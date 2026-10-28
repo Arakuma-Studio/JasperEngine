@@ -391,16 +391,20 @@ async def test_toon_steps(ed: Editor):
     await shot(ed, "q-window-advanced")
     # a narrower settings column (its border dragged left): the six presets wrap to rows instead of clipping
     area = await rect_of(ed, "spriteNormals.settings", "the settings panel")
-    border_x, border_y = int(area[2]) + 4, int((area[1] + area[3]) / 2)
-    xdo(ed, "mousemove", str(border_x), str(border_y))
-    await ed.call("wait", frames=4)
-    xdo(ed, "mousedown", "1")
-    for step in range(1, 9):
-        xdo(ed, "mousemove", str(border_x - step * 10), str(border_y))
-        await ed.call("wait", frames=2)
-    xdo(ed, "mouseup", "1")
-    await ed.call("wait", frames=10)
-    narrow = await rect_of(ed, "spriteNormals.settings", "the settings panel")
+    narrow = area
+    for offset in (6, 10, 14, 18, 22, 3):   # the table's column border, just right of the panel's scroll area
+        border_x, border_y = int(area[2]) + offset, int(area[1]) + 40
+        xdo(ed, "mousemove", str(border_x), str(border_y))
+        await ed.call("wait", frames=4)
+        xdo(ed, "mousedown", "1")
+        for step in range(1, 9):
+            xdo(ed, "mousemove", str(border_x - step * 12), str(border_y))
+            await ed.call("wait", frames=2)
+        xdo(ed, "mouseup", "1")
+        await ed.call("wait", frames=10)
+        narrow = await rect_of(ed, "spriteNormals.settings", "the settings panel")
+        if narrow[2] < area[2] - 30:
+            break
     ed.check(narrow[2] < area[2] - 30, f"the column is narrower: {area} -> {narrow}")
     await rect_of(ed, "spriteNormals.presets.Soft", "Soft", panel="spriteNormals.settings")
     soft, chunky = ed.ui_items().get("spriteNormals.presets.Soft"), ed.ui_items().get("spriteNormals.presets.Chunky")
