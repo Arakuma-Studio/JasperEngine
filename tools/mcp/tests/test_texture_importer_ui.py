@@ -15,6 +15,7 @@ import subprocess
 from pathlib import Path
 
 from harness import Editor, skip
+import ui_input
 
 REPO = Path(__file__).resolve().parents[3]
 EDITOR = {"project": REPO / "tools" / "fixtures" / "textures", "xvfb": "harness"}
@@ -41,17 +42,14 @@ def window(ed: Editor) -> str:
 
 
 async def frames(ed: Editor, count: int = 2) -> None:
-    for _ in range(count):
-        await ed.call("editor_status")
+    await ui_input.frames(ed, count)
 
 
 async def click_at(ed: Editor, x: float, y: float) -> None:
-    xdo(ed, "mousemove", "--window", window(ed), str(int(x)), str(int(y)))
-    await frames(ed)
-    xdo(ed, "mousedown", "1")
-    await frames(ed)
-    xdo(ed, "mouseup", "1")
-    await frames(ed)
+    """a click at a point in window coordinates (ui_input: frame-paced, never a double click)"""
+    window(ed)
+    ui = ui_input.for_editor(ed)
+    await ui.click(ui.at((x, y)))
 
 
 async def click(ed: Editor, rect: list) -> None:
@@ -69,7 +67,7 @@ async def wait_ui(ed: Editor, predicate, what: str, timeout: float = 20.0) -> di
         state = await ui(ed)
         if predicate(state):
             return state
-        await asyncio.sleep(0.25)
+        await ui_input.frames(ed, 2)
     ed.fail(f"{what}; ui: {state}")
 
 
@@ -98,7 +96,7 @@ async def wait_item(ed: Editor, label: str, window_name: str | None = None, time
         rect = await item(ed, label, window_name)
         if rect:
             return rect
-        await asyncio.sleep(0.25)
+        await ui_input.frames(ed, 2)
     ed.fail(f"no drawn UI item {label!r}")
 
 

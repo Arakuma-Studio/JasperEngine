@@ -12,6 +12,7 @@ import subprocess
 from pathlib import Path
 
 from harness import Editor, tool_meta
+import ui_input
 
 EDITOR = {"xvfb": "harness"}
 TIMEOUT = 900
@@ -79,21 +80,15 @@ async def click_enabled_checkbox(ed: Editor, xdo, phase_name: str, system: str):
         shown = await ed.call("focus_window", window="systems")
         row = systems_row(shown, phase_name, system)
         box = row["enabled_checkbox"]
+        ui = ui_input.for_editor(ed)   # frame-paced input (tools/mcp/ui_input.py)
         if row["visible"]:
-            xdo("mousemove", str(int(box["x"] + box["width"] / 2)), str(int(box["y"] + box["height"] / 2)))
-            await asyncio.sleep(0.3)
-            xdo("click", "1")
-            await asyncio.sleep(0.5)
+            await ui.click(ui.centre(box))
             await ed.call("wait", frames=3)
             return
         # wheel over the table (the first row's checkbox column) one notch down
         first = shown["rows"][0]["enabled_checkbox"]
         top = shown["rect"]["y"] + 60
-        xdo("mousemove", str(int(first["x"] + first["width"] / 2)), str(int(max(top, min(first["y"], box["y"] - 40)))))
-        await asyncio.sleep(0.2)
-        xdo("click", "5")
-        await asyncio.sleep(0.3)
-        await ed.call("wait", frames=2)
+        await ui.wheel(ui.at((first["x"] + first["width"] / 2, max(top, min(first["y"], box["y"] - 40)))), 1)
     raise AssertionError(f"the {phase_name} {system} row never scrolled into view: {row}")
 
 
