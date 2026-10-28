@@ -20,6 +20,7 @@
 #include <limits>
 
 using namespace jasperengine;
+using namespace jasperengine::editor;
 
 namespace {
 
