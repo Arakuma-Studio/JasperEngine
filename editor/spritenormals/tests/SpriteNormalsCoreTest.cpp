@@ -1416,7 +1416,7 @@ TEST(SpriteNormalsQuantize, HeightMapIsTheGeneratorsAndMetricsInputsAreFinal) {
 TEST(SpriteNormalsQuantize, ValidationNamesTheQuantizeFields) {
     Settings s = presetSettings(Preset::Toon);
     EXPECT_TRUE(validateSettings(s).empty());
-    s.quantize = quantizeOf(5, 0, 46.0f, 360.0f);
+    s.quantize = quantizeOf(5, 0, 46.0f, 361.0f);
     std::vector<Problem> problems = validateSettings(s);
     ASSERT_EQ(problems.size(), 4u);
     EXPECT_EQ(problems[0].field, "quantize.directions");
@@ -1426,7 +1426,7 @@ TEST(SpriteNormalsQuantize, ValidationNamesTheQuantizeFields) {
     EXPECT_EQ(problems[2].field, "quantize.flat_deg");
     EXPECT_EQ(problems[2].message, "quantize.flat_deg must be between 0 and 45 (got 46)");
     EXPECT_EQ(problems[3].field, "quantize.rotation_deg");
-    EXPECT_EQ(problems[3].message, "quantize.rotation_deg must be at least 0 and below 360 (got 360)");
+    EXPECT_EQ(problems[3].message, "quantize.rotation_deg must be between 0 and 360 (got 361)");
     for (const Problem& p : problems) {
         EXPECT_EQ(p.kind, "invalid_settings");
         EXPECT_FALSE(p.fix.empty());
@@ -1438,10 +1438,10 @@ TEST(SpriteNormalsQuantize, ValidationNamesTheQuantizeFields) {
     s.quantize = quantizeOf(4, 1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity());
     problems = validateSettings(s);
     ASSERT_EQ(problems.size(), 2u);
-    EXPECT_EQ(problems[1].message, "quantize.rotation_deg must be a number at least 0 and below 360 (got inf)");
+    EXPECT_EQ(problems[1].message, "quantize.rotation_deg must be a number between 0 and 360 (got inf)");
     // the limits themselves are valid; off validates the other values too
     for (int d : {0, 4, 6, 8, 12, 16}) {
-        s.quantize = quantizeOf(d, 4, 45.0f, 359.99f);
+        s.quantize = quantizeOf(d, 4, 45.0f, 360.0f);   // 360 is 0 (a whole turn)
         EXPECT_TRUE(validateSettings(s).empty()) << d;
         s.quantize = quantizeOf(d, 1, 0.0f, 0.0f);
         EXPECT_TRUE(validateSettings(s).empty()) << d;

@@ -639,7 +639,9 @@ Report report(Project* project, const NormalsCall& state, const NormalsTarget& t
     if (!sheet.empty()) sn::encodePng(sheet, out.sheet, error);
 
     out.summary = "Normal map of " + p.sourcePath + " (" + std::to_string(source.fileWidth) + "x" + std::to_string(source.fileHeight) + ", " +
-                  framesFromText(p, count) + ", preset " + sn::toString(s.preset) + ", " + radius + ") in " + fixed(r.seconds, 2) + " s.";
+                  framesFromText(p, count) + ", preset " + sn::toString(s.preset) +
+                  (s.quantize.on() && s.preset != sn::Preset::Toon ? ", toon steps " + std::to_string(s.quantize.directions) : std::string()) + ", " +
+                  radius + ") in " + fixed(r.seconds, 2) + " s.";
     for (const std::string& line : assessment.lines) out.summary += " " + line + ".";
     if (p.paint.active() || p.spec.paintMode != sn::PaintMode::Keep) {
         out.summary += " Paint (" + std::string(sn::toString(p.spec.paintMode)) + (p.paintKeptFrom.empty() ? "" : ", kept from " + p.paintKeptFrom) + "): " +

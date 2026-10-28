@@ -2423,16 +2423,29 @@ namespace {
     // the toon preset's tooltip (its values: presetSettings(Preset::Toon))
     constexpr const char* kToonPresetTip = "Cel-shaded pixel art: Toon steps 8 (one tilt ring, flat below 15 deg), light in flat bands (strength 2, detail 0.5, smoothing 2, volume 1.3)";
 
-    // Physics Placement's segmented buttons (one selected, the others plain), equal widths; with
-    // `probe`, each button is the UI probe's "<probe>.<label>"
+    // Physics Placement's segmented buttons (one selected, the others plain), equal widths; in a
+    // dock too narrow for every label on one row they wrap to rows of equal columns (6: 3 + 3,
+    // then 2 + 2 + 2), each row starting where the first did. With `probe`, each button is the UI
+    // probe's "<probe>.<label>" ("<probe>Selected.<label>" when selected)
     bool segmentedButtons(const char* id, int& value, const char* const* labels, const char* const* tooltips, int count, const char* probe = nullptr) {
         bool changed = false;
         const float spacing = ImGui::GetStyle().ItemInnerSpacing.x;
-        const float width = std::max(1.0f, (ImGui::GetContentRegionAvail().x - spacing * (float)(count - 1)) / (float)count);
+        const float avail = ImGui::GetContentRegionAvail().x;
+        float needed = 0.0f;
+        for (int i = 0; i < count; i++) needed = std::max(needed, ImGui::CalcTextSize(labels[i]).x + ImGui::GetStyle().FramePadding.x * 2.0f);
+        int columns = count;
+        auto widthOf = [&](int n) { return std::max(1.0f, (avail - spacing * (float)(n - 1)) / (float)n); };
+        while (columns > 1 && widthOf(columns) < needed) {
+            const int rows = (count + columns - 1) / columns + 1;
+            columns = std::min(columns - 1, (count + rows - 1) / rows);
+        }
+        const float width = widthOf(columns);
+        const float startX = ImGui::GetCursorPosX();
         ImGui::PushID(id);
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(spacing, ImGui::GetStyle().ItemSpacing.y));
         for (int i = 0; i < count; i++) {
-            if (i > 0) ImGui::SameLine();
+            if (i % columns != 0) ImGui::SameLine();
+            else if (i > 0) ImGui::SetCursorPosX(startX);
             const bool selected = value == i;
             if (selected) {
                 ImGui::PushStyleColor(ImGuiCol_Button, Theme::Colors::ButtonActivated);
@@ -2828,16 +2841,29 @@ void SpriteNormalsWindow::drawToonSteps(const sn::Settings& base) {
         }
         ImGui::SameLine();
     }
-    static const int values[] = {0, 4, 8, 16};
-    const char* labels[] = {"Off", "4", "8", "16"};
-    const char* tips[] = {"Smooth normals (no steps)", "4 directions: chunky, blocky light", "8 directions: classic cel shading",
-                          "16 directions: finer steps, still banded"};
-    int v = -1;   // 6 and 12 (Advanced) select no button
-    for (int i = 0; i < 4; i++) {
-        if (settings.quantize.directions == values[i]) v = i;
+    // Off / 4 / 8 / 16, and 6 or 12 (set in Advanced) shown in its place among them while selected
+    std::vector<int> values = {0, 4, 8, 16};
+    std::vector<std::string> names = {"Off", "4", "8", "16"};
+    std::vector<std::string> tipTexts = {"Smooth normals (no steps)", "4 directions: chunky, blocky light", "8 directions: classic cel shading",
+                                         "16 directions: finer steps, still banded"};
+    const int d = settings.quantize.directions;
+    if (d == 6 || d == 12) {
+        const size_t at = d == 6 ? 2 : 3;
+        values.insert(values.begin() + static_cast<std::ptrdiff_t>(at), d);
+        names.insert(names.begin() + static_cast<std::ptrdiff_t>(at), std::to_string(d));
+        tipTexts.insert(tipTexts.begin() + static_cast<std::ptrdiff_t>(at), std::to_string(d) + " directions (set in Advanced)");
     }
-    if (segmentedButtons("##toonStepsButtons", v, labels, tips, 4, "spriteNormals.toonSteps")) {
-        settings.quantize.directions = values[v];
+    std::vector<const char*> labels, tips;
+    for (size_t i = 0; i < values.size(); i++) {
+        labels.push_back(names[i].c_str());
+        tips.push_back(tipTexts[i].c_str());
+    }
+    int v = -1;
+    for (size_t i = 0; i < values.size(); i++) {
+        if (d == values[i]) v = static_cast<int>(i);
+    }
+    if (segmentedButtons("##toonStepsButtons", v, labels.data(), tips.data(), static_cast<int>(labels.size()), "spriteNormals.toonSteps")) {
+        settings.quantize.directions = values[static_cast<size_t>(v)];
         markChanged();
         storeSettings();
     }

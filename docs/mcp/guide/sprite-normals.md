@@ -95,10 +95,11 @@ normal to a small palette of directions, so a moving light steps across the spri
 | `directions` | 0 (off), 4, 6, 8, 12, 16 | 0 | azimuth steps around the circle |
 | `tilts` | 1..4 | 1 | tilt rings between `flat_deg` and 90° |
 | `flat_deg` | 0..45 | 15 | normals tilted less face the viewer exactly (flat tops, no speckle) |
-| `rotation_deg` | 0..360 (360 excluded) | 0 | turns the palette (0: one direction points right) |
+| `rotation_deg` | 0..360 (360 is 0) | 0 | turns the palette (0: one direction points right) |
 
 Per opaque pixel: tilted under `flat_deg` → `(0, 0, 1)`; else the azimuth snaps to `rotation_deg + k·360/directions`
-(halves round away) and the tilt to the centre of its ring of `[flat_deg, 90)`. So every opaque pixel is one of
+(a tie, exactly between two directions, goes to the next direction counter-clockwise from `rotation_deg`) and the
+tilt to the centre of its ring of `[flat_deg, 90)`. So every opaque pixel is one of
 `1 + directions × tilts` normals. It runs after the relief, before the DirectX flip; painted pixels keep exactly
 the direction painted; the height map is not quantized; flat regions stay flat. Missing keys keep the preset's
 values (`{"quantize": {"directions": 8}}` is enough). Fewer directions read chunkier (4: a pyramid look); 16 is

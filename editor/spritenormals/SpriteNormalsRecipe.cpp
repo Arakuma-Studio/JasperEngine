@@ -98,8 +98,12 @@ namespace jasperengine::editor::spritenormals {
                 error = wrongType("quantize", value, "an object {directions, tilts, flat_deg, rotation_deg}");
                 return false;
             }
-            return readInt(value, "directions", "quantize.", q.directions, error) && readInt(value, "tilts", "quantize.", q.tilts, error) &&
-                   readNumber(value, "flat_deg", "quantize.", q.flatDeg, error) && readNumber(value, "rotation_deg", "quantize.", q.rotationDeg, error);
+            if (!readInt(value, "directions", "quantize.", q.directions, error) || !readInt(value, "tilts", "quantize.", q.tilts, error) ||
+                !readNumber(value, "flat_deg", "quantize.", q.flatDeg, error) || !readNumber(value, "rotation_deg", "quantize.", q.rotationDeg, error)) {
+                return false;
+            }
+            if (q.rotationDeg == 360.0f) q.rotationDeg = 0.0f;   // a whole turn: every surface takes 360 as 0
+            return true;
         }
 
         bool regionFromJson(const json& value, const std::string& where, Region& region, std::string& error) {
@@ -204,7 +208,7 @@ namespace jasperengine::editor::spritenormals {
             j["quantize"] = {{"directions", s.quantize.directions},
                              {"tilts", s.quantize.tilts},
                              {"flat_deg", number(s.quantize.flatDeg)},
-                             {"rotation_deg", number(s.quantize.rotationDeg)}};
+                             {"rotation_deg", number(s.quantize.rotationDeg == 360.0f ? 0.0f : s.quantize.rotationDeg)}};
         }
         return j;
     }

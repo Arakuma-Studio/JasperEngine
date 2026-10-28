@@ -714,6 +714,27 @@ namespace jasperengine::editor::spritenormals {
             json data;
         };
 
+        // --quantize-tilts / -flat / -rotation given while Toon steps resolve to off: they do nothing
+        std::optional<Problem> quantizeOffWarning(const Options& o, const Settings& s) {
+            if (s.quantize.on() || !o.overrides.contains("quantize")) return std::nullopt;
+            std::vector<std::string> flags;
+            for (const auto& [key, flag] : {std::pair<const char*, const char*>{"tilts", "--quantize-tilts"}, {"flat_deg", "--quantize-flat"},
+                                            {"rotation_deg", "--quantize-rotation"}}) {
+                if (o.overrides["quantize"].contains(key)) flags.push_back(flag);
+            }
+            if (flags.empty()) return std::nullopt;
+            std::string names;
+            for (size_t i = 0; i < flags.size(); i++) names += (i == 0 ? "" : (i + 1 == flags.size() ? " and " : ", ")) + flags[i];
+            return Problem{"quantize_off", "quantize",
+                           "Toon steps are off: " + names + (flags.size() == 1 ? " has" : " have") + " no effect; add --quantize N",
+                           "add --quantize 8 (or 4, 6, 12, 16), or drop " + names};
+        }
+
+        // ", toon steps N" for the summary line when Toon steps are on and the preset is not toon
+        std::string toonStepsText(const Settings& s) {
+            return s.quantize.on() && s.preset != Preset::Toon ? ", toon steps " + std::to_string(s.quantize.directions) : std::string();
+        }
+
         json resultJson(const Options& o, Item& item) {
             const Prepared& p = item.prepared;
             const Result& r = item.result;
@@ -780,6 +801,7 @@ namespace jasperengine::editor::spritenormals {
             item.warnings = a.warnings;
             item.warnings.insert(item.warnings.end(), r.warnings.begin(), r.warnings.end());
             for (const Problem& w : sceneWarnings(nullptr, NULL_ENTITY, s, r.normal.width, r.normal.height, p.source.delays, false)) item.warnings.push_back(w);
+            if (const std::optional<Problem> off = quantizeOffWarning(o, s)) item.warnings.push_back(*off);
             json warnings = json::array();
             for (const Problem& w : item.warnings) warnings.push_back({{"kind", w.kind}, {"message", w.message}, {"fix", w.fix}});
             j["warnings"] = warnings;
@@ -1060,7 +1082,7 @@ namespace jasperengine::editor::spritenormals {
                     if (!item.previewPath.empty()) outputs += (outputs.empty() ? "" : ", ") + shown(o, item.previewPath);
                     const size_t frames = item.prepared.request.cells.empty() ? 1 : item.prepared.request.cells.size();
                     err << PREFIX << item.label << " -> " << (o.dryRun ? "(dry run, would write) " : "") << outputs << " (" << item.prepared.source.fileWidth << "x"
-                        << item.prepared.source.fileHeight << ", " << frames << (frames == 1 ? " frame" : " frames") << ", preset " << toString(o.preset) << ") in "
+                        << item.prepared.source.fileHeight << ", " << frames << (frames == 1 ? " frame" : " frames") << ", preset " << toString(o.preset) << toonStepsText(item.prepared.request.settings) << ") in "
                         << fixed(item.result.seconds, 2) << "s\n";
                     const PaintLayer& paint = item.prepared.paint;
                     if (paint.active() || item.spec.paintMode != PaintMode::Keep) {
@@ -1104,7 +1126,7 @@ namespace jasperengine::editor::spritenormals {
             << "      --quantize <n>          Toon steps: snap normals to n directions (0 off, 4, 6, 8, 12, 16) for\n"
             << "                              stepped, cel-shaded light.   --quantize-tilts <n>  1..4 rings (1).\n"
             << "      --quantize-flat <deg>   0..45 (15): flatter normals face the viewer.\n"
-            << "      --quantize-rotation <deg>  0..360 (0 = one direction points right).\n"
+            << "      --quantize-rotation <deg>  0..360, 360 is 0 (0: one direction points right).\n"
             << "      --directx               Green down (Unreal). The engine reads OpenGL.\n"
             << "Frames (default: the animation's, the --sprite's, else the whole image):\n"
             << "      --frame-size <WxH|N>    Cell size.   --columns <n>  --rows <n>  --count <n>\n"

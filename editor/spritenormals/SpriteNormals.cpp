@@ -496,12 +496,7 @@ namespace jasperengine::editor::spritenormals {
                                 "Use a whole number between 1 and 4."});
         }
         checkRange(problems, "quantize.flat_deg", q.flatDeg, 0.0f, 45.0f);
-        if (!(std::isfinite(q.rotationDeg) && q.rotationDeg >= 0.0f && q.rotationDeg < 360.0f)) {
-            problems.push_back({"invalid_settings", "quantize.rotation_deg",
-                                std::string("quantize.rotation_deg must be ") + (std::isfinite(q.rotationDeg) ? "" : "a number ") +
-                                    "at least 0 and below 360 (got " + fmt(q.rotationDeg) + ")",
-                                "Use a value from 0 up to (not including) 360; 360 is 0."});
-        }
+        checkRange(problems, "quantize.rotation_deg", q.rotationDeg, 0.0f, 360.0f);   // 360 is 0 (a whole turn)
         return problems;
     }
 

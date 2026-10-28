@@ -272,7 +272,7 @@ async def test_quantize_flags_echo_and_errors():
         (["--quantize", "5"], "--quantize must be 0 (off), 4, 6, 8, 12 or 16 (got 5)"),
         (["--quantize", "8", "--quantize-tilts", "9"], "--quantize-tilts must be between 1 and 4 (got 9)"),
         (["--quantize", "8", "--quantize-flat", "50"], "--quantize-flat must be between 0 and 45 (got 50)"),
-        (["--quantize", "8", "--quantize-rotation", "360"], "--quantize-rotation must be at least 0 and below 360 (got 360)"),
+        (["--quantize", "8", "--quantize-rotation", "361"], "--quantize-rotation must be between 0 and 360 (got 361)"),
         (["--quantize", "eight"], "invalid --quantize value 'eight'"),
         (["--quantize", "4.5"], "invalid --quantize value '4.5'"),
         (["--quantize-flat", "x"], "invalid --quantize-flat value 'x'"),
@@ -281,7 +281,25 @@ async def test_quantize_flags_echo_and_errors():
         check(r.returncode == 2 and needle in r.stderr, f"{args}: exit 2 with {needle!r}: {r.returncode} {r.stderr[-600:]}")
     check(listing(work) == before, "usage errors write nothing")
     r = run(work, "--help")
-    check("--quantize" in r.stdout and "toon" in r.stdout, "--help lists the flags and the preset")
+    check("--quantize" in r.stdout and "toon" in r.stdout and "360 is 0" in r.stdout, "--help lists the flags and the preset")
+    # 360 is 0 (as in the window and MCP)
+    code, out, err = run_json(work, "--source", "art/ball.png", "--dry-run", "--quantize", "8", "--quantize-rotation", "360")
+    check(code == 0 and out["results"][0]["settings"]["quantize"]["rotation_deg"] == 0, f"360 -> 0: {out['results'][0]['settings']} {err}")
+    # flags without Toon steps: a warning (text and JSON), the run still succeeds
+    code, out, err = run_json(work, "--source", "art/ball.png", "--dry-run", "--quantize-tilts", "2", "--quantize-flat", "20")
+    warns = [w for w in out["results"][0]["warnings"] if w["kind"] == "quantize_off"]
+    check(code == 0 and len(warns) == 1 and warns[0]["message"] ==
+          "Toon steps are off: --quantize-tilts and --quantize-flat have no effect; add --quantize N", f"quantize_off: {out['results'][0]['warnings']}")
+    r = run(work, "--source", "art/ball.png", "--dry-run", "--preset", "toon", "--quantize", "0", "--quantize-rotation", "45")
+    check(r.returncode == 0 and "warning: quantize_off: Toon steps are off: --quantize-rotation has no effect; add --quantize N" in r.stderr,
+          f"text warning: {r.stderr}")
+    code, out, _ = run_json(work, "--source", "art/ball.png", "--dry-run", "--quantize", "8")
+    check(not any(w["kind"] == "quantize_off" for w in out["results"][0]["warnings"]), "no warning with Toon steps on")
+    # the summary line names Toon steps on a non-toon preset only
+    r = run(work, "--source", "art/ball.png", "--dry-run", "--preset", "crisp", "--quantize", "6")
+    check(r.returncode == 0 and "preset crisp, toon steps 6)" in r.stderr, f"summary: {r.stderr}")
+    r = run(work, "--source", "art/ball.png", "--dry-run", "--preset", "toon")
+    check(r.returncode == 0 and "preset toon)" in r.stderr and "toon steps" not in r.stderr, f"toon summary: {r.stderr}")
 
 
 # ---------------------------------------------------------------------------- 10. recipe paths and --project

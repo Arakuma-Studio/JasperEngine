@@ -535,6 +535,9 @@ async def test_quantize_toon_steps(ed: Editor):
     _, _, px = rgba((ed.project / out).read_bytes())
     check(1 < len(opaque_colours(px)) <= 5, f"at most 1 + 4 x 1 normals: {opaque_colours(px)}")
     check(recipe(ed.project / out)["settings"]["quantize"] == q, "the recipe records it")
+    check(", toon steps 4," in r.text, f"the summary names Toon steps on a non-toon preset: {r.text[:300]}")
+    turn = (await gen(ed, source=BALL, params={"quantize": {"directions": 8, "rotation_deg": 360}})).structured["settings"]["quantize"]
+    check(turn["rotation_deg"] == 0, f"360 is 0: {turn}")
     plain = (await gen(ed, source=BALL)).structured["settings"]
     check("quantize" not in plain, f"off: no quantize key: {plain}")
     # the toon preset
@@ -563,7 +566,7 @@ async def test_quantize_toon_steps(ed: Editor):
         ({"quantize": {"directions": 5}}, "params.quantize.directions", "0 (off), 4, 6, 8, 12 or 16 (got 5)"),
         ({"quantize": {"directions": 8, "tilts": 7}}, "params.quantize.tilts", "between 1 and 4 (got 7)"),
         ({"quantize": {"directions": 8, "flat_deg": 60}}, "params.quantize.flat_deg", "between 0 and 45 (got 60)"),
-        ({"quantize": {"directions": 8, "rotation_deg": 360}}, "params.quantize.rotation_deg", "below 360 (got 360)"),
+        ({"quantize": {"directions": 8, "rotation_deg": 400}}, "params.quantize.rotation_deg", "between 0 and 360 (got 400)"),
         ({"quantize": {"directions": 8.5}}, "params", "expected a whole number"),
         ({"quantize": 8}, "params", "expected an object"),
         ({"quantize": {"steps": 8}}, "params.quantize", "unknown key \"steps\""),

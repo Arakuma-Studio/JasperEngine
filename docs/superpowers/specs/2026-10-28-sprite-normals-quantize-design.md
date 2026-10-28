@@ -19,13 +19,21 @@ to today (golden parity, all existing tests unchanged).
 | `directions` | 0, 4, 6, 8, 12, 16 (0 = off) | 0 | number of azimuth steps around the circle |
 | `tilts` | 1..4 | 1 | number of tilt rings between `flat_deg` and 90° |
 | `flat_deg` | 0..45 | 15 | normals tilted less than this become exactly flat (0,0,1) |
-| `rotation_deg` | 0..360 (360 excluded) | 0 | rotates the azimuth palette (0 = one direction points right, +X) |
+| `rotation_deg` | 0..360 (360 is 0; amended, below) | 0 | rotates the azimuth palette (0 = one direction points right, +X) |
 
 **Amendment (controller ruling, 2026-10-28):** the defaults of `tilts` and `flat_deg` are 1 and 15 (were 2 and 10),
 the toon preset's values, so turning Toon steps on from any preset gives one ring at 52.5° instead of rims at 70°
 that trip `too_steep`. `directions` stays 0 (off) and `rotation_deg` 0. Recipes always record all four keys when they
 record `quantize`, so no recipe written by this branch resolves differently; a partial object (MCP `params`, a
 hand-written recipe) fills missing keys from the preset (toon: 1 / 15) or, on the other presets, the new defaults.
+
+**Amendment (polish round, 2026-10-28): 360 is 0 on every surface.** `rotation_deg` accepts 0..360; 360 is a whole
+turn, read as 0 (`settingsFromJson`, so MCP `params`, CLI `--quantize-rotation 360` and recipes) and recorded as 0
+(`settingsToJson`); the window's Rotation slider wraps 360 to 0. Values outside 0..360 are refused on every surface
+(`quantize.rotation_deg must be between 0 and 360 (got 361)`). The CLI warns `quantize_off` ("Toon steps are off:
+--quantize-tilts has no effect; add --quantize N", text and JSON `warnings`) when a `--quantize-tilts/-flat/-rotation`
+flag is given but Toon steps resolve to off; the CLI and MCP one-line summaries add ", toon steps N" when Toon steps are
+on and the preset is not toon.
 
 - JSON/MCP: `params.quantize: {directions, tilts, flat_deg, rotation_deg}` (inside the existing loose `params`
   object; unknown keys refused with the valid list; out-of-range values refused with the house message).
@@ -47,8 +55,8 @@ hand-written recipe) fills missing keys from the preset (toon: 1 / 15) or, on th
   names them. `settingsFromJson` stays lenient on unknown keys inside `quantize` (recipes from a newer editor); the MCP
   handler refuses them (`params.quantize has an unknown key "steps"`, fix: the valid keys), as it does for `regions`.
 - *Messages.* `quantize.directions must be 0 (off), 4, 6, 8, 12 or 16 (got 5)`, `quantize.tilts must be between 1 and
-  4 (got 0)`, `quantize.flat_deg must be between 0 and 45 (got 46)`, `quantize.rotation_deg must be at least 0 and
-  below 360 (got 360)`; fields `quantize.<key>` (MCP `params.quantize.<key>`; the CLI names the flag:
+  4 (got 0)`, `quantize.flat_deg must be between 0 and 45 (got 46)`, `quantize.rotation_deg must be between 0 and
+  360 (got 361)`; fields `quantize.<key>` (MCP `params.quantize.<key>`; the CLI names the flag:
   `--quantize-tilts must be between 1 and 4 (got 9)`).
 - *Window.* "Toon steps" is a row after Volume with segmented Off / 4 / 8 / 16 (6 and 12 select no button) and a
   reset-to-preset arrow when it differs from the preset; Advanced has a "Directions" combo (Off, 4, 6, 8, 12, 16),

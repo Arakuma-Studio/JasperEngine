@@ -60,7 +60,7 @@ namespace jasperengine::editor::spritenormals {
         int directions = 0;                   // 0 (off), 4, 6, 8, 12, 16: azimuth steps around the circle
         int tilts = 1;                        // 1..4: tilt rings between flatDeg and 90 degrees
         float flatDeg = 15.0f;                // 0..45: normals tilted less become exactly (0, 0, 1)
-        float rotationDeg = 0.0f;             // [0, 360): the palette's first azimuth (0 = +X, right)
+        float rotationDeg = 0.0f;             // 0..360 (360 is 0: recipes record 0): the palette's first azimuth (0 = +X, right)
         bool on() const { return directions > 0; }
         bool operator==(const Quantize& o) const {
             return directions == o.directions && tilts == o.tilts && flatDeg == o.flatDeg && rotationDeg == o.rotationDeg;

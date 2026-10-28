@@ -373,6 +373,12 @@ TEST(SpriteNormalsRecipe, QuantizeIsRecordedOnlyWhenOnOrThePresetsIs) {
     ASSERT_TRUE(sn::settingsFromJson(json::parse(R"({"quantize":{"directions":1e12}})"), big, error));
     EXPECT_EQ(big.quantize.directions, 1000000000);
     EXPECT_EQ(sn::validateSettings(big).at(0).field, "quantize.directions");
+    // 360 is 0 on every surface: read as 0, recorded as 0
+    sn::Settings turn = toon;
+    ASSERT_TRUE(sn::settingsFromJson(json::parse(R"({"quantize":{"rotation_deg":360}})"), turn, error)) << error;
+    EXPECT_EQ(turn.quantize.rotationDeg, 0.0f);
+    turn.quantize.rotationDeg = 360.0f;
+    EXPECT_EQ(sn::settingsToJson(turn)["quantize"]["rotation_deg"], 0);
     // the preset name
     sn::Settings named;
     ASSERT_TRUE(sn::settingsFromJson(json::parse(R"({"preset":"toon"})"), named, error)) << error;
