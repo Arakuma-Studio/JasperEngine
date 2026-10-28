@@ -307,17 +307,24 @@ async def test_gizmo_cube_toggles_projection(ed: Editor):
     await cube(ed, sid, "Box", (0, 0, 0))
     await ed.call("set_scene_camera", scene=sid, position=[4, 3, 6], target=[0, 0, 0])
     rect, info = await view(ed, sid)
-    ed.check_eq((await camera(ed, sid))["projection"], "perspective")
+    before = await camera(ed, sid)
+    ed.check_eq(before["projection"], "perspective")
     # the view gizmo: VIEWPORT_GIZMO_SIZE (100) times the overlay scale, at the view's top right
     scale = rect["width"] / info["width"]   # window pixels per image pixel
     gizmo = 100 * info.get("overlay_scale", 1.0) * scale
     centre = ui.at(rect, (rect["width"] - gizmo / 2, gizmo / 2))
+    where = f"clicked {centre} in {rect}, image {info.get('width')}x{info.get('height')}"
+    await ed.screenshot("editor", path=str(s["out"] / "s26-gizmo-before.png"))
     await ui.click(centre)
     await ed.screenshot("editor", path=str(s["out"] / "s26-gizmo-iso.png"))
-    ed.check_eq((await camera(ed, sid))["projection"], "orthographic", "the cube toggles to Iso")
+    iso = await camera(ed, sid)
+    # the cube, not an arrow: the same free view, orthographic (an arrow gives an axis view)
+    ed.check_eq((iso["projection"], iso["view"]), ("orthographic", "free"), f"the cube toggles to Iso ({where}): {before} -> {iso}")
     await ui.settle(1.0)    # two clicks, not a double click
     await ui.click(centre)
-    ed.check_eq((await camera(ed, sid))["projection"], "perspective", "and back to Persp")
+    await ed.screenshot("editor", path=str(s["out"] / "s26-gizmo-persp.png"))
+    back = await camera(ed, sid)
+    ed.check_eq((back["projection"], back["view"]), ("perspective", "free"), f"and back to Persp ({where}): {back}")
 
 
 # ---------------------------------------------------------------------------- AC10
@@ -391,7 +398,8 @@ async def test_drop_on_surface(ed: Editor):
         await ed.screenshot("editor", path=str(s["out"] / f"s26-drop-{settings_align}.png"))
         found = await ed.call("find_entities", scene=sid, name="Crate")
         crates = [e for e in found["entities"] if e["id"] != crate]
-        ed.check(len(crates) >= 1, f"the drop made an instance: {found}")
+        status = (await ed.call("editor_status")).get("status_message", "")
+        ed.check(len(crates) >= 1, f"the drop made an instance: {found}; dragged {start} -> {uv(ui, rect, 0.5, 0.5)}, status {status!r}")
         inst = crates[-1]["id"]
         t = (await ed.call("get_entity", scene=sid, entity=inst, components=["transform"]))["components"]["transform"]
         pos, rq = t["position"], t["rotation"]["quat"]

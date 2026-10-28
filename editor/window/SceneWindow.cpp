@@ -2587,12 +2587,13 @@ void editor::SceneWindow::show() {
                     // Black until the first render creates the framebuffer.
                     const ImVec2 canvasMin = ImGui::GetCursorScreenPos();
                     Widgets::image(previewTex, canvasAvail, IM_COL32(0, 0, 0, 255));
-                    const ImVec2 afterImage = ImGui::GetCursorScreenPos();
                     particleOverlay.draw(project, &sceneProject, canvasMin, canvasAvail);
-                    // back after the image: an empty item ends the line there (moving the cursor
-                    // alone may not extend the window, ImGui's boundary check)
-                    ImGui::SetCursorScreenPos(afterImage);
-                    ImGui::Dummy(ImVec2(0.0f, 0.0f));
+                    // an item over the image again, after the panel's widgets: the drop targets
+                    // below (BeginDragDropTarget) take the last item, and an empty one a line
+                    // lower would make them unreachable and give the canvas a scrollbar (which
+                    // narrows the view and moves the view gizmo off the view's corner)
+                    ImGui::SetCursorScreenPos(canvasMin);
+                    ImGui::Dummy(canvasAvail);
 
                     // Physics: the HUD, and the labels at their objects
                     if (PhysicsPlacementWindow* physics = Backend::getApp().getPhysicsPlacementWindow()) {
