@@ -2488,7 +2488,7 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::path& path, con
         }else if (Util::isModelFile(fileEntry.extension)){
             fileEntry.type = FileType::MODEL;
             // a Vertex Animation's mesh (its .vat beside it)
-            fileEntry.generated = !vat::existingPairOf(entry.path()).empty() && vat::isVatMeshFile(entry.path().generic_string());
+            fileEntry.generated = !vat::existingPairOf(path).empty() && vat::isVatMeshFile(path.generic_string());
         }else if (Util::isVertexAnimationFile(fileEntry.extension)){
             fileEntry.type = FileType::VERTEX_ANIMATION;
             fileEntry.icon = vertexAnimationIcon.getRender();

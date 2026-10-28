@@ -156,7 +156,7 @@ namespace{
         for (size_t i = 0; i < models->size(); i++){
             const ModelComponent& model = models->getComponentFromIndex(i);
             if (model.filename.empty() || !underRoot(scene, models->getEntity(i), target.root)) continue;
-            const fs::path file = project->resolveAssetPath(FileUtils::pathFromUtf8(model.filename)).lexically_normal();
+            const fs::path file = project->resolveAssetPath(FileUtils::pathFromUtf8(model.filename.path)).lexically_normal();
             std::error_code ec;
             if (!fs::is_regular_file(file, ec)) continue;
             addModelHashes(target, project, FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(file)), file);
@@ -322,7 +322,7 @@ namespace{
         target.directory.clear();
         if (const ModelComponent* model = target.scene->findComponent<ModelComponent>(entity)){
             if (!model->filename.empty()){
-                const fs::path file = project->resolveAssetPath(FileUtils::pathFromUtf8(model->filename)).lexically_normal();
+                const fs::path file = project->resolveAssetPath(FileUtils::pathFromUtf8(model->filename.path)).lexically_normal();
                 target.directory = parentOf(FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(file)));
             }
         }
@@ -465,7 +465,7 @@ namespace{
 
         if (const PoseAnimatorComponent* animator = scene->findComponent<PoseAnimatorComponent>(root)){
             if (!animator->animation.empty()){
-                const fs::path file = project->resolveAssetPath(FileUtils::pathFromUtf8(animator->animation)).lexically_normal();
+                const fs::path file = project->resolveAssetPath(FileUtils::pathFromUtf8(animator->animation.path)).lexically_normal();
                 addPoseClip(project, target, FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(file)), issues, false);
             }
         }
@@ -773,7 +773,7 @@ namespace{
         VatMaterialData convert(const Submesh& submesh, int index, const std::string& sourceName){
             const Material& material = submesh.material;
             VatMaterialData out;
-            out.name = !material.name.empty() ? material.name : !sourceName.empty() ? sourceName : "Material " + std::to_string(index);
+            out.name = !material.name.path.empty() ? material.name.path : !sourceName.empty() ? sourceName : "Material " + std::to_string(index);
             out.baseColor[0] = material.baseColorFactor.x;
             out.baseColor[1] = material.baseColorFactor.y;
             out.baseColor[2] = material.baseColorFactor.z;
@@ -855,7 +855,7 @@ namespace{
             if (!model || model->mergeStaticMeshes) return "";
             const std::string extension = extensionOf(model->filename);
             if (extension != ".gltf" && extension != ".glb") return "";
-            const std::string file = FileUtils::pathToUtf8(project->resolveAssetPath(FileUtils::pathFromUtf8(model->filename)).lexically_normal());
+            const std::string file = FileUtils::pathToUtf8(project->resolveAssetPath(FileUtils::pathFromUtf8(model->filename.path)).lexically_normal());
             tinygltf::Model* gltf = images.get(file);
             if (!gltf) return "";
             int node = -1;

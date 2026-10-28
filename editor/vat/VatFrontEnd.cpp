@@ -51,15 +51,6 @@ namespace{
         return fs::exists(path, ec);
     }
 
-    std::string fileSafe(const std::string& name){
-        std::string out;
-        for (char c : name){
-            out += (c == '/' || c == '\\' || c == ':' || c == '*' || c == '?' || c == '"' || c == '<' || c == '>' || c == '|') ? '_' : c;
-        }
-        while (!out.empty() && (out.back() == '.' || out.back() == ' ')) out.pop_back();
-        return out.empty() ? std::string("vertex animation") : out;
-    }
-
     const char* ACCEPTED = "give a model (.gltf/.glb/.fbx, \"hero.gltf#Walk\" for one clip), .anim files with on (a model, prefab or "
                            "GameObject), a .poseanim, a GameObject, or a Houdini VAT 3 / OpenVAT export (its folder, mesh, .mat or "
                            "-remap_info.json)";

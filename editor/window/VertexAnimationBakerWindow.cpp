@@ -843,7 +843,7 @@ int VertexAnimationBakerWindow::addSelectedSockets(std::string& error) {
             for (Entity current = selected; current != NULL_ENTITY;) {
                 if (const ModelComponent* model = scene->findComponent<ModelComponent>(current)) {
                     if (!model->filename.empty() &&
-                        lower(projectRelative(project, project->resolveAssetPath(FileUtils::pathFromUtf8(model->filename)))) == sourceFile) {
+                        lower(projectRelative(project, project->resolveAssetPath(FileUtils::pathFromUtf8(model->filename.path)))) == sourceFile) {
                         rootFor = current;
                         break;
                     }
@@ -1419,7 +1419,7 @@ std::string VertexAnimationBakerWindow::sourcePreviewFile() {
         return "";
     }
     previewNote = "Source: the GameObject's model file (what the scene adds to it is not shown here).";
-    return projectRelative(project, project->resolveAssetPath(FileUtils::pathFromUtf8(model->filename)));
+    return projectRelative(project, project->resolveAssetPath(FileUtils::pathFromUtf8(model->filename.path)));
 }
 
 void VertexAnimationBakerWindow::releasePreview() {

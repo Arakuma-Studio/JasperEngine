@@ -91,17 +91,17 @@ namespace {
     // "walk 1.vat.glb", both free, so the copies are a pair again (vertex animation spec 2.1)
     fs::path freeCopyName(const fs::path& target) {
         std::error_code ec;
-        const fs::path pair = vat::pairPathOf(target);
+        const fs::path pair = editor::vat::pairPathOf(target);
         if (!pair.empty()) {
-            const bool isMesh = vat::isVatMeshFile(FileUtils::pathToUtf8(target));
+            const bool isMesh = editor::vat::isVatMeshFile(editor::FileUtils::pathToUtf8(target));
             const fs::path vatFile = isMesh ? pair : target;
-            if (!fs::exists(vatFile, ec) && !fs::exists(vat::pairPathOf(vatFile), ec)) {
+            if (!fs::exists(vatFile, ec) && !fs::exists(editor::vat::pairPathOf(vatFile), ec)) {
                 return target;
             }
             const std::string stem = vatFile.stem().string();
             for (int counter = 1;; counter++) {
                 const fs::path candidate = vatFile.parent_path() / (stem + " " + std::to_string(counter) + vatFile.extension().string());
-                const fs::path candidateMesh = vat::pairPathOf(candidate);
+                const fs::path candidateMesh = editor::vat::pairPathOf(candidate);
                 if (!fs::exists(candidate, ec) && !fs::exists(candidateMesh, ec)) {
                     return isMesh ? candidateMesh : candidate;
                 }

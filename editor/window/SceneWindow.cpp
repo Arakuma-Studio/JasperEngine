@@ -529,7 +529,9 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                 Backend::getApp().registerOutsideAssetsAlert(receivedStrings[0]);
                                 focusSceneWindow(*sceneProject);
                             } else if (payload->IsDelivery()) {
-                                const Vector3 dropPosition = getModelDropPosition(sceneProject, x, y, selEntity);
+                                // where a model drops (S26: the surface under the pointer)
+                                const SceneSurfaceHit surface = getDropSurface(sceneProject, x, y, {});
+                                const Vector3 dropPosition = surface.point;
                                 std::string error;
                                 if (createVatObject(project, sceneProject->id, receivedStrings[0], dropPosition, NULL_ENTITY, &error) == NULL_ENTITY) {
                                     Out::error("%s", error.c_str());

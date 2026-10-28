@@ -558,10 +558,10 @@ size_t EntityRegistry::getEntityCount() const {
 
 size_t EntityRegistry::getSystemEntityCount() const {
     return entityManager.countSystem();
+}
 
 void EntityRegistry::compactComponents() {
     componentManager.compactAll();
-}
 }
 
 void EntityRegistry::setEntityName(Entity entity, const std::string& name) {

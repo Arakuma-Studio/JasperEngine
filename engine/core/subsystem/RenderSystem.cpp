@@ -5936,7 +5936,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         }
         if (!vatBuffer.getRender()->isCreated() &&
                 !vatBuffer.getRender()->createBuffer(std::max(1u, instmesh->maxInstances) * vatBuffer.getStride(), nullptr, BufferType::VERTEX_BUFFER, BufferUsage::STREAM)){
-            Log::error("Cannot create the Vertex Animation instance buffer for mesh entity %lu; resource pool may be exhausted", entity);
+            Log::error("Cannot create the Vertex Animation instance buffer for mesh entity %u; resource pool may be exhausted", entity);
             return false;
         }
         instmesh->needUpdateBuffer = true;
