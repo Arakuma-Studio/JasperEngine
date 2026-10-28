@@ -6,6 +6,9 @@ scalingMode: letterbox
 textureStrategy: none
 vsync: true
 htmlUiMsaaSamples: 4
+htmlUiGlyphAtlasMiB: 0
+htmlUiSdfPrimitives: true
+htmlUiTransformAwareText: true
 windowMode: windowed
 windowWidth: 960
 windowHeight: 540

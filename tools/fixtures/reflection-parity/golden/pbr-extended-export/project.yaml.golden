@@ -6,6 +6,9 @@ scalingMode: fitwidth
 textureStrategy: none
 vsync: true
 htmlUiMsaaSamples: 4
+htmlUiGlyphAtlasMiB: 0
+htmlUiSdfPrimitives: true
+htmlUiTransformAwareText: true
 windowMode: windowed
 windowWidth: 1280
 windowHeight: 720

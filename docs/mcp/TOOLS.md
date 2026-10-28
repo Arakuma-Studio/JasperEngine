@@ -3185,7 +3185,7 @@ Drive a list-view, grid-view, tree-view or table-view of a playing HTML UI docum
 
 Group: `core`. Hints: read-only, idempotent
 
-A live HTML/CSS UI document: element tree (ref = reusable selector, box [x,y,w,h] canvas px = send_input coords, flags overflow/clipped/hidden/offscreen, effects), diagnostics; detail full: box model, computed styles + each rule's file:line. at: hit test. file: a .html/.css's diagnostics, no document (= `jasperengine-editor check --ui`). Lua-made content: play only.
+A live HTML/CSS UI document: element tree (ref = reusable selector, box [x,y,w,h] canvas px = send_input coords, flags overflow/clipped/hidden/offscreen, effects), diagnostics; detail full: box model, styles + rule file:line. at: hit test. file: a .html/.css's diagnostics (= `jasperengine-editor check --ui`). Lua-made content: play only.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -3197,13 +3197,13 @@ A live HTML/CSS UI document: element tree (ref = reusable selector, box [x,y,w,h
 | `limit` | integer (1..1000) |  | Default: `200`. |
 | `max_width` | integer (0..4096) |  | Default: `768`. |
 | `models` | boolean |  | Data-model values (play). |
-| `reload` | boolean |  | The last hot reload's report. |
-| `render_stats` | boolean |  | Last frame's render counters. |
+| `reload` | boolean |  | Last hot reload's report. |
+| `render_stats` | boolean |  | Last frame's draw counters. |
 | `scene` | integer or string |  |  |
 | `screenshot` | boolean |  | Game view image, matches outlined. |
 | `selector` | string |  | Default: whole document. |
 | `styles` | array of string |  | Computed CSS properties. |
-| `viewport` | array[2] of number |  | Lay out at [w,h] first (restored after). |
+| `viewport` | array[2] of number |  | Lay out at [w,h], then restore. |
 
 
 ### `list_ui_effects`
