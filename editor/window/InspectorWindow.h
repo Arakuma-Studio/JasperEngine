@@ -624,6 +624,13 @@ namespace jasperengine::editor{
         void drawCharacterControllerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawWaterVolumeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawBuoyancyComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // InspectorSplines.cpp (S18)
+        void drawSplineComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawSplineExtrudeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawSplineInstantiateComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawSplineAnimateComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // the last spline terrain bake's or Bake to GameObjects' message
+        std::string splineBakeMessage;
         void drawJoint3DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawActionComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

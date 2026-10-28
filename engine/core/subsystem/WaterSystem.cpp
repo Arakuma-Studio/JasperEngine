@@ -17,6 +17,7 @@
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "component/RigidbodyComponent.h"
 #include "subsystem/PhysicsSystem.h"
+#include "subsystem/SplineSystem.h"
 #include "Jolt/Physics/Body/BodyLock.h"
 #include "Jolt/Physics/Body/BodyLockInterface.h"
 #endif
@@ -73,6 +74,9 @@ void WaterSystem::gatherVolumes() const{
         volume.flow = component.flow;
         volume.linearDrag = std::max(0.0f, component.linearDrag);
         volume.angularDrag = std::max(0.0f, component.angularDrag);
+        if (std::shared_ptr<SplineSystem> splines = scene->findSystem<SplineSystem>()){
+            volume.spline = splines->hasWaterSurface(entity);
+        }
 
         // the waves are the material's (R30): never copied into the volume
         if (component.waves == WaterVolumeWaves::FROM_MATERIAL){
@@ -95,17 +99,29 @@ void WaterSystem::gatherVolumes() const{
     }
 }
 
-const WaterSystem::Volume* WaterSystem::findVolume(float x, float y, float z, float& height, float& rate, Vector2& slope) const{
+const WaterSystem::Volume* WaterSystem::findVolume(float x, float y, float z, float& height, float& rate, Vector2& slope, Vector3& flow) const{
     const Volume* found = nullptr;
+    std::shared_ptr<SplineSystem> splines;
     for (const Volume& volume : volumes){
-        if (!volume.infinite){
+        float surface = volume.surface;
+        Vector3 surfaceFlow = volume.flow;
+        if (volume.spline){
+            // a spline river or lake: its surface where it has water, depth below it
+            if (!splines){
+                splines = scene->findSystem<SplineSystem>();
+            }
+            const SplineWaterSample water = splines ? splines->sampleWaterSurface(x, z, volume.entity) : SplineWaterSample();
+            if (!water.hit || y < water.height - volume.depth)
+                continue;
+            surface = water.height;
+            surfaceFlow = volume.flow + water.flow;
+        }else if (!volume.infinite){
             const Vector3 local = volume.worldToLocal * Vector3(x, volume.surface, z);
             if (std::fabs(local.x) > volume.halfX || std::fabs(local.z) > volume.halfZ)
                 continue;
             if (y < volume.surface - volume.depth)
                 continue;
         }
-        float surface = volume.surface;
         float surfaceRate = 0.0f;
         Vector2 surfaceSlope(0.0f, 0.0f);
         if (volume.waves && volume.waveHeight != 0.0f){
@@ -120,6 +136,7 @@ const WaterSystem::Volume* WaterSystem::findVolume(float x, float y, float z, fl
             height = surface;
             rate = surfaceRate;
             slope = surfaceSlope;
+            flow = surfaceFlow;
         }
     }
     return found;
@@ -131,14 +148,27 @@ WaterSample WaterSystem::sample(const Vector3& point) const{
     float height = 0.0f;
     float rate = 0.0f;
     Vector2 slope;
-    if (const Volume* volume = findVolume(point.x, point.y, point.z, height, rate, slope)){
+    Vector3 flow;
+    if (const Volume* volume = findVolume(point.x, point.y, point.z, height, rate, slope, flow)){
         result.volume = volume->entity;
         result.surfaceHeight = height;
         result.inWater = point.y <= height;
         // as water.frag bends the flat surface's normal by the slope
         result.normal = Vector3(-slope.x, 1.0f, -slope.y).normalized();
-        result.flowVelocity = volume->flow + Vector3(0.0f, rate, 0.0f);
+        result.flowVelocity = flow + Vector3(0.0f, rate, 0.0f);
         return result;
+    }
+    // a spline river or lake without a Water Volume (SplineSystem::sampleWaterSurface)
+    if (std::shared_ptr<SplineSystem> splines = scene->findSystem<SplineSystem>(); splines && splines->hasWaterSurfaces()){
+        const SplineWaterSample water = splines->sampleWaterSurface(point.x, point.z);
+        if (water.hit){
+            result.volume = water.owner;
+            result.surfaceHeight = water.height;
+            result.inWater = point.y <= water.height;
+            result.normal = water.normal;
+            result.flowVelocity = water.flow;
+            return result;
+        }
     }
     // a library:water mesh without a Water Volume: its surface over its bounds (Water.h)
     const std::vector<WaterSurface> surfaces = Water::getSurfaces(scene);
@@ -260,7 +290,8 @@ void WaterSystem::applyBuoyancy(float dt){
             float height = 0.0f;
             float rate = 0.0f;
             Vector2 slope;
-            const Volume* volume = findVolume((float)bottom.GetX(), (float)bottom.GetY(), (float)bottom.GetZ(), height, rate, slope);
+            Vector3 flow;
+            const Volume* volume = findVolume((float)bottom.GetX(), (float)bottom.GetY(), (float)bottom.GetZ(), height, rate, slope, flow);
             if (!volume)
                 continue;
             const float depth = std::clamp(height - (float)bottom.GetY(), 0.0f, columnHeight);
@@ -270,8 +301,8 @@ void WaterSystem::applyBuoyancy(float dt){
             column.point = bottom + JPH::Vec3(0.0f, depth * 0.5f, 0.0f);
             column.depth = depth;
             column.volume = volume;
-            column.waterVelocity = volume->flow + Vector3(0.0f, rate, 0.0f);
-            if (volume->waves || volume->flow.x != 0.0f || volume->flow.y != 0.0f || volume->flow.z != 0.0f)
+            column.waterVelocity = flow + Vector3(0.0f, rate, 0.0f);
+            if (volume->waves || flow.x != 0.0f || flow.y != 0.0f || flow.z != 0.0f)
                 movingWater = true;
         }
         if (submerged == 0)

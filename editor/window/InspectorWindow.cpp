@@ -1169,7 +1169,6 @@ void editor::InspectorWindow::drawImageWithBorderAndRounding(Texture* texture, c
     ImGui::InvisibleButton("##image", size);
 }
 
-
 void editor::InspectorWindow::dragDropResourcesFont(ComponentType cpType, std::string id, size_t slot, SceneProject* sceneProject, std::vector<Entity> entities){
     // Block DnD while playing for non-script components
     if (sceneProject && sceneProject->playState != ScenePlayState::STOPPED) {
@@ -1425,7 +1424,6 @@ void editor::InspectorWindow::drawFontFallbacksPopup(const char* popupId, Compon
 
     ImGui::EndPopup();
 }
-
 
 void editor::InspectorWindow::applyCameraTexture(Entity cameraEntity, ComponentType cpType, const std::string& id, SceneProject* sceneProject, std::vector<Entity>& entities, std::function<void()> onValueChanged){
     Scene* scene = sceneProject->scene;
@@ -2743,7 +2741,6 @@ void editor::InspectorWindow::syncSubSelection(SceneProject* sceneProject, Entit
 
     project->updateSceneRender(sceneProject->id);
 }
-
 
 void editor::InspectorWindow::beginTable(ComponentType cpType, float firstColSize, std::string nameAddon){
     ImGui::PushItemWidth(-1);
@@ -16316,6 +16313,14 @@ void editor::InspectorWindow::show(){
                     drawWaterVolumeComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::BuoyancyComponent){
                     drawBuoyancyComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::SplineComponent){
+                    drawSplineComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::SplineExtrudeComponent){
+                    drawSplineExtrudeComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::SplineInstantiateComponent){
+                    drawSplineInstantiateComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::SplineAnimateComponent){
+                    drawSplineAnimateComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::Joint3DComponent){
                     drawJoint3DComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::ActionComponent){

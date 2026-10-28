@@ -17,6 +17,7 @@
 #include "subsystem/AudioSystem.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/ParticleSubsystem.h"
+#include "subsystem/SplineSystem.h"
 #include "util/Color.h"
 
 #include <algorithm>
@@ -36,6 +37,9 @@ void Scene::init(){
     lifetime = std::make_shared<char>(0);
 
     registerSystem<ActionSystem>();
+    // after the scripts, before the meshes and transforms: generated chunks and followers are
+    // drawn in the frame they change (docs/specs/S18-splines.md D3)
+    registerSystem<SplineSystem>();
     registerSystem<MeshSystem>();
     registerSystem<LatticeSystem>();
     registerSystem<UISystem>();
@@ -85,6 +89,10 @@ void Scene::removeSubscriptionsByTag(const std::string& substring) {
         action.onPause.removeByTagSubstring(tag);
         action.onStop.removeByTagSubstring(tag);
         action.onStep.removeByTagSubstring(tag);
+    });
+
+    removeComponentSubscriptionsByTag<SplineAnimateComponent>(this, substring, [](SplineAnimateComponent& animate, const std::string& tag) {
+        animate.onComplete.removeByTagSubstring(tag);
     });
 
     removeComponentSubscriptionsByTag<AudioSourceComponent>(this, substring, [](AudioSourceComponent& sound, const std::string& tag) {

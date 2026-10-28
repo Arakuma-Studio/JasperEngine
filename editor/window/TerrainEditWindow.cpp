@@ -922,6 +922,8 @@ private:
     TerrainMapSnapshot afterSnapshot;
     bool wasModified = false;
     PrefabEditUndo prefabUndo;
+    // the step's verb when it is not a sculpt or a paint ("Convert Heightmap to 16-bit")
+    std::string verbOverride;
 
     void apply(const TerrainMapSnapshot& snapshot, bool restoreModifiedState){
         SceneProject* sceneProject = project->getScene(sceneId);
@@ -968,8 +970,9 @@ private:
 
 public:
     TerrainTextureEditCmd(TerrainEditWindow* window, Project* project, uint32_t sceneId, Entity entity, const TerrainMapRef& ref,
-                          const TerrainMapSnapshot& beforeSnapshot, const TerrainMapSnapshot& afterSnapshot):
-        window(window), project(project), sceneId(sceneId), entity(entity), ref(ref), beforeSnapshot(beforeSnapshot), afterSnapshot(afterSnapshot){}
+                          const TerrainMapSnapshot& beforeSnapshot, const TerrainMapSnapshot& afterSnapshot, std::string verb = {}):
+        window(window), project(project), sceneId(sceneId), entity(entity), ref(ref), beforeSnapshot(beforeSnapshot), afterSnapshot(afterSnapshot),
+        verbOverride(std::move(verb)){}
 
     bool execute() override{
         SceneProject* sceneProject = project->getScene(sceneId);
@@ -989,7 +992,7 @@ public:
     std::string describe() const override{
         const char* verb = ref.target == TerrainMapTarget::HeightMap ? "Sculpt Terrain" :
             (ref.target == TerrainMapTarget::BlendMap ? "Paint Terrain" : "Paint Details");
-        return std::string(verb) + " (" + editor::CommandNames::entity(project, sceneId, entity) + ")";
+        return (verbOverride.empty() ? std::string(verb) : verbOverride) + " (" + editor::CommandNames::entity(project, sceneId, entity) + ")";
     }
 
     const char* typeName() const override{ return "TerrainTextureEditCmd"; }
@@ -2246,6 +2249,41 @@ bool editor::TerrainEditWindow::createMapForTarget(const TerrainMapRef& ref, int
     }
 
     CommandHandle::get(sceneProject->id)->addCommandNoMerge(new TerrainTextureEditCmd(this, project, sceneProject->id, selectedEntity, ref, before, after));
+    return true;
+}
+
+bool editor::TerrainEditWindow::convertHeightMapTo16Bit(uint32_t sceneId, Entity entity, std::string& error){
+    SceneProject* sceneProject = project->getScene(sceneId);
+    TerrainComponent* terrain = sceneProject ? sceneProject->scene->findComponent<TerrainComponent>(entity) : nullptr;
+    if (!terrain){
+        error = "The GameObject has no Terrain.";
+        return false;
+    }
+    const TerrainMapRef ref(TerrainMapTarget::HeightMap);
+    Texture& texture = terrain->heightMap;
+    TerrainMapSnapshot before = captureSnapshot(project, texture, true);
+    if (before.empty || before.pixels.empty()){
+        error = "The terrain has no heightmap.";
+        return false;
+    }
+    if (TextureData::getBytesPerChannel(before.colorFormat) >= 2){
+        error = "The heightmap is 16-bit already.";
+        return false;
+    }
+    // the same heights, each 8-bit level at its 16-bit equal (v * 257), in the same file
+    TerrainMapSnapshot after = before;
+    after.colorFormat = ColorFormat::RED16;
+    after.channels = 1;
+    after.pixels.assign(static_cast<size_t>(before.width) * static_cast<size_t>(before.height) * 2, 0);
+    for (size_t texel = 0; texel < static_cast<size_t>(before.width) * static_cast<size_t>(before.height); texel++){
+        encodeHeightTexel(after.pixels.data(), texel, 2, decodeHeightTexel(before.pixels.data(), texel, before.channels, 1));
+    }
+    if (after.path.empty()){
+        after.path = makeEditableTexturePath(project, sceneId, entity, ref);
+        after.id = after.path;
+    }
+    CommandHandle::get(sceneId)->addCommandNoMerge(new TerrainTextureEditCmd(this, project, sceneId, entity, ref, before, after,
+                                                                             "Convert Heightmap to 16-bit"));
     return true;
 }
 

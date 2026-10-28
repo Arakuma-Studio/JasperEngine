@@ -71,6 +71,8 @@ namespace jasperengine::editor{
         UpdateFlags_Lattice             = (uint64_t)1 << 40,
         // a particle system's effect changed (asset, inline document, exposed values, seed)
         UpdateFlags_Particles           = (uint64_t)1 << 41,
+        // a Spline's knots, type, closed flag or up axis was written in place: bumps its version
+        UpdateFlags_Spline              = (uint64_t)1 << 42,
         // handlers that touch the whole scene, must be masked out when applying all flags
         UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Scene_Mesh_Variant | UpdateFlags_Reflection_Probe_Recapture_All
     };
@@ -143,12 +145,16 @@ namespace jasperengine::editor{
         CharacterController2DComponent,
         CharacterControllerComponent,
         WaterVolumeComponent,
-        BuoyancyComponent
+        BuoyancyComponent,
+        SplineComponent,
+        SplineExtrudeComponent,
+        SplineInstantiateComponent,
+        SplineAnimateComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::BuoyancyComponent;
+    constexpr ComponentType LastComponentType = ComponentType::SplineAnimateComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
     // (S12's name for it)
     constexpr ComponentType LAST_COMPONENT_TYPE = LastComponentType;

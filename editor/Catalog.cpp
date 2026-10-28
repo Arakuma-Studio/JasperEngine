@@ -968,6 +968,156 @@ namespace {
         makeFastPropertyNoDefault<BuoyancyComponent, std::vector<Vector3>, &BuoyancyComponent::customPoints>("customPoints", PropertyType::Custom, UpdateFlags_None),
     };
 
+    // Splines (docs/specs/S18-splines.md): the curve's fields are written in place, then
+    // UpdateFlags_Spline bumps its version; the consumers' fields are read by SplineSystem, which
+    // regenerates when their values change
+    struct SplineFieldDescriptor{
+        const char* name;
+        PropertyType type;
+        uint64_t updateFlags;
+        void* (*ref)(SplineComponent&);
+    };
+
+    static const SplineFieldDescriptor kSplineProperties[] = {
+        {"type", PropertyType::Enum, UpdateFlags_Spline, [](SplineComponent& c) -> void* { return &c.spline.editableType(); }},
+        {"closed", PropertyType::Bool, UpdateFlags_Spline, [](SplineComponent& c) -> void* { return &c.spline.editableClosed(); }},
+        {"upAxis", PropertyType::Vector3, UpdateFlags_Spline, [](SplineComponent& c) -> void* { return &c.spline.editableUpAxis(); }},
+        {"knots", PropertyType::Custom, UpdateFlags_Spline, [](SplineComponent& c) -> void* { return &c.spline.editableKnots(); }},
+        {"terrain.region", PropertyType::Enum, UpdateFlags_None, [](SplineComponent& c) -> void* { return &c.terrain.region; }},
+        {"terrain.extraWidth", PropertyType::Float, UpdateFlags_None, [](SplineComponent& c) -> void* { return &c.terrain.extraWidth; }},
+        {"terrain.falloff", PropertyType::Float, UpdateFlags_None, [](SplineComponent& c) -> void* { return &c.terrain.falloff; }},
+        {"terrain.flatten", PropertyType::Bool, UpdateFlags_None, [](SplineComponent& c) -> void* { return &c.terrain.flatten; }},
+        {"terrain.flattenMode", PropertyType::Enum, UpdateFlags_None, [](SplineComponent& c) -> void* { return &c.terrain.flattenMode; }},
+        {"terrain.heightOffset", PropertyType::Float, UpdateFlags_None, [](SplineComponent& c) -> void* { return &c.terrain.heightOffset; }},
+        {"terrain.paint", PropertyType::Bool, UpdateFlags_None, [](SplineComponent& c) -> void* { return &c.terrain.paint; }},
+        {"terrain.paintLayer", PropertyType::UInt, UpdateFlags_None, [](SplineComponent& c) -> void* { return &c.terrain.paintLayer; }},
+        {"terrain.paintStrength", PropertyType::Float, UpdateFlags_None, [](SplineComponent& c) -> void* { return &c.terrain.paintStrength; }},
+        {"terrain.paintFalloff", PropertyType::Float, UpdateFlags_None, [](SplineComponent& c) -> void* { return &c.terrain.paintFalloff; }},
+        {"terrain.paintNoise", PropertyType::Float, UpdateFlags_None, [](SplineComponent& c) -> void* { return &c.terrain.paintNoise; }},
+        {"terrain.clearFoliage", PropertyType::Bool, UpdateFlags_None, [](SplineComponent& c) -> void* { return &c.terrain.clearFoliage; }},
+        {"terrain.foliageMask", PropertyType::UInt, UpdateFlags_None, [](SplineComponent& c) -> void* { return &c.terrain.foliageMask; }},
+        {"terrain.terrain", PropertyType::Entity, UpdateFlags_None, [](SplineComponent& c) -> void* { return &c.terrain.terrain; }},
+    };
+
+    // knots[N].<field>
+    static const char* const kSplineKnotFields[] = {"position", "tangentIn", "tangentOut", "radius", "roll", "mode"};
+
+    PropertyData getSplineKnotPropertyFast(spline::SplineKnot& knot, const std::string& field) {
+        static spline::SplineKnot def;
+        if (field == "position") return {PropertyType::Vector3, UpdateFlags_Spline, (void*)&def.position, (void*)&knot.position};
+        if (field == "tangentIn") return {PropertyType::Vector3, UpdateFlags_Spline, (void*)&def.tangentIn, (void*)&knot.tangentIn};
+        if (field == "tangentOut") return {PropertyType::Vector3, UpdateFlags_Spline, (void*)&def.tangentOut, (void*)&knot.tangentOut};
+        if (field == "radius") return {PropertyType::Float, UpdateFlags_Spline, (void*)&def.radius, (void*)&knot.radius};
+        if (field == "roll") return {PropertyType::Float, UpdateFlags_Spline, (void*)&def.rollDeg, (void*)&knot.rollDeg};
+        if (field == "mode") return {PropertyType::Enum, UpdateFlags_Spline, (void*)&def.mode, (void*)&knot.mode};
+        return PropertyData();
+    }
+
+    PropertyData getSplinePoolEntryPropertyFast(SplinePoolEntry& entry, const std::string& field) {
+        static SplinePoolEntry def;
+        if (field == "asset") return {PropertyType::Asset, UpdateFlags_None, (void*)&def.asset, (void*)&entry.asset};
+        if (field == "weight") return {PropertyType::Float, UpdateFlags_None, (void*)&def.weight, (void*)&entry.weight};
+        return PropertyData();
+    }
+
+    PropertyData getSplineSpanOverridePropertyFast(SplineSpanOverride& entry, const std::string& field) {
+        static SplineSpanOverride def;
+        if (field == "knot") return {PropertyType::UInt, UpdateFlags_None, (void*)&def.knot, (void*)&entry.knot};
+        if (field == "span") return {PropertyType::UInt, UpdateFlags_None, (void*)&def.span, (void*)&entry.span};
+        if (field == "kind") return {PropertyType::Enum, UpdateFlags_None, (void*)&def.kind, (void*)&entry.kind};
+        if (field == "piece") return {PropertyType::UInt, UpdateFlags_None, (void*)&def.piece, (void*)&entry.piece};
+        return PropertyData();
+    }
+
+    PropertyData getSplineProfilePointPropertyFast(SplineProfilePoint& point, const std::string& field) {
+        static SplineProfilePoint def;
+        if (field == "position") return {PropertyType::Vector2, UpdateFlags_None, (void*)&def.position, (void*)&point.position};
+        if (field == "hard") return {PropertyType::Bool, UpdateFlags_None, (void*)&def.hard, (void*)&point.hard};
+        if (field == "grounded") return {PropertyType::Bool, UpdateFlags_None, (void*)&def.grounded, (void*)&point.grounded};
+        return PropertyData();
+    }
+
+    static const FastPropertyDescriptor kSplineExtrudeProperties[] = {
+        makeFastProperty<SplineExtrudeComponent, SplineExtrudeShape, &SplineExtrudeComponent::shape>("shape", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<SplineExtrudeComponent, SplineWidthSource, &SplineExtrudeComponent::widthSource>("widthSource", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<SplineExtrudeComponent, float, &SplineExtrudeComponent::width>("width", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineExtrudeComponent, float, &SplineExtrudeComponent::edgeDrop>("edgeDrop", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineExtrudeComponent, float, &SplineExtrudeComponent::edgeInset>("edgeInset", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineExtrudeComponent, float, &SplineExtrudeComponent::crownRise>("crownRise", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineExtrudeComponent, float, &SplineExtrudeComponent::shoulderWidth>("shoulderWidth", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineExtrudeComponent, float, &SplineExtrudeComponent::shoulderDrop>("shoulderDrop", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineExtrudeComponent, float, &SplineExtrudeComponent::thickness>("thickness", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineExtrudeComponent, float, &SplineExtrudeComponent::height>("height", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineExtrudeComponent, SplineGrade, &SplineExtrudeComponent::grade>("grade", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<SplineExtrudeComponent, float, &SplineExtrudeComponent::stepHeight>("stepHeight", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineExtrudeComponent, unsigned int, &SplineExtrudeComponent::tubeSides>("tubeSides", PropertyType::UInt, UpdateFlags_None),
+        makeFastProperty<SplineExtrudeComponent, bool, &SplineExtrudeComponent::customClosed>("customClosed", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<SplineExtrudeComponent, float, &SplineExtrudeComponent::maxHalfWidth>("maxHalfWidth", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineExtrudeComponent, float, &SplineExtrudeComponent::waterEdgeDrop>("waterEdgeDrop", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineExtrudeComponent, bool, &SplineExtrudeComponent::seaLevelFloor>("seaLevelFloor", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<SplineExtrudeComponent, float, &SplineExtrudeComponent::seaLevel>("seaLevel", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineExtrudeComponent, bool, &SplineExtrudeComponent::flow>("flow", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<SplineExtrudeComponent, float, &SplineExtrudeComponent::flowSpeed>("flowSpeed", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineExtrudeComponent, float, &SplineExtrudeComponent::tilesPerMetreU>("tilesPerMetreU", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineExtrudeComponent, float, &SplineExtrudeComponent::tilesPerMetreV>("tilesPerMetreV", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineExtrudeComponent, bool, &SplineExtrudeComponent::levelCourseV>("levelCourseV", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<SplineExtrudeComponent, SplineCornerStyle, &SplineExtrudeComponent::corners>("corners", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<SplineExtrudeComponent, bool, &SplineExtrudeComponent::endCaps>("endCaps", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<SplineExtrudeComponent, float, &SplineExtrudeComponent::endTaper>("endTaper", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineExtrudeComponent, float, &SplineExtrudeComponent::lateralOffset>("lateralOffset", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineExtrudeComponent, float, &SplineExtrudeComponent::verticalOffset>("verticalOffset", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineExtrudeComponent, SplineConform, &SplineExtrudeComponent::conform>("conform", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<SplineExtrudeComponent, float, &SplineExtrudeComponent::slopeBlend>("slopeBlend", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineExtrudeComponent, float, &SplineExtrudeComponent::stationSpacing>("stationSpacing", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineExtrudeComponent, SplineCollision, &SplineExtrudeComponent::collision>("collision", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<SplineExtrudeComponent, std::vector<SplineProfilePoint>, &SplineExtrudeComponent::customProfile>("customProfile", PropertyType::Custom, UpdateFlags_None),
+    };
+
+    static const FastPropertyDescriptor kSplineInstantiateProperties[] = {
+        makeFastProperty<SplineInstantiateComponent, SplineInstantiateMode, &SplineInstantiateComponent::mode>("mode", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<SplineInstantiateComponent, float, &SplineInstantiateComponent::spacing>("spacing", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineInstantiateComponent, SplineSpacingFit, &SplineInstantiateComponent::fit>("fit", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<SplineInstantiateComponent, float, &SplineInstantiateComponent::postPitch>("postPitch", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineInstantiateComponent, float, &SplineInstantiateComponent::spanMaxStretch>("spanMaxStretch", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineInstantiateComponent, SplineGrade, &SplineInstantiateComponent::fenceGrade>("fenceGrade", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<SplineInstantiateComponent, float, &SplineInstantiateComponent::crestPitch>("crestPitch", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineInstantiateComponent, float, &SplineInstantiateComponent::lateralOffset>("lateralOffset", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineInstantiateComponent, float, &SplineInstantiateComponent::verticalOffset>("verticalOffset", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineInstantiateComponent, float, &SplineInstantiateComponent::spacingJitter>("spacingJitter", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineInstantiateComponent, float, &SplineInstantiateComponent::yawJitter>("yawJitter", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineInstantiateComponent, float, &SplineInstantiateComponent::lateralJitter>("lateralJitter", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineInstantiateComponent, Vector2, &SplineInstantiateComponent::scaleRange>("scaleRange", PropertyType::Vector2, UpdateFlags_None),
+        makeFastProperty<SplineInstantiateComponent, float, &SplineInstantiateComponent::dropout>("dropout", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineInstantiateComponent, uint32_t, &SplineInstantiateComponent::seed>("seed", PropertyType::UInt, UpdateFlags_None),
+        makeFastProperty<SplineInstantiateComponent, float, &SplineInstantiateComponent::endTrim>("endTrim", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineInstantiateComponent, SplinePlantMode, &SplineInstantiateComponent::plantMode>("plantMode", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<SplineInstantiateComponent, float, &SplineInstantiateComponent::maxTilt>("maxTilt", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineInstantiateComponent, SplineConform, &SplineInstantiateComponent::conform>("conform", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<SplineInstantiateComponent, float, &SplineInstantiateComponent::slopeBlend>("slopeBlend", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineInstantiateComponent, float, &SplineInstantiateComponent::stationSpacing>("stationSpacing", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineInstantiateComponent, std::vector<SplinePoolEntry>, &SplineInstantiateComponent::items>("items", PropertyType::Custom, UpdateFlags_None),
+        makeFastProperty<SplineInstantiateComponent, std::vector<SplinePoolEntry>, &SplineInstantiateComponent::posts>("posts", PropertyType::Custom, UpdateFlags_None),
+        makeFastProperty<SplineInstantiateComponent, std::vector<SplinePoolEntry>, &SplineInstantiateComponent::spans>("spans", PropertyType::Custom, UpdateFlags_None),
+        makeFastProperty<SplineInstantiateComponent, std::vector<SplinePoolEntry>, &SplineInstantiateComponent::gates>("gates", PropertyType::Custom, UpdateFlags_None),
+        makeFastProperty<SplineInstantiateComponent, std::vector<SplinePoolEntry>, &SplineInstantiateComponent::crests>("crests", PropertyType::Custom, UpdateFlags_None),
+        makeFastProperty<SplineInstantiateComponent, std::vector<SplinePoolEntry>, &SplineInstantiateComponent::caps>("caps", PropertyType::Custom, UpdateFlags_None),
+        makeFastProperty<SplineInstantiateComponent, std::vector<SplineSpanOverride>, &SplineInstantiateComponent::spanOverrides>("spanOverrides", PropertyType::Custom, UpdateFlags_None),
+    };
+
+    static const FastPropertyDescriptor kSplineAnimateProperties[] = {
+        makeFastProperty<SplineAnimateComponent, Entity, &SplineAnimateComponent::spline>("spline", PropertyType::Entity, UpdateFlags_None),
+        makeFastProperty<SplineAnimateComponent, SplineAnimateMethod, &SplineAnimateComponent::method>("method", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<SplineAnimateComponent, float, &SplineAnimateComponent::duration>("duration", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineAnimateComponent, float, &SplineAnimateComponent::speed>("speed", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineAnimateComponent, SplineLoop, &SplineAnimateComponent::loop>("loop", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<SplineAnimateComponent, SplineEasing, &SplineAnimateComponent::easing>("easing", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<SplineAnimateComponent, SplineAlignment, &SplineAnimateComponent::alignment>("alignment", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<SplineAnimateComponent, float, &SplineAnimateComponent::startOffset>("startOffset", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineAnimateComponent, float, &SplineAnimateComponent::lateralOffset>("lateralOffset", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineAnimateComponent, float, &SplineAnimateComponent::verticalOffset>("verticalOffset", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<SplineAnimateComponent, bool, &SplineAnimateComponent::playOnAwake>("playOnAwake", PropertyType::Bool, UpdateFlags_None),
+    };
+
     static const FastPropertyDescriptor kJoint3DProperties[] = {
         makeFastProperty<Joint3DComponent, Joint3DType, &Joint3DComponent::type>("type", PropertyType::Enum, UpdateFlags_Joint3D),
         makeFastProperty<Joint3DComponent, Entity, &Joint3DComponent::bodyA>("bodyA", PropertyType::Entity, UpdateFlags_Joint3D),
@@ -2053,6 +2203,83 @@ namespace {
         return resolveDirectProperties(static_cast<BuoyancyComponent*>(comp), propertyName, kBuoyancyProperties);
     }
 
+    PropertyData resolveSplinePropertyFast(void* compRef, const std::string& propertyName) {
+        SplineComponent* comp = static_cast<SplineComponent*>(compRef);
+        if (!comp) return PropertyData();
+        static SplineComponent def;
+        for (const SplineFieldDescriptor& field : kSplineProperties) {
+            if (propertyName == field.name) {
+                return {field.type, field.updateFlags, field.ref(def), field.ref(*comp)};
+            }
+        }
+        // knots[N] (a whole knot) and knots[N].<field>: a prefab instance overrides knots one by one
+        std::vector<spline::SplineKnot>& knots = comp->spline.editableKnots();
+        size_t index = 0;
+        size_t fieldPos = 0;
+        if (parseIndexedProperty(propertyName, "knots[", knots.size(), index, fieldPos)) {
+            if (fieldPos == std::string::npos) {
+                static spline::SplineKnot defKnot;
+                return {PropertyType::Custom, UpdateFlags_Spline, (void*)&defKnot, (void*)&knots[index]};
+            }
+            return getSplineKnotPropertyFast(knots[index], propertyName.substr(fieldPos));
+        }
+        return PropertyData();
+    }
+
+    PropertyData resolveSplineExtrudePropertyFast(void* compRef, const std::string& propertyName) {
+        SplineExtrudeComponent* comp = static_cast<SplineExtrudeComponent*>(compRef);
+        if (!comp) return PropertyData();
+        PropertyData result = resolveDirectProperties(comp, propertyName, kSplineExtrudeProperties);
+        if (result.ref) return result;
+        size_t index = 0;
+        size_t fieldPos = 0;
+        if (parseIndexedProperty(propertyName, "customProfile[", comp->customProfile.size(), index, fieldPos) && fieldPos != std::string::npos) {
+            return getSplineProfilePointPropertyFast(comp->customProfile[index], propertyName.substr(fieldPos));
+        }
+        return PropertyData();
+    }
+
+    std::vector<SplinePoolEntry>* findSplinePool(SplineInstantiateComponent* comp, const std::string& propertyName, size_t& prefixLength) {
+        for (const char* pool : {"items", "posts", "spans", "gates", "crests", "caps"}) {
+            const size_t length = std::strlen(pool);
+            if (propertyName.compare(0, length, pool) == 0 && propertyName.size() > length && propertyName[length] == '[') {
+                prefixLength = length + 1;
+                if (std::strcmp(pool, "items") == 0) return &comp->items;
+                if (std::strcmp(pool, "posts") == 0) return &comp->posts;
+                if (std::strcmp(pool, "spans") == 0) return &comp->spans;
+                if (std::strcmp(pool, "gates") == 0) return &comp->gates;
+                if (std::strcmp(pool, "crests") == 0) return &comp->crests;
+                return &comp->caps;
+            }
+        }
+        return nullptr;
+    }
+
+    PropertyData resolveSplineInstantiatePropertyFast(void* compRef, const std::string& propertyName) {
+        SplineInstantiateComponent* comp = static_cast<SplineInstantiateComponent*>(compRef);
+        if (!comp) return PropertyData();
+        PropertyData result = resolveDirectProperties(comp, propertyName, kSplineInstantiateProperties);
+        if (result.ref) return result;
+        size_t index = 0;
+        size_t fieldPos = 0;
+        size_t prefixLength = 0;
+        if (std::vector<SplinePoolEntry>* pool = findSplinePool(comp, propertyName, prefixLength)) {
+            const std::string prefix = propertyName.substr(0, prefixLength);
+            if (parseIndexedProperty(propertyName, prefix.c_str(), pool->size(), index, fieldPos) && fieldPos != std::string::npos) {
+                return getSplinePoolEntryPropertyFast((*pool)[index], propertyName.substr(fieldPos));
+            }
+            return PropertyData();
+        }
+        if (parseIndexedProperty(propertyName, "spanOverrides[", comp->spanOverrides.size(), index, fieldPos) && fieldPos != std::string::npos) {
+            return getSplineSpanOverridePropertyFast(comp->spanOverrides[index], propertyName.substr(fieldPos));
+        }
+        return PropertyData();
+    }
+
+    PropertyData resolveSplineAnimatePropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<SplineAnimateComponent*>(comp), propertyName, kSplineAnimateProperties);
+    }
+
     PropertyData resolveJoint3DPropertyFast(void* comp, const std::string& propertyName) {
         Joint3DComponent* joint = static_cast<Joint3DComponent*>(comp);
         if (!joint) return PropertyData();
@@ -2999,6 +3226,76 @@ namespace {
         enumerateFromDescriptors(comp, ps, kBuoyancyProperties);
     }
 
+    void enumerateSplineProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
+        SplineComponent* comp = static_cast<SplineComponent*>(compRef);
+        static SplineComponent def;
+        for (const SplineFieldDescriptor& field : kSplineProperties) {
+            ps[field.name] = {field.type, field.updateFlags, field.ref(def), comp ? field.ref(*comp) : nullptr};
+        }
+        static spline::SplineKnot defKnot;
+        const size_t count = comp ? comp->spline.knotCount() : 1;
+        for (size_t i = 0; i < count; i++) {
+            const std::string prefix = "knots[" + (comp ? std::to_string(i) : "") + "]";
+            spline::SplineKnot& knot = comp ? comp->spline.editableKnots()[i] : defKnot;
+            for (const char* field : kSplineKnotFields) {
+                PropertyData property = getSplineKnotPropertyFast(knot, field);
+                if (!comp) property.ref = nullptr;
+                ps[prefix + "." + field] = property;
+            }
+        }
+    }
+
+    void enumerateSplineExtrudeProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
+        SplineExtrudeComponent* comp = static_cast<SplineExtrudeComponent*>(compRef);
+        enumerateFromDescriptors(compRef, ps, kSplineExtrudeProperties);
+        static SplineProfilePoint defPoint;
+        for (size_t i = 0; i < (comp ? comp->customProfile.size() : 1); i++) {
+            const std::string prefix = "customProfile[" + (comp ? std::to_string(i) : "") + "].";
+            SplineProfilePoint& point = comp ? comp->customProfile[i] : defPoint;
+            for (const char* field : {"position", "hard", "grounded"}) {
+                PropertyData property = getSplineProfilePointPropertyFast(point, field);
+                if (!comp) property.ref = nullptr;
+                ps[prefix + field] = property;
+            }
+        }
+    }
+
+    void enumerateSplineInstantiateProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
+        SplineInstantiateComponent* comp = static_cast<SplineInstantiateComponent*>(compRef);
+        enumerateFromDescriptors(compRef, ps, kSplineInstantiateProperties);
+        static SplinePoolEntry defEntry;
+        static SplineInstantiateComponent defComp;
+        const std::pair<const char*, std::vector<SplinePoolEntry>*> pools[] = {
+            {"items", comp ? &comp->items : &defComp.items}, {"posts", comp ? &comp->posts : &defComp.posts},
+            {"spans", comp ? &comp->spans : &defComp.spans}, {"gates", comp ? &comp->gates : &defComp.gates},
+            {"crests", comp ? &comp->crests : &defComp.crests}, {"caps", comp ? &comp->caps : &defComp.caps}};
+        for (const auto& pool : pools) {
+            for (size_t i = 0; i < (comp ? pool.second->size() : 1); i++) {
+                const std::string prefix = std::string(pool.first) + "[" + (comp ? std::to_string(i) : "") + "].";
+                SplinePoolEntry& entry = comp ? (*pool.second)[i] : defEntry;
+                for (const char* field : {"asset", "weight"}) {
+                    PropertyData property = getSplinePoolEntryPropertyFast(entry, field);
+                    if (!comp) property.ref = nullptr;
+                    ps[prefix + field] = property;
+                }
+            }
+        }
+        static SplineSpanOverride defOverride;
+        for (size_t i = 0; i < (comp ? comp->spanOverrides.size() : 1); i++) {
+            const std::string prefix = "spanOverrides[" + (comp ? std::to_string(i) : "") + "].";
+            SplineSpanOverride& entry = comp ? comp->spanOverrides[i] : defOverride;
+            for (const char* field : {"knot", "span", "kind", "piece"}) {
+                PropertyData property = getSplineSpanOverridePropertyFast(entry, field);
+                if (!comp) property.ref = nullptr;
+                ps[prefix + field] = property;
+            }
+        }
+    }
+
+    void enumerateSplineAnimateProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kSplineAnimateProperties);
+    }
+
     void enumerateJoint3DProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
         Joint3DComponent* comp = static_cast<Joint3DComponent*>(compRef);
         Joint3DComponent& def = getDefaultComponent<Joint3DComponent>();
@@ -3626,6 +3923,10 @@ namespace {
         {ComponentType::CharacterControllerComponent, &findComponentPtr<CharacterControllerComponent>, &resolveCharacterControllerPropertyFast, &enumerateCharacterControllerProperties},
         {ComponentType::WaterVolumeComponent, &findComponentPtr<WaterVolumeComponent>, &resolveWaterVolumePropertyFast, &enumerateWaterVolumeProperties},
         {ComponentType::BuoyancyComponent, &findComponentPtr<BuoyancyComponent>, &resolveBuoyancyPropertyFast, &enumerateBuoyancyProperties},
+        {ComponentType::SplineComponent, &findComponentPtr<SplineComponent>, &resolveSplinePropertyFast, &enumerateSplineProperties},
+        {ComponentType::SplineExtrudeComponent, &findComponentPtr<SplineExtrudeComponent>, &resolveSplineExtrudePropertyFast, &enumerateSplineExtrudeProperties},
+        {ComponentType::SplineInstantiateComponent, &findComponentPtr<SplineInstantiateComponent>, &resolveSplineInstantiatePropertyFast, &enumerateSplineInstantiateProperties},
+        {ComponentType::SplineAnimateComponent, &findComponentPtr<SplineAnimateComponent>, &resolveSplineAnimatePropertyFast, &enumerateSplineAnimateProperties},
         {ComponentType::Joint3DComponent, &findComponentPtr<Joint3DComponent>, &resolveJoint3DPropertyFast, &enumerateJoint3DProperties},
         {ComponentType::Rigidbody2DComponent, &findComponentPtr<Rigidbody2DComponent>, &resolveRigidbody2DPropertyFast, &enumerateRigidbody2DProperties},
         {ComponentType::RigidbodyComponent, &findComponentPtr<RigidbodyComponent>, &resolveRigidbodyPropertyFast, &enumerateRigidbodyProperties},
@@ -3687,6 +3988,10 @@ namespace {
             case ComponentType::CharacterControllerComponent: return &getEnabledRef<CharacterControllerComponent>;
             case ComponentType::WaterVolumeComponent: return &getEnabledRef<WaterVolumeComponent>;
             case ComponentType::BuoyancyComponent: return &getEnabledRef<BuoyancyComponent>;
+            case ComponentType::SplineComponent: return &getEnabledRef<SplineComponent>;
+            case ComponentType::SplineExtrudeComponent: return &getEnabledRef<SplineExtrudeComponent>;
+            case ComponentType::SplineInstantiateComponent: return &getEnabledRef<SplineInstantiateComponent>;
+            case ComponentType::SplineAnimateComponent: return &getEnabledRef<SplineAnimateComponent>;
             case ComponentType::Joint3DComponent: return &getEnabledRef<Joint3DComponent>;
             case ComponentType::UIComponent: return &getEnabledRef<UIComponent>;
             case ComponentType::UIDocumentComponent: return &getEnabledRef<UIDocumentComponent>;
@@ -3864,6 +4169,14 @@ std::string computeComponentName(editor::ComponentType component){
         name = "WaterVolumeComponent";
     }else if(component == ComponentType::BuoyancyComponent){
         name = "BuoyancyComponent";
+    }else if(component == ComponentType::SplineComponent){
+        name = "SplineComponent";
+    }else if(component == ComponentType::SplineExtrudeComponent){
+        name = "SplineExtrudeComponent";
+    }else if(component == ComponentType::SplineInstantiateComponent){
+        name = "SplineInstantiateComponent";
+    }else if(component == ComponentType::SplineAnimateComponent){
+        name = "SplineAnimateComponent";
     }else if(component == ComponentType::Joint3DComponent){
         name = "Joint3DComponent";
     }else if(component == ComponentType::KeyframeTracksComponent){
@@ -3972,6 +4285,10 @@ std::string editor::Catalog::getComponentDisplayName(ComponentType component){
         case ComponentType::CharacterControllerComponent: return "Character Controller";
         case ComponentType::WaterVolumeComponent: return "Water Volume";
         case ComponentType::BuoyancyComponent: return "Buoyancy";
+        case ComponentType::SplineComponent: return "Spline";
+        case ComponentType::SplineExtrudeComponent: return "Spline Extrude";
+        case ComponentType::SplineInstantiateComponent: return "Spline Instantiate";
+        case ComponentType::SplineAnimateComponent: return "Spline Animate";
         case ComponentType::Joint3DComponent: return "Joint";
         case ComponentType::KeyframeTracksComponent: return "Keyframe Tracks";
         case ComponentType::MeshPolygonComponent: return "Polygon Mesh";
@@ -4043,6 +4360,10 @@ const char* editor::Catalog::getComponentIcon(ComponentType component){
         case ComponentType::CharacterControllerComponent: return ICON_FA_PERSON_WALKING;
         case ComponentType::WaterVolumeComponent: return ICON_FA_WATER;
         case ComponentType::BuoyancyComponent: return ICON_FA_LIFE_RING;
+        case ComponentType::SplineComponent: return ICON_FA_BEZIER_CURVE;
+        case ComponentType::SplineExtrudeComponent: return ICON_FA_ROAD;
+        case ComponentType::SplineInstantiateComponent: return ICON_FA_TREE;
+        case ComponentType::SplineAnimateComponent: return ICON_FA_ROUTE;
         case ComponentType::Joint3DComponent: return ICON_FA_LINK;
         case ComponentType::KeyframeTracksComponent: return ICON_FA_KEY;
         case ComponentType::MeshPolygonComponent: return ICON_FA_DRAW_POLYGON;
@@ -4187,6 +4508,14 @@ ComponentId editor::Catalog::getComponentId(const EntityRegistry* registry, Comp
             return registry->getComponentId<WaterVolumeComponent>();
         case ComponentType::BuoyancyComponent:
             return registry->getComponentId<BuoyancyComponent>();
+        case ComponentType::SplineComponent:
+            return registry->getComponentId<SplineComponent>();
+        case ComponentType::SplineExtrudeComponent:
+            return registry->getComponentId<SplineExtrudeComponent>();
+        case ComponentType::SplineInstantiateComponent:
+            return registry->getComponentId<SplineInstantiateComponent>();
+        case ComponentType::SplineAnimateComponent:
+            return registry->getComponentId<SplineAnimateComponent>();
         case ComponentType::Joint3DComponent:
             return registry->getComponentId<Joint3DComponent>();
         case ComponentType::KeyframeTracksComponent:
@@ -4317,6 +4646,14 @@ editor::ComponentType editor::Catalog::getComponentType(const std::string& compo
         return ComponentType::WaterVolumeComponent;
     }else if(normalizedName == "buoyancy"){
         return ComponentType::BuoyancyComponent;
+    }else if(normalizedName == "spline"){
+        return ComponentType::SplineComponent;
+    }else if(normalizedName == "splineextrude"){
+        return ComponentType::SplineExtrudeComponent;
+    }else if(normalizedName == "splineinstantiate"){
+        return ComponentType::SplineInstantiateComponent;
+    }else if(normalizedName == "splineanimate"){
+        return ComponentType::SplineAnimateComponent;
     }else if(normalizedName == "joint3d"){
         return ComponentType::Joint3DComponent;
     }else if(normalizedName == "keyframetracks"){
@@ -4516,6 +4853,18 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     }
     if (registry->findComponent<BuoyancyComponent>(entity)){
         ret.push_back(ComponentType::BuoyancyComponent);
+    }
+    if (registry->findComponent<SplineComponent>(entity)){
+        ret.push_back(ComponentType::SplineComponent);
+    }
+    if (registry->findComponent<SplineExtrudeComponent>(entity)){
+        ret.push_back(ComponentType::SplineExtrudeComponent);
+    }
+    if (registry->findComponent<SplineInstantiateComponent>(entity)){
+        ret.push_back(ComponentType::SplineInstantiateComponent);
+    }
+    if (registry->findComponent<SplineAnimateComponent>(entity)){
+        ret.push_back(ComponentType::SplineAnimateComponent);
     }
     if (registry->findComponent<Joint3DComponent>(entity)){
         ret.push_back(ComponentType::Joint3DComponent);
@@ -5415,6 +5764,15 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
             particles->needReload = true;
         }
     }
+    if (updateFlags & UpdateFlags_Spline){
+        // a knot, the type, closed or the up axis was written in place: a new version
+        if (SplineComponent* spline = registry->findComponent<SplineComponent>(entity)){
+            for (spline::SplineKnot& knot : spline->spline.editableKnots()){
+                knot.radius = std::isfinite(knot.radius) ? std::max(0.0f, knot.radius) : 0.0f;
+            }
+            spline->spline.markDirty();
+        }
+    }
     if (updateFlags & UpdateFlags_Lattice){
         // offsets are left as they are: LatticeEditorOps::setResolution writes them resampled
         // with the resolution, and a prefab override applies them before it
@@ -5672,6 +6030,26 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
         case ComponentType::BuoyancyComponent: {
             YAML::Node encoded = Stream::encodeBuoyancyComponent(sourceRegistry->getComponent<BuoyancyComponent>(sourceEntity));
             targetRegistry->getComponent<BuoyancyComponent>(targetEntity) = Stream::decodeBuoyancyComponent(encoded);
+            break;
+        }
+        case ComponentType::SplineComponent: {
+            YAML::Node encoded = Stream::encodeSplineComponent(sourceRegistry->getComponent<SplineComponent>(sourceEntity));
+            targetRegistry->getComponent<SplineComponent>(targetEntity) = Stream::decodeSplineComponent(encoded);
+            break;
+        }
+        case ComponentType::SplineExtrudeComponent: {
+            YAML::Node encoded = Stream::encodeSplineExtrudeComponent(sourceRegistry->getComponent<SplineExtrudeComponent>(sourceEntity));
+            targetRegistry->getComponent<SplineExtrudeComponent>(targetEntity) = Stream::decodeSplineExtrudeComponent(encoded);
+            break;
+        }
+        case ComponentType::SplineInstantiateComponent: {
+            YAML::Node encoded = Stream::encodeSplineInstantiateComponent(sourceRegistry->getComponent<SplineInstantiateComponent>(sourceEntity));
+            targetRegistry->getComponent<SplineInstantiateComponent>(targetEntity) = Stream::decodeSplineInstantiateComponent(encoded);
+            break;
+        }
+        case ComponentType::SplineAnimateComponent: {
+            YAML::Node encoded = Stream::encodeSplineAnimateComponent(sourceRegistry->getComponent<SplineAnimateComponent>(sourceEntity));
+            targetRegistry->getComponent<SplineAnimateComponent>(targetEntity) = Stream::decodeSplineAnimateComponent(encoded);
             break;
         }
 
@@ -6009,6 +6387,28 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
             } else if (compType == ComponentType::ForceFieldComponent && property == "falloff") {
                 auto* source = Catalog::getPropertyRef<Curve>(sourceRegistry, sourceEntity, compType, property);
                 auto* target = Catalog::getPropertyRef<Curve>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::SplineComponent && property == "knots") {
+                SplineComponent* source = sourceRegistry->findComponent<SplineComponent>(sourceEntity);
+                SplineComponent* target = targetRegistry->findComponent<SplineComponent>(targetEntity);
+                if (source && target) target->spline.editableKnots() = source->spline.knots();
+            } else if (compType == ComponentType::SplineComponent && property.compare(0, 6, "knots[") == 0) {
+                auto* source = Catalog::getPropertyRef<spline::SplineKnot>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<spline::SplineKnot>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::SplineExtrudeComponent && property == "customProfile") {
+                auto* source = Catalog::getPropertyRef<std::vector<SplineProfilePoint>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<SplineProfilePoint>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::SplineInstantiateComponent && property == "spanOverrides") {
+                auto* source = Catalog::getPropertyRef<std::vector<SplineSpanOverride>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<SplineSpanOverride>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::SplineInstantiateComponent &&
+                       (property == "items" || property == "posts" || property == "spans" || property == "gates" ||
+                        property == "crests" || property == "caps")) {
+                auto* source = Catalog::getPropertyRef<std::vector<SplinePoolEntry>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<SplinePoolEntry>>(targetRegistry, targetEntity, compType, property);
                 if (source && target) *target = *source;
             }
             break;

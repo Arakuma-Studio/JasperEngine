@@ -609,6 +609,10 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getBuoyancy", &GameObject::getBuoyancy)
 #endif
         .addFunction("getWaterVolume", &GameObject::getWaterVolume)
+        .addFunction("getSpline", &GameObject::getSpline)
+        .addFunction("getSplineExtrude", &GameObject::getSplineExtrude)
+        .addFunction("getSplineInstantiate", &GameObject::getSplineInstantiate)
+        .addFunction("getSplineAnimate", &GameObject::getSplineAnimate)
         .addFunction("getRay", &GameObject::getRay)
         .endClass();
 

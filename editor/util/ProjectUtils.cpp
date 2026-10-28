@@ -59,6 +59,7 @@
 #include "component/Rigidbody2DComponent.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/MeshSystem.h"
+#include "subsystem/SplineSystem.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "component/RigidbodyComponent.h"
 #include "component/Joint2DComponent.h"
@@ -511,6 +512,13 @@ Entity editor::ProjectUtils::getLockedEntityParent(Scene* scene, Entity entity){
     Entity foliageOwner = scene->getSystem<MeshSystem>()->getFoliageOwner(entity);
     if (foliageOwner != NULL_ENTITY) {
         return foliageOwner;
+    }
+    // so are a spline's generated chunks and pieces: clicking the road selects the Road
+    if (std::shared_ptr<SplineSystem> splines = scene->findSystem<SplineSystem>()) {
+        const Entity splineOwner = splines->getGeneratedOwner(entity);
+        if (splineOwner != NULL_ENTITY) {
+            return splineOwner;
+        }
     }
 
     auto models = scene->getComponentArray<ModelComponent>();
@@ -1162,6 +1170,34 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<BuoyancyComponent>(entity, Stream::decodeBuoyancyComponent(componentNode));
             }
             break;
+        case ComponentType::SplineComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<SplineComponent>(entity, {});
+            }else{
+                registry->addComponent<SplineComponent>(entity, Stream::decodeSplineComponent(componentNode));
+            }
+            break;
+        case ComponentType::SplineExtrudeComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<SplineExtrudeComponent>(entity, {});
+            }else{
+                registry->addComponent<SplineExtrudeComponent>(entity, Stream::decodeSplineExtrudeComponent(componentNode));
+            }
+            break;
+        case ComponentType::SplineInstantiateComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<SplineInstantiateComponent>(entity, {});
+            }else{
+                registry->addComponent<SplineInstantiateComponent>(entity, Stream::decodeSplineInstantiateComponent(componentNode));
+            }
+            break;
+        case ComponentType::SplineAnimateComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<SplineAnimateComponent>(entity, {});
+            }else{
+                registry->addComponent<SplineAnimateComponent>(entity, Stream::decodeSplineAnimateComponent(componentNode));
+            }
+            break;
         case ComponentType::CharacterControllerComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
                 registry->addComponent<CharacterControllerComponent>(entity, {});
@@ -1686,6 +1722,30 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
                 oldComponent = Stream::encodeBuoyancyComponent(registry->getComponent<BuoyancyComponent>(entity));
             }
             registry->removeComponent<BuoyancyComponent>(entity);
+            break;
+        case ComponentType::SplineComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeSplineComponent(registry->getComponent<SplineComponent>(entity));
+            }
+            registry->removeComponent<SplineComponent>(entity);
+            break;
+        case ComponentType::SplineExtrudeComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeSplineExtrudeComponent(registry->getComponent<SplineExtrudeComponent>(entity));
+            }
+            registry->removeComponent<SplineExtrudeComponent>(entity);
+            break;
+        case ComponentType::SplineInstantiateComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeSplineInstantiateComponent(registry->getComponent<SplineInstantiateComponent>(entity));
+            }
+            registry->removeComponent<SplineInstantiateComponent>(entity);
+            break;
+        case ComponentType::SplineAnimateComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeSplineAnimateComponent(registry->getComponent<SplineAnimateComponent>(entity));
+            }
+            registry->removeComponent<SplineAnimateComponent>(entity);
             break;
         case ComponentType::CharacterControllerComponent:
             if (encodeComponent){

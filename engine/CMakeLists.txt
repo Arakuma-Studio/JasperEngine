@@ -1173,6 +1173,10 @@ set(JASPERENGINE_SRCS
     core/object/environment/Water.cpp
     core/object/environment/WaterVolume.cpp
     core/object/physics/Buoyancy.cpp
+    core/object/spline/Spline.cpp
+    core/object/spline/SplineExtrude.cpp
+    core/object/spline/SplineInstantiate.cpp
+    core/object/spline/SplineAnimate.cpp
     core/object/environment/VolumetricClouds.cpp
     core/object/ui/Button.cpp
     core/object/ui/LayoutGroup.cpp
@@ -1240,6 +1244,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/GameObjectClassesLua.cpp
     core/script/binding/ProfilerClassesLua.cpp
     core/script/binding/GameplayClassesLua.cpp
+    core/script/binding/SplineClassesLua.cpp
     core/script/binding/ThreadClassesLua.cpp
     core/script/binding/HtmlUIVectorLua.cpp
     core/script/binding/HtmlUIMediaLua.cpp
@@ -1261,6 +1266,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/AudioSystem.cpp
     core/subsystem/MeshSystem.cpp
     core/subsystem/LatticeSystem.cpp
+    core/subsystem/SplineSystem.cpp
     core/lattice/LatticeSolver.cpp
     core/lattice/LatticePresets.cpp
     core/lattice/LatticeRender.cpp

@@ -4316,7 +4316,8 @@ bool editor::Stream::isGeneratedMesh(const EntityRegistry* registry, Signature s
     return signature.test(registry->getComponentId<SpriteComponent>()) ||
            signature.test(registry->getComponentId<TilemapComponent>()) ||
            signature.test(registry->getComponentId<MeshPolygonComponent>()) ||
-           signature.test(registry->getComponentId<TerrainComponent>());
+           signature.test(registry->getComponentId<TerrainComponent>()) ||
+           signature.test(registry->getComponentId<SplineExtrudeComponent>());
 }
 
 bool editor::Stream::isGeneratedUI(const EntityRegistry* registry, Signature signature) {
@@ -4546,6 +4547,19 @@ YAML::Node editor::Stream::encodeComponentsLive(const Entity entity, const Entit
 
     if (signature.test(registry->getComponentId<BuoyancyComponent>())) {
         compNode[Catalog::getComponentName(ComponentType::BuoyancyComponent, true)] = encodeBuoyancyComponent(registry->getComponent<BuoyancyComponent>(entity));
+    }
+
+    if (signature.test(registry->getComponentId<SplineComponent>())) {
+        compNode[Catalog::getComponentName(ComponentType::SplineComponent, true)] = encodeSplineComponent(registry->getComponent<SplineComponent>(entity));
+    }
+    if (signature.test(registry->getComponentId<SplineExtrudeComponent>())) {
+        compNode[Catalog::getComponentName(ComponentType::SplineExtrudeComponent, true)] = encodeSplineExtrudeComponent(registry->getComponent<SplineExtrudeComponent>(entity));
+    }
+    if (signature.test(registry->getComponentId<SplineInstantiateComponent>())) {
+        compNode[Catalog::getComponentName(ComponentType::SplineInstantiateComponent, true)] = encodeSplineInstantiateComponent(registry->getComponent<SplineInstantiateComponent>(entity));
+    }
+    if (signature.test(registry->getComponentId<SplineAnimateComponent>())) {
+        compNode[Catalog::getComponentName(ComponentType::SplineAnimateComponent, true)] = encodeSplineAnimateComponent(registry->getComponent<SplineAnimateComponent>(entity));
     }
 
     if (signature.test(registry->getComponentId<CharacterControllerComponent>())) {
@@ -5205,6 +5219,50 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             registry->getComponent<BuoyancyComponent>(entity) = std::move(buoyancy);
             registry->markChanged<BuoyancyComponent>(entity);
+        }
+    });
+
+    StreamLoad::decodeComponent(ComponentType::SplineComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
+        SplineComponent* existing = registry->findComponent<SplineComponent>(entity);
+        SplineComponent spline = decodeSplineComponent(componentNode, existing);
+        if (!signature.test(registry->getComponentId<SplineComponent>())){
+            registry->addComponent<SplineComponent>(entity, std::move(spline));
+        }else{
+            registry->getComponent<SplineComponent>(entity) = std::move(spline);
+            registry->markChanged<SplineComponent>(entity);
+        }
+    });
+
+    StreamLoad::decodeComponent(ComponentType::SplineExtrudeComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
+        SplineExtrudeComponent* existing = registry->findComponent<SplineExtrudeComponent>(entity);
+        SplineExtrudeComponent extrude = decodeSplineExtrudeComponent(componentNode, existing);
+        if (!signature.test(registry->getComponentId<SplineExtrudeComponent>())){
+            registry->addComponent<SplineExtrudeComponent>(entity, std::move(extrude));
+        }else{
+            registry->getComponent<SplineExtrudeComponent>(entity) = std::move(extrude);
+            registry->markChanged<SplineExtrudeComponent>(entity);
+        }
+    });
+
+    StreamLoad::decodeComponent(ComponentType::SplineInstantiateComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
+        SplineInstantiateComponent* existing = registry->findComponent<SplineInstantiateComponent>(entity);
+        SplineInstantiateComponent instantiate = decodeSplineInstantiateComponent(componentNode, existing);
+        if (!signature.test(registry->getComponentId<SplineInstantiateComponent>())){
+            registry->addComponent<SplineInstantiateComponent>(entity, std::move(instantiate));
+        }else{
+            registry->getComponent<SplineInstantiateComponent>(entity) = std::move(instantiate);
+            registry->markChanged<SplineInstantiateComponent>(entity);
+        }
+    });
+
+    StreamLoad::decodeComponent(ComponentType::SplineAnimateComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
+        SplineAnimateComponent* existing = registry->findComponent<SplineAnimateComponent>(entity);
+        SplineAnimateComponent animate = decodeSplineAnimateComponent(componentNode, existing);
+        if (!signature.test(registry->getComponentId<SplineAnimateComponent>())){
+            registry->addComponent<SplineAnimateComponent>(entity, std::move(animate));
+        }else{
+            registry->getComponent<SplineAnimateComponent>(entity) = std::move(animate);
+            registry->markChanged<SplineAnimateComponent>(entity);
         }
     });
 
@@ -8021,6 +8079,368 @@ CharacterController2DComponent editor::Stream::decodeCharacterController2DCompon
     if (node["categoryBits"]) controller.categoryBits = YamlNumbers::as<uint16_t>(node["categoryBits"]);
     if (node["maskBits"]) controller.maskBits = YamlNumbers::as<uint16_t>(node["maskBits"]);
     return controller;
+}
+
+// =====================================================
+// Spline, SplineExtrude, SplineInstantiate and SplineAnimate encode/decode (S18 R29): values
+// that differ from the defaults only; knots are flow maps, one per line
+// =====================================================
+
+YAML::Node editor::Stream::writeSplineKnot(const spline::SplineKnot& knot) {
+    const spline::SplineKnot defaults;
+    YAML::Node node(YAML::NodeType::Map);
+    node.SetStyle(YAML::EmitterStyle::Flow);
+    node["p"] = encodeVector3(knot.position);
+    if (knot.tangentIn != defaults.tangentIn) node["in"] = encodeVector3(knot.tangentIn);
+    if (knot.tangentOut != defaults.tangentOut) node["out"] = encodeVector3(knot.tangentOut);
+    if (knot.radius != defaults.radius) node["r"] = knot.radius;
+    if (knot.rollDeg != defaults.rollDeg) node["roll"] = knot.rollDeg;
+    if (knot.mode != defaults.mode) node["mode"] = StreamSchema::splineTangentMode().toString(knot.mode);
+    return node;
+}
+
+spline::SplineKnot editor::Stream::readSplineKnot(const YAML::Node& item) {
+    spline::SplineKnot knot;
+    if (item.IsSequence()) {
+        // a bare [x, y, z]
+        knot.position = decodeVector3(item);
+        return knot;
+    }
+    if (item["p"]) knot.position = decodeVector3(item["p"]);
+    if (item["in"]) knot.tangentIn = decodeVector3(item["in"]);
+    if (item["out"]) knot.tangentOut = decodeVector3(item["out"]);
+    if (item["r"]) knot.radius = std::max(0.0f, YamlNumbers::as<float>(item["r"]));
+    if (item["roll"]) knot.rollDeg = YamlNumbers::as<float>(item["roll"]);
+    if (item["mode"]) knot.mode = decodeEnum(item, "mode", StreamSchema::splineTangentMode());
+    return knot;
+}
+
+YAML::Node editor::Stream::writeSplinePool(const std::vector<SplinePoolEntry>& pool) {
+    YAML::Node list(YAML::NodeType::Sequence);
+    for (const SplinePoolEntry& entry : pool) {
+        YAML::Node item(YAML::NodeType::Map);
+        item.SetStyle(YAML::EmitterStyle::Flow);
+        encodeAssetRef(item, "asset", entry.asset);
+        if (entry.weight != 1.0f) item["weight"] = entry.weight;
+        list.push_back(item);
+    }
+    return list;
+}
+
+std::vector<SplinePoolEntry> editor::Stream::readSplinePool(const YAML::Node& list) {
+    std::vector<SplinePoolEntry> pool;
+    if (!list.IsSequence()) return pool;
+    for (const YAML::Node& item : list) {
+        SplinePoolEntry entry;
+        entry.asset = decodeAssetRef(item, "asset");
+        if (item["weight"]) entry.weight = YamlNumbers::as<float>(item["weight"]);
+        pool.push_back(entry);
+    }
+    return pool;
+}
+
+YAML::Node editor::Stream::encodeSplineComponent(const SplineComponent& spline) {
+    const SplineComponent defaults;
+    YAML::Node node;
+    node["enabled"] = spline.enabled;
+    if (spline.spline.type() != defaults.spline.type()) node["type"] = StreamSchema::splineType().toString(spline.spline.type());
+    if (spline.spline.closed() != defaults.spline.closed()) node["closed"] = spline.spline.closed();
+    if (spline.spline.upAxis() != defaults.spline.upAxis()) node["upAxis"] = encodeVector3(spline.spline.upAxis());
+    YAML::Node knots(YAML::NodeType::Sequence);
+    for (const spline::SplineKnot& knot : spline.spline.knots()) {
+        knots.push_back(writeSplineKnot(knot));
+    }
+    node["knots"] = knots;
+
+    const SplineTerrainSettings& t = spline.terrain;
+    const SplineTerrainSettings d;
+    YAML::Node terrain(YAML::NodeType::Map);
+    if (t.region != d.region) terrain["region"] = StreamSchema::splineTerrainRegion().toString(t.region);
+    if (t.extraWidth != d.extraWidth) terrain["extraWidth"] = t.extraWidth;
+    if (t.falloff != d.falloff) terrain["falloff"] = t.falloff;
+    if (t.flatten != d.flatten) terrain["flatten"] = t.flatten;
+    if (t.flattenMode != d.flattenMode) terrain["flattenMode"] = StreamSchema::splineFlattenMode().toString(t.flattenMode);
+    if (t.heightOffset != d.heightOffset) terrain["heightOffset"] = t.heightOffset;
+    if (t.paint != d.paint) terrain["paint"] = t.paint;
+    if (t.paintLayer != d.paintLayer) terrain["paintLayer"] = t.paintLayer;
+    if (t.paintStrength != d.paintStrength) terrain["paintStrength"] = t.paintStrength;
+    if (t.paintFalloff != d.paintFalloff) terrain["paintFalloff"] = t.paintFalloff;
+    if (t.paintNoise != d.paintNoise) terrain["paintNoise"] = t.paintNoise;
+    if (t.clearFoliage != d.clearFoliage) terrain["clearFoliage"] = t.clearFoliage;
+    if (t.foliageMask != d.foliageMask) terrain["foliageMask"] = t.foliageMask;
+    if (t.terrain != d.terrain) terrain["terrain"] = t.terrain;
+    if (terrain.size() > 0) node["terrain"] = terrain;
+    return node;
+}
+
+SplineComponent editor::Stream::decodeSplineComponent(const YAML::Node& node, const SplineComponent* oldSpline) {
+    SplineComponent spline;
+    if (oldSpline) {
+        spline = *oldSpline;
+    }
+    if (node["enabled"]) spline.enabled = YamlNumbers::as<bool>(node["enabled"]);
+    if (node["type"]) spline.spline.setType(decodeEnum(node, "type", StreamSchema::splineType()));
+    if (node["closed"]) spline.spline.setClosed(YamlNumbers::as<bool>(node["closed"]));
+    if (node["upAxis"]) spline.spline.setUpAxis(decodeVector3(node["upAxis"]));
+    if (node["knots"] && node["knots"].IsSequence()) {
+        std::vector<spline::SplineKnot> knots;
+        for (const YAML::Node& item : node["knots"]) {
+            knots.push_back(readSplineKnot(item));
+        }
+        spline.spline.setKnots(std::move(knots));
+    }
+    if (const YAML::Node terrain = node["terrain"]; terrain && terrain.IsMap()) {
+        SplineTerrainSettings& t = spline.terrain;
+        if (terrain["region"]) t.region = decodeEnum(terrain, "region", StreamSchema::splineTerrainRegion());
+        if (terrain["extraWidth"]) t.extraWidth = YamlNumbers::as<float>(terrain["extraWidth"]);
+        if (terrain["falloff"]) t.falloff = YamlNumbers::as<float>(terrain["falloff"]);
+        if (terrain["flatten"]) t.flatten = YamlNumbers::as<bool>(terrain["flatten"]);
+        if (terrain["flattenMode"]) t.flattenMode = decodeEnum(terrain, "flattenMode", StreamSchema::splineFlattenMode());
+        if (terrain["heightOffset"]) t.heightOffset = YamlNumbers::as<float>(terrain["heightOffset"]);
+        if (terrain["paint"]) t.paint = YamlNumbers::as<bool>(terrain["paint"]);
+        if (terrain["paintLayer"]) t.paintLayer = YamlNumbers::as<unsigned int>(terrain["paintLayer"]);
+        if (terrain["paintStrength"]) t.paintStrength = YamlNumbers::as<float>(terrain["paintStrength"]);
+        if (terrain["paintFalloff"]) t.paintFalloff = YamlNumbers::as<float>(terrain["paintFalloff"]);
+        if (terrain["paintNoise"]) t.paintNoise = YamlNumbers::as<float>(terrain["paintNoise"]);
+        if (terrain["clearFoliage"]) t.clearFoliage = YamlNumbers::as<bool>(terrain["clearFoliage"]);
+        if (terrain["foliageMask"]) t.foliageMask = YamlNumbers::as<uint32_t>(terrain["foliageMask"]);
+        if (terrain["terrain"]) t.terrain = YamlNumbers::as<Entity>(terrain["terrain"]);
+    }
+    return spline;
+}
+
+YAML::Node editor::Stream::encodeSplineExtrudeComponent(const SplineExtrudeComponent& e) {
+    const SplineExtrudeComponent d;
+    YAML::Node node;
+    node["enabled"] = e.enabled;
+    if (e.shape != d.shape) node["shape"] = StreamSchema::splineExtrudeShape().toString(e.shape);
+    if (e.widthSource != d.widthSource) node["widthSource"] = StreamSchema::splineWidthSource().toString(e.widthSource);
+    if (e.width != d.width) encodeFinite(node, "width", e.width);
+    if (e.edgeDrop != d.edgeDrop) encodeFinite(node, "edgeDrop", e.edgeDrop);
+    if (e.edgeInset != d.edgeInset) encodeFinite(node, "edgeInset", e.edgeInset);
+    if (e.crownRise != d.crownRise) encodeFinite(node, "crownRise", e.crownRise);
+    if (e.shoulderWidth != d.shoulderWidth) encodeFinite(node, "shoulderWidth", e.shoulderWidth);
+    if (e.shoulderDrop != d.shoulderDrop) encodeFinite(node, "shoulderDrop", e.shoulderDrop);
+    if (e.thickness != d.thickness) encodeFinite(node, "thickness", e.thickness);
+    if (e.height != d.height) encodeFinite(node, "height", e.height);
+    if (e.grade != d.grade) node["grade"] = StreamSchema::splineGrade().toString(e.grade);
+    if (e.stepHeight != d.stepHeight) encodeFinite(node, "stepHeight", e.stepHeight);
+    if (e.tubeSides != d.tubeSides) node["tubeSides"] = e.tubeSides;
+    if (!e.customProfile.empty()) {
+        YAML::Node points(YAML::NodeType::Sequence);
+        for (const SplineProfilePoint& p : e.customProfile) {
+            YAML::Node item(YAML::NodeType::Map);
+            item.SetStyle(YAML::EmitterStyle::Flow);
+            item["p"] = encodeVector2(p.position);
+            if (p.hard) item["hard"] = true;
+            if (p.grounded) item["grounded"] = true;
+            points.push_back(item);
+        }
+        node["customProfile"] = points;
+    }
+    if (e.customClosed != d.customClosed) node["customClosed"] = e.customClosed;
+    if (e.maxHalfWidth != d.maxHalfWidth) encodeFinite(node, "maxHalfWidth", e.maxHalfWidth);
+    if (e.waterEdgeDrop != d.waterEdgeDrop) encodeFinite(node, "waterEdgeDrop", e.waterEdgeDrop);
+    if (e.seaLevelFloor != d.seaLevelFloor) node["seaLevelFloor"] = e.seaLevelFloor;
+    if (e.seaLevel != d.seaLevel) encodeFinite(node, "seaLevel", e.seaLevel);
+    if (e.flow != d.flow) node["flow"] = e.flow;
+    if (e.flowSpeed != d.flowSpeed) encodeFinite(node, "flowSpeed", e.flowSpeed);
+    if (e.tilesPerMetreU != d.tilesPerMetreU) encodeFinite(node, "tilesPerMetreU", e.tilesPerMetreU);
+    if (e.tilesPerMetreV != d.tilesPerMetreV) encodeFinite(node, "tilesPerMetreV", e.tilesPerMetreV);
+    if (e.levelCourseV != d.levelCourseV) node["levelCourseV"] = e.levelCourseV;
+    if (e.corners != d.corners) node["corners"] = StreamSchema::splineCornerStyle().toString(e.corners);
+    if (e.endCaps != d.endCaps) node["endCaps"] = e.endCaps;
+    if (e.endTaper != d.endTaper) encodeFinite(node, "endTaper", e.endTaper);
+    if (e.lateralOffset != d.lateralOffset) encodeFinite(node, "lateralOffset", e.lateralOffset);
+    if (e.verticalOffset != d.verticalOffset) encodeFinite(node, "verticalOffset", e.verticalOffset);
+    if (e.conform != d.conform) node["conform"] = StreamSchema::splineConform().toString(e.conform);
+    if (e.slopeBlend != d.slopeBlend) encodeFinite(node, "slopeBlend", e.slopeBlend);
+    if (e.stationSpacing != d.stationSpacing) encodeFinite(node, "stationSpacing", e.stationSpacing);
+    if (e.collision != d.collision) node["collision"] = StreamSchema::splineCollision().toString(e.collision);
+    return node;
+}
+
+SplineExtrudeComponent editor::Stream::decodeSplineExtrudeComponent(const YAML::Node& node, const SplineExtrudeComponent* oldExtrude) {
+    SplineExtrudeComponent e;
+    if (oldExtrude) {
+        e = *oldExtrude;
+    }
+    if (node["enabled"]) e.enabled = YamlNumbers::as<bool>(node["enabled"]);
+    if (node["shape"]) e.shape = decodeEnum(node, "shape", StreamSchema::splineExtrudeShape());
+    if (node["widthSource"]) e.widthSource = decodeEnum(node, "widthSource", StreamSchema::splineWidthSource());
+    if (node["width"]) e.width = YamlNumbers::as<float>(node["width"]);
+    if (node["edgeDrop"]) e.edgeDrop = YamlNumbers::as<float>(node["edgeDrop"]);
+    if (node["edgeInset"]) e.edgeInset = YamlNumbers::as<float>(node["edgeInset"]);
+    if (node["crownRise"]) e.crownRise = YamlNumbers::as<float>(node["crownRise"]);
+    if (node["shoulderWidth"]) e.shoulderWidth = YamlNumbers::as<float>(node["shoulderWidth"]);
+    if (node["shoulderDrop"]) e.shoulderDrop = YamlNumbers::as<float>(node["shoulderDrop"]);
+    if (node["thickness"]) e.thickness = YamlNumbers::as<float>(node["thickness"]);
+    if (node["height"]) e.height = YamlNumbers::as<float>(node["height"]);
+    if (node["grade"]) e.grade = decodeEnum(node, "grade", StreamSchema::splineGrade());
+    if (node["stepHeight"]) e.stepHeight = YamlNumbers::as<float>(node["stepHeight"]);
+    if (node["tubeSides"]) e.tubeSides = YamlNumbers::as<unsigned int>(node["tubeSides"]);
+    if (node["customProfile"] && node["customProfile"].IsSequence()) {
+        e.customProfile.clear();
+        for (const YAML::Node& item : node["customProfile"]) {
+            SplineProfilePoint point;
+            if (item["p"]) point.position = decodeVector2(item["p"]);
+            if (item["hard"]) point.hard = YamlNumbers::as<bool>(item["hard"]);
+            if (item["grounded"]) point.grounded = YamlNumbers::as<bool>(item["grounded"]);
+            e.customProfile.push_back(point);
+        }
+    }
+    if (node["customClosed"]) e.customClosed = YamlNumbers::as<bool>(node["customClosed"]);
+    if (node["maxHalfWidth"]) e.maxHalfWidth = YamlNumbers::as<float>(node["maxHalfWidth"]);
+    if (node["waterEdgeDrop"]) e.waterEdgeDrop = YamlNumbers::as<float>(node["waterEdgeDrop"]);
+    if (node["seaLevelFloor"]) e.seaLevelFloor = YamlNumbers::as<bool>(node["seaLevelFloor"]);
+    if (node["seaLevel"]) e.seaLevel = YamlNumbers::as<float>(node["seaLevel"]);
+    if (node["flow"]) e.flow = YamlNumbers::as<bool>(node["flow"]);
+    if (node["flowSpeed"]) e.flowSpeed = YamlNumbers::as<float>(node["flowSpeed"]);
+    if (node["tilesPerMetreU"]) e.tilesPerMetreU = YamlNumbers::as<float>(node["tilesPerMetreU"]);
+    if (node["tilesPerMetreV"]) e.tilesPerMetreV = YamlNumbers::as<float>(node["tilesPerMetreV"]);
+    if (node["levelCourseV"]) e.levelCourseV = YamlNumbers::as<bool>(node["levelCourseV"]);
+    if (node["corners"]) e.corners = decodeEnum(node, "corners", StreamSchema::splineCornerStyle());
+    if (node["endCaps"]) e.endCaps = YamlNumbers::as<bool>(node["endCaps"]);
+    if (node["endTaper"]) e.endTaper = YamlNumbers::as<float>(node["endTaper"]);
+    if (node["lateralOffset"]) e.lateralOffset = YamlNumbers::as<float>(node["lateralOffset"]);
+    if (node["verticalOffset"]) e.verticalOffset = YamlNumbers::as<float>(node["verticalOffset"]);
+    if (node["conform"]) e.conform = decodeEnum(node, "conform", StreamSchema::splineConform());
+    if (node["slopeBlend"]) e.slopeBlend = YamlNumbers::as<float>(node["slopeBlend"]);
+    if (node["stationSpacing"]) e.stationSpacing = YamlNumbers::as<float>(node["stationSpacing"]);
+    if (node["collision"]) e.collision = decodeEnum(node, "collision", StreamSchema::splineCollision());
+    return e;
+}
+
+YAML::Node editor::Stream::encodeSplineInstantiateComponent(const SplineInstantiateComponent& c) {
+    const SplineInstantiateComponent d;
+    YAML::Node node;
+    node["enabled"] = c.enabled;
+    if (c.mode != d.mode) node["mode"] = StreamSchema::splineInstantiateMode().toString(c.mode);
+    if (!c.items.empty()) node["items"] = writeSplinePool(c.items);
+    if (!c.posts.empty()) node["posts"] = writeSplinePool(c.posts);
+    if (!c.spans.empty()) node["spans"] = writeSplinePool(c.spans);
+    if (!c.gates.empty()) node["gates"] = writeSplinePool(c.gates);
+    if (!c.crests.empty()) node["crests"] = writeSplinePool(c.crests);
+    if (!c.caps.empty()) node["caps"] = writeSplinePool(c.caps);
+    if (c.spacing != d.spacing) encodeFinite(node, "spacing", c.spacing);
+    if (c.fit != d.fit) node["fit"] = StreamSchema::splineSpacingFit().toString(c.fit);
+    if (c.postPitch != d.postPitch) encodeFinite(node, "postPitch", c.postPitch);
+    if (c.spanMaxStretch != d.spanMaxStretch) encodeFinite(node, "spanMaxStretch", c.spanMaxStretch);
+    if (c.fenceGrade != d.fenceGrade) node["fenceGrade"] = StreamSchema::splineGrade().toString(c.fenceGrade);
+    if (c.crestPitch != d.crestPitch) encodeFinite(node, "crestPitch", c.crestPitch);
+    if (!c.spanOverrides.empty()) {
+        YAML::Node list(YAML::NodeType::Sequence);
+        for (const SplineSpanOverride& o : c.spanOverrides) {
+            YAML::Node item(YAML::NodeType::Map);
+            item.SetStyle(YAML::EmitterStyle::Flow);
+            item["knot"] = o.knot;
+            item["span"] = o.span;
+            item["kind"] = StreamSchema::splineSpanOverrideKind().toString(o.kind);
+            item["piece"] = o.piece;
+            list.push_back(item);
+        }
+        node["spanOverrides"] = list;
+    }
+    if (c.lateralOffset != d.lateralOffset) encodeFinite(node, "lateralOffset", c.lateralOffset);
+    if (c.verticalOffset != d.verticalOffset) encodeFinite(node, "verticalOffset", c.verticalOffset);
+    if (c.spacingJitter != d.spacingJitter) encodeFinite(node, "spacingJitter", c.spacingJitter);
+    if (c.yawJitter != d.yawJitter) encodeFinite(node, "yawJitter", c.yawJitter);
+    if (c.lateralJitter != d.lateralJitter) encodeFinite(node, "lateralJitter", c.lateralJitter);
+    if (c.scaleRange != d.scaleRange) node["scaleRange"] = encodeVector2(c.scaleRange);
+    if (c.dropout != d.dropout) encodeFinite(node, "dropout", c.dropout);
+    if (c.seed != d.seed) node["seed"] = c.seed;
+    if (c.endTrim != d.endTrim) encodeFinite(node, "endTrim", c.endTrim);
+    if (c.plantMode != d.plantMode) node["plantMode"] = StreamSchema::splinePlantMode().toString(c.plantMode);
+    if (c.maxTilt != d.maxTilt) encodeFinite(node, "maxTilt", c.maxTilt);
+    if (c.conform != d.conform) node["conform"] = StreamSchema::splineConform().toString(c.conform);
+    if (c.slopeBlend != d.slopeBlend) encodeFinite(node, "slopeBlend", c.slopeBlend);
+    if (c.stationSpacing != d.stationSpacing) encodeFinite(node, "stationSpacing", c.stationSpacing);
+    return node;
+}
+
+SplineInstantiateComponent editor::Stream::decodeSplineInstantiateComponent(const YAML::Node& node, const SplineInstantiateComponent* oldInstantiate) {
+    SplineInstantiateComponent c;
+    if (oldInstantiate) {
+        c = *oldInstantiate;
+    }
+    if (node["enabled"]) c.enabled = YamlNumbers::as<bool>(node["enabled"]);
+    if (node["mode"]) c.mode = decodeEnum(node, "mode", StreamSchema::splineInstantiateMode());
+    if (node["items"]) c.items = readSplinePool(node["items"]);
+    if (node["posts"]) c.posts = readSplinePool(node["posts"]);
+    if (node["spans"]) c.spans = readSplinePool(node["spans"]);
+    if (node["gates"]) c.gates = readSplinePool(node["gates"]);
+    if (node["crests"]) c.crests = readSplinePool(node["crests"]);
+    if (node["caps"]) c.caps = readSplinePool(node["caps"]);
+    if (node["spacing"]) c.spacing = YamlNumbers::as<float>(node["spacing"]);
+    if (node["fit"]) c.fit = decodeEnum(node, "fit", StreamSchema::splineSpacingFit());
+    if (node["postPitch"]) c.postPitch = YamlNumbers::as<float>(node["postPitch"]);
+    if (node["spanMaxStretch"]) c.spanMaxStretch = YamlNumbers::as<float>(node["spanMaxStretch"]);
+    if (node["fenceGrade"]) c.fenceGrade = decodeEnum(node, "fenceGrade", StreamSchema::splineGrade());
+    if (node["crestPitch"]) c.crestPitch = YamlNumbers::as<float>(node["crestPitch"]);
+    if (node["spanOverrides"] && node["spanOverrides"].IsSequence()) {
+        c.spanOverrides.clear();
+        for (const YAML::Node& item : node["spanOverrides"]) {
+            SplineSpanOverride o;
+            if (item["knot"]) o.knot = YamlNumbers::as<unsigned int>(item["knot"]);
+            if (item["span"]) o.span = YamlNumbers::as<unsigned int>(item["span"]);
+            if (item["kind"]) o.kind = decodeEnum(item, "kind", StreamSchema::splineSpanOverrideKind());
+            if (item["piece"]) o.piece = YamlNumbers::as<unsigned int>(item["piece"]);
+            c.spanOverrides.push_back(o);
+        }
+    }
+    if (node["lateralOffset"]) c.lateralOffset = YamlNumbers::as<float>(node["lateralOffset"]);
+    if (node["verticalOffset"]) c.verticalOffset = YamlNumbers::as<float>(node["verticalOffset"]);
+    if (node["spacingJitter"]) c.spacingJitter = YamlNumbers::as<float>(node["spacingJitter"]);
+    if (node["yawJitter"]) c.yawJitter = YamlNumbers::as<float>(node["yawJitter"]);
+    if (node["lateralJitter"]) c.lateralJitter = YamlNumbers::as<float>(node["lateralJitter"]);
+    if (node["scaleRange"]) c.scaleRange = decodeVector2(node["scaleRange"]);
+    if (node["dropout"]) c.dropout = YamlNumbers::as<float>(node["dropout"]);
+    if (node["seed"]) c.seed = YamlNumbers::as<uint32_t>(node["seed"]);
+    if (node["endTrim"]) c.endTrim = YamlNumbers::as<float>(node["endTrim"]);
+    if (node["plantMode"]) c.plantMode = decodeEnum(node, "plantMode", StreamSchema::splinePlantMode());
+    if (node["maxTilt"]) c.maxTilt = YamlNumbers::as<float>(node["maxTilt"]);
+    if (node["conform"]) c.conform = decodeEnum(node, "conform", StreamSchema::splineConform());
+    if (node["slopeBlend"]) c.slopeBlend = YamlNumbers::as<float>(node["slopeBlend"]);
+    if (node["stationSpacing"]) c.stationSpacing = YamlNumbers::as<float>(node["stationSpacing"]);
+    return c;
+}
+
+YAML::Node editor::Stream::encodeSplineAnimateComponent(const SplineAnimateComponent& a) {
+    const SplineAnimateComponent d;
+    YAML::Node node;
+    node["enabled"] = a.enabled;
+    if (a.spline != d.spline) node["spline"] = a.spline;
+    if (a.method != d.method) node["method"] = StreamSchema::splineAnimateMethod().toString(a.method);
+    if (a.duration != d.duration) encodeFinite(node, "duration", a.duration);
+    if (a.speed != d.speed) encodeFinite(node, "speed", a.speed);
+    if (a.loop != d.loop) node["loop"] = StreamSchema::splineLoop().toString(a.loop);
+    if (a.easing != d.easing) node["easing"] = StreamSchema::splineEasing().toString(a.easing);
+    if (a.alignment != d.alignment) node["alignment"] = StreamSchema::splineAlignment().toString(a.alignment);
+    if (a.startOffset != d.startOffset) encodeFinite(node, "startOffset", a.startOffset);
+    if (a.lateralOffset != d.lateralOffset) encodeFinite(node, "lateralOffset", a.lateralOffset);
+    if (a.verticalOffset != d.verticalOffset) encodeFinite(node, "verticalOffset", a.verticalOffset);
+    if (a.playOnAwake != d.playOnAwake) node["playOnAwake"] = a.playOnAwake;
+    return node;
+}
+
+SplineAnimateComponent editor::Stream::decodeSplineAnimateComponent(const YAML::Node& node, const SplineAnimateComponent* oldAnimate) {
+    SplineAnimateComponent a;
+    if (oldAnimate) {
+        a = *oldAnimate;
+    }
+    if (node["enabled"]) a.enabled = YamlNumbers::as<bool>(node["enabled"]);
+    if (node["spline"]) a.spline = YamlNumbers::as<Entity>(node["spline"]);
+    if (node["method"]) a.method = decodeEnum(node, "method", StreamSchema::splineAnimateMethod());
+    if (node["duration"]) a.duration = YamlNumbers::as<float>(node["duration"]);
+    if (node["speed"]) a.speed = YamlNumbers::as<float>(node["speed"]);
+    if (node["loop"]) a.loop = decodeEnum(node, "loop", StreamSchema::splineLoop());
+    if (node["easing"]) a.easing = decodeEnum(node, "easing", StreamSchema::splineEasing());
+    if (node["alignment"]) a.alignment = decodeEnum(node, "alignment", StreamSchema::splineAlignment());
+    if (node["startOffset"]) a.startOffset = YamlNumbers::as<float>(node["startOffset"]);
+    if (node["lateralOffset"]) a.lateralOffset = YamlNumbers::as<float>(node["lateralOffset"]);
+    if (node["verticalOffset"]) a.verticalOffset = YamlNumbers::as<float>(node["verticalOffset"]);
+    if (node["playOnAwake"]) a.playOnAwake = YamlNumbers::as<bool>(node["playOnAwake"]);
+    return a;
 }
 
 // =====================================================

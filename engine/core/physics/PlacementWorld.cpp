@@ -20,6 +20,7 @@
 #include "component/TilemapComponent.h"
 #include "component/Transform.h"
 #include "subsystem/MeshSystem.h"
+#include "subsystem/SplineSystem.h"
 #include "subsystem/RenderSystem.h"
 
 #ifdef JASPERENGINE_PHYSICS_3D
@@ -1557,6 +1558,13 @@ struct PlacementWorld::Impl {
         MeshSystem* meshSystem = scene->getSystem<MeshSystem>().get();
         for (size_t i = 0; i < terrains->size(); i++) {
             for (Entity e : meshSystem->getFoliageEntities(terrains->getEntity(i))) foliage.insert(e);
+        }
+        // a spline's chunks collide through their owner's colliders (SplineSystem), not as props
+        if (std::shared_ptr<SplineSystem> splines = scene->findSystem<SplineSystem>()) {
+            auto splineArray = scene->getComponentArray<SplineComponent>();
+            for (size_t i = 0; i < splineArray->size(); i++) {
+                for (Entity e : splines->getGeneratedEntities(splineArray->getEntity(i))) foliage.insert(e);
+            }
         }
 
         std::vector<Entity> candidates;

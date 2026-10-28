@@ -358,6 +358,168 @@ const EnumOptions& buoyancyColumnsOptions() {
     return options;
 }
 
+const EnumOptions& splineTypeOptions() {
+    static const EnumOptions options = {
+        {(int)spline::SplineType::Linear, "linear", "Linear"},
+        {(int)spline::SplineType::CatmullRom, "catmull_rom", "Catmull Rom"},
+        {(int)spline::SplineType::CubicBezier, "bezier", "Cubic Bezier"}
+    };
+    return options;
+}
+
+const EnumOptions& splineTangentModeOptions() {
+    static const EnumOptions options = {
+        {(int)spline::TangentMode::Mirrored, "mirrored", "Mirrored"},
+        {(int)spline::TangentMode::Aligned, "aligned", "Aligned"},
+        {(int)spline::TangentMode::Broken, "broken", "Broken"}
+    };
+    return options;
+}
+
+const EnumOptions& splineTerrainRegionOptions() {
+    static const EnumOptions options = {
+        {(int)SplineTerrainRegion::Path, "path", "Path"},
+        {(int)SplineTerrainRegion::Area, "area", "Area"}
+    };
+    return options;
+}
+
+const EnumOptions& splineFlattenModeOptions() {
+    static const EnumOptions options = {
+        {(int)SplineFlattenMode::Flatten, "flatten", "Flatten"},
+        {(int)SplineFlattenMode::CutOnly, "cut_only", "Cut Only"},
+        {(int)SplineFlattenMode::FillOnly, "fill_only", "Fill Only"}
+    };
+    return options;
+}
+
+const EnumOptions& splineExtrudeShapeOptions() {
+    static const EnumOptions options = {
+        {(int)SplineExtrudeShape::Flat, "flat", "Flat"},
+        {(int)SplineExtrudeShape::Bevel, "bevel", "Bevel"},
+        {(int)SplineExtrudeShape::Crown, "crown", "Crown"},
+        {(int)SplineExtrudeShape::Rectangle, "rectangle", "Rectangle"},
+        {(int)SplineExtrudeShape::Tube, "tube", "Tube"},
+        {(int)SplineExtrudeShape::Custom, "custom", "Custom"},
+        {(int)SplineExtrudeShape::Fill, "fill", "Fill"},
+        {(int)SplineExtrudeShape::WaterBanks, "water_banks", "Water Banks"}
+    };
+    return options;
+}
+
+const EnumOptions& splineWidthSourceOptions() {
+    static const EnumOptions options = {
+        {(int)SplineWidthSource::Radius, "radius", "Radius"},
+        {(int)SplineWidthSource::Constant, "constant", "Constant"}
+    };
+    return options;
+}
+
+const EnumOptions& splineCornerStyleOptions() {
+    static const EnumOptions options = {
+        {(int)SplineCornerStyle::None, "none", "None"},
+        {(int)SplineCornerStyle::Mitre, "mitre", "Mitre"},
+        {(int)SplineCornerStyle::Round, "round", "Round"}
+    };
+    return options;
+}
+
+const EnumOptions& splineGradeOptions() {
+    static const EnumOptions options = {
+        {(int)SplineGrade::Racked, "racked", "Racked"},
+        {(int)SplineGrade::Stepped, "stepped", "Stepped"}
+    };
+    return options;
+}
+
+const EnumOptions& splineConformOptions() {
+    static const EnumOptions options = {
+        {(int)SplineConform::None, "none", "None"},
+        {(int)SplineConform::TerrainHeight, "terrain_height", "Terrain Height"},
+        {(int)SplineConform::TerrainHeightAndSlope, "terrain_height_and_slope", "Terrain Height And Slope"}
+    };
+    return options;
+}
+
+const EnumOptions& splineCollisionOptions() {
+    static const EnumOptions options = {
+        {(int)SplineCollision::None, "none", "None"},
+        {(int)SplineCollision::Mesh, "mesh", "Mesh"},
+        {(int)SplineCollision::Chain2D, "chain_2d", "Chain 2D"}
+    };
+    return options;
+}
+
+const EnumOptions& splineInstantiateModeOptions() {
+    static const EnumOptions options = {
+        {(int)SplineInstantiateMode::Spacing, "spacing", "Spacing"},
+        {(int)SplineInstantiateMode::Tile, "tile", "Tile"},
+        {(int)SplineInstantiateMode::Fence, "fence", "Fence"}
+    };
+    return options;
+}
+
+const EnumOptions& splineSpacingFitOptions() {
+    static const EnumOptions options = {
+        {(int)SplineSpacingFit::FitToLength, "fit_to_length", "Fit To Length"},
+        {(int)SplineSpacingFit::FixedPitch, "fixed_pitch", "Fixed Pitch"}
+    };
+    return options;
+}
+
+const EnumOptions& splinePlantModeOptions() {
+    static const EnumOptions options = {
+        {(int)SplinePlantMode::BoundsMin, "bounds_min", "Bounds Min"},
+        {(int)SplinePlantMode::Pivot, "pivot", "Pivot"}
+    };
+    return options;
+}
+
+const EnumOptions& splineSpanOverrideKindOptions() {
+    static const EnumOptions options = {
+        {(int)SplineSpanOverrideKind::Gate, "gate", "Gate"},
+        {(int)SplineSpanOverrideKind::Piece, "piece", "Piece"}
+    };
+    return options;
+}
+
+const EnumOptions& splineAnimateMethodOptions() {
+    static const EnumOptions options = {
+        {(int)SplineAnimateMethod::Duration, "duration", "Duration"},
+        {(int)SplineAnimateMethod::Speed, "speed", "Speed"}
+    };
+    return options;
+}
+
+const EnumOptions& splineLoopOptions() {
+    static const EnumOptions options = {
+        {(int)SplineLoop::Once, "once", "Once"},
+        {(int)SplineLoop::Loop, "loop", "Loop"},
+        {(int)SplineLoop::PingPong, "ping_pong", "Ping Pong"}
+    };
+    return options;
+}
+
+const EnumOptions& splineEasingOptions() {
+    static const EnumOptions options = {
+        {(int)SplineEasing::None, "none", "None"},
+        {(int)SplineEasing::EaseIn, "ease_in", "Ease In"},
+        {(int)SplineEasing::EaseOut, "ease_out", "Ease Out"},
+        {(int)SplineEasing::EaseInOut, "ease_in_out", "Ease In Out"}
+    };
+    return options;
+}
+
+const EnumOptions& splineAlignmentOptions() {
+    static const EnumOptions options = {
+        {(int)SplineAlignment::None, "none", "None"},
+        {(int)SplineAlignment::SplineTangent, "spline_tangent", "Spline Tangent"},
+        {(int)SplineAlignment::SplineTangentAndUp, "spline_tangent_and_up", "Spline Tangent And Up"},
+        {(int)SplineAlignment::World, "world", "World"}
+    };
+    return options;
+}
+
 const EnumOptions& fogVolumeShapeOptions() {
     static const EnumOptions options = {
         {(int)FogVolumeShape::BOX, "box", "Box"},
@@ -1173,6 +1335,34 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
             break;
         case ComponentType::BuoyancyComponent:
             if (name == "columns") return &buoyancyColumnsOptions();
+            break;
+        case ComponentType::SplineComponent:
+            if (name == "type") return &splineTypeOptions();
+            if (name == "knots[].mode") return &splineTangentModeOptions();
+            if (name == "terrain.region") return &splineTerrainRegionOptions();
+            if (name == "terrain.flattenMode") return &splineFlattenModeOptions();
+            break;
+        case ComponentType::SplineExtrudeComponent:
+            if (name == "shape") return &splineExtrudeShapeOptions();
+            if (name == "widthSource") return &splineWidthSourceOptions();
+            if (name == "grade") return &splineGradeOptions();
+            if (name == "corners") return &splineCornerStyleOptions();
+            if (name == "conform") return &splineConformOptions();
+            if (name == "collision") return &splineCollisionOptions();
+            break;
+        case ComponentType::SplineInstantiateComponent:
+            if (name == "mode") return &splineInstantiateModeOptions();
+            if (name == "fit") return &splineSpacingFitOptions();
+            if (name == "fenceGrade") return &splineGradeOptions();
+            if (name == "plantMode") return &splinePlantModeOptions();
+            if (name == "conform") return &splineConformOptions();
+            if (name == "spanOverrides[].kind") return &splineSpanOverrideKindOptions();
+            break;
+        case ComponentType::SplineAnimateComponent:
+            if (name == "method") return &splineAnimateMethodOptions();
+            if (name == "loop") return &splineLoopOptions();
+            if (name == "easing") return &splineEasingOptions();
+            if (name == "alignment") return &splineAlignmentOptions();
             break;
         case ComponentType::LocalVolumetricFogComponent:
             if (name == "shape") return &fogVolumeShapeOptions();

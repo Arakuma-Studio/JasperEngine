@@ -93,6 +93,10 @@ EntityRegistry::EntityRegistry() {
 #endif
     registerComponent<WaterVolumeComponent>(ComponentOrder::Insertion, "WaterVolumeComponent");
     registerComponent<BuoyancyComponent>(ComponentOrder::Insertion, "BuoyancyComponent");
+    registerComponent<SplineComponent>(ComponentOrder::Insertion, "SplineComponent");
+    registerComponent<SplineExtrudeComponent>(ComponentOrder::Insertion, "SplineExtrudeComponent");
+    registerComponent<SplineInstantiateComponent>(ComponentOrder::Insertion, "SplineInstantiateComponent");
+    registerComponent<SplineAnimateComponent>(ComponentOrder::Insertion, "SplineAnimateComponent");
 
     // complete: markChangedComponent may look into it
     std::lock_guard<std::mutex> lock(liveRegistriesMutex());

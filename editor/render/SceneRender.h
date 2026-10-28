@@ -268,12 +268,39 @@ namespace jasperengine::editor{
         void drawLatticeFalloff(Entity entity, bool visible);
         void hideLatticeCages();
         void destroyLatticeCages();
+        // the world change of a gizmo drag about pivot (W/E/R or the 2D move), false when the
+        // cursor is off the drag plane; shared by the lattice points and the spline knots
+        bool gizmoDragDelta(const Vector3& pivot, const Quaternion& rotation, bool invertRotationSnap, Matrix4& delta);
         void beginLatticeDrag(Entity entity, const Vector3& pivot, const Quaternion& rotation);
         // the gizmo's change since the drag began (the entity drag's math, about the pivot)
         void dragLatticeGizmo(Project* project, uint32_t sceneId, bool invertRotationSnap);
         // a world-space change applied to the dragged points (and the falloff's)
         void dragLatticePoints(Project* project, uint32_t sceneId, const Matrix4& worldDelta);
         void endLatticeDrag();
+
+        // --- splines: the edited spline's knots, handles and radius band, the Draw Spline
+        // tool's stroke, the knot gizmo's drag (editor/spline/SplineSceneRender.cpp) ---
+        LineRenderer* splineOverlayLines = nullptr; // tools scene: over the geometry
+        LineRenderer* splineDepthLines = nullptr;   // this scene: depth tested (3D views)
+        struct SplineDrag{
+            bool active = false;
+            Entity spline = 0; // NULL_ENTITY
+            std::vector<uint32_t> knots;
+            std::vector<spline::SplineKnot> baseKnots;
+            Matrix4 model;
+            Vector3 pivot;
+            Quaternion rotation;
+        };
+        SplineDrag splineDrag;
+        // the spline whose knots the tools edit: the only tool entity, the one in Edit Spline
+        Entity getKnotEditSpline(const std::vector<Entity>& toolEntities);
+        bool getSplineKnotsPivot(Entity entity, const std::vector<uint32_t>& knots, Vector3& pivot, Quaternion& rotation, OBB& obb);
+        void updateSplineOverlay(const std::vector<Entity>& selEntities, Entity editedSpline);
+        void hideSplineOverlay();
+        void destroySplineOverlay();
+        void beginSplineDrag(Entity entity, const Vector3& pivot, const Quaternion& rotation);
+        void dragSplineGizmo(Project* project, uint32_t sceneId, bool invertRotationSnap);
+        void endSplineDrag();
         // a Lattice Follower driven on the channel the grabbed gizmo edits (W position, E
         // rotation, R scale, the 2D gizmo's move) is replaced by its rest: the follower is put
         // back every frame, so the tools move the spot it follows instead
@@ -500,6 +527,21 @@ namespace jasperengine::editor{
         AABB getLatticePointsAABB(Entity entity, const std::vector<int>& points);
         // a gizmo drag of lattice points is under way (the mouse wheel sizes the falloff)
         bool isLatticeDragActive() const { return latticeDrag.active; }
+
+        // Spline knots and Bezier handles under the cursor (the Edit Spline context)
+        int hitTestSplineKnot(Entity entity, float x, float y);
+        bool hitTestSplineHandle(Entity entity, float x, float y, uint32_t& knot, bool& out);
+        std::vector<uint32_t> getSplineKnotsInRect(Entity entity, Vector2 start, Vector2 end);
+        // the point of the curve under the cursor, within a few pixels (Ctrl+click inserts there)
+        bool hitTestSplineCurve(Entity entity, float x, float y, Vector3& worldPoint);
+        // the world point under the cursor for a new knot or stroke point: the snap's surface,
+        // else the plane through the spline (y 0, or z 0 in 2D)
+        bool splinePointUnderCursor(Entity entity, float x, float y, bool snapToSurface, Vector3& worldPoint);
+        // a Bezier handle tip dragged to the cursor, in the plane facing the camera through it
+        void dragSplineHandle(Project* project, uint32_t sceneId, Entity entity, uint32_t knot, bool out, float x, float y);
+        bool isSplineDragActive() const { return splineDrag.active; }
+        // world units of one pixel at a point (the Draw tool's pixel tolerances)
+        float worldPerPixelAt(const Vector3& worldPoint) const;
 
         // Polygon / MeshPolygon vertex sub-selection
         int getSelectedPolygonPointIndex() const { return selectedPolygonPointIndex; }

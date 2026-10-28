@@ -157,6 +157,25 @@ namespace jasperengine::editor {
         static const EnumTable<FogVolumeShape>& fogVolumeShape();
         static const EnumTable<WaterVolumeWaves>& waterVolumeWaves();
         static const EnumTable<BuoyancyColumns>& buoyancyColumns();
+        // splines (S18)
+        static const EnumTable<spline::SplineType>& splineType();
+        static const EnumTable<spline::TangentMode>& splineTangentMode();
+        static const EnumTable<SplineTerrainRegion>& splineTerrainRegion();
+        static const EnumTable<SplineFlattenMode>& splineFlattenMode();
+        static const EnumTable<SplineExtrudeShape>& splineExtrudeShape();
+        static const EnumTable<SplineWidthSource>& splineWidthSource();
+        static const EnumTable<SplineCornerStyle>& splineCornerStyle();
+        static const EnumTable<SplineGrade>& splineGrade();
+        static const EnumTable<SplineConform>& splineConform();
+        static const EnumTable<SplineCollision>& splineCollision();
+        static const EnumTable<SplineInstantiateMode>& splineInstantiateMode();
+        static const EnumTable<SplineSpacingFit>& splineSpacingFit();
+        static const EnumTable<SplinePlantMode>& splinePlantMode();
+        static const EnumTable<SplineSpanOverrideKind>& splineSpanOverrideKind();
+        static const EnumTable<SplineAnimateMethod>& splineAnimateMethod();
+        static const EnumTable<SplineLoop>& splineLoop();
+        static const EnumTable<SplineEasing>& splineEasing();
+        static const EnumTable<SplineAlignment>& splineAlignment();
         static const EnumTable<ForceFieldShapeType>& forceFieldShape();
         static const EnumTable<ForceFieldKind>& forceFieldKind();
         static const EnumTable<Joint2DType>& joint2DType();

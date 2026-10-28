@@ -3158,6 +3158,10 @@ std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* s
         case ComponentType::Joint2DComponent: return guardPhysicsCode(createJoint2DComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames), "JASPERENGINE_PHYSICS_2D");
         case ComponentType::WaterVolumeComponent: return createWaterVolumeComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting);
         case ComponentType::BuoyancyComponent: return createBuoyancyComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting);
+        case ComponentType::SplineComponent: return createSplineComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::SplineExtrudeComponent: return createSplineExtrudeComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting);
+        case ComponentType::SplineInstantiateComponent: return createSplineInstantiateComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting);
+        case ComponentType::SplineAnimateComponent: return createSplineAnimateComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::CharacterControllerComponent: return guardPhysicsCode(createCharacterControllerComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting), "JASPERENGINE_PHYSICS_3D");
         case ComponentType::CharacterController2DComponent: return guardPhysicsCode(createCharacterController2DComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting), "JASPERENGINE_PHYSICS_2D");
         case ComponentType::Joint3DComponent: return guardPhysicsCode(createJoint3DComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames), "JASPERENGINE_PHYSICS_3D");

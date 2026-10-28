@@ -71,6 +71,10 @@ const std::vector<std::string>& StreamSchema::knownFieldKeys(ComponentType type)
         {ComponentType::Joint2DComponent, {"anchorA", "anchorB", "autoAnchors", "axis", "bodyA", "bodyB", "enabled", "rope", "target", "type"}},
         {ComponentType::WaterVolumeComponent, {"angularDrag", "density", "enabled", "flow", "infinite", "linearDrag", "size", "surfaceOffset", "waves"}},
         {ComponentType::BuoyancyComponent, {"columns", "customPoints", "dragScale", "enabled", "volumeScale"}},
+        {ComponentType::SplineComponent, {"closed", "enabled", "knots", "terrain", "type", "upAxis"}},
+        {ComponentType::SplineExtrudeComponent, {"collision", "conform", "corners", "crownRise", "customClosed", "customProfile", "edgeDrop", "edgeInset", "enabled", "endCaps", "endTaper", "flow", "flowSpeed", "grade", "height", "lateralOffset", "levelCourseV", "maxHalfWidth", "seaLevel", "seaLevelFloor", "shape", "shoulderDrop", "shoulderWidth", "slopeBlend", "stationSpacing", "stepHeight", "thickness", "tilesPerMetreU", "tilesPerMetreV", "tubeSides", "verticalOffset", "waterEdgeDrop", "width", "widthSource"}},
+        {ComponentType::SplineInstantiateComponent, {"caps", "conform", "crestPitch", "crests", "dropout", "enabled", "endTrim", "fenceGrade", "fit", "gates", "items", "lateralJitter", "lateralOffset", "maxTilt", "mode", "plantMode", "postPitch", "posts", "scaleRange", "seed", "slopeBlend", "spacing", "spacingJitter", "spanMaxStretch", "spanOverrides", "spans", "stationSpacing", "verticalOffset", "yawJitter"}},
+        {ComponentType::SplineAnimateComponent, {"alignment", "duration", "easing", "enabled", "lateralOffset", "loop", "method", "playOnAwake", "speed", "spline", "startOffset", "verticalOffset"}},
         {ComponentType::CharacterControllerComponent, {"categoryBits", "center", "characterCollisions", "detectCollisions", "enabled", "enhancedEdgeRemoval", "height", "inheritPlatformYaw", "maskBits", "mass", "minMoveDistance", "movingPlatforms", "pushBodies", "pushStrength", "radius", "skinWidth", "slopeLimit", "stepOffset"}},
         {ComponentType::CharacterController2DComponent, {"categoryBits", "center", "enabled", "height", "maskBits", "minMoveDistance", "movingPlatforms", "pushBodies", "pushStrength", "radius", "skinWidth", "slopeLimit", "stepOffset"}},
         {ComponentType::Joint3DComponent, {"anchor", "anchorA", "anchorB", "autoAnchors", "axis", "axisX", "axisY", "bodyA", "bodyB", "enabled", "fixedPointA", "fixedPointB", "hinge", "hingeA", "hingeB", "isLooping", "limitsMax", "limitsMin", "normal", "normalHalfConeAngle", "numTeethGear", "numTeethGearA", "numTeethGearB", "numTeethRack", "pathPoints", "pathPosition", "planeAxis", "planeHalfConeAngle", "rackLength", "slider", "twistAxis", "twistMaxAngle", "twistMinAngle", "type"}},
@@ -506,6 +510,168 @@ const EnumTable<BuoyancyColumns>& StreamSchema::buoyancyColumns() {
         {BuoyancyColumns::AUTO_3x3, "auto_3x3"},
         {BuoyancyColumns::CUSTOM, "custom"},
     }, BuoyancyColumns::AUTO_2x2);
+    return table;
+}
+
+const EnumTable<spline::SplineType>& StreamSchema::splineType() {
+    static const EnumTable<spline::SplineType> table("SplineType", {
+        {spline::SplineType::Linear, "linear"},
+        {spline::SplineType::CatmullRom, "catmull_rom"},
+        {spline::SplineType::CubicBezier, "bezier"},
+    }, spline::SplineType::CatmullRom);
+    return table;
+}
+
+const EnumTable<spline::TangentMode>& StreamSchema::splineTangentMode() {
+    static const EnumTable<spline::TangentMode> table("SplineTangentMode", {
+        {spline::TangentMode::Mirrored, "mirrored"},
+        {spline::TangentMode::Aligned, "aligned"},
+        {spline::TangentMode::Broken, "broken"},
+    }, spline::TangentMode::Mirrored);
+    return table;
+}
+
+const EnumTable<SplineTerrainRegion>& StreamSchema::splineTerrainRegion() {
+    static const EnumTable<SplineTerrainRegion> table("SplineTerrainRegion", {
+        {SplineTerrainRegion::Path, "path"},
+        {SplineTerrainRegion::Area, "area"},
+    }, SplineTerrainRegion::Path);
+    return table;
+}
+
+const EnumTable<SplineFlattenMode>& StreamSchema::splineFlattenMode() {
+    static const EnumTable<SplineFlattenMode> table("SplineFlattenMode", {
+        {SplineFlattenMode::Flatten, "flatten"},
+        {SplineFlattenMode::CutOnly, "cut_only"},
+        {SplineFlattenMode::FillOnly, "fill_only"},
+    }, SplineFlattenMode::Flatten);
+    return table;
+}
+
+const EnumTable<SplineExtrudeShape>& StreamSchema::splineExtrudeShape() {
+    static const EnumTable<SplineExtrudeShape> table("SplineExtrudeShape", {
+        {SplineExtrudeShape::Flat, "flat"},
+        {SplineExtrudeShape::Bevel, "bevel"},
+        {SplineExtrudeShape::Crown, "crown"},
+        {SplineExtrudeShape::Rectangle, "rectangle"},
+        {SplineExtrudeShape::Tube, "tube"},
+        {SplineExtrudeShape::Custom, "custom"},
+        {SplineExtrudeShape::Fill, "fill"},
+        {SplineExtrudeShape::WaterBanks, "water_banks"},
+    }, SplineExtrudeShape::Bevel);
+    return table;
+}
+
+const EnumTable<SplineWidthSource>& StreamSchema::splineWidthSource() {
+    static const EnumTable<SplineWidthSource> table("SplineWidthSource", {
+        {SplineWidthSource::Radius, "radius"},
+        {SplineWidthSource::Constant, "constant"},
+    }, SplineWidthSource::Radius);
+    return table;
+}
+
+const EnumTable<SplineCornerStyle>& StreamSchema::splineCornerStyle() {
+    static const EnumTable<SplineCornerStyle> table("SplineCornerStyle", {
+        {SplineCornerStyle::None, "none"},
+        {SplineCornerStyle::Mitre, "mitre"},
+        {SplineCornerStyle::Round, "round"},
+    }, SplineCornerStyle::Mitre);
+    return table;
+}
+
+const EnumTable<SplineGrade>& StreamSchema::splineGrade() {
+    static const EnumTable<SplineGrade> table("SplineGrade", {
+        {SplineGrade::Racked, "racked"},
+        {SplineGrade::Stepped, "stepped"},
+    }, SplineGrade::Racked);
+    return table;
+}
+
+const EnumTable<SplineConform>& StreamSchema::splineConform() {
+    static const EnumTable<SplineConform> table("SplineConform", {
+        {SplineConform::None, "none"},
+        {SplineConform::TerrainHeight, "terrain_height"},
+        {SplineConform::TerrainHeightAndSlope, "terrain_height_and_slope"},
+    }, SplineConform::None);
+    return table;
+}
+
+const EnumTable<SplineCollision>& StreamSchema::splineCollision() {
+    static const EnumTable<SplineCollision> table("SplineCollision", {
+        {SplineCollision::None, "none"},
+        {SplineCollision::Mesh, "mesh"},
+        {SplineCollision::Chain2D, "chain_2d"},
+    }, SplineCollision::None);
+    return table;
+}
+
+const EnumTable<SplineInstantiateMode>& StreamSchema::splineInstantiateMode() {
+    static const EnumTable<SplineInstantiateMode> table("SplineInstantiateMode", {
+        {SplineInstantiateMode::Spacing, "spacing"},
+        {SplineInstantiateMode::Tile, "tile"},
+        {SplineInstantiateMode::Fence, "fence"},
+    }, SplineInstantiateMode::Spacing);
+    return table;
+}
+
+const EnumTable<SplineSpacingFit>& StreamSchema::splineSpacingFit() {
+    static const EnumTable<SplineSpacingFit> table("SplineSpacingFit", {
+        {SplineSpacingFit::FitToLength, "fit_to_length"},
+        {SplineSpacingFit::FixedPitch, "fixed_pitch"},
+    }, SplineSpacingFit::FitToLength);
+    return table;
+}
+
+const EnumTable<SplinePlantMode>& StreamSchema::splinePlantMode() {
+    static const EnumTable<SplinePlantMode> table("SplinePlantMode", {
+        {SplinePlantMode::BoundsMin, "bounds_min"},
+        {SplinePlantMode::Pivot, "pivot"},
+    }, SplinePlantMode::BoundsMin);
+    return table;
+}
+
+const EnumTable<SplineSpanOverrideKind>& StreamSchema::splineSpanOverrideKind() {
+    static const EnumTable<SplineSpanOverrideKind> table("SplineSpanOverrideKind", {
+        {SplineSpanOverrideKind::Gate, "gate"},
+        {SplineSpanOverrideKind::Piece, "piece"},
+    }, SplineSpanOverrideKind::Gate);
+    return table;
+}
+
+const EnumTable<SplineAnimateMethod>& StreamSchema::splineAnimateMethod() {
+    static const EnumTable<SplineAnimateMethod> table("SplineAnimateMethod", {
+        {SplineAnimateMethod::Duration, "duration"},
+        {SplineAnimateMethod::Speed, "speed"},
+    }, SplineAnimateMethod::Duration);
+    return table;
+}
+
+const EnumTable<SplineLoop>& StreamSchema::splineLoop() {
+    static const EnumTable<SplineLoop> table("SplineLoop", {
+        {SplineLoop::Once, "once"},
+        {SplineLoop::Loop, "loop"},
+        {SplineLoop::PingPong, "ping_pong"},
+    }, SplineLoop::Loop);
+    return table;
+}
+
+const EnumTable<SplineEasing>& StreamSchema::splineEasing() {
+    static const EnumTable<SplineEasing> table("SplineEasing", {
+        {SplineEasing::None, "none"},
+        {SplineEasing::EaseIn, "ease_in"},
+        {SplineEasing::EaseOut, "ease_out"},
+        {SplineEasing::EaseInOut, "ease_in_out"},
+    }, SplineEasing::None);
+    return table;
+}
+
+const EnumTable<SplineAlignment>& StreamSchema::splineAlignment() {
+    static const EnumTable<SplineAlignment> table("SplineAlignment", {
+        {SplineAlignment::None, "none"},
+        {SplineAlignment::SplineTangent, "spline_tangent"},
+        {SplineAlignment::SplineTangentAndUp, "spline_tangent_and_up"},
+        {SplineAlignment::World, "world"},
+    }, SplineAlignment::SplineTangentAndUp);
     return table;
 }
 

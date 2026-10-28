@@ -208,6 +208,11 @@ namespace jasperengine::editor {
         static Vector2 decodeVector2(const YAML::Node& node);
 
         static YAML::Node encodeVector3(const Vector3& vec);
+        // a Spline knot as a flow map and an Instantiate pool (S18 R29)
+        static YAML::Node writeSplineKnot(const spline::SplineKnot& knot);
+        static spline::SplineKnot readSplineKnot(const YAML::Node& item);
+        static YAML::Node writeSplinePool(const std::vector<SplinePoolEntry>& pool);
+        static std::vector<SplinePoolEntry> readSplinePool(const YAML::Node& list);
         static Vector3 decodeVector3(const YAML::Node& node);
 
         static YAML::Node encodeVector4(const Vector4& vec);
@@ -539,6 +544,14 @@ namespace jasperengine::editor {
         static WaterVolumeComponent decodeWaterVolumeComponent(const YAML::Node& node, const WaterVolumeComponent* oldVolume = nullptr);
         static YAML::Node encodeBuoyancyComponent(const BuoyancyComponent& buoyancy);
         static BuoyancyComponent decodeBuoyancyComponent(const YAML::Node& node, const BuoyancyComponent* oldBuoyancy = nullptr);
+        static YAML::Node encodeSplineComponent(const SplineComponent& spline);
+        static SplineComponent decodeSplineComponent(const YAML::Node& node, const SplineComponent* oldSpline = nullptr);
+        static YAML::Node encodeSplineExtrudeComponent(const SplineExtrudeComponent& extrude);
+        static SplineExtrudeComponent decodeSplineExtrudeComponent(const YAML::Node& node, const SplineExtrudeComponent* oldExtrude = nullptr);
+        static YAML::Node encodeSplineInstantiateComponent(const SplineInstantiateComponent& instantiate);
+        static SplineInstantiateComponent decodeSplineInstantiateComponent(const YAML::Node& node, const SplineInstantiateComponent* oldInstantiate = nullptr);
+        static YAML::Node encodeSplineAnimateComponent(const SplineAnimateComponent& animate);
+        static SplineAnimateComponent decodeSplineAnimateComponent(const YAML::Node& node, const SplineAnimateComponent* oldAnimate = nullptr);
         static CharacterControllerComponent decodeCharacterControllerComponent(const YAML::Node& node, const CharacterControllerComponent* oldController = nullptr);
         static CharacterController2DComponent decodeCharacterController2DComponent(const YAML::Node& node, const CharacterController2DComponent* oldController = nullptr);
 
