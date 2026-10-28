@@ -471,3 +471,88 @@ in `tools/mcp/tests/test_reflection.py`.
 - **`visibleIf` on mixed selections** uses the first entity, matching today's hand drawers.
 - **Lua generation stays out of scope.** If LuaBridge parity becomes painful, S23 decides on
   binding generation from these tables.
+
+## Deviations
+
+Recorded by the implementation (branch `feat/s08-reflection`).
+
+- **Hand codecs kept (P3 → P4).** 38 of the 65 components use the generic codec. 27 keep a whole-component
+  codec called through `ComponentDesc::codec`, with their table driving the Catalog, Inspector,
+  MCP, locators and codegen: the P4 set (Mesh, UI, Model, Prefab, Script, Terrain) plus Sprite,
+  Tilemap, Polygon, MeshPolygon, Points, LineRenderer, InstancedMesh, MorphTracks,
+  Rigidbody2D/3D, Skybox, SpriteAnimation and the lattice, particle, force field and S22 gameplay codecs below. Their YAML has quirks that one flag
+  cannot express (count-limited lists, keys read from other components, legacy branches), so
+  §9's default applies. The codecs are in `editor/StreamComponents.cpp`. `Stream.cpp` is 4,374
+  lines and `StreamComponents.cpp` 2,423 lines, so the codec code that remains is about 6,790
+  lines in total. AC15's `Stream.cpp` ≤ 5,000 is met by that split, not by deleting those codecs.
+  `ComponentDesc::extraKeys` lists each codec's known keys for `StreamSchema` and
+  `tools/check_stream_keys.py`.
+- **Components added upstream after the S08 base** (oe-port 05eb8d3b4; 697d661e2 added none): Fluid Simulation and
+  Lattice Follower use the generic codec (parity-tested against their upstream codecs); Lattice,
+  Lattice Modifier and Lattice Tracks keep their codecs (offsets sized by the resolution,
+  flow-style empty lists, clamps on read) in `StreamComponents.cpp`, with tables for the rest.
+  Their exported code stays the Factory writers'. The lattice drawers moved to
+  `InspectorLattice.cpp`; the fluid keeps its own drawer (`InspectorFluid.cpp`).
+- **S20 (oe-port 64d735104).** The new Particle System (an effect asset or an inline `.particles`
+  document, exposed values, collision planes) and the Force Field keep S20's codecs in
+  `StreamComponents.cpp` (the inline effect is its canonical JSON, the falloff curve key rows);
+  their tables (`ParticlesReflect.cpp`) give the properties, MCP schema and locators, the inline
+  document compared by its JSON. Their drawers are S20's (`InspectorParticles.cpp`), registered
+  in the drawer lookup, with the force field's enum rows from its `EnumDesc`s. S20's scene 2→3
+  and prefab 4→5 migrations (`StreamMigrations`) are the only format bumps: S08 adds no
+  migration, so the sequence stays S20's. The old particle model's table, drawer and emitter-shape
+  rows are gone; its `EnumDesc` stays for the legacy decode the migration uses.
+- **S22 (oe-port 4e4ba3964).** The Character Controller 2D and 3D, the Water Volume and the
+  Buoyancy keep S22's codecs (every key written) in `StreamComponents.cpp`, with tables in
+  `GameplayReflect.cpp` and S22's drawers moved to `InspectorPhysics.cpp` (enum rows from their
+  `EnumDesc`s). The controllers' `categoryBits`/`maskBits` are saved but no property (`Derived`),
+  as S22's Catalog had them (a `uint16_t` the Catalog's `unsigned int` commands would overrun); the
+  schema reads `UIntAs` defaults at their own width. `Catalog::copyPropertyValue` (prefab
+  Apply/Revert of one property) copies a Custom value no type branch names through its table's
+  `TypeOps::copy`, so Buoyancy `customPoints` and later table fields need no branch of their own.
+- **Legacy oracle kept.** `editor/tests/reflect/legacy/` (the deleted hand codecs, test-only)
+  stays so the parity fuzzers can keep running. D5 deletes it once S08 completes. Deleting it is
+  a follow-up for the integrator after merge, and the goldens do not depend on it.
+- **R15.** The engine keeps `PostProcessingSettings::getFields()` as the single field table,
+  because the runtime clamp and the Inspector post-processing panel read it. The editor builds
+  the `StructDesc` from that table (`editor/reflect/PostProcessingReflect.cpp`), so the scene
+  codec and `jasper://reflection` use reflection, and a field added to the engine table is
+  reflected without an edit. The façade is not deleted.
+- **Default Inspector (R8/R10).** It is in `editor/window/InspectorDefault.cpp`, not
+  `inspector/DefaultInspector.cpp`. The drawer registry is a static `componentDrawer(type)`
+  lookup, not the three-hook `InspectorDrawers` API. 12 components moved to the default drawer
+  (Button, Scrollbar, Progressbar, Panel, Text, RectTransform, Light2D, Mirror,
+  LocalVolumetricFog, Tween, Bone, Prefab). The others keep their hand drawers, which were moved
+  into `InspectorPhysics.cpp`, `InspectorAnimation.cpp` and `InspectorRenderers.cpp` and use the
+  `EnumDesc` entries. These named drawers exist: `label`, `multiline`, `direction`, `halfCone`,
+  `po2Slider`, `textureCube` and `modelEntity`. `InspectorWindow.cpp` is 11,410 lines.
+- **Extra table vocabulary** beyond R3/R4: flags `NoDefault`, `NonStructural`, `CodegenIfChanged`,
+  `CodegenRuntime`, `Transient`, `EmptyIsDefault`, `NullIfEmpty`, `NotListed`, `ListWhole`,
+  `ListElements`, `ListEachElement`, `ListTemplate`, `ComponentOnly` and `Clamped`. These keep the Catalog
+  property listing and codegen identical to before. Fields `enabledIf`, `enumMask`, `cppPath`,
+  `count` (`JE_COUNT`) and `elementOps` were also added. `ComponentDesc` gained
+  `remove`/`extraProperty`/`extraProperties` (Script properties, Model maps) and `extraKeys`.
+- **Decode differences** (R7/R32, accepted per §9):
+  - An unknown ReflectionProbe `mode`/`updateMode` token now keeps the base value and is
+    reported. Before, it silently became `static`/`on_load`.
+  - LocalVolumetricFog and VolumetricClouds are now also `markChanged` when decoded over an
+    existing component, like every other generic component.
+  - The Animation `actionFrameCount` pseudo-property is no longer listed. Through MCP it read a
+    dangling pointer.
+- **MCP.** `set_properties` refuses `Derived` fields as well as `ReadOnly`/`NoMcpWrite` ones. A
+  field flagged `Clamped` (UIDocument `textureWidth`/`textureHeight`, Lattice `resolutionX/Y/Z`,
+  Lattice Modifier `subdivisions` and binding `weight`) is clamped rather than refused outside
+  its range: its load and `Catalog::updateEntity` clamp too, and the existing suite relies on that. MCP
+  ease options leave out `custom`, as before. Camera keeps both tokens (R5 default).
+- **Benchmarks.** `ReflectCodecBench` (R17) and `ReflectResolveBench` (R18) always log their numbers
+  and always check for zero allocations. The time budgets are asserted only with
+  `JASPER_TEST_PERF_SLACK`, in the benchmark run on E (docs/testing.md).
+- **Goldens.** `test_golden_resave` saves each scene it opens again, 5 frames apart, until two
+  saves in a row agree (in the capture and in the check), so values the systems compute after the
+  load (mesh vertex counts, UI layout, camera clips, transparency from a texture loaded in the
+  background) do not depend on load speed. The codegen golden's
+  `rigidbody.solidBoxDensity`, an uninitialized member the editor before S08 exported as whatever
+  memory held, is 0 (the reflection codec value-initializes components).
+- **Not done here.** `editor/asset/AssetRefSchema` is still hand-written (its header expects S08
+  to generate it from reflection; `visitAssetRefs` and the locators are ready for it).
+- **R29** (optional Lua field report) is not implemented.

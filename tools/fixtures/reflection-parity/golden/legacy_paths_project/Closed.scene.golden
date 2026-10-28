@@ -1,0 +1,206 @@
+formatVersion: 3
+guid: 743bbd65bf2a44796f3a2c6886d66f02
+id: 2
+name: Closed
+scene:
+  backgroundColor: [0.16, 0.18, 0.24, 1]
+  shadowQuality: auto
+  meshLodEnabled: false
+  meshLodThreshold: 1
+  depthPrepassEnabled: false
+  lightState: auto
+  globalIlluminationIntensity: 0.1
+  globalIlluminationColor: [1, 1, 1]
+  ambientLight2DIntensity: 1
+  ambientLight2DColor: [1, 1, 1]
+  shadow2DQuality: low
+  ssaoEnabled: false
+  ssaoRadius: 0.5
+  ssaoIntensity: 1
+  ssaoBias: 0.025
+  ssrEnabled: false
+  ssrMaxDistance: 8
+  ssrThickness: 0.5
+  ssrMaxSteps: 48
+  ssrIntensity: 1
+  ssrBlur: 0
+  gravity2D: [0, -9.81]
+  gravity3D: [0, -9.81, 0]
+  fixedResolutionEnabled: false
+  fixedResolutionWidth: 640
+  fixedResolutionHeight: 360
+  fixedResolutionFilter: nearest
+  enableUIEvents: not_set
+sceneType: scene_3d
+mainCamera: 0
+maxValues:
+  maxSubmeshes: 1
+  maxTilemapTilesRect: 0
+  maxTilemapTiles: 0
+  maxExternalBuffers: 2
+  maxSpriteFrames: 0
+  maxBones: 128
+  maxColliders2D: 0
+  maxColliderPoints2D: 0
+  maxColliders3D: 0
+  maxColliderVertices3D: 0
+  maxColliderIndices3D: 0
+shaderKeys:
+  - type: mesh
+    properties: 33554504
+  - type: blit
+  - type: htmlui
+  - type: htmlui
+    properties: 1
+  - type: htmluigradient
+  - type: htmluipost
+    properties: 1
+  - type: htmluipost
+    properties: 2
+  - type: htmluipost
+    properties: 4
+  - type: htmluipost
+    properties: 8
+  - type: htmluipost
+    properties: 16
+  - type: htmluipost
+    properties: 32
+  - type: htmluipost
+    properties: 64
+entities:
+  - type: Entity
+    entity: 1001
+    name: Spot
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [0, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      light:
+        enabled: true
+        type: spot
+        direction: [0, 0, 0]
+        worldDirection: [0, 0, 0]
+        color: [1, 1, 1]
+        range: 0
+        intensity: 1
+        innerConeCos: 0.76604444
+        outerConeCos: 0.64278764
+        spotMask:
+          textureType: 2D
+          source: path
+          path: textures/mask.png
+          guid: f20edc826a355e7ac9118237ce2cd7a0
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: true
+        cullingMask: 4294967295
+        shadows: false
+        automaticShadowCamera: true
+        shadowBias: 1
+        mapResolution: 0
+        shadowCameraNearFar: [0.1, 10]
+        numShadowCascades: 0
+  - type: Entity
+    entity: 1002
+    name: Hud
+    components:
+      uidocument:
+        enabled: true
+        filename: ui/hud.html
+        filenameGuid: 00e0b373dfc7e39599c1a3ed2ed1fb89
+        sortOrder: 0
+  - type: Entity
+    entity: 1003
+    name: Lantern
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [0, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      light:
+        enabled: true
+        type: spot
+        direction: [0, 0, 0]
+        worldDirection: [0, 0, 0]
+        color: [1, 1, 1]
+        range: 0
+        intensity: 1
+        innerConeCos: 0.76604444
+        outerConeCos: 0.64278764
+        spotMask:
+          textureType: 2D
+          source: path
+          path: textures/brick.png
+          guid: 4f172276042c39a8da88bc7b7635e7e1
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: true
+        cullingMask: 4294967295
+        shadows: false
+        automaticShadowCamera: true
+        shadowBias: 1
+        mapResolution: 0
+        shadowCameraNearFar: [0.1, 10]
+        numShadowCascades: 0
+  - type: Entity
+    entity: 1004
+    name: Boat
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [0, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      model:
+        enabled: true
+        filename: models/ship.gltf
+        filenameGuid: df3f31641adc07a75bea73a881800d5e
+        mergeStaticMeshes: false
+        skeleton: 0
+        animations:
+          []
+        bonesIdMapping:
+          []
+        bonesNameMapping:
+          []
+        meshNodesMapping:
+          []
+        nodesIdMapping:
+          []

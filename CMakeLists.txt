@@ -631,10 +631,32 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/project/ProjectPrefabVariant.cpp
     ${EDITOR_DIR}/project/ProjectPrefabRefs.cpp
     ${EDITOR_DIR}/Catalog.cpp
+    ${EDITOR_DIR}/reflect/Reflect.cpp
+    ${EDITOR_DIR}/reflect/TypeOps.cpp
+    ${EDITOR_DIR}/reflect/Enums.cpp
+    ${EDITOR_DIR}/reflect/Registry.cpp
+    ${EDITOR_DIR}/reflect/Resolve.cpp
+    ${EDITOR_DIR}/reflect/YamlCodec.cpp
+    ${EDITOR_DIR}/reflect/Schema.cpp
+    ${EDITOR_DIR}/reflect/Codegen.cpp
+    ${EDITOR_DIR}/reflect/Remap.cpp
+    ${EDITOR_DIR}/reflect/Properties.cpp
+    ${EDITOR_DIR}/reflect/PostProcessingReflect.cpp
+    ${EDITOR_DIR}/reflect/components/AnimationReflect.cpp
+    ${EDITOR_DIR}/reflect/components/CameraAudioReflect.cpp
+    ${EDITOR_DIR}/reflect/components/LightingReflect.cpp
+    ${EDITOR_DIR}/reflect/components/MaterialReflect.cpp
+    ${EDITOR_DIR}/reflect/components/GameplayReflect.cpp
+    ${EDITOR_DIR}/reflect/components/ParticlesReflect.cpp
+    ${EDITOR_DIR}/reflect/components/RenderReflect.cpp
+    ${EDITOR_DIR}/reflect/components/TransformPhysicsReflect.cpp
+    ${EDITOR_DIR}/reflect/components/UIReflect.cpp
+    ${EDITOR_DIR}/reflect/components/LatticeFluidReflect.cpp
     ${EDITOR_DIR}/Conector.cpp
     ${EDITOR_DIR}/EditorHost.cpp
     ${EDITOR_DIR}/Generator.cpp
     ${EDITOR_DIR}/Stream.cpp
+    ${EDITOR_DIR}/StreamComponents.cpp
     ${EDITOR_DIR}/StreamPrefab.cpp
     ${EDITOR_DIR}/StreamMigrations.cpp
     ${EDITOR_DIR}/StreamSchema.cpp
@@ -865,6 +887,11 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorPostProcessing.cpp
     ${EDITOR_DIR}/window/InspectorFluid.cpp
     ${EDITOR_DIR}/window/InspectorShadows.cpp
+    ${EDITOR_DIR}/window/InspectorDefault.cpp
+    ${EDITOR_DIR}/window/InspectorPhysics.cpp
+    ${EDITOR_DIR}/window/InspectorAnimation.cpp
+    ${EDITOR_DIR}/window/InspectorRenderers.cpp
+    ${EDITOR_DIR}/window/InspectorLattice.cpp
     ${EDITOR_DIR}/window/InspectorPrefabBar.cpp
     ${EDITOR_DIR}/window/HierarchyPrefabRows.cpp
     ${EDITOR_DIR}/window/ConsoleWindow.cpp
@@ -952,6 +979,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/DuplicateEntityCmd.cpp
     ${EDITOR_DIR}/command/type/PasteEntitiesCmd.cpp
     ${EDITOR_DIR}/command/type/ComponentValuesCmd.cpp
+    ${EDITOR_DIR}/command/type/ReflectedValueCmd.cpp
     ${EDITOR_DIR}/command/type/AtmospherePresetCmd.cpp
     ${EDITOR_DIR}/command/type/MoveEntityOrderCmd.cpp
     ${EDITOR_DIR}/command/type/ObjectTransformCmd.cpp
@@ -1016,9 +1044,9 @@ set_source_files_properties(${EDITOR_DIR}/util/EditorFingerprint.cpp PROPERTIES
 # Unity build: these sources keep generic file-local helpers (lower, trim, Target, sceneArg, ...) in
 # anonymous namespaces, one helper set per file, so they never share a unity unit
 set(JASPERENGINE_EDITOR_UNITY_SKIP ${JASPERENGINE_EDITOR_SOURCES})
-list(FILTER JASPERENGINE_EDITOR_UNITY_SKIP INCLUDE REGEX "(^|/)editor/(htmlui|mcp/tools)/")
+list(FILTER JASPERENGINE_EDITOR_UNITY_SKIP INCLUDE REGEX "(^|/)editor/(htmlui|mcp/tools|reflect)/")
 jasperengine_skip_unity_build(
-    REASON "the HTML UI importers and the MCP tools: per-file helper sets with the same names"
+    REASON "the HTML UI importers, the MCP tools and the reflection tables: per-file helper sets with the same names"
     SOURCES ${JASPERENGINE_EDITOR_UNITY_SKIP})
 set(JASPERENGINE_EDITOR_SCENEVIEW_SOURCES ${JASPERENGINE_EDITOR_SOURCES})
 list(FILTER JASPERENGINE_EDITOR_SCENEVIEW_SOURCES INCLUDE REGEX "(^|/)editor/(picking|sceneview)/")
