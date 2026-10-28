@@ -651,6 +651,14 @@ MCP tests are in `tools/mcp/tests/test_vcs.py`. Each test builds its repository 
   the question comes right after the first edit that dirties a lockable scene or prefab (or the
   first import-settings edit of a lockable asset, `SetAssetMetaCmd`), and Cancel (or "Undo the
   Edit" for a file locked by someone else) undoes that edit, which leaves the document as it was.
+- **AC16 goldens**: the build before R20 has no `scene-dump --world` (this stream adds it), so
+  `editor/tests/fixtures/vcs/world/` was captured from this branch before the R20 commit; the
+  fixtures upstream added later (html-ui, pose-animation, AllComponents' new GameObjects) were
+  captured from the merged tree with R20's load path switched off (no key removal in the
+  migration, no post-decode update), which is what the older build did on load.
+- **R26 encode budget** is reported by `VcsBench.EncodeOfTheCurrentSide`, not enforced: R26 makes
+  10 ms a switch (over it, the tracker diffs the saved file: "Showing saved changes"), and a
+  2,000-GameObject encode takes ~30 ms on the benchmark server.
 - **R20 format versions**: scene 3 -> 4 and prefab 5 -> 6 (`Prefab::FILE_VERSION` 6); prefab files
   are written again (needsUpgrade) the next time a scene using them is saved. The reflection
   table gains a `NotWritten` flag (read when present, never written) on the six transform
