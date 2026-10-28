@@ -168,7 +168,8 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
 - 2D: sprites, tilemaps, UI; units are points (pixels of the canvas, project canvasWidth x
   canvasHeight, y up). Box2D converts with pointsToMeterScale (64 points per meter). Light 2D
   adds to the 2D ambient (lower ambient_light_2d_intensity to see it); Shadow Caster 2D needs the
-  light's shadows on.
+  light's shadows on; normal maps (generate_sprite_normals, jasper://docs/sprite-normals) need
+  its height > 0.
 - 3D: meshes (box, sphere, plane, model files), lights, skybox, fog, terrain. Cameras look at
   their target by default (useTarget): the GameObject's rotation is ignored until you call
   disableTarget() (orbiting: jasper://docs/lua-api, Camera).

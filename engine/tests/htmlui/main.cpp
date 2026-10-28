@@ -18,7 +18,11 @@ int main(int argc, char** argv){
     setenv("JASPER_LUA_THREAD_CHECK", "abort", 0);
 
     jasperengine::test::GpuEnvironment::initEngine(argc, argv);
-    ::testing::AddGlobalTestEnvironment(new jasperengine::test::GpuTestEnvironment());
 
-    return RUN_ALL_TESTS();
+    const int result = RUN_ALL_TESTS();
+    // the engine shuts down after every global environment's TearDown (some still compile
+    // documents, reading files through the engine) and before the statics are destroyed, as a
+    // game quits
+    jasperengine::test::GpuEnvironment::shutdown();
+    return result;
 }

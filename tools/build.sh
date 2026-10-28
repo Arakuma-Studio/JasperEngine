@@ -8,6 +8,7 @@
 #   tools/build.sh htmlui-tests [--clean]  builds and runs jasperengine-htmlui-tests headless
 #   tools/build.sh htmlui-editor-tests      builds the linux editor with jasperengine-htmlui-editor-tests, runs them
 #   tools/build.sh texsynth-tests      builds and runs jasperengine-texsynth-tests (texture synthesis, editor/texsynth)
+#   tools/build.sh spritenormals-tests builds and runs jasperengine-spritenormals-tests (sprite normals, editor/spritenormals)
 #   tools/build.sh editor-tests        builds the linux editor with jasperengine-editor-tests (unit tests of
 #                                      the editor and engine core: shader keys, .sdat, scene encoding), runs them
 #   tools/build.sh shell <target>      interactive shell in that target's image
@@ -28,6 +29,8 @@
 # texsynth-tests: TEXSYNTH_TEST_ARGS goes to the test binary, RUN=0 builds only. Without Docker:
 #   cmake -S . -B build/linux/editor -DJASPERENGINE_TEXSYNTH_TESTS=ON && cmake --build build/linux/editor
 #   --target jasperengine-texsynth-tests && build/linux/editor/jasperengine-texsynth-tests
+# spritenormals-tests: SPRITENORMALS_TEST_ARGS goes to the test binary, RUN=0 builds only. Without
+# Docker: the same with -DJASPERENGINE_SPRITENORMALS_TESTS=ON and jasperengine-spritenormals-tests.
 # editor-tests: EDITOR_TEST_ARGS goes to the test binary (e.g. --gtest_filter=ShaderKey*),
 # RUN=0 builds only. Without Docker: configure the editor with -DJASPERENGINE_EDITOR_TESTS=ON,
 # build the target jasperengine-editor-tests, run <build dir>/jasperengine-editor-tests.
@@ -39,7 +42,7 @@ EDITOR_TARGET=jasperengine-editor
 ENGINE_TARGET=jasperengine-project
 
 usage() {
-    sed -n '2,29p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,37p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 1
 }
 
@@ -60,13 +63,13 @@ for arg in "$@"; do
 done
 
 case "$TARGET" in
-    linux|web|android|htmlui-tests|htmlui-editor-tests|texsynth-tests|editor-tests) ;;
+    linux|web|android|htmlui-tests|htmlui-editor-tests|texsynth-tests|spritenormals-tests|editor-tests) ;;
     *) usage ;;
 esac
 
 # The tests run in the linux image, next to the linux build output
 IMAGE_TARGET="$TARGET"
-[[ "$TARGET" == htmlui-tests || "$TARGET" == htmlui-editor-tests || "$TARGET" == texsynth-tests || "$TARGET" == editor-tests ]] && IMAGE_TARGET=linux
+[[ "$TARGET" == htmlui-tests || "$TARGET" == htmlui-editor-tests || "$TARGET" == texsynth-tests || "$TARGET" == spritenormals-tests || "$TARGET" == editor-tests ]] && IMAGE_TARGET=linux
 IMAGE="jasperengine/${IMAGE_TARGET}-build"
 OUT="build/$IMAGE_TARGET"
 CACHE="build/.cache"
@@ -217,6 +220,17 @@ texsynth-tests)
         [[ '${RUN:-1}' == 0 ]] && exit 0
         set -f  # a --gtest_filter pattern is not a glob
         $OUT/editor/jasperengine-texsynth-tests ${TEXSYNTH_TEST_ARGS:-}
+    "
+    ;;
+spritenormals-tests)
+    BT="${BUILD_TYPE:-Release}"
+    run bash -euo pipefail -c "
+        cmake -S . -B $OUT/editor -G Ninja -DCMAKE_BUILD_TYPE=$BT -DJASPERENGINE_SPRITENORMALS_TESTS=ON \
+            -DCMAKE_INSTALL_PREFIX=$OUT/editor-install $CCACHE_FLAGS
+        cmake --build $OUT/editor --target jasperengine-spritenormals-tests $JOBS_FLAG
+        [[ '${RUN:-1}' == 0 ]] && exit 0
+        set -f  # a --gtest_filter pattern is not a glob
+        $OUT/editor/jasperengine-spritenormals-tests ${SPRITENORMALS_TEST_ARGS:-}
     "
     ;;
 editor-tests)

@@ -113,7 +113,3 @@ void GpuEnvironment::shutdown(){
     framebuffer = nullptr;
     HeadlessContext::destroy();
 }
-
-void GpuTestEnvironment::TearDown(){
-    GpuEnvironment::shutdown();
-}

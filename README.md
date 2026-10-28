@@ -12,6 +12,7 @@ JasperEngine is based on [Doriax](https://github.com/doriaxengine/doriax) by Edu
 - Build 2D and 3D scenes from GameObjects with sprites, tilemaps, models, cameras, lights, and reusable Prefabs
 - Edit components, assets, animations, bones, and terrain without leaving the editor
 - Synthesize textures from an example: extend, make tileable, inpaint, or guide them, with matching normal/roughness/height maps (Window > Texture Synthesis, the `synthesize-texture` CLI, or the `synthesize_texture` MCP tool)
+- Generate normal maps for pixel-art sprites, sheets, GIF/APNG animations and tilesets so 2D lights give them volume: presets, a lit preview with a movable light, frames from the Sprite, recipes that know when the sprite changed, and paint corrections that survive regeneration (Window > Sprite Normal Map, the Project window's Generate/Regenerate Normal Map, the Inspector's Normal Map buttons, the `generate-sprite-normals` CLI, the `generate_sprite_normals` MCP tool, and `check --normals` for stale or mismatched maps; a port of Sprite Fusion's sprite-normals)
 - Tune a fluid simulation from presets in the Inspector, preview it in edit mode and paint dye into it with a Scene view brush
 - Place objects with edit-time physics: press G to turn Physics on and the Move, Rotate and Scale tools slide the selection along the scene and stop it against what it touches, hold Space to drop it until it rests, Shift-drag to snap it across surfaces; each gesture is one undo step (Window > Physics Placement, the `place-physics` CLI, or the `place_with_physics` MCP tool)
 - Keyframe characters and objects Unity-style in the Animation window: record Scene-view and Inspector edits, edit keys in a dopesheet or curves, add events that call Lua, and save shared Animation Clips (`.anim`) that any hierarchy with the same child names can play; extract clips from glTF/FBX models, convert old keyframe Animations and bake pose animations to clips: see [docs/animation-clips.md](docs/animation-clips.md)
@@ -24,7 +25,7 @@ JasperEngine is based on [Doriax](https://github.com/doriaxengine/doriax) by Edu
 **Engine**
 
 - Shared ECS runtime for 2D and 3D scenes, with scene layers and serialization
-- Sprites, tilemaps, and polygons, plus 2D lights, normal maps, and 2D shadow casters
+- Sprites, tilemaps, and polygons, plus 2D lights, normal maps (OpenGL convention, green up; set from scripts with `setNormalTexture`, read by the built-in sprite material and `library:sprite`, correct on mirrored sprites), and 2D shadow casters
 - glTF, OBJ, and FBX models with skeletal animation, morph targets, and mesh instancing (the editor converts FBX to glTF with [ufbx](https://github.com/ufbx/ufbx): meshes, materials and textures, skins, animations, blend shapes, node hierarchy, units and axes; reimported when the file or its textures change)
 - PBR materials with dynamic lights and cascaded shadows, sky-driven IBL, SSAO, fog, and planar mirrors
 - A library of 40 ready-made shaders (toon, matcap, water, glass, outlines, sprites, skies, post effects...), per-pixel, per-vertex or mixed lighting with any number of lights, and a mobile-first post-processing stack (tone mapping and grading in the shaders, one uber pass, quarter-resolution bloom): see [docs/shaders](docs/shaders/README.md)
@@ -41,6 +42,13 @@ JasperEngine is based on [Doriax](https://github.com/doriaxengine/doriax) by Edu
 - Spatial 3D audio and multithreaded asynchronous resource loading
 
 Names follow Unity; see [docs/unity-glossary.md](docs/unity-glossary.md) for the old names and how to migrate older projects.
+
+**2D normal maps in older projects**:
+
+- 2D normal maps are read in the OpenGL convention (green up), like 3D Lit materials: a map made for the old 2D behaviour lights upside down. Flip its green channel (`check --normals` reports it as `normals-green-convention`) or generate it again.
+- A Light 2D's Height now shapes only normal-mapped objects (and Lit materials): plain sprites under a light with Height above 0 are no longer dimmed, so they get brighter. Lower the light's Intensity if the dimming was wanted. Light 2Ds made in the editor start at Height 64; lights made by scripts or loaded from scenes keep their value (0 makes normal maps flat).
+- Mirrored objects (a negative scale) shade normal maps correctly and keep their front faces: remove `windingOrder = CW` workarounds on meshes mirrored at runtime (they are now reversed twice), and shaders branching on `gl_FrontFacing` see the front. Not covered: a mirror made only by an instance matrix, by skinning joints, by a lattice turning the mesh inside out, or baked into a Vertex Animation.
+- `library:sprite` samples the material's Normal Texture under 2D lights (it was ignored), and a normal map that fails to load shades flat (it was tilted).
 
 ## Platform support
 
@@ -118,6 +126,9 @@ jasperengine-editor benchmark --help  # measure scene FPS
 jasperengine-editor place-physics --help  # drop, separate or move GameObjects with physics, no window
                                           # (--decompose never or always: the same result every run)
 jasperengine-editor bake-vat --help   # bake or import a Vertex Animation (.vat), no window
+jasperengine-editor synthesize-texture --help  # synthesize textures from examples, no window
+jasperengine-editor generate-sprite-normals --help  # normal maps for sprites, sheets and GIFs, no window
+jasperengine-editor check --project . --normals    # stale or mismatched sprite normal maps (docs/mcp/checks.md)
 ```
 
 ## Continuous integration

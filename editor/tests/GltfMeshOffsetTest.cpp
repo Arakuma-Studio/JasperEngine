@@ -20,6 +20,7 @@
 #include "buffer/ExternalBuffer.h"
 #include "object/Model.h"
 #include "subsystem/MeshSystem.h"
+#include "subsystem/RenderSystem.h"
 
 #include "json.hpp"
 
@@ -205,7 +206,38 @@ TEST_F(GltfMeshOffset, MeshUnderAnotherSceneRoot) {
     expectVector(mesh.verticesAABB.getMinimum(), Vector3(-6, 0, 0), "AABB minimum");
     // the mirror flips the winding
     EXPECT_EQ(mesh.windingOrder, WindingOrder::CW);
+    // it is in the vertices: the entity's transform does not mirror, nor does the draw
+    EXPECT_FALSE(mesh.mirroredWinding);
+    const Transform& transform = scene.getComponent<Transform>(model.getEntity());
+    EXPECT_FALSE(RenderSystem::isMirroredDraw(mesh, Matrix4::translateMatrix(transform.position) *
+        transform.rotation.getRotationMatrix() * Matrix4::scaleMatrix(transform.scale)));
     EXPECT_GE(editor::Project::countGltfExternalBuffers(path, false), mesh.numExternalBuffers);
+}
+
+TEST_F(GltfMeshOffset, MirroredRootOnTheEntityIsCompensated) {
+    // the mesh at the root, mirrored: the mirror goes on the entity's transform,
+    // the winding turns to CW for it, and the draw must not reverse it again
+    const nlohmann::json nodes = {
+        {{"name", "Mesh"}, {"translation", {0, 0, 3}}, {"scale", {-1, 1, 1}}, {"mesh", 0}},
+    };
+    const fs::path path = writeGltf("mirrored-root", nodes, {0});
+
+    Scene scene;
+    Model model(&scene);
+    ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(model.getEntity(), path.string()));
+
+    Transform& transform = scene.getComponent<Transform>(model.getEntity());
+    // (decomposed as a turn and a scale whose product is negative)
+    EXPECT_LT(transform.scale.x * transform.scale.y * transform.scale.z, 0.0f) << "the entity's scale mirrors";
+    const MeshComponent& mesh = scene.getComponent<MeshComponent>(model.getEntity());
+    expectPositions(mesh, {Vector3(0, 0, 0), Vector3(1, 0, 0), Vector3(0, 1, 0)});
+    EXPECT_EQ(mesh.windingOrder, WindingOrder::CW);
+    EXPECT_TRUE(mesh.mirroredWinding);
+    Matrix4 placed = Matrix4::translateMatrix(transform.position) * transform.rotation.getRotationMatrix() * Matrix4::scaleMatrix(transform.scale);
+    EXPECT_LT(placed.determinant(), 0.0f);
+    EXPECT_FALSE(RenderSystem::isMirroredDraw(mesh, placed)) << "compensated by its winding";
+    // mirrored back at runtime (scale +1): now the draw reverses the winding
+    EXPECT_TRUE(RenderSystem::isMirroredDraw(mesh, Matrix4::translateMatrix(transform.position)));
 }
 
 TEST_F(GltfMeshOffset, PreviewLoadPreservesGeometryOfTheOriginal) {
@@ -308,6 +340,7 @@ TEST_F(GltfMeshOffset, FoliageBakesTheWholeNodeTransform) {
     const MeshComponent& rootMesh = scene.getComponent<MeshComponent>(rootChunk.getEntity());
     expectPositions(rootMesh, {Vector3(0, 0, 3), Vector3(-1, 0, 3), Vector3(0, 1, 3)});
     EXPECT_EQ(rootMesh.windingOrder, WindingOrder::CW);
+    EXPECT_FALSE(rootMesh.mirroredWinding) << "the mirror is baked into the vertices";
 
     // a mesh that cannot be baked (a morph target) under a mirrored root keeps its vertices,
     // and the winding of what is applied to them: nothing

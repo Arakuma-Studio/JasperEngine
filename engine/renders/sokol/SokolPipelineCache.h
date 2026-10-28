@@ -47,6 +47,19 @@ namespace jasperengine{
         // counters since start: misses (pipelines created) and sg_apply_pipeline calls of apply()
         static uint64_t getMissCount();
         static uint64_t getApplyCount();
+
+        // Variants of the fixed pipelines (SokolObject::beginDraw: the reversed face winding of a
+        // mirrored draw, the editor's no-cull view), shared by every object asking for the same
+        // description and reference counted: acquire makes the pipeline on a miss (main thread
+        // only; SG_INVALID_ID when sokol could not), release lets go of one reference and
+        // destroys the pipeline with the last (an unknown handle is ignored). releaseShader does
+        // not touch them (their objects release them, as their own pipelines); clear destroys all
+        static sg_pipeline acquireVariant(const sg_pipeline_desc& desc);
+        static void releaseVariant(sg_pipeline pipeline);
+        // a reference more on a variant acquired before (a copy of an object holding it)
+        static void retainVariant(sg_pipeline pipeline);
+        // the shared variant pipelines alive (tests)
+        static size_t variantCount();
     };
 }
 

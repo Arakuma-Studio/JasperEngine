@@ -82,6 +82,7 @@
 #include "pose/PoseAnimatorRuntime.h"
 #include "pose/PoseInspectorHooks.h"
 #include "window/InspectorVatBake.h"
+#include "window/SpriteNormalsEntry.h"
 #include "pose/PoseEditSession.h"
 #include "animation/PreviewOwner.h"
 #include "animation/ClipRecordHooks.h"
@@ -4301,6 +4302,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         // when applicable), with one gap between each item and a trailing gap on the right
         int texButtonCount = settings.allowCameraTexture ? 3 : 1;
         if (showTexSettings) texButtonCount++;
+        if (settings.extraButton) texButtonCount++;
         float texButtonsReserve = texButtonSize.x * texButtonCount + ImGui::GetStyle().ItemSpacing.x * (texButtonCount + 1);
         ImGui::BeginChild("textureframe", ImVec2(-texButtonsReserve, ImGui::GetFontSize() + ImGui::GetStyle().FramePadding.y * 2),
             false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
@@ -4387,6 +4389,11 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                 ImGui::OpenPopup("texturesettingspopup");
             }
             ImGui::SetItemTooltip("Texture settings (filter, wrap, SVG scale)");
+        }
+
+        if (settings.extraButton) {
+            ImGui::SameLine();
+            settings.extraButton(texButtonSize);
         }
 
         ImGui::PopStyleVar();
@@ -4872,6 +4879,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (ImGui::ArrowButton("##toggle_mesh", materialButtonGroups[id] ? ImGuiDir_Up : ImGuiDir_Down)){
             materialButtonGroups[id] = !materialButtonGroups[id];
         }
+        UIProbe::item("inspector.materialToggle." + id);
 
         ImGui::SameLine();
 
@@ -7168,6 +7176,11 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
             RowSettings settingsAlphaMode = settingsMaterial;
             settingsAlphaMode.enumEntries = &entriesMaterialAlphaMode;
 
+            // with the Sprite Normal Map wand when the Base Texture is an image (both Normal Texture rows)
+            RowSettings settingsNormalTexture = normalTextureRowSettings(settingsMaterial, sceneProject, entities, (unsigned int)s);
+            settingsNormalTexture.help = "Tangent-space normal map, OpenGL convention (green up). On sprites, tilemaps and polygons it answers "
+                                         "Light 2Ds whose Height is above 0; same size and frame layout as the Base Texture.";
+
             // the shader (built-in Lit, a library shader or a custom file) and its own rows
             beginTable(cpType, getLabelSize("Met. Roug. Texture"), "submeshes_material_shader");
             // one-click setups of the shader, extra pass and state (shader library phase 2)
@@ -7188,7 +7201,7 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
             propertyRow(RowPropertyType::Color3L, cpType, "submeshes["+std::to_string(s)+"].material.emissiveFactor", "Emissive Factor", sceneProject, entities, settingsMaterial);
             propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.emissiveTexture", "Emissive Texture", sceneProject, entities, settingsMaterial);
             propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.occlusionTexture", "Occlusion Texture", sceneProject, entities, settingsMaterial);
-            propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.normalTexture", "Normal Texture", sceneProject, entities, settingsMaterial);
+            propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.normalTexture", "Normal Texture", sceneProject, entities, settingsNormalTexture);
 
             // Stochastic Tiling of these maps (includes/pbr.glsl), its values while it is on
             const std::string materialPrefix = "submeshes[" + std::to_string(s) + "].material.";
@@ -7222,6 +7235,20 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
                                               firstMaterial.normalTexture, settingsMaterial.onValueChanged);
             }
             endTable();
+            }else{
+                // a library shader with @require normalmap reads the material's own Normal Texture
+                // (the 2D lights' normal map): the one PBR row it keeps
+                Scene* materialScene = sceneProject->scene;
+                MeshComponent& firstMesh = materialScene->getComponent<MeshComponent>(entities[0]);
+                const std::string drawnShader = RenderSystem::getSubmeshShader(firstMesh, firstMesh.submeshes[s],
+                                                                               materialScene->getDefaultCustomShader(ShaderType::MESH));
+                std::shared_ptr<const ShaderManifest> drawnManifest = drawnShader.empty() ? nullptr : ShaderManifests::get(drawnShader);
+                const std::vector<std::string> features = ShaderReference::getEnabledFeatures(drawnShader, firstMesh.submeshes[s].material.shaderFeatures);
+                if (Catalog::shaderReadsMaterialNormalMap(drawnManifest.get(), features)){
+                    beginTable(cpType, getLabelSize("Met. Roug. Texture"), "submeshes_material_normal_map");
+                    propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.normalTexture", "Normal Texture", sceneProject, entities, settingsNormalTexture);
+                    endTable();
+                }
             }
 
             ImGui::SeparatorText("Surface");
@@ -7972,7 +7999,9 @@ void editor::InspectorWindow::drawSpriteComponent(ComponentType cpType, ScenePro
         int activeFrameCount = (int)sprite.numFramesRect;
 
         // Sprite slicer tool button
-        if (ImGui::Button(ICON_FA_GRIP " Slicer Tool", ImVec2(ImGui::GetContentRegionAvail().x, 0))) {
+        // the Slicer Tool and the Sprite Normal Map (this texture with these frames), side by side
+        const float spriteFramesHalf = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+        if (ImGui::Button(ICON_FA_GRIP " Slicer Tool", ImVec2(spriteFramesHalf, 0))) {
             textureSlicerToolDialog.open(
                 previewTexture,
                 static_cast<int>(sprite.width),
@@ -8024,6 +8053,9 @@ void editor::InspectorWindow::drawSpriteComponent(ComponentType cpType, ScenePro
                 }
             );
         }
+        ImGui::SameLine();
+        spritenormalsentry::normalMapButton(sceneProject, entities[0], ImGui::GetContentRegionAvail().x);
+        spritenormalsentry::normalMapHint(sceneProject, entities[0]);
 
         beginTable(cpType, getLabelSize("Frames"), "sprite_frames_header");
         propertyHeader("Frames", -1, false, false);
@@ -9363,7 +9395,7 @@ void editor::InspectorWindow::drawLight2DComponent(ComponentType cpType, ScenePr
     settingsFloat.secondColSize = 6 * ImGui::GetFontSize();
 
     RowSettings settingsHeight = settingsFloat;
-    settingsHeight.help = "Virtual Z height of the light above the 2D plane. Gives normal maps a direction to respond to; 0 disables normal response (pure radial light).";
+    settingsHeight.help = "Virtual height of the light above the 2D plane, in world units: how steeply it shines on normal-mapped sprites (64 for new lights). 0 makes normal maps flat. Sprites without a normal map are lit the same at any height.";
 
     beginTable(cpType, getLabelSize("Intensity"));
     propertyRow(RowPropertyType::Float, cpType, "intensity", "Intensity", sceneProject, entities, settingsFloat);

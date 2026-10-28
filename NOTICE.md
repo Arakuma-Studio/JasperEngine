@@ -59,11 +59,12 @@ UI effects of the HTML/CSS UI: the effects of `engine/shaderlib/effects/` marked
 
 Fluid simulation: the FluidSimulation component and the HTML UI `fluid` effect port [WebGL-Fluid-Simulation](https://github.com/PavelDoGreat/WebGL-Fluid-Simulation) by Pavel Dobryakov (MIT, Copyright (c) 2017 Pavel Dobryakov): his solver and look kernels (`engine/shaderlib/effects/lib/fam_fluid_solver.glsl`, `engine/shaderlib/effects/lib/fam_fluid_look.glsl`; these two are his, not shaders.com's), the native passes on them (`engine/shaderlib/fluid.vert`, `engine/shaderlib/fluid.frag`) and his simulation loop, defaults and splats (`engine/core/fluid/`). His blue-noise dithering texture (`LDR_LLL1_0.png`, whose licence is not stated) was not copied: the dither is procedural. The notice is `engine/shaderlib/effects/LICENSE.webgl-fluid-simulation.txt`; exports that run the fluid (a FluidSimulation component in an exported scene or prefab, or the `fluid` effect) copy it to `licenses/webgl-fluid-simulation-LICENSE.txt`.
 
-Texture synthesis of the editor (editor-only: never part of an exported game):
+Texture synthesis and sprite normal maps of the editor (editor-only: never part of an exported game):
 
 | Code | Version | Location | License | Used for |
 |---|---|---|---|---|
 | [texture-synthesis](https://github.com/EmbarkStudios/texture-synthesis) by Embark Studios (`lib/src`, ported to C++) | 0.8.2 (`22825ec4ad25`) | `editor/texsynth/` (`editor/texsynth/LICENSE-texture-synthesis.txt`) | MIT OR Apache-2.0 (used under MIT) | `jasperengine-editor synthesize-texture`: new, tileable, inpainted and guided textures from examples |
+| [spritefusion-sprite-normals](https://github.com/Hugo-Dz/spritefusion-sprite-normals) by Hugo Duprez (`src`, ported to C++) | 0.1.0 (`d14b067`) | `editor/spritenormals/` (`editor/spritenormals/LICENSE-spritefusion-sprite-normals.txt`; C++ port of the normal-map generator) | MIT | Window > Sprite Normal Map, `jasperengine-editor generate-sprite-normals` and the `generate_sprite_normals` MCP tool: normal maps for 2D sprites, sheets, animations and tilesets |
 
 FBX import of the editor (editor-only: an exported game ships the converted `.glb`, never ufbx):
 

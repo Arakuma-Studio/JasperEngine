@@ -24,6 +24,8 @@ namespace jasperengine::editor{
         std::vector<Command*> editRedo;     // edit-time redo tail, set aside while playing
 
         size_t undoFloor() const { return inPlaySession ? playFloor : 0; }
+        // a step's serial when it enters the list
+        static void stamp(Command* cmd);
 
     public:
         // Called after any command apply/undo/redo with the scene id and affectsStructure().
@@ -71,6 +73,13 @@ namespace jasperengine::editor{
         bool groupSince(size_t mark);
         // Current position (what mark() returns, without its side effect)
         size_t position() const { return index; }
+        // The step undo() would revert / redo() would apply (nullptr when none): who made the
+        // newest step (the Sprite Normal Map window's undo routing compares its own)
+        const Command* undoCommand() const { return index > 0 && index <= list.size() ? list[index - 1] : nullptr; }
+        const Command* redoCommand() const { return index < list.size() ? list[index] : nullptr; }
+        // ... their serials (Command::serial; 0 when none): what to keep and compare, never the pointers
+        unsigned long long undoSerial() const { const Command* c = undoCommand(); return c ? c->serial() : 0; }
+        unsigned long long redoSerial() const { const Command* c = redoCommand(); return c ? c->serial() : 0; }
         // Deletes the redo tail (the commands after position()): a call that rolled itself back
         // with undo() leaves nothing to redo
         void dropRedo();

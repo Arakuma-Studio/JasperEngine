@@ -34,14 +34,8 @@ namespace jasperengine { namespace test {
 
         static Framebuffer& target();
 
-        // systemViewDestroyed, systemShutdown, device and display (gtest TearDown)
+        // systemViewDestroyed, systemShutdown, device and display (main, after RUN_ALL_TESTS)
         static void shutdown();
-    };
-
-    // gtest global environment: shuts the engine down after the last test
-    class GpuTestEnvironment : public ::testing::Environment {
-    public:
-        void TearDown() override;
     };
 
 } }

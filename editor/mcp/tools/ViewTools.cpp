@@ -1149,9 +1149,12 @@ void focusWindowTool(const CallPtr& call) {
     } else if (window == "vertex_animation_baker") {
         app.getVertexAnimationBakerWindow()->open();
         imguiName = VertexAnimationBakerWindow::WINDOW_NAME;
+    } else if (window == "sprite_normals") {
+        app.getSpriteNormalsWindow()->open();
+        imguiName = SpriteNormalsWindow::WINDOW_NAME;
     } else {
         call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, pose_animation, terrain, "
-                   "mcp, texture_synthesis, vertex_animation_baker.");
+                   "mcp, texture_synthesis, vertex_animation_baker, sprite_normals.");
         return;
     }
     if (args.contains("pose") && window != "pose_animation") {
@@ -1333,7 +1336,7 @@ void registerViewTools(McpRegistry& registry) {
             "Show a panel (not needed for screenshot). pose_animation: pose {entity, path, index, play, tab}.";
         tool.inputSchema = object({
             {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "pose_animation",
-                                       "terrain", "mcp", "texture_synthesis", "vertex_animation_baker"})},
+                                       "terrain", "mcp", "texture_synthesis", "vertex_animation_baker", "sprite_normals"})},
             {"scene", sceneRef("window scene: whose tab.")},
             {"pose", {{"type", "object"}}}
         }, {"window"});

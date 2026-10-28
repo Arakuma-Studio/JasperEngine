@@ -63,6 +63,8 @@ namespace jasperengine {
     private:
 
         friend class Engine;
+        // TEST-ONLY seam (no engine code defines it): a test detaches and restores the instance
+        friend struct SystemTestAccess;
 
         static System* systemInstance;
 
@@ -80,6 +82,10 @@ namespace jasperengine {
         std::vector<std::string> args;
 
         static System& instance();
+        // Whether a System instance is set (Engine::systemInit sets it; instance() aborts while none
+        // is). It says nothing about the System object being alive: Engine::systemShutdown keeps the
+        // instance set. For code that also runs without the engine (editor CLI tools).
+        static bool hasInstance() { return systemInstance != nullptr; }
 
         virtual ~System() {}
 

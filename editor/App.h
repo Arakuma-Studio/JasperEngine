@@ -22,6 +22,8 @@
 #include "window/TextureSynthesisWindow.h"
 #include "window/VertexAnimationBakerWindow.h"
 #include "window/PhysicsPlacementWindow.h"
+#include "window/SpriteNormalsWindow.h"
+#include "spritenormals/SpriteNormalsWatcher.h"
 #include "window/GameWindow.h"
 #include "window/MainToolbar.h"
 #include "window/PlayInput.h"
@@ -178,6 +180,9 @@ namespace jasperengine::editor{
         TextureSynthesisWindow* textureSynthesisWindow;
         VertexAnimationBakerWindow* vertexAnimationBakerWindow;
         PhysicsPlacementWindow* physicsPlacementWindow;
+        SpriteNormalsWindow* spriteNormalsWindow;
+        // which generated normal maps are stale, and their opt-in auto-regenerate
+        SpriteNormalsWatcher* spriteNormalsWatcher;
         mcp::McpActivityWindow* mcpActivityWindow;
         PlayInput* playInput;
         GameWindow* gameWindow;
@@ -250,7 +255,10 @@ namespace jasperengine::editor{
             // the newest undoable step across the scene and project histories is a clip commit
             // made through the editor UI, whatever has focus (animation clips spec 9.R5b/R5c):
             // Ctrl/Cmd+Z/Y go to the project history (AnimationClipAppHooks::ownsUndo)
-            AnimationClip
+            AnimationClip,
+            // the Sprite Normal Map window: Ctrl/Cmd+Z/Y go to the scene of its last Save &
+            // Assign while that assign is the scene's newest step, else to the project history
+            SpriteNormals
         } lastFocusedWindow;
 
         // the Undo/Redo target is the project history (Project window, Pose window, clip edits)
@@ -431,6 +439,10 @@ namespace jasperengine::editor{
         TextureSynthesisWindow* getTextureSynthesisWindow() const;
         VertexAnimationBakerWindow* getVertexAnimationBakerWindow() const;
         PhysicsPlacementWindow* getPhysicsPlacementWindow() const;
+        SpriteNormalsWindow* getSpriteNormalsWindow() const;
+        SpriteNormalsWatcher* getSpriteNormalsWatcher() const;
+        void openSpriteNormals(const std::vector<std::filesystem::path>& images, bool editRecipe) override;
+        void openSpriteNormalsForEntity(uint32_t sceneId, Entity entity, unsigned submesh, bool now) override;
         MainToolbar* getMainToolbar() const;
         void openTextureSynthesis(const std::filesystem::path& image, bool editRecipe) override;
         void openVertexAnimationBaker(const std::filesystem::path& path, bool bakeNow) override;

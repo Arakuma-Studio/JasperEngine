@@ -656,6 +656,8 @@ Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool ful
     for (const fs::path& path : changed) addAnimationFileProblems(project, path, problems);
     // and a .vat that doesn't match its .vat.glb (it doesn't load: vat-layout-mismatch / vat-mesh-mismatch)
     for (const fs::path& path : changed) vatFileChanged(project, path, problems);
+    // and the sprite normal maps made from a changed image (their recipe's source SHA-1 no longer matches)
+    for (const fs::path& path : changed) spriteNormalsFileChanged(project, path, problems);
 
     // Code editor buffers
     Json codeEditor = {{"reloaded", Json::array()}, {"conflicts", Json::array()}};

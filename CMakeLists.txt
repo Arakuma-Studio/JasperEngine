@@ -565,6 +565,36 @@ set(JASPERENGINE_TEXSYNTH_SOURCES
     ${EDITOR_DIR}/texsynth/TextureSynthesis.cpp
 )
 
+# The sprite normal generator core (editor/spritenormals: spritefusion-sprite-normals ported, NOTICE.md),
+# also built alone into jasperengine-spritenormals-tests (-DJASPERENGINE_SPRITENORMALS_TESTS=ON)
+set(JASPERENGINE_SPRITENORMALS_SOURCES
+    ${EDITOR_DIR}/spritenormals/SpriteNormals.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsField.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteMedia.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsRecipe.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsPreview.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsPaint.cpp
+)
+# Upstream parity: Rust never contracts a*b+c into an FMA (the generator calls std::fma itself
+# exactly where upstream calls mul_add); the media decoding (resampling, frame compositing) and the
+# paint layer's compositing likewise keep their bytes on every target. MSVC: /fp:precise (no
+# contraction without /fp:contract); clang-cl (the MSVC front end of Clang, which contracts under
+# /fp:precise): Clang's own flag through /clang:; GCC and Clang: -ffp-contract=off
+set(JASPERENGINE_SPRITENORMALS_NO_FMA_SOURCES
+    ${EDITOR_DIR}/spritenormals/SpriteNormals.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsField.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteMedia.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsPaint.cpp
+)
+if(MSVC AND CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    set(JASPERENGINE_NO_FMA_FLAGS "/fp:precise")
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
+    set(JASPERENGINE_NO_FMA_FLAGS "/fp:precise;/clang:-ffp-contract=off")
+else()
+    set(JASPERENGINE_NO_FMA_FLAGS "-ffp-contract=off")
+endif()
+set_source_files_properties(${JASPERENGINE_SPRITENORMALS_NO_FMA_SOURCES} PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_NO_FMA_FLAGS}")
+
 set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/main.cpp
     ${EDITOR_DIR}/cli/CommandLine.cpp
@@ -635,6 +665,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/PoseTools.cpp
     ${EDITOR_DIR}/mcp/tools/PlacementTools.cpp
     ${EDITOR_DIR}/mcp/tools/VatTools.cpp
+    ${EDITOR_DIR}/mcp/tools/SpriteNormalsTools.cpp
 
     ${EDITOR_DIR}/util/ShaderHeaderBuilder.cpp
     ${EDITOR_DIR}/util/BidiText.cpp
@@ -666,6 +697,12 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${JASPERENGINE_TEXSYNTH_SOURCES}
     ${EDITOR_DIR}/texsynth/SynthesisCli.cpp
     ${EDITOR_DIR}/texsynth/SynthesisSession.cpp
+    ${JASPERENGINE_SPRITENORMALS_SOURCES}
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsSession.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsApply.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsCli.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsCheck.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsWatcher.cpp
     ${EDITOR_DIR}/physics/PlacementSettings.cpp
     ${EDITOR_DIR}/physics/PlacementSession.cpp
     ${EDITOR_DIR}/physics/PlacementCli.cpp
@@ -719,6 +756,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorWindow.cpp
     ${EDITOR_DIR}/window/InspectorWindowClips.cpp
     ${EDITOR_DIR}/window/InspectorWindowVat.cpp
+    ${EDITOR_DIR}/window/InspectorWindowSpriteNormals.cpp
     ${EDITOR_DIR}/window/InspectorShaderLibrary.cpp
     ${EDITOR_DIR}/window/InspectorPostProcessing.cpp
     ${EDITOR_DIR}/window/InspectorFluid.cpp
@@ -771,6 +809,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/vat/VatImportWrite.cpp
     ${EDITOR_DIR}/window/VertexAnimationBakerWindow.cpp
     ${EDITOR_DIR}/window/TextureSynthesisWindow.cpp
+    ${EDITOR_DIR}/window/SpriteNormalsWindow.cpp
     ${EDITOR_DIR}/window/PhysicsPlacementWindow.cpp
     ${EDITOR_DIR}/window/LoadingWindow.cpp
     ${EDITOR_DIR}/window/dialog/SceneSaveDialog.cpp
@@ -1070,6 +1109,14 @@ endif()
 option(JASPERENGINE_TEXSYNTH_TESTS "Build jasperengine-texsynth-tests (texture synthesis tests)" OFF)
 if(JASPERENGINE_TEXSYNTH_TESTS)
     include(${EDITOR_DIR}/texsynth/tests/TexSynthTests.cmake)
+endif()
+
+# jasperengine-spritenormals-tests: the sprite normal generator core (editor/spritenormals): upstream
+# parity on golden fixtures, the options, GIF/APNG decoding, recipes, the lit preview (tools/build.sh
+# spritenormals-tests, or -DJASPERENGINE_SPRITENORMALS_TESTS=ON and the target)
+option(JASPERENGINE_SPRITENORMALS_TESTS "Build jasperengine-spritenormals-tests (sprite normal generator tests)" OFF)
+if(JASPERENGINE_SPRITENORMALS_TESTS)
+    include(${EDITOR_DIR}/spritenormals/tests/SpriteNormalsTests.cmake)
 endif()
 
 # jasperengine-editor-tests: unit tests of the editor and the engine core it drives (shader

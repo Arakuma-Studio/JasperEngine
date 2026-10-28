@@ -138,6 +138,9 @@ editor::App::App(){
     textureSynthesisWindow = new TextureSynthesisWindow(&project);
     vertexAnimationBakerWindow = new VertexAnimationBakerWindow(&project);
     physicsPlacementWindow = new PhysicsPlacementWindow(&project);
+    spriteNormalsWindow = new SpriteNormalsWindow(&project);
+    spriteNormalsWatcher = new SpriteNormalsWatcher(&project);
+    SpriteNormalsWatcher::setActive(spriteNormalsWatcher);
     mcpActivityWindow = new mcp::McpActivityWindow();
     // pose templates saved or deleted (and their undo/redo): the asset database and the Project
     // window see the files (MCP writes templates through the pose document, which syncs itself)
@@ -275,6 +278,7 @@ enum class AppMenuCommand : uint32_t {
     TogglePoseAnimation,
     ToggleTerrain,
     ToggleTextureSynthesis,
+    ToggleSpriteNormals,
     ToggleVertexAnimationBaker,
     TogglePhysicsPlacement,
     ToggleMcpActivity,
@@ -459,8 +463,19 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
 
     bool canUndo = false;
     bool canRedo = false;
+    bool paintUndo = false;
+    bool paintRedo = false;
     if (!textInput) {
-        if (undoGoesToProjectHistory()) {
+        uint32_t routedScene = 0;
+        if (lastFocusedWindow == LastFocusedWindow::SpriteNormals) {
+            // the Sprite Normal Map window: its paint strokes, else its last assign's scene, else the project
+            paintUndo = spriteNormalsWindow->canUndoPaint();
+            paintRedo = spriteNormalsWindow->canRedoPaint();
+            canUndo = paintUndo || (spriteNormalsWindow->undoGoesToScene(routedScene) ? CommandHandle::get(routedScene)->canUndo()
+                                                                                      : project.getProjectCommandHistory()->canUndo());
+            canRedo = paintRedo || (spriteNormalsWindow->redoGoesToScene(routedScene) ? CommandHandle::get(routedScene)->canRedo()
+                                                                                      : project.getProjectCommandHistory()->canRedo());
+        } else if (undoGoesToProjectHistory()) {
             canUndo = project.getProjectCommandHistory()->canUndo();
             canRedo = project.getProjectCommandHistory()->canRedo();
         } else if (lastFocusedWindow == LastFocusedWindow::Code) {
@@ -471,7 +486,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             canRedo = CommandHandle::get(selectedSceneId)->canRedo();
         }
         // redo is routed on its own (animation clips R5b)
-        if (redoGoesToProjectHistory() != undoGoesToProjectHistory()) {
+        if (lastFocusedWindow != LastFocusedWindow::SpriteNormals && redoGoesToProjectHistory() != undoGoesToProjectHistory()) {
             if (redoGoesToProjectHistory()) {
                 canRedo = project.getProjectCommandHistory()->canRedo();
             } else if (hasSelectedScene) {
@@ -537,11 +552,11 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
     }));
 
     menu.menus.push_back(menuSubmenu("Edit", {
-        menuShortcut(AppMenuCommand::Undo, "Undo", "Ctrl+Z", canUndo),
+        menuShortcut(AppMenuCommand::Undo, paintUndo ? "Undo Paint Stroke" : "Undo", "Ctrl+Z", canUndo),
 #if defined(__APPLE__)
-        menuShortcut(AppMenuCommand::Redo, "Redo", "Ctrl+Shift+Z", canRedo),
+        menuShortcut(AppMenuCommand::Redo, paintRedo ? "Redo Paint Stroke" : "Redo", "Ctrl+Shift+Z", canRedo),
 #else
-        menuShortcut(AppMenuCommand::Redo, "Redo", "Ctrl+Y", canRedo),
+        menuShortcut(AppMenuCommand::Redo, paintRedo ? "Redo Paint Stroke" : "Redo", "Ctrl+Y", canRedo),
 #endif
         menuSeparator(),
         menuShortcut(AppMenuCommand::SelectAll, "Select All", "Ctrl+A", canSelectAll()),
@@ -621,6 +636,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         }),
         menuCommand(AppMenuCommand::ToggleTerrain, windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
         menuCommand(AppMenuCommand::ToggleTextureSynthesis, windowMenuLabel(TextureSynthesisWindow::WINDOW_NAME)),
+        menuCommand(AppMenuCommand::ToggleSpriteNormals, windowMenuLabel(SpriteNormalsWindow::WINDOW_NAME)),
         menuCommand(AppMenuCommand::TogglePhysicsPlacement, windowMenuLabel(PhysicsPlacementWindow::WINDOW_NAME)),
         menuSubmenu("MCP", {
             menuCommand(AppMenuCommand::ToggleMcpActivity, windowMenuLabel(mcp::McpActivityWindow::WINDOW_NAME))
@@ -728,7 +744,20 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             exit();
             break;
         case AppMenuCommand::Undo:
-            if (undoGoesToProjectHistory()) {
+            if (lastFocusedWindow == LastFocusedWindow::SpriteNormals) {
+                uint32_t routedScene = 0;
+                if (spriteNormalsWindow->canUndoPaint()) {
+                    spriteNormalsWindow->undoPaint();
+                } else if (spriteNormalsWindow->undoGoesToScene(routedScene)) {
+                    // another history's step undone: the stroke redos go (Ctrl+Y redoes that step first)
+                    spriteNormalsWindow->dropPaintRedo();
+                    CommandHandle::get(routedScene)->undo();
+                } else {
+                    spriteNormalsWindow->dropPaintRedo();
+                    project.getProjectCommandHistory()->undo();
+                    projectWindow->refreshCurrentDirectory();
+                }
+            } else if (undoGoesToProjectHistory()) {
                 project.getProjectCommandHistory()->undo();
                 projectWindow->refreshCurrentDirectory();
             } else if (lastFocusedWindow == LastFocusedWindow::Code) {
@@ -738,7 +767,17 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             }
             break;
         case AppMenuCommand::Redo:
-            if (redoGoesToProjectHistory()) {
+            if (lastFocusedWindow == LastFocusedWindow::SpriteNormals) {
+                uint32_t routedScene = 0;
+                if (spriteNormalsWindow->canRedoPaint()) {
+                    spriteNormalsWindow->redoPaint();
+                } else if (spriteNormalsWindow->redoGoesToScene(routedScene)) {
+                    CommandHandle::get(routedScene)->redo();
+                } else {
+                    project.getProjectCommandHistory()->redo();
+                    projectWindow->refreshCurrentDirectory();
+                }
+            } else if (redoGoesToProjectHistory()) {
                 project.getProjectCommandHistory()->redo();
                 projectWindow->refreshCurrentDirectory();
             } else if (lastFocusedWindow == LastFocusedWindow::Code) {
@@ -794,6 +833,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ToggleTextureSynthesis:
             textureSynthesisWindow->open();
             break;
+        case AppMenuCommand::ToggleSpriteNormals:
+            spriteNormalsWindow->open();
+            break;
         case AppMenuCommand::ToggleVertexAnimationBaker:
             vertexAnimationBakerWindow->open();
             break;
@@ -841,6 +883,7 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             poseAnimationWindow->setOpen(false);
             terrainEditWindow->setOpen(false);
             textureSynthesisWindow->setOpen(false);
+            spriteNormalsWindow->setOpen(false);
             vertexAnimationBakerWindow->setOpen(false);
             physicsPlacementWindow->setOpen(false);
             mcpActivityWindow->setOpen(false);
@@ -1004,6 +1047,8 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
                 "WINDOWS\n"
                 "Ctrl+1 Scene   Ctrl+3 Inspector   Ctrl+4 Hierarchy\n"
                 "Ctrl+5 Project   Ctrl+6 Animation   Ctrl+Shift+C Console\n\n"
+                "SPRITE NORMAL MAP\n1 / 2 / 3 / 4    Color / Normal / Lit / Split\nDrag    Move the light (Shift+wheel: height)\nSpace    Play frames   , / .    Previous / next frame\nO    Orbit the light   G    Frame grid   F / 0    Fit / 100%\nAlt+click    Pick a region colour\nCtrl+Enter    Save (and assign)\n\n"
+                "SPRITE NORMAL MAP: PAINT\nV    Navigate (no brush)   B / N / M / E    Angle / Flatten / Smooth / Erase\nDrag    Paint   Alt+click    Sample the direction\nShift+wheel / - / =    Brush size (Ctrl+Shift+wheel: 4 px)\nW    Brush / Wand   X    Mirror X   H    Highlight painted   P    Show paint\nCtrl+Z / Ctrl+Y    Undo / redo a paint stroke first, then the project's steps (undoing one of those drops the stroke redos)\n\n"
                 "SCENE VIEW\n"
                 "Q / W / E / R / T    Hand / Move / Rotate / Scale / Rect\n"
                 "X    Toggle local / global transforms\n"
@@ -1508,6 +1553,8 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow(TextureSynthesisWindow::WINDOW_NAME, dock_id_middle_top);
     // the baker too (its preview), so the Inspector entries that open it stay in view
     ImGui::DockBuilderDockWindow(VertexAnimationBakerWindow::WINDOW_NAME, dock_id_middle_top);
+    // the Sprite Normal Map window: a preview too
+    ImGui::DockBuilderDockWindow(SpriteNormalsWindow::WINDOW_NAME, dock_id_middle_top);
 
     // Tab order inside the shared nodes (first one is the visible tab).
     auto stampPanelDockOrder = [](const char* windowName, short order) {
@@ -2093,6 +2140,8 @@ void editor::App::show(){
             lastFocusedWindow = LastFocusedWindow::Resources;
         } else if (codeEditor->isFocused()) {
             lastFocusedWindow = LastFocusedWindow::Code;
+        } else if (spriteNormalsWindow->isFocused()) {
+            lastFocusedWindow = LastFocusedWindow::SpriteNormals;
         } else if (poseAnimationWindow->ownsUndo(sceneWindow->isFocused())) {
             lastFocusedWindow = LastFocusedWindow::PoseAnimation;
         } else if (clipUndoGoesToProject(placementBusy)) {
@@ -2133,7 +2182,9 @@ void editor::App::show(){
         // Play mode (Ctrl+P, Ctrl+Shift+P, Ctrl+Alt+P, F5/F6/F7) and tool shortcuts
         // a Scene view posing the window's character keeps its letter keys for the pose (E: Global Edit)
         const bool scenePosing = sceneWindow->isFocused() && poseAnimationWindow->ownsUndo(true) && !poseAnimationWindow->isFocused();
-        mainToolbar->handleShortcuts(!codeEditor->isFocused() && !poseAnimationWindow->isFocused() && !scenePosing && !clipWindowKeys);
+        // the Sprite Normal Map window's single keys (G, O, F...) are its own while it has focus
+        mainToolbar->handleShortcuts(!codeEditor->isFocused() && !poseAnimationWindow->isFocused() && !scenePosing && !clipWindowKeys &&
+                                     !spriteNormalsWindow->isFocused());
         if (ImGui::IsKeyPressed(ImGuiKey_F1)) executeMenuCommand({static_cast<uint32_t>(AppMenuCommand::Documentation), {}});
 
         // Unity menu shortcuts. Not while typing: text fields and the code editor
@@ -2206,8 +2257,38 @@ void editor::App::show(){
         project.getProjectCommandHistory()->redo();
     }
 
+    // the Sprite Normal Map window: the scene of its last assign while that is the newest step
+    const bool spriteNormalsKeys = lastFocusedWindow == LastFocusedWindow::SpriteNormals;
+    if (!popupOpen && spriteNormalsKeys) {
+        uint32_t routedScene = 0;
+        if (isUndo) {
+            // its paint strokes first (window-local until Save)
+            if (spriteNormalsWindow->canUndoPaint()) {
+                spriteNormalsWindow->undoPaint();
+            } else if (spriteNormalsWindow->undoGoesToScene(routedScene)) {
+                // another history's step undone: the stroke redos go (Ctrl+Y redoes that step first)
+                spriteNormalsWindow->dropPaintRedo();
+                CommandHandle::get(routedScene)->undo();
+            } else {
+                spriteNormalsWindow->dropPaintRedo();
+                project.getProjectCommandHistory()->undo();
+                projectWindow->refreshCurrentDirectory();
+            }
+        }
+        if (isRedo) {
+            if (spriteNormalsWindow->canRedoPaint()) {
+                spriteNormalsWindow->redoPaint();
+            } else if (spriteNormalsWindow->redoGoesToScene(routedScene)) {
+                CommandHandle::get(routedScene)->redo();
+            } else {
+                project.getProjectCommandHistory()->redo();
+                projectWindow->refreshCurrentDirectory();
+            }
+        }
+    }
+
     // Record routing undo from the Scene view keeps the scene's other keys (Delete, Ctrl+D...)
-    if (!popupOpen && !poseKeys && !(clipKeys && clipWindowKeys) && !projectWindow->isFocused() && !codeEditor->isFocused()){
+    if (!popupOpen && !poseKeys && !spriteNormalsKeys && !(clipKeys && clipWindowKeys) && !projectWindow->isFocused() && !codeEditor->isFocused()){
         uint32_t sceneId = project.getSelectedSceneId();
 
         // Update the Undo and Redo button logic (during a physics gesture or its settle, undo
@@ -2303,6 +2384,8 @@ void editor::App::show(){
     PoseViewport::frame(&project);
     terrainEditWindow->show();
     textureSynthesisWindow->show();
+    // also the tick of its Shift-click generations (with the window closed)
+    spriteNormalsWindow->show();
     // also the tick of a running bake (a Shift-click bake runs with the window closed)
     vertexAnimationBakerWindow->show();
     // also the tick of the Scene view's physics sessions, with the panel closed too
@@ -2706,6 +2789,16 @@ bool editor::App::answerDialog(const std::string& choice, std::string& error) {
 
 void editor::App::requestProjectChange(std::function<void()> change) {
     if (projectLoading || pendingProjectChange) return;
+    // the Sprite Normal Map window's unsaved paint strokes are asked about first
+    if (spriteNormalsWindow && spriteNormalsWindow->hasUnsavedPaint()) {
+        registerConfirmAlert("Discard Paint Changes?",
+                             "The Sprite Normal Map window has paint strokes that are not saved into the normal map.\n\nDiscard them and switch projects?",
+                             [this, change]() {
+                                 spriteNormalsWindow->discardPaint();
+                                 requestProjectChange(change);
+                             });
+        return;
+    }
     pendingProjectChange = std::move(change);
     requestRedraw();
 }
@@ -2791,6 +2884,8 @@ void editor::App::engineRender(){
     processMainThreadTasks();
     project.refreshLinkedMaterials();
     project.refreshFbxImports();
+    // generated normal maps whose sources changed (badges, the opt-in auto-regenerate)
+    spriteNormalsWatcher->tick();
     project.refreshAssetDatabase();
     project.updateGeneratedSources();
     // clip previews (the Animation window's clip mode, MCP preview_animation) advance every frame
@@ -3543,6 +3638,12 @@ void editor::App::shutdownBackgroundWork() {
     if (!editor::texsynth::SynthesisRun::cancelAll()) {
         Out::warning("A texture synthesis did not stop in time; it is left to finish without effect.");
     }
+    if (spriteNormalsWatcher) spriteNormalsWatcher->shutdown(1.0);
+    // Shift-click generations and Regenerates: cancelled, waited for a moment
+    if (spriteNormalsWindow) spriteNormalsWindow->shutdownJobs(2.0);
+    if (!editor::spritenormals::SpriteNormalsRun::cancelAll()) {
+        Out::warning("A sprite normal map generation did not stop in time; it is left to finish without effect.");
+    }
     htmlui::HtmlUiAutoImport::get().shutdown();
     setWakeCallback(nullptr);
     PoseRender::setFrameRequester(nullptr);
@@ -3617,6 +3718,10 @@ void editor::App::prepareForProjectSwitch() {
     imageViewerWindow->closeAll();
     // a synthesis started in this project is cancelled and never written into the next one
     textureSynthesisWindow->resetForProjectSwitch();
+    // a live preview or a Shift-click generation is cancelled, its sources and results forgotten
+    spriteNormalsWindow->resetForProjectSwitch();
+    spriteNormalsWatcher->reset();
+    editor::spritenormals::SpriteNormalsRun::cancelRunning();
     // a running bake or import is cancelled, its source and result forgotten
     vertexAnimationBakerWindow->resetForProjectSwitch();
     editor::texsynth::projectSwitching();
@@ -3758,6 +3863,10 @@ bool editor::App::dispatchClipDrop(uint32_t sceneId, Entity target, const std::v
 }
 
 bool editor::App::redoGoesToProjectHistory() const {
+    if (lastFocusedWindow == LastFocusedWindow::SpriteNormals) {
+        uint32_t sceneId = 0;
+        return !spriteNormalsWindow->canRedoPaint() && !spriteNormalsWindow->redoGoesToScene(sceneId);
+    }
     if (lastFocusedWindow == LastFocusedWindow::AnimationClip || lastFocusedWindow == LastFocusedWindow::AnySceneWindow) {
         return clipRedoToProject;
     }
@@ -3765,6 +3874,11 @@ bool editor::App::redoGoesToProjectHistory() const {
 }
 
 bool editor::App::undoGoesToProjectHistory() const {
+    if (lastFocusedWindow == LastFocusedWindow::SpriteNormals) {
+        uint32_t sceneId = 0;
+        // paint strokes are the window's own steps (canUndoPaint), then the assign's scene
+        return !spriteNormalsWindow->canUndoPaint() && !spriteNormalsWindow->undoGoesToScene(sceneId);
+    }
     return lastFocusedWindow == LastFocusedWindow::Resources || lastFocusedWindow == LastFocusedWindow::PoseAnimation ||
            lastFocusedWindow == LastFocusedWindow::AnimationClip;
 }
@@ -4010,7 +4124,11 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v39: vertex animation (includes/vat.glsl): vatEvaluate() and the vatPosition/vatNormal/...
     //      wrappers in every vertex entry point, HAS_VAT / HAS_VAT_BONES (MESH bits 33/34, DEPTH 16/17,
     //      GBUFFER 14/15).
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v39";
+    // v40: sprite normal maps: the 2D tangent frame (includes/tangent_frame.glsl, mesh.vert,
+    //      includes/surface_vs.glsl: OpenGL green, mirroring), the Light 2D normal response
+    //      (includes/lighting2d.glsl: LIGHT2D_NORMAL_RESPONSE, getNormal2DAt, mesh.frag's
+    //      LIGHT2D_SURFACE_NORMALS), @require normalmap (library/sprite.frag) and stochastic.glsl.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v40";
 }
 
 void editor::App::pushTabNotificationStyle(){
@@ -4093,6 +4211,36 @@ void editor::App::openVertexAnimationBaker(const std::filesystem::path& path, bo
 
 editor::PhysicsPlacementWindow* editor::App::getPhysicsPlacementWindow() const{
     return physicsPlacementWindow;
+}
+
+editor::SpriteNormalsWindow* editor::App::getSpriteNormalsWindow() const{
+    return spriteNormalsWindow;
+}
+
+editor::SpriteNormalsWatcher* editor::App::getSpriteNormalsWatcher() const{
+    return spriteNormalsWatcher;
+}
+
+void editor::App::openSpriteNormals(const std::vector<std::filesystem::path>& images, bool editRecipe){
+    std::string error;
+    if (editRecipe && !images.empty()) {
+        if (!spriteNormalsWindow->openRecipe(images[0], error)) {
+            registerAlert("Sprite Normal Map", "Can't open " + FileUtils::pathToUtf8(images[0].filename()) + ": " + error);
+        }
+        return;
+    }
+    if (!spriteNormalsWindow->openSources(images, error)) {
+        registerAlert("Sprite Normal Map", "Can't open " + (images.size() == 1 ? FileUtils::pathToUtf8(images[0].filename()) : std::string("the images")) + ": " + error);
+    }
+}
+
+void editor::App::openSpriteNormalsForEntity(uint32_t sceneId, Entity entity, unsigned submesh, bool now){
+    std::string error;
+    if (!spriteNormalsWindow->openForEntity(sceneId, static_cast<Entity>(entity), submesh, now, error)) {
+        SceneProject* sp = project.getScene(sceneId);
+        const std::string name = sp && sp->scene && sp->scene->isEntityCreated(static_cast<Entity>(entity)) ? sp->scene->getEntityName(static_cast<Entity>(entity)) : "the GameObject";
+        registerAlert("Sprite Normal Map", "Can't open " + name + ": " + error);
+    }
 }
 
 editor::MainToolbar* editor::App::getMainToolbar() const{
@@ -4321,6 +4469,7 @@ void editor::App::applyPanelVisibilitySettings() {
     poseAnimationWindow->setOpen(visibility.poseAnimation);
     terrainEditWindow->setOpen(visibility.terrain);
     textureSynthesisWindow->setOpen(visibility.textureSynthesis);
+    spriteNormalsWindow->setOpen(visibility.spriteNormals);
     vertexAnimationBakerWindow->setOpen(visibility.vertexAnimationBaker);
     physicsPlacementWindow->setOpen(visibility.physicsPlacement);
     mcpActivityWindow->setOpen(visibility.mcp);
@@ -4337,6 +4486,7 @@ void editor::App::persistPanelVisibilitySettings() {
     visibility.poseAnimation = poseAnimationWindow->isOpen();
     visibility.terrain = terrainEditWindow->isOpen();
     visibility.textureSynthesis = textureSynthesisWindow->isOpen();
+    visibility.spriteNormals = spriteNormalsWindow->isOpen();
     visibility.vertexAnimationBaker = vertexAnimationBakerWindow->isOpen();
     visibility.physicsPlacement = physicsPlacementWindow->isOpen();
     visibility.mcp = mcpActivityWindow->isOpen();
@@ -4394,6 +4544,17 @@ void editor::App::exit() {
 
     if (project.isAnySceneSaving()) {
         registerAlert("Saving Scene", "Wait for the current scene save to finish before exiting.");
+        return;
+    }
+
+    // the Sprite Normal Map window's unsaved paint strokes (not in any file): asked first, like its close
+    if (spriteNormalsWindow && spriteNormalsWindow->hasUnsavedPaint()) {
+        registerConfirmAlert("Discard Paint Changes?",
+                             "The Sprite Normal Map window has paint strokes that are not saved into the normal map.\n\nDiscard them and exit?",
+                             [this]() {
+                                 spriteNormalsWindow->discardPaint();
+                                 exit();
+                             });
         return;
     }
 

@@ -9,6 +9,7 @@
 
 #include <atomic>
 #include <mutex>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -25,9 +26,11 @@ namespace {
 
     // main thread in practice (UI drawing); the mutex covers a shader destroyed by a loader
     // thread while the main thread draws
+    // never destroyed: an object holding a shared variant may let go of it in a destructor that
+    // runs at exit (SokolObject)
     std::mutex& cacheMutex(){
-        static std::mutex mutex;
-        return mutex;
+        static std::mutex* mutex = new std::mutex();
+        return *mutex;
     }
 
     std::unordered_map<uint64_t, Entry>& entries(){
@@ -167,6 +170,79 @@ namespace {
         }
     }
 
+    // ---- shared variants of the fixed pipelines (acquireVariant)
+
+    struct VariantEntry {
+        sg_pipeline pipeline;
+        int references;
+    };
+
+    // by the description's fingerprint (fingerprintOf), and the fingerprint of each pipeline
+    // (never destroyed, as cacheMutex)
+    std::unordered_map<std::string, VariantEntry>& variants(){
+        static auto* map = new std::unordered_map<std::string, VariantEntry>();
+        return *map;
+    }
+    std::unordered_map<uint32_t, std::string>& variantKeys(){
+        static auto* map = new std::unordered_map<uint32_t, std::string>();
+        return *map;
+    }
+
+    template <typename T>
+    void appendValue(std::string& out, const T& value){
+        out.append(reinterpret_cast<const char*>(&value), sizeof(T));
+    }
+
+    // every field of a pipeline description that makes the pipeline, field by field (no
+    // padding bytes, no label), so equal descriptions give equal strings
+    std::string fingerprintOf(const sg_pipeline_desc& d){
+        std::string out;
+        out.reserve(512);
+        appendValue(out, d.compute);
+        appendValue(out, d.shader.id);
+        // all of sg_vertex_layout_state is 4-byte fields: its bytes carry no padding
+        out.append(reinterpret_cast<const char*>(&d.layout), sizeof(d.layout));
+        appendValue(out, d.depth.pixel_format);
+        appendValue(out, d.depth.compare);
+        appendValue(out, d.depth.write_enabled);
+        appendValue(out, d.depth.bias);
+        appendValue(out, d.depth.bias_slope_scale);
+        appendValue(out, d.depth.bias_clamp);
+        appendValue(out, d.stencil.enabled);
+        for (const sg_stencil_face_state* face : {&d.stencil.front, &d.stencil.back}){
+            appendValue(out, face->compare);
+            appendValue(out, face->fail_op);
+            appendValue(out, face->depth_fail_op);
+            appendValue(out, face->pass_op);
+        }
+        appendValue(out, d.stencil.read_mask);
+        appendValue(out, d.stencil.write_mask);
+        appendValue(out, d.stencil.ref);
+        appendValue(out, d.color_count);
+        for (const sg_color_target_state& color : d.colors){
+            appendValue(out, color.pixel_format);
+            appendValue(out, color.write_mask);
+            appendValue(out, color.blend.enabled);
+            appendValue(out, color.blend.src_factor_rgb);
+            appendValue(out, color.blend.dst_factor_rgb);
+            appendValue(out, color.blend.op_rgb);
+            appendValue(out, color.blend.src_factor_alpha);
+            appendValue(out, color.blend.dst_factor_alpha);
+            appendValue(out, color.blend.op_alpha);
+        }
+        appendValue(out, d.primitive_type);
+        appendValue(out, d.index_type);
+        appendValue(out, d.cull_mode);
+        appendValue(out, d.face_winding);
+        appendValue(out, d.sample_count);
+        appendValue(out, d.blend_color.r);
+        appendValue(out, d.blend_color.g);
+        appendValue(out, d.blend_color.b);
+        appendValue(out, d.blend_color.a);
+        appendValue(out, d.alpha_to_coverage_enabled);
+        return out;
+    }
+
 }
 
 sg_pipeline_desc SokolPipelineCache::makeDesc(const sg_pipeline_desc& base, const PipelineState& state){
@@ -294,7 +370,79 @@ void SokolPipelineCache::clear(){
         destroyPipeline(pair.second.pipeline);
     }
     map.clear();
+    for (auto& pair : variants()){
+        destroyPipeline(pair.second.pipeline);
+    }
+    variants().clear();
+    variantKeys().clear();
     lastApplied = SG_INVALID_ID;
+}
+
+sg_pipeline SokolPipelineCache::acquireVariant(const sg_pipeline_desc& desc){
+    std::string fingerprint = fingerprintOf(desc);
+
+    std::lock_guard<std::mutex> lock(cacheMutex());
+    auto& map = variants();
+    auto it = map.find(fingerprint);
+    if (it != map.end()){
+        it->second.references++;
+        return it->second.pipeline;
+    }
+
+    if (Engine::isAsyncThread()){
+        Log::error("Pipeline variants are created on the main thread only");
+        sg_pipeline invalid = {SG_INVALID_ID};
+        return invalid;
+    }
+
+    // (not counted in getMissCount: the dynamic path's misses, which the HTML UI frame stats report)
+    sg_pipeline pipeline = sg_make_pipeline(desc);
+    if (pipeline.id == SG_INVALID_ID)
+        return pipeline;
+
+    variantKeys()[pipeline.id] = fingerprint;
+    map.emplace(std::move(fingerprint), VariantEntry{pipeline, 1});
+    return pipeline;
+}
+
+void SokolPipelineCache::retainVariant(sg_pipeline pipeline){
+    // (after shutdown, clear() destroyed them all: also at exit, when the maps may be gone)
+    if (pipeline.id == SG_INVALID_ID || !sg_isvalid())
+        return;
+    std::lock_guard<std::mutex> lock(cacheMutex());
+    auto keyIt = variantKeys().find(pipeline.id);
+    if (keyIt == variantKeys().end())
+        return;
+    auto it = variants().find(keyIt->second);
+    if (it != variants().end())
+        it->second.references++;
+}
+
+void SokolPipelineCache::releaseVariant(sg_pipeline pipeline){
+    // (after shutdown, clear() destroyed them all: also at exit, when the maps may be gone)
+    if (pipeline.id == SG_INVALID_ID || !sg_isvalid())
+        return;
+    std::lock_guard<std::mutex> lock(cacheMutex());
+    auto keyIt = variantKeys().find(pipeline.id);
+    if (keyIt == variantKeys().end())
+        return;
+    auto it = variants().find(keyIt->second);
+    if (it == variants().end()){
+        variantKeys().erase(keyIt);
+        return;
+    }
+    if (--it->second.references > 0)
+        return;
+    if (pipeline.id == lastApplied)
+        lastApplied = SG_INVALID_ID;
+    destroyPipeline(pipeline);
+    variants().erase(it);
+    variantKeys().erase(keyIt);
+}
+
+size_t SokolPipelineCache::variantCount(){
+    std::lock_guard<std::mutex> lock(cacheMutex());
+    return variants().size();
 }
 
 size_t SokolPipelineCache::size(){

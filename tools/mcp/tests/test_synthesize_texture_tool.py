@@ -35,7 +35,7 @@ import zlib
 from pathlib import Path
 
 import harness
-from harness import Editor, TestFailure
+from harness import REPO as REPO_ROOT, Editor, TestFailure
 from htmlui_pixels import decode_png
 
 EDITOR = {"create": True, "name": "SynthTool"}
@@ -495,6 +495,16 @@ async def test_seeds_beyond_2_53_and_files_mode_chains(ed: Editor):
     code, result = run_check(ed.project, "--files", first)
     check(any(f["path"] == second and f["code"] == "synthesis-source-changed" for f in result["findings"]),
           f"the texture made from the changed synthesized PNG is reported: {result['findings']}")
+
+
+async def test_files_that_are_no_png_have_no_synthesis_recipe(ed: Editor):
+    # a JPEG named .png (and garbage) has no jasper.synthesis chunk: no unusable recipe is reported
+    jpeg = REPO_ROOT / "engine/tests/htmlui/fixtures/compat/net/img/photo.jpg"
+    for name, data in (("photo.png", jpeg.read_bytes()), ("garbage.png", b"not an image")):
+        (ed.project / TEX / name).write_bytes(data)
+        r = await ed.call_raw("get_asset_info", {"path": f"{TEX}/{name}"})
+        check(not r.is_error and "synthesis" not in (r.structured or {}) and "synthesis recipe" not in r.text, f"{name}: {r.text[:300]}")
+        (ed.project / TEX / name).unlink()
 
 
 # ---------------------------------------------------------------------------- last: switches projects

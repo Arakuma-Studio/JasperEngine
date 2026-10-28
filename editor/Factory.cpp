@@ -1129,6 +1129,8 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
     code << ind << "mesh.autoTransparency = " << formatBool(mesh.autoTransparency) << ";\n";
     code << ind << "mesh.cullingMode = " << formatCullingMode(mesh.cullingMode) << ";\n";
     code << ind << "mesh.windingOrder = " << formatWindingOrder(mesh.windingOrder) << ";\n";
+    if (mesh.mirroredWinding)
+        code << ind << "mesh.mirroredWinding = true;\n";
     // a model load sets these again from its file
     if (mesh.normAdjustJoint != 1.0f)
         code << ind << "mesh.normAdjustJoint = " << formatFloat(mesh.normAdjustJoint) << ";\n";
