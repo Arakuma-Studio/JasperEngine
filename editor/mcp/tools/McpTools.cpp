@@ -57,6 +57,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerGameplayTools, "Gameplay: input, character controller, water", "gameplay"},   // S22
     {registerParticleTools, "Particles: effects and playback", "particles"},   // S20
     {registerOrganisationTools, "Search, shortcuts, layouts, labels, saved searches and bookmarks", "organisation"},   // S25
+    {registerVcsTools, "Version control: status, diffs, scene diffs, commits, locks", "vcs"},   // S29
 };
 
 // JASPER_MCP_SELFTEST_GROUP: one tool in the test-only group "selftest", for the tests of

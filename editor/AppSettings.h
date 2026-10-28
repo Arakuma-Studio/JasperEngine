@@ -26,6 +26,29 @@ struct LoggingSettings {
     }
 };
 
+// Preferences > Version Control (settings.yaml "version_control", docs/editor/version-control.md,
+// docs/specs/S29-version-control.md D2): this user's tools and cadences. The project's own choice
+// (provider, LFS, lockable scenes) is in project.yaml.
+enum class LockOnEdit : int { Off, Ask, Auto };
+
+struct VersionControlSettings {
+    std::string gitPath;            // "" finds git on PATH
+    std::string svnPath;            // "" finds svn on PATH
+    LockOnEdit lockOnEdit = LockOnEdit::Ask;
+    int pollSeconds = 10;           // 2..120
+    int lockPollSeconds = 60;       // 0 off, 30..600
+    int autoFetchMinutes = 0;       // 0 off
+    bool commitAndPush = false;     // the Commit window's "Commit and Push", remembered
+    bool showChanges = true;        // the Hierarchy's "Show VCS Changes"
+
+    bool operator==(const VersionControlSettings& other) const {
+        return gitPath == other.gitPath && svnPath == other.svnPath && lockOnEdit == other.lockOnEdit &&
+               pollSeconds == other.pollSeconds && lockPollSeconds == other.lockPollSeconds &&
+               autoFetchMinutes == other.autoFetchMinutes && commitAndPush == other.commitAndPush && showChanges == other.showChanges;
+    }
+    bool operator!=(const VersionControlSettings& other) const { return !(*this == other); }
+};
+
 // Preferences > Diagnostics (settings.yaml "diagnostics", docs/crash-diagnostics.md): the main
 // thread's hang watchdog and the notice of an abnormal previous session. Editor-wide.
 struct DiagnosticsSettings {
@@ -231,6 +254,7 @@ private:
     static SceneViewSettings sceneViewSettings;
     static LatticeViewSettings latticeViewSettings;
     static ProfilerSettings profilerSettings;
+    static VersionControlSettings versionControlSettings;
 
     // MCP server over HTTP (Editor Settings / MCP window); stdio needs no setting
     static bool mcpHttpEnabled;
@@ -450,6 +474,9 @@ public:
     // Preferences > Diagnostics (clamped); set applies them to the running watchdog at once
     static DiagnosticsSettings getDiagnosticsSettings();
     static void setDiagnosticsSettings(const DiagnosticsSettings& settings);
+    // Preferences > Version Control (clamped to their ranges); saved at once
+    static VersionControlSettings getVersionControlSettings();
+    static void setVersionControlSettings(const VersionControlSettings& settings);
 
     // Load and save settings
     static bool loadSettings();

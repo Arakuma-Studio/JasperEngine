@@ -70,6 +70,7 @@ namespace jasperengine::editor::mcp {
     void registerGameplayTools(McpRegistry& registry);
     void registerParticleTools(McpRegistry& registry);
     void registerOrganisationTools(McpRegistry& registry);
+    void registerVcsTools(McpRegistry& registry);   // S29 (VcsTools.cpp)
 
     // list_assets search and saved searches (OrganisationTools.cpp): an R20 search over the asset
     // index, as {entries: [{path, type, guid?, labels?}], total, truncated, query}; *error for a bad re:

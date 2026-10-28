@@ -353,6 +353,15 @@ namespace jasperengine::editor {
         void renderLabelItems();
         float renderLabelStrip(ImVec2 barMin, float barHeight, float right);
         void drawItemLabels(const FileEntry& entry, ImVec2 min, ImVec2 max, bool listView);
+        // S29 (ProjectWindowVcs.cpp): an entry's version control state at `pos`, a glyph of
+        // `size`, with its tooltip; the width it took (a list row reserves it while version
+        // control is on, so the names stay aligned)
+        float drawVcsOverlay(const FileEntry& entry, ImVec2 pos, float size, bool listView);
+        // the current folder's repository key, computed once per folder and snapshot
+        std::string vcsFolderKey;
+        fs::path vcsFolderKeyPath;
+        fs::path vcsFolderRoot;
+        bool vcsFolderInRepository = false;
         void handleTypeAhead();
         void handleWheelResize();
         void runSavedSearch(const SavedSearch& search);

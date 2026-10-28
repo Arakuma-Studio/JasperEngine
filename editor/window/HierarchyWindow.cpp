@@ -722,6 +722,7 @@ void editor::HierarchyWindow::showToolbar(){
     ImGui::SetItemTooltip("Create a GameObject");
 
     ImGui::SameLine();
+    showVcsToolbarToggle();
 
     UIUtils::searchInput("##structure_search", "Search  (t:Camera)", searchBuffer, sizeof(searchBuffer), false, &matchCase);
 
@@ -762,6 +763,7 @@ void editor::HierarchyWindow::showSceneMenu(SceneProject* sceneProject){
     if (ImGui::MenuItem(ICON_FA_MAGNIFYING_GLASS "  Select Scene Asset", nullptr, false, !sceneProject->filepath.empty())) {
         revealInProject(sceneProject->filepath);
     }
+    showVcsMenu(sceneProject);
     const bool canRemove = !busy && project->getScenes().size() > 1;
     if (ImGui::MenuItem(ICON_FA_TRASH "  Remove Scene from Project", nullptr, false, canRemove)) {
         // Deferred: the scene is still being drawn this frame
@@ -1574,6 +1576,7 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
     const ImGuiID nodeItemId = ImGui::GetItemID();
     if (!renamingNode) {
         drawPrefabRowOverlay(node, ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+        drawVcsRowOverlay(node, ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
     }
 
     // Pop color if we pushed it

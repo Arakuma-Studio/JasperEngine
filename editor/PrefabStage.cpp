@@ -290,6 +290,14 @@ bool editor::Project::openPrefabStage(const std::filesystem::path& path, uint32_
         editor::getEditorHost().registerAlert("Open Prefab", "The prefab \"" + relative.generic_string() + "\" does not exist.");
         return false;
     }
+    // S29 R19: a prefab in conflict opens once it is resolved
+    if (documentOpenGuard) {
+        std::string why;
+        if (!documentOpenGuard(getProjectPath() / relative, why)) {
+            editor::getEditorHost().registerAlert("Open Prefab", why);
+            return false;
+        }
+    }
 
     // From an instance inside a stage the new stage goes on top of that one; from anywhere
     // else it replaces the whole stack
@@ -650,6 +658,17 @@ YAML::Node editor::Project::encodePrefabStage(PrefabStage& stage) {
         StreamSave::applyRootKeys(prefab->registry.get(), NULL_ENTITY, node);
     }
     return node;
+}
+
+YAML::Node editor::Project::encodeDocument(uint32_t sceneId) {
+    if (PrefabStage* stage = getPrefabStage(sceneId)) return encodePrefabStage(*stage);
+    SceneProject* sceneProject = getScene(sceneId);
+    if (!sceneProject || !sceneProject->scene) return YAML::Node(YAML::NodeType::Undefined);
+    YAML::Node root = Stream::encodeSceneProject(this, sceneProject);
+    StreamMigrations::stampCurrentVersion(DocumentKind::Scene, root);
+    // the identity keys a save puts in (guid, formerGuids, labels)
+    if (!sceneProject->filepath.empty()) prepareDocumentIdentity(root, sceneProject->filepath);
+    return root;
 }
 
 bool editor::Project::isPrefabStageDegraded(uint32_t sceneId) const {

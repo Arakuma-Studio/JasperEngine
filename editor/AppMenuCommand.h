@@ -96,7 +96,19 @@ namespace jasperengine::editor {
         LayoutRename,         // payload: the preset's name
         LayoutDelete,         // payload: the preset's name
         LayoutSaveToFile,
-        LayoutLoadFromFile
+        LayoutLoadFromFile,
+        // S29: Assets > Version Control (the Project window's selection) and Window > Version Control
+        VcsCommit,
+        VcsRevert,
+        VcsLock,
+        VcsUnlock,
+        VcsShowHistory,
+        VcsDiffAgainstBaseline,
+        VcsRefresh,
+        ToggleVcsCommit,
+        ToggleVcsHistory,
+        ToggleVcsSceneDiff,
+        ToggleVcsConflicts
     };
 
 }
