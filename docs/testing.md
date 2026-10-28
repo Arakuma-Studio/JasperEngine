@@ -531,3 +531,24 @@ on the benchmark host E):
   oe-port (`test_html_ui_component` S04 asset type, `test_html_ui_phase2`/`_integration` S17 patch
   reload, `test_html_ui_effects` "Loading" dialog under load, `test_html_ui_export`,
   `test_html_ui_agent_sim`) are fixed on BF2's branch, whose run on oe-port passes them.
+
+Final tree (oe-port 64d735104, S20 and S28, merged; f6c0639f0 and the docs after it):
+
+- `tools/build.sh htmlui-tests` (glcore): 3,480 ran, 0 failed, 75 skipped. `JASPER_HTMLUI_S16_OFF=1`
+  against the pre-S16 goldens (AC1): 3,480 ran, 0 failed. `HTMLUI_BACKEND=vulkan`, twice: 3,480
+  ran, 0 failed each (server B).
+- `HtmlUIRenderPerf.*` on the benchmark host E: 9 passed (B2 41 % of the baseline engine time).
+- Gate on C: `WERROR=1 tools/build.sh linux`; `gen_tool_docs.py` (225 tools, no change); MCP
+  (`test_html_ui_*.py`, `test_ui_render_stats.py`, `test_protocol.py`, `test_profiler.py`,
+  `test_tool_budget.py`, `test_tool_conventions.py`, `test_search_organisation.py`): 345 passed,
+  3 failed, the three failing without S16 too: `test_html_ui_checks::test_cli_default_includes_ui`
+  (S14's `texture_imports` in the check summary; the test is updated on the origin/main sync
+  branch) and `test_html_ui_video_export`'s two export tests (the exported `poster.png`, S14).
+- On 14dcdfed6 (the S20 merge, C): `tools/build.sh unit-tests` core 1,331 and editor 881 ran,
+  0 failed; `htmlui-editor-tests` 76 ran, 0 failed; `run-rmlui-tests.sh --docker` 37,670
+  assertions pass; web + web-gate and android pass.
+- Smoke on a build directory made before S20: the export copied the old
+  `core/action/ParticleSystem.*` that `build/linux/editor-install/bin/engine` still held (S20
+  moved them to `core/object`), and the exported build failed; removing those installed engine
+  copies before the build fixes it: `tools/smoke-test.sh tools/fixtures/post-processing` (glcore
+  and Vulkan), web + web-gate pass on the final tree.
