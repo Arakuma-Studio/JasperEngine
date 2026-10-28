@@ -586,6 +586,9 @@ What the implementation does differently from the text above, and why.
   slice of R23; the time-sliced pump also holds back a step its stage's longest so far would push
   past the budget. Baked assets keep their tile size (an `updateTiles` over a 64-cell asset on the
   web rebuilds it whole, at 32 cells).
+- **Grid batch budget (R29).** The 200-path batch measures 4.14 ms on 4 threads on the new timing
+  server E (median of 5), against the 4 ms desktop budget: accepted under the documented new-E
+  allowance (E is about 10 % slower; its gate is 4.4 ms, `tools/perf/bench-thresholds.json`).
 - **Jump point search.** Uniform-cost square grids (8 neighbours, no corner cutting, no
   reservations or heights) are searched with JPS: the same path cost as A*
   (`NavGridTest.JumpPointSearchMatchesAStar`). Its scratch adds 17 bytes per cell to a solver
