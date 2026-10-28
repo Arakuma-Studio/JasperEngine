@@ -12,7 +12,6 @@
 
 #include <algorithm>
 #include <atomic>
-#include <functional>
 #include <cmath>
 #include <limits>
 
@@ -302,27 +301,39 @@ GridPath GridSolver::solveJps(const NavGridMap& map, GridCell start, GridCell go
         return x >= 0 && y >= 0 && x < width && y < height && ((passMask >> areas[y * width + x]) & 1u) != 0;
     };
     const int goalIndex = map.index(goal);
-    // the next jump point from (x, y) moving (dx, dy), -1 when none
-    std::function<int(int, int, int, int)> jump;
-    jump = [&](int x, int y, int dx, int dy) -> int {
+    // the next jump point from (x, y) moving straight (one of dx, dy zero), -1 when none
+    auto jumpStraight = [&](int x, int y, int dx, int dy) -> int {
         while (true) {
             if (!open(x, y))
                 return -1;
             const int index = y * width + x;
             if (index == goalIndex)
                 return index;
-            if (dx != 0 && dy != 0) {
-                if (jump(x + dx, y, dx, 0) >= 0 || jump(x, y + dy, 0, dy) >= 0)
-                    return index;
-                if (!(open(x + dx, y) && open(x, y + dy)))
-                    return -1;
-            } else if (dx != 0) {
+            if (dx != 0) {
                 if ((open(x, y - 1) && !open(x - dx, y - 1)) || (open(x, y + 1) && !open(x - dx, y + 1)))
                     return index;
             } else {
                 if ((open(x - 1, y) && !open(x - 1, y - dy)) || (open(x + 1, y) && !open(x + 1, y - dy)))
                     return index;
             }
+            x += dx;
+            y += dy;
+        }
+    };
+    // moving diagonally: a cell is a jump point when a straight scan from it finds one
+    auto jump = [&](int x, int y, int dx, int dy) -> int {
+        if (dx == 0 || dy == 0)
+            return jumpStraight(x, y, dx, dy);
+        while (true) {
+            if (!open(x, y))
+                return -1;
+            const int index = y * width + x;
+            if (index == goalIndex)
+                return index;
+            if (jumpStraight(x + dx, y, dx, 0) >= 0 || jumpStraight(x, y + dy, 0, dy) >= 0)
+                return index;
+            if (!(open(x + dx, y) && open(x, y + dy)))
+                return -1;
             x += dx;
             y += dy;
         }
