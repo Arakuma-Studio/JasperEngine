@@ -541,6 +541,9 @@ TEST_CASE("EffectHooks.filter_region_of_descendant_filters")
 )");
 	REQUIRE(document);
 	document->Show();
+	// (a descendant's transform is known once it was rendered: the second frame's region)
+	TestsShell::RenderLoop();
+	filter_regions.clear();
 	TestsShell::RenderLoop();
 
 	REQUIRE(!filter_regions.empty());
