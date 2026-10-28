@@ -3302,6 +3302,8 @@ void editor::App::engineRender(){
 
             project.beginPrefabStageDraw(sceneProject.id);
             Engine::systemDraw();
+            // Split and Quad: the other panes, after the frame (only those that changed)
+            sceneWindow->renderInactivePanes(sceneProject);
             project.endPrefabStageDraw(sceneProject.id);
 
             if (steppingFrame) {
@@ -3416,6 +3418,7 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
     if (sceneViewShown){
         project.updateSceneRender(sceneProject.id);
         sceneRender->drawSceneView(sceneWidth, sceneHeight, project.getRunningRuntimeLayers(sceneProject.id), true);
+        sceneWindow->renderInactivePanes(sceneProject);
     }
 
     projectWindow->processMaterialThumbnails();
@@ -3463,6 +3466,7 @@ void editor::App::renderSceneBesideGame(SceneProject& sceneProject) {
 
     project.beginPrefabStageDraw(sceneProject.id);
     sceneRender->drawSceneView(width, height, childLayers, false);
+    sceneWindow->renderInactivePanes(sceneProject);
     project.endPrefabStageDraw(sceneProject.id);
 
     renderedSceneThisFrame = true;

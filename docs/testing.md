@@ -46,6 +46,12 @@ RUN=0 tools/build.sh unit-tests                             # build only
 The binaries also register with CTest (`ctest --preset linux-ci` in an IDE build), labelled
 `unit`, `gpu` and `slow` by suite name.
 
+Picking (S26): `JASPER_PICK_SIMD=scalar|avx2|neon` forces the mesh BVH's slab test path (CI runs
+the picking suites a second time with `scalar`); `MeshPose.MatchesGpuSkinning` is a GPU suite (the
+CPU pose against the skinned shaders, glcore and Vulkan). `JASPER_PICK_BUILD_DELAY_MS=<ms>` holds
+every background mesh BVH build pending that long: the MCP tests use it to see the Scene view's
+waiting click and refused drop (`tools/mcp/tests/test_scene_view*.py`).
+
 ### HTML UI, MCP, smoke, web
 
 - `tools/build.sh htmlui-tests`: about 3,300 tests, 74 of them skipped on purpose (the gate allows
@@ -77,6 +83,8 @@ The binaries also register with CTest (`ctest --preset linux-ci` in an IDE build
   appear at that console level (log, info, warning, error), in order; an error listed there is
   expected and fails nothing. `GATE=core-utilities` (after `WEB_PROJECT=core-utilities tools/build.sh
   web`) checks the logger's browser console sink and a Lua `Timer` that way.
+- `GATE=mesh-raycast` (after `WEB_PROJECT=mesh-raycast tools/build.sh web`) times 10,000
+  MeshRaycast rays against 1,000 meshes in WebAssembly and fails on a p99 over 4 ms (S26 AC17).
 - The other test projects with a gate: `atmosphere` (S12), `post-fx` (S13) and `terrain`, a
   terrain displaced by a 16-bit heightmap, which WebGL2 and GLES3 cannot sample as R16 (the
   renderer uploads it as R32F or R16F there).

@@ -704,12 +704,12 @@ namespace jasperengine{
 		bool hasFog = false;
 		bool hasIBL = false;
 		bool hasReflectionProbes = false;
-		bool hasMultipleCameras;
+		bool hasMultipleCameras = false;
 		// extra cameras the last frame drew, to catch the switch back to main only
-		bool lastMultiCameraDraw;
-		bool capturingReflectionProbe;
+		bool lastMultiCameraDraw = false;
+		bool capturingReflectionProbe = false;
 		// batch order currently baked into the shared points/instance arrays
-		bool lastBatchSort;
+		bool lastBatchSort = true;
 		// scene mesh LOD switch the levels were built (or freed) for
 		bool lastMeshLodEnabled = false;
 		// pipelines the objects were loaded with, to catch a destination change
@@ -1196,6 +1196,9 @@ namespace jasperengine{
 		// the camera pass being drawn culls no face (a Scene view's debug toggle)
 		bool passDisablesFaceCulling = false;
 #endif
+		// the camera pass being drawn is the editor's Scene view (CameraComponent::editorView)
+		// with GameObjects hidden there (EDITOR_HIDDEN): isLayerVisible leaves those out
+		bool passHidesEditorHidden = false;
 
 		// whether the pass being drawn culls no face (always false outside the editor)
 		bool passNoFaceCulling() const{
@@ -2595,6 +2598,8 @@ namespace jasperengine{
 			// canvas an auto-resize camera covers in this view (0: as the camera is)
 			float canvasWidth = 0.0f;
 			float canvasHeight = 0.0f;
+			// off: no shadow maps are drawn for the view and its fragments read no shadow
+			bool shadows = true;
 		};
 		void drawView(uint32_t viewId, const ViewDesc& desc);
 		// frees what a view created

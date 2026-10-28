@@ -105,13 +105,38 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 
 | Command | Shortcut | Context |
 |---|---|---|
-| Frame All (3D) | Home | Scene View |
+| Frame All | Alt+F / Home | Scene View |
 | Front View | Numpad1 | Scene View |
 | Back View | Ctrl+Numpad1 | Scene View |
 | Right View | Numpad3 | Scene View |
 | Left View | Ctrl+Numpad3 | Scene View |
 | Top View | Numpad7 / Ctrl+Numpad9 | Scene View |
 | Bottom View | Numpad9 / Ctrl+Numpad7 | Scene View |
+| Hide Selection | H | Scene View |
+| Show All | Alt+H | Scene View |
+| Toggle Pick Lock | L | Scene View |
+| Measure | M | Scene View |
+| Delete Measure | Delete / Backspace | Scene View |
+| Recall Camera Bookmark 1 | Shift+1 | Scene View |
+| Store Camera Bookmark 1 | Ctrl+Shift+1 | Scene View |
+| Recall Camera Bookmark 2 | Shift+2 | Scene View |
+| Store Camera Bookmark 2 | Ctrl+Shift+2 | Scene View |
+| Recall Camera Bookmark 3 | Shift+3 | Scene View |
+| Store Camera Bookmark 3 | Ctrl+Shift+3 | Scene View |
+| Recall Camera Bookmark 4 | Shift+4 | Scene View |
+| Store Camera Bookmark 4 | Ctrl+Shift+4 | Scene View |
+| Recall Camera Bookmark 5 | Shift+5 | Scene View |
+| Store Camera Bookmark 5 | Ctrl+Shift+5 | Scene View |
+| Recall Camera Bookmark 6 | Shift+6 | Scene View |
+| Store Camera Bookmark 6 | Ctrl+Shift+6 | Scene View |
+| Recall Camera Bookmark 7 | Shift+7 | Scene View |
+| Store Camera Bookmark 7 | Ctrl+Shift+7 | Scene View |
+| Recall Camera Bookmark 8 | Shift+8 | Scene View |
+| Store Camera Bookmark 8 | Ctrl+Shift+8 | Scene View |
+| Recall Camera Bookmark 9 | Shift+9 | Scene View |
+| Store Camera Bookmark 9 | Ctrl+Shift+9 | Scene View |
+| Cycle Overlapping Objects | Ctrl+Mouse Wheel | Scene View |
+| Measure: Snap to Vertices | Hold V | Scene View |
 | Fly Through (3D) | Right Mouse + W/A/S/D/Q/E | Scene View |
 | Orbit (3D) | Alt+Left Drag | Scene View |
 | Pan | Middle Drag (2D: also Space+Left Drag) | Scene View |
