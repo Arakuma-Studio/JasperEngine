@@ -114,9 +114,13 @@ async def test_play_floats_and_queries(ed: Editor):
     ed.check(isinstance(normal, list) and len(normal) == 3 and normal[1] > 0.9, f"normal nearly up: {normal!r}")
     ed.check(outside is None, f"no water at x 50: {outside!r}")
     ed.check(under is True and over is False, f"isUnderwater: {under!r} {over!r}")
-    # on the shader's clock: the waves move
-    first, second = await lua(ed, "local a = Water.getHeight(scene, 1, 2); local t = Water.getTime(); "
-                                  "while Water.getTime() < t + 0.3 do end; return a, Water.getHeight(scene, 1, 2)")
+    # on the shader's clock, latched once a frame (S22 R29): still within a frame, moving over frames
+    first, time, same = await lua(ed, "local a = Water.getHeight(scene, 1, 2); local t = Water.getTime(); "
+                                      "local s = os.clock(); while os.clock() < s + 0.05 do end; return a, t, Water.getTime()")
+    ed.check_eq(same, time, "one shader time within a frame")
+    await ed.call("wait", frames=20)
+    second, later = await lua(ed, "return Water.getHeight(scene, 1, 2), Water.getTime()")
+    ed.check(later > time, f"the clock moves frame to frame: {time} {later}")
     ed.check(first != second, f"the waves move: {first} {second}")
 
 

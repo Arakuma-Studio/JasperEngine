@@ -58,8 +58,9 @@ return Player
   Engine.deltatime. A non-existent method fails at runtime ("attempt to call a nil value").
   Check jasper://docs/lua-api (an index: read only the sections you need), the Lua stubs or
   search_engine_api before using a name you have not seen there.
-- Input.isKeyPressed is the held state; detect a press by remembering last frame's value or
-  with onKeyDown(key, isRepeat, mods). Log.print/warn/error take ONE string (use ..).
+- Input.isKeyPressed (getKey) is the held state; Input.getKeyDown / getKeyUp are this frame's
+  press and release (both true for a tap inside one frame; one fixed step sees each in
+  onFixedUpdate). Mouse delta: Input.getMouseDelta(). More: jasper://docs/input. Log.print/warn/error take ONE string (use ..).
 - Time: Engine.timeScale and Engine.fixedDeltatime (read/write), Engine.gameTime and
   Engine.frameCount (scaled game time and frames since start).
 - Lua has no C++ default arguments: pass every argument (e.g. the wake flag).

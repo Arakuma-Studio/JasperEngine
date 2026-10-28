@@ -367,6 +367,23 @@ const EnumOptions& atmosphereQualityOptions() {
     return options;
 }
 
+const EnumOptions& waterVolumeWavesOptions() {
+    static const EnumOptions options = {
+        {(int)WaterVolumeWaves::FROM_MATERIAL, "from_material", "From Material"},
+        {(int)WaterVolumeWaves::NONE, "none", "None"}
+    };
+    return options;
+}
+
+const EnumOptions& buoyancyColumnsOptions() {
+    static const EnumOptions options = {
+        {(int)BuoyancyColumns::AUTO_2x2, "auto_2x2", "Auto 2x2"},
+        {(int)BuoyancyColumns::AUTO_3x3, "auto_3x3", "Auto 3x3"},
+        {(int)BuoyancyColumns::CUSTOM, "custom", "Custom"}
+    };
+    return options;
+}
+
 const EnumOptions& fogVolumeShapeOptions() {
     static const EnumOptions options = {
         {(int)FogVolumeShape::BOX, "box", "Box"},
@@ -1176,6 +1193,12 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
             if (name == "type") return &fogTypeOptions();
             if (name == "colorMode") return &fogColorModeOptions();
             if (name == "qualityOverride") return &atmosphereQualityOverrideOptions();
+            break;
+        case ComponentType::WaterVolumeComponent:
+            if (name == "waves") return &waterVolumeWavesOptions();
+            break;
+        case ComponentType::BuoyancyComponent:
+            if (name == "columns") return &buoyancyColumnsOptions();
             break;
         case ComponentType::LocalVolumetricFogComponent:
             if (name == "shape") return &fogVolumeShapeOptions();

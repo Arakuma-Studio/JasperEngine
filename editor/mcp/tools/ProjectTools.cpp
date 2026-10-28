@@ -1040,7 +1040,7 @@ void registerProjectTools(McpRegistry& registry) {
             "platform overrides. describe adds each key's type, allowed values, meaning.";
         tool.inputSchema = object({
             {"category", string("player, web, linux, windows, macos, ios, android, graphics, quality, physics, "
-                                "physics2d, scripting, editor, tags_and_layers, preferences or all.")},
+                                "physics2d, input, scripting, editor, tags_and_layers, preferences or all.")},
             {"keys", array(Json{{"type", "string"}}, "Keys or categories.")},
             {"describe", withDefault(boolean(""), false)},
             {"search", string("Words: matches {key, page, label, scope} of every Preferences/Project Settings row.")}

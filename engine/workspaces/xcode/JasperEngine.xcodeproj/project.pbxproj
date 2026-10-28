@@ -32,8 +32,10 @@
 		5E5150000000000000000022 /* SokolVramTracker.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E515000000000000000000F /* SokolVramTracker.cpp */; };
 		5E5150000000000000000023 /* SokolVramTracker.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E515000000000000000000F /* SokolVramTracker.cpp */; };
 		5E5150000000000000000024 /* ProfilerClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000012 /* ProfilerClassesLua.cpp */; };
-		5E5280000000000000000042 /* CrashClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000041 /* CrashClassesLua.cpp */; };
+		434F4D50C6EF06C129A2C1A1 /* GameplayClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D500FDED71A67F616CA /* GameplayClassesLua.cpp */; };
 		5E5150000000000000000025 /* ProfilerClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000012 /* ProfilerClassesLua.cpp */; };
+		434F4D5077FD9C84C36F4F2D /* GameplayClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D500FDED71A67F616CA /* GameplayClassesLua.cpp */; };
+		5E5280000000000000000042 /* CrashClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000041 /* CrashClassesLua.cpp */; };
 		5E5280000000000000000043 /* CrashClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000041 /* CrashClassesLua.cpp */; };
 		5E0A1E00000000000000000F /* CascadeFit.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E0A1E000000000000000001 /* CascadeFit.cpp */; };
 		5E0A1E000000000000000010 /* CascadeFit.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E0A1E000000000000000001 /* CascadeFit.cpp */; };
@@ -226,12 +228,22 @@
 		7105CAA92AD61BD5007C91BA /* Box2DAux.h in Headers */ = {isa = PBXBuildFile; fileRef = 7105CAA72AD61BD5007C91BA /* Box2DAux.h */; };
 		7105CAAC2AD61C7A007C91BA /* RigidbodyComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 7105CAAA2AD61C7A007C91BA /* RigidbodyComponent.h */; };
 		7105CAAD2AD61C7A007C91BA /* Joint3DComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 7105CAAB2AD61C7A007C91BA /* Joint3DComponent.h */; };
+		434F4D5047A84905C0348B5B /* BuoyancyComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5061DEA5CCD068915F /* BuoyancyComponent.h */; };
+		434F4D509DF77520FB09D297 /* WaterVolumeComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50CB4A6D444125276A /* WaterVolumeComponent.h */; };
+		434F4D501E30D64F308D59B4 /* CharacterControllerComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5053DC96D5A818F616 /* CharacterControllerComponent.h */; };
 		7105CAB22AD61CB6007C91BA /* Joint3D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105CAAE2AD61CB5007C91BA /* Joint3D.cpp */; };
+		434F4D50421DB7150F3F7B7B /* Buoyancy.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5062D223094E060126 /* Buoyancy.cpp */; };
+		434F4D50BF25EC1914E550C7 /* CharacterController.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50924F742EE4F8B55A /* CharacterController.cpp */; };
 		7105CAB32AD61CB6007C91BA /* Joint3D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105CAAE2AD61CB5007C91BA /* Joint3D.cpp */; };
+		434F4D50FB45A656669C7D41 /* Buoyancy.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5062D223094E060126 /* Buoyancy.cpp */; };
+		434F4D506186EF2152BDFE1F /* CharacterController.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50924F742EE4F8B55A /* CharacterController.cpp */; };
 		7105CAB42AD61CB6007C91BA /* Rigidbody.h in Headers */ = {isa = PBXBuildFile; fileRef = 7105CAAF2AD61CB5007C91BA /* Rigidbody.h */; };
 		7105CAB52AD61CB6007C91BA /* Rigidbody.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105CAB02AD61CB6007C91BA /* Rigidbody.cpp */; };
 		7105CAB62AD61CB6007C91BA /* Rigidbody.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105CAB02AD61CB6007C91BA /* Rigidbody.cpp */; };
 		7105CAB72AD61CB6007C91BA /* Joint3D.h in Headers */ = {isa = PBXBuildFile; fileRef = 7105CAB12AD61CB6007C91BA /* Joint3D.h */; };
+		434F4D5078E5688AFE157716 /* Buoyancy.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5054A2EC3C6D818D80 /* Buoyancy.h */; };
+		434F4D502136CA306C5110A0 /* CharacterController.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5032C290E7DCD91FA2 /* CharacterController.h */; };
+		434F4D505A097F599EE4B973 /* ControllerColliderHit.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50BD439D531664D226 /* ControllerColliderHit.h */; };
 		7105CC9D2AD61DA5007C91BA /* DebugRendererPlayback.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105CAED2AD61DA4007C91BA /* DebugRendererPlayback.cpp */; };
 		7105CC9E2AD61DA5007C91BA /* DebugRendererPlayback.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105CAED2AD61DA4007C91BA /* DebugRendererPlayback.cpp */; };
 		7105CCA02AD61DA5007C91BA /* DebugRendererRecorder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105CAEF2AD61DA4007C91BA /* DebugRendererRecorder.cpp */; };
@@ -385,7 +397,13 @@
 		7105CDE52AD61DA6007C91BA /* IslandBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105CC052AD61DA5007C91BA /* IslandBuilder.cpp */; };
 		7105CDE62AD61DA6007C91BA /* IslandBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105CC052AD61DA5007C91BA /* IslandBuilder.cpp */; };
 		7105CDE82AD61DA6007C91BA /* PhysicsSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105CC072AD61DA5007C91BA /* PhysicsSystem.cpp */; };
+		434F4D506F00C842157094F8 /* WaterSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50F7036D2E37823341 /* WaterSystem.cpp */; };
+		434F4D50F32F3D0ED3D2106C /* CharacterControllerSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50BA33DD4BEA61D08E /* CharacterControllerSystem.cpp */; };
+		434F4D50EF9EC9F8C196BED9 /* CharacterController2DSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50606BB535DE48BDAB /* CharacterController2DSystem.cpp */; };
 		7105CDE92AD61DA6007C91BA /* PhysicsSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105CC072AD61DA5007C91BA /* PhysicsSystem.cpp */; };
+		434F4D509655FC6C7979EC56 /* WaterSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50F7036D2E37823341 /* WaterSystem.cpp */; };
+		434F4D50A8718B883F574821 /* CharacterControllerSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50BA33DD4BEA61D08E /* CharacterControllerSystem.cpp */; };
+		434F4D50991F13DE7591A55B /* CharacterController2DSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50606BB535DE48BDAB /* CharacterController2DSystem.cpp */; };
 		7105CDEA2AD61DA6007C91BA /* StateRecorderImpl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105CC082AD61DA5007C91BA /* StateRecorderImpl.cpp */; };
 		7105CDEB2AD61DA6007C91BA /* StateRecorderImpl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105CC082AD61DA5007C91BA /* StateRecorderImpl.cpp */; };
 		7105CDEC2AD61DA6007C91BA /* PhysicsUpdateContext.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105CC092AD61DA5007C91BA /* PhysicsUpdateContext.cpp */; };
@@ -541,7 +559,17 @@
 		7128CFAD25BA717500965B51 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 7128CFAA25BA717500965B51 /* LaunchScreen.storyboard */; };
 		7128CFAE25BA717500965B51 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 7128CFAB25BA717500965B51 /* Main.storyboard */; };
 		7128D08625BB033D00965B51 /* Input.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7128D08525BB033D00965B51 /* Input.cpp */; };
+		434F4D504533621485F625C7 /* InputVirtualControls.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50FF717FBABDEAD7D2 /* InputVirtualControls.cpp */; };
+		434F4D5013A0AB80B4C94403 /* InputRebind.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D506FAF644CD4C6156F /* InputRebind.cpp */; };
+		434F4D5047DE2062B62E1944 /* InputActions.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50685CC50B1CBC4DB6 /* InputActions.cpp */; };
+		434F4D50246235CDA4187741 /* InputActionAsset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50D06F100B22C53DA7 /* InputActionAsset.cpp */; };
+		434F4D50312728BAD70188F6 /* InputControlPath.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5008747FD51D6BC1D7 /* InputControlPath.cpp */; };
 		7128D08725BB033D00965B51 /* Input.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7128D08525BB033D00965B51 /* Input.cpp */; };
+		434F4D50F866BE1250EF4E4C /* InputVirtualControls.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50FF717FBABDEAD7D2 /* InputVirtualControls.cpp */; };
+		434F4D50627A9C492EAD4705 /* InputRebind.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D506FAF644CD4C6156F /* InputRebind.cpp */; };
+		434F4D50B4EF04DF955434B4 /* InputActions.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50685CC50B1CBC4DB6 /* InputActions.cpp */; };
+		434F4D504C123D08E8E04205 /* InputActionAsset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50D06F100B22C53DA7 /* InputActionAsset.cpp */; };
+		434F4D50B62CBA2A0B777D36 /* InputControlPath.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5008747FD51D6BC1D7 /* InputControlPath.cpp */; };
 		7128D0AE25BB18DC00965B51 /* StringUtils.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7128D0AC25BB18DC00965B51 /* StringUtils.cpp */; };
 		7128D0AF25BB18DC00965B51 /* StringUtils.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7128D0AC25BB18DC00965B51 /* StringUtils.cpp */; };
 		7128D0B025BB18DC00965B51 /* StringUtils.h in Headers */ = {isa = PBXBuildFile; fileRef = 7128D0AD25BB18DC00965B51 /* StringUtils.h */; };
@@ -750,11 +778,15 @@
 		7170A3D62818A8A30003E965 /* Bone.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7170A3CE2818A8A30003E965 /* Bone.cpp */; };
 		7170A3D72818A8A30003E965 /* Skybox.h in Headers */ = {isa = PBXBuildFile; fileRef = 7170A3D02818A8A30003E965 /* Skybox.h */; };
 		7AE0A7E00000000000000003 /* Water.h in Headers */ = {isa = PBXBuildFile; fileRef = 7AE0A7E00000000000000001 /* Water.h */; };
+		434F4D50939136448EC93DCD /* WaterVolume.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D506C21DBF3E4DC56B0 /* WaterVolume.h */; };
+		434F4D50FC6752A94B1FD359 /* WaterWaves.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5069D90B095694CAEC /* WaterWaves.h */; };
 		7170A3D82818A8A30003E965 /* Fog.h in Headers */ = {isa = PBXBuildFile; fileRef = 7170A3D12818A8A30003E965 /* Fog.h */; };
 		7170A3D92818A8A30003E965 /* Skybox.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7170A3D22818A8A30003E965 /* Skybox.cpp */; };
 		7170A3DA2818A8A30003E965 /* Skybox.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7170A3D22818A8A30003E965 /* Skybox.cpp */; };
 		7AE0A7E00000000000000004 /* Water.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7AE0A7E00000000000000002 /* Water.cpp */; };
+		434F4D50975BBA2205786743 /* WaterVolume.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D505D19875CF883CFC3 /* WaterVolume.cpp */; };
 		7AE0A7E00000000000000005 /* Water.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7AE0A7E00000000000000002 /* Water.cpp */; };
+		434F4D50DA773D6E981E6E0E /* WaterVolume.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D505D19875CF883CFC3 /* WaterVolume.cpp */; };
 		7170A3DB2818A8A30003E965 /* Fog.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7170A3D32818A8A30003E965 /* Fog.cpp */; };
 		7170A3DC2818A8A30003E965 /* Fog.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7170A3D32818A8A30003E965 /* Fog.cpp */; };
 		717AD876290B5DF3007D7DB5 /* soloud_bus.h in Headers */ = {isa = PBXBuildFile; fileRef = 717AD7C0290B5DF2007D7DB5 /* soloud_bus.h */; };
@@ -1256,15 +1288,29 @@
 		71E824822A9C235A00C8E6F2 /* libbox2d-ios.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 71E8227E2A9C1FD400C8E6F2 /* libbox2d-ios.a */; };
 		71E824852A9C238900C8E6F2 /* Rigidbody2DComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 71E824832A9C238800C8E6F2 /* Rigidbody2DComponent.h */; };
 		71E824862A9C238900C8E6F2 /* Joint2DComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 71E824842A9C238900C8E6F2 /* Joint2DComponent.h */; };
+		434F4D50CB3CE5F969987B41 /* CharacterController2DComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50C5DE5B71BE8D8759 /* CharacterController2DComponent.h */; };
+		434F4D500543F03D392433A1 /* CharacterCollision.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5084D5F77E117B1988 /* CharacterCollision.h */; };
 		71E8248C2A9C23A600C8E6F2 /* Joint2D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71E824882A9C23A600C8E6F2 /* Joint2D.cpp */; };
+		434F4D50B496571777A0F8E8 /* CharacterController2D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50E918DA07B8033B43 /* CharacterController2D.cpp */; };
 		71E8248D2A9C23A600C8E6F2 /* Joint2D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71E824882A9C23A600C8E6F2 /* Joint2D.cpp */; };
+		434F4D5080FDBB5F750DEC87 /* CharacterController2D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50E918DA07B8033B43 /* CharacterController2D.cpp */; };
 		71E8248E2A9C23A600C8E6F2 /* Joint2D.h in Headers */ = {isa = PBXBuildFile; fileRef = 71E824892A9C23A600C8E6F2 /* Joint2D.h */; };
+		434F4D50FFCB1D2868B6F326 /* CharacterController2D.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5094FA8E0734344B34 /* CharacterController2D.h */; };
 		71E8248F2A9C23A600C8E6F2 /* Rigidbody2D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71E8248A2A9C23A600C8E6F2 /* Rigidbody2D.cpp */; };
 		71E824902A9C23A600C8E6F2 /* Rigidbody2D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71E8248A2A9C23A600C8E6F2 /* Rigidbody2D.cpp */; };
 		71E824912A9C23A600C8E6F2 /* Rigidbody2D.h in Headers */ = {isa = PBXBuildFile; fileRef = 71E8248B2A9C23A600C8E6F2 /* Rigidbody2D.h */; };
 		71E824942A9C242B00C8E6F2 /* PhysicsSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71E824922A9C242B00C8E6F2 /* PhysicsSystem.cpp */; };
+		434F4D5068BD83EDBFE79621 /* WaterSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50F7036D2E37823341 /* WaterSystem.cpp */; };
+		434F4D50F8815683BBB7375C /* CharacterControllerSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50BA33DD4BEA61D08E /* CharacterControllerSystem.cpp */; };
+		434F4D50EBE664EDCE408D9E /* CharacterController2DSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50606BB535DE48BDAB /* CharacterController2DSystem.cpp */; };
 		71E824952A9C242B00C8E6F2 /* PhysicsSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71E824922A9C242B00C8E6F2 /* PhysicsSystem.cpp */; };
+		434F4D5076C16B09EE60F3FA /* WaterSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50F7036D2E37823341 /* WaterSystem.cpp */; };
+		434F4D50CDC45DD22A274CED /* CharacterControllerSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50BA33DD4BEA61D08E /* CharacterControllerSystem.cpp */; };
+		434F4D50887E2D0BA5FF3E27 /* CharacterController2DSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50606BB535DE48BDAB /* CharacterController2DSystem.cpp */; };
 		71E824962A9C242B00C8E6F2 /* PhysicsSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 71E824932A9C242B00C8E6F2 /* PhysicsSystem.h */; };
+		434F4D507DCA5C810A20BFE5 /* WaterSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5085D27159644D1984 /* WaterSystem.h */; };
+		434F4D507B39E15A1EC1D964 /* CharacterControllerSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50F05C9C05EE00D373 /* CharacterControllerSystem.h */; };
+		434F4D50160AF96A60C20170 /* CharacterController2DSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D501ABB136B08B05B1C /* CharacterController2DSystem.h */; };
 		71EA6DA52AE20B8C00CA9A75 /* Contact3D.h in Headers */ = {isa = PBXBuildFile; fileRef = 71EA6DA12AE20B8C00CA9A75 /* Contact3D.h */; };
 		71EA6DA62AE20B8C00CA9A75 /* CollideShapeResult3D.h in Headers */ = {isa = PBXBuildFile; fileRef = 71EA6DA22AE20B8C00CA9A75 /* CollideShapeResult3D.h */; };
 		71EA6DA72AE20B8C00CA9A75 /* CollideShapeResult3D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71EA6DA32AE20B8C00CA9A75 /* CollideShapeResult3D.cpp */; };
@@ -4034,6 +4080,7 @@
 		5E5150000000000000000010 /* SokolVramTracker.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SokolVramTracker.h; sourceTree = "<group>"; };
 		5E5150000000000000000011 /* Profile.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Profile.h; sourceTree = "<group>"; };
 		5E5150000000000000000012 /* ProfilerClassesLua.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ProfilerClassesLua.cpp; sourceTree = "<group>"; };
+		434F4D500FDED71A67F616CA /* GameplayClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GameplayClassesLua.cpp; sourceTree = "<group>"; };
 		5E5280000000000000000041 /* CrashClassesLua.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = CrashClassesLua.cpp; sourceTree = "<group>"; };
 		5E5150000000000000000013 /* RenderStats.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RenderStats.h; sourceTree = "<group>"; };
 		5E0A1E000000000000000001 /* CascadeFit.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = CascadeFit.cpp; sourceTree = "<group>"; };
@@ -4192,10 +4239,18 @@
 		7105CAA72AD61BD5007C91BA /* Box2DAux.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Box2DAux.h; sourceTree = "<group>"; };
 		7105CAAA2AD61C7A007C91BA /* RigidbodyComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RigidbodyComponent.h; sourceTree = "<group>"; };
 		7105CAAB2AD61C7A007C91BA /* Joint3DComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Joint3DComponent.h; sourceTree = "<group>"; };
+		434F4D5061DEA5CCD068915F /* BuoyancyComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = BuoyancyComponent.h; sourceTree = "<group>"; };
+		434F4D50CB4A6D444125276A /* WaterVolumeComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WaterVolumeComponent.h; sourceTree = "<group>"; };
+		434F4D5053DC96D5A818F616 /* CharacterControllerComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CharacterControllerComponent.h; sourceTree = "<group>"; };
 		7105CAAE2AD61CB5007C91BA /* Joint3D.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Joint3D.cpp; sourceTree = "<group>"; };
+		434F4D5062D223094E060126 /* Buoyancy.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Buoyancy.cpp; sourceTree = "<group>"; };
+		434F4D50924F742EE4F8B55A /* CharacterController.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CharacterController.cpp; sourceTree = "<group>"; };
 		7105CAAF2AD61CB5007C91BA /* Rigidbody.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Rigidbody.h; sourceTree = "<group>"; };
 		7105CAB02AD61CB6007C91BA /* Rigidbody.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Rigidbody.cpp; sourceTree = "<group>"; };
 		7105CAB12AD61CB6007C91BA /* Joint3D.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Joint3D.h; sourceTree = "<group>"; };
+		434F4D5054A2EC3C6D818D80 /* Buoyancy.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Buoyancy.h; sourceTree = "<group>"; };
+		434F4D5032C290E7DCD91FA2 /* CharacterController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CharacterController.h; sourceTree = "<group>"; };
+		434F4D50BD439D531664D226 /* ControllerColliderHit.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ControllerColliderHit.h; sourceTree = "<group>"; };
 		7105CACB2AD61D1F007C91BA /* libjoltphysics-macos.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libjoltphysics-macos.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		7105CADA2AD61D35007C91BA /* libjoltphysics-ios.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libjoltphysics-ios.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		7105CAE82AD61DA4007C91BA /* Jolt.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Jolt.h; sourceTree = "<group>"; };
@@ -4462,10 +4517,16 @@
 		7105CC052AD61DA5007C91BA /* IslandBuilder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = IslandBuilder.cpp; sourceTree = "<group>"; };
 		7105CC062AD61DA5007C91BA /* EPhysicsUpdateError.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EPhysicsUpdateError.h; sourceTree = "<group>"; };
 		7105CC072AD61DA5007C91BA /* PhysicsSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsSystem.cpp; sourceTree = "<group>"; };
+		434F4D50F7036D2E37823341 /* WaterSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WaterSystem.cpp; sourceTree = "<group>"; };
+		434F4D50BA33DD4BEA61D08E /* CharacterControllerSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CharacterControllerSystem.cpp; sourceTree = "<group>"; };
+		434F4D50606BB535DE48BDAB /* CharacterController2DSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CharacterController2DSystem.cpp; sourceTree = "<group>"; };
 		7105CC082AD61DA5007C91BA /* StateRecorderImpl.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = StateRecorderImpl.cpp; sourceTree = "<group>"; };
 		7105CC092AD61DA5007C91BA /* PhysicsUpdateContext.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsUpdateContext.cpp; sourceTree = "<group>"; };
 		7105CC0A2AD61DA5007C91BA /* LargeIslandSplitter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LargeIslandSplitter.cpp; sourceTree = "<group>"; };
 		7105CC0B2AD61DA5007C91BA /* PhysicsSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PhysicsSystem.h; sourceTree = "<group>"; };
+		434F4D5085D27159644D1984 /* WaterSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WaterSystem.h; sourceTree = "<group>"; };
+		434F4D50F05C9C05EE00D373 /* CharacterControllerSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CharacterControllerSystem.h; sourceTree = "<group>"; };
+		434F4D501ABB136B08B05B1C /* CharacterController2DSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CharacterController2DSystem.h; sourceTree = "<group>"; };
 		7105CC0C2AD61DA5007C91BA /* LargeIslandSplitter.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LargeIslandSplitter.h; sourceTree = "<group>"; };
 		7105CC0D2AD61DA5007C91BA /* StateRecorder.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = StateRecorder.h; sourceTree = "<group>"; };
 		7105CC0E2AD61DA5007C91BA /* PhysicsScene.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PhysicsScene.h; sourceTree = "<group>"; };
@@ -4650,7 +4711,18 @@
 		7128CFAB25BA717500965B51 /* Main.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; path = Main.storyboard; sourceTree = "<group>"; };
 		7128D00425BA74A000965B51 /* JasperEngine_macOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = JasperEngine_macOS.entitlements; sourceTree = "<group>"; };
 		7128D05D25BB02F800965B51 /* Input.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Input.h; sourceTree = "<group>"; };
+		434F4D50C0F0357454135C12 /* InputActionAssetJson.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = input/InputActionAssetJson.h; sourceTree = "<group>"; };
+		434F4D505A481C39BEF7784E /* InputVirtualControls.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = input/InputVirtualControls.h; sourceTree = "<group>"; };
+		434F4D5060482BAA961FF957 /* InputRebind.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = input/InputRebind.h; sourceTree = "<group>"; };
+		434F4D50B88700EBF5817AFC /* InputActions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = input/InputActions.h; sourceTree = "<group>"; };
+		434F4D50C26E07633B2E11DF /* InputActionAsset.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = input/InputActionAsset.h; sourceTree = "<group>"; };
+		434F4D50E7F57628F40D5CD6 /* InputControlPath.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = input/InputControlPath.h; sourceTree = "<group>"; };
 		7128D08525BB033D00965B51 /* Input.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = Input.cpp; sourceTree = "<group>"; };
+		434F4D50FF717FBABDEAD7D2 /* InputVirtualControls.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = input/InputVirtualControls.cpp; sourceTree = "<group>"; };
+		434F4D506FAF644CD4C6156F /* InputRebind.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = input/InputRebind.cpp; sourceTree = "<group>"; };
+		434F4D50685CC50B1CBC4DB6 /* InputActions.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = input/InputActions.cpp; sourceTree = "<group>"; };
+		434F4D50D06F100B22C53DA7 /* InputActionAsset.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = input/InputActionAsset.cpp; sourceTree = "<group>"; };
+		434F4D5008747FD51D6BC1D7 /* InputControlPath.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = input/InputControlPath.cpp; sourceTree = "<group>"; };
 		7128D0AC25BB18DC00965B51 /* StringUtils.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = StringUtils.cpp; sourceTree = "<group>"; };
 		7128D0AD25BB18DC00965B51 /* StringUtils.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = StringUtils.h; sourceTree = "<group>"; };
 		7128D0FE25C2354A00965B51 /* SystemRender.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SystemRender.cpp; sourceTree = "<group>"; };
@@ -4870,7 +4942,10 @@
 		7170A3D12818A8A30003E965 /* Fog.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Fog.h; sourceTree = "<group>"; };
 		7170A3D22818A8A30003E965 /* Skybox.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Skybox.cpp; sourceTree = "<group>"; };
 		7AE0A7E00000000000000001 /* Water.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Water.h; sourceTree = "<group>"; };
+		434F4D506C21DBF3E4DC56B0 /* WaterVolume.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WaterVolume.h; sourceTree = "<group>"; };
+		434F4D5069D90B095694CAEC /* WaterWaves.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../../util/WaterWaves.h; sourceTree = "<group>"; };
 		7AE0A7E00000000000000002 /* Water.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Water.cpp; sourceTree = "<group>"; };
+		434F4D505D19875CF883CFC3 /* WaterVolume.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WaterVolume.cpp; sourceTree = "<group>"; };
 		7170A3D32818A8A30003E965 /* Fog.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Fog.cpp; sourceTree = "<group>"; };
 		717AD7A2290B5DA1007D7DB5 /* libsoloud-macos.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libsoloud-macos.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		717AD7B1290B5DCA007D7DB5 /* libsoloud-ios.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libsoloud-ios.a"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -5636,8 +5711,12 @@
 		71E823962A9C209500C8E6F2 /* box2d.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = box2d.h; sourceTree = "<group>"; };
 		71E824832A9C238800C8E6F2 /* Rigidbody2DComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Rigidbody2DComponent.h; sourceTree = "<group>"; };
 		71E824842A9C238900C8E6F2 /* Joint2DComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Joint2DComponent.h; sourceTree = "<group>"; };
+		434F4D50C5DE5B71BE8D8759 /* CharacterController2DComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CharacterController2DComponent.h; sourceTree = "<group>"; };
+		434F4D5084D5F77E117B1988 /* CharacterCollision.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CharacterCollision.h; sourceTree = "<group>"; };
 		71E824882A9C23A600C8E6F2 /* Joint2D.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Joint2D.cpp; sourceTree = "<group>"; };
+		434F4D50E918DA07B8033B43 /* CharacterController2D.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CharacterController2D.cpp; sourceTree = "<group>"; };
 		71E824892A9C23A600C8E6F2 /* Joint2D.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Joint2D.h; sourceTree = "<group>"; };
+		434F4D5094FA8E0734344B34 /* CharacterController2D.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CharacterController2D.h; sourceTree = "<group>"; };
 		71E8248A2A9C23A600C8E6F2 /* Rigidbody2D.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Rigidbody2D.cpp; sourceTree = "<group>"; };
 		71E8248B2A9C23A600C8E6F2 /* Rigidbody2D.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Rigidbody2D.h; sourceTree = "<group>"; };
 		71E824922A9C242B00C8E6F2 /* PhysicsSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsSystem.cpp; sourceTree = "<group>"; };
@@ -7764,6 +7843,7 @@
 				7105A55C28B305B20092EA05 /* GameObjectClassesLua.cpp */,
 				716803C72DF75E6F00ED71BE /* ThreadClassesLua.cpp */,
 				5E5150000000000000000012 /* ProfilerClassesLua.cpp */,
+				434F4D500FDED71A67F616CA /* GameplayClassesLua.cpp */,
 				5E5280000000000000000041 /* CrashClassesLua.cpp */,
 				7105A56028B305B20092EA05 /* UtilClassesLua.cpp */,
 				50314C550000000000000013 /* HtmlUIClassesLua.h */,
@@ -8028,7 +8108,13 @@
 				7105CB8C2AD61DA5007C91BA /* PhysicsSettings.h */,
 				7105CC0F2AD61DA5007C91BA /* PhysicsStepListener.h */,
 				7105CC072AD61DA5007C91BA /* PhysicsSystem.cpp */,
+				434F4D50F7036D2E37823341 /* WaterSystem.cpp */,
+				434F4D50BA33DD4BEA61D08E /* CharacterControllerSystem.cpp */,
+				434F4D50606BB535DE48BDAB /* CharacterController2DSystem.cpp */,
 				7105CC0B2AD61DA5007C91BA /* PhysicsSystem.h */,
+				434F4D5085D27159644D1984 /* WaterSystem.h */,
+				434F4D50F05C9C05EE00D373 /* CharacterControllerSystem.h */,
+				434F4D501ABB136B08B05B1C /* CharacterController2DSystem.h */,
 				7105CC092AD61DA5007C91BA /* PhysicsUpdateContext.cpp */,
 				7105CBDB2AD61DA5007C91BA /* PhysicsUpdateContext.h */,
 				7105CBE42AD61DA5007C91BA /* Ragdoll */,
@@ -8709,7 +8795,18 @@
 				175DCCB9300FA22F008C19EC /* Export.h */,
 				F10B0B1E0000000000000005 /* fluid */,
 				7128D05D25BB02F800965B51 /* Input.h */,
+				434F4D50C0F0357454135C12 /* InputActionAssetJson.h */,
+				434F4D505A481C39BEF7784E /* InputVirtualControls.h */,
+				434F4D5060482BAA961FF957 /* InputRebind.h */,
+				434F4D50B88700EBF5817AFC /* InputActions.h */,
+				434F4D50C26E07633B2E11DF /* InputActionAsset.h */,
+				434F4D50E7F57628F40D5CD6 /* InputControlPath.h */,
 				7128D08525BB033D00965B51 /* Input.cpp */,
+				434F4D50FF717FBABDEAD7D2 /* InputVirtualControls.cpp */,
+				434F4D506FAF644CD4C6156F /* InputRebind.cpp */,
+				434F4D50685CC50B1CBC4DB6 /* InputActions.cpp */,
+				434F4D50D06F100B22C53DA7 /* InputActionAsset.cpp */,
+				434F4D5008747FD51D6BC1D7 /* InputControlPath.cpp */,
 				7162FC2F25962A0E0075B97D /* io */,
 				7162FC6925962A0E0075B97D /* Log.h */,
 				7162FC2C25962A0E0075B97D /* Log.cpp */,
@@ -8890,7 +8987,12 @@
 				717AD9872919E1E9007D7DB5 /* ImageComponent.h */,
 				71F225442C58736B006ED3CA /* InstancedMeshComponent.h */,
 				71E824842A9C238900C8E6F2 /* Joint2DComponent.h */,
+				434F4D50C5DE5B71BE8D8759 /* CharacterController2DComponent.h */,
+				434F4D5084D5F77E117B1988 /* CharacterCollision.h */,
 				7105CAAB2AD61C7A007C91BA /* Joint3DComponent.h */,
+				434F4D5061DEA5CCD068915F /* BuoyancyComponent.h */,
+				434F4D50CB4A6D444125276A /* WaterVolumeComponent.h */,
+				434F4D5053DC96D5A818F616 /* CharacterControllerComponent.h */,
 				71E54512284D5BE000C68FAB /* KeyframeTracksComponent.h */,
 				17145B342FF7FC3B00543CB7 /* Light2DComponent.h */,
 				71CC839226B8C49B00EEBB93 /* LightComponent.h */,
@@ -9339,7 +9441,10 @@
 				7170A3D02818A8A30003E965 /* Skybox.h */,
 				7170A3D22818A8A30003E965 /* Skybox.cpp */,
 				7AE0A7E00000000000000001 /* Water.h */,
+				434F4D506C21DBF3E4DC56B0 /* WaterVolume.h */,
+				434F4D5069D90B095694CAEC /* WaterWaves.h */,
 				7AE0A7E00000000000000002 /* Water.cpp */,
+				434F4D505D19875CF883CFC3 /* WaterVolume.cpp */,
 			);
 			path = environment;
 			sourceTree = "<group>";
@@ -10507,9 +10612,16 @@
 				71EA6DA42AE20B8C00CA9A75 /* Contact3D.cpp */,
 				71EA6DA12AE20B8C00CA9A75 /* Contact3D.h */,
 				71E824882A9C23A600C8E6F2 /* Joint2D.cpp */,
+				434F4D50E918DA07B8033B43 /* CharacterController2D.cpp */,
 				71E824892A9C23A600C8E6F2 /* Joint2D.h */,
+				434F4D5094FA8E0734344B34 /* CharacterController2D.h */,
 				7105CAAE2AD61CB5007C91BA /* Joint3D.cpp */,
+				434F4D5062D223094E060126 /* Buoyancy.cpp */,
+				434F4D50924F742EE4F8B55A /* CharacterController.cpp */,
 				7105CAB12AD61CB6007C91BA /* Joint3D.h */,
+				434F4D5054A2EC3C6D818D80 /* Buoyancy.h */,
+				434F4D5032C290E7DCD91FA2 /* CharacterController.h */,
+				434F4D50BD439D531664D226 /* ControllerColliderHit.h */,
 				71651FEC2AA804B4008D9BF5 /* Manifold2D.cpp */,
 				71651FE92AA804B4008D9BF5 /* Manifold2D.h */,
 			);
@@ -12537,8 +12649,14 @@
 				71651FF22AA804B4008D9BF5 /* Manifold2D.h in Headers */,
 				71ABBD4127A879B9001CE3AF /* ButtonComponent.h in Headers */,
 				7105CAB72AD61CB6007C91BA /* Joint3D.h in Headers */,
+				434F4D5078E5688AFE157716 /* Buoyancy.h in Headers */,
+				434F4D502136CA306C5110A0 /* CharacterController.h in Headers */,
+				434F4D505A097F599EE4B973 /* ControllerColliderHit.h in Headers */,
 				7181A0AD2BC8B6B400AC230B /* PanelComponent.h in Headers */,
 				7105CAAD2AD61C7A007C91BA /* Joint3DComponent.h in Headers */,
+				434F4D5047A84905C0348B5B /* BuoyancyComponent.h in Headers */,
+				434F4D509DF77520FB09D297 /* WaterVolumeComponent.h in Headers */,
+				434F4D501E30D64F308D59B4 /* CharacterControllerComponent.h in Headers */,
 				71D7494E296731A800348AB8 /* FogComponent.h in Headers */,
 				71FCE4C528E0FA31003C5217 /* LuaBridge.h in Headers */,
 				71125F1C2E41845E006D11A1 /* EntityRegistry.h in Headers */,
@@ -12578,6 +12696,9 @@
 				718FDDF52837CA9A00AF314C /* msl21ios.h in Headers */,
 				175DCCC23022C5E9008C19EC /* Mirror.h in Headers */,
 				71E824962A9C242B00C8E6F2 /* PhysicsSystem.h in Headers */,
+				434F4D507DCA5C810A20BFE5 /* WaterSystem.h in Headers */,
+				434F4D507B39E15A1EC1D964 /* CharacterControllerSystem.h in Headers */,
+				434F4D50160AF96A60C20170 /* CharacterController2DSystem.h in Headers */,
 				718FDDF92837CA9A00AF314C /* glsl330.h in Headers */,
 				717AD96A290B6602007D7DB5 /* AudioSource.h in Headers */,
 				71F2254D2C58740F006ED3CA /* Points.h in Headers */,
@@ -12605,6 +12726,8 @@
 				DD48A305E5C3E4EA4FABC835 /* LatticeTracks.h in Headers */,
 				7170A3D72818A8A30003E965 /* Skybox.h in Headers */,
 				7AE0A7E00000000000000003 /* Water.h in Headers */,
+				434F4D50939136448EC93DCD /* WaterVolume.h in Headers */,
+				434F4D50FC6752A94B1FD359 /* WaterWaves.h in Headers */,
 				71BE620025B1DB22006D6E02 /* System.h in Headers */,
 				175DCCBB300FA22F008C19EC /* Export.h in Headers */,
 				175DCE6B30255343008C19EC /* CharExtent.h in Headers */,
@@ -12708,6 +12831,7 @@
 				71A41CB729AC3D7C006953D3 /* SokolCmdQueue.h in Headers */,
 				71451BC0270CA16200712643 /* ActionSystem.h in Headers */,
 				71E8248E2A9C23A600C8E6F2 /* Joint2D.h in Headers */,
+				434F4D50FFCB1D2868B6F326 /* CharacterController2D.h in Headers */,
 				175DCCB130066F7F008C19EC /* Interpolation.h in Headers */,
 				71ABBD4627A879D4001CE3AF /* Button.h in Headers */,
 				71EA6DA52AE20B8C00CA9A75 /* Contact3D.h in Headers */,
@@ -12716,6 +12840,8 @@
 				7105CAB42AD61CB6007C91BA /* Rigidbody.h in Headers */,
 				1787AD8E2F673CE000DB1D75 /* PrefabComponent.h in Headers */,
 				71E824862A9C238900C8E6F2 /* Joint2DComponent.h in Headers */,
+				434F4D50CB3CE5F969987B41 /* CharacterController2DComponent.h in Headers */,
+				434F4D500543F03D392433A1 /* CharacterCollision.h in Headers */,
 				717AD9862919E1CB007D7DB5 /* RectTransform.h in Headers */,
 				48544D4C0000000000000002 /* HtmlUI.h in Headers */,
 				48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */,
@@ -14442,6 +14568,9 @@
 				7105CDFC2AD61DA6007C91BA /* PhysicsMaterialSimple.cpp in Sources */,
 				7105CE482AD61DA6007C91BA /* CollideSphereVsTriangles.cpp in Sources */,
 				7105CDE82AD61DA6007C91BA /* PhysicsSystem.cpp in Sources */,
+				434F4D506F00C842157094F8 /* WaterSystem.cpp in Sources */,
+				434F4D50F32F3D0ED3D2106C /* CharacterControllerSystem.cpp in Sources */,
+				434F4D50EF9EC9F8C196BED9 /* CharacterController2DSystem.cpp in Sources */,
 				7105CD8F2AD61DA6007C91BA /* PhysicsScene.cpp in Sources */,
 				7105CE4A2AD61DA6007C91BA /* CollisionDispatch.cpp in Sources */,
 				7105CE342AD61DA6007C91BA /* ConvexHullShape.cpp in Sources */,
@@ -14587,6 +14716,9 @@
 				7105CDFD2AD61DA6007C91BA /* PhysicsMaterialSimple.cpp in Sources */,
 				7105CE492AD61DA6007C91BA /* CollideSphereVsTriangles.cpp in Sources */,
 				7105CDE92AD61DA6007C91BA /* PhysicsSystem.cpp in Sources */,
+				434F4D509655FC6C7979EC56 /* WaterSystem.cpp in Sources */,
+				434F4D50A8718B883F574821 /* CharacterControllerSystem.cpp in Sources */,
+				434F4D50991F13DE7591A55B /* CharacterController2DSystem.cpp in Sources */,
 				7105CD902AD61DA6007C91BA /* PhysicsScene.cpp in Sources */,
 				7105CE4B2AD61DA6007C91BA /* CollisionDispatch.cpp in Sources */,
 				7105CE352AD61DA6007C91BA /* ConvexHullShape.cpp in Sources */,
@@ -14722,6 +14854,7 @@
 				713D8294259D307F00567F9F /* Data.cpp in Sources */,
 				713D829A2E76C00100567F9F /* ResourcePack.cpp in Sources */,
 				71E8248D2A9C23A600C8E6F2 /* Joint2D.cpp in Sources */,
+				434F4D5080FDBB5F750DEC87 /* CharacterController2D.cpp in Sources */,
 				71451BBF270CA16200712643 /* ActionSystem.cpp in Sources */,
 				71BE623D25B1DB9E006D6E02 /* LuaScript.cpp in Sources */,
 				533039212E9B8AAACBFB34F6 /* Logger.cpp in Sources */,
@@ -14746,6 +14879,9 @@
 				7181A0B12BC8B6CB00AC230B /* Panel.cpp in Sources */,
 				71CC839626B8C4D800EEBB93 /* Light.cpp in Sources */,
 				71E824952A9C242B00C8E6F2 /* PhysicsSystem.cpp in Sources */,
+				434F4D5076C16B09EE60F3FA /* WaterSystem.cpp in Sources */,
+				434F4D50CDC45DD22A274CED /* CharacterControllerSystem.cpp in Sources */,
+				434F4D50887E2D0BA5FF3E27 /* CharacterController2DSystem.cpp in Sources */,
 				1787AD942F6C333300DB1D75 /* SceneManager.cpp in Sources */,
 				1787AD952F6C333300DB1D75 /* PrefabManager.cpp in Sources */,
 				A6E1266199635F3E1FC4BE40 /* ObjectManager.cpp in Sources */,
@@ -14841,6 +14977,11 @@
 				1721303B2FB012BD00390DC2 /* SoundPool.cpp in Sources */,
 				715CB118288CD40E0049344B /* Terrain.cpp in Sources */,
 				7128D08725BB033D00965B51 /* Input.cpp in Sources */,
+				434F4D50F866BE1250EF4E4C /* InputVirtualControls.cpp in Sources */,
+				434F4D50627A9C492EAD4705 /* InputRebind.cpp in Sources */,
+				434F4D50B4EF04DF955434B4 /* InputActions.cpp in Sources */,
+				434F4D504C123D08E8E04205 /* InputActionAsset.cpp in Sources */,
+				434F4D50B62CBA2A0B777D36 /* InputControlPath.cpp in Sources */,
 				713D82AB259D307F00567F9F /* Texture.cpp in Sources */,
 				175DCCC43022C5E9008C19EC /* Mirror.cpp in Sources */,
 				71451BE0270CA17F00712643 /* PositionTween.cpp in Sources */,
@@ -14894,6 +15035,7 @@
 				71BE620225B1DB22006D6E02 /* System.cpp in Sources */,
 				7170A3DA2818A8A30003E965 /* Skybox.cpp in Sources */,
 				7AE0A7E00000000000000005 /* Water.cpp in Sources */,
+				434F4D50DA773D6E981E6E0E /* WaterVolume.cpp in Sources */,
 				713D82B0259D307F00567F9F /* Attribute.cpp in Sources */,
 				71E54502284D5BB700C68FAB /* TranslateTracks.cpp in Sources */,
 				71EA6DAA2AE20B8C00CA9A75 /* Contact3D.cpp in Sources */,
@@ -14906,6 +15048,8 @@
 				710506AF297F4483002DD23C /* Primitive.cpp in Sources */,
 				7105CAB62AD61CB6007C91BA /* Rigidbody.cpp in Sources */,
 				7105CAB32AD61CB6007C91BA /* Joint3D.cpp in Sources */,
+				434F4D50FB45A656669C7D41 /* Buoyancy.cpp in Sources */,
+				434F4D506186EF2152BDFE1F /* CharacterController.cpp in Sources */,
 				713D82B3259D307F00567F9F /* SokolObject.cpp in Sources */,
 				713D82B4259D307F00567F9F /* SokolBuffer.cpp in Sources */,
 				71ED64C628B45E0B005D2D96 /* Angle.cpp in Sources */,
@@ -14945,6 +15089,7 @@
 				5E5150000000000000000020 /* SokolTraceHub.cpp in Sources */,
 				5E5150000000000000000022 /* SokolVramTracker.cpp in Sources */,
 				5E5150000000000000000024 /* ProfilerClassesLua.cpp in Sources */,
+				434F4D50C6EF06C129A2C1A1 /* GameplayClassesLua.cpp in Sources */,
 				5E5280000000000000000042 /* CrashClassesLua.cpp in Sources */,
 				48544D4C0000000000000004 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */,
@@ -15264,6 +15409,7 @@
 				71651FF62AA804B4008D9BF5 /* Manifold2D.cpp in Sources */,
 				7162FE0F2596A5BE0075B97D /* SokolTexture.cpp in Sources */,
 				71E8248C2A9C23A600C8E6F2 /* Joint2D.cpp in Sources */,
+				434F4D50B496571777A0F8E8 /* CharacterController2D.cpp in Sources */,
 				71451BBE270CA16200712643 /* ActionSystem.cpp in Sources */,
 				71BE623C25B1DB9E006D6E02 /* LuaScript.cpp in Sources */,
 				53303921EB2FAA931E22F83E /* Logger.cpp in Sources */,
@@ -15288,6 +15434,9 @@
 				7181A0B02BC8B6CB00AC230B /* Panel.cpp in Sources */,
 				71CC839526B8C4D800EEBB93 /* Light.cpp in Sources */,
 				71E824942A9C242B00C8E6F2 /* PhysicsSystem.cpp in Sources */,
+				434F4D5068BD83EDBFE79621 /* WaterSystem.cpp in Sources */,
+				434F4D50F8815683BBB7375C /* CharacterControllerSystem.cpp in Sources */,
+				434F4D50EBE664EDCE408D9E /* CharacterController2DSystem.cpp in Sources */,
 				1787AD982F6C333300DB1D75 /* SceneManager.cpp in Sources */,
 				1787AD992F6C333300DB1D75 /* PrefabManager.cpp in Sources */,
 				A6E1BBB0C286C20E302F0AE0 /* ObjectManager.cpp in Sources */,
@@ -15315,6 +15464,7 @@
 				5E5150000000000000000021 /* SokolTraceHub.cpp in Sources */,
 				5E5150000000000000000023 /* SokolVramTracker.cpp in Sources */,
 				5E5150000000000000000025 /* ProfilerClassesLua.cpp in Sources */,
+				434F4D5077FD9C84C36F4F2D /* GameplayClassesLua.cpp in Sources */,
 				5E5280000000000000000043 /* CrashClassesLua.cpp in Sources */,
 				71A41CB529AC3D7C006953D3 /* SokolCmdQueue.cpp in Sources */,
 				503152450000000000000002 /* SokolPipelineCache.cpp in Sources */,
@@ -15399,6 +15549,11 @@
 				71451BD1270CA17F00712643 /* SpriteAnimation.cpp in Sources */,
 				715CB117288CD40E0049344B /* Terrain.cpp in Sources */,
 				7128D08625BB033D00965B51 /* Input.cpp in Sources */,
+				434F4D504533621485F625C7 /* InputVirtualControls.cpp in Sources */,
+				434F4D5013A0AB80B4C94403 /* InputRebind.cpp in Sources */,
+				434F4D5047DE2062B62E1944 /* InputActions.cpp in Sources */,
+				434F4D50246235CDA4187741 /* InputActionAsset.cpp in Sources */,
+				434F4D50312728BAD70188F6 /* InputControlPath.cpp in Sources */,
 				175DCCC33022C5E9008C19EC /* Mirror.cpp in Sources */,
 				7162FD3D25963AE00075B97D /* Plane.cpp in Sources */,
 				71451BDF270CA17F00712643 /* PositionTween.cpp in Sources */,
@@ -15450,6 +15605,7 @@
 				71BE620125B1DB22006D6E02 /* System.cpp in Sources */,
 				7170A3D92818A8A30003E965 /* Skybox.cpp in Sources */,
 				7AE0A7E00000000000000004 /* Water.cpp in Sources */,
+				434F4D50975BBA2205786743 /* WaterVolume.cpp in Sources */,
 				7162FD4A25963AE00075B97D /* Texture.cpp in Sources */,
 				71E54501284D5BB700C68FAB /* TranslateTracks.cpp in Sources */,
 				71EA6DA92AE20B8C00CA9A75 /* Contact3D.cpp in Sources */,
@@ -15463,6 +15619,8 @@
 				710506AE297F4483002DD23C /* Primitive.cpp in Sources */,
 				7105CAB52AD61CB6007C91BA /* Rigidbody.cpp in Sources */,
 				7105CAB22AD61CB6007C91BA /* Joint3D.cpp in Sources */,
+				434F4D50421DB7150F3F7B7B /* Buoyancy.cpp in Sources */,
+				434F4D50BF25EC1914E550C7 /* CharacterController.cpp in Sources */,
 				7162FD5825963AE00075B97D /* InterleavedBuffer.cpp in Sources */,
 				7162FD5925963AE00075B97D /* Buffer.cpp in Sources */,
 				71ED64C528B45E0B005D2D96 /* Angle.cpp in Sources */,

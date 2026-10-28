@@ -22,6 +22,7 @@
 #include "util/EditorScripts.h"
 #include "util/EntityClipboard.h"
 #include "util/ScriptReloadService.h"
+#include "window/InputActionsWindow.h"
 #include "window/JobsMemoryWindow.h"
 
 #include "imgui_internal.h"
@@ -119,7 +120,8 @@ void editor::App::registerCommands(){
     enable("edit.paste", [this]() { return canPasteSelection(false); }, sceneKeys);
     enable("edit.pasteAsChild", [this]() { return canPasteSelection(true); }, sceneKeys);
     enable("edit.duplicate", [this]() { return canEditSelection(true); }, sceneKeysAnd(notAssetPanel));
-    enable("edit.delete", [this]() { return canEditSelection(false); }, sceneKeysAnd(notAssetPanel));
+    // the Input Actions window, focused, deletes its selected map, action or binding
+    enable("edit.delete", [this]() { return canEditSelection(false) || inputActionsWindow->canDelete(); }, sceneKeysAnd(notAssetPanel));
     // F2 renames inline in the Hierarchy when it has focus, else in the Inspector
     bind("edit.rename", [this](const CommandArgs& args) {
         if (args.source == CommandSource::Keyboard) {
@@ -334,7 +336,9 @@ editor::ShortcutState editor::App::shortcutState() const{
     state.wantTextInput = io.WantTextInput;
     state.codeEditorFocused = codeEditor->isFocused();
     state.gameHasKeyboard = project.isAnyScenePlaying() && gameWindow->hasKeyboardFocus();
-    state.popupOpen = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
+    // the Input Actions window's Listen takes the next key for a game binding
+    state.popupOpen = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel) ||
+                      inputActionsWindow->isListening();
     state.nativeMenuOwnsKeys = Backend::nativeMenuHandlesKeyEquivalents();
     if (hierarchyWindow->isFocused()) state.panels.push_back(ShortcutContext::Hierarchy);
     if (sceneWindow->isFocused() || sceneWindow->isHovered()) state.panels.push_back(ShortcutContext::SceneView);

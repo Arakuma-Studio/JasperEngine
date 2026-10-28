@@ -1129,9 +1129,11 @@ std::string editor::Factory::guardComponentCode(ComponentType type, const std::s
     switch (type) {
         case ComponentType::Rigidbody2DComponent:
         case ComponentType::Joint2DComponent:
+        case ComponentType::CharacterController2DComponent:
             return guardPhysicsCode(code, "JASPERENGINE_PHYSICS_2D");
         case ComponentType::RigidbodyComponent:
         case ComponentType::Joint3DComponent:
+        case ComponentType::CharacterControllerComponent:
             return guardPhysicsCode(code, "JASPERENGINE_PHYSICS_3D");
         default:
             return code;
@@ -2559,6 +2561,94 @@ std::string editor::Factory::createRigidbodyComponent(int indentSpaces, EntityRe
     return code.str();
 }
 
+std::string editor::Factory::createWaterVolumeComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting) {
+    if (!scene->findComponent<WaterVolumeComponent>(entity)) return "";
+    const WaterVolumeComponent& volume = scene->getComponent<WaterVolumeComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "WaterVolumeComponent waterVolume;\n";
+    code << ind << "waterVolume.size = " << formatVector3(volume.size) << ";\n";
+    code << ind << "waterVolume.surfaceOffset = " << formatFloat(volume.surfaceOffset) << ";\n";
+    code << ind << "waterVolume.infinite = " << formatBool(volume.infinite) << ";\n";
+    code << ind << "waterVolume.density = " << formatFloat(volume.density) << ";\n";
+    code << ind << "waterVolume.flow = " << formatVector3(volume.flow) << ";\n";
+    code << ind << "waterVolume.linearDrag = " << formatFloat(volume.linearDrag) << ";\n";
+    code << ind << "waterVolume.angularDrag = " << formatFloat(volume.angularDrag) << ";\n";
+    code << ind << "waterVolume.waves = " << (volume.waves == WaterVolumeWaves::NONE ? "WaterVolumeWaves::NONE" : "WaterVolumeWaves::FROM_MATERIAL") << ";\n";
+    if (!volume.enabled) code << ind << "waterVolume.enabled = false;\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "WaterVolumeComponent", "waterVolume", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createBuoyancyComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting) {
+    if (!scene->findComponent<BuoyancyComponent>(entity)) return "";
+    const BuoyancyComponent& buoyancy = scene->getComponent<BuoyancyComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    const char* columns = buoyancy.columns == BuoyancyColumns::AUTO_3x3 ? "BuoyancyColumns::AUTO_3x3"
+                        : buoyancy.columns == BuoyancyColumns::CUSTOM ? "BuoyancyColumns::CUSTOM" : "BuoyancyColumns::AUTO_2x2";
+    code << ind << "BuoyancyComponent buoyancy;\n";
+    code << ind << "buoyancy.columns = " << columns << ";\n";
+    for (const Vector3& point : buoyancy.customPoints)
+        code << ind << "buoyancy.customPoints.push_back(" << formatVector3(point) << ");\n";
+    code << ind << "buoyancy.volumeScale = " << formatFloat(buoyancy.volumeScale) << ";\n";
+    code << ind << "buoyancy.dragScale = " << formatFloat(buoyancy.dragScale) << ";\n";
+    if (!buoyancy.enabled) code << ind << "buoyancy.enabled = false;\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "BuoyancyComponent", "buoyancy", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createCharacterControllerComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting) {
+    if (!scene->findComponent<CharacterControllerComponent>(entity)) return "";
+    const CharacterControllerComponent& controller = scene->getComponent<CharacterControllerComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "CharacterControllerComponent controller;\n";
+    code << ind << "controller.center = " << formatVector3(controller.center) << ";\n";
+    code << ind << "controller.height = " << formatFloat(controller.height) << ";\n";
+    code << ind << "controller.radius = " << formatFloat(controller.radius) << ";\n";
+    code << ind << "controller.slopeLimit = " << formatFloat(controller.slopeLimit) << ";\n";
+    code << ind << "controller.stepOffset = " << formatFloat(controller.stepOffset) << ";\n";
+    code << ind << "controller.skinWidth = " << formatFloat(controller.skinWidth) << ";\n";
+    code << ind << "controller.minMoveDistance = " << formatFloat(controller.minMoveDistance) << ";\n";
+    code << ind << "controller.mass = " << formatFloat(controller.mass) << ";\n";
+    code << ind << "controller.pushStrength = " << formatFloat(controller.pushStrength) << ";\n";
+    code << ind << "controller.pushBodies = " << formatBool(controller.pushBodies) << ";\n";
+    code << ind << "controller.movingPlatforms = " << formatBool(controller.movingPlatforms) << ";\n";
+    code << ind << "controller.inheritPlatformYaw = " << formatBool(controller.inheritPlatformYaw) << ";\n";
+    code << ind << "controller.detectCollisions = " << formatBool(controller.detectCollisions) << ";\n";
+    code << ind << "controller.characterCollisions = " << formatBool(controller.characterCollisions) << ";\n";
+    code << ind << "controller.enhancedEdgeRemoval = " << formatBool(controller.enhancedEdgeRemoval) << ";\n";
+    code << ind << "controller.categoryBits = " << controller.categoryBits << ";\n";
+    code << ind << "controller.maskBits = " << controller.maskBits << ";\n";
+    if (!controller.enabled) code << ind << "controller.enabled = false;\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "CharacterControllerComponent", "controller", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createCharacterController2DComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting) {
+    if (!scene->findComponent<CharacterController2DComponent>(entity)) return "";
+    const CharacterController2DComponent& controller = scene->getComponent<CharacterController2DComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "CharacterController2DComponent controller2d;\n";
+    code << ind << "controller2d.center = " << formatVector2(controller.center) << ";\n";
+    code << ind << "controller2d.height = " << formatFloat(controller.height) << ";\n";
+    code << ind << "controller2d.radius = " << formatFloat(controller.radius) << ";\n";
+    code << ind << "controller2d.slopeLimit = " << formatFloat(controller.slopeLimit) << ";\n";
+    code << ind << "controller2d.stepOffset = " << formatFloat(controller.stepOffset) << ";\n";
+    code << ind << "controller2d.skinWidth = " << formatFloat(controller.skinWidth) << ";\n";
+    code << ind << "controller2d.minMoveDistance = " << formatFloat(controller.minMoveDistance) << ";\n";
+    code << ind << "controller2d.pushStrength = " << formatFloat(controller.pushStrength) << ";\n";
+    code << ind << "controller2d.pushBodies = " << formatBool(controller.pushBodies) << ";\n";
+    code << ind << "controller2d.movingPlatforms = " << formatBool(controller.movingPlatforms) << ";\n";
+    code << ind << "controller2d.categoryBits = " << controller.categoryBits << ";\n";
+    code << ind << "controller2d.maskBits = " << controller.maskBits << ";\n";
+    if (!controller.enabled) code << ind << "controller2d.enabled = false;\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "CharacterController2DComponent", "controller2d", assignExisting);
+    return code.str();
+}
+
 std::string editor::Factory::createJoint2DComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
     if (!scene->findComponent<Joint2DComponent>(entity)) return "";
     Joint2DComponent& joint = scene->getComponent<Joint2DComponent>(entity);
@@ -3127,6 +3217,10 @@ std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* s
         case ComponentType::Rigidbody2DComponent: return guardPhysicsCode(createRigidbody2DComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames), "JASPERENGINE_PHYSICS_2D");
         case ComponentType::RigidbodyComponent: return guardPhysicsCode(createRigidbodyComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames), "JASPERENGINE_PHYSICS_3D");
         case ComponentType::Joint2DComponent: return guardPhysicsCode(createJoint2DComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames), "JASPERENGINE_PHYSICS_2D");
+        case ComponentType::WaterVolumeComponent: return createWaterVolumeComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting);
+        case ComponentType::BuoyancyComponent: return createBuoyancyComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting);
+        case ComponentType::CharacterControllerComponent: return guardPhysicsCode(createCharacterControllerComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting), "JASPERENGINE_PHYSICS_3D");
+        case ComponentType::CharacterController2DComponent: return guardPhysicsCode(createCharacterController2DComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting), "JASPERENGINE_PHYSICS_2D");
         case ComponentType::Joint3DComponent: return guardPhysicsCode(createJoint3DComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames), "JASPERENGINE_PHYSICS_3D");
         case ComponentType::ActionComponent: return createActionComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::TweenComponent: return createTweenComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);

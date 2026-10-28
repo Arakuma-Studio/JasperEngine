@@ -115,8 +115,8 @@ Wrapper class names accepted as `type` (case-insensitive): `GameObject`, `Camera
 `Light2D`, `ShadowCaster2D`, `Mesh`, `Primitive`, `Mirror`, `Terrain`, `Tilemap`, `Model`,
 `MeshPolygon`, `Points`, `LineRenderer`, `Sprite`, `AudioSource`, `RectTransform`,
 `LayoutGroup`, `Polygon`, `Text`, `Image`, `Button`, `Panel`, `Scrollbar`, `Progressbar`,
-`InputField`, `Bone`, `Fog`, `LocalVolumetricFog`, `VolumetricClouds`, `Skybox`, `ReflectionProbe`, `FluidSimulation`, `Rigidbody2D`, `Joint2D`,
-`Rigidbody`, `Joint3D`, `Action`, `Tween`, `AlphaTween`, `ColorTween`, `PositionTween`,
+`InputField`, `Bone`, `Fog`, `LocalVolumetricFog`, `VolumetricClouds`, `Skybox`, `ReflectionProbe`, `FluidSimulation`, `Rigidbody2D`, `Joint2D`, `CharacterController2D`,
+`Rigidbody`, `Joint3D`, `CharacterController`, `Action`, `Tween`, `AlphaTween`, `ColorTween`, `PositionTween`,
 `RotationTween`, `ScaleTween`, `Animation`, `ParticleSystem`, `SpriteAnimation`,
 `KeyframeTracks`, `MorphTracks`, `LatticeTracks`, `RotateTracks`, `ScaleTracks`, `TranslateTracks`, `EntityHandle`.
 An unknown name falls back to `EntityHandle` (with a warning in the log).
@@ -353,16 +353,25 @@ Functions:
 
 | Function | Returns |
 |---|---|
-| `Input.isKeyPressed(key)` | bool, key currently held |
-| `Input.isMousePressed(button)` | bool, button held |
+| `Input.isKeyPressed(key)`, `Input.getKey(key)` | bool, key currently held |
+| `Input.getKeyDown(key)`, `Input.getKeyUp(key)` | bool, pressed / released this frame (both true for a tap inside one frame; the fixed step's window in `onFixedUpdate`) |
+| `Input.isMousePressed(button)`, `Input.getMouseButton(button)` | bool, button held |
+| `Input.getMouseButtonDown(button)`, `Input.getMouseButtonUp(button)` | bool, this frame |
+| `Input.getGamepadButtonDown(id, button)`, `Input.getGamepadButtonUp(id, button)` | bool, this frame |
+| `Input.anyKeyDown()` | bool, a key, mouse or gamepad button pressed this frame |
+| `Input.getMouseDelta()` | `Vector2`, canvas pixels moved this frame |
+| `Input.getMouseScrollDelta()` | `Vector2`, wheel offsets of this frame |
+| `Input.getTouchCount()`, `Input.getTouch(i)` | this frame's touches (0-based), also those lifted in the frame: `{pointer, position, phase, delta, startPosition, time, began}` |
+| `Input.getTouchDown(pointer)`, `Input.getTouchUp(pointer)` | bool, this frame |
+| `Input.getPointerLockState()` | `Input.POINTER_UNLOCKED` / `POINTER_PENDING` / `POINTER_LOCKED` |
 | `Input.isTouch()` | bool, any touch active |
 | `Input.isMouseEntered()` | bool |
 | `Input.getMousePosition()` | `Vector2` |
-| `Input.getMouseScroll()` | `Vector2` |
+| `Input.getMouseScroll()` | `Vector2`, deprecated: the last wheel event, never reset (use `getMouseScrollDelta`) |
 | `Input.getTouchPosition(pointer)` | `Vector2` |
 | `Input.numTouches()` | integer |
 | `Input.findTouchIndex(pointer)` | integer |
-| `Input.getTouches()` | list of `Touch` (Touch class is NOT bound; prefer `numTouches`/`getTouchPosition` or touch events) |
+| `Input.getTouches()` | list of the fingers down now, each a table `{pointer, position, phase, delta, startPosition, time, began}` |
 | `Input.isGamepadConnected(id)`, `Input.getGamepadName(id)`, `Input.isGamepadButtonPressed(id, button)`, `Input.getGamepadAxis(id, axis)`, `Input.numGamepads()`, `Input.getGamepadId(index)` | gamepad |
 | `Input.getModifiers()` | bitmask of `Input.MODIFIER_*` |
 
@@ -385,12 +394,42 @@ Constants (static properties, integers, no parentheses):
   `MOUSE_BUTTON_1` .. `MOUSE_BUTTON_8`, `MOUSE_BUTTON_LAST`.
 - Modifiers: `Input.MODIFIER_SHIFT`, `MODIFIER_CONTROL`, `MODIFIER_ALT`, `MODIFIER_SUPER`,
   `MODIFIER_CAPS_LOCK`, `MODIFIER_NUM_LOCK`.
+- Touch phases: `Input.TOUCH_BEGAN`, `TOUCH_MOVED`, `TOUCH_STATIONARY`, `TOUCH_ENDED`,
+  `TOUCH_CANCELED`. Pointer lock: `Input.POINTER_UNLOCKED`, `POINTER_PENDING`, `POINTER_LOCKED`.
+  Frames and fixed steps: `jasper://docs/input`.
 - Gamepad buttons: `Input.GAMEPAD_BUTTON_A`, `_B`, `_X`, `_Y`, `_LEFT_BUMPER`,
   `_RIGHT_BUMPER`, `_BACK`, `_START`, `_GUIDE`, `_LEFT_THUMB`, `_RIGHT_THUMB`, `_DPAD_UP`,
   `_DPAD_RIGHT`, `_DPAD_DOWN`, `_DPAD_LEFT`, `_LAST`, `_CROSS`, `_CIRCLE`, `_SQUARE`,
   `_TRIANGLE` (full names `Input.GAMEPAD_BUTTON_<X>`).
 - Gamepad axes: `Input.GAMEPAD_AXIS_LEFT_X`, `_LEFT_Y`, `_RIGHT_X`, `_RIGHT_Y`,
   `_LEFT_TRIGGER`, `_RIGHT_TRIGGER`, `_LAST`.
+
+### 2.2.2 InputActions (static) and InputAction
+
+Maps of actions bound to controls, from an `.inputactions` asset (`jasper://docs/input`).
+
+| Function | Notes |
+|---|---|
+| `InputActions.load(path)`, `loadDefault(path)`, `unload()`, `isLoaded()`, `getAssetPath()` | a path in the assets directory |
+| `InputActions.get("Map/Action")` | `InputAction` or nil |
+| `InputActions.getMap(name)` | `InputActionMap`: `enabled` (rw), `priority` (rw), `gamepad` (rw, -1 any), `enable()`, `disable()`, `setGamepad(id)`, `getActions()` |
+| `InputActions.enableMap(name, on)`, `isMapEnabled`, `setMapPriority`, `getMapPriority`, `setGamepad(map, id)`, `getGamepad` | |
+| `InputActions.setVirtual(name, number or Vector2)`, `getVirtual(name)` | `virtual/<name>` controls |
+| `InputActions.bindVirtualStick(element, name)`, `bindVirtualButton(element, name)`, `unbindVirtualControl(element)` | HTML UI on-screen controls |
+| `InputActions.inject(action, number or Vector2, windows)`, `releaseInjected(action)` | 0 windows: a tap, -1: until released |
+| `InputActions.startRebind(action, bindingId, {groups, exclude, cancel, timeout}, fn(result))`, `cancelRebind()`, `isRebinding()` | `result.status` completed, canceled or timed_out; `result.path` |
+| `InputActions.getConflicts(action, bindingId)` | list of `{action, id, path, groups}` |
+| `InputActions.getBindingPath(id)`, `setOverride(id, path)`, `removeOverride(id)`, `saveOverrides()`, `loadOverrides()`, `resetOverrides()` | overrides persist in UserSettings |
+| `InputActions.getBinding(id)` | `InputBinding`: `id`, `path`, `displayName`, `composite`, `overridden`, `getDisplayName()`, `getGroups()`, `getParts()` |
+| `InputActions.getBindingDisplayName(id)`, `getControlDisplayName(path)`, `isControlBound(path)` | "Space", "Ctrl+S", "Left Stick" |
+| `InputActions.defaultDeadzone` | rw, 0.15 |
+
+`InputAction`: `readValue()`, `readVector2()`, `isPressed()`, `wasPressedThisFrame()`,
+`wasReleasedThisFrame()`, `getHeldTime()`, `getPhase()` / `phase` (`InputActionPhase.WAITING`,
+`STARTED`, `PERFORMED`, `CANCELED`), `name`, `mapName`, `path`, `type` (`InputActionType.BUTTON`,
+`AXIS`, `VECTOR2`), `consumedBy`, `getBindings()`, and the events `onStarted`, `onPerformed`,
+`onCanceled` (assign a function; it gets an `InputActionEvent`: `action`, `phase`, `value`,
+`vector2`, `consume()`).
 
 ### 2.2.1 Jobs (static, read-only)
 
@@ -590,8 +629,9 @@ if hit.hit then local e = hit.body end
 The water surfaces of a scene are its meshes drawn with `library:water` (enabled, active), each
 resting at the top of its world bounds and covering their XZ extent; with `WAVES` the heights
 follow the same waves the shader draws, on its clock (`Water.getTime()`, `frame.time.x`:
-seconds since the engine started, wall-clock, running in the editor and while the game is
-paused or time-scaled), so a script and the screen agree. Where waters overlap the one whose
+seconds since the engine started, wall-clock latched once a frame, running in the editor and
+while the game is paused or time-scaled; with a fixed frame delta it advances by exactly that a
+frame), so a script and the screen agree. Where waters overlap the one whose
 bottom (the material's `buoyancyDepth` below its surface; none at 0) is highest wins. Each call
 looks through the scene's meshes: for many points a frame, keep the results.
 
@@ -600,7 +640,15 @@ looks through the scene's meshes: for many points a frame, keep the results.
 | `Water.getHeight(scene, x, z)` | surface height (world Y, waves included) of the topmost water over (x, z); `nil` where none covers it |
 | `Water.getNormal(scene, x, z)` | its normal (`Vector3`; up without `WAVES`); `nil` where none |
 | `Water.isUnderwater(scene, point)` | `point` (`Vector3`) is under the surface of the water it is in |
-| `Water.getTime()` | the shader library's clock, seconds |
+| `Water.getTime()` | the shader library's clock, seconds (one value a frame) |
+| `Water.sample(scene, point)` | a `WaterSample`: `inWater`, `surfaceHeight`, `normal`, `flowVelocity` (the volume's flow + the surface rising), `volume` (entity), `hasWater`; Water Volumes first, then the meshes above |
+| `Water.sampleHeight(scene, x, z)` | the surface height there, Water Volumes first; `nil` where no water is |
+
+A Water Volume (`go:getWaterVolume()`, `WaterVolume(scene, entity)`): `size` (Vector3, local: XZ
+extent, Y depth), `surfaceOffset`, `infinite`, `density`, `flow`, `linearDrag`, `angularDrag`,
+`waves` (`WaterVolumeWaves.FROM_MATERIAL` / `NONE`), `enabled`. A Buoyancy (`go:getBuoyancy()`,
+`Buoyancy(scene, entity)`): `columns` (`BuoyancyColumns.AUTO_2x2` / `AUTO_3x3` / `CUSTOM`),
+`customPoints` ({Vector3...}), `volumeScale`, `dragScale`, `enabled`.
 
 ```lua
 local y = Water.getHeight(self.scene, pos.x, pos.z)
@@ -1167,6 +1215,23 @@ Restart a one-shot: `snd:stop(); snd:play()`.
 `setRevoluteJoint`, `setPrismaticJoint`, `setMouseJoint`, `setWheelJoint`, `setWeldJoint`,
 `setMotorJoint`, `getType()` (partial; arguments follow the C++ headers).
 
+#### 4.13.1 CharacterController2D (EntityHandle)
+
+`go:getCharacterController2D()` (adds one with defaults if missing), `go:removeCharacterController2D()`,
+or `CharacterController2D(scene, entity)`. Points and points per second, as Rigidbody2D.
+
+| Member | Kind | Notes |
+|---|---|---|
+| `move(motionV2)` | method | slides by motion now (no gravity), writes the Transform; returns `CollisionFlags` bits |
+| `simpleMove(speedV2)` | method | speed.y ignored, own gravity (`Physics` 2D gravity); returns `isGrounded` |
+| `center` | rw `Vector2` | offset from the Transform position |
+| `height`, `radius`, `slopeLimit`, `stepOffset`, `skinWidth`, `minMoveDistance`, `pushStrength` | rw number | defaults: height 128, radius 32 (2 m x 0.5 m at 64 points a metre) |
+| `pushBodies`, `movingPlatforms`, `enabled` | rw bool | |
+| `setBitsFilter(category, mask)`, `categoryBits`, `maskBits` | method / ro | |
+| `isGrounded`, `isOnSteepSlope`, `collisionFlags`, `velocity`, `groundNormal`, `groundEntity`, `groundVelocity` | ro | the last move and physics step |
+
+`CollisionFlags.NONE`, `SIDES` (1), `ABOVE` (2), `BELOW` (4): test with `flags & CollisionFlags.SIDES ~= 0`.
+
 ### 4.14 Rigidbody (EntityHandle) - 3D physics (Jolt)
 
 | Member | Kind | Notes |
@@ -1193,6 +1258,25 @@ Restart a one-shot: `snd:stop(); snd:play()`.
 `setDistanceJoint`, `setPointJoint`, `setHingeJoint`, `setConeJoint`, `setPrismaticJoint`,
 `setSwingTwistJoint`, `setSixDOFJoint`, `setPathJoint`, `setGearJoint`,
 `setRackAndPinionJoint`, `setPulleyJoint`, `getType()` (partial).
+
+#### 4.14.1 CharacterController (EntityHandle)
+
+`go:getCharacterController()` (adds one with defaults if missing), `go:removeCharacterController()`,
+or `CharacterController(scene, entity)`. World units (metres).
+
+| Member | Kind | Notes |
+|---|---|---|
+| `move(motionV3)` | method | sweeps by motion now (no gravity), writes the Transform; returns `CollisionFlags` bits |
+| `simpleMove(speedV3)` | method | speed.y ignored, own gravity; returns `isGrounded` |
+| `trySetSize(height, radius, centerV3)` | method | false (old size kept) when it does not fit there |
+| `center` | rw `Vector3` | setting `center`, `height`, `radius` goes through `trySetSize` |
+| `height`, `radius`, `slopeLimit`, `stepOffset`, `skinWidth`, `minMoveDistance`, `mass`, `pushStrength` | rw number | Unity defaults: 2, 0.5, 45, 0.3, 0.02, 0.001; mass 70, push 100 N |
+| `pushBodies`, `movingPlatforms`, `inheritPlatformYaw`, `detectCollisions`, `characterCollisions`, `enhancedEdgeRemoval`, `enabled` | rw bool | |
+| `setBitsFilter(category, mask)`, `categoryBits`, `maskBits` | method / ro | |
+| `isGrounded`, `isOnSteepSlope`, `collisionFlags`, `velocity`, `groundNormal`, `groundEntity`, `groundVelocity` | ro | the last move and physics step |
+
+Script hook `function MyScript:onControllerColliderHit(hit)`: `hit.controller`, `hit.entity`,
+`hit.point`, `hit.normal`, `hit.moveDirection`, `hit.moveLength`.
 
 ### 4.15 Actions and Tweens
 

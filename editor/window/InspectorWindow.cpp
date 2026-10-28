@@ -28,6 +28,7 @@
 #include "external/IconsFontAwesome6.h"
 #include "command/CommandHandle.h"
 #include "command/type/PropertyCmd.h"
+#include "util/WaterEditorUtils.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/CreateEntityCmd.h"
 #include "lattice/LatticeEditorOps.h"
@@ -234,6 +235,17 @@ static std::vector<editor::EnumEntry> entriesAtmosphereQualityOverride = {
     { (int)AtmosphereQualityOverride::PROJECT, "Project" },
     { (int)AtmosphereQualityOverride::LOW, "Low" },
     { (int)AtmosphereQualityOverride::MEDIUM, "Medium" }
+};
+
+static std::vector<editor::EnumEntry> entriesWaterVolumeWaves = {
+    { (int)WaterVolumeWaves::FROM_MATERIAL, "From Material" },
+    { (int)WaterVolumeWaves::NONE, "None" }
+};
+
+static std::vector<editor::EnumEntry> entriesBuoyancyColumns = {
+    { (int)BuoyancyColumns::AUTO_2x2, "Auto 2x2" },
+    { (int)BuoyancyColumns::AUTO_3x3, "Auto 3x3" },
+    { (int)BuoyancyColumns::CUSTOM, "Custom" }
 };
 
 static std::vector<editor::EnumEntry> entriesFogVolumeShape = {
@@ -1972,7 +1984,10 @@ bool editor::InspectorWindow::addComponentToSelection(ComponentType type, std::s
 bool editor::InspectorWindow::canAddComponent(SceneProject* sceneProject, Entity entity, ComponentType cpType) {
     // Check if entity already has this component
     std::vector<ComponentType> existingComponents = Catalog::findComponents(sceneProject->scene, entity);
-    return std::find(existingComponents.begin(), existingComponents.end(), cpType) == existingComponents.end();
+    if (std::find(existingComponents.begin(), existingComponents.end(), cpType) != existingComponents.end())
+        return false;
+    // a character controller and a rigidbody of its dimension never share a GameObject
+    return Catalog::getComponentConflict(sceneProject->scene, entity, cpType).empty();
 }
 
 // Prefab (prefab) text color, as in the Hierarchy
@@ -13294,6 +13309,272 @@ void editor::InspectorWindow::drawJoint2DComponent(ComponentType cpType, ScenePr
     endTable();
 }
 
+void editor::InspectorWindow::drawCharacterController2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    Scene* scene = sceneProject->scene;
+
+    RowSettings settings;
+    settings.secondColSize = 6 * ImGui::GetFontSize();
+    RowSettings settingsSlope = settings;
+    settingsSlope.help = "Surfaces steeper than this (degrees) are not walked on: they act as walls";
+    RowSettings settingsStep = settings;
+    settingsStep.help = "Steps up to this high (points) are climbed while walking on the ground; 0 climbs none";
+    RowSettings settingsSkin = settings;
+    settingsSkin.help = "How far (points) the capsule stays off what it touches";
+    RowSettings settingsPush = settings;
+    settingsPush.help = "Dynamic bodies it walks into get an impulse of this (N) x dt along the move";
+    RowSettings settingsPlatforms;
+    settingsPlatforms.help = "Carried by the kinematic or dynamic body it stands on";
+
+    beginTable(cpType, getLabelSize("Min Move Distance"));
+    propertyRow(RowPropertyType::Vector2, cpType, "center", "Center", sceneProject, entities, settings);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "height", "Height", sceneProject, entities, settings);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "radius", "Radius", sceneProject, entities, settings);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "slopeLimit", "Slope Limit", sceneProject, entities, settingsSlope);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "stepOffset", "Step Offset", sceneProject, entities, settingsStep);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "skinWidth", "Skin Width", sceneProject, entities, settingsSkin);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "minMoveDistance", "Min Move Distance", sceneProject, entities, settings);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "pushStrength", "Push Strength", sceneProject, entities, settingsPush);
+    propertyRow(RowPropertyType::Bool, cpType, "pushBodies", "Push Bodies", sceneProject, entities, settings);
+    propertyRow(RowPropertyType::Bool, cpType, "movingPlatforms", "Moving Platforms", sceneProject, entities, settingsPlatforms);
+    endTable();
+
+    for (Entity entity : entities){
+        if (scene->findComponent<Rigidbody2DComponent>(entity)){
+            ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION);
+            ImGui::SameLine();
+            ImGui::TextWrapped("A Character Controller 2D does nothing on a GameObject with a Rigidbody 2D: remove one of them.");
+            break;
+        }
+    }
+
+    // what the last move and physics step left, while the scene plays
+    if (sceneProject->playState != ScenePlayState::STOPPED && entities.size() == 1){
+        const CharacterController2DComponent& controller = scene->getComponent<CharacterController2DComponent>(entities[0]);
+        std::string flags;
+        if (controller.collisionFlags & CharacterCollision_Sides) flags += " Sides";
+        if (controller.collisionFlags & CharacterCollision_Above) flags += " Above";
+        if (controller.collisionFlags & CharacterCollision_Below) flags += " Below";
+        ImGui::SeparatorText("Runtime");
+        ImGui::TextDisabled("Grounded: %s   On Steep Slope: %s", controller.isGrounded ? "yes" : "no", controller.isOnSteepSlope ? "yes" : "no");
+        ImGui::TextDisabled("Collision Flags:%s", flags.empty() ? " None" : flags.c_str());
+        ImGui::TextDisabled("Velocity: %.1f, %.1f", controller.velocity.x, controller.velocity.y);
+        ImGui::TextDisabled("Ground Velocity: %.1f, %.1f", controller.groundVelocity.x, controller.groundVelocity.y);
+    }
+}
+
+void editor::InspectorWindow::drawCharacterControllerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    Scene* scene = sceneProject->scene;
+
+    RowSettings settings;
+    settings.secondColSize = 6 * ImGui::GetFontSize();
+    RowSettings settingsSlope = settings;
+    settingsSlope.help = "Surfaces steeper than this (degrees) are not walked on: they act as walls";
+    RowSettings settingsStep = settings;
+    settingsStep.help = "Steps up to this high are climbed while walking on the ground; 0 climbs none";
+    RowSettings settingsSkin = settings;
+    settingsSkin.help = "How far the capsule stays off what it touches (Jolt's character padding)";
+    RowSettings settingsSize = settings;
+    settingsSize.help = "While playing a new size is tried at once and refused when it does not fit there (a crouch under a ceiling)";
+    RowSettings settingsPush = settings;
+    settingsPush.help = "The most force (N) it pushes dynamic bodies with";
+    RowSettings settingsFlag;
+    RowSettings settingsDetect;
+    settingsDetect.help = "A kinematic inner body: rays, triggers and dynamic bodies see it";
+    RowSettings settingsCharacters;
+    settingsCharacters.help = "Other controllers block it";
+    RowSettings settingsEdges;
+    settingsEdges.help = "Smoother over the inner edges of meshes, at a cost";
+
+    beginTable(cpType, getLabelSize("Enhanced Edge Removal"));
+    propertyRow(RowPropertyType::Vector3, cpType, "center", "Center", sceneProject, entities, settingsSize);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "height", "Height", sceneProject, entities, settingsSize);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "radius", "Radius", sceneProject, entities, settingsSize);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "slopeLimit", "Slope Limit", sceneProject, entities, settingsSlope);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "stepOffset", "Step Offset", sceneProject, entities, settingsStep);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "skinWidth", "Skin Width", sceneProject, entities, settingsSkin);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "minMoveDistance", "Min Move Distance", sceneProject, entities, settings);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "mass", "Mass", sceneProject, entities, settings);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "pushStrength", "Push Strength", sceneProject, entities, settingsPush);
+    propertyRow(RowPropertyType::Bool, cpType, "pushBodies", "Push Bodies", sceneProject, entities, settingsFlag);
+    propertyRow(RowPropertyType::Bool, cpType, "movingPlatforms", "Moving Platforms", sceneProject, entities, settingsFlag);
+    propertyRow(RowPropertyType::Bool, cpType, "inheritPlatformYaw", "Inherit Platform Yaw", sceneProject, entities, settingsFlag);
+    propertyRow(RowPropertyType::Bool, cpType, "detectCollisions", "Detect Collisions", sceneProject, entities, settingsDetect);
+    propertyRow(RowPropertyType::Bool, cpType, "characterCollisions", "Character Collisions", sceneProject, entities, settingsCharacters);
+    propertyRow(RowPropertyType::Bool, cpType, "enhancedEdgeRemoval", "Enhanced Edge Removal", sceneProject, entities, settingsEdges);
+    endTable();
+
+    for (Entity entity : entities){
+        if (scene->findComponent<RigidbodyComponent>(entity)){
+            ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION);
+            ImGui::SameLine();
+            ImGui::TextWrapped("A Character Controller does nothing on a GameObject with a Rigidbody: remove one of them.");
+            break;
+        }
+    }
+
+    // what the last move and physics step left, while the scene plays
+    if (sceneProject->playState != ScenePlayState::STOPPED && entities.size() == 1){
+        const CharacterControllerComponent& controller = scene->getComponent<CharacterControllerComponent>(entities[0]);
+        std::string flags;
+        if (controller.collisionFlags & CharacterCollision_Sides) flags += " Sides";
+        if (controller.collisionFlags & CharacterCollision_Above) flags += " Above";
+        if (controller.collisionFlags & CharacterCollision_Below) flags += " Below";
+        ImGui::SeparatorText("Runtime");
+        ImGui::TextDisabled("Grounded: %s   On Steep Slope: %s", controller.isGrounded ? "yes" : "no", controller.isOnSteepSlope ? "yes" : "no");
+        ImGui::TextDisabled("Collision Flags:%s", flags.empty() ? " None" : flags.c_str());
+        ImGui::TextDisabled("Velocity: %.2f, %.2f, %.2f", controller.velocity.x, controller.velocity.y, controller.velocity.z);
+        ImGui::TextDisabled("Ground Velocity: %.2f, %.2f, %.2f", controller.groundVelocity.x, controller.groundVelocity.y, controller.groundVelocity.z);
+    }
+}
+
+void editor::InspectorWindow::drawWaterVolumeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    Scene* scene = sceneProject->scene;
+    const WaterVolumeComponent& volume = scene->getComponent<WaterVolumeComponent>(entities[0]);
+
+    RowSettings settings;
+    settings.secondColSize = 6 * ImGui::GetFontSize();
+    RowSettings settingsSize = settings;
+    settingsSize.help = "Local box under the surface: X and Z its extent, Y the depth";
+    RowSettings settingsOffset = settings;
+    settingsOffset.help = "Local height of the surface (the waves move it up and down)";
+    RowSettings settingsInfinite;
+    settingsInfinite.help = "An ocean: no extent and no bottom";
+    RowSettings settingsDensity = settings;
+    settingsDensity.help = "kg/m3: what floats in it settles as deep as its density is of this";
+    RowSettings settingsFlow = settings;
+    settingsFlow.help = "World m/s: what floats drifts with it";
+    RowSettings settingsDrag = settings;
+    settingsDrag.help = "Per second, against moving through the water (Linear) and turning in it (Angular)";
+    RowSettings settingsWaves;
+    settingsWaves.enumEntries = &entriesWaterVolumeWaves;
+    settingsWaves.help = "From Material: the waves of this GameObject's library:water material (WAVES), the ones it draws";
+
+    beginTable(cpType, getLabelSize("Surface Offset"));
+    propertyRow(RowPropertyType::Vector3, cpType, "size", "Size", sceneProject, entities, settingsSize);
+    propertyRow(RowPropertyType::Float, cpType, "surfaceOffset", "Surface Offset", sceneProject, entities, settingsOffset);
+    propertyRow(RowPropertyType::Bool, cpType, "infinite", "Infinite", sceneProject, entities, settingsInfinite);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "density", "Density", sceneProject, entities, settingsDensity);
+    propertyRow(RowPropertyType::Vector3, cpType, "flow", "Flow", sceneProject, entities, settingsFlow);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "linearDrag", "Linear Drag", sceneProject, entities, settingsDrag);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "angularDrag", "Angular Drag", sceneProject, entities, settingsDrag);
+    propertyRow(RowPropertyType::Enum, cpType, "waves", "Waves", sceneProject, entities, settingsWaves);
+    endTable();
+
+    // Fit to Mesh: the volume over the GameObject's mesh, its surface at the mesh's top
+    const MeshComponent* mesh = scene->findComponent<MeshComponent>(entities[0]);
+    const bool fits = entities.size() == 1 && mesh && !mesh->aabb.isNull();
+    ImGui::BeginDisabled(!fits);
+    if (ImGui::Button(ICON_FA_EXPAND " Fit to Mesh")){
+        const Vector3 min = mesh->aabb.getMinimum();
+        const Vector3 max = mesh->aabb.getMaximum();
+        auto multiCmd = new MultiPropertyCmd();
+        multiCmd->addPropertyCmd<Vector3>(project, sceneProject->id, entities[0], cpType, "size",
+                                          Vector3(max.x - min.x, volume.size.y, max.z - min.z));
+        multiCmd->addPropertyCmd<float>(project, sceneProject->id, entities[0], cpType, "surfaceOffset", max.y);
+        CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
+        multiCmd->setNoMerge();
+    }
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip(fits ? "Size X and Z and the surface from this GameObject's mesh bounds" : "Needs a mesh on this GameObject");
+
+    // the drawn surface is linear between vertices; the physics follows the exact waves
+    if (entities.size() == 1 && volume.waves == WaterVolumeWaves::FROM_MATERIAL){
+        const float waveLength = WaterEditorUtils::materialWaveLength(scene, entities[0]);
+        const float spacing = WaterEditorUtils::meshVertexSpacing(scene, entities[0]);
+        if (waveLength > 0.0f && spacing > waveLength * 0.6f / 8.0f){
+            ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION);
+            ImGui::SameLine();
+            ImGui::TextWrapped("The mesh's vertices are %.2f apart, more than an eighth of the shorter wave (%.2f): the drawn surface "
+                               "departs from the one things float on by more than about 8%% of the wave height. Subdivide the mesh.",
+                               spacing, waveLength * 0.6f / 8.0f);
+        }
+    }
+}
+
+void editor::InspectorWindow::drawBuoyancyComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    Scene* scene = sceneProject->scene;
+    const BuoyancyComponent& buoyancy = scene->getComponent<BuoyancyComponent>(entities[0]);
+
+    RowSettings settings;
+    settings.secondColSize = 6 * ImGui::GetFontSize();
+    RowSettings settingsColumns;
+    settingsColumns.enumEntries = &entriesBuoyancyColumns;
+    settingsColumns.help = "Where it samples the water: a grid on the bottom of its colliders, or the points below";
+    RowSettings settingsVolume = settings;
+    settingsVolume.help = "Times the colliders' volume: more floats higher";
+    RowSettings settingsDrag = settings;
+    settingsDrag.help = "Times the water's drags";
+
+    beginTable(cpType, getLabelSize("Volume Scale"));
+    propertyRow(RowPropertyType::Enum, cpType, "columns", "Columns", sceneProject, entities, settingsColumns);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "volumeScale", "Volume Scale", sceneProject, entities, settingsVolume);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "dragScale", "Drag Scale", sceneProject, entities, settingsDrag);
+    endTable();
+
+    if (buoyancy.columns == BuoyancyColumns::CUSTOM && entities.size() == 1){
+        const Entity entity = entities[0];
+        auto setPoints = [&](const std::vector<Vector3>& points){
+            auto* cmd = new editor::PropertyCmd<std::vector<Vector3>>(project, sceneProject->id, entity, cpType, "customPoints", points);
+            cmd->setNoMerge();
+            CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+        };
+        ImGui::SeparatorText("Column Points (local, at most 9)");
+        std::vector<Vector3> points = buoyancy.customPoints;
+        for (size_t i = 0; i < points.size(); i++){
+            ImGui::PushID((int)i);
+            Vector3 point = points[i];
+            ImGui::SetNextItemWidth(-3.0f * ImGui::GetFontSize());
+            if (ImGui::DragFloat3("##point", &point.x, 0.01f) ){
+                points[i] = point;
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit())
+                setPoints(points);
+            ImGui::SameLine();
+            if (ImGui::Button(ICON_FA_XMARK)){
+                points.erase(points.begin() + (long)i);
+                setPoints(points);
+                ImGui::PopID();
+                break;
+            }
+            ImGui::PopID();
+        }
+        ImGui::BeginDisabled(points.size() >= 9);
+        if (ImGui::Button(ICON_FA_PLUS " Add Point")){
+            points.push_back(Vector3(0.0f, 0.0f, 0.0f));
+            setPoints(points);
+        }
+        ImGui::EndDisabled();
+    }
+
+    auto warning = [](const char* text){
+        ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION);
+        ImGui::SameLine();
+        ImGui::TextWrapped("%s", text);
+    };
+    for (Entity entity : entities){
+        const RigidbodyComponent* body = scene->findComponent<RigidbodyComponent>(entity);
+        if (!body || body->type != BodyType::DYNAMIC){
+            warning("Buoyancy floats a dynamic Rigidbody: add one to this GameObject (or make it Dynamic).");
+            break;
+        }
+    }
+    if (scene->getComponentArray<WaterVolumeComponent>()->size() == 0)
+        warning("There is no Water Volume in this scene: nothing floats it.");
+
+    // its effective density against the water's
+    if (entities.size() == 1){
+        float volume = 0.0f, mass = 0.0f;
+        const float water = WaterEditorUtils::waterDensity(scene, entities[0]);
+        if (WaterEditorUtils::colliderMass(scene, entities[0], volume, mass) && water > 0.0f){
+            const float effective = mass / (volume * std::max(buoyancy.volumeScale, 1e-6f));
+            ImGui::TextDisabled("Effective density %.0f kg/m3 (water %.0f)", effective, water);
+            if (effective >= water)
+                warning("At least as dense as the water: it will sink or hover.");
+        }
+    }
+}
+
 void editor::InspectorWindow::drawJoint3DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     Joint3DComponent& joint = sceneProject->scene->getComponent<Joint3DComponent>(entities[0]);
 
@@ -16555,6 +16836,14 @@ void editor::InspectorWindow::show(){
                     drawRigidbodyComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::Joint2DComponent){
                     drawJoint2DComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::CharacterController2DComponent){
+                    drawCharacterController2DComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::CharacterControllerComponent){
+                    drawCharacterControllerComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::WaterVolumeComponent){
+                    drawWaterVolumeComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::BuoyancyComponent){
+                    drawBuoyancyComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::Joint3DComponent){
                     drawJoint3DComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::ActionComponent){

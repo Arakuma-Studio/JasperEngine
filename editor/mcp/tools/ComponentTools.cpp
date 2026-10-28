@@ -558,6 +558,21 @@ void addComponentTool(const CallPtr& call) {
             return;
         }
     }
+    for (ComponentType type : types) {
+        const ComponentType other = Catalog::getConflictingComponent(type);
+        if (other != ComponentType::Transform && std::find(types.begin(), types.end(), other) != types.end()) {
+            call->fail("A " + Catalog::getComponentDisplayName(type) + " and a " + Catalog::getComponentDisplayName(other) +
+                       " cannot share a GameObject: add one of them.");
+            return;
+        }
+        for (Entity entity : entities) {
+            const std::string conflict = Catalog::getComponentConflict(scene->scene, entity, type);
+            if (!conflict.empty()) {
+                call->fail(conflict, Json{{"entity", entity}});
+                return;
+            }
+        }
+    }
     std::vector<McpValues::Change> changes;
     if (args.contains("values") && !args["values"].is_null()) {
         if (!McpValues::parseChanges(args["values"], changes, error)) {

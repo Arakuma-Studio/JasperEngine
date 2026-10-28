@@ -4177,6 +4177,8 @@ void editor::ProjectWindow::openFile(const FileEntry& file, const fs::path& file
         animationClipInspectorHooks().openClip(project, 0, NULL_ENTITY, clip);
     } else if (Util::isPrefabFile(filePath.string())) {
         editor::getEditorHost().openPrefabAsset(filePath);  // Unity: Prefab Mode
+    } else if (filePath.extension() == ".inputactions") {
+        editor::getEditorHost().openInputActions(filePath);
     } else if (file.type == FileType::COLOR_LUT) {
         assignColorLut(filePath);  // the open scene's Color Grading LUT
     } else {

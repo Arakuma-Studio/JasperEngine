@@ -19,6 +19,8 @@ namespace jasperengine{
     class Rigidbody;
     class Contact3D;
     class CollideShapeResult3D;
+    struct ControllerColliderHit;
+    class InputActionEvent;
     struct ParticleCollisionInfo;
     struct ParticleDeathInfo;
     struct ParticleSubEmitInfo;
@@ -73,6 +75,9 @@ namespace jasperengine{
         void push_value(lua_State *vm, CollideShapeResult3D o);
         // a copy of the event (its args read as a 1-based table: AnimationEvent.args)
         void push_value(lua_State *vm, const AnimationEvent &o);
+        void push_value(lua_State *vm, ControllerColliderHit o);
+        // an input action's callback gets the event itself: event:consume() reaches it
+        void push_value(lua_State *vm, const InputActionEvent& o);
 
         template <typename T>
         static T get_value(lua_State *vm);

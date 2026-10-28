@@ -547,6 +547,14 @@ namespace jasperengine::editor {
 
         static YAML::Node encodeJoint2DComponent(const Joint2DComponent& joint);
         static Joint2DComponent decodeJoint2DComponent(const YAML::Node& node, const Joint2DComponent* oldJoint = nullptr);
+        static YAML::Node encodeCharacterController2DComponent(const CharacterController2DComponent& controller);
+        static YAML::Node encodeCharacterControllerComponent(const CharacterControllerComponent& controller);
+        static YAML::Node encodeWaterVolumeComponent(const WaterVolumeComponent& volume);
+        static WaterVolumeComponent decodeWaterVolumeComponent(const YAML::Node& node, const WaterVolumeComponent* oldVolume = nullptr);
+        static YAML::Node encodeBuoyancyComponent(const BuoyancyComponent& buoyancy);
+        static BuoyancyComponent decodeBuoyancyComponent(const YAML::Node& node, const BuoyancyComponent* oldBuoyancy = nullptr);
+        static CharacterControllerComponent decodeCharacterControllerComponent(const YAML::Node& node, const CharacterControllerComponent* oldController = nullptr);
+        static CharacterController2DComponent decodeCharacterController2DComponent(const YAML::Node& node, const CharacterController2DComponent* oldController = nullptr);
 
         static YAML::Node encodeJoint3DComponent(const Joint3DComponent& joint);
         static Joint3DComponent decodeJoint3DComponent(const YAML::Node& node, const Joint3DComponent* oldJoint = nullptr);

@@ -51,6 +51,7 @@ namespace jasperengine::editor {
         ToggleProfiler,
         ToggleFrameDebugger,
         ToggleUndoHistory,
+        ToggleInputActions,
         TogglePlayModeChanges,
         FocusScene,
         FocusGame,

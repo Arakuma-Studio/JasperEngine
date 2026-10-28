@@ -296,6 +296,14 @@ namespace jasperengine{
     private:
         Scene* scene;
         PhysicsSystem* physicsSystem;
+
+        // A CharacterController's inner body has no RigidbodyComponent: its contacts with bodies
+        // are not reported (scripts would get a Rigidbody with nothing behind it), a trigger's are
+        // (its Rigidbody for the controller side is not isValid())
+        bool hidden(const JPH::Body& body1, const JPH::Body& body2) const{
+            const bool inner = physicsSystem->isCharacterInnerBody(body1.GetID()) || physicsSystem->isCharacterInnerBody(body2.GetID());
+            return inner && !body1.IsSensor() && !body2.IsSensor();
+        }
 	public:
         JoltContactListener(Scene* scene, PhysicsSystem* physicsSystem){
             this->scene = scene;
@@ -324,7 +332,7 @@ namespace jasperengine{
 		}
 
 		virtual void OnContactAdded(const JPH::Body &inBody1, const JPH::Body &inBody2, const JPH::ContactManifold &inManifold, JPH::ContactSettings &ioSettings) override{
-			if (!physicsSystem->onContactAdded3D.hasSubscribers()){
+			if (!physicsSystem->onContactAdded3D.hasSubscribers() || hidden(inBody1, inBody2)){
 				return;
 			}
 			std::lock_guard<std::recursive_mutex> lock(physicsSystem->getCallbackMutex3D());
@@ -339,7 +347,7 @@ namespace jasperengine{
 		}
 
 		virtual void OnContactPersisted(const JPH::Body &inBody1, const JPH::Body &inBody2, const JPH::ContactManifold &inManifold, JPH::ContactSettings &ioSettings) override{
-			if (!physicsSystem->onContactPersisted3D.hasSubscribers()){
+			if (!physicsSystem->onContactPersisted3D.hasSubscribers() || hidden(inBody1, inBody2)){
 				return;
 			}
 			std::lock_guard<std::recursive_mutex> lock(physicsSystem->getCallbackMutex3D());
@@ -369,6 +377,16 @@ namespace jasperengine{
 
 			if (!body_interface.IsAdded(body1Id) || !body_interface.IsAdded(body2Id)){
 				return;
+			}
+
+			// as hidden(): an inner body's removal is reported only against a trigger
+			if (physicsSystem->isCharacterInnerBody(body1Id) || physicsSystem->isCharacterInnerBody(body2Id)){
+				const JPH::BodyLockInterface& locks = physicsSystem->getWorld3D()->GetBodyLockInterfaceNoLock();
+				const JPH::Body* body1 = locks.TryGetBody(body1Id);
+				const JPH::Body* body2 = locks.TryGetBody(body2Id);
+				if (!body1 || !body2 || (!body1->IsSensor() && !body2->IsSensor())){
+					return;
+				}
 			}
 
 			auto shape1 = body_interface.GetShape(body1Id);

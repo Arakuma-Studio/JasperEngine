@@ -2452,6 +2452,11 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     mainContent += "    Engine::setAtmosphereQualityDefaults(" + qualityName(atmosphereQuality[0]) + ", " + qualityName(atmosphereQuality[1]) + ", " +
                    qualityName(atmosphereQuality[2]) + ");\n";
 
+    // Project Settings > Input: the deadzone, then the default Input Actions asset
+    if (inputDeadzone != 0.15f)
+        mainContent += "    InputActions::setDefaultDeadzone(" + Factory::formatFloat(inputDeadzone) + ");\n";
+    if (!inputActionsAsset.empty())
+        mainContent += "    InputActions::loadDefault(" + Factory::formatString(inputActionsAsset) + ");\n";
     // the texture quality, memory budget and low-memory fallback of the platform group
     // (Project Settings > Texture), before any texture loads
     {

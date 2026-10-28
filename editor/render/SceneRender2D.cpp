@@ -64,6 +64,10 @@ editor::SceneRender2D::~SceneRender2D(){
         delete pair.second;
     }
 
+    for (auto& pair : controllerLines) {
+        delete pair.second;
+    }
+
     for (auto& pair : light2DLines) {
         delete pair.second;
     }
@@ -520,6 +524,47 @@ void editor::SceneRender2D::createOrUpdateBodyLines(Entity entity, const Transfo
     }
 }
 
+// the upright capsule the CharacterController2DSystem moves: as it sizes it, the world scale
+// (radius by x, height by y) and no rotation
+void editor::SceneRender2D::createOrUpdateController2DLines(Entity entity, const Transform& transform, const CharacterController2DComponent& controller, bool visible, bool highlighted){
+    LineRenderer* linesObj = controllerLines[entity];
+    linesObj->clearLines();
+    linesObj->setVisible(transform.visible && visible);
+    if (!transform.visible || !visible){
+        return;
+    }
+
+    const Vector2 scale(std::fabs(transform.worldScale.x), std::fabs(transform.worldScale.y));
+    const float radius = std::max(0.0f, controller.radius) * scale.x;
+    const float height = std::max(0.0f, controller.height) * scale.y;
+    if (radius <= 0.0f){
+        return;
+    }
+    const float halfSegment = std::max(0.0f, height * 0.5f - radius);
+    const Vector2 center = Vector2(transform.worldPosition.x, transform.worldPosition.y) + controller.center * scale;
+    const float z = transform.worldPosition.z;
+    const Vector4 color = controller.enabled ? Vector4(0.45f, 0.95f, 0.35f, highlighted ? 1.0f : 0.35f)
+                                             : Vector4(0.6f, 0.6f, 0.6f, highlighted ? 0.8f : 0.3f);
+    auto point = [&](const Vector2& p){ return Vector3(p.x, p.y, z); };
+    const Vector2 top = center + Vector2(0.0f, halfSegment);
+    const Vector2 bottom = center - Vector2(0.0f, halfSegment);
+    linesObj->addLine(point(top + Vector2(-radius, 0.0f)), point(bottom + Vector2(-radius, 0.0f)), color);
+    linesObj->addLine(point(top + Vector2(radius, 0.0f)), point(bottom + Vector2(radius, 0.0f)), color);
+    constexpr int segments = 12;
+    for (int i = 0; i < segments; i++){
+        const float a0 = (float)M_PI * i / segments;
+        const float a1 = (float)M_PI * (i + 1) / segments;
+        linesObj->addLine(point(top + Vector2(std::cos(a0), std::sin(a0)) * radius), point(top + Vector2(std::cos(a1), std::sin(a1)) * radius), color);
+        linesObj->addLine(point(bottom - Vector2(std::cos(a0), std::sin(a0)) * radius), point(bottom - Vector2(std::cos(a1), std::sin(a1)) * radius), color);
+    }
+    // the step it climbs, over the feet
+    if (controller.stepOffset > 0.0f){
+        const float feet = bottom.y - radius;
+        linesObj->addLine(point(Vector2(center.x - radius, feet + controller.stepOffset)), point(Vector2(center.x + radius, feet + controller.stepOffset)),
+                          Vector4(color.x, color.y, color.z, color.w * 0.5f));
+    }
+}
+
 void editor::SceneRender2D::createOrUpdateJointLines(Entity entity, const Joint2DComponent& joint, bool visible, bool highlighted){
     LineRenderer* jointLinesObj = jointLines[entity];
 
@@ -781,6 +826,9 @@ void editor::SceneRender2D::hideAllGizmos(){
     for (auto& pair : jointLines) {
         pair.second->setVisible(false);
     }
+    for (auto& pair : controllerLines) {
+        pair.second->setVisible(false);
+    }
     for (auto& pair : light2DLines) {
         pair.second->setVisible(false);
     }
@@ -872,6 +920,7 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
     std::set<Entity> currentContainers;
     std::set<Entity> currentBodies;
     std::set<Entity> currentJoints;
+    std::set<Entity> currentControllers;
     std::set<Entity> currentLights2D;
     std::set<Entity> currentOccluders2D;
     std::set<Entity> currentLinePoints;
@@ -949,6 +998,16 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
             bool isVisible = displaySettings.showAllBodies || highlighted;
 
             createOrUpdateBodyLines(entity, transform, body, isVisible, highlighted);
+        }
+
+        if (signature.test(scene->getComponentId<CharacterController2DComponent>()) && signature.test(scene->getComponentId<Transform>())){
+            const CharacterController2DComponent& controller = scene->getComponent<CharacterController2DComponent>(entity);
+            Transform& transform = scene->getComponent<Transform>(entity);
+
+            currentControllers.insert(entity);
+            ensureOverlayLines(controllerLines, entity);
+            const bool highlighted = isDescendantSelected(entity);
+            createOrUpdateController2DLines(entity, transform, controller, displaySettings.showAllBodies || highlighted, highlighted);
         }
 
         if (signature.test(scene->getComponentId<Light2DComponent>()) && signature.test(scene->getComponentId<Transform>())){
@@ -1194,6 +1253,16 @@ void editor::SceneRender2D::update(std::vector<Entity> selEntities, std::vector<
             itBody = bodyLines.erase(itBody);
         } else {
             ++itBody;
+        }
+    }
+
+    auto itController = controllerLines.begin();
+    while (itController != controllerLines.end()) {
+        if (currentControllers.find(itController->first) == currentControllers.end()) {
+            delete itController->second;
+            itController = controllerLines.erase(itController);
+        } else {
+            ++itController;
         }
     }
 

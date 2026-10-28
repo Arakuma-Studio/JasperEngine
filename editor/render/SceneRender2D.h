@@ -18,6 +18,7 @@ namespace jasperengine::editor{
         std::map<Entity, LineRenderer*> containerLines;
         std::map<Entity, LineRenderer*> bodyLines;
         std::map<Entity, LineRenderer*> jointLines;
+        std::map<Entity, LineRenderer*> controllerLines;
         std::map<Entity, LineRenderer*> light2DLines;
         std::map<Entity, LineRenderer*> shadowCaster2DLines;
         std::map<Entity, LineRenderer*> linePointLines;
@@ -41,6 +42,7 @@ namespace jasperengine::editor{
         void addPointHandle(LineRenderer* linesObj, const Vector3& worldPoint, float halfSize, const Vector4& color);
         void createOrUpdateBodyLines(Entity entity, const Transform& transform, const Rigidbody2DComponent& body, bool visible, bool highlighted);
         void createOrUpdateJointLines(Entity entity, const Joint2DComponent& joint, bool visible, bool highlighted);
+        void createOrUpdateController2DLines(Entity entity, const Transform& transform, const CharacterController2DComponent& controller, bool visible, bool highlighted);
         void createOrUpdateLight2DLines(Entity entity, const Transform& transform, const Light2DComponent& light, bool visible, bool highlighted);
         void createOrUpdateShadowCaster2DLines(Entity entity, const Transform& transform, const ShadowCaster2DComponent& occluder, bool visible, bool highlighted);
         void createOrUpdateLinePointLines(Entity entity, const Transform& transform, const LineRendererComponent& lines, bool visible);
