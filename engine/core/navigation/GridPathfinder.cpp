@@ -99,7 +99,8 @@ GridSolver::~GridSolver() = default;
 
 size_t GridSolver::scratchBytes() const {
     return g.capacity() * sizeof(float) + parent.capacity() * sizeof(int32_t) + generation.capacity() * sizeof(uint16_t) +
-           state.capacity() * sizeof(uint8_t) + heap.capacity() * sizeof(HeapNode) + openCells.capacity();
+           state.capacity() * sizeof(uint8_t) + heap.capacity() * sizeof(HeapNode) + openCells.capacity() +
+           4 * (jumpDistance[0].capacity() + runDistance[0].capacity()) * sizeof(int16_t);
 }
 
 void GridSolver::prepare(int cells) {
@@ -306,6 +307,37 @@ GridPath GridSolver::solveJps(const NavGridMap& map, GridCell start, GridCell go
         openMap = &map;
         openRevision = map.getRevision();
         openMask = passMask;
+        const uint8_t* at = openCells.data() + stride + 1;
+        auto isOpen = [at, stride](int x, int y) { return at[y * stride + x] != 0; };
+        const int steps[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        for (int d = 0; d < 4; d++) {
+            const int dx = steps[d][0], dy = steps[d][1];
+            jumpDistance[d].assign((size_t)width * (size_t)height, -1);
+            runDistance[d].assign((size_t)width * (size_t)height, 0);
+            // from the far end of each run backwards: what lies ahead is known
+            const int x0 = dx > 0 ? width - 1 : 0, x1 = dx > 0 ? -1 : width, sx = dx > 0 ? -1 : 1;
+            const int y0 = dy > 0 ? height - 1 : 0, y1 = dy > 0 ? -1 : height, sy = dy > 0 ? -1 : 1;
+            for (int y = y0; y != y1; y += sy) {
+                for (int x = x0; x != x1; x += sx) {
+                    const size_t c = (size_t)(y * width + x);
+                    if (!isOpen(x, y))
+                        continue;
+                    bool forced;
+                    if (dx != 0)
+                        forced = (isOpen(x, y - 1) && !isOpen(x - dx, y - 1)) || (isOpen(x, y + 1) && !isOpen(x - dx, y + 1));
+                    else
+                        forced = (isOpen(x - 1, y) && !isOpen(x - 1, y - dy)) || (isOpen(x + 1, y) && !isOpen(x + 1, y - dy));
+                    const int nx = x + dx, ny = y + dy;
+                    const bool aheadOpen = isOpen(nx, ny);
+                    const size_t ahead = aheadOpen ? (size_t)(ny * width + nx) : 0;
+                    runDistance[d][c] = aheadOpen ? (int16_t)(runDistance[d][ahead] + 1) : 0;
+                    if (forced)
+                        jumpDistance[d][c] = 0;
+                    else if (aheadOpen && jumpDistance[d][ahead] >= 0)
+                        jumpDistance[d][c] = (int16_t)(jumpDistance[d][ahead] + 1);
+                }
+            }
+        }
     }
     const uint8_t* openAt = openCells.data() + stride + 1;
     // x and y may be one cell outside the grid: the border is closed
@@ -313,22 +345,17 @@ GridPath GridSolver::solveJps(const NavGridMap& map, GridCell start, GridCell go
     const int goalIndex = map.index(goal);
     // the next jump point from (x, y) moving straight (one of dx, dy zero), -1 when none
     auto jumpStraight = [&](int x, int y, int dx, int dy) -> int {
-        while (true) {
-            if (!open(x, y))
-                return -1;
-            const int index = y * width + x;
-            if (index == goalIndex)
-                return index;
-            if (dx != 0) {
-                if ((open(x, y - 1) && !open(x - dx, y - 1)) || (open(x, y + 1) && !open(x - dx, y + 1)))
-                    return index;
-            } else {
-                if ((open(x - 1, y) && !open(x - 1, y - dy)) || (open(x + 1, y) && !open(x + 1, y - dy)))
-                    return index;
-            }
-            x += dx;
-            y += dy;
-        }
+        if (!open(x, y))
+            return -1;
+        const int d = dx > 0 ? 0 : dx < 0 ? 1 : dy > 0 ? 2 : 3;
+        const size_t c = (size_t)(y * width + x);
+        const int jumpAt = jumpDistance[d][c];
+        const int reach = jumpAt >= 0 ? jumpAt : runDistance[d][c];
+        // the goal on the run before the jump point (or the wall)
+        const int k = dx != 0 ? (goal.y == y ? (goal.x - x) * dx : -1) : (goal.x == x ? (goal.y - y) * dy : -1);
+        if (k >= 0 && k <= reach)
+            return goalIndex;
+        return jumpAt >= 0 ? (y + dy * jumpAt) * width + (x + dx * jumpAt) : -1;
     };
     // moving diagonally: a cell is a jump point when a straight scan from it finds one
     auto jump = [&](int x, int y, int dx, int dy) -> int {

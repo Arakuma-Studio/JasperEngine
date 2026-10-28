@@ -583,8 +583,9 @@ What the implementation does differently from the text above, and why.
   bytes of solver scratch R29 budgets (`NavGridTest.MemoryPerCell` checks both).
 - **Jump point search.** Uniform-cost square grids (8 neighbours, no corner cutting, no
   reservations or heights) are searched with JPS: the same path cost as A*
-  (`NavGridTest.JumpPointSearchMatchesAStar`), at 1 byte per cell more solver scratch (a bordered
-  passability copy, rebuilt when the map or the area mask changes).
+  (`NavGridTest.JumpPointSearchMatchesAStar`). Its scratch adds 17 bytes per cell to a solver
+  that ran one (a bordered passability copy and, per straight direction, the distances to the next
+  jump point and to the wall, JPS+ style), rebuilt when the map or the area mask changes.
 - **Default asset location.** Scenes live at the project root, so the default `.navmesh` is
   `assets/<scene folder>/<SceneName>/NavMesh-<GameObject>.navmesh` (inside the assets folder, where
   the engine reads assets), not next to the scene; `.navgrid` files follow the same rule

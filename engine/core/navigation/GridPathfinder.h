@@ -116,6 +116,11 @@ namespace jasperengine::nav {
         // jump point search: the passable cells with a closed border ((width + 2) x (height + 2)),
         // kept while the map, its revision and the area mask stay the same
         std::vector<uint8_t> openCells;
+        // per straight direction (+x, -x, +y, -y) and cell: the distance to the next jump point
+        // (-1: a wall first) and to the last open cell of the run (JPS+ style, so a straight
+        // scan is one lookup)
+        std::vector<int16_t> jumpDistance[4];
+        std::vector<int16_t> runDistance[4];
         const NavGridMap* openMap = nullptr;
         uint64_t openRevision = 0;
         uint32_t openMask = 0;
