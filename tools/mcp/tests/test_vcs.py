@@ -99,11 +99,12 @@ async def test_unsaved_edit_diff_revert_and_undo(ed: Editor):
     ed.check(spawner_diff(on_disk) is None, f"disk: {on_disk}")
 
     reverted = await ed.call("revert_to_baseline", scene="Main Scene", entity=S["spawner"], property="transform.position")
-    ed.check("to Baseline" in reverted.get("undo", ""), f"{reverted}")
+    undo_name = (reverted.get("undo") or {}).get("name", "")
+    ed.check("Revert transform.position to Baseline" in undo_name, f"{reverted}")
     after = await ed.call("diff_scene", scene="Main Scene")
     ed.check(spawner_diff(after) is None, f"reverted: {after}")
     undone = await ed.call("undo", scope="scene", scene="Main Scene")
-    ed.check_eq([u["name"] for u in undone["undone"]], [reverted["undo"]], f"one step: {undone}")
+    ed.check_eq([u["name"] for u in undone["undone"]], [undo_name], f"one step: {undone}")
     again = await ed.call("diff_scene", scene="Main Scene")
     ed.check(spawner_diff(again) is not None, f"undo brings the edit back: {again}")
 
@@ -129,8 +130,9 @@ async def test_refusals_commit_nothing(ed: Editor):
     await ed.check_error("sync_remote", {"action": "pull", "confirm": False}, contains="confirm")
     await ed.check_error("lock_files", {"paths": ["../outside"]})
     await ed.check_error("unlock_files", {"paths": []})
-    # no remote: git's own message, nothing hangs on a prompt
-    await ed.check_error("sync_remote", {"action": "fetch", "wait": True, "timeout_seconds": 60})
+    # no remote: nothing to fetch, and nothing waits on a prompt
+    fetched = await ed.call_raw("sync_remote", {"action": "fetch", "wait": True, "timeout_seconds": 60})
+    ed.check("Fetch" in fetched.text, f"the job answered: {fetched.text[:300]}")
     await ed.check_error("diff_file", {"path": "../outside"})
     await ed.check_error("commit_files", {"paths": ["../outside"], "message": "outside"})
     target = ed.scratch.root / "x"
@@ -160,5 +162,5 @@ async def test_commit_and_log(ed: Editor):
     log = await ed.call("get_vcs_log", limit=5)
     ed.check_eq(log["entries"][0]["revision"], revision, f"newest first: {log}")
     ed.check_eq(log["entries"][0]["message"], "Move the spawner", f"{log}")
-    status = await ed.call("get_vcs_status")
+    status = await ed.call("get_vcs_status", refresh=True)
     ed.check(SCENE not in {e["path"] for e in status["entries"]}, f"clean after the commit: {status}")
