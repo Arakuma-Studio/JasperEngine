@@ -34,7 +34,14 @@ namespace {
         return std::string(path) + "@";
     }
 
-    RepoPath keyOf(std::string path) {
+    // a path svn printed: relative to the working copy root (status, as it was given) or
+    // absolute (propget prints them so)
+    RepoPath keyOf(std::string path, const fs::path& root = {}) {
+        if (!root.empty()) {
+            const fs::path printed = pathFromUtf8(path);
+            RepoPath key;
+            if (printed.is_absolute() && repoRelative(printed, root, key)) return key;
+        }
         std::replace(path.begin(), path.end(), '\\', '/');
         while (path.rfind("./", 0) == 0) path.erase(0, 2);
         if (path == ".") path.clear();
@@ -316,6 +323,11 @@ VcsResult SvnProvider::status(VcsSnapshot& out, uint32_t depth, const jobs::Canc
     if (!parseXml(result.out, root, &error)) return VcsResult::failure("svn status: " + error);
     int against = 0;
     parseStatusXml(root, remote, out, against);
+    // the editor's own folder (.jasperengine, which svn does not ignore unless told) is never a change
+    RepoPath internalKey;
+    if (repoRelative(cfg.projectDir / ".jasperengine", cfg.repoRoot, internalKey) && !internalKey.empty()) {
+        std::erase_if(out.entries, [&internalKey](const VcsChange& change) { return pathKeyIsWithin(change.path, internalKey); });
+    }
     out.hasIgnored = (depth & WithIgnored) != 0;
     VcsBranchInfo branch;
     if (branchInfo(branch).ok) out.branch = branch;
@@ -335,7 +347,7 @@ VcsResult SvnProvider::readLockable(VcsSnapshot& out) {
     XmlElement root;
     if (!parseXml(result.out, root)) return VcsResult::failure("svn propget: unreadable output");
     for (const XmlElement& target : root.children) {
-        if (target.name == "target") out.lockable.push_back(keyOf(target.attribute("path")));
+        if (target.name == "target") out.lockable.push_back(keyOf(target.attribute("path"), cfg.repoRoot));
     }
     out.hasLockable = true;
     return VcsResult::success();
@@ -549,7 +561,7 @@ VcsResult SvnProvider::lockable(std::span<const RepoPath> paths, std::vector<boo
     if (!parseXml(result.out, root)) return VcsResult::failure("svn propget: unreadable output");
     for (const XmlElement& target : root.children) {
         if (target.name != "target") continue;
-        const RepoPath key = keyOf(target.attribute("path"));
+        const RepoPath key = keyOf(target.attribute("path"), cfg.repoRoot);
         for (size_t i = 0; i < paths.size(); i++) {
             if (pathKeysEqual(paths[i], key)) out[i] = true;
         }

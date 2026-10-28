@@ -41,7 +41,7 @@ namespace {
     // 400th (a scene has at most MAX_LIGHTS), a script with properties every fifth; ids from 1000
     std::string bigScene(int count, int changedEvery = 0) {
         std::string text = "formatVersion: " + std::to_string(StreamMigrations::currentVersion(DocumentKind::Scene)) +
-                           "\nid: 1\nname: Big\nsceneType: scene_3d\nmainCamera: 0\nentities:\n";
+                           "\nid: 1\nname: Big\nscene:\n  backgroundColor: [0.25, 0.45, 0.65, 1]\nsceneType: scene_3d\nmainCamera: 0\nentities:\n";
         text.reserve(static_cast<size_t>(count) * 420);
         for (int i = 0; i < count; i++) {
             const bool changed = changedEvery > 0 && i % changedEvery == 0;
