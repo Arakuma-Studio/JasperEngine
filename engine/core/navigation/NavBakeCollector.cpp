@@ -383,7 +383,9 @@ namespace {
     public:
         Collector(Scene* scene, Entity surface, const NavMeshSurfaceComponent& component, NavCollectStats& stats)
             : scene(scene), surfaceEntity(surface), surface(component), stats(stats) {
+#ifdef JASPERENGINE_EDITOR
             renderSystem = scene->getSystem<RenderSystem>().get();
+#endif
         }
 
         std::shared_ptr<NavBakeInput> run(std::string& error);
@@ -407,6 +409,7 @@ namespace {
         bool inScope(Entity entity) const;
         const Policy& policyOf(Entity entity);
         bool collectable(Entity entity, Policy& policy);
+        // the editor's overlay flags (editor builds only: a game has no overlays)
         RenderSystem* renderSystem = nullptr;
         void grow(const Vector3& nav);
         void addTriangles(const Mesh& mesh, const Matrix4& toNav, uint8_t area);
@@ -498,8 +501,10 @@ namespace {
     bool Collector::collectable(Entity entity, Policy& policy) {
         // the editor's own objects in the scene (gizmos, the navigation overlay's meshes) are not
         // the level: collecting the overlay of a bake would make the next check find it stale
+#ifdef JASPERENGINE_EDITOR
         if (renderSystem && renderSystem->isEditorOverlay(entity))
             return false;
+#endif
         if (!inScope(entity))
             return false;
         policy = policyOf(entity);
