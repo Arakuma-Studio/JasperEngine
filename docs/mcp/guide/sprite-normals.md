@@ -40,8 +40,8 @@ The run is a job: past `timeout_seconds` (default 120) the call returns `{job_id
 |---|---|---|
 | `source` (required) | | An image file (`.png` APNG included, `.gif`, `.jpg`, `.tga`, `.bmp`, `.psd`), or a GameObject (id, path, unique name, `{id\|name\|path}`) that is a Sprite, a Polygon or a Tilemap: its colour texture is the source, a Sprite's frames the cells |
 | `scene` | selected | the scene of a GameObject source and of `apply` |
-| `preset` | `default` | `soft`, `default`, `crisp`, `detailed`, `chunky` (below) |
-| `params` | `{}` | overrides: `strength`, `detail`, `smoothing`, `volume`, `radius`, `softness`, `alpha_threshold`, `profile`, `edges`, `ignore_outline`, `regions`; an unknown key or a value out of range is refused |
+| `preset` | `default` | `soft`, `default`, `crisp`, `detailed`, `chunky`, `toon` (below) |
+| `params` | `{}` | overrides: `strength`, `detail`, `smoothing`, `volume`, `radius`, `softness`, `alpha_threshold`, `profile`, `edges`, `ignore_outline`, `regions`, `quantize` (Toon steps, below); an unknown key or a value out of range is refused |
 | `frames` | `"auto"` | `"auto"`, `"none"`, a grid `{tile_size: N or [w, h], columns, rows, count, offset: [x, y], padding: [x, y]}` (as `set_sprite_frames.slice`) or `{cells: [[x, y, w, h], ...]}` |
 | `directx` | false | green down (Unreal); the engine reads OpenGL |
 | `height` | false | also a 16-bit grey height map |
@@ -67,8 +67,9 @@ in `.png` (`.json` for frames), and be distinct (never the source, also not thro
 | `crisp` | 1.5 | 3 | 0.6 | 1.15 | small characters, keeps 1 px features |
 | `detailed` | 1.5 | 6 | 0.6 | 1.15 | most painted detail (the upstream defaults except radius: add `radius: 4` for an exact match) |
 | `chunky` | 2.5 | 4 | 0.6 | 2.0 | stylised, strong volume |
+| `toon` | 2.0 | 0.5 | 2.0 | 1.3 | cel-shaded pixel art: Toon steps on (`quantize` `{directions: 8, tilts: 1, flat_deg: 15, rotation_deg: 0}`) |
 
-All presets: `softness` 1.15, `radius` auto. Explicit `params` override the preset.
+All presets: `softness` 1.15, `radius` auto; only `toon` quantizes. Explicit `params` override the preset.
 
 - `strength` 0..8: multiplies every slope. `detail` 0..8: relief from the painted shading. `smoothing` 0..8 px:
   blur of the fine shading (the broad blur is twice it). `volume` 0..8: silhouette rounding.
@@ -84,6 +85,41 @@ All presets: `softness` 1.15, `radius` auto. Explicit `params` override the pres
 - `regions` (at most 16): `{colors: ["#rrggbb", ...], tolerance: 0..0.5 (0.03), detail: 0..8 (1), lift: -16..16
   px (0), flat: false}`; a pixel takes the first matching region. Painted highlights that should not be bumps:
   `{"colors": ["#ffffff", "#fff3c4"], "detail": 0}`. Armour plates standing out: `{"colors": ["#8a8f99"], "lift": 3}`.
+
+## Toon steps (`quantize`)
+
+Pixel art usually reads best lit in a few flat bands, not smooth gradients. `quantize` snaps every generated
+normal to a small palette of directions, so a moving light steps across the sprite like hand-shaded cel art:
+
+| key | range | default | meaning |
+|---|---|---|---|
+| `directions` | 0 (off), 4, 6, 8, 12, 16 | 0 | azimuth steps around the circle |
+| `tilts` | 1..4 | 1 | tilt rings between `flat_deg` and 90° |
+| `flat_deg` | 0..45 | 15 | normals tilted less face the viewer exactly (flat tops, no speckle) |
+| `rotation_deg` | 0..360 (360 is 0) | 0 | turns the palette (0: one direction points right) |
+
+Per opaque pixel: tilted under `flat_deg` → `(0, 0, 1)`; else the azimuth snaps to `rotation_deg + k·360/directions`
+(a tie, exactly between two directions, goes to the next direction counter-clockwise from `rotation_deg`) and the
+tilt to the centre of its ring of `[flat_deg, 90)`. So every opaque pixel is one of
+`1 + directions × tilts` normals. It runs after the relief, before the DirectX flip; painted pixels keep exactly
+the direction painted; the height map is not quantized; flat regions stay flat. Missing keys keep the preset's
+values (`{"quantize": {"directions": 8}}` is enough). Fewer directions read chunkier (4: a pyramid look); 16 is
+nearly smooth. `tilts: 1` (the default) reads cleanest (two or three tones per light); 2 or more add rings tilted
+70° and over at the rims (`too_steep` may warn: lower `strength`). Keep `rotation_deg` 0 for art with straight sides: a
+rotation that puts a step boundary on an axis (22.5 with 8, 45 with 4) makes those sides speckle. The window's
+**Toon steps** (Settings: Off / 4 / 8 / 16; Advanced: all six values, Tilt rings, Flat below, Rotation); the CLI's
+`--quantize N --quantize-tilts N --quantize-flat DEG --quantize-rotation DEG`.
+
+A cel-shaded hero, previewed, then blockier (4 steps) and written:
+
+```json
+{"source": "Hero", "preset": "toon"}
+{"source": "Hero", "preset": "toon", "params": {"quantize": {"directions": 4}}, "output": true}
+```
+
+Quantized normals on any preset: `{"source": "Hero", "preset": "crisp", "params": {"quantize": {"directions": 8}}}`;
+off on `toon`: `{"params": {"quantize": {"directions": 0}}}`. The recipe records `quantize` when it is on (or the
+preset's is), so `regenerate` gives the same pixels.
 
 ## Sprites, sheets, animations, tiles
 
@@ -164,7 +200,7 @@ Errors (`isError`, `errors: [{kind, message, fix, field?}]`; nothing is written)
 | kind | means | fix |
 |---|---|---|
 | `invalid_source` | no such image or GameObject, not a Sprite/Polygon/Tilemap, its texture is not a file | a project image path or a Sprite GameObject |
-| `invalid_settings` | unknown preset or `params` key, wrong type, out of range | the ranges above |
+| `invalid_settings` | unknown preset or `params` key (`quantize`'s too), wrong type, out of range | the ranges above |
 | `frames_mismatch` | a grid that doesn't fit, `none`/grid/cells on a GIF/APNG, over 4096 cells | fix the grid, or `frames: "auto"` |
 | `too_large` | over 64 MiB, 4096x4096 pixels, or 256 animation frames | trim or split it |
 | `output_invalid` | outside assets, hidden folder, wrong extension, an input, twice, a path for several tilesets | an assets `.png` path, or `output: true` |
@@ -215,6 +251,7 @@ With **Auto-regenerate when sources change** on (a generated PNG's Inspector), t
 
 ```sh
 jasperengine-editor generate-sprite-normals --source art/hero.png --preset crisp
+jasperengine-editor generate-sprite-normals --source art/hero.png --preset toon --quantize 4
 jasperengine-editor generate-sprite-normals -s a.png -s b.png --output-dir normals --format json
 jasperengine-editor generate-sprite-normals --source fx/torch.gif --frames-json --preview-out torch_sheet_preview.png
 ```

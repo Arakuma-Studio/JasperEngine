@@ -585,7 +585,8 @@ TEST(SpriteNormalsSettings, PresetsNamesAndColours) {
     // Settings{} is the default preset
     EXPECT_EQ(Settings().strength, def.strength);
     EXPECT_EQ(Settings().detail, def.detail);
-    for (Preset p : {Preset::Soft, Preset::Default, Preset::Crisp, Preset::Detailed, Preset::Chunky}) {
+    for (Preset p : {Preset::Soft, Preset::Default, Preset::Crisp, Preset::Detailed, Preset::Chunky, Preset::Toon}) {
+        EXPECT_EQ(presetSettings(p).quantize.on(), p == Preset::Toon) << toString(p) << ": only toon quantizes";
         Preset back;
         EXPECT_TRUE(parsePreset(toString(p), back));
         EXPECT_EQ(back, p);
@@ -1160,4 +1161,308 @@ TEST(SpriteNormalsPerformance, Opaque512UnderBudget) {
 #else
     GTEST_SKIP() << "Release builds only";
 #endif
+}
+
+// ---------------------------------------------------------------- quantization ("Toon steps")
+
+namespace {
+
+    constexpr double kPi = 3.14159265358979323846;
+
+    Quantize quantizeOf(int directions, int tilts, float flatDeg, float rotationDeg) {
+        Quantize q;
+        q.directions = directions;
+        q.tilts = tilts;
+        q.flatDeg = flatDeg;
+        q.rotationDeg = rotationDeg;
+        return q;
+    }
+
+    std::array<double, 3> fromAngles(double azimuthDeg, double tiltDeg) {
+        const double a = azimuthDeg * kPi / 180.0, t = tiltDeg * kPi / 180.0;
+        return {std::sin(t) * std::cos(a), std::sin(t) * std::sin(a), std::cos(t)};
+    }
+
+    // azimuth in [0, 360) and tilt of a quantized direction
+    void anglesOfDirection(const std::array<double, 3>& n, double& azimuth, double& tilt) {
+        azimuth = std::atan2(n[1], n[0]) * 180.0 / kPi;
+        if (azimuth < 0.0) azimuth += 360.0;
+        if (azimuth >= 360.0 - 1e-9) azimuth = 0.0;
+        tilt = std::acos(std::min(std::max(n[2], -1.0), 1.0)) * 180.0 / kPi;
+    }
+
+    std::array<double, 3> snap(const Quantize& q, double azimuthDeg, double tiltDeg) {
+        const std::array<double, 3> n = fromAngles(azimuthDeg, tiltDeg);
+        return quantizeNormal(q, n[0], n[1], n[2]);
+    }
+
+    void expectAngles(const std::array<double, 3>& n, double azimuth, double tilt) {
+        double a, t;
+        anglesOfDirection(n, a, t);
+        EXPECT_NEAR(t, tilt, 1e-9);
+        if (tilt <= 0.0) return;   // flat: no azimuth
+        double off = std::fmod(a - azimuth + 720.0, 360.0);   // the angle between them, in (-180, 180]
+        if (off > 180.0) off -= 360.0;
+        EXPECT_NEAR(off, 0.0, 1e-9) << "azimuth " << a << ", expected " << azimuth;
+    }
+
+    // the encoded palette (what generate() writes for each palette direction)
+    std::vector<std::array<uint8_t, 3>> encodedPalette(const Quantize& q, bool directx) {
+        std::vector<std::array<uint8_t, 3>> bytes;
+        for (const std::array<double, 3>& n : quantizePalette(q)) {
+            const float v[3] = {static_cast<float>(n[0]), static_cast<float>(n[1]), static_cast<float>(n[2])};
+            std::array<uint8_t, 3> b{};
+            detail::encodeUnit(v, directx, b.data());
+            bytes.push_back(b);
+        }
+        return bytes;
+    }
+
+    const std::vector<Quantize>& quantizeVariants() {
+        static const std::vector<Quantize> list = {quantizeOf(8, 2, 10.0f, 0.0f), quantizeOf(4, 1, 0.0f, 45.0f), quantizeOf(16, 4, 20.0f, 22.5f),
+                                                   quantizeOf(6, 3, 5.0f, 10.0f), quantizeOf(12, 2, 45.0f, 359.0f)};
+        return list;
+    }
+}
+
+TEST(SpriteNormalsQuantize, OffIsByteIdenticalOnEveryFixture) {
+    for (const Golden& g : goldens()) {
+        for (bool directx : {false, true}) {
+            SCOPED_TRACE(std::string(g.name) + (directx ? " directx" : " opengl"));
+            Image color;
+            std::vector<Cell> cells;
+            bool sequence;
+            ASSERT_TRUE(goldenRequest(g, color, cells, sequence));
+            Settings plain = upstreamDefaults();
+            if (g.adjust) g.adjust(plain);
+            plain.directx = directx;
+            // off: whatever the other quantize values say
+            Settings off = plain;
+            off.quantize = quantizeOf(0, 4, 45.0f, 123.0f);
+            const Result a = run(color, plain, cells, 1, sequence);
+            const Result b = run(color, off, cells, 4, sequence);
+            EXPECT_EQ(a.normal.data, b.normal.data);
+            if (!directx && !g.adjust) {
+                // and the upstream fixture itself (bit-exact with glibc) is what off writes
+                const Image expected = loadPng(kFixtures / "expected" / (std::string(g.name) + "_n.png"));
+                const Comparison c = compare(b.normal, expected);
+                EXPECT_LE(c.maxRgb, 1);
+            }
+        }
+    }
+}
+
+TEST(SpriteNormalsQuantize, EveryOpaquePixelIsAPaletteNormal) {
+    for (const Quantize& q : quantizeVariants()) {
+        const std::vector<std::array<double, 3>> palette = quantizePalette(q);
+        ASSERT_EQ(palette.size(), static_cast<size_t>(1 + q.directions * q.tilts));
+        for (bool directx : {false, true}) {
+            const std::vector<std::array<uint8_t, 3>> bytes = encodedPalette(q, directx);
+            for (const Golden& g : goldens()) {
+                SCOPED_TRACE(std::string(g.name) + " directions " + std::to_string(q.directions) + (directx ? " directx" : ""));
+                Image color;
+                std::vector<Cell> cells;
+                bool sequence;
+                ASSERT_TRUE(goldenRequest(g, color, cells, sequence));
+                Settings s = presetSettings(Preset::Toon);
+                s.quantize = q;
+                s.directx = directx;
+                const Result r = run(color, s, cells, 2, sequence);
+                size_t offPalette = 0, opaque = 0;
+                std::vector<int> used(bytes.size(), 0);
+                for (size_t i = 0; i < r.normal.pixelCount(); i++) {
+                    const uint8_t* p = r.normal.data.data() + 4 * i;
+                    EXPECT_EQ(p[3], color.data[4 * i + 3]);
+                    if (!(static_cast<float>(p[3]) / 255.0f > s.alphaThreshold)) {
+                        EXPECT_TRUE(p[0] == 128 && p[1] == 128 && p[2] == 255);
+                        continue;
+                    }
+                    opaque++;
+                    bool found = false;
+                    for (size_t k = 0; k < bytes.size() && !found; k++) {
+                        // decoded within 1 LSB of a palette normal
+                        found = std::abs(p[0] - bytes[k][0]) <= 1 && std::abs(p[1] - bytes[k][1]) <= 1 && std::abs(p[2] - bytes[k][2]) <= 1;
+                        if (found) used[k]++;
+                    }
+                    if (!found) offPalette++;
+                }
+                EXPECT_EQ(offPalette, 0u) << "of " << opaque << " opaque pixels";
+                // decoded palette directions are unit vectors and z > 0
+                for (const std::array<double, 3>& n : palette) {
+                    EXPECT_NEAR(n[0] * n[0] + n[1] * n[1] + n[2] * n[2], 1.0, 1e-12);
+                    EXPECT_GT(n[2], 0.0);
+                }
+            }
+        }
+    }
+}
+
+TEST(SpriteNormalsQuantize, FlatConeBoundaryAndTiltRings) {
+    const Quantize q = quantizeOf(8, 2, 10.0f, 0.0f);   // rings [10, 50) and [50, 90): centres 30 and 70
+    expectAngles(snap(q, 37.0, 9.9), 0.0, 0.0);
+    EXPECT_EQ(snap(q, 37.0, 9.9)[2], 1.0) << "under the flat cone: exactly (0, 0, 1)";
+    expectAngles(snap(q, 37.0, 10.1), 45.0, 30.0);
+    expectAngles(snap(q, 37.0, 49.9), 45.0, 30.0);
+    expectAngles(snap(q, 37.0, 50.1), 45.0, 70.0);
+    expectAngles(snap(q, 37.0, 89.99), 45.0, 70.0);
+    expectAngles(quantizeNormal(q, 1.0, 0.0, 0.0), 0.0, 70.0);   // t = 90: the last ring
+    // flat 0: nothing is flat but a normal without azimuth
+    const Quantize none = quantizeOf(4, 1, 0.0f, 0.0f);
+    expectAngles(snap(none, 10.0, 0.5), 0.0, 45.0);
+    const std::array<double, 3> up = quantizeNormal(none, 0.0, 0.0, 1.0);
+    EXPECT_EQ(up[0], 0.0);
+    EXPECT_EQ(up[1], 0.0);
+    EXPECT_EQ(up[2], 1.0);
+    // flat 45, 4 rings: [45, 90) in 11.25 degree rings
+    const Quantize wide = quantizeOf(16, 4, 45.0f, 0.0f);
+    expectAngles(snap(wide, 0.0, 44.9), 0.0, 0.0);
+    expectAngles(snap(wide, 0.0, 45.1), 0.0, 45.0 + 11.25 / 2.0);
+    expectAngles(snap(wide, 0.0, 80.0), 0.0, 45.0 + 3.5 * 11.25);
+    // off: unchanged
+    const std::array<double, 3> raw = fromAngles(33.0, 21.0);
+    EXPECT_EQ(quantizeNormal(Quantize(), raw[0], raw[1], raw[2]), raw);
+    EXPECT_TRUE(quantizePalette(Quantize()).empty());
+}
+
+TEST(SpriteNormalsQuantize, RotationAndWrapAroundAtHalfTurn) {
+    const Quantize four = quantizeOf(4, 1, 0.0f, 0.0f);
+    expectAngles(snap(four, 30.0, 40.0), 0.0, 45.0);
+    expectAngles(snap(four, 100.0, 40.0), 90.0, 45.0);
+    const Quantize turned = quantizeOf(4, 1, 0.0f, 45.0f);
+    expectAngles(snap(turned, 30.0, 40.0), 45.0, 45.0);
+    expectAngles(snap(turned, 100.0, 40.0), 135.0, 45.0);
+    expectAngles(snap(turned, 350.0, 40.0), 315.0, 45.0);
+    // +-180 (atan2 of y = +0 and -0) snap alike, ties rounding away from the rotation
+    const std::array<double, 3> plus = quantizeNormal(turned, -0.5, 0.0, std::sqrt(0.75));
+    const std::array<double, 3> minus = quantizeNormal(turned, -0.5, -0.0, std::sqrt(0.75));
+    EXPECT_EQ(plus, minus);
+    expectAngles(plus, 225.0, 45.0);
+    // either side of the half turn and of 0 / 360
+    const Quantize eight = quantizeOf(8, 2, 10.0f, 0.0f);
+    expectAngles(snap(eight, 179.0, 40.0), 180.0, 30.0);
+    expectAngles(snap(eight, -179.0, 40.0), 180.0, 30.0);
+    expectAngles(snap(eight, 350.0, 40.0), 0.0, 30.0);
+    expectAngles(snap(eight, -10.0, 40.0), 0.0, 30.0);
+    expectAngles(snap(eight, 21.0, 40.0), 0.0, 30.0);
+    expectAngles(snap(eight, 24.0, 40.0), 45.0, 30.0);
+    const Quantize near360 = quantizeOf(12, 1, 0.0f, 359.0f);
+    expectAngles(snap(near360, 0.0, 60.0), 359.0, 45.0);
+    expectAngles(snap(near360, 10.0, 60.0), 359.0, 45.0);   // 11 past 359, 19 short of 29
+    expectAngles(snap(near360, 20.0, 60.0), 29.0, 45.0);
+    // 360 is exactly 0, for direct Settings callers too: the same palette and the same bytes
+    EXPECT_EQ(quantizePalette(quantizeOf(8, 2, 10.0f, 360.0f)), quantizePalette(quantizeOf(8, 2, 10.0f, 0.0f)));
+    for (double az : {0.0, 22.5, 100.0, 181.0, 359.0}) {
+        const std::array<double, 3> n = fromAngles(az, 40.0);
+        EXPECT_EQ(quantizeNormal(quantizeOf(8, 2, 10.0f, 360.0f), n[0], n[1], n[2]), quantizeNormal(eight, n[0], n[1], n[2])) << az;
+    }
+    {
+        const Image color = loadPng(kFixtures / "inputs" / "character.png");
+        Settings whole = presetSettings(Preset::Toon);
+        whole.quantize.rotationDeg = 360.0f;
+        EXPECT_EQ(run(color, whole).normal.data, run(color, presetSettings(Preset::Toon)).normal.data);
+    }
+    // the palette's order: flat, then rings innermost first, azimuths from the rotation
+    const std::vector<std::array<double, 3>> palette = quantizePalette(turned);
+    ASSERT_EQ(palette.size(), 5u);
+    expectAngles(palette[0], 0.0, 0.0);
+    expectAngles(palette[1], 45.0, 45.0);
+    expectAngles(palette[4], 315.0, 45.0);
+}
+
+TEST(SpriteNormalsQuantize, ThreadCountNeverChangesTheBytes) {
+    for (const Golden& g : goldens()) {
+        SCOPED_TRACE(g.name);
+        Image color;
+        std::vector<Cell> cells;
+        bool sequence;
+        ASSERT_TRUE(goldenRequest(g, color, cells, sequence));
+        for (const Quantize& q : quantizeVariants()) {
+            Settings s = presetSettings(Preset::Toon);
+            s.quantize = q;
+            s.height = true;
+            const Result one = run(color, s, cells, 1, sequence);
+            const Result eight = run(color, s, cells, 8, sequence);
+            EXPECT_EQ(one.normal.data, eight.normal.data);
+            EXPECT_EQ(one.height.data, eight.height.data);
+        }
+    }
+}
+
+TEST(SpriteNormalsQuantize, DirectxFlipsGreenAfterQuantizing) {
+    for (const Golden& g : goldens()) {
+        SCOPED_TRACE(g.name);
+        Image color;
+        std::vector<Cell> cells;
+        bool sequence;
+        ASSERT_TRUE(goldenRequest(g, color, cells, sequence));
+        Settings s = presetSettings(Preset::Toon);
+        const Result gl = run(color, s, cells, 1, sequence);
+        s.directx = true;
+        const Result dx = run(color, s, cells, 1, sequence);
+        for (size_t i = 0; i < gl.normal.pixelCount(); i++) {
+            const uint8_t* a = gl.normal.data.data() + 4 * i;
+            const uint8_t* b = dx.normal.data.data() + 4 * i;
+            ASSERT_EQ(a[0], b[0]);
+            ASSERT_EQ(a[2], b[2]);
+            ASSERT_EQ(a[3], b[3]);
+            // the same quantized direction, green negated (within the 1 LSB of the 127.5 tie)
+            ASSERT_LE(std::abs(int(b[1]) - (255 - int(a[1]))), 1) << "pixel " << i;
+        }
+    }
+}
+
+TEST(SpriteNormalsQuantize, HeightMapIsTheGeneratorsAndMetricsInputsAreFinal) {
+    const Image color = loadPng(kFixtures / "inputs" / "character.png");
+    Settings s = presetSettings(Preset::Toon);
+    s.height = true;
+    const Result quantized = run(color, s);
+    s.quantize.directions = 0;
+    const Result smooth = run(color, s);
+    EXPECT_EQ(quantized.height.data, smooth.height.data) << "the height map is not quantized";
+    EXPECT_EQ(quantized.heightMin, smooth.heightMin);
+    EXPECT_EQ(quantized.heightMax, smooth.heightMax);
+    EXPECT_NE(quantized.normal.data, smooth.normal.data);
+    EXPECT_TRUE(quantized.warnings.empty());
+}
+
+TEST(SpriteNormalsQuantize, ValidationNamesTheQuantizeFields) {
+    Settings s = presetSettings(Preset::Toon);
+    EXPECT_TRUE(validateSettings(s).empty());
+    s.quantize = quantizeOf(5, 0, 46.0f, 361.0f);
+    std::vector<Problem> problems = validateSettings(s);
+    ASSERT_EQ(problems.size(), 4u);
+    EXPECT_EQ(problems[0].field, "quantize.directions");
+    EXPECT_EQ(problems[0].message, "quantize.directions must be 0 (off), 4, 6, 8, 12 or 16 (got 5)");
+    EXPECT_EQ(problems[1].field, "quantize.tilts");
+    EXPECT_EQ(problems[1].message, "quantize.tilts must be between 1 and 4 (got 0)");
+    EXPECT_EQ(problems[2].field, "quantize.flat_deg");
+    EXPECT_EQ(problems[2].message, "quantize.flat_deg must be between 0 and 45 (got 46)");
+    EXPECT_EQ(problems[3].field, "quantize.rotation_deg");
+    EXPECT_EQ(problems[3].message, "quantize.rotation_deg must be between 0 and 360 (got 361)");
+    for (const Problem& p : problems) {
+        EXPECT_EQ(p.kind, "invalid_settings");
+        EXPECT_FALSE(p.fix.empty());
+    }
+    s.quantize = quantizeOf(16, 5, -1.0f, -0.5f);
+    problems = validateSettings(s);
+    ASSERT_EQ(problems.size(), 3u);
+    EXPECT_EQ(problems[0].field, "quantize.tilts");
+    s.quantize = quantizeOf(4, 1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity());
+    problems = validateSettings(s);
+    ASSERT_EQ(problems.size(), 2u);
+    EXPECT_EQ(problems[1].message, "quantize.rotation_deg must be a number between 0 and 360 (got inf)");
+    // the limits themselves are valid; off validates the other values too
+    for (int d : {0, 4, 6, 8, 12, 16}) {
+        s.quantize = quantizeOf(d, 4, 45.0f, 360.0f);   // 360 is 0 (a whole turn)
+        EXPECT_TRUE(validateSettings(s).empty()) << d;
+        s.quantize = quantizeOf(d, 1, 0.0f, 0.0f);
+        EXPECT_TRUE(validateSettings(s).empty()) << d;
+    }
+    s.quantize = quantizeOf(0, 9, 10.0f, 0.0f);
+    EXPECT_EQ(validateSettings(s).size(), 1u);
+    // a refused request writes nothing
+    Request request;
+    request.color = disk();
+    request.settings = s;
+    EXPECT_EQ(generate(request).status, Status::InvalidRequest);
 }

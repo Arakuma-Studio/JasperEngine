@@ -521,6 +521,73 @@ async def test_height_map(ed: Editor):
     check(recipe(out)["role"] == "height", "its recipe")
 
 
+def opaque_colours(px: list[tuple[int, int, int, int]]) -> set[tuple[int, int, int]]:
+    return {p[:3] for p in px if p[3] > 0}
+
+
+async def test_quantize_toon_steps(ed: Editor):
+    """params.quantize (Toon steps): preview and write give the same palette-only pixels, the settings and recipe
+    carry quantize, preset toon turns it on, regenerate reproduces both an override to off and an on-by-params map,
+    bad values and unknown keys are refused with their fix"""
+    r = await gen(ed, source=BALL, params={"quantize": {"directions": 4}})
+    v = r.structured
+    q = v["settings"]["quantize"]
+    check(q == {"directions": 4, "tilts": 1, "flat_deg": 15, "rotation_deg": 0}, f"settings.quantize (missing keys at their defaults): {q}")
+    check(v["written"] is False and v["settings"]["preset"] == "default", f"{v['settings']}")
+    out = f"{SPR}/q/ball_q4.png"
+    w = await gen(ed, source=BALL, params={"quantize": {"directions": 4}}, output=out)
+    check(w.images and w.images[0][0] == r.images[0][0], "the write returns the previewed sheet")
+    _, _, px = rgba((ed.project / out).read_bytes())
+    check(1 < len(opaque_colours(px)) <= 5, f"at most 1 + 4 x 1 normals: {opaque_colours(px)}")
+    check(recipe(ed.project / out)["settings"]["quantize"] == q, "the recipe records it")
+    check(", toon steps 4," in r.text, f"the summary names Toon steps on a non-toon preset: {r.text[:300]}")
+    turn = (await gen(ed, source=BALL, params={"quantize": {"directions": 8, "rotation_deg": 360}})).structured["settings"]["quantize"]
+    check(turn["rotation_deg"] == 0, f"360 is 0: {turn}")
+    plain = (await gen(ed, source=BALL)).structured["settings"]
+    check("quantize" not in plain, f"off: no quantize key: {plain}")
+    # the toon preset
+    t = (await gen(ed, source=BALL, preset="toon")).structured["settings"]
+    check(t["preset"] == "toon" and t["quantize"]["directions"] > 0, f"preset toon: {t}")
+    toon_out = f"{SPR}/q/ball_toon.png"
+    await gen(ed, source=BALL, preset="toon", output=toon_out)
+    _, _, tpx = rgba((ed.project / toon_out).read_bytes())
+    tq = t["quantize"]
+    check(len(opaque_colours(tpx)) <= 1 + tq["directions"] * tq["tilts"], "toon: palette normals only")
+    # toon turned off, written: regenerate keeps it off (and the on-by-params map stays on)
+    off_out = f"{SPR}/q/ball_toon_off.png"
+    await gen(ed, source=BALL, preset="toon", params={"quantize": {"directions": 0}}, output=off_out)
+    _, _, opx = rgba((ed.project / off_out).read_bytes())
+    check(len(opaque_colours(opx)) > 40, "toon with directions 0: smooth")
+    for path, pixels_before in ((off_out, opx), (out, px)):
+        regen = (await ed.call("get_asset_info", path=path))["sprite_normals"]["regenerate"]
+        check("quantize" in regen.get("params", {}), f"{path}: regenerate carries quantize: {regen}")
+        await gen(ed, **regen)
+        check(rgba((ed.project / path).read_bytes())[2] == pixels_before, f"{path}: regenerate reproduces the pixels")
+    regen = (await ed.call("get_asset_info", path=toon_out))["sprite_normals"]["regenerate"]
+    check(regen["preset"] == "toon" and "quantize" not in regen.get("params", {}), f"the preset's own quantize is not repeated: {regen}")
+    # refusals: the field, the value and the fix
+    before = files_under(ed.project)
+    for params, field, needle in [
+        ({"quantize": {"directions": 5}}, "params.quantize.directions", "0 (off), 4, 6, 8, 12 or 16 (got 5)"),
+        ({"quantize": {"directions": 8, "tilts": 7}}, "params.quantize.tilts", "between 1 and 4 (got 7)"),
+        ({"quantize": {"directions": 8, "flat_deg": 60}}, "params.quantize.flat_deg", "between 0 and 45 (got 60)"),
+        ({"quantize": {"directions": 8, "rotation_deg": 400}}, "params.quantize.rotation_deg", "between 0 and 360 (got 400)"),
+        ({"quantize": {"directions": 8.5}}, "params", "expected a whole number"),
+        ({"quantize": 8}, "params", "expected an object"),
+        ({"quantize": {"steps": 8}}, "params.quantize", "unknown key \"steps\""),
+    ]:
+        got = await gen_error(ed, source=BALL, params=params)
+        errors = got["data"]["errors"]
+        check(got["kinds"] == ["invalid_settings"] and errors[0].get("field") == field and needle in errors[0]["message"],
+              f"{params}: {field} / {needle!r}: {errors}")
+        check(errors[0]["fix"], f"{params}: a fix: {errors}")
+    got = await gen_error(ed, source=BALL, params={"quantize": {"steps": 8}})
+    check("directions, tilts, flat_deg, rotation_deg" in got["data"]["errors"][0]["fix"], f"the valid keys: {got['data']['errors']}")
+    got = await gen_error(ed, source=BALL, preset="cel")
+    check("toon" in got["data"]["errors"][0]["message"], f"the presets listed: {got['data']['errors']}")
+    check(files_under(ed.project) == before, "refusals write nothing")
+
+
 async def test_frames_json(ed: Editor):
     r = await gen(ed, source=SHEET, frames={"tile_size": 32}, output={"normal": f"{SPR}/n/custom.png", "frames": True})
     check(set(r.structured["files"]) == {f"{SPR}/n/custom.png", f"{SPR}/n/custom.frames.json"}, f"files: {r.structured['files']}")

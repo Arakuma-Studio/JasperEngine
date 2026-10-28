@@ -51,4 +51,9 @@ namespace jasperengine::editor::spritenormals::detail {
 
     // (128,128,255)-encoding of slopes (upstream slopes_to_normal + byte rounding)
     void encodeNormal(float dx, float dy, float strength, bool directx, uint8_t out[3]);
+    // The OpenGL-convention unit normal encodeNormal encodes (the same float operations, before
+    // its DirectX flip)
+    void slopeNormal(float dx, float dy, float strength, float v[3]);
+    // A unit normal (OpenGL convention) to bytes with encodeNormal's rounding; directx negates y
+    void encodeUnit(const float v[3], bool directx, uint8_t out[3]);
 }

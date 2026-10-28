@@ -14,7 +14,8 @@ Covered here, where the App's wiring, focus and real input matter:
 - real keys 3 then 1 switch the views (the selected radio's probe), and the editor screenshot is not flat;
 - hero.png overwritten on disk then sync_files: the Project window's badge of hero_normal.png turns stale; a real
   right-click > "Regenerate Normal Map" makes it fresh again;
-- while the scene plays the wand is disabled: a Shift-click writes nothing.
+- while the scene plays the wand is disabled: a Shift-click writes nothing;
+- Toon steps: real clicks on the Toon preset and the Toon steps buttons (their selected probes, the preview changes).
 Set JASPER_SN_SHOTS=<dir> to keep the editor screenshots taken on the way.
 """
 
@@ -323,7 +324,7 @@ async def test_sprite_frames_button_opens_on_the_sprite(ed: Editor):
     await ed.call("select_entities", entities=["Walker"])
     await focus_x(ed, "inspector")
     await click(ed, await rect_of(ed, "inspector.spriteNormalMap", "the Sprite Frames' Normal Map... button", panel="inspector"))
-    await rect_of(ed, "spriteNormals.assign", "the Assign checkbox (an assign target)")
+    await rect_of(ed, "spriteNormals.assign", "the Assign checkbox (an assign target)", panel="spriteNormals.settings")
     await rect_of(ed, "spriteNormals.grid", "the frame grid toggle (the Sprite's frames)")
     await rect_of(ed, "spriteNormals.play", "the Play button (more than one frame)")
     # the Advanced foldout and a region, drawn for real
@@ -353,3 +354,90 @@ async def test_batch_from_the_project_window(ed: Editor):
     await rect_of(ed, "spriteNormals.batch.walk.png", "walk.png in the batch list", panel="spriteNormals.settings")
     await ed.call("wait", frames=40)
     await shot(ed, "p4-window-batch")
+
+
+async def test_toon_steps(ed: Editor):
+    """Settings > Toon: a real click on the preset selects Toon steps 8 and changes the preview; a click on "4" and
+    "Off" moves the selection (the Advanced foldout draws Tilt rings, Flat below, Rotation)"""
+    await open_assets_folder(ed)
+    hero = await rect_of(ed, "project.file.hero.png", "hero.png")
+    await click(ed, hero)   # only hero.png selected (the batch test selected two)
+    await click(ed, hero, button="3")
+    await click(ed, await rect_of(ed, "project.menu.generateNormalMap", "Generate Normal Map... in the context menu"))
+    await rect_of(ed, "spriteNormals.canvas", "the window's canvas")
+    await rect_of(ed, "spriteNormals.preset", "the presets", panel="spriteNormals.settings")
+    if "spriteNormals.presetsSelected.Default" not in ed.ui_items():
+        await click(ed, await rect_of(ed, "spriteNormals.presets.Default", "the Default preset", panel="spriteNormals.settings"))
+    await rect_of(ed, "spriteNormals.toonStepsSelected.Off", "Toon steps Off on the Default preset", panel="spriteNormals.settings")
+    await ed.call("wait", frames=60)
+    before = await shot(ed, "q-window-off")
+    await click(ed, await rect_of(ed, "spriteNormals.presets.Toon", "the Toon preset", panel="spriteNormals.settings"))
+    await rect_of(ed, "spriteNormals.presetsSelected.Toon", "Toon selected", panel="spriteNormals.settings")
+    await rect_of(ed, "spriteNormals.toonStepsSelected.8", "Toon steps 8 with the Toon preset", panel="spriteNormals.settings")
+    await ed.call("wait", frames=60)
+    after = await shot(ed, "q-window-wide")
+    ed.check(before != after, "the preview changed")
+    await click(ed, await rect_of(ed, "spriteNormals.toonSteps.4", "Toon steps 4", panel="spriteNormals.settings"))
+    await rect_of(ed, "spriteNormals.toonStepsSelected.4", "4 selected", panel="spriteNormals.settings")
+    await ed.call("wait", frames=60)
+    await shot(ed, "q-window-4")
+    # the Advanced values (Directions, Tilt rings, Flat below, Rotation), scrolled into view
+    try:
+        await rect_of(ed, "spriteNormals.toonTilts", "Tilt rings", panel="spriteNormals.settings", seconds=1.0)
+    except harness.TestFailure:   # the Advanced foldout was closed
+        await click(ed, await rect_of(ed, "spriteNormals.advanced", "the Advanced foldout", panel="spriteNormals.settings"))
+        await rect_of(ed, "spriteNormals.toonTilts", "Tilt rings", panel="spriteNormals.settings")
+    await ed.call("wait", frames=10)
+    await shot(ed, "q-window-advanced")
+    # 6 and 12 (only in the Advanced Directions combo) show as an extra, selected button on the Toon steps row
+    for d in ("6", "12"):
+        await click(ed, await rect_of(ed, "spriteNormals.toonDirections", "the Directions combo", panel="spriteNormals.settings"))
+        await click(ed, await rect_of(ed, f"spriteNormals.toonDirections.{d}", f"{d} in the Directions combo"))
+        await rect_of(ed, f"spriteNormals.toonStepsSelected.{d}", f"{d} selected on the Toon steps row", panel="spriteNormals.settings")
+        row = [n for n in ed.ui_items() if n.startswith("spriteNormals.toonSteps")]
+        ed.check(sorted(row) == sorted(["spriteNormals.toonSteps.Off", "spriteNormals.toonSteps.4", "spriteNormals.toonSteps.8",
+                                        "spriteNormals.toonSteps.16", f"spriteNormals.toonStepsSelected.{d}"]), f"five buttons with {d}: {row}")
+        await shot(ed, f"q-window-{d}")
+    await click(ed, await rect_of(ed, "spriteNormals.toonSteps.4", "Toon steps 4", panel="spriteNormals.settings"))
+    await rect_of(ed, "spriteNormals.toonStepsSelected.4", "4 selected again", panel="spriteNormals.settings")
+    ed.check("spriteNormals.toonSteps.6" not in ed.ui_items() and "spriteNormals.toonSteps.12" not in ed.ui_items(), "back to four buttons")
+
+    def toon_rows() -> tuple[float, float]:
+        items = ed.ui_items()
+        off, last = items.get("spriteNormals.toonSteps.Off"), items.get("spriteNormals.toonSteps.16")
+        ed.check(off and last, f"the Toon steps buttons are drawn: {off} {last}")
+        return off[1], last[1]
+
+    await rect_of(ed, "spriteNormals.toonSteps.16", "Toon steps 16", panel="spriteNormals.settings")
+    await rect_of(ed, "spriteNormals.toonSteps.Off", "Toon steps Off", panel="spriteNormals.settings")
+    wide_off, wide_last = toon_rows()
+    ed.check(abs(wide_off - wide_last) < 1, f"one Toon steps row at the default width: Off y {wide_off}, 16 y {wide_last}")
+    # a narrower settings column (its border dragged left): the six presets wrap to rows instead of clipping
+    area = await rect_of(ed, "spriteNormals.settings", "the settings panel")
+    narrow = area
+    for offset in (6, 10, 14, 18, 22, 3):   # the table's column border, just right of the panel's scroll area
+        border_x, border_y = int(area[2]) + offset, int(area[1]) + 40
+        xdo(ed, "mousemove", str(border_x), str(border_y))
+        await ed.call("wait", frames=4)
+        xdo(ed, "mousedown", "1")
+        for step in range(1, 9):
+            xdo(ed, "mousemove", str(border_x - step * 12), str(border_y))
+            await ed.call("wait", frames=2)
+        xdo(ed, "mouseup", "1")
+        await ed.call("wait", frames=10)
+        narrow = await rect_of(ed, "spriteNormals.settings", "the settings panel")
+        if narrow[2] < area[2] - 30:
+            break
+    ed.check(narrow[2] < area[2] - 30, f"the column is narrower: {area} -> {narrow}")
+    await rect_of(ed, "spriteNormals.presets.Soft", "Soft", panel="spriteNormals.settings")
+    soft, chunky = ed.ui_items().get("spriteNormals.presets.Soft"), ed.ui_items().get("spriteNormals.presets.Chunky")
+    ed.check(soft and chunky and chunky[1] > soft[3] - 1, f"the presets wrap to a second row: {soft} {chunky}")
+    await rect_of(ed, "spriteNormals.toonSteps.16", "Toon steps 16", panel="spriteNormals.settings")
+    await rect_of(ed, "spriteNormals.toonSteps.Off", "Toon steps Off", panel="spriteNormals.settings")
+    narrow_off, narrow_last = toon_rows()
+    ed.check(narrow_last > narrow_off + 1, f"the Toon steps buttons wrap to a second row: Off y {narrow_off}, 16 y {narrow_last}")
+    await ed.call("wait", frames=10)
+    await shot(ed, "q-window")
+    await click(ed, await rect_of(ed, "spriteNormals.toonSteps.Off", "Toon steps Off", panel="spriteNormals.settings"))
+    await rect_of(ed, "spriteNormals.toonStepsSelected.Off", "Off selected", panel="spriteNormals.settings")
+    await click(ed, await rect_of(ed, "spriteNormals.presets.Default", "the Default preset", panel="spriteNormals.settings"))

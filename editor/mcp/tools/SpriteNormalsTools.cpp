@@ -91,7 +91,7 @@ std::string relativeOf(Project* project, const fs::path& absolute) {
 // The settings' field names (validateSettings, settingsFromJson) as the tool's argument names
 const std::vector<std::string>& paramKeys() {
     static const std::vector<std::string> keys = {"strength", "detail", "smoothing", "volume", "radius", "softness", "alpha_threshold",
-                                                  "profile", "edges", "ignore_outline", "regions"};
+                                                  "profile", "edges", "ignore_outline", "regions", "quantize"};
     return keys;
 }
 
@@ -192,8 +192,8 @@ bool settingsArg(const Json& args, sn::Settings& out, std::vector<sn::Problem>& 
     if (args.contains("preset") && !args["preset"].is_null()) {
         const Json& p = args["preset"];
         if (!p.is_string() || !sn::parsePreset(p.get<std::string>(), preset)) {
-            problems.push_back(problem("invalid_settings", "preset", "preset must be soft, default, crisp, detailed or chunky (got " + p.dump() + ")",
-                                       "valid presets: soft, default, crisp, detailed, chunky"));
+            problems.push_back(problem("invalid_settings", "preset", "preset must be soft, default, crisp, detailed, chunky or toon (got " + p.dump() + ")",
+                                       "valid presets: soft, default, crisp, detailed, chunky, toon"));
             return false;
         }
     }
@@ -240,6 +240,16 @@ bool settingsArg(const Json& args, sn::Settings& out, std::vector<sn::Problem>& 
                                                    "valid keys: colors, tolerance, detail, lift, flat"));
                         return false;
                     }
+                }
+            }
+        }
+        if (params.contains("quantize") && params["quantize"].is_object()) {
+            static const std::set<std::string> quantizeKeys = {"directions", "tilts", "flat_deg", "rotation_deg"};
+            for (auto it = params["quantize"].begin(); it != params["quantize"].end(); ++it) {
+                if (!quantizeKeys.count(it.key())) {
+                    problems.push_back(problem("invalid_settings", "params.quantize", "params.quantize has an unknown key \"" + it.key() + "\"",
+                                               "valid keys: directions, tilts, flat_deg, rotation_deg"));
+                    return false;
                 }
             }
         }
@@ -639,7 +649,9 @@ Report report(Project* project, const NormalsCall& state, const NormalsTarget& t
     if (!sheet.empty()) sn::encodePng(sheet, out.sheet, error);
 
     out.summary = "Normal map of " + p.sourcePath + " (" + std::to_string(source.fileWidth) + "x" + std::to_string(source.fileHeight) + ", " +
-                  framesFromText(p, count) + ", preset " + sn::toString(s.preset) + ", " + radius + ") in " + fixed(r.seconds, 2) + " s.";
+                  framesFromText(p, count) + ", preset " + sn::toString(s.preset) +
+                  (s.quantize.on() && s.preset != sn::Preset::Toon ? ", toon steps " + std::to_string(s.quantize.directions) : std::string()) + ", " +
+                  radius + ") in " + fixed(r.seconds, 2) + " s.";
     for (const std::string& line : assessment.lines) out.summary += " " + line + ".";
     if (p.paint.active() || p.spec.paintMode != sn::PaintMode::Keep) {
         out.summary += " Paint (" + std::string(sn::toString(p.spec.paintMode)) + (p.paintKeptFrom.empty() ? "" : ", kept from " + p.paintKeptFrom) + "): " +
@@ -1554,7 +1566,7 @@ void registerSpriteNormalsTools(McpRegistry& registry) {
     tool.title = "Generate Sprite Normals";
     tool.description =
         "Pixel-art normal maps (sprites, sheets, GIF/APNG, tiles; lights need height > 0). No output: lit contact sheet + metrics; "
-        "+ output writes that (one undo step); apply wires it on. "
+        "+ output writes that (one undo); apply wires it on. "
         "paint: fix spots (angle/flatten/smooth/erase by rect, pixels, colors or frame); kept on regenerate (paint_mode). "
         "Guide: jasper://docs/sprite-normals.";
     // nested objects are loose (the handler refuses unknown keys itself, saving tools/list bytes);
@@ -1570,7 +1582,7 @@ void registerSpriteNormalsTools(McpRegistry& registry) {
     tool.inputSchema = object({
         {"source", types({"string", "integer", "object"})},
         {"scene", sceneRef()},
-        {"preset", stringEnum("", {"soft", "default", "crisp", "detailed", "chunky"})},
+        {"preset", stringEnum("", {"soft", "default", "crisp", "detailed", "chunky", "toon"})},
         {"params", anyObject("")},
         {"frames", frames},
         // the defaults (preset default; directx, height, overwrite false; wait true) are in the

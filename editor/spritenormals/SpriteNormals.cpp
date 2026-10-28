@@ -265,7 +265,16 @@ namespace jasperengine::editor::spritenormals {
                     } else {
                         balancedSobel(combined, fx, fy, dx, dy, border);
                     }
-                    detail::encodeNormal(dx, dy, s.strength, s.directx, out);
+                    if (!s.quantize.on()) {
+                        detail::encodeNormal(dx, dy, s.strength, s.directx, out);
+                    } else {
+                        // Toon steps: the generated normal snapped to the palette, then the same encode
+                        float v[3];
+                        detail::slopeNormal(dx, dy, s.strength, v);
+                        const std::array<double, 3> qn = quantizeNormal(s.quantize, v[0], v[1], v[2]);
+                        const float snapped[3] = {static_cast<float>(qn[0]), static_cast<float>(qn[1]), static_cast<float>(qn[2])};
+                        detail::encodeUnit(snapped, s.directx, out);
+                    }
                 }
                 if (ctx.heights) {
                     const size_t p = static_cast<size_t>(y) * color.width + x;
@@ -286,6 +295,11 @@ namespace jasperengine::editor::spritenormals {
             }
             return mask;
         }
+
+        // 360 is a whole turn: exactly 0, so every caller gets 0's bits (sin and cos of 2 pi + x are not those of x)
+        double quantizeRotation(const Quantize& q) { return q.rotationDeg == 360.0f ? 0.0 : static_cast<double>(q.rotationDeg); }
+
+        bool isQuantizeDirections(int d) { return d == 0 || d == 4 || d == 6 || d == 8 || d == 12 || d == 16; }
 
         inline float autoRadius(float side) { return std::min(std::max(0.15f * side, 4.0f), 512.0f); }
 
@@ -341,6 +355,12 @@ namespace jasperengine::editor::spritenormals {
             case Preset::Crisp: s.strength = 1.5f; s.detail = 3.0f; s.smoothing = 0.6f; s.volume = 1.15f; break;
             case Preset::Detailed: s.strength = 1.5f; s.detail = 6.0f; s.smoothing = 0.6f; s.volume = 1.15f; break;
             case Preset::Chunky: s.strength = 2.5f; s.detail = 4.0f; s.smoothing = 0.6f; s.volume = 2.0f; break;
+            case Preset::Toon:
+                // chosen on lit contact sheets (2026-10-28-sprite-normals-quantize-design.md): one
+                // tilt ring and little painted detail keep clean two- and three-tone facets
+                s.strength = 2.0f; s.detail = 0.5f; s.smoothing = 2.0f; s.volume = 1.3f;
+                s.quantize.directions = 8; s.quantize.tilts = 1; s.quantize.flatDeg = 15.0f; s.quantize.rotationDeg = 0.0f;
+                break;
         }
         return s;
     }
@@ -352,6 +372,7 @@ namespace jasperengine::editor::spritenormals {
             case Preset::Crisp: return "crisp";
             case Preset::Detailed: return "detailed";
             case Preset::Chunky: return "chunky";
+            case Preset::Toon: return "toon";
         }
         return "default";
     }
@@ -376,7 +397,7 @@ namespace jasperengine::editor::spritenormals {
 
     bool parsePreset(const std::string& name, Preset& out) {
         const std::string n = lower(name);
-        for (Preset p : {Preset::Soft, Preset::Default, Preset::Crisp, Preset::Detailed, Preset::Chunky}) {
+        for (Preset p : {Preset::Soft, Preset::Default, Preset::Crisp, Preset::Detailed, Preset::Chunky, Preset::Toon}) {
             if (n == toString(p)) {
                 out = p;
                 return true;
@@ -467,7 +488,58 @@ namespace jasperengine::editor::spritenormals {
             checkRange(problems, field + ".detail", region.detail, 0.0f, 8.0f);
             checkRange(problems, field + ".lift", region.lift, -16.0f, 16.0f);
         }
+        const Quantize& q = settings.quantize;
+        if (!isQuantizeDirections(q.directions)) {
+            problems.push_back({"invalid_settings", "quantize.directions",
+                                "quantize.directions must be 0 (off), 4, 6, 8, 12 or 16 (got " + std::to_string(q.directions) + ")",
+                                "Use 0 (off), 4, 6, 8, 12 or 16."});
+        }
+        if (q.tilts < 1 || q.tilts > 4) {
+            problems.push_back({"invalid_settings", "quantize.tilts", "quantize.tilts must be between 1 and 4 (got " + std::to_string(q.tilts) + ")",
+                                "Use a whole number between 1 and 4."});
+        }
+        checkRange(problems, "quantize.flat_deg", q.flatDeg, 0.0f, 45.0f);
+        checkRange(problems, "quantize.rotation_deg", q.rotationDeg, 0.0f, 360.0f);   // 360 is 0 (a whole turn)
         return problems;
+    }
+
+    // ---- quantization
+
+    std::array<double, 3> quantizeNormal(const Quantize& q, double x, double y, double z) {
+        if (!q.on() || !isQuantizeDirections(q.directions) || q.tilts < 1) return {x, y, z};
+        constexpr double kDeg = 180.0 / 3.14159265358979323846;
+        const double tilt = std::acos(std::min(std::max(z, -1.0), 1.0)) * kDeg;
+        const double flat = q.flatDeg;
+        // under the flat cone, or no azimuth to snap (x = y = 0): facing the viewer
+        if (tilt < flat || (x == 0.0 && y == 0.0)) return {0.0, 0.0, 1.0};
+        const double step = 360.0 / q.directions;
+        const double rotation = quantizeRotation(q);
+        // measured from the rotation in [0, 360): -180 and +180 snap alike
+        double from = std::fmod(std::atan2(y, x) * kDeg - rotation, 360.0);
+        if (from < 0.0) from += 360.0;
+        const double k = std::fmod(std::round(from / step), static_cast<double>(q.directions));
+        const double azimuth = (rotation + k * step) / kDeg;
+        const double ring = (90.0 - flat) / q.tilts;
+        const double bin = std::min(std::floor((tilt - flat) / ring), static_cast<double>(q.tilts - 1));
+        const double t = (flat + (std::max(bin, 0.0) + 0.5) * ring) / kDeg;
+        return {std::sin(t) * std::cos(azimuth), std::sin(t) * std::sin(azimuth), std::cos(t)};
+    }
+
+    std::vector<std::array<double, 3>> quantizePalette(const Quantize& q) {
+        std::vector<std::array<double, 3>> palette;
+        if (!q.on() || !isQuantizeDirections(q.directions) || q.tilts < 1) return palette;
+        constexpr double kDeg = 180.0 / 3.14159265358979323846;
+        palette.push_back({0.0, 0.0, 1.0});
+        const double step = 360.0 / q.directions;
+        const double ring = (90.0 - q.flatDeg) / q.tilts;
+        for (int r = 0; r < q.tilts; r++) {
+            const double t = (q.flatDeg + (r + 0.5) * ring) / kDeg;
+            for (int k = 0; k < q.directions; k++) {
+                const double azimuth = (quantizeRotation(q) + k * step) / kDeg;
+                palette.push_back({std::sin(t) * std::cos(azimuth), std::sin(t) * std::sin(azimuth), std::cos(t)});
+            }
+        }
+        return palette;
     }
 
     // ---- cells

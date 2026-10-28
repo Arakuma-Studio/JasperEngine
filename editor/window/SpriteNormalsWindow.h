@@ -573,6 +573,8 @@ namespace jasperengine::editor {
         void drawBatch();
         void drawFrames();
         void drawPresetAndSliders();
+        void drawToonSteps(const spritenormals::Settings& base);              // after Volume: Off / 4 / 8 / 16
+        void drawToonAdvanced(const spritenormals::Settings& base, bool& changed);   // directions, tilt rings, flat, rotation
         void drawAdvanced();
         void drawRegions();
         void drawOutput();
