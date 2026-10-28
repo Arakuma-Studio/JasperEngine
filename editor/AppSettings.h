@@ -50,6 +50,7 @@ struct PanelVisibilitySettings {
     bool project = true;
     bool console = true;
     bool animation = true;
+    bool poseAnimation = false;
     bool terrain = false;
     bool textureSynthesis = false;
     bool physicsPlacement = false;
@@ -63,6 +64,7 @@ struct PanelVisibilitySettings {
             && project == other.project
             && console == other.console
             && animation == other.animation
+            && poseAnimation == other.poseAnimation
             && terrain == other.terrain
             && textureSynthesis == other.textureSynthesis
             && physicsPlacement == other.physicsPlacement
@@ -91,6 +93,18 @@ struct GameViewSettings {
             && atmosphereQuality == other.atmosphereQuality;
     }
     bool operator!=(const GameViewSettings& other) const { return !(*this == other); }
+};
+
+// Scene view toolbar toggles that follow the user, not the scene (S26 R12, R16)
+struct SceneViewSettings {
+    bool exactPick = false;       // a click selects what is under it, never its prefab or model root
+    bool alignToSurface = false;  // drops turn their up axis onto the surface normal
+    bool rulers = false;          // top and left rulers in 2D, UI and orthographic axis views
+
+    bool operator==(const SceneViewSettings& other) const {
+        return exactPick == other.exactPick && alignToSurface == other.alignToSurface && rulers == other.rulers;
+    }
+    bool operator!=(const SceneViewSettings& other) const { return !(*this == other); }
 };
 
 // How the Scene view draws lattice cages and edits their points (Preferences > Lattice)
@@ -214,8 +228,10 @@ private:
     static bool multiViewportEnabled;
     static bool editorVSyncEnabled;
     static float uiScale;
+    static bool poseDockGrown;
     static PanelVisibilitySettings panelVisibility;
     static GameViewSettings gameViewSettings;
+    static SceneViewSettings sceneViewSettings;
     static LatticeViewSettings latticeViewSettings;
     static ProfilerSettings profilerSettings;
 
@@ -337,6 +353,10 @@ public:
     static bool getMultiViewportEnabled();
     static void setMultiViewportEnabled(bool enabled);
 
+    // The Pose Animation window grew the bottom dock once on its first open (not again)
+    static bool getPoseDockGrown();
+    static void setPoseDockGrown(bool grown);
+
     // VSync for the editor's own frames; Play mode and builds use the project setting
     static bool getEditorVSyncEnabled();
     static void setEditorVSyncEnabled(bool enabled);
@@ -351,6 +371,8 @@ public:
 
     static GameViewSettings getGameViewSettings();
     static void setGameViewSettings(const GameViewSettings& settings);
+    static SceneViewSettings getSceneViewSettings();
+    static void setSceneViewSettings(const SceneViewSettings& settings);
 
     // Lattice cage drawing and point editing; set clamps every value to its range
     static LatticeViewSettings getLatticeViewSettings();

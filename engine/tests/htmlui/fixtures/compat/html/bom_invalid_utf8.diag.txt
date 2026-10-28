@@ -1,1 +1,0 @@
-compat/html/bom_invalid_utf8.html:2:8: warning: 2 invalid UTF-8 sequence(s) replaced by U+FFFD (fix: save the file as UTF-8) [HTMLUI-GEN-0003]

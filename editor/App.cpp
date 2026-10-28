@@ -13,6 +13,7 @@
 #include "profiler/Profile.h"
 #include "asset/AssetRefEditor.h"
 #include "util/Scheduler.h"
+#include "window/AnimationWindowClip.h"
 #include "thread/ResourceProgress.h"
 
 #include "imgui_internal.h"
@@ -40,6 +41,7 @@
 #include "window/UndoHistoryWindow.h"
 #include "window/InputActionsWindow.h"
 #include "command/PlayChangeReview.h"
+#include "pose/PoseEditSession.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpAutoSync.h"
 #include "mcp/tools/McpTools.h"
@@ -74,6 +76,11 @@
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "htmlui/HtmlUiAutoImport.h"
+#include "render/preview/PoseRender.h"
+#include "pose/PoseTemplates.h"
+#include "pose/PoseViewport.h"
+#include "animation/AnimationClipAppHooks.h"
+#include "animation/AnimationClipController.h"
 
 #include <filesystem>
 #include <cstdlib>
@@ -161,6 +168,7 @@ editor::App::App(){
     projectWindow = new ProjectWindow(&project, codeEditor, imageViewerWindow);
     loadingWindow = new LoadingWindow();
     animationWindow = new AnimationWindow(&project);
+    poseAnimationWindow = new PoseAnimationWindow(&project);
     terrainEditWindow = new TerrainEditWindow(&project);
     textureSynthesisWindow = new TextureSynthesisWindow(&project);
     physicsPlacementWindow = new PhysicsPlacementWindow(&project);
@@ -186,6 +194,12 @@ editor::App::App(){
         }
         playModeChangesWindow->openFor(sceneId);
     };
+    // pose templates saved or deleted (and their undo/redo): the asset database and the Project
+    // window see the files (MCP writes templates through the pose document, which syncs itself)
+    PoseTemplates::setFilesChangedHook([this](const std::vector<std::filesystem::path>&){
+        project.refreshAssetDatabase(true);
+        projectWindow->refreshCurrentDirectory();
+    });
 
     isInitialized = false;
     dockspaceNeedsRebuild = false;
@@ -550,17 +564,25 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         catalogItem("edit.shortcuts")
     }));
 
+    std::vector<PlatformMenuItem> assetsCreateItems = {
+        catalogItem("assets.createFolder", "Folder"),
+        menuSeparator(),
+        catalogItem("assets.createLuaScript", "Lua Script"),
+        catalogItem("assets.createCppScript", "C++ Script"),
+        menuSeparator(),
+        catalogItem("assets.createHtmlDocument", "HTML Document"),
+        menuSeparator(),
+        catalogItem("assets.createPoseAnimation", "Pose Animation")
+    };
+    // Animation Clip: once the clip asset task set its hook
+    if (animationClipAppHooks().createClipAsset) {
+        assetsCreateItems.push_back(catalogItem("assets.createAnimationClip", "Animation Clip"));
+    }
+    assetsCreateItems.push_back(menuSeparator());
+    assetsCreateItems.push_back(menuSubmenu("Scene", newSceneItems(), !isProjectBusy));
+
     menu.menus.push_back(menuSubmenu("Assets", {
-        menuSubmenu("Create", {
-            catalogItem("assets.createFolder", "Folder"),
-            menuSeparator(),
-            catalogItem("assets.createLuaScript", "Lua Script"),
-            catalogItem("assets.createCppScript", "C++ Script"),
-            menuSeparator(),
-            catalogItem("assets.createHtmlDocument", "HTML Document"),
-            menuSeparator(),
-            menuSubmenu("Scene", newSceneItems(), !isProjectBusy)
-        }),
+        menuSubmenu("Create", assetsCreateItems),
         catalogItem("assets.showInFileManager"),
         catalogItem("assets.open"),
         catalogItem("assets.rename", "Rename"),
@@ -603,7 +625,8 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             catalogItem("window.playModeChanges", windowMenuLabel(PlayModeChangesWindow::WINDOW_NAME))
         }),
         menuSubmenu("Animation", {
-            catalogItem("window.animation", windowMenuLabel(AnimationWindow::WINDOW_NAME))
+            catalogItem("window.animation", windowMenuLabel(AnimationWindow::WINDOW_NAME)),
+            catalogItem("window.poseAnimation", windowMenuLabel(PoseAnimationWindow::WINDOW_NAME))
         }),
         catalogItem("window.terrain", windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
         catalogItem("window.inputActions", windowMenuLabel(InputActionsWindow::WINDOW_NAME)),
@@ -803,6 +826,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ToggleAnimation:
             showEditorWindow(animationWindow);
             break;
+        case AppMenuCommand::TogglePoseAnimation:
+            showEditorWindow(poseAnimationWindow);
+            break;
         case AppMenuCommand::ToggleTerrain:
             showEditorWindow(terrainEditWindow);
             break;
@@ -963,6 +989,15 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::AssetsCreateHtmlDocument:
             projectWindow->assetsCreateHtmlDocument();
+            break;
+        case AppMenuCommand::AssetsCreatePoseAnimation:
+            projectWindow->assetsCreatePoseAnimation();
+            break;
+        case AppMenuCommand::AssetsCreateAnimationClip:
+            if (animationClipAppHooks().createClipAsset) {
+                animationClipAppHooks().createClipAsset(&project);
+                projectWindow->refreshCurrentDirectory();
+            }
             break;
         case AppMenuCommand::AssetsShowInFileManager:
             projectWindow->assetsShowInFileManager();
@@ -1132,6 +1167,9 @@ editor::UndoTimeline::Target editor::App::undoTarget() const{
         case LastFocusedWindow::AnySceneWindow: focused = UndoTimeline::FocusedWindow::Scene; break;
         case LastFocusedWindow::Resources: focused = UndoTimeline::FocusedWindow::Resources; break;
         case LastFocusedWindow::Code: focused = UndoTimeline::FocusedWindow::Code; break;
+        // their edits are steps of the project history: the timeline orders them with the scene's
+        case LastFocusedWindow::PoseAnimation:
+        case LastFocusedWindow::AnimationClip: focused = UndoTimeline::FocusedWindow::Other; break;
     }
     return UndoTimeline::resolveTarget(ImGui::GetIO().WantTextInput, codeEditor->isFocused(), focused);
 }
@@ -1806,6 +1844,7 @@ void editor::App::buildDefaultLayout(){
     // system names and the Enabled checkboxes were cut off)
     ImGui::DockBuilderDockWindow(SystemsWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(AnimationWindow::WINDOW_NAME, dock_id_middle_bottom);
+    ImGui::DockBuilderDockWindow(PoseAnimationWindow::WINDOW_NAME, dock_id_middle_bottom);
 
     // Hierarchy top-left; the Scene tabs and Game view fill the centre.
     ImGui::DockBuilderSplitNode(dock_id_left, ImGuiDir_Left, 0.0f, &dock_id_left_top, &dock_id_middle_top);
@@ -1833,10 +1872,11 @@ void editor::App::buildDefaultLayout(){
     stampPanelDockOrder(ProjectWindow::WINDOW_NAME, 0);
     stampPanelDockOrder(ConsoleWindow::WINDOW_NAME, 1);
     stampPanelDockOrder(AnimationWindow::WINDOW_NAME, 2);
-    stampPanelDockOrder(UndoHistoryWindow::WINDOW_NAME, 3);
-    stampPanelDockOrder(PlayModeChangesWindow::WINDOW_NAME, 4);
-    stampPanelDockOrder(SystemsWindow::WINDOW_NAME, 5);
-    stampPanelDockOrder(BookmarksWindow::WINDOW_NAME, 6);
+    stampPanelDockOrder(PoseAnimationWindow::WINDOW_NAME, 3);
+    stampPanelDockOrder(UndoHistoryWindow::WINDOW_NAME, 4);
+    stampPanelDockOrder(PlayModeChangesWindow::WINDOW_NAME, 5);
+    stampPanelDockOrder(SystemsWindow::WINDOW_NAME, 6);
+    stampPanelDockOrder(BookmarksWindow::WINDOW_NAME, 7);
 
     // Mark the scene area as the central node. CentralNode is a saved flag, so it
     // persists in the ini and lets getCentralDockId() recover this node on the
@@ -2058,6 +2098,9 @@ ImFont* editor::App::getBoldFont() {
 void editor::App::setup() {
     mainThreadId = std::this_thread::get_id();
 
+    // a queued offscreen pose render keeps the loop drawing until processFrame serves it
+    PoseRender::setFrameRequester([this]() { requestRedraw(); });
+
     // Initialize application settings
     initializeSettings();
 
@@ -2085,6 +2128,9 @@ void editor::App::setup() {
     // and writes it, so ImGui's own ini file is off (S25 R19). At most one write a second.
     io.IniFilename = nullptr;
     io.IniSavingRate = 1.0f;
+    // the Animation window's saved label width and view: an ImGui settings handler, in the
+    // layout's ini text (before the first layout loads)
+    AnimationWindowClip::registerSettingsHandler();
     layouts.loadGlobalIni();
     setupLayouts();
     // the command catalog and the user's rebindings (shortcuts.yaml, next to settings.yaml)
@@ -2187,6 +2233,9 @@ void editor::App::setup() {
 bool editor::App::canEditSelection(bool duplicate) {
     // Enabled items keep their native key equivalent, stealing it from a focused text field.
     if (ImGui::GetIO().WantTextInput) return false;
+    // the focused Animation window owns Delete / Backspace / Ctrl+D (AnimationClipAppHooks::takesKeys):
+    // covers the scene key block and the native menu key equivalents
+    if (animationClipAppHooks().takesKeys && animationClipAppHooks().takesKeys()) return false;
     if (lastFocusedWindow != LastFocusedWindow::AnySceneWindow || project.isAnyScenePlaying()) return false;
     const uint32_t sceneId = project.getSelectedSceneId();
     uint32_t targetSceneId = sceneId;
@@ -2206,6 +2255,8 @@ bool editor::App::canEditSelection(bool duplicate) {
 
 void editor::App::deleteSelection() {
     if (!canEditSelection(false)) return;
+    // a posed character goes back to its rest bones first, so they are what the undo keeps
+    PoseEditSession::suspendActive();
     const uint32_t sceneId = project.getSelectedSceneId();
     uint32_t selectedSceneForProperties = project.getSelectedSceneForProperties();
     uint32_t targetSceneId = sceneId;
@@ -2266,6 +2317,8 @@ void editor::App::deleteSelection() {
 
 void editor::App::duplicateSelection() {
     if (!canEditSelection(true)) return;
+    // a posed character goes back to its rest bones first, so they are what gets copied
+    PoseEditSession::suspendActive();
     const uint32_t sceneId = project.getSelectedSceneId();
     uint32_t targetSceneId = sceneId;
     SceneProject* sp = project.getScene(targetSceneId);
@@ -2342,6 +2395,8 @@ void editor::App::selectAll() {
 
 void editor::App::copySelection(bool cut) {
     if (!(cut ? canCutSelection() : canCopySelection())) return;
+    // a posed character goes back to its rest bones first, so they are what gets copied
+    PoseEditSession::suspendActive();
     const uint32_t sceneId = project.getSelectedSceneId();
     std::vector<Entity> selection = EntityClipboard::getCopyableSelection(&project, sceneId);
     if (selection.empty()) return;
@@ -2392,11 +2447,18 @@ void editor::App::show(){
     project.syncPlayRuntimeSelections();
 
     if (!ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel)) {
-        // the Jobs & Memory panel shows the threading settings: its undo is the project's
+        // the Jobs & Memory panel shows the threading settings: its undo is the project's.
+        // A Physics Placement gesture of the selected scene keeps the keys on the scene while it
+        // runs (the timeline's undo cancels it first: CommandHistory::beforeChange)
+        const bool placementBusy = physicsPlacementWindow->isBusy(project.getSelectedSceneId());
         if (projectWindow->isFocused() || jobsMemoryWindow->isFocused()) {
             lastFocusedWindow = LastFocusedWindow::Resources;
         } else if (codeEditor->isFocused()) {
             lastFocusedWindow = LastFocusedWindow::Code;
+        } else if (poseAnimationWindow->ownsUndo(sceneWindow->isFocused())) {
+            lastFocusedWindow = LastFocusedWindow::PoseAnimation;
+        } else if (clipUndoGoesToProject(placementBusy)) {
+            lastFocusedWindow = LastFocusedWindow::AnimationClip;
         }else{
             lastFocusedWindow = LastFocusedWindow::AnySceneWindow;
         }
@@ -2470,6 +2532,9 @@ void editor::App::show(){
     imageViewerWindow->show();
     consoleWindow->show();
     animationWindow->show();
+    poseAnimationWindow->show();
+    // the Scene views posing its character: a selection elsewhere leaves posing, ghosts go
+    PoseViewport::frame(&project);
     terrainEditWindow->show();
     textureSynthesisWindow->show();
     // also the tick of the Scene view's physics sessions, with the panel closed too
@@ -2610,6 +2675,8 @@ void editor::App::parseBenchmarkArgs(int argc, char** argv) {
         } else if (arg == "--out") {
             if (const char* value = requireValue(i, "--out"))
                 benchmarkOut = CommandLine::absoluteArgPath(value);
+        } else if (arg == "--ui-stats") {
+            benchmarkUiStats = true;
         } else if (arg == "--gpu-passes") {
             benchmarkGpuPasses = true;
         } else if (arg == "--profile") {
@@ -2697,6 +2764,10 @@ void editor::App::engineInit(int argc, char** argv) {
     Engine::pauseGameEvents(true);
 
     // Any edit/undo/redo flags its scene for redraw, so the loop can idle otherwise.
+    // a scene undo / redo while a character is posed runs on its rest bones (PoseEditSession)
+    CommandHistory::beforeStep = [](size_t sceneId){
+        PoseEditSession::suspendActiveForScene(static_cast<uint32_t>(sceneId));
+    };
     CommandHistory::onSceneModified = [this](size_t sceneId, bool structural){
         if (SceneProject* sceneProject = project.getScene((uint32_t)sceneId)){
             sceneProject->needUpdateRender = true;
@@ -2742,6 +2813,8 @@ void editor::App::engineInit(int argc, char** argv) {
     CommandHistory::beforeChange = [this](size_t sceneId, CommandHistory::Change change){
         return physicsPlacementWindow->beforeHistoryChange((uint32_t)sceneId, change);
     };
+    // the clip editor's history timeline (undo routing, R5b) after the listeners above
+    AnimationClipController::installHistoryTimeline(&project);
 
     ShaderPool::setShaderBuilder([this](jasperengine::ShaderKey shaderKey) -> jasperengine::ShaderBuildResult {
         static jasperengine::editor::ShaderBuilder builder;  // Make static to reuse
@@ -3053,6 +3126,12 @@ void editor::App::engineRender(){
         return;
     }
 
+    // a frame that began drawing (EditorFrame: frameReady): PoseRender::renderNow may draw
+    // from here on, main-thread tasks included, until the end of this function
+    struct PoseFrameScope {
+        PoseFrameScope() { PoseRender::setInEditorFrame(true); }
+        ~PoseFrameScope() { PoseRender::setInEditorFrame(false); }
+    } poseFrameScope;
 
     processMainThreadTasks();
     // upstream's FBX reimports: their own throttled check, hashing on a Background job
@@ -3062,6 +3141,10 @@ void editor::App::engineRender(){
     ScriptStatus::get().update();
     ScriptReloadService::get().update();
     project.updateGeneratedSources();
+    // clip previews (the Animation window's clip mode, MCP preview_animation) advance every frame
+    if (animationClipAppHooks().frame) {
+        animationClipAppHooks().frame(&project, ImGui::GetIO().DeltaTime, ImGui::GetFrameCount());
+    }
     // Prefab Mode's Auto Save waits for the edit in progress (a drag, a field being typed)
     project.updatePrefabStages(ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsAnyItemActive()
         || ImGui::GetIO().WantTextInput || physicsPlacementWindow->isAnyBusy());
@@ -3290,6 +3373,8 @@ void editor::App::engineRender(){
 
             project.beginPrefabStageDraw(sceneProject.id);
             Engine::systemDraw();
+            // Split and Quad: the other panes, after the frame (only those that changed)
+            sceneWindow->renderInactivePanes(sceneProject);
             project.endPrefabStageDraw(sceneProject.id);
 
             if (steppingFrame) {
@@ -3325,6 +3410,13 @@ void editor::App::engineRender(){
         footerDeltaMs = 0.0f;
     }
     renderedScenePrevFrame = renderedSceneThisFrame;
+
+    // offscreen pose renders (PoseRender): private scenes drawn as views of their own after
+    // this frame's views, so the open scenes, the Scene view and the Game view are untouched
+    if (PoseRender::processFrame()) {
+        requestRedraw();
+    }
+
     if (benchmarkEnabled)
         tickBenchmark();
 }
@@ -3404,6 +3496,7 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
     if (sceneViewShown){
         project.updateSceneRender(sceneProject.id);
         sceneRender->drawSceneView(sceneWidth, sceneHeight, project.getRunningRuntimeLayers(sceneProject.id), true);
+        sceneWindow->renderInactivePanes(sceneProject);
     }
 
     projectWindow->processMaterialThumbnails();
@@ -3451,6 +3544,7 @@ void editor::App::renderSceneBesideGame(SceneProject& sceneProject) {
 
     project.beginPrefabStageDraw(sceneProject.id);
     sceneRender->drawSceneView(width, height, childLayers, false);
+    sceneWindow->renderInactivePanes(sceneProject);
     project.endPrefabStageDraw(sceneProject.id);
 
     renderedSceneThisFrame = true;
@@ -3658,6 +3752,7 @@ void editor::App::tickBenchmark() {
             benchmarkDraws.clear();
             benchmarkInstances.clear();
             benchmarkTris.clear();
+            benchmarkUiTotals.clear();
             benchmarkCpuMs.clear();
             benchmarkGpuFrameMs.clear();
             benchmarkGpuPassList.clear();
@@ -3684,6 +3779,17 @@ void editor::App::tickBenchmark() {
         benchmarkDraws.push_back(stats.drawCalls);
         benchmarkInstances.push_back(stats.instances);
         benchmarkTris.push_back(stats.triangles);
+        if (benchmarkUiStats) {
+            // the scene's documents (screen and texture-mode contexts), this frame
+            std::shared_ptr<UIDocumentSystem> documents = selected->scene->getSystem<UIDocumentSystem>();
+            const HtmlUIRenderStats ui = documents ? documents->getRenderStats() : HtmlUIRenderStats();
+            size_t field = 0;
+            ui.forEachField([this, &field](const char* name, uint32_t value) {
+                if (field == benchmarkUiTotals.size())
+                    benchmarkUiTotals.emplace_back(name, 0.0);
+                benchmarkUiTotals[field++].second += (double)value;
+            });
+        }
         collectBenchmarkGpuFrame();
         if (static_cast<int>(benchmarkFps.size()) >= benchmarkMeasureFrames) {
             benchmarkLastFrame = FrameTimes::currentFrame();
@@ -3825,6 +3931,15 @@ void editor::App::finishBenchmark() {
     json.precision(3);
     json << "  \"cpuMs\": {\"median\": " << stat(benchmarkCpuMs, 0.5) << ", \"p95\": " << stat(benchmarkCpuMs, 0.95)
          << ", \"mean\": " << mean(benchmarkCpuMs) << "}";
+    if (benchmarkUiStats) {
+        // HtmlUIRenderStats averaged over the measured frames
+        json << ",\n  \"htmlUi\": {";
+        for (size_t i = 0; i < benchmarkUiTotals.size(); i++) {
+            json << (i ? ", " : "") << "\"" << benchmarkUiTotals[i].first << "\": "
+                 << (n > 0 ? benchmarkUiTotals[i].second / static_cast<double>(n) : 0.0);
+        }
+        json << "}";
+    }
     if (benchmarkGpuPasses) {
         const GpuTimingState gpu = SystemRender::getGpuTimingState();
         json << ",\n  \"gpu\": {\n"
@@ -3947,6 +4062,10 @@ void editor::App::setWakeCallback(std::function<void()> cb) {
 }
 
 void editor::App::shutdownBackgroundWork() {
+    // clip previews restored while the scenes still exist (nothing of them runs at static exit)
+    if (animationClipAppHooks().projectClosed) {
+        animationClipAppHooks().projectClosed();
+    }
     // teardown is watched on its own window (the job system is not read from here on)
     EditorDiagnostics::beginShutdown();
     // the window layout as it is, for the next start
@@ -3963,6 +4082,7 @@ void editor::App::shutdownBackgroundWork() {
     HotReloadService::get().stopWatching();
     htmlui::HtmlUiAutoImport::get().shutdown();
     setWakeCallback(nullptr);
+    PoseRender::setFrameRequester(nullptr);
 }
 
 void editor::App::engineViewDestroyed(){
@@ -3970,6 +4090,10 @@ void editor::App::engineViewDestroyed(){
     // no thumbnail step renders off the main thread (and commits to the render queue) from
     // here on, nor touches the scenes the view's destruction removes
     projectWindow->stopThumbnailWork();
+    // the offscreen pose renderers' private scenes are not the Engine's: they free their GPU
+    // objects here, while the view still exists (not on Engine::onViewDestroyed, which a play
+    // session's stop fires too)
+    PoseRender::releaseGpu();
     // Closing during project loading can leave uploads committed before any scene frame
     // consumes them. Drain that batch before shutdown waits to flush the queue.
     SystemRender::executeQueue();
@@ -4011,6 +4135,13 @@ void editor::App::clearSceneWindowState(uint32_t sceneId) {
     if (animationWindow) {
         animationWindow->clearSceneState(sceneId);
     }
+    if (animationClipAppHooks().sceneClosed) {
+        animationClipAppHooks().sceneClosed(sceneId);
+    }
+
+    if (poseAnimationWindow) {
+        poseAnimationWindow->clearSceneState(sceneId);
+    }
 
     if (lastActivatedScene == sceneId) {
         resetLastActivatedScene();
@@ -4022,6 +4153,12 @@ void editor::App::prepareForProjectSwitch() {
     layouts.saveWorkingLayoutNow();
     // the watcher stops before the project goes (S05 D2)
     HotReloadService::get().stopWatching();
+    // the posed bones go back while their scenes still exist
+    poseAnimationWindow->prepareForProjectSwitch();
+    // and the clip previews (documents and the shared clip controller are released)
+    if (animationClipAppHooks().projectClosed) {
+        animationClipAppHooks().projectClosed();
+    }
     imageViewerWindow->closeAll();
     // a synthesis started in this project is cancelled and never written into the next one
     textureSynthesisWindow->resetForProjectSwitch();
@@ -4135,6 +4272,18 @@ void editor::App::updateWindowTitle(const std::string& projectName) {
 }
 
 void editor::App::stopTransientPreviews() {
+    // before a scene save or play: posed bones go back to their saved transforms
+    if (poseAnimationWindow) {
+        poseAnimationWindow->stopTransientPreviews();
+    }
+    // and the Animation window's previewed targets to their snapshots (animation clips 9.R6):
+    // the entity-sequence mode, then the clip mode
+    if (animationWindow) {
+        animationWindow->stopTransientPreviews();
+    }
+    if (animationClipAppHooks().stopTransientPreviews) {
+        animationClipAppHooks().stopTransientPreviews();
+    }
     if (terrainEditWindow) {
         terrainEditWindow->endStroke();
         terrainEditWindow->updateFoliagePreview();
@@ -4149,6 +4298,11 @@ void editor::App::stopTransientPreviews() {
         physicsPlacementWindow->finaliseGestures();
     }
     mcp::stopPlacementPreviews(&project);
+}
+
+bool editor::App::dispatchClipDrop(uint32_t sceneId, Entity target, const std::vector<std::string>& paths) {
+    if (!animationClipAppHooks().dropClips) return false;
+    return animationClipAppHooks().dropClips(&project, sceneId, target, paths);
 }
 
 void editor::App::flushSceneMaterialWrites(uint32_t sceneId) {
@@ -4423,12 +4577,21 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // (oe-port) v35: atmosphere (S12): the fogged mesh variants (HAS_FOG) carry the height fog
     //      (HAS_HEIGHT_FOG, u_fs_heightFog), so every cached 'Fog' variant is stale; the
     //      atmosphere pass types after S10's SHADOW_CACHE.
+    // S16 side, v36: HTML UI rendering cost (S16): htmlui.vert/.frag gain the document position and
+    //      u_fs_htmluiClip (analytic clip, R8 coverage textures); HTMLUI_PRIM (instanced SDF
+    //      boxes, borders, shadows and glyph quads) appended after the atmosphere types.
+    // v37: S15's PASS_PREVIEW before HTMLUI_PRIM (the merge of both); the HTML UI's rounded-rect
+    //      distance and border colours changed (S16).
+    // v38: HTMLUI_PRIM samples four textures (u_htmluiTexture0-3, u_fs_htmluiSlots, S16).
+    // S16 v39: HTMLUI_PRIM gradients take their origin and tile period (S16-F5).
     // v39: upstream (v34-v38 above) and oe-port's S10/S12 (its v34/v35) together: MESH bit 5 is
     //      'Sto' and S10's high shadow filters moved to bit 33 ('Shq', USE_SHADOWS_HQ); the
     //      fogged variants carry the height fog. Either side's v34-v38 cache holds other variants.
     // v40: S11's built-in Lit (lobes, hex tiling, Lit Quality: pbr.glsl, mesh.frag, terrain) with
     //      upstream's Stochastic Tiling in the same Lit and terrain sources and block layout.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v40";
+    // v41: S16's HTMLUI_PRIM and htmlui changes (its v36-v39) with upstream's and S11's (v39, v40).
+    // v42: S20's PARTICLES before HTMLUI_PRIM (the merge of both): a v41 cache numbers them otherwise.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v42";
 }
 
 void editor::App::pushTabNotificationStyle(){
@@ -4482,6 +4645,10 @@ editor::AnimationWindow* editor::App::getAnimationWindow() const{
 
 editor::JobsMemoryWindow* editor::App::getJobsMemoryWindow() const{
     return jobsMemoryWindow;
+}
+
+editor::PoseAnimationWindow* editor::App::getPoseAnimationWindow() const{
+    return poseAnimationWindow;
 }
 
 editor::TerrainEditWindow* editor::App::getTerrainEditWindow() const{
@@ -4551,7 +4718,8 @@ namespace {
                       editor::MissingAssetsWindow* missing, editor::AssetReferencesWindow* references, editor::JobsMemoryWindow* jobs,
                       editor::ProfilerWindow* profiler, editor::FrameDebuggerWindow* frameDebugger, editor::UndoHistoryWindow* undo,
                       editor::PlayModeChangesWindow* playChanges, editor::GameWindow* game, editor::BookmarksWindow* bookmarks,
-                      editor::TextureSynthesisWindow* textureSynthesis, editor::PhysicsPlacementWindow* physicsPlacement) {
+                      editor::TextureSynthesisWindow* textureSynthesis, editor::PhysicsPlacementWindow* physicsPlacement,
+                      editor::PoseAnimationWindow* poseAnimation) {
         visit(editor::GameWindow::WINDOW_NAME, game);
         visit(editor::InspectorWindow::WINDOW_NAME, inspector);
         visit(editor::HierarchyWindow::WINDOW_NAME, hierarchy);
@@ -4571,6 +4739,7 @@ namespace {
         visit(editor::BookmarksWindow::WINDOW_NAME, bookmarks);
         visit(editor::TextureSynthesisWindow::WINDOW_NAME, textureSynthesis);
         visit(editor::PhysicsPlacementWindow::WINDOW_NAME, physicsPlacement);
+        visit(editor::PoseAnimationWindow::WINDOW_NAME, poseAnimation);
     }
 
 }
@@ -4588,7 +4757,7 @@ std::map<std::string, bool> editor::App::panelStates() const{
                  hierarchyWindow, inspectorWindow, projectWindow, consoleWindow, animationWindow, terrainEditWindow,
                  mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, profilerWindow,
                  frameDebuggerWindow, undoHistoryWindow, playModeChangesWindow, gameWindow, bookmarksWindow,
-                 textureSynthesisWindow, physicsPlacementWindow);
+                 textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow);
     return panels;
 }
 
@@ -4600,7 +4769,7 @@ void editor::App::applyPanelStates(const std::map<std::string, bool>& panels){
     }, hierarchyWindow, inspectorWindow, projectWindow, consoleWindow, animationWindow, terrainEditWindow,
        mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, profilerWindow,
        frameDebuggerWindow, undoHistoryWindow, playModeChangesWindow, gameWindow, bookmarksWindow,
-                 textureSynthesisWindow, physicsPlacementWindow);
+                 textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow);
 }
 
 void editor::App::applyDefaultLayout(){
@@ -4609,6 +4778,7 @@ void editor::App::applyDefaultLayout(){
     projectWindow->setOpen(true);
     consoleWindow->setOpen(true);
     animationWindow->setOpen(true);
+    poseAnimationWindow->setOpen(false);
     terrainEditWindow->setOpen(false);
     textureSynthesisWindow->setOpen(false);
     physicsPlacementWindow->setOpen(false);
@@ -4830,6 +5000,7 @@ void editor::App::applyPanelVisibilitySettings() {
     projectWindow->setOpen(visibility.project);
     consoleWindow->setOpen(visibility.console);
     animationWindow->setOpen(visibility.animation);
+    poseAnimationWindow->setOpen(visibility.poseAnimation);
     terrainEditWindow->setOpen(visibility.terrain);
     textureSynthesisWindow->setOpen(visibility.textureSynthesis);
     physicsPlacementWindow->setOpen(visibility.physicsPlacement);
@@ -4845,6 +5016,7 @@ void editor::App::persistPanelVisibilitySettings() {
     visibility.project = projectWindow->isOpen();
     visibility.console = consoleWindow->isOpen();
     visibility.animation = animationWindow->isOpen();
+    visibility.poseAnimation = poseAnimationWindow->isOpen();
     visibility.terrain = terrainEditWindow->isOpen();
     visibility.textureSynthesis = textureSynthesisWindow->isOpen();
     visibility.physicsPlacement = physicsPlacementWindow->isOpen();

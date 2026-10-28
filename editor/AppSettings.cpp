@@ -153,10 +153,12 @@ int AppSettings::resourcesItemViewStyle = 1;
 float AppSettings::resourcesLeftPanelWidth = 200.0f;
 float AppSettings::codeEditorFontSize = AppSettings::defaultCodeEditorFontSize;
 bool AppSettings::multiViewportEnabled = false;
+bool AppSettings::poseDockGrown = false;
 bool AppSettings::editorVSyncEnabled = true;
 float AppSettings::uiScale = 1.0f;
 PanelVisibilitySettings AppSettings::panelVisibility;
 GameViewSettings AppSettings::gameViewSettings;
+SceneViewSettings AppSettings::sceneViewSettings;
 LatticeViewSettings AppSettings::latticeViewSettings;
 ProfilerSettings AppSettings::profilerSettings;
 bool AppSettings::mcpHttpEnabled = false;
@@ -432,6 +434,9 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             if (editorNode["multi_viewport"]) {
                 multiViewportEnabled = editorNode["multi_viewport"].as<bool>();
             }
+            if (editorNode["pose_dock_grown"]) {
+                poseDockGrown = editorNode["pose_dock_grown"].as<bool>();
+            }
             if (editorNode["vsync"]) {
                 editorVSyncEnabled = editorNode["vsync"].as<bool>();
             }
@@ -450,6 +455,7 @@ bool AppSettings::applySettings(const YAML::Node& node) {
                 if (panelsNode["project"]) panelVisibility.project = panelsNode["project"].as<bool>();
                 if (panelsNode["console"]) panelVisibility.console = panelsNode["console"].as<bool>();
                 if (panelsNode["animation"]) panelVisibility.animation = panelsNode["animation"].as<bool>();
+                if (panelsNode["poseAnimation"]) panelVisibility.poseAnimation = panelsNode["poseAnimation"].as<bool>();
                 if (panelsNode["terrain"]) panelVisibility.terrain = panelsNode["terrain"].as<bool>();
                 if (panelsNode["textureSynthesis"]) panelVisibility.textureSynthesis = panelsNode["textureSynthesis"].as<bool>();
                 if (panelsNode["physicsPlacement"]) panelVisibility.physicsPlacement = panelsNode["physicsPlacement"].as<bool>();
@@ -464,6 +470,12 @@ bool AppSettings::applySettings(const YAML::Node& node) {
                 if (gameNode["maximize_on_play"]) gameViewSettings.maximizeOnPlay = gameNode["maximize_on_play"].as<bool>();
                 if (gameNode["stats"]) gameViewSettings.showStats = gameNode["stats"].as<bool>();
                 if (gameNode["atmosphere_quality"]) gameViewSettings.atmosphereQuality = std::clamp(gameNode["atmosphere_quality"].as<int>(), -1, 3);
+            }
+            if (editorNode["scene_view"]) {
+                auto sceneNode = editorNode["scene_view"];
+                if (sceneNode["exact_pick"]) sceneViewSettings.exactPick = sceneNode["exact_pick"].as<bool>();
+                if (sceneNode["align_to_surface"]) sceneViewSettings.alignToSurface = sceneNode["align_to_surface"].as<bool>();
+                if (sceneNode["rulers"]) sceneViewSettings.rulers = sceneNode["rulers"].as<bool>();
             }
             if (editorNode["profiler"]) {
                 auto profilerNode = editorNode["profiler"];
@@ -688,6 +700,7 @@ bool AppSettings::saveSettings() {
         // Editor viewport settings
         YAML::Node editorNode;
         editorNode["multi_viewport"] = multiViewportEnabled;
+        editorNode["pose_dock_grown"] = poseDockGrown;
         editorNode["vsync"] = editorVSyncEnabled;
         YAML::Node autosaveNode;
         autosaveNode["enabled"] = autosaveEnabled;
@@ -700,6 +713,7 @@ bool AppSettings::saveSettings() {
         panelsNode["project"] = panelVisibility.project;
         panelsNode["console"] = panelVisibility.console;
         panelsNode["animation"] = panelVisibility.animation;
+        panelsNode["poseAnimation"] = panelVisibility.poseAnimation;
         panelsNode["terrain"] = panelVisibility.terrain;
         panelsNode["textureSynthesis"] = panelVisibility.textureSynthesis;
         panelsNode["physicsPlacement"] = panelVisibility.physicsPlacement;
@@ -714,6 +728,11 @@ bool AppSettings::saveSettings() {
         gameNode["stats"] = gameViewSettings.showStats;
         gameNode["atmosphere_quality"] = gameViewSettings.atmosphereQuality;
         editorNode["game_view"] = gameNode;
+        YAML::Node sceneViewNode;
+        sceneViewNode["exact_pick"] = sceneViewSettings.exactPick;
+        sceneViewNode["align_to_surface"] = sceneViewSettings.alignToSurface;
+        sceneViewNode["rulers"] = sceneViewSettings.rulers;
+        editorNode["scene_view"] = sceneViewNode;
         YAML::Node profilerNode;
         profilerNode["budget_fps"] = profilerSettings.budgetFps;
         profilerNode["cpu"] = profilerSettings.showCpu;
@@ -1171,6 +1190,14 @@ void AppSettings::applyUndoSettings() {
     PlayChangeReview::enabled = undoReviewPlayChanges;
 }
 
+bool AppSettings::getPoseDockGrown() {
+    return poseDockGrown;
+}
+
+void AppSettings::setPoseDockGrown(bool grown) {
+    poseDockGrown = grown;
+}
+
 bool AppSettings::getHtmlUiAutoImport() {
     return htmlUiAutoImport;
 }
@@ -1270,6 +1297,16 @@ GameViewSettings AppSettings::getGameViewSettings() {
 
 void AppSettings::setGameViewSettings(const GameViewSettings& settings) {
     gameViewSettings = settings;
+    saveSettings();
+}
+
+SceneViewSettings AppSettings::getSceneViewSettings() {
+    return sceneViewSettings;
+}
+
+void AppSettings::setSceneViewSettings(const SceneViewSettings& settings) {
+    if (settings == sceneViewSettings) return;
+    sceneViewSettings = settings;
     saveSettings();
 }
 

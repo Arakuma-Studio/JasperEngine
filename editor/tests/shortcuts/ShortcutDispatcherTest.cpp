@@ -72,11 +72,28 @@ TEST(ShortcutDispatcher, CharacterizesTodaysBindings) {
         {"F5", ShortcutContext::Editor, "playmode.playOrResume"},
         {"Ctrl+K", ShortcutContext::Editor, "edit.searchAll"},
         {"Home", ShortcutContext::SceneView, "sceneView.frameAll"},
+        {"Alt+F", ShortcutContext::SceneView, "sceneView.frameAll"},     // S26
+        {"H", ShortcutContext::SceneView, "sceneView.hideSelection"},
+        {"Alt+H", ShortcutContext::SceneView, "sceneView.showAll"},
+        {"L", ShortcutContext::SceneView, "sceneView.togglePickLock"},
+        {"M", ShortcutContext::SceneView, "sceneView.measure"},
+        {"Shift+3", ShortcutContext::SceneView, "sceneView.recallBookmark3"},
+        {"Ctrl+Shift+3", ShortcutContext::SceneView, "sceneView.storeBookmark3"},
         {"Numpad7", ShortcutContext::SceneView, "sceneView.viewTop"},
         {"Ctrl+Numpad7", ShortcutContext::SceneView, "sceneView.viewBottom"},
         {"[", ShortcutContext::SceneView, "terrain.brushSmaller"},
         {"Shift+]", ShortcutContext::SceneView, "terrain.brushStronger"},
         {"Ctrl+Shift+N", ShortcutContext::Editor, "gameobject.createEmpty"},
+        // the Animation window editing a clip and the Pose Animation window: their keys first
+        {"K", ShortcutContext::Animation, "animation.addKey"},
+        {"Ctrl+D", ShortcutContext::Animation, "animation.duplicate"},
+        {"Delete", ShortcutContext::Animation, "animation.delete"},
+        {"Alt+.", ShortcutContext::Animation, "animation.nextKey"},
+        {"R", ShortcutContext::Animation, "animation.record"},
+        {"E", ShortcutContext::PoseAnimation, "pose.globalEdit"},
+        {"Ctrl+Shift+D", ShortcutContext::PoseAnimation, "pose.duplicateMirrored"},
+        {"Shift+Left", ShortcutContext::PoseAnimation, "pose.moveLeft"},
+        {"Ctrl+C", ShortcutContext::PoseAnimation, "pose.copy"},
     };
     for (const Expected& e : expected) {
         const Chord chord = chordOf(e.chord);

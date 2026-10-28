@@ -6,6 +6,7 @@
 #include "Scene.h"
 #include "Catalog.h"
 #include "render/SceneRender.h"
+#include "sceneview/SceneViewState.h"
 #include "command/CommandHistory.h"
 #include "render/preview/MaterialRender.h"
 #include "Conector.h"
@@ -187,10 +188,19 @@ namespace jasperengine::editor{
         std::set<ShaderKey> shaderKeys;
         std::vector<ChildSceneRef> childScenes;
         std::vector<SceneScriptSource> cppScripts;
+        // While the scene is closed: the write time and size of the file cppScripts were read
+        // from (Project::collectClosedSceneCppScripts), so an unchanged file is not read again.
+        // Forgotten when the scene closes: what it had in memory is not its file's.
+        bool cppScriptsRead = false;
+        fs::file_time_type cppScriptsReadStamp{};
+        std::uintmax_t cppScriptsReadSize = 0;
         std::vector<PrefabSceneInfo> prefabs;
         // FBX model path -> the import its saved model parts were built from
         std::map<std::string, std::string> imports;
         YAML::Node editorCameraState;
+        // this user's Scene view of it: camera settings, layout, bookmarks, measures, filters
+        // (S26, workspace.yaml)
+        SceneViewState viewState;
         // Missing Prefab instances by root entity (Project::getMissingPrefab validates them)
         std::map<Entity, MissingPrefabInstance> missingPrefabs;
         // Set while decoding when a prefab reference resolved to another path by its GUID:
@@ -625,6 +635,8 @@ namespace jasperengine::editor{
         }
     };
 
+    // editor/tests/PlayStartupScenesTest.cpp: builds a play session around a scenes vector
+    struct PlaySessionTestAccess;
     // Project Settings > Player > Crash Handling (project.yaml "playerCrash", docs/crash-diagnostics.md).
     // The defaults are what a game does without the key.
     struct PlayerCrashSettings {
@@ -645,6 +657,7 @@ namespace jasperengine::editor{
     };
 
     class Project{
+        friend struct PlaySessionTestAccess;
     private:
 
         Conector conector;
@@ -683,6 +696,7 @@ namespace jasperengine::editor{
         float inputDeadzone = 0.15f;
         PlayerCrashSettings playerCrash;
         int htmlUiMsaaSamples;
+        HtmlUiRenderSettings htmlUiRender;
         // graphics.shadowTier.<platform>: the shadow quality tier a scene of Quality Auto uses
         ShadowTier shadowTiers[ShadowTiers::PLATFORM_COUNT];
         WindowMode windowMode;
@@ -817,11 +831,18 @@ namespace jasperengine::editor{
 
         struct PlayRuntimeScene {
             uint32_t sourceSceneId = NULL_PROJECT_SCENE;
-            SceneProject* runtime = nullptr; // Scene used by the Engine while playing
-            bool ownedRuntime = false;       // true when runtime was cloned and must be deleted
+            // The Play copy (ownedRuntime), on the heap; null for the played scene itself, an
+            // element of `scenes` that a scene added or removed meanwhile moves: runtimeOf()
+            SceneProject* copy = nullptr;
+            bool ownedRuntime = false;       // true when the scene used is a copy, deleted with the session
             bool initialized = false;        // true when scripts and library are initialized
             bool initializing = false;       // true while its scripts run, to stop re-entrant init
         };
+
+        // The scene a runtime entry plays (the Engine's while playing): its copy, or the played
+        // scene found by id now (null if it is gone)
+        SceneProject* runtimeOf(const PlayRuntimeScene& entry);
+        Scene* runtimeSceneOf(const PlayRuntimeScene& entry);
 
         struct PlaySession {
             uint32_t mainSceneId = NULL_PROJECT_SCENE;
@@ -833,6 +854,7 @@ namespace jasperengine::editor{
 
         mutable std::mutex playSessionMutex;
         std::shared_ptr<PlaySession> activePlaySession;
+        size_t closedSceneScriptReads = 0;
 
         // Single-frame advance while paused (see step())
         uint32_t stepSceneId = NULL_PROJECT_SCENE;
@@ -862,6 +884,9 @@ namespace jasperengine::editor{
         // the authored ones, and while it runs what the game made in it
         std::vector<Entity> getPickableEntities(const SceneProject* sceneProject) const;
         void prepareRuntimeScene(PlayRuntimeScene& entry);
+        // the Scene view's picking (editor/picking) reads the pickable GameObjects and their bounds
+        friend class ScenePicker;
+        friend class SceneViewController;
         std::shared_ptr<PlaySession> buildRuntimeSceneStack(uint32_t sceneId, std::vector<size_t>& stackIndices);
         Entity getSceneCamera(const SceneProject* sceneProject) const;
         void cleanupPlaySession(const std::shared_ptr<PlaySession>& session);
@@ -873,7 +898,10 @@ namespace jasperengine::editor{
         // sizeScene sizes the handles of points and lines; iconsDrawn: lights, cameras and
         // audio sources show icons in this view (only the view's own scene draws them)
         Entity findBestEntityByRay(const std::vector<Entity>& entities, Scene* scene, const Ray& ray, Scene* sizeScene, SceneType sceneType, float& distance, size_t& index, bool iconsDrawn = true) const;
-        bool selectEntitiesInRect(uint32_t sceneId, const std::vector<Entity>& entities, Scene* scene, const Matrix4& vpMatrix, Vector2 start, Vector2 end);
+        // the box select (R15): the BVH's frustum of the box, then every corner inside it; the
+        // view's own scene (viewScene) takes its Layers filter
+        bool selectEntitiesInRect(uint32_t sceneId, const std::vector<Entity>& entities, Scene* scene, const Matrix4& vpMatrix, Vector2 start, Vector2 end,
+                                  const SceneProject* viewScene = nullptr);
         uint32_t selectedScene;
         uint32_t selectedSceneForProperties;
 
@@ -947,8 +975,13 @@ namespace jasperengine::editor{
         EditorAssetResolver assetResolver{this};
 
         // What the database reports changed: moved prefabs get their new path everywhere in
-        // memory, removed ones leave Missing Prefab instances behind, added ones relink them
+        // memory, removed ones leave Missing Prefab instances behind, added ones relink them;
+        // the .anim changes go to applyClipAssetChanges
         void applyAssetChanges(const std::vector<AssetDatabase::Change>& changes);
+        // .anim files moved, added (copies, a delete undone), removed or edited outside the
+        // editor: the references in memory follow the GUIDs, documents and players reload; a
+        // moved model: the sub-clip entries taken from it name it again
+        void applyClipAssetChanges(const std::vector<AssetDatabase::Change>& changes);
         // The in-memory part of a prefab rename or move (a file or a directory): prefab assets,
         // scene and prefab PrefabComponents, scene prefab lists and the standalone list
         void remapPrefabPathsInMemory(const fs::path& oldRelative, const fs::path& newRelative);
@@ -1075,6 +1108,8 @@ namespace jasperengine::editor{
         // Runs transform over every stored asset reference (component textures and cubemap
         // faces, model and sound filenames, text fonts), rewriting the value in place.
         static bool visitAssetPathsInRegistry(EntityRegistry* registry, const std::function<bool(std::string&)>& transform);
+        // The Animation Player clips of visitAssetPathsInRegistry (their path and GUID are not an AssetRef)
+        static bool visitClipPathsInRegistry(EntityRegistry* registry, const std::function<bool(std::string&)>& transform);
         // The files of those references, for SceneManager::preloadScene()
         static SceneResources collectResourcesInRegistry(EntityRegistry* registry);
         // Same for Lua script entries; C++ ones are build inputs kept project-relative.
@@ -1090,6 +1125,24 @@ namespace jasperengine::editor{
         void finalizeStart(SceneProject* mainSceneProject, std::vector<PlayRuntimeScene>& runtimeScenes);
         void finalizeStop(SceneProject* mainSceneProject, std::vector<PlayRuntimeScene> runtimeScenes);
         void runPlayStartup(const std::shared_ptr<PlaySession>& session, uint32_t sceneId, const LocalBuildSettings& buildSettings);
+        // What Play's startup reads of the scenes, taken on the main thread (preparePlayStartup)
+        // for its worker thread, which then only compiles shaders and C++ scripts
+        struct PlayStartupPrepared {
+            enum class Status { Ready, Cancelled, Failed };
+            Status status = Status::Failed;
+            std::string message;      // Failed: for the console
+            std::string alertTitle;   // Failed: an alert besides the console's message (none when empty)
+            std::string alertMessage;
+            YAML::Node snapshot;      // the played scene as Stop puts it back
+            PlayPrefabState prefabState;
+            std::set<Entity> entities; // alive before Play: anything else is the game's
+            std::set<ShaderKey> shaderKeys;
+            bool hasCppScripts = false;
+        };
+        // On the main thread: the scenes' script properties, saves and generated sources, the
+        // runtime copies, the Play snapshot and the shader keys, all at one moment the editor
+        // does not change them (MCP edits, other scenes' views, a scene opened or created)
+        PlayStartupPrepared preparePlayStartup(const std::shared_ptr<PlaySession>& session, uint32_t sceneId);
         void failPlayStartup(const std::shared_ptr<PlaySession>& session, uint32_t sceneId, const std::string& message,
                      const std::string& alertTitle = "", const std::string& alertMessage = "");
         bool saveSceneFile(SceneProject* sceneProject, const std::filesystem::path& path, bool stopTransientPreviews = true,
@@ -1137,10 +1190,27 @@ namespace jasperengine::editor{
         void openSceneInternal(fs::path filepath, uint32_t sceneToClose);
 
         // The standalone build reads shaders from the editor cache (JASPERENGINE_SHADER_PATH)
-        // and cannot compile, so a variant the editor never draws with is missing there.
-        void buildStandaloneShaderCache();
+        // and cannot compile, so a variant the editor never draws with is missing there. The
+        // keys are read from the scenes (main thread), the build runs anywhere.
+        std::set<ShaderKey> collectStandaloneShaderKeys();
+        void buildStandaloneShaderCache(const std::set<ShaderKey>& shaderKeys);
+
+    private:
+        // see getInspectedAsset()
+        std::filesystem::path inspectedAsset;
 
     public:
+        // Unity's activeObject (animation clips spec 9.R30): the asset the Inspector shows, set by
+        // the Project window when a single asset is clicked (T2b), cleared by any scene selection
+        // change (T2c); empty = the Inspector shows the scene selection. Absolute path.
+        void setInspectedAsset(const std::filesystem::path& absolutePath);
+        void clearInspectedAsset();
+        const std::filesystem::path& getInspectedAsset() const;
+        // the inspected asset follows a rename or move of it (or of a folder holding it), and is
+        // cleared when it (or its folder) is deleted; the file commands call these (T2b)
+        void remapInspectedAsset(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
+        void cleanupInspectedAsset(const std::filesystem::path& deletedPath);
+
         // The C++ scripts the build compiles: every scene's and the build prefabs'
         std::vector<SceneScriptSource> getBuildCppScripts() const { return collectAllSceneCppScripts(); }
         // Writes what a C++ build of the scripts needs (scene and prefab sources, the generated
@@ -1162,6 +1232,9 @@ namespace jasperengine::editor{
         static constexpr bool defaultVSyncEnabled = true;
         static constexpr std::array<AtmosphereQuality, 3> defaultAtmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
         static constexpr int defaultHtmlUiMsaaSamples = 4;
+        // htmlUiGlyphAtlasMiB: 0 (the platform's default) or this range
+        static constexpr int minHtmlUiGlyphAtlasMiB = 4;
+        static constexpr int maxHtmlUiGlyphAtlasMiB = 256;
         static constexpr WindowMode defaultWindowMode = WindowMode::WINDOWED;
         static constexpr unsigned int defaultWindowWidth = defaultCanvasWidth;
         static constexpr unsigned int defaultWindowHeight = defaultCanvasHeight;
@@ -1247,6 +1320,12 @@ namespace jasperengine::editor{
         void setHtmlUiMsaaSamples(int samples);
         int getHtmlUiMsaaSamples() const;
         static bool isValidHtmlUiMsaaSamples(int samples);
+        // HTML UI rendering (S16): htmlUiGlyphAtlasMiB (clamped into its range, 0 = the
+        // platform's default), htmlUiSdfPrimitives, htmlUiTransformAwareText; applied to the
+        // editor's documents at once and written into exports
+        void setHtmlUiRenderSettings(const HtmlUiRenderSettings& settings);
+        const HtmlUiRenderSettings& getHtmlUiRenderSettings() const;
+        static bool isValidHtmlUiGlyphAtlasMiB(int mib);
 
         // the shadow quality tier of a platform (Engine::Platform as an int), applied to the
         // editor's scenes at once and written into exports (docs/rendering/shadows.md)
@@ -1539,6 +1618,12 @@ namespace jasperengine::editor{
         void unlinkAllMaterialFiles(uint32_t sceneId);
 
         //=== end Linked Material part ===
+
+        // While Play runs (or starts or stops) no scene leaves the project: the session finds the
+        // played scene by id and runs it in place. True when that refuses it now: the reason is
+        // logged, put in *reason and, with alert (and not inside a non-interactive call), shown.
+        // (Deleting a scene's file never takes its scene out: the reference stays, Missing, S04 R15.)
+        bool refuseSceneRemovalWhilePlaying(const std::string& what, std::string* reason = nullptr, bool alert = true);
 
         void checkUnsavedAndExecute(uint32_t sceneId, std::function<void()> action);
 
@@ -1880,6 +1965,25 @@ namespace jasperengine::editor{
         // A prefab file or a directory holding some appeared (a copy, a deleted file put back
         // by an undo): they are registered, and Missing Prefab instances they resolve relinked
         void importPrefabFiles(const std::filesystem::path& path, bool copy = false, std::map<std::string, std::string>* copyGuids = nullptr);
+
+        // ---- Animation clip references (animation clips spec 4.1, 9.R8/R26; ProjectPrefabPaths.cpp) ----
+        // Where an Animation Player entry's .anim points now: by GUID (a GUID no file has keeps
+        // its path: the Inspector shows it Missing, and undoing the delete relinks it), else by
+        // its path (a file not in the database yet is added when `mayImport`). The path hint is
+        // repaired (asset-relative) and a missing GUID filled in. Sub-clip entries
+        // ("<model>#<clip>") are path-only. True when the entry changed.
+        bool resolveClipReference(AnimationPlayerClip& entry, bool mayImport = true);
+        // Every Animation Player entry of a registry (a scene, a prefab asset, a play copy); true
+        // when one changed (the players reload). `mayImport` false reads the database only (the
+        // play startup worker)
+        bool resolveRegistryClipRefs(EntityRegistry* registry, bool mayImport = true);
+        // A file or directory moved through AssetOps (renamed, moved, a move undone): the open
+        // clip documents (a clip's, a model's sub-clips), AnimationClipPool and the players learn
+        // both paths. The database moved the clips' GUIDs and applyClipAssetChanges relinked the
+        // references by them already.
+        void remapClipFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
+        // Every loaded prefab asset (clip users and reference walks)
+        void forEachPrefabAsset(const std::function<void(const std::filesystem::path& path, Prefab& prefab)>& visit);
 
         // Missing Prefab instances (SceneProject::missingPrefabs)
         const MissingPrefabInstance* getMissingPrefab(uint32_t sceneId, Entity entity) const;
@@ -2407,6 +2511,20 @@ namespace jasperengine::editor{
         // (PLAYING) — false when paused, loading, or no session is active.
         bool isMainScenePlaying() const;
         bool isAnySceneSaving() const;
+        // Play mode is starting (its scene LOADING): the startup compiles shaders and C++
+        // scripts from the scenes as they were when it read them
+        bool isPlayStarting() const;
+
+        // A closed scene's C++ scripts (Play builds them: SceneManager can load the scene while
+        // playing), read from its file once per version of it (its write time): a scene without
+        // any, as in a Lua-only project, would otherwise be decoded again on every Play. True if
+        // it read the file now.
+        bool collectClosedSceneCppScripts(SceneProject& sceneProject);
+        // The C++ script list the scene file's header has (what it had when saved), as a closed
+        // scene gets at project load; forgets collectClosedSceneCppScripts' read of it
+        void readSceneFileCppScripts(SceneProject& sceneProject);
+        // How many times that read a scene file (tests)
+        size_t getClosedSceneScriptReads() const { return closedSceneScriptReads; }
 
         void start(uint32_t sceneId);
         void pause(uint32_t sceneId);

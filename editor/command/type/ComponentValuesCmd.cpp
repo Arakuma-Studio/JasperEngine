@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ComponentValuesCmd.h"
+#include "animation/ClipRecordHooks.h"
 
 #include "Stream.h"
 #include "command/CommandNames.h"
@@ -171,6 +172,7 @@ namespace {
         bool enabled = true;
         std::string filename;
         bool mergeStaticMeshes = false;
+        bool animationEntities = true;
     };
 
     ModelValue readModelValue(const YAML::Node& value) {
@@ -178,6 +180,8 @@ namespace {
         if (value["enabled"]) model.enabled = value["enabled"].as<bool>();
         if (value["filename"]) model.filename = value["filename"].as<std::string>();
         if (value["mergeStaticMeshes"]) model.mergeStaticMeshes = value["mergeStaticMeshes"].as<bool>();
+        // written only when false (Stream::encodeModelComponent)
+        if (value["animationEntities"]) model.animationEntities = value["animationEntities"].as<bool>();
         return model;
     }
 
@@ -190,11 +194,18 @@ namespace {
                           const ModelValue& model, const ModelComponent* current, bool reset = false) {
         const std::string currentFile = current ? current->filename.path : std::string();
         const bool currentMerge = current ? current->mergeStaticMeshes : false;
-        if (!model.filename.empty() && (model.filename != currentFile || model.mergeStaticMeshes != currentMerge)) {
+        const bool currentAnimationEntities = current ? current->animationEntities : true;
+        // the loader makes (or skips) the animation entities by the flag (spec 9.R15): set before
+        // the load in the same step, and a changed flag on the same file reloads it
+        if (!model.filename.empty() && (model.filename != currentFile || model.mergeStaticMeshes != currentMerge ||
+                                        model.animationEntities != currentAnimationEntities)) {
             for (editor::ComponentType needed : {editor::ComponentType::Transform, editor::ComponentType::MeshComponent}) {
                 if (!hasComponent(scene, entity, needed)) {
                     multi->addCommand(std::make_unique<editor::AddComponentCmd>(project, sceneId, entity, needed));
                 }
+            }
+            if (model.animationEntities != currentAnimationEntities) {
+                multi->addPropertyCmd<bool>(project, sceneId, entity, editor::ComponentType::ModelComponent, "animationEntities", model.animationEntities);
             }
             multi->addCommand(std::make_unique<editor::ModelLoadCmd>(project, sceneId, entity, model.filename, model.mergeStaticMeshes));
         } else if (model.filename.empty()) {
@@ -202,6 +213,7 @@ namespace {
                 multi->addCommand(std::make_unique<editor::ModelClearCmd>(project, sceneId, entity));
             }
             multi->addPropertyCmd<bool>(project, sceneId, entity, editor::ComponentType::ModelComponent, "mergeStaticMeshes", model.mergeStaticMeshes);
+            multi->addPropertyCmd<bool>(project, sceneId, entity, editor::ComponentType::ModelComponent, "animationEntities", model.animationEntities);
             if (reset) {
                 multi->addPropertyCmd<Entity>(project, sceneId, entity, editor::ComponentType::ModelComponent, "skeleton", NULL_ENTITY);
                 multi->addPropertyCmd<std::vector<Entity>>(project, sceneId, entity, editor::ComponentType::ModelComponent, "animations", std::vector<Entity>());
@@ -252,6 +264,9 @@ bool editor::ComponentValuesCmd::execute(){
         defaults = EntityClipboard::encodeDefaultComponent(type);
     }
 
+    // a posed bone's Transform (paste values, reset; Pose window) and previewed channels (clip
+    // preview) go back to their rest: recorded and edited on it (animation clips 9.R5/R6)
+    for (const Target& target : targets) ClipRecordHooks::beforeComponentWrite(sceneId, target.entity, type, "");
     for (Target& target : targets) {
         target.before = YAML::Node();
         if (!hasComponent(scene, target.entity, type)) {
@@ -291,6 +306,8 @@ bool editor::ComponentValuesCmd::execute(){
             differs = !yamlEqual(EntityClipboard::encodeComponent(scene, target.entity, type), target.before);
         }
     }
+
+    for (const Target& target : targets) ClipRecordHooks::afterComponentWrite(sceneId, target.entity, type, "");
 
     if (!changed) {
         return false;
@@ -346,6 +363,7 @@ void editor::ComponentValuesCmd::undo(){
     }
     Scene* scene = sceneProject->scene;
 
+    for (const Target& target : targets) ClipRecordHooks::beforeComponentWrite(sceneId, target.entity, type, "");
     for (auto it = targets.rbegin(); it != targets.rend(); ++it) {
         if (!it->before.IsMap() || !hasComponent(scene, it->entity, type)) {
             continue;
@@ -363,6 +381,8 @@ void editor::ComponentValuesCmd::undo(){
         CameraTextureLink::resolve(scene);
     }
     sceneProject->isModified = wasModified;
+
+    for (const Target& target : targets) ClipRecordHooks::afterComponentWrite(sceneId, target.entity, type, "");
 }
 
 bool editor::ComponentValuesCmd::canPasteValues(Project* project, uint32_t sceneId, const std::vector<Entity>& entities,

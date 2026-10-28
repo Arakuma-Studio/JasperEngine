@@ -132,6 +132,17 @@ bool editor::CopyFileCmd::execute(){
             return false;
         }
     }
+    // clips previewing a moved model (or taken from it) name it again, in this step (every file
+    // first: a clip moved in the same step is at its final place when its hint is rewritten)
+    if (!copy) {
+        for (const FileCopyData& fdata : files) {
+            if (fdata.destination.empty()) {
+                continue;
+            }
+            std::vector<ClipHintEdit> edits = remapClipHints(project, fdata.sourceDirectory / fdata.filename, fdata.destination);
+            clipHintEdits.insert(clipHintEdits.end(), edits.begin(), edits.end());
+        }
+    }
     return true;
 }
 
@@ -139,6 +150,8 @@ void editor::CopyFileCmd::undo(){
     if (!project) {
         return;
     }
+    restoreClipHints(project, clipHintEdits);
+    clipHintEdits.clear();
     for (auto it = files.rbegin(); it != files.rend(); ++it) {
         FileCopyData& fdata = *it;
         std::error_code ec;

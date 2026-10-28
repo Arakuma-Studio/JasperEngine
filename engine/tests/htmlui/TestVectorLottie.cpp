@@ -10,6 +10,7 @@
 // HtmlUITexture handles (the phase-1 RmlRenderer contract: ReleaseTexture deletes them), so
 // they need the headless GPU for the dynamic textures but not p1-render's renderer.
 
+#include "TestRenderCommon.h"
 #include "harness/GpuEnvironment.h"
 #include "harness/Readback.h"
 #include "harness/RecordingRenderInterface.h"
@@ -310,41 +311,28 @@ TEST_F(LottieElementTest, LoadsJsonWithIntrinsicSize){
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR, "[HTML UI]"), 0u);
 }
 
-// P4-G1: a rounded <lottie> draws its frame trimmed to the content edge curve, by the mesh (the
-// feathered curves of a background), as an <img>; a square one draws a quad
+// Rounded image content is clipped on screen; removing the radius restores the corner.
 TEST_F(LottieElementTest, BorderRadiusTrimsTheFrame){
     JASPER_REQUIRE_GPU();
-    UILottieElement* lottie = load("src=\"shapes.json\"", "width: 100px; height: 100px;");
-    ASSERT_NE(lottie, nullptr);
-    settle(0.0);
-    const auto frameVertices = [this](){
-        for (const RecordingRenderInterface::Draw& draw : recording.getDraws()){
-            if (draw.texture)
-                return recording.getGeometry(draw.geometry)->vertices.size();
-        }
-        return size_t(0);
-    };
-    EXPECT_EQ(frameVertices(), 4u);
+    RenderTestContext render(100, 100, 100, 100, 1);
+    ASSERT_TRUE(render.isValid());
+    Rml::ElementDocument* doc = render.loadFromMemory(R"(<rml><head><style>
+body { margin: 0; width: 100px; height: 100px; }
+lottie { display: block; width: 100px; height: 100px; border-radius: 50%; }
+</style></head><body><lottie id="anim" src="image_ext.json"/></body></rml>)", "p1/lottie/rounded.rml");
+    ASSERT_NE(doc, nullptr);
+    ASSERT_TRUE(render.renderUntilDrawn());
+    std::vector<uint8_t> pixels;
+    ASSERT_TRUE(render.readLayer(pixels));
+    PixelProbe rounded{pixels, 100};
+    EXPECT_TRUE(rounded.is(50, 50, 255, 0, 0));
+    EXPECT_TRUE(rounded.is(1, 1, 0, 0, 0, 0));
 
-    lottie->SetProperty("border-radius", "50%");
-    frame(0.0);
-    EXPECT_GT(frameVertices(), 16u);
-    // the trimmed mesh stays inside the content box and maps it to the whole frame
-    for (const RecordingRenderInterface::Draw& draw : recording.getDraws()){
-        if (!draw.texture)
-            continue;
-        for (const Rml::Vertex& vertex : recording.getGeometry(draw.geometry)->vertices){
-            // (the feathered ring reaches a little over the edge)
-            EXPECT_GE(vertex.position.x, -1.5f);
-            EXPECT_LE(vertex.position.x, 101.5f);
-            EXPECT_NEAR(vertex.tex_coord.x, vertex.position.x / 100.0f, 1e-4f);
-            EXPECT_NEAR(vertex.tex_coord.y, vertex.position.y / 100.0f, 1e-4f);
-        }
-    }
-
-    lottie->RemoveProperty("border-radius");
-    frame(0.0);
-    EXPECT_EQ(frameVertices(), 4u);
+    doc->GetElementById("anim")->SetProperty("border-radius", "0px");
+    ASSERT_TRUE(render.renderFrame());
+    ASSERT_TRUE(render.readLayer(pixels));
+    PixelProbe square{pixels, 100};
+    EXPECT_TRUE(square.is(1, 1, 255, 0, 0));
 }
 
 TEST_F(LottieElementTest, OneTextureUpdatedOnlyOnFrameChanges){
@@ -358,26 +346,21 @@ TEST_F(LottieElementTest, OneTextureUpdatedOnlyOnFrameChanges){
     EXPECT_EQ(lottie->getStats().texturesCreated, 1u);
     EXPECT_EQ(lottie->getStats().uploads, 1u);
 
-    // 60 display frames at 60 Hz of a 30 fps animation: 30 frame changes (frames 0 .. 30)
-    std::set<float> shown;
-    for (int i = 1; i <= 60; i++){
-        frame(i / 60.0);
-        EXPECT_EQ(lottie->getTexture(), texture) << "frame " << i;
-        EXPECT_EQ(drawnTexture(), reinterpret_cast<Rml::TextureHandle>(texture)) << "frame " << i;
-        shown.insert(lottie->getCurrentFrame());
-    }
-    EXPECT_EQ(shown.size(), 31u);
+    // A display refresh before the next animation frame reuses the upload. Crossing
+    // the 30 fps boundary updates it in place; holding the clock does no work.
+    frame(1.0 / 60.0);
+    EXPECT_EQ(lottie->getStats().uploads, 1u);
+    EXPECT_EQ(lottie->getStats().rasterizations, 1u);
+    frame(1.0 / 30.0);
+    EXPECT_EQ(lottie->getCurrentFrame(), 1.0f);
+    EXPECT_EQ(lottie->getTexture(), texture);
     EXPECT_EQ(lottie->getStats().texturesCreated, 1u);
-    EXPECT_EQ(lottie->getStats().uploads, 31u);
-    EXPECT_EQ(lottie->getStats().rasterizations, 31u);
+    EXPECT_EQ(lottie->getStats().uploads, 2u);
+    EXPECT_EQ(lottie->getStats().rasterizations, 2u);
+    frame(1.0 / 30.0);
+    EXPECT_EQ(lottie->getStats().uploads, 2u);
+    EXPECT_EQ(lottie->getStats().rasterizations, 2u);
     EXPECT_TRUE(recording.released.empty());
-
-    // a held clock: no new frame, no upload
-    const uint32_t uploads = lottie->getStats().uploads;
-    for (int i = 0; i < 10; i++)
-        frame(1.0);
-    EXPECT_EQ(lottie->getStats().uploads, uploads);
-    EXPECT_EQ(lottie->getStats().rasterizations, uploads);
 }
 
 TEST_F(LottieElementTest, ResizeCreatesExactlyOneNewTexture){

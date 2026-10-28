@@ -17,6 +17,7 @@
 #include "mcp/McpValues.h"
 
 #include "App.h"
+#include "Backend.h"
 #include "AppSettings.h"
 #include "Engine.h"
 #include "Project.h"
@@ -26,6 +27,7 @@
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
+#include "subsystem/UIDocumentSystem.h"
 #include "object/ui/UIDocument.h"
 #include "util/Base64.h"
 #include "util/FileUtils.h"
@@ -36,10 +38,13 @@
 #include "window/profiler/FrameDebuggerWindow.h"
 #include "window/profiler/ProfilerWindow.h"
 #include "window/PlayModeChangesWindow.h"
+#include "window/PoseAnimationWindow.h"
 #include "window/SceneWindow.h"
 #include "window/SystemsWindow.h"
 #include "window/UndoHistoryWindow.h"
 #include "util/UiItemLocator.h"
+#include "pose/PoseAnimationDocument.h"
+#include "pose/PoseViewport.h"
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -79,6 +84,10 @@ bool sceneContentLoaded(SceneProject* sp) {
     if (rs && !rs->isAllLoaded()) return false;
     auto us = sp->scene->getSystem<UISystem>();
     if (us && us->hasPendingImages()) return false;
+    // its HTML documents loaded (or failed) and drawn once: the first frame waits for the HTML UI
+    // shaders, which are made when a document first draws (on a software rasterizer, seconds)
+    auto ds = sp->scene->getSystem<UIDocumentSystem>();
+    if (ds && !ds->isAllLoaded()) return false;
     // pinned stateful UI effects still replaying their state (phase 6): drawn a few frames later
     if (UIDocument::getPendingEffectReplays() > 0) return false;
     auto ms = sp->scene->getSystem<MeshSystem>();
@@ -746,6 +755,25 @@ Json sceneCameraJson(SceneProject* sp) {
     if (sp->sceneType == SceneType::SCENE_3D) {
         out["distance"] = camera->getDistanceFromTarget();
         out["mode"] = "3d";
+        // S26: projection, axis view and the Scene Camera settings
+        if (SceneWindow* sw = Backend::getApp().getSceneWindow()) {
+            SceneViewController& view = sw->getViewController();
+            const SceneCameraPose pose = view.currentPose(*sp);
+            const SceneCameraSettings& settings = sp->viewState.camera;
+            out["projection"] = pose.orthographic ? "orthographic" : "perspective";
+            out["ortho_size"] = pose.orthoSize;
+            out["fov"] = settings.fieldOfView;
+            out["near"] = camera->getNearClip();
+            out["far"] = camera->getFarClip();
+            const SceneViewAxis axis = view.viewAxis(*sp);
+            out["view"] = SceneViewStateStream::axisName(axis);
+            out["camera_settings"] = {{"speed", settings.speed}, {"speed_min", settings.speedMin}, {"speed_max", settings.speedMax},
+                                      {"shift_multiplier", settings.shiftMultiplier}, {"acceleration", settings.acceleration},
+                                      {"easing", settings.easing}, {"dynamic_clipping", settings.dynamicClipping},
+                                      {"near", settings.nearClip}, {"far", settings.farClip}};
+            out["layout"] = SceneViewStateStream::layoutName(sp->viewState.layout);
+            out["active_pane"] = sp->viewState.activePane;
+        }
     } else {
         out["zoom"] = static_cast<SceneRender2D*>(sp->sceneRender)->getZoom();
         out["mode"] = "2d";
@@ -851,10 +879,67 @@ void setSceneCameraTool(const CallPtr& call) {
         }
     }
 
+    for (const char* key : {"projection", "ortho_size", "view", "camera_settings"}) {
+        if (!is3D && args.contains(key)) {
+            call->fail(std::string(key) + " is for 3D scenes; \"" + sp->name + "\" is " + McpRefs::sceneTypeName(sp->sceneType) + ".");
+            return;
+        }
+    }
+    SceneViewAxis viewAxis = SceneViewAxis::FREE;
+    if (args.contains("view") && (!args["view"].is_string() || !SceneViewStateStream::parseAxis(args["view"].get<std::string>(), viewAxis) ||
+                                  viewAxis == SceneViewAxis::FREE)) {
+        call->fail("view must be top, bottom, front, back, left or right.");
+        return;
+    }
+    if (args.contains("projection") && args["projection"] != "perspective" && args["projection"] != "orthographic") {
+        call->fail("projection must be \"perspective\" or \"orthographic\".");
+        return;
+    }
+    // the Scene Camera settings (Unity's camera popup): one object, checked here
+    if (args.contains("camera_settings")) {
+        const Json& cs = args["camera_settings"];
+        if (!cs.is_object()) {
+            call->fail("camera_settings must be an object {fov, near, far, speed, acceleration, easing, dynamic_clipping}.");
+            return;
+        }
+        struct Range {
+            const char* key;
+            double min;
+            double max;
+        };
+        static const Range ranges[] = {{"fov", 4, 120}, {"near", 0.001, 1000}, {"far", 1, 1000000}, {"speed", 0.01, 1000}};
+        for (auto it = cs.begin(); it != cs.end(); ++it) {
+            const std::string& key = it.key();
+            const Range* range = nullptr;
+            for (const Range& r : ranges) {
+                if (key == r.key) range = &r;
+            }
+            if (range) {
+                if (!it.value().is_number() || it.value().get<double>() < range->min || it.value().get<double>() > range->max) {
+                    call->fail("camera_settings." + key + " must be a number in " + Json(range->min).dump() + ".." + Json(range->max).dump() + ".");
+                    return;
+                }
+            } else if (key == "acceleration" || key == "easing" || key == "dynamic_clipping") {
+                if (!it.value().is_boolean()) {
+                    call->fail("camera_settings." + key + " must be true or false.");
+                    return;
+                }
+            } else {
+                call->fail("camera_settings: unknown \"" + key + "\" (fov, near, far, speed, acceleration, easing, dynamic_clipping).");
+                return;
+            }
+        }
+        if (cs.contains("near") && cs.contains("far") && cs.value("near", 0.0) >= cs.value("far", 0.0)) {
+            call->fail("camera_settings: near must be less than far.");
+            return;
+        }
+    }
+
     const uint32_t sceneId = sp->id;
-    whenSceneViewReady(call, sceneId, true, 10000, [call, sceneId, is3D, position, target, center](bool ready, const std::string& err) {
+    whenSceneViewReady(call, sceneId, true, 10000, [call, sceneId, is3D, position, target, center, viewAxis](bool ready, const std::string& err) {
         const Json& a = call->args();
-        Project* p = call->ctx().project();
+        McpContext& c = call->ctx();
+        Project* p = c.project();
         SceneProject* s = p->getScene(sceneId);
         if (!s || !s->sceneRender || !s->sceneRender->getCamera()) {
             call->fail("The scene closed.");
@@ -894,6 +979,40 @@ void setSceneCameraTool(const CallPtr& call) {
                 const Vector3 dir = (camera->getTarget() - camera->getPosition()).normalize();
                 if (std::abs(dir.y) < 0.99f) camera->setUp(0, 1, 0);
             }
+            // S26 (R17, R18, R21): the Scene Camera settings, projection, axis view, framing;
+            // an agent's camera moves land at once (Camera Easing is for the user's)
+            SceneViewController& view = c.sceneWindow()->getViewController();
+            view.ensureApplied(*s);
+            SceneCameraSettings settings = s->viewState.camera;
+            bool settingsChanged = false;
+            if (a.contains("camera_settings") && a["camera_settings"].is_object()) {
+                const Json& cs = a["camera_settings"];
+                settings.fieldOfView = cs.value("fov", settings.fieldOfView);
+                settings.nearClip = cs.value("near", settings.nearClip);
+                settings.farClip = cs.value("far", settings.farClip);
+                settings.speed = cs.value("speed", settings.speed);
+                settings.acceleration = cs.value("acceleration", settings.acceleration);
+                settings.easing = cs.value("easing", settings.easing);
+                settings.dynamicClipping = cs.value("dynamic_clipping", settings.dynamicClipping);
+                settingsChanged = true;
+            }
+            if (settingsChanged) {
+                view.applyCameraSettings(*s, settings);
+                changed.push_back("camera_settings");
+            }
+            if (a.contains("projection")) {
+                view.setProjection(*s, a["projection"] == "orthographic");
+                changed.push_back("projection");
+            }
+            if (a.contains("view")) {
+                view.setAxisView(*s, viewAxis);
+                view.finishTween(*s);
+                changed.push_back("view");
+            }
+            if (a.contains("ortho_size")) {
+                view.setOrthoSize(*s, a.value("ortho_size", 10.0f));
+                changed.push_back("ortho_size");
+            }
         } else {
             auto* render2D = static_cast<SceneRender2D*>(s->sceneRender);
             SceneWindow* sw = call->ctx().sceneWindow();
@@ -924,6 +1043,17 @@ void setSceneCameraTool(const CallPtr& call) {
                 camera->setTarget(x, y, t.z);
             }
         }
+        if (a.value("frame_all", false)) {
+            SceneViewController& view = c.sceneWindow()->getViewController();
+            view.ensureApplied(*s);
+            if (!view.frameAll(*s)) {
+                call->fail("Nothing in \"" + s->name + "\" to frame.");
+                return;
+            }
+            view.finishTween(*s);
+            changed.push_back("frame_all");
+        }
+        if (!changed.empty()) p->saveWorkspaceFile();
         if (a.contains("display")) {
             for (auto it = a["display"].begin(); it != a["display"].end(); ++it) {
                 if (it.key() == "grid_spacing_2d" && it.value().is_number()) s->displaySettings.gridSpacing2D = it.value().get<float>();
@@ -990,6 +1120,8 @@ void frameEntityTool(const CallPtr& call) {
         }
         if (entities.empty()) w->frameSelection(sceneId);
         else w->frameEntities(sceneId, sceneId, entities);
+        // an agent's framing lands at once (Camera Easing animates the user's)
+        w->getViewController().finishTween(*s);
         s->needUpdateRender = true;
         Json data = {{"scene", McpRefs::sceneJson(p, *s)}, {"camera", sceneCameraJson(s)}};
         data["framed"] = entities.empty() ? Json("selection") : framed;
@@ -1039,6 +1171,129 @@ void locateUiItemTool(const CallPtr& call) {
                                                : std::to_string(items.size()) + " item(s) \"" + label + "\".";
         call->ok(text, Json{{"items", items}});
     });
+}
+
+// The Scene view of the posed scene and its pose handles (phase 5), null when not posing there
+PoseViewport* posedViewport(Project* project, PoseEditSession& session) {
+    if (!session.bound()) return nullptr;
+    SceneProject* sp = project->getScene(session.sceneId());
+    if (!sp || !sp->sceneRender) return nullptr;
+    return sp->sceneRender->getPoseViewport();
+}
+
+// focus_window pose_animation's `pose` object: {entity, path, index, play}, applied in that order
+bool focusPoseAnimation(const CallPtr& call, PoseAnimationWindow* window) {
+    const Json& args = call->args();
+    const Json& pose = args["pose"];
+    if (!pose.is_object()) {
+        call->fail("pose must be an object {entity, path, index, play, tab}.");
+        return false;
+    }
+    for (auto it = pose.begin(); it != pose.end(); ++it) {
+        const std::string& key = it.key();
+        if (key != "entity" && key != "path" && key != "index" && key != "play" && key != "tab") {
+            call->fail("pose." + key + ": unknown key (valid: entity, path, index, play, tab).");
+            return false;
+        }
+    }
+    Project* project = call->ctx().project();
+    std::string error;
+    if (pose.contains("entity")) {
+        SceneProject* sp = resolveViewScene(project, args.contains("scene") ? args["scene"] : Json(), error);
+        if (!sp) {
+            call->fail(error);
+            return false;
+        }
+        const Entity entity = w3::resolveLiveEntity(project, sp, pose["entity"], error);
+        if (entity == NULL_ENTITY) {
+            call->fail("pose.entity: " + error);
+            return false;
+        }
+        if (!window->bindCharacter(sp->id, entity, &error)) {
+            call->fail("pose.entity: " + error);
+            return false;
+        }
+    }
+    if (pose.contains("path")) {
+        if (!pose["path"].is_string() || !window->openAnimation(pose["path"].get<std::string>(), &error)) {
+            call->fail("pose.path: " + (error.empty() ? std::string("a .poseanim path (string)") : error));
+            return false;
+        }
+    }
+    PoseEditSession& session = window->getSession();
+    if (pose.contains("index")) {
+        const int count = session.document() ? static_cast<int>(session.document()->data().poses.size()) : 0;
+        if (!pose["index"].is_number_integer() || pose["index"].get<int>() < 0 || pose["index"].get<int>() >= count) {
+            call->fail("pose.index: a pose index 0.." + std::to_string(count - 1) + " of the open animation.");
+            return false;
+        }
+        window->selectPose(pose["index"].get<int>());
+    }
+    if (pose.contains("play")) {
+        if (!pose["play"].is_boolean()) {
+            call->fail("pose.play: true plays the preview, false stops it.");
+            return false;
+        }
+        if (!session.bound() || !session.document()) {
+            call->fail("pose.play: bind a character (pose.entity) and open an animation (pose.path) first.");
+            return false;
+        }
+        if (pose["play"].get<bool>()) window->play();
+        else window->stop();
+    }
+    if (pose.contains("tab")) {
+        if (!pose["tab"].is_string()) {
+            call->fail("pose.tab: Pose, Feel, Humanize, Templates or map_bones (the bone mapping popup).");
+            return false;
+        }
+        const std::string tab = pose["tab"].get<std::string>();
+        if (tab == "map_bones") {
+            if (!window->openMappingFor(&error)) {
+                call->fail("pose.tab: " + error);
+                return false;
+            }
+        } else {
+            window->selectTab(tab);
+        }
+    }
+    return true;
+}
+
+Json poseWindowState(const CallPtr& call) {
+    PoseAnimationWindow::State state = call->ctx().app().getPoseAnimationWindow()->getState();
+    Json data = {{"character", state.character.empty() ? Json() : Json(state.character)},
+                 {"rig", state.rig.empty() ? Json() : Json(state.rig)},
+                 {"animation", state.animation.empty() ? Json() : Json(state.animation)},
+                 {"pose_count", state.poseCount}, {"primary", state.primary}, {"selection", state.selection},
+                 {"mode", state.mode}, {"time", state.time}, {"length", state.length}, {"playing", state.playing},
+                 {"tab", state.tab}, {"scene_keys", state.sceneKeys}, {"editable", state.editable},
+                 {"layout", state.layout}, {"thumbnail_height", state.thumbnailHeight},
+                 {"menu", state.menu.empty() ? Json() : Json(state.menu)}};
+    if (state.entity != NULL_ENTITY) {
+        if (SceneProject* sp = call->ctx().project()->getScene(state.sceneId)) {
+            if (sp->scene && sp->scene->isEntityCreated(state.entity)) data["entity"] = McpRefs::entityJson(sp, state.entity);
+        }
+    }
+    if (!state.emptyState.empty()) data["empty_state"] = state.emptyState;
+    if (!state.status.empty()) data["status"] = state.status;
+    // the Templates tab (phase 6) while it shows: the cards after the filter
+    if (state.templates.shown) {
+        data["templates"] = {{"cards", state.templates.cards}, {"user", state.templates.user},
+                             {"visible", state.templates.visible}, {"thumbnails", state.templates.thumbnails}, {"hint", state.templates.hint},
+                             {"category", state.templates.category}, {"search", state.templates.search}};
+    }
+    // the Scene view posing the character (phase 5): handles in Scene view pixels, ghosts, floor
+    PoseEditSession& session = call->ctx().app().getPoseAnimationWindow()->getSession();
+    if (PoseViewport* viewport = posedViewport(call->ctx().project(), session)) {
+        const PoseViewport::State view = viewport->getState();
+        data["viewport"] = {{"posing", view.posing}, {"previewing", view.previewing}, {"handle_count", view.visibleHandles},
+                            {"active_joint", view.activeJoint.empty() ? Json() : Json(view.activeJoint)},
+                            {"ghosts", view.ghosts}, {"floor", view.floor}, {"contacts", view.contacts},
+                            {"balanced", view.balanceShown ? Json(view.balanced) : Json()},
+                            {"global_edit", session.globalEditActive()},
+                            {"view", Json::array({view.viewWidth, view.viewHeight})}};
+    }
+    return data;
 }
 
 void focusWindowTool(const CallPtr& call) {
@@ -1139,15 +1394,24 @@ void focusWindowTool(const CallPtr& call) {
     } else if (window == "play_mode_changes") {
         app.getPlayModeChangesWindow()->setOpen(true);
         imguiName = PlayModeChangesWindow::WINDOW_NAME;
+    } else if (window == "pose_animation") {
+        PoseAnimationWindow* pw = app.getPoseAnimationWindow();
+        pw->requestFocus();
+        imguiName = PoseAnimationWindow::WINDOW_NAME;
+        if (args.contains("pose") && !focusPoseAnimation(call, pw)) return;
     } else if (window == "texture_synthesis") {
         app.getTextureSynthesisWindow()->open();
         imguiName = TextureSynthesisWindow::WINDOW_NAME;
     } else {
-        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, terrain, mcp, "
+        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, pose_animation, terrain, mcp, "
                    "systems, jobs_memory, profiler, frame_debugger, preferences, undo_history, play_mode_changes, texture_synthesis.");
         return;
     }
-    // A window opened just now exists after its next draw
+    if (args.contains("pose") && window != "pose_animation") {
+        call->fail("pose: only for window \"pose_animation\".");
+        return;
+    }
+    // A window opened just now exists after its next draw.
     call->afterFrames(1, [call, imguiName, window]() {
         if (window != "game") ImGui::SetWindowFocus(imguiName.c_str());
         call->afterFrames(2, [call, imguiName, window]() {
@@ -1178,6 +1442,10 @@ void focusWindowTool(const CallPtr& call) {
                                                           {"width", std::round(row.width)}, {"height", std::round(row.height)}}}});
                 }
                 data["rows"] = rows;
+            }
+            if (window == "pose_animation") {
+                data["state"] = poseWindowState(call);
+                if (w) data["pos"] = {w->Pos.x - ImGui::GetMainViewport()->Pos.x, w->Pos.y - ImGui::GetMainViewport()->Pos.y};
             }
             if (!w) {
                 call->fail("The " + window + " window does not exist (closed panel?).", data);
@@ -1279,10 +1547,31 @@ void configureGameViewTool(const CallPtr& call) {
 
 } // namespace
 
+namespace w3 {
+
+SceneProject* resolveSceneViewScene(Project* project, const Json& ref, std::string& error) {
+    return resolveViewScene(project, ref, error);
+}
+
+void whenSceneViewShown(const CallPtr& call, uint32_t sceneId, bool focus, int timeoutMs,
+                        std::function<void(bool ready, const std::string& error)> then) {
+    whenSceneViewReady(call, sceneId, focus, timeoutMs, std::move(then));
+}
+
+void replyWithSceneShot(const CallPtr& call, uint32_t sceneId, const std::string& text, Json data) {
+    replyMaybeWithScreenshot(call, sceneId, text, std::move(data));
+}
+
+Json sceneViewCameraJson(SceneProject* sceneProject) {
+    return sceneCameraJson(sceneProject);
+}
+
+} // namespace w3
+
 void registerViewTools(McpRegistry& registry) {
     using namespace schema;
 
-    const Json viewScene = sceneRef("Default: playing, else selected.");
+    const Json viewScene = sceneRef();
     const Json sceneShot = withDefault(boolean("Also return a Scene view image."), false);
     const Json maxWidth = w3::maxWidthArgSchema(8192, 768);
 
@@ -1291,9 +1580,9 @@ void registerViewTools(McpRegistry& registry) {
         tool.name = "screenshot";
         tool.title = "Screenshot";
         tool.description =
-            "Capture a view as PNG. game: the running game, or (stopped) the selected scene through its camera. "
-            "scene: the Scene view with gizmos (aim: set_scene_camera / frame_entity). editor: the whole window. "
-            "canvas_rect_in_image maps image -> send_input coords; warns on a flat image.";
+            "Capture a view as PNG. game: the running game, or (stopped) the selected scene through its "
+            "camera. scene: the Scene view with gizmos (aim: set_scene_camera / frame_entity). editor: the "
+            "whole window. canvas_rect_in_image maps image -> send_input coords; warns on a flat image.";
         tool.inputSchema = object({
             {"view", withDefault(stringEnum("", {"game", "scene", "editor"}), "game")},
             {"scene", sceneRef("scene view: whose tab; stopped game view: preview it (selects it).")},
@@ -1320,12 +1609,17 @@ void registerViewTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"scene", viewScene},
             {"position", vec3("")},
-            {"target", vec3("Look-at point.")},
+            {"target", vec3("")},
             {"orbit", object({{"yaw", number("")}, {"pitch", number("")}})},
             {"distance", number("", 0.2, 2000)},
             {"center", vec2("World point at the view centre.")},
             {"zoom", number("World units per pixel.", 0.01, 1000)},
             {"display", anyObject("Overlay flags, e.g. {show_grid_3d: false, show_post_processing: true}; saved with the workspace.")},
+            {"projection", stringEnum("", {"perspective", "orthographic"})},
+            {"ortho_size", number("Half height.", 0.001, 100000)},
+            {"view", stringEnum("", {"top", "bottom", "front", "back", "left", "right"})},
+            {"frame_all", boolean("As Alt+F.")},
+            {"camera_settings", anyObject("fov, near, far, speed, acceleration, easing, dynamic_clipping.")},
             {"screenshot", sceneShot},
             {"max_width", maxWidth}
         });
@@ -1358,13 +1652,17 @@ void registerViewTools(McpRegistry& registry) {
         tool.name = "focus_window";
         tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Focus Window";
+        // pose: {entity (bind), path (.poseanim), index (pose it), play (preview), tab (Pose, Feel,
+        // Humanize, an added tab, or map_bones: the mapping popup)}; the result has the window's
+        // state. Budget-neutral with the pose_animation window added.
         tool.description =
             "Open and bring an editor panel to the front, e.g. to show a watching human. Not needed before "
             "screenshot. console: returns what it shows (rows, categories, selection); preferences: opens a page; "
-            "systems: returns each row's Enabled checkbox rect.";
+            "systems: returns each row's Enabled checkbox rect; pose_animation: pose {entity, path, index, play, tab}.";
         tool.inputSchema = object({
-            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "terrain", "mcp",
-                                       "systems", "jobs_memory", "profiler", "frame_debugger", "preferences", "undo_history", "play_mode_changes", "texture_synthesis"})},
+            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "pose_animation",
+                                       "terrain", "mcp", "systems", "jobs_memory", "profiler", "frame_debugger", "preferences",
+                                       "undo_history", "play_mode_changes", "texture_synthesis"})},
             {"scene", sceneRef("window scene: whose tab.")},
             {"console", object({
                 {"hidden_categories", array(string(""), "The Category filter: categories not shown.")},
@@ -1373,7 +1671,8 @@ void registerViewTools(McpRegistry& registry) {
             })},
             {"page", string("preferences: General, Code Editor, Undo, External Tools, Logging, Shader Cache.")},
             {"close", boolean("preferences: close it.")},
-            {"profiler", object({{"load", string("A .jetrace.json to load (as Load).")}})}
+            {"profiler", object({{"load", string("A .jetrace.json to load (as Load).")}})},
+            {"pose", anyObject("")}
         }, {"window"});
         tool.annotations.idempotent = true;
         tool.handler = focusWindowTool;
@@ -1389,7 +1688,7 @@ void registerViewTools(McpRegistry& registry) {
             "Where editor controls with this label are drawn now (window coords, as focus_window's rect), to click "
             "them with send_input or real input. Only drawn items: scroll or open their panel first.";
         tool.inputSchema = object({
-            {"label", string("Text, or the whole label with its ## id.")},
+            {"label", string("Text (a row's text after its icon too), or the whole label with its ## id.")},
             {"window", string("Only in windows whose name contains this.")}
         }, {"label"});
         tool.annotations.readOnly = true;
@@ -1407,7 +1706,7 @@ void registerViewTools(McpRegistry& registry) {
             "project = the canvas size (a project setting); the game renders at render_size.";
         tool.inputSchema = object({
             {"aspect", stringEnum("", {"free", "project", "16:9", "16:10", "4:3", "9:16"})},
-            {"scale", number("Zoom.", 1, 5)},
+            {"scale", number("", 1, 5)},
             {"maximize_on_play", boolean("")},
             {"show_stats", boolean("")},
             {"simulate_touch", boolean("Mouse = one finger. Not while playing.")},

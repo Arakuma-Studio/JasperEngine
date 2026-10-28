@@ -9,7 +9,7 @@ The names are read from RmlUi's property registrations
 `RegisterProperty(PropertyId::X, "name", ...)` and `RegisterShorthand(ShorthandId::X, "name", ...)`,
 the longhands every shorthand lists (names registered in loops), and the `names[]` tables of
 registration loops. Re-run it after changing the fork's registrations. --check writes nothing and
-exits 1 if the header is stale; tools/mcp/tests/test_generators.py runs it.
+exits 1 if the header is stale. The MCP generator tests check public RCSS completion behavior.
 """
 import re
 import sys

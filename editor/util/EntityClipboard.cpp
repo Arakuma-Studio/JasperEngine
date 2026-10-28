@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "EntityClipboard.h"
+#include "pose/PoseEditSession.h"
 
 #include "Project.h"
 #include "Stream.h"
@@ -502,6 +503,8 @@ bool editor::EntityClipboard::copyGameObjects(Project* project, uint32_t sceneId
     if (!sceneProject || !sceneProject->scene) {
         return false;
     }
+    // a posed character goes back to its rest bones first: they are what gets copied
+    PoseEditSession::suspendActiveFor(sceneId, requested);
     Scene* scene = sceneProject->scene;
 
     std::unordered_set<Entity> tracked(sceneProject->entities.begin(), sceneProject->entities.end());

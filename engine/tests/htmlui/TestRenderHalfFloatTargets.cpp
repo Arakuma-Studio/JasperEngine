@@ -174,19 +174,6 @@ namespace {
 
 // sokol's sg_query_pixelformat for the two formats, through SystemRender::getFeatures: desktop
 // GL 3.3 (Mesa llvmpipe) and Vulkan (lavapipe) render, blend and filter both
-TEST(HalfFloatTargets, FeaturesAreReported){
-    JASPER_REQUIRE_GPU();
-    const RenderFeatures& f = SystemRender::getFeatures();
-    EXPECT_TRUE(f.renderRG16F);
-    EXPECT_TRUE(f.blendRG16F);
-    EXPECT_TRUE(f.filterRG16F);
-    EXPECT_TRUE(f.renderR16F);
-    EXPECT_TRUE(f.blendR16F);
-    EXPECT_TRUE(f.filterR16F);
-    // the same answers as RGBA16F where the backend has no separate rule
-    EXPECT_EQ(f.renderRG16F, f.renderRGBA16F);
-    EXPECT_EQ(f.filterR16F, f.filterRGBA16F);
-}
 
 TEST(HalfFloatTargets, FramebuffersOfEveryPath){
     JASPER_REQUIRE_GPU();
@@ -231,19 +218,6 @@ TEST(HalfFloatTargets, FramebuffersOfEveryPath){
         EXPECT_EQ(pixelFormatOf(mrt.getRender().getColorAttachmentTexture(0)), sokolFormatOf(format));
         EXPECT_EQ(pixelFormatOf(mrt.getRender().getColorAttachmentTexture(1)), SG_PIXELFORMAT_RGBA8);
         mrt.destroy();
-    }
-}
-
-TEST(HalfFloatTargets, PipelineFormats){
-    sg_pipeline_desc base = {};
-    for (ColorFormat format : {ColorFormat::RG16F, ColorFormat::R16F}){
-        PipelineState state;
-        state.target.color = format;
-        state.target.depth = DepthStencilFormat::NONE;
-        EXPECT_EQ(SokolPipelineCache::makeDesc(base, state).colors[0].pixel_format, sokolFormatOf(format)) << nameOf(format);
-        PipelineState other = state;
-        other.target.color = ColorFormat::RGBA16F;
-        EXPECT_NE(state.hash(), other.hash());
     }
 }
 

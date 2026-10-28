@@ -833,7 +833,17 @@ Json detailJson(Project* project, const hui::InspectDetail& d, std::string& text
     }
     Json attributes = Json::object();
     for (const auto& [name, value] : d.attributes) attributes[name] = value;
-    return {
+    // S16: primitive or mesh, and the raster of its own text
+    text += "\n  paint: " + d.paint.path + (d.paint.reason.empty() ? std::string() : " (" + d.paint.reason + ")");
+    Json paint = {{"path", d.paint.path}};
+    if (!d.paint.reason.empty()) paint["reason"] = d.paint.reason;
+    Json raster = nullptr;
+    if (d.raster.hasText) {
+        raster = {{"mode", d.raster.mode}, {"scale", std::round(d.raster.scale * 100.0) / 100.0}};
+        text += "\n  raster: " + d.raster.mode + (d.raster.mode == "bitmap" && d.raster.scale > 0.0f ? " x" + number(d.raster.scale, 2) : std::string()) +
+                (d.raster.mode == "stretched" ? " (settling)" : "");
+    }
+    Json out = {
         {"ref", d.element.ref},
         {"box", {{"content", box1(b.content)}, {"padding", box1(b.padding)}, {"border", box1(b.border)}, {"margin", box1(b.margin)},
                  {"padding_edges", edges1(b.paddingEdges)}, {"border_edges", edges1(b.borderEdges)},
@@ -842,8 +852,11 @@ Json detailJson(Project* project, const hui::InspectDetail& d, std::string& text
                              {"client_width", round1(b.clientWidth)}, {"client_height", round1(b.clientHeight)},
                              {"left", round1(b.scrollLeft)}, {"top", round1(b.scrollTop)}}}}},
         {"attributes", attributes},
-        {"styles", styles}
+        {"styles", styles},
+        {"paint", paint}
     };
+    if (!raster.is_null()) out["raster"] = raster;
+    return out;
 }
 
 std::vector<std::string> stringList(const Json& value) {
@@ -917,7 +930,7 @@ void inspectUiTool(const CallPtr& call) {
     const Json& args = call->args();
     if (has(args, "file")) {
         std::vector<std::string> conflicts;
-        for (const char* key : {"selector", "at", "detail", "styles", "models", "reload", "viewport", "screenshot", "entity"}) {
+        for (const char* key : {"selector", "at", "detail", "styles", "models", "reload", "viewport", "screenshot", "entity", "render_stats"}) {
             if (has(args, key)) conflicts.push_back(key);
         }
         if (!conflicts.empty()) {
@@ -1075,6 +1088,21 @@ void inspectUiTool(const CallPtr& call) {
             data["details"] = detailList;
             if (text.size() + detailText.size() > MAX_TEXT * 2) detailText = detailText.substr(0, MAX_TEXT) + "\n... (details cut: see structuredContent)";
             text += detailText;
+        }
+
+        if (args.value("render_stats", false)) {
+            std::vector<std::pair<std::string, uint32_t>> fields;
+            std::string statsError;
+            if (hui::HtmlUIInspector::renderStats(sp->scene, target.entity, fields, statsError)) {
+                Json stats = Json::object();
+                for (const auto& [name, value] : fields) stats[name] = value;
+                data["render_stats"] = stats;
+                text += "\nRender (last frame): " + std::to_string(stats.value("drawCalls", 0u)) + " draws (" +
+                        std::to_string(stats.value("runsMerged", 0u)) + " merged, " + std::to_string(stats.value("instancesDrawn", 0u)) +
+                        " instances), " + std::to_string(stats.value("stencilDraws", 0u)) + " stencil draws, " +
+                        std::to_string(stats.value("layersPushed", 0u)) + " layers, glyph atlas " +
+                        number((double)stats.value("atlasBytes", 0u) / (1024.0 * 1024.0)) + " MiB.";
+            }
         }
 
         if (args.value("models", false)) {
@@ -1933,23 +1961,24 @@ void registerHtmlUiTools(McpRegistry& registry) {
         tool.description =
             "A live HTML/CSS UI document: element tree (ref = reusable selector, box [x,y,w,h] canvas px = "
             "send_input coords, flags overflow/clipped/hidden/offscreen, effects), diagnostics; detail full: box model, "
-            "computed styles + each rule's file:line. at: hit test. file: a .html/.css's diagnostics, no document (= "
+            "styles + rule file:line. at: hit test. file: a .html/.css's diagnostics (= "
             "`jasperengine-editor check --ui`). Lua-made content: play only.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef("UI Document (default: the only one).")},
-            {"file", assetPath(".html/.css: its diagnostics only, no live document.")},
+            {"file", assetPath(".html/.css: diagnostics only.")},
             {"selector", string("Default: whole document.")},
-            {"at", vec2("Hit test (canvas px): the element stack.")},
-            {"detail", withDefault(stringEnum("full: box model, attributes, computed styles + sources (max 20 elements).",
+            {"at", vec2("Hit test (canvas px): element stack.")},
+            {"detail", withDefault(stringEnum("full: box model, attributes, styles + sources (max 20 elements).",
                                               {"tree", "full"}), "tree")},
             {"depth", integer("Descendant levels (default tree 3, full 0).", 0, 16)},
             {"styles", array(Json{{"type", "string"}}, "Computed CSS properties.")},
             {"limit", withDefault(integer("", 1, 1000), 200)},
             {"models", boolean("Data-model values (play).")},
-            {"reload", boolean("The last hot reload's report.")},
-            {"viewport", vec2("Lay out at [w,h] first (restored after).")},
-            {"screenshot", boolean("Game view image of the matches, outlined.")},
+            {"reload", boolean("Last hot reload's report.")},
+            {"viewport", vec2("Lay out at [w,h], then restore.")},
+            {"screenshot", boolean("Game view image, matches outlined.")},
+            {"render_stats", boolean("Last frame's draw counters.")},
             {"max_width", w3::maxWidthArgSchema(4096, DEFAULT_IMAGE_WIDTH)}
         });
         tool.annotations.readOnly = true;
@@ -2020,7 +2049,7 @@ void registerHtmlUiTools(McpRegistry& registry) {
             {"template", withDefault(stringEnum("", HtmlUiExamples::names()), "blank")},
             {"script", boolean("Attach the template's Lua (default: examples yes, blank no).")},
             {"sort_order", integer("", -32768, 32767)},
-            {"overwrite", boolean("Replace existing files.")},
+            {"overwrite", boolean("")},
             {"properties", anyObject("Other UI Document properties.")}
         }, {"html"});
         tool.annotations.readOnly = false;

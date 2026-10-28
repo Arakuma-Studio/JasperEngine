@@ -71,7 +71,7 @@ SceneProject* sceneArg(const CallPtr& call, bool requireLoaded = true) {
 // move_entity's parent: null = the scene root
 Json nullableEntityRef(const std::string& description) {
     Json ref = entityRef(description);
-    ref["type"].push_back("null");
+    ref["type"] = Json::array({"string", "null"});
     return ref;
 }
 
@@ -1177,7 +1177,7 @@ void registerEntityTools(McpRegistry& registry) {
             {"scene", sceneRef()},
             {"root", entityRef("Only this subtree.")},
             {"depth", integer("Max depth (0: start nodes only).", 0, 1000)},
-            {"limit", withDefault(integer("Max nodes.", 1, 100000), 400)},
+            {"limit", withDefault(integer("", 1, 100000), 400)},
             {"format", withDefault(stringEnum("", {"text", "json"}), "text")},
             {"components", withDefault(boolean(""), true)},
             {"runtime", withDefault(boolean("While playing: the running copy."), false)}
@@ -1201,7 +1201,7 @@ void registerEntityTools(McpRegistry& registry) {
             {"tag", string("")},
             {"layer", {{"type", {"integer", "string"}}, {"description", "0-31 or name."}}},
             {"under", entityRef("Only descendants of this.")},
-            {"active", boolean("Active in hierarchy or not.")},
+            {"active", boolean("")},
             {"with_components", withDefault(boolean("Add component names."), false)},
             {"limit", withDefault(integer("", 1, 100000), 100)},
             {"runtime", withDefault(boolean("While playing: the running copy."), false)}
@@ -1278,9 +1278,9 @@ void registerEntityTools(McpRegistry& registry) {
         tool.name = "move_entity";
         tool.title = "Move Entity";
         tool.description =
-            "Reparent/reorder GameObjects (Hierarchy drag): exactly one of parent (null = root; index among its "
-            "children, default last), before or after (a sibling). Several keep their order and their world pose "
-            "unless keep_world_transform=false. Prefab instance children cannot be rearranged.";
+            "Reparent/reorder GameObjects: exactly one of parent (null = root; index among its children, "
+            "default last), before or after (a sibling). Several keep their order and world pose unless "
+            "keep_world_transform=false. Prefab instance children cannot be rearranged.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},

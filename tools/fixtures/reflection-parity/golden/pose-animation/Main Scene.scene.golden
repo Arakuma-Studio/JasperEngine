@@ -1,0 +1,2647 @@
+formatVersion: 3
+guid: 2385f1a5e2877b94bc16d5309fb19aca
+id: 3116732838
+name: Main Scene
+scene:
+  backgroundColor: [0.25, 0.45, 0.65, 1]
+  shadowQuality: auto
+  meshLodEnabled: false
+  meshLodThreshold: 1
+  depthPrepassEnabled: false
+  lightState: on
+  globalIlluminationIntensity: 0.2
+  globalIlluminationColor: [1, 1, 1]
+  ambientLight2DIntensity: 1
+  ambientLight2DColor: [1, 1, 1]
+  shadow2DQuality: low
+  ssaoEnabled: false
+  ssaoRadius: 0.5
+  ssaoIntensity: 1
+  ssaoBias: 0.025
+  ssrEnabled: false
+  ssrMaxDistance: 8
+  ssrThickness: 0.5
+  ssrMaxSteps: 48
+  ssrIntensity: 1
+  ssrBlur: 0
+  gravity2D: [0, -9.81]
+  gravity3D: [0, -9.81, 0]
+  fixedResolutionEnabled: false
+  fixedResolutionWidth: 640
+  fixedResolutionHeight: 360
+  fixedResolutionFilter: nearest
+  enableUIEvents: not_set
+sceneType: scene_3d
+mainCamera: 1072
+maxValues:
+  maxSubmeshes: 3
+  maxTilemapTilesRect: 0
+  maxTilemapTiles: 0
+  maxExternalBuffers: 11
+  maxSpriteFrames: 0
+  maxBones: 128
+  maxColliders2D: 0
+  maxColliderPoints2D: 0
+  maxColliders3D: 0
+  maxColliderVertices3D: 0
+  maxColliderIndices3D: 0
+shaderKeys:
+  - type: mesh
+    properties: 1112
+  - type: mesh
+    properties: 33562712
+  - type: mesh
+    properties: 8589935704
+  - type: mesh
+    properties: 8623497304
+  - type: sky
+  - type: depth
+  - type: depth
+    properties: 2
+  - type: blit
+  - type: shadowcache
+entities:
+  - type: Entity
+    entity: 1001
+    name: Directional Light
+    components:
+      transform:
+        position: [0, 10, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [0, 10, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 10, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 10, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, -10], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      light:
+        enabled: true
+        type: directional
+        direction: [0.35, -0.6, -0.72]
+        worldDirection: [0.35, -0.6, -0.72]
+        color: [1, 1, 1]
+        range: 100
+        intensity: 4
+        innerConeCos: 0.76604444
+        outerConeCos: 0.64278764
+        spotMask: ~
+        cullingMask: 4294967295
+        shadows: true
+        automaticShadowCamera: true
+        shadowBias: 1
+        mapResolution: 2048
+        shadowCameraNearFar: [0.3, 100]
+        numShadowCascades: 3
+  - type: Entity
+    entity: 1002
+    name: Skybox
+    components:
+      skybox:
+        useDefaultTexture: true
+        texture:
+          textureType: CUBE
+          cubeMode: faces
+          source: paths
+          paths: ["", "", "", "", "", ""]
+          hasEmptyFaces: true
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: false
+        color: [1, 1, 1, 1]
+        rotation: 0
+        visible: true
+  - type: Entity
+    entity: 1003
+    name: Hero
+    components:
+      transform:
+        position: [-0.75, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [-0.75, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.75, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.75, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0.75], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [0.28, 0.55, 0.92, 1]
+              metallicFactor: 0
+              roughnessFactor: 0.65
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: ALPHA_OPAQUE
+              emissiveFactor: [0, 0, 0]
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 5388
+            faceCulling: true
+            textureShadow: false
+            hasTexCoord1: false
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: false
+            hasTextureRect: false
+            hasSkinning: true
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+            normAdjustJoint: 65535
+            normAdjustWeight: 1
+          - material:
+              baseColorFactor: [0.92, 0.52, 0.28, 1]
+              metallicFactor: 0
+              roughnessFactor: 0.65
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: ALPHA_OPAQUE
+              emissiveFactor: [0, 0, 0]
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 5388
+            faceCulling: true
+            textureShadow: false
+            hasTexCoord1: false
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: false
+            hasTextureRect: false
+            hasSkinning: true
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+            normAdjustJoint: 65535
+            normAdjustWeight: 1
+          - material:
+              baseColorFactor: [0.8, 0.72, 0.62, 1]
+              metallicFactor: 0
+              roughnessFactor: 0.65
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: ALPHA_OPAQUE
+              emissiveFactor: [0, 0, 0]
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 3696
+            faceCulling: true
+            textureShadow: false
+            hasTexCoord1: false
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: false
+            hasTextureRect: false
+            hasSkinning: true
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+            normAdjustJoint: 65535
+            normAdjustWeight: 1
+        normAdjustJoint: 65535
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-0.918, 0, -0.105]
+          max: [0.918, 1.75, 0.2]
+        verticesAABB:
+          min: [-0.918, 0, -0.105]
+          max: [0.918, 1.75, 0.2]
+        worldAABB:
+          min: [-1.668, -1.4901161e-08, -0.105]
+          max: [0.16799998, 1.7500001, 0.2]
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      model:
+        enabled: true
+        filename: models/hero_tpose.gltf
+        filenameGuid: 761cace83b53ef5d7b5845af6670a12e
+        mergeStaticMeshes: false
+        skeleton: 1004
+        animations:
+          []
+        bonesIdMapping:
+          - id: 1
+            entity: 1004
+          - id: 2
+            entity: 1005
+          - id: 3
+            entity: 1006
+          - id: 4
+            entity: 1007
+          - id: 5
+            entity: 1008
+          - id: 6
+            entity: 1009
+          - id: 7
+            entity: 1010
+          - id: 8
+            entity: 1011
+          - id: 9
+            entity: 1012
+          - id: 10
+            entity: 1013
+          - id: 11
+            entity: 1014
+          - id: 12
+            entity: 1015
+          - id: 13
+            entity: 1016
+          - id: 14
+            entity: 1017
+          - id: 15
+            entity: 1018
+          - id: 16
+            entity: 1019
+          - id: 17
+            entity: 1020
+          - id: 18
+            entity: 1021
+          - id: 19
+            entity: 1022
+          - id: 20
+            entity: 1023
+          - id: 21
+            entity: 1024
+          - id: 22
+            entity: 1025
+          - id: 23
+            entity: 1026
+          - id: 24
+            entity: 1027
+          - id: 25
+            entity: 1028
+          - id: 26
+            entity: 1029
+          - id: 27
+            entity: 1030
+          - id: 28
+            entity: 1031
+          - id: 29
+            entity: 1032
+          - id: 30
+            entity: 1033
+          - id: 31
+            entity: 1034
+          - id: 32
+            entity: 1035
+          - id: 33
+            entity: 1036
+          - id: 34
+            entity: 1037
+          - id: 35
+            entity: 1038
+          - id: 36
+            entity: 1039
+          - id: 37
+            entity: 1040
+          - id: 38
+            entity: 1041
+          - id: 39
+            entity: 1042
+          - id: 40
+            entity: 1043
+          - id: 41
+            entity: 1044
+          - id: 42
+            entity: 1045
+          - id: 43
+            entity: 1046
+        bonesNameMapping:
+          - name: mixamorig:Head
+            entity: 1009
+          - name: mixamorig:HeadTop_End
+            entity: 1010
+          - name: mixamorig:Hips
+            entity: 1004
+          - name: mixamorig:LeftArm
+            entity: 1012
+          - name: mixamorig:LeftFoot
+            entity: 1039
+          - name: mixamorig:LeftForeArm
+            entity: 1013
+          - name: mixamorig:LeftHand
+            entity: 1014
+          - name: mixamorig:LeftHandIndex1
+            entity: 1018
+          - name: mixamorig:LeftHandIndex2
+            entity: 1019
+          - name: mixamorig:LeftHandIndex3
+            entity: 1020
+          - name: mixamorig:LeftHandMiddle1
+            entity: 1021
+          - name: mixamorig:LeftHandMiddle2
+            entity: 1022
+          - name: mixamorig:LeftHandMiddle3
+            entity: 1023
+          - name: mixamorig:LeftHandThumb1
+            entity: 1015
+          - name: mixamorig:LeftHandThumb2
+            entity: 1016
+          - name: mixamorig:LeftHandThumb3
+            entity: 1017
+          - name: mixamorig:LeftLeg
+            entity: 1038
+          - name: mixamorig:LeftShoulder
+            entity: 1011
+          - name: mixamorig:LeftToeBase
+            entity: 1040
+          - name: mixamorig:LeftToe_End
+            entity: 1041
+          - name: mixamorig:LeftUpLeg
+            entity: 1037
+          - name: mixamorig:Neck
+            entity: 1008
+          - name: mixamorig:RightArm
+            entity: 1025
+          - name: mixamorig:RightFoot
+            entity: 1044
+          - name: mixamorig:RightForeArm
+            entity: 1026
+          - name: mixamorig:RightHand
+            entity: 1027
+          - name: mixamorig:RightHandIndex1
+            entity: 1031
+          - name: mixamorig:RightHandIndex2
+            entity: 1032
+          - name: mixamorig:RightHandIndex3
+            entity: 1033
+          - name: mixamorig:RightHandMiddle1
+            entity: 1034
+          - name: mixamorig:RightHandMiddle2
+            entity: 1035
+          - name: mixamorig:RightHandMiddle3
+            entity: 1036
+          - name: mixamorig:RightHandThumb1
+            entity: 1028
+          - name: mixamorig:RightHandThumb2
+            entity: 1029
+          - name: mixamorig:RightHandThumb3
+            entity: 1030
+          - name: mixamorig:RightLeg
+            entity: 1043
+          - name: mixamorig:RightShoulder
+            entity: 1024
+          - name: mixamorig:RightToeBase
+            entity: 1045
+          - name: mixamorig:RightToe_End
+            entity: 1046
+          - name: mixamorig:RightUpLeg
+            entity: 1042
+          - name: mixamorig:Spine
+            entity: 1005
+          - name: mixamorig:Spine1
+            entity: 1006
+          - name: mixamorig:Spine2
+            entity: 1007
+        meshNodesMapping:
+          []
+        nodesIdMapping:
+          []
+    children:
+      - type: Entity
+        entity: 1004
+        name: mixamorig:Hips
+        components:
+          transform:
+            position: [0, 0.95, 0]
+            rotation: [1, 0, 0, 0]
+            scale: [1, 1, 1]
+            worldPosition: [-0.75, 0.95, 0]
+            worldRotation: [1, 0, 0, 0]
+            worldScale: [1, 1, 1]
+            localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0.95, 0, 1]]
+            modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.75, 0.95, 0, 1]]
+            normalMatrix: [[1, 0, 0, 0.75], [0, 1, 0, -0.95], [0, 0, 1, 0], [0, 0, 0, 1]]
+            visible: true
+            billboardRotation: [1, 0, 0, 0]
+            billboard: false
+            fakeBillboard: false
+            cylindricalBillboard: false
+          bone:
+            model: 1003
+            index: 0
+            bindPosition: [0, 0.95, 0]
+            bindRotation: [1, 0, 0, 0]
+            bindScale: [1, 1, 1]
+            offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, -0.95, 0, 1]]
+        children:
+          - type: Entity
+            entity: 1005
+            name: mixamorig:Spine
+            components:
+              transform:
+                position: [0, 0.1, 0]
+                rotation: [1, 0, 0, 0]
+                scale: [1, 1, 1]
+                worldPosition: [-0.75, 1.05, 0]
+                worldRotation: [1, 0, 0, 0]
+                worldScale: [1, 1, 1]
+                localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0.1, 0, 1]]
+                modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.75, 1.05, 0, 1]]
+                normalMatrix: [[1, 0, 0, 0.75], [0, 1, 0, -1.05], [0, 0, 1, 0], [0, 0, 0, 1]]
+                visible: true
+                billboardRotation: [1, 0, 0, 0]
+                billboard: false
+                fakeBillboard: false
+                cylindricalBillboard: false
+              bone:
+                model: 1003
+                index: 1
+                bindPosition: [0, 0.1, 0]
+                bindRotation: [1, 0, 0, 0]
+                bindScale: [1, 1, 1]
+                offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, -1.05, 0, 1]]
+            children:
+              - type: Entity
+                entity: 1006
+                name: mixamorig:Spine1
+                components:
+                  transform:
+                    position: [0, 0.12, 0]
+                    rotation: [1, 0, 0, 0]
+                    scale: [1, 1, 1]
+                    worldPosition: [-0.75, 1.17, 0]
+                    worldRotation: [1, 0, 0, 0]
+                    worldScale: [1, 1, 1]
+                    localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0.12, 0, 1]]
+                    modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.75, 1.17, 0, 1]]
+                    normalMatrix: [[1, 0, 0, 0.75], [0, 1, 0, -1.17], [0, 0, 1, 0], [0, 0, 0, 1]]
+                    visible: true
+                    billboardRotation: [1, 0, 0, 0]
+                    billboard: false
+                    fakeBillboard: false
+                    cylindricalBillboard: false
+                  bone:
+                    model: 1003
+                    index: 2
+                    bindPosition: [0, 0.12, 0]
+                    bindRotation: [1, 0, 0, 0]
+                    bindScale: [1, 1, 1]
+                    offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, -1.17, 0, 1]]
+                children:
+                  - type: Entity
+                    entity: 1007
+                    name: mixamorig:Spine2
+                    components:
+                      transform:
+                        position: [0, 0.13, 0]
+                        rotation: [1, 0, 0, 0]
+                        scale: [1, 1, 1]
+                        worldPosition: [-0.75, 1.3, 0]
+                        worldRotation: [1, 0, 0, 0]
+                        worldScale: [1, 1, 1]
+                        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0.13, 0, 1]]
+                        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.75, 1.3, 0, 1]]
+                        normalMatrix: [[1, 0, 0, 0.75], [0, 1, 0, -1.3], [0, 0, 1, 0], [0, 0, 0, 1]]
+                        visible: true
+                        billboardRotation: [1, 0, 0, 0]
+                        billboard: false
+                        fakeBillboard: false
+                        cylindricalBillboard: false
+                      bone:
+                        model: 1003
+                        index: 3
+                        bindPosition: [0, 0.13, 0]
+                        bindRotation: [1, 0, 0, 0]
+                        bindScale: [1, 1, 1]
+                        offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, -1.3, 0, 1]]
+                    children:
+                      - type: Entity
+                        entity: 1008
+                        name: mixamorig:Neck
+                        components:
+                          transform:
+                            position: [0, 0.18, 0]
+                            rotation: [1, 0, 0, 0]
+                            scale: [1, 1, 1]
+                            worldPosition: [-0.75, 1.48, 0]
+                            worldRotation: [1, 0, 0, 0]
+                            worldScale: [1, 1, 1]
+                            localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0.18, 0, 1]]
+                            modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.75, 1.48, 0, 1]]
+                            normalMatrix: [[1, 0, 0, 0.75], [0, 1, 0, -1.48], [0, 0, 1, 0], [0, 0, 0, 1]]
+                            visible: true
+                            billboardRotation: [1, 0, 0, 0]
+                            billboard: false
+                            fakeBillboard: false
+                            cylindricalBillboard: false
+                          bone:
+                            model: 1003
+                            index: 4
+                            bindPosition: [0, 0.18, 0]
+                            bindRotation: [1, 0, 0, 0]
+                            bindScale: [1, 1, 1]
+                            offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, -1.48, 0, 1]]
+                        children:
+                          - type: Entity
+                            entity: 1009
+                            name: mixamorig:Head
+                            components:
+                              transform:
+                                position: [0, 0.08, 0]
+                                rotation: [1, 0, 0, 0]
+                                scale: [1, 1, 1]
+                                worldPosition: [-0.75, 1.5600001, 0]
+                                worldRotation: [1, 0, 0, 0]
+                                worldScale: [1, 1, 1]
+                                localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0.08, 0, 1]]
+                                modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.75, 1.5600001, 0, 1]]
+                                normalMatrix: [[1, 0, 0, 0.75], [0, 1, 0, -1.5600001], [0, 0, 1, 0], [0, 0, 0, 1]]
+                                visible: true
+                                billboardRotation: [1, 0, 0, 0]
+                                billboard: false
+                                fakeBillboard: false
+                                cylindricalBillboard: false
+                              bone:
+                                model: 1003
+                                index: 5
+                                bindPosition: [0, 0.08, 0]
+                                bindRotation: [1, 0, 0, 0]
+                                bindScale: [1, 1, 1]
+                                offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, -1.56, 0, 1]]
+                            children:
+                              - type: Entity
+                                entity: 1010
+                                name: mixamorig:HeadTop_End
+                                components:
+                                  transform:
+                                    position: [0, 0.19, 0]
+                                    rotation: [1, 0, 0, 0]
+                                    scale: [1, 1, 1]
+                                    worldPosition: [-0.75, 1.75, 0]
+                                    worldRotation: [1, 0, 0, 0]
+                                    worldScale: [1, 1, 1]
+                                    localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0.19, 0, 1]]
+                                    modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.75, 1.75, 0, 1]]
+                                    normalMatrix: [[1, 0, 0, 0.75], [0, 1, 0, -1.75], [0, 0, 1, 0], [0, 0, 0, 1]]
+                                    visible: true
+                                    billboardRotation: [1, 0, 0, 0]
+                                    billboard: false
+                                    fakeBillboard: false
+                                    cylindricalBillboard: false
+                                  bone:
+                                    model: 1003
+                                    index: 6
+                                    bindPosition: [0, 0.19, 0]
+                                    bindRotation: [1, 0, 0, 0]
+                                    bindScale: [1, 1, 1]
+                                    offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, -1.75, 0, 1]]
+                      - type: Entity
+                        entity: 1011
+                        name: mixamorig:LeftShoulder
+                        components:
+                          transform:
+                            position: [0.06, 0.12, 0]
+                            rotation: [1, 0, 0, 0]
+                            scale: [1, 1, 1]
+                            worldPosition: [-0.69, 1.42, 0]
+                            worldRotation: [1, 0, 0, 0]
+                            worldScale: [1, 1, 1]
+                            localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.06, 0.12, 0, 1]]
+                            modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.69, 1.42, 0, 1]]
+                            normalMatrix: [[1, 0, 0, 0.69], [0, 1, 0, -1.42], [0, 0, 1, 0], [0, 0, 0, 1]]
+                            visible: true
+                            billboardRotation: [1, 0, 0, 0]
+                            billboard: false
+                            fakeBillboard: false
+                            cylindricalBillboard: false
+                          bone:
+                            model: 1003
+                            index: 7
+                            bindPosition: [0.06, 0.12, 0]
+                            bindRotation: [1, 0, 0, 0]
+                            bindScale: [1, 1, 1]
+                            offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.06, -1.42, 0, 1]]
+                        children:
+                          - type: Entity
+                            entity: 1012
+                            name: mixamorig:LeftArm
+                            components:
+                              transform:
+                                position: [0.12, 0, 0]
+                                rotation: [1, 0, 0, 0]
+                                scale: [1, 1, 1]
+                                worldPosition: [-0.57, 1.42, 0]
+                                worldRotation: [1, 0, 0, 0]
+                                worldScale: [1, 1, 1]
+                                localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.12, 0, 0, 1]]
+                                modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.57, 1.42, 0, 1]]
+                                normalMatrix: [[1, 0, 0, 0.57], [0, 1, 0, -1.42], [0, 0, 1, 0], [0, 0, 0, 1]]
+                                visible: true
+                                billboardRotation: [1, 0, 0, 0]
+                                billboard: false
+                                fakeBillboard: false
+                                cylindricalBillboard: false
+                              bone:
+                                model: 1003
+                                index: 8
+                                bindPosition: [0.12, 0, 0]
+                                bindRotation: [1, 0, 0, 0]
+                                bindScale: [1, 1, 1]
+                                offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.18, -1.42, 0, 1]]
+                            children:
+                              - type: Entity
+                                entity: 1013
+                                name: mixamorig:LeftForeArm
+                                components:
+                                  transform:
+                                    position: [0.28, 0, 0]
+                                    rotation: [1, 0, 0, 0]
+                                    scale: [1, 1, 1]
+                                    worldPosition: [-0.29, 1.42, 0]
+                                    worldRotation: [1, 0, 0, 0]
+                                    worldScale: [1, 1, 1]
+                                    localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.28, 0, 0, 1]]
+                                    modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.29, 1.42, 0, 1]]
+                                    normalMatrix: [[1, 0, 0, 0.29], [0, 1, 0, -1.42], [0, 0, 1, 0], [0, 0, 0, 1]]
+                                    visible: true
+                                    billboardRotation: [1, 0, 0, 0]
+                                    billboard: false
+                                    fakeBillboard: false
+                                    cylindricalBillboard: false
+                                  bone:
+                                    model: 1003
+                                    index: 9
+                                    bindPosition: [0.28, 0, 0]
+                                    bindRotation: [1, 0, 0, 0]
+                                    bindScale: [1, 1, 1]
+                                    offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.46, -1.42, 0, 1]]
+                                children:
+                                  - type: Entity
+                                    entity: 1014
+                                    name: mixamorig:LeftHand
+                                    components:
+                                      transform:
+                                        position: [0.26, 0, 0]
+                                        rotation: [1, 0, 0, 0]
+                                        scale: [1, 1, 1]
+                                        worldPosition: [-0.030000001, 1.42, 0]
+                                        worldRotation: [1, 0, 0, 0]
+                                        worldScale: [1, 1, 1]
+                                        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.26, 0, 0, 1]]
+                                        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.030000001, 1.42, 0, 1]]
+                                        normalMatrix: [[1, 0, 0, 0.030000001], [0, 1, 0, -1.42], [0, 0, 1, 0], [0, 0, 0, 1]]
+                                        visible: true
+                                        billboardRotation: [1, 0, 0, 0]
+                                        billboard: false
+                                        fakeBillboard: false
+                                        cylindricalBillboard: false
+                                      bone:
+                                        model: 1003
+                                        index: 10
+                                        bindPosition: [0.26, 0, 0]
+                                        bindRotation: [1, 0, 0, 0]
+                                        bindScale: [1, 1, 1]
+                                        offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.72, -1.42, 0, 1]]
+                                    children:
+                                      - type: Entity
+                                        entity: 1015
+                                        name: mixamorig:LeftHandThumb1
+                                        components:
+                                          transform:
+                                            position: [0.025, -0.01, 0.03]
+                                            rotation: [1, 0, 0, 0]
+                                            scale: [1, 1, 1]
+                                            worldPosition: [-0.005000001, 1.41, 0.03]
+                                            worldRotation: [1, 0, 0, 0]
+                                            worldScale: [1, 1, 1]
+                                            localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.025, -0.01, 0.03, 1]]
+                                            modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.005000001, 1.41, 0.03, 1]]
+                                            normalMatrix: [[1, 0, 0, 0.005000001], [0, 1, 0, -1.41], [0, 0, 1, -0.03], [0, 0, 0, 1]]
+                                            visible: true
+                                            billboardRotation: [1, 0, 0, 0]
+                                            billboard: false
+                                            fakeBillboard: false
+                                            cylindricalBillboard: false
+                                          bone:
+                                            model: 1003
+                                            index: 11
+                                            bindPosition: [0.025, -0.01, 0.03]
+                                            bindRotation: [1, 0, 0, 0]
+                                            bindScale: [1, 1, 1]
+                                            offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.745, -1.41, -0.03, 1]]
+                                        children:
+                                          - type: Entity
+                                            entity: 1016
+                                            name: mixamorig:LeftHandThumb2
+                                            components:
+                                              transform:
+                                                position: [0.025, -0.005, 0.025]
+                                                rotation: [1, 0, 0, 0]
+                                                scale: [1, 1, 1]
+                                                worldPosition: [0.02, 1.405, 0.055]
+                                                worldRotation: [1, 0, 0, 0]
+                                                worldScale: [1, 1, 1]
+                                                localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.025, -0.005, 0.025, 1]]
+                                                modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.02, 1.405, 0.055, 1]]
+                                                normalMatrix: [[1, 0, 0, -0.02], [0, 1, 0, -1.405], [0, 0, 1, -0.055], [0, 0, 0, 1]]
+                                                visible: true
+                                                billboardRotation: [1, 0, 0, 0]
+                                                billboard: false
+                                                fakeBillboard: false
+                                                cylindricalBillboard: false
+                                              bone:
+                                                model: 1003
+                                                index: 12
+                                                bindPosition: [0.025, -0.005, 0.025]
+                                                bindRotation: [1, 0, 0, 0]
+                                                bindScale: [1, 1, 1]
+                                                offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.77, -1.405, -0.055, 1]]
+                                            children:
+                                              - type: Entity
+                                                entity: 1017
+                                                name: mixamorig:LeftHandThumb3
+                                                components:
+                                                  transform:
+                                                    position: [0.02, -0.005, 0.02]
+                                                    rotation: [1, 0, 0, 0]
+                                                    scale: [1, 1, 1]
+                                                    worldPosition: [0.04, 1.4, 0.075]
+                                                    worldRotation: [1, 0, 0, 0]
+                                                    worldScale: [1, 1, 1]
+                                                    localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.02, -0.005, 0.02, 1]]
+                                                    modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.04, 1.4, 0.075, 1]]
+                                                    normalMatrix: [[1, 0, 0, -0.04], [0, 1, 0, -1.4], [0, 0, 1, -0.075], [0, 0, 0, 1]]
+                                                    visible: true
+                                                    billboardRotation: [1, 0, 0, 0]
+                                                    billboard: false
+                                                    fakeBillboard: false
+                                                    cylindricalBillboard: false
+                                                  bone:
+                                                    model: 1003
+                                                    index: 13
+                                                    bindPosition: [0.02, -0.005, 0.02]
+                                                    bindRotation: [1, 0, 0, 0]
+                                                    bindScale: [1, 1, 1]
+                                                    offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.79, -1.4, -0.075, 1]]
+                                      - type: Entity
+                                        entity: 1018
+                                        name: mixamorig:LeftHandIndex1
+                                        components:
+                                          transform:
+                                            position: [0.09, 0, 0.025]
+                                            rotation: [1, 0, 0, 0]
+                                            scale: [1, 1, 1]
+                                            worldPosition: [0.060000002, 1.42, 0.025]
+                                            worldRotation: [1, 0, 0, 0]
+                                            worldScale: [1, 1, 1]
+                                            localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.09, 0, 0.025, 1]]
+                                            modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.060000002, 1.42, 0.025, 1]]
+                                            normalMatrix: [[1, 0, 0, -0.060000002], [0, 1, 0, -1.42], [0, 0, 1, -0.025], [0, 0, 0, 1]]
+                                            visible: true
+                                            billboardRotation: [1, 0, 0, 0]
+                                            billboard: false
+                                            fakeBillboard: false
+                                            cylindricalBillboard: false
+                                          bone:
+                                            model: 1003
+                                            index: 14
+                                            bindPosition: [0.09, 0, 0.025]
+                                            bindRotation: [1, 0, 0, 0]
+                                            bindScale: [1, 1, 1]
+                                            offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.81, -1.42, -0.025, 1]]
+                                        children:
+                                          - type: Entity
+                                            entity: 1019
+                                            name: mixamorig:LeftHandIndex2
+                                            components:
+                                              transform:
+                                                position: [0.04, 0, 0]
+                                                rotation: [1, 0, 0, 0]
+                                                scale: [1, 1, 1]
+                                                worldPosition: [0.1, 1.42, 0.025]
+                                                worldRotation: [1, 0, 0, 0]
+                                                worldScale: [1, 1, 1]
+                                                localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.04, 0, 0, 1]]
+                                                modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.1, 1.42, 0.025, 1]]
+                                                normalMatrix: [[1, 0, 0, -0.1], [0, 1, 0, -1.42], [0, 0, 1, -0.025], [0, 0, 0, 1]]
+                                                visible: true
+                                                billboardRotation: [1, 0, 0, 0]
+                                                billboard: false
+                                                fakeBillboard: false
+                                                cylindricalBillboard: false
+                                              bone:
+                                                model: 1003
+                                                index: 15
+                                                bindPosition: [0.04, 0, 0]
+                                                bindRotation: [1, 0, 0, 0]
+                                                bindScale: [1, 1, 1]
+                                                offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.85, -1.42, -0.025, 1]]
+                                            children:
+                                              - type: Entity
+                                                entity: 1020
+                                                name: mixamorig:LeftHandIndex3
+                                                components:
+                                                  transform:
+                                                    position: [0.03, 0, 0]
+                                                    rotation: [1, 0, 0, 0]
+                                                    scale: [1, 1, 1]
+                                                    worldPosition: [0.13, 1.42, 0.025]
+                                                    worldRotation: [1, 0, 0, 0]
+                                                    worldScale: [1, 1, 1]
+                                                    localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.03, 0, 0, 1]]
+                                                    modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.13, 1.42, 0.025, 1]]
+                                                    normalMatrix: [[1, 0, 0, -0.13], [0, 1, 0, -1.42], [0, 0, 1, -0.025], [0, 0, 0, 1]]
+                                                    visible: true
+                                                    billboardRotation: [1, 0, 0, 0]
+                                                    billboard: false
+                                                    fakeBillboard: false
+                                                    cylindricalBillboard: false
+                                                  bone:
+                                                    model: 1003
+                                                    index: 16
+                                                    bindPosition: [0.03, 0, 0]
+                                                    bindRotation: [1, 0, 0, 0]
+                                                    bindScale: [1, 1, 1]
+                                                    offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.88, -1.42, -0.025, 1]]
+                                      - type: Entity
+                                        entity: 1021
+                                        name: mixamorig:LeftHandMiddle1
+                                        components:
+                                          transform:
+                                            position: [0.095, 0, -0.005]
+                                            rotation: [1, 0, 0, 0]
+                                            scale: [1, 1, 1]
+                                            worldPosition: [0.065, 1.42, -0.005]
+                                            worldRotation: [1, 0, 0, 0]
+                                            worldScale: [1, 1, 1]
+                                            localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.095, 0, -0.005, 1]]
+                                            modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.065, 1.42, -0.005, 1]]
+                                            normalMatrix: [[1, 0, 0, -0.065], [0, 1, 0, -1.42], [0, -0, 1, 0.005], [0, 0, 0, 1]]
+                                            visible: true
+                                            billboardRotation: [1, 0, 0, 0]
+                                            billboard: false
+                                            fakeBillboard: false
+                                            cylindricalBillboard: false
+                                          bone:
+                                            model: 1003
+                                            index: 17
+                                            bindPosition: [0.095, 0, -0.005]
+                                            bindRotation: [1, 0, 0, 0]
+                                            bindScale: [1, 1, 1]
+                                            offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.815, -1.42, 0.005, 1]]
+                                        children:
+                                          - type: Entity
+                                            entity: 1022
+                                            name: mixamorig:LeftHandMiddle2
+                                            components:
+                                              transform:
+                                                position: [0.045, 0, 0]
+                                                rotation: [1, 0, 0, 0]
+                                                scale: [1, 1, 1]
+                                                worldPosition: [0.11, 1.42, -0.005]
+                                                worldRotation: [1, 0, 0, 0]
+                                                worldScale: [1, 1, 1]
+                                                localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.045, 0, 0, 1]]
+                                                modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.11, 1.42, -0.005, 1]]
+                                                normalMatrix: [[1, 0, 0, -0.11], [0, 1, 0, -1.42], [0, -0, 1, 0.005], [0, 0, 0, 1]]
+                                                visible: true
+                                                billboardRotation: [1, 0, 0, 0]
+                                                billboard: false
+                                                fakeBillboard: false
+                                                cylindricalBillboard: false
+                                              bone:
+                                                model: 1003
+                                                index: 18
+                                                bindPosition: [0.045, 0, 0]
+                                                bindRotation: [1, 0, 0, 0]
+                                                bindScale: [1, 1, 1]
+                                                offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.86, -1.42, 0.005, 1]]
+                                            children:
+                                              - type: Entity
+                                                entity: 1023
+                                                name: mixamorig:LeftHandMiddle3
+                                                components:
+                                                  transform:
+                                                    position: [0.033, 0, 0]
+                                                    rotation: [1, 0, 0, 0]
+                                                    scale: [1, 1, 1]
+                                                    worldPosition: [0.143, 1.42, -0.005]
+                                                    worldRotation: [1, 0, 0, 0]
+                                                    worldScale: [1, 1, 1]
+                                                    localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.033, 0, 0, 1]]
+                                                    modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.143, 1.42, -0.005, 1]]
+                                                    normalMatrix: [[1, 0, 0, -0.143], [0, 1, 0, -1.42], [0, -0, 1, 0.005], [0, 0, 0, 1]]
+                                                    visible: true
+                                                    billboardRotation: [1, 0, 0, 0]
+                                                    billboard: false
+                                                    fakeBillboard: false
+                                                    cylindricalBillboard: false
+                                                  bone:
+                                                    model: 1003
+                                                    index: 19
+                                                    bindPosition: [0.033, 0, 0]
+                                                    bindRotation: [1, 0, 0, 0]
+                                                    bindScale: [1, 1, 1]
+                                                    offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.893, -1.42, 0.005, 1]]
+                      - type: Entity
+                        entity: 1024
+                        name: mixamorig:RightShoulder
+                        components:
+                          transform:
+                            position: [-0.06, 0.12, 0]
+                            rotation: [1, 0, 0, 0]
+                            scale: [1, 1, 1]
+                            worldPosition: [-0.81, 1.42, 0]
+                            worldRotation: [1, 0, 0, 0]
+                            worldScale: [1, 1, 1]
+                            localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.06, 0.12, 0, 1]]
+                            modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.81, 1.42, 0, 1]]
+                            normalMatrix: [[1, 0, 0, 0.81], [0, 1, 0, -1.42], [0, 0, 1, 0], [0, 0, 0, 1]]
+                            visible: true
+                            billboardRotation: [1, 0, 0, 0]
+                            billboard: false
+                            fakeBillboard: false
+                            cylindricalBillboard: false
+                          bone:
+                            model: 1003
+                            index: 20
+                            bindPosition: [-0.06, 0.12, 0]
+                            bindRotation: [1, 0, 0, 0]
+                            bindScale: [1, 1, 1]
+                            offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.06, -1.42, 0, 1]]
+                        children:
+                          - type: Entity
+                            entity: 1025
+                            name: mixamorig:RightArm
+                            components:
+                              transform:
+                                position: [-0.12, 0, 0]
+                                rotation: [1, 0, 0, 0]
+                                scale: [1, 1, 1]
+                                worldPosition: [-0.93, 1.42, 0]
+                                worldRotation: [1, 0, 0, 0]
+                                worldScale: [1, 1, 1]
+                                localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.12, 0, 0, 1]]
+                                modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.93, 1.42, 0, 1]]
+                                normalMatrix: [[1, 0, 0, 0.93], [0, 1, 0, -1.42], [0, 0, 1, 0], [0, 0, 0, 1]]
+                                visible: true
+                                billboardRotation: [1, 0, 0, 0]
+                                billboard: false
+                                fakeBillboard: false
+                                cylindricalBillboard: false
+                              bone:
+                                model: 1003
+                                index: 21
+                                bindPosition: [-0.12, 0, 0]
+                                bindRotation: [1, 0, 0, 0]
+                                bindScale: [1, 1, 1]
+                                offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.18, -1.42, 0, 1]]
+                            children:
+                              - type: Entity
+                                entity: 1026
+                                name: mixamorig:RightForeArm
+                                components:
+                                  transform:
+                                    position: [-0.28, 0, 0]
+                                    rotation: [1, 0, 0, 0]
+                                    scale: [1, 1, 1]
+                                    worldPosition: [-1.21, 1.42, 0]
+                                    worldRotation: [1, 0, 0, 0]
+                                    worldScale: [1, 1, 1]
+                                    localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.28, 0, 0, 1]]
+                                    modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-1.21, 1.42, 0, 1]]
+                                    normalMatrix: [[1, 0, 0, 1.21], [0, 1, 0, -1.42], [0, 0, 1, 0], [0, 0, 0, 1]]
+                                    visible: true
+                                    billboardRotation: [1, 0, 0, 0]
+                                    billboard: false
+                                    fakeBillboard: false
+                                    cylindricalBillboard: false
+                                  bone:
+                                    model: 1003
+                                    index: 22
+                                    bindPosition: [-0.28, 0, 0]
+                                    bindRotation: [1, 0, 0, 0]
+                                    bindScale: [1, 1, 1]
+                                    offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.46, -1.42, 0, 1]]
+                                children:
+                                  - type: Entity
+                                    entity: 1027
+                                    name: mixamorig:RightHand
+                                    components:
+                                      transform:
+                                        position: [-0.26, 0, 0]
+                                        rotation: [1, 0, 0, 0]
+                                        scale: [1, 1, 1]
+                                        worldPosition: [-1.47, 1.42, 0]
+                                        worldRotation: [1, 0, 0, 0]
+                                        worldScale: [1, 1, 1]
+                                        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.26, 0, 0, 1]]
+                                        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-1.47, 1.42, 0, 1]]
+                                        normalMatrix: [[1, 0, 0, 1.47], [0, 1, 0, -1.42], [0, 0, 1, 0], [0, 0, 0, 1]]
+                                        visible: true
+                                        billboardRotation: [1, 0, 0, 0]
+                                        billboard: false
+                                        fakeBillboard: false
+                                        cylindricalBillboard: false
+                                      bone:
+                                        model: 1003
+                                        index: 23
+                                        bindPosition: [-0.26, 0, 0]
+                                        bindRotation: [1, 0, 0, 0]
+                                        bindScale: [1, 1, 1]
+                                        offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.72, -1.42, 0, 1]]
+                                    children:
+                                      - type: Entity
+                                        entity: 1028
+                                        name: mixamorig:RightHandThumb1
+                                        components:
+                                          transform:
+                                            position: [-0.025, -0.01, 0.03]
+                                            rotation: [1, 0, 0, 0]
+                                            scale: [1, 1, 1]
+                                            worldPosition: [-1.495, 1.41, 0.03]
+                                            worldRotation: [1, 0, 0, 0]
+                                            worldScale: [1, 1, 1]
+                                            localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.025, -0.01, 0.03, 1]]
+                                            modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-1.495, 1.41, 0.03, 1]]
+                                            normalMatrix: [[1, 0, 0, 1.495], [0, 1, 0, -1.41], [0, 0, 1, -0.03], [0, 0, 0, 1]]
+                                            visible: true
+                                            billboardRotation: [1, 0, 0, 0]
+                                            billboard: false
+                                            fakeBillboard: false
+                                            cylindricalBillboard: false
+                                          bone:
+                                            model: 1003
+                                            index: 24
+                                            bindPosition: [-0.025, -0.01, 0.03]
+                                            bindRotation: [1, 0, 0, 0]
+                                            bindScale: [1, 1, 1]
+                                            offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.745, -1.41, -0.03, 1]]
+                                        children:
+                                          - type: Entity
+                                            entity: 1029
+                                            name: mixamorig:RightHandThumb2
+                                            components:
+                                              transform:
+                                                position: [-0.025, -0.005, 0.025]
+                                                rotation: [1, 0, 0, 0]
+                                                scale: [1, 1, 1]
+                                                worldPosition: [-1.52, 1.405, 0.055]
+                                                worldRotation: [1, 0, 0, 0]
+                                                worldScale: [1, 1, 1]
+                                                localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.025, -0.005, 0.025, 1]]
+                                                modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-1.52, 1.405, 0.055, 1]]
+                                                normalMatrix: [[1, 0, 0, 1.52], [0, 1, 0, -1.405], [0, 0, 1, -0.055], [0, 0, 0, 1]]
+                                                visible: true
+                                                billboardRotation: [1, 0, 0, 0]
+                                                billboard: false
+                                                fakeBillboard: false
+                                                cylindricalBillboard: false
+                                              bone:
+                                                model: 1003
+                                                index: 25
+                                                bindPosition: [-0.025, -0.005, 0.025]
+                                                bindRotation: [1, 0, 0, 0]
+                                                bindScale: [1, 1, 1]
+                                                offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.77, -1.405, -0.055, 1]]
+                                            children:
+                                              - type: Entity
+                                                entity: 1030
+                                                name: mixamorig:RightHandThumb3
+                                                components:
+                                                  transform:
+                                                    position: [-0.02, -0.005, 0.02]
+                                                    rotation: [1, 0, 0, 0]
+                                                    scale: [1, 1, 1]
+                                                    worldPosition: [-1.54, 1.4, 0.075]
+                                                    worldRotation: [1, 0, 0, 0]
+                                                    worldScale: [1, 1, 1]
+                                                    localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.02, -0.005, 0.02, 1]]
+                                                    modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-1.54, 1.4, 0.075, 1]]
+                                                    normalMatrix: [[1, 0, 0, 1.54], [0, 1, 0, -1.4], [0, 0, 1, -0.075], [0, 0, 0, 1]]
+                                                    visible: true
+                                                    billboardRotation: [1, 0, 0, 0]
+                                                    billboard: false
+                                                    fakeBillboard: false
+                                                    cylindricalBillboard: false
+                                                  bone:
+                                                    model: 1003
+                                                    index: 26
+                                                    bindPosition: [-0.02, -0.005, 0.02]
+                                                    bindRotation: [1, 0, 0, 0]
+                                                    bindScale: [1, 1, 1]
+                                                    offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.79, -1.4, -0.075, 1]]
+                                      - type: Entity
+                                        entity: 1031
+                                        name: mixamorig:RightHandIndex1
+                                        components:
+                                          transform:
+                                            position: [-0.09, 0, 0.025]
+                                            rotation: [1, 0, 0, 0]
+                                            scale: [1, 1, 1]
+                                            worldPosition: [-1.5600001, 1.42, 0.025]
+                                            worldRotation: [1, 0, 0, 0]
+                                            worldScale: [1, 1, 1]
+                                            localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.09, 0, 0.025, 1]]
+                                            modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-1.5600001, 1.42, 0.025, 1]]
+                                            normalMatrix: [[1, 0, 0, 1.5600001], [0, 1, 0, -1.42], [0, 0, 1, -0.025], [0, 0, 0, 1]]
+                                            visible: true
+                                            billboardRotation: [1, 0, 0, 0]
+                                            billboard: false
+                                            fakeBillboard: false
+                                            cylindricalBillboard: false
+                                          bone:
+                                            model: 1003
+                                            index: 27
+                                            bindPosition: [-0.09, 0, 0.025]
+                                            bindRotation: [1, 0, 0, 0]
+                                            bindScale: [1, 1, 1]
+                                            offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.81, -1.42, -0.025, 1]]
+                                        children:
+                                          - type: Entity
+                                            entity: 1032
+                                            name: mixamorig:RightHandIndex2
+                                            components:
+                                              transform:
+                                                position: [-0.04, 0, 0]
+                                                rotation: [1, 0, 0, 0]
+                                                scale: [1, 1, 1]
+                                                worldPosition: [-1.6, 1.42, 0.025]
+                                                worldRotation: [1, 0, 0, 0]
+                                                worldScale: [1, 1, 1]
+                                                localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.04, 0, 0, 1]]
+                                                modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-1.6, 1.42, 0.025, 1]]
+                                                normalMatrix: [[1, 0, 0, 1.6], [0, 1, 0, -1.42], [0, 0, 1, -0.025], [0, 0, 0, 1]]
+                                                visible: true
+                                                billboardRotation: [1, 0, 0, 0]
+                                                billboard: false
+                                                fakeBillboard: false
+                                                cylindricalBillboard: false
+                                              bone:
+                                                model: 1003
+                                                index: 28
+                                                bindPosition: [-0.04, 0, 0]
+                                                bindRotation: [1, 0, 0, 0]
+                                                bindScale: [1, 1, 1]
+                                                offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.85, -1.42, -0.025, 1]]
+                                            children:
+                                              - type: Entity
+                                                entity: 1033
+                                                name: mixamorig:RightHandIndex3
+                                                components:
+                                                  transform:
+                                                    position: [-0.03, 0, 0]
+                                                    rotation: [1, 0, 0, 0]
+                                                    scale: [1, 1, 1]
+                                                    worldPosition: [-1.63, 1.42, 0.025]
+                                                    worldRotation: [1, 0, 0, 0]
+                                                    worldScale: [1, 1, 1]
+                                                    localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.03, 0, 0, 1]]
+                                                    modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-1.63, 1.42, 0.025, 1]]
+                                                    normalMatrix: [[1, 0, 0, 1.63], [0, 1, 0, -1.42], [0, 0, 1, -0.025], [0, 0, 0, 1]]
+                                                    visible: true
+                                                    billboardRotation: [1, 0, 0, 0]
+                                                    billboard: false
+                                                    fakeBillboard: false
+                                                    cylindricalBillboard: false
+                                                  bone:
+                                                    model: 1003
+                                                    index: 29
+                                                    bindPosition: [-0.03, 0, 0]
+                                                    bindRotation: [1, 0, 0, 0]
+                                                    bindScale: [1, 1, 1]
+                                                    offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.88, -1.42, -0.025, 1]]
+                                      - type: Entity
+                                        entity: 1034
+                                        name: mixamorig:RightHandMiddle1
+                                        components:
+                                          transform:
+                                            position: [-0.095, 0, -0.005]
+                                            rotation: [1, 0, 0, 0]
+                                            scale: [1, 1, 1]
+                                            worldPosition: [-1.565, 1.42, -0.005]
+                                            worldRotation: [1, 0, 0, 0]
+                                            worldScale: [1, 1, 1]
+                                            localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.095, 0, -0.005, 1]]
+                                            modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-1.565, 1.42, -0.005, 1]]
+                                            normalMatrix: [[1, 0, 0, 1.565], [0, 1, 0, -1.42], [0, 0, 1, 0.005], [0, 0, 0, 1]]
+                                            visible: true
+                                            billboardRotation: [1, 0, 0, 0]
+                                            billboard: false
+                                            fakeBillboard: false
+                                            cylindricalBillboard: false
+                                          bone:
+                                            model: 1003
+                                            index: 30
+                                            bindPosition: [-0.095, 0, -0.005]
+                                            bindRotation: [1, 0, 0, 0]
+                                            bindScale: [1, 1, 1]
+                                            offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.815, -1.42, 0.005, 1]]
+                                        children:
+                                          - type: Entity
+                                            entity: 1035
+                                            name: mixamorig:RightHandMiddle2
+                                            components:
+                                              transform:
+                                                position: [-0.045, 0, 0]
+                                                rotation: [1, 0, 0, 0]
+                                                scale: [1, 1, 1]
+                                                worldPosition: [-1.61, 1.42, -0.005]
+                                                worldRotation: [1, 0, 0, 0]
+                                                worldScale: [1, 1, 1]
+                                                localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.045, 0, 0, 1]]
+                                                modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-1.61, 1.42, -0.005, 1]]
+                                                normalMatrix: [[1, 0, 0, 1.61], [0, 1, 0, -1.42], [0, 0, 1, 0.005], [0, 0, 0, 1]]
+                                                visible: true
+                                                billboardRotation: [1, 0, 0, 0]
+                                                billboard: false
+                                                fakeBillboard: false
+                                                cylindricalBillboard: false
+                                              bone:
+                                                model: 1003
+                                                index: 31
+                                                bindPosition: [-0.045, 0, 0]
+                                                bindRotation: [1, 0, 0, 0]
+                                                bindScale: [1, 1, 1]
+                                                offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.86, -1.42, 0.005, 1]]
+                                            children:
+                                              - type: Entity
+                                                entity: 1036
+                                                name: mixamorig:RightHandMiddle3
+                                                components:
+                                                  transform:
+                                                    position: [-0.033, 0, 0]
+                                                    rotation: [1, 0, 0, 0]
+                                                    scale: [1, 1, 1]
+                                                    worldPosition: [-1.643, 1.42, -0.005]
+                                                    worldRotation: [1, 0, 0, 0]
+                                                    worldScale: [1, 1, 1]
+                                                    localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.033, 0, 0, 1]]
+                                                    modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-1.643, 1.42, -0.005, 1]]
+                                                    normalMatrix: [[1, 0, 0, 1.643], [0, 1, 0, -1.42], [0, 0, 1, 0.005], [0, 0, 0, 1]]
+                                                    visible: true
+                                                    billboardRotation: [1, 0, 0, 0]
+                                                    billboard: false
+                                                    fakeBillboard: false
+                                                    cylindricalBillboard: false
+                                                  bone:
+                                                    model: 1003
+                                                    index: 32
+                                                    bindPosition: [-0.033, 0, 0]
+                                                    bindRotation: [1, 0, 0, 0]
+                                                    bindScale: [1, 1, 1]
+                                                    offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.893, -1.42, 0.005, 1]]
+          - type: Entity
+            entity: 1037
+            name: mixamorig:LeftUpLeg
+            components:
+              transform:
+                position: [0.09, -0.05, 0]
+                rotation: [1, 0, 0, 0]
+                scale: [1, 1, 1]
+                worldPosition: [-0.65999997, 0.9, 0]
+                worldRotation: [1, 0, 0, 0]
+                worldScale: [1, 1, 1]
+                localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.09, -0.05, 0, 1]]
+                modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.65999997, 0.9, 0, 1]]
+                normalMatrix: [[1, 0, 0, 0.65999997], [0, 1, 0, -0.9], [0, 0, 1, 0], [0, 0, 0, 1]]
+                visible: true
+                billboardRotation: [1, 0, 0, 0]
+                billboard: false
+                fakeBillboard: false
+                cylindricalBillboard: false
+              bone:
+                model: 1003
+                index: 33
+                bindPosition: [0.09, -0.05, 0]
+                bindRotation: [1, 0, 0, 0]
+                bindScale: [1, 1, 1]
+                offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.09, -0.9, 0, 1]]
+            children:
+              - type: Entity
+                entity: 1038
+                name: mixamorig:LeftLeg
+                components:
+                  transform:
+                    position: [0, -0.4, 0.01]
+                    rotation: [1, 0, 0, 0]
+                    scale: [1, 1, 1]
+                    worldPosition: [-0.65999997, 0.49999997, 0.01]
+                    worldRotation: [1, 0, 0, 0]
+                    worldScale: [1, 1, 1]
+                    localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, -0.4, 0.01, 1]]
+                    modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.65999997, 0.49999997, 0.01, 1]]
+                    normalMatrix: [[1, 0, 0, 0.65999997], [0, 1, 0, -0.49999997], [0, 0, 1, -0.01], [0, 0, 0, 1]]
+                    visible: true
+                    billboardRotation: [1, 0, 0, 0]
+                    billboard: false
+                    fakeBillboard: false
+                    cylindricalBillboard: false
+                  bone:
+                    model: 1003
+                    index: 34
+                    bindPosition: [0, -0.4, 0.01]
+                    bindRotation: [1, 0, 0, 0]
+                    bindScale: [1, 1, 1]
+                    offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.09, -0.5, -0.01, 1]]
+                children:
+                  - type: Entity
+                    entity: 1039
+                    name: mixamorig:LeftFoot
+                    components:
+                      transform:
+                        position: [0, -0.42, -0.03]
+                        rotation: [1, 0, 0, 0]
+                        scale: [1, 1, 1]
+                        worldPosition: [-0.65999997, 0.07999998, -0.02]
+                        worldRotation: [1, 0, 0, 0]
+                        worldScale: [1, 1, 1]
+                        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, -0.42, -0.03, 1]]
+                        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.65999997, 0.07999998, -0.02, 1]]
+                        normalMatrix: [[1, 0, 0, 0.65999997], [0, 1, 0, -0.07999998], [0, 0, 1, 0.02], [0, 0, 0, 1]]
+                        visible: true
+                        billboardRotation: [1, 0, 0, 0]
+                        billboard: false
+                        fakeBillboard: false
+                        cylindricalBillboard: false
+                      bone:
+                        model: 1003
+                        index: 35
+                        bindPosition: [0, -0.42, -0.03]
+                        bindRotation: [1, 0, 0, 0]
+                        bindScale: [1, 1, 1]
+                        offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.09, -0.08, 0.02, 1]]
+                    children:
+                      - type: Entity
+                        entity: 1040
+                        name: mixamorig:LeftToeBase
+                        components:
+                          transform:
+                            position: [0, -0.06, 0.13]
+                            rotation: [1, 0, 0, 0]
+                            scale: [1, 1, 1]
+                            worldPosition: [-0.65999997, 0.019999985, 0.11]
+                            worldRotation: [1, 0, 0, 0]
+                            worldScale: [1, 1, 1]
+                            localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, -0.06, 0.13, 1]]
+                            modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.65999997, 0.019999985, 0.11, 1]]
+                            normalMatrix: [[1, 0, 0, 0.65999997], [0, 1, 0, -0.019999985], [0, 0, 1, -0.11], [0, 0, 0, 1]]
+                            visible: true
+                            billboardRotation: [1, 0, 0, 0]
+                            billboard: false
+                            fakeBillboard: false
+                            cylindricalBillboard: false
+                          bone:
+                            model: 1003
+                            index: 36
+                            bindPosition: [0, -0.06, 0.13]
+                            bindRotation: [1, 0, 0, 0]
+                            bindScale: [1, 1, 1]
+                            offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.09, -0.02, -0.11, 1]]
+                        children:
+                          - type: Entity
+                            entity: 1041
+                            name: mixamorig:LeftToe_End
+                            components:
+                              transform:
+                                position: [0, 0, 0.08]
+                                rotation: [1, 0, 0, 0]
+                                scale: [1, 1, 1]
+                                worldPosition: [-0.65999997, 0.019999985, 0.19]
+                                worldRotation: [1, 0, 0, 0]
+                                worldScale: [1, 1, 1]
+                                localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0.08, 1]]
+                                modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.65999997, 0.019999985, 0.19, 1]]
+                                normalMatrix: [[1, 0, 0, 0.65999997], [0, 1, 0, -0.019999985], [0, 0, 1, -0.19], [0, 0, 0, 1]]
+                                visible: true
+                                billboardRotation: [1, 0, 0, 0]
+                                billboard: false
+                                fakeBillboard: false
+                                cylindricalBillboard: false
+                              bone:
+                                model: 1003
+                                index: 37
+                                bindPosition: [0, 0, 0.08]
+                                bindRotation: [1, 0, 0, 0]
+                                bindScale: [1, 1, 1]
+                                offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.09, -0.02, -0.19, 1]]
+          - type: Entity
+            entity: 1042
+            name: mixamorig:RightUpLeg
+            components:
+              transform:
+                position: [-0.09, -0.05, 0]
+                rotation: [1, 0, 0, 0]
+                scale: [1, 1, 1]
+                worldPosition: [-0.84000003, 0.9, 0]
+                worldRotation: [1, 0, 0, 0]
+                worldScale: [1, 1, 1]
+                localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.09, -0.05, 0, 1]]
+                modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.84000003, 0.9, 0, 1]]
+                normalMatrix: [[1, 0, 0, 0.84000003], [0, 1, 0, -0.9], [0, 0, 1, 0], [0, 0, 0, 1]]
+                visible: true
+                billboardRotation: [1, 0, 0, 0]
+                billboard: false
+                fakeBillboard: false
+                cylindricalBillboard: false
+              bone:
+                model: 1003
+                index: 38
+                bindPosition: [-0.09, -0.05, 0]
+                bindRotation: [1, 0, 0, 0]
+                bindScale: [1, 1, 1]
+                offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.09, -0.9, 0, 1]]
+            children:
+              - type: Entity
+                entity: 1043
+                name: mixamorig:RightLeg
+                components:
+                  transform:
+                    position: [0, -0.4, 0.01]
+                    rotation: [1, 0, 0, 0]
+                    scale: [1, 1, 1]
+                    worldPosition: [-0.84000003, 0.49999997, 0.01]
+                    worldRotation: [1, 0, 0, 0]
+                    worldScale: [1, 1, 1]
+                    localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, -0.4, 0.01, 1]]
+                    modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.84000003, 0.49999997, 0.01, 1]]
+                    normalMatrix: [[1, 0, 0, 0.84000003], [0, 1, 0, -0.49999997], [0, 0, 1, -0.01], [0, 0, 0, 1]]
+                    visible: true
+                    billboardRotation: [1, 0, 0, 0]
+                    billboard: false
+                    fakeBillboard: false
+                    cylindricalBillboard: false
+                  bone:
+                    model: 1003
+                    index: 39
+                    bindPosition: [0, -0.4, 0.01]
+                    bindRotation: [1, 0, 0, 0]
+                    bindScale: [1, 1, 1]
+                    offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.09, -0.5, -0.01, 1]]
+                children:
+                  - type: Entity
+                    entity: 1044
+                    name: mixamorig:RightFoot
+                    components:
+                      transform:
+                        position: [0, -0.42, -0.03]
+                        rotation: [1, 0, 0, 0]
+                        scale: [1, 1, 1]
+                        worldPosition: [-0.84000003, 0.07999998, -0.02]
+                        worldRotation: [1, 0, 0, 0]
+                        worldScale: [1, 1, 1]
+                        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, -0.42, -0.03, 1]]
+                        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.84000003, 0.07999998, -0.02, 1]]
+                        normalMatrix: [[1, 0, 0, 0.84000003], [0, 1, 0, -0.07999998], [0, 0, 1, 0.02], [0, 0, 0, 1]]
+                        visible: true
+                        billboardRotation: [1, 0, 0, 0]
+                        billboard: false
+                        fakeBillboard: false
+                        cylindricalBillboard: false
+                      bone:
+                        model: 1003
+                        index: 40
+                        bindPosition: [0, -0.42, -0.03]
+                        bindRotation: [1, 0, 0, 0]
+                        bindScale: [1, 1, 1]
+                        offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.09, -0.08, 0.02, 1]]
+                    children:
+                      - type: Entity
+                        entity: 1045
+                        name: mixamorig:RightToeBase
+                        components:
+                          transform:
+                            position: [0, -0.06, 0.13]
+                            rotation: [1, 0, 0, 0]
+                            scale: [1, 1, 1]
+                            worldPosition: [-0.84000003, 0.019999985, 0.11]
+                            worldRotation: [1, 0, 0, 0]
+                            worldScale: [1, 1, 1]
+                            localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, -0.06, 0.13, 1]]
+                            modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.84000003, 0.019999985, 0.11, 1]]
+                            normalMatrix: [[1, 0, 0, 0.84000003], [0, 1, 0, -0.019999985], [0, 0, 1, -0.11], [0, 0, 0, 1]]
+                            visible: true
+                            billboardRotation: [1, 0, 0, 0]
+                            billboard: false
+                            fakeBillboard: false
+                            cylindricalBillboard: false
+                          bone:
+                            model: 1003
+                            index: 41
+                            bindPosition: [0, -0.06, 0.13]
+                            bindRotation: [1, 0, 0, 0]
+                            bindScale: [1, 1, 1]
+                            offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.09, -0.02, -0.11, 1]]
+                        children:
+                          - type: Entity
+                            entity: 1046
+                            name: mixamorig:RightToe_End
+                            components:
+                              transform:
+                                position: [0, 0, 0.08]
+                                rotation: [1, 0, 0, 0]
+                                scale: [1, 1, 1]
+                                worldPosition: [-0.84000003, 0.019999985, 0.19]
+                                worldRotation: [1, 0, 0, 0]
+                                worldScale: [1, 1, 1]
+                                localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0.08, 1]]
+                                modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-0.84000003, 0.019999985, 0.19, 1]]
+                                normalMatrix: [[1, 0, 0, 0.84000003], [0, 1, 0, -0.019999985], [0, 0, 1, -0.19], [0, 0, 0, 1]]
+                                visible: true
+                                billboardRotation: [1, 0, 0, 0]
+                                billboard: false
+                                fakeBillboard: false
+                                cylindricalBillboard: false
+                              bone:
+                                model: 1003
+                                index: 42
+                                bindPosition: [0, 0, 0.08]
+                                bindRotation: [1, 0, 0, 0]
+                                bindScale: [1, 1, 1]
+                                offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.09, -0.02, -0.19, 1]]
+  - type: Entity
+    entity: 1047
+    name: Robot
+    components:
+      transform:
+        position: [0.75, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [0.75, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.75, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.75, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, -0.75], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [0.22, 0.45, 0.88, 1]
+              metallicFactor: 0
+              roughnessFactor: 0.65
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: ALPHA_OPAQUE
+              emissiveFactor: [0, 0, 0]
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 1668
+            faceCulling: true
+            textureShadow: false
+            hasTexCoord1: false
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: false
+            hasTextureRect: false
+            hasSkinning: true
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+            normAdjustJoint: 65535
+            normAdjustWeight: 1
+          - material:
+              baseColorFactor: [0.88, 0.42, 0.22, 1]
+              metallicFactor: 0
+              roughnessFactor: 0.65
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: ALPHA_OPAQUE
+              emissiveFactor: [0, 0, 0]
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 1668
+            faceCulling: true
+            textureShadow: false
+            hasTexCoord1: false
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: false
+            hasTextureRect: false
+            hasSkinning: true
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+            normAdjustJoint: 65535
+            normAdjustWeight: 1
+          - material:
+              baseColorFactor: [0.62, 0.64, 0.68, 1]
+              metallicFactor: 0
+              roughnessFactor: 0.65
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: ALPHA_OPAQUE
+              emissiveFactor: [0, 0, 0]
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 984
+            faceCulling: true
+            textureShadow: false
+            hasTexCoord1: false
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: false
+            hasTextureRect: false
+            hasSkinning: true
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+            normAdjustJoint: 65535
+            normAdjustWeight: 1
+        normAdjustJoint: 65535
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-0.79037, 0, -0.1]
+          max: [0.79037, 1.627, 0.203]
+        verticesAABB:
+          min: [-0.79037, 0, -0.1]
+          max: [0.79037, 1.627, 0.203]
+        worldAABB:
+          min: [-0.040370166, -2.4239836e-07, -0.1]
+          max: [1.5403702, 1.6270001, 0.20300034]
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      model:
+        enabled: true
+        filename: models/robot_apose.gltf
+        filenameGuid: 08f014f180bf2de6d56151524b38aefb
+        mergeStaticMeshes: false
+        skeleton: 1048
+        animations:
+          []
+        bonesIdMapping:
+          - id: 1
+            entity: 1048
+          - id: 2
+            entity: 1049
+          - id: 3
+            entity: 1050
+          - id: 4
+            entity: 1051
+          - id: 5
+            entity: 1052
+          - id: 6
+            entity: 1053
+          - id: 7
+            entity: 1054
+          - id: 8
+            entity: 1055
+          - id: 9
+            entity: 1056
+          - id: 10
+            entity: 1057
+          - id: 11
+            entity: 1058
+          - id: 12
+            entity: 1059
+          - id: 13
+            entity: 1060
+          - id: 14
+            entity: 1061
+          - id: 15
+            entity: 1062
+          - id: 16
+            entity: 1063
+          - id: 17
+            entity: 1064
+          - id: 18
+            entity: 1065
+          - id: 19
+            entity: 1066
+          - id: 20
+            entity: 1067
+          - id: 21
+            entity: 1068
+          - id: 22
+            entity: 1069
+          - id: 23
+            entity: 1070
+        bonesNameMapping:
+          - name: foot.L
+            entity: 1065
+          - name: foot.R
+            entity: 1069
+          - name: forearm.L
+            entity: 1056
+          - name: forearm.R
+            entity: 1061
+          - name: hand.L
+            entity: 1057
+          - name: hand.R
+            entity: 1062
+          - name: head
+            entity: 1052
+          - name: neck
+            entity: 1051
+          - name: pelvis
+            entity: 1048
+          - name: shin.L
+            entity: 1064
+          - name: shin.R
+            entity: 1068
+          - name: shoulder.L
+            entity: 1053
+          - name: shoulder.R
+            entity: 1058
+          - name: spine
+            entity: 1049
+          - name: spine.001
+            entity: 1050
+          - name: thigh.L
+            entity: 1063
+          - name: thigh.R
+            entity: 1067
+          - name: toe.L
+            entity: 1066
+          - name: toe.R
+            entity: 1070
+          - name: upper_arm.L
+            entity: 1054
+          - name: upper_arm.R
+            entity: 1059
+          - name: upper_arm_twist.L
+            entity: 1055
+          - name: upper_arm_twist.R
+            entity: 1060
+        meshNodesMapping:
+          []
+        nodesIdMapping:
+          []
+    children:
+      - type: Entity
+        entity: 1048
+        name: pelvis
+        components:
+          transform:
+            position: [0, 0.827, 0]
+            rotation: [1, 0, 0, 0]
+            scale: [1, 1, 1]
+            worldPosition: [0.75, 0.827, 0]
+            worldRotation: [1, 0, 0, 0]
+            worldScale: [1, 1, 1]
+            localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0.827, 0, 1]]
+            modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.75, 0.827, 0, 1]]
+            normalMatrix: [[1, 0, 0, -0.75], [0, 1, 0, -0.827], [0, 0, 1, 0], [0, 0, 0, 1]]
+            visible: true
+            billboardRotation: [1, 0, 0, 0]
+            billboard: false
+            fakeBillboard: false
+            cylindricalBillboard: false
+          bone:
+            model: 1047
+            index: 0
+            bindPosition: [0, 0.827, 0]
+            bindRotation: [1, 0, 0, 0]
+            bindScale: [1, 1, 1]
+            offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, -0.827, 0, 1]]
+        children:
+          - type: Entity
+            entity: 1049
+            name: spine
+            components:
+              transform:
+                position: [0, 0.1, 0]
+                rotation: [1, 0, 0, 0]
+                scale: [1, 1, 1]
+                worldPosition: [0.75, 0.92700005, 0]
+                worldRotation: [1, 0, 0, 0]
+                worldScale: [1, 1, 1]
+                localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0.1, 0, 1]]
+                modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.75, 0.92700005, 0, 1]]
+                normalMatrix: [[1, 0, 0, -0.75], [0, 1, 0, -0.92700005], [0, 0, 1, 0], [0, 0, 0, 1]]
+                visible: true
+                billboardRotation: [1, 0, 0, 0]
+                billboard: false
+                fakeBillboard: false
+                cylindricalBillboard: false
+              bone:
+                model: 1047
+                index: 1
+                bindPosition: [0, 0.1, 0]
+                bindRotation: [1, 0, 0, 0]
+                bindScale: [1, 1, 1]
+                offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, -0.927, 0, 1]]
+            children:
+              - type: Entity
+                entity: 1050
+                name: spine.001
+                components:
+                  transform:
+                    position: [0, 0.19, 0]
+                    rotation: [1, 0, 0, 0]
+                    scale: [1, 1, 1]
+                    worldPosition: [0.75, 1.1170001, 0]
+                    worldRotation: [1, 0, 0, 0]
+                    worldScale: [1, 1, 1]
+                    localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0.19, 0, 1]]
+                    modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.75, 1.1170001, 0, 1]]
+                    normalMatrix: [[1, 0, 0, -0.75], [0, 1, 0, -1.1170001], [0, 0, 1, 0], [0, 0, 0, 1]]
+                    visible: true
+                    billboardRotation: [1, 0, 0, 0]
+                    billboard: false
+                    fakeBillboard: false
+                    cylindricalBillboard: false
+                  bone:
+                    model: 1047
+                    index: 2
+                    bindPosition: [0, 0.19, 0]
+                    bindRotation: [1, 0, 0, 0]
+                    bindScale: [1, 1, 1]
+                    offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, -1.117, 0, 1]]
+                children:
+                  - type: Entity
+                    entity: 1051
+                    name: neck
+                    components:
+                      transform:
+                        position: [0, 0.24, 0]
+                        rotation: [1, 0, 0, 0]
+                        scale: [1, 1, 1]
+                        worldPosition: [0.75, 1.3570001, 0]
+                        worldRotation: [1, 0, 0, 0]
+                        worldScale: [1, 1, 1]
+                        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0.24, 0, 1]]
+                        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.75, 1.3570001, 0, 1]]
+                        normalMatrix: [[1, 0, 0, -0.75], [0, 1, 0, -1.3570001], [0, 0, 1, 0], [0, 0, 0, 1]]
+                        visible: true
+                        billboardRotation: [1, 0, 0, 0]
+                        billboard: false
+                        fakeBillboard: false
+                        cylindricalBillboard: false
+                      bone:
+                        model: 1047
+                        index: 3
+                        bindPosition: [0, 0.24, 0]
+                        bindRotation: [1, 0, 0, 0]
+                        bindScale: [1, 1, 1]
+                        offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, -1.357, 0, 1]]
+                    children:
+                      - type: Entity
+                        entity: 1052
+                        name: head
+                        components:
+                          transform:
+                            position: [0, 0.08, 0]
+                            rotation: [1, 0, 0, 0]
+                            scale: [1, 1, 1]
+                            worldPosition: [0.75, 1.4370002, 0]
+                            worldRotation: [1, 0, 0, 0]
+                            worldScale: [1, 1, 1]
+                            localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0.08, 0, 1]]
+                            modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.75, 1.4370002, 0, 1]]
+                            normalMatrix: [[1, 0, 0, -0.75], [0, 1, 0, -1.4370002], [0, 0, 1, 0], [0, 0, 0, 1]]
+                            visible: true
+                            billboardRotation: [1, 0, 0, 0]
+                            billboard: false
+                            fakeBillboard: false
+                            cylindricalBillboard: false
+                          bone:
+                            model: 1047
+                            index: 4
+                            bindPosition: [0, 0.08, 0]
+                            bindRotation: [1, 0, 0, 0]
+                            bindScale: [1, 1, 1]
+                            offsetMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, -1.437, 0, 1]]
+                  - type: Entity
+                    entity: 1053
+                    name: shoulder.L
+                    components:
+                      transform:
+                        position: [0.06, 0.18, 0]
+                        rotation: [0.7071066, 0, 0, -0.70710695]
+                        scale: [1.0000006, 1.0000006, 1]
+                        worldPosition: [0.81, 1.2970002, 0]
+                        worldRotation: [0.7071066, 0, 0, -0.70710695]
+                        worldScale: [1.0000006, 1.0000006, 1]
+                        localMatrix: [[-4.7683744e-07, -1.0000005, 0, 0], [1.0000005, -4.7683744e-07, 0, 0], [0, 0, 1, 0], [0.06, 0.18, 0, 1]]
+                        modelMatrix: [[-4.7683744e-07, -1.0000005, 0, 0], [1.0000005, -4.7683744e-07, 0, 0], [0, 0, 1, 0], [0.81, 1.2970002, 0, 1]]
+                        normalMatrix: [[-4.76837e-07, -0.9999995, 0, 1.2969999], [0.9999995, -4.76837e-07, 0, -0.809999], [0, 0, 1, -0], [0, 0, -0, 1]]
+                        visible: true
+                        billboardRotation: [1, 0, 0, 0]
+                        billboard: false
+                        fakeBillboard: false
+                        cylindricalBillboard: false
+                      bone:
+                        model: 1047
+                        index: 5
+                        bindPosition: [0.06, 0.18, 0]
+                        bindRotation: [0.7071066, 0, 0, -0.70710695]
+                        bindScale: [1.0000006, 1.0000006, 1]
+                        offsetMatrix: [[0, 1, 0, 0], [-1, 0, 0, 0], [0, 0, 1, 0], [1.297, -0.06, 0, 1]]
+                    children:
+                      - type: Entity
+                        entity: 1054
+                        name: upper_arm.L
+                        components:
+                          transform:
+                            position: [0, 0.12, 0]
+                            rotation: [0.9396926, 0, 0, -0.3420201]
+                            scale: [1, 1, 1]
+                            worldPosition: [0.93000007, 1.2970002, 0]
+                            worldRotation: [0.4226181, 0, 0, -0.9063078]
+                            worldScale: [1.0000006, 1.0000006, 1]
+                            localMatrix: [[0.7660445, -0.6427875, 0, 0], [0.6427875, 0.7660445, 0, 0], [0, 0, 1, 0], [0, 0.12, 0, 1]]
+                            modelMatrix: [[-0.6427882, -0.76604456, 0, 0], [0.76604456, -0.6427882, 0, 0], [0, 0, 1, 0], [0.93000007, 1.2970002, 0, 1]]
+                            normalMatrix: [[-0.64278764, -0.7660439, 0, 1.5913516], [0.7660439, -0.64278764, 0, 0.121274784], [0, 0, 1, -0], [0, 0, -0, 1]]
+                            visible: true
+                            billboardRotation: [1, 0, 0, 0]
+                            billboard: false
+                            fakeBillboard: false
+                            cylindricalBillboard: false
+                          bone:
+                            model: 1047
+                            index: 6
+                            bindPosition: [0, 0.12, 0]
+                            bindRotation: [0.9396926, 0, 0, -0.3420201]
+                            bindScale: [1, 1, 1]
+                            offsetMatrix: [[-0.642787, 0.766045, 0, 0], [-0.766045, -0.642787, 0, 0], [0, 0, 1, 0], [1.109262, 0.695807, 0, 1]]
+                        children:
+                          - type: Entity
+                            entity: 1055
+                            name: upper_arm_twist.L
+                            components:
+                              transform:
+                                position: [0, 0.168, 0]
+                                rotation: [1, 0, 0, 0]
+                                scale: [1, 1, 1]
+                                worldPosition: [1.0586956, 1.1890118, 0]
+                                worldRotation: [0.4226181, 0, 0, -0.9063078]
+                                worldScale: [1.0000006, 1.0000006, 1]
+                                localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0.168, 0, 1]]
+                                modelMatrix: [[-0.6427882, -0.76604456, 0, 0], [0.76604456, -0.6427882, 0, 0], [0, 0, 1, 0], [1.0586956, 1.1890118, 0, 1]]
+                                normalMatrix: [[-0.64278764, -0.7660439, 0, 1.5913516], [0.7660439, -0.64278764, 0, -0.046725236], [0, 0, 1, -0], [0, 0, -0, 1]]
+                                visible: true
+                                billboardRotation: [1, 0, 0, 0]
+                                billboard: false
+                                fakeBillboard: false
+                                cylindricalBillboard: false
+                              bone:
+                                model: 1047
+                                index: 7
+                                bindPosition: [0, 0.168, 0]
+                                bindRotation: [1, 0, 0, 0]
+                                bindScale: [1, 1, 1]
+                                offsetMatrix: [[-0.642787, 0.766045, 0, 0], [-0.766045, -0.642787, 0, 0], [0, 0, 1, 0], [1.109262, 0.527807, 0, 1]]
+                            children:
+                              - type: Entity
+                                entity: 1056
+                                name: forearm.L
+                                components:
+                                  transform:
+                                    position: [0, 0.168, 0]
+                                    rotation: [1, 0, 0, 0]
+                                    scale: [1, 1, 1]
+                                    worldPosition: [1.187391, 1.0810235, 0]
+                                    worldRotation: [0.4226181, 0, 0, -0.9063078]
+                                    worldScale: [1.0000006, 1.0000006, 1]
+                                    localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0.168, 0, 1]]
+                                    modelMatrix: [[-0.6427882, -0.76604456, 0, 0], [0.76604456, -0.6427882, 0, 0], [0, 0, 1, 0], [1.187391, 1.0810235, 0, 1]]
+                                    normalMatrix: [[-0.64278764, -0.7660439, 0, 1.5913517], [0.7660439, -0.64278764, 0, -0.21472514], [0, 0, 1, -0], [0, 0, -0, 1]]
+                                    visible: true
+                                    billboardRotation: [1, 0, 0, 0]
+                                    billboard: false
+                                    fakeBillboard: false
+                                    cylindricalBillboard: false
+                                  bone:
+                                    model: 1047
+                                    index: 8
+                                    bindPosition: [0, 0.168, 0]
+                                    bindRotation: [1, 0, 0, 0]
+                                    bindScale: [1, 1, 1]
+                                    offsetMatrix: [[-0.642787, 0.766045, 0, 0], [-0.766045, -0.642787, 0, 0], [0, 0, 1, 0], [1.109262, 0.359807, 0, 1]]
+                                children:
+                                  - type: Entity
+                                    entity: 1057
+                                    name: hand.L
+                                    components:
+                                      transform:
+                                        position: [0, 0.312, 0]
+                                        rotation: [1, 0, 0, 0]
+                                        scale: [1, 1, 1]
+                                        worldPosition: [1.426397, 0.88047355, 0]
+                                        worldRotation: [0.4226181, 0, 0, -0.9063078]
+                                        worldScale: [1.0000006, 1.0000006, 1]
+                                        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0.312, 0, 1]]
+                                        modelMatrix: [[-0.6427882, -0.76604456, 0, 0], [0.76604456, -0.6427882, 0, 0], [0, 0, 1, 0], [1.426397, 0.88047355, 0, 1]]
+                                        normalMatrix: [[-0.64278764, -0.7660439, 0, 1.5913517], [0.7660439, -0.64278764, 0, -0.5267253], [0, 0, 1, -0], [0, 0, -0, 1]]
+                                        visible: true
+                                        billboardRotation: [1, 0, 0, 0]
+                                        billboard: false
+                                        fakeBillboard: false
+                                        cylindricalBillboard: false
+                                      bone:
+                                        model: 1047
+                                        index: 9
+                                        bindPosition: [0, 0.312, 0]
+                                        bindRotation: [1, 0, 0, 0]
+                                        bindScale: [1, 1, 1]
+                                        offsetMatrix: [[-0.642787, 0.766045, 0, 0], [-0.766045, -0.642787, 0, 0], [0, 0, 1, 0], [1.109262, 0.047807, 0, 1]]
+                  - type: Entity
+                    entity: 1058
+                    name: shoulder.R
+                    components:
+                      transform:
+                        position: [-0.06, 0.18, 0]
+                        rotation: [0.7071066, 0, 0, 0.70710695]
+                        scale: [1.0000006, 1.0000006, 1]
+                        worldPosition: [0.69, 1.2970002, 0]
+                        worldRotation: [0.7071066, 0, 0, 0.70710695]
+                        worldScale: [1.0000006, 1.0000006, 1]
+                        localMatrix: [[-4.7683744e-07, 1.0000005, 0, 0], [-1.0000005, -4.7683744e-07, 0, 0], [0, 0, 1, 0], [-0.06, 0.18, 0, 1]]
+                        modelMatrix: [[-4.7683744e-07, 1.0000005, 0, 0], [-1.0000005, -4.7683744e-07, 0, 0], [0, 0, 1, 0], [0.69, 1.2970002, 0, 1]]
+                        normalMatrix: [[-4.76837e-07, 0.9999995, 0, -1.2969992], [-0.9999995, -4.76837e-07, 0, 0.6900003], [0, 0, 1, 0], [0, 0, 0, 1]]
+                        visible: true
+                        billboardRotation: [1, 0, 0, 0]
+                        billboard: false
+                        fakeBillboard: false
+                        cylindricalBillboard: false
+                      bone:
+                        model: 1047
+                        index: 10
+                        bindPosition: [-0.06, 0.18, 0]
+                        bindRotation: [0.7071066, 0, 0, 0.70710695]
+                        bindScale: [1.0000006, 1.0000006, 1]
+                        offsetMatrix: [[0, -1, 0, 0], [1, 0, 0, 0], [0, 0, 1, 0], [-1.297, -0.06, 0, 1]]
+                    children:
+                      - type: Entity
+                        entity: 1059
+                        name: upper_arm.R
+                        components:
+                          transform:
+                            position: [0, 0.12, 0]
+                            rotation: [0.9396926, 0, 0, 0.3420201]
+                            scale: [1, 1, 1]
+                            worldPosition: [0.56999993, 1.2970002, 0]
+                            worldRotation: [0.4226181, 0, 0, 0.9063078]
+                            worldScale: [1.0000006, 1.0000006, 1]
+                            localMatrix: [[0.7660445, 0.6427875, 0, 0], [-0.6427875, 0.7660445, 0, 0], [0, 0, 1, 0], [0, 0.12, 0, 1]]
+                            modelMatrix: [[-0.6427882, 0.76604456, 0, 0], [-0.76604456, -0.6427882, 0, 0], [0, 0, 1, 0], [0.56999993, 1.2970002, 0, 1]]
+                            normalMatrix: [[-0.64278764, 0.7660439, 0, -0.62717015], [-0.7660439, -0.64278764, 0, 1.2703407], [0, 0, 1, 0], [0, 0, 0, 1]]
+                            visible: true
+                            billboardRotation: [1, 0, 0, 0]
+                            billboard: false
+                            fakeBillboard: false
+                            cylindricalBillboard: false
+                          bone:
+                            model: 1047
+                            index: 11
+                            bindPosition: [0, 0.12, 0]
+                            bindRotation: [0.9396926, 0, 0, 0.3420201]
+                            bindScale: [1, 1, 1]
+                            offsetMatrix: [[-0.642787, -0.766045, 0, 0], [0.766045, -0.642787, 0, 0], [0, 0, 1, 0], [-1.109262, 0.695807, 0, 1]]
+                        children:
+                          - type: Entity
+                            entity: 1060
+                            name: upper_arm_twist.R
+                            components:
+                              transform:
+                                position: [0, 0.168, 0]
+                                rotation: [1, 0, 0, 0]
+                                scale: [1, 1, 1]
+                                worldPosition: [0.44130445, 1.1890118, 0]
+                                worldRotation: [0.4226181, 0, 0, 0.9063078]
+                                worldScale: [1.0000006, 1.0000006, 1]
+                                localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0.168, 0, 1]]
+                                modelMatrix: [[-0.6427882, 0.76604456, 0, 0], [-0.76604456, -0.6427882, 0, 0], [0, 0, 1, 0], [0.44130445, 1.1890118, 0, 1]]
+                                normalMatrix: [[-0.64278764, 0.7660439, 0, -0.62717026], [-0.7660439, -0.64278764, 0, 1.1023406], [0, 0, 1, 0], [0, 0, 0, 1]]
+                                visible: true
+                                billboardRotation: [1, 0, 0, 0]
+                                billboard: false
+                                fakeBillboard: false
+                                cylindricalBillboard: false
+                              bone:
+                                model: 1047
+                                index: 12
+                                bindPosition: [0, 0.168, 0]
+                                bindRotation: [1, 0, 0, 0]
+                                bindScale: [1, 1, 1]
+                                offsetMatrix: [[-0.642787, -0.766045, 0, 0], [0.766045, -0.642787, 0, 0], [0, 0, 1, 0], [-1.109262, 0.527807, 0, 1]]
+                            children:
+                              - type: Entity
+                                entity: 1061
+                                name: forearm.R
+                                components:
+                                  transform:
+                                    position: [0, 0.168, 0]
+                                    rotation: [1, 0, 0, 0]
+                                    scale: [1, 1, 1]
+                                    worldPosition: [0.31260896, 1.0810235, 0]
+                                    worldRotation: [0.4226181, 0, 0, 0.9063078]
+                                    worldScale: [1.0000006, 1.0000006, 1]
+                                    localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0.168, 0, 1]]
+                                    modelMatrix: [[-0.6427882, 0.76604456, 0, 0], [-0.76604456, -0.6427882, 0, 0], [0, 0, 1, 0], [0.31260896, 1.0810235, 0, 1]]
+                                    normalMatrix: [[-0.64278764, 0.7660439, 0, -0.62717026], [-0.7660439, -0.64278764, 0, 0.9343407], [0, 0, 1, 0], [0, 0, 0, 1]]
+                                    visible: true
+                                    billboardRotation: [1, 0, 0, 0]
+                                    billboard: false
+                                    fakeBillboard: false
+                                    cylindricalBillboard: false
+                                  bone:
+                                    model: 1047
+                                    index: 13
+                                    bindPosition: [0, 0.168, 0]
+                                    bindRotation: [1, 0, 0, 0]
+                                    bindScale: [1, 1, 1]
+                                    offsetMatrix: [[-0.642787, -0.766045, 0, 0], [0.766045, -0.642787, 0, 0], [0, 0, 1, 0], [-1.109262, 0.359807, 0, 1]]
+                                children:
+                                  - type: Entity
+                                    entity: 1062
+                                    name: hand.R
+                                    components:
+                                      transform:
+                                        position: [0, 0.312, 0]
+                                        rotation: [1, 0, 0, 0]
+                                        scale: [1, 1, 1]
+                                        worldPosition: [0.07360305, 0.88047355, 0]
+                                        worldRotation: [0.4226181, 0, 0, 0.9063078]
+                                        worldScale: [1.0000006, 1.0000006, 1]
+                                        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0.312, 0, 1]]
+                                        modelMatrix: [[-0.6427882, 0.76604456, 0, 0], [-0.76604456, -0.6427882, 0, 0], [0, 0, 1, 0], [0.07360305, 0.88047355, 0, 1]]
+                                        normalMatrix: [[-0.64278764, 0.7660439, 0, -0.62717026], [-0.7660439, -0.64278764, 0, 0.6223406], [0, 0, 1, 0], [0, 0, 0, 1]]
+                                        visible: true
+                                        billboardRotation: [1, 0, 0, 0]
+                                        billboard: false
+                                        fakeBillboard: false
+                                        cylindricalBillboard: false
+                                      bone:
+                                        model: 1047
+                                        index: 14
+                                        bindPosition: [0, 0.312, 0]
+                                        bindRotation: [1, 0, 0, 0]
+                                        bindScale: [1, 1, 1]
+                                        offsetMatrix: [[-0.642787, -0.766045, 0, 0], [0.766045, -0.642787, 0, 0], [0, 0, 1, 0], [-1.109262, 0.047807, 0, 1]]
+          - type: Entity
+            entity: 1063
+            name: thigh.L
+            components:
+              transform:
+                position: [0.09, -0.05, 0]
+                rotation: [0, 0, 0.0124969985, 0.9999219]
+                scale: [1.0000002, 1.0000004, 1.0000001]
+                worldPosition: [0.84000003, 0.777, 0]
+                worldRotation: [0, 0, 0.0124969985, 0.9999219]
+                worldScale: [1.0000002, 1.0000004, 1.0000001]
+                localMatrix: [[-1.0000002, 0, 0, 0], [0, -0.999688, 0.024992054, 0], [0, 0.024992049, 0.9996878, 0], [0.09, -0.05, 0, 1]]
+                modelMatrix: [[-1.0000002, 0, 0, 0], [0, -0.999688, 0.024992054, 0], [0, 0.024992049, 0.9996878, 0], [0.84000003, 0.777, 0, 1]]
+                normalMatrix: [[-0.99999976, 0, 0, 0.83999974], [0, -0.9996872, 0.024992034, 0.77675694], [0, 0.02499204, 0.99968743, -0.019418813], [0, 0, -0, 1]]
+                visible: true
+                billboardRotation: [1, 0, 0, 0]
+                billboard: false
+                fakeBillboard: false
+                cylindricalBillboard: false
+              bone:
+                model: 1047
+                index: 15
+                bindPosition: [0.09, -0.05, 0]
+                bindRotation: [0, 0, 0.0124969985, 0.9999219]
+                bindScale: [1.0000002, 1.0000004, 1.0000001]
+                offsetMatrix: [[-1, 0, 0, 0], [0, -0.999688, 0.024992, 0], [0, 0.024992, 0.999688, 0], [0.09, 0.776757, -0.019419, 1]]
+            children:
+              - type: Entity
+                entity: 1064
+                name: shin.L
+                components:
+                  transform:
+                    position: [0, 0.340106, 0]
+                    rotation: [0.998841, -0.048133, 0, 0]
+                    scale: [1, 1, 1]
+                    worldPosition: [0.84000003, 0.4370001, 0.008499948]
+                    worldRotation: [0, 0, -0.03564673, 0.99936455]
+                    worldScale: [1.0000002, 1.0000004, 1.0000001]
+                    localMatrix: [[1, 0, 0, 0], [0, 0.99536645, -0.09615443, 0], [0, 0.09615443, 0.99536645, 0], [0, 0.340106, 0, 1]]
+                    modelMatrix: [[-1.0000002, 0, 0, 0], [0, -0.997459, -0.07124816, 0], [0, -0.07124819, 0.99745876, 0], [0.84000003, 0.4370001, 0.008499948, 1]]
+                    normalMatrix: [[-0.99999976, 0, 0, 0.8399999], [0, -0.9974583, -0.07124815, 0.43649498], [0, -0.07124812, 0.9974585, 0.02265709], [0, 0, 0, 1]]
+                    visible: true
+                    billboardRotation: [1, 0, 0, 0]
+                    billboard: false
+                    fakeBillboard: false
+                    cylindricalBillboard: false
+                  bone:
+                    model: 1047
+                    index: 16
+                    bindPosition: [0, 0.340106, 0]
+                    bindRotation: [0.998841, -0.048133, 0, 0]
+                    bindScale: [1, 1, 1]
+                    offsetMatrix: [[-1, 0, 0, 0], [0, -0.997459, -0.071248, 0], [0, -0.071248, 0.997459, 0], [0.09, 0.436495, 0.022657, 1]]
+                children:
+                  - type: Entity
+                    entity: 1065
+                    name: foot.L
+                    components:
+                      transform:
+                        position: [0, 0.35791, 0]
+                        rotation: [0.8225885, 0.5686371, 0, 0]
+                        scale: [1, 1.0000005, 1.0000005]
+                        worldPosition: [0.84000003, 0.07999954, -0.017000481]
+                        worldRotation: [0, 0, 0.5389532, 0.8423358]
+                        worldScale: [1.0000002, 1.0000008, 1.0000006]
+                        localMatrix: [[1, 0, 0, 0], [0, 0.3533039, 0.935509, 0], [0, -0.935509, 0.3533039, 0], [0, 0.35791, 0, 1]]
+                        modelMatrix: [[-1.0000002, 0, 0, 0], [0, -0.41905951, 0.90795946, 0], [0, 0.9079596, 0.4190594, 0], [0.84000003, 0.07999954, -0.017000481, 1]]
+                        normalMatrix: [[-0.99999976, 0, 0, 0.8399998], [0, -0.41905883, 0.9079584, 0.048960242], [0, 0.90795827, 0.41905895, -0.06551204], [0, 0, -0, 1]]
+                        visible: true
+                        billboardRotation: [1, 0, 0, 0]
+                        billboard: false
+                        fakeBillboard: false
+                        cylindricalBillboard: false
+                      bone:
+                        model: 1047
+                        index: 17
+                        bindPosition: [0, 0.35791, 0]
+                        bindRotation: [0.8225885, 0.5686371, 0, 0]
+                        bindScale: [1, 1.0000005, 1.0000005]
+                        offsetMatrix: [[-1, 0, 0, 0], [0, -0.41906, 0.907959, 0], [0, 0.907959, 0.41906, 0], [0.09, 0.04896, -0.065512, 1]]
+                    children:
+                      - type: Entity
+                        entity: 1066
+                        name: toe.L
+                        components:
+                          transform:
+                            position: [0, 0.143178, 0]
+                            rotation: [0.9767189, 0.21452303, 0, 0]
+                            scale: [1, 1, 1]
+                            worldPosition: [0.84000003, 0.019999433, 0.112999335]
+                            worldRotation: [0, 0, 0.7071062, 0.7071074]
+                            worldScale: [1.0000002, 1.0000008, 1.0000006]
+                            localMatrix: [[1, 0, 0, 0], [0, 0.90795976, 0.4190574, 0], [0, -0.4190574, 0.90795976, 0], [0, 0.143178, 0, 1]]
+                            modelMatrix: [[-1.0000002, 0, 0, 0], [0, -1.9967556e-06, 1.0000006, 0], [0, 1.0000007, 1.937151e-06, 0], [0.84000003, 0.019999433, 0.112999335, 1]]
+                            normalMatrix: [[-0.99999976, 0, 0, 0.8399998], [0, -1.9371485e-06, 0.9999994, -0.11299923], [0, 0.9999993, 1.9967529e-06, -0.019999644], [0, 0, -0, 1]]
+                            visible: true
+                            billboardRotation: [1, 0, 0, 0]
+                            billboard: false
+                            fakeBillboard: false
+                            cylindricalBillboard: false
+                          bone:
+                            model: 1047
+                            index: 18
+                            bindPosition: [0, 0.143178, 0]
+                            bindRotation: [0.9767189, 0.21452303, 0, 0]
+                            bindScale: [1, 1, 1]
+                            offsetMatrix: [[-1, 0, 0, 0], [0, -3e-06, 1, 0], [0, 1, 3e-06, 0], [0.09, -0.112999, -0.02, 1]]
+          - type: Entity
+            entity: 1067
+            name: thigh.R
+            components:
+              transform:
+                position: [-0.09, -0.05, 0]
+                rotation: [0, 0, 0.0124969985, 0.9999219]
+                scale: [1.0000002, 1.0000004, 1.0000001]
+                worldPosition: [0.65999997, 0.777, 0]
+                worldRotation: [0, 0, 0.0124969985, 0.9999219]
+                worldScale: [1.0000002, 1.0000004, 1.0000001]
+                localMatrix: [[-1.0000002, 0, 0, 0], [0, -0.999688, 0.024992054, 0], [0, 0.024992049, 0.9996878, 0], [-0.09, -0.05, 0, 1]]
+                modelMatrix: [[-1.0000002, 0, 0, 0], [0, -0.999688, 0.024992054, 0], [0, 0.024992049, 0.9996878, 0], [0.65999997, 0.777, 0, 1]]
+                normalMatrix: [[-0.99999976, 0, 0, 0.6599998], [0, -0.9996872, 0.024992034, 0.77675694], [0, 0.02499204, 0.99968743, -0.019418813], [0, 0, -0, 1]]
+                visible: true
+                billboardRotation: [1, 0, 0, 0]
+                billboard: false
+                fakeBillboard: false
+                cylindricalBillboard: false
+              bone:
+                model: 1047
+                index: 19
+                bindPosition: [-0.09, -0.05, 0]
+                bindRotation: [0, 0, 0.0124969985, 0.9999219]
+                bindScale: [1.0000002, 1.0000004, 1.0000001]
+                offsetMatrix: [[-1, 0, 0, 0], [0, -0.999688, 0.024992, 0], [0, 0.024992, 0.999688, 0], [-0.09, 0.776757, -0.019419, 1]]
+            children:
+              - type: Entity
+                entity: 1068
+                name: shin.R
+                components:
+                  transform:
+                    position: [0, 0.340106, 0]
+                    rotation: [0.998841, -0.048133, 0, 0]
+                    scale: [1, 1, 1]
+                    worldPosition: [0.65999997, 0.4370001, 0.008499948]
+                    worldRotation: [0, 0, -0.03564673, 0.99936455]
+                    worldScale: [1.0000002, 1.0000004, 1.0000001]
+                    localMatrix: [[1, 0, 0, 0], [0, 0.99536645, -0.09615443, 0], [0, 0.09615443, 0.99536645, 0], [0, 0.340106, 0, 1]]
+                    modelMatrix: [[-1.0000002, 0, 0, 0], [0, -0.997459, -0.07124816, 0], [0, -0.07124819, 0.99745876, 0], [0.65999997, 0.4370001, 0.008499948, 1]]
+                    normalMatrix: [[-0.99999976, 0, 0, 0.65999985], [0, -0.9974583, -0.07124815, 0.43649498], [0, -0.07124812, 0.9974585, 0.02265709], [0, 0, 0, 1]]
+                    visible: true
+                    billboardRotation: [1, 0, 0, 0]
+                    billboard: false
+                    fakeBillboard: false
+                    cylindricalBillboard: false
+                  bone:
+                    model: 1047
+                    index: 20
+                    bindPosition: [0, 0.340106, 0]
+                    bindRotation: [0.998841, -0.048133, 0, 0]
+                    bindScale: [1, 1, 1]
+                    offsetMatrix: [[-1, 0, 0, 0], [0, -0.997459, -0.071248, 0], [0, -0.071248, 0.997459, 0], [-0.09, 0.436495, 0.022657, 1]]
+                children:
+                  - type: Entity
+                    entity: 1069
+                    name: foot.R
+                    components:
+                      transform:
+                        position: [0, 0.35791, 0]
+                        rotation: [0.8225885, 0.5686371, 0, 0]
+                        scale: [1, 1.0000005, 1.0000005]
+                        worldPosition: [0.65999997, 0.07999954, -0.017000481]
+                        worldRotation: [0, 0, 0.5389532, 0.8423358]
+                        worldScale: [1.0000002, 1.0000008, 1.0000006]
+                        localMatrix: [[1, 0, 0, 0], [0, 0.3533039, 0.935509, 0], [0, -0.935509, 0.3533039, 0], [0, 0.35791, 0, 1]]
+                        modelMatrix: [[-1.0000002, 0, 0, 0], [0, -0.41905951, 0.90795946, 0], [0, 0.9079596, 0.4190594, 0], [0.65999997, 0.07999954, -0.017000481, 1]]
+                        normalMatrix: [[-0.99999976, 0, 0, 0.65999985], [0, -0.41905883, 0.9079584, 0.048960242], [0, 0.90795827, 0.41905895, -0.06551204], [0, 0, -0, 1]]
+                        visible: true
+                        billboardRotation: [1, 0, 0, 0]
+                        billboard: false
+                        fakeBillboard: false
+                        cylindricalBillboard: false
+                      bone:
+                        model: 1047
+                        index: 21
+                        bindPosition: [0, 0.35791, 0]
+                        bindRotation: [0.8225885, 0.5686371, 0, 0]
+                        bindScale: [1, 1.0000005, 1.0000005]
+                        offsetMatrix: [[-1, 0, 0, 0], [0, -0.41906, 0.907959, 0], [0, 0.907959, 0.41906, 0], [-0.09, 0.04896, -0.065512, 1]]
+                    children:
+                      - type: Entity
+                        entity: 1070
+                        name: toe.R
+                        components:
+                          transform:
+                            position: [0, 0.143178, 0]
+                            rotation: [0.9767189, 0.21452303, 0, 0]
+                            scale: [1, 1, 1]
+                            worldPosition: [0.65999997, 0.019999433, 0.112999335]
+                            worldRotation: [0, 0, 0.7071062, 0.7071074]
+                            worldScale: [1.0000002, 1.0000008, 1.0000006]
+                            localMatrix: [[1, 0, 0, 0], [0, 0.90795976, 0.4190574, 0], [0, -0.4190574, 0.90795976, 0], [0, 0.143178, 0, 1]]
+                            modelMatrix: [[-1.0000002, 0, 0, 0], [0, -1.9967556e-06, 1.0000006, 0], [0, 1.0000007, 1.937151e-06, 0], [0.65999997, 0.019999433, 0.112999335, 1]]
+                            normalMatrix: [[-0.99999976, 0, 0, 0.65999985], [0, -1.9371485e-06, 0.9999994, -0.11299923], [0, 0.9999993, 1.9967529e-06, -0.019999644], [0, 0, -0, 1]]
+                            visible: true
+                            billboardRotation: [1, 0, 0, 0]
+                            billboard: false
+                            fakeBillboard: false
+                            cylindricalBillboard: false
+                          bone:
+                            model: 1047
+                            index: 22
+                            bindPosition: [0, 0.143178, 0]
+                            bindRotation: [0.9767189, 0.21452303, 0, 0]
+                            bindScale: [1, 1, 1]
+                            offsetMatrix: [[-1, 0, 0, 0], [0, -3e-06, 1, 0], [0, 1, 3e-06, 0], [-0.09, -0.112999, -0.02, 1]]
+  - type: Entity
+    entity: 1071
+    name: Ground
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [8, 1, 8]
+        worldPosition: [0, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [8, 1, 8]
+        localMatrix: [[8, 0, 0, 0], [0, 1, 0, 0], [0, 0, 8, 0], [0, 0, 0, 1]]
+        modelMatrix: [[8, 0, 0, 0], [0, 1, 0, 0], [0, 0, 8, 0], [0, 0, 0, 1]]
+        normalMatrix: [[0.125, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0.125, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        buffer:
+          type: vertex_buffer
+          usage: immutable
+          stride: 48
+          size: 192
+          count: 4
+          renderAttributes: true
+          instanceBuffer: false
+          attributes:
+            - type: position
+              dataType: float
+              bufferName: ""
+              elements: 3
+              offset: 0
+              count: 4
+              normalized: true
+              perInstance: false
+            - type: texcoord1
+              dataType: float
+              bufferName: ""
+              elements: 2
+              offset: 12
+              count: 4
+              normalized: true
+              perInstance: false
+            - type: normal
+              dataType: float
+              bufferName: ""
+              elements: 3
+              offset: 20
+              count: 4
+              normalized: true
+              perInstance: false
+            - type: color
+              dataType: float
+              bufferName: ""
+              elements: 4
+              offset: 32
+              count: 4
+              normalized: true
+              perInstance: false
+          data: AACgwAAAAAAAAKDAAAAAAAAAAAAAAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AACgwAAAAAAAAKBAAAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AACgQAAAAAAAAKBAAACAPwAAgD8AAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AACgQAAAAAAAAKDAAACAPwAAAAAAAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/
+          vertexSize: 48
+        indices:
+          type: index_buffer
+          usage: immutable
+          stride: 2
+          size: 12
+          count: 6
+          renderAttributes: true
+          instanceBuffer: false
+          attributes:
+            - type: index
+              dataType: unsigned_short
+              bufferName: ""
+              elements: 1
+              offset: 0
+              count: 6
+              normalized: true
+              perInstance: false
+          data: AAABAAIAAAACAAMA
+        eBuffers: ~
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 6
+            faceCulling: true
+            textureShadow: false
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: false
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        bonesMatrix:
+          []
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-5, 0, -5]
+          max: [5, 0, 5]
+        verticesAABB:
+          min: [-5, 0, -5]
+          max: [5, 0, 5]
+        worldAABB:
+          min: [-40, 0, -40]
+          max: [40, 0, 40]
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+  - type: Entity
+    entity: 1072
+    name: Main Camera
+    components:
+      transform:
+        position: [0, 0.9, 3.5]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [0, 0.9, 3.5]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0.9, 3.5, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0.9, 3.5, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, -0.9], [0, 0, 1, -3.5], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      camera:
+        enabled: true
+        type: camera_perspective
+        cullingMask: 4294967295
+        target: [0, 0, 0]
+        up: [0, 1, 0]
+        leftClip: <view>
+        rightClip: <view>
+        bottomClip: <view>
+        topClip: <view>
+        yfov: 0.75
+        aspect: <view>
+        nearClip: 0.2
+        farClip: 200
+        renderToTexture: false
+        transparentSort: true
+        depthTest: true
+        useTarget: false
+        autoResize: true
+        framebufferWidth: 512
+        framebufferHeight: 512
+        framebufferFilter: linear

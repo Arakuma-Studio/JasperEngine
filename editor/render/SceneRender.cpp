@@ -18,6 +18,7 @@ extern unsigned int bulb_icon_png_len;
 #include "command/type/ObjectTransformCmd.h"
 #include "command/type/PropertyCmd.h"
 #include "command/type/MultiPropertyCmd.h"
+#include "animation/ClipRecordHooks.h"
 #include "lattice/LatticeEditorOps.h"
 #include "util/GraphicUtils.h"
 #include "window/PhysicsPlacementWindow.h"
@@ -25,6 +26,7 @@ extern unsigned int bulb_icon_png_len;
 #include "render/LineDrawUtils.h"
 #include "util/Angle.h"
 #include "util/FluidEditorTools.h"
+#include "pose/PoseViewport.h"
 
 #include <algorithm>
 #include <cmath>
@@ -44,6 +46,31 @@ namespace {
         {OBB::FAR_RIGHT_TOP, OBB::NEAR_RIGHT_TOP}, {OBB::FAR_RIGHT_BOTTOM, OBB::NEAR_RIGHT_BOTTOM}
     };
 
+}
+
+bool editor::SceneRender::isGizmoGone(const EntityHandle* gizmo, const RenderSystem& render) const{
+    if (!gizmo){
+        return false;
+    }
+    Scene* gizmoScene = gizmo->getScene();
+    const Entity entity = gizmo->getEntity();
+    if (!gizmoScene->isEntityCreated(entity) || !gizmoScene->findComponent<Transform>(entity)){
+        return true;
+    }
+    // the tools layers' gizmos carry no mark
+    return gizmoScene == scene && !render.isEditorOverlay(entity);
+}
+
+void editor::SceneRender::deleteGizmo(EntityHandle* gizmo, const RenderSystem& render) const{
+    if (gizmo && isGizmoGone(gizmo, render)){
+        gizmo->setEntityOwned(false);
+    }
+    delete gizmo;
+}
+
+void editor::SceneRender::dropGoneGizmos(){
+    const RenderSystem& render = *scene->getSystem<RenderSystem>();
+    dropGoneGizmos(latticeCages, render, &LatticeCageLines::overlay, &LatticeCageLines::depth);
 }
 
 void editor::SceneRender::ensureOverlayLines(std::map<Entity, LineRenderer*>& lines, Entity entity){
@@ -519,6 +546,9 @@ OBB editor::SceneRender::getFamilyVisualOBB(Scene* target, Entity entity, float 
 }
 
 void editor::SceneRender::hideAllGizmos(){
+    // (also the subclasses' gizmos: they hide theirs after calling this)
+    dropGoneGizmos();
+
     selLines->setVisible(false);
     terrainBrushLines->setVisible(false);
     physicsLines->setVisible(false);
@@ -644,21 +674,7 @@ void editor::SceneRender::drawSceneView(int width, int height, const std::vector
 
     // Gizmos and icons placed after the scene's update: their transforms are settled
     // here for this draw (the scene's next update takes them from there)
-    {
-        RenderSystem* renderSystem = scene->getSystem<RenderSystem>().get();
-        auto transforms = scene->getComponentArray<Transform>();
-        for (size_t i = 0; i < transforms->size(); i++){
-            Transform& transform = transforms->getComponentFromIndex(i);
-            const Entity entity = transforms->getEntity(i);
-            if (!transform.needUpdate || !renderSystem->isEditorOverlay(entity)){
-                continue;
-            }
-            renderSystem->updateTransform(transform, entity);
-            if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
-                mesh->worldAABB = transform.modelMatrix * (mesh->skinnedAABB.isNull() ? mesh->aabb : mesh->skinnedAABB);
-            }
-        }
-    }
+    settleOverlayTransforms();
 
     const Rect full(0, 0, (float)width, (float)height);
     const bool previewing = !isPlaying && isPreviewCameraActive();
@@ -704,6 +720,70 @@ void editor::SceneRender::drawSceneView(int width, int height, const std::vector
     addOverlayLayers(layers, width, height);
 
     Engine::drawView(SCENE_VIEW_ID, &framebuffer, layers);
+}
+
+void editor::SceneRender::settleOverlayTransforms(){
+    RenderSystem* renderSystem = scene->getSystem<RenderSystem>().get();
+    auto transforms = scene->getComponentArray<Transform>();
+    for (size_t i = 0; i < transforms->size(); i++){
+        Transform& transform = transforms->getComponentFromIndex(i);
+        const Entity entity = transforms->getEntity(i);
+        if (!transform.needUpdate || !renderSystem->isEditorOverlay(entity)){
+            continue;
+        }
+        renderSystem->updateTransform(transform, entity);
+        if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
+            mesh->worldAABB = transform.modelMatrix * (mesh->skinnedAABB.isNull() ? mesh->aabb : mesh->skinnedAABB);
+        }
+    }
+}
+
+void editor::SceneRender::drawPaneView(uint32_t viewId, Entity paneCamera, Framebuffer* target, int width, int height, const PaneViewFlags& flags){
+    if (width <= 0 || height <= 0 || !target || paneCamera == NULL_ENTITY){
+        return;
+    }
+    if (!target->isCreated() || target->getWidth() != (unsigned int)width || target->getHeight() != (unsigned int)height){
+        target->destroy();
+        target->setWidth((unsigned int)width);
+        target->setHeight((unsigned int)height);
+        JE_GPU_ALLOC_SCOPE(Editor, "Scene view pane");
+        target->create();
+    }
+
+    // the pane's camera as just placed (this frame's update ran before it moved)
+    if (Transform* cameraTransform = scene->findComponent<Transform>(paneCamera); cameraTransform && cameraTransform->needUpdate){
+        scene->getSystem<RenderSystem>()->updateTransform(*cameraTransform, paneCamera);
+    }
+
+    // the grid in the pane's axis plane for this draw only
+    const int gridPlane = getGridPlane();
+    setGridPlane(flags.gridPlane);
+    settleOverlayTransforms();
+
+    const Rect full(0, 0, (float)width, (float)height);
+    std::vector<Engine::ViewLayer> layers;
+    Engine::ViewLayer base;
+    base.scene = scene;
+    base.camera = paneCamera;
+    base.viewRect = full;
+    base.editorOverlays = true;
+    base.disableFog = displaySettings.disableFog;
+    base.canvasWidth = (float)width;
+    base.canvasHeight = (float)height;
+    base.disableFaceCulling = displaySettings.disableFaceCulling;
+    base.postProcessing = flags.postProcessing;
+    base.disableClouds = displaySettings.disableClouds;
+    base.shadows = flags.shadows;
+    layers.push_back(base);
+    for (Scene* childScene : childSceneLayers){
+        if (childScene && childScene != scene){
+            layers.push_back({childScene, childScene->getCamera(), full, false, false, false, (float)width, (float)height});
+        }
+    }
+    Engine::drawView(viewId, target, layers);
+
+    setGridPlane(gridPlane);
+    settleOverlayTransforms();
 }
 
 void editor::SceneRender::setChildSceneLayers(const std::vector<Scene*>& layers){
@@ -774,6 +854,9 @@ void editor::SceneRender::updateRenderSystem(){
 }
 
 void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<Entity> entities, Entity mainCamera, const SceneDisplaySettings& settings){
+    // (also the subclasses' gizmos: their update runs after this one)
+    dropGoneGizmos();
+
     displaySettings = settings;
 
     // The tools work on this scene's selection, or on the edit layer's while one is set.
@@ -785,6 +868,11 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
     if (editLayer.active){
         // the toolbar sets the tool on this scene's tools layer
         tools.setGizmoSelected(toolslayer.getGizmoSelected());
+    }
+
+    // a posed model (pose animation) and its bones take no transform gizmo: the pose handles move them
+    if (poseViewport && !editLayer.active){
+        poseViewport->removeCovered(toolEntities);
     }
 
     // Physics (G) shows in orange gizmos; it never works through an edit layer's tools
@@ -1121,10 +1209,33 @@ void editor::SceneRender::mouseHoverEvent(float x, float y){
     ownerMouseRay = screenToRay(x, y);
     mouseRay = editLayer.active ? gizmoRay(x, y) : ownerMouseRay;
     updateTerrainBrushCursor();
+    if (poseViewport){
+        poseViewport->hover(ownerMouseRay);
+    }
+}
+
+bool editor::SceneRender::isPoseEditing() const{
+    return poseViewport && !isPlaying && poseViewport->isPosing();
+}
+
+bool editor::SceneRender::poseMouseDown(float x, float y, bool shift, bool ctrl){
+    if (!isPoseEditing()){
+        return false;
+    }
+    ownerMouseRay = screenToRay(x, y);
+    return poseViewport->mouseDown(ownerMouseRay, shift, ctrl);
+}
+
+bool editor::SceneRender::isPoseDragging() const{
+    return poseViewport && poseViewport->isDragging();
 }
 
 void editor::SceneRender::mouseClickEvent(float x, float y, std::vector<Entity> selEntities){
     mouseClicked = true;
+
+    if (poseViewport && !editLayer.active){
+        poseViewport->removeCovered(selEntities);
+    }
 
     if (TerrainEditWindow* terrainEditWindow = Backend::getApp().getTerrainEditWindow()){
         if (terrainEditWindow->isEditingScene(scene)){
@@ -1339,6 +1450,11 @@ void editor::SceneRender::mouseClickEvent(float x, float y, std::vector<Entity> 
 void editor::SceneRender::mouseReleaseEvent(float x, float y){
     uilayer.setSelectionBoxVisible(false);
 
+    if (poseViewport){
+        // a pose handle drag ends: one undo step
+        poseViewport->mouseUp();
+    }
+
     if (TerrainEditWindow* terrainEditWindow = Backend::getApp().getTerrainEditWindow()){
         terrainEditWindow->endStroke();
     }
@@ -1363,6 +1479,9 @@ void editor::SceneRender::mouseReleaseEvent(float x, float y){
         }
     }
 
+    // a recorded drag: one key edit (one merge key) per drag
+    endGizmoRecord();
+
     // one drag of lattice points, one undo step
     endLatticeDrag();
     dragEdit.commit();
@@ -1381,6 +1500,56 @@ bool editor::SceneRender::pushDragCommand(size_t sceneId, Command* command){
         dragEditStarted = true;
     }
     return history->addCommand(command);
+}
+
+namespace {
+    bool gizmoChannel(editor::GizmoSelected gizmo, ClipChannel& channel){
+        if (gizmo == editor::GizmoSelected::TRANSLATE) channel = ClipChannel::Position;
+        else if (gizmo == editor::GizmoSelected::ROTATE) channel = ClipChannel::Rotation;
+        else if (gizmo == editor::GizmoSelected::SCALE) channel = ClipChannel::Scale;
+        else return false;
+        return true;
+    }
+}
+
+bool editor::SceneRender::gizmoRecordClaims(uint32_t sceneId, GizmoSelected gizmo, const std::vector<Entity>& selection) const{
+    ClipChannel channel;
+    return gizmoChannel(gizmo, channel) && ClipRecordHooks::claimsAny(sceneId, selection, channel);
+}
+
+bool editor::SceneRender::recordGizmoTransform(uint32_t sceneId, Entity entity, const Matrix4& localMatrix, GizmoSelected gizmo,
+                                               bool selectionClaimed){
+    ClipChannel channel;
+    if (!selectionClaimed || !gizmoChannel(gizmo, channel)) return false;
+    // an unbound GameObject of the selection stays as it is (no scene step mixed into the key edit)
+    if (!ClipRecordHooks::claims(sceneId, entity, channel)) return true;
+    Vector3 position, scale;
+    Quaternion rotation;
+    localMatrix.decomposeStandard(position, scale, rotation);
+    // one merge key per drag, the gizmo's own (another source's gesture is never joined)
+    const std::string mergeKey = ClipRecordHooks::gestureMergeKey(RecordSource::Gizmo, nullptr);
+    ClipRecordHooks::record(sceneId, entity, ClipRecordHooks::transformValue(channel, position, rotation, scale), mergeKey);
+    // Rotate / Scale about a pivot that is not the GameObject's origin (a selection's Center)
+    // moves it too: the position is keyed with the drag, as without Record (T3c review M2)
+    if (channel != ClipChannel::Position && ClipRecordHooks::claims(sceneId, entity, ClipChannel::Position)){
+        Scene* target = gizmoScene();
+        const Transform* transform = target ? target->findComponent<Transform>(entity) : nullptr;
+        if (transform && (transform->position - position).length() > 1e-5f){
+            ClipRecordHooks::record(sceneId, entity, ClipRecordHooks::transformValue(ClipChannel::Position, position, rotation, scale), mergeKey);
+        }
+    }
+    return true;
+}
+
+editor::Command* editor::SceneRender::buildObjectTransformDrag(Project* project, uint32_t sceneId, Entity entity, const Matrix4& localMatrix,
+                                                       GizmoSelected gizmo, bool selectionClaimed){
+    if (recordGizmoTransform(sceneId, entity, localMatrix, gizmo, selectionClaimed)) return nullptr;
+    return new ObjectTransformCmd(project, sceneId, entity, localMatrix);
+}
+
+void editor::SceneRender::endGizmoRecord(){
+    gizmoRecordNoted = false;
+    ClipRecordHooks::endGesture(RecordSource::Gizmo);
 }
 
 Vector3 editor::SceneRender::getMatrixScale(const Matrix4& matrix){
@@ -1426,6 +1595,15 @@ Vector2 editor::SceneRender::lockObject2DAspectRatio(const Vector2& startSize, c
 void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float origY, Project* project, size_t sceneId, std::vector<Entity> selEntities, bool disableSelection, bool invertRotationSnap, bool preserveAspectRatio){
     ownerMouseRay = screenToRay(x, y);
     mouseRay = editLayer.active ? gizmoRay(x, y) : ownerMouseRay;
+
+    if (poseViewport && poseViewport->isDragging()){
+        // a pose handle: Shift keeps it on the horizontal plane, Ctrl/Cmd snaps ring turns
+        poseViewport->mouseDrag(ownerMouseRay, preserveAspectRatio, invertRotationSnap);
+        return;
+    }
+    if (poseViewport && !editLayer.active){
+        poseViewport->removeCovered(selEntities);
+    }
 
     if (TerrainEditWindow* terrainEditWindow = Backend::getApp().getTerrainEditWindow()){
         if (terrainEditWindow->isEditingScene(scene)){
@@ -1547,6 +1725,10 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
         }
     }
 
+    // Record (animation clips 9.R5): whether it takes this drag of the selection, asked once per
+    // drag event (not per selected entity)
+    const bool recordSelection = gizmoRecordClaims(commandSceneId, tools.getGizmoSelected(), selEntities);
+
     for (Entity& entity: selEntities){
         if (selectedTrackPointIndex >= 0 && entity == selectedTrackPointEntity){
             // the drag targets the track keyframe point (handled above), not the entity
@@ -1613,7 +1795,8 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                                 transform->position, newRotation, newScale));
                             dragCommand = multiCmd;
                         }else{
-                            dragCommand = new ObjectTransformCmd(project, commandSceneId, entity, m);
+                            // (Record keys a claimed channel instead: no command, animation clips 9.R5)
+                            dragCommand = buildObjectTransformDrag(project, commandSceneId, entity, m, tools.getGizmoSelected(), recordSelection);
                         }
                     }
                 };
@@ -2143,6 +2326,12 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                     } // end else (entity-level OBJECT2D)
                 }
 
+                // a move Record does not key (2D gizmo, UI layout, instances, sub-points) of a
+                // GameObject it animates: say so once per drag
+                if (dragCommand && !gizmoRecordNoted && ClipRecordHooks::claims(commandSceneId, entity, ClipChannel::Position)){
+                    gizmoRecordNoted = true;
+                    ClipRecordHooks::note("Record does not key 2D, UI layout, instance or point moves yet: this drag is a scene step");
+                }
                 if (dragCommand){
                     pushDragCommand(sceneId, dragCommand);
                 }

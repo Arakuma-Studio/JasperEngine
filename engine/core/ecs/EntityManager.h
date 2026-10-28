@@ -31,6 +31,9 @@ namespace jasperengine{
         uint16_t tag = 0;
         int8_t layer = 0;
         bool active = true;
+        // editor-only Scene view state (picking/PickTypes.h EDITOR_HIDDEN, EDITOR_PICK_LOCKED):
+        // never saved, never cloned into Play, never seen by Lua (S26 D10)
+        uint8_t editorFlags = 0;
         std::string name;
     };
 
@@ -63,6 +66,8 @@ namespace jasperengine{
 
         // entities whose own active flag is off; zero lets hierarchy queries return early
         size_t inactiveCount = 0;
+        // entities with editor flags set; zero lets the render passes skip the lookup
+        size_t editorFlaggedCount = 0;
 
         // interned tags: id -> name, name -> id ("Untagged" is 0)
         std::vector<std::string> tagNames{DEFAULT_ENTITY_TAG};
@@ -123,6 +128,7 @@ namespace jasperengine{
             }
             recordCount = 0;
             freeHead = kNoFreeSlot;
+            editorFlaggedCount = 0;
             records.shrinkTo(0);
         }
 
@@ -234,6 +240,9 @@ namespace jasperengine{
             if (!data.active && inactiveCount > 0){
                 inactiveCount--;
             }
+            if (data.editorFlags != 0 && editorFlaggedCount > 0){
+                editorFlaggedCount--;
+            }
             idToSlot.erase(entity);
             if (isSystemId(entity)){
                 systemUsed[entity >> 6] &= ~(uint64_t(1) << (entity & 63));
@@ -250,6 +259,7 @@ namespace jasperengine{
             data.tag = 0;
             data.layer = 0;
             data.active = true;
+            data.editorFlags = 0;
             data.serial = freeHead;
             freeHead = slot;
         }
@@ -327,6 +337,13 @@ namespace jasperengine{
                 data = &add(entity);
             }
             data->name = name;
+        }
+
+        // the name without a copy (an empty one for an unknown entity)
+        const std::string& getNameRef(Entity entity) const{
+            static const std::string none;
+            const EntityMetadata* data = find(entity);
+            return data ? data->name : none;
         }
 
         std::string getName(Entity entity) const{
@@ -454,6 +471,31 @@ namespace jasperengine{
                 return 0;
             }
             return data->layer;
+        }
+
+        void setEditorFlags(Entity entity, uint8_t flags) {
+            EntityMetadata* data = find(entity);
+            if (!data || data->editorFlags == flags){
+                return;
+            }
+            if (data->editorFlags == 0){
+                editorFlaggedCount++;
+            }else if (flags == 0 && editorFlaggedCount > 0){
+                editorFlaggedCount--;
+            }
+            data->editorFlags = flags;
+        }
+
+        JE_ECS_INLINE uint8_t getEditorFlags(Entity entity) const {
+            if (editorFlaggedCount == 0){
+                return 0;
+            }
+            const EntityMetadata* data = find(entity);
+            return data ? data->editorFlags : 0;
+        }
+
+        bool hasEditorFlags() const {
+            return editorFlaggedCount > 0;
         }
 
         // Memory of the metadata, the strings' heap buffers left out

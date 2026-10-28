@@ -140,6 +140,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("assets.createLuaScript", "Create Lua Script", AppMenuCommand::AssetsCreateLuaScript);
     b.menu("assets.createCppScript", "Create C++ Script", AppMenuCommand::AssetsCreateCppScript);
     b.menu("assets.createHtmlDocument", "Create HTML Document", AppMenuCommand::AssetsCreateHtmlDocument);
+    b.menu("assets.createPoseAnimation", "Create Pose Animation", AppMenuCommand::AssetsCreatePoseAnimation);
+    b.menu("assets.createAnimationClip", "Create Animation Clip", AppMenuCommand::AssetsCreateAnimationClip);
     b.menu("assets.showInFileManager", "Show in File Manager", AppMenuCommand::AssetsShowInFileManager);
     b.menu("assets.open", "Open", AppMenuCommand::AssetsOpen);
     b.menu("assets.rename", "Rename Asset", AppMenuCommand::AssetsRename);
@@ -182,6 +184,7 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("window.hierarchy", "Hierarchy", AppMenuCommand::ToggleHierarchy, C::Editor, "Ctrl+4");
     b.menu("window.project", "Project", AppMenuCommand::ToggleProject, C::Editor, "Ctrl+5");
     b.menu("window.animation", "Animation", AppMenuCommand::ToggleAnimation, C::Editor, "Ctrl+6");
+    b.menu("window.poseAnimation", "Pose Animation", AppMenuCommand::TogglePoseAnimation);
     b.menu("window.profiler", "Profiler", AppMenuCommand::ToggleProfiler, C::Editor, "Ctrl+7");
     b.menu("window.console", "Console", AppMenuCommand::ToggleConsole, C::Editor, "Ctrl+Shift+C");
     b.menu("window.bookmarks", "Bookmarks", AppMenuCommand::ToggleBookmarks);
@@ -226,13 +229,47 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
         "Move, Rotate and Scale push the selection through a physics simulation (3D scenes, not in Play)";
 
     b.group = "Scene View";
-    b.add("sceneView.frameAll", "Frame All (3D)", C::SceneView, "Home");
+    // S26 (docs/specs/S26-scene-view.md R14-R24): Alt+F as Unity's, Home kept
+    b.add("sceneView.frameAll", "Frame All", C::SceneView, "Alt+F", "Home").description =
+        "Frame everything the view shows and can pick";
     b.add("sceneView.viewFront", "Front View", C::SceneView, "Numpad1");
     b.add("sceneView.viewBack", "Back View", C::SceneView, "Ctrl+Numpad1");
     b.add("sceneView.viewRight", "Right View", C::SceneView, "Numpad3");
     b.add("sceneView.viewLeft", "Left View", C::SceneView, "Ctrl+Numpad3");
     b.add("sceneView.viewTop", "Top View", C::SceneView, "Numpad7", "Ctrl+Numpad9");
     b.add("sceneView.viewBottom", "Bottom View", C::SceneView, "Numpad9", "Ctrl+Numpad7");
+    b.add("sceneView.hideSelection", "Hide Selection", C::SceneView, "H").description =
+        "Hide the selection in the Scene view (again: show it)";
+    b.add("sceneView.showAll", "Show All", C::SceneView, "Alt+H").description = "Show every GameObject hidden in the Scene view";
+    b.add("sceneView.togglePickLock", "Toggle Pick Lock", C::SceneView, "L").description =
+        "Lock the selection against picking in the Scene view, or unlock it";
+    b.add("sceneView.measure", "Measure", C::SceneView, "M").description =
+        "Measure distances: drag from A to B (Esc ends it)";
+    b.add("sceneView.deleteMeasure", "Delete Measure", C::SceneView, "Delete", "Backspace").description =
+        "Delete the selected measure (while one is selected)";
+    for (int slot = 1; slot <= 9; slot++) {
+        static const char* recallIds[] = {"sceneView.recallBookmark1", "sceneView.recallBookmark2", "sceneView.recallBookmark3",
+                                          "sceneView.recallBookmark4", "sceneView.recallBookmark5", "sceneView.recallBookmark6",
+                                          "sceneView.recallBookmark7", "sceneView.recallBookmark8", "sceneView.recallBookmark9"};
+        static const char* storeIds[] = {"sceneView.storeBookmark1", "sceneView.storeBookmark2", "sceneView.storeBookmark3",
+                                         "sceneView.storeBookmark4", "sceneView.storeBookmark5", "sceneView.storeBookmark6",
+                                         "sceneView.storeBookmark7", "sceneView.storeBookmark8", "sceneView.storeBookmark9"};
+        static const char* recallNames[] = {"Recall Camera Bookmark 1", "Recall Camera Bookmark 2", "Recall Camera Bookmark 3",
+                                            "Recall Camera Bookmark 4", "Recall Camera Bookmark 5", "Recall Camera Bookmark 6",
+                                            "Recall Camera Bookmark 7", "Recall Camera Bookmark 8", "Recall Camera Bookmark 9"};
+        static const char* storeNames[] = {"Store Camera Bookmark 1", "Store Camera Bookmark 2", "Store Camera Bookmark 3",
+                                           "Store Camera Bookmark 4", "Store Camera Bookmark 5", "Store Camera Bookmark 6",
+                                           "Store Camera Bookmark 7", "Store Camera Bookmark 8", "Store Camera Bookmark 9"};
+        static const char* recallKeys[] = {"Shift+1", "Shift+2", "Shift+3", "Shift+4", "Shift+5", "Shift+6", "Shift+7", "Shift+8", "Shift+9"};
+        static const char* storeKeys[] = {"Ctrl+Shift+1", "Ctrl+Shift+2", "Ctrl+Shift+3", "Ctrl+Shift+4", "Ctrl+Shift+5",
+                                          "Ctrl+Shift+6", "Ctrl+Shift+7", "Ctrl+Shift+8", "Ctrl+Shift+9"};
+        b.add(recallIds[slot - 1], recallNames[slot - 1], C::SceneView, recallKeys[slot - 1]);
+        b.add(storeIds[slot - 1], storeNames[slot - 1], C::SceneView, storeKeys[slot - 1]);
+    }
+    b.gesture("sceneView.cycleCandidates", "Cycle Overlapping Objects", C::SceneView, "Ctrl+Mouse Wheel",
+              "Step through what lies under the pointer; the next click confirms");
+    b.gesture("sceneView.measureVertexSnap", "Measure: Snap to Vertices", C::SceneView, "Hold V",
+              "While measuring: the ends snap to the nearest vertex");
     b.gesture("sceneView.flyThrough", "Fly Through (3D)", C::SceneView, "Right Mouse + W/A/S/D/Q/E",
               "Hold Shift to move faster");
     b.gesture("sceneView.orbit", "Orbit (3D)", C::SceneView, "Alt+Left Drag", "Orbit around the view's pivot");
@@ -242,7 +279,7 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.gesture("sceneView.physicsSnap", "Snap onto Surfaces (Physics)", C::SceneView, "Shift+Left Drag",
               "Drag a selected object onto what is under the pointer");
     b.gesture("sceneView.cancelGesture", "Cancel Gesture", C::SceneView, "Escape",
-              "Stops a physics gesture, the Paint Dye brush or clears the lattice points (Ctrl+Z also undoes)");
+              "Stops a physics gesture, the Paint Dye brush or the measure tool, or clears the lattice points (Ctrl+Z also undoes)");
 
     b.group = "Lattice";
     b.add("lattice.selectNone", "Select No Points", C::SceneView, "Alt+A");
@@ -256,6 +293,48 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.add("terrain.brushLarger", "Brush Larger", C::SceneView, "]").repeat = true;
     b.add("terrain.brushWeaker", "Brush Weaker", C::SceneView, "Shift+[").repeat = true;
     b.add("terrain.brushStronger", "Brush Stronger", C::SceneView, "Shift+]").repeat = true;
+
+    // The Animation window editing a clip (docs/animation-clips.md): while it has focus
+    b.group = "Animation";
+    b.add("animation.playPause", "Play / Pause Preview", C::Animation, "Space");
+    b.add("animation.addKey", "Add Key", C::Animation, "K").description = "Key every property at the playhead";
+    b.add("animation.addKeyModified", "Key Modified Properties", C::Animation, "Shift+K").description =
+        "Key only the properties changed since the last key";
+    b.add("animation.previousFrame", "Previous Frame", C::Animation, ",").repeat = true;
+    b.add("animation.nextFrame", "Next Frame", C::Animation, ".").repeat = true;
+    b.add("animation.previousKey", "Previous Key", C::Animation, "Alt+,").repeat = true;
+    b.add("animation.nextKey", "Next Key", C::Animation, "Alt+.").repeat = true;
+    b.add("animation.delete", "Delete Keys", C::Animation, "Delete", "Backspace").description =
+        "The selected keys, else the selected event";
+    b.add("animation.copy", "Copy Keys", C::Animation, "Ctrl+C");
+    b.add("animation.paste", "Paste Keys", C::Animation, "Ctrl+V").description = "At the playhead";
+    b.add("animation.duplicate", "Duplicate Keys", C::Animation, "Ctrl+D");
+    b.add("animation.frameSelected", "Frame Selected Keys", C::Animation, "F");
+    b.add("animation.frameAll", "Frame All Keys", C::Animation, "A");
+    b.add("animation.record", "Record", C::Animation, "R").description = "Record mode on or off";
+
+    // The Pose Animation window (docs/pose-animation.md): while it has focus, or in a Scene view
+    // posing its character
+    b.group = "Pose Animation";
+    b.add("pose.playPause", "Play / Pause Preview", C::PoseAnimation, "Space");
+    b.add("pose.selectPrevious", "Select Previous Pose", C::PoseAnimation, "Left").repeat = true;
+    b.add("pose.selectNext", "Select Next Pose", C::PoseAnimation, "Right").repeat = true;
+    b.add("pose.moveLeft", "Move Poses Left", C::PoseAnimation, "Shift+Left").repeat = true;
+    b.add("pose.moveRight", "Move Poses Right", C::PoseAnimation, "Shift+Right").repeat = true;
+    b.add("pose.selectFirst", "Select First Pose", C::PoseAnimation, "Home");
+    b.add("pose.selectLast", "Select Last Pose", C::PoseAnimation, "End");
+    b.add("pose.previousFrame", "Previous Frame", C::PoseAnimation, ",").repeat = true;
+    b.add("pose.nextFrame", "Next Frame", C::PoseAnimation, ".").repeat = true;
+    b.add("pose.rename", "Rename Pose", C::PoseAnimation, "F2");
+    b.add("pose.duplicate", "Duplicate Poses", C::PoseAnimation, "Ctrl+D");
+    b.add("pose.duplicateMirrored", "Duplicate Poses Mirrored", C::PoseAnimation, "Ctrl+Shift+D");
+    b.add("pose.mirror", "Mirror Poses", C::PoseAnimation, "M").description = "Swap the left and right sides";
+    b.add("pose.delete", "Delete Poses", C::PoseAnimation, "Delete", "Backspace");
+    b.add("pose.ground", "Ground Pose", C::PoseAnimation, "G").description = "Put the feet on the ground";
+    b.add("pose.copy", "Copy Pose", C::PoseAnimation, "Ctrl+C");
+    b.add("pose.paste", "Paste Pose", C::PoseAnimation, "Ctrl+V");
+    b.add("pose.add", "Add Pose", C::PoseAnimation, "N");
+    b.add("pose.globalEdit", "Global Edit", C::PoseAnimation, "E").description = "Edit every pose at once";
 
     b.group = "Project";
     b.add("project.copy", "Copy Assets", C::Project, "Ctrl+C");

@@ -286,15 +286,16 @@ TEST(PlacementWorldControl, WallStopsTargetAndSlidingKeepsFullSpeed) {
 TEST(PlacementWorldControl, DeepOverlapLiftedOutThenSettled) {
     struct Case { Vector3 b; int other; Vector3 lift; int dragSteps; };
     // other: 0 = A is context, 1 = A is a mover too, 2 = A is a pushed neighbour
-    std::vector<Case> cases;
-    for (const Vector3& b : {Vector3(0.8f, 0.5f, 0), Vector3(0.2f, 0.5f, 0), Vector3(0.0f, 0.5f, 0), Vector3(0.2f, 0.1f, 0.1f),
-                             Vector3(0.8f, 0.0f, 0), Vector3(0.8f, -0.3f, 0)}) {
-        for (int other = 0; other < 3; other++) {
-            for (const Vector3& lift : {Vector3(0, 1, 0), Vector3(0.5f, 1, 0), Vector3(0, 0, 0), Vector3(-0.3f, 0.5f, 0)}) {
-                for (int dragSteps : {0, 10, 60}) cases.push_back({b, other, lift, dragSteps});
-            }
-        }
-    }
+    // Each case covers a distinct recovery condition. The Cartesian product of pose,
+    // collision role, lift vector and drag duration repeated the same contracts 216 times.
+    const Case cases[] = {
+        {Vector3(0.8f, 0.5f, 0), 0, Vector3(0, 1, 0), 60},        // static context, lifted vertically
+        {Vector3(0.2f, 0.5f, 0), 1, Vector3(0.5f, 1, 0), 10},     // another mover, diagonal drag
+        {Vector3(0.0f, 0.5f, 0), 2, Vector3(-0.3f, 0.5f, 0), 60}, // coincident pushed neighbour
+        {Vector3(0.2f, 0.1f, 0.1f), 0, Vector3(0, 0, 0), 0},      // release while sunk in the floor
+        {Vector3(0.8f, 0.0f, 0), 1, Vector3(0, 0, 0), 10},        // motionless hold with another mover
+        {Vector3(0.8f, -0.3f, 0), 2, Vector3(0.5f, 1, 0), 60},    // deep floor overlap while pushing
+    };
     for (const Case& c : cases) {
         SCOPED_TRACE(testing::Message() << "B at (" << c.b.x << ", " << c.b.y << ") other " << c.other << " lift (" << c.lift.x << ", "
                                         << c.lift.y << ") over " << c.dragSteps << " steps");
@@ -843,6 +844,7 @@ TEST(PlacementWorldColliders, DecompositionWithTheCache) {
     ConvexDecompositionCache cache("");
     PlacementWorldSettings settings;
     settings.decompositionCache = &cache;
+    settings.decompositionResolution = 20000;   // cache/shape transitions do not need production-quality voxels
     PlacementWorld world(&t.scene, settings);
     const uint64_t version = cache.completionVersion();
     ASSERT_TRUE(world.addMover(ring));
@@ -857,8 +859,13 @@ TEST(PlacementWorldColliders, DecompositionWithTheCache) {
 
     ASSERT_TRUE(waitForDecompositions(world, cache, version));
     EXPECT_EQ(world.getState(ring).shape, PlacementShapeKind::CONVEX_HULL);   // until refreshed
+    for (int i = 0; i < 10; i++) world.step();
+    const PlacementBodyState before = world.getState(ring);
+    ASSERT_GT(before.linearVelocity.length(), 0.0f);
     world.refreshShapes();
     state = world.getState(ring);
+    EXPECT_NEAR((state.pose.position - before.pose.position).length(), 0.0f, 1e-6f);
+    EXPECT_NEAR((state.linearVelocity - before.linearVelocity).length(), 0.0f, 1e-6f);
     EXPECT_EQ(state.shape, PlacementShapeKind::DECOMPOSED);
     EXPECT_GT(state.hullCount, 1);
     EXPECT_LE(state.hullCount, (int)settings.decompositionMaxHulls);
@@ -923,17 +930,14 @@ TEST(PlacementWorldColliders, BakeThenMoveIsDecomposedAtOnce) {
     TestScene t;
     const Entity group = t.entity(Vector3(0, 0, 0));
     const Entity ring = t.torus(0.5f, 0.15f, Vector3(0, 0, 0), group);
-    const Entity cube = t.box(Vector3(1, 1, 1), Vector3(3, 0, 0), group);
-    t.scene.setEntityName(ring, "Ring");
-    t.scene.setEntityName(cube, "Cube");
+    t.box(Vector3(1, 1, 1), Vector3(3, 0, 0), group);
     t.resolve();
 
     ConvexDecompositionCache cache("");
     PlacementWorldSettings settings;
     settings.decompositionCache = &cache;
-    std::vector<std::string> notes;
-    EXPECT_EQ(PlacementWorld::requestDecompositions(&t.scene, group, settings, &notes), 1u);
-    EXPECT_EQ(notes, std::vector<std::string>{"Cube: fits a box, nothing to decompose"});
+    settings.decompositionResolution = 20000;   // cache/shape transitions do not need production-quality voxels
+    EXPECT_EQ(PlacementWorld::requestDecompositions(&t.scene, group, settings), 1u);
     EXPECT_EQ(cache.pendingCount(), 1u);
     EXPECT_FALSE(PlacementWorld::decompositionReady(&t.scene, group, settings));
 
@@ -959,13 +963,13 @@ TEST(PlacementWorldColliders, BakeThenMoveIsDecomposedAtOnce) {
 
 namespace {
 
-    // Under a sanitizer a decomposition runs several times slower: a coarser one and a longer
-    // wait, the same queue (what the ordering tests check does not depend on either)
+    // A coarse decomposition: the real queue ordering without high-fidelity hull work (what the
+    // ordering tests check does not depend on it). Under a sanitizer it still runs several times
+    // slower: a longer wait
+    constexpr int QUEUE_RACE_RESOLUTION = 20000;
 #if defined(JASPERENGINE_SANITIZE_ADDRESS) || defined(JASPERENGINE_SANITIZE_THREAD) || defined(JASPERENGINE_SANITIZE_UNDEFINED)
-    constexpr int QUEUE_RACE_RESOLUTION = 25000;
     constexpr int QUEUE_RACE_SECONDS = 1200;
 #else
-    constexpr int QUEUE_RACE_RESOLUTION = 100000;
     constexpr int QUEUE_RACE_SECONDS = 300;
 #endif
 
@@ -978,8 +982,8 @@ namespace {
         PlacementWorldSettings settings;
 
         QueueRace() {
-            // different rings: different geometry, so six keys
-            for (int i = 0; i < 6; i++) baked.push_back(t.torus(0.4f + 0.05f * i, 0.12f, Vector3(3.0f * i, 0, 0)));
+            // One running bake plus two queued bakes proves overtaking and FIFO.
+            for (int i = 0; i < 3; i++) baked.push_back(t.torus(0.4f + 0.05f * i, 0.12f, Vector3(3.0f * i, 0, 0)));
             mover = t.torus(0.75f, 0.12f, Vector3(-5, 0, 0));
             t.resolve();
             settings.decompositionCache = &cache;
@@ -1047,6 +1051,7 @@ TEST(PlacementWorldColliders, UrgentBakesJumpTheQueue) {
     std::vector<Entity> roots = race.baked;
     roots.push_back(race.mover);
     const std::vector<int> when = race.finishOrder(roots);
+    ASSERT_GE(when.back(), 0) << "the urgent decomposition never completed";
     int bakedBefore = 0;
     for (size_t i = 0; i + 1 < when.size(); i++) {
         ASSERT_GE(when[i], 0);
@@ -1086,22 +1091,6 @@ TEST(PlacementWorldColliders, BakeSkipsPrimitivesAndRefusals) {
     EXPECT_EQ(PlacementWorld::requestDecompositions(&t.scene, cube, PlacementWorldSettings(), &notes), 0u);
     EXPECT_EQ(notes, std::vector<std::string>{"no decomposition cache"});
     EXPECT_FALSE(PlacementWorld::decompositionReady(&t.scene, cube, PlacementWorldSettings()));
-}
-
-TEST(PlacementWorldColliders, RefreshShapesKeepsPoseAndVelocity) {
-    TestScene t;
-    const Entity crate = t.box(Vector3(1, 1, 1), Vector3(0, 3, 0));
-    t.resolve();
-
-    PlacementWorld world(&t.scene, PlacementWorldSettings());
-    ASSERT_TRUE(world.addMover(crate));
-    for (int i = 0; i < 30; i++) world.step();
-    const PlacementBodyState before = world.getState(crate);
-    world.refreshShapes();
-    const PlacementBodyState after = world.getState(crate);
-    EXPECT_NEAR((after.pose.position - before.pose.position).length(), 0.0f, 1e-6f);
-    EXPECT_NEAR((after.linearVelocity - before.linearVelocity).length(), 0.0f, 1e-6f);
-    EXPECT_EQ(after.shape, PlacementShapeKind::BOX);
 }
 
 // ---- context --------------------------------------------------------------------------------
@@ -1434,20 +1423,6 @@ TEST(PlacementWorldContext, TerrainsWithoutHeights) {
     // nothing for an empty region
     world.ensureContext(AABB());
     EXPECT_EQ(world.getContextBodyCount(), 2u);
-}
-
-TEST(PlacementWorldContext, BodyLimit) {
-    TestScene t;
-    for (int i = 0; i < 4096; i++) t.box(Vector3(0.5f, 0.5f, 0.5f), Vector3(float(i % 64), 0, float(i / 64)));
-    const Entity crate = t.box(Vector3(1, 1, 1), Vector3(0, 5, 0));
-    t.resolve();
-
-    PlacementWorld world(&t.scene, PlacementWorldSettings());
-    world.ensureContext(everywhere);
-    EXPECT_EQ(world.getContextBodyCount(), 4096u);
-    std::string why;
-    EXPECT_FALSE(world.addMover(crate, &why));
-    EXPECT_EQ(why, "too many bodies in the placement world");
 }
 
 // ---- read-back ------------------------------------------------------------------------------
@@ -1937,11 +1912,15 @@ TEST(PlacementWorldReview, BodyLimitLeavesTheRestForLater) {
     world.ensureContext(everywhere);
     EXPECT_EQ(world.getContextBodyCount(), 4096u);
     EXPECT_TRUE(world.raycast(Ray(Vector3(63, 5, 63), Vector3(0, -10, 0)), hit));
+    // Once that last context body fills the slot, a new mover is refused too.
+    std::string why;
+    EXPECT_FALSE(world.addMover(crate, &why));
+    EXPECT_EQ(why, "too many bodies in the placement world");
 }
 
 TEST(PlacementWorldReview, LargeTerrainsAreResampled) {
     TestScene t;
-    const Entity terrain = t.terrain(4097, 400.0f, 20.0f, Vector3(0, 0, 0), [](float u, float v) {
+    const Entity terrain = t.terrain(1027, 400.0f, 20.0f, Vector3(0, 0, 0), [](float u, float v) {
         return 0.5f + 0.2f * std::sin(6.0f * u) * std::cos(5.0f * v);
     }, true);
     t.resolve();
@@ -1950,10 +1929,11 @@ TEST(PlacementWorldReview, LargeTerrainsAreResampled) {
     const auto begin = std::chrono::steady_clock::now();
     world.ensureContext(everywhere);
     const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - begin).count();
-    std::printf("[placement] 4097^2 terrain context in %.2f s\n", seconds);
+    std::printf("[placement] oversized terrain context in %.2f s\n", seconds);
     EXPECT_EQ(world.getContextBodyCount(), 1u);
     TerrainComponent& component = t.scene.getComponent<TerrainComponent>(terrain);
-    // resampled to 1025 x 1025 (it was 4097 x 4097, a stall); a small heightmap keeps one per texel
+    // The first odd-sized map over the cap is enough to exercise resampling to 1025.
+    // A small heightmap still keeps one sample per texel.
     EXPECT_EQ(JoltShapeBuilder::defaultHeightFieldSamples(component), 1025u);
     const Entity small = t.terrain(33, 10.0f, 1.0f, Vector3(500, 0, 0), [](float, float) { return 0.5f; });
     EXPECT_EQ(JoltShapeBuilder::defaultHeightFieldSamples(t.scene.getComponent<TerrainComponent>(small)), 33u);

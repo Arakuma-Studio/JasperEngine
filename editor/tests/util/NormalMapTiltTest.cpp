@@ -24,6 +24,7 @@
 #include <random>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 using namespace jasperengine;
@@ -73,13 +74,24 @@ namespace {
         }
 
         ~SlowMeasure() {
-            open();
+            finish();
             // the measures this test started finish before the next test
             std::unique_lock<std::mutex> lock(state->mutex);
             state->cv.wait_for(lock, std::chrono::seconds(10), [this]() { return state->running == 0; });
             lock.unlock();
             NormalMapTilt::setMeasureFunction(nullptr);
             NormalMapTilt::clearCache();
+        }
+
+        void start(std::function<void()> work) {
+            workers.emplace_back(std::move(work));
+        }
+
+        void finish() {
+            open();
+            for (auto& worker : workers)
+                worker.join();
+            workers.clear();
         }
 
         void open() {
@@ -143,6 +155,7 @@ namespace {
             }
         };
         std::shared_ptr<State> state;
+        std::vector<std::thread> workers;
     };
 
     class TempDir {
@@ -303,6 +316,7 @@ TEST(NormalMapTiltCache, ChangedFileDoesNotWaitForTheOldMeasure) {
 
 TEST(NormalMapTiltCache, MeasureDoesNotHoldTheCacheWhileItDecodes) {
     TempDir dir;
+    NormalMapTiltResult measured, second;
     SlowMeasure slow;
     const fs::path big = dir.path / "big_normal.png";
     const fs::path other = dir.path / "other_normal.png";
@@ -310,8 +324,7 @@ TEST(NormalMapTiltCache, MeasureDoesNotHoldTheCacheWhileItDecodes) {
     writeFile(other, "5");
 
     // check's measure() decoding one file on its own thread...
-    NormalMapTiltResult measured;
-    std::thread checker([&]() { measured = NormalMapTilt::measure(big); });
+    slow.start([&]() { measured = NormalMapTilt::measure(big); });
     ASSERT_TRUE(slow.waitForSlow(std::chrono::seconds(5)));
 
     // ...while the UI asks for others, and for the same one
@@ -324,11 +337,8 @@ TEST(NormalMapTiltCache, MeasureDoesNotHoldTheCacheWhileItDecodes) {
     EXPECT_NEAR(result.degrees, 5.0f, 1e-4f);
 
     // a second measure of the decoding file waits for that one's result, not another decode
-    NormalMapTiltResult second;
-    std::thread waiter([&]() { second = NormalMapTilt::measure(big); });
-    slow.open();
-    checker.join();
-    waiter.join();
+    slow.start([&]() { second = NormalMapTilt::measure(big); });
+    slow.finish();
     EXPECT_TRUE(measured.ready && measured.valid);
     EXPECT_NEAR(measured.degrees, 30.0f, 1e-4f);
     EXPECT_NEAR(second.degrees, 30.0f, 1e-4f);

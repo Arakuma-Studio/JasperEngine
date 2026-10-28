@@ -42,6 +42,11 @@ namespace jasperengine::editor{
         bool hasDropPosition = false;
         bool dropKeepsZ = false;
         Vector3 dropPosition;
+        // a 3D drop rests on the surface it hit (S26 R16)
+        bool hasDropSurface = false;
+        Vector3 dropNormal = Vector3(0, 1, 0);
+        bool dropAlign = false;
+        Quaternion importedRootRotation;
 
     public:
         ImportPrefabCmd(Project* project, uint32_t sceneId, const fs::path& filepath, Entity parent = NULL_ENTITY, bool needSaveScene = true);
@@ -61,7 +66,12 @@ namespace jasperengine::editor{
         // Scene view drop: the root goes to this world position, keeping the prefab root's
         // rotation and scale (keepZ: its z too, a 2D drop), on every execute
         void setDropPosition(const Vector3& position, bool keepZ = false);
+        // ...and rests the instance's bottom on the surface there (normal), its up axis turned
+        // onto the normal when align (Align to Surface)
+        void setDropSurface(const Vector3& normal, bool align);
         Entity getRootEntity() const;
+        // the root's rotation as the prefab gives it (before a surface alignment)
+        Quaternion getRootRotation() const { return importedRootRotation; }
 
         // "Instantiate Prefab Door.prefab"
         std::string describe() const override { return "Instantiate Prefab " + CommandNames::file(filepath); }

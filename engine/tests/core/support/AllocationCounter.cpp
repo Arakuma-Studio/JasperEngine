@@ -1,15 +1,15 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 //
-// Counts the process's heap allocations. The engine links ThorVG, which replaces the plain
-// global operator new/delete (engine/libs/thorvg/src/renderer/tvgInitializer.cpp) with
-// malloc/free, so the plain forms are counted at malloc, wrapped by the linker
-// (--wrap=malloc, calloc, realloc: tests/core/CMakeLists.txt); the aligned forms, which the
-// job system's slabs and the arenas use, are replaced here. GNU ld only
-// (JE_TEST_COUNTS_ALLOCATIONS): elsewhere countsAllocations() is false and the tests skip.
-// Under ASan, whose allocator serves operator new itself (ThorVG's replacement is off there),
-// so that new never reaches malloc, every allocation is counted at ASan's allocator instead,
-// through its malloc hook, and the wrappers above only forward.
+// Counts the process's heap allocations. The plain global operator new/delete are replaced here
+// with malloc/free (libstdc++'s own call malloc from inside the shared library, past the
+// linker's wrap), so they are counted at malloc, wrapped by the linker (--wrap=malloc, calloc,
+// realloc: tests/core/CMakeLists.txt); the aligned forms, which the job system's slabs and the
+// arenas use, are replaced and counted here. GNU ld only (JE_TEST_COUNTS_ALLOCATIONS):
+// elsewhere countsAllocations() is false and the tests skip.
+// Under ASan, whose allocator serves operator new itself (the plain forms are not replaced
+// there), so that new never reaches malloc, every allocation is counted at ASan's allocator
+// instead, through its malloc hook, and the wrappers above only forward.
 
 #include "AllocationCounter.h"
 
@@ -104,6 +104,26 @@ extern "C" {
         return __real_realloc(memory, bytes);
     }
 }
+
+#if !defined(JASPERENGINE_SANITIZE_ADDRESS)
+// counted at the malloc wrapper
+void* operator new(std::size_t bytes){
+    if (void* memory = std::malloc(bytes ? bytes : 1))
+        return memory;
+    throw std::bad_alloc();
+}
+
+void* operator new[](std::size_t bytes){
+    if (void* memory = std::malloc(bytes ? bytes : 1))
+        return memory;
+    throw std::bad_alloc();
+}
+
+void operator delete(void* memory) noexcept{ std::free(memory); }
+void operator delete[](void* memory) noexcept{ std::free(memory); }
+void operator delete(void* memory, std::size_t) noexcept{ std::free(memory); }
+void operator delete[](void* memory, std::size_t) noexcept{ std::free(memory); }
+#endif
 
 void* operator new(std::size_t bytes, std::align_val_t alignment){
     if (void* memory = alignedCounted(bytes, (std::size_t)alignment))

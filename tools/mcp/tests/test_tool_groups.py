@@ -208,6 +208,9 @@ SPEC_GROUPS = {
     "terrain": ["sculpt_terrain", "set_terrain_maps", "sample_terrain"],                   # S31 (budget)
     "editor_ux": ["get_undo_history", "get_play_changes", "apply_play_changes", "discard_play_changes",  # S24
                   "find_ui_item",                                                   # BF1 (UI tests)
+                  "get_inspector_layout",                                           # S08
+                  "pick_at", "edit_scene_view_bookmarks", "set_scene_view_layout", "measure_scene_view",  # S26
+                  "set_scene_view_filter",
                   "search_editor", "run_command", "list_shortcuts", "set_shortcut", "edit_layout_presets",  # S25
                   "edit_asset_labels", "edit_saved_searches", "edit_bookmarks"],
     "rendering_fx": ["get_shadow_stats", "set_shadow_debug",                               # S10

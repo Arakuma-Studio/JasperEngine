@@ -1613,7 +1613,11 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
     agentsContent += "- Features with their own reference (`jasper://docs` lists them all), e.g. the GPU fluid simulation (Fluid Simulation component: "
                      "`create_entity` type `fluid_simulation`, presets, seeded deterministic runs, Lua `FluidSimulation`; `jasper://docs/fluid`) "
                      "and post-processing (`jasper://docs/post-processing`).\n";
-    agentsContent += "- Checks without the editor: `jasperengine-editor check --project . [--files <paths...>] [--cpp]` (Lua syntax and load, shaders, HTML/CSS UI, C++ build; exit code 1 on errors). "
+    agentsContent += "- Keyframe animation: Animation Clips are shared `.anim` JSON assets whose tracks bind by path below the GameObject that plays them, "
+                     "played by an Animation Player component (Unity's legacy Animation; Lua `getAnimationPlayer()`, `play`, `crossFade`, `queue`, clip events into script methods). "
+                     "Edit them with `edit_animation {clip, ...}` (one project undo step) or by hand (auto-sync reloads them and reports problems); "
+                     "a model's animations are read-only clips `assets/models/hero.gltf#Walk`. Guide: `jasper://docs/animation`.\n";
+    agentsContent += "- Checks without the editor: `jasperengine-editor check --project . [--files <paths...>] [--cpp]` (Lua syntax and load, shaders, animation clips, HTML/CSS UI, C++ build; exit code 1 on errors). "
                      "As an agent hook after every edit, shell commands included: `jasperengine-editor check --project <this directory> --hook` "
                      "(PostToolUse; it checks what changed since its last run and logs to `" + relativeInternalPath.generic_string() + "/check-hook.log`).\n\n";
     agentsContent += "## HTML/CSS UI\n\n";
@@ -2219,7 +2223,7 @@ bool editor::Generator::hasSceneSource(uint32_t sceneId, const std::string& scen
     return std::getline(file, header) && header == Factory::sceneSourceHeader;
 }
 
-void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples, const ThreadingProjectSettings& threading, PbrTier mobilePbrTier){
+void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples, const ThreadingProjectSettings& threading, const HtmlUiRenderSettings& htmlUiRender, PbrTier mobilePbrTier){
     const fs::path generatedPath = getGeneratedPath(projectInternalPath);
 
     // The editor used to emit a GLFW application host into every project. It is
@@ -2466,6 +2470,9 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
 
     // MSAA of the HTML UI targets (Project Settings > Graphics), before any document draws
     mainContent += "    UIDocumentSystem::setPreferredSampleCount(" + std::to_string(htmlUiMsaaSamples) + ");\n";
+    // the HTML UI's glyph atlas budget, SDF primitives and transform-aware text (S16)
+    mainContent += "    UIDocumentSystem::setHtmlUiRenderOptions(" + std::to_string(htmlUiRender.glyphAtlasMiB) + ", " +
+                   (htmlUiRender.sdfPrimitives ? "true" : "false") + ", " + (htmlUiRender.transformAwareText ? "true" : "false") + ");\n";
     // the lobes a mobile or web build draws (Project Settings > Graphics > Mobile PBR Tier);
     // Reduced is the engine's default, desktop always draws them all
     if (mobilePbrTier != PbrTier::REDUCED)

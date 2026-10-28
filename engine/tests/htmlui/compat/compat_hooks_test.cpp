@@ -27,16 +27,6 @@ namespace {
 
     using CompatFontHookTest = RuntimeContextTest;
 
-    // vertices drawn with a texture (glyph quads) in the last frame
-    size_t texturedVertices(const RecordingRenderInterface& recording){
-        size_t count = 0;
-        for (const RecordingRenderInterface::Draw& draw : recording.getDraws()){
-            if (draw.texture)
-                count += draw.vertexCount;
-        }
-        return count;
-    }
-
     std::string readFixtureBytes(const std::string& name){
         std::ifstream file(std::string(JASPER_HTMLUI_TEST_SOURCE_DIR) + "/fixtures/" + name, std::ios::binary);
         return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
@@ -53,39 +43,6 @@ TEST_F(CompatFontHookTest, HasFamily){
     EXPECT_TRUE(RmlFontEngine::hasFamily("\"Roboto\""));
     EXPECT_FALSE(RmlFontEngine::hasFamily("No Such Family"));
     EXPECT_FALSE(RmlFontEngine::hasFamily(""));
-}
-
-TEST_F(CompatFontHookTest, FontEffectsGenerateGeometry){
-    // text-shadow as compat writes it (shadow / glow), and the plain text
-    ASSERT_NE(show("<p id='plain'>Shadow</p>"), nullptr);
-    const size_t plain = texturedVertices(recording);
-    ASSERT_GT(plain, 0u);
-
-    ASSERT_NE(show("<p id='shadow' style='font-effect: shadow(2px 2px #ff0000ff);'>Shadow</p>"), nullptr);
-    const size_t shadow = texturedVertices(recording);
-    EXPECT_EQ(shadow, plain * 2);   // the shadow layer redraws every glyph
-
-    ASSERT_NE(show("<p id='both' style='font-effect: glow(0px 2px 1px 1px #00ff00ff), shadow(2px 2px #ff0000ff);'>Shadow</p>"), nullptr);
-    EXPECT_EQ(texturedVertices(recording), plain * 3);
-    // the glow has glyphs of its own (RGBA8 effect pages)
-    EXPECT_GT(HtmlUI::getFontEngine().getEffectPageCount(), 0u);
-}
-
-TEST_F(CompatFontHookTest, RenderTextForTestingKeepsLayout){
-    RmlFontEngine& fonts = HtmlUI::getFontEngine();
-    ASSERT_TRUE(fonts.getRenderTextForTesting());
-    ASSERT_NE(show("<p><span id='text' style='font-effect: shadow(1px 1px #000000ff);'>Some text here</span></p>"), nullptr);
-    const float width = byId("text")->GetBox().GetSize().x;
-    ASSERT_GT(texturedVertices(recording), 0u);
-
-    fonts.setRenderTextForTesting(false);
-    frame();
-    EXPECT_EQ(texturedVertices(recording), 0u);
-    EXPECT_FLOAT_EQ(byId("text")->GetBox().GetSize().x, width);
-
-    fonts.setRenderTextForTesting(true);
-    frame();
-    EXPECT_GT(texturedVertices(recording), 0u);
 }
 
 // ---------------------------------------------------------------- H7

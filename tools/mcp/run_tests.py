@@ -9,16 +9,19 @@
     tools/mcp/run-tests.sh --suite ci -j 2      # the CI suite: the files that declare CI = True
 
 A test is a module-level `async def test_xxx(ed)` (ed: harness.Editor) or `async def test_xxx()`.
-Tests of a file run in source order and share one editor, started on a fresh scratch copy of the
-fixture project (module variable EDITOR = dict(...) passes Editor arguments, e.g.
-EDITOR = {"create": True}). If a test leaves the editor unresponsive, the next test gets a new one.
+Tests of a file run in source order and share one editor using the module's owned project setup
+(module variable EDITOR = dict(...) passes Editor arguments, e.g. EDITOR = {"create": True}).
+An explicit --url overrides that launch setup. If a test leaves the editor unresponsive,
+the next test gets a new one.
 Call harness.skip("why") or ed.require_tools(...) to skip. Module variable TIMEOUT sets the
 per-test hang guard in seconds (default 600): a test fails when no tool call has been in flight
 for that long (a slow but working editor, such as one waiting for game frames on a loaded machine,
 never trips it; each call has its own timeout, harness.Editor.call_raw).
 
 A file joins the CI suite (--suite ci, the CI workflow's e2e job) by declaring CI = True at module
-level. CI has no copy of the default fixture (build/fixture-unity), so such a file must not need it:
+level. CI has no copy of the default fixture (harness.default_fixture(): JASPER_FIXTURE, else
+build/fixture-unity, /fixture or ~/je/fixture-unity; the tests that need it skip without one), so
+such a file must not need it:
 every test that takes an editor runs on EDITOR = {"create": True, ...} or EDITOR = {"project": ...}
 (e.g. a tools/fixtures project). The runner checks this and exits 2 otherwise. New test files are
 written CI-capable by default (docs/mcp/README.md).
@@ -89,23 +92,29 @@ async def _run_guarded(coro, ed, timeout: float) -> None:
             raise asyncio.TimeoutError()
 
 
-async def _run_file(path: Path, filt: list[str], results_path: Path) -> None:
+async def _run_file(path: Path, filt: list[str], results_path: Path, url: str | None = None) -> None:
     import harness
 
     mod, tests = _collect(path, filt)
     opts = dict(getattr(mod, "EDITOR", {}) or {})
+    if url is not None:
+        opts["url"] = url
     timeout = float(getattr(mod, "TIMEOUT", 600))
     ed: harness.Editor | None = None
     ed_error: str | None = None
+    ed_skip: str | None = None
     results = []
 
     async def get_editor() -> harness.Editor:
-        nonlocal ed, ed_error
+        nonlocal ed, ed_error, ed_skip
         if ed is not None:
             return ed
         e = harness.Editor(label=path.stem, **opts)
         try:
             await e.__aenter__()
+        except harness.Skip as ex:  # no default fixture anywhere (harness.FixtureMissing)
+            ed_skip = str(ex)
+            raise
         except Exception as ex:  # noqa: BLE001
             ed_error = f"editor failed to start: {ex}"
             raise
@@ -119,6 +128,8 @@ async def _run_file(path: Path, filt: list[str], results_path: Path) -> None:
         wants_ed = len(inspect.signature(fn).parameters) > 0
         try:
             if wants_ed:
+                if ed_skip:
+                    raise harness.Skip(ed_skip)
                 if ed_error:
                     raise harness.HarnessError(ed_error)
                 e = await get_editor()
@@ -161,7 +172,7 @@ def worker_main(args) -> int:
                  ("JASPER_KEEP_SCRATCH", "1" if args.keep else None), ("JASPER_MCP_URL", args.url)):
         if v:
             os.environ[k] = v
-    asyncio.run(_run_file(Path(args.worker), args.k or [], Path(args.results)))
+    asyncio.run(_run_file(Path(args.worker), args.k or [], Path(args.results), args.url))
     return 0
 
 

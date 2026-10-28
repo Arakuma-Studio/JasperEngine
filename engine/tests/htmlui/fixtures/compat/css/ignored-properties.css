@@ -124,7 +124,7 @@
   text-align-last: auto;
   text-autospace: normal;
   text-justify: auto;
-  text-rendering: auto;
+  /* text-rendering: native since S16 (fork S16-F3), no longer ignored */
   text-size-adjust: auto;
   text-spacing: normal;
   text-spacing-trim: normal;

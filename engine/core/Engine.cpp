@@ -31,6 +31,8 @@
 #include "component/InputFieldComponent.h"
 #include "component/AudioSourceComponent.h"
 #include "component/ActionComponent.h"
+#include "component/PoseAnimatorComponent.h"
+#include "component/AnimationPlayerComponent.h"
 #include "pool/TexturePool.h"
 #include "pool/SoundPool.h"
 #include "pool/TextureDataPool.h"
@@ -38,10 +40,12 @@
 #include "pool/FontPool.h"
 #include "pool/ModelPool.h"
 #include "pool/MeshLodPool.h"
+#include "pool/AnimationClipPool.h"
 #include "shader/RuntimeShaderCompiler.h"
 #include "io/AssetIOService.h"
 #include "jobs/JobSystem.h"
 #include "memory/Arena.h"
+#include "picking/PickCache.h"
 #include "profiler/FrameTimes.h"
 #include "profiler/Profile.h"
 #if JASPERENGINE_PROFILER
@@ -561,6 +565,14 @@ bool Engine::isAllowEventsOutCanvas(){
     return allowEventsOutCanvas;
 }
 
+void Engine::setMeshRaycastMaxTriangles(unsigned int maxTriangles){
+    PickCache::setMaxTriangles(maxTriangles);
+}
+
+unsigned int Engine::getMeshRaycastMaxTriangles(){
+    return PickCache::getMaxTriangles();
+}
+
 void Engine::setIgnoreEventsHandledByUI(bool ignoreEventsHandledByUI){
     Engine::ignoreEventsHandledByUI = ignoreEventsHandledByUI;
 }
@@ -1071,6 +1083,7 @@ void Engine::clearPools(){
     FontPool::clear();
     ModelPool::clear();
     MeshLodPool::clear();
+    AnimationClipPool::clear();
 }
 
 void Engine::clearUnusedPools(){
@@ -1081,6 +1094,7 @@ void Engine::clearUnusedPools(){
     FontPool::clearUnused();
     ModelPool::clearUnused();
     MeshLodPool::clearUnused();
+    AnimationClipPool::clearUnused();
 }
 
 void Engine::removeSubscriptionsByTag(const std::string& substring) {
@@ -1235,6 +1249,18 @@ void Engine::clearComponentSubscriptions(Scene* scene) {
 
     // contact and activation events a script subscribed to on the scene's physics
     scene->getSystem<PhysicsSystem>()->clearSubscriptions();
+
+    auto animators = scene->getComponentArray<PoseAnimatorComponent>();
+    for (size_t i = 0; i < animators->size(); i++) {
+        animators->getComponentFromIndex(i).onFinish.clear();
+    }
+
+    auto players = scene->getComponentArray<AnimationPlayerComponent>();
+    for (size_t i = 0; i < players->size(); i++) {
+        AnimationPlayerComponent& player = players->getComponentFromIndex(i);
+        player.onEvent.clear();
+        player.onFinish.clear();
+    }
 }
 
 void Engine::computeViewLayout(int screenWidth, int screenHeight, int preferredWidth, int preferredHeight, Scaling scalingMode,
@@ -1943,6 +1969,7 @@ void Engine::drawView(uint32_t viewId, Framebuffer* target, const std::vector<Vi
         desc.postProcessing = layer.postProcessing;
         desc.disableClouds = layer.disableClouds;
         desc.atmosphereQuality = layer.atmosphereQuality;
+        desc.shadows = layer.shadows;
         desc.canvasWidth = layer.canvasWidth;
         desc.canvasHeight = layer.canvasHeight;
         layer.scene->getSystem<RenderSystem>()->drawView(viewId, desc);

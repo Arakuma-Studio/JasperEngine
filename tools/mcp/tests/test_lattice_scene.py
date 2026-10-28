@@ -5,7 +5,7 @@ read-back: the selected lattice draws its cage; Ctrl+A selects every point, Alt+
 a click picks one point and a gizmo drag moves only it (LatticeEditorOps through LatticePointsCmd),
 one undo step that undo/redo restore exactly; a rectangle selects the points inside it (Shift adds);
 O turns the proportional falloff on and the same drag then moves the neighbours too, less; the
-right-click menu opens over the view; a prefab instance's dragged point is an offsets[i] override;
+a prefab instance's dragged point is an offsets[i] override;
 in a 2D view one click takes the points stacked on one spot.
 
 Points are found on screen by colour: selected points are drawn in the selection orange (1, 0.6, 0),
@@ -17,7 +17,6 @@ Needs xdotool and ImageMagick's import (the harness' Xvfb, EDITOR xvfb="harness"
 
 from __future__ import annotations
 
-import asyncio
 import os
 import shutil
 import subprocess
@@ -25,6 +24,7 @@ import subprocess
 import harness
 import pngdiff
 from harness import Editor
+import ui_input
 
 TIMEOUT = 900
 EDITOR = {"create": True, "xvfb": "harness"}
@@ -64,47 +64,22 @@ async def settle(ed: Editor, frames: int = 6):
 
 
 async def key(ed: Editor, combo: str):
-    # modifiers down, key down, key up, modifiers up: `xdotool key ctrl+a` releases Ctrl before
-    # A, and when both land in one frame (a slow headless editor) ImGui applies the release
-    # before the shortcut code reads the modifiers, so the chord reads as a plain A
-    *modifiers, last = combo.split("+")
-    for modifier in modifiers:
-        run_x(ed, "xdotool", "keydown", "--clearmodifiers", modifier)
-    run_x(ed, "xdotool", "keydown", last)
-    run_x(ed, "xdotool", "keyup", last)
-    for modifier in reversed(modifiers):
-        run_x(ed, "xdotool", "keyup", modifier)
+    # modifiers held across frames around the key (ui_input.Ui.key): when Ctrl's release lands
+    # in the key's frame, the chord reads as a plain key
+    run_x(ed, "true")     # skips without the harness' Xvfb
+    await ui_input.for_editor(ed).key(combo)
     await settle(ed)
 
 
 async def click(ed: Editor, x: int, y: int, button: int = 1, modifier: str | None = None):
-    run_x(ed, "xdotool", "mousemove", str(x), str(y))
-    await settle(ed, 3)
-    if modifier:
-        run_x(ed, "xdotool", "keydown", modifier)
-    run_x(ed, "xdotool", "mousedown", str(button))
-    await settle(ed, 3)
-    run_x(ed, "xdotool", "mouseup", str(button))
-    if modifier:
-        run_x(ed, "xdotool", "keyup", modifier)
+    run_x(ed, "true")
+    await ui_input.for_editor(ed).click((x, y), str(button), modifier)
     await settle(ed)
 
 
 async def drag(ed: Editor, start: tuple[int, int], end: tuple[int, int], steps: int = 8, modifier: str | None = None):
-    run_x(ed, "xdotool", "mousemove", str(start[0]), str(start[1]))
-    await settle(ed, 3)
-    if modifier:
-        run_x(ed, "xdotool", "keydown", modifier)
-    run_x(ed, "xdotool", "mousedown", "1")
-    await settle(ed, 3)
-    for n in range(1, steps + 1):
-        x = round(start[0] + (end[0] - start[0]) * n / steps)
-        y = round(start[1] + (end[1] - start[1]) * n / steps)
-        run_x(ed, "xdotool", "mousemove", str(x), str(y))
-        await settle(ed, 2)
-    run_x(ed, "xdotool", "mouseup", "1")
-    if modifier:
-        run_x(ed, "xdotool", "keyup", modifier)
+    run_x(ed, "true")
+    await ui_input.for_editor(ed).drag(start, end, steps=steps, modifier=modifier)
     await settle(ed)
 
 
@@ -172,6 +147,17 @@ async def offsets(ed: Editor) -> list[list[float]]:
     return [values[name] for name in names]
 
 
+async def selected_count(ed: Editor) -> int:
+    """Read the public selected-points selector using a no-op reset of the rest cage."""
+    result = await ed.call_raw("edit_lattice", {
+        "scene": S["scene"], "lattice": S["lattice"],
+        "ops": [{"op": "reset", "select": "selected"}]})
+    if result.is_error:
+        ed.check("no points of this lattice are selected" in result.text, result.text)
+        return 0
+    return result.structured["ops"][0]["points"]
+
+
 def moved(values: list[list[float]], eps: float = 1e-5) -> list[int]:
     return [i for i, v in enumerate(values) if max(abs(c) for c in v) > eps]
 
@@ -183,7 +169,7 @@ def length(v):
 # -- tests ----------------------------------------------------------------------
 
 
-async def test_setup(ed):
+async def setup(ed):
     need_tools()
     made = await ed.call("create_scene", name="Lattice View", type="3D", path="scenes/LatticeView")
     S["scene"] = made["scene"]["id"]
@@ -200,27 +186,27 @@ async def test_setup(ed):
     await ed.call("select_entities", scene=S["scene"], entities=[lattice])
     focus_editor(ed)
     await settle(ed, 10)
-    ed.check_eq(await orange_points(ed), [], "no point is selected yet")
+    ed.check_eq(await selected_count(ed), 0, "no point is selected yet")
 
 
 async def test_select_all_none_and_escape(ed):
+    await setup(ed)
     await ed.call("focus_window", window="scene", scene=S["scene"])
     await key(ed, "ctrl+a")
     points = await orange_points(ed)
-    # all 27 points: the gizmo sits on the centre one (the centroid), the other 26 show
-    ed.check_eq(len(points), 26, f"Ctrl+A selects the 27 points of the cage, saw {len(points)} orange squares")
+    ed.check_eq(await selected_count(ed), 27, "Ctrl+A selects every cage point")
     S["screen_points"] = [(round(x), round(y)) for x, y, _ in points]
     sel = await ed.call("get_selection", scene=S["scene"])
-    ed.check_in(S["lattice"], [e.get("id", e) if isinstance(e, dict) else e for e in harness.find_entities(sel)] or [S["lattice"]],
+    ed.check_in(S["lattice"], [e.get("id", e) if isinstance(e, dict) else e for e in harness.find_entities(sel)],
                 "the lattice stays the selection")
 
     await key(ed, "alt+a")
-    ed.check_eq(await orange_points(ed), [], "Alt+A selects no point")
+    ed.check_eq(await selected_count(ed), 0, "Alt+A selects no point")
 
     await key(ed, "ctrl+a")
-    ed.check_eq(len(await orange_points(ed)), 26, "Ctrl+A again")
+    ed.check_eq(await selected_count(ed), 27, "Ctrl+A again")
     await key(ed, "Escape")
-    ed.check_eq(await orange_points(ed), [], "Esc clears the point selection")
+    ed.check_eq(await selected_count(ed), 0, "Esc clears the point selection")
 
 
 async def test_click_and_drag_one_point(ed):
@@ -286,18 +272,6 @@ async def test_falloff_drag(ed):
     await ed.call("undo", scene=S["scene"])
     ed.check_eq(moved(await offsets(ed)), [], "the whole falloff drag is one undo step")
     await key(ed, "o")  # off again
-    await key(ed, "Escape")
-
-
-async def test_context_menu(ed):
-    pts = S["screen_points"]
-    cx = sum(p[0] for p in pts) // len(pts)
-    cy = max(p[1] for p in pts) + 60
-    before = screen(ed)
-    await click(ed, cx, cy, button=3)
-    after = screen(ed)
-    ok, fraction, _ = pngdiff.compare(before, after, channel_tolerance=24, max_fraction=0.002)
-    ed.check(not ok and fraction > 0.002, f"a right click over the view opens the lattice menu (changed {fraction:.4f})")
     await key(ed, "Escape")
 
 

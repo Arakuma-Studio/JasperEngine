@@ -315,7 +315,10 @@ TEST(ActionTriggers, SetTargetRestartsARunningAction) {
     tween.setTarget(second);
     step(scene, 0.25, 1);
     EXPECT_TRUE(tween.isRunning()) << "the stop and the start of one update";
-    EXPECT_FLOAT_EQ(tween.getTimeCount(), 0.25f) << "from the beginning";
+    EXPECT_FLOAT_EQ(positionOf(scene, second).x, 0.0f) << "from the beginning";
+    step(scene, 0.25, 2);
+    EXPECT_FLOAT_EQ(positionOf(scene, second).x, 5.0f);
+    EXPECT_FLOAT_EQ(positionOf(scene, first).x, 5.0f) << "the old target is no longer animated";
 }
 
 TEST(ActionTriggers, OnStopDestroyingItsEntity) {

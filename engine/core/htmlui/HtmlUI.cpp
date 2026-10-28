@@ -186,6 +186,10 @@ RmlFontEngine& HtmlUI::getFontEngine(){
     return fontEngine;
 }
 
+const std::vector<HtmlUIContext*>& HtmlUI::getContexts(){
+    return registeredContexts();
+}
+
 void HtmlUI::registerContext(HtmlUIContext* context){
     if (!context)
         return;

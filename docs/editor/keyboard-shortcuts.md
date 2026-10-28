@@ -105,13 +105,38 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 
 | Command | Shortcut | Context |
 |---|---|---|
-| Frame All (3D) | Home | Scene View |
+| Frame All | Alt+F / Home | Scene View |
 | Front View | Numpad1 | Scene View |
 | Back View | Ctrl+Numpad1 | Scene View |
 | Right View | Numpad3 | Scene View |
 | Left View | Ctrl+Numpad3 | Scene View |
 | Top View | Numpad7 / Ctrl+Numpad9 | Scene View |
 | Bottom View | Numpad9 / Ctrl+Numpad7 | Scene View |
+| Hide Selection | H | Scene View |
+| Show All | Alt+H | Scene View |
+| Toggle Pick Lock | L | Scene View |
+| Measure | M | Scene View |
+| Delete Measure | Delete / Backspace | Scene View |
+| Recall Camera Bookmark 1 | Shift+1 | Scene View |
+| Store Camera Bookmark 1 | Ctrl+Shift+1 | Scene View |
+| Recall Camera Bookmark 2 | Shift+2 | Scene View |
+| Store Camera Bookmark 2 | Ctrl+Shift+2 | Scene View |
+| Recall Camera Bookmark 3 | Shift+3 | Scene View |
+| Store Camera Bookmark 3 | Ctrl+Shift+3 | Scene View |
+| Recall Camera Bookmark 4 | Shift+4 | Scene View |
+| Store Camera Bookmark 4 | Ctrl+Shift+4 | Scene View |
+| Recall Camera Bookmark 5 | Shift+5 | Scene View |
+| Store Camera Bookmark 5 | Ctrl+Shift+5 | Scene View |
+| Recall Camera Bookmark 6 | Shift+6 | Scene View |
+| Store Camera Bookmark 6 | Ctrl+Shift+6 | Scene View |
+| Recall Camera Bookmark 7 | Shift+7 | Scene View |
+| Store Camera Bookmark 7 | Ctrl+Shift+7 | Scene View |
+| Recall Camera Bookmark 8 | Shift+8 | Scene View |
+| Store Camera Bookmark 8 | Ctrl+Shift+8 | Scene View |
+| Recall Camera Bookmark 9 | Shift+9 | Scene View |
+| Store Camera Bookmark 9 | Ctrl+Shift+9 | Scene View |
+| Cycle Overlapping Objects | Ctrl+Mouse Wheel | Scene View |
+| Measure: Snap to Vertices | Hold V | Scene View |
 | Fly Through (3D) | Right Mouse + W/A/S/D/Q/E | Scene View |
 | Orbit (3D) | Alt+Left Drag | Scene View |
 | Pan | Middle Drag (2D: also Space+Left Drag) | Scene View |
@@ -138,6 +163,49 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Brush Larger | ] | Scene View |
 | Brush Weaker | Shift+[ | Scene View |
 | Brush Stronger | Shift+] | Scene View |
+
+## Animation
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Play / Pause Preview | Space | Animation |
+| Add Key | K | Animation |
+| Key Modified Properties | Shift+K | Animation |
+| Previous Frame | , | Animation |
+| Next Frame | . | Animation |
+| Previous Key | Alt+, | Animation |
+| Next Key | Alt+. | Animation |
+| Delete Keys | Delete / Backspace | Animation |
+| Copy Keys | Ctrl+C | Animation |
+| Paste Keys | Ctrl+V | Animation |
+| Duplicate Keys | Ctrl+D | Animation |
+| Frame Selected Keys | F | Animation |
+| Frame All Keys | A | Animation |
+| Record | R | Animation |
+
+## Pose Animation
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Play / Pause Preview | Space | Pose Animation |
+| Select Previous Pose | Left | Pose Animation |
+| Select Next Pose | Right | Pose Animation |
+| Move Poses Left | Shift+Left | Pose Animation |
+| Move Poses Right | Shift+Right | Pose Animation |
+| Select First Pose | Home | Pose Animation |
+| Select Last Pose | End | Pose Animation |
+| Previous Frame | , | Pose Animation |
+| Next Frame | . | Pose Animation |
+| Rename Pose | F2 | Pose Animation |
+| Duplicate Poses | Ctrl+D | Pose Animation |
+| Duplicate Poses Mirrored | Ctrl+Shift+D | Pose Animation |
+| Mirror Poses | M | Pose Animation |
+| Delete Poses | Delete / Backspace | Pose Animation |
+| Ground Pose | G | Pose Animation |
+| Copy Pose | Ctrl+C | Pose Animation |
+| Paste Pose | Ctrl+V | Pose Animation |
+| Add Pose | N | Pose Animation |
+| Global Edit | E | Pose Animation |
 
 ## Project
 

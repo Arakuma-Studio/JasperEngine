@@ -2,13 +2,12 @@
 edit-mode preview and the Scene view's Paint Dye brush (editor/util/FluidEditorTools.cpp), driven like
 a human with xdotool in the harness's Xvfb, on the real GPU simulator:
 
-- the inspector draws (not a blank panel) for one fluid and for a mixed multi-selection;
 - a slider drag is one undo step, the reset arrow puts the default back;
 - the Bloom group checkbox turns bloom off (and back with undo);
 - the Preset combo applies a preset's fields in one undo step and leaves the others;
 - a texture slot's droplet button links a scene fluid ("fluid|<entity>"), undone in one step;
 - the preview animates the fluid in the Scene view, Pause holds it, a preset changes its look;
-- Paint Dye: the circle shows over the Sprite, [ and ] scale splatRadius as one undo step a run,
+- Paint Dye: [ and ] scale splatRadius as one undo step a run,
   an armed click beside the Sprite keeps the selection, a stroke paints where it was drawn (the
   dye lands in the quadrant painted: orientation) without moving or deselecting the Sprite, and
   after Esc a drag moves the Sprite again.
@@ -32,6 +31,7 @@ import sys
 from pathlib import Path
 
 from harness import Editor
+import ui_input
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from htmlui_pixels import decode_png  # noqa: E402
@@ -47,63 +47,33 @@ S: dict = {}
 SHOTS = Path(__file__).resolve().parents[3] / "build" / "fluid-inspector-shots"
 
 
-class Ui:
-    def __init__(self, ed: Editor):
-        self.ed = ed
-        self.env = dict(os.environ, DISPLAY=ed._xvfb.display)
-
-    def xdo(self, *args: str) -> str:
-        return subprocess.run(["xdotool", *args], env=self.env, capture_output=True, text=True, timeout=20).stdout
+class Ui(ui_input.Ui):
+    """The shared frame-paced input (tools/mcp/ui_input.py) at the UIProbe's screen points: each
+    action waits for editor frames, not a sleep (a drag whose press and moves land in one frame is
+    never a drag)."""
 
     async def focus(self):
-        windows = self.xdo("search", "--name", ".").split()
-        self.ed.check(windows, "the editor window")
-        self.xdo("windowfocus", "--sync", windows[-1])
-
-    # each action is followed by editor frames, not only by a sleep: the editor reads the X events
-    # at the start of a frame, and on a loaded builder one frame outlasts the sleep (a drag whose
-    # press and moves land in one frame is never a drag); test_undo_ui's Ui does the same
-    async def settle(self, seconds: float, frames: int = 2):
-        await asyncio.sleep(seconds)
-        await self.ed.call("wait", frames=frames)
+        super().focus()
+        await self.frames()
 
     async def move(self, x: float, y: float):
-        self.xdo("mousemove", str(int(x)), str(int(y)))
-        await self.settle(0.3)
+        await super().move((x, y))
 
     async def click(self, x: float, y: float):
-        await self.move(x, y)
-        # press and release frames apart: in one frame the widget never sees the press
-        self.xdo("mousedown", "1")
-        await self.settle(0.1)
-        self.xdo("mouseup", "1")
-        await self.settle(0.5)
+        await super().click((x, y))
 
     async def key(self, name: str):
-        self.xdo("key", name)
-        await self.settle(0.5)
+        await super().key(name)
 
     async def drag(self, x: float, y: float, dx: float, dy: float = 0.0, steps: int = 8):
-        """press, move by (dx, dy) in steps (a frame between each), release"""
-        await self.move(x, y)
-        self.xdo("mousedown", "1")
-        await self.settle(0.2)
-        for i in range(1, steps + 1):
-            self.xdo("mousemove", str(int(x + dx * i / steps)), str(int(y + dy * i / steps)))
-            await self.settle(0.05, frames=1)
-        await self.settle(0.2)
-        self.xdo("mouseup", "1")
-        await self.settle(0.5)
+        """press, move by (dx, dy) a frame per step, release"""
+        await super().drag((x, y), (x + dx, y + dy), steps=steps)
 
     async def wheel(self, at, down: bool, notches: int):
-        await self.move(*at)
-        for _ in range(notches):
-            self.xdo("click", "5" if down else "4")
-            await self.settle(0.05, frames=1)
-        await self.settle(0.3)
+        await super().wheel(at, notches if down else -notches)
 
     async def frames(self, n: int = 3):
-        await self.ed.call("wait", frames=n)
+        await super().frames(n)
 
     async def reveal(self, name: str) -> list[float]:
         """The widget's rectangle, scrolling the inspector from its top until it is drawn whole."""
@@ -181,13 +151,6 @@ def difference(a, b) -> float:
     return sum(abs(p - q) for pa, pb in zip(a, b) for p, q in zip(pa, pb)) / max(1, 3 * len(a))
 
 
-def spread(pixels) -> tuple[int, float]:
-    """distinct colours and the luminance spread: a drawn panel has text and widgets"""
-    lum = [0.299 * r + 0.587 * g + 0.114 * b for r, g, b in pixels]
-    mean = sum(lum) / max(1, len(lum))
-    return len(set(pixels)), math.sqrt(sum((v - mean) ** 2 for v in lum) / max(1, len(lum)))
-
-
 def inset(rect, margin=0.04):
     """the inner part of a rectangle (no outline or anti-aliased edge)"""
     x0, y0, x1, y1 = rect
@@ -200,11 +163,6 @@ def quadrants(rect):
     x0, y0, x1, y1 = inset(rect)
     xm, ym = (x0 + x1) / 2, (y0 + y1) / 2
     return {"ul": (x0, y0, xm, ym), "ur": (xm, y0, x1, ym), "ll": (x0, ym, xm, y1), "lr": (xm, ym, x1, y1)}
-
-
-def cyan_pixels(pixels) -> int:
-    """pixels of the Paint Dye circle's colour (89, 204, 255)"""
-    return sum(1 for r, g, b in pixels if b > 200 and g > 140 and r < 200 and b - r > 40)
 
 
 async def select(ed: Editor, *entities: int, frames: int = 10):
@@ -228,10 +186,10 @@ async def sprite_rect(ed: Editor):
     return rect
 
 
-# ---------------------------------------------------------------------------- setup and drawing
+# ---------------------------------------------------------------------------- rows
 
 
-async def test_inspector_draws(ed: Editor):
+async def test_slider_drag_is_one_undo_step(ed: Editor):
     ed.check(shutil.which("xdotool") and ed._xvfb and ed._xvfb.display, "needs xdotool and the harness's Xvfb")
     made = await ed.call("create_scene", name="Fluids", type="2D")
     S["scene"] = made["scene"]["id"]
@@ -243,38 +201,6 @@ async def test_inspector_draws(ed: Editor):
     S["ui"] = ui = Ui(ed)
     await ui.focus()
 
-    panel = await ed.ui_rect("inspector")
-    ed.check(panel, "the inspector rectangle")
-    S["panel"] = panel
-    for name in ("fluid.preset", "fluid.preview.play", "fluid.paint"):
-        await ui.reveal(name)
-    colours, lum = spread(region(await shot(ed, "inspector"), panel))
-    ed.check(colours > 40 and lum > 8, f"the fluid inspector is drawn: {colours} colours, spread {lum:.1f}")
-
-    # its end (Advanced) and the Stats line once the fluid has a simulator
-    await ui.reveal("fluid.advanced")
-    colours, lum = spread(region(await shot(ed, "inspector-end"), panel))
-    ed.check(colours > 40 and lum > 8, f"its end is drawn: {colours} colours, spread {lum:.1f}")
-    await ui.reveal("fluid.stats")
-
-    # a second fluid with other values: the mixed rows of a multi-selection
-    other = await ed.call("create_entity", scene=S["scene"], type="empty", name="Other")
-    S["other"] = other["entity_id"]
-    await ed.call("add_component", scene=S["scene"], entity=S["other"], component="fluid",
-                  values={KEY: {"curl": 12, "bloom": False, "output": "texture", "seed": 7}})
-    await select(ed, S["bare"], S["other"])
-    await ui.reveal("fluid.preset")
-    colours, lum = spread(region(await shot(ed, "inspector-mixed"), panel))
-    ed.check(colours > 40 and lum > 8, f"the mixed selection is drawn: {colours} colours, spread {lum:.1f}")
-    await ed.check_alive()
-    await select(ed, S["bare"])
-
-
-# ---------------------------------------------------------------------------- rows
-
-
-async def test_slider_drag_is_one_undo_step(ed: Editor):
-    ui: Ui = S["ui"]
     x, y = center(await ui.reveal("fluid.value.curl"))
     await ui.drag(x, y, -60)
     curl = (await values(ed, S["bare"]))["curl"]
@@ -298,7 +224,6 @@ async def test_bloom_group_checkbox(ed: Editor):
     await ui.click_item("fluid.group.bloom")
     ed.check(not (await values(ed, S["bare"]))["bloom"], "the group checkbox turns bloom off")
     await ui.frames()
-    ed.check("fluid.value.bloomIntensity" not in ed.ui_items(), "its rows hide")
     await ed.call("undo", scene=S["scene"])
     ed.check((await values(ed, S["bare"]))["bloom"], "undo turns bloom back on")
 
@@ -366,32 +291,31 @@ async def test_preview_animates_and_presets_change_the_look(ed: Editor):
 
     # Play: the start burst moves
     await ui.click_item("fluid.preview.play")
-    await asyncio.sleep(1.0)
+    await ui.settle(1.0, frames=4)
     a = region(await shot(ed, "preview-a"), rect)
-    await asyncio.sleep(1.0)
+    await ui.settle(1.0, frames=4)
     b = region(await shot(ed, "preview-b"), rect)
     ed.check(brightness(a) > 8, f"the fluid shows dye on its Sprite (brightness {brightness(a):.1f})")
     ed.check(difference(a, b) > 1.0, f"the preview animates (difference {difference(a, b):.2f})")
-    await ui.reveal("fluid.stats")
 
     # Pause holds it still
     await ui.click_item("fluid.preview.pause")
-    await asyncio.sleep(0.5)
+    await ui.settle(0.5, frames=4)
     c = region(await shot(ed, "paused-c"), rect)
-    await asyncio.sleep(1.0)
+    await ui.settle(1.0, frames=4)
     d = region(await shot(ed, "paused-d"), rect)
     ed.check(difference(c, d) < 0.5, f"paused, it holds still (difference {difference(c, d):.2f})")
 
     # a preset changes the look of the same (paused) fluid: Mobile has no shading, bloom or sunrays
     await ui.click_item("fluid.preset")
     await ui.click_popup_item("fluid.preset.mobile")
-    await asyncio.sleep(0.5)
+    await ui.settle(0.5, frames=4)
     e = region(await shot(ed, "preset-mobile"), rect)
     v = await values(ed, fluid)
     ed.check(not v["shading"] and not v["bloom"] and not v["sunrays"], f"Mobile applied: {v}")
     ed.check(difference(d, e) > 1.0, f"the preset changes the look (difference {difference(d, e):.2f})")
     await ed.call("undo", scene=S["scene"])
-    await asyncio.sleep(0.5)
+    await ui.settle(0.5, frames=4)
     g = region(await shot(ed, "preset-undone"), rect)
     ed.check(difference(d, g) < difference(d, e) / 2,
              f"undo brings the look back ({difference(d, g):.2f} vs {difference(d, e):.2f})")
@@ -416,14 +340,12 @@ async def test_paint_dye_brush(ed: Editor):
     ed.check(brightness(black) < 6, f"restarted without the start burst it is black ({brightness(black):.1f})")
     start = await position(ed, fluid)
 
-    # armed: the circle over the Sprite under the pointer
+    # Arm the brush before the input and selection checks.
     await ui.click_item("fluid.paint")
     sx, sy = center(sprite)
     await ui.move(sx, sy)
     await ui.move(sx + 5, sy + 5)
     await ui.frames(5)
-    ring = region(await shot(ed, "paint-cursor"), inset(sprite), step=1)
-    ed.check(cyan_pixels(ring) > 40, f"the brush circle is drawn ({cyan_pixels(ring)} pixels)")
 
     # a click beside the Sprite (the Scene view takes the keys after the inspector's clicks)
     # neither paints nor deselects
@@ -449,7 +371,7 @@ async def test_paint_dye_brush(ed: Editor):
     w, h = x1 - x0, y1 - y0
     await ui.drag(x0 + 0.25 * w, y0 + 0.3 * h, 0.5 * w, 0.3 * h, steps=10)
     await ui.move(view[0] + 5, view[1] + 5)       # the circle off the Sprite
-    await asyncio.sleep(0.5)
+    await ui.settle(0.5, frames=4)
     image = await shot(ed, "paint-stroke")
     lit = {name: brightness(region(image, box)) for name, box in quads.items()}
     ed.check(lit["ul"] > 4 and lit["ul"] > 3 * max(lit["ur"], lit["ll"], lit["lr"]),

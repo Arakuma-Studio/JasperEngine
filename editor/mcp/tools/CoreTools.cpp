@@ -4,6 +4,7 @@
 // Core: batch, get_job, cancel_job, undo / redo, editor_status, respond_dialog, tool_groups,
 // get_job_system_stats, set_job_system_config, get_memory_stats
 #include "McpTools.h"
+#include "window/StatusBar.h"
 
 #include "mcp/McpAutoSync.h"
 #include "reload/HotReloadService.h"
@@ -668,6 +669,8 @@ void editorStatusTool(const CallPtr& call) {
         {"waiting_calls", status.pendingCalls},
         {"auto_sync", McpAutoSync::get().stats()},
         {"file_watcher", fileWatcherJson()},
+        // the status bar's short message ("Preparing picking for Rock...", S26)
+        {"status_message", StatusBar::getTransientMessage()},
         {"scripts", ScriptStatus::get().toJson()},
         {"frame_ms", app.takeFrameStats()},
         {"dialog", dialog},

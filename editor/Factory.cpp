@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "Factory.h"
+#include "reflect/Reflect.h"
+#include "reflect/Enums.h"
 
 #include "Scene.h"
 #include "Catalog.h"
@@ -494,52 +496,18 @@ std::string editor::Factory::formatRect(const Rect& r) {
 }
 
 std::string editor::Factory::formatPrimitiveType(PrimitiveType type) {
-    switch (type) {
-        case PrimitiveType::TRIANGLES: return "PrimitiveType::TRIANGLES";
-        case PrimitiveType::TRIANGLE_STRIP: return "PrimitiveType::TRIANGLE_STRIP";
-        case PrimitiveType::POINTS: return "PrimitiveType::POINTS";
-        case PrimitiveType::LINES: return "PrimitiveType::LINES";
-        default: return "PrimitiveType::TRIANGLES";
-    }
+    return formatEnum(reflect::enums::kPrimitiveType, static_cast<int>(type));
+}
+
+std::string editor::Factory::formatEnum(const reflect::EnumDesc& desc, int value) {
+    // the C++ name of the value, of the table's fallback when the value is not one of its own
+    if (const reflect::EnumItem* item = reflect::enumItem(desc, value)) return item->cppName;
+    const reflect::EnumItem* fallback = reflect::enumItem(desc, desc.fallback);
+    return fallback ? fallback->cppName : std::string();
 }
 
 std::string editor::Factory::formatEaseType(EaseType type) {
-    switch (type) {
-        case EaseType::LINEAR: return "EaseType::LINEAR";
-        case EaseType::QUAD_IN: return "EaseType::QUAD_IN";
-        case EaseType::QUAD_OUT: return "EaseType::QUAD_OUT";
-        case EaseType::QUAD_IN_OUT: return "EaseType::QUAD_IN_OUT";
-        case EaseType::CUBIC_IN: return "EaseType::CUBIC_IN";
-        case EaseType::CUBIC_OUT: return "EaseType::CUBIC_OUT";
-        case EaseType::CUBIC_IN_OUT: return "EaseType::CUBIC_IN_OUT";
-        case EaseType::QUART_IN: return "EaseType::QUART_IN";
-        case EaseType::QUART_OUT: return "EaseType::QUART_OUT";
-        case EaseType::QUART_IN_OUT: return "EaseType::QUART_IN_OUT";
-        case EaseType::QUINT_IN: return "EaseType::QUINT_IN";
-        case EaseType::QUINT_OUT: return "EaseType::QUINT_OUT";
-        case EaseType::QUINT_IN_OUT: return "EaseType::QUINT_IN_OUT";
-        case EaseType::SINE_IN: return "EaseType::SINE_IN";
-        case EaseType::SINE_OUT: return "EaseType::SINE_OUT";
-        case EaseType::SINE_IN_OUT: return "EaseType::SINE_IN_OUT";
-        case EaseType::EXPO_IN: return "EaseType::EXPO_IN";
-        case EaseType::EXPO_OUT: return "EaseType::EXPO_OUT";
-        case EaseType::EXPO_IN_OUT: return "EaseType::EXPO_IN_OUT";
-        case EaseType::CIRC_IN: return "EaseType::CIRC_IN";
-        case EaseType::CIRC_OUT: return "EaseType::CIRC_OUT";
-        case EaseType::CIRC_IN_OUT: return "EaseType::CIRC_IN_OUT";
-        case EaseType::ELASTIC_IN: return "EaseType::ELASTIC_IN";
-        case EaseType::ELASTIC_OUT: return "EaseType::ELASTIC_OUT";
-        case EaseType::ELASTIC_IN_OUT: return "EaseType::ELASTIC_IN_OUT";
-        case EaseType::BACK_IN: return "EaseType::BACK_IN";
-        case EaseType::BACK_OUT: return "EaseType::BACK_OUT";
-        case EaseType::BACK_IN_OUT: return "EaseType::BACK_IN_OUT";
-        case EaseType::BOUNCE_IN: return "EaseType::BOUNCE_IN";
-        case EaseType::BOUNCE_OUT: return "EaseType::BOUNCE_OUT";
-        case EaseType::BOUNCE_IN_OUT: return "EaseType::BOUNCE_IN_OUT";
-        case EaseType::STEP: return "EaseType::STEP";
-        case EaseType::CUSTOM: return "EaseType::CUSTOM";
-        default: return "EaseType::LINEAR";
-    }
+    return formatEnum(reflect::enums::kEaseType, static_cast<int>(type));
 }
 
 std::string editor::Factory::formatEase(const Ease& ease) {
@@ -547,86 +515,7 @@ std::string editor::Factory::formatEase(const Ease& ease) {
 }
 
 std::string editor::Factory::formatPivotPreset(PivotPreset preset) {
-    switch (preset) {
-        case PivotPreset::CENTER: return "PivotPreset::CENTER";
-        case PivotPreset::TOP_CENTER: return "PivotPreset::TOP_CENTER";
-        case PivotPreset::BOTTOM_CENTER: return "PivotPreset::BOTTOM_CENTER";
-        case PivotPreset::LEFT_CENTER: return "PivotPreset::LEFT_CENTER";
-        case PivotPreset::RIGHT_CENTER: return "PivotPreset::RIGHT_CENTER";
-        case PivotPreset::TOP_LEFT: return "PivotPreset::TOP_LEFT";
-        case PivotPreset::BOTTOM_LEFT: return "PivotPreset::BOTTOM_LEFT";
-        case PivotPreset::TOP_RIGHT: return "PivotPreset::TOP_RIGHT";
-        case PivotPreset::BOTTOM_RIGHT: return "PivotPreset::BOTTOM_RIGHT";
-        default: return "PivotPreset::BOTTOM_LEFT";
-    }
-}
-
-std::string editor::Factory::formatAnchorPreset(AnchorPreset preset) {
-    switch (preset) {
-        case AnchorPreset::NONE: return "AnchorPreset::NONE";
-        case AnchorPreset::TOP_LEFT: return "AnchorPreset::TOP_LEFT";
-        case AnchorPreset::TOP_RIGHT: return "AnchorPreset::TOP_RIGHT";
-        case AnchorPreset::BOTTOM_LEFT: return "AnchorPreset::BOTTOM_LEFT";
-        case AnchorPreset::BOTTOM_RIGHT: return "AnchorPreset::BOTTOM_RIGHT";
-        case AnchorPreset::CENTER_LEFT: return "AnchorPreset::CENTER_LEFT";
-        case AnchorPreset::CENTER_TOP: return "AnchorPreset::CENTER_TOP";
-        case AnchorPreset::CENTER_RIGHT: return "AnchorPreset::CENTER_RIGHT";
-        case AnchorPreset::CENTER_BOTTOM: return "AnchorPreset::CENTER_BOTTOM";
-        case AnchorPreset::CENTER: return "AnchorPreset::CENTER";
-        case AnchorPreset::LEFT_WIDE: return "AnchorPreset::LEFT_WIDE";
-        case AnchorPreset::TOP_WIDE: return "AnchorPreset::TOP_WIDE";
-        case AnchorPreset::RIGHT_WIDE: return "AnchorPreset::RIGHT_WIDE";
-        case AnchorPreset::BOTTOM_WIDE: return "AnchorPreset::BOTTOM_WIDE";
-        case AnchorPreset::VERTICAL_CENTER_WIDE: return "AnchorPreset::VERTICAL_CENTER_WIDE";
-        case AnchorPreset::HORIZONTAL_CENTER_WIDE: return "AnchorPreset::HORIZONTAL_CENTER_WIDE";
-        case AnchorPreset::FULL_LAYOUT: return "AnchorPreset::FULL_LAYOUT";
-        default: return "AnchorPreset::NONE";
-    }
-}
-
-std::string editor::Factory::formatLayoutGroupType(LayoutGroupType type) {
-    switch (type) {
-        case LayoutGroupType::VERTICAL: return "LayoutGroupType::VERTICAL";
-        case LayoutGroupType::HORIZONTAL: return "LayoutGroupType::HORIZONTAL";
-        case LayoutGroupType::VERTICAL_WRAP: return "LayoutGroupType::VERTICAL_WRAP";
-        case LayoutGroupType::HORIZONTAL_WRAP: return "LayoutGroupType::HORIZONTAL_WRAP";
-        default: return "LayoutGroupType::VERTICAL";
-    }
-}
-
-std::string editor::Factory::formatScrollbarType(ScrollbarType type) {
-    switch (type) {
-        case ScrollbarType::VERTICAL: return "ScrollbarType::VERTICAL";
-        case ScrollbarType::HORIZONTAL: return "ScrollbarType::HORIZONTAL";
-        default: return "ScrollbarType::VERTICAL";
-    }
-}
-
-std::string editor::Factory::formatProgressbarType(ProgressbarType type) {
-    switch (type) {
-        case ProgressbarType::VERTICAL: return "ProgressbarType::VERTICAL";
-        case ProgressbarType::HORIZONTAL: return "ProgressbarType::HORIZONTAL";
-        default: return "ProgressbarType::HORIZONTAL";
-    }
-}
-
-std::string editor::Factory::formatLightType(LightType type) {
-    switch (type) {
-        case LightType::DIRECTIONAL: return "LightType::DIRECTIONAL";
-        case LightType::POINT: return "LightType::POINT";
-        case LightType::SPOT: return "LightType::SPOT";
-        default: return "LightType::DIRECTIONAL";
-    }
-}
-
-std::string editor::Factory::formatFogType(FogType type) {
-    switch (type) {
-        case FogType::LINEAR: return "FogType::LINEAR";
-        case FogType::EXPONENTIAL: return "FogType::EXPONENTIAL";
-        case FogType::EXPONENTIALSQUARED: return "FogType::EXPONENTIALSQUARED";
-        case FogType::HEIGHT: return "FogType::HEIGHT";
-        default: return "FogType::LINEAR";
-    }
+    return formatEnum(reflect::enums::kPivotPreset, static_cast<int>(preset));
 }
 
 std::string editor::Factory::formatLightState(LightState state) {
@@ -658,49 +547,12 @@ std::string editor::Factory::formatSceneColorScale(SceneColorScale scale) {
     }
 }
 
-std::string editor::Factory::formatAudioSourceState(AudioSourceState state) {
-    switch (state) {
-        case AudioSourceState::Playing: return "AudioSourceState::Playing";
-        case AudioSourceState::Paused: return "AudioSourceState::Paused";
-        case AudioSourceState::Stopped: return "AudioSourceState::Stopped";
-        default: return "AudioSourceState::Stopped";
-    }
-}
-
-std::string editor::Factory::formatAudioSourceAttenuation(AudioSourceAttenuation attenuation) {
-    switch (attenuation) {
-        case AudioSourceAttenuation::NO_ATTENUATION: return "AudioSourceAttenuation::NO_ATTENUATION";
-        case AudioSourceAttenuation::INVERSE_DISTANCE: return "AudioSourceAttenuation::INVERSE_DISTANCE";
-        case AudioSourceAttenuation::LINEAR_DISTANCE: return "AudioSourceAttenuation::LINEAR_DISTANCE";
-        case AudioSourceAttenuation::EXPONENTIAL_DISTANCE: return "AudioSourceAttenuation::EXPONENTIAL_DISTANCE";
-        default: return "AudioSourceAttenuation::NO_ATTENUATION";
-    }
-}
-
 std::string editor::Factory::formatUIEventState(UIEventState state) {
-    switch (state) {
-        case UIEventState::NOT_SET: return "UIEventState::NOT_SET";
-        case UIEventState::ENABLED: return "UIEventState::ENABLED";
-        case UIEventState::DISABLED: return "UIEventState::DISABLED";
-        default: return "UIEventState::NOT_SET";
-    }
-}
-
-std::string editor::Factory::formatCameraType(CameraType type) {
-    switch (type) {
-        case CameraType::CAMERA_UI: return "CameraType::CAMERA_UI";
-        case CameraType::CAMERA_ORTHO: return "CameraType::CAMERA_ORTHO";
-        case CameraType::CAMERA_PERSPECTIVE: return "CameraType::CAMERA_PERSPECTIVE";
-        default: return "CameraType::CAMERA_UI";
-    }
+    return formatEnum(reflect::enums::kUIEventState, static_cast<int>(state));
 }
 
 std::string editor::Factory::formatScriptType(ScriptType type) {
-    switch (type) {
-        case ScriptType::CPP: return "ScriptType::CPP";
-        case ScriptType::LUA: return "ScriptType::LUA";
-        default: return "ScriptType::CPP";
-    }
+    return formatEnum(reflect::enums::kScriptType, static_cast<int>(type));
 }
 
 std::string editor::Factory::formatQuaternion(const Quaternion& q) {
@@ -762,7 +614,7 @@ std::string editor::Factory::formatUInt(unsigned int value) {
 }
 
 // culling masks read best as hex: 0xFFFFFFFFu is Everything
-static std::string formatLayerMask(uint32_t mask) {
+std::string editor::Factory::formatLayerMask(uint32_t mask) {
     char buffer[16];
     snprintf(buffer, sizeof(buffer), "0x%08Xu", (unsigned int)mask);
     return buffer;
@@ -922,33 +774,15 @@ std::string editor::Factory::formatPostProcessing(int indentSpaces, const PostPr
 }
 
 std::string editor::Factory::formatTextureFilter(TextureFilter filter) {
-    switch (filter) {
-        case TextureFilter::NEAREST: return "TextureFilter::NEAREST";
-        case TextureFilter::LINEAR: return "TextureFilter::LINEAR";
-        case TextureFilter::NEAREST_MIPMAP_NEAREST: return "TextureFilter::NEAREST_MIPMAP_NEAREST";
-        case TextureFilter::NEAREST_MIPMAP_LINEAR: return "TextureFilter::NEAREST_MIPMAP_LINEAR";
-        case TextureFilter::LINEAR_MIPMAP_NEAREST: return "TextureFilter::LINEAR_MIPMAP_NEAREST";
-        case TextureFilter::LINEAR_MIPMAP_LINEAR: return "TextureFilter::LINEAR_MIPMAP_LINEAR";
-        default: return "TextureFilter::LINEAR";
-    }
+    return formatEnum(reflect::enums::kTextureFilter, static_cast<int>(filter));
 }
 
 std::string editor::Factory::formatTextureWrap(TextureWrap wrap) {
-    switch (wrap) {
-        case TextureWrap::REPEAT: return "TextureWrap::REPEAT";
-        case TextureWrap::MIRRORED_REPEAT: return "TextureWrap::MIRRORED_REPEAT";
-        case TextureWrap::CLAMP_TO_EDGE: return "TextureWrap::CLAMP_TO_EDGE";
-        case TextureWrap::CLAMP_TO_BORDER: return "TextureWrap::CLAMP_TO_BORDER";
-        default: return "TextureWrap::REPEAT";
-    }
+    return formatEnum(reflect::enums::kTextureWrap, static_cast<int>(wrap));
 }
 
 std::string editor::Factory::formatTextureAlphaBorder(TextureAlphaBorder alphaBorder) {
-    switch (alphaBorder) {
-        case TextureAlphaBorder::FIX: return "TextureAlphaBorder::FIX";
-        case TextureAlphaBorder::KEEP: return "TextureAlphaBorder::KEEP";
-        default: return "TextureAlphaBorder::AUTO";
-    }
+    return formatEnum(reflect::enums::kTextureAlphaBorder, static_cast<int>(alphaBorder));
 }
 
 std::string editor::Factory::formatScriptPropertyType(ScriptPropertyType type) {
@@ -1200,6 +1034,14 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
     for (int w = 0; w < MAX_MORPHTARGETS; w++) {
         if (mesh.morphWeights[w] != 0.0f)
             code << ind << "mesh.morphWeights[" << w << "] = " << formatFloat(mesh.morphWeights[w]) << ";\n";
+    }
+    // the model's load keeps these weights (zeros too) instead of its file's defaults, as the
+    // editor saves them (Stream): weights a load or an edit set, or non-zero ones set before any
+    // load, up to the targets they cover (more in the model file: theirs are its defaults)
+    const int presentCount = morphWeightsPresentCount(mesh.morphWeights);
+    if (mesh.morphWeightsSet || presentCount > 0) {
+        code << ind << "mesh.morphWeightsSet = true;\n";
+        code << ind << "mesh.morphTargetCount = " << (mesh.morphWeightsSet ? mesh.morphTargetCount : presentCount) << ";\n";
     }
     if (!mesh.customShader.empty())
         code << ind << "mesh.customShader = " << formatString(mesh.customShader) << ";\n";
@@ -1457,110 +1299,6 @@ std::string editor::Factory::createUIComponent(int indentSpaces, EntityRegistry*
     return code.str();
 }
 
-std::string editor::Factory::createButtonComponent(int indentSpaces, EntityRegistry* scene, Entity entity, const fs::path& projectPath, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
-    if (!scene->findComponent<ButtonComponent>(entity)) return "";
-    ButtonComponent& button = scene->getComponent<ButtonComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "ButtonComponent button;\n";
-    code << ind << "button.label = " << formatEntity(button.label, entityVarNames) << ";\n";
-    code << formatTexture(indentSpaces, button.textureNormal, "button.textureNormal", projectPath);
-    code << formatTexture(indentSpaces, button.textureHovered, "button.textureHovered", projectPath);
-    code << formatTexture(indentSpaces, button.texturePressed, "button.texturePressed", projectPath);
-    code << formatTexture(indentSpaces, button.textureDisabled, "button.textureDisabled", projectPath);
-    code << ind << "button.colorNormal = " << formatVector4(button.colorNormal) << ";\n";
-    code << ind << "button.colorHovered = " << formatVector4(button.colorHovered) << ";\n";
-    code << ind << "button.colorPressed = " << formatVector4(button.colorPressed) << ";\n";
-    code << ind << "button.colorDisabled = " << formatVector4(button.colorDisabled) << ";\n";
-    code << ind << "button.disabled = " << formatBool(button.disabled) << ";\n";
-    addComponentCode(code, ind, sceneName, entityName, entity, "ButtonComponent", "button", assignExisting);
-    return code.str();
-}
-
-std::string editor::Factory::createScrollbarComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
-    if (!scene->findComponent<ScrollbarComponent>(entity)) return "";
-    ScrollbarComponent& scrollbar = scene->getComponent<ScrollbarComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "ScrollbarComponent scrollbar;\n";
-    code << ind << "scrollbar.bar = " << formatEntity(scrollbar.bar, entityVarNames) << ";\n";
-    code << ind << "scrollbar.type = " << formatScrollbarType(scrollbar.type) << ";\n";
-    code << ind << "scrollbar.barSize = " << formatFloat(scrollbar.barSize) << ";\n";
-    code << ind << "scrollbar.step = " << formatFloat(scrollbar.step) << ";\n";
-    code << ind << "scrollbar.barMarginLeft = " << formatInt(scrollbar.barMarginLeft) << ";\n";
-    code << ind << "scrollbar.barMarginRight = " << formatInt(scrollbar.barMarginRight) << ";\n";
-    code << ind << "scrollbar.barMarginTop = " << formatInt(scrollbar.barMarginTop) << ";\n";
-    code << ind << "scrollbar.barMarginBottom = " << formatInt(scrollbar.barMarginBottom) << ";\n";
-    addComponentCode(code, ind, sceneName, entityName, entity, "ScrollbarComponent", "scrollbar", assignExisting);
-    return code.str();
-}
-
-std::string editor::Factory::createProgressbarComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
-    if (!scene->findComponent<ProgressbarComponent>(entity)) return "";
-    ProgressbarComponent& progressbar = scene->getComponent<ProgressbarComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "ProgressbarComponent progressbar;\n";
-    code << ind << "progressbar.fill = " << formatEntity(progressbar.fill, entityVarNames) << ";\n";
-    code << ind << "progressbar.type = " << formatProgressbarType(progressbar.type) << ";\n";
-    code << ind << "progressbar.value = " << formatFloat(progressbar.value) << ";\n";
-    code << ind << "progressbar.fillMarginLeft = " << formatInt(progressbar.fillMarginLeft) << ";\n";
-    code << ind << "progressbar.fillMarginRight = " << formatInt(progressbar.fillMarginRight) << ";\n";
-    code << ind << "progressbar.fillMarginTop = " << formatInt(progressbar.fillMarginTop) << ";\n";
-    code << ind << "progressbar.fillMarginBottom = " << formatInt(progressbar.fillMarginBottom) << ";\n";
-    addComponentCode(code, ind, sceneName, entityName, entity, "ProgressbarComponent", "progressbar", assignExisting);
-    return code.str();
-}
-
-std::string editor::Factory::createInputFieldComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
-    if (!scene->findComponent<InputFieldComponent>(entity)) return "";
-    InputFieldComponent& inputfield = scene->getComponent<InputFieldComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "InputFieldComponent inputfield;\n";
-    code << ind << "inputfield.text = " << formatEntity(inputfield.text, entityVarNames) << ";\n";
-    code << ind << "inputfield.selection = " << formatEntity(inputfield.selection, entityVarNames) << ";\n";
-    code << ind << "inputfield.cursor = " << formatEntity(inputfield.cursor, entityVarNames) << ";\n";
-    code << ind << "inputfield.cursorBlink = " << formatFloat(inputfield.cursorBlink) << ";\n";
-    code << ind << "inputfield.cursorWidth = " << formatFloat(inputfield.cursorWidth) << ";\n";
-    code << ind << "inputfield.cursorColor = " << formatVector4(inputfield.cursorColor) << ";\n";
-    code << ind << "inputfield.selectionColor = " << formatVector4(inputfield.selectionColor) << ";\n";
-    code << ind << "inputfield.placeholderColor = " << formatVector4(inputfield.placeholderColor) << ";\n";
-    code << ind << "inputfield.placeholder = " << formatString(inputfield.placeholder) << ";\n";
-    code << ind << "inputfield.passwordChar = " << formatChar(inputfield.passwordChar) << ";\n";
-    code << ind << "inputfield.cursorIndex = " << formatInt(inputfield.cursorIndex) << ";\n";
-    code << ind << "inputfield.selectionAnchor = " << formatInt(inputfield.selectionAnchor) << ";\n";
-    code << ind << "inputfield.disabled = " << formatBool(inputfield.disabled) << ";\n";
-    code << ind << "inputfield.password = " << formatBool(inputfield.password) << ";\n";
-    addComponentCode(code, ind, sceneName, entityName, entity, "InputFieldComponent", "inputfield", assignExisting);
-    return code.str();
-}
-
-std::string editor::Factory::createPanelComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
-    if (!scene->findComponent<PanelComponent>(entity)) return "";
-    PanelComponent& panel = scene->getComponent<PanelComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "PanelComponent panel;\n";
-    code << ind << "panel.headerimage = " << formatEntity(panel.headerimage, entityVarNames) << ";\n";
-    code << ind << "panel.headercontainer = " << formatEntity(panel.headercontainer, entityVarNames) << ";\n";
-    code << ind << "panel.headertext = " << formatEntity(panel.headertext, entityVarNames) << ";\n";
-    code << ind << "panel.titleAnchorPreset = " << formatAnchorPreset(panel.titleAnchorPreset) << ";\n";
-    code << ind << "panel.minWidth = " << formatUInt(panel.minWidth) << ";\n";
-    code << ind << "panel.minHeight = " << formatUInt(panel.minHeight) << ";\n";
-    code << ind << "panel.headerMarginLeft = " << formatInt(panel.headerMarginLeft) << ";\n";
-    code << ind << "panel.headerMarginTop = " << formatInt(panel.headerMarginTop) << ";\n";
-    code << ind << "panel.headerMarginRight = " << formatInt(panel.headerMarginRight) << ";\n";
-    code << ind << "panel.headerMarginBottom = " << formatInt(panel.headerMarginBottom) << ";\n";
-    code << ind << "panel.defaultHeaderMargin = " << formatBool(panel.defaultHeaderMargin) << ";\n";
-    code << ind << "panel.resizeMargin = " << formatInt(panel.resizeMargin) << ";\n";
-    code << ind << "panel.canMove = " << formatBool(panel.canMove) << ";\n";
-    code << ind << "panel.canResize = " << formatBool(panel.canResize) << ";\n";
-    code << ind << "panel.canBringToFront = " << formatBool(panel.canBringToFront) << ";\n";
-    addComponentCode(code, ind, sceneName, entityName, entity, "PanelComponent", "panel", assignExisting);
-    return code.str();
-}
-
 std::string editor::Factory::createPolygonComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
     if (!scene->findComponent<PolygonComponent>(entity)) return "";
     PolygonComponent& polygon = scene->getComponent<PolygonComponent>(entity);
@@ -1602,83 +1340,6 @@ std::string editor::Factory::createMeshPolygonComponent(int indentSpaces, Entity
     }
 
     addComponentCode(code, ind, sceneName, entityName, entity, "MeshPolygonComponent", "meshpolygon", assignExisting);
-    return code.str();
-}
-
-std::string editor::Factory::createRectTransformComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
-    if (!scene->findComponent<RectTransformComponent>(entity)) return "";
-    RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "RectTransformComponent layout;\n";
-    code << ind << "layout.width = " << formatUInt(layout.width) << ";\n";
-    code << ind << "layout.height = " << formatUInt(layout.height) << ";\n";
-    code << ind << "layout.anchorPointLeft = " << formatFloat(layout.anchorPointLeft) << ";\n";
-    code << ind << "layout.anchorPointTop = " << formatFloat(layout.anchorPointTop) << ";\n";
-    code << ind << "layout.anchorPointRight = " << formatFloat(layout.anchorPointRight) << ";\n";
-    code << ind << "layout.anchorPointBottom = " << formatFloat(layout.anchorPointBottom) << ";\n";
-    code << ind << "layout.anchorOffsetLeft = " << formatInt(layout.anchorOffsetLeft) << ";\n";
-    code << ind << "layout.anchorOffsetTop = " << formatInt(layout.anchorOffsetTop) << ";\n";
-    code << ind << "layout.anchorOffsetRight = " << formatInt(layout.anchorOffsetRight) << ";\n";
-    code << ind << "layout.anchorOffsetBottom = " << formatInt(layout.anchorOffsetBottom) << ";\n";
-    code << ind << "layout.positionOffset = " << formatVector2(layout.positionOffset) << ";\n";
-    code << ind << "layout.pivot = " << formatVector2(layout.pivot) << ";\n";
-    code << ind << "layout.anchorPreset = " << formatAnchorPreset(layout.anchorPreset) << ";\n";
-    code << ind << "layout.usingAnchors = " << formatBool(layout.usingAnchors) << ";\n";
-    code << ind << "layout.ignoreScissor = " << formatBool(layout.ignoreScissor) << ";\n";
-    code << ind << "layout.ignoreEvents = " << formatBool(layout.ignoreEvents) << ";\n";
-    addComponentCode(code, ind, sceneName, entityName, entity, "RectTransformComponent", "layout", assignExisting);
-    return code.str();
-}
-
-std::string editor::Factory::createLayoutGroupComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
-    if (!scene->findComponent<LayoutGroupComponent>(entity)) return "";
-    LayoutGroupComponent& container = scene->getComponent<LayoutGroupComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "LayoutGroupComponent container;\n";
-    code << ind << "container.type = " << formatLayoutGroupType(container.type) << ";\n";
-    code << ind << "container.useAllWrapSpace = " << formatBool(container.useAllWrapSpace) << ";\n";
-    code << ind << "container.wrapCellWidth = " << formatUInt(container.wrapCellWidth) << ";\n";
-    code << ind << "container.wrapCellHeight = " << formatUInt(container.wrapCellHeight) << ";\n";
-    addComponentCode(code, ind, sceneName, entityName, entity, "LayoutGroupComponent", "container", assignExisting);
-    return code.str();
-}
-
-std::string editor::Factory::createTextComponent(int indentSpaces, EntityRegistry* scene, Entity entity, const fs::path& projectPath, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
-    if (!scene->findComponent<TextComponent>(entity)) return "";
-    TextComponent& text = scene->getComponent<TextComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "TextComponent text;\n";
-    for (size_t i = 0; i < text.font.size(); i++){
-        if (!text.font[i].empty())
-            code << ind << "text.font[" << i << "] = " << formatString(text.font[i]) << ";\n";
-    }
-    code << ind << "text.text = " << formatString(text.text) << ";\n";
-    code << ind << "text.fontSize = " << formatUInt(text.fontSize) << ";\n";
-    code << ind << "text.multiline = " << formatBool(text.multiline) << ";\n";
-    code << ind << "text.maxTextSize = " << formatUInt(text.maxTextSize) << ";\n";
-    code << ind << "text.fixedWidth = " << formatBool(text.fixedWidth) << ";\n";
-    code << ind << "text.fixedHeight = " << formatBool(text.fixedHeight) << ";\n";
-    code << ind << "text.pivotBaseline = " << formatBool(text.pivotBaseline) << ";\n";
-    code << ind << "text.pivotCentered = " << formatBool(text.pivotCentered) << ";\n";
-    addComponentCode(code, ind, sceneName, entityName, entity, "TextComponent", "text", assignExisting);
-    return code.str();
-}
-
-std::string editor::Factory::createImageComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
-    if (!scene->findComponent<ImageComponent>(entity)) return "";
-    ImageComponent& image = scene->getComponent<ImageComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "ImageComponent image;\n";
-    code << ind << "image.patchMarginLeft = " << formatUInt(image.patchMarginLeft) << ";\n";
-    code << ind << "image.patchMarginRight = " << formatUInt(image.patchMarginRight) << ";\n";
-    code << ind << "image.patchMarginTop = " << formatUInt(image.patchMarginTop) << ";\n";
-    code << ind << "image.patchMarginBottom = " << formatUInt(image.patchMarginBottom) << ";\n";
-    code << ind << "image.textureScaleFactor = " << formatFloat(image.textureScaleFactor) << ";\n";
-    addComponentCode(code, ind, sceneName, entityName, entity, "ImageComponent", "image", assignExisting);
     return code.str();
 }
 
@@ -1857,359 +1518,6 @@ std::string editor::Factory::createTerrainComponent(int indentSpaces, EntityRegi
     return code.str();
 }
 
-std::string editor::Factory::createLightComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
-    if (!scene->findComponent<LightComponent>(entity)) return "";
-    LightComponent& light = scene->getComponent<LightComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "LightComponent light;\n";
-    code << ind << "light.type = " << formatLightType(light.type) << ";\n";
-    code << ind << "light.direction = " << formatVector3(light.direction) << ";\n";
-    code << ind << "light.shadows = " << formatBool(light.shadows) << ";\n";
-    code << ind << "light.cullingMask = " << formatLayerMask(light.cullingMask) << ";\n";
-    code << ind << "light.intensity = " << formatFloat(light.intensity) << ";\n";
-    code << ind << "light.range = " << formatFloat(light.range) << ";\n";
-    code << ind << "light.color = " << formatVector3(light.color) << ";\n";
-    code << ind << "light.innerConeCos = " << formatFloat(light.innerConeCos) << ";\n";
-    code << ind << "light.outerConeCos = " << formatFloat(light.outerConeCos) << ";\n";
-    code << formatTexture(indentSpaces, light.spotMask, "light.spotMask", fs::path());
-    code << ind << "light.shadowBias = " << formatFloat(light.shadowBias) << ";\n";
-    code << ind << "light.mapResolution = " << formatUInt(light.mapResolution) << ";\n";
-    code << ind << "light.automaticShadowCamera = " << formatBool(light.automaticShadowCamera) << ";\n";
-    code << ind << "light.shadowCameraNearFar.x = " << formatFloat(light.shadowCameraNearFar.x) << ";\n";
-    code << ind << "light.shadowCameraNearFar.y = " << formatFloat(light.shadowCameraNearFar.y) << ";\n";
-    code << ind << "light.numShadowCascades = " << formatUInt(light.numShadowCascades) << ";\n";
-    code << ind << "light.softShadows = " << formatBool(light.softShadows) << ";\n";
-    code << ind << "light.shadowStrength = " << formatFloat(light.shadowStrength) << ";\n";
-    code << ind << "light.shadowNormalBias = " << formatFloat(light.shadowNormalBias) << ";\n";
-    code << ind << "light.cascadeSplitMode = " << (light.cascadeSplitMode == CascadeSplitMode::MANUAL ? "CascadeSplitMode::MANUAL" : "CascadeSplitMode::AUTO") << ";\n";
-    code << ind << "light.cascadeSplits = " << formatVector3(light.cascadeSplits) << ";\n";
-    code << ind << "light.shadowDistance = " << formatFloat(light.shadowDistance) << ";\n";
-    code << ind << "light.shadowAngularDiameter = " << formatFloat(light.shadowAngularDiameter) << ";\n";
-    code << ind << "light.shadowSourceRadius = " << formatFloat(light.shadowSourceRadius) << ";\n";
-    if (light.shadowUpdateMode == ShadowUpdateMode::EVERY_FRAME)
-        code << ind << "light.shadowUpdateMode = ShadowUpdateMode::EVERY_FRAME;\n";
-    else if (light.shadowUpdateMode == ShadowUpdateMode::ON_DEMAND)
-        code << ind << "light.shadowUpdateMode = ShadowUpdateMode::ON_DEMAND;\n";
-    if (light.volumetricIntensity != LightComponent().volumetricIntensity)
-        code << ind << "light.volumetricIntensity = " << formatFloat(light.volumetricIntensity) << ";\n";
-    if (light.shading == LightShading::PIXEL)
-        code << ind << "light.shading = LightShading::PIXEL;\n";
-    else if (light.shading == LightShading::VERTEX)
-        code << ind << "light.shading = LightShading::VERTEX;\n";
-    if (light.intensityUnit == LightUnit::LUX)
-        code << ind << "light.intensityUnit = LightUnit::LUX;\n";
-    else if (light.intensityUnit == LightUnit::CANDELA)
-        code << ind << "light.intensityUnit = LightUnit::CANDELA;\n";
-    else if (light.intensityUnit == LightUnit::LUMEN)
-        code << ind << "light.intensityUnit = LightUnit::LUMEN;\n";
-    if (light.useColorTemperature)
-        code << ind << "light.useColorTemperature = true;\n";
-    if (light.colorTemperature != LightComponent().colorTemperature)
-        code << ind << "light.colorTemperature = " << formatFloat(light.colorTemperature) << ";\n";
-    if (!light.enabled) code << ind << "light.enabled = false;\n";
-    addComponentCode(code, ind, sceneName, entityName, entity, "LightComponent", "light", assignExisting);
-    return code.str();
-}
-
-std::string editor::Factory::createLight2DComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
-    if (!scene->findComponent<Light2DComponent>(entity)) return "";
-    Light2DComponent& light = scene->getComponent<Light2DComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "Light2DComponent light2d;\n";
-    code << ind << "light2d.color = " << formatVector3(light.color) << ";\n";
-    code << ind << "light2d.intensity = " << formatFloat(light.intensity) << ";\n";
-    code << ind << "light2d.range = " << formatFloat(light.range) << ";\n";
-    code << ind << "light2d.falloff = " << formatFloat(light.falloff) << ";\n";
-    code << ind << "light2d.height = " << formatFloat(light.height) << ";\n";
-    code << ind << "light2d.shadows = " << formatBool(light.shadows) << ";\n";
-    code << ind << "light2d.shadowBias = " << formatFloat(light.shadowBias) << ";\n";
-    code << ind << "light2d.shadowSoftness = " << formatFloat(light.shadowSoftness) << ";\n";
-    code << ind << "light2d.mapResolution = " << formatUInt(light.mapResolution) << ";\n";
-    if (!light.enabled) code << ind << "light2d.enabled = false;\n";
-    addComponentCode(code, ind, sceneName, entityName, entity, "Light2DComponent", "light2d", assignExisting);
-    return code.str();
-}
-
-std::string editor::Factory::createShadowCaster2DComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
-    if (!scene->findComponent<ShadowCaster2DComponent>(entity)) return "";
-    ShadowCaster2DComponent& occluder = scene->getComponent<ShadowCaster2DComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "ShadowCaster2DComponent shadowcaster2d;\n";
-    code << ind << "shadowcaster2d.shape = " << ((occluder.shape == ShadowCaster2DShape::POLYGON) ? "ShadowCaster2DShape::POLYGON" : "ShadowCaster2DShape::AUTO_QUAD") << ";\n";
-    code << ind << "shadowcaster2d.closed = " << formatBool(occluder.closed) << ";\n";
-    code << ind << "shadowcaster2d.enabled = " << formatBool(occluder.enabled) << ";\n";
-    for (const Vector2& point : occluder.points) {
-        code << ind << "shadowcaster2d.points.push_back(" << formatVector2(point) << ");\n";
-    }
-    addComponentCode(code, ind, sceneName, entityName, entity, "ShadowCaster2DComponent", "shadowcaster2d", assignExisting);
-    return code.str();
-}
-
-std::string editor::Factory::createFogComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
-    if (!scene->findComponent<FogComponent>(entity)) return "";
-    FogComponent& fog = scene->getComponent<FogComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "FogComponent fog;\n";
-    code << ind << "fog.type = " << formatFogType(fog.type) << ";\n";
-    code << ind << "fog.color = " << formatVector3(fog.color) << ";\n";
-    code << ind << "fog.density = " << formatFloat(fog.density) << ";\n";
-    code << ind << "fog.linearStart = " << formatFloat(fog.linearStart) << ";\n";
-    code << ind << "fog.linearEnd = " << formatFloat(fog.linearEnd) << ";\n";
-    // the height fog's fields where they differ from the defaults
-    const FogComponent defaults;
-    if (fog.colorMode != defaults.colorMode) code << ind << "fog.colorMode = FogColorMode::SKY;\n";
-    if (fog.attenuationDistance != defaults.attenuationDistance) code << ind << "fog.attenuationDistance = " << formatFloat(fog.attenuationDistance) << ";\n";
-    if (fog.baseHeight != defaults.baseHeight) code << ind << "fog.baseHeight = " << formatFloat(fog.baseHeight) << ";\n";
-    if (fog.maximumHeight != defaults.maximumHeight) code << ind << "fog.maximumHeight = " << formatFloat(fog.maximumHeight) << ";\n";
-    if (fog.startDistance != defaults.startDistance) code << ind << "fog.startDistance = " << formatFloat(fog.startDistance) << ";\n";
-    if (fog.maxFogDistance != defaults.maxFogDistance) code << ind << "fog.maxFogDistance = " << formatFloat(fog.maxFogDistance) << ";\n";
-    if (fog.maxOpacity != defaults.maxOpacity) code << ind << "fog.maxOpacity = " << formatFloat(fog.maxOpacity) << ";\n";
-    if (fog.directionalInscattering != defaults.directionalInscattering) code << ind << "fog.directionalInscattering = " << formatFloat(fog.directionalInscattering) << ";\n";
-    if (fog.anisotropy != defaults.anisotropy) code << ind << "fog.anisotropy = " << formatFloat(fog.anisotropy) << ";\n";
-    if (fog.skyFill != defaults.skyFill) code << ind << "fog.skyFill = " << formatBool(fog.skyFill) << ";\n";
-    if (fog.skyFillAngle != defaults.skyFillAngle) code << ind << "fog.skyFillAngle = " << formatFloat(fog.skyFillAngle) << ";\n";
-    if (fog.volumetric != defaults.volumetric) code << ind << "fog.volumetric = " << formatBool(fog.volumetric) << ";\n";
-    if (fog.volumetricDistance != defaults.volumetricDistance) code << ind << "fog.volumetricDistance = " << formatFloat(fog.volumetricDistance) << ";\n";
-    if (fog.lightShafts != defaults.lightShafts) code << ind << "fog.lightShafts = " << formatBool(fog.lightShafts) << ";\n";
-    if (fog.noiseIntensity != defaults.noiseIntensity) code << ind << "fog.noiseIntensity = " << formatFloat(fog.noiseIntensity) << ";\n";
-    if (fog.noiseScale != defaults.noiseScale) code << ind << "fog.noiseScale = " << formatFloat(fog.noiseScale) << ";\n";
-    if (fog.wind != defaults.wind) code << ind << "fog.wind = " << formatVector3(fog.wind) << ";\n";
-    if (fog.qualityOverride != defaults.qualityOverride) code << ind << "fog.qualityOverride = " << formatAtmosphereQualityOverride(fog.qualityOverride) << ";\n";
-    addComponentCode(code, ind, sceneName, entityName, entity, "FogComponent", "fog", assignExisting);
-    return code.str();
-}
-
-std::string editor::Factory::formatAtmosphereQualityOverride(AtmosphereQualityOverride quality) {
-    switch (quality) {
-        case AtmosphereQualityOverride::LOW: return "AtmosphereQualityOverride::LOW";
-        case AtmosphereQualityOverride::MEDIUM: return "AtmosphereQualityOverride::MEDIUM";
-        default: return "AtmosphereQualityOverride::PROJECT";
-    }
-}
-
-std::string editor::Factory::createLocalVolumetricFogComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
-    if (!scene->findComponent<LocalVolumetricFogComponent>(entity)) return "";
-    LocalVolumetricFogComponent& volume = scene->getComponent<LocalVolumetricFogComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "LocalVolumetricFogComponent volume;\n";
-    code << ind << "volume.shape = FogVolumeShape::" << (volume.shape == FogVolumeShape::SPHERE ? "SPHERE" : "BOX") << ";\n";
-    code << ind << "volume.size = " << formatVector3(volume.size) << ";\n";
-    code << ind << "volume.attenuationDistance = " << formatFloat(volume.attenuationDistance) << ";\n";
-    code << ind << "volume.albedo = " << formatVector3(volume.albedo) << ";\n";
-    code << ind << "volume.blendDistance = " << formatFloat(volume.blendDistance) << ";\n";
-    code << ind << "volume.falloff = FogVolumeFalloff::" << (volume.falloff == FogVolumeFalloff::EXPONENTIAL ? "EXPONENTIAL" : "LINEAR") << ";\n";
-    code << ind << "volume.noiseIntensity = " << formatFloat(volume.noiseIntensity) << ";\n";
-    code << ind << "volume.noiseScale = " << formatFloat(volume.noiseScale) << ";\n";
-    code << ind << "volume.scrollSpeed = " << formatVector3(volume.scrollSpeed) << ";\n";
-    addComponentCode(code, ind, sceneName, entityName, entity, "LocalVolumetricFogComponent", "volume", assignExisting);
-    return code.str();
-}
-
-std::string editor::Factory::createVolumetricCloudsComponent(int indentSpaces, EntityRegistry* scene, Entity entity, const fs::path& projectPath, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
-    if (!scene->findComponent<VolumetricCloudsComponent>(entity)) return "";
-    VolumetricCloudsComponent& clouds = scene->getComponent<VolumetricCloudsComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    static const char* const presets[] = {"CUSTOM", "SPARSE", "CLOUDY", "OVERCAST", "STORMY"};
-    static const char* const renderings[] = {"AUTO", "SKY_MAP", "SCREEN"};
-    code << ind << "VolumetricCloudsComponent clouds;\n";
-    code << ind << "clouds.preset = CloudsPreset::" << presets[std::clamp((int)clouds.preset, 0, 4)] << ";\n";
-    code << ind << "clouds.rendering = CloudsRendering::" << renderings[std::clamp((int)clouds.rendering, 0, 2)] << ";\n";
-    code << ind << "clouds.coverage = " << formatFloat(clouds.coverage) << ";\n";
-    code << ind << "clouds.density = " << formatFloat(clouds.density) << ";\n";
-    code << ind << "clouds.shapeScale = " << formatFloat(clouds.shapeScale) << ";\n";
-    code << ind << "clouds.shapeFactor = " << formatFloat(clouds.shapeFactor) << ";\n";
-    code << ind << "clouds.erosionFactor = " << formatFloat(clouds.erosionFactor) << ";\n";
-    code << ind << "clouds.erosionScale = " << formatFloat(clouds.erosionScale) << ";\n";
-    code << ind << "clouds.bottomAltitude = " << formatFloat(clouds.bottomAltitude) << ";\n";
-    code << ind << "clouds.altitudeRange = " << formatFloat(clouds.altitudeRange) << ";\n";
-    code << ind << "clouds.earthCurvature = " << formatFloat(clouds.earthCurvature) << ";\n";
-    code << ind << "clouds.windDirection = " << formatFloat(clouds.windDirection) << ";\n";
-    code << ind << "clouds.windSpeed = " << formatFloat(clouds.windSpeed) << ";\n";
-    code << formatTexture(indentSpaces, clouds.weatherMap, "clouds.weatherMap", projectPath);
-    code << ind << "clouds.weatherMapScale = " << formatFloat(clouds.weatherMapScale) << ";\n";
-    code << ind << "clouds.sunLightDimmer = " << formatFloat(clouds.sunLightDimmer) << ";\n";
-    code << ind << "clouds.ambientLightDimmer = " << formatFloat(clouds.ambientLightDimmer) << ";\n";
-    code << ind << "clouds.maxDistance = " << formatFloat(clouds.maxDistance) << ";\n";
-    code << ind << "clouds.qualityOverride = " << formatAtmosphereQualityOverride(clouds.qualityOverride) << ";\n";
-    addComponentCode(code, ind, sceneName, entityName, entity, "VolumetricCloudsComponent", "clouds", assignExisting);
-    return code.str();
-}
-
-std::string editor::Factory::createMirrorComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
-    if (!scene->findComponent<MirrorComponent>(entity)) return "";
-    MirrorComponent& mirror = scene->getComponent<MirrorComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "MirrorComponent mirror;\n";
-    code << ind << "mirror.normal = " << formatVector3(mirror.normal) << ";\n";
-    addComponentCode(code, ind, sceneName, entityName, entity, "MirrorComponent", "mirror", assignExisting);
-    return code.str();
-}
-
-std::string editor::Factory::createUIDocumentComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
-    if (!scene->findComponent<UIDocumentComponent>(entity)) return "";
-    UIDocumentComponent& document = scene->getComponent<UIDocumentComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "UIDocumentComponent uidocument;\n";
-    code << ind << "uidocument.filename = " << formatString(document.filename) << ";\n";
-    code << ind << "uidocument.sortOrder = " << formatInt(document.sortOrder) << ";\n";
-    if (!document.enabled) code << ind << "uidocument.enabled = false;\n";
-    const UIDocumentComponent defaults;
-    if (document.interactive != defaults.interactive) code << ind << "uidocument.interactive = " << formatBool(document.interactive) << ";\n";
-    if (document.renderMode != defaults.renderMode) code << ind << "uidocument.renderMode = UIDocumentRenderMode::" << (document.renderMode == UIDocumentRenderMode::TEXTURE ? "TEXTURE" : "SCREEN") << ";\n";
-    if (document.textureWidth != defaults.textureWidth) code << ind << "uidocument.textureWidth = " << formatInt(document.textureWidth) << ";\n";
-    if (document.textureHeight != defaults.textureHeight) code << ind << "uidocument.textureHeight = " << formatInt(document.textureHeight) << ";\n";
-    if (document.inputSurface != defaults.inputSurface) code << ind << "uidocument.inputSurface = " << formatEntity(document.inputSurface, entityVarNames) << ";\n";
-    if (document.pixelRatio != defaults.pixelRatio) code << ind << "uidocument.pixelRatio = " << formatFloat(document.pixelRatio) << ";\n";
-    addComponentCode(code, ind, sceneName, entityName, entity, "UIDocumentComponent", "uidocument", assignExisting);
-    return code.str();
-}
-
-std::string editor::Factory::createFluidSimulationComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
-    (void)entityVarNames;
-    if (!scene->findComponent<FluidSimulationComponent>(entity)) return "";
-    FluidSimulationComponent& fluid = scene->getComponent<FluidSimulationComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "FluidSimulationComponent fluid;\n";
-    if (!fluid.enabled) code << ind << "fluid.enabled = false;\n";
-    // only what differs from the defaults (Pavel's); the runtime fields start fresh
-    const FluidSimulationComponent defaults;
-    if (fluid.output != defaults.output) code << ind << "fluid.output = " << "FluidOutput::" << (fluid.output == FluidOutput::SCREEN ? "SCREEN" : fluid.output == FluidOutput::TEXTURE ? "TEXTURE" : "MATERIAL") << ";\n";
-    if (fluid.interactive != defaults.interactive) code << ind << "fluid.interactive = " << formatBool(fluid.interactive) << ";\n";
-    if (fluid.aspectRatio != defaults.aspectRatio) code << ind << "fluid.aspectRatio = " << formatFloat(fluid.aspectRatio) << ";\n";
-    if (fluid.simResolution != defaults.simResolution) code << ind << "fluid.simResolution = " << formatUInt(fluid.simResolution) << "u" << ";\n";
-    if (fluid.dyeResolution != defaults.dyeResolution) code << ind << "fluid.dyeResolution = " << formatUInt(fluid.dyeResolution) << "u" << ";\n";
-    if (fluid.densityDissipation != defaults.densityDissipation) code << ind << "fluid.densityDissipation = " << formatFloat(fluid.densityDissipation) << ";\n";
-    if (fluid.velocityDissipation != defaults.velocityDissipation) code << ind << "fluid.velocityDissipation = " << formatFloat(fluid.velocityDissipation) << ";\n";
-    if (fluid.pressure != defaults.pressure) code << ind << "fluid.pressure = " << formatFloat(fluid.pressure) << ";\n";
-    if (fluid.pressureIterations != defaults.pressureIterations) code << ind << "fluid.pressureIterations = " << formatUInt(fluid.pressureIterations) << "u" << ";\n";
-    if (fluid.curl != defaults.curl) code << ind << "fluid.curl = " << formatFloat(fluid.curl) << ";\n";
-    if (fluid.gradientScale != defaults.gradientScale) code << ind << "fluid.gradientScale = " << formatFloat(fluid.gradientScale) << ";\n";
-    if (fluid.simulationRate != defaults.simulationRate) code << ind << "fluid.simulationRate = " << formatFloat(fluid.simulationRate) << ";\n";
-    if (fluid.maxSubsteps != defaults.maxSubsteps) code << ind << "fluid.maxSubsteps = " << formatUInt(fluid.maxSubsteps) << "u" << ";\n";
-    if (fluid.timeScale != defaults.timeScale) code << ind << "fluid.timeScale = " << formatFloat(fluid.timeScale) << ";\n";
-    if (fluid.paused != defaults.paused) code << ind << "fluid.paused = " << formatBool(fluid.paused) << ";\n";
-    if (fluid.splatRadius != defaults.splatRadius) code << ind << "fluid.splatRadius = " << formatFloat(fluid.splatRadius) << ";\n";
-    if (fluid.splatForce != defaults.splatForce) code << ind << "fluid.splatForce = " << formatFloat(fluid.splatForce) << ";\n";
-    if (fluid.colorful != defaults.colorful) code << ind << "fluid.colorful = " << formatBool(fluid.colorful) << ";\n";
-    if (fluid.colorUpdateSpeed != defaults.colorUpdateSpeed) code << ind << "fluid.colorUpdateSpeed = " << formatFloat(fluid.colorUpdateSpeed) << ";\n";
-    if (fluid.splatsOnStart != defaults.splatsOnStart) code << ind << "fluid.splatsOnStart = " << formatBool(fluid.splatsOnStart) << ";\n";
-    if (fluid.randomSplatCount != defaults.randomSplatCount) code << ind << "fluid.randomSplatCount = " << formatUInt(fluid.randomSplatCount) << "u" << ";\n";
-    if (fluid.seed != defaults.seed) code << ind << "fluid.seed = " << formatUInt(fluid.seed) << "u" << ";\n";
-    if (fluid.shading != defaults.shading) code << ind << "fluid.shading = " << formatBool(fluid.shading) << ";\n";
-    if (fluid.backColor != defaults.backColor) code << ind << "fluid.backColor = " << formatVector3(fluid.backColor) << ";\n";
-    if (fluid.transparent != defaults.transparent) code << ind << "fluid.transparent = " << formatBool(fluid.transparent) << ";\n";
-    if (fluid.bloom != defaults.bloom) code << ind << "fluid.bloom = " << formatBool(fluid.bloom) << ";\n";
-    if (fluid.bloomIterations != defaults.bloomIterations) code << ind << "fluid.bloomIterations = " << formatUInt(fluid.bloomIterations) << "u" << ";\n";
-    if (fluid.bloomResolution != defaults.bloomResolution) code << ind << "fluid.bloomResolution = " << formatUInt(fluid.bloomResolution) << "u" << ";\n";
-    if (fluid.bloomIntensity != defaults.bloomIntensity) code << ind << "fluid.bloomIntensity = " << formatFloat(fluid.bloomIntensity) << ";\n";
-    if (fluid.bloomThreshold != defaults.bloomThreshold) code << ind << "fluid.bloomThreshold = " << formatFloat(fluid.bloomThreshold) << ";\n";
-    if (fluid.bloomSoftKnee != defaults.bloomSoftKnee) code << ind << "fluid.bloomSoftKnee = " << formatFloat(fluid.bloomSoftKnee) << ";\n";
-    if (fluid.sunrays != defaults.sunrays) code << ind << "fluid.sunrays = " << formatBool(fluid.sunrays) << ";\n";
-    if (fluid.sunraysResolution != defaults.sunraysResolution) code << ind << "fluid.sunraysResolution = " << formatUInt(fluid.sunraysResolution) << "u" << ";\n";
-    if (fluid.sunraysWeight != defaults.sunraysWeight) code << ind << "fluid.sunraysWeight = " << formatFloat(fluid.sunraysWeight) << ";\n";
-    addComponentCode(code, ind, sceneName, entityName, entity, "FluidSimulationComponent", "fluid", assignExisting);
-    return code.str();
-}
-
-std::string editor::Factory::createReflectionProbeComponent(int indentSpaces, EntityRegistry* scene, Entity entity, const fs::path& projectPath, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
-    if (!scene->findComponent<ReflectionProbeComponent>(entity)) return "";
-    ReflectionProbeComponent& probe = scene->getComponent<ReflectionProbeComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "ReflectionProbeComponent probe;\n";
-    code << ind << "probe.mode = ReflectionProbeMode::" << (probe.mode == ReflectionProbeMode::DYNAMIC ? "DYNAMIC" : "STATIC") << ";\n";
-    const char* updateMode = "ON_LOAD";
-    if (probe.updateMode == ReflectionProbeUpdateMode::ON_MOVE) updateMode = "ON_MOVE";
-    else if (probe.updateMode == ReflectionProbeUpdateMode::INTERVAL) updateMode = "INTERVAL";
-    else if (probe.updateMode == ReflectionProbeUpdateMode::MANUAL) updateMode = "MANUAL";
-    code << ind << "probe.updateMode = ReflectionProbeUpdateMode::" << updateMode << ";\n";
-    code << ind << "probe.boxOffset = " << formatVector3(probe.boxOffset) << ";\n";
-    code << ind << "probe.boxSize = " << formatVector3(probe.boxSize) << ";\n";
-    code << ind << "probe.blendDistance = " << formatFloat(probe.blendDistance) << ";\n";
-    code << ind << "probe.intensity = " << formatFloat(probe.intensity) << ";\n";
-    code << ind << "probe.priority = " << formatInt(probe.priority) << ";\n";
-    code << ind << "probe.resolution = " << probe.resolution << ";\n";
-    code << ind << "probe.nearClip = " << formatFloat(probe.nearClip) << ";\n";
-    code << ind << "probe.farClip = " << formatFloat(probe.farClip) << ";\n";
-    code << ind << "probe.updateInterval = " << formatFloat(probe.updateInterval) << ";\n";
-    code << ind << "probe.includeSky = " << formatBool(probe.includeSky) << ";\n";
-    code << ind << "probe.cullingMask = " << formatLayerMask(probe.cullingMask) << ";\n";
-    code << formatTexture(indentSpaces, probe.texture, "probe.texture", projectPath);
-    addComponentCode(code, ind, sceneName, entityName, entity, "ReflectionProbeComponent", "probe", assignExisting);
-    return code.str();
-}
-
-std::string editor::Factory::createCameraComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
-    if (!scene->findComponent<CameraComponent>(entity)) return "";
-    CameraComponent& camera = scene->getComponent<CameraComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "CameraComponent camera;\n";
-    code << ind << "camera.type = " << formatCameraType(camera.type) << ";\n";
-    code << ind << "camera.target = " << formatVector3(camera.target) << ";\n";
-    code << ind << "camera.up = " << formatVector3(camera.up) << ";\n";
-    code << ind << "camera.leftClip = " << formatFloat(camera.leftClip) << ";\n";
-    code << ind << "camera.rightClip = " << formatFloat(camera.rightClip) << ";\n";
-    code << ind << "camera.bottomClip = " << formatFloat(camera.bottomClip) << ";\n";
-    code << ind << "camera.topClip = " << formatFloat(camera.topClip) << ";\n";
-    code << ind << "camera.yfov = " << formatPositiveFloat(camera.yfov) << ";\n";
-    code << ind << "camera.aspect = " << formatPositiveFloat(camera.aspect) << ";\n";
-    code << ind << "camera.nearClip = " << formatFloat(camera.nearClip) << ";\n";
-    code << ind << "camera.farClip = " << formatFloat(camera.farClip) << ";\n";
-    code << ind << "camera.renderToTexture = " << formatBool(camera.renderToTexture) << ";\n";
-    code << ind << "camera.transparentSort = " << formatBool(camera.transparentSort) << ";\n";
-    code << ind << "camera.depthTest = " << formatBool(camera.depthTest) << ";\n";
-    code << ind << "camera.cullingMask = " << formatLayerMask(camera.cullingMask) << ";\n";
-    code << ind << "camera.useTarget = " << formatBool(camera.useTarget) << ";\n";
-    code << ind << "camera.autoResize = " << formatBool(camera.autoResize) << ";\n";
-    code << ind << "camera.framebufferWidth = " << formatUInt(camera.framebufferWidth) << ";\n";
-    code << ind << "camera.framebufferHeight = " << formatUInt(camera.framebufferHeight) << ";\n";
-    code << ind << "camera.framebufferFilter = " << formatTextureFilter(camera.framebufferFilter) << ";\n";
-    if (!camera.enabled) code << ind << "camera.enabled = false;\n";
-    addComponentCode(code, ind, sceneName, entityName, entity, "CameraComponent", "camera", assignExisting);
-    return code.str();
-}
-
-std::string editor::Factory::createAudioSourceComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
-    if (!scene->findComponent<AudioSourceComponent>(entity)) return "";
-    AudioSourceComponent& audio = scene->getComponent<AudioSourceComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "AudioSourceComponent audio;\n";
-    code << ind << "audio.state = " << formatAudioSourceState(AudioSourceState::Stopped) << ";\n";
-    code << ind << "audio.filename = " << formatString(audio.filename) << ";\n";
-    code << ind << "audio.enableClocked = " << formatBool(audio.enableClocked) << ";\n";
-    code << ind << "audio.volume = " << formatDouble(audio.volume) << ";\n";
-    code << ind << "audio.speed = " << formatFloat(audio.speed) << ";\n";
-    code << ind << "audio.pan = " << formatFloat(audio.pan) << ";\n";
-    code << ind << "audio.looping = " << formatBool(audio.looping) << ";\n";
-    code << ind << "audio.loopingPoint = " << formatDouble(audio.loopingPoint) << ";\n";
-    code << ind << "audio.protectVoice = " << formatBool(audio.protectVoice) << ";\n";
-    code << ind << "audio.inaudibleBehaviorMustTick = " << formatBool(audio.inaudibleBehaviorMustTick) << ";\n";
-    code << ind << "audio.inaudibleBehaviorKill = " << formatBool(audio.inaudibleBehaviorKill) << ";\n";
-    code << ind << "audio.minDistance = " << formatFloat(audio.minDistance) << ";\n";
-    code << ind << "audio.maxDistance = " << formatFloat(audio.maxDistance) << ";\n";
-    code << ind << "audio.attenuationModel = " << formatAudioSourceAttenuation(audio.attenuationModel) << ";\n";
-    code << ind << "audio.attenuationRolloffFactor = " << formatFloat(audio.attenuationRolloffFactor) << ";\n";
-    code << ind << "audio.dopplerFactor = " << formatFloat(audio.dopplerFactor) << ";\n";
-    code << ind << "audio.needUpdate = true;\n";
-    if (audio.state == AudioSourceState::Playing) {
-        code << ind << "audio.startTrigger = true;\n";
-    }
-    if (!audio.enabled) code << ind << "audio.enabled = false;\n";
-    addComponentCode(code, ind, sceneName, entityName, entity, "AudioSourceComponent", "audio", assignExisting);
-    return code.str();
-}
-
 std::string editor::Factory::createScriptComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
     if (!scene->findComponent<ScriptComponent>(entity)) return "";
     ScriptComponent& script = scene->getComponent<ScriptComponent>(entity);
@@ -2289,96 +1597,27 @@ std::string editor::Factory::createSkyboxComponent(int indentSpaces, EntityRegis
 }
 
 std::string editor::Factory::formatBodyType(BodyType type) {
-    switch (type) {
-        case BodyType::STATIC: return "BodyType::STATIC";
-        case BodyType::KINEMATIC: return "BodyType::KINEMATIC";
-        case BodyType::DYNAMIC: return "BodyType::DYNAMIC";
-        default: return "BodyType::STATIC";
-    }
+    return formatEnum(reflect::enums::kBodyType, static_cast<int>(type));
 }
 
 std::string editor::Factory::formatCollider2DType(Collider2DType type) {
-    switch (type) {
-        case Collider2DType::POLYGON: return "Collider2DType::POLYGON";
-        case Collider2DType::CIRCLE: return "Collider2DType::CIRCLE";
-        case Collider2DType::CAPSULE: return "Collider2DType::CAPSULE";
-        case Collider2DType::SEGMENT: return "Collider2DType::SEGMENT";
-        case Collider2DType::CHAIN: return "Collider2DType::CHAIN";
-        default: return "Collider2DType::POLYGON";
-    }
+    return formatEnum(reflect::enums::kCollider2DType, static_cast<int>(type));
 }
 
 std::string editor::Factory::formatRigidbodyMotionQuality(RigidbodyMotionQuality motionQuality) {
-    switch (motionQuality) {
-        case RigidbodyMotionQuality::LINEAR_CAST: return "RigidbodyMotionQuality::LINEAR_CAST";
-        case RigidbodyMotionQuality::DISCRETE:
-        default: return "RigidbodyMotionQuality::DISCRETE";
-    }
+    return formatEnum(reflect::enums::kRigidbodyMotionQuality, static_cast<int>(motionQuality));
 }
 
 std::string editor::Factory::formatCollider3DType(Collider3DType type) {
-    switch (type) {
-        case Collider3DType::SPHERE: return "Collider3DType::SPHERE";
-        case Collider3DType::BOX: return "Collider3DType::BOX";
-        case Collider3DType::CAPSULE: return "Collider3DType::CAPSULE";
-        case Collider3DType::TAPERED_CAPSULE: return "Collider3DType::TAPERED_CAPSULE";
-        case Collider3DType::CYLINDER: return "Collider3DType::CYLINDER";
-        case Collider3DType::CONVEX_HULL: return "Collider3DType::CONVEX_HULL";
-        case Collider3DType::MESH: return "Collider3DType::MESH";
-        case Collider3DType::HEIGHTFIELD: return "Collider3DType::HEIGHTFIELD";
-        default: return "Collider3DType::SPHERE";
-    }
+    return formatEnum(reflect::enums::kCollider3DType, static_cast<int>(type));
 }
 
 std::string editor::Factory::formatCollider3DSource(Collider3DSource source) {
-    switch (source) {
-        case Collider3DSource::NONE: return "Collider3DSource::NONE";
-        case Collider3DSource::RAW_VERTICES: return "Collider3DSource::RAW_VERTICES";
-        case Collider3DSource::RAW_MESH: return "Collider3DSource::RAW_MESH";
-        case Collider3DSource::ENTITY_MESH: return "Collider3DSource::ENTITY_MESH";
-        case Collider3DSource::ENTITY_HEIGHTFIELD: return "Collider3DSource::ENTITY_HEIGHTFIELD";
-        default: return "Collider3DSource::NONE";
-    }
-}
-
-std::string editor::Factory::formatJoint2DType(Joint2DType type) {
-    switch (type) {
-        case Joint2DType::DISTANCE: return "Joint2DType::DISTANCE";
-        case Joint2DType::REVOLUTE: return "Joint2DType::REVOLUTE";
-        case Joint2DType::PRISMATIC: return "Joint2DType::PRISMATIC";
-        case Joint2DType::MOUSE: return "Joint2DType::MOUSE";
-        case Joint2DType::WHEEL: return "Joint2DType::WHEEL";
-        case Joint2DType::WELD: return "Joint2DType::WELD";
-        case Joint2DType::MOTOR: return "Joint2DType::MOTOR";
-        default: return "Joint2DType::DISTANCE";
-    }
-}
-
-std::string editor::Factory::formatJoint3DType(Joint3DType type) {
-    switch (type) {
-        case Joint3DType::FIXED: return "Joint3DType::FIXED";
-        case Joint3DType::DISTANCE: return "Joint3DType::DISTANCE";
-        case Joint3DType::POINT: return "Joint3DType::POINT";
-        case Joint3DType::HINGE: return "Joint3DType::HINGE";
-        case Joint3DType::CONE: return "Joint3DType::CONE";
-        case Joint3DType::PRISMATIC: return "Joint3DType::PRISMATIC";
-        case Joint3DType::SWINGTWIST: return "Joint3DType::SWINGTWIST";
-        case Joint3DType::SIXDOF: return "Joint3DType::SIXDOF";
-        case Joint3DType::PATH: return "Joint3DType::PATH";
-        case Joint3DType::GEAR: return "Joint3DType::GEAR";
-        case Joint3DType::RACKANDPINON: return "Joint3DType::RACKANDPINON";
-        case Joint3DType::PULLEY: return "Joint3DType::PULLEY";
-        default: return "Joint3DType::FIXED";
-    }
+    return formatEnum(reflect::enums::kCollider3DSource, static_cast<int>(source));
 }
 
 std::string editor::Factory::formatActionState(ActionState state) {
-    switch (state) {
-        case ActionState::Running: return "ActionState::Running";
-        case ActionState::Paused: return "ActionState::Paused";
-        case ActionState::Stopped: return "ActionState::Stopped";
-        default: return "ActionState::Stopped";
-    }
+    return formatEnum(reflect::enums::kActionState, static_cast<int>(state));
 }
 
 std::string editor::Factory::createRigidbody2DComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
@@ -2504,263 +1743,6 @@ std::string editor::Factory::createRigidbodyComponent(int indentSpaces, EntityRe
     return code.str();
 }
 
-std::string editor::Factory::createWaterVolumeComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting) {
-    if (!scene->findComponent<WaterVolumeComponent>(entity)) return "";
-    const WaterVolumeComponent& volume = scene->getComponent<WaterVolumeComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "WaterVolumeComponent waterVolume;\n";
-    code << ind << "waterVolume.size = " << formatVector3(volume.size) << ";\n";
-    code << ind << "waterVolume.surfaceOffset = " << formatFloat(volume.surfaceOffset) << ";\n";
-    code << ind << "waterVolume.infinite = " << formatBool(volume.infinite) << ";\n";
-    code << ind << "waterVolume.density = " << formatFloat(volume.density) << ";\n";
-    code << ind << "waterVolume.flow = " << formatVector3(volume.flow) << ";\n";
-    code << ind << "waterVolume.linearDrag = " << formatFloat(volume.linearDrag) << ";\n";
-    code << ind << "waterVolume.angularDrag = " << formatFloat(volume.angularDrag) << ";\n";
-    code << ind << "waterVolume.waves = " << (volume.waves == WaterVolumeWaves::NONE ? "WaterVolumeWaves::NONE" : "WaterVolumeWaves::FROM_MATERIAL") << ";\n";
-    if (!volume.enabled) code << ind << "waterVolume.enabled = false;\n";
-    addComponentCode(code, ind, sceneName, entityName, entity, "WaterVolumeComponent", "waterVolume", assignExisting);
-    return code.str();
-}
-
-std::string editor::Factory::createBuoyancyComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting) {
-    if (!scene->findComponent<BuoyancyComponent>(entity)) return "";
-    const BuoyancyComponent& buoyancy = scene->getComponent<BuoyancyComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    const char* columns = buoyancy.columns == BuoyancyColumns::AUTO_3x3 ? "BuoyancyColumns::AUTO_3x3"
-                        : buoyancy.columns == BuoyancyColumns::CUSTOM ? "BuoyancyColumns::CUSTOM" : "BuoyancyColumns::AUTO_2x2";
-    code << ind << "BuoyancyComponent buoyancy;\n";
-    code << ind << "buoyancy.columns = " << columns << ";\n";
-    for (const Vector3& point : buoyancy.customPoints)
-        code << ind << "buoyancy.customPoints.push_back(" << formatVector3(point) << ");\n";
-    code << ind << "buoyancy.volumeScale = " << formatFloat(buoyancy.volumeScale) << ";\n";
-    code << ind << "buoyancy.dragScale = " << formatFloat(buoyancy.dragScale) << ";\n";
-    if (!buoyancy.enabled) code << ind << "buoyancy.enabled = false;\n";
-    addComponentCode(code, ind, sceneName, entityName, entity, "BuoyancyComponent", "buoyancy", assignExisting);
-    return code.str();
-}
-
-std::string editor::Factory::createCharacterControllerComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting) {
-    if (!scene->findComponent<CharacterControllerComponent>(entity)) return "";
-    const CharacterControllerComponent& controller = scene->getComponent<CharacterControllerComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "CharacterControllerComponent controller;\n";
-    code << ind << "controller.center = " << formatVector3(controller.center) << ";\n";
-    code << ind << "controller.height = " << formatFloat(controller.height) << ";\n";
-    code << ind << "controller.radius = " << formatFloat(controller.radius) << ";\n";
-    code << ind << "controller.slopeLimit = " << formatFloat(controller.slopeLimit) << ";\n";
-    code << ind << "controller.stepOffset = " << formatFloat(controller.stepOffset) << ";\n";
-    code << ind << "controller.skinWidth = " << formatFloat(controller.skinWidth) << ";\n";
-    code << ind << "controller.minMoveDistance = " << formatFloat(controller.minMoveDistance) << ";\n";
-    code << ind << "controller.mass = " << formatFloat(controller.mass) << ";\n";
-    code << ind << "controller.pushStrength = " << formatFloat(controller.pushStrength) << ";\n";
-    code << ind << "controller.pushBodies = " << formatBool(controller.pushBodies) << ";\n";
-    code << ind << "controller.movingPlatforms = " << formatBool(controller.movingPlatforms) << ";\n";
-    code << ind << "controller.inheritPlatformYaw = " << formatBool(controller.inheritPlatformYaw) << ";\n";
-    code << ind << "controller.detectCollisions = " << formatBool(controller.detectCollisions) << ";\n";
-    code << ind << "controller.characterCollisions = " << formatBool(controller.characterCollisions) << ";\n";
-    code << ind << "controller.enhancedEdgeRemoval = " << formatBool(controller.enhancedEdgeRemoval) << ";\n";
-    code << ind << "controller.categoryBits = " << controller.categoryBits << ";\n";
-    code << ind << "controller.maskBits = " << controller.maskBits << ";\n";
-    if (!controller.enabled) code << ind << "controller.enabled = false;\n";
-    addComponentCode(code, ind, sceneName, entityName, entity, "CharacterControllerComponent", "controller", assignExisting);
-    return code.str();
-}
-
-std::string editor::Factory::createCharacterController2DComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting) {
-    if (!scene->findComponent<CharacterController2DComponent>(entity)) return "";
-    const CharacterController2DComponent& controller = scene->getComponent<CharacterController2DComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "CharacterController2DComponent controller2d;\n";
-    code << ind << "controller2d.center = " << formatVector2(controller.center) << ";\n";
-    code << ind << "controller2d.height = " << formatFloat(controller.height) << ";\n";
-    code << ind << "controller2d.radius = " << formatFloat(controller.radius) << ";\n";
-    code << ind << "controller2d.slopeLimit = " << formatFloat(controller.slopeLimit) << ";\n";
-    code << ind << "controller2d.stepOffset = " << formatFloat(controller.stepOffset) << ";\n";
-    code << ind << "controller2d.skinWidth = " << formatFloat(controller.skinWidth) << ";\n";
-    code << ind << "controller2d.minMoveDistance = " << formatFloat(controller.minMoveDistance) << ";\n";
-    code << ind << "controller2d.pushStrength = " << formatFloat(controller.pushStrength) << ";\n";
-    code << ind << "controller2d.pushBodies = " << formatBool(controller.pushBodies) << ";\n";
-    code << ind << "controller2d.movingPlatforms = " << formatBool(controller.movingPlatforms) << ";\n";
-    code << ind << "controller2d.categoryBits = " << controller.categoryBits << ";\n";
-    code << ind << "controller2d.maskBits = " << controller.maskBits << ";\n";
-    if (!controller.enabled) code << ind << "controller2d.enabled = false;\n";
-    addComponentCode(code, ind, sceneName, entityName, entity, "CharacterController2DComponent", "controller2d", assignExisting);
-    return code.str();
-}
-
-std::string editor::Factory::createJoint2DComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
-    if (!scene->findComponent<Joint2DComponent>(entity)) return "";
-    Joint2DComponent& joint = scene->getComponent<Joint2DComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "Joint2DComponent joint2d;\n";
-    code << ind << "joint2d.type = " << formatJoint2DType(joint.type) << ";\n";
-    code << ind << "joint2d.bodyA = " << formatEntity(joint.bodyA, entityVarNames) << ";\n";
-    code << ind << "joint2d.bodyB = " << formatEntity(joint.bodyB, entityVarNames) << ";\n";
-    code << ind << "joint2d.anchorA = " << formatVector2(joint.anchorA) << ";\n";
-    code << ind << "joint2d.anchorB = " << formatVector2(joint.anchorB) << ";\n";
-    code << ind << "joint2d.axis = " << formatVector2(joint.axis) << ";\n";
-    code << ind << "joint2d.target = " << formatVector2(joint.target) << ";\n";
-    code << ind << "joint2d.autoAnchors = " << formatBool(joint.autoAnchors) << ";\n";
-    code << ind << "joint2d.rope = " << formatBool(joint.rope) << ";\n";
-    code << ind << "joint2d.needUpdateJoint = " << formatBool(joint.needUpdateJoint) << ";\n";
-    if (!joint.enabled) code << ind << "joint2d.enabled = false;\n";
-    addComponentCode(code, ind, sceneName, entityName, entity, "Joint2DComponent", "joint2d", assignExisting);
-    return code.str();
-}
-
-std::string editor::Factory::createJoint3DComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
-    if (!scene->findComponent<Joint3DComponent>(entity)) return "";
-    Joint3DComponent& joint = scene->getComponent<Joint3DComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "Joint3DComponent joint3d;\n";
-    code << ind << "joint3d.type = " << formatJoint3DType(joint.type) << ";\n";
-    code << ind << "joint3d.bodyA = " << formatEntity(joint.bodyA, entityVarNames) << ";\n";
-    code << ind << "joint3d.bodyB = " << formatEntity(joint.bodyB, entityVarNames) << ";\n";
-    code << ind << "joint3d.anchorA = " << formatVector3(joint.anchorA) << ";\n";
-    code << ind << "joint3d.anchorB = " << formatVector3(joint.anchorB) << ";\n";
-    code << ind << "joint3d.anchor = " << formatVector3(joint.anchor) << ";\n";
-    code << ind << "joint3d.axis = " << formatVector3(joint.axis) << ";\n";
-    code << ind << "joint3d.normal = " << formatVector3(joint.normal) << ";\n";
-    code << ind << "joint3d.twistAxis = " << formatVector3(joint.twistAxis) << ";\n";
-    code << ind << "joint3d.planeAxis = " << formatVector3(joint.planeAxis) << ";\n";
-    code << ind << "joint3d.axisX = " << formatVector3(joint.axisX) << ";\n";
-    code << ind << "joint3d.axisY = " << formatVector3(joint.axisY) << ";\n";
-    code << ind << "joint3d.limitsMin = " << formatFloat(joint.limitsMin) << ";\n";
-    code << ind << "joint3d.limitsMax = " << formatFloat(joint.limitsMax) << ";\n";
-    code << ind << "joint3d.normalHalfConeAngle = " << formatFloat(joint.normalHalfConeAngle) << ";\n";
-    code << ind << "joint3d.planeHalfConeAngle = " << formatFloat(joint.planeHalfConeAngle) << ";\n";
-    code << ind << "joint3d.twistMinAngle = " << formatFloat(joint.twistMinAngle) << ";\n";
-    code << ind << "joint3d.twistMaxAngle = " << formatFloat(joint.twistMaxAngle) << ";\n";
-    code << ind << "joint3d.fixedPointA = " << formatVector3(joint.fixedPointA) << ";\n";
-    code << ind << "joint3d.fixedPointB = " << formatVector3(joint.fixedPointB) << ";\n";
-    code << ind << "joint3d.hingeA = " << formatEntity(joint.hingeA, entityVarNames) << ";\n";
-    code << ind << "joint3d.hingeB = " << formatEntity(joint.hingeB, entityVarNames) << ";\n";
-    code << ind << "joint3d.hinge = " << formatEntity(joint.hinge, entityVarNames) << ";\n";
-    code << ind << "joint3d.slider = " << formatEntity(joint.slider, entityVarNames) << ";\n";
-    code << ind << "joint3d.numTeethGearA = " << formatInt(joint.numTeethGearA) << ";\n";
-    code << ind << "joint3d.numTeethGearB = " << formatInt(joint.numTeethGearB) << ";\n";
-    code << ind << "joint3d.numTeethRack = " << formatInt(joint.numTeethRack) << ";\n";
-    code << ind << "joint3d.numTeethGear = " << formatInt(joint.numTeethGear) << ";\n";
-    code << ind << "joint3d.rackLength = " << formatInt(joint.rackLength) << ";\n";
-    code << ind << "joint3d.pathPoints.clear();\n";
-    for (size_t i = 0; i < joint.pathPoints.size(); i++) {
-        code << ind << "joint3d.pathPoints.push_back(" << formatVector3(joint.pathPoints[i]) << ");\n";
-    }
-    code << ind << "joint3d.pathPosition = " << formatVector3(joint.pathPosition) << ";\n";
-    code << ind << "joint3d.isLooping = " << formatBool(joint.isLooping) << ";\n";
-    code << ind << "joint3d.autoAnchors = " << formatBool(joint.autoAnchors) << ";\n";
-    code << ind << "joint3d.needUpdateJoint = " << formatBool(joint.needUpdateJoint) << ";\n";
-    if (!joint.enabled) code << ind << "joint3d.enabled = false;\n";
-    addComponentCode(code, ind, sceneName, entityName, entity, "Joint3DComponent", "joint3d", assignExisting);
-    return code.str();
-}
-
-std::string editor::Factory::createActionComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
-    if (!scene->findComponent<ActionComponent>(entity)) return "";
-    ActionComponent& action = scene->getComponent<ActionComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "ActionComponent actioncomp;\n";
-    if (action.state == ActionState::Running) {
-        code << ind << "actioncomp.startTrigger = true;\n";
-    } else if (action.state == ActionState::Paused) {
-        code << ind << "actioncomp.startTrigger = true;\n";
-        code << ind << "actioncomp.pauseTrigger = true;\n";
-    } else {
-        code << ind << "actioncomp.state = " << formatActionState(action.state) << ";\n";
-    }
-    code << ind << "actioncomp.speed = " << formatFloat(action.speed) << ";\n";
-    code << ind << "actioncomp.target = " << formatEntity(action.target, entityVarNames) << ";\n";
-    code << ind << "actioncomp.ownedTarget = " << formatBool(action.ownedTarget) << ";\n";
-    addComponentCode(code, ind, sceneName, entityName, entity, "ActionComponent", "actioncomp", assignExisting);
-    return code.str();
-}
-
-std::string editor::Factory::createTweenComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
-    if (!scene->findComponent<TweenComponent>(entity)) return "";
-    TweenComponent& timed = scene->getComponent<TweenComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "TweenComponent timedcomp;\n";
-    code << ind << "timedcomp.duration = " << formatFloat(timed.duration) << ";\n";
-    code << ind << "timedcomp.loop = " << formatBool(timed.loop) << ";\n";
-    code << ind << "timedcomp.pingPong = " << formatBool(timed.pingPong) << ";\n";
-    code << ind << "timedcomp.function = " << formatEase(timed.function) << ";\n";
-    addComponentCode(code, ind, sceneName, entityName, entity, "TweenComponent", "timedcomp", assignExisting);
-    return code.str();
-}
-
-std::string editor::Factory::createPositionTweenComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
-    if (!scene->findComponent<PositionTweenComponent>(entity)) return "";
-    PositionTweenComponent& posAction = scene->getComponent<PositionTweenComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "PositionTweenComponent poscomp;\n";
-    code << ind << "poscomp.endPosition = " << formatVector3(posAction.endPosition) << ";\n";
-    code << ind << "poscomp.startPosition = " << formatVector3(posAction.startPosition) << ";\n";
-    addComponentCode(code, ind, sceneName, entityName, entity, "PositionTweenComponent", "poscomp", assignExisting);
-    return code.str();
-}
-
-std::string editor::Factory::createRotationTweenComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
-    if (!scene->findComponent<RotationTweenComponent>(entity)) return "";
-    RotationTweenComponent& rotAction = scene->getComponent<RotationTweenComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "RotationTweenComponent rotcomp;\n";
-    code << ind << "rotcomp.endRotation = " << formatQuaternion(rotAction.endRotation) << ";\n";
-    code << ind << "rotcomp.startRotation = " << formatQuaternion(rotAction.startRotation) << ";\n";
-    code << ind << "rotcomp.shortestPath = " << formatBool(rotAction.shortestPath) << ";\n";
-    code << ind << "rotcomp.spin = " << formatBool(rotAction.spin) << ";\n";
-    code << ind << "rotcomp.axis = " << formatVector3(rotAction.axis) << ";\n";
-    code << ind << "rotcomp.angle = " << formatFloat(rotAction.angle) << ";\n";
-    addComponentCode(code, ind, sceneName, entityName, entity, "RotationTweenComponent", "rotcomp", assignExisting);
-    return code.str();
-}
-
-std::string editor::Factory::createScaleTweenComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
-    if (!scene->findComponent<ScaleTweenComponent>(entity)) return "";
-    ScaleTweenComponent& scaleTween = scene->getComponent<ScaleTweenComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "ScaleTweenComponent scalecomp;\n";
-    code << ind << "scalecomp.endScale = " << formatVector3(scaleTween.endScale) << ";\n";
-    code << ind << "scalecomp.startScale = " << formatVector3(scaleTween.startScale) << ";\n";
-    addComponentCode(code, ind, sceneName, entityName, entity, "ScaleTweenComponent", "scalecomp", assignExisting);
-    return code.str();
-}
-
-std::string editor::Factory::createColorTweenComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
-    if (!scene->findComponent<ColorTweenComponent>(entity)) return "";
-    ColorTweenComponent& colorTween = scene->getComponent<ColorTweenComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "ColorTweenComponent colorcomp;\n";
-    code << ind << "colorcomp.endColor = " << formatVector3(colorTween.endColor) << ";\n";
-    code << ind << "colorcomp.startColor = " << formatVector3(colorTween.startColor) << ";\n";
-    code << ind << "colorcomp.useSRGB = " << formatBool(colorTween.useSRGB) << ";\n";
-    addComponentCode(code, ind, sceneName, entityName, entity, "ColorTweenComponent", "colorcomp", assignExisting);
-    return code.str();
-}
-
-std::string editor::Factory::createAlphaTweenComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
-    if (!scene->findComponent<AlphaTweenComponent>(entity)) return "";
-    AlphaTweenComponent& alphaTween = scene->getComponent<AlphaTweenComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "AlphaTweenComponent alphacomp;\n";
-    code << ind << "alphacomp.endAlpha = " << formatFloat(alphaTween.endAlpha) << ";\n";
-    code << ind << "alphacomp.startAlpha = " << formatFloat(alphaTween.startAlpha) << ";\n";
-    addComponentCode(code, ind, sceneName, entityName, entity, "AlphaTweenComponent", "alphacomp", assignExisting);
-    return code.str();
-}
-
 std::string editor::Factory::createSpriteAnimationComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
     if (!scene->findComponent<SpriteAnimationComponent>(entity)) return "";
     SpriteAnimationComponent& spriteanim = scene->getComponent<SpriteAnimationComponent>(entity);
@@ -2783,24 +1765,6 @@ std::string editor::Factory::createSpriteAnimationComponent(int indentSpaces, En
     return code.str();
 }
 
-std::string editor::Factory::createAnimationComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
-    if (!scene->findComponent<AnimationComponent>(entity)) return "";
-    AnimationComponent& anim = scene->getComponent<AnimationComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "AnimationComponent animcomp;\n";
-    code << ind << "animcomp.loop = " << formatBool(anim.loop) << ";\n";
-    code << ind << "animcomp.duration = " << formatFloat(anim.duration) << ";\n";
-    code << ind << "animcomp.ownedActions = " << formatBool(anim.ownedActions) << ";\n";
-    code << ind << "animcomp.defaultFadeTime = " << formatFloat(anim.defaultFadeTime) << ";\n";
-    code << ind << "animcomp.actions.clear();\n";
-    for (size_t i = 0; i < anim.actions.size(); i++) {
-        code << ind << "animcomp.actions.push_back({" << formatFloat(anim.actions[i].startTime) << ", " << formatFloat(anim.actions[i].duration) << ", " << formatEntity(anim.actions[i].action, entityVarNames) << ", " << formatUInt(anim.actions[i].track) << "});\n";
-    }
-    addComponentCode(code, ind, sceneName, entityName, entity, "AnimationComponent", "animcomp", assignExisting);
-    return code.str();
-}
-
 std::string editor::Factory::createModelComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
     if (!scene->findComponent<ModelComponent>(entity)) return "";
     ModelComponent& model = scene->getComponent<ModelComponent>(entity);
@@ -2809,6 +1773,8 @@ std::string editor::Factory::createModelComponent(int indentSpaces, EntityRegist
     code << ind << "ModelComponent modelcomp;\n";
     code << ind << "modelcomp.filename = " << formatString(model.filename) << ";\n";
     code << ind << "modelcomp.mergeStaticMeshes = " << formatBool(model.mergeStaticMeshes) << ";\n";
+    // an Animation Player plays the model's clips: no entity animations (9.R15)
+    if (!model.animationEntities) code << ind << "modelcomp.animationEntities = false;\n";
     code << ind << "modelcomp.skeleton = " << formatEntity(model.skeleton, entityVarNames) << ";\n";
     if (!model.animations.empty()) {
         code << ind << "modelcomp.animations.clear();\n";
@@ -2835,31 +1801,6 @@ std::string editor::Factory::createModelComponent(int indentSpaces, EntityRegist
     if (!model.enabled) code << ind << "modelcomp.enabled = false;\n";
 
     addComponentCode(code, ind, sceneName, entityName, entity, "ModelComponent", "modelcomp", assignExisting);
-    return code.str();
-}
-
-std::string editor::Factory::createBoneComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
-    if (!scene->findComponent<BoneComponent>(entity)) return "";
-    BoneComponent& bone = scene->getComponent<BoneComponent>(entity);
-    std::ostringstream code;
-    const std::string ind = indentation(indentSpaces);
-    code << ind << "BoneComponent bonecomp;\n";
-    code << ind << "bonecomp.model = " << formatEntity(bone.model, entityVarNames) << ";\n";
-    code << ind << "bonecomp.index = " << formatInt(bone.index) << ";\n";
-    code << ind << "bonecomp.bindPosition = " << formatVector3(bone.bindPosition) << ";\n";
-    code << ind << "bonecomp.bindRotation = " << formatQuaternion(bone.bindRotation) << ";\n";
-    code << ind << "bonecomp.bindScale = " << formatVector3(bone.bindScale) << ";\n";
-    code << ind << "bonecomp.offsetMatrix = Matrix4(\n";
-    for (int row = 0; row < 4; row++) {
-        code << ind << "    ";
-        for (int col = 0; col < 4; col++) {
-            code << formatFloat(bone.offsetMatrix[col][row]);
-            if (row < 3 || col < 3) code << ", ";
-        }
-        code << "\n";
-    }
-    code << ind << ");\n";
-    addComponentCode(code, ind, sceneName, entityName, entity, "BoneComponent", "bonecomp", assignExisting);
     return code.str();
 }
 
@@ -2968,6 +1909,54 @@ std::string editor::Factory::createMorphTracksComponent(int indentSpaces, Entity
     emitFloatLists(code, ind, "mtcomp.inTangents", mt.inTangents, formatFloat);
     emitFloatLists(code, ind, "mtcomp.outTangents", mt.outTangents, formatFloat);
     addComponentCode(code, ind, sceneName, entityName, entity, "MorphTracksComponent", "mtcomp", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createFluidSimulationComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    (void)entityVarNames;
+    if (!scene->findComponent<FluidSimulationComponent>(entity)) return "";
+    FluidSimulationComponent& fluid = scene->getComponent<FluidSimulationComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "FluidSimulationComponent fluid;\n";
+    if (!fluid.enabled) code << ind << "fluid.enabled = false;\n";
+    // only what differs from the defaults (Pavel's); the runtime fields start fresh
+    const FluidSimulationComponent defaults;
+    if (fluid.output != defaults.output) code << ind << "fluid.output = " << "FluidOutput::" << (fluid.output == FluidOutput::SCREEN ? "SCREEN" : fluid.output == FluidOutput::TEXTURE ? "TEXTURE" : "MATERIAL") << ";\n";
+    if (fluid.interactive != defaults.interactive) code << ind << "fluid.interactive = " << formatBool(fluid.interactive) << ";\n";
+    if (fluid.aspectRatio != defaults.aspectRatio) code << ind << "fluid.aspectRatio = " << formatFloat(fluid.aspectRatio) << ";\n";
+    if (fluid.simResolution != defaults.simResolution) code << ind << "fluid.simResolution = " << formatUInt(fluid.simResolution) << "u" << ";\n";
+    if (fluid.dyeResolution != defaults.dyeResolution) code << ind << "fluid.dyeResolution = " << formatUInt(fluid.dyeResolution) << "u" << ";\n";
+    if (fluid.densityDissipation != defaults.densityDissipation) code << ind << "fluid.densityDissipation = " << formatFloat(fluid.densityDissipation) << ";\n";
+    if (fluid.velocityDissipation != defaults.velocityDissipation) code << ind << "fluid.velocityDissipation = " << formatFloat(fluid.velocityDissipation) << ";\n";
+    if (fluid.pressure != defaults.pressure) code << ind << "fluid.pressure = " << formatFloat(fluid.pressure) << ";\n";
+    if (fluid.pressureIterations != defaults.pressureIterations) code << ind << "fluid.pressureIterations = " << formatUInt(fluid.pressureIterations) << "u" << ";\n";
+    if (fluid.curl != defaults.curl) code << ind << "fluid.curl = " << formatFloat(fluid.curl) << ";\n";
+    if (fluid.gradientScale != defaults.gradientScale) code << ind << "fluid.gradientScale = " << formatFloat(fluid.gradientScale) << ";\n";
+    if (fluid.simulationRate != defaults.simulationRate) code << ind << "fluid.simulationRate = " << formatFloat(fluid.simulationRate) << ";\n";
+    if (fluid.maxSubsteps != defaults.maxSubsteps) code << ind << "fluid.maxSubsteps = " << formatUInt(fluid.maxSubsteps) << "u" << ";\n";
+    if (fluid.timeScale != defaults.timeScale) code << ind << "fluid.timeScale = " << formatFloat(fluid.timeScale) << ";\n";
+    if (fluid.paused != defaults.paused) code << ind << "fluid.paused = " << formatBool(fluid.paused) << ";\n";
+    if (fluid.splatRadius != defaults.splatRadius) code << ind << "fluid.splatRadius = " << formatFloat(fluid.splatRadius) << ";\n";
+    if (fluid.splatForce != defaults.splatForce) code << ind << "fluid.splatForce = " << formatFloat(fluid.splatForce) << ";\n";
+    if (fluid.colorful != defaults.colorful) code << ind << "fluid.colorful = " << formatBool(fluid.colorful) << ";\n";
+    if (fluid.colorUpdateSpeed != defaults.colorUpdateSpeed) code << ind << "fluid.colorUpdateSpeed = " << formatFloat(fluid.colorUpdateSpeed) << ";\n";
+    if (fluid.splatsOnStart != defaults.splatsOnStart) code << ind << "fluid.splatsOnStart = " << formatBool(fluid.splatsOnStart) << ";\n";
+    if (fluid.randomSplatCount != defaults.randomSplatCount) code << ind << "fluid.randomSplatCount = " << formatUInt(fluid.randomSplatCount) << "u" << ";\n";
+    if (fluid.seed != defaults.seed) code << ind << "fluid.seed = " << formatUInt(fluid.seed) << "u" << ";\n";
+    if (fluid.shading != defaults.shading) code << ind << "fluid.shading = " << formatBool(fluid.shading) << ";\n";
+    if (fluid.backColor != defaults.backColor) code << ind << "fluid.backColor = " << formatVector3(fluid.backColor) << ";\n";
+    if (fluid.transparent != defaults.transparent) code << ind << "fluid.transparent = " << formatBool(fluid.transparent) << ";\n";
+    if (fluid.bloom != defaults.bloom) code << ind << "fluid.bloom = " << formatBool(fluid.bloom) << ";\n";
+    if (fluid.bloomIterations != defaults.bloomIterations) code << ind << "fluid.bloomIterations = " << formatUInt(fluid.bloomIterations) << "u" << ";\n";
+    if (fluid.bloomResolution != defaults.bloomResolution) code << ind << "fluid.bloomResolution = " << formatUInt(fluid.bloomResolution) << "u" << ";\n";
+    if (fluid.bloomIntensity != defaults.bloomIntensity) code << ind << "fluid.bloomIntensity = " << formatFloat(fluid.bloomIntensity) << ";\n";
+    if (fluid.bloomThreshold != defaults.bloomThreshold) code << ind << "fluid.bloomThreshold = " << formatFloat(fluid.bloomThreshold) << ";\n";
+    if (fluid.bloomSoftKnee != defaults.bloomSoftKnee) code << ind << "fluid.bloomSoftKnee = " << formatFloat(fluid.bloomSoftKnee) << ";\n";
+    if (fluid.sunrays != defaults.sunrays) code << ind << "fluid.sunrays = " << formatBool(fluid.sunrays) << ";\n";
+    if (fluid.sunraysResolution != defaults.sunraysResolution) code << ind << "fluid.sunraysResolution = " << formatUInt(fluid.sunraysResolution) << "u" << ";\n";
+    if (fluid.sunraysWeight != defaults.sunraysWeight) code << ind << "fluid.sunraysWeight = " << formatFloat(fluid.sunraysWeight) << ";\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "FluidSimulationComponent", "fluid", assignExisting);
     return code.str();
 }
 
@@ -3120,74 +2109,81 @@ std::string editor::Factory::createLatticeTracksComponent(int indentSpaces, Enti
     return code.str();
 }
 
-std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* scene, Entity entity, ComponentType componentType, const fs::path& projectPath, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
-    switch (componentType) {
-        case ComponentType::Transform: return createTransform(indentSpaces, scene, entity, sceneName, entityName, false, assignExisting, entityVarNames);
-        case ComponentType::MeshComponent: return createMeshComponent(indentSpaces, scene, entity, projectPath, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::UIComponent: return createUIComponent(indentSpaces, scene, entity, projectPath, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::ButtonComponent: return createButtonComponent(indentSpaces, scene, entity, projectPath, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::ScrollbarComponent: return createScrollbarComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::ProgressbarComponent: return createProgressbarComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::InputFieldComponent: return createInputFieldComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::PanelComponent: return createPanelComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::PolygonComponent: return createPolygonComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::MeshPolygonComponent: return createMeshPolygonComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::RectTransformComponent: return createRectTransformComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::LayoutGroupComponent: return createLayoutGroupComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::TextComponent: return createTextComponent(indentSpaces, scene, entity, projectPath, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::ImageComponent: return createImageComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::SpriteComponent: return createSpriteComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::TilemapComponent: return createTilemapComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::TerrainComponent: return createTerrainComponent(indentSpaces, scene, entity, projectPath, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::LightComponent: return createLightComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::Light2DComponent: return createLight2DComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::ShadowCaster2DComponent: return createShadowCaster2DComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::FogComponent: return createFogComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::MirrorComponent: return createMirrorComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::LocalVolumetricFogComponent: return createLocalVolumetricFogComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::VolumetricCloudsComponent: return createVolumetricCloudsComponent(indentSpaces, scene, entity, projectPath, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::ReflectionProbeComponent: return createReflectionProbeComponent(indentSpaces, scene, entity, projectPath, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::UIDocumentComponent: return createUIDocumentComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::FluidSimulationComponent: return createFluidSimulationComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::CameraComponent: return createCameraComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::AudioSourceComponent: return createAudioSourceComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::ScriptComponent: return createScriptComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::SkyboxComponent: return createSkyboxComponent(indentSpaces, scene, entity, projectPath, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::Rigidbody2DComponent: return guardPhysicsCode(createRigidbody2DComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames), "JASPERENGINE_PHYSICS_2D");
-        case ComponentType::RigidbodyComponent: return guardPhysicsCode(createRigidbodyComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames), "JASPERENGINE_PHYSICS_3D");
-        case ComponentType::Joint2DComponent: return guardPhysicsCode(createJoint2DComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames), "JASPERENGINE_PHYSICS_2D");
-        case ComponentType::WaterVolumeComponent: return createWaterVolumeComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting);
-        case ComponentType::BuoyancyComponent: return createBuoyancyComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting);
-        case ComponentType::CharacterControllerComponent: return guardPhysicsCode(createCharacterControllerComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting), "JASPERENGINE_PHYSICS_3D");
-        case ComponentType::CharacterController2DComponent: return guardPhysicsCode(createCharacterController2DComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting), "JASPERENGINE_PHYSICS_2D");
-        case ComponentType::Joint3DComponent: return guardPhysicsCode(createJoint3DComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames), "JASPERENGINE_PHYSICS_3D");
-        case ComponentType::ActionComponent: return createActionComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::TweenComponent: return createTweenComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::PositionTweenComponent: return createPositionTweenComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::RotationTweenComponent: return createRotationTweenComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::ScaleTweenComponent: return createScaleTweenComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::ColorTweenComponent: return createColorTweenComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::AlphaTweenComponent: return createAlphaTweenComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::SpriteAnimationComponent: return createSpriteAnimationComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::AnimationComponent: return createAnimationComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::ModelComponent: return createModelComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::BoneComponent: return createBoneComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::KeyframeTracksComponent: return createKeyframeTracksComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::TranslateTracksComponent: return createTranslateTracksComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::RotateTracksComponent: return createRotateTracksComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::ScaleTracksComponent: return createScaleTracksComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::MorphTracksComponent: return createMorphTracksComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::LatticeComponent: return createLatticeComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::LatticeModifierComponent: return createLatticeModifierComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::LatticeFollowerComponent: return createLatticeFollowerComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::LatticeTracksComponent: return createLatticeTracksComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::ParticleSystemComponent: return createParticleSystemComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::ForceFieldComponent: return createForceFieldComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting);
-        case ComponentType::LineRendererComponent: return createLineRendererComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::PointsComponent: return createPointsComponent(indentSpaces, scene, entity, projectPath, sceneName, entityName, assignExisting, entityVarNames);
-        case ComponentType::InstancedMeshComponent: return createInstancedMeshComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
-        default: return "";
+std::string editor::Factory::createPoseAnimatorComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    if (!scene->findComponent<PoseAnimatorComponent>(entity)) return "";
+    PoseAnimatorComponent& animator = scene->getComponent<PoseAnimatorComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "PoseAnimatorComponent poseanimator;\n";
+    code << ind << "poseanimator.animation = " << formatString(animator.animation) << ";\n";
+    code << ind << "poseanimator.autoplay = " << formatBool(animator.autoplay) << ";\n";
+    code << ind << "poseanimator.speed = " << formatFloat(animator.speed) << ";\n";
+    code << ind << "poseanimator.weight = " << formatFloat(animator.weight) << ";\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "PoseAnimatorComponent", "poseanimator", assignExisting);
+    return code.str();
+}
+
+static const char* formatClipWrapMode(ClipWrapMode wrap) {
+    switch (wrap) {
+        case ClipWrapMode::Once: return "ClipWrapMode::Once";
+        case ClipWrapMode::Loop: return "ClipWrapMode::Loop";
+        case ClipWrapMode::PingPong: return "ClipWrapMode::PingPong";
+        case ClipWrapMode::ClampForever: return "ClipWrapMode::ClampForever";
+        case ClipWrapMode::Default: break;
     }
+    return "ClipWrapMode::Default";
+}
+
+std::string editor::Factory::createAnimationPlayerComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    if (!scene->findComponent<AnimationPlayerComponent>(entity)) return "";
+    AnimationPlayerComponent& player = scene->getComponent<AnimationPlayerComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "AnimationPlayerComponent animationplayer;\n";
+    if (!player.enabled) code << ind << "animationplayer.enabled = false;\n";
+    // the runtime loads them by path (the exporter copies every asset file); GUIDs are the editor's
+    if (!player.clips.empty()) code << ind << "animationplayer.clips.resize(" << player.clips.size() << ");\n";
+    for (size_t i = 0; i < player.clips.size(); i++) {
+        const AnimationPlayerClip& entry = player.clips[i];
+        const std::string target = "animationplayer.clips[" + std::to_string(i) + "]";
+        code << ind << target << ".clip = " << formatString(entry.clip) << ";\n";
+        if (!entry.name.empty()) code << ind << target << ".name = " << formatString(entry.name) << ";\n";
+        if (entry.wrap != ClipWrapMode::Default) code << ind << target << ".wrap = " << formatClipWrapMode(entry.wrap) << ";\n";
+    }
+    if (!player.defaultClip.empty()) code << ind << "animationplayer.defaultClip = " << formatString(player.defaultClip) << ";\n";
+    code << ind << "animationplayer.playAutomatically = " << formatBool(player.playAutomatically) << ";\n";
+    code << ind << "animationplayer.speed = " << formatFloat(player.speed) << ";\n";
+    code << ind << "animationplayer.defaultFadeTime = " << formatFloat(player.defaultFadeTime) << ";\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "AnimationPlayerComponent", "animationplayer", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* scene, Entity entity, ComponentType componentType, const fs::path& projectPath, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    // the component's exported code from its reflection table (editor/reflect/Codegen.cpp), or
+    // its own writer for those the table does not describe
+    const reflect::ComponentDesc* desc = reflect::find(componentType);
+    void* comp = desc ? desc->find(scene, entity) : nullptr;
+    if (!comp) return "";
+    reflect::CodegenContext ctx;
+    ctx.indentSpaces = indentSpaces;
+    ctx.variable = desc->codegenVar ? desc->codegenVar : "";
+    ctx.projectPath = projectPath;
+    ctx.sceneName = sceneName;
+    ctx.entityName = entityName;
+    ctx.assignExisting = assignExisting;
+    ctx.entityVarNames = entityVarNames;
+    std::string code;
+    if (desc->codegen) {
+        code = desc->codegen(scene, entity, ctx);
+    } else {
+        std::ostringstream out;
+        const std::string ind = indentation(indentSpaces);
+        out << ind << desc->cppName << " " << ctx.variable << ";\n";
+        out << reflect::cppAssignments(*desc, comp, ctx);
+        addComponentCode(out, ind, sceneName, entityName, entity, desc->cppName, ctx.variable, assignExisting);
+        code = out.str();
+    }
+    return desc->codegenGuard ? guardPhysicsCode(code, desc->codegenGuard) : code;
 }
 
 std::string editor::Factory::createAllComponents(int indentSpaces, EntityRegistry* scene, Entity entity, const fs::path& projectPath, std::string sceneName, std::string entityName, const std::unordered_map<Entity, std::string>* entityVarNames) {
@@ -3675,6 +2671,9 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, uint32_
     for (const std::string& model : resources.models) {
         out << ind2 << "resources.models.push_back(" << formatString(model) << ");\n";
     }
+    for (const std::string& clip : resources.clips) {
+        out << ind2 << "resources.clips.push_back(" << formatString(clip) << ");\n";
+    }
     out << ind2 << "return resources;\n";
     out << ind << "}\n";
 
@@ -4011,6 +3010,94 @@ std::string editor::Factory::createParticleSystemComponent(int indentSpaces, Ent
     if (!p.enabled) code << ind << "particles.enabled = false;\n";
 
     addComponentCode(code, ind, sceneName, entityName, entity, "ParticleSystemComponent", "particles", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createWaterVolumeComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting) {
+    if (!scene->findComponent<WaterVolumeComponent>(entity)) return "";
+    const WaterVolumeComponent& volume = scene->getComponent<WaterVolumeComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "WaterVolumeComponent waterVolume;\n";
+    code << ind << "waterVolume.size = " << formatVector3(volume.size) << ";\n";
+    code << ind << "waterVolume.surfaceOffset = " << formatFloat(volume.surfaceOffset) << ";\n";
+    code << ind << "waterVolume.infinite = " << formatBool(volume.infinite) << ";\n";
+    code << ind << "waterVolume.density = " << formatFloat(volume.density) << ";\n";
+    code << ind << "waterVolume.flow = " << formatVector3(volume.flow) << ";\n";
+    code << ind << "waterVolume.linearDrag = " << formatFloat(volume.linearDrag) << ";\n";
+    code << ind << "waterVolume.angularDrag = " << formatFloat(volume.angularDrag) << ";\n";
+    code << ind << "waterVolume.waves = " << (volume.waves == WaterVolumeWaves::NONE ? "WaterVolumeWaves::NONE" : "WaterVolumeWaves::FROM_MATERIAL") << ";\n";
+    if (!volume.enabled) code << ind << "waterVolume.enabled = false;\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "WaterVolumeComponent", "waterVolume", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createBuoyancyComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting) {
+    if (!scene->findComponent<BuoyancyComponent>(entity)) return "";
+    const BuoyancyComponent& buoyancy = scene->getComponent<BuoyancyComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    const char* columns = buoyancy.columns == BuoyancyColumns::AUTO_3x3 ? "BuoyancyColumns::AUTO_3x3"
+                        : buoyancy.columns == BuoyancyColumns::CUSTOM ? "BuoyancyColumns::CUSTOM" : "BuoyancyColumns::AUTO_2x2";
+    code << ind << "BuoyancyComponent buoyancy;\n";
+    code << ind << "buoyancy.columns = " << columns << ";\n";
+    for (const Vector3& point : buoyancy.customPoints)
+        code << ind << "buoyancy.customPoints.push_back(" << formatVector3(point) << ");\n";
+    code << ind << "buoyancy.volumeScale = " << formatFloat(buoyancy.volumeScale) << ";\n";
+    code << ind << "buoyancy.dragScale = " << formatFloat(buoyancy.dragScale) << ";\n";
+    if (!buoyancy.enabled) code << ind << "buoyancy.enabled = false;\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "BuoyancyComponent", "buoyancy", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createCharacterControllerComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting) {
+    if (!scene->findComponent<CharacterControllerComponent>(entity)) return "";
+    const CharacterControllerComponent& controller = scene->getComponent<CharacterControllerComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "CharacterControllerComponent controller;\n";
+    code << ind << "controller.center = " << formatVector3(controller.center) << ";\n";
+    code << ind << "controller.height = " << formatFloat(controller.height) << ";\n";
+    code << ind << "controller.radius = " << formatFloat(controller.radius) << ";\n";
+    code << ind << "controller.slopeLimit = " << formatFloat(controller.slopeLimit) << ";\n";
+    code << ind << "controller.stepOffset = " << formatFloat(controller.stepOffset) << ";\n";
+    code << ind << "controller.skinWidth = " << formatFloat(controller.skinWidth) << ";\n";
+    code << ind << "controller.minMoveDistance = " << formatFloat(controller.minMoveDistance) << ";\n";
+    code << ind << "controller.mass = " << formatFloat(controller.mass) << ";\n";
+    code << ind << "controller.pushStrength = " << formatFloat(controller.pushStrength) << ";\n";
+    code << ind << "controller.pushBodies = " << formatBool(controller.pushBodies) << ";\n";
+    code << ind << "controller.movingPlatforms = " << formatBool(controller.movingPlatforms) << ";\n";
+    code << ind << "controller.inheritPlatformYaw = " << formatBool(controller.inheritPlatformYaw) << ";\n";
+    code << ind << "controller.detectCollisions = " << formatBool(controller.detectCollisions) << ";\n";
+    code << ind << "controller.characterCollisions = " << formatBool(controller.characterCollisions) << ";\n";
+    code << ind << "controller.enhancedEdgeRemoval = " << formatBool(controller.enhancedEdgeRemoval) << ";\n";
+    code << ind << "controller.categoryBits = " << controller.categoryBits << ";\n";
+    code << ind << "controller.maskBits = " << controller.maskBits << ";\n";
+    if (!controller.enabled) code << ind << "controller.enabled = false;\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "CharacterControllerComponent", "controller", assignExisting);
+    return code.str();
+}
+
+std::string editor::Factory::createCharacterController2DComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting) {
+    if (!scene->findComponent<CharacterController2DComponent>(entity)) return "";
+    const CharacterController2DComponent& controller = scene->getComponent<CharacterController2DComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "CharacterController2DComponent controller2d;\n";
+    code << ind << "controller2d.center = " << formatVector2(controller.center) << ";\n";
+    code << ind << "controller2d.height = " << formatFloat(controller.height) << ";\n";
+    code << ind << "controller2d.radius = " << formatFloat(controller.radius) << ";\n";
+    code << ind << "controller2d.slopeLimit = " << formatFloat(controller.slopeLimit) << ";\n";
+    code << ind << "controller2d.stepOffset = " << formatFloat(controller.stepOffset) << ";\n";
+    code << ind << "controller2d.skinWidth = " << formatFloat(controller.skinWidth) << ";\n";
+    code << ind << "controller2d.minMoveDistance = " << formatFloat(controller.minMoveDistance) << ";\n";
+    code << ind << "controller2d.pushStrength = " << formatFloat(controller.pushStrength) << ";\n";
+    code << ind << "controller2d.pushBodies = " << formatBool(controller.pushBodies) << ";\n";
+    code << ind << "controller2d.movingPlatforms = " << formatBool(controller.movingPlatforms) << ";\n";
+    code << ind << "controller2d.categoryBits = " << controller.categoryBits << ";\n";
+    code << ind << "controller2d.maskBits = " << controller.maskBits << ";\n";
+    if (!controller.enabled) code << ind << "controller2d.enabled = false;\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "CharacterController2DComponent", "controller2d", assignExisting);
     return code.str();
 }
 

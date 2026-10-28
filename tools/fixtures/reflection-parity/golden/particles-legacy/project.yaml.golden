@@ -1,0 +1,21 @@
+formatVersion: 1
+name: ParticlesLegacy
+canvasWidth: 1280
+canvasHeight: 720
+scalingMode: letterbox
+textureStrategy: none
+vsync: true
+htmlUiMsaaSamples: 4
+htmlUiGlyphAtlasMiB: 0
+htmlUiSdfPrimitives: true
+htmlUiTransformAwareText: true
+windowMode: windowed
+windowWidth: 1280
+windowHeight: 720
+windowResizable: true
+assetsDir: assets
+luaDir: scripts
+startSceneId: 1
+scenes:
+  - filepath: Legacy Particles.scene
+    filepathGuid: 0f153ca2a957eb5d8f91ac03716acf99

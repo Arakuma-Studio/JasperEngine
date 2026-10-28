@@ -72,14 +72,14 @@ bool parseUnsaved(const CallPtr& call, UnsavedChoice& out) {
 }
 
 Json unsavedSchema() {
-    return withDefault(stringEnum("Unsaved changes of a scene that closes (cancel: fail).", {"cancel", "save", "discard"}),
+    return withDefault(stringEnum("cancel: fail.", {"cancel", "save", "discard"}),
                        "cancel");
 }
 
 // set_main_camera's entity: null = the default camera
 Json nullableEntityRef(const std::string& description = {}) {
     Json ref = entityRef(description);
-    ref["type"].push_back("null");
+    ref["type"] = Json::array({"string", "null"});
     return ref;
 }
 
@@ -1745,7 +1745,7 @@ void registerSceneTools(McpRegistry& registry) {
             {"name", string("Default: the file name or \"New Scene\".")},
             {"type", withDefault(stringEnum("", {"3D", "2D", "UI"}), "3D")},
             {"path", assetPath(".scene path (extension optional).")},
-            {"close_previous", withDefault(boolean("Close the previously selected scene."), false)},
+            {"close_previous", withDefault(boolean(""), false)},
             {"unsaved", unsavedSchema()}
         });
         tool.allowedWhilePlaying = false;
@@ -1787,7 +1787,7 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "select_scene";
         tool.title = "Select Scene";
         tool.description = "Selects an open scene (its tab): the default scene of other tools.";
-        tool.inputSchema = object({{"scene", sceneRef("An open scene.")}}, {"scene"});
+        tool.inputSchema = object({{"scene", sceneRef("")}}, {"scene"});
         tool.annotations.idempotent = true;
         tool.handler = selectSceneTool;
         registry.addTool(std::move(tool));
@@ -1867,7 +1867,7 @@ void registerSceneTools(McpRegistry& registry) {
             "Remove a saved, unmodified scene from the project (undo scope=project); delete_file=true also moves the "
             "file to .trash. Not the last scene.";
         tool.inputSchema = object({
-            {"scene", sceneRef("A saved project scene.")},
+            {"scene", sceneRef("")},
             {"delete_file", withDefault(boolean(""), false)}
         }, {"scene"});
         tool.allowedWhilePlaying = false;
@@ -1884,7 +1884,7 @@ void registerSceneTools(McpRegistry& registry) {
             "when the parent starts; loaded_inline: shown inside the parent in the editor. Not undoable.";
         tool.inputSchema = object({
             {"scene", sceneRef("Parent (default: selected).")},
-            {"child", sceneRef("Child scene.")},
+            {"child", sceneRef()},
             {"attached", withDefault(boolean(""), true)},
             {"start_active", boolean("")},
             {"loaded_inline", boolean("")}
@@ -1917,7 +1917,7 @@ void registerSceneTools(McpRegistry& registry) {
             "shaders).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
-            {"names", array(string(""), "Default: all.")},
+            {"names", array(string(""), "")},
             {"detail", withDefault(boolean(""), false)}
         });
         tool.annotations.readOnly = true;
@@ -1930,10 +1930,10 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "set_scene_settings";
         tool.title = "Set Scene Settings";
         tool.description =
-            "Set scene settings {name: value} (names and shapes: get_scene_settings). post_process replaces the pass "
-            "list: [{\"shader\": \"shaders/MyPost\", \"enabled\": true, \"uniforms\": {\"strength\": [0.5,0,0,0]}}]. "
-            "post_processing {field: value} sets the fields named (null resets all), like post_processing.<field>; "
-            "one undo step per call.";
+            "Set scene settings {name: value} (names and shapes: get_scene_settings). post_process replaces "
+            "the pass list: [{\"shader\": \"shaders/MyPost\", \"enabled\": true, \"uniforms\": {\"strength\": "
+            "[0.5,0,0,0]}}]. post_processing {field: value} sets the fields named (null resets all); one undo "
+            "step per call.";
         tool.inputSchema = object({{"scene", sceneRef()}, {"settings", anyObject("")}}, {"settings"});
         tool.annotations.idempotent = true;
         tool.handler = setSceneSettingsTool;

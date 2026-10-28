@@ -77,6 +77,7 @@ namespace jasperengine::editor{
     };
 
     class Project;
+    class PoseViewport;
     class PhysicsPlacementWindow;
 
     class SceneRender{
@@ -107,6 +108,8 @@ namespace jasperengine::editor{
         InteractiveEdit dragEdit;
         bool dragEditStarted = false;
         bool pushDragCommand(size_t sceneId, Command* command);
+        // this drag already said that Record does not key it (ClipRecordHooks::note)
+        bool gizmoRecordNoted = false;
 
         CursorSelected cursorSelected;
 
@@ -300,10 +303,54 @@ namespace jasperengine::editor{
             return object;
         }
 
+        // A gizmo whose entity its scene destroyed behind this view's back (Stop once swept the
+        // gizmos the Scene view first drew while playing as made by the game): hiding or
+        // updating it throws, and its id may already be another entity's. An overlay of this
+        // scene that is no longer marked as one is gone too (the mark goes with its entity).
+        // render: this scene's RenderSystem (the overlay marks)
+        bool isGizmoGone(const EntityHandle* gizmo, const RenderSystem& render) const;
+        // Deletes a gizmo; a gone one without touching the scene (it no longer owns its entity)
+        void deleteGizmo(EntityHandle* gizmo, const RenderSystem& render) const;
+        // Every per-entity gizmo whose own entity is gone is forgotten (update() makes it again
+        // while what it annotates is there), so no pass touches it: run before the gizmo maps
+        // are used (update, hideAllGizmos, the destructors). The views' single gizmos (selection,
+        // terrain brush, physics, grid, tile and document lines, the editor camera) are not
+        // swept: they are made with the view, before any Play, so the Play snapshot lists them as
+        // alive before Play and Stop never destroys them, and nothing else destroys them.
+        virtual void dropGoneGizmos();
+
+        template<typename T>
+        void dropGoneGizmos(std::map<Entity, T*>& gizmos, const RenderSystem& render){
+            for (auto it = gizmos.begin(); it != gizmos.end();){
+                if (isGizmoGone(it->second, render)){
+                    deleteGizmo(it->second, render);
+                    it = gizmos.erase(it);
+                }else{
+                    ++it;
+                }
+            }
+        }
+
+        // gizmos made of several objects (icon and lines): one gone drops them all
+        template<typename V, typename... Parts>
+        void dropGoneGizmos(std::map<Entity, V>& gizmos, const RenderSystem& render, Parts... parts){
+            for (auto it = gizmos.begin(); it != gizmos.end();){
+                V& gizmo = it->second;
+                if ((isGizmoGone(gizmo.*parts, render) || ...)){
+                    (deleteGizmo(gizmo.*parts, render), ...);
+                    it = gizmos.erase(it);
+                }else{
+                    ++it;
+                }
+            }
+        }
+
         // Editor-only scenes the Scene view draws over the scene and its layers
         // (gizmos, overlays), and the views they render into before it
         virtual void addOverlayLayers(std::vector<Engine::ViewLayer>& layers, int width, int height);
         virtual void drawOverlayTargets();
+        // the editor overlays placed after the scene's update get their transforms for a draw
+        void settleOverlayTransforms();
 
         Scene* scene;
         Camera* camera;
@@ -319,6 +366,9 @@ namespace jasperengine::editor{
 
         ToolsLayer toolslayer;
         UILayer uilayer;
+
+        // posing a humanoid in the view (pose animation phase 5; 3D views only, null otherwise)
+        std::unique_ptr<PoseViewport> poseViewport;
 
         std::vector<Scene*> childSceneLayers;
 
@@ -362,6 +412,7 @@ namespace jasperengine::editor{
         void drawSceneView(int width, int height, const std::vector<Scene*>& layerScenes, bool gameLayers);
         virtual void updateSize(int width, int height);
         virtual void setOverlayScale(float scale);
+        float getOverlayScale() const { return overlayScale; }
         float billboardScreenScale(const Vector3& worldPos, float logicalScale) const;
         virtual void updateSelLines(std::vector<OBB> obbs) = 0;
 
@@ -374,6 +425,24 @@ namespace jasperengine::editor{
         // sceneId is this scene: its history takes the commands. While an edit layer is set
         // the tools work on the layer's selection, and its commands target the layer.
         virtual void mouseDragEvent(float x, float y, float origX, float origY, Project* project, size_t sceneId, std::vector<Entity> selEntities, bool disableSelection, bool invertRotationSnap, bool preserveAspectRatio);
+
+        // Record (animation clips 9.R5), the transform gizmo's drag: `localMatrix` is `entity`'s
+        // new local matrix from `gizmo` (Move: Position, Rotate: Rotation, Scale: Scale). When
+        // Record claims that channel for some of `selection`, a claimed entity's value is recorded
+        // (the live value and a key at the playhead, one merge key per drag, no scene command) and
+        // an unclaimed one stays as it is; returns false when Record does not take the drag (the
+        // caller builds the scene command). Rotate / Scale about another pivot also key the moved
+        // position. The drag's release ends the gesture (endGizmoRecord).
+        // `selectionClaimed`: gizmoRecordClaims of the drag's selection (asked once per drag event)
+        bool recordGizmoTransform(uint32_t sceneId, Entity entity, const Matrix4& localMatrix, GizmoSelected gizmo,
+                                  bool selectionClaimed);
+        bool gizmoRecordClaims(uint32_t sceneId, GizmoSelected gizmo, const std::vector<Entity>& selection) const;
+        // the gizmo drag's step for one GameObject (Move / Rotate / Scale of its new local matrix):
+        // recorded (null) or the ObjectTransformCmd to add (the caller adds it; the drag's release,
+        // mouseReleaseEvent, ends its merging and the record gesture)
+        Command* buildObjectTransformDrag(Project* project, uint32_t sceneId, Entity entity, const Matrix4& localMatrix,
+                                          GizmoSelected gizmo, bool selectionClaimed);
+        void endGizmoRecord();
 
         virtual bool isAnyGizmoSideSelected() const;
 
@@ -405,6 +474,14 @@ namespace jasperengine::editor{
         bool getFluidBrushCircle(std::vector<Vector2>& points);
         // a world point in pixels of this view (y down) through the editor camera; false behind it
         bool projectToView(const Vector3& world, Vector2& point);
+
+        // Pose animation (phase 5): the Pose Animation window's session poses a model of this
+        // scene. Its handles take a click first (poseMouseDown, x/y as screenToRay); a drag they
+        // took goes through mouseDragEvent / mouseReleaseEvent like a gizmo's.
+        bool isPoseEditing() const;
+        bool poseMouseDown(float x, float y, bool shift, bool ctrl);
+        bool isPoseDragging() const;
+        PoseViewport* getPoseViewport() const { return poseViewport.get(); }
 
         void setChildSceneLayers(const std::vector<Scene*>& layers);
         // Prefab Mode In Context: activate() makes `scene` the Engine's main scene, seen
@@ -438,6 +515,21 @@ namespace jasperengine::editor{
         // the Scene view's frame draws without the scene's post-processing (update)
         bool viewDisablesPostProcessing = false;
         void endGameViewPass();
+
+        // An inactive pane of the Split and Quad layouts (S26 R20, D8): the scene and its inline
+        // child scenes through the pane's own camera into target, after this frame's draw, with
+        // the icons, grid and selection outlines but no tools layer. gridPlane: 0 the XZ plane,
+        // 1 XY (front and back views), 2 YZ (side views).
+        struct PaneViewFlags {
+            bool shadows = false;
+            bool postProcessing = false;
+            int gridPlane = 0;
+        };
+        void drawPaneView(uint32_t viewId, Entity paneCamera, Framebuffer* target, int width, int height, const PaneViewFlags& flags);
+        // the plane the 3D grid lies in (the 2D views have none)
+        virtual void setGridPlane(int plane) { (void)plane; }
+        virtual int getGridPlane() const { return 0; }
+
         ToolsLayer* getToolsLayer();
         UILayer* getUILayer();
 
