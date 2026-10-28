@@ -1120,9 +1120,15 @@ float NavBakeCollector::unitScaleOf(Scene* scene, const NavMeshSurfaceComponent&
 
 NavBuildConfig NavBakeCollector::configOf(Scene* scene, const NavMeshSurfaceComponent& surface) {
     const AgentTypeSettings agent = getSettings().agentTypeOrDefault(surface.agentType);
-    return NavBuildConfig::derive(agent, surface.plane, surface.overrideCellSize ? surface.cellSize : 0.0f,
-                                  surface.overrideTileSize ? surface.tileSize : 64, surface.minRegionArea, surface.runtimeCarving,
-                                  unitScaleOf(scene, surface));
+    int tileSize = surface.overrideTileSize ? surface.tileSize : 64;
+#ifdef __EMSCRIPTEN__
+    // a web player bakes in tiles of at most 32 cells: every Recast pass of a tile then fits the
+    // main-thread slice of a single-threaded build (spec R23), and threaded web builds bake the
+    // same bytes. Baked assets keep the tile size they were baked with.
+    tileSize = std::min(tileSize, WEB_MAX_TILE_CELLS);
+#endif
+    return NavBuildConfig::derive(agent, surface.plane, surface.overrideCellSize ? surface.cellSize : 0.0f, tileSize,
+                                  surface.minRegionArea, surface.runtimeCarving, unitScaleOf(scene, surface));
 }
 
 void NavBakeCollector::linkConnections(Scene* scene, Entity entity, const NavFrame& frame, float agentRadius,

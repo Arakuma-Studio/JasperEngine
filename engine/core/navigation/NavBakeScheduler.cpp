@@ -77,6 +77,7 @@ void NavBake::pump(double budgetMs) {
         return;
     JE_PROFILE_SCOPE("Nav.Bake");
     const auto begin = std::chrono::steady_clock::now();
+    bool ranOne = false;
     do {
         if (!active) {
             if (next >= queue.size())
@@ -84,6 +85,13 @@ void NavBake::pump(double budgetMs) {
             active = std::make_unique<NavMeshBuilder::TileJob>(input, queue[next]);
         }
         const char* stage = active->stageName();
+        // a step expected to overrun what is left of the budget waits for the next frame (one
+        // step always runs, so a bake always moves)
+        const double spent = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count();
+        const auto expected = stageMaxMs.find(stage);
+        if (spent > 0.0 && ranOne && expected != stageMaxMs.end() && spent + expected->second > budgetMs)
+            break;
+        ranOne = true;
         const auto stepStart = std::chrono::steady_clock::now();
         const bool finished = active->step();
         const double stepMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - stepStart).count();

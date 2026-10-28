@@ -46,6 +46,9 @@ namespace jasperengine::nav {
         std::vector<std::string> warnings;
     };
 
+    // the largest tile a web player bakes at runtime (NavBakeCollector::configOf)
+    constexpr int WEB_MAX_TILE_CELLS = 32;
+
     class JASPERENGINE_API NavBakeCollector {
     public:
         // The input of the surface's bake, null (with *error) when the surface cannot be baked

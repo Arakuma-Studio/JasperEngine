@@ -581,6 +581,11 @@ What the implementation does differently from the text above, and why.
   bake. The `.navmesh` header still records the area-table hash (R39).
 - **Grid memory.** The reachability index (R17) adds 4 bytes per cell on the map, beside the 11
   bytes of solver scratch R29 budgets (`NavGridTest.MemoryPerCell` checks both).
+- **Web runtime tiles.** A web player bakes at runtime (`bakeAsync`, `updateTiles`) in tiles of at
+  most 32 cells, single-threaded or not, so that each Recast pass of a tile fits the main-thread
+  slice of R23; the time-sliced pump also holds back a step its stage's longest so far would push
+  past the budget. Baked assets keep their tile size (an `updateTiles` over a 64-cell asset on the
+  web rebuilds it whole, at 32 cells).
 - **Jump point search.** Uniform-cost square grids (8 neighbours, no corner cutting, no
   reservations or heights) are searched with JPS: the same path cost as A*
   (`NavGridTest.JumpPointSearchMatchesAStar`). Its scratch adds 17 bytes per cell to a solver
