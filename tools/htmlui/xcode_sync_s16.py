@@ -10,7 +10,8 @@
 # Each .cpp goes into the two Sources phases that compile HtmlUIClock.cpp (the iOS and macOS
 # engine targets), each .h of engine/core/htmlui into its Headers phase. Object ids are derived
 # from the path ("S16X" + sha1, as xcode_sync_compat.py does), so running it again changes
-# nothing. --check exits 1 when files are missing (nothing is written).
+# nothing. --check exits 1 when files are missing (nothing is written), or when the project does
+# not parse or refers to an object it does not define.
 
 import hashlib
 import os
@@ -76,6 +77,18 @@ def main():
     check = "--check" in sys.argv
     with open(PROJECT, encoding="utf-8") as f:
         text = f.read()
+    # the file must still parse as Xcode reads it (a merge once dropped a group's closing lines,
+    # which listing checks do not see)
+    sys.path.insert(0, os.path.join(ROOT, "tools", "mcp"))
+    import pbxproj
+    try:
+        dangling = pbxproj.dangling_references(pbxproj.parse(text))
+    except ValueError as error:
+        print("the Xcode project does not parse: %s" % error)
+        return 1
+    if dangling:
+        print("the Xcode project refers to objects it does not define: %s" % dangling[:5])
+        return 1
     missing = [entry for entry in wanted() if object_id("ref", entry[0]) not in text]
     if not missing:
         print("Xcode project lists every S16 file")
