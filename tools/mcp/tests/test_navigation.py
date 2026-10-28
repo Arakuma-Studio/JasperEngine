@@ -8,7 +8,9 @@ its undo), the overlay screenshot, and the Lua API in play (onDestinationReached
 """
 
 import asyncio
+import os
 import time
+from pathlib import Path
 
 import pngdiff
 from harness import Editor
@@ -22,6 +24,9 @@ TOOLS = ["bake_navigation", "get_navigation_info", "query_navigation", "set_navi
          "paint_nav_grid", "visualize_navigation"]
 
 S: dict = {}
+
+# the AI Navigation overlay over the test scene (JASPER_UPDATE_GOLDEN=1 rewrites it)
+GOLDEN = Path(__file__).resolve().parent / "golden" / "navigation_overlay.png"
 
 
 async def setup(ed: Editor) -> dict:
@@ -204,3 +209,32 @@ async def test_lua_api_in_play(ed: Editor):
         ed.check_eq(info["status"], "complete", f"query in play: {info}")
     finally:
         await ed.call("play", action="stop")
+
+
+async def test_overlay_golden(ed: Editor):
+    """The overlay draws the navmesh in its area colours, its tile bounds and a query path: on and off
+    differ, and the image matches tools/mcp/tests/golden/navigation_overlay.png."""
+    s = await setup(ed)
+    await bake(ed, s, mode="full")
+    await ed.call("select_entities", scene=s["scene"], entities=[])
+    cam = {"scene": s["scene"], "position": [0.0, 45.0, 30.0], "target": [0.0, 0.0, 0.0],
+           "display": {"show_grid_3d": False, "hide_light_icons": True}}
+    await ed.call("set_scene_camera", cam)
+    await ed.call("visualize_navigation", scene=s["scene"], show={"navmesh": True, "tiles": True, "links": True},
+                  path={"from": [-15, 0, -15], "to": [15, 0, 15]})
+    shot = await ed.screenshot("scene", scene=s["scene"], max_width=640)
+    img = pngdiff.decode(shot)
+    await ed.call("visualize_navigation", scene=s["scene"], show={"navmesh": False, "tiles": False})
+    plain = pngdiff.decode(await ed.screenshot("scene", scene=s["scene"], max_width=640))
+    same, fraction, _ = pngdiff.compare(img, plain, max_fraction=0.002)
+    ed.check(not same, f"the overlay draws ({fraction:.4f} of the pixels differ)")
+    await ed.call("visualize_navigation", scene=s["scene"], show={"navmesh": True, "tiles": False})
+    if os.environ.get("JASPER_UPDATE_GOLDEN") == "1" or not GOLDEN.exists():
+        GOLDEN.parent.mkdir(parents=True, exist_ok=True)
+        GOLDEN.write_bytes(shot)
+        print(f"     [golden] wrote {GOLDEN}")
+    else:
+        ok, fraction, diff = pngdiff.compare(pngdiff.decode(GOLDEN.read_bytes()), img, max_fraction=0.01)
+        if not ok and ed.scratch:
+            (ed.scratch.root / "navigation_overlay_diff.png").write_bytes(diff)
+        ed.check(ok, f"the screenshot differs from {GOLDEN.name} in {fraction:.4f} of the pixels")
