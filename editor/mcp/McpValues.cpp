@@ -3381,8 +3381,35 @@ bool McpStepsCmd::execute() {
 void McpStepsCmd::undo() {
     for (auto it = done.rbegin(); it != done.rend(); ++it) {
         (*it)->undo();
+        const std::string problem = (*it)->takeUndoProblem();
+        if (!problem.empty()) undoProblem += (undoProblem.empty() ? "" : "; ") + problem;
         refresh();
     }
+}
+
+std::vector<Command::Touched> McpStepsCmd::touchedPaths(bool undo) const {
+    std::vector<Touched> all;
+    for (const std::unique_ptr<Command>& step : done) {
+        std::vector<Touched> some = step->touchedPaths(undo);
+        all.insert(all.end(), some.begin(), some.end());
+    }
+    return all;
+}
+
+std::string McpStepsCmd::undoRefusal() const {
+    for (const std::unique_ptr<Command>& step : done) {
+        std::string why = step->undoRefusal();
+        if (!why.empty()) return why;
+    }
+    return std::string();
+}
+
+std::string McpStepsCmd::redoRefusal() const {
+    for (const std::unique_ptr<Command>& step : done) {
+        std::string why = step->redoRefusal();
+        if (!why.empty()) return why;
+    }
+    return std::string();
 }
 
 namespace {

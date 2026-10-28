@@ -24,6 +24,7 @@ namespace jasperengine::editor{
         // false (nothing removed) when a file is missing or cannot be read, or one cannot be
         // removed (the files removed before it are written back)
         bool execute() override;
+        std::vector<Touched> touchedPaths(bool undo) const override;
         void undo() override;
         bool affectsStructure() const override { return false; }
 

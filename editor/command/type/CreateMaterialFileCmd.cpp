@@ -75,7 +75,7 @@ bool editor::CreateMaterialFileCmd::execute() {
 
     if (materialCmd && !materialCmd->execute()) {
         std::error_code ec;
-        fs::remove(targetFile, ec);
+        FileUtils::removePath(targetFile, ec);   // (in a write scope: beneath its root)
         return false;
     }
 
@@ -88,5 +88,11 @@ void editor::CreateMaterialFileCmd::undo() {
     }
 
     std::error_code ec;
-    fs::remove(targetFile, ec);
+    // the file it made, the entry itself (in a write scope: beneath its root)
+    if (!FileUtils::removePath(targetFile, ec) && fs::exists(fs::symlink_status(targetFile, ec)))
+        undoProblem = "could not remove " + FileUtils::pathToGenericUtf8(targetFile);
+}
+
+std::vector<editor::Command::Touched> editor::CreateMaterialFileCmd::touchedPaths(bool undo) const {
+    return {{targetFile, undo}};
 }

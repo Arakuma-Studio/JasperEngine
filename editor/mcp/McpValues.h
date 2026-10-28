@@ -319,6 +319,11 @@ namespace jasperengine::editor::mcp {
         bool execute() override;
         void undo() override;
         bool affectsStructure() const override { return true; }
+        // its steps' files and refusals (Command::touchedPaths; a step's own canUndo / canRedo)
+        std::vector<Touched> touchedPaths(bool undo) const override;
+        std::string undoRefusal() const override;
+        std::string redoRefusal() const override;
+        std::string failure() const override { return error ? *error : std::string(); }
 
     private:
         std::vector<Step> steps;

@@ -803,9 +803,64 @@ namespace jasperengine::editor::safewrite {
     }
 
     // ------------------------------------------------------------------ beneath the root
+    namespace {
+        // What a write puts in the file: bytes in memory, or a stream read in chunks (a copy)
+        class ByteSource {
+        public:
+            virtual ~ByteSource() = default;
+            // the next chunk (false at the end, or `failed` when the source could not be read)
+            virtual bool next(const char*& data, size_t& size, bool& failed) = 0;
+        };
+        class StringSource : public ByteSource {
+        public:
+            explicit StringSource(const std::string& text) : text(text) {}
+            bool next(const char*& data, size_t& size, bool&) override {
+                if (given) return false;
+                given = true;
+                data = text.data();
+                size = text.size();
+                return true;
+            }
+
+        private:
+            const std::string& text;
+            bool given = false;
+        };
+        class StreamSource : public ByteSource {
+        public:
+            explicit StreamSource(std::istream& in) : in(in), buffer(1u << 20) {}
+            bool next(const char*& data, size_t& size, bool& failed) override {
+                in.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+                const std::streamsize n = in.gcount();
+                if (in.bad()) {
+                    failed = true;
+                    return false;
+                }
+                if (n <= 0) return false;
+                data = buffer.data();
+                size = static_cast<size_t>(n);
+                return true;
+            }
+
+        private:
+            std::istream& in;
+            std::vector<char> buffer;
+        };
+
+        bool writeSourceBeneath(const fs::path& root, const fs::path& target, ByteSource& source, std::string& error,
+                                std::vector<fs::path>* createdDirs);
+    }
 
     bool writeFileBeneath(const fs::path& root, const fs::path& target, const std::string& bytes, std::string& error,
                           std::vector<fs::path>* createdDirs) {
+        StringSource source(bytes);
+        return writeSourceBeneath(root, target, source, error, createdDirs);
+    }
+
+
+    namespace {
+    bool writeSourceBeneath(const fs::path& root, const fs::path& target, ByteSource& source, std::string& error,
+                            std::vector<fs::path>* createdDirs) {
         fs::path realRoot, rel;
         if (!prepare(root, target, realRoot, rel, error)) return false;
         const fs::path name = rel.filename();
@@ -840,13 +895,22 @@ namespace jasperengine::editor::safewrite {
                         error = "can't write " + shown(full) + ": " + systemMessage(code);
                     } else {
                         bool wrote = true;
-                        size_t done = 0;
-                        while (wrote && done < bytes.size()) {
-                            const DWORD chunk = static_cast<DWORD>(std::min<size_t>(bytes.size() - done, 1u << 30));
-                            DWORD written = 0;
-                            wrote = WriteFile(file, bytes.data() + done, chunk, &written, nullptr) && written > 0;
-                            if (!wrote) code = GetLastError();
-                            done += written;
+                        const char* data = nullptr;
+                        size_t size = 0;
+                        bool readFailed = false;
+                        while (wrote && source.next(data, size, readFailed)) {
+                            size_t done = 0;
+                            while (wrote && done < size) {
+                                const DWORD chunk = static_cast<DWORD>(std::min<size_t>(size - done, 1u << 30));
+                                DWORD written = 0;
+                                wrote = WriteFile(file, data + done, chunk, &written, nullptr) && written > 0;
+                                if (!wrote) code = GetLastError();
+                                done += written;
+                            }
+                        }
+                        if (readFailed) {
+                            wrote = false;
+                            code = ERROR_READ_FAULT;
                         }
                         if (wrote) {
                             if (api().setInfo) {
@@ -919,16 +983,25 @@ namespace jasperengine::editor::safewrite {
                         errno = code;
                     } else {
                         bool wrote = true;
-                        size_t done = 0;
-                        while (done < bytes.size()) {
-                            const ssize_t n = ::write(fd, bytes.data() + done, bytes.size() - done);
-                            if (n < 0) {
-                                if (errno == EINTR) continue;
-                                code = errno;
-                                wrote = false;
-                                break;
+                        const char* data = nullptr;
+                        size_t size = 0;
+                        bool readFailed = false;
+                        while (wrote && source.next(data, size, readFailed)) {
+                            size_t done = 0;
+                            while (done < size) {
+                                const ssize_t n = ::write(fd, data + done, size - done);
+                                if (n < 0) {
+                                    if (errno == EINTR) continue;
+                                    code = errno;
+                                    wrote = false;
+                                    break;
+                                }
+                                done += static_cast<size_t>(n);
                             }
-                            done += static_cast<size_t>(n);
+                        }
+                        if (readFailed) {
+                            wrote = false;
+                            code = EIO;
                         }
                         if (wrote && existingFile) (void)::fchmod(fd, keep);
                         if (::close(fd) != 0 && wrote) {
@@ -960,6 +1033,7 @@ namespace jasperengine::editor::safewrite {
         }
         if (createdDirs) createdDirs->insert(createdDirs->end(), made.begin(), made.end());
         return true;
+    }
     }
 
     namespace {
@@ -1253,13 +1327,6 @@ namespace jasperengine::editor::safewrite {
     }
 
     namespace {
-        bool readWhole(const fs::path& path, std::string& bytes) {
-            std::ifstream in(path, std::ios::binary);
-            if (!in) return false;
-            bytes.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
-            return !in.bad();
-        }
-
         bool copyInto(const fs::path& root, const fs::path& from, const fs::path& to, bool overwrite, std::string& error, int depth) {
             std::error_code ec;
             // the source is read wherever its links lead
@@ -1283,12 +1350,20 @@ namespace jasperengine::editor::safewrite {
                 error = shown(to) + " already exists.";
                 return false;
             }
-            std::string bytes;
-            if (!readWhole(from, bytes)) {
+            // streamed into the temporary file (a large asset is never held in memory whole)
+            std::ifstream in(from, std::ios::binary);
+            if (!in) {
                 error = "can't read " + shown(from) + ".";
                 return false;
             }
-            return writeFileResolvedBeneath(root, to, bytes, error);
+            std::string refusal;
+            if (refuseEscape(root, to, false, refusal)) {
+                error = refusal;
+                return false;
+            }
+            StreamSource source(in);
+            if (!writeSourceBeneath(resolvedPath(root), writeLocation(absoluteIn(root, to)), source, error, nullptr)) return false;
+            return true;
         }
     }
 
@@ -1353,6 +1428,8 @@ namespace jasperengine::editor::safewrite {
             return s;
         }
 
+        thread_local unsigned long long scopedFailures = 0;
+
         int scopedResult(bool ok, const std::string& error, std::error_code& ec) {
             if (ok) {
                 scopedError.clear();
@@ -1360,21 +1437,45 @@ namespace jasperengine::editor::safewrite {
                 return 1;
             }
             scopedError = error;
+            scopedFailures++;
             ec = std::make_error_code(std::errc::operation_not_permitted);
             warn(error);
             return 0;
+        }
+
+        bool lexicallyIn(const fs::path& absolute, const fs::path& root) {
+            if (isAtOrBelow(absolute, root)) return true;
+            const fs::path real = resolvedPath(root);
+            return !real.empty() && isAtOrBelow(absolute, real);
+        }
+
+        // Every other active scope whose root holds `path` must hold it once links are resolved too
+        // (nested scopes: an MCP call's project and a step's own root both apply)
+        bool otherScopesAllow(const fs::path& path, const fs::path& used, bool entry, std::string& error) {
+            const fs::path absolute = absoluteNormal(path);
+            for (const fs::path& root : scopes) {
+                if (root.empty() || root == used || !lexicallyIn(absolute, root)) continue;
+                const std::string escape = escapeOf(root, path, entry);
+                if (!escape.empty()) {
+                    error = escape + " Remove the link (or use a path that stays inside), then try again.";
+                    return false;
+                }
+            }
+            return true;
         }
 
         int scopedWrite(const fs::path& path, const std::string& content, std::error_code& ec) {
             const fs::path root = scopeRootFor(path);
             if (root.empty()) return -1;
             std::string error;
+            if (!otherScopesAllow(path, root, false, error)) return scopedResult(false, error, ec);
             return scopedResult(writeFileResolvedBeneath(root, path, content, error), error, ec);
         }
         int scopedCreateDirectories(const fs::path& path, std::error_code& ec) {
             const fs::path root = scopeRootFor(path);
             if (root.empty()) return -1;
             std::string error;
+            if (!otherScopesAllow(path, root, false, error)) return scopedResult(false, error, ec);
             return scopedResult(createDirectoriesResolvedBeneath(root, path, error), error, ec);
         }
         int scopedRemove(const fs::path& path, std::error_code& ec) {
@@ -1382,6 +1483,7 @@ namespace jasperengine::editor::safewrite {
             if (root.empty()) return -1;
             std::error_code status;
             std::string error;
+            if (!otherScopesAllow(path, root, true, error)) return scopedResult(false, error, ec);
             // fs::remove: a file, a link or an empty folder
             if (fs::is_directory(fs::symlink_status(path, status))) {
                 if (!fs::is_empty(path, status)) {
@@ -1397,18 +1499,23 @@ namespace jasperengine::editor::safewrite {
             const fs::path root = scopeRootFor(path);
             if (root.empty()) return -1;
             std::string error;
+            if (!otherScopesAllow(path, root, true, error)) return scopedResult(false, error, ec);
             return scopedResult(removeTreeResolvedBeneath(root, path, error), error, ec);
         }
         int scopedRename(const fs::path& from, const fs::path& to, std::error_code& ec) {
-            const fs::path root = scopeRootFor(from);
-            if (root.empty() || scopeRootFor(to).empty()) return -1;
+            // either end inside a scope: beneath it (the other end outside its root is refused)
+            fs::path root = scopeRootFor(from);
+            if (root.empty()) root = scopeRootFor(to);
+            if (root.empty()) return -1;
             std::string error;
+            if (!otherScopesAllow(from, root, true, error) || !otherScopesAllow(to, root, true, error)) return scopedResult(false, error, ec);
             return scopedResult(renameResolvedBeneath(root, from, to, error, true), error, ec);
         }
         int scopedCopy(const fs::path& from, const fs::path& to, bool overwrite, std::error_code& ec) {
             const fs::path root = scopeRootFor(to);
             if (root.empty()) return -1;
             std::string error;
+            if (!otherScopesAllow(to, root, false, error)) return scopedResult(false, error, ec);
             return scopedResult(copyResolvedBeneath(root, from, to, overwrite, error), error, ec);
         }
 
@@ -1416,7 +1523,9 @@ namespace jasperengine::editor::safewrite {
     }
 
     Scope::Scope(fs::path root) {
-        FileUtils::scopedOps() = &kScopedOps;
+        // installed once, whichever thread opens the first scope
+        static std::once_flag installed;
+        std::call_once(installed, [] { FileUtils::scopedOps() = &kScopedOps; });
         scopes.push_back(std::move(root));
     }
 
@@ -1429,13 +1538,19 @@ namespace jasperengine::editor::safewrite {
     }
 
     fs::path scopeRootFor(const fs::path& path) {
-        const fs::path root = Scope::current();
-        if (root.empty() || path.empty()) return fs::path();
+        // a suspended innermost scope (empty root): no scope; else the innermost root holding the
+        // path (the scoped operations check every other one holding it too)
+        if (scopes.empty() || scopes.back().empty() || path.empty()) return fs::path();
         const fs::path absolute = absoluteNormal(path);
-        if (isAtOrBelow(absolute, root)) return root;
-        const fs::path real = resolvedPath(root);
-        if (!real.empty() && isAtOrBelow(absolute, real)) return root;
+        for (auto it = scopes.rbegin(); it != scopes.rend(); ++it) {
+            if (it->empty()) return fs::path();
+            if (lexicallyIn(absolute, *it)) return *it;
+        }
         return fs::path();
+    }
+
+    unsigned long long scopedFailureCount() {
+        return scopedFailures;
     }
 
     const std::string& lastScopedError() {

@@ -12,6 +12,7 @@
 #include "command/type/CopyFileCmd.h"
 #include "command/type/CreateDirCmd.h"
 #include "command/type/DeleteFileCmd.h"
+#include "command/type/RemoveFilesCmd.h"
 #include "command/type/RenameFileCmd.h"
 #include "command/type/WriteFilesCmd.h"
 #include "util/FileUtils.h"
@@ -437,4 +438,137 @@ TEST(SafeWrite, CopyAndDeleteCommandsStayBeneathTheirRoot) {
     fs::create_directories(d.root / "src");
     ASSERT_TRUE(history.undo()) << history.lastRefusal();
     EXPECT_EQ(readAll(d.root / "src" / "a.txt"), "a");
+}
+
+// ---- round 3: nested scopes, redo semantics, scoped failures inside commands, more file commands
+
+namespace {
+
+    // a step whose redo finds nothing to do (its GameObjects are gone) and says nothing
+    class NothingToRedoCmd : public Command {
+    public:
+        int executions = 0;
+        bool execute() override { return ++executions == 1; }
+        void undo() override {}
+    };
+
+    // a step writing one file through FileUtils (in its write scope: beneath the root)
+    class ScopedFileCmd : public Command {
+    public:
+        explicit ScopedFileCmd(fs::path file) : file(std::move(file)) {}
+        bool execute() override { return FileUtils::writeFileReplacing(file, "made"); }
+        void undo() override {
+            std::error_code ec;
+            FileUtils::writeFileReplacing(file, "undone");
+            (void)ec;
+        }
+
+    private:
+        fs::path file;
+    };
+
+}
+
+TEST(SafeWrite, NestedScopesEachApply) {
+    SKIP_WITHOUT_SYMLINKS();
+    Dirs d("nested");
+    // the inner root is a link to a folder outside the outer root
+    fs::create_directories(d.outside / "inner");
+    fs::create_directory_symlink(d.outside / "inner", d.root / "inner");
+    sw::Scope outer(d.root);
+    sw::Scope inner(d.root / "inner");
+    EXPECT_EQ(sw::scopeRootFor(d.root / "inner" / "f.txt"), d.root / "inner");
+    EXPECT_FALSE(FileUtils::writeFileReplacing(d.root / "inner" / "f.txt", "x")) << "the outer scope holds the path too: it applies";
+    EXPECT_FALSE(fs::exists(d.outside / "inner" / "f.txt"));
+    EXPECT_NE(sw::lastScopedError().find("resolves outside"), std::string::npos) << sw::lastScopedError();
+    // a path only the outer scope holds: beneath the outer root
+    EXPECT_EQ(sw::scopeRootFor(d.root / "plain.txt"), d.root);
+    EXPECT_TRUE(FileUtils::writeFileReplacing(d.root / "plain.txt", "p"));
+    // renames with one end inside a scope go beneath it (the other end outside it: refused)
+    std::error_code ec;
+    EXPECT_FALSE(FileUtils::renamePath(d.root / "plain.txt", d.base / "away.txt", ec));
+    EXPECT_TRUE(fs::exists(d.root / "plain.txt"));
+    EXPECT_FALSE(fs::exists(d.base / "away.txt"));
+}
+
+TEST(SafeWrite, ARedoWithNothingToDoIsPassedOverAsBefore) {
+    CommandHistory history;
+    auto* cmd = new NothingToRedoCmd();
+    ASSERT_TRUE(history.addCommand(cmd));
+    ASSERT_TRUE(history.undo());
+    EXPECT_TRUE(history.redo()) << "no reason given: the step is passed over (the old behaviour)";
+    EXPECT_EQ(history.position(), 1u);
+    EXPECT_TRUE(history.lastRefusal().empty());
+}
+
+TEST(SafeWrite, AWriteTheScopeRefusesInsideAStepIsItsFailure) {
+    SKIP_WITHOUT_SYMLINKS();
+    Dirs d("stepfail");
+    fs::create_directories(d.root / "sub");
+    CommandHistory history;
+    {
+        sw::Scope scope(d.root);
+        ASSERT_TRUE(history.addCommand(new ScopedFileCmd(d.root / "sub" / "f.txt")));
+    }
+    EXPECT_EQ(readAll(d.root / "sub" / "f.txt"), "made");
+    // the folder swapped for a link out of the root: the undo (no touchedPaths) is taken, but
+    // the write it does is refused by the step's scope and reported
+    fs::remove_all(d.root / "sub");
+    fs::create_directory_symlink(d.outside, d.root / "sub");
+    ASSERT_TRUE(history.undo());
+    EXPECT_NE(history.lastUndoProblem().find("resolves outside"), std::string::npos) << history.lastUndoProblem();
+    EXPECT_FALSE(fs::exists(d.outside / "f.txt"));
+    // its redo fails for the same reason, with a reason: not taken
+    EXPECT_FALSE(history.redo());
+    EXPECT_EQ(history.position(), 0u);
+    EXPECT_NE(history.lastRefusal().find("resolves outside"), std::string::npos) << history.lastRefusal();
+    EXPECT_FALSE(fs::exists(d.outside / "f.txt"));
+    // a group of steps: its execute says when one of them failed
+    CommandHistory grouped;
+    {
+        sw::Scope scope(d.root);
+        const size_t mark = grouped.mark();
+        ASSERT_TRUE(grouped.addCommand(new ScopedFileCmd(d.root / "a.txt")));
+        fs::remove(d.root / "sub");
+        fs::create_directories(d.root / "sub");
+        ASSERT_TRUE(grouped.addCommand(new ScopedFileCmd(d.root / "sub" / "b.txt")));
+        ASSERT_TRUE(grouped.groupSince(mark));
+    }
+    ASSERT_TRUE(grouped.undo());
+    fs::remove_all(d.root / "sub");
+    fs::create_directory_symlink(d.outside, d.root / "sub");
+    EXPECT_FALSE(grouped.redo()) << "one step of the group was refused";
+    EXPECT_FALSE(fs::exists(d.outside / "b.txt"));
+}
+
+TEST(SafeWrite, RemoveFilesAndMaterialCommandsStayBeneathTheirRoot) {
+    SKIP_WITHOUT_SYMLINKS();
+    Dirs d("removefiles");
+    writeText(d.root / "sub" / "gone.txt", "bytes");
+    CommandHistory history;
+    {
+        sw::Scope scope(d.root);
+        ASSERT_TRUE(history.addCommand(new RemoveFilesCmd({d.root / "sub" / "gone.txt"}, nullptr)));
+    }
+    EXPECT_FALSE(fs::exists(d.root / "sub" / "gone.txt"));
+    // its undo would write the bytes back through a folder now a link: refused, nothing written there
+    fs::remove_all(d.root / "sub");
+    fs::create_directory_symlink(d.outside, d.root / "sub");
+    EXPECT_FALSE(history.undo());
+    EXPECT_FALSE(fs::exists(d.outside / "gone.txt"));
+    fs::remove(d.root / "sub");
+    fs::create_directories(d.root / "sub");
+    ASSERT_TRUE(history.undo()) << history.lastRefusal();
+    EXPECT_EQ(readAll(d.root / "sub" / "gone.txt"), "bytes");
+}
+
+TEST(SafeWrite, ALargeCopyIsStreamed) {
+    Dirs d("bigcopy");
+    std::string big(5u << 20, 'z');
+    for (size_t i = 0; i < big.size(); i += 4096) big[i] = static_cast<char>('a' + (i / 4096) % 26);
+    writeText(d.outside / "big.bin", big);
+    std::string error;
+    ASSERT_TRUE(sw::copyResolvedBeneath(d.root, d.outside / "big.bin", d.root / "copies" / "big.bin", false, error)) << error;
+    EXPECT_EQ(readAll(d.root / "copies" / "big.bin"), big);
+    EXPECT_EQ(entries(d.root / "copies"), 1u) << "no temporary file left";
 }

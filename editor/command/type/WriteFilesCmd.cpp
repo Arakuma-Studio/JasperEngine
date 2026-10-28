@@ -80,7 +80,7 @@ bool editor::WriteFilesCmd::restore(size_t i, std::string* why) {
     }
     if (previous[i].existed) return FileUtils::writeFileReplacing(items[i].path, previous[i].content);
     // a file it created (or began to): gone again; never a directory that was there
-    if (fs::is_regular_file(items[i].path, ec) || fs::is_symlink(items[i].path, ec)) fs::remove(items[i].path, ec);
+    if (fs::is_regular_file(items[i].path, ec) || fs::is_symlink(items[i].path, ec)) FileUtils::removePath(items[i].path, ec);
     return !fs::exists(fs::symlink_status(items[i].path, ec));
 }
 
@@ -95,12 +95,13 @@ void editor::WriteFilesCmd::removeCreatedDirs() {
             continue;
         }
         std::error_code ec;
-        if (fs::is_directory(dir, ec) && fs::is_empty(dir, ec)) fs::remove(dir, ec);
+        if (fs::is_directory(dir, ec) && fs::is_empty(dir, ec)) FileUtils::removePath(dir, ec);
     }
     createdDirs.clear();
 }
 
 bool editor::WriteFilesCmd::execute() {
+    lastFailure.clear();
     if (!captured) {
         previous.clear();
         for (const Item& item : items) {

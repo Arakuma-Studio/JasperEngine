@@ -10,6 +10,7 @@
 #include "animation/ClipEditorUtil.h"
 #include "command/type/ClipSceneActions.h"
 #include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -37,7 +38,10 @@ CreateClipCmd::~CreateClipCmd(){
 }
 
 bool CreateClipCmd::fail(const std::string& message){
-    failure = message;
+    // a write the write scope refused: its reason too
+    failureText = message;
+    if (!safewrite::lastScopedError().empty() && message.find(safewrite::lastScopedError()) == std::string::npos &&
+        message.find("can't write") != std::string::npos) failureText += " (" + safewrite::lastScopedError() + ")";
     if (failureSink) *failureSink = message;
     return false;
 }
@@ -76,10 +80,13 @@ void CreateClipCmd::restoreFiles(size_t count, bool checkBytes){
         }
         if (written[i].existed){
             if (!FileUtils::writeFileReplacing(file.path, written[i].previous)){
+                if (checkBytes) undoProblem += (undoProblem.empty() ? "" : "; ") + std::string("could not put back ") + FileUtils::pathToGenericUtf8(file.path);
                 editor::Out::warning("Could not put back the previous content of '%s'", FileUtils::pathToGenericUtf8(file.path).c_str());
             }
         }else if (fs::is_regular_file(file.path, ec) || fs::is_symlink(file.path, ec)){
-            FileUtils::removePath(file.path, ec);
+            if (!FileUtils::removePath(file.path, ec) && checkBytes){
+                undoProblem += (undoProblem.empty() ? "" : "; ") + std::string("could not remove ") + FileUtils::pathToGenericUtf8(file.path);
+            }
         }
     }
     // the directories the write created, deepest first, when empty again
@@ -93,7 +100,7 @@ void CreateClipCmd::restoreFiles(size_t count, bool checkBytes){
 }
 
 bool CreateClipCmd::execute(){
-    failure.clear();
+    failureText.clear();
     // the files the last undo kept because the user changed them: a redo keeps them too
     const std::vector<fs::path> keptByUndo = keptFiles;
     keptFiles.clear();
@@ -237,4 +244,17 @@ bool CreateClipCmd::affectsStructure() const{
         if (command->affectsStructure()) return true;
     }
     return false;
+}
+
+std::vector<Command::Touched> CreateClipCmd::touchedPaths(bool undo) const{
+    std::vector<Touched> out;
+    for (size_t i = 0; i < files.size(); i++){
+        // an undo writes a previous file back or removes a new one (the entry); a redo writes
+        const bool existed = i < written.size() && written[i].existed;
+        out.push_back({files[i].path, undo && !existed});
+    }
+    if (undo){
+        for (const std::filesystem::path& dir : createdDirs) out.push_back({dir, true});
+    }
+    return out;
 }

@@ -3,6 +3,8 @@
 
 #include "CreatePrefabCmd.h"
 #include "editor/Out.h"
+#include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 #include "Stream.h"
 
 using namespace jasperengine;
@@ -188,8 +190,14 @@ void editor::CreatePrefabCmd::undo(){
         try {
             fs::path fullPath = project->getProjectPath() / item.filepath;
             if (fs::exists(fullPath)) {
-                fs::remove(fullPath);
-                editor::Out::info("Removed prefab file: %s", fullPath.string().c_str());
+                // the entry itself (in a write scope: beneath its root)
+                std::error_code removeError;
+                if (FileUtils::removePath(fullPath, removeError)) {
+                    editor::Out::info("Removed prefab file: %s", FileUtils::pathToGenericUtf8(fullPath).c_str());
+                } else {
+                    undoProblem += (undoProblem.empty() ? "" : "; ") + std::string("could not remove ") + FileUtils::pathToGenericUtf8(fullPath) +
+                                   (safewrite::lastScopedError().empty() ? std::string() : ": " + safewrite::lastScopedError());
+                }
             }
             project->getAssetDatabase().removeAssets(fullPath);
         } catch (const std::exception& e) {
@@ -224,4 +232,15 @@ void editor::CreatePrefabCmd::undo(){
 
     // Restore modified state
     sceneProject->isModified = wasModified;
+}
+
+std::vector<editor::Command::Touched> editor::CreatePrefabCmd::touchedPaths(bool undo) const{
+    std::vector<Touched> out;
+    for (const Item& item : items){
+        if (item.filepath.empty()) continue;
+        const fs::path full = item.filepath.is_absolute() ? item.filepath : project->getProjectPath() / item.filepath;
+        // made again (a write) or removed (the entry)
+        out.push_back({full, undo});
+    }
+    return out;
 }

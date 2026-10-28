@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "TerrainEditWindow.h"
+#include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 
 #include "Backend.h"
 #include "Catalog.h"
@@ -539,6 +541,12 @@ bool editor::TerrainEditWindow::cleanUnusedTerrainMaps(Project* project){
         return flushOk;
     }
 
+    // The maps folder resolving outside the project (a link to another project's folder): its
+    // files are not this project's to collect
+    if (!safewrite::isInsideResolved(absoluteBaseDir, project->getProjectPath())){
+        return flushOk;
+    }
+
     // Candidate orphans: editable maps on disk that no loaded scene references.
     std::vector<fs::path> candidates;
     for (const auto& entry : fs::directory_iterator(absoluteBaseDir, ec)){
@@ -563,7 +571,8 @@ bool editor::TerrainEditWindow::cleanUnusedTerrainMaps(Project* project){
 
     for (const fs::path& candidate : candidates){
         if (activeFiles.find(candidate.filename().string()) == activeFiles.end()){
-            fs::remove(candidate, ec);
+            // the entry itself (in a write scope: beneath its root)
+            FileUtils::removePath(candidate, ec);
             Out::info("Garbage collected old terrain map: %s", candidate.filename().string().c_str());
         }
     }

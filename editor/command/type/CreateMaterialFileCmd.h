@@ -28,6 +28,8 @@ namespace jasperengine::editor {
                               size_t contentLen, const MaterialPayload* sourceMaterial = nullptr);
 
         bool execute() override;
+
+        std::vector<Touched> touchedPaths(bool undo) const override;
         void undo() override;
 
     };

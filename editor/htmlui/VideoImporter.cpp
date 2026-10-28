@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "VideoImporter.h"
+#include "util/FileUtils.h"
 
 #include "htmlui/media/VideoFormats.h"
 #include "util/CommandRunner.h"
@@ -180,7 +181,8 @@ VideoImportResult VideoImporter::importFile(const fs::path& input, const fs::pat
     VideoImportResult result;
     std::error_code ec;
     const std::string name = pathString(input.filename());
-    fs::create_directories(targetDir, ec);
+    // (in a write scope, an MCP import: beneath its root; the copies too)
+    jasperengine::editor::FileUtils::createDirectories(targetDir, ec);
 
     // already the engine's format: copied
     const jasperengine::VideoProbe probe = probeHost(input);
@@ -190,7 +192,7 @@ VideoImportResult VideoImporter::importFile(const fs::path& input, const fs::pat
             result.message = pathString(result.output.filename()) + " already exists";
             return result;
         }
-        fs::copy_file(input, result.output, fs::copy_options::overwrite_existing, ec);
+        jasperengine::editor::FileUtils::copyPath(input, result.output, true, ec);
         result.ok = !ec;
         result.copied = !ec;
         result.message = ec ? "could not copy " + name + ": " + ec.message() : name + " is AV1/Opus WebM: copied";
@@ -214,7 +216,7 @@ VideoImportResult VideoImporter::importFile(const fs::path& input, const fs::pat
         // copied as it is; the engine will not play it until it is converted
         const fs::path copy = targetDir / input.filename();
         if (!fs::exists(copy, ec) || overwrite)
-            fs::copy_file(input, copy, fs::copy_options::overwrite_existing, ec);
+            jasperengine::editor::FileUtils::copyPath(input, copy, true, ec);
         result.output = copy;
         result.copied = !ec;
         result.ok = false;

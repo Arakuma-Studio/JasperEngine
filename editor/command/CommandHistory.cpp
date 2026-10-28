@@ -14,6 +14,7 @@ namespace {
 class CommandGroup : public jasperengine::editor::Command {
 private:
     std::vector<jasperengine::editor::Command*> commands;
+    std::string failureText;
 
 public:
     explicit CommandGroup(std::vector<jasperengine::editor::Command*> commands): commands(std::move(commands)) {
@@ -24,10 +25,22 @@ public:
         for (jasperengine::editor::Command* cmd : commands) delete cmd;
     }
 
+    // every step done again; false when one of them failed (CommandHistory::redo then reports
+    // it when a step gave a reason)
     bool execute() override {
-        for (jasperengine::editor::Command* cmd : commands) cmd->execute();
-        return true;
+        bool all = true;
+        failureText.clear();
+        for (jasperengine::editor::Command* cmd : commands) {
+            if (!cmd->execute()) {
+                all = false;
+                const std::string why = cmd->failure();
+                if (!why.empty() && failureText.empty()) failureText = why;
+            }
+        }
+        return all;
     }
+
+    std::string failure() const override { return failureText; }
 
     void undo() override {
         for (auto it = commands.rbegin(); it != commands.rend(); ++it) {
@@ -218,12 +231,15 @@ bool editor::CommandHistory::undo(){
             beforeStep(sceneId);
         }
         const bool structural = list[index-1]->affectsStructure();
+        const unsigned long long failuresBefore = safewrite::scopedFailureCount();
         {
             StepScope scope(list[index-1]);
             list[index-1]->undo();
         }
-        // a file it could not put back after its check passed (a link planted since): said
+        // a file it could not put back after its check passed (a link planted since; a write the
+        // write scope refused inside it): said
         undoProblemText = list[index-1]->takeUndoProblem();
+        if (undoProblemText.empty() && safewrite::scopedFailureCount() != failuresBefore) undoProblemText = safewrite::lastScopedError();
         if (!undoProblemText.empty()) safewrite::warn("Undo incomplete: " + undoProblemText);
         index--;
 
@@ -241,6 +257,7 @@ bool editor::CommandHistory::undo(){
 
 bool editor::CommandHistory::redo(){
     refusal.clear();
+    undoProblemText.clear();
     if (beforeChange && !beforeChange(sceneId, Change::Redo)){
         return false;
     }
@@ -261,19 +278,30 @@ bool editor::CommandHistory::redo(){
             beforeStep(sceneId);
         }
         bool executed = false;
+        const unsigned long long failuresBefore = safewrite::scopedFailureCount();
         {
             StepScope scope(list[index]);
             executed = list[index]->execute();
         }
-        // a step that could not be done again (its execute changed nothing) is not taken
+        // a step that could not be done again and says why (its failure, or a write the write
+        // scope refused in it) is not taken; one that just found nothing to do (the GameObjects it
+        // changes are gone) is passed over as before
         if (!executed){
-            refusal = list[index]->failure();
-            if (refusal.empty()) refusal = "the step could not be done again";
-            refusedText = refusal;
-            refusedSerial = list[index]->serial();
-            refusedUndo = false;
-            safewrite::warn("Redo not applied: " + refusal);
-            return false;
+            std::string why = list[index]->failure();
+            if (why.empty() && safewrite::scopedFailureCount() != failuresBefore) why = safewrite::lastScopedError();
+            if (!why.empty()){
+                refusal = why;
+                refusedText = refusal;
+                refusedSerial = list[index]->serial();
+                refusedUndo = false;
+                safewrite::warn("Redo not applied: " + refusal);
+                return false;
+            }
+        }
+        // done, but a write the write scope refused inside it: said
+        if (executed && safewrite::scopedFailureCount() != failuresBefore){
+            undoProblemText = safewrite::lastScopedError();
+            safewrite::warn("Redo incomplete: " + undoProblemText);
         }
         index++;
 

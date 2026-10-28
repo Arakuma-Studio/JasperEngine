@@ -34,6 +34,7 @@ namespace jasperengine::editor{
         std::vector<std::string> properties;  // empty: the whole component
         uint8_t stateBits;                    // PrefabObjectOverrides::State bits
         std::filesystem::path target;         // apply: the prefab (empty: the owning one)
+        std::vector<std::filesystem::path> writtenTargets;   // the prefabs the last execute wrote
         PrefabUndoState before;
 
         bool isApply() const;
@@ -44,6 +45,8 @@ namespace jasperengine::editor{
             uint8_t stateBits = 0, const std::filesystem::path& target = {});
 
         bool execute() override;
+
+        std::vector<Touched> touchedPaths(bool undo) const override;
         void undo() override;
     };
 

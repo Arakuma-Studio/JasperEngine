@@ -4,6 +4,7 @@
 #include "CreatePrefabVariantAssetCmd.h"
 
 #include "Out.h"
+#include "util/FileUtils.h"
 
 #include <system_error>
 
@@ -48,8 +49,14 @@ void editor::CreatePrefabVariantAssetCmd::undo() {
     }
     const std::filesystem::path fullPath = project->getProjectPath() / filepath;
     std::error_code ec;
-    std::filesystem::remove(fullPath, ec);
+    // the entry itself (in a write scope: beneath its root)
+    if (!FileUtils::removePath(fullPath, ec) && std::filesystem::exists(std::filesystem::symlink_status(fullPath, ec)))
+        undoProblem = "could not remove " + FileUtils::pathToGenericUtf8(fullPath);
     // like deleting it: an instance made since goes Missing (and comes back with a redo)
     project->cleanupPrefabFilePath(fullPath);
     created = false;
+}
+
+std::vector<editor::Command::Touched> editor::CreatePrefabVariantAssetCmd::touchedPaths(bool undo) const {
+    return {{project->getProjectPath() / filepath, undo}};
 }

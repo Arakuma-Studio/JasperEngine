@@ -169,10 +169,16 @@ namespace jasperengine::editor::safewrite {
         // The innermost root on this thread ("" when none, or suspended)
         static std::filesystem::path current();
     };
-    // The active root when `path` is lexically inside it (its spelling or once resolved), else ""
+    // The innermost active root holding `path` lexically (its spelling or once resolved), else ""
+    // (also "" while the innermost scope is suspended). Every other active root holding the path
+    // applies too: a scoped operation is refused when one of them doesn't hold it once resolved.
     std::filesystem::path scopeRootFor(const std::filesystem::path& path);
     // Why the last scoped FileUtils operation on this thread failed ("" when it did not)
     const std::string& lastScopedError();
+    // How many scoped FileUtils operations failed on this thread so far (CommandHistory compares
+    // it around a step: a write the scope refused inside a command is that step's failure / undo
+    // problem, lastScopedError the reason)
+    unsigned long long scopedFailureCount();
 
     // Warnings of the writers (a restore that failed in an undo...): to the editor's console once
     // it installs its sink (stderr until then)

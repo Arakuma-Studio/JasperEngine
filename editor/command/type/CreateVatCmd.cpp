@@ -13,6 +13,7 @@
 #include "command/type/ModelLoadCmd.h"
 #include "command/type/PropertyCmd.h"
 #include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 #include "util/Util.h"
 
 #include "pool/VertexAnimationPool.h"
@@ -34,7 +35,10 @@ CreateVatCmd::~CreateVatCmd(){
 }
 
 bool CreateVatCmd::fail(const std::string& message){
-    failure = message;
+    // a write the write scope refused: its reason too
+    failureText = message;
+    if (!safewrite::lastScopedError().empty() && message.find(safewrite::lastScopedError()) == std::string::npos &&
+        message.find("can't write") != std::string::npos) failureText += " (" + safewrite::lastScopedError() + ")";
     if (failureSink) *failureSink = message;
     return false;
 }
@@ -75,10 +79,13 @@ void CreateVatCmd::restoreFiles(size_t count, bool checkBytes){
         }
         if (written[i].existed){
             if (!FileUtils::writeFileReplacing(file.path, written[i].previous)){
+                if (checkBytes) undoProblem += (undoProblem.empty() ? "" : "; ") + std::string("could not put back ") + FileUtils::pathToGenericUtf8(file.path);
                 Out::warning("Could not put back the previous content of '%s'", FileUtils::pathToGenericUtf8(file.path).c_str());
             }
         }else if (fs::is_regular_file(file.path, ec) || fs::is_symlink(file.path, ec)){
-            FileUtils::removePath(file.path, ec);
+            if (!FileUtils::removePath(file.path, ec) && checkBytes){
+                undoProblem += (undoProblem.empty() ? "" : "; ") + std::string("could not remove ") + FileUtils::pathToGenericUtf8(file.path);
+            }
         }
     }
     std::vector<fs::path> dirs = createdDirs;
@@ -227,7 +234,7 @@ bool CreateVatCmd::buildAndRun(){
 }
 
 bool CreateVatCmd::execute(){
-    failure.clear();
+    failureText.clear();
     SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
     if (!sceneProject || !sceneProject->scene){
         return fail("the scene is not open");
@@ -284,4 +291,17 @@ void CreateVatCmd::undo(){
 
 bool CreateVatCmd::affectsStructure() const{
     return placement.mode != VatPlacement::Mode::None;
+}
+
+std::vector<Command::Touched> CreateVatCmd::touchedPaths(bool undo) const{
+    std::vector<Touched> out;
+    for (size_t i = 0; i < files.size(); i++){
+        // an undo writes a previous file back or removes a new one (the entry); a redo writes
+        const bool existed = i < written.size() && written[i].existed;
+        out.push_back({files[i].path, undo && !existed});
+    }
+    if (undo){
+        for (const std::filesystem::path& dir : createdDirs) out.push_back({dir, true});
+    }
+    return out;
 }

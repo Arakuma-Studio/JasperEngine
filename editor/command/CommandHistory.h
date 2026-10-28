@@ -75,8 +75,9 @@ namespace jasperengine::editor{
         // Why the last undo() / redo() was refused by its step (Command::undoRefusal / redoRefusal);
         // "" when that call was not refused or the step gave no reason (a child scene cycle)
         const std::string& lastRefusal() const { return refusal; }
-        // The last undo() was taken but a file it had to put back could not be (Command::takeUndoProblem;
-        // also said in the console): why ("" when it went through)
+        // The last undo() / redo() was taken but a file it had to put back or write could not be
+        // (Command::takeUndoProblem, or a write the write scope refused in it; also said in the
+        // console): why ("" when it went through)
         const std::string& lastUndoProblem() const { return undoProblemText; }
         // The step undo() / redo() would take now refused the last time it was tried: why (a
         // generic text when it gave none), "" else

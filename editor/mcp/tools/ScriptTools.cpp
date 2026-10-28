@@ -1534,6 +1534,12 @@ void compileScriptsTool(const CallPtr& call) {
         return;
     }
 
+    // the build writes generated sources and its build tree into the internal folder (CMake and
+    // the compiler with their own writers): it must stay inside the project, checked up front
+    if (const std::string escape = McpRefs::writeEscape(project, project->getProjectInternalPath()); !escape.empty()) {
+        call->fail(escape);
+        return;
+    }
     ProjectChecks::CppBuildPlan plan;
     std::string error;
     switch (ProjectChecks::prepareCppBuild(project, plan, error)) {

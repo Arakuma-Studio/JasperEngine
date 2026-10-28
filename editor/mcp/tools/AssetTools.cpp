@@ -1576,7 +1576,7 @@ bool importLocalFiles(const CallPtr& call, const std::vector<std::string>& local
         imported.push_back(projectRelative(project, dest));
     }
     if (!fs::exists(target, ec)) {
-        fs::create_directories(target, ec);
+        FileUtils::createDirectories(target, ec);   // beneath the project (the call's write scope)
         if (ec) {
             call->fail("Can't create " + projectRelative(project, target) + ": " + ec.message());
             return false;
@@ -1810,6 +1810,14 @@ void importFilesTool(const CallPtr& call) {
             fs::path output = target / video.filename();
             output.replace_extension(".webm");
             std::error_code ec;
+            // the converted file, its fallback name and the unconverted copy are written by the
+            // importer and FFmpeg: every name inside the project once links are resolved
+            for (const fs::path& name : {output, target / (video.stem().string() + ".av1.webm"), target / video.filename()}) {
+                if (const std::string escape = McpRefs::writeEscape(project, name); !escape.empty()) {
+                    call->fail(escape);
+                    return;
+                }
+            }
             if (fs::exists(output, ec) && !state->overwrite) {
                 call->fail(projectRelative(project, output) + " already exists; pass overwrite: true to replace it.");
                 return;

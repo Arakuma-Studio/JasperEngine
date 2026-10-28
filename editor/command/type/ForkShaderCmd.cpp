@@ -82,3 +82,10 @@ void editor::ForkShaderCmd::undo() {
     project->invalidateCustomShaders();
     executed = false;
 }
+
+std::vector<editor::Command::Touched> editor::ForkShaderCmd::touchedPaths(bool undo) const {
+    // written by a redo, removed (the entries) by an undo
+    std::vector<Touched> out = {{plan.vertPath, undo}, {plan.fragPath, undo}};
+    for (const auto& include : plan.includeFiles) out.push_back({include.path, undo});
+    return out;
+}
