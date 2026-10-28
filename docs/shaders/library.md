@@ -876,11 +876,11 @@ Leaves and grass: wind sway in the vertex stage (masked by the vertex colour's r
 <a id="librarywater"></a>
 ### Water (`library:water`)
 
-Stylised water: shallow to deep colour by the view angle, two scrolling normal layers and foam anchored to the world, optional sine waves; lit per pixel with a specular glint, distant waves and ripples fading so they do not shimmer. Optional features: BUILTIN_TEXTURES (the engine's seamless ripples and foam noise where the material sets no texture, so no image files are needed), REFLECTION (the sky or the reflection probe around it by Schlick's fresnel, a GGX sun glint), UNDERSIDE (both faces drawn: seen from below, the sky only through Snell's window, the depths mirrored around it; with library:underwater in the post-processing chain the view under the surface fades into the water), and the scene-reading DEPTH_FOAM (foam along every shore and object crossing the surface) and ABSORPTION (colour by the water's thickness; with REFRACTION the bed seen through it also loses each colour at its own rate) reading the scene depth, REFRACTION (the bed and anything under the surface bent by the ripples) the scene colour and depth, CAUSTICS (with REFRACTION: the sunlight focused on the bed). Mobile cost of those: the scene depth is an extra depth-only pass of the opaque meshes (none when SSAO or SSR already made one), the scene colour a copy of the screen (half resolution by default) and a split of the render pass; REFLECTION and CAUSTICS are a few instructions (one cube map read). REFRACTION hides other transparent objects behind the water where it bends the view (the scene colour holds only opaque objects and the sky), and needs the Alpha or Premultiplied blend (Additive and Multiply draw it unrefracted). Limits of reading the depth: no shore foam where a vertical face meets the water seen from straight above (no depth gap there), and REFRACTION leaves a faint line along outlines crossing the water (samples in front are rejected). Floats rigidbodies with a Buoyancy (Water in Lua: the surface height and normal at a point, the same waves). Alpha blended; casts no shadows.
+Stylised water: shallow to deep colour by the view angle, two scrolling normal layers and foam anchored to the world, optional sine waves; lit per pixel with a specular glint, distant waves and ripples fading so they do not shimmer. Optional features: BUILTIN_TEXTURES (the engine's seamless ripples and foam noise where the material sets no texture, so no image files are needed), REFLECTION (the sky or the reflection probe around it by Schlick's fresnel, a GGX sun glint), UNDERSIDE (both faces drawn: seen from below, the sky only through Snell's window, the depths mirrored around it; with library:underwater in the post-processing chain the view under the surface fades into the water), and the scene-reading DEPTH_FOAM (foam along every shore and object crossing the surface) and ABSORPTION (colour by the water's thickness; with REFRACTION the bed seen through it also loses each colour at its own rate) reading the scene depth, REFRACTION (the bed and anything under the surface bent by the ripples) the scene colour and depth, CAUSTICS (with REFRACTION: the sunlight focused on the bed). For meshes that carry their water (a spline's river or lake): FLOW (rivers: the ripples and the foam carried along the flow the vertex colour gives) and MESH_DEPTH (shore foam and shallow to deep colour from the depth the mesh's first UV set gives, with no scene-depth pass: the mobile path). Mobile cost of those: the scene depth is an extra depth-only pass of the opaque meshes (none when SSAO or SSR already made one), the scene colour a copy of the screen (half resolution by default) and a split of the render pass; REFLECTION, CAUSTICS and MESH_DEPTH are a few instructions (one cube map read for REFLECTION), FLOW doubles the four texture reads. REFRACTION hides other transparent objects behind the water where it bends the view (the scene colour holds only opaque objects and the sky), and needs the Alpha or Premultiplied blend (Additive and Multiply draw it unrefracted). Limits of reading the depth: no shore foam where a vertical face meets the water seen from straight above (no depth gap there), and REFRACTION leaves a faint line along outlines crossing the water (samples in front are rejected). Floats rigidbodies with a Buoyancy (Water in Lua: the surface height and normal at a point, the same waves). Alpha blended; casts no shadows.
 
 - **Type**: mesh (a material's shader); category Nature.
 - **Lighting**: none (default), per pixel.
-- **Inputs**: `position`, `normals`; `scenedepth` with `DEPTH_FOAM`; `scenedepth` with `ABSORPTION`; `scenedepth`, `scenecolor` with `REFRACTION`; `environment` with `REFLECTION`.
+- **Inputs**: `position`, `normals`; `scenedepth` with `DEPTH_FOAM`; `scenedepth` with `ABSORPTION`; `scenedepth`, `scenecolor` with `REFRACTION`; `environment` with `REFLECTION`; `rawcolor` with `FLOW`; `uv1` with `MESH_DEPTH`.
 - **Reads the scene**: the scene depth (a depth pre-pass, unless SSAO, SSR or a depth-reading post pass already runs one) and the scene colour (a copy of the opaque scene, at the scene's Scene Color Scale), in the camera passes that draw it.
 - **Default state**: blend alpha, shadows off; with `UNDERSIDE`: cull off (both faces).
 - **Depth program**: yes (shadows and depth follow its vertices and clipping).
@@ -916,6 +916,12 @@ Stylised water: shallow to deep colour by the view angle, two scrolling normal l
 | `causticsScale` | float | 1.5 | Caustics size (world units per cell) (with `CAUSTICS`) |
 | `causticsSpeed` | float | 0.7 | Caustics speed (with `CAUSTICS`) |
 | `causticsDepth` | float | 3 | Caustics fade depth (world units below the surface) (with `CAUSTICS`) |
+| `flowSpeed` | float | 1 | Flow speed (world units per second at the mesh's full speed) (with `FLOW`) |
+| `flowCycle` | float | 1.5 | Flow cycle (seconds a ripple phase travels before it restarts) (with `FLOW`) |
+| `meshShoreFoamWidth` | float | 0.3 | Shore foam width (world units of the mesh's depth) (with `MESH_DEPTH`) |
+| `meshShoreFoamBreakup` | range 0 to 1 | 0.7 | Shore foam break-up (by the foam noise) (with `MESH_DEPTH`) |
+| `meshAbsorptionDepth` | float | 1.5 | Deep colour thickness (world units of water along the view) (with `MESH_DEPTH`) |
+| `meshShoreFade` | float | 0.1 | Shore fade (world units of the mesh's depth) (with `MESH_DEPTH`) |
 | `buoyancy` | toggle | on | Floats rigidbodies (those with a Buoyancy) |
 | `buoyancyDepth` | float | 0 | Floating depth (world units below the surface; 0: no bottom) |
 
@@ -934,6 +940,8 @@ Stylised water: shallow to deep colour by the view angle, two scrolling normal l
 | `ABSORPTION` | off | Depth colour (reads the scene depth) |
 | `REFRACTION` | off | Refraction (reads the scene colour and depth) |
 | `CAUSTICS` | off | Caustics (with REFRACTION) |
+| `FLOW` | off | Flow (rivers: ripples advect along the mesh's flow) |
+| `MESH_DEPTH` | off | Depth from the mesh (shore foam and depth colour without a scene-depth pass; mobile) |
 
 ## Animated
 
