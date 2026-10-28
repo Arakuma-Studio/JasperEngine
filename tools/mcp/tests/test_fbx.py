@@ -11,6 +11,7 @@ The model is editor/tests/fixtures/rigged_cube.fbx, the gtest FbxImportTest's ha
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 import shutil
 import struct
@@ -204,7 +205,13 @@ async def test_source_export_ships_the_imports(ed: Editor):
         ed.check((shipped / name).read_bytes()[:4] == b"glTF", f"{name} is a binary glTF")
     ed.check(not (shipped / "rigged_cube.fbx").exists(), "the .fbx itself is not shipped")
     ed.check(not (shipped / "unused.fbx").exists(), "the .fbx itself is not shipped")
-    ed.check((shipped / "textures" / "checker.png").is_file(), "its linked texture ships as an asset")
+    # its linked texture ships cooked (S14 R9: a glTF's external image loads its cook; a Linux
+    # export ships the desktop family, the source stays out)
+    index = json.loads((assets / "je-cooked" / "desktop" / "index.json").read_text())["textures"]
+    ed.check("models/textures/checker.png" in index, f"its linked texture ships cooked: {sorted(index)}")
+    ed.check((assets / "je-cooked" / "desktop" / index["models/textures/checker.png"]["file"]).is_file(),
+             "its cooked file ships")
+    ed.check(not (shipped / "textures" / "checker.png").exists(), "the cooked source itself is not shipped")
     sources = [p for p in out.rglob("*.cpp") if "rigged_cube.fbx" in p.read_text(errors="ignore")]
     ed.check(sources, "the scene source loads the model by its .fbx path")
 
