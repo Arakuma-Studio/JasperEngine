@@ -10,6 +10,7 @@
 #include "command/CommandHandle.h"
 #include "component/MeshComponent.h"
 #include "component/TerrainComponent.h"
+#include "picking/MeshRaycast.h"
 #include "spline/SplineEvaluator.h"
 #include "spline/SplineStroke.h"
 #include "subsystem/MeshSystem.h"
@@ -408,27 +409,26 @@ spline::SplineSurfaceProbe editor::SplineEditor::makeProbe(SceneProject* scenePr
         if (snap != SplineSnap::Surface){
             return best;
         }
-        // anything drawn: the top of the bounds of the meshes over the point (the model drop
-        // rule), the spline's own chunks excepted
+        // anything drawn (S26 triangle picking): straight down onto the triangles of the meshes,
+        // instances and terrains over the point, the spline's own geometry excepted
         std::shared_ptr<SplineSystem> splines = scene->findSystem<SplineSystem>();
-        auto meshes = scene->getComponentArray<MeshComponent>();
-        for (size_t i = 0; i < meshes->size(); i++){
-            const Entity entity = meshes->getEntity(i);
-            const MeshComponent& mesh = meshes->getComponentFromIndex(i);
-            if (entity == ignore || (splines && splines->getGeneratedOwner(entity) == ignore) ||
-                scene->findComponent<TerrainComponent>(entity) || !mesh.enabled || mesh.worldAABB.isNull() || mesh.worldAABB.isInfinite()){
-                continue;
+        MeshRaycastOptions options;
+        options.kinds = MeshRaycast::MESH | MeshRaycast::INSTANCE | MeshRaycast::TERRAIN;
+        if (ignore != NULL_ENTITY){
+            options.ignore.push_back(ignore);
+            if (splines){
+                for (Entity generated : splines->getGeneratedEntities(ignore)){
+                    options.ignore.push_back(generated);
+                }
             }
-            const Vector3& lo = mesh.worldAABB.getMinimum();
-            const Vector3& hi = mesh.worldAABB.getMaximum();
-            if (point.x < lo.x || point.x > hi.x || point.z < lo.z || point.z > hi.z){
-                continue;
-            }
-            if (!best.hit || hi.y > best.height){
-                best.hit = true;
-                best.height = hi.y;
-                best.normal = Vector3(0.0f, 1.0f, 0.0f);
-            }
+        }
+        constexpr float REACH = 10000.0f;
+        const MeshRaycastHit hit = MeshRaycast::raycast(scene, Vector3(point.x, point.y + REACH, point.z), Vector3(0.0f, -1.0f, 0.0f),
+                                                        2.0f * REACH, LAYER_MASK_DEFAULT_RAYCAST, options);
+        if (hit.hit && (!best.hit || hit.point.y > best.height)){
+            best.hit = true;
+            best.height = hit.point.y;
+            best.normal = hit.normal.y < 0.0f ? -hit.normal : hit.normal;
         }
         return best;
     };

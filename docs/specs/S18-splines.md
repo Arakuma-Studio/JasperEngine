@@ -522,9 +522,11 @@ detail (each the best correct alternative found; the requirement it serves is na
 3. **Chain2D colliders live on generated static bodies** (R13: "on the entity's Rigidbody2D, a
    static body is added if missing"): writing the generated chain into the GameObject's own
    Rigidbody2D would put derived data into the scene file and fight the user's colliders. The
-   chain is the centreline simplified to 1 cm, split into chains of `MAX_COLLIDER_POINTS_2D`
-   points sharing their end points, `MAX_COLLIDERS_2D` chains a body, on engine-owned bodies like
-   the chunks.
+   centreline (simplified to 2 mm of physics scale) becomes Box2D chains of at most
+   `MAX_COLLIDER_POINTS_2D` points overlapping by three, with ghost points past open ends, each
+   made twice (reversed), so the edge collides from both sides along its whole length like
+   Unity's EdgeCollider2D (a Box2D chain is one-sided and skips its end edges); on engine-owned
+   bodies like the chunks.
 4. **WaterBanks samples the heightmap at its texel centres** (D9 wrote spacing
    `terrainSize/(N-1)`): the terrain now draws and samples texel `i` at `(i + 0.5) / N`
    (upstream's texel-centre sampling), so the ground lattice is `terrainSize/N` apart, starting
@@ -543,22 +545,19 @@ detail (each the best correct alternative found; the requirement it serves is na
    authored knot (FenceLayout's model), without a toggle; the fence gains a `crests` pool.
 8. **Corners (Mitre/Round) apply at the knots of Linear splines**: Catmull-Rom and Bezier splines
    are smooth through their knots, so a corner there has no turn to build.
-9. **Surface snap** (R26) uses the terrain under the point, then the top of the bounds of the
-   meshes there (the `getModelDropPosition` rule); S26's triangle picking was not on `oe-port`
-   when this stream ended (see the integrator notes in the final report).
-10. **Live Terrain restores every texel the session wrote** before each re-bake (R12 wrote the
+9. **Live Terrain restores every texel the session wrote** before each re-bake (R12 wrote the
    union of the old and new footprints): a superset of that union, so no stale cut survives.
-11. **Painting needs the blend map to exist**: the bake paints an existing blend map; a layer
+10. **Painting needs the blend map to exist**: the bake paints an existing blend map; a layer
    whose blend map is missing gets a warning (the Terrain tool creates it).
-12. **Every export ships `licenses/OpenEngine-LICENSE.txt`**: every game links the spline module
+11. **Every export ships `licenses/OpenEngine-LICENSE.txt`**: every game links the spline module
    (`SplineSystem` is a scene system), not only those with spline components.
-13. **R20's bake budgets are measured by the editor test `TerrainSplineBakeTests.BakeBudgets`**
+12. **R20's bake budgets are measured by the editor test `TerrainSplineBakeTests.BakeBudgets`**
    (the bake is editor code, `editor/util/TerrainSplineBake.cpp`), enforced with
    `JASPER_TEST_PERF_SLACK` on the benchmark server; R18, R19 and R21 by `je-bench-splines`.
-14. **Only the scene format is bumped (3 -> 4)**; prefab files keep version 5: an older editor
+13. **Only the scene format is bumped (3 -> 4)**; prefab files keep version 5: an older editor
    preserves a prefab's unknown spline components as unknown data (S03) either way.
-15. **R19's "7-point" Crown is OpenEngine's 5-point Crown with its two shoulder creases split**:
+14. **R19's "7-point" Crown is OpenEngine's 5-point Crown with its two shoulder creases split**:
    a crease emits its vertex twice (split normals), so a ring has 7 vertices, which is what the
    build cost depends on; `je-bench-splines` gates `crown_ring_vertices` = 7.
-16. **AC15's cross-compiler hash** is pinned on GCC (`ROAD_FIXTURE_VERTEX_HASH`); Clang and MSVC CI
+15. **AC15's cross-compiler hash** is pinned on GCC (`ROAD_FIXTURE_VERTEX_HASH`); Clang and MSVC CI
    jobs check the same constant (there is one Linux compiler on the build servers).
