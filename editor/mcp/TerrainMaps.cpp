@@ -4,6 +4,7 @@
 #include "TerrainMaps.h"
 
 #include "Project.h"
+#include "mcp/McpRefs.h"
 #include "pool/TextureDataPool.h"
 #include "texture/TextureData.h"
 #include "util/PngWriter.h"
@@ -170,6 +171,11 @@ TerrainHeightmapResult TerrainMaps::createHeightmap(Project* project,
         result.error = "No project is available.";
         return result;
     }
+    // the generated maps' folder: inside the project once links are resolved
+    if (const std::string escape = mcp::McpRefs::writeEscape(project, project->getTerrainMapsDir()); !escape.empty()) {
+        result.error = escape;
+        return result;
+    }
 
     const int resolution = std::max(2, request.resolution);
     std::vector<unsigned char> pixels = makeHeightPixels(request);
@@ -191,6 +197,11 @@ TerrainBlendmapResult TerrainMaps::createBlendmap(Project* project,
     TerrainBlendmapResult result;
     if (!project) {
         result.error = "No project is available.";
+        return result;
+    }
+    // the generated maps' folder: inside the project once links are resolved
+    if (const std::string escape = mcp::McpRefs::writeEscape(project, project->getTerrainMapsDir()); !escape.empty()) {
+        result.error = escape;
         return result;
     }
 

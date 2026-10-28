@@ -129,8 +129,9 @@ std::string wrapNames() {
 
 // `value`: a project-relative .anim path, or (allowSubClip) "<model>#<clip>". `relative` gets
 // the project-relative form (the document key), `absolute` the file (the model of a sub-clip).
+// `write`: the tool writes the .anim (edit_animation): inside the project once links are resolved
 bool resolveClipArg(Project* project, const Json& value, const std::string& what, bool allowSubClip,
-                    std::string& relative, fs::path& absolute, bool& subClip, std::string& error) {
+                    std::string& relative, fs::path& absolute, bool& subClip, std::string& error, bool write = false) {
     if (!value.is_string() || value.get<std::string>().empty()) {
         error = what + " must be a project-relative .anim path (e.g. assets/anim/bob.anim)" +
                 std::string(allowSubClip ? " or a model clip \"assets/models/hero.gltf#Walk\"" : "") + ".";
@@ -149,7 +150,8 @@ bool resolveClipArg(Project* project, const Json& value, const std::string& what
                 std::string(allowSubClip ? " (or name a model clip: \"assets/models/hero.gltf#Walk\")" : "") + ".";
         return false;
     }
-    if (!McpRefs::resolveProjectPath(project, file, absolute, error, subClip)) {
+    if ((write && !subClip) ? !McpRefs::resolveProjectWritePath(project, file, absolute, error, false)
+                            : !McpRefs::resolveProjectPath(project, file, absolute, error, subClip)) {
         error = what + ": " + error;
         return false;
     }
@@ -1334,7 +1336,7 @@ void editClip(const CallPtr& call) {
     std::string relative;
     fs::path absolute;
     bool subClip = false;
-    if (!resolveClipArg(project, args["clip"], "clip", true, relative, absolute, subClip, error)) {
+    if (!resolveClipArg(project, args["clip"], "clip", true, relative, absolute, subClip, error, true)) {
         call->fail(error);
         return;
     }

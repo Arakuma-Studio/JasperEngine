@@ -82,7 +82,8 @@ bool scenePathArg(Project* project, const std::string& given, fs::path& relative
     fs::path rel = FileUtils::pathFromUtf8(given).lexically_normal();
     if (rel.extension() != ".scene") rel += ".scene";
     fs::path absolute;
-    if (!McpRefs::resolveProjectPath(project, FileUtils::pathToGenericUtf8(rel), absolute, error)) return false;
+    // a file the tool writes: inside the project once links are resolved
+    if (!McpRefs::resolveProjectWritePath(project, FileUtils::pathToGenericUtf8(rel), absolute, error)) return false;
     relative = rel;
     return true;
 }
@@ -326,6 +327,14 @@ void saveSceneTool(const CallPtr& call) {
             return;
         }
     }
+    // saved in place: its file (a link out of the project would be written through) stays inside
+    if (!scene->filepath.empty()) {
+        const fs::path file = scene->filepath.is_absolute() ? scene->filepath : project->getProjectPath() / scene->filepath;
+        if (const std::string escape = McpRefs::writeEscape(project, file); !escape.empty()) {
+            call->fail(escape);
+            return;
+        }
+    }
     fs::path untitledPath;
     if (!pathArg.empty() && scene->filepath.empty()) {
         if (!scenePathArg(project, pathArg, untitledPath, error)) {
@@ -454,6 +463,12 @@ void deleteSceneTool(const CallPtr& call) {
     const std::string name = scene->name;
     const fs::path relative = project->normalizeToProjectRelative(scene->filepath);
     const fs::path absolute = project->getProjectPath() / relative;
+    if (deleteFile) {
+        if (const std::string escape = McpRefs::writeEscape(project, absolute, McpRefs::WriteUse::Entry); !escape.empty()) {
+            call->fail(escape);
+            return;
+        }
+    }
     CommandHistory* history = project->getProjectCommandHistory();
     const size_t mark = history->mark();
     std::string error;
@@ -462,8 +477,10 @@ void deleteSceneTool(const CallPtr& call) {
         return;
     }
     if (deleteFile) {
-        if (!runProjectCommand(project, new DeleteFileCmd(project, {absolute}, project->getProjectPath()), error,
-                               "The scene file could not be deleted.")) {
+        // the file moved to the trash beneath the project (a link: the link itself)
+        auto* deleteCmd = new DeleteFileCmd(project, {absolute}, project->getProjectPath());
+        deleteCmd->writeBeneath(project->getProjectPath());
+        if (!runProjectCommand(project, deleteCmd, error, "The scene file could not be deleted.")) {
             history->undo();
             call->fail(error);
             return;

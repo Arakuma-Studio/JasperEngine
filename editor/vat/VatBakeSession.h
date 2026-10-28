@@ -173,8 +173,14 @@ namespace jasperengine::editor::vat{
         // given (kind invalid_source / invalid_settings / output_exists / scene_playing /
         // write_failed, with its fix)
         bool write(VatWriteResult& out, std::string& error, VatIssue* issue = nullptr);
+        // write() keeps its files beneath `root` (the MCP tool: the project): a file resolving
+        // outside it once links are resolved is refused (write_failed), and the files-only step
+        // writes beneath it when it happens (WriteFilesCmd::writeBeneath, util/SafeWrite.h).
+        // Empty (the default, the window): as before.
+        void writeBeneath(std::filesystem::path root) { beneathRoot = std::move(root); }
 
     private:
+        std::filesystem::path beneathRoot;
         struct PlanItem{
             int clip = 0;           // into input.clips
             bool mid = false;

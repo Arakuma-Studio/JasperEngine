@@ -1022,7 +1022,7 @@ void createScriptTool(const CallPtr& call) {
     fs::path dir;
     std::string error;
     if (dirArg == ".") dir = project->getProjectPath();
-    else if (!McpRefs::resolveProjectPath(project, dirArg, dir, error)) {
+    else if (!McpRefs::resolveProjectWritePath(project, dirArg, dir, error)) {
         call->fail(error);
         return;
     }
@@ -1645,7 +1645,9 @@ void codeEditorTool(const CallPtr& call) {
     const std::string path = args.value("path", "");
     fs::path file;
     std::string error;
-    if (!McpRefs::resolveProjectPath(project, path, file, error, action == "open")) {
+    // a save writes the file: inside the project once links are resolved (an open only reads)
+    if (action == "save" ? !McpRefs::resolveProjectWritePath(project, path, file, error, false)
+                         : !McpRefs::resolveProjectPath(project, path, file, error, action == "open")) {
         call->fail(error.empty() ? "path is required." : error);
         return;
     }

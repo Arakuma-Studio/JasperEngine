@@ -3,6 +3,8 @@
 
 #include "DeleteFileCmd.h"
 
+#include "util/SafeWrite.h"
+
 #include "util/Util.h"
 #include "vat/VatAssetFiles.h"
 
@@ -52,8 +54,13 @@ bool editor::DeleteFileCmd::execute(){
         }
     }
 
-    if (!fs::exists(trash)) {
-        fs::create_directory(trash);
+    try {
+        if (!fs::exists(trash)) {
+            safewrite::createDirOrThrow(beneathRoot, trash);
+        }
+    } catch (const fs::filesystem_error& e) {
+        printf("Error: Creating %s: %s\n", trash.string().c_str(), e.what());
+        return false;
     }
 
     std::vector<fs::path> deletedPaths;
@@ -76,10 +83,10 @@ bool editor::DeleteFileCmd::execute(){
                 } else {
                     // Normal deletion - move to trash with unique name
                     if (!fs::exists(trash)) {
-                        fs::create_directory(trash);
+                        safewrite::createDirOrThrow(beneathRoot, trash);
                     }
                     file.trashFile = generateUniqueTrashPath(trash, file.originalFile);
-                    fs::rename(file.originalFile, file.trashFile);
+                    safewrite::renameOrThrow(beneathRoot, file.originalFile, file.trashFile);
                 }
 
                 deletedPaths.push_back(file.originalFile);
@@ -115,7 +122,7 @@ void editor::DeleteFileCmd::undo(){
         try {
             // Only attempt to restore if the file was moved to trash (not permanently deleted)
             if (!file.trashFile.empty() && fs::exists(file.trashFile)) {
-                fs::rename(file.trashFile, file.originalFile);
+                safewrite::renameOrThrow(beneathRoot, file.trashFile, file.originalFile);
                 restoredShaderSource |= fs::is_directory(file.originalFile) ||
                                         Util::isShaderFile(file.originalFile.string());
                 // Prefabs and clips come back with their GUIDs: their Missing Prefab instances

@@ -1101,7 +1101,7 @@ void generateSpriteNormalsTool(const CallPtr& call) {
         }
         fs::path target;
         std::string error;
-        if (!McpRefs::resolveProjectPath(project, s.get<std::string>(), target, error)) {
+        if (!McpRefs::resolveProjectWritePath(project, s.get<std::string>(), target, error)) {
             failCall(call, problem("output_invalid", "save_path", "save_path: " + error, "a project-relative .png path"));
             return;
         }

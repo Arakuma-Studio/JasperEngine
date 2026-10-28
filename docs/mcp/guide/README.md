@@ -6,6 +6,10 @@ build time (`CMakeLists.txt` generates `mcp_docs.h`; `editor/mcp/tools/DocsTools
 them), so a new file here becomes `jasper://docs/<file name>` after a rebuild. This README is
 not served; `jasper://docs` lists the served documents. The guide refers to them by these URIs:
 
+Paths in every guide are project-relative. Reads follow symbolic links; writes, creates, deletes
+and moves refuse a path that leads out of the project through one (editor-integration.md,
+"Paths and symbolic links"; docs/mcp/DESIGN.md, Addressing).
+
 | File | Resource | Contents |
 |---|---|---|
 | [lua-api.md](lua-api.md) | `jasper://docs/lua-api` | Lua script structure, property types, events, every bound class used in gameplay, enums, pitfalls (checked against `engine/core/script/binding/*`) |

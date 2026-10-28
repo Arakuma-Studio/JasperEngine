@@ -46,7 +46,9 @@ Legacy Animation = AnimationPlayerComponent (AnimationComponent: entity sequence
   colors as vectors (0..1); enums by name; textures/fonts/materials by asset path;
   entity references by entity ref, or {"scene": <scene>, "id": <id>} for a GameObject of
   another scene (cross-scene references); Prefab script properties by .prefab path.
-- assets: project-relative paths only ("assets/sprites/ship.png", "scripts/Player.lua").
+- assets: project-relative paths only ("assets/sprites/ship.png", "scripts/Player.lua"). Reads
+  follow symbolic links; a tool that writes, creates, deletes or moves a file refuses a path that
+  leads out of the project through a link (isError says where it leads).
 
 ## The loop
 1. Inspect: `editor_status`, the scene list, the hierarchy, then the GameObjects you will

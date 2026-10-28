@@ -25,6 +25,7 @@
 #include "object/ui/UIDocument.h"
 #include "util/Base64.h"
 #include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 #include "util/GraphicUtils.h"
 #include "window/ConsoleWindow.h"
 #include "window/GameWindow.h"
@@ -274,16 +275,14 @@ void finishWithPng(const CaptureJobPtr& job, std::vector<uint8_t> png, int width
         Project* project = job->call->ctx().project();
         fs::path target;
         std::string error;
-        // Inside the project only, like every file a tool writes
-        if (!McpRefs::resolveProjectPath(project, job->req.savePath, target, error)) {
+        // Inside the project only, like every file a tool writes (also once links are resolved),
+        // and written beneath it: no link planted on the way since the check is followed
+        if (!McpRefs::resolveProjectWritePath(project, job->req.savePath, target, error)) {
             job->fail("save_path: " + error);
             return;
         }
-        std::error_code ec;
-        if (target.has_parent_path()) fs::create_directories(target.parent_path(), ec);
-        std::ofstream file(target, std::ios::binary | std::ios::trunc);
-        if (!file || !file.write(reinterpret_cast<const char*>(png.data()), static_cast<std::streamsize>(png.size()))) {
-            job->fail("Could not write the PNG to " + FileUtils::pathToGenericUtf8(target) + ".");
+        if (!safewrite::writeFileResolvedBeneath(project->getProjectPath(), target, std::string(png.begin(), png.end()), error)) {
+            job->fail("Could not write the PNG to " + FileUtils::pathToGenericUtf8(target) + ": " + error);
             return;
         }
         info["saved_to"] = FileUtils::pathToGenericUtf8(target);

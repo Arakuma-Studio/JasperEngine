@@ -68,9 +68,29 @@ namespace jasperengine::editor::mcp {
         static bool hasComponent(SceneProject* scene, Entity entity, ComponentType type);
 
         // Project-relative path → absolute, sandboxed to the project (no '..' escaping it,
-        // no absolute paths). mustExist adds an existence check.
+        // no absolute paths). mustExist adds an existence check. Lexical only: reads follow
+        // symbolic links (an assets folder deliberately linked in from a shared library reads
+        // fine); every tool that writes, creates, deletes, moves or renames uses
+        // resolveProjectWritePath instead.
         static bool resolveProjectPath(Project* project, const std::string& relative,
                                        std::filesystem::path& absolute, std::string& error, bool mustExist = false);
+
+        // What a write acts on: the final name followed too when it is a link (a dangling one
+        // included: a plain write would create its target), or (Entry) only the folders on the
+        // way, the entry itself acted on (a delete or a move's source: a link there is removed or
+        // moved, never followed)
+        enum class WriteUse { Write, Entry };
+        // resolveProjectPath for a path a tool writes, creates, deletes, moves or renames: also
+        // refused when, once symbolic links (and Windows junctions) are resolved
+        // (util/SafeWrite.h, resolvedPath), it lies outside the project directory (itself
+        // resolved: a project opened through a link works) or a link on the way loops. `absolute`
+        // is the path as named (under the project's spelling). The error names the path, where
+        // the link leads and how to fix it.
+        static bool resolveProjectWritePath(Project* project, const std::string& relative, std::filesystem::path& absolute,
+                                            std::string& error, bool mustExist = false, WriteUse use = WriteUse::Write);
+        // The same check for an absolute path a tool computed itself (a default output beside its
+        // source, a generated file): "" when it stays inside the project, else the error
+        static std::string writeEscape(Project* project, const std::filesystem::path& absolute, WriteUse use = WriteUse::Write);
     };
 
 }

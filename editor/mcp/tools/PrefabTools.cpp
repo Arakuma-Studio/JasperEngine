@@ -223,8 +223,10 @@ bool entitiesArg(const CallPtr& call, SceneProject* scene, std::vector<Entity>& 
 }
 
 // A project-relative .prefab path. mustExist: the file is there (a prefab to use);
-// otherwise ".prefab" is added when missing (a prefab to create).
-bool prefabPathArg(Project* project, const std::string& text, bool mustExist, fs::path& relative, std::string& error) {
+// otherwise ".prefab" is added when missing (a prefab to create). A prefab the tool writes (created,
+// or `write`: changed) must stay inside the project once links are resolved
+// (McpRefs::resolveProjectWritePath); one it only reads may be reached through a link.
+bool prefabPathArg(Project* project, const std::string& text, bool mustExist, fs::path& relative, std::string& error, bool write = false) {
     if (text.empty()) {
         error = "A project-relative .prefab path is required.";
         return false;
@@ -232,7 +234,10 @@ bool prefabPathArg(Project* project, const std::string& text, bool mustExist, fs
     fs::path rel = FileUtils::pathFromUtf8(text).lexically_normal();
     if (!mustExist && rel.extension() != ".prefab") rel += ".prefab";
     fs::path absolute;
-    if (!McpRefs::resolveProjectPath(project, generic(rel), absolute, error, false)) return false;
+    if ((!mustExist || write) ? !McpRefs::resolveProjectWritePath(project, generic(rel), absolute, error, false)
+                            : !McpRefs::resolveProjectPath(project, generic(rel), absolute, error, false)) {
+        return false;
+    }
     if (!Util::isPrefabFile(rel.string())) {
         error = "\"" + text + "\" is not a .prefab file.";
         return false;
@@ -692,7 +697,7 @@ void createPrefabTool(const CallPtr& call) {
     if (pathArg.empty()) {
         fs::path absolute;
         std::string error;
-        if (!McpRefs::resolveProjectPath(project, generic(dir), absolute, error, false)) {
+        if (!McpRefs::resolveProjectWritePath(project, generic(dir), absolute, error, false)) {
             call->fail("directory: " + error);
             return;
         }
@@ -1035,7 +1040,7 @@ void addToPrefabTool(const CallPtr& call) {
     fs::path target;
     const std::string targetArg = call->args().value("target", std::string());
     std::string error;
-    if (!targetArg.empty() && !prefabPathArg(project, targetArg, true, target, error)) {
+    if (!targetArg.empty() && !prefabPathArg(project, targetArg, true, target, error, true)) {
         call->fail("target: " + error);
         return;
     }
@@ -1342,7 +1347,7 @@ void prefabOverridesTool(const CallPtr& call) {
             call->fail("target is for apply only (revert always goes back to what the prefab gives).");
             return;
         }
-        if (!prefabPathArg(project, targetArg, true, target, error)) {
+        if (!prefabPathArg(project, targetArg, true, target, error, true)) {
             call->fail("target: " + error);
             return;
         }
@@ -1855,7 +1860,7 @@ void setStandalonePrefabTool(const CallPtr& call) {
     const Json& args = call->args();
     fs::path relative;
     std::string error;
-    if (!prefabPathArg(project, args.value("prefab", std::string()), true, relative, error)) {
+    if (!prefabPathArg(project, args.value("prefab", std::string()), true, relative, error, true)) {
         call->fail("prefab: " + error);
         return;
     }

@@ -25,6 +25,7 @@ namespace jasperengine::editor{
     class CopyFileCmd: public Command{
 
     private:
+        fs::path beneathRoot;
 
         Project* project;
         std::vector<FileCopyData> files;
@@ -43,6 +44,10 @@ namespace jasperengine::editor{
         void addVatPairs();
 
     public:
+        // Every rename (and folder creation) of this command stays beneath `root` when it happens
+        // (util/SafeWrite.h: resolved inside it first, no link planted on the way since followed;
+        // the MCP tools set the project directory). Empty (the default): fs::rename as before.
+        void writeBeneath(fs::path root) { beneathRoot = std::move(root); }
         CopyFileCmd(Project* project, std::vector<std::string> sourceFiles, std::string currentDirectory, std::string targetDirectory, bool copy);
         CopyFileCmd(Project* project, std::vector<std::string> sourcePaths, std::string targetDirectory, bool copy);
 

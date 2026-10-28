@@ -17,6 +17,7 @@ namespace jasperengine::editor{
     class RenameFileCmd: public Command{
 
     private:
+        fs::path beneathRoot;
 
         Project* project;
         fs::path oldFilename;
@@ -44,6 +45,10 @@ namespace jasperengine::editor{
         bool renameFile(const fs::path& source, const fs::path& destination);
 
     public:
+        // Every rename (and folder creation) of this command stays beneath `root` when it happens
+        // (util/SafeWrite.h: resolved inside it first, no link planted on the way since followed;
+        // the MCP tools set the project directory). Empty (the default): fs::rename as before.
+        void writeBeneath(fs::path root) { beneathRoot = std::move(root); }
         RenameFileCmd(Project* project, std::string oldName, std::string newName, std::string directory);
 
         bool execute() override;

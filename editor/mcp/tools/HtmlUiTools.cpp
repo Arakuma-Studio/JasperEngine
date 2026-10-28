@@ -1383,7 +1383,7 @@ void createUiDocumentTool(const CallPtr& call) {
         return;
     }
     fs::path htmlAbs;
-    if (!McpRefs::resolveProjectPath(project, args["html"].get<std::string>(), htmlAbs, error, false)) {
+    if (!McpRefs::resolveProjectWritePath(project, args["html"].get<std::string>(), htmlAbs, error, false)) {
         call->fail(error);
         return;
     }

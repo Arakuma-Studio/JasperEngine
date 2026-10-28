@@ -144,14 +144,23 @@ namespace importers = jasperengine::editor::htmlui;
 
 // ------------------------------------------------------------------ helpers
 
-bool resolveExisting(const CallPtr& call, const std::string& key, fs::path& out, bool mustExist = true) {
+// What a path argument is for: read (links followed, wherever they lead), or written / created
+// (Write) or deleted / moved (Entry): then it must stay inside the project once links are resolved
+// (McpRefs::resolveProjectWritePath)
+enum class PathFor { Read, Write, Entry };
+
+bool resolveExisting(const CallPtr& call, const std::string& key, fs::path& out, bool mustExist = true, PathFor use = PathFor::Read) {
     const Json& args = call->args();
     if (!args.contains(key) || !args[key].is_string() || args[key].get<std::string>().empty()) {
         call->fail(key + " is required (a project-relative path).");
         return false;
     }
     std::string error;
-    if (!McpRefs::resolveProjectPath(call->ctx().project(), args[key].get<std::string>(), out, error, mustExist)) {
+    const bool ok = use == PathFor::Read
+        ? McpRefs::resolveProjectPath(call->ctx().project(), args[key].get<std::string>(), out, error, mustExist)
+        : McpRefs::resolveProjectWritePath(call->ctx().project(), args[key].get<std::string>(), out, error, mustExist,
+                                           use == PathFor::Entry ? McpRefs::WriteUse::Entry : McpRefs::WriteUse::Write);
+    if (!ok) {
         call->fail(error);
         return false;
     }
@@ -1077,7 +1086,7 @@ void writeFileTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
     fs::path file;
-    if (!resolveExisting(call, "path", file, false)) return;
+    if (!resolveExisting(call, "path", file, false, PathFor::Write)) return;
     const std::string rel = projectRelative(project, file);
     std::string why;
     if (isEditorOwnedFile(project, file, why)) {
@@ -1220,7 +1229,7 @@ void writeFileTool(const CallPtr& call) {
 
 void createFolderTool(const CallPtr& call) {
     fs::path dir;
-    if (!resolveExisting(call, "path", dir, false)) return;
+    if (!resolveExisting(call, "path", dir, false, PathFor::Write)) return;
     Project* project = call->ctx().project();
     std::error_code ec;
     if (fs::exists(dir, ec)) {
@@ -1231,7 +1240,10 @@ void createFolderTool(const CallPtr& call) {
         call->fail("The parent folder " + projectRelative(project, dir.parent_path()) + " does not exist; create it first.");
         return;
     }
-    if (!addProjectCommand(call->ctx(), new CreateDirCmd(dir.filename().string(), dir.parent_path().string()))) {
+    // made beneath the project: no link planted on the way since the check is followed
+    auto* create = new CreateDirCmd(dir.filename().string(), dir.parent_path().string());
+    create->writeBeneath(project->getProjectPath());
+    if (!addProjectCommand(call->ctx(), create)) {
         call->fail("Couldn't create the folder.");
         return;
     }
@@ -1302,8 +1314,8 @@ private:
 
 void moveAssetTool(const CallPtr& call) {
     fs::path from, to;
-    if (!resolveExisting(call, "path", from)) return;
-    if (!resolveExisting(call, "to", to, false)) return;
+    if (!resolveExisting(call, "path", from, true, PathFor::Entry)) return;
+    if (!resolveExisting(call, "to", to, false, PathFor::Write)) return;
     Project* project = call->ctx().project();
     const std::string fromRel = projectRelative(project, from), toRel = projectRelative(project, to);
     std::string why;
@@ -1341,12 +1353,19 @@ void moveAssetTool(const CallPtr& call) {
     if (copy) {
         cmd = new CopyAsCmd(project, from, to);
     } else if (from.parent_path() == to.parent_path()) {
-        cmd = new RenameFileCmd(project, from.filename().string(), to.filename().string(), from.parent_path().string());
+        // renamed beneath the project: no link planted on the way since the check is followed
+        auto* rename = new RenameFileCmd(project, from.filename().string(), to.filename().string(), from.parent_path().string());
+        rename->writeBeneath(project->getProjectPath());
+        cmd = rename;
     } else {
         auto* multi = new MultiPropertyCmd();
-        multi->addCommand(std::make_unique<CopyFileCmd>(project, std::vector<std::string>{from.string()}, to.parent_path().string(), false));
+        auto move = std::make_unique<CopyFileCmd>(project, std::vector<std::string>{from.string()}, to.parent_path().string(), false);
+        move->writeBeneath(project->getProjectPath());
+        multi->addCommand(std::move(move));
         if (from.filename() != to.filename()) {
-            multi->addCommand(std::make_unique<RenameFileCmd>(project, from.filename().string(), to.filename().string(), to.parent_path().string()));
+            auto rename = std::make_unique<RenameFileCmd>(project, from.filename().string(), to.filename().string(), to.parent_path().string());
+            rename->writeBeneath(project->getProjectPath());
+            multi->addCommand(std::move(rename));
         }
         cmd = multi;
     }
@@ -1384,7 +1403,8 @@ void deleteAssetTool(const CallPtr& call) {
     for (const Json& item : args["paths"]) {
         fs::path file;
         std::string error;
-        if (!item.is_string() || !McpRefs::resolveProjectPath(project, item.get<std::string>(), file, error, true)) {
+        // the entry itself goes to the trash: a link there is moved, never followed
+        if (!item.is_string() || !McpRefs::resolveProjectWritePath(project, item.get<std::string>(), file, error, true, McpRefs::WriteUse::Entry)) {
             call->fail(error.empty() ? "paths must be strings." : error);
             return;
         }
@@ -1424,6 +1444,8 @@ void deleteAssetTool(const CallPtr& call) {
     }
     auto* deleteCmd = new DeleteFileCmd(project, files, project->getProjectPath());
     deleteCmd->setAlertOnRefusal(false);
+    // moved to the trash beneath the project: no link planted on the way since the check is followed
+    deleteCmd->writeBeneath(project->getProjectPath());
     if (!addProjectCommand(call->ctx(), deleteCmd)) {
         call->fail("Couldn't delete the files.");
         return;
@@ -1496,7 +1518,7 @@ bool importLocalFiles(const CallPtr& call, const std::vector<std::string>& local
         return false;
     }
     fs::path target;
-    if (!resolveExisting(call, "to_dir", target, false)) return false;
+    if (!resolveExisting(call, "to_dir", target, false, PathFor::Write)) return false;
     std::error_code ec;
     std::vector<std::string> sources;
     Json imported = Json::array();
@@ -1511,6 +1533,11 @@ bool importLocalFiles(const CallPtr& call, const std::vector<std::string>& local
             return false;
         }
         const fs::path dest = target / source.filename();
+        // a link at the destination name leading out of the project: the copy would follow it
+        if (const std::string escape = McpRefs::writeEscape(project, dest); !escape.empty()) {
+            call->fail(escape);
+            return false;
+        }
         if (fs::exists(dest, ec) && !args.value("overwrite", false)) {
             call->fail(projectRelative(project, dest) + " already exists; pass overwrite: true to replace it.");
             return false;
@@ -1746,7 +1773,7 @@ void importFilesTool(const CallPtr& call) {
     }
     if (!state->videos.empty()) {
         fs::path target;
-        if (!resolveExisting(call, "to_dir", target, false)) return;
+        if (!resolveExisting(call, "to_dir", target, false, PathFor::Write)) return;
         state->videoTarget = target;
         state->overwrite = args.value("overwrite", false);
         for (const fs::path& video : state->videos) {
@@ -1767,7 +1794,7 @@ void importFilesTool(const CallPtr& call) {
         const std::string assetsRel = projectRelative(project, project->getAssetsPath());
         const std::string destArg = args.contains("to_dir") && args["to_dir"].is_string() ? args["to_dir"].get<std::string>()
                                                                                             : (assetsRel.empty() ? "" : assetsRel + "/") + "ui/imported";
-        if (!McpRefs::resolveProjectPath(project, destArg, dest, error, false)) {
+        if (!McpRefs::resolveProjectWritePath(project, destArg, dest, error, false)) {
             call->fail(error);
             return;
         }
@@ -1833,7 +1860,7 @@ void createMaterialTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
     fs::path file;
-    if (!resolveExisting(call, "path", file, false)) return;
+    if (!resolveExisting(call, "path", file, false, PathFor::Write)) return;
     if (extensionOf(file) != ".material") file += ".material";
     const std::string rel = projectRelative(project, file);
     std::error_code ec;
@@ -1896,7 +1923,7 @@ void updateMaterialTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
     fs::path file;
-    if (!resolveExisting(call, "path", file)) return;
+    if (!resolveExisting(call, "path", file, true, PathFor::Write)) return;
     const std::string rel = projectRelative(project, file);
     if (extensionOf(file) != ".material") {
         call->fail(rel + " is not a .material file.");
@@ -2036,7 +2063,7 @@ void applyMaterialPresetTool(const CallPtr& call) {
             return;
         }
         fs::path file;
-        if (!resolveExisting(call, "path", file)) return;
+        if (!resolveExisting(call, "path", file, true, PathFor::Write)) return;
         const std::string rel = projectRelative(project, file);
         if (extensionOf(file) != ".material") {
             call->fail(rel + " is not a .material file.");
@@ -2140,6 +2167,12 @@ void forkShaderTool(const CallPtr& call) {
     const fs::path directory = FileUtils::pathFromUtf8(args.value("directory", FileUtils::pathToGenericUtf8(ProjectUtils::defaultShaderForkDir()))).lexically_normal();
     if (directory != "." && !Util::isSafeRelativePath(directory)) {
         call->fail("directory must be project-relative.");
+        return;
+    }
+    // the fork's files are written there: inside the project once links are resolved
+    if (const std::string escape = McpRefs::writeEscape(project, directory == "." ? project->getProjectPath() : project->getProjectPath() / directory);
+        !escape.empty()) {
+        call->fail("directory: " + escape);
         return;
     }
     const bool forkIncludes = args.value("fork_includes", false);
@@ -2827,7 +2860,7 @@ void placeholderArtTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
     fs::path file;
-    if (!resolveExisting(call, "path", file, false)) return;
+    if (!resolveExisting(call, "path", file, false, PathFor::Write)) return;
     if (extensionOf(file) != ".png") file += ".png";
     const std::string rel = projectRelative(project, file);
     // project-relative like the paths of set_properties / create_entity, which only take assets

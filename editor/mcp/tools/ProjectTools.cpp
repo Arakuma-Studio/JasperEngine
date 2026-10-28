@@ -32,6 +32,7 @@
 #include "registry/TagManager.h"
 #include "util/CxxStandards.h"
 #include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 #include "window/CodeEditor.h"
 #include "window/ConsoleWindow.h"
 #include "window/ProjectWindow.h"
@@ -419,7 +420,7 @@ void saveProjectTool(const CallPtr& call) {
     if (!sceneDirText.empty()) {
         fs::path absolute;
         std::string error;
-        if (!McpRefs::resolveProjectPath(project, sceneDirText, absolute, error)) {
+        if (!McpRefs::resolveProjectWritePath(project, sceneDirText, absolute, error)) {
             call->fail("untitled_scene_dir: " + error);
             return;
         }
@@ -1310,7 +1311,8 @@ const std::vector<Setting>& settingsTable() {
                 fs::path dir = text.empty() ? fs::path(".") : FileUtils::pathFromUtf8(text).lexically_normal();
                 if (dir != ".") {
                     fs::path absolute;
-                    if (!McpRefs::resolveProjectPath(p, text, absolute, error)) return false;
+                    // the referenced files are moved there: inside the project once links are resolved
+                    if (!McpRefs::resolveProjectWritePath(p, text, absolute, error)) return false;
                 }
                 if (ctx.isPlaying()) {
                     error = "cannot change asset roots during Play";
@@ -1939,17 +1941,22 @@ void editProjectBuildFileTool(const CallPtr& call) {
                    "build and exported players), and use ${JASPERENGINE_SCRIPTS_DIR} as the root of script paths.");
         return;
     }
-    std::error_code ec;
+    // written (or removed) beneath the project: a link there leading out of it is refused, and no
+    // link planted on the way since the check is followed
+    std::string why;
+    if (const std::string escape = McpRefs::writeEscape(project, path, content.empty() ? McpRefs::WriteUse::Entry : McpRefs::WriteUse::Write);
+        !escape.empty()) {
+        call->fail(escape);
+        return;
+    }
     if (content.empty()) {
-        fs::remove(path, ec);
-    } else {
-        std::ofstream out(path, std::ios::binary | std::ios::trunc);
-        out << content;
-        out.close();
-        if (!out) {
-            call->fail("Could not write ProjectBuild.cmake.");
+        if (!safewrite::removeFileResolvedBeneath(project->getProjectPath(), path, why)) {
+            call->fail("Could not remove ProjectBuild.cmake: " + why);
             return;
         }
+    } else if (!safewrite::writeFileResolvedBeneath(project->getProjectPath(), path, content, why)) {
+        call->fail("Could not write ProjectBuild.cmake: " + why);
+        return;
     }
     if (ctx.projectWindow()) ctx.projectWindow()->refreshCurrentDirectory();
     Out::info("MCP: %s ProjectBuild.cmake", content.empty() ? "removed" : "updated");

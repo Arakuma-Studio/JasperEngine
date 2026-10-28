@@ -230,6 +230,32 @@ runs several tool calls in one round-trip, sequentially on the main thread; with
   `scripts[0].speed`).
 - **Asset**: project-relative path. Paths are sandboxed to the project (no `..`, no
   absolute paths outside it) except explicit import-from-disk tools.
+- **Symbolic links** (and Windows junctions). Reads follow them wherever they lead: an assets
+  folder deliberately linked in from a shared library reads, lists, previews and imports fine
+  (`McpRefs::resolveProjectPath` is lexical). Every tool that **writes, creates, deletes, moves or
+  renames** a file resolves its path through `McpRefs::resolveProjectWritePath` /
+  `McpRefs::writeEscape`: once every link on the way is followed (a dangling one too; the shared
+  walk `safewrite::resolvedPath` in `editor/util/SafeWrite.h`, the same one sprite normals'
+  output containment uses), the location must be inside the project directory (itself resolved,
+  so a project opened through a link works; links pointing inside the project work). A delete or
+  a move's source acts on the entry itself: a link there is trashed or moved, never followed.
+  Refused: isError naming the path and where the link leads, with the fix ("use a path that is not
+  behind a link to elsewhere, or replace the link with a real folder").
+- **Writes beneath the project.** The check and the write are two steps; a link planted between
+  them must not redirect the write. The tools' writes go through `editor/util/SafeWrite.h`, which
+  never follows a link below the root at the moment it writes (POSIX: `openat` with `O_NOFOLLOW`
+  folder by folder, an exclusive temporary file, `renameat` in the same folder; Windows: every
+  folder opened with `FILE_FLAG_OPEN_REPARSE_POINT`, refused when it is a reparse point, held
+  without delete sharing until the rename): a folder on the way that became a link is refused
+  (the error names it: remove the link, then try again); a link at the final name is replaced, not
+  followed. Covered: every write through `w4::writeFilesUndoable` / `ProjectFileWrites::writeUndoable`
+  (write_file, create_script, the material tools, generate_placeholder_art, create_ui_document,
+  synthesize_texture, generate_sprite_normals and its save_path sheet; undo and redo of those steps
+  too), screenshot and render_pose_animation `save_path`, edit_project_build_file, the trash moves
+  of delete_asset / delete_scene, move_asset's renames and moves, create_folder, and
+  bake_vertex_animation's files-only step. Writes made by shared editor code (scene, prefab and
+  project.yaml saves, the clip, pose and Vertex Animation documents, recursive copies) are checked
+  before they run but write with `FileUtils::writeFileReplacing`.
 
 ## Values (McpValues)
 

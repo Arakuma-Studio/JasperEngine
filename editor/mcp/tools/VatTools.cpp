@@ -587,6 +587,11 @@ bool requestFromArgs(Project* project, const Json& args, VatRequest& request, st
                 return false;
             }
             const fs::path absolute = project->getProjectPath() / FileUtils::pathFromUtf8(relative);
+            // written by the tool: inside the project once links are resolved
+            if (const std::string escape = McpRefs::writeEscape(project, absolute); !escape.empty()) {
+                error = "output: " + escape;
+                return false;
+            }
             if (!Util::isVertexAnimationFile(relative) || !project->isInsideAssetsPath(absolute)) {
                 error = "output must be a .vat path inside the assets folder (e.g. \"assets/vat/hero.vat\"; the mesh goes to hero.vat.glb), or "
                         "true for the default name next to the source (got \"" + relative + "\").";
@@ -1102,6 +1107,8 @@ void bakeVertexAnimationRun(const CallPtr& call, bool waited) {
         title = "Import Vertex Animation " + relativeOf(project, FileUtils::pathFromUtf8(request.importSpec.path));
     } else {
         state->session = std::make_unique<VatBakeSession>(project);
+        // its files stay beneath the project when written (a default output beside a linked-in source included)
+        state->session->writeBeneath(project->getProjectPath());
         if (request.rebake) {
             if (!state->session->loadRebake(request.rebakePath, error)) {
                 call->fail("Can't rebake " + request.rebakePath + ": " + error + ".");

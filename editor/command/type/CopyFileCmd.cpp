@@ -3,6 +3,8 @@
 
 #include "CopyFileCmd.h"
 
+#include "util/SafeWrite.h"
+
 #include "util/Util.h"
 #include "vat/VatAssetFiles.h"
 
@@ -61,7 +63,7 @@ editor::CopyFileCmd::CopyFileCmd(Project* project, std::vector<std::string> sour
 }
 
 void editor::CopyFileCmd::moveFile(const fs::path& source, const fs::path& destination, bool isDirectory){
-    fs::rename(source, destination);
+    safewrite::renameOrThrow(beneathRoot, source, destination);
     if (!project) {
         return;
     }

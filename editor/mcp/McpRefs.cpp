@@ -3,6 +3,8 @@
 
 #include "McpRefs.h"
 
+#include "util/SafeWrite.h"
+
 #include "util/EntityPath.h"
 #include "util/FileUtils.h"
 
@@ -438,4 +440,33 @@ bool McpRefs::resolveProjectPath(Project* project, const std::string& relative, 
         return false;
     }
     return true;
+}
+
+std::string McpRefs::writeEscape(Project* project, const fs::path& absolute, WriteUse use) {
+    if (!project) return "No project is open.";
+    const fs::path root = project->getProjectPath();
+    const fs::path realRoot = safewrite::resolvedPath(root);
+    const fs::path normal = absolute.lexically_normal();
+    const fs::path rel = normal.lexically_relative(root.lexically_normal());
+    const std::string shown = rel.empty() || *rel.begin() == ".." ? FileUtils::pathToGenericUtf8(normal) : FileUtils::pathToGenericUtf8(rel);
+    // a write follows a link at the name (a dangling one too: a plain write creates its target)
+    const fs::path where = use == WriteUse::Entry ? safewrite::entryLocation(normal) : safewrite::resolvedPath(normal);
+    if (where.empty() || realRoot.empty()) {
+        return "\"" + shown + "\" can't be resolved: a symbolic link on its way loops or can't be read. Remove the loop, then try again.";
+    }
+    if (!safewrite::isAtOrBelow(where, realRoot)) {
+        return "\"" + shown + "\" resolves outside the project: a symbolic link on its way leads to " + FileUtils::pathToGenericUtf8(where) +
+               ". Tools write, create, delete and move files only inside the project (reads may follow links): use a path that is "
+               "not behind a link to elsewhere, or replace the link with a real folder.";
+    }
+    return std::string();
+}
+
+bool McpRefs::resolveProjectWritePath(Project* project, const std::string& relative, fs::path& absolute, std::string& error,
+                                      bool mustExist, WriteUse use) {
+    if (!resolveProjectPath(project, relative, absolute, error, mustExist)) return false;
+    const std::string escape = writeEscape(project, absolute, use);
+    if (escape.empty()) return true;
+    error = escape;
+    return false;
 }

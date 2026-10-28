@@ -3,6 +3,8 @@
 
 #include "RenameFileCmd.h"
 
+#include "util/SafeWrite.h"
+
 #include "util/FileUtils.h"
 #include "util/Util.h"
 #include "vat/VatAssetFiles.h"
@@ -48,7 +50,7 @@ bool editor::RenameFileCmd::renameFile(const fs::path& sourceFs, const fs::path&
         bool isDir = fs::is_directory(sourceFs);
         // Resolve the thumbnail path before the rename, while the source still exists.
         fs::path oldThumbnail = project ? project->getThumbnailPath(sourceFs) : fs::path();
-        fs::rename(sourceFs, destFs);
+        safewrite::renameOrThrow(beneathRoot, sourceFs, destFs);
         if (project) {
             moveThumbnail(oldThumbnail, destFs);
             std::string extension = sourceFs.extension().string();
