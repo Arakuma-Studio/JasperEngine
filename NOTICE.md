@@ -64,7 +64,7 @@ Texture synthesis and sprite normal maps of the editor (editor-only: never part 
 | Code | Version | Location | License | Used for |
 |---|---|---|---|---|
 | [texture-synthesis](https://github.com/EmbarkStudios/texture-synthesis) by Embark Studios (`lib/src`, ported to C++) | 0.8.2 (`22825ec4ad25`) | `editor/texsynth/` (`editor/texsynth/LICENSE-texture-synthesis.txt`) | MIT OR Apache-2.0 (used under MIT) | `jasperengine-editor synthesize-texture`: new, tileable, inpainted and guided textures from examples |
-| [spritefusion-sprite-normals](https://github.com/Hugo-Dz/spritefusion-sprite-normals) by Hugo Duprez (`src`, ported to C++) | 0.1.0 (`d14b067`) | `editor/spritenormals/` (`editor/spritenormals/LICENSE-spritefusion-sprite-normals.txt`; C++ port of the normal-map generator) | MIT | Sprite Normal Map: normal maps for 2D sprites, sheets and animations |
+| [spritefusion-sprite-normals](https://github.com/Hugo-Dz/spritefusion-sprite-normals) by Hugo Duprez (`src`, ported to C++) | 0.1.0 (`d14b067`) | `editor/spritenormals/` (`editor/spritenormals/LICENSE-spritefusion-sprite-normals.txt`; C++ port of the normal-map generator) | MIT | Window > Sprite Normal Map, `jasperengine-editor generate-sprite-normals` and the `generate_sprite_normals` MCP tool: normal maps for 2D sprites, sheets, animations and tilesets |
 
 FBX import of the editor (editor-only: an exported game ships the converted `.glb`, never ufbx):
 

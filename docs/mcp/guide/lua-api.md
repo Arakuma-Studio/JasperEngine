@@ -713,7 +713,7 @@ sprites) sorted by their distance to the camera position, not by Z.
 | `enabled` | rw |
 | `setTexture(path)` | method |
 | `normalTexture` | rw path of submesh 0's normal map (`""` none; assigning `""` removes it) |
-| `setNormalTexture([submesh,] path)`, `getNormalTexture([submesh])` | methods: the normal map of submesh 0 or of a submesh (tangent-space, OpenGL convention, green up; on sprites, tilemaps and polygons it answers Light 2Ds whose `height` is above 0; same size and frame layout as the colour texture; a Tilemap's submesh `i` is the tileset of its colour texture `i`) |
+| `setNormalTexture([submesh,] path)`, `setNormalTexture(id, TextureData)`, `getNormalTexture([submesh])` | methods: the normal map of submesh 0 or of a submesh (tangent-space, OpenGL convention, green up; on sprites, tilemaps and polygons it answers Light 2Ds whose `height` is above 0; same size and frame layout as the colour texture; a Tilemap's submesh `i` is the tileset of its colour texture `i`) |
 | `material` | rw `Material`; `getMaterial([submesh])`, `setMaterial([submesh,] mat)` |
 | `castShadows`, `receiveShadows`, `receiveLights`, `transparent`, `faceCulling`, `cullingMode`, `customShader` | rw |
 | `getAABB()`, `getWorldAABB()`, `getNumSubmeshes()` | methods |
@@ -1024,8 +1024,8 @@ Light2D rw: `enabled`, `color` (Vector3), `intensity`, `range`, `falloff`, `heig
 `shadows`, `shadowBias`, `shadowSoftness`, `mapResolution`; methods `setColor(r,g,b)`,
 `setIntensity(i)`, `setRange(r)`, `setFalloff(f)`, `setHeight(h)`, `setShadows(b)`.
 `height`: the light's virtual height above the 2D plane for normal-mapped objects (editor
-default 64; `Light2D(scene)` keeps 0, which makes normal maps flat); objects without a normal
-map are lit the same at any height. 2D normal maps use the OpenGL convention (green up), like
+default 64; `Light2D(scene)` keeps 0, which makes normal maps flat); unlit objects without a
+normal map (sprites by default) are lit the same at any height; Lit materials keep their N.L. 2D normal maps use the OpenGL convention (green up), like
 3D Lit, Unity and Godot: a map made for the engine's old 2D (DirectX) behaviour needs its green
 channel flipped.
 

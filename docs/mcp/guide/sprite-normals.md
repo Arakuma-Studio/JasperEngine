@@ -4,8 +4,10 @@
 volume) and its painted shading (relief), OpenGL convention (green = up the image), the sprite's pixel size and
 frame layout, its alpha byte kept, flat `(128, 128, 255)` where it is transparent. It runs in the editor only
 (nothing of it ships in games): a C++ port of Sprite Fusion's sprite-normals (MIT). Humans have the same thing as
-**Window > Sprite Normal Map** and the Project window's right-click > **Generate Normal Map...**; all of them run
-the same code, so a preview in one is the same pixels as a write in another.
+**Window > Sprite Normal Map**, the Project window's right-click > **Generate Normal Map...** / **Regenerate Normal
+Map** (a badge marks stale maps), and the Inspector (a wand on the Normal Texture row, **Normal Map...** under Sprite
+Frames, Regenerate on a generated PNG); shells have the CLI and `check --normals` (below). All of them run the same
+code, so a preview in one is the same pixels as a write in another.
 
 ## When it shows
 
@@ -189,7 +191,8 @@ texture's pixel size and frame layout (they share UVs). Pixel art needs the same
 Linear normal smears the light): `apply` copies the colour texture's min/mag filter and wrap. Without `apply`, a
 write on a GameObject source returns `apply_args` (the exact `set_properties`, and for animations
 `set_sprite_frames` / `set_sprite_animation`, calls). The engine reads OpenGL green; use `directx` only to export
-for Unreal. The library Sprite shader samples normal maps; mirrored sprites (negative scale, flipped frames) stay
+for Unreal; a map made for the engine's old 2D behaviour (green down) lights upside down: flip its green
+(`check --normals` flags it as `normals-green-convention`). The library Sprite shader samples normal maps; mirrored sprites (negative scale, flipped frames) stay
 correctly lit. In Lua: `Sprite(self.scene, self.entity):setNormalTexture("sprites/hero_normal.png")`.
 
 ## Recipes and regenerating
