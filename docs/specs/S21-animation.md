@@ -452,7 +452,33 @@ Unit tests in `engine/tests/core/animation/` (`Animator*.cpp`), editor tests in
 
 ## 10. Deviations
 
-(none yet)
+1. **D8 culling default**: `AlwaysAnimate` (Unity's default), not `CullUpdateTransforms`: an
+   Animator seen only by an off-screen camera, a render target or the editor's Scene view must not
+   freeze by default. `CullUpdateTransforms` and `CullCompletely` are there to choose.
+2. **No per-layer "IK pass"** (R6, R22, the `ik_pass` key): the IK stack runs once, after every
+   layer and montage (R11); a per-layer flag would have nothing to switch. The key is not part of
+   the format (read, it is an unknown key: a warning).
+3. **Lua `getBoneWorldTransform`** is `getBonePosition` / `getBoneRotation` (+ `hasBone`): two
+   values from one call are awkward through LuaBridge; Unity's `GetBoneTransform` returns an object.
+4. **`clipOverrides[].replacement`** is a plain path (no GUID): the override list is scene data
+   edited as text; a moved replacement is reported unbound (warning) like a missing clip.
+5. **R28 preference**: `scene_view.preview_particles` (Preferences > Scene View > Animation), not a
+   new `animation.previewParticles` page: one toggle did not justify a Preferences page.
+6. **R27 tangents**: one mode per key (all its components), stored as the key's `"tangent_mode"`
+   in `.anim` (written only with tangents; Constant keeps the step ease with tangents, the one
+   ease a Hermite track keeps). Rotation tangents are quaternion tangents: their handles show
+   read-only, the modes apply. Unity's per-curve modes and Euler handles are not reproduced.
+7. **R12 targets**: the target humanoid is built from the Animator's model file (its nodes and
+   `.humanoid` sidecar, the same source a clip of that file uses) and mapped onto the rig's bones
+   by path: the rig holds a subset of the nodes, which changed what the auto-detect found.
+8. **R20 runtime state** is `AnimatorInstance::runtimeStateBytes()`: the instance, parameters,
+   layer / montage / IK runs and output buffers; the rig, poses, per-bone masks and clip bindings
+   grow with bones and clips and are counted by the Crowd200 memory, not by the 8 KB.
+9. **Test names**: AC1-AC11 are covered under the suites `AnimatorAssetIO`, `AnimatorPoseOps`,
+   `AnimatorBlendTree`, `AnimatorStateMachine`, `AnimatorIK`, `AnimatorFootIK`,
+   `AnimatorRetargeting`, `AnimatorSystemTest` (root motion, montages, events, culling, writing,
+   skins, player compatibility), `AnimatorSystemAllocations`, `AnimatorSystemDeterminism`,
+   `ClipTangentModes`, `AnimatorGpu`; the editor's `AnimatorEditor`.
 
 ## 11. Progress
 
