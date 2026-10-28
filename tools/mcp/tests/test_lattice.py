@@ -786,7 +786,9 @@ async def test_show_all_lattices_screenshot(ed: Editor):
         GOLDEN.write_bytes(shot)
         print(f"     [golden] wrote {GOLDEN}")
     else:
-        ok, fraction, diff = pngdiff.compare(pngdiff.decode(GOLDEN.read_bytes()), img, max_fraction=0.01)
+        golden = pngdiff.decode(GOLDEN.read_bytes())
+        ed.check_eq(img[:2], golden[:2], f"the Scene view shot has {GOLDEN.name}'s size (width, height)")
+        ok, fraction, diff = pngdiff.compare(golden, img, max_fraction=0.01)
         if not ok and ed.scratch:
             (ed.scratch.root / "lattice_show_all_diff.png").write_bytes(diff)
         ed.check(ok, f"the screenshot differs from {GOLDEN.name} in {fraction:.4f} of the pixels")
