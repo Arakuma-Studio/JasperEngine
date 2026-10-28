@@ -7,6 +7,7 @@
 // away from their defaults, so a file saved before them is written again byte for byte.
 
 #include "Stream.h"
+#include "reflect/Reflect.h"
 #include "util/LightPhotometry.h"
 
 #include <gtest/gtest.h>
@@ -31,7 +32,8 @@ TEST(StreamMaterialPbr, DefaultsWriteNothingNew){
     allocated.pbr.edit();
     EXPECT_EQ(YAML::Dump(Stream::encodeMaterial(allocated)), YAML::Dump(node));
 
-    const YAML::Node light = Stream::encodeLightComponent(LightComponent());
+    const LightComponent light0;
+    const YAML::Node light = reflect::encodeValue(ComponentType::LightComponent, &light0);
     EXPECT_FALSE(light["intensityUnit"]);
     EXPECT_FALSE(light["useColorTemperature"]);
     EXPECT_FALSE(light["colorTemperature"]);
@@ -109,15 +111,15 @@ TEST(StreamMaterialPbr, LightUnitsRoundTrip){
     light.intensityUnit = LightUnit::LUMEN;
     light.useColorTemperature = true;
     light.colorTemperature = 2700.0f;
-    const YAML::Node node = reread(Stream::encodeLightComponent(light));
+    const YAML::Node node = reread(reflect::encodeValue(ComponentType::LightComponent, &light));
     EXPECT_EQ(node["intensityUnit"].as<std::string>(), "lumen");
-    const LightComponent read = Stream::decodeLightComponent(node);
+    const LightComponent read = reflect::decodeValue<LightComponent>(ComponentType::LightComponent, node);
     EXPECT_EQ(read.intensityUnit, LightUnit::LUMEN);
     EXPECT_TRUE(read.useColorTemperature);
     EXPECT_FLOAT_EQ(read.colorTemperature, 2700.0f);
     EXPECT_FLOAT_EQ(read.intensity, 800.0f);
     // a file without them reads the defaults (a light of before keeps its look)
-    const LightComponent old = Stream::decodeLightComponent(YAML::Load("type: point\nintensity: 2\n"));
+    const LightComponent old = reflect::decodeValue<LightComponent>(ComponentType::LightComponent, YAML::Load("type: point\nintensity: 2\n"));
     EXPECT_EQ(old.intensityUnit, LightUnit::ENGINE);
     EXPECT_FALSE(old.useColorTemperature);
     EXPECT_FLOAT_EQ(old.colorTemperature, 6500.0f);

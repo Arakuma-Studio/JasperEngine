@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
-# Keeps the hand-kept known-key tables of editor/StreamSchema.cpp honest (docs/data-safety.md,
-# S03 AC12): every key a decoder in editor/Stream*.cpp reads from its YAML node must be listed
-# for that decoder's component (knownFieldKeys) or nested structure (knownNestedKeys).
+# Keeps the hand-kept known-key tables honest (docs/data-safety.md, S03 AC12): every key a
+# hand-written decoder in editor/Stream*.cpp reads from its YAML node must be listed for its
+# component (the extraKeys of the component's reflection table, editor/reflect/components: a
+# component with a codec of its own lists the keys it reads there) or nested structure
+# (knownNestedKeys of editor/StreamSchema.cpp). Components the generic codec decodes need no
+# list: their table is their decoder (docs/specs/S08-reflection.md).
 # A key a decoder reads but the table lacks would make a valid file report "unknown field"
 # (noise in the load report, and Dropped for nested structures, which gates saves).
 #
@@ -10,16 +13,16 @@
 #
 # A decoder's keys: every node["literal"] on its YAML parameter, the literals passed to a
 # lambda of its body that indexes that parameter (given("renderMode")), and the keys of the
-# helpers it hands the parameter to (decodeComponentShaderLibrary(node, ...)). S08 replaces the
-# tables with reflection.
+# helpers it hands the parameter to (decodeComponentShaderLibrary(node, ...)).
 
 import os
 import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SOURCES = [os.path.join(ROOT, "editor", "Stream.cpp"), os.path.join(ROOT, "editor", "StreamPrefab.cpp")]
+SOURCES = [os.path.join(ROOT, "editor", name) for name in ("Stream.cpp", "StreamComponents.cpp", "StreamPrefab.cpp")]
 SCHEMA = os.path.join(ROOT, "editor", "StreamSchema.cpp")
+REFLECT = os.path.join(ROOT, "editor", "reflect", "components")
 
 # Nested structures with a decoder of their own, checked inside components (knownNestedKeys)
 NESTED = {
@@ -81,14 +84,25 @@ def decoder_keys(decoders):
     return {name: keys_of(name) for name in decoders}
 
 
-def component_decoders(text):
-    """ComponentType -> decoder name, from the blocks of decodeComponents"""
-    mapping = {}
-    for block in re.finditer(r"StreamLoad::decodeComponent\(ComponentType::(\w+),(.*?)\n    \}\);", text, re.S):
-        call = re.search(r"\b(decode\w+Component|decodeTransform)\(componentNode", block.group(2))
-        if call:
-            mapping[block.group(1)] = call.group(1)
-    return mapping
+def component_tables():
+    """ComponentType -> (decoder name, known keys) of each component with a codec of its own, from
+    its ComponentDesc (.codec and .extraKeys) in editor/reflect/components"""
+    found = {}
+    for name in sorted(os.listdir(REFLECT)):
+        if not name.endswith(".cpp"):
+            continue
+        text = open(os.path.join(REFLECT, name), encoding="utf-8").read()
+        arrays = {m.group(1): set(re.findall(r'"([^"]+)"', m.group(2)))
+                  for m in re.finditer(r"constexpr const char\*\s+(\w+)\[\]\s*=\s*\{([^}]*)\}", text)}
+        for block in re.finditer(r"const ComponentDesc k\w+Desc\{(.*?)\n\};", text, re.S):
+            body = block.group(1)
+            component = re.search(r"\.type = ComponentType::(\w+)", body).group(1)
+            if ".codec = " not in body:
+                continue
+            extra = re.search(r"\.extraKeys = (\w+)", body)
+            decoder = "decodeTransform" if component == "Transform" else "decode" + component
+            found[component] = (decoder, arrays.get(extra.group(1), set()) if extra else set())
+    return found
 
 
 def schema_tables(text):
@@ -102,12 +116,16 @@ def main():
     text = "\n".join(open(path, encoding="utf-8").read() for path in SOURCES)
     decoders = functions(text)
     keys = decoder_keys(decoders)
-    components = component_decoders(text)
+    components = component_tables()
     if not components:
-        print("check_stream_keys: no component blocks found in decodeComponents", file=sys.stderr)
+        print("check_stream_keys: no component with a codec of its own in editor/reflect/components", file=sys.stderr)
         return 2
 
-    wanted = {component: keys[decoder] for component, decoder in components.items()}
+    wanted = {component: keys[decoder] for component, (decoder, _) in components.items() if decoder in keys}
+    for component, (decoder, _) in components.items():
+        if decoder not in keys:
+            print("check_stream_keys: %s: no decoder %s in editor/Stream*.cpp" % (component, decoder), file=sys.stderr)
+            return 2
     for decoder, kind in NESTED.items():
         if decoder in keys:
             wanted[kind] = keys[decoder]
@@ -120,11 +138,13 @@ def main():
         return 0
 
     tables = schema_tables(open(SCHEMA, encoding="utf-8").read())
+    for component, (_, known) in components.items():
+        tables[component] = known
     problems = []
     for name in sorted(wanted):
         table = tables.get(name)
         if table is None:
-            problems.append("%s: no known-key table in editor/StreamSchema.cpp" % name)
+            problems.append("%s: no known-key table" % name)
             continue
         missing = sorted(wanted[name] - table)
         if missing:
@@ -132,7 +152,8 @@ def main():
     for problem in problems:
         print("check_stream_keys: " + problem, file=sys.stderr)
     if problems:
-        print("Add the keys to editor/StreamSchema.cpp (knownFieldKeys / knownNestedKeys).", file=sys.stderr)
+        print("Add the keys to the component's extraKeys (editor/reflect/components) or to knownNestedKeys "
+              "(editor/StreamSchema.cpp).", file=sys.stderr)
         return 1
     print("check_stream_keys: %d tables cover every key their decoders read" % len(wanted))
     return 0

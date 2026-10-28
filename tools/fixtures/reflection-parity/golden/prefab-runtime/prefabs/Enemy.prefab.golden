@@ -1,0 +1,95 @@
+type: Prefab
+version: 5
+guid: e0e0e0e0e0e0e0e0e0e0e0e0e0e00001
+nextEntity: 1011
+root: 1001
+members:
+  - type: Entity
+    entity: 1001
+    name: Enemy
+    components:
+      transform:
+        position: [1, 2, 3]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [0, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      script:
+        scripts:
+          - type: lua
+            path: Enemy.lua
+            pathGuid: a2fba6e3bb5af0e54866fa377640f7c1
+            className: Enemy
+            enabled: true
+            properties:
+              - name: speed
+                displayName: Speed
+                type: Float
+                value: 1.5
+                defaultValue: 1
+              - name: body
+                displayName: Body
+                type: EntityReference
+                ptrTypeName: GameObject
+                value: 1002
+                defaultValue: 0
+              - name: bulletPrefab
+                displayName: Bullet Prefab
+                type: Prefab
+                value:
+                  guid: b0b0b0b0b0b0b0b0b0b0b0b0b0b00003
+                  path: prefabs/Bullet.prefab
+                defaultValue:
+                  {}
+    children:
+      - type: Entity
+        entity: 1002
+        name: Body
+        components:
+          transform:
+            position: [0, 1, 0]
+            rotation: [1, 0, 0, 0]
+            scale: [1, 1, 1]
+            worldPosition: [0, 0, 0]
+            worldRotation: [1, 0, 0, 0]
+            worldScale: [1, 1, 1]
+            localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+            modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+            normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+            visible: true
+            billboardRotation: [1, 0, 0, 0]
+            billboard: false
+            fakeBillboard: false
+            cylindricalBillboard: false
+      - type: Entity
+        entity: 1003
+        name: Wheel
+        components:
+          transform:
+            position: [0, -1, 0]
+            rotation: [1, 0, 0, 0]
+            scale: [1, 1, 1]
+            worldPosition: [0, 0, 0]
+            worldRotation: [1, 0, 0, 0]
+            worldScale: [1, 1, 1]
+            localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+            modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+            normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+            visible: true
+            billboardRotation: [1, 0, 0, 0]
+            billboard: false
+            fakeBillboard: false
+            cylindricalBillboard: false
+          prefab:
+            name: Wheel
+            path: prefabs/Wheel.prefab
+            guid: f0f0f0f0f0f0f0f0f0f0f0f0f0f00002

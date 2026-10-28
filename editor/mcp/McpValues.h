@@ -125,6 +125,11 @@ namespace jasperengine::editor::mcp {
         // it expands in place (in the object form before the component's other values, which
         // then override it)
         static bool parseChanges(const Json& changes, std::vector<Change>& out, std::string& error);
+        // The changes as the components' reflection tables see them (docs/specs/S08-reflection.md
+        // R26): a property named by an alias is renamed to its field, with a warning ("light.old
+        // is now light.new"); one that is read-only, or a value outside its hard range, is refused.
+        // Properties no table describes are left to the edit.
+        static bool checkReflectedChanges(std::vector<Change>& changes, std::vector<std::string>& warnings, std::string& error);
         // The commands for `changes` on each entity, added to `multi`: per entity and
         // component, the custom (YAML) edits first as one component rewrite, then the typed
         // PropertyCmds. False with `error` (multi may hold part of the commands then).

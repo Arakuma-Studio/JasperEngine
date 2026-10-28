@@ -11,6 +11,7 @@
 #include "mcp/McpRegistry.h"
 #include "mcp/McpSchema.h"
 #include "mcp/McpValues.h"
+#include "reflect/Reflect.h"
 
 #include "Out.h"
 #include "Project.h"
@@ -31,6 +32,7 @@
 #include "util/EntityClipboard.h"
 #include "util/FileUtils.h"
 #include "util/Prefab.h"
+#include "window/InspectorWindow.h"
 #include "window/dialog/ComponentAddDialog.h"
 
 #include <algorithm>
@@ -324,6 +326,10 @@ void getEntityTool(const CallPtr& call) {
                 entry["options"] = playerWrapNames();
             }
             if (overridden.count(propName) || overridden.count(PrefabObjectOverrides::WHOLE_COMPONENT)) entry["overridden"] = true;
+            // what its reflection table says of it: label, unit, ranges, tooltip, read-only, asset kind, group (S08 R25)
+            if (const reflect::ComponentDesc* desc = reflect::find(type)) {
+                if (const reflect::FieldDesc* field = reflect::findField(*desc, propName)) entry.update(reflect::fieldMetadata(*field));
+            }
             props[propName] = entry;
         }
         // explicitly asked names that are not Catalog properties: the component encoding's keys
@@ -422,6 +428,12 @@ void setPropertiesTool(const CallPtr& call) {
         call->fail("Pass changes: [{component, property, value}] or values: {component: {property: value}}.");
         return;
     }
+    // aliases renamed (with a warning), read-only fields and values outside a hard range refused (S08 R26)
+    std::vector<std::string> warnings;
+    if (!McpValues::checkReflectedChanges(changes, warnings, error)) {
+        call->fail(error);
+        return;
+    }
     auto* multi = new MultiPropertyCmd();
     if (!McpValues::appendChangeCommands(project, scene, entities, changes, *multi, error)) {
         delete multi;
@@ -437,8 +449,88 @@ void setPropertiesTool(const CallPtr& call) {
     Json data = {{"scene_id", sceneId}, {"entities", Json::array()}};
     for (Entity entity : entities) data["entities"].push_back(McpRefs::entityJson(current, entity));
     data["values"] = readBack(project, current, entities[0], changes);
+    std::string warningText;
+    if (!warnings.empty()) {
+        data["warnings"] = warnings;
+        for (const std::string& warning : warnings) warningText += " Warning: " + warning + ".";
+    }
     call->ok("Set " + std::to_string(changes.size()) + " propert" + (changes.size() == 1 ? "y" : "ies") + " on " +
-             std::to_string(entities.size()) + " GameObject(s) (one undo step). New values: " + data["values"].dump(), data);
+             std::to_string(entities.size()) + " GameObject(s) (one undo step). New values: " + data["values"].dump() + warningText, data);
+}
+
+// ------------------------------------------------------------------ get_inspector_layout
+
+// The rows the Inspector drew for the selection (S08 R28), read two frames after the call so a
+// selection made just before it is drawn
+void getInspectorLayoutTool(const CallPtr& call) {
+    const Json& args = call->args();
+    Project* project = call->ctx().project();
+    InspectorWindow* inspector = call->ctx().inspectorWindow();
+    if (!inspector || !inspector->isOpen()) {
+        call->fail("The Inspector is closed: focus_window {\"window\": \"inspector\"} opens it.");
+        return;
+    }
+    SceneProject* scene = sceneArg(call);
+    if (!scene) return;
+    const uint32_t sceneId = scene->id;
+    std::vector<Entity> asked;
+    if ((args.contains("entity") && !args["entity"].is_null()) || (args.contains("entities") && !args["entities"].is_null())) {
+        std::string error;
+        if (!McpRefs::resolveEntityArgs(scene, args, asked, error)) {
+            call->fail(error);
+            return;
+        }
+        std::vector<Entity> selected = project->getSelectedEntities(sceneId);
+        std::vector<Entity> wanted = asked;
+        std::sort(selected.begin(), selected.end());
+        std::sort(wanted.begin(), wanted.end());
+        wanted.erase(std::unique(wanted.begin(), wanted.end()), wanted.end());
+        if (selected != wanted) {
+            call->fail("get_inspector_layout reads what the Inspector draws for the selection: select_entities those "
+                       "GameObjects first.");
+            return;
+        }
+    }
+    call->afterFrames(2, [call, inspector, sceneId]() {
+        Project* project = call->ctx().project();
+        const InspectorLayout& layout = inspector->getLastLayout();
+        if (layout.frame < 0 || layout.frame + 3 < ImGui::GetFrameCount()) {
+            call->fail("The Inspector was not drawn on the last frames (a hidden tab?): focus_window {\"window\": \"inspector\"}.");
+            return;
+        }
+        if (layout.sceneId != sceneId) {
+            call->fail("The Inspector shows scene " + std::to_string(layout.sceneId) + ", not " + std::to_string(sceneId) +
+                       ": select_scene first.");
+            return;
+        }
+        SceneProject* scene = project->getScene(sceneId);
+        Json entities = Json::array();
+        for (Entity entity : layout.entities) entities.push_back(McpRefs::entityJson(scene, entity));
+        Json rows = Json::array();
+        std::string text = std::to_string(layout.rows.size()) + " row(s) for " + std::to_string(layout.entities.size()) + " GameObject(s):";
+        std::string lastComponent;
+        for (const InspectorLayoutRow& row : layout.rows) {
+            const std::string component = McpRefs::componentName(row.component);
+            rows.push_back({
+                {"component", component},
+                {"path", row.path},
+                {"label", row.label},
+                {"kind", row.kind},
+                {"group", row.group},
+                {"mixed", row.mixed},
+                {"read_only", row.readOnly},
+                {"visible", row.visible}
+            });
+            if (!row.visible) continue;
+            if (component != lastComponent) {
+                text += "\n" + component + ":";
+                lastComponent = component;
+            }
+            text += " " + row.label + (row.mixed ? " (mixed)" : "") + (row.readOnly ? " (read-only)" : "") + ",";
+        }
+        if (!text.empty() && text.back() == ',') text.pop_back();
+        call->ok(text, Json{{"scene_id", sceneId}, {"entities", entities}, {"rows", rows}});
+    });
 }
 
 // ------------------------------------------------------------------ set_transform
@@ -928,7 +1020,8 @@ void listComponentTypesTool(const CallPtr& call) {
                  std::to_string(props.size()) + " properties (indexed ones like submeshes[0].x or colliders[0].x exist per element; "
                  "see get_entity).",
                  Json{{"component", McpRefs::componentName(type)}, {"display_name", Catalog::getComponentDisplayName(type)},
-                      {"addable", ComponentAddDialog::isListed(type)}, {"properties", props}});
+                      {"addable", ComponentAddDialog::isListed(type)}, {"properties", props},
+                      {"schema", reflect::find(type) ? reflect::schema(*reflect::find(type)) : Json::object()}});
         return;
     }
     Json list = Json::array();
@@ -946,6 +1039,24 @@ void listComponentTypesTool(const CallPtr& call) {
 } // namespace
 
 void registerComponentTools(McpRegistry& registry) {
+
+    // jasper://reflection: every component and enum the editor knows, with their schemas and
+    // the scene format version (S08 R27; the CLI and the scripting API description read it)
+    {
+        ResourceDef reflection;
+        reflection.uri = "jasper://reflection";
+        reflection.name = "reflection";
+        reflection.title = "Component reflection";
+        reflection.description = "Every component (key, fields with kind, YAML key, flags, range, unit, enum, JSON Schema) and enum "
+                                 "(tokens, labels), with the scene format version.";
+        reflection.mimeType = "application/json";
+        reflection.read = [](const std::string& uri) {
+            ResourceResult result;
+            result.contents.push_back({uri, "application/json", reflect::reflectionDocument().dump(), std::string()});
+            return result;
+        };
+        registry.addResource(std::move(reflection));
+    }
 
     {
         ToolDef tool;
@@ -1097,6 +1208,24 @@ void registerComponentTools(McpRegistry& registry) {
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
         tool.handler = listComponentTypesTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "get_inspector_layout";
+        tool.group = "editor_ux";  // S31 tool groups: listed once enabled, callable always
+        tool.title = "Get Inspector Layout";
+        tool.description =
+            "The rows the Inspector drew for the selection on the last frame: [{component, path, label, kind, group, "
+            "mixed, read_only, visible}] in drawing order. entities: must be the selection (select_entities first).";
+        tool.inputSchema = object({
+            {"scene", sceneRef()},
+            {"entity", entityRef()},
+            {"entities", entities()}
+        });
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = getInspectorLayoutTool;
         registry.addTool(std::move(tool));
     }
     {

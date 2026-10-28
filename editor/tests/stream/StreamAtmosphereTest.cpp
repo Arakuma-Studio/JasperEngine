@@ -8,6 +8,7 @@
 // version change: docs/data-safety.md).
 
 #include "Stream.h"
+#include "reflect/Reflect.h"
 #include "StreamSchema.h"
 #include "Project.h"
 
@@ -60,7 +61,7 @@ namespace {
 
 TEST(StreamAtmosphere, SerializeHeightFogRoundTrips){
     const FogComponent fog = everyHeightFogField();
-    const FogComponent back = Stream::decodeFogComponent(YAML::Load(YAML::Dump(Stream::encodeFogComponent(fog))));
+    const FogComponent back = reflect::decodeValue<FogComponent>(ComponentType::FogComponent, YAML::Load(YAML::Dump(reflect::encodeValue(ComponentType::FogComponent, &fog))));
     EXPECT_EQ(back.type, FogType::HEIGHT);
     EXPECT_EQ(back.colorMode, FogColorMode::SKY);
     EXPECT_FLOAT_EQ(back.attenuationDistance, 123.0f);
@@ -80,7 +81,7 @@ TEST(StreamAtmosphere, SerializeHeightFogRoundTrips){
     EXPECT_FLOAT_EQ(back.noiseScale, 13.0f);
     EXPECT_TRUE(back.wind == Vector3(1.0f, 0.0f, -2.0f));
     EXPECT_EQ(back.qualityOverride, AtmosphereQualityOverride::MEDIUM);
-    EXPECT_EQ(YAML::Dump(Stream::encodeFogComponent(back)), YAML::Dump(Stream::encodeFogComponent(fog)));
+    EXPECT_EQ(YAML::Dump(reflect::encodeValue(ComponentType::FogComponent, &back)), YAML::Dump(reflect::encodeValue(ComponentType::FogComponent, &fog)));
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -88,14 +89,14 @@ TEST(StreamAtmosphere, SerializeDistanceFogWritesItsOldKeys){
     FogComponent fog;
     fog.type = FogType::EXPONENTIAL;
     fog.density = 0.05f;
-    const std::set<std::string> written = keys(Stream::encodeFogComponent(fog));
+    const std::set<std::string> written = keys(reflect::encodeValue(ComponentType::FogComponent, &fog));
     EXPECT_EQ(written, (std::set<std::string>{"type", "color", "density", "linearStart", "linearEnd"}));
 }
 
 TEST(StreamAtmosphere, SerializeOldFogLoadsWithTheDefaults){
     // a Fog as scenes wrote it before the atmosphere
     const YAML::Node old = YAML::Load("{type: linear, color: [0.5, 0.5, 0.5], density: 0.01, linearStart: 10, linearEnd: 60}");
-    const FogComponent fog = Stream::decodeFogComponent(old);
+    const FogComponent fog = reflect::decodeValue<FogComponent>(ComponentType::FogComponent, old);
     const FogComponent defaults;
     EXPECT_EQ(fog.type, FogType::LINEAR);
     EXPECT_EQ(fog.colorMode, defaults.colorMode);
@@ -107,7 +108,7 @@ TEST(StreamAtmosphere, SerializeOldFogLoadsWithTheDefaults){
 
     // decoded over a height fog (paste, play-stop restore), the missing keys are the defaults
     const FogComponent height = everyHeightFogField();
-    const FogComponent restored = Stream::decodeFogComponent(old, &height);
+    const FogComponent restored = reflect::decodeValue<FogComponent>(ComponentType::FogComponent, old, &height);
     EXPECT_EQ(restored.type, FogType::LINEAR);
     EXPECT_FALSE(restored.volumetric);
     EXPECT_FLOAT_EQ(restored.attenuationDistance, defaults.attenuationDistance);
@@ -126,7 +127,7 @@ TEST(StreamAtmosphere, SerializeLocalVolumetricFogRoundTrips){
     volume.noiseScale = 2.0f;
     volume.scrollSpeed = Vector3(0.0f, 1.0f, 0.0f);
     const LocalVolumetricFogComponent back =
-        Stream::decodeLocalVolumetricFogComponent(YAML::Load(YAML::Dump(Stream::encodeLocalVolumetricFogComponent(volume))));
+        reflect::decodeValue<LocalVolumetricFogComponent>(ComponentType::LocalVolumetricFogComponent, YAML::Load(YAML::Dump(reflect::encodeValue(ComponentType::LocalVolumetricFogComponent, &volume))));
     EXPECT_EQ(back.shape, FogVolumeShape::SPHERE);
     EXPECT_TRUE(back.size == volume.size);
     EXPECT_FLOAT_EQ(back.attenuationDistance, 5.5f);
@@ -136,7 +137,7 @@ TEST(StreamAtmosphere, SerializeLocalVolumetricFogRoundTrips){
     EXPECT_FLOAT_EQ(back.noiseIntensity, 0.3f);
     EXPECT_FLOAT_EQ(back.noiseScale, 2.0f);
     EXPECT_TRUE(back.scrollSpeed == volume.scrollSpeed);
-    EXPECT_EQ(YAML::Dump(Stream::encodeLocalVolumetricFogComponent(back)), YAML::Dump(Stream::encodeLocalVolumetricFogComponent(volume)));
+    EXPECT_EQ(YAML::Dump(reflect::encodeValue(ComponentType::LocalVolumetricFogComponent, &back)), YAML::Dump(reflect::encodeValue(ComponentType::LocalVolumetricFogComponent, &volume)));
 }
 
 TEST(StreamAtmosphere, SerializeVolumetricCloudsRoundTrips){
@@ -160,7 +161,7 @@ TEST(StreamAtmosphere, SerializeVolumetricCloudsRoundTrips){
     clouds.maxDistance = 60.0f;
     clouds.qualityOverride = AtmosphereQualityOverride::LOW;
     const VolumetricCloudsComponent back =
-        Stream::decodeVolumetricCloudsComponent(YAML::Load(YAML::Dump(Stream::encodeVolumetricCloudsComponent(clouds))));
+        reflect::decodeValue<VolumetricCloudsComponent>(ComponentType::VolumetricCloudsComponent, YAML::Load(YAML::Dump(reflect::encodeValue(ComponentType::VolumetricCloudsComponent, &clouds))));
     EXPECT_EQ(back.preset, CloudsPreset::STORMY);
     EXPECT_EQ(back.rendering, CloudsRendering::SCREEN);
     EXPECT_FLOAT_EQ(back.coverage, 0.71f);
@@ -168,15 +169,15 @@ TEST(StreamAtmosphere, SerializeVolumetricCloudsRoundTrips){
     EXPECT_FLOAT_EQ(back.windSpeed, 25.0f);
     EXPECT_FLOAT_EQ(back.maxDistance, 60.0f);
     EXPECT_EQ(back.qualityOverride, AtmosphereQualityOverride::LOW);
-    EXPECT_EQ(YAML::Dump(Stream::encodeVolumetricCloudsComponent(back)), YAML::Dump(Stream::encodeVolumetricCloudsComponent(clouds)));
+    EXPECT_EQ(YAML::Dump(reflect::encodeValue(ComponentType::VolumetricCloudsComponent, &back)), YAML::Dump(reflect::encodeValue(ComponentType::VolumetricCloudsComponent, &clouds)));
 }
 
 TEST(StreamAtmosphere, SerializeLightVolumetricIntensity){
     LightComponent light;
     // omitted at its default: old scenes' lights are written as they were
-    EXPECT_FALSE(Stream::encodeLightComponent(light)["volumetricIntensity"].IsDefined());
+    EXPECT_FALSE(reflect::encodeValue(ComponentType::LightComponent, &light)["volumetricIntensity"].IsDefined());
     light.volumetricIntensity = 2.5f;
-    const LightComponent back = Stream::decodeLightComponent(YAML::Load(YAML::Dump(Stream::encodeLightComponent(light))));
+    const LightComponent back = reflect::decodeValue<LightComponent>(ComponentType::LightComponent, YAML::Load(YAML::Dump(reflect::encodeValue(ComponentType::LightComponent, &light))));
     EXPECT_FLOAT_EQ(back.volumetricIntensity, 2.5f);
 }
 

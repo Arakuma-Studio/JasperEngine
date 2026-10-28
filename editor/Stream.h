@@ -23,10 +23,13 @@
 namespace jasperengine::editor {
     class Workspace;
     class StreamTestAccess;
+    class LegacyCodecs;
 
     class Stream {
-        // jasperengine-editor-tests round-trips the private conversions too (editor/tests/stream)
+        // jasperengine-editor-tests round-trips the private conversions too (editor/tests/stream),
+        // and keeps the codecs reflection replaced as the parity oracle (editor/tests/reflect/legacy)
         friend class StreamTestAccess;
+        friend class LegacyCodecs;
 
     private:
 
@@ -35,9 +38,6 @@ namespace jasperengine::editor {
 
         static std::string primitiveTypeToString(PrimitiveType type);
         static PrimitiveType stringToPrimitiveType(const std::string& str);
-
-        static YAML::Node encodeEase(const Ease& ease);
-        static Ease decodeEase(const YAML::Node& node, const Ease* oldEase = nullptr);
 
         static std::string bufferTypeToString(BufferType type);
         static BufferType stringToBufferType(const std::string& str);
@@ -123,44 +123,6 @@ namespace jasperengine::editor {
         static std::string lightShadingToString(LightShading shading);
         static LightShading stringToLightShading(const std::string& str);
 
-        // shader library textures (by @texture uniform) and features of a material or component
-        static YAML::Node encodeShaderTextures(const std::vector<std::pair<std::string, Texture>>& textures, bool embedData);
-        static std::vector<std::pair<std::string, Texture>> decodeShaderTextures(const YAML::Node& node);
-        static YAML::Node encodeShaderFeatures(const std::vector<std::string>& features);
-        static std::vector<std::string> decodeShaderFeatures(const YAML::Node& node);
-        // the shaderTextures, shaderFeatures and (when given) blendMode/depthWrite keys of a
-        // UI, Points, LineRenderer or Skybox component
-        static void encodeComponentShaderLibrary(YAML::Node& node, const std::vector<std::pair<std::string, Texture>>& textures,
-                const std::vector<std::string>& features, const MaterialBlendMode* blendMode, const MaterialDepthWrite* depthWrite, bool embedData);
-        static void decodeComponentShaderLibrary(const YAML::Node& node, std::vector<std::pair<std::string, Texture>>& textures,
-                std::vector<std::string>& features, MaterialBlendMode* blendMode, MaterialDepthWrite* depthWrite);
-
-        // shader library phase 2: stencil, colour write and the extra pass
-        // (docs/superpowers/specs/2026-10-10-shader-library-phase2-design.md)
-        static std::string materialStencilCompareToString(MaterialStencilCompare compare);
-        static MaterialStencilCompare stringToMaterialStencilCompare(const std::string& str);
-        static std::string materialStencilOpToString(MaterialStencilOp op);
-        static MaterialStencilOp stringToMaterialStencilOp(const std::string& str);
-        static std::string materialPassOrderToString(MaterialPassOrder order);
-        static MaterialPassOrder stringToMaterialPassOrder(const std::string& str);
-        // a colour write mask as the manifest writes it ("rgba", "rgb", "none"...; -1 "auto")
-        static std::string colorWriteToString(int colorWrite);
-        static int stringToColorWrite(const std::string& str);
-        // a stencil block: compare, then the fields away from their defaults
-        static YAML::Node encodeStencil(const MaterialStencil& stencil);
-        static MaterialStencil decodeStencil(const YAML::Node& node);
-        // the stencil and colorWrite keys of a material, pass or UI/Points/LineRenderer
-        // component, written only away from their defaults (AUTO)
-        static void encodeStencilAndColorWrite(YAML::Node& node, const MaterialStencil& stencil, int colorWrite);
-        static void decodeStencilAndColorWrite(const YAML::Node& node, MaterialStencil& stencil, int& colorWrite);
-        // a material's extra pass; only the fields away from their defaults
-        static YAML::Node encodeMaterialPass(const MaterialPass& pass, bool embedTextureData);
-        static MaterialPass decodeMaterialPass(const YAML::Node& node);
-        // Material::pbr, the built-in Lit's extended lobes and hex tiling: a map of the lobes
-        // with a value away from its default, each with only those values (empty: all default)
-        static YAML::Node encodeMaterialPbr(const MaterialPbrExtensions& pbr, bool embedTextureData);
-        static MaterialPbrExtensions decodeMaterialPbr(const YAML::Node& node);
-
         static std::string scriptPropertyTypeToString(ScriptPropertyType type);
         static ScriptPropertyType stringToScriptPropertyType(const std::string& str);
 
@@ -187,52 +149,6 @@ namespace jasperengine::editor {
 
         static std::string windowModeToString(WindowMode mode);
         static WindowMode stringToWindowMode(const std::string& str);
-
-        static float finiteOr(float value, float fallback = 0.0f);
-        static double finiteOr(double value, double fallback = 0.0);
-        static float positiveFiniteOr(float value, float fallback = 1.0f);
-        static float decodeFinite(const YAML::Node& node, float fallback);
-        static double decodeFiniteDouble(const YAML::Node& node, double fallback);
-        static float decodePositiveFinite(const YAML::Node& node, float fallback);
-        // camera, light and reflection probe culling masks (one bit per layer)
-        static uint32_t decodeLayerMask(const YAML::Node& node, uint32_t fallback);
-        static void encodeFinite(YAML::Node& node, const char* key, float value);
-        static void encodeFinite(YAML::Node& node, const char* key, double value);
-        static void encodePositiveFinite(YAML::Node& node, const char* key, float value);
-        static void encodeFiniteVector3(YAML::Node& node, const char* key, const Vector3& value);
-        static Vector3 decodeFiniteVector3(const YAML::Node& node, const Vector3& fallback);
-
-        // ==============================
-
-        static YAML::Node encodeVector2(const Vector2& vec);
-        static Vector2 decodeVector2(const YAML::Node& node);
-
-        static YAML::Node encodeVector3(const Vector3& vec);
-        static Vector3 decodeVector3(const YAML::Node& node);
-
-        static YAML::Node encodeVector4(const Vector4& vec);
-        static Vector4 decodeVector4(const YAML::Node& node);
-
-        static YAML::Node encodeQuaternion(const Quaternion& quat);
-        static Quaternion decodeQuaternion(const YAML::Node& node);
-
-        static YAML::Node encodeShaderUniforms(const ShaderUniformValues& uniforms);
-        static ShaderUniformValues decodeShaderUniforms(const YAML::Node& node);
-
-        static YAML::Node encodeRect(const Rect& rect);
-        static Rect decodeRect(const YAML::Node& node);
-
-        static YAML::Node encodeMatrix4(const Matrix4& mat);
-        static Matrix4 decodeMatrix4(const YAML::Node& node);
-
-        static std::string makeEmbeddedTextureId();
-        static const char* colorFormatToString(ColorFormat format);
-        static ColorFormat stringToColorFormat(const std::string& value, int channels);
-        static bool getEmbeddedTextureData(const Texture& texture, TextureData*& data);
-        static bool setEmbeddedTextureData(Texture& texture, const std::string& preferredId, int width, int height, ColorFormat format, int channels, const std::vector<unsigned char>& pixels);
-
-        static YAML::Node encodeTexture(const Texture& texture, bool embedData = true);
-        static Texture decodeTexture(const YAML::Node& node);
 
         static YAML::Node encodeBuffer(const Buffer& buffer);
         static void decodeBuffer(Buffer& buffer, const YAML::Node& node);
@@ -280,6 +196,95 @@ namespace jasperengine::editor {
         static ScriptProperty decodeScriptProperty(const YAML::Node& node);
 
     public:
+        // ---- value helpers: the scene codec's text of each value type, shared with the
+        // reflection codecs (editor/reflect/TypeOps.cpp, docs/specs/S08-reflection.md D4)
+        static YAML::Node encodeEase(const Ease& ease);
+        static Ease decodeEase(const YAML::Node& node, const Ease* oldEase = nullptr);
+        static float finiteOr(float value, float fallback = 0.0f);
+        static double finiteOr(double value, double fallback = 0.0);
+        static float positiveFiniteOr(float value, float fallback = 1.0f);
+        static float decodeFinite(const YAML::Node& node, float fallback);
+        static double decodeFiniteDouble(const YAML::Node& node, double fallback);
+        static float decodePositiveFinite(const YAML::Node& node, float fallback);
+        // camera, light and reflection probe culling masks (one bit per layer)
+        static uint32_t decodeLayerMask(const YAML::Node& node, uint32_t fallback);
+        static void encodeFinite(YAML::Node& node, const char* key, float value);
+        static void encodeFinite(YAML::Node& node, const char* key, double value);
+        static void encodePositiveFinite(YAML::Node& node, const char* key, float value);
+        static void encodeFiniteVector3(YAML::Node& node, const char* key, const Vector3& value);
+        static Vector3 decodeFiniteVector3(const YAML::Node& node, const Vector3& fallback);
+
+        // =======================
+        // Material::pbr, the built-in Lit's extended lobes and hex tiling: a map of the lobes
+        // with a value away from its default, each with only those values (empty: all default)
+        static YAML::Node encodeMaterialPbr(const MaterialPbrExtensions& pbr, bool embedTextureData);
+        static MaterialPbrExtensions decodeMaterialPbr(const YAML::Node& node);
+
+
+        static YAML::Node encodeVector2(const Vector2& vec);
+        static Vector2 decodeVector2(const YAML::Node& node);
+
+        static YAML::Node encodeVector3(const Vector3& vec);
+        static Vector3 decodeVector3(const YAML::Node& node);
+
+        static YAML::Node encodeVector4(const Vector4& vec);
+        static Vector4 decodeVector4(const YAML::Node& node);
+
+        static YAML::Node encodeQuaternion(const Quaternion& quat);
+        static Quaternion decodeQuaternion(const YAML::Node& node);
+
+        static YAML::Node encodeShaderUniforms(const ShaderUniformValues& uniforms);
+        static ShaderUniformValues decodeShaderUniforms(const YAML::Node& node);
+
+        static YAML::Node encodeRect(const Rect& rect);
+        static Rect decodeRect(const YAML::Node& node);
+
+        static YAML::Node encodeMatrix4(const Matrix4& mat);
+        static Matrix4 decodeMatrix4(const YAML::Node& node);
+
+        static std::string makeEmbeddedTextureId();
+        static const char* colorFormatToString(ColorFormat format);
+        static ColorFormat stringToColorFormat(const std::string& value, int channels);
+        static bool getEmbeddedTextureData(const Texture& texture, TextureData*& data);
+        static bool setEmbeddedTextureData(Texture& texture, const std::string& preferredId, int width, int height, ColorFormat format, int channels, const std::vector<unsigned char>& pixels);
+
+        static YAML::Node encodeTexture(const Texture& texture, bool embedData = true);
+        static Texture decodeTexture(const YAML::Node& node);
+
+        // shader library textures (by @texture uniform) and features of a material or component
+        static YAML::Node encodeShaderTextures(const std::vector<std::pair<std::string, Texture>>& textures, bool embedData);
+        static std::vector<std::pair<std::string, Texture>> decodeShaderTextures(const YAML::Node& node);
+        static YAML::Node encodeShaderFeatures(const std::vector<std::string>& features);
+        static std::vector<std::string> decodeShaderFeatures(const YAML::Node& node);
+        // the shaderTextures, shaderFeatures and (when given) blendMode/depthWrite keys of a
+        // UI, Points, LineRenderer or Skybox component
+        static void encodeComponentShaderLibrary(YAML::Node& node, const std::vector<std::pair<std::string, Texture>>& textures,
+                const std::vector<std::string>& features, const MaterialBlendMode* blendMode, const MaterialDepthWrite* depthWrite, bool embedData);
+        static void decodeComponentShaderLibrary(const YAML::Node& node, std::vector<std::pair<std::string, Texture>>& textures,
+                std::vector<std::string>& features, MaterialBlendMode* blendMode, MaterialDepthWrite* depthWrite);
+
+        // shader library phase 2: stencil, colour write and the extra pass
+        // (docs/superpowers/specs/2026-10-10-shader-library-phase2-design.md)
+        static std::string materialStencilCompareToString(MaterialStencilCompare compare);
+        static MaterialStencilCompare stringToMaterialStencilCompare(const std::string& str);
+        static std::string materialStencilOpToString(MaterialStencilOp op);
+        static MaterialStencilOp stringToMaterialStencilOp(const std::string& str);
+        static std::string materialPassOrderToString(MaterialPassOrder order);
+        static MaterialPassOrder stringToMaterialPassOrder(const std::string& str);
+        // a colour write mask as the manifest writes it ("rgba", "rgb", "none"...; -1 "auto")
+        static std::string colorWriteToString(int colorWrite);
+        static int stringToColorWrite(const std::string& str);
+        // a stencil block: compare, then the fields away from their defaults
+        static YAML::Node encodeStencil(const MaterialStencil& stencil);
+        static MaterialStencil decodeStencil(const YAML::Node& node);
+        // the stencil and colorWrite keys of a material, pass or UI/Points/LineRenderer
+        // component, written only away from their defaults (AUTO)
+        static void encodeStencilAndColorWrite(YAML::Node& node, const MaterialStencil& stencil, int colorWrite);
+        static void decodeStencilAndColorWrite(const YAML::Node& node, MaterialStencil& stencil, int& colorWrite);
+        // a material's extra pass; only the fields away from their defaults
+        static YAML::Node encodeMaterialPass(const MaterialPass& pass, bool embedTextureData);
+        static MaterialPass decodeMaterialPass(const YAML::Node& node);
+
         // A shader variant key (scene shaderKeys, project shaderAdditions/shaderExclusions):
         // a map of type, properties (a plain integer of up to 64 bits, left out when 0) and
         // customShader (a fork's project-relative path: the session-local id is not written;
@@ -408,6 +413,8 @@ namespace jasperengine::editor {
         static YAML::Node encodeComponentsLive(const Entity entity, const EntityRegistry* registry, Signature signature);
         static void decodeComponents(Entity entity, Entity parent, EntityRegistry* registry, const YAML::Node& compNode);
 
+        // a Transform by its reflection table (editor/reflect): the components' codecs are their
+        // tables (reflect::encode / reflect::decode), these keep the Transform's short form
         static YAML::Node encodeTransform(const Transform& transform);
         static Transform decodeTransform(const YAML::Node& node, const Transform* oldTransform = nullptr);
 
@@ -416,33 +423,6 @@ namespace jasperengine::editor {
 
         static YAML::Node encodeUIComponent(const UIComponent& ui, bool encodeBuffers = true, bool embedTextureData = true);
         static UIComponent decodeUIComponent(const YAML::Node& node, const UIComponent* oldUI = nullptr);
-
-        static YAML::Node encodeButtonComponent(const ButtonComponent& button);
-        static ButtonComponent decodeButtonComponent(const YAML::Node& node, const ButtonComponent* oldButton = nullptr);
-
-        static YAML::Node encodeScrollbarComponent(const ScrollbarComponent& scrollbar);
-        static ScrollbarComponent decodeScrollbarComponent(const YAML::Node& node, const ScrollbarComponent* oldScrollbar = nullptr);
-
-        static YAML::Node encodeProgressbarComponent(const ProgressbarComponent& progressbar);
-        static ProgressbarComponent decodeProgressbarComponent(const YAML::Node& node, const ProgressbarComponent* oldProgressbar = nullptr);
-
-        static YAML::Node encodeInputFieldComponent(const InputFieldComponent& inputfield);
-        static InputFieldComponent decodeInputFieldComponent(const YAML::Node& node, const InputFieldComponent* oldInputField = nullptr);
-
-        static YAML::Node encodePanelComponent(const PanelComponent& panel);
-        static PanelComponent decodePanelComponent(const YAML::Node& node, const PanelComponent* oldPanel = nullptr);
-
-        static YAML::Node encodeRectTransformComponent(const RectTransformComponent& layout);
-        static RectTransformComponent decodeRectTransformComponent(const YAML::Node& node, const RectTransformComponent* oldLayout = nullptr);
-
-        static YAML::Node encodeLayoutGroupComponent(const LayoutGroupComponent& container);
-        static LayoutGroupComponent decodeLayoutGroupComponent(const YAML::Node& node, const LayoutGroupComponent* oldContainer = nullptr);
-
-        static YAML::Node encodeTextComponent(const TextComponent& text);
-        static TextComponent decodeTextComponent(const YAML::Node& node, const TextComponent* oldText = nullptr);
-
-        static YAML::Node encodeImageComponent(const ImageComponent& image);
-        static ImageComponent decodeImageComponent(const YAML::Node& node, const ImageComponent* oldImage = nullptr);
 
         static YAML::Node encodeSpriteComponent(const SpriteComponent& sprite);
         static SpriteComponent decodeSpriteComponent(const YAML::Node& node, const SpriteComponent* oldSprite = nullptr);
@@ -456,58 +436,6 @@ namespace jasperengine::editor {
         static TerrainFoliageLayer decodeTerrainFoliageLayer(const YAML::Node& node);
         static YAML::Node encodeTerrainComponent(const TerrainComponent& terrain);
         static TerrainComponent decodeTerrainComponent(const YAML::Node& node, const TerrainComponent* oldTerrain = nullptr);
-
-        static YAML::Node encodeLightComponent(const LightComponent& light);
-        static LightComponent decodeLightComponent(const YAML::Node& node, const LightComponent* oldLight = nullptr);
-
-        static YAML::Node encodeLight2DComponent(const Light2DComponent& light);
-        static Light2DComponent decodeLight2DComponent(const YAML::Node& node, const Light2DComponent* oldLight = nullptr);
-
-        static YAML::Node encodeShadowCaster2DComponent(const ShadowCaster2DComponent& occluder);
-        static ShadowCaster2DComponent decodeShadowCaster2DComponent(const YAML::Node& node, const ShadowCaster2DComponent* oldOccluder = nullptr);
-
-        static YAML::Node encodeFogComponent(const FogComponent& fog);
-        static FogComponent decodeFogComponent(const YAML::Node& node, const FogComponent* oldFog = nullptr);
-        static YAML::Node encodeForceFieldComponent(const ForceFieldComponent& field);
-        static ForceFieldComponent decodeForceFieldComponent(const YAML::Node& node, const ForceFieldComponent* oldField = nullptr);
-        static YAML::Node encodeLocalVolumetricFogComponent(const LocalVolumetricFogComponent& volume);
-        static LocalVolumetricFogComponent decodeLocalVolumetricFogComponent(const YAML::Node& node, const LocalVolumetricFogComponent* oldVolume = nullptr);
-        static YAML::Node encodeVolumetricCloudsComponent(const VolumetricCloudsComponent& clouds);
-        static VolumetricCloudsComponent decodeVolumetricCloudsComponent(const YAML::Node& node, const VolumetricCloudsComponent* oldClouds = nullptr);
-
-        static YAML::Node encodeMirrorComponent(const MirrorComponent& mirror);
-        static MirrorComponent decodeMirrorComponent(const YAML::Node& node, const MirrorComponent* oldMirror = nullptr);
-
-        static YAML::Node encodeReflectionProbeComponent(const ReflectionProbeComponent& probe);
-        static ReflectionProbeComponent decodeReflectionProbeComponent(const YAML::Node& node, const ReflectionProbeComponent* oldProbe = nullptr);
-
-        static YAML::Node encodeUIDocumentComponent(const UIDocumentComponent& document);
-        static UIDocumentComponent decodeUIDocumentComponent(const YAML::Node& node, const UIDocumentComponent* oldDocument = nullptr);
-
-        // only what differs from the defaults is written; a missing key is the default. Over an
-        // old component its runtime state (the simulator) stays; a new seed or start burst
-        // restarts it (needReset)
-        static YAML::Node encodeFluidSimulationComponent(const FluidSimulationComponent& fluid);
-        static FluidSimulationComponent decodeFluidSimulationComponent(const YAML::Node& node, const FluidSimulationComponent* oldFluid = nullptr);
-
-        static YAML::Node encodePoseAnimatorComponent(const PoseAnimatorComponent& animator);
-        static PoseAnimatorComponent decodePoseAnimatorComponent(const YAML::Node& node, const PoseAnimatorComponent* oldAnimator = nullptr);
-
-        // Animation Player (spec 3.2, 9.R8/R14/R25): the authored fields only. clips[] entries
-        // are {clip, guid, name, wrap}: clip is the path hint (asset-relative .anim or
-        // "<model>#<clip>"), guid the .anim's GUID (empty, and not written, for sub-clips),
-        // name and wrap written when set. A plain string entry reads as {clip}. Decoding never
-        // loads (play startup decodes off the main thread). Over an old component its runtime
-        // stays (states, rest values) and a changed clip list sets needsLoad; the callbacks
-        // are cleared.
-        static YAML::Node encodeAnimationPlayerComponent(const AnimationPlayerComponent& player);
-        static AnimationPlayerComponent decodeAnimationPlayerComponent(const YAML::Node& node, const AnimationPlayerComponent* oldPlayer = nullptr);
-
-        static YAML::Node encodeCameraComponent(const CameraComponent& camera);
-        static CameraComponent decodeCameraComponent(const YAML::Node& node, const CameraComponent* oldCamera = nullptr);
-
-        static YAML::Node encodeAudioSourceComponent(const AudioSourceComponent& audio);
-        static AudioSourceComponent decodeAudioSourceComponent(const YAML::Node& node, const AudioSourceComponent* oldAudio = nullptr);
 
         static YAML::Node encodeScriptComponent(const ScriptComponent& script);
         static ScriptComponent decodeScriptComponent(const YAML::Node& node, const ScriptComponent* oldScript = nullptr);
@@ -545,64 +473,15 @@ namespace jasperengine::editor {
         static YAML::Node encodeRigidbodyComponent(const RigidbodyComponent& body);
         static RigidbodyComponent decodeRigidbodyComponent(const YAML::Node& node, const RigidbodyComponent* oldBody = nullptr, const Vector3& bodyScale = Vector3::UNIT_SCALE);
 
-        static YAML::Node encodeJoint2DComponent(const Joint2DComponent& joint);
-        static Joint2DComponent decodeJoint2DComponent(const YAML::Node& node, const Joint2DComponent* oldJoint = nullptr);
-        static YAML::Node encodeCharacterController2DComponent(const CharacterController2DComponent& controller);
-        static YAML::Node encodeCharacterControllerComponent(const CharacterControllerComponent& controller);
-        static YAML::Node encodeWaterVolumeComponent(const WaterVolumeComponent& volume);
-        static WaterVolumeComponent decodeWaterVolumeComponent(const YAML::Node& node, const WaterVolumeComponent* oldVolume = nullptr);
-        static YAML::Node encodeBuoyancyComponent(const BuoyancyComponent& buoyancy);
-        static BuoyancyComponent decodeBuoyancyComponent(const YAML::Node& node, const BuoyancyComponent* oldBuoyancy = nullptr);
-        static CharacterControllerComponent decodeCharacterControllerComponent(const YAML::Node& node, const CharacterControllerComponent* oldController = nullptr);
-        static CharacterController2DComponent decodeCharacterController2DComponent(const YAML::Node& node, const CharacterController2DComponent* oldController = nullptr);
-
-        static YAML::Node encodeJoint3DComponent(const Joint3DComponent& joint);
-        static Joint3DComponent decodeJoint3DComponent(const YAML::Node& node, const Joint3DComponent* oldJoint = nullptr);
-
         static std::string actionStateToString(ActionState state);
         static ActionState stringToActionState(const std::string& str);
-
-        static YAML::Node encodeActionComponent(const ActionComponent& action);
-        static ActionComponent decodeActionComponent(const YAML::Node& node, const ActionComponent* oldAction = nullptr);
-
-        static YAML::Node encodeTweenComponent(const TweenComponent& timed);
-        static TweenComponent decodeTweenComponent(const YAML::Node& node, const TweenComponent* oldTimed = nullptr);
-
-        static YAML::Node encodePositionTweenComponent(const PositionTweenComponent& posAction);
-        static PositionTweenComponent decodePositionTweenComponent(const YAML::Node& node, const PositionTweenComponent* oldPosAction = nullptr);
-
-        static YAML::Node encodeRotationTweenComponent(const RotationTweenComponent& rotAction);
-        static RotationTweenComponent decodeRotationTweenComponent(const YAML::Node& node, const RotationTweenComponent* oldRotAction = nullptr);
-
-        static YAML::Node encodeScaleTweenComponent(const ScaleTweenComponent& scaleTween);
-        static ScaleTweenComponent decodeScaleTweenComponent(const YAML::Node& node, const ScaleTweenComponent* oldScaleTween = nullptr);
-
-        static YAML::Node encodeColorTweenComponent(const ColorTweenComponent& colorTween);
-        static ColorTweenComponent decodeColorTweenComponent(const YAML::Node& node, const ColorTweenComponent* oldColorTween = nullptr);
-
-        static YAML::Node encodeAlphaTweenComponent(const AlphaTweenComponent& alphaTween);
-        static AlphaTweenComponent decodeAlphaTweenComponent(const YAML::Node& node, const AlphaTweenComponent* oldAlphaTween = nullptr);
 
         static YAML::Node encodeSpriteAnimationComponent(const SpriteAnimationComponent& spriteanim);
         static SpriteAnimationComponent decodeSpriteAnimationComponent(const YAML::Node& node, const SpriteAnimationComponent* oldSpriteanim = nullptr);
 
-        static YAML::Node encodeAnimationComponent(const AnimationComponent& animation);
-        static AnimationComponent decodeAnimationComponent(const YAML::Node& node, const AnimationComponent* oldAnimation = nullptr);
 
-        static YAML::Node encodeBoneComponent(const BoneComponent& bone);
-        static BoneComponent decodeBoneComponent(const YAML::Node& node, const BoneComponent* oldBone = nullptr);
 
-        static YAML::Node encodeKeyframeTracksComponent(const KeyframeTracksComponent& tracks);
-        static KeyframeTracksComponent decodeKeyframeTracksComponent(const YAML::Node& node, const KeyframeTracksComponent* oldTracks = nullptr);
 
-        static YAML::Node encodeTranslateTracksComponent(const TranslateTracksComponent& tracks);
-        static TranslateTracksComponent decodeTranslateTracksComponent(const YAML::Node& node, const TranslateTracksComponent* oldTracks = nullptr);
-
-        static YAML::Node encodeRotateTracksComponent(const RotateTracksComponent& tracks);
-        static RotateTracksComponent decodeRotateTracksComponent(const YAML::Node& node, const RotateTracksComponent* oldTracks = nullptr);
-
-        static YAML::Node encodeScaleTracksComponent(const ScaleTracksComponent& tracks);
-        static ScaleTracksComponent decodeScaleTracksComponent(const YAML::Node& node, const ScaleTracksComponent* oldTracks = nullptr);
 
         static YAML::Node encodeMorphTracksComponent(const MorphTracksComponent& tracks);
         static MorphTracksComponent decodeMorphTracksComponent(const YAML::Node& node, const MorphTracksComponent* oldTracks = nullptr);
@@ -615,16 +494,41 @@ namespace jasperengine::editor {
         static YAML::Node encodeLatticeModifierComponent(const LatticeModifierComponent& modifier);
         static LatticeModifierComponent decodeLatticeModifierComponent(const YAML::Node& node, const LatticeModifierComponent* oldModifier = nullptr);
 
-        static YAML::Node encodeLatticeFollowerComponent(const LatticeFollowerComponent& follower);
-        static LatticeFollowerComponent decodeLatticeFollowerComponent(const YAML::Node& node, const LatticeFollowerComponent* oldFollower = nullptr);
-
         static YAML::Node encodeLatticeTracksComponent(const LatticeTracksComponent& tracks);
         static LatticeTracksComponent decodeLatticeTracksComponent(const YAML::Node& node, const LatticeTracksComponent* oldTracks = nullptr);
+
+        // the Pose Animator and the Animation Player keep their own codecs (a missing key is the
+        // default, not the old value; the runtime state of a component decoded over stays)
+        static YAML::Node encodePoseAnimatorComponent(const PoseAnimatorComponent& animator);
+        static PoseAnimatorComponent decodePoseAnimatorComponent(const YAML::Node& node, const PoseAnimatorComponent* oldAnimator = nullptr);
+
+        // Animation Player (spec 3.2, 9.R8/R14/R25): the authored fields only. clips[] entries
+        // are {clip, guid, name, wrap}: clip is the path hint (asset-relative .anim or
+        // "<model>#<clip>"), guid the .anim's GUID (empty, and not written, for sub-clips),
+        // name and wrap written when set. A plain string entry reads as {clip}. Decoding never
+        // loads (play startup decodes off the main thread). Over an old component its runtime
+        // stays (states, rest values) and a changed clip list sets needsLoad; the callbacks
+        // are cleared.
+        static YAML::Node encodeAnimationPlayerComponent(const AnimationPlayerComponent& player);
+        static AnimationPlayerComponent decodeAnimationPlayerComponent(const YAML::Node& node, const AnimationPlayerComponent* oldPlayer = nullptr);
 
         static YAML::Node encodeParticleSystemComponent(const ParticleSystemComponent& particles);
         static ParticleSystemComponent decodeParticleSystemComponent(const YAML::Node& node, const ParticleSystemComponent* oldParticles = nullptr);
         // a scene's particle system as written before S20 (the scene migration reads it)
         static LegacyParticleSystem decodeLegacyParticleSystem(const YAML::Node& node);
+
+        // the falloff curve as [time, value, inTangent, outTangent] rows
+        static YAML::Node encodeForceFieldComponent(const ForceFieldComponent& field);
+        static ForceFieldComponent decodeForceFieldComponent(const YAML::Node& node, const ForceFieldComponent* oldField = nullptr);
+
+        static YAML::Node encodeCharacterController2DComponent(const CharacterController2DComponent& controller);
+        static CharacterController2DComponent decodeCharacterController2DComponent(const YAML::Node& node, const CharacterController2DComponent* oldController = nullptr);
+        static YAML::Node encodeCharacterControllerComponent(const CharacterControllerComponent& controller);
+        static CharacterControllerComponent decodeCharacterControllerComponent(const YAML::Node& node, const CharacterControllerComponent* oldController = nullptr);
+        static YAML::Node encodeWaterVolumeComponent(const WaterVolumeComponent& volume);
+        static WaterVolumeComponent decodeWaterVolumeComponent(const YAML::Node& node, const WaterVolumeComponent* oldVolume = nullptr);
+        static YAML::Node encodeBuoyancyComponent(const BuoyancyComponent& buoyancy);
+        static BuoyancyComponent decodeBuoyancyComponent(const YAML::Node& node, const BuoyancyComponent* oldBuoyancy = nullptr);
 
         static YAML::Node encodeInstancedMeshComponent(const InstancedMeshComponent& instmesh);
         static InstancedMeshComponent decodeInstancedMeshComponent(const YAML::Node& node, const InstancedMeshComponent* oldInstmesh = nullptr);
