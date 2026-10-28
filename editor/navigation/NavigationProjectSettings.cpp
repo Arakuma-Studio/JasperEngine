@@ -118,10 +118,10 @@ NavigationProjectSettings editor::decodeNavigationProjectSettings(const YAML::No
     settings.webBakeBudgetMs = std::clamp(readFinite(node, "webBakeBudgetMs", settings.webBakeBudgetMs), 0.5f, 50.0f);
     settings.maxGridSolvesPerTick = std::clamp(readOr<int>(node, "maxGridSolvesPerTick", settings.maxGridSolvesPerTick), 1, 4096);
     const YAML::Node agents = node["agentTypes"];
-    if (agents.IsSequence() && agents.size() > 0) {
+    if (agents.IsDefined() && agents.IsSequence() && agents.size() > 0) {
         settings.agentTypes.clear();
         for (const YAML::Node& row : agents) {
-            if (!row.IsMap()) continue;
+            if (!row.IsDefined() || !row.IsMap()) continue;
             nav::AgentTypeSettings agent;
             agent.id = readOr<int>(row, "id", settings.nextAgentTypeId());
             agent.name = readOr<std::string>(row, "name", agent.name);
@@ -133,9 +133,9 @@ NavigationProjectSettings editor::decodeNavigationProjectSettings(const YAML::No
         }
     }
     const YAML::Node areas = node["areas"];
-    if (areas.IsSequence()) {
+    if (areas.IsDefined() && areas.IsSequence()) {
         for (const YAML::Node& row : areas) {
-            if (!row.IsMap()) continue;
+            if (!row.IsDefined() || !row.IsMap()) continue;
             const int index = readOr<int>(row, "index", -1);
             if (index < 0 || index >= nav::AREA_COUNT) continue;
             nav::AreaSettings& area = settings.areas[(size_t)index];

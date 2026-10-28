@@ -17,6 +17,7 @@
 #include "navigation/NavMesh.h"
 #include "navigation/NavMeshBuilder.h"
 #include "object/navigation/NavMeshAgent.h"
+#include "subsystem/RenderSystem.h"
 
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "component/RigidbodyComponent.h"
@@ -135,6 +136,20 @@ TEST_F(NavBakeTest, NoPhysicsWorld){
 #if !defined(JASPERENGINE_PHYSICS_2D) && !defined(JASPERENGINE_PHYSICS_3D)
     SUCCEED() << "built without physics";
 #endif
+}
+
+// The editor draws its overlays (the navmesh itself, gizmos) as meshes in the scene they annotate:
+// they are never collected, so a fresh bake is not stale once its overlay shows (MCP
+// test_bake_job_and_info: every tile reported dirty right after the bake)
+TEST_F(NavBakeTest, EditorOverlaysNotCollected){
+    const Entity surface = planeSurface(20.0f, 20.0f);
+    bake(surface);
+    EXPECT_EQ(nav->countDirtyTiles(surface), 0);
+    const Entity overlay = box(*scene, Vector3(0.0f, 0.5f, 0.0f), Vector3(30.0f, 1.0f, 30.0f));
+    resolveTransforms(*scene);
+    EXPECT_GT(nav->countDirtyTiles(surface), 0);
+    scene->getSystem<RenderSystem>()->setEditorOverlay(overlay, true);
+    EXPECT_EQ(nav->countDirtyTiles(surface), 0);
 }
 
 TEST_F(NavBakeTest, CollectPolicy){

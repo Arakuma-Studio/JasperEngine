@@ -6,6 +6,7 @@
 // Limited and contributors, MIT License, as a reference; the code is our own. See NOTICE.md.
 
 #include "NavBakeCollector.h"
+#include "subsystem/RenderSystem.h"
 
 #include "Scene.h"
 #include "component/InstancedMeshComponent.h"
@@ -381,7 +382,9 @@ namespace {
     class Collector {
     public:
         Collector(Scene* scene, Entity surface, const NavMeshSurfaceComponent& component, NavCollectStats& stats)
-            : scene(scene), surfaceEntity(surface), surface(component), stats(stats) {}
+            : scene(scene), surfaceEntity(surface), surface(component), stats(stats) {
+            renderSystem = scene->getSystem<RenderSystem>().get();
+        }
 
         std::shared_ptr<NavBakeInput> run(std::string& error);
 
@@ -404,6 +407,7 @@ namespace {
         bool inScope(Entity entity) const;
         const Policy& policyOf(Entity entity);
         bool collectable(Entity entity, Policy& policy);
+        RenderSystem* renderSystem = nullptr;
         void grow(const Vector3& nav);
         void addTriangles(const Mesh& mesh, const Matrix4& toNav, uint8_t area);
         void addMeshComponent(Entity entity, const Matrix4& worldOf, uint8_t area);
@@ -492,6 +496,10 @@ namespace {
     }
 
     bool Collector::collectable(Entity entity, Policy& policy) {
+        // the editor's own objects in the scene (gizmos, the navigation overlay's meshes) are not
+        // the level: collecting the overlay of a bake would make the next check find it stale
+        if (renderSystem && renderSystem->isEditorOverlay(entity))
+            return false;
         if (!inScope(entity))
             return false;
         policy = policyOf(entity);
@@ -639,6 +647,8 @@ namespace {
         grow(Vector3(lattice.bmax[0], lattice.bmax[1], lattice.bmax[2]));
         input->terrains.push_back(std::move(lattice));
         stats.terrains++;
+        // the pixels read again here are this collect's own (TextureData does not free them)
+        reloaded.releaseImageData();
     }
 
     void Collector::collectTerrains() {
