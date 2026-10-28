@@ -4856,7 +4856,8 @@ void registerWorldTools(McpRegistry& registry) {
     // a key item without additionalProperties: keys read back from a result carry in/out (tangents),
     // which clip mode takes; the handler checks the fields
     Json openKeyItem = object({{"time", number("")}, {"value", any("")}, {"points", any("")}, {"ease", string("")}}, {"time"});
-    openKeyItem.erase("additionalProperties");
+    // a key takes the channel-specific keys too (in/out tangents...): free-form, said so (S31)
+    openKeyItem["additionalProperties"] = true;
     add("edit_animation", "Edit Animation",
         "Keyframes in seconds. clip (.anim): a shared clip file, tracks by path from the GameObject whose "
         "Animation Player plays it; create {from?: entity Animation or \"model.gltf#Walk\"}; root checks paths "

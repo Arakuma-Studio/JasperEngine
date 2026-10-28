@@ -65,8 +65,8 @@
             "reason": "upstream (lattice deformer), predates its merge into oe-port: 2030 chars measured on the upstream sync, 2058 with S31's schema conventions (nested objects say additionalProperties)"
         },
         "edit_animation": {
-            "limit": 3578,
-            "reason": "grandfathered by S31: 2699 chars when the limits were set, +5%; 3340 measured on the round-1 upstream sync, 3494 on round 2 (upstream's .anim clip mode on the same tool: clip, create, tracks by path, keys, events, cheaper than a second tool); 3578 with refs typed integer|string again (the CLI tells ids from names by it)"
+            "limit": 3606,
+            "reason": "grandfathered by S31: 2699 chars when the limits were set, +5%; 3340 measured on the round-1 upstream sync, 3494 on round 2 (upstream's .anim clip mode on the same tool: clip, create, tracks by path, keys, events, cheaper than a second tool); 3578 with refs typed integer|string again (the CLI tells ids from names by it), 3606 with its free-form key items saying so (S31 conventions)"
         },
         "sculpt_terrain": {
             "limit": 2699,
