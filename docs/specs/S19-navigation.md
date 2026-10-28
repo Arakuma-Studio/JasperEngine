@@ -648,17 +648,8 @@ What the implementation does differently from the text above, and why.
 
 ## Progress (implementation notes, keep updated)
 
-- GREEN (before the S08 merge): nav core tests 50/50; ASan+UBSan core 80/80 and editor 125/125;
-  editor tests 82/82; linux GL + Vulkan WERROR; E bench all budgets (grid worst 0.24 ms, batch
-  4.14 ms with JPS+); web gate ST on E 3/3 and threaded (same navmesh hashes); MCP navigation 9/9 incl.
-  overlay golden; full MCP CI suite: only failures shared with other branches (post_fx goldens,
-  scene_inputs manifest, shadow goldens).
-- Fixed: editor overlay meshes collected (stale tiles), 2D-surface binding, Lua (bool, hit),
-  fixture UAF, heightmap leak, YAML zombie nodes, Lua API description (overrides, unqualified names,
-  AreaMask enum), web runtime tiles <= 32 cells + predictive pump.
-- NEXT: merge oe-port (S08 landed: move the six nav components onto its reflection tables, drop the
-  hand-written Catalog/Stream/StreamSchema/Factory entries as S08 dictates), regenerate TOOLS.md,
-  re-run: nav core tests, editor tests, MCP navigation + lua_api_json + conventions, Android emulator
-  (A: tools/android-emulator-test.sh build/android-navigation/app-debug.apk --expect-file ...; no
-  --ordered: the engine ready line comes after the gate lines), web gate on E.
-- Scratch remote scripts (untracked): tools/.s19-core.sh, .s19-bench.sh (RUNS=N median), .s19-editor.sh.
+Done on the merged tree (oe-port 424925911, S08 reflection): nav core 50/50; editor 192/192; MCP
+55/55 (MCP_SUITE=all subset incl. navigation 9 with the overlay golden, lua_api_json, conventions,
+ecs, docs, autosync, reflection); linux GL and Vulkan WERROR; ASan+UBSan core 80/80, editor 125/125
+(pre-S08 merge); E bench all budgets (median of 5); web gate single-threaded on E 3/3 and threaded,
+same navmesh hashes; Android emulator (A) pass.
