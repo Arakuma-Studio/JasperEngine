@@ -1,0 +1,2975 @@
+formatVersion: 3
+guid: fa957052190b74172aca2dc49fa7bbdc
+id: 2971396629
+name: Stencil
+scene:
+  backgroundColor: [0.25, 0.45, 0.65, 1]
+  shadowQuality: auto
+  meshLodEnabled: false
+  meshLodThreshold: 1
+  depthPrepassEnabled: false
+  lightState: on
+  globalIlluminationIntensity: 0.2
+  globalIlluminationColor: [1, 1, 1]
+  ambientLight2DIntensity: 1
+  ambientLight2DColor: [1, 1, 1]
+  shadow2DQuality: low
+  ssaoEnabled: false
+  ssaoRadius: 0.5
+  ssaoIntensity: 1
+  ssaoBias: 0.025
+  ssrEnabled: false
+  ssrMaxDistance: 8
+  ssrThickness: 0.5
+  ssrMaxSteps: 48
+  ssrIntensity: 1
+  ssrBlur: 0
+  gravity2D: [0, -9.81]
+  gravity3D: [0, -9.81, 0]
+  fixedResolutionEnabled: false
+  fixedResolutionWidth: 640
+  fixedResolutionHeight: 360
+  fixedResolutionFilter: nearest
+  enableUIEvents: not_set
+sceneType: scene_3d
+mainCamera: 1027
+maxValues:
+  maxSubmeshes: 1
+  maxTilemapTilesRect: 0
+  maxTilemapTiles: 0
+  maxExternalBuffers: 5
+  maxSpriteFrames: 0
+  maxBones: 128
+  maxColliders2D: 0
+  maxColliderPoints2D: 0
+  maxColliders3D: 0
+  maxColliderVertices3D: 0
+  maxColliderIndices3D: 0
+shaderKeys:
+  - type: mesh
+    properties: 1
+  - type: mesh
+    properties: 3
+  - type: mesh
+    properties: 1027
+  - type: mesh
+    properties: 2051
+  - type: mesh
+    properties: 3075
+  - type: mesh
+    properties: 33554435
+  - type: mesh
+    properties: 33555459
+  - type: sky
+  - type: depth
+  - type: blit
+  - type: mesh
+    properties: 1027
+    customShader: library:unlit#BLEND_NONE
+  - type: mesh
+    properties: 33555459
+    customShader: library:unlit#BLEND_NONE
+  - type: depth
+    customShader: library:unlit
+  - type: mesh
+    properties: 3075
+    customShader: library:sprite#BLEND_ALPHA
+  - type: mesh
+    properties: 33554433
+    customShader: library:outline#BLEND_NONE,WIDTH_MODE_SCREEN
+  - type: mesh
+    properties: 33554433
+    customShader: library:outline#BLEND_NONE,WIDTH_MODE_WORLD
+  - type: mesh
+    properties: 33554433
+    customShader: library:outline#BLEND_NONE,DISTANCE_SCALE,WIDTH_MODE_WORLD
+  - type: mesh
+    properties: 33554435
+    customShader: library:outline#BLEND_NONE,TEXTURE,WIDTH_MODE_WORLD
+  - type: mesh
+    properties: 33554435
+    customShader: library:unlit#BLEND_ALPHA
+  - type: mesh
+    properties: 33555459
+    customShader: library:unlit#BLEND_ALPHA
+  - type: mesh
+    properties: 33554433
+    customShader: library:outline_stencil#BLEND_NONE,VISIBILITY_VISIBLE_ONLY,WIDTH_MODE_SCREEN
+  - type: mesh
+    properties: 33554433
+    customShader: library:outline_stencil#BLEND_NONE,VISIBILITY_ALWAYS,WIDTH_MODE_SCREEN
+  - type: mesh
+    properties: 33554433
+    customShader: library:silhouette#BLEND_ALPHA,SILHOUETTE_MODE_FLAT
+  - type: mesh
+    properties: 33554497
+    customShader: library:silhouette#BLEND_ALPHA,SILHOUETTE_MODE_FRESNEL
+  - type: mesh
+    properties: 1
+    customShader: library:stencil_mask#BLEND_NONE
+  - type: mesh
+    properties: 3
+    customShader: library:stencil_mask#ALPHA_CLIP,BLEND_NONE
+  - type: mesh
+    properties: 2051
+    customShader: library:sprite_mask#BLEND_NONE
+entities:
+  - type: Entity
+    entity: 1001
+    name: Directional Light
+    components:
+      transform:
+        position: [0, 10, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [0, 10, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 10, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 10, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, -10], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      light:
+        enabled: true
+        type: directional
+        direction: [-0.4, -1, -0.6]
+        worldDirection: [-0.4, -1, -0.6]
+        color: [1, 1, 1]
+        range: 100
+        intensity: 3
+        innerConeCos: 0.76604444
+        outerConeCos: 0.64278764
+        spotMask: ~
+        cullingMask: 4294967295
+        shadows: false
+        automaticShadowCamera: true
+        shadowBias: 1
+        mapResolution: 2048
+        shadowCameraNearFar: [0.3, 100]
+        numShadowCascades: 3
+  - type: Entity
+    entity: 1002
+    name: Skybox
+    components:
+      skybox:
+        useDefaultTexture: true
+        texture:
+          textureType: CUBE
+          cubeMode: faces
+          source: paths
+          paths: ["", "", "", "", "", ""]
+          hasEmptyFaces: true
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: false
+        color: [1, 1, 1, 1]
+        rotation: 0
+        visible: true
+  - type: Entity
+    entity: 1003
+    name: Backdrop
+    components:
+      transform:
+        position: [0, 2, -2.5]
+        rotation: [0.70710677, 0.70710677, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [0, 2, -2.5]
+        worldRotation: [0.70710677, 0.70710677, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 5.9604645e-08, 0.99999994, 0], [0, -0.99999994, 5.9604645e-08, 0], [0, 2, -2.5, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 5.9604645e-08, 0.99999994, 0], [0, -0.99999994, 5.9604645e-08, 0], [0, 2, -2.5, 1]]
+        normalMatrix: [[1, 0, 0, -0], [-0, 5.960465e-08, 1, 2.4999998], [0, -1, 5.960465e-08, 2.0000002], [0, 0, -0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        buffer:
+          type: vertex_buffer
+          usage: immutable
+          stride: 48
+          size: 192
+          count: 4
+          renderAttributes: true
+          instanceBuffer: false
+          attributes:
+            - type: position
+              dataType: float
+              bufferName: ""
+              elements: 3
+              offset: 0
+              count: 4
+              normalized: true
+              perInstance: false
+            - type: texcoord1
+              dataType: float
+              bufferName: ""
+              elements: 2
+              offset: 12
+              count: 4
+              normalized: true
+              perInstance: false
+            - type: normal
+              dataType: float
+              bufferName: ""
+              elements: 3
+              offset: 20
+              count: 4
+              normalized: true
+              perInstance: false
+            - type: color
+              dataType: float
+              bufferName: ""
+              elements: 4
+              offset: 32
+              count: 4
+              normalized: true
+              perInstance: false
+          data: AAAQwQAAAAAAAJDAAAAAAAAAAAAAAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAQwQAAAAAAAJBAAAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAQQQAAAAAAAJBAAACAPwAAgD8AAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAQQQAAAAAAAJDAAACAPwAAAAAAAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/
+          vertexSize: 48
+        indices:
+          type: index_buffer
+          usage: immutable
+          stride: 2
+          size: 12
+          count: 6
+          renderAttributes: true
+          instanceBuffer: false
+          attributes:
+            - type: index
+              dataType: unsigned_short
+              bufferName: ""
+              elements: 1
+              offset: 0
+              count: 6
+              normalized: true
+              perInstance: false
+          data: AAABAAIAAAACAAMA
+        eBuffers: ~
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:unlit
+              shaderParams:
+                baseColor: [0.45, 0.47, 0.52, 1]
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 6
+            faceCulling: true
+            textureShadow: false
+            overrideFields: 196608
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: false
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        bonesMatrix:
+          []
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-9, 0, -4.5]
+          max: [9, 0, 4.5]
+        verticesAABB:
+          min: [-9, 0, -4.5]
+          max: [9, 0, 4.5]
+        worldAABB:
+          min: [-9, -2.4999995, -2.5000002]
+          max: [9, 6.4999995, -2.4999998]
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+  - type: Entity
+    entity: 1004
+    name: outline-screen
+    components:
+      transform:
+        position: [-6, 4.2, 0]
+        rotation: [0.9512512, 0.16773126, 0.25488698, -0.044943456]
+        scale: [0.9, 0.9, 0.9]
+        worldPosition: [-6, 4.2, 0]
+        worldRotation: [0.9512512, 0.16773126, 0.25488698, -0.044943456]
+        worldScale: [0.9, 0.9, 0.9]
+        localMatrix: [[0.7794229, 0, -0.44999993, 0], [0.15390906, 0.84572333, 0.2665783, 0], [0.4228616, -0.3078181, 0.73241794, 0], [-6, 4.2, 0, 1]]
+        modelMatrix: [[0.7794229, 0, -0.44999993, 0], [0.15390906, 0.84572333, 0.2665783, 0], [0.4228616, -0.3078181, 0.73241794, 0], [-6, 4.2, 0, 1]]
+        normalMatrix: [[0.96225035, -5.1101377e-08, -0.55555546, 5.7735023], [0.19001114, 1.0441029, 0.32910904, -3.2451646], [0.5220514, -0.38002235, 0.9042196, 4.728402], [0, 0, -0, 0.9999999]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: ALPHA_OPAQUE
+              emissiveFactor: [0, 0, 0]
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:unlit
+              shaderParams:
+                baseColor: [0.85, 0.3, 0.25, 1]
+              extraPass:
+                shader: library:outline
+                shaderParams:
+                  screenWidth: [4, 0, 0, 0]
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 36
+            faceCulling: true
+            textureShadow: false
+            overrideFields: 537067520
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: false
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-0.5, -0.5, -0.5]
+          max: [0.5, 0.5, 0.5]
+        verticesAABB:
+          min: [-0.5, -0.5, -0.5]
+          max: [0.5, 0.5, 0.5]
+        worldAABB:
+          min: [-6.678097, 3.623229, -0.7244981]
+          max: [-5.321903, 4.7767706, 0.7244981]
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      model:
+        enabled: true
+        filename: assets/models/box.gltf
+        filenameGuid: b3931cf0ce958281d527f8946f1369cc
+        mergeStaticMeshes: false
+        skeleton: 0
+        animations:
+          []
+        bonesIdMapping:
+          []
+        bonesNameMapping:
+          []
+        meshNodesMapping:
+          []
+        nodesIdMapping:
+          []
+  - type: Entity
+    entity: 1005
+    name: outline-world
+    components:
+      transform:
+        position: [-3, 4.2, 0]
+        rotation: [0.9512512, 0.16773126, 0.25488698, -0.044943456]
+        scale: [0.9, 0.9, 0.9]
+        worldPosition: [-3, 4.2, 0]
+        worldRotation: [0.9512512, 0.16773126, 0.25488698, -0.044943456]
+        worldScale: [0.9, 0.9, 0.9]
+        localMatrix: [[0.7794229, 0, -0.44999993, 0], [0.15390906, 0.84572333, 0.2665783, 0], [0.4228616, -0.3078181, 0.73241794, 0], [-3, 4.2, 0, 1]]
+        modelMatrix: [[0.7794229, 0, -0.44999993, 0], [0.15390906, 0.84572333, 0.2665783, 0], [0.4228616, -0.3078181, 0.73241794, 0], [-3, 4.2, 0, 1]]
+        normalMatrix: [[0.96225035, -5.1101377e-08, -0.55555546, 2.8867517], [0.19001114, 1.0441029, 0.32910904, -3.8151984], [0.5220514, -0.38002235, 0.9042196, 3.1622481], [0, 0, -0, 0.9999999]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: ALPHA_OPAQUE
+              emissiveFactor: [0, 0, 0]
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:unlit
+              shaderParams:
+                baseColor: [0.85, 0.3, 0.25, 1]
+              extraPass:
+                shader: library:outline
+                shaderParams:
+                  worldWidth: [0.06, 0, 0, 0]
+                shaderFeatures: [WIDTH_MODE_WORLD]
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 36
+            faceCulling: true
+            textureShadow: false
+            overrideFields: 537067520
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: false
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-0.5, -0.5, -0.5]
+          max: [0.5, 0.5, 0.5]
+        verticesAABB:
+          min: [-0.5, -0.5, -0.5]
+          max: [0.5, 0.5, 0.5]
+        worldAABB:
+          min: [-3.6780968, 3.623229, -0.7244981]
+          max: [-2.3219032, 4.7767706, 0.7244981]
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      model:
+        enabled: true
+        filename: assets/models/box.gltf
+        filenameGuid: b3931cf0ce958281d527f8946f1369cc
+        mergeStaticMeshes: false
+        skeleton: 0
+        animations:
+          []
+        bonesIdMapping:
+          []
+        bonesNameMapping:
+          []
+        meshNodesMapping:
+          []
+        nodesIdMapping:
+          []
+  - type: Entity
+    entity: 1006
+    name: outline-distance
+    components:
+      transform:
+        position: [0, 4.2, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [0.9, 0.9, 0.9]
+        worldPosition: [0, 4.2, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [0.9, 0.9, 0.9]
+        localMatrix: [[0.9, 0, 0, 0], [0, 0.9, 0, 0], [0, 0, 0.9, 0], [0, 4.2, 0, 1]]
+        modelMatrix: [[0.9, 0, 0, 0], [0, 0.9, 0, 0], [0, 0, 0.9, 0], [0, 4.2, 0, 1]]
+        normalMatrix: [[1.1111112, 0, 0, 0], [0, 1.1111112, 0, -4.6666665], [0, 0, 1.1111112, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: ALPHA_OPAQUE
+              emissiveFactor: [0, 0, 0]
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:unlit
+              shaderParams:
+                baseColor: [0.9, 0.9, 0.85, 1]
+              extraPass:
+                shader: library:outline
+                shaderParams:
+                  maxWidth: [0.1, 0, 0, 0]
+                  referenceDistance: [5, 0, 0, 0]
+                  worldWidth: [0.03, 0, 0, 0]
+                shaderFeatures: [WIDTH_MODE_WORLD, DISTANCE_SCALE]
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 2304
+            faceCulling: true
+            textureShadow: false
+            overrideFields: 537067520
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: false
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-0.5, -0.5, -0.5]
+          max: [0.5, 0.5, 0.5]
+        verticesAABB:
+          min: [-0.5, -0.5, -0.5]
+          max: [0.5, 0.5, 0.5]
+        worldAABB:
+          min: [-0.45, 3.7499998, -0.45]
+          max: [0.45, 4.6499996, 0.45]
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      model:
+        enabled: true
+        filename: assets/models/uv_sphere.gltf
+        filenameGuid: 0e73814e49cea5e2f081750b117b2582
+        mergeStaticMeshes: false
+        skeleton: 0
+        animations:
+          []
+        bonesIdMapping:
+          []
+        bonesNameMapping:
+          []
+        meshNodesMapping:
+          []
+        nodesIdMapping:
+          []
+  - type: Entity
+    entity: 1007
+    name: outline-texture
+    components:
+      transform:
+        position: [3, 4.2, 0]
+        rotation: [0.9512512, 0.16773126, 0.25488698, -0.044943456]
+        scale: [0.9, 0.9, 0.9]
+        worldPosition: [3, 4.2, 0]
+        worldRotation: [0.9512512, 0.16773126, 0.25488698, -0.044943456]
+        worldScale: [0.9, 0.9, 0.9]
+        localMatrix: [[0.7794229, 0, -0.44999993, 0], [0.15390906, 0.84572333, 0.2665783, 0], [0.4228616, -0.3078181, 0.73241794, 0], [3, 4.2, 0, 1]]
+        modelMatrix: [[0.7794229, 0, -0.44999993, 0], [0.15390906, 0.84572333, 0.2665783, 0], [0.4228616, -0.3078181, 0.73241794, 0], [3, 4.2, 0, 1]]
+        normalMatrix: [[0.96225035, -5.1101377e-08, -0.55555546, -2.886751], [0.19001114, 1.0441029, 0.32910904, -4.955265], [0.5220514, -0.38002235, 0.9042196, 0.02993952], [0, 0, -0, 0.9999999]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: ALPHA_OPAQUE
+              emissiveFactor: [0, 0, 0]
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:unlit
+              shaderParams:
+                baseColor: [0.95, 0.95, 0.95, 1]
+              extraPass:
+                shader: library:outline
+                shaderParams:
+                  outlineColor: [1, 0.3, 0.05, 1]
+                  worldWidth: [0.08, 0, 0, 0]
+                shaderTextures:
+                  u_outlineTexture:
+                    textureType: 2D
+                    source: path
+                    path: assets/textures/checker.png
+                    guid: ffbab4b9196cd6877411a17991f69c67
+                    minFilter: linear
+                    magFilter: linear
+                    wrapU: repeat
+                    wrapV: repeat
+                    releaseDataAfterLoad: true
+                shaderFeatures: [WIDTH_MODE_WORLD, TEXTURE]
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 36
+            faceCulling: true
+            textureShadow: false
+            overrideFields: 537067520
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: false
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-0.5, -0.5, -0.5]
+          max: [0.5, 0.5, 0.5]
+        verticesAABB:
+          min: [-0.5, -0.5, -0.5]
+          max: [0.5, 0.5, 0.5]
+        worldAABB:
+          min: [2.3219032, 3.623229, -0.7244981]
+          max: [3.6780968, 4.7767706, 0.7244981]
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      model:
+        enabled: true
+        filename: assets/models/box.gltf
+        filenameGuid: b3931cf0ce958281d527f8946f1369cc
+        mergeStaticMeshes: false
+        skeleton: 0
+        animations:
+          []
+        bonesIdMapping:
+          []
+        bonesNameMapping:
+          []
+        meshNodesMapping:
+          []
+        nodesIdMapping:
+          []
+  - type: Entity
+    entity: 1008
+    name: outline-glass
+    components:
+      transform:
+        position: [6, 4.2, 0]
+        rotation: [0.9512512, 0.16773126, 0.25488698, -0.044943456]
+        scale: [0.9, 0.9, 0.9]
+        worldPosition: [6, 4.2, 0]
+        worldRotation: [0.9512512, 0.16773126, 0.25488698, -0.044943456]
+        worldScale: [0.9, 0.9, 0.9]
+        localMatrix: [[0.7794229, 0, -0.44999993, 0], [0.15390906, 0.84572333, 0.2665783, 0], [0.4228616, -0.3078181, 0.73241794, 0], [6, 4.2, 0, 1]]
+        modelMatrix: [[0.7794229, 0, -0.44999993, 0], [0.15390906, 0.84572333, 0.2665783, 0], [0.4228616, -0.3078181, 0.73241794, 0], [6, 4.2, 0, 1]]
+        normalMatrix: [[0.96225035, -5.1101377e-08, -0.55555546, -5.773502], [0.19001114, 1.0441029, 0.32910904, -5.5252986], [0.5220514, -0.38002235, 0.9042196, -1.5362146], [0, 0, -0, 0.9999999]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: ALPHA_OPAQUE
+              emissiveFactor: [0, 0, 0]
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:unlit
+              shaderParams:
+                baseColor: [0.2, 0.45, 1, 0.45]
+              blendMode: ALPHA
+              stencil:
+                compare: ALWAYS
+                ref: 1
+                writeMask: 1
+                pass: REPLACE
+                depthFail: REPLACE
+              extraPass:
+                shader: library:outline_stencil
+                shaderParams:
+                  outlineColor: [0, 0.05, 0.3, 1]
+                  screenWidth: [3, 0, 0, 0]
+                  worldWidth: [0.03, 0, 0, 0]
+                shaderFeatures: [VISIBILITY_VISIBLE_ONLY]
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 36
+            faceCulling: true
+            textureShadow: false
+            overrideFields: 672333824
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: false
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-0.5, -0.5, -0.5]
+          max: [0.5, 0.5, 0.5]
+        verticesAABB:
+          min: [-0.5, -0.5, -0.5]
+          max: [0.5, 0.5, 0.5]
+        worldAABB:
+          min: [5.321903, 3.623229, -0.7244981]
+          max: [6.678097, 4.7767706, 0.7244981]
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: true
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      model:
+        enabled: true
+        filename: assets/models/box.gltf
+        filenameGuid: b3931cf0ce958281d527f8946f1369cc
+        mergeStaticMeshes: false
+        skeleton: 0
+        animations:
+          []
+        bonesIdMapping:
+          []
+        bonesNameMapping:
+          []
+        meshNodesMapping:
+          []
+        nodesIdMapping:
+          []
+  - type: Entity
+    entity: 1009
+    name: outline-stencil
+    components:
+      transform:
+        position: [-4.5, 2.1, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [-4.5, 2.1, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-4.5, 2.1, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-4.5, 2.1, 0, 1]]
+        normalMatrix: [[1, 0, 0, 4.5], [0, 1, 0, -2.1], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: ALPHA_OPAQUE
+              emissiveFactor: [0, 0, 0]
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:unlit
+              shaderParams:
+                baseColor: [0.95, 0.75, 0.3, 1]
+              sortPriority: 1
+              stencil:
+                compare: ALWAYS
+                ref: 1
+                writeMask: 1
+                pass: REPLACE
+                depthFail: REPLACE
+              extraPass:
+                shader: library:outline_stencil
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 2304
+            faceCulling: true
+            textureShadow: false
+            overrideFields: 704839680
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: false
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-0.5, -0.5, -0.5]
+          max: [0.5, 0.5, 0.5]
+        verticesAABB:
+          min: [-0.5, -0.5, -0.5]
+          max: [0.5, 0.5, 0.5]
+        worldAABB:
+          min: [-5, 1.5999999, -0.5]
+          max: [-4, 2.6, 0.5]
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      model:
+        enabled: true
+        filename: assets/models/uv_sphere.gltf
+        filenameGuid: 0e73814e49cea5e2f081750b117b2582
+        mergeStaticMeshes: false
+        skeleton: 0
+        animations:
+          []
+        bonesIdMapping:
+          []
+        bonesNameMapping:
+          []
+        meshNodesMapping:
+          []
+        nodesIdMapping:
+          []
+  - type: Entity
+    entity: 1010
+    name: wall--4.5
+    components:
+      transform:
+        position: [-4.5, 1.75, 0.9]
+        rotation: [0.70710677, 0.70710677, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [-4.5, 1.75, 0.9]
+        worldRotation: [0.70710677, 0.70710677, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 5.9604645e-08, 0.99999994, 0], [0, -0.99999994, 5.9604645e-08, 0], [-4.5, 1.75, 0.9, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 5.9604645e-08, 0.99999994, 0], [0, -0.99999994, 5.9604645e-08, 0], [-4.5, 1.75, 0.9, 1]]
+        normalMatrix: [[1, 0, -0, 4.4999995], [0, 5.960465e-08, 1, -0.90000015], [0, -1, 5.960465e-08, 1.7500001], [0, 0, -0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        buffer:
+          type: vertex_buffer
+          usage: immutable
+          stride: 48
+          size: 192
+          count: 4
+          renderAttributes: true
+          instanceBuffer: false
+          attributes:
+            - type: position
+              dataType: float
+              bufferName: ""
+              elements: 3
+              offset: 0
+              count: 4
+              normalized: true
+              perInstance: false
+            - type: texcoord1
+              dataType: float
+              bufferName: ""
+              elements: 2
+              offset: 12
+              count: 4
+              normalized: true
+              perInstance: false
+            - type: normal
+              dataType: float
+              bufferName: ""
+              elements: 3
+              offset: 20
+              count: 4
+              normalized: true
+              perInstance: false
+            - type: color
+              dataType: float
+              bufferName: ""
+              elements: 4
+              offset: 32
+              count: 4
+              normalized: true
+              perInstance: false
+          data: zcxMvwAAAAAzM7O+AAAAAAAAAAAAAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/zcxMvwAAAAAzM7M+AAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/zcxMPwAAAAAzM7M+AACAPwAAgD8AAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/zcxMPwAAAAAzM7O+AACAPwAAAAAAAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/
+          vertexSize: 48
+        indices:
+          type: index_buffer
+          usage: immutable
+          stride: 2
+          size: 12
+          count: 6
+          renderAttributes: true
+          instanceBuffer: false
+          attributes:
+            - type: index
+              dataType: unsigned_short
+              bufferName: ""
+              elements: 1
+              offset: 0
+              count: 6
+              normalized: true
+              perInstance: false
+          data: AAABAAIAAAACAAMA
+        eBuffers: ~
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:unlit
+              shaderParams:
+                baseColor: [0.3, 0.32, 0.36, 1]
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 6
+            faceCulling: true
+            textureShadow: false
+            overrideFields: 196608
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: false
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        bonesMatrix:
+          []
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-0.8, 0, -0.35]
+          max: [0.8, 0, 0.35]
+        verticesAABB:
+          min: [-0.8, 0, -0.35]
+          max: [0.8, 0, 0.35]
+        worldAABB:
+          min: [-5.3, 1.4000001, 0.9]
+          max: [-3.7, 2.1, 0.9]
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+  - type: Entity
+    entity: 1011
+    name: outline-stencil-visible
+    components:
+      transform:
+        position: [-1.5, 2.1, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [-1.5, 2.1, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-1.5, 2.1, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-1.5, 2.1, 0, 1]]
+        normalMatrix: [[1, 0, 0, 1.5], [0, 1, 0, -2.1], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: ALPHA_OPAQUE
+              emissiveFactor: [0, 0, 0]
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:unlit
+              shaderParams:
+                baseColor: [0.95, 0.75, 0.3, 1]
+              sortPriority: 1
+              stencil:
+                compare: ALWAYS
+                ref: 1
+                writeMask: 1
+                pass: REPLACE
+                depthFail: REPLACE
+              extraPass:
+                shader: library:outline_stencil
+                shaderFeatures: [VISIBILITY_VISIBLE_ONLY]
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 2304
+            faceCulling: true
+            textureShadow: false
+            overrideFields: 704839680
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: false
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-0.5, -0.5, -0.5]
+          max: [0.5, 0.5, 0.5]
+        verticesAABB:
+          min: [-0.5, -0.5, -0.5]
+          max: [0.5, 0.5, 0.5]
+        worldAABB:
+          min: [-2, 1.5999999, -0.5]
+          max: [-1, 2.6, 0.5]
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      model:
+        enabled: true
+        filename: assets/models/uv_sphere.gltf
+        filenameGuid: 0e73814e49cea5e2f081750b117b2582
+        mergeStaticMeshes: false
+        skeleton: 0
+        animations:
+          []
+        bonesIdMapping:
+          []
+        bonesNameMapping:
+          []
+        meshNodesMapping:
+          []
+        nodesIdMapping:
+          []
+  - type: Entity
+    entity: 1012
+    name: wall--1.5
+    components:
+      transform:
+        position: [-1.5, 1.75, 0.9]
+        rotation: [0.70710677, 0.70710677, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [-1.5, 1.75, 0.9]
+        worldRotation: [0.70710677, 0.70710677, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 5.9604645e-08, 0.99999994, 0], [0, -0.99999994, 5.9604645e-08, 0], [-1.5, 1.75, 0.9, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 5.9604645e-08, 0.99999994, 0], [0, -0.99999994, 5.9604645e-08, 0], [-1.5, 1.75, 0.9, 1]]
+        normalMatrix: [[1, 0, -0, 1.4999999], [0, 5.960465e-08, 1, -0.90000015], [0, -1, 5.960465e-08, 1.7500001], [0, 0, -0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        buffer:
+          type: vertex_buffer
+          usage: immutable
+          stride: 48
+          size: 192
+          count: 4
+          renderAttributes: true
+          instanceBuffer: false
+          attributes:
+            - type: position
+              dataType: float
+              bufferName: ""
+              elements: 3
+              offset: 0
+              count: 4
+              normalized: true
+              perInstance: false
+            - type: texcoord1
+              dataType: float
+              bufferName: ""
+              elements: 2
+              offset: 12
+              count: 4
+              normalized: true
+              perInstance: false
+            - type: normal
+              dataType: float
+              bufferName: ""
+              elements: 3
+              offset: 20
+              count: 4
+              normalized: true
+              perInstance: false
+            - type: color
+              dataType: float
+              bufferName: ""
+              elements: 4
+              offset: 32
+              count: 4
+              normalized: true
+              perInstance: false
+          data: zcxMvwAAAAAzM7O+AAAAAAAAAAAAAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/zcxMvwAAAAAzM7M+AAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/zcxMPwAAAAAzM7M+AACAPwAAgD8AAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/zcxMPwAAAAAzM7O+AACAPwAAAAAAAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/
+          vertexSize: 48
+        indices:
+          type: index_buffer
+          usage: immutable
+          stride: 2
+          size: 12
+          count: 6
+          renderAttributes: true
+          instanceBuffer: false
+          attributes:
+            - type: index
+              dataType: unsigned_short
+              bufferName: ""
+              elements: 1
+              offset: 0
+              count: 6
+              normalized: true
+              perInstance: false
+          data: AAABAAIAAAACAAMA
+        eBuffers: ~
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:unlit
+              shaderParams:
+                baseColor: [0.3, 0.32, 0.36, 1]
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 6
+            faceCulling: true
+            textureShadow: false
+            overrideFields: 196608
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: false
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        bonesMatrix:
+          []
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-0.8, 0, -0.35]
+          max: [0.8, 0, 0.35]
+        verticesAABB:
+          min: [-0.8, 0, -0.35]
+          max: [0.8, 0, 0.35]
+        worldAABB:
+          min: [-2.3, 1.4000001, 0.9]
+          max: [-0.7, 2.1, 0.9]
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+  - type: Entity
+    entity: 1013
+    name: silhouette-flat
+    components:
+      transform:
+        position: [1.5, 2.1, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [1.5, 2.1, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [1.5, 2.1, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [1.5, 2.1, 0, 1]]
+        normalMatrix: [[1, 0, 0, -1.5], [0, 1, 0, -2.1], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: ALPHA_OPAQUE
+              emissiveFactor: [0, 0, 0]
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:unlit
+              shaderParams:
+                baseColor: [0.95, 0.75, 0.3, 1]
+              sortPriority: 1
+              extraPass:
+                shader: library:silhouette
+                order: BEFORE
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 2304
+            faceCulling: true
+            textureShadow: false
+            overrideFields: 570621952
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: false
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-0.5, -0.5, -0.5]
+          max: [0.5, 0.5, 0.5]
+        verticesAABB:
+          min: [-0.5, -0.5, -0.5]
+          max: [0.5, 0.5, 0.5]
+        worldAABB:
+          min: [1, 1.5999999, -0.5]
+          max: [2, 2.6, 0.5]
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      model:
+        enabled: true
+        filename: assets/models/uv_sphere.gltf
+        filenameGuid: 0e73814e49cea5e2f081750b117b2582
+        mergeStaticMeshes: false
+        skeleton: 0
+        animations:
+          []
+        bonesIdMapping:
+          []
+        bonesNameMapping:
+          []
+        meshNodesMapping:
+          []
+        nodesIdMapping:
+          []
+  - type: Entity
+    entity: 1014
+    name: wall-1.5
+    components:
+      transform:
+        position: [1.5, 1.75, 0.9]
+        rotation: [0.70710677, 0.70710677, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [1.5, 1.75, 0.9]
+        worldRotation: [0.70710677, 0.70710677, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 5.9604645e-08, 0.99999994, 0], [0, -0.99999994, 5.9604645e-08, 0], [1.5, 1.75, 0.9, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 5.9604645e-08, 0.99999994, 0], [0, -0.99999994, 5.9604645e-08, 0], [1.5, 1.75, 0.9, 1]]
+        normalMatrix: [[1, 0, 0, -1.4999999], [0, 5.960465e-08, 1, -0.90000015], [0, -1, 5.960465e-08, 1.7500001], [0, 0, -0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        buffer:
+          type: vertex_buffer
+          usage: immutable
+          stride: 48
+          size: 192
+          count: 4
+          renderAttributes: true
+          instanceBuffer: false
+          attributes:
+            - type: position
+              dataType: float
+              bufferName: ""
+              elements: 3
+              offset: 0
+              count: 4
+              normalized: true
+              perInstance: false
+            - type: texcoord1
+              dataType: float
+              bufferName: ""
+              elements: 2
+              offset: 12
+              count: 4
+              normalized: true
+              perInstance: false
+            - type: normal
+              dataType: float
+              bufferName: ""
+              elements: 3
+              offset: 20
+              count: 4
+              normalized: true
+              perInstance: false
+            - type: color
+              dataType: float
+              bufferName: ""
+              elements: 4
+              offset: 32
+              count: 4
+              normalized: true
+              perInstance: false
+          data: zcxMvwAAAAAzM7O+AAAAAAAAAAAAAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/zcxMvwAAAAAzM7M+AAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/zcxMPwAAAAAzM7M+AACAPwAAgD8AAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/zcxMPwAAAAAzM7O+AACAPwAAAAAAAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/
+          vertexSize: 48
+        indices:
+          type: index_buffer
+          usage: immutable
+          stride: 2
+          size: 12
+          count: 6
+          renderAttributes: true
+          instanceBuffer: false
+          attributes:
+            - type: index
+              dataType: unsigned_short
+              bufferName: ""
+              elements: 1
+              offset: 0
+              count: 6
+              normalized: true
+              perInstance: false
+          data: AAABAAIAAAACAAMA
+        eBuffers: ~
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:unlit
+              shaderParams:
+                baseColor: [0.3, 0.32, 0.36, 1]
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 6
+            faceCulling: true
+            textureShadow: false
+            overrideFields: 196608
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: false
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        bonesMatrix:
+          []
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-0.8, 0, -0.35]
+          max: [0.8, 0, 0.35]
+        verticesAABB:
+          min: [-0.8, 0, -0.35]
+          max: [0.8, 0, 0.35]
+        worldAABB:
+          min: [0.7, 1.4000001, 0.9]
+          max: [2.3, 2.1, 0.9]
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+  - type: Entity
+    entity: 1015
+    name: silhouette-fresnel
+    components:
+      transform:
+        position: [4.5, 2.1, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [4.5, 2.1, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [4.5, 2.1, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [4.5, 2.1, 0, 1]]
+        normalMatrix: [[1, 0, 0, -4.5], [0, 1, 0, -2.1], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: ALPHA_OPAQUE
+              emissiveFactor: [0, 0, 0]
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:unlit
+              shaderParams:
+                baseColor: [0.95, 0.75, 0.3, 1]
+              sortPriority: 1
+              extraPass:
+                shader: library:silhouette
+                shaderParams:
+                  color: [0.2, 1, 0.4, 0.9]
+                shaderFeatures: [SILHOUETTE_MODE_FRESNEL]
+                order: BEFORE
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 2304
+            faceCulling: true
+            textureShadow: false
+            overrideFields: 570621952
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: false
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-0.5, -0.5, -0.5]
+          max: [0.5, 0.5, 0.5]
+        verticesAABB:
+          min: [-0.5, -0.5, -0.5]
+          max: [0.5, 0.5, 0.5]
+        worldAABB:
+          min: [4, 1.5999999, -0.5]
+          max: [5, 2.6, 0.5]
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      model:
+        enabled: true
+        filename: assets/models/uv_sphere.gltf
+        filenameGuid: 0e73814e49cea5e2f081750b117b2582
+        mergeStaticMeshes: false
+        skeleton: 0
+        animations:
+          []
+        bonesIdMapping:
+          []
+        bonesNameMapping:
+          []
+        meshNodesMapping:
+          []
+        nodesIdMapping:
+          []
+  - type: Entity
+    entity: 1016
+    name: wall-4.5
+    components:
+      transform:
+        position: [4.5, 1.75, 0.9]
+        rotation: [0.70710677, 0.70710677, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [4.5, 1.75, 0.9]
+        worldRotation: [0.70710677, 0.70710677, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 5.9604645e-08, 0.99999994, 0], [0, -0.99999994, 5.9604645e-08, 0], [4.5, 1.75, 0.9, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 5.9604645e-08, 0.99999994, 0], [0, -0.99999994, 5.9604645e-08, 0], [4.5, 1.75, 0.9, 1]]
+        normalMatrix: [[1, 0, 0, -4.4999995], [0, 5.960465e-08, 1, -0.90000015], [0, -1, 5.960465e-08, 1.7500001], [0, 0, -0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        buffer:
+          type: vertex_buffer
+          usage: immutable
+          stride: 48
+          size: 192
+          count: 4
+          renderAttributes: true
+          instanceBuffer: false
+          attributes:
+            - type: position
+              dataType: float
+              bufferName: ""
+              elements: 3
+              offset: 0
+              count: 4
+              normalized: true
+              perInstance: false
+            - type: texcoord1
+              dataType: float
+              bufferName: ""
+              elements: 2
+              offset: 12
+              count: 4
+              normalized: true
+              perInstance: false
+            - type: normal
+              dataType: float
+              bufferName: ""
+              elements: 3
+              offset: 20
+              count: 4
+              normalized: true
+              perInstance: false
+            - type: color
+              dataType: float
+              bufferName: ""
+              elements: 4
+              offset: 32
+              count: 4
+              normalized: true
+              perInstance: false
+          data: zcxMvwAAAAAzM7O+AAAAAAAAAAAAAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/zcxMvwAAAAAzM7M+AAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/zcxMPwAAAAAzM7M+AACAPwAAgD8AAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/zcxMPwAAAAAzM7O+AACAPwAAAAAAAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/
+          vertexSize: 48
+        indices:
+          type: index_buffer
+          usage: immutable
+          stride: 2
+          size: 12
+          count: 6
+          renderAttributes: true
+          instanceBuffer: false
+          attributes:
+            - type: index
+              dataType: unsigned_short
+              bufferName: ""
+              elements: 1
+              offset: 0
+              count: 6
+              normalized: true
+              perInstance: false
+          data: AAABAAIAAAACAAMA
+        eBuffers: ~
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:unlit
+              shaderParams:
+                baseColor: [0.3, 0.32, 0.36, 1]
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 6
+            faceCulling: true
+            textureShadow: false
+            overrideFields: 196608
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: false
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        bonesMatrix:
+          []
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-0.8, 0, -0.35]
+          max: [0.8, 0, 0.35]
+        verticesAABB:
+          min: [-0.8, 0, -0.35]
+          max: [0.8, 0, 0.35]
+        worldAABB:
+          min: [3.7, 1.4000001, 0.9]
+          max: [5.3, 2.1, 0.9]
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+  - type: Entity
+    entity: 1017
+    name: overlap-stacked
+    components:
+      transform:
+        position: [-7, 0, 0.2]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [-7, 0, 0.2]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-7, 0, 0.2, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-7, 0, 0.2, 1]]
+        normalMatrix: [[1, 0, 0, 7], [0, 1, 0, 0], [0, 0, 1, -0.2], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 0
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: ALPHA_OPAQUE
+              emissiveFactor: [0, 0, 0]
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:unlit
+              shaderParams:
+                baseColor: [0.25, 0.65, 1, 0.45]
+              blendMode: ALPHA
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 18
+            faceCulling: true
+            textureShadow: false
+            overrideFields: 1245184
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: false
+            hasTextureRect: false
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-0.75, -0.72, 0]
+          max: [0.75, 0.7, 0.08]
+        verticesAABB:
+          min: [-0.75, -0.72, 0]
+          max: [0.75, 0.7, 0.08]
+        worldAABB:
+          min: [-7.75, -0.72, 0.2]
+          max: [-6.25, 0.7, 0.28]
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: true
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      model:
+        enabled: true
+        filename: assets/models/overlap_quads.gltf
+        filenameGuid: fece6f873a1b340980ce80bfdb6e72e7
+        mergeStaticMeshes: false
+        skeleton: 0
+        animations:
+          []
+        bonesIdMapping:
+          []
+        bonesNameMapping:
+          []
+        meshNodesMapping:
+          []
+        nodesIdMapping:
+          []
+  - type: Entity
+    entity: 1018
+    name: overlap-once
+    components:
+      transform:
+        position: [-5.3, 0, 0.2]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [-5.3, 0, 0.2]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-5.3, 0, 0.2, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-5.3, 0, 0.2, 1]]
+        normalMatrix: [[1, 0, 0, 5.3], [0, 1, 0, 0], [0, 0, 1, -0.2], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 0
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: ALPHA_OPAQUE
+              emissiveFactor: [0, 0, 0]
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:unlit
+              shaderParams:
+                baseColor: [0.25, 0.65, 1, 0.45]
+              blendMode: ALPHA
+              stencil:
+                compare: NOT_EQUAL
+                ref: 4
+                readMask: 12
+                writeMask: 12
+                pass: REPLACE
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 18
+            faceCulling: true
+            textureShadow: false
+            overrideFields: 135462912
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: false
+            hasTextureRect: false
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-0.75, -0.72, 0]
+          max: [0.75, 0.7, 0.08]
+        verticesAABB:
+          min: [-0.75, -0.72, 0]
+          max: [0.75, 0.7, 0.08]
+        worldAABB:
+          min: [-6.05, -0.72, 0.2]
+          max: [-4.55, 0.7, 0.28]
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: true
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      model:
+        enabled: true
+        filename: assets/models/overlap_quads.gltf
+        filenameGuid: fece6f873a1b340980ce80bfdb6e72e7
+        mergeStaticMeshes: false
+        skeleton: 0
+        animations:
+          []
+        bonesIdMapping:
+          []
+        bonesNameMapping:
+          []
+        meshNodesMapping:
+          []
+        nodesIdMapping:
+          []
+  - type: Entity
+    entity: 1019
+    name: masked-visible_inside_mask
+    components:
+      transform:
+        position: [-3, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [-3, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-3, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-3, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, 3], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: ALPHA_OPAQUE
+              emissiveFactor: [0, 0, 0]
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:unlit
+              shaderParams:
+                baseColor: [0.9, 0.15, 0.1, 1]
+              stencil:
+                compare: EQUAL
+                ref: 16
+                readMask: 240
+                writeMask: 240
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 2304
+            faceCulling: true
+            textureShadow: false
+            overrideFields: 134414336
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: false
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-0.5, -0.5, -0.5]
+          max: [0.5, 0.5, 0.5]
+        verticesAABB:
+          min: [-0.5, -0.5, -0.5]
+          max: [0.5, 0.5, 0.5]
+        worldAABB:
+          min: [-3.5, -0.5, -0.5]
+          max: [-2.5, 0.5, 0.5]
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      model:
+        enabled: true
+        filename: assets/models/uv_sphere.gltf
+        filenameGuid: 0e73814e49cea5e2f081750b117b2582
+        mergeStaticMeshes: false
+        skeleton: 0
+        animations:
+          []
+        bonesIdMapping:
+          []
+        bonesNameMapping:
+          []
+        meshNodesMapping:
+          []
+        nodesIdMapping:
+          []
+  - type: Entity
+    entity: 1020
+    name: mask-visible_inside_mask
+    components:
+      transform:
+        position: [-3, 0, 0.8]
+        rotation: [0.70710677, 0.70710677, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [-3, 0, 0.8]
+        worldRotation: [0.70710677, 0.70710677, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 5.9604645e-08, 0.99999994, 0], [0, -0.99999994, 5.9604645e-08, 0], [-3, 0, 0.8, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 5.9604645e-08, 0.99999994, 0], [0, -0.99999994, 5.9604645e-08, 0], [-3, 0, 0.8, 1]]
+        normalMatrix: [[1, 0, -0, 2.9999998], [0, 5.960465e-08, 1, -0.8000001], [0, -1, 5.960465e-08, -4.7683724e-08], [0, 0, -0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        buffer:
+          type: vertex_buffer
+          usage: immutable
+          stride: 48
+          size: 192
+          count: 4
+          renderAttributes: true
+          instanceBuffer: false
+          attributes:
+            - type: position
+              dataType: float
+              bufferName: ""
+              elements: 3
+              offset: 0
+              count: 4
+              normalized: true
+              perInstance: false
+            - type: texcoord1
+              dataType: float
+              bufferName: ""
+              elements: 2
+              offset: 12
+              count: 4
+              normalized: true
+              perInstance: false
+            - type: normal
+              dataType: float
+              bufferName: ""
+              elements: 3
+              offset: 20
+              count: 4
+              normalized: true
+              perInstance: false
+            - type: color
+              dataType: float
+              bufferName: ""
+              elements: 4
+              offset: 32
+              count: 4
+              normalized: true
+              perInstance: false
+          data: zczMvgAAAADNzMy+AAAAAAAAAAAAAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/zczMvgAAAADNzMw+AAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/zczMPgAAAADNzMw+AACAPwAAgD8AAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/zczMPgAAAADNzMy+AACAPwAAAAAAAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/
+          vertexSize: 48
+        indices:
+          type: index_buffer
+          usage: immutable
+          stride: 2
+          size: 12
+          count: 6
+          renderAttributes: true
+          instanceBuffer: false
+          attributes:
+            - type: index
+              dataType: unsigned_short
+              bufferName: ""
+              elements: 1
+              offset: 0
+              count: 6
+              normalized: true
+              perInstance: false
+          data: AAABAAIAAAACAAMA
+        eBuffers: ~
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:stencil_mask
+              shaderParams:
+                baseColor: [1, 0, 1, 1]
+              sortPriority: -1
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 6
+            faceCulling: true
+            textureShadow: false
+            overrideFields: 33751040
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: false
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        bonesMatrix:
+          []
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-0.4, 0, -0.4]
+          max: [0.4, 0, 0.4]
+        verticesAABB:
+          min: [-0.4, 0, -0.4]
+          max: [0.4, 0, 0.4]
+        worldAABB:
+          min: [-3.4, -0.39999998, 0.8]
+          max: [-2.6, 0.39999998, 0.8]
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+  - type: Entity
+    entity: 1021
+    name: masked-visible_outside_mask
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [0, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: ALPHA_OPAQUE
+              emissiveFactor: [0, 0, 0]
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:unlit
+              shaderParams:
+                baseColor: [0.9, 0.15, 0.1, 1]
+              stencil:
+                compare: NOT_EQUAL
+                ref: 16
+                readMask: 240
+                writeMask: 240
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 2304
+            faceCulling: true
+            textureShadow: false
+            overrideFields: 134414336
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: false
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-0.5, -0.5, -0.5]
+          max: [0.5, 0.5, 0.5]
+        verticesAABB:
+          min: [-0.5, -0.5, -0.5]
+          max: [0.5, 0.5, 0.5]
+        worldAABB:
+          min: [-0.5, -0.5, -0.5]
+          max: [0.5, 0.5, 0.5]
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      model:
+        enabled: true
+        filename: assets/models/uv_sphere.gltf
+        filenameGuid: 0e73814e49cea5e2f081750b117b2582
+        mergeStaticMeshes: false
+        skeleton: 0
+        animations:
+          []
+        bonesIdMapping:
+          []
+        bonesNameMapping:
+          []
+        meshNodesMapping:
+          []
+        nodesIdMapping:
+          []
+  - type: Entity
+    entity: 1022
+    name: mask-visible_outside_mask
+    components:
+      transform:
+        position: [0, 0, 0.8]
+        rotation: [0.70710677, 0.70710677, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [0, 0, 0.8]
+        worldRotation: [0.70710677, 0.70710677, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 5.9604645e-08, 0.99999994, 0], [0, -0.99999994, 5.9604645e-08, 0], [0, 0, 0.8, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 5.9604645e-08, 0.99999994, 0], [0, -0.99999994, 5.9604645e-08, 0], [0, 0, 0.8, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 5.960465e-08, 1, -0.8000001], [0, -1, 5.960465e-08, -4.7683724e-08], [0, 0, -0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        buffer:
+          type: vertex_buffer
+          usage: immutable
+          stride: 48
+          size: 192
+          count: 4
+          renderAttributes: true
+          instanceBuffer: false
+          attributes:
+            - type: position
+              dataType: float
+              bufferName: ""
+              elements: 3
+              offset: 0
+              count: 4
+              normalized: true
+              perInstance: false
+            - type: texcoord1
+              dataType: float
+              bufferName: ""
+              elements: 2
+              offset: 12
+              count: 4
+              normalized: true
+              perInstance: false
+            - type: normal
+              dataType: float
+              bufferName: ""
+              elements: 3
+              offset: 20
+              count: 4
+              normalized: true
+              perInstance: false
+            - type: color
+              dataType: float
+              bufferName: ""
+              elements: 4
+              offset: 32
+              count: 4
+              normalized: true
+              perInstance: false
+          data: zczMvgAAAADNzMy+AAAAAAAAAAAAAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/zczMvgAAAADNzMw+AAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/zczMPgAAAADNzMw+AACAPwAAgD8AAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/zczMPgAAAADNzMy+AACAPwAAAAAAAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/
+          vertexSize: 48
+        indices:
+          type: index_buffer
+          usage: immutable
+          stride: 2
+          size: 12
+          count: 6
+          renderAttributes: true
+          instanceBuffer: false
+          attributes:
+            - type: index
+              dataType: unsigned_short
+              bufferName: ""
+              elements: 1
+              offset: 0
+              count: 6
+              normalized: true
+              perInstance: false
+          data: AAABAAIAAAACAAMA
+        eBuffers: ~
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:stencil_mask
+              shaderParams:
+                baseColor: [1, 0, 1, 1]
+              shaderTextures:
+                u_maskTexture:
+                  textureType: 2D
+                  source: path
+                  path: assets/textures/leaf.png
+                  guid: 79e49616df9d8a0d364a731cf31d8f7f
+                  minFilter: linear
+                  magFilter: linear
+                  wrapU: repeat
+                  wrapV: repeat
+                  releaseDataAfterLoad: true
+              shaderFeatures: [ALPHA_CLIP]
+              sortPriority: -1
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 6
+            faceCulling: true
+            textureShadow: false
+            overrideFields: 34537472
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: false
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        bonesMatrix:
+          []
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-0.4, 0, -0.4]
+          max: [0.4, 0, 0.4]
+        verticesAABB:
+          min: [-0.4, 0, -0.4]
+          max: [0.4, 0, 0.4]
+        worldAABB:
+          min: [-0.4, -0.39999998, 0.8]
+          max: [0.4, 0.39999998, 0.8]
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+  - type: Entity
+    entity: 1023
+    name: sprite-visible_inside_mask
+    components:
+      transform:
+        position: [3, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [0.0234375, 0.0234375, 0.0234375]
+        worldPosition: [3, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [0.0234375, 0.0234375, 0.0234375]
+        localMatrix: [[0.0234375, 0, 0, 0], [0, 0.0234375, 0, 0], [0, 0, 0.0234375, 0], [3, 0, 0, 1]]
+        modelMatrix: [[0.0234375, 0, 0, 0], [0, 0.0234375, 0, 0], [0, 0, 0.0234375, 0], [3, 0, 0, 1]]
+        normalMatrix: [[42.666668, 0, 0, -128], [0, 42.666668, 0, 0], [0, 0, 42.666668, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: BLEND
+              emissiveFactor: [0, 0, 0]
+              baseColorTexture:
+                textureType: 2D
+                source: path
+                path: assets/textures/checker.png
+                guid: ffbab4b9196cd6877411a17991f69c67
+                minFilter: linear
+                magFilter: linear
+                wrapU: repeat
+                wrapV: repeat
+                releaseDataAfterLoad: true
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:sprite
+              stencil:
+                compare: EQUAL
+                ref: 16
+                readMask: 240
+                writeMask: 240
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 6
+            faceCulling: false
+            textureShadow: false
+            overrideFields: 134283424
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: true
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: true
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-32, -32, 0]
+          max: [32, 32, 0]
+        verticesAABB:
+          min: [-32, -32, 0]
+          max: [32, 32, 0]
+        worldAABB:
+          min: [2.25, -0.75, 0]
+          max: [3.75, 0.75, 0]
+        receiveLights: false
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: true
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      sprite:
+        enabled: true
+        width: 64
+        height: 64
+        automaticFlipY: true
+        flipY: true
+        textureScaleFactor: 0
+        pivotPreset: center
+  - type: Entity
+    entity: 1024
+    name: sprite-mask-0
+    components:
+      transform:
+        position: [3, 0, 0.05]
+        rotation: [1, 0, 0, 0]
+        scale: [0.0234375, 0.0234375, 0.0234375]
+        worldPosition: [3, 0, 0.05]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [0.0234375, 0.0234375, 0.0234375]
+        localMatrix: [[0.0234375, 0, 0, 0], [0, 0.0234375, 0, 0], [0, 0, 0.0234375, 0], [3, 0, 0.05, 1]]
+        modelMatrix: [[0.0234375, 0, 0, 0], [0, 0.0234375, 0, 0], [0, 0, 0.0234375, 0], [3, 0, 0.05, 1]]
+        normalMatrix: [[42.666668, 0, 0, -128], [0, 42.666668, 0, 0], [0, 0, 42.666668, -2.1333334], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: BLEND
+              emissiveFactor: [0, 0, 0]
+              baseColorTexture:
+                textureType: 2D
+                source: path
+                path: assets/textures/character.png
+                guid: 155990fce27589be4de99fdb594142e3
+                minFilter: linear
+                magFilter: linear
+                wrapU: repeat
+                wrapV: repeat
+                releaseDataAfterLoad: true
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:sprite_mask
+              sortPriority: -1
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 6
+            faceCulling: false
+            textureShadow: false
+            overrideFields: 33620128
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: true
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: true
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-32, -32, 0]
+          max: [32, 32, 0]
+        verticesAABB:
+          min: [-32, -32, 0]
+          max: [32, 32, 0]
+        worldAABB:
+          min: [2.25, -0.75, 0.05]
+          max: [3.75, 0.75, 0.05]
+        receiveLights: false
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      sprite:
+        enabled: true
+        width: 64
+        height: 64
+        automaticFlipY: true
+        flipY: true
+        textureScaleFactor: 0
+        pivotPreset: center
+  - type: Entity
+    entity: 1025
+    name: sprite-visible_outside_mask
+    components:
+      transform:
+        position: [5, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [0.0234375, 0.0234375, 0.0234375]
+        worldPosition: [5, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [0.0234375, 0.0234375, 0.0234375]
+        localMatrix: [[0.0234375, 0, 0, 0], [0, 0.0234375, 0, 0], [0, 0, 0.0234375, 0], [5, 0, 0, 1]]
+        modelMatrix: [[0.0234375, 0, 0, 0], [0, 0.0234375, 0, 0], [0, 0, 0.0234375, 0], [5, 0, 0, 1]]
+        normalMatrix: [[42.666668, 0, 0, -213.33333], [0, 42.666668, 0, 0], [0, 0, 42.666668, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: BLEND
+              emissiveFactor: [0, 0, 0]
+              baseColorTexture:
+                textureType: 2D
+                source: path
+                path: assets/textures/checker.png
+                guid: ffbab4b9196cd6877411a17991f69c67
+                minFilter: linear
+                magFilter: linear
+                wrapU: repeat
+                wrapV: repeat
+                releaseDataAfterLoad: true
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:sprite
+              stencil:
+                compare: NOT_EQUAL
+                ref: 16
+                readMask: 240
+                writeMask: 240
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 6
+            faceCulling: false
+            textureShadow: false
+            overrideFields: 134283424
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: true
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: true
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-32, -32, 0]
+          max: [32, 32, 0]
+        verticesAABB:
+          min: [-32, -32, 0]
+          max: [32, 32, 0]
+        worldAABB:
+          min: [4.25, -0.75, 0]
+          max: [5.75, 0.75, 0]
+        receiveLights: false
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: true
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      sprite:
+        enabled: true
+        width: 64
+        height: 64
+        automaticFlipY: true
+        flipY: true
+        textureScaleFactor: 0
+        pivotPreset: center
+  - type: Entity
+    entity: 1026
+    name: sprite-mask-1
+    components:
+      transform:
+        position: [5, 0, 0.05]
+        rotation: [1, 0, 0, 0]
+        scale: [0.0234375, 0.0234375, 0.0234375]
+        worldPosition: [5, 0, 0.05]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [0.0234375, 0.0234375, 0.0234375]
+        localMatrix: [[0.0234375, 0, 0, 0], [0, 0.0234375, 0, 0], [0, 0, 0.0234375, 0], [5, 0, 0.05, 1]]
+        modelMatrix: [[0.0234375, 0, 0, 0], [0, 0.0234375, 0, 0], [0, 0, 0.0234375, 0], [5, 0, 0.05, 1]]
+        normalMatrix: [[42.666668, 0, 0, -213.33333], [0, 42.666668, 0, 0], [0, 0, 42.666668, -2.1333334], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: BLEND
+              emissiveFactor: [0, 0, 0]
+              baseColorTexture:
+                textureType: 2D
+                source: path
+                path: assets/textures/character.png
+                guid: 155990fce27589be4de99fdb594142e3
+                minFilter: linear
+                magFilter: linear
+                wrapU: repeat
+                wrapV: repeat
+                releaseDataAfterLoad: true
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+              shader: library:sprite_mask
+              sortPriority: -1
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 6
+            faceCulling: false
+            textureShadow: false
+            overrideFields: 33620128
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: true
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: true
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        aabb:
+          min: [-32, -32, 0]
+          max: [32, 32, 0]
+        verticesAABB:
+          min: [-32, -32, 0]
+          max: [32, 32, 0]
+        worldAABB:
+          min: [4.25, -0.75, 0.05]
+          max: [5.75, 0.75, 0.05]
+        receiveLights: false
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      sprite:
+        enabled: true
+        width: 64
+        height: 64
+        automaticFlipY: true
+        flipY: true
+        textureScaleFactor: 0
+        pivotPreset: center
+  - type: Entity
+    entity: 1027
+    name: Camera
+    components:
+      transform:
+        position: [0, 2, 13]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [0, 2, 13]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 2, 13, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 2, 13, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, -2], [0, 0, 1, -13], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      camera:
+        enabled: true
+        type: camera_perspective
+        cullingMask: 4294967295
+        target: [0, 2, 0]
+        up: [0, 1, 0]
+        leftClip: <view>
+        rightClip: <view>
+        bottomClip: <view>
+        topClip: <view>
+        yfov: 0.75
+        aspect: <view>
+        nearClip: 0.2
+        farClip: 200
+        renderToTexture: false
+        transparentSort: true
+        depthTest: true
+        useTarget: true
+        autoResize: true
+        framebufferWidth: 512
+        framebufferHeight: 512
+        framebufferFilter: linear

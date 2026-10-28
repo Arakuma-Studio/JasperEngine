@@ -21,6 +21,7 @@
 namespace jasperengine{
 
     class Camera;
+    class SceneBvh;
 
     // LightState, ShadowQuality and SceneColorScale live in SceneSettings.h (they are scene-setting types).
 
@@ -60,6 +61,12 @@ namespace jasperengine{
         // the change tick at the end of the last frames (Removed<T> trimming without a gate)
         Tick frameEndTicks[2] = {0, 0};
 
+        // the picking BVH, made by the first query (getPickBvh); until then the hooks below
+        // cost one pointer test
+        std::unique_ptr<SceneBvh> pickBvh;
+        void notifyPickStructure(Signature components);
+        void notifyPickDirty(Entity entity);
+
     protected:
 
         // The add/remove hooks go only to the systems that handle the type (declareHookType)
@@ -69,6 +76,11 @@ namespace jasperengine{
                     pair.second->onComponentAdded(entity, componentId);
                 }
             }
+            if (pickBvh) {
+                Signature added;
+                added.set(componentId);
+                notifyPickStructure(added);
+            }
         }
 
         void onComponentRemoved(Entity entity, ComponentId componentId) override {
@@ -77,12 +89,20 @@ namespace jasperengine{
                     pair.second->onComponentRemoved(entity, componentId);
                 }
             }
+            if (pickBvh) {
+                Signature removed;
+                removed.set(componentId);
+                notifyPickStructure(removed);
+            }
         }
 
-        // physics re-filters the entity's bodies
+        // physics re-filters the entity's bodies; picking's layer masks see the new layer
         void onEntityLayerChanged(Entity entity) override {
             for (auto const& pair : systems) {
                 pair.second->onEntityLayerChanged(entity);
+            }
+            if (pickBvh) {
+                notifyPickDirty(entity);
             }
         }
 
@@ -92,6 +112,9 @@ namespace jasperengine{
                 system->forEachHookType(signature, [&](size_t componentId) {
                     system->onComponentRemoved(entity, (ComponentId)componentId);
                 });
+            }
+            if (pickBvh) {
+                notifyPickStructure(signature);
             }
         }
 
@@ -154,6 +177,14 @@ namespace jasperengine{
         // the Scene view's shadow debug view (editor only, not saved)
         void setShadowDebugView(ShadowDebugView view);
         ShadowDebugView getShadowDebugView() const;
+
+        // The picking BVH of the scene (MeshRaycast, the editor's Scene view picking): made on
+        // the first call, destroyed with the scene
+        SceneBvh& getPickBvh();
+        // null until a query made it
+        SceneBvh* findPickBvh() const { return pickBvh.get(); }
+        // the entity's bounds changed (RenderSystem): its leaf is refitted at the next query
+        void markPickDirty(Entity entity) { if (pickBvh) notifyPickDirty(entity); }
 
         void setMeshLodEnabled(bool enabled);
         bool isMeshLodEnabled() const;

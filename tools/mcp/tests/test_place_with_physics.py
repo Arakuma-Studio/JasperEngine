@@ -38,6 +38,7 @@ from pathlib import Path
 import yaml
 
 from harness import Editor, TestFailure
+import ui_input
 from htmlui_pixels import decode_png
 
 # a harness Xvfb: test_waits_for_a_scene_view_gesture drives the Scene view with xdotool
@@ -645,11 +646,6 @@ async def test_decompose_always(ed: Editor):
 
 # ---------------------------------------------------------------------------- review fixes
 
-def xdo(ed: Editor, *args: str) -> None:
-    env = dict(os.environ, DISPLAY=ed._xvfb.display)
-    subprocess.run(["xdotool", *args], env=env, check=True, capture_output=True, timeout=30)
-
-
 async def test_stale_apply_refused(ed: Editor):
     """An edit while an apply runs (the floor moved under it): the run stops, nothing is committed."""
     cubes = [{"name": f"Stale{i}", "type": "cube", "position": [-20 + (i % 10) * 1.3, 3 + (i // 10) * 1.3, 20 + (i % 3) * 1.3]}
@@ -684,11 +680,11 @@ async def test_waits_for_a_scene_view_gesture(ed: Editor):
     await ed.call("focus_window", window="scene")
     start = await world(ed, "Held")
     # the pointer over the Scene view (the default layout puts it in the middle), G: Physics on
-    xdo(ed, "mousemove", "800", "300")
-    await asyncio.sleep(0.3)
-    xdo(ed, "key", "g")
-    await asyncio.sleep(0.3)
-    xdo(ed, "keydown", "space")
+    ui = ui_input.for_editor(ed)   # frame-paced input (tools/mcp/ui_input.py)
+    await ui.move(ui.at((800, 300)))
+    await ui.key("g")
+    ui.xdo("keydown", "space")
+    await ui.frames()
     try:
         held = False
         for _ in range(100):
@@ -704,13 +700,14 @@ async def test_waits_for_a_scene_view_gesture(ed: Editor):
         check(state["status"] == "running" and "waiting for the Scene view's Physics gesture" in state["message"],
               f"the run waits while the gesture holds preview poses: {state['status']} {state['message'][:200]}")
     finally:
-        xdo(ed, "keyup", "space")
+        ui.xdo("keyup", "space")
+        await ui.frames()
     state = await wait_job(ed, job, 120)
     check(state["status"] == "succeeded", f"then it runs: {state['message'][:300]}")
     check(abs(by_path(state["result"], "Waiter")["after"]["position"][1] - 0.5) < 0.01, "and commits its own drop")
     held_after = (await world(ed, "Held"))[0]
     check(held_after[1] < 5.0, f"the gesture's drop was committed by the Scene view, not overwritten: {held_after}")
-    xdo(ed, "key", "g")
+    await ui.key("g")
     await ed.call("delete_entities", entities=["Held", "Waiter"])
 
 
@@ -805,11 +802,11 @@ async def test_undo_redo_during_a_gesture(ed: Editor):
     await ed.call("select_entities", entities=["Gest"])
     await ed.call("focus_window", window="scene")
     start = await world(ed, "Gest")
-    xdo(ed, "mousemove", "800", "300")
-    await asyncio.sleep(0.3)
-    xdo(ed, "key", "g")
-    await asyncio.sleep(0.3)
-    xdo(ed, "keydown", "space")
+    ui = ui_input.for_editor(ed)
+    await ui.move(ui.at((800, 300)))
+    await ui.key("g")
+    ui.xdo("keydown", "space")
+    await ui.frames()
     try:
         held = False
         for _ in range(100):
@@ -827,8 +824,8 @@ async def test_undo_redo_during_a_gesture(ed: Editor):
         check((await world(ed, "Gest"))[0] == start[0], "the gesture's object is back where it was")
         check((await world(ed, "Marker"))[0] == [7.0, 0.5, -35.0], "the last edit was not undone")
     finally:
-        xdo(ed, "keyup", "space")
-    await asyncio.sleep(0.3)
+        ui.xdo("keyup", "space")
+    await ui.frames(3)
     check((await world(ed, "Gest"))[0] == start[0], "the cancelled gesture commits nothing on release")
     # then undo works as before: the agent's select_entities is a step of its own (S24 R40),
     # the Marker's move the one before it
@@ -838,5 +835,5 @@ async def test_undo_redo_during_a_gesture(ed: Editor):
           f"then undo works as before: {undone}")
     redone = await ed.call("redo", steps=2)
     check(redone["steps"] == 2 and (await world(ed, "Marker"))[0] == [7.0, 0.5, -35.0], "and redo")
-    xdo(ed, "key", "g")
+    await ui.key("g")
     await ed.call("delete_entities", entities=["Gest", "Marker"])

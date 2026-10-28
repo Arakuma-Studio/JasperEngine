@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ImportPrefabCmd.h"
+#include "sceneview/SurfacePlacement.h"
 
 #include "editor/Out.h"
 #include "Stream.h"
@@ -113,12 +114,23 @@ bool editor::ImportPrefabCmd::execute(){
         }
     }
 
+    if (Transform* rootTransform = scene->findComponent<Transform>(rootEntity)){
+        importedRootRotation = rootTransform->rotation;
+    }
     if (hasDropPosition){
         if (Transform* rootTransform = scene->findComponent<Transform>(rootEntity)){
             const float z = rootTransform->position.z;
             rootTransform->position = dropPosition;
             if (dropKeepsZ){
                 rootTransform->position.z = z;
+            }
+            if (hasDropSurface){
+                Vector3 position;
+                Quaternion rotation;
+                sceneview::restOnSurface(dropPosition, dropNormal, sceneview::familyLocalBounds(scene, rootEntity), rootTransform->scale,
+                                         rootTransform->rotation, dropAlign, position, rotation);
+                rootTransform->position = position;
+                rootTransform->rotation = rotation;
             }
             rootTransform->needUpdate = true;
         }
@@ -190,6 +202,12 @@ void editor::ImportPrefabCmd::setPlacement(const Vector3& position, const Quater
 
 void editor::ImportPrefabCmd::setQuiet(bool quiet){
     this->quiet = quiet;
+}
+
+void editor::ImportPrefabCmd::setDropSurface(const Vector3& normal, bool align){
+    hasDropSurface = true;
+    dropNormal = normal;
+    dropAlign = align;
 }
 
 void editor::ImportPrefabCmd::setDropPosition(const Vector3& position, bool keepZ){

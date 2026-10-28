@@ -24,6 +24,7 @@ import subprocess
 from pathlib import Path
 
 from harness import Editor, skip
+import ui_input
 
 EDITOR = {"xvfb": "harness", "create": True, "name": "Undo UI"}
 TIMEOUT = 900
@@ -52,86 +53,7 @@ TOOLBAR_PLAY = (764, 36)
 S: dict = {}
 
 
-class Ui:
-    """xdotool input, each action followed by editor frames: the editor reads the X events at the
-    start of a frame, so a step (or an MCP check) after settle() sees the input applied. A fixed
-    sleep alone did not: on a loaded host one frame takes longer, and a click or a press landed
-    after the next step (the brush never picked, a history row read before its click)."""
-
-    def __init__(self, ed: Editor):
-        self.ed = ed
-        self.env = dict(os.environ, DISPLAY=ed._xvfb.display)
-        windows = self.xdo("search", "--name", "JasperEngine").split() or self.xdo("search", "--name", ".").split()
-        if not windows:
-            skip("no editor window found")
-        self.window = windows[-1]
-        geometry = self.xdo("getwindowgeometry", self.window)
-        x, y = 0, 0
-        for line in geometry.splitlines():
-            if "Position:" in line:
-                x, y = (int(v) for v in line.split("Position:")[1].split("(")[0].strip().split(","))
-        self.origin = (x, y)
-
-    def xdo(self, *args: str) -> str:
-        return subprocess.run(["xdotool", *args], env=self.env, capture_output=True, text=True, timeout=20).stdout
-
-    def focus(self):
-        self.xdo("windowactivate", "--sync", self.window)
-        self.xdo("windowfocus", "--sync", self.window)
-
-    def at(self, rect: dict, offset: tuple[float, float]) -> tuple[int, int]:
-        return (int(self.origin[0] + rect["x"] + offset[0]), int(self.origin[1] + rect["y"] + offset[1]))
-
-    async def settle(self, seconds: float):
-        await asyncio.sleep(seconds)
-        await self.ed.call("wait", frames=2)
-
-    async def move(self, point: tuple[int, int]):
-        self.xdo("mousemove", str(point[0]), str(point[1]))
-        await self.settle(0.25)
-
-    async def click(self, point: tuple[int, int]):
-        await self.move(point)
-        # press and release frames apart: in one frame the widget never sees the press
-        self.xdo("mousedown", "1")
-        await self.settle(0.1)
-        self.xdo("mouseup", "1")
-        await self.settle(0.5)
-
-    async def press(self, point: tuple[int, int]):
-        await self.move(point)
-        self.xdo("mousedown", "1")
-        await self.settle(0.3)
-
-    async def drag_to(self, start: tuple[int, int], dx: int, dy: int, steps: int = 12):
-        for k in range(1, steps + 1):
-            self.xdo("mousemove", str(int(start[0] + dx * k / steps)), str(int(start[1] + dy * k / steps)))
-            await asyncio.sleep(0.05)
-        await self.settle(0.4)
-
-    async def release(self):
-        self.xdo("mouseup", "1")
-        await self.settle(0.6)
-
-    async def key(self, *keys: str):
-        for key in keys:
-            # a chord's modifiers go down first and up last, frames apart: `xdotool key ctrl+z`
-            # can land Z's press and Ctrl's release in one editor frame, where Ctrl reads up
-            *mods, main = key.split("+")
-            for mod in mods:
-                self.xdo("keydown", mod)
-            if mods:
-                await self.settle(0.1)
-            self.xdo("key", main)
-            if mods:
-                await self.settle(0.1)
-            for mod in reversed(mods):
-                self.xdo("keyup", mod)
-            await self.settle(0.3)
-
-    async def type(self, text: str):
-        self.xdo("type", "--delay", "40", text)
-        await self.settle(0.5)
+Ui = ui_input.Ui   # frame-paced xdotool input (tools/mcp/ui_input.py)
 
 
 def evidence(ed: Editor) -> Path:

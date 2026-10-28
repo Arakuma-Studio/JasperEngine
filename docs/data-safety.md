@@ -144,9 +144,12 @@ decoders only see the current shape; a migrated file is not marked modified and 
 the current format by its next save.
 
 - Adding an optional component or field: **no version bump** (defaults and preservation cover
-  older and newer editors). Add the key to `editor/StreamSchema.cpp` (`knownFieldKeys`,
-  `knownNestedKeys` or `knownRootKeys`) and any enum names to its table;
-  `tools/check_stream_keys.py` and `StreamSchemaTest` fail otherwise.
+  older and newer editors). A component field goes into the component's reflection table
+  (`editor/reflect/components/`, `OmitIfDefault` from S08 on; docs/specs/S08-reflection.md R31):
+  its key, aliases and enum names are known from it. A component with a codec of its own lists
+  the keys its decoder reads in its table's `extraKeys`; other keys go into
+  `editor/StreamSchema.cpp` (`knownNestedKeys` or `knownRootKeys`). `tools/check_stream_keys.py`
+  and `StreamSchemaTest` fail otherwise.
 - Renaming, moving or re-typing a key, or changing what a value means: **bump the kind's
   version** and add a migration (a pure `void(YAML::Node& root, MigrationLog&)` in
   `StreamMigrations.cpp`, appended to its table), with a fixture under

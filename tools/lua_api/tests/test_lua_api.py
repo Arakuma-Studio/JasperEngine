@@ -9,6 +9,7 @@ passes on the repository's docs and fails with file:line on a bad one.
 
 import json
 import os
+import re
 import tempfile
 import unittest
 
@@ -127,11 +128,44 @@ class Emitters(unittest.TestCase):
         'Text': {'compare', 'str', 'substr'},
     }
 
+    # What later specs changed on purpose since the snapshot (the API's history, not the parser's):
+    #  - S20 replaced the particle system: the legacy component's fields and the Lua classes of its
+    #    initializers, modifiers and colour gradient are gone (deprecated setters stay on the
+    #    ParticleSystem object, S20 D9), and so is ActionSystem::particleActionReset;
+    #  - the lattice merge moved setTimes/setEasings/setEasing to KeyframeTracks, where every
+    #    tracks class inherits them (a base class's member counts for the derived one).
+    S20_LEGACY_PARTICLE_FIELDS = {
+        'accelerationInitializer', 'accelerationModifier', 'alphaInitializer', 'alphaModifier', 'bursts',
+        'colorGradient', 'colorInitializer', 'colorModifier', 'currentBurst', 'emitter', 'lastUsedParticle',
+        'lifeInitializer', 'localSpace', 'loop', 'maxPerUpdate', 'newParticlesCount', 'positionInitializer',
+        'positionModifier', 'rate', 'rotationInitializer', 'rotationModifier', 'scaleInitializer',
+        'scaleModifier', 'sizeInitializer', 'sizeModifier', 'spriteInitializer', 'spriteModifier',
+        'velocityInitializer', 'velocityModifier'}
+
+    @classmethod
+    def removed_on_purpose(cls, kind, parent, name):
+        owner = parent or name
+        if re.fullmatch(r'Particle\w*(Initializer|Modifier)|ParticleColorGradient', owner):
+            return True
+        if parent == 'ParticleSystemComponent' and kind == 'Property' and name in cls.S20_LEGACY_PARTICLE_FIELDS:
+            return True
+        return (kind, parent, name) == ('CppMethod', 'ActionSystem', 'particleActionReset')
+
     def test_suggestions_keep_what_the_regex_parser_knew(self):
         """generate_api_suggestions.py's symbols at its deletion (fixtures/regex_symbols.txt: kind
         parent name): the one parser's completion has every one of them, but for the regex
-        parser's mistakes above"""
+        parser's mistakes and the later API changes above"""
         new = {(k, parent, name) for name, k, _, parent in suggestions.symbols(api())}
+        bases = {c['name']: c.get('base') for c in api()['classes']}
+
+        def known(kind, parent, name):
+            seen = set()
+            while parent and parent not in seen:
+                if (kind, parent, name) in new:
+                    return True
+                seen.add(parent)
+                parent = bases.get(parent)
+            return False
         missing = []
         with open(os.path.join(FIXTURES, 'regex_symbols.txt'), encoding='utf-8') as f:
             for line in f:
@@ -139,7 +173,9 @@ class Emitters(unittest.TestCase):
                 if not line or line.startswith('#'):
                     continue
                 kind, parent, name = line.split('\t')
-                if (kind, parent, name) in new:
+                if (kind, parent, name) in new or known(kind, parent, name):
+                    continue
+                if self.removed_on_purpose(kind, parent, name):
                     continue
                 if kind == 'Event' and ('Constant', parent, name) in new:
                     continue

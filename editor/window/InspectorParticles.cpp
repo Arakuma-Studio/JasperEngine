@@ -27,6 +27,7 @@
 #include "external/IconsFontAwesome6.h"
 #include "particles/ParticleEffectCodec.h"
 #include "particles/ParticleModules.h"
+#include "reflect/Enums.h"
 #include "util/EntityPayload.h"
 #include "util/ParticleEffectEdit.h"
 #include "util/Util.h"
@@ -47,20 +48,9 @@ using namespace jasperengine::particles;
 
 namespace {
 
-    std::vector<editor::EnumEntry> entriesForceFieldShape = {
-        { (int)ForceFieldShapeType::Sphere, "Sphere" },
-        { (int)ForceFieldShapeType::Box, "Box" },
-        { (int)ForceFieldShapeType::Cylinder, "Cylinder" },
-        { (int)ForceFieldShapeType::Infinite, "Infinite" }
-    };
-
-    std::vector<editor::EnumEntry> entriesForceFieldKind = {
-        { (int)ForceFieldKind::Directional, "Directional" },
-        { (int)ForceFieldKind::Radial, "Radial" },
-        { (int)ForceFieldKind::Vortex, "Vortex" },
-        { (int)ForceFieldKind::Turbulence, "Turbulence" },
-        { (int)ForceFieldKind::Drag, "Drag" }
-    };
+    // from the enum tables (editor/reflect/Enums.cpp)
+    std::vector<editor::EnumEntry>& entriesForceFieldShape = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kForceFieldShape);
+    std::vector<editor::EnumEntry>& entriesForceFieldKind = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kForceFieldKind);
 
     // What the rows of one frame did: a value changed (an undo step to push) and an edit ended
     // (the step stops merging: a drag released, a checkbox clicked)

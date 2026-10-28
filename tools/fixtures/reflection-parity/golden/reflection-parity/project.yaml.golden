@@ -1,0 +1,16 @@
+formatVersion: 1
+name: ReflectionParity
+canvasWidth: 1280
+canvasHeight: 720
+scalingMode: fitwidth
+textureStrategy: none
+vsync: true
+htmlUiMsaaSamples: 4
+windowMode: windowed
+windowWidth: 1280
+windowHeight: 720
+windowResizable: true
+luaDir: .
+scenes:
+  - filepath: AllComponents.scene
+    filepathGuid: 32bfd2ae1a9d56a8dc83ae0fc8537f39

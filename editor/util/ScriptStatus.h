@@ -95,8 +95,10 @@ namespace jasperengine::editor {
         static const char* cppStateName(CppScriptState state);    // none, stale, building, up_to_date, failed, refused
         // "Lua: 2 errors · C++: build failed — using last good build"
         std::string summary() const;
-        // get_script_status and editor_status.scripts: {lua, cpp, editor_cpp, fingerprint, summary}
-        mcp::Json toJson() const;
+        // get_script_status and editor_status.scripts: {lua, cpp, editor_cpp, fingerprint, summary}.
+        // Main thread. Applies what builds posted first (update()): a build that ended after this
+        // frame's update() is reported as ended, not as still building
+        mcp::Json toJson();
 
     private:
         ScriptStatus() = default;

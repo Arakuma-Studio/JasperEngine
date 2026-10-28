@@ -1,0 +1,186 @@
+type: Prefab
+version: 5
+guid: 6a121bc13079cc89021cde9df07e3778
+nextEntity: 1052
+root: 1051
+members:
+  - type: Entity
+    entity: 1051
+    name: Gem
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [0, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+    children:
+      - type: Entity
+        entity: 1050
+        name: Gem
+        components:
+          transform:
+            position: [0, 0, 0]
+            rotation: [1, 0, 0, 0]
+            scale: [1, 1, 1]
+            worldPosition: [0, 0, 0]
+            worldRotation: [1, 0, 0, 0]
+            worldScale: [1, 1, 1]
+            localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+            modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+            normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+            visible: true
+            billboardRotation: [1, 0, 0, 0]
+            billboard: false
+            fakeBillboard: false
+            cylindricalBillboard: false
+          mesh:
+            enabled: true
+            submeshes:
+              - material:
+                  baseColorFactor: [1, 1, 1, 1]
+                  metallicFactor: 1
+                  roughnessFactor: 1
+                  alphaCutoff: 0.5
+                  foliageTransmission: 0
+                  alphaMode: AUTO
+                  emissiveFactor: [0, 0, 0]
+                  baseColorTexture:
+                    textureType: 2D
+                    source: path
+                    path: sprites/plane-sheet.png
+                    guid: a24fdc2bf2f6147f4b94acb3faf772da
+                    minFilter: linear
+                    magFilter: linear
+                    wrapU: clamp_to_edge
+                    wrapV: clamp_to_edge
+                    releaseDataAfterLoad: true
+                  baseColorTexCoord: 0
+                  metallicRoughnessTexCoord: 0
+                  occlusionTexCoord: 0
+                  emissiveTexCoord: 0
+                  normalTexCoord: 0
+                  name: ""
+                textureRect: [0, 0, 1, 1]
+                primitiveType: triangles
+                vertexCount: 6
+                faceCulling: false
+                textureShadow: false
+                hasTexCoord1: false
+                hasTexCoord2: false
+                hasNormalMap: false
+                hasTangent: false
+                hasVertexColor3: false
+                hasVertexColor4: false
+                hasTextureRect: true
+                hasSkinning: false
+                hasMorphTarget: false
+                hasMorphNormal: false
+                hasMorphTangent: false
+            normAdjustJoint: 1
+            normAdjustWeight: 1
+            morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+            aabb:
+              min: [0, 0, 0]
+              max: [0, 0, 0]
+            verticesAABB:
+              min: [0, 0, 0]
+              max: [0, 0, 0]
+            worldAABB:
+              min: [0, 0, 0]
+              max: [0, 0, 0]
+            receiveLights: false
+            receiveIBL: false
+            castShadows: false
+            receiveShadows: false
+            lodEnabled: true
+            lodBias: 1
+            renderInReflectionProbes: true
+            shadowsBillboard: true
+            transparent: true
+            autoTransparency: true
+            cullingMode: back
+            windingOrder: ccw
+          sprite:
+            enabled: true
+            width: 88
+            height: 73
+            automaticFlipY: true
+            flipY: true
+            textureScaleFactor: 0
+            pivotPreset: bottom_center
+        guid: 6a121bc13079cc89021cde9df07e3778
+entity: 1050
+name: Gem
+components:
+  transform:
+    position:
+      - 0.0
+      - 0.0
+      - 0
+    rotation:
+      - 1
+      - 0
+      - 0
+      - 0
+    scale:
+      - 1.0
+      - 1.0
+      - 1
+    visible: true
+    billboard: false
+    fakeBillboard: false
+    cylindricalBillboard: false
+    billboardRotation:
+      - 1
+      - 0
+      - 0
+      - 0
+  mesh:
+    castShadows: false
+    receiveLights: false
+    receiveShadows: false
+    receiveIBL: false
+    transparent: true
+    submeshes:
+      - faceCulling: false
+        hasTextureRect: true
+        textureRect:
+          - 0
+          - 0
+          - 1
+          - 1
+        primitiveType: triangles
+        vertexCount: 6
+        material:
+          baseColorFactor:
+            - 1
+            - 1
+            - 1
+            - 1
+          alphaMode: AUTO
+          baseColorTexture:
+            textureType: 2D
+            source: path
+            path: sprites/plane-sheet.png
+            minFilter: linear
+            magFilter: linear
+            wrapU: clamp_to_edge
+            wrapV: clamp_to_edge
+            releaseDataAfterLoad: true
+  sprite:
+    width: 88
+    height: 73
+    pivotPreset: bottom_center
+    automaticFlipY: true
+    flipY: true
+    textureScaleFactor: 0

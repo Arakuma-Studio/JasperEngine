@@ -157,6 +157,7 @@ bool AppSettings::editorVSyncEnabled = true;
 float AppSettings::uiScale = 1.0f;
 PanelVisibilitySettings AppSettings::panelVisibility;
 GameViewSettings AppSettings::gameViewSettings;
+SceneViewSettings AppSettings::sceneViewSettings;
 LatticeViewSettings AppSettings::latticeViewSettings;
 ProfilerSettings AppSettings::profilerSettings;
 bool AppSettings::mcpHttpEnabled = false;
@@ -465,6 +466,12 @@ bool AppSettings::applySettings(const YAML::Node& node) {
                 if (gameNode["stats"]) gameViewSettings.showStats = gameNode["stats"].as<bool>();
                 if (gameNode["atmosphere_quality"]) gameViewSettings.atmosphereQuality = std::clamp(gameNode["atmosphere_quality"].as<int>(), -1, 3);
             }
+            if (editorNode["scene_view"]) {
+                auto sceneNode = editorNode["scene_view"];
+                if (sceneNode["exact_pick"]) sceneViewSettings.exactPick = sceneNode["exact_pick"].as<bool>();
+                if (sceneNode["align_to_surface"]) sceneViewSettings.alignToSurface = sceneNode["align_to_surface"].as<bool>();
+                if (sceneNode["rulers"]) sceneViewSettings.rulers = sceneNode["rulers"].as<bool>();
+            }
             if (editorNode["profiler"]) {
                 auto profilerNode = editorNode["profiler"];
                 ProfilerSettings& p = profilerSettings;
@@ -714,6 +721,11 @@ bool AppSettings::saveSettings() {
         gameNode["stats"] = gameViewSettings.showStats;
         gameNode["atmosphere_quality"] = gameViewSettings.atmosphereQuality;
         editorNode["game_view"] = gameNode;
+        YAML::Node sceneViewNode;
+        sceneViewNode["exact_pick"] = sceneViewSettings.exactPick;
+        sceneViewNode["align_to_surface"] = sceneViewSettings.alignToSurface;
+        sceneViewNode["rulers"] = sceneViewSettings.rulers;
+        editorNode["scene_view"] = sceneViewNode;
         YAML::Node profilerNode;
         profilerNode["budget_fps"] = profilerSettings.budgetFps;
         profilerNode["cpu"] = profilerSettings.showCpu;
@@ -1270,6 +1282,16 @@ GameViewSettings AppSettings::getGameViewSettings() {
 
 void AppSettings::setGameViewSettings(const GameViewSettings& settings) {
     gameViewSettings = settings;
+    saveSettings();
+}
+
+SceneViewSettings AppSettings::getSceneViewSettings() {
+    return sceneViewSettings;
+}
+
+void AppSettings::setSceneViewSettings(const SceneViewSettings& settings) {
+    if (settings == sceneViewSettings) return;
+    sceneViewSettings = settings;
     saveSettings();
 }
 

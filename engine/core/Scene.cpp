@@ -16,6 +16,7 @@
 #include "subsystem/ActionSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/PhysicsSystem.h"
+#include "picking/SceneBvh.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "util/Color.h"
 
@@ -792,6 +793,25 @@ void Scene::load(){
         if (Engine::isViewLoaded()){
             pair.second->load();
         }
+    }
+}
+
+SceneBvh& Scene::getPickBvh(){
+    if (!pickBvh){
+        pickBvh = std::make_unique<SceneBvh>(this);
+    }
+    return *pickBvh;
+}
+
+void Scene::notifyPickStructure(Signature components){
+    if (pickBvh && pickBvh->tracks(components)){
+        pickBvh->markStructureChanged();
+    }
+}
+
+void Scene::notifyPickDirty(Entity entity){
+    if (pickBvh){
+        pickBvh->markDirty(entity);
     }
 }
 

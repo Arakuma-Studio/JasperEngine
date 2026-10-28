@@ -631,10 +631,32 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/project/ProjectPrefabVariant.cpp
     ${EDITOR_DIR}/project/ProjectPrefabRefs.cpp
     ${EDITOR_DIR}/Catalog.cpp
+    ${EDITOR_DIR}/reflect/Reflect.cpp
+    ${EDITOR_DIR}/reflect/TypeOps.cpp
+    ${EDITOR_DIR}/reflect/Enums.cpp
+    ${EDITOR_DIR}/reflect/Registry.cpp
+    ${EDITOR_DIR}/reflect/Resolve.cpp
+    ${EDITOR_DIR}/reflect/YamlCodec.cpp
+    ${EDITOR_DIR}/reflect/Schema.cpp
+    ${EDITOR_DIR}/reflect/Codegen.cpp
+    ${EDITOR_DIR}/reflect/Remap.cpp
+    ${EDITOR_DIR}/reflect/Properties.cpp
+    ${EDITOR_DIR}/reflect/PostProcessingReflect.cpp
+    ${EDITOR_DIR}/reflect/components/AnimationReflect.cpp
+    ${EDITOR_DIR}/reflect/components/CameraAudioReflect.cpp
+    ${EDITOR_DIR}/reflect/components/LightingReflect.cpp
+    ${EDITOR_DIR}/reflect/components/MaterialReflect.cpp
+    ${EDITOR_DIR}/reflect/components/GameplayReflect.cpp
+    ${EDITOR_DIR}/reflect/components/ParticlesReflect.cpp
+    ${EDITOR_DIR}/reflect/components/RenderReflect.cpp
+    ${EDITOR_DIR}/reflect/components/TransformPhysicsReflect.cpp
+    ${EDITOR_DIR}/reflect/components/UIReflect.cpp
+    ${EDITOR_DIR}/reflect/components/LatticeFluidReflect.cpp
     ${EDITOR_DIR}/Conector.cpp
     ${EDITOR_DIR}/EditorHost.cpp
     ${EDITOR_DIR}/Generator.cpp
     ${EDITOR_DIR}/Stream.cpp
+    ${EDITOR_DIR}/StreamComponents.cpp
     ${EDITOR_DIR}/StreamPrefab.cpp
     ${EDITOR_DIR}/StreamMigrations.cpp
     ${EDITOR_DIR}/StreamSchema.cpp
@@ -644,6 +666,16 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/SceneBackup.cpp
     ${EDITOR_DIR}/PrefabStage.cpp
     ${EDITOR_DIR}/Workspace.cpp
+    ${EDITOR_DIR}/picking/BvhDiskCache.cpp
+    ${EDITOR_DIR}/picking/IconPicker.cpp
+    ${EDITOR_DIR}/picking/ScenePicker.cpp
+    ${EDITOR_DIR}/sceneview/SceneViewController.cpp
+    ${EDITOR_DIR}/sceneview/SceneViewMath.cpp
+    ${EDITOR_DIR}/sceneview/SceneViewState.cpp
+    ${EDITOR_DIR}/sceneview/SceneViewToolbar.cpp
+    ${EDITOR_DIR}/sceneview/SceneViewVisibility.cpp
+    ${EDITOR_DIR}/sceneview/SurfacePlacement.cpp
+    ${EDITOR_DIR}/window/HierarchyVisibilityGutter.cpp
     ${EDITOR_DIR}/Exporter.cpp
 
     ${EDITOR_DIR}/mcp/McpActivityWindow.cpp
@@ -700,6 +732,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/SynthesisTools.cpp
     ${EDITOR_DIR}/mcp/tools/PlacementTools.cpp
     ${EDITOR_DIR}/mcp/tools/EcsTools.cpp
+    ${EDITOR_DIR}/mcp/tools/SceneViewTools.cpp
     ${EDITOR_DIR}/mcp/tools/GameplayTools.cpp
     ${EDITOR_DIR}/mcp/tools/DiagnosticsTools.cpp
     ${EDITOR_DIR}/mcp/tools/OrganisationTools.cpp
@@ -854,6 +887,11 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorPostProcessing.cpp
     ${EDITOR_DIR}/window/InspectorFluid.cpp
     ${EDITOR_DIR}/window/InspectorShadows.cpp
+    ${EDITOR_DIR}/window/InspectorDefault.cpp
+    ${EDITOR_DIR}/window/InspectorPhysics.cpp
+    ${EDITOR_DIR}/window/InspectorAnimation.cpp
+    ${EDITOR_DIR}/window/InspectorRenderers.cpp
+    ${EDITOR_DIR}/window/InspectorLattice.cpp
     ${EDITOR_DIR}/window/InspectorPrefabBar.cpp
     ${EDITOR_DIR}/window/HierarchyPrefabRows.cpp
     ${EDITOR_DIR}/window/ConsoleWindow.cpp
@@ -941,6 +979,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/DuplicateEntityCmd.cpp
     ${EDITOR_DIR}/command/type/PasteEntitiesCmd.cpp
     ${EDITOR_DIR}/command/type/ComponentValuesCmd.cpp
+    ${EDITOR_DIR}/command/type/ReflectedValueCmd.cpp
     ${EDITOR_DIR}/command/type/AtmospherePresetCmd.cpp
     ${EDITOR_DIR}/command/type/MoveEntityOrderCmd.cpp
     ${EDITOR_DIR}/command/type/ObjectTransformCmd.cpp
@@ -1006,10 +1045,15 @@ set_source_files_properties(${EDITOR_DIR}/util/EditorFingerprint.cpp PROPERTIES
 # Unity build: these sources keep generic file-local helpers (lower, trim, Target, sceneArg, ...) in
 # anonymous namespaces, one helper set per file, so they never share a unity unit
 set(JASPERENGINE_EDITOR_UNITY_SKIP ${JASPERENGINE_EDITOR_SOURCES})
-list(FILTER JASPERENGINE_EDITOR_UNITY_SKIP INCLUDE REGEX "(^|/)editor/(htmlui|mcp/tools)/")
+list(FILTER JASPERENGINE_EDITOR_UNITY_SKIP INCLUDE REGEX "(^|/)editor/(htmlui|mcp/tools|reflect)/")
 jasperengine_skip_unity_build(
-    REASON "the HTML UI importers and the MCP tools: per-file helper sets with the same names"
+    REASON "the HTML UI importers, the MCP tools and the reflection tables: per-file helper sets with the same names"
     SOURCES ${JASPERENGINE_EDITOR_UNITY_SKIP})
+set(JASPERENGINE_EDITOR_SCENEVIEW_SOURCES ${JASPERENGINE_EDITOR_SOURCES})
+list(FILTER JASPERENGINE_EDITOR_SCENEVIEW_SOURCES INCLUDE REGEX "(^|/)editor/(picking|sceneview)/")
+jasperengine_skip_unity_build(
+    REASON "the Scene view picking and tools (S26): per-file helpers (PI, now, project to view)"
+    SOURCES ${JASPERENGINE_EDITOR_SCENEVIEW_SOURCES})
 
 function(configure_jasperengine_editor_target target_name)
     add_dependencies(${target_name} generate_api_suggestions)
@@ -1201,6 +1245,8 @@ add_custom_target(copy_jasperengine_editor_engine
     COMMAND ${CMAKE_COMMAND}
         -DENGINE_SOURCE:PATH=${CMAKE_SOURCE_DIR}/engine
         -DENGINE_DEST:PATH=${JASPERENGINE_EDITOR_ENGINE_DIR}
+        # what the copy made, so a file deleted from engine/ leaves the copy too
+        -DMANIFEST:FILEPATH=${CMAKE_BINARY_DIR}/engine-copy-manifest.txt
         -P ${CMAKE_SOURCE_DIR}/CopyEditorEngine.cmake
     COMMENT "Copying engine next to the editor"
     VERBATIM
@@ -1280,6 +1326,12 @@ else()
         )
     endif()
 
+    # install(DIRECTORY) only adds and overwrites: first the files engine/ no longer has leave
+    # the installed copy (an export or a script build would compile a deleted header)
+    install(CODE "execute_process(COMMAND \"${CMAKE_COMMAND}\" \"-DENGINE_SOURCE=${CMAKE_SOURCE_DIR}/engine\"
+                      \"-DENGINE_DEST=\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/bin/engine\" -DPRUNE_ONLY=ON -DINSTALL_EXCLUDES=ON
+                      -P \"${CMAKE_SOURCE_DIR}/CopyEditorEngine.cmake\" COMMAND_ERROR_IS_FATAL ANY)"
+            CONFIGURATIONS Release MinSizeRel)
     install(DIRECTORY ${CMAKE_SOURCE_DIR}/engine
             DESTINATION bin
             CONFIGURATIONS Release MinSizeRel

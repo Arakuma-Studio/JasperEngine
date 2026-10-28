@@ -36,6 +36,7 @@ import zlib
 from pathlib import Path
 
 from harness import Editor, skip
+import ui_input
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import pngdiff  # noqa: E402  (tools/mcp/pngdiff.py)
@@ -465,46 +466,24 @@ async def frames(ed, n=20):
 # -- the inspector's Bake Deformation button --------------------------------------------------------
 
 
-class Ui:
-    def __init__(self, ed: Editor):
-        if not shutil.which("xdotool") or not ed._xvfb or not ed._xvfb.display:
-            skip("needs xdotool and the harness's Xvfb")
-        self.ed = ed
-        self.env = dict(os.environ, DISPLAY=ed._xvfb.display)
-
-    def xdo(self, *args: str) -> str:
-        return subprocess.run(["xdotool", *args], env=self.env, capture_output=True, text=True, timeout=20).stdout
+class Ui(ui_input.Ui):
+    """The shared frame-paced input (tools/mcp/ui_input.py), at screen points of the default layout."""
 
     async def focus(self):
-        windows = self.xdo("search", "--name", ".").split()
-        if not windows:
-            skip("no editor window found")
-        self.xdo("windowfocus", "--sync", windows[-1])
+        super().focus()
+        await self.frames()
 
     async def click(self, x: int, y: int):
-        self.xdo("mousemove", str(x), str(y))
-        await asyncio.sleep(0.3)
-        self.xdo("click", "1")
-        await asyncio.sleep(0.8)
+        await super().click((x, y))
 
     async def scroll_inspector_to_end(self, at):
-        self.xdo("mousemove", str(at[0]), str(at[1]))
-        await asyncio.sleep(0.2)
+        await self.move(at)
         for _ in range(120):
             self.xdo("click", "5")
-        await asyncio.sleep(0.8)
+        await self.frames(4)
 
     def window_origin(self):
-        windows = self.xdo("search", "--name", ".").split()
-        if not windows:
-            return 0, 0
-        out = self.xdo("getwindowgeometry", windows[-1])
-        for line in out.splitlines():
-            line = line.strip()
-            if line.startswith("Position:"):
-                x, y = line.split()[1].split(",")
-                return int(x), int(y)
-        return 0, 0
+        return self.origin
 
 
 INSPECTOR_AT = (1420, 500)  # inside the Inspector of the default layout (1600x900)
