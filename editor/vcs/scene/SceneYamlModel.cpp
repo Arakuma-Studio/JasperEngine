@@ -110,13 +110,24 @@ bool valuesEqual(const YAML::Node& a, const YAML::Node& b) {
         }
         case YAML::NodeType::Sequence: {
             if (a.size() != b.size()) return false;
-            for (size_t i = 0; i < a.size(); i++) {
-                if (!valuesEqual(a[i], b[i])) return false;
+            for (auto ia = a.begin(), ib = b.begin(); ia != a.end() && ib != b.end(); ++ia, ++ib) {
+                if (!valuesEqual(*ia, *ib)) return false;
             }
             return true;
         }
         case YAML::NodeType::Map: {
             if (a.size() != b.size()) return false;
+            // the same encoder wrote both: the keys pair up in order (a lookup by key reads every
+            // key of the map as a new string, so it is only the fallback)
+            bool ordered = true;
+            for (auto ia = a.begin(), ib = b.begin(); ia != a.end() && ib != b.end(); ++ia, ++ib) {
+                if (!ia->first.IsScalar() || !ib->first.IsScalar() || ia->first.Scalar() != ib->first.Scalar()) {
+                    ordered = false;
+                    break;
+                }
+                if (!valuesEqual(ia->second, ib->second)) return false;
+            }
+            if (ordered) return true;
             for (auto it = a.begin(); it != a.end(); ++it) {
                 const YAML::Node other = b[it->first.Scalar()];
                 if (!other || !valuesEqual(it->second, other)) return false;
@@ -211,7 +222,9 @@ bool SceneYamlModel::fromOwnedDocument(YAML::Node root, SceneYamlModel& out, std
         for (auto it = node.begin(); it != node.end(); ++it) {
             const std::string key = it->first.Scalar();
             if (structuralEntityKey(key)) continue;
-            own[key] = it->second;
+            // a copy: assigning the document's node would merge the whole document's memory into
+            // this map's, once per GameObject
+            own[key] = YAML::Clone(it->second);
         }
         if (own.size() > 0) object.components.emplace_back(kGameObjectKey, own);
         if (const YAML::Node components = node["components"]; components && components.IsMap()) {
