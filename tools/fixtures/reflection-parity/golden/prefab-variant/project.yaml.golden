@@ -1,0 +1,25 @@
+formatVersion: 1
+name: PrefabVariants
+canvasWidth: 1280
+canvasHeight: 720
+scalingMode: letterbox
+textureStrategy: resize
+vsync: true
+htmlUiMsaaSamples: 4
+windowMode: windowed
+windowWidth: 1280
+windowHeight: 720
+windowResizable: true
+assetsDir: assets
+luaDir: scripts
+export:
+  sourceCode:
+    graphicBackends:
+      - opengles
+      - vulkan
+web:
+  resizeCanvasToWindow: false
+startSceneId: 1
+scenes:
+  - filepath: Variant Scene.scene
+    filepathGuid: 7cea9db2d25f9068013f62594a555399
