@@ -137,7 +137,8 @@ namespace jasperengine::editor::vcs {
         void cancelRunning();
 
         // A poll now; with locks (refresh=true in get_vcs_status). done runs once the new
-        // snapshot is in (the next update()).
+        // snapshot is in (the next update()). Without a repository or the tools, it first looks
+        // for them again (a git init or an install since the project opened).
         void refresh(bool withLocks, Done done = {});
         void commit(std::vector<RepoPath> paths, std::string message, bool push, std::function<void(const VcsResult&, const std::string& revision)> done);
         void lock(std::vector<RepoPath> paths, Done done);
@@ -185,6 +186,11 @@ namespace jasperengine::editor::vcs {
             Done done;
         };
         std::vector<RefreshWaiter> refreshWaiters;
+        struct DetectionWaiter {
+            bool withLocks;
+            Done done;
+        };
+        std::vector<DetectionWaiter> detectionWaiters;   // refreshes asked while detecting
         // operations queued or running, by id: a close() answers the ones that never ran
         std::map<uint64_t, Done> inflight;
         uint64_t nextOpId = 1;

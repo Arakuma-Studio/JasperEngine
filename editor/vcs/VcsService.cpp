@@ -213,6 +213,15 @@ void VcsService::startDetection() {
             } else if (found.state == VcsState::NotAvailable) {
                 Out::warning("%s", found.message.c_str());
             }
+            std::vector<DetectionWaiter> waiters;
+            waiters.swap(detectionWaiters);
+            for (DetectionWaiter& waiter : waiters) {
+                if (active()) {
+                    refresh(waiter.withLocks, std::move(waiter.done));
+                } else if (waiter.done) {
+                    waiter.done(VcsResult::failure("Version control is not active: " + message));
+                }
+            }
         });
     }, jobs::SubmitOptions{.name = "vcs-detect"});
 }
@@ -274,6 +283,11 @@ void VcsService::close() {
     std::vector<RefreshWaiter> waiters;
     waiters.swap(refreshWaiters);
     for (RefreshWaiter& waiter : waiters) {
+        if (waiter.done) waiter.done(VcsResult::failure("cancelled: the project's version control closed"));
+    }
+    std::vector<DetectionWaiter> detecting;
+    detecting.swap(detectionWaiters);
+    for (DetectionWaiter& waiter : detecting) {
         if (waiter.done) waiter.done(VcsResult::failure("cancelled: the project's version control closed"));
     }
     {
@@ -532,6 +546,14 @@ void VcsService::cancelRunning() {
 }
 
 void VcsService::refresh(bool withLocks, Done done) {
+    if (currentState == VcsState::NoRepository || currentState == VcsState::NotAvailable) {
+        // a repository made, or the tools installed, since the project opened: look again
+        open(project, internal, settings, watch);
+    }
+    if (currentState == VcsState::Detecting) {
+        detectionWaiters.push_back({withLocks, std::move(done)});
+        return;
+    }
     if (!active()) {
         if (done) post([this, done]() { done(VcsResult::failure("Version control is not active: " + message)); });
         return;

@@ -134,6 +134,12 @@ Json changeJson(const VcsService& service, const vcs::VcsChange& change) {
     return entry;
 }
 
+// "Version control: ..." once, whatever the state's message starts with
+std::string stateLine(const VcsService& service) {
+    const std::string& message = service.stateMessage();
+    return message.rfind("Version control", 0) == 0 ? message : "Version control: " + message;
+}
+
 // the snapshot's summary (get_vcs_status, jasper://vcs/status)
 Json summaryJson(const VcsService& service) {
     Json out = {{"state", vcs::vcsStateName(service.state())}, {"message", service.stateMessage()}};
@@ -216,16 +222,22 @@ void getVcsStatusTool(const CallPtr& call) {
     const Json& args = call->args();
     const Json paths = args.value("paths", Json());
     const bool includeClean = args.value("include_clean", false);
-    if (!service.active()) {
-        call->ok("Version control: " + service.stateMessage(), summaryJson(service));
+    const bool refresh = args.value("refresh", false);
+    const bool retry = service.state() == VcsState::NoRepository || service.state() == VcsState::NotAvailable;
+    if (!service.active() && !(refresh && retry) && service.state() != VcsState::Detecting) {
+        call->ok(stateLine(service), summaryJson(service));
         return;
     }
-    if (!args.value("refresh", false) && service.snapshot()) {
+    if (!refresh && service.snapshot()) {
         replyStatus(call, service, paths, includeClean);
         return;
     }
     call->detach();
     service.refresh(true, [call, &service, paths, includeClean](const VcsResult& result) {
+        if (!service.active()) {
+            call->ok(stateLine(service), summaryJson(service));
+            return;
+        }
         if (!result.ok) {
             call->fail("The status poll failed: " + result.message);
             return;

@@ -1,0 +1,65 @@
+# Version control for agents
+
+Served as `jasper://docs/version-control`. The user documentation is
+`docs/editor/version-control.md`; the design is `docs/specs/S29-version-control.md`. The tools
+are the `vcs` group: `tool_groups` enable `["vcs"]` lists them.
+
+## What is there
+
+- The editor finds the repository from the project folder up: Git (with Git LFS for locks) or
+  Subversion, through the installed `git`/`git-lfs`/`svn` programs. `get_vcs_status` says which,
+  or why there is none ("Version control: not available (...)", no repository, off in Project
+  Settings). `refresh: true` looks again after a `git init`.
+- Paths are project-relative everywhere. A path outside the project or the repository, or
+  containing NUL, is refused. An asset and its `.meta` are one item: committing or reverting the
+  asset takes its changed `.meta` along.
+- Revisions: Git takes a 7-64 digit hash, `HEAD` or `HEAD~n`; Subversion a number, `BASE` or
+  `HEAD`. Anything else (`--output=...` included) is refused before a process runs.
+
+## Reading
+
+- `get_vcs_status`: branch, ahead/behind, the changed files {path, index, worktree, conflict,
+  lock, lock_owner, remote_changed} (500 at most, `paths` filters). It answers from the last poll
+  (every 10 s, and after the editor's own saves and operations); `refresh: true` polls now, with
+  the locks (the lock server is asked only then and every 60 s). `jasper://vcs/status` holds the
+  summary.
+- `diff_file`: a unified text diff of the working file against `rev`.
+- `get_vcs_log`: newest first, of the project or one `path`; `limit`/`skip` page.
+- `diff_scene`: the semantic diff of a scene or prefab against `rev`: GameObjects added,
+  removed, modified, reparented or reordered (by id, which survives reordering and renames),
+  their components and properties {path, base, current}. `source: "editor"` (default) diffs what
+  is open, unsaved edits included; `"disk"` the saved file. Values the engine recomputes on load
+  (world matrices, cached sizes) are never differences. Paths look like `transform.position`,
+  `script.scripts[lua:Enemy.lua].properties[speed].value`; prefab instance members are listed
+  with `prefab_member: true` and their instance root.
+
+## Changing
+
+- `revert_to_baseline` reverts one `diff_scene` row of an open scene or prefab to HEAD: a
+  `property` (as `diff_scene` writes it), a `component`, or the whole GameObject (`entity`; a
+  removed one by its id; `"settings"` for Scene Settings). One undo step named
+  "Revert <what> to Baseline"; `undo` restores the edit. It never touches the file.
+- `commit_files` commits exactly `paths` with `message`; each path must have changes (others are
+  refused, so commit only what you changed), the message must not be blank, hooks run, nothing
+  else that is staged goes in. `push: true` pushes after. Returns the revision, which
+  `get_vcs_log` lists first. Run `diff_scene` first and say what you commit.
+- `revert_files` discards files' changes (open scenes reload from the result) and needs
+  `confirm: true`. It is one undoable step "Revert N files" in the project history (`undo` scope
+  `project` or `timeline` brings the changes back byte for byte). A new file cannot be reverted:
+  delete it.
+- `lock_files` / `unlock_files`: Git LFS locks on `lockable` files (binary assets in new
+  projects) or Subversion locks. A file locked by someone else shows `lock: "locked_by_other"`
+  and its owner; breaking it is `unlock_files` with `force: true` and `confirm: true`: tell them
+  first.
+- `fetch_remote`, `pull_remote` (fast-forward only), `push_remote` (never forced) are jobs;
+  pull and push need `confirm: true`. Credentials come from the user's own setup: a prompt is
+  never shown, so a remote that asks for a password fails with git's message.
+
+## Merging scenes
+
+Scenes and prefabs merge by GameObject and property when Smart Merge is set up (Preferences >
+Version Control > Set Up Smart Merge writes the repository's `merge.jasperengine-scene.driver`).
+Edits to different GameObjects or properties merge cleanly; both sides adding the same id
+renumbers theirs and remaps references to it. Real conflicts keep ours in the file (it loads)
+and are listed in `.jasperengine/merge/<path>.conflicts.yaml`; the Conflicts window resolves
+them. Without Smart Merge git merges the text and conflicts leave markers no loader reads.
