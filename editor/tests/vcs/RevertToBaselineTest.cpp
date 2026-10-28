@@ -98,7 +98,9 @@ namespace {
             const scene::ObjectDiff* objectDiff = result.find(object);
             ASSERT_NE(objectDiff, nullptr) << "no diff of " << object;
             const scene::ComponentDiff* componentDiff = component ? objectDiff->component(component) : nullptr;
-            if (component) ASSERT_NE(componentDiff, nullptr) << component;
+            if (component) {
+                ASSERT_NE(componentDiff, nullptr) << component;
+            }
             const scene::PropertyDiff* propertyDiff = nullptr;
             if (property) {
                 for (const scene::PropertyDiff& candidate : componentDiff->properties) {

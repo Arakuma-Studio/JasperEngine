@@ -204,10 +204,8 @@ void replyStatus(const CallPtr& call, const VcsService& service, const Json& pat
 }
 
 // a continuation of an attributed call is the agent's too (its undo steps)
-std::optional<UndoOriginScope> attribution(const CallPtr& call) {
-    std::optional<UndoOriginScope> scope;
+void attribute(const CallPtr& call, std::optional<UndoOriginScope>& scope) {
     if (call->attributed()) scope.emplace(call->getUndoOrigin());
-    return scope;
 }
 
 // ------------------------------------------------------------------ get_vcs_status
@@ -223,8 +221,8 @@ void getVcsStatusTool(const CallPtr& call) {
     const Json paths = args.value("paths", Json());
     const bool includeClean = args.value("include_clean", false);
     const bool refresh = args.value("refresh", false);
-    const bool retry = service.state() == VcsState::NoRepository || service.state() == VcsState::NotAvailable;
-    if (!service.active() && !(refresh && retry) && service.state() != VcsState::Detecting) {
+    const bool retry = service.state() == vcs::VcsState::NoRepository || service.state() == vcs::VcsState::NotAvailable;
+    if (!service.active() && !(refresh && retry) && service.state() != vcs::VcsState::Detecting) {
         call->ok(stateLine(service), summaryJson(service));
         return;
     }
@@ -482,7 +480,8 @@ void revertToBaselineTool(const CallPtr& call) {
             }
             const std::string name = command->describe();
             std::string runError;
-            std::optional<UndoOriginScope> scope = attribution(call);
+            std::optional<UndoOriginScope> scope;
+            attribute(call, scope);
             if (!runSceneCommand(sceneId, command, runError, "the revert did not apply")) {
                 call->fail(runError);
                 return;

@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <initializer_list>
 #include <set>
 
 namespace jasperengine::editor::vcs::scene {
@@ -260,7 +261,7 @@ MergeResult mergeScenes(const SceneYamlModel& base, const SceneYamlModel& ours, 
 
     // ---- both sides added the same id with different content: theirs is renumbered (R17)
     uint64_t top = std::max({base.maxId(), ours.maxId(), theirs.maxId()});
-    for (const SceneYamlModel* model : {&base, &ours, &theirs}) {
+    for (const SceneYamlModel* model : std::initializer_list<const SceneYamlModel*>{&base, &ours, &theirs}) {
         const uint64_t next = model->nextEntity();
         if (next > 0) top = std::max(top, next - 1);
     }
@@ -283,7 +284,7 @@ MergeResult mergeScenes(const SceneYamlModel& base, const SceneYamlModel& ours, 
 
     Merger merger{resolutions, result.conflicts};
     std::set<uint64_t> ids;
-    for (const SceneYamlModel* model : {&base, &ours, &theirs}) {
+    for (const SceneYamlModel* model : std::initializer_list<const SceneYamlModel*>{&base, &ours, &theirs}) {
         for (const auto& [id, object] : model->objects) ids.insert(id);
     }
     for (uint64_t id : ids) {

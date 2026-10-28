@@ -621,3 +621,46 @@ MCP tests are in `tools/mcp/tests/test_vcs.py`. Each test builds its repository 
   only scenes, prefabs and text files are diffed. Binary rows offer "Open in External Tool" only.
 - **Windows path case.** Snapshot keys are compared case-insensitively on Windows and macOS (the
   `:(icase)` pathspec for log, as theirs does).
+
+## Deviations
+
+- **MCP tool names** (R33, AC17). The S31 conventions gate (`tools/mcp/tests/test_tool_conventions.py`)
+  requires verb-first names, so the tools are `get_vcs_status` (`vcs_status`), `diff_file`
+  (`vcs_diff`), `get_vcs_log` (`vcs_log`), `diff_scene` (`scene_diff`), `revert_to_baseline`
+  (`scene_diff_revert`), `lock_files` / `unlock_files` (`vcs_lock` / `vcs_unlock`), `commit_files`
+  (`vcs_commit`), `revert_files` (`vcs_revert`), `fetch_remote`, `pull_remote`, `push_remote`
+  (`vcs_fetch/pull/push`), in the tool group `vcs` (hidden until `tool_groups` enables it). The
+  parameters are the spec's; the long-running remote operations are jobs (`wait`,
+  `timeout_seconds`). `get_vcs_status` with `refresh: true` also looks for a repository again
+  when there was none (a `git init` after the project opened). AC17's "unsaved
+  `set_component_value` edit" is a `set_transform` edit (the editor has no `set_component_value`).
+- **Hierarchy glyphs** (R27) of GameObject rows are drawn after the name, not before it: before
+  the name sit the prefab icon and the variant badge, which the glyph would overlap at narrow
+  widths. The scene row and the Project window follow R27.
+- **Document-level derived keys** (R14). Besides `kDerivedKeys` (the transform's world values),
+  the diff ignores the document keys the encoder recomputes on every save (`maxValues`,
+  `shaderKeys`, `formatVersion` / `version`), which would otherwise show a change on every
+  re-save of an unchanged scene. The Derived flag of the reflection tables (S08) marks the
+  per-component ones (light `worldDirection`, bone `offsetMatrix`, ...), so the table is
+  `kDerivedKeys` plus every `Derived` field.
+- **Prefab instance members** (R14): a member's override is listed under the member GameObject
+  (`prefab_member: true`, its instance root and registry id), not under the instance root's
+  `prefabInstance` component, so Revert to Baseline acts on the member as the Inspector's Revert
+  does (`PrefabOverrideCmd`).
+- **Lock on edit** (R12) runs from S24's history hook, which reports an edit after it happened:
+  the question comes right after the first edit that dirties a lockable scene or prefab (or the
+  first import-settings edit of a lockable asset, `SetAssetMetaCmd`), and Cancel (or "Undo the
+  Edit" for a file locked by someone else) undoes that edit, which leaves the document as it was.
+- **R20 format versions**: scene 3 -> 4 and prefab 5 -> 6 (`Prefab::FILE_VERSION` 6); prefab files
+  are written again (needsUpgrade) the next time a scene using them is saved. The reflection
+  table gains a `NotWritten` flag (read when present, never written) on the six transform
+  fields, and the Transform's post-decode sets `needUpdate`, so the first transform pass computes
+  them. A stream that bumps the scene version too (S18) renumbers on merge.
+- **Test hooks**: `ProviderConfig::svnGlobalArgs` (the SVN tests pass `--username` for two users
+  of one `file://` repository) and `VcsSettings::usePathOverride` / `pathOverride` (AC20 runs the
+  detection with an empty `PATH`), and `VcsSettings::pollMilliseconds` /
+  `lockPollMilliseconds` (sub-second cadences for AC8). None is reachable from the UI or MCP.
+- **Windows**: the process runner's Windows path (CreateProcessW with `QuoteArgument`, a job
+  object, an explicit handle list) is built by the Windows CI job; the gate of this stream ran on
+  Linux (the build servers have no Windows host), so AC1's Windows half and AC19 on Windows are
+  for the integrator's Windows run.

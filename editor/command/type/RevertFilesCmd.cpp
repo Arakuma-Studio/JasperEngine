@@ -7,6 +7,7 @@
 #include "Project.h"
 #include "io/AtomicFile.h"
 #include "reload/HotReloadService.h"
+#include "vcs/VcsService.h"
 
 #include <atomic>
 #include <chrono>

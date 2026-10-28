@@ -228,7 +228,7 @@ namespace {
                 reflect::Value temporary(desc->body.ops, desc->body.defaults());
                 reflect::decodeInto(desc->type, component.baseNode, temporary.get(), nullptr);
                 const reflect::FieldRef baseField = reflect::resolve(*desc, temporary.get(), property.path);
-                if (!baseField) return fail("the baseline's " + desc->displayName + " has no " + property.path);
+                if (!baseField) return fail(std::string("the baseline's ") + desc->displayName + " has no " + property.path);
                 return add(new ReflectedValueCmd(project, sceneId, {entity}, desc->type, property.path, reflect::Value(baseField.ops, baseField.ref)), "");
             }
             // a value no field holds (a script's property): spliced into the component, pasted
