@@ -97,7 +97,7 @@ namespace{
         Sampler(const SplineData& spline, const SplineStationOptions& options):
             spline(spline),
             options(options),
-            conforming(options.conform != SplineConform::None && bool(options.probe)),
+            conforming(options.conform != SplineDrape::None && bool(options.probe)),
             cosTurn(std::cos(std::clamp(options.maxTurnDeg, 0.0f, 180.0f) * DEG_TO_RAD)){
         }
 
@@ -346,7 +346,7 @@ SplineStationReport spline::buildStations(const SplineData& spline, const Spline
     // 4. roll-free frames from the draped polyline
     const size_t n = out.size();
     const bool ring = spline.effectivelyClosed() && n >= 3;
-    const bool slope = sampler.isConforming() && !report.allMissed && options.conform == SplineConform::HeightAndSlope;
+    const bool slope = sampler.isConforming() && !report.allMissed && options.conform == SplineDrape::HeightAndSlope;
     const float blend = std::clamp(options.slopeBlend, 0.0f, 1.0f);
     std::vector<uint8_t> defined(n, 0);
     for (size_t i = 0; i < n; i++){

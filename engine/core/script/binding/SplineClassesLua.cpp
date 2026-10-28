@@ -18,20 +18,25 @@
 #include "object/spline/SplineInstantiate.h"
 
 using namespace jasperengine;
+// the spline core's value types by their own names (the Lua API extractor matches bare names)
+using jasperengine::SplineFrame;
+using jasperengine::SplineHit;
+using jasperengine::spline::SplineType;
+using jasperengine::spline::TangentMode;
 
 void LuaBinding::registerSplineClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .beginNamespace("SplineType")
-        .addVariable("Linear", spline::SplineType::Linear)
-        .addVariable("CatmullRom", spline::SplineType::CatmullRom)
-        .addVariable("CubicBezier", spline::SplineType::CubicBezier)
+        .addVariable("Linear", SplineType::Linear)
+        .addVariable("CatmullRom", SplineType::CatmullRom)
+        .addVariable("CubicBezier", SplineType::CubicBezier)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
         .beginNamespace("SplineTangentMode")
-        .addVariable("Mirrored", spline::TangentMode::Mirrored)
-        .addVariable("Aligned", spline::TangentMode::Aligned)
-        .addVariable("Broken", spline::TangentMode::Broken)
+        .addVariable("Mirrored", TangentMode::Mirrored)
+        .addVariable("Aligned", TangentMode::Aligned)
+        .addVariable("Broken", TangentMode::Broken)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -129,21 +134,21 @@ void LuaBinding::registerSplineClasses(lua_State *L){
 
     // what the queries return: a frame on the curve and a closest point
     luabridge::getGlobalNamespace(L)
-        .beginClass<spline::SplineFrame>("SplineFrame")
-        .addProperty("position", &spline::SplineFrame::position)
-        .addProperty("forward", &spline::SplineFrame::forward)
-        .addProperty("right", &spline::SplineFrame::right)
-        .addProperty("up", &spline::SplineFrame::up)
-        .addProperty("radius", &spline::SplineFrame::radius)
-        .addProperty("roll", &spline::SplineFrame::rollDeg)
+        .beginClass<SplineFrame>("SplineFrame")
+        .addProperty("position", &SplineFrame::position)
+        .addProperty("forward", &SplineFrame::forward)
+        .addProperty("right", &SplineFrame::right)
+        .addProperty("up", &SplineFrame::up)
+        .addProperty("radius", &SplineFrame::radius)
+        .addProperty("roll", &SplineFrame::rollDeg)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .beginClass<spline::SplineHit>("SplineHit")
-        .addProperty("t", &spline::SplineHit::t)
-        .addProperty("distance", &spline::SplineHit::distance)
-        .addProperty("position", &spline::SplineHit::position)
-        .addProperty("segment", &spline::SplineHit::segment)
+        .beginClass<SplineHit>("SplineHit")
+        .addProperty("t", &SplineHit::t)
+        .addProperty("distance", &SplineHit::distance)
+        .addProperty("position", &SplineHit::position)
+        .addProperty("segment", &SplineHit::segment)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

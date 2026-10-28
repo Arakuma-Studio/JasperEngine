@@ -94,7 +94,7 @@ TEST(SplineStationsTests, TurnsAddStations){
 TEST(SplineStationsTests, ConformFollowsTheProbeAndSubdividesTheDrape){
     const SplineData s = makeSpline(SplineType::Linear, {Vector3(0, 5, 0), Vector3(20, 5, 0)});
     SplineStationOptions options;
-    options.conform = SplineConform::Height;
+    options.conform = SplineDrape::Height;
     options.probe = stationsTerrain(stationsSineHeight);
     options.verticalOffset = 0.25f;
     std::vector<SplineStation> stations;
@@ -118,7 +118,7 @@ TEST(SplineStationsTests, ConformFollowsTheProbeAndSubdividesTheDrape){
 TEST(SplineStationsTests, DistanceIsTheDrapedLength){
     const SplineData s = makeSpline(SplineType::Linear, {Vector3(0, 0, 0), Vector3(20, 0, 0)});
     SplineStationOptions options;
-    options.conform = SplineConform::Height;
+    options.conform = SplineDrape::Height;
     options.probe = stationsTerrain(stationsRampHeight);
     std::vector<SplineStation> stations;
     buildStations(s, options, stations);
@@ -132,7 +132,7 @@ TEST(SplineStationsTests, DistanceIsTheDrapedLength){
 TEST(SplineStationsTests, MissesHoldTheNearestMeasuredHeight){
     const SplineData s = makeSpline(SplineType::Linear, {Vector3(0, 9, 0), Vector3(20, 9, 0)});
     SplineStationOptions options;
-    options.conform = SplineConform::Height;
+    options.conform = SplineDrape::Height;
     options.probe = [](const Vector3& p){
         SplineSurfaceSample sample;
         sample.hit = p.x >= 2.5f && !(p.x > 8.5f && p.x < 12.5f);
@@ -161,7 +161,7 @@ TEST(SplineStationsTests, MissesHoldTheNearestMeasuredHeight){
 TEST(SplineStationsTests, AllMissesKeepTheAuthoredHeights){
     const SplineData s = makeSpline(SplineType::CatmullRom, {Vector3(0, 3, 0), Vector3(5, 4, 1), Vector3(10, 2, 0)});
     SplineStationOptions options;
-    options.conform = SplineConform::HeightAndSlope;
+    options.conform = SplineDrape::HeightAndSlope;
     options.probe = [](const Vector3&){ return SplineSurfaceSample(); };
     std::vector<SplineStation> stations;
     const SplineStationReport report = buildStations(s, options, stations);
@@ -176,7 +176,7 @@ TEST(SplineStationsTests, AllMissesKeepTheAuthoredHeights){
 TEST(SplineStationsTests, HeightAndSlopeTiltsUpTowardTheSurface){
     const SplineData s = makeSpline(SplineType::Linear, {Vector3(0, 0, 0), Vector3(10, 0, 0)});
     SplineStationOptions options;
-    options.conform = SplineConform::HeightAndSlope;
+    options.conform = SplineDrape::HeightAndSlope;
     options.probe = [](const Vector3& p){
         SplineSurfaceSample sample;
         sample.hit = true;
@@ -230,7 +230,7 @@ TEST(SplineStationsTests, TheTransformAppliesBeforeTheConform){
     const Matrix4 m = Matrix4::translateMatrix(Vector3(100, 7, -3)) * Matrix4::scaleMatrix(Vector3(2, 2, 2));
     SplineStationOptions options;
     options.localToWorld = &m;
-    options.conform = SplineConform::Height;
+    options.conform = SplineDrape::Height;
     // the probe sees world points
     options.probe = [](const Vector3& p){
         SplineSurfaceSample sample;

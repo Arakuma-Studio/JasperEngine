@@ -214,11 +214,11 @@ namespace{
         return spline::buildProfile(params);
     }
 
-    spline::SplineConform stationConform(SplineConform conform){
+    spline::SplineDrape stationConform(SplineConform conform){
         switch (conform){
-            case SplineConform::TerrainHeight: return spline::SplineConform::Height;
-            case SplineConform::TerrainHeightAndSlope: return spline::SplineConform::HeightAndSlope;
-            default: return spline::SplineConform::None;
+            case SplineConform::TerrainHeight: return spline::SplineDrape::Height;
+            case SplineConform::TerrainHeightAndSlope: return spline::SplineDrape::HeightAndSlope;
+            default: return spline::SplineDrape::None;
         }
     }
 
@@ -823,7 +823,7 @@ bool SplineSystem::collectStations(Entity entity, const SplineComponent& spline,
 
     // terrain probe: the named terrain, else the first one under each point
     const Entity named = spline.terrain.terrain;
-    if (options.conform != spline::SplineConform::None){
+    if (options.conform != spline::SplineDrape::None){
         Scene* s = scene;
         const SplineSystem* self = this;
         options.probe = [s, self, named](const Vector3& point) -> spline::SplineSurfaceSample{
@@ -858,7 +858,7 @@ bool SplineSystem::collectStations(Entity entity, const SplineComponent& spline,
 
     const spline::SplineStationReport report = spline::buildStations(spline.spline, options, stations);
     options.localToWorld = nullptr;
-    if (options.conform != spline::SplineConform::None){
+    if (options.conform != spline::SplineDrape::None){
         if (report.allMissed){
             addWarning(warnings, SplineWarningKind::NoTerrain, -1, "No terrain under the spline: it is not conformed.");
         }else if (report.probeMisses > 0){
@@ -948,7 +948,7 @@ void SplineSystem::scheduleExtrude(Entity entity, Resolve& resolve, const Spline
 
     spline::SplineStationOptions options;
     options.stationSpacing = std::max(extrude.stationSpacing, 0.05f) / scale;
-    options.conform = flat2D ? spline::SplineConform::None : stationConform(extrude.conform);
+    options.conform = flat2D ? spline::SplineDrape::None : stationConform(extrude.conform);
     options.slopeBlend = extrude.slopeBlend;
     if (extrude.widthSource == SplineWidthSource::Constant || extrude.shape == SplineExtrudeShape::WaterBanks){
         options.constantWidth = extrude.widthSource == SplineWidthSource::Constant;
@@ -1598,7 +1598,7 @@ void SplineSystem::scheduleInstantiate(Entity entity, Resolve& resolve, const Sp
 
     spline::SplineStationOptions options;
     options.stationSpacing = std::max(instantiate.stationSpacing, 0.05f) / scale;
-    options.conform = flat2D ? spline::SplineConform::None : stationConform(instantiate.conform);
+    options.conform = flat2D ? spline::SplineDrape::None : stationConform(instantiate.conform);
     options.slopeBlend = instantiate.slopeBlend;
     options.verticalOffset = instantiate.verticalOffset;
     std::vector<spline::SplineStation>& stations = job->stations;

@@ -30,7 +30,7 @@ namespace jasperengine{ namespace spline{
     inline constexpr uint32_t SPLINE_MAX_STATIONS = 1u << 20;
 
     // How stations follow the ground under them (S18 R9).
-    enum class SplineConform : uint8_t{
+    enum class SplineDrape : uint8_t{
         // the curve as authored
         None = 0,
         // the probed height (plus verticalOffset) replaces the curve's
@@ -49,7 +49,7 @@ namespace jasperengine{ namespace spline{
         // how many times one interval may be halved
         uint32_t maxSubdivisions = 5;
 
-        SplineConform conform = SplineConform::None;
+        SplineDrape conform = SplineDrape::None;
         // probes the surface under a world point (height along upAxis); unused with None
         SplineSurfaceProbe probe;
         // HeightAndSlope: 0 keeps the curve's up, 1 takes the surface normal
