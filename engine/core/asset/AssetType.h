@@ -28,7 +28,9 @@ namespace jasperengine {
         Data = 12,
         SubAsset = 13,  // a mesh, material, animation, skin or image inside a model
         ColorLut = 14,  // a .cube colour LUT (post-processing's lutTexture, S13)
-        ParticleEffect = 15   // a .particles effect (S20)
+        ParticleEffect = 15,  // a .particles effect (S20)
+        NavMesh = 16,         // a baked .navmesh (S19)
+        NavGrid = 17          // a .navgrid's cells (S19)
     };
 
     // The lowercase names used by Lua (AssetRef.type), MCP and the editor ("texture", "model", ...)
@@ -49,13 +51,15 @@ namespace jasperengine {
             case AssetType::SubAsset: return "sub_asset";
             case AssetType::ColorLut: return "color_lut";
             case AssetType::ParticleEffect: return "particle_effect";
+            case AssetType::NavMesh: return "navmesh";
+            case AssetType::NavGrid: return "navgrid";
             case AssetType::Unknown: break;
         }
         return "unknown";
     }
 
     inline AssetType assetTypeFromName(std::string_view name) {
-        for (uint8_t value = 1; value <= static_cast<uint8_t>(AssetType::ParticleEffect); value++) {
+        for (uint8_t value = 1; value <= static_cast<uint8_t>(AssetType::NavGrid); value++) {
             const AssetType type = static_cast<AssetType>(value);
             if (name == assetTypeName(type)) {
                 return type;

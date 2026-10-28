@@ -58,6 +58,7 @@ namespace jasperengine::editor {
         uint32_t m_startSceneId = NULL_PROJECT_SCENE;
         LoadingSettings m_loadingSettings;
         ThreadingProjectSettings m_threading;
+        NavigationProjectSettings m_navigation;
         fs::path m_assetsDir;
         fs::path m_luaDir;
         std::vector<fs::path> m_scriptDirs;
@@ -146,6 +147,7 @@ namespace jasperengine::editor {
         void drawPhysicsSettings();
         void drawPhysics2DSettings();
         void drawInputSettings();
+        void drawNavigationSettings();
         // Unity's triangular Layer Collision Matrix over the named layers (as typed in
         // Tags and Layers, not yet applied)
         void drawLayerCollisionMatrix(const char* id, LayerCollisionRows& rows);

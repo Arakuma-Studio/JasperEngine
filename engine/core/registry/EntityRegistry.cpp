@@ -93,6 +93,12 @@ EntityRegistry::EntityRegistry() {
 #endif
     registerComponent<WaterVolumeComponent>(ComponentOrder::Insertion, "WaterVolumeComponent");
     registerComponent<BuoyancyComponent>(ComponentOrder::Insertion, "BuoyancyComponent");
+    registerComponent<NavMeshSurfaceComponent>(ComponentOrder::Insertion, "NavMeshSurfaceComponent");
+    registerComponent<NavMeshAgentComponent>(ComponentOrder::Insertion, "NavMeshAgentComponent");
+    registerComponent<NavMeshObstacleComponent>(ComponentOrder::Insertion, "NavMeshObstacleComponent");
+    registerComponent<NavMeshLinkComponent>(ComponentOrder::Insertion, "NavMeshLinkComponent");
+    registerComponent<NavMeshModifierComponent>(ComponentOrder::Insertion, "NavMeshModifierComponent");
+    registerComponent<NavGridComponent>(ComponentOrder::Insertion, "NavGridComponent");
 
     // complete: markChangedComponent may look into it
     std::lock_guard<std::mutex> lock(liveRegistriesMutex());

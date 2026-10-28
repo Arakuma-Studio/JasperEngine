@@ -1,0 +1,1431 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+//
+// The tile pool and the checks of tile data before Detour sees it follow OpenEngine's DetourNavMap
+// (Engine/Modules/Pathfinding/Source/DetourNavMap.cpp), Copyright (c) 2026 Gamecrafters Guild
+// Limited and contributors, MIT License, extended to off-mesh connections and tile-cache layers.
+// See NOTICE.md.
+
+#include "NavMesh.h"
+#include "NavHash.h"
+
+#include "Log.h"
+
+#include <algorithm>
+#include <atomic>
+#include <bit>
+#include <chrono>
+#include <cmath>
+#include <cstring>
+#include <limits>
+#include <map>
+
+using namespace jasperengine;
+using namespace jasperengine::nav;
+
+// ---------------------------------------------------------------- data, filters (both builds)
+
+void NavMeshData::sortTiles() {
+    std::sort(tiles.begin(), tiles.end(), [](const NavTileBlob& a, const NavTileBlob& b) {
+        if (a.y != b.y) return a.y < b.y;
+        if (a.x != b.x) return a.x < b.x;
+        return a.layer < b.layer;
+    });
+}
+
+size_t NavMeshData::memoryBytes() const {
+    size_t bytes = sizeof(NavMeshData) + header.linkAreaCosts.capacity() * sizeof(float);
+    for (const NavTileBlob& tile : tiles)
+        bytes += sizeof(NavTileBlob) + tile.data.capacity() + tile.links.capacity() * sizeof(NavLinkInput);
+    return bytes;
+}
+
+const NavTileBlob* NavMeshData::findTile(int x, int y, int layer) const {
+    for (const NavTileBlob& tile : tiles) {
+        if (tile.x == x && tile.y == y && tile.layer == layer)
+            return &tile;
+    }
+    return nullptr;
+}
+
+NavFilter::NavFilter() {
+    for (int i = 0; i < AREA_COUNT; i++)
+        areaCosts[i] = 1.0f;
+}
+
+NavFilter NavFilter::fromSettings(uint16_t areaMask) {
+    NavFilter filter;
+    filter.areaMask = areaMask;
+    const NavigationSettings& settings = getSettings();
+    for (int i = 0; i < AREA_COUNT; i++)
+        filter.areaCosts[i] = std::max(1.0f, settings.areas[(size_t)i].cost);
+    return filter;
+}
+
+// ---------------------------------------------------------------- the file format
+
+namespace {
+
+    constexpr char MAGIC[4] = {'J', 'N', 'A', 'V'};
+
+    class Writer {
+    public:
+        std::vector<uint8_t> bytes;
+        void raw(const void* data, size_t size) {
+            const uint8_t* p = static_cast<const uint8_t*>(data);
+            bytes.insert(bytes.end(), p, p + size);
+        }
+        void u8(uint8_t v) { bytes.push_back(v); }
+        void u32(uint32_t v) { for (int i = 0; i < 4; i++) bytes.push_back((uint8_t)(v >> (8 * i))); }
+        void i32(int32_t v) { u32((uint32_t)v); }
+        void u64(uint64_t v) { for (int i = 0; i < 8; i++) bytes.push_back((uint8_t)(v >> (8 * i))); }
+        void f32(float v) {
+            uint32_t bits;
+            std::memcpy(&bits, &v, 4);
+            u32(bits);
+        }
+        void string(const std::string& s) {
+            u32((uint32_t)s.size());
+            raw(s.data(), s.size());
+        }
+        void pad4() { while (bytes.size() % 4) bytes.push_back(0); }
+    };
+
+    class Reader {
+    public:
+        Reader(const uint8_t* data, size_t size): data(data), size(size) {}
+        bool ok = true;
+        size_t offset = 0;
+
+        bool need(size_t n) {
+            if (!ok || n > size - offset) {
+                ok = false;
+                return false;
+            }
+            return true;
+        }
+        uint8_t u8() { if (!need(1)) return 0; return data[offset++]; }
+        uint32_t u32() {
+            if (!need(4)) return 0;
+            uint32_t v = 0;
+            for (int i = 0; i < 4; i++) v |= (uint32_t)data[offset + (size_t)i] << (8 * i);
+            offset += 4;
+            return v;
+        }
+        int32_t i32() { return (int32_t)u32(); }
+        uint64_t u64() {
+            if (!need(8)) return 0;
+            uint64_t v = 0;
+            for (int i = 0; i < 8; i++) v |= (uint64_t)data[offset + (size_t)i] << (8 * i);
+            offset += 8;
+            return v;
+        }
+        float f32() {
+            const uint32_t bits = u32();
+            float v;
+            std::memcpy(&v, &bits, 4);
+            return v;
+        }
+        std::string string(size_t maxLength) {
+            const uint32_t length = u32();
+            if (length > maxLength || !need(length)) {
+                ok = false;
+                return std::string();
+            }
+            std::string s(reinterpret_cast<const char*>(data + offset), length);
+            offset += length;
+            return s;
+        }
+        bool bytes(std::vector<uint8_t>& out, size_t length) {
+            if (!need(length)) return false;
+            out.assign(data + offset, data + offset + length);
+            offset += length;
+            return true;
+        }
+        void skip4() { while (ok && offset % 4) { if (!need(1)) return; offset++; } }
+
+    private:
+        const uint8_t* data;
+        size_t size;
+    };
+
+    void writeConfig(Writer& w, const NavBuildConfig& c) {
+        w.u8((uint8_t)c.plane);
+        w.u8(c.carving ? 1 : 0);
+        w.f32(c.cellSize);
+        w.f32(c.cellHeight);
+        w.i32(c.tileSize);
+        w.f32(c.agentRadius);
+        w.f32(c.agentHeight);
+        w.f32(c.agentClimb);
+        w.f32(c.agentMaxSlope);
+        w.i32(c.walkableHeight);
+        w.i32(c.walkableClimb);
+        w.i32(c.walkableRadius);
+        w.i32(c.borderSize);
+        w.i32(c.minRegionArea);
+        w.i32(c.mergeRegionArea);
+        w.i32(c.maxEdgeLen);
+        w.f32(c.maxSimplificationError);
+        w.f32(c.detailSampleDist);
+        w.f32(c.detailSampleMaxError);
+        w.i32(c.maxVertsPerPoly);
+        w.i32(c.maxPolysPerTile);
+    }
+
+    void readConfig(Reader& r, NavBuildConfig& c) {
+        c.plane = r.u8() == 1 ? NavPlane::XY : NavPlane::XZ;
+        c.carving = r.u8() != 0;
+        c.cellSize = r.f32();
+        c.cellHeight = r.f32();
+        c.tileSize = r.i32();
+        c.agentRadius = r.f32();
+        c.agentHeight = r.f32();
+        c.agentClimb = r.f32();
+        c.agentMaxSlope = r.f32();
+        c.walkableHeight = r.i32();
+        c.walkableClimb = r.i32();
+        c.walkableRadius = r.i32();
+        c.borderSize = r.i32();
+        c.minRegionArea = r.i32();
+        c.mergeRegionArea = r.i32();
+        c.maxEdgeLen = r.i32();
+        c.maxSimplificationError = r.f32();
+        c.detailSampleDist = r.f32();
+        c.detailSampleMaxError = r.f32();
+        c.maxVertsPerPoly = r.i32();
+        c.maxPolysPerTile = r.i32();
+    }
+
+    void writeLink(Writer& w, const NavLinkInput& link) {
+        for (float v : link.start) w.f32(v);
+        for (float v : link.end) w.f32(v);
+        w.f32(link.radius);
+        w.u8(link.bidirectional ? 1 : 0);
+        w.u8(link.area);
+        w.u8(link.polyArea);
+        w.u32(link.userId);
+    }
+
+    void readLink(Reader& r, NavLinkInput& link) {
+        for (float& v : link.start) v = r.f32();
+        for (float& v : link.end) v = r.f32();
+        link.radius = r.f32();
+        link.bidirectional = r.u8() != 0;
+        link.area = r.u8();
+        link.polyArea = r.u8();
+        link.userId = r.u32();
+    }
+
+    bool finite(float v) { return std::isfinite(v); }
+
+}
+
+std::vector<uint8_t> NavMeshFile::write(const NavMeshData& data) {
+    Writer w;
+    w.raw(MAGIC, 4);
+    w.u32(VERSION);
+
+    const NavMeshHeader& h = data.header;
+    w.i32(h.agent.id);
+    w.string(h.agent.name);
+    w.f32(h.agent.radius);
+    w.f32(h.agent.height);
+    w.f32(h.agent.stepHeight);
+    w.f32(h.agent.maxSlope);
+    w.u64(h.areaTableHash);
+    writeConfig(w, h.config);
+    w.u64(h.config.hash());
+    w.u32((uint32_t)data.tiles.size());
+    // dtNavMeshParams: a zero origin, square tiles of the tile size, the pool and the poly limit
+    w.f32(0.0f);
+    w.f32(0.0f);
+    w.f32(0.0f);
+    w.f32(h.config.tileWorldSize());
+    w.f32(h.config.tileWorldSize());
+    w.i32(h.maxTiles);
+    w.i32(h.config.maxPolysPerTile);
+    w.i32(h.maxObstacles);
+    w.u32((uint32_t)h.linkAreaCosts.size());
+    for (float cost : h.linkAreaCosts)
+        w.f32(cost);
+
+    for (const NavTileBlob& tile : data.tiles) {
+        w.i32(tile.x);
+        w.i32(tile.y);
+        w.i32(tile.layer);
+        w.u64(tile.hash);
+        w.u32(tile.flags);
+        w.u32((uint32_t)tile.data.size());
+        w.pad4();
+        w.raw(tile.data.data(), tile.data.size());
+        w.pad4();
+        w.u32((uint32_t)tile.links.size());
+        for (const NavLinkInput& link : tile.links)
+            writeLink(w, link);
+    }
+    w.u64(hashBytes(w.bytes.data(), w.bytes.size()));
+    return std::move(w.bytes);
+}
+
+bool NavMeshFile::read(const uint8_t* bytes, size_t size, NavMeshData& out, std::string& error) {
+    out = NavMeshData();
+    if constexpr (std::endian::native != std::endian::little) {
+        error = "navmesh data is little-endian and this platform is big-endian";
+        return false;
+    }
+    if (size < 4 + 4 + 8 || std::memcmp(bytes, MAGIC, 4) != 0) {
+        error = "not a navmesh file (no JNAV magic)";
+        return false;
+    }
+    Reader r(bytes, size - 8);
+    r.offset = 4;
+    const uint32_t version = r.u32();
+    if (version != VERSION) {
+        error = version > VERSION ? "navmesh format version " + std::to_string(version) + " is newer than this engine reads (" +
+                                        std::to_string(VERSION) + "); rebake it or update the engine"
+                                  : "unknown navmesh format version " + std::to_string(version);
+        return false;
+    }
+    {
+        Reader trailer(bytes, size);
+        trailer.offset = size - 8;
+        if (trailer.u64() != hashBytes(bytes, size - 8)) {
+            error = "the navmesh file is damaged (its checksum does not match)";
+            return false;
+        }
+    }
+
+    NavMeshHeader& h = out.header;
+    h.agent.id = r.i32();
+    h.agent.name = r.string(1024);
+    h.agent.radius = r.f32();
+    h.agent.height = r.f32();
+    h.agent.stepHeight = r.f32();
+    h.agent.maxSlope = r.f32();
+    h.areaTableHash = r.u64();
+    readConfig(r, h.config);
+    const uint64_t configHash = r.u64();
+    const uint32_t tileCount = r.u32();
+    float orig[3];
+    for (float& v : orig) v = r.f32();
+    const float tileWidth = r.f32();
+    const float tileHeight = r.f32();
+    h.maxTiles = r.i32();
+    const int maxPolys = r.i32();
+    h.maxObstacles = r.i32();
+    const uint32_t costCount = r.u32();
+    if (!r.ok || costCount > (uint32_t)(MAX_POLY_AREAS - FIRST_LINK_COST_AREA)) {
+        error = "the navmesh header is truncated or invalid";
+        return false;
+    }
+    for (uint32_t i = 0; i < costCount; i++)
+        h.linkAreaCosts.push_back(r.f32());
+    const NavBuildConfig& c = h.config;
+    if (!r.ok || configHash != c.hash() || !(c.cellSize > 0.0f) || !(c.cellHeight > 0.0f) || c.tileSize < 1 ||
+        c.tileSize > 1024 || maxPolys != c.maxPolysPerTile || maxPolys < 1 || h.maxTiles < 1 ||
+        !finite(tileWidth) || std::fabs(tileWidth - c.tileWorldSize()) > 1e-4f * std::max(1.0f, tileWidth) ||
+        tileWidth != tileHeight || orig[0] != 0.0f || orig[1] != 0.0f || orig[2] != 0.0f ||
+        h.maxObstacles < 0 || h.maxObstacles > 65535 || tileCount > (uint32_t)h.maxTiles * 4u) {
+        error = "the navmesh header is invalid";
+        return false;
+    }
+    if (saltBitsFor(h.maxTiles, maxPolys) < 10) {
+        error = checkPolyRefBits(h.maxTiles, maxPolys);
+        return false;
+    }
+
+    out.tiles.reserve(tileCount);
+    for (uint32_t i = 0; i < tileCount; i++) {
+        NavTileBlob tile;
+        tile.x = r.i32();
+        tile.y = r.i32();
+        tile.layer = r.i32();
+        tile.hash = r.u64();
+        tile.flags = r.u32();
+        const uint32_t dataSize = r.u32();
+        r.skip4();
+        if (!r.ok || dataSize > 64u * 1024u * 1024u || !r.bytes(tile.data, dataSize)) {
+            error = "the navmesh file is truncated (tile " + std::to_string(i) + ")";
+            return false;
+        }
+        r.skip4();
+        const uint32_t linkCount = r.u32();
+        if (!r.ok || linkCount > 65535) {
+            error = "the navmesh file is truncated (tile " + std::to_string(i) + " links)";
+            return false;
+        }
+        for (uint32_t l = 0; l < linkCount; l++) {
+            NavLinkInput link;
+            readLink(r, link);
+            tile.links.push_back(link);
+        }
+        if (!r.ok || tile.layer < 0 || tile.layer > 255) {
+            error = "the navmesh file is truncated (tile " + std::to_string(i) + ")";
+            return false;
+        }
+        out.tiles.push_back(std::move(tile));
+    }
+    if (!r.ok || r.offset != size - 8) {
+        error = "the navmesh file has trailing or missing bytes";
+        return false;
+    }
+    out.sortTiles();
+    return true;
+}
+
+#if JASPERENGINE_NAVIGATION
+
+#include "NavDetourSupport.h"
+
+#include "DetourAlloc.h"
+#include "DetourCommon.h"
+#include "DetourNavMesh.h"
+#include "DetourNavMeshBuilder.h"
+#include "DetourNavMeshQuery.h"
+#include "DetourNode.h"
+#include "DetourTileCache.h"
+#include "DetourTileCacheBuilder.h"
+
+namespace {
+
+    constexpr int MAX_PATH_POLYS = 2048;
+    constexpr int MAX_CORNERS = 2048;
+    constexpr int QUERY_NODES = 2048;
+
+    std::atomic<uint64_t> revisions{1};
+
+    // Why Detour cannot hold this static tile safely, or null when it can: Detour's addTile and
+    // its queries take every count and index in the data as they are
+    const char* refuseTileData(const NavTileBlob& tile, int maxPolys) {
+        const std::vector<uint8_t>& data = tile.data;
+        if (data.size() < sizeof(dtMeshHeader))
+            return "the tile is shorter than its header";
+        dtMeshHeader header;
+        std::memcpy(&header, data.data(), sizeof(header));
+        if (header.magic != DT_NAVMESH_MAGIC || header.version != DT_NAVMESH_VERSION)
+            return "the tile is not Detour tile data of this version";
+        if (header.x != tile.x || header.y != tile.y || header.layer != tile.layer)
+            return "the tile's coordinates are not its record's";
+        const int counts[] = {header.polyCount, header.vertCount, header.maxLinkCount, header.detailMeshCount,
+                              header.detailVertCount, header.detailTriCount, header.bvNodeCount, header.offMeshConCount,
+                              header.offMeshBase};
+        for (const int count : counts) {
+            if (count < 0 || count > (1 << 20))
+                return "a count in the tile's header is out of range";
+        }
+        if (header.polyCount > maxPolys || header.maxLinkCount < 1 || header.offMeshBase + header.offMeshConCount != header.polyCount ||
+            header.detailMeshCount != header.offMeshBase || header.bvNodeCount > header.polyCount * 2)
+            return "the tile's header does not describe a tile this engine builds";
+
+        const size_t headerSize = (size_t)dtAlign4(sizeof(dtMeshHeader));
+        const size_t vertsSize = (size_t)dtAlign4(sizeof(float) * 3 * header.vertCount);
+        const size_t polysSize = (size_t)dtAlign4(sizeof(dtPoly) * header.polyCount);
+        const size_t linksSize = (size_t)dtAlign4(sizeof(dtLink) * header.maxLinkCount);
+        const size_t detailMeshesSize = (size_t)dtAlign4(sizeof(dtPolyDetail) * header.detailMeshCount);
+        const size_t detailVertsSize = (size_t)dtAlign4(sizeof(float) * 3 * header.detailVertCount);
+        const size_t detailTrisSize = (size_t)dtAlign4(sizeof(unsigned char) * 4 * header.detailTriCount);
+        const size_t bvTreeSize = (size_t)dtAlign4(sizeof(dtBVNode) * header.bvNodeCount);
+        const size_t offMeshSize = (size_t)dtAlign4(sizeof(dtOffMeshConnection) * header.offMeshConCount);
+        if (headerSize + vertsSize + polysSize + linksSize + detailMeshesSize + detailVertsSize + detailTrisSize + bvTreeSize +
+                offMeshSize != data.size())
+            return "the tile's sections do not add up to its size";
+
+        const uint8_t* vertsAt = data.data() + headerSize;
+        const uint8_t* polysAt = vertsAt + vertsSize;
+        const uint8_t* detailMeshesAt = polysAt + polysSize + linksSize;
+        const uint8_t* detailTrisAt = detailMeshesAt + detailMeshesSize + detailVertsSize;
+        const uint8_t* bvTreeAt = detailTrisAt + detailTrisSize;
+        const uint8_t* offMeshAt = bvTreeAt + bvTreeSize;
+        for (int v = 0; v < header.vertCount * 3; v++) {
+            float value;
+            std::memcpy(&value, vertsAt + sizeof(float) * (size_t)v, sizeof(value));
+            if (!std::isfinite(value))
+                return "a vertex of the tile is not finite";
+        }
+        for (int p = 0; p < header.polyCount; p++) {
+            dtPoly poly;
+            std::memcpy(&poly, polysAt + sizeof(dtPoly) * (size_t)p, sizeof(poly));
+            const bool offMesh = p >= header.offMeshBase;
+            if (offMesh) {
+                if (poly.getType() != DT_POLYTYPE_OFFMESH_CONNECTION || poly.vertCount != 2)
+                    return "an off-mesh polygon of the tile is malformed";
+            } else if (poly.vertCount < 3 || poly.vertCount > DT_VERTS_PER_POLYGON || poly.getType() != DT_POLYTYPE_GROUND) {
+                return "a polygon of the tile is malformed";
+            }
+            if (poly.getArea() >= MAX_POLY_AREAS)
+                return "a polygon of the tile has an unknown area";
+            for (unsigned int v = 0; v < poly.vertCount; v++) {
+                if (poly.verts[v] >= header.vertCount)
+                    return "a polygon of the tile names a vertex it does not have";
+                const unsigned short neighbour = poly.neis[v];
+                if (!offMesh && neighbour != 0 && (neighbour & DT_EXT_LINK) == 0 && neighbour > header.offMeshBase)
+                    return "a polygon of the tile names a neighbour it does not have";
+            }
+            if (offMesh)
+                continue;
+            dtPolyDetail detail;
+            std::memcpy(&detail, detailMeshesAt + sizeof(dtPolyDetail) * (size_t)p, sizeof(detail));
+            if ((uint64_t)detail.vertBase + detail.vertCount > (uint64_t)header.detailVertCount ||
+                (uint64_t)detail.triBase + detail.triCount > (uint64_t)header.detailTriCount)
+                return "a detail mesh of the tile lies outside its arrays";
+            for (unsigned int t = 0; t < detail.triCount; t++) {
+                const uint8_t* triangle = detailTrisAt + 4 * ((size_t)detail.triBase + t);
+                for (int corner = 0; corner < 3; corner++) {
+                    if (triangle[corner] >= poly.vertCount + detail.vertCount)
+                        return "a detail triangle of the tile names a vertex it does not have";
+                }
+            }
+        }
+        for (int n = 0; n < header.bvNodeCount; n++) {
+            dtBVNode node;
+            std::memcpy(&node, bvTreeAt + sizeof(dtBVNode) * (size_t)n, sizeof(node));
+            if (node.i >= header.offMeshBase || node.i < -header.bvNodeCount)
+                return "a bounding-volume node of the tile names a polygon it does not have";
+        }
+        for (int c = 0; c < header.offMeshConCount; c++) {
+            dtOffMeshConnection con;
+            std::memcpy(&con, offMeshAt + sizeof(dtOffMeshConnection) * (size_t)c, sizeof(con));
+            if (con.poly < header.offMeshBase || con.poly >= header.polyCount)
+                return "an off-mesh connection of the tile names a polygon it does not have";
+            for (float v : con.pos) {
+                if (!std::isfinite(v))
+                    return "an off-mesh connection of the tile is not finite";
+            }
+        }
+        return nullptr;
+    }
+
+    const char* refuseLayerData(const NavTileBlob& tile, int tileSize) {
+        if (tile.data.size() < sizeof(dtTileCacheLayerHeader))
+            return "the layer is shorter than its header";
+        dtTileCacheLayerHeader header;
+        std::memcpy(&header, tile.data.data(), sizeof(header));
+        if (header.magic != DT_TILECACHE_MAGIC || header.version != DT_TILECACHE_VERSION)
+            return "the layer is not Detour tile-cache data of this version";
+        if (header.tx != tile.x || header.ty != tile.y || header.tlayer != tile.layer)
+            return "the layer's coordinates are not its record's";
+        if (header.width != tileSize || header.height != tileSize || header.minx > header.maxx || header.maxx >= header.width ||
+            header.miny > header.maxy || header.maxy >= header.height)
+            return "the layer's size is not the surface's tile size";
+        for (int a = 0; a < 3; a++) {
+            if (!std::isfinite(header.bmin[a]) || !std::isfinite(header.bmax[a]))
+                return "the layer's bounds are not finite";
+        }
+        return nullptr;
+    }
+
+    // Detour's own classification of an off-mesh end against a tile (dtCreateNavMeshData)
+    unsigned char classifyOffMeshPoint(const float* pt, const float* bmin, const float* bmax) {
+        constexpr unsigned char XP = 1 << 0, ZP = 1 << 1, XM = 1 << 2, ZM = 1 << 3;
+        unsigned char outcode = 0;
+        outcode |= (pt[0] >= bmax[0]) ? XP : 0;
+        outcode |= (pt[2] >= bmax[2]) ? ZP : 0;
+        outcode |= (pt[0] < bmin[0]) ? XM : 0;
+        outcode |= (pt[2] < bmin[2]) ? ZM : 0;
+        switch (outcode) {
+            case XP: return 0;
+            case XP | ZP: return 1;
+            case ZP: return 2;
+            case XM | ZP: return 3;
+            case XM: return 4;
+            case XM | ZM: return 5;
+            case ZM: return 6;
+            case XP | ZM: return 7;
+        }
+        return 0xff;
+    }
+
+    unsigned int nextPow2(unsigned int v) {
+        if (v <= 1) return 1;
+        v--;
+        v |= v >> 1; v |= v >> 2; v |= v >> 4; v |= v >> 8; v |= v >> 16;
+        return v + 1;
+    }
+
+    struct TileKey {
+        int x, y;
+        bool operator<(const TileKey& o) const { return y < o.y || (y == o.y && x < o.x); }
+    };
+
+}
+
+struct NavMesh::Impl {
+    NavMeshHeader header;
+    bool valid = false;
+    bool keepData = false;
+    NavMeshData data;
+    dtNavMesh* navMesh = nullptr;
+    mutable dtNavMeshQuery* query = nullptr;
+    dtTileCache* tileCache = nullptr;
+    detail::DeflateCompressor compressor;
+    detail::LinearAllocator allocator;
+    detail::MeshProcess meshProcess;
+    // carving: the links of each tile (the mesh process adds them to the tiles it builds)
+    std::map<TileKey, std::vector<NavLinkInput>> links;
+    uint64_t revision = 0;
+
+    ~Impl() { release(); }
+
+    void release() {
+        if (query) dtFreeNavMeshQuery(query);
+        if (tileCache) dtFreeTileCache(tileCache);
+        if (navMesh) dtFreeNavMesh(navMesh);
+        query = nullptr;
+        tileCache = nullptr;
+        navMesh = nullptr;
+        valid = false;
+        links.clear();
+    }
+
+    void bump() { revision = revisions.fetch_add(1, std::memory_order_relaxed) + 1; }
+
+    void fillFilter(const NavFilter& filter, dtQueryFilter& out) const {
+        out.setIncludeFlags(filter.areaMask);
+        out.setExcludeFlags(0);
+        for (int i = 0; i < AREA_COUNT; i++)
+            out.setAreaCost(i, std::max(1.0f, filter.areaCosts[i]));
+        for (size_t i = 0; i < header.linkAreaCosts.size() && FIRST_LINK_COST_AREA + (int)i < MAX_POLY_AREAS; i++)
+            out.setAreaCost(FIRST_LINK_COST_AREA + (int)i, std::max(0.0f, header.linkAreaCosts[i]));
+    }
+
+    bool initNavMesh(int maxTiles, std::string& error) {
+        dtNavMeshParams params;
+        std::memset(&params, 0, sizeof(params));
+        params.tileWidth = header.config.tileWorldSize();
+        params.tileHeight = params.tileWidth;
+        params.maxTiles = maxTiles;
+        params.maxPolys = header.config.maxPolysPerTile;
+        const std::string tooLarge = checkPolyRefBits(maxTiles, params.maxPolys);
+        if (!tooLarge.empty()) {
+            error = tooLarge;
+            return false;
+        }
+        navMesh = dtAllocNavMesh();
+        if (!navMesh || dtStatusFailed(navMesh->init(&params))) {
+            error = "Detour could not create the navmesh (" + std::to_string(maxTiles) + " tiles)";
+            return false;
+        }
+        query = dtAllocNavMeshQuery();
+        if (!query || dtStatusFailed(query->init(navMesh, QUERY_NODES))) {
+            error = "Detour could not create the navmesh query";
+            return false;
+        }
+        return true;
+    }
+
+    bool initTileCache(int maxTiles, std::string& error) {
+        dtTileCacheParams params;
+        std::memset(&params, 0, sizeof(params));
+        const NavBuildConfig& c = header.config;
+        params.cs = c.cellSize;
+        params.ch = c.cellHeight;
+        params.width = c.tileSize;
+        params.height = c.tileSize;
+        params.walkableHeight = (float)c.walkableHeight * c.cellHeight;
+        params.walkableRadius = (float)c.walkableRadius * c.cellSize;
+        params.walkableClimb = (float)c.walkableClimb * c.cellHeight;
+        params.maxSimplificationError = c.maxSimplificationError;
+        params.maxTiles = maxTiles;
+        params.maxObstacles = std::max(1, header.maxObstacles);
+        meshProcess.linksAt = [this](int x, int y) -> const std::vector<NavLinkInput>* {
+            auto found = links.find(TileKey{x, y});
+            return found != links.end() ? &found->second : nullptr;
+        };
+        tileCache = dtAllocTileCache();
+        if (!tileCache || dtStatusFailed(tileCache->init(&params, &allocator, &compressor, &meshProcess))) {
+            error = "Detour could not create the tile cache";
+            return false;
+        }
+        return true;
+    }
+
+    // a static tile into Detour (its own copy of the bytes)
+    bool addStaticTile(const NavTileBlob& blob, std::string& error) {
+        if (blob.data.empty())
+            return true;
+        if (const char* refused = refuseTileData(blob, header.config.maxPolysPerTile)) {
+            error = "tile (" + std::to_string(blob.x) + ", " + std::to_string(blob.y) + "): " + refused;
+            return false;
+        }
+        unsigned char* copy = (unsigned char*)dtAlloc(blob.data.size(), DT_ALLOC_PERM);
+        if (!copy) {
+            error = "out of memory for a navmesh tile";
+            return false;
+        }
+        std::memcpy(copy, blob.data.data(), blob.data.size());
+        if (dtStatusFailed(navMesh->addTile(copy, (int)blob.data.size(), DT_TILE_FREE_DATA, 0, nullptr))) {
+            dtFree(copy);
+            error = "Detour refused tile (" + std::to_string(blob.x) + ", " + std::to_string(blob.y) + ")";
+            return false;
+        }
+        return true;
+    }
+
+    bool addLayer(const NavTileBlob& blob, std::string& error) {
+        if (blob.data.empty())
+            return true;
+        if (const char* refused = refuseLayerData(blob, header.config.tileSize)) {
+            error = "tile (" + std::to_string(blob.x) + ", " + std::to_string(blob.y) + ") layer " + std::to_string(blob.layer) + ": " + refused;
+            return false;
+        }
+        unsigned char* copy = (unsigned char*)dtAlloc(blob.data.size(), DT_ALLOC_PERM);
+        if (!copy) {
+            error = "out of memory for a tile-cache layer";
+            return false;
+        }
+        std::memcpy(copy, blob.data.data(), blob.data.size());
+        if (dtStatusFailed(tileCache->addTile(copy, (int)blob.data.size(), DT_COMPRESSEDTILE_FREE_DATA, nullptr))) {
+            dtFree(copy);
+            error = "Detour refused tile-cache layer (" + std::to_string(blob.x) + ", " + std::to_string(blob.y) + ", " +
+                    std::to_string(blob.layer) + ")";
+            return false;
+        }
+        if (blob.layer == 0 && !blob.links.empty())
+            links[TileKey{blob.x, blob.y}] = blob.links;
+        return true;
+    }
+
+    void removeNavTilesAt(int x, int y) {
+        const dtMeshTile* tiles[64];
+        const int count = navMesh->getTilesAt(x, y, tiles, 64);
+        for (int i = 0; i < count; i++)
+            navMesh->removeTile(navMesh->getTileRef(tiles[i]), nullptr, nullptr);
+    }
+
+    void removeLayersAt(int x, int y) {
+        dtCompressedTileRef refs[256];
+        const int count = tileCache->getTilesAt(x, y, refs, 256);
+        for (int i = 0; i < count; i++)
+            tileCache->removeTile(refs[i], nullptr, nullptr);
+        links.erase(TileKey{x, y});
+    }
+
+    bool buildCarvedTiles(const std::vector<TileKey>& keys, std::string& error) {
+        for (const TileKey& key : keys) {
+            removeNavTilesAt(key.x, key.y);
+            if (dtStatusFailed(tileCache->buildNavMeshTilesAt(key.x, key.y, navMesh))) {
+                error = "Detour could not build tile (" + std::to_string(key.x) + ", " + std::to_string(key.y) + ") from its layers";
+                return false;
+            }
+        }
+        return true;
+    }
+
+    int layerCount(const NavMeshData& source) const {
+        return (int)source.tiles.size();
+    }
+
+    // the tile under a nav-space point, for the queries' start polygons
+    dtPolyRef nearest(const Vector3& point, const Vector3& halfExtents, const dtQueryFilter& filter, float* nearestPoint) const {
+        dtPolyRef ref = 0;
+        const float p[3] = {point.x, point.y, point.z};
+        const float extents[3] = {halfExtents.x, halfExtents.y, halfExtents.z};
+        if (dtStatusFailed(query->findNearestPoly(p, extents, &filter, &ref, nearestPoint)))
+            return 0;
+        return ref;
+    }
+
+    Vector3 polyNormal(dtPolyRef ref, const float* position) const {
+        const dtMeshTile* tile = nullptr;
+        const dtPoly* poly = nullptr;
+        if (dtStatusFailed(navMesh->getTileAndPolyByRef(ref, &tile, &poly)) || poly->getType() != DT_POLYTYPE_GROUND)
+            return Vector3(0.0f, 1.0f, 0.0f);
+        const unsigned int index = (unsigned int)(poly - tile->polys);
+        auto normalOf = [](const float* a, const float* b, const float* c) {
+            const Vector3 e0(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+            const Vector3 e1(c[0] - a[0], c[1] - a[1], c[2] - a[2]);
+            Vector3 n = e0.crossProduct(e1);
+            const float length = n.length();
+            if (length <= 0.0f) return Vector3(0.0f, 1.0f, 0.0f);
+            n = n / length;
+            return n.y < 0.0f ? -n : n;
+        };
+        if (tile->detailMeshes) {
+            const dtPolyDetail& detail = tile->detailMeshes[index];
+            for (int t = 0; t < detail.triCount; t++) {
+                const unsigned char* tri = &tile->detailTris[(detail.triBase + (unsigned int)t) * 4];
+                const float* v[3];
+                for (int k = 0; k < 3; k++) {
+                    if (tri[k] < poly->vertCount)
+                        v[k] = &tile->verts[poly->verts[tri[k]] * 3];
+                    else
+                        v[k] = &tile->detailVerts[(detail.vertBase + (tri[k] - poly->vertCount)) * 3];
+                }
+                float h;
+                if (dtClosestHeightPointTriangle(position, v[0], v[1], v[2], h))
+                    return normalOf(v[0], v[1], v[2]);
+            }
+        }
+        return normalOf(&tile->verts[poly->verts[0] * 3], &tile->verts[poly->verts[1] * 3], &tile->verts[poly->verts[2] * 3]);
+    }
+};
+
+NavMesh::NavMesh(): impl(std::make_unique<Impl>()) {}
+NavMesh::~NavMesh() = default;
+
+bool NavMesh::create(NavMeshData data, bool keepData, std::string& error) {
+    impl->release();
+    impl->data = NavMeshData();
+    impl->header = data.header;
+    impl->keepData = keepData;
+    data.sortTiles();
+
+    const NavBuildConfig& config = impl->header.config;
+    const int records = impl->layerCount(data);
+    // the pool keeps room for an incremental bake to add tiles
+    const int maxTiles = (int)nextPow2((unsigned int)std::max({impl->header.maxTiles, records, 1}));
+    impl->header.maxTiles = maxTiles;
+    if (!impl->initNavMesh(maxTiles, error)) {
+        impl->release();
+        return false;
+    }
+    if (config.carving) {
+        if (!impl->initTileCache(maxTiles, error)) {
+            impl->release();
+            return false;
+        }
+        std::vector<TileKey> keys;
+        for (const NavTileBlob& blob : data.tiles) {
+            if (!impl->addLayer(blob, error)) {
+                impl->release();
+                return false;
+            }
+            if (keys.empty() || keys.back().x != blob.x || keys.back().y != blob.y)
+                keys.push_back(TileKey{blob.x, blob.y});
+        }
+        if (!impl->buildCarvedTiles(keys, error)) {
+            impl->release();
+            return false;
+        }
+    } else {
+        for (const NavTileBlob& blob : data.tiles) {
+            if (!impl->addStaticTile(blob, error)) {
+                impl->release();
+                return false;
+            }
+        }
+    }
+    data.header.maxTiles = maxTiles;
+    if (keepData)
+        impl->data = std::move(data);
+    impl->valid = true;
+    impl->bump();
+    return true;
+}
+
+void NavMesh::clear() {
+    impl->release();
+    impl->data = NavMeshData();
+    impl->header = NavMeshHeader();
+    impl->bump();
+}
+
+bool NavMesh::isValid() const {
+    return impl->valid;
+}
+
+const NavMeshHeader& NavMesh::getHeader() const {
+    return impl->header;
+}
+
+const NavMeshData* NavMesh::getData() const {
+    return impl->keepData && impl->valid ? &impl->data : nullptr;
+}
+
+bool NavMesh::replaceTiles(const std::vector<NavTileCoord>& coords, std::vector<NavTileBlob> blobs, std::string& error) {
+    if (!impl->valid || !impl->keepData) {
+        error = "the navmesh keeps no tile records to replace";
+        return false;
+    }
+    std::vector<TileKey> keys;
+    for (const NavTileCoord& coord : coords)
+        keys.push_back(TileKey{coord.x, coord.y});
+    std::sort(keys.begin(), keys.end());
+    keys.erase(std::unique(keys.begin(), keys.end(), [](const TileKey& a, const TileKey& b) { return a.x == b.x && a.y == b.y; }), keys.end());
+    auto replaced = [&](const NavTileBlob& blob) {
+        return std::binary_search(keys.begin(), keys.end(), TileKey{blob.x, blob.y});
+    };
+
+    NavMeshData next;
+    next.header = impl->data.header;
+    for (NavTileBlob& blob : impl->data.tiles) {
+        if (!replaced(blob))
+            next.tiles.push_back(std::move(blob));
+    }
+    for (NavTileBlob& blob : blobs)
+        next.tiles.push_back(std::move(blob));
+    next.sortTiles();
+
+    // a pool too small for the new count, or a failed swap: rebuild the whole mesh
+    if ((int)next.tiles.size() > impl->header.maxTiles) {
+        next.header.maxTiles = (int)nextPow2((unsigned int)next.tiles.size());
+        return create(std::move(next), true, error);
+    }
+
+    if (impl->header.config.carving) {
+        for (const TileKey& key : keys) {
+            impl->removeLayersAt(key.x, key.y);
+            impl->removeNavTilesAt(key.x, key.y);
+        }
+        for (const NavTileBlob& blob : next.tiles) {
+            if (replaced(blob) && !impl->addLayer(blob, error))
+                return create(std::move(next), true, error);
+        }
+        if (!impl->buildCarvedTiles(keys, error))
+            return create(std::move(next), true, error);
+    } else {
+        for (const TileKey& key : keys)
+            impl->removeNavTilesAt(key.x, key.y);
+        for (const NavTileBlob& blob : next.tiles) {
+            if (replaced(blob) && !impl->addStaticTile(blob, error))
+                return create(std::move(next), true, error);
+        }
+    }
+    impl->data = std::move(next);
+    impl->bump();
+    return true;
+}
+
+int NavMesh::getTileCount() const {
+    if (!impl->valid) return 0;
+    int count = 0;
+    const dtNavMesh* mesh = impl->navMesh;
+    for (int i = 0; i < mesh->getMaxTiles(); i++) {
+        const dtMeshTile* tile = mesh->getTile(i);
+        if (tile && tile->header)
+            count++;
+    }
+    return count;
+}
+
+int NavMesh::getPolyCount() const {
+    if (!impl->valid) return 0;
+    int count = 0;
+    const dtNavMesh* mesh = impl->navMesh;
+    for (int i = 0; i < mesh->getMaxTiles(); i++) {
+        const dtMeshTile* tile = mesh->getTile(i);
+        if (tile && tile->header)
+            count += tile->header->offMeshBase;
+    }
+    return count;
+}
+
+size_t NavMesh::getMemoryBytes() const {
+    if (!impl->valid) return 0;
+    size_t bytes = sizeof(dtNavMesh) + (size_t)impl->header.maxTiles * sizeof(dtMeshTile);
+    const dtNavMesh* mesh = impl->navMesh;
+    for (int i = 0; i < mesh->getMaxTiles(); i++) {
+        const dtMeshTile* tile = mesh->getTile(i);
+        if (tile && tile->header)
+            bytes += (size_t)tile->dataSize;
+    }
+    if (impl->tileCache) {
+        for (int i = 0; i < impl->tileCache->getTileCount(); i++) {
+            const dtCompressedTile* tile = impl->tileCache->getTile(i);
+            if (tile && tile->header)
+                bytes += (size_t)tile->dataSize;
+        }
+        bytes += (size_t)impl->tileCache->getObstacleCount() * sizeof(dtTileCacheObstacle);
+    }
+    // the query's node pool
+    bytes += (size_t)QUERY_NODES * (sizeof(dtNode) + sizeof(dtNodeIndex) * 2) + (size_t)QUERY_NODES * sizeof(dtNode*);
+    if (impl->keepData)
+        bytes += impl->data.memoryBytes();
+    return bytes;
+}
+
+bool NavMesh::isCarving() const {
+    return impl->valid && impl->tileCache != nullptr;
+}
+
+NavPath NavMesh::findPath(const Vector3& start, const Vector3& end, const NavFilter& filter, const Vector3& halfExtents) const {
+    NavPath path;
+    if (!impl->valid)
+        return path;
+    dtQueryFilter f;
+    impl->fillFilter(filter, f);
+    float startPoint[3], endPoint[3];
+    const dtPolyRef startRef = impl->nearest(start, halfExtents, f, startPoint);
+    const dtPolyRef endRef = impl->nearest(end, halfExtents, f, endPoint);
+    if (!startRef || !endRef)
+        return path;
+
+    static thread_local std::vector<dtPolyRef> polys;
+    polys.resize(MAX_PATH_POLYS);
+    int count = 0;
+    const dtStatus status = impl->query->findPath(startRef, endRef, startPoint, endPoint, &f, polys.data(), &count, MAX_PATH_POLYS);
+    if (dtStatusFailed(status) || count == 0)
+        return path;
+
+    float target[3] = {endPoint[0], endPoint[1], endPoint[2]};
+    const bool partial = polys[(size_t)count - 1] != endRef || dtStatusDetail(status, DT_PARTIAL_RESULT);
+    if (polys[(size_t)count - 1] != endRef)
+        impl->query->closestPointOnPoly(polys[(size_t)count - 1], endPoint, target, nullptr);
+
+    static thread_local std::vector<float> corners;
+    corners.resize((size_t)MAX_CORNERS * 3);
+    int cornerCount = 0;
+    if (dtStatusFailed(impl->query->findStraightPath(startPoint, target, polys.data(), count, corners.data(), nullptr, nullptr,
+                                                      &cornerCount, MAX_CORNERS)) || cornerCount == 0)
+        return path;
+    path.corners.reserve((size_t)cornerCount);
+    for (int i = 0; i < cornerCount; i++) {
+        const Vector3 corner(corners[(size_t)i * 3], corners[(size_t)i * 3 + 1], corners[(size_t)i * 3 + 2]);
+        if (!path.corners.empty())
+            path.length += path.corners.back().distance(corner);
+        path.corners.push_back(corner);
+    }
+    path.status = partial ? PathStatus::Partial : PathStatus::Complete;
+    return path;
+}
+
+NavHit NavMesh::samplePosition(const Vector3& point, float maxDistance, const NavFilter& filter) const {
+    NavHit hit;
+    if (!impl->valid || !(maxDistance > 0.0f))
+        return hit;
+    dtQueryFilter f;
+    impl->fillFilter(filter, f);
+    float nearestPoint[3];
+    const dtPolyRef ref = impl->nearest(point, Vector3(maxDistance, maxDistance, maxDistance), f, nearestPoint);
+    if (!ref)
+        return hit;
+    const Vector3 position(nearestPoint[0], nearestPoint[1], nearestPoint[2]);
+    const float distance = position.distance(point);
+    if (distance > maxDistance)
+        return hit;
+    const dtMeshTile* tile = nullptr;
+    const dtPoly* poly = nullptr;
+    impl->navMesh->getTileAndPolyByRefUnsafe(ref, &tile, &poly);
+    hit.hit = true;
+    hit.position = position;
+    hit.distance = distance;
+    hit.area = poly->getArea() < AREA_COUNT ? poly->getArea() : AREA_WALKABLE;
+    hit.normal = impl->polyNormal(ref, nearestPoint);
+    return hit;
+}
+
+NavHit NavMesh::raycast(const Vector3& from, const Vector3& to, const NavFilter& filter, const Vector3& halfExtents) const {
+    NavHit hit;
+    if (!impl->valid)
+        return hit;
+    dtQueryFilter f;
+    impl->fillFilter(filter, f);
+    float startPoint[3];
+    const dtPolyRef startRef = impl->nearest(from, halfExtents, f, startPoint);
+    if (!startRef) {
+        // Unity: a start off the mesh hits at once
+        hit.hit = true;
+        hit.position = from;
+        return hit;
+    }
+    const float end[3] = {to.x, to.y, to.z};
+    float t = 0.0f;
+    float normal[3] = {0, 0, 0};
+    static thread_local std::vector<dtPolyRef> polys;
+    polys.resize(MAX_PATH_POLYS);
+    int count = 0;
+    if (dtStatusFailed(impl->query->raycast(startRef, startPoint, end, &f, &t, normal, polys.data(), &count, MAX_PATH_POLYS)))
+        return hit;
+    const Vector3 start(startPoint[0], startPoint[1], startPoint[2]);
+    const Vector3 delta = to - start;
+    if (t == std::numeric_limits<float>::max() || t > 1.0f) {
+        // reached the end: the position is on the last polygon under `to`
+        hit.hit = false;
+        float height = to.y;
+        if (count > 0)
+            impl->query->getPolyHeight(polys[(size_t)count - 1], end, &height);
+        hit.position = Vector3(to.x, height, to.z);
+        hit.distance = Vector3(delta.x, 0.0f, delta.z).length();
+        if (count > 0) {
+            const dtMeshTile* tile = nullptr;
+            const dtPoly* poly = nullptr;
+            impl->navMesh->getTileAndPolyByRefUnsafe(polys[(size_t)count - 1], &tile, &poly);
+            hit.area = poly->getArea() < AREA_COUNT ? poly->getArea() : AREA_WALKABLE;
+        }
+        return hit;
+    }
+    hit.hit = true;
+    Vector3 position = start + delta * t;
+    if (count > 0) {
+        float height = position.y;
+        const float p[3] = {position.x, position.y, position.z};
+        if (dtStatusSucceed(impl->query->getPolyHeight(polys[(size_t)count - 1], p, &height)))
+            position.y = height;
+        const dtMeshTile* tile = nullptr;
+        const dtPoly* poly = nullptr;
+        impl->navMesh->getTileAndPolyByRefUnsafe(polys[(size_t)count - 1], &tile, &poly);
+        hit.area = poly->getArea() < AREA_COUNT ? poly->getArea() : AREA_WALKABLE;
+    }
+    hit.position = position;
+    hit.normal = Vector3(normal[0], normal[1], normal[2]);
+    hit.distance = Vector3(delta.x, 0.0f, delta.z).length() * t;
+    return hit;
+}
+
+NavHit NavMesh::findClosestEdge(const Vector3& point, const NavFilter& filter, const Vector3& halfExtents) const {
+    NavHit hit;
+    if (!impl->valid)
+        return hit;
+    dtQueryFilter f;
+    impl->fillFilter(filter, f);
+    float startPoint[3];
+    const dtPolyRef startRef = impl->nearest(point, halfExtents, f, startPoint);
+    if (!startRef)
+        return hit;
+    float distance = 0.0f;
+    float position[3], normal[3];
+    // as far as the query's node pool reaches
+    const float radius = impl->header.config.tileWorldSize() * 64.0f;
+    if (dtStatusFailed(impl->query->findDistanceToWall(startRef, startPoint, radius, &f, &distance, position, normal)))
+        return hit;
+    hit.hit = true;
+    hit.distance = distance;
+    hit.position = Vector3(position[0], position[1], position[2]);
+    hit.normal = Vector3(normal[0], normal[1], normal[2]);
+    const dtMeshTile* tile = nullptr;
+    const dtPoly* poly = nullptr;
+    impl->navMesh->getTileAndPolyByRefUnsafe(startRef, &tile, &poly);
+    hit.area = poly->getArea() < AREA_COUNT ? poly->getArea() : AREA_WALKABLE;
+    return hit;
+}
+
+bool NavMesh::getHeight(const Vector3& point, const NavFilter& filter, const Vector3& halfExtents, float& height) const {
+    if (!impl->valid)
+        return false;
+    dtQueryFilter f;
+    impl->fillFilter(filter, f);
+    float nearestPoint[3];
+    const dtPolyRef ref = impl->nearest(point, halfExtents, f, nearestPoint);
+    if (!ref)
+        return false;
+    const float p[3] = {point.x, point.y, point.z};
+    return dtStatusSucceed(impl->query->getPolyHeight(ref, p, &height));
+}
+
+uint32_t NavMesh::addCylinderObstacle(const Vector3& position, float radius, float height) {
+    if (!impl->valid || !impl->tileCache)
+        return 0;
+    const float p[3] = {position.x, position.y, position.z};
+    dtObstacleRef ref = 0;
+    if (dtStatusFailed(impl->tileCache->addObstacle(p, radius, height, &ref)))
+        return 0;
+    return ref;
+}
+
+uint32_t NavMesh::addBoxObstacle(const Vector3& center, const Vector3& halfExtents, float yRadians) {
+    if (!impl->valid || !impl->tileCache)
+        return 0;
+    const float c[3] = {center.x, center.y, center.z};
+    const float h[3] = {halfExtents.x, halfExtents.y, halfExtents.z};
+    dtObstacleRef ref = 0;
+    if (dtStatusFailed(impl->tileCache->addBoxObstacle(c, h, yRadians, &ref)))
+        return 0;
+    return ref;
+}
+
+bool NavMesh::removeObstacle(uint32_t obstacle) {
+    if (!impl->valid || !impl->tileCache || obstacle == 0)
+        return false;
+    return dtStatusSucceed(impl->tileCache->removeObstacle(obstacle));
+}
+
+bool NavMesh::updateCarving(double budgetMs, bool& upToDate, int& tilesRebuilt) {
+    upToDate = true;
+    tilesRebuilt = 0;
+    if (!impl->valid || !impl->tileCache)
+        return false;
+    const auto begin = std::chrono::steady_clock::now();
+    bool changed = false;
+    // each update handles the queued obstacle requests and then rebuilds one touched tile
+    for (;;) {
+        bool done = false;
+        if (dtStatusFailed(impl->tileCache->update(0.0f, impl->navMesh, &done)))
+            break;
+        if (done) {
+            upToDate = true;
+            break;
+        }
+        upToDate = false;
+        changed = true;
+        tilesRebuilt++;
+        const double elapsed = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count();
+        if (elapsed >= budgetMs)
+            break;
+    }
+    if (changed)
+        impl->bump();
+    return true;
+}
+
+bool NavMesh::updateLink(uint32_t userId, const std::vector<NavLinkInput>& connections, std::string& error) {
+    if (!impl->valid) {
+        error = "the navmesh is not built";
+        return false;
+    }
+    const float tileSize = impl->header.config.tileWorldSize();
+    if (impl->tileCache) {
+        // the tile cache rebuilds the tiles from their layers with the moved links
+        std::vector<TileKey> touched;
+        for (auto& entry : impl->links) {
+            auto& list = entry.second;
+            const size_t before = list.size();
+            list.erase(std::remove_if(list.begin(), list.end(), [&](const NavLinkInput& l) { return l.userId == userId; }), list.end());
+            if (list.size() != before)
+                touched.push_back(entry.first);
+        }
+        for (const NavLinkInput& link : connections) {
+            const TileKey key{(int)std::floor(link.start[0] / tileSize), (int)std::floor(link.start[2] / tileSize)};
+            impl->links[key].push_back(link);
+            touched.push_back(key);
+        }
+        std::sort(touched.begin(), touched.end());
+        touched.erase(std::unique(touched.begin(), touched.end(), [](const TileKey& a, const TileKey& b) { return a.x == b.x && a.y == b.y; }), touched.end());
+        if (impl->keepData) {
+            for (NavTileBlob& blob : impl->data.tiles) {
+                if (blob.layer != 0)
+                    continue;
+                auto found = impl->links.find(TileKey{blob.x, blob.y});
+                blob.links = found != impl->links.end() ? found->second : std::vector<NavLinkInput>();
+            }
+        }
+        if (!impl->buildCarvedTiles(touched, error))
+            return false;
+        impl->bump();
+        return true;
+    }
+
+    // static tiles: patch the connections in a copy of their tile and re-add it
+    dtNavMesh* mesh = impl->navMesh;
+    size_t next = 0;
+    std::vector<std::pair<dtTileRef, std::vector<unsigned char>>> patched;
+    for (int i = 0; i < mesh->getMaxTiles() && next <= connections.size(); i++) {
+        const dtMeshTile* tile = static_cast<const dtNavMesh*>(mesh)->getTile(i);
+        if (!tile || !tile->header || tile->header->offMeshConCount == 0)
+            continue;
+        std::vector<unsigned char> copy;
+        for (int c = 0; c < tile->header->offMeshConCount; c++) {
+            if (tile->offMeshCons[c].userId != userId)
+                continue;
+            if (next >= connections.size()) {
+                error = "the link has fewer connections than it was baked with; rebake the surface";
+                return false;
+            }
+            const NavLinkInput& link = connections[next++];
+            const float* bmin = tile->header->bmin;
+            const float* bmax = tile->header->bmax;
+            if (link.start[0] < bmin[0] || link.start[0] >= bmax[0] || link.start[2] < bmin[2] || link.start[2] >= bmax[2] ||
+                link.start[1] < bmin[1] || link.start[1] > bmax[1]) {
+                error = "the link's start left its baked tile; rebake the surface";
+                return false;
+            }
+            if (copy.empty())
+                copy.assign(tile->data, tile->data + tile->dataSize);
+            const size_t offMeshOffset = (size_t)((const unsigned char*)tile->offMeshCons - tile->data);
+            const size_t vertsOffset = (size_t)((const unsigned char*)tile->verts - tile->data);
+            const size_t polysOffset = (size_t)((const unsigned char*)tile->polys - tile->data);
+            dtOffMeshConnection con;
+            std::memcpy(&con, copy.data() + offMeshOffset + sizeof(dtOffMeshConnection) * (size_t)c, sizeof(con));
+            dtVcopy(&con.pos[0], link.start);
+            dtVcopy(&con.pos[3], link.end);
+            con.rad = link.radius;
+            con.flags = link.bidirectional ? DT_OFFMESH_CON_BIDIR : 0;
+            con.side = classifyOffMeshPoint(link.end, bmin, bmax);
+            std::memcpy(copy.data() + offMeshOffset + sizeof(dtOffMeshConnection) * (size_t)c, &con, sizeof(con));
+            dtPoly poly;
+            std::memcpy(&poly, copy.data() + polysOffset + sizeof(dtPoly) * con.poly, sizeof(poly));
+            std::memcpy(copy.data() + vertsOffset + sizeof(float) * 3 * poly.verts[0], link.start, sizeof(float) * 3);
+            std::memcpy(copy.data() + vertsOffset + sizeof(float) * 3 * poly.verts[1], link.end, sizeof(float) * 3);
+            poly.flags = (unsigned short)(1u << link.area);
+            poly.setArea(link.polyArea);
+            std::memcpy(copy.data() + polysOffset + sizeof(dtPoly) * con.poly, &poly, sizeof(poly));
+        }
+        if (!copy.empty())
+            patched.emplace_back(mesh->getTileRef(tile), std::move(copy));
+    }
+    if (next != connections.size()) {
+        error = "the link has more connections than it was baked with; rebake the surface";
+        return false;
+    }
+    for (auto& entry : patched) {
+        mesh->removeTile(entry.first, nullptr, nullptr);
+        unsigned char* data = (unsigned char*)dtAlloc(entry.second.size(), DT_ALLOC_PERM);
+        std::memcpy(data, entry.second.data(), entry.second.size());
+        if (dtStatusFailed(mesh->addTile(data, (int)entry.second.size(), DT_TILE_FREE_DATA, 0, nullptr))) {
+            dtFree(data);
+            error = "Detour refused a patched tile";
+            return false;
+        }
+    }
+    impl->bump();
+    return true;
+}
+
+void NavMesh::getDebugGeometry(const std::function<bool(const float* bmin, const float* bmax)>& visible, size_t maxTriangles,
+                               bool detailMesh, NavDebugGeometry& out) const {
+    out = NavDebugGeometry();
+    if (!impl->valid)
+        return;
+    const dtNavMesh* mesh = impl->navMesh;
+    size_t triangles = 0;
+    for (int i = 0; i < mesh->getMaxTiles(); i++) {
+        const dtMeshTile* tile = mesh->getTile(i);
+        if (!tile || !tile->header)
+            continue;
+        if (visible && !visible(tile->header->bmin, tile->header->bmax))
+            continue;
+        out.tileBounds.insert(out.tileBounds.end(), tile->header->bmin, tile->header->bmin + 3);
+        out.tileBounds.insert(out.tileBounds.end(), tile->header->bmax, tile->header->bmax + 3);
+
+        for (int p = 0; p < tile->header->polyCount; p++) {
+            const dtPoly& poly = tile->polys[p];
+            if (poly.getType() == DT_POLYTYPE_OFFMESH_CONNECTION)
+                continue;
+            const uint8_t area = poly.getArea() < AREA_COUNT ? poly.getArea() : AREA_WALKABLE;
+            if (detailMesh && tile->detailMeshes) {
+                const dtPolyDetail& detail = tile->detailMeshes[p];
+                for (int t = 0; t < detail.triCount; t++) {
+                    if (triangles >= maxTriangles) {
+                        out.truncated = true;
+                        break;
+                    }
+                    const unsigned char* tri = &tile->detailTris[(detail.triBase + (unsigned int)t) * 4];
+                    for (int k = 0; k < 3; k++) {
+                        const float* v = tri[k] < poly.vertCount ? &tile->verts[poly.verts[tri[k]] * 3]
+                                                                  : &tile->detailVerts[(detail.vertBase + (tri[k] - poly.vertCount)) * 3];
+                        out.triangles.insert(out.triangles.end(), v, v + 3);
+                    }
+                    out.triangleAreas.push_back(area);
+                    triangles++;
+                }
+            } else {
+                for (int t = 2; t < poly.vertCount; t++) {
+                    if (triangles >= maxTriangles) {
+                        out.truncated = true;
+                        break;
+                    }
+                    const float* a = &tile->verts[poly.verts[0] * 3];
+                    const float* b = &tile->verts[poly.verts[t - 1] * 3];
+                    const float* c = &tile->verts[poly.verts[t] * 3];
+                    out.triangles.insert(out.triangles.end(), a, a + 3);
+                    out.triangles.insert(out.triangles.end(), b, b + 3);
+                    out.triangles.insert(out.triangles.end(), c, c + 3);
+                    out.triangleAreas.push_back(area);
+                    triangles++;
+                }
+            }
+            for (int e = 0; e < poly.vertCount; e++) {
+                const float* a = &tile->verts[poly.verts[e] * 3];
+                const float* b = &tile->verts[poly.verts[(e + 1) % poly.vertCount] * 3];
+                bool boundary = poly.neis[e] == 0;
+                if (!boundary && (poly.neis[e] & DT_EXT_LINK)) {
+                    boundary = true;
+                    for (unsigned int link = poly.firstLink; link != DT_NULL_LINK; link = tile->links[link].next) {
+                        if (tile->links[link].edge == e) {
+                            boundary = false;
+                            break;
+                        }
+                    }
+                }
+                // an inner edge once (from its lower polygon index)
+                if (!boundary && !(poly.neis[e] & DT_EXT_LINK) && poly.neis[e] - 1 < p)
+                    continue;
+                std::vector<float>& edges = boundary ? out.boundaryEdges : out.polygonEdges;
+                edges.insert(edges.end(), a, a + 3);
+                edges.insert(edges.end(), b, b + 3);
+            }
+        }
+        for (int c = 0; c < tile->header->offMeshConCount; c++) {
+            const dtOffMeshConnection& con = tile->offMeshCons[c];
+            const dtPoly& poly = tile->polys[con.poly];
+            NavDebugGeometry::Link link;
+            std::memcpy(link.start, &con.pos[0], sizeof(link.start));
+            std::memcpy(link.end, &con.pos[3], sizeof(link.end));
+            link.radius = con.rad;
+            link.bidirectional = (con.flags & DT_OFFMESH_CON_BIDIR) != 0;
+            unsigned short flags = poly.flags;
+            uint8_t area = AREA_JUMP;
+            for (int a = 0; a < AREA_COUNT; a++) {
+                if (flags == (1u << a))
+                    area = (uint8_t)a;
+            }
+            link.area = area;
+            link.userId = con.userId;
+            out.links.push_back(link);
+        }
+        if (out.truncated)
+            break;
+    }
+}
+
+void* NavMesh::detourNavMesh() const {
+    return impl->valid ? impl->navMesh : nullptr;
+}
+
+void* NavMesh::detourQuery() const {
+    return impl->valid ? impl->query : nullptr;
+}
+
+uint64_t NavMesh::getRevision() const {
+    return impl->revision;
+}
+
+#else // JASPERENGINE_NAVIGATION
+
+// Without Recast/Detour: the data model and its file format work (an editor can read and write
+// .navmesh files), but nothing builds a runtime mesh; every query fails and logs once.
+
+namespace {
+    void logUnavailable() {
+        static std::atomic<bool> logged{false};
+        if (!logged.exchange(true))
+            Log::error("Navigation: this build has no navmesh support (JASPERENGINE_NAVIGATION is off)");
+    }
+}
+
+struct NavMesh::Impl {
+    NavMeshHeader header;
+};
+
+NavMesh::NavMesh(): impl(std::make_unique<Impl>()) {}
+NavMesh::~NavMesh() = default;
+
+bool NavMesh::create(NavMeshData, bool, std::string& error) {
+    logUnavailable();
+    error = "navmesh support is not in this build (JASPERENGINE_NAVIGATION is off)";
+    return false;
+}
+void NavMesh::clear() {}
+bool NavMesh::isValid() const { return false; }
+const NavMeshHeader& NavMesh::getHeader() const { return impl->header; }
+const NavMeshData* NavMesh::getData() const { return nullptr; }
+bool NavMesh::replaceTiles(const std::vector<NavTileCoord>&, std::vector<NavTileBlob>, std::string& error) {
+    logUnavailable();
+    error = "navmesh support is not in this build (JASPERENGINE_NAVIGATION is off)";
+    return false;
+}
+int NavMesh::getTileCount() const { return 0; }
+int NavMesh::getPolyCount() const { return 0; }
+size_t NavMesh::getMemoryBytes() const { return 0; }
+bool NavMesh::isCarving() const { return false; }
+NavPath NavMesh::findPath(const Vector3&, const Vector3&, const NavFilter&, const Vector3&) const { logUnavailable(); return NavPath(); }
+NavHit NavMesh::samplePosition(const Vector3&, float, const NavFilter&) const { logUnavailable(); return NavHit(); }
+NavHit NavMesh::raycast(const Vector3&, const Vector3&, const NavFilter&, const Vector3&) const { logUnavailable(); return NavHit(); }
+NavHit NavMesh::findClosestEdge(const Vector3&, const NavFilter&, const Vector3&) const { logUnavailable(); return NavHit(); }
+bool NavMesh::getHeight(const Vector3&, const NavFilter&, const Vector3&, float&) const { logUnavailable(); return false; }
+uint32_t NavMesh::addCylinderObstacle(const Vector3&, float, float) { logUnavailable(); return 0; }
+uint32_t NavMesh::addBoxObstacle(const Vector3&, const Vector3&, float) { logUnavailable(); return 0; }
+bool NavMesh::removeObstacle(uint32_t) { return false; }
+bool NavMesh::updateCarving(double, bool& upToDate, int& tilesRebuilt) { upToDate = true; tilesRebuilt = 0; return false; }
+bool NavMesh::updateLink(uint32_t, const std::vector<NavLinkInput>&, std::string& error) {
+    error = "navmesh support is not in this build (JASPERENGINE_NAVIGATION is off)";
+    return false;
+}
+void NavMesh::getDebugGeometry(const std::function<bool(const float*, const float*)>&, size_t, bool, NavDebugGeometry& out) const {
+    out = NavDebugGeometry();
+}
+void* NavMesh::detourNavMesh() const { return nullptr; }
+void* NavMesh::detourQuery() const { return nullptr; }
+uint64_t NavMesh::getRevision() const { return 0; }
+
+#endif // JASPERENGINE_NAVIGATION

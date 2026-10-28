@@ -54,6 +54,7 @@ namespace jasperengine {
         static void registerThreadClasses(lua_State *L);
         static void registerProfilerClasses(lua_State *L);
         static void registerGameplayClasses(lua_State *L);
+        static void registerNavigationClasses(lua_State *L);
         static void registerCrashClasses(lua_State *L);
         static void registerHtmlUIClasses(lua_State *L);
         static void registerHtmlUIAnimeClasses(lua_State *L);

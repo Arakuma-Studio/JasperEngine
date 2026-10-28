@@ -69,6 +69,12 @@ const std::vector<std::string>& StreamSchema::knownFieldKeys(ComponentType type)
         {ComponentType::InputFieldComponent, {"cursor", "cursorBlink", "cursorColor", "cursorIndex", "cursorWidth", "disabled", "password", "passwordChar", "placeholder", "placeholderColor", "selection", "selectionAnchor", "selectionColor", "text"}},
         {ComponentType::InstancedMeshComponent, {"cullDistance", "cullInstances", "distanceFade", "enabled", "fadeEnd", "fadeStart", "instancedBillboard", "instancedCylindricalBillboard", "instances", "maxInstances"}},
         {ComponentType::Joint2DComponent, {"anchorA", "anchorB", "autoAnchors", "axis", "bodyA", "bodyB", "enabled", "rope", "target", "type"}},
+        {ComponentType::NavMeshSurfaceComponent, {"agentType", "cellSize", "collectObjects", "defaultArea", "enabled", "includeLayers", "minRegionArea", "navMeshData", "navMeshDataGuid", "overrideCellSize", "overrideTileSize", "plane", "runtimeCarving", "tileSize", "useGeometry", "volumeCenter", "volumeSize"}},
+        {ComponentType::NavMeshAgentComponent, {"acceleration", "agentType", "angularSpeed", "areaMask", "autoBraking", "autoRepath", "autoTraverseOffMeshLink", "avoidancePriority", "baseOffset", "driver", "enabled", "height", "obstacleAvoidance", "radius", "speed", "stoppingDistance", "surface", "updatePosition", "updateRotation"}},
+        {ComponentType::NavMeshObstacleComponent, {"carve", "carveOnlyStationary", "center", "enabled", "height", "moveThreshold", "radius", "shape", "size", "timeToStationary"}},
+        {ComponentType::NavMeshLinkComponent, {"agentType", "area", "autoUpdatePosition", "bidirectional", "costModifier", "enabled", "endPoint", "startPoint", "width"}},
+        {ComponentType::NavMeshModifierComponent, {"applyToChildren", "area", "enabled", "overrideArea", "overrideInclusion", "useVolume", "volumeCenter", "volumeSize"}},
+        {ComponentType::NavGridComponent, {"autoRebuild", "cellSize", "collidersBlock", "emptyCellArea", "enabled", "gridData", "gridDataGuid", "height", "layout", "maxSlope", "maxStep", "movement", "neighbours", "plane", "reservationLookahead", "reservationPenalty", "source", "sourceEntity", "tileAreas", "width"}},
         {ComponentType::WaterVolumeComponent, {"angularDrag", "density", "enabled", "flow", "infinite", "linearDrag", "size", "surfaceOffset", "waves"}},
         {ComponentType::BuoyancyComponent, {"columns", "customPoints", "dragScale", "enabled", "volumeScale"}},
         {ComponentType::CharacterControllerComponent, {"categoryBits", "center", "characterCollisions", "detectCollisions", "enabled", "enhancedEdgeRemoval", "height", "inheritPlatformYaw", "maskBits", "mass", "minMoveDistance", "movingPlatforms", "pushBodies", "pushStrength", "radius", "skinWidth", "slopeLimit", "stepOffset"}},
@@ -146,7 +152,7 @@ const std::vector<std::string>& StreamSchema::knownRootKeys(RootKind kind) {
             "addedTo", "childIndex", "parentRegistryEntity", "prefabRootRegistryEntity", "prefabPath"}},
         // the editor state an older project.yaml held (Workspace::adoptLegacyProjectState) and
         // its build settings (AppSettings, build.yaml) are read too
-        {RootKind::Project, {"formatVersion", "android", "application", "assetLabels", "assetsDir", "atmosphereQuality", "canvasHeight", "canvasWidth", "cxxStandard", "export", "graphics", "htmlUiMsaaSamples", "ignoredLayerCollisions", "input", "ios", "layers", "linux", "loading", "luaDir", "macos", "mobilePbrTier", "name", "packNativeResources", "physics2D", "physics3D", "playerLogging", "runtimeShaders", "savedSearches", "scalingMode", "scenes", "scriptDirs", "standalonePrefabs", "startSceneId", "tags", "texture", "textureStrategy", "threading", "versionControlMetadata", "vsync", "web", "windowHeight", "windowIcon", "windowMode", "windowResizable", "windowTitle", "windowWidth", "windows",
+        {RootKind::Project, {"formatVersion", "android", "application", "assetLabels", "assetsDir", "atmosphereQuality", "canvasHeight", "canvasWidth", "cxxStandard", "export", "graphics", "htmlUiMsaaSamples", "ignoredLayerCollisions", "input", "ios", "layers", "linux", "loading", "luaDir", "macos", "mobilePbrTier", "name", "navigation", "packNativeResources", "physics2D", "physics3D", "playerLogging", "runtimeShaders", "savedSearches", "scalingMode", "scenes", "scriptDirs", "standalonePrefabs", "startSceneId", "tags", "texture", "textureStrategy", "threading", "versionControlMetadata", "vsync", "web", "windowHeight", "windowIcon", "windowMode", "windowResizable", "windowTitle", "windowWidth", "windows",
             "cmakeBuildJobs", "cmakeCCompiler", "cmakeCxxCompiler", "cmakeGenerator", "selectedScene", "tabs", "terrainEditor"}},
         {RootKind::Material, {}},
         {RootKind::PrefabHeader, {"type", "version", "guid", "formerGuids", "labels", "nextEntity", "root", "members", "stripped"}},
@@ -489,6 +495,96 @@ const EnumTable<FogColorMode>& StreamSchema::fogColorMode() {
         {FogColorMode::COLOR, "color"},
         {FogColorMode::SKY, "sky"},
     }, FogColorMode::COLOR);
+    return table;
+}
+
+// ---- navigation (S19)
+const EnumTable<NavCollectObjects>& StreamSchema::navCollectObjects() {
+    static const EnumTable<NavCollectObjects> table("NavCollectObjects", {
+        {NavCollectObjects::ALL, "all"},
+        {NavCollectObjects::VOLUME, "volume"},
+        {NavCollectObjects::CHILDREN, "children"},
+    }, NavCollectObjects::ALL);
+    return table;
+}
+
+const EnumTable<NavUseGeometry>& StreamSchema::navUseGeometry() {
+    static const EnumTable<NavUseGeometry> table("NavUseGeometry", {
+        {NavUseGeometry::RENDER_MESHES, "render_meshes"},
+        {NavUseGeometry::PHYSICS_COLLIDERS, "physics_colliders"},
+        {NavUseGeometry::BOTH, "both"},
+    }, NavUseGeometry::RENDER_MESHES);
+    return table;
+}
+
+const EnumTable<nav::NavPlane>& StreamSchema::navPlane() {
+    static const EnumTable<nav::NavPlane> table("NavPlane", {
+        {nav::NavPlane::XZ, "xz"},
+        {nav::NavPlane::XY, "xy"},
+    }, nav::NavPlane::XZ);
+    return table;
+}
+
+const EnumTable<nav::AvoidanceQuality>& StreamSchema::navAvoidanceQuality() {
+    static const EnumTable<nav::AvoidanceQuality> table("ObstacleAvoidanceType", {
+        {nav::AvoidanceQuality::None, "none"},
+        {nav::AvoidanceQuality::Low, "low"},
+        {nav::AvoidanceQuality::Medium, "medium"},
+        {nav::AvoidanceQuality::Good, "good"},
+        {nav::AvoidanceQuality::High, "high"},
+    }, nav::AvoidanceQuality::High);
+    return table;
+}
+
+const EnumTable<NavAgentDriver>& StreamSchema::navAgentDriver() {
+    static const EnumTable<NavAgentDriver> table("NavAgentDriver", {
+        {NavAgentDriver::TRANSFORM, "transform"},
+        {NavAgentDriver::RIGIDBODY, "rigidbody"},
+        {NavAgentDriver::CHARACTER_CONTROLLER, "character_controller"},
+        {NavAgentDriver::NONE, "none"},
+    }, NavAgentDriver::TRANSFORM);
+    return table;
+}
+
+const EnumTable<NavObstacleShape>& StreamSchema::navObstacleShape() {
+    static const EnumTable<NavObstacleShape> table("NavObstacleShape", {
+        {NavObstacleShape::CAPSULE, "capsule"},
+        {NavObstacleShape::BOX, "box"},
+    }, NavObstacleShape::BOX);
+    return table;
+}
+
+const EnumTable<NavModifierInclusion>& StreamSchema::navModifierInclusion() {
+    static const EnumTable<NavModifierInclusion> table("NavModifierInclusion", {
+        {NavModifierInclusion::AUTO, "auto"},
+        {NavModifierInclusion::INCLUDE, "include"},
+        {NavModifierInclusion::EXCLUDE, "exclude"},
+    }, NavModifierInclusion::AUTO);
+    return table;
+}
+
+const EnumTable<nav::GridLayout>& StreamSchema::navGridLayout() {
+    static const EnumTable<nav::GridLayout> table("GridLayout", {
+        {nav::GridLayout::Square, "square"},
+        {nav::GridLayout::Hex, "hex"},
+    }, nav::GridLayout::Square);
+    return table;
+}
+
+const EnumTable<nav::GridMovement>& StreamSchema::navGridMovement() {
+    static const EnumTable<nav::GridMovement> table("GridMovement", {
+        {nav::GridMovement::Free, "free"},
+        {nav::GridMovement::CellCentres, "cell_centres"},
+    }, nav::GridMovement::Free);
+    return table;
+}
+
+const EnumTable<NavGridSource>& StreamSchema::navGridSource() {
+    static const EnumTable<NavGridSource> table("NavGridSource", {
+        {NavGridSource::NONE, "none"},
+        {NavGridSource::TILEMAP, "tilemap"},
+        {NavGridSource::TERRAIN, "terrain"},
+    }, NavGridSource::NONE);
     return table;
 }
 

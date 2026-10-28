@@ -16318,6 +16318,18 @@ void editor::InspectorWindow::show(){
                     drawBuoyancyComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::Joint3DComponent){
                     drawJoint3DComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::NavMeshSurfaceComponent){
+                    drawNavMeshSurfaceComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::NavMeshAgentComponent){
+                    drawNavMeshAgentComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::NavMeshObstacleComponent){
+                    drawNavMeshObstacleComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::NavMeshLinkComponent){
+                    drawNavMeshLinkComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::NavMeshModifierComponent){
+                    drawNavMeshModifierComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::NavGridComponent){
+                    drawNavGridComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::ActionComponent){
                     drawActionComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::TweenComponent){

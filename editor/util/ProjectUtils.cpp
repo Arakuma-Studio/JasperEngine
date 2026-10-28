@@ -1148,6 +1148,48 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<Joint2DComponent>(entity, Stream::decodeJoint2DComponent(componentNode));
             }
             break;
+        case ComponentType::NavMeshSurfaceComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<NavMeshSurfaceComponent>(entity, {});
+            }else{
+                registry->addComponent<NavMeshSurfaceComponent>(entity, Stream::decodeNavMeshSurfaceComponent(componentNode));
+            }
+            break;
+        case ComponentType::NavMeshAgentComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<NavMeshAgentComponent>(entity, {});
+            }else{
+                registry->addComponent<NavMeshAgentComponent>(entity, Stream::decodeNavMeshAgentComponent(componentNode));
+            }
+            break;
+        case ComponentType::NavMeshObstacleComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<NavMeshObstacleComponent>(entity, {});
+            }else{
+                registry->addComponent<NavMeshObstacleComponent>(entity, Stream::decodeNavMeshObstacleComponent(componentNode));
+            }
+            break;
+        case ComponentType::NavMeshLinkComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<NavMeshLinkComponent>(entity, {});
+            }else{
+                registry->addComponent<NavMeshLinkComponent>(entity, Stream::decodeNavMeshLinkComponent(componentNode));
+            }
+            break;
+        case ComponentType::NavMeshModifierComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<NavMeshModifierComponent>(entity, {});
+            }else{
+                registry->addComponent<NavMeshModifierComponent>(entity, Stream::decodeNavMeshModifierComponent(componentNode));
+            }
+            break;
+        case ComponentType::NavGridComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<NavGridComponent>(entity, {});
+            }else{
+                registry->addComponent<NavGridComponent>(entity, Stream::decodeNavGridComponent(componentNode));
+            }
+            break;
         case ComponentType::WaterVolumeComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
                 registry->addComponent<WaterVolumeComponent>(entity, {});
@@ -1674,6 +1716,42 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
                 oldComponent = Stream::encodeJoint2DComponent(registry->getComponent<Joint2DComponent>(entity));
             }
             registry->removeComponent<Joint2DComponent>(entity);
+            break;
+        case ComponentType::NavMeshSurfaceComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeNavMeshSurfaceComponent(registry->getComponent<NavMeshSurfaceComponent>(entity));
+            }
+            registry->removeComponent<NavMeshSurfaceComponent>(entity);
+            break;
+        case ComponentType::NavMeshAgentComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeNavMeshAgentComponent(registry->getComponent<NavMeshAgentComponent>(entity));
+            }
+            registry->removeComponent<NavMeshAgentComponent>(entity);
+            break;
+        case ComponentType::NavMeshObstacleComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeNavMeshObstacleComponent(registry->getComponent<NavMeshObstacleComponent>(entity));
+            }
+            registry->removeComponent<NavMeshObstacleComponent>(entity);
+            break;
+        case ComponentType::NavMeshLinkComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeNavMeshLinkComponent(registry->getComponent<NavMeshLinkComponent>(entity));
+            }
+            registry->removeComponent<NavMeshLinkComponent>(entity);
+            break;
+        case ComponentType::NavMeshModifierComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeNavMeshModifierComponent(registry->getComponent<NavMeshModifierComponent>(entity));
+            }
+            registry->removeComponent<NavMeshModifierComponent>(entity);
+            break;
+        case ComponentType::NavGridComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeNavGridComponent(registry->getComponent<NavGridComponent>(entity));
+            }
+            registry->removeComponent<NavGridComponent>(entity);
             break;
         case ComponentType::WaterVolumeComponent:
             if (encodeComponent){

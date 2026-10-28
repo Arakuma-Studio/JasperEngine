@@ -3156,6 +3156,12 @@ std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* s
         case ComponentType::Rigidbody2DComponent: return guardPhysicsCode(createRigidbody2DComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames), "JASPERENGINE_PHYSICS_2D");
         case ComponentType::RigidbodyComponent: return guardPhysicsCode(createRigidbodyComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames), "JASPERENGINE_PHYSICS_3D");
         case ComponentType::Joint2DComponent: return guardPhysicsCode(createJoint2DComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames), "JASPERENGINE_PHYSICS_2D");
+        case ComponentType::NavMeshSurfaceComponent: return createNavMeshSurfaceComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::NavMeshAgentComponent: return createNavMeshAgentComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::NavMeshObstacleComponent: return createNavMeshObstacleComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::NavMeshLinkComponent: return createNavMeshLinkComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::NavMeshModifierComponent: return createNavMeshModifierComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::NavGridComponent: return createNavGridComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::WaterVolumeComponent: return createWaterVolumeComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting);
         case ComponentType::BuoyancyComponent: return createBuoyancyComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting);
         case ComponentType::CharacterControllerComponent: return guardPhysicsCode(createCharacterControllerComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting), "JASPERENGINE_PHYSICS_3D");

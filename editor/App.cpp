@@ -29,6 +29,7 @@
 #include "command/type/DuplicateEntityCmd.h"
 #include "command/type/RemoveChildSceneCmd.h"
 #include "lattice/LatticeSceneTools.h"
+#include "navigation/NavigationEditor.h"
 #include "util/EntityClipboard.h"
 #include "mcp/McpActivityWindow.h"
 #include "window/JobsMemoryWindow.h"
@@ -3061,6 +3062,8 @@ void editor::App::engineRender(){
     // scripts saved while a scene plays swap in here, at the frame boundary (no Lua runs now)
     ScriptStatus::get().update();
     ScriptReloadService::get().update();
+    // navigation bakes of the stopped scenes: landed and saved (.navmesh) as they finish
+    NavigationEditor::get().update(&project);
     project.updateGeneratedSources();
     // Prefab Mode's Auto Save waits for the edit in progress (a drag, a field being typed)
     project.updatePrefabStages(ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsAnyItemActive()

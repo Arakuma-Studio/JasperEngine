@@ -341,6 +341,96 @@ const EnumOptions& atmosphereQualityOptions() {
     return options;
 }
 
+// ---- navigation (S19)
+const EnumOptions& navCollectObjectsOptions() {
+    static const EnumOptions options = {
+        {(int)NavCollectObjects::ALL, "all", "All Game Objects"},
+        {(int)NavCollectObjects::VOLUME, "volume", "Volume"},
+        {(int)NavCollectObjects::CHILDREN, "children", "Current Object Hierarchy"}
+    };
+    return options;
+}
+
+const EnumOptions& navUseGeometryOptions() {
+    static const EnumOptions options = {
+        {(int)NavUseGeometry::RENDER_MESHES, "render_meshes", "Render Meshes"},
+        {(int)NavUseGeometry::PHYSICS_COLLIDERS, "physics_colliders", "Physics Colliders"},
+        {(int)NavUseGeometry::BOTH, "both", "Both"}
+    };
+    return options;
+}
+
+const EnumOptions& navPlaneOptions() {
+    static const EnumOptions options = {
+        {(int)nav::NavPlane::XZ, "xz", "XZ (3D)"},
+        {(int)nav::NavPlane::XY, "xy", "XY (2D)"}
+    };
+    return options;
+}
+
+const EnumOptions& navAvoidanceOptions() {
+    static const EnumOptions options = {
+        {(int)nav::AvoidanceQuality::None, "none", "None"},
+        {(int)nav::AvoidanceQuality::Low, "low", "Low Quality"},
+        {(int)nav::AvoidanceQuality::Medium, "medium", "Medium Quality"},
+        {(int)nav::AvoidanceQuality::Good, "good", "Good Quality"},
+        {(int)nav::AvoidanceQuality::High, "high", "High Quality"}
+    };
+    return options;
+}
+
+const EnumOptions& navAgentDriverOptions() {
+    static const EnumOptions options = {
+        {(int)NavAgentDriver::TRANSFORM, "transform", "Transform"},
+        {(int)NavAgentDriver::RIGIDBODY, "rigidbody", "Rigidbody"},
+        {(int)NavAgentDriver::CHARACTER_CONTROLLER, "character_controller", "Character Controller"},
+        {(int)NavAgentDriver::NONE, "none", "None"}
+    };
+    return options;
+}
+
+const EnumOptions& navObstacleShapeOptions() {
+    static const EnumOptions options = {
+        {(int)NavObstacleShape::CAPSULE, "capsule", "Capsule"},
+        {(int)NavObstacleShape::BOX, "box", "Box"}
+    };
+    return options;
+}
+
+const EnumOptions& navModifierInclusionOptions() {
+    static const EnumOptions options = {
+        {(int)NavModifierInclusion::AUTO, "auto", "Auto"},
+        {(int)NavModifierInclusion::INCLUDE, "include", "Include"},
+        {(int)NavModifierInclusion::EXCLUDE, "exclude", "Exclude"}
+    };
+    return options;
+}
+
+const EnumOptions& navGridLayoutOptions() {
+    static const EnumOptions options = {
+        {(int)nav::GridLayout::Square, "square", "Square"},
+        {(int)nav::GridLayout::Hex, "hex", "Hex (pointy-top)"}
+    };
+    return options;
+}
+
+const EnumOptions& navGridMovementOptions() {
+    static const EnumOptions options = {
+        {(int)nav::GridMovement::Free, "free", "Free"},
+        {(int)nav::GridMovement::CellCentres, "cell_centres", "Cell Centres"}
+    };
+    return options;
+}
+
+const EnumOptions& navGridSourceOptions() {
+    static const EnumOptions options = {
+        {(int)NavGridSource::NONE, "none", "None"},
+        {(int)NavGridSource::TILEMAP, "tilemap", "Tilemap"},
+        {(int)NavGridSource::TERRAIN, "terrain", "Terrain"}
+    };
+    return options;
+}
+
 const EnumOptions& waterVolumeWavesOptions() {
     static const EnumOptions options = {
         {(int)WaterVolumeWaves::FROM_MATERIAL, "from_material", "From Material"},
@@ -1167,6 +1257,27 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
             if (name == "type") return &fogTypeOptions();
             if (name == "colorMode") return &fogColorModeOptions();
             if (name == "qualityOverride") return &atmosphereQualityOverrideOptions();
+            break;
+        case ComponentType::NavMeshSurfaceComponent:
+            if (name == "collectObjects") return &navCollectObjectsOptions();
+            if (name == "useGeometry") return &navUseGeometryOptions();
+            if (name == "plane") return &navPlaneOptions();
+            break;
+        case ComponentType::NavMeshAgentComponent:
+            if (name == "obstacleAvoidance") return &navAvoidanceOptions();
+            if (name == "driver") return &navAgentDriverOptions();
+            break;
+        case ComponentType::NavMeshObstacleComponent:
+            if (name == "shape") return &navObstacleShapeOptions();
+            break;
+        case ComponentType::NavMeshModifierComponent:
+            if (name == "overrideInclusion") return &navModifierInclusionOptions();
+            break;
+        case ComponentType::NavGridComponent:
+            if (name == "layout") return &navGridLayoutOptions();
+            if (name == "plane") return &navPlaneOptions();
+            if (name == "movement") return &navGridMovementOptions();
+            if (name == "source") return &navGridSourceOptions();
             break;
         case ComponentType::WaterVolumeComponent:
             if (name == "waves") return &waterVolumeWavesOptions();

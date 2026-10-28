@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "LuaFunction.h"
+#include "object/navigation/NavMeshAgent.h"
+#include "object/navigation/NavMeshSurface.h"
 
 #include "math/Vector2.h"
 #include "util/FunctionSubscribe.h"
@@ -207,6 +209,16 @@ void LuaFunctionBase::push_value(lua_State *vm, const std::vector<ParticleSubEmi
         lua_setfield(vm, -2, "trigger");
         lua_rawseti(vm, -2, (lua_Integer)i + 1);
     }
+}
+
+void LuaFunctionBase::push_value(lua_State *vm, NavMeshAgent o){
+    if (!luabridge::push<NavMeshAgent>(vm, o))
+        throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
+}
+
+void LuaFunctionBase::push_value(lua_State *vm, NavMeshSurface o){
+    if (!luabridge::push<NavMeshSurface>(vm, o))
+        throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
 }
 
 #ifdef JASPERENGINE_PHYSICS_2D

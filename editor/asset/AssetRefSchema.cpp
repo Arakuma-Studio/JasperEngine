@@ -130,6 +130,8 @@ namespace {
         row(C::ModelComponent, "filename", Shape::Asset, AssetType::Model, Base::Assets);
         row(C::AudioSourceComponent, "filename", Shape::Asset, AssetType::Audio, Base::Assets);
         row(C::UIDocumentComponent, "filename", Shape::Asset, AssetType::UIDocument, Base::Assets);
+        row(C::NavMeshSurfaceComponent, "navMeshData", Shape::Asset, AssetType::NavMesh, Base::Assets);
+        row(C::NavGridComponent, "gridData", Shape::Asset, AssetType::NavGrid, Base::Assets);
 
         row(C::ParticleSystemComponent, "effect", Shape::Asset, AssetType::ParticleEffect, Base::Assets);
         row(C::ParticleSystemComponent, "inlineEffect", Shape::ParticleEffect, AssetType::Unknown, Base::Assets);

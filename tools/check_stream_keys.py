@@ -18,7 +18,8 @@ import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SOURCES = [os.path.join(ROOT, "editor", "Stream.cpp"), os.path.join(ROOT, "editor", "StreamPrefab.cpp")]
+SOURCES = [os.path.join(ROOT, "editor", "Stream.cpp"), os.path.join(ROOT, "editor", "StreamPrefab.cpp"),
+           os.path.join(ROOT, "editor", "StreamNavigation.cpp")]
 SCHEMA = os.path.join(ROOT, "editor", "StreamSchema.cpp")
 
 # Nested structures with a decoder of their own, checked inside components (knownNestedKeys)

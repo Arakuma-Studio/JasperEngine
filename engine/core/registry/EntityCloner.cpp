@@ -639,6 +639,40 @@ void prepare<Joint3DComponent>(Joint3DComponent& joint, Entity, CloneContext& ct
 }
 #endif
 
+// navigation (S19): an agent's surface reference follows the clone; runtime state and Lua
+// subscriptions stay with the original; a grid's cells are its own copy
+template<>
+void prepare<NavMeshAgentComponent>(NavMeshAgentComponent& agent, Entity, CloneContext& ctx) {
+    agent.surface = ctx.remap(agent.surface);
+    const NavMeshAgentComponent defaults;
+    agent.destination = defaults.destination;
+    agent.hasPath = false;
+    agent.pathPending = false;
+    agent.pathStatus = defaults.pathStatus;
+    agent.remainingDistance = 0.0f;
+    agent.velocity = defaults.velocity;
+    agent.desiredVelocity = defaults.desiredVelocity;
+    agent.nextPosition = defaults.nextPosition;
+    agent.isOnNavMesh = false;
+    agent.isOnOffMeshLink = false;
+    agent.onDestinationReached.clear();
+    agent.onPathFailed.clear();
+    agent.onOffMeshLinkStart.clear();
+    agent.onOffMeshLinkEnd.clear();
+}
+
+template<>
+void prepare<NavMeshSurfaceComponent>(NavMeshSurfaceComponent& surface, Entity, CloneContext&) {
+    surface.onBakeCompleted.clear();
+}
+
+template<>
+void prepare<NavGridComponent>(NavGridComponent& grid, Entity, CloneContext& ctx) {
+    grid.sourceEntity = ctx.remap(grid.sourceEntity);
+    if (grid.map)
+        grid.map = std::make_shared<nav::NavGridMap>(*grid.map);
+}
+
 template<>
 void prepare<ScriptComponent>(ScriptComponent& scripts, Entity, CloneContext& ctx) {
     for (ScriptEntry& entry : scripts.scripts) {
@@ -736,6 +770,12 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
 #endif
     copyComponent<WaterVolumeComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<BuoyancyComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<NavMeshSurfaceComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<NavMeshAgentComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<NavMeshObstacleComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<NavMeshLinkComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<NavMeshModifierComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<NavGridComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<InstancedMeshComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<PrefabComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ReflectionProbeComponent>(source, sourceEntity, signature, target, targetEntity, ctx);

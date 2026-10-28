@@ -919,6 +919,100 @@ namespace {
         makeFastProperty<Joint2DComponent, bool, &Joint2DComponent::rope>("rope", PropertyType::Bool, UpdateFlags_Joint2D),
     };
 
+    // ---- navigation (S19)
+    static const FastPropertyDescriptor kNavMeshSurfaceProperties[] = {
+        makeFastProperty<NavMeshSurfaceComponent, int, &NavMeshSurfaceComponent::agentType>("agentType", PropertyType::Int, UpdateFlags_None),
+        makeFastProperty<NavMeshSurfaceComponent, NavCollectObjects, &NavMeshSurfaceComponent::collectObjects>("collectObjects", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<NavMeshSurfaceComponent, NavUseGeometry, &NavMeshSurfaceComponent::useGeometry>("useGeometry", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<NavMeshSurfaceComponent, unsigned int, &NavMeshSurfaceComponent::includeLayers>("includeLayers", PropertyType::UInt, UpdateFlags_None),
+        makeFastProperty<NavMeshSurfaceComponent, int, &NavMeshSurfaceComponent::defaultArea>("defaultArea", PropertyType::Int, UpdateFlags_None),
+        makeFastProperty<NavMeshSurfaceComponent, Vector3, &NavMeshSurfaceComponent::volumeCenter>("volumeCenter", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<NavMeshSurfaceComponent, Vector3, &NavMeshSurfaceComponent::volumeSize>("volumeSize", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<NavMeshSurfaceComponent, bool, &NavMeshSurfaceComponent::overrideCellSize>("overrideCellSize", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<NavMeshSurfaceComponent, float, &NavMeshSurfaceComponent::cellSize>("cellSize", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<NavMeshSurfaceComponent, bool, &NavMeshSurfaceComponent::overrideTileSize>("overrideTileSize", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<NavMeshSurfaceComponent, int, &NavMeshSurfaceComponent::tileSize>("tileSize", PropertyType::Int, UpdateFlags_None),
+        makeFastProperty<NavMeshSurfaceComponent, float, &NavMeshSurfaceComponent::minRegionArea>("minRegionArea", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<NavMeshSurfaceComponent, nav::NavPlane, &NavMeshSurfaceComponent::plane>("plane", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<NavMeshSurfaceComponent, bool, &NavMeshSurfaceComponent::runtimeCarving>("runtimeCarving", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<NavMeshSurfaceComponent, AssetRef, &NavMeshSurfaceComponent::navMeshData>("navMeshData", PropertyType::Asset, UpdateFlags_None),
+    };
+
+    static const FastPropertyDescriptor kNavMeshAgentProperties[] = {
+        makeFastProperty<NavMeshAgentComponent, int, &NavMeshAgentComponent::agentType>("agentType", PropertyType::Int, UpdateFlags_None),
+        makeFastProperty<NavMeshAgentComponent, float, &NavMeshAgentComponent::baseOffset>("baseOffset", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<NavMeshAgentComponent, float, &NavMeshAgentComponent::speed>("speed", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<NavMeshAgentComponent, float, &NavMeshAgentComponent::angularSpeed>("angularSpeed", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<NavMeshAgentComponent, float, &NavMeshAgentComponent::acceleration>("acceleration", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<NavMeshAgentComponent, float, &NavMeshAgentComponent::stoppingDistance>("stoppingDistance", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<NavMeshAgentComponent, bool, &NavMeshAgentComponent::autoBraking>("autoBraking", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<NavMeshAgentComponent, float, &NavMeshAgentComponent::radius>("radius", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<NavMeshAgentComponent, float, &NavMeshAgentComponent::height>("height", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<NavMeshAgentComponent, nav::AvoidanceQuality, &NavMeshAgentComponent::obstacleAvoidance>("obstacleAvoidance", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<NavMeshAgentComponent, int, &NavMeshAgentComponent::avoidancePriority>("avoidancePriority", PropertyType::Int, UpdateFlags_None),
+        makeFastProperty<NavMeshAgentComponent, bool, &NavMeshAgentComponent::autoTraverseOffMeshLink>("autoTraverseOffMeshLink", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<NavMeshAgentComponent, bool, &NavMeshAgentComponent::autoRepath>("autoRepath", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<NavMeshAgentComponent, int, &NavMeshAgentComponent::areaMask>("areaMask", PropertyType::Int, UpdateFlags_None),
+        makeFastProperty<NavMeshAgentComponent, bool, &NavMeshAgentComponent::updatePosition>("updatePosition", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<NavMeshAgentComponent, bool, &NavMeshAgentComponent::updateRotation>("updateRotation", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<NavMeshAgentComponent, NavAgentDriver, &NavMeshAgentComponent::driver>("driver", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<NavMeshAgentComponent, Entity, &NavMeshAgentComponent::surface>("surface", PropertyType::Entity, UpdateFlags_None),
+    };
+
+    static const FastPropertyDescriptor kNavMeshObstacleProperties[] = {
+        makeFastProperty<NavMeshObstacleComponent, NavObstacleShape, &NavMeshObstacleComponent::shape>("shape", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<NavMeshObstacleComponent, Vector3, &NavMeshObstacleComponent::center>("center", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<NavMeshObstacleComponent, Vector3, &NavMeshObstacleComponent::size>("size", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<NavMeshObstacleComponent, float, &NavMeshObstacleComponent::radius>("radius", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<NavMeshObstacleComponent, float, &NavMeshObstacleComponent::height>("height", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<NavMeshObstacleComponent, bool, &NavMeshObstacleComponent::carve>("carve", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<NavMeshObstacleComponent, float, &NavMeshObstacleComponent::moveThreshold>("moveThreshold", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<NavMeshObstacleComponent, float, &NavMeshObstacleComponent::timeToStationary>("timeToStationary", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<NavMeshObstacleComponent, bool, &NavMeshObstacleComponent::carveOnlyStationary>("carveOnlyStationary", PropertyType::Bool, UpdateFlags_None),
+    };
+
+    static const FastPropertyDescriptor kNavMeshLinkProperties[] = {
+        makeFastProperty<NavMeshLinkComponent, int, &NavMeshLinkComponent::agentType>("agentType", PropertyType::Int, UpdateFlags_None),
+        makeFastProperty<NavMeshLinkComponent, Vector3, &NavMeshLinkComponent::startPoint>("startPoint", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<NavMeshLinkComponent, Vector3, &NavMeshLinkComponent::endPoint>("endPoint", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<NavMeshLinkComponent, float, &NavMeshLinkComponent::width>("width", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<NavMeshLinkComponent, float, &NavMeshLinkComponent::costModifier>("costModifier", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<NavMeshLinkComponent, bool, &NavMeshLinkComponent::bidirectional>("bidirectional", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<NavMeshLinkComponent, bool, &NavMeshLinkComponent::autoUpdatePosition>("autoUpdatePosition", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<NavMeshLinkComponent, int, &NavMeshLinkComponent::area>("area", PropertyType::Int, UpdateFlags_None),
+    };
+
+    static const FastPropertyDescriptor kNavMeshModifierProperties[] = {
+        makeFastProperty<NavMeshModifierComponent, NavModifierInclusion, &NavMeshModifierComponent::overrideInclusion>("overrideInclusion", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<NavMeshModifierComponent, bool, &NavMeshModifierComponent::overrideArea>("overrideArea", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<NavMeshModifierComponent, int, &NavMeshModifierComponent::area>("area", PropertyType::Int, UpdateFlags_None),
+        makeFastProperty<NavMeshModifierComponent, bool, &NavMeshModifierComponent::applyToChildren>("applyToChildren", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<NavMeshModifierComponent, bool, &NavMeshModifierComponent::useVolume>("useVolume", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<NavMeshModifierComponent, Vector3, &NavMeshModifierComponent::volumeCenter>("volumeCenter", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<NavMeshModifierComponent, Vector3, &NavMeshModifierComponent::volumeSize>("volumeSize", PropertyType::Vector3, UpdateFlags_None),
+    };
+
+    static const FastPropertyDescriptor kNavGridProperties[] = {
+        makeFastProperty<NavGridComponent, nav::GridLayout, &NavGridComponent::layout>("layout", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<NavGridComponent, int, &NavGridComponent::neighbours>("neighbours", PropertyType::Int, UpdateFlags_None),
+        makeFastProperty<NavGridComponent, float, &NavGridComponent::cellSize>("cellSize", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<NavGridComponent, int, &NavGridComponent::width>("width", PropertyType::Int, UpdateFlags_None),
+        makeFastProperty<NavGridComponent, int, &NavGridComponent::height>("height", PropertyType::Int, UpdateFlags_None),
+        makeFastProperty<NavGridComponent, nav::NavPlane, &NavGridComponent::plane>("plane", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<NavGridComponent, float, &NavGridComponent::maxSlope>("maxSlope", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<NavGridComponent, float, &NavGridComponent::maxStep>("maxStep", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<NavGridComponent, nav::GridMovement, &NavGridComponent::movement>("movement", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<NavGridComponent, float, &NavGridComponent::reservationLookahead>("reservationLookahead", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<NavGridComponent, float, &NavGridComponent::reservationPenalty>("reservationPenalty", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<NavGridComponent, NavGridSource, &NavGridComponent::source>("source", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<NavGridComponent, Entity, &NavGridComponent::sourceEntity>("sourceEntity", PropertyType::Entity, UpdateFlags_None),
+        makeFastPropertyNoDefault<NavGridComponent, std::vector<NavGridTileArea>, &NavGridComponent::tileAreas>("tileAreas", PropertyType::Custom, UpdateFlags_None),
+        makeFastProperty<NavGridComponent, int, &NavGridComponent::emptyCellArea>("emptyCellArea", PropertyType::Int, UpdateFlags_None),
+        makeFastProperty<NavGridComponent, bool, &NavGridComponent::collidersBlock>("collidersBlock", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<NavGridComponent, bool, &NavGridComponent::autoRebuild>("autoRebuild", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<NavGridComponent, AssetRef, &NavGridComponent::gridData>("gridData", PropertyType::Asset, UpdateFlags_None),
+    };
+
     static const FastPropertyDescriptor kCharacterController2DProperties[] = {
         makeFastProperty<CharacterController2DComponent, Vector2, &CharacterController2DComponent::center>("center", PropertyType::Vector2, UpdateFlags_None),
         makeFastProperty<CharacterController2DComponent, float, &CharacterController2DComponent::height>("height", PropertyType::Float, UpdateFlags_None),
@@ -2037,6 +2131,30 @@ namespace {
         return resolveDirectProperties(static_cast<Joint2DComponent*>(comp), propertyName, kJoint2DProperties);
     }
 
+    PropertyData resolveNavMeshSurfacePropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<NavMeshSurfaceComponent*>(comp), propertyName, kNavMeshSurfaceProperties);
+    }
+
+    PropertyData resolveNavMeshAgentPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<NavMeshAgentComponent*>(comp), propertyName, kNavMeshAgentProperties);
+    }
+
+    PropertyData resolveNavMeshObstaclePropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<NavMeshObstacleComponent*>(comp), propertyName, kNavMeshObstacleProperties);
+    }
+
+    PropertyData resolveNavMeshLinkPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<NavMeshLinkComponent*>(comp), propertyName, kNavMeshLinkProperties);
+    }
+
+    PropertyData resolveNavMeshModifierPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<NavMeshModifierComponent*>(comp), propertyName, kNavMeshModifierProperties);
+    }
+
+    PropertyData resolveNavGridPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<NavGridComponent*>(comp), propertyName, kNavGridProperties);
+    }
+
     PropertyData resolveCharacterController2DPropertyFast(void* comp, const std::string& propertyName) {
         return resolveDirectProperties(static_cast<CharacterController2DComponent*>(comp), propertyName, kCharacterController2DProperties);
     }
@@ -2983,6 +3101,30 @@ namespace {
         enumerateFromDescriptors(comp, ps, kJoint2DProperties);
     }
 
+    void enumerateNavMeshSurfaceProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kNavMeshSurfaceProperties);
+    }
+
+    void enumerateNavMeshAgentProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kNavMeshAgentProperties);
+    }
+
+    void enumerateNavMeshObstacleProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kNavMeshObstacleProperties);
+    }
+
+    void enumerateNavMeshLinkProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kNavMeshLinkProperties);
+    }
+
+    void enumerateNavMeshModifierProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kNavMeshModifierProperties);
+    }
+
+    void enumerateNavGridProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kNavGridProperties);
+    }
+
     void enumerateCharacterController2DProperties(void* comp, std::map<std::string, PropertyData>& ps) {
         enumerateFromDescriptors(comp, ps, kCharacterController2DProperties);
     }
@@ -3622,6 +3764,12 @@ namespace {
         {ComponentType::TextComponent, &findComponentPtr<TextComponent>, &resolveTextPropertyFast, &enumerateTextProperties},
         {ComponentType::ScriptComponent, &findComponentPtr<ScriptComponent>, &resolveScriptPropertyFast, &enumerateScriptProperties},
         {ComponentType::Joint2DComponent, &findComponentPtr<Joint2DComponent>, &resolveJoint2DPropertyFast, &enumerateJoint2DProperties},
+        {ComponentType::NavMeshSurfaceComponent, &findComponentPtr<NavMeshSurfaceComponent>, &resolveNavMeshSurfacePropertyFast, &enumerateNavMeshSurfaceProperties},
+        {ComponentType::NavMeshAgentComponent, &findComponentPtr<NavMeshAgentComponent>, &resolveNavMeshAgentPropertyFast, &enumerateNavMeshAgentProperties},
+        {ComponentType::NavMeshObstacleComponent, &findComponentPtr<NavMeshObstacleComponent>, &resolveNavMeshObstaclePropertyFast, &enumerateNavMeshObstacleProperties},
+        {ComponentType::NavMeshLinkComponent, &findComponentPtr<NavMeshLinkComponent>, &resolveNavMeshLinkPropertyFast, &enumerateNavMeshLinkProperties},
+        {ComponentType::NavMeshModifierComponent, &findComponentPtr<NavMeshModifierComponent>, &resolveNavMeshModifierPropertyFast, &enumerateNavMeshModifierProperties},
+        {ComponentType::NavGridComponent, &findComponentPtr<NavGridComponent>, &resolveNavGridPropertyFast, &enumerateNavGridProperties},
         {ComponentType::CharacterController2DComponent, &findComponentPtr<CharacterController2DComponent>, &resolveCharacterController2DPropertyFast, &enumerateCharacterController2DProperties},
         {ComponentType::CharacterControllerComponent, &findComponentPtr<CharacterControllerComponent>, &resolveCharacterControllerPropertyFast, &enumerateCharacterControllerProperties},
         {ComponentType::WaterVolumeComponent, &findComponentPtr<WaterVolumeComponent>, &resolveWaterVolumePropertyFast, &enumerateWaterVolumeProperties},
@@ -3683,6 +3831,12 @@ namespace {
             case ComponentType::Rigidbody2DComponent: return &getEnabledRef<Rigidbody2DComponent>;
             case ComponentType::RigidbodyComponent: return &getEnabledRef<RigidbodyComponent>;
             case ComponentType::Joint2DComponent: return &getEnabledRef<Joint2DComponent>;
+            case ComponentType::NavMeshSurfaceComponent: return &getEnabledRef<NavMeshSurfaceComponent>;
+            case ComponentType::NavMeshAgentComponent: return &getEnabledRef<NavMeshAgentComponent>;
+            case ComponentType::NavMeshObstacleComponent: return &getEnabledRef<NavMeshObstacleComponent>;
+            case ComponentType::NavMeshLinkComponent: return &getEnabledRef<NavMeshLinkComponent>;
+            case ComponentType::NavMeshModifierComponent: return &getEnabledRef<NavMeshModifierComponent>;
+            case ComponentType::NavGridComponent: return &getEnabledRef<NavGridComponent>;
             case ComponentType::CharacterController2DComponent: return &getEnabledRef<CharacterController2DComponent>;
             case ComponentType::CharacterControllerComponent: return &getEnabledRef<CharacterControllerComponent>;
             case ComponentType::WaterVolumeComponent: return &getEnabledRef<WaterVolumeComponent>;
@@ -3856,6 +4010,18 @@ std::string computeComponentName(editor::ComponentType component){
         name = "InstancedMeshComponent";
     }else if(component == ComponentType::Joint2DComponent){
         name = "Joint2DComponent";
+    }else if(component == ComponentType::NavMeshSurfaceComponent){
+        name = "NavMeshSurfaceComponent";
+    }else if(component == ComponentType::NavMeshAgentComponent){
+        name = "NavMeshAgentComponent";
+    }else if(component == ComponentType::NavMeshObstacleComponent){
+        name = "NavMeshObstacleComponent";
+    }else if(component == ComponentType::NavMeshLinkComponent){
+        name = "NavMeshLinkComponent";
+    }else if(component == ComponentType::NavMeshModifierComponent){
+        name = "NavMeshModifierComponent";
+    }else if(component == ComponentType::NavGridComponent){
+        name = "NavGridComponent";
     }else if(component == ComponentType::CharacterController2DComponent){
         name = "CharacterController2DComponent";
     }else if(component == ComponentType::CharacterControllerComponent){
@@ -3968,6 +4134,12 @@ std::string editor::Catalog::getComponentDisplayName(ComponentType component){
         case ComponentType::ImageComponent: return "Image";
         case ComponentType::InstancedMeshComponent: return "Mesh Instancing";
         case ComponentType::Joint2DComponent: return "Joint 2D";
+        case ComponentType::NavMeshSurfaceComponent: return "NavMesh Surface";
+        case ComponentType::NavMeshAgentComponent: return "NavMesh Agent";
+        case ComponentType::NavMeshObstacleComponent: return "NavMesh Obstacle";
+        case ComponentType::NavMeshLinkComponent: return "NavMesh Link";
+        case ComponentType::NavMeshModifierComponent: return "NavMesh Modifier";
+        case ComponentType::NavGridComponent: return "Nav Grid";
         case ComponentType::CharacterController2DComponent: return "Character Controller 2D";
         case ComponentType::CharacterControllerComponent: return "Character Controller";
         case ComponentType::WaterVolumeComponent: return "Water Volume";
@@ -4039,6 +4211,12 @@ const char* editor::Catalog::getComponentIcon(ComponentType component){
         case ComponentType::ImageComponent: return ICON_FA_IMAGE;
         case ComponentType::InstancedMeshComponent: return ICON_FA_CLONE;
         case ComponentType::Joint2DComponent: return ICON_FA_LINK;
+        case ComponentType::NavMeshSurfaceComponent: return ICON_FA_ROUTE;
+        case ComponentType::NavMeshAgentComponent: return ICON_FA_PERSON_WALKING_ARROW_RIGHT;
+        case ComponentType::NavMeshObstacleComponent: return ICON_FA_BAN;
+        case ComponentType::NavMeshLinkComponent: return ICON_FA_BRIDGE;
+        case ComponentType::NavMeshModifierComponent: return ICON_FA_DRAW_POLYGON;
+        case ComponentType::NavGridComponent: return ICON_FA_TABLE_CELLS;
         case ComponentType::CharacterController2DComponent: return ICON_FA_PERSON_WALKING;
         case ComponentType::CharacterControllerComponent: return ICON_FA_PERSON_WALKING;
         case ComponentType::WaterVolumeComponent: return ICON_FA_WATER;
@@ -4179,6 +4357,18 @@ ComponentId editor::Catalog::getComponentId(const EntityRegistry* registry, Comp
             return registry->getComponentId<InstancedMeshComponent>();
         case ComponentType::Joint2DComponent:
             return registry->getComponentId<Joint2DComponent>();
+        case ComponentType::NavMeshSurfaceComponent:
+            return registry->getComponentId<NavMeshSurfaceComponent>();
+        case ComponentType::NavMeshAgentComponent:
+            return registry->getComponentId<NavMeshAgentComponent>();
+        case ComponentType::NavMeshObstacleComponent:
+            return registry->getComponentId<NavMeshObstacleComponent>();
+        case ComponentType::NavMeshLinkComponent:
+            return registry->getComponentId<NavMeshLinkComponent>();
+        case ComponentType::NavMeshModifierComponent:
+            return registry->getComponentId<NavMeshModifierComponent>();
+        case ComponentType::NavGridComponent:
+            return registry->getComponentId<NavGridComponent>();
         case ComponentType::CharacterController2DComponent:
             return registry->getComponentId<CharacterController2DComponent>();
         case ComponentType::CharacterControllerComponent:
@@ -4309,6 +4499,18 @@ editor::ComponentType editor::Catalog::getComponentType(const std::string& compo
         return ComponentType::InstancedMeshComponent;
     }else if(normalizedName == "joint2d"){
         return ComponentType::Joint2DComponent;
+    }else if(normalizedName == "navmeshsurface"){
+        return ComponentType::NavMeshSurfaceComponent;
+    }else if(normalizedName == "navmeshagent"){
+        return ComponentType::NavMeshAgentComponent;
+    }else if(normalizedName == "navmeshobstacle"){
+        return ComponentType::NavMeshObstacleComponent;
+    }else if(normalizedName == "navmeshlink"){
+        return ComponentType::NavMeshLinkComponent;
+    }else if(normalizedName == "navmeshmodifier"){
+        return ComponentType::NavMeshModifierComponent;
+    }else if(normalizedName == "navgrid"){
+        return ComponentType::NavGridComponent;
     }else if(normalizedName == "charactercontroller2d"){
         return ComponentType::CharacterController2DComponent;
     }else if(normalizedName == "charactercontroller"){
@@ -4504,6 +4706,24 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     }
     if (registry->findComponent<Joint2DComponent>(entity)){
         ret.push_back(ComponentType::Joint2DComponent);
+    }
+    if (registry->findComponent<NavMeshSurfaceComponent>(entity)){
+        ret.push_back(ComponentType::NavMeshSurfaceComponent);
+    }
+    if (registry->findComponent<NavMeshAgentComponent>(entity)){
+        ret.push_back(ComponentType::NavMeshAgentComponent);
+    }
+    if (registry->findComponent<NavMeshObstacleComponent>(entity)){
+        ret.push_back(ComponentType::NavMeshObstacleComponent);
+    }
+    if (registry->findComponent<NavMeshLinkComponent>(entity)){
+        ret.push_back(ComponentType::NavMeshLinkComponent);
+    }
+    if (registry->findComponent<NavMeshModifierComponent>(entity)){
+        ret.push_back(ComponentType::NavMeshModifierComponent);
+    }
+    if (registry->findComponent<NavGridComponent>(entity)){
+        ret.push_back(ComponentType::NavGridComponent);
     }
     if (registry->findComponent<CharacterController2DComponent>(entity)){
         ret.push_back(ComponentType::CharacterController2DComponent);
@@ -5652,6 +5872,36 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
         case ComponentType::Joint2DComponent: {
             YAML::Node encoded = Stream::encodeJoint2DComponent(sourceRegistry->getComponent<Joint2DComponent>(sourceEntity));
             targetRegistry->getComponent<Joint2DComponent>(targetEntity) = Stream::decodeJoint2DComponent(encoded);
+            break;
+        }
+        case ComponentType::NavMeshSurfaceComponent: {
+            YAML::Node encoded = Stream::encodeNavMeshSurfaceComponent(sourceRegistry->getComponent<NavMeshSurfaceComponent>(sourceEntity));
+            targetRegistry->getComponent<NavMeshSurfaceComponent>(targetEntity) = Stream::decodeNavMeshSurfaceComponent(encoded);
+            break;
+        }
+        case ComponentType::NavMeshAgentComponent: {
+            YAML::Node encoded = Stream::encodeNavMeshAgentComponent(sourceRegistry->getComponent<NavMeshAgentComponent>(sourceEntity));
+            targetRegistry->getComponent<NavMeshAgentComponent>(targetEntity) = Stream::decodeNavMeshAgentComponent(encoded);
+            break;
+        }
+        case ComponentType::NavMeshObstacleComponent: {
+            YAML::Node encoded = Stream::encodeNavMeshObstacleComponent(sourceRegistry->getComponent<NavMeshObstacleComponent>(sourceEntity));
+            targetRegistry->getComponent<NavMeshObstacleComponent>(targetEntity) = Stream::decodeNavMeshObstacleComponent(encoded);
+            break;
+        }
+        case ComponentType::NavMeshLinkComponent: {
+            YAML::Node encoded = Stream::encodeNavMeshLinkComponent(sourceRegistry->getComponent<NavMeshLinkComponent>(sourceEntity));
+            targetRegistry->getComponent<NavMeshLinkComponent>(targetEntity) = Stream::decodeNavMeshLinkComponent(encoded);
+            break;
+        }
+        case ComponentType::NavMeshModifierComponent: {
+            YAML::Node encoded = Stream::encodeNavMeshModifierComponent(sourceRegistry->getComponent<NavMeshModifierComponent>(sourceEntity));
+            targetRegistry->getComponent<NavMeshModifierComponent>(targetEntity) = Stream::decodeNavMeshModifierComponent(encoded);
+            break;
+        }
+        case ComponentType::NavGridComponent: {
+            YAML::Node encoded = Stream::encodeNavGridComponent(sourceRegistry->getComponent<NavGridComponent>(sourceEntity));
+            targetRegistry->getComponent<NavGridComponent>(targetEntity) = Stream::decodeNavGridComponent(encoded);
             break;
         }
         case ComponentType::CharacterController2DComponent: {

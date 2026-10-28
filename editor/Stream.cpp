@@ -2241,6 +2241,12 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
     }
 
     {
+        // Project Settings > Navigation (S19): only what differs from the defaults
+        const YAML::Node navigationNode = encodeNavigationProjectSettings(project->getNavigationSettings());
+        if (navigationNode.size() > 0) root["navigation"] = navigationNode;
+    }
+
+    {
         // Project Settings > Texture (S14 R24): only what differs from the defaults
         const YAML::Node textureNode = encodeTextureProjectSettings(project->getTextureSettings());
         if (textureNode.size() > 0) root["texture"] = textureNode;
@@ -2762,6 +2768,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         }
         project->setThreadingSettings(threading);
     }
+
+    project->setNavigationSettings(decodeNavigationProjectSettings(node["navigation"]));
 
     {
         TextureProjectSettings textureSettings;
@@ -4535,6 +4543,30 @@ YAML::Node editor::Stream::encodeComponentsLive(const Entity entity, const Entit
         compNode[Catalog::getComponentName(ComponentType::Joint2DComponent, true)] = encodeJoint2DComponent(joint);
     }
 
+    if (signature.test(registry->getComponentId<NavMeshSurfaceComponent>())) {
+        compNode[Catalog::getComponentName(ComponentType::NavMeshSurfaceComponent, true)] = encodeNavMeshSurfaceComponent(registry->getComponent<NavMeshSurfaceComponent>(entity));
+    }
+
+    if (signature.test(registry->getComponentId<NavMeshAgentComponent>())) {
+        compNode[Catalog::getComponentName(ComponentType::NavMeshAgentComponent, true)] = encodeNavMeshAgentComponent(registry->getComponent<NavMeshAgentComponent>(entity));
+    }
+
+    if (signature.test(registry->getComponentId<NavMeshObstacleComponent>())) {
+        compNode[Catalog::getComponentName(ComponentType::NavMeshObstacleComponent, true)] = encodeNavMeshObstacleComponent(registry->getComponent<NavMeshObstacleComponent>(entity));
+    }
+
+    if (signature.test(registry->getComponentId<NavMeshLinkComponent>())) {
+        compNode[Catalog::getComponentName(ComponentType::NavMeshLinkComponent, true)] = encodeNavMeshLinkComponent(registry->getComponent<NavMeshLinkComponent>(entity));
+    }
+
+    if (signature.test(registry->getComponentId<NavMeshModifierComponent>())) {
+        compNode[Catalog::getComponentName(ComponentType::NavMeshModifierComponent, true)] = encodeNavMeshModifierComponent(registry->getComponent<NavMeshModifierComponent>(entity));
+    }
+
+    if (signature.test(registry->getComponentId<NavGridComponent>())) {
+        compNode[Catalog::getComponentName(ComponentType::NavGridComponent, true)] = encodeNavGridComponent(registry->getComponent<NavGridComponent>(entity));
+    }
+
     if (signature.test(registry->getComponentId<CharacterController2DComponent>())) {
         const CharacterController2DComponent& controller = registry->getComponent<CharacterController2DComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::CharacterController2DComponent, true)] = encodeCharacterController2DComponent(controller);
@@ -5172,6 +5204,72 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->getComponent<Joint2DComponent>(entity) = std::move(joint);
             registry->markChanged<Joint2DComponent>(entity);
             Catalog::updateEntity(registry, entity, flags);
+        }
+    });
+
+    StreamLoad::decodeComponent(ComponentType::NavMeshSurfaceComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
+        NavMeshSurfaceComponent* existing = registry->findComponent<NavMeshSurfaceComponent>(entity);
+        NavMeshSurfaceComponent component = decodeNavMeshSurfaceComponent(componentNode, existing);
+        if (!signature.test(registry->getComponentId<NavMeshSurfaceComponent>())){
+            registry->addComponent<NavMeshSurfaceComponent>(entity, std::move(component));
+        }else{
+            registry->getComponent<NavMeshSurfaceComponent>(entity) = std::move(component);
+            registry->markChanged<NavMeshSurfaceComponent>(entity);
+        }
+    });
+
+    StreamLoad::decodeComponent(ComponentType::NavMeshAgentComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
+        NavMeshAgentComponent* existing = registry->findComponent<NavMeshAgentComponent>(entity);
+        NavMeshAgentComponent component = decodeNavMeshAgentComponent(componentNode, existing);
+        if (!signature.test(registry->getComponentId<NavMeshAgentComponent>())){
+            registry->addComponent<NavMeshAgentComponent>(entity, std::move(component));
+        }else{
+            registry->getComponent<NavMeshAgentComponent>(entity) = std::move(component);
+            registry->markChanged<NavMeshAgentComponent>(entity);
+        }
+    });
+
+    StreamLoad::decodeComponent(ComponentType::NavMeshObstacleComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
+        NavMeshObstacleComponent* existing = registry->findComponent<NavMeshObstacleComponent>(entity);
+        NavMeshObstacleComponent component = decodeNavMeshObstacleComponent(componentNode, existing);
+        if (!signature.test(registry->getComponentId<NavMeshObstacleComponent>())){
+            registry->addComponent<NavMeshObstacleComponent>(entity, std::move(component));
+        }else{
+            registry->getComponent<NavMeshObstacleComponent>(entity) = std::move(component);
+            registry->markChanged<NavMeshObstacleComponent>(entity);
+        }
+    });
+
+    StreamLoad::decodeComponent(ComponentType::NavMeshLinkComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
+        NavMeshLinkComponent* existing = registry->findComponent<NavMeshLinkComponent>(entity);
+        NavMeshLinkComponent component = decodeNavMeshLinkComponent(componentNode, existing);
+        if (!signature.test(registry->getComponentId<NavMeshLinkComponent>())){
+            registry->addComponent<NavMeshLinkComponent>(entity, std::move(component));
+        }else{
+            registry->getComponent<NavMeshLinkComponent>(entity) = std::move(component);
+            registry->markChanged<NavMeshLinkComponent>(entity);
+        }
+    });
+
+    StreamLoad::decodeComponent(ComponentType::NavMeshModifierComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
+        NavMeshModifierComponent* existing = registry->findComponent<NavMeshModifierComponent>(entity);
+        NavMeshModifierComponent component = decodeNavMeshModifierComponent(componentNode, existing);
+        if (!signature.test(registry->getComponentId<NavMeshModifierComponent>())){
+            registry->addComponent<NavMeshModifierComponent>(entity, std::move(component));
+        }else{
+            registry->getComponent<NavMeshModifierComponent>(entity) = std::move(component);
+            registry->markChanged<NavMeshModifierComponent>(entity);
+        }
+    });
+
+    StreamLoad::decodeComponent(ComponentType::NavGridComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
+        NavGridComponent* existing = registry->findComponent<NavGridComponent>(entity);
+        NavGridComponent component = decodeNavGridComponent(componentNode, existing);
+        if (!signature.test(registry->getComponentId<NavGridComponent>())){
+            registry->addComponent<NavGridComponent>(entity, std::move(component));
+        }else{
+            registry->getComponent<NavGridComponent>(entity) = std::move(component);
+            registry->markChanged<NavGridComponent>(entity);
         }
     });
 

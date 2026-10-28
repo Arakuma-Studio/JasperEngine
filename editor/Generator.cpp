@@ -2453,6 +2453,8 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
         mainContent += "    InputActions::setDefaultDeadzone(" + Factory::formatFloat(inputDeadzone) + ");\n";
     if (!inputActionsAsset.empty())
         mainContent += "    InputActions::loadDefault(" + Factory::formatString(inputActionsAsset) + ");\n";
+    // Project Settings > Navigation: the agent types and areas every navmesh and grid reads
+    mainContent += navigationSettingsCode;
     // the texture quality, memory budget and low-memory fallback of the platform group
     // (Project Settings > Texture), before any texture loads
     {

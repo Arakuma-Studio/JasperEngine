@@ -143,12 +143,18 @@ namespace jasperengine::editor{
         CharacterController2DComponent,
         CharacterControllerComponent,
         WaterVolumeComponent,
-        BuoyancyComponent
+        BuoyancyComponent,
+        NavMeshSurfaceComponent,
+        NavMeshAgentComponent,
+        NavMeshObstacleComponent,
+        NavMeshLinkComponent,
+        NavMeshModifierComponent,
+        NavGridComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::BuoyancyComponent;
+    constexpr ComponentType LastComponentType = ComponentType::NavGridComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
     // (S12's name for it)
     constexpr ComponentType LAST_COMPONENT_TYPE = LastComponentType;

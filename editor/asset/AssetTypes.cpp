@@ -38,6 +38,8 @@ namespace {
             {{AssetType::Data, AssetIdentity::Sidecar, AssetPathBase::Assets, false, true}, {".json", ".txt", ".csv", ".xml", ".bytes", ".inputactions"}},
             {{AssetType::ColorLut, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".cube"}},
             {{AssetType::ParticleEffect, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".particles"}},
+            {{AssetType::NavMesh, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".navmesh"}},
+            {{AssetType::NavGrid, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".navgrid"}},
         };
         return table;
     }

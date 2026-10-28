@@ -2952,6 +2952,7 @@ bool editor::Exporter::copyEngine() {
         projectSettings += indent + "set(JASPERENGINE_CXX_STANDARD " + std::to_string(project->getCxxStandard()) + ")";
         projectSettings += indent + std::string("set(JASPERENGINE_PHYSICS_2D ") + (project->isPhysics2DEnabled() ? "ON" : "OFF") + ")";
         projectSettings += indent + std::string("set(JASPERENGINE_PHYSICS_3D ") + (project->isPhysics3DEnabled() ? "ON" : "OFF") + ")";
+        projectSettings += indent + std::string("set(JASPERENGINE_NAVIGATION ") + (project->getNavigationSettings().includeInBuilds ? "ON" : "OFF") + ")";
         projectSettings += indent + std::string("set(JASPERENGINE_RUNTIME_SHADERS ") + (project->isRuntimeShadersEnabled() ? "ON" : "OFF") + ")";
         // Development Build: the profiler in a Release game (a source export builds it as one)
         if (config.developmentBuild) {

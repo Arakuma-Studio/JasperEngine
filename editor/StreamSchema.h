@@ -156,6 +156,17 @@ namespace jasperengine::editor {
         static const EnumTable<FogVolumeFalloff>& fogVolumeFalloff();
         static const EnumTable<FogVolumeShape>& fogVolumeShape();
         static const EnumTable<WaterVolumeWaves>& waterVolumeWaves();
+        // navigation (S19)
+        static const EnumTable<NavCollectObjects>& navCollectObjects();
+        static const EnumTable<NavUseGeometry>& navUseGeometry();
+        static const EnumTable<nav::NavPlane>& navPlane();
+        static const EnumTable<nav::AvoidanceQuality>& navAvoidanceQuality();
+        static const EnumTable<NavAgentDriver>& navAgentDriver();
+        static const EnumTable<NavObstacleShape>& navObstacleShape();
+        static const EnumTable<NavModifierInclusion>& navModifierInclusion();
+        static const EnumTable<nav::GridLayout>& navGridLayout();
+        static const EnumTable<nav::GridMovement>& navGridMovement();
+        static const EnumTable<NavGridSource>& navGridSource();
         static const EnumTable<BuoyancyColumns>& buoyancyColumns();
         static const EnumTable<ForceFieldShapeType>& forceFieldShape();
         static const EnumTable<ForceFieldKind>& forceFieldKind();
