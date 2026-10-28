@@ -288,31 +288,37 @@ TEST(RenderFilterClip, DropShadowCastFromBeyondTheClip){
 
 // A clip with a transform is a clip mask only (no scissor): the filtered content is still drawn
 // unclipped into the layer, the mask cuts the composite. The clip is a 48 px square with 16 px
-// corners turned a quarter, which leaves its shape as it is.
+// corners turned a quarter, which leaves its shape as it is. And the filtered element turned a
+// quarter in an untransformed clip (its filter region the bounds of its turned box)
 TEST(RenderFilterClip, TransformedRoundedClip){
     JASPER_REQUIRE_GPU();
     for (int samples : {1, 4}){
         for (const FilterCase& filter : kFilters){
-            SCOPED_TRACE(std::string(filter.filter) + ", " + std::to_string(samples) + " samples");
-            const std::string rml = R"(<rml><head><style>
+            for (bool turnedClip : {true, false}){
+                SCOPED_TRACE(std::string(filter.filter) + ", " + (turnedClip ? "turned clip" : "turned element") + ", " +
+                             std::to_string(samples) + " samples");
+                const char* turn = "transform: rotate(90deg);";
+                const std::string rml = R"(<rml><head><style>
 body { width: 96px; height: 64px; margin: 0; padding: 0; }
 div { display: block; }
-#clip { position: absolute; left: 16px; top: 8px; width: 48px; height: 48px; border-radius: 16px; overflow: hidden; transform: rotate(90deg); }
+#clip { position: absolute; left: 16px; top: 8px; width: 48px; height: 48px; border-radius: 16px; overflow: hidden; )" +
+                                        std::string(turnedClip ? turn : "") + R"( }
 .filtered { position: absolute; left: -8px; top: -8px; width: 64px; height: 64px; background-color: #e04020; filter: )" +
-                                    std::string(filter.filter) + R"(; }
+                                        std::string(filter.filter) + "; " + (turnedClip ? "" : turn) + R"( }
 </style></head><body><div id="clip"><div class="filtered"/></div></body></rml>)";
-            std::vector<uint8_t> rgba;
-            ASSERT_TRUE(renderLayer(rml, samples, rgba));
-            const PixelProbe probe{rgba, kWidth};
-            // near the four arcs (2.6 px in on their diagonals), at the four edges and in the middle
-            const int inside[][2] = {{22, 14}, {57, 14}, {22, 49}, {57, 49}, {17, 31}, {62, 31}, {40, 9}, {40, 54}, {40, 31}};
-            for (const auto& p : inside)
-                EXPECT_TRUE(probe.is(p[0], p[1], filter.r, filter.g, filter.b, 255, 4)) << "inside the clip";
-            const int outside[][2] = {{16, 8}, {63, 8}, {16, 55}, {63, 55}, {12, 31}, {68, 31}, {40, 5}, {40, 58}};
-            for (const auto& p : outside)
-                EXPECT_EQ(int(probe.at(p[0], p[1])[3]), 0) << "drawn at (" << p[0] << ", " << p[1] << "), outside the clip";
-            if (samples == 1)
-                EXPECT_EQ(partialPixels(rgba), 0u) << "pixels partly covered: the filter's result faded at the clip";
+                std::vector<uint8_t> rgba;
+                ASSERT_TRUE(renderLayer(rml, samples, rgba));
+                const PixelProbe probe{rgba, kWidth};
+                // near the four arcs (2.6 px in on their diagonals), at the four edges and in the middle
+                const int inside[][2] = {{22, 14}, {57, 14}, {22, 49}, {57, 49}, {17, 31}, {62, 31}, {40, 9}, {40, 54}, {40, 31}};
+                for (const auto& p : inside)
+                    EXPECT_TRUE(probe.is(p[0], p[1], filter.r, filter.g, filter.b, 255, 4)) << "inside the clip";
+                const int outside[][2] = {{16, 8}, {63, 8}, {16, 55}, {63, 55}, {12, 31}, {68, 31}, {40, 5}, {40, 58}};
+                for (const auto& p : outside)
+                    EXPECT_EQ(int(probe.at(p[0], p[1])[3]), 0) << "drawn at (" << p[0] << ", " << p[1] << "), outside the clip";
+                if (samples == 1)
+                    EXPECT_EQ(partialPixels(rgba), 0u) << "pixels partly covered: the filter's result faded at the clip";
+            }
         }
     }
 }
