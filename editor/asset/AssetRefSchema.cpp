@@ -25,6 +25,7 @@
 #include "particles/ParticleModules.h"
 #include "component/PoseAnimatorComponent.h"
 #include "component/AnimationPlayerComponent.h"
+#include "component/VertexAnimatorComponent.h"
 #include "animation/ModelSubClips.h"
 #include "pool/TexturePool.h"
 #include "registry/EntityRegistry.h"
@@ -136,6 +137,8 @@ namespace {
         row(C::PoseAnimatorComponent, "animation", Shape::Asset, AssetType::PoseAnimation, Base::Assets);
         // each entry: "clips[2]" (an .anim, or the model of a "<model>#<clip>" sub-clip)
         row(C::AnimationPlayerComponent, "clips[]", Shape::ClipEntry, AssetType::AnimationClip, Base::Assets);
+        // the .vat by its GUID (the sibling "guid") and path hint; its .vat.glb is the Model's filename
+        row(C::VertexAnimatorComponent, "animation", Shape::GuidSibling, AssetType::VertexAnimation, Base::Assets);
 
         row(C::ParticleSystemComponent, "effect", Shape::Asset, AssetType::ParticleEffect, Base::Assets);
         row(C::ParticleSystemComponent, "inlineEffect", Shape::ParticleEffect, AssetType::Unknown, Base::Assets);
@@ -623,6 +626,12 @@ namespace {
             if (moved) player.needsLoad = true;
         });
 
+        eachComponent<VertexAnimatorComponent>(registry, only, visit, C::VertexAnimatorComponent, [&](VertexAnimatorComponent& animator) {
+            if (visit.prefab(animator.animation, animator.guid, componentRow(C::VertexAnimatorComponent, "animation"), "animation")) {
+                animator.needsLoad = true;
+            }
+        });
+
         eachComponent<ScriptComponent>(registry, only, visit, C::ScriptComponent, [&](ScriptComponent& scripts) {
             for (size_t i = 0; i < scripts.scripts.size(); i++) {
                 ScriptEntry& entry = scripts.scripts[i];
@@ -824,6 +833,9 @@ namespace {
                         });
                         break;
                     }
+                    case AssetRefShape::GuidSibling:
+                        found(row, AssetRef(scalar(value), parent ? Guid::parse(scalar(parent["guid"])) : Guid()), field);
+                        break;
                     case AssetRefShape::ClipEntry: {
                         const std::string clip = value.IsMap() ? scalar(value["clip"]) : scalar(value);
                         anim::SubClipReference sub;

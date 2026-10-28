@@ -459,10 +459,10 @@ bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const 
     return refs || clips;
 }
 
-// The Animation Player clips and the Vertex Animators are paths relative to the assets directory
-// too: the .anim or .vat path (its GUID stays), or the model part of "<model>#<clip>" (R26). A
-// reference the transform empties (its file deleted) is kept: the Inspector shows it missing, and
-// undoing the delete relinks it (R8).
+// The Animation Player clips are paths relative to the assets directory too: the .anim path
+// (its GUID stays), or the model part of "<model>#<clip>" (R26). A reference the transform
+// empties (its file deleted) is kept: the Inspector shows it missing, and undoing the delete
+// relinks it (R8). (The Vertex Animators' .vat is a GuidSibling row of AssetRefSchema.)
 bool editor::Project::visitClipPathsInRegistry(EntityRegistry* registry, const std::function<bool(std::string&)>& transform) {
     bool changed = false;
     auto players = registry->getComponentArray<AnimationPlayerComponent>();
@@ -494,21 +494,6 @@ bool editor::Project::visitClipPathsInRegistry(EntityRegistry* registry, const s
         }
     }
 
-    // Vertex Animator: the .vat (its GUID stays). Its .vat.glb is the GameObject's Model,
-    // visited with the models
-    auto animators = registry->getComponentArray<VertexAnimatorComponent>();
-    for (size_t i = 0; i < animators->size(); i++) {
-        VertexAnimatorComponent& animator = animators->getComponentFromIndex(i);
-        if (animator.animation.empty()) {
-            continue;
-        }
-        std::string path = animator.animation;
-        if (transform(path) && !path.empty() && path != animator.animation) {
-            animator.animation = path;
-            animator.needsLoad = true;
-            changed = true;
-        }
-    }
     return changed;
 }
 
