@@ -419,6 +419,13 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::LatticeModifierComponent: return &InspectorWindow::drawLatticeModifierComponent;
         case ComponentType::LatticeFollowerComponent: return &InspectorWindow::drawLatticeFollowerComponent;
         case ComponentType::LatticeTracksComponent: return &InspectorWindow::drawLatticeTracksComponent;
+        // navigation (InspectorNavigation.cpp)
+        case ComponentType::NavMeshSurfaceComponent: return &InspectorWindow::drawNavMeshSurfaceComponent;
+        case ComponentType::NavMeshAgentComponent: return &InspectorWindow::drawNavMeshAgentComponent;
+        case ComponentType::NavMeshObstacleComponent: return &InspectorWindow::drawNavMeshObstacleComponent;
+        case ComponentType::NavMeshLinkComponent: return &InspectorWindow::drawNavMeshLinkComponent;
+        case ComponentType::NavMeshModifierComponent: return &InspectorWindow::drawNavMeshModifierComponent;
+        case ComponentType::NavGridComponent: return &InspectorWindow::drawNavGridComponent;
         default: return nullptr;
     }
 }

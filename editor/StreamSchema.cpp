@@ -307,93 +307,54 @@ const EnumTable<FogColorMode>& StreamSchema::fogColorMode() {
     return table;
 }
 
-// ---- navigation (S19)
+// ---- navigation (S19): from their reflection tables (editor/reflect/components/NavigationReflect.cpp)
 const EnumTable<NavCollectObjects>& StreamSchema::navCollectObjects() {
-    static const EnumTable<NavCollectObjects> table("NavCollectObjects", {
-        {NavCollectObjects::ALL, "all"},
-        {NavCollectObjects::VOLUME, "volume"},
-        {NavCollectObjects::CHILDREN, "children"},
-    }, NavCollectObjects::ALL);
+    static const EnumTable<NavCollectObjects> table(reflect::enums::kNavCollectObjects);
     return table;
 }
 
 const EnumTable<NavUseGeometry>& StreamSchema::navUseGeometry() {
-    static const EnumTable<NavUseGeometry> table("NavUseGeometry", {
-        {NavUseGeometry::RENDER_MESHES, "render_meshes"},
-        {NavUseGeometry::PHYSICS_COLLIDERS, "physics_colliders"},
-        {NavUseGeometry::BOTH, "both"},
-    }, NavUseGeometry::RENDER_MESHES);
+    static const EnumTable<NavUseGeometry> table(reflect::enums::kNavUseGeometry);
     return table;
 }
 
 const EnumTable<nav::NavPlane>& StreamSchema::navPlane() {
-    static const EnumTable<nav::NavPlane> table("NavPlane", {
-        {nav::NavPlane::XZ, "xz"},
-        {nav::NavPlane::XY, "xy"},
-    }, nav::NavPlane::XZ);
+    static const EnumTable<nav::NavPlane> table(reflect::enums::kNavPlane);
     return table;
 }
 
 const EnumTable<nav::AvoidanceQuality>& StreamSchema::navAvoidanceQuality() {
-    static const EnumTable<nav::AvoidanceQuality> table("ObstacleAvoidanceType", {
-        {nav::AvoidanceQuality::None, "none"},
-        {nav::AvoidanceQuality::Low, "low"},
-        {nav::AvoidanceQuality::Medium, "medium"},
-        {nav::AvoidanceQuality::Good, "good"},
-        {nav::AvoidanceQuality::High, "high"},
-    }, nav::AvoidanceQuality::High);
+    static const EnumTable<nav::AvoidanceQuality> table(reflect::enums::kNavAvoidanceQuality);
     return table;
 }
 
 const EnumTable<NavAgentDriver>& StreamSchema::navAgentDriver() {
-    static const EnumTable<NavAgentDriver> table("NavAgentDriver", {
-        {NavAgentDriver::TRANSFORM, "transform"},
-        {NavAgentDriver::RIGIDBODY, "rigidbody"},
-        {NavAgentDriver::CHARACTER_CONTROLLER, "character_controller"},
-        {NavAgentDriver::NONE, "none"},
-    }, NavAgentDriver::TRANSFORM);
+    static const EnumTable<NavAgentDriver> table(reflect::enums::kNavAgentDriver);
     return table;
 }
 
 const EnumTable<NavObstacleShape>& StreamSchema::navObstacleShape() {
-    static const EnumTable<NavObstacleShape> table("NavObstacleShape", {
-        {NavObstacleShape::CAPSULE, "capsule"},
-        {NavObstacleShape::BOX, "box"},
-    }, NavObstacleShape::BOX);
+    static const EnumTable<NavObstacleShape> table(reflect::enums::kNavObstacleShape);
     return table;
 }
 
 const EnumTable<NavModifierInclusion>& StreamSchema::navModifierInclusion() {
-    static const EnumTable<NavModifierInclusion> table("NavModifierInclusion", {
-        {NavModifierInclusion::AUTO, "auto"},
-        {NavModifierInclusion::INCLUDE, "include"},
-        {NavModifierInclusion::EXCLUDE, "exclude"},
-    }, NavModifierInclusion::AUTO);
+    static const EnumTable<NavModifierInclusion> table(reflect::enums::kNavModifierInclusion);
     return table;
 }
 
 const EnumTable<nav::GridLayout>& StreamSchema::navGridLayout() {
-    static const EnumTable<nav::GridLayout> table("GridLayout", {
-        {nav::GridLayout::Square, "square"},
-        {nav::GridLayout::Hex, "hex"},
-    }, nav::GridLayout::Square);
+    static const EnumTable<nav::GridLayout> table(reflect::enums::kNavGridLayout);
     return table;
 }
 
 const EnumTable<nav::GridMovement>& StreamSchema::navGridMovement() {
-    static const EnumTable<nav::GridMovement> table("GridMovement", {
-        {nav::GridMovement::Free, "free"},
-        {nav::GridMovement::CellCentres, "cell_centres"},
-    }, nav::GridMovement::Free);
+    static const EnumTable<nav::GridMovement> table(reflect::enums::kNavGridMovement);
     return table;
 }
 
 const EnumTable<NavGridSource>& StreamSchema::navGridSource() {
-    static const EnumTable<NavGridSource> table("NavGridSource", {
-        {NavGridSource::NONE, "none"},
-        {NavGridSource::TILEMAP, "tilemap"},
-        {NavGridSource::TERRAIN, "terrain"},
-    }, NavGridSource::NONE);
+    static const EnumTable<NavGridSource> table(reflect::enums::kNavGridSource);
     return table;
 }
 

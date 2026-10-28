@@ -6,6 +6,7 @@
 // by path; the components' runtime state is not exported.
 
 #include "Factory.h"
+#include "reflect/Enums.h"
 
 #include <sstream>
 
@@ -13,65 +14,12 @@ using namespace jasperengine;
 
 namespace {
 
-    const char* collectObjectsCode(NavCollectObjects value) {
-        switch (value) {
-            case NavCollectObjects::VOLUME: return "NavCollectObjects::VOLUME";
-            case NavCollectObjects::CHILDREN: return "NavCollectObjects::CHILDREN";
-            case NavCollectObjects::ALL: break;
-        }
-        return "NavCollectObjects::ALL";
-    }
-
-    const char* useGeometryCode(NavUseGeometry value) {
-        switch (value) {
-            case NavUseGeometry::PHYSICS_COLLIDERS: return "NavUseGeometry::PHYSICS_COLLIDERS";
-            case NavUseGeometry::BOTH: return "NavUseGeometry::BOTH";
-            case NavUseGeometry::RENDER_MESHES: break;
-        }
-        return "NavUseGeometry::RENDER_MESHES";
-    }
-
-    const char* planeCode(nav::NavPlane value) {
-        return value == nav::NavPlane::XY ? "nav::NavPlane::XY" : "nav::NavPlane::XZ";
-    }
-
-    const char* avoidanceCode(nav::AvoidanceQuality value) {
-        switch (value) {
-            case nav::AvoidanceQuality::None: return "nav::AvoidanceQuality::None";
-            case nav::AvoidanceQuality::Low: return "nav::AvoidanceQuality::Low";
-            case nav::AvoidanceQuality::Medium: return "nav::AvoidanceQuality::Medium";
-            case nav::AvoidanceQuality::Good: return "nav::AvoidanceQuality::Good";
-            case nav::AvoidanceQuality::High: break;
-        }
-        return "nav::AvoidanceQuality::High";
-    }
-
-    const char* driverCode(NavAgentDriver value) {
-        switch (value) {
-            case NavAgentDriver::RIGIDBODY: return "NavAgentDriver::RIGIDBODY";
-            case NavAgentDriver::CHARACTER_CONTROLLER: return "NavAgentDriver::CHARACTER_CONTROLLER";
-            case NavAgentDriver::NONE: return "NavAgentDriver::NONE";
-            case NavAgentDriver::TRANSFORM: break;
-        }
-        return "NavAgentDriver::TRANSFORM";
-    }
-
-    const char* inclusionCode(NavModifierInclusion value) {
-        switch (value) {
-            case NavModifierInclusion::INCLUDE: return "NavModifierInclusion::INCLUDE";
-            case NavModifierInclusion::EXCLUDE: return "NavModifierInclusion::EXCLUDE";
-            case NavModifierInclusion::AUTO: break;
-        }
-        return "NavModifierInclusion::AUTO";
-    }
-
-    const char* sourceCode(NavGridSource value) {
-        switch (value) {
-            case NavGridSource::TILEMAP: return "NavGridSource::TILEMAP";
-            case NavGridSource::TERRAIN: return "NavGridSource::TERRAIN";
-            case NavGridSource::NONE: break;
-        }
-        return "NavGridSource::NONE";
+    // the C++ name of an enum value, from its reflection table (an unlisted value: the fallback's)
+    template<typename E>
+    const char* enumCode(const editor::reflect::EnumDesc& desc, E value) {
+        const editor::reflect::EnumItem* item = editor::reflect::enumItem(desc, static_cast<int>(value));
+        if (!item) item = editor::reflect::enumItem(desc, desc.fallback);
+        return item ? item->cppName : "";
     }
 
 }
@@ -86,8 +34,8 @@ std::string editor::Factory::createNavMeshSurfaceComponent(int indentSpaces, Ent
     const std::string ind = indentation(indentSpaces);
     code << ind << "NavMeshSurfaceComponent navSurface;\n";
     code << ind << "navSurface.agentType = " << surface.agentType << ";\n";
-    code << ind << "navSurface.collectObjects = " << collectObjectsCode(surface.collectObjects) << ";\n";
-    code << ind << "navSurface.useGeometry = " << useGeometryCode(surface.useGeometry) << ";\n";
+    code << ind << "navSurface.collectObjects = " << enumCode(editor::reflect::enums::kNavCollectObjects, surface.collectObjects) << ";\n";
+    code << ind << "navSurface.useGeometry = " << enumCode(editor::reflect::enums::kNavUseGeometry, surface.useGeometry) << ";\n";
     code << ind << "navSurface.includeLayers = " << surface.includeLayers << "u;\n";
     code << ind << "navSurface.defaultArea = " << surface.defaultArea << ";\n";
     code << ind << "navSurface.volumeCenter = " << formatVector3(surface.volumeCenter) << ";\n";
@@ -97,7 +45,7 @@ std::string editor::Factory::createNavMeshSurfaceComponent(int indentSpaces, Ent
     code << ind << "navSurface.overrideTileSize = " << formatBool(surface.overrideTileSize) << ";\n";
     code << ind << "navSurface.tileSize = " << surface.tileSize << ";\n";
     code << ind << "navSurface.minRegionArea = " << formatFloat(surface.minRegionArea) << ";\n";
-    code << ind << "navSurface.plane = " << planeCode(surface.plane) << ";\n";
+    code << ind << "navSurface.plane = " << enumCode(editor::reflect::enums::kNavPlane, surface.plane) << ";\n";
     code << ind << "navSurface.runtimeCarving = " << formatBool(surface.runtimeCarving) << ";\n";
     code << ind << "navSurface.navMeshData = " << formatString(surface.navMeshData.path) << ";\n";
     if (!surface.enabled) code << ind << "navSurface.enabled = false;\n";
@@ -122,14 +70,14 @@ std::string editor::Factory::createNavMeshAgentComponent(int indentSpaces, Entit
     code << ind << "navAgent.autoBraking = " << formatBool(agent.autoBraking) << ";\n";
     code << ind << "navAgent.radius = " << formatFloat(agent.radius) << ";\n";
     code << ind << "navAgent.height = " << formatFloat(agent.height) << ";\n";
-    code << ind << "navAgent.obstacleAvoidance = " << avoidanceCode(agent.obstacleAvoidance) << ";\n";
+    code << ind << "navAgent.obstacleAvoidance = " << enumCode(editor::reflect::enums::kNavAvoidanceQuality, agent.obstacleAvoidance) << ";\n";
     code << ind << "navAgent.avoidancePriority = " << agent.avoidancePriority << ";\n";
     code << ind << "navAgent.autoTraverseOffMeshLink = " << formatBool(agent.autoTraverseOffMeshLink) << ";\n";
     code << ind << "navAgent.autoRepath = " << formatBool(agent.autoRepath) << ";\n";
     code << ind << "navAgent.areaMask = " << agent.areaMask << ";\n";
     code << ind << "navAgent.updatePosition = " << formatBool(agent.updatePosition) << ";\n";
     code << ind << "navAgent.updateRotation = " << formatBool(agent.updateRotation) << ";\n";
-    code << ind << "navAgent.driver = " << driverCode(agent.driver) << ";\n";
+    code << ind << "navAgent.driver = " << enumCode(editor::reflect::enums::kNavAgentDriver, agent.driver) << ";\n";
     code << ind << "navAgent.surface = " << formatEntity(agent.surface, entityVarNames) << ";\n";
     if (!agent.enabled) code << ind << "navAgent.enabled = false;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "NavMeshAgentComponent", "navAgent", assignExisting);
@@ -145,7 +93,7 @@ std::string editor::Factory::createNavMeshObstacleComponent(int indentSpaces, En
     std::ostringstream code;
     const std::string ind = indentation(indentSpaces);
     code << ind << "NavMeshObstacleComponent navObstacle;\n";
-    code << ind << "navObstacle.shape = " << (obstacle.shape == NavObstacleShape::CAPSULE ? "NavObstacleShape::CAPSULE" : "NavObstacleShape::BOX") << ";\n";
+    code << ind << "navObstacle.shape = " << enumCode(editor::reflect::enums::kNavObstacleShape, obstacle.shape) << ";\n";
     code << ind << "navObstacle.center = " << formatVector3(obstacle.center) << ";\n";
     code << ind << "navObstacle.size = " << formatVector3(obstacle.size) << ";\n";
     code << ind << "navObstacle.radius = " << formatFloat(obstacle.radius) << ";\n";
@@ -190,7 +138,7 @@ std::string editor::Factory::createNavMeshModifierComponent(int indentSpaces, En
     std::ostringstream code;
     const std::string ind = indentation(indentSpaces);
     code << ind << "NavMeshModifierComponent navModifier;\n";
-    code << ind << "navModifier.overrideInclusion = " << inclusionCode(modifier.overrideInclusion) << ";\n";
+    code << ind << "navModifier.overrideInclusion = " << enumCode(editor::reflect::enums::kNavModifierInclusion, modifier.overrideInclusion) << ";\n";
     code << ind << "navModifier.overrideArea = " << formatBool(modifier.overrideArea) << ";\n";
     code << ind << "navModifier.area = " << modifier.area << ";\n";
     code << ind << "navModifier.applyToChildren = " << formatBool(modifier.applyToChildren) << ";\n";
@@ -210,18 +158,18 @@ std::string editor::Factory::createNavGridComponent(int indentSpaces, EntityRegi
     std::ostringstream code;
     const std::string ind = indentation(indentSpaces);
     code << ind << "NavGridComponent navGrid;\n";
-    code << ind << "navGrid.layout = " << (grid.layout == nav::GridLayout::Hex ? "nav::GridLayout::Hex" : "nav::GridLayout::Square") << ";\n";
+    code << ind << "navGrid.layout = " << enumCode(editor::reflect::enums::kNavGridLayout, grid.layout) << ";\n";
     code << ind << "navGrid.neighbours = " << grid.neighbours << ";\n";
     code << ind << "navGrid.cellSize = " << formatFloat(grid.cellSize) << ";\n";
     code << ind << "navGrid.width = " << grid.width << ";\n";
     code << ind << "navGrid.height = " << grid.height << ";\n";
-    code << ind << "navGrid.plane = " << planeCode(grid.plane) << ";\n";
+    code << ind << "navGrid.plane = " << enumCode(editor::reflect::enums::kNavPlane, grid.plane) << ";\n";
     code << ind << "navGrid.maxSlope = " << formatFloat(grid.maxSlope) << ";\n";
     code << ind << "navGrid.maxStep = " << formatFloat(grid.maxStep) << ";\n";
-    code << ind << "navGrid.movement = " << (grid.movement == nav::GridMovement::CellCentres ? "nav::GridMovement::CellCentres" : "nav::GridMovement::Free") << ";\n";
+    code << ind << "navGrid.movement = " << enumCode(editor::reflect::enums::kNavGridMovement, grid.movement) << ";\n";
     code << ind << "navGrid.reservationLookahead = " << formatFloat(grid.reservationLookahead) << ";\n";
     code << ind << "navGrid.reservationPenalty = " << formatFloat(grid.reservationPenalty) << ";\n";
-    code << ind << "navGrid.source = " << sourceCode(grid.source) << ";\n";
+    code << ind << "navGrid.source = " << enumCode(editor::reflect::enums::kNavGridSource, grid.source) << ";\n";
     code << ind << "navGrid.sourceEntity = " << formatEntity(grid.sourceEntity, entityVarNames) << ";\n";
     for (const NavGridTileArea& row : grid.tileAreas)
         code << ind << "navGrid.tileAreas.push_back({" << formatString(row.rect) << ", " << row.area << "});\n";

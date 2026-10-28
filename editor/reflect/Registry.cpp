@@ -85,6 +85,12 @@ namespace {
         &kCharacterControllerDesc,
         &kWaterVolumeDesc,
         &kBuoyancyDesc,
+        &kNavMeshSurfaceDesc,
+        &kNavMeshAgentDesc,
+        &kNavMeshObstacleDesc,
+        &kNavMeshLinkDesc,
+        &kNavMeshModifierDesc,
+        &kNavGridDesc,
     };
     static_assert(std::size(kAll) == static_cast<size_t>(LAST_COMPONENT_TYPE) + 1, "a ComponentType without a description");
 
@@ -128,6 +134,12 @@ namespace {
         &kRigidbody2DDesc,
         &kRigidbodyDesc,
         &kJoint2DDesc,
+        &kNavMeshSurfaceDesc,
+        &kNavMeshAgentDesc,
+        &kNavMeshObstacleDesc,
+        &kNavMeshLinkDesc,
+        &kNavMeshModifierDesc,
+        &kNavGridDesc,
         &kCharacterController2DDesc,
         &kWaterVolumeDesc,
         &kBuoyancyDesc,
@@ -187,6 +199,12 @@ namespace {
         &kImageDesc,
         &kInstancedMeshDesc,
         &kJoint2DDesc,
+        &kNavMeshSurfaceDesc,
+        &kNavMeshAgentDesc,
+        &kNavMeshObstacleDesc,
+        &kNavMeshLinkDesc,
+        &kNavMeshModifierDesc,
+        &kNavGridDesc,
         &kCharacterController2DDesc,
         &kCharacterControllerDesc,
         &kWaterVolumeDesc,
@@ -241,6 +259,8 @@ namespace {
         &enums::kScriptType, &enums::kScrollbarType, &enums::kShadowCaster2DShape, &enums::kShadowUpdateMode,
         &enums::kTextureAlphaBorder, &enums::kTextureFilter, &enums::kTextureWrap, &enums::kUIDocumentRenderMode,
         &enums::kUIEventState, &enums::kWindingOrder,
+        &enums::kNavCollectObjects, &enums::kNavUseGeometry, &enums::kNavPlane, &enums::kNavAvoidanceQuality, &enums::kNavAgentDriver,
+        &enums::kNavObstacleShape, &enums::kNavModifierInclusion, &enums::kNavGridLayout, &enums::kNavGridMovement, &enums::kNavGridSource,
     };
 
     bool equalsIgnoreCase(std::string_view a, std::string_view b) {

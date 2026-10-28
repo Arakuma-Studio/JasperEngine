@@ -27,6 +27,7 @@
 #include "navigation/NavigationEditor.h"
 #include "navigation/NavTypes.h"
 #include "navigation/NavBakeCollector.h"
+#include "reflect/Enums.h"
 #include "subsystem/NavigationSystem.h"
 
 #include <algorithm>
@@ -37,55 +38,6 @@ using namespace jasperengine;
 
 namespace {
 
-    std::vector<editor::EnumEntry> entriesCollectObjects = {
-        {(int)NavCollectObjects::ALL, "All Game Objects"},
-        {(int)NavCollectObjects::VOLUME, "Volume"},
-        {(int)NavCollectObjects::CHILDREN, "Current Object Hierarchy"},
-    };
-    std::vector<editor::EnumEntry> entriesUseGeometry = {
-        {(int)NavUseGeometry::RENDER_MESHES, "Render Meshes"},
-        {(int)NavUseGeometry::PHYSICS_COLLIDERS, "Physics Colliders"},
-        {(int)NavUseGeometry::BOTH, "Both"},
-    };
-    std::vector<editor::EnumEntry> entriesNavPlane = {
-        {(int)nav::NavPlane::XZ, "XZ (3D)"},
-        {(int)nav::NavPlane::XY, "XY (2D)"},
-    };
-    std::vector<editor::EnumEntry> entriesAvoidance = {
-        {(int)nav::AvoidanceQuality::None, "None"},
-        {(int)nav::AvoidanceQuality::Low, "Low Quality"},
-        {(int)nav::AvoidanceQuality::Medium, "Medium Quality"},
-        {(int)nav::AvoidanceQuality::Good, "Good Quality"},
-        {(int)nav::AvoidanceQuality::High, "High Quality"},
-    };
-    std::vector<editor::EnumEntry> entriesDriver = {
-        {(int)NavAgentDriver::TRANSFORM, "Transform"},
-        {(int)NavAgentDriver::RIGIDBODY, "Rigidbody"},
-        {(int)NavAgentDriver::CHARACTER_CONTROLLER, "Character Controller"},
-        {(int)NavAgentDriver::NONE, "None"},
-    };
-    std::vector<editor::EnumEntry> entriesObstacleShape = {
-        {(int)NavObstacleShape::CAPSULE, "Capsule"},
-        {(int)NavObstacleShape::BOX, "Box"},
-    };
-    std::vector<editor::EnumEntry> entriesInclusion = {
-        {(int)NavModifierInclusion::AUTO, "Remove Object"},
-        {(int)NavModifierInclusion::INCLUDE, "Add or Modify Object"},
-        {(int)NavModifierInclusion::EXCLUDE, "Remove Object (always)"},
-    };
-    std::vector<editor::EnumEntry> entriesGridLayout = {
-        {(int)nav::GridLayout::Square, "Square"},
-        {(int)nav::GridLayout::Hex, "Hex (pointy-top)"},
-    };
-    std::vector<editor::EnumEntry> entriesGridMovement = {
-        {(int)nav::GridMovement::Free, "Free (smoothed)"},
-        {(int)nav::GridMovement::CellCentres, "Cell Centres"},
-    };
-    std::vector<editor::EnumEntry> entriesGridSource = {
-        {(int)NavGridSource::NONE, "None (painted)"},
-        {(int)NavGridSource::TILEMAP, "Tilemap"},
-        {(int)NavGridSource::TERRAIN, "Terrain"},
-    };
     std::vector<editor::EnumEntry> entriesNeighbours = {
         {4, "4"},
         {8, "8"},
@@ -197,10 +149,10 @@ void editor::InspectorWindow::drawNavMeshSurfaceComponent(ComponentType cpType, 
     settingsAgent.enumEntries = &agentTypeEntries().entries;
     settingsAgent.help = "The agent type it bakes for (Window > AI > Navigation > Agents): its radius, height, step and slope";
     RowSettings settingsCollect;
-    settingsCollect.enumEntries = &entriesCollectObjects;
+    settingsCollect.enumEntries = enumEntries(reflect::enums::kNavCollectObjects);
     settingsCollect.help = "What is collected: every static GameObject, the ones in the volume box, or this hierarchy";
     RowSettings settingsGeometry;
-    settingsGeometry.enumEntries = &entriesUseGeometry;
+    settingsGeometry.enumEntries = enumEntries(reflect::enums::kNavUseGeometry);
     settingsGeometry.help = "Collect render meshes, collider shapes (no physics world needed) or both";
     RowSettings settingsLayers;
     settingsLayers.help = "GameObject layers collected";
@@ -208,7 +160,7 @@ void editor::InspectorWindow::drawNavMeshSurfaceComponent(ComponentType cpType, 
     settingsArea.enumEntries = &areaEntries().entries;
     settingsArea.help = "The area of what is collected unless a NavMesh Modifier says otherwise";
     RowSettings settingsPlane;
-    settingsPlane.enumEntries = &entriesNavPlane;
+    settingsPlane.enumEntries = enumEntries(reflect::enums::kNavPlane);
     settingsPlane.help = "XZ for 3D scenes (Y up); XY for 2D scenes: Collider2D footprints on the scene's plane";
     RowSettings settingsCarving;
     settingsCarving.help = "Keep tile-cache layers so carving NavMesh Obstacles cut it at runtime (about 30% more memory)";
@@ -365,14 +317,14 @@ void editor::InspectorWindow::drawNavMeshAgentComponent(ComponentType cpType, Sc
     RowSettings settingsBraking;
     settingsBraking.help = "Slow down before the destination so it stops there without overshooting";
     RowSettings settingsAvoidance;
-    settingsAvoidance.enumEntries = &entriesAvoidance;
+    settingsAvoidance.enumEntries = enumEntries(reflect::enums::kNavAvoidanceQuality);
     settingsAvoidance.help = "How carefully it steers around other agents (None: it walks through them)";
     RowSettings settingsPriority = settings;
     settingsPriority.intMin = 0;
     settingsPriority.intMax = 99;
     settingsPriority.help = "0-99, lower is more important: it avoids agents of its priority or lower and ignores higher numbers";
     RowSettings settingsDriver;
-    settingsDriver.enumEntries = &entriesDriver;
+    settingsDriver.enumEntries = enumEntries(reflect::enums::kNavAgentDriver);
     settingsDriver.help = "What moves it: its Transform, its Rigidbody's velocity, its Character Controller, or nothing (scripts)";
     RowSettings settingsSurface;
     settingsSurface.help = "The NavMesh Surface or Nav Grid it walks; none: the surface of its type under it, else a grid holding it";
@@ -430,7 +382,7 @@ void editor::InspectorWindow::drawNavMeshObstacleComponent(ComponentType cpType,
     RowSettings settings;
     settings.secondColSize = 6 * ImGui::GetFontSize();
     RowSettings settingsShape;
-    settingsShape.enumEntries = &entriesObstacleShape;
+    settingsShape.enumEntries = enumEntries(reflect::enums::kNavObstacleShape);
     RowSettings settingsCarve;
     settingsCarve.help = "Cut a hole in the navmesh (needs Runtime Carving on its surface); off: agents steer around it";
     RowSettings settingsMove = settings;
@@ -514,7 +466,7 @@ void editor::InspectorWindow::drawNavMeshModifierComponent(ComponentType cpType,
     RowSettings settings;
     settings.secondColSize = 6 * ImGui::GetFontSize();
     RowSettings settingsInclusion;
-    settingsInclusion.enumEntries = &entriesInclusion;
+    settingsInclusion.enumEntries = enumEntries(reflect::enums::kNavModifierInclusion);
     settingsInclusion.help = "Remove Object: as the surface decides (moving objects are left out); Add or Modify: collected even "
                              "when it would not be; Remove (always): never collected";
     RowSettings settingsOverride;
@@ -549,7 +501,7 @@ void editor::InspectorWindow::drawNavGridComponent(ComponentType cpType, ScenePr
     RowSettings settings;
     settings.secondColSize = 6 * ImGui::GetFontSize();
     RowSettings settingsLayout;
-    settingsLayout.enumEntries = &entriesGridLayout;
+    settingsLayout.enumEntries = enumEntries(reflect::enums::kNavGridLayout);
     settingsLayout.help = "Square cells, or hex cells (pointy-top, odd rows shifted right by half a cell)";
     RowSettings settingsNeighbours;
     settingsNeighbours.enumEntries = &entriesNeighbours;
@@ -558,20 +510,20 @@ void editor::InspectorWindow::drawNavGridComponent(ComponentType cpType, ScenePr
     settingsSize.intMin = 1;
     settingsSize.intMax = 4096;
     RowSettings settingsPlane;
-    settingsPlane.enumEntries = &entriesNavPlane;
+    settingsPlane.enumEntries = enumEntries(reflect::enums::kNavPlane);
     RowSettings settingsSlope = settings;
     settingsSlope.help = "With heights (Terrain source): steps steeper than this (degrees) are blocked";
     RowSettings settingsStep = settings;
     settingsStep.help = "With heights: steps higher than this are blocked";
     RowSettings settingsMovement;
-    settingsMovement.enumEntries = &entriesGridMovement;
+    settingsMovement.enumEntries = enumEntries(reflect::enums::kNavGridMovement);
     settingsMovement.help = "Free: straight lines between turns (line of sight); Cell Centres: from centre to centre";
     RowSettings settingsLookahead = settings;
     settingsLookahead.help = "Seconds of their path agents reserve ahead; others pay the penalty on reserved cells";
     RowSettings settingsPenalty = settings;
     settingsPenalty.help = "Cost multiplier of a cell another agent reserved";
     RowSettings settingsSource;
-    settingsSource.enumEntries = &entriesGridSource;
+    settingsSource.enumEntries = enumEntries(reflect::enums::kNavGridSource);
     settingsSource.help = "Where Rebuild takes the cells from: painted only, a Tilemap's tiles or a Terrain's heights";
     RowSettings settingsSourceEntity;
     settingsSourceEntity.help = "The Tilemap or Terrain; none: this GameObject's";

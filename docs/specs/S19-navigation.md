@@ -632,6 +632,16 @@ What the implementation does differently from the text above, and why.
 - **Gizmos (R34).** Link start and end handles drag in the Scene view (one undo step per drag);
   obstacle shapes, surface and modifier volumes and the agent's cylinder are drawn on selection
   and edited through their Inspector fields (no drag handles of their own).
+- **S08 reflection.** The six components are described by tables in
+  `editor/reflect/components/NavigationReflect.cpp` (with their ten enums), which give the Catalog
+  properties, names, icons, MCP enum options and schemas, StreamSchema's enum tables and known keys,
+  add/remove/copy, locators and the Inspector's enum rows. As S08 did for S22's gameplay
+  components, they keep their own codecs (`StreamNavigation.cpp`, every key written: files are
+  unchanged) and exported code (`FactoryNavigation.cpp`, enum names from the tables), and their
+  hand drawers (`InspectorNavigation.cpp`, registered in `InspectorWindow::componentDrawer`).
+  `tileAreas` is one opaque value (the Inspector edits it as a table); runtime state is no field.
+  One label per enum value: MCP's labels are now the Inspector's (Modifier mode "Remove Object",
+  grid movement "Free (smoothed)", grid source "None (painted)"); the tokens are unchanged.
 
 ## Progress (implementation notes, keep updated)
 
