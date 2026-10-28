@@ -323,6 +323,12 @@ namespace jasperengine::anim{
         // true the first time a message is given (the caller logs it): one warning per name
         bool warnOnce(const std::string& message);
 
+        // The bytes of the Animator's runtime state (R20's 8 KB): the instance itself, its
+        // parameters, layer, montage and IK runs and the outputs' buffers; not the rig, the poses,
+        // the per-bone masks, the clip slots' bindings and cursors nor the humanoid (they grow
+        // with the bones and the clips, and are what a pose costs, not the controller's state).
+        size_t runtimeStateBytes() const;
+
     private:
         // scratch (sized at bind)
         Pose temp;

@@ -1668,3 +1668,19 @@ void anim::AnimatorInstance::runIK(const AnimatorComponent& component, const Ani
         }
     }
 }
+
+size_t anim::AnimatorInstance::runtimeStateBytes() const{
+    // the instance less what it holds by value that is bone- or clip-sized
+    size_t bytes = sizeof(*this) - sizeof(rig) - sizeof(humanoid) - 6 * sizeof(Pose);
+    bytes += parameters.capacity() * sizeof(float) + velocities.capacity() * sizeof(float);
+    bytes += layers.capacity() * sizeof(AnimatorLayerRun);
+    bytes += montages.capacity() * sizeof(AnimatorMontageRun);
+    for (const AnimatorMontageRun& run : montages){
+        bytes += run.nextOverride.capacity() * sizeof(std::string) + run.hasNextOverride.capacity() / 8;
+    }
+    bytes += ik.capacity() * sizeof(AnimatorIKRun);
+    bytes += output.events.capacity() * sizeof(AnimatorPendingEvent);
+    bytes += output.states.capacity() * sizeof(AnimatorStateNote);
+    bytes += output.montages.capacity() * sizeof(AnimatorMontageNote);
+    return bytes;
+}
