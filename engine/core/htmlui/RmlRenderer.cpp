@@ -7,9 +7,12 @@
 // its RmlRenderTarget, and a sokol pass is opened only when a draw needs another target.
 
 #include "RmlRenderer.h"
+#include "RmlRendererInternal.h"
 
+#include "HtmlUI.h"
 #include "HtmlUITexture.h"
 #include "RmlFilterContext.h"
+#include "RmlFontEngine.h"
 
 #include "Engine.h"
 #include "HtmlUIDependencies.h"
@@ -20,10 +23,12 @@
 #include "render/SystemRender.h"
 #include "texture/Framebuffer.h"
 #include "texture/TextureData.h"
+#include "util/GlyphAtlas.h"
 #include "compat/VirtualFiles.h"
 #include "effects/EffectRenderer.h"
 #include "effects/EffectRuntime.h"
 
+#include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/DecorationTypes.h>
 #include <RmlUi/Core/Dictionary.h>
 #include <RmlUi/Core/Log.h>
@@ -32,62 +37,8 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstddef>
 #include <cstring>
-
-namespace jasperengine {
-
-    // A compiled RmlUi geometry. RmlUi keeps the spans valid and unchanged until
-    // ReleaseGeometry (RenderInterface.h), so its data is read from them: into the frame's
-    // transient buffers on the first draw, into persistent storage at the end of that frame,
-    // and again after the GPU objects went with the view.
-    struct RmlGeometry {
-        bool alive = false;         // compiled and not released (released ones wait for reuse)
-        Rml::Span<const Rml::Vertex> vertices;
-        Rml::Span<const int> indices;
-        // persistent storage
-        RmlGeometryPage* vertexPage = nullptr;
-        RmlGeometryPage* indexPage = nullptr;
-        size_t vertexOffset = 0;
-        size_t indexOffset = 0;
-        size_t vertexBytes = 0;     // allocated (aligned) sizes
-        size_t indexBytes = 0;
-        // this frame's transient copy (before persistence)
-        uint64_t transientFrame = UINT64_MAX;
-        BufferRender* transientVertices = nullptr;
-        BufferRender* transientIndices = nullptr;
-        size_t transientVertexOffset = 0;
-        size_t transientIndexOffset = 0;
-    };
-
-    // Persistent geometry storage: a STREAM buffer (sokol's dynamic buffers wait for the GPU
-    // to idle on every Vulkan update, stream buffers go through the per-frame staging buffer;
-    // both keep their content until updated again). A page holds many small geometries,
-    // bump-allocated in a CPU copy and uploaded whole, at most once a frame, at the end of a
-    // frame; it starts over once all its geometries are released. A dedicated buffer holds
-    // one large geometry.
-    struct RmlGeometryPage {
-        BufferRender buffer;
-        size_t capacity = 0;
-        bool index = false;
-        bool dedicated = false;
-        std::vector<uint8_t> shadow;            // pages: the CPU copy of [0, top)
-        size_t top = 0;
-        size_t uploadedTop = 0;
-        size_t live = 0;                        // geometries in it
-        uint64_t updateFrame = UINT64_MAX;      // frame of the last sg_update_buffer
-        uint64_t releaseFrame = UINT64_MAX;     // frame its last geometry went: reused from the next
-    };
-
-    // geometry first drawn in a frame, appended (sokol starts every frame at offset 0)
-    struct RmlTransientBuffer {
-        BufferRender buffer;
-        size_t capacity = 0;
-        size_t used = 0;
-        bool index = false;
-        uint64_t frame = UINT64_MAX;            // the frame "used" counts
-    };
-
-}
 
 using namespace jasperengine;
 
@@ -103,12 +54,7 @@ namespace {
     // empty pages and dedicated buffers kept for reuse; beyond it a free one is destroyed
     const size_t maximumFreeBytes = 16 * 1024 * 1024;
 
-    // u_vs_htmluiParams
-    struct HtmlUIParams {
-        float transform[16];
-        float translation[4];
-    };
-    static_assert(sizeof(HtmlUIParams) == 80, "u_vs_htmluiParams is 80 bytes");
+    static_assert(sizeof(float) * 28 == 112, "u_fs_htmluiClip is 112 bytes");
 
     // u_fs_htmluiGradient
     struct GradientParams {
@@ -124,16 +70,6 @@ namespace {
         float uvTransform[4];
     };
 
-    HtmlUIParams makeParams(const Rml::Matrix4f& transform, Rml::Vector2f translation){
-        HtmlUIParams params;
-        // column-major, like GLSL (RMLUI_MATRIX_ROW_MAJOR is not defined)
-        std::memcpy(params.transform, transform.data(), sizeof(params.transform));
-        params.translation[0] = translation.x;
-        params.translation[1] = translation.y;
-        params.translation[2] = 0.0f;
-        params.translation[3] = 0.0f;
-        return params;
-    }
 
     Rml::Rectanglei fullRect(int width, int height){
         return Rml::Rectanglei::FromSize(Rml::Vector2i(std::max(width, 1), std::max(height, 1)));
@@ -182,7 +118,9 @@ RmlRenderTarget::~RmlRenderTarget(){
 bool RmlRenderTarget::ensure(int width, int height, int sampleCount){
     width = std::max(width, 1);
     height = std::max(height, 1);
-    sampleCount = std::max(sampleCount, 1);
+    // a count the device cannot render (Vulkan has no error for it: lavapipe's targets of 8
+    // samples drew into memory not theirs) is the highest one below it that it can
+    sampleCount = sampleCount > 1 ? std::max(FramebufferRender::getMaxMsaaSamples(sampleCount), 1) : 1;
 
     if (isCreated() && width == this->width && height == this->height && sampleCount == this->sampleCount)
         return false;
@@ -251,6 +189,23 @@ Framebuffer* RmlRenderTarget::getLayer(int index) const{
     return layers[index].get();
 }
 
+int RmlRenderTarget::getLayerCount() const{
+    return (int)layers.size();
+}
+
+int RmlRenderTarget::getPostprocessCount() const{
+    int count = 0;
+    for (const std::unique_ptr<Framebuffer>& target : postprocess){
+        if (target)
+            count++;
+    }
+    return count;
+}
+
+uint64_t RmlRenderTarget::getCreateCount() const{
+    return createCount;
+}
+
 namespace {
     std::atomic<uint64_t> targetGenerations{0};
 }
@@ -284,6 +239,7 @@ Framebuffer* RmlRenderTarget::ensureLayer(int index){
     desc.label = "htmlui-layer";
 
     std::unique_ptr<Framebuffer> layer = std::make_unique<Framebuffer>();
+    createCount++;
     generation = ++targetGenerations;
     if (!layer->create(desc)){
         Log::error("[HTML UI] could not create the %d x %d layer %d (%d samples)", width, height, index, sampleCount);
@@ -312,6 +268,7 @@ Framebuffer* RmlRenderTarget::ensurePostprocess(int index){
     desc.label = "htmlui-postprocess";
 
     std::unique_ptr<Framebuffer> target = std::make_unique<Framebuffer>();
+    createCount++;
     generation = ++targetGenerations;
     if (!target->create(desc)){
         Log::error("[HTML UI] could not create the %d x %d post-process target %d", width, height, index);
@@ -430,6 +387,7 @@ RmlRenderer::~RmlRenderer(){
         delete texture;
     }
     liveTextures.clear();
+    atlasTextures.clear();
 }
 
 Rml::CompiledGeometryHandle RmlRenderer::CompileGeometry(Rml::Span<const Rml::Vertex> vertices, Rml::Span<const int> indices){
@@ -441,7 +399,9 @@ Rml::CompiledGeometryHandle RmlRenderer::CompileGeometry(Rml::Span<const Rml::Ve
     }else{
         geometry = new RmlGeometry();
     }
+    static uint64_t generations = 0;
     geometry->alive = true;
+    geometry->generation = ++generations;
     geometry->vertices = vertices;
     geometry->indices = indices;
     liveGeometry.insert(geometry);
@@ -510,6 +470,7 @@ bool RmlRenderer::appendTransient(const void* data, size_t bytes, bool index, Bu
             created->capacity *= 2;
         created->index = index;
         created->frame = frame;
+        gpuCreateCount++;
         if (!created->buffer.createBuffer((unsigned int)created->capacity, nullptr, index ? BufferType::INDEX_BUFFER : BufferType::VERTEX_BUFFER, BufferUsage::STREAM)){
             Log::error("[HTML UI] could not create a %u-byte geometry buffer", (unsigned int)created->capacity);
             return false;
@@ -550,6 +511,7 @@ bool RmlRenderer::allocateRange(const void* data, size_t bytes, bool index, RmlG
             created->capacity = capacity;
             created->index = index;
             created->dedicated = true;
+            gpuCreateCount++;
             if (!created->buffer.createBuffer((unsigned int)capacity, nullptr, index ? BufferType::INDEX_BUFFER : BufferType::VERTEX_BUFFER, BufferUsage::STREAM)){
                 Log::error("[HTML UI] could not create a %u-byte geometry buffer", (unsigned int)capacity);
                 return false;
@@ -588,6 +550,7 @@ bool RmlRenderer::allocateRange(const void* data, size_t bytes, bool index, RmlG
         created->capacity = pageBytes;
         created->index = index;
         created->shadow.resize(pageBytes);
+        gpuCreateCount++;
         if (!created->buffer.createBuffer((unsigned int)pageBytes, nullptr, index ? BufferType::INDEX_BUFFER : BufferType::VERTEX_BUFFER, BufferUsage::STREAM)){
             Log::error("[HTML UI] could not create a %u-byte geometry page", (unsigned int)pageBytes);
             return false;
@@ -727,7 +690,7 @@ bool RmlRenderer::bindGeometry(Rml::CompiledGeometryHandle handle, ObjectRender&
 }
 
 HtmlUITexture* RmlRenderer::createStaticTexture(const uint8_t* rgba, int width, int height, const char* label, TextureFilter filter,
-                                                TextureWrap wrapU, TextureWrap wrapV){
+                                                TextureWrap wrapU, TextureWrap wrapV, ColorFormat format){
     std::unique_ptr<HtmlUITexture> texture = std::make_unique<HtmlUITexture>();
     texture->kind = HtmlUITexture::Kind::STATIC;
     texture->ownedRender = std::make_unique<TextureRender>();
@@ -745,9 +708,10 @@ HtmlUITexture* RmlRenderer::createStaticTexture(const uint8_t* rgba, int width, 
     }
 
     void* data[1] = {const_cast<uint8_t*>(rgba)};
-    size_t size[1] = {(size_t)width * (size_t)height * 4};
+    size_t size[1] = {(size_t)width * (size_t)height * (format == ColorFormat::RED ? 1 : 4)};
+    gpuCreateCount++;
     // LINEAR (or NEAREST) min filter: no mipmaps
-    if (!texture->ownedRender->createTexture(label, width, height, ColorFormat::RGBA, TextureType::TEXTURE_2D, 1, data, size,
+    if (!texture->ownedRender->createTexture(label, width, height, format, TextureType::TEXTURE_2D, 1, data, size,
                                              filter, filter, wrapU, wrapV)){
         texture->ownedRender->destroyTexture();
         texture->dead = true;
@@ -758,6 +722,99 @@ HtmlUITexture* RmlRenderer::createStaticTexture(const uint8_t* rgba, int width, 
     HtmlUITexture* result = texture.release();
     liveTextures.insert(result);
     return result;
+}
+
+Rml::TextureHandle RmlRenderer::createAtlasTexture(int width, int height, const AtlasTexture& desc){
+    const bool coverage = desc.sample == HtmlUITexture::Sample::COVERAGE;
+    HtmlUITexture* texture = nullptr;
+    if (!Engine::isViewLoaded()){
+        // no GPU yet: RmlUi makes it again once the view exists (createStaticTexture's way)
+        texture = new HtmlUITexture();
+        texture->kind = HtmlUITexture::Kind::DYNAMIC;
+        texture->width = width;
+        texture->height = height;
+        texture->dead = true;
+        texturesWithoutView = true;
+    }else{
+        // dynamic: glyphs added to the page are uploaded into the same texture
+        gpuCreateCount++;
+        std::unique_ptr<HtmlUITexture> created = HtmlUITexture::createDynamic(coverage ? "htmlui-glyph-atlas" : "htmlui-glyph-atlas-rgba",
+                                                                              width, height, coverage ? ColorFormat::RED : ColorFormat::RGBA);
+        if (!created)
+            return 0;
+        texture = created.release();
+    }
+    liveTextures.insert(texture);
+    atlasTextures.push_back(texture);
+    texture->atlas = desc.atlas;
+    texture->atlasGeneration = desc.generation;
+    texture->sample = desc.sample;
+    texture->distanceRange = desc.distanceRange;
+    texture->drawFrame = desc.drawFrame;
+    if (desc.whiteX >= 0 && desc.whiteY >= 0 && width > 0 && height > 0){
+        // the centre of the 4x4 block: every bilinear tap reads full coverage
+        texture->hasWhiteTexel = true;
+        texture->whiteU = ((float)desc.whiteX + 2.0f) / (float)width;
+        texture->whiteV = ((float)desc.whiteY + 2.0f) / (float)height;
+    }
+    return reinterpret_cast<Rml::TextureHandle>(texture);
+}
+
+Rml::TextureHandle RmlRenderer::createTextureVariant(Rml::TextureHandle baseHandle, const float textEffect[3], std::shared_ptr<uint64_t> drawFrame){
+    HtmlUITexture* base = toTexture(baseHandle);
+    if (!base)
+        return 0;
+    HtmlUITexture* texture = new HtmlUITexture();
+    texture->kind = HtmlUITexture::Kind::EXTERNAL;
+    texture->sample = base->sample;
+    texture->render = base->render;
+    texture->width = base->width;
+    texture->height = base->height;
+    texture->dead = base->dead;
+    texture->distanceRange = base->distanceRange;
+    for (int i = 0; i < 3; i++)
+        texture->textEffect[i] = textEffect[i];
+    texture->drawFrame = std::move(drawFrame);
+    liveTextures.insert(texture);
+    return reinterpret_cast<Rml::TextureHandle>(texture);
+}
+
+void RmlRenderer::noteDrawn(HtmlUITexture* texture){
+    if (!texture)
+        return;
+    if (texture->drawFrame)
+        *texture->drawFrame = SystemRender::getFrameCount();
+    // drawing at once, an atlas page not uploaded since glyphs were added (the replay uploads them all first)
+    if (texture->atlas)
+        uploadAtlasTexture(*texture);
+}
+
+void RmlRenderer::uploadAtlasTexture(HtmlUITexture& texture){
+    if (texture.dead || !texture.atlas || !texture.atlasGeneration || *texture.atlasGeneration == texture.uploadedGeneration)
+        return;
+    const std::vector<unsigned char>& pixels = texture.atlas->getPixels();
+    const size_t bytes = (size_t)texture.width * (size_t)texture.height * (texture.sample == HtmlUITexture::Sample::COVERAGE ? 1u : 4u);
+    // (a page parked by the font engine has no texels: its texture goes with its source)
+    if (pixels.size() != bytes)
+        return;
+    if (texture.update(pixels.data(), bytes))
+        texture.uploadedGeneration = *texture.atlasGeneration;
+}
+
+std::vector<const HtmlUITexture*> RmlRenderer::getAtlasTextures() const{
+    return std::vector<const HtmlUITexture*>(atlasTextures.begin(), atlasTextures.end());
+}
+
+void RmlRenderer::updateAtlasTextures(){
+    for (HtmlUITexture* texture : atlasTextures)
+        uploadAtlasTexture(*texture);
+}
+
+void RmlRenderer::addTextStats(uint32_t glyphsRasterized, uint32_t textRegenerations, uint32_t textEffectFallbacks, uint32_t atlasEvictions){
+    stats.glyphsRasterized += glyphsRasterized;
+    stats.textRegenerations += textRegenerations;
+    stats.textEffectFallbacks += textEffectFallbacks;
+    stats.atlasEvictions += atlasEvictions;
 }
 
 Rml::TextureHandle RmlRenderer::LoadTexture(Rml::Vector2i& texture_dimensions, const Rml::String& rmlSource){
@@ -907,7 +964,10 @@ HtmlUITexture* RmlRenderer::toTexture(Rml::TextureHandle handle){
 }
 
 void RmlRenderer::destroyTexture(HtmlUITexture* texture){
-    liveTextures.erase(texture);
+    if (liveTextures.erase(texture) > 0 && texture->savedLayer && stats.boxShadowTextures > 0)
+        stats.boxShadowTextures--;
+    if (texture->atlas)
+        atlasTextures.erase(std::remove(atlasTextures.begin(), atlasTextures.end(), texture), atlasTextures.end());
     cancelVideoConversion(texture);
     // the destructor destroys what it owns, without GPU calls when dead
     delete texture;
@@ -967,6 +1027,7 @@ void RmlRenderer::SetScissorRegion(Rml::Rectanglei region){
 }
 
 void RmlRenderer::SetTransform(const Rml::Matrix4f* newTransform){
+    transformSet = newTransform != nullptr;
     if (recording){
         // RmlUi's matrix lives only during the call
         Command& command = recordCommand(CommandType::TRANSFORM);
@@ -991,13 +1052,17 @@ const Rml::Matrix4f& RmlRenderer::getCurrentTransform() const{
 }
 
 Rml::Rectanglei RmlRenderer::getCurrentScissor() const{
-    if (!scissorEnabled)
+    if (!scissorEnabled && activeClipScope < 0)
         return Rml::Rectanglei::MakeInvalid();
-    return scissorTarget;
+    return currentScissorTarget();
 }
 
 bool RmlRenderer::isClipMaskEnabled() const{
     return clipMaskEnabled;
+}
+
+uint8_t RmlRenderer::getStencilRef() const{
+    return stencilRef;
 }
 
 Rml::Vector2f RmlRenderer::getPixelScale() const{
@@ -1007,9 +1072,7 @@ Rml::Vector2f RmlRenderer::getPixelScale() const{
 }
 
 Rml::Rectanglei RmlRenderer::currentScissorTarget() const{
-    if (!scissorEnabled)
-        return fullRect(targetSize.x, targetSize.y);
-    return scissorTarget;
+    return effectiveScissorTarget();
 }
 
 PipelineState RmlRenderer::layerState(BlendMode blend, ColorWriteMask writeMask, const StencilState& stencil) const{
@@ -1174,6 +1237,14 @@ void RmlRenderer::ensureResolved(Framebuffer& layer){
     // a pass that only resolves
     if (beginPass(layer, kind, index, LoadAction::LOAD, LoadAction::LOAD))
         endPass(true);
+}
+
+namespace {
+    std::atomic<bool> compositeFusion{true};
+}
+
+void RmlRenderer::setCompositeFusionForTesting(bool enabled){
+    compositeFusion = enabled;
 }
 
 void RmlRenderer::flushDeferredComposite(){
@@ -1356,6 +1427,7 @@ void RmlRenderer::stencilClear(uint8_t value){
         PostParams fs;
         object.applyUniformBlock(program.fsSlot, sizeof(PostParams), &fs);
     });
+    stats.stencilDraws++;
 }
 
 bool RmlRenderer::drawGeometry(RmlGeometry* geometry, Rml::Vector2f translation, HtmlUITexture* texture, const PipelineState& state){
@@ -1376,13 +1448,20 @@ bool RmlRenderer::drawGeometry(RmlGeometry* geometry, Rml::Vector2f translation,
     // one program for everything: untextured geometry samples white
     geometryObject.addTexture(geometryTextureSlot, ShaderStageType::FRAGMENT, texture ? texture->render : &placeholderWhite);
     stats.textureBinds++;
+    noteDrawn(texture);
     if (!geometryObject.beginDraw(state))
         return false;
     HtmlUIParams params = makeParams(transform, translation);
     geometryObject.applyUniformBlock(geometryParamsSlot, sizeof(HtmlUIParams), &params);
+    // a stencil-only draw (a clip mask) is not clipped analytically
+    const ClipParams& clipParams = (state.writeMask == ColorWriteMask::NONE)
+                                   ? noClip : currentClipParams(texture);
+    geometryObject.applyUniformBlock(geometryClipSlot, sizeof(ClipParams), const_cast<ClipParams*>(&clipParams));
     geometryObject.draw(0, indexCount, 1);
     stats.drawCalls++;
-    if (state.writeMask != ColorWriteMask::NONE)
+    if (state.writeMask == ColorWriteMask::NONE)
+        stats.stencilDraws++;
+    else
         noteColorWrite();
     return true;
 }
@@ -1392,12 +1471,15 @@ bool RmlRenderer::drawGeometry(RmlGeometry* geometry, Rml::Vector2f translation,
 //-------------------------------------------------------------------------------------------
 
 void RmlRenderer::RenderGeometry(Rml::CompiledGeometryHandle handle, Rml::Vector2f translation, Rml::TextureHandle textureHandle){
+    if (frameState == FrameState::ACTIVE)
+        stats.geometrySubmitted++;
     if (recording){
         // the texture is checked now (it cannot change before the replay, which draws it as it
         // is); the geometry is read at replay only (an empty one draws nothing there)
         HtmlUITexture* texture = toTexture(textureHandle);
         if (texture && (texture->dead || !texture->render || !texture->render->isCreated()))
             return;
+        translation = snapTextTranslation(translation, texture);
         Command& command = recordCommand(CommandType::GEOMETRY);
         command.a = handle;
         command.b = reinterpret_cast<uintptr_t>(texture);
@@ -1405,7 +1487,17 @@ void RmlRenderer::RenderGeometry(Rml::CompiledGeometryHandle handle, Rml::Vector
         command.y = translation.y;
         return;
     }
-    renderGeometryNow(handle, translation, textureHandle);
+    renderGeometryNow(handle, snapTextTranslation(translation, toTexture(textureHandle)), textureHandle);
+}
+
+Rml::Vector2f RmlRenderer::snapTextTranslation(Rml::Vector2f translation, const HtmlUITexture* texture) const{
+    // (part of transform-aware text, D1: off with it)
+    if (!texture || !texture->atlas || texture->sample == HtmlUITexture::Sample::MSDF || transformSet || !RmlFontEngine::isTransformAwareText())
+        return translation;
+    const Rml::Vector2f pixel = getPixelScale();
+    if (pixel.x == 1.0f && pixel.y == 1.0f)
+        return translation;
+    return Rml::Vector2f(std::round(translation.x * pixel.x) / pixel.x, std::round(translation.y * pixel.y) / pixel.y);
 }
 
 void RmlRenderer::drawRecordedGeometry(Rml::CompiledGeometryHandle handle, Rml::Vector2f translation, HtmlUITexture* texture){
@@ -1441,7 +1533,7 @@ void RmlRenderer::RenderToClipMask(Rml::ClipMaskOperation operation, Rml::Compil
         RmlGeometry* geometry = reinterpret_cast<RmlGeometry*>(handle);
         if (!geometry || geometry->vertices.empty() || geometry->indices.empty())
             return;
-        // the reference the replay will test against
+        // the reference the replay will test against (getStencilRef during the traversal)
         switch (operation){
         case Rml::ClipMaskOperation::Set:
         case Rml::ClipMaskOperation::SetInverse:
@@ -1459,6 +1551,25 @@ void RmlRenderer::RenderToClipMask(Rml::ClipMaskOperation operation, Rml::Compil
         return;
     }
     renderToClipMaskNow(operation, handle, translation);
+}
+
+void RmlRenderer::RenderToClipMaskShape(Rml::ClipMaskOperation operation, Rml::CompiledGeometryHandle handle, Rml::Vector2f translation,
+                                        const Rml::ClipShape& shape){
+    if (!recording){
+        renderToClipMaskNow(operation, handle, translation);
+        return;
+    }
+    const size_t before = commands.size();
+    RenderToClipMask(operation, handle, translation);
+    if (commands.size() == before)
+        return;
+    // the replay may clip by the shape instead of drawing the mask (RmlRendererBatch.cpp)
+    ClipShapeRecord record;
+    record.rect = shape.rect;
+    for (int i = 0; i < 4; i++)
+        record.radii[i] = shape.radii[i];
+    commandClipShapes.push_back(record);
+    commands.back().i[0] = (int32_t)commandClipShapes.size();
 }
 
 void RmlRenderer::renderToClipMaskNow(Rml::ClipMaskOperation operation, Rml::CompiledGeometryHandle handle, Rml::Vector2f translation){
@@ -1641,7 +1752,7 @@ void RmlRenderer::compositeLayersNow(Rml::LayerHandle sourceHandle, Rml::LayerHa
     if (!destinationLayer)
         return;
     // a filtered composite into a just pushed layer (a backdrop's): deferred, see DeferredComposite
-    if (blendMode == Rml::BlendMode::Blend && !clipMaskEnabled && !context.isPrimaryLayer() && destination == layersSize - 1 &&
+    if (compositeFusion && blendMode == Rml::BlendMode::Blend && !clipMaskEnabled && !context.isPrimaryLayer() && destination == layersSize - 1 &&
         destination > 0 && destination < (int)layerClearPending.size() && layerClearPending[destination] && !isEmpty(currentScissorTarget())){
         deferred.layer = destination;
         deferred.post = context.primaryIndex;
@@ -1860,6 +1971,7 @@ HtmlUITexture* RmlRenderer::createLayerTexture(int width, int height){
     desc.depth = DepthStencilFormat::NONE;
     desc.sampleCount = 1;
     desc.label = "htmlui-layer-texture";
+    gpuCreateCount++;
     if (!texture->ownedTarget->create(desc)){
         Log::error("[HTML UI] could not create a %d x %d layer texture", desc.width, desc.height);
         return nullptr;
@@ -1867,8 +1979,10 @@ HtmlUITexture* RmlRenderer::createLayerTexture(int width, int height){
     texture->render = &texture->ownedTarget->getRender().getColorTexture();
     texture->width = desc.width;
     texture->height = desc.height;
+    texture->savedLayer = true;
     HtmlUITexture* result = texture.release();
     liveTextures.insert(result);
+    stats.boxShadowTextures++;
     return result;
 }
 
@@ -2285,7 +2399,9 @@ namespace {
 bool RmlRenderer::loadPrograms(){
     geometryShader = ShaderPool::get(ShaderType::HTMLUI, ShaderPool::getHtmlUIProperties(true));
     gradientShader = ShaderPool::get(ShaderType::HTMLUI_GRADIENT, 0);
-    bool ready = geometryShader && geometryShader->isCreated() && gradientShader && gradientShader->isCreated();
+    primShader = ShaderPool::get(ShaderType::HTMLUI_PRIM, 0);
+    bool ready = geometryShader && geometryShader->isCreated() && gradientShader && gradientShader->isCreated() && primShader &&
+                 primShader->isCreated();
     static_assert(POST_PROGRAM_COUNT == HTMLUI_POST_VARIANT_COUNT, "one post program per HTMLUI_POST variant");
     for (int i = 0; i < HTMLUI_POST_VARIANT_COUNT; i++){
         PostProgram& program = postPrograms[i];
@@ -2295,6 +2411,64 @@ bool RmlRenderer::loadPrograms(){
         ready = ready && program.shader && program.shader->isCreated();
     }
     return ready;
+}
+
+bool RmlRenderer::loadPrimObject(){
+    // the unit quad (two triangles), and one zero instance whose layout the instance buffers share
+    const float corners[8] = {0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f};
+    const uint32_t cornerIndices[6] = {0, 1, 2, 0, 2, 3};
+    HtmlUIPrimitive zero;
+    std::memset(&zero, 0, sizeof(zero));
+    gpuCreateCount += 3;
+    if (!primQuadBuffer.createBuffer(sizeof(corners), (void*)corners, BufferType::VERTEX_BUFFER, BufferUsage::IMMUTABLE) ||
+        !primQuadIndexBuffer.createBuffer(sizeof(cornerIndices), (void*)cornerIndices, BufferType::INDEX_BUFFER, BufferUsage::IMMUTABLE) ||
+        !primInstanceTemplate.createBuffer(sizeof(zero), &zero, BufferType::VERTEX_BUFFER, BufferUsage::IMMUTABLE))
+        return false;
+
+    ShaderData& data = primShader->shaderData;
+    primParamsSlot = data.getUniformBlockIndexByName("u_vs_htmluiPrim");
+    primClipSlot = data.getUniformBlockIndexByName("u_fs_htmluiClip");
+    primSlotsSlot = data.getUniformBlockIndexByName("u_fs_htmluiSlots");
+    for (int i = 0; i < 4; i++)
+        primTextureSlots[(size_t)i] = data.getTextureIndexByName(("u_htmluiTexture" + std::to_string(i)).c_str());
+    primObject.beginLoad(PrimitiveType::TRIANGLES);
+    primObject.setShader(primShader.get());
+    primObject.addAttribute(data.getAttrIndex(AttributeType::POSITION), &primQuadBuffer, 2, AttributeDataType::FLOAT, sizeof(float) * 2, 0, false, false);
+    // every instance attribute in one bind slot (more of them than sokol has vertex buffer slots)
+    struct InstanceAttribute {
+        const char* name;
+        size_t offset;
+        bool color;
+    };
+    const InstanceAttribute attributes[] = {
+        {"i_a", offsetof(HtmlUIPrimitive, a), false},
+        {"i_b", offsetof(HtmlUIPrimitive, b), false},
+        {"i_c", offsetof(HtmlUIPrimitive, c), false},
+        {"i_d", offsetof(HtmlUIPrimitive, d), false},
+        {"i_e", offsetof(HtmlUIPrimitive, e), false},
+        {"i_f", offsetof(HtmlUIPrimitive, f), false},
+        {"i_params", offsetof(HtmlUIPrimitive, params), false},
+        {"i_color", offsetof(HtmlUIPrimitive, color), true},
+        {"i_border0", offsetof(HtmlUIPrimitive, border), true},
+        {"i_border1", offsetof(HtmlUIPrimitive, border) + 4, true},
+        {"i_border2", offsetof(HtmlUIPrimitive, border) + 8, true},
+        {"i_border3", offsetof(HtmlUIPrimitive, border) + 12, true},
+    };
+    for (const InstanceAttribute& attribute : attributes){
+        const int slot = data.getAttrIndexByName(attribute.name);
+        if (slot < 0){
+            Log::error("[HTML UI] the primitive program has no attribute %s", attribute.name);
+            return false;
+        }
+        primObject.addInterleavedAttribute(slot, &primInstanceTemplate, 4, attribute.color ? AttributeDataType::UNSIGNED_BYTE : AttributeDataType::FLOAT,
+                                           sizeof(HtmlUIPrimitive), attribute.offset, attribute.color, true);
+    }
+    primObject.setIndex(&primQuadIndexBuffer, AttributeDataType::UNSIGNED_INT, 0);
+    for (const std::pair<int, int>& slot : primTextureSlots){
+        if (slot.first >= 0)
+            primObject.addTexture(slot, ShaderStageType::FRAGMENT, &placeholderWhite);
+    }
+    return primObject.endLoadDynamic(PrimitiveType::TRIANGLES, IndexType::UINT32);
 }
 
 bool RmlRenderer::loadPipelines(){
@@ -2311,6 +2485,7 @@ bool RmlRenderer::loadPipelines(){
     const uint8_t white[4] = {255, 255, 255, 255};
     void* whiteData[1] = {const_cast<uint8_t*>(white)};
     size_t whiteSize[1] = {sizeof(white)};
+    gpuCreateCount++;
     if (!placeholderWhite.createTexture("htmlui-white", 1, 1, ColorFormat::RGBA, TextureType::TEXTURE_2D, 1, whiteData, whiteSize,
                                         TextureFilter::NEAREST, TextureFilter::NEAREST, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE)){
         Log::error("[HTML UI] could not create the placeholder texture");
@@ -2328,6 +2503,7 @@ bool RmlRenderer::loadPipelines(){
         {Rml::Vector2f(-1.0f, -1.0f), white4, Rml::Vector2f(0.0f, 1.0f)},
     };
     const uint32_t quadIndices[6] = {0, 1, 2, 0, 2, 3};
+    gpuCreateCount += 2;
     if (!compositeVertexBuffer.createBuffer(sizeof(quad), (void*)quad, BufferType::VERTEX_BUFFER, BufferUsage::IMMUTABLE) ||
         !compositeIndexBuffer.createBuffer(sizeof(quadIndices), (void*)quadIndices, BufferType::INDEX_BUFFER, BufferUsage::IMMUTABLE)){
         Log::error("[HTML UI] could not create the HTML UI composite");
@@ -2337,6 +2513,7 @@ bool RmlRenderer::loadPipelines(){
 
     ShaderData& geometryData = geometryShader->shaderData;
     geometryParamsSlot = geometryData.getUniformBlockIndexByName("u_vs_htmluiParams");
+    geometryClipSlot = geometryData.getUniformBlockIndexByName("u_fs_htmluiClip");
     geometryTextureSlot = geometryData.getTextureIndexByName("u_htmluiTexture");
     gradientParamsSlot = gradientShader->shaderData.getUniformBlockIndexByName("u_vs_htmluiParams");
     gradientFsSlot = gradientShader->shaderData.getUniformBlockIndexByName("u_fs_htmluiGradient");
@@ -2361,6 +2538,12 @@ bool RmlRenderer::loadPipelines(){
         !loadGeometryObject(geometryObject, geometryShader.get(), &compositeVertexBuffer, &compositeIndexBuffer, &placeholderWhite) ||
         !loadGeometryObject(gradientObject, gradientShader.get(), &compositeVertexBuffer, &compositeIndexBuffer, &placeholderWhite)){
         Log::error("[HTML UI] could not load the HTML UI geometry programs");
+        destroyPipelineObjects();
+        return false;
+    }
+
+    if (!loadPrimObject()){
+        Log::error("[HTML UI] could not load the HTML UI primitive program");
         destroyPipelineObjects();
         return false;
     }
@@ -2411,6 +2594,22 @@ void RmlRenderer::abortFrame(){
 // RmlRenderer: command recording (phase-1 spec 3.2.10)
 //-------------------------------------------------------------------------------------------
 
+namespace {
+    std::atomic<bool> commandRecording{true};
+}
+
+void RmlRenderer::setCommandRecordingForTesting(bool enabled){
+    commandRecording = enabled;
+}
+
+bool RmlRenderer::isCommandRecording(){
+    return commandRecording;
+}
+
+size_t RmlRenderer::getLastFrameCommandCount() const{
+    return lastFrameCommandCount;
+}
+
 RmlRenderer::Command& RmlRenderer::recordCommand(CommandType type){
     commands.emplace_back();
     Command& command = commands.back();
@@ -2431,63 +2630,79 @@ void RmlRenderer::replayCommands(){
     clipMaskEnabled = false;
     stencilRef = 0;
     layersSize = 1;
+    activeClipScope = -1;
 
-    const Command* command = commands.data();
-    const Command* end = command + commands.size();
-    for (; command != end; command++){
-        const Command& c = *command;
-        switch (c.type){
-        case CommandType::GEOMETRY:
-            drawRecordedGeometry(c.a, Rml::Vector2f(c.x, c.y), reinterpret_cast<HtmlUITexture*>(c.b));
-            break;
-        case CommandType::CLIP_MASK:
-            renderToClipMaskNow((Rml::ClipMaskOperation)c.flag, c.a, Rml::Vector2f(c.x, c.y));
-            break;
-        case CommandType::SCISSOR_ENABLE:
-            scissorEnabled = c.flag != 0;
-            break;
-        case CommandType::SCISSOR_REGION:
-            scissorTarget = Rml::Rectanglei::FromCorners(Rml::Vector2i(c.i[0], c.i[1]), Rml::Vector2i(c.i[2], c.i[3]));
-            scissorRegion = commandRects[c.a];
-            break;
-        case CommandType::CLIP_ENABLE:
-            clipMaskEnabled = c.flag != 0;
-            break;
-        case CommandType::TRANSFORM:
-            transform = c.flag ? (projection * commandMatrices[(size_t)c.i[0]]) : projection;
-            break;
-        case CommandType::PUSH_LAYER: {
-            const int index = (int)pushLayerNow();
-            if (index != c.i[0])
-                Log::error("[HTML UI] the replay pushed layer %d where the recording returned %d", index, c.i[0]);
-            break;
-        }
-        case CommandType::POP_LAYER:
-            popLayerNow();
-            break;
-        case CommandType::COMPOSITE:
-            compositeLayersNow((Rml::LayerHandle)c.i[0], (Rml::LayerHandle)c.i[1], (Rml::BlendMode)c.flag,
-                               Rml::Span<const Rml::CompiledFilterHandle>(commandFilters.data() + c.i[2], (size_t)c.i[3]));
-            break;
-        case CommandType::SAVE_TEXTURE: {
-            // the texture exists since the recording; it stays unfilled when the layer cannot be made
-            HtmlUITexture* texture = reinterpret_cast<HtmlUITexture*>(c.a);
-            if (Framebuffer* layer = readableTopLayer())
-                copyLayerInto(*layer, *texture, currentScissorTarget(), (c.flag & SAVE_TILED) != 0, Rml::Vector2i(c.i[0], c.i[1]),
-                              (c.flag & SAVE_LOAD) ? LoadAction::LOAD : LoadAction::CLEAR);
-            break;
-        }
-        case CommandType::SAVE_MASK: {
-            Framebuffer* layer = readableTopLayer();
-            Framebuffer* mask = postTarget(RmlRenderTarget::BLEND_MASK);
-            if (layer && mask)
-                copyLayerIntoMask(*layer, *mask);
-            break;
-        }
-        case CommandType::SHADER:
-            renderShaderNow(c.a, c.b, Rml::Vector2f(c.x, c.y));
-            break;
-        }
+    // glyphs the recorded frame added to atlas pages, before anything draws
+    updateAtlasTextures();
+    if (batching){
+        replayBatched();
+        return;
+    }
+    // unbatched with SDF primitives: rounded clips the shaders can do are analytic (S16 R6)
+    if (primitivesFrame){
+        planClipScopes();
+        replayScoped();
+        return;
+    }
+    for (const Command& c : commands)
+        replayCommand(c);
+}
+
+void RmlRenderer::replayCommand(const Command& c){
+    switch (c.type){
+    case CommandType::GEOMETRY:
+        drawRecordedGeometry(c.a, Rml::Vector2f(c.x, c.y), reinterpret_cast<HtmlUITexture*>(c.b));
+        break;
+    case CommandType::CLIP_MASK:
+        renderToClipMaskNow((Rml::ClipMaskOperation)c.flag, c.a, Rml::Vector2f(c.x, c.y));
+        break;
+    case CommandType::SCISSOR_ENABLE:
+        scissorEnabled = c.flag != 0;
+        break;
+    case CommandType::SCISSOR_REGION:
+        scissorTarget = Rml::Rectanglei::FromCorners(Rml::Vector2i(c.i[0], c.i[1]), Rml::Vector2i(c.i[2], c.i[3]));
+        scissorRegion = commandRects[c.a];
+        break;
+    case CommandType::CLIP_ENABLE:
+        clipMaskEnabled = c.flag != 0;
+        break;
+    case CommandType::TRANSFORM:
+        transform = c.flag ? (projection * commandMatrices[(size_t)c.i[0]]) : projection;
+        break;
+    case CommandType::PUSH_LAYER: {
+        const int index = (int)pushLayerNow();
+        if (index != c.i[0])
+            Log::error("[HTML UI] the replay pushed layer %d where the recording returned %d", index, c.i[0]);
+        break;
+    }
+    case CommandType::POP_LAYER:
+        popLayerNow();
+        break;
+    case CommandType::COMPOSITE:
+        compositeLayersNow((Rml::LayerHandle)c.i[0], (Rml::LayerHandle)c.i[1], (Rml::BlendMode)c.flag,
+                           Rml::Span<const Rml::CompiledFilterHandle>(commandFilters.data() + c.i[2], (size_t)c.i[3]));
+        break;
+    case CommandType::SAVE_TEXTURE: {
+        // the texture exists since the recording; it stays unfilled when the layer cannot be made
+        HtmlUITexture* texture = reinterpret_cast<HtmlUITexture*>(c.a);
+        if (Framebuffer* layer = readableTopLayer())
+            copyLayerInto(*layer, *texture, currentScissorTarget(), (c.flag & SAVE_TILED) != 0, Rml::Vector2i(c.i[0], c.i[1]),
+                          (c.flag & SAVE_LOAD) ? LoadAction::LOAD : LoadAction::CLEAR);
+        break;
+    }
+    case CommandType::SAVE_MASK: {
+        Framebuffer* layer = readableTopLayer();
+        Framebuffer* mask = postTarget(RmlRenderTarget::BLEND_MASK);
+        if (layer && mask)
+            copyLayerIntoMask(*layer, *mask);
+        break;
+    }
+    case CommandType::SHADER:
+        renderShaderNow(c.a, c.b, Rml::Vector2f(c.x, c.y));
+        break;
+    case CommandType::PRIMITIVES:
+        drawPrimitivesNow(commandPrimitives.data() + c.i[0], (size_t)c.i[1], Rml::Vector2f(c.x, c.y));
+        break;
     }
 }
 
@@ -2496,6 +2711,9 @@ void RmlRenderer::finishRecording(){
     commandMatrices.clear();
     commandFilters.clear();
     commandRects.clear();
+    commandClipShapes.clear();
+    commandPrimitives.clear();
+    activeClipScope = -1;
     // releases deferred while recording, in their order
     for (size_t i = 0; i < deferredReleases.size(); i++){
         const DeferredRelease release = deferredReleases[i];
@@ -2524,6 +2742,7 @@ bool RmlRenderer::beginFrame(RmlRenderTarget& renderTarget, Rml::Vector2i size){
 
     contextSize = Rml::Vector2i(std::max(size.x, 1), std::max(size.y, 1));
     framed = true;
+    transformSet = false;
     frameNumber = SystemRender::getFrameCount();
     // the effects' per-frame state (phase 5; once per sokol frame) and what their draws read once
     htmlui::EffectRuntime::get().beginFrame();
@@ -2532,9 +2751,11 @@ bool RmlRenderer::beginFrame(RmlRenderTarget& renderTarget, Rml::Vector2i size){
     // per-frame statistics; the geometry counts are current
     const uint32_t geometryLive = stats.geometryLive;
     const uint32_t geometryBytes = stats.geometryBytes;
+    const uint32_t savedLayers = stats.boxShadowTextures;
     stats = HtmlUIRenderStats();
     stats.geometryLive = geometryLive;
     stats.geometryBytes = geometryBytes;
+    stats.boxShadowTextures = savedLayers;
     lastFrameDrawCount = 0;
 
     // shaders still compiling, or no target: the frame is dropped
@@ -2583,13 +2804,21 @@ bool RmlRenderer::beginFrame(RmlRenderTarget& renderTarget, Rml::Vector2i size){
 
     // RmlUi's calls are recorded until endFrame replays them
     frameStartScissor = scissorRegion;
-    recording = true;
+    recording = commandRecording;
+    batching = recording && isBatching();
+    primitivesFrame = isSdfPrimitives();
+    // drawing at once: what the atlas pages hold now (pages are uploaded again when drawn)
+    if (!recording)
+        updateAtlasTextures();
+    activeClipScope = -1;
     if (recording){
         recordLayers = 1;
         commands.clear();
         commandMatrices.clear();
         commandFilters.clear();
         commandRects.clear();
+        commandClipShapes.clear();
+        commandPrimitives.clear();
     }
     return true;
 }
@@ -2610,8 +2839,10 @@ bool RmlRenderer::endFrame(){
     }
 
     // the recorded frame, drawn in one go
+    lastFrameCommandCount = 0;
     if (recording){
         recording = false;
+        lastFrameCommandCount = commands.size();
         replayCommands();
     }
 
@@ -2628,6 +2859,10 @@ bool RmlRenderer::endFrame(){
     stats.pipelineCacheMisses = (uint32_t)(SystemRender::getPipelineCacheMisses() - frameMissesStart);
     stats.pipelineApplies = (uint32_t)(SystemRender::getPipelineApplies() - frameAppliesStart);
     lastFrameDrawCount = stats.drawCalls;
+    // the glyph atlas is shared by every context: its size and the distance glyphs it still makes
+    const RmlFontEngine& fonts = HtmlUI::getFontEngine();
+    stats.atlasBytes = (uint32_t)fonts.getAtlasBytes();
+    stats.msdfGlyphsPending = (uint32_t)fonts.getPendingDistanceGlyphCount();
 
     frameState = FrameState::NONE;
     target = nullptr;
@@ -2668,6 +2903,7 @@ bool RmlRenderer::drawComposite(TextureRender& source, PipelineType compositePip
     object->addTexture(geometryTextureSlot, ShaderStageType::FRAGMENT, &source);
     HtmlUIParams params = makeParams(clipFromQuad, Rml::Vector2f(0.0f, 0.0f));
     object->applyUniformBlock(geometryParamsSlot, sizeof(HtmlUIParams), &params);
+    object->applyUniformBlock(geometryClipSlot, sizeof(ClipParams), &noClip);
     object->draw(0, 6, 1);
 
     return true;
@@ -2715,6 +2951,7 @@ void RmlRenderer::releaseGpuResources(){
 
     destroyPipelineObjects();
     destroyGeometryBuffers();
+    destroyGatherPages();
 
     // the handles stay valid for RmlUi, which releases them (Rml::ReleaseTextures)
     for (HtmlUITexture* texture : liveTextures){
@@ -2741,11 +2978,15 @@ void RmlRenderer::destroyPipelineObjects(){
     gradientObject.destroy();
     compositeObject.destroy();
     compositeMsaaObject.destroy();
+    primObject.destroy();
     for (PostProgram& program : postPrograms){
         program.object.destroy();
     }
     compositeVertexBuffer.destroyBuffer();
     compositeIndexBuffer.destroyBuffer();
+    primQuadBuffer.destroyBuffer();
+    primQuadIndexBuffer.destroyBuffer();
+    primInstanceTemplate.destroyBuffer();
     placeholderWhite.destroyTexture();
 
     // the pool destroys a shader (and its cached pipelines) once no other renderer holds it
@@ -2757,6 +2998,14 @@ void RmlRenderer::destroyPipelineObjects(){
         gradientShader.reset();
         ShaderPool::remove(ShaderType::HTMLUI_GRADIENT, 0);
     }
+    if (primShader){
+        primShader.reset();
+        ShaderPool::remove(ShaderType::HTMLUI_PRIM, 0);
+    }
+    primParamsSlot = -1;
+    primClipSlot = -1;
+    primSlotsSlot = -1;
+    primTextureSlots.fill({-1, -1});
     for (int i = 0; i < HTMLUI_POST_VARIANT_COUNT; i++){
         PostProgram& program = postPrograms[i];
         if (program.shader){
@@ -2771,6 +3020,7 @@ void RmlRenderer::destroyPipelineObjects(){
         program.chromaVSlot = {-1, -1};
     }
     geometryParamsSlot = -1;
+    geometryClipSlot = -1;
     geometryTextureSlot = {-1, -1};
     gradientParamsSlot = -1;
     gradientFsSlot = -1;
@@ -2845,6 +3095,10 @@ size_t RmlRenderer::getLastFrameDrawCount() const{
     return lastFrameDrawCount;
 }
 
+uint64_t RmlRenderer::getGpuCreateCount() const{
+    return gpuCreateCount;
+}
+
 //-------------------------------------------------------------------------------------------
 // RmlRenderer: contexts and <video> frames (phase 6)
 //-------------------------------------------------------------------------------------------
@@ -2856,6 +3110,16 @@ namespace {
         return value;
     }
 
+    std::unordered_map<const Rml::RenderManager*, RmlRenderer*>& managerRenderers(){
+        static std::unordered_map<const Rml::RenderManager*, RmlRenderer*> value;
+        return value;
+    }
+
+}
+
+RmlRenderer* RmlRenderer::forRenderManager(const Rml::RenderManager* renderManager){
+    auto it = managerRenderers().find(renderManager);
+    return it == managerRenderers().end() ? nullptr : it->second;
 }
 
 RmlRenderer* RmlRenderer::forContext(const Rml::Context* context){
@@ -2864,12 +3128,23 @@ RmlRenderer* RmlRenderer::forContext(const Rml::Context* context){
 }
 
 void RmlRenderer::bindContext(const Rml::Context* context, RmlRenderer* renderer){
-    if (context && renderer)
+    if (context && renderer){
         contextRenderers()[context] = renderer;
+        managerRenderers()[&const_cast<Rml::Context*>(context)->GetRenderManager()] = renderer;
+    }
 }
 
 void RmlRenderer::unbindContext(const Rml::Context* context){
-    contextRenderers().erase(context);
+    auto it = contextRenderers().find(context);
+    if (it == contextRenderers().end())
+        return;
+    for (auto manager = managerRenderers().begin(); manager != managerRenderers().end();){
+        if (manager->second == it->second)
+            manager = managerRenderers().erase(manager);
+        else
+            ++manager;
+    }
+    contextRenderers().erase(it);
 }
 
 void RmlRenderer::queueVideoConversion(const VideoConversion& conversion){
@@ -2973,6 +3248,14 @@ void RmlRenderer::getGpuHandles(std::vector<uint32_t>& buffers, std::vector<uint
     for (const std::unique_ptr<RmlTransientBuffer>& buffer : transientBuffers){
         addBuffer(buffer->buffer);
     }
+    // S16: the batched replay's gather pages and the HTMLUI_PRIM unit quad
+    for (const std::unique_ptr<GatherPage>& page : gatherPages){
+        addBuffer(page->data);
+        addBuffer(page->indices);
+    }
+    addBuffer(primQuadBuffer);
+    addBuffer(primQuadIndexBuffer);
+    addBuffer(primInstanceTemplate);
 
     uint32_t placeholder = const_cast<TextureRender&>(placeholderWhite).backend.get().id;
     if (placeholder != 0) images.push_back(placeholder);

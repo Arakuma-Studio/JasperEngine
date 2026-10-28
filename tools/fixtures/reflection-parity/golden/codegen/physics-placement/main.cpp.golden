@@ -653,6 +653,7 @@ JASPERENGINE_INIT void init() {
     Engine::setAtmosphereQualityDefaults(AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW);
     Engine::setTextureDefaults({0, 0, false}, {0, 512, false}, {0, 384, true});
     UIDocumentSystem::setPreferredSampleCount(4);
+    UIDocumentSystem::setHtmlUiRenderOptions(0, true, true);
 
     SceneManager::registerScene(2685538481, "TableCrate", load_scene_TableCrate_2685538481, add_scene_TableCrate_2685538481, {2685538481}, resources_scene_TableCrate_2685538481);
     SceneManager::registerScene(1698906752, "RingPeg", load_scene_RingPeg_1698906752, add_scene_RingPeg_1698906752, {1698906752}, resources_scene_RingPeg_1698906752);

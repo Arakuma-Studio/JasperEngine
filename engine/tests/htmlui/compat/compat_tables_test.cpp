@@ -183,3 +183,13 @@ TEST(CompatTables, CssPropertyNameOfRcss){
     EXPECT_EQ(cssPropertyName("tab-index"), "tab-index");
     EXPECT_EQ(cssPropertyName("not-a-property"), "not-a-property");
 }
+
+// S16 AC17: text-rendering is native (fork S16-F3): the rewriter passes it through, check --ui reports
+// nothing for it
+TEST(CompatTables, TextRenderingIsNative){
+    const PropertySupport* row = findProperty("text-rendering");
+    ASSERT_NE(row, nullptr);
+    EXPECT_EQ(row->support, Support::Native);
+    EXPECT_EQ(row->supportWithFork, Support::Native);
+    EXPECT_TRUE(row->inherited);
+}

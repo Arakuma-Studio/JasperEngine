@@ -23,6 +23,8 @@ uniform u_fs_htmluiGradient {
 
 in vec4 v_color;
 in vec2 v_uv1;
+// htmlui.vert's document position (S16's analytic clip, not used by gradients)
+in vec2 v_docPos;
 
 out vec4 g_finalColor;
 

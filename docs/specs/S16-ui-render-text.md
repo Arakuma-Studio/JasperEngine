@@ -503,3 +503,257 @@ one line pointing here.
 | Effective scale is wrong under perspective (scale varies across the box) | Use the max singular value at the box centre; perspective text uses MSDF (R16) |
 | Slug patent status | Not used. Revisit only with a written legal clearance; MSDF covers the need |
 | Gamma/contrast tuning à la `text_mask_gamma.glsl` | Out of scope (would change every text golden); candidate follow-up |
+
+## Deviations (implementation record)
+
+- **Toggles (D1).** Batching (`RmlRenderer::setBatchingForTesting`) covers the merged runs, the run
+  cache and the clip-mask elision; the analytic rounded clip (R6) is part of the SDF primitives
+  toggle (`setSdfPrimitivesForTesting` / `htmlUiSdfPrimitives`) and applies to the unbatched
+  replay too (`RmlRenderer::replayScoped`). Elision draws exactly what the mask would, analytic
+  clips antialias the curve differently from a stencil mask: with the analytic clip under the
+  batching toggle, R7's "max channel difference <= 1 between batching on and off" could not hold
+  on any rounded clip. The project settings call these setters (`UIDocumentSystem::
+  setHtmlUiRenderOptions`), the names stay D1's. GPU text effects and distance text (R16
+  `geometricPrecision`, R17) are part of the text layer: off with transform-aware text. `JASPER_HTMLUI_S16_OFF=1` turns all three off
+  for a whole `jasperengine-htmlui-tests` run (AC1).
+- **No `MSDF_GLYPH` instance mode.** Distance glyphs are `QUAD` instances (or meshes, unbatched)
+  whose texture is an MTSDF page: the texture's kind (`HtmlUITexture::Sample`) and its effect
+  variant's parameters (D6) go into `u_fs_htmluiClip` per draw (`params.y`, `text`), which both
+  `htmlui.frag` and `htmlui_prim.frag` decode, so distance text also draws with batching off.
+- **Distance range.** "12 px (0.3 em)" is read as 12 atlas texels of distance on each side of the
+  outline (msdfgen's range of 24), so that an effect reach of 0.3 em is inside it as R17 says.
+- **Atlas pages update in place.** A page that gets glyphs keeps its texture (a DYNAMIC image the
+  renderer uploads again before the frame draws, `RmlRenderer::updateAtlasTextures`) instead of a
+  new texture source: nothing is regenerated for a growing page. Per-handle versions (R13) change
+  when a page a handle drew from is cleared (eviction), when the distance glyphs a handle waits for
+  arrive, and with the epoch (reloads, scale and render-text resets). A render interface other than
+  the engine's (RmlUi's own tests, `RecordingRenderInterface`) still gets a new source per growing
+  page, bumping that page's users.
+- **Budget split.** `htmlUiGlyphAtlasMiB` is the sum of both budgets, split 2:1 (bitmap : distance,
+  as 16 + 8 and 8 + 4); the CPU font-effect pages (RGBA8, 4 MiB) count against the bitmap budget.
+  A page cleared to make room keeps its index (parked, no texels, no texture) so glyph entries stay
+  valid; the "unused in this frame and the last" rule reads the renderer's draws of the page's
+  textures (`HtmlUITexture::drawFrame`) and the strings that used it.
+- **Shadows (D4).** The analytic shadow integrates the Gaussian exactly over the rows between the
+  corners (separable erf) and numerically (6 rows per curved band) over the corners, instead of
+  `erf` of the signed distance: a true Gaussian of the rounded rectangle at every blur, so
+  `GeometryBoxShadow::primitive_blur_limit` stays at "no limit". `BoxPrimitive` also carries
+  `fill_insets` (the mesh path's one-pixel inset of the fill under opaque borders) beyond the API
+  sketch.
+- **Translate-only transforms** are folded into the members' translation (outside analytic clips),
+  so `translateX(-50%)` centring and slides join the runs around them.
+- **Hysteresis (R15).** "The scale changed" is a change above 1e-4 of the last render's on-screen
+  scale; the first generation of a text is at its on-screen scale at once; text above 128 device px,
+  under perspective or with `geometricPrecision` waits for its distance glyphs as a bitmap at its
+  scale. The settle's glyphs are made within 256 glyphs and 2 ms a frame (`PrepareGlyphs`); the
+  first generation is never held back.
+- **Acutance (AC10)** is the mean Sobel gradient over the ink box's edge pixels (those at least a
+  tenth of the box's largest gradient): over the whole box a sharp text twice the size has a lower
+  mean (more pixels inside the strokes), which made the 1.37 pixel ratio comparison meaningless.
+- **Tests on the GPU renderer.** `RenderBatch.*` drive `RmlRenderer` directly in a
+  `RenderTestContext` (draw counts and images) rather than the `RecordingRenderInterface`, which
+  does not batch. `TestFontEngine.AtlasBudget*` are GPU tests (`TestFontEngineAtlas.cpp`): the LRU
+  rule counts rendered frames. `RenderBatch.EquivalenceAllGoldenScenes` compares every capture of
+  the browser-parity fixtures (the golden scenes the documents define); the C++-drawn goldens'
+  suites compare their own images.
+- **B6** is `list-500` in its own 1024 x 1024 context (what a texture-mode document is: an
+  `HtmlUIContext` of the texture's size), not through a scene's `UIDocumentComponent`.
+- **textEffectFallbacks** counts a string generated with a CPU font effect and, per frame, each
+  blurred `text-shadow` drawn through a layer.
+- **S15's render-stats tool** (`get_render_stats`, merged after S16's work) carries the selected
+  scene's `HtmlUIRenderStats` as `html_ui` (`forEachField`), the same fields as `inspect_ui`'s.
+- **R21 B1 draws (reported, not gated).** After round 2's measured attempts (four texture slots
+  per `HTMLUI_PRIM` draw; CSS background gradients as primitives without their mask layers,
+  S16-F5) blank, inventory, pause_menu, settings and shop meet "<= 30 % of the baseline and <= 40";
+  dialogue (14 for 12), hud (80 for 40), loading (34 for 17), main_menu (36 for 31), toasts (40
+  for 24) and video_menu (14 for 9) do not. Their remaining draws, measured per example on the
+  benchmark host (`docs/html-ui/render-benchmark.md`, `RmlRenderer::getLastEffectCounts` and
+  `getLastRunBreaks`), are effect passes S16 does not change: backdrop-filter and filter blurs
+  (several passes each), `text-shadow` blurs beyond the distance glyphs' reach (a layer and a
+  blur), opacity groups and their composites, and stencil masks under those layers (an analytic
+  clip does not clip a composite); runs split by textures are gone (1 or 0 per example). Merging
+  them would change what the browser draws (a blur of a group is not the group of blurs).
+  `HtmlUIRenderPerf.B1Examples` prints the target per example, and gates "no more draws than the
+  baseline" and the engine time (baseline + 5 %).
+- **R22 B2 met.** "<= 50 % of the baseline" for the engine time: 2.477 -> 1.084 ms (44 %), B6 43 %,
+  gated by `B2List500` and `B6TextureList500` (round 2: the paint traversal's shortcuts S16-F6,
+  culling S16-F4, the benchmark's frames started with the GPU idle).
+- **R22 gathering** counts an instance as the 4 vertices it replaces, on warm frames with the run
+  cache dropped (`RmlRenderer::clearRunCacheForTesting`).
+- **Wall frame times on a software rasterizer** (llvmpipe, the CI and benchmark hosts) are higher
+  with S16: llvmpipe pays per instance (B3 text-wall: 128 ms instanced, 38 ms as a vertex run, 37 ms
+  baseline). They are not a criterion (R22 excludes the backend, R24 needs GPU pass timings) and
+  are reported in `docs/html-ui/render-benchmark.md`.
+- **AC8 compare budget.** `RenderPrimitive.MatchesTheMeshPath` uses the default threshold and mean
+  with up to 0.5 % bad pixels (default 0.05 %): at 1 and 4 samples the meshes' feathered edges,
+  polygonal curves and aliased shadow textures differ from the exact coverage on edge pixels
+  (largest measured: 0.29 %, rotated boxes at 1 sample). A sample count the device has no
+  targets for (llvmpipe and lavapipe have 1 and 4) is reported and skipped: the HTML UI targets
+  take the highest count the device has up to the asked one (`FramebufferRender::getMaxMsaaSamples`),
+  since an 8-sample image on lavapipe is invalid Vulkan usage that no layer rejects (it drew into
+  memory not its own, the whole-suite-only failures of round 2).
+- **Atlas placement (R13).** Glyphs fill the newest page; with room in the budget then the others'
+  space, then a new page; with the budget full a new page in place of the least recently used one
+  (unused in this frame and the last). A glyph that finds every page used in this frame or the last
+  waits one frame (its text is made again, `RmlFontEngine::GetVersion`) instead of being dropped;
+  only when no page can ever free up is it reported as not fitting. Filling the newest page keeps a
+  document's glyphs together, so the pages of text no longer drawn become free.
+- **Shape quads and the scissor.** A box or shadow instance's quad, widened by two device pixels for
+  its antialiasing, is cut to the draw's scissor when drawn in document px (no element transform):
+  llvmpipe at 4 samples lets samples of a primitive through just outside the scissor's top and left
+  edges, which the meshes (ending at the edge) never showed.
+- **Glyph placement at fractional pixel ratios.** A glyph atlas draw's translation is rounded to
+  whole target pixels (`RmlRenderer::snapTextTranslation`, no element transform), so bitmap text at
+  a pixel ratio of 1.37 is drawn 1:1 on target pixels (AC10).
+- **Primitive qualification and Chromium.** A border round a curve of under 3 px (the form
+  controls' 2 px) keeps the mesh path: Chromium paints such a corner with less than its exact
+  coverage, as the meshes' polygon does (`layout/button-display-*` fail AC2 with the exact
+  coverage). The rounded-rectangle distance applies every corner that reaches a point (a radius
+  may pass the middle of a side: `border-radius: 20px / 50px` on a 60 px box), and an outer shadow
+  is cut out half a pixel inside the box's edge, so the box antialiases against the shadow rather
+  than against its hole (no lighter seam; `paint/box-shadow-radius-percent`).
+- **AC4 ties.** `RenderBatch.EquivalenceAllGoldenScenes` holds max channel difference <= 1 on every
+  capture but two, which it lists with their reason and bound: `paint/object-position`, where a
+  nearest-filtered texel boundary falls exactly on pixel centres (the folded translation and the
+  shader's round the tie differently; up to 120 pixels), and `integration/fixed-modal-backdrop`,
+  where the `translate(-50%, -50%)` modal's 30 px shadow tail under a backdrop blur differs by up to
+  3.
+- **AC1 `p1/texture_effects` traced (round 2).** With `JASPER_HTMLUI_S16_OFF=1` it was 48 pixels
+  over the threshold (limit 32). Two causes, measured against oe-port's own render of the test
+  (scratch worktree, `JASPER_HTMLUI_WRITE_ACTUAL=1`): (1) oe-port 50c7afd3d alone renders 30 of
+  them, on the stencil-clipped disc's edge, and passes (30 <= 32): its golden (2026-10-11) is older
+  than that rendering; (2) S16 added 18 on the outlined label in the rotated, filtered panel: the
+  white texel block S16 reserves at the start of every glyph page (batching: untextured geometry
+  joins a glyph page's run) moved the glyphs in the atlas, and a transformed glyph samples its
+  atlas neighbours. The block now sits in the page's last rows, outside the shelf packing
+  (`GlyphAtlas::reserveBottom`), so glyphs are packed where they were before S16 whether the frame
+  batches or not (first fix, the block only while batching, made batched and unbatched differ on
+  transformed text: `RenderBatch.EquivalenceAllGoldenScenes`, p3 `integration/sample-dialog`); the
+  S16-off render was pixel-identical to oe-port's (0 pixels over the threshold between them). The other S16-off
+  failures were S16's own tests needing S16 on (`S16On`), S16's new goldens, and goldens S16
+  updated (the AC1 run uses the pre-S16 files).
+
+## Acceptance round 2 (working notes)
+
+- S17 merged (348362026): FORK.md keeps both sections; `inspect_ui` keeps `reload` and
+  `render_stats`; TOOLS.md to be regenerated.
+- B2 profile (perf on the benchmark host, `HtmlUIRenderPerf.ProfileTarget`): the main thread's
+  time is spread over RmlUi's per-element paint (`Element::Update` 7 %, `Element::Render` 5 %,
+  `GetClippingRegion` 5 %, `SetTransform`, `GetRenderBox`, `ElementText::OnRender`,
+  `RenderPrimitives`/`toInstance`, `ElementBackgroundBorder::Render` about 3 % each; clip shapes'
+  `ComputeBorderMetrics`/`ScaleRadiiToFit` per clipped element). 450 of the 500 cards are outside
+  the list's scissor. Changes: S16-F4 culling, clip shapes cached.
+- B1: four texture slots per `HTMLUI_PRIM` draw; the benchmark prints the effect draws (shaders,
+  composites, filters, clip masks).
+- Vulkan `RenderPrimitive.MatchesTheMeshPath` (whole suite only): root cause found. The test made
+  layer targets of 8 samples; lavapipe (Mesa 23.2.1, the test image's Vulkan device) has
+  `framebufferColorSampleCounts` 1 and 4 only (`vulkaninfo` in the image). An image of 8 samples
+  is invalid Vulkan usage that neither sokol nor lavapipe rejects (GL llvmpipe fails the
+  framebuffer, which the test skipped); its draws landed in memory not the image's, so what the
+  readback saw depended on the heap the earlier tests left: the failure images
+  (`primitives-borders-8.mesh.png`, `-transforms-8.sdf.png`) are the right document shifted by a
+  linear memory offset with foreign bytes in the first/last rows, on the mesh path as much as the
+  primitive path. Fix (012d4cd61): `RmlRenderTarget::ensure` and `HtmlUIContext::getSampleCount`
+  take `FramebufferRender::getMaxMsaaSamples` (the device's highest count up to the asked one, as
+  the scene MSAA already did), so an editor preference of 8 on such a device is 4, not undefined;
+  the comparison skips counts the device lacks; `RenderP1Test.SampleCountChoice` checks the clamp.
+- B1 gradients: S16-F5 as first written covered RCSS `decorator:` gradients only; the examples'
+  CSS `background` gradients are background-image layers (`ElementBackgroundLayers`), drawn as a
+  shader mesh and, under a rounded clip box, a mask layer each. Those are primitives now (one per
+  grid of tiles, the clip radii their own). The gradient instances also lacked their translation
+  (`translateInstance`), unseen while no CSS gradient took the path.
+- B2: S16-F6 keeps each offset parent's clipping region for the render pass (500 cards: 2000
+  elements walked their ancestors and built a mask list each).
+- B2 profile (perf, main thread, benchmark host): `Element::Update` 8.5 %, `Element::Render` 7.2 %,
+  `GetClippingRegion` 4.8 %, `SetTransform` + `Matrix4::operator!=` 6 %, `ElementText::OnRender`
+  3.4 %, `malloc`/mask-list `realloc_insert` 3 %. RmlUi 6.3 never cleared `dirty_transform`, so
+  every element recomputed its transform each render. S16-F6: clip memo keyed by the first
+  clipping offset parent, SetTransform(nullptr) fast path, `dirty_transform` cleared, and elements
+  whose paint bounds lie outside the memo's scissor passed over before any state. The benchmark
+  starts each frame with the GPU idle (`finishGpu`; llvmpipe's 4 threads otherwise share the 4
+  cores with the main thread). B2 on E: 2.389 -> 1.064 ms (44.5 %), B6 2.370 -> 1.046 ms.
+- B1 after the background-layer gradients (E): dialogue 43->14, hud 155->80, inventory 46->6,
+  loading 57->34, main_menu 105->36, pause_menu 42->2, settings 97->17, shop 26->2, toasts
+  82->40, video_menu 32->14; engine time below the baseline in 9 of 11. Met: blank, inventory,
+  pause_menu, settings, shop. The rest are effect passes (backdrop/filter blurs, text-shadow
+  blurs beyond the MSDF reach, opacity layers and their composites, stencil masks under layers).
+- AC1 `p1/texture_effects` (S16 off, against oe-port's golden of 2026-10-11): oe-port 50c7afd3d
+  alone already renders 30 pixels over the threshold on the circle's clip edge (it passes: the
+  budget is 32), and S16 off adds 18 on the outlined text in the rotated, filtered panel (the
+  glyphs' top rows): 48. Experiments that changed nothing: clip shapes off (X1), the primitive
+  program not awaited (X2), the render request (X4). Bisect of oe-port's first-parent merges for
+  the 30 running in a scratch worktree; S16's 18 under investigation (glyph placement in the atlas).
+- Suites at 592d8ed28 (server B, `JASPER_HTMLUI_PERF_SLACK=3`): glcore 3379 ran, 0 failed;
+  Vulkan twice, whole suite, 3379 ran, 0 failed each (`MatchesTheMeshPath` skips 8 samples:
+  lavapipe has none). An earlier Vulkan crash (`InputGamepadTest.SelectOpensAndNavigates`) came
+  from a build whose sources were re-synced mid-build (RenderManager's layout changed between
+  objects); it did not recur in four runs, ASan (glcore) reports no error there.
+- AC1 run (S16 off, pre-S16 goldens): `RenderClip.RoundedClipIsAnalyticAndAntialiased` compares
+  S16's own goldens, now under `S16On`; `s17/views_scrolled` needs oe-port's golden in that run;
+  `HtmlUIWidgetsPerf.ModelSetAndTreeFlatten` (S17) once took 12 ms on the loaded host (1.6 ms in
+  the next run).
+- Merged oe-port e1ca0c71a (upstream round 1, 432a9be1f). Gate re-running on the merged tree
+  (htmlui suites on B, the rest on C, timings on E). MCP failures of the earlier gate that were
+  not S16's are fixed on BF2's branch (S04 asset type, S17 patch reload, the "Loading" dialog).
+- AC1 golden drift: oe-port's own render of `p1/texture_effects` matches its golden at the
+  golden's commit 723cbba62 and is 30 pixels off from the phase-3 merge 08ec10485 on (bisect of
+  the phase-3 branch between them in progress).
+- AC1 drift bisect (stopped: its steps starved on the shared host): oe-port's `p1/texture_effects`
+  render matches its golden at 723cbba62 and is off by the 30 disc-edge pixels at every later
+  commit tested; the change lies in html-ui phase 3's p3-text branch, between e812f9753 ("rmlui:
+  Unicode line breaking and text-transform") and 31c67f7de ("rmlui: native text-shadow") (10
+  commits, two of which did not build in the bisect), merged into oe-port by 08ec10485 before any
+  S stream. It stays within oe-port's budget (30 <= 32); S16's own share was the 18 text pixels.
+- Merged oe-port 05eb8d3b4 (BF2 fixes, S25, c67bbdc8a): S16's three HTML UI project settings are
+  rows of S25's settings registry (`SettingsRows.cpp`, search entries; the Project Settings rows
+  behind `settingsui::beginRow`; `mcp-keys-before-s25.txt` lists them). S16 adds no editor
+  shortcut or menu.
+- On the tree with oe-port e1ca0c71a and the white-block fix (server A): glcore 3478 ran, the only
+  failure S17's `MarkdownHtml.Perf20KB` timing on the loaded host; AC1 (S16 off, pre-S16
+  goldens) 3478 ran, the same single timing failure: `p1/texture_effects` passes. Gate on B
+  (e1ca0c71a): `WERROR=1 linux`, TOOLS.md (198 tools), htmlui-editor-tests, unit tests, RmlUi
+  tests (463), web + web-gate pass; MCP failures there were the ones BF2 fixed (merged since).
+- Benchmark host E was replaced (a new rented box, cold builds): the earlier E runs (S16 alone and
+  e1ca0c71a) are recorded; the run on the final tree goes to the new E.
+- Vulkan, whole suite, twice on the tree with e1ca0c71a and the white-block fix (server A):
+  3478 ran, 0 failed, both runs. Gate on B: android, smoke (glcore and Vulkan) pass.
+- MCP on c67bbdc8a (C): the remaining S16 failures were run-to-run differences:
+  `test_html_ui_effects::test_determinism_and_live_clock` (the pinned effect time rendered twice)
+  and `test_html_ui_examples::test_main_menu_play_golden` (two fixed_fps runs). Text depended on wall
+  time: distance glyphs come from background jobs and the settle budget counted milliseconds.
+  Under a deterministic clock (fixed_fps, a fixed UI or effect time) distance glyphs are now waited
+  for and the budget counts glyphs only; a pixel-ratio change (resized view, screenshot size) draws
+  the bitmap at once (092ec068f). Editor unit tests there: 822 ran, 0 failed; htmlui-editor 76.
+- Merged oe-port 545618e38 (S14, 11ee1a967); final gate running on it (htmlui suites on B, the
+  rest on B, timings on E).
+- On 11ee1a967: glcore, AC1 and Vulkan twice 3478 ran, 0 failed; benchmark (E) 9 passed.
+- Merged oe-port 697d661e2 (S28, 0ef7ff94f) and 64d735104 (S20, 14dcdfed6): `PARTICLES` keeps
+  its upstream `ShaderType` value and `HTMLUI_PRIM` follows it (shader cache v42); `TOOLS.md`
+  regenerated by `gen_tool_docs.py` matches the merged one (225 tools).
+- `test_html_ui_examples::test_main_menu_play_golden` still differed after 092ec068f, by 9 pixels
+  at the top edge of the menu labels: alone (a fresh editor) the first play run differed from the
+  later ones, which matched each other; S16-less oe-port runs pass. Between runs the glyph page
+  was cleared and refilled (the atlas budget), and a glyph packed at a page's top or left edge
+  read its own edge texels there under filtering (clamp to edge) where elsewhere it read the
+  padding's 0. Under transform-aware text the pages now keep their first row and column empty
+  (`GlyphAtlas::reserveLeading`, f6c0639f0); with it off the glyphs are packed as before S16 (AC1).
+  `TestFontEngine.GlyphsDrawTheSameWhereverTheyArePacked` draws text at a fractional offset from
+  glyphs at the top of a page and from the same glyphs packed lower: 60 apart without the change,
+  equal with it. No golden changed (glcore 3480 ran, 0 failed).
+- Merged oe-port 6f47d2c48 (S22, S14b, 7ac1b7ccd): no `ShaderType` or shader source changed
+  upstream, the shader cache stays v42.
+- `test_html_ui_phase2::test_mistakes_are_reported` (a black first Game view shot, 1 in 7 S16
+  runs, none on oe-port): the MCP screenshot of a stopped scene waited for meshes, images and
+  effect replays but not for its HTML documents, so it could shoot before a document's first
+  frame. That frame waits for the HTML UI shaders, made when a document first draws; the failing
+  run shot at 22:05:14, the HTML UI shaders (S16's `htmluiprim` with them) were made at 22:05:14,
+  and the document's first frame then stalled 3.1 s in the software rasterizer (hang report,
+  `UIDocumentSystem::renderOffscreen`). S16's extra program lengthens that wait; the gap is the
+  screenshot's. The shot now also waits for `UIDocumentSystem::isAllLoaded` (documents loaded and
+  drawn once), as play's loading and the editor's redraw do (d32267af6). Four copies of the test
+  at once, five rounds, on C: 3 of 20 failed without the change, 0 of 20 with it.
+- Merged oe-port 424925911 (S26, BF5, S08; 7dc3a625e): build.sh passes every side's environment
+  names, the Xcode project keeps every object of both sides (and parses again, 89a19be88). S16
+  adds no component field to S08's reflection tables; its reflection goldens take S16's project
+  settings, generated render options and shader key (d7848f9e6); `inspect_ui` is 44 characters
+  shorter so the default listing fits (6e2e283bc).

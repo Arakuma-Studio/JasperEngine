@@ -860,6 +860,8 @@ endforeach()
 add_subdirectory(libs/harfbuzz)
 add_subdirectory(libs/sheenbidi)
 add_subdirectory(libs/meshoptimizer)
+# the HTML UI's MTSDF glyphs (S16)
+add_subdirectory(libs/msdfgen)
 # Cooked textures (S14, docs/textures.md): Zstandard (zstd_decompress in every game, zstd for the
 # cook), the Basis Universal transcoder of web textures (the web runtime, the editor's previews
 # and the tests; native games never load Basis files) and, in the editor tree only
@@ -956,7 +958,7 @@ endif()
 
 foreach(lib IN ITEMS
     sokol lua stb soloud tinyobjloader tinygltf tinyxml2
-    harfbuzz sheenbidi meshoptimizer lunasvg thorvg rmlui lexbor
+    harfbuzz sheenbidi meshoptimizer msdfgen lunasvg thorvg rmlui lexbor
     dav1d dav1d_bitdepth_8 dav1d_bitdepth_16 opus webm ${JASPERENGINE_PHYSICS_LIBS} ${JASPERENGINE_TEXTURE_LIBS})
     target_compile_options(${lib} PRIVATE ${EXTERNAL_WARNING_FLAG})
 endforeach()
@@ -965,7 +967,7 @@ endforeach()
 # at two standards across a library boundary (tinygltf and RmlUi pass std containers into
 # engine code) broke Wasm signatures. Most of these set a standard of their own, or none.
 jasperengine_apply_cxx_standard(
-    sokol soloud tinyobjloader tinygltf tinyxml2 harfbuzz meshoptimizer
+    sokol soloud tinyobjloader tinygltf tinyxml2 harfbuzz meshoptimizer msdfgen
     lunasvg thorvg rmlui webm ${JASPERENGINE_PHYSICS_LIBS} basisu_transcoder)
 if(JASPERENGINE_TEXTURE_ENCODERS)
     jasperengine_apply_cxx_standard(basisu_encoder bc7enc_rdo astcenc)
@@ -1091,7 +1093,9 @@ set(JASPERENGINE_SRCS
     core/htmlui/RmlFile.cpp
     core/htmlui/RmlFontEffects.cpp
     core/htmlui/RmlFontEngine.cpp
+    core/htmlui/RmlFontMsdf.cpp
     core/htmlui/RmlRenderer.cpp
+    core/htmlui/RmlRendererBatch.cpp
     core/htmlui/RmlSystem.cpp
     core/htmlui/HtmlUIContextInput.cpp
     core/htmlui/RmlKeyMap.cpp
@@ -1518,7 +1522,7 @@ target_link_libraries(
 
     PUBLIC
 
-    sokol lua stb tinyobjloader tinygltf tinyxml2 soloud harfbuzz sheenbidi meshoptimizer lunasvg thorvg rmlui lexbor
+    sokol lua stb tinyobjloader tinygltf tinyxml2 soloud harfbuzz sheenbidi meshoptimizer msdfgen lunasvg thorvg rmlui lexbor
     dav1d opus webm zstd_decompress
     ${JASPERENGINE_PHYSICS_LIBS}
 )

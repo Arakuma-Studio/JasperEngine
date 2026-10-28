@@ -78,6 +78,15 @@ bool FontEffectGlow::Initialise(int _width_outline, int _width_blur, Vector2i _o
 	return true;
 }
 
+bool FontEffectGlow::GetDistanceEffect(DistanceEffect& effect) const
+{
+	// the outline pass, then the blur's standard deviation (Initialise)
+	effect.dilation = (width_outline > 0 ? float(width_outline) + 0.5f : 0.f);
+	effect.sigma = (width_blur == 0 ? 0.f : .4f * float(width_blur));
+	effect.offset = Vector2f(offset);
+	return true;
+}
+
 bool FontEffectGlow::GetGlyphMetrics(Vector2i& origin, Vector2i& dimensions, const FontGlyph& /*glyph*/) const
 {
 	if (dimensions.x * dimensions.y > 0)

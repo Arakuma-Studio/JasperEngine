@@ -73,6 +73,10 @@ public:
 	/// @param[in] force_clip_self If true, also clips to the border area of the provided element regardless.
 	/// @return The visibility of the given element within its clipping region.
 	static bool SetClippingRegion(Element* element, bool force_clip_self = false);
+	/// Fork (S16-F6): what the clipping region of an element whose own 'clip' is auto depends on: its offset parent, or,
+	/// while that neither clips (overflow visible, clip auto) nor stops the walk, the offset parent's own key; the key of
+	/// the region kept in RenderManager::ClipMemo (nullptr: no element clips it).
+	static const void* GetClipMemoKey(Element* offset_parent);
 
 	/// Returns a rectangle covering the element's area in window coordinate space.
 	/// @param[in] out_rectangle The resulting rectangle covering the projected element's box.

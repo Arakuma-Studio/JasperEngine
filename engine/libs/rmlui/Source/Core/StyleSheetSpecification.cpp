@@ -730,6 +730,9 @@ void StyleSheetSpecification::RegisterDefaultProperties()
 		.AddParser("keyword", "xx-small, x-small, small, medium, large, x-large, xx-large, xxx-large, smaller, larger, math")
 		.AddParser("length").AddParser("length_percent").SetRelativeTarget(RelativeTarget::ParentFontSize);
 	RegisterProperty(PropertyId::FontKerning, "font-kerning", "auto", true, true).AddParser("keyword", "auto, normal, none");
+	// Fork (S16-F3): no layout change, the text is drawn again
+	RegisterProperty(PropertyId::TextRendering, "text-rendering", "auto", true, false)
+		.AddParser("keyword", "auto, optimizespeed, optimizelegibility, geometricprecision");
 	RegisterProperty(PropertyId::LetterSpacing, "letter-spacing", "normal", true, true).AddParser("keyword", "normal").AddParser("length_percent").SetRelativeTarget(RelativeTarget::FontSize);
 	RegisterShorthand(ShorthandId::Font, "font", "font-style, font-weight, font-size, line-height, font-family", ShorthandType::Custom);
 

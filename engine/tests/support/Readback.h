@@ -20,6 +20,10 @@ namespace jasperengine { namespace test {
     bool readTexturePixels(TextureRender& texture, int width, int height, int bytesPerPixel, std::vector<uint8_t>& pixels);
     // the same for an RGBA32F render target: width * height * 4 floats, rows top first
     bool readTextureFloat(TextureRender& texture, int width, int height, std::vector<float>& rgba);
+    // waits until the GPU has done everything submitted (glFinish, vkQueueWaitIdle): benchmarks
+    // start a timed frame with a software rasterizer's threads idle instead of competing with
+    // the main thread for the cores
+    bool finishGpu();
 
 } }
 

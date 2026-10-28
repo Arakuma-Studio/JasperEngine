@@ -19,6 +19,7 @@
 #include "App.h"
 #include "Project.h"
 #include "render/RenderUtil.h"
+#include "subsystem/UIDocumentSystem.h"
 #include "render/SystemRender.h"
 #include "profiler/FrameTimes.h"
 #include "profiler/GpuMemory.h"
@@ -175,6 +176,18 @@ void getRenderStatsTool(const CallPtr& call){
     if (!resolveView(call, tag, name))
         return;
     Json data = renderStatsJson(tag, name);
+    // the selected (or playing) scene's HTML UI: HtmlUIRenderStats, as inspect_ui's render_stats (S16 R27)
+    Project* project = call->ctx().project();
+    const SceneProject* sceneProject = project ? project->getSelectedScene() : nullptr;
+    if (sceneProject && sceneProject->scene){
+        if (std::shared_ptr<UIDocumentSystem> documents = sceneProject->scene->getSystem<UIDocumentSystem>()){
+            if (documents->hasDocuments()){
+                Json ui = Json::object();
+                documents->getRenderStats().forEachField([&ui](const char* field, uint32_t value){ ui[field] = value; });
+                data["html_ui"] = ui;
+            }
+        }
+    }
     std::string text = "Render stats (" + name + "): " + std::to_string(data["draw_calls"].get<uint32_t>()) + " draws, " +
         std::to_string(data["passes"].get<uint32_t>()) + " passes, CPU " + std::to_string(data["cpu_ms"].get<double>()).substr(0, 6) + " ms";
     if (!data["drawn"].get<bool>())
@@ -986,7 +999,7 @@ void registerProfilerTools(McpRegistry& registry){
         tool.title = "Get Render Stats";
         tool.description =
             "A view's last drawn frame: draws, instances, triangles, passes, pipelines/bindings, uniform and upload bytes, alive "
-            "resources, pipeline cache, cpu_ms, fps, gpu{available,reason,frame_ms,semantics}. One frame is one sample. "
+            "resources, pipeline cache, cpu_ms, fps, gpu{available,reason,frame_ms,semantics}, html_ui. One frame is one sample. "
             "gpu.frame_ms is null until GPU timing ran (get_gpu_passes arms it). Also jasper://stats.";
         tool.inputSchema = object({{"view", viewSchema()}});
         tool.annotations.readOnly = true;

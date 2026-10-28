@@ -20,7 +20,10 @@ editor.assets_dir
 editor.version_control_files
 graphics.canvas_height
 graphics.canvas_width
+graphics.html_ui_glyph_atlas_mib
 graphics.html_ui_msaa_samples
+graphics.html_ui_sdf_primitives
+graphics.html_ui_transform_aware_text
 graphics.runtime_shaders
 graphics.scaling_mode
 graphics.shadow_tier.android

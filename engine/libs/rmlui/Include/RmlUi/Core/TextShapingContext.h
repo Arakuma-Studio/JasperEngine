@@ -40,6 +40,15 @@ struct TextShapingContext {
 	// character, only at the first code point of a grapheme cluster; empty when the string is not justified). A font engine
 	// applies it in GetStringWidth and GenerateString.
 	Span<const JustificationSpacing> justification = {};
+	// Fork (S16-F3): the device pixels per document pixel the glyphs are rasterized at; 0: the font engine's own scale for the
+	// render manager. Elements pass their on-screen scale (FontEngineInterface::GetBaseRasterScale times their transform's).
+	float raster_scale = 0.0f;
+	// Fork (S16-F3): the glyphs come from the font engine's distance-field atlas (scale-independent), not its bitmaps; only
+	// after FontEngineInterface::PrepareDistanceGlyphs answered true for the string.
+	bool distance_field = false;
+	// Fork (S16-F3): a blurred text-shadow the font engine draws itself (its blur radius, px), after
+	// FontEngineInterface::SupportsGpuTextShadow answered true; 0: none.
+	float shadow_blur = 0.0f;
 };
 
 } // namespace Rml

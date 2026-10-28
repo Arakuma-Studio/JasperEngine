@@ -1954,6 +1954,12 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         root["playerCrash"] = crashNode;
     }
     root["htmlUiMsaaSamples"] = project->getHtmlUiMsaaSamples();
+    {
+        const HtmlUiRenderSettings& htmlUiRender = project->getHtmlUiRenderSettings();
+        root["htmlUiGlyphAtlasMiB"] = htmlUiRender.glyphAtlasMiB;
+        root["htmlUiSdfPrimitives"] = htmlUiRender.sdfPrimitives;
+        root["htmlUiTransformAwareText"] = htmlUiRender.transformAwareText;
+    }
     // graphics.shadowTier.<platform>, only the platforms away from their default tier
     {
         YAML::Node tiers;
@@ -2421,6 +2427,18 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
 
     if (node["htmlUiMsaaSamples"].IsDefined()) {
         project->setHtmlUiMsaaSamples(YamlNumbers::as<int>(node["htmlUiMsaaSamples"]));
+    }
+
+    // S16: projects saved before them take the defaults
+    {
+        HtmlUiRenderSettings htmlUiRender;
+        if (node["htmlUiGlyphAtlasMiB"].IsDefined())
+            htmlUiRender.glyphAtlasMiB = YamlNumbers::as<int>(node["htmlUiGlyphAtlasMiB"]);
+        if (node["htmlUiSdfPrimitives"].IsDefined())
+            htmlUiRender.sdfPrimitives = YamlNumbers::as<bool>(node["htmlUiSdfPrimitives"]);
+        if (node["htmlUiTransformAwareText"].IsDefined())
+            htmlUiRender.transformAwareText = YamlNumbers::as<bool>(node["htmlUiTransformAwareText"]);
+        project->setHtmlUiRenderSettings(htmlUiRender);
     }
 
     // graphics.shadowTier.<platform>: an absent platform takes its default tier

@@ -118,6 +118,7 @@ namespace jasperengine {
         // Same lookups by reflected name, for shaders whose bindings are not a fixed
         // enum (user post-process passes). Missing names give -1.
         int getUniformBlockIndexByName(const std::string& name);
+        int getAttrIndexByName(const std::string& name);
         std::pair<int, int> getTextureIndexByName(const std::string& name);
 
         // block members, to build its byte blob by name

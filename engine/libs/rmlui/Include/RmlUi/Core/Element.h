@@ -612,6 +612,9 @@ public:
 	String GetEventDispatcherSummary() const;
 	/// Access the element background and border.
 	ElementBackgroundBorder* GetElementBackgroundBorder() const;
+	/// Fork (S16-F1): whether the background, border and box shadows were last generated as box primitives
+	/// (RenderInterface::RenderPrimitives); when not, why (a static string, empty when the renderer draws none).
+	bool IsPaintedAsPrimitives(const char** reason = nullptr) const;
 	/// Returns the element's scrollbar functionality.
 	ElementScroll* GetElementScroll() const;
 	/// Returns the element's nearest scroll container that can be scrolled, if any.
@@ -669,6 +672,10 @@ protected:
 	virtual void OnUpdate();
 	/// Called during render after backgrounds, borders, decorators, but before children, are rendered.
 	virtual void OnRender();
+	/// Fork (S16-F6): the rectangle (absolute, before any transform) everything the element paints of its own lies in,
+	/// false when unknown: an element of no subclass has its border box widened by its box shadows' reach; a subclass
+	/// that paints more in OnRender says so by overriding this (the default for every subclass is false).
+	virtual bool GetPaintBounds(Rectanglef& out_bounds);
 	/// Called during update if the element size has been changed.
 	virtual void OnResize();
 	/// Called during a layout operation, when the element is being positioned and sized.

@@ -67,6 +67,7 @@ shaderKeys:
     properties: 32
   - type: htmluipost
     properties: 64
+  - type: htmluiprim
 entities:
   - type: Entity
     entity: 1001

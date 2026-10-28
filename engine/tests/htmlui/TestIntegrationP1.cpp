@@ -7,7 +7,7 @@
 // what the scripts made in every context, repeated play/stop cycles leak nothing, hot reload
 // of a playing document keeps its model, listeners and Lottie, texture-mode documents draw
 // clips, layers and filters, input goes to screen documents, then the component UI, then
-// documents on meshes, then the game.
+// documents on meshes, then the game, and the render statistics add up.
 
 #include "TestGoldenCommon.h"
 #include "TestDocumentCommon.h"
@@ -251,7 +251,7 @@ TEST_F(IntegrationTest, PlayStopCyclesLeakNothing){
     ASSERT_TRUE(fixture->waitUntilLoaded());
 
     size_t screenTextures = 0, screenGeometry = 0, textureTextures = 0, textureGeometry = 0, pipelines = 0;
-    for (int cycle = 0; cycle < 3; cycle++){
+    for (int cycle = 0; cycle < 12; cycle++){
         setGlobal("screenDoc", screen());
         setGlobal("textureDoc", texture());
         ASSERT_EQ(lua(playScripts), "") << "cycle " << cycle;
@@ -274,7 +274,10 @@ TEST_F(IntegrationTest, PlayStopCyclesLeakNothing){
             pipelines = SystemRender::getPipelineCacheSize();
             EXPECT_GE(screenTextures, 4u);
             EXPECT_GT(screenGeometry, 0u);
-            EXPECT_GT(textureGeometry, 0u);
+            // the texture form is an empty field and an empty label: with the S16 primitives its
+            // background is an HTMLUI_PRIM instance, not a geometry, so only the screen document
+            // is sure to hold geometry
+            if (!RmlRenderer::isSdfPrimitives()) EXPECT_GT(textureGeometry, 0u);
         }else if (cycle > 1){
             EXPECT_EQ(screenContext->getRenderer().getLiveTextureCount(), screenTextures) << "cycle " << cycle;
             EXPECT_EQ(screenContext->getRenderer().getLiveGeometryCount(), screenGeometry) << "cycle " << cycle;
@@ -709,10 +712,65 @@ TEST_F(IntegrationTest, TextureDocumentDrawsClipsLayersAndFilters){
     EXPECT_GT(green, 3000u);
     EXPECT_GT(white, 60u);
 
+    // the texture context drew it with layers and filters
+    const HtmlUIRenderStats& stats = system().getTextureContext(texture().getEntity())->getRenderer().getStats();
+    EXPECT_GE(stats.filtersApplied, 3u);
+    EXPECT_GE(stats.layersPushed, 3u);
+    EXPECT_GT(stats.passes, 3u);
+
     CompareResult result = compareWithGolden("p1/texture_effects", texels.rgba, texels.width, texels.height);
     EXPECT_TRUE(result.passed) << result.message;
 }
 
+TEST_F(IntegrationTest, RenderStatsOfACombinedScene){
+    createScene();
+    ASSERT_TRUE(fixture->waitUntilLoaded());
+    drawFramesAt(time, 3, 0.0);
+
+    HtmlUIContext* screenContext = system().getContext();
+    HtmlUIContext* textureContext = system().getTextureContext(texture().getEntity());
+    ASSERT_TRUE(screenContext && textureContext);
+    const HtmlUIRenderStats& total = system().getRenderStats();
+    const HtmlUIRenderStats& a = screenContext->getRenderer().getStats();
+    const HtmlUIRenderStats& b = textureContext->getRenderer().getStats();
+
+    // both contexts drew this frame, and the scene's statistics are their sum
+    const uint64_t frame = SystemRender::getFrameCount() - 1;
+    EXPECT_TRUE(screenContext->getRenderer().hasFrame(frame));
+    EXPECT_TRUE(textureContext->getRenderer().hasFrame(frame));
+    EXPECT_EQ(total.passes, a.passes + b.passes);
+    EXPECT_EQ(total.drawCalls, a.drawCalls + b.drawCalls);
+    EXPECT_EQ(total.pipelineApplies, a.pipelineApplies + b.pipelineApplies);
+    EXPECT_EQ(total.textureBinds, a.textureBinds + b.textureBinds);
+    EXPECT_EQ(total.layersPushed, a.layersPushed + b.layersPushed);
+    EXPECT_EQ(total.filtersApplied, a.filtersApplied + b.filtersApplied);
+    EXPECT_EQ(total.geometryLive, a.geometryLive + b.geometryLive);
+    EXPECT_EQ(total.geometryBytes, a.geometryBytes + b.geometryBytes);
+
+    // sane values: the screen document's one drop-shadow filter, the texture document
+    // without filters is one pass (its field's box: no script made its model, so the bound
+    // text is empty); draws for every box, glyph run and image; every pipeline already made
+    // (steady state), at most one switch per draw
+    EXPECT_EQ(a.filtersApplied, 1u);
+    EXPECT_EQ(a.layersPushed, 1u);
+    EXPECT_GT(a.passes, 1u);
+    EXPECT_EQ(b.passes, 1u);
+    EXPECT_EQ(b.filtersApplied, 0u);
+    EXPECT_GE(a.geometrySubmitted, 10u);
+    EXPECT_GE(b.geometrySubmitted, 1u);
+    EXPECT_GE(a.drawCalls, 1u);
+    EXPECT_GE(b.drawCalls, 1u);
+    EXPECT_EQ(total.pipelineCacheMisses, 0u);
+    EXPECT_LE(total.pipelineApplies, total.drawCalls + total.passes * 2);
+    EXPECT_GT(total.geometryLive, 0u);
+    EXPECT_GT(total.geometryBytes, 0u);
+
+    // a hidden texture document draws nothing: only the screen context counts
+    texture().hide();
+    drawFramesAt(time, 2, 0.0);
+    EXPECT_EQ(system().getRenderStats().passes, screenContext->getRenderer().getStats().passes);
+    EXPECT_EQ(system().getRenderStats().drawCalls, screenContext->getRenderer().getStats().drawCalls);
+}
 
 namespace {
 
@@ -777,8 +835,11 @@ TEST_F(TextEffectsInLayersTest, FontEffectsInsideLayersAndFilters){
     EXPECT_GT(countNear(screen, w, row1, 142, 15, 15, 20), 40u);
     // row 2, blur(1px) on outlined text: the blue outline is there, softened
     const PixelRect row2{16, 56, 260, 96};
-    EXPECT_GT(countInk(screen, w, row2), 400u);
-    EXPECT_EQ(countNear(screen, w, row2, 0, 128, 255, 4), 0u);
+    const size_t ink2 = countInk(screen, w, row2);
+    EXPECT_GT(ink2, 400u);
+    // (the outline from distance glyphs, S16 R17, is drawn at device resolution: the middle of
+    // its stroke may keep a few pure pixels through a 1 px blur, not the edges)
+    EXPECT_LE(countNear(screen, w, row2, 0, 128, 255, 4), ink2 / 100);
     // row 3, glow text in a backdrop-blurred panel over a gradient: green glow pixels
     size_t glow = 0;
     for (int y = 104; y < 160; y++){

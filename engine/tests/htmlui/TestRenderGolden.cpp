@@ -42,6 +42,43 @@ namespace {
 
 }
 
+TEST_F(RmlRendererGoldenTest, Boxes){
+    JASPER_REQUIRE_GPU();
+    RenderTestContext test;
+    std::vector<uint8_t> screen;
+    ASSERT_TRUE(draw(test, "render/boxes.rml", screen));
+    PixelProbe probe{screen, 640};
+
+    // #solid: 4 px white border around #3060c0, border box (20,20)-(148,108)
+    EXPECT_TRUE(probe.is(80, 60, 0x30, 0x60, 0xc0));
+    EXPECT_TRUE(probe.is(21, 60, 255, 255, 255));
+    EXPECT_TRUE(probe.is(146, 60, 255, 255, 255));
+    EXPECT_TRUE(probe.isBackground(150, 60));
+    EXPECT_TRUE(probe.isBackground(80, 18));
+    // #sides: per-side widths and colors, border box (180,20)-(320,112)
+    EXPECT_TRUE(probe.is(250, 20, 255, 0, 0));      // top 2 px red
+    EXPECT_TRUE(probe.is(317, 66, 0, 255, 0));      // right 6 px green
+    EXPECT_TRUE(probe.is(250, 107, 0, 0, 255));     // bottom 10 px blue
+    EXPECT_TRUE(probe.is(186, 66, 255, 255, 0));    // left 14 px yellow
+    EXPECT_TRUE(probe.is(250, 66, 0x40, 0x40, 0x40));
+    // radius 0 keeps its corner, 24 cuts it
+    EXPECT_TRUE(probe.is(341, 21, 0xc0, 0x30, 0x30));
+    EXPECT_TRUE(probe.isBackground(541, 21));
+    EXPECT_TRUE(probe.is(583, 63, 0x30, 0x30, 0xc0));
+    EXPECT_TRUE(probe.isBackground(441, 21));
+    EXPECT_TRUE(probe.is(480, 60, 0x30, 0xc0, 0x30));
+    // nested: outer padding, middle margin and padding, inner rounded
+    EXPECT_TRUE(probe.is(30, 160, 0x60, 0x60, 0x60));
+    EXPECT_TRUE(probe.is(50, 180, 0xa0, 0x60, 0x20));
+    EXPECT_TRUE(probe.is(110, 210, 0x20, 0xa0, 0xa0));
+    // the ring is hollow
+    EXPECT_TRUE(probe.isBackground(410, 220));
+    EXPECT_TRUE(probe.is(345, 220, 0xff, 0xc0, 0x00));
+
+    CompareResult result = test.compareScreen("render_boxes");
+    EXPECT_TRUE(result.passed) << result.message;
+}
+
 TEST_F(RmlRendererGoldenTest, Flex){
     JASPER_REQUIRE_GPU();
     RenderTestContext test;
@@ -87,6 +124,39 @@ TEST_F(RmlRendererGoldenTest, Flex){
     EXPECT_TRUE(probe.is(560, 35, 0x30, 0x30, 0x30));
 
     CompareResult result = test.compareScreen("render_flex");
+    EXPECT_TRUE(result.passed) << result.message;
+}
+
+TEST_F(RmlRendererGoldenTest, Images){
+    JASPER_REQUIRE_GPU();
+    RenderTestContext test;
+    std::vector<uint8_t> screen;
+    ASSERT_TRUE(draw(test, "render/images.rml", screen));
+    PixelProbe probe{screen, 640};
+
+    // checker.png at 1x: 8 px cells, the top-left one red
+    EXPECT_TRUE(probe.is(24, 24, 255, 0, 0));
+    EXPECT_TRUE(probe.is(32, 24, 0x40, 0x40, 0x40));
+    EXPECT_TRUE(probe.is(40, 24, 255, 255, 255));
+    // at 2.5x: 20 px cells
+    EXPECT_TRUE(probe.is(118, 28, 255, 0, 0));
+    EXPECT_TRUE(probe.is(140, 28, 0x40, 0x40, 0x40));
+    EXPECT_TRUE(probe.is(160, 28, 255, 255, 255));
+    EXPECT_TRUE(probe.is(118, 48, 0x40, 0x40, 0x40));
+    // alpha50 (255, 0, 0, 128) over white and over the background
+    EXPECT_TRUE(probe.is(330, 50, 255, 127, 127));
+    EXPECT_TRUE(probe.is(305, 25, 255, 255, 255));
+    EXPECT_TRUE(probe.is(316, 136, 143, 15, 15));
+    // the image decorator
+    EXPECT_TRUE(probe.is(404, 24, 255, 0, 0));
+    EXPECT_TRUE(probe.is(412, 24, 0x40, 0x40, 0x40));
+    // icon.svg: white circle on the blue rounded square, at 1x and 3x
+    EXPECT_TRUE(probe.is(512, 32, 255, 255, 255, 255, 3));
+    EXPECT_TRUE(probe.is(504, 32, 0x20, 0x60, 0xc0, 255, 3));
+    EXPECT_TRUE(probe.is(576, 56, 255, 255, 255, 255, 3));
+    EXPECT_TRUE(probe.is(552, 56, 0x20, 0x60, 0xc0, 255, 6));
+
+    CompareResult result = test.compareScreen("render_images");
     EXPECT_TRUE(result.passed) << result.message;
 }
 
@@ -159,6 +229,70 @@ TEST_F(RmlRendererGoldenTest, Scissor){
     EXPECT_TRUE(probe.is(320, 280, 0x80, 0x80, 0x80));
 
     CompareResult result = test.compareScreen("render_scissor");
+    EXPECT_TRUE(result.passed) << result.message;
+}
+
+TEST_F(RmlRendererGoldenTest, Transform){
+    JASPER_REQUIRE_GPU();
+    RenderTestContext test;
+    std::vector<uint8_t> screen;
+    ASSERT_TRUE(draw(test, "render/transform.rml", screen));
+    PixelProbe probe{screen, 640};
+
+    EXPECT_TRUE(probe.is(70, 70, 0x60, 0x60, 0x60));
+    // rotated about its center: the center stays, a corner moves out
+    EXPECT_TRUE(probe.is(210, 70, 0xe0, 0x40, 0x40));
+    EXPECT_TRUE(probe.isBackground(161, 41));
+    // scaled 1.5x about its center: 150 px wide from x = 295
+    EXPECT_TRUE(probe.is(370, 70, 0x40, 0xe0, 0x40));
+    EXPECT_TRUE(probe.is(440, 70, 0x40, 0xe0, 0x40));
+    EXPECT_TRUE(probe.isBackground(450, 70));
+    // translated by (30, 20)
+    EXPECT_TRUE(probe.is(140, 270, 0x40, 0x40, 0xe0));
+    EXPECT_TRUE(probe.isBackground(30, 205));
+    // perspective: the box keeps its center, its sides are no longer parallel
+    EXPECT_TRUE(probe.is(300, 255, 0xe0, 0xc0, 0x40));
+
+    CompareResult result = test.compareScreen("render_transform");
+    EXPECT_TRUE(result.passed) << result.message;
+}
+
+TEST_F(RmlRendererGoldenTest, Many){
+    JASPER_REQUIRE_GPU();
+    RenderTestContext test;
+    ASSERT_TRUE(test.isValid());
+
+    // 5000 boxes of 4x4 px on a 5 px grid, 125 per row: many geometries in few buffers
+    std::string rml = "<html><head><link type=\"text/css\" href=\"../common/base.css\"/><link type=\"text/css\" href=\"render.css\"/>"
+                      "<style>#grid { position: absolute; left: 7px; top: 30px; width: 627px; display: flex; flex-wrap: wrap; }"
+                      " #grid div { width: 4px; height: 4px; margin-right: 1px; margin-bottom: 1px; }</style></head><body><div id=\"grid\">";
+    for (int i = 0; i < 5000; i++){
+        char colour[32];
+        std::snprintf(colour, sizeof(colour), "#%02x%02x%02x", (i * 7) % 256, (i / 125) * 6, 255 - (i % 125) * 2);
+        rml += std::string("<div style=\"background-color: ") + colour + "\"/>";
+    }
+    rml += "</div></body></html>";
+
+    // the document's url places it next to the fixtures, for its stylesheet links
+    ASSERT_NE(test.loadFromMemory(rml, "render/many.html"), nullptr);
+    ASSERT_TRUE(test.renderUntilDrawn());
+    EXPECT_LT(test.renderer.getGeometryBufferCount(), 64u);
+    // every box submitted (S16: batched into a few draws)
+    EXPECT_GE(test.renderer.getStats().geometrySubmitted, 5000u);
+
+    std::vector<uint8_t> screen;
+    ASSERT_TRUE(test.readScreen(screen));
+    PixelProbe probe{screen, 640};
+    // box i at (7 + 5 * (i % 125), 30 + 5 * (i / 125))
+    for (int i : {0, 1, 124, 125, 2500, 4999}){
+        const int x = 7 + 5 * (i % 125) + 1;
+        const int y = 30 + 5 * (i / 125) + 1;
+        EXPECT_TRUE(probe.is(x, y, (i * 7) % 256, (i / 125) * 6, 255 - (i % 125) * 2)) << "box " << i;
+    }
+    EXPECT_TRUE(probe.isBackground(7 + 4, 30 + 4));
+    EXPECT_TRUE(probe.isBackground(320, 240));
+
+    CompareResult result = test.compareScreen("render_many");
     EXPECT_TRUE(result.passed) << result.message;
 }
 

@@ -104,6 +104,7 @@ TEST_F(FullPathGoldenTest, ReloadReadsEditedStyleSheet){
 TEST_F(FullPathGoldenTest, NoLeaksAfterSceneReload){
     // twice the same scene: images, an SVG and text (font pages), drawn, then the scene goes
     // (as a scene reload drops it before loading it again)
+    size_t firstRoundBuffers = 0;
     for (int round = 0; round < 2; round++){
         std::vector<uint32_t> buffers, images;
         {
@@ -118,9 +119,13 @@ TEST_F(FullPathGoldenTest, NoLeaksAfterSceneReload){
             EXPECT_GT(renderer.getLiveGeometryCount(), 0u);
             EXPECT_GE(renderer.getLiveTextureCount(), 4u);   // checker, alpha50, icon, a font page
             renderer.getGpuHandles(buffers, images);
-            // the composite quad's two, a vertex and an index page, the first frame's transient two
-            EXPECT_FALSE(buffers.empty()) << "round " << round;
-            EXPECT_FALSE(images.empty()) << "round " << round;
+            // the composite quad's two plus what drew the frame: with the batched replay (S16)
+            // the gather pages and the HTMLUI_PRIM unit quad, else a vertex and an index page
+            // and the first frame's transient two; the same in both rounds
+            EXPECT_GE(buffers.size(), 4u) << "round " << round;
+            if (round == 0) firstRoundBuffers = buffers.size();
+            else EXPECT_EQ(buffers.size(), firstRoundBuffers);
+            EXPECT_GE(images.size(), 5u) << "round " << round;   // + the placeholder
             for (uint32_t id : buffers) EXPECT_TRUE(isBufferValid(id));
             for (uint32_t id : images) EXPECT_TRUE(isImageValid(id));
             ASSERT_NE(context->getTarget(), nullptr);

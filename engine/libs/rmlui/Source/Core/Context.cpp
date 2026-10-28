@@ -13,6 +13,7 @@
 #include "../../Include/RmlUi/Core/StreamMemory.h"
 #include "../../Include/RmlUi/Core/SystemInterface.h"
 #include "DataModel.h"
+#include "ElementBackgroundBorder.h"
 #include "ElementCascade.h"
 #include "EventDispatcher.h"
 #include "PluginRegistry.h"
@@ -226,6 +227,21 @@ bool Context::Update()
 	return true;
 }
 
+void Context::DirtyBackgrounds()
+{
+	Function<void(Element*)> dirty = [&dirty](Element* element) {
+		ElementBackgroundBorder* background = element->GetElementBackgroundBorder();
+		background->DirtyBackground();
+		background->DirtyBorder();
+		background->DirtyOutline();
+		// the decorators' data too: gradients are primitives or meshes (S16-F5)
+		element->DirtyBorderTopCut();
+		for (int i = 0; i < element->GetNumChildren(true); i++)
+			dirty(element->GetChild(i));
+	};
+	dirty(root.get());
+}
+
 bool Context::Render()
 {
 	RMLUI_ZoneScoped;
@@ -237,6 +253,8 @@ bool Context::Render()
 	// Render the cursor proxy so that any attached drag clone will be rendered below the cursor.
 	if (drag_clone)
 	{
+		// (fork, S16-F6: the proxy moves)
+		render_manager->ResetClipMemo();
 		static_cast<ElementDocument&>(*cursor_proxy).UpdateDocument();
 		cursor_proxy->SetOffset(
 			Vector2f((float)Math::Clamp(mouse_position.x, 0, dimensions.x), (float)Math::Clamp(mouse_position.y, 0, dimensions.y)), nullptr);
