@@ -635,13 +635,17 @@ What the implementation does differently from the text above, and why.
 
 ## Progress (implementation notes, keep updated)
 
-- FIXED: stale tiles after an editor bake (the collector collected the editor's overlay meshes;
-  editor test NavigationCollect.EditorOverlaysNotCollected); agent bound to a distant 2D surface
-  (pickSurface); Lua (bool, hit) returns; ASan fixture UAF + LeakSanitizer heightmap leak; YAML
-  zombie-node throws in project settings decode; paint_nav_grid area names.
-- Grid budgets hold on E (JPS+ tables, per-request batch scheduling): worst 0.24 ms, batch 4.14 ms.
-- OPEN: web ST slice (6 ms budget): after splitting compact/areas stages, 8.75 ms (rasterize 6.8 ms on
-  a city tile). Diagnosing with per-stage maxima ("[nav] longest step per stage" in the gate log).
-- OPEN: re-run MCP test_navigation (+ full MCP suite), editor tests incl. ASan (A, asan3 log),
-  Vulkan WERROR (D), threaded web gate, Android emulator (C or A), navigation goldens.
+- GREEN (before the S08 merge): nav core tests 50/50; ASan+UBSan core 80/80 and editor 125/125;
+  editor tests 82/82; linux GL + Vulkan WERROR; E bench all budgets (grid worst 0.24 ms, batch
+  4.14 ms with JPS+); web gate ST on E 3/3 and threaded (same navmesh hashes); MCP navigation 9/9 incl.
+  overlay golden; full MCP CI suite: only failures shared with other branches (post_fx goldens,
+  scene_inputs manifest, shadow goldens).
+- Fixed: editor overlay meshes collected (stale tiles), 2D-surface binding, Lua (bool, hit),
+  fixture UAF, heightmap leak, YAML zombie nodes, Lua API description (overrides, unqualified names,
+  AreaMask enum), web runtime tiles <= 32 cells + predictive pump.
+- NEXT: merge oe-port (S08 landed: move the six nav components onto its reflection tables, drop the
+  hand-written Catalog/Stream/StreamSchema/Factory entries as S08 dictates), regenerate TOOLS.md,
+  re-run: nav core tests, editor tests, MCP navigation + lua_api_json + conventions, Android emulator
+  (A: tools/android-emulator-test.sh build/android-navigation/app-debug.apk --expect-file ...; no
+  --ordered: the engine ready line comes after the gate lines), web gate on E.
 - Scratch remote scripts (untracked): tools/.s19-core.sh, .s19-bench.sh (RUNS=N median), .s19-editor.sh.
