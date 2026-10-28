@@ -72,6 +72,7 @@ namespace jasperengine::editor{
     class FrameDebuggerWindow;
     class UndoHistoryWindow;
     class InputActionsWindow;
+    class NavigationWindow;
     class PlayModeChangesWindow;
     class SearchPalette;
     class ShortcutsWindow;
@@ -228,6 +229,8 @@ namespace jasperengine::editor{
         FrameDebuggerWindow* frameDebuggerWindow;
         UndoHistoryWindow* undoHistoryWindow;
         InputActionsWindow* inputActionsWindow;
+        // Window > AI > Navigation (S19)
+        NavigationWindow* navigationWindow;
         PlayModeChangesWindow* playModeChangesWindow;
         // S25: Edit > Search All..., Edit > Shortcuts... (and Help > Keyboard Shortcuts),
         // Window > General > Bookmarks

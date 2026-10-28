@@ -40,6 +40,7 @@
 #include "window/PlayModeChangesWindow.h"
 #include "window/UndoHistoryWindow.h"
 #include "window/InputActionsWindow.h"
+#include "navigation/NavigationWindow.h"
 #include "command/PlayChangeReview.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpAutoSync.h"
@@ -174,6 +175,7 @@ editor::App::App(){
     frameDebuggerWindow = new FrameDebuggerWindow(this);
     undoHistoryWindow = new UndoHistoryWindow(&project);
     inputActionsWindow = new InputActionsWindow(&project);
+    navigationWindow = new NavigationWindow(&project);
     playModeChangesWindow = new PlayModeChangesWindow(&project);
     searchPalette = new SearchPalette(this);
     shortcutsWindow = new ShortcutsWindow(CommandCatalog::editor(), shortcutDispatcher);
@@ -608,6 +610,9 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         }),
         catalogItem("window.terrain", windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
         catalogItem("window.inputActions", windowMenuLabel(InputActionsWindow::WINDOW_NAME)),
+        menuSubmenu("AI", {
+            catalogItem("window.navigation", windowMenuLabel(NavigationWindow::WINDOW_NAME))
+        }),
         menuSubmenu("Assets", {
             catalogItem("window.missingAssets", windowMenuLabel(MissingAssetsWindow::WINDOW_NAME)),
             catalogItem("window.assetReferences", windowMenuLabel(AssetReferencesWindow::WINDOW_NAME))
@@ -824,6 +829,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleInputActions:
             showEditorWindow(inputActionsWindow);
+            break;
+        case AppMenuCommand::ToggleNavigation:
+            showEditorWindow(navigationWindow);
             break;
         case AppMenuCommand::TogglePlayModeChanges:
             showEditorWindow(playModeChangesWindow);
@@ -2485,6 +2493,7 @@ void editor::App::show(){
     frameDebuggerWindow->show();
     undoHistoryWindow->show();
     inputActionsWindow->show();
+    navigationWindow->show();
     playModeChangesWindow->show();
     bookmarksWindow->show();
     codeEditor->show();

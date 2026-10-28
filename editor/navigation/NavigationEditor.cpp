@@ -12,6 +12,8 @@
 #include "io/AtomicFile.h"
 #include "navigation/NavGridMap.h"
 #include "navigation/NavGridCellsCmd.h"
+#include "navigation/NavGridBrush.h"
+#include "component/Transform.h"
 #include "command/CommandHandle.h"
 
 #include <algorithm>
@@ -407,3 +409,89 @@ int NavigationEditor::dirtyTiles(Project* project, uint32_t sceneId, Entity surf
     dirtyCache.push_back(cache);
     return cache.dirty;
 }
+
+// ---------------------------------------------------------------- the nav-grid brush
+
+struct NavigationEditor::BrushStroke {
+    Scene* scene = nullptr;
+    uint32_t sceneId = 0;
+    Entity grid = NULL_ENTITY;
+    NavGridBrush::Stroke edits;
+    nav::GridCell last;
+    bool started = false;
+};
+
+bool NavigationEditor::isBrushPainting(Scene* scene) const {
+    if (brushGrid == NULL_ENTITY || !scene) return false;
+    Project* project = Backend::getApp().getProject();
+    SceneProject* sceneProject = project ? project->getScene(brushScene) : nullptr;
+    return sceneProject && sceneProject->scene == scene && sceneProject->playState == ScenePlayState::STOPPED &&
+           scene->findComponent<NavGridComponent>(brushGrid) != nullptr;
+}
+
+bool NavigationEditor::cellUnderRay(Scene* scene, Entity grid, const Ray& ray, nav::GridCell& cell) {
+    const NavGridComponent* component = scene->findComponent<NavGridComponent>(grid);
+    const Transform* transform = scene->findComponent<Transform>(grid);
+    auto system = scene->getSystem<NavigationSystem>();
+    if (!component || !transform || !system) return false;
+    const Vector3 normal = component->plane == nav::NavPlane::XY ? Vector3(0, 0, 1) : transform->worldRotation * Vector3(0, 1, 0);
+    const RayReturn hit = ray.intersects(Plane(normal, transform->worldPosition));
+    if (!hit.hit) return false;
+    cell = system->gridWorldToCell(grid, hit.point);
+    return true;
+}
+
+void NavigationEditor::strokeTo(Scene* scene, nav::GridCell cell) {
+    auto system = scene->getSystem<NavigationSystem>();
+    nav::NavGridMap* map = system ? system->getGridMap(stroke->grid) : nullptr;
+    if (!map) return;
+    const uint8_t area = brush.mode == BrushMode::Erase ? nav::AREA_WALKABLE : (uint8_t)std::clamp(brush.area, 0, nav::AREA_COUNT - 1);
+    if (brush.mode == BrushMode::Fill) {
+        if (!stroke->started) stroke->edits.apply(*map, NavGridBrush::flood(*map, cell), area);
+    } else {
+        const NavGridBrush::Shape shape = brush.shape == BrushShape::Square ? NavGridBrush::Shape::Square : NavGridBrush::Shape::Circle;
+        const std::vector<nav::GridCell> along = stroke->started ? NavGridBrush::line(*map, stroke->last, cell) : std::vector<nav::GridCell>{cell};
+        for (const nav::GridCell& c : along) stroke->edits.apply(*map, NavGridBrush::stamp(*map, c, brush.size, shape), area);
+    }
+    stroke->last = cell;
+    stroke->started = true;
+    if (NavGridComponent* component = scene->findComponent<NavGridComponent>(stroke->grid)) component->mapDirty = true;
+}
+
+void NavigationEditor::beginBrushStroke(Project* project, Scene* scene, const Ray& ray, bool shift) {
+    if (!isBrushPainting(scene)) return;
+    nav::GridCell cell;
+    if (!cellUnderRay(scene, brushGrid, ray, cell)) return;
+    stroke = std::make_shared<BrushStroke>();
+    stroke->scene = scene;
+    stroke->sceneId = brushScene;
+    stroke->grid = brushGrid;
+    (void)project;
+    // Shift: a straight line from where the last stroke ended
+    if (shift && hasLastStrokeEnd && brush.mode != BrushMode::Fill) {
+        stroke->last = lastStrokeEnd;
+        stroke->started = true;
+    }
+    strokeTo(scene, cell);
+}
+
+void NavigationEditor::paintBrushStroke(Scene* scene, const Ray& ray) {
+    if (!stroke || stroke->scene != scene || brush.mode == BrushMode::Fill) return;
+    nav::GridCell cell;
+    if (!cellUnderRay(scene, stroke->grid, ray, cell) || cell == stroke->last) return;
+    strokeTo(scene, cell);
+}
+
+void NavigationEditor::endBrushStroke(Project* project) {
+    if (!stroke) return;
+    std::shared_ptr<BrushStroke> done = std::move(stroke);
+    stroke.reset();
+    lastStrokeEnd = done->last;
+    hasLastStrokeEnd = done->started;
+    const std::vector<NavGridCellsCmd::Cell> cells = done->edits.cells();
+    if (cells.empty() || !project) return;
+    // the cells are painted already: the command's execute() writes the same values
+    CommandHandle::get(done->sceneId)->addCommand(new NavGridCellsCmd(project, done->sceneId, done->grid, cells, "Paint Nav Grid"));
+    if (SceneProject* sceneProject = project->getScene(done->sceneId)) sceneProject->needUpdateRender = true;
+}
+

@@ -99,6 +99,8 @@ namespace jasperengine::nav {
         struct HeapNode {
             float f;
             float h;
+            // the cell's g when pushed (f - h is not exactly g in floats)
+            float g;
             int cell;
         };
         std::vector<float> g;

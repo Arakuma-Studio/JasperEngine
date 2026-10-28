@@ -155,7 +155,7 @@ namespace jasperengine::nav {
     // 64-bit content hash of a navigation settings snapshot's area table (names, costs, colours)
     JASPERENGINE_API uint64_t hashAreaTable(const NavigationSettings& settings);
 
-    const char* pathStatusName(PathStatus status);
+    JASPERENGINE_API const char* pathStatusName(PathStatus status);
 
 }
 

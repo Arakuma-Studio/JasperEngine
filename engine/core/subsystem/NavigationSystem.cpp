@@ -58,6 +58,9 @@ namespace {
     constexpr double CARVE_BUDGET_MS = 1.0;
     // arrival never closer than this (spec R12)
     constexpr float MIN_STOPPING_DISTANCE = 0.01f;
+    // auto braking: the final approach closes 1/8 of what is left per tick, and arrives within 5 mm
+    constexpr float BRAKE_FINAL_TICKS = 8.0f;
+    constexpr float ARRIVAL_TOLERANCE = 0.005f;
     // a grid agent waiting this long for an occupied cell plans around it
     constexpr float GRID_WAIT_SECONDS = 0.5f;
 
@@ -2100,15 +2103,23 @@ void NavigationSystem::Runtime::stepCrowds(Scene* scene, float dt) {
                 bool reachedEnd = false;
                 float remaining = crowd.getSteeringDistance(agent.crowdIndex, reachedEnd);
                 const float accel = std::max(params.maxAcceleration, 1e-4f);
-                const float brakeDistance = params.maxSpeed * params.maxSpeed / (2.0f * accel);
+                // braking at half the acceleration (the velocity follows within the acceleration)
+                const float brakeDistance = params.maxSpeed * params.maxSpeed / accel;
                 if (!reachedEnd && remaining <= brakeDistance)
                     remaining = crowd.getRemainingDistance(agent.crowdIndex, reachedEnd);
                 if (reachedEnd) {
                     const float stop = std::max(component->stoppingDistance, MIN_STOPPING_DISTANCE) * scale;
                     const float left = std::max(0.0f, remaining - stop);
-                    // decelerate to stop at the stopping distance: v = sqrt(2 a d), and never past it in one step
-                    const float allowed = std::min(std::sqrt(2.0f * accel * left), dt > 0.0f ? left / dt : left);
-                    params.maxSpeed = std::min(params.maxSpeed, allowed);
+                    // decelerate to stop at the stopping distance: v = sqrt(a d) (a constant a / 2), then
+                    // the last centimetres closed by an eighth per tick, so the speed at the stop is
+                    // under 0.05 m/s and it never passes it
+                    const float allowed = std::min(std::sqrt(accel * left), dt > 0.0f ? left / (BRAKE_FINAL_TICKS * dt) : left);
+                    // dtCrowd scales the speed down within two radii of the end itself (distance / 2r):
+                    // asked for allowed / scale, it moves at `allowed` (else the two slow-downs
+                    // compound and it creeps towards the stop without reaching it)
+                    const float slowDown = params.radius * 2.0f;
+                    const float crowdScale = slowDown > 0.0f ? std::min(1.0f, remaining / slowDown) : 1.0f;
+                    params.maxSpeed = std::min(params.maxSpeed, allowed / std::max(crowdScale, 1e-3f));
                 }
             }
             if (params.maxSpeed != crowd.getParams(agent.crowdIndex).maxSpeed)
@@ -2368,7 +2379,7 @@ void NavigationSystem::Runtime::writeBack(NavigationSystem& system, Scene* scene
                     remaining = crowd.getRemainingDistance(index, reachedEnd);
                 component.remainingDistance = remaining;
                 const float stop = std::max(component.stoppingDistance, MIN_STOPPING_DISTANCE) * scale;
-                if (reachedEnd && remaining <= stop) {
+                if (reachedEnd && remaining <= stop + (component.autoBraking ? ARRIVAL_TOLERANCE * scale : 0.0f)) {
                     agent.arrived = true;
                     crowd.resetMoveTarget(index);
                     crowd.setVelocity(index, Vector3());

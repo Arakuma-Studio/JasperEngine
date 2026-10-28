@@ -141,7 +141,7 @@ GridPath GridSolver::solve(const NavGridMap& map, GridCell start, GridCell goal,
     generation[(size_t)startIndex] = current;
     state[(size_t)startIndex] = STATE_OPEN;
     const float startH = map.heuristic(start, goal);
-    heap.push_back(HeapNode{startH, startH, startIndex});
+    heap.push_back(HeapNode{startH, startH, 0.0f, startIndex});
 
     int best = startIndex;
     float bestH = startH;
@@ -155,7 +155,8 @@ GridPath GridSolver::solve(const NavGridMap& map, GridCell start, GridCell goal,
         std::pop_heap(heap.begin(), heap.end(), HeapGreater());
         const HeapNode node = heap.back();
         heap.pop_back();
-        if (state[(size_t)node.cell] == STATE_CLOSED || node.f - node.h > g[(size_t)node.cell] + 1e-6f)
+        // a stale entry (the cell was reached cheaper since): its g is not the cell's
+        if (state[(size_t)node.cell] == STATE_CLOSED || node.g != g[(size_t)node.cell])
             continue;
         state[(size_t)node.cell] = STATE_CLOSED;
         path.expanded++;
@@ -196,7 +197,7 @@ GridPath GridSolver::solve(const NavGridMap& map, GridCell start, GridCell goal,
             parent[(size_t)to] = node.cell;
             state[(size_t)to] = STATE_OPEN;
             const float h = map.heuristic(next[n], goal);
-            heap.push_back(HeapNode{candidate + h, h, to});
+            heap.push_back(HeapNode{candidate + h, h, candidate, to});
             std::push_heap(heap.begin(), heap.end(), HeapGreater());
         }
     }

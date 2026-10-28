@@ -13,10 +13,12 @@
 
 #include "Scene.h"
 #include "subsystem/NavigationSystem.h"
+#include "math/Ray.h"
 
 #include <filesystem>
 #include <functional>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -86,6 +88,15 @@ namespace jasperengine::editor {
         bool isBrushActive(uint32_t sceneId) const { return brushGrid != NULL_ENTITY && brushScene == sceneId; }
         Entity getBrushGrid() const { return brushGrid; }
         Brush& getBrush() { return brush; }
+        // the brush holds the Scene view's left button in this scene (a NavGrid to paint)
+        bool isBrushPainting(Scene* scene) const;
+        // A stroke: press, drag, release (one undo step "Paint Nav Grid"); Shift on press draws a
+        // straight line from the last stroke's end. Fill floods the cell pressed.
+        void beginBrushStroke(Project* project, Scene* scene, const Ray& ray, bool shift);
+        void paintBrushStroke(Scene* scene, const Ray& ray);
+        void endBrushStroke(Project* project);
+        // the grid cell under a ray (false: it misses the grid's plane)
+        static bool cellUnderRay(Scene* scene, Entity grid, const Ray& ray, nav::GridCell& cell);
 
         // ---- the overlay's query path (visualize_navigation path), world points
         void setQueryPath(uint32_t sceneId, std::vector<Vector3> points) { queryPaths[sceneId] = std::move(points); }
@@ -121,6 +132,11 @@ namespace jasperengine::editor {
         uint32_t brushScene = 0;
         Entity brushGrid = NULL_ENTITY;
         Brush brush;
+        struct BrushStroke;
+        std::shared_ptr<BrushStroke> stroke;
+        nav::GridCell lastStrokeEnd;
+        bool hasLastStrokeEnd = false;
+        void strokeTo(Scene* scene, nav::GridCell cell);
 
         void finish(Project* project, Pending& entry, const NavBakeResult& result);
     };

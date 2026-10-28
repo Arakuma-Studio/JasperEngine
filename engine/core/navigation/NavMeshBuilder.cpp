@@ -318,8 +318,13 @@ void NavMeshBuilder::TileJob::State::markAreas() {
             polygon.push_back(0.0f);
             polygon.push_back(volume.points[i + 1]);
         }
-        rcMarkConvexPolyArea(&context, polygon.data(), (int)(polygon.size() / 3), volume.minY, volume.maxY,
-                             volume.recastArea, chf);
+        // Recast turns the heights into span cells as ints: an unbounded volume (a 2D footprint)
+        // is clamped to the tile's heights first (beyond them it would overflow and mark nothing)
+        const float low = std::max(volume.minY, chf.bmin[1] - chf.ch);
+        const float high = std::min(volume.maxY, chf.bmax[1] + chf.ch);
+        if (low > high)
+            continue;
+        rcMarkConvexPolyArea(&context, polygon.data(), (int)(polygon.size() / 3), low, high, volume.recastArea, chf);
     }
 
     if (!rcErodeWalkableArea(&context, cfg.walkableRadius, chf)) {

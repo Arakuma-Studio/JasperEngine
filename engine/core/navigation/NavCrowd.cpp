@@ -11,6 +11,7 @@
 #include "Log.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <cstring>
@@ -73,6 +74,8 @@ struct NavCrowd::Impl {
     std::vector<NavCrowdAgentParams> params;
     // the agents on a link: off the crowd's steering until completeOffMeshLink
     std::vector<uint8_t> onLink;
+    // where each obstacle stands (dtCrowd's collision pass would push it like any agent)
+    std::vector<std::array<float, 3>> pinned;
     // the agents whose traversal Detour runs (a fallback, see takeDetourTraversals)
     std::vector<uint8_t> detourLink;
     // the area masks of the 16 query filters (0: unused)
@@ -177,6 +180,7 @@ bool NavCrowd::init(const NavMesh& mesh, int maxAgents, float maxAgentRadius) {
     impl->capacity = std::max(1, maxAgents);
     impl->params.assign((size_t)impl->capacity, NavCrowdAgentParams());
     impl->onLink.assign((size_t)impl->capacity, 0);
+    impl->pinned.assign((size_t)impl->capacity, std::array<float, 3>{0.0f, 0.0f, 0.0f});
     impl->detourLink.assign((size_t)impl->capacity, 0);
     impl->filterMasks.assign(DT_CROWD_MAX_QUERY_FILTER_TYPE, 0);
     impl->filterMasks[0] = ALL_AREAS;
@@ -286,6 +290,63 @@ void NavCrowd::update(float dt) {
     if (!impl->crowd || impl->count == 0)
         return;
     impl->crowd->update(dt, nullptr);
+
+    // obstacles stand where their transforms put them
+    const int count = impl->crowd->getActiveAgents(impl->active.data(), impl->capacity);
+    for (int i = 0; i < count; i++) {
+        dtCrowdAgent* ag = impl->active[(size_t)i];
+        const int index = (int)(ag - impl->crowd->getEditableAgent(0));
+        if (impl->params[(size_t)index].obstacle)
+            dtVcopy(ag->npos, impl->pinned[(size_t)index].data());
+    }
+
+    // Avoidance is a velocity preference, so a crowd squeezing past a non-carving obstacle can
+    // graze it; agents are put back on the obstacle's circle (along the navmesh), the way
+    // dtCrowd's collision pass separates agents, but the obstacle never moves (spec R9, AC10)
+    for (int pass = 0; pass < 2; pass++) {
+        for (int i = 0; i < count; i++) {
+            dtCrowdAgent* ag = impl->active[(size_t)i];
+            const int index = (int)(ag - impl->crowd->getEditableAgent(0));
+            if (impl->params[(size_t)index].obstacle || ag->state != DT_CROWDAGENT_STATE_WALKING)
+                continue;
+            float push[3] = {0.0f, 0.0f, 0.0f};
+            bool pushed = false;
+            for (int j = 0; j < count; j++) {
+                const dtCrowdAgent* other = impl->active[(size_t)j];
+                const int otherIndex = (int)(other - impl->crowd->getEditableAgent(0));
+                if (!impl->params[(size_t)otherIndex].obstacle)
+                    continue;
+                const float minimum = ag->params.radius + other->params.radius;
+                // vertically apart (another floor): no contact
+                if (std::fabs(ag->npos[1] - other->npos[1]) > (ag->params.height + other->params.height) * 0.5f)
+                    continue;
+                float dx = ag->npos[0] - other->npos[0];
+                float dz = ag->npos[2] - other->npos[2];
+                const float distance = std::sqrt(dx * dx + dz * dz);
+                if (distance >= minimum)
+                    continue;
+                if (distance < 1e-5f) {
+                    // dead centre: out along the agent's velocity, else +x
+                    const float speed = std::sqrt(ag->vel[0] * ag->vel[0] + ag->vel[2] * ag->vel[2]);
+                    dx = speed > 1e-5f ? -ag->vel[0] / speed : 1.0f;
+                    dz = speed > 1e-5f ? -ag->vel[2] / speed : 0.0f;
+                } else {
+                    dx /= distance;
+                    dz /= distance;
+                }
+                // a hair past the circle, so the next tick starts outside
+                const float depth = minimum - distance + 1e-3f;
+                push[0] += dx * depth;
+                push[2] += dz * depth;
+                pushed = true;
+            }
+            if (!pushed)
+                continue;
+            float target[3] = {ag->npos[0] + push[0], ag->npos[1], ag->npos[2] + push[2]};
+            ag->corridor.movePosition(target, impl->editableQuery(), impl->filterOf(ag));
+            dtVcopy(ag->npos, ag->corridor.getPos());
+        }
+    }
 }
 
 Vector3 NavCrowd::getPosition(int agent) const {
@@ -371,6 +432,7 @@ void NavCrowd::setObstacleState(int agent, const Vector3& position, const Vector
     // the obstacle stands where its transform is, on the mesh or not: only its circle matters
     ag->corridor.reset(ref, nearest);
     dtVcopy(ag->npos, p);
+    impl->pinned[(size_t)agent] = {p[0], p[1], p[2]};
     const float v[3] = {velocity.x, velocity.y, velocity.z};
     dtVcopy(ag->vel, v);
     dtVcopy(ag->dvel, v);
