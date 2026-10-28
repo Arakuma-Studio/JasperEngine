@@ -524,13 +524,13 @@ async def test_quantize_toon_steps(ed: Editor):
     """params.quantize (Toon steps): preview and write give the same palette-only pixels, the settings and recipe
     carry quantize, preset toon turns it on, regenerate reproduces both an override to off and an on-by-params map,
     bad values and unknown keys are refused with their fix"""
-    r = await gen(ed, source=BALL, params={"quantize": {"directions": 4, "tilts": 1}})
+    r = await gen(ed, source=BALL, params={"quantize": {"directions": 4}})
     v = r.structured
     q = v["settings"]["quantize"]
-    check(q == {"directions": 4, "tilts": 1, "flat_deg": 10, "rotation_deg": 0}, f"settings.quantize (missing keys at their defaults): {q}")
+    check(q == {"directions": 4, "tilts": 1, "flat_deg": 15, "rotation_deg": 0}, f"settings.quantize (missing keys at their defaults): {q}")
     check(v["written"] is False and v["settings"]["preset"] == "default", f"{v['settings']}")
     out = f"{SPR}/q/ball_q4.png"
-    w = await gen(ed, source=BALL, params={"quantize": {"directions": 4, "tilts": 1}}, output=out)
+    w = await gen(ed, source=BALL, params={"quantize": {"directions": 4}}, output=out)
     check(w.images and w.images[0][0] == r.images[0][0], "the write returns the previewed sheet")
     _, _, px = rgba((ed.project / out).read_bytes())
     check(1 < len(opaque_colours(px)) <= 5, f"at most 1 + 4 x 1 normals: {opaque_colours(px)}")

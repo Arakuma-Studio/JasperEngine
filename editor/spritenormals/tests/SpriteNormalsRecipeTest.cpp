@@ -511,3 +511,57 @@ TEST(SpriteNormalsRecipe, FramesFromNames) {
     sn::FramesFrom out;
     EXPECT_FALSE(sn::parseFramesFrom("video", out));
 }
+
+// The amended defaults (tilts 1, flat 15: one ring, no 70-degree rims): a partial quantize resolves
+// to them, and the toon preset's settings survive a recipe round trip with identical pixels
+TEST(SpriteNormalsRecipe, QuantizeDefaultsAndToonRoundTripReproducePixels) {
+    const sn::Quantize defaults;
+    EXPECT_EQ(defaults.directions, 0);
+    EXPECT_EQ(defaults.tilts, 1);
+    EXPECT_EQ(defaults.flatDeg, 15.0f);
+    EXPECT_EQ(defaults.rotationDeg, 0.0f);
+    sn::Quantize toonQ = defaults;
+    toonQ.directions = 8;
+    EXPECT_EQ(sn::presetSettings(sn::Preset::Toon).quantize, toonQ) << "toon = the defaults with 8 directions";
+    std::string error;
+    sn::Settings partial = sn::presetSettings(sn::Preset::Default);
+    ASSERT_TRUE(sn::settingsFromJson(json::parse(R"({"quantize":{"directions":8}})"), partial, error)) << error;
+    EXPECT_EQ(partial.quantize, toonQ);
+    EXPECT_TRUE(sn::validateSettings(partial).empty());
+
+    sn::Image color = sn::Image::make(24, 24, 4, 8);
+    for (int y = 0; y < 24; y++) {
+        for (int x = 0; x < 24; x++) {
+            uint8_t* p = color.pixel(x, y);
+            const float dx = x - 11.5f, dy = y - 11.5f;
+            p[0] = static_cast<uint8_t>(120 + x * 4);
+            p[1] = static_cast<uint8_t>(60 + y * 3);
+            p[2] = 40;
+            p[3] = dx * dx + dy * dy <= 100.0f ? 255 : 0;
+        }
+    }
+    for (bool directx : {false, true}) {
+        for (int directions : {8, 0}) {   // toon, and toon turned off (recorded as directions 0)
+            sn::Settings s = sn::presetSettings(sn::Preset::Toon);
+            s.directx = directx;
+            s.quantize.directions = directions;
+            const json j = sn::settingsToJson(s);
+            ASSERT_TRUE(j.contains("quantize")) << "written while the preset's quantize is on";
+            sn::Settings back;   // a recipe reader (Settings{}), and one resolving over the preset
+            sn::Settings overPreset = sn::presetSettings(sn::Preset::Toon);
+            ASSERT_TRUE(sn::settingsFromJson(j, back, error)) << error;
+            ASSERT_TRUE(sn::settingsFromJson(j, overPreset, error)) << error;
+            EXPECT_EQ(back.quantize, s.quantize);
+            EXPECT_EQ(overPreset.quantize, s.quantize);
+            sn::Request a, b;
+            a.color = b.color = color;
+            a.settings = s;
+            b.settings = back;
+            const sn::Result ra = sn::generate(a), rb = sn::generate(b);
+            ASSERT_EQ(ra.status, sn::Status::Ok);
+            EXPECT_EQ(ra.normal.data, rb.normal.data) << "directx " << directx << " directions " << directions;
+        }
+    }
+    // other presets with quantize off still record nothing
+    EXPECT_FALSE(sn::settingsToJson(sn::presetSettings(sn::Preset::Crisp)).contains("quantize"));
+}

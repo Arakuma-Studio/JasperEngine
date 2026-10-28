@@ -53,7 +53,7 @@ Phase 1 are engine changes and ship in every game.
 ## Known limitations
 
 - Toon steps: the height map is not quantized; flat regions are not quantized (they stay flat); 2+ tilt rings put the
-  rims at 70° and over, so `too_steep` can warn on strongly domed sprites (the toon preset uses one ring); a rotation
+  rims at 70° and over, so `too_steep` can warn on strongly domed sprites (the default and the toon preset use one ring); a rotation
   that puts a step boundary on an axis (22.5 with 8 directions) speckles straight-sided art.
 
 - `check --normals` and the Inspector wand look at Sprites, Tilemaps and Polygons only; a prefab-instance override

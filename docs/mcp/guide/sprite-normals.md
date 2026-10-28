@@ -93,8 +93,8 @@ normal to a small palette of directions, so a moving light steps across the spri
 | key | range | default | meaning |
 |---|---|---|---|
 | `directions` | 0 (off), 4, 6, 8, 12, 16 | 0 | azimuth steps around the circle |
-| `tilts` | 1..4 | 2 | tilt rings between `flat_deg` and 90° |
-| `flat_deg` | 0..45 | 10 | normals tilted less face the viewer exactly (flat tops, no speckle) |
+| `tilts` | 1..4 | 1 | tilt rings between `flat_deg` and 90° |
+| `flat_deg` | 0..45 | 15 | normals tilted less face the viewer exactly (flat tops, no speckle) |
 | `rotation_deg` | 0..360 (360 excluded) | 0 | turns the palette (0: one direction points right) |
 
 Per opaque pixel: tilted under `flat_deg` → `(0, 0, 1)`; else the azimuth snaps to `rotation_deg + k·360/directions`
@@ -102,8 +102,8 @@ Per opaque pixel: tilted under `flat_deg` → `(0, 0, 1)`; else the azimuth snap
 `1 + directions × tilts` normals. It runs after the relief, before the DirectX flip; painted pixels keep exactly
 the direction painted; the height map is not quantized; flat regions stay flat. Missing keys keep the preset's
 values (`{"quantize": {"directions": 8}}` is enough). Fewer directions read chunkier (4: a pyramid look); 16 is
-nearly smooth. `tilts: 1` reads cleanest (two or three tones per light); 2 or more add rings tilted 70° and over
-at the rims (`too_steep` may warn: lower `strength`). Keep `rotation_deg` 0 for art with straight sides: a
+nearly smooth. `tilts: 1` (the default) reads cleanest (two or three tones per light); 2 or more add rings tilted
+70° and over at the rims (`too_steep` may warn: lower `strength`). Keep `rotation_deg` 0 for art with straight sides: a
 rotation that puts a step boundary on an axis (22.5 with 8, 45 with 4) makes those sides speckle. The window's
 **Toon steps** (Settings: Off / 4 / 8 / 16; Advanced: all six values, Tilt rings, Flat below, Rotation); the CLI's
 `--quantize N --quantize-tilts N --quantize-flat DEG --quantize-rotation DEG`.
@@ -115,7 +115,7 @@ A cel-shaded hero, previewed, then blockier (4 steps) and written:
 {"source": "Hero", "preset": "toon", "params": {"quantize": {"directions": 4}}, "output": true}
 ```
 
-Quantized normals on any preset: `{"source": "Hero", "preset": "crisp", "params": {"quantize": {"directions": 8, "tilts": 1}}}`;
+Quantized normals on any preset: `{"source": "Hero", "preset": "crisp", "params": {"quantize": {"directions": 8}}}`;
 off on `toon`: `{"params": {"quantize": {"directions": 0}}}`. The recipe records `quantize` when it is on (or the
 preset's is), so `regenerate` gives the same pixels.
 

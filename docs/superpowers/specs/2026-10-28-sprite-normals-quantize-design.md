@@ -17,9 +17,15 @@ to today (golden parity, all existing tests unchanged).
 | key | type, range | default | meaning |
 |---|---|---|---|
 | `directions` | 0, 4, 6, 8, 12, 16 (0 = off) | 0 | number of azimuth steps around the circle |
-| `tilts` | 1..4 | 2 | number of tilt rings between `flat_deg` and 90° |
-| `flat_deg` | 0..45 | 10 | normals tilted less than this become exactly flat (0,0,1) |
+| `tilts` | 1..4 | 1 | number of tilt rings between `flat_deg` and 90° |
+| `flat_deg` | 0..45 | 15 | normals tilted less than this become exactly flat (0,0,1) |
 | `rotation_deg` | 0..360 (360 excluded) | 0 | rotates the azimuth palette (0 = one direction points right, +X) |
+
+**Amendment (controller ruling, 2026-10-28):** the defaults of `tilts` and `flat_deg` are 1 and 15 (were 2 and 10),
+the toon preset's values, so turning Toon steps on from any preset gives one ring at 52.5° instead of rims at 70°
+that trip `too_steep`. `directions` stays 0 (off) and `rotation_deg` 0. Recipes always record all four keys when they
+record `quantize`, so no recipe written by this branch resolves differently; a partial object (MCP `params`, a
+hand-written recipe) fills missing keys from the preset (toon: 1 / 15) or, on the other presets, the new defaults.
 
 - JSON/MCP: `params.quantize: {directions, tilts, flat_deg, rotation_deg}` (inside the existing loose `params`
   object; unknown keys refused with the valid list; out-of-range values refused with the house message).
@@ -80,8 +86,8 @@ same float operations as `encodeNormal` (`detail::slopeNormal`), quantizes in do
 - *Paint.* `generatePainted` composites over `generate()`'s quantized result, so painted pixels keep the painted
   direction byte for byte and erased paint shows the quantized bytes again (tested).
 - *Metrics.* Quantization adds no warning kind. The existing ones apply to the quantized result: with 2+ tilt rings
-  the outer ring sits at 70° or more, so `too_steep` can fire on strongly domed sprites; the toon preset uses one
-  ring and warns nothing the default preset does not (table below).
+  the outer ring sits at 70° or more, so `too_steep` can fire on strongly domed sprites; the defaults (one ring,
+  amendment below) and the toon preset warn nothing the default preset does not (table below).
 
 ## Presets
 Add preset `toon` (contract preset list becomes soft, default, crisp, detailed, chunky, toon): choose its six main

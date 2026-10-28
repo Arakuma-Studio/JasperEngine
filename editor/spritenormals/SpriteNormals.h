@@ -58,8 +58,8 @@ namespace jasperengine::editor::spritenormals {
     // Off (directions 0) by default: unquantized output is byte-identical to before.
     struct Quantize {
         int directions = 0;                   // 0 (off), 4, 6, 8, 12, 16: azimuth steps around the circle
-        int tilts = 2;                        // 1..4: tilt rings between flatDeg and 90 degrees
-        float flatDeg = 10.0f;                // 0..45: normals tilted less become exactly (0, 0, 1)
+        int tilts = 1;                        // 1..4: tilt rings between flatDeg and 90 degrees
+        float flatDeg = 15.0f;                // 0..45: normals tilted less become exactly (0, 0, 1)
         float rotationDeg = 0.0f;             // [0, 360): the palette's first azimuth (0 = +X, right)
         bool on() const { return directions > 0; }
         bool operator==(const Quantize& o) const {
