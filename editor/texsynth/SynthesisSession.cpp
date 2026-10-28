@@ -3,6 +3,7 @@
 
 #include "SynthesisSession.h"
 
+#include "Project.h"
 #include "util/ProjectFileWrites.h"
 #include "util/Util.h"
 
@@ -567,8 +568,15 @@ namespace jasperengine::editor::texsynth {
 
     bool writeOutputsUndoable(Project* project, const std::vector<OutputFile>& files, std::string& error) {
         std::vector<WriteFilesCmd::Item> items;
-        for (const OutputFile& file : files) items.push_back({file.absolute, file.bytes});
-        return ProjectFileWrites::writeUndoable(project, std::move(items), error);
+        bool inAssets = project && !project->getAssetsPath().empty();
+        for (const OutputFile& file : files) {
+            items.push_back({file.absolute, file.bytes});
+            if (inAssets && !project->isInsideAssetsPath(file.absolute)) inAssets = false;
+        }
+        // beneath the project when they are written, or beneath its assets directory when they all
+        // are in it (an assets directory linked in from elsewhere keeps working)
+        const std::filesystem::path beneath = inAssets ? project->getAssetsPath() : std::filesystem::path();
+        return ProjectFileWrites::writeUndoable(project, std::move(items), error, nullptr, nullptr, beneath);
     }
 
     // ------------------------------------------------------------------ feedback

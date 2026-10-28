@@ -705,7 +705,8 @@ void createEntityRun(const CallPtr& call, bool waited) {
     const bool stepsOk = stepCount == 0 ? (delete steps, true) : runSceneCommand(sceneId, steps, error);
     if (kind->type == EntityCreationType::LATTICE) {
         if (!stepsOk) {
-            while (history->position() > start && history->canUndo()) history->undo();
+            // a refused undo leaves the position (CommandHistory::undo false): it ends the loop too
+            while (history->position() > start && history->canUndo() && history->undo()) {}
         } else {
             history->groupSince(start);
             if (!select) project->replaceSelectedEntities(sceneId, selectedBefore);

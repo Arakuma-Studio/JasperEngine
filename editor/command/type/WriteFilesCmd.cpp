@@ -4,6 +4,7 @@
 #include "WriteFilesCmd.h"
 
 #include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -42,8 +43,17 @@ void editor::WriteFilesCmd::fail(const std::string& message) {
     if (failureSink) *failureSink = message;
 }
 
-bool editor::WriteFilesCmd::restore(size_t i) {
+bool editor::WriteFilesCmd::restore(size_t i, std::string* why) {
     std::error_code ec;
+    if (!beneathRoot.empty()) {
+        // beneath the root: the previous bytes written back / the new file removed (the entry
+        // itself), never through a link made since
+        std::string error;
+        const bool ok = previous[i].existed ? safewrite::writeFileResolvedBeneath(beneathRoot, items[i].path, previous[i].content, error)
+                                            : safewrite::removeFileResolvedBeneath(beneathRoot, items[i].path, error);
+        if (!ok && why) *why = error;
+        return ok;
+    }
     if (previous[i].existed) return FileUtils::writeFileReplacing(items[i].path, previous[i].content);
     // a file it created (or began to): gone again; never a directory that was there
     if (fs::is_regular_file(items[i].path, ec) || fs::is_symlink(items[i].path, ec)) fs::remove(items[i].path, ec);
@@ -54,6 +64,11 @@ void editor::WriteFilesCmd::removeCreatedDirs() {
     std::vector<fs::path> dirs = createdDirs;
     std::sort(dirs.begin(), dirs.end(), [](const fs::path& a, const fs::path& b) { return a.native().size() > b.native().size(); });
     for (const fs::path& dir : dirs) {
+        if (!beneathRoot.empty()) {
+            std::string ignored;
+            safewrite::removeEmptyDirResolvedBeneath(beneathRoot, dir, ignored);
+            continue;
+        }
         std::error_code ec;
         if (fs::is_directory(dir, ec) && fs::is_empty(dir, ec)) fs::remove(dir, ec);
     }
@@ -76,6 +91,7 @@ bool editor::WriteFilesCmd::execute() {
         captured = true;
     }
     createdDirs.clear();
+    failedPath.clear();
     // on a failure at item `failed`: items [0, touched) back to their previous state, the
     // directories created removed
     auto rollback = [&](size_t touched, const std::string& why) {
@@ -91,6 +107,17 @@ bool editor::WriteFilesCmd::execute() {
     for (size_t i = 0; i < items.size(); i++) {
         const Item& item = items[i];
         std::error_code ec;
+        if (!beneathRoot.empty()) {
+            // the missing folders are made by the write (and listed for undo); a failed write
+            // left the file as it was
+            std::string why;
+            if (!safewrite::writeFileResolvedBeneath(beneathRoot, item.path, item.content, why, &createdDirs)) {
+                failedPath = item.path;
+                const bool named = why.rfind("can't ", 0) == 0;
+                return rollback(i, named ? why : "can't write " + FileUtils::pathToGenericUtf8(item.path) + ": " + why);
+            }
+            continue;
+        }
         const fs::path parent = item.path.parent_path();
         if (!parent.empty() && !fs::exists(parent, ec)) {
             // every directory created, for undo (and a rollback)
@@ -104,6 +131,7 @@ bool editor::WriteFilesCmd::execute() {
                 std::error_code exists;
                 if (fs::is_directory(dir, exists)) createdDirs.push_back(dir);
             }
+            if (ec) failedPath = item.path;
             if (ec) return rollback(i, "can't create the directory " + FileUtils::pathToGenericUtf8(parent) + " for " +
                                        FileUtils::pathToGenericUtf8(item.path) + ": " + ec.message());
         }
@@ -112,6 +140,7 @@ bool editor::WriteFilesCmd::execute() {
             const int code = errno;
             std::string reason = code ? std::strerror(code) : std::string("write failed");
             if (fs::is_directory(item.path, ec)) reason = "it is a directory";
+            failedPath = item.path;
             // the file itself may be half written: restored too
             return rollback(i + 1, "can't write " + FileUtils::pathToGenericUtf8(item.path) + ": " + reason);
         }

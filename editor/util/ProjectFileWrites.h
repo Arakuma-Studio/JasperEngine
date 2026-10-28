@@ -55,8 +55,9 @@ namespace jasperengine::editor {
 
         // Asked before every execute (the first one and each redo) and undo of a write: false with
         // the reason refuses that step (nothing written or removed; a refused redo or undo says so
-        // in the console). A refused redo is not taken (canRedo: the history keeps its place); a
-        // refused undo still moves the history back (canUndo is not asked), its files untouched.
+        // in the console, with the fix "remove the link, then undo / redo again"). A refused redo
+        // or undo is not taken (canRedo / canUndo: the history keeps its place, and
+        // CommandHistory::lastRefusal has the reason for the MCP undo tool and the Edit menu).
         // The sprite normal maps' containment check.
         using Guard = std::function<bool(std::string& why)>;
 
@@ -64,9 +65,12 @@ namespace jasperengine::editor {
         // failed write changes nothing and adds no step). After its execute, undo and redo it runs
         // `afterChange` with the paths (default: filesWritten). False + `error` without a
         // project, when an item is a directory, when `guard` refuses, or when the write failed.
+        // Every write, removal and restore stays beneath `beneath` (default: the project
+        // directory) when it happens (WriteFilesCmd::writeBeneath, util/SafeWrite.h): a path that
+        // resolves outside it is refused, a link planted on the way since is never followed.
         static bool writeUndoable(Project* project, std::vector<WriteFilesCmd::Item> items, std::string& error,
                                   std::function<void(const std::vector<std::filesystem::path>&)> afterChange = nullptr,
-                                  Guard guard = nullptr);
+                                  Guard guard = nullptr, std::filesystem::path beneath = {});
     };
 
 }

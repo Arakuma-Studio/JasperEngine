@@ -776,7 +776,7 @@ void finishNormals(const NormalsCallPtr& state) {
             return;
         }
         std::string restoreWarning;
-        if (!sheet.write(target, reports[0].sheet, error, &restoreWarning)) {
+        if (!sheet.write(project->getProjectPath(), target, reports[0].sheet, error, &restoreWarning)) {
             std::vector<sn::Problem> problems = {problem("write_failed", "save_path", "could not write the sheet to " + state->savePath + " (" + error + ")",
                                                          "save_path must name a writable file whose folders are folders (not files), then call again")};
             // the half-written sheet could not be put back: the file at save_path changed

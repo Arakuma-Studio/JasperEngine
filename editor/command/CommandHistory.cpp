@@ -45,6 +45,22 @@ public:
         return true;
     }
 
+    std::string undoRefusal() const override {
+        for (const jasperengine::editor::Command* cmd : commands) {
+            std::string why = cmd->undoRefusal();
+            if (!why.empty()) return why;
+        }
+        return std::string();
+    }
+
+    std::string redoRefusal() const override {
+        for (const jasperengine::editor::Command* cmd : commands) {
+            std::string why = cmd->redoRefusal();
+            if (!why.empty()) return why;
+        }
+        return std::string();
+    }
+
     bool affectsStructure() const override {
         for (const jasperengine::editor::Command* cmd : commands) {
             if (cmd->affectsStructure()) return true;
@@ -138,10 +154,20 @@ bool editor::CommandHistory::insertCommand(Command* cmd){
 }
 
 bool editor::CommandHistory::undo(){
+    refusal.clear();
     if (beforeChange && !beforeChange(sceneId, Change::Undo)){
         return false;
     }
-    if (index > undoFloor() && list[index-1]->canUndo()){
+    // a step that refuses (Command::canUndo) keeps the history where it is
+    if (index > undoFloor() && !list[index-1]->canUndo()){
+        refusal = list[index-1]->undoRefusal();
+        refusedText = refusal;
+        refusedSerial = list[index-1]->serial();
+        refusedUndo = true;
+        return false;
+    }
+    if (index > undoFloor()){
+        refusedSerial = 0;
         if (beforeStep){
             beforeStep(sceneId);
         }
@@ -162,10 +188,19 @@ bool editor::CommandHistory::undo(){
 }
 
 bool editor::CommandHistory::redo(){
+    refusal.clear();
     if (beforeChange && !beforeChange(sceneId, Change::Redo)){
         return false;
     }
-    if (index < list.size() && list[index]->canRedo()){
+    if (index < list.size() && !list[index]->canRedo()){
+        refusal = list[index]->redoRefusal();
+        refusedText = refusal;
+        refusedSerial = list[index]->serial();
+        refusedUndo = false;
+        return false;
+    }
+    if (index < list.size()){
+        refusedSerial = 0;
         if (beforeStep){
             beforeStep(sceneId);
         }
@@ -182,6 +217,16 @@ bool editor::CommandHistory::redo(){
         return true;
     }
     return false;
+}
+
+std::string editor::CommandHistory::undoRefusedLastTry() const{
+    if (!refusedUndo || refusedSerial == 0 || refusedSerial != undoSerial()) return std::string();
+    return refusedText.empty() ? std::string("the step can't be undone now") : refusedText;
+}
+
+std::string editor::CommandHistory::redoRefusedLastTry() const{
+    if (refusedUndo || refusedSerial == 0 || refusedSerial != redoSerial()) return std::string();
+    return refusedText.empty() ? std::string("the step can't be redone now") : refusedText;
 }
 
 bool editor::CommandHistory::canUndo() const{

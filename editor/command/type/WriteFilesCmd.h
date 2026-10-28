@@ -47,6 +47,16 @@ namespace jasperengine::editor{
         // Where execute() writes its failure ("can't write <path>: <reason>; ..."): the
         // command is deleted by the history when it fails, the sink outlives it
         void reportFailureTo(std::shared_ptr<std::string> sink) { failureSink = std::move(sink); }
+        // Every write, removal and restore of this command (execute, its rollback, undo, redo)
+        // stays beneath `root` at the moment it happens (util/SafeWrite.h, the *ResolvedBeneath
+        // functions): a path resolving outside `root` (a symbolic link on its way) is refused,
+        // and a link planted at a folder of the resolved location since is never followed (that
+        // step fails, nothing is written through it). Empty (the default): plain writes
+        // (FileUtils::writeFileReplacing), as for documents outside a project.
+        void writeBeneath(std::filesystem::path root) { beneathRoot = std::move(root); }
+        const std::filesystem::path& getBeneathRoot() const { return beneathRoot; }
+        // The file execute() failed on (empty when it did not fail, or failed before writing)
+        const std::filesystem::path& getFailedPath() const { return failedPath; }
 
     private:
         struct Previous {
@@ -60,10 +70,12 @@ namespace jasperengine::editor{
         std::string mergeKey;
         std::function<void(const std::vector<std::filesystem::path>&)> afterChange;
         std::shared_ptr<std::string> failureSink;
+        std::filesystem::path beneathRoot;
+        std::filesystem::path failedPath;
 
         std::vector<std::filesystem::path> paths() const;
-        // items[i] back to what it was before execute (false when that failed)
-        bool restore(size_t i);
+        // items[i] back to what it was before execute (false when that failed; `why` the reason)
+        bool restore(size_t i, std::string* why = nullptr);
         // the created directories that are empty, deepest first
         void removeCreatedDirs();
         void fail(const std::string& message);

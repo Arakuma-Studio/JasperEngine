@@ -264,11 +264,14 @@ void undoRedo(const CallPtr& call, bool undo) {
 
     int done = 0;
     bool refused = false;
+    std::string refusedWhy;
     for (; done < steps; done++) {
         if (undo ? !history->canUndo() : !history->canRedo()) break;
-        // the command itself can refuse (it would make a child scene cycle)
+        // the command itself can refuse (it would make a child scene cycle; a generated file's
+        // folder became a link out of the project): the history keeps its place
         if (!(undo ? history->undo() : history->redo())) {
             refused = true;
+            refusedWhy = history->lastRefusal();
             break;
         }
     }
@@ -278,9 +281,10 @@ void undoRedo(const CallPtr& call, bool undo) {
     data["steps"] = done;
     data["can_undo"] = history->canUndo();
     data["can_redo"] = history->canRedo();
-    const std::string refusal = std::string("The next step cannot be ") + (undo ? "undone" : "redone") +
-        " now: it would make a child scene cycle (read_console has the scenes).";
+    const std::string refusal = std::string("The next step cannot be ") + (undo ? "undone" : "redone") + " now: " +
+        (refusedWhy.empty() ? std::string("it would make a child scene cycle (read_console has the scenes).") : refusedWhy);
     if (refused) data["refused"] = true;
+    if (refused && !refusedWhy.empty()) data["refusal"] = refusedWhy;
     if (done == 0) {
         call->fail(refused ? refusal : std::string("Nothing to ") + verb + " in the " + scope + " history.", data);
         return;

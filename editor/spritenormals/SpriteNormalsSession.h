@@ -23,6 +23,7 @@
 #include "SpriteNormalsPaint.h"
 #include "SpriteNormalsPreview.h"
 #include "SpriteNormalsRecipe.h"
+#include "util/SafeWrite.h"
 
 #include "ecs/Entity.h"
 #include "json.hpp"
@@ -99,15 +100,11 @@ namespace jasperengine::editor::spritenormals {
     bool resolveProjectFile(const std::filesystem::path& projectDir, const std::string& rel, std::filesystem::path& absolute,
                             std::string& error);
     std::string projectRelative(const std::filesystem::path& projectDir, const std::filesystem::path& absolute);
-    // `path` (absolute, lexically normal first) with every symbolic link (and Windows junction) on
-    // the way followed, a dangling one too (unlike std::filesystem::weakly_canonical, which stops
-    // at the first component that doesn't exist); below a component that doesn't exist the rest
-    // stays lexical; then weakly_canonical (8.3 names, case on Windows).
-    // Empty when a link loops (more than 40) or can't be read: inside nothing.
-    std::filesystem::path resolvedPath(const std::filesystem::path& path);
-    // `path` is `dir` or below it once both are resolved (resolvedPath): a symbolic link inside
-    // `dir` leading elsewhere is not inside; `dir` itself reached through a link is fine
-    bool isInsideResolved(const std::filesystem::path& path, const std::filesystem::path& dir);
+    // The link-resolving walk and containment test are the shared ones (util/SafeWrite.h: the MCP
+    // write sandbox uses them too): resolvedPath follows every symbolic link (and junction) on the
+    // way, a dangling one too (empty when a link loops); isInsideResolved compares resolved paths
+    using safewrite::resolvedPath;
+    using safewrite::isInsideResolved;
 
     struct PlannedOutput {
         std::string role;            // "normal", "atlas", "height", "frames_json"
@@ -198,13 +195,23 @@ namespace jasperengine::editor::spritenormals {
     // the Project window, the watcher; with the MCP server running, its file sync). The files are
     // checked with outputsContained first (refused: `problem` output_invalid, nothing written) and
     // again before each redo and undo of the step (refused: that step is not applied, said in the
-    // console; a refused redo leaves the history where it is). `problem` (optional): the refusal,
+    // console with the fix; a refused redo or undo leaves the history where it is). Every write,
+    // removal and restore stays beneath the assets directory when it happens (outputsRoot,
+    // WriteFilesCmd::writeBeneath). `problem` (optional): the refusal,
     // or write_failed. Main thread.
     // The step is named "Generate Normal Map <file name of the first normal output>" ("Generate
     // Normal Maps (N)" for N normal outputs).
     bool writeOutputsUndoable(Project* project, const std::vector<OutputFile>& files, std::string& error, Problem* problem = nullptr);
-    // All or nothing without history (the CLI): texsynth::writeFilesAllOrNothing
-    bool writeOutputsDirect(const std::vector<OutputFile>& files, std::string& failedPath, std::string& error);
+    // All or nothing without history (the CLI, the watcher): a WriteFilesCmd executed alone (a
+    // failure puts back what was written before it; `failedPath` and `error` say which file and
+    // why, "...; nothing was written"). Every write and rollback stays beneath `beneath` when it
+    // happens (util/SafeWrite.h: a link planted on the way since the check is never followed, a
+    // link at a file's name is replaced); empty: the deepest existing folder holding all the files.
+    bool writeOutputsDirect(const std::vector<OutputFile>& files, std::string& failedPath, std::string& error,
+                            const std::filesystem::path& beneath = {});
+    // The folder `project`'s outputs must stay in (its assets directory, under the project's
+    // spelling; outputsContained checks against it); empty without a project
+    std::filesystem::path outputsRoot(Project* project);
 
     // The frames JSON (contract section 5): {"version":1, "source":<recipe path>, "width":W,
     // "height":H, "animation":{"frame_width", "frame_height", "columns", "rows", "frame_count",

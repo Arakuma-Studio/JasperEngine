@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <string>
+
 namespace jasperengine::editor{
 
     class CommandHistory;
@@ -26,6 +28,11 @@ namespace jasperengine::editor{
         // cycle), so the history stays where it is
         virtual bool canUndo() const { return true; }
         virtual bool canRedo() const { return true; }
+        // Why canUndo() / canRedo() refuse now, with how to fix it ("" when they don't, or the
+        // command has no words for it): what CommandHistory::lastRefusal reports (the MCP undo
+        // tool, the Edit menu)
+        virtual std::string undoRefusal() const { return std::string(); }
+        virtual std::string redoRefusal() const { return std::string(); }
 
         virtual bool mergeWith(Command*) { return false; }
 

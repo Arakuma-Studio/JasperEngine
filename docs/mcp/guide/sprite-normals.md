@@ -57,6 +57,10 @@ Outputs must be inside the assets directory, also once symbolic links are resolv
 links outside the project is refused; an assets directory that is itself a link is fine), not in a hidden folder, end
 in `.png` (`.json` for frames), and be distinct (never the source, also not through a link). Default names: `<stem>_normal.png` beside the source; for a GIF/APNG `<stem>_sheet.png` (the colour atlas)
 + `<stem>_sheet_normal.png`; `<stem>_height.png` (`<stem>_sheet_height.png`); frames JSON on request only.
+The files are written beneath the assets directory without following a link planted on the way
+after the check; an undo or redo of the step whose folder has since become a link out of the
+assets is refused (`undo` fails naming the file: remove the link, then undo again) and the history
+keeps its place.
 
 ## Presets and settings
 
