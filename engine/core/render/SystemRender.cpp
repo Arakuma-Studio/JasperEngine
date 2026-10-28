@@ -14,8 +14,104 @@
 
 using namespace jasperengine;
 
+namespace {
+    uint64_t contextId = 0;
+}
+
 void SystemRender::setup(){
+    contextId++;
     SokolSystem::setup();
+}
+
+uint64_t SystemRender::getContextId(){
+    return contextId;
+}
+
+int SystemRender::getResourcesInUse(GpuResourceKind kind){
+    return SokolSystem::getResourcesInUse((int)kind);
+}
+
+int SystemRender::getResourceLimit(GpuResourceKind kind){
+    return SokolSystem::getResourceLimit((int)kind);
+}
+
+const char* SystemRender::getResourceKindName(GpuResourceKind kind){
+    return SokolSystem::getResourceKindName((int)kind);
+}
+
+uint64_t SystemRender::getResourcePoolExhaustions(){
+    uint64_t total = 0;
+    for (int kind = 0; kind < GPU_RESOURCE_KINDS; kind++)
+        total += SokolSystem::getResourcePoolExhaustions(kind);
+    return total;
+}
+
+uint64_t SystemRender::getResourcePoolExhaustions(GpuResourceKind kind){
+    return SokolSystem::getResourcePoolExhaustions((int)kind);
+}
+
+bool SystemRender::hasResourcePoolRoom(){
+    return SokolSystem::hasResourcePoolRoom();
+}
+
+uint64_t SystemRender::getUniformBytesLastFrame(){
+    return SokolSystem::getBudgetLastFrame(SokolSystem::UNIFORM_BUDGET);
+}
+
+uint64_t SystemRender::getUniformBytesPeak(){
+    return SokolSystem::getBudgetPeak(SokolSystem::UNIFORM_BUDGET);
+}
+
+uint64_t SystemRender::getUniformBytesLimit(){
+    return SokolSystem::getBudgetLimit(SokolSystem::UNIFORM_BUDGET);
+}
+
+bool SystemRender::hasUniformBufferLimit(){
+    return SokolSystem::isBudgetEnforced(SokolSystem::UNIFORM_BUDGET);
+}
+
+uint64_t SystemRender::getUniformSkippedDraws(){
+    return SokolSystem::getBudgetSkipped(SokolSystem::UNIFORM_BUDGET);
+}
+
+uint64_t SystemRender::getStreamBytesLastFrame(){
+    return SokolSystem::getBudgetLastFrame(SokolSystem::STREAM_BUDGET);
+}
+
+uint64_t SystemRender::getStreamBytesPeak(){
+    return SokolSystem::getBudgetPeak(SokolSystem::STREAM_BUDGET);
+}
+
+uint64_t SystemRender::getStreamBytesLimit(){
+    return SokolSystem::getBudgetLimit(SokolSystem::STREAM_BUDGET);
+}
+
+bool SystemRender::hasStreamStagingLimit(){
+    return SokolSystem::isBudgetEnforced(SokolSystem::STREAM_BUDGET);
+}
+
+uint64_t SystemRender::getStreamSkippedUploads(){
+    return SokolSystem::getBudgetSkipped(SokolSystem::STREAM_BUDGET);
+}
+
+uint64_t SystemRender::getDescriptorBytesLastFrame(){
+    return SokolSystem::getBudgetLastFrame(SokolSystem::DESCRIPTOR_BUDGET);
+}
+
+uint64_t SystemRender::getDescriptorBytesPeak(){
+    return SokolSystem::getBudgetPeak(SokolSystem::DESCRIPTOR_BUDGET);
+}
+
+uint64_t SystemRender::getDescriptorBytesLimit(){
+    return SokolSystem::getBudgetLimit(SokolSystem::DESCRIPTOR_BUDGET);
+}
+
+bool SystemRender::hasDescriptorBufferLimit(){
+    return SokolSystem::isBudgetEnforced(SokolSystem::DESCRIPTOR_BUDGET);
+}
+
+uint64_t SystemRender::getDescriptorSkippedDraws(){
+    return SokolSystem::getBudgetSkipped(SokolSystem::DESCRIPTOR_BUDGET);
 }
 
 void SystemRender::commitQueue(){
@@ -87,6 +183,10 @@ uint64_t SystemRender::getPipelineApplies(){
 
 size_t SystemRender::getPipelineCacheSize(){
     return SokolSystem::getPipelineCacheSize();
+}
+
+uint64_t SystemRender::getNestedPassCount(){
+    return SokolSystem::getNestedPassCount();
 }
 
 void SystemRender::shutdown(){

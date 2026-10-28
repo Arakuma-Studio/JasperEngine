@@ -7,6 +7,7 @@
 #include "command/CommandNames.h"
 #include "Project.h"
 #include "animation/AnimationClipDocument.h"
+#include "vat/VatAssetFiles.h"
 #include <map>
 #include <vector>
 #include <string>
@@ -37,7 +38,13 @@ namespace jasperengine::editor{
         std::map<std::string, std::string> copyGuids;
         // moves: .anim files whose preview/source paths followed (animation clips spec 9.R26)
         std::vector<ClipHintEdit> clipHintEdits;
+        // .vat.glb image URIs rewritten for their new directory (vat/VatAssetFiles.h), and the moves
+        // they followed: a move's undo writes the old URIs back
+        std::vector<vat::VatUriEdit> vatUriEdits;
+        std::vector<std::pair<fs::path, fs::path>> vatUriMoves;
 
+        // the other file of each Vertex Animation pair (".vat" + ".vat.glb") joins the list
+        void addVatPairs();
     public:
         CopyFileCmd(Project* project, std::vector<std::string> sourceFiles, std::string currentDirectory, std::string targetDirectory, bool copy);
         CopyFileCmd(Project* project, std::vector<std::string> sourcePaths, std::string targetDirectory, bool copy);

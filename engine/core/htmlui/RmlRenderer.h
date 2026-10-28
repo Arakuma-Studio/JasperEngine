@@ -51,10 +51,20 @@ namespace jasperengine {
     // clip survives layer switches. Post-process targets are 1-sample, no depth, created on
     // first use. Everything is recreated only when the size or sample count changes; layers
     // pushed in an earlier frame are reused.
+    //
+    // Region layers (fork patch P7-F2): a filter's layer whose window extends beyond the viewport
+    // (RmlUi's RenderInterface::PushLayerRegion) covers that region of the target plane, the
+    // viewport's pixel grid continued beyond its edges: a pooled RGBA8 + DEPTH_STENCIL framebuffer
+    // of the region's size (its own depth-stencil, same sample count), and the filter chain's four
+    // post-process targets in a set of that size, shared by the regions of that size. Sizes are
+    // rounded up to 64 px so a moving region reuses them; an entry not used for kRegionKeepFrames
+    // frames, or beyond kRegionKeepFree free ones, is destroyed at the end of a frame.
     class JASPERENGINE_INTERNAL RmlRenderTarget {
     public:
         static constexpr int POSTPROCESS_COUNT = 4;
         static constexpr int BLEND_MASK = 3;
+        static constexpr uint64_t kRegionKeepFrames = 120;
+        static constexpr size_t kRegionKeepFree = 4;
 
         RmlRenderTarget();
         ~RmlRenderTarget();
@@ -82,12 +92,42 @@ namespace jasperengine {
         // renderer knows about their contents holds while it is the same
         uint64_t getGeneration() const;
 
+        // region layers and post-process sets held (in use or kept for reuse), and their bytes
+        // (colour, depth-stencil and post-process images, all samples)
+        size_t getRegionLayerCount() const;
+        size_t getRegionPostSetCount() const;
+        size_t getRegionBytes() const;
+
     private:
         friend class RmlRenderer;
         friend class RmlFilterContext;
 
+        struct RegionLayer {
+            std::unique_ptr<Framebuffer> framebuffer;
+            int width = 0;
+            int height = 0;
+            bool inUse = false;
+            uint64_t lastUsed = 0;
+        };
+        struct RegionPost {
+            int width = 0;
+            int height = 0;
+            std::unique_ptr<Framebuffer> targets[POSTPROCESS_COUNT];
+            uint64_t lastUsed = 0;
+        };
+
         Framebuffer* ensureLayer(int index);
         Framebuffer* ensurePostprocess(int index);
+        // a free region layer of that size, made when there is none (created: it was); -1 when it
+        // cannot be made. Released when its layer is popped
+        int acquireRegionLayer(int width, int height, bool& created);
+        void releaseRegionLayer(int pool);
+        Framebuffer* regionLayer(int pool) const;
+        // the post-process set of that size (made empty when there is none), a target of it
+        RegionPost* regionPost(int width, int height);
+        Framebuffer* ensureRegionPost(RegionPost& set, int index, bool& created);
+        // end of frame: what was not used for a while, and free entries beyond the kept count, go
+        void trimRegions();
         // A framebuffer's GPU objects are checked once per frame (Framebuffer::isCreated asks
         // sokol for every attachment view: hundreds of lookups a frame with layers and filters,
         // on memory the driver has just evicted); they can only go between frames (the view
@@ -97,6 +137,8 @@ namespace jasperengine {
 
         std::vector<std::unique_ptr<Framebuffer>> layers;
         std::unique_ptr<Framebuffer> postprocess[POSTPROCESS_COUNT];
+        std::vector<std::unique_ptr<RegionLayer>> regionLayers;
+        std::vector<std::unique_ptr<RegionPost>> regionPosts;
         std::vector<uint64_t> layerChecked;              // the frame each layer was last found created
         uint64_t postprocessChecked[POSTPROCESS_COUNT] = {};
         uint64_t frame = 1;
@@ -173,6 +215,12 @@ namespace jasperengine {
                                    const Rml::ClipShape& shape) override;
         void SetTransform(const Rml::Matrix4f* transform) override;
         Rml::LayerHandle PushLayer() override;
+        // fork P7-F2: a layer covering region (document px) beyond the viewport, a region layer of
+        // RmlRenderTarget (an ordinary layer when it covers no more than the viewport: region is
+        // then invalid). The region in target px is cropped to regionLimit() on each axis, keeping
+        // its part inside the layer it is pushed on (where its composite shows) and as much of the
+        // rest as fits around it, and rounded up to 64 px; region returns what it covers
+        Rml::LayerHandle PushLayerRegion(Rml::Rectanglei& region) override;
         void CompositeLayers(Rml::LayerHandle source, Rml::LayerHandle destination, Rml::BlendMode blend_mode,
                              Rml::Span<const Rml::CompiledFilterHandle> filters) override;
         void PopLayer() override;
@@ -234,6 +282,18 @@ namespace jasperengine {
                                     Rml::Vector2i targetSize, bool openGLFlipped);
         // the same in target px with a top-left origin (applyScissorTopLeft); empty when clipped away
         static Rml::Rectanglei toTargetRect(Rml::Rectanglei region, Rml::Vector2i contextSize, Rml::Vector2i targetSize);
+        // the same not clamped to the target (the target plane beyond it: region layers); empty
+        // when invalid
+        static Rml::Rectanglei toTargetPixels(Rml::Rectanglei region, Rml::Vector2i contextSize, Rml::Vector2i targetSize);
+        // P7-F2, pure: the target px a region layer for 'pixels' covers, pushed on a layer covering
+        // 'parent': on each axis at most limit px, keeping pixels' part within parent (where the
+        // layer's composite can show) and as much of the rest as fits, evenly on both sides; the
+        // size then rounded up to a multiple of 64 px (not beyond limit)
+        static Rml::Rectanglei regionFrame(Rml::Rectanglei pixels, Rml::Rectanglei parent, Rml::Vector2i limit);
+        // the largest region layer side: the device's largest texture, and twice the target's side
+        // (at least the target's side plus 512 px), which bounds a region layer's memory to 4x the
+        // target's (P7-F2, docs/html-ui/phase-1-integration.md)
+        static Rml::Vector2i regionLimit(Rml::Vector2i targetSize, int maxTextureSize);
 
         // GL3's blur parameters: downscale passes and the remaining sigma (max 10 passes,
         // single-pass sigma at most 3) and the 4 normalized weights of a 7-tap pass
@@ -269,9 +329,17 @@ namespace jasperengine {
         static HtmlUIPrimitive toInstance(const Rml::BoxPrimitive& primitive, Rml::Vector2f translation);
 
         // For phase-5 effects (they draw with the same geometry layout and u_vs_htmluiParams):
-        // projection x the SetTransform matrix (or projection alone)
+        // projection x the SetTransform matrix (or projection alone): document px to the clip
+        // space of the viewport
         const Rml::Matrix4f& getCurrentTransform() const;
-        // target px, top-left origin; invalid when no scissor is enabled
+        // what draws into the top layer use: the clip space of the part of the target plane it
+        // covers (getCurrentTransform for an ordinary layer; P7-F2)
+        Rml::Matrix4f getDrawTransform() const;
+        // the top layer's part of the target plane (target px: the viewport's FromSize(target
+        // size), or a region layer's beyond it), and in document px
+        Rml::Rectanglei getTopLayerFrame() const;
+        Rml::Rectanglef getTopLayerDocumentRect() const;
+        // target px of the top layer, top-left origin; invalid when no scissor is enabled
         Rml::Rectanglei getCurrentScissor() const;
         bool isClipMaskEnabled() const;
         uint8_t getStencilRef() const;          // the stencil value geometry is tested against
@@ -442,6 +510,54 @@ namespace jasperengine {
         bool fusingDeferred = false;
         void flushDeferredComposite();
 
+        // P7-F2: what a pushed layer draws into. An ordinary layer covers the viewport (rect is
+        // FromSize(targetSize), the image target->layers[index]); a region layer covers rect of the
+        // target plane (target px, beyond the viewport) in a pooled framebuffer with its own
+        // depth-stencil, which holds the clip mask of maskVersion (0: none)
+        struct LayerFrame {
+            Rml::Rectanglei rect;
+            Framebuffer* framebuffer = nullptr;
+            int pool = -1;
+            uint64_t maskVersion = 0;
+        };
+        std::vector<LayerFrame> frames;               // the replay's, per layer stack index
+        std::vector<Rml::Rectanglei> recordFrames;    // the recording's rects, per layer stack index
+        Rml::Rectanglei filterFrame = Rml::Rectanglei::MakeInvalid();   // the frame of the layer being filtered (prepareFilter)
+        Rml::Rectanglei standardFrame() const;
+        bool isRegionLayer(int index) const;
+        Rml::Rectanglei frameRectOf(int index) const;
+        // the layer's image (made when needed), or the one already made (nullptr when none)
+        Framebuffer* layerAt(int index);
+        Framebuffer* currentLayerAt(int index) const;
+        // the scissor region in the pixels of a layer covering frame (top-left origin, empty when
+        // clipped away; all of it without a scissor)
+        Rml::Rectanglei scissorIn(Rml::Rectanglei frame) const;
+        Rml::Matrix4f transformIn(Rml::Rectanglei frame) const;
+        // the post-process targets of a layer covering frame: nullptr for the viewport's (the
+        // render target's postprocess), else the region set of its size
+        RmlRenderTarget::RegionPost* postSetFor(Rml::Rectanglei frame);
+        Framebuffer* postTargetIn(RmlRenderTarget::RegionPost* set, int index);
+
+        // P7-F2: the clip mask as RmlUi set it, since its last Set/SetInverse, so that a
+        // depth-stencil that has not seen it gets it before a draw tests it (every ordinary layer
+        // shares layer 0's; each region layer has its own). maskVersion counts the operations
+        struct MaskOp {
+            Rml::ClipMaskOperation operation;
+            Rml::CompiledGeometryHandle geometry;
+            Rml::Vector2f translation;
+            Rml::Matrix4f transform;      // getCurrentTransform's, when it was drawn
+        };
+        std::vector<MaskOp> maskOps;
+        uint64_t maskVersion = 0;
+        uint64_t sharedMaskVersion = 0;   // layer 0's depth-stencil's
+        bool drawingMask = false;
+        int drawIndexOverride = -1;       // ensureMask's layer, which the mask draws go to
+        // the layer a geometry draw goes to: the top one (or ensureMask's)
+        int drawLayerIndex() const;
+        uint64_t& maskVersionOf(int index);
+        // the layer's depth-stencil holds the current clip mask (drawn again into it when not)
+        void ensureMask(int index);
+
         // targets and passes
         // resolve: an MSAA layer's pass ends with its resolve (stale region); else, on GL, the
         // resolve is left for when the layer is read (other backends resolve at every pass end)
@@ -463,7 +579,8 @@ namespace jasperengine {
         PipelineState postTargetState(BlendMode blend) const;
         void stencilClear(uint8_t value);
         bool drawGeometry(RmlGeometry* geometry, Rml::Vector2f translation, HtmlUITexture* texture, const PipelineState& state);
-        void blurInto(Framebuffer& source, Framebuffer& destination, Framebuffer& temp, float sigma, Rml::Rectanglei window);
+        // size: the images' (the layer's frame)
+        void blurInto(Framebuffer& source, Framebuffer& destination, Framebuffer& temp, float sigma, Rml::Rectanglei window, Rml::Vector2i size);
         void applyFilter(RmlFilterContext& context, const RmlCompiledFilter& filter);
         Framebuffer* postTarget(int index);
 
@@ -504,7 +621,8 @@ namespace jasperengine {
         // the replay of RenderGeometry: the texture was checked when it was recorded
         void drawRecordedGeometry(Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation, HtmlUITexture* texture);
         void renderToClipMaskNow(Rml::ClipMaskOperation operation, Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation);
-        Rml::LayerHandle pushLayerNow();
+        // frame: an ordinary layer when invalid, else a region layer covering it (target px)
+        Rml::LayerHandle pushLayerNow(Rml::Rectanglei frame = Rml::Rectanglei::MakeInvalid());
         void popLayerNow();
         void compositeLayersNow(Rml::LayerHandle source, Rml::LayerHandle destination, Rml::BlendMode blendMode,
                                 Rml::Span<const Rml::CompiledFilterHandle> filters);
@@ -736,11 +854,15 @@ namespace jasperengine {
         Rml::Matrix4f transform;
         bool scissorEnabled = false;
         Rml::Rectanglei scissorRegion;
-        Rml::Rectanglei scissorTarget;      // scissorRegion in target px (toTargetRect), set with it
+        Rml::Rectanglei scissorPixels;      // scissorRegion in target px, not clamped (toTargetPixels), set with it
         bool clipMaskEnabled = false;
         uint8_t stencilRef = 0;
         int layersSize = 0;
         std::vector<bool> layerClearPending;
+        // the shared depth-stencil (the clip masks of every layer) not cleared yet this frame: the
+        // frame's first layer pass clears it, whichever layer that is (a filtered element's pushed
+        // layer can come before layer 0, with the clip mask the composite into layer 0 tests)
+        bool depthStencilClearPending = false;
 
         // the open pass
         CameraRender pass;

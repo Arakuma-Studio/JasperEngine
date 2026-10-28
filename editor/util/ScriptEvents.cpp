@@ -35,6 +35,7 @@ const std::vector<ScriptEventSourceInfo>& sourceList() {
         {S::UIDocument, "UI Document", ICON_FA_FILE_CODE, "UIDocumentComponent.h", "UIDocumentComponent", "REGISTER_COMPONENT_EVENT", "UIDocument"},
         {S::PoseAnimator, "Pose Animator", ICON_FA_PERSON_RUNNING, "PoseAnimatorComponent.h", "PoseAnimatorComponent", "REGISTER_COMPONENT_EVENT", "PoseAnimator"},
         {S::AnimationPlayer, "Animation Player", ICON_FA_FILM, "AnimationPlayerComponent.h", "AnimationPlayerComponent", "REGISTER_COMPONENT_EVENT", "AnimationPlayer"},
+        {S::VertexAnimator, "Vertex Animator", ICON_FA_PEOPLE_GROUP, "VertexAnimatorComponent.h", "VertexAnimatorComponent", "REGISTER_COMPONENT_EVENT", "VertexAnimator"},
         {S::Physics2D, "Physics 2D", ICON_FA_CIRCLE, "PhysicsSystem.h", "", "REGISTER_EVENT", ""},
         {S::Physics3D, "Physics 3D", ICON_FA_CUBE, "PhysicsSystem.h", "", "REGISTER_EVENT", ""},
     };
@@ -124,6 +125,11 @@ const std::vector<ScriptEvent>& eventList() {
 
         {S::AnimationPlayer, "onEvent", nullptr, "A clip event fired (its function name, args, state and time)", {{"const AnimationEvent&", "event"}}},
         {S::AnimationPlayer, "onFinish", nullptr, "A once state ended, or a clamp forever state first reached its end", {{"const std::string&", "state"}}},
+
+        {S::VertexAnimator, "onEvent", nullptr, "A baked clip event fired (a GameObject without instances)", {{"const AnimationEvent&", "event"}}},
+        {S::VertexAnimator, "onFinish", nullptr, "A once clip ended", {{"const std::string&", "clip"}}},
+        {S::VertexAnimator, "onInstanceEvent", nullptr, "A clip event of an instance fired (Instance Events on)", {{"int", "instance"}, {"const AnimationEvent&", "event"}}},
+        {S::VertexAnimator, "onInstanceFinish", nullptr, "A once clip of an instance ended (Instance Events on)", {{"int", "instance"}, {"const std::string&", "clip"}}},
 
         {S::Physics2D, "beginContact2D", "Contacts", "Any two Rigidbody 2Ds start touching, needs Contact Events on a Collider 2D", contact2D},
         {S::Physics2D, "endContact2D", "Contacts", "Any two Rigidbody 2Ds stop touching, needs Contact Events on a Collider 2D", contact2D},

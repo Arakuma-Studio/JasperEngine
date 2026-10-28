@@ -185,6 +185,12 @@ namespace jasperengine::editor{
             return fileExtension(path) == ".anim";
         }
 
+        // Vertex Animation assets (VertexAnimatorComponent::animation); their generated mesh is
+        // "<name>.vat.glb", a model file
+        inline static bool isVertexAnimationFile(const std::string& path) {
+            return fileExtension(path) == ".vat";
+        }
+
         // Files referenced relative to the assets directory
         inline static bool isAssetFile(const std::string& path) {
             return isImageFile(path) || isModelFile(path) || isFontFile(path) || isAudioFile(path) ||

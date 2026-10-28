@@ -2103,7 +2103,7 @@ An antialiased placeholder PNG (no art yet) and its preview: a shape with fill c
 
 Group: `core`. Hints: read-only, idempotent
 
-One project file's details by type: image size/channels (synthesized PNG: its recipe, changed sources, regenerate arguments); model meshes, materials, animations, nodes (an FBX: of its glTF conversion, fbx_import.state); WAV format/duration; .material fields, .anim clip settings, tracks, events, users; linked submeshes; shader includes, forks using it; Lua syntax; scene status; unsaved code editor edits.
+One project file's details by type: image size/channels (synthesized PNG: its recipe, changed sources, regenerate arguments); model meshes, materials, animations, nodes (an FBX: of its glTF conversion, fbx_import.state); WAV format/duration; .material fields, .anim clip settings, tracks, events, users; .vat clips, staleness, users; linked submeshes; shader includes, forks using it; Lua syntax; scene status; unsaved code editor edits.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -2387,20 +2387,20 @@ Example-based texture synthesis (editor-side): a new texture like the examples (
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `border` | number (0.0001..0.5) |  | make_tileable band per edge. Default: `0.125`. |
-| `companions` | `"auto"` \| `"none"` or array of string or object {name, output, path, paths} |  | auto: the maps next to each example (rock_albedo.png -> rock_normal.png...). Default: `"auto"`. |
-| `examples` | array of string or object {guide, path, sample_mask, sampleable} | yes | Image paths (albedo). |
+| `border` | number (0.0001..0.5) |  | Default: `0.125`. |
+| `companions` | `"auto"` \| `"none"` or array of string or object {name, output, path, paths} |  | Default: `"auto"`. |
+| `examples` | array of string or object {guide, path, sample_mask, sampleable} | yes |  |
 | `mask` | object {channel, invert, path} |  |  |
 | `mode` | `"extend"` \| `"tileable"` \| `"make_tileable"` \| `"inpaint"` \| `"guided"` |  | Default: `"tileable"`. |
-| `output` | string |  | A .png in the assets dir; omitted = preview only. |
+| `output` | string |  |  |
 | `overwrite` | boolean |  |  |
-| `params` | object |  | Expert overrides: jasper://docs/texture-synthesis. |
-| `quality` | `"draft"` \| `"balanced"` \| `"high"` |  | draft ~2x faster, high ~2x slower. Default: `"balanced"`. |
-| `seed` | integer (0..) or string |  | 0..2^53, or a decimal string up to 2^64-1. Default random (returned). |
-| `show_in_editor` | boolean |  | Run it in the Texture Synthesis window. |
-| `size` | integer (1..8192) or object {height, width} |  | Default 1024; guided: the target guide's. Not for make_tileable/inpaint. |
-| `target_guide` | string |  | guided. |
-| `timeout_seconds` | number (1..3600) |  | Then a job_id (get_job). Default: `120`. |
+| `params` | object |  | Expert overrides. |
+| `quality` | `"draft"` \| `"balanced"` \| `"high"` |  | Default: `"balanced"`. |
+| `seed` | integer (0..) or string |  |  |
+| `show_in_editor` | boolean |  |  |
+| `size` | integer (1..8192) or object {height, width} |  |  |
+| `target_guide` | string |  |  |
+| `timeout_seconds` | number (1..3600) |  | Default: `120`. |
 | `uncertainty_output` | string |  |  |
 | `wait` | boolean |  | Default: `true`. |
 
@@ -3166,9 +3166,9 @@ Edit-time physics placement (the scene's own physics never runs): drop GameObjec
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `amount` | number (0..1) |  | gather: 1 = to the centre. Default: `1`. |
-| `apply` | boolean |  | false: preview only. |
-| `axis` | `"x"` \| `"y"` \| `"z"` |  | distribute. |
+| `amount` | number (0..1) |  | Default: `1`. |
+| `apply` | boolean |  |  |
+| `axis` | `"x"` \| `"y"` \| `"z"` |  |  |
 | `colliders` | `"auto"` \| `"authored"` \| `"generated"` \| `"both"` |  | Default: `"auto"`. |
 | `context` | `"auto"` \| `"none"` or array of integer or string |  | auto: what is around the movers. Default: `"auto"`. |
 | `context_margin` | number (0..1000) |  | m around the movers. Default: `2`. |
@@ -3178,17 +3178,17 @@ Edit-time physics placement (the scene's own physics never runs): drop GameObjec
 | `gravity` | array[3] of number |  | Default: `[0, -9.81, 0]`. |
 | `ignore_layers` | array of integer or string |  |  |
 | `jitter` | object {position, rotation_deg} |  |  |
-| `max_seconds` | number (0.01..120) |  | Simulated. Default: `10`. |
+| `max_seconds` | number (0.01..120) |  | Default: `10`. |
 | `mode` | `"drop"` \| `"separate"` \| `"move"` \| `"snap"` \| `"gather"` \| `"distribute"` |  | Default: `"drop"`. |
-| `push_neighbours` | boolean |  | Loose objects in the way move too. |
+| `push_neighbours` | boolean |  |  |
 | `ray` | object {direction, origin, screen} |  |  |
 | `scene` | integer or string |  |  |
 | `screenshot` | boolean or object {frame, max_width} |  | Scene view image framed on the movers. |
 | `seed` | integer (0..4294967295) |  | Default: `1`. |
-| `settle` | boolean |  | Run until resting. Default: `true`. |
+| `settle` | boolean |  | Default: `true`. |
 | `target` | object {delta, position, rotation, space} |  |  |
-| `timeout_seconds` | number (1..3600) |  | Then a job_id (get_job). Default: `120`. |
-| `use_selection` | boolean |  | Instead of entities. |
+| `timeout_seconds` | number (1..3600) |  | Default: `120`. |
+| `use_selection` | boolean |  |  |
 | `wait` | boolean |  | Default: `true`. |
 
 

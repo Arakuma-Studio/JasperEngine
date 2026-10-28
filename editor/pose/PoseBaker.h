@@ -18,11 +18,16 @@
 
 #pragma once
 
+#include "animation/AnimationClip.h"
 #include "ecs/Entity.h"
 
 #include <cstdint>
 #include <string>
 #include <vector>
+
+namespace jasperengine{
+    class Scene;
+}
 
 namespace jasperengine::editor{
 
@@ -70,6 +75,12 @@ namespace jasperengine::editor{
         // is taken ("walk 2.anim"), and an explicit `clipPath` that exists is refused.
         static bool bakeToClip(Project* project, uint32_t sceneId, Entity model, PoseAnimationDocument& document,
                                const std::string& name, const std::string& clipPath, PoseClipBakeResult& result, std::string& error);
+        // The clip Bake to Animation Clip writes, in memory only (no file, no scene change): the
+        // frames on `model` of `scene` (an open scene or a private one, e.g. the Vertex Animation
+        // baker's), paths from the model root, source {kind "pose", path, stem}. False + error, with
+        // nothing changed, when the model is no usable humanoid or the animation has no poses.
+        static bool clipData(Project* project, Scene* scene, Entity model, PoseAnimationDocument& document, ClipData& out,
+                             std::string& error);
         // "Baked 'anim/walk.poseanim' to the clip 'assets/anim/walk.anim' (23 tracks, 31 keys each), ..."
         static std::string clipBakeStatusLine(const std::string& animation, const PoseClipBakeResult& result);
 

@@ -570,6 +570,10 @@ bool editor::Project::revertPropertyOverride(uint32_t sceneId, Entity entity, Co
         if (PoseAnimatorComponent* animator = scene->findComponent<PoseAnimatorComponent>(entity)) {
             animator->needsLoad = true;
         }
+    } else if (type == ComponentType::VertexAnimatorComponent) {
+        if (VertexAnimatorComponent* animator = scene->findComponent<VertexAnimatorComponent>(entity)) {
+            animator->needsLoad = true;
+        }
     }
     clearPropertyOverride(sceneId, entity, type, whole ? std::vector<std::string>{} : properties);
     if (CameraTextureLink::isLinkSourceType(type)) {

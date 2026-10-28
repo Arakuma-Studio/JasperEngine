@@ -159,6 +159,8 @@ More: jasper://docs/cpp-scripting.
 - Poses (.poseanim): get/edit/render_pose_animation (jasper://docs/pose-animation).
 - Clips (.anim, shared): edit_animation {clip, create, tracks [{path}]}, for an Animation
   Player (jasper://docs/animation).
+- Crowds: bake_vertex_animation (preview, then output): a .vat a Vertex Animator plays on the
+  GPU (jasper://docs/vertex-animation).
 
 ## Atmosphere
 A Fog of type "height" is physically based height fog (volumetric: true adds light shafts and
@@ -177,9 +179,8 @@ quality.atmosphere_quality_*). More: jasper://docs/atmosphere.
   meter), never set directly. Size forces as mass x acceleration; if they get huge, lower the
   density.
 - Continuous forces and torques go in onFixedUpdate, never onUpdate, and are NOT multiplied by
-  deltatime. Rigidbody (3D): applyForce(f), applyForce(f, point), applyTorque(t), applyImpulse;
-  mass is the property body.mass. Rigidbody2D: applyForceToCenter(f, true), applyForce(f, point,
-  true), applyLinearImpulseToCenter(i, true); mass is body:getMass().
+  deltatime. The 3D and 2D APIs differ (2D calls take a wake flag; mass: body.mass vs
+  body:getMass()): table in jasper://docs/physics.
 - Never move a body by writing its transform in onFixedUpdate (overwritten). Teleport with
   body.position (body.rotation / body.angle), velocity with body.linearVelocity.
 - Layer Collision Matrix (project settings) gates contacts; raycasts take a layer mask. Drop
@@ -190,11 +191,9 @@ quality.atmosphere_quality_*). More: jasper://docs/atmosphere.
   with Apply, or edit the asset in Prefab Mode. Instances cannot be restructured (reparent,
   reorder, move out): open the prefab instead. Variants are prefabs based on another prefab.
 - Runtime: GameObject.instantiate(prefabAsset [, scene] [, position, rotation] [, parent])
-  returns the new root named "<name>(Clone)", scripts already initialized (without scene or
-  parent it goes to the active scene); GameObject.destroy(go [, delay]).
-  Get the PrefabAsset from a script property of type Prefab (preferred) or
-  PrefabAsset.load("path/Name"). A prefab that is only loaded by path, never placed or
-  referenced, must be marked standalone or the build will not contain it.
+  returns "<name>(Clone)", scripts initialized; GameObject.destroy(go [, delay]). Get the
+  PrefabAsset from a Prefab script property (preferred); one only loaded by path
+  (PrefabAsset.load) must be marked standalone to be in the build (jasper://docs/prefabs).
 
 ## Shaders and materials
 Library first: list_shaders, the engine's shaders ("library:<name>"; with name: parameters,

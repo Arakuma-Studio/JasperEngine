@@ -464,6 +464,139 @@ async def test_cli_anims_guid_mismatch_and_unreadable_yaml():
         check_eq(code, 0, f"warnings only: exit 0: {data}")
 
 
+# ---------------------------------------------------------------------------- CLI: vertex animations
+
+VAT_MODELS = harness.REPO / "tools" / "fixtures" / "vertex-animation" / "assets" / "models"
+VAT_KEYS = FINDING_KEYS | {"code", "suggestion"}
+
+
+def bake_vat(project: Path, *args: str) -> dict:
+    r = subprocess.run(harness.editor_command() + ["bake-vat", "--project", str(project), *args, "--format", "json", "-q"],
+                       capture_output=True, text=True, timeout=300)
+    check_eq(r.returncode, 0, f"bake-vat {args}: {r.stdout[-2000:]}{r.stderr[-2000:]}")
+    return json.loads(r.stdout)
+
+
+def vat_findings(data: dict) -> list[tuple[str, str, str]]:
+    """(path, severity, code) of the vat findings, each with the vat keys"""
+    out = []
+    for f in data["findings"]:
+        if f["tool"] != "vat":
+            continue
+        check_eq(set(f), VAT_KEYS, f"a vat finding has a code (the kind) and a suggestion (the fix): {f}")
+        out.append((f["path"], f["severity"], f["code"]))
+    return sorted(out)
+
+
+async def test_cli_vat():
+    with scratch_project() as project:
+        (project / "assets/models").mkdir(parents=True, exist_ok=True)
+        for model in ("rigid_arm.gltf", "morph_blob.gltf"):
+            shutil.copy(VAT_MODELS / model, project / "assets/models" / model)
+        arm, blob = "assets/models/rigid_arm.vat", "assets/models/morph_blob.vat"
+        bake_vat(project, "--source", "assets/models/rigid_arm.gltf")
+        bake_vat(project, "--source", "assets/models/morph_blob.gltf", "--preset", "desktop")
+
+        # fresh bakes are clean; the default set checks them too
+        code, data = run_json(project, "--vat")
+        check_eq((code, data["checked"], data["findings"]), (0, {"vat": 2}, []), "fresh bakes")
+        code, data = run_json(project)
+        check_eq((code, data["checked"].get("vat"), vat_findings(data)), (0, 2, []), f"the default set checks vertex animations: {data['checked']}")
+        r = run_check(project, "--vat")
+        check(r.returncode == 0 and r.stdout == "" and "vat 2 files" in r.stderr, f"text summary: {r.stdout}{r.stderr}")
+
+        # a source changed since the bake: a warning (exit 0), also through --files of the source
+        model = project / "assets/models/rigid_arm.gltf"
+        original = model.read_text()
+        model.write_text(original + "\n")
+        code, data = run_json(project, "--vat")
+        check_eq((code, vat_findings(data)), (0, [(arm, "warning", "vat-source-changed")]), f"source changed: {data['findings']}")
+        changed = [f for f in data["findings"] if f["code"] == "vat-source-changed"][0]
+        check("assets/models/rigid_arm.gltf" in changed["message"] and "rebake" in changed["suggestion"].lower(),
+              f"names it, says rebake: {changed}")
+        # on the command line the fix is bake-vat's rebake (not the MCP tool's arguments)
+        check(f"bake-vat --rebake {arm}" in changed["suggestion"] and "bake_vertex_animation" not in changed["suggestion"],
+              f"the CLI's rebake: {changed}")
+        r = run_check(project, "--vat")
+        check(f"{arm}: warning: " in r.stdout and "[vat-source-changed]" in r.stdout and "(fix: " in r.stdout, f"text line: {r.stdout}")
+        code, data = run_json(project, "--files", "assets/models/rigid_arm.gltf")
+        check_eq((code, data["checked"], vat_findings(data)), (0, {"vat": 1}, [(arm, "warning", "vat-source-changed")]),
+                 "--files of a source checks the .vat baked from it")
+        code, data = run_json(project, "--files", "assets/models/morph_blob.gltf")
+        check_eq((code, data["checked"], data["findings"]), (0, {"vat": 1}, []), "the other bake is clean")
+        code, data = run_json(project, "--files", "scripts/Probe.lua")
+        check("vat" not in data["checked"], f"a file no bake read checks no .vat: {data['checked']}")
+        # missing: a warning
+        model.unlink()
+        code, data = run_json(project, "--vat")
+        check_eq((code, vat_findings(data)), (0, [(arm, "warning", "vat-source-missing")]), f"source missing: {data['findings']}")
+        model.write_text(original)
+
+        # --files: a .vat, a .vat.glb
+        code, data = run_json(project, "--files", arm)
+        check_eq((code, data["checked"], data["findings"]), (0, {"vat": 1}, []), "--files a .vat")
+        code, data = run_json(project, "--files", arm + ".glb")
+        check_eq((code, data["checked"], data["findings"]), (0, {"vat": 1}, []), "--files a .vat.glb checks its .vat")
+
+        # a corrupted mesh: vat-mesh-mismatch, exit 1
+        glb = project / (arm + ".glb")
+        glb_bytes = glb.read_bytes()
+        glb.write_bytes(glb_bytes[: len(glb_bytes) // 2])
+        code, data = run_json(project, "--vat")
+        check_eq((code, vat_findings(data)), (1, [(arm, "error", "vat-mesh-mismatch")]), f"a truncated .vat.glb: {data['findings']}")
+        r = run_check(project, "--files", arm + ".glb")
+        check(r.returncode == 1 and "[vat-mesh-mismatch]" in r.stdout, f"text: {r.stdout}")
+        glb.write_bytes(glb_bytes)
+
+        # a generated field changed by hand: vat-layout-mismatch, exit 1
+        vat_file = project / arm
+        vat_text = vat_file.read_text()
+        vat = json.loads(vat_text)
+        vat["layout"]["layout_hash"] = "0" * len(vat["layout"]["layout_hash"])
+        vat_file.write_text(json.dumps(vat, indent=2))
+        code, data = run_json(project, "--files", arm)
+        check_eq((code, vat_findings(data)), (1, [(arm, "error", "vat-layout-mismatch")]), f"a changed generated field: {data['findings']}")
+        check(all(f"bake-vat --rebake {arm}" in f["suggestion"] for f in data["findings"] if f["tool"] == "vat"),
+              f"the CLI's rebake: {data['findings']}")
+        # not a .vat at all: vat-invalid at its line:col
+        vat_file.write_text('{\n  "format": "jasperengine.vat",\n  "version": 1,\n  "clips": [\n}\n')
+        code, data = run_json(project, "--vat")
+        bad = [f for f in data["findings"] if f["path"] == arm]
+        check(code == 1 and len(bad) == 1 and bad[0]["code"] == "vat-invalid" and bad[0]["severity"] == "error" and bad[0]["line"] == 5,
+              f"a .vat that doesn't parse: {bad}")
+        # an editable field repaired on load: a vat-format warning with its JSON path
+        vat = json.loads(vat_text)
+        vat["clips"][0]["wrap"] = "sideways"
+        vat_file.write_text(json.dumps(vat, indent=2))
+        code, data = run_json(project, "--files", arm)
+        check(code == 0 and vat_findings(data) == [(arm, "warning", "vat-format")] and "clips[0].wrap" in data["findings"][0]["message"],
+              f"a repaired editable field: {data['findings']}")
+        vat_file.write_text(vat_text)
+
+        # the device limit of the recipe's preset: a desktop-wide payload on a mobile_web recipe
+        blob_file = project / blob
+        blob_text = blob_file.read_text()
+        vat = json.loads(blob_text)
+        check_eq(vat["layout"]["width"], 4096, "a desktop bake is 4096 wide")
+        vat["recipe"]["preset"] = "mobile_web"
+        blob_file.write_text(json.dumps(vat, indent=2))
+        code, data = run_json(project, "--vat")
+        check_eq((code, vat_findings(data)), (1, [(blob, "error", "vat-device-limit")]), f"over mobile_web's 2048: {data['findings']}")
+        limit = [f for f in data["findings"] if f["code"] == "vat-device-limit"][0]
+        check("4096x" in limit["message"] and "2048" in limit["message"] and "WebGL2" in limit["message"], f"the numbers: {limit}")
+        blob_file.write_text(blob_text)
+
+        # hook mode: an agent wrote a broken .vat
+        vat_file.write_text("{ not json")
+        hook = {"hook_event_name": "PostToolUse", "tool_name": "Write", "cwd": str(project),
+                "tool_input": {"file_path": str(vat_file), "content": "..."}}
+        r = run_check(project, "--hook", stdin=json.dumps(hook))
+        check(r.returncode == 2 and f"{arm}:1:" in r.stderr and "[vat-invalid]" in r.stderr, f"hook mode: {r.returncode} {r.stderr}")
+        vat_file.write_text(vat_text)
+        code, data = run_json(project, "--vat")
+        check_eq((code, data["findings"]), (0, []), "clean again")
+
+
 # ---------------------------------------------------------------------------- CLI: shaders
 
 async def test_cli_shaders():

@@ -568,6 +568,26 @@ Entity editor::ProjectUtils::getLockedEntityParent(Scene* scene, Entity entity){
         }
     }
 
+    bool checkPanels = false;
+    const Entity uiOwner = lockedByParentUI(scene, entity, signature, checkPanels);
+    if (uiOwner != NULL_ENTITY || !checkPanels){
+        return uiOwner;
+    }
+
+    auto panels = scene->getComponentArray<PanelComponent>();
+    for (size_t i = 0; i < panels->size(); ++i) {
+        Entity panelEntity = panels->getEntity(i);
+        PanelComponent& panel = panels->getComponentFromIndex(i);
+        if (panel.headerimage == entity || panel.headercontainer == entity || panel.headertext == entity) {
+            return panelEntity;
+        }
+    }
+
+    return NULL_ENTITY;
+}
+
+Entity editor::ProjectUtils::lockedByParentUI(Scene* scene, Entity entity, Signature signature, bool& checkPanels){
+    checkPanels = false;
     if (!signature.test(scene->getComponentId<Transform>())){
         return NULL_ENTITY;
     }
@@ -608,16 +628,70 @@ Entity editor::ProjectUtils::getLockedEntityParent(Scene* scene, Entity entity){
         }
     }
 
+    checkPanels = true;
+    return NULL_ENTITY;
+}
+
+editor::LockedParentIndex::LockedParentIndex(Scene* scene): scene(scene){
+    // in the order getLockedEntityParent looks: the first model (and in it the first kind of
+    // reference) that names an entity answers for it
+    auto models = scene->getComponentArray<ModelComponent>();
+    for (size_t i = 0; i < models->size(); ++i) {
+        const Entity modelEntity = models->getEntity(i);
+        const ModelComponent& model = models->getComponentFromIndex(i);
+        auto add = [this](Entity entity, Entity owner, bool byTransformParent){
+            modelReferences.emplace(entity, ModelReference{owner, byTransformParent});
+        };
+        add(model.skeleton, modelEntity, false);
+        for (Entity anim : model.animations){
+            add(anim, modelEntity, false);
+            if (const AnimationComponent* animComp = scene->findComponent<AnimationComponent>(anim)){
+                for (const auto& frame : animComp->actions){
+                    add(frame.action, anim, false);
+                }
+            }
+        }
+        for (const auto& bone : model.bonesIdMapping) add(bone.second, modelEntity, true);
+        for (const auto& node : model.meshNodesMapping) add(node.second, modelEntity, true);
+        for (const auto& node : model.nodesIdMapping) add(node.second, modelEntity, true);
+    }
     auto panels = scene->getComponentArray<PanelComponent>();
     for (size_t i = 0; i < panels->size(); ++i) {
-        Entity panelEntity = panels->getEntity(i);
-        PanelComponent& panel = panels->getComponentFromIndex(i);
-        if (panel.headerimage == entity || panel.headercontainer == entity || panel.headertext == entity) {
-            return panelEntity;
+        const Entity panelEntity = panels->getEntity(i);
+        const PanelComponent& panel = panels->getComponentFromIndex(i);
+        for (Entity part : {panel.headerimage, panel.headercontainer, panel.headertext}) {
+            panelParts.emplace(part, panelEntity);
         }
     }
+}
 
-    return NULL_ENTITY;
+Entity editor::LockedParentIndex::get(Entity entity) const{
+    if (entity == NULL_ENTITY)
+        return NULL_ENTITY;
+
+    Entity foliageOwner = scene->getSystem<MeshSystem>()->getFoliageOwner(entity);
+    if (foliageOwner != NULL_ENTITY) {
+        return foliageOwner;
+    }
+
+    auto reference = modelReferences.find(entity);
+    if (reference != modelReferences.end()) {
+        if (reference->second.byTransformParent) {
+            Transform* transform = scene->findComponent<Transform>(entity);
+            if (transform && transform->parent != NULL_ENTITY) {
+                return transform->parent;
+            }
+        }
+        return reference->second.owner;
+    }
+
+    bool checkPanels = false;
+    const Entity uiOwner = ProjectUtils::lockedByParentUI(scene, entity, scene->getSignature(entity), checkPanels);
+    if (uiOwner != NULL_ENTITY || !checkPanels){
+        return uiOwner;
+    }
+    auto part = panelParts.find(entity);
+    return part != panelParts.end() ? part->second : NULL_ENTITY;
 }
 
 bool editor::ProjectUtils::isEntityLocked(Scene* scene, Entity entity){
@@ -805,25 +879,21 @@ bool editor::ProjectUtils::moveEntityOrderByTarget(EntityRegistry* registry, std
 
     if (transformSource && transformTarget){
         hasTransform = true;
+        // the parents read by entity first, before the hierarchy and index queries
+        const Entity newParent = (type == InsertionType::INTO) ? target : transformTarget->parent;
+        const Entity sourceParent = transformSource->parent;
 
         if (registry->isParentOf(source, target)){
             Out::error("Cannot move an entity to its own child");
             return false;
         }
+        oldParent = sourceParent;
 
         auto transforms = registry->getComponentArray<Transform>();
 
         size_t sourceTransformIndex = transforms->getIndex(source);
         size_t targetTransformIndex = transforms->getIndex(target);
 
-        Entity newParent = NULL_ENTITY;
-        if (type == InsertionType::INTO){
-            newParent = target;
-        }else{
-            newParent = transformTarget->parent;
-        }
-
-        oldParent = transformSource->parent;
         oldIndex = sourceTransformIndex;
 
         if (type == InsertionType::AFTER || type == InsertionType::INTO){

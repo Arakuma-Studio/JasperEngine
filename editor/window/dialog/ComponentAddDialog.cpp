@@ -117,6 +117,7 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::AnimationPlayerComponent, "Plays shared animation clips (.anim, model clips) with fades and events"},
             {ComponentType::AnimationComponent, "Plays a sequence of actions"},
             {ComponentType::PoseAnimatorComponent, "Plays a pose animation (.poseanim) on a humanoid model"},
+            {ComponentType::VertexAnimatorComponent, "Plays baked vertex animation (.vat) on the GPU: crowds with a clip and time per instance"},
             {ComponentType::SpriteAnimationComponent, "Flips through sprite frames"},
             {ComponentType::ActionComponent, "Start, pause and stop state of an animation step"},
             {ComponentType::TweenComponent, "Duration, easing and looping of a tween"},

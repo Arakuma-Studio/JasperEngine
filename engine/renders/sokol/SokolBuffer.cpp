@@ -9,6 +9,7 @@
 #include <unordered_map>
 #include "Log.h"
 #include "SokolCmdQueue.h"
+#include "SokolSystem.h"
 #include "Engine.h"
 
 using namespace jasperengine;
@@ -112,15 +113,16 @@ bool SokolBuffer::createBuffer(unsigned int size, void* data, BufferType type, B
 }
 
 // called by draw
-void SokolBuffer::updateBuffer(unsigned int size, void* data){
+bool SokolBuffer::updateBuffer(unsigned int size, void* data){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
-    if (buffer.id != SG_INVALID_ID && data && size > 0){
-        if (Engine::isAsyncThread()){
-            SokolCmdQueue::add_command_update_buffer(buffer, {data, (size_t)size});
-        }else{
-            sg_update_buffer(buffer, {data, (size_t)size});
-        }
+    if (buffer.id == SG_INVALID_ID || !data || size == 0)
+        return false;
+    if (Engine::isAsyncThread()){
+        // budgeted when the render thread runs it (a refused one is counted and logged there)
+        SokolCmdQueue::add_command_update_buffer(buffer, {data, (size_t)size});
+        return true;
     }
+    return SokolSystem::updateBuffer(buffer, {data, (size_t)size});
 }
 
 // main thread: the offset is needed right away
@@ -128,7 +130,7 @@ int SokolBuffer::appendBuffer(unsigned int size, const void* data){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     if (buffer.id == SG_INVALID_ID || !data || size == 0 || Engine::isAsyncThread())
         return -1;
-    return sg_append_buffer(buffer, {data, (size_t)size});
+    return SokolSystem::appendBuffer(buffer, {data, (size_t)size});
 }
 
 void SokolBuffer::destroyBuffer(){
@@ -153,9 +155,17 @@ void SokolBuffer::destroyBuffer(){
     view.id = SG_INVALID_ID;
 }
 
-bool SokolBuffer::isCreated(){
+bool SokolBuffer::isCreated() const{
     if (buffer.id != SG_INVALID_ID && sg_isvalid()) {
         return sg_query_buffer_state(buffer) == SG_RESOURCESTATE_VALID;
+    }
+
+    return false;
+}
+
+bool SokolBuffer::isPending() const{
+    if (buffer.id != SG_INVALID_ID && sg_isvalid()) {
+        return sg_query_buffer_state(buffer) == SG_RESOURCESTATE_ALLOC;
     }
 
     return false;
@@ -165,10 +175,10 @@ BufferUsage SokolBuffer::getCreatedUsage() const{
     return createdUsage;
 }
 
-sg_buffer SokolBuffer::get(){
+sg_buffer SokolBuffer::get() const{
     return buffer;
 }
 
-sg_view SokolBuffer::getView(){
+sg_view SokolBuffer::getView() const{
     return view;
 }

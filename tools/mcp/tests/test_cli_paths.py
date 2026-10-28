@@ -197,6 +197,22 @@ async def test_benchmark_relative_paths():
                    timeout=600, extra_env=extra), "benchmark --scene <project-relative file>")
         result = json.loads((work / "bench-project.json").read_text())
         check(result["scene"] == "Overlay" and result["frames"] == 5, f"project-relative --scene: {result}")
+        check(result["play"] is False, f"without --play the scene is measured in edit mode: {result}")
+    finally:
+        xvfb.stop()
+
+
+async def test_benchmark_play():
+    # --play measures the scene playing: the benchmark starts Play and only measures once the
+    # scene plays (it fails when Play doesn't start)
+    work = layout()
+    xvfb = harness.Xvfb()
+    display = xvfb.start()
+    try:
+        ok(run(work, "benchmark", "--project", "proj", "--scene", "World.scene", "--play", "--frames", "5", "--warmup", "2",
+               "--out", "bench-play.json", timeout=600, extra_env={"DISPLAY": display}), "benchmark --play")
+        result = json.loads((work / "bench-play.json").read_text())
+        check(result["scene"] == "World" and result["frames"] == 5 and result["play"] is True, f"benchmark --play: {result}")
     finally:
         xvfb.stop()
 

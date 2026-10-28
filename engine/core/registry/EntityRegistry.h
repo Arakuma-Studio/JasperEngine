@@ -37,6 +37,7 @@
 #include "component/FluidSimulationComponent.h"
 #include "component/PoseAnimatorComponent.h"
 #include "component/AnimationPlayerComponent.h"
+#include "component/VertexAnimatorComponent.h"
 #include "component/ImageComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/LayoutGroupComponent.h"
@@ -179,12 +180,20 @@ namespace jasperengine {
 
         bool isEntityCreated(Entity entity) const;
 
+        // O(1) whatever the number of entities (a component removed from the middle of its
+        // array leaves a hole, closed once at the next index observation or compactComponents(),
+        // see ComponentArray), so destroying all of a scene's, one by one or by its teardown, is O(n)
         void destroyEntity(Entity entity);
         // Several entities: every component removal callback first, then the components
         void destroyEntities(const std::vector<Entity>& entities);
         // GameObject.destroy semantics: the entity and its Transform children (a Scene
         // stops their scripts first)
         void destroyHierarchy(Entity entity);
+        // Closes the holes destroyed entities left in every component array (moving the
+        // components after them), as the next index observation of each array would. The scene
+        // does it at the start of its update and draw and the engine after the frame's deferred
+        // destroys; the editor between commands and MCP calls and before a thread reads the scene.
+        void compactComponents();
 
         void addEntityChild(Entity parent, Entity child, bool changeTransform);
 
@@ -448,8 +457,9 @@ namespace jasperengine {
 
             if constexpr (std::is_same_v<T, Transform>) {
                 Transform* removed = componentManager.findComponent<Transform>(entity);
+                const bool hadParent = removed && removed->parent != NULL_ENTITY;
                 // children are reparented to its parent: a hierarchy change when it had either
-                if (changeTransformChildren(entity) || (removed && removed->parent != NULL_ENTITY)) {
+                if (changeTransformChildren(entity) || hadParent) {
                     hierarchyRev++;
                 }
             }

@@ -98,6 +98,7 @@ namespace jasperengine::editor {
         LayoutSaveToFile,
         LayoutLoadFromFile,
         TogglePoseAnimation,          // Window > Animation > Pose Animation
+        ToggleVertexAnimationBaker,   // Window > Animation > Vertex Animation Baker
         AssetsCreatePoseAnimation,
         AssetsCreateAnimationClip     // shown only once AnimationClipAppHooks::createClipAsset is set
     };

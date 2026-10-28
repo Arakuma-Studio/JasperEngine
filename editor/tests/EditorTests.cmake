@@ -36,6 +36,8 @@ jasperengine_add_test_target(jasperengine-editor-tests
     SOURCES ${EDITOR_TEST_SOURCES}
     INCLUDES ${CMAKE_CURRENT_LIST_DIR} ${CMAKE_SOURCE_DIR}/engine/tests/core
     ASSET_DIR ${CMAKE_CURRENT_LIST_DIR}/fixtures
+    # tinyexr: FloatImageTest writes EXRs with custom channel names through it
+    LINK tinyexr
     DEFINITIONS
         # the repository root (the data-safety corpus reads tools/fixtures)
         JASPER_TEST_REPO_DIR="${CMAKE_SOURCE_DIR}"

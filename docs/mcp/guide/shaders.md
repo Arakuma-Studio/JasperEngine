@@ -45,8 +45,9 @@ documents have their own effects library instead, `effect(<name>, ...)` in CSS (
     (draw order within the opaque or the transparent queue, lower first, before distance). `auto` takes the shader's default state, else the
     engine's. UI, Points and Lines have `blendMode` and `depthWrite`.
   - `lighting`: auto, pixel, vertex, mixed or none (unlit), only the modes the shader lists
-    (`list_shaders` gives them, the default first; the built-in Lit takes pixel, vertex and
-    mixed). Choosing another shader puts a mode it does not list back to auto. `mixed`
+    (`list_shaders` gives them, the default first; the built-in Lit takes pixel, vertex, mixed
+    and none, which draws the base colour only: a glTF material with `KHR_materials_unlit`
+    loads as none). Choosing another shader puts a mode it does not list back to auto. `mixed`
     follows each light's `shading` (both, pixel, vertex). The scene setting
     `max_lights_per_object` (1-16, default 8) caps the lights per object; the rest reaching
     it fold into its ambient.
@@ -178,6 +179,12 @@ editable `includes/` folder beside the fork.
   `latticeDeform(1, pos.xyz, normal, tangent, stretch);` after the instance matrix and before
   the model matrix (`latticeDeform(0, ...)` before skinning for bind-pose lattices), as
   `mesh.vert` does (`read_engine_source`), in the depth fork too.
+- A mesh played by a Vertex Animator compiles with `HAS_VAT` (variant bits `Vat`, Bones mode
+  `Vab` with `HAS_VAT_BONES`), without skinning or morph targets: `mesh.vert` and `depth.vert`
+  call `vatEvaluate()` first and read the rest attributes through `vatPosition(a_position)`,
+  `vatNormal(a_normal)` and `vatTangent(a_tangent.xyz)` from `includes/vat.glsl`. A fork without
+  them draws the mesh at rest; to play it, include the file after the attributes and make the
+  same calls (they return their argument without `HAS_VAT`), in the depth fork too.
 - Stochastic Tiling (the material's `stochasticTiling`) in a Mesh fork: a fork opts in by
   naming the material's four values for `includes/pbr.glsl`, as the engine's `mesh.frag` does.
   A fork made before the feature (October 2026) does not: its submeshes then draw without it in

@@ -92,7 +92,9 @@ void ObjectRender::applyUniformBlock(int slot, unsigned int count, void* data){
 }
 
 void ObjectRender::draw(unsigned int baseElement, unsigned int vertexCount, unsigned int instanceCount){
-    backend.draw(baseElement, vertexCount, instanceCount);
+    // a draw skipped for want of uniform or descriptor buffer space is not counted
+    if (!backend.draw(baseElement, vertexCount, instanceCount))
+        return;
 
     uint64_t triangles = 0;
     if (primitiveType == PrimitiveType::TRIANGLES)
@@ -109,4 +111,8 @@ void ObjectRender::destroy(){
 
 int ObjectRender::getLivePipelineCount(){
     return SokolObject::getLivePipelineCount();
+}
+
+int ObjectRender::getUnfedVertexInputLoads(){
+    return SokolObject::getUnfedVertexInputLoads();
 }

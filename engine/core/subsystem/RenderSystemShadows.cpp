@@ -1098,6 +1098,10 @@ void RenderSystem::CameraShadows::releaseInstances(){
         view.data.clear();
         view.data.shrink_to_fit();
         view.capacity = 0;
+        view.vatBuffer.getRender()->destroyBuffer();
+        view.vatData.clear();
+        view.vatData.shrink_to_fit();
+        view.vatCapacity = 0;
         view.needUpload = false;
     }
     instanceRanges.clear();
@@ -1418,6 +1422,7 @@ void RenderSystem::buildCameraShadowInstances(CameraShadows& target){
 
     for (InstanceView& view : target.instanceViews){
         view.data.clear();
+        view.vatData.clear();
     }
 
     for (int i = 0; i < instmeshes->size(); i++){
@@ -1434,6 +1439,7 @@ void RenderSystem::buildCameraShadowInstances(CameraShadows& target){
 
         // the frame's list, the one this camera's color pass draws
         const InstanceRenderData* instances = instmesh.renderInstances.data();
+        const InstanceVatRenderData* vat = instanceVatData(instmesh);
         const InstanceBounds* bounds = instmesh.renderBounds.data();
         const unsigned int count = (instmesh.renderBounds.size() < instmesh.numVisible) ? 0 : instmesh.numVisible;
 
@@ -1441,7 +1447,7 @@ void RenderSystem::buildCameraShadowInstances(CameraShadows& target){
             const LightCamera& shadowCamera = lightCamera(shadow.lightIndex, *shadow.light, shadow.cameraIndex);
             LodView shadowLod = shadowLodView(*shadow.light, shadow.lightIndex, shadow.cameraIndex, shadow.slot);
             Vector3 lightDirection = (shadow.light->type == LightType::DIRECTIONAL) ? shadow.light->worldDirection : Vector3::ZERO;
-            buildInstanceView(target.instanceViews[shadow.slot], ranges.slots[shadow.slot], instances, bounds, count, instmesh, *mesh, *transform,
+            buildInstanceView(target.instanceViews[shadow.slot], ranges.slots[shadow.slot], instances, vat, bounds, count, instmesh, *mesh, *transform,
                 shadowCamera.nearFar.y, shadowCamera.frustumPlanes, shadowLod, shadowLod.origin, shadowLod.origin, lightDirection, InstanceOrder::NEAREST, false);
         }
     }

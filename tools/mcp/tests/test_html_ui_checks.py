@@ -293,7 +293,7 @@ async def test_cli_default_includes_ui():
 
         r = run_check(project)
         check_eq(r.returncode, 0, r.stderr)
-        check(re.search(r"\(lua \d+ files?, shaders \d+ forks?, (texture_imports \d+ textures?, )?ui 2 files(, textures \d+ recipes?)?(, anims \d+ clips?)?\)", r.stderr), f"summary names ui files: {r.stderr}")
+        check(re.search(r"\(lua \d+ files?, shaders \d+ forks?, (texture_imports \d+ textures?, )?ui 2 files(, textures \d+ recipes?)?(, anims \d+ clips?)?(, vat \d+ files?)?\)", r.stderr), f"summary names ui files: {r.stderr}")
 
 
 # ---------------------------------------------------------------------------- 3. findings

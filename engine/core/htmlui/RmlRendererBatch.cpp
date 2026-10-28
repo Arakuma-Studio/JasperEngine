@@ -214,10 +214,13 @@ Rml::Rectanglef RmlRenderer::geometryBounds(RmlGeometry& geometry){
 }
 
 Rml::Rectanglei RmlRenderer::effectiveScissorTarget() const{
-    const Rml::Rectanglei full = Rml::Rectanglei::FromSize(Rml::Vector2i(std::max(targetSize.x, 1), std::max(targetSize.y, 1)));
-    Rml::Rectanglei scissor = scissorEnabled ? scissorTarget : full;
+    // in the top layer's pixels: the viewport's, or a region layer's beyond it (P7-F2)
+    const Rml::Rectanglei frame = getTopLayerFrame();
+    Rml::Rectanglei scissor = scissorIn(frame);
     if (activeClipScope >= 0 && activeClipScope < (int)clipScopes.size() && clipScopes[(size_t)activeClipScope].mode == ScopeMode::ELIDED){
-        const Rml::Rectanglei clip = clipScopes[(size_t)activeClipScope].scissor;
+        // the scope's scissor is in target px, as the recording's
+        const Rml::Rectanglei scoped = clipScopes[(size_t)activeClipScope].scissor;
+        const Rml::Rectanglei clip = Rml::Rectanglei::FromCorners(scoped.p0 - frame.p0, scoped.p1 - frame.p0);
         const Rml::Vector2i p0 = Rml::Math::Max(scissor.p0, clip.p0);
         const Rml::Vector2i p1 = Rml::Math::Min(scissor.p1, clip.p1);
         scissor = Rml::Rectanglei::FromCorners(p0, Rml::Math::Max(p0, p1));

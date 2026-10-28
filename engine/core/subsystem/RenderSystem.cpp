@@ -18,6 +18,7 @@
 #include "render/SystemRender.h"
 #include "pool/ShaderPool.h"
 #include "pool/TexturePool.h"
+#include "pool/MeshBufferPool.h"
 #include "math/Vector3.h"
 #include "texture/IBLEnvironment.h"
 #include "texture/MipChain.h"
@@ -31,6 +32,9 @@
 #include "subsystem/LatticeSystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "lattice/LatticeRender.h"
+#include "animation/VertexAnimation.h"
+#include "component/VertexAnimatorComponent.h"
+#include "texture/Texture.h"
 #include "object/environment/Water.h"
 #include "subsystem/FluidSystem.h"
 #include "particles/ParticleRender.h"
@@ -46,6 +50,7 @@
 #include <unordered_map>
 #include <random>
 #include <cstdint>
+#include <climits>
 #include <cstring>
 
 using namespace jasperengine;
@@ -110,6 +115,83 @@ namespace {
             Vector4 block[2];
             LatticeRender::getUniformBlock(mesh.lattice, submesh, stretch, block);
             render.applyUniformBlock(slot, sizeof(block), block);
+        }
+        return true;
+    }
+
+    static_assert(VAT_BLOCK_CLIPS == vat::VAT_MAX_CLIPS, "u_vs_vat's clip table is vat::VAT_MAX_CLIPS long");
+
+    // u_vs_vat and the payload of one submesh's draw (includes/vat.glsl), for a render loaded
+    // with a Vertex Animation variant (slot -1: none, or a fork without the include). False when
+    // the payload is missing: the draw would read no texture
+    bool applyVat(ObjectRender& render, int slot, std::pair<int, int> textureSlot, MeshComponent& mesh,
+                  const Submesh& submesh){
+        if (slot == -1 && textureSlot.first == -1)
+            return true;
+        VatMeshState& state = mesh.vat;
+        if (!state.texture || state.block.size() != size_t(VAT_BLOCK_HEADER + VAT_BLOCK_CLIPS))
+            return false;
+        if (textureSlot.first != -1){
+            render.addTexture(textureSlot, ShaderStageType::VERTEX, state.texture);
+        }
+        if (slot != -1){
+            // the bone index and weight scales of this submesh's JOINTS_0 / WEIGHTS_0 (as
+            // applySkinningUniform's normAdjust)
+            state.block[0].y = submesh.hasSkinningNormalization ? submesh.normAdjustJoint : mesh.normAdjustJoint;
+            state.block[0].z = submesh.hasSkinningNormalization ? submesh.normAdjustWeight : mesh.normAdjustWeight;
+            render.applyUniformBlock(slot, (unsigned int)(state.block.size() * sizeof(Vector4)), state.block.data());
+        }
+        return true;
+    }
+
+    // i_vat0 / i_vat1 of an instanced mesh loaded with a Vertex Animation variant (a render whose
+    // shader does not read them leaves them out)
+    void addVatInstanceAttributes(ObjectRender& render, ShaderData& shaderData, InstancedMeshComponent& instmesh){
+        if (!instmesh.vatBuffer.getRender()->isCreated())
+            return;
+        for (auto const &attr : instmesh.vatBuffer.getAttributes()) {
+            render.addAttribute(shaderData.getAttrIndex(attr.first), instmesh.vatBuffer.getRender(), attr.second.getElements(), attr.second.getDataType(), instmesh.vatBuffer.getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
+        }
+    }
+
+    // a clip's flags in u_vs_vat (includes/vat.glsl): wrap 0 loop, 1 once or clamp forever,
+    // 2 ping-pong; + 4 interpolate; + 8 rest none
+    float vatClipFlags(const vat::VatClip& clip){
+        int wrap = 1;
+        if (clip.wrap == ClipWrapMode::Loop)
+            wrap = 0;
+        else if (clip.wrap == ClipWrapMode::PingPong)
+            wrap = 2;
+        return float(wrap + (clip.interpolate ? 4 : 0) + (clip.restNone ? 8 : 0));
+    }
+
+    // whether every submesh has the attributes a Vertex Animation variant reads: _VAT_INDEX
+    // (Vertices) or JOINTS_0 and WEIGHTS_0 (Bones)
+    bool meshHasVatAttributes(const MeshComponent& mesh, VatVariant variant){
+        if (mesh.numSubmeshes == 0)
+            return false;
+        auto has = [&mesh](const Submesh& submesh, AttributeType type){
+            if (submesh.attributes.count(type))
+                return true;
+            const Buffer* buffers[] = {&mesh.buffer};
+            for (const Buffer* buffer : buffers){
+                if (buffer->isRenderAttributes() && buffer->getAttributes().count(type))
+                    return true;
+            }
+            for (unsigned int b = 0; b < mesh.numExternalBuffers; b++){
+                if (mesh.eBuffers[b].isRenderAttributes() && mesh.eBuffers[b].getAttributes().count(type))
+                    return true;
+            }
+            return false;
+        };
+        for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+            const Submesh& submesh = mesh.submeshes[s];
+            if (variant == VatVariant::BONES){
+                if (!has(submesh, AttributeType::BONEIDS) || !has(submesh, AttributeType::BONEWEIGHTS))
+                    return false;
+            }else if (!has(submesh, AttributeType::VAT_INDEX)){
+                return false;
+            }
         }
         return true;
     }
@@ -461,6 +543,8 @@ uint32_t RenderSystem::pixelsNoise[DEFAULT_PATTERN_SIZE * DEFAULT_PATTERN_SIZE];
 TextureRender RenderSystem::defaultRipples;
 TextureRender RenderSystem::defaultNoise;
 TextureRender RenderSystem::emptyCubeGray;
+std::vector<RenderSystem::ZeroVertexBuffer> RenderSystem::zeroVertexBuffers;
+std::mutex RenderSystem::zeroVertexBuffersMutex;
 
 bool RenderSystem::emptyTexturesCreated = false;
 int RenderSystem::emptyTextureUsers = 0;
@@ -665,6 +749,9 @@ void RenderSystem::destroy(){
         view.buffer.getRender()->destroyBuffer();
         view.data.clear();
         view.capacity = 0;
+        view.vatBuffer.getRender()->destroyBuffer();
+        view.vatData.clear();
+        view.vatCapacity = 0;
     }
     instanceViewsDirty = true;
     passShadows = nullptr;
@@ -910,7 +997,44 @@ void RenderSystem::destroyEmptyTextures(){
     for (TextureRender* texture : textures){
         texture->destroyTexture();
     }
+    // the zero vertex buffers go with them: the same RenderSystems' bindings hold their handles
+    {
+        std::lock_guard<std::mutex> lock(zeroVertexBuffersMutex);
+        for (ZeroVertexBuffer& zeros : zeroVertexBuffers){
+            zeros.render.destroyBuffer();
+        }
+        zeroVertexBuffers.clear();
+    }
     emptyTexturesCreated = false;
+}
+
+bool RenderSystem::getZeroVertexBuffer(unsigned int size, BufferRender& buffer){
+    std::lock_guard<std::mutex> lock(zeroVertexBuffersMutex);
+    ZeroVertexBuffer* best = nullptr;
+    for (ZeroVertexBuffer& zeros : zeroVertexBuffers){
+        if (zeros.size >= size && zeros.render.isCreated() && (!best || zeros.size < best->size))
+            best = &zeros;
+    }
+    if (best){
+        buffer = best->render;
+        return true;
+    }
+    // a power of two from 4 KB: a few sizes serve every mesh, at most twice the largest asked
+    unsigned int bucket = 4096;
+    while (bucket < size && bucket <= (UINT_MAX >> 1))
+        bucket <<= 1;
+    if (bucket < size)
+        return false;
+    ZeroVertexBuffer zeros;
+    zeros.size = bucket;
+    std::vector<uint8_t> data(bucket, 0);
+    if (!zeros.render.createBuffer(bucket, data.data(), BufferType::VERTEX_BUFFER, BufferUsage::IMMUTABLE)){
+        Log::error("Cannot create a buffer of zero vertex inputs (%u bytes); resource pool may be exhausted", bucket);
+        return false;
+    }
+    zeroVertexBuffers.push_back(zeros);
+    buffer = zeros.render;
+    return true;
 }
 
 int RenderSystem::checkLightsAndShadow(){
@@ -3166,6 +3290,16 @@ SubmeshShaderInputs RenderSystem::getSubmeshShaderInputs(const MeshComponent& me
     inputs.mirror = mirror;
     // LatticeRender::prepare decides it each frame (a terrain is never deformed)
     inputs.lattice = mesh.lattice.count > 0 && !terrain;
+    // the Vertex Animator, as updateVertexAnimations decides it each frame (never a terrain)
+    inputs.vat = terrain ? VatVariant::NONE : mesh.vat.variant;
+    // a Vertex Animation takes the place of skinning and morph targets; a .vat.glb has no skin
+    // to draw its JOINTS_0 with, so without its animation it stands at rest
+    if (inputs.vat != VatVariant::NONE || mesh.vatMesh){
+        inputs.skinning = false;
+        inputs.morphTarget = false;
+        inputs.morphNormal = false;
+        inputs.morphTangent = false;
+    }
 
     // the built-in Lit's extended lobes (a shader with a manifest has none of them, nor does
     // a Terrain: its painted layers are its surface, and they hex tile on their own)
@@ -3217,8 +3351,9 @@ bool RenderSystem::supportsLighting(MaterialLighting mode, const ShaderManifest*
     if (mode == MaterialLighting::AUTO)
         return true;
     if (!manifest){
-        // the built-in Lit, and forks of it without a manifest
-        return mode != MaterialLighting::NONE;
+        // the built-in Lit, and forks of it without a manifest: every mode, NONE drawing its
+        // MATERIAL_UNLIT variant (base colour only, as glTF's KHR_materials_unlit asks)
+        return true;
     }
     if (manifest->lighting.empty())
         return mode == MaterialLighting::NONE;
@@ -3282,7 +3417,7 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
         }else{
             p_unlit = true;
         }
-    }else if ((environment.lights || useIBL) && inputs.receiveLights){
+    }else if ((environment.lights || useIBL) && inputs.receiveLights && lighting != MaterialLighting::NONE){
         p_punctual = environment.lights && lighting != MaterialLighting::VERTEX;
         p_vertexLights = environment.lights && (lighting == MaterialLighting::VERTEX || lighting == MaterialLighting::MIXED);
         p_ibl = useIBL;
@@ -3394,7 +3529,8 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
                     environment.fog, inputs.skinning, inputs.morphTarget, inputs.morphNormal, inputs.morphTangent,
                     inputs.terrain, inputs.instanced, p_ibl, inputs.mirror, p_ssao, p_light2d, p_shadows2d,
                     p_alphaMask, p_alphaOpaque, p_instanceFade, p_terrainSurface,
-                    p_vertexLights, lightCapacity, p_stochastic, p_lattice);
+                    p_vertexLights, lightCapacity, p_stochastic, p_lattice,
+                    inputs.vat != VatVariant::NONE, inputs.vat == VatVariant::BONES);
     // the post-processing colour (phase 4): the scene's, for every colour variant
     if (environment.postColor)
         variant.properties |= ShaderPool::getPostColorProperty(ShaderType::MESH);
@@ -3449,7 +3585,7 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
             p_depthTexture, inputs.skinning, inputs.morphTarget,
             inputs.morphNormal, inputs.morphTangent, inputs.terrain, inputs.instanced,
             p_depthAlphaMask, p_instanceFade, d_normals, d_vertexColorVec3, d_vertexColorVec4, d_uv1, d_textureRect,
-            d_stochastic, p_lattice);
+            d_stochastic, p_lattice, inputs.vat != VatVariant::NONE, inputs.vat == VatVariant::BONES);
     }
 
     // the G-buffer shader feeds the SSR geometry pass (MRT: packed depth + view-space
@@ -3464,7 +3600,8 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
             inputs.baseColorTexture, inputs.normal, inputs.skinning,
             inputs.morphTarget, inputs.morphNormal, inputs.morphTangent,
             inputs.terrain, inputs.instanced, inputs.metallicRoughnessTexture, p_terrainSurface && inputs.normal,
-            g_stochastic, p_lattice, p_lattice && inputs.vertexColor3, p_lattice && inputs.vertexColor4);
+            g_stochastic, p_lattice, p_lattice && inputs.vertexColor3, p_lattice && inputs.vertexColor4,
+            inputs.vat != VatVariant::NONE, inputs.vat == VatVariant::BONES);
     }
 
     return variant;
@@ -5553,12 +5690,25 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         if (bufferRender->isCreated() && bufferRender->getCreatedUsage() != buf.second->getUsage()) {
             bufferRender->destroyBuffer();
         }
+        // A shared GPU buffer (the bytes of a model file every Model of it draws, MeshBufferPool)
+        // of other bytes than the buffer shows now (written since: an edited buffer gets one
+        // of its own; re-pointed at another parse) is let go
+        if (bufferRender->isShared() && !MeshBufferPool::holdsSource(*bufferRender, *buf.second)) {
+            bufferRender->destroyBuffer();
+        }
 
         if (!bufferRender->isCreated()) {
             JE_GPU_ALLOC_SCOPE(Meshes, scene->getEntityName(entity));
-            if (!bufferRender->createBuffer(buf.second->getSize(), buf.second->getData(), buf.second->getType(), buf.second->getUsage())) {
-                Log::error("Cannot create GPU buffer '%s' (%zu bytes) for mesh entity %u; resource pool may be exhausted",
-                           buf.first.c_str(), buf.second->getSize(), entity);
+            const uint64_t poolFullBefore = SystemRender::getResourcePoolExhaustions();
+            if (!MeshBufferPool::createRender(*buf.second)) {
+                // a full pool is logged once by SokolSystem, not once per mesh
+                if (SystemRender::getResourcePoolExhaustions() != poolFullBefore){
+                    Log::verbose("Cannot create GPU buffer '%s' (%zu bytes) for mesh entity %u: a GPU pool is full",
+                                 buf.first.c_str(), buf.second->getSize(), entity);
+                }else{
+                    Log::error("Cannot create GPU buffer '%s' (%zu bytes) for mesh entity %u",
+                               buf.first.c_str(), buf.second->getSize(), entity);
+                }
                 for (BufferRender* created : buffersCreatedThisLoad) {
                     created->destroyBuffer();
                 }
@@ -5654,6 +5804,12 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         // a FluidSimulation's output lent to submesh 0 (drawMesh) needs its texture coordinates
         if (i == 0 && frameFluids && frameFluids->getMaterialTexture(entity))
             submeshLoads[i].shaderInputs.baseColorTexture = true;
+        // the geometry the variant draws: no skin nor morph targets under a Vertex Animation
+        // (or for a .vat.glb at rest), so the passes bind none
+        mesh.submeshes[i].hasSkinning = submeshLoads[i].shaderInputs.skinning;
+        mesh.submeshes[i].hasMorphTarget = submeshLoads[i].shaderInputs.morphTarget;
+        mesh.submeshes[i].hasMorphNormal = submeshLoads[i].shaderInputs.morphNormal;
+        mesh.submeshes[i].hasMorphTangent = submeshLoads[i].shaderInputs.morphTangent;
         submeshLoads[i].variant = getSubmeshShaderVariant(shaderEnvironment, submeshLoads[i].shaderInputs);
         const SubmeshShaderInputs& shaderInputs = submeshLoads[i].shaderInputs;
         const SubmeshShaderVariant& variant = submeshLoads[i].variant;
@@ -5764,6 +5920,29 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         return false;
     }
 
+    // the instances' Vertex Animation state (i_vat0, i_vat1), in a buffer of its own for a VAT
+    // variant only: every other batch keeps its one instance buffer
+    const VatVariant loadVat = (mesh.numSubmeshes > 0) ? submeshLoads[0].shaderInputs.vat : VatVariant::NONE;
+    if (instmesh && loadVat != VatVariant::NONE){
+        ExternalBuffer& vatBuffer = instmesh->vatBuffer;
+        if (vatBuffer.getAttributes().empty()){
+            vatBuffer.clear();
+            vatBuffer.addAttribute(AttributeType::INSTANCEVAT0, 4, 0, true);
+            vatBuffer.addAttribute(AttributeType::INSTANCEVAT1, 4, 4 * sizeof(float), true);
+            vatBuffer.setStride(8 * sizeof(float));
+            vatBuffer.setRenderAttributes(true);
+            vatBuffer.setInstanceBuffer(true);
+            vatBuffer.setUsage(BufferUsage::STREAM);
+        }
+        if (!vatBuffer.getRender()->isCreated() &&
+                !vatBuffer.getRender()->createBuffer(std::max(1u, instmesh->maxInstances) * vatBuffer.getStride(), nullptr, BufferType::VERTEX_BUFFER, BufferUsage::STREAM)){
+            Log::error("Cannot create the Vertex Animation instance buffer for mesh entity %lu; resource pool may be exhausted", entity);
+            return false;
+        }
+        instmesh->needUpdateBuffer = true;
+        instmesh->needUpdateInstances = true;
+    }
+
     // Then the pipelines. A load failing from here on (a texture still loading, a resource
     // pool full) destroys the pipelines this try made before returning: the next try makes
     // them again, and a mesh destroyed before it loads has nothing to release. Only what
@@ -5802,6 +5981,8 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         const std::string& meshShaderSrc = submeshLoads[i].meshShaderSrc;
         const std::string& depthShaderSrc = submeshLoads[i].depthShaderSrc;
         const bool needDepthPass = variant.depthPass;
+        // a Bones-mode Vertex Animation reads JOINTS_0 / WEIGHTS_0 without skinning
+        const bool vatBones = shaderInputs.vat == VatVariant::BONES;
 
         // what the variant enables, from the property bits (see ShaderPool::getMeshProperties)
         const uint64_t meshProperties = variant.properties;
@@ -5897,6 +6078,12 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         if (meshProperties & shaderPropertyBit(32)){ // 'Ltc'
             mesh.submeshes[i].slotVSLattice = shaderData.getUniformBlockIndex(UniformBlockType::VS_LATTICE);
             mesh.submeshes[i].slotVSLatticeTexture = shaderData.getTextureIndex(TextureShaderType::LATTICE);
+        }
+        // the Vertex Animation variant ('Vat', 'Vab'): its block and payload (none in a fork
+        // without includes/vat.glsl), bound by drawMesh
+        if (meshProperties & (shaderPropertyBit(33) | shaderPropertyBit(34))){
+            mesh.submeshes[i].slotVSVat = shaderData.getUniformBlockIndex(UniformBlockType::VS_VAT);
+            mesh.submeshes[i].slotVSVatTexture = shaderData.getTextureIndex(TextureShaderType::VAT);
         }
         // custom blocks of a forked shader (none in the built-in), with the depth shader's:
         // the material's parameters, the mesh's shader uniforms, the manifest defaults
@@ -6046,6 +6233,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             for (auto const &attr : instmesh->buffer.getAttributes()) {
                 render.addAttribute(shaderData.getAttrIndex(attr.first), instmesh->buffer.getRender(), attr.second.getElements(), attr.second.getDataType(), instmesh->buffer.getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
             }
+            addVatInstanceAttributes(render, shaderData, *instmesh);
         }
 
         if (indexed){
@@ -6059,6 +6247,9 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
 
         // a_smoothNormal, when the shader asks for it (@require smoothnormals)
         if (!bindSmoothNormals(render, shaderData, mesh, mesh.submeshes[i], buffers)){
+            return false;
+        }
+        if (!bindUnfedMorphInputs(render, shaderData, mesh, mesh.submeshes[i], buffers)){
             return false;
         }
 
@@ -6103,6 +6294,10 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                 mesh.submeshes[i].slotVSDepthLattice = depthShaderData.getUniformBlockIndex(UniformBlockType::DEPTH_VS_LATTICE);
                 mesh.submeshes[i].slotVSDepthLatticeTexture = depthShaderData.getTextureIndex(TextureShaderType::LATTICE);
             }
+            if (variant.depthProperties & (shaderPropertyBit(16) | shaderPropertyBit(17))){ // 'Vat', 'Vab'
+                mesh.submeshes[i].slotVSDepthVat = depthShaderData.getUniformBlockIndex(UniformBlockType::DEPTH_VS_VAT);
+                mesh.submeshes[i].slotVSDepthVatTexture = depthShaderData.getTextureIndex(TextureShaderType::VAT);
+            }
 
             if (p_depthTexture){
                 if (!loadDepthTexture(mesh.submeshes[i].material, depthShaderData, depthRender)){
@@ -6145,10 +6340,11 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                                 continue;
                             }
                             // (the colour: a lattice variant's mask reads it)
-                            if (attr.first == AttributeType::POSITION || attr.first == AttributeType::TEXCOORD1 || attr.first == AttributeType::COLOR){
+                            if (attr.first == AttributeType::POSITION || attr.first == AttributeType::TEXCOORD1 || attr.first == AttributeType::COLOR ||
+                                    attr.first == AttributeType::VAT_INDEX){
                                 depthRender.addAttribute(depthShaderData.getAttrIndex(attr.first), buf.second->getRender(), attr.second.getElements(), attr.second.getDataType(), buf.second->getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
                             }
-                            if (mesh.submeshes[i].hasSkinning){
+                            if (mesh.submeshes[i].hasSkinning || vatBones){
                                 if (attr.first == AttributeType::BONEIDS || attr.first == AttributeType::BONEWEIGHTS){
                                     depthRender.addAttribute(depthShaderData.getAttrIndex(attr.first), buf.second->getRender(), attr.second.getElements(), attr.second.getDataType(), buf.second->getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
                                 }
@@ -6176,10 +6372,11 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                     }else if (allDepthAttributes){
                         depthRender.addAttribute(depthShaderData.getAttrIndex(attr.first), bufferNameToRender[attr.second.getBufferName()], attr.second.getElements(), attr.second.getDataType(), bufferStride[attr.second.getBufferName()], attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
                         continue;
-                    }else if (attr.first == AttributeType::POSITION || attr.first == AttributeType::TEXCOORD1 || attr.first == AttributeType::COLOR){
+                    }else if (attr.first == AttributeType::POSITION || attr.first == AttributeType::TEXCOORD1 || attr.first == AttributeType::COLOR ||
+                            attr.first == AttributeType::VAT_INDEX){
                         depthRender.addAttribute(depthShaderData.getAttrIndex(attr.first), bufferNameToRender[attr.second.getBufferName()], attr.second.getElements(), attr.second.getDataType(), bufferStride[attr.second.getBufferName()], attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
                     }
-                    if (mesh.submeshes[i].hasSkinning){
+                    if (mesh.submeshes[i].hasSkinning || vatBones){
                         if (attr.first == AttributeType::BONEIDS || attr.first == AttributeType::BONEWEIGHTS){
                             depthRender.addAttribute(depthShaderData.getAttrIndex(attr.first), bufferNameToRender[attr.second.getBufferName()], attr.second.getElements(), attr.second.getDataType(), bufferStride[attr.second.getBufferName()], attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
                         }
@@ -6204,9 +6401,13 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                 for (auto const &attr : instmesh->buffer.getAttributes()) {
                     depthRender.addAttribute(depthShaderData.getAttrIndex(attr.first), instmesh->buffer.getRender(), attr.second.getElements(), attr.second.getDataType(), instmesh->buffer.getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
                 }
+                addVatInstanceAttributes(depthRender, depthShaderData, *instmesh);
             }
 
             if (!bindSmoothNormals(depthRender, depthShaderData, mesh, mesh.submeshes[i], buffers)){
+                return false;
+            }
+            if (!bindUnfedMorphInputs(depthRender, depthShaderData, mesh, mesh.submeshes[i], buffers)){
                 return false;
             }
 
@@ -6257,6 +6458,10 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                 mesh.submeshes[i].slotVSGBufferLattice = gbufferShaderData.getUniformBlockIndex(UniformBlockType::GBUFFER_VS_LATTICE);
                 mesh.submeshes[i].slotVSGBufferLatticeTexture = gbufferShaderData.getTextureIndex(TextureShaderType::LATTICE);
             }
+            if (variant.gbufferProperties & (shaderPropertyBit(14) | shaderPropertyBit(15))){ // 'Vat', 'Vab'
+                mesh.submeshes[i].slotVSGBufferVat = gbufferShaderData.getUniformBlockIndex(UniformBlockType::GBUFFER_VS_VAT);
+                mesh.submeshes[i].slotVSGBufferVatTexture = gbufferShaderData.getTextureIndex(TextureShaderType::VAT);
+            }
 
             if (!loadGBufferTextures(mesh.submeshes[i].material, gbufferShaderData, gbufferRender)){
                 return false;
@@ -6290,10 +6495,10 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                         for (auto const &attr : buf.second->getAttributes()){
                             // (the colour: a lattice variant's mask reads it)
                             if (attr.first == AttributeType::POSITION || attr.first == AttributeType::TEXCOORD1 || attr.first == AttributeType::NORMAL ||
-                                    attr.first == AttributeType::COLOR){
+                                    attr.first == AttributeType::COLOR || attr.first == AttributeType::VAT_INDEX){
                                 gbufferRender.addAttribute(gbufferShaderData.getAttrIndex(attr.first), buf.second->getRender(), attr.second.getElements(), attr.second.getDataType(), buf.second->getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
                             }
-                            if (mesh.submeshes[i].hasSkinning){
+                            if (mesh.submeshes[i].hasSkinning || vatBones){
                                 if (attr.first == AttributeType::BONEIDS || attr.first == AttributeType::BONEWEIGHTS){
                                     gbufferRender.addAttribute(gbufferShaderData.getAttrIndex(attr.first), buf.second->getRender(), attr.second.getElements(), attr.second.getDataType(), buf.second->getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
                                 }
@@ -6319,10 +6524,10 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                     if (attr.first == AttributeType::INDEX){
                         gbufferRender.setIndex(bufferNameToRender[attr.second.getBufferName()], attr.second.getDataType(), attr.second.getOffset());
                     }else if (attr.first == AttributeType::POSITION || attr.first == AttributeType::TEXCOORD1 || attr.first == AttributeType::NORMAL ||
-                            attr.first == AttributeType::COLOR){
+                            attr.first == AttributeType::COLOR || attr.first == AttributeType::VAT_INDEX){
                         gbufferRender.addAttribute(gbufferShaderData.getAttrIndex(attr.first), bufferNameToRender[attr.second.getBufferName()], attr.second.getElements(), attr.second.getDataType(), bufferStride[attr.second.getBufferName()], attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
                     }
-                    if (mesh.submeshes[i].hasSkinning){
+                    if (mesh.submeshes[i].hasSkinning || vatBones){
                         if (attr.first == AttributeType::BONEIDS || attr.first == AttributeType::BONEWEIGHTS){
                             gbufferRender.addAttribute(gbufferShaderData.getAttrIndex(attr.first), bufferNameToRender[attr.second.getBufferName()], attr.second.getElements(), attr.second.getDataType(), bufferStride[attr.second.getBufferName()], attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
                         }
@@ -6345,6 +6550,10 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                 for (auto const &attr : instmesh->buffer.getAttributes()) {
                     gbufferRender.addAttribute(gbufferShaderData.getAttrIndex(attr.first), instmesh->buffer.getRender(), attr.second.getElements(), attr.second.getDataType(), instmesh->buffer.getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
                 }
+                addVatInstanceAttributes(gbufferRender, gbufferShaderData, *instmesh);
+            }
+            if (!bindUnfedMorphInputs(gbufferRender, gbufferShaderData, mesh, mesh.submeshes[i], buffers)){
+                return false;
             }
 
             CullingMode gbufferCullingMode = colorState.cullingMode;
@@ -6418,6 +6627,20 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         mesh.lattice.needUpload = true;
     }else{
         mesh.lattice.texture.destroyTexture();
+    }
+
+    // the Vertex Animation variant as loaded: a change of VatMeshState::variant reloads it; a
+    // load without one lets the payload go (the asset keeps it for the others)
+    mesh.vat.variantActive = loadVat;
+    if (loadVat == VatVariant::NONE && mesh.vat.variant == VatVariant::NONE){
+        mesh.vat.asset.reset();
+        mesh.vat.texture = nullptr;
+        mesh.vat.block.clear();
+        mesh.vat.block.shrink_to_fit();
+    }
+    if (instmesh && loadVat == VatVariant::NONE){
+        instmesh->vatBuffer.getRender()->destroyBuffer();
+        instmesh->renderVat.clear();
     }
 
     mesh.needReload = false;
@@ -6599,15 +6822,16 @@ void RenderSystem::pollMeshLod(MeshComponent& mesh, Submesh& submesh){
         submesh.lodData = MeshLodPool::get(submesh.lodKey);
         if (!submesh.lodData)
             return;
-        submesh.lodIndices.setData(submesh.lodData->indices.data(), submesh.lodData->indices.size());
+        // the pool's level set: every mesh of the same geometry draws its levels from one buffer
         submesh.lodIndices.setType(BufferType::INDEX_BUFFER);
         submesh.lodIndices.setUsage(BufferUsage::IMMUTABLE);
+        submesh.lodIndices.setData(submesh.lodData->indices.data(), submesh.lodData->indices.size(), submesh.lodData);
         updateMeshLodErrors(mesh);
     }
 
     if (submesh.lodData->numLevels > 1 && !submesh.lodIndices.getRender()->isCreated()){
         JE_GPU_ALLOC_SCOPE(Meshes, "Mesh LODs");
-        submesh.lodIndices.getRender()->createBuffer(submesh.lodIndices.getSize(), submesh.lodIndices.getData(), BufferType::INDEX_BUFFER, BufferUsage::IMMUTABLE);
+        MeshBufferPool::createRender(submesh.lodIndices);
     }
 }
 
@@ -6958,7 +7182,8 @@ bool RenderSystem::bindSmoothNormals(ObjectRender& render, ShaderData& shaderDat
     // until then, and the other renders of the submesh bind the same buffer
     if (!entry.created){
         JE_GPU_ALLOC_SCOPE(Meshes, "Smooth normals");
-        if (entry.data.empty() || !entry.buffer.createBuffer((unsigned int)entry.data.size(), entry.data.data(), BufferType::VERTEX_BUFFER, BufferUsage::IMMUTABLE))
+        // one buffer for every mesh of the same geometry (keyed by what it is made of)
+        if (entry.data.empty() || !MeshBufferPool::acquireContent(entry.buffer, entry.key, BufferType::VERTEX_BUFFER, entry.data.data(), entry.data.size()))
             return false;
         entry.created = true;
     }
@@ -7012,6 +7237,50 @@ void RenderSystem::trimSmoothNormals(MeshComponent& mesh){
         mesh.smoothNormals.reset();
 }
 
+// The built-in shaders declare a fixed set of morph inputs (includes/morphtarget.glsl: by
+// whether normals and tangents are morphed, not by the mesh's target count) and a mesh feeds
+// those of its own targets. An input without a buffer reads zero on OpenGL but is undefined
+// on Vulkan (invalid on Metal and D3D11): a one-target morph mesh drew nothing on an NVIDIA
+// GPU once earlier draws had left garbage there (a NaN or infinity times the unused target's
+// zero weight is not zero). The unfed ones read zeros, as OpenGL's do: an unused target
+// moves nothing at any weight.
+bool RenderSystem::bindUnfedMorphInputs(ObjectRender& render, ShaderData& shaderData, MeshComponent& mesh, Submesh& submesh, BufferMap& buffers){
+    static const AttributeType morphInputs[] = {
+        AttributeType::MORPHTARGET0, AttributeType::MORPHTARGET1, AttributeType::MORPHTARGET2, AttributeType::MORPHTARGET3,
+        AttributeType::MORPHTARGET4, AttributeType::MORPHTARGET5, AttributeType::MORPHTARGET6, AttributeType::MORPHTARGET7,
+        AttributeType::MORPHNORMAL0, AttributeType::MORPHNORMAL1, AttributeType::MORPHNORMAL2, AttributeType::MORPHNORMAL3,
+        AttributeType::MORPHTANGENT0, AttributeType::MORPHTANGENT1
+    };
+    if (!submesh.hasMorphTarget)
+        return true;
+
+    BufferRender zeros;
+    bool haveZeros = false;
+    for (AttributeType type : morphInputs){
+        const int slot = shaderData.getAttrIndex(type);
+        if (slot == -1 || findSubmeshAttribute(submesh, buffers, type).attribute)
+            continue;
+        if (!haveZeros){
+            // as many vertices as any input of the submesh addresses
+            size_t vertices = mesh.vertexCount;
+            for (auto const& attr : submesh.attributes){
+                if (attr.first != AttributeType::INDEX)
+                    vertices = std::max(vertices, (size_t)attr.second.getCount());
+            }
+            for (auto const& buf : buffers){
+                if (buf.second->isRenderAttributes() && buf.second->getType() != BufferType::INDEX_BUFFER)
+                    vertices = std::max(vertices, (size_t)buf.second->getCount());
+            }
+            const size_t bytes = std::max(vertices, (size_t)1) * 3 * sizeof(float);
+            if (bytes > UINT_MAX || !getZeroVertexBuffer((unsigned int)bytes, zeros))
+                return false;
+            haveZeros = true;
+        }
+        render.addAttribute(slot, &zeros, 3, AttributeDataType::FLOAT, 3 * sizeof(float), 0, false, false);
+    }
+    return true;
+}
+
 unsigned int RenderSystem::bindSubmeshAttributes(ObjectRender& render, ShaderData& shaderData, MeshComponent& mesh, Submesh& submesh,
                                                  BufferMap& buffers, BufferRenderMap& bufferNameToRender, BufferStrideMap& bufferStride,
                                                  InstancedMeshComponent* instmesh){
@@ -7047,6 +7316,7 @@ unsigned int RenderSystem::bindSubmeshAttributes(ObjectRender& render, ShaderDat
         for (auto const &attr : instmesh->buffer.getAttributes()) {
             render.addAttribute(shaderData.getAttrIndex(attr.first), instmesh->buffer.getRender(), attr.second.getElements(), attr.second.getDataType(), instmesh->buffer.getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
         }
+        addVatInstanceAttributes(render, shaderData, *instmesh);
     }
     return indexed ? indexCount : mesh.vertexCount;
 }
@@ -7065,6 +7335,8 @@ void RenderSystem::releaseSubmeshExtraPass(Submesh& submesh, bool keepShader){
     extra.loaded = false;
     extra.slotVSLattice = -1;
     extra.slotVSLatticeTexture = {-1, -1};
+    extra.slotVSVat = -1;
+    extra.slotVSVatTexture = {-1, -1};
     extra.libraryBindings.clear();
     extra.customVSParams.clear();
     extra.customFSParams.clear();
@@ -7175,6 +7447,10 @@ bool RenderSystem::loadSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
     const bool latticeVariant = (properties & shaderPropertyBit(32)) != 0; // 'Ltc'
     extra.slotVSLattice = latticeVariant ? shaderData.getUniformBlockIndex(UniformBlockType::VS_LATTICE) : -1;
     extra.slotVSLatticeTexture = latticeVariant ? shaderData.getTextureIndex(TextureShaderType::LATTICE) : std::pair<int, int>(-1, -1);
+    // the Vertex Animation variant ('Vat', 'Vab'), as the submesh's colour render
+    const bool vatVariant = (properties & (shaderPropertyBit(33) | shaderPropertyBit(34))) != 0;
+    extra.slotVSVat = vatVariant ? shaderData.getUniformBlockIndex(UniformBlockType::VS_VAT) : -1;
+    extra.slotVSVatTexture = vatVariant ? shaderData.getTextureIndex(TextureShaderType::VAT) : std::pair<int, int>(-1, -1);
 
     // its own parameters, else its manifest's defaults
     extra.customVSParams.resolve(shaderData, "u_vs_customParams");
@@ -7192,6 +7468,8 @@ bool RenderSystem::loadSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
 
     bindSubmeshAttributes(render, shaderData, mesh, submesh, buffers, bufferNameToRender, bufferStride, instmesh);
     if (!bindSmoothNormals(render, shaderData, mesh, submesh, buffers))
+        return false;
+    if (!bindUnfedMorphInputs(render, shaderData, mesh, submesh, buffers))
         return false;
 
     const RenderState extraState = resolveExtraPassRenderState(mesh, submesh, extra.manifest ? &extra.manifestState : nullptr);
@@ -7290,6 +7568,9 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
     if (!applyLattice(render, extra.slotVSLattice, extra.slotVSLatticeTexture, mesh, submeshIndex, true)){
         return;
     }
+    if (!applyVat(render, extra.slotVSVat, extra.slotVSVatTexture, mesh, submesh)){
+        return;
+    }
 
     // the material's prefix, the size its variant declares (a fork of Lit reads it)
     if (lit){
@@ -7318,7 +7599,7 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
     // the same instances, detail level and tilemap chunks as the submesh's draw
     if (tilemap && !tilemapDrawRanges.empty()){
         if (instmesh){
-            bindInstances(render, *instmesh, instanceView, draw.instanceFirst);
+            bindInstances(render, *instmesh, instanceView, draw.instanceFirst, draw.vatFirst);
         }
         for (const TilemapDrawRange& range : tilemapDrawRanges){
             render.draw(range.offset, range.count, instanceCount);
@@ -7419,6 +7700,7 @@ void RenderSystem::buildInstanceViews(CameraComponent& mainCamera, Transform& ma
     collectShadowSlots();
     for (InstanceView& view : rv().instanceViews){
         view.data.clear();
+        view.vatData.clear();
     }
 
     // hidden entities are built too: the passes skip them, but their slices must stay valid
@@ -7437,9 +7719,10 @@ void RenderSystem::buildInstanceViews(CameraComponent& mainCamera, Transform& ma
         InstanceOrder order = (mesh->transparent || !sortsByDistance(mainCamera)) ? InstanceOrder::KEEP : InstanceOrder::NEAREST;
         const Vector3& eye = mainCameraTransform.worldPosition;
         const InstanceRenderData* instances = instmesh.renderInstances.data();
+        const InstanceVatRenderData* vat = instanceVatData(instmesh);
         const InstanceBounds* bounds = instmesh.renderBounds.data();
         const unsigned int count = (instmesh.renderBounds.size() < instmesh.numVisible) ? 0 : instmesh.numVisible;
-        buildInstanceView(rv().instanceViews[0], instmesh.views[0], instances, bounds, count, instmesh, *mesh, *transform,
+        buildInstanceView(rv().instanceViews[0], instmesh.views[0], instances, vat, bounds, count, instmesh, *mesh, *transform,
             mainCamera.farClip, mainCamera.frustumPlanes, rv().lodView, eye, eye, Vector3::ZERO, order);
 
         for (const ShadowSlot& shadow : shadowSlots){
@@ -7450,7 +7733,7 @@ void RenderSystem::buildInstanceViews(CameraComponent& mainCamera, Transform& ma
             const LightCamera& shadowCamera = lightCamera(shadow.lightIndex, *shadow.light, shadow.cameraIndex);
             LodView lodView = shadowLodView(*shadow.light, shadow.lightIndex, shadow.cameraIndex, shadow.slot);
             Vector3 direction = (shadow.light->type == LightType::DIRECTIONAL) ? shadow.light->worldDirection : Vector3::ZERO;
-            buildInstanceView(rv().instanceViews[1 + shadow.slot], instmesh.views[1 + shadow.slot], instances, bounds, count, instmesh, *mesh, *transform,
+            buildInstanceView(rv().instanceViews[1 + shadow.slot], instmesh.views[1 + shadow.slot], instances, vat, bounds, count, instmesh, *mesh, *transform,
                 shadowCamera.nearFar.y, shadowCamera.frustumPlanes, lodView, eye, lodView.origin, direction, InstanceOrder::NEAREST);
         }
     }
@@ -7464,7 +7747,7 @@ void RenderSystem::buildInstanceViews(CameraComponent& mainCamera, Transform& ma
 // instances inside the frustum and the cull distance from the eye, appended to view with
 // their range. NEAREST: nearest first (along direction when given), grouped by level;
 // KEEP: list order at full detail; BACK_TO_FRONT: ascending along direction, full detail
-void RenderSystem::buildInstanceView(InstanceView& view, InstanceViewRange& range, const InstanceRenderData* instances, const InstanceBounds* instanceBounds, unsigned int count, const InstancedMeshComponent& instmesh, const MeshComponent& mesh, const Transform& transform, const float cameraFar, const Plane frustumPlanes[6], const LodView& lodView, const Vector3& eye, const Vector3& origin, const Vector3& direction, InstanceOrder order, bool limitDistance){
+void RenderSystem::buildInstanceView(InstanceView& view, InstanceViewRange& range, const InstanceRenderData* instances, const InstanceVatRenderData* vat, const InstanceBounds* instanceBounds, unsigned int count, const InstancedMeshComponent& instmesh, const MeshComponent& mesh, const Transform& transform, const float cameraFar, const Plane frustumPlanes[6], const LodView& lodView, const Vector3& eye, const Vector3& origin, const Vector3& direction, InstanceOrder order, bool limitDistance){
     struct Candidate{
         unsigned int index;
         unsigned int lod;
@@ -7475,13 +7758,25 @@ void RenderSystem::buildInstanceView(InstanceView& view, InstanceViewRange& rang
 
     range = InstanceViewRange();
     range.offset = (unsigned int)view.data.size();
+    // a VAT batch's states go with its instances, in the same order (at rest until its list
+    // has them: its draws read them whatever)
+    range.vatOffset = (unsigned int)view.vatData.size();
+    const bool vatBatch = vat || mesh.vat.variantActive != VatVariant::NONE;
+    auto pushVat = [&view, vat, vatBatch](unsigned int index){
+        static const InstanceVatRenderData rest{Vector4(-1.0f, 0.0f, 1.0f, -1.0f), Vector4(0.0f, 1.0f, 0.0f, 0.0f)};
+        if (vatBatch)
+            view.vatData.push_back(vat ? vat[index] : rest);
+    };
 
     // KEEP already arrives in draw order. Above the exact integer range of a
     // float, retain the existing sort's tie ordering for its rounded index keys.
     const bool keepOrder = order == InstanceOrder::KEEP && count <= (1u << 24);
     if (keepOrder && !instmesh.cullInstances){
-        if (count > 0)
+        if (count > 0){
             view.data.insert(view.data.end(), instances, instances + count);
+            for (unsigned int i = 0; i < count; i++)
+                pushVat(i);
+        }
         range.lodCount[0] = count;
         return;
     }
@@ -7505,6 +7800,7 @@ void RenderSystem::buildInstanceView(InstanceView& view, InstanceViewRange& rang
 
         if (keepOrder){
             view.data.push_back(instances[i]);
+            pushVat(i);
             range.lodCount[0]++;
             continue;
         }
@@ -7532,6 +7828,7 @@ void RenderSystem::buildInstanceView(InstanceView& view, InstanceViewRange& rang
 
     for (const Candidate& candidate : candidates){
         view.data.push_back(instances[candidate.index]);
+        pushVat(candidate.index);
         range.lodCount[candidate.lod]++;
     }
 }
@@ -7542,6 +7839,7 @@ bool RenderSystem::selectMeshDraw(Entity entity, MeshComponent& mesh, Transform&
         const InstanceViewRange* range = (instanceView >= 0) ? &instanceRange(entity, *instmesh, instanceView) : nullptr;
         draw.instanceCount = range ? range->count() : instmesh->numVisible;
         draw.instanceFirst = range ? range->offset : 0;
+        draw.vatFirst = range ? range->vatOffset : 0;
         // unpainted foliage chunks make this common
         if (draw.instanceCount == 0)
             return false;
@@ -7557,9 +7855,15 @@ bool RenderSystem::selectMeshDraw(Entity entity, MeshComponent& mesh, Transform&
 }
 
 // the slice of a view buffer, or the whole component buffer, starting at instance first
-void RenderSystem::bindInstances(ObjectRender& render, InstancedMeshComponent& instmesh, int instanceView, unsigned int first){
+void RenderSystem::bindInstances(ObjectRender& render, InstancedMeshComponent& instmesh, int instanceView, unsigned int first, unsigned int vatFirst){
     BufferRender* buffer = (instanceView >= 0) ? instanceBuffer(instanceView) : instmesh.buffer.getRender();
     render.replaceVertexBuffer(instmesh.buffer.getRender(), buffer, (size_t)first * instmesh.buffer.getStride());
+    // a VAT batch's states: the same instances in the view's VAT list (vatFirst) or the batch's own
+    if (instmesh.vatBuffer.getRender()->isCreated()){
+        BufferRender* vatBuffer = (instanceView >= 0) ? instanceVatBuffer(instanceView) : instmesh.vatBuffer.getRender();
+        if (vatBuffer && vatBuffer->isCreated())
+            render.replaceVertexBuffer(instmesh.vatBuffer.getRender(), vatBuffer, (size_t)vatFirst * instmesh.vatBuffer.getStride());
+    }
 }
 
 // a culled view draws each level bucket of its slice; anything else draws every instance at one level
@@ -7568,11 +7872,11 @@ void RenderSystem::drawSubmeshGeometry(ObjectRender& render, Entity entity, Mesh
     const MeshLodData* lodData = submesh.lodData.get();
     bool lodReady = lodData && lodData->numLevels > 1 && submesh.lodIndices.getRender()->isCreated();
 
-    auto drawLevel = [&](unsigned int level, unsigned int instances, unsigned int first){
+    auto drawLevel = [&](unsigned int level, unsigned int instances, unsigned int first, unsigned int vatFirst){
         if (instances == 0)
             return;
         if (instmesh)
-            bindInstances(render, *instmesh, instanceView, first);
+            bindInstances(render, *instmesh, instanceView, first, vatFirst);
         level = lodReady ? std::min(level, lodData->numLevels - 1) : 0;
         if (level > 0){
             render.setIndexBuffer(submesh.lodIndices.getRender());
@@ -7586,12 +7890,14 @@ void RenderSystem::drawSubmeshGeometry(ObjectRender& render, Entity entity, Mesh
     if (instmesh && instanceView >= 0){
         const InstanceViewRange& range = instanceRange(entity, *instmesh, instanceView);
         unsigned int first = range.offset;
+        unsigned int vatFirst = range.vatOffset;
         for (unsigned int l = 0; l < MAX_MESH_LODS; l++){
-            drawLevel(l, range.lodCount[l], first);
+            drawLevel(l, range.lodCount[l], first, vatFirst);
             first += range.lodCount[l];
+            vatFirst += range.lodCount[l];
         }
     }else{
-        drawLevel(lod, instanceCount, 0);
+        drawLevel(lod, instanceCount, 0, 0);
     }
 }
 
@@ -7604,11 +7910,14 @@ void RenderSystem::updateMeshBuffers(MeshComponent& mesh){
     if (mesh.needUpdateBones){
         const unsigned int size = static_cast<unsigned int>(
             mesh.bonesMatrix.size() * sizeof(Matrix4));
+        bool uploaded = true;
         if (mesh.bonesBuffer.isCreated())
-            mesh.bonesBuffer.updateBuffer(size, mesh.bonesMatrix.data());
+            uploaded = mesh.bonesBuffer.updateBuffer(size, mesh.bonesMatrix.data()) && uploaded;
         if (mesh.bonesTexture.isCreated())
-            mesh.bonesTexture.updateTexture(mesh.bonesMatrix.data(), size);
-        mesh.needUpdateBones = false;
+            uploaded = mesh.bonesTexture.updateTexture(mesh.bonesMatrix.data(), size) && uploaded;
+        // past the frame's stream staging buffer (Engine::GpuResourceLimits::streamStagingBytes,
+        // logged): uploaded next frame, not never (a static mesh uploads its bones once)
+        mesh.needUpdateBones = !uploaded && size > 0;
     }
 
     // the lattice records (LatticeRender::prepare), while the lattice variant is loaded: whole
@@ -7635,16 +7944,24 @@ void RenderSystem::updateMeshBuffers(MeshComponent& mesh){
     // what picking hashed may be gone (a script edits the vertices, a tilemap rebuilds)
     mesh.pickGeometryHash = 0;
 
-    if (mesh.buffer.getUsage() != BufferUsage::IMMUTABLE)
+    // a STREAM upload past the frame's stream staging buffer is tried again next frame
+    bool refused = false;
+    if (mesh.buffer.getUsage() == BufferUsage::STREAM)
+        refused |= !mesh.buffer.getRender()->updateBuffer(mesh.buffer.getSize(), mesh.buffer.getData()) && mesh.buffer.getSize() > 0;
+    else if (mesh.buffer.getUsage() != BufferUsage::IMMUTABLE)
         mesh.buffer.getRender()->updateBuffer(mesh.buffer.getSize(), mesh.buffer.getData());
-    if (mesh.indices.getUsage() != BufferUsage::IMMUTABLE)
+    if (mesh.indices.getUsage() == BufferUsage::STREAM)
+        refused |= !mesh.indices.getRender()->updateBuffer(mesh.indices.getSize(), mesh.indices.getData()) && mesh.indices.getSize() > 0;
+    else if (mesh.indices.getUsage() != BufferUsage::IMMUTABLE)
         mesh.indices.getRender()->updateBuffer(mesh.indices.getSize(), mesh.indices.getData());
     for (int i = 0; i < mesh.numExternalBuffers; i++){
-        if (mesh.eBuffers[i].getUsage() != BufferUsage::IMMUTABLE)
+        if (mesh.eBuffers[i].getUsage() == BufferUsage::STREAM)
+            refused |= !mesh.eBuffers[i].getRender()->updateBuffer(mesh.eBuffers[i].getSize(), mesh.eBuffers[i].getData()) && mesh.eBuffers[i].getSize() > 0;
+        else if (mesh.eBuffers[i].getUsage() != BufferUsage::IMMUTABLE)
             mesh.eBuffers[i].getRender()->updateBuffer(mesh.eBuffers[i].getSize(), mesh.eBuffers[i].getData());
     }
 
-    mesh.needUpdateBuffer = false;
+    mesh.needUpdateBuffer = refused;
 }
 
 // Once per frame, before any pass: the depth passes take their instance count from here.
@@ -7657,13 +7974,20 @@ void RenderSystem::updateInstanceBuffers(){
         if (!instmesh.needUpdateBuffer)
             continue;
 
-        // setData here because component can change order and lose reference
+        // setData here because component can change order and lose reference; an upload past
+        // the frame's stream staging buffer is tried again next frame
+        bool refused = false;
         if (instmesh.numVisible > 0 && !instmesh.renderInstances.empty()){
             instmesh.buffer.setData((unsigned char*)(&instmesh.renderInstances[0]), sizeof(InstanceRenderData)*instmesh.numVisible);
-            instmesh.buffer.getRender()->updateBuffer(instmesh.buffer.getSize(), instmesh.buffer.getData());
+            refused |= !instmesh.buffer.getRender()->updateBuffer(instmesh.buffer.getSize(), instmesh.buffer.getData());
+        }
+        // a VAT batch's states, in the same order
+        if (instmesh.numVisible > 0 && instmesh.renderVat.size() >= instmesh.numVisible && instmesh.vatBuffer.getRender()->isCreated()){
+            instmesh.vatBuffer.setData((unsigned char*)(&instmesh.renderVat[0]), sizeof(InstanceVatRenderData)*instmesh.numVisible);
+            refused |= !instmesh.vatBuffer.getRender()->updateBuffer(instmesh.vatBuffer.getSize(), instmesh.vatBuffer.getData());
         }
 
-        instmesh.needUpdateBuffer = false;
+        instmesh.needUpdateBuffer = refused;
     }
 
     uploadInstanceViews(rv());
@@ -7692,7 +8016,24 @@ void RenderSystem::uploadInstanceViews(InstanceView* views, size_t count){
             render->createBuffer(view.capacity, nullptr, BufferType::VERTEX_BUFFER, BufferUsage::STREAM);
         }
         view.buffer.setData((unsigned char*)view.data.data(), size);
-        render->updateBuffer(size, view.buffer.getData());
+        // past the frame's stream staging buffer: tried again next frame
+        if (size > 0 && !render->updateBuffer(size, view.buffer.getData()))
+            view.needUpload = true;
+
+        // the VAT batches' states, alike
+        if (!view.vatData.empty()){
+            const size_t vatSize = view.vatData.size() * sizeof(InstanceVatRenderData);
+            BufferRender* vatRender = view.vatBuffer.getRender();
+            if (vatRender->isCreated() && view.vatCapacity < vatSize)
+                vatRender->destroyBuffer();
+            if (!vatRender->isCreated()){
+                view.vatCapacity = vatSize + vatSize / 2;
+                vatRender->createBuffer(view.vatCapacity, nullptr, BufferType::VERTEX_BUFFER, BufferUsage::STREAM);
+            }
+            view.vatBuffer.setData((unsigned char*)view.vatData.data(), vatSize);
+            if (!vatRender->updateBuffer(vatSize, view.vatBuffer.getData()))
+                view.needUpload = true;
+        }
     }
 }
 
@@ -7705,11 +8046,14 @@ void RenderSystem::updateTerrainNodesBuffer(TerrainView& view){
     if (!view.needUpdateNodesBuffer)
         return;
 
+    // past the frame's stream staging buffer: tried again next frame
+    bool refused = false;
     for (int s = 0; s < 2; s++){
-        view.nodesbuffer[s].getRender()->updateBuffer(view.nodesbuffer[s].getSize(), view.nodesbuffer[s].getData());
+        if (view.nodesbuffer[s].getSize() > 0)
+            refused |= !view.nodesbuffer[s].getRender()->updateBuffer(view.nodesbuffer[s].getSize(), view.nodesbuffer[s].getData());
     }
 
-    view.needUpdateNodesBuffer = false;
+    view.needUpdateNodesBuffer = refused;
 }
 
 bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, int terrainView, int instanceView, const LodView* lodView){
@@ -7870,6 +8214,9 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             }
 
             if (!applyLattice(render, mesh.submeshes[i].slotVSLattice, mesh.submeshes[i].slotVSLatticeTexture, mesh, i, true)){
+                continue;
+            }
+            if (!applyVat(render, mesh.submeshes[i].slotVSVat, mesh.submeshes[i].slotVSVatTexture, mesh, mesh.submeshes[i])){
                 continue;
             }
 
@@ -8064,7 +8411,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
 
             if (tilemap && !tilemapDrawRanges.empty()){
                 if (instmesh){
-                    bindInstances(render, *instmesh, instanceView, draw.instanceFirst);
+                    bindInstances(render, *instmesh, instanceView, draw.instanceFirst, draw.vatFirst);
                 }
                 for (const TilemapDrawRange& range : tilemapDrawRanges){
                     render.draw(range.offset, range.count, instanceCount);
@@ -8215,6 +8562,9 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
             if (!applyLattice(depthRender, mesh.submeshes[i].slotVSDepthLattice, mesh.submeshes[i].slotVSDepthLatticeTexture, mesh, i, false)){
                 continue;
             }
+            if (!applyVat(depthRender, mesh.submeshes[i].slotVSDepthVat, mesh.submeshes[i].slotVSDepthVatTexture, mesh, mesh.submeshes[i])){
+                continue;
+            }
 
             if (terrain){
                 // shadow depth renders the view camera's selection
@@ -8224,7 +8574,7 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
 
             if (tilemap && !tilemapDrawRanges.empty()){
                 if (instmesh){
-                    bindInstances(depthRender, *instmesh, instanceView, draw.instanceFirst);
+                    bindInstances(depthRender, *instmesh, instanceView, draw.instanceFirst, draw.vatFirst);
                 }
                 for (const TilemapDrawRange& range : tilemapDrawRanges){
                     depthRender.draw(range.offset, range.count, instanceCount);
@@ -9008,6 +9358,9 @@ bool RenderSystem::drawMeshGBuffer(Entity entity, MeshComponent& mesh, Transform
         if (!applyLattice(gbufferRender, mesh.submeshes[i].slotVSGBufferLattice, mesh.submeshes[i].slotVSGBufferLatticeTexture, mesh, i, false)){
             continue;
         }
+        if (!applyVat(gbufferRender, mesh.submeshes[i].slotVSGBufferVat, mesh.submeshes[i].slotVSGBufferVatTexture, mesh, mesh.submeshes[i])){
+            continue;
+        }
 
         if (terrain){
             terrain->eyePos = terrainNodes->nodesEyePos;
@@ -9019,7 +9372,7 @@ bool RenderSystem::drawMeshGBuffer(Entity entity, MeshComponent& mesh, Transform
 
         if (tilemap && !tilemapDrawRanges.empty()){
             if (instmesh){
-                bindInstances(gbufferRender, *instmesh, instanceView, draw.instanceFirst);
+                bindInstances(gbufferRender, *instmesh, instanceView, draw.instanceFirst, draw.vatFirst);
             }
             for (const TilemapDrawRange& range : tilemapDrawRanges){
                 gbufferRender.draw(range.offset, range.count, instanceCount);
@@ -9842,6 +10195,7 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
                 instmesh->buffer.clearAll();
             }
             instmesh->buffer.getRender()->destroyBuffer();
+            instmesh->vatBuffer.getRender()->destroyBuffer();
         }
 
         submesh.lodIndices.getRender()->destroyBuffer();
@@ -9883,6 +10237,8 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.slotVSMorphTarget = -1;
         submesh.slotVSLattice = -1;
         submesh.slotVSLatticeTexture = {-1, -1};
+        submesh.slotVSVat = -1;
+        submesh.slotVSVatTexture = {-1, -1};
         submesh.slotVSTerrain = -1;
         submesh.slotFSTerrainLayers = -1;
 
@@ -9894,6 +10250,8 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.slotVSDepthMorphTarget = -1;
         submesh.slotVSDepthLattice = -1;
         submesh.slotVSDepthLatticeTexture = {-1, -1};
+        submesh.slotVSDepthVat = -1;
+        submesh.slotVSDepthVatTexture = {-1, -1};
         submesh.slotVSDepthTerrain = -1;
         submesh.slotVSDepthSprite = -1;
 
@@ -9904,6 +10262,8 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.slotVSGBufferMorphTarget = -1;
         submesh.slotVSGBufferLattice = -1;
         submesh.slotVSGBufferLatticeTexture = {-1, -1};
+        submesh.slotVSGBufferVat = -1;
+        submesh.slotVSGBufferVatTexture = {-1, -1};
         submesh.slotVSGBufferTerrain = -1;
         submesh.slotFSGBufferTerrainLayers = -1;
 
@@ -11568,8 +11928,9 @@ void RenderSystem::getLoadCount(size_t& loaded, size_t& total) const{
     auto meshes = scene->getComponentArray<MeshComponent>();
     for (int i = 0; i < meshes->size(); i++) {
         const MeshComponent& mesh = meshes->getComponentFromIndex(i);
-        // a mesh drawing its previous variant while the new one builds is still loading
-        count((mesh.loaded && !mesh.needVariantReload) || (!mesh.loadCalled && isMeshShaderUnavailable(mesh)));
+        // a mesh drawing its previous variant while the new one builds is still loading; one
+        // whose load found a GPU pool full has failed (not drawn, nothing to wait for)
+        count((mesh.loaded && !mesh.needVariantReload) || mesh.loadFailed || (!mesh.loadCalled && isMeshShaderUnavailable(mesh)));
     }
 
     // Check UIComponents
@@ -11665,10 +12026,17 @@ void RenderSystem::updateInstancedMesh(InstancedMeshComponent& instmesh, MeshCom
     instmesh.renderInstances.reserve(instmesh.instances.size());
     instmesh.renderBounds.clear();
     instmesh.renderBounds.reserve(instmesh.instances.size());
+    // each instance's Vertex Animator state, while the mesh asks for or draws a VAT variant
+    const bool vat = mesh.vat.variant != VatVariant::NONE || mesh.vat.variantActive != VatVariant::NONE;
+    instmesh.renderVat.clear();
+    if (vat)
+        instmesh.renderVat.reserve(instmesh.instances.size());
 
-    const bool hasBounds = !mesh.verticesAABB.isNull() && !mesh.verticesAABB.isInfinite();
-    const Vector3 localCenter = hasBounds ? mesh.verticesAABB.getCenter() : Vector3::ZERO;
-    const float localRadius = hasBounds ? mesh.verticesAABB.getHalfSize().length() : 0.0f;
+    // the vertices' bounds, or the Vertex Animator's over its clips
+    const AABB& vertexBounds = getMeshLocalBounds(mesh);
+    const bool hasBounds = !vertexBounds.isNull() && !vertexBounds.isInfinite();
+    const Vector3 localCenter = hasBounds ? vertexBounds.getCenter() : Vector3::ZERO;
+    const float localRadius = hasBounds ? vertexBounds.getHalfSize().length() : 0.0f;
 
     const float cullEnd = instanceFadeCullEnd(instmesh, mesh, *scene);
     instmesh.lastFadeCullEnd = cullEnd;
@@ -11713,6 +12081,8 @@ void RenderSystem::updateInstancedMesh(InstancedMeshComponent& instmesh, MeshCom
             instmesh.renderInstances[instmesh.numVisible].instanceMatrix = instanceMatrix;
             instmesh.renderInstances[instmesh.numVisible].color = instmesh.instances[i].color;
             instmesh.renderInstances[instmesh.numVisible].textureRect = instmesh.instances[i].textureRect;
+            if (vat)
+                instmesh.renderVat.push_back({instmesh.instances[i].vat0, instmesh.instances[i].vat1});
             instmesh.numVisible++;
 
             const Vector3& scale = instmesh.instances[i].scale;
@@ -11722,7 +12092,7 @@ void RenderSystem::updateInstancedMesh(InstancedMeshComponent& instmesh, MeshCom
             bounds.radius = localRadius * bounds.scale;
             instmesh.renderBounds.push_back(bounds);
 
-            mesh.aabb.merge(instanceMatrix * mesh.verticesAABB);
+            mesh.aabb.merge(instanceMatrix * vertexBounds);
         }
     }
 
@@ -11740,13 +12110,18 @@ void RenderSystem::sortInstancedMesh(InstancedMeshComponent& instmesh, MeshCompo
     const auto order = detail::instanceDepthOrder(instmesh.renderInstances, transform.modelMatrix, camDir);
     std::vector<InstanceRenderData> sortedInstances(order.size());
     std::vector<InstanceBounds> sortedBounds(std::min(order.size(), instmesh.renderBounds.size()));
+    // a VAT batch's states move with their instances
+    std::vector<InstanceVatRenderData> sortedVat(std::min(order.size(), instmesh.renderVat.size()));
     for (unsigned int i = 0; i < order.size(); i++){
         sortedInstances[i] = instmesh.renderInstances[order[i]];
         if (order[i] < sortedBounds.size() && i < sortedBounds.size())
             sortedBounds[i] = instmesh.renderBounds[order[i]];
+        if (order[i] < sortedVat.size() && i < sortedVat.size())
+            sortedVat[i] = instmesh.renderVat[order[i]];
     }
     instmesh.renderInstances.swap(sortedInstances);
     instmesh.renderBounds.swap(sortedBounds);
+    instmesh.renderVat.swap(sortedVat);
     instanceViewsDirty = true;
 
     if (mesh.loaded)
@@ -11908,6 +12283,121 @@ LatticeRenderState& RenderSystem::getLatticeState(){
     return latticeState;
 }
 
+const AABB& RenderSystem::getMeshLocalBounds(const MeshComponent& mesh){
+    return mesh.animatedBounds.isNull() ? mesh.verticesAABB : mesh.animatedBounds;
+}
+
+// Every Vertex Animator's mesh, once a frame before the meshes load: the variant it draws with
+// (Vertices or Bones while the animator is enabled and gpuActive with its asset's payload on
+// the GPU and the mesh carries the attributes the variant reads; none otherwise, the mesh
+// drawing at rest), u_vs_vat from the asset's layout and clips and the animator's clock and
+// tracks, and the bounds when animatedBounds changed. A variant change reloads the mesh once
+// the new shaders are built; until then the loaded variant draws, at rest when it went.
+void RenderSystem::updateVertexAnimations(){
+    std::vector<Entity> previous;
+    previous.swap(vatMeshes);
+    if (scene->isComponentRegistered<VertexAnimatorComponent>()){
+        auto animators = scene->getComponentArray<VertexAnimatorComponent>();
+        for (size_t i = 0; i < animators->size(); i++){
+            const VertexAnimatorComponent& animator = animators->getComponentFromIndex(i);
+            const Entity entity = animators->getEntity(i);
+            MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+            if (!mesh)
+                continue;
+
+            VatVariant variant = VatVariant::NONE;
+            TextureRender* texture = nullptr;
+            const bool terrain = scene->findComponent<TerrainComponent>(entity) != nullptr;
+            if (animator.enabled && animator.gpuActive && animator.asset && !terrain){
+                const vat::VatData& data = animator.asset->getData();
+                const VatVariant wanted = (animator.gpuMode == vat::VatMode::Bones) ? VatVariant::BONES : VatVariant::VERTICES;
+                const int maxSize = SystemRender::getFeatures().maxTextureSize2D;
+                if (maxSize > 0 && (data.layout.height > maxSize || data.layout.width > maxSize)){
+                    // the payload cannot upload: the mesh draws at rest, said once per asset
+                    static std::set<const void*> reported;
+                    if (reported.insert(animator.asset.get()).second){
+                        Log::error("Vertex Animation '%s' needs a %ix%i texture, over this device's limit of %i: drawing at rest",
+                                   animator.animation.c_str(), data.layout.width, data.layout.height, maxSize);
+                    }
+                }else if (meshHasVatAttributes(*mesh, wanted)){
+                    Texture* payload = animator.asset->getTexture();
+                    TextureRender* render = payload ? payload->getRender() : nullptr;
+                    if (render && render->isCreated()){
+                        variant = wanted;
+                        texture = render;
+                    }
+                }
+            }
+
+            VatMeshState& state = mesh->vat;
+            if (variant != VatVariant::NONE){
+                const vat::VatData& data = animator.asset->getData();
+                state.asset = animator.asset;
+                state.texture = texture;
+                state.block.resize(VAT_BLOCK_HEADER + VAT_BLOCK_CLIPS);
+                const int clips = std::min((int)data.clips.size(), VAT_BLOCK_CLIPS);
+                const vat::VatMode mode = (variant == VatVariant::BONES) ? vat::VatMode::Bones : vat::VatMode::Vertices;
+                state.block[0] = Vector4(animator.gpuNow, 1.0f, 1.0f, float(clips));
+                state.block[1] = Vector4(float(data.layout.width),
+                                         float(mode == vat::VatMode::Bones ? data.layout.bones : data.layout.vertices),
+                                         float(data.layout.texelsPerSample(mode)),
+                                         (mode == vat::VatMode::Vertices && data.layout.normals) ? 1.0f : 0.0f);
+                state.block[2] = animator.gpuState0;
+                state.block[3] = animator.gpuState1;
+                for (int c = 0; c < VAT_BLOCK_CLIPS; c++){
+                    if (c < clips){
+                        const vat::VatClip& clip = data.clips[c];
+                        state.block[VAT_BLOCK_HEADER + c] = Vector4(float(clip.start), float(clip.frames), clip.fps, vatClipFlags(clip));
+                    }else{
+                        state.block[VAT_BLOCK_HEADER + c] = Vector4(0.0f, 1.0f, 1.0f, 0.0f);
+                    }
+                }
+            }else if (!state.block.empty()){
+                // the loaded variant draws at rest until the mesh reloads without it
+                state.block[2] = Vector4(-1.0f, 0.0f, 1.0f, -1.0f);
+                state.block[3] = Vector4(0.0f, 1.0f, 0.0f, 0.0f);
+            }
+            if (state.variant != variant){
+                state.variant = variant;
+                if (InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity))
+                    instmesh->needUpdateInstances = true;
+            }
+            if (state.variant != state.variantActive && mesh->loadCalled)
+                mesh->needVariantReload = true;
+            if (mesh->animatedBounds != state.boundsApplied){
+                state.boundsApplied = mesh->animatedBounds;
+                mesh->needUpdateAABB = true;
+            }
+            vatMeshes.push_back(entity);
+        }
+    }
+
+    // meshes whose animator went: drawn at rest, without the variant once reloaded
+    for (Entity entity : previous){
+        if (std::find(vatMeshes.begin(), vatMeshes.end(), entity) != vatMeshes.end())
+            continue;
+        MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        if (!mesh)
+            continue;
+        VatMeshState& state = mesh->vat;
+        if (!state.block.empty()){
+            state.block[2] = Vector4(-1.0f, 0.0f, 1.0f, -1.0f);
+            state.block[3] = Vector4(0.0f, 1.0f, 0.0f, 0.0f);
+        }
+        if (state.variant != VatVariant::NONE){
+            state.variant = VatVariant::NONE;
+            if (InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity))
+                instmesh->needUpdateInstances = true;
+        }
+        if (state.variantActive != VatVariant::NONE && mesh->loadCalled)
+            mesh->needVariantReload = true;
+        if (!state.boundsApplied.isNull() || !mesh->animatedBounds.isNull()){
+            state.boundsApplied = mesh->animatedBounds;
+            mesh->needUpdateAABB = true;
+        }
+    }
+}
+
 bool RenderSystem::usesAlphaMask(const Material& material, bool textureShadow){
     return material.alphaMode == MaterialAlphaMode::MASK ||
         (material.alphaMode == MaterialAlphaMode::AUTO && textureShadow);
@@ -12048,6 +12538,16 @@ const InstanceViewRange& RenderSystem::instanceRange(Entity entity, const Instan
     }
 #endif
     return instmesh.views[instanceView];
+}
+
+BufferRender* RenderSystem::instanceVatBuffer(int instanceView){
+    if (instanceView >= 1 && ps().ownShadowInstances)
+        return ps().instanceViews[instanceView - 1].vatBuffer.getRender();
+#ifdef JASPERENGINE_EDITOR
+    if (rv().secondary && rv().sharesPrimaryCamera)
+        return primaryView.instanceViews[instanceView].vatBuffer.getRender();
+#endif
+    return rv().instanceViews[instanceView].vatBuffer.getRender();
 }
 
 BufferRender* RenderSystem::instanceBuffer(int instanceView){
@@ -12306,7 +12806,9 @@ void RenderSystem::updateSceneColorRedirect(CameraComponent& mainCamera){
             if (!cullsBatch(*mesh, instmesh)){
                 seen = true;
             }else{
-                const AABB& local = mesh->skinnedAABB.isNull() ? mesh->aabb : mesh->skinnedAABB;
+                // (a Vertex Animator's bounds, as the update makes worldAABB)
+                const AABB& meshBounds = (!instmesh && !mesh->animatedBounds.isNull()) ? mesh->animatedBounds : mesh->aabb;
+                const AABB& local = mesh->skinnedAABB.isNull() ? meshBounds : mesh->skinnedAABB;
                 AABB bounds = transform->modelMatrix * local;
                 // grown as the update grows worldAABB (spec 5.5)
                 const float latticePadding = (mesh->lattice.count > 0) ? mesh->lattice.worldPadding : 0.0f;
@@ -12588,6 +13090,9 @@ void RenderSystem::update(double dt){
     // them), then the bindings are packed into the meshes the loop below loads and bounds
     scene->getSystem<LatticeSystem>()->lateUpdate();
     LatticeRender::prepare(scene, latticeState);
+    // the Vertex Animators' variants, payloads, clocks and bounds, before the meshes load and
+    // their bounds are made below
+    updateVertexAnimations();
 
     updateReflectionProbes(dt);
 
@@ -13023,10 +13528,23 @@ void RenderSystem::update(double dt){
             if (mesh.loaded && mesh.needReload){
                 destroyMesh(entity, mesh);
             }
+            // a load that failed for want of a GPU object is tried again once the pools that were
+            // full have room (the failed loads try in turn until one fills them again)
+            if (mesh.loadFailed && SystemRender::hasResourcePoolRoom()){
+                mesh.loadFailed = false;
+                mesh.loadCalled = false;
+            }
             if (!mesh.loadCalled){
                 static const bool timing = std::getenv("JASPER_SHADER_TIMING") != nullptr;
                 const auto l0 = std::chrono::steady_clock::now();
-                loadMesh(entity, mesh, pipelines, instmesh, terrain);
+                const uint64_t poolFullBefore = SystemRender::getResourcePoolExhaustions();
+                if (!loadMesh(entity, mesh, pipelines, instmesh, terrain) &&
+                        SystemRender::getResourcePoolExhaustions() != poolFullBefore){
+                    // failed: not drawn, not loading, not tried every frame (SokolSystem logged
+                    // the pool that is full)
+                    mesh.loadFailed = true;
+                    mesh.loadCalled = true;
+                }
                 const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - l0).count();
                 if (timing && ms > 5.0)
                     Log::print("[shader-timing] loadMesh %s: %.1f ms", scene->getEntityName(entity).c_str(), ms);
@@ -13056,7 +13574,10 @@ void RenderSystem::update(double dt){
                         }
                     }
                 }
-                mesh.worldAABB = mesh.skinnedAABB.isNull() ? (transform.modelMatrix * mesh.aabb)
+                // a Vertex Animator's bounds over its clips in place of the vertices' (an
+                // instanced mesh's aabb already holds its instances' animated bounds)
+                const AABB& meshBounds = (!instmesh && !mesh.animatedBounds.isNull()) ? mesh.animatedBounds : mesh.aabb;
+                mesh.worldAABB = mesh.skinnedAABB.isNull() ? (transform.modelMatrix * meshBounds)
                                                            : (transform.modelMatrix * mesh.skinnedAABB);
                 // as far as its lattices can move a vertex (spec 5.5), so culling, light
                 // assignment and framing keep the deformed mesh
@@ -14725,6 +15246,9 @@ void RenderSystem::destroyRenderView(RenderView& view){
         instanceView.buffer.getRender()->destroyBuffer();
         instanceView.data.clear();
         instanceView.capacity = 0;
+        instanceView.vatBuffer.getRender()->destroyBuffer();
+        instanceView.vatData.clear();
+        instanceView.vatCapacity = 0;
         instanceView.needUpload = false;
     }
     view.instanceRanges.clear();
@@ -14993,10 +15517,13 @@ void RenderSystem::selectPassTerrain(PassObjects& objects, CameraComponent& came
 void RenderSystem::buildInstanceList(const InstancedMeshComponent& instmesh, const MeshComponent& mesh, const Transform& transform, const CameraComponent& camera, const Vector3& fadeEyeLocal, ViewInstanceSource& source){
     source.instances.clear();
     source.bounds.clear();
+    source.vat.clear();
+    const bool vat = !instmesh.renderVat.empty();
 
-    const bool hasBounds = !mesh.verticesAABB.isNull() && !mesh.verticesAABB.isInfinite();
-    const Vector3 localCenter = hasBounds ? mesh.verticesAABB.getCenter() : Vector3::ZERO;
-    const float localRadius = hasBounds ? mesh.verticesAABB.getHalfSize().length() : 0.0f;
+    const AABB& vertexBounds = getMeshLocalBounds(mesh);
+    const bool hasBounds = !vertexBounds.isNull() && !vertexBounds.isInfinite();
+    const Vector3 localCenter = hasBounds ? vertexBounds.getCenter() : Vector3::ZERO;
+    const float localRadius = hasBounds ? vertexBounds.getHalfSize().length() : 0.0f;
 
     const float cullEnd = instanceFadeCullEnd(instmesh, mesh, *scene);
     const float cullRadius = cullEnd + std::max(0.0001f, cullEnd * 0.00001f);
@@ -15033,6 +15560,8 @@ void RenderSystem::buildInstanceList(const InstancedMeshComponent& instmesh, con
         renderData.color = instance.color;
         renderData.textureRect = instance.textureRect;
         source.instances.push_back(renderData);
+        if (vat)
+            source.vat.push_back({instance.vat0, instance.vat1});
 
         InstanceBounds bounds;
         bounds.scale = std::max(std::abs(instance.scale.x), std::max(std::abs(instance.scale.y), std::abs(instance.scale.z)));
@@ -15040,7 +15569,7 @@ void RenderSystem::buildInstanceList(const InstancedMeshComponent& instmesh, con
         bounds.radius = localRadius * bounds.scale;
         source.bounds.push_back(bounds);
 
-        localAABB.merge(instanceMatrix * mesh.verticesAABB);
+        localAABB.merge(instanceMatrix * vertexBounds);
     }
 
     if (localAABB.isNull()){
@@ -15097,6 +15626,7 @@ void RenderSystem::buildViewInstances(RenderView& view, CameraComponent& camera,
 
     for (InstanceView& instanceView : view.instanceViews){
         instanceView.data.clear();
+        instanceView.vatData.clear();
     }
 
     const Vector3& eye = cameraTransform.worldPosition;
@@ -15120,18 +15650,22 @@ void RenderSystem::buildViewInstances(RenderView& view, CameraComponent& camera,
         source.fadeEyeLocal = inverseModel.isValid() ? (inverseModel * eye) : eye;
 
         const InstanceRenderData* instances;
+        const InstanceVatRenderData* vat;
         const InstanceBounds* bounds;
         unsigned int count;
         source.own = instmesh.instancedBillboard || instanceFadeCullEnd(instmesh, *mesh, *scene) >= 0.0f;
         if (source.own){
             buildInstanceList(instmesh, *mesh, *transform, camera, source.fadeEyeLocal, source);
             instances = source.instances.data();
+            vat = source.vat.empty() ? nullptr : source.vat.data();
             bounds = source.bounds.data();
             count = (unsigned int)source.instances.size();
         }else{
             source.instances.clear();
             source.bounds.clear();
+            source.vat.clear();
             instances = instmesh.renderInstances.data();
+            vat = instanceVatData(instmesh);
             bounds = instmesh.renderBounds.data();
             count = (instmesh.renderBounds.size() < instmesh.numVisible) ? 0 : instmesh.numVisible;
         }
@@ -15145,7 +15679,7 @@ void RenderSystem::buildViewInstances(RenderView& view, CameraComponent& camera,
             order = InstanceOrder::BACK_TO_FRONT;
             direction = towardCamera;
         }
-        buildInstanceView(view.instanceViews[0], ranges[0], instances, bounds, count, instmesh, *mesh, *transform,
+        buildInstanceView(view.instanceViews[0], ranges[0], instances, vat, bounds, count, instmesh, *mesh, *transform,
             camera.farClip, camera.frustumPlanes, view.lodView, eye, eye, direction, order);
 
         for (const ShadowSlot& shadow : shadowSlots){
@@ -15154,7 +15688,7 @@ void RenderSystem::buildViewInstances(RenderView& view, CameraComponent& camera,
             const LightCamera& shadowCamera = lightCamera(shadow.lightIndex, *shadow.light, shadow.cameraIndex);
             LodView shadowLod = shadowLodView(*shadow.light, shadow.lightIndex, shadow.cameraIndex, shadow.slot);
             Vector3 lightDirection = (shadow.light->type == LightType::DIRECTIONAL) ? shadow.light->worldDirection : Vector3::ZERO;
-            buildInstanceView(view.instanceViews[1 + shadow.slot], ranges[1 + shadow.slot], instances, bounds, count, instmesh, *mesh, *transform,
+            buildInstanceView(view.instanceViews[1 + shadow.slot], ranges[1 + shadow.slot], instances, vat, bounds, count, instmesh, *mesh, *transform,
                 shadowCamera.nearFar.y, shadowCamera.frustumPlanes, shadowLod, eye, shadowLod.origin, lightDirection, InstanceOrder::NEAREST);
         }
     }

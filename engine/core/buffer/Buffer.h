@@ -4,8 +4,10 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include <cstdint>
 #include <string>
 #include <map>
+#include <memory>
 
 #include "math/Vector2.h"
 #include "math/Vector3.h"
@@ -33,6 +35,11 @@ namespace jasperengine {
         bool instanceBuffer;
 
         BufferRender render;
+
+        // the immutable source its bytes are (setShareSource), dropped by any write
+        std::weak_ptr<const void> shareOwner;
+        uint64_t shareId;
+        bool shareSource;
 
     public:
         Buffer();
@@ -117,6 +124,19 @@ namespace jasperengine {
 
         bool isInstanceBuffer() const;
         void setInstanceBuffer(bool instanceBuffer);
+
+        // Its bytes are bytes `id` of `owner`, an immutable source others read too (the parse of
+        // a model file in ModelPool, a MeshLodPool level set): every immutable vertex or index
+        // buffer with the same source, type and size draws from one GPU buffer (MeshBufferPool).
+        // Set by the loader once the bytes are in place; a write of the bytes (setValues, add*,
+        // set*, importData, increase, clear, clearAll, ExternalBuffer::setData) drops it, so an
+        // edited buffer gets a GPU buffer of its own. It does not keep the owner alive.
+        void setShareSource(const std::shared_ptr<const void>& owner, uint64_t id);
+        void clearShareSource();
+        // a source is set and its owner is alive
+        bool hasShareSource() const;
+        const std::weak_ptr<const void>& getShareOwner() const;
+        uint64_t getShareId() const;
     };
 
 }

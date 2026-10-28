@@ -16,6 +16,7 @@
 
 #include "json.hpp"
 #include "animation/AnimationClipIO.h"
+#include "animation/VertexAnimation.h"
 #include "yaml-cpp/yaml.h"
 
 #include <algorithm>
@@ -235,9 +236,19 @@ namespace {
         return out;
     }
 
-    // .anim clips are JSON: their GUID is the top-level "guid" member (AnimationClipIO)
+    // .anim clips and .vat Vertex Animations are JSON: their GUID is the top-level "guid" member
+    // (AnimationClipIO reads and replaces it in any JSON object that has a "version" member)
     bool isClipFile(const fs::path& path) {
-        return editor::Util::isAnimationClipFile(path.string());
+        return editor::Util::isAnimationClipFile(path.string()) || editor::Util::isVertexAnimationFile(path.string());
+    }
+
+    // the JSON asset parses as its own type; a broken or foreign file (a Unity YAML .anim, broken
+    // JSON) is left alone: its error must keep its line
+    bool parsesAsJsonAsset(const fs::path& path, const std::string& text) {
+        if (editor::Util::isVertexAnimationFile(path.string())) {
+            return vat::parseVat(text).ok();
+        }
+        return anim::parseClip(text).ok();
     }
 
     // A clip's in-file identity: "guid" and, for an asset that took over others (R8), the
@@ -256,19 +267,12 @@ namespace {
         return !guid.isNull();
     }
 
-    // The clip text with that identity: only the "guid" member replaced or inserted after
-    // "version" (the rest byte-identical) while there are no former GUIDs to write or drop;
-    // else the clip written again canonically. False for a text that is not a clip.
-    bool withClipIdentity(std::string& text, const Guid& guid, const std::vector<Guid>& formerGuids) {
-        anim::ClipParseResult parsed = anim::parseClip(text);
-        if (!parsed.ok()) {
-            return false;
-        }
-        ClipData& data = *parsed.data;
-        auto& unknown = data.unknownKeys;
+    // `unknown` (a JSON asset's unknown top-level keys) holding `formerGuids` as the list; false
+    // when it already did (the text needs no rewrite for them)
+    bool setFormerGuids(std::vector<std::pair<std::string, std::string>>& unknown, const std::vector<Guid>& formerGuids) {
         const auto had = std::find_if(unknown.begin(), unknown.end(), [](const auto& key) { return key.first == "formerGuids"; });
         if (formerGuids.empty() && had == unknown.end()) {
-            return anim::replaceClipGuid(text, guid.str());
+            return false;
         }
         if (had != unknown.end()) {
             unknown.erase(had);
@@ -280,6 +284,36 @@ namespace {
             Json list = Json::array();
             for (const Guid& former : sorted) list.push_back(former.str());
             unknown.emplace_back("formerGuids", list.dump());
+        }
+        return true;
+    }
+
+    // The JSON asset's text (.anim clip, .vat Vertex Animation) with that identity: only the
+    // "guid" member replaced or inserted after "version" (the rest byte-identical) while there
+    // are no former GUIDs to write or drop; else the asset written again canonically. False for
+    // a text that is not one (a Unity YAML .anim, broken JSON: its error must keep its line).
+    bool withJsonAssetIdentity(const fs::path& path, std::string& text, const Guid& guid, const std::vector<Guid>& formerGuids) {
+        if (editor::Util::isVertexAnimationFile(path.string())) {
+            vat::VatParseResult parsed = vat::parseVat(text);
+            if (!parsed.ok()) {
+                return false;
+            }
+            vat::VatData& data = *parsed.data;
+            if (!setFormerGuids(data.unknownKeys, formerGuids)) {
+                return anim::replaceClipGuid(text, guid.str());
+            }
+            data.guid = guid.str();
+            text = vat::writeVat(data);
+            return true;
+        }
+        anim::ClipParseResult parsed = anim::parseClip(text);
+        if (!parsed.ok()) {
+            return false;
+        }
+        ClipData& data = *parsed.data;
+        auto& unknown = data.unknownKeys;
+        if (!setFormerGuids(unknown, formerGuids)) {
+            return anim::replaceClipGuid(text, guid.str());
         }
         data.guid = guid.str();
         text = anim::writeClip(data);
@@ -424,7 +458,7 @@ bool editor::AssetDatabase::writeInFileIdentity(const fs::path& fullPath, const 
     if (isClipFile(fullPath)) {
         // a file that is not a clip (a Unity YAML .anim, broken JSON: its error must keep its
         // line) is left alone
-        if (!withClipIdentity(text, guid, formerGuids)) {
+        if (!withJsonAssetIdentity(fullPath, text, guid, formerGuids)) {
             return false;
         }
         std::string error;
@@ -901,7 +935,7 @@ editor::AssetDatabase::Entry editor::AssetDatabase::identify(const std::string& 
         // a clip that does not parse (a Unity YAML .anim, broken JSON) is reported by the clip
         // checks, not here
         std::string text;
-        if (!(isClipFile(relative) && assetio::readFile(projectPath / relative, text) && !anim::parseClip(text).ok())) {
+        if (!(isClipFile(relative) && assetio::readFile(projectPath / relative, text) && !parsesAsJsonAsset(relative, text))) {
             Out::warning("The GUID of %s is kept in memory only", relative.c_str());
         }
     }

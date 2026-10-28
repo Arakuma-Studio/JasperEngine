@@ -211,6 +211,10 @@ TEST_F(RmlRendererP1GoldenTest, FilterDropShadow){
 
     // the hard magenta shadow of the image, 8 px down and right, and the image over it
     EXPECT_TRUE(probe.is(406, 70, 255, 0, 255));
+    // its first row (the image's first row, read at the region's first texel centre: it was
+    // dropped where rounding put the read just before it)
+    for (int x = 404; x < 412; x++)
+        EXPECT_TRUE(probe.is(x, 48, 255, 0, 255)) << "the shadow's first row";
     EXPECT_TRUE(probe.is(344, 44, 255, 0, 0));
     EXPECT_TRUE(probe.is(345, 105, 0x80, 0x80, 0x80));
     // the blurred one fades

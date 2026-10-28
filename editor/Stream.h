@@ -512,6 +512,14 @@ namespace jasperengine::editor {
         static YAML::Node encodeAnimationPlayerComponent(const AnimationPlayerComponent& player);
         static AnimationPlayerComponent decodeAnimationPlayerComponent(const YAML::Node& node, const AnimationPlayerComponent* oldPlayer = nullptr);
 
+        // Vertex Animator (vertex animation spec 3.3, 3.9; scene key "vertexanimator"): the authored
+        // fields only. `animation` is the .vat path hint (asset-relative), `guid` its GUID (not
+        // written when empty), attachments[] are {socket, entity}. Decoding never loads; over an
+        // old component everything it played is reset (the system starts it again) except the
+        // editor's Preview toggle, and the callbacks are cleared.
+        static YAML::Node encodeVertexAnimatorComponent(const VertexAnimatorComponent& animator);
+        static VertexAnimatorComponent decodeVertexAnimatorComponent(const YAML::Node& node, const VertexAnimatorComponent* oldAnimator = nullptr);
+
         static YAML::Node encodeParticleSystemComponent(const ParticleSystemComponent& particles);
         static ParticleSystemComponent decodeParticleSystemComponent(const YAML::Node& node, const ParticleSystemComponent* oldParticles = nullptr);
         // a scene's particle system as written before S20 (the scene migration reads it)

@@ -25,7 +25,8 @@ namespace jasperengine::editor{
         FILE_DIALOG_HTML = 1 << 8,
         FILE_DIALOG_COLOR_LUT = 1 << 9,
         FILE_DIALOG_POSE_ANIMATION = 1 << 10,
-        FILE_DIALOG_ANIMATION_CLIP = 1 << 11
+        FILE_DIALOG_ANIMATION_CLIP = 1 << 11,
+        FILE_DIALOG_VERTEX_ANIMATION = 1 << 12
     };
 
     class FileDialogs{
@@ -68,6 +69,9 @@ namespace jasperengine::editor{
             }
             if (filterFlags & FILE_DIALOG_ANIMATION_CLIP) {
                 filterItems.push_back({ "Animation clips", "anim" });
+            }
+            if (filterFlags & FILE_DIALOG_VERTEX_ANIMATION) {
+                filterItems.push_back({ "Vertex Animations", "vat" });
             }
             return filterItems;
         }

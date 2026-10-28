@@ -95,6 +95,7 @@ EntityRegistry::EntityRegistry() {
     registerComponent<BuoyancyComponent>(ComponentOrder::Insertion, "BuoyancyComponent");
     registerComponent<PoseAnimatorComponent>(ComponentOrder::Insertion, "PoseAnimatorComponent");
     registerComponent<AnimationPlayerComponent>(ComponentOrder::Insertion, "AnimationPlayerComponent");
+    registerComponent<VertexAnimatorComponent>(ComponentOrder::Insertion, "VertexAnimatorComponent");
 
     // complete: markChangedComponent may look into it
     std::lock_guard<std::mutex> lock(liveRegistriesMutex());
@@ -557,6 +558,10 @@ size_t EntityRegistry::getEntityCount() const {
 
 size_t EntityRegistry::getSystemEntityCount() const {
     return entityManager.countSystem();
+
+void EntityRegistry::compactComponents() {
+    componentManager.compactAll();
+}
 }
 
 void EntityRegistry::setEntityName(Entity entity, const std::string& name) {
@@ -810,6 +815,7 @@ void EntityRegistry::clear() {
     if (editorData) {
         editorData->registryCleared();
     }
+    compactComponents();
 }
 
 void EntityRegistry::addEntityChild(Entity parent, Entity child, bool changeTransform){

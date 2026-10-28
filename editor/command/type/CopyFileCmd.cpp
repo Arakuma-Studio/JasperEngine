@@ -8,8 +8,36 @@
 #include "util/Util.h"
 #include "asset/AssetOps.h"
 #include "Out.h"
+#include "vat/VatAssetFiles.h"
+#include "vat/VatDocument.h"
+
+#include <algorithm>
+#include <fstream>
+#include <iterator>
 
 using namespace jasperengine;
+
+// A Vertex Animation moves and copies as a pair (vertex animation spec 2.1): the .vat or the
+// .vat.glb brings the other file of its directory along (same name: the copied .vat still names
+// its mesh, and gets a GUID of its own)
+void editor::CopyFileCmd::addVatPairs(){
+    const size_t count = files.size();
+    for (size_t i = 0; i < count; i++) {
+        const FileCopyData fdata = files[i];
+        const fs::path pair = vat::existingPairOf(fdata.sourceDirectory / fdata.filename);
+        if (pair.empty()) {
+            continue;
+        }
+        const bool listed = std::any_of(files.begin(), files.end(), [&](const FileCopyData& other) {
+            return (other.sourceDirectory / other.filename).lexically_normal() == pair.lexically_normal();
+        });
+        if (!listed) {
+            FileCopyData added = fdata;
+            added.filename = pair.filename();
+            files.push_back(added);
+        }
+    }
+}
 
 editor::CopyFileCmd::CopyFileCmd(Project* project, std::vector<std::string> sourceFiles, std::string currentDirectory, std::string targetDirectory, bool copy){
     this->project = project;
@@ -22,6 +50,7 @@ editor::CopyFileCmd::CopyFileCmd(Project* project, std::vector<std::string> sour
         this->files.push_back(fdata);
     }
     this->copy = copy;
+    addVatPairs();
 }
 
 editor::CopyFileCmd::CopyFileCmd(Project* project, std::vector<std::string> sourcePaths, std::string targetDirectory, bool copy){
@@ -35,6 +64,7 @@ editor::CopyFileCmd::CopyFileCmd(Project* project, std::vector<std::string> sour
         this->files.push_back(fdata);
     }
     this->copy = copy;
+    addVatPairs();
 }
 
 namespace {
@@ -56,9 +86,27 @@ namespace {
         return true;
     }
 
-    // Unity's duplicate naming: "hero.png" -> "hero 1.png", "hero 2.png", ...
+    // Unity's duplicate naming: "hero.png" -> "hero 1.png", "hero 2.png", ... A Vertex
+    // Animation's file is named with its pair: "walk.vat" and "walk.vat.glb" -> "walk 1.vat" and
+    // "walk 1.vat.glb", both free, so the copies are a pair again (vertex animation spec 2.1)
     fs::path freeCopyName(const fs::path& target) {
         std::error_code ec;
+        const fs::path pair = vat::pairPathOf(target);
+        if (!pair.empty()) {
+            const bool isMesh = vat::isVatMeshFile(FileUtils::pathToUtf8(target));
+            const fs::path vatFile = isMesh ? pair : target;
+            if (!fs::exists(vatFile, ec) && !fs::exists(vat::pairPathOf(vatFile), ec)) {
+                return target;
+            }
+            const std::string stem = vatFile.stem().string();
+            for (int counter = 1;; counter++) {
+                const fs::path candidate = vatFile.parent_path() / (stem + " " + std::to_string(counter) + vatFile.extension().string());
+                const fs::path candidateMesh = vat::pairPathOf(candidate);
+                if (!fs::exists(candidate, ec) && !fs::exists(candidateMesh, ec)) {
+                    return isMesh ? candidateMesh : candidate;
+                }
+            }
+        }
         if (!fs::exists(target, ec)) {
             return target;
         }
@@ -80,6 +128,8 @@ bool editor::CopyFileCmd::execute(){
     if (!project) {
         return false;
     }
+    // what went (moved or copied): the Vertex Animation meshes among it name their textures again
+    std::vector<std::pair<fs::path, fs::path>> went;
     for (size_t i = 0; i < files.size(); i++) {
         FileCopyData& fdata = files[i];
         const fs::path source = fdata.sourceDirectory / fdata.filename;
@@ -107,11 +157,20 @@ bool editor::CopyFileCmd::execute(){
                 return false;
             }
             project->onAssetFilesChanged(project->getAssetDatabase().importAssets(target));
+            went.emplace_back(source, target);
             continue;
         }
         if (copy) {
             if (fdata.destination.empty()) {
                 fdata.destination = freeCopyName(fdata.targetDirectory / fdata.filename);
+                // the other file of a Vertex Animation pair copied in this step takes the same name
+                const fs::path pair = vat::pairPathOf(source);
+                for (FileCopyData& other : files) {
+                    if (!pair.empty() && other.destination.empty() &&
+                        (other.sourceDirectory / other.filename).lexically_normal() == pair.lexically_normal()) {
+                        other.destination = vat::pairPathOf(fdata.destination);
+                    }
+                }
             }
             result = AssetOps::copy(*project, source, fdata.destination, &copyGuids);
         } else {
@@ -131,7 +190,34 @@ bool editor::CopyFileCmd::execute(){
             }
             return false;
         }
+        went.emplace_back(source, fdata.destination);
     }
+
+    // a .vat.glb in another directory names the same texture files (or the copies made with it);
+    // a move's undo writes the old URIs back
+    vatUriMoves.clear();
+    if (!copy) {
+        vatUriMoves = went;
+    }
+    vatUriEdits = vat::rebaseMovedVatMeshes(went);
+    // a .vat copied under a free name ("walk 1.vat") names the mesh copied with it
+    if (copy) {
+        for (const FileCopyData& fdata : files) {
+            const std::string destination = FileUtils::pathToUtf8(fdata.destination);
+            if (!Util::isVertexAnimationFile(destination) || fdata.destination.filename() == fdata.filename) {
+                continue;
+            }
+            std::ifstream file(fdata.destination, std::ios::binary);
+            std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+            file.close();
+            if (vat::setMeshField(text, vat::pairPathOf(fdata.destination).filename().generic_string()) &&
+                FileUtils::writeFileReplacing(fdata.destination, text)) {
+                project->importPrefabFiles(fdata.destination);
+                VatDocument::filesChanged({fdata.destination}, project);
+            }
+        }
+    }
+
     // clips previewing a moved model (or taken from it) name it again, in this step (every file
     // first: a clip moved in the same step is at its final place when its hint is rewritten)
     if (!copy) {
@@ -177,4 +263,11 @@ void editor::CopyFileCmd::undo(){
             Out::error("Couldn't undo the %s of \"%s\": %s", copy ? "copy" : "move", fdata.filename.string().c_str(), result.error.c_str());
         }
     }
+
+    // the moved meshes back where they were name their textures as before (copies are gone)
+    if (!copy) {
+        vat::restoreVatMeshUris(vatUriEdits, vatUriMoves);
+    }
+    vatUriEdits.clear();
+    vatUriMoves.clear();
 }

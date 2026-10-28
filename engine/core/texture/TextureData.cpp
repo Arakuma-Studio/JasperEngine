@@ -724,14 +724,16 @@ bool TextureData::splitCubeMapCross(TextureData& texture, std::array<TextureData
         const int srcChannels = texture.getChannels();
         const ColorFormat srcFormat = texture.getColorFormat();
 
-        const int rowBytes = tileW * srcChannels;
-        const int bufsize = tileW * tileH * srcChannels;
+        // whole texels: RED16 has two bytes per channel
+        const int srcPixelSize = srcChannels * TextureData::getBytesPerChannel(srcFormat);
+        const int rowBytes = tileW * srcPixelSize;
+        const int bufsize = tileW * tileH * srcPixelSize;
         unsigned char* faceData = (unsigned char*)malloc(bufsize * sizeof(unsigned char));
         if (!faceData)
             throw std::runtime_error("Out of memory while extracting cubemap face");
 
         for (int y = 0; y < tileH; y++){
-            const size_t srcOffset = ((size_t)(yOffset + y) * (size_t)srcW + (size_t)xOffset) * (size_t)srcChannels;
+            const size_t srcOffset = ((size_t)(yOffset + y) * (size_t)srcW + (size_t)xOffset) * (size_t)srcPixelSize;
             const size_t dstOffset = (size_t)y * (size_t)rowBytes;
             memcpy(faceData + dstOffset, src + srcOffset, (size_t)rowBytes);
         }
@@ -813,9 +815,66 @@ void TextureData::releaseImageData(){
 }
 
 int TextureData::getBytesPerChannel(ColorFormat format){
-    if (format == ColorFormat::RGBA32F)
-        return 4;
-    return format == ColorFormat::RED16 ? 2 : 1;
+    switch (format){
+        case ColorFormat::RED16:
+        case ColorFormat::RGBA16F:
+        case ColorFormat::RG16F:
+        case ColorFormat::R16F:
+            return 2;
+        case ColorFormat::RGBA32F:
+        case ColorFormat::R32F:
+            return 4;
+        default:
+            return 1;
+    }
+}
+
+bool TextureData::isFloatFormat(ColorFormat format){
+    return getFloatFormatChannels(format) > 0;
+}
+
+int TextureData::getFloatFormatChannels(ColorFormat format){
+    switch (format){
+        case ColorFormat::RGBA16F:
+        case ColorFormat::RGBA32F:
+            return 4;
+        case ColorFormat::RG16F:
+            return 2;
+        case ColorFormat::R32F:
+        case ColorFormat::R16F:
+            return 1;
+        default:
+            return 0;
+    }
+}
+
+const char* TextureData::getColorFormatName(ColorFormat format){
+    switch (format){
+        case ColorFormat::RED:     return "RED";
+        case ColorFormat::RGBA:    return "RGBA";
+        case ColorFormat::RED16:   return "RED16";
+        case ColorFormat::SRGB8A8: return "SRGB8A8";
+        case ColorFormat::RGBA16F: return "RGBA16F";
+        case ColorFormat::RGBA32F: return "RGBA32F";
+        case ColorFormat::R32F:    return "R32F";
+        case ColorFormat::RG16F:   return "RG16F";
+        case ColorFormat::R16F:    return "R16F";
+    }
+    return "unknown";
+}
+
+int TextureData::getWalkablePixelSize(const char* operation) const{
+    if (!data){
+        Log::error("Texture data %s: no data", operation);
+        return 0;
+    }
+    const int floatChannels = getFloatFormatChannels(color_format);
+    if (floatChannels > 0 && channels != floatChannels){
+        Log::error("Texture data %s: colour format %s has %i channels, the data says %i",
+                   operation, getColorFormatName(color_format), floatChannels, channels);
+        return 0;
+    }
+    return channels * getBytesPerChannel(color_format);
 }
 
 int TextureData::getNearestPowerOfTwo(int size){
@@ -829,14 +888,28 @@ int TextureData::getNearestPowerOfTwo(int size){
 bool TextureData::hasAlpha(){
     if (!data && !levels.empty())
         return (flags & TEXTURE_FLAG_ALPHA) != 0;
-    if (color_format == ColorFormat::RGBA32F && data){
-        const float* pixels = (const float*)data;
-        for (size_t i = 0; i < (size_t)width * (size_t)height; i++)
-            if (pixels[i * 4 + 3] < 1.0f)
+    if (!data)
+        return false;
+    // float alpha: below 1 (an HDR alpha past 1 is opaque)
+    if (channels == 4 && color_format == ColorFormat::RGBA16F){
+        // half 1.0 is 0x3C00; the positive halves order as their bits, negatives have the sign bit
+        const uint16_t* texels = (const uint16_t*)data;
+        for (size_t i = 0; i < (size_t)width * (size_t)height; i++){
+            const uint16_t alpha = texels[i * 4 + 3];
+            if ((alpha & 0x8000) || alpha < 0x3C00)
                 return true;
+        }
         return false;
     }
-    if (channels == 4){
+    if (channels == 4 && color_format == ColorFormat::RGBA32F){
+        const float* texels = (const float*)data;
+        for (size_t i = 0; i < (size_t)width * (size_t)height; i++){
+            if (texels[i * 4 + 3] < 1.0f)
+                return true;
+        }
+        return false;
+    }
+    if (channels == 4 && getBytesPerChannel(color_format) == 1){
         for(int y = 0; y < height; y++){
             for(int x = 0; x < width; x++){
                 int pixel = (y * (width * channels)) + (x * channels);
@@ -852,17 +925,27 @@ void TextureData::crop(int xOffset, int yOffset, int newWidth, int newHeight){
     detachLevels();
     if (!data)
         return;
+
+    // whole texels (RED16 and the float formats have several bytes per channel)
+    const int pixelSize = getWalkablePixelSize("crop");
+    if (pixelSize == 0)
+        return;
+    if (xOffset < 0 || yOffset < 0 || newWidth <= 0 || newHeight <= 0 ||
+        xOffset + newWidth > width || yOffset + newHeight > height){
+        Log::error("Texture data crop: %i x %i at (%i, %i) is outside the %i x %i image", newWidth, newHeight, xOffset, yOffset, width, height);
+        return;
+    }
     
-    int rowsize = width * channels;
-    int newRowsize = newWidth * channels;
-    int bufsize = newWidth * newHeight * channels;
+    int rowsize = width * pixelSize;
+    int newRowsize = newWidth * pixelSize;
+    int bufsize = newWidth * newHeight * pixelSize;
     
     unsigned char* newData = (unsigned char*) malloc(bufsize*sizeof(unsigned char));
     
     int row_cnt;
     long off1 = 0;
     long off2 = 0;
-    long off3 = xOffset*channels;
+    long off3 = xOffset*pixelSize;
     
     for (row_cnt=yOffset;row_cnt<yOffset+(newHeight);row_cnt++) {
         off1=row_cnt*rowsize;
@@ -897,8 +980,11 @@ void TextureData::resize(int newWidth, int newHeight){
 
     if ((newWidth != width) || (newHeight != height)){
 
-        // RED16 carries two bytes per channel, so a pixel is not always one byte per channel
-        int pixelSize = channels * getBytesPerChannel(color_format);
+        // RED16 and the float formats carry several bytes per channel, so a pixel is not always
+        // one byte per channel
+        int pixelSize = getWalkablePixelSize("resize");
+        if (pixelSize == 0 || newWidth <= 0 || newHeight <= 0)
+            return;
         int bufsize = newWidth * newHeight * pixelSize;
         unsigned char* newData = (unsigned char*) malloc(bufsize*sizeof(unsigned char));
 
@@ -940,7 +1026,16 @@ void TextureData::fitSize(int xOffset, int yOffset, int newWidth, int newHeight)
     
     if ((newWidth != width) || (newHeight != height)){
 
-        int bufsize = newWidth * newHeight * channels;
+        // whole texels (RED16 and the float formats have several bytes per channel)
+        const int pixelSize = getWalkablePixelSize("fitSize");
+        if (pixelSize == 0)
+            return;
+        if (xOffset < 0 || yOffset < 0 || xOffset + width > newWidth || yOffset + height > newHeight){
+            Log::error("Texture data fitSize: the %i x %i image at (%i, %i) doesn't fit %i x %i", width, height, xOffset, yOffset, newWidth, newHeight);
+            return;
+        }
+
+        int bufsize = newWidth * newHeight * pixelSize;
         unsigned char* newData = (unsigned char*) malloc(bufsize*sizeof(unsigned char));
         
         for( unsigned int i = 0; i < bufsize; ++i )
@@ -950,7 +1045,7 @@ void TextureData::fitSize(int xOffset, int yOffset, int newWidth, int newHeight)
         
         for( unsigned int i = 0; i < height; ++i )
         {
-            memcpy( (unsigned char*)newData + channels * ( newWidth * ( yOffset + i ) + xOffset ), (unsigned char*)data + width * i * channels, width * channels );
+            memcpy( (unsigned char*)newData + pixelSize * ( newWidth * ( yOffset + i ) + xOffset ), (unsigned char*)data + width * i * pixelSize, width * pixelSize );
         }
         
         stbi_image_free(data);
@@ -976,8 +1071,13 @@ void TextureData::flipVertical(){
     detachLevels();
     if (!data)
         return;
+
+    // whole texels (RED16 and the float formats have several bytes per channel)
+    const int pixelSize = getWalkablePixelSize("flipVertical");
+    if (pixelSize == 0)
+        return;
     
-    int bufsize = width * channels;
+    int bufsize = width * pixelSize;
     
     unsigned char* tb1 = new unsigned char[bufsize];
     
@@ -999,6 +1099,10 @@ void TextureData::flipVertical(){
 }
 
 unsigned char TextureData::getColorComponent(int x, int y, int color){
+    if (getBytesPerChannel(color_format) != 1){
+        Log::error("Texture data getColorComponent: colour format %s is not 8-bit", getColorFormatName(color_format));
+        return 0;
+    }
     return ((unsigned char*)data)[((x + y*width)*channels)+color];
 }
 

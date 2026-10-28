@@ -184,3 +184,9 @@ unchanged dependency/header versions. JSON results are saved under
 - Project-window offscreen asset work, glyph-atlas width-cache invalidation and
   world-UI triangle picking need interaction/lifecycle measurements before changing
   clipping or caching behavior.
+
+## Scene benchmarks
+
+- `vat_crowd.py` and [vat-crowd.md](vat-crowd.md): a crowd of skinned heroes with Animation
+  Players against the same crowd as one Vertex Animation (Vertices and Bones), measured playing
+  with `jasperengine-editor benchmark --play`.

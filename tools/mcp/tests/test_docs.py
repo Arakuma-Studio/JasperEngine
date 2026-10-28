@@ -23,7 +23,7 @@ TOOLS_MD = harness.REPO / "docs" / "mcp" / "TOOLS.md"
 EDITOR = {"create": True, "name": "MCP Resources"}
 
 DOCS = ["animation", "assets", "cpp-scripting", "data-safety", "html-ui", "lattice", "lua-api", "lua-scripting", "physics",
-        "post-processing", "prefabs", "scene-view", "shaders", "undo", "unity-glossary"]
+        "post-processing", "prefabs", "scene-view", "shaders", "undo", "unity-glossary", "vertex-animation"]
 
 
 async def read_text(ed: Editor, uri: str) -> str:
@@ -156,3 +156,12 @@ async def test_tool_docs_red_control(ed: Editor):
         ed.check(gen_tool_docs.stale_diff(copy, text) == [], "a different version in the header is not stale")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+async def test_tool_reference_has_no_other_section(ed: Editor):
+    """docs/mcp/TOOLS.md (tools/mcp/gen_tool_docs.py) files every tool under its module's section: none
+    falls into "Other" (a tools/*.cpp missing from the generator's MODULES)."""
+    from harness import REPO
+    text = (REPO / "docs" / "mcp" / "TOOLS.md").read_text()
+    ed.check("\n## Other\n" not in text and "[Other](#other)" not in text, "a tool is listed under Other: add its module to gen_tool_docs.py")
+    ed.check("- [Vertex animation](#vertex-animation) (1): `bake_vertex_animation`" in text, "bake_vertex_animation under Vertex animation")

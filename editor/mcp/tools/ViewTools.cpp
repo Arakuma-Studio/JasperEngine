@@ -1402,9 +1402,13 @@ void focusWindowTool(const CallPtr& call) {
     } else if (window == "texture_synthesis") {
         app.getTextureSynthesisWindow()->open();
         imguiName = TextureSynthesisWindow::WINDOW_NAME;
+    } else if (window == "vertex_animation_baker") {
+        app.getVertexAnimationBakerWindow()->open();
+        imguiName = VertexAnimationBakerWindow::WINDOW_NAME;
     } else {
         call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, pose_animation, terrain, mcp, "
-                   "systems, jobs_memory, profiler, frame_debugger, preferences, undo_history, play_mode_changes, texture_synthesis.");
+                   "systems, jobs_memory, profiler, frame_debugger, preferences, undo_history, play_mode_changes, texture_synthesis, "
+                   "vertex_animation_baker.");
         return;
     }
     if (args.contains("pose") && window != "pose_animation") {
@@ -1662,7 +1666,7 @@ void registerViewTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "pose_animation",
                                        "terrain", "mcp", "systems", "jobs_memory", "profiler", "frame_debugger", "preferences",
-                                       "undo_history", "play_mode_changes", "texture_synthesis"})},
+                                       "undo_history", "play_mode_changes", "texture_synthesis", "vertex_animation_baker"})},
             {"scene", sceneRef("window scene: whose tab.")},
             {"console", object({
                 {"hidden_categories", array(string(""), "The Category filter: categories not shown.")},

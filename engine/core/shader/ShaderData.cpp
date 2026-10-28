@@ -135,6 +135,12 @@ int ShaderData::getAttrIndex(AttributeType type){
         attrstr = "i_particleRotation";
     }else if (type == AttributeType::PARTICLECUSTOM){
         attrstr = "i_particleCustom";
+    }else if (type == AttributeType::VAT_INDEX){
+        attrstr = "a_vatIndex";
+    }else if (type == AttributeType::INSTANCEVAT0){
+        attrstr = "i_vat0";
+    }else if (type == AttributeType::INSTANCEVAT1){
+        attrstr = "i_vat1";
     }
 
     if (attrstr.empty()){
@@ -236,6 +242,12 @@ int ShaderData::getUniformBlockIndex(UniformBlockType type){
         ustr = "u_vs_lattice";
     }else if (type == UniformBlockType::GBUFFER_VS_LATTICE){
         ustr = "u_vs_lattice";
+    }else if (type == UniformBlockType::VS_VAT){
+        ustr = "u_vs_vat";
+    }else if (type == UniformBlockType::DEPTH_VS_VAT){
+        ustr = "u_vs_vat";
+    }else if (type == UniformBlockType::GBUFFER_VS_VAT){
+        ustr = "u_vs_vat";
     }else if (type == UniformBlockType::TERRAIN_VS_PARAMS){
         ustr = "u_vs_terrainParams";
     }else if (type == UniformBlockType::DEPTH_TERRAIN_VS_PARAMS){
@@ -367,6 +379,8 @@ std::pair<int, int> ShaderData::getTextureIndex(TextureShaderType type){
         texstr = "u_bonesTexture";
     }else if (type == TextureShaderType::LATTICE){
         texstr = "u_latticeTexture";
+    }else if (type == TextureShaderType::VAT){
+        texstr = "u_vatTexture";
     }else if (type == TextureShaderType::HEIGHTMAP){
         texstr = "u_heightMap";
     }else if (type == TextureShaderType::BLENDMAP){

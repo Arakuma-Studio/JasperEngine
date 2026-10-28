@@ -54,6 +54,10 @@ namespace jasperengine::editor{
     struct InspectorClipStateDeleter{
         void operator()(InspectorClipState* state) const;
     };
+    struct InspectorVatState;
+    struct InspectorVatStateDeleter{
+        void operator()(InspectorVatState* state) const;
+    };
 
     enum class RowPropertyType{
         Label,
@@ -326,6 +330,25 @@ namespace jasperengine::editor{
         void drawModelClipRows(ComponentType cpType, SceneProject* sceneProject, Entity entity, const std::vector<std::string>& shownInRows);
         std::vector<std::string> modelSubClipNames(const std::string& model);
         void drawAnimationClipButtons(SceneProject* sceneProject, Entity entity);
+
+        // ---- vertex animation (InspectorWindowVat.cpp; vertex animation spec 3.6, 5.2, 5.4) ----
+        std::unique_ptr<InspectorVatState, InspectorVatStateDeleter> vatStatePtr;
+        InspectorVatState& vatState();
+        void drawVertexAnimatorComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // the Animation field: a .vat (or its .vat.glb) as the component's path + GUID, one step
+        // the Vertex Animator's Animation of `entities` (one undo step): the path and its GUID
+        void setVertexAnimatorFile(SceneProject* sceneProject, const std::vector<Entity>& entities, const std::string& file);
+        void drawVertexAnimatorFileField(SceneProject* sceneProject, const std::vector<Entity>& entities, const std::string& animation,
+                                         bool mixed, bool stopped);
+        // Preview: the GameObject plays in edit mode (PreviewOwner); one at a time
+        void startVertexAnimatorPreview(SceneProject* sceneProject, Entity entity);
+        void stopVertexAnimatorPreview();
+        void syncVertexAnimatorPreview(SceneProject* shown, const std::vector<Entity>& selection);
+        // a closed scene: its preview is forgotten (the scene is gone, nothing to put back)
+        void clearVertexAnimatorPreviewScene(uint32_t sceneId);
+        // the inspected .vat (Project window click)
+        void drawVatAsset(const std::filesystem::path& asset);
+        void drawCreateCrowdDialog();
         void updateParticlePreviewSnapshot(YAML::Node& components, const ParticleSystemComponent& particles);
 
         // Dirty material helpers

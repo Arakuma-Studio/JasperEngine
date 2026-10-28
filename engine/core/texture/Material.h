@@ -67,8 +67,9 @@ namespace jasperengine{
 
     // Which shader stage evaluates the object's lights. MIXED follows each light's
     // LightComponent::shading. AUTO is the shader's default (built-in Lit: PIXEL); NONE draws
-    // a shader that lists it (manifest @lighting none) unlit. A mode the shader does not
-    // list falls back to its default (RenderSystem::resolveLighting).
+    // a shader that lists it (manifest @lighting none; the built-in Lit lists every mode) unlit,
+    // in its base colour: what a glTF material with KHR_materials_unlit loads as. A mode the
+    // shader does not list falls back to its default (RenderSystem::resolveLighting).
     enum class MaterialLighting {
         AUTO,
         PIXEL,

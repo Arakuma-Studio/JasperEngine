@@ -681,6 +681,16 @@ class Editor:
             return json.loads(path.read_text()).get("items", {})
         return {}
 
+    def ui_probe_state(self) -> dict:
+        """The whole UI probe of the editor's last frame: {"frame", "items", "scroll": {name: [y, max_y]}}
+        ({} before the first frame or without ui_probe)."""
+        if not self.scratch:
+            return {}
+        path = self.scratch.root / "ui-probe.json"
+        with contextlib.suppress(OSError, ValueError):
+            return json.loads(path.read_text())
+        return {}
+
     async def ui_rect(self, name: str, timeout: float = 10.0) -> list[float] | None:
         """A widget's rectangle once the editor draws it whole (None after timeout seconds)."""
         deadline = time.monotonic() + timeout

@@ -75,6 +75,9 @@ namespace jasperengine {
 
         // pipelines made by every object and not destroyed yet (diagnostics)
         static int getLivePipelineCount();
+        // loads that left a vertex input of their shader without a buffer (diagnostics: zero
+        // when every load binds what its shader reads)
+        static int getUnfedVertexInputLoads();
     };
 }
 
