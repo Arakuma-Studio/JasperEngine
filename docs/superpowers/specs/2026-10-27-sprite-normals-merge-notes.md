@@ -12,7 +12,8 @@ Phase 1 are engine changes and ship in every game.
 | Lua / C++ | `Mesh:setNormalTexture([submesh,] path)`, `setNormalTexture(id, TextureData)`, `getNormalTexture([submesh])`, rw `normalTexture` (submesh 0); Light2D `height` documented |
 | Generator (Phase 2) | C++ port of Sprite Fusion's sprite-normals 0.1.0 (bit-exact on every upstream fixture with glibc; within 1 per channel across platforms, whose maths libraries differ; no FMA contraction on any compiler) plus presets (`soft`, `default`, `crisp`, `detailed`, `chunky`), profiles, edges, outline detection, colour regions; PNG/APNG/GIF/JPEG/TGA/BMP/PSD input with hostile-input bounds; sheets, Sprite frames, GIF/APNG to atlas; recipe chunk `jasper.spritenormals` (staleness by source SHA-1); CPU lit preview and contact sheet; metrics and assessment; worker with cancel; apply command (one Scene undo step) |
 | MCP (Phase 3) | `generate_sprite_normals` (preview, write as one project undo step, `apply`, `save_path`, jobs), `get_asset_info` / `view_asset` recipe summary and `regenerate` arguments, file-sync `external_changes.problems` for maps whose source changed (asks the editor's watcher first, then the default names and the check cache), guide `jasper://docs/sprite-normals`, `focus_window sprite_normals` |
-| CLI | `jasperengine-editor generate-sprite-normals` (`--frame-size`, `--cells-json`, `--project --sprite`, `--dry-run`, `--format json`, `--preview-out`, `--paint-json`, `--paint-mode`); `jasperengine-editor check --normals` (12 `normals-*` codes, cached in `.jasperengine/normals-check-cache.json`, version 2) |
+| CLI | `jasperengine-editor generate-sprite-normals` (`--frame-size`, `--cells-json`, `--project --sprite`, `--dry-run`, `--format json`, `--preview-out`, `--paint-json`, `--paint-mode`); `jasperengine-editor check --normals` (12 `normals-*` codes on generated PNGs and on the normal maps of Sprites, Tilemaps and Polygons; 3D meshes are not checked; cached in `.jasperengine/normals-check-cache.json`, version 2) |
+| Export | PNGs ship without the editor's `jasper.*` text chunks (sprite normals recipe and paint layer, texture synthesis recipe), dropped losslessly (every other chunk kept byte for byte) |
 | Editor UI (Phase 4) | Window > Sprite Normal Map (single and batch mode, live preview with a movable light, frames, presets, advanced settings, Save / Save & Assign / Save All); Project window Generate / Edit / Regenerate Normal Map and a stale badge; Inspector: a wand on both Normal Texture rows, Normal Map... under Sprite Frames, an asset view for generated PNGs (Regenerate, Open in Generator, Assign to Selection, opt-in auto-regenerate); `SpriteNormalsWatcher` staleness index |
 | Paint (Phase 5) | A correction layer stored in the normal map (`jasper.spritenormals.paint`) and composited again on every regeneration: Angle, Flatten, Smooth, Erase brushes and a wand in the window (stroke undo, unsaved-paint prompts); `paint` / `paint_mode` in MCP and the CLI; `normals-paint-unreadable`, `normals-paint-size` checks |
 | Docs | README (features, migration notes, CLI block), NOTICE (upstream MIT row), `docs/mcp/guide/sprite-normals.md`, guide index, MCP README, `checks.md`, `lua-api.md`, `shaders.md`, `docs/shaders/library.md`, regenerated `TOOLS.md` |
@@ -36,6 +37,11 @@ Phase 1 are engine changes and ship in every game.
   out, or baked into a Vertex Animation.
 - **`library:sprite` reads the Normal Texture** under 2D lights (it was ignored).
 - **A normal map that fails to load shades flat** (it was tilted about 55 degrees).
+- **The editor's shader cache moves to `shaders/v40`** (the shader sources of this branch changed): the first run
+  rebuilds the cached built-in and library programs once; exported projects' shader path follows.
+- **Exported PNGs lose their `jasper.*` chunks** (a few hundred bytes to a few KB each); the project files keep them.
+- **Custom shaders** that include `lighting2d.glsl` and pass their own normals to `getLight2DIntensity` must
+  `#define LIGHT2D_SURFACE_NORMALS` before the include to keep the Light 2D Height response (`docs/mcp/guide/shaders.md`).
 - **Engine internals, no behaviour change at exit:** `System::hasInstance()` is new (true once `Engine::systemInit`
   set an instance), and `Log` writes to stderr instead of aborting when no instance is set (editor CLI tools that run
   without the engine). `Engine::systemShutdown` keeps the instance set, as before: Phase 3 had made it clear the
@@ -44,6 +50,11 @@ Phase 1 are engine changes and ship in every game.
   (after every global environment, before the statics, as a game quits).
 
 ## Known limitations
+
+- `check --normals` and the Inspector wand look at Sprites, Tilemaps and Polygons only; a prefab-instance override
+  that changes only the mesh of such an instance (no 2D component in the override) is not checked.
+- The staleness watcher rests on a project with no generated map: it walks it again on this tool's writes, an MCP
+  file sync, a generated PNG shown in the Project window, or every 10 minutes (files copied in by hand show up then).
 
 - Brightness is read as height: dark albedo becomes dents, bright paint bumps (use `regions` with `detail: 0` or
   paint). 1 px lines get no sideways slope; overlapping parts merge. Frames are processed independently, so painted
@@ -62,19 +73,18 @@ Phase 1 are engine changes and ship in every game.
 
 ## Test evidence (integration head)
 
-All on `sn/final`, Release, this host (Linux, llvmpipe/lavapipe under Xvfb):
+All on `sn/final` (final head after the final-review fixes, 69109afc6 code + 7c320e40c TOOLS.md), Release, this host
+(Linux, llvmpipe/lavapipe under Xvfb):
 
 | Suite | Result |
 |---|---|
-| Build (editor, all targets incl. editor/spritenormals/texsynth tests; install) | no warnings |
-| Engine-only build (`cmake -S engine`, `jasperengine-project`) | builds; one pre-existing GCC `-Wstringop-overflow` note in `Matrix3.cpp` (unchanged file) |
+| Build (editor, all targets incl. editor/spritenormals/texsynth tests; install), htmlui glcore and Vulkan, engine-only `jasperengine-project` | 0 compiler warnings (the engine-only build's earlier `Matrix3.cpp` `-Wstringop-overflow` note is pre-existing, in an untouched file) |
 | `jasperengine-spritenormals-tests` | 95/95 passed |
 | `jasperengine-texsynth-tests` | 24/24 passed |
-| `jasperengine-editor-tests` (full) | 841 ran: 835 passed, 6 skipped (environment: SideFX exports, convex decomposition cache), 0 failed |
-| MCP e2e (`run_tests.py -j 3`) | 764 passed, 14 skipped (tools not installed / slow builds), 5 failed: all `test_animation_assets.py`, the missing external fixture `build/fixture-unity` (pre-existing) |
+| `jasperengine-editor-tests` (full) | 845 ran: 839 passed, 6 skipped (environment: SideFX exports, convex decomposition cache), 0 failed |
+| MCP e2e (`run_tests.py -j 3`) | 767 passed, 14 skipped (tools not installed / slow builds), 5 failed: all `test_animation_assets.py`, the missing external fixture `build/fixture-unity` (pre-existing) |
 | htmlui GPU suite, OpenGL (glcore) | 3077/3077 passed, exit 0, no golden changed |
 | htmlui GPU suite, Vulkan (lavapipe) | 3077/3077 passed, exit 0 |
-| After the `systemShutdown` revert (2fd7b5b37) | editor-tests 841 ran / 835 passed / 6 skipped; MCP sprite normals CLI, check, tool, paint, window, light2d, protocol, docs: 79/79; other CLI/check files (bake-vat CLI, checks, CLI paths, HTML UI checks, place-physics CLI, texture synthesis): 74/74; htmlui glcore and Vulkan 3077/3077 each, exit 0, no abort |
-| `shaders --library sprite --backend all` | 103 variants x 6 backends, 618 compiles, 0 failed |
-| `shaders --library all --backend all` | 42 library shaders, 26,130 compiles, 0 failed |
-| CLI smoke | PNG, GIF (+frames JSON, preview), sheet with `--frame-size` and `--cells-json`, `--dry-run --format json`, paint, exit codes 1/2, `check --normals` (clean, source changed, source missing, JSON) |
+| `shaders --library sprite --backend all` | 111 variants x 6 backends (normal-mapped sprite cases included), 666 compiles, 0 failed |
+| `shaders --library all --backend all` | 42 library shaders, 27,558 compiles, 0 failed |
+| CLI smoke | PNG, GIF (+frames JSON, preview), sheet with `--frame-size` and `--cells-json`, `--dry-run --format json`, paint, exit codes 1/2, `check --normals` (clean, source changed, source missing, JSON), `export` (the exported map has no `jasper.*` chunk, same pixels) |
