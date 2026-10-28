@@ -684,7 +684,7 @@ These follow GL3; the differences are listed.
   |---|---|
   | `opacity` | `Pas` with `params.x = value`, multiplying all four premultiplied channels. This replaces GL3's `glBlendColor`, because sokol's `blend_color` is pipeline-baked. |
   | `blur` | below |
-  | `drop-shadow` | GL3 algorithm. `Shd` writes `colour × source.a` into a free target with the uv offset `offset / viewport` (sign as GL3 line 1810 but without the y flip, per §3.2.1). If sigma ≥ 0.5 it is blurred with the tertiary target. The source is then drawn over it with `Pas`, PREMULTIPLIED blend, and the result becomes the source. |
+  | `drop-shadow` | GL3 algorithm. `Shd` writes `colour × source.a` into a free target with the uv offset `offset / viewport` (sign as GL3 line 1810 but without the y flip, per §3.2.1), reading only the region's texels (`texCoordMinMax`, their centres; tested half a texel beyond them, as an integer offset reads the first row and column exactly at the centre and rounding dropped them at some pixels). If sigma ≥ 0.5 it is blurred with the tertiary target. The source is then drawn over it with `Pas`, PREMULTIPLIED blend, and the result becomes the source. |
   | colour matrix family (`brightness`, `contrast`, `invert`, `grayscale`, `sepia`, `hue-rotate`, `saturate`) | `Cmx` with the GL3 matrices, uploaded column-major |
   | `MaskImage` | `Msk`, sampling the source and `postprocess[3]` |
 
@@ -703,6 +703,29 @@ These follow GL3; the differences are listed.
   (`Source/Core/ElementEffects.cpp:249-279`) pushes layers and composites `backdrop_source
   → temp` with the filters. That works because a lower layer's colour texture is resolved
   and current whenever it is not the active pass.
+- **Filters inside clipping ancestors (fork P7-F1, `docs/html-ui/FORK.md`).** As in CSS and
+  Chromium, a filter (and a mask or a group opacity, which share the element's layer) applies
+  to its element's content *unclipped* by the clips its ancestors establish (`overflow`,
+  rounded corners, clips under transforms); those clips cut the filter's result. The fork's
+  `ElementEffects` pushes the element as the render manager's *clip root* with its layer: the
+  content drawn into the layer is clipped by the element's own overflow clip and its
+  descendants' only (`ElementUtilities::SetClippingRegion` stops at the root), and to the
+  ancestors' scissor extended by twice the filters' reach (the content beyond a clip that a
+  blur or a shadow moves into it; twice, as the downsampled blur passes clamp their reads at
+  their window's edge; unbounded without an ancestor clip, as before). The layer's *window*,
+  which the filters read: the filter region (the element's box, its subtree's ink overflow,
+  the filters' extent) within that. The composite is drawn with the scissor at the window and
+  the ancestors' clip mask, plus their scissor as a rectangle of the clip mask when the window
+  extends beyond it: nothing is drawn outside the clip. Without that a blur faded inwards along
+  a rounded clip's curve (and extended the colour at a scissor's edge instead of reading the
+  content beyond it), and a drop shadow lost what the content beyond the clip casts into it.
+  With no reach (colour filters, opacity, masks) the scissors are the old ones and no
+  rectangle is added; with 4 samples the clip's
+  edge is now multisampled once (at the composite), not twice (in the layer and again at the
+  composite, which squared the edge pixels' coverage). Not covered: content beyond the
+  viewport (the layers are viewport-sized), the extent of a descendant's own filter in its
+  ancestor's filter region (pre-existing), and `text-shadow` blur layers (still drawn through
+  the clips).
 
 #### 3.2.6 Shaders (`CompileShader` / `RenderShader`)
 - **Gradients.** `linear-gradient`, `radial-gradient` and `conic-gradient` (with

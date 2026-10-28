@@ -1,0 +1,10 @@
+{
+ "comment": "blur and drop-shadow inside clipping ancestors (fork P7-F1: the filter applies to the content unclipped by the ancestors' clips, which cut its result): a blurred child overflowing a rounded clip (its corners do not fade along the curve), drop shadows cast into a rounded and a rectangular clip by content entirely beyond it (they were lost), a blur over a green border lying beyond a rectangular clip (it bleeds in; the edge colour was extended), a shadow cast from beyond the clip inside a brightness() group (nested filter layers), a blurred child of a rounded clip turned by a transform (a clip mask without a scissor), an element with its own rounded overflow clip and a blur (its clip is inside the filter), a blur in a rectangular clip inside a rounded one. Everything within the viewport (the layers are viewport-sized). Before P7-F1: 7.436 % bad, largest cluster 1768 px. Tolerance: single pixels along the rounded curves (the clip mask multisampled, 4 samples; Skia's coverage is analytic), largest cluster 3 px; the blurs match within the channel threshold. Measured 0.162 % on glcore; the cluster limit stays at the default (16 px).",
+ "viewport": [
+  340,
+  230
+ ],
+ "tolerance": {
+  "badPercent": 0.17
+ }
+}
