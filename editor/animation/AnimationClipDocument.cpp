@@ -408,11 +408,12 @@ std::vector<ClipHintEdit> jasperengine::editor::remapClipHints(Project* project,
     const fs::path newAbsolute = (newPath.is_absolute() ? newPath : root / newPath).lexically_normal();
 
     // only what a hint can name: models and prefabs (preview), scenes and pose animations
-    // (source), or a directory holding some
+    // (source), clips and masks (an Animator controller's or montage's), or a directory holding some
     std::error_code ec;
     auto hintable = [](const fs::path& path){
         const std::string p = path.string();
-        return Util::isModelFile(p) || Util::isPrefabFile(p) || Util::isSceneFile(p) || Util::isPoseAnimationFile(p);
+        return Util::isModelFile(p) || Util::isPrefabFile(p) || Util::isSceneFile(p) || Util::isPoseAnimationFile(p) ||
+               Util::isAnimationClipFile(p) || Util::isAvatarMaskFile(p);
     };
     if (!fs::is_directory(newAbsolute, ec) && !hintable(oldAbsolute) && !hintable(newAbsolute)){
         return edits;

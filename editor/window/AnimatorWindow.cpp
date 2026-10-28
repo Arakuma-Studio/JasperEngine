@@ -447,6 +447,16 @@ bool AnimatorWindow::removeSelection(){
         }
     }
     if (!removed) return false;
+    if (selection.kind == SelectionKind::State || selection.kind == SelectionKind::SubMachine){
+        // the transitions into it (or into the sub-machine's states) go with it
+        const std::string gone = selection.name;
+        auto into = [&](const TransitionDef& t){ return t.to == gone || t.to.rfind(gone + "/", 0) == 0; };
+        auto prune = [&](std::vector<TransitionDef>& list){ list.erase(std::remove_if(list.begin(), list.end(), into), list.end()); };
+        prune(machine->entry);
+        prune(machine->anyState);
+        for (StateDef& s : machine->states) prune(s.transitions);
+        for (StateMachineDef& sub : machine->subMachines) prune(sub.exitTransitions);
+    }
     selection = Selection();
     return commit(def, what);
 }
