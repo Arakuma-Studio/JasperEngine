@@ -332,6 +332,12 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
             if (change.origin == ChangeOrigin::External && lastRecordOf(relPath, record)) {
                 result.reloaded.push_back({{"path", record.path}, {"kind", record.kind}, {"ms", std::round(record.ms)}});
             }
+            // a clip's or pose animation's load problems as the file is now: the watcher's report
+            // of them goes stale when the asset scan writes the clip's GUID into it meanwhile (a
+            // Background job), and the reading is cheap
+            if (change.origin == ChangeOrigin::External && kind == "animation") {
+                reload::addAnimationFileProblems(*project, change.path, result.problems);
+            }
             continue;
         }
         if (change.origin == ChangeOrigin::Editor) {

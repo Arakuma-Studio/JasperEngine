@@ -45,53 +45,53 @@ namespace {
         return 0;
     }
 
-    // What fails to load in a changed .anim or .poseanim, then its warnings: the same reading
-    // the documents and the players do
-    void addAnimationFileProblems(Project& project, const fs::path& path, Json& problems) {
-        const std::string pathText = path.string();
-        const bool clip = Util::isAnimationClipFile(pathText);
-        if (!clip && !Util::isPoseAnimationFile(pathText)) return;
-        std::error_code ec;
-        std::string text;
-        if (!fs::is_regular_file(path, ec) || !ProjectChecks::readFile(path, text)) return;
-        const std::string relative = reload::rel(project, path);
+}
 
-        std::vector<std::string> warnings;
-        if (clip) {
-            const anim::ClipParseResult parsed = anim::parseClip(text);
-            if (!parsed.ok()) {
-                Json problem = {{"path", relative}, {"message", "Not a valid animation clip: " + parsed.error.message +
-                                                                " (an open clip keeps its last valid content)."}};
-                if (parsed.error.line > 0) {
-                    problem["line"] = parsed.error.line;
-                    problem["col"] = parsed.error.column;
-                }
-                problems.push_back(problem);
-                return;
+// What fails to load in a changed .anim or .poseanim, then its warnings: the same reading the
+// documents and the players do
+void reload::addAnimationFileProblems(Project& project, const fs::path& path, Json& problems) {
+    const std::string pathText = path.string();
+    const bool clip = Util::isAnimationClipFile(pathText);
+    if (!clip && !Util::isPoseAnimationFile(pathText)) return;
+    std::error_code ec;
+    std::string text;
+    if (!fs::is_regular_file(path, ec) || !ProjectChecks::readFile(path, text)) return;
+    const std::string relative = reload::rel(project, path);
+
+    std::vector<std::string> warnings;
+    if (clip) {
+        const anim::ClipParseResult parsed = anim::parseClip(text);
+        if (!parsed.ok()) {
+            Json problem = {{"path", relative}, {"message", "Not a valid animation clip: " + parsed.error.message +
+                                                            " (an open clip keeps its last valid content)."}};
+            if (parsed.error.line > 0) {
+                problem["line"] = parsed.error.line;
+                problem["col"] = parsed.error.column;
             }
-            for (const ClipWarning& warning : parsed.warnings) {
-                warnings.push_back(warning.path.empty() ? warning.message : warning.path + ": " + warning.message);
-            }
-        } else {
-            pose::PoseAnimationData data;
-            std::string error;
-            if (!pose::parsePoseAnimation(text, data, warnings, &error)) {
-                Json problem = {{"path", relative}, {"message", "Not a valid pose animation: " + error +
-                                                                " (an open pose animation keeps its last valid content)."}};
-                if (const int line = jsonErrorLine(text)) problem["line"] = line;
-                problems.push_back(problem);
-                return;
-            }
+            problems.push_back(problem);
+            return;
         }
-        for (size_t i = 0; i < warnings.size() && i < ANIMATION_WARNINGS_MAX; i++) {
-            problems.push_back({{"path", relative}, {"severity", "warning"}, {"message", warnings[i]}});
+        for (const ClipWarning& warning : parsed.warnings) {
+            warnings.push_back(warning.path.empty() ? warning.message : warning.path + ": " + warning.message);
         }
-        if (warnings.size() > ANIMATION_WARNINGS_MAX) {
-            problems.push_back({{"path", relative}, {"severity", "warning"},
-                                {"message", "(+" + std::to_string(warnings.size() - ANIMATION_WARNINGS_MAX) + " more warnings)"}});
+    } else {
+        pose::PoseAnimationData data;
+        std::string error;
+        if (!pose::parsePoseAnimation(text, data, warnings, &error)) {
+            Json problem = {{"path", relative}, {"message", "Not a valid pose animation: " + error +
+                                                            " (an open pose animation keeps its last valid content)."}};
+            if (const int line = jsonErrorLine(text)) problem["line"] = line;
+            problems.push_back(problem);
+            return;
         }
     }
-
+    for (size_t i = 0; i < warnings.size() && i < ANIMATION_WARNINGS_MAX; i++) {
+        problems.push_back({{"path", relative}, {"severity", "warning"}, {"message", warnings[i]}});
+    }
+    if (warnings.size() > ANIMATION_WARNINGS_MAX) {
+        problems.push_back({{"path", relative}, {"severity", "warning"},
+                            {"message", "(+" + std::to_string(warnings.size() - ANIMATION_WARNINGS_MAX) + " more warnings)"}});
+    }
 }
 
 void reload::reloadAnimations(Context& ctx, const std::vector<fs::path>& files, const std::vector<fs::path>& models, bool all) {
