@@ -87,10 +87,6 @@ namespace jasperengine::editor::mcp {
     // rebake message); `warnings` the lenient reader's
     bool checkVatText(Project* project, const std::filesystem::path& file, const std::string& content,
                       std::vector<std::string>& warnings, std::string& error);
-    // a changed .vat (file sync, auto-sync; the pool, documents and parse problems are syncFiles'
-    // through VatDocument): a .vat that doesn't match its .vat.glb (vat-mesh-mismatch,
-    // vat-layout-mismatch: it doesn't load) goes to `problems` ({path, message})
-    void vatFileChanged(Project* project, const std::filesystem::path& path, Json& problems);
 
     // the pose documents' files-written hook (their writes reach the asset database and the
     // Project window like any MCP file change): installed once, when the MCP context exists

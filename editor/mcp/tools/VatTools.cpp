@@ -1290,22 +1290,6 @@ bool checkVatText(Project* project, const fs::path& file, const std::string& con
     return true;
 }
 
-void vatFileChanged(Project* project, const fs::path& path, Json& problems) {
-    // the pool, the documents, parse errors and warnings: syncFiles (VatDocument::filesChanged,
-    // addAnimationFileProblems). Here: a .vat that doesn't match its mesh does not load
-    const std::string text = FileUtils::pathToUtf8(path);
-    if (!Util::isVertexAnimationFile(text)) return;
-    std::error_code ec;
-    if (!fs::is_regular_file(path, ec)) return;
-    std::string content;
-    if (!clipui::readWholeFile(path, content) || !::jasperengine::vat::parseVat(content).ok()) return;
-    const std::string rel = relativeOf(project, path);
-    for (const VatIssue& issue : checkVatStaleness(project, rel)) {
-        if (!issue.error) continue;
-        problems.push_back({{"path", rel}, {"message", issue.kind + ": " + issue.message + ". Fix: " + issue.fix + "."}});
-    }
-}
-
 void registerVatTools(McpRegistry& registry) {
     using namespace schema;
     ToolDef tool;
