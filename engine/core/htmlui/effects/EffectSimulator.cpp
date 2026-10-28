@@ -346,7 +346,9 @@ bool EffectRenderer::clippedOut(const EffectInstance& instance) const{
         maxX = std::max(maxX, x);
         maxY = std::max(maxY, y);
     }
-    float left = 0.f, top = 0.f, right = w, bottom = h;
+    // the top layer's part of the window: the viewport, or a region layer's beyond it (P7-F2)
+    const Rml::Rectanglef layer = renderer.getTopLayerDocumentRect();
+    float left = layer.Left(), top = layer.Top(), right = layer.Right(), bottom = layer.Bottom();
     if (renderer.scissorEnabled){
         left = std::max(left, (float)renderer.scissorRegion.Left());
         top = std::max(top, (float)renderer.scissorRegion.Top());

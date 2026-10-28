@@ -39,6 +39,8 @@ public:
 	// filters (a blur's and a shadow's spread), applied in its own space: scaled by its transform. Returns the largest
 	// extent added on a side (the filters' reach), zero without filters.
 	float ExtendByFilterExtent(Rectanglef& region);
+	// The same for any element (its effects).
+	static float ExtendByFilterExtent(Element* element, Rectanglef& region);
 
 	// Mark effects as dirty and force them to reset themselves.
 	void DirtyEffects();

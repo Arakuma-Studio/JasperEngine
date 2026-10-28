@@ -230,7 +230,7 @@ static void ExtendBySubtreeInkOverflow(Element* element, Rectanglef& region, int
 		if (depth < 256)
 			ExtendBySubtreeInkOverflow(child, child_region, depth + 1);
 		if (computed.has_filter())
-			child->meta->effects.ExtendByFilterExtent(child_region);
+			ElementEffects::ExtendByFilterExtent(child, child_region);
 		region = JoinValid(region, child_region);
 	}
 }
@@ -246,6 +246,11 @@ static float GetTransformScale(const Element* element)
 	const Vector4f y = (*transform) * Vector4f(0.f, 1.f, 0.f, 0.f);
 	const float scale = Math::Max(Vector2f(x.x, x.y).Magnitude(), Vector2f(y.x, y.y).Magnitude());
 	return (scale > 0.f && scale < 1e6f) ? scale : 1.f;
+}
+
+float ElementEffects::ExtendByFilterExtent(Element* element, Rectanglef& region)
+{
+	return element->meta->effects.ExtendByFilterExtent(region);
 }
 
 float ElementEffects::ExtendByFilterExtent(Rectanglef& region)

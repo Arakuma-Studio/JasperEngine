@@ -425,7 +425,8 @@ void EffectRenderer::renderShader(Rml::CompiledShaderHandle handle, Rml::Compile
     uint32_t indexCount = 0;
     if (!renderer.bindGeometry(geometry, program->object, indexCount))
         return;
-    renderer.applyPassViewport(Rml::Rectanglei::FromSize(Rml::Vector2i(std::max(renderer.targetSize.x, 1), std::max(renderer.targetSize.y, 1))));
+    // the top layer's frame: the viewport, or a region layer's part of the target plane (P7-F2)
+    renderer.applyPassViewport(Rml::Rectanglei::FromSize(renderer.getTopLayerFrame().Size()));
     renderer.applyPassScissor(scissor);
     if (stateful)
         bindStates(*instance, *program);
@@ -438,7 +439,8 @@ void EffectRenderer::renderShader(Rml::CompiledShaderHandle handle, Rml::Compile
     runtime.mutableFrameStats().pipelinesCreated += created;
 
     VertexBlock vertex;
-    std::memcpy(vertex.transform, renderer.getCurrentTransform().data(), sizeof(vertex.transform));
+    const Rml::Matrix4f drawTransform = renderer.getDrawTransform();
+    std::memcpy(vertex.transform, drawTransform.data(), sizeof(vertex.transform));
     vertex.translate[0] = translation.x;
     vertex.translate[1] = translation.y;
     vertex.translate[2] = 0.f;
@@ -492,9 +494,12 @@ bool EffectRenderer::prepareFilter(Rml::CompiledFilterHandle handle){
     const EffectManifest& m = *instance->manifest;
     Rml::Element* element = instance->element;
 
-    // the layer (the context's target: RmlFilterContext::getLayerSize) and the window <->
-    // area-local maps (three projections; affine)
-    const Rml::Vector2i layer = renderer.targetSize;
+    // the layer (RmlFilterContext::getLayerSize: the context's target, or a region layer's part
+    // of the target plane beyond it, P7-F2) and the window <-> area-local maps (three
+    // projections; affine)
+    const Rml::Rectanglei layerFrame = renderer.filterFrame.Valid() ? renderer.filterFrame : renderer.standardFrame();
+    const Rml::Vector2i layer = layerFrame.Size();
+    const Rml::Vector2f origin(layerFrame.p0);
     const Rml::Vector2f scale = renderer.getPixelScale();
     EffectFrameBlock& f = instance->frame;
     f.layer[0] = (float)layer.x;
@@ -518,15 +523,15 @@ bool EffectRenderer::prepareFilter(Rml::CompiledFilterHandle handle){
     const float by = l0.y - (a10 * p0.x + a11 * p0.y);
     const float sx = scale.x > 0.f ? scale.x : 1.f;
     const float sy = scale.y > 0.f ? scale.y : 1.f;
-    // window = layerPx / scale
-    f.toLocalX[0] = a00 / sx; f.toLocalX[1] = a01 / sy; f.toLocalX[2] = bx; f.toLocalX[3] = 0.f;
-    f.toLocalY[0] = a10 / sx; f.toLocalY[1] = a11 / sy; f.toLocalY[2] = by; f.toLocalY[3] = 0.f;
+    // window = (layerPx + origin) / scale
+    f.toLocalX[0] = a00 / sx; f.toLocalX[1] = a01 / sy; f.toLocalX[2] = bx + a00 * origin.x / sx + a01 * origin.y / sy; f.toLocalX[3] = 0.f;
+    f.toLocalY[0] = a10 / sx; f.toLocalY[1] = a11 / sy; f.toLocalY[2] = by + a10 * origin.x / sx + a11 * origin.y / sy; f.toLocalY[3] = 0.f;
     const float det = a00 * a11 - a01 * a10;
     if (std::fabs(det) > 1e-12f){
-        // window = A^-1 (local - b), layerPx = window * scale
+        // window = A^-1 (local - b), layerPx = window * scale - origin
         const float i00 = a11 / det, i01 = -a01 / det, i10 = -a10 / det, i11 = a00 / det;
-        f.toLayerX[0] = i00 * sx; f.toLayerX[1] = i01 * sx; f.toLayerX[2] = -(i00 * bx + i01 * by) * sx; f.toLayerX[3] = 0.f;
-        f.toLayerY[0] = i10 * sy; f.toLayerY[1] = i11 * sy; f.toLayerY[2] = -(i10 * bx + i11 * by) * sy; f.toLayerY[3] = 0.f;
+        f.toLayerX[0] = i00 * sx; f.toLayerX[1] = i01 * sx; f.toLayerX[2] = -(i00 * bx + i01 * by) * sx - origin.x; f.toLayerX[3] = 0.f;
+        f.toLayerY[0] = i10 * sy; f.toLayerY[1] = i11 * sy; f.toLayerY[2] = -(i10 * bx + i11 * by) * sy - origin.y; f.toLayerY[3] = 0.f;
     }else{
         std::memset(f.toLayerX, 0, sizeof(f.toLayerX));
         std::memset(f.toLayerY, 0, sizeof(f.toLayerY));
