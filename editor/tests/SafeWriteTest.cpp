@@ -18,6 +18,9 @@
 #include "util/FileUtils.h"
 #include "util/TerrainMapFileWriter.h"
 #include "Generator.h"
+#include "htmlui/HtmlUiImportQueue.h"
+#include "htmlui/ImportManifestWriter.h"
+#include <thread>
 #include "util/SafeWrite.h"
 #include "SymlinkSupport.h"
 
@@ -707,4 +710,83 @@ TEST(SafeWrite, ALinkedAssetsRootIsTrustedAndLinksBelowItAreChecked) {
     EXPECT_EQ(readAll(d.outside / "assets" / "moved.txt"), "m");
     ASSERT_TRUE(history.undo()) << history.lastRefusal();
     EXPECT_EQ(readAll(d.outside / "assets" / "move.txt"), "m");
+}
+
+// ---- round 6: pinned trusted roots, allowed folders by resolved path, strict inheritance, GUI imports
+
+TEST(SafeWrite, APinnedRootMovedAwayAndReplacedByALinkIsRefused) {
+    SKIP_WITHOUT_SYMLINKS();
+    Dirs d("pinned");
+    fs::create_directories(d.root / "assets");
+    const fs::path pinned = sw::resolvedPath(d.root / "assets");
+    sw::pinTrustedRoot(pinned);
+    EXPECT_TRUE(sw::trustedRootIntact(pinned));
+    std::string error;
+    ASSERT_TRUE(sw::writeFileResolvedBeneath(pinned, pinned / "a.txt", "a", error)) << error;
+    // the real folder moved away, a link to elsewhere put in its place
+    fs::rename(d.root / "assets", d.root / "assets_old");
+    fs::create_directory_symlink(d.outside, d.root / "assets");
+    EXPECT_FALSE(sw::trustedRootIntact(pinned));
+    EXPECT_FALSE(sw::writeFileResolvedBeneath(pinned, pinned / "pwn.txt", "x", error));
+    EXPECT_NE(error.find("no longer the folder the project loaded"), std::string::npos) << error;
+    EXPECT_FALSE(sw::removeFileResolvedBeneath(pinned, pinned / "keep.txt", error));
+    EXPECT_FALSE(fs::exists(d.outside / "pwn.txt"));
+    {
+        sw::Scope scope(std::vector<fs::path>{sw::resolvedPath(d.root), pinned}, true);
+        EXPECT_FALSE(FileUtils::writeFileReplacing(d.root / "assets" / "pwn2.txt", "x"));
+        EXPECT_FALSE(fs::exists(d.outside / "pwn2.txt"));
+    }
+}
+
+TEST(SafeWrite, AllowedFoldersMatchByResolvedPathAndWorkersInheritStrictness) {
+    SKIP_WITHOUT_SYMLINKS();
+    Dirs d("allowedresolved");
+    fs::create_directories(d.base / "allowedR");
+    sw::allowOutsideScopes(d.base / "allowedR");
+    // a link under the allowed folder leading elsewhere: not allowed (resolved, not spelling)
+    fs::create_directory_symlink(d.outside, d.base / "allowedR" / "out");
+    sw::Scope scope(d.root, true);
+    EXPECT_TRUE(FileUtils::writeFileReplacing(d.base / "allowedR" / "fine.txt", "f"));
+    EXPECT_FALSE(FileUtils::writeFileReplacing(d.base / "allowedR" / "out" / "x.txt", "x"));
+    EXPECT_FALSE(fs::exists(d.outside / "x.txt"));
+    // a worker started here inherits the roots and the strictness
+    const std::vector<fs::path> roots = sw::Scope::currentRoots();
+    const bool strict = sw::Scope::currentStrict();
+    EXPECT_TRUE(strict);
+    bool refused = false;
+    std::thread([&]() {
+        sw::Scope inherited(roots, strict);
+        refused = !FileUtils::writeFileReplacing(d.base / "elsewhere-from-worker.txt", "x");
+    }).join();
+    EXPECT_TRUE(refused) << "a strict scope's worker refuses writes outside its roots too";
+    EXPECT_FALSE(fs::exists(d.base / "elsewhere-from-worker.txt"));
+}
+
+TEST(SafeWrite, GuiImportsWorkInALinkedAssetsFolder) {
+    SKIP_WITHOUT_SYMLINKS();
+    Dirs d("guiimport");
+    fs::create_directories(d.outside / "assets");
+    fs::create_directory_symlink(d.outside / "assets", d.root / "assets");
+    jasperengine::editor::htmlui::ImportTarget target;
+    target.projectRoot = d.root;
+    target.assetsDir = d.root / "assets";
+    jasperengine::editor::htmlui::ImportQueue queue([](const jasperengine::editor::htmlui::ImportJob& job) {
+        jasperengine::editor::htmlui::ImportedResource result;
+        result.url = job.url;
+        std::string error;
+        result.ok = jasperengine::editor::htmlui::ImportManifestWriter::writeFileAtomic(job.target.assetsDir / "imported" / "font.css", "/* css */", &error);
+        result.error = error;
+        return result;
+    });
+    jasperengine::editor::htmlui::ImportJob job;
+    job.target = target;
+    job.url = "https://example.invalid/font.css";
+    ASSERT_TRUE(queue.enqueue(job, true));
+    queue.waitIdle();
+    jasperengine::editor::htmlui::ImportQueue::Batch batch;
+    ASSERT_TRUE(queue.takeFinishedBatch(batch));
+    ASSERT_EQ(batch.results.size(), 1u);
+    EXPECT_TRUE(batch.results[0].ok) << batch.results[0].error;
+    EXPECT_EQ(readAll(d.outside / "assets" / "imported" / "font.css"), "/* css */") << "the GUI's import writes into the linked assets folder";
+    queue.stop();
 }

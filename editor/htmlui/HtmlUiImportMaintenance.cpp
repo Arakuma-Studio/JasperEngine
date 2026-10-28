@@ -157,7 +157,7 @@ RemoveUnusedResult jasperengine::editor::htmlui::removeUnusedImports(const Impor
         return result;
 
     // the removals beneath the project (util/SafeWrite.h)
-    jasperengine::editor::safewrite::Scope scope(target.projectRoot);
+    jasperengine::editor::safewrite::Scope scope(std::vector<std::filesystem::path>{target.projectRoot, target.assetsDir});
     std::error_code ec;
     for (const std::string& file : toDelete){
         if (file.empty() || keptFiles.count(file))

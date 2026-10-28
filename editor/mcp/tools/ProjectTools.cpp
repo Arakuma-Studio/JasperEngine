@@ -312,6 +312,13 @@ void switchProjectTool(const CallPtr& call, bool create) {
             call->fail(FileUtils::pathToGenericUtf8(path) + " is a file, not a directory.");
             return;
         }
+        // a new or empty folder only: the project becomes a trusted root, so an agent can't turn
+        // a folder that holds other things (a home directory) into one
+        if (fs::is_directory(path, ec) && !fs::is_empty(path, ec)) {
+            call->fail(FileUtils::pathToGenericUtf8(path) + " is not empty: create_project makes a project in a new or empty folder. "
+                       "Pick a new folder (it is created), or create the project in the editor's New Project dialog.");
+            return;
+        }
     } else {
         if (path.filename() == "project.yaml") path = path.parent_path();
         if (!fs::exists(path / "project.yaml", ec)) {

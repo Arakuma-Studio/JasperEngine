@@ -180,6 +180,8 @@ namespace jasperengine::editor::safewrite {
         static std::filesystem::path current();
         // ... all its trusted roots (empty when none, or suspended)
         static std::vector<std::filesystem::path> currentRoots();
+        // ... whether it is strict (a worker started inside it inherits that)
+        static bool currentStrict();
     };
     // The scopes in force are the ones above the innermost suspending (empty) Scope. The innermost
     // root in force holding `path` lexically (its spelling or once resolved), else "". Fail-closed:
@@ -199,6 +201,12 @@ namespace jasperengine::editor::safewrite {
     // A folder a strict scope lets writes reach outside its root (the editor's config folder, the
     // temporary folder). Any thread.
     void allowOutsideScopes(const std::filesystem::path& dir);
+    // A project's trusted root, resolved when the project loaded (or a root setting was applied):
+    // every *Beneath / *ResolvedBeneath operation given it refuses once it resolves elsewhere (the
+    // folder moved away and a link put in its place), instead of resolving it again
+    void pinTrustedRoot(const std::filesystem::path& resolvedRoot);
+    // The pinned root still is the folder it was (not a link now, resolving to itself)
+    bool trustedRootIntact(const std::filesystem::path& resolvedRoot);
     // Why the last scoped FileUtils operation on this thread failed ("" when it did not)
     const std::string& lastScopedError();
     // How many scoped FileUtils operations failed on this thread so far (CommandHistory compares

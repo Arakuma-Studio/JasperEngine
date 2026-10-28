@@ -2765,9 +2765,10 @@ void editor::Generator::build(const fs::path projectPath, const fs::path buildPa
     commandRunner.resetCancel();
 
     const std::vector<fs::path> writeRoot = safewrite::Scope::currentRoots();
-    buildFuture = std::async(std::launch::async, [this, projectPath, buildPath, cCompiler, cxxCompiler, generator, parallelJobs, writeRoot]() {
+    const bool writeStrict = safewrite::Scope::currentStrict();
+    buildFuture = std::async(std::launch::async, [this, projectPath, buildPath, cCompiler, cxxCompiler, generator, parallelJobs, writeRoot, writeStrict]() {
         // in the write scope of the thread that started the build (an MCP call's project)
-        safewrite::Scope scope(writeRoot);
+        safewrite::Scope scope(writeRoot, writeStrict);
         try {
             auto startTime = std::chrono::steady_clock::now();
 

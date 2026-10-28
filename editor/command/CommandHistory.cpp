@@ -41,7 +41,14 @@ public:
             if (why.empty()) why = jasperengine::editor::safewrite::scopedFailureSince(mark);
             if (why.empty()) continue;
             failureText = why;
-            for (auto it = doneNow.rbegin(); it != doneNow.rend(); ++it) (*it)->undo();
+            // the steps done before it taken back; a rollback that couldn't put everything back says so
+            for (auto it = doneNow.rbegin(); it != doneNow.rend(); ++it) {
+                const unsigned long long rollbackMark = jasperengine::editor::safewrite::scopedFailureCount();
+                (*it)->undo();
+                std::string problem = (*it)->takeUndoProblem();
+                if (problem.empty()) problem = jasperengine::editor::safewrite::scopedFailureSince(rollbackMark);
+                if (!problem.empty()) failureText += "; and its rollback could not put everything back: " + problem;
+            }
             return false;
         }
         return true;

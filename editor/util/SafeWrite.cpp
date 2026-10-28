@@ -113,10 +113,32 @@ namespace jasperengine::editor::safewrite {
             return true;
         }
 
+        // the trusted roots a project pinned (resolved when it loaded or a root setting was applied)
+        std::mutex& pinnedMutex() {
+            static std::mutex m;
+            return m;
+        }
+        std::vector<fs::path>& pinnedRoots() {
+            static std::vector<fs::path> roots;
+            return roots;
+        }
+        bool isPinned(const fs::path& root) {
+            const fs::path normal = normalDir(root);
+            std::lock_guard<std::mutex> lock(pinnedMutex());
+            return std::find(pinnedRoots().begin(), pinnedRoots().end(), normal) != pinnedRoots().end();
+        }
+
         bool realRootOf(const fs::path& root, fs::path& realRoot, std::string& error) {
             realRoot = resolvedPath(root);
             if (realRoot.empty()) {
                 error = shown(root) + " can't be resolved: a symbolic link on its way loops or can't be read.";
+                return false;
+            }
+            // a pinned trusted root is used as it was resolved: one that resolves elsewhere now
+            // (moved away, a link put in its place) is refused, never followed
+            if (isPinned(root) && normalDir(realRoot) != normalDir(root)) {
+                error = shown(root) + " (a trusted root of the project) is no longer the folder the project loaded: it leads to " +
+                        shown(realRoot) + " now. Put the folder back (or reopen the project), then try again.";
                 return false;
             }
             return true;
@@ -382,11 +404,20 @@ namespace jasperengine::editor::safewrite {
                     std::vector<fs::path>* created, bool* missing = nullptr, bool shareWrite = false) {
             if (missing) *missing = false;
             // the root is trusted (resolved already): opened by its path, following what it is
+            // (resolved already: a name surrogate swapped in at its last component since is refused)
             const HANDLE rootHandle = CreateFileW(realRoot.c_str(), kWalkAccess | SYNCHRONIZE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
-                                                  OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+                                                  OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
             if (rootHandle == INVALID_HANDLE_VALUE) {
                 error = "can't open the folder " + shown(realRoot) + ": " + systemMessage(GetLastError());
                 return false;
+            }
+            {
+                const Kind rootKind = kindOf(rootHandle);
+                if (rootKind == Kind::Link || rootKind == Kind::LinkToDir) {
+                    CloseHandle(rootHandle);
+                    error = linkRefusal(realRoot, realRoot);
+                    return false;
+                }
             }
             walk.handles.push_back(rootHandle);
             walk.at = realRoot;
@@ -550,9 +581,11 @@ namespace jasperengine::editor::safewrite {
             return fd;
         }
 
+        // the root is resolved already (no link in it): its last component opened without
+        // following one swapped in since
         int openRootFolder(const fs::path& realRoot) {
-            int fd = ::open(realRoot.c_str(), kSearchOnly | O_DIRECTORY | O_CLOEXEC);
-            if (fd < 0 && errno == EINVAL && kSearchOnly != O_RDONLY) fd = ::open(realRoot.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+            int fd = ::open(realRoot.c_str(), kSearchOnly | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+            if (fd < 0 && errno == EINVAL && kSearchOnly != O_RDONLY) fd = ::open(realRoot.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
             return fd;
         }
 
@@ -1265,8 +1298,9 @@ namespace jasperengine::editor::safewrite {
 
     std::string escapeOf(const fs::path& root, const fs::path& target, bool entry, const std::string& shownName) {
         const std::string name = shownName.empty() ? shown(target) : shownName;
-        const fs::path realRoot = resolvedPath(root);
-        if (realRoot.empty()) return shown(root) + " can't be resolved: a symbolic link on its way loops or can't be read.";
+        fs::path realRoot;
+        std::string rootError;
+        if (!realRootOf(root, realRoot, rootError)) return rootError;
         const fs::path absolute = absoluteIn(root, target);
         const fs::path where = entry ? entryLocation(absolute) : writeLocation(absolute);
         if (where.empty()) return name + " can't be resolved: a symbolic link on its way loops or can't be read.";
@@ -1474,9 +1508,14 @@ namespace jasperengine::editor::safewrite {
             return active;
         }
 
+        // the scope holds the path as spelled, or where it resolves to
         bool holdsLexically(const ScopeEntry& scope, const fs::path& absolute) {
             for (const fs::path& root : scope.roots) {
                 if (lexicallyIn(absolute, root)) return true;
+            }
+            const fs::path where = writeLocation(absolute);
+            for (const fs::path& root : scope.roots) {
+                if (!where.empty() && isAtOrBelow(where, root)) return true;
             }
             return false;
         }
@@ -1493,10 +1532,13 @@ namespace jasperengine::editor::safewrite {
             return fs::path();
         }
 
+        // by resolved paths: a path spelled under an allowed folder that a link leads elsewhere is not
         bool allowedOutside(const fs::path& absolute) {
+            const fs::path where = writeLocation(absolute);
+            if (where.empty()) return false;
             std::lock_guard<std::mutex> lock(globalMutex());
             for (const fs::path& dir : outsideAllowed()) {
-                if (lexicallyIn(absolute, dir)) return true;
+                if (isAtOrBelow(where, dir)) return true;
             }
             return false;
         }
@@ -1681,8 +1723,28 @@ namespace jasperengine::editor::safewrite {
 
     void allowOutsideScopes(const fs::path& dir) {
         if (dir.empty()) return;
+        const fs::path resolved = resolvedPath(dir);
+        if (resolved.empty()) return;
         std::lock_guard<std::mutex> lock(globalMutex());
-        outsideAllowed().push_back(absoluteNormal(dir));
+        outsideAllowed().push_back(normalDir(resolved));
+    }
+
+    void pinTrustedRoot(const fs::path& resolvedRoot) {
+        if (resolvedRoot.empty()) return;
+        const fs::path normal = normalDir(resolvedRoot);
+        std::lock_guard<std::mutex> lock(pinnedMutex());
+        if (std::find(pinnedRoots().begin(), pinnedRoots().end(), normal) == pinnedRoots().end()) pinnedRoots().push_back(normal);
+    }
+
+    bool trustedRootIntact(const fs::path& resolvedRoot) {
+        if (resolvedRoot.empty()) return false;
+        std::error_code ec;
+        if (fs::is_symlink(fs::symlink_status(resolvedRoot, ec))) return false;
+        return normalDir(resolvedPath(resolvedRoot)) == normalDir(resolvedRoot);
+    }
+
+    bool Scope::currentStrict() {
+        return !scopes.empty() && scopes.back().strict;
     }
 
     unsigned long long scopedFailureCount() {

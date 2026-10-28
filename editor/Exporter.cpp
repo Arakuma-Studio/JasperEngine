@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "util/SafeWrite.h"
 #include "Exporter.h"
 #include "util/PngEditorChunks.h"
 #include "EditorHost.h"
@@ -39,6 +40,23 @@
 #include <map>
 #include <set>
 #include <vector>
+
+
+namespace {
+    // fs::remove_all that never follows a link: the entry removed beneath its own (resolved)
+    // folder, a link in the tree removed as a link (util/SafeWrite.h). ec set on failure.
+    void removeAllNoFollow(const std::filesystem::path& path, std::error_code& ec) {
+        ec.clear();
+        std::error_code status;
+        if (!std::filesystem::exists(std::filesystem::symlink_status(path, status))) return;
+        const std::filesystem::path root = jasperengine::editor::safewrite::existingFolderOf(path.parent_path());
+        std::string error;
+        if (root.empty() || !jasperengine::editor::safewrite::removeTreeBeneath(root, jasperengine::editor::safewrite::entryLocation(path), error)) {
+            ec = std::make_error_code(std::errc::operation_not_permitted);
+            jasperengine::editor::safewrite::warn(error.empty() ? "can't remove " + path.string() : error);
+        }
+    }
+}
 
 using namespace jasperengine;
 
@@ -986,7 +1004,7 @@ bool editor::Exporter::prepareCacheTarget() {
     // the exported CMake's recursive glob and break the link, so the (small)
     // project tree is wiped and fully re-copied every export. The engine tree is
     // kept and synced with copyTreeIfChanged() so the build stays incremental.
-    fs::remove_all(getExportProjectRoot(), ec);
+    removeAllNoFollow(getExportProjectRoot(), ec);
     if (ec) {
         setError("Failed to clear cached project sources: " + ec.message());
         return false;
@@ -1051,7 +1069,7 @@ bool editor::Exporter::configureBuild() {
         }
         if (prevKit != kitId) {
             Out::warning("Build settings or export location changed. Cleaning export build directory...");
-            fs::remove_all(buildDir, ec);
+            removeAllNoFollow(buildDir, ec);
             if (ec) {
                 setError("Failed to clean export build directory: " + ec.message());
                 return false;
@@ -1254,7 +1272,7 @@ bool editor::Exporter::collectDesktopArtifacts() {
     if (packCreated) {
         for (const char* dir : {"assets", "lua"}) {
             ec.clear();
-            fs::remove_all(config.destinationDir / dir, ec);
+            removeAllNoFollow(config.destinationDir / dir, ec);
             if (ec) {
                 setError(std::string("Failed to remove unpacked ") + dir + ": " + ec.message());
                 return false;
@@ -1510,7 +1528,7 @@ bool editor::Exporter::collectSourceResourcePack() {
     if (!collectPackedTreeEntries(luaDir, removable)) return false;
 
     for (const fs::path& path : removable) {
-        fs::remove_all(path, ec);
+        removeAllNoFollow(path, ec);
         if (ec) {
             setError("Failed to remove unpacked resource after packing: " + path.string() + ": " + ec.message());
             return false;
@@ -1598,7 +1616,7 @@ bool editor::Exporter::clearGenerated() {
 
     std::error_code ec;
     if (fs::exists(generatedDir, ec)) {
-        fs::remove_all(generatedDir, ec);
+        removeAllNoFollow(generatedDir, ec);
         if (ec) {
             setError("Failed to clear generated directory: " + ec.message());
             return false;
@@ -2397,7 +2415,7 @@ void editor::Exporter::copyTreeIfChanged(const fs::path& src, const fs::path& ds
         }
         for (const fs::path& path : stale) {
             // No-op for children of an already-removed directory.
-            fs::remove_all(path);
+            { std::error_code removeError; removeAllNoFollow(path, removeError); }
         }
     } catch (const fs::filesystem_error& e) {
         ec = e.code();

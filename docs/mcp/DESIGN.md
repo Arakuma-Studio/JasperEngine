@@ -245,7 +245,17 @@ runs several tool calls in one round-trip, sequentially on the main thread; with
   inside a trusted root work. A tool that changes an asset root (`set_project_settings`
   `editor.assets_dir` / `scripting.lua_dir`) must name a folder inside the project directory
   itself once resolved (`McpRefs::projectOnlyEscape`): an agent can't make a folder outside the
-  project a trusted root. A delete or
+  project a trusted root. The roots are resolved when the project loads (or a root setting is
+  applied) and **pinned** (`Project::getTrustedRoots`, `safewrite::pinTrustedRoot`): never resolved
+  again, so a root moved away and replaced by a link is refused, not followed. A tool can't move,
+  rename or delete a trusted root or a folder holding one, nor move anything into a root's place
+  (`McpRefs::trustedRootTouched`); `move_asset` never moves into a hidden or editor-owned place
+  (`.jasperengine`, `.trash`, project.yaml ...) and never moves a link that leads out of the
+  project (copying what it holds is fine). Build, Play and script compiles refuse an internal
+  folder holding a link out of the project (every entry two levels deep). `build_project` /
+  `generate_shaders` build only into the project's chosen export folder, the default export
+  location (or below it) or a folder of the project, and never save an agent's folder as the
+  export folder; `create_project` needs a new or empty folder. A delete or
   a move's source acts on the entry itself: a link there is trashed or moved, never followed.
   Refused: isError naming the path and where the link leads, with the fix ("use a path that is not
   behind a link to elsewhere, or replace the link with a real folder").

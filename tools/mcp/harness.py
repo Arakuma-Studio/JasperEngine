@@ -264,6 +264,9 @@ class Scratch:
         settings: dict[str, Any] = {
             "window": {"width": 1600, "height": 900, "maximized": True},
             "mcp": {"http_token": HTTP_TOKEN},
+            # builds an agent starts go to the default export location (or the project's chosen
+            # export folder): the scratch dir, so the tests' output_dir under it is allowed
+            "export": {"default_dir": str(root)},
         }
         if not create:
             settings["last_project_path"] = str(proj)

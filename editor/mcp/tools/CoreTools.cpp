@@ -287,7 +287,8 @@ void undoRedo(const CallPtr& call, bool undo) {
             refusedWhy = history->lastRefusal();
             break;
         }
-        if (undo && !history->lastUndoProblem().empty()) problems.push_back(history->lastUndoProblem());
+        // (an undo, or a redo, taken whose files could not all be written: "Undo / Redo incomplete")
+        if (!history->lastUndoProblem().empty()) problems.push_back(history->lastUndoProblem());
     }
     if (scope == "project" && call->ctx().projectWindow()) {
         call->ctx().projectWindow()->refreshCurrentDirectory();
@@ -303,7 +304,7 @@ void undoRedo(const CallPtr& call, bool undo) {
     std::string problemText;
     if (!problems.empty()) {
         data["problems"] = problems;
-        for (const std::string& problem : problems) problemText += " Not everything was put back: " + problem + ".";
+        for (const std::string& problem : problems) problemText += std::string(undo ? " Undo incomplete: " : " Redo incomplete: ") + problem + ".";
     }
     if (done == 0) {
         call->fail(refused ? refusal : std::string("Nothing to ") + verb + " in the " + scope + " history.", data);

@@ -2167,9 +2167,9 @@ void editor::Project::refreshFbxImports() {
 
     // Hashing and converting can take seconds, so the check runs off the main thread
     fbxImportScan = std::async(std::launch::async,
-        [this, files, assetsRoot = getAssetsPath(), known = failedFbxImports, writeRoot = safewrite::Scope::currentRoots()]() {
+        [this, files, assetsRoot = getAssetsPath(), known = failedFbxImports, writeRoot = safewrite::Scope::currentRoots(), writeStrict = safewrite::Scope::currentStrict()]() {
             // the conversions write in the write scope of the thread that started the scan
-            safewrite::Scope scope(writeRoot);
+            safewrite::Scope scope(writeRoot, writeStrict);
             std::map<fs::path, FbxImportFailure> failures;
             for (const auto& [fbxPath, glbPath] : files) {
                 std::error_code ec;
@@ -2433,6 +2433,24 @@ editor::WindowSettings editor::Project::getWindowSettings() const{
 
 void editor::Project::setAssetsDir(const std::filesystem::path& assetsDir){
     this->assetsDir = assetsDir;
+    getTrustedRoots();   // resolved now, when the setting is applied
+}
+
+std::vector<std::filesystem::path> editor::Project::getTrustedRoots() const{
+    if (projectPath.empty()) return {};
+    const std::vector<std::filesystem::path> configured = {projectPath, getAssetsPath(), getLuaPath()};
+    if (configured != trustedConfigured){
+        trustedConfigured = configured;
+        trustedResolved.clear();
+        for (const std::filesystem::path& root : configured){
+            const std::filesystem::path resolved = safewrite::resolvedPath(root);
+            if (resolved.empty()) continue;
+            if (std::find(trustedResolved.begin(), trustedResolved.end(), resolved) != trustedResolved.end()) continue;
+            trustedResolved.push_back(resolved);
+            safewrite::pinTrustedRoot(resolved);
+        }
+    }
+    return trustedResolved;
 }
 
 std::filesystem::path editor::Project::getAssetsDir() const{
@@ -2441,6 +2459,7 @@ std::filesystem::path editor::Project::getAssetsDir() const{
 
 void editor::Project::setLuaDir(const std::filesystem::path& luaDir){
     this->luaDir = luaDir;
+    getTrustedRoots();   // resolved now, when the setting is applied
 }
 
 std::filesystem::path editor::Project::getLuaDir() const{
@@ -6841,8 +6860,9 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
 
     // the worker writes in the write scope of the thread that started it (an MCP call's project)
     const std::vector<fs::path> writeRoot = safewrite::Scope::currentRoots();
-    std::thread([this, sceneId, savePath, writeRoot, callback = std::move(callback)]() mutable {
-        safewrite::Scope scope(writeRoot);
+    const bool writeStrict = safewrite::Scope::currentStrict();
+    std::thread([this, sceneId, savePath, writeRoot, writeStrict, callback = std::move(callback)]() mutable {
+        safewrite::Scope scope(writeRoot, writeStrict);
         bool success = false;
         try {
             success = writeSceneToPath(sceneId, savePath, false);
@@ -9010,8 +9030,9 @@ void editor::Project::start(uint32_t sceneId) {
 
     // the startup writes generated sources in the write scope of the thread that started Play
     const std::vector<fs::path> writeRoot = safewrite::Scope::currentRoots();
-    std::thread startupThread([this, session, sceneId, buildSettings, writeRoot]() {
-        safewrite::Scope scope(writeRoot);
+    const bool writeStrict = safewrite::Scope::currentStrict();
+    std::thread startupThread([this, session, sceneId, buildSettings, writeRoot, writeStrict]() {
+        safewrite::Scope scope(writeRoot, writeStrict);
         runPlayStartup(session, sceneId, buildSettings);
     });
     startupThread.detach();
@@ -9142,8 +9163,9 @@ void editor::Project::stop(uint32_t sceneId) {
     auto cancelFuture = generator.cancelBuild();
 
     const std::vector<fs::path> stopWriteRoot = safewrite::Scope::currentRoots();
-    std::thread finalizeStopThread([this, session, sceneId, startupSucceededAtStop, stopWriteRoot, cancelFuture = std::move(cancelFuture)]() mutable {
-        safewrite::Scope scope(stopWriteRoot);
+    const bool stopWriteStrict = safewrite::Scope::currentStrict();
+    std::thread finalizeStopThread([this, session, sceneId, startupSucceededAtStop, stopWriteRoot, stopWriteStrict, cancelFuture = std::move(cancelFuture)]() mutable {
+        safewrite::Scope scope(stopWriteRoot, stopWriteStrict);
         if (cancelFuture.valid()) {
             cancelFuture.wait();
         }

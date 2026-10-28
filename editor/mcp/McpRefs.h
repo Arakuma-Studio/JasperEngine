@@ -107,6 +107,10 @@ namespace jasperengine::editor::mcp {
         // imported models, the thumbnails, the terrain maps, .vscode): their writers are CMake,
         // the compilers and editor code running later, so they are checked up front. "" or the refusal.
         static std::string internalFoldersEscape(Project* project);
+        // A move, rename or delete of `absolute` (or a move to it, `destination`) that would touch
+        // a trusted root: the assets or Lua folder itself or a folder holding one (moving it away
+        // and a link in its place must not re-point a root). "" or the refusal.
+        static std::string trustedRootTouched(Project* project, const std::filesystem::path& absolute, bool destination);
     };
 
 }

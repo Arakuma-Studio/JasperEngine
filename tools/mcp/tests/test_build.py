@@ -157,9 +157,9 @@ async def test_source_export(ed: Editor):
     # exporting again patches the workspace the same way
     await check_xcode_workspace(ed, out)
 
-    # the remembered output dir is the default next time
+    # an agent's output folder is not saved as the project's export folder (only the user picks that)
     info = await ed.call("get_build_info")
-    ed.check_eq(Path(info["source"]["output_dir"]).resolve(), out.resolve())
+    ed.check(Path(info["source"]["output_dir"]).resolve() != out.resolve(), f"not remembered: {info['source']['output_dir']}")
     ed.check_eq(sorted(info["source"]["backends"]), ["opengl", "opengles"])
     ed.check_eq(info["last_build"]["status"], "succeeded")
 

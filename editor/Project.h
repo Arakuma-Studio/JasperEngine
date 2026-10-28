@@ -613,6 +613,8 @@ namespace jasperengine::editor{
         std::string windowTitle;  // empty = use the project name
         std::filesystem::path windowIcon;  // project-relative image path; empty = no icon
         std::filesystem::path assetsDir;
+        mutable std::vector<std::filesystem::path> trustedConfigured;   // the configuration getTrustedRoots resolved
+        mutable std::vector<std::filesystem::path> trustedResolved;
         std::filesystem::path luaDir;
         std::vector<std::filesystem::path> scriptDirs;  // extra C++ include and source roots
         int cxxStandard;  // C++ standard for Play and exported builds
@@ -1194,6 +1196,10 @@ namespace jasperengine::editor{
         // sounds and fonts ("asset://"), Lua for script entries ("lua://").
         std::filesystem::path getAssetsPath() const;
         std::filesystem::path getLuaPath() const;
+        // The project's trusted roots (its directory, its configured assets and Lua directories),
+        // resolved when the project loaded or a root setting changed, and kept: moving a folder
+        // and putting a link in its place doesn't re-point them (util/SafeWrite.h pins them)
+        std::vector<std::filesystem::path> getTrustedRoots() const;
 
         std::filesystem::path normalizeToProjectRelative(const std::filesystem::path& path) const;
         std::filesystem::path resolveAssetPath(const std::filesystem::path& assetRelative) const;

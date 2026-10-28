@@ -445,16 +445,12 @@ bool McpRefs::resolveProjectPath(Project* project, const std::string& relative, 
 std::vector<fs::path> McpRefs::trustedRoots(Project* project) {
     if (!project || project->getProjectPath().empty()) return {};
     // the project directory, its configured assets directory and its configured Lua scripts
-    // directory (project.yaml as loaded)
-    std::vector<fs::path> roots = {project->getProjectPath()};
-    for (const fs::path& configured : {project->getAssetsPath(), project->getLuaPath()}) {
-        if (configured.empty()) continue;
-        const fs::path normal = configured.lexically_normal();
-        bool known = false;
-        for (const fs::path& root : roots) {
-            if (root.lexically_normal() == normal) known = true;
-        }
-        if (!known) roots.push_back(configured);
+    // directory, as resolved when the project loaded (or a root setting was applied) and pinned:
+    // never resolved again, so a root can't be re-pointed by moving folders around; one that is
+    // no longer the folder it was is left out
+    std::vector<fs::path> roots;
+    for (const fs::path& root : project->getTrustedRoots()) {
+        if (safewrite::trustedRootIntact(root)) roots.push_back(root);
     }
     return roots;
 }
@@ -500,9 +496,47 @@ std::string McpRefs::projectOnlyEscape(Project* project, const fs::path& absolut
     return escape + " An asset root must be a folder of the project itself.";
 }
 
+std::string McpRefs::trustedRootTouched(Project* project, const fs::path& absolute, bool destination) {
+    if (!project) return std::string();
+    const fs::path normal = absolute.lexically_normal();
+    const fs::path entry = safewrite::entryLocation(normal);
+    const fs::path projectNormal = project->getProjectPath().lexically_normal();
+    struct Root {
+        fs::path configured;
+        const char* what;
+    };
+    const std::vector<Root> roots = {{project->getAssetsPath(), "assets folder"}, {project->getLuaPath(), "Lua scripts folder"}};
+    for (const Root& root : roots) {
+        if (root.configured.empty() || root.configured.lexically_normal() == projectNormal) continue;
+        const fs::path resolved = safewrite::resolvedPath(root.configured);
+        const bool touches = safewrite::isAtOrBelow(root.configured, normal) ||
+                             (!entry.empty() && !resolved.empty() && safewrite::isAtOrBelow(resolved, entry));
+        if (!touches) continue;
+        const std::string rel = FileUtils::pathToGenericUtf8(normal.lexically_relative(projectNormal));
+        return "\"" + rel + "\" " + (destination ? "would take the place of " : "is or holds ") + "the project's " + root.what +
+               " (a trusted root): it can't be " + (destination ? "replaced" : "moved, renamed or deleted") +
+               " by a tool. Change the root in Project Settings first, or pick another path.";
+    }
+    return std::string();
+}
+
 std::string McpRefs::internalFoldersEscape(Project* project) {
     if (!project) return "No project is open.";
     const fs::path internal = project->getProjectInternalPath();
+    // every entry of the internal folder (two levels deep): a link out of the project there would
+    // let a build, Play or an export write or delete through it
+    {
+        std::error_code ec;
+        for (fs::recursive_directory_iterator it(internal, fs::directory_options::none, ec), end; !ec && it != end; it.increment(ec)) {
+            if (it.depth() > 1) {
+                it.disable_recursion_pending();
+                continue;
+            }
+            std::error_code statusError;
+            if (!fs::is_symlink(it->symlink_status(statusError))) continue;
+            if (const std::string escape = writeEscape(project, it->path()); !escape.empty()) return escape;
+        }
+    }
     for (const fs::path& dir : {internal, internal / "build", internal / "build" / "hotreload", internal / "engine-api",
                                 internal / "engine-api" / "lua" / "scripts", internal / "generated", internal / "logs",
                                 internal / "externalbuild", project->getImportPath(), project->getThumbsDir(),

@@ -9,6 +9,7 @@
 #include "util/SafeWrite.h"
 
 #include <iostream>
+#include <cstdlib>
 #include <chrono>
 #include <atomic>
 #include <system_error>
@@ -18,6 +19,8 @@
 #include <windows.h>
 #else
 #include <dlfcn.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #endif
 
 using namespace jasperengine;
@@ -60,6 +63,38 @@ void editor::Conector::unloadSharedLibrary(void* libHandle) {
     std::cout << "Library unloaded successfully.\n";
 }
 
+
+namespace {
+    // A folder only this user can write: $XDG_RUNTIME_DIR/jasperengine_hotreload, else
+    // <temp>/jasperengine_hotreload-<uid> made 0700 and checked (lstat: a real folder, ours, 0700);
+    // "" when it can't be had. Windows: the user's own temporary folder.
+    fs::path privateStagingDir() {
+        std::error_code ec;
+    #ifdef _WIN32
+        const fs::path temp = fs::temp_directory_path(ec);
+        return ec || temp.empty() ? fs::path() : temp / "jasperengine_hotreload";
+    #else
+        fs::path dir;
+        const char* runtime = std::getenv("XDG_RUNTIME_DIR");
+        if (runtime && *runtime && fs::is_directory(runtime, ec)) {
+            dir = fs::path(runtime) / "jasperengine_hotreload";
+        } else {
+            const fs::path temp = fs::temp_directory_path(ec);
+            if (ec || temp.empty()) return fs::path();
+            dir = temp / ("jasperengine_hotreload-" + std::to_string(static_cast<unsigned long long>(::geteuid())));
+        }
+        ::mkdir(dir.c_str(), 0700);
+        struct stat st;
+        if (::lstat(dir.c_str(), &st) != 0 || !S_ISDIR(st.st_mode) || st.st_uid != ::geteuid() || (st.st_mode & 077) != 0) {
+            jasperengine::editor::Out::warning("Not staging the hot-reload copy in %s: it is not a private folder of this user (a link, someone else's, or "
+                         "open to others).", dir.string().c_str());
+            return fs::path();
+        }
+        return dir;
+    #endif
+    }
+}
+
 bool editor::Conector::connect(const fs::path& buildPath, std::string libName, const fs::path& projectRoot){
     disconnect();
 
@@ -98,9 +133,11 @@ bool editor::Conector::connect(const fs::path& buildPath, std::string libName, c
     std::error_code ec;
     std::vector<fs::path> stagingDirs;
     stagingDirs.push_back(buildPath / "hotreload");
-    fs::path tempBase = fs::temp_directory_path(ec);
-    if (!ec && !tempBase.empty()) {
-        stagingDirs.push_back(tempBase / "jasperengine_hotreload");
+    // the fallback outside the project: a private per-user folder (another user can't plant the
+    // library we load there)
+    const fs::path privateDir = privateStagingDir();
+    if (!privateDir.empty()) {
+        stagingDirs.push_back(privateDir);
     }
 
     fs::path copyPath;

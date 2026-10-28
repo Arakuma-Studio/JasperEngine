@@ -1353,6 +1353,43 @@ void moveAssetTool(const CallPtr& call) {
         call->fail("Can't move " + (fromRel.empty() ? std::string("the project root") : fromRel) + ".");
         return;
     }
+    // never into a hidden or editor-owned place (.jasperengine, .trash, .git ...; project.yaml,
+    // scenes' generated files): a link moved there would let a build or an export write through it
+    {
+        const fs::path toRelPath = FileUtils::pathFromUtf8(toRel);
+        bool hidden = false;
+        for (const fs::path& part : toRelPath) {
+            const std::string text = FileUtils::pathToUtf8(part);
+            if (!text.empty() && text[0] == '.' && text != "." && text != "..") hidden = true;
+        }
+        std::string owned;
+        if (hidden || toRel == "project.yaml" || isEditorOwnedFile(project, to, owned)) {
+            call->fail("Can't move to " + toRel + ": " + (owned.empty() ? std::string("a hidden or editor-owned place") : owned) +
+                       ". Pick a folder of the project's assets.");
+            return;
+        }
+    }
+    // a trusted root (the assets or Lua folder, or a folder holding one) is not moved away, nor
+    // anything moved into its place
+    if (const std::string touched = McpRefs::trustedRootTouched(project, from, false); !touched.empty() && !copying) {
+        call->fail(touched);
+        return;
+    }
+    if (const std::string touched = McpRefs::trustedRootTouched(project, to, true); !touched.empty()) {
+        call->fail(touched);
+        return;
+    }
+    // moving a link that leads out of the project's trusted roots would relocate an escape hatch
+    {
+        std::error_code linkError;
+        if (!copying && fs::is_symlink(fs::symlink_status(from, linkError))) {
+            if (const std::string escape = McpRefs::writeEscape(project, from); !escape.empty()) {
+                call->fail("Can't move " + fromRel + ": it is a link leading out of the project (" + escape +
+                           ") — moving the link would take that elsewhere. Copy what it holds instead (move_asset copy: true), or move it yourself.");
+                return;
+            }
+        }
+    }
     std::error_code ec;
     if (fs::exists(to, ec)) {
         call->fail(toRel + " already exists; delete it first or pick another name.");
@@ -1441,6 +1478,11 @@ void deleteAssetTool(const CallPtr& call) {
         const std::string rel = projectRelative(project, file.lexically_normal());
         if (rel.empty() || rel == "project.yaml" || rel[0] == '.') {
             call->fail("Refusing to delete " + (rel.empty() ? std::string("the project root") : rel) + ".");
+            return;
+        }
+        // a trusted root (the assets or Lua folder, or a folder holding one): never deleted by a tool
+        if (const std::string touched = McpRefs::trustedRootTouched(project, file, false); !touched.empty()) {
+            call->fail(touched);
             return;
         }
         for (SceneProject* scene : project->getScenesAndPrefabStages()) {

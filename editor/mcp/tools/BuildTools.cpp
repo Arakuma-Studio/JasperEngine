@@ -309,6 +309,28 @@ fs::path defaultOutputDir(Project* project, ExportMode mode) {
     return project->getProjectInternalPath() / "builds" / modeName(mode);
 }
 
+// An output folder an agent may build into: the user's saved export folder for the mode, the
+// default export location (or anything below it), or a folder inside the project's trusted roots.
+// "" when allowed, else the refusal (the agent can't make the editor write a build anywhere else)
+std::string outputDirRefusal(Project* project, const fs::path& outputDir, ExportMode mode) {
+    const fs::path where = safewrite::resolvedPath(outputDir);
+    auto below = [&](const fs::path& dir) {
+        if (dir.empty()) return false;
+        const fs::path real = safewrite::resolvedPath(dir);
+        return !real.empty() && !where.empty() && safewrite::isAtOrBelow(where, real);
+    };
+    const fs::path file = project->getProjectPath() / "project.yaml";
+    if (below(AppSettings::getExportTargetDir(file, settingsModeKey(mode)))) return std::string();
+    if (below(AppSettings::getDefaultExportDirectory())) return std::string();
+    if (below(defaultOutputDir(project, mode))) return std::string();
+    for (const fs::path& root : McpRefs::trustedRoots(project)) {
+        if (below(root)) return std::string();
+    }
+    return "output_dir " + FileUtils::pathToGenericUtf8(outputDir) + " is not the export folder chosen for this project, the default "
+           "export location or a folder of the project. Fix: choose the output folder in Build Settings (or Preferences' default "
+           "export folder), or omit output_dir.";
+}
+
 std::string stripAnsi(const std::string& line) {
     std::string out;
     out.reserve(line.size());
@@ -768,6 +790,10 @@ void buildProjectTool(const CallPtr& call) {
     }
     outputDir = outputDir.lexically_normal();
     if (outputDir.filename().empty()) outputDir = outputDir.parent_path();
+    if (const std::string refusal = outputDirRefusal(project, outputDir, mode); !refusal.empty()) {
+        call->fail(refusal);
+        return;
+    }
     if ((isInside(outputDir, project->getProjectPath()) || isInside(outputDir, project->getAssetsPath())) &&
         !isInside(outputDir, project->getProjectInternalPath())) {
         call->fail("output_dir " + FileUtils::pathToGenericUtf8(outputDir) + " is inside the project (its assets and scenes are scanned "
@@ -933,7 +959,8 @@ void buildProjectTool(const CallPtr& call) {
         call->fail("Could not write the project file (see the console).");
         return;
     }
-    AppSettings::setExportTargetDir(projectFile, settingsModeKey(mode), outputDir);
+    // (an agent's output folder is not saved as the project's export folder: only the user picks that)
+    (void)projectFile;
 
     // ---- start
     if (const std::string escape = buildFoldersEscape(project, {config.targetDir, config.destinationDir}); !escape.empty()) {
@@ -977,6 +1004,10 @@ void generateShadersTool(const CallPtr& call) {
     }
     ExportConfig config;
     config.targetDir = FileUtils::pathFromUtf8(target).lexically_normal();
+    if (const std::string refusal = outputDirRefusal(project, config.targetDir, ExportMode::Desktop); !refusal.empty()) {
+        call->fail(refusal);
+        return;
+    }
     std::string error;
     if (!parseBackends(args.contains("backends") ? args["backends"] : Json("all"), config.selectedBackends, error)) {
         call->fail("backends: " + error + ".");

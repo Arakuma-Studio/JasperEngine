@@ -144,7 +144,9 @@ void ImportQueue::work(){
         {
             // the import's files beneath the project (util/SafeWrite.h: no link on the way
             // followed), for the GUI's automatic imports too
-            jasperengine::editor::safewrite::Scope scope(job.target.projectRoot);
+            // the project's trusted roots: its directory and its assets directory (a linked
+            // assets folder keeps working)
+            jasperengine::editor::safewrite::Scope scope(std::vector<std::filesystem::path>{job.target.projectRoot, job.target.assetsDir});
             result = runner(job);
         }
 
