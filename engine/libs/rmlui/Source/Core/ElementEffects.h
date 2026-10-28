@@ -35,6 +35,11 @@ public:
 			opacity < 1.f || has_mask_image;
 	}
 
+	// Fork (P7-F2): extends 'region' (window coordinates: the ink of the element's subtree) by the extent of the element's
+	// filters (a blur's and a shadow's spread), applied in its own space: scaled by its transform. Returns the largest
+	// extent added on a side (the filters' reach), zero without filters.
+	float ExtendByFilterExtent(Rectanglef& region);
+
 	// Mark effects as dirty and force them to reset themselves.
 	void DirtyEffects();
 	// Mark the element data of effects as dirty.
