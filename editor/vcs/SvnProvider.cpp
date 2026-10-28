@@ -167,11 +167,42 @@ fs::path SvnProvider::tempFile(const char* prefix) const {
     return cfg.internalDir / (std::string(prefix) + std::to_string(io::currentProcessId()) + "-" + std::to_string(tempCounter++));
 }
 
+namespace {
+
+    // `part`'s top-level children appended inside `into`'s root element (the documents of one
+    // command run over chunks of paths); text without a root element is appended as it is
+    void appendXmlDocument(std::string& into, const std::string& part) {
+        auto rootOf = [](const std::string& text, size_t& open, size_t& close) {
+            size_t at = 0;
+            while ((at = text.find('<', at)) != std::string::npos && (text.compare(at, 2, "<?") == 0 || text.compare(at, 2, "<!") == 0)) at++;
+            if (at == std::string::npos) return false;
+            const size_t nameEnd = text.find_first_of(" \t\r\n/>", at + 1);
+            if (nameEnd == std::string::npos) return false;
+            const std::string name = text.substr(at + 1, nameEnd - at - 1);
+            const size_t openEnd = text.find('>', nameEnd);
+            close = text.rfind("</" + name + ">");
+            if (openEnd == std::string::npos || close == std::string::npos || close < openEnd) return false;
+            open = openEnd + 1;
+            return true;
+        };
+        size_t intoOpen = 0, intoClose = 0, partOpen = 0, partClose = 0;
+        if (!rootOf(into, intoOpen, intoClose) || !rootOf(part, partOpen, partClose)) {
+            into += part;
+            return;
+        }
+        into.insert(intoClose, part.substr(partOpen, partClose - partOpen));
+    }
+
+}
+
 ProcessResult SvnProvider::svnWithTargets(std::vector<std::string> args, std::span<const RepoPath> paths, int timeoutMs,
                                           const jobs::CancelToken* cancel) const {
-    // status takes no --targets: its paths go on the command line, in chunks (after --, each
-    // with its peg escape), the outputs one after the other
-    if (!args.empty() && args[0] == "status") {
+    // status and propget take no --targets: their paths go on the command line, in chunks (after
+    // --, each with its peg escape), the outputs one XML document again
+    static const char* const kTargetsCommands[] = {"add", "commit", "delete", "info", "lock", "unlock", "revert", "resolve", "update"};
+    const bool targetsFile = !args.empty() && std::any_of(std::begin(kTargetsCommands), std::end(kTargetsCommands),
+                                                          [&](const char* command) { return args[0] == command; });
+    if (!targetsFile) {
         constexpr size_t kChunkPaths = 256;
         ProcessResult combined;
         for (size_t start = 0; start < paths.size(); start += kChunkPaths) {
@@ -182,19 +213,8 @@ ProcessResult SvnProvider::svnWithTargets(std::vector<std::string> args, std::sp
             if (!part.ok()) return part;
             combined.exitCode = part.exitCode;
             combined.err += part.err;
-            if (combined.out.empty()) {
-                combined.out = std::move(part.out);
-                continue;
-            }
-            // one <status> document: the later chunks' targets go inside the first's
-            const size_t open = part.out.find("<status>");
-            const size_t close = part.out.rfind("</status>");
-            const size_t end = combined.out.rfind("</status>");
-            if (open == std::string::npos || close == std::string::npos || end == std::string::npos) {
-                combined.out += part.out;
-                continue;
-            }
-            combined.out.insert(end, part.out.substr(open + 8, close - open - 8));
+            if (combined.out.empty()) combined.out = std::move(part.out);
+            else appendXmlDocument(combined.out, part.out);
         }
         return combined;
     }
@@ -521,7 +541,9 @@ VcsResult SvnProvider::unlock(std::span<const RepoPath> paths, bool force) {
 VcsResult SvnProvider::lockable(std::span<const RepoPath> paths, std::vector<bool>& out) {
     out.assign(paths.size(), false);
     if (paths.empty()) return VcsResult::success();
-    const ProcessResult result = svnWithTargets({"propget", "svn:needs-lock", "--xml"}, paths);
+    // one recursive query of the project: every file that has the property (naming a file
+    // without it is an error to svn)
+    const ProcessResult result = svn({"propget", "svn:needs-lock", "--xml", "--depth", "infinity", "--", pegged(projectTarget())});
     if (!result.ok()) return resultOf(result);
     XmlElement root;
     if (!parseXml(result.out, root)) return VcsResult::failure("svn propget: unreadable output");

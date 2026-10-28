@@ -107,7 +107,8 @@ TEST(SvnProvider, EndToEnd) {
     result = offMain([&]() { return alice.commit(std::vector<RepoPath>{"art/needs.bin"}, "needs-lock", revision); });
     ASSERT_TRUE(result.ok) << result.message;
     EXPECT_EQ(revision, "2");
-    EXPECT_TRUE(statusOf(alice).entries.empty());
+    // nothing changed (the needs-lock file is listed for its lock state only)
+    EXPECT_EQ(statusOf(alice).changedCount(), 0u);
 
     // modify
     writeFile(wcA / "a.txt", "line1 alice\n");
