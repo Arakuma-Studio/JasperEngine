@@ -659,10 +659,10 @@ namespace jasperengine::editor::spritenormals {
             return o.project.empty() || p.is_absolute() ? p.lexically_normal() : (o.project / p).lexically_normal();
         }
 
+        // links resolved, a dangling one too (resolvedPath); a loop: the path as named
         fs::path canonicalPath(const fs::path& path) {
-            std::error_code ec;
-            const fs::path c = fs::weakly_canonical(path, ec);
-            return ec ? path.lexically_normal() : c;
+            const fs::path c = resolvedPath(path);
+            return c.empty() ? path.lexically_normal() : c;
         }
 
         int exitFor(const std::string& kind) {

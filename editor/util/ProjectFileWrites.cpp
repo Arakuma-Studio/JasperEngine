@@ -6,6 +6,7 @@
 #include "App.h"
 #include "Backend.h"
 #include "Catalog.h"
+#include "Out.h"
 #include "Project.h"
 #include "animation/AnimationClipDocument.h"
 #include "command/CommandHistory.h"
@@ -31,6 +32,41 @@ using namespace jasperengine;
 namespace fs = std::filesystem;
 
 namespace {
+
+    // A WriteFilesCmd whose every execute (redo included) and undo asks the guard first
+    class GuardedWriteFilesCmd : public editor::WriteFilesCmd {
+    public:
+        GuardedWriteFilesCmd(std::vector<Item> items, std::function<void(const std::vector<fs::path>&)> afterChange,
+                             editor::ProjectFileWrites::Guard guard, std::shared_ptr<std::string> failure)
+            : WriteFilesCmd(std::move(items), std::move(afterChange)), guard(std::move(guard)), failure(std::move(failure)) {
+            reportFailureTo(this->failure);
+        }
+
+        bool execute() override {
+            std::string why;
+            if (!guard(why)) {
+                *failure = why;
+                if (executed) editor::Out::warning("Redo not applied: %s", why.c_str());
+                return false;
+            }
+            executed = true;
+            return WriteFilesCmd::execute();
+        }
+
+        void undo() override {
+            std::string why;
+            if (!guard(why)) {
+                editor::Out::warning("Undo not applied: %s", why.c_str());
+                return;
+            }
+            WriteFilesCmd::undo();
+        }
+
+    private:
+        editor::ProjectFileWrites::Guard guard;
+        std::shared_ptr<std::string> failure;
+        bool executed = false;
+    };
 
     editor::ProjectFileWrites::SyncHook& syncHook() {
         static editor::ProjectFileWrites::SyncHook hook;
@@ -203,7 +239,7 @@ void editor::ProjectFileWrites::setSyncHook(SyncHook hook) {
 }
 
 bool editor::ProjectFileWrites::writeUndoable(Project* project, std::vector<WriteFilesCmd::Item> items, std::string& error,
-                                              std::function<void(const std::vector<fs::path>&)> afterChange) {
+                                              std::function<void(const std::vector<fs::path>&)> afterChange, Guard guard) {
     if (!project) {
         error = "No project is open to write into.";
         return false;
@@ -218,9 +254,10 @@ bool editor::ProjectFileWrites::writeUndoable(Project* project, std::vector<Writ
     if (!afterChange) {
         afterChange = [project](const std::vector<fs::path>& changed) { filesWritten(project, changed); };
     }
-    auto* cmd = new WriteFilesCmd(std::move(items), std::move(afterChange));
-    cmd->setNoMerge();
     auto failure = std::make_shared<std::string>();
+    WriteFilesCmd* cmd = guard ? new GuardedWriteFilesCmd(std::move(items), std::move(afterChange), std::move(guard), failure)
+                               : new WriteFilesCmd(std::move(items), std::move(afterChange));
+    cmd->setNoMerge();
     cmd->reportFailureTo(failure);
     // addCommand runs execute() and deletes the command when it fails (execute then changed nothing)
     if (!project->getProjectCommandHistory()->addCommand(cmd)) {

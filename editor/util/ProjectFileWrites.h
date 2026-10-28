@@ -53,12 +53,18 @@ namespace jasperengine::editor {
         using SyncHook = std::function<bool(Project* project, const std::vector<std::filesystem::path>& changed)>;
         static void setSyncHook(SyncHook hook);
 
+        // Asked before every execute (the first one and each redo) and undo of a write: false with
+        // the reason refuses that step (nothing written or removed; a refused redo or undo says so
+        // in the console). The sprite normal maps' containment check.
+        using Guard = std::function<bool(std::string& why)>;
+
         // A WriteFilesCmd on the project's command history: one undo step, all or nothing (a
         // failed write changes nothing and adds no step). After its execute, undo and redo it runs
         // `afterChange` with the paths (default: filesWritten). False + `error` without a
-        // project, when an item is a directory, or when the write failed.
+        // project, when an item is a directory, when `guard` refuses, or when the write failed.
         static bool writeUndoable(Project* project, std::vector<WriteFilesCmd::Item> items, std::string& error,
-                                  std::function<void(const std::vector<std::filesystem::path>&)> afterChange = nullptr);
+                                  std::function<void(const std::vector<std::filesystem::path>&)> afterChange = nullptr,
+                                  Guard guard = nullptr);
     };
 
 }

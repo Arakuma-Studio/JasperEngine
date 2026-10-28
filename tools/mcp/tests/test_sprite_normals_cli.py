@@ -17,8 +17,8 @@ for --sprite:
 - the recipe's source.path: relative to the output's directory without --project, project-relative with it; an output
   outside the assets directory exits 2;
 - with --project, symbolic links: an output (-o, --output-dir, --atlas, --frames-json) through a folder of the assets
-  that links outside the project exits 2 (output_invalid, nothing written), -o the source through a link exits 2; a
-  project reached through a link and an assets directory that is a link work;
+  that links outside the project, or a dangling link, exits 2 (output_invalid, nothing written), -o the source through
+  a link exits 2; a project reached through a link and an assets directory that is a link work;
 - --sprite: frames from the Sprite (from: "sprite");
 - --cells-json with a written map's recipe frames.cells reproduces its pixels; with --frame-size it exits 2;
 - paint (Phase 5 spec 4.2): --paint-json from a file, inline and stdin, --paint-mode keep / replace / clear, the JSON
@@ -260,6 +260,8 @@ async def test_project_outputs_and_symbolic_links():
     # folder of the assets that is a link to outside the project is refused (exit 2, output_invalid,
     # nothing written); an assets directory that is itself a link, and a project reached through a
     # link, keep working
+    if not harness.symlinks_permitted():
+        harness.skip("this process may not create symbolic links")
     work = scratch()
     project = work.parent / "linkproj"
     (project / "assets" / "art").mkdir(parents=True)
@@ -275,6 +277,13 @@ async def test_project_outputs_and_symbolic_links():
                  ["--source", "assets/art/spin.gif", "--output-dir", "assets/out", "--frames-json"]):
         r = run(project, "--project", str(project), *args)
         check(r.returncode == 2 and "output_invalid" in r.stderr and "symbolic link" in r.stderr, f"{args}: exit 2 through the link: {r.returncode} {r.stderr[-600:]}")
+    # dangling links (to a file and a folder outside that don't exist yet)
+    os.symlink(outside / "dangling.png", project / "assets" / "art" / "dl.png")
+    os.symlink(outside / "gone", project / "assets" / "dl_dir")
+    for args in (["--source", "assets/art/ball.png", "-o", "assets/art/dl.png", "--overwrite"],
+                 ["--source", "assets/art/ball.png", "--output-dir", "assets/dl_dir"]):
+        r = run(project, "--project", str(project), *args)
+        check(r.returncode == 2 and "output_invalid" in r.stderr and "symbolic link" in r.stderr, f"{args}: exit 2 through a dangling link: {r.returncode} {r.stderr[-600:]}")
     check(not any(outside.iterdir()), f"nothing written outside: {list(outside.iterdir())}")
     # an output that is the source through a link: refused even with --overwrite
     os.symlink("ball.png", project / "assets" / "art" / "alias.png")

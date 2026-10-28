@@ -99,9 +99,10 @@ namespace jasperengine::editor::spritenormals {
     bool resolveProjectFile(const std::filesystem::path& projectDir, const std::string& rel, std::filesystem::path& absolute,
                             std::string& error);
     std::string projectRelative(const std::filesystem::path& projectDir, const std::filesystem::path& absolute);
-    // `path` with the components that exist resolved (symbolic links included:
-    // std::filesystem::weakly_canonical), the ones that don't exist yet kept lexically; the
-    // lexical path when it can't be resolved
+    // `path` (absolute, lexically normal first) with every symbolic link on the way followed,
+    // a dangling one too (unlike std::filesystem::weakly_canonical, which stops at the first
+    // component that doesn't exist); below a component that doesn't exist the rest stays lexical.
+    // Empty when a link loops (more than 40) or can't be read: inside nothing.
     std::filesystem::path resolvedPath(const std::filesystem::path& path);
     // `path` is `dir` or below it once both are resolved (resolvedPath): a symbolic link inside
     // `dir` leading elsewhere is not inside; `dir` itself reached through a link is fine
@@ -187,14 +188,19 @@ namespace jasperengine::editor::spritenormals {
     // recipe "paint":{"painted":N}. `problem` (optional): the kind (paint_too_large, write_failed).
     bool encodeOutputs(const Prepared& prepared, const Result& result, std::vector<OutputFile>& files, std::string& error,
                        Problem* problem = nullptr);
+    // Every file inside `project`'s assets directory, also once symbolic links are resolved
+    // (outputs are checked by checkSpec; this checks them again where they are written: a link
+    // made since). False with the problem (output_invalid, field output.<role>) otherwise.
+    bool outputsContained(Project* project, const std::vector<OutputFile>& files, Problem& problem);
     // One step of the project command history (ProjectFileWrites::writeUndoable: no MCP server
     // needed), then the editor notices them (textures reloaded, the asset database, thumbnails,
-    // the Project window, the watcher; with the MCP server running, its file sync). Each file is
-    // checked again first: inside `project`'s assets directory once symbolic links are resolved
-    // (a link made since the check), else nothing is written. Main thread.
+    // the Project window, the watcher; with the MCP server running, its file sync). The files are
+    // checked with outputsContained first (refused: `problem` output_invalid, nothing written) and
+    // again before each redo and undo of the step (refused: that step is not applied, said in the
+    // console). `problem` (optional): the refusal, or write_failed. Main thread.
     // The step is named "Generate Normal Map <file name of the first normal output>" ("Generate
     // Normal Maps (N)" for N normal outputs).
-    bool writeOutputsUndoable(Project* project, const std::vector<OutputFile>& files, std::string& error);
+    bool writeOutputsUndoable(Project* project, const std::vector<OutputFile>& files, std::string& error, Problem* problem = nullptr);
     // All or nothing without history (the CLI): texsynth::writeFilesAllOrNothing
     bool writeOutputsDirect(const std::vector<OutputFile>& files, std::string& failedPath, std::string& error);
 

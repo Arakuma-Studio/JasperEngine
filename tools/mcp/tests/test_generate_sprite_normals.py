@@ -19,7 +19,8 @@ the 2-frame APNG, the upstream golden ball):
 - height: true writes a 16-bit grey PNG; output {normal, frames: true} writes the frames JSON;
 - save_path writes the sheet and nothing else;
 - symbolic links: no output (normal, height, frames JSON, atlas) nor save_path through a link of the assets to outside
-  the project (output_invalid), none that is the source through a link; a link to a folder of the assets is fine;
+  the project, dangling links included (output_invalid), none that is the source through a link; a link to a folder
+  of the assets is fine;
 - the job path (timeout -> job_id, get_job, cancel_job writes nothing);
 - get_asset_info / view_asset (sprite_normals, regenerate reproducing the pixels, a grid's {cells}, staleness after
   an edit of the source and the auto-sync's external_changes problem, normal_map on the source);
@@ -42,7 +43,7 @@ import tempfile
 import zlib
 from pathlib import Path
 
-from harness import REPO, Editor, TestFailure
+from harness import REPO, Editor, TestFailure, skip, symlinks_permitted
 from htmlui_pixels import decode_png
 
 EDITOR = {"create": True, "name": "SpriteNormals"}
@@ -658,12 +659,18 @@ async def test_outputs_through_symbolic_links(ed: Editor):
     # a folder of the assets that is a link to a folder outside the project: no output, nor the
     # sheet, is written through it (output_invalid); a link to a folder of the assets is fine; an
     # output or save_path that is the source through a link is refused
+    if not symlinks_permitted():
+        skip("this process may not create symbolic links")
     if not (ed.project / BALL).is_file():
         write_inputs(ed.project)
     spr = ed.project / SPR
     outside = Path(tempfile.mkdtemp(prefix="jasper-normals-outside-"))
     os.symlink(outside, spr / "out")
     os.symlink("ball.png", spr / "ball_alias.png")
+    # dangling links: files and a folder outside that don't exist (yet)
+    os.symlink(outside / "dangling_sheet.png", spr / "dl_sheet.png")
+    os.symlink(outside / "dangling_normal.png", spr / "dl_normal.png")
+    os.symlink(outside / "missing_folder", spr / "dl_dir")
     (spr / "real").mkdir(exist_ok=True)
     os.symlink(spr / "real", spr / "inside")
     try:
@@ -674,13 +681,18 @@ async def test_outputs_through_symbolic_links(ed: Editor):
             {"output": {"normal": f"{SPR}/ln/ball_n.png", "frames": f"{SPR}/out/ball.frames.json"}, "frames": {"tile_size": 16}},
             {"save_path": f"{SPR}/out/sheet.png"},
             {"output": f"{SPR}/ln/ball_n.png", "save_path": f"{SPR}/out/sheet.png"},
+            {"save_path": f"{SPR}/dl_sheet.png"},
+            {"save_path": f"{SPR}/dl_dir/sheet.png"},
+            {"output": f"{SPR}/dl_normal.png", "overwrite": True},
+            {"output": f"{SPR}/dl_dir/ball_n.png"},
+            {"output": {"normal": f"{SPR}/ln/ball_n.png", "height": f"{SPR}/dl_dir/ball_h.png"}, "height": True},
         ]
         for args in cases:
             got = await gen_error(ed, source=BALL, **args)
             check("output_invalid" in got["kinds"] and "symbolic link" in got["text"], f"{args}: output_invalid through the link: {got['kinds']} {got['text'][:400]}")
         got = await gen_error(ed, source=GIF, output={"atlas": f"{SPR}/out/torch_sheet.png"})
         check("output_invalid" in got["kinds"] and "symbolic link" in got["text"], f"the atlas through the link: {got['kinds']} {got['text'][:400]}")
-        check(not any(outside.iterdir()), f"nothing written outside: {list(outside.iterdir())}")
+        check(not any(outside.iterdir()), f"nothing written outside (dangling links included): {list(outside.iterdir())}")
         check(files_under(ed.project) == before, f"nothing written: {files_under(ed.project) - before}")
         # the source through a link: never replaced, even with overwrite
         src = (spr / "ball.png").read_bytes()
@@ -694,7 +706,7 @@ async def test_outputs_through_symbolic_links(ed: Editor):
         check((spr / "real" / "ball_in.png").is_file() and (spr / "real" / "ball_in_sheet.png").is_file(), "written through the inside link")
         await ed.call("undo", scope="project")
     finally:
-        for name in ("out", "ball_alias.png", "inside"):
+        for name in ("out", "ball_alias.png", "inside", "dl_sheet.png", "dl_normal.png", "dl_dir"):
             (spr / name).unlink()
         shutil.rmtree(spr / "real", ignore_errors=True)
         shutil.rmtree(outside, ignore_errors=True)

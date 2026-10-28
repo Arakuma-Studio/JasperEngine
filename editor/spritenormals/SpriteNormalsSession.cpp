@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 #include "SpriteNormalsSession.h"
-#include "SpriteNormalsWatcher.h"
 
 #include "Catalog.h"
 #include "Platform.h"
@@ -25,6 +24,7 @@
 #include <cmath>
 #include <condition_variable>
 #include <cstdio>
+#include <deque>
 #include <fstream>
 #include <iterator>
 #include <set>
@@ -145,6 +145,9 @@ namespace jasperengine::editor::spritenormals {
         std::string resolvedEscape(const fs::path& projectDir, const fs::path& assets, const fs::path& abs, const std::string& shownPath) {
             const fs::path real = resolvedPath(abs);
             const fs::path realAssets = resolvedPath(assets);
+            if (real.empty()) {
+                return shownPath + " can't be resolved: a symbolic link on its way loops or can't be read.";
+            }
             if (!isAtOrBelow(real, realAssets)) {
                 return shownPath + " resolves outside the project's assets directory (" + projectRelative(projectDir, assets) +
                        "): a symbolic link on its way leads to " + texsynth::printableUtf8(real.generic_u8string()) + ".";
@@ -334,8 +337,47 @@ namespace jasperengine::editor::spritenormals {
     fs::path resolvedPath(const fs::path& path) {
         if (path.empty()) return path;
         std::error_code ec;
-        const fs::path resolved = fs::weakly_canonical(path, ec);
-        return ec || resolved.empty() ? path.lexically_normal() : resolved.lexically_normal();
+        fs::path absolute = path.is_absolute() ? path : fs::absolute(path, ec);
+        if (ec) absolute = path;
+        absolute = absolute.lexically_normal();
+        // component by component (weakly_canonical stops at the first one that doesn't exist, so
+        // a dangling link would stay unresolved): every link on the way is followed, a dangling
+        // one too, up to kMaxLinks; below a component that doesn't exist the rest is lexical
+        constexpr int kMaxLinks = 40;
+        std::deque<fs::path> rest;
+        for (const fs::path& part : absolute.relative_path()) rest.push_back(part);
+        fs::path out = absolute.root_path();
+        int links = 0;
+        bool lexical = false;
+        while (!rest.empty()) {
+            const fs::path part = rest.front();
+            rest.pop_front();
+            if (part.empty() || part == ".") continue;
+            if (part == "..") {
+                if (out.has_relative_path()) out = out.parent_path();
+                continue;
+            }
+            const fs::path next = out / part;
+            if (!lexical) {
+                std::error_code statusError;
+                const fs::file_status status = fs::symlink_status(next, statusError);
+                if (!statusError && fs::is_symlink(status)) {
+                    std::error_code readError;
+                    const fs::path target = fs::read_symlink(next, readError);
+                    // a loop, or a link that can't be read: nothing it could be inside of
+                    if (++links > kMaxLinks || readError) return fs::path();
+                    // an absolute target starts again from its root, a relative one from the link's folder
+                    if (target.is_absolute()) out = target.root_path();
+                    const fs::path parts = target.is_absolute() ? target.relative_path() : target;
+                    const std::vector<fs::path> list(parts.begin(), parts.end());
+                    for (auto it = list.rbegin(); it != list.rend(); ++it) rest.push_front(*it);
+                    continue;
+                }
+                if (statusError || !fs::exists(status)) lexical = true;
+            }
+            out = next;
+        }
+        return out.lexically_normal();
     }
 
     bool isInsideResolved(const fs::path& path, const fs::path& dir) {
@@ -880,32 +922,53 @@ namespace jasperengine::editor::spritenormals {
         return true;
     }
 
-    bool writeOutputsUndoable(Project* project, const std::vector<OutputFile>& files, std::string& error) {
-        if (!project || project->getProjectPath().empty()) {
-            error = "No editor project is open to write into (outside the editor, write with writeOutputsDirect).";
-            return false;
-        }
-        // checked again where they are written: a symbolic link made since the check must not
-        // lead a write out of the assets directory
+    bool outputsContained(Project* project, const std::vector<OutputFile>& files, Problem& problem) {
+        if (!project || project->getProjectPath().empty()) return true;
         const fs::path root = project->getProjectPath();
         const fs::path assets = assetsRootOf(root, project->getAssetsPath());
         for (const OutputFile& file : files) {
             const std::string shown = file.path.empty() ? projectRelative(root, file.absolute) : file.path;
-            std::string escape = isAtOrBelow(file.absolute, assets)
-                                     ? resolvedEscape(root, assets, file.absolute, shown)
-                                     : shown + " is outside the project's assets directory (" + projectRelative(root, assets) + ").";
+            const bool lexicallyInside = isAtOrBelow(file.absolute, assets);
+            const std::string escape = lexicallyInside ? resolvedEscape(root, assets, file.absolute, shown)
+                                                       : shown + " is outside the project's assets directory (" + projectRelative(root, assets) + ").";
             if (!escape.empty()) {
-                error = escape + " Nothing was written.";
+                problem = {"output_invalid", "output." + file.role, escape,
+                           lexicallyInside ? "Write it to a folder of the assets directory that is not a link to elsewhere."
+                                           : "Write it inside the assets directory."};
                 return false;
             }
         }
+        return true;
+    }
+
+    bool writeOutputsUndoable(Project* project, const std::vector<OutputFile>& files, std::string& error, Problem* problem) {
+        if (!project || project->getProjectPath().empty()) {
+            error = "No editor project is open to write into (outside the editor, write with writeOutputsDirect).";
+            if (problem) *problem = {"write_failed", "output", error, "Open the project in the editor."};
+            return false;
+        }
+        // checked again where they are written: a symbolic link made since the check must not
+        // lead a write out of the assets directory
+        Problem escape;
+        if (!outputsContained(project, files, escape)) {
+            error = escape.message;
+            if (problem) *problem = escape;
+            return false;
+        }
         std::vector<WriteFilesCmd::Item> items;
         for (const OutputFile& file : files) items.push_back({file.absolute, file.bytes});
-        if (!ProjectFileWrites::writeUndoable(project, std::move(items), error)) return false;
-        // the editor's watcher reads them soon (and wakes when the project had no generated map)
-        if (SpriteNormalsWatcher* watcher = SpriteNormalsWatcher::active()) {
-            for (const OutputFile& file : files) watcher->invalidate(file.absolute);
+        // ... and before each redo and undo of the step (a link made in between: that step is not applied)
+        auto guard = [project, files](std::string& why) {
+            Problem p;
+            if (outputsContained(project, files, p)) return true;
+            why = p.message;
+            return false;
+        };
+        if (!ProjectFileWrites::writeUndoable(project, std::move(items), error, nullptr, guard)) {
+            if (problem) *problem = {"write_failed", "output", error, "Check the path is writable, then try again."};
+            return false;
         }
+        // (the editor's refresh, ProjectFileWrites::refresh, has the watcher read them again)
         return true;
     }
 

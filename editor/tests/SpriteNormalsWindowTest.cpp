@@ -41,6 +41,7 @@
 #include "window/SpriteNormalsWindow.h"
 
 #include "imgui.h"
+#include "SymlinkSupport.h"
 
 #include <unistd.h>
 
@@ -1536,6 +1537,7 @@ TEST(SpriteNormalsWindowDeathTest, SaveWithTheMcpServerIsNoExternalChange) {
 // ==================================================================== outputs and symbolic links
 
 TEST(SpriteNormalsWindowDeathTest, AnOutputThroughALinkOutOfTheAssetsIsRefused) {
+    SKIP_WITHOUT_SYMLINKS();
     IN_EDITOR("symlink", {
         // assets/out is a link to a folder outside the project
         const fs::path outside = w.dir.parent_path() / "outside";

@@ -105,6 +105,18 @@ def skip(reason: str) -> None:
     raise Skip(reason)
 
 
+def symlinks_permitted() -> bool:
+    """Whether this process may create symbolic links (Windows may not): the symlink tests skip without."""
+    probe = Path(tempfile.mkdtemp(prefix="jasper-symlink-probe-"))
+    try:
+        os.symlink(probe / "missing", probe / "link")
+        return True
+    except (OSError, NotImplementedError):
+        return False
+    finally:
+        shutil.rmtree(probe, ignore_errors=True)
+
+
 # ---------------------------------------------------------------------------
 # Locations
 

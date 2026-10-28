@@ -4,7 +4,8 @@
 // generate_sprite_normals' save_path contact sheet (SpriteNormalsTools.cpp), written before the
 // project files (a sheet that can't be written fails the call before anything else is). Until
 // commit(), a later failure (or an exception unwinding the finish) puts the path back as it was:
-// its old bytes, or no file and none of the folders made for it.
+// its old bytes, or no file and none of the folders made for it. Written to a temporary file
+// beside it, then renamed over it: a symbolic link at the path is replaced, never written through.
 #pragma once
 
 #include <cstdint>
@@ -44,10 +45,9 @@ namespace jasperengine::editor::mcp {
             }
             active = true;
             if (path.has_parent_path()) fs::create_directories(path.parent_path(), ec);
-            std::ofstream file(path, std::ios::binary | std::ios::trunc);
-            // a file that could not be opened was not touched: the rollback leaves it alone
-            touched = static_cast<bool>(file);
-            if (!file || !file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size())) || !(file.close(), file)) {
+            // a path that could not be replaced was not touched: the rollback leaves it alone
+            touched = replace(path, reinterpret_cast<const char*>(bytes.data()), bytes.size());
+            if (!touched) {
                 error = ec ? ec.message() : std::string("the file could not be written");
                 std::string restore;
                 if (!rollback(&restore) && warning) *warning = restore;
@@ -66,8 +66,7 @@ namespace jasperengine::editor::mcp {
             std::error_code ec;
             bool ok = true;
             if (touched && existed) {
-                std::ofstream back(target, std::ios::binary | std::ios::trunc);
-                ok = back && back.write(previous.data(), static_cast<std::streamsize>(previous.size())) && (back.close(), back);
+                ok = replace(target, previous.data(), previous.size());
                 if (!ok && warning) *warning = "the sheet replaced " + target.generic_u8string() + " and its previous version could not be written back";
             } else if (touched) {
                 fs::remove(target, ec);
@@ -79,6 +78,31 @@ namespace jasperengine::editor::mcp {
         const std::filesystem::path& path() const { return target; }
 
     private:
+        // `size` bytes into a temporary file beside `path`, renamed over it (what is at `path`,
+        // a symbolic link included, is replaced, not written through); false (and no temporary
+        // file left) when that failed
+        static bool replace(const std::filesystem::path& path, const char* data, size_t size) {
+            namespace fs = std::filesystem;
+            std::error_code ec;
+            fs::path name(".");
+            name += path.filename();
+            name += ".sheet.tmp";
+            const fs::path temp = path.parent_path() / name;
+            {
+                std::ofstream file(temp, std::ios::binary | std::ios::trunc);
+                if (!file || !file.write(data, static_cast<std::streamsize>(size)) || !(file.close(), file)) {
+                    fs::remove(temp, ec);
+                    return false;
+                }
+            }
+            fs::rename(temp, path, ec);
+            if (ec) {
+                fs::remove(temp, ec);
+                return false;
+            }
+            return true;
+        }
+
         std::filesystem::path target;
         bool existed = false;
         bool touched = false;

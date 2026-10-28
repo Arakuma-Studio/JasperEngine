@@ -31,6 +31,7 @@
 #include "window/SpriteNormalsWindow.h"
 
 #include "imgui.h"
+#include "SymlinkSupport.h"
 
 #include <unistd.h>
 
@@ -879,6 +880,7 @@ TEST(SpriteNormalsPaintWindowDeathTest, StrokesEvictedFromTheUndoCapStillKeepThe
 // ---- the paint Save: no MCP server, and never through a link out of the assets
 
 TEST(SpriteNormalsPaintWindowDeathTest, PaintSaveNeedsNoServerAndStaysInsideTheAssets) {
+    SKIP_WITHOUT_SYMLINKS();
     IN_EDITOR("paintlinks", {
         ASSERT_FALSE(mcp::McpServer::get().isStarted());
         const fs::path outside = w.dir.parent_path() / "outside";

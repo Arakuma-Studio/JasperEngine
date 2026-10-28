@@ -832,8 +832,11 @@ void finishNormals(const NormalsCallPtr& state) {
         CommandHistory* history = project->getProjectCommandHistory();
         const size_t before = history ? history->position() : 0;
         std::string error;
-        if (!sn::writeOutputsUndoable(project, all, error)) {
-            failWrite("Nothing was written:", {problem("write_failed", "output", error, "check the path is writable, then call again")});
+        sn::Problem refusal;
+        if (!sn::writeOutputsUndoable(project, all, error, &refusal)) {
+            // an output a symbolic link now leads out of the assets: output_invalid with its fix
+            if (refusal.kind == "output_invalid") failWrite("Nothing was written:", {refusal});
+            else failWrite("Nothing was written:", {problem("write_failed", "output", error, "check the path is writable, then call again")});
             return;
         }
         int normals = 0;

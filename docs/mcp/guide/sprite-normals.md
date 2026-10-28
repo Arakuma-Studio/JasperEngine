@@ -208,6 +208,8 @@ of a source shows `normal_map` (its `<stem>_normal.png`, stale or not). After yo
 `normals-source-changed`, `normals-source-missing`, `normals-recipe-invalid`, `normals-size-mismatch` (error),
 `normals-frames-mismatch`, `normals-filter-mismatch`, `normals-directx`, `normals-green-convention`,
 `normals-not-a-normal-map`, `normals-no-light-height`, `normals-paint-unreadable`, `normals-paint-size`.
+With **Auto-regenerate when sources change** on (a generated PNG's Inspector), the editor rewrites a stale map itself
+(no undo step); a map whose folder links out of the assets directory is not regenerated (the console says why).
 
 ## Shell
 
@@ -218,7 +220,9 @@ jasperengine-editor generate-sprite-normals --source fx/torch.gif --frames-json 
 ```
 
 `--dry-run` generates and reports without writing; `--preview-out` writes the contact sheet; `--project <dir>
---sprite <GameObject>` takes a Sprite's texture and frames; `--cells-json` takes a recipe's `frames.cells`. JSON:
+--sprite <GameObject>` takes a Sprite's texture and frames; `--cells-json` takes a recipe's `frames.cells`. With
+`--project`, paths inside the project are taken as named, so a source reached through a link inside it is accepted
+(its outputs must still be inside the assets directory once links are resolved). JSON:
 `{ok, dry_run, seconds, results: [{source, kind, width, height, frames, settings, radius_resolved, metrics,
 assessment, hint, warnings, outputs, written}], errors}`. Exit 0 written, 1 failed or an output exists without
 `--overwrite` (nothing written), 2 usage error.

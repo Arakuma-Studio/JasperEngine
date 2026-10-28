@@ -27,6 +27,7 @@
 #include "spritenormals/SpriteNormalsWatcher.h"
 #include "texsynth/SynthesisRecipe.h"
 #include "texsynth/SynthesisSession.h"
+#include "SymlinkSupport.h"
 
 #include "json.hpp"
 
@@ -382,6 +383,7 @@ TEST(SpriteNormalsSession, OutputsMustBeInsideTheAssetsDirectory) {
 // ---- symbolic links: every output stays inside the assets directory once links are resolved
 
 TEST(SpriteNormalsSession, OutputsThroughALinkOutOfTheAssetsAreRefused) {
+    SKIP_WITHOUT_SYMLINKS();
     const std::string dir = folder("links");
     writePng(dir + "/hero.png", balls(16, 16, 16, 6));
     copyWalkGif(dir + "/walk.gif");
@@ -441,10 +443,14 @@ TEST(SpriteNormalsSession, OutputsThroughALinkOutOfTheAssetsAreRefused) {
     late.absolute = abs / "out" / "late.png";
     late.bytes = "bytes";
     std::string error;
+    sn::Problem lateProblem;
     const size_t before = project()->getProjectCommandHistory()->position();
-    EXPECT_FALSE(sn::writeOutputsUndoable(project(), {late}, error));
+    EXPECT_FALSE(sn::writeOutputsUndoable(project(), {late}, error, &lateProblem));
     EXPECT_NE(error.find("symbolic link"), std::string::npos) << error;
-    EXPECT_NE(error.find("Nothing was written"), std::string::npos) << error;
+    EXPECT_EQ(lateProblem.kind, "output_invalid");
+    EXPECT_EQ(lateProblem.field, "output.normal");
+    EXPECT_EQ(lateProblem.message, error);
+    EXPECT_EQ(lateProblem.fix, "Write it to a folder of the assets directory that is not a link to elsewhere.");
     EXPECT_FALSE(fs::exists(outside / "late.png"));
     EXPECT_EQ(project()->getProjectCommandHistory()->position(), before);
     fs::remove_all(abs);
@@ -452,7 +458,156 @@ TEST(SpriteNormalsSession, OutputsThroughALinkOutOfTheAssetsAreRefused) {
     fs::remove_all(root() / ".jasperengine" / "links");
 }
 
+TEST(SpriteNormalsSession, ResolvedPathFollowsDanglingLinksAndRefusesLoops) {
+    SKIP_WITHOUT_SYMLINKS();
+    const fs::path base = root().parent_path() / "resolve-links";
+    fs::remove_all(base);
+    fs::create_directories(base / "real");
+    const fs::path real = fs::weakly_canonical(base);
+    // a dangling file link, a dangling folder link, a chain of relative links ending in nothing
+    fs::create_symlink(real / "nowhere" / "x.png", base / "file.png");
+    fs::create_directory_symlink(real / "gone", base / "dir");
+    fs::create_symlink("chain2", base / "chain1");
+    fs::create_symlink("real/../missing.png", base / "chain2");
+    EXPECT_EQ(sn::resolvedPath(base / "file.png"), real / "nowhere" / "x.png");
+    EXPECT_EQ(sn::resolvedPath(base / "dir" / "a" / "b.png"), real / "gone" / "a" / "b.png");
+    EXPECT_EQ(sn::resolvedPath(base / "chain1"), real / "missing.png");
+    EXPECT_EQ(sn::resolvedPath(base / "real" / "new.png"), real / "real" / "new.png") << "not there yet: lexical";
+    EXPECT_FALSE(sn::isInsideResolved(base / "file.png", base / "real"));
+    // a loop: nothing it could be inside of
+    fs::create_symlink("loop2", base / "loop1");
+    fs::create_symlink("loop1", base / "loop2");
+    EXPECT_TRUE(sn::resolvedPath(base / "loop1" / "x.png").empty());
+    EXPECT_FALSE(sn::isInsideResolved(base / "loop1" / "x.png", base));
+    fs::remove_all(base);
+}
+
+TEST(SpriteNormalsSession, OutputsThroughADanglingLinkAreRefused) {
+    SKIP_WITHOUT_SYMLINKS();
+    const std::string dir = folder("dangling");
+    writePng(dir + "/hero.png", balls(16, 16, 16, 6));
+    copyWalkGif(dir + "/walk.gif");
+    const fs::path abs = root() / fs::u8path(dir);
+    const fs::path outside = root().parent_path() / "outside-dangling";
+    fs::remove_all(outside);
+    // file links to files that don't exist (yet) outside the project, and a folder link to a missing folder
+    for (const char* name : {"hero_normal.png", "hero_height.png", "hero.frames.json", "walk_sheet.png"}) {
+        fs::create_symlink(outside / name, abs / name);
+    }
+    fs::create_directory_symlink(outside / "folder", abs / "gone");
+    project()->setAssetsDir("assets");
+    auto refused = [&](const sn::Spec& spec, const std::string& field) {
+        for (const sn::Problem& p : sn::checkSpec(root(), spec)) {
+            if (p.kind == "output_invalid" && p.field == field && p.message.find("symbolic link") != std::string::npos) return true;
+        }
+        return false;
+    };
+    sn::Spec normal = stillSpec(dir + "/hero.png");
+    normal.overwrite = true;
+    EXPECT_TRUE(refused(normal, "output.normal")) << "the default normal map is a dangling link";
+    sn::Spec height = normal;
+    height.settings.height = true;
+    height.output.normal = dir + "/n.png";
+    EXPECT_TRUE(refused(height, "output.height"));
+    sn::Spec frames = normal;
+    frames.output.normal = dir + "/n.png";
+    frames.frames.mode = sn::FramesSpec::Mode::Grid;
+    frames.frames.grid.tileWidth = frames.frames.grid.tileHeight = 8;
+    frames.output.framesJson = true;
+    frames.output.framesJsonPath = dir + "/hero.frames.json";
+    EXPECT_TRUE(refused(frames, "output.frames_json"));
+    sn::Spec atlas = stillSpec(dir + "/walk.gif");
+    atlas.overwrite = true;
+    atlas.output.normal = dir + "/walk_n.png";
+    EXPECT_TRUE(refused(atlas, "output.atlas"));
+    sn::Spec folderLink = stillSpec(dir + "/hero.png");
+    folderLink.output.normal = dir + "/gone/hero_normal.png";
+    EXPECT_TRUE(refused(folderLink, "output.normal"));
+    // the write-time check too, and nothing appears outside
+    sn::OutputFile late;
+    late.role = "normal";
+    late.path = dir + "/hero_normal.png";
+    late.absolute = abs / "hero_normal.png";
+    late.bytes = "bytes";
+    sn::Problem refusal;
+    std::string error;
+    EXPECT_FALSE(sn::writeOutputsUndoable(project(), {late}, error, &refusal));
+    EXPECT_EQ(refusal.kind, "output_invalid");
+    EXPECT_FALSE(sn::outputsContained(project(), {late}, refusal));
+    EXPECT_FALSE(fs::exists(outside));
+    project()->setAssetsDir(".");
+    fs::remove_all(abs);
+}
+
+TEST(SpriteNormalsSession, RedoAndUndoNeverGoThroughALinkMadeInBetween) {
+    SKIP_WITHOUT_SYMLINKS();
+    const std::string dir = folder("redo");
+    const fs::path abs = root() / fs::u8path(dir);
+    fs::create_directories(abs / "sub");
+    const fs::path outside = root().parent_path() / "outside-redo";
+    fs::remove_all(outside);
+    fs::create_directories(outside);
+    sn::OutputFile file;
+    file.role = "normal";
+    file.path = dir + "/sub/x_normal.png";
+    file.absolute = abs / "sub" / "x_normal.png";
+    file.bytes = "first";
+    CommandHistory* history = project()->getProjectCommandHistory();
+    std::string error;
+    ASSERT_TRUE(sn::writeOutputsUndoable(project(), {file}, error)) << error;
+    ASSERT_TRUE(history->undo());
+    EXPECT_FALSE(fs::exists(file.absolute));
+    // the folder becomes a link out of the assets: the redo writes nothing through it
+    fs::remove_all(abs / "sub");
+    fs::create_directory_symlink(outside, abs / "sub");
+    ASSERT_TRUE(history->redo());
+    EXPECT_FALSE(fs::exists(outside / "x_normal.png")) << "the redo was not applied";
+    // and an undo removes nothing through it
+    std::ofstream(outside / "x_normal.png") << "theirs";
+    ASSERT_TRUE(history->undo());
+    EXPECT_EQ(readAll(outside / "x_normal.png"), "theirs") << "the undo was not applied";
+    // back to a folder: redo and undo work again
+    fs::remove(abs / "sub");
+    fs::create_directories(abs / "sub");
+    ASSERT_TRUE(history->redo());
+    EXPECT_EQ(readAll(file.absolute), "first");
+    ASSERT_TRUE(history->undo());
+    EXPECT_FALSE(fs::exists(file.absolute));
+    fs::remove_all(abs);
+    fs::remove_all(outside);
+}
+
+TEST(SpriteNormalsSession, TheSheetReplacesALinkInsteadOfWritingThroughIt) {
+    SKIP_WITHOUT_SYMLINKS();
+    const std::string dir = folder("sheetlink");
+    const fs::path abs = root() / fs::u8path(dir);
+    const fs::path outside = root().parent_path() / "outside-sheet";
+    fs::remove_all(outside);
+    fs::create_directories(outside);
+    fs::create_symlink(outside / "sheet.png", abs / "sheet.png");
+    {
+        mcp::SheetWrite sheet;
+        std::string error;
+        ASSERT_TRUE(sheet.write(abs / "sheet.png", {1, 2, 3}, error)) << error;
+        sheet.commit();
+    }
+    EXPECT_FALSE(fs::exists(outside / "sheet.png")) << "not written through the dangling link";
+    EXPECT_FALSE(fs::is_symlink(abs / "sheet.png"));
+    EXPECT_EQ(readAll(abs / "sheet.png"), std::string("\x01\x02\x03"));
+    // a rollback of a replaced sheet puts its bytes back; nothing temporary is left
+    {
+        mcp::SheetWrite sheet;
+        std::string error;
+        ASSERT_TRUE(sheet.write(abs / "sheet.png", {9}, error)) << error;
+    }
+    EXPECT_EQ(readAll(abs / "sheet.png"), std::string("\x01\x02\x03"));
+    EXPECT_EQ(std::distance(fs::directory_iterator(abs), fs::directory_iterator()), 1);
+    fs::remove_all(abs);
+    fs::remove_all(outside);
+}
+
 TEST(SpriteNormalsSession, AnOutputThatIsTheSourceThroughALinkIsRefused) {
+    SKIP_WITHOUT_SYMLINKS();
     const std::string dir = folder("alias");
     writePng(dir + "/hero.png", balls(16, 16, 16, 6));
     const fs::path abs = root() / fs::u8path(dir);
@@ -479,6 +634,7 @@ TEST(SpriteNormalsSession, AnOutputThatIsTheSourceThroughALinkIsRefused) {
 }
 
 TEST(SpriteNormalsSession, ALinkedAssetsDirectoryOrProjectKeepsWorking) {
+    SKIP_WITHOUT_SYMLINKS();
     const std::string dir = folder("linkedroot");
     writePng(dir + "/hero.png", balls(16, 16, 16, 6));
     // the assets directory is a link to a folder outside the project
@@ -1310,9 +1466,10 @@ TEST(SpriteNormalsSession, OutsideAProjectPathsAreRelativeToThePng) {
 }
 
 // generate_sprite_normals' save_path sheet (mcp::SheetWrite, Phase 3 spec 3.4): a rollback puts the
-// old bytes back, or removes the new file and its folders; a sheet whose write fails is rolled back
-// at once, and when its previous bytes can't be written back either the caller is told (a file-size
-// limit makes both writes fail: the root user of CI ignores read-only files)
+// old bytes back, or removes the new file and its folders; a sheet whose write fails leaves the file
+// it would replace whole (a temporary file renamed over it), and when a rollback can't write the
+// previous bytes back the caller is told (a file-size limit makes the writes fail: the root user of
+// CI ignores read-only files)
 TEST(SpriteNormalsSession, SheetWriteRollsBackAndReportsAFailedRestore) {
     const fs::path dir = fs::temp_directory_path() / ("jasper-spritenormals-sheet-" + std::to_string(::getpid()));
     fs::remove_all(dir);
@@ -1356,24 +1513,39 @@ TEST(SpriteNormalsSession, SheetWriteRollsBackAndReportsAFailedRestore) {
         EXPECT_TRUE(fs::is_directory(dir / "folder.png"));
     }
     {
-        // the sheet's write fails half way (past a 4 KiB file-size limit) and so does putting the
-        // 8 KiB it replaced back: reported
+        // the sheet's write fails half way (past a 4 KiB file-size limit): the 8 KiB file it would
+        // replace is whole, no temporary file is left, nothing to warn about
         struct rlimit saved{};
         ASSERT_EQ(getrlimit(RLIMIT_FSIZE, &saved), 0);
         void (*previousHandler)(int) = std::signal(SIGXFSZ, SIG_IGN);
         struct rlimit small = saved;
         small.rlim_cur = 4096;
         ASSERT_EQ(setrlimit(RLIMIT_FSIZE, &small), 0);
+        {
+            mcp::SheetWrite write;
+            error.clear();
+            warning.clear();
+            const bool written = write.write(dir / "shots" / "sheet.png", sheet, error, &warning);
+            EXPECT_FALSE(written);
+            EXPECT_FALSE(error.empty());
+            EXPECT_TRUE(warning.empty()) << warning;
+        }
+        EXPECT_EQ(readAll(dir / "shots" / "sheet.png"), old) << "the replaced file is whole";
+        EXPECT_EQ(std::distance(fs::directory_iterator(dir / "shots"), fs::directory_iterator()), 1) << "no temporary file left";
+        // a small sheet goes through; its rollback can't write the 8 KiB back: reported
         mcp::SheetWrite write;
-        error.clear();
+        const std::vector<uint8_t> tiny(100, 'C');
+        const bool written = write.write(dir / "shots" / "sheet.png", tiny, error, &warning);
         warning.clear();
-        const bool written = write.write(dir / "shots" / "sheet.png", sheet, error, &warning);
+        const bool restored = write.rollback(&warning);
         setrlimit(RLIMIT_FSIZE, &saved);
         std::signal(SIGXFSZ, previousHandler);
-        EXPECT_FALSE(written);
-        EXPECT_FALSE(error.empty());
+        EXPECT_EQ(readAll(dir / "shots" / "sheet.png"), written ? tiny : old);
+        EXPECT_TRUE(written);
+        EXPECT_FALSE(restored);
         EXPECT_NE(warning.find("its previous version could not be written back"), std::string::npos) << warning;
         EXPECT_NE(warning.find("sheet.png"), std::string::npos) << warning;
+        EXPECT_EQ(std::distance(fs::directory_iterator(dir / "shots"), fs::directory_iterator()), 1) << "no temporary file left";
         EXPECT_TRUE(write.rollback()) << "rolled back once only";
     }
     fs::remove_all(dir);
