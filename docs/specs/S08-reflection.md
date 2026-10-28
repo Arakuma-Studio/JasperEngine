@@ -550,7 +550,11 @@ Recorded by the implementation (branch `feat/s08-reflection`).
 - **Goldens.** `test_golden_resave` saves each scene it opens again, 5 frames apart, until two
   saves in a row agree (in the capture and in the check), so values the systems compute after the
   load (mesh vertex counts, UI layout, camera clips, transparency from a texture loaded in the
-  background) do not depend on load speed. The codegen golden's
+  background) do not depend on load speed. Values the editor computes from its own view size
+  are masked (`<view>`) in the goldens and the re-saves alike: a RectTransform's `scissor` and an
+  `autoResize` camera's clips and aspect, in the scenes, prefabs and generated code. They follow
+  the editor's window layout, not the code under test (S26's scrollbar fix widened the Scene view
+  by 11 px and moved them all). The codegen golden's
   `rigidbody.solidBoxDensity`, an uninitialized member the editor before S08 exported as whatever
   memory held, is 0 (the reflection codec value-initializes components).
 - **Not done here.** `editor/asset/AssetRefSchema` is still hand-written (its header expects S08

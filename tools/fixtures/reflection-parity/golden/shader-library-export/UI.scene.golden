@@ -196,7 +196,7 @@ entities:
         usingAnchors: true
         panel: 0
         containerBoxIndex: -1
-        scissor: [49.999996, 50, 883, 438]
+        scissor: <view>
         ignoreScissor: false
         ignoreEvents: false
       image:
@@ -267,7 +267,7 @@ entities:
         usingAnchors: true
         panel: 0
         containerBoxIndex: -1
-        scissor: [129.99998, 110, 260, 119.999985]
+        scissor: <view>
         ignoreScissor: false
         ignoreEvents: false
       image:
@@ -341,7 +341,7 @@ entities:
         usingAnchors: true
         panel: 0
         containerBoxIndex: -1
-        scissor: [429.99997, 110, 259.99997, 119.999985]
+        scissor: <view>
         ignoreScissor: false
         ignoreEvents: false
       image:
@@ -416,7 +416,7 @@ entities:
         usingAnchors: true
         panel: 0
         containerBoxIndex: -1
-        scissor: [730, 110, 203, 119.999985]
+        scissor: <view>
         ignoreScissor: false
         ignoreEvents: false
       image:
@@ -491,7 +491,7 @@ entities:
         usingAnchors: true
         panel: 0
         containerBoxIndex: -1
-        scissor: [933, 110, 0, 119.999985]
+        scissor: <view>
         ignoreScissor: false
         ignoreEvents: false
       image:
@@ -568,7 +568,7 @@ entities:
         usingAnchors: true
         panel: 0
         containerBoxIndex: -1
-        scissor: [129.99998, 309.99997, 260, 120]
+        scissor: <view>
         ignoreScissor: false
         ignoreEvents: false
       image:
@@ -643,7 +643,7 @@ entities:
         usingAnchors: true
         panel: 0
         containerBoxIndex: -1
-        scissor: [429.99997, 309.99997, 259.99997, 120]
+        scissor: <view>
         ignoreScissor: false
         ignoreEvents: false
       image:
@@ -719,7 +719,7 @@ entities:
         usingAnchors: true
         panel: 0
         containerBoxIndex: -1
-        scissor: [730, 309.99997, 203, 120]
+        scissor: <view>
         ignoreScissor: false
         ignoreEvents: false
       image:
@@ -795,7 +795,7 @@ entities:
         usingAnchors: true
         panel: 0
         containerBoxIndex: -1
-        scissor: [933, 309.99997, 0, 120]
+        scissor: <view>
         ignoreScissor: false
         ignoreEvents: false
       image:
@@ -871,7 +871,7 @@ entities:
         usingAnchors: true
         panel: 0
         containerBoxIndex: -1
-        scissor: [129.99998, 488, 260, 0]
+        scissor: <view>
         ignoreScissor: false
         ignoreEvents: false
       image:
@@ -947,7 +947,7 @@ entities:
         usingAnchors: true
         panel: 0
         containerBoxIndex: -1
-        scissor: [429.99997, 488, 259.99997, 0]
+        scissor: <view>
         ignoreScissor: false
         ignoreEvents: false
       image:
@@ -1023,7 +1023,7 @@ entities:
         usingAnchors: true
         panel: 0
         containerBoxIndex: -1
-        scissor: [730, 488, 203, 0]
+        scissor: <view>
         ignoreScissor: false
         ignoreEvents: false
       image:
