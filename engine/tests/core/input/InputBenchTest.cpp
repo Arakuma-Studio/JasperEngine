@@ -42,8 +42,9 @@ TEST(InputBench, LatchWithoutEvents){
     const double us = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count() / frames;
     std::printf("[bench] Input latch without events %.3f us (budget 2 us)\n", us);
     EXPECT_EQ(allocations.count(), 0u);
-    if (testsupport::perfSlack() > 0.0)
+    if (testsupport::perfSlack() > 0.0){
         EXPECT_LE(us, 2.0 * 1.5 * testsupport::perfSlack());
+    }
 
     Engine::systemTouchCancel();
     Input::resetFrameState();
@@ -114,8 +115,9 @@ TEST(InputBench, Evaluate100Actions300Bindings){
     const double us = total / frames;
     std::printf("[bench] Input latch + 100 actions / 300 bindings %.2f us (budget 50 us)\n", us);
     EXPECT_EQ(allocations, 0u);
-    if (testsupport::perfSlack() > 0.0)
+    if (testsupport::perfSlack() > 0.0){
         EXPECT_LE(us, 50.0 * 1.5 * testsupport::perfSlack());
+    }
 
     InputActions::unload();
     Engine::systemGamepadDisconnect(0);

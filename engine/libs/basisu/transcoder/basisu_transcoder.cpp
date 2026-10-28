@@ -20,7 +20,9 @@
 
 #define BASISU_ASTC_HELPERS_IMPLEMENTATION
 #include "basisu_astc_helpers.h"
+#if BASISD_SUPPORT_XUASTC // JasperEngine: the XBC7 decoder is built on XUASTC's BC7 code (README.jasper.md)
 #include "basisu_xbc7_decoder.h"
+#endif
 
 #include <limits.h>
 
@@ -78,6 +80,16 @@
 
 #ifndef BASISD_SUPPORT_DXT5A
 	#define BASISD_SUPPORT_DXT5A 1
+#endif
+
+// JasperEngine: compute the ETC1S -> BC1 tables at init instead of compiling them in (README.jasper.md)
+#ifndef JASPER_BASISD_COMPUTE_DXT1_TABLES
+	#define JASPER_BASISD_COMPUTE_DXT1_TABLES 0
+#endif
+
+// JasperEngine: faster UASTC -> BC7 packing and endpoint decoding, the same bytes (README.jasper.md)
+#ifndef JASPER_BASISD_FAST_TRANSCODE
+	#define JASPER_BASISD_FAST_TRANSCODE 0
 #endif
 
 // Disable all BC7 transcoders if necessary (useful when cross compiling to Javascript)
@@ -249,6 +261,7 @@ namespace basist
 #endif
 	}
 	
+#if BASISD_SUPPORT_XUASTC // JasperEngine: declared with XUASTC (README.jasper.md)
 	// Used by arith encoder/decoder
 	namespace arith_fastbits_f32
 	{
@@ -256,6 +269,7 @@ namespace basist
 		float g_lut_edge[TABLE_SIZE + 1]; // samples at m = 1 + i/TABLE_SIZE (for linear)
 
 	} // namespace arith_fastbits_f32
+#endif
 
 	inline uint16_t byteswap_uint16(uint16_t v)
 	{
@@ -1207,6 +1221,12 @@ namespace basist
 	static uint8_t g_etc1_to_dxt1_selector_mappings_raw_dxt1_256[NUM_ETC1_TO_DXT1_SELECTOR_MAPPINGS][256];
 	static uint8_t g_etc1_to_dxt1_selector_mappings_raw_dxt1_inv_256[NUM_ETC1_TO_DXT1_SELECTOR_MAPPINGS][256];
 
+#if JASPER_BASISD_COMPUTE_DXT1_TABLES
+	// JasperEngine: computed by basisu_transcoder_init() (jasper_etc1s_to_bc1_tables.inl)
+	static etc1_to_dxt1_56_solution g_etc1_to_dxt_6[32 * 8 * NUM_ETC1_TO_DXT1_SELECTOR_MAPPINGS * NUM_ETC1_TO_DXT1_SELECTOR_RANGES];
+	static etc1_to_dxt1_56_solution g_etc1_to_dxt_5[32 * 8 * NUM_ETC1_TO_DXT1_SELECTOR_MAPPINGS * NUM_ETC1_TO_DXT1_SELECTOR_RANGES];
+#include "jasper_etc1s_to_bc1_tables.inl"
+#else
 	static const etc1_to_dxt1_56_solution g_etc1_to_dxt_6[32 * 8 * NUM_ETC1_TO_DXT1_SELECTOR_MAPPINGS * NUM_ETC1_TO_DXT1_SELECTOR_RANGES] = {
 #include "basisu_transcoder_tables_dxt1_6.inc"
 	};
@@ -1214,6 +1234,7 @@ namespace basist
 	static const etc1_to_dxt1_56_solution g_etc1_to_dxt_5[32 * 8 * NUM_ETC1_TO_DXT1_SELECTOR_MAPPINGS * NUM_ETC1_TO_DXT1_SELECTOR_RANGES] = {
 #include "basisu_transcoder_tables_dxt1_5.inc"
 	};
+#endif
 #endif // BASISD_SUPPORT_DXT1
 
 #if BASISD_SUPPORT_DXT1 || BASISD_SUPPORT_UASTC
@@ -2192,6 +2213,9 @@ namespace basist
 #endif
 
 #if BASISD_SUPPORT_DXT1
+#if JASPER_BASISD_COMPUTE_DXT1_TABLES
+		jasper_compute_etc1_to_dxt1_tables();
+#endif
 		for (uint32_t i = 0; i < NUM_ETC1_TO_DXT1_SELECTOR_RANGES; i++)
 		{
 			uint32_t l = g_etc1_to_dxt1_selector_ranges[i].m_low;
@@ -5436,6 +5460,16 @@ namespace basist
 	{
 		uint8_t* pBytes = reinterpret_cast<uint8_t*>(pOutput);
 
+#if JASPER_BASISD_FAST_TRANSCODE
+		// JasperEngine: the bytes the field covers OR-ed from one shifted word (README.jasper.md)
+		const uint32_t shift = bit_pos & 7;
+		const uint64_t v = (uint64_t)value << shift;
+		uint8_t* p = pBytes + (bit_pos >> 3);
+		const uint32_t total_bytes = (shift + total_bits + 7) >> 3;
+		for (uint32_t i = 0; i < total_bytes; i++)
+			p[i] |= static_cast<uint8_t>(v >> (8 * i));
+		bit_pos += total_bits;
+#else
 		while (total_bits)
 		{
 			const uint32_t bits_to_write = basisu::minimum<int>(total_bits, 8 - (bit_pos & 7));
@@ -5446,6 +5480,7 @@ namespace basist
 			total_bits -= bits_to_write;
 			value >>= bits_to_write;
 		}
+#endif
 	}
 
 	// Encodes 5 values to output, usable for any range that uses trits and bits
@@ -10128,10 +10163,15 @@ namespace basist
 		bool status = false;
 		if ((fmt == block_format::cPVRTC1_4_RGB) || (fmt == block_format::cPVRTC1_4_RGBA))
 		{
+#if BASISD_SUPPORT_PVRTC1 // JasperEngine: UASTC -> PVRTC1 compiled out with ETC1S's (README.jasper.md)
 			if (fmt == block_format::cPVRTC1_4_RGBA)
 				transcode_uastc_to_pvrtc1_4_rgba((const uastc_block*)pImage_data, pDst_blocks, num_blocks_x, num_blocks_y, high_quality);
 			else
 				transcode_uastc_to_pvrtc1_4_rgb((const uastc_block *)pImage_data, pDst_blocks, num_blocks_x, num_blocks_y, high_quality, from_alpha);
+#else
+			BASISU_NOTE_UNUSED(from_alpha);
+			return false;
+#endif
 		}
 		else
 		{
@@ -14653,6 +14693,245 @@ namespace basist
 		assert(*pCur_ofs <= 128);
 	}
 
+#if JASPER_BASISD_FAST_TRANSCODE
+	// JasperEngine: the block's 128 bits gathered in two words, not OR-ed into bytes a field at a
+	// time (half the cost of a UASTC -> BC7 transcode was here); the same bytes (README.jasper.md)
+	struct bc7_block_bit_writer
+	{
+		uint64_t m_bits[2] = { 0, 0 };
+		uint32_t m_ofs = 0;
+
+		inline void put(uint32_t val, uint32_t num_bits)
+		{
+			assert((num_bits <= 32) && (val < (1ULL << num_bits)) && (m_ofs + num_bits <= 128));
+			const uint64_t v = val;
+			if (m_ofs < 64)
+			{
+				m_bits[0] |= v << m_ofs;
+				if (m_ofs + num_bits > 64)
+					m_bits[1] |= v >> (64 - m_ofs);
+			}
+			else
+				m_bits[1] |= v << (m_ofs - 64);
+			m_ofs += num_bits;
+		}
+
+		inline void store(uint8_t* pBytes) const
+		{
+			for (uint32_t i = 0; i < 8; i++)
+			{
+				pBytes[i] = (uint8_t)(m_bits[0] >> (i * 8));
+				pBytes[8 + i] = (uint8_t)(m_bits[1] >> (i * 8));
+			}
+		}
+	};
+
+	void encode_bc7_block(void* pBlock, const bc7_optimization_results* pResults)
+	{
+		const uint32_t best_mode = pResults->m_mode;
+
+		const uint32_t total_subsets = g_bc7_num_subsets[best_mode];
+		const uint32_t total_partitions = 1 << g_bc7_partition_bits[best_mode];
+		//const uint32_t num_rotations = 1 << g_bc7_rotation_bits[best_mode];
+		//const uint32_t num_index_selectors = (best_mode == 4) ? 2 : 1;
+
+		const uint8_t* pPartition;
+		if (total_subsets == 1)
+			pPartition = &g_bc7_partition1[0];
+		else if (total_subsets == 2)
+			pPartition = &g_bc7_partition2[pResults->m_partition * 16];
+		else
+			pPartition = &g_bc7_partition3[pResults->m_partition * 16];
+
+		uint8_t color_selectors[16];
+		memcpy(color_selectors, pResults->m_selectors, 16);
+
+		uint8_t alpha_selectors[16];
+		memcpy(alpha_selectors, pResults->m_alpha_selectors, 16);
+
+		color_quad_u8 low[3], high[3];
+		memcpy(low, pResults->m_low, sizeof(low));
+		memcpy(high, pResults->m_high, sizeof(high));
+
+		uint32_t pbits[3][2];
+		memcpy(pbits, pResults->m_pbits, sizeof(pbits));
+
+		int anchor[3] = { -1, -1, -1 };
+
+		for (uint32_t k = 0; k < total_subsets; k++)
+		{
+			uint32_t anchor_index = 0;
+			if (k)
+			{
+				if ((total_subsets == 3) && (k == 1))
+					anchor_index = g_bc7_table_anchor_index_third_subset_1[pResults->m_partition];
+				else if ((total_subsets == 3) && (k == 2))
+					anchor_index = g_bc7_table_anchor_index_third_subset_2[pResults->m_partition];
+				else
+					anchor_index = g_bc7_table_anchor_index_second_subset[pResults->m_partition];
+			}
+
+			anchor[k] = anchor_index;
+
+			const uint32_t color_index_bits = get_bc7_color_index_size(best_mode, pResults->m_index_selector);
+			const uint32_t num_color_indices = 1 << color_index_bits;
+
+			if (color_selectors[anchor_index] & (num_color_indices >> 1))
+			{
+				for (uint32_t i = 0; i < 16; i++)
+					if (pPartition[i] == k)
+						color_selectors[i] = (uint8_t)((num_color_indices - 1) - color_selectors[i]);
+
+				if (get_bc7_mode_has_seperate_alpha_selectors(best_mode))
+				{
+					for (uint32_t q = 0; q < 3; q++)
+					{
+						uint8_t t = low[k].m_c[q];
+						low[k].m_c[q] = high[k].m_c[q];
+						high[k].m_c[q] = t;
+					}
+				}
+				else
+				{
+					color_quad_u8 tmp = low[k];
+					low[k] = high[k];
+					high[k] = tmp;
+				}
+
+				if (!g_bc7_mode_has_shared_p_bits[best_mode])
+				{
+					uint32_t t = pbits[k][0];
+					pbits[k][0] = pbits[k][1];
+					pbits[k][1] = t;
+				}
+			}
+
+			if (get_bc7_mode_has_seperate_alpha_selectors(best_mode))
+			{
+				const uint32_t alpha_index_bits = get_bc7_alpha_index_size(best_mode, pResults->m_index_selector);
+				const uint32_t num_alpha_indices = 1 << alpha_index_bits;
+
+				if (alpha_selectors[anchor_index] & (num_alpha_indices >> 1))
+				{
+					for (uint32_t i = 0; i < 16; i++)
+						if (pPartition[i] == k)
+							alpha_selectors[i] = (uint8_t)((num_alpha_indices - 1) - alpha_selectors[i]);
+
+					uint8_t t = low[k].m_c[3];
+					low[k].m_c[3] = high[k].m_c[3];
+					high[k].m_c[3] = t;
+				}
+			}
+		}
+
+		uint8_t* pBlock_bytes = (uint8_t*)(pBlock);
+
+		// the two modes UASTC's common modes land on, their layouts written out
+		if ((best_mode == 6) || (best_mode == 5))
+		{
+			bc7_block_bit_writer bits;
+			uint64_t lo, hi;
+			if (best_mode == 6)
+			{
+				// mode 1000000 (7), RGBA endpoints 7 bits each (56), P0 P1, 16 4-bit indices (the first 3)
+				lo = 1ULL << 6;
+				for (uint32_t c = 0; c < 4; c++)
+					lo |= ((uint64_t)low[0].m_c[c] << (7 + c * 14)) | ((uint64_t)high[0].m_c[c] << (14 + c * 14));
+				lo |= (uint64_t)pbits[0][0] << 63;
+				hi = pbits[0][1] | ((uint64_t)color_selectors[0] << 1);
+				for (uint32_t i = 1; i < 16; i++)
+					hi |= (uint64_t)color_selectors[i] << (4 * i);
+			}
+			else
+			{
+				// mode 100000 (6), rotation (2), RGB endpoints 7 bits each (42), A endpoints 8 bits each,
+				// 16 2-bit colour indices then 16 2-bit alpha indices (the first ones 1 bit)
+				lo = (1ULL << 5) | ((uint64_t)pResults->m_rotation << 6);
+				for (uint32_t c = 0; c < 3; c++)
+					lo |= ((uint64_t)low[0].m_c[c] << (8 + c * 14)) | ((uint64_t)high[0].m_c[c] << (15 + c * 14));
+				lo |= ((uint64_t)low[0].m_c[3] << 50) | ((uint64_t)high[0].m_c[3] << 58);
+				hi = (uint64_t)high[0].m_c[3] >> 6;
+				hi |= (uint64_t)color_selectors[0] << 2;
+				for (uint32_t i = 1; i < 16; i++)
+					hi |= (uint64_t)color_selectors[i] << (1 + 2 * i);
+				hi |= (uint64_t)alpha_selectors[0] << 33;
+				for (uint32_t i = 1; i < 16; i++)
+					hi |= (uint64_t)alpha_selectors[i] << (32 + 2 * i);
+			}
+			bits.m_bits[0] = lo;
+			bits.m_bits[1] = hi;
+			bits.store(pBlock_bytes);
+			return;
+		}
+
+		bc7_block_bit_writer bits;
+		bits.put(1 << best_mode, best_mode + 1);
+
+		if ((best_mode == 4) || (best_mode == 5))
+			bits.put(pResults->m_rotation, 2);
+
+		if (best_mode == 4)
+			bits.put(pResults->m_index_selector, 1);
+
+		if (total_partitions > 1)
+			bits.put(pResults->m_partition, (total_partitions == 64) ? 6 : 4);
+
+		const uint32_t total_comps = (best_mode >= 4) ? 4 : 3;
+		for (uint32_t comp = 0; comp < total_comps; comp++)
+		{
+			for (uint32_t subset = 0; subset < total_subsets; subset++)
+			{
+				bits.put(low[subset].m_c[comp], (comp == 3) ? g_bc7_alpha_precision_table[best_mode] : g_bc7_color_precision_table[best_mode]);
+				bits.put(high[subset].m_c[comp], (comp == 3) ? g_bc7_alpha_precision_table[best_mode] : g_bc7_color_precision_table[best_mode]);
+			}
+		}
+
+		if (g_bc7_mode_has_p_bits[best_mode])
+		{
+			for (uint32_t subset = 0; subset < total_subsets; subset++)
+			{
+				bits.put(pbits[subset][0], 1);
+				if (!g_bc7_mode_has_shared_p_bits[best_mode])
+					bits.put(pbits[subset][1], 1);
+			}
+		}
+
+		// JasperEngine: the indices gathered 32 bits at a time, their sizes and the anchors read
+		// once, not per texel (README.jasper.md)
+		uint32_t anchor_mask = 0;
+		for (uint32_t k = 0; k < total_subsets; k++)
+			anchor_mask |= 1U << anchor[k];
+		uint64_t index_bits = 0;
+		uint32_t index_bit_count = 0;
+		auto put_indices = [&](const uint8_t* pIndices, uint32_t n)
+		{
+			for (uint32_t idx = 0; idx < 16; idx++)
+			{
+				index_bits |= (uint64_t)pIndices[idx] << index_bit_count;
+				index_bit_count += n - ((anchor_mask >> idx) & 1);
+				if (index_bit_count >= 32)
+				{
+					bits.put((uint32_t)index_bits, 32);
+					index_bits >>= 32;
+					index_bit_count -= 32;
+				}
+			}
+		};
+		const bool alpha_first = pResults->m_index_selector != 0;
+		put_indices(alpha_first ? alpha_selectors : color_selectors,
+			alpha_first ? get_bc7_alpha_index_size(best_mode, pResults->m_index_selector) : get_bc7_color_index_size(best_mode, pResults->m_index_selector));
+		if (get_bc7_mode_has_seperate_alpha_selectors(best_mode))
+		{
+			put_indices(alpha_first ? color_selectors : alpha_selectors,
+				alpha_first ? get_bc7_color_index_size(best_mode, pResults->m_index_selector) : get_bc7_alpha_index_size(best_mode, pResults->m_index_selector));
+		}
+		if (index_bit_count)
+			bits.put((uint32_t)index_bits, index_bit_count);
+
+		assert(bits.m_ofs == 128);
+		bits.store(pBlock_bytes);
+	}
+#else
 	// TODO: Optimize this.
 	void encode_bc7_block(void* pBlock, const bc7_optimization_results* pResults)
 	{
@@ -14822,6 +15101,7 @@ namespace basist
 
 		assert(cur_bit_ofs == 128);
 	}
+#endif // JASPER_BASISD_FAST_TRANSCODE
 
 	// ASTC
 	static inline void astc_set_bits_1_to_9(uint32_t* pDst, int& bit_offset, uint32_t code, uint32_t codesize)
@@ -15025,6 +15305,120 @@ namespace basist
 
 	const uint32_t g_uastc_mode_astc_block_mode[TOTAL_UASTC_MODES] = { 0x242, 0x42, 0x53, 0x42, 0x42, 0x53, 0x442, 0x42, 0, 0x42, 0x242, 0x442, 0x53, 0x441, 0x42, 0x242, 0x42, 0x442, 0x253 };
 
+#if JASPER_BASISD_FAST_TRANSCODE
+	// JasperEngine (README.jasper.md): the ASTC block of a UASTC one gathered in two words, the same
+	// bits as the byte-wise packer below (which the editor's copy keeps): bits past 128 of a
+	// partial BISE group are dropped as its 4-word OR drops them
+	struct astc_block_bits
+	{
+		uint64_t m_w[2] = { 0, 0 };
+
+		inline void put(uint32_t ofs, uint64_t val, uint32_t n)
+		{
+			if (ofs >= 128)
+				return;
+			if (ofs >= 64)
+				m_w[1] |= val << (ofs - 64);
+			else
+			{
+				m_w[0] |= val << ofs;
+				if (ofs + n > 64)
+					m_w[1] |= val >> (64 - ofs);
+			}
+		}
+	};
+
+	bool pack_astc_block(uint32_t* pDst, const astc_block_desc* pBlock, uint32_t uastc_mode)
+	{
+		assert(uastc_mode < TOTAL_UASTC_MODES);
+		astc_block_bits out;
+
+		const int total_weights = pBlock->m_dual_plane ? 32 : 16;
+		out.put(0, g_uastc_mode_astc_block_mode[uastc_mode] & 0xFFFF, 16);
+		uint32_t bit_pos = ASTC_BLOCK_MODE_BITS;
+
+		const uint32_t bits_per_weight = g_astc_bise_range_table[pBlock->m_weight_range][0];
+		out.put(bit_pos, pBlock->m_subsets - 1, ASTC_PART_BITS);
+		bit_pos += ASTC_PART_BITS;
+		if (pBlock->m_subsets == 1)
+		{
+			out.put(bit_pos, pBlock->m_cem, ASTC_CEM_BITS);
+			bit_pos += ASTC_CEM_BITS;
+		}
+		else
+		{
+			out.put(bit_pos, pBlock->m_partition_seed, ASTC_PARTITION_INDEX_BITS);
+			bit_pos += ASTC_PARTITION_INDEX_BITS;
+			out.put(bit_pos, (pBlock->m_cem << 2) & 63, ASTC_CEM_BITS + 2);
+			bit_pos += ASTC_CEM_BITS + 2;
+		}
+
+		if (pBlock->m_dual_plane)
+			out.put(128 - total_weights * bits_per_weight - ASTC_CCS_BITS, pBlock->m_ccs, ASTC_CCS_BITS);
+
+		// the endpoints' BISE (astc_pack_bise, astc_encode_trits / _quints)
+		const int num_vals = (1 + (pBlock->m_cem >> 2)) * pBlock->m_subsets * 2;
+		const int range = g_uastc_mode_endpoint_ranges[uastc_mode];
+		const uint32_t n = g_astc_bise_range_table[range][0];
+		const uint8_t* pVals = pBlock->m_endpoints;
+		if (g_astc_bise_range_table[range][1])
+		{
+			for (int group = 0; group < (num_vals + 4) / 5; group++)
+			{
+				uint32_t v[5] = { 0, 0, 0, 0, 0 };
+				for (int i = 0; i < 5 && group * 5 + i < num_vals; i++)
+					v[i] = pVals[group * 5 + i];
+				const uint32_t trits = (v[0] >> n) + (v[1] >> n) * 3 + (v[2] >> n) * 9 + (v[3] >> n) * 27 + (v[4] >> n) * 81;
+				const uint32_t T = g_astc_trit_encode[trits], m = (1U << n) - 1;
+				out.put(bit_pos, (v[0] & m) | (astc_extract_bits(T, 0, 1) << n) | ((v[1] & m) << (2 + n)), n * 2 + 2);
+				bit_pos += n * 2 + 2;
+				out.put(bit_pos, astc_extract_bits(T, 2, 3) | ((v[2] & m) << 2) | (astc_extract_bits(T, 4, 4) << (2 + n)) | ((v[3] & m) << (3 + n)) |
+					(astc_extract_bits(T, 5, 6) << (3 + n * 2)) | ((v[4] & m) << (5 + n * 2)) | (astc_extract_bits(T, 7, 7) << (5 + n * 3)), n * 3 + 6);
+				bit_pos += n * 3 + 6;
+			}
+		}
+		else if (g_astc_bise_range_table[range][2])
+		{
+			for (int group = 0; group < (num_vals + 2) / 3; group++)
+			{
+				uint32_t v[3] = { 0, 0, 0 };
+				for (int i = 0; i < 3 && group * 3 + i < num_vals; i++)
+					v[i] = pVals[group * 3 + i];
+				const uint32_t quints = (v[0] >> n) + (v[1] >> n) * 5 + (v[2] >> n) * 25;
+				const uint32_t T = g_astc_quint_encode[quints], m = (1U << n) - 1;
+				out.put(bit_pos, (v[0] & m) | (astc_extract_bits(T, 0, 2) << n) | ((v[1] & m) << (3 + n)) | (astc_extract_bits(T, 3, 4) << (3 + n * 2)) |
+					((v[2] & m) << (5 + n * 2)) | (astc_extract_bits(T, 5, 6) << (5 + n * 3)), 7 + n * 3);
+				bit_pos += 7 + n * 3;
+			}
+		}
+		else
+		{
+			for (int i = 0; i < num_vals; i++)
+			{
+				out.put(bit_pos, pVals[i], n);
+				bit_pos += n;
+			}
+		}
+
+		// the weights in reverse bit order from the top: an N-bit weight reversed is the 5-bit
+		// reversal shifted down
+		static const uint8_t s_reverse_bits5[32] = { 0, 16, 8, 24, 4, 20, 12, 28, 2, 18, 10, 26, 6, 22, 14, 30, 1, 17, 9, 25, 5, 21, 13, 29, 3, 19, 11, 27, 7, 23, 15, 31 };
+		assert((bits_per_weight >= 1) && (bits_per_weight <= 5));
+		for (int i = 0; i < total_weights; i++)
+		{
+			const uint32_t rev = (uint32_t)s_reverse_bits5[pBlock->m_weights[i] & 31] >> (5 - bits_per_weight);
+			out.put(128 - bits_per_weight - i * bits_per_weight, rev, bits_per_weight);
+		}
+
+		uint8_t* pDst_bytes = reinterpret_cast<uint8_t*>(pDst);
+		for (uint32_t i = 0; i < 8; i++)
+		{
+			pDst_bytes[i] = (uint8_t)(out.m_w[0] >> (i * 8));
+			pDst_bytes[8 + i] = (uint8_t)(out.m_w[1] >> (i * 8));
+		}
+		return true;
+	}
+#else
 	bool pack_astc_block(uint32_t* pDst, const astc_block_desc* pBlock, uint32_t uastc_mode)
 	{
 		assert(uastc_mode < TOTAL_UASTC_MODES);
@@ -15075,6 +15469,7 @@ namespace basist
 		assert(num_cem_pairs <= 9);
 
 		astc_pack_bise(pDst, pBlock->m_endpoints, bit_pos, num_cem_pairs * 2, g_uastc_mode_endpoint_ranges[uastc_mode]);
+
 
 		// Write the weight bits in reverse bit order.
 		switch (bits_per_weight)
@@ -15158,6 +15553,7 @@ namespace basist
 
 		return true;
 	}
+#endif // JASPER_BASISD_FAST_TRANSCODE
 
 	const uint8_t* get_anchor_indices(uint32_t subsets, uint32_t mode, uint32_t common_pattern, const uint8_t*& pPartition_pattern)
 	{
@@ -15218,7 +15614,8 @@ namespace basist
 		}
 
 		uint32_t byte_bit_offset = bit_offset & 7U;
-		const uint16_t w = *(const uint16_t *)(&pBuf[bit_offset >> 3U]);
+		uint16_t w; // JasperEngine: memcpy, not an unaligned uint16_t* read (README.jasper.md)
+		memcpy(&w, &pBuf[bit_offset >> 3U], sizeof(w));
 		bit_offset += codesize;
 		return (w >> byte_bit_offset) & ((1U << codesize) - 1U);
 	}
@@ -15273,7 +15670,8 @@ namespace basist
 		else
 		{
 			uint32_t byte_bit_offset = bit_offset & 7U;
-			const uint16_t w = *(const uint16_t*)(&pBuf[bit_offset >> 3U]);
+			uint16_t w; // JasperEngine: memcpy, not an unaligned uint16_t* read (README.jasper.md)
+			memcpy(&w, &pBuf[bit_offset >> 3U], sizeof(w));
 			bit_offset += codesize;
 			return (w >> byte_bit_offset) & ((1U << codesize) - 1U);
 		}
@@ -15522,8 +15920,22 @@ namespace basist
 				}
 
 				// TODO: Optimize with tables
+#if JASPER_BASISD_FAST_TRANSCODE // JasperEngine: divisions by the constants 3 and 5, not by a variable (README.jasper.md)
+				uint32_t v;
+				if (mul == 3)
+				{
+					v = accum % 3;
+					accum /= 3;
+				}
+				else
+				{
+					v = accum % 5;
+					accum /= 5;
+				}
+#else
 				uint32_t v = accum % mul;
 				accum /= mul;
+#endif
 				accum_remaining--;
 
 				value |= (v << ep_bits);
@@ -15720,6 +16132,15 @@ namespace basist
 			{
 				const uint32_t weight_mask = (1 << weight_bits) - 1;
 
+#if JASPER_BASISD_FAST_TRANSCODE
+				// JasperEngine: one subset inverts every weight (README.jasper.md)
+				if (subsets == 1)
+				{
+					for (uint32_t i = 0; i < 16 * total_planes; i++)
+						unpacked.m_astc.m_weights[i] = (uint8_t)(weight_mask - unpacked.m_astc.m_weights[i]);
+				}
+				else
+#endif
 				for (uint32_t i = 0; i < 16; i++)
 				{
 					uint32_t subset = pPartition_pattern[i];
@@ -42950,6 +43371,7 @@ void encode_pvrtc1(
 
 #endif // BASISD_SUPPORT_XUASTC
 
+#if BASISD_SUPPORT_XUASTC // JasperEngine: the XUASTC transcoders' helpers, with them (README.jasper.md)
 static inline bool blocks_same_solid_colors(const astc_helpers::log_astc_block& a, const astc_helpers::log_astc_block& b, uint32_t tol)
 {
 	if ((!a.m_solid_color_flag_ldr) || (!b.m_solid_color_flag_ldr))
@@ -43069,6 +43491,7 @@ static void astc_upsample_grid_weights(const astc_helpers::log_astc_block& log_b
 		memcpy(pDst_weights, dequantized_weights, block_width * block_height);
 	}
 }
+#endif // JasperEngine: BASISD_SUPPORT_XUASTC
 
 bool basisu_lowlevel_xuastc_ldr_transcoder::transcode_slice(
 	basis_tex_format src_format, bool use_astc_srgb_decode_profile,
@@ -45956,7 +46379,9 @@ bool basisu_lowlevel_xubc7_transcoder::transcode_image(
 } // namespace basist
 
 // XUBC7/XBC7 decoder source code
+#if BASISD_SUPPORT_XUASTC // JasperEngine: with its header (README.jasper.md)
 #include "basisu_xbc7_decoder.inl"
+#endif
 
 // Plain BC1/3/4/5 block unpackers (basist::bcu) and the DDS reader/transcoder (basist::dds_transcoder).
 #include "basisu_dds_transcoder.inl"

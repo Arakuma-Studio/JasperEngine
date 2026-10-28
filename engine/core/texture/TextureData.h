@@ -99,7 +99,8 @@ namespace jasperengine {
         // Without `support` the stored format is kept (Basis: transcoded to RGBA8).
         bool loadKtx2(const unsigned char* bytes, unsigned int length, uint32_t firstLevel = 0,
                       const TextureFormatSupport* support = nullptr, bool lowMemoryFallback = false, std::string* error = nullptr);
-        // the same from levels Ktx2::read already kept (the pool reads byte ranges itself)
+        // the same from levels Ktx2::read already kept (the pool reads byte ranges itself); the
+        // levels are taken from `image`
         bool loadKtx2Image(Ktx2Image& image, bool decodeToPixels, const TextureFormatSupport* support,
                            bool lowMemoryFallback, std::string& error);
 

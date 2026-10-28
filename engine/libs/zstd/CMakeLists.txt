@@ -56,5 +56,10 @@ target_compile_definitions(zstd_decompress PRIVATE
     DYNAMIC_BMI2=0
     HUF_FORCE_DECOMPRESS_X1=1
     ZSTD_FORCE_DECOMPRESS_SEQUENCES_SHORT=1)
+# and for size on the web, which downloads it (an inflate of a 512² UASTC file stays under a
+# millisecond in desktop Chrome: docs/textures.md)
+if(EMSCRIPTEN)
+    target_compile_options(zstd_decompress PRIVATE -Os)
+endif()
 jasperengine_zstd_library(zstd ${ZSTD_COMPRESS_SOURCES})
 target_link_libraries(zstd PUBLIC zstd_decompress)
