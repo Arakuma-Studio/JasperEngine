@@ -10,6 +10,13 @@
 // every sibling drawn after it through the same mask, tested an empty stencil and drew nothing.
 // A sibling drawn before it bound layer 0 first, and the stencil was cleared before the mask.
 // The shared depth-stencil is now cleared by the frame's first layer pass, whichever layer it is.
+//
+// A filter applies to its element's content unclipped by the clips established outside the
+// element, and those clips cut its result (CSS, Chromium): the content is drawn into the filter's
+// layer clipped by the element's own clips and its descendants' only, the ancestors' scissor and
+// clip mask clip the layer's composite (fork patch P7-F1). The engine once drew the content through
+// the ancestors' clips and filtered that: a blur faded inwards along a rounded clip's curve, and a
+// drop shadow lost what the content beyond the clip casts into it.
 
 #include "TestRenderCommon.h"
 
@@ -101,8 +108,26 @@ div { display: block; }
         return render.readLayer(rgba);
     }
 
-    void expectClipped(const std::vector<uint8_t>& rgba, const FilterCase& filter, Sibling sibling){
+    // pixels with some coverage but not all
+    size_t partialPixels(const std::vector<uint8_t>& rgba){
+        size_t count = 0;
+        for (size_t i = 0; i + 3 < rgba.size(); i += 4)
+            count += rgba[i + 3] > 0 && rgba[i + 3] < 255;
+        return count;
+    }
+
+    void expectClipped(const std::vector<uint8_t>& rgba, const FilterCase& filter, Sibling sibling, int samples){
         const PixelProbe probe{rgba, kWidth};
+        // 2.6 px inside each corner's arc, on its diagonal: the filtered element overflows the clip
+        // by 8 px, so a blur there averages the element's colour only (it once faded: the content
+        // was clipped by the curve before it was blurred)
+        EXPECT_TRUE(probe.is(14, 14, filter.r, filter.g, filter.b, 255, 4)) << "near the top-left corner's arc";
+        EXPECT_TRUE(probe.is(61, 14, filter.r, filter.g, filter.b, 255, 4)) << "near the top-right corner's arc";
+        EXPECT_TRUE(probe.is(14, 49, filter.r, filter.g, filter.b, 255, 4)) << "near the bottom-left corner's arc";
+        EXPECT_TRUE(probe.is(61, 49, filter.r, filter.g, filter.b, 255, 4)) << "near the bottom-right corner's arc";
+        // one sample: the clip is the stencil's, every pixel is in or out; nothing fades
+        if (samples == 1)
+            EXPECT_EQ(partialPixels(rgba), 0u) << "pixels partly covered: the filter's result faded at the clip";
         // inside the rounded box: the filtered element (layer 0 is premultiplied, the colours are opaque)
         EXPECT_TRUE(probe.is(20, 16, filter.r, filter.g, filter.b, 255, 4)) << "inside the top-left corner's arc";
         EXPECT_TRUE(probe.is(16, 47, filter.r, filter.g, filter.b, 255, 4)) << "inside the bottom-left corner's arc";
@@ -140,7 +165,7 @@ TEST(RenderFilterClip, FilteredChildOfRoundedOverflowClip){
                 SCOPED_TRACE(std::string(filter.filter) + ", " + siblingName(sibling) + ", " + std::to_string(samples) + " samples");
                 std::vector<uint8_t> rgba;
                 ASSERT_TRUE(renderLayer(document(filter.filter, sibling), samples, rgba));
-                expectClipped(rgba, filter, sibling);
+                expectClipped(rgba, filter, sibling, samples);
                 if (sibling == Sibling::NONE)
                     onlyChild = rgba;
                 else if (sibling == Sibling::BEFORE)
@@ -185,7 +210,7 @@ div { display: block; }
             ASSERT_TRUE(drawn);
             std::vector<uint8_t> first;
             ASSERT_TRUE(render.readLayer(first));
-            expectClipped(first, kFilters[0], Sibling::NONE);
+            expectClipped(first, kFilters[0], Sibling::NONE, samples);
 
             ASSERT_TRUE(render.renderFrame());
             std::vector<uint8_t> second;
@@ -193,5 +218,145 @@ div { display: block; }
             EXPECT_EQ(differingPixels(first, second), 0u) << "the frame that created the targets drew differently";
             EXPECT_EQ(SystemRender::getNestedPassCount(), nestedBefore) << "a render pass began inside another";
         }
+    }
+}
+
+namespace {
+
+    constexpr int kShadowHeight = 80;
+
+    // #clip covers (8, 24)-(67, 71); a red bar at (28, 4)-(47, 19) lies above it, outside, and its
+    // shadow 16 px lower, at (28, 20)-(47, 35): the part from y = 24 on is inside the clip. Nested:
+    // the bar in a group (covering (0, 0)-(75, 55)) filtered with brightness(0.5)
+    std::string shadowDocument(const std::string& clipStyle, const std::string& shadow, bool nested){
+        const std::string bar = "<div class=\"bar\" style=\"filter: " + shadow + ";\"/>";
+        return R"(<rml><head><style>
+body { width: 96px; height: 80px; margin: 0; padding: 0; }
+div { display: block; }
+#clip { position: absolute; left: 8px; top: 24px; width: 60px; height: 48px; overflow: hidden; )" +
+               clipStyle + R"( }
+#group { position: absolute; left: -8px; top: -24px; width: 76px; height: 56px; filter: brightness(0.5); }
+.bar { position: absolute; left: 20px; top: -20px; width: 20px; height: 16px; background-color: #e04020; }
+#group .bar { left: 28px; top: 4px; }
+</style></head><body><div id="clip">)" +
+               (nested ? "<div id=\"group\">" + bar + "</div>" : bar) + "</div></body></rml>";
+    }
+
+}
+
+// A drop shadow that the filtered element casts from beyond its ancestor's clip into it: drawn
+// within the clip (it was lost: the element was clipped away before its shadow was cast), and
+// nothing of the element or the shadow outside the clip. A rectangular clip (a scissor: a
+// rectangle of the composite's clip mask, the filter reads beyond it), a rounded one (a clip
+// mask), and the shadow's element inside a colour-filtered group (nested layers: the shadow's
+// composite into the group's layer is not clipped by #clip, the group's composite is)
+TEST(RenderFilterClip, DropShadowCastFromBeyondTheClip){
+    JASPER_REQUIRE_GPU();
+    // sharp, and blurred (6 px of soft edge on each side of the 20 x 16 px shadow; the probes are at
+    // least 5.5 px in)
+    const char* shadows[] = {"drop-shadow(#2040e0 0px 16px 0px)", "drop-shadow(#2040e0 0px 16px 2px)"};
+    const char* clips[] = {"", "border-radius: 16px;"};
+    for (int samples : {1, 4}){
+        for (const char* shadow : shadows){
+            for (const char* clip : clips){
+                for (bool nested : {false, true}){
+                    SCOPED_TRACE(std::string(shadow) + ", clip { " + clip + " }" + (nested ? ", in a brightness(0.5) group" : "") + ", " +
+                                 std::to_string(samples) + " samples");
+                    RenderTestContext render(kWidth, kShadowHeight, kWidth, kShadowHeight, samples);
+                    ASSERT_TRUE(render.isValid());
+                    ASSERT_NE(render.loadFromMemory(shadowDocument(clip, shadow, nested), "filter-clip-shadow"), nullptr);
+                    ASSERT_TRUE(render.renderUntilDrawn());
+                    std::vector<uint8_t> rgba;
+                    ASSERT_TRUE(render.readLayer(rgba));
+                    const PixelProbe probe{rgba, kWidth};
+
+                    // the group halves the shadow's colour
+                    const int r = nested ? 0x10 : 0x20, g = nested ? 0x20 : 0x40, b = nested ? 0x70 : 0xe0;
+                    for (int y : {25, 28, 30}){
+                        for (int x : {35, 38, 41})
+                            EXPECT_TRUE(probe.is(x, y, r, g, b, 255, 4)) << "the shadow inside the clip";
+                    }
+                    // the bar, the shadow's part above the clip, beside and below the shadow
+                    const int outside[][2] = {{38, 8}, {38, 18}, {38, 21}, {38, 23}, {30, 22}, {45, 22}, {4, 30}, {70, 30}, {38, 40}, {38, 60}};
+                    for (const auto& p : outside)
+                        EXPECT_EQ(int(probe.at(p[0], p[1])[3]), 0) << "drawn at (" << p[0] << ", " << p[1] << ")";
+                }
+            }
+        }
+    }
+}
+
+// A clip with a transform is a clip mask only (no scissor): the filtered content is still drawn
+// unclipped into the layer, the mask cuts the composite. The clip is a 48 px square with 16 px
+// corners turned a quarter, which leaves its shape as it is. And the filtered element turned a
+// quarter in an untransformed clip (its filter region the bounds of its turned box)
+TEST(RenderFilterClip, TransformedRoundedClip){
+    JASPER_REQUIRE_GPU();
+    for (int samples : {1, 4}){
+        for (const FilterCase& filter : kFilters){
+            for (bool turnedClip : {true, false}){
+                SCOPED_TRACE(std::string(filter.filter) + ", " + (turnedClip ? "turned clip" : "turned element") + ", " +
+                             std::to_string(samples) + " samples");
+                const char* turn = "transform: rotate(90deg);";
+                const std::string rml = R"(<rml><head><style>
+body { width: 96px; height: 64px; margin: 0; padding: 0; }
+div { display: block; }
+#clip { position: absolute; left: 16px; top: 8px; width: 48px; height: 48px; border-radius: 16px; overflow: hidden; )" +
+                                        std::string(turnedClip ? turn : "") + R"( }
+.filtered { position: absolute; left: -8px; top: -8px; width: 64px; height: 64px; background-color: #e04020; filter: )" +
+                                        std::string(filter.filter) + "; " + (turnedClip ? "" : turn) + R"( }
+</style></head><body><div id="clip"><div class="filtered"/></div></body></rml>)";
+                std::vector<uint8_t> rgba;
+                ASSERT_TRUE(renderLayer(rml, samples, rgba));
+                const PixelProbe probe{rgba, kWidth};
+                // near the four arcs (2.6 px in on their diagonals), at the four edges and in the middle
+                const int inside[][2] = {{22, 14}, {57, 14}, {22, 49}, {57, 49}, {17, 31}, {62, 31}, {40, 9}, {40, 54}, {40, 31}};
+                for (const auto& p : inside)
+                    EXPECT_TRUE(probe.is(p[0], p[1], filter.r, filter.g, filter.b, 255, 4)) << "inside the clip";
+                const int outside[][2] = {{16, 8}, {63, 8}, {16, 55}, {63, 55}, {12, 31}, {68, 31}, {40, 5}, {40, 58}};
+                for (const auto& p : outside)
+                    EXPECT_EQ(int(probe.at(p[0], p[1])[3]), 0) << "drawn at (" << p[0] << ", " << p[1] << "), outside the clip";
+                if (samples == 1)
+                    EXPECT_EQ(partialPixels(rgba), 0u) << "pixels partly covered: the filter's result faded at the clip";
+            }
+        }
+    }
+}
+
+// The filtered element's own rounded overflow clip is inside the filter: its content is clipped
+// to it before the blur, which spreads the clipped box beyond it (the ancestor's clip, larger,
+// still cuts the result)
+TEST(RenderFilterClip, OwnOverflowClipIsFiltered){
+    JASPER_REQUIRE_GPU();
+    const std::string rml = R"(<rml><head><style>
+body { width: 96px; height: 64px; margin: 0; padding: 0; }
+div { display: block; }
+#clip { position: absolute; left: 8px; top: 4px; width: 80px; height: 56px; border-radius: 16px; overflow: hidden; }
+#own { position: absolute; left: 16px; top: 12px; width: 48px; height: 32px; border-radius: 8px; overflow: hidden; filter: blur(2px); }
+.fill { position: absolute; left: -12px; top: -12px; width: 72px; height: 56px; background-color: #e04020; }
+</style></head><body><div id="clip"><div id="own"><div class="fill"/></div></div></body></rml>)";
+    for (int samples : {1, 4}){
+        SCOPED_TRACE(std::to_string(samples) + " samples");
+        std::vector<uint8_t> rgba;
+        ASSERT_TRUE(renderLayer(rml, samples, rgba));
+        const PixelProbe probe{rgba, kWidth};
+        // #own covers (24, 16)-(71, 47): its middle is the colour, its edges blurred both ways
+        EXPECT_TRUE(probe.is(48, 32, 0xe0, 0x40, 0x20, 255, 4));
+        const int beyond[][2] = {{21, 32}, {74, 32}, {48, 13}, {48, 50}};
+        for (const auto& p : beyond){
+            const int alpha = probe.at(p[0], p[1])[3];
+            EXPECT_GT(alpha, 0) << "the blur spreads 2.5 px beyond #own's clip at (" << p[0] << ", " << p[1] << ")";
+            EXPECT_LT(alpha, 96) << "#own's clip did not cut its content before the blur at (" << p[0] << ", " << p[1] << ")";
+        }
+        const int within[][2] = {{25, 32}, {70, 32}, {48, 17}, {48, 46}};
+        for (const auto& p : within){
+            const int alpha = probe.at(p[0], p[1])[3];
+            EXPECT_GT(alpha, 160) << "1.5 px inside #own's clip at (" << p[0] << ", " << p[1] << ")";
+            EXPECT_LT(alpha, 240) << "not blurred at #own's edge at (" << p[0] << ", " << p[1] << ")";
+        }
+        // beyond the blur, and outside #clip: nothing
+        const int outside[][2] = {{12, 32}, {84, 32}, {48, 6}, {48, 57}, {0, 0}, {95, 63}};
+        for (const auto& p : outside)
+            EXPECT_EQ(int(probe.at(p[0], p[1])[3]), 0) << "drawn at (" << p[0] << ", " << p[1] << ")";
     }
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../Include/RmlUi/Core/CompiledFilterShader.h"
+#include "../../Include/RmlUi/Core/Geometry.h"
 #include "../../Include/RmlUi/Core/Types.h"
 
 namespace Rml {
@@ -9,6 +10,7 @@ class Decorator;
 class ElementBackgroundLayers;
 class Element;
 class Filter;
+class RenderManager;
 
 enum class RenderStage { Enter, Decoration, Exit };
 
@@ -69,6 +71,16 @@ private:
 	// this filter, compiled for 'group_opacity_value'.
 	CompiledFilter group_opacity;
 	float group_opacity_value = 1.f;
+
+	// Fork (P7-F1): the window of the element's layer, which the filters read (the filter region within the clips established
+	// outside the element, extended by the filters' reach), set when the layer is pushed, and whether its clip root is pushed.
+	Rectanglei layer_window = Rectanglei::MakeInvalid();
+	bool layer_clip_root = false;
+	// The rectangle of those clips' scissor region in the clip mask of the layer's composite, when the window extends
+	// beyond it; built for 'clip_rect_manager' at 'clip_rect_size' (placed by the clip mask's offset).
+	Geometry clip_rect_geometry;
+	RenderManager* clip_rect_manager = nullptr;
+	Vector2f clip_rect_size;
 
 	// If set, a full reload is necessary.
 	bool effects_dirty = false;

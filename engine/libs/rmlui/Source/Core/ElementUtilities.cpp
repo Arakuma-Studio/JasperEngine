@@ -128,8 +128,19 @@ static bool IsScrollbarPart(const Element* element, Element* scroll_container)
 	return element->GetTagName() == "scrollbarcorner";
 }
 
+// Fork (P7-F1): 'element' is a proper ancestor of 'descendant'.
+static bool IsProperAncestor(const Element* element, const Element* descendant)
+{
+	for (const Element* e = descendant->GetParentNode(); e; e = e->GetParentNode())
+	{
+		if (e == element)
+			return true;
+	}
+	return false;
+}
+
 bool ElementUtilities::GetClippingRegion(Element* element, Rectanglei& out_clip_region, ClipMaskGeometryList* out_clip_mask_list,
-	bool force_clip_self)
+	bool force_clip_self, const Element* clip_root)
 {
 	using Style::Clip;
 	Clip target_element_clip = element->GetComputedValues().clip();
@@ -149,6 +160,11 @@ bool ElementUtilities::GetClippingRegion(Element* element, Rectanglei& out_clip_
 
 	while (clipping_element)
 	{
+		// Fork (P7-F1): inside the effects layer of 'clip_root', the clips of its ancestors are applied to the layer's
+		// composite instead (the element's own clip and its descendants' clip the content drawn into the layer).
+		if (clip_root && clipping_element != clip_root && IsProperAncestor(clipping_element, clip_root))
+			break;
+
 		const bool force_clip_current_element = (force_clip_self && clipping_element == element);
 		const ComputedValues& clip_computed = clipping_element->GetComputedValues();
 		const bool clip_enabled = (clip_computed.overflow_x() != Style::Overflow::Visible || clip_computed.overflow_y() != Style::Overflow::Visible);
@@ -260,6 +276,25 @@ bool ElementUtilities::GetClippingRegion(Element* element, Rectanglei& out_clip_
 	return clip_region.Valid();
 }
 
+bool ElementUtilities::GetRenderClippingRegion(Element* element, RenderManager& render_manager, Rectanglei& scissor_region,
+	ClipMaskGeometryList& clip_mask_list, bool force_clip_self)
+{
+	const Element* clip_root = render_manager.GetClipRoot();
+	bool scissoring_enabled = GetClippingRegion(element, scissor_region, &clip_mask_list, force_clip_self, clip_root);
+
+	// Fork (P7-F1): within the window of the effects layer being drawn.
+	if (clip_root)
+	{
+		const Rectanglei window = render_manager.GetClipRootWindow();
+		if (window.Valid())
+		{
+			scissor_region = (scissoring_enabled ? scissor_region.Intersect(window) : window);
+			scissoring_enabled = true;
+		}
+	}
+	return scissoring_enabled;
+}
+
 bool ElementUtilities::SetClippingRegion(Element* element, bool force_clip_self)
 {
 	Context* context = element->GetContext();
@@ -271,7 +306,7 @@ bool ElementUtilities::SetClippingRegion(Element* element, bool force_clip_self)
 	Rectanglei clip_region;
 	ClipMaskGeometryList clip_mask_list;
 
-	const bool scissoring_enabled = GetClippingRegion(element, clip_region, &clip_mask_list, force_clip_self);
+	const bool scissoring_enabled = GetRenderClippingRegion(element, render_manager, clip_region, clip_mask_list, force_clip_self);
 	if (scissoring_enabled)
 		render_manager.SetScissorRegion(clip_region);
 	else
