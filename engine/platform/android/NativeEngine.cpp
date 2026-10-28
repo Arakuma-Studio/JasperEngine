@@ -602,6 +602,7 @@ NativeEngine::NativeEngine(struct android_app *app) {
     mEglDisplay = EGL_NO_DISPLAY;
     mEglSurface = EGL_NO_SURFACE;
     mEglContext = EGL_NO_CONTEXT;
+    mEglReleaseSurface = EGL_NO_SURFACE;
     mEglConfig = 0;
     mSurfWidth = mSurfHeight = 0;
     mJniEnv = NULL;
@@ -985,11 +986,27 @@ bool NativeEngine::makeContextCurrent() {
     if (mEglSurface != EGL_NO_SURFACE) {
         return eglMakeCurrent(mEglDisplay, mEglSurface, mEglSurface, mEglContext) == EGL_TRUE;
     }
-    const char* extensions = eglQueryString(mEglDisplay, EGL_EXTENSIONS);
-    if (!extensions || !strstr(extensions, "EGL_KHR_surfaceless_context")) {
-        return false;
+    // no window: a 1x1 pbuffer of the context's config, else no surface at all
+    // (EGL_KHR_surfaceless_context)
+    if (mEglReleaseSurface == EGL_NO_SURFACE) {
+        EGLint surfaceType = 0;
+        eglGetConfigAttrib(mEglDisplay, mEglConfig, EGL_SURFACE_TYPE, &surfaceType);
+        if (surfaceType & EGL_PBUFFER_BIT) {
+            const EGLint attribs[] = {EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE};
+            mEglReleaseSurface = eglCreatePbufferSurface(mEglDisplay, mEglConfig, attribs);
+        }
     }
-    return eglMakeCurrent(mEglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, mEglContext) == EGL_TRUE;
+    if (mEglReleaseSurface != EGL_NO_SURFACE &&
+            eglMakeCurrent(mEglDisplay, mEglReleaseSurface, mEglReleaseSurface, mEglContext) == EGL_TRUE) {
+        return true;
+    }
+    const char* extensions = eglQueryString(mEglDisplay, EGL_EXTENSIONS);
+    if (extensions && strstr(extensions, "EGL_KHR_surfaceless_context") &&
+            eglMakeCurrent(mEglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, mEglContext) == EGL_TRUE) {
+        return true;
+    }
+    jasperengine::Log::warn("NativeEngine: no surface to make the context current without the window, EGL error %d", eglGetError());
+    return false;
 }
 
 void NativeEngine::killContext() {
@@ -1005,6 +1022,10 @@ void NativeEngine::killContext() {
     if (mEglContext != EGL_NO_CONTEXT) {
         eglDestroyContext(mEglDisplay, mEglContext);
         mEglContext = EGL_NO_CONTEXT;
+    }
+    if (mEglReleaseSurface != EGL_NO_SURFACE) {
+        eglDestroySurface(mEglDisplay, mEglReleaseSurface);
+        mEglReleaseSurface = EGL_NO_SURFACE;
     }
 }
 

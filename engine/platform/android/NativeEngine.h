@@ -75,6 +75,8 @@ private:
 
     EGLDisplay mEglDisplay;
     EGLSurface mEglSurface;
+    // makeContextCurrent's surface while there is no window (GL objects released then)
+    EGLSurface mEglReleaseSurface;
     EGLContext mEglContext;
     EGLConfig mEglConfig;
 
@@ -91,8 +93,8 @@ private:
     bool initContext();
 
     void killContext();
-    // the context current with the window surface, or with none when the window is gone
-    // (EGL_KHR_surfaceless_context); false when it cannot be
+    // the context current with the window surface, or without the window (a 1x1 pbuffer, or
+    // no surface: EGL_KHR_surfaceless_context) to release GL objects; false when it cannot be
     bool makeContextCurrent();
     void killSurface();
     void killDisplay();
