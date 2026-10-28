@@ -361,7 +361,11 @@ Tests that drive the editor with real input (xdotool, `EDITOR = {"xvfb": "harnes
 puts a press and its release, and each step of a drag, in different frames, keeps two clicks
 apart by more than ImGui's double-click time, holds a chord's modifiers across frames, and finds
 controls where `find_ui_item` says they are drawn now. A host drawing a frame a second runs them
-as a fast one does.
+as a fast one does. `Ui.reveal(label, window)` wheels a panel until the control is in view and
+`Ui.click_revealed` clicks it there: no position or offset is measured in a test, so a layout
+change cannot move a click off its control (a missing control fails the test, it never skips).
+Labels are ImGui's: the whole label, its `##` id, or its text (with or without a leading icon);
+an item's `enabled` says whether it is drawn disabled.
 
 ### The CI suite (`CI = True`)
 
