@@ -603,14 +603,28 @@ SceneDiffResult diffScenes(const SceneYamlModel& base, const SceneYamlModel& cur
     for (const auto& [id, object] : current.objects) {
         if (!object.settings) parents.insert(object.parentId);
     }
+    // each side's children by parent, in sibling order (one pass, not one per parent)
+    auto childrenByParent = [](const SceneYamlModel& model) {
+        std::map<uint64_t, std::vector<std::pair<int, uint64_t>>> out;
+        for (const auto& [id, object] : model.objects) {
+            if (!object.settings) out[object.parentId].emplace_back(object.siblingIndex, id);
+        }
+        for (auto& [parent, children] : out) std::sort(children.begin(), children.end());
+        return out;
+    };
+    const auto childrenA = childrenByParent(base);
+    const auto childrenB = childrenByParent(current);
+    const std::vector<std::pair<int, uint64_t>> none;
     for (uint64_t parent : parents) {
         if (parent != 0 && (!base.find(parent) || !current.find(parent))) continue;
+        auto ia = childrenA.find(parent);
+        auto ib = childrenB.find(parent);
         std::vector<uint64_t> orderA, orderB;
-        for (uint64_t id : base.childrenOf(parent)) {
+        for (const auto& [index, id] : ia != childrenA.end() ? ia->second : none) {
             const SceneObject* other = current.find(id);
             if (other && other->parentId == parent) orderA.push_back(id);
         }
-        for (uint64_t id : current.childrenOf(parent)) {
+        for (const auto& [index, id] : ib != childrenB.end() ? ib->second : none) {
             const SceneObject* other = base.find(id);
             if (other && other->parentId == parent) orderB.push_back(id);
         }
