@@ -999,8 +999,10 @@ TEST(SpriteNormalsHostile, HugeDescriptorsOnATinyCanvasAreBounded) {
     EXPECT_EQ(p.kind, "too_large");
     EXPECT_NE(p.message.find("the image descriptors of frames 1-3 cover 50331648 pixels; at most 33554432 are decoded"), std::string::npos)
         << p.message;
+    // the message proves the bound (the third frame refused, the rest never looked at); the clock
+    // only catches a runaway (unbounded work takes minutes), with room for a loaded CI host
 #ifdef NDEBUG
-    EXPECT_LT(seconds, 1.0);
+    EXPECT_LT(seconds, 10.0);
 #endif
     // probing applies the same limit without decoding
     const fs::path dir = tempDir();

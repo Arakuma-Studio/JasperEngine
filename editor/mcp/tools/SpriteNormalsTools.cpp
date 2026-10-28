@@ -13,6 +13,7 @@
 #include "mcp/McpRegistry.h"
 #include "mcp/McpSchema.h"
 #include "mcp/McpValues.h"
+#include "mcp/tools/SpriteNormalsSheetWrite.h"
 #include "mcp/tools/W4Shared.h"
 
 #include "App.h"
@@ -28,6 +29,7 @@
 #include "spritenormals/SpriteNormalsCheck.h"
 #include "spritenormals/SpriteNormalsPaint.h"
 #include "spritenormals/SpriteNormalsSession.h"
+#include "spritenormals/SpriteNormalsWatcher.h"
 #include "texsynth/SynthesisSession.h"
 #include "util/Base64.h"
 #include "util/EntityPath.h"
@@ -696,73 +698,6 @@ Json applyArgs(Project* project, const NormalsCall& state, const std::vector<std
     return calls;
 }
 
-// save_path's contact sheet, written before the project files (a sheet that can't be written
-// fails the call before anything else is). Until commit(), a later failure (or an exception
-// unwinding the finish) puts the path back as it was: its old bytes, or no file and none of the
-// folders made for it.
-class SheetWrite {
-public:
-    SheetWrite() = default;
-    SheetWrite(const SheetWrite&) = delete;
-    SheetWrite& operator=(const SheetWrite&) = delete;
-    ~SheetWrite() {
-        if (!committed) rollback();
-    }
-
-    bool write(const fs::path& path, const std::vector<uint8_t>& bytes, std::string& error) {
-        std::error_code ec;
-        target = path;
-        existed = fs::is_regular_file(path, ec);
-        if (existed) {
-            std::ifstream in(path, std::ios::binary);
-            previous.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
-        }
-        // the folders create_directories makes, deepest first (removed again on rollback)
-        for (fs::path dir = path.parent_path(); !dir.empty() && !fs::exists(dir, ec); dir = dir.parent_path()) {
-            created.push_back(dir);
-            if (dir == dir.parent_path()) break;
-        }
-        active = true;
-        if (path.has_parent_path()) fs::create_directories(path.parent_path(), ec);
-        std::ofstream file(path, std::ios::binary | std::ios::trunc);
-        if (!file || !file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size())) || !(file.close(), file)) {
-            error = ec ? ec.message() : std::string("the file could not be written");
-            rollback();
-            return false;
-        }
-        return true;
-    }
-
-    void commit() { committed = true; }
-
-    // false (with `warning`) when the previous bytes could not be written back
-    bool rollback(std::string* warning = nullptr) {
-        if (!active) return true;
-        active = false;
-        std::error_code ec;
-        bool ok = true;
-        if (existed) {
-            std::ofstream back(target, std::ios::binary | std::ios::trunc);
-            ok = back && back.write(previous.data(), static_cast<std::streamsize>(previous.size())) && (back.close(), back);
-            if (!ok && warning) *warning = "the sheet replaced " + target.generic_u8string() + " and its previous version could not be written back";
-        } else {
-            fs::remove(target, ec);
-        }
-        for (const fs::path& dir : created) fs::remove(dir, ec);   // only empty folders go
-        return ok;
-    }
-
-    const fs::path& path() const { return target; }
-
-private:
-    fs::path target;
-    bool existed = false;
-    std::string previous;
-    std::vector<fs::path> created;
-    bool active = false;
-    bool committed = false;
-};
-
 // Builds the job's result once every run finished (main thread): writes and applies when asked
 void finishNormals(const NormalsCallPtr& state) {
     McpContext& ctx = *state->ctx;
@@ -818,9 +753,15 @@ void finishNormals(const NormalsCallPtr& state) {
             failJob(job, "Nothing was written:", {problem("output_invalid", "save_path", error, "a project-relative .png path")});
             return;
         }
-        if (!sheet.write(target, reports[0].sheet, error)) {
-            failJob(job, "Nothing was written:", {problem("write_failed", "save_path", "could not write the sheet to " + state->savePath + " (" + error + ")",
-                                                          "save_path must name a writable file whose folders are folders (not files), then call again")});
+        std::string restoreWarning;
+        if (!sheet.write(target, reports[0].sheet, error, &restoreWarning)) {
+            std::vector<sn::Problem> problems = {problem("write_failed", "save_path", "could not write the sheet to " + state->savePath + " (" + error + ")",
+                                                         "save_path must name a writable file whose folders are folders (not files), then call again")};
+            // the half-written sheet could not be put back: the file at save_path changed
+            if (!restoreWarning.empty()) {
+                problems.push_back(problem("write_failed", "save_path", restoreWarning, "restore that file yourself (its previous version could not be written back)"));
+            }
+            failJob(job, restoreWarning.empty() ? "Nothing was written:" : "Nothing else was written:", problems);
             return;
         }
         data["saved_to"] = relativeOf(project, target);
@@ -1559,9 +1500,13 @@ void spriteNormalsFileChanged(Project* project, const fs::path& path, Json& prob
     const std::string rel = relativeOf(project, path);
     if (!Util::isImageFile(rel) || lowerExtension(rel) == ".svg") return;
     const fs::path root = project->getProjectPath();
-    // the maps made from it: the default names beside it, and the check cache's reverse index
-    // (written by check --normals; no scan here)
-    std::vector<fs::path> candidates = defaultMapsOf(path);
+    // the maps made from it: first the editor's watcher index (SpriteNormalsWatcher::outputsOf,
+    // every recipe of the project), then the default names beside it and the check cache's reverse
+    // index (written by check --normals; no scan here), which also cover a map the watcher has not
+    // scanned yet and editors without one. Each candidate's recipe is read again below.
+    std::vector<fs::path> candidates;
+    if (const SpriteNormalsWatcher* watcher = SpriteNormalsWatcher::active()) candidates = watcher->outputsOf(path);
+    for (const fs::path& named : defaultMapsOf(path)) candidates.push_back(named);
     for (const fs::path& cached : sn::cachedMapsOf(root, path)) candidates.push_back(cached);
     std::set<fs::path> seen;
     for (const fs::path& candidate : candidates) {

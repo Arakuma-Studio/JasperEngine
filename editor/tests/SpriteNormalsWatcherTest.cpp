@@ -19,6 +19,7 @@
 #include "spritenormals/SpriteNormalsSession.h"
 #include "spritenormals/SpriteNormalsWatcher.h"
 #include "texsynth/SynthImage.h"
+#include "mcp/tools/McpTools.h"
 
 #include <unistd.h>
 
@@ -221,6 +222,48 @@ TEST(SpriteNormalsWatcher, IndexStaleMissingAndHashing) {
     Access::scan(watcher);
     EXPECT_TRUE(watcher.sourceMissing(map));
     EXPECT_FALSE(watcher.isStale(map));
+}
+
+// The MCP file-sync hook (mcp::spriteNormalsFileChanged, Phase 3 spec 3.9) asks the editor's watcher
+// first: a map under a name the default-name probe doesn't try (and not in the check cache) is reported
+// once the watcher has indexed it, and only then
+TEST(SpriteNormalsWatcher, FileSyncAsksTheWatcherFirst) {
+    const std::string dir = fresh("sync");
+    writePng(dir + "/hero.png", disk(32, 80));
+    generate(dir + "/hero.png");
+    fs::create_directories(root() / dir / "lit");
+    fs::rename(root() / dir / "hero_normal.png", root() / dir / "lit" / "hero_n.png");
+    project()->getSpriteNormalsSettings().autoRegenerate = false;
+    writePng(dir + "/hero.png", disk(32, 120));
+    const fs::path source = root() / dir / "hero.png";
+
+    // (an editor made by an earlier test of this process may have left its watcher active)
+    SpriteNormalsWatcher* const before = SpriteNormalsWatcher::active();
+    SpriteNormalsWatcher::setActive(nullptr);
+    mcp::Json problems = mcp::Json::array();
+    mcp::spriteNormalsFileChanged(project(), source, problems);
+    EXPECT_TRUE(problems.empty()) << "no watcher: only the default names and the check cache, which don't know it";
+
+    SpriteNormalsWatcher watcher(project());
+    Access::scan(watcher);
+    SpriteNormalsWatcher::setActive(&watcher);
+    mcp::spriteNormalsFileChanged(project(), source, problems);
+    SpriteNormalsWatcher::setActive(nullptr);
+    if (problems.size() != 1u) SpriteNormalsWatcher::setActive(before);
+    ASSERT_EQ(problems.size(), 1u) << problems.dump();
+    EXPECT_EQ(problems[0].value("path", std::string()), dir + "/lit/hero_n.png");
+    EXPECT_NE(problems[0].value("message", std::string()).find("made from " + dir + "/hero.png, which changed"), std::string::npos)
+        << problems.dump();
+
+    // the default-name map is still found beside the watcher's (once)
+    generate(dir + "/hero.png");
+    writePng(dir + "/hero.png", disk(32, 160));
+    Access::scan(watcher);
+    SpriteNormalsWatcher::setActive(&watcher);
+    problems = mcp::Json::array();
+    mcp::spriteNormalsFileChanged(project(), source, problems);
+    SpriteNormalsWatcher::setActive(before);
+    EXPECT_EQ(problems.size(), 2u) << problems.dump();
 }
 
 TEST(SpriteNormalsWatcher, AutoRegenerateOffWritesNothing) {

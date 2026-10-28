@@ -66,6 +66,7 @@ namespace jasperengine::editor {
         static void holdConfirms(W& w, bool hold) { w.holdConfirms = hold; }
         static std::function<void()> lastConfirm(W& w) { return w.lastConfirm; }
         static size_t undoSteps(W& w) { return w.paintUndo.size(); }
+        static void undoByteLimit(W& w, size_t bytes) { w.paintUndoByteLimit = bytes; }
         static const sn::Image& displayed(W& w) { return w.displayNormal(); }
         static sn::Image composed(W& w) { return w.composedNormal(); }
         static void refreshWarningsNow(W& w) { w.refreshWarnings(true); }
@@ -839,6 +840,36 @@ TEST(SpriteNormalsPaintWindowDeathTest, AnOutsideRewriteWithoutStrokesIsAdopted)
         EXPECT_TRUE(w.p->getProjectCommandHistory()->undo());
         Access::checkTarget(*window);
         EXPECT_EQ(window->paintedPixelCount(), 9u);
+        EXPECT_FALSE(window->hasUnsavedPaint());
+    });
+}
+
+// ---- integration: a stroke whose undo patch the cap dropped still counts as a stroke
+
+TEST(SpriteNormalsPaintWindowDeathTest, StrokesEvictedFromTheUndoCapStillKeepTheOverlay) {
+    IN_EDITOR("evicted", {
+        auto window = openWindow(w, "assets/hero.png");
+        window->setPaintTool(sn::PaintTool::Flatten);
+        window->setPaintBrush(brushOf(2));
+        // every patch is over the cap: the stack is empty after each stroke, the strokes are not
+        Access::undoByteLimit(*window, 1);
+        ASSERT_TRUE(window->paintStroke({{16, 16}}));
+        EXPECT_EQ(Access::undoSteps(*window), 0u);
+        EXPECT_FALSE(window->canUndoPaint());
+        ASSERT_EQ(window->paintedPixelCount(), 4u);
+        EXPECT_TRUE(window->hasUnsavedPaint());
+        // another tool writes the map with other paint: the saved state, the window's strokes stay
+        writePaintedMap(w, "assets/hero.png", "assets/hero_normal.png", R"([{"op":"flatten","where":{"rect":[8,8,3,3]}}])");
+        Access::checkTarget(*window);
+        EXPECT_EQ(window->paintedPixelCount(), 4u) << "the strokes are not replaced by the file's paint";
+        EXPECT_TRUE(window->hasUnsavedPaint());
+        EXPECT_NE(window->getStatus().find("changed on disk"), std::string::npos) << window->getStatus();
+        // discarding takes the file's paint, and a later rewrite is adopted again
+        window->discardPaint();
+        EXPECT_EQ(window->paintedPixelCount(), 9u);
+        writePaintedMap(w, "assets/hero.png", "assets/hero_normal.png", R"([{"op":"flatten","where":{"rect":[14,14,2,2]}}])");
+        Access::checkTarget(*window);
+        EXPECT_EQ(window->paintedPixelCount(), 4u);
         EXPECT_FALSE(window->hasUnsavedPaint());
     });
 }

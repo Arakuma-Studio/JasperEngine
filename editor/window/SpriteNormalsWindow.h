@@ -430,6 +430,11 @@ namespace jasperengine::editor {
         std::vector<PaintPatch> paintUndo;
         std::vector<PaintPatch> paintRedo;
         size_t paintUndoBytes = 0;
+        size_t paintUndoByteLimit = 64u * 1024u * 1024u;  // the undo stack's byte cap (tests lower it)
+        // strokes made in the window since the target was loaded and not undone (a Save keeps
+        // them; the undo cap dropping old patches doesn't lower it): with none, a change of the
+        // target on disk is taken as the overlay
+        size_t paintStrokes = 0;
         spritenormals::PaintTool paintTool = spritenormals::PaintTool::Navigate;
         spritenormals::PaintBrush brush;
         bool showPaint = true;
@@ -452,7 +457,7 @@ namespace jasperengine::editor {
         double normalUploadedAt = -1.0;
         // Smooth's cells and islands of the shown result (built once per result)
         spritenormals::PaintTopology topology;
-        uint64_t topologyFor_ = 0;              // the result id it was built for
+        uint64_t topologyResult = 0;            // the result id it was built for
         mutable uint64_t unsavedFor = 0;         // hasUnsavedPaint() for this paintSerial ...
         mutable bool unsavedCached = false;      // ... (an overlay compare per change, not per frame)
         // a stroke in progress (mouse or paintStroke)
@@ -467,8 +472,10 @@ namespace jasperengine::editor {
         spritenormals::Image generatedGLImage;
         uint64_t generatedGLResult = 0;
         uint64_t resultIds = 0;                 // the last result id given
+        // what the Normal view's GPU copy (normalGpu) shows: the overlay state it was uploaded at
+        // (paintSerial * 2 + Show Paint; 0 = upload again) and the result id it is the composite of
         uint64_t normalGpuFor = 0;
-        uint64_t normalGpuResult = 0;               // the displayed serial the Normal view's GPU copy shows
+        uint64_t normalGpuResult = 0;
         GpuImage hemisphereGpu;                  // the direction disk's colour wheel
         // the wand's hover outline (cached for the hovered pixel)
         int wandHoverX = -1, wandHoverY = -1;

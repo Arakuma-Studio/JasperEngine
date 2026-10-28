@@ -22,13 +22,17 @@
 #include "component/MeshComponent.h"
 #include "component/SpriteComponent.h"
 #include "mcp/McpServer.h"
+#include "mcp/tools/SpriteNormalsSheetWrite.h"
 #include "spritenormals/SpriteNormalsSession.h"
 #include "texsynth/SynthesisRecipe.h"
 #include "texsynth/SynthesisSession.h"
 
 #include "json.hpp"
 
+#include <sys/resource.h>
 #include <unistd.h>
+
+#include <csignal>
 
 #include <atomic>
 #include <chrono>
@@ -906,6 +910,13 @@ TEST(SpriteNormalsScene, SceneWarnings) {
     w = sn::sceneWarnings(scene, hero, settings, 32, 32, still, true);
     ASSERT_EQ(kinds(w), std::vector<std::string>{"shader_ignores_normals"});
     EXPECT_EQ(w[0].message, "The sprite's material shader library:simple_lit does not sample a normal map.");
+    // library:sprite reads the material's Normal Texture (Catalog::shaderReadsMaterialNormalMap), with or
+    // without its features: no warning
+    mesh.submeshes[0].material.shader = "library:sprite";
+    EXPECT_TRUE(sn::sceneWarnings(scene, hero, settings, 32, 32, still, true).empty());
+    mesh.submeshes[0].material.shaderFeatures = {"OUTLINE"};
+    EXPECT_TRUE(sn::sceneWarnings(scene, hero, settings, 32, 32, still, true).empty());
+    mesh.submeshes[0].material.shaderFeatures.clear();
     mesh.submeshes[0].material.shader.clear();
 
     // zero delays: the only warning without a scene
@@ -1074,5 +1085,75 @@ TEST(SpriteNormalsSession, OutsideAProjectPathsAreRelativeToThePng) {
     std::vector<std::string> notes;
     ASSERT_TRUE(sn::specFromRecipe(recipe, dir / "out" / "hero_n.png", fs::path(), back, notes, error)) << error;
     EXPECT_EQ(fs::path(back.source), (dir / "in" / "hero.png").lexically_normal());
+    fs::remove_all(dir);
+}
+
+// generate_sprite_normals' save_path sheet (mcp::SheetWrite, Phase 3 spec 3.4): a rollback puts the
+// old bytes back, or removes the new file and its folders; a sheet whose write fails is rolled back
+// at once, and when its previous bytes can't be written back either the caller is told (a file-size
+// limit makes both writes fail: the root user of CI ignores read-only files)
+TEST(SpriteNormalsSession, SheetWriteRollsBackAndReportsAFailedRestore) {
+    const fs::path dir = fs::temp_directory_path() / ("jasper-spritenormals-sheet-" + std::to_string(::getpid()));
+    fs::remove_all(dir);
+    const std::vector<uint8_t> old(8192, 'A'), sheet(8192, 'B');
+    auto readAll = [](const fs::path& path) {
+        std::ifstream in(path, std::ios::binary);
+        return std::vector<uint8_t>((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    };
+    writeBytes(dir / "shots" / "sheet.png", old);
+    std::string error, warning;
+    {
+        // replaced, then rolled back: the old bytes
+        mcp::SheetWrite write;
+        ASSERT_TRUE(write.write(dir / "shots" / "sheet.png", sheet, error, &warning)) << error;
+        EXPECT_EQ(readAll(dir / "shots" / "sheet.png"), sheet);
+        EXPECT_TRUE(write.rollback(&warning));
+        EXPECT_EQ(readAll(dir / "shots" / "sheet.png"), old);
+    }
+    {
+        // a new file in new folders, rolled back by the destructor: none of them left
+        mcp::SheetWrite write;
+        ASSERT_TRUE(write.write(dir / "new" / "deep" / "sheet.png", sheet, error)) << error;
+        EXPECT_TRUE(fs::exists(dir / "new" / "deep" / "sheet.png"));
+    }
+    EXPECT_FALSE(fs::exists(dir / "new"));
+    {
+        // committed: kept
+        mcp::SheetWrite write;
+        ASSERT_TRUE(write.write(dir / "kept.png", sheet, error)) << error;
+        write.commit();
+    }
+    EXPECT_EQ(readAll(dir / "kept.png"), sheet);
+    {
+        // a path that can't be opened (a folder) is left alone
+        fs::create_directories(dir / "folder.png");
+        mcp::SheetWrite write;
+        warning.clear();
+        EXPECT_FALSE(write.write(dir / "folder.png", sheet, error, &warning));
+        EXPECT_FALSE(error.empty());
+        EXPECT_TRUE(warning.empty()) << warning;
+        EXPECT_TRUE(fs::is_directory(dir / "folder.png"));
+    }
+    {
+        // the sheet's write fails half way (past a 4 KiB file-size limit) and so does putting the
+        // 8 KiB it replaced back: reported
+        struct rlimit saved{};
+        ASSERT_EQ(getrlimit(RLIMIT_FSIZE, &saved), 0);
+        void (*previousHandler)(int) = std::signal(SIGXFSZ, SIG_IGN);
+        struct rlimit small = saved;
+        small.rlim_cur = 4096;
+        ASSERT_EQ(setrlimit(RLIMIT_FSIZE, &small), 0);
+        mcp::SheetWrite write;
+        error.clear();
+        warning.clear();
+        const bool written = write.write(dir / "shots" / "sheet.png", sheet, error, &warning);
+        setrlimit(RLIMIT_FSIZE, &saved);
+        std::signal(SIGXFSZ, previousHandler);
+        EXPECT_FALSE(written);
+        EXPECT_FALSE(error.empty());
+        EXPECT_NE(warning.find("its previous version could not be written back"), std::string::npos) << warning;
+        EXPECT_NE(warning.find("sheet.png"), std::string::npos) << warning;
+        EXPECT_TRUE(write.rollback()) << "rolled back once only";
+    }
     fs::remove_all(dir);
 }

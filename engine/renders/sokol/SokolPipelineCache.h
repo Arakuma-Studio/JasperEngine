@@ -60,8 +60,6 @@ namespace jasperengine{
         static void retainVariant(sg_pipeline pipeline);
         // the shared variant pipelines alive (tests)
         static size_t variantCount();
-        // shared variants created since start (kept out of getMissCount, the dynamic path's)
-        static uint64_t getVariantMissCount();
     };
 }
 

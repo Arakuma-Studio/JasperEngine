@@ -31,7 +31,6 @@
 #include <set>
 #include <system_error>
 #include <thread>
-#include <type_traits>
 #include <utility>
 
 namespace fs = std::filesystem;
@@ -132,26 +131,6 @@ namespace jasperengine::editor::spritenormals {
         // A mesh's submeshes; a Sprite's first exists before its first update sets the count
         unsigned submeshCount(Scene* scene, Entity entity, const MeshComponent& mesh) {
             return std::max(mesh.numSubmeshes, scene->findComponent<SpriteComponent>(entity) ? 1u : 0u);
-        }
-
-        // Catalog::shaderReadsMaterialNormalMap (Phase 1: which manifest shaders sample the
-        // material's Normal Texture) when the editor has it; without it no manifest shader does
-        template <typename C, typename = void>
-        struct HasNormalMapQuery : std::false_type {};
-        template <typename C>
-        struct HasNormalMapQuery<C, std::void_t<decltype(C::shaderReadsMaterialNormalMap(std::declval<const ShaderManifest*>(),
-                                                                                        std::declval<const std::vector<std::string>&>()))>>
-            : std::true_type {};
-
-        template <typename C>
-        bool shaderReadsNormalMap(const ShaderManifest* manifest, const std::vector<std::string>& features) {
-            if constexpr (HasNormalMapQuery<C>::value) {
-                return C::shaderReadsMaterialNormalMap(manifest, features);
-            } else {
-                (void)manifest;
-                (void)features;
-                return false;
-            }
         }
 
         struct SpriteInfo {
@@ -1065,7 +1044,7 @@ namespace jasperengine::editor::spritenormals {
             }
             if (!material.shader.empty()) {
                 const std::shared_ptr<const ShaderManifest> manifest = mcp::McpValues::findManifest(material.shader);
-                if (manifest && !shaderReadsNormalMap<Catalog>(manifest.get(), material.shaderFeatures)) {
+                if (manifest && !Catalog::shaderReadsMaterialNormalMap(manifest.get(), material.shaderFeatures)) {
                     add(warnings, "shader_ignores_normals", "", "The sprite's material shader " + material.shader + " does not sample a normal map.",
                         "Use the built-in sprite material or library:sprite.");
                 }

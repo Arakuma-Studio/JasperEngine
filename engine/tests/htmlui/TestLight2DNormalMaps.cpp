@@ -739,7 +739,8 @@ TEST_F(Light2DNormalMapTest, MirroredShadowCaster){
         EXPECT_TRUE(quad.isFaceCulling()) << "the quad culls its back face";
         ASSERT_TRUE((scaleX < 0.0f ? mirrored : plain).read());
     }
-    // the shadow falls on the wall 60 units right of the quad (light from the front left)
+    // the shadow falls on the wall about 55 units right of the quad (light from the front left at
+    // 45 degrees; the wall's face is 55 units behind the quad)
     const float shadowed = meanLuminance(plain, 310, 168, 330, 192);
     const float lit = meanLuminance(plain, 420, 168, 440, 192);
     EXPECT_LT(shadowed, lit * 0.7f) << "the quad's shadow: " << shadowed << " vs lit wall " << lit;

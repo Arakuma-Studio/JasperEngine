@@ -39,7 +39,6 @@ namespace {
     }
 
     uint64_t missCount = 0;
-    uint64_t variantMissCount = 0;
     uint64_t applyCount = 0;
     uint32_t lastApplied = SG_INVALID_ID;
     std::atomic<uint32_t> pipelineGeneration{1};
@@ -396,9 +395,8 @@ sg_pipeline SokolPipelineCache::acquireVariant(const sg_pipeline_desc& desc){
         return invalid;
     }
 
+    // (not counted in getMissCount: the dynamic path's misses, which the HTML UI frame stats report)
     sg_pipeline pipeline = sg_make_pipeline(desc);
-    // not getMissCount's (the dynamic path's misses, which the HTML UI frame stats report)
-    variantMissCount++;
     if (pipeline.id == SG_INVALID_ID)
         return pipeline;
 
@@ -440,10 +438,6 @@ void SokolPipelineCache::releaseVariant(sg_pipeline pipeline){
     destroyPipeline(pipeline);
     variants().erase(it);
     variantKeys().erase(keyIt);
-}
-
-uint64_t SokolPipelineCache::getVariantMissCount(){
-    return variantMissCount;
 }
 
 size_t SokolPipelineCache::variantCount(){

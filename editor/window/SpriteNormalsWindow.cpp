@@ -341,6 +341,7 @@ void SpriteNormalsWindow::resetForProjectSwitch() {
     paintUndo.clear();
     paintRedo.clear();
     paintUndoBytes = 0;
+    paintStrokes = 0;
     paintTool = sn::PaintTool::Navigate;
     stroking = false;
     paintOpenSet = false;
@@ -3766,7 +3767,6 @@ void SpriteNormalsWindow::drawPreview() {
 namespace {
 
     constexpr size_t PAINT_UNDO_STEPS = 256;
-    constexpr size_t PAINT_UNDO_BYTES = 64u * 1024u * 1024u;
 
     sn::PaintOpKind kindOf(sn::PaintTool tool) {
         switch (tool) {
@@ -3867,8 +3867,8 @@ void SpriteNormalsWindow::checkPaintTarget() {
     if (exists == paintStampExists && time == paintStampTime && size == paintStampSize) return;
     // the file changed under the window (a Save undone, a regeneration, another tool): what it
     // holds now is the saved state. Without strokes in the window (none since the target was
-    // loaded) the window takes it as its overlay too; with strokes (an undone Save included) the
-    // overlay stays, unsaved
+    // loaded, or all undone) the window takes it as its overlay too; with strokes (an undone Save
+    // included, and strokes whose undo patches the cap dropped) the overlay stays, unsaved
     const bool hadUnsaved = hasUnsavedPaint();
     std::string why;
     std::optional<sn::PaintOverlay> onDisk = exists ? sn::readPaint(target, &why) : std::nullopt;
@@ -3876,7 +3876,7 @@ void SpriteNormalsWindow::checkPaintTarget() {
     recordPaintStamp();
     unsavedFor = 0;
     warningsDirty = true;
-    if (paintUndo.empty() && !stroking) {
+    if (paintStrokes == 0 && !stroking) {
         paint = paintSaved;
         paintRedo.clear();
         paintProblem = why.empty() ? std::string() : fileName(paintTarget) + "'s paint layer can't be read (" + why + "); Save writes the map without it.";
@@ -3897,8 +3897,8 @@ uint64_t SpriteNormalsWindow::shownId() const {
 const sn::PaintTopology* SpriteNormalsWindow::topologyFor(bool needed) {
     const std::shared_ptr<sn::SpriteNormalsRun> r = shown();
     if (!r || !needed) return nullptr;
-    if (topologyFor_ != shownId()) {
-        topologyFor_ = shownId();
+    if (topologyResult != shownId()) {
+        topologyResult = shownId();
         topology = sn::paintTopology(r->prepared().request.color, r->prepared().request.cells, r->prepared().request.settings.alphaThreshold);
     }
     return &topology;
@@ -3909,6 +3909,7 @@ void SpriteNormalsWindow::loadPaintForTarget() {
     paintUndo.clear();
     paintRedo.clear();
     paintUndoBytes = 0;
+    paintStrokes = 0;
     paint = sn::PaintOverlay();
     paintSaved = sn::PaintOverlay();
     paintTarget.clear();
@@ -3971,6 +3972,7 @@ void SpriteNormalsWindow::discardPaint() {
     paintUndo.clear();
     paintRedo.clear();
     paintUndoBytes = 0;
+    paintStrokes = 0;
     paintChanged();
 }
 
@@ -4055,8 +4057,9 @@ void SpriteNormalsWindow::pushPaintPatch(PaintPatch patch) {
     paintUndoBytes += patch.bytes();
     paintUndo.push_back(std::move(patch));
     paintRedo.clear();
+    paintStrokes++;
     // the cap: 256 steps or 64 MiB, the oldest dropped first
-    while (!paintUndo.empty() && (paintUndo.size() > PAINT_UNDO_STEPS || paintUndoBytes > PAINT_UNDO_BYTES)) {
+    while (!paintUndo.empty() && (paintUndo.size() > PAINT_UNDO_STEPS || paintUndoBytes > paintUndoByteLimit)) {
         paintUndoBytes -= paintUndo.front().bytes();
         paintUndo.erase(paintUndo.begin());
     }
@@ -4213,6 +4216,7 @@ bool SpriteNormalsWindow::undoPaint() {
     PaintPatch patch = std::move(paintUndo.back());
     paintUndo.pop_back();
     paintUndoBytes -= patch.bytes();
+    if (paintStrokes > 0) paintStrokes--;
     const bool resized = !paint.sized(patch.width, patch.height);
     if (resized) paint = sn::PaintOverlay::blank(patch.width, patch.height);
     for (size_t k = 0; k < patch.pixels.size(); k++) {
@@ -4238,6 +4242,7 @@ bool SpriteNormalsWindow::redoPaint() {
     else paintChangedPixels(patch.pixels);
     paintUndoBytes += patch.bytes();
     paintUndo.push_back(std::move(patch));
+    paintStrokes++;
     return true;
 }
 
