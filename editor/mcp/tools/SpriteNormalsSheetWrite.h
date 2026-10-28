@@ -51,8 +51,10 @@ namespace jasperengine::editor::mcp {
             }
             active = true;
             created.clear();
-            // a path that could not be replaced was not touched (and no folder was left made for it)
-            touched = safewrite::writeFileResolvedBeneath(base, path, std::string(bytes.begin(), bytes.end()), error, &created);
+            // a path that could not be replaced was not touched (and no folder was left made for it);
+            // every write scope in force allows it too
+            error = safewrite::scopesRefusal(path, false);
+            touched = error.empty() && safewrite::writeFileResolvedBeneath(base, path, std::string(bytes.begin(), bytes.end()), error, &created);
             if (!touched) {
                 std::string restore;
                 if (!rollback(&restore) && warning) *warning = restore;

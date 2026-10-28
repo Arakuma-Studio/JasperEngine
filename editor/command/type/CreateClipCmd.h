@@ -96,6 +96,7 @@ namespace jasperengine::editor{
         std::vector<std::unique_ptr<Command>> sceneCommands;
         bool wasModified = false;
         std::string failureText;
+        unsigned long long failureMark = 0;   // safewrite::scopedFailureCount() when execute began
         std::shared_ptr<std::string> failureSink;
         Entity playerRoot = NULL_ENTITY;
         PlayerModelLayout::Reloads layoutReloads;

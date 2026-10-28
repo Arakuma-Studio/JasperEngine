@@ -707,18 +707,37 @@ TEST(SpriteNormalsSession, ALinkedAssetsDirectoryOrProjectKeepsWorking) {
     fs::create_directory_symlink(real, root() / "linked");
     project()->setAssetsDir("linked");
     sn::Spec spec = stillSpec("linked/art/hero.png");
-    EXPECT_TRUE(sn::checkSpec(root(), spec).empty()) << "the default output, inside the linked assets directory";
+    // an assets directory that is a link out of the project is not followed (round 3): its outputs
+    // are refused, naming the link and the fix
+    std::optional<sn::Problem> refused = findKind(sn::checkSpec(root(), spec), "output_invalid");
+    ASSERT_TRUE(refused) << "the default output, inside the linked assets directory outside the project";
+    EXPECT_NE(refused->message.find("resolves outside the project"), std::string::npos) << refused->message;
+    EXPECT_NE(refused->message.find("Make the assets directory a real folder of the project."), std::string::npos) << refused->message;
     spec.output.normal = "assets/elsewhere.png";
     EXPECT_TRUE(findKind(sn::checkSpec(root(), spec), "output_invalid")) << "outside the assets directory, as before";
-    // its undoable write goes through
+    // the undoable write is refused too, nothing written out there
+    sn::OutputFile late;
+    late.role = "normal";
+    late.path = "linked/art/hero_normal.png";
+    late.absolute = root() / "linked" / "art" / "hero_normal.png";
+    late.bytes = "bytes";
+    std::string error;
+    EXPECT_FALSE(sn::writeOutputsUndoable(project(), {late}, error));
+    EXPECT_FALSE(fs::exists(real / "art" / "hero_normal.png"));
+    // the assets directory linked to a folder inside the project works
+    fs::create_directories(root() / "realassets" / "art");
+    fs::copy_file(real / "art" / "hero.png", root() / "realassets" / "art" / "hero.png");
+    fs::remove(root() / "linked");
+    fs::create_directory_symlink(root() / "realassets", root() / "linked");
     spec.output.normal.clear();
+    EXPECT_TRUE(sn::checkSpec(root(), spec).empty()) << "a link inside the project";
     std::vector<sn::OutputFile> files = generateFiles(spec);
     ASSERT_EQ(files.size(), 1u);
-    std::string error;
     ASSERT_TRUE(sn::writeOutputsUndoable(project(), files, error)) << error;
-    EXPECT_TRUE(fs::is_regular_file(real / "art" / "hero_normal.png"));
+    EXPECT_TRUE(fs::is_regular_file(root() / "realassets" / "art" / "hero_normal.png"));
     ASSERT_TRUE(project()->getProjectCommandHistory()->undo());
-    EXPECT_FALSE(fs::exists(real / "art" / "hero_normal.png"));
+    EXPECT_FALSE(fs::exists(root() / "realassets" / "art" / "hero_normal.png"));
+    fs::remove_all(root() / "realassets");
     project()->setAssetsDir(".");
     // the project reached through a link
     const fs::path via = root().parent_path() / "via-link";

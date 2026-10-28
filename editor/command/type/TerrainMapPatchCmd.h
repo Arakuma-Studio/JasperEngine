@@ -33,6 +33,8 @@ namespace jasperengine::editor{
 
         bool execute() override;
         void undo() override;
+        // the map file each apply rewrites in full (beneath the step's write scope)
+        std::vector<Touched> touchedPaths(bool undo) const override;
 
     };
 

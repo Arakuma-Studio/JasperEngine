@@ -1416,10 +1416,19 @@ namespace jasperengine::editor::safewrite {
     // ------------------------------------------------------------------ the write scope
 
     namespace {
-        thread_local std::vector<fs::path> scopes;
+        struct ScopeEntry {
+            fs::path root;
+            bool strict = false;
+        };
+        thread_local std::vector<ScopeEntry> scopes;
         thread_local std::string scopedError;
+        // the scoped failures on this thread: a running count and the latest texts (a step reads
+        // the first one since its mark: a later success doesn't hide it)
+        thread_local unsigned long long scopedFailures = 0;
+        thread_local std::deque<std::string> recentFailures;
+        constexpr size_t kRecentFailures = 64;
 
-        std::mutex& sinkMutex() {
+        std::mutex& globalMutex() {
             static std::mutex m;
             return m;
         }
@@ -1427,8 +1436,10 @@ namespace jasperengine::editor::safewrite {
             static std::function<void(const std::string&)> s;
             return s;
         }
-
-        thread_local unsigned long long scopedFailures = 0;
+        std::vector<fs::path>& outsideAllowed() {
+            static std::vector<fs::path> dirs;
+            return dirs;
+        }
 
         int scopedResult(bool ok, const std::string& error, std::error_code& ec) {
             if (ok) {
@@ -1438,6 +1449,8 @@ namespace jasperengine::editor::safewrite {
             }
             scopedError = error;
             scopedFailures++;
+            recentFailures.push_back(error);
+            if (recentFailures.size() > kRecentFailures) recentFailures.pop_front();
             ec = std::make_error_code(std::errc::operation_not_permitted);
             warn(error);
             return 0;
@@ -1449,41 +1462,96 @@ namespace jasperengine::editor::safewrite {
             return !real.empty() && isAtOrBelow(absolute, real);
         }
 
-        // Every other active scope whose root holds `path` must hold it once links are resolved too
-        // (nested scopes: an MCP call's project and a step's own root both apply)
-        bool otherScopesAllow(const fs::path& path, const fs::path& used, bool entry, std::string& error) {
+        // The scopes in force: those above the innermost suspending (empty) one
+        std::vector<const ScopeEntry*> activeScopes() {
+            std::vector<const ScopeEntry*> active;
+            for (auto it = scopes.rbegin(); it != scopes.rend(); ++it) {
+                if (it->root.empty()) break;
+                active.push_back(&*it);   // innermost first
+            }
+            return active;
+        }
+
+        bool allowedOutside(const fs::path& absolute) {
+            std::lock_guard<std::mutex> lock(globalMutex());
+            for (const fs::path& dir : outsideAllowed()) {
+                if (lexicallyIn(absolute, dir)) return true;
+            }
+            return false;
+        }
+
+        enum class Route { Plain, Beneath, Refused };
+
+        // How a scoped operation on `path` goes: plain (no scope in force holds it, and no strict
+        // scope refuses it), beneath `root` (the innermost scope holding it; every scope in force
+        // must hold it once resolved: fail-closed), or refused (`error`)
+        Route route(const fs::path& path, bool entry, fs::path& root, std::string& error, const fs::path& alsoHolding = {}) {
+            root.clear();
+            const std::vector<const ScopeEntry*> active = activeScopes();
+            if (active.empty() || path.empty()) return Route::Plain;
             const fs::path absolute = absoluteNormal(path);
-            for (const fs::path& root : scopes) {
-                if (root.empty() || root == used || !lexicallyIn(absolute, root)) continue;
-                const std::string escape = escapeOf(root, path, entry);
-                if (!escape.empty()) {
-                    error = escape + " Remove the link (or use a path that stays inside), then try again.";
-                    return false;
+            const fs::path other = alsoHolding.empty() ? fs::path() : absoluteNormal(alsoHolding);
+            bool held = false;
+            for (const ScopeEntry* scope : active) {
+                if (!lexicallyIn(absolute, scope->root) && (other.empty() || !lexicallyIn(other, scope->root))) continue;
+                held = true;
+                // a rename: the innermost root holding both ends
+                if (root.empty() && lexicallyIn(absolute, scope->root) && (other.empty() || lexicallyIn(other, scope->root))) root = scope->root;
+            }
+            if (!held) {
+                // outside every root: an MCP call (a strict scope) writes nowhere else, but the
+                // editor's own places (its settings, the temporary folder)
+                for (const ScopeEntry* scope : active) {
+                    if (scope->strict && !allowedOutside(absolute)) {
+                        error = shown(absolute) + " is outside the project (" + shown(scope->root) +
+                                "): an MCP call writes only inside it. Use a path inside the project.";
+                        return Route::Refused;
+                    }
+                }
+                return Route::Plain;
+            }
+            if (root.empty()) {
+                error = shown(absolute) + (other.empty() ? std::string() : " and " + shown(other)) +
+                        " are not inside one write root: a move across them is refused.";
+                return Route::Refused;
+            }
+            // fail-closed: every scope in force holds it once links are resolved
+            for (const ScopeEntry* scope : active) {
+                for (const fs::path& p : {absolute, other}) {
+                    if (p.empty()) continue;
+                    const std::string escape = escapeOf(scope->root, p, entry);
+                    if (!escape.empty()) {
+                        error = escape + " Remove the link (or use a path that stays inside), then try again.";
+                        return Route::Refused;
+                    }
                 }
             }
-            return true;
+            return Route::Beneath;
         }
 
         int scopedWrite(const fs::path& path, const std::string& content, std::error_code& ec) {
-            const fs::path root = scopeRootFor(path);
-            if (root.empty()) return -1;
+            fs::path root;
             std::string error;
-            if (!otherScopesAllow(path, root, false, error)) return scopedResult(false, error, ec);
+            const Route r = route(path, false, root, error);
+            if (r == Route::Plain) return -1;
+            if (r == Route::Refused) return scopedResult(false, error, ec);
             return scopedResult(writeFileResolvedBeneath(root, path, content, error), error, ec);
         }
         int scopedCreateDirectories(const fs::path& path, std::error_code& ec) {
-            const fs::path root = scopeRootFor(path);
-            if (root.empty()) return -1;
+            fs::path root;
             std::string error;
-            if (!otherScopesAllow(path, root, false, error)) return scopedResult(false, error, ec);
+            const Route r = route(path, false, root, error);
+            if (r == Route::Plain) return -1;
+            if (r == Route::Refused) return scopedResult(false, error, ec);
             return scopedResult(createDirectoriesResolvedBeneath(root, path, error), error, ec);
         }
         int scopedRemove(const fs::path& path, std::error_code& ec) {
-            const fs::path root = scopeRootFor(path);
-            if (root.empty()) return -1;
-            std::error_code status;
+            fs::path root;
             std::string error;
-            if (!otherScopesAllow(path, root, true, error)) return scopedResult(false, error, ec);
+            const Route r = route(path, true, root, error);
+            if (r == Route::Plain) return -1;
+            if (r == Route::Refused) return scopedResult(false, error, ec);
+            std::error_code status;
             // fs::remove: a file, a link or an empty folder
             if (fs::is_directory(fs::symlink_status(path, status))) {
                 if (!fs::is_empty(path, status)) {
@@ -1496,37 +1564,38 @@ namespace jasperengine::editor::safewrite {
             return scopedResult(removeFileResolvedBeneath(root, path, error), error, ec);
         }
         int scopedRemoveAll(const fs::path& path, std::error_code& ec) {
-            const fs::path root = scopeRootFor(path);
-            if (root.empty()) return -1;
+            fs::path root;
             std::string error;
-            if (!otherScopesAllow(path, root, true, error)) return scopedResult(false, error, ec);
+            const Route r = route(path, true, root, error);
+            if (r == Route::Plain) return -1;
+            if (r == Route::Refused) return scopedResult(false, error, ec);
             return scopedResult(removeTreeResolvedBeneath(root, path, error), error, ec);
         }
         int scopedRename(const fs::path& from, const fs::path& to, std::error_code& ec) {
-            // either end inside a scope: beneath it (the other end outside its root is refused)
-            fs::path root = scopeRootFor(from);
-            if (root.empty()) root = scopeRootFor(to);
-            if (root.empty()) return -1;
+            // either end inside a scope: beneath the innermost root holding both
+            fs::path root;
             std::string error;
-            if (!otherScopesAllow(from, root, true, error) || !otherScopesAllow(to, root, true, error)) return scopedResult(false, error, ec);
+            const Route r = route(from, true, root, error, to);
+            if (r == Route::Plain) return -1;
+            if (r == Route::Refused) return scopedResult(false, error, ec);
             return scopedResult(renameResolvedBeneath(root, from, to, error, true), error, ec);
         }
         int scopedCopy(const fs::path& from, const fs::path& to, bool overwrite, std::error_code& ec) {
-            const fs::path root = scopeRootFor(to);
-            if (root.empty()) return -1;
+            fs::path root;
             std::string error;
-            if (!otherScopesAllow(to, root, false, error)) return scopedResult(false, error, ec);
+            const Route r = route(to, false, root, error);
+            if (r == Route::Plain) return -1;
+            if (r == Route::Refused) return scopedResult(false, error, ec);
             return scopedResult(copyResolvedBeneath(root, from, to, overwrite, error), error, ec);
         }
 
         const FileUtils::ScopedOps kScopedOps{scopedWrite, scopedCreateDirectories, scopedRemove, scopedRemoveAll, scopedRename, scopedCopy};
     }
 
-    Scope::Scope(fs::path root) {
-        // installed once, whichever thread opens the first scope
-        static std::once_flag installed;
-        std::call_once(installed, [] { FileUtils::scopedOps() = &kScopedOps; });
-        scopes.push_back(std::move(root));
+    Scope::Scope(fs::path root, bool strict) {
+        // installed once (an atomic store: readers on any thread see it whole)
+        FileUtils::installScopedOps(&kScopedOps);
+        scopes.push_back({std::move(root), strict});
     }
 
     Scope::~Scope() {
@@ -1534,23 +1603,40 @@ namespace jasperengine::editor::safewrite {
     }
 
     fs::path Scope::current() {
-        return scopes.empty() ? fs::path() : scopes.back();
+        return scopes.empty() ? fs::path() : scopes.back().root;
     }
 
     fs::path scopeRootFor(const fs::path& path) {
-        // a suspended innermost scope (empty root): no scope; else the innermost root holding the
-        // path (the scoped operations check every other one holding it too)
-        if (scopes.empty() || scopes.back().empty() || path.empty()) return fs::path();
+        // the innermost scope in force holding the path ("" none, or suspended)
+        if (path.empty()) return fs::path();
         const fs::path absolute = absoluteNormal(path);
-        for (auto it = scopes.rbegin(); it != scopes.rend(); ++it) {
-            if (it->empty()) return fs::path();
-            if (lexicallyIn(absolute, *it)) return *it;
+        for (const ScopeEntry* scope : activeScopes()) {
+            if (lexicallyIn(absolute, scope->root)) return scope->root;
         }
         return fs::path();
     }
 
+    std::string scopesRefusal(const fs::path& path, bool entry) {
+        fs::path root;
+        std::string error;
+        return route(path, entry, root, error) == Route::Refused ? error : std::string();
+    }
+
+    void allowOutsideScopes(const fs::path& dir) {
+        if (dir.empty()) return;
+        std::lock_guard<std::mutex> lock(globalMutex());
+        outsideAllowed().push_back(absoluteNormal(dir));
+    }
+
     unsigned long long scopedFailureCount() {
         return scopedFailures;
+    }
+
+    std::string scopedFailureSince(unsigned long long mark) {
+        if (scopedFailures <= mark) return std::string();
+        const unsigned long long first = scopedFailures - recentFailures.size();
+        const unsigned long long index = mark < first ? 0 : mark - first;
+        return index < recentFailures.size() ? recentFailures[static_cast<size_t>(index)] : std::string();
     }
 
     const std::string& lastScopedError() {
@@ -1558,14 +1644,14 @@ namespace jasperengine::editor::safewrite {
     }
 
     void setWarningSink(std::function<void(const std::string&)> s) {
-        std::lock_guard<std::mutex> lock(sinkMutex());
+        std::lock_guard<std::mutex> lock(globalMutex());
         sink() = std::move(s);
     }
 
     void warn(const std::string& message) {
         std::function<void(const std::string&)> s;
         {
-            std::lock_guard<std::mutex> lock(sinkMutex());
+            std::lock_guard<std::mutex> lock(globalMutex());
             s = sink();
         }
         if (s) s(message);

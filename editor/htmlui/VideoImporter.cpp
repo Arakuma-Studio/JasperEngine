@@ -254,7 +254,7 @@ VideoImportResult VideoImporter::importFile(const fs::path& input, const fs::pat
     result.seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     const bool playable = success && probeHost(output).playable;
     if (!playable){
-        fs::remove(output, ec);
+        jasperengine::editor::FileUtils::removePath(output, ec);   // (in a write scope: beneath its root)
         // the last lines say what went wrong
         std::string last;
         size_t lines = 0;

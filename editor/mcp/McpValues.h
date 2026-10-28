@@ -323,13 +323,14 @@ namespace jasperengine::editor::mcp {
         std::vector<Touched> touchedPaths(bool undo) const override;
         std::string undoRefusal() const override;
         std::string redoRefusal() const override;
-        std::string failure() const override { return error ? *error : std::string(); }
+        std::string failure() const override { return !redoFailure.empty() ? redoFailure : error ? *error : std::string(); }
 
     private:
         std::vector<Step> steps;
         std::vector<std::unique_ptr<Command>> done;
         bool built = false;
         std::shared_ptr<std::string> error = std::make_shared<std::string>();
+        std::string redoFailure;   // why the last redo failed (a step's own failure, or a refused scoped write)
         Project* transformProject = nullptr;
         uint32_t transformSceneId = 0;
         void refresh();

@@ -462,6 +462,18 @@ std::string McpRefs::writeEscape(Project* project, const fs::path& absolute, Wri
     return std::string();
 }
 
+std::string McpRefs::internalFoldersEscape(Project* project) {
+    if (!project) return "No project is open.";
+    const fs::path internal = project->getProjectInternalPath();
+    for (const fs::path& dir : {internal, internal / "build", internal / "build" / "hotreload", internal / "engine-api",
+                                internal / "engine-api" / "lua" / "scripts", internal / "generated", internal / "logs",
+                                internal / "externalbuild", project->getImportPath(), project->getThumbsDir(),
+                                project->getTerrainMapsDir(), project->getProjectPath() / ".vscode"}) {
+        if (const std::string escape = writeEscape(project, dir); !escape.empty()) return escape;
+    }
+    return std::string();
+}
+
 bool McpRefs::resolveProjectWritePath(Project* project, const std::string& relative, fs::path& absolute, std::string& error,
                                       bool mustExist, WriteUse use) {
     if (!resolveProjectPath(project, relative, absolute, error, mustExist)) return false;

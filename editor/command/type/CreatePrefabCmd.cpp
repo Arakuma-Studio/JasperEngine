@@ -238,7 +238,13 @@ std::vector<editor::Command::Touched> editor::CreatePrefabCmd::touchedPaths(bool
     std::vector<Touched> out;
     for (const Item& item : items){
         if (item.filepath.empty()) continue;
-        const fs::path full = item.filepath.is_absolute() ? item.filepath : project->getProjectPath() / item.filepath;
+        // where the prefab is now (moved since: its GUID knows), as the undo will find it
+        fs::path current = item.filepath;
+        if (!item.guid.empty()){
+            const fs::path moved = project->resolvePrefabPath(item.guid, item.filepath);
+            if (!moved.empty()) current = moved;
+        }
+        const fs::path full = current.is_absolute() ? current : project->getProjectPath() / current;
         // made again (a write) or removed (the entry)
         out.push_back({full, undo});
     }

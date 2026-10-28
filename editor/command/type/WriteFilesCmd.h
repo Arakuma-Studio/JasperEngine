@@ -56,8 +56,13 @@ namespace jasperengine::editor{
         // (The write root is Command::writeRoot: a WriteFilesCmd made in an MCP call's write scope
         // writes beneath the project without this.) Its undo and redo are refused while a file or
         // a folder it made resolves outside the root (Command::touchedPaths / canUndo / canRedo).
-        void writeBeneath(std::filesystem::path root) { setWriteRoot(std::move(root)); }
-        const std::filesystem::path& getBeneathRoot() const { return writeRoot(); }
+        // An explicit root (sprite normals: the assets directory) is the command's own: the write
+        // scope it runs in (Command::writeRoot) is the one it was made in, and every scope in force
+        // must allow each path too (safewrite::scopesRefusal).
+        void writeBeneath(std::filesystem::path root) { explicitRoot = std::move(root); }
+        const std::filesystem::path& getBeneathRoot() const { return explicitRoot.empty() ? writeRoot() : explicitRoot; }
+        std::string undoRefusal() const override;
+        std::string redoRefusal() const override;
         // No write root: each file written (and put back) beneath its own folder once resolved (the
         // nearest existing one): no containment, but no link planted below it is followed
         void writeBeneathOwnFolders() { ownFolders = true; }
@@ -81,6 +86,7 @@ namespace jasperengine::editor{
         std::filesystem::path failedPath;
         std::string lastFailure;
         bool ownFolders = false;
+        std::filesystem::path explicitRoot;
         // the root a file's write, removal or restore stays beneath ("" = a plain write)
         std::filesystem::path rootOf(const std::filesystem::path& path) const;
 

@@ -5,6 +5,8 @@
 #include "Conector.h"
 
 #include "editor/Out.h"
+#include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 
 #include <iostream>
 #include <chrono>
@@ -58,7 +60,7 @@ void editor::Conector::unloadSharedLibrary(void* libHandle) {
     std::cout << "Library unloaded successfully.\n";
 }
 
-bool editor::Conector::connect(const fs::path& buildPath, std::string libName){
+bool editor::Conector::connect(const fs::path& buildPath, std::string libName, const fs::path& projectRoot){
     disconnect();
 
     #ifdef _WIN32
@@ -104,18 +106,28 @@ bool editor::Conector::connect(const fs::path& buildPath, std::string libName){
     fs::path copyPath;
     for (const fs::path& dir : stagingDirs) {
         std::error_code dirEc;
-        fs::create_directories(dir, dirEc);
+        // (in a write scope: beneath its root)
+        FileUtils::createDirectories(dir, dirEc);
 
         // Best-effort sweep of copies left behind by previous sessions/crashes.
-        // Still-mapped files fail to remove and are simply skipped.
-        for (const auto& entry : fs::directory_iterator(dir, dirEc)) {
-            std::error_code rmEc;
-            fs::remove(entry.path(), rmEc);
+        // Still-mapped files fail to remove and are simply skipped. Never through a link: a
+        // staging folder that is a link (or, inside the project, one resolving outside it) is
+        // not swept, and each entry is removed as an entry beneath the folder (util/SafeWrite.h)
+        std::error_code linkEc;
+        const bool folderIsLink = fs::is_symlink(fs::symlink_status(dir, linkEc));
+        const bool inProject = !projectRoot.empty() && safewrite::isAtOrBelow(dir, projectRoot);
+        const bool sweep = !folderIsLink && (!inProject || safewrite::isInsideResolved(dir, projectRoot));
+        if (sweep) {
+            const fs::path realDir = safewrite::resolvedPath(dir);
+            for (const auto& entry : fs::directory_iterator(dir, dirEc)) {
+                std::string ignored;
+                safewrite::removeFileBeneath(realDir, entry.path().filename(), ignored);
+            }
         }
 
         fs::path candidate = dir / uniqueName;
         std::error_code cpEc;
-        fs::copy_file(fullLibPath, candidate, fs::copy_options::overwrite_existing, cpEc);
+        FileUtils::copyPath(fullLibPath, candidate, true, cpEc);
         if (!cpEc) {
             copyPath = candidate;
             break;

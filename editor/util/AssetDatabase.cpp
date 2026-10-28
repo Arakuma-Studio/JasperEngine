@@ -405,7 +405,7 @@ void editor::AssetDatabase::saveCache() const {
     out << YAML::EndSeq << YAML::EndMap;
 
     std::error_code ec;
-    fs::create_directories(cacheFile().parent_path(), ec);
+    editor::FileUtils::createDirectories(cacheFile().parent_path(), ec);   // (in a write scope: beneath its root)
     writeText(cacheFile(), std::string(out.c_str()) + "\n");
 }
 

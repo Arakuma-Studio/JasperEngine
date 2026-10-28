@@ -110,6 +110,7 @@ namespace jasperengine::editor{
         bool wasModified = false;
         std::vector<Entity> previousSelection;
         std::string failureText;
+        unsigned long long failureMark = 0;   // safewrite::scopedFailureCount() when execute began
         std::shared_ptr<std::string> failureSink;
         bool executedOnce = false;
         std::vector<bool> existedFirst;

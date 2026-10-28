@@ -35,10 +35,10 @@ CreateVatCmd::~CreateVatCmd(){
 }
 
 bool CreateVatCmd::fail(const std::string& message){
-    // a write the write scope refused: its reason too
+    // a write the write scope refused during this execute: its reason too (never an older one)
     failureText = message;
-    if (!safewrite::lastScopedError().empty() && message.find(safewrite::lastScopedError()) == std::string::npos &&
-        message.find("can't write") != std::string::npos) failureText += " (" + safewrite::lastScopedError() + ")";
+    const std::string scoped = safewrite::scopedFailureSince(failureMark);
+    if (!scoped.empty() && message.find(scoped) == std::string::npos) failureText += " (" + scoped + ")";
     if (failureSink) *failureSink = message;
     return false;
 }
@@ -235,6 +235,7 @@ bool CreateVatCmd::buildAndRun(){
 
 bool CreateVatCmd::execute(){
     failureText.clear();
+    failureMark = safewrite::scopedFailureCount();
     SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
     if (!sceneProject || !sceneProject->scene){
         return fail("the scene is not open");

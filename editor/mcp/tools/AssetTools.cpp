@@ -1812,7 +1812,8 @@ void importFilesTool(const CallPtr& call) {
             std::error_code ec;
             // the converted file, its fallback name and the unconverted copy are written by the
             // importer and FFmpeg: every name inside the project once links are resolved
-            for (const fs::path& name : {output, target / (video.stem().string() + ".av1.webm"), target / video.filename()}) {
+            // (named as the importer names them: its pathString is UTF-8)
+            for (const fs::path& name : {output, target / (FileUtils::pathToUtf8(video.stem()) + ".av1.webm"), target / video.filename()}) {
                 if (const std::string escape = McpRefs::writeEscape(project, name); !escape.empty()) {
                     call->fail(escape);
                     return;

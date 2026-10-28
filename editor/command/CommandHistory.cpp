@@ -25,19 +25,26 @@ public:
         for (jasperengine::editor::Command* cmd : commands) delete cmd;
     }
 
-    // every step done again; false when one of them failed (CommandHistory::redo then reports
-    // it when a step gave a reason)
+    // every step done again. One failing with a reason (its failure(), or a write the write scope
+    // refused in it) takes back the ones done before it, in reverse, and the group fails (the
+    // history then doesn't take it); one that just finds nothing to do is passed over, as before
     bool execute() override {
-        bool all = true;
         failureText.clear();
+        std::vector<jasperengine::editor::Command*> doneNow;
         for (jasperengine::editor::Command* cmd : commands) {
-            if (!cmd->execute()) {
-                all = false;
-                const std::string why = cmd->failure();
-                if (!why.empty() && failureText.empty()) failureText = why;
+            const unsigned long long mark = jasperengine::editor::safewrite::scopedFailureCount();
+            if (cmd->execute()) {
+                doneNow.push_back(cmd);
+                continue;
             }
+            std::string why = cmd->failure();
+            if (why.empty()) why = jasperengine::editor::safewrite::scopedFailureSince(mark);
+            if (why.empty()) continue;
+            failureText = why;
+            for (auto it = doneNow.rbegin(); it != doneNow.rend(); ++it) (*it)->undo();
+            return false;
         }
-        return all;
+        return true;
     }
 
     std::string failure() const override { return failureText; }
@@ -239,7 +246,7 @@ bool editor::CommandHistory::undo(){
         // a file it could not put back after its check passed (a link planted since; a write the
         // write scope refused inside it): said
         undoProblemText = list[index-1]->takeUndoProblem();
-        if (undoProblemText.empty() && safewrite::scopedFailureCount() != failuresBefore) undoProblemText = safewrite::lastScopedError();
+        if (undoProblemText.empty()) undoProblemText = safewrite::scopedFailureSince(failuresBefore);
         if (!undoProblemText.empty()) safewrite::warn("Undo incomplete: " + undoProblemText);
         index--;
 
@@ -288,7 +295,7 @@ bool editor::CommandHistory::redo(){
         // changes are gone) is passed over as before
         if (!executed){
             std::string why = list[index]->failure();
-            if (why.empty() && safewrite::scopedFailureCount() != failuresBefore) why = safewrite::lastScopedError();
+            if (why.empty()) why = safewrite::scopedFailureSince(failuresBefore);
             if (!why.empty()){
                 refusal = why;
                 refusedText = refusal;
@@ -300,7 +307,7 @@ bool editor::CommandHistory::redo(){
         }
         // done, but a write the write scope refused inside it: said
         if (executed && safewrite::scopedFailureCount() != failuresBefore){
-            undoProblemText = safewrite::lastScopedError();
+            undoProblemText = safewrite::scopedFailureSince(failuresBefore);
             safewrite::warn("Redo incomplete: " + undoProblemText);
         }
         index++;

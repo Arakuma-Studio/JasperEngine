@@ -144,10 +144,12 @@ public:
         int (*rename)(const std::filesystem::path& from, const std::filesystem::path& to, std::error_code& ec);
         int (*copy)(const std::filesystem::path& from, const std::filesystem::path& to, bool overwrite, std::error_code& ec);
     };
-    static const ScopedOps*& scopedOps() {
-        static const ScopedOps* ops = nullptr;
+    static std::atomic<const ScopedOps*>& scopedOpsSlot() {
+        static std::atomic<const ScopedOps*> ops{nullptr};
         return ops;
     }
+    static const ScopedOps* scopedOps() { return scopedOpsSlot().load(std::memory_order_acquire); }
+    static void installScopedOps(const ScopedOps* ops) { scopedOpsSlot().store(ops, std::memory_order_release); }
 
     // std::filesystem::create_directories / remove / remove_all / rename / copy (recursive, with
     // overwrite_existing when `overwrite`), beneath the active write scope's root when the path is

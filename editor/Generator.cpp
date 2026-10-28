@@ -9,6 +9,7 @@
 #include "AppSettings.h"
 #include "util/CxxStandards.h"
 #include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 #include "util/ShellEnv.h"
 #include "util/Util.h"
 #include "engine_lua_stubs.h"
@@ -87,7 +88,7 @@ bool editor::Generator::cleanBuildDirectory(const fs::path& buildPath) {
     std::error_code ec;
 
     // Best-effort full wipe first.
-    fs::remove_all(buildPath, ec);
+    FileUtils::removeAll(buildPath, ec);
 
     // CMakeCache.txt and CMakeFiles/ are what actually pin the previous
     // generator/compiler. If the full wipe above was blocked partway by a
@@ -100,15 +101,15 @@ bool editor::Generator::cleanBuildDirectory(const fs::path& buildPath) {
         if (!fs::exists(cacheFile) && !fs::exists(cacheDir)) {
             break;
         }
-        fs::remove(cacheFile, ec);
-        fs::remove_all(cacheDir, ec);
+        FileUtils::removePath(cacheFile, ec);
+        FileUtils::removeAll(cacheDir, ec);
         if (!fs::exists(cacheFile) && !fs::exists(cacheDir)) {
             break;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    fs::create_directories(buildPath, ec);
+    FileUtils::createDirectories(buildPath, ec);
 
     if (fs::exists(cacheFile)) {
         Out::error("Could not remove the previous CMake cache at: %s", cacheFile.string().c_str());
@@ -379,11 +380,9 @@ bool editor::Generator::configureCMake(const fs::path& projectPath, const fs::pa
     // Record which kit was used so we can detect changes next time.
     if (result) {
         std::error_code ec;
-        fs::create_directories(buildPath, ec);
-        std::ofstream f(buildPath / ".jasperengine_kit");
-        if (f.is_open()) {
-            f << currentKit;
-        }
+        FileUtils::createDirectories(buildPath, ec);
+        // (in a write scope: beneath its root)
+        FileUtils::writeFileReplacing(buildPath / ".jasperengine_kit", currentKit);
     }
 
     return result;
@@ -1251,7 +1250,7 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     // Generate .vscode/settings.json for VS Code if it doesn't exist
     fs::path vscodeDir = projectPath / ".vscode";
     if (!fs::exists(vscodeDir)) {
-        fs::create_directories(vscodeDir);
+        { std::error_code dirError; FileUtils::createDirectories(vscodeDir, dirError); }
     }
     fs::path settingsFile = vscodeDir / "settings.json";
     if (!fs::exists(settingsFile)) {
@@ -1359,6 +1358,12 @@ void editor::Generator::writeLuaScriptStubs(const fs::path& projectPath, const f
                                             const std::vector<fs::path>& changedFiles) {
     try {
         const fs::path stubsDir = projectInternalPath / "engine-api" / "lua" / "scripts";
+        // a stubs folder resolving outside the project (a link): nothing written or removed there
+        if (!safewrite::isInsideResolved(stubsDir, projectPath)) {
+            Out::warning("Not writing the Lua script classes: %s resolves outside the project (a symbolic link on its way); remove the link.",
+                         FileUtils::pathToGenericUtf8(stubsDir).c_str());
+            return;
+        }
         const fs::path luaRoot = ProjectChecks::luaRootFromProjectFile(projectPath);
 
         // engine names: a script named like an engine class or enum keeps its own declaration
@@ -1401,7 +1406,7 @@ void editor::Generator::writeLuaScriptStubs(const fs::path& projectPath, const f
 
         std::error_code ec;
         if (!todo.empty()) {
-            fs::create_directories(stubsDir, ec);
+            FileUtils::createDirectories(stubsDir, ec);
             const std::vector<std::string> engineGlobals = ProjectChecks::engineLuaGlobals();
             for (const auto& [name, file] : todo) {
                 std::string code;
@@ -1424,7 +1429,7 @@ void editor::Generator::writeLuaScriptStubs(const fs::path& projectPath, const f
             const std::string name = path.stem().string();
             const bool stale = changedFiles.empty() ? classes.count(name) == 0 : removed.count(name) > 0;
             std::error_code removeEc;
-            if (stale) fs::remove(path, removeEc);
+            if (stale) FileUtils::removePath(path, removeEc);
         }
     } catch (const std::exception& e) {
         Out::warning("Could not write the Lua script classes for lua-language-server: %s", e.what());
@@ -1607,7 +1612,7 @@ void writeLuaApiStubs(const fs::path& stubsDir) {
         std::error_code fileEc;
         const fs::path path = it->path();
         if (path.extension() == ".lua" && it->is_regular_file(fileEc) && names.count(path.filename().string()) == 0) {
-            fs::remove(path, fileEc);
+            FileUtils::removePath(path, fileEc);
         }
     }
 }
@@ -2055,7 +2060,7 @@ void editor::Generator::clearSceneSource(uint32_t sceneId, const std::string& sc
 
     if (fs::exists(sourceFile)) {
         std::error_code ec;
-        fs::remove(sourceFile, ec);
+        FileUtils::removePath(sourceFile, ec);
         if (ec) {
             Out::error("Failed to remove scene source file '%s': %s", sourceFile.string().c_str(), ec.message().c_str());
         }
@@ -2078,8 +2083,8 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     // root, so a leftover would be compiled against an engine that no longer
     // has GLFW in it.
     std::error_code removeError;
-    fs::remove(generatedPath / "PlatformEditor.h", removeError);
-    fs::remove(generatedPath / "PlatformEditor.cpp", removeError);
+    FileUtils::removePath(generatedPath / "PlatformEditor.h", removeError);
+    FileUtils::removePath(generatedPath / "PlatformEditor.cpp", removeError);
 
     // Build main.cpp content
     std::string mainContent;
@@ -2759,7 +2764,10 @@ void editor::Generator::build(const fs::path projectPath, const fs::path buildPa
     lastBuildSucceeded.store(false, std::memory_order_relaxed);
     commandRunner.resetCancel();
 
-    buildFuture = std::async(std::launch::async, [this, projectPath, buildPath, cCompiler, cxxCompiler, generator, parallelJobs]() {
+    const fs::path writeRoot = safewrite::Scope::current();
+    buildFuture = std::async(std::launch::async, [this, projectPath, buildPath, cCompiler, cxxCompiler, generator, parallelJobs, writeRoot]() {
+        // in the write scope of the thread that started the build (an MCP call's project)
+        safewrite::Scope scope(writeRoot);
         try {
             auto startTime = std::chrono::steady_clock::now();
 

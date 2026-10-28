@@ -14,6 +14,7 @@
 
 #include "EditorHost.h"
 #include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 #include "util/FbxImporter.h"
 #include "window/CodeEditor.h"
 #include "window/ImageViewerWindow.h"
@@ -2166,7 +2167,9 @@ void editor::Project::refreshFbxImports() {
 
     // Hashing and converting can take seconds, so the check runs off the main thread
     fbxImportScan = std::async(std::launch::async,
-        [this, files, assetsRoot = getAssetsPath(), known = failedFbxImports]() {
+        [this, files, assetsRoot = getAssetsPath(), known = failedFbxImports, writeRoot = safewrite::Scope::current()]() {
+            // the conversions write in the write scope of the thread that started the scan
+            safewrite::Scope scope(writeRoot);
             std::map<fs::path, FbxImportFailure> failures;
             for (const auto& [fbxPath, glbPath] : files) {
                 std::error_code ec;
@@ -6224,8 +6227,15 @@ void editor::Project::clearTrash() {
 
     std::filesystem::path trashPath = projectPath / ".trash";
     if (std::filesystem::exists(trashPath)) {
+        // never through a link: a trash folder resolving outside the project is left alone, and
+        // the removal goes beneath the project (util/SafeWrite.h)
+        if (!safewrite::isInsideResolved(trashPath, projectPath)) {
+            Out::warning("Not clearing %s: it resolves outside the project (a symbolic link); remove the link.", FileUtils::pathToGenericUtf8(trashPath).c_str());
+            return;
+        }
         try {
-            std::filesystem::remove_all(trashPath);
+            std::string error;
+            if (!safewrite::removeTreeResolvedBeneath(projectPath, trashPath, error)) throw std::runtime_error(error);
             Out::info("Cleared trash directory: %s", trashPath.string().c_str());
         } catch (const std::exception& e) {
             Out::error("Failed to clear trash directory: %s", e.what());
@@ -6829,7 +6839,10 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
     sceneProject->playState = ScenePlayState::SAVING;
     fs::path savePath = path;
 
-    std::thread([this, sceneId, savePath, callback = std::move(callback)]() mutable {
+    // the worker writes in the write scope of the thread that started it (an MCP call's project)
+    const fs::path writeRoot = safewrite::Scope::current();
+    std::thread([this, sceneId, savePath, writeRoot, callback = std::move(callback)]() mutable {
+        safewrite::Scope scope(writeRoot);
         bool success = false;
         try {
             success = writeSceneToPath(sceneId, savePath, false);
@@ -8584,7 +8597,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                 return;
             }
 
-            if (!conector.connect(buildPath, libName)) {
+            if (!conector.connect(buildPath, libName, getProjectPath())) {
                 failPlayStartup(session, sceneId, "Failed to connect to library");
                 return;
             }
@@ -8995,7 +9008,10 @@ void editor::Project::start(uint32_t sceneId) {
     // Read on the UI thread: the startup thread must not race the settings dialog
     const LocalBuildSettings buildSettings = AppSettings::getBuildSettings(getProjectPath() / "project.yaml");
 
-    std::thread startupThread([this, session, sceneId, buildSettings]() {
+    // the startup writes generated sources in the write scope of the thread that started Play
+    const fs::path writeRoot = safewrite::Scope::current();
+    std::thread startupThread([this, session, sceneId, buildSettings, writeRoot]() {
+        safewrite::Scope scope(writeRoot);
         runPlayStartup(session, sceneId, buildSettings);
     });
     startupThread.detach();
@@ -9125,7 +9141,9 @@ void editor::Project::stop(uint32_t sceneId) {
     // Request cancellation asynchronously (returns a future we can wait on later if needed)
     auto cancelFuture = generator.cancelBuild();
 
-    std::thread finalizeStopThread([this, session, sceneId, startupSucceededAtStop, cancelFuture = std::move(cancelFuture)]() mutable {
+    const fs::path stopWriteRoot = safewrite::Scope::current();
+    std::thread finalizeStopThread([this, session, sceneId, startupSucceededAtStop, stopWriteRoot, cancelFuture = std::move(cancelFuture)]() mutable {
+        safewrite::Scope scope(stopWriteRoot);
         if (cancelFuture.valid()) {
             cancelFuture.wait();
         }

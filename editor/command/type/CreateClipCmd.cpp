@@ -38,10 +38,10 @@ CreateClipCmd::~CreateClipCmd(){
 }
 
 bool CreateClipCmd::fail(const std::string& message){
-    // a write the write scope refused: its reason too
+    // a write the write scope refused during this execute: its reason too (never an older one)
     failureText = message;
-    if (!safewrite::lastScopedError().empty() && message.find(safewrite::lastScopedError()) == std::string::npos &&
-        message.find("can't write") != std::string::npos) failureText += " (" + safewrite::lastScopedError() + ")";
+    const std::string scoped = safewrite::scopedFailureSince(failureMark);
+    if (!scoped.empty() && message.find(scoped) == std::string::npos) failureText += " (" + scoped + ")";
     if (failureSink) *failureSink = message;
     return false;
 }
@@ -101,6 +101,7 @@ void CreateClipCmd::restoreFiles(size_t count, bool checkBytes){
 
 bool CreateClipCmd::execute(){
     failureText.clear();
+    failureMark = safewrite::scopedFailureCount();
     // the files the last undo kept because the user changed them: a redo keeps them too
     const std::vector<fs::path> keptByUndo = keptFiles;
     keptFiles.clear();

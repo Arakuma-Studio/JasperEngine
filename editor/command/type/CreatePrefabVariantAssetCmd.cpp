@@ -58,5 +58,11 @@ void editor::CreatePrefabVariantAssetCmd::undo() {
 }
 
 std::vector<editor::Command::Touched> editor::CreatePrefabVariantAssetCmd::touchedPaths(bool undo) const {
-    return {{project->getProjectPath() / filepath, undo}};
+    // where the variant is now (moved since: its GUID knows), as the undo will find it
+    std::filesystem::path current = filepath;
+    if (!guid.empty()) {
+        const std::filesystem::path moved = project->resolvePrefabPath(guid, filepath);
+        if (!moved.empty()) current = moved;
+    }
+    return {{project->getProjectPath() / current, undo}};
 }

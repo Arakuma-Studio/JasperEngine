@@ -151,6 +151,13 @@ namespace jasperengine::editor::spritenormals {
                 return shownPath + " resolves outside the project's assets directory (" + projectRelative(projectDir, assets) +
                        "): a symbolic link on its way leads to " + texsynth::printableUtf8(real.generic_u8string()) + ".";
             }
+            // the assets directory itself a link out of the project: not followed there either (the
+            // GUI too) — sprite normal maps are written only inside the project
+            if (!projectDir.empty() && !isAtOrBelow(real, resolvedPath(projectDir))) {
+                return shownPath + " resolves outside the project: the project's assets directory (" + projectRelative(projectDir, assets) +
+                       ") leads through a symbolic link to " + texsynth::printableUtf8(real.generic_u8string()) +
+                       ". Make the assets directory a real folder of the project.";
+            }
             // a link into a hidden directory of the project (.jasperengine, .git ...)
             if (!projectDir.empty()) {
                 const fs::path back = real.lexically_relative(resolvedPath(projectDir));

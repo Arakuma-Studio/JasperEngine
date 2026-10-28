@@ -45,10 +45,21 @@ void editor::WriteFilesCmd::fail(const std::string& message) {
 }
 
 fs::path editor::WriteFilesCmd::rootOf(const fs::path& path) const {
+    if (!explicitRoot.empty()) return explicitRoot;
     if (!writeRoot().empty() || !ownFolders) return rootFor(path);
     // where the write lands (a live link at the name followed), its folder the root
     const fs::path where = safewrite::writeLocation(path);
     return where.empty() ? fs::path() : safewrite::existingFolderOf(where.parent_path());
+}
+
+std::string editor::WriteFilesCmd::undoRefusal() const {
+    const std::string why = Command::undoRefusal();
+    return why.empty() && !explicitRoot.empty() ? escapeFor(explicitRoot, true) : why;
+}
+
+std::string editor::WriteFilesCmd::redoRefusal() const {
+    const std::string why = Command::redoRefusal();
+    return why.empty() && !explicitRoot.empty() ? escapeFor(explicitRoot, false) : why;
 }
 
 std::vector<editor::Command::Touched> editor::WriteFilesCmd::touchedPaths(bool undo) const {
@@ -73,6 +84,12 @@ bool editor::WriteFilesCmd::restore(size_t i, std::string* why) {
         // beneath the root: the previous bytes written back / the new file removed (the entry
         // itself), never through a link made since
         std::string error;
+        // every write scope in force allows it too (an explicit root is checked against them)
+        const std::string refused = safewrite::scopesRefusal(items[i].path, !previous[i].existed);
+        if (!refused.empty()) {
+            if (why) *why = refused;
+            return false;
+        }
         const bool ok = previous[i].existed ? safewrite::writeFileResolvedBeneath(beneathRoot, items[i].path, previous[i].content, error)
                                             : safewrite::removeFileResolvedBeneath(beneathRoot, items[i].path, error);
         if (!ok && why) *why = error;
@@ -137,8 +154,8 @@ bool editor::WriteFilesCmd::execute() {
         if (!beneathRoot.empty()) {
             // the missing folders are made by the write (and listed for undo); a failed write
             // left the file as it was
-            std::string why;
-            if (!safewrite::writeFileResolvedBeneath(beneathRoot, item.path, item.content, why, &createdDirs)) {
+            std::string why = safewrite::scopesRefusal(item.path, false);
+            if (!why.empty() || !safewrite::writeFileResolvedBeneath(beneathRoot, item.path, item.content, why, &createdDirs)) {
                 failedPath = item.path;
                 const bool named = why.rfind("can't ", 0) == 0;
                 return rollback(i, named ? why : "can't write " + FileUtils::pathToGenericUtf8(item.path) + ": " + why);

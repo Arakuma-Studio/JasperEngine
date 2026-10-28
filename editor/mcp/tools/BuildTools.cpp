@@ -645,7 +645,7 @@ bool openRunLog(BuildRun& run, Project* project) {
 // project) must stay inside it once links are resolved: CMake and the exporter write there with
 // their own writers, so this is checked up front ("" when fine, else the refusal)
 std::string buildFoldersEscape(Project* project, const std::vector<fs::path>& outputs) {
-    if (const std::string escape = McpRefs::writeEscape(project, project->getProjectInternalPath()); !escape.empty()) return escape;
+    if (const std::string escape = McpRefs::internalFoldersEscape(project); !escape.empty()) return escape;
     for (const fs::path& dir : outputs) {
         if (dir.empty()) continue;
         const fs::path rel = dir.lexically_normal().lexically_relative(project->getProjectPath().lexically_normal());

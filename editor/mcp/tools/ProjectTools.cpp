@@ -470,6 +470,9 @@ void saveProjectTool(const CallPtr& call) {
     bool ok;
     if (!target.empty()) {
         std::error_code ec;
+        // Save As: the explicit target outside the project is the user's choice (a temporary
+        // project's new home): the call's strict write scope is suspended for it
+        safewrite::Scope saveAs{fs::path()};
         fs::create_directories(target.parent_path(), ec);   // saveProjectToPath makes only the last level
         ok = project->saveProjectToPath(target);
         if (ok) ctx.app().updateWindowTitle(project->getName());

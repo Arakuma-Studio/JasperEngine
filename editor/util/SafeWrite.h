@@ -162,23 +162,38 @@ namespace jasperengine::editor::safewrite {
     // behaviour. A Scope with an empty root suspends an outer one. Nested Scopes: the innermost wins.
     class Scope {
     public:
-        explicit Scope(std::filesystem::path root);
+        // `strict` (an MCP call): a path outside every root in force is refused too, but the
+        // folders allowOutsideScopes registers (the editor's settings, the temporary folder)
+        explicit Scope(std::filesystem::path root, bool strict = false);
         ~Scope();
         Scope(const Scope&) = delete;
         Scope& operator=(const Scope&) = delete;
         // The innermost root on this thread ("" when none, or suspended)
         static std::filesystem::path current();
     };
-    // The innermost active root holding `path` lexically (its spelling or once resolved), else ""
-    // (also "" while the innermost scope is suspended). Every other active root holding the path
-    // applies too: a scoped operation is refused when one of them doesn't hold it once resolved.
+    // The scopes in force are the ones above the innermost suspending (empty) Scope. The innermost
+    // root in force holding `path` lexically (its spelling or once resolved), else "". Fail-closed:
+    // once a scope in force holds a path, every scope in force must hold it once links are
+    // resolved, else the scoped operation is refused; a path no scope holds is refused by a strict
+    // scope (outside the allowOutsideScopes folders). A rename goes beneath the innermost root
+    // holding both ends.
     std::filesystem::path scopeRootFor(const std::filesystem::path& path);
+    // "" when the scopes in force allow an operation on `path` (a write, or `entry`: a removal or a
+    // rename of the entry), else why not: what explicit-root writers (WriteFilesCmd, SheetWrite)
+    // check on top of their own root
+    std::string scopesRefusal(const std::filesystem::path& path, bool entry = false);
+    // A folder a strict scope lets writes reach outside its root (the editor's config folder, the
+    // temporary folder). Any thread.
+    void allowOutsideScopes(const std::filesystem::path& dir);
     // Why the last scoped FileUtils operation on this thread failed ("" when it did not)
     const std::string& lastScopedError();
     // How many scoped FileUtils operations failed on this thread so far (CommandHistory compares
     // it around a step: a write the scope refused inside a command is that step's failure / undo
     // problem, lastScopedError the reason)
     unsigned long long scopedFailureCount();
+    // The first scoped failure on this thread after `mark` (a scopedFailureCount() value): a later
+    // success doesn't clear it ("" when none, or too long ago)
+    std::string scopedFailureSince(unsigned long long mark);
 
     // Warnings of the writers (a restore that failed in an undo...): to the editor's console once
     // it installs its sink (stderr until then)

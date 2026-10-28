@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ProjectChecks.h"
+#include "util/FileUtils.h"
 
 #include "AppSettings.h"
 #include "Catalog.h"
@@ -1664,13 +1665,9 @@ void saveSynthesisCache(const SynthesisCache& cache) {
     // the keys are valid UTF-8 (cacheable() keeps the others out), so nothing is lost; replace
     // only makes sure a dump never throws
     const std::string text = editor::texsynth::jsonTextLossy(j);
-    std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
-    if (!out) return;
-    out << text;
-    out.close();
-    std::error_code ec;
-    fs::rename(temporary, cache.file, ec);
-    if (ec) fs::remove(temporary, ec);
+    // (in a write scope: beneath its root; FileUtils writes aside and renames)
+    (void)temporary;
+    editor::FileUtils::writeFileReplacing(cache.file, text);
 }
 
 // JSON keys are UTF-8 text: a path that is not (a Latin-1 file name) is not cached, it is read

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "HtmlUiImportQueue.h"
+#include "util/SafeWrite.h"
 
 #include "Out.h"
 
@@ -139,7 +140,13 @@ void ImportQueue::work(){
         states[key].state = ImportStatus::State::Importing;
         lock.unlock();
 
-        ImportedResource result = runner(job);
+        ImportedResource result;
+        {
+            // the import's files beneath the project (util/SafeWrite.h: no link on the way
+            // followed), for the GUI's automatic imports too
+            jasperengine::editor::safewrite::Scope scope(job.target.projectRoot);
+            result = runner(job);
+        }
 
         lock.lock();
         ImportStatus& status = states[key];

@@ -32,10 +32,13 @@ namespace jasperengine::editor::mcp {
     // its deferred continuations and resource reads; a tool's own continuations (enqueued main
     // thread tasks, worker threads that write) open one themselves. Main thread (or the worker it
     // is made on: the scope is per thread).
+    // Strict (safewrite::Scope): a write outside the project is refused too, but the editor's own
+    // folders (its settings, the temporary folder: registered when the server starts); a tool that
+    // switches projects runs in a non-strict one.
     class McpWriteScope : public safewrite::Scope {
     public:
         McpWriteScope();
-        explicit McpWriteScope(std::filesystem::path root) : safewrite::Scope(std::move(root)) {}
+        explicit McpWriteScope(std::filesystem::path root, bool strict = true) : safewrite::Scope(std::move(root), strict) {}
         // the open project's directory ("" when none)
         static std::filesystem::path projectRoot();
     };

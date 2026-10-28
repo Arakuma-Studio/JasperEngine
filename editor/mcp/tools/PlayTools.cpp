@@ -1703,7 +1703,7 @@ void playTool(const CallPtr& call) {
     if (action == "start" || action == "restart") {
         // Play writes generated sources and build trees into the project's internal folder (in
         // later frames too, outside this call's write scope): it must stay inside the project
-        if (const std::string escape = McpRefs::writeEscape(project, project->getProjectInternalPath()); !escape.empty()) {
+        if (const std::string escape = McpRefs::internalFoldersEscape(project); !escape.empty()) {
             call->fail(escape);
             return;
         }

@@ -531,6 +531,12 @@ void sculptTerrainTool(const CallPtr& call) {
         call->fail("strokes must be a non-empty array of {mode, points, ...}.");
         return;
     }
+    // the editable maps a stroke makes and writes: inside the project once links are resolved
+    // (the writes themselves go beneath it: the call's write scope, carried to the map writer)
+    if (const std::string escape = McpRefs::writeEscape(target.project, target.project->getTerrainMapsDir()); !escape.empty()) {
+        call->fail(escape);
+        return;
+    }
     Scene* scene = target.engineScene();
     Transform& transform = scene->getComponent<Transform>(target.entity);
     const Matrix4 inverseModel = transform.modelMatrix.inverse();

@@ -91,6 +91,12 @@ namespace jasperengine::editor::mcp {
         // The same check for an absolute path a tool computed itself (a default output beside its
         // source, a generated file): "" when it stays inside the project, else the error
         static std::string writeEscape(Project* project, const std::filesystem::path& absolute, WriteUse use = WriteUse::Write);
+        // writeEscape of every editor-owned folder a build, Play or a script compile writes or
+        // sweeps (the internal folder, its build tree and hot-reload staging, the engine API
+        // snapshot and Lua stubs, the generated sources, the logs, the external build, the
+        // imported models, the thumbnails, the terrain maps, .vscode): their writers are CMake,
+        // the compilers and editor code running later, so they are checked up front. "" or the refusal.
+        static std::string internalFoldersEscape(Project* project);
     };
 
 }

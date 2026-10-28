@@ -40,6 +40,7 @@
 #include "util/EntityClipboard.h"
 #include "util/FbxImporter.h"
 #include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 #include "util/Util.h"
 
 #include <algorithm>
@@ -3347,8 +3348,13 @@ void McpStepsCmd::refresh() {
 
 bool McpStepsCmd::execute() {
     if (built) {
+        redoFailure.clear();
+        const unsigned long long mark = safewrite::scopedFailureCount();
         for (size_t i = 0; i < done.size(); i++) {
             if (!done[i]->execute()) {
+                // the reason, before the rollback runs other steps
+                redoFailure = done[i]->failure();
+                if (redoFailure.empty()) redoFailure = safewrite::scopedFailureSince(mark);
                 while (i > 0) {
                     done[--i]->undo();
                     refresh();

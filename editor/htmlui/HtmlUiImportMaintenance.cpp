@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "HtmlUiImportMaintenance.h"
+#include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 
 #include "ImportManifestWriter.h"
 
@@ -154,6 +156,8 @@ RemoveUnusedResult jasperengine::editor::htmlui::removeUnusedImports(const Impor
     if (!writer.remove(result.removedUrls, &result.error))
         return result;
 
+    // the removals beneath the project (util/SafeWrite.h)
+    jasperengine::editor::safewrite::Scope scope(target.projectRoot);
     std::error_code ec;
     for (const std::string& file : toDelete){
         if (file.empty() || keptFiles.count(file))
@@ -161,12 +165,13 @@ RemoveUnusedResult jasperengine::editor::htmlui::removeUnusedImports(const Impor
         const fs::path absolute = target.toAbsolute(file);
         if (target.toAssetPath(absolute).empty())
             continue;   // never outside the assets
-        if (fs::remove(absolute, ec))
+        // (beneath the project: the entry itself, never through a link)
+        if (jasperengine::editor::FileUtils::removePath(absolute, ec))
             result.deletedFiles.push_back(file);
         // directories the import created and left empty
         fs::path parent = absolute.parent_path();
         while (!target.toAssetPath(parent).empty() && fs::is_directory(parent, ec) && fs::is_empty(parent, ec)){
-            fs::remove(parent, ec);
+            jasperengine::editor::FileUtils::removePath(parent, ec);
             parent = parent.parent_path();
         }
     }

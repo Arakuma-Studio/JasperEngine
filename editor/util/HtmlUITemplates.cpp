@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "HtmlUITemplates.h"
+#include "util/FileUtils.h"
 
 #include <fstream>
 
@@ -74,23 +75,17 @@ bool editor::HtmlUITemplates::createDocument(const fs::path& directory, const st
     const fs::path html = directory / (name + ".html");
     const fs::path css = directory / (name + ".css");
 
-    std::ofstream cssFile(css, std::ios::trunc | std::ios::binary);
-    if (!cssFile){
+    // (in a write scope: beneath its root)
+    if (!FileUtils::writeFileReplacing(css, styleSheetText())){
         error = "could not write " + css.string();
         return false;
     }
-    cssFile << styleSheetText();
-    cssFile.close();
 
-    std::ofstream htmlFile(html, std::ios::trunc | std::ios::binary);
-    if (!htmlFile){
+    if (!FileUtils::writeFileReplacing(html, documentText(name))){
         std::error_code ignored;
-        fs::remove(css, ignored);
+        FileUtils::removePath(css, ignored);
         error = "could not write " + html.string();
         return false;
     }
-    htmlFile << documentText(name);
-    htmlFile.close();
-
     return true;
 }

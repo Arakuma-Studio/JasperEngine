@@ -16,6 +16,8 @@
 #include "command/type/RenameFileCmd.h"
 #include "command/type/WriteFilesCmd.h"
 #include "util/FileUtils.h"
+#include "util/TerrainMapFileWriter.h"
+#include "Generator.h"
 #include "util/SafeWrite.h"
 #include "SymlinkSupport.h"
 
@@ -481,14 +483,46 @@ TEST(SafeWrite, NestedScopesEachApply) {
     EXPECT_FALSE(FileUtils::writeFileReplacing(d.root / "inner" / "f.txt", "x")) << "the outer scope holds the path too: it applies";
     EXPECT_FALSE(fs::exists(d.outside / "inner" / "f.txt"));
     EXPECT_NE(sw::lastScopedError().find("resolves outside"), std::string::npos) << sw::lastScopedError();
-    // a path only the outer scope holds: beneath the outer root
+    // fail-closed: a path only the outer scope holds is refused by the inner one
     EXPECT_EQ(sw::scopeRootFor(d.root / "plain.txt"), d.root);
-    EXPECT_TRUE(FileUtils::writeFileReplacing(d.root / "plain.txt", "p"));
-    // renames with one end inside a scope go beneath it (the other end outside it: refused)
+    EXPECT_FALSE(FileUtils::writeFileReplacing(d.root / "plain.txt", "p"));
+    EXPECT_FALSE(fs::exists(d.root / "plain.txt"));
+}
+
+TEST(SafeWrite, ScopesAreFailClosed) {
+    SKIP_WITHOUT_SYMLINKS();
+    Dirs d("failclosed");
     std::error_code ec;
-    EXPECT_FALSE(FileUtils::renamePath(d.root / "plain.txt", d.base / "away.txt", ec));
-    EXPECT_TRUE(fs::exists(d.root / "plain.txt"));
-    EXPECT_FALSE(fs::exists(d.base / "away.txt"));
+    writeText(d.root / "a.txt", "a");
+    {
+        // the same root twice (an MCP call and the step it runs): renames inside it work, one
+        // end outside it is refused
+        sw::Scope outer(d.root, true);
+        sw::Scope inner(d.root);
+        EXPECT_TRUE(FileUtils::renamePath(d.root / "a.txt", d.root / "sub" / ".." / "b.txt", ec)) << sw::lastScopedError();
+        EXPECT_FALSE(FileUtils::renamePath(d.root / "b.txt", d.base / "away.txt", ec));
+        EXPECT_TRUE(fs::exists(d.root / "b.txt"));
+        EXPECT_FALSE(fs::exists(d.base / "away.txt"));
+        // a strict scope: a path outside every root is refused, but an allowed folder
+        EXPECT_FALSE(FileUtils::writeFileReplacing(d.base / "elsewhere.txt", "x"));
+        EXPECT_FALSE(fs::exists(d.base / "elsewhere.txt"));
+        fs::create_directories(d.base / "allowed");
+        sw::allowOutsideScopes(d.base / "allowed");
+        EXPECT_TRUE(FileUtils::writeFileReplacing(d.base / "allowed" / "ok.txt", "x"));
+        // a suspended scope: as before
+        sw::Scope suspended{fs::path()};
+        EXPECT_TRUE(FileUtils::writeFileReplacing(d.base / "elsewhere.txt", "x"));
+    }
+    // an explicit-root command checks the scopes in force too
+    fs::create_directories(d.outside / "linked");
+    fs::create_directory_symlink(d.outside / "linked", d.root / "linked");
+    sw::Scope scope(d.root, true);
+    auto failure = std::make_shared<std::string>();
+    WriteFilesCmd cmd({{d.root / "linked" / "x.txt", "x"}}, nullptr);
+    cmd.reportFailureTo(failure);
+    cmd.writeBeneath(d.root / "linked");
+    EXPECT_FALSE(cmd.execute()) << "its own root holds it, the project scope doesn't";
+    EXPECT_FALSE(fs::exists(d.outside / "linked" / "x.txt"));
 }
 
 TEST(SafeWrite, ARedoWithNothingToDoIsPassedOverAsBefore) {
@@ -571,4 +605,76 @@ TEST(SafeWrite, ALargeCopyIsStreamed) {
     ASSERT_TRUE(sw::copyResolvedBeneath(d.root, d.outside / "big.bin", d.root / "copies" / "big.bin", false, error)) << error;
     EXPECT_EQ(readAll(d.root / "copies" / "big.bin"), big);
     EXPECT_EQ(entries(d.root / "copies"), 1u) << "no temporary file left";
+}
+
+// ---- round 4: sticky failures, group rollback, the terrain map writer, the Lua stubs
+
+TEST(SafeWrite, AScopedFailureStaysAfterALaterSuccess) {
+    SKIP_WITHOUT_SYMLINKS();
+    Dirs d("sticky");
+    fs::create_directory_symlink(d.outside, d.root / "out");
+    sw::Scope scope(d.root);
+    const unsigned long long mark = sw::scopedFailureCount();
+    EXPECT_FALSE(FileUtils::writeFileReplacing(d.root / "out" / "x.txt", "x"));
+    EXPECT_TRUE(FileUtils::writeFileReplacing(d.root / "fine.txt", "f"));
+    EXPECT_TRUE(sw::lastScopedError().empty()) << "the last one succeeded";
+    EXPECT_NE(sw::scopedFailureSince(mark).find("resolves outside"), std::string::npos) << "the first failure since the mark stays";
+    EXPECT_TRUE(sw::scopedFailureSince(sw::scopedFailureCount()).empty());
+}
+
+TEST(SafeWrite, AFailedGroupRedoTakesBackItsDoneSteps) {
+    SKIP_WITHOUT_SYMLINKS();
+    Dirs d("grouproll");
+    fs::create_directories(d.root / "sub");
+    CommandHistory history;
+    {
+        sw::Scope scope(d.root);
+        const size_t mark = history.mark();
+        ASSERT_TRUE(history.addCommand(new ScopedFileCmd(d.root / "a.txt")));
+        ASSERT_TRUE(history.addCommand(new ScopedFileCmd(d.root / "sub" / "b.txt")));
+        ASSERT_TRUE(history.groupSince(mark));
+    }
+    ASSERT_TRUE(history.undo());
+    EXPECT_EQ(readAll(d.root / "a.txt"), "undone");
+    fs::remove_all(d.root / "sub");
+    fs::create_directory_symlink(d.outside, d.root / "sub");
+    EXPECT_FALSE(history.redo()) << "the second step is refused";
+    EXPECT_EQ(history.position(), 0u);
+    EXPECT_EQ(readAll(d.root / "a.txt"), "undone") << "the first step was taken back";
+    // fixed: the redo goes through whole, then its undo
+    fs::remove(d.root / "sub");
+    fs::create_directories(d.root / "sub");
+    ASSERT_TRUE(history.redo()) << history.lastRefusal();
+    EXPECT_EQ(readAll(d.root / "a.txt"), "made");
+    EXPECT_EQ(readAll(d.root / "sub" / "b.txt"), "made");
+    ASSERT_TRUE(history.undo());
+    EXPECT_EQ(readAll(d.root / "sub" / "b.txt"), "undone");
+}
+
+TEST(SafeWrite, TheTerrainMapWriterWritesBeneathTheQueuedRoot) {
+    SKIP_WITHOUT_SYMLINKS();
+    Dirs d("terrain");
+    fs::create_directories(d.root / "maps");
+    fs::create_directory_symlink(d.outside, d.root / "linked");
+    std::vector<unsigned char> pixels(4 * 4 * 4, 200);
+    TerrainMapFileWriter::get().enqueue(d.root / "maps" / "ok.png", 4, 4, 4, 1, pixels, d.root);
+    TerrainMapFileWriter::get().enqueue(d.root / "linked" / "bad.png", 4, 4, 4, 1, pixels, d.root);
+    EXPECT_FALSE(TerrainMapFileWriter::get().flushAll()) << "the write through the link failed";
+    EXPECT_TRUE(fs::is_regular_file(d.root / "maps" / "ok.png"));
+    EXPECT_FALSE(fs::exists(d.outside / "bad.png"));
+    // forget the failed job (a later flush would retry it)
+    fs::remove(d.root / "linked");
+    fs::create_directories(d.root / "linked");
+    EXPECT_TRUE(TerrainMapFileWriter::get().flushAll());
+}
+
+TEST(SafeWrite, LuaStubsAreNeverWrittenOrRemovedThroughALink) {
+    SKIP_WITHOUT_SYMLINKS();
+    Dirs d("luastubs");
+    const fs::path internal = d.root / ".jasperengine";
+    fs::create_directories(internal / "engine-api" / "lua");
+    writeText(d.outside / "Theirs.lua", "-- theirs");
+    fs::create_directory_symlink(d.outside, internal / "engine-api" / "lua" / "scripts");
+    Generator::writeLuaScriptStubs(d.root, internal, {});
+    EXPECT_EQ(readAll(d.outside / "Theirs.lua"), "-- theirs") << "a stale-looking stub behind the link is not removed";
 }

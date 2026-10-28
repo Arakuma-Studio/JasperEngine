@@ -991,6 +991,14 @@ public:
     void undo() override{
         apply(beforeSnapshot, true);
     }
+
+    // the map file each apply writes (the write itself: TerrainMapUtils::writeFile, beneath the
+    // step's write scope)
+    std::vector<Touched> touchedPaths(bool undo) const override{
+        const TerrainMapSnapshot& snapshot = undo ? beforeSnapshot : afterSnapshot;
+        if (snapshot.path.empty()) return {};
+        return {{project->resolveAssetPath(snapshot.path), false}};
+    }
 };
 
 editor::TerrainEditWindow::TerrainEditWindow(Project* project){

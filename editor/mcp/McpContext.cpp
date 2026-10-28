@@ -23,7 +23,7 @@ std::filesystem::path McpWriteScope::projectRoot() {
     return project ? project->getProjectPath() : std::filesystem::path();
 }
 
-McpWriteScope::McpWriteScope() : safewrite::Scope(projectRoot()) {}
+McpWriteScope::McpWriteScope() : safewrite::Scope(projectRoot(), true) {}
 
 Project* McpContext::project() const {
     return appRef.getProject();
