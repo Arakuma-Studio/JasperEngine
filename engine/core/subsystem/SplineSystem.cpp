@@ -28,6 +28,7 @@
 #include "spline/SplineStep.h"
 #include "spline/SplineStripBuilder.h"
 #include "spline/SplineTileLayout.h"
+#include "spline/SplineUtility.h"
 #include "subsystem/MeshSystem.h"
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "object/physics/Rigidbody.h"
@@ -1381,12 +1382,13 @@ void SplineSystem::updateCollision(Entity entity, Resolve& resolve, const Spline
         for (const ExtrudeChunk& chunk : resolve.extrudeChunks){
             const bool has = scene->findComponent<RigidbodyComponent>(chunk.entity) != nullptr;
             if (wanted == SplineCollision::Mesh){
-                if (!has){
-                    physics->createRigidbody(chunk.entity);
+                // a body of the chunk's current triangles: a rebuilt chunk's old body goes
+                if (has){
+                    physics->removeRigidbody(chunk.entity);
                 }
+                physics->createRigidbody(chunk.entity);
                 Rigidbody body(scene, chunk.entity);
                 body.setType(BodyType::STATIC);
-                body.removeAllColliders();
                 body.createMeshCollider();
             }else if (has){
                 physics->removeRigidbody(chunk.entity);
