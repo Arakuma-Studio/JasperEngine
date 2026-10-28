@@ -13,6 +13,7 @@
 #include <map>
 
 using namespace jasperengine;
+using namespace jasperengine::editor;
 
 namespace {
 

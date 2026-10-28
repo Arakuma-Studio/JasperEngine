@@ -29,7 +29,7 @@ using namespace jasperengine;
 namespace {
 
     // the road fixture's vertex hash, pinned on GCC (RoadFixtureVerticesAreDeterministic)
-    constexpr uint64_t ROAD_FIXTURE_VERTEX_HASH = 0;
+    constexpr uint64_t ROAD_FIXTURE_VERTEX_HASH = 0xb33a1dea13fbc139ull;
 
     std::vector<spline::SplineKnot> straightKnots(int count, float step, float radius){
         std::vector<spline::SplineKnot> knots;

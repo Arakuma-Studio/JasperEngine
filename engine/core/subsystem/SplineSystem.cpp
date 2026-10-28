@@ -1191,7 +1191,15 @@ void SplineSystem::scheduleExtrude(Entity entity, Resolve& resolve, const Spline
     Hasher common;
     common.u(resolve.extrudeHash);
     common.u(flat2D);
-    common.f(stations.back().distance);
+    // the run's U origin is its first station's distance; a closed loop's seam and U density
+    // also depend on its whole length (snapped to whole tiles), an open run's chunks do not
+    common.f(stations.front().distance);
+    common.u(params.snapUForClosedLoop); common.u(closed);
+    if (params.snapUForClosedLoop || closed){
+        common.f(stations.back().distance);
+        common.f(params.loopLengthMetres); common.f(params.loopFaceTurnLeft); common.f(params.loopFaceTurnRight);
+        common.f(params.loopTopArcAllowance);
+    }
     for (const spline::SplineProfilePoint& p : job->profile.points){
         common.f(p.position.x); common.f(p.position.y); common.u(p.hard); common.u(p.grounded);
     }

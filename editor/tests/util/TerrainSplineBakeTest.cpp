@@ -325,6 +325,8 @@ namespace {
         SceneProject* scene = nullptr;
         Entity terrain = NULL_ENTITY;
         Entity road = NULL_ENTITY;
+        // the heightmap's pixels: the TextureData made from memory points at them
+        std::vector<unsigned char> heightData;
         static constexpr int N = 129;
 
         void SetUp() override{
@@ -350,7 +352,8 @@ namespace {
             t.terrainSize = 128.0f;
             t.maxHeight = 20.0f;
             s->addComponent<TerrainComponent>(terrain, t);
-            std::vector<unsigned char> pixels(static_cast<size_t>(N) * N * 2);
+            std::vector<unsigned char>& pixels = heightData;
+            pixels.assign(static_cast<size_t>(N) * N * 2, 0);
             for (size_t i = 0; i < pixels.size(); i += 2){
                 const unsigned q = 16384u + static_cast<unsigned>((i / 2) % 97);
                 pixels[i] = static_cast<unsigned char>(q & 0xFF);

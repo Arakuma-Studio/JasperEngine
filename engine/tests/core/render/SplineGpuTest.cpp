@@ -85,6 +85,9 @@ namespace {
         Light sun{&scene};
         std::unique_ptr<Terrain> terrain;
         std::vector<Entity> owners;
+        // the heightmap's pixels: a TextureData made from memory points at them, so they live as
+        // long as the scene
+        std::vector<unsigned char> heightPixels;
 
         void SetUp() override{
             Engine::setPinnedShaderTime(PINNED_TIME);
@@ -108,7 +111,8 @@ namespace {
             terrain = std::make_unique<Terrain>(&scene);
             terrain->setSize(TERRAIN_SIZE);
             terrain->setMaxHeight(maxHeight);
-            std::vector<unsigned char> pixels(static_cast<size_t>(HEIGHT_RESOLUTION) * HEIGHT_RESOLUTION * 2);
+            std::vector<unsigned char>& pixels = heightPixels;
+            pixels.assign(static_cast<size_t>(HEIGHT_RESOLUTION) * HEIGHT_RESOLUTION * 2, 0);
             for (int j = 0; j < HEIGHT_RESOLUTION; j++){
                 for (int i = 0; i < HEIGHT_RESOLUTION; i++){
                     // texel i at (i + 0.5) / N of the size (texel-centre sampling)
@@ -246,6 +250,8 @@ TEST_F(SplineGpu, FenceAndWall){
     // the fence: posts on the knots and every pitch, rails between them
     std::vector<spline::SplineKnot> fenceKnots = {knotAt(-20, 3, 4, 1), knotAt(-4, 3, 7, 1), knotAt(10, 3, 3, 1), knotAt(20, 3, 6, 1)};
     const Entity fence = splineObject(fenceKnots, litColor(0.45f, 0.3f, 0.18f), spline::SplineType::Linear);
+    // pieces keep their models' own materials: an Instantiate has no Mesh template
+    scene.removeComponent<MeshComponent>(fence);
     SplineInstantiateComponent instantiate;
     instantiate.mode = SplineInstantiateMode::Fence;
     instantiate.posts.push_back({AssetRef("splines/post.obj"), 1.0f});
