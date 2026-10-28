@@ -43,9 +43,13 @@ namespace {
     // 4.094 / 4.162 / 4.304 ms (failed the 4 ms target), page rules 3.961 / 4.048 / 4.188 ms,
     // user-agent sheet 1.146 / 1.195 / 1.212 ms: the 50 KB budget becomes 4.75 ms (that max plus
     // 10 %); the other two budgets already cover it.
-    constexpr double kFiftyKilobyteBudgetMs = 4.75;
-    constexpr double kPageRulesBudgetMs = 4.6;
-    constexpr double kUserAgentBudgetMs = 1.33;
+    // A third cloud CPU (Xeon E5-2695 v3, 2.3 GHz, the RTX 3060 Ti box of 2026-10-28, a host shared
+    // with other tenants: load average 23-30), 12 runs: 50 KB sheet 3.173-4.732 ms, page rules
+    // 3.111-4.520 ms, user-agent sheet 0.891-1.285 ms: every budget is the slowest run seen on any
+    // of these machines plus 10 % (the owner's rule).
+    constexpr double kFiftyKilobyteBudgetMs = 5.2;
+    constexpr double kPageRulesBudgetMs = 5.0;
+    constexpr double kUserAgentBudgetMs = 1.42;
 
     void rewriteOnce(const std::string& css){
         SourceFiles files;

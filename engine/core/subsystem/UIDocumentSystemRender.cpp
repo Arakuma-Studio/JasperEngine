@@ -38,6 +38,9 @@ namespace jasperengine{
                 stats.layersPushed += frame.layersPushed;
                 stats.filtersApplied += frame.filtersApplied;
                 stats.compositesFused += frame.compositesFused;
+                stats.regionLayers += frame.regionLayers;
+                stats.regionTargetsCreated += frame.regionTargetsCreated;
+                stats.clipMasksRedrawn += frame.clipMasksRedrawn;
             }
             stats.geometryLive += frame.geometryLive;
             stats.geometryBytes += frame.geometryBytes;

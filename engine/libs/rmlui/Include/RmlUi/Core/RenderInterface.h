@@ -108,6 +108,13 @@ public:
 	/// @return An application-specified handle representing the new layer. The value 'zero' is reserved for the initial base layer.
 	/// @note The new layer should be initialized to transparent black within the current scissor region.
 	virtual LayerHandle PushLayer();
+	/// Fork (P7-F2): called by RmlUi when it wants to push a new layer covering 'region' (window coordinates), which may
+	/// extend beyond the render target: a filter reads the content beyond the viewport that its blur or shadow moves into
+	/// view. Content, scissor regions and clip masks are given in window coordinates as for every layer; layers pushed
+	/// with PushLayer() are the size of the viewport. On return 'region' holds what the layer covers (the render interface
+	/// may crop it, to its largest texture for instance), invalid when the layer is an ordinary one: the default, which
+	/// calls PushLayer(). Composites between layers of different regions place their content by window coordinates.
+	virtual LayerHandle PushLayerRegion(Rectanglei& region);
 	/// Composite two layers with the given blend mode and apply filters.
 	/// @param[in] source The source layer.
 	/// @param[in] destination The destination layer.

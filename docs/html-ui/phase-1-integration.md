@@ -712,9 +712,10 @@ These follow GL3; the differences are listed.
   descendants' only (`ElementUtilities::SetClippingRegion` stops at the root), and to the
   ancestors' scissor extended by twice the filters' reach (the content beyond a clip that a
   blur or a shadow moves into it; twice, as the downsampled blur passes clamp their reads at
-  their window's edge; unbounded without an ancestor clip, as before). The layer's *window*,
-  which the filters read: the filter region (the element's box, its subtree's ink overflow,
-  the filters' extent) within that. The composite is drawn with the scissor at the window and
+  their window's edge; fork P7-F2: within the region of the layer the result goes into, the
+  viewport at the top level, and extended so without an ancestor clip too). The layer's
+  *window*, which the filters read: the filter region (the element's box, its subtree's ink
+  overflow with its descendants' own filters' extent, the filters' extent) within that. The composite is drawn with the scissor at the window and
   the ancestors' clip mask, plus their scissor as a rectangle of the clip mask when the window
   extends beyond it: nothing is drawn outside the clip. Without that a blur faded inwards along
   a rounded clip's curve (and extended the colour at a scissor's edge instead of reading the
@@ -722,10 +723,60 @@ These follow GL3; the differences are listed.
   With no reach (colour filters, opacity, masks) the scissors are the old ones and no
   rectangle is added; with 4 samples the clip's
   edge is now multisampled once (at the composite), not twice (in the layer and again at the
-  composite, which squared the edge pixels' coverage). Not covered: content beyond the
-  viewport (the layers are viewport-sized), the extent of a descendant's own filter in its
-  ancestor's filter region (pre-existing), and `text-shadow` blur layers (still drawn through
-  the clips).
+  composite, which squared the edge pixels' coverage). Not covered: `text-shadow` blur
+  layers (still drawn through the clips).
+- **Filter regions beyond the viewport (fork P7-F2, `docs/html-ui/FORK.md`).** The window of
+  a filter's layer is not cut at the viewport: a blur at the screen's edge reads the content
+  beyond it (it mirrored the content on screen there), and a drop shadow is cast onto the
+  screen by content beyond it (it was missing), as in Chromium, whose render surface for a
+  filter covers its visible part extended by the filter's outsets. RmlUi pushes such a layer
+  with `RenderManager::PushLayer(region)` (`RenderInterface::PushLayerRegion`); layers pushed
+  on it (opacity groups, masks, nested filters) cover its region, scissor regions are clamped
+  to the top layer's region (`RenderManager::GetLayerRegion`) instead of the viewport, and a
+  callback texture (a box shadow) is still drawn into viewport-sized layers. A window within
+  the viewport is an ordinary layer: nothing changes for filters away from the edges.
+  - **Region layers.** `RmlRenderer::PushLayerRegion` turns the region into target pixels,
+    the viewport's pixel grid continued beyond its edges, crops it to `regionLimit` on each
+    axis (the device's largest texture, `getFeatures().maxTextureSize2D`, and twice the
+    target's side, at least the side plus 512 px), keeping its part inside the layer it is
+    pushed on (where its composite can show) and as much of the rest as fits evenly around
+    it, and aligns it to 64 px granules of the plane (the size for the pool, the origin so the
+    blur's halved passes sample the grid they sample in the viewport's layers); the region
+    RmlUi gets back is what it covers. A crop is the only degradation: content farther than
+    the limit allows is not read (a shadow cast from beyond it is missing, a blur there reads
+    less), nothing fails. The layer is a pooled `RmlRenderTarget` region layer (RGBA8 +
+    DEPTH_STENCIL, the context's sample count, its own depth-stencil); its filters run with a
+    post-process set of its size (four 1-sample RGBA8 targets, shared by regions of that
+    size). Draws into it use its viewport and the target's clip space moved onto the region
+    (`transformIn`), scissors are clamped to it (`scissorIn`), and a composite between layers
+    of different regions places the source by the plane (`uvTransform`); filters, the blur,
+    the drop shadow, masks and the phase-5 effect filters (their layer maps) read the
+    region's pixels. A backdrop's deferred composite is used between ordinary layers only.
+  - **Clip masks.** A region layer's depth-stencil is its own, so the renderer keeps the
+    clip mask's operations since its last `Set` and draws them again into a layer's
+    depth-stencil that has not seen them before a draw tests it (`ensureMask`; RmlUi sets a
+    filter's outer clip mask while the filter's layer is the top one, before compositing it
+    into the layer below: `HtmlUIRenderStats::clipMasksRedrawn`). Between ordinary layers
+    nothing changes (they share layer 0's).
+  - **Memory.** A region layer costs `w x h x 8 x samples` bytes and its post-process set
+    `w x h x 16` (w, h: its size in target pixels), only while some filter's window crosses
+    the viewport's edge: a blur(sigma) adds up to 6 sigma on each crossed side (twice its
+    reach of 3 sigma, where content lies beyond the edge; 3 sigma for an element ending at
+    it), rounded to 64 px, e.g. a full-screen element at 1920 x 1080 with blur(10px), 1
+    sample: 2048 x 1216, 20 MB for the layer and 40 MB for its set. At
+    most `regionLimit` per axis (4x the target's pixels). The pool keeps what a frame used;
+    an entry unused for 120 frames, and free entries beyond 4 layers and 4 sets, are
+    destroyed at the end of a frame (`RmlRenderTarget::trimRegions`), so a moving region
+    makes no images once its granules fit (`HtmlUIRenderStats::regionTargetsCreated`).
+  - **`backdrop-filter`** is unchanged: its input is the backdrop within the element's border
+    box and the viewport (the region of the layer it is drawn on), mirrored at their edges,
+    as Chromium reads the viewport's backdrop (`paint/filter-backdrop-viewport-edge`).
+- **A descendant's filters in its ancestor's filter region (P7-F2).** The ink overflow of a
+  filtered (or masked, or group-opacity) element's subtree adds each descendant's own
+  filters' extent around that descendant's subtree, recursively and scaled by its transform:
+  a child's drop shadow or blur reaching past a `filter: brightness()` parent's box is no
+  longer cut at the parent's window. The subtree is walked once per layer per frame as before
+  (a `has_filter()` test per element more).
 
 #### 3.2.6 Shaders (`CompileShader` / `RenderShader`)
 - **Gradients.** `linear-gradient`, `radial-gradient` and `conic-gradient` (with
