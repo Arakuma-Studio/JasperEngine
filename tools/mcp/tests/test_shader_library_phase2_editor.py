@@ -13,7 +13,7 @@ from pathlib import Path
 
 import yaml
 
-from harness import Editor, find_key, skip
+from harness import Editor, exported_asset_ships, find_key, skip
 
 TIMEOUT = 900
 
@@ -526,7 +526,7 @@ async def test_export_phase2_scene(ed: Editor):
                  'ui.colorWrite = 15;', '.extraPass.edit().stencil.compare = MaterialStencilCompare::NOT_EQUAL;'):
         ed.check(line in generated, f"generated code has {line!r}")
     ed.check(re.search(r'\.extraPass\.edit\(\)\.shaderParams = \{\{"baseColor"', generated), "generated code sets the pass parameters")
-    ed.check((out / "project" / "assets" / "sprites" / "rock.png").exists(), "the pass texture ships")
+    ed.check(exported_asset_ships(out / "project" / "assets", "sprites/rock.png"), "the pass texture ships (its source or its desktop cook)")
     # the pass variants are precompiled: unlit with its feature and the blend define of its state
     header = (out / "shaders" / "glsl410.h").read_text(errors="replace")
     ed.check(re.search(r"mesh_library_unlit_ALPHA_CLIP_BLEND_\w+_glsl410", header), "the extra pass's variant is precompiled")

@@ -10,7 +10,7 @@ from pathlib import Path
 
 import yaml
 
-from harness import Editor, find_key
+from harness import Editor, exported_asset_ships, find_key
 
 TIMEOUT = 900
 
@@ -343,7 +343,7 @@ async def test_export_library_scene(ed: Editor):
     ed.check(re.search(r'\.shaderFeatures = \{"(ALPHA_CLIP|VERTEX_COLOR)", "(ALPHA_CLIP|VERTEX_COLOR)"\};', generated),
              "generated code sets the features")
     ed.check(re.search(r'\.shaderParams = \{\{"baseColor"', generated), "generated code sets the parameters")
-    ed.check((out / "project" / "assets" / "sprites" / "rock.png").exists(), "the shader texture ships")
+    ed.check(exported_asset_ships(out / "project" / "assets", "sprites/rock.png"), "the shader texture ships (its source or its desktop cook)")
     # the library variant with its features, and its depth program, are precompiled
     header = (out / "shaders" / "glsl410.h").read_text(errors="replace")
     # (a colour variant also carries the BLEND_* define of its blend mode, here the material's alpha)
