@@ -8,6 +8,7 @@
 
 #include "Project.h"
 #include "command/CommandHandle.h"
+#include "support/EditorTestSupport.h"
 
 #include "TempDir.h"
 
@@ -39,12 +40,8 @@ namespace jasperengine::editor::test {
             project->getAssetLabels().update();
         }
         void TearDown() override {
-            if (project) {
-                for (SceneProject& candidate : project->getScenes()) CommandHandle::remove(candidate.id);
-                // closes the scenes as a project switch does: a Project frees none itself
-                // (LeakSanitizer: each test leaked its scenes and renders)
-                project->releaseScenes();
-            }
+            // closes the scenes as a project switch does: a Project frees none itself
+            if (project) closeProject(*project);
             project.reset();
         }
 

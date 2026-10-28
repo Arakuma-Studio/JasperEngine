@@ -458,7 +458,11 @@ whenever Physics Placement's convex decomposition was cancelled while V-HACD han
 hulls over: its finalize loop stopped and cleared the map that owned the rest. The vendored
 header now frees them (`engine/libs/vhacd/README.jasper.md`);
 `ConvexDecomposition.CancelWhileFinalizingFreesTheHulls` cancels at that point and measures the
-heap. With it the editor tree under ASan + UBSan ran 871 tests with no leak report.
+heap. With it the editor tree under ASan + UBSan ran 871 tests with no leak report. A loaded
+`Project` frees none of its scenes itself (the editor's lives as long as the process, the CLI's
+have no renderer): an editor test that loads one closes it with `editor::test::closeProject`
+(`editor/tests/support/EditorTestSupport.h`) before dropping it, or every scene and its render
+leaks (S08's reflection tests leaked about 84 MB that way).
 
 ### Unity build (R25)
 

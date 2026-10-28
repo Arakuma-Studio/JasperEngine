@@ -7,6 +7,7 @@
 #include "Engine.h"
 #include "Stream.h"
 #include "System.h"
+#include "command/CommandHandle.h"
 
 #include <cstdlib>
 #include <fstream>
@@ -21,6 +22,12 @@ void editor::test::ensureEngine() {
     // engine/tests/support/TestMain.cpp starts the engine before any test, with the support
     // library's TestSystem (headless, logs captured); a second Engine::systemInit with another
     // System would leave that capture reading the wrong object
+}
+
+void editor::test::closeProject(Project& project) {
+    for (SceneProject& scene : project.getScenes())
+        CommandHandle::remove(scene.id);
+    project.releaseScenes();
 }
 
 double editor::test::perfSlack() {
