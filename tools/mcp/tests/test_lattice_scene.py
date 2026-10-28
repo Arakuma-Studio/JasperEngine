@@ -18,6 +18,7 @@ Needs xdotool and ImageMagick's import (the harness' Xvfb, EDITOR xvfb="harness"
 from __future__ import annotations
 
 import asyncio
+import math
 import os
 import shutil
 import subprocess
@@ -172,7 +173,10 @@ async def test_setup(ed):
     await ed.call("add_component", scene=S["scene"], entity=lattice, component="LatticeComponent")
     await ed.call("set_transform", scene=S["scene"], entity=lattice, scale=[2, 2, 2])
     # an oblique view: the 27 points of the 3x3x3 cage land apart on screen
-    await ed.call("set_scene_camera", scene=S["scene"], position=[3.2, 2.4, 5.0], target=[0, 0, 0])
+    # the field of view the points were counted and placed with (0.75 rad, before S26's 60 degree
+    # default): the centre point sits under the gizmo there
+    await ed.call("set_scene_camera", scene=S["scene"], position=[3.2, 2.4, 5.0], target=[0, 0, 0],
+                  camera_settings={"fov": math.degrees(0.75)})
     await ed.call("select_entities", scene=S["scene"], entities=[lattice])
     focus_editor(ed)
     await settle(ed, 10)
