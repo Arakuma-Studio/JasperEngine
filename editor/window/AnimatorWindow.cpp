@@ -495,7 +495,7 @@ void AnimatorWindow::startPreview(){
         SceneProject* s = project->getScene(previewScene);
         if (s && s->scene){
             s->scene->getSystem<AnimatorSystem>()->restorePreview(previewEntity);
-            seekParticles(0.0, true);
+            particles.stop(s->scene);
         }
         previewToken = 0;
     });
@@ -504,7 +504,8 @@ void AnimatorWindow::startPreview(){
     previewClock = 0.0;
     previewPaused = false;
     lastFrameTime = nowSeconds();
-    seekParticles(0.0, true);
+    particles.stop(scene->scene);
+    syncParticles(false);
 }
 
 void AnimatorWindow::stopPreview(){
@@ -515,28 +516,15 @@ void AnimatorWindow::stopPreview(){
     if (scene && scene->scene){
         scene->scene->getSystem<AnimatorSystem>()->restorePreview(previewEntity);
         // the particle systems under it go back to stopped and empty
-        auto particles = scene->scene->getComponentArray<ParticleSystemComponent>();
-        ParticleSubsystem* system = scene->scene->getSystem<ParticleSubsystem>().get();
-        for (size_t i = 0; i < particles->size(); i++){
-            const Entity p = particles->getEntity(i);
-            if (PreviewOwner::overlaps(scene->scene, previewEntity, p)) system->stop(p, true);
-        }
+        particles.stop(scene->scene);
     }
     PreviewOwner::release(token);
 }
 
-void AnimatorWindow::seekParticles(double time, bool restart){
-    if (!AppSettings::getSceneViewSettings().previewParticles) return;
+void AnimatorWindow::syncParticles(bool forward){
     SceneProject* scene = project->getScene(previewScene);
     if (!scene || !scene->scene) return;
-    auto particles = scene->scene->getComponentArray<ParticleSystemComponent>();
-    ParticleSubsystem* system = scene->scene->getSystem<ParticleSubsystem>().get();
-    for (size_t i = 0; i < particles->size(); i++){
-        const Entity p = particles->getEntity(i);
-        if (!PreviewOwner::overlaps(scene->scene, previewEntity, p)) continue;
-        if (restart) system->previewSeek(p, time);
-        else system->previewAdvance(p, time);
-    }
+    particles.sync(scene->scene, previewEntity, previewClock, forward);
 }
 
 void AnimatorWindow::updatePreview(){
@@ -553,6 +541,7 @@ void AnimatorWindow::updatePreview(){
     const double now = nowSeconds();
     const float dt = (float)std::min(0.1, std::max(0.0, now - lastFrameTime));
     lastFrameTime = now;
+    particles.pump(scene->scene);
     if (previewPaused) return;
     previewClock += dt;
     std::string error;
@@ -560,7 +549,7 @@ void AnimatorWindow::updatePreview(){
         status = "Preview: " + error;
         return;
     }
-    seekParticles(dt, false);
+    syncParticles(true);
     scene->needUpdateRender = true;
 }
 
@@ -1630,6 +1619,9 @@ void AnimatorWindow::drawTransitionInspector(ControllerDef& def, TransitionDef& 
                     if (animator->runtime->crossFade(prefix + t.to, t.duration, t.fixedDuration, layer, t.offset)){
                         system->preview(previewEntity, transitionScrub * seconds, &error);
                     }
+                    // the effects under it at the scrubbed point of the transition
+                    previewClock = transitionScrub * seconds;
+                    syncParticles(false);
                 }
                 if (!error.empty()) status = "Preview: " + error;
                 scene->needUpdateRender = true;

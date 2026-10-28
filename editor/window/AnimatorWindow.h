@@ -24,6 +24,7 @@
 
 #include "animation/AnimatorAssetDocument.h"
 #include "animation/PreviewOwner.h"
+#include "animation/PreviewParticles.h"
 #include "ecs/Entity.h"
 #include "window/widget/GraphCanvas.h"
 
@@ -132,6 +133,7 @@ namespace jasperengine::editor{
         double previewClock = 0.0;
         double lastFrameTime = 0.0;
         bool previewPaused = false;
+        PreviewParticles particles;
         float transitionScrub = 0.0f;
         // an edit in progress (a drag): shown at once, committed as one step when no item is active
         std::optional<anim::ControllerDef> pending;
@@ -156,7 +158,7 @@ namespace jasperengine::editor{
         void drawContextMenus();
         void startPreview();
         void updatePreview();
-        void seekParticles(double time, bool restart);
+        void syncParticles(bool forward);
 
         // Inspector panels
         void drawStateInspector(anim::ControllerDef& def, anim::StateDef& state);

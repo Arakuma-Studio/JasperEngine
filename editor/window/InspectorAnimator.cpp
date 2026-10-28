@@ -272,7 +272,7 @@ void editor::InspectorWindow::drawAnimatorComponent(ComponentType cpType, SceneP
         if (!runtime.controllerError.empty()) warningText(runtime.controllerError);
         if (!runtime.bindError.empty()) warningText(runtime.bindError);
         if (runtime.controller){
-            for (const ClipWarning& warning : runtime.controller->diagnostics) warningText(warning.toString());
+            for (const ClipWarning& warning : runtime.controller->diagnostics) warningText(warning.path.empty() ? warning.message : warning.path + ": " + warning.message);
         }
         if (!stopped && runtime.controller && runtime.bound){
             ImGui::SeparatorText("State");
@@ -292,7 +292,7 @@ void editor::InspectorWindow::drawAnimatorComponent(ComponentType cpType, SceneP
         std::string error;
         std::shared_ptr<const CompiledController> compiled = AnimatorAssetPool::controller(animator->controller.path, &error);
         if (!compiled) warningText(error);
-        else for (const ClipWarning& warning : compiled->diagnostics) warningText(warning.toString());
+        else for (const ClipWarning& warning : compiled->diagnostics) warningText(warning.path.empty() ? warning.message : warning.path + ": " + warning.message);
     }
     if (disabled) ImGui::BeginDisabled(true);
 }
@@ -316,7 +316,7 @@ bool editor::InspectorWindow::drawAnimatorAsset(const fs::path& asset){
         errorText(document->loadError());
         return true;
     }
-    for (const ClipWarning& warning : document->warnings()) warningText(warning.toString());
+    for (const ClipWarning& warning : document->warnings()) warningText(warning.path.empty() ? warning.message : warning.path + ": " + warning.message);
     if (kind == AnimatorAssetDocument::Kind::Controller) drawControllerAsset(document);
     else if (kind == AnimatorAssetDocument::Kind::Mask) drawMaskAsset(document);
     else drawMontageAsset(document);
@@ -353,7 +353,7 @@ void editor::InspectorWindow::drawControllerAsset(const std::shared_ptr<Animator
     std::shared_ptr<const CompiledController> compiled = compileController(def);
     if (compiled && !compiled->diagnostics.empty()){
         ImGui::SeparatorText("Problems");
-        for (const ClipWarning& warning : compiled->diagnostics) warningText(warning.toString());
+        for (const ClipWarning& warning : compiled->diagnostics) warningText(warning.path.empty() ? warning.message : warning.path + ": " + warning.message);
     }
 }
 
