@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>S16 B5: text-effects</title>
+<!-- S16 benchmark B5: 50 labels with text-shadow: 0 1px 2px, font-effect: outline(2px) and glow. Budget:
+     no layer pushed for the effects within the distance glyphs' reach. -->
+<style>
+  html, body { margin: 0; width: 1280px; height: 720px; background-color: #202430; font-family: sans-serif; }
+  .label { position: absolute; color: #ffffff; font-size: 28px; }
+  .shadow { text-shadow: 0 1px 2px #000000; }
+  .outline { font-effect: outline(2px #000000); }
+  .glow { font-effect: glow(1px 3px 0px 0px #40a0ff); }
+</style>
+</head>
+<body>
+  <div class="label shadow" style="left: 30px; top: 30px">Label 1</div>
+  <div class="label outline" style="left: 280px; top: 30px">Label 2</div>
+  <div class="label glow" style="left: 530px; top: 30px">Label 3</div>
+  <div class="label shadow" style="left: 780px; top: 30px">Label 4</div>
+  <div class="label outline" style="left: 1030px; top: 30px">Label 5</div>
+  <div class="label glow" style="left: 30px; top: 96px">Label 6</div>
+  <div class="label shadow" style="left: 280px; top: 96px">Label 7</div>
+  <div class="label outline" style="left: 530px; top: 96px">Label 8</div>
+  <div class="label glow" style="left: 780px; top: 96px">Label 9</div>
+  <div class="label shadow" style="left: 1030px; top: 96px">Label 10</div>
+  <div class="label outline" style="left: 30px; top: 162px">Label 11</div>
+  <div class="label glow" style="left: 280px; top: 162px">Label 12</div>
+  <div class="label shadow" style="left: 530px; top: 162px">Label 13</div>
+  <div class="label outline" style="left: 780px; top: 162px">Label 14</div>
+  <div class="label glow" style="left: 1030px; top: 162px">Label 15</div>
+  <div class="label shadow" style="left: 30px; top: 228px">Label 16</div>
+  <div class="label outline" style="left: 280px; top: 228px">Label 17</div>
+  <div class="label glow" style="left: 530px; top: 228px">Label 18</div>
+  <div class="label shadow" style="left: 780px; top: 228px">Label 19</div>
+  <div class="label outline" style="left: 1030px; top: 228px">Label 20</div>
+  <div class="label glow" style="left: 30px; top: 294px">Label 21</div>
+  <div class="label shadow" style="left: 280px; top: 294px">Label 22</div>
+  <div class="label outline" style="left: 530px; top: 294px">Label 23</div>
+  <div class="label glow" style="left: 780px; top: 294px">Label 24</div>
+  <div class="label shadow" style="left: 1030px; top: 294px">Label 25</div>
+  <div class="label outline" style="left: 30px; top: 360px">Label 26</div>
+  <div class="label glow" style="left: 280px; top: 360px">Label 27</div>
+  <div class="label shadow" style="left: 530px; top: 360px">Label 28</div>
+  <div class="label outline" style="left: 780px; top: 360px">Label 29</div>
+  <div class="label glow" style="left: 1030px; top: 360px">Label 30</div>
+  <div class="label shadow" style="left: 30px; top: 426px">Label 31</div>
+  <div class="label outline" style="left: 280px; top: 426px">Label 32</div>
+  <div class="label glow" style="left: 530px; top: 426px">Label 33</div>
+  <div class="label shadow" style="left: 780px; top: 426px">Label 34</div>
+  <div class="label outline" style="left: 1030px; top: 426px">Label 35</div>
+  <div class="label glow" style="left: 30px; top: 492px">Label 36</div>
+  <div class="label shadow" style="left: 280px; top: 492px">Label 37</div>
+  <div class="label outline" style="left: 530px; top: 492px">Label 38</div>
+  <div class="label glow" style="left: 780px; top: 492px">Label 39</div>
+  <div class="label shadow" style="left: 1030px; top: 492px">Label 40</div>
+  <div class="label outline" style="left: 30px; top: 558px">Label 41</div>
+  <div class="label glow" style="left: 280px; top: 558px">Label 42</div>
+  <div class="label shadow" style="left: 530px; top: 558px">Label 43</div>
+  <div class="label outline" style="left: 780px; top: 558px">Label 44</div>
+  <div class="label glow" style="left: 1030px; top: 558px">Label 45</div>
+  <div class="label shadow" style="left: 30px; top: 624px">Label 46</div>
+  <div class="label outline" style="left: 280px; top: 624px">Label 47</div>
+  <div class="label glow" style="left: 530px; top: 624px">Label 48</div>
+  <div class="label shadow" style="left: 780px; top: 624px">Label 49</div>
+  <div class="label outline" style="left: 1030px; top: 624px">Label 50</div>
+</body>
+</html>

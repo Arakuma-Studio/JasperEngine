@@ -377,6 +377,8 @@ enum class PropertyId : uint16_t {
 	// Line clamping (fork, phase 6, P6-L1): '-webkit-line-clamp' and the legacy '-webkit-box-orient' it needs.
 	WebkitLineClamp,
 	WebkitBoxOrient,
+	// Fork (S16-F3): 'text-rendering' (SVG 2): how text follows its on-screen scale.
+	TextRendering,
 
 	NumDefinedIds,
 	FirstCustomId = NumDefinedIds,

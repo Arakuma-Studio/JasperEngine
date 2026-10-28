@@ -34,6 +34,8 @@ namespace jasperengine{
     class SokolObject{
 
     private:
+        void addAttribute(int slot, BufferRender* buffer, unsigned int elements, AttributeDataType dataType, unsigned int stride, size_t offset,
+                          bool normalized, bool perInstance, bool interleaved);
 
         sg_bindings bind;
         sg_buffer loadIndexBuffer;
@@ -108,6 +110,10 @@ namespace jasperengine{
         void setShader(ShaderRender* shader);
         void setIndex(BufferRender* buffer, AttributeDataType dataType, size_t offset);
         void addAttribute(int slot, BufferRender* buffer, unsigned int elements, AttributeDataType dataType, unsigned int stride, size_t offset, bool normalized, bool perInstance);
+        // an attribute of an interleaved buffer that stays one bind slot on every backend: the
+        // offset (inside the stride, below 2048) is the attribute's, not the buffer binding's
+        // (a layout of more attributes than sokol has vertex buffer bind slots)
+        void addInterleavedAttribute(int slot, BufferRender* buffer, unsigned int elements, AttributeDataType dataType, unsigned int stride, size_t offset, bool normalized, bool perInstance);
         // rebind every vertex bind-slot that was filled from fromBufferId to toBuffer,
         // keeping the same per-slot layout/offset (used to swap a per-view instance
         // buffer in just before draw). Affects only the bindings, not the pipeline.

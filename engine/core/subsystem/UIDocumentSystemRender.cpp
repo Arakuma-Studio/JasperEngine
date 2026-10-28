@@ -10,11 +10,16 @@
 #include "Engine.h"
 #include "component/CameraComponent.h"
 #include "component/Transform.h"
+#include "htmlui/HtmlUI.h"
 #include "htmlui/HtmlUIContext.h"
+#include "htmlui/RmlFontEngine.h"
 #include "htmlui/RmlRenderer.h"
 #include "math/Matrix4.h"
 #include "render/SystemRender.h"
 
+#include <RmlUi/Core/Context.h>
+
+#include <algorithm>
 #include <cstring>
 
 namespace jasperengine{
@@ -28,19 +33,7 @@ namespace jasperengine{
             if (!context)
                 return;
             RmlRenderer& renderer = context->getRenderer();
-            const HtmlUIRenderStats& frame = renderer.getStats();
-            if (renderer.hasFrame(SystemRender::getFrameCount())){
-                stats.passes += frame.passes;
-                stats.drawCalls += frame.drawCalls;
-                stats.pipelineApplies += frame.pipelineApplies;
-                stats.pipelineCacheMisses += frame.pipelineCacheMisses;
-                stats.textureBinds += frame.textureBinds;
-                stats.layersPushed += frame.layersPushed;
-                stats.filtersApplied += frame.filtersApplied;
-                stats.compositesFused += frame.compositesFused;
-            }
-            stats.geometryLive += frame.geometryLive;
-            stats.geometryBytes += frame.geometryBytes;
+            stats.add(renderer.getStats(), renderer.hasFrame(SystemRender::getFrameCount()));
         }
     };
 
@@ -54,6 +47,18 @@ void UIDocumentSystem::setPreferredSampleCount(int samples){
 
 int UIDocumentSystem::getPreferredSampleCount(){
     return HtmlUIContext::getPreferredSampleCount();
+}
+
+void UIDocumentSystem::setHtmlUiRenderOptions(int glyphAtlasMiB, bool sdfPrimitives, bool transformAwareText){
+    RmlFontEngine::setAtlasBudgetMiB((size_t)std::max(glyphAtlasMiB, 0));
+    const bool primitivesChanged = RmlRenderer::isSdfPrimitives() != sdfPrimitives;
+    RmlRenderer::setSdfPrimitivesForTesting(sdfPrimitives);
+    RmlFontEngine::setTransformAwareTextForTesting(transformAwareText);
+    for (HtmlUIContext* context : HtmlUI::getContexts()){
+        if (primitivesChanged && context->getRmlContext())
+            context->getRmlContext()->DirtyBackgrounds();
+        context->markUpdated();
+    }
 }
 
 void UIDocumentSystem::renderOffscreen(const Rect& viewRect){
@@ -73,6 +78,13 @@ void UIDocumentSystem::renderOffscreen(const Rect& viewRect){
 const HtmlUIRenderStats& UIDocumentSystem::getRenderStats() const{
     static const HtmlUIRenderStats none;
     return renderState ? renderState->stats : none;
+}
+
+HtmlUIRenderStats UIDocumentSystem::getRenderStats(Entity entity) const{
+    HtmlUIContext* context = getTextureContext(entity);
+    if (!context)
+        context = getContext();
+    return context ? context->getRenderer().getStats() : HtmlUIRenderStats();
 }
 
 void UIDocumentSystem::drawComposite(PipelineType colorPipeline, bool flipY){

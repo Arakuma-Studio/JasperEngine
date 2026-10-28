@@ -18,6 +18,47 @@ enum class BlendMode {
 	Plus,    // Add the source to the destination (premultiplied, CSS 'plus-lighter'): cross-fade().
 };
 
+/// Fork (S16-F2): the shape a clip mask's geometry covers, a rectangle with elliptical corners, so that a render interface
+/// can clip without drawing the mask (a scissor, or an analytic clip in its shaders).
+struct ClipShape {
+	Rectanglef rect;                  // relative to the mask's translation, before the transform
+	Array<Vector2f, 4> radii = {};    // top-left, top-right, bottom-right, bottom-left: horizontal (x) and vertical (y); a corner
+	                                  // with a radius <= 0 is square
+	const Matrix4f* transform = nullptr; // the transform the mask is drawn with (nullptr: none), valid during the call only
+};
+inline bool operator==(const ClipShape& a, const ClipShape& b)
+{
+	return a.rect.TopLeft() == b.rect.TopLeft() && a.rect.BottomRight() == b.rect.BottomRight() && a.radii == b.radii &&
+		a.transform == b.transform;
+}
+
+/// Fork (S16-F1): a box drawn from its signed distance field instead of a mesh (RenderInterface::RenderPrimitives): a
+/// background with its solid border, an outline ring, or a box shadow. Rectangles are relative to the translation, before
+/// the transform; radii are top-left, top-right, bottom-right, bottom-left (x horizontal, y vertical; <= 0 is square).
+struct BoxPrimitive {
+	enum class Kind : uint8_t {
+		Box,         // border_box filled with 'fill', its border (border_widths) in border_colors
+		ShadowOuter, // the shadow shape border_box in 'fill', blurred by sigma, outside clip_box (the element's border box)
+		ShadowInset, // everything outside the shadow shape border_box in 'fill', blurred by sigma, inside clip_box (the padding box)
+		Gradient,    // fork (S16-F5): border_box (a fill area, its radii) painted by the gradient 'shader' times 'fill' (the opacity)
+	};
+	Kind kind = Kind::Box;
+	Rectanglef border_box;               // Box: the border box; shadows: the shadow's shape (offset and spread applied)
+	Array<Vector2f, 4> radii = {};
+	Vector4f border_widths;              // Box: top, right, bottom, left
+	Vector4f fill_insets;                // Box: the fill's edges inside border_box (top, right, bottom, left), its radii reduced
+	                                     // by them (the mesh path's background under opaque borders)
+	ColourbPremultiplied fill;
+	Array<ColourbPremultiplied, 4> border_colors = {}; // Box: top, right, bottom, left
+	float sigma = 0.f;                   // shadows: half the blur radius
+	Rectanglef clip_box;                 // shadows
+	Array<Vector2f, 4> clip_radii = {};
+	CompiledShaderHandle shader = {};    // Gradient: its compiled shader (RenderInterface::SupportsGradientPrimitive)
+	Vector2f gradient_origin;            // Gradient: where the shader's (0, 0) is relative to border_box's top-left (a
+	                                     // background image tile's origin; zero for a decorator's fill area)
+	Vector2f gradient_repeat;            // Gradient: the period of its tiles along each axis (0: one tile)
+};
+
 /**
     The abstract base class for application-specific rendering implementation. Your application must provide a concrete
     implementation of this class and install it through Rml::SetRenderInterface() in order for anything to be rendered.
@@ -96,6 +137,23 @@ public:
 	/// @note The clip mask applies exclusively to all other functions that render with a geometry handle, in addition
 	/// to the `CompositeLayers` function while rendering to its destination.
 	virtual void RenderToClipMask(ClipMaskOperation operation, CompiledGeometryHandle geometry, Vector2f translation);
+	/// Fork (S16-F2): the same with the shape the geometry covers (exactly: the geometry is the shape's fill). RmlUi calls it
+	/// instead of RenderToClipMask for the clip masks of overflow and replaced content; the default forwards to
+	/// RenderToClipMask.
+	virtual void RenderToClipMaskShape(ClipMaskOperation operation, CompiledGeometryHandle geometry, Vector2f translation,
+		const ClipShape& shape);
+
+	/// Fork (S16-F1): whether RenderPrimitives draws boxes: elements then send their solid backgrounds, borders, outlines
+	/// and box shadows as primitives instead of meshes and shadow textures. Asked when the geometry is generated.
+	virtual bool SupportsPrimitives();
+	/// Fork (S16-F1): draws the primitives in order, like RenderGeometry (the scissor, clip mask and transform apply).
+	virtual void RenderPrimitives(Span<const BoxPrimitive> primitives, Vector2f translation);
+	/// Fork (S16-F4): whether elements may skip painting their background, border and text when it lies wholly outside the
+	/// scissor region (no transform): what the render interface would clip anyway. Asked every frame.
+	virtual bool CullsOffscreenPaint();
+	/// Fork (S16-F5): whether a gradient (CompileShader's) can be drawn as a BoxPrimitive of kind Gradient over a fill area,
+	/// so that gradient backgrounds batch with the other primitives. Asked when the decorator's data is made.
+	virtual bool SupportsGradientPrimitive(CompiledShaderHandle shader);
 
 	/// Called by RmlUi when it wants the renderer to use a new transform matrix.
 	/// @param[in] transform The new transform to apply, or nullptr if no transform applies to the current element.

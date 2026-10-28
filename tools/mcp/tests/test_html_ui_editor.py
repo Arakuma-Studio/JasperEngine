@@ -274,6 +274,9 @@ async def test_msaa_setting(ed: Editor):
     ent = await ed.call("create_entity", scene=scene, type="ui_document", name="Rotated")
     await ed.call("set_properties", scene=scene, entity=ent["entity_id"], values={"uidocument": {"filename": ROT_DOC}})
 
+    # the meshes' edges are the sample count's; the SDF primitives (S16) antialias at any count
+    await ed.call("set_project_settings", values={"graphics.html_ui_sdf_primitives": False})
+
     async def edge_pixels(samples: int):
         await ed.call("set_project_settings", values={"graphics.html_ui_msaa_samples": samples})
         shot = await ed.call_raw("screenshot", {"view": "game", "scene": scene, "max_width": 1280})
@@ -290,6 +293,7 @@ async def test_msaa_setting(ed: Editor):
     four = await edge_pixels(4)
     ed.check(len(one) > 200 and len(four) > 200, f"smooth edges: {len(four)} partly covered pixels with 4 samples, {len(one)} with 1")
     ed.check(len(one ^ four) > 50, f"the sample count changes the edges: {len(one ^ four)} pixels differ")
+    await ed.call("set_project_settings", values={"graphics.html_ui_sdf_primitives": True})
 
 
 async def test_scene_view_shows_document(ed: Editor):

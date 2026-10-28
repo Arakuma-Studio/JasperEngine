@@ -771,7 +771,7 @@ namespace {
         {"text-justify", I, FF::Justify, N, true, "auto", false, RW::None, "", "where justified lines take their space; native with the fork (Justify): auto (spaces, and around CJK characters), none, inter-word, inter-character, distribute (computes to inter-character); ignored without it", "", "css-text-3"},
         {"text-orientation", U, FF::None, U, true, "mixed", false, RW::None, "", "vertical text is not supported (Warning)", "rotate the element with transform: rotate(90deg), or stack the characters in a column", "css-writing-modes-3"},
         {"text-overflow", N, FF::None, N, false, "clip", false, RW::None, "", "ellipsis, clip and strings native", "", "css-overflow-4"},
-        {"text-rendering", I, FF::None, I, true, "auto", false, RW::None, "", "font rendering hint; the font engine decides", "", "svg2"},
+        {"text-rendering", N, FF::None, N, true, "auto", false, RW::None, "", "native (fork S16-F3): optimizeSpeed keeps text a bitmap at the document's scale (stretched under a transform); auto and optimizeLegibility rasterize it at its on-screen scale, from distance fields while that scale animates; geometricPrecision always draws it from distance fields", "", "svg2"},
         {"text-shadow", R, FF::TextShadow, N, true, "none", false, RW::TextShadow, "font-effect: shadow() / glow()", "blur -> glow; a missing color -> the rule color or white (approximated); native with the fork (TextShadow)", "", "css-text-decor-3"},
         {"text-size-adjust", I, FF::None, I, true, "auto", false, RW::None, "", "mobile text inflation control; no effect in a game UI", "", "css-size-adjust-1"},
         {"text-spacing", I, FF::None, I, true, "normal", false, RW::None, "", "typographic refinement; ignored (Info)", "", "css-text-4"},

@@ -182,6 +182,10 @@ bool ShaderPool::parseShaderTypeToken(const std::string& typeToken, ShaderType& 
         shaderType = ShaderType::PARTICLES;
         return true;
     }
+    if (typeToken == "htmluiprim") {
+        shaderType = ShaderType::HTMLUI_PRIM;
+        return true;
+    }
 
     return false;
 }
@@ -552,6 +556,7 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
         case ShaderType::VOLUMETRIC_COMPOSITE: return lowerCase ? "volumetriccomposite" : "Volumetric Composite";
         case ShaderType::PASS_PREVIEW: return lowerCase ? "passpreview" : "Pass Preview";
         case ShaderType::PARTICLES: return lowerCase ? "particles" : "Particles";
+        case ShaderType::HTMLUI_PRIM: return lowerCase ? "htmluiprim" : "HTML UI Primitives";
         default:                 return lowerCase ? "unknown": "Unknown";
     }
 }
@@ -605,6 +610,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::PASS_PREVIEW: return 3;
         // ShaderPool::getParticlesProperties
         case ShaderType::PARTICLES: return 11;
+        case ShaderType::HTMLUI_PRIM: return 0;
         default:                 return 0;
     }
 }
@@ -1679,6 +1685,7 @@ std::vector<std::pair<ShaderType, uint64_t>> ShaderPool::getHtmlUIVariants(){
     variants.push_back({ShaderType::HTMLUI, getHtmlUIProperties(false)});
     variants.push_back({ShaderType::HTMLUI, getHtmlUIProperties(true)});
     variants.push_back({ShaderType::HTMLUI_GRADIENT, 0});
+    variants.push_back({ShaderType::HTMLUI_PRIM, 0});
     for (int variant = 0; variant < HTMLUI_POST_VARIANT_COUNT; variant++){
         variants.push_back({ShaderType::HTMLUI_POST, getHtmlUIPostProperties((HtmlUIPostVariant)variant)});
     }

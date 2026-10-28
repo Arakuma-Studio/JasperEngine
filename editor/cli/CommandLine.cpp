@@ -325,6 +325,8 @@ static void printBenchmarkUsage(const std::string& commandName) {
         << "      --lit-quality <standard|high> Override the scene's Lit Quality.\n"
         << "      --name <label>     Label written into the JSON result.\n"
         << "      --out <path>       Write JSON to this file in addition to stdout.\n"
+        << "      --ui-stats         Add the scene's HTML UI statistics (draws, merged runs, stencil draws,\n"
+        << "                         glyph atlas, ...), averaged over the measured frames, as \"htmlUi\".\n"
         << "      --gpu-passes       Time every GPU pass of the measured frames: \"gpu\" in the JSON, with\n"
         << "                         the frame's and each pass label's median/p95/mean ms (docs/profiling.md).\n"
         << "      --profile-capture <path>  Write a .jetrace.json profiler capture of the measured frames.\n"

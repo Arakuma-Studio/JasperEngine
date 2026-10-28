@@ -1473,6 +1473,22 @@ int editor::Project::getHtmlUiMsaaSamples() const{
     return htmlUiMsaaSamples;
 }
 
+bool editor::Project::isValidHtmlUiGlyphAtlasMiB(int mib){
+    return mib == 0 || (mib >= minHtmlUiGlyphAtlasMiB && mib <= maxHtmlUiGlyphAtlasMiB);
+}
+
+void editor::Project::setHtmlUiRenderSettings(const HtmlUiRenderSettings& settings){
+    htmlUiRender = settings;
+    if (!isValidHtmlUiGlyphAtlasMiB(htmlUiRender.glyphAtlasMiB))
+        htmlUiRender.glyphAtlasMiB = std::clamp(htmlUiRender.glyphAtlasMiB, minHtmlUiGlyphAtlasMiB, maxHtmlUiGlyphAtlasMiB);
+    // the editor's documents follow at once
+    UIDocumentSystem::setHtmlUiRenderOptions(htmlUiRender.glyphAtlasMiB, htmlUiRender.sdfPrimitives, htmlUiRender.transformAwareText);
+}
+
+const editor::HtmlUiRenderSettings& editor::Project::getHtmlUiRenderSettings() const{
+    return htmlUiRender;
+}
+
 void editor::Project::setShadowTier(int platform, ShadowTier tier){
     if (platform < 0 || platform >= ShadowTiers::PLATFORM_COUNT)
         return;
@@ -4759,6 +4775,7 @@ void editor::Project::resetConfigs() {
     setInputDeadzone(defaultInputDeadzone);
     playerCrash = PlayerCrashSettings();
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
+    setHtmlUiRenderSettings(HtmlUiRenderSettings());
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){
         setShadowTier(platform, ShadowTiers::defaultTier(platform));
     }
@@ -6332,7 +6349,7 @@ void editor::Project::configureGenerator() {
     generator.setAtmosphereQuality(atmosphereQuality);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
-    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, threadingSettings, mobilePbrTier);
+    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier);
 }
 
 std::vector<editor::SceneScriptSource> editor::Project::prepareScriptBuild() {
@@ -8330,7 +8347,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
         generator.setAtmosphereQuality(atmosphereQuality);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
         generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
-        generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, threadingSettings, mobilePbrTier);
+        generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier);
         if (hasMissingSceneSources()) {
             generatedSourcesDirty.store(true);
         }

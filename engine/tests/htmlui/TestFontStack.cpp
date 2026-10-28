@@ -623,3 +623,34 @@ TEST(GlyphAtlasTest, FullReturnsFalse){
     EXPECT_EQ(x, 0);
     EXPECT_EQ(y, 0);
 }
+
+TEST(GlyphAtlasTest, LeadingTexelsKeepEveryRectSurroundedByEmptyTexels){
+    // (S16) the HTML UI's transform-aware text filters a texel past a glyph's edges: with the
+    // first row and column kept empty, no rect touches the atlas's top or left edge
+    GlyphAtlas atlas(64, 64, 1);
+    atlas.reserveLeading(1);
+    int x, y;
+    ASSERT_TRUE(atlas.pack(10, 12, x, y));
+    EXPECT_EQ(x, 1);
+    EXPECT_EQ(y, 1);
+    ASSERT_TRUE(atlas.pack(10, 12, x, y));
+    EXPECT_EQ(x, 12);
+    EXPECT_EQ(y, 1);
+    // a taller rect opens the next shelf, which starts after the leading column too
+    ASSERT_TRUE(atlas.pack(10, 20, x, y));
+    EXPECT_EQ(x, 1);
+    EXPECT_EQ(y, 14);
+    // 62 + 1 padding fills a row after the leading column; 63 does not fit
+    EXPECT_FALSE(atlas.pack(63, 4, x, y));
+    ASSERT_TRUE(atlas.pack(62, 4, x, y));
+    EXPECT_EQ(x, 1);
+    // only before the first pack: the packed rects do not move
+    atlas.reserveLeading(4);
+    ASSERT_TRUE(atlas.pack(4, 4, x, y));
+    EXPECT_GE(x, 1);
+    // reset forgets it
+    atlas.reset(64, 64);
+    ASSERT_TRUE(atlas.pack(15, 15, x, y));
+    EXPECT_EQ(x, 0);
+    EXPECT_EQ(y, 0);
+}
