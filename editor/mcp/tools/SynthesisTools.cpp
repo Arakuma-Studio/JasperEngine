@@ -573,7 +573,7 @@ void finishSynthesis(McpContext& ctx, const std::shared_ptr<SynthesisCall>& stat
             ok = window->save(state->overwrite, written, error, &spec);
         } else {
             std::vector<ts::OutputFile> files;
-            ok = ts::encodeOutputs(state->root, spec, run.request(), result, files, error) && ts::writeOutputsUndoable(files, error);
+            ok = ts::encodeOutputs(state->root, spec, run.request(), result, files, error) && ts::writeOutputsUndoable(ctx.project(), files, error);
             for (const ts::OutputFile& f : files) written.push_back(f.path);
         }
         if (!ok) {

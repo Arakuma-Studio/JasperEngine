@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <algorithm>
+#include <atomic>
 #include <cerrno>
 #include <chrono>
 #include <cstdlib>
@@ -26,6 +28,7 @@
     #include <sys/sysctl.h>
 #endif
 #ifndef _WIN32
+    #include <fcntl.h>
     #include <unistd.h>
 #endif
 
@@ -193,11 +196,73 @@ public:
         return out;
     }
 
+    // Creates `path` and writes `size` bytes to it; fails when anything is there already (a
+    // file, a symbolic link: O_EXCL / CREATE_NEW, so a link planted at the name is never
+    // followed). errno tells why (EEXIST when something was there).
+    static bool writeNewFile(const std::filesystem::path& path, const char* data, size_t size) {
+#ifdef _WIN32
+        // FILE_FLAG_OPEN_REPARSE_POINT: a reparse point already at the name (a symlink, a
+        // junction) is the entry itself, so CREATE_NEW fails with ERROR_FILE_EXISTS instead of
+        // following it
+        const HANDLE file = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+                                        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+        if (file == INVALID_HANDLE_VALUE) {
+            const DWORD code = GetLastError();
+            errno = (code == ERROR_FILE_EXISTS || code == ERROR_ALREADY_EXISTS) ? EEXIST
+                  : code == ERROR_ACCESS_DENIED ? EACCES
+                  : (code == ERROR_FILE_NOT_FOUND || code == ERROR_PATH_NOT_FOUND) ? ENOENT
+                  : code == ERROR_SHARING_VIOLATION ? EBUSY
+                  : code == ERROR_INVALID_NAME ? EINVAL : EIO;
+            return false;
+        }
+        size_t done = 0;
+        bool ok = true;
+        while (ok && done < size) {
+            const DWORD chunk = static_cast<DWORD>(std::min<size_t>(size - done, 1u << 30));
+            DWORD wrote = 0;
+            ok = WriteFile(file, data + done, chunk, &wrote, nullptr) && wrote > 0;
+            if (!ok) {
+                const DWORD code = GetLastError();
+                errno = (code == ERROR_DISK_FULL || code == ERROR_HANDLE_DISK_FULL) ? ENOSPC : EIO;
+            }
+            done += wrote;
+        }
+        if (!CloseHandle(file) && ok) {
+            errno = EIO;
+            ok = false;
+        }
+        return ok;
+#else
+        const int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0666);
+        if (fd < 0) {
+            return false;
+        }
+        size_t done = 0;
+        while (done < size) {
+            const ssize_t wrote = ::write(fd, data + done, size - done);
+            if (wrote < 0) {
+                if (errno == EINTR) {
+                    continue;
+                }
+                const int code = errno;
+                ::close(fd);
+                errno = code;
+                return false;
+            }
+            done += static_cast<size_t>(wrote);
+        }
+        return ::close(fd) == 0;
+#endif
+    }
+
     // Writes a temporary file next to the target and renames it over the target, so a save
     // that fails (a full disk, a crash halfway) keeps the old file whole. rename() replaces an
     // existing target on Windows too (MoveFileExW with MOVEFILE_REPLACE_EXISTING). As with a
     // plain write, a symlink is written through and a file the user may not write (read-only,
-    // a locked file) is refused; an existing file keeps its permissions.
+    // a locked file) is refused; an existing file keeps its permissions. The temporary file has
+    // a name of its own (".<name>.<pid>-<n>.tmp"), anything already there is removed first (a
+    // link: the link, not its target), and it is created exclusively (writeNewFile): a link
+    // planted at that name can't redirect the write.
     static bool writeFileReplacing(const std::filesystem::path& filePath, const std::string& content,
                                    LineEndings lineEndings = LineEndings::AsGiven) {
         namespace fs = std::filesystem;
@@ -223,22 +288,29 @@ public:
 
         const bool crlf = lineEndings == LineEndings::KeepExisting && existingFile && fileUsesCrlf(target);
 
-        // Same directory, so the rename never crosses a file system
-        fs::path tempName(".");
-        tempName += target.filename();
-        tempName += ".tmp";
-        const fs::path tempPath = target.parent_path() / tempName;
+        const std::string converted = crlf ? toCrlf(content) : std::string();
+        const std::string& data = crlf ? converted : content;
 
+        // Same directory, so the rename never crosses a file system
+        static std::atomic<unsigned long long> tempCounter{0};
+#ifdef _WIN32
+        const unsigned long long processId = static_cast<unsigned long long>(GetCurrentProcessId());
+#else
+        const unsigned long long processId = static_cast<unsigned long long>(::getpid());
+#endif
+        fs::path tempPath;
         bool written = false;
-        {
-            std::ofstream ofs(tempPath, std::ios::out | std::ios::binary | std::ios::trunc);
-            if (ofs) {
-                const std::string converted = crlf ? toCrlf(content) : std::string();
-                const std::string& data = crlf ? converted : content;
-                ofs.write(data.data(), static_cast<std::streamsize>(data.size()));
-                ofs.flush();
-                ofs.close();
-                written = !ofs.fail();
+        for (int attempt = 0; attempt < 16 && !written; attempt++) {
+            fs::path tempName(".");
+            tempName += target.filename();
+            tempName += "." + std::to_string(processId) + "-" + std::to_string(tempCounter++) + ".tmp";
+            tempPath = target.parent_path() / tempName;
+            // whatever is there (a stale temporary file, a planted link) goes first
+            fs::remove(tempPath, ec);
+            errno = 0;
+            written = writeNewFile(tempPath, data.data(), data.size());
+            if (!written && errno != EEXIST) {
+                break;
             }
         }
 

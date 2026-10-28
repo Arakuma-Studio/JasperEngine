@@ -33,6 +33,8 @@
 #include <string>
 #include <vector>
 
+#include "SymlinkSupport.h"
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 namespace sn = jasperengine::editor::spritenormals;
@@ -312,6 +314,38 @@ TEST(SpriteNormalsWatcher, AutoRegenerateRewritesWithoutUndo) {
     // the next scan sees it fresh
     Access::scan(watcher);
     EXPECT_FALSE(watcher.isStale(map));
+    project()->getSpriteNormalsSettings().autoRegenerate = false;
+}
+
+TEST(SpriteNormalsWatcher, RegenerationNeverWritesThroughALinkOutOfTheAssets) {
+    SKIP_WITHOUT_SYMLINKS();
+    const std::string dir = fresh("linked");
+    writePng(dir + "/hero.png", disk(32, 80));
+    generate(dir + "/hero.png");
+    project()->getSpriteNormalsSettings().autoRegenerate = true;
+    SpriteNormalsWatcher watcher(project());
+    Access::scan(watcher);
+    const fs::path map = root() / dir / "hero_normal.png";
+    const fs::path outside = root().parent_path() / "outside-watcher";
+    fs::remove_all(outside);
+    fs::create_directories(outside);
+    writePng(dir + "/hero.png", disk(32, 160));
+    age(dir + "/hero.png", 10);
+    Access::scan(watcher);
+    ASSERT_NE(Access::regeneration(watcher), nullptr) << "regenerating after the scan";
+    const std::shared_ptr<sn::SpriteNormalsRun> run = Access::regeneration(watcher);
+    for (int i = 0; i < 4000 && !run->finished(); i++) usleep(1000);
+    // while it ran, the map became a (dangling) link out of the project: checked again right
+    // before the write, nothing is written through it
+    fs::remove(map);
+    fs::create_symlink(outside / "hero_normal.png", map);
+    watcher.tick();
+    EXPECT_FALSE(fs::exists(outside / "hero_normal.png")) << "nothing written outside";
+    EXPECT_TRUE(fs::is_symlink(map));
+    EXPECT_NE(Access::lastLog(watcher).find("Could not regenerate hero_normal.png"), std::string::npos) << Access::lastLog(watcher);
+    EXPECT_NE(Access::lastLog(watcher).find("symbolic link"), std::string::npos) << Access::lastLog(watcher);
+    fs::remove(map);
+    fs::remove_all(outside);
     project()->getSpriteNormalsSettings().autoRegenerate = false;
 }
 

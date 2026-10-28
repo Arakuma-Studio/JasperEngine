@@ -607,14 +607,26 @@ namespace jasperengine::editor::spritenormals {
             return !rel.empty() && *rel.begin() != ".." && !rel.is_absolute();
         }
 
+        // A path argument made absolute (against the current directory): as named when it lies in
+        // the --project (lexically: a symbolic link in it, its assets directory one too, keeps its
+        // project path; the session's checks resolve links themselves), else canonical
+        fs::path argPath(const Options& o, const fs::path& path) {
+            if (!o.project.empty() && !path.empty()) {
+                fs::path lexical = (path.is_absolute() ? path : CommandLine::invocationDirectory() / path).lexically_normal();
+                if (!lexical.has_filename() && lexical.has_relative_path()) lexical = lexical.parent_path();
+                if (below(lexical, o.project)) return lexical;
+            }
+            return CommandLine::absoluteArgPath(path);
+        }
+
         // An input argument: absolute, relative to the current directory, else (with a project)
         // to the project
         fs::path inputPath(const Options& o, const fs::path& given) {
-            if (given.is_absolute()) return CommandLine::absoluteArgPath(given);
-            const fs::path fromCwd = CommandLine::absoluteArgPath(given);
+            if (given.is_absolute()) return argPath(o, given);
+            const fs::path fromCwd = argPath(o, given);
             std::error_code ec;
             if (fs::exists(fromCwd, ec) || o.project.empty()) return fromCwd;
-            const fs::path fromProject = CommandLine::absoluteArgPath(o.project / given);
+            const fs::path fromProject = argPath(o, o.project / given);
             return fs::exists(fromProject, ec) ? fromProject : fromCwd;
         }
 
@@ -622,8 +634,8 @@ namespace jasperengine::editor::spritenormals {
         // project, or without one), else to the project
         fs::path outputPath(const Options& o, const std::string& given) {
             const fs::path path = fs::u8path(given);
-            if (path.is_absolute() || o.project.empty() || below(CommandLine::invocationDirectory(), o.project)) return CommandLine::absoluteArgPath(path);
-            return CommandLine::absoluteArgPath(o.project / path);
+            if (path.is_absolute() || o.project.empty() || below(CommandLine::invocationDirectory(), o.project)) return argPath(o, path);
+            return argPath(o, o.project / path);
         }
 
         // As the user would type it back: project-relative with --project, else relative to the
@@ -647,10 +659,10 @@ namespace jasperengine::editor::spritenormals {
             return o.project.empty() || p.is_absolute() ? p.lexically_normal() : (o.project / p).lexically_normal();
         }
 
+        // links resolved, a dangling one too (resolvedPath); a loop: the path as named
         fs::path canonicalPath(const fs::path& path) {
-            std::error_code ec;
-            const fs::path c = fs::weakly_canonical(path, ec);
-            return ec ? path.lexically_normal() : c;
+            const fs::path c = resolvedPath(path);
+            return c.empty() ? path.lexically_normal() : c;
         }
 
         int exitFor(const std::string& kind) {
@@ -1069,7 +1081,8 @@ namespace jasperengine::editor::spritenormals {
             << "                              texture is the source and its frames the cells. Needs --project.\n"
             << "      --scene <scene>         The scene of --sprite (name or .scene path; default: the project's start scene).\n"
             << "  -p, --project <path>        Project directory or project.yaml: recipe paths are relative to it, and\n"
-            << "                              outputs must be inside its assets directory. Optional with --source.\n"
+            << "                              outputs must be inside its assets directory (also once symbolic links\n"
+            << "                              are resolved). Optional with --source.\n"
             << "Settings (defaults: the preset's):\n"
             << "      --preset <name>         soft, default (default), crisp, detailed, chunky.\n"
             << "      --strength <x>          0..8.          --detail <x>      0..8.\n"

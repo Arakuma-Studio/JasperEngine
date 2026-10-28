@@ -841,22 +841,9 @@ bool SpriteNormalsWindow::openForEntity(uint32_t sceneId, Entity entity, unsigne
 }
 
 bool SpriteNormalsWindow::writeAndNotify(Project* project, const std::vector<sn::OutputFile>& files, std::string& error) {
-    if (!sn::writeOutputsUndoable(files, error)) return false;
-    // the Project window: fresh thumbnails, the new files listed; the watcher re-reads them
-    if (editorUi()) {
-        App& app = Backend::getApp();
-        if (ProjectWindow* projectWindow = app.getProjectWindow()) {
-            for (const sn::OutputFile& f : files) {
-                if (lower(f.absolute.extension().u8string()) == ".png") projectWindow->requestThumbnailGeneration(f.absolute, true);
-            }
-            projectWindow->refreshCurrentDirectory();
-        }
-    }
-    (void)project;
-    if (SpriteNormalsWatcher* watcher = SpriteNormalsWatcher::active()) {
-        for (const sn::OutputFile& f : files) watcher->invalidate(f.absolute);
-    }
-    return true;
+    // the Project window (fresh thumbnails, the new files listed) and the watcher notice them
+    // through the write's refresh (ProjectFileWrites::refresh)
+    return sn::writeOutputsUndoable(project, files, error);
 }
 
 bool SpriteNormalsWindow::regenerateFromRecipe(Project* project, const fs::path& generatedPng, std::vector<std::string>& written, std::string& error) {

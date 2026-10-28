@@ -3,17 +3,13 @@
 
 #include "SpriteNormalsWatcher.h"
 
-#include "Backend.h"
 #include "App.h"
 #include "Out.h"
 #include "Project.h"
-#include "mcp/McpContext.h"
-#include "mcp/McpServer.h"
-#include "mcp/tools/W4Shared.h"
 #include "texsynth/SynthImage.h"
 #include "texsynth/SynthesisSession.h"
 #include "util/ProjectChecks.h"
-#include "window/ProjectWindow.h"
+#include "util/ProjectFileWrites.h"
 
 #include "imgui.h"
 
@@ -329,8 +325,17 @@ void SpriteNormalsWatcher::tickRegeneration() {
         }
         std::vector<sn::OutputFile> files;
         std::string error, failed;
-        // the plain all-or-nothing writer: not an undo step, like an FBX reimport
-        if (!sn::encodeOutputs(prepared, result, files, error) || !sn::writeOutputsDirect(files, failed, error)) {
+        sn::Problem escape;
+        // the plain all-or-nothing writer: not an undo step, like an FBX reimport; the files checked
+        // again right before (a symbolic link made since the check must not lead a write out of the
+        // assets directory)
+        bool ok = sn::encodeOutputs(prepared, result, files, error);
+        if (ok && !sn::outputsContained(project, files, escape)) {
+            error = escape.message;
+            ok = false;
+        }
+        if (ok) ok = sn::writeOutputsDirect(files, failed, error);
+        if (!ok) {
             lastLog = "Could not regenerate " + name + ": " + error;
             Out::warning("%s", lastLog.c_str());
             return;
@@ -340,15 +345,9 @@ void SpriteNormalsWatcher::tickRegeneration() {
             changed.push_back(f.absolute);
             invalidate(f.absolute);
         }
-        // the editor notices (textures reload, the Project window's thumbnails and listing)
-        mcp::McpServer& server = mcp::McpServer::get();
-        if (server.isStarted() && server.context().project() == project) mcp::w4::syncFiles(server.context(), changed, false);
-        if (ImGui::GetCurrentContext() && ImGui::GetIO().BackendPlatformName) {
-            if (ProjectWindow* projectWindow = Backend::getApp().getProjectWindow()) {
-                for (const fs::path& path : changed) projectWindow->requestThumbnailGeneration(path, true);
-                projectWindow->refreshCurrentDirectory();
-            }
-        }
+        // the editor notices (textures reload, the asset database, the Project window's thumbnails
+        // and listing; with the MCP server running, its file sync)
+        ProjectFileWrites::filesWritten(project, changed);
         lastLog = "Regenerated " + sn::projectRelative(root, output) + " (" + fileName(prepared.sourcePath) + " changed)";
         Out::info("Regenerated %s (%s changed)", sn::projectRelative(root, output).c_str(), fileName(prepared.sourcePath).c_str());
         return;

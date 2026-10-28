@@ -16,6 +16,9 @@ for --sprite:
 - --threads 1 and 0 give identical pixels;
 - the recipe's source.path: relative to the output's directory without --project, project-relative with it; an output
   outside the assets directory exits 2;
+- with --project, symbolic links: an output (-o, --output-dir, --atlas, --frames-json) through a folder of the assets
+  that links outside the project, or a dangling link, exits 2 (output_invalid, nothing written), -o the source through
+  a link exits 2; a project reached through a link and an assets directory that is a link work;
 - --sprite: frames from the Sprite (from: "sprite");
 - --cells-json with a written map's recipe frames.cells reproduces its pixels; with --frame-size it exits 2;
 - paint (Phase 5 spec 4.2): --paint-json from a file, inline and stdin, --paint-mode keep / replace / clear, the JSON
@@ -250,6 +253,61 @@ async def test_recipe_paths_and_project():
     r = run(project, "--project", str(project), "--source", "assets/art/ball.png", "-o", "outside.png")
     check(r.returncode == 2 and "output_invalid" in r.stderr, f"outside the assets directory: {r.returncode} {r.stderr}")
     check(not (project / "outside.png").exists(), "not written")
+
+
+async def test_project_outputs_and_symbolic_links():
+    # with --project the outputs stay inside its assets directory once symbolic links are resolved: a
+    # folder of the assets that is a link to outside the project is refused (exit 2, output_invalid,
+    # nothing written); an assets directory that is itself a link, and a project reached through a
+    # link, keep working
+    if not harness.symlinks_permitted():
+        harness.skip("this process may not create symbolic links")
+    work = scratch()
+    project = work.parent / "linkproj"
+    (project / "assets" / "art").mkdir(parents=True)
+    (project / "project.yaml").write_text("name: Proj\nassetsDir: assets\n")
+    shutil.copy(work / "art" / "ball.png", project / "assets" / "art" / "ball.png")
+    shutil.copy(work / "art" / "spin.gif", project / "assets" / "art" / "spin.gif")
+    outside = work.parent / "outside"
+    outside.mkdir()
+    os.symlink(outside, project / "assets" / "out")
+    for args in (["--source", "assets/art/ball.png", "-o", "assets/out/ball_n.png"],
+                 ["--source", "assets/art/ball.png", "--output-dir", "assets/out"],
+                 ["--source", "assets/art/spin.gif", "--atlas", "assets/out/spin_sheet.png"],
+                 ["--source", "assets/art/spin.gif", "--output-dir", "assets/out", "--frames-json"]):
+        r = run(project, "--project", str(project), *args)
+        check(r.returncode == 2 and "output_invalid" in r.stderr and "symbolic link" in r.stderr, f"{args}: exit 2 through the link: {r.returncode} {r.stderr[-600:]}")
+    # dangling links (to a file and a folder outside that don't exist yet)
+    os.symlink(outside / "dangling.png", project / "assets" / "art" / "dl.png")
+    os.symlink(outside / "gone", project / "assets" / "dl_dir")
+    for args in (["--source", "assets/art/ball.png", "-o", "assets/art/dl.png", "--overwrite"],
+                 ["--source", "assets/art/ball.png", "--output-dir", "assets/dl_dir"]):
+        r = run(project, "--project", str(project), *args)
+        check(r.returncode == 2 and "output_invalid" in r.stderr and "symbolic link" in r.stderr, f"{args}: exit 2 through a dangling link: {r.returncode} {r.stderr[-600:]}")
+    check(not any(outside.iterdir()), f"nothing written outside: {list(outside.iterdir())}")
+    # an output that is the source through a link: refused even with --overwrite
+    os.symlink("ball.png", project / "assets" / "art" / "alias.png")
+    src = (project / "assets" / "art" / "ball.png").read_bytes()
+    r = run(project, "--project", str(project), "--source", "assets/art/ball.png", "-o", "assets/art/alias.png", "--overwrite")
+    check(r.returncode == 2 and "output_invalid" in r.stderr, f"-o the source through a link: {r.returncode} {r.stderr[-600:]}")
+    check((project / "assets" / "art" / "ball.png").read_bytes() == src, "the source is unchanged")
+    # a project reached through a link
+    via = work.parent / "via"
+    os.symlink(project, via)
+    code, out, err = run_json(via, "--project", str(via), "--source", "assets/art/ball.png")
+    check(code == 0, f"through a linked project: {err} {json.dumps(out)}")
+    check((project / "assets" / "art" / "ball_normal.png").is_file(), "written in the project")
+    # an assets directory that is a link (to a folder outside the project)
+    linked = work.parent / "linkedassets"
+    real = work.parent / "realassets"
+    (real / "art").mkdir(parents=True)
+    linked.mkdir()
+    (linked / "project.yaml").write_text("name: Linked\nassetsDir: assets\n")
+    os.symlink(real, linked / "assets")
+    shutil.copy(work / "art" / "ball.png", real / "art" / "ball.png")
+    code, out, err = run_json(linked, "--project", str(linked), "--source", "assets/art/ball.png")
+    check(code == 0, f"a linked assets directory: {err} {json.dumps(out)}")
+    check((real / "art" / "ball_normal.png").is_file(), "written into the linked assets directory")
 
 
 # ---------------------------------------------------------------------------- 12. --cells-json

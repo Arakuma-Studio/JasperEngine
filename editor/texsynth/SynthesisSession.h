@@ -31,6 +31,10 @@
 #include <string>
 #include <vector>
 
+namespace jasperengine::editor {
+    class Project;
+}
+
 namespace jasperengine::editor::texsynth {
 
     // Paths are project-relative with '/' ("assets/rock_albedo.png")
@@ -140,10 +144,11 @@ namespace jasperengine::editor::texsynth {
     // the inpaint mask file.
     bool encodeOutputs(const std::filesystem::path& projectDir, const SynthesisSpec& spec, Request& request, const Result& result,
                        std::vector<OutputFile>& files, std::string& error);
-    // Writes them as one step of the project command history (undo deletes or restores the whole
-    // set), then lets the editor notice them (textures reloaded, thumbnails, Project window).
-    // Main thread.
-    bool writeOutputsUndoable(const std::vector<OutputFile>& files, std::string& error);
+    // Writes them as one step of `project`'s command history (undo deletes or restores the whole
+    // set; ProjectFileWrites::writeUndoable, no MCP server needed), then lets the editor notice them
+    // (textures reloaded, the asset database, thumbnails, Project window; with the MCP server
+    // running, its file sync). Main thread.
+    bool writeOutputsUndoable(Project* project, const std::vector<OutputFile>& files, std::string& error);
 
     // ---- feedback
 

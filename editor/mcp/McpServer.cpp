@@ -8,11 +8,14 @@
 #include "McpTransportHttp.h"
 #include "McpTransportStdio.h"
 #include "tools/McpTools.h"
+#include "tools/W4Shared.h"
 
 #include "App.h"
 #include "AppSettings.h"
 #include "EditorVersion.h"
 #include "Out.h"
+#include "Project.h"
+#include "util/ProjectFileWrites.h"
 
 #include <algorithm>
 #include <chrono>
@@ -124,6 +127,15 @@ void McpServer::start(App& app) {
     ctx = std::make_unique<McpContext>(app, *this);
     McpAutoSync::get().serverStarted();
     installPoseSyncHook(*ctx);
+    // the editor's own file writes (its windows' Save, the sprite normals watcher) go through the
+    // file sync while the server runs: their files are current for the automatic pick-up, not
+    // external changes
+    ProjectFileWrites::setSyncHook([](Project* project, const std::vector<std::filesystem::path>& changed) {
+        McpServer& server = McpServer::get();
+        if (!server.isStarted() || server.context().project() != project) return false;
+        w4::syncFiles(server.context(), changed, false);
+        return true;
+    });
 
     registerAllTools();
 
