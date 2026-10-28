@@ -11,6 +11,7 @@
 #include "jobs/JobSystem.h"
 
 #include <algorithm>
+#include <functional>
 #include <cmath>
 #include <limits>
 
@@ -158,6 +159,11 @@ GridPath GridSolver::solve(const NavGridMap& map, GridCell start, GridCell goal,
         // the area mask splits the component further than the index knows: the full search
     }
 
+    // a uniform-cost square grid (8 neighbours, no corner cutting, no reservations or heights):
+    // jump point search finds a path of the same cost expanding only its jump points
+    if (goalOpen && jpsApplies(map, query, areaCosts))
+        return solveJps(map, start, goal, query, areaCosts);
+
     prepare(map.getCellCount());
 
     g[(size_t)startIndex] = 0.0f;
@@ -260,6 +266,178 @@ GridPath GridSolver::solve(const NavGridMap& map, GridCell start, GridCell goal,
     std::reverse(path.cells.begin(), path.cells.end());
     path.cost = g[(size_t)end];
     path.status = found ? PathStatus::Complete : PathStatus::Partial;
+    smooth(map, path, query, areaCosts);
+    return path;
+}
+
+bool GridSolver::jpsApplies(const NavGridMap& map, const GridQuery& query, const float* areaCosts) const {
+    if (map.getLayout() != GridLayout::Square || map.getNeighbourMode() != 8 || query.cornerCutting || map.hasHeights() ||
+        query.reservations)
+        return false;
+    const uint32_t passMask = (uint32_t)query.areaMask & ~(1u << AREA_NOT_WALKABLE);
+    float cost = -1.0f;
+    for (int a = 0; a < AREA_COUNT; a++) {
+        if (!((passMask >> a) & 1u))
+            continue;
+        if (cost < 0.0f)
+            cost = areaCosts[a];
+        else if (areaCosts[a] != cost)
+            return false;
+    }
+    return cost >= 0.0f;
+}
+
+// Jump point search without corner cutting (a diagonal needs both orthogonal cells open), the
+// pruning rules of PathFinding.js's JPFMoveDiagonallyIfNoObstacles: straight runs and diagonals
+// are scanned without the open list, which only holds jump points. Every passable area costs
+// the same, so a path's cost is its octile length times that cost, as the plain A* gives it.
+GridPath GridSolver::solveJps(const NavGridMap& map, GridCell start, GridCell goal, const GridQuery& query, const float* areaCosts) {
+    GridPath path;
+    const uint8_t* areas = map.areaData();
+    const uint32_t passMask = (uint32_t)query.areaMask & ~(1u << AREA_NOT_WALKABLE);
+    const int width = map.getWidth(), height = map.getHeight();
+    const float unit = areaCosts[areas[map.index(start)]];
+    auto open = [&](int x, int y) {
+        return x >= 0 && y >= 0 && x < width && y < height && ((passMask >> areas[y * width + x]) & 1u) != 0;
+    };
+    const int goalIndex = map.index(goal);
+    // the next jump point from (x, y) moving (dx, dy), -1 when none
+    std::function<int(int, int, int, int)> jump;
+    jump = [&](int x, int y, int dx, int dy) -> int {
+        while (true) {
+            if (!open(x, y))
+                return -1;
+            const int index = y * width + x;
+            if (index == goalIndex)
+                return index;
+            if (dx != 0 && dy != 0) {
+                if (jump(x + dx, y, dx, 0) >= 0 || jump(x, y + dy, 0, dy) >= 0)
+                    return index;
+                if (!(open(x + dx, y) && open(x, y + dy)))
+                    return -1;
+            } else if (dx != 0) {
+                if ((open(x, y - 1) && !open(x - dx, y - 1)) || (open(x, y + 1) && !open(x - dx, y + 1)))
+                    return index;
+            } else {
+                if ((open(x - 1, y) && !open(x - 1, y - dy)) || (open(x + 1, y) && !open(x + 1, y - dy)))
+                    return index;
+            }
+            x += dx;
+            y += dy;
+        }
+    };
+    auto octile = [](int ax, int ay, int bx, int by) {
+        const int dx = std::abs(ax - bx), dy = std::abs(ay - by);
+        return (float)(dx + dy) + (SQRT2_STEP - 2.0f) * (float)std::min(dx, dy);
+    };
+
+    prepare(map.getCellCount());
+    const int startIndex = map.index(start);
+    g[(size_t)startIndex] = 0.0f;
+    parent[(size_t)startIndex] = -1;
+    generation[(size_t)startIndex] = current;
+    state[(size_t)startIndex] = STATE_OPEN;
+    const float startH = octile(start.x, start.y, goal.x, goal.y) * unit;
+    heap.push_back(HeapNode{startH, startH, 0.0f, startIndex});
+    bool found = false;
+    int directions[8][2];
+    while (!heap.empty()) {
+        std::pop_heap(heap.begin(), heap.end(), HeapGreater());
+        const HeapNode node = heap.back();
+        heap.pop_back();
+        if (state[(size_t)node.cell] == STATE_CLOSED || node.g != g[(size_t)node.cell])
+            continue;
+        state[(size_t)node.cell] = STATE_CLOSED;
+        path.expanded++;
+        if (node.cell == goalIndex) {
+            found = true;
+            break;
+        }
+        const int x = node.cell % width, y = node.cell / width;
+        // the pruned directions (all of them at the start)
+        int count = 0;
+        const int from = parent[(size_t)node.cell];
+        if (from < 0) {
+            for (int dy = -1; dy <= 1; dy++)
+                for (int dx = -1; dx <= 1; dx++)
+                    if ((dx || dy) && open(x + dx, y + dy) && (!(dx && dy) || (open(x + dx, y) && open(x, y + dy)))) {
+                        directions[count][0] = dx;
+                        directions[count][1] = dy;
+                        count++;
+                    }
+        } else {
+            const int px = from % width, py = from / width;
+            const int dx = (x > px) - (x < px), dy = (y > py) - (y < py);
+            auto add = [&](int ddx, int ddy) {
+                directions[count][0] = ddx;
+                directions[count][1] = ddy;
+                count++;
+            };
+            if (dx && dy) {
+                if (open(x, y + dy)) add(0, dy);
+                if (open(x + dx, y)) add(dx, 0);
+                if (open(x, y + dy) && open(x + dx, y)) add(dx, dy);
+            } else if (dx) {
+                const bool next = open(x + dx, y), up = open(x, y + 1), down = open(x, y - 1);
+                if (next) {
+                    add(dx, 0);
+                    if (up) add(dx, 1);
+                    if (down) add(dx, -1);
+                }
+                if (up) add(0, 1);
+                if (down) add(0, -1);
+            } else {
+                const bool next = open(x, y + dy), right = open(x + 1, y), left = open(x - 1, y);
+                if (next) {
+                    add(0, dy);
+                    if (right) add(1, dy);
+                    if (left) add(-1, dy);
+                }
+                if (right) add(1, 0);
+                if (left) add(-1, 0);
+            }
+        }
+        for (int d = 0; d < count; d++) {
+            const int dx = directions[d][0], dy = directions[d][1];
+            // a diagonal entry needs its two orthogonal cells (checked above for the pruned set)
+            const int to = jump(x + dx, y + dy, dx, dy);
+            if (to < 0 || (state[(size_t)to] == STATE_CLOSED && generation[(size_t)to] == current))
+                continue;
+            const int tx = to % width, ty = to / width;
+            const float candidate = node.g + octile(x, y, tx, ty) * unit;
+            if (generation[(size_t)to] == current && candidate >= g[(size_t)to])
+                continue;
+            generation[(size_t)to] = current;
+            g[(size_t)to] = candidate;
+            parent[(size_t)to] = node.cell;
+            state[(size_t)to] = STATE_OPEN;
+            const float h = octile(tx, ty, goal.x, goal.y) * unit;
+            heap.push_back(HeapNode{candidate + h, h, candidate, to});
+            std::push_heap(heap.begin(), heap.end(), HeapGreater());
+        }
+    }
+    if (!found)
+        return GridPath{PathStatus::Invalid, {}, {}, 0.0f, path.expanded};
+    // the jump points, then every cell between them (straight or diagonal runs)
+    std::vector<int> points;
+    for (int cell = goalIndex; cell >= 0; cell = parent[(size_t)cell])
+        points.push_back(cell);
+    std::reverse(points.begin(), points.end());
+    path.cells.push_back(start);
+    for (size_t i = 1; i < points.size(); i++) {
+        int x = points[i - 1] % width, y = points[i - 1] / width;
+        const int tx = points[i] % width, ty = points[i] / width;
+        const int dx = (tx > x) - (tx < x), dy = (ty > y) - (ty < y);
+        while (x != tx || y != ty) {
+            // a jump is purely straight or purely diagonal
+            const int sx = (x != tx) ? dx : 0, sy = (y != ty) ? dy : 0;
+            x += sx;
+            y += sy;
+            path.cells.push_back(GridCell{x, y});
+        }
+    }
+    path.cost = g[(size_t)goalIndex];
+    path.status = PathStatus::Complete;
     smooth(map, path, query, areaCosts);
     return path;
 }

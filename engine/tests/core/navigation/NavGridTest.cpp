@@ -399,3 +399,48 @@ TEST_F(NavGridTest, RuntimeEditsRepath){
     EXPECT_FALSE(crossedWall);
     EXPECT_EQ(handle.worldToCell(position(walker)), (GridCell{18, 5}));
 }
+
+// Uniform costs take jump point search: the same cost as the plain A* (forced here by an empty
+// reservation table), a contiguous path of open cells, never cutting a corner
+TEST_F(NavGridTest, JumpPointSearchMatchesAStar){
+    float uniform[nav::AREA_COUNT];
+    for (float& cost : uniform)
+        cost = 1.0f;
+    for (uint32_t seed : {3u, 17u, 41u}) {
+        NavGridMap map = randomMap(64, 48, nav::GridLayout::Square, 8, seed, 0.25f);
+        nav::GridReservations none;
+        none.reset(map.getCellCount());
+        nav::GridQuery plain;
+        plain.reservations = &none;
+        nav::GridSolver solver;
+        std::mt19937 random(seed + 7);
+        std::uniform_int_distribution<int> px(0, map.getWidth() - 1), py(0, map.getHeight() - 1);
+        int compared = 0;
+        for (int trial = 0; trial < 400 && compared < 60; trial++) {
+            const GridCell a{px(random), py(random)}, b{px(random), py(random)};
+            if (!map.isWalkable(map.index(a)) || !map.isWalkable(map.index(b)) || !map.isReachable(a, b))
+                continue;
+            const nav::GridPath reference = solver.solve(map, a, b, plain, uniform);
+            const nav::GridPath jps = solver.solve(map, a, b, nav::GridQuery(), uniform);
+            ASSERT_EQ(reference.status, nav::PathStatus::Complete);
+            ASSERT_EQ(jps.status, nav::PathStatus::Complete);
+            EXPECT_NEAR(jps.cost, reference.cost, 1e-3f * std::max(1.0f, reference.cost));
+            ASSERT_FALSE(jps.cells.empty());
+            EXPECT_EQ(jps.cells.front(), a);
+            EXPECT_EQ(jps.cells.back(), b);
+            for (size_t i = 1; i < jps.cells.size(); i++) {
+                const GridCell p = jps.cells[i - 1], q = jps.cells[i];
+                ASSERT_LE(std::abs(q.x - p.x), 1);
+                ASSERT_LE(std::abs(q.y - p.y), 1);
+                EXPECT_TRUE(map.isWalkable(map.index(q)));
+                if (q.x != p.x && q.y != p.y) {
+                    EXPECT_TRUE(map.isWalkable(map.index(GridCell{q.x, p.y})));
+                    EXPECT_TRUE(map.isWalkable(map.index(GridCell{p.x, q.y})));
+                }
+            }
+            EXPECT_LE(jps.expanded, reference.expanded);
+            compared++;
+        }
+        EXPECT_GT(compared, 20);
+    }
+}

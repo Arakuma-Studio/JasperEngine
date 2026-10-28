@@ -91,6 +91,8 @@ namespace jasperengine::nav {
 
     private:
         void prepare(int cells);
+        bool jpsApplies(const NavGridMap& map, const GridQuery& query, const float* areaCosts) const;
+        GridPath solveJps(const NavGridMap& map, GridCell start, GridCell goal, const GridQuery& query, const float* areaCosts);
         // the passable cell of start's component closest to goal by the heuristic (-1: none)
         int nearestReachable(const NavGridMap& map, GridCell start, GridCell goal, const GridQuery& query);
         bool passable(const NavGridMap& map, int cell, const GridQuery& query) const;
