@@ -79,14 +79,38 @@ int main(int argc, char** argv){
         data.ensureCache();
         const float length = spline::length(data);
         constexpr int queries = 200000;
+        // the inputs made beforehand: the loops time the queries, not their arguments
+        std::vector<float> distances(queries);
+        std::vector<float> params(queries);
+        for (int q = 0; q < queries; q++){
+            distances[size_t(q)] = length * static_cast<float>(q) / queries;
+            params[size_t(q)] = static_cast<float>(q) / queries;
+        }
         const double evalMs = medianMs(9, [&](){
             float acc = 0.0f;
             for (int q = 0; q < queries; q++){
-                acc += spline::evaluateAtDistance(data, length * static_cast<float>(q) / queries).position.x;
+                acc += spline::evaluateAtDistance(data, distances[size_t(q)]).position.x;
             }
             sink = acc;
         });
         results.add("evaluate_at_distance_ns", evalMs * 1.0e6 / queries, "ns");
+        // its two halves: the distance to (segment, u), and the frame there
+        const double locateMs = medianMs(9, [&](){
+            float acc = 0.0f;
+            for (int q = 0; q < queries; q++){
+                acc += spline::distanceToT(data, distances[size_t(q)]);
+            }
+            sink = acc;
+        });
+        results.add("distance_to_t_ns", locateMs * 1.0e6 / queries, "ns");
+        const double frameMs = medianMs(9, [&](){
+            float acc = 0.0f;
+            for (int q = 0; q < queries; q++){
+                acc += spline::evaluate(data, params[size_t(q)]).position.x;
+            }
+            sink = acc;
+        });
+        results.add("evaluate_t_ns", frameMs * 1.0e6 / queries, "ns");
 
         constexpr int closest = 20000;
         const double closestMs = medianMs(9, [&](){

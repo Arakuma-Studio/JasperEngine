@@ -208,24 +208,42 @@ namespace{
         return frame;
     }
 
-    SplineFrame segmentFrame(const SplineData& s, const SplineCache& c, uint32_t segment, float u){
-        const curve::Segment seg = segmentOf(s, c, segment);
+    SplineFrame segmentFrame(const SplineData& s, const SplineCache& c, uint32_t segment, float u, const curve::Segment& seg){
         const SplineKnot& k0 = s.knot(segment);
         const SplineKnot& k1 = segmentEnd(s, segment);
         SplineFrame frame;
         frame.position = seg.position(u);
-        frame.forward = forwardAt(s, c, segment, u, seg);
-        const Vector3 r = curve::cross(frame.forward, s.upAxis());
-        if (curve::lengthSq(r) >= PARALLEL_SIN_SQ){
-            frame.right = r / std::sqrt(curve::lengthSq(r));
+        // the common case in one pass: the derivative's direction and its cross with up are
+        // normalized side by side (|cross(d, up)| = |d| sin of their angle)
+        const Vector3& upAxis = s.upAxis();
+        const Vector3 d = seg.derivative(u);
+        const float dSq = curve::lengthSq(d);
+        const Vector3 dr = curve::cross(d, upAxis);
+        const float drSq = curve::lengthSq(dr);
+        if (dSq >= MIN_DERIVATIVE_SQ && std::isfinite(dSq) && drSq >= PARALLEL_SIN_SQ * dSq){
+            const float dLength = std::sqrt(dSq);
+            const float drLength = std::sqrt(drSq);
+            const float r = 1.0f / (dLength * drLength);
+            frame.forward = d * (drLength * r);
+            frame.right = dr * (dLength * r);
         }else{
-            frame.right = transportedRight(s, c, segment, u, frame.forward);
+            frame.forward = forwardAt(s, c, segment, u, seg);
+            const Vector3 r = curve::cross(frame.forward, upAxis);
+            if (curve::lengthSq(r) >= PARALLEL_SIN_SQ){
+                frame.right = r / std::sqrt(curve::lengthSq(r));
+            }else{
+                frame.right = transportedRight(s, c, segment, u, frame.forward);
+            }
         }
         frame.up = curve::cross(frame.right, frame.forward);
         frame.radius = curve::lerp(k0.radius, k1.radius, u);
         frame.rollDeg = curve::lerp(k0.rollDeg, k1.rollDeg, u);
         applyRoll(frame);
         return frame;
+    }
+
+    SplineFrame segmentFrame(const SplineData& s, const SplineCache& c, uint32_t segment, float u){
+        return segmentFrame(s, c, segment, u, segmentOf(s, c, segment));
     }
 
     // global t -> (segment, u); t clamps to [0, 1]
@@ -260,67 +278,74 @@ namespace{
 
     // arc distance d (in [0, length]) -> (segment, u): the LUT interval by binary search, then
     // a cubic Hermite of u over it whose end slopes are 1 / speed, which is exact to fourth order
-    void locate(const SplineData& s, const SplineCache& c, float d, uint32_t& segment, float& u){
+    void locate(const SplineData& s, const SplineCache& c, float d, uint32_t& segment, float& u, curve::Segment* segmentOut = nullptr){
         const size_t count = c.arc.size();
         const float* arc = c.arc.data();
+        const uint32_t steps = c.arcSteps;
+        const float invSteps = c.invArcSteps;
         // the first entry >= d (lower_bound): guessed from d's share of the length (the entries
         // are near evenly spaced along most curves), walked a few entries, else a binary search
         // of the side the guess left
-        size_t index = count - 1;
-        const float total = arc[count - 1];
-        if (total > 0.0f){
-            const float share = d / total;
-            size_t guess = share > 0.0f ? static_cast<size_t>(share * float(count)) : 0;
-            guess = guess < count ? guess : count - 1;
-            constexpr int WALK = 4;
-            bool found = false;
-            if (arc[guess] < d){
-                for (int w = 0; w < WALK && guess + 1 < count; w++){
-                    guess++;
-                    if (!(arc[guess] < d)){
-                        found = true;
-                        break;
-                    }
+        size_t index;
+        const float guessed = d * c.arcEntriesPerUnit;
+        size_t guess = guessed > 0.0f ? static_cast<size_t>(guessed) : 0;
+        guess = guess < count ? guess : count - 1;
+        constexpr int WALK = 4;
+        bool found = false;
+        if (arc[guess] < d){
+            for (int w = 0; w < WALK && guess + 1 < count; w++){
+                guess++;
+                if (!(arc[guess] < d)){
+                    found = true;
+                    break;
                 }
-                index = found ? guess : static_cast<size_t>(std::lower_bound(arc + guess, arc + count, d) - arc);
-            }else{
-                for (int w = 0; w < WALK; w++){
-                    if (guess == 0 || arc[guess - 1] < d){
-                        found = true;
-                        break;
-                    }
-                    guess--;
-                }
-                index = found ? guess : static_cast<size_t>(std::lower_bound(arc, arc + guess, d) - arc);
             }
+            index = found ? guess : static_cast<size_t>(std::lower_bound(arc + guess, arc + count, d) - arc);
         }else{
-            index = static_cast<size_t>(std::lower_bound(arc, arc + count, d) - arc);
+            for (int w = 0; w < WALK; w++){
+                if (guess == 0 || arc[guess - 1] < d){
+                    found = true;
+                    break;
+                }
+                guess--;
+            }
+            index = found ? guess : static_cast<size_t>(std::lower_bound(arc, arc + guess, d) - arc);
         }
         if (index >= count){
             index = count - 1;
         }
-        const uint32_t steps = c.arcSteps;
-        segment = static_cast<uint32_t>(index / steps);
-        const uint32_t i = static_cast<uint32_t>(index % steps);
+        // index / steps without an integer division: the float quotient, corrected by one
+        uint32_t seg = static_cast<uint32_t>(float(index) * invSteps);
+        if (size_t(seg) * steps > index){
+            seg--;
+        }else if (size_t(seg + 1) * steps <= index){
+            seg++;
+        }
+        segment = seg;
+        const uint32_t i = static_cast<uint32_t>(index - size_t(seg) * steps);
         const float s0 = index > 0 ? arc[index - 1] : 0.0f;
         const float h = arc[index] - s0;
+        const curve::Segment sg = segmentOf(s, c, segment);
+        if (segmentOut){
+            *segmentOut = sg;
+        }
         if (!(h > 0.0f)){
-            u = float(i) / float(steps);
+            u = float(i) * invSteps;
             return;
         }
+        // the interval's share of d and the end slopes 1 / speed: independent divisions
+        const float v0 = sg.speed(float(i) * invSteps);
+        const float v1 = sg.speed(float(i + 1) * invSteps);
+        const float hs = h * float(steps);
         const float x = clamp01((d - s0) / h);
-        const curve::Segment seg = segmentOf(s, c, segment);
-        const float du = 1.0f / float(steps);
-        const float v0 = seg.speed(float(i) / float(steps));
-        const float v1 = seg.speed(float(i + 1) / float(steps));
-        float m0 = v0 > 0.0f ? h / (du * v0) : MAX_HERMITE_SLOPE;
-        float m1 = v1 > 0.0f ? h / (du * v1) : MAX_HERMITE_SLOPE;
+        float m0 = v0 > 0.0f ? hs / v0 : MAX_HERMITE_SLOPE;
+        float m1 = v1 > 0.0f ? hs / v1 : MAX_HERMITE_SLOPE;
         m0 = m0 < MAX_HERMITE_SLOPE ? (m0 > 0.0f ? m0 : 0.0f) : MAX_HERMITE_SLOPE;
         m1 = m1 < MAX_HERMITE_SLOPE ? (m1 > 0.0f ? m1 : 0.0f) : MAX_HERMITE_SLOPE;
         const float x2 = x * x;
         const float x3 = x2 * x;
         const float hermite = (x3 - 2.0f * x2 + x) * m0 + (3.0f * x2 - 2.0f * x3) + (x3 - x2) * m1;
-        u = clamp01((float(i) + hermite) / float(steps));
+        u = clamp01((float(i) + hermite) * invSteps);
     }
 
     struct Closest{
@@ -538,8 +563,9 @@ SplineFrame spline::evaluateAtDistance(const SplineData& spline, float d){
     }
     uint32_t segment;
     float u;
-    locate(spline, c, sanitizedDistance(spline, c, d), segment, u);
-    return segmentFrame(spline, c, segment, u);
+    curve::Segment seg;
+    locate(spline, c, sanitizedDistance(spline, c, d), segment, u, &seg);
+    return segmentFrame(spline, c, segment, u, seg);
 }
 
 Vector3 spline::evaluatePosition(const SplineData& spline, float t){

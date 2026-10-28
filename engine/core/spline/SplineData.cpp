@@ -318,14 +318,12 @@ uint32_t SplineData::segmentCount() const{
     return static_cast<uint32_t>(effectivelyClosed() ? splineKnots.size() : splineKnots.size() - 1);
 }
 
-const SplineCache& SplineData::ensureCache() const{
+const SplineCache& SplineData::rebuildCacheLocked() const{
     const uint64_t current = dataVersion;
-    if (cacheVersion.load(std::memory_order_acquire) != current){
-        std::lock_guard<std::mutex> lock(cacheMutex);
-        if (cacheVersion.load(std::memory_order_relaxed) != current){
-            rebuildCache(cache);
-            cacheVersion.store(current, std::memory_order_release);
-        }
+    std::lock_guard<std::mutex> lock(cacheMutex);
+    if (cacheVersion.load(std::memory_order_relaxed) != current){
+        rebuildCache(cache);
+        cacheVersion.store(current, std::memory_order_release);
     }
     return cache;
 }
@@ -343,6 +341,8 @@ void SplineData::rebuildCache(SplineCache& c) const{
     c.length = 0.0f;
     c.polygonError = 0.0f;
     c.polygonArea = 0.0f;
+    c.arcEntriesPerUnit = 0.0f;
+    c.invArcSteps = 0.0f;
     if (segments == 0){
         c.arcSteps = 0;
         sizeExactly(c.controls, 0);
@@ -361,6 +361,7 @@ void SplineData::rebuildCache(SplineCache& c) const{
     steps = std::clamp<size_t>(steps, 1, MAX_ARC_STEPS);
     const uint32_t arcSteps = static_cast<uint32_t>(steps);
     c.arcSteps = arcSteps;
+    c.invArcSteps = 1.0f / float(arcSteps);
 
     sizeExactly(c.controls, size_t(segments) * 2);
     sizeExactly(c.bounds, segments);
@@ -412,6 +413,8 @@ void SplineData::rebuildCache(SplineCache& c) const{
             }
         }
     }
+
+    c.arcEntriesPerUnit = c.length > 0.0f ? float(c.arc.size()) / c.length : 0.0f;
 
     if (ring){
         // how far the polygon strays from the curve: the chord-to-curve distance at the middle of

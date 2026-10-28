@@ -11,7 +11,9 @@ if(MSVC)
     # /fp:precise (the default) does not contract
     list(APPEND JASPERENGINE_SPLINE_FLAGS /fp:precise)
 else()
-    list(APPEND JASPERENGINE_SPLINE_FLAGS -ffp-contract=off)
+    # -fno-math-errno: sqrt compiles to the instruction alone (no errno branch); it changes no
+    # result, so the output stays bit-identical
+    list(APPEND JASPERENGINE_SPLINE_FLAGS -ffp-contract=off -fno-math-errno)
 endif()
 if(JASPERENGINE_SPLINE_SRCS)
     set_source_files_properties(${JASPERENGINE_SPLINE_SRCS} PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_SPLINE_FLAGS}")

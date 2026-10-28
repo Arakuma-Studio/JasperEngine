@@ -37,6 +37,10 @@ namespace jasperengine{ namespace spline{
         // and the polygon's signed area in (x, z) (its sign is the loop's orientation)
         float polygonError = 0.0f;
         float polygonArea = 0.0f;
+        // arc entries per world unit (arc.size() / length): a distance's first guess into arc;
+        // and 1 / arcSteps (the queries multiply by it)
+        float arcEntriesPerUnit = 0.0f;
+        float invArcSteps = 0.0f;
         // per segment the two inner Bezier control points (b1, b2), absolute: every type runs as
         // one cubic Bezier per segment from knot i to knot i + 1 (Linear at thirds of the chord,
         // CatmullRom from its centripetal tangents, CubicBezier from the handles)
@@ -143,12 +147,19 @@ namespace jasperengine{ namespace spline{
         uint32_t segmentCount() const;
 
         // the cache of the current version, rebuilt first if stale
-        const SplineCache& ensureCache() const;
+        const SplineCache& ensureCache() const{
+            // the fast path inline (every query starts here): an up-to-date cache
+            if (cacheVersion.load(std::memory_order_acquire) == dataVersion){
+                return cache;
+            }
+            return rebuildCacheLocked();
+        }
         // heap and object bytes of the cache (after ensureCache): <= 4096 + 64 * knots (R22)
         size_t cacheBytes() const;
 
     private:
         void rebuildCache(SplineCache& cache) const;
+        const SplineCache& rebuildCacheLocked() const;
 
         SplineType splineType = SplineType::CatmullRom;
         bool isClosed = false;
