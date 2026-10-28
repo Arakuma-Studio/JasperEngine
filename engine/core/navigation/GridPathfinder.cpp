@@ -99,7 +99,7 @@ GridSolver::~GridSolver() = default;
 
 size_t GridSolver::scratchBytes() const {
     return g.capacity() * sizeof(float) + parent.capacity() * sizeof(int32_t) + generation.capacity() * sizeof(uint16_t) +
-           state.capacity() * sizeof(uint8_t) + heap.capacity() * sizeof(HeapNode);
+           state.capacity() * sizeof(uint8_t) + heap.capacity() * sizeof(HeapNode) + openCells.capacity();
 }
 
 void GridSolver::prepare(int cells) {
@@ -297,9 +297,19 @@ GridPath GridSolver::solveJps(const NavGridMap& map, GridCell start, GridCell go
     const uint32_t passMask = (uint32_t)query.areaMask & ~(1u << AREA_NOT_WALKABLE);
     const int width = map.getWidth(), height = map.getHeight();
     const float unit = areaCosts[areas[map.index(start)]];
-    auto open = [&](int x, int y) {
-        return x >= 0 && y >= 0 && x < width && y < height && ((passMask >> areas[y * width + x]) & 1u) != 0;
-    };
+    const int stride = width + 2;
+    if (openMap != &map || openRevision != map.getRevision() || openMask != passMask || openCells.size() != (size_t)(stride * (height + 2))) {
+        openCells.assign((size_t)(stride * (height + 2)), 0);
+        for (int y = 0; y < height; y++)
+            for (int x = 0; x < width; x++)
+                openCells[(size_t)((y + 1) * stride + x + 1)] = (uint8_t)((passMask >> areas[y * width + x]) & 1u);
+        openMap = &map;
+        openRevision = map.getRevision();
+        openMask = passMask;
+    }
+    const uint8_t* openAt = openCells.data() + stride + 1;
+    // x and y may be one cell outside the grid: the border is closed
+    auto open = [openAt, stride](int x, int y) { return openAt[y * stride + x] != 0; };
     const int goalIndex = map.index(goal);
     // the next jump point from (x, y) moving straight (one of dx, dy zero), -1 when none
     auto jumpStraight = [&](int x, int y, int dx, int dy) -> int {

@@ -113,6 +113,12 @@ namespace jasperengine::nav {
         std::vector<uint8_t> state;
         std::vector<HeapNode> heap;
         uint16_t current = 0;
+        // jump point search: the passable cells with a closed border ((width + 2) x (height + 2)),
+        // kept while the map, its revision and the area mask stay the same
+        std::vector<uint8_t> openCells;
+        const NavGridMap* openMap = nullptr;
+        uint64_t openRevision = 0;
+        uint32_t openMask = 0;
     };
 
     // Solvers leased for a batch; a solver goes back to the pool when the batch is done

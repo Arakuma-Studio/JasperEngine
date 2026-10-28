@@ -581,6 +581,10 @@ What the implementation does differently from the text above, and why.
   bake. The `.navmesh` header still records the area-table hash (R39).
 - **Grid memory.** The reachability index (R17) adds 4 bytes per cell on the map, beside the 11
   bytes of solver scratch R29 budgets (`NavGridTest.MemoryPerCell` checks both).
+- **Jump point search.** Uniform-cost square grids (8 neighbours, no corner cutting, no
+  reservations or heights) are searched with JPS: the same path cost as A*
+  (`NavGridTest.JumpPointSearchMatchesAStar`), at 1 byte per cell more solver scratch (a bordered
+  passability copy, rebuilt when the map or the area mask changes).
 - **Default asset location.** Scenes live at the project root, so the default `.navmesh` is
   `assets/<scene folder>/<SceneName>/NavMesh-<GameObject>.navmesh` (inside the assets folder, where
   the engine reads assets), not next to the scene; `.navgrid` files follow the same rule

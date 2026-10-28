@@ -342,6 +342,33 @@ int main(int argc, char** argv) {
             times.push_back(msSince(t));
         }
         results.add("grid_batch_200_1t_ms", bench::percentile(times, 0.5), "ms");
+        // where the single-thread time goes: without smoothing, and the unreachable goals alone
+        {
+            std::vector<nav::GridRequest> centres = requests, unreachable;
+            for (nav::GridRequest& request : centres)
+                request.query.movement = nav::GridMovement::CellCentres;
+            for (const nav::GridRequest& request : requests)
+                if (!field.isReachable(request.start, request.goal) || !field.isWalkable(field.index(request.goal)))
+                    unreachable.push_back(request);
+            auto timed = [&](const std::vector<nav::GridRequest>& list) {
+                std::vector<double> samples;
+                for (int i = 0; i < 10; i++) {
+                    const auto t = bench::Clock::now();
+                    nav::solveGridBatch(field, list, costs, pool4, paths, 1);
+                    samples.push_back(msSince(t));
+                }
+                return bench::percentile(samples, 0.5);
+            };
+            results.add("grid_batch_200_1t_centres_ms", timed(centres), "ms");
+            nav::GridReservations none;
+            none.reset(field.getCellCount());
+            std::vector<nav::GridRequest> plain = requests;
+            for (nav::GridRequest& request : plain)
+                request.query.reservations = &none;
+            results.add("grid_batch_200_1t_astar_ms", timed(plain), "ms");
+            results.add("grid_batch_unreachable_count", (double)unreachable.size(), "requests");
+            results.add("grid_batch_unreachable_1t_ms", timed(unreachable), "ms");
+        }
         results.add("grid_bytes_per_cell", (double)field.memoryBytes() / (128.0 * 128.0), "B");
     }
 
