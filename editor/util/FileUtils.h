@@ -201,12 +201,18 @@ public:
     // followed). errno tells why (EEXIST when something was there).
     static bool writeNewFile(const std::filesystem::path& path, const char* data, size_t size) {
 #ifdef _WIN32
-        const HANDLE file = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+        // FILE_FLAG_OPEN_REPARSE_POINT: a reparse point already at the name (a symlink, a
+        // junction) is the entry itself, so CREATE_NEW fails with ERROR_FILE_EXISTS instead of
+        // following it
+        const HANDLE file = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+                                        FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
         if (file == INVALID_HANDLE_VALUE) {
             const DWORD code = GetLastError();
             errno = (code == ERROR_FILE_EXISTS || code == ERROR_ALREADY_EXISTS) ? EEXIST
                   : code == ERROR_ACCESS_DENIED ? EACCES
-                  : code == ERROR_PATH_NOT_FOUND ? ENOENT : EIO;
+                  : (code == ERROR_FILE_NOT_FOUND || code == ERROR_PATH_NOT_FOUND) ? ENOENT
+                  : code == ERROR_SHARING_VIOLATION ? EBUSY
+                  : code == ERROR_INVALID_NAME ? EINVAL : EIO;
             return false;
         }
         size_t done = 0;

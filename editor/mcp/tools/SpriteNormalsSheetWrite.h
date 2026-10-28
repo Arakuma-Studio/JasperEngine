@@ -6,7 +6,9 @@
 // commit(), a later failure (or an exception unwinding the finish) puts the path back as it was:
 // its old bytes, or no file and none of the folders made for it. Written with
 // FileUtils::writeFileReplacing (a temporary file of its own beside it, created exclusively, renamed
-// over it; a failed write leaves the old file whole; a dangling link at the path is replaced).
+// over it; a failed write leaves the old file whole). A live link at save_path (one the containment
+// check found inside the project, checked once more right before this write) is written through,
+// as writeFileReplacing does; a dangling link there is replaced by the sheet, never followed.
 #pragma once
 
 #include "util/FileUtils.h"
