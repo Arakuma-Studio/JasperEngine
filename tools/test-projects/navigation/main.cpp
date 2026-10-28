@@ -37,6 +37,7 @@ namespace {
     bool baked = false;
     bool arrived = false;
     bool sent = false;
+    int round = 0;
     bool reported = false;
 
     uint64_t fnv(const std::vector<uint8_t>& bytes) {
@@ -148,13 +149,16 @@ namespace {
     void onUpdate() {
         frame++;
         auto system = scene.getSystem<NavigationSystem>();
-        if (frame == 2) {
+        // a first bake warms the code up (a browser compiles wasm functions on their first
+        // call, which no budget covers); the second one is timed and hashed
+        if (frame == 2 || (round == 1 && !system->isAnyBaking())) {
+            round++;
             system->resetBakeSliceStats();
             NavMeshSurface(&scene, cityFloor).bakeAsync();
             NavMeshSurface(&scene, topDownSurface).bakeAsync();
             return;
         }
-        if (frame > 2 && !baked && !system->isAnyBaking()) {
+        if (round == 2 && !baked && !system->isAnyBaking()) {
             baked = true;
             report();
         }
@@ -167,6 +171,12 @@ namespace {
                 if (!agent.setDestination(Vector3(30.0f, 0.0f, 30.0f)))
                     Log::error("[gate] nav setDestination failed");
             }
+        }
+        if (sent && !arrived && frame % 120 == 0) {
+            NavMeshAgent agent(&scene, walker);
+            const Vector3 p = agent.getEntity() != NULL_ENTITY ? scene.getComponent<Transform>(walker).worldPosition : Vector3();
+            Log::print("[nav] agent at %.2f %.2f %.2f, %s, %.2f m left", p.x, p.y, p.z, nav::pathStatusName(agent.getPathStatus()),
+                       agent.getRemainingDistance());
         }
         if (arrived && !reported) {
             reported = true;
