@@ -626,6 +626,18 @@ class Editor:
         """Seconds since the last tool call ended; 0 while one is in flight."""
         return 0.0 if self.in_flight else time.monotonic() - self.last_activity
 
+    @contextlib.contextmanager
+    def busy(self):
+        """Work with a timeout of its own that drives this editor some other way (a CLI run
+        attached to it, polling a build for minutes) counts as a call in flight: the runner's hang
+        guard (TIMEOUT) does not cut it short."""
+        self.in_flight += 1
+        try:
+            yield
+        finally:
+            self.in_flight -= 1
+            self.last_activity = time.monotonic()
+
     async def call(self, tool: str, _args: dict | None = None, *, expect_error: bool = False,
                    timeout: float | None = None, **args: Any) -> Any:
         """Call a tool and return its value (structuredContent, else JSON-parsed text, else text).
