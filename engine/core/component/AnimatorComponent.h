@@ -95,11 +95,11 @@ namespace jasperengine{
 
     // clipOverrides: plays `override` wherever the controller plays `original` (R15)
     struct JASPERENGINE_API AnimatorClipOverride{
-        std::string original;   // a clip path as the controller references it
-        AssetRef replacement;   // .anim or "<model>#<clip>"
+        std::string original;       // a clip path as the controller references it
+        std::string replacement;    // an asset-relative .anim or "<model>#<clip>"
 
         bool operator==(const AnimatorClipOverride& other) const{
-            return original == other.original && replacement.path == other.replacement.path && replacement.guid == other.replacement.guid;
+            return original == other.original && replacement == other.replacement;
         }
         bool operator!=(const AnimatorClipOverride& other) const{ return !(*this == other); }
     };

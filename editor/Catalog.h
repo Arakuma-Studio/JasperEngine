@@ -75,6 +75,9 @@ namespace jasperengine::editor{
         UpdateFlags_PoseAnimator_Reload = (uint64_t)1 << 42,
         // an Animation Player's clip list changed: the next update reloads and rebinds it
         UpdateFlags_AnimationPlayer_Reload = (uint64_t)1 << 43,
+        // an Animator's controller or a setting it binds with changed: the next update loads and
+        // rebinds it, keeping its states (S21)
+        UpdateFlags_Animator_Reload = (uint64_t)1 << 44,
         // handlers that touch the whole scene, must be masked out when applying all flags
         UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Scene_Mesh_Variant | UpdateFlags_Reflection_Probe_Recapture_All
     };
@@ -150,12 +153,14 @@ namespace jasperengine::editor{
         BuoyancyComponent,
         PoseAnimatorComponent,
         // Unity's legacy Animation component (animation clips spec 3.2)
-        AnimationPlayerComponent
+        AnimationPlayerComponent,
+        // Unity's Animator (docs/specs/S21-animation.md)
+        AnimatorComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::AnimationPlayerComponent;
+    constexpr ComponentType LastComponentType = ComponentType::AnimatorComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
     // (S12's name for it)
     constexpr ComponentType LAST_COMPONENT_TYPE = LastComponentType;

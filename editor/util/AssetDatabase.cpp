@@ -16,6 +16,7 @@
 
 #include "json.hpp"
 #include "animation/AnimationClipIO.h"
+#include "animation/AnimatorAssetIO.h"
 #include "yaml-cpp/yaml.h"
 
 #include <algorithm>
@@ -235,9 +236,50 @@ namespace {
         return out;
     }
 
-    // .anim clips are JSON: their GUID is the top-level "guid" member (AnimationClipIO)
+    // .anim clips and the Animator's .controller / .mask / .montage files are JSON: their GUID is
+    // the top-level "guid" member (AnimationClipIO, AnimatorAssetIO)
     bool isClipFile(const fs::path& path) {
-        return editor::Util::isAnimationClipFile(path.string());
+        return editor::Util::isAnimationClipFile(path.string()) || editor::Util::isAnimatorAssetFile(path.string());
+    }
+
+    // the Animator asset text parses (its writer is what the identity rewrite uses)
+    bool animatorAssetParses(const std::string& text) {
+        const std::string kind = anim::animatorAssetKind(text);
+        if (kind == "controller") return anim::parseController(text).ok;
+        if (kind == "mask") return anim::parseMask(text).ok;
+        if (kind == "montage") return anim::parseMontage(text).ok;
+        return false;
+    }
+
+    // the Animator asset with "formerGuids" set (an unknown key to its reader, written back) and
+    // that GUID: written canonically again; false for a text that is not one
+    template<class Result, class Write>
+    bool rewriteIdentity(Result parsed, Write write, std::string& text, const Guid& guid, const std::vector<Guid>& formerGuids) {
+        if (!parsed.ok) return false;
+        auto& unknown = parsed.data.unknownKeys;
+        unknown.erase(std::remove_if(unknown.begin(), unknown.end(), [](const auto& key) { return key.first == "formerGuids"; }), unknown.end());
+        if (!formerGuids.empty()) {
+            std::vector<Guid> sorted = formerGuids;
+            std::sort(sorted.begin(), sorted.end());
+            sorted.erase(std::unique(sorted.begin(), sorted.end()), sorted.end());
+            Json list = Json::array();
+            for (const Guid& former : sorted) list.push_back(former.str());
+            unknown.emplace_back("formerGuids", list.dump());
+        }
+        parsed.data.guid = guid.str();
+        text = write(parsed.data);
+        return true;
+    }
+
+    bool withAnimatorAssetIdentity(std::string& text, const Guid& guid, const std::vector<Guid>& formerGuids) {
+        if (!animatorAssetParses(text)) return false;
+        if (formerGuids.empty() && text.find("\"formerGuids\"") == std::string::npos) {
+            return anim::replaceClipGuid(text, guid.str());
+        }
+        const std::string kind = anim::animatorAssetKind(text);
+        if (kind == "controller") return rewriteIdentity(anim::parseController(text), &anim::writeController, text, guid, formerGuids);
+        if (kind == "mask") return rewriteIdentity(anim::parseMask(text), &anim::writeMask, text, guid, formerGuids);
+        return rewriteIdentity(anim::parseMontage(text), &anim::writeMontage, text, guid, formerGuids);
     }
 
     // A clip's in-file identity: "guid" and, for an asset that took over others (R8), the
@@ -260,6 +302,9 @@ namespace {
     // "version" (the rest byte-identical) while there are no former GUIDs to write or drop;
     // else the clip written again canonically. False for a text that is not a clip.
     bool withClipIdentity(std::string& text, const Guid& guid, const std::vector<Guid>& formerGuids) {
+        if (!anim::animatorAssetKind(text).empty()) {
+            return withAnimatorAssetIdentity(text, guid, formerGuids);
+        }
         anim::ClipParseResult parsed = anim::parseClip(text);
         if (!parsed.ok()) {
             return false;
@@ -901,7 +946,8 @@ editor::AssetDatabase::Entry editor::AssetDatabase::identify(const std::string& 
         // a clip that does not parse (a Unity YAML .anim, broken JSON) is reported by the clip
         // checks, not here
         std::string text;
-        if (!(isClipFile(relative) && assetio::readFile(projectPath / relative, text) && !anim::parseClip(text).ok())) {
+        if (!(isClipFile(relative) && assetio::readFile(projectPath / relative, text) && !anim::parseClip(text).ok() &&
+              !animatorAssetParses(text))) {
             Out::warning("The GUID of %s is kept in memory only", relative.c_str());
         }
     }

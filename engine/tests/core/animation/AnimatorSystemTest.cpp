@@ -95,9 +95,11 @@ TEST_F(AnimatorSystemTest, MatchesThePlayer){
     player.addClip(path, "walk");
     player.setPlayAutomatically(true);
     animator(controllerFile("c", oneState(path)));
+    // binary-exact steps: both players reach the loop's end at exactly the same time
+    const float dt = 1.0f / 64.0f;
     for (int i = 0; i < 90; i++){
-        scene.getSystem<ActionSystem>()->update(kDt);
-        step(kDt);
+        scene.getSystem<ActionSystem>()->update(dt);
+        step(dt);
         const std::pair<Entity, Entity> pairs[] = {{hips, twinHips}, {spine, twinSpine}, {leg, twinLeg}, {foot, twinFoot}};
         for (const auto& p : pairs){
             const Transform& a = scene.getComponent<Transform>(p.first);
@@ -200,10 +202,13 @@ TEST_F(AnimatorSystemTest, EventsLeaderOnlyAllAndSeek){
 TEST_F(AnimatorSystemTest, EventsOncePerAnimator){
     Model first(&scene);
     ASSERT_TRUE(first.loadModel(fixturePath("hero_tpose.gltf")));
+    scene.getComponent<ModelComponent>(first.getEntity()).needUpdateModel = false;
     Model second(&scene);
     ASSERT_TRUE(second.loadModel(fixturePath("robot_apose.gltf")));
+    scene.getComponent<ModelComponent>(second.getEntity()).needUpdateModel = false;
     Model third(&scene);
     ASSERT_TRUE(third.loadModel(fixturePath("hero_tpose.gltf")));
+    scene.getComponent<ModelComponent>(third.getEntity()).needUpdateModel = false;
     scene.addEntityChild(root, first.getEntity(), false);
     scene.addEntityChild(root, second.getEntity(), false);
     scene.addEntityChild(root, third.getEntity(), false);
@@ -348,6 +353,7 @@ TEST_F(AnimatorSystemTest, ExposedWritesOnlyListedBonesAndAttachments){
 TEST_F(AnimatorSystemTest, SkinMatricesMatchTheRenderSystem){
     Model model(&scene);
     ASSERT_TRUE(model.loadModel(fixturePath("hero_animated.gltf")));
+    scene.getComponent<ModelComponent>(model.getEntity()).needUpdateModel = false;
     const Entity hero = model.getEntity();
     scene.getComponent<Transform>(hero).position = Vector3(2, 0, -1);
     scene.getComponent<Transform>(hero).rotation = aboutY(30);
@@ -380,6 +386,7 @@ TEST_F(AnimatorSystemTest, SkinMatricesMatchTheRenderSystem){
 TEST_F(AnimatorSystemTest, CullUpdateTransformsAdvancesWithoutWriting){
     Model model(&scene);
     ASSERT_TRUE(model.loadModel(fixturePath("hero_animated.gltf")));
+    scene.getComponent<ModelComponent>(model.getEntity()).needUpdateModel = false;
     const Entity hero = model.getEntity();
     const Entity camera = scene.createEntity();
     scene.addComponent<Transform>(camera, {});
@@ -420,7 +427,7 @@ TEST_F(AnimatorSystemTest, ClipOverridesHotReloadAndOwnership){
     ControllerDef def = controller({}, {state("Play", a), state("Other", b)});
     const std::string path = controllerFile("c", def);
     AnimatorComponent& component = animator(path);
-    component.clipOverrides = {{a, AssetRef(b)}};
+    component.clipOverrides = {{a, b}};
     step(0.0);
     step(kDt);
     EXPECT_NEAR(position(hips).x, 2.0f, 1e-6f) << "the override plays";

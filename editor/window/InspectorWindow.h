@@ -50,6 +50,7 @@ namespace jasperengine::editor{
     class ForkShaderCmd;
     class MultiPropertyCmd;
     class AnimationClipDocument;
+    class AnimatorAssetDocument;
     struct InspectorClipState;
     struct InspectorClipStateDeleter{
         void operator()(InspectorClipState* state) const;
@@ -308,6 +309,7 @@ namespace jasperengine::editor{
         void removePlayerClipEntry(ComponentType cpType, SceneProject* sceneProject, Entity entity, size_t index);
         bool usePlayerClipFiles(ComponentType cpType, SceneProject* sceneProject, Entity entity, size_t index, const std::vector<std::string>& files);
         void drawAnimationPlayerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawAnimatorComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawAnimationPlayerClips(ComponentType cpType, SceneProject* sceneProject, Entity entity);
         void drawPlayerClipNameRow(ComponentType cpType, SceneProject* sceneProject, Entity entity, size_t index);
         void drawPlayerDefaultClipRow(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
@@ -317,6 +319,11 @@ namespace jasperengine::editor{
         bool drawInspectedAsset();
         void drawAssetHeader(const char* icon, const std::filesystem::path& asset, const char* kind);
         void drawClipAsset(const std::filesystem::path& asset, const std::string& reference);
+        // the Animator assets (InspectorAnimator.cpp): .controller, .mask, .montage
+        bool drawAnimatorAsset(const std::filesystem::path& asset);
+        void drawControllerAsset(const std::shared_ptr<AnimatorAssetDocument>& document);
+        void drawMaskAsset(const std::shared_ptr<AnimatorAssetDocument>& document);
+        void drawMontageAsset(const std::shared_ptr<AnimatorAssetDocument>& document);
         void drawModelClipsAsset(const std::filesystem::path& asset, const std::string& model);
         void drawClipDocument(AnimationClipDocument& document, const std::string& reference);
         // the Model section: the clip buttons of an entity animation row that stands for a

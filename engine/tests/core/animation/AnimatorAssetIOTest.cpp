@@ -305,15 +305,15 @@ TEST(AnimatorAssetIO, ClipRootMotionExtensionKeyIsKeptSilently){
         EXPECT_EQ(warning.message.find("unknown keys"), std::string::npos) << warning.message;
     }
     std::vector<ClipWarning> warnings;
-    const ClipRootMotion rootMotion = readClipRootMotion(parsed.data.unknownKeys, &warnings);
+    const ClipRootMotion rootMotion = readClipRootMotion(parsed.data->unknownKeys, &warnings);
     EXPECT_TRUE(rootMotion.present);
     EXPECT_EQ(rootMotion.bone, "Hips");
     EXPECT_TRUE(rootMotion.bakeRotation);
     EXPECT_FALSE(rootMotion.bakePositionY);
     EXPECT_TRUE(warnings.empty());
-    const std::string written = writeClip(parsed.data);
+    const std::string written = writeClip(*parsed.data);
     EXPECT_NE(written.find("\"root_motion\""), std::string::npos);
-    EXPECT_EQ(readClipRootMotion(parseClip(written).data.unknownKeys).bone, "Hips");
+    EXPECT_EQ(readClipRootMotion(parseClip(written).data->unknownKeys).bone, "Hips");
     EXPECT_EQ(writeClipRootMotion(rootMotion), "{\"bone\": \"Hips\", \"bake_rotation\": true, \"bake_position_y\": false, \"bake_position_xz\": false}");
 }
 

@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "animation/AnimatorEditorHooks.h"
 #include "InspectorWindow.h"
 #include "reflect/Reflect.h"
 #include "reflect/Enums.h"
@@ -11405,6 +11406,14 @@ void editor::InspectorWindow::show(){
             ImGui::End();
             return;
         }
+    }
+    // a state, transition or layer clicked in the Animator window: drawn instead of the scene
+    // selection until the selection or the inspected asset changes (S21 R23)
+    if (animatorEditorHooks().drawSelection && animatorEditorHooks().drawSelection()) {
+        stopSoundPreview();
+        stopActionPreviewIfActive();
+        ImGui::End();
+        return;
     }
     // the inspected .anim (or model clips) the Project window's last click chose: drawn instead of
     // the scene selection, never touching a scene (R30)

@@ -12,12 +12,15 @@
 
 #include "Engine.h"
 #include "component/RigidbodyComponent.h"
+#include "component/ModelComponent.h"
 #include "object/Model.h"
 #include "pose/HumanBones.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
 
 #include <cmath>
+#include <memory>
+#include <vector>
 
 using namespace jasperengine;
 using namespace jasperengine::anim;
@@ -36,11 +39,17 @@ namespace {
         return std::acos(std::min(1.0f, std::max(-1.0f, d))) * 57.29577951f;
     }
 
-    class Retarget : public ::testing::Test, public AnimatorFixture {
+    class AnimatorRetargeting : public ::testing::Test, public AnimatorFixture {
     protected:
+        // the Model handles own their GameObjects: kept for the test
+        std::vector<std::unique_ptr<Model>> models;
+
         Entity load(const std::string& file, float x){
-            Model model(&scene);
+            models.push_back(std::make_unique<Model>(&scene));
+            Model& model = *models.back();
             EXPECT_TRUE(model.loadModel(fixturePath(file)));
+            // loaded at once (MeshSystem's update would clear the flag the next frame)
+            scene.getComponent<ModelComponent>(model.getEntity()).needUpdateModel = false;
             scene.getComponent<Transform>(model.getEntity()).position = Vector3(x, 0, 0);
             return model.getEntity();
         }
@@ -48,7 +57,7 @@ namespace {
 
 }
 
-TEST_F(Retarget, SameRigIdentity){
+TEST_F(AnimatorRetargeting, SameRigIdentity){
     const Entity direct = load("hero_tpose.gltf", -1);
     const Entity retargeted = load("hero_tpose.gltf", 1);
     const std::string walk = fixturePath("hero_animated.gltf") + "#Walk";
@@ -78,7 +87,7 @@ TEST_F(Retarget, SameRigIdentity){
     }
 }
 
-TEST_F(Retarget, CrossAxisConvention){
+TEST_F(AnimatorRetargeting, CrossAxisConvention){
     const Entity hero = load("hero_tpose.gltf", -1);
     const Entity robot = load("robot_apose.gltf", 1);
     const std::string walk = fixturePath("hero_animated.gltf") + "#Walk";
@@ -116,7 +125,7 @@ TEST_F(Retarget, CrossAxisConvention){
 namespace {
 
     // A two-legged rig standing on a ramp: Hero -> Hips -> {L/R}UpperLeg -> {L/R}LowerLeg -> {L/R}Foot
-    class FootIK : public ::testing::Test, public AnimatorFixture {
+    class AnimatorFootIK : public ::testing::Test, public AnimatorFixture {
     protected:
         Entity upper[2], lower[2], ankles[2];
         float updateTime = 0.0f;
@@ -192,7 +201,7 @@ namespace {
 
 }
 
-TEST_F(FootIK, SlopeGrounding){
+TEST_F(AnimatorFootIK, SlopeGrounding){
     ramp();
     rig();
     step(0.0);
@@ -210,7 +219,7 @@ TEST_F(FootIK, SlopeGrounding){
     EXPECT_LT(position(hips).y, 1.0f) << "the pelvis dropped for the lower foot";
 }
 
-TEST_F(FootIK, FootLockNoSlide){
+TEST_F(AnimatorFootIK, FootLockNoSlide){
     // the hips slide forward 0.1 m/s while the right foot is in contact (the parameter)
     ClipData data;
     data.wrap = ClipWrapMode::Once;

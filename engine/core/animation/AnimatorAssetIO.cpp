@@ -942,6 +942,36 @@ int anim::MontageDef::findSection(const std::string& name) const{
     return -1;
 }
 
+namespace{
+
+    void visitMotion(MotionDef& motion, const std::string& path, const std::function<void(AnimatorAssetRef&, const std::string&)>& visit){
+        if (!motion.clip.empty()) visit(motion.clip, path + ".clip");
+        if (!motion.isTree()) return;
+        BlendTreeDef& tree = motion.tree.front();
+        for (size_t i = 0; i < tree.children.size(); i++){
+            visitMotion(tree.children[i].motion, path + ".blend_tree.children[" + std::to_string(i) + "].motion", visit);
+        }
+    }
+
+    void visitMachine(StateMachineDef& machine, const std::string& path, const std::function<void(AnimatorAssetRef&, const std::string&)>& visit){
+        for (size_t i = 0; i < machine.states.size(); i++){
+            visitMotion(machine.states[i].motion, path + ".states[" + std::to_string(i) + "].motion", visit);
+        }
+        for (size_t i = 0; i < machine.subMachines.size(); i++){
+            visitMachine(machine.subMachines[i], path + ".sub_state_machines[" + std::to_string(i) + "]", visit);
+        }
+    }
+
+}
+
+void anim::visitControllerRefs(ControllerDef& data, const std::function<void(AnimatorAssetRef& ref, const std::string& field)>& visit){
+    for (size_t l = 0; l < data.layers.size(); l++){
+        const std::string path = "layers[" + std::to_string(l) + "]";
+        if (!data.layers[l].mask.empty()) visit(data.layers[l].mask, path + ".mask");
+        visitMachine(data.layers[l].machine, path + ".state_machine", visit);
+    }
+}
+
 std::string anim::animatorAssetKind(const std::string& text){
     const std::string format = topLevelString(text, "format");
     if (format == CONTROLLER_FORMAT) return "controller";

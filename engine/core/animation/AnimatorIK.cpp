@@ -111,6 +111,22 @@ void anim::rotateBoneInRigSpace(IKContext& context, int bone, const Quaternion& 
     refreshRigSpace(context, bone);
 }
 
+void anim::aimBoneInRigSpace(IKContext& context, int bone, const Vector3& point, const Vector3& target){
+    if (bone < 0) return;
+    const Vector3 origin = context.space.position[bone];
+    const int parent = context.parents[bone];
+    Vector3 current = point - origin;
+    Vector3 desired = target - origin;
+    if (parent >= 0){
+        const Affine inverse = context.space.world[parent].inverse();
+        current = inverse.transformVector(current);
+        desired = inverse.transformVector(desired);
+    }
+    const Quaternion arc = shortestArc(current, desired);
+    context.local->setRotation((size_t)bone, normalizedOr(arc * context.local->rotation((size_t)bone), context.local->rotation((size_t)bone)));
+    refreshRigSpace(context, bone);
+}
+
 void anim::translateBoneInRigSpace(IKContext& context, int bone, const Vector3& delta){
     if (bone < 0) return;
     const int parent = context.parents[bone];
@@ -132,44 +148,44 @@ void anim::solveTwoBone(IKContext& context, int upper, int mid, int end, const V
     saved.save(context, mid);
     saved.save(context, end);
 
-    const Vector3 a = context.space.position[upper];
-    const Vector3 b = context.space.position[mid];
-    const Vector3 c = context.space.position[end];
-    const float lab = (b - a).length();
-    const float lbc = (c - b).length();
-    if (lab < kEpsilon || lbc < kEpsilon) return;
+    // the bend side: toward the pole, else the side the mid joint is on now
+    const Vector3 startA = context.space.position[upper];
+    const Vector3 bendHint = pole ? (*pole - startA) : (context.space.position[mid] - startA);
+    // passes until the end is there: one with uniform scale, a few when non-uniform scale makes
+    // the world bone lengths change with the bend
+    for (int pass = 0; pass < 10; pass++){
+        const Vector3 a = context.space.position[upper];
+        const Vector3 b = context.space.position[mid];
+        const Vector3 c = context.space.position[end];
+        const float lab = (b - a).length();
+        const float lbc = (c - b).length();
+        if (lab < kEpsilon || lbc < kEpsilon) break;
 
-    Vector3 toTarget = target - a;
-    float distance = toTarget.length();
-    const float reach = (lab + lbc) * 0.999f;
-    const float minimum = std::fabs(lab - lbc) * 1.001f + kEpsilon;
-    if (distance < kEpsilon){
-        toTarget = c - a;
-        distance = toTarget.length();
-        if (distance < kEpsilon) return;
+        Vector3 toTarget = target - a;
+        float distance = toTarget.length();
+        if (distance < kEpsilon){
+            toTarget = c - a;
+            distance = toTarget.length();
+            if (distance < kEpsilon) break;
+        }
+        const Vector3 direction = toTarget * (1.0f / distance);
+        const float reach = (lab + lbc) * 0.999f;
+        const float minimum = std::fabs(lab - lbc) * 1.001f + kEpsilon;
+        const float clamped = std::min(std::max(distance, minimum), reach);
+
+        Vector3 bend = bendHint - direction * bendHint.dotProduct(direction);
+        if (bend.squaredLength() < 1e-10f){
+            const Vector3 current = (b - a) - direction * (b - a).dotProduct(direction);
+            bend = current.squaredLength() > 1e-10f ? current : direction.crossProduct(std::fabs(direction.y) < 0.9f ? Vector3(0, 1, 0) : Vector3(1, 0, 0));
+        }
+        bend.normalize();
+
+        const float cosA = std::min(1.0f, std::max(-1.0f, (lab * lab + clamped * clamped - lbc * lbc) / (2.0f * lab * clamped)));
+        const float sinA = std::sqrt(std::max(0.0f, 1.0f - cosA * cosA));
+        aimBoneInRigSpace(context, upper, b, a + direction * (lab * cosA) + bend * (lab * sinA));
+        aimBoneInRigSpace(context, mid, context.space.position[end], a + direction * clamped);
+        if ((context.space.position[end] - (a + direction * clamped)).length() < 1e-5f) break;
     }
-    const Vector3 direction = toTarget * (1.0f / distance);
-    const float clamped = std::min(std::max(distance, minimum), reach);
-
-    // the bend direction: toward the pole, else the mid joint's current side of the chain
-    Vector3 bendSource = pole ? (*pole - a) : (b - a);
-    Vector3 bend = bendSource - direction * bendSource.dotProduct(direction);
-    if (bend.squaredLength() < 1e-10f){
-        // straight chain or pole on the line: the mid joint's current offset, else any perpendicular
-        const Vector3 current = (b - a) - direction * (b - a).dotProduct(direction);
-        bend = current.squaredLength() > 1e-10f ? current : direction.crossProduct(std::fabs(direction.y) < 0.9f ? Vector3(0, 1, 0) : Vector3(1, 0, 0));
-    }
-    bend.normalize();
-
-    const float cosA = std::min(1.0f, std::max(-1.0f, (lab * lab + clamped * clamped - lbc * lbc) / (2.0f * lab * clamped)));
-    const float sinA = std::sqrt(std::max(0.0f, 1.0f - cosA * cosA));
-    const Vector3 desiredMid = a + direction * (lab * cosA) + bend * (lab * sinA);
-    rotateBoneInRigSpace(context, upper, shortestArc(b - a, desiredMid - a));
-
-    const Vector3 newMid = context.space.position[mid];
-    const Vector3 newEnd = context.space.position[end];
-    const Vector3 goal = a + direction * clamped;
-    rotateBoneInRigSpace(context, mid, shortestArc(newEnd - newMid, goal - newMid));
 
     if (endRotation){
         setRigRotation(context, end, *endRotation);
@@ -219,9 +235,7 @@ void anim::solveFabrik(IKContext& context, const int* chain, int count, const Ve
     }
     // rotations back, parents first (shortest arc per joint keeps the twist)
     for (int k = 0; k + 1 < count; k++){
-        const Vector3 current = context.space.position[chain[k + 1]] - context.space.position[chain[k]];
-        const Vector3 desired = points[k + 1] - context.space.position[chain[k]];
-        rotateBoneInRigSpace(context, chain[k], shortestArc(current, desired));
+        aimBoneInRigSpace(context, chain[k], context.space.position[chain[k + 1]], points[k + 1]);
     }
     saved.blend(context, weight);
 }

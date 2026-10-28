@@ -32,6 +32,10 @@ namespace jasperengine::anim{
     JASPERENGINE_API Quaternion shortestArc(const Vector3& from, const Vector3& to);
     // rotates `bone` by `rotation` in rig space (about its own position) and updates the cache
     JASPERENGINE_API void rotateBoneInRigSpace(IKContext& context, int bone, const Quaternion& rotation);
+    // turns `bone` about its own position so that `point` (a rig-space point it carries, such as
+    // its child joint) moves onto the ray toward `target`. The turn is found in the parent's
+    // local space, so the direction is exact under non-uniform parent scale.
+    JASPERENGINE_API void aimBoneInRigSpace(IKContext& context, int bone, const Vector3& point, const Vector3& target);
     // moves `bone` by `delta` (rig space) and updates the cache
     JASPERENGINE_API void translateBoneInRigSpace(IKContext& context, int bone, const Vector3& delta);
     // brings the cache up to date for bones from `bone` on

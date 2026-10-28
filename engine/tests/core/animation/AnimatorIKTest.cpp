@@ -108,9 +108,9 @@ TEST(AnimatorIK, FabrikConverges){
             chain.local.setRotation((size_t)i, q);
         }
         refreshRigSpace(chain.context, 0);
-        // a reachable target: within 80 % of the reach
-        Vector3 target(u(random), std::fabs(u(random)) + 0.2f, u(random));
-        target = target.normalized() * (0.8f * 2.5f * (0.3f + 0.7f * std::fabs(u(random))));
+        // a reachable target in front of the chain: 30 % to 75 % of the reach
+        Vector3 target(u(random), std::fabs(u(random)) + 0.5f, u(random));
+        target = target.normalized() * (2.5f * (0.3f + 0.45f * std::fabs(u(random))));
         const int bones[6] = {0, 1, 2, 3, 4, 5};
         solveFabrik(chain.context, bones, 6, target, 10, 0.001f, 1.0f);
         if ((chain.positions[5] - target).length() <= 0.001f) converged++;

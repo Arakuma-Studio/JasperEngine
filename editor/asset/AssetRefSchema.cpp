@@ -24,6 +24,7 @@
 #include "particles/ParticleEffectCodec.h"
 #include "particles/ParticleModules.h"
 #include "component/PoseAnimatorComponent.h"
+#include "component/AnimatorComponent.h"
 #include "component/AnimationPlayerComponent.h"
 #include "animation/ModelSubClips.h"
 #include "pool/TexturePool.h"
@@ -136,6 +137,7 @@ namespace {
         row(C::PoseAnimatorComponent, "animation", Shape::Asset, AssetType::PoseAnimation, Base::Assets);
         // each entry: "clips[2]" (an .anim, or the model of a "<model>#<clip>" sub-clip)
         row(C::AnimationPlayerComponent, "clips[]", Shape::ClipEntry, AssetType::AnimationClip, Base::Assets);
+        row(C::AnimatorComponent, "controller", Shape::Asset, AssetType::AnimatorController, Base::Assets);
 
         row(C::ParticleSystemComponent, "effect", Shape::Asset, AssetType::ParticleEffect, Base::Assets);
         row(C::ParticleSystemComponent, "inlineEffect", Shape::ParticleEffect, AssetType::Unknown, Base::Assets);
@@ -611,6 +613,10 @@ namespace {
 
         eachComponent<PoseAnimatorComponent>(registry, only, visit, C::PoseAnimatorComponent, [&](PoseAnimatorComponent& animator) {
             if (visit.asset(animator.animation, componentRow(C::PoseAnimatorComponent, "animation"), "animation")) animator.needsLoad = true;
+        });
+
+        eachComponent<AnimatorComponent>(registry, only, visit, C::AnimatorComponent, [&](AnimatorComponent& animator) {
+            if (visit.asset(animator.controller, componentRow(C::AnimatorComponent, "controller"), "controller")) animator.needsLoad = true;
         });
 
         eachComponent<AnimationPlayerComponent>(registry, only, visit, C::AnimationPlayerComponent, [&](AnimationPlayerComponent& player) {

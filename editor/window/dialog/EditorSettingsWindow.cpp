@@ -651,6 +651,12 @@ void EditorSettingsWindow::drawSceneViewSettings() {
             toggleRow("preferences.scene_view.rulers", "Rulers", "Top and left rulers in 2D, UI and orthographic axis views.",
                       m_sceneView.rulers, defaults.rulers);
         }
+        if (sectionRow("Animation")) {
+            toggleRow("preferences.scene_view.preview_particles", "Preview Particle Systems",
+                      "Animation previews in edit mode (the Animator and Animation windows) play and scrub the Particle Systems under the "
+                      "previewed GameObject with the animation.",
+                      m_sceneView.previewParticles, defaults.previewParticles);
+        }
     });
 }
 

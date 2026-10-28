@@ -539,10 +539,18 @@ void AnimatorSystem::finalize(Job& job, float dt){
         const std::string path = instance->montages[(size_t)note.montage].path;
         component->onMontageEnded.call(path, note.interrupted);
     }
+    // by layer, then where each was crossed: a stable insertion sort (std::stable_sort allocates)
     sortedEvents.assign(output.events.begin(), output.events.end());
-    std::stable_sort(sortedEvents.begin(), sortedEvents.end(), [](const anim::AnimatorPendingEvent& a, const anim::AnimatorPendingEvent& b){
-        return a.layer != b.layer ? a.layer < b.layer : a.position < b.position;
-    });
+    for (size_t i = 1; i < sortedEvents.size(); i++){
+        const anim::AnimatorPendingEvent moving = sortedEvents[i];
+        size_t j = i;
+        while (j > 0 && (moving.layer < sortedEvents[j - 1].layer ||
+                         (moving.layer == sortedEvents[j - 1].layer && moving.position < sortedEvents[j - 1].position))){
+            sortedEvents[j] = sortedEvents[j - 1];
+            j--;
+        }
+        sortedEvents[j] = moving;
+    }
     for (const anim::AnimatorPendingEvent& pending : sortedEvents){
         component = scene->isEntityCreated(entity) ? scene->findComponent<AnimatorComponent>(entity) : nullptr;
         if (!component) return;

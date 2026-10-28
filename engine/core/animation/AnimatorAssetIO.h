@@ -27,6 +27,7 @@
 #include "animation/ClipTypes.h"
 #include "animation/ControllerDef.h"
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -99,6 +100,11 @@ namespace jasperengine::anim{
     // sections sorted by start, unique names, the first at 0 ("Default" when there is none),
     // unknown `next` names cleared with a warning; events sorted by time
     JASPERENGINE_API void normalizeMontage(MontageDef& data, std::vector<ClipWarning>* warnings = nullptr);
+
+    // Every asset reference of a controller (state and blend-tree clips, layer masks) with its
+    // JSON path ("layers[0].state_machine.states[1].motion.clip"); `visit` may change it
+    JASPERENGINE_API void visitControllerRefs(ControllerDef& data,
+                                              const std::function<void(AnimatorAssetRef& ref, const std::string& field)>& visit);
 
     // "controller", "mask", "montage" or "" from a file's "format" member (cheap scan)
     JASPERENGINE_API std::string animatorAssetKind(const std::string& text);

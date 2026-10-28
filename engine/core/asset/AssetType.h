@@ -30,7 +30,10 @@ namespace jasperengine {
         ColorLut = 14,  // a .cube colour LUT (post-processing's lutTexture, S13)
         ParticleEffect = 15,  // a .particles effect (S20)
         AnimationClip = 16,     // an .anim clip (Animation Player clips; its GUID in its JSON)
-        PoseAnimation = 17      // a .poseanim pose animation (Pose Animator's animation)
+        PoseAnimation = 17,     // a .poseanim pose animation (Pose Animator's animation)
+        AnimatorController = 18,    // a .controller Animator Controller (S21; its GUID in its JSON)
+        AvatarMask = 19,            // a .mask avatar mask (S21)
+        AnimationMontage = 20       // a .montage animation montage (S21)
     };
 
     // The lowercase names used by Lua (AssetRef.type), MCP and the editor ("texture", "model", ...)
@@ -53,13 +56,16 @@ namespace jasperengine {
             case AssetType::ParticleEffect: return "particle_effect";
             case AssetType::AnimationClip: return "animation_clip";
             case AssetType::PoseAnimation: return "pose_animation";
+            case AssetType::AnimatorController: return "animator_controller";
+            case AssetType::AvatarMask: return "avatar_mask";
+            case AssetType::AnimationMontage: return "animation_montage";
             case AssetType::Unknown: break;
         }
         return "unknown";
     }
 
     inline AssetType assetTypeFromName(std::string_view name) {
-        for (uint8_t value = 1; value <= static_cast<uint8_t>(AssetType::PoseAnimation); value++) {
+        for (uint8_t value = 1; value <= static_cast<uint8_t>(AssetType::AnimationMontage); value++) {
             const AssetType type = static_cast<AssetType>(value);
             if (name == assetTypeName(type)) {
                 return type;

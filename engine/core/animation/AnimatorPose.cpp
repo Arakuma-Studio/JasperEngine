@@ -122,10 +122,12 @@ namespace{
             for (size_t i = 0; i < n; i += 4){
                 const f4 w = maskLanes(mask, i, w0);
                 const u4 keep = B::cmpeq(w, B::zero());
+                // at a weight of exactly 1 the layer's own values (no round-off)
+                const u4 full = B::cmpeq(w, one);
                 for (int k : {Pose::TX, Pose::TY, Pose::TZ, Pose::SX, Pose::SY, Pose::SZ}){
                     const f4 b = B::load(base.array((Pose::Array)k) + i);
                     const f4 l = B::load(layer.array((Pose::Array)k) + i);
-                    B::store(out.array((Pose::Array)k) + i, B::select(keep, b, B::add(b, B::mul(B::sub(l, b), w))));
+                    B::store(out.array((Pose::Array)k) + i, B::select(keep, b, B::select(full, l, B::add(b, B::mul(B::sub(l, b), w)))));
                 }
                 const f4 bx = B::load(base.array(Pose::QX) + i), by = B::load(base.array(Pose::QY) + i);
                 const f4 bz = B::load(base.array(Pose::QZ) + i), bw = B::load(base.array(Pose::QW) + i);
@@ -139,17 +141,20 @@ namespace{
                 f4 z = B::add(B::mul(bz, iw), B::mul(lz, ws));
                 f4 q = B::add(B::mul(bw, iw), B::mul(lw, ws));
                 normalize(x, y, z, q, bx, by, bz, bw);
-                B::store(out.array(Pose::QX) + i, B::select(keep, bx, x));
-                B::store(out.array(Pose::QY) + i, B::select(keep, by, y));
-                B::store(out.array(Pose::QZ) + i, B::select(keep, bz, z));
-                B::store(out.array(Pose::QW) + i, B::select(keep, bw, q));
+                const f4 lx0 = B::load(layer.array(Pose::QX) + i), ly0 = B::load(layer.array(Pose::QY) + i);
+                const f4 lz0 = B::load(layer.array(Pose::QZ) + i), lw0 = B::load(layer.array(Pose::QW) + i);
+                B::store(out.array(Pose::QX) + i, B::select(keep, bx, B::select(full, lx0, x)));
+                B::store(out.array(Pose::QY) + i, B::select(keep, by, B::select(full, ly0, y)));
+                B::store(out.array(Pose::QZ) + i, B::select(keep, bz, B::select(full, lz0, z)));
+                B::store(out.array(Pose::QW) + i, B::select(keep, bw, B::select(full, lw0, q)));
             }
             for (size_t i = 0; i < out.channelStride(); i += 4){
                 const f4 w = maskLanes(channelMask, i, w0);
                 const u4 keep = B::cmpeq(w, B::zero());
+                const u4 full = B::cmpeq(w, one);
                 const f4 b = B::load(base.channelData() + i);
                 const f4 l = B::load(layer.channelData() + i);
-                B::store(out.channelData() + i, B::select(keep, b, B::add(b, B::mul(B::sub(l, b), w))));
+                B::store(out.channelData() + i, B::select(keep, b, B::select(full, l, B::add(b, B::mul(B::sub(l, b), w)))));
             }
         }
 

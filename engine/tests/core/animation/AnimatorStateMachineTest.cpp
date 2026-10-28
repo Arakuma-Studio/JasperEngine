@@ -20,7 +20,7 @@ namespace {
 
     constexpr float kDt = 1.0f / 60.0f;
 
-    class StateMachine : public ::testing::Test, public AnimatorFixture {
+    class AnimatorStateMachine : public ::testing::Test, public AnimatorFixture {
     protected:
         std::string a, b, c, d;
 
@@ -31,8 +31,11 @@ namespace {
             d = clip("d", hold("Hips", Vector3(0, 0, 10)));
         }
 
+        int files = 0;
+
+        // a file of its own each time (the asset pool keeps a path's first load)
         void start(const ControllerDef& def){
-            animator(controllerFile("controller", def));
+            animator(controllerFile("controller" + std::to_string(files++), def));
             step(0.0);
             ASSERT_TRUE(instance().bound);
         }
@@ -44,7 +47,7 @@ namespace {
 
 }
 
-TEST_F(StateMachine, ExitTimeEachLoop){
+TEST_F(AnimatorStateMachine, ExitTimeEachLoop){
     StateDef sa = state("A", a);
     TransitionDef t = transition("B", {condition("Go", AnimatorConditionMode::If)});
     t.hasExitTime = true;
@@ -68,7 +71,7 @@ TEST_F(StateMachine, ExitTimeEachLoop){
     EXPECT_NEAR(switched, 1.75f, kDt + 1e-4f);
 }
 
-TEST_F(StateMachine, ExitTimeOnce){
+TEST_F(AnimatorStateMachine, ExitTimeOnce){
     StateDef sa = state("A", a);
     TransitionDef t = transition("B");
     t.hasExitTime = true;
@@ -97,7 +100,7 @@ TEST_F(StateMachine, ExitTimeOnce){
     EXPECT_EQ(current(), "A");
 }
 
-TEST_F(StateMachine, AnyStateFirst){
+TEST_F(AnimatorStateMachine, AnyStateFirst){
     StateDef sa = state("A", a);
     sa.transitions.push_back(transition("B", {condition("Go", AnimatorConditionMode::If)}));
     ControllerDef def = controller({parameter("Go", AnimatorParameterType::Bool)}, {sa, state("B", b), state("C", c)});
@@ -108,7 +111,7 @@ TEST_F(StateMachine, AnyStateFirst){
     EXPECT_EQ(current(), "C");
 }
 
-TEST_F(StateMachine, TriggerConsumedOnce){
+TEST_F(AnimatorStateMachine, TriggerConsumedOnce){
     StateDef sa = state("A", a);
     sa.transitions.push_back(transition("B", {condition("T", AnimatorConditionMode::If)}));
     sa.transitions.push_back(transition("C", {condition("T", AnimatorConditionMode::If)}));
@@ -123,7 +126,7 @@ TEST_F(StateMachine, TriggerConsumedOnce){
     EXPECT_EQ(current(), "B") << "the trigger was used once";
 }
 
-TEST_F(StateMachine, TriggerPersistsUntilUsed){
+TEST_F(AnimatorStateMachine, TriggerPersistsUntilUsed){
     StateDef sa = state("A", a);
     sa.transitions.push_back(transition("B", {condition("T", AnimatorConditionMode::If), condition("Ready", AnimatorConditionMode::If)}));
     start(controller({parameter("T", AnimatorParameterType::Trigger), parameter("Ready", AnimatorParameterType::Bool)}, {sa, state("B", b)}));
@@ -145,7 +148,7 @@ TEST_F(StateMachine, TriggerPersistsUntilUsed){
     EXPECT_EQ(current(), "A");
 }
 
-TEST_F(StateMachine, InterruptionNextThenCurrent){
+TEST_F(AnimatorStateMachine, InterruptionNextThenCurrent){
     StateDef sa = state("A", a);
     TransitionDef toB = transition("B", {condition("GoB", AnimatorConditionMode::If)}, 0.5f);
     toB.interruptionSource = TransitionInterruptionSource::NextThenCurrent;
@@ -179,7 +182,7 @@ TEST_F(StateMachine, InterruptionNextThenCurrent){
     EXPECT_EQ(next(), "B");
 }
 
-TEST_F(StateMachine, OrderedInterruption){
+TEST_F(AnimatorStateMachine, OrderedInterruption){
     StateDef sa = state("A", a);
     sa.transitions.push_back(transition("C", {condition("GoC", AnimatorConditionMode::If)}, 0.5f));
     TransitionDef toB = transition("B", {condition("GoB", AnimatorConditionMode::If)}, 0.5f);
@@ -200,7 +203,7 @@ TEST_F(StateMachine, OrderedInterruption){
     EXPECT_EQ(next(), "C") << "an earlier one does";
 }
 
-TEST_F(StateMachine, SubStateEntryExit){
+TEST_F(AnimatorStateMachine, SubStateEntryExit){
     ControllerDef def;
     def.parameters = {parameter("GoSub", AnimatorParameterType::Bool), parameter("Flag", AnimatorParameterType::Bool),
                       parameter("GoExit", AnimatorParameterType::Bool), parameter("Flag2", AnimatorParameterType::Bool)};
@@ -244,7 +247,7 @@ TEST_F(StateMachine, SubStateEntryExit){
     EXPECT_EQ(current(), "Idle") << "without one: the parent's entry (its default)";
 }
 
-TEST_F(StateMachine, NoTransitionToSelfUnlessAllowed){
+TEST_F(AnimatorStateMachine, NoTransitionToSelfUnlessAllowed){
     ControllerDef def = controller({parameter("Hold", AnimatorParameterType::Bool)}, {state("A", a)});
     TransitionDef any = transition("A", {condition("Hold", AnimatorConditionMode::If)});
     def.layers[0].machine.anyState.push_back(any);
@@ -260,7 +263,7 @@ TEST_F(StateMachine, NoTransitionToSelfUnlessAllowed){
     EXPECT_LT(instance().currentState(0).normalizedTime, 2.0f * kDt) << "restarted every update";
 }
 
-TEST_F(StateMachine, InterruptedBlendIsContinuous){
+TEST_F(AnimatorStateMachine, InterruptedBlendIsContinuous){
     StateDef sa = state("A", a);
     sa.transitions.push_back(transition("B", {condition("GoB", AnimatorConditionMode::If)}, 1.0f));
     ControllerDef def = controller({parameter("GoB", AnimatorParameterType::Bool), parameter("Hit", AnimatorParameterType::Trigger)},
@@ -288,7 +291,7 @@ TEST_F(StateMachine, InterruptedBlendIsContinuous){
     EXPECT_NEAR(position(hips).x, -10.0f, 1e-4f);
 }
 
-TEST_F(StateMachine, CrossFadeAndPlayFromScripts){
+TEST_F(AnimatorStateMachine, CrossFadeAndPlayFromScripts){
     start(controller({}, {state("A", a), state("B", b)}));
     Animator animator = object();
     animator.crossFadeInFixedTime("B", 0.5f);

@@ -1090,6 +1090,13 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
             }
         }
     }
+    if (updateFlags & UpdateFlags_Animator_Reload){
+        // a new controller, override, IK constraint or written-bones setting: loaded and bound
+        // again by the next update, its states kept
+        if (AnimatorComponent* animator = registry->findComponent<AnimatorComponent>(entity)){
+            animator->needsLoad = true;
+        }
+    }
     if (updateFlags & UpdateFlags_AnimationPlayer_Reload){
         // the clip list changed (an entry added, removed, retargeted, renamed or rewrapped): the
         // player loads it again and rebinds, keeping its states and rest values
@@ -1135,7 +1142,7 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
     const YAML::Node encoded = reflect::encode(*desc, source, reflect::EncodeContext{});
     const bool overTarget = compType == ComponentType::UIDocumentComponent || compType == ComponentType::FluidSimulationComponent ||
                             compType == ComponentType::LatticeComponent || compType == ComponentType::PoseAnimatorComponent ||
-                            compType == ComponentType::AnimationPlayerComponent;
+                            compType == ComponentType::AnimationPlayerComponent || compType == ComponentType::AnimatorComponent;
     reflect::Value copy(desc->body.ops, overTarget ? target : nullptr);
     reflect::DecodeContext ctx;
     ctx.old = overTarget ? target : nullptr;

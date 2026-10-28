@@ -7,7 +7,8 @@
 //   through EntityRegistry.h). Their JSON names (`.controller`, `.mask`, `.montage`) and Lua
 //   names come from AnimatorNames (AnimatorJson.h).
 // - Invariants: appending is allowed, reordering is not (the scene YAML stores the component's
-//   enums by name, the files by their JSON names, tests by value).
+//   enums by name, the files by their JSON names, tests by value). The AnimatorComponent's enums
+//   are int-sized (the reflection tables' Enum properties); the assets' are one byte.
 
 #ifndef ANIMATOR_TYPES_H
 #define ANIMATOR_TYPES_H
@@ -17,32 +18,32 @@
 namespace jasperengine{
 
     // Unity's AnimatorUpdateMode
-    enum class AnimatorUpdateMode : uint8_t {
+    enum class AnimatorUpdateMode : int {
         Normal,             // the scene's update, scaled time
         AnimatePhysics,     // in the fixed steps, before physics
         UnscaledTime        // the scene's update, real time (Engine::getDeltatime ignoring the time scale)
     };
 
     // Unity's AnimatorCullingMode
-    enum class AnimatorCullingMode : uint8_t {
+    enum class AnimatorCullingMode : int {
         AlwaysAnimate,
         CullUpdateTransforms,   // invisible: time, states, events and root motion advance; no pose written
         CullCompletely          // invisible: nothing advances
     };
 
     // which bone GameObjects get the evaluated local transform (skin matrices never depend on it)
-    enum class AnimatorWriteBones : uint8_t {
+    enum class AnimatorWriteBones : int {
         All,
         Exposed     // the listed paths and the bones with children that are not bones (attachments)
     };
 
     // which clips of a layer fire their events
-    enum class AnimatorEventMode : uint8_t {
+    enum class AnimatorEventMode : int {
         LeaderOnly,     // per layer the clip with the highest weight
         All             // every clip with a weight above 0
     };
 
-    enum class AnimatorRetarget : uint8_t {
+    enum class AnimatorRetarget : int {
         Auto,   // humanoid clips made on another humanoid model play retargeted (D12)
         Off
     };
@@ -90,7 +91,7 @@ namespace jasperengine{
 
     constexpr int AVATAR_BODY_PART_COUNT = static_cast<int>(AvatarBodyPart::Count);
 
-    enum class AnimatorIKType : uint8_t {
+    enum class AnimatorIKType : int {
         TwoBone,    // upper, mid, end: the end reaches the target, the mid bends toward the pole
         Fabrik,     // a chain of 2..16 bones
         LookAt,     // up to 4 bones turn toward the target, weighted, clamped

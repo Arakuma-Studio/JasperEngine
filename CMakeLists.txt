@@ -669,6 +669,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/components/MaterialReflect.cpp
     ${EDITOR_DIR}/reflect/components/GameplayReflect.cpp
     ${EDITOR_DIR}/reflect/components/ClipPlayersReflect.cpp
+    ${EDITOR_DIR}/reflect/components/AnimatorReflect.cpp
     ${EDITOR_DIR}/reflect/components/ParticlesReflect.cpp
     ${EDITOR_DIR}/reflect/components/RenderReflect.cpp
     ${EDITOR_DIR}/reflect/components/TransformPhysicsReflect.cpp
@@ -749,6 +750,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/BuildTools.cpp
     ${EDITOR_DIR}/mcp/tools/WorldTools.cpp
     ${EDITOR_DIR}/mcp/tools/AnimationClipTools.cpp
+    ${EDITOR_DIR}/mcp/tools/AnimatorTools.cpp
     ${EDITOR_DIR}/mcp/tools/LatticeTools.cpp
     ${EDITOR_DIR}/mcp/tools/HtmlUiTools.cpp
     ${EDITOR_DIR}/mcp/tools/UIEffectTools.cpp
@@ -849,6 +851,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/pose/PoseViewportLogic.cpp
     ${EDITOR_DIR}/animation/AnimationClipController.cpp
     ${EDITOR_DIR}/animation/AnimationClipDocument.cpp
+    ${EDITOR_DIR}/animation/AnimatorAssetDocument.cpp
     ${EDITOR_DIR}/animation/ClipConverters.cpp
     ${EDITOR_DIR}/animation/ClipRecordHooks.cpp
     ${EDITOR_DIR}/animation/ClipValidation.cpp
@@ -933,6 +936,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorAnimation.cpp
     ${EDITOR_DIR}/window/InspectorRenderers.cpp
     ${EDITOR_DIR}/window/InspectorLattice.cpp
+    ${EDITOR_DIR}/window/InspectorAnimator.cpp
     ${EDITOR_DIR}/window/InspectorPrefabBar.cpp
     ${EDITOR_DIR}/window/HierarchyPrefabRows.cpp
     ${EDITOR_DIR}/window/ConsoleWindow.cpp
@@ -962,6 +966,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/AnimationWindowClipMode.cpp
     ${EDITOR_DIR}/window/AnimationWindowClipDraw.cpp
     ${EDITOR_DIR}/window/PoseAnimationWindow.cpp
+    ${EDITOR_DIR}/window/AnimatorWindow.cpp
     ${EDITOR_DIR}/window/PoseAnimationWindowTemplates.cpp
     ${EDITOR_DIR}/window/TerrainEditWindow.cpp
     ${EDITOR_DIR}/lattice/LatticeEditorOps.cpp
@@ -987,6 +992,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/dialog/AboutWindow.cpp
     ${EDITOR_DIR}/window/dialog/ScenesWindow.cpp
     ${EDITOR_DIR}/window/widget/CustomTextEditor.cpp
+    ${EDITOR_DIR}/window/widget/GraphCanvas.cpp
     ${EDITOR_DIR}/window/widget/HtmlCssLexer.cpp
     ${EDITOR_DIR}/window/widget/InputTextContextMenu.cpp
     ${EDITOR_DIR}/window/widget/SemanticSuggestions.cpp

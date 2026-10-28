@@ -51,7 +51,8 @@ namespace jasperengine::editor {
         COLOR_LUT,
         POSE_ANIMATION,     // .poseanim (the Pose Animation window)
         HUMANOID,           // .humanoid bone-mapping sidecar (plain data)
-        ANIMATION_CLIP      // .anim (the Animation window; an icon, no thumbnail)
+        ANIMATION_CLIP,     // .anim (the Animation window; an icon, no thumbnail)
+        ANIMATOR_ASSET      // .controller (the Animator window), .mask, .montage (the Inspector)
     };
 
     struct FileEntry {
@@ -159,6 +160,13 @@ namespace jasperengine::editor {
         // drawn by the editor too: a film strip (animation clips spec 4.1, 9.R53)
         Texture animationClipIcon;
         std::vector<uint8_t> animationClipIconPixels;
+        // the Animator assets' icons (S21): a state graph, a figure, a sectioned strip
+        Texture animatorControllerIcon;
+        std::vector<uint8_t> animatorControllerIconPixels;
+        Texture avatarMaskIcon;
+        std::vector<uint8_t> avatarMaskIconPixels;
+        Texture montageIcon;
+        std::vector<uint8_t> montageIconPixels;
         // Bounded cache of GPU thumbnail textures; must stay well below the
         // sokol image/sampler pool sizes (2048), which are shared with scenes
         static constexpr size_t MAX_THUMBNAIL_TEXTURES = 512;
@@ -477,6 +485,8 @@ namespace jasperengine::editor {
         void assetsCreateHtmlDocument();
         // Assets > Create > Pose Animation: a .poseanim with one neutral pose (Pose Animation window)
         void assetsCreatePoseAnimation();
+        // Create > Animator Controller / Avatar Mask / Animation Montage (one project undo step)
+        void assetsCreateAnimatorAsset(int kind);
         // Assets > Create > Animation Clip: an empty "New Animation.anim" in the current folder,
         // one project undo step (AnimationClipDocument::create), then renamed in place (the
         // App's createClipAsset hook, set by this window)

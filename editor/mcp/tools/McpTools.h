@@ -70,6 +70,7 @@ namespace jasperengine::editor::mcp {
     void registerGraphTools(McpRegistry& registry);
     void registerGameplayTools(McpRegistry& registry);
     void registerParticleTools(McpRegistry& registry);
+    void registerAnimatorTools(McpRegistry& registry);
 
     void registerPoseTools(McpRegistry& registry);
 

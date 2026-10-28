@@ -150,8 +150,8 @@ void anim::AnimatorInstance::setController(const std::shared_ptr<const CompiledC
         slot.ref = ref;
         slot.path = ref.path;
         for (const AnimatorClipOverride& entry : overrides){
-            if (entry.original == ref.path && !entry.replacement.path.empty()){
-                slot.path = entry.replacement.path;
+            if (entry.original == ref.path && !entry.replacement.empty()){
+                slot.path = entry.replacement;
                 break;
             }
         }
@@ -194,8 +194,8 @@ void anim::AnimatorInstance::applyOverrides(const std::vector<AnimatorClipOverri
         AnimatorClipSlot& slot = clips[i];
         std::string path = slot.ref.path;
         for (const AnimatorClipOverride& entry : overrides){
-            if (entry.original == slot.ref.path && !entry.replacement.path.empty()){
-                path = entry.replacement.path;
+            if (entry.original == slot.ref.path && !entry.replacement.empty()){
+                path = entry.replacement;
                 break;
             }
         }

@@ -142,6 +142,9 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("assets.createHtmlDocument", "Create HTML Document", AppMenuCommand::AssetsCreateHtmlDocument);
     b.menu("assets.createPoseAnimation", "Create Pose Animation", AppMenuCommand::AssetsCreatePoseAnimation);
     b.menu("assets.createAnimationClip", "Create Animation Clip", AppMenuCommand::AssetsCreateAnimationClip);
+    b.menu("assets.createAnimatorController", "Create Animator Controller", AppMenuCommand::AssetsCreateAnimatorController);
+    b.menu("assets.createAvatarMask", "Create Avatar Mask", AppMenuCommand::AssetsCreateAvatarMask);
+    b.menu("assets.createAnimationMontage", "Create Animation Montage", AppMenuCommand::AssetsCreateAnimationMontage);
     b.menu("assets.showInFileManager", "Show in File Manager", AppMenuCommand::AssetsShowInFileManager);
     b.menu("assets.open", "Open", AppMenuCommand::AssetsOpen);
     b.menu("assets.rename", "Rename Asset", AppMenuCommand::AssetsRename);
@@ -185,6 +188,7 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("window.project", "Project", AppMenuCommand::ToggleProject, C::Editor, "Ctrl+5");
     b.menu("window.animation", "Animation", AppMenuCommand::ToggleAnimation, C::Editor, "Ctrl+6");
     b.menu("window.poseAnimation", "Pose Animation", AppMenuCommand::TogglePoseAnimation);
+    b.menu("window.animator", "Animator", AppMenuCommand::ToggleAnimator);
     b.menu("window.profiler", "Profiler", AppMenuCommand::ToggleProfiler, C::Editor, "Ctrl+7");
     b.menu("window.console", "Console", AppMenuCommand::ToggleConsole, C::Editor, "Ctrl+Shift+C");
     b.menu("window.bookmarks", "Bookmarks", AppMenuCommand::ToggleBookmarks);

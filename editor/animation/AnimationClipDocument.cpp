@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "AnimationClipDocument.h"
+
+#include "animation/AnimatorAssetIO.h"
+#include "pool/AnimatorAssetPool.h"
 #include "command/CommandNames.h"
 
 #include "Out.h"
@@ -467,6 +470,43 @@ std::vector<ClipHintEdit> jasperengine::editor::remapClipHints(Project* project,
         edits.push_back({file, text, newText});
         written.push_back(file);
     }
+
+    // the Animator's controllers and montages name clips (and masks) by path: they follow too
+    // (a "<model>#<clip>" its model); the GUIDs they hold stay
+    auto remapRef = [&](anim::AnimatorAssetRef& ref){
+        anim::SubClipReference subClip;
+        if (anim::parseSubClipReference(ref.path, subClip)){
+            std::string model = subClip.model;
+            if (!remap(model)) return false;
+            ref.path = anim::formatSubClipReference(model, subClip.clip);
+            return true;
+        }
+        return remap(ref.path);
+    };
+    for (const fs::path& file : ProjectChecks::findProjectFiles(root, {".controller", ".montage"})){
+        std::string text;
+        if (!ProjectChecks::readFile(file, text) || oldName.empty() || text.find(oldName) == std::string::npos) continue;
+        std::string newText;
+        if (Util::isAnimatorControllerFile(file.string())){
+            anim::ControllerParseResult parsed = anim::parseController(text);
+            if (!parsed.ok) continue;
+            bool changed = false;
+            anim::visitControllerRefs(parsed.data, [&](anim::AnimatorAssetRef& ref, const std::string&){ changed |= remapRef(ref); });
+            if (!changed) continue;
+            newText = anim::writeController(parsed.data);
+        }else{
+            anim::MontageParseResult parsed = anim::parseMontage(text);
+            if (!parsed.ok || !remapRef(parsed.data.clip)) continue;
+            newText = anim::writeMontage(parsed.data);
+        }
+        if (newText == text) continue;
+        if (!FileUtils::writeFileReplacing(file, newText)){
+            Out::warning("Could not update the clip paths of %s", file.string().c_str());
+            continue;
+        }
+        edits.push_back({file, text, newText});
+        AnimatorAssetPool::invalidate(file.string());
+    }
     clipFilesRewritten(project, written);
     return edits;
 }
@@ -481,7 +521,8 @@ void jasperengine::editor::restoreClipHints(Project* project, const std::vector<
             continue;
         }
         if (FileUtils::writeFileReplacing(edit.file, edit.before)){
-            written.push_back(edit.file);
+            if (Util::isAnimatorAssetFile(edit.file.string())) AnimatorAssetPool::invalidate(edit.file.string());
+            else written.push_back(edit.file);
         }
     }
     if (project) clipFilesRewritten(project, written);
