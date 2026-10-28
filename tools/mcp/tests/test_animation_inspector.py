@@ -10,8 +10,8 @@ driven like a human with xdotool in the harness's Xvfb on a scratch copy of tool
   a programmatic selection change and a click on a GameObject in the Scene view show the selection again (R30);
 - a model's clips as an asset; the AnimationComponent's Convert to Clip button.
 
-Widgets are found through the UI probe (Editor(ui_probe=True), editor/util/UIProbe.h). The Project window
-has no probe names: its tree and grid are clicked at the fixed positions of the harness's 1600x900 layout.
+Widgets are found through the UI probe (Editor(ui_probe=True), editor/util/UIProbe.h). The Project window's
+tree and listing are clicked at the rects editor_status reports (ui.project_window).
 Screenshots go to $JASPER_SHOTS_DIR when set (else the scratch directory).
 """
 
@@ -96,6 +96,54 @@ class Ui:
 
 def center(rect):
     return (rect[0] + rect[2]) / 2.0, (rect[1] + rect[3]) / 2.0
+
+
+async def project_window(ed: Editor) -> dict:
+    return (await ed.call("editor_status"))["ui"]["project_window"]
+
+
+async def inspect_asset(ed: Editor, ui: Ui, folder: str, name: str) -> None:
+    """Shows `folder` from the Project window's tree and clicks `name` in its listing, at the rects
+    editor_status reports (ui.project_window, window pixels [x, y, w, h]): the tree's rows move with
+    what the window shows above them (S25's Favorites), so no fixed positions"""
+    await ed.call("focus_window", window="project")
+
+    def node(state, path):
+        return next((n for n in state["tree"] if n["path"] == path), None)
+
+    def entry(state):
+        return next((e["rect"] for e in state["entries"] if e["name"] == name), None)
+
+    def middle(rect):
+        return rect[0] + rect[2] / 2.0, rect[1] + rect[3] / 2.0
+
+    state = await project_window(ed)
+    for _ in range(40):
+        if state["drawn"] and node(state, "assets"):
+            break
+        await ui.frames()
+        state = await project_window(ed)
+    parts = folder.split("/")
+    for depth in range(1, len(parts)):
+        parent = node(state, "/".join(parts[:depth]))
+        ed.check(parent, f"{'/'.join(parts[:depth])} in the tree: {[n['path'] for n in state['tree']]}")
+        if not node(state, "/".join(parts[:depth + 1])):
+            await ui.click(*parent["arrow"])
+            state = await project_window(ed)
+    for _ in range(10):
+        if state["directory"] == folder and entry(state):
+            break
+        target = node(state, folder)
+        ed.check(target, f"{folder} in the tree: {[n['path'] for n in state['tree']]}")
+        await ui.click(*middle(target["rect"]))
+        await ui.frames()
+        state = await project_window(ed)
+    ed.check(entry(state), f"{name} listed in {state['directory']}: {[e['name'] for e in state['entries']]}")
+    for _ in range(4):
+        await ui.click(*middle(entry(await project_window(ed))))
+        await ui.frames(10)
+        if "asset.header" in ed.ui_items():
+            break
 
 
 async def shot(ed: Editor, name: str):
@@ -219,19 +267,7 @@ async def test_asset_section(ed: Editor):
     ui = Ui(ed)
     await ed.call("focus_window", window="project")
     await ed.call("wait", frames=5)
-    # Project tree: assets; grid: anim (first folder), then hero_wave.anim (first file)
-    await ui.click(85, 691)
-    await shot(ed, "05a-project-assets")
-    # grid: anim is the first folder (double-click opens it), hero_wave.anim then the first file
-    for attempt in range(4):
-        await ui.click(247, 715, double=True)
-        await ed.call("wait", frames=10)
-        if attempt == 0:
-            await shot(ed, "05b-project-anim")
-        await ui.click(247, 715)
-        await ed.call("wait", frames=10)
-        if "asset.header" in ed.ui_items():
-            break
+    await inspect_asset(ed, ui, "assets/anim", "hero_wave.anim")
     await shot(ed, "06-clip-asset")
     S["asset_items"] = sorted(ed.ui_items())
     ed.check("asset.header" in ed.ui_items(), f"asset section drawn: {S['asset_items']}")
@@ -258,23 +294,7 @@ async def test_scene_click_shows_the_selection(ed: Editor):
     """R30: clicking the GameObject that is already selected (no selection change) in the Scene view makes it
     the inspected object again"""
     ui = Ui(ed)
-    await ed.call("focus_window", window="project")
-    await ed.call("wait", frames=5)
-    for _ in range(4):
-        await ui.click(95, 708)
-        await ed.call("wait", frames=5)
-        await ui.click(247, 715)
-        await ed.call("wait", frames=10)
-        if "asset.header" in ed.ui_items():
-            break
-        await ui.click(85, 691)
-        await ed.call("wait", frames=5)
-        await ui.click(247, 715, double=True)
-        await ed.call("wait", frames=10)
-        await ui.click(247, 715)
-        await ed.call("wait", frames=10)
-        if "asset.header" in ed.ui_items():
-            break
+    await inspect_asset(ed, ui, "assets/anim", "hero_wave.anim")
     ed.check("asset.header" in ed.ui_items(), f"the clip asset is inspected: {sorted(ed.ui_items())}")
     selected = await ed.call("get_selection")
     await ed.call("frame_entity", entity="Hero")
@@ -290,24 +310,7 @@ async def test_scene_click_shows_the_selection(ed: Editor):
 
 async def test_model_asset(ed: Editor):
     ui = Ui(ed)
-    await ed.call("focus_window", window="project")
-    # back to assets (tree), then models (second folder), then hero_animated.gltf (first file)
-    await ui.click(85, 691)
-    await ed.call("wait", frames=5)
-    for _ in range(4):
-        # the expanded tree's models row, else a double-click on the grid's second folder
-        await ui.click(100, 725)
-        await ed.call("wait", frames=10)
-        await ui.click(247, 715)
-        await ed.call("wait", frames=10)
-        if "asset.header" in ed.ui_items():
-            break
-        await ui.click(326, 715, double=True)
-        await ed.call("wait", frames=10)
-        await ui.click(247, 715)
-        await ed.call("wait", frames=10)
-        if "asset.header" in ed.ui_items():
-            break
+    await inspect_asset(ed, ui, "assets/models", "hero_animated.gltf")
     await shot(ed, "08-model-asset")
     ed.check("asset.header" in ed.ui_items(), f"model asset section drawn: {sorted(ed.ui_items())}")
 
