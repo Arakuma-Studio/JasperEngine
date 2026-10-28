@@ -10,7 +10,7 @@
 // BASISD_WRITE_NEW_DXT1_TABLES: the least squared error over the range's selectors, the first pair
 // in hi-major order on ties), found here in a window around the least-squares endpoints, or along
 // the one palette entry a mapping uses. The two give the same tables entry for entry
-// (TextureBasisTranscode.Etc1sToBc1TablesMatchUpstream), in milliseconds instead of seconds.
+// (TextureBasisTranscode.Etc1sToBc1TablesMatchUpstream), without the exhaustive search's seconds.
 
 namespace jasper_dxt1
 {

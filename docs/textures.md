@@ -213,12 +213,31 @@ Times (R19, R20):
 | cold 2048² cook, mobile ASTC 6x6 (normal effort) | 1.30 s | 6 s |
 | cold 2048² cook, web UASTC λ1 | 9.57 s | 12 s |
 | warm cook (cache hits) of 200 textures | 0.01 s | 10 s |
+| web (headless Chrome, one thread): 2048² UASTC λ1 with its mips to BC7 | 35.5 ms | 40 ms |
+| the same to ASTC 4x4 | 33.2 ms | 40 ms |
+| web: the transcoder's first-use set-up (once, the first Basis file) | 45.6 ms | |
+| web: the longest 32-block-row band of a 2048² level to BC7 (a main-thread slice) | 1.8 ms | |
+
+The web rows run in the texture-formats project's page (`?transcode_bench=1`, a Release web build)
+in headless Chrome on the same server: the bench's 2048² chain tiles the blocks of
+`assets/bench/uastc-photo-512.ktx2`, a 512² UASTC λ1 cook of the corpus photo (UASTC blocks
+transcode independently, so the work per block is a 2048² photo's), median of 15 runs. A budget
+missed is an error line; `?transcode_bench=report` (CI, the build servers) prints the figures
+without a verdict:
+
+```sh
+BUILD_TYPE=Release WEB_PROJECT=texture-formats tools/build.sh web
+GATE=texture-formats GATE_ARGS='--query=transcode_bench=1 --expect=transcode_web_budgets=pass --seconds 15' tools/build.sh web-gate
+```
+
+`TextureBasisTranscodeBench.Uastc2048Chain` prints the native figures of the same chain.
 
 Sizes (R21, `tools/textures/runtime_size.py`): a linked Release game carries 97.3 KB of Zstandard's
-decoder (73.5), bcdec (9.8) and the KTX2 reader (14.0), budget 120 KB, and 35.8 KB more of CPU
-decodes, fallback plans and the cooked index. The web build adds 823 KB (Basis Universal's
-transcoder 718 KB at `-Os`, Zstandard 43 KB, the texture runtime 61 KB) against R21's 250 KB: spec
-deviation 23.
+decoder (73.5), bcdec (9.8) and the KTX2 reader (14.0), budget 120 KB, and 31.3 KB more of CPU
+decodes, fallback plans and the cooked index. The web build adds 232.6 KB against R21's 250 KB
+(823 KB before S14b): Basis Universal's transcoder 145.2 KB (the D5 paths only, at `-O2`;
+`engine/libs/basisu/README.jasper.md`), Zstandard 37.3 KB and the texture runtime 50.1 KB (both at
+`-Os`); spec S14 deviation 23 has what was taken out. CI holds it to 240 KB.
 
 ## Libraries
 

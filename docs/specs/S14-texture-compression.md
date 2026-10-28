@@ -625,9 +625,11 @@ alternative, recorded here).
     decoder, bcdec and the KTX2 reader: **97.3 KB** (≤ 120) once the decoder is built with
     upstream's size options and the KTX2 writer is a file of its own no game links (S14b: unchanged,
     native games carry no Basis code). The web is measured from the wasm-ld link map (`--wasm-map`,
-    the texture-formats project's Release build): **197.4 KB** against R21's 250 KB (S14 shipped
-    823 KB): the Basis Universal transcoder 110.0 KB (718), Zstandard 37.3 KB (43.2) and the
-    texture runtime 50.1 KB (61.4). What made the difference (S14b):
+    the texture-formats project's Release build): **232.6 KB** against R21's 250 KB (S14 shipped
+    823 KB): the Basis Universal transcoder 145.2 KB (718), Zstandard 37.3 KB (43.2) and the
+    texture runtime 50.1 KB (61.4). The transcoder is built at `-O2` for R19 (deviation 24): at
+    `-Os` it is 110 KB, 197 KB in all, but a 2048² UASTC → BC7 takes 49 ms. What made the
+    difference (S14b):
     - the transcoder is built with only the D5 paths: XUASTC off (deviation 12: 270 KB of XUASTC,
       ASTC LDR and XUBC7 decoders with their BC7 / ASTC / ETC1 packers), PVRTC1/2, ATC and FXT1 off
       (UASTC → PVRTC1 too), and no ETC1S → ASTC 4x4 or BC7 (deviation 26: 125 KB of tables);
@@ -638,16 +640,25 @@ alternative, recorded here).
       UASTC HDR 4x4) from `Ktx2::read`'s levels instead of `ktx2_transcoder`, so the KTX2 container
       class and the ASTC HDR 6x6 transcoders are not linked (and a load no longer copies the file
       into a rebuilt KTX2);
-    - Zstandard's decoder and the texture runtime's files are built at `-Os` on the web like the
-      transcoder.
+    - Zstandard's decoder and the texture runtime's files are built at `-Os` on the web.
     `TextureWebTranscode.TrimmedTranscoderMatchesUpstreamOnEveryTarget` (editor tests, where the
     encoder's full transcoder is the reference) checks that every web cook transcodes to every
-    format of its list to upstream's bytes. The CI check holds 205 KB (the measured size and a
-    margin).
-24. **R19 on the web.** The 2048² UASTC → BC7 / ASTC transcode times in desktop Chrome and on a
-    Pixel 6a were not measured: the benchmark server has no browser timing harness and no
-    device; the web gate checks the transcode and the drawing (WebGL2 in headless Chrome), and the
-    loader's main-thread cap of one level per frame is in BasisTranscode / TextureDataPool.
+    format of its list to upstream's bytes, and `…OnRandomUastcBlocks` does the same over random
+    blocks of every UASTC mode. The CI check holds 240 KB (the measured size and a margin).
+24. **R19 on the web (S14b).** Measured in headless Chrome on the benchmark server E (4 AMD
+    EPYC-Milan vCPUs, the page's one thread, median of 15): a 2048² UASTC λ1 file with its mips
+    transcodes to BC7 in **35.5 ms** and to ASTC 4x4 in **33.2 ms** (≤ 40). The texture-formats
+    project's `?transcode_bench=1` measures it (docs/textures.md) and fails on a missed budget; the
+    2048² chain tiles the blocks of a 512² cook of the corpus photo (`assets/bench/`), since UASTC
+    blocks transcode independently and a 2048² cook would add 3 MB to the repository. Basis's
+    UASTC → BC7 / ASTC paths took 77 / 51 ms at `-Os` and 68 / 41 ms at `-O2`; the rest came from
+    the engine's copy of the transcoder (`JASPER_BASISD_FAST_TRANSCODE`, README.jasper.md: the BC7
+    and ASTC blocks built in two 64-bit words, the BC7 modes 5 and 6 UASTC's common modes land on
+    written out, word reads of the UASTC bit fields), checked byte for byte against upstream's code
+    by the editor's `TextureWebTranscode` tests. The transcoder's first use costs 45.6 ms once
+    (upstream's UASTC endpoint tables and the ETC1S → BC1 tables computed in place of their 120
+    KB): on the loader thread with threads, on the main thread during the scene load without. The Pixel 6a row is not
+    measured (no device: the Android build does not transcode Basis files at all).
 25. **Android gate.** The emulator's SwiftShader GLES3 has no ASTC: the texture-formats project
     ships `android_etc2` (an export with the ETC2 fallback), which the runtime picks there (`This
     GPU has no ASTC: loading the android_etc2 textures`). Devices with ASTC take `mobile`, as the

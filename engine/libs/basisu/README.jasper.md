@@ -46,11 +46,15 @@ shader-deblocking samples, the build files.
     and `.inl`), the arithmetic decoder's lookup table (`arith_fastbits_f32`) and the XUASTC
     transcoders' block helpers, which v2.50 leaves outside it (it does not compile without XUASTC
     otherwise: spec S14 deviation 12).
-  - Speed of the UASTC -> BC7 / ASTC transcodes the web measures (spec S14 R19), the same bytes
-    (the editor's `TextureWebTranscode` tests compare the engine's copy with the encoder's): the
-    16-bit word reads of UASTC bit fields are `memcpy` loads (no unaligned `uint16_t*` read, so
-    the engine's copy takes `BASISD_USE_UNALIGNED_WORD_READS=1` on every platform, wasm and UBSan
-    builds included); `encode_bc7_block()` gathers the block's 128 bits in two words
-    (`bc7_block_bit_writer`) and its indices 32 bits at a time instead of OR-ing each field into
-    the bytes; `unpack_uastc()` divides the trit / quint bundles by the constants 3 and 5.
+  - Speed of the UASTC -> BC7 / ASTC transcodes the web measures (spec S14 R19, deviation 24),
+    the same bytes: the 16-bit word reads of UASTC bit fields are `memcpy` loads (no unaligned
+    `uint16_t*` read, so the engine's copy takes `BASISD_USE_UNALIGNED_WORD_READS=1` everywhere,
+    wasm and UBSan builds included; the encoder's copy keeps byte reads), and under
+    `JASPER_BASISD_FAST_TRANSCODE` (default 0; 1 for the engine's copy, so the encoder's copy stays
+    upstream's code and the editor's `TextureWebTranscode` tests compare the two byte for byte):
+    `encode_bc7_block()` builds the block in two 64-bit words (`bc7_block_bit_writer`), BC7 modes
+    5 and 6 (where UASTC's common modes land) written out, the other modes' indices 32 bits at a
+    time; `pack_astc_block()` builds the ASTC block in two words (`astc_block_bits`) and
+    `astc_set_bits()` ORs a field from one shifted word; `unpack_uastc()` divides the trit / quint
+    bundles by the constants 3 and 5 and inverts a one-subset block's weights in one loop.
 - Otherwise no source file is changed; `encoder/*` is byte for byte the tag's.
