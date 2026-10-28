@@ -12,14 +12,12 @@
 #include "component/Light2DComponent.h"
 #include "component/MeshComponent.h"
 #include "component/SpriteComponent.h"
-#include "mcp/McpContext.h"
-#include "mcp/McpServer.h"
 #include "mcp/McpValues.h"
-#include "mcp/tools/W4Shared.h"
 #include "texsynth/SynthesisRecipe.h"
 #include "texsynth/SynthesisSession.h"
 #include "util/EntityPath.h"
 #include "util/ProjectChecks.h"
+#include "util/ProjectFileWrites.h"
 
 #include <algorithm>
 #include <cctype>
@@ -117,14 +115,54 @@ namespace jasperengine::editor::spritenormals {
             return System::hasInstance() ? fs::u8path(System::instance().getAssetPath()) : fs::path();
         }
 
-        // The assets directory outputs must be in: the Platform's asset path when it lies at or
-        // below projectDir (the project's assets directory), else projectDir itself. Without the
-        // engine: the assets directory projectDir's project.yaml names
-        fs::path assetsRoot(const fs::path& projectDir) {
-            const fs::path assets = System::hasInstance() ? fs::u8path(System::instance().getAssetPath())
-                                                          : ProjectChecks::assetsRootFromProjectFile(projectDir);
-            if (!assets.empty() && !projectDir.empty() && isAtOrBelow(assets, projectDir)) return normalDir(assets);
+        // The assets directory outputs must be in: `assets` when it lies at or below projectDir,
+        // else projectDir itself. `assets` named through another spelling of projectDir (a link to
+        // the project) is that directory under projectDir's spelling.
+        fs::path assetsRootOf(const fs::path& projectDir, const fs::path& assets) {
+            if (assets.empty() || projectDir.empty()) return normalDir(projectDir);
+            if (isAtOrBelow(assets, projectDir)) return normalDir(assets);
+            // the ancestor of `assets` that is projectDir once links are resolved: the rest of
+            // `assets` below projectDir as named
+            const fs::path realProject = resolvedPath(projectDir);
+            fs::path tail;
+            for (fs::path a = normalDir(assets); a.has_relative_path(); a = a.parent_path()) {
+                if (resolvedPath(a) == realProject) return normalDir(tail.empty() ? projectDir : projectDir / tail);
+                tail = tail.empty() ? a.filename() : a.filename() / tail;
+            }
             return normalDir(projectDir);
+        }
+
+        // ... the Platform's asset path (the project's assets directory); without the engine: the
+        // assets directory projectDir's project.yaml names
+        fs::path assetsRoot(const fs::path& projectDir) {
+            return assetsRootOf(projectDir, System::hasInstance() ? fs::u8path(System::instance().getAssetPath())
+                                                                  : ProjectChecks::assetsRootFromProjectFile(projectDir));
+        }
+
+        // An output's escape once links are resolved: "" when `abs` (lexically inside `assets`)
+        // stays inside the assets directory and out of hidden directories of the project, else
+        // the problem's message. `shownPath` as the caller names the output.
+        std::string resolvedEscape(const fs::path& projectDir, const fs::path& assets, const fs::path& abs, const std::string& shownPath) {
+            const fs::path real = resolvedPath(abs);
+            const fs::path realAssets = resolvedPath(assets);
+            if (!isAtOrBelow(real, realAssets)) {
+                return shownPath + " resolves outside the project's assets directory (" + projectRelative(projectDir, assets) +
+                       "): a symbolic link on its way leads to " + texsynth::printableUtf8(real.generic_u8string()) + ".";
+            }
+            // a link into a hidden directory of the project (.jasperengine, .git ...)
+            if (!projectDir.empty()) {
+                const fs::path back = real.lexically_relative(resolvedPath(projectDir));
+                if (!back.empty() && *back.begin() != "..") {
+                    for (auto it = back.begin(); it != back.end() && std::next(it) != back.end(); ++it) {
+                        const std::string part = it->u8string();
+                        if (!part.empty() && part[0] == '.' && part != "." && part != "..") {
+                            return shownPath + " resolves into the hidden directory " + texsynth::printableUtf8(part) +
+                                   " through a symbolic link.";
+                        }
+                    }
+                }
+            }
+            return std::string();
         }
 
         Scene* mutableScene(const Scene* scene) { return const_cast<Scene*>(scene); }
@@ -291,6 +329,18 @@ namespace jasperengine::editor::spritenormals {
         const fs::path rel = absolute.lexically_normal().lexically_relative(projectDir.lexically_normal());
         if (rel.empty() || *rel.begin() == ".." || rel.is_absolute()) return absolute.lexically_normal().generic_u8string();
         return rel.generic_u8string();
+    }
+
+    fs::path resolvedPath(const fs::path& path) {
+        if (path.empty()) return path;
+        std::error_code ec;
+        const fs::path resolved = fs::weakly_canonical(path, ec);
+        return ec || resolved.empty() ? path.lexically_normal() : resolved.lexically_normal();
+    }
+
+    bool isInsideResolved(const fs::path& path, const fs::path& dir) {
+        if (path.empty() || dir.empty()) return false;
+        return isAtOrBelow(resolvedPath(path), resolvedPath(dir));
     }
 
     std::vector<PlannedOutput> defaultOutputs(const std::string& sourcePath, SourceKind kind, bool height, bool framesJson) {
@@ -517,7 +567,8 @@ namespace jasperengine::editor::spritenormals {
             c.outputs = plannedOutputs(projectDir, resolved, animated ? c.info.kind : SourceKind::Image);
             std::set<std::string> written;
             const fs::path assets = projectDir.empty() ? fs::path() : assetsRoot(projectDir);
-            const std::string sourceKey = c.sourceAbsolute.empty() ? std::string() : c.sourceAbsolute.lexically_normal().generic_u8string();
+            // the source and the outputs compared with their links resolved (an alias is the same file)
+            const std::string sourceKey = c.sourceAbsolute.empty() ? std::string() : resolvedPath(c.sourceAbsolute).generic_u8string();
             for (const PlannedOutput& out : c.outputs) {
                 const std::string field = "output." + out.role;
                 if (out.path.empty()) {
@@ -546,7 +597,14 @@ namespace jasperengine::editor::spritenormals {
                         "Write it inside the assets directory.");
                     continue;
                 }
-                const std::string key = abs.lexically_normal().generic_u8string();
+                if (!assets.empty()) {
+                    const std::string escape = resolvedEscape(projectDir, assets, abs, out.path);
+                    if (!escape.empty()) {
+                        add(problems, "output_invalid", field, escape, "Write it to a folder of the assets directory that is not a link to elsewhere.");
+                        continue;
+                    }
+                }
+                const std::string key = resolvedPath(abs).generic_u8string();
                 if (!written.insert(key).second) {
                     add(problems, "output_invalid", field, "Two outputs would be written to " + out.path + ".", "Give each output its own path.");
                     continue;
@@ -822,15 +880,28 @@ namespace jasperengine::editor::spritenormals {
         return true;
     }
 
-    bool writeOutputsUndoable(const std::vector<OutputFile>& files, std::string& error) {
-        mcp::McpServer& server = mcp::McpServer::get();
-        if (!server.isStarted() || !server.context().project()) {
+    bool writeOutputsUndoable(Project* project, const std::vector<OutputFile>& files, std::string& error) {
+        if (!project || project->getProjectPath().empty()) {
             error = "No editor project is open to write into (outside the editor, write with writeOutputsDirect).";
             return false;
         }
-        std::vector<mcp::w4::WriteFilesCmd::Item> items;
+        // checked again where they are written: a symbolic link made since the check must not
+        // lead a write out of the assets directory
+        const fs::path root = project->getProjectPath();
+        const fs::path assets = assetsRootOf(root, project->getAssetsPath());
+        for (const OutputFile& file : files) {
+            const std::string shown = file.path.empty() ? projectRelative(root, file.absolute) : file.path;
+            std::string escape = isAtOrBelow(file.absolute, assets)
+                                     ? resolvedEscape(root, assets, file.absolute, shown)
+                                     : shown + " is outside the project's assets directory (" + projectRelative(root, assets) + ").";
+            if (!escape.empty()) {
+                error = escape + " Nothing was written.";
+                return false;
+            }
+        }
+        std::vector<WriteFilesCmd::Item> items;
         for (const OutputFile& file : files) items.push_back({file.absolute, file.bytes});
-        if (!mcp::w4::writeFilesUndoable(server.context(), std::move(items), error)) return false;
+        if (!ProjectFileWrites::writeUndoable(project, std::move(items), error)) return false;
         // the editor's watcher reads them soon (and wakes when the project had no generated map)
         if (SpriteNormalsWatcher* watcher = SpriteNormalsWatcher::active()) {
             for (const OutputFile& file : files) watcher->invalidate(file.absolute);

@@ -42,6 +42,7 @@
 #include "texture/Texture.h"
 #include "util/FileUtils.h"
 #include "util/ProjectChecks.h"
+#include "util/ProjectFileWrites.h"
 #include "util/ProjectUtils.h"
 #include "util/ScriptParser.h"
 #include "util/Util.h"
@@ -149,27 +150,12 @@ bool isEditorOwnedFile(Project* project, const fs::path& absolute, std::string& 
 }
 
 bool writeFilesUndoable(McpContext& ctx, std::vector<WriteFilesCmd::Item> items, std::string& error) {
-    for (const WriteFilesCmd::Item& item : items) {
-        std::error_code ec;
-        if (fs::is_directory(item.path, ec)) {
-            error = FileUtils::pathToGenericUtf8(item.path) + " is a directory.";
-            return false;
-        }
-    }
+    // the editor's undoable write (ProjectFileWrites); its execute, undo and redo run the full file
+    // sync (the editor's refresh, then this server's bookkeeping)
     McpContext* context = &ctx;
-    auto* cmd = new WriteFilesCmd(std::move(items), [context](const std::vector<fs::path>& changed) {
+    return ProjectFileWrites::writeUndoable(ctx.project(), std::move(items), error, [context](const std::vector<fs::path>& changed) {
         syncFiles(*context, changed, false);
     });
-    cmd->setNoMerge();
-    auto failure = std::make_shared<std::string>();
-    cmd->reportFailureTo(failure);
-    // addCommand runs execute() and deletes the command when it fails (execute then changed nothing)
-    if (!ctx.project()->getProjectCommandHistory()->addCommand(cmd)) {
-        error = "Writing the file(s) failed: " +
-                (failure->empty() ? std::string("permissions, a read-only disk, or a parent path that is a file") : *failure) + ".";
-        return false;
-    }
-    return true;
 }
 
 // ------------------------------------------------------------------ syncFiles
@@ -259,96 +245,6 @@ fs::path entrySourceFile(Project* project, const ScriptEntry& entry) {
     fs::path source = entry.path;
     if (source.is_relative()) source = project->getProjectPath() / source;
     return source.lexically_normal();
-}
-
-int reloadTextures(Project* project, const std::set<std::string>& images) {
-    if (images.empty()) return 0;
-    int count = 0;
-    auto matches = [&](const Texture& texture) {
-        const std::string path = texture.getPath(0);
-        if (path.empty()) return false;
-        return images.count(McpValues::assetPathToJson(project, path)) > 0;
-    };
-    auto reload = [&](Texture& texture) {
-        texture.invalidateRender();
-        TextureDataPool::remove(texture.getId());
-        texture.destroy();
-        count++;
-    };
-    for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
-        if (!sceneProject->scene) continue;
-        bool touched = false;
-        for (Entity entity : sceneProject->entities) {
-            for (ComponentType component : Catalog::findComponents(sceneProject->scene, entity)) {
-                for (auto& [name, property] : Catalog::findEntityProperties(sceneProject->scene, entity, component)) {
-                    if (!property.ref) continue;
-                    if (property.type == PropertyType::Texture) {
-                        Texture* texture = static_cast<Texture*>(property.ref);
-                        if (matches(*texture)) {
-                            reload(*texture);
-                            touched = true;
-                        }
-                    } else if (property.type == PropertyType::Material) {
-                        Material* material = static_cast<Material*>(property.ref);
-                        for (Texture* texture : {&material->baseColorTexture, &material->emissiveTexture,
-                                                 &material->metallicRoughnessTexture, &material->occlusionTexture,
-                                                 &material->normalTexture}) {
-                            if (matches(*texture)) {
-                                reload(*texture);
-                                touched = true;
-                            }
-                        }
-                    } else if (property.type == PropertyType::Custom && name.size() >= 14 &&
-                               name.compare(name.size() - 14, 14, "shaderTextures") == 0) {
-                        // shader library textures, of a submesh material or a component; which
-                        // textures it binds is resolved when it loads
-                        bool reloaded = false;
-                        for (auto& shaderTexture : *static_cast<std::vector<std::pair<std::string, Texture>>*>(property.ref)) {
-                            if (matches(shaderTexture.second)) {
-                                reload(shaderTexture.second);
-                                reloaded = true;
-                            }
-                        }
-                        if (reloaded) {
-                            Catalog::updateEntity(sceneProject->scene, entity, property.updateFlags);
-                            touched = true;
-                        }
-                    }
-                }
-            }
-        }
-        // the scene's post-processing images (phase 4): the user passes' textures and the LUT
-        // strip, which the renderer caches by path
-        bool postImages = false;
-        std::vector<PostProcessPass> passes = sceneProject->scene->getPostProcessPasses();
-        for (PostProcessPass& pass : passes) {
-            for (auto& entry : pass.textures) {
-                if (matches(entry.second)) {
-                    // the GPU texture is held by the chain's copies, not by the scene's: the
-                    // pool entry is marked stale for them to rebuild it from the new pixels
-                    TexturePool::invalidate(entry.second.getId());
-                    reload(entry.second);
-                    postImages = true;
-                }
-            }
-        }
-        // the scene keeps the released textures (no pixels held), so the chain's reload below
-        // reads the file again; same paths, so this is no edit (and no undo step)
-        if (postImages) sceneProject->scene->setPostProcessPasses(passes);
-        const std::string lut = sceneProject->scene->getPostProcessing().lutTexture;
-        if (!lut.empty() && images.count(McpValues::assetPathToJson(project, lut)) > 0) {
-            count++;
-            postImages = true;
-        }
-        if (postImages) {
-            if (std::shared_ptr<RenderSystem> render = sceneProject->scene->getSystem<RenderSystem>())
-                render->invalidatePostProcessTextures();
-            touched = true;
-        }
-
-        if (touched) sceneProject->needUpdateRender = true;
-    }
-    return count;
 }
 
 std::vector<std::string> propertyNames(const ScriptEntry& entry) {
@@ -629,30 +525,22 @@ Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool ful
         updateSnapshotEntries(project, changedIn, &added, &modified, &removed);
     }
 
-    bool anyShader = false, anyMaterial = false;
-    std::set<std::string> images;
     std::vector<std::string> changedRel;
-    for (const fs::path& path : changed) {
-        const std::string rel = projectRelative(project, path);
-        changedRel.push_back(rel);
-        if (Util::isShaderFile(rel)) anyShader = true;
-        if (Util::isMaterialFile(rel)) anyMaterial = true;
-        if (Util::isImageFile(rel)) images.insert(rel);
-    }
+    for (const fs::path& path : changed) changedRel.push_back(projectRelative(project, path));
     bool firstFull = full && !notes.empty();
 
-    // Pose animation documents (editor/pose) of changed .poseanim files reload; so do clip
-    // documents (a changed model: its sub-clips), and AnimationClipPool drops the clips so the
-    // Animation Players using them reload (edit preview and play alike)
+    // The editor's own refresh (ProjectFileWrites::refresh, what the editor's writes run without
+    // the server too): the pose, clip and .vat documents of changed files reload (a broken file
+    // keeps the last valid asset; its problem is reported below), linked materials, shader forks,
+    // the textures reading a changed image, the asset database, the Project window and the sprite
+    // normals watcher. A first full sync refreshes every linked material and shader fork.
     const std::vector<fs::path> changedPaths(changed.begin(), changed.end());
-    PoseAnimationDocument::filesChanged(changedPaths);
-    if (full) PoseAnimationDocument::checkDiskChanges();
-    AnimationClipDocument::filesChanged(changedPaths, project);
-    if (full) AnimationClipDocument::checkDiskChanges(project);
-    // .vat documents reload too, VertexAnimationPool drops the changed ones and their Vertex
-    // Animators reload (a broken file keeps the last valid asset; its problem is reported below)
-    VatDocument::filesChanged(changedPaths, project);
-    if (full) VatDocument::checkDiskChanges(project);
+    const ProjectFileWrites::Refreshed refreshed = ProjectFileWrites::refresh(project, changedPaths, firstFull);
+    if (full) {
+        PoseAnimationDocument::checkDiskChanges();
+        AnimationClipDocument::checkDiskChanges(project);
+        VatDocument::checkDiskChanges(project);
+    }
     for (const fs::path& path : changed) addAnimationFileProblems(project, path, problems);
     // and a .vat that doesn't match its .vat.glb (it doesn't load: vat-layout-mismatch / vat-mesh-mismatch)
     for (const fs::path& path : changed) vatFileChanged(project, path, problems);
@@ -763,10 +651,6 @@ Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool ful
                                        full ? std::vector<fs::path>() : changedLua);
     }
 
-    if (anyMaterial || firstFull) project->refreshLinkedMaterials(true);
-    if (anyShader || firstFull) project->invalidateCustomShaders();
-    const int texturesReloaded = reloadTextures(project, images);
-
     // HTML UI documents reading a changed file reload now (edit mode and play alike)
     Json uiReloaded = Json::array();
     int uiCurrent = 0;
@@ -793,12 +677,6 @@ Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool ful
         }
     }
 
-    project->refreshAssetDatabase(true);
-    if (ProjectWindow* window = ctx.projectWindow()) {
-        for (const fs::path& path : changed) window->notifyResourceFileChanged(path);
-        window->refreshCurrentDirectory();
-    }
-
     Json result = {
         {"changed", {{"added", added}, {"modified", modified}, {"removed", removed}}},
         {"code_editor", codeEditor},
@@ -806,8 +684,8 @@ Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool ful
         {"problems", problems},
         {"notes", notes}
     };
-    if (texturesReloaded > 0) result["textures_reloaded"] = texturesReloaded;
-    if (anyShader) result["shaders_invalidated"] = true;
+    if (refreshed.texturesReloaded > 0) result["textures_reloaded"] = refreshed.texturesReloaded;
+    if (refreshed.shadersInvalidated) result["shaders_invalidated"] = true;
     if (!uiReloaded.empty()) result["ui_reloaded"] = uiReloaded;
     if (uiCurrent > 0) result["ui_current"] = uiCurrent;
     // Handled now: not an external change for the automatic pick-up before the next call

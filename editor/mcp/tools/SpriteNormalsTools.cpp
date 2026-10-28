@@ -33,6 +33,7 @@
 #include "texsynth/SynthesisSession.h"
 #include "util/Base64.h"
 #include "util/EntityPath.h"
+#include "util/FileUtils.h"
 #include "util/Util.h"
 
 #include <algorithm>
@@ -104,6 +105,15 @@ std::string argumentField(const std::string& field) {
 
 sn::Problem problem(const std::string& kind, const std::string& field, const std::string& message, const std::string& fix) {
     return {kind, field, message, fix};
+}
+
+// save_path (resolved by McpRefs::resolveProjectPath to `target`) still inside the project once
+// symbolic links are resolved; false + error when a link on its way leads out of it
+bool savePathStaysInside(Project* project, const std::string& given, const fs::path& target, std::string& error) {
+    if (sn::isInsideResolved(target, project->getProjectPath())) return true;
+    error = "\"" + given + "\" resolves outside the project: a symbolic link on its way leads to " +
+            FileUtils::pathToGenericUtf8(sn::resolvedPath(target)) + ".";
+    return false;
 }
 
 // every error says how to fix it: a problem without its own fix points at the argument table
@@ -749,7 +759,7 @@ void finishNormals(const NormalsCallPtr& state) {
     if (!state->savePath.empty() && !reports.empty() && !reports[0].sheet.empty()) {
         fs::path target;
         std::string error;
-        if (!McpRefs::resolveProjectPath(project, state->savePath, target, error)) {
+        if (!McpRefs::resolveProjectPath(project, state->savePath, target, error) || !savePathStaysInside(project, state->savePath, target, error)) {
             failJob(job, "Nothing was written:", {problem("output_invalid", "save_path", error, "a project-relative .png path")});
             return;
         }
@@ -822,7 +832,7 @@ void finishNormals(const NormalsCallPtr& state) {
         CommandHistory* history = project->getProjectCommandHistory();
         const size_t before = history ? history->position() : 0;
         std::string error;
-        if (!sn::writeOutputsUndoable(all, error)) {
+        if (!sn::writeOutputsUndoable(project, all, error)) {
             failWrite("Nothing was written:", {problem("write_failed", "output", error, "check the path is writable, then call again")});
             return;
         }
@@ -1080,6 +1090,11 @@ void generateSpriteNormalsTool(const CallPtr& call) {
             failCall(call, problem("output_invalid", "save_path", "save_path: " + error, "a project-relative .png path"));
             return;
         }
+        if (!savePathStaysInside(project, s.get<std::string>(), target, error)) {
+            failCall(call, problem("output_invalid", "save_path", "save_path: " + error,
+                                   "a project-relative .png path in a folder of the project that is not a link to elsewhere"));
+            return;
+        }
         state->savePath = relativeOf(project, target);
     }
 
@@ -1262,7 +1277,8 @@ void generateSpriteNormalsTool(const CallPtr& call) {
             failCall(call, problems);
             return;
         }
-        inputs.insert(prepared[i].sourceAbsolute.lexically_normal().generic_u8string());
+        // compared with their links resolved: an alias of a file is that file
+        inputs.insert(sn::resolvedPath(prepared[i].sourceAbsolute).generic_u8string());
         if (state->write && output.framesJson && prepared[i].request.cells.empty()) {
             failCall(call, problem("output_invalid", "output.frames", "output.frames writes a frames JSON, but " + prepared[i].sourcePath + " has no frames (one whole image)",
                                    "pass frames (a grid or cells) or a GIF/APNG, or leave output.frames out"));
@@ -1270,17 +1286,18 @@ void generateSpriteNormalsTool(const CallPtr& call) {
         }
     }
     // outputs of different tilesets must differ, and never replace an input of the call (or the sheet)
+    const std::string sheetKey = state->savePath.empty() ? std::string() : sn::resolvedPath(state->root / fs::u8path(state->savePath)).generic_u8string();
     for (size_t i = 0; state->write && i < prepared.size(); i++) {
         for (const sn::PlannedOutput& o : prepared[i].outputs) {
-            const std::string key = (state->root / fs::u8path(o.path)).lexically_normal().generic_u8string();
-            if (inputs.count(key) || !outputs.insert(key).second || (!state->savePath.empty() && o.path == state->savePath)) {
+            const std::string key = sn::resolvedPath(state->root / fs::u8path(o.path)).generic_u8string();
+            if (inputs.count(key) || !outputs.insert(key).second || (!sheetKey.empty() && key == sheetKey)) {
                 failCall(call, problem("output_invalid", "output." + o.role, o.path + " is an input of this call, or written twice by it",
                                        "an assets path ending in .png, or output: true"));
                 return;
             }
         }
     }
-    if (!state->savePath.empty() && inputs.count((state->root / fs::u8path(state->savePath)).lexically_normal().generic_u8string())) {
+    if (!sheetKey.empty() && inputs.count(sheetKey)) {
         failCall(call, problem("output_invalid", "save_path", "save_path " + state->savePath + " is the source", "save the sheet elsewhere"));
         return;
     }

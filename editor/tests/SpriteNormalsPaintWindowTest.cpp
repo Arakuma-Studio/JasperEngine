@@ -4,9 +4,10 @@
 // Painting in the Sprite Normal Map window (sprite normals Phase 5 spec 5 and 7.3) through its
 // scripted API and SpriteNormalsPaintWindowTestAccess (the friend the window declares): strokes
 // and brush footprints, mirror X, the wand, the stroke undo stack, opening a painted map (and one
-// of another size), Alt-click sampling, Save writing the paint chunk. Every case runs in a child
-// process with the editor's App, its project and MCP server started (the SpriteNormalsWindowTest
-// pattern): a 32x32 shaded disk hero.png and a 128x32 4-frame walk.png drawn by the Sprite "Walker".
+// of another size), Alt-click sampling, Save writing the paint chunk (no MCP server: the write is
+// ProjectFileWrites'). Every case runs in a child process with the editor's App and its project set
+// up for good (the SpriteNormalsWindowTest pattern): a 32x32 shaded disk hero.png and a 128x32
+// 4-frame walk.png drawn by the Sprite "Walker".
 
 #include <gtest/gtest.h>
 #include <gtest/gtest-spi.h>
@@ -174,7 +175,8 @@ namespace {
         Engine::setAsyncLoading(false);
         if (!w.p->loadProject(w.dir, false)) std::exit(90);
         Engine::setAsyncLoading(false);
-        mcp::McpServer::get().start(app);
+        // no MCP server: the window's Save writes through ProjectFileWrites without it
+        if (mcp::McpServer::get().isStarted()) std::exit(91);
 
         w.p->createNewScene("Normals", SceneType::SCENE_2D);
         w.sceneId = w.p->getSelectedSceneId();
@@ -832,7 +834,7 @@ TEST(SpriteNormalsPaintWindowDeathTest, AnOutsideRewriteWithoutStrokesIsAdopted)
         std::vector<sn::OutputFile> files;
         std::string error;
         ASSERT_TRUE(sn::encodeOutputs(prepared, result, files, error)) << error;
-        ASSERT_TRUE(sn::writeOutputsUndoable(files, error)) << error;
+        ASSERT_TRUE(sn::writeOutputsUndoable(w.p, files, error)) << error;
         Access::checkTarget(*window);
         EXPECT_EQ(window->paintedPixelCount(), 0u) << "no strokes here: the file's (empty) paint is taken";
         EXPECT_FALSE(window->hasUnsavedPaint());
@@ -871,5 +873,42 @@ TEST(SpriteNormalsPaintWindowDeathTest, StrokesEvictedFromTheUndoCapStillKeepThe
         Access::checkTarget(*window);
         EXPECT_EQ(window->paintedPixelCount(), 4u);
         EXPECT_FALSE(window->hasUnsavedPaint());
+    });
+}
+
+// ---- the paint Save: no MCP server, and never through a link out of the assets
+
+TEST(SpriteNormalsPaintWindowDeathTest, PaintSaveNeedsNoServerAndStaysInsideTheAssets) {
+    IN_EDITOR("paintlinks", {
+        ASSERT_FALSE(mcp::McpServer::get().isStarted());
+        const fs::path outside = w.dir.parent_path() / "outside";
+        fs::create_directories(outside);
+        fs::create_directory_symlink(outside, w.file("assets/out"));
+        auto window = openWindow(w, "assets/hero.png");
+        window->setPaintTool(sn::PaintTool::Flatten);
+        window->setPaintBrush(brushOf(2));
+        window->paintStroke({{10, 16}});
+        ASSERT_TRUE(window->hasUnsavedPaint());
+        // the paint lives in the normal map: a map through the link is refused, nothing written
+        window->setOutput("assets/out/hero_normal.png");
+        std::vector<std::string> written;
+        std::string error;
+        const size_t before = w.p->getProjectCommandHistory()->position();
+        EXPECT_FALSE(window->save(true, written, error));
+        EXPECT_NE(error.find("symbolic link"), std::string::npos) << error;
+        EXPECT_FALSE(fs::exists(outside / "hero_normal.png"));
+        EXPECT_EQ(w.p->getProjectCommandHistory()->position(), before);
+        EXPECT_TRUE(window->hasUnsavedPaint());
+        // inside the assets: one project step with the paint chunk, undo and redo
+        window->setOutput("");
+        ASSERT_TRUE(window->save(true, written, error)) << error;
+        const fs::path map = w.file("assets/hero_normal.png");
+        EXPECT_EQ(w.p->getProjectCommandHistory()->position(), before + 1);
+        EXPECT_FALSE(window->hasUnsavedPaint());
+        EXPECT_GT(sn::readPaint(map).value_or(sn::PaintOverlay()).paintedCount(), 0u);
+        ASSERT_TRUE(w.p->getProjectCommandHistory()->undo());
+        EXPECT_FALSE(fs::exists(map));
+        ASSERT_TRUE(w.p->getProjectCommandHistory()->redo());
+        EXPECT_GT(sn::readPaint(map).value_or(sn::PaintOverlay()).paintedCount(), 0u);
     });
 }

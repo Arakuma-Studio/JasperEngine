@@ -379,6 +379,144 @@ TEST(SpriteNormalsSession, OutputsMustBeInsideTheAssetsDirectory) {
     EXPECT_TRUE(sn::checkSpec(root(), spec).empty());
 }
 
+// ---- symbolic links: every output stays inside the assets directory once links are resolved
+
+TEST(SpriteNormalsSession, OutputsThroughALinkOutOfTheAssetsAreRefused) {
+    const std::string dir = folder("links");
+    writePng(dir + "/hero.png", balls(16, 16, 16, 6));
+    copyWalkGif(dir + "/walk.gif");
+    const fs::path outside = root().parent_path() / "outside-links";
+    fs::remove_all(outside);
+    fs::create_directories(outside);
+    const fs::path abs = root() / fs::u8path(dir);
+    fs::create_directory_symlink(outside, abs / "out");
+    project()->setAssetsDir("assets");
+    auto refusal = [&](const sn::Spec& spec, const std::string& field) {
+        for (const sn::Problem& p : sn::checkSpec(root(), spec)) {
+            if (p.kind == "output_invalid" && p.field == field) return p.message;
+        }
+        return std::string();
+    };
+    // the normal map, the height map, the frames JSON and the atlas
+    sn::Spec normal = stillSpec(dir + "/hero.png");
+    normal.output.normal = dir + "/out/hero_normal.png";
+    const std::string message = refusal(normal, "output.normal");
+    EXPECT_EQ(message, dir + "/out/hero_normal.png resolves outside the project's assets directory (assets): a symbolic link on its way leads to " +
+                           (fs::weakly_canonical(outside) / "hero_normal.png").generic_u8string() + ".");
+    sn::Spec height = stillSpec(dir + "/hero.png");
+    height.settings.height = true;
+    height.output.height = dir + "/out/hero_height.png";
+    EXPECT_NE(refusal(height, "output.height").find("symbolic link"), std::string::npos);
+    sn::Spec frames = stillSpec(dir + "/hero.png");
+    frames.frames.mode = sn::FramesSpec::Mode::Grid;
+    frames.frames.grid.tileWidth = frames.frames.grid.tileHeight = 8;
+    frames.output.framesJson = true;
+    frames.output.framesJsonPath = dir + "/out/hero.frames.json";
+    EXPECT_NE(refusal(frames, "output.frames_json").find("symbolic link"), std::string::npos);
+    sn::Spec atlas = stillSpec(dir + "/walk.gif");
+    atlas.output.atlas = dir + "/out/walk_sheet.png";
+    EXPECT_NE(refusal(atlas, "output.atlas").find("symbolic link"), std::string::npos);
+    // the default outputs of a source in the linked folder too (its paint would be stored there)
+    fs::copy_file(abs / "hero.png", outside / "art.png");
+    sn::Spec linkedSource = stillSpec(dir + "/out/art.png");
+    EXPECT_NE(refusal(linkedSource, "output.normal").find("symbolic link"), std::string::npos);
+    // a link to a folder of the assets is fine
+    fs::create_directories(abs / "real");
+    fs::create_directory_symlink(abs / "real", abs / "inside");
+    sn::Spec inside = stillSpec(dir + "/hero.png");
+    inside.output.normal = dir + "/inside/hero_normal.png";
+    EXPECT_TRUE(sn::checkSpec(root(), inside).empty());
+    // a link into a hidden directory of the project, with the whole project as assets
+    project()->setAssetsDir(".");
+    fs::create_directories(root() / ".jasperengine" / "links");
+    fs::create_directory_symlink(root() / ".jasperengine" / "links", abs / "hidden");
+    sn::Spec hidden = stillSpec(dir + "/hero.png");
+    hidden.output.normal = dir + "/hidden/hero_normal.png";
+    EXPECT_NE(refusal(hidden, "output.normal").find("hidden directory .jasperengine"), std::string::npos);
+    EXPECT_NE(refusal(normal, "output.normal").find("symbolic link"), std::string::npos) << "outside the project too";
+    // the undoable write checks again where it writes (a link made since the check): nothing is written
+    sn::OutputFile late;
+    late.role = "normal";
+    late.path = dir + "/out/late.png";
+    late.absolute = abs / "out" / "late.png";
+    late.bytes = "bytes";
+    std::string error;
+    const size_t before = project()->getProjectCommandHistory()->position();
+    EXPECT_FALSE(sn::writeOutputsUndoable(project(), {late}, error));
+    EXPECT_NE(error.find("symbolic link"), std::string::npos) << error;
+    EXPECT_NE(error.find("Nothing was written"), std::string::npos) << error;
+    EXPECT_FALSE(fs::exists(outside / "late.png"));
+    EXPECT_EQ(project()->getProjectCommandHistory()->position(), before);
+    fs::remove_all(abs);
+    fs::remove_all(outside);
+    fs::remove_all(root() / ".jasperengine" / "links");
+}
+
+TEST(SpriteNormalsSession, AnOutputThatIsTheSourceThroughALinkIsRefused) {
+    const std::string dir = folder("alias");
+    writePng(dir + "/hero.png", balls(16, 16, 16, 6));
+    const fs::path abs = root() / fs::u8path(dir);
+    fs::create_symlink("hero.png", abs / "hero_link.png");
+    fs::create_directory_symlink(abs, abs.parent_path() / "alias_dir");
+    sn::Spec spec = stillSpec(dir + "/hero.png");
+    spec.overwrite = true;
+    for (const std::string& out : {dir + "/hero_link.png", std::string("assets/alias_dir/hero.png")}) {
+        spec.output.normal = out;
+        std::optional<sn::Problem> p = findKind(sn::checkSpec(root(), spec), "output_invalid");
+        ASSERT_TRUE(p) << out;
+        EXPECT_NE(p->message.find("would replace the source"), std::string::npos) << out << ": " << p->message;
+    }
+    // two outputs that are one file through a link
+    spec.output.normal = dir + "/hero_n.png";
+    spec.settings.height = true;
+    spec.output.height = "assets/alias_dir/hero_n.png";
+    std::optional<sn::Problem> p = findKind(sn::checkSpec(root(), spec), "output_invalid");
+    ASSERT_TRUE(p);
+    EXPECT_EQ(p->field, "output.height");
+    EXPECT_NE(p->message.find("Two outputs"), std::string::npos) << p->message;
+    fs::remove(abs.parent_path() / "alias_dir");
+    fs::remove_all(abs);
+}
+
+TEST(SpriteNormalsSession, ALinkedAssetsDirectoryOrProjectKeepsWorking) {
+    const std::string dir = folder("linkedroot");
+    writePng(dir + "/hero.png", balls(16, 16, 16, 6));
+    // the assets directory is a link to a folder outside the project
+    const fs::path real = root().parent_path() / "real-assets";
+    fs::remove_all(real);
+    fs::create_directories(real / "art");
+    fs::copy_file(root() / fs::u8path(dir) / "hero.png", real / "art" / "hero.png");
+    fs::remove(root() / "linked");
+    fs::create_directory_symlink(real, root() / "linked");
+    project()->setAssetsDir("linked");
+    sn::Spec spec = stillSpec("linked/art/hero.png");
+    EXPECT_TRUE(sn::checkSpec(root(), spec).empty()) << "the default output, inside the linked assets directory";
+    spec.output.normal = "assets/elsewhere.png";
+    EXPECT_TRUE(findKind(sn::checkSpec(root(), spec), "output_invalid")) << "outside the assets directory, as before";
+    // its undoable write goes through
+    spec.output.normal.clear();
+    std::vector<sn::OutputFile> files = generateFiles(spec);
+    ASSERT_EQ(files.size(), 1u);
+    std::string error;
+    ASSERT_TRUE(sn::writeOutputsUndoable(project(), files, error)) << error;
+    EXPECT_TRUE(fs::is_regular_file(real / "art" / "hero_normal.png"));
+    ASSERT_TRUE(project()->getProjectCommandHistory()->undo());
+    EXPECT_FALSE(fs::exists(real / "art" / "hero_normal.png"));
+    project()->setAssetsDir(".");
+    // the project reached through a link
+    const fs::path via = root().parent_path() / "via-link";
+    fs::remove(via);
+    fs::create_directory_symlink(root(), via);
+    sn::Spec through = stillSpec(dir + "/hero.png");
+    EXPECT_TRUE(sn::checkSpec(via, through).empty());
+    project()->setAssetsDir("assets");
+    EXPECT_TRUE(sn::checkSpec(via, through).empty()) << "assets/ named through the project's link";
+    project()->setAssetsDir(".");
+    fs::remove(via);
+    fs::remove(root() / "linked");
+    fs::remove_all(real);
+}
+
 // ---- prepare, generate, encode
 
 TEST(SpriteNormalsSession, StillPrepareGenerateEncode) {
@@ -494,17 +632,16 @@ TEST(SpriteNormalsSession, WriteOutputsDirectIsAllOrNothing) {
     EXPECT_EQ(readAll(files[0].absolute), files[0].bytes);
 }
 
-TEST(SpriteNormalsSession, WriteOutputsUndoableNeedsTheEditor) {
-    // no editor (MCP server not started): refused with a message, never a crash
-    if (mcp::McpServer::get().isStarted()) GTEST_SKIP() << "an editor is running in this process";
+TEST(SpriteNormalsSession, WriteOutputsUndoableNeedsAProject) {
+    // no editor project: refused with a message, never a crash
     std::string error;
-    EXPECT_FALSE(sn::writeOutputsUndoable({}, error));
+    EXPECT_FALSE(sn::writeOutputsUndoable(nullptr, {}, error));
     EXPECT_NE(error.find("writeOutputsDirect"), std::string::npos) << error;
 }
 
 namespace {
 
-    // In a child process (the editor's App and MCP server are started for good): the set is one
+    // In a child process (the editor's App is set up for good; no MCP server): the set is one
     // step of the project history, undo removes all of it, redo puts it back
     void undoableWriteInTheEditor(const fs::path& dir) {
         App& app = Backend::getApp();
@@ -514,7 +651,8 @@ namespace {
         static char* argv[] = {arg0, nullptr};
         Engine::systemInit(1, argv, &platform);
         if (!p->loadProject(dir, false)) std::exit(2);
-        mcp::McpServer::get().start(app);
+        // no MCP server: the undoable write needs none (ProjectFileWrites)
+        if (mcp::McpServer::get().isStarted()) std::exit(20);
         writeBytes(dir / "assets" / "undo" / "hero.png", [] {
             std::vector<uint8_t> png;
             ts::encodePng(balls(32, 32, 32, 12), png);
@@ -531,7 +669,7 @@ namespace {
         if (result.status != sn::Status::Ok || !sn::encodeOutputs(prepared, result, files, error) || files.size() != 2) std::exit(4);
         CommandHistory* history = p->getProjectCommandHistory();
         const size_t before = history->position();
-        if (!sn::writeOutputsUndoable(files, error)) std::exit(5);
+        if (!sn::writeOutputsUndoable(p, files, error)) std::exit(5);
         if (history->position() != before + 1) std::exit(6);
         for (const sn::OutputFile& f : files) {
             if (readAll(f.absolute) != f.bytes) std::exit(7);
@@ -558,8 +696,9 @@ namespace {
         return false;
     }
 
-    // In a child process (the App with its watcher, the MCP server): the undoable write, its undo
-    // and its redo each wake the watcher (writeOutputsUndoable, and the write command's file sync)
+    // In a child process (the App with its watcher, no MCP server): the undoable write, its undo
+    // and its redo each wake the watcher (writeOutputsUndoable, and the write command's refresh:
+    // ProjectFileWrites::refresh)
     void watcherWakesInTheEditor(const fs::path& dir) {
         App& app = Backend::getApp();
         Project* p = app.getProject();
@@ -568,7 +707,8 @@ namespace {
         static char* argv[] = {arg0, nullptr};
         Engine::systemInit(1, argv, &platform);
         if (!p->loadProject(dir, false)) std::exit(2);
-        mcp::McpServer::get().start(app);
+        // no MCP server: the undoable write needs none (ProjectFileWrites)
+        if (mcp::McpServer::get().isStarted()) std::exit(20);
         SpriteNormalsWatcher* watcher = app.getSpriteNormalsWatcher();
         if (!watcher || SpriteNormalsWatcher::active() != watcher) std::exit(3);
         writeBytes(dir / "assets" / "wake" / "hero.png", [] {
@@ -585,7 +725,7 @@ namespace {
         std::string error;
         if (result.status != sn::Status::Ok || !sn::encodeOutputs(prepared, result, files, error)) std::exit(6);
         // the first generation wakes it
-        if (!sn::writeOutputsUndoable(files, error)) std::exit(7);
+        if (!sn::writeOutputsUndoable(p, files, error)) std::exit(7);
         if (watcher->dormant()) std::exit(8);
         // its walk indexes the map (not dormant)
         std::string indexedSource, indexedRole;
@@ -600,7 +740,7 @@ namespace {
         CommandHistory* history = p->getProjectCommandHistory();
         if (!history->undo()) std::exit(10);
         if (!settleWatcher(*watcher, true)) std::exit(11);
-        // redone: the write command's file sync wakes it at once
+        // redone: the write command's refresh wakes it at once
         if (!history->redo()) std::exit(12);
         if (watcher->dormant()) std::exit(13);
         // and its next walk indexes the map again

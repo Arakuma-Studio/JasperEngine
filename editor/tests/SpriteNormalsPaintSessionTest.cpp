@@ -456,7 +456,8 @@ namespace {
         static char* argv[] = {arg0, nullptr};
         Engine::systemInit(1, argv, &platform);
         if (!p->loadProject(dir, false)) std::exit(2);
-        mcp::McpServer::get().start(app);
+        // the write needs no MCP server (ProjectFileWrites)
+        if (mcp::McpServer::get().isStarted()) std::exit(12);
         std::vector<uint8_t> source;
         ts::encodePng(balls(32, 32, 32, 13), source);
         writeBytes(dir / "assets" / "undo" / "hero.png", source);
@@ -470,7 +471,7 @@ namespace {
             std::vector<sn::OutputFile> files;
             std::string error;
             if (result.status != sn::Status::Ok || !sn::encodeOutputs(prepared, result, files, error)) std::exit(4);
-            if (!sn::writeOutputsUndoable(files, error)) std::exit(5);
+            if (!sn::writeOutputsUndoable(p, files, error)) std::exit(5);
             return files.at(0);
         };
         const sn::OutputFile v1 = undoable(R"([{"op":"flatten","where":{"rect":[8,8,6,6]}}])");

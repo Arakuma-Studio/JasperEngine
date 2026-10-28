@@ -41,6 +41,10 @@ namespace jasperengine {
     class Scene;
 }
 
+namespace jasperengine::editor {
+    class Project;
+}
+
 namespace jasperengine::editor::spritenormals {
 
     // The refusal (kind project_changed) of a run's result when another project was opened
@@ -95,6 +99,13 @@ namespace jasperengine::editor::spritenormals {
     bool resolveProjectFile(const std::filesystem::path& projectDir, const std::string& rel, std::filesystem::path& absolute,
                             std::string& error);
     std::string projectRelative(const std::filesystem::path& projectDir, const std::filesystem::path& absolute);
+    // `path` with the components that exist resolved (symbolic links included:
+    // std::filesystem::weakly_canonical), the ones that don't exist yet kept lexically; the
+    // lexical path when it can't be resolved
+    std::filesystem::path resolvedPath(const std::filesystem::path& path);
+    // `path` is `dir` or below it once both are resolved (resolvedPath): a symbolic link inside
+    // `dir` leading elsewhere is not inside; `dir` itself reached through a link is fine
+    bool isInsideResolved(const std::filesystem::path& path, const std::filesystem::path& dir);
 
     struct PlannedOutput {
         std::string role;            // "normal", "atlas", "height", "frames_json"
@@ -123,8 +134,9 @@ namespace jasperengine::editor::spritenormals {
     // Every problem visible without decoding pixels: settings, source missing / outside the
     // project / unsupported (probeSource), frames (a grid or none on a GIF/APNG: frames_mismatch;
     // grid empty or too many cells; overlapping Sprite frames: frames_mismatch), outputs (not
-    // .png, outside the project's assets directory, colliding with the source or each other,
-    // existing without overwrite: output_exists, not valid UTF-8), paint (invalid_paint keyed
+    // .png, outside the project's assets directory, lexically or once symbolic links are resolved
+    // (isInsideResolved), colliding with the source or each other (links resolved too), existing
+    // without overwrite: output_exists, not valid UTF-8), paint (invalid_paint keyed
     // paint[i].<field>: ranges, counts, directions; ops with paint mode Clear)
     std::vector<Problem> checkSpec(const std::filesystem::path& projectDir, const Spec& spec, const Scene* scene = nullptr);
 
@@ -175,11 +187,14 @@ namespace jasperengine::editor::spritenormals {
     // recipe "paint":{"painted":N}. `problem` (optional): the kind (paint_too_large, write_failed).
     bool encodeOutputs(const Prepared& prepared, const Result& result, std::vector<OutputFile>& files, std::string& error,
                        Problem* problem = nullptr);
-    // One step of the project command history (WriteFilesCmd through w4::writeFilesUndoable),
-    // then the editor notices them (textures reloaded, thumbnails, Project window). Main thread.
+    // One step of the project command history (ProjectFileWrites::writeUndoable: no MCP server
+    // needed), then the editor notices them (textures reloaded, the asset database, thumbnails,
+    // the Project window, the watcher; with the MCP server running, its file sync). Each file is
+    // checked again first: inside `project`'s assets directory once symbolic links are resolved
+    // (a link made since the check), else nothing is written. Main thread.
     // The step is named "Generate Normal Map <file name of the first normal output>" ("Generate
     // Normal Maps (N)" for N normal outputs).
-    bool writeOutputsUndoable(const std::vector<OutputFile>& files, std::string& error);
+    bool writeOutputsUndoable(Project* project, const std::vector<OutputFile>& files, std::string& error);
     // All or nothing without history (the CLI): texsynth::writeFilesAllOrNothing
     bool writeOutputsDirect(const std::vector<OutputFile>& files, std::string& failedPath, std::string& error);
 

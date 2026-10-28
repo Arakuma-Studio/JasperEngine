@@ -841,7 +841,7 @@ bool SpriteNormalsWindow::openForEntity(uint32_t sceneId, Entity entity, unsigne
 }
 
 bool SpriteNormalsWindow::writeAndNotify(Project* project, const std::vector<sn::OutputFile>& files, std::string& error) {
-    if (!sn::writeOutputsUndoable(files, error)) return false;
+    if (!sn::writeOutputsUndoable(project, files, error)) return false;
     // the Project window: fresh thumbnails, the new files listed; the watcher re-reads them
     if (editorUi()) {
         App& app = Backend::getApp();
@@ -852,7 +852,6 @@ bool SpriteNormalsWindow::writeAndNotify(Project* project, const std::vector<sn:
             projectWindow->refreshCurrentDirectory();
         }
     }
-    (void)project;
     if (SpriteNormalsWatcher* watcher = SpriteNormalsWatcher::active()) {
         for (const sn::OutputFile& f : files) watcher->invalidate(f.absolute);
     }

@@ -7,12 +7,10 @@
 #include "App.h"
 #include "Out.h"
 #include "Project.h"
-#include "mcp/McpContext.h"
-#include "mcp/McpServer.h"
-#include "mcp/tools/W4Shared.h"
 #include "texsynth/SynthImage.h"
 #include "texsynth/SynthesisSession.h"
 #include "util/ProjectChecks.h"
+#include "util/ProjectFileWrites.h"
 #include "window/ProjectWindow.h"
 
 #include "imgui.h"
@@ -340,9 +338,9 @@ void SpriteNormalsWatcher::tickRegeneration() {
             changed.push_back(f.absolute);
             invalidate(f.absolute);
         }
-        // the editor notices (textures reload, the Project window's thumbnails and listing)
-        mcp::McpServer& server = mcp::McpServer::get();
-        if (server.isStarted() && server.context().project() == project) mcp::w4::syncFiles(server.context(), changed, false);
+        // the editor notices (textures reload, the asset database, the Project window's thumbnails
+        // and listing; with the MCP server running, its file sync)
+        ProjectFileWrites::filesWritten(project, changed);
         if (ImGui::GetCurrentContext() && ImGui::GetIO().BackendPlatformName) {
             if (ProjectWindow* projectWindow = Backend::getApp().getProjectWindow()) {
                 for (const fs::path& path : changed) projectWindow->requestThumbnailGeneration(path, true);

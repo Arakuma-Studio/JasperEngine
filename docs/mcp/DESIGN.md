@@ -302,7 +302,10 @@ the same work and reports it itself):
 - **Pick-up**: changed paths go through `w4::syncFiles` (ScriptTools.cpp; the same as
   `sync_files` with paths): clean code editor buffers reloaded, script properties re-parsed,
   Lua syntax checked, materials refreshed, shader forks invalidated, textures reloaded, HTML UI
-  documents reloaded, asset database and Project window refreshed. Shader forks using a changed
+  documents reloaded, asset database and Project window refreshed. The editor's own part of that
+  (documents, materials, shader forks, textures, asset database, Project window, the sprite normals
+  watcher) is `ProjectFileWrites::refresh` (editor/util/ProjectFileWrites), which the editor's
+  windows run without the server too. Shader forks using a changed
   shader file are then compiled (`w4::checkShadersAsync`; the call waits for it through
   `waitUntil`) so their errors are reported with the call.
 - **HTML UI**: UI documents reload live, before the tool runs, in edit mode and during play
@@ -323,7 +326,11 @@ the same work and reports it itself):
   in "Menu" (styles only); 1 document(s) were already current.`).
 - **Not the agent's changes**: `syncFiles` (the funnel of `write_file`, `create_script`,
   the material and asset tools, `code_editor` save, undo of file writes) restamps what it
-  handled (`McpAutoSync::filesSynced`). After a call that may write files (not read-only, or
+  handled (`McpAutoSync::filesSynced`). The editor's own undoable writes
+  (`ProjectFileWrites::writeUndoable`: the Sprite Normal Map and Texture Synthesis windows' Save,
+  the sprite normals watcher's regeneration) need no server; while it runs they go through
+  `syncFiles` as well (the sync hook `McpServer::start` installs), so they are not external
+  changes either. After a call that may write files (not read-only, or
   with `save_path`), a settle scan posted to the main thread attributes changes stamped
   inside the call's time window to the tool, which handled them (`fork_shader`, screenshots
   saved into the project, terrain maps): their stamps are taken, nothing is re-run (a texture

@@ -48,13 +48,14 @@ The run is a job: past `timeout_seconds` (default 120) the call returns `{job_id
 | `output` | (preview) | `true`: the default names; a `.png` path: the normal map; `{normal?, atlas?, height?, frames?}` (`frames`: `true` or a `.json` path); `false`: preview |
 | `overwrite` | false | replace existing outputs (one undo puts them back); inputs are never replaced |
 | `apply` | false | on write: `true` = the source GameObject, or a GameObject reference (with an image source) |
-| `save_path` | | also write the contact sheet PNG there (any project folder; replaced without `overwrite`) |
+| `save_path` | | also write the contact sheet PNG there (any project folder, not one linking out of the project; replaced without `overwrite`) |
 | `paint` | `[]` | up to 256 correction operations (below, "Fixing spots: paint"); one normal map per call |
 | `paint_mode` | `keep` | `keep` the map's existing paint, `replace` it, or `clear` it (no `paint` then) |
 | `wait` / `timeout_seconds` | true / 120 (1..3600) | job control |
 
-Outputs must be inside the assets directory, not in a hidden folder, end in `.png` (`.json` for frames), and be
-distinct. Default names: `<stem>_normal.png` beside the source; for a GIF/APNG `<stem>_sheet.png` (the colour atlas)
+Outputs must be inside the assets directory, also once symbolic links are resolved (a folder of the assets that
+links outside the project is refused; an assets directory that is itself a link is fine), not in a hidden folder, end
+in `.png` (`.json` for frames), and be distinct (never the source, also not through a link). Default names: `<stem>_normal.png` beside the source; for a GIF/APNG `<stem>_sheet.png` (the colour atlas)
 + `<stem>_sheet_normal.png`; `<stem>_height.png` (`<stem>_sheet_height.png`); frames JSON on request only.
 
 ## Presets and settings

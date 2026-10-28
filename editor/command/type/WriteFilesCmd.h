@@ -16,7 +16,8 @@ namespace jasperengine::editor{
     // Writes (creates or replaces) files as one step of the project command history; undo
     // puts back the previous contents (or deletes files that did not exist, and the
     // directories it created). After execute and undo it runs `afterChange` with the paths.
-    // Used by the MCP file tools (w4::writeFilesUndoable) and the pose animation document.
+    // Used by the editor's undoable file writes (ProjectFileWrites::writeUndoable, which the MCP file
+    // tools' w4::writeFilesUndoable builds on) and the pose animation document.
     //
     // A non-empty merge key (setMergeKey) merges the command into the previous one when that
     // one has the same key and writes the same files: the merged step undoes to the contents

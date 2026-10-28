@@ -4,9 +4,10 @@
 // The Sprite Normal Map window (sprite normals Phase 4 spec 9.1) through its scripted API (what
 // its buttons, the Project window, the Inspector and MCP focus_window call) and
 // SpriteNormalsWindowTestAccess, the friend the window declares for its internals. Saving goes
-// through the session's writeOutputsUndoable (the editor's MCP context and project history), so
-// every case runs in a child process with the editor's App, its project and MCP server started
-// (the SpriteNormalsSession death test's pattern): a project written by the test with a 32x32
+// through the session's writeOutputsUndoable (ProjectFileWrites on the project history; no MCP
+// server: IN_EDITOR never starts one, IN_EDITOR_WITH_MCP does), so every case runs in a child
+// process with the editor's App, its Platform and its project set up for good (the
+// SpriteNormalsSession death test's pattern): a project written by the test with a 32x32
 // shaded disk hero.png, a 128x32 4-frame walk.png, a 3-frame blink.gif (a minimal GIF writer
 // below), a 2D scene with the Sprites "Hero" (hero.png) and "Walker" (walk.png, 4 frames) and a
 // Light 2D of height 0. The workspace round trip runs in process (Stream only).
@@ -31,7 +32,9 @@
 #include "component/SpriteAnimationComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/Transform.h"
+#include "mcp/McpContext.h"
 #include "mcp/McpServer.h"
+#include "mcp/tools/W4Shared.h"
 #include "spritenormals/SpriteNormalsRecipe.h"
 #include "spritenormals/SpriteNormalsSession.h"
 #include "texsynth/SynthImage.h"
@@ -277,7 +280,7 @@ namespace {
         return e;
     }
 
-    void runInEditor(const std::string& name, const std::function<void(World&)>& body) {
+    void runInEditor(const std::string& name, const std::function<void(World&)>& body, bool mcpServer = false) {
         const fs::path root = fs::temp_directory_path() / ("jasper-sn-window-" + name + "-" + std::to_string(::getpid()));
         fs::remove_all(root);
         fs::create_directories(root / "config");
@@ -303,7 +306,8 @@ namespace {
         Engine::setAsyncLoading(false);
         if (!w.p->loadProject(w.dir, false)) std::exit(90);
         Engine::setAsyncLoading(false);
-        mcp::McpServer::get().start(app);
+        if (mcpServer) mcp::McpServer::get().start(app);
+        else if (mcp::McpServer::get().isStarted()) std::exit(91);
 
         w.p->createNewScene("Normals", SceneType::SCENE_2D);
         w.sceneId = w.p->getSelectedSceneId();
@@ -340,6 +344,13 @@ namespace {
     do {                                                                        \
         auto inEditor = [&](World& w) __VA_ARGS__;                              \
         EXPECT_EXIT(runInEditor(name, inEditor), ::testing::ExitedWithCode(0), ""); \
+    } while (0)
+
+// ... with the MCP server started
+#define IN_EDITOR_WITH_MCP(name, ...)                                           \
+    do {                                                                        \
+        auto inEditor = [&](World& w) __VA_ARGS__;                              \
+        EXPECT_EXIT(runInEditor(name, inEditor, true), ::testing::ExitedWithCode(0), ""); \
     } while (0)
 
     // the window's runs (and Save All, Shift-click jobs) to their end; the debounce clock moved past
@@ -1443,5 +1454,122 @@ TEST(SpriteNormalsWindowDeathTest, ShiftClickNeverWritesWhileAnySceneplays) {
         EXPECT_TRUE(w.material(w.hero).normalTexture.getPath().empty());
         other()->playState = ScenePlayState::STOPPED;
         w.p->getScenes().pop_back();
+    });
+}
+
+// ==================================================================== Save without the MCP server
+
+TEST(SpriteNormalsWindowDeathTest, SaveNeedsNoMcpServerAndRefreshesTheEditor) {
+    IN_EDITOR("nomcp", {
+        ASSERT_FALSE(mcp::McpServer::get().isStarted());
+        SpriteNormalsWindow window(w.p);
+        std::string error;
+        std::vector<std::string> written;
+        ASSERT_TRUE(window.openForEntity(w.sceneId, w.hero, 0, false, error)) << error;
+        ASSERT_TRUE(settle(window));
+        // Save & Assign: the file, one project step
+        const size_t before = w.projectHistory()->position();
+        ASSERT_TRUE(window.save(false, written, error)) << error;
+        const fs::path normal = w.file("assets/hero_normal.png");
+        ASSERT_TRUE(fs::exists(normal));
+        EXPECT_EQ(w.projectHistory()->position(), before + 1);
+        Texture& texture = w.material(w.hero).normalTexture;
+        ASSERT_EQ(texture.getPath(), "assets/hero_normal.png");
+        texture.load();
+        ASSERT_TRUE(texture.hasData());
+        // project undo: the file goes, the texture reading it is released (ProjectFileWrites::refresh)
+        ASSERT_TRUE(w.projectHistory()->undo());
+        EXPECT_FALSE(fs::exists(normal));
+        EXPECT_FALSE(texture.hasData()) << "the texture reading the removed file is released";
+        // redo: back
+        ASSERT_TRUE(w.projectHistory()->redo());
+        EXPECT_TRUE(fs::exists(normal));
+        texture.load();
+        ASSERT_TRUE(texture.hasData());
+        // a replacing Save (no assign this time) releases it too: the next draw reads the new map
+        window.setAssign(false);
+        sn::Settings s = window.getSettings();
+        s.detail = 7.0f;
+        window.setSettings(s);
+        ASSERT_TRUE(settle(window));
+        const std::string first = readAll(normal);
+        ASSERT_TRUE(window.save(true, written, error)) << error;
+        EXPECT_NE(readAll(normal), first);
+        EXPECT_FALSE(texture.hasData()) << "the texture reading the replaced file is released";
+        EXPECT_EQ(texture.getPath(), "assets/hero_normal.png");
+    });
+}
+
+TEST(SpriteNormalsWindowDeathTest, SaveWithTheMcpServerIsNoExternalChange) {
+    IN_EDITOR_WITH_MCP("withmcp", {
+        ASSERT_TRUE(mcp::McpServer::get().isStarted());
+        mcp::McpContext& ctx = mcp::McpServer::get().context();
+        auto listed = [](const nlohmann::json& sync, const char* list, const std::string& rel) {
+            for (const nlohmann::json& p : sync["changed"][list]) {
+                if (p == rel) return true;
+            }
+            return false;
+        };
+        mcp::w4::syncFiles(ctx, {}, true);   // the snapshot full syncs compare with
+        SpriteNormalsWindow window(w.p);
+        std::string error;
+        std::vector<std::string> written;
+        ASSERT_TRUE(window.openSources({w.file("assets/hero.png")}, error)) << error;
+        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(window.save(false, written, error)) << error;
+        // the window's write went through the server's file sync: not a change made behind its back
+        nlohmann::json sync = mcp::w4::syncFiles(ctx, {}, true);
+        EXPECT_FALSE(listed(sync, "added", "assets/hero_normal.png")) << sync.dump();
+        ASSERT_TRUE(w.projectHistory()->undo());
+        sync = mcp::w4::syncFiles(ctx, {}, true);
+        EXPECT_FALSE(listed(sync, "removed", "assets/hero_normal.png")) << sync.dump();
+        ASSERT_TRUE(w.projectHistory()->redo());
+        sync = mcp::w4::syncFiles(ctx, {}, true);
+        EXPECT_FALSE(listed(sync, "added", "assets/hero_normal.png")) << sync.dump();
+        // a file written behind the editor's back is listed (the full sync does see changes)
+        writePng(w.file("assets/elsewhere.png"), disk(8, 8));
+        sync = mcp::w4::syncFiles(ctx, {}, true);
+        EXPECT_TRUE(listed(sync, "added", "assets/elsewhere.png")) << sync.dump();
+    });
+}
+
+// ==================================================================== outputs and symbolic links
+
+TEST(SpriteNormalsWindowDeathTest, AnOutputThroughALinkOutOfTheAssetsIsRefused) {
+    IN_EDITOR("symlink", {
+        // assets/out is a link to a folder outside the project
+        const fs::path outside = w.dir.parent_path() / "outside";
+        fs::create_directories(outside);
+        fs::create_directory_symlink(outside, w.file("assets/out"));
+        SpriteNormalsWindow window(w.p);
+        std::string error;
+        std::vector<std::string> written;
+        ASSERT_TRUE(window.openSources({w.file("assets/hero.png")}, error)) << error;
+        ASSERT_TRUE(settle(window));
+        ASSERT_TRUE(window.hasResult());
+        window.setOutput("assets/out/hero_normal.png");
+        bool refused = false;
+        for (const sn::Problem& p : Access::problems(window)) {
+            if (p.kind == "output_invalid" && p.message.find("symbolic link") != std::string::npos) refused = true;
+        }
+        EXPECT_TRUE(refused) << "the window lists the problem";
+        const size_t before = w.projectHistory()->position();
+        EXPECT_FALSE(window.save(false, written, error));
+        EXPECT_NE(error.find("resolves outside the project's assets directory"), std::string::npos) << error;
+        EXPECT_FALSE(fs::exists(outside / "hero_normal.png")) << "nothing written through the link";
+        EXPECT_EQ(w.projectHistory()->position(), before);
+        // a link to a folder of the assets is fine
+        fs::create_directories(w.file("assets/real"));
+        fs::create_directory_symlink(w.file("assets/real"), w.file("assets/alias"));
+        window.setOutput("assets/alias/hero_normal.png");
+        ASSERT_TRUE(window.save(false, written, error)) << error;
+        EXPECT_TRUE(fs::exists(w.file("assets/real/hero_normal.png")));
+        // an output that is the source through a link: refused (never replaced, even with overwrite)
+        fs::create_symlink("hero.png", w.file("assets/hero_link.png"));
+        window.setOutput("assets/hero_link.png");
+        const std::string source = readAll(w.file("assets/hero.png"));
+        EXPECT_FALSE(window.save(true, written, error));
+        EXPECT_NE(error.find("would replace the source"), std::string::npos) << error;
+        EXPECT_EQ(readAll(w.file("assets/hero.png")), source);
     });
 }

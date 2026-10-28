@@ -46,13 +46,16 @@ namespace jasperengine::editor::mcp {
         // Writes files as one step of the project command history (editor/command/type)
         using WriteFilesCmd = ::jasperengine::editor::WriteFilesCmd;
 
-        // Runs a WriteFilesCmd on the project history (one undo step). False + error on failure.
+        // Runs a WriteFilesCmd on the project history (one undo step: ProjectFileWrites::writeUndoable,
+        // syncFiles after its execute, undo and redo). False + error on failure.
         bool writeFilesUndoable(McpContext& ctx, std::vector<WriteFilesCmd::Item> items, std::string& error);
 
         // What the editor must do after files changed on disk (written by a tool or by an
         // external agent): reload code editor buffers, re-parse script properties of the
         // GameObjects using changed scripts, refresh linked materials, invalidate shader forks,
-        // reload changed textures, refresh the asset database and the Project window.
+        // reload changed textures, refresh the asset database and the Project window (the
+        // editor's part is ProjectFileWrites::refresh, which the editor's own writes run without
+        // the server; this adds the code editor, scripts, HTML UI, problems and the snapshots).
         // `changed` = absolute paths known to have changed (may be empty); `full` also re-parses
         // every attached script and scans the project for changes since the last sync.
         // Returns {changed, code_editor, script_properties, problems, notes}.
