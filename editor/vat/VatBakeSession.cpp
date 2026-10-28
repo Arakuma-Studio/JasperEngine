@@ -1072,9 +1072,9 @@ bool VatBakeSession::write(VatWriteResult& out, std::string& error, VatIssue* is
     out.undoName = "Bake Vertex Animation '" + relative + "'";
 
     // beneath the root (the MCP tool): no file through a link leading out of the project
-    if (!beneathRoot.empty()){
+    if (!beneathRoots.empty()){
         for (const CreateVatCmd::File& file : files){
-            const std::string escape = safewrite::escapeOf(beneathRoot, file.path, false,
+            const std::string escape = safewrite::escapeOf(safewrite::trustedRootFor(beneathRoots, file.path), file.path, false,
                 FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(file.path)));
             if (!escape.empty()){
                 return refuse("write_failed", escape, "write it to a folder of the project that is not a link to elsewhere (output), "
@@ -1092,7 +1092,7 @@ bool VatBakeSession::write(VatWriteResult& out, std::string& error, VatIssue* is
             CreateVatCmd::notifyFiles(owner, paths);
         });
         command->reportFailureTo(failureText);
-        if (!beneathRoot.empty()) command->writeBeneath(beneathRoot);
+        if (!beneathRoots.empty()) command->setWriteRoots(beneathRoots);
         if (!project->getProjectCommandHistory()->addCommand(command)){
             return refuse("write_failed", failureText->empty() ? std::string("the files could not be written") : *failureText,
                           "check the folder's permissions and free space");

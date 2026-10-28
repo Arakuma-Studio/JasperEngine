@@ -678,3 +678,33 @@ TEST(SafeWrite, LuaStubsAreNeverWrittenOrRemovedThroughALink) {
     Generator::writeLuaScriptStubs(d.root, internal, {});
     EXPECT_EQ(readAll(d.outside / "Theirs.lua"), "-- theirs") << "a stale-looking stub behind the link is not removed";
 }
+
+// ---- round 5: the trusted roots (the project directory and its configured assets directory)
+
+TEST(SafeWrite, ALinkedAssetsRootIsTrustedAndLinksBelowItAreChecked) {
+    SKIP_WITHOUT_SYMLINKS();
+    Dirs d("trusted");
+    // project/assets -> /elsewhere/assets
+    fs::create_directories(d.outside / "assets");
+    fs::create_directories(d.outside / "further");
+    fs::create_directory_symlink(d.outside / "assets", d.root / "assets");
+    sw::Scope scope(std::vector<fs::path>{d.root, d.root / "assets"}, true);
+    EXPECT_TRUE(FileUtils::writeFileReplacing(d.root / "assets" / "a.txt", "a")) << sw::lastScopedError();
+    EXPECT_EQ(readAll(d.outside / "assets" / "a.txt"), "a") << "landed under the linked assets directory";
+    std::error_code ec;
+    EXPECT_TRUE(FileUtils::createDirectories(d.root / "assets" / "sub" / "deep", ec)) << sw::lastScopedError();
+    EXPECT_TRUE(fs::is_directory(d.outside / "assets" / "sub" / "deep"));
+    // a link below the assets root leading further out: refused
+    fs::create_directory_symlink(d.outside / "further", d.outside / "assets" / "out");
+    EXPECT_FALSE(FileUtils::writeFileReplacing(d.root / "assets" / "out" / "x.txt", "x"));
+    EXPECT_FALSE(fs::exists(d.outside / "further" / "x.txt"));
+    // the project directory itself still a root: its own files written beneath it
+    EXPECT_TRUE(FileUtils::writeFileReplacing(d.root / "scene.scene", "s"));
+    // a command made in the scope records both roots; its file operations go beneath the one holding the path
+    CommandHistory history;
+    writeText(d.root / "assets" / "move.txt", "m");
+    ASSERT_TRUE(history.addCommand(new RenameFileCmd(nullptr, "move.txt", "moved.txt", (d.root / "assets").string())));
+    EXPECT_EQ(readAll(d.outside / "assets" / "moved.txt"), "m");
+    ASSERT_TRUE(history.undo()) << history.lastRefusal();
+    EXPECT_EQ(readAll(d.outside / "assets" / "move.txt"), "m");
+}

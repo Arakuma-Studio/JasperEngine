@@ -378,11 +378,16 @@ async def test_project_outputs_and_symbolic_links():
     (linked / "project.yaml").write_text("name: Linked\nassetsDir: assets\n")
     os.symlink(real, linked / "assets")
     shutil.copy(work / "art" / "ball.png", real / "art" / "ball.png")
-    # (round 3: an assets directory that is a link out of the project is not followed)
-    r = run(linked, "--project", str(linked), "--source", "assets/art/ball.png")
-    check(r.returncode != 0 and "output_invalid" in r.stderr and "Make the assets directory a real folder of the project" in r.stderr,
-          f"a linked assets directory out of the project is refused: {r.returncode} {r.stderr[-600:]}")
-    check(not (real / "art" / "ball_normal.png").exists(), "nothing written into the linked assets directory")
+    code, out, err = run_json(linked, "--project", str(linked), "--source", "assets/art/ball.png")
+    check(code == 0, f"a linked assets directory: {err} {json.dumps(out)}")
+    check((real / "art" / "ball_normal.png").is_file(), "written into the linked assets directory")
+    # a link below the linked assets directory, leading further out: refused, nothing written there
+    further = work.parent / "further"
+    further.mkdir()
+    os.symlink(further, real / "out")
+    r = run(linked, "--project", str(linked), "--source", "assets/art/ball.png", "-o", "assets/out/ball_n.png")
+    check(r.returncode != 0 and "output_invalid" in r.stderr, f"a link below the assets directory: {r.returncode} {r.stderr[-600:]}")
+    check(not any(further.iterdir()), "nothing written further out")
 
 
 # ---------------------------------------------------------------------------- 12. --cells-json

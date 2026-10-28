@@ -1314,8 +1314,14 @@ const std::vector<Setting>& settingsTable() {
                 fs::path dir = text.empty() ? fs::path(".") : FileUtils::pathFromUtf8(text).lexically_normal();
                 if (dir != ".") {
                     fs::path absolute;
-                    // the referenced files are moved there: inside the project once links are resolved
-                    if (!McpRefs::resolveProjectWritePath(p, text, absolute, error)) return false;
+                    // the referenced files are moved there, and it becomes a trusted root: inside the
+                    // project directory itself once links are resolved (never via the current
+                    // assets directory's link)
+                    if (!McpRefs::resolveProjectPath(p, text, absolute, error)) return false;
+                    if (const std::string escape = McpRefs::projectOnlyEscape(p, absolute); !escape.empty()) {
+                        error = escape;
+                        return false;
+                    }
                 }
                 if (ctx.isPlaying()) {
                     error = "cannot change asset roots during Play";
@@ -1953,11 +1959,11 @@ void editProjectBuildFileTool(const CallPtr& call) {
         return;
     }
     if (content.empty()) {
-        if (!safewrite::removeFileResolvedBeneath(project->getProjectPath(), path, why)) {
+        if (!safewrite::removeFileResolvedBeneath(McpRefs::rootFor(project, path, McpRefs::WriteUse::Entry), path, why)) {
             call->fail("Could not remove ProjectBuild.cmake: " + why);
             return;
         }
-    } else if (!safewrite::writeFileResolvedBeneath(project->getProjectPath(), path, content, why)) {
+    } else if (!safewrite::writeFileResolvedBeneath(McpRefs::rootFor(project, path), path, content, why)) {
         call->fail("Could not write ProjectBuild.cmake: " + why);
         return;
     }

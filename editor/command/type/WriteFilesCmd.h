@@ -60,7 +60,7 @@ namespace jasperengine::editor{
         // scope it runs in (Command::writeRoot) is the one it was made in, and every scope in force
         // must allow each path too (safewrite::scopesRefusal).
         void writeBeneath(std::filesystem::path root) { explicitRoot = std::move(root); }
-        const std::filesystem::path& getBeneathRoot() const { return explicitRoot.empty() ? writeRoot() : explicitRoot; }
+        std::filesystem::path getBeneathRoot() const { return explicitRoot.empty() ? writeRoot() : explicitRoot; }
         std::string undoRefusal() const override;
         std::string redoRefusal() const override;
         // No write root: each file written (and put back) beneath its own folder once resolved (the

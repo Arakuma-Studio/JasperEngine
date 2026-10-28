@@ -1416,8 +1416,10 @@ namespace jasperengine::editor::safewrite {
     // ------------------------------------------------------------------ the write scope
 
     namespace {
+        // a scope's trusted roots (the project directory and its assets directory: each resolved
+        // once); no roots: a suspending scope
         struct ScopeEntry {
-            fs::path root;
+            std::vector<fs::path> roots;
             bool strict = false;
         };
         thread_local std::vector<ScopeEntry> scopes;
@@ -1466,10 +1468,29 @@ namespace jasperengine::editor::safewrite {
         std::vector<const ScopeEntry*> activeScopes() {
             std::vector<const ScopeEntry*> active;
             for (auto it = scopes.rbegin(); it != scopes.rend(); ++it) {
-                if (it->root.empty()) break;
+                if (it->roots.empty()) break;
                 active.push_back(&*it);   // innermost first
             }
             return active;
+        }
+
+        bool holdsLexically(const ScopeEntry& scope, const fs::path& absolute) {
+            for (const fs::path& root : scope.roots) {
+                if (lexicallyIn(absolute, root)) return true;
+            }
+            return false;
+        }
+
+        // the first trusted root of `roots` holding every path of `paths` once links are resolved ("" none)
+        fs::path containingRoot(const std::vector<fs::path>& roots, std::initializer_list<fs::path> paths, bool entry) {
+            for (const fs::path& root : roots) {
+                bool all = true;
+                for (const fs::path& p : paths) {
+                    if (!p.empty() && !escapeOf(root, p, entry).empty()) all = false;
+                }
+                if (all) return root;
+            }
+            return fs::path();
         }
 
         bool allowedOutside(const fs::path& absolute) {
@@ -1480,11 +1501,18 @@ namespace jasperengine::editor::safewrite {
             return false;
         }
 
+        std::string rootsShown(const ScopeEntry& scope) {
+            std::string text;
+            for (const fs::path& root : scope.roots) text += (text.empty() ? "" : " or ") + shown(root);
+            return text;
+        }
+
         enum class Route { Plain, Beneath, Refused };
 
         // How a scoped operation on `path` goes: plain (no scope in force holds it, and no strict
-        // scope refuses it), beneath `root` (the innermost scope holding it; every scope in force
-        // must hold it once resolved: fail-closed), or refused (`error`)
+        // scope refuses it), beneath `root` (a trusted root of the innermost scope holding it once
+        // resolved; fail-closed: every scope in force must hold it once resolved, in one of its
+        // trusted roots), or refused (`error`)
         Route route(const fs::path& path, bool entry, fs::path& root, std::string& error, const fs::path& alsoHolding = {}) {
             root.clear();
             const std::vector<const ScopeEntry*> active = activeScopes();
@@ -1493,38 +1521,37 @@ namespace jasperengine::editor::safewrite {
             const fs::path other = alsoHolding.empty() ? fs::path() : absoluteNormal(alsoHolding);
             bool held = false;
             for (const ScopeEntry* scope : active) {
-                if (!lexicallyIn(absolute, scope->root) && (other.empty() || !lexicallyIn(other, scope->root))) continue;
-                held = true;
-                // a rename: the innermost root holding both ends
-                if (root.empty() && lexicallyIn(absolute, scope->root) && (other.empty() || lexicallyIn(other, scope->root))) root = scope->root;
+                if (holdsLexically(*scope, absolute) || (!other.empty() && holdsLexically(*scope, other))) held = true;
             }
             if (!held) {
                 // outside every root: an MCP call (a strict scope) writes nowhere else, but the
                 // editor's own places (its settings, the temporary folder)
                 for (const ScopeEntry* scope : active) {
                     if (scope->strict && !allowedOutside(absolute)) {
-                        error = shown(absolute) + " is outside the project (" + shown(scope->root) +
+                        error = shown(absolute) + " is outside the project (" + rootsShown(*scope) +
                                 "): an MCP call writes only inside it. Use a path inside the project.";
                         return Route::Refused;
                     }
                 }
                 return Route::Plain;
             }
-            if (root.empty()) {
-                error = shown(absolute) + (other.empty() ? std::string() : " and " + shown(other)) +
-                        " are not inside one write root: a move across them is refused.";
-                return Route::Refused;
-            }
-            // fail-closed: every scope in force holds it once links are resolved
+            // fail-closed: every scope in force holds each path once links are resolved, in one of
+            // its trusted roots
             for (const ScopeEntry* scope : active) {
                 for (const fs::path& p : {absolute, other}) {
-                    if (p.empty()) continue;
-                    const std::string escape = escapeOf(scope->root, p, entry);
-                    if (!escape.empty()) {
-                        error = escape + " Remove the link (or use a path that stays inside), then try again.";
-                        return Route::Refused;
-                    }
+                    if (p.empty() || !containingRoot(scope->roots, {p}, entry).empty()) continue;
+                    error = escapeOf(scope->roots.front(), p, entry);
+                    if (scope->roots.size() > 1) error += " (nor inside " + rootsShown(*scope) + ")";
+                    error += " Remove the link (or use a path that stays inside), then try again.";
+                    return Route::Refused;
                 }
+            }
+            // beneath the innermost scope's root holding both ends (a rename)
+            root = containingRoot(active.front()->roots, {absolute, other}, entry);
+            if (root.empty()) {
+                error = shown(absolute) + " and " + shown(other) + " are not inside one trusted root (" + rootsShown(*active.front()) +
+                        "): a move across them is refused.";
+                return Route::Refused;
             }
             return Route::Beneath;
         }
@@ -1595,7 +1622,21 @@ namespace jasperengine::editor::safewrite {
     Scope::Scope(fs::path root, bool strict) {
         // installed once (an atomic store: readers on any thread see it whole)
         FileUtils::installScopedOps(&kScopedOps);
-        scopes.push_back({std::move(root), strict});
+        ScopeEntry entry;
+        if (!root.empty()) entry.roots.push_back(std::move(root));
+        entry.strict = strict;
+        scopes.push_back(std::move(entry));
+    }
+
+    Scope::Scope(std::vector<fs::path> roots, bool strict) {
+        FileUtils::installScopedOps(&kScopedOps);
+        ScopeEntry entry;
+        for (fs::path& root : roots) {
+            if (root.empty()) continue;
+            if (std::find(entry.roots.begin(), entry.roots.end(), root) == entry.roots.end()) entry.roots.push_back(std::move(root));
+        }
+        entry.strict = strict;
+        scopes.push_back(std::move(entry));
     }
 
     Scope::~Scope() {
@@ -1603,15 +1644,31 @@ namespace jasperengine::editor::safewrite {
     }
 
     fs::path Scope::current() {
-        return scopes.empty() ? fs::path() : scopes.back().root;
+        return scopes.empty() || scopes.back().roots.empty() ? fs::path() : scopes.back().roots.front();
+    }
+
+    std::vector<fs::path> Scope::currentRoots() {
+        return scopes.empty() ? std::vector<fs::path>() : scopes.back().roots;
+    }
+
+    fs::path trustedRootFor(const std::vector<fs::path>& roots, const fs::path& path, bool entry) {
+        if (roots.empty()) return fs::path();
+        const fs::path root = containingRoot(roots, {path}, entry);
+        return root.empty() ? roots.front() : root;
     }
 
     fs::path scopeRootFor(const fs::path& path) {
-        // the innermost scope in force holding the path ("" none, or suspended)
+        // the innermost scope in force holding the path: its trusted root holding it once
+        // resolved (else the first one holding it as spelled); "" none, or suspended
         if (path.empty()) return fs::path();
         const fs::path absolute = absoluteNormal(path);
         for (const ScopeEntry* scope : activeScopes()) {
-            if (lexicallyIn(absolute, scope->root)) return scope->root;
+            if (!holdsLexically(*scope, absolute)) continue;
+            const fs::path root = containingRoot(scope->roots, {absolute}, false);
+            if (!root.empty()) return root;
+            for (const fs::path& r : scope->roots) {
+                if (lexicallyIn(absolute, r)) return r;
+            }
         }
         return fs::path();
     }

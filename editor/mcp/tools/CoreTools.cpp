@@ -266,13 +266,14 @@ void undoRedo(const CallPtr& call, bool undo) {
     bool refused = false;
     std::string refusedWhy;
     std::vector<std::string> problems;
-    const std::filesystem::path projectRoot = project->getProjectPath();
+    // the project's trusted roots (its directory, its assets directory)
+    const std::vector<std::filesystem::path> projectRoots = McpRefs::trustedRoots(project);
     for (; done < steps; done++) {
         if (undo ? !history->canUndo() : !history->canRedo()) break;
         // a step the GUI made (no write root of its own): its files must stay inside the project
         // too, once links are resolved (Command::escapeFor); it then runs in this call's write scope
         if (const Command* next = undo ? history->undoCommand() : history->redoCommand()) {
-            const std::string escape = next->escapeFor(projectRoot, undo);
+            const std::string escape = next->escapeFor(projectRoots, undo);
             if (!escape.empty()) {
                 refused = true;
                 refusedWhy = escape;

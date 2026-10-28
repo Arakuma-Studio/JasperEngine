@@ -2764,7 +2764,7 @@ void editor::Generator::build(const fs::path projectPath, const fs::path buildPa
     lastBuildSucceeded.store(false, std::memory_order_relaxed);
     commandRunner.resetCancel();
 
-    const fs::path writeRoot = safewrite::Scope::current();
+    const std::vector<fs::path> writeRoot = safewrite::Scope::currentRoots();
     buildFuture = std::async(std::launch::async, [this, projectPath, buildPath, cCompiler, cxxCompiler, generator, parallelJobs, writeRoot]() {
         // in the write scope of the thread that started the build (an MCP call's project)
         safewrite::Scope scope(writeRoot);

@@ -39,6 +39,10 @@
 //   link to a FOLDER at the final name of a file write is refused up front (it can't be replaced
 //   by a file).
 //
+// Trusted roots: a Scope (and Command::writeRoots, McpRefs::trustedRoots) may hold several roots,
+// the project directory and its configured assets directory, each resolved once: a path is
+// contained when its link-resolved location lies inside one of them; links BELOW them are checked.
+//
 // The *ResolvedBeneath functions are what callers that accept links INSIDE the root use (the
 // editor's own writes, the MCP tools): the path is resolved first (resolvedPath: links inside the
 // root are fine, e.g. an assets folder linked in), refused when that leads outside the root, and
@@ -165,11 +169,17 @@ namespace jasperengine::editor::safewrite {
         // `strict` (an MCP call): a path outside every root in force is refused too, but the
         // folders allowOutsideScopes registers (the editor's settings, the temporary folder)
         explicit Scope(std::filesystem::path root, bool strict = false);
+        // Several trusted roots (the project directory and its configured assets directory, each
+        // resolved once): a path is inside the scope when its link-resolved location lies inside
+        // one of them; links below them are what is checked
+        explicit Scope(std::vector<std::filesystem::path> roots, bool strict = false);
         ~Scope();
         Scope(const Scope&) = delete;
         Scope& operator=(const Scope&) = delete;
         // The innermost root on this thread ("" when none, or suspended)
         static std::filesystem::path current();
+        // ... all its trusted roots (empty when none, or suspended)
+        static std::vector<std::filesystem::path> currentRoots();
     };
     // The scopes in force are the ones above the innermost suspending (empty) Scope. The innermost
     // root in force holding `path` lexically (its spelling or once resolved), else "". Fail-closed:
@@ -178,6 +188,10 @@ namespace jasperengine::editor::safewrite {
     // scope (outside the allowOutsideScopes folders). A rename goes beneath the innermost root
     // holding both ends.
     std::filesystem::path scopeRootFor(const std::filesystem::path& path);
+    // The trusted root of `roots` that holds `path` once links are resolved (a write, or `entry`);
+    // the first one when none does (an operation beneath it then refuses the escape)
+    std::filesystem::path trustedRootFor(const std::vector<std::filesystem::path>& roots, const std::filesystem::path& path,
+                                         bool entry = false);
     // "" when the scopes in force allow an operation on `path` (a write, or `entry`: a removal or a
     // rename of the entry), else why not: what explicit-root writers (WriteFilesCmd, SheetWrite)
     // check on top of their own root

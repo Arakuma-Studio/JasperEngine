@@ -281,7 +281,7 @@ void finishWithPng(const CaptureJobPtr& job, std::vector<uint8_t> png, int width
             job->fail("save_path: " + error);
             return;
         }
-        if (!safewrite::writeFileResolvedBeneath(project->getProjectPath(), target, std::string(png.begin(), png.end()), error)) {
+        if (!safewrite::writeFileResolvedBeneath(McpRefs::rootFor(project, target), target, std::string(png.begin(), png.end()), error)) {
             job->fail("Could not write the PNG to " + FileUtils::pathToGenericUtf8(target) + ": " + error);
             return;
         }

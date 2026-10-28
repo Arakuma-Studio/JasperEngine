@@ -23,7 +23,17 @@ std::filesystem::path McpWriteScope::projectRoot() {
     return project ? project->getProjectPath() : std::filesystem::path();
 }
 
-McpWriteScope::McpWriteScope() : safewrite::Scope(projectRoot(), true) {}
+std::vector<std::filesystem::path> McpWriteScope::projectRoots() {
+    const App& app = Backend::getApp();
+    Project* project = const_cast<App&>(app).getProject();
+    if (!project || project->getProjectPath().empty()) return {};
+    std::vector<std::filesystem::path> roots = {project->getProjectPath()};
+    const std::filesystem::path assets = project->getAssetsPath();
+    if (!assets.empty() && assets.lexically_normal() != project->getProjectPath().lexically_normal()) roots.push_back(assets);
+    return roots;
+}
+
+McpWriteScope::McpWriteScope() : safewrite::Scope(projectRoots(), true) {}
 
 Project* McpContext::project() const {
     return appRef.getProject();

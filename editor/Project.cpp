@@ -2167,7 +2167,7 @@ void editor::Project::refreshFbxImports() {
 
     // Hashing and converting can take seconds, so the check runs off the main thread
     fbxImportScan = std::async(std::launch::async,
-        [this, files, assetsRoot = getAssetsPath(), known = failedFbxImports, writeRoot = safewrite::Scope::current()]() {
+        [this, files, assetsRoot = getAssetsPath(), known = failedFbxImports, writeRoot = safewrite::Scope::currentRoots()]() {
             // the conversions write in the write scope of the thread that started the scan
             safewrite::Scope scope(writeRoot);
             std::map<fs::path, FbxImportFailure> failures;
@@ -6840,7 +6840,7 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
     fs::path savePath = path;
 
     // the worker writes in the write scope of the thread that started it (an MCP call's project)
-    const fs::path writeRoot = safewrite::Scope::current();
+    const std::vector<fs::path> writeRoot = safewrite::Scope::currentRoots();
     std::thread([this, sceneId, savePath, writeRoot, callback = std::move(callback)]() mutable {
         safewrite::Scope scope(writeRoot);
         bool success = false;
@@ -9009,7 +9009,7 @@ void editor::Project::start(uint32_t sceneId) {
     const LocalBuildSettings buildSettings = AppSettings::getBuildSettings(getProjectPath() / "project.yaml");
 
     // the startup writes generated sources in the write scope of the thread that started Play
-    const fs::path writeRoot = safewrite::Scope::current();
+    const std::vector<fs::path> writeRoot = safewrite::Scope::currentRoots();
     std::thread startupThread([this, session, sceneId, buildSettings, writeRoot]() {
         safewrite::Scope scope(writeRoot);
         runPlayStartup(session, sceneId, buildSettings);
@@ -9141,7 +9141,7 @@ void editor::Project::stop(uint32_t sceneId) {
     // Request cancellation asynchronously (returns a future we can wait on later if needed)
     auto cancelFuture = generator.cancelBuild();
 
-    const fs::path stopWriteRoot = safewrite::Scope::current();
+    const std::vector<fs::path> stopWriteRoot = safewrite::Scope::currentRoots();
     std::thread finalizeStopThread([this, session, sceneId, startupSucceededAtStop, stopWriteRoot, cancelFuture = std::move(cancelFuture)]() mutable {
         safewrite::Scope scope(stopWriteRoot);
         if (cancelFuture.valid()) {

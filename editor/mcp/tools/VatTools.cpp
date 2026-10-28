@@ -1110,7 +1110,7 @@ void bakeVertexAnimationRun(const CallPtr& call, bool waited) {
     } else {
         state->session = std::make_unique<VatBakeSession>(project);
         // its files stay beneath the project when written (a default output beside a linked-in source included)
-        state->session->writeBeneath(project->getProjectPath());
+        state->session->writeBeneath(McpRefs::trustedRoots(project));
         if (request.rebake) {
             if (!state->session->loadRebake(request.rebakePath, error)) {
                 call->fail("Can't rebake " + request.rebakePath + ": " + error + ".");

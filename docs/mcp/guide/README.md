@@ -7,7 +7,8 @@ them), so a new file here becomes `jasper://docs/<file name>` after a rebuild. T
 not served; `jasper://docs` lists the served documents. The guide refers to them by these URIs:
 
 Paths in every guide are project-relative. Reads follow symbolic links; writes, creates, deletes
-and moves refuse a path that leads out of the project through one (editor-integration.md,
+and moves refuse a path that a link leads out of the project's trusted roots (the project folder
+and its configured assets folder, which may themselves be links) (editor-integration.md,
 "Paths and symbolic links"; docs/mcp/DESIGN.md, Addressing).
 
 | File | Resource | Contents |

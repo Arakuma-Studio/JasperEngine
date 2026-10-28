@@ -1131,7 +1131,7 @@ void McpServer::execute(const CallPtr& call, const ToolDef& def) {
     // every file the tool writes stays beneath the project (util/SafeWrite.h): FileUtils' writes,
     // and the commands it makes (their undo and redo too); outside the project nothing but the
     // editor's own folders, except for a tool that switches projects (its paths are explicit)
-    McpWriteScope writeScope(McpWriteScope::projectRoot(), effectiveActivity(def) != ToolActivity::ProjectSwitch);
+    McpWriteScope writeScope(McpWriteScope::projectRoots(), effectiveActivity(def) != ToolActivity::ProjectSwitch);
     try {
         def.handler(call);
     } catch (const Json::type_error& e) {

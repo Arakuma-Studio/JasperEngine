@@ -236,8 +236,15 @@ runs several tool calls in one round-trip, sequentially on the main thread; with
   renames** a file resolves its path through `McpRefs::resolveProjectWritePath` /
   `McpRefs::writeEscape`: once every link on the way is followed (a dangling one too; the shared
   walk `safewrite::resolvedPath` in `editor/util/SafeWrite.h`, the same one sprite normals'
-  output containment uses), the location must be inside the project directory (itself resolved,
-  so a project opened through a link works; links pointing inside the project work). A delete or
+  output containment uses), the location must be inside one of the project's **trusted roots**:
+  the project directory and its configured assets directory (project.yaml `assetsDir`, as
+  loaded), each resolved once. So a project opened through a link works, and so does a project
+  whose assets folder is itself a link (to a shared drive): agents write its assets there. Links
+  BELOW those roots are what is checked (one pointing further out is refused); links pointing
+  inside a trusted root work. A tool that changes an asset root (`set_project_settings`
+  `editor.assets_dir` / `scripting.lua_dir`) must name a folder inside the project directory
+  itself once resolved (`McpRefs::projectOnlyEscape`): an agent can't make a folder outside the
+  project a trusted root. A delete or
   a move's source acts on the entry itself: a link there is trashed or moved, never followed.
   Refused: isError naming the path and where the link leads, with the fix ("use a path that is not
   behind a link to elsewhere, or replace the link with a real folder").

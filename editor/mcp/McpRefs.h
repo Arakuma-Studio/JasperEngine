@@ -91,6 +91,16 @@ namespace jasperengine::editor::mcp {
         // The same check for an absolute path a tool computed itself (a default output beside its
         // source, a generated file): "" when it stays inside the project, else the error
         static std::string writeEscape(Project* project, const std::filesystem::path& absolute, WriteUse use = WriteUse::Write);
+        // The project's trusted roots: its directory and its configured assets directory (as
+        // loaded from project.yaml; each resolved once). Containment = the link-resolved target
+        // lies inside one of them resolved; links below them are what is checked.
+        static std::vector<std::filesystem::path> trustedRoots(Project* project);
+        // The trusted root a beneath-root write of `absolute` goes under (the one holding it once
+        // resolved; the project directory when none does: the write then refuses the escape)
+        static std::filesystem::path rootFor(Project* project, const std::filesystem::path& absolute, WriteUse use = WriteUse::Write);
+        // writeEscape against the project directory alone: for a path that becomes a trusted root
+        // (an asset root setting), so an agent can't make a folder outside the project trusted
+        static std::string projectOnlyEscape(Project* project, const std::filesystem::path& absolute);
         // writeEscape of every editor-owned folder a build, Play or a script compile writes or
         // sweeps (the internal folder, its build tree and hot-reload staging, the engine API
         // snapshot and Lua stubs, the generated sources, the logs, the external build, the

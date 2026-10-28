@@ -479,7 +479,7 @@ void deleteSceneTool(const CallPtr& call) {
     if (deleteFile) {
         // the file moved to the trash beneath the project (a link: the link itself)
         auto* deleteCmd = new DeleteFileCmd(project, {absolute}, project->getProjectPath());
-        deleteCmd->writeBeneath(project->getProjectPath());
+        deleteCmd->setWriteRoots(McpRefs::trustedRoots(project));
         if (!runProjectCommand(project, deleteCmd, error, "The scene file could not be deleted.")) {
             history->undo();
             call->fail(error);

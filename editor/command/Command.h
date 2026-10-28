@@ -22,7 +22,8 @@ namespace jasperengine::editor{
         // the write scope the command was made in (util/SafeWrite.h: an MCP call's project
         // directory; "" outside one): CommandHistory runs its execute, undo and redo in a Scope of
         // it again, and its file operations stay beneath it
-        std::filesystem::path recordedRoot = safewrite::Scope::current();
+        // (its trusted roots: the project directory and its assets directory)
+        std::vector<std::filesystem::path> recordedRoots = safewrite::Scope::currentRoots();
 
     protected:
         bool mergeable = true;
@@ -48,10 +49,20 @@ namespace jasperengine::editor{
         // "" when every touched path stays inside `root` once links are resolved, else why, with
         // the fix ("Remove the link, then undo again.")
         std::string escapeFor(const std::filesystem::path& root, bool undo) const {
-            if (root.empty()) return std::string();
+            return root.empty() ? std::string() : escapeFor(std::vector<std::filesystem::path>{root}, undo);
+        }
+        // ... inside one of `roots` (trusted roots: the project directory, its assets directory)
+        std::string escapeFor(const std::vector<std::filesystem::path>& roots, bool undo) const {
+            if (roots.empty()) return std::string();
             for (const Touched& touched : touchedPaths(undo)) {
-                const std::string escape = safewrite::escapeOf(root, touched.path, touched.entry);
-                if (!escape.empty()) return escape + (undo ? " Remove the link, then undo again." : " Remove the link, then redo again.");
+                bool inside = false;
+                for (const std::filesystem::path& root : roots) {
+                    if (safewrite::escapeOf(root, touched.path, touched.entry).empty()) inside = true;
+                }
+                if (!inside) {
+                    return safewrite::escapeOf(roots.front(), touched.path, touched.entry) +
+                           (undo ? " Remove the link, then undo again." : " Remove the link, then redo again.");
+                }
             }
             return std::string();
         }
@@ -64,8 +75,8 @@ namespace jasperengine::editor{
         // Why canUndo() / canRedo() refuse now, with how to fix it ("" when they don't, or the
         // command has no words for it): what CommandHistory::lastRefusal reports (the MCP undo
         // tool, the Edit menu)
-        virtual std::string undoRefusal() const { return escapeFor(recordedRoot, true); }
-        virtual std::string redoRefusal() const { return escapeFor(recordedRoot, false); }
+        virtual std::string undoRefusal() const { return escapeFor(recordedRoots, true); }
+        virtual std::string redoRefusal() const { return escapeFor(recordedRoots, false); }
 
         virtual bool mergeWith(Command*) { return false; }
 
@@ -77,12 +88,15 @@ namespace jasperengine::editor{
         unsigned long long serial() const { return historySerial; }
         bool canMerge() const { return mergeable; }
 
-        const std::filesystem::path& writeRoot() const { return recordedRoot; }
-        void setWriteRoot(std::filesystem::path root) { recordedRoot = std::move(root); }
-        // writeRoot(), else the active write scope's root when `path` is inside it (an MCP call
-        // undoing a step the GUI made)
-        std::filesystem::path rootFor(const std::filesystem::path& path) const {
-            return recordedRoot.empty() ? safewrite::scopeRootFor(path) : recordedRoot;
+        // the first recorded root ("" none)
+        std::filesystem::path writeRoot() const { return recordedRoots.empty() ? std::filesystem::path() : recordedRoots.front(); }
+        const std::vector<std::filesystem::path>& writeRoots() const { return recordedRoots; }
+        void setWriteRoot(std::filesystem::path root) { recordedRoots.clear(); if (!root.empty()) recordedRoots.push_back(std::move(root)); }
+        void setWriteRoots(std::vector<std::filesystem::path> roots) { recordedRoots = std::move(roots); }
+        // the recorded trusted root holding `path` once resolved, else the active write scope's
+        // root when `path` is inside it (an MCP call undoing a step the GUI made)
+        std::filesystem::path rootFor(const std::filesystem::path& path, bool entry = false) const {
+            return recordedRoots.empty() ? safewrite::scopeRootFor(path) : safewrite::trustedRootFor(recordedRoots, path, entry);
         }
         // Why the last execute() failed ("" when it did not, or the command has no words for it):
         // what a refused redo reports

@@ -113,7 +113,7 @@ namespace {
 class StepScope {
 public:
     explicit StepScope(const jasperengine::editor::Command* cmd) {
-        if (cmd && !cmd->writeRoot().empty()) scope.emplace(cmd->writeRoot());
+        if (cmd && !cmd->writeRoots().empty()) scope.emplace(cmd->writeRoots());
     }
 
 private:

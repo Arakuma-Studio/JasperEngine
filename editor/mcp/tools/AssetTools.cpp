@@ -1243,7 +1243,7 @@ void createFolderTool(const CallPtr& call) {
     }
     // made beneath the project: no link planted on the way since the check is followed
     auto* create = new CreateDirCmd(dir.filename().string(), dir.parent_path().string());
-    create->writeBeneath(project->getProjectPath());
+    create->setWriteRoots(McpRefs::trustedRoots(project));
     if (!addProjectCommand(call->ctx(), create)) {
         call->fail("Couldn't create the folder.");
         return;
@@ -1385,16 +1385,16 @@ void moveAssetTool(const CallPtr& call) {
     } else if (from.parent_path() == to.parent_path()) {
         // renamed beneath the project: no link planted on the way since the check is followed
         auto* rename = new RenameFileCmd(project, from.filename().string(), to.filename().string(), from.parent_path().string());
-        rename->writeBeneath(project->getProjectPath());
+        rename->setWriteRoots(McpRefs::trustedRoots(project));
         cmd = rename;
     } else {
         auto* multi = new MultiPropertyCmd();
         auto move = std::make_unique<CopyFileCmd>(project, std::vector<std::string>{from.string()}, to.parent_path().string(), false);
-        move->writeBeneath(project->getProjectPath());
+        move->setWriteRoots(McpRefs::trustedRoots(project));
         multi->addCommand(std::move(move));
         if (from.filename() != to.filename()) {
             auto rename = std::make_unique<RenameFileCmd>(project, from.filename().string(), to.filename().string(), to.parent_path().string());
-            rename->writeBeneath(project->getProjectPath());
+            rename->setWriteRoots(McpRefs::trustedRoots(project));
             multi->addCommand(std::move(rename));
         }
         cmd = multi;
@@ -1475,7 +1475,7 @@ void deleteAssetTool(const CallPtr& call) {
     auto* deleteCmd = new DeleteFileCmd(project, files, project->getProjectPath());
     deleteCmd->setAlertOnRefusal(false);
     // moved to the trash beneath the project: no link planted on the way since the check is followed
-    deleteCmd->writeBeneath(project->getProjectPath());
+    deleteCmd->setWriteRoots(McpRefs::trustedRoots(project));
     if (!addProjectCommand(call->ctx(), deleteCmd)) {
         call->fail("Couldn't delete the files.");
         return;
@@ -1501,6 +1501,7 @@ void deleteAssetTool(const CallPtr& call) {
 // worker thread; the main thread then rewrites the document and makes the editor notice the files.
 struct RemoteImport {
     fs::path projectRoot;
+    std::vector<fs::path> writeRoots;     // the project's trusted roots, for the worker's write scope
     std::string destDir;                  // project-relative, inside the assets
     std::vector<std::string> urls, fonts, icons;
     std::string document;                 // from_document, project-relative ("" = none)
@@ -1789,6 +1790,7 @@ void importFilesTool(const CallPtr& call) {
 
     auto state = std::make_shared<RemoteImport>();
     state->projectRoot = project->getProjectPath();
+    state->writeRoots = McpWriteScope::projectRoots();
     // videos the engine does not play are converted (FFmpeg, on the worker) instead of copied (phase 6)
     std::vector<std::string> plainFiles;
     for (const std::string& item : local) {
@@ -1875,7 +1877,7 @@ void importFilesTool(const CallPtr& call) {
 
     std::thread([state]() {
         // the importers' files beneath the project, as on the main thread (the scope is per thread)
-        McpWriteScope writeScope(state->projectRoot);
+        McpWriteScope writeScope(state->writeRoots);
         for (const fs::path& video : state->videos)
             state->videoResults.push_back(importers::VideoImporter::importFile(video, state->videoTarget, state->overwrite));
         const std::string dest = state->destDir;

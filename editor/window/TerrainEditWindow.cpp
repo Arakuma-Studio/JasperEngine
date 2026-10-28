@@ -543,7 +543,7 @@ bool editor::TerrainEditWindow::cleanUnusedTerrainMaps(Project* project){
 
     // The maps folder resolving outside the project (a link to another project's folder): its
     // files are not this project's to collect
-    if (!safewrite::isInsideResolved(absoluteBaseDir, project->getProjectPath())){
+    if (!safewrite::isInsideResolved(absoluteBaseDir, project->getProjectPath()) && !safewrite::isInsideResolved(absoluteBaseDir, project->getAssetsPath())){
         return flushOk;
     }
 

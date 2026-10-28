@@ -177,10 +177,11 @@ namespace jasperengine::editor::vat{
         // outside it once links are resolved is refused (write_failed), and the files-only step
         // writes beneath it when it happens (WriteFilesCmd::writeBeneath, util/SafeWrite.h).
         // Empty (the default, the window): as before.
-        void writeBeneath(std::filesystem::path root) { beneathRoot = std::move(root); }
+        // (`roots`: the project's trusted roots, its directory and its assets directory)
+        void writeBeneath(std::vector<std::filesystem::path> roots) { beneathRoots = std::move(roots); }
 
     private:
-        std::filesystem::path beneathRoot;
+        std::vector<std::filesystem::path> beneathRoots;
         struct PlanItem{
             int clip = 0;           // into input.clips
             bool mid = false;

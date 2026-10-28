@@ -38,9 +38,12 @@ namespace jasperengine::editor::mcp {
     class McpWriteScope : public safewrite::Scope {
     public:
         McpWriteScope();
-        explicit McpWriteScope(std::filesystem::path root, bool strict = true) : safewrite::Scope(std::move(root), strict) {}
+        explicit McpWriteScope(std::vector<std::filesystem::path> roots, bool strict = true) : safewrite::Scope(std::move(roots), strict) {}
         // the open project's directory ("" when none)
         static std::filesystem::path projectRoot();
+        // the open project's trusted roots: its directory and its configured assets directory
+        // (project.yaml assetsDir as loaded; each resolved once by the checks), empty when none
+        static std::vector<std::filesystem::path> projectRoots();
     };
 
     // What tool handlers reach the editor through. Main thread only (except server()/jobs()).

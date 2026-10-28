@@ -442,24 +442,53 @@ bool McpRefs::resolveProjectPath(Project* project, const std::string& relative, 
     return true;
 }
 
+std::vector<fs::path> McpRefs::trustedRoots(Project* project) {
+    if (!project || project->getProjectPath().empty()) return {};
+    std::vector<fs::path> roots = {project->getProjectPath()};
+    const fs::path assets = project->getAssetsPath();
+    if (!assets.empty() && assets.lexically_normal() != project->getProjectPath().lexically_normal()) roots.push_back(assets);
+    return roots;
+}
+
+fs::path McpRefs::rootFor(Project* project, const fs::path& absolute, WriteUse use) {
+    return safewrite::trustedRootFor(trustedRoots(project), absolute, use == WriteUse::Entry);
+}
+
+namespace {
+    // `absolute` inside one of `roots` once links are resolved ("" ok, else the error)
+    std::string escapeAgainst(const std::vector<fs::path>& roots, const fs::path& root, const fs::path& absolute, McpRefs::WriteUse use) {
+        const fs::path normal = absolute.lexically_normal();
+        const fs::path rel = normal.lexically_relative(root.lexically_normal());
+        const std::string shown = rel.empty() || *rel.begin() == ".." ? FileUtils::pathToGenericUtf8(normal) : FileUtils::pathToGenericUtf8(rel);
+        // a write follows a link at the name (a dangling one too: a plain write creates its target)
+        const fs::path where = use == McpRefs::WriteUse::Entry ? safewrite::entryLocation(normal) : safewrite::resolvedPath(normal);
+        if (where.empty()) {
+            return "\"" + shown + "\" can't be resolved: a symbolic link on its way loops or can't be read. Remove the loop, then try again.";
+        }
+        for (const fs::path& trusted : roots) {
+            const fs::path real = safewrite::resolvedPath(trusted);
+            if (!real.empty() && safewrite::isAtOrBelow(where, real)) return std::string();
+        }
+        return "\"" + shown + "\" resolves outside the project: a symbolic link on its way leads to " + FileUtils::pathToGenericUtf8(where) +
+               ". Tools write, create, delete and move files only inside the project and its assets directory (reads may follow links): "
+               "use a path that is not behind a link to elsewhere, or replace the link with a real folder.";
+    }
+}
+
 std::string McpRefs::writeEscape(Project* project, const fs::path& absolute, WriteUse use) {
     if (!project) return "No project is open.";
-    const fs::path root = project->getProjectPath();
-    const fs::path realRoot = safewrite::resolvedPath(root);
-    const fs::path normal = absolute.lexically_normal();
-    const fs::path rel = normal.lexically_relative(root.lexically_normal());
-    const std::string shown = rel.empty() || *rel.begin() == ".." ? FileUtils::pathToGenericUtf8(normal) : FileUtils::pathToGenericUtf8(rel);
-    // a write follows a link at the name (a dangling one too: a plain write creates its target)
-    const fs::path where = use == WriteUse::Entry ? safewrite::entryLocation(normal) : safewrite::resolvedPath(normal);
-    if (where.empty() || realRoot.empty()) {
-        return "\"" + shown + "\" can't be resolved: a symbolic link on its way loops or can't be read. Remove the loop, then try again.";
-    }
-    if (!safewrite::isAtOrBelow(where, realRoot)) {
-        return "\"" + shown + "\" resolves outside the project: a symbolic link on its way leads to " + FileUtils::pathToGenericUtf8(where) +
-               ". Tools write, create, delete and move files only inside the project (reads may follow links): use a path that is "
-               "not behind a link to elsewhere, or replace the link with a real folder.";
-    }
-    return std::string();
+    // the trusted roots: the project directory and its configured assets directory (each resolved
+    // once: an assets directory linked in from a shared drive works); links below them are checked
+    return escapeAgainst(trustedRoots(project), project->getProjectPath(), absolute, use);
+}
+
+std::string McpRefs::projectOnlyEscape(Project* project, const fs::path& absolute) {
+    if (!project) return "No project is open.";
+    // a new trusted root (an asset root setting): inside the project directory itself, never via
+    // the current assets directory's link
+    const std::string escape = escapeAgainst({project->getProjectPath()}, project->getProjectPath(), absolute, WriteUse::Write);
+    if (escape.empty()) return escape;
+    return escape + " An asset root must be a folder of the project itself.";
 }
 
 std::string McpRefs::internalFoldersEscape(Project* project) {

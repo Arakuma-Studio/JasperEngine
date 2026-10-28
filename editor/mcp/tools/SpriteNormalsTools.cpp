@@ -110,7 +110,8 @@ sn::Problem problem(const std::string& kind, const std::string& field, const std
 // save_path (resolved by McpRefs::resolveProjectPath to `target`) still inside the project once
 // symbolic links are resolved; false + error when a link on its way leads out of it
 bool savePathStaysInside(Project* project, const std::string& given, const fs::path& target, std::string& error) {
-    if (sn::isInsideResolved(target, project->getProjectPath())) return true;
+    // inside the project's trusted roots (its directory, its assets directory) once resolved
+    if (McpRefs::writeEscape(project, target).empty()) return true;
     error = "\"" + given + "\" resolves outside the project: a symbolic link on its way leads to " +
             FileUtils::pathToGenericUtf8(sn::resolvedPath(target)) + ".";
     return false;
@@ -776,7 +777,7 @@ void finishNormals(const NormalsCallPtr& state) {
             return;
         }
         std::string restoreWarning;
-        if (!sheet.write(project->getProjectPath(), target, reports[0].sheet, error, &restoreWarning)) {
+        if (!sheet.write(McpRefs::rootFor(project, target), target, reports[0].sheet, error, &restoreWarning)) {
             std::vector<sn::Problem> problems = {problem("write_failed", "save_path", "could not write the sheet to " + state->savePath + " (" + error + ")",
                                                          "save_path must name a writable file whose folders are folders (not files), then call again")};
             // the half-written sheet could not be put back: the file at save_path changed

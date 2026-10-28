@@ -2089,7 +2089,7 @@ void renderPoseAnimationTool(const CallPtr& call) {
         if (!saveTarget.empty()) {
             // beneath the project: no link planted on the way since the check is followed
             std::string why;
-            if (!safewrite::writeFileResolvedBeneath(project->getProjectPath(), saveTarget, std::string(png.begin(), png.end()), why)) {
+            if (!safewrite::writeFileResolvedBeneath(McpRefs::rootFor(project, saveTarget), saveTarget, std::string(png.begin(), png.end()), why)) {
                 call->fail("Could not write the PNG to " + projectRel(project, saveTarget) + ": " + why);
                 return;
             }
