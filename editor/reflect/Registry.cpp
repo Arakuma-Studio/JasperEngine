@@ -87,6 +87,7 @@ namespace {
         &kBuoyancyDesc,
         &kPoseAnimatorDesc,
         &kAnimationPlayerDesc,
+        &kVertexAnimatorDesc,
     };
     static_assert(std::size(kAll) == static_cast<size_t>(LAST_COMPONENT_TYPE) + 1, "a ComponentType without a description");
 
@@ -124,6 +125,7 @@ namespace {
         &kLatticeTracksDesc,
         &kPoseAnimatorDesc,
         &kAnimationPlayerDesc,
+        &kVertexAnimatorDesc,
         &kCameraDesc,
         &kAudioSourceDesc,
         &kScriptDesc,
@@ -204,6 +206,7 @@ namespace {
         &kModelDesc,
         &kPoseAnimatorDesc,
         &kAnimationPlayerDesc,
+        &kVertexAnimatorDesc,
         &kMorphTracksDesc,
         &kPanelDesc,
         &kParticleSystemDesc,

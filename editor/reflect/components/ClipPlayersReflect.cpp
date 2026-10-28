@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 // The players of authored animation (docs/specs/S08-reflection.md; animation clips spec 3.2,
-// pose animation spec 4.1): the Pose Animator and the Animation Player keep their own codecs (a
-// missing key is the default, not the old value; a component decoded over keeps its runtime);
-// their tables give the properties, schema, Inspector metadata and the generic copy of a value.
+// pose animation spec 4.1, vertex animation spec 3.3): the Pose Animator, the Animation Player and
+// the Vertex Animator keep their own codecs (a missing key is the default, not the old value; a
+// component decoded over keeps its runtime, the Vertex Animator only its Preview toggle); their
+// tables give the properties, schema, Inspector metadata and the generic copy of a value.
 
 #include "reflect/Components.h"
 
@@ -12,6 +13,7 @@
 #include "Stream.h"
 #include "component/AnimationPlayerComponent.h"
 #include "component/PoseAnimatorComponent.h"
+#include "component/VertexAnimatorComponent.h"
 
 namespace jasperengine::editor::reflect {
 
@@ -81,6 +83,56 @@ namespace {
 
 }
 
+namespace {
+
+    // ---------------------------------------------------------------- Vertex Animator
+
+    constexpr uint64_t kVertexReload = UpdateFlags_VertexAnimator_Reload;
+
+    // an attachment: the socket the GameObject `entity` follows (single entity mode)
+    constexpr FieldDesc kVertexAnimatorAttachmentFields[] = {
+        JE_FIELD(VertexAnimatorAttachment, socket),
+        JE_FIELD(VertexAnimatorAttachment, entity, .ops = &ops::Entity),
+    };
+
+}
+
+JE_REFLECT_STRUCT_TRAITS(VertexAnimatorAttachment, kVertexAnimatorAttachmentStruct);
+const StructDesc kVertexAnimatorAttachmentStruct = JE_STRUCT_DESC(VertexAnimatorAttachment, "VertexAnimatorAttachment",
+                                                                  kVertexAnimatorAttachmentFields);
+
+namespace {
+
+    // enabled is the component checkbox; `animation` is the .vat path hint (asset-relative) and
+    // `guid` its GUID (editor); `attachments`, `instanceClips` and `instanceSpeeds` are whole lists
+    // (what a prefab override holds; per-instance starts are Create Crowd's). The runtime fields
+    // (Preview, the loaded asset, the GPU state) are no properties; the settings are read by the
+    // system when it plays (no update flag)
+    constexpr FieldDesc kVertexAnimatorFields[] = {
+        JE_FIELD(VertexAnimatorComponent, enabled),
+        JE_FIELD(VertexAnimatorComponent, animation, .updateFlags = kVertexReload, .asset = AssetKind::VertexAnimation),
+        JE_FIELD(VertexAnimatorComponent, guid, .updateFlags = kVertexReload, .label = "GUID"),
+        JE_FIELD(VertexAnimatorComponent, defaultClip, .tooltip = "The clip played automatically (empty: the first clip)."),
+        JE_FIELD(VertexAnimatorComponent, playAutomatically),
+        JE_FIELD(VertexAnimatorComponent, speed),
+        JE_FIELD(VertexAnimatorComponent, randomStart, .tooltip = "A random start phase per instance (or GameObject)."),
+        // kept >= 0 by its decode and updateEntity
+        JE_FIELD(VertexAnimatorComponent, defaultFadeTime, .flags = Clamped, .updateFlags = kVertexReload, .unit = Unit::Seconds, .min = 0.0f),
+        JE_FIELD(VertexAnimatorComponent, instanceEvents, .tooltip = "Events and finishes for every instance (cost per instance)."),
+        JE_FIELD(VertexAnimatorComponent, attachments, .flags = ListWhole | ListTemplate),
+        JE_FIELD(VertexAnimatorComponent, instanceClips, .flags = ListWhole, .updateFlags = kVertexReload),
+        JE_FIELD(VertexAnimatorComponent, instanceSpeeds, .flags = ListWhole, .updateFlags = kVertexReload),
+    };
+
+    const ComponentCodec kVertexAnimatorCodec = JE_STREAM_CODEC(VertexAnimatorComponent, encodeVertexAnimatorComponent,
+                                                                decodeVertexAnimatorComponent);
+
+    constexpr const char* kVertexAnimatorKnownKeys[] = {"animation", "attachments", "defaultClip", "defaultFadeTime", "enabled", "guid",
+                                                        "instanceClips", "instanceEvents", "instanceSpeeds", "playAutomatically",
+                                                        "randomStart", "speed"};
+
+}
+
 const ComponentDesc kPoseAnimatorDesc{
     .type = ComponentType::PoseAnimatorComponent, .cppName = "PoseAnimatorComponent", .key = "poseanimator",
     .displayName = "Pose Animator", .icon = ICON_FA_PERSON_RUNNING,
@@ -101,6 +153,17 @@ const ComponentDesc kAnimationPlayerDesc{
     .decodeApply = DecodeApply::MarkOnly,
     .codegen = JE_FACTORY_CODEGEN(createAnimationPlayerComponent),
     .extraKeys = kAnimationPlayerKnownKeys,
+};
+
+const ComponentDesc kVertexAnimatorDesc{
+    .type = ComponentType::VertexAnimatorComponent, .cppName = "VertexAnimatorComponent", .key = "vertexanimator",
+    .displayName = "Vertex Animator", .icon = ICON_FA_PEOPLE_GROUP,
+    .body = JE_STRUCT_DESC(VertexAnimatorComponent, "VertexAnimatorComponent", kVertexAnimatorFields),
+    .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(VertexAnimatorComponent),
+    .codec = &kVertexAnimatorCodec,
+    .decodeApply = DecodeApply::MarkOnly,
+    .codegen = JE_FACTORY_CODEGEN(createVertexAnimatorComponent),
+    .extraKeys = kVertexAnimatorKnownKeys,
 };
 
 }
