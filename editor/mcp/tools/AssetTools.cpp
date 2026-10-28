@@ -39,6 +39,7 @@
 #include "command/type/ScenePropertyCmd.h"
 #include "command/type/UnlinkMaterialCmd.h"
 #include "vat/VatAssetFiles.h"
+#include "vat/VatDocument.h"
 #include "component/MeshComponent.h"
 #include "htmlui/HtmlUiImporters.h"
 #include "htmlui/VideoImporter.h"
