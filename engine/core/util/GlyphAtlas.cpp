@@ -21,10 +21,16 @@ void GlyphAtlas::reset(unsigned int width, unsigned int height){
     pixels.assign((size_t)width * (size_t)height * (size_t)bytesPerPixel, 0);
     shelves.clear();
     reservedRows = 0;
+    leading = 0;
 }
 
 void GlyphAtlas::reserveBottom(int rows){
     reservedRows = std::max(0, std::min(rows, (int)height));
+}
+
+void GlyphAtlas::reserveLeading(int texels){
+    if (shelves.empty())
+        leading = std::max(0, std::min(texels, (int)std::min(width, height)));
 }
 
 bool GlyphAtlas::pack(int width, int height, int& x, int& y){
@@ -55,17 +61,18 @@ bool GlyphAtlas::pack(int width, int height, int& x, int& y){
         return true;
     }
 
-    int shelfY = 0;
+    int shelfY = leading;
     if (!shelves.empty()){
         shelfY = shelves.back().y + shelves.back().h;
     }
 
-    if (width > (int)this->width || (shelfY + height) > (int)this->height - reservedRows){
+    if (leading + width > (int)this->width || (shelfY + height) > (int)this->height - reservedRows){
         return false;
     }
 
-    shelves.push_back({width, shelfY, height});
+    shelves.push_back({leading + width, shelfY, height});
 
+    x = leading;
     y = shelfY;
 
     return true;

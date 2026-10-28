@@ -851,7 +851,7 @@ bool RmlFontEngine::place(PageKind kind, const unsigned char* pixels, int width,
     // longer drawn become free to clear, instead of every page holding a little of everything.
     const uint64_t frame = SystemRender::getFrameCount();
     const size_t pageBytes = (size_t)pageSize * (size_t)pageSize * (kind == PageKind::BASE ? 1u : 4u);
-    const bool fitsAPage = width + 1 <= pageSize && height + 1 <= pageSize;
+    const bool fitsAPage = width + 2 <= pageSize && height + 2 <= pageSize;
     placeDeferred = false;
     size_t newest = list.size();
     for (size_t i = 0; i < list.size(); i++){
@@ -882,6 +882,13 @@ bool RmlFontEngine::place(PageKind kind, const unsigned char* pixels, int width,
         else
             list[slot]->atlas->reset(pageSize, pageSize);
         list[slot]->opened = ++pagesOpened;
+        // transform-aware text draws glyphs at fractional positions and scales, where filtering
+        // reads a texel past their edges: an empty one on every side wherever they are packed
+        // (at the page's top or left edge clamping read the glyph's own edge row instead, so the
+        // same text drew otherwise once its page was cleared and refilled). Off, the glyphs are
+        // packed where they were before S16 (AC1).
+        if (transformAwareText)
+            list[slot]->atlas->reserveLeading(1);
         reserveWhiteBlock(*list[slot]);
         makeSource(*list[slot]);
         return packInto(slot);

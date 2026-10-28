@@ -25,6 +25,11 @@ namespace jasperengine {
         // keeps the last `rows` rows out of the packing (until reset): what the owner writes
         // there moves no packed rectangle
         void reserveBottom(int rows);
+        // (before the first pack, until reset) keeps the first `texels` rows and columns empty, as
+        // the padding keeps the space right and below each rect: every rect then has empty texels
+        // on all four sides, so a filtered sample at its edge reads 0 wherever it was packed (at
+        // the atlas edge, clamp-to-edge would repeat the rect's own edge texels instead)
+        void reserveLeading(int texels);
         // copies a width x height bitmap (rows of width * bytesPerPixel bytes) to (x, y), clipped to the atlas
         void blit(const unsigned char* pixels, int width, int height, int x, int y);
         const std::vector<unsigned char>& getPixels() const;
@@ -47,6 +52,7 @@ namespace jasperengine {
         int padding = 0;
         int bytesPerPixel = 1;
         int reservedRows = 0;
+        int leading = 0;
     };
 
 }

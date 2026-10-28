@@ -152,3 +152,48 @@ TEST(TestFontEngine, AtlasBudgetEvictsLeastRecentlyUsed){
     // more than four evictions within 120 frames: once per context
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "HTMLUI-GEN-0007"), 1u);
 }
+
+TEST(TestFontEngine, GlyphsDrawTheSameWhereverTheyArePacked){
+    // (S16, transform-aware text) text at a fractional offset and scale filters a texel past each
+    // glyph's edges. Drawn from glyphs at the top of a fresh page, and again from the same glyphs
+    // packed below another document's: the same pixels (a glyph at the page's top or left edge
+    // once read its own edge row there, clamped: the same text drew otherwise once its page was
+    // cleared and refilled, a play run after the first, test_html_ui_examples main_menu)
+    JASPER_REQUIRE_GPU();
+    S16On s16;
+    RmlFontEngine& fonts = HtmlUI::getFontEngine();
+    const std::string moved = "<rml><head><style>body { margin: 0; font-family: sans-serif; color: #ffffff; } "
+                              "p { font-size: 24px; line-height: 1; margin: 0; transform: translate(0.4px, 0.45px) scale(1.01); "
+                              "transform-origin: 0 0; }</style></head><body><p>" + glyphSet() + "</p></body></rml>";
+
+    std::vector<uint8_t> first;
+    {
+        RenderTestContext test(width, height);
+        ASSERT_TRUE(test.isValid());
+        fonts.ReleaseFontResources();
+        ASSERT_NE(test.loadFromMemory(moved, "render/atlas-moved.rml"), nullptr);
+        ASSERT_TRUE(test.renderUntilDrawn());
+        for (int frame = 0; frame < 8; frame++)
+            test.renderFrame();
+        ASSERT_TRUE(test.readScreen(first));
+    }
+
+    std::vector<uint8_t> second;
+    {
+        RenderTestContext test(width, height);
+        ASSERT_TRUE(test.isValid());
+        fonts.ReleaseFontResources();
+        // another size's glyphs take the page's first shelves
+        Rml::ElementDocument* other = test.loadFromMemory(documentOf(40), "render/atlas.rml");
+        ASSERT_NE(other, nullptr);
+        ASSERT_TRUE(test.renderUntilDrawn());
+        other->Hide();
+        ASSERT_NE(test.loadFromMemory(moved, "render/atlas-moved.rml"), nullptr);
+        ASSERT_TRUE(test.renderUntilDrawn());
+        for (int frame = 0; frame < 8; frame++)
+            test.renderFrame();
+        ASSERT_TRUE(test.readScreen(second));
+    }
+    fonts.ReleaseFontResources();
+    EXPECT_LE(largestDifference(first, second), 1);
+}
