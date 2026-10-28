@@ -105,8 +105,9 @@ TEST(BuoyancyBench, HundredBodiesFourColumns){
         std::printf("[bench] Buoyancy, 100 bodies x 4 columns %.4f ms a step (budget 0.1 ms desktop)\n", ms);
         // every column of every body sampled the waves each step (twice: the pass and the step)
         EXPECT_GE(WaterSystem::getWaveEvaluations() - evaluations, (uint64_t)steps * 100 * 4);
-        if (testsupport::perfSlack() > 0.0)
+        if (testsupport::perfSlack() > 0.0) {
             EXPECT_LE(ms, 0.1 * 1.5 * testsupport::perfSlack());
+        }
     }
     Engine::setFixedDeltatime(0.0);
     Engine::latchShaderTime();
