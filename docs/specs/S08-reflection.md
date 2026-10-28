@@ -517,6 +517,13 @@ Recorded by the implementation (branch `feat/s08-reflection`).
   entry is a table struct (`clips[2].wrap`; the one-byte `ClipWrapMode` a Custom property, an
   enum to the schema). The Mesh's `morphWeights[N]` and the Model's `animationEntities` are table
   fields; their codecs stay the hand ones. No format bump: the sequence stays S20's.
+- **Upstream vertex animation (sync round 3).** The Vertex Animator keeps upstream's codec (the
+  authored fields; a component decoded over keeps only its Preview toggle) in
+  `StreamComponents.cpp`, with its table in `ClipPlayersReflect.cpp` (attachments are a table
+  struct whose `entity` is an entity reference; `attachments`, `instanceClips` and
+  `instanceSpeeds` are whole lists); its drawer stays upstream's (`InspectorWindowVat.cpp`),
+  registered in the drawer lookup. Its `.vat` is an `AssetRefSchema` row (the `GuidSibling`
+  shape). No format bump.
 - **Legacy oracle kept.** `editor/tests/reflect/legacy/` (the deleted hand codecs, test-only)
   stays so the parity fuzzers can keep running. D5 deletes it once S08 completes. Deleting it is
   a follow-up for the integrator after merge, and the goldens do not depend on it.
