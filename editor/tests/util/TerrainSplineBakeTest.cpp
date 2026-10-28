@@ -390,7 +390,7 @@ namespace {
         std::vector<unsigned char> heightPixels(){
             Texture& map = scene->scene->getComponent<TerrainComponent>(terrain).heightMap;
             EXPECT_TRUE(TerrainMapUtils::hasLoadedData(map));
-            const TextureData& data = map.getData();
+            TextureData& data = map.getData();
             const unsigned char* p = static_cast<const unsigned char*>(data.getData());
             return std::vector<unsigned char>(p, p + data.getSize());
         }
