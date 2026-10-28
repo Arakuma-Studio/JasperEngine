@@ -155,20 +155,25 @@ PARITY_COMPONENT(RectTransform)
 PARITY_COMPONENT(LayoutGroup)
 PARITY_COMPONENT(Text)
 PARITY_COMPONENT(Image)
-// Transform: saves no longer write the derived world values (docs/specs/S29-version-control.md
-// R20, scene format 4); everything else is the legacy text, and the legacy text (with them) still
-// decodes the same
-YAML::Node legacyTransformAsWritten(const Transform& transform) {
-    YAML::Node node = LegacyCodecs::encodeTransform(transform);
-    for (const char* key : {"worldPosition", "worldRotation", "worldScale", "localMatrix", "modelMatrix", "normalMatrix"}) node.remove(key);
-    return node;
-}
-TEST(ReflectParity, TransformEncodeMatchesLegacy) {
-    encodeMatches<Transform>(ComponentType::Transform, &legacyTransformAsWritten, 1000u * static_cast<uint32_t>(ComponentType::Transform));
-}
-TEST(ReflectParity, TransformDecodeMatchesLegacy) {
-    decodeMatches<Transform>(ComponentType::Transform, &LegacyCodecs::encodeTransform, &LegacyCodecs::decodeTransform,
-                             7919u * static_cast<uint32_t>(ComponentType::Transform) + 17u);
+PARITY(Transform, Transform, encodeTransform, decodeTransform)
+// a document (a scene or prefab file) leaves out the derived world values (S29 R20); every other
+// encode is the legacy text
+TEST(ReflectParity, TransformDocumentEncodeLeavesOutDerivedValues) {
+    Transform transform;
+    transform.position = Vector3(1, 2, 3);
+    transform.worldPosition = Vector3(4, 5, 6);
+    YAML::Node legacy = LegacyCodecs::encodeTransform(transform);
+    EXPECT_EQ(YAML::Dump(reflect::encodeValue(ComponentType::Transform, &transform)), YAML::Dump(legacy));
+    YAML::Node written;
+    {
+        reflect::DocumentEncodeScope document;
+        written = reflect::encodeValue(ComponentType::Transform, &transform);
+    }
+    for (const char* key : {"worldPosition", "worldRotation", "worldScale", "localMatrix", "modelMatrix", "normalMatrix"}) {
+        EXPECT_FALSE(written[key].IsDefined()) << key;
+        legacy.remove(key);
+    }
+    EXPECT_EQ(YAML::Dump(written), YAML::Dump(legacy));
 }
 PARITY_COMPONENT(Joint2D)
 PARITY_COMPONENT(Joint3D)

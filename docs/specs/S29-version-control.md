@@ -661,9 +661,12 @@ MCP tests are in `tools/mcp/tests/test_vcs.py`. Each test builds its repository 
   2,000-GameObject encode takes ~30 ms on the benchmark server.
 - **R20 format versions**: scene 3 -> 4 and prefab 5 -> 6 (`Prefab::FILE_VERSION` 6); prefab files
   are written again (needsUpgrade) the next time a scene using them is saved. The reflection
-  table gains a `NotWritten` flag (read when present, never written) on the six transform
-  fields, and the Transform's post-decode sets `needUpdate`, so the first transform pass computes
-  them. A stream that bumps the scene version too (S18) renumbers on merge.
+  table gains a `NotWritten` flag on the six transform fields: left out of documents (encodes
+  inside a `reflect::DocumentEncodeScope`: `Stream::encodeSceneProject`,
+  `Project::encodePrefabNode`, `Project::encodePrefabStage`), read when present; the in-memory
+  encodes (undo snapshots, the clipboard) keep them, since a restore may need them before the
+  next transform pass (a model's layout switch undone under a reparent does). The Transform's
+  post-decode sets `needUpdate`, so the first transform pass computes them. A stream that bumps the scene version too (S18) renumbers on merge.
 - **Test hooks**: `ProviderConfig::svnGlobalArgs` (the SVN tests pass `--username` for two users
   of one `file://` repository) and `VcsSettings::usePathOverride` / `pathOverride` (AC20 runs the
   detection with an empty `PATH`), and `VcsSettings::pollMilliseconds` /

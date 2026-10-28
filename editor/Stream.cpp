@@ -2933,6 +2933,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
 }
 
 YAML::Node editor::Stream::encodeSceneProject(const Project* project, const SceneProject* sceneProject) {
+    // a scene file: without the values loading computes (S29 R20)
+    reflect::DocumentEncodeScope document;
     YAML::Node root;
     root[StreamMigrations::versionKey(DocumentKind::Scene)] = StreamMigrations::currentVersion(DocumentKind::Scene);
     root["id"] = sceneProject->id;

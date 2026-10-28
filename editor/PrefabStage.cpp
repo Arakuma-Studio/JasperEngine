@@ -14,6 +14,7 @@
 #include "StreamPreserved.h"
 #include "Out.h"
 #include "Stream.h"
+#include "reflect/Reflect.h"
 #include "Factory.h"
 #include "command/CommandHandle.h"
 #include "render/SceneRender.h"
@@ -615,6 +616,8 @@ void editor::Project::fixPrefabStageRoots(PrefabStage& stage) {
 }
 
 YAML::Node editor::Project::encodePrefabStage(PrefabStage& stage) {
+    // the prefab file Prefab Mode saves: without the values loading computes (S29 R20)
+    reflect::DocumentEncodeScope document;
     SceneProject& sceneProject = stage.sceneProject;
     Scene* scene = sceneProject.scene;
     fixPrefabStageRoots(stage);

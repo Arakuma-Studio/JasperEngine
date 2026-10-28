@@ -63,10 +63,27 @@ namespace {
 
 }
 
+namespace {
+    thread_local int documentEncodes = 0;
+}
+
+reflect::DocumentEncodeScope::DocumentEncodeScope() {
+    documentEncodes++;
+}
+
+reflect::DocumentEncodeScope::~DocumentEncodeScope() {
+    documentEncodes--;
+}
+
+bool reflect::DocumentEncodeScope::active() {
+    return documentEncodes > 0;
+}
+
 YAML::Node reflect::encode(const StructDesc& desc, const void* owner, const EncodeContext& ctx) {
     YAML::Node node;
+    const bool document = DocumentEncodeScope::active();
     for (const FieldDesc& field : desc.fields) {
-        if (!isSaved(field) || (field.flags & NotWritten)) continue;
+        if (!isSaved(field) || (document && (field.flags & NotWritten))) continue;
         const void* value = field.ref(const_cast<void*>(owner));
         if (field.flags & OmitIfDefault) {
             const void* def = defaultValue(desc, field);
