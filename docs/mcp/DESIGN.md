@@ -128,6 +128,9 @@ editor/mcp/
     DocsTools.cpp         engine API docs and resources
     BuildTools.cpp        export, build and player jobs
     WorldTools.cpp        terrain, tilemaps, animation, physics, UI and audio
+    AnimationClipTools.cpp the clip-file mode of edit/get/preview_animation (.anim through
+                          AnimationClipDocument, bindings, preview through AnimationClipController),
+                          the .anim parts of get_asset_info / write_file (no tools of its own)
     LatticeTools.cpp      edit_lattice (lattice deformer cages)
     PlacementTools.cpp    physics placement (place_with_physics: drop, separate, move, snap, gather,
                           distribute in edit mode), sharing physics/PlacementSession with the Scene
@@ -303,24 +306,28 @@ the same work and reports it itself):
   journal or the flush timed out, the stat scan (`source: "scan"`): stat-based against a cached
   map (mtime + size) of the project's tracked files (Lua, C++
   `.h/.hpp/.hh/.hxx/.inl/.c/.cc/.cpp/.cxx`, shaders `.vert/.frag/.glsl`, `.material`, HTML UI
-  `.html/.htm/.css`; assets: images (`.svg` included), fonts `.ttf/.otf`, `.json/.lottie`) and
-  folders (mtime: an added, removed or renamed entry), skipping hidden folders
-  (`.jasperengine`, `.git`...), `build`, `node_modules` and `trash`. `.scene`, `.prefab`,
-  `project.yaml` and the terrain maps the editor writes from its in-memory terrain
-  (`terrain_maps/terrain_edit_*.png`) are not tracked: the editor owns them. Files changed this
-  session, folders and code files (HTML UI included) are checked whole on every call (up to
-  2000 of each); assets rotate within a ~2 ms budget. The baseline is taken (in
-  `McpServer::tick`) when a project opens.
+  `.html/.htm/.css`, pose files `.poseanim/.humanoid`, animation clips `.anim`; models
+  `.gltf/.glb/.obj/.fbx` and glTF `.bin` buffers, picked up but not reported; assets: images
+  (`.svg` included), fonts `.ttf/.otf`, `.json/.lottie`) and folders (mtime: an added, removed or
+  renamed entry), skipping hidden folders (`.jasperengine`, `.git`...), `build`, `node_modules`
+  and `trash`. `.scene`, `.prefab`, `project.yaml` and the terrain maps the editor writes from
+  its in-memory terrain (`terrain_maps/terrain_edit_*.png`) are not tracked: the editor owns
+  them. Files changed this session, folders and code files (HTML UI included) are checked whole
+  on every call (up to 2000 of each); assets rotate within a ~2 ms budget. The baseline is taken
+  (in `McpServer::tick`) when a project opens.
 - **Pick-up**: changed paths go through `w4::syncFiles` (ScriptTools.cpp), which is
   `HotReloadService::apply` (editor/reload, the one reload funnel of the watcher, `sync_files`,
   Assets > Refresh and the code editor's saves): clean code editor buffers reloaded, script
   properties re-parsed, Lua syntax checked, textures, materials, models, audio and fonts decoded
   on workers and swapped in, the shader forks whose sources or includes hold a changed file
-  compiled before they swap, HTML UI documents reloaded, asset database and Project window
-  updated. The call waits (`waitUntil`, 10 s at most) for the reloads it started; their
-  failures (the previous version kept) and the forks' compile errors are reported with the call.
-  A path the watcher reloaded before the call is current (the applied-stamp table): reported,
-  with its `reloaded` entry, not reloaded again.
+  compiled before they swap, HTML UI documents reloaded, the open `PoseAnimationDocument`s and
+  `AnimationClipDocument`s of changed `.poseanim`/`.anim` files reloaded (`AnimationClipPool`
+  drops the clips and the Animation Players using them reload, during play too; a changed model
+  drops its sub-clips the same way), asset database and Project window updated. The call waits
+  (`waitUntil`, 10 s at most) for the reloads it started; their failures (the previous version
+  kept), the forks' compile errors and the load errors and warnings of `.anim` and `.poseanim`
+  files are reported with the call. A path the watcher reloaded before the call is current (the
+  applied-stamp table): reported, with its `reloaded` entry, not reloaded again.
 - **HTML UI**: UI documents reload live, before the tool runs, in edit mode and during play
   (`UIDocumentSystem::reloadChangedFiles` of every open scene, prefab stage and running Play
   scene, whose per-document stamps make a change reload once, whoever sees it first). A CSS-only

@@ -24,6 +24,8 @@
 #include "component/LineRendererComponent.h"
 #include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
+#include "component/PoseAnimatorComponent.h"
+#include "component/AnimationPlayerComponent.h"
 #include "component/PointsComponent.h"
 #include "component/PrefabComponent.h"
 #include "component/ReflectionProbeComponent.h"
@@ -629,6 +631,10 @@ TEST(AssetRefSchema, CoversAllFields) {
         // the effect asset, and the asset paths an inline effect's modules hold (S20)
         {C::ParticleSystemComponent, "effect"}, {C::ParticleSystemComponent, "inlineEffect"},
         {C::PrefabComponent, ""},
+        // upstream's Pose Animator: its .poseanim (an AssetRef since the sync)
+        {C::PoseAnimatorComponent, "animation"},
+        // upstream's Animation Player: each clip entry, an .anim by GUID or a model's sub-clip
+        {C::AnimationPlayerComponent, "clips[]"},
     };
     std::set<std::pair<C, std::string>> rows;
     for (const AssetRefField& field : AssetRefSchema::fields()) {
@@ -703,6 +709,71 @@ TEST(AssetRefSchema, VisitorRewritesAndFlags) {
     });
     EXPECT_FALSE(registry.findComponent<ModelComponent>(entity)->needUpdateModel);
     EXPECT_EQ(registry.findComponent<ModelComponent>(entity)->filename.guid.str(), "00000000000000000000000000000007");
+}
+
+// An Animation Player's clip entries are references (Find References, Missing Assets, renames):
+// an .anim by GUID and path, a sub-clip by its model's path, the clip part kept
+TEST(AssetRefSchema, AnimationPlayerClipEntries) {
+    EntityRegistry registry;
+    const Entity entity = registry.createEntity();
+    AnimationPlayerComponent player;
+    player.clips = {{"anim/walk.anim", "0123456789abcdef0123456789abcdef", "Walk", ClipWrapMode::Loop},
+                    {"models/hero.gltf#Run", "", "", ClipWrapMode::Default},
+                    {"", "", "", ClipWrapMode::Default}};
+    player.needsLoad = false;
+    registry.addComponent<AnimationPlayerComponent>(entity, player);
+
+    std::vector<std::string> seen;
+    AssetRefSchema::forEachAssetRef(registry, [&](AssetRef& ref, const AssetRefSite& site) {
+        seen.push_back(site.locator() + " " + ref.path + " " + ref.guid.str() + " " + assetTypeName(site.expected));
+    });
+    const std::string prefix = "entity:" + std::to_string(entity) + "/AnimationPlayerComponent.";
+    EXPECT_EQ(seen, (std::vector<std::string>{prefix + "clips[0] anim/walk.anim 0123456789abcdef0123456789abcdef animation_clip",
+                                              prefix + "clips[1] models/hero.gltf  model"}));
+    EXPECT_NE(AssetRefSchema::findRow(AssetRefScope::Component, ComponentType::AnimationPlayerComponent, "clips[1]"), nullptr);
+
+    // a GUID filled in for the model is no change: a sub-clip entry keeps none
+    EXPECT_FALSE(AssetRefSchema::forEachAssetRef(registry, [&](AssetRef& ref, const AssetRefSite& site) {
+        if (site.field == "clips[1]") ref.guid = Guid::parse("00000000000000000000000000000009");
+    }));
+    EXPECT_FALSE(registry.findComponent<AnimationPlayerComponent>(entity)->needsLoad);
+
+    // moved files: the .anim takes its new path and GUID, the sub-clip its new model; the player reloads
+    EXPECT_TRUE(AssetRefSchema::forEachAssetRef(registry, [&](AssetRef& ref, const AssetRefSite& site) {
+        if (site.field == "clips[0]") ref = AssetRef("anim/moved/walk.anim", Guid::parse("00000000000000000000000000000008"));
+        if (site.field == "clips[1]") ref.path = "models/moved/hero.gltf";
+    }));
+    const AnimationPlayerComponent& after = *registry.findComponent<AnimationPlayerComponent>(entity);
+    EXPECT_EQ(after.clips[0].clip, "anim/moved/walk.anim");
+    EXPECT_EQ(after.clips[0].guid, "00000000000000000000000000000008");
+    EXPECT_EQ(after.clips[0].name, "Walk");
+    EXPECT_EQ(after.clips[0].wrap, ClipWrapMode::Loop);
+    EXPECT_EQ(after.clips[1].clip, "models/moved/hero.gltf#Run");
+    EXPECT_EQ(after.clips[1].guid, "");
+    EXPECT_TRUE(after.needsLoad);
+
+    // the same entries in a closed scene file (a bare path entry too)
+    const YAML::Node root = YAML::Load(R"(
+entities:
+  - type: Entity
+    entity: 12
+    name: Hero
+    components:
+      animationplayer:
+        clips:
+          - {clip: anim/walk.anim, guid: 0123456789abcdef0123456789abcdef, name: Walk}
+          - {clip: "models/hero.gltf#Run"}
+          - anim/idle.anim
+)");
+    std::vector<std::string> found;
+    AssetRefSchema::extractDocumentRefs(root, false, [&](const AssetRefFound& ref) {
+        found.push_back(ref.site.locator(ref.scope) + " " + ref.ref.path + " " + ref.ref.guid.str() + " " + assetTypeName(ref.site.expected));
+    });
+    EXPECT_EQ(found, (std::vector<std::string>{
+        "entity:12/AnimationPlayerComponent.clips[0] anim/walk.anim 0123456789abcdef0123456789abcdef animation_clip",
+        "entity:12/AnimationPlayerComponent.clips[1] models/hero.gltf  model",
+        "entity:12/AnimationPlayerComponent.clips[2] anim/idle.anim  animation_clip",
+    }));
 }
 
 TEST(AssetRefSchema, ExtractsDocumentShapes) {

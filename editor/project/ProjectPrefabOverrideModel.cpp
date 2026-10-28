@@ -11,6 +11,7 @@
 #include "ProjectPrefabInternal.h"
 #include "Out.h"
 #include "Stream.h"
+#include "pose/PoseEditSession.h"
 #include "util/CameraTextureLink.h"
 #include "util/ProjectUtils.h"
 #include "util/YamlNumbers.h"
@@ -559,6 +560,17 @@ bool editor::Project::revertPropertyOverride(uint32_t sceneId, Entity entity, Co
         copyProperties(source, scene, entity, type, names, ref.path.string());
     }
     Catalog::updateEntity(scene, entity, Catalog::getComponentStructuralUpdateFlags(type));
+    // a reverted clip list or pose animation loads again, as a decode does (the whole-component
+    // copy also brings the prefab's own runtime flags)
+    if (type == ComponentType::AnimationPlayerComponent) {
+        if (AnimationPlayerComponent* player = scene->findComponent<AnimationPlayerComponent>(entity)) {
+            player->needsLoad = true;
+        }
+    } else if (type == ComponentType::PoseAnimatorComponent) {
+        if (PoseAnimatorComponent* animator = scene->findComponent<PoseAnimatorComponent>(entity)) {
+            animator->needsLoad = true;
+        }
+    }
     clearPropertyOverride(sceneId, entity, type, whole ? std::vector<std::string>{} : properties);
     if (CameraTextureLink::isLinkSourceType(type)) {
         CameraTextureLink::resolve(scene);
@@ -1256,6 +1268,9 @@ bool editor::Project::reimportPrefabInstance(SceneProject* sceneProject, Entity 
         return false;
     }
     Scene* scene = sceneProject->scene;
+    // the instance is rewritten from the prefab (same entity ids, no channel notification): a
+    // preview of it restores first, or its stop would write the old values back (clips 9.R7)
+    PoseEditSession::suspendActiveFor(sceneProject->id, {root});
     std::filesystem::path path;
     Prefab::Instance* instance = instanceRootedAt(this, scene, sceneProject->id, root, &path);
     if (!instance) {

@@ -9,8 +9,8 @@ The design and acceptance record is `docs/specs/S02-build-ci-tests.md`.
 
 | Suite | What it covers | Run it | Results |
 |---|---|---|---|
-| `jasperengine-core-tests` | engine code (`engine/core`, `engine/renders`) against the static engine: ECS, math, registry, shaders, render state, utilities, the job system, allocators and asset I/O; `*Gpu` suites render into a headless device | `tools/build.sh unit-tests` | `build/test-results/core.xml` |
-| `jasperengine-editor-tests` | editor logic (`editor/`): scene serialization (`Stream`), undo (`CommandHistory`, the S24 suites `CommandHistoryTests`, `UndoTimelineTests`, `PrefabUndoTests`, `PlayChangeReviewTests`, `CommandHistoryBench`), the asset database, Physics Placement, FBX import, texture synthesis; and in `editor/tests/engine/` engine code driven through the editor's shared engine (physics sync and shapes, placement worlds, convex decomposition, actions, shader and texture keys, water, terrain) | `tools/build.sh unit-tests` | `build/test-results/editor.xml` |
+| `jasperengine-core-tests` | engine code (`engine/core`, `engine/renders`) against the static engine: ECS, math, registry, shaders, render state, utilities, the job system, allocators, asset I/O, the pose animation core (`pose/`) and the animation clips core (`animation/`: clip IO, sampling, binding, the clip pool and the Animation Player, on a temporary asset root around each of its tests); `*Gpu` suites render into a headless device | `tools/build.sh unit-tests` | `build/test-results/core.xml` |
+| `jasperengine-editor-tests` | editor logic (`editor/`): scene serialization (`Stream`), undo (`CommandHistory`, the S24 suites `CommandHistoryTests`, `UndoTimelineTests`, `PrefabUndoTests`, `PlayChangeReviewTests`, `CommandHistoryBench`), the asset database, Physics Placement, FBX import, texture synthesis, the Pose Animation window's logic and templates (`pose/`), animation clip documents, the clip controller, Record and the converters (`animation/`); and in `editor/tests/engine/` engine code driven through the editor's shared engine (physics sync and shapes, placement worlds, convex decomposition, actions, shader and texture keys, water, terrain) | `tools/build.sh unit-tests` | `build/test-results/editor.xml` |
 | `jasperengine-htmlui-tests` | the HTML/CSS UI, with its golden images | `tools/build.sh htmlui-tests` (`HTMLUI_BACKEND=vulkan`) | `build/test-results/htmlui-<backend>.xml` |
 | `jasperengine-htmlui-editor-tests` | the HTML UI importers against a local HTTP fixture server | `tools/build.sh htmlui-editor-tests` | `build/test-results/htmlui-editor.xml` |
 | MCP tests | the editor's MCP server, driven like an agent (`tools/mcp/tests/test_*.py`) | `tools/build.sh linux`, then `tools/build.sh mcp-tests -j 2` | `build/test-results/mcp.json` |
@@ -77,8 +77,7 @@ waiting click and refused drop (`tools/mcp/tests/test_scene_view*.py`).
   line and fails only when `JASPER_MCP_PERF_SLACK` is set: a shared build server's load alone
   misses those budgets. The benchmark run enforces them on the benchmark-only server E:
   `rb.sh E --img 'JASPER_MCP_PERF_SLACK=1 dbus-run-session -- tools/mcp/run-tests.sh
-  tools/mcp/tests/test_call_cli.py tools/mcp/tests/test_hot_reload.py tools/mcp/tests/test_checks.py
-  tools/mcp/tests/test_autosync.py'` (test_autosync.py: the auto-sync scan's CPU and wall-clock budgets).
+  tools/mcp/tests/test_call_cli.py tools/mcp/tests/test_hot_reload.py tools/mcp/tests/test_checks.py'`.
 - `tools/smoke-test.sh <project>`: see its header. It also checks that the exported project
   configures as a user's game does: no presets file, no warnings as errors, no sanitizer.
 - `tools/build.sh web-gate` serves `build/web` with cross-origin isolation, opens
@@ -453,10 +452,11 @@ in both runs the binary aborts and `gtest-gate` fails on the missing XML.
 | `SANITIZE=thread UNIT_SUITE=core UNIT_TEST_ARGS='--gtest_filter=-*Gpu*' tools/build.sh unit-tests` | 354 ran, 0 failed, no race report |
 | `WERROR=1 tools/build.sh unit-tests` | both trees build with `-Werror`; 356 + 218 ran, 0 failed |
 
-What the first ASan runs found, and the fixes: ThorVG replaces the global `operator new`/`delete`
+What the first ASan runs found, and the fixes: ThorVG replaced the global `operator new`/`delete`
 but not the sized `delete`, so ASan's sized `delete` freed ThorVG's `malloc` blocks
-(alloc-dealloc-mismatch in the first static initializer); an ASan build now keeps the sanitizer's
-operators (`NOTICE.md` lists the local change). The editor leaked the default sky's six decoded
+(alloc-dealloc-mismatch in the first static initializer); the vendored ThorVG no longer replaces
+them at all (`engine/libs/thorvg/CMakeLists.txt` lists the local patch), and the core tests'
+allocation counter replaces the plain forms in the test binary only. The editor leaked the default sky's six decoded
 faces (about 7 MB) every time a scene with `useDefaultTexture` was decoded after the first
 (`ProjectUtils::setDefaultSkyTexture` now reuses the pooled faces). A `CameraComponent` value owns
 a `Framebuffer` that only `RenderSystem` frees, when its entity is destroyed; the tests free the

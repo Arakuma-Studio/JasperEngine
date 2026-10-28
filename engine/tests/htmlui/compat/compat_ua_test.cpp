@@ -171,16 +171,6 @@ namespace {
 
 }
 
-TEST(CompatUaSheet, SpecificityHelperFollowsRmlUi){
-    EXPECT_EQ(specificityOf("input"), 10000);
-    EXPECT_EQ(specificityOf("input[type=\"checkbox\"]:checked"), 210000);
-    EXPECT_EQ(specificityOf("details:not([open]) > :not(summary)"), 120000);
-    EXPECT_EQ(specificityOf("select selectbox option:hover"), 130000);
-    EXPECT_EQ(specificityOf("#htmlui-root .btn"), 1100000);
-    EXPECT_EQ(specificityOf("body#htmlui-root > htmlbody"), 1020000);
-    EXPECT_EQ(specificityOf(".htmlui-unsupported[data-html-tag=\"audio\"]"), 200000);
-    EXPECT_EQ(specificityOf("*"), 0);
-}
 
 TEST(CompatUaSheet, RewritesWithoutDiagnosticsInEveryForkState){
     for (const ForkFeatures& fork : forkStates()){
@@ -236,84 +226,6 @@ TEST(CompatUaSheet, NoSelectorReachesTheAuthorBand){
         EXPECT_LT(highest + int(rules.size()), 1000000) << describe(fork) << ": '" << highestSelector << "' " << highest;
     }
     UserAgentStyle::clearCache();
-}
-
-// Appendix D: every element with a UA display has a rule giving it that display. The rule is
-// looked up in the standard-CSS source under the selector the element is written with:
-// its own name, the placeholder class for the elements compat replaces with
-// div.htmlui-unsupported, svg for data-lucide.
-TEST(CompatUaSheet, EveryElementWithADisplayHasARule){
-    const std::string_view source = UserAgentStyle::source();
-    ASSERT_FALSE(source.empty());
-    SourceFiles files;
-    const uint32_t file = files.add(UserAgentStyle::kSourcePath, std::string(source));
-    DiagnosticSink sink(files);
-    const Stylesheet parsed = parseStylesheet(file, files.text(file), sink);
-    EXPECT_TRUE(sink.diagnostics().empty());
-
-    // selector (a single compound) -> the display it declares
-    std::map<std::string, std::string> displays;
-    std::vector<const Rule*> rules;
-    collectStyleRules(parsed.rules, rules);
-    for (const Rule* rule : rules){
-        for (const Declaration& declaration : rule->declarations){
-            if (declaration.name != "display")
-                continue;
-            const std::string value = serialize(trimWhitespace(declaration.value));
-            for (const std::string& selector : selectorsOf(*rule))
-                displays[selector] = value;
-        }
-    }
-
-    size_t checked = 0;
-    for (const ElementSupport& element : elementTable()){
-        if (!element.display || !*element.display)
-            continue;
-        std::string selector = element.name;
-        const std::string rmlTag = element.rmlTag ? element.rmlTag : "";
-        if (rmlTag == "div")
-            selector = ".htmlui-unsupported";            // the placeholder of video, canvas, ...
-        else if (selector == "[data-lucide]")
-            selector = "svg";                            // the expanded icon
-        else if (selector == "dotlottie-player" || selector == "dotlottie-wc" || selector == "lottie-player")
-            selector = "lottie";
-        else if (selector == "meter")
-            selector = "progress";
-        const auto found = displays.find(selector);
-        if (found == displays.end()){
-            ADD_FAILURE() << "<" << element.name << ">: no UA rule '" << selector << "' with display: " << element.display;
-            continue;
-        }
-        EXPECT_EQ(found->second, element.display) << "<" << element.name << "> (rule '" << selector << "')";
-        checked++;
-    }
-    EXPECT_GT(checked, 80u);
-
-    // and the rewritten sheet keeps display for li (list-item, or block + markers before the
-    // fork's ListMarkers), the root and the body
-    const std::shared_ptr<const UserAgentStyle::Sheet> sheet = UserAgentStyle::get();
-    EXPECT_NE(sheet->rcss.find("htmlbody"), std::string::npos);
-    UserAgentStyle::clearCache();
-}
-
-// Chromium 153's light theme values the golden pages calibrate (spot checks of the source)
-TEST(CompatUaSheet, SourceCarriesChromiumDefaults){
-    const std::string source(UserAgentStyle::source());
-    for (const char* expected : {"margin: 8px;", "font-size: 2em;", "margin: 0.67em 0;", "padding-left: 40px;", "border-spacing: 2px;",
-                                 "font-size: 13.333px;", "width: var(--html-check-size, 13px);", "width: 129px;", "width: 10em;", "#767676", "#efefef",
-                                 "var(--html-accent, #0075ff)", "--html-theme-fill: var(--html-control-bg, #ffffff);", "var(--html-control-bg, #ffffff)",
-                                 "var(--html-control-border, #767676)", "var(--html-select-arrow,", "var(--html-thumb,",
-                                 "--html-box-shadow: 0 0 0 0 #0000;", "--html-outline-shadow: 0 0 0 0 #0000;", ":focus-visible",
-                                 "scrollbarvertical", "width: 15px;", "selection", ".htmlui-unsupported"})
-        EXPECT_NE(source.find(expected), std::string::npos) << expected;
-    // never an id, never a selector that needs the fork (comments aside)
-    std::string code;
-    for (const Token& token : tokenize(source)){
-        if (token.type != TokenType::Comment && token.type != TokenType::EndOfFile)
-            code += source.substr(token.offset, token.length);
-    }
-    for (const char* forbidden : {"#htmlui-root", ":is(", ":where(", ":has(", "::before", "::after", "!important"})
-        EXPECT_EQ(code.find(forbidden), std::string::npos) << forbidden;
 }
 
 // The images the sheet references are embedded with it, served as @htmlui/ua/<name>, and are

@@ -33,6 +33,7 @@
 #include "command/type/RemoveEntityFromPrefabCmd.h"
 #include "command/type/ReplacePrefabCmd.h"
 #include "command/type/UnpackPrefabCmd.h"
+#include "pose/PoseEditSession.h"
 #include "util/FileUtils.h"
 #include "util/ProjectUtils.h"
 #include "util/Util.h"
@@ -643,6 +644,8 @@ void createPrefabTool(const CallPtr& call) {
     std::vector<Entity> exportEntities = tops;
     const std::vector<Entity> virtualChildren = ProjectUtils::getVirtualChildren(registry, tops);
     exportEntities.insert(exportEntities.end(), virtualChildren.begin(), virtualChildren.end());
+    // a posed character's prefab gets its rest bones (the pose comes back on the next frame)
+    PoseEditSession::suspendActiveFor(sceneId, exportEntities);
     YAML::Node payload = exportEntities.size() == 1
         ? Stream::encodeEntity(tops[0], registry, project, scene)
         : Stream::encodeEntitySelection(exportEntities, registry, project, scene);
@@ -818,6 +821,8 @@ void createPrefabVariantTool(const CallPtr& call) {
     }
     const fs::path base = rootPrefabPath(project, scene, root);
     if (relative.empty()) relative = CreatePrefabVariantAssetCmd::defaultPath(project, base);
+    // a posed character's prefab gets its rest bones
+    PoseEditSession::suspendActiveFor(scene->id, {root});
     std::vector<std::pair<fs::path, YAML::Node>> items = {{relative, Stream::encodeEntity(root, scene->scene, project, scene)}};
     if (!runCommand(CommandHandle::get(scene->id), new CreatePrefabCmd(project, scene->id, items, true))) {
         const std::string why = problemsSince(since);
@@ -1921,7 +1926,7 @@ void setStandalonePrefabTool(const CallPtr& call) {
 void registerPrefabTools(McpRegistry& registry) {
     using namespace schema;
 
-    const Json prefabRef = assetPath(".prefab asset.");
+    const Json prefabRef = assetPath("");
 
     {
         ToolDef tool;
@@ -1936,7 +1941,7 @@ void registerPrefabTools(McpRegistry& registry) {
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"entities", entities()},
-            {"path", assetPath("One root only. Default <directory>/<name>.prefab.")},
+            {"path", assetPath("One root only.")},
             {"directory", withDefault(assetPath("Folder used when path is omitted."), "prefabs")}
         });
         tool.allowedWhilePlaying = false;
@@ -1953,7 +1958,7 @@ void registerPrefabTools(McpRegistry& registry) {
             "GameObjects. From base: the asset only (undo scope=project).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
-            {"entity", entityRef("Outermost instance root.")},
+            {"entity", entityRef("")},
             {"base", assetPath("Base .prefab (instead of entity).")},
             {"path", assetPath("Default \"<base> Variant.prefab\" next to base.")}
         });
@@ -1991,7 +1996,7 @@ void registerPrefabTools(McpRegistry& registry) {
             "by name path (name), sibling-index path (hierarchy) or root only (none); dropped ones are logged.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
-            {"entity", entityRef("Instance root or Missing Prefab root.")},
+            {"entity", entityRef("")},
             {"entities", entities()},
             {"prefab", assetPath("New .prefab.")},
             {"match", withDefault(stringEnum("", {"name", "hierarchy", "none"}), "name")},
@@ -2033,7 +2038,7 @@ void registerPrefabTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"allow_data_loss", boolean("")},
             {"scene", sceneRef()},
-            {"entity", entityRef("GameObject to add (with children).")},
+            {"entity", entityRef("")},
             {"parent", entityRef("Instance GameObject (default: current parent).")},
             {"target", assetPath("Default: parent's own prefab.")}
         }, {"entity"});
@@ -2131,8 +2136,8 @@ void registerPrefabTools(McpRegistry& registry) {
             {"action", withDefault(stringEnum("", {"open", "close", "save", "status"}), "status")},
             {"prefab", assetPath("open: .prefab; with entity: another level of its chain.")},
             {"scene", sceneRef("open: entity's scene; save: stage (default: shown).")},
-            {"entity", entityRef("open: an instance GameObject.")},
-            {"in_context", withDefault(boolean("open from entity."), true)},
+            {"entity", entityRef("")},
+            {"in_context", withDefault(boolean(""), true)},
             {"depth", withDefault(integer("close: stages kept.", 0, 64), 0)},
             {"unsaved", withDefault(stringEnum("cancel: error.", {"save", "discard", "cancel"}), "save")},
             {"auto_save", boolean("")},

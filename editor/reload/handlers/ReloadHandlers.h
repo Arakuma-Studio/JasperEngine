@@ -53,6 +53,11 @@ namespace jasperengine::editor::reload {
     void reloadAudio(Context& ctx, const std::vector<std::filesystem::path>& files);
     // Fonts: a new pool entry; the texts using it rebuild their atlas
     void reloadFonts(Context& ctx, const std::vector<std::filesystem::path>& files);
+    // .poseanim, .humanoid and .anim files (and models, for their sub-clips): the open pose and
+    // clip documents reload, the clip pool drops what the Animation Players use; the load errors
+    // and warnings are problems (`all`: every open document checks its file, a full sync)
+    void reloadAnimations(Context& ctx, const std::vector<std::filesystem::path>& files,
+                          const std::vector<std::filesystem::path>& models, bool all);
     // Lua and C++ scripts: script properties, Lua syntax, lua-language-server stubs
     // (`all`: every attached script, a full sync)
     void reloadScripts(Context& ctx, const std::vector<std::filesystem::path>& files, bool all);

@@ -164,6 +164,9 @@ void editor::InspectorWindow::drawActionComponent(ComponentType cpType, ScenePro
                 actionPreviewStates.clear();
                 actionPreviewing = false;
                 actionPreviewPlaying = false;
+                actionPreviewEntity = NULL_ENTITY;
+                actionPreviewSceneId = 0;
+                releaseActionPreviewOwners();
             }
         }
 
@@ -1024,6 +1027,11 @@ void editor::InspectorWindow::drawAnimationComponent(ComponentType cpType, Scene
     propertyRow(RowPropertyType::Bool, cpType, "ownedActions", "Owned actions", sceneProject, entities);
     propertyRow(RowPropertyType::FloatPositive, cpType, "defaultFadeTime", "Fade time", sceneProject, entities);
     endTable();
+
+    // Open in Animation window, Convert to Clip... (animation clips spec 4.2, 4.5)
+    if (entities.size() == 1) {
+        drawAnimationClipButtons(sceneProject, entities[0]);
+    }
 
     AnimationComponent& anim = sceneProject->scene->getComponent<AnimationComponent>(entities[0]);
 

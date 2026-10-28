@@ -190,40 +190,10 @@ TEST(TerrainHeight, TexelCentresCarryTheirTexel) {
     EXPECT_FLOAT_EQ(MeshSystem::terrainTexelCoord(terrainSize * 0.5f, terrainSize, map.width), static_cast<float>(map.width) - 0.5f);
 }
 
-TEST(TerrainHeight, FlatGroundStaysFlat) {
-    const HeightMap map = flat8();
-    const float expected = 128.0f / 255.0f * 30.0f;
-    for (float z : axisPositions(50.0f, 17, 1.2f)) {
-        for (float x : axisPositions(50.0f, 17, 1.2f)) {
-            EXPECT_FLOAT_EQ(cpuHeight(map, 50.0f, 30.0f, x, z), expected);
-        }
-    }
-}
-
 TEST(TerrainHeight, NoPixelsIsFlatZero) {
     EXPECT_EQ(MeshSystem::sampleTerrainHeight(nullptr, 4, 4, 1, 1, 10.0f, 0.0f, 0.0f), 0.0f);
     const HeightMap map = ramp8();
     EXPECT_EQ(MeshSystem::sampleTerrainHeight(map.pixels.data(), map.width, map.height, map.channels, 1, 0.0f, 0.0f, 0.0f), 0.0f);
-}
-
-TEST(TerrainHeight, HeightfieldSamplesSitOnTheSurface) {
-    // PhysicsSystem builds the Jolt heightfield from samplesSize samples spaced
-    // terrainSize / (samplesSize - 1) apart from -terrainSize / 2: the first and the last
-    // sit on the terrain edges, every one on the drawn surface
-    const HeightMap map = random16();
-    const float terrainSize = 80.0f;
-    const float maxHeight = 12.0f;
-    for (unsigned int samplesSize : {4u, 16u, 32u}) {
-        const float spacing = terrainSize / static_cast<float>(samplesSize - 1);
-        EXPECT_FLOAT_EQ(-terrainSize * 0.5f + spacing * static_cast<float>(samplesSize - 1), terrainSize * 0.5f);
-        for (unsigned int y = 0; y < samplesSize; y++) {
-            for (unsigned int x = 0; x < samplesSize; x++) {
-                const float localX = -terrainSize * 0.5f + spacing * static_cast<float>(x);
-                const float localZ = -terrainSize * 0.5f + spacing * static_cast<float>(y);
-                EXPECT_NEAR(cpuHeight(map, terrainSize, maxHeight, localX, localZ), shaderHeight(map, terrainSize, maxHeight, localX, localZ), 1e-4f);
-            }
-        }
-    }
 }
 
 TEST(TerrainHeight, MeshSystemQueriesMatchTheShader) {

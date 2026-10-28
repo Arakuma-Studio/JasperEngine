@@ -130,6 +130,8 @@ void create_scene__2D_4155373791(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
+        mesh.morphWeightsSet = true;
+        mesh.morphTargetCount = 0;
         mesh.vertexCount = 4;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
@@ -248,6 +250,8 @@ void create_scene__2D_4155373791(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
+        mesh.morphWeightsSet = true;
+        mesh.morphTargetCount = 0;
         mesh.vertexCount = 4;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
@@ -367,6 +371,8 @@ void create_scene__2D_4155373791(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
+        mesh.morphWeightsSet = true;
+        mesh.morphTargetCount = 0;
         mesh.vertexCount = 4;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
@@ -486,6 +492,8 @@ void create_scene__2D_4155373791(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
+        mesh.morphWeightsSet = true;
+        mesh.morphTargetCount = 0;
         mesh.vertexCount = 4;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
@@ -605,6 +613,8 @@ void create_scene__2D_4155373791(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
+        mesh.morphWeightsSet = true;
+        mesh.morphTargetCount = 0;
         mesh.vertexCount = 4;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
@@ -724,6 +734,8 @@ void create_scene__2D_4155373791(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
+        mesh.morphWeightsSet = true;
+        mesh.morphTargetCount = 0;
         mesh.vertexCount = 4;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
@@ -852,6 +864,8 @@ void create_scene__2D_4155373791(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
+        mesh.morphWeightsSet = true;
+        mesh.morphTargetCount = 0;
         mesh.vertexCount = 4;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
@@ -980,6 +994,8 @@ void create_scene__2D_4155373791(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
+        mesh.morphWeightsSet = true;
+        mesh.morphTargetCount = 0;
         mesh.vertexCount = 4;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";

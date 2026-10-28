@@ -6,6 +6,7 @@
 #include "command/Command.h"
 #include "command/CommandNames.h"
 #include "Project.h"
+#include "animation/PlayerModelLayout.h"
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -30,6 +31,16 @@ namespace jasperengine::editor{
         Entity oldParent;
 
         bool wasModified;
+
+        // A model moved on or under an Animation Player reloads in the node hierarchy (animation
+        // clips spec 9.R3), in this same step
+        PlayerModelLayout::Reloads layoutReloads;
+        bool executed = false;
+
+        // before `source` moves from under `fromParent` to under `toParent` keeping its world:
+        // the clip previews and the pose of the branch or of either place restore first, and the
+        // world matrices the move reads are recomputed from that rest
+        void prepareReparent(Scene* scene, Entity fromParent, Entity toParent);
 
     public:
         MoveEntityOrderCmd(Project* project, uint32_t sceneId, Entity source, Entity target, InsertionType type);

@@ -29,7 +29,6 @@ namespace {
         std::mutex mutex;
         std::unordered_map<std::string, std::shared_ptr<const SvgResult>> results;
         std::set<std::pair<std::string, std::string>> logged;   // (file, code): logged once
-        size_t processed = 0;
     };
 
     Cache& cache(){
@@ -153,7 +152,6 @@ std::shared_ptr<const SvgResult> SvgElementHook::preprocess(const std::string& s
     }
     auto result = std::make_shared<const SvgResult>(SvgPreprocess::process(source, use, overrides));
     std::lock_guard<std::mutex> lock(c.mutex);
-    c.processed++;
     if (c.results.size() >= kCacheLimit)
         c.results.clear();
     c.results[key] = result;
@@ -217,16 +215,6 @@ bool SvgElementHook::IsSourceProperty(const Rml::PropertyIdSet& changed_properti
             return true;
     }
     return false;
-}
-
-size_t SvgElementHook::cacheSize(){
-    std::lock_guard<std::mutex> lock(cache().mutex);
-    return cache().results.size();
-}
-
-size_t SvgElementHook::processCount(){
-    std::lock_guard<std::mutex> lock(cache().mutex);
-    return cache().processed;
 }
 
 void SvgElementHook::clearCache(){

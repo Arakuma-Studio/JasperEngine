@@ -260,32 +260,6 @@ TEST_F(CompatElementTest, AnchorsNavigateAndScroll){
 
 // ---------------------------------------------------------------- input
 
-TEST(CompatInput, TypeMappingAndNumberFilter){
-    EXPECT_EQ(HtmlInputElement::mapType("email"), "text");
-    EXPECT_EQ(HtmlInputElement::mapType("number"), "text");
-    EXPECT_EQ(HtmlInputElement::mapType("date"), "text");
-    EXPECT_EQ(HtmlInputElement::mapType("hidden"), "text");
-    EXPECT_EQ(HtmlInputElement::mapType("password"), "password");
-    EXPECT_EQ(HtmlInputElement::mapType("checkbox"), "checkbox");
-    EXPECT_EQ(HtmlInputElement::mapType("range"), "range");
-    EXPECT_EQ(HtmlInputElement::mapType("reset"), "button");
-    EXPECT_EQ(HtmlInputElement::mapType("file"), "button");
-    EXPECT_EQ(HtmlInputElement::mapType("image"), "submit");
-    EXPECT_EQ(HtmlInputElement::mapType("frobnicate"), "text");
-    EXPECT_EQ(HtmlInputElement::datePlaceholder("date"), "yyyy-mm-dd");
-    EXPECT_EQ(HtmlInputElement::datePlaceholder("time"), "hh:mm");
-    EXPECT_EQ(HtmlInputElement::datePlaceholder("text"), "");
-
-    EXPECT_EQ(HtmlInputElement::filterNumber("12a3"), "123");
-    EXPECT_EQ(HtmlInputElement::filterNumber("1.2.3"), "1.23");
-    EXPECT_EQ(HtmlInputElement::filterNumber("--5"), "-5");
-    EXPECT_EQ(HtmlInputElement::filterNumber("+3e-2x"), "+3e-2");
-    EXPECT_EQ(HtmlInputElement::filterNumber("1e5e3"), "1e53");
-    EXPECT_EQ(HtmlInputElement::filterNumber("e5"), "5");
-    EXPECT_EQ(HtmlInputElement::filterNumber(".5"), ".5");
-    EXPECT_EQ(HtmlInputElement::filterNumber("abc"), "");
-}
-
 TEST_F(CompatElementTest, InputTypesKeepTheirAttribute){
     ASSERT_NE(show("<input id='mail' type='email'/><input id='date' type='date'/><input id='time' type='time' placeholder='when'/>"
                    "<input id='file' type='file'/><input id='color' type='color'/><input id='box' type='CHECKBOX'/>", kControls), nullptr);

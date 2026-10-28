@@ -460,10 +460,6 @@ void SokolObject::setBlendState(const BlendState& state){
     blendState = state;
 }
 
-sg_pipeline_desc SokolObject::describePipeline(PipelineType pipType) const{
-    return makePipelineDesc(pipType);
-}
-
 sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType) const{
     sg_pipeline_desc desc = pipeline_desc;
 
@@ -763,6 +759,15 @@ bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling){
     // invalid pipeline, uniform, binding, and draw validation failures.
     if (selectedPipeline.id == SG_INVALID_ID ||
         sg_query_pipeline_state(selectedPipeline) != SG_RESOURCESTATE_VALID){
+        return false;
+    }
+    // A pipeline outlives the shader it was built on when the shader goes before the objects
+    // drawing with it load again (a shader reloaded or released while a mesh keeps its old
+    // pipelines for a frame): sokol keeps such a pipeline valid, and applying it and its bindings
+    // reads the dead shader (a crash in sg_apply_bindings without the validation layer). Such an
+    // object draws nothing until its reload builds pipelines on the live shader.
+    if (pipeline_desc.shader.id == SG_INVALID_ID ||
+        sg_query_shader_state(pipeline_desc.shader) != SG_RESOURCESTATE_VALID){
         return false;
     }
 

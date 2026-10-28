@@ -12,6 +12,7 @@
 #include "command/PrefabEditUndo.h"
 #include "math/Vector3.h"
 #include "math/Quaternion.h"
+#include "math/Matrix4.h"
 #include "subsystem/MeshSystem.h"
 #include "yaml-cpp/yaml.h"
 
@@ -42,6 +43,12 @@ namespace jasperengine::editor{
         bool wasModified;
         PrefabEditUndo prefabUndo;
         bool isNewModel = false;
+        // A reload that switches the model to the node-hierarchy layout (animation clips spec 9.R3),
+        // decided on the first run (the old component a redo starts from no longer says how it was
+        // loaded), and the glTF scene root's matrix the legacy model entity stood in for
+        bool switchesLayout = false;
+        bool movesLegacyRoot = false;
+        Matrix4 legacyRoot;
         bool reuseHierarchy = false;
         bool asyncPending = false;
         bool hasDropSurface = false;
@@ -81,10 +88,25 @@ namespace jasperengine::editor{
         };
         std::vector<ParkedEntity> parkedEntities;
         std::vector<MovedPart> movedParts;
+        // An action of the user's (a track of an entity Animation, a tween) whose target is a model
+        // node: kept out of the rebuild's delete (an action is a virtual child of its target) and
+        // pointed at the rebuilt node of the same glTF node; undo gives it its old target back
+        struct RetargetedAction {
+            Entity action = NULL_ENTITY;
+            Entity oldTarget = NULL_ENTITY;
+            NodeRef node;
+        };
+        std::vector<RetargetedAction> retargetedActions;
 
         // The generated mesh entities are destroyed before the load, so their submesh edits are
         // taken aside here. Empty when the asset itself changed.
         MeshSystem::SubmeshOverrides savedSubmeshOverrides;
+        // The blend shape weights of the mesh parts by glTF node, carried across a layout switch
+        // (R3): its rebuild makes new mesh entities (a legacy model entity's own mesh moves to its
+        // node's entity). Taken on the first run, put back after every load of it.
+        std::map<int, std::vector<float>> savedMorphWeights;
+        void recordMorphWeights(Scene* scene, const ModelComponent& model);
+        void restoreMorphWeights(Scene* scene, const ModelComponent& model);
 
         static std::vector<Entity> collectModelDeleteRoots(Scene* scene, const ModelComponent& model);
         static bool isMappedMeshNode(const ModelComponent& model, Entity entity);
@@ -94,6 +116,11 @@ namespace jasperengine::editor{
 
         void recordArrangement(SceneProject* sceneProject, const ModelComponent& model);
         void restoreArrangement(SceneProject* sceneProject, const ModelComponent& model);
+        void recordRetargets(Scene* scene, const ModelComponent& model);
+        // the actions point at nothing while the old nodes go and the new ones come
+        void detachRetargets(Scene* scene);
+        void applyRetargets(Scene* scene, const ModelComponent& model);
+        void restoreRetargets(Scene* scene);
         void parkEntities(SceneProject* sceneProject);
         void unparkEntities(SceneProject* sceneProject);
 

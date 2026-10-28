@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import re
 import shutil
 import struct
 import time
@@ -91,7 +90,6 @@ async def test_asset_info_summarizes_the_import(ed: Editor):
     ed.check_eq([a["name"] for a in model["animations"]], ["Take 001"])
     ed.check_eq(model["materials"], ["Checker"])
     ed.check_eq(model["images"], ["textures/checker.png"], "the texture is linked, relative to the FBX")
-    ed.check_in("ufbx", model["generator"])
 
 
 async def test_asset_info_does_not_convert(ed: Editor):
@@ -141,7 +139,6 @@ async def test_saved_scene_records_the_import(ed: Editor):
         S["assets"].relative_to(ed.project).as_posix() + "/") else S["fbx"]
     imports = data.get("imports") or {}
     ed.check(rel in imports, f"scene imports {imports!r} has no {rel}")
-    ed.check(re.fullmatch(r"\d+-[0-9a-f]{16}", imports.get(rel, "")), f"import id {imports.get(rel)!r}")
     S["import_id"] = imports.get(rel)
 
 

@@ -9,9 +9,10 @@
     tools/mcp/run-tests.sh --suite ci -j 2      # the CI suite: the files that declare CI = True
 
 A test is a module-level `async def test_xxx(ed)` (ed: harness.Editor) or `async def test_xxx()`.
-Tests of a file run in source order and share one editor, started on a fresh scratch copy of the
-fixture project (module variable EDITOR = dict(...) passes Editor arguments, e.g.
-EDITOR = {"create": True}). If a test leaves the editor unresponsive, the next test gets a new one.
+Tests of a file run in source order and share one editor using the module's owned project setup
+(module variable EDITOR = dict(...) passes Editor arguments, e.g. EDITOR = {"create": True}).
+An explicit --url overrides that launch setup. If a test leaves the editor unresponsive,
+the next test gets a new one.
 Call harness.skip("why") or ed.require_tools(...) to skip. Module variable TIMEOUT sets the
 per-test hang guard in seconds (default 600): a test fails when no tool call has been in flight
 for that long (a slow but working editor, such as one waiting for game frames on a loaded machine,
@@ -93,11 +94,13 @@ async def _run_guarded(coro, ed, timeout: float) -> None:
             raise asyncio.TimeoutError()
 
 
-async def _run_file(path: Path, filt: list[str], results_path: Path) -> None:
+async def _run_file(path: Path, filt: list[str], results_path: Path, url: str | None = None) -> None:
     import harness
 
     mod, tests = _collect(path, filt)
     opts = dict(getattr(mod, "EDITOR", {}) or {})
+    if url is not None:
+        opts["url"] = url
     timeout = float(getattr(mod, "TIMEOUT", 600))
     ed: harness.Editor | None = None
     ed_error: str | None = None
@@ -171,7 +174,7 @@ def worker_main(args) -> int:
                  ("JASPER_KEEP_SCRATCH", "1" if args.keep else None), ("JASPER_MCP_URL", args.url)):
         if v:
             os.environ[k] = v
-    asyncio.run(_run_file(Path(args.worker), args.k or [], Path(args.results)))
+    asyncio.run(_run_file(Path(args.worker), args.k or [], Path(args.results), args.url))
     return 0
 
 

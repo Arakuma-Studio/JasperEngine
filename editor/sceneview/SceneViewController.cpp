@@ -351,6 +351,7 @@ void SceneViewController::applyClick(uint32_t sceneId, const ScenePickClick& cli
         case ScenePickClick::Action::CLEAR:
             project->clearAllSelections(sceneId);
             project->setSelectedSceneForProperties(sceneId);
+            project->clearInspectedAsset();
             project->syncSceneRenderEditLayer(sceneId);
             return;
         case ScenePickClick::Action::SELECT:
@@ -380,6 +381,8 @@ void SceneViewController::applyClick(uint32_t sceneId, const ScenePickClick& cli
             break;
     }
     project->setSelectedSceneForProperties(target.sceneId);
+    // a user selection makes the GameObject the inspected object (animation clips 9.R30)
+    project->clearInspectedAsset();
     if (HierarchyWindow* structure = Backend::getApp().getHierarchyWindow()){
         structure->revealEntity(target.sceneId, target.entity);
     }

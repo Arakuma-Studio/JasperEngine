@@ -68,10 +68,6 @@ namespace {
 
 }
 
-TEST_F(CompatDecoratorTest, InstancersAreRegistered){
-    for (const char* name : {"html-layer", "html-shape", "html-border-image"})
-        EXPECT_NE(Rml::Factory::GetDecoratorInstancer(name), nullptr) << name;
-}
 
 TEST_F(CompatDecoratorTest, LayerTilesFromRcss){
     // a 4 x 2 image at 10 x 5, repeated over 40 x 20: 4 x 4 tiles

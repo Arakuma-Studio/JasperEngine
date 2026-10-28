@@ -5,6 +5,7 @@
 
 #include "Out.h"
 #include "command/type/DeleteEntityCmd.h"
+#include "pose/PoseEditSession.h"
 #include "util/CameraTextureLink.h"
 #include "util/ProjectUtils.h"
 #include "util/YamlFootprint.h"
@@ -59,6 +60,14 @@ bool editor::RemoveComponentCmd::execute() {
     SceneProject* sceneProject = project->getScene(sceneId);
     if (sceneProject) {
         Scene* scene = sceneProject->scene;
+
+        // the removed component keeps its rest values for undo (blend shape weights, lattice
+        // offsets), not a preview's: those previews restore first (clips 9.R7)
+        if (componentType == ComponentType::MeshComponent || componentType == ComponentType::LatticeComponent) {
+            std::vector<Entity> removedFrom;
+            for (const RemoveComponentData& entityData : entities) removedFrom.push_back(entityData.entity);
+            PoseEditSession::suspendActiveFor((uint32_t)sceneId, removedFrom);
+        }
 
         if (!ownedEntitiesCaptured) {
             ownedEntitiesCaptured = true;

@@ -13,7 +13,8 @@ from harness import Editor, find_key
 import ui_input
 
 # the harness owns the Xvfb so xdotool can click in the editor window
-EDITOR = {"xvfb": "harness"}
+EDITOR = {"xvfb": "harness", "create": True, "name": "Multi Selection Inspector"}
+CI = True
 TIMEOUT = 600
 
 M = "submeshes[0].material."

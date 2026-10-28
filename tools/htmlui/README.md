@@ -107,7 +107,7 @@ References land in `engine/tests/htmlui/golden/browser/<area>/` (`<name>[.<captu
 
 ### Taffy layout fixtures (spec §5.3)
 
-`engine/tests/htmlui/fixtures/taffy/<suite>/` holds Taffy's fixtures (commit 8409f3f8, suites grid,
+`engine/tests/htmlui/fixtures/taffy/<suite>/` holds Taffy's supported fixtures (commit 8409f3f8, suites grid,
 flex, block, blockflex, blockgrid, gridflex, leaf, float); `BoxParityTest` loads each at 1024x768
 and compares the boxes of `#test-root` and every element under it with Chromium's within 1 px.
 
@@ -139,6 +139,7 @@ fails until its line is removed. So a wave-1 package:
    package's feature.
 
 The baseline (`known-failures` command) classifies each failure by the features of the element its
-first difference names (`classify`): a guide, not a verdict. `excluded.txt` holds the fixtures that
-are not compared (Taffy's invalid `x*` ones, `direction: rtl` and `writing-mode` per spec §2.2, and
-two that build their styles with JavaScript); it changes only with the spec.
+first difference names (`classify`): a guide, not a verdict. `excluded.txt` records upstream fixtures that are not copied or instantiated (Taffy's invalid
+`x*` ones, `direction: rtl` and `writing-mode` per spec §2.2). The local corpus contains 1,522
+supported fixtures, each with a Chromium reference. The importer expands the two static track-list
+scripts before classification; they remain supported. Exclusion policy changes only with the spec.

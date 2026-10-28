@@ -129,13 +129,22 @@ TEST(EffectLifecycleTest, HundredCyclesOfEveryStatefulEffect){
                       "div.s div { position: absolute; left: 10px; top: 10px; width: 30px; height: 30px; background: #e74c3c; }\n";
     std::string body;
     int count = 0;
+    std::vector<std::string> effects;
     for (const EffectManifest* m : EffectRegistry::get().builtins()){
         if (!m->stateful())
             continue;
         ASSERT_TRUE(warmUpEffect(*m)) << m->name;
         const std::string id = "s" + std::to_string(count);
-        const std::string decl = m->kind == EffectKind::Paint ? "background-image: effect(" + m->name + ")"
-                                                              : std::string(m->backdrop ? "backdrop-filter" : "filter") + ": effect(" + m->name + ")";
+        // Keep populations small while exercising actual agents, passes and state-image lifetimes.
+        std::string parameters;
+        if (const EffectParamDef* population = m->findParam("count"); population && population->hasRange)
+            parameters = ", count " + std::to_string(std::max(1, (int)std::ceil(population->minValue)));
+        if (m->name == "reaction-diffusion") parameters += ", speed 1";
+        if (m->name == "fluid") parameters += ", pressure-iterations 1";
+        const std::string call = "effect(" + m->name + parameters + ")";
+        const std::string decl = m->kind == EffectKind::Paint ? "background-image: " + call
+                                                              : std::string(m->backdrop ? "backdrop-filter" : "filter") + ": " + call;
+        effects.push_back(m->name);
         css += "#" + id + " { left: " + std::to_string(4 + (count % 6) * 52) + "px; top: " + std::to_string(4 + (count / 6) * 64) + "px; " + decl + "; }\n";
         body += "<div class=\"s\" id=\"" + id + "\"><div></div></div>";
         count++;
@@ -160,7 +169,10 @@ TEST(EffectLifecycleTest, HundredCyclesOfEveryStatefulEffect){
     Counters baseline;
     uint64_t created = 0;
     uint64_t documentBytes = 0;
-    double clock = 10.0;
+    // Control the live clock explicitly; the effect clock has a separate pinned override.
+    EffectClock::setFixedTime(std::nullopt);
+    HtmlUIClock::setFixedTime(0.0);
+    double clock = 0.0;
     for (int cycle = 0; cycle < 100; cycle++){
         std::shared_ptr<const hc::CompatDocument> compiled;
         Rml::ElementDocument* document = hc::DocumentLoader::load(r.context, path, options, &compiled);
@@ -168,10 +180,19 @@ TEST(EffectLifecycleTest, HundredCyclesOfEveryStatefulEffect){
         document->Show();
         runtime.setTestPointer(r.context, Rml::Vector2f(80.f, 50.f), false, 0.1f);
         ASSERT_TRUE(r.renderUntilDrawn()) << "cycle " << cycle;
+        // Finish any warm-up split across frames before advancing the live simulations.
+        for (int frame = 0; frame < 30 && runtime.pendingReplays() != 0; frame++)
+            ASSERT_TRUE(r.renderFrame()) << "cycle " << cycle;
+        ASSERT_EQ(runtime.pendingReplays(), 0u) << "cycle " << cycle;
         // a live step
         clock += 1.0 / 60.0;
         HtmlUIClock::setFixedTime(clock);
         ASSERT_TRUE(r.renderFrame()) << "cycle " << cycle;
+        for (size_t i = 0; i < effects.size(); i++){
+            const EffectSimulationInfo simulation = runtime.simulationInfo(document->GetElementById("s" + std::to_string(i)), effects[i], 0);
+            EXPECT_TRUE(simulation.exists) << effects[i] << " cycle " << cycle;
+            EXPECT_GT(simulation.steps, 0) << effects[i] << " did not step in cycle " << cycle;
+        }
         if (cycle == 0){
             EXPECT_EQ(runtime.simulationCount(), (size_t)count) << "every stateful effect simulates";
             documentBytes = runtime.stats().stateBytes;

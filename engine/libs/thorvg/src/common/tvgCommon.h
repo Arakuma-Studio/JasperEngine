@@ -63,8 +63,8 @@ using namespace tvg;
     #define TVG_FALLTHROUGH
 #endif
 
-void* operator new(std::size_t size);
-void operator delete(void* ptr) noexcept;
+// (JasperEngine patch: upstream declares its global operator new / delete replacement here; it is
+// removed, see tvgInitializer.cpp)
 
 namespace tvg
 {

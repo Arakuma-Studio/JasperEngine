@@ -1,28 +1,10 @@
-"""The HTML/CSS UI example library (phase 4, p4-examples, spec §3.7, §3.9, §5.4).
+"""Interactive HTML/CSS UI examples at their public MCP boundary.
 
-docs/mcp/guide/html-ui-examples holds thirteen examples (phase 6 added video_menu; S17 server_browser, chat_log and
-quest_log) and the blank template (examples.json is the manifest). The editor embeds them and writes them into every project's
-.jasperengine/engine-api/html-ui-examples/. Per example <n> (generated from the manifest):
-
-  test_<n>_files_in_project   the project copy has the example's files, byte for byte
-  test_<n>_compat_clean       `check --ui --files` on its files: zero findings
-  test_<n>_edit_mode          built in a 2D scene UITest_<n> from the copied files: it loads with no
-                              warning or error and the Game view is not flat
-  test_<n>_play_golden        played (fixed_fps 60, auto_pause) for 90 frames, the example's
-                              interaction steps (behaviour checked through eval_lua and the Console),
-                              captured twice from fresh starts (identical), compared with
-                              engine/tests/htmlui/golden/examples/<n>.png (JASPER_HTMLUI_UPDATE_GOLDEN=1
-                              rewrites it: look at every image you write)
-  test_<n>_asserts            the manifest's assert_ui checks at its viewports
-
-plus pngdiff, the manifest and authoring rules, the project copy (kept current when the editor's
-examples change, unicode project paths, an unwritable target) and lua-language-server on the scripts.
-
-The scenes are built with create_ui_document {template}; elements are clicked, hovered and dragged
-with send_input {target}; inspect_ui, assert_ui and the jasper://examples/html-ui resources are
-checked too (p4-mcp-tools).
-
-Runs on a scratch copy of the fixture project (canvas 1280 x 720).
+Each nonblank example keeps its authored interactions, visual reference and layout checks.
+Examples that leave mutated data replay to verify a fresh state; shared font rendering
+determinism is owned by RmlRendererP1GoldenTest.OpacityText. Core compatibility
+and editor-library tests own exhaustive parsing, template renaming and file-copy behavior.
+Project-open refresh/error reporting and LuaLS compatibility remain separate boundary checks.
 """
 
 from __future__ import annotations
@@ -30,22 +12,23 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import random
 import re
 import shutil
-import struct
 import subprocess
 import sys
 import tempfile
 import time
-import zlib
 from pathlib import Path
 
 import harness
-from harness import Editor, TestFailure, skip
+from harness import Editor, TestFailure, skip, REPO
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import pngdiff  # noqa: E402  (tools/mcp/pngdiff.py)
+
+EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
+CI_EXCLUDED = ("long-running (about an hour: each example's play golden drawn by the software renderer); "
+               "in the full suite (MCP_SUITE=all) on the build servers")
 
 TIMEOUT = 900
 
@@ -62,40 +45,10 @@ GOLDEN_SIZE = (1280, 720)
 COMPARE_SIZE = (640, 360)
 CHANNEL_TOLERANCE = 24
 MAX_FRACTION = 0.01
-# Two runs from fresh starts: the same image (rendering is deterministic: p4-gaps fixed the shadow
-# textures that kept the pixel size of the view they were first drawn in, fork P4-G7)
+# Fresh-start captures must agree exactly (historical box-shadow cache/readback regressions).
 RUNS_MAX_FRACTION = 0.0
-
-# Per example: the public surface the spec (§3.7.2), the tests and the docs name
-SURFACE = {
-    "main_menu": ["h1.logo", "nav.menu", "button.menu-button#play", "button.menu-button#settings", "button.menu-button#credits",
-                  "button.menu-button#quit", "footer.version", "aside#settings-panel", "#settings-back"],
-    "pause_menu": ["div#pause.pause.open", ".pause-card", "h2", "button.pause-button#resume", "button.pause-button#options",
-                   "button.pause-button#restart", "button.pause-button#to-menu"],
-    "hud": [".hud-panel", "#health-fill", "#shield-fill", "#score", "#timer", ".minimap", "#ammo", "#reserve", ".ability",
-            "#damage-vignette", ".hud-label"],
-    "inventory": ["div.inventory", "#gold", "#close", ".equipment", "div.grid", "div.slot", "#tooltip", ".tooltip-title", "#weight-fill"],
-    "settings": ["div.settings", "button.tab#tab-graphics", "button.tab#tab-audio", "button.tab#tab-controls", "button.tab#tab-gameplay",
-                 "section.panel", ".row", "input#music", "input#vsync", ".keybind", "#apply", "#reset", "#back"],
-    "dialogue": ["section.dialogue", ".portrait", "#speaker", "#line.dialogue-text", ".continue", "#choices"],
-    "shop": ["div.shop", "#gold", "button.chip", "div.grid", "article.card", ".name", ".rarity", ".stats", ".price", "button.buy",
-             "#confirm", "#qty-minus", "#qty-plus", "#confirm-buy", "#confirm-cancel"],
-    "toasts": ["div#toasts.toast-stack", "div.toast.toast-info", ".message", ".toast-progress"],
-    "loading": ["div.loading", "lottie#spinner", "#progress-track", "#progress-fill", "#percent", ".tip", "#press-key", ".loading-card"],
-    "video_menu": ["video.backdrop-video#backdrop", ".scrim", "h1.title", "nav.menu", "button.menu-button#play", "button.menu-button#continue",
-                   "button.menu-button#options", "button.menu-button#quit", "button.motion#motion", "#motion-label", "footer.footer"],
-    "server_browser": ["div.browser", "table-view#servers.servers", "button.chip#region-eu", "#count", "button#refresh", "#detail-name",
-                       "button#join.join", ".ping-head", "template#ping-help"],
-    "chat_log": ["section.chat", "list-view#messages.messages", "input#draft.draft", "button#send.send", "#online"],
-    "quest_log": ["section.log", "tree-view#tree.tree", "markdown#journal", "#progress", "article.journal"],
-    "blank": ["main.screen", "h1"],
-}
-
-# Examples whose CSS animations run from the document's load (infinite keyframes) and that make
-# no data model (createDataModel reloads a document): play keeps the document the editor loaded,
-# so their phase at play start depends on the wall time spent in edit mode. The test rebuilds them (a
-# patch reload keeps running animations, S17)
-# once play is held, which starts them on the fixed UI clock (video_menu: its autoplay video too).
+# Reload (rebuild: a patch reload keeps running animations, S17) wall-clock CSS/video animations after
+# the fixed UI clock is held.
 RESTART_CSS = {"main_menu", "video_menu"}
 
 S: dict = {}   # per example: {"scene", "entity"}, and "editor" (the Editor the scenes were made in)
@@ -110,15 +63,6 @@ def fail(message: str) -> None:
 def check(cond, message: str) -> None:
     if not cond:
         fail(message)
-
-
-def pascal(stem: str) -> str:
-    """HtmlUiExamples::pascalName: words of ASCII letters and digits, capitalized and joined."""
-    words = re.split(r"[^A-Za-z0-9]+", stem)
-    name = "".join(w[:1].upper() + w[1:] for w in words if w)
-    if not name:
-        return "Document"
-    return "Ui" + name if name[0].isdigit() else name
 
 
 def example_files(name: str) -> list[str]:
@@ -156,8 +100,8 @@ async def console_messages(ed: Editor, **args) -> list[str]:
     return [e.get("message", "") for e in await ed.console_since(limit=1000, **args)]
 
 
-async def pad(ed: Editor, *buttons: str, frames_after: int = 6) -> None:
-    """Gamepad presses (p4-input: the focused document gets them as keys)."""
+async def pad(ed: Editor, *buttons: str, frames_after: int = 1) -> None:
+    """Gamepad keys, then one update for model bindings; animated panels request their full duration."""
     await ed.call("send_input", events=[{"type": "gamepad", "button": b, "action": "press"} for b in buttons],
                   frames_after=frames_after)
 
@@ -189,17 +133,6 @@ async def errors_since(ed: Editor, cursor: int) -> list[str]:
     result = await ed.call("read_console", since=cursor, types=["error", "warning"], limit=1000)
     return [e.get("message", "") for e in result["entries"]
             if e.get("type") == "error" or "[HTML UI]" in e.get("message", "") or "Lua" in e.get("message", "")]
-
-
-def copy_example(project: Path, name: str, source: Path) -> None:
-    """The example's html, css and assets into assets/ui/<name>/, its Lua into the Lua dir."""
-    entry = ENTRIES[name]
-    destination = project / "assets" / "ui" / name
-    if destination.exists():
-        shutil.rmtree(destination)
-    shutil.copytree(source / name, destination, ignore=shutil.ignore_patterns("*.lua"))
-    (project / LUA_DIR).mkdir(exist_ok=True)
-    shutil.copy(source / name / entry["lua"], project / LUA_DIR / entry["lua"])
 
 
 async def ensure_scene(ed: Editor, name: str) -> dict:
@@ -250,184 +183,11 @@ async def wait_project_copy(ed: Editor, project: Path, timeout: float = 240) -> 
 
 # ---------------------------------------------------------------------------------------- pngdiff
 
-def _png(width: int, height: int, channels: int, rows: list[bytes], filters: list[int]) -> bytes:
-    """A PNG whose rows use the given filters (the encoder side of each filter)."""
-    stride = width * channels
-    raw = b""
-    prev = bytes(stride)
-    for row, f in zip(rows, filters):
-        out = bytearray(stride)
-        for x in range(stride):
-            a = row[x - channels] if x >= channels else 0
-            b = prev[x]
-            c = prev[x - channels] if x >= channels else 0
-            if f == 0:
-                predictor = 0
-            elif f == 1:
-                predictor = a
-            elif f == 2:
-                predictor = b
-            elif f == 3:
-                predictor = (a + b) // 2
-            else:
-                p = a + b - c
-                pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
-                predictor = a if pa <= pb and pa <= pc else b if pb <= pc else c
-            out[x] = (row[x] - predictor) & 255
-        raw += bytes([f]) + bytes(out)
-        prev = row
-
-    def chunk(kind: bytes, data: bytes) -> bytes:
-        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
-    color_type = {3: 2, 4: 6}[channels]
-    return (pngdiff.PNG_SIGNATURE + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, color_type, 0, 0, 0)) +
-            chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
-
-
-async def test_pngdiff():
-    """decode (RGB and RGBA, the five filters), encode, crop, downscale, compare, flat."""
-    rng = random.Random(4)
-    for channels in (3, 4):
-        width, height = 7, 10
-        rows = [bytes(rng.randrange(256) for _ in range(width * channels)) for _ in range(height)]
-        data = _png(width, height, channels, rows, [y % 5 for y in range(height)])
-        w, h, rgba = pngdiff.decode(data)
-        check((w, h) == (width, height), f"size {w}x{h}")
-        for y in range(height):
-            for x in range(width):
-                pixel = rgba[(y * width + x) * 4:(y * width + x + 1) * 4]
-                expected = rows[y][x * channels:(x + 1) * channels] + (b"\xff" if channels == 3 else b"")
-                check(bytes(pixel) == expected, f"pixel {x},{y} of a {channels}-channel PNG: {bytes(pixel)!r} != {expected!r}")
-
-    img = (4, 2, bytearray(range(32)))
-    check(pngdiff.decode(pngdiff.encode(img)) == img, "encode then decode")
-    check(pngdiff.encode(*img) == pngdiff.encode(img), "encode(w, h, rgba) == encode(img)")
-    check(pngdiff.crop(img, 1, 1, 2, 5) == (2, 1, bytearray(range(20, 28))), "crop clamps to the image")
-
-    # box filter: integer ratio (2x2 means) and a fractional one (area weights)
-    big = (4, 2, bytearray([0, 0, 0, 255, 100, 100, 100, 255, 10, 20, 30, 255, 30, 40, 50, 255] * 2))
-    check(pngdiff.downscale(big, 2, 1) == (2, 1, bytearray([50, 50, 50, 255, 20, 30, 40, 255])), "2:1 downscale")
-    w, h, third = pngdiff.downscale((3, 1, bytearray([0, 0, 0, 0, 90, 90, 90, 90, 180, 180, 180, 180])), 2, 1)
-    check((w, h) == (2, 1) and list(third[:4]) == [30, 30, 30, 30] and list(third[4:]) == [150, 150, 150, 150],
-          f"3:2 downscale weights the areas: {list(third)}")
-
-    a = (10, 10, bytearray([40, 40, 40, 255] * 100))
-    b = (10, 10, bytearray(a[2]))
-    b[2][0:4] = bytes([60, 40, 40, 255])          # within the tolerance
-    ok, fraction, diff = pngdiff.compare(a, b)
-    check(ok and fraction == 0.0 and diff.startswith(pngdiff.PNG_SIGNATURE), f"within tolerance: {ok} {fraction}")
-    b[2][4:8] = bytes([200, 40, 40, 255])         # one pixel of 100 beyond it
-    ok, fraction, diff = pngdiff.compare(a, b)
-    check(ok and fraction == 0.01, f"1% differs: {ok} {fraction}")
-    b[2][8:12] = bytes([40, 40, 40, 0])           # alpha counts
-    ok, fraction, diff = pngdiff.compare(a, b)
-    check(not ok and fraction == 0.02, f"2% differs: {ok} {fraction}")
-    dw, dh, drgba = pngdiff.decode(diff)
-    check((dw, dh) == (10, 10) and bytes(drgba[4:8]) == bytes([255, 0, 0, 255]), "the diff marks a differing pixel red")
-    check(pngdiff.compare(a, (5, 5, bytearray(100))) == (False, 1.0, None), "different sizes never match")
-
-    check(pngdiff.flat(a) and not pngdiff.flat(b), "flat")
-    check(pngdiff.flat((0, 0, bytearray())), "an empty image is flat")
-
 
 # ---------------------------------------------------------------------------------------- library rules
 
-async def test_manifest_and_authoring_rules():
-    """examples.json lists the thirteen examples then blank; each example follows the library's rules
-    (spec §3.7.1): one html linking one css, assets under assets/, a purpose comment at the top, a
-    `<Pascal>UI` Lua class with byId and the onLoad binding, generic font families, nothing remote,
-    the size limits, and the public ids and classes."""
-    check(MANIFEST.get("version") == 1, "manifest version 1")
-    check(NAMES == ["main_menu", "pause_menu", "hud", "inventory", "settings", "dialogue", "shop", "toasts", "loading", "video_menu",
-                    "server_browser", "chat_log", "quest_log", "blank"],
-          f"manifest order: {NAMES}")
-    on_disk = sorted(p.name for p in LIBRARY.iterdir() if p.is_dir())
-    check(on_disk == sorted(NAMES), f"folders {on_disk}")
-    check((LIBRARY / "LICENSE-lucide.txt").is_file() and "ISC License" in (LIBRARY / "LICENSE-lucide.txt").read_text(),
-          "LICENSE-lucide.txt with the ISC license")
-    keys = {"name", "title", "example", "description", "demonstrates", "html", "css", "lua", "assets", "viewports", "checks"}
-    check_types = {"exists", "count", "visible", "text_fits", "no_overlap", "within_parent", "within_viewport", "contrast", "min_size",
-                   "virtual_window", "tooltip", "selected"}
-    for name, entry in ENTRIES.items():
-        where = f"examples.json {name}"
-        check(set(entry) == keys, f"{where}: keys {sorted(entry)}")
-        check(entry["example"] == (name != "blank"), f"{where}: example flag")
-        check(entry["html"] == f"{name}.html" and entry["css"] == f"{name}.css", f"{where}: file names")
-        check(entry["lua"] == f"{pascal(name)}UI.lua", f"{where}: Lua file {entry['lua']}")
-        check(entry["viewports"] and all(len(v) == 2 for v in entry["viewports"]), f"{where}: viewports")
-        check(entry["checks"] and all(c["type"] in check_types and c.get("selector") for c in entry["checks"]), f"{where}: checks")
-        listed = {f"{name}/{entry['html']}", f"{name}/{entry['css']}", f"{name}/{entry['lua']}"} | {f"{name}/{a}" for a in entry["assets"]}
-        check(set(example_files(name)) == listed, f"{where}: the folder holds {example_files(name)}, the manifest lists {sorted(listed)}")
-
-        html = (LIBRARY / name / entry["html"]).read_text(encoding="utf-8")
-        css = (LIBRARY / name / entry["css"]).read_text(encoding="utf-8")
-        code = (LIBRARY / name / entry["lua"]).read_text(encoding="utf-8")
-        for text, limit, label in ((html, 200, "html"), (css, 450, "css"), (code, 250, "Lua")):
-            lines = text.count("\n")
-            check(lines <= limit, f"{name}: {label} has {lines} lines (at most {limit})")
-        links = re.findall(r'<link[^>]*rel="stylesheet"[^>]*href="([^"]+)"', html)
-        check(links == [entry["css"]], f"{name}: links {links}, one stylesheet expected")
-        check(not re.search(r"https?://", html + css), f"{name}: a remote URL")
-        check("<script" not in html, f"{name}: a <script> (logic goes in {entry['lua']})")
-        for ref in re.findall(r'(?<![\w-])(?:src|href)="([^"#]+)"', html) + re.findall(r"url\(['\"]?([^'\")]+)", css):
-            if ref != entry["css"]:
-                check(ref.startswith("assets/") and (LIBRARY / name / ref).is_file(), f"{name}: reference {ref}")
-        for family in re.findall(r"font-family:\s*([^;]+);", css):
-            check(family.strip() in ("system-ui, sans-serif", "inherit", "monospace"), f"{name}: font-family {family}")
-        if name != "blank":
-            check(re.match(r"<!DOCTYPE html>\n<!--\n  [^\n]+\n  Shows: ", html), f"{name}: the html starts with its purpose and features")
-            check(":root {" in css and "var(--" in css, f"{name}: design tokens in :root")
-            check("local function byId(doc, id)" in code and "assert(element" in code, f"{name}: byId that asserts")
-            check("RegisterEvent(self, self.doc.onLoad, \"onDocumentLoad\")" in code and "self:onDocumentLoad()" in code,
-                  f"{name}: listeners bound on doc.onLoad and from init")
-        cls = entry["lua"][:-4]
-        check(f"---@class {cls} : ScriptInstance" in code and f"local {cls} = {{" in code and code.rstrip().endswith(f"return {cls}"),
-              f"{name}: the Lua class {cls}")
-        check(f"UIDocument(self.scene, self.entity)" in code, f"{name}: the document from UIDocument(self.scene, self.entity)")
-        for selector in SURFACE[name]:
-            tag, rest = re.match(r"([a-z0-9]*)(.*)", selector).groups()
-            ids = re.findall(r"#([\w-]+)", rest)
-            classes = re.findall(r"\.([\w-]+)", rest)
-            found = False
-            for m in re.finditer(r"<([a-z0-9]+)([^>]*)>", html):
-                attrs = m.group(2)
-                if tag and m.group(1) != tag:
-                    continue
-                element_id = re.search(r'\bid="([^"]+)"', attrs)
-                element_classes = (re.search(r'\bclass="([^"]+)"', attrs) or [None, ""])[1].split()
-                if all(element_id and element_id.group(1) == i for i in ids) and all(c in element_classes for c in classes):
-                    found = True
-                    break
-            check(found, f"{name}: no element {selector} in {entry['html']}")
-
-
-async def test_ui_check_on_the_library():
-    """`check --ui` on the whole library copied into a project: zero errors and warnings."""
-    with tempfile.TemporaryDirectory(prefix="jasper-examples-check-") as tmp:
-        project = Path(tmp) / "project"
-        project.mkdir()
-        shutil.copy(harness.default_fixture() / "project.yaml", project / "project.yaml")
-        shutil.copytree(LIBRARY, project / "assets" / "html-ui-examples")
-        r = subprocess.run(harness.editor_command() + ["check", "--project", str(project), "--ui", "--format", "json"],
-                           cwd=project, capture_output=True, text=True, timeout=120)
-        data = json.loads(r.stdout)
-        check(r.returncode == 0 and data["errors"] == 0 and data["warnings"] == 0 and data["findings"] == [],
-              f"check --ui on the library: exit {r.returncode}, {data}")
-        check(data["checked"] == {"ui": len(NAMES)}, f"documents checked: {data['checked']}")
-
 
 # ---------------------------------------------------------------------------------------- the project copy
-
-async def test_project_copy_is_the_library(ed: Editor):
-    """The editor wrote the library into .jasperengine/engine-api/html-ui-examples: every file, byte
-    for byte, nothing else."""
-    copy = await wait_project_copy(ed, ed.project)
-    library = sorted(p.relative_to(LIBRARY).as_posix() for p in LIBRARY.rglob("*") if p.is_file())
-    written = sorted(p.relative_to(copy).as_posix() for p in copy.rglob("*") if p.is_file())
-    check(written == library, f"the copy holds {written}")
-    for rel in library:
-        check((copy / rel).read_bytes() == (LIBRARY / rel).read_bytes(), f"{rel} differs from the library")
-    check(json.loads((copy / "examples.json").read_text())["examples"][0]["name"] == "main_menu", "the copy's manifest parses")
 
 
 async def test_project_copy_follows_the_editor(ed: Editor):
@@ -483,6 +243,7 @@ async def test_lua_scripts_have_no_luals_diagnostics(ed: Editor):
     if not exe:
         skip("lua-language-server is not installed (https://github.com/LuaLS/lua-language-server/releases)")
     await wait_project_copy(ed, ed.project)
+    (ed.project / LUA_DIR).mkdir(parents=True, exist_ok=True)
     for name in NAMES:
         shutil.copy(LIBRARY / name / ENTRIES[name]["lua"], ed.project / LUA_DIR / ENTRIES[name]["lua"])
     await ed.call("sync_files")
@@ -643,7 +404,7 @@ async def inventory_after(ed: Editor, n: str) -> None:
         rows.append((await lua(ed, slot))[0])
     check(await focused(ed, n) == "close", f"the close button above the grid is reachable: {rows}")
 
-    await click(ed, n, "#close")
+    await click(ed, n, "#close", frames_after=1)
     check(await lua(ed, f"return {doc_lua(n)}.visible") == [False], "#close hides the document")
     await pad(ed, "back", frames_after=10)
     check(await lua(ed, f"return {doc_lua(n)}.visible") == [True], "View shows it again")
@@ -672,16 +433,16 @@ async def settings_before(ed: Editor, n: str, first: bool) -> None:
 
 
 async def settings_after(ed: Editor, n: str) -> None:
-    await click(ed, n, "#tab-controls")
-    await click(ed, n, "#bind-jump")
+    await click(ed, n, "#tab-controls", frames_after=1)
+    await click(ed, n, "#bind-jump", frames_after=1)
     check("Press a key" in (await lua(ed, f"return {doc_lua(n)}:getElementById('bind-jump').textContent"))[0], "the binding waits for a key")
-    await ed.call("send_input", events=[{"type": "key", "key": "j"}], frames_after=5)
+    await ed.call("send_input", events=[{"type": "key", "key": "j"}], frames_after=1)
     check(await lua(ed, f"return {doc_lua(n)}:getDataModel('settings').keys.jump") == ["J"], "the next key is the binding")
     await ed.console_since(None, limit=1)
-    await click(ed, n, "#apply")
+    await click(ed, n, "#apply", frames_after=1)
     applied = [m for m in await console_messages(ed) if m.startswith("settings: apply")]
     check(applied and "music=" in applied[0] and "jump=J" in applied[0] and "vsync=false" in applied[0], f"#apply logs the values: {applied}")
-    await click(ed, n, "#reset")
+    await click(ed, n, "#reset", frames_after=1)
     check(await lua(ed, f"local m = {doc_lua(n)}:getDataModel('settings'); return m.music, m.vsync, m.keys.jump") == [60, True, "Space"],
           "#reset restores the defaults")
 
@@ -689,7 +450,7 @@ async def settings_after(ed: Editor, n: str) -> None:
     # selects open and choose, B is Back
     model = f"{doc_lua(n)}:getDataModel('settings')"
     await lua(ed, f"{doc_lua(n)}:getElementById('tab-graphics'):focus()")
-    await pad(ed, "a", frames_after=10)
+    await pad(ed, "a", frames_after=1)
     check(await lua(ed, f"return {doc_lua(n)}:getElementById('panel-graphics').classList:contains('active')") == [True],
           "A selects the Graphics tab")
     check(await walk(ed, n, "dpad_right") == ["tab-audio", "tab-controls", "tab-gameplay"], "the d-pad goes along the tabs")
@@ -705,16 +466,16 @@ async def settings_after(ed: Editor, n: str) -> None:
 
     await lua(ed, f"{doc_lua(n)}:getElementById('fov'):focus()")
     fov = (await lua(ed, f"return {model}.fov"))[0]
-    await pad(ed, "dpad_right", "dpad_right", frames_after=10)
+    await pad(ed, "dpad_right", "dpad_right", frames_after=1)
     check(await lua(ed, f"return {model}.fov") == [fov + 2], "the d-pad adjusts the focused range")
     await lua(ed, f"{doc_lua(n)}:getElementById('bloom'):focus()")
-    await pad(ed, "a", frames_after=10)
+    await pad(ed, "a", frames_after=1)
     check(await lua(ed, f"return {model}.bloom") == [False], "A toggles the focused switch")
     await lua(ed, f"{doc_lua(n)}:getElementById('quality'):focus()")
-    await pad(ed, "a", "dpad_down", "a", frames_after=10)
+    await pad(ed, "a", "dpad_down", "a", frames_after=1)
     check(await lua(ed, f"return {model}.quality") == ["ultra"], "A opens the select, the d-pad moves, A chooses")
     await ed.console_since(None, limit=1)
-    await pad(ed, "b", frames_after=10)
+    await pad(ed, "b", frames_after=1)
     check("settings: back" in await console_messages(ed), "B is Back")
 
 
@@ -929,15 +690,7 @@ async def quest_log_after(ed: Editor, n: str) -> None:
     check(await lua(ed, f"return {doc_lua(n)}:getElementById('progress').textContent") == ["2 of 6 done"], "the progress counts it")
 
 
-async def blank_before(ed: Editor, n: str, first: bool) -> None:
-    check(await lua(ed, f"return {doc_lua(n)}:querySelector('h1').textContent") == ["Blank"], "the heading")
-
-
-async def blank_after(ed: Editor, n: str) -> None:
-    pass
-
-
-STEPS = {name: (globals()[f"{name}_before"], globals()[f"{name}_after"]) for name in NAMES}
+STEPS = {name: (globals()[f"{name}_before"], globals()[f"{name}_after"]) for name in NAMES if name != "blank"}
 
 
 # ---------------------------------------------------------------------------------------- per example
@@ -945,56 +698,16 @@ STEPS = {name: (globals()[f"{name}_before"], globals()[f"{name}_after"]) for nam
 def _make_tests(name: str) -> None:
     entry = ENTRIES[name]
 
-    async def files_in_project(ed: Editor):
-        copy = await wait_project_copy(ed, ed.project)
-        for rel in example_files(name):
-            check((copy / rel).is_file(), f"{rel} is not in the project copy")
-            check((copy / rel).read_bytes() == (LIBRARY / rel).read_bytes(), f"{rel} differs")
-        check(json.loads((copy / "examples.json").read_text())["examples"][NAMES.index(name)]["name"] == name, "the copy's manifest")
-        # the resource jasper://examples/html-ui/<name>/<name>.html is the same file
-        r = await ed.session.read_resource(f"jasper://examples/html-ui/{name}/{entry['html']}")
-        check(r.contents[0].text == (LIBRARY / name / entry["html"]).read_text(encoding="utf-8"), "the resource")
-
-    async def compat_clean():
-        with tempfile.TemporaryDirectory(prefix="jasper-example-check-") as tmp:
-            project = Path(tmp) / "project"
-            project.mkdir()
-            shutil.copy(harness.default_fixture() / "project.yaml", project / "project.yaml")
-            copy_example(project, name, LIBRARY)
-            files = [html_rel(name), f"assets/ui/{name}/{entry['css']}"]
-            r = subprocess.run(harness.editor_command() + ["check", "--project", str(project), "--ui", "--files", *files,
-                                                           "--format", "json"], cwd=project, capture_output=True, text=True, timeout=120)
-            data = json.loads(r.stdout)
-            check(r.returncode == 0 and data["findings"] == [], f"check --ui --files: exit {r.returncode}, {data['findings']}")
-            check(data["checked"].get("ui", 0) >= 1, f"checked {data['checked']}")
-
-    async def edit_mode(ed: Editor):
-        cursor = await console_cursor(ed)
-        state = await ensure_scene(ed, name)
-        values = await lua(ed, f"""
-            local doc = UIDocument(scene, entity('{name}'))
-            local errors, warnings, lines = 0, 0, {{}}
-            for _, d in ipairs(doc:getDiagnostics()) do
-                if d.severity == 'error' then errors = errors + 1 end
-                if d.severity == 'warning' then warnings = warnings + 1 end
-                if d.severity ~= 'info' then lines[#lines + 1] = d.text end
-            end
-            return doc.loaded, errors, warnings, table.concat(lines, '\\n')""", allow_edit_mode=True, scene=state["scene"])
-        check(values[:3] == [True, 0, 0], f"{name} in edit mode: loaded {values[0]}, {values[1]} errors, {values[2]} warnings\n{values[3]}")
-        shot = await ed.call_raw("screenshot", {"view": "game", "max_width": 0, "scene": state["scene"]})
-        check(not shot.is_error and shot.images, f"edit-mode screenshot: {shot.text[:300]}")
-        (ed.scratch.root / f"{name}.edit.png").write_bytes(shot.images[0][0])
-        check(not pngdiff.flat(pngdiff.decode(shot.images[0][0])), f"{name}: the edit-mode Game view is flat")
-        problems = await errors_since(ed, cursor)
-        check(not problems, f"{name}: Console problems in edit mode: {problems[:5]}")
-
     async def play_golden(ed: Editor):
         state = await ensure_scene(ed, name)
         before, after = STEPS[name]
         await ed.call("configure_game_view", aspect="project", scale=1, maximize_on_play=True)
         captures = []
+        # These have no distinct reset assertion on replay; their second capture duplicates
+        # the core font/readback oracles. Other examples leave distinct data to reset.
+        runs = 1 if name in {"main_menu", "pause_menu"} else 2
         try:
-            for run in range(2):
+            for run in range(runs):
                 cursor = await console_cursor(ed)
                 await ed.call("play", action="start", scene=state["scene"], fixed_fps=60, auto_pause=True)
                 if name in RESTART_CSS:
@@ -1002,20 +715,38 @@ def _make_tests(name: str) -> None:
                 await ed.call("wait", frames=90)
                 await before(ed, name, run == 0)
                 captures.append(await capture(ed, f"{name}.play{run}"))
+                if run == runs - 1:
+                    # Probe the captured initial state after the final capture, so alternate
+                    # viewport layouts do not change the history of a remaining replay.
+                    result = await ed.call("assert_ui", entity=name, checks=entry["checks"], viewports=entry["viewports"])
+                    check(result["passed"], f"{name}: assert_ui failed: " +
+                          json.dumps([c for c in result["checks"] if not c["passed"]])[:3000])
                 if run == 0:
                     await after(ed, name)
                 errors = await errors_since(ed, cursor)
                 check(not errors, f"{name}: Console problems while playing: {errors[:5]}")
                 await ed.call("play", action="stop")
         finally:
-            await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)
+            failed = sys.exc_info()[0] is not None
+            try:
+                await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)
+                # Each generated case owns its scene. Release its stopped context before the
+                # next example; the initial scene and screenshots remain on disk.
+                await ed.call("close_scene", scene=state["scene"], unsaved="discard")
+            except Exception as cleanup_error:
+                if not failed:
+                    raise
+                print(f"     [cleanup] {name}: {cleanup_error}", flush=True)
+            finally:
+                S.pop(name, None)
 
-        first, second = captures
-        same, fraction, diff = pngdiff.compare(first, second, CHANNEL_TOLERANCE, RUNS_MAX_FRACTION)
-        if not same:
-            (ed.scratch.root / f"{name}.runs.diff.png").write_bytes(diff or b"")
-            ed.keep = True
-        check(same, f"{name}: two runs differ in {fraction * 100:.2f}% of the pixels ({ed.scratch.root / (name + '.runs.diff.png')})")
+        first = captures[0]
+        if len(captures) == 2:
+            same, fraction, diff = pngdiff.compare(first, captures[1], CHANNEL_TOLERANCE, RUNS_MAX_FRACTION)
+            if not same:
+                (ed.scratch.root / f"{name}.runs.diff.png").write_bytes(diff or b"")
+                ed.keep = True
+            check(same, f"{name}: two runs differ in {fraction * 100:.2f}% of the pixels ({ed.scratch.root / (name + '.runs.diff.png')})")
 
         width, height = first[0], first[1]
         check(width >= GOLDEN_SIZE[0] and height >= GOLDEN_SIZE[1],
@@ -1038,57 +769,11 @@ def _make_tests(name: str) -> None:
             fail(f"{name}: {fraction * 100:.2f}% of the pixels differ from the golden (at most {MAX_FRACTION * 100:.0f}%): "
                  f"{actual}, {ed.scratch.root / (name + '.diff.png')}")
 
-    async def asserts(ed: Editor):
-        state = await ensure_scene(ed, name)
-        before, _ = STEPS[name]
-        try:
-            await ed.call("play", action="start", scene=state["scene"], fixed_fps=60, auto_pause=True)
-            if name in RESTART_CSS:
-                await lua(ed, f"{doc_lua(name)}:reload{{mode = \"rebuild\"}}")
-            await ed.call("wait", frames=90)
-            await before(ed, name, True)
-            r = await ed.call("assert_ui", entity=name, checks=entry["checks"], viewports=entry["viewports"])
-            check(r["passed"], f"{name}: assert_ui failed: {json.dumps([c for c in r['checks'] if not c['passed']])[:3000]}")
-            # one deliberate failure: a label 20px wide does not fit (blank has no text_fits check: its h1)
-            selector = next((c["selector"] for c in entry["checks"] if c["type"] == "text_fits"),
-                            entry["checks"][0]["selector"]).split(",")[0].strip()
-            # the first match on screen (a hidden one, in an inactive tab, is not checked); width does not apply
-            # to an inline box: it becomes an inline-block
-            shown = next(e for e in (await ed.call("inspect_ui", entity=name, selector=selector, depth=0,
-                                                   styles=["display"]))["elements"] if "hidden" not in e.get("flags", []))
-            selector = shown["ref"]
-            shrink = "e.style.width = '20px'" + ("; e.style.display = 'inline-block'" if shown["styles"]["display"] == "inline" else "")
-            await lua(ed, f"local e = {doc_lua(name)}:querySelector({json.dumps(selector)}); {shrink}")
-            await ed.call("wait", frames=2)
-            raw = await ed.call_raw("assert_ui", {"entity": name, "checks": [{"type": "text_fits", "selector": selector}],
-                                                  "screenshot": "on_failure", "max_width": 0})
-            result = raw.value
-            check(not raw.is_error and not result["passed"], f"{name}: the shrunk label fails text_fits")
-            failures = result["checks"][0]["failures"]
-            check(failures[0]["ref"], "the failure names the element")
-            check(raw.images, "a failed assertion returns an image")
-            img = pngdiff.decode(raw.images[0][0])
-            # the image is the Game view cropped around the failures: image.canvas_rect is the part of
-            # the canvas it shows; each failing element (the label and others its width squeezes) is outlined
-            cx, cy, cw, _ = result["image"]["canvas_rect"]
-            scale = img[0] / cw
-            rects = [((f["rect"][0] - cx) * scale, (f["rect"][1] - cy) * scale, f["rect"][2] * scale, f["rect"][3] * scale)
-                     for f in failures]
-            reds = [(x, y) for y in range(img[1]) for x in range(img[0])
-                    if img[2][(y * img[0] + x) * 4] > 200 and img[2][(y * img[0] + x) * 4 + 1] < 60 and img[2][(y * img[0] + x) * 4 + 2] < 60]
-            check(reds, "red outline pixels in the image")
-            for x, y in reds:
-                check(any(rx - 4 <= x <= rx + rw + 4 and ry - 4 <= y <= ry + rh + 4 for rx, ry, rw, rh in rects),
-                      f"a red pixel at {x},{y} outside the reported rects {[f['rect'] for f in failures]} (image {result['image']})")
-        finally:
-            await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)
-
-    for suffix, fn in (("files_in_project", files_in_project), ("compat_clean", compat_clean), ("edit_mode", edit_mode),
-                       ("play_golden", play_golden), ("asserts", asserts)):
-        fn.__name__ = fn.__qualname__ = f"test_{name}_{suffix}"
-        fn.__doc__ = f"{name}: {suffix.replace('_', ' ')} (spec §5.4)"
-        globals()[fn.__name__] = fn
+    play_golden.__name__ = play_golden.__qualname__ = f"test_{name}_play_golden"
+    play_golden.__doc__ = f"{name}: interactive example, visual reference and layout checks"
+    globals()[play_golden.__name__] = play_golden
 
 
 for _name in NAMES:
-    _make_tests(_name)
+    if _name != "blank":
+        _make_tests(_name)

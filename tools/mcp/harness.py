@@ -4,12 +4,11 @@ Run with:  uv run --no-project --with-requirements tools/mcp/requirements.txt py
 
     from harness import Editor, ToolError
 
-    async with Editor() as ed:                       # copy of build/fixture-unity
+    async with Editor(create=True) as ed:            # a new isolated project
         status = await ed.call("editor_status")
         made = await ed.call("create_entity", name="Box", type="box")
         await ed.screenshot(view="game", path="game.png")
 
-    async with Editor(create=True) as ed: ...        # a new empty project
     async with Editor(project="/path/proj") as ed: ...   # a copy of that project
     async with Editor(url="http://127.0.0.1:47615/mcp", token="...") as ed: ...   # attach over HTTP
 
@@ -1067,19 +1066,6 @@ def tool_meta(tool: Any) -> dict:
 
 # ---------------------------------------------------------------------------
 # Result helpers (tolerant of legacy vs new result shapes)
-
-
-def exported_asset_ships(assets: Path, rel: str, family: str = "desktop") -> bool:
-    """Whether an export's assets directory ships the asset `rel` (assets-relative): the file
-    itself, or for a texture source the export cooked, its entry in je-cooked/<family>/index.json
-    with the cooked file (S14 R9: the source then stays out)."""
-    if (assets / rel).is_file():
-        return True
-    index_path = assets / "je-cooked" / family / "index.json"
-    if not index_path.is_file():
-        return False
-    entry = json.loads(index_path.read_text(encoding="utf-8"))["textures"].get(rel)
-    return bool(entry) and (index_path.parent / entry["file"]).is_file()
 
 
 def find_key(value: Any, *keys: str) -> Any:

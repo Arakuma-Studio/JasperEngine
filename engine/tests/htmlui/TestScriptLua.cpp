@@ -441,39 +441,24 @@ TEST_F(ScriptLuaTest, LoadAndUnloadNotifications){
 }
 
 TEST_F(ScriptLuaTest, ListenersMoveOnReload){
-    // what p1-editor's full reload does: the new document is loaded while the old one lives,
-    // then the listeners of id-ed elements (and of the document) move
     EXPECT_LUA(R"(
         result = {btn = 0, doc = 0, anon = 0}
-        doc:getElementById("btn"):addEventListener("click", function() result.btn = result.btn + 1 end)
+        el = doc:getElementById("btn")
+        el:addEventListener("click", function() result.btn = result.btn + 1 end)
         doc:addEventListener("click", function() result.doc = result.doc + 1 end)
-        doc:getElementById("label").parentElement.firstElementChild:addEventListener("click", function() end)
-        doc:querySelector(".item"):addEventListener("click", function() result.anon = result.anon + 1 end)
-        doc:getElementById("i1"):removeAttribute("id")
+        local anonymous = doc:getElementById("i1")
+        anonymous:addEventListener("click", function() result.anon = result.anon + 1 end)
+        anonymous:removeAttribute("id")
+        doc:reload()
     )");
-
-    Rml::ElementDocument* oldDocument = documentSystem(scene()).getDocument(document->getEntity());
-    ASSERT_NE(oldDocument, nullptr);
-    Rml::ElementDocument* newDocument = context()->LoadDocument("p1/script_dom.rml");
-    ASSERT_NE(newDocument, nullptr);
-
-    std::unordered_map<Rml::Element*, Rml::Element*> oldToNew;
-    oldToNew[oldDocument] = newDocument;
-    for (const char* id : {"btn", "label", "list", "outer"}){
-        oldToNew[oldDocument->GetElementById(id)] = newDocument->GetElementById(id);
-    }
-    const size_t refs = HtmlUIScriptState::liveLuaRefs();
-    TestSystem::get().clearLogs();
-    documentSystem(scene()).getScriptState().onDocumentReloaded(document->getEntity(), oldToNew);
-    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "1 event listener(s) on elements without an id were dropped"), 1u);
-    EXPECT_EQ(HtmlUIScriptState::liveLuaRefs(), refs - 1);
-    TestSystem::get().clearLogs();
-
-    UIElementAccess::wrap(newDocument->GetElementById("btn")).click();
-    UIElementAccess::wrap(oldDocument->GetElementById("btn")).click();
-    EXPECT_LUA("assert(result.btn == 1 and result.doc == 1, result.btn .. ' ' .. result.doc)");
-    context()->UnloadDocument(newDocument);
     update();
+    EXPECT_LUA(R"(
+        assert(not el:isValid())
+        doc:getElementById("btn"):click()
+        assert(result.btn == 1 and result.doc == 1)
+        doc:getElementById("i1"):click()
+        assert(result.anon == 0 and result.doc == 2)
+    )");
 }
 
 TEST_F(ScriptLuaTest, LuaRefsReleasedWithTheScene){
@@ -489,20 +474,20 @@ TEST_F(ScriptLuaTest, LuaRefsReleasedWithTheScene){
 }
 
 TEST_F(ScriptLuaTest, LuaFunctionBaseReleasesItsReference){
-    // FunctionSubscribe's Lua functions (doc.onLoad) unref their registry slot when destroyed
-    auto registryFunctions = [this](){
-        size_t count = 0;
-        lua_pushnil(L);
-        while (lua_next(L, LUA_REGISTRYINDEX) != 0){
-            if (lua_isfunction(L, -1))
-                count++;
-            lua_pop(L, 1);
-        }
-        return count;
-    };
-    const size_t before = registryFunctions();
-    EXPECT_LUA("doc.onLoad = function() end");
-    EXPECT_GT(registryFunctions(), before);
-    EXPECT_TRUE(document->getComponent<UIDocumentComponent>().onLoad.remove("luaFunction"));
-    EXPECT_EQ(registryFunctions(), before);
+    // A public lifecycle callback keeps captured Lua values alive only while subscribed.
+    // A weak table observes collection without depending on registry slots or subscriber tags.
+    EXPECT_LUA(R"(
+        local captured = {}
+        result = setmetatable({captured}, {__mode = "v"})
+        doc.onLoad = function() return captured end
+        collectgarbage()
+        assert(result[1] ~= nil)
+    )");
+    document->removeComponent<UIDocumentComponent>();
+    update();
+    EXPECT_LUA(R"(
+        collectgarbage()
+        collectgarbage()
+        assert(result[1] == nil)
+    )");
 }

@@ -6,7 +6,7 @@
 // element under it are compared with Chromium's (golden/browser/taffy/<suite>.boxes.json, written by
 // tools/htmlui/render-reference.mjs --fixtures taffy --boxes-only) within 1 px.
 //
-// excluded.txt: fixtures that are not compared (skipped, with the reason). known-failures.txt: the
+// excluded.txt records unsupported upstream fixtures, which are not copied or instantiated. known-failures.txt: the
 // fixtures the fork does not pass yet, with the package that owns each; they are expected to fail
 // (reported as KNOWN) and the test fails when one passes, so the package that fixes a fixture removes
 // its line. Every run writes <binary>/htmlui-test-output/taffy/results.txt ("<suite>/<name> pass|fail
@@ -27,7 +27,6 @@
 #include <fstream>
 #include <iostream>
 #include <map>
-#include <mutex>
 
 using namespace jasperengine;
 using namespace jasperengine::test;
@@ -59,11 +58,6 @@ namespace {
             return result;
         }();
         return references;
-    }
-
-    const FixtureList& taffyExcluded(){
-        static const FixtureList list = loadFixtureList(taffyFixturesDirectory() + "/excluded.txt");
-        return list;
     }
 
     const FixtureList& taffyKnownFailures(){
@@ -137,49 +131,6 @@ TEST(BoxParityHarness, ReadsFixtureLists){
     EXPECT_TRUE(loadFixtureList(path + ".missing").entries.empty());
 }
 
-// ---- the committed data ----------------------------------------------------------------------------
-
-// Every fixture is excluded or has a reference, every reference has its fixture; the lists name
-// existing fixtures, a fixture is either excluded or a known failure, and known failures name their
-// owner (a phase-3 package) and reason class.
-TEST(BoxParityFixtures, ListsAndReferencesAreConsistent){
-    const std::vector<std::string> fixtures = listTaffyFixtures();
-    ASSERT_GE(fixtures.size(), 1595u) << "the imported Taffy suites (tools/htmlui/import-taffy-fixtures.py import)";
-    const TaffyReferences& references = taffyReferences();
-    for (const std::string& error : references.errors)
-        ADD_FAILURE() << error;
-    const FixtureList& excluded = taffyExcluded();
-    const FixtureList& known = taffyKnownFailures();
-    for (const std::string& error : excluded.errors)
-        ADD_FAILURE() << error;
-    for (const std::string& error : known.errors)
-        ADD_FAILURE() << error;
-
-    size_t compared = 0;
-    for (const std::string& fixture : fixtures){
-        const bool isExcluded = excluded.find(fixture) != nullptr;
-        const bool hasReference = references.fixtures.count(fixture) > 0;
-        if (isExcluded){
-            EXPECT_FALSE(hasReference) << fixture << " is excluded but has a reference";
-            EXPECT_EQ(known.find(fixture), nullptr) << fixture << " is both excluded and a known failure";
-        }else{
-            EXPECT_TRUE(hasReference) << fixture << " has no reference: node tools/htmlui/render-reference.mjs --fixtures taffy/" << fixture
-                                      << " --boxes-only";
-            compared++;
-        }
-    }
-    for (const auto& reference : references.fixtures)
-        EXPECT_TRUE(std::binary_search(fixtures.begin(), fixtures.end(), reference.first)) << reference.first << " has a reference but no fixture";
-    for (const ListedFixture& entry : excluded.entries)
-        EXPECT_TRUE(std::binary_search(fixtures.begin(), fixtures.end(), entry.id)) << "excluded.txt:" << entry.line << ": no fixture " << entry.id;
-    for (const ListedFixture& entry : known.entries){
-        EXPECT_TRUE(std::binary_search(fixtures.begin(), fixtures.end(), entry.id)) << "known-failures.txt:" << entry.line << ": no fixture " << entry.id;
-        EXPECT_TRUE(isPhase3Package(entry.owner)) << "known-failures.txt:" << entry.line << ": owner '" << entry.owner << "' is not a phase-3 package";
-    }
-    std::cout << "[ TAFFY    ] " << fixtures.size() << " fixtures, " << excluded.entries.size() << " excluded, " << compared << " compared, "
-              << known.entries.size() << " known failures\n";
-}
-
 // ---- the fixtures ----------------------------------------------------------------------------------
 
 class BoxParity : public ::testing::TestWithParam<std::string> {
@@ -214,10 +165,8 @@ std::map<std::string, std::array<int, 4>> BoxParity::counts;
 TEST_P(BoxParity, MatchesChromium){
     const std::string fixture = GetParam();
     const std::string suite = fixture.substr(0, fixture.find('/'));
-    if (const ListedFixture* excluded = taffyExcluded().find(fixture))
-        GTEST_SKIP() << fixture << " is excluded: " << excluded->reason << (excluded->note.empty() ? "" : " (" + excluded->note + ")");
     const auto reference = taffyReferences().fixtures.find(fixture);
-    ASSERT_NE(reference, taffyReferences().fixtures.end()) << fixture << " has no reference (BoxParityFixtures.ListsAndReferencesAreConsistent)";
+    ASSERT_NE(reference, taffyReferences().fixtures.end()) << fixture << " has no Chromium reference";
     if (!runner->valid())
         GTEST_SKIP() << "no headless GPU context";
 

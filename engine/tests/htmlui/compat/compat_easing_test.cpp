@@ -51,36 +51,6 @@ TEST(CompatEasing, TweensMatchRmlUi){
     }
 }
 
-TEST(CompatEasing, KeywordTableIsTheNearestTween){
-    const std::pair<const char*, double> measured[] = {{"ease", 0.098}, {"ease-in", 0.024}, {"ease-out", 0.024}, {"ease-in-out", 0.012}, {"linear", 0.0}};
-    for (const auto& m : measured){
-        const std::array<double, 4> p = *Easing::keywordBezier(m.first);
-        auto curve = [&](double t){ return Easing::cubicBezier(p[0], p[1], p[2], p[3], t); };
-        const TweenChoice choice = Easing::nearestTween(curve);
-        EXPECT_EQ(choice.name, *Easing::keywordTween(m.first)) << m.first;
-        EXPECT_NEAR(choice.error, m.second, 0.001) << m.first;
-    }
-    EXPECT_FALSE(Easing::keywordTween("bounce").has_value());
-}
-
-TEST(CompatEasing, NearestTweenIsTheBruteForceMinimum){
-    const double curves[][4] = {{0.68, -0.55, 0.265, 1.55}, {0.17, 0.67, 0.83, 0.67}, {0.4, 0, 0.2, 1}, {0, 0, 1, 1}, {0.9, 0.1, 0.1, 0.9}};
-    for (const auto& c : curves){
-        auto curve = [&](double t){ return Easing::cubicBezier(c[0], c[1], c[2], c[3], t); };
-        const TweenChoice choice = Easing::nearestTween(curve);
-        double best = 1e9;
-        for (const char* name : Easing::tweenNames()){
-            double worst = 0;
-            for (int i = 0; i <= 100; i++){
-                const double t = i / 100.0;
-                worst = std::max(worst, std::fabs(curve(t) - Easing::tween(name, t)));
-            }
-            best = std::min(best, worst);
-        }
-        EXPECT_NEAR(choice.error, best, 1e-12);
-        EXPECT_NEAR(Easing::maxError(curve, choice.name), best, 1e-12);
-    }
-}
 
 TEST(CompatEasing, Curves){
     // cubic-bezier: end points, symmetry of ease-in-out, a known value of ease

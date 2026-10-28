@@ -379,6 +379,27 @@ string(APPEND mcp_docs_header "static const McpEmbeddedDoc mcp_embedded_docs[] =
 file(WRITE "${GENERATED_DIR}/mcp_docs.h.in" "${mcp_docs_header}")
 configure_file("${GENERATED_DIR}/mcp_docs.h.in" "${GENERATED_DIR}/mcp_docs.h" COPYONLY)
 
+# Built-in pose animation templates (editor/resources/pose-templates/*.poseanim) embedded in the
+# editor (editor/pose/PoseTemplatesBuiltin.cpp, the only includer)
+file(GLOB POSE_TEMPLATE_FILES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/pose-templates/*.poseanim")
+list(SORT POSE_TEMPLATE_FILES)
+set(pose_templates_header "// Generated from editor/resources/pose-templates by CMakeLists.txt. Do not edit.\n#pragma once\n\n")
+set(pose_templates_entries "")
+set(pose_template_index 0)
+foreach(pose_template IN LISTS POSE_TEMPLATE_FILES)
+    get_filename_component(pose_template_name "${pose_template}" NAME)
+    file(READ "${pose_template}" pose_template_hex HEX)
+    string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," pose_template_bytes "${pose_template_hex}")
+    string(APPEND pose_templates_header "static const unsigned char pose_template_${pose_template_index}[] = {${pose_template_bytes}0x00};\n")
+    string(APPEND pose_templates_entries "    { \"${pose_template_name}\", pose_template_${pose_template_index}, sizeof(pose_template_${pose_template_index}) - 1 },\n")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${pose_template}")
+    math(EXPR pose_template_index "${pose_template_index} + 1")
+endforeach()
+string(APPEND pose_templates_header "\nstruct PoseTemplateEmbeddedFile { const char* name; const unsigned char* data; unsigned int size; };\n")
+string(APPEND pose_templates_header "static const PoseTemplateEmbeddedFile pose_template_embedded_files[] = {\n${pose_templates_entries}    { nullptr, nullptr, 0 }\n};\n")
+file(WRITE "${GENERATED_DIR}/pose_templates.h.in" "${pose_templates_header}")
+configure_file("${GENERATED_DIR}/pose_templates.h.in" "${GENERATED_DIR}/pose_templates.h" COPYONLY)
+
 # HTML/CSS UI example library (docs/mcp/guide/html-ui-examples/**) embedded in the editor: written
 # into every project's .jasperengine/engine-api/html-ui-examples, served as MCP resources and used
 # as create_ui_document templates (editor/util/HtmlUiExamples.cpp, the only includer)
@@ -647,6 +668,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/components/LightingReflect.cpp
     ${EDITOR_DIR}/reflect/components/MaterialReflect.cpp
     ${EDITOR_DIR}/reflect/components/GameplayReflect.cpp
+    ${EDITOR_DIR}/reflect/components/ClipPlayersReflect.cpp
     ${EDITOR_DIR}/reflect/components/ParticlesReflect.cpp
     ${EDITOR_DIR}/reflect/components/RenderReflect.cpp
     ${EDITOR_DIR}/reflect/components/TransformPhysicsReflect.cpp
@@ -726,10 +748,12 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/DocsTools.cpp
     ${EDITOR_DIR}/mcp/tools/BuildTools.cpp
     ${EDITOR_DIR}/mcp/tools/WorldTools.cpp
+    ${EDITOR_DIR}/mcp/tools/AnimationClipTools.cpp
     ${EDITOR_DIR}/mcp/tools/LatticeTools.cpp
     ${EDITOR_DIR}/mcp/tools/HtmlUiTools.cpp
     ${EDITOR_DIR}/mcp/tools/UIEffectTools.cpp
     ${EDITOR_DIR}/mcp/tools/SynthesisTools.cpp
+    ${EDITOR_DIR}/mcp/tools/PoseTools.cpp
     ${EDITOR_DIR}/mcp/tools/PlacementTools.cpp
     ${EDITOR_DIR}/mcp/tools/EcsTools.cpp
     ${EDITOR_DIR}/mcp/tools/SceneViewTools.cpp
@@ -752,6 +776,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/BackgroundRelease.cpp
     ${EDITOR_DIR}/reload/HotReloadService.cpp
     ${EDITOR_DIR}/window/StatusBar.cpp
+    ${EDITOR_DIR}/reload/handlers/Animations.cpp
     ${EDITOR_DIR}/reload/handlers/Assets.cpp
     ${EDITOR_DIR}/reload/handlers/Audio.cpp
     ${EDITOR_DIR}/reload/handlers/Particles.cpp
@@ -814,6 +839,21 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/CommandRunner.cpp
     ${EDITOR_DIR}/util/ShellEnv.cpp
     ${EDITOR_DIR}/material/MaterialChange.cpp
+    ${EDITOR_DIR}/pose/PoseAnimationDocument.cpp
+    ${EDITOR_DIR}/pose/PoseBaker.cpp
+    ${EDITOR_DIR}/pose/PoseRigProvider.cpp
+    ${EDITOR_DIR}/pose/PoseEditSession.cpp
+    ${EDITOR_DIR}/pose/PoseThumbnails.cpp
+    ${EDITOR_DIR}/pose/PoseUiLogic.cpp
+    ${EDITOR_DIR}/pose/PoseViewport.cpp
+    ${EDITOR_DIR}/pose/PoseViewportLogic.cpp
+    ${EDITOR_DIR}/animation/AnimationClipController.cpp
+    ${EDITOR_DIR}/animation/AnimationClipDocument.cpp
+    ${EDITOR_DIR}/animation/ClipConverters.cpp
+    ${EDITOR_DIR}/animation/ClipRecordHooks.cpp
+    ${EDITOR_DIR}/animation/ClipValidation.cpp
+    ${EDITOR_DIR}/animation/PlayerModelLayout.cpp
+    ${EDITOR_DIR}/animation/PreviewOwner.cpp
     ${EDITOR_DIR}/util/UserFiles.cpp
 
     ${EDITOR_DIR}/search/SearchScorer.cpp
@@ -880,6 +920,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/PostProcessingPresets.cpp
 
     ${EDITOR_DIR}/window/InspectorWindow.cpp
+    ${EDITOR_DIR}/window/InspectorWindowClips.cpp
     ${EDITOR_DIR}/window/InputActionsWindow.cpp
     ${EDITOR_DIR}/window/InspectorShaderLibrary.cpp
     ${EDITOR_DIR}/window/InspectorMaterialPbr.cpp
@@ -914,6 +955,14 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/ImageViewerWindow.cpp
     ${EDITOR_DIR}/window/CodeEditor.cpp
     ${EDITOR_DIR}/window/AnimationWindow.cpp
+    ${EDITOR_DIR}/window/AnimationWindowClipSheet.cpp
+    ${EDITOR_DIR}/window/AnimationWindowClipEvents.cpp
+    ${EDITOR_DIR}/window/AnimationWindowClipCurves.cpp
+    ${EDITOR_DIR}/window/AnimationWindowClipRecord.cpp
+    ${EDITOR_DIR}/window/AnimationWindowClipMode.cpp
+    ${EDITOR_DIR}/window/AnimationWindowClipDraw.cpp
+    ${EDITOR_DIR}/window/PoseAnimationWindow.cpp
+    ${EDITOR_DIR}/window/PoseAnimationWindowTemplates.cpp
     ${EDITOR_DIR}/window/TerrainEditWindow.cpp
     ${EDITOR_DIR}/lattice/LatticeEditorOps.cpp
     ${EDITOR_DIR}/lattice/LatticeBake.cpp
@@ -959,6 +1008,12 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/render/preview/DirectionRender.cpp
     ${EDITOR_DIR}/render/preview/ModelRender.cpp
     ${EDITOR_DIR}/render/preview/PrefabRender.cpp
+    ${EDITOR_DIR}/render/preview/PoseRender.cpp
+
+    ${EDITOR_DIR}/pose/PoseImage.cpp
+    ${EDITOR_DIR}/pose/PoseSheetRenderer.cpp
+    ${EDITOR_DIR}/pose/PoseTemplates.cpp
+    ${EDITOR_DIR}/pose/PoseTemplatesBuiltin.cpp
     ${EDITOR_DIR}/render/preview/ParticlePreviewRender.cpp
 
     ${EDITOR_DIR}/command/CommandHandle.cpp
@@ -1007,6 +1062,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/UnlinkMaterialCmd.cpp
     ${EDITOR_DIR}/command/type/LinkMaterialCmd.cpp
     ${EDITOR_DIR}/command/type/CreatePrefabCmd.cpp
+    ${EDITOR_DIR}/command/type/CreateClipCmd.cpp
+    ${EDITOR_DIR}/command/type/ClipSceneActions.cpp
     ${EDITOR_DIR}/command/type/CreatePrefabVariantAssetCmd.cpp
     ${EDITOR_DIR}/command/type/ComponentToPrefabSharedCmd.cpp
     ${EDITOR_DIR}/command/type/UnpackPrefabCmd.cpp
@@ -1015,6 +1072,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/ReplacePrefabCmd.cpp
     ${EDITOR_DIR}/command/type/ForkShaderCmd.cpp
     ${EDITOR_DIR}/command/type/TerrainMapPatchCmd.cpp
+    ${EDITOR_DIR}/command/type/WriteFilesCmd.cpp
+    ${EDITOR_DIR}/command/type/RemoveFilesCmd.cpp
     ${EDITOR_DIR}/command/type/LatticePointsCmd.cpp
     ${EDITOR_DIR}/command/type/LatticeBindingsCmd.cpp
     ${EDITOR_DIR}/command/type/LatticeBakeCmd.cpp

@@ -1,0 +1,231 @@
+TAPPYPLANE DEPENDENCY FOLLOW-UP
+
+Status
+
+All 587 current required MCP case IDs are verified: 582 passed, 0 failed and 5 default opt-in skips after source-current file replays. The initial complete partitions recorded 579 passes, three stress modal/cascade failures and five skips; these raw results are retained. Corrected fresh full stress-file runs each passed all 12 cases in 18.0s and 19.7s. This verification combines the full partitions with relevant replays, not a single green invocation. The optional C++ compiler failure case separately passes with JASPER_SLOW_TESTS=1 (7.1s), so 583 unique case bodies were observed passing across configurations; four desktop opt-ins remain unexecuted.
+The production editor and importer targets rebuild successfully. All five
+native CPU targets pass after the production fix: 666 passed, 2 intentional
+configuration/network skips across 668 cases, 34.611s combined
+process wall time. Native GPU engine sources were not changed in this
+follow-up; the preceding cleanup's 3,019-case verified result is historical,
+not a claim of another full GPU run here. Targeted and standalone validation
+are described below. Actual cleanup commit/push receipt belongs in the final
+completion message; this report does not invent one.
+
+Answer and scope
+
+No: the original TappyPlane-dependent set was not all necessary. Much of it
+was engine/tool coverage that happened to inherit one game's project, while
+other checks merely repeated game state, copied defaults, native lifetime
+coverage or generic CRUD. The missing external game was not restored or
+recreated as a replacement kitchen-sink fixture.
+
+This follow-up starts at 304e64e4378b7f9c6f700679e93170e8cd1ace3b.
+Every one of the 394 missing-fixture case IDs was audited alongside production
+owners and stronger surviving coverage. Fourteen adjacent cases were also
+audited: 408 MCP cases total. The outcomes are 28 DELETE,
+152 REWRITE, 147 OPTIMIZE,
+80 CONSOLIDATE and 1 KEEP.
+CONSOLIDATE counts include both removed scenarios and surviving owners.
+The complete runner collection changes 678 to 587 named cases:
+97 original names disappear and 6 names are new/renamed,
+for a net 91 fewer executions. The other 270 starting
+cases were outside this follow-up audit but remain included in required
+whole-suite validation. Definition counts are separate from assertion sites.
+
+The standalone prefab audit covers 167 starting assertion/check sites, now 145:
+20 generic repetitions were consolidated into MCP owners and 2 usage-format
+inventories deleted. These sites are not added to framework case counts.
+
+Test sources and infrastructure change 21,281 to 18,112 lines,
+net -3,169 LOC across 63 changed Python files.
+This includes new helpers and excludes report text, the six-line production
+fix, and fixture YAML. It is not a coverage-percentage or deletion-count goal.
+
+Every audited original case/site is recorded in tappyplane-dispositions.jsonl
+(575 rows: 408 MCP plus 167 standalone), with path/name, disposition, contract
+source, recognizable bug, independent oracle, stable seam, refactor resistance,
+unique protection, reason and validation command. Baseline/final observations
+have source-log identifiers; missing observations do not imply a pass. The
+previous report and its JSONL inventories describe the earlier revision,
+not the current status of cases subsequently removed here.
+
+Implemented decisions
+
+- Removed sample-game ready/playing/dead and asset/default inventories,
+  redundant screenshots and generic command replays. Four MCP Lua-handle
+  lifetime cases were deleted because actual native lifetime/thread owners
+  exercise the lower stable seam. Plain protocol CRUD shares the scene/
+  prefab command owner instead of another transport scenario.
+- Retained protocol/security/schema, cancellation/backpressure and process
+  isolation contracts on owned empty projects, including all nested raw,
+  HTTP and stdio launches. HTTP disconnect checks now observe public pending
+  state rather than private trace wording or a fixed hold.
+- Preserved atomic settings, file/config persistence, safe project switching,
+  cross-scene references, recursive UI rollback/undo and actual joint physics.
+  Replaced echo-only assertions with authored data and behavior, including
+  a crate actually held by its configured fixed joint under gravity.
+- Preserved real CLI/compiler/linker recovery, C++ runtime reflection and cache
+  relocation, path/Unicode/export behavior, LSP diagnostics and automatic file
+  notification. Removed duplicate CLI/MCP comparisons, generated-source
+  inventories, excess startups, arbitrary waits and oversized fixtures.
+- Preserved meaningful shader/material/prefab/model persistence, preview,
+  resource remapping, supported catalogue compilation and scene-input errors.
+  Shared setup creates/closes each actual scene and uses one authored pixel.
+- The HTML library keeps its authored interactions, public-state resets,
+  image references and responsive layout requirements. Its own empty project
+  replaces the incidental game. Reload checks use public state, callbacks
+  and real changed pixels instead of private console reload-count messages.
+- Legacy prefab migration, nested targets, variants, cycles, missing bases,
+  explicit-equal overrides and persistence stay in actual scene-dump workflows.
+  The generators now author their tiny public-format projects and untextured
+  colored sprites; they copy no game or image assets. The comparator no longer
+  ignores an entire submesh/material array: material loss fails, derived cache
+  differences remain excluded, and missing subtrees cannot pass vacuously.
+
+Owned inputs and infrastructure
+
+The only committed shared HTML fixture is tools/fixtures/html-ui/project.yaml
+(eight lines) and Main Scene.scene (six lines): name, 1280x720 letterbox canvas,
+assets/scripts directories and an empty 2D scene. It contains no gameplay,
+images, audio, scripts or generated SDK snapshot. Each editor copies it.
+Most generic modules use EDITOR = {"create": True} and author their exact data.
+
+tools/mcp/project_fixture.py writes a tiny public YAML/script input for CLI
+checks; only path/export cases request World/Overlay scenes and a payload.
+tools/mcp/shader_project.py owns per-case create/close cleanup and an optional
+one-pixel PNG. No production injection hook, replacement game, new external
+dependency or altered test gate was introduced. Legacy explicit project/
+JASPER_FIXTURE harness support remains for external callers; required tests
+no longer depend on build/fixture-unity. Cross-test image helper imports were
+replaced by the existing shared PNG utility, preserving sampling semantics.
+Selftest selections were updated after the duplicate protocol CRUD owner was
+removed. The runner also preserves explicit --url priority over module-owned
+project setup: a real HTTP selftest uses a nonexistent local-editor sentinel,
+fails on the pre-fix runner and passes after the fix. The optional fourth
+worker argument is absent on ordinary local runs. This existing CLI/selftest
+contract is ancillary to the 408 audited MCP cases, not another framework
+case. Active development/prefab instructions now describe owned projects.
+
+Production bug exposed by the better tests
+
+The shader guide explicitly permits project-relative fork paths with an
+assets-relative fallback (docs/mcp/guide/shaders.md:166-167). Opening an
+existing project installs ShaderManifests' Project::readShaderFile callback;
+creating a fresh project did not. Once assets_dir was a distinct directory,
+valid project-root shader files could produce empty scene-input metadata
+and compile against the wrong requirements.
+
+The minimal real-editor reproduction had both files present and assets_dir
+set to assets, yet returned no scenedepth input and failed. The fix installs
+the same lazy reader in Project::createProjectInDirectory before loading any
+new scene. The existing test_material_variant now covers this configuration
+and restores settings afterward; no new test-only production seam was added.
+The old reproduction fails and the fixed editor reports reads: [scenedepth].
+Relevant logs: tappy-shader-root-repro.log,tappy-shader-root-fixed.log and
+8/8 passing scene-input owners on the rebuilt native editor. All five native
+CPU targets also pass after this fix.
+
+Performance and reliability evidence
+
+The starting full attempt recorded 283 passes, 394 missing-fixture failures,
+1 opt-in skip in 781.84595s. Those 394 failed before useful test-body work;
+that time is not a prerequisite-complete performance baseline. A green run
+that now executes those contracts must not be advertised as a percentage
+speedup against setup failures. tappyplane-performance.json records actual
+partition results, source-qualified slow cases, raw paired timings and limits.
+The final examples partition passed 12/12 in 1,636.8s. The other partition
+recorded 567 passes, three failures and five skips in 1,841.5s (outer measured
+wall time 1,841.626s). They overlap, so adding those times would not measure
+the full gate's wall time. No comparable prerequisite-complete before/after
+total, absolute suite saving or percentage suite gain can be reported.
+
+A controlled new comparison exists for the standalone legacy instance
+workflow: the same owned asset-free fixture before/after removing redundant
+operations, three alternating pairs, all six pass. Median 9.670078 to 7.351320s,
+2.318758s saved (23.9787%). Nested 18.036s and variant 15.889s are single final
+observations only, not attributed improvements. Full catalogue shader
+compilation and the HTML example interactions/goldens remain intentionally
+expensive because their independent public contracts are not superseded.
+No measured CI wall-time/billing reduction or whole-suite speedup is claimed.
+
+Validation commands and results
+
+Common actual environment:
+  JASPER_FIXTURE and JASPER_FAKE unset
+  JASPER_EDITOR=$PWD/build/test-cleanup/baseline-build/jasperengine-editor
+  PATH=$PWD/build/test-cleanup/venv/bin:$PWD/build/test-cleanup/tools/luals/bin:$PATH
+  JASPER_XVFB=editor LP_NUM_THREADS=2
+  dbus-run-session for each actual MCP driver
+
+Required partition A:
+  dbus-run-session -- build/test-cleanup/venv/bin/python tools/mcp/run_tests.py --keep -j 1 tools/mcp/tests/test_html_ui_examples.py
+Required partition B:
+  dbus-run-session -- build/test-cleanup/venv/bin/python tools/mcp/run_tests.py --keep -j 1 <all current test_*.py files except test_html_ui_examples.py>
+The exact file argv is stored in build/test-cleanup/tappy-full-rest-manifest.json
+and tappy-full-rest.json. The partitions overlap in time and together cover
+every collected case; neither is an optional or removed gate. The report
+generator checks unique coverage when both complete.
+
+Latest five-case project-resource replay strengthens the surviving owner
+with missing CLAUDE import generation; it supplements its full-run observation
+without double-counting case IDs. Other new root changes only move an existing
+pixel helper/import; pixel thresholds and sample stride remain unchanged.
+
+Executed build:
+  build/test-cleanup/venv/bin/cmake --build build/test-cleanup/baseline-build --target jasperengine-editor jasperengine-editor-tests jasperengine-htmlui-editor-tests -j2
+Executed native driver:
+  build/test-cleanup/venv/bin/python build/test-cleanup/run_native_final.py cpu
+All five entries exit 0; total 34.611s. The unchanged base skips
+are the decomposition-OFF body in an ON build and opt-in live Google Fonts.
+Earlier phase real OFF/live-network executions are not claimed repeated.
+
+Harness selftest:
+  build/test-cleanup/venv/bin/python tools/mcp/selftest.py
+All 31 checks passed after sample-selection and explicit-URL configuration fixes.
+The explicit --url regression check failed on the pre-fix runner
+(tappy-url-override-before.log); the corrected runner passes all 31 checks
+(tappy-harness-selftest-final.log).
+Standalone workflows (actual native CLI):
+  JASPER_EDITOR=<absolute native editor> build/test-cleanup/venv/bin/python tools/prefab-instance-edit-test.py
+  JASPER_EDITOR=<absolute native editor> build/test-cleanup/venv/bin/python tools/prefab-nested-test.py
+  JASPER_EDITOR=<absolute native editor> build/test-cleanup/venv/bin/python tools/prefab-variant-test.py
+All pass; material-only corruption is rejected, derived metadata alone is
+accepted, and absent subtree roots are rejected. No standalone player build
+or rendering run is inferred from a successful dump/export fixture builder.
+
+Ruff correctness (F401/F821/F822/F823), Python syntax and git diff checks pass
+for the changed sources as recorded by the workstreams/root. Broader Ruff
+style findings in runtime files were verified pre-existing. Targeted group
+results remain visible in source-qualified per-case ledgers and summaries;
+initial fixture errors include a reserved Water layer collision, assumed
+asset/Lua directories, soft asynchronous audio readiness and scaling-mode
+assumptions. They were corrected with authored valid setup, not deleted to
+make failing legitimate contracts disappear. Source-generation/import orphan
+errors found during final collection were corrected before the final relevant
+workers, with no meaningful assertion weakened.
+
+The three raw stress failures came from modal setup: Ctrl+S opened a dialog,
+then a mutating frame-wait was correctly refused while modal; the open dialog
+blocked the next two cases. Setup now polls read-only editor_status until the
+dialog appears, releases keys in finally, and always cancels/closes in outer
+cleanup. Modal refusal, allowed reads and recovery assertions remain. The
+corrected three cases pass in 7.6s and the complete stress file passes 12/12
+in two fresh runs, 18.0s and 19.7s, without retries masking a failure.
+Raw initial failures are retained in tappy-full-rest.log; final
+per-case receipts are in build/test-cleanup/tappy-final-verification.json.
+
+Limits and delivery
+
+No new external project must be supplied for the required MCP suite. The
+required partitions retain five explicit opt-in skips. The C++ compiler
+failure case separately passes with JASPER_SLOW_TESTS=1 in 7.1s; the remaining
+four desktop-player opt-ins were not run and are not claimed passing.
+Windows/macOS/iOS/Android/Web builds and Vulkan runtime checks were not repeated
+by this Linux follow-up. No production engine-core code changed; one editor
+project-initialization bug was fixed and validated as described above.
+
+The branch is main. All changes are owned follow-up work on the clean
+304e64e43 starting point. Fetch/integration found no incoming origin/main
+changes (0/0). The final completion message provides the actual cleanup
+commit hash and verified origin/main push receipt.

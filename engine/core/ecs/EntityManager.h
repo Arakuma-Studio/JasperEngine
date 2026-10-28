@@ -339,6 +339,13 @@ namespace jasperengine{
             data->name = name;
         }
 
+        // the name without a copy (an empty one for an unknown entity)
+        const std::string& getNameRef(Entity entity) const{
+            static const std::string none;
+            const EntityMetadata* data = find(entity);
+            return data ? data->name : none;
+        }
+
         std::string getName(Entity entity) const{
             const EntityMetadata* data = find(entity);
             if (!data){

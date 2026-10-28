@@ -34,6 +34,8 @@ Json object(const Json& properties, const std::vector<std::string>& required, bo
 }
 
 Json anyObject(const std::string& description) {
+    // a free-form object says so (S31 conventions: an object with properties declares
+    // additionalProperties; upstream's trim left it to the JSON Schema default)
     return described({{"type", "object"}, {"additionalProperties", true}}, description);
 }
 
@@ -108,17 +110,18 @@ Json quat(const std::string& description) {
 }
 
 Json color(const std::string& description) {
-    return {
+    return described({
         {"type", "array"},
         {"items", {{"type", "number"}}},
         {"minItems", 3},
-        {"maxItems", 4},
-        {"description", description.empty() ? "[r,g,b(,a)] 0-1." : description}
-    };
+        {"maxItems", 4}
+    }, description);
 }
 
-// Refs advertise [integer, string]; McpRefs also accepts the {"id"|"name"|"path"} objects results
-// return. The default descriptions are empty: the server instructions explain the conventions.
+// Refs advertise [integer, string] (the CLI's `call` tells an id from a name by it: --entity 42 is
+// the id, --entity '"42"' the name); McpRefs also reads a numeric string like an integer id and
+// accepts the {"id"|"name"|"path"} objects results return. The server instructions (Addressing)
+// explain the conventions, so the default descriptions are empty.
 Json sceneRef(const std::string& description) {
     return described({{"type", {"integer", "string"}}}, description);
 }

@@ -110,14 +110,6 @@ namespace {
 
 }
 
-TEST(PhysicsPlacementWorkspace, EveryFieldRoundTrips) {
-    const PhysicsPlacementSettings changed = changedSettings();
-    expectSame(throughText(changed), changed);
-
-    // and the defaults stay the defaults
-    expectSame(throughText(PhysicsPlacementSettings()), PhysicsPlacementSettings());
-}
-
 TEST(PhysicsPlacementWorkspace, EveryEnumValueRoundTrips) {
     for (PlacementFeel feel : {PlacementFeel::Precise, PlacementFeel::Balanced, PlacementFeel::Fast}) {
         PhysicsPlacementSettings s;

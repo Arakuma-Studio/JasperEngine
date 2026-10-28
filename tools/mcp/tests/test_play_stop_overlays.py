@@ -9,8 +9,6 @@ threw on its missing Transform: "FATAL: unhandled exception: unordered_map::at".
 
 from __future__ import annotations
 
-import asyncio
-
 from harness import Editor
 
 EDITOR = {"create": True, "name": "PlayStopOverlays"}
@@ -18,16 +16,17 @@ CI = True
 
 
 async def test_overlay_made_during_play_survives_stop(ed: Editor):
-    # a few rounds: each body's collider lines are first drawn while Play starts
-    for round_ in range(4):
-        name = f"Body{round_}"
-        await ed.batch([
-            ("create_entity", {"name": name, "type": "cube", "position": [round_ * 2.0, 1, 0]}),
-            ("add_component", {"entity": name, "component": "Rigidbody"}),
-            ("play", {"action": "start"}),
-        ])
-        await asyncio.sleep(2.0)
-        await ed.call("play", action="stop")
-        await asyncio.sleep(1.0)
-        await ed.check_alive()
-        await ed.call("get_entity", entity=name)
+    await ed.batch([
+        ("create_entity", {"name": "Body", "type": "cube", "position": [0, 1, 0]}),
+        ("add_component", {"entity": "Body", "component": "Rigidbody"}),
+        ("play", {"action": "start", "auto_pause": True, "fixed_fps": 60}),
+    ])
+    try:
+        await ed.call("wait", frames=3)
+    finally:
+        await ed.call("play", action="stop", auto_pause=False, fixed_fps=0)
+    # Both views hide/show their own overlays after Stop; the old deletion crashed here.
+    for view in ("scene", "game"):
+        image = await ed.call_raw("screenshot", {"view": view, "max_width": 160})
+        ed.check(not image.is_error and image.images, image.text)
+    await ed.call("get_entity", entity="Body")

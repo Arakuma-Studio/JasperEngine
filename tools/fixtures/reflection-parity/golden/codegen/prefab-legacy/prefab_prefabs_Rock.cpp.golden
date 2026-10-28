@@ -71,11 +71,6 @@ bool build_prefab_prefabs_Rock(Scene* scene, Entity root, std::vector<Entity>& m
         mesh.submeshes[0].material.foliageTransmission = 0.000000f;
         mesh.submeshes[0].material.alphaMode = static_cast<MaterialAlphaMode>(0);
         mesh.submeshes[0].material.emissiveFactor = Vector3(0.000000f, 0.000000f, 0.000000f);
-        mesh.submeshes[0].material.baseColorTexture.setPath("sprites/rock.png");
-        mesh.submeshes[0].material.baseColorTexture.setMinFilter(TextureFilter::LINEAR);
-        mesh.submeshes[0].material.baseColorTexture.setMagFilter(TextureFilter::LINEAR);
-        mesh.submeshes[0].material.baseColorTexture.setWrapU(TextureWrap::CLAMP_TO_EDGE);
-        mesh.submeshes[0].material.baseColorTexture.setWrapV(TextureWrap::CLAMP_TO_EDGE);
         mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLES;
         mesh.submeshes[0].vertexCount = 6;
         mesh.submeshes[0].faceCulling = false;
@@ -130,11 +125,6 @@ bool build_prefab_prefabs_Rock(Scene* scene, Entity root, std::vector<Entity>& m
         mesh.submeshes[0].material.foliageTransmission = 0.000000f;
         mesh.submeshes[0].material.alphaMode = static_cast<MaterialAlphaMode>(0);
         mesh.submeshes[0].material.emissiveFactor = Vector3(0.000000f, 0.000000f, 0.000000f);
-        mesh.submeshes[0].material.baseColorTexture.setPath("sprites/rock.png");
-        mesh.submeshes[0].material.baseColorTexture.setMinFilter(TextureFilter::LINEAR);
-        mesh.submeshes[0].material.baseColorTexture.setMagFilter(TextureFilter::LINEAR);
-        mesh.submeshes[0].material.baseColorTexture.setWrapU(TextureWrap::CLAMP_TO_EDGE);
-        mesh.submeshes[0].material.baseColorTexture.setWrapV(TextureWrap::CLAMP_TO_EDGE);
         mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLES;
         mesh.submeshes[0].vertexCount = 6;
         mesh.submeshes[0].faceCulling = false;
@@ -189,11 +179,6 @@ bool build_prefab_prefabs_Rock(Scene* scene, Entity root, std::vector<Entity>& m
         mesh.submeshes[0].material.foliageTransmission = 0.000000f;
         mesh.submeshes[0].material.alphaMode = static_cast<MaterialAlphaMode>(0);
         mesh.submeshes[0].material.emissiveFactor = Vector3(0.000000f, 0.000000f, 0.000000f);
-        mesh.submeshes[0].material.baseColorTexture.setPath("sprites/rock-down.png");
-        mesh.submeshes[0].material.baseColorTexture.setMinFilter(TextureFilter::LINEAR);
-        mesh.submeshes[0].material.baseColorTexture.setMagFilter(TextureFilter::LINEAR);
-        mesh.submeshes[0].material.baseColorTexture.setWrapU(TextureWrap::CLAMP_TO_EDGE);
-        mesh.submeshes[0].material.baseColorTexture.setWrapV(TextureWrap::CLAMP_TO_EDGE);
         mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLES;
         mesh.submeshes[0].vertexCount = 6;
         mesh.submeshes[0].faceCulling = false;

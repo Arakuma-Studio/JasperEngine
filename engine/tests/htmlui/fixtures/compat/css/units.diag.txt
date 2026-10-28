@@ -1,8 +1,0 @@
-compat/css/units.css:5:25: info: unit 'ch' is approximated as 0.5em (fix: use em or rem) [HTMLUI-CSS-0005]
-compat/css/units.css:5:39: info: unit 'ex' is approximated as 0.5em (fix: use em or rem) [HTMLUI-CSS-0005]
-compat/css/units.css:5:56: info: unit 'cap' is approximated as 0.7em (fix: use em or rem) [HTMLUI-CSS-0005]
-compat/css/units.css:5:77: info: unit 'ic' is approximated as 1em (fix: use em or rem) [HTMLUI-CSS-0005]
-compat/css/units.css:5:95: info: unit 'lh' is approximated as 1.2em (fix: use em or rem) [HTMLUI-CSS-0005]
-compat/css/units.css:5:116: info: unit 'rlh' is approximated as 1.2rem (fix: use em or rem) [HTMLUI-CSS-0005]
-compat/css/units.css:6:21: warning: container query unit 'cqw' is not supported; declaration dropped (fix: use vw / vh, or % of the parent) [HTMLUI-CSS-0014]
-compat/css/units.css:7:24: warning: container query unit 'cqh' is not supported; declaration dropped (fix: use vw / vh, or % of the parent) [HTMLUI-CSS-0014]

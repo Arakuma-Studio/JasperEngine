@@ -139,9 +139,6 @@ namespace jasperengine{
 
         void destroy();
 
-        // test/debug use: the sg_pipeline_desc endLoad creates (or created) the pipeline
-        // of that type from, with the current load description
-        sg_pipeline_desc describePipeline(PipelineType pipType) const;
 
     };
 }

@@ -6,13 +6,19 @@
 #include "DocumentFile.h"
 #include "Engine.h"
 #include "Stream.h"
+#include "Project.h"
 #include "System.h"
+#include "TestSystem.h"
 #include "command/CommandHandle.h"
 
+#include <gtest/gtest.h>
+
+#include <algorithm>
 #include <cstdlib>
 #include <fstream>
 #include <iterator>
 #include <mutex>
+#include <vector>
 
 namespace fs = std::filesystem;
 using namespace jasperengine;
@@ -22,6 +28,52 @@ void editor::test::ensureEngine() {
     // engine/tests/support/TestMain.cpp starts the engine before any test, with the support
     // library's TestSystem (headless, logs captured); a second Engine::systemInit with another
     // System would leave that capture reading the wrong object
+}
+
+namespace {
+
+    // a test's project paths end with it: the next test runs on the test System's own
+    class ProjectPathsReset : public ::testing::EmptyTestEventListener {
+    public:
+        void OnTestEnd(const ::testing::TestInfo&) override { jasperengine::test::TestSystem::get().clearPathProvider(); }
+    };
+
+    const bool projectPathsResetInstalled = []() {
+        ::testing::UnitTest::GetInstance()->listeners().Append(new ProjectPathsReset());
+        return true;
+    }();
+
+    std::vector<Project*>& projectsToRelease() {
+        static std::vector<Project*> projects;
+        return projects;
+    }
+
+    // the headless projects' scenes go when the tests end (as PlacementSessionTest's
+    // EngineShutdown: a static environment, torn down with the others)
+    struct ReleaseProjects : public ::testing::Environment {
+        void TearDown() override {
+            for (Project* project : projectsToRelease()) project->releaseScenes();
+            projectsToRelease().clear();
+        }
+    };
+
+    [[maybe_unused]] ::testing::Environment* const releaseProjects = ::testing::AddGlobalTestEnvironment(new ReleaseProjects);
+
+}
+
+void editor::test::releaseAtExit(Project* project) {
+    std::vector<Project*>& projects = projectsToRelease();
+    if (project && std::find(projects.begin(), projects.end(), project) == projects.end()) projects.push_back(project);
+}
+
+void editor::test::useProjectPaths(Project* project) {
+    (void)projectPathsResetInstalled;
+    releaseAtExit(project);
+    jasperengine::test::TestSystem::PathProvider provider;
+    provider.assets = [project]() { return project->getAssetsPath().string(); };
+    provider.lua = [project]() { return project->getLuaPath().string(); };
+    provider.userData = [project]() { return project->getUserDataPath().string(); };
+    jasperengine::test::TestSystem::get().setPathProvider(std::move(provider));
 }
 
 void editor::test::closeProject(Project& project) {

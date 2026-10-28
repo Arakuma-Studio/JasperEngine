@@ -47,7 +47,8 @@ namespace jasperengine::editor::reflect {
     };
 
     enum class AssetKind : uint8_t {
-        None, Texture, Cubemap, Font, Material, Model, Audio, Script, Prefab, Shader, UIDocument, Scene, Any
+        None, Texture, Cubemap, Font, Material, Model, Audio, Script, Prefab, Shader, UIDocument, Scene, Any,
+        PoseAnimation, AnimationClip
     };
 
     enum class Unit : uint8_t {
