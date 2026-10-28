@@ -91,6 +91,8 @@ struct NavMeshBuilder::TileJob::State {
     std::shared_ptr<const NavBakeInput> input;
     uint32_t index = 0;
     Stage stage = Stage::Gather;
+    // the step within a stage split into several (each Recast pass of a time-sliced bake is one)
+    int part = 0;
     NavTileBuildResult result;
     std::chrono::steady_clock::time_point started;
     double busyMs = 0.0;
@@ -279,9 +281,14 @@ void NavMeshBuilder::TileJob::State::rasterize() {
 }
 
 void NavMeshBuilder::TileJob::State::compact() {
-    rcFilterLowHangingWalkableObstacles(&context, cfg.walkableClimb, *scratch.heightfield);
-    rcFilterLedgeSpans(&context, cfg.walkableHeight, cfg.walkableClimb, *scratch.heightfield);
-    rcFilterWalkableLowHeightSpans(&context, cfg.walkableHeight, *scratch.heightfield);
+    // one Recast pass per step: a time-sliced bake never runs two of them in one go
+    switch (part++) {
+        case 0: rcFilterLowHangingWalkableObstacles(&context, cfg.walkableClimb, *scratch.heightfield); return;
+        case 1: rcFilterLedgeSpans(&context, cfg.walkableHeight, cfg.walkableClimb, *scratch.heightfield); return;
+        case 2: rcFilterWalkableLowHeightSpans(&context, cfg.walkableHeight, *scratch.heightfield); return;
+        default: break;
+    }
+    part = 0;
 
     scratch.compact = rcAllocCompactHeightfield();
     if (!scratch.compact ||
@@ -306,32 +313,37 @@ void NavMeshBuilder::TileJob::State::markAreas() {
     rcCompactHeightfield& chf = *scratch.compact;
     // volumes in the collector's order (ascending area, Not Walkable and 2D footprints last),
     // before erosion, so agents keep their radius from what they may not enter
-    std::vector<float> polygon;
-    for (const NavConvexVolume& volume : input.volumes) {
-        if (volume.bmax[0] < cfg.bmin[0] || volume.bmin[0] > cfg.bmax[0] ||
-            volume.bmax[2] < cfg.bmin[2] || volume.bmin[2] > cfg.bmax[2] ||
-            volume.points.size() < 6)
-            continue;
-        polygon.clear();
-        for (size_t i = 0; i + 1 < volume.points.size(); i += 2) {
-            polygon.push_back(volume.points[i]);
-            polygon.push_back(0.0f);
-            polygon.push_back(volume.points[i + 1]);
+    if (part == 0) {
+        part = 1;
+        std::vector<float> polygon;
+        for (const NavConvexVolume& volume : input.volumes) {
+            if (volume.bmax[0] < cfg.bmin[0] || volume.bmin[0] > cfg.bmax[0] ||
+                volume.bmax[2] < cfg.bmin[2] || volume.bmin[2] > cfg.bmax[2] ||
+                volume.points.size() < 6)
+                continue;
+            polygon.clear();
+            for (size_t i = 0; i + 1 < volume.points.size(); i += 2) {
+                polygon.push_back(volume.points[i]);
+                polygon.push_back(0.0f);
+                polygon.push_back(volume.points[i + 1]);
+            }
+            // Recast turns the heights into span cells as ints: an unbounded volume (a 2D footprint)
+            // is clamped to the tile's heights first (beyond them it would overflow and mark nothing)
+            const float low = std::max(volume.minY, chf.bmin[1] - chf.ch);
+            const float high = std::min(volume.maxY, chf.bmax[1] + chf.ch);
+            if (low > high)
+                continue;
+            rcMarkConvexPolyArea(&context, polygon.data(), (int)(polygon.size() / 3), low, high, volume.recastArea, chf);
         }
-        // Recast turns the heights into span cells as ints: an unbounded volume (a 2D footprint)
-        // is clamped to the tile's heights first (beyond them it would overflow and mark nothing)
-        const float low = std::max(volume.minY, chf.bmin[1] - chf.ch);
-        const float high = std::min(volume.maxY, chf.bmax[1] + chf.ch);
-        if (low > high)
-            continue;
-        rcMarkConvexPolyArea(&context, polygon.data(), (int)(polygon.size() / 3), low, high, volume.recastArea, chf);
-    }
-
-    if (!rcErodeWalkableArea(&context, cfg.walkableRadius, chf)) {
-        fail("Recast could not erode the walkable area");
         return;
     }
-
+    if (part == 1) {
+        part = 2;
+        if (!rcErodeWalkableArea(&context, cfg.walkableRadius, chf))
+            fail("Recast could not erode the walkable area");
+        return;
+    }
+    part = 0;
     if (input.config.carving) {
         buildLayers();
         return;
