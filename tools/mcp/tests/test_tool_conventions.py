@@ -46,6 +46,8 @@ VERBS = {
     "discard", "wait", "resolve", "retarget", "raycast", "reimport", "control",
     # S28: dismiss_crash_notice (marks a report handled, not a close), debug_crash (crashes on purpose)
     "dismiss", "debug",
+    # S19: visualize_navigation (the spec's name: overlay flags and a Scene view image)
+    "visualize",
 }
 
 # Names registered before the verb_noun rule (S31): they keep their names
