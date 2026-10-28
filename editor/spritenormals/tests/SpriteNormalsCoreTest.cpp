@@ -1349,6 +1349,18 @@ TEST(SpriteNormalsQuantize, RotationAndWrapAroundAtHalfTurn) {
     expectAngles(snap(near360, 0.0, 60.0), 359.0, 45.0);
     expectAngles(snap(near360, 10.0, 60.0), 359.0, 45.0);   // 11 past 359, 19 short of 29
     expectAngles(snap(near360, 20.0, 60.0), 29.0, 45.0);
+    // 360 is exactly 0, for direct Settings callers too: the same palette and the same bytes
+    EXPECT_EQ(quantizePalette(quantizeOf(8, 2, 10.0f, 360.0f)), quantizePalette(quantizeOf(8, 2, 10.0f, 0.0f)));
+    for (double az : {0.0, 22.5, 100.0, 181.0, 359.0}) {
+        const std::array<double, 3> n = fromAngles(az, 40.0);
+        EXPECT_EQ(quantizeNormal(quantizeOf(8, 2, 10.0f, 360.0f), n[0], n[1], n[2]), quantizeNormal(eight, n[0], n[1], n[2])) << az;
+    }
+    {
+        const Image color = loadPng(kFixtures / "inputs" / "character.png");
+        Settings whole = presetSettings(Preset::Toon);
+        whole.quantize.rotationDeg = 360.0f;
+        EXPECT_EQ(run(color, whole).normal.data, run(color, presetSettings(Preset::Toon)).normal.data);
+    }
     // the palette's order: flat, then rings innermost first, azimuths from the rotation
     const std::vector<std::array<double, 3>> palette = quantizePalette(turned);
     ASSERT_EQ(palette.size(), 5u);

@@ -2882,9 +2882,15 @@ void SpriteNormalsWindow::drawToonAdvanced(const sn::Settings& base, bool& chang
             if (settings.quantize.directions == values[i]) v = i;
         }
         ImGui::SetNextItemWidth(-FLT_MIN);
-        if (ImGui::Combo("##toonDirections", &v, names, 6)) {
-            settings.quantize.directions = values[v];
-            changed = true;
+        if (ImGui::BeginCombo("##toonDirections", names[v])) {
+            for (int i = 0; i < 6; i++) {
+                if (ImGui::Selectable(names[i], i == v) && i != v) {
+                    settings.quantize.directions = values[i];
+                    changed = true;
+                }
+                UIProbe::item(std::string("spriteNormals.toonDirections.") + names[i]);
+            }
+            ImGui::EndCombo();
         }
         UIProbe::item("spriteNormals.toonDirections");
         tooltip("Toon steps: how many directions around the circle (Off, 4, 6, 8, 12, 16)");
@@ -2941,7 +2947,7 @@ void SpriteNormalsWindow::drawToonAdvanced(const sn::Settings& base, bool& chang
                 "Toon steps: turns the directions (0 = one points right). Keep 0 for straight-sided art: a step boundary on an axis "
                 "(22.5 with 8) makes those sides speckle");
     if (settings.quantize.rotationDeg != rotationBefore) {
-        // 360 is 0 (the range excludes it)
+        // 360 is 0 (a whole turn; recipes record 0)
         float r = std::fmod(settings.quantize.rotationDeg, 360.0f);
         settings.quantize.rotationDeg = r < 0.0f ? r + 360.0f : r;
     }

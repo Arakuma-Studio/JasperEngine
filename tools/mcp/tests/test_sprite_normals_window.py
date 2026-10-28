@@ -389,6 +389,29 @@ async def test_toon_steps(ed: Editor):
         await rect_of(ed, "spriteNormals.toonTilts", "Tilt rings", panel="spriteNormals.settings")
     await ed.call("wait", frames=10)
     await shot(ed, "q-window-advanced")
+    # 6 and 12 (only in the Advanced Directions combo) show as an extra, selected button on the Toon steps row
+    for d in ("6", "12"):
+        await click(ed, await rect_of(ed, "spriteNormals.toonDirections", "the Directions combo", panel="spriteNormals.settings"))
+        await click(ed, await rect_of(ed, f"spriteNormals.toonDirections.{d}", f"{d} in the Directions combo"))
+        await rect_of(ed, f"spriteNormals.toonStepsSelected.{d}", f"{d} selected on the Toon steps row", panel="spriteNormals.settings")
+        row = [n for n in ed.ui_items() if n.startswith("spriteNormals.toonSteps")]
+        ed.check(sorted(row) == sorted(["spriteNormals.toonSteps.Off", "spriteNormals.toonSteps.4", "spriteNormals.toonSteps.8",
+                                        "spriteNormals.toonSteps.16", f"spriteNormals.toonStepsSelected.{d}"]), f"five buttons with {d}: {row}")
+        await shot(ed, f"q-window-{d}")
+    await click(ed, await rect_of(ed, "spriteNormals.toonSteps.4", "Toon steps 4", panel="spriteNormals.settings"))
+    await rect_of(ed, "spriteNormals.toonStepsSelected.4", "4 selected again", panel="spriteNormals.settings")
+    ed.check("spriteNormals.toonSteps.6" not in ed.ui_items() and "spriteNormals.toonSteps.12" not in ed.ui_items(), "back to four buttons")
+
+    def toon_rows() -> tuple[float, float]:
+        items = ed.ui_items()
+        off, last = items.get("spriteNormals.toonSteps.Off"), items.get("spriteNormals.toonSteps.16")
+        ed.check(off and last, f"the Toon steps buttons are drawn: {off} {last}")
+        return off[1], last[1]
+
+    await rect_of(ed, "spriteNormals.toonSteps.16", "Toon steps 16", panel="spriteNormals.settings")
+    await rect_of(ed, "spriteNormals.toonSteps.Off", "Toon steps Off", panel="spriteNormals.settings")
+    wide_off, wide_last = toon_rows()
+    ed.check(abs(wide_off - wide_last) < 1, f"one Toon steps row at the default width: Off y {wide_off}, 16 y {wide_last}")
     # a narrower settings column (its border dragged left): the six presets wrap to rows instead of clipping
     area = await rect_of(ed, "spriteNormals.settings", "the settings panel")
     narrow = area
@@ -409,6 +432,10 @@ async def test_toon_steps(ed: Editor):
     await rect_of(ed, "spriteNormals.presets.Soft", "Soft", panel="spriteNormals.settings")
     soft, chunky = ed.ui_items().get("spriteNormals.presets.Soft"), ed.ui_items().get("spriteNormals.presets.Chunky")
     ed.check(soft and chunky and chunky[1] > soft[3] - 1, f"the presets wrap to a second row: {soft} {chunky}")
+    await rect_of(ed, "spriteNormals.toonSteps.16", "Toon steps 16", panel="spriteNormals.settings")
+    await rect_of(ed, "spriteNormals.toonSteps.Off", "Toon steps Off", panel="spriteNormals.settings")
+    narrow_off, narrow_last = toon_rows()
+    ed.check(narrow_last > narrow_off + 1, f"the Toon steps buttons wrap to a second row: Off y {narrow_off}, 16 y {narrow_last}")
     await ed.call("wait", frames=10)
     await shot(ed, "q-window")
     await click(ed, await rect_of(ed, "spriteNormals.toonSteps.Off", "Toon steps Off", panel="spriteNormals.settings"))

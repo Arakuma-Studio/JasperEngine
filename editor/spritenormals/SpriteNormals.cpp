@@ -296,6 +296,9 @@ namespace jasperengine::editor::spritenormals {
             return mask;
         }
 
+        // 360 is a whole turn: exactly 0, so every caller gets 0's bits (sin and cos of 2 pi + x are not those of x)
+        double quantizeRotation(const Quantize& q) { return q.rotationDeg == 360.0f ? 0.0 : static_cast<double>(q.rotationDeg); }
+
         bool isQuantizeDirections(int d) { return d == 0 || d == 4 || d == 6 || d == 8 || d == 12 || d == 16; }
 
         inline float autoRadius(float side) { return std::min(std::max(0.15f * side, 4.0f), 512.0f); }
@@ -510,7 +513,7 @@ namespace jasperengine::editor::spritenormals {
         // under the flat cone, or no azimuth to snap (x = y = 0): facing the viewer
         if (tilt < flat || (x == 0.0 && y == 0.0)) return {0.0, 0.0, 1.0};
         const double step = 360.0 / q.directions;
-        const double rotation = q.rotationDeg;
+        const double rotation = quantizeRotation(q);
         // measured from the rotation in [0, 360): -180 and +180 snap alike
         double from = std::fmod(std::atan2(y, x) * kDeg - rotation, 360.0);
         if (from < 0.0) from += 360.0;
@@ -532,7 +535,7 @@ namespace jasperengine::editor::spritenormals {
         for (int r = 0; r < q.tilts; r++) {
             const double t = (q.flatDeg + (r + 0.5) * ring) / kDeg;
             for (int k = 0; k < q.directions; k++) {
-                const double azimuth = (q.rotationDeg + k * step) / kDeg;
+                const double azimuth = (quantizeRotation(q) + k * step) / kDeg;
                 palette.push_back({std::sin(t) * std::cos(azimuth), std::sin(t) * std::sin(azimuth), std::cos(t)});
             }
         }
