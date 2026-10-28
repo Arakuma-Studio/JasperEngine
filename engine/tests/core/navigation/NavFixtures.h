@@ -128,7 +128,10 @@ namespace jasperengine::navtest {
         TerrainComponent component;
         component.terrainSize = size;
         component.maxHeight = maxHeight;
-        component.heightMap.setData("navtest-heights-" + std::to_string(entity),
+        // a texture id of its own every time: the texture pool keeps ids across scenes, and an
+        // earlier test's id would hand back its (freed) pixels
+        static int serial = 0;
+        component.heightMap.setData("navtest-heights-" + std::to_string(++serial),
                                     TextureData(heights.size, heights.size, (unsigned int)heights.pixels->size(), ColorFormat::RED, 1,
                                                 heights.pixels->data()));
         scene.addComponent<TerrainComponent>(entity, component);
