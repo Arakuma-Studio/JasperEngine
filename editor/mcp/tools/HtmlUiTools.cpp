@@ -1961,7 +1961,7 @@ void registerHtmlUiTools(McpRegistry& registry) {
         tool.description =
             "A live HTML/CSS UI document: element tree (ref = reusable selector, box [x,y,w,h] canvas px = "
             "send_input coords, flags overflow/clipped/hidden/offscreen, effects), diagnostics; detail full: box model, "
-            "computed styles + each rule's file:line. at: hit test. file: a .html/.css's diagnostics, no document (= "
+            "styles + rule file:line. at: hit test. file: a .html/.css's diagnostics (= "
             "`jasperengine-editor check --ui`). Lua-made content: play only.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
@@ -1975,10 +1975,10 @@ void registerHtmlUiTools(McpRegistry& registry) {
             {"styles", array(Json{{"type", "string"}}, "Computed CSS properties.")},
             {"limit", withDefault(integer("", 1, 1000), 200)},
             {"models", boolean("Data-model values (play).")},
-            {"reload", boolean("The last hot reload's report.")},
-            {"viewport", vec2("Lay out at [w,h] first (restored after).")},
+            {"reload", boolean("Last hot reload's report.")},
+            {"viewport", vec2("Lay out at [w,h], then restore.")},
             {"screenshot", boolean("Game view image, matches outlined.")},
-            {"render_stats", boolean("Last frame's render counters.")},
+            {"render_stats", boolean("Last frame's draw counters.")},
             {"max_width", w3::maxWidthArgSchema(4096, DEFAULT_IMAGE_WIDTH)}
         });
         tool.annotations.readOnly = true;
