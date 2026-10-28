@@ -653,3 +653,7 @@ Done on the merged tree (oe-port 424925911, S08 reflection): nav core 50/50; edi
 ecs, docs, autosync, reflection); linux GL and Vulkan WERROR; ASan+UBSan core 80/80, editor 125/125
 (pre-S08 merge); E bench all budgets (median of 5); web gate single-threaded on E 3/3 and threaded,
 same navmesh hashes; Android emulator (A) pass.
+Evidence on the final tree (323587682 + a61b23298): linux Vulkan WERROR (D) clean; ASan+UBSan (B)
+core 82/82, editor 186/186 (navigation, reflection, stream, ECS, scheduler filters), no sanitizer
+reports. The first run leaked every scene in two S08 tests (ReflectMcpRead, ReflectedValueCmd: no
+releaseScenes before the Project goes); a61b23298 releases them as the other editor tests do.
