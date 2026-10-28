@@ -3,12 +3,12 @@ guid: 9833476a37f04d96e0e409177f514f7a
 id: 1
 name: Nested Scene
 scene:
-  backgroundColor: [0, 0, 0, 1]
+  backgroundColor: [0.1, 0.1, 0.1, 1]
   shadowQuality: auto
-  meshLodEnabled: true
+  meshLodEnabled: false
   meshLodThreshold: 1
   depthPrepassEnabled: false
-  lightState: false
+  lightState: auto
   globalIlluminationIntensity: 0.1
   globalIlluminationColor: [1, 1, 1]
   ambientLight2DIntensity: 1
@@ -24,7 +24,7 @@ scene:
   ssrMaxSteps: 48
   ssrIntensity: 1
   ssrBlur: 0
-  gravity2D: [0, -9.81]
+  gravity2D: [0, 0]
   gravity3D: [0, -9.81, 0]
   fixedResolutionEnabled: false
   fixedResolutionWidth: 640
@@ -47,12 +47,10 @@ maxValues:
   maxColliderIndices3D: 0
 shaderKeys:
   - type: mesh
-    properties: 3075
+    properties: 3073
   - type: depth
   - type: depth
-    properties: 1
-  - type: depth
-    properties: 129
+    properties: 128
   - type: blit
 entities:
   - type: Entity
@@ -85,16 +83,6 @@ entities:
               foliageTransmission: 0
               alphaMode: AUTO
               emissiveFactor: [0, 0, 0]
-              baseColorTexture:
-                textureType: 2D
-                source: path
-                path: sprites/ground.png
-                guid: 6da86ed364ad55ac29447a0999cd2f23
-                minFilter: linear
-                magFilter: linear
-                wrapU: clamp_to_edge
-                wrapV: clamp_to_edge
-                releaseDataAfterLoad: true
               baseColorTexCoord: 0
               metallicRoughnessTexCoord: 0
               occlusionTexCoord: 0
@@ -119,7 +107,6 @@ entities:
             hasMorphTangent: false
         normAdjustJoint: 1
         normAdjustWeight: 1
-        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
         aabb:
           min: [-200, 0, 0]
           max: [200, 60, 0]
@@ -137,7 +124,7 @@ entities:
         lodBias: 1
         renderInReflectionProbes: true
         shadowsBillboard: true
-        transparent: true
+        transparent: false
         autoTransparency: true
         cullingMode: back
         windingOrder: ccw
@@ -204,16 +191,6 @@ entities:
                   foliageTransmission: 0
                   alphaMode: AUTO
                   emissiveFactor: [0, 0, 0]
-                  baseColorTexture:
-                    textureType: 2D
-                    source: path
-                    path: sprites/rock.png
-                    guid: 3d7db38a9143846dc003c29c55eb5c4e
-                    minFilter: linear
-                    magFilter: linear
-                    wrapU: clamp_to_edge
-                    wrapV: clamp_to_edge
-                    releaseDataAfterLoad: true
                   baseColorTexCoord: 0
                   metallicRoughnessTexCoord: 0
                   occlusionTexCoord: 0
@@ -238,7 +215,6 @@ entities:
                 hasMorphTangent: false
             normAdjustJoint: 1
             normAdjustWeight: 1
-            morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
             aabb:
               min: [-60, 0, 0]
               max: [60, 260, 0]
@@ -256,7 +232,7 @@ entities:
             lodBias: 1
             renderInReflectionProbes: true
             shadowsBillboard: true
-            transparent: true
+            transparent: false
             autoTransparency: true
             cullingMode: back
             windingOrder: ccw
@@ -299,16 +275,6 @@ entities:
                       foliageTransmission: 0
                       alphaMode: AUTO
                       emissiveFactor: [0, 0, 0]
-                      baseColorTexture:
-                        textureType: 2D
-                        source: path
-                        path: sprites/ground.png
-                        guid: 6da86ed364ad55ac29447a0999cd2f23
-                        minFilter: linear
-                        magFilter: linear
-                        wrapU: clamp_to_edge
-                        wrapV: clamp_to_edge
-                        releaseDataAfterLoad: true
                       baseColorTexCoord: 0
                       metallicRoughnessTexCoord: 0
                       occlusionTexCoord: 0
@@ -333,7 +299,6 @@ entities:
                     hasMorphTangent: false
                 normAdjustJoint: 1
                 normAdjustWeight: 1
-                morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
                 aabb:
                   min: [-40, 0, 0]
                   max: [40, 40, 0]
@@ -351,7 +316,7 @@ entities:
                 lodBias: 1
                 renderInReflectionProbes: true
                 shadowsBillboard: true
-                transparent: true
+                transparent: false
                 autoTransparency: true
                 cullingMode: back
                 windingOrder: ccw
@@ -445,16 +410,6 @@ entities:
                       foliageTransmission: 0
                       alphaMode: AUTO
                       emissiveFactor: [0, 0, 0]
-                      baseColorTexture:
-                        textureType: 2D
-                        source: path
-                        path: sprites/rock-down.png
-                        guid: 1035926b6b910eaf387e747d96dba4e8
-                        minFilter: linear
-                        magFilter: linear
-                        wrapU: clamp_to_edge
-                        wrapV: clamp_to_edge
-                        releaseDataAfterLoad: true
                       baseColorTexCoord: 0
                       metallicRoughnessTexCoord: 0
                       occlusionTexCoord: 0
@@ -479,7 +434,6 @@ entities:
                     hasMorphTangent: false
                 normAdjustJoint: 1
                 normAdjustWeight: 1
-                morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
                 aabb:
                   min: [-30, 0, 0]
                   max: [30, 140, 0]
@@ -497,7 +451,7 @@ entities:
                 lodBias: 1
                 renderInReflectionProbes: true
                 shadowsBillboard: true
-                transparent: true
+                transparent: false
                 autoTransparency: true
                 cullingMode: back
                 windingOrder: ccw
@@ -540,16 +494,6 @@ entities:
                           foliageTransmission: 0
                           alphaMode: AUTO
                           emissiveFactor: [0, 0, 0]
-                          baseColorTexture:
-                            textureType: 2D
-                            source: path
-                            path: sprites/rock.png
-                            guid: 3d7db38a9143846dc003c29c55eb5c4e
-                            minFilter: linear
-                            magFilter: linear
-                            wrapU: clamp_to_edge
-                            wrapV: clamp_to_edge
-                            releaseDataAfterLoad: true
                           baseColorTexCoord: 0
                           metallicRoughnessTexCoord: 0
                           occlusionTexCoord: 0
@@ -574,7 +518,6 @@ entities:
                         hasMorphTangent: false
                     normAdjustJoint: 1
                     normAdjustWeight: 1
-                    morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
                     aabb:
                       min: [-15, 0, 0]
                       max: [15, 80, 0]
@@ -592,7 +535,7 @@ entities:
                     lodBias: 1
                     renderInReflectionProbes: true
                     shadowsBillboard: true
-                    transparent: true
+                    transparent: false
                     autoTransparency: true
                     cullingMode: back
                     windingOrder: ccw
@@ -634,16 +577,6 @@ entities:
                           foliageTransmission: 0
                           alphaMode: AUTO
                           emissiveFactor: [0, 0, 0]
-                          baseColorTexture:
-                            textureType: 2D
-                            source: path
-                            path: sprites/ground.png
-                            guid: 6da86ed364ad55ac29447a0999cd2f23
-                            minFilter: linear
-                            magFilter: linear
-                            wrapU: clamp_to_edge
-                            wrapV: clamp_to_edge
-                            releaseDataAfterLoad: true
                           baseColorTexCoord: 0
                           metallicRoughnessTexCoord: 0
                           occlusionTexCoord: 0
@@ -668,7 +601,6 @@ entities:
                         hasMorphTangent: false
                     normAdjustJoint: 1
                     normAdjustWeight: 1
-                    morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
                     aabb:
                       min: [-60, 0, 0]
                       max: [60, 40, 0]
@@ -686,7 +618,7 @@ entities:
                     lodBias: 1
                     renderInReflectionProbes: true
                     shadowsBillboard: true
-                    transparent: true
+                    transparent: false
                     autoTransparency: true
                     cullingMode: back
                     windingOrder: ccw
@@ -761,16 +693,6 @@ entities:
                           foliageTransmission: 0
                           alphaMode: AUTO
                           emissiveFactor: [0, 0, 0]
-                          baseColorTexture:
-                            textureType: 2D
-                            source: path
-                            path: sprites/plane-sheet.png
-                            guid: a24fdc2bf2f6147f4b94acb3faf772da
-                            minFilter: linear
-                            magFilter: linear
-                            wrapU: clamp_to_edge
-                            wrapV: clamp_to_edge
-                            releaseDataAfterLoad: true
                           baseColorTexCoord: 0
                           metallicRoughnessTexCoord: 0
                           occlusionTexCoord: 0
@@ -795,7 +717,6 @@ entities:
                         hasMorphTangent: false
                     normAdjustJoint: 1
                     normAdjustWeight: 1
-                    morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
                     aabb:
                       min: [-44, 0, 0]
                       max: [44, 73, 0]
@@ -813,7 +734,7 @@ entities:
                     lodBias: 1
                     renderInReflectionProbes: true
                     shadowsBillboard: true
-                    transparent: true
+                    transparent: false
                     autoTransparency: true
                     cullingMode: back
                     windingOrder: ccw
@@ -856,16 +777,6 @@ entities:
                               foliageTransmission: 0
                               alphaMode: AUTO
                               emissiveFactor: [0, 0, 0]
-                              baseColorTexture:
-                                textureType: 2D
-                                source: path
-                                path: sprites/rock.png
-                                guid: 3d7db38a9143846dc003c29c55eb5c4e
-                                minFilter: linear
-                                magFilter: linear
-                                wrapU: clamp_to_edge
-                                wrapV: clamp_to_edge
-                                releaseDataAfterLoad: true
                               baseColorTexCoord: 0
                               metallicRoughnessTexCoord: 0
                               occlusionTexCoord: 0
@@ -890,7 +801,6 @@ entities:
                             hasMorphTangent: false
                         normAdjustJoint: 1
                         normAdjustWeight: 1
-                        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
                         aabb:
                           min: [-15, 0, 0]
                           max: [15, 60, 0]
@@ -908,7 +818,7 @@ entities:
                         lodBias: 1
                         renderInReflectionProbes: true
                         shadowsBillboard: true
-                        transparent: true
+                        transparent: false
                         autoTransparency: true
                         cullingMode: back
                         windingOrder: ccw
@@ -950,16 +860,6 @@ entities:
                               foliageTransmission: 0
                               alphaMode: AUTO
                               emissiveFactor: [0, 0, 0]
-                              baseColorTexture:
-                                textureType: 2D
-                                source: path
-                                path: sprites/rock.png
-                                guid: 3d7db38a9143846dc003c29c55eb5c4e
-                                minFilter: linear
-                                magFilter: linear
-                                wrapU: clamp_to_edge
-                                wrapV: clamp_to_edge
-                                releaseDataAfterLoad: true
                               baseColorTexCoord: 0
                               metallicRoughnessTexCoord: 0
                               occlusionTexCoord: 0
@@ -984,7 +884,6 @@ entities:
                             hasMorphTangent: false
                         normAdjustJoint: 1
                         normAdjustWeight: 1
-                        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
                         aabb:
                           min: [-10, 0, 0]
                           max: [10, 40, 0]
@@ -1002,7 +901,7 @@ entities:
                         lodBias: 1
                         renderInReflectionProbes: true
                         shadowsBillboard: true
-                        transparent: true
+                        transparent: false
                         autoTransparency: true
                         cullingMode: back
                         windingOrder: ccw
@@ -1049,16 +948,6 @@ entities:
                               foliageTransmission: 0
                               alphaMode: AUTO
                               emissiveFactor: [0, 0, 0]
-                              baseColorTexture:
-                                textureType: 2D
-                                source: path
-                                path: sprites/rock-down.png
-                                guid: 1035926b6b910eaf387e747d96dba4e8
-                                minFilter: linear
-                                magFilter: linear
-                                wrapU: clamp_to_edge
-                                wrapV: clamp_to_edge
-                                releaseDataAfterLoad: true
                               baseColorTexCoord: 0
                               metallicRoughnessTexCoord: 0
                               occlusionTexCoord: 0
@@ -1083,7 +972,6 @@ entities:
                             hasMorphTangent: false
                         normAdjustJoint: 1
                         normAdjustWeight: 1
-                        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
                         aabb:
                           min: [-10, 0, 0]
                           max: [10, 30, 0]
@@ -1101,7 +989,7 @@ entities:
                         lodBias: 1
                         renderInReflectionProbes: true
                         shadowsBillboard: true
-                        transparent: true
+                        transparent: false
                         autoTransparency: true
                         cullingMode: back
                         windingOrder: ccw
@@ -1202,16 +1090,6 @@ entities:
               foliageTransmission: 0
               alphaMode: AUTO
               emissiveFactor: [0, 0, 0]
-              baseColorTexture:
-                textureType: 2D
-                source: path
-                path: sprites/ground.png
-                guid: 6da86ed364ad55ac29447a0999cd2f23
-                minFilter: linear
-                magFilter: linear
-                wrapU: clamp_to_edge
-                wrapV: clamp_to_edge
-                releaseDataAfterLoad: true
               baseColorTexCoord: 0
               metallicRoughnessTexCoord: 0
               occlusionTexCoord: 0
@@ -1236,7 +1114,6 @@ entities:
             hasMorphTangent: false
         normAdjustJoint: 1
         normAdjustWeight: 1
-        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
         aabb:
           min: [-150, 0, 0]
           max: [150, 30, 0]
@@ -1254,7 +1131,7 @@ entities:
         lodBias: 1
         renderInReflectionProbes: true
         shadowsBillboard: true
-        transparent: true
+        transparent: false
         autoTransparency: true
         cullingMode: back
         windingOrder: ccw

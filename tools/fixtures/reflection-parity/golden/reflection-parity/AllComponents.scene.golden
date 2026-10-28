@@ -201,7 +201,8 @@ entities:
           []
         normAdjustJoint: 1
         normAdjustWeight: 1
-        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        morphWeights: [0.5, 0, 0.25, 0, 0, 0, 0, 0]
+        morphTargetCount: 4
         aabb:
           min: [0, 0, 0]
           max: [0, 0, 0]
@@ -433,6 +434,7 @@ entities:
         enabled: false
         filename: ""
         mergeStaticMeshes: true
+        animationEntities: false
         skeleton: 0
         animations:
           []
@@ -2174,3 +2176,58 @@ entities:
           []
         volumeScale: 9
         dragScale: 0.9
+  - type: Entity
+    entity: 1066
+    name: PoseAnimatorComponent
+    components:
+      transform:
+        position: [65, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [65, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [65, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [65, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, -65], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      poseanimator:
+        animation: animations/parity.poseanim
+        autoplay: false
+        speed: 2.5
+        weight: 0.5
+  - type: Entity
+    entity: 1067
+    name: AnimationPlayerComponent
+    components:
+      transform:
+        position: [66, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [66, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [66, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [66, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, -66], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      animationplayer:
+        enabled: false
+        clips:
+          - clip: animations/parity.anim
+            name: Parity
+            wrap: loop
+          - clip: models/parity.gltf#Run
+            wrap: ping_pong
+        defaultClip: Parity
+        playAutomatically: false
+        speed: 2.5
+        defaultFadeTime: 0.5

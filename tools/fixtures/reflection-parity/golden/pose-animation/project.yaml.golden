@@ -1,0 +1,17 @@
+formatVersion: 1
+name: PoseAnimation
+canvasWidth: 1280
+canvasHeight: 720
+scalingMode: fitwidth
+textureStrategy: none
+vsync: true
+htmlUiMsaaSamples: 4
+windowMode: windowed
+windowWidth: 1280
+windowHeight: 720
+windowResizable: true
+assetsDir: assets
+luaDir: .
+scenes:
+  - filepath: Main Scene.scene
+    filepathGuid: 2385f1a5e2877b94bc16d5309fb19aca
