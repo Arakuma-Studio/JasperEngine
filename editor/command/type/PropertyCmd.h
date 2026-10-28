@@ -297,6 +297,8 @@ namespace jasperengine::editor{
 
             sceneProject->isModified = wasModified;
 
+            notifyAfterWrite(true);
+
             if (onValueChanged) {
                 onValueChanged();
             }

@@ -10814,6 +10814,7 @@
     "indices",
     "lodBias",
     "lodEnabled",
+    "morphTargetCount",
     "morphWeights",
     "normAdjustJoint",
     "normAdjustWeight",
@@ -10870,6 +10871,46 @@
     "lodEnabled": [
      0,
      8,
+     true
+    ],
+    "morphWeights[0]": [
+     2,
+     0,
+     true
+    ],
+    "morphWeights[1]": [
+     2,
+     0,
+     true
+    ],
+    "morphWeights[2]": [
+     2,
+     0,
+     true
+    ],
+    "morphWeights[3]": [
+     2,
+     0,
+     true
+    ],
+    "morphWeights[4]": [
+     2,
+     0,
+     true
+    ],
+    "morphWeights[5]": [
+     2,
+     0,
+     true
+    ],
+    "morphWeights[6]": [
+     2,
+     0,
+     true
+    ],
+    "morphWeights[7]": [
+     2,
+     0,
      true
     ],
     "numSubmeshes": [
@@ -19514,6 +19555,11 @@
      8,
      true
     ],
+    "morphWeights[]": [
+     2,
+     0,
+     true
+    ],
     "numSubmeshes": [
      9,
      0,
@@ -21939,6 +21985,7 @@
    "icon": "ef86b3",
    "key": "model",
    "known_keys": [
+    "animationEntities",
     "animations",
     "bonesIdMapping",
     "bonesNameMapping",
@@ -21951,6 +21998,11 @@
    ],
    "name": "ModelComponent",
    "properties_of_default": {
+    "animationEntities": [
+     0,
+     0,
+     true
+    ],
     "animations": [
      15,
      0,
@@ -21978,6 +22030,11 @@
     ]
    },
    "properties_without_component": {
+    "animationEntities": [
+     0,
+     0,
+     true
+    ],
     "animations": [
      15,
      0,
@@ -31065,6 +31122,172 @@
    "type": 64,
    "type_of_key": 64,
    "type_of_name": 64
+  },
+  {
+   "display_name": "Pose Animator",
+   "enum_options": {},
+   "has_enabled": false,
+   "icon": "ef9c8c",
+   "key": "poseanimator",
+   "known_keys": [
+    "animation",
+    "autoplay",
+    "speed",
+    "weight"
+   ],
+   "name": "PoseAnimatorComponent",
+   "properties_of_default": {
+    "animation": [
+     18,
+     4398046511104,
+     true
+    ],
+    "autoplay": [
+     0,
+     0,
+     true
+    ],
+    "speed": [
+     2,
+     0,
+     true
+    ],
+    "weight": [
+     2,
+     4398046511104,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "animation": [
+     18,
+     4398046511104,
+     true
+    ],
+    "autoplay": [
+     0,
+     0,
+     true
+    ],
+    "speed": [
+     2,
+     0,
+     true
+    ],
+    "weight": [
+     2,
+     4398046511104,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 65,
+   "type_of_key": 65,
+   "type_of_name": 65
+  },
+  {
+   "display_name": "Animation Player",
+   "enum_options": {},
+   "has_enabled": true,
+   "icon": "ef8088",
+   "key": "animationplayer",
+   "known_keys": [
+    "clips",
+    "defaultClip",
+    "defaultFadeTime",
+    "enabled",
+    "playAutomatically",
+    "speed"
+   ],
+   "name": "AnimationPlayerComponent",
+   "properties_of_default": {
+    "clips": [
+     15,
+     8796093022208,
+     true
+    ],
+    "defaultClip": [
+     1,
+     0,
+     true
+    ],
+    "defaultFadeTime": [
+     2,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "playAutomatically": [
+     0,
+     0,
+     true
+    ],
+    "speed": [
+     2,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "clips": [
+     15,
+     8796093022208,
+     true
+    ],
+    "clips[].clip": [
+     1,
+     8796093022208,
+     true
+    ],
+    "clips[].guid": [
+     1,
+     8796093022208,
+     true
+    ],
+    "clips[].name": [
+     1,
+     8796093022208,
+     true
+    ],
+    "clips[].wrap": [
+     15,
+     8796093022208,
+     true
+    ],
+    "defaultClip": [
+     1,
+     0,
+     true
+    ],
+    "defaultFadeTime": [
+     2,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "playAutomatically": [
+     0,
+     0,
+     true
+    ],
+    "speed": [
+     2,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 66,
+   "type_of_key": 66,
+   "type_of_name": 66
   }
  ],
  "ease_options": [
@@ -31287,6 +31510,58 @@
    ],
    "ownedActions": [
     0,
+    0,
+    true
+   ]
+  },
+  "AnimationPlayerComponent": {
+   "clips": [
+    15,
+    8796093022208,
+    true
+   ],
+   "clips[N].clip": [
+    1,
+    8796093022208,
+    true
+   ],
+   "clips[N].guid": [
+    1,
+    8796093022208,
+    true
+   ],
+   "clips[N].name": [
+    1,
+    8796093022208,
+    true
+   ],
+   "clips[N].wrap": [
+    15,
+    8796093022208,
+    true
+   ],
+   "defaultClip": [
+    1,
+    0,
+    true
+   ],
+   "defaultFadeTime": [
+    2,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "playAutomatically": [
+    0,
+    0,
+    true
+   ],
+   "speed": [
+    2,
     0,
     true
    ]
@@ -33119,6 +33394,11 @@
     8,
     true
    ],
+   "morphWeights[N]": [
+    2,
+    0,
+    true
+   ],
    "numSubmeshes": [
     9,
     0,
@@ -33720,8 +34000,348 @@
    ]
   },
   "ModelComponent": {
+   "animationEntities": [
+    0,
+    0,
+    true
+   ],
    "animations": [
     15,
+    0,
+    true
+   ],
+   "bonesIdMapping[N]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[foot.L]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[foot.R]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[forearm.L]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[forearm.R]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[hand.L]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[hand.R]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[head]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:HeadTop_End]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:Head]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:Hips]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:LeftArm]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:LeftFoot]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:LeftForeArm]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:LeftHandIndex1]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:LeftHandIndex2]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:LeftHandIndex3]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:LeftHandMiddle1]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:LeftHandMiddle2]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:LeftHandMiddle3]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:LeftHandThumb1]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:LeftHandThumb2]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:LeftHandThumb3]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:LeftHand]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:LeftLeg]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:LeftShoulder]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:LeftToeBase]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:LeftToe_End]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:LeftUpLeg]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:Neck]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:RightArm]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:RightFoot]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:RightForeArm]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:RightHandIndex1]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:RightHandIndex2]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:RightHandIndex3]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:RightHandMiddle1]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:RightHandMiddle2]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:RightHandMiddle3]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:RightHandThumb1]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:RightHandThumb2]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:RightHandThumb3]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:RightHand]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:RightLeg]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:RightShoulder]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:RightToeBase]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:RightToe_End]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:RightUpLeg]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:Spine1]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:Spine2]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[mixamorig:Spine]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[neck]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[pelvis]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[shin.L]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[shin.R]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[shoulder.L]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[shoulder.R]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[spine.001]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[spine]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[thigh.L]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[thigh.R]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[toe.L]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[toe.R]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[upper_arm.L]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[upper_arm.R]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[upper_arm_twist.L]": [
+    16,
+    0,
+    true
+   ],
+   "bonesNameMapping[upper_arm_twist.R]": [
+    16,
     0,
     true
    ],
@@ -34033,6 +34653,28 @@
    "points": [
     15,
     32,
+    true
+   ]
+  },
+  "PoseAnimatorComponent": {
+   "animation": [
+    18,
+    4398046511104,
+    true
+   ],
+   "autoplay": [
+    0,
+    0,
+    true
+   ],
+   "speed": [
+    2,
+    0,
+    true
+   ],
+   "weight": [
+    2,
+    4398046511104,
     true
    ]
   },
