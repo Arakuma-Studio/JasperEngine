@@ -9,8 +9,9 @@
 // the same bytes (tools/web/gates/navigation.json holds them for both). Then an agent walks the
 // city and arrives (onDestinationReached), and a grid path is found.
 //
-//   WEB_PROJECT=navigation tools/build.sh web ; GATE=navigation tools/build.sh web-gate
-//   WEB_THREADS=1 WEB_PROJECT=navigation tools/build.sh web ; WEB_THREADS=1 GATE=navigation tools/build.sh web-gate
+//   BUILD_TYPE=Release WEB_PROJECT=navigation tools/build.sh web ; GATE=navigation tools/build.sh web-gate
+//   BUILD_TYPE=Release WEB_THREADS=1 WEB_PROJECT=navigation tools/build.sh web ; WEB_THREADS=1 GATE=navigation tools/build.sh web-gate
+// (the slice budget is a release budget: a Debug wasm build's Recast stages are several times slower)
 //   ANDROID_PROJECT=navigation tools/build.sh android (tools/android-emulator-test.sh --expect-file
 //   tools/test-projects/navigation/android-expect.txt)
 
@@ -35,6 +36,7 @@ namespace {
     int frame = 0;
     bool baked = false;
     bool arrived = false;
+    bool sent = false;
     bool reported = false;
 
     uint64_t fnv(const std::vector<uint8_t>& bytes) {
@@ -141,9 +143,6 @@ namespace {
         cells.setCellArea(nav::GridCell{12, 0}, nav::AREA_NOT_WALKABLE);
         const nav::GridPath path = cells.findPath(nav::GridCell{0, 0}, nav::GridCell{23, 15}, nav::GridQuery());
         Log::print("[gate] nav grid path %s %zu cells", nav::pathStatusName(path.status), path.cells.size());
-        NavMeshAgent agent(&scene, walker);
-        agent.getOnDestinationReached() = std::function<void(NavMeshAgent)>([](NavMeshAgent) { arrived = true; });
-        agent.setDestination(Vector3(30.0f, 0.0f, 30.0f));
     }
 
     void onUpdate() {
@@ -158,6 +157,16 @@ namespace {
         if (frame > 2 && !baked && !system->isAnyBaking()) {
             baked = true;
             report();
+        }
+        // once the agent stands on the baked navmesh (the next fixed step places it), it walks
+        if (baked && !sent) {
+            NavMeshAgent agent(&scene, walker);
+            if (agent.isOnNavMesh()) {
+                sent = true;
+                agent.getOnDestinationReached() = std::function<void(NavMeshAgent)>([](NavMeshAgent) { arrived = true; });
+                if (!agent.setDestination(Vector3(30.0f, 0.0f, 30.0f)))
+                    Log::error("[gate] nav setDestination failed");
+            }
         }
         if (arrived && !reported) {
             reported = true;

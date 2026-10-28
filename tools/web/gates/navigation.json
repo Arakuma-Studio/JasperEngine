@@ -1,0 +1,24 @@
+{
+  "description": "tools/test-projects/navigation, a Release build (BUILD_TYPE=Release WEB_PROJECT=navigation tools/build.sh web, gated with GATE=navigation; WEB_THREADS=1 for both steps gives the pthreads build): a reduced bench_nav_city and nav_2d_topdown baked at runtime. Single-threaded, the tiles are time-sliced on the main thread and no slice exceeds the web bake budget + 2 ms (R23, release budgets); both builds log the same navmesh hashes (byte-identical bakes, AC20); a grid path is found and an agent walks the city and arrives. No pixel check.",
+  "isolated": true,
+  "seconds": 45,
+  "console": [
+    {
+      "text": "[gate] nav baked city ec35f238b6414396 topdown f4015713ef0448b6",
+      "level": "log"
+    },
+    {
+      "text": "[gate] nav slices within budget",
+      "level": "log"
+    },
+    {
+      "text": "[gate] nav grid path complete",
+      "level": "log"
+    },
+    {
+      "text": "[gate] nav agent arrived",
+      "level": "log"
+    }
+  ],
+  "ordered": true
+}
