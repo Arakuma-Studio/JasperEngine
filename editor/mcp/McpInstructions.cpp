@@ -159,6 +159,7 @@ More: jasper://docs/cpp-scripting.
 - Poses (.poseanim): get/edit/render_pose_animation (jasper://docs/pose-animation).
 - Clips (.anim, shared): edit_animation {clip, create, tracks [{path}]}, for an Animation
   Player (jasper://docs/animation).
+- Animator (state machines, blend trees, masks, montages, IK): jasper://docs/animator.
 
 ## Atmosphere
 A Fog of type "height" is physically based height fog (volumetric: true adds light shafts and

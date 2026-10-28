@@ -1,0 +1,129 @@
+# Animator
+
+The Animator is Unity's Mecanim for JasperEngine: a component that plays an **Animator
+Controller** (a `.controller` asset) on a GameObject's hierarchy. It is built on the engine's
+Animation Clips (`.anim` files and model clips such as `models/hero.gltf#Walk`, see
+`docs/animation-clips.md`) and on the humanoid maps of the Pose Animation system (`.humanoid`,
+see `docs/pose-animation.md`).
+
+| | Animation Player | Animator |
+|---|---|---|
+| What it plays | a list of clips, by name | a state machine of clips and blend trees |
+| Control | `play`, `crossFade`, `blend`, `queue` | parameters (float, int, bool, trigger) that drive transitions |
+| Layers, masks, additive | no | yes (Avatar Masks, override or additive layers) |
+| Montages, IK, root motion | no | yes |
+| Retargeting | by bone names | humanoid clips play on any humanoid |
+
+The Animation Player stays the simple path. A GameObject with both works: the Animator runs after
+the player and owns the bones its clips animate. **Create Animator Controller from Animation
+Player** (the Animator's **New from Player** button, or `edit_animator_controller {from_player}`)
+makes a controller with a state per clip of a player.
+
+## Getting started
+
+1. Assets > Create > Animator Controller (or the Project window's Create menu). Double-click it to
+   open it in Window > Animation > Animator.
+2. Select the character and Add Component > Animation > Animator; drop the controller on its
+   Controller field (or press **New Controller** in the component).
+3. In the Animator window, drag clips (`.anim` files, or a model to pick one of its clips) from
+   the Project window onto the graph: each becomes a state. The first state is the layer's
+   default (orange). Right-click a state > Make Transition, then click the target state.
+4. Add parameters in the Parameters tab, select a transition and give it conditions in the
+   Inspector (Speed Greater 0.1, a trigger Jump...).
+5. Press **Preview** in the Animator window to run the controller in edit mode (the scene comes
+   back when it stops), or press Play. While playing, the window shows the active state's
+   progress, the transition's on its arrow, and the parameters: edit them there to test.
+
+## The Animator window
+
+- **Layers** tab: add, rename, reorder (right-click), delete; select a layer to set its weight,
+  blending (Override, Additive), Avatar Mask and montage slot in the Inspector.
+- **Parameters** tab: add (Float, Int, Bool, Trigger), rename (Enter; conditions and blend trees
+  follow), default values; in Play and Preview the live values (triggers as buttons).
+- **Graph**: pan with the middle mouse (or Alt + drag), zoom with the wheel, box select, drag to
+  move (grid snap). Entry is green, Any State cyan, Exit red, the default state orange,
+  sub-state machines blue (double-click to enter, the breadcrumb or (Up) to go back).
+  Right-click: Create State (Empty, From Clip, From New Blend Tree), Create Sub-State Machine,
+  Make Transition, Make Transition from Any State, Set as Layer Default State, Delete (Del).
+- **Inspector**: a selected state (motion, speed and multiplier, cycle offset, motion time, loop,
+  tag, additive reference), transition (exit time, fixed duration, duration, offset, interruption
+  source, ordered interruption, can transition to self, mute, conditions; in Preview a Blend
+  slider shows the transition at any point), layer, or blend tree.
+- Every edit is one undo step (Edit > Undo), named after what it did.
+
+## Blend trees
+
+A state's motion can be a blend tree: **1D** (one parameter, children at thresholds), **2D Simple
+Directional** (one child per direction, optionally one at the centre), **2D Freeform
+Directional** and **2D Freeform Cartesian** (any positions, gradient band interpolation), or
+**Direct** (each child weighted by its own parameter). The Inspector shows each child's weight
+for the current parameters, a weight graph (1D) or the sample diagram (2D) with the parameter
+point (drag it while previewing), and **Compute Thresholds / Positions** from each clip's root
+motion speed and direction. Children may be nested trees; a tree has at most 32 children.
+
+## Layers and masks
+
+The first layer always weighs 1. Further layers override (blend over the layers below by their
+weight) or add (an additive layer adds each clip's difference from its reference pose: the first
+frame, the rest pose, or a time). An **Avatar Mask** (`.mask`, Assets > Create > Avatar Mask)
+limits a layer to body parts (click them on the figure: head, body, arms, hands, legs, root
+motion) and transform paths with weights (drop a model on the Transforms field to list its
+bones).
+
+## Montages
+
+An **Animation Montage** (`.montage`) is a one-shot clip played on a layer whose **slot** it names
+(Default: the base layer): attacks, emotes, reactions. It blends in and out with eases, is cut
+into **sections** (each plays on into its next one, or ends the montage; a section that names
+itself loops) and has its own events. Play it from Lua (`animator:playMontage("anim/wave.montage")`)
+or MCP (`control_animator {montage}`); a second montage on the same slot interrupts the first
+(`onMontageEnded(path, true)`).
+
+## Events
+
+Clip events (the Animation window's events lane) fire for the clip with the highest weight of each
+layer (**Event Mode** Leader Only, the default) or for every playing clip (All), once per crossing.
+They call the Animator's `onEvent` subscribers and, with **Send Events To Scripts**, the method of
+the same name on the GameObject's scripts. State changes call `onStateEnter` / `onStateExit`.
+
+## Root motion
+
+With **Apply Root Motion** the clips' movement of their root bone (the clip's `root_motion.bone`,
+else the Animator's **Root Motion Bone**, the humanoid hips, or the shallowest moving bone) moves
+the GameObject instead of the bone: through its Character Controller when it has one, else its
+Transform. The pose keeps the vertical motion (a jump stays in the pose) unless the clip bakes it.
+A script setting `onAnimatorMove` takes the motion over.
+
+## IK
+
+The IK list runs after the layers and montages: **Two Bone** (upper, middle and end bone reach a
+target, the middle bends toward a pole), **FABRIK** (a chain of 2 to 16 bones), **Look At** (up
+to 4 bones turn toward a target within a clamp angle), **Foot IK** (a raycast below each foot:
+the pelvis drops, the ankle meets the ground and turns to its slope) and **Foot Lock** (a planted
+foot stays put). Bones are paths or humanoid slots (`left_hand`); targets are GameObjects, or set
+from scripts (`setIKTarget`). Each constraint has a weight and an optional weight parameter.
+
+## Humanoids and retargeting
+
+A model whose bones map to the 22 humanoid slots is a humanoid (the Animator's Avatar section
+shows it; **Configure Avatar...** opens the bone mapping, saved in the model's `.humanoid` file).
+A humanoid clip made on another humanoid model plays **retargeted**: each slot's rotation is moved
+from the source rig's frames to the target's, and the hips' movement is scaled by the rigs'
+sizes, so a Mixamo walk plays on a Rigify robot. Set **Retarget** to Off to bind by bone path
+only.
+
+## Performance
+
+The Animator evaluates its characters in parallel (the job system), keeps poses in SIMD-friendly
+arrays and writes skin matrices directly. **Culling Mode** Cull Update Transforms skips writing
+the pose of characters no camera sees (time, states, events and root motion go on); Cull
+Completely stops them. **Write Bones: Exposed** writes only the bones listed (and bones with
+attachments) to their GameObjects: the skins still follow every bone. The budget: 200 humanoids
+per frame (see `docs/perf/animator.md`).
+
+## Files
+
+`.controller`, `.mask` and `.montage` are JSON (`"format": "jasperengine.controller"`, `"version":
+1`, a `guid`), written in a canonical order with unknown keys kept. They are assets with GUIDs:
+references follow renames and moves, and renaming a clip rewrites the controllers and montages
+that use it.
