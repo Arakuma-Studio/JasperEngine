@@ -289,12 +289,29 @@ def _editor_cpu_ticks(root) -> tuple:
     return None, 0
 
 
+async def wait_for_quiet_jobs(ed: Editor, timeout: float = 600.0) -> None:
+    """Until the job system has nothing queued or running on any lane and no asset job, three
+    reads in a row (a cook batch queues its next texture as one ends)."""
+    deadline = time.monotonic() + timeout
+    quiet = 0
+    stats = {}
+    while quiet < 3:
+        stats = await ed.call("get_job_system_stats", window_frames=1)
+        busy = stats["asset_jobs"] or any(lane["queued"] or lane["running"] for lane in stats["lanes"].values())
+        quiet = 0 if busy else quiet + 1
+        ed.check(time.monotonic() < deadline, f"the editor's jobs never went quiet: {stats['lanes']}, {stats['asset_jobs']} asset job(s)")
+        await asyncio.sleep(0.5)
+
+
 async def test_idle_editor_does_not_spin(ed: Editor):
     """A headless editor's pointer rests over the Scene view; hovering used to redraw the scene
-    every frame, so the loop never idled (about two cores of software GL)."""
+    every frame, so the loop never idled (about two cores of software GL). Measured once the
+    editor has no work left: a project's first open queues background jobs (S14 cooks every
+    texture of the project for the view's platform), which are work, not spinning."""
     if not sys.platform.startswith("linux") or ed.scratch is None:
         skip("needs /proc and a stdio editor")
     await ed.call("editor_status")
+    await wait_for_quiet_jobs(ed)
     await asyncio.sleep(3)  # past the idle delay and the settle frames
     pid, before = _editor_cpu_ticks(ed.scratch.root)
     if pid is None:
