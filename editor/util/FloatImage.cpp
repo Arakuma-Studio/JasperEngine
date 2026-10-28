@@ -4,6 +4,7 @@
 #include "util/FloatImage.h"
 
 #include "util/FileUtils.h"
+#include "io/AtomicFile.h"
 
 #include "stb_image.h"
 #include "tinyexr.h"
@@ -263,16 +264,12 @@ namespace jasperengine::editor {
             return true;
         }
 
+        // atomically (S03): a failed write leaves the old file whole
         bool writeBytes(const std::string& path, const unsigned char* bytes, size_t size, std::string* error) {
-            std::ofstream file(FileUtils::pathFromUtf8(path), std::ios::binary | std::ios::trunc);
-            if (!file) {
-                setError(error, path + ": can't be written");
-                return false;
-            }
-            file.write(reinterpret_cast<const char*>(bytes), static_cast<std::streamsize>(size));
-            file.close();
-            if (!file) {
-                setError(error, path + ": can't be written");
+            const io::WriteResult result = io::writeFileAtomic(FileUtils::pathFromUtf8(path),
+                                                               std::string_view(reinterpret_cast<const char*>(bytes), size));
+            if (!result.ok()) {
+                setError(error, path + ": can't be written (" + result.message + ")");
                 return false;
             }
             return true;
