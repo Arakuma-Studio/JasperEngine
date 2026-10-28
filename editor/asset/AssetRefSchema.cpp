@@ -24,6 +24,8 @@
 #include "particles/ParticleEffectCodec.h"
 #include "particles/ParticleModules.h"
 #include "component/PoseAnimatorComponent.h"
+#include "component/AnimationPlayerComponent.h"
+#include "animation/ModelSubClips.h"
 #include "pool/TexturePool.h"
 #include "registry/EntityRegistry.h"
 #include "util/Util.h"
@@ -132,6 +134,8 @@ namespace {
         row(C::AudioSourceComponent, "filename", Shape::Asset, AssetType::Audio, Base::Assets);
         row(C::UIDocumentComponent, "filename", Shape::Asset, AssetType::UIDocument, Base::Assets);
         row(C::PoseAnimatorComponent, "animation", Shape::Asset, AssetType::PoseAnimation, Base::Assets);
+        // each entry: "clips[2]" (an .anim, or the model of a "<model>#<clip>" sub-clip)
+        row(C::AnimationPlayerComponent, "clips[]", Shape::ClipEntry, AssetType::AnimationClip, Base::Assets);
 
         row(C::ParticleSystemComponent, "effect", Shape::Asset, AssetType::ParticleEffect, Base::Assets);
         row(C::ParticleSystemComponent, "inlineEffect", Shape::ParticleEffect, AssetType::Unknown, Base::Assets);
@@ -342,6 +346,28 @@ namespace {
                 pathChanged |= this->texture(texture, row, prefix + uniform);
             }
             return pathChanged;
+        }
+
+        // an Animation Player entry: true when what it names moved (the player loads again)
+        bool clipEntry(std::string& clip, std::string& guid, const AssetRefField& row, const std::string& field) {
+            anim::SubClipReference sub;
+            if (anim::parseSubClipReference(clip, sub)) {
+                // the model by path: its GUID has no place in the entry (empty for sub-clips)
+                AssetRef ref(sub.model);
+                if (!ref.isSet()) {
+                    return false;
+                }
+                AssetRefSite where = site(row, field);
+                where.expected = AssetType::Model;
+                visitor(ref, where);
+                if (ref.path == sub.model) {
+                    return false;
+                }
+                changed = true;
+                clip = ref.path.empty() ? std::string() : anim::formatSubClipReference(ref.path, sub.clip);
+                return true;
+            }
+            return prefab(clip, guid, row, field);
         }
 
         bool prefab(std::string& path, std::string& guid, const AssetRefField& row, const std::string& field) {
@@ -587,6 +613,16 @@ namespace {
             if (visit.asset(animator.animation, componentRow(C::PoseAnimatorComponent, "animation"), "animation")) animator.needsLoad = true;
         });
 
+        eachComponent<AnimationPlayerComponent>(registry, only, visit, C::AnimationPlayerComponent, [&](AnimationPlayerComponent& player) {
+            bool moved = false;
+            for (size_t i = 0; i < player.clips.size(); i++) {
+                AnimationPlayerClip& entry = player.clips[i];
+                moved |= visit.clipEntry(entry.clip, entry.guid, componentRow(C::AnimationPlayerComponent, "clips[]"),
+                                         "clips[" + std::to_string(i) + "]");
+            }
+            if (moved) player.needsLoad = true;
+        });
+
         eachComponent<ScriptComponent>(registry, only, visit, C::ScriptComponent, [&](ScriptComponent& scripts) {
             for (size_t i = 0; i < scripts.scripts.size(); i++) {
                 ScriptEntry& entry = scripts.scripts[i];
@@ -786,6 +822,16 @@ namespace {
                         particles::ParticleModules::visitAssets(document, [&](std::string& path, std::string& guid, particles::ParticleModules::AssetKind kind, const std::string& inner) {
                             found(row, AssetRef(path, Guid::parse(guid)), field + "." + inner, 0, AssetPathBase::Assets, true, effectAssetType(kind));
                         });
+                        break;
+                    }
+                    case AssetRefShape::ClipEntry: {
+                        const std::string clip = value.IsMap() ? scalar(value["clip"]) : scalar(value);
+                        anim::SubClipReference sub;
+                        if (anim::parseSubClipReference(clip, sub)) {
+                            found(row, AssetRef(sub.model), field, 0, AssetPathBase::Project, false, AssetType::Model);
+                        } else {
+                            found(row, AssetRef(clip, value.IsMap() ? Guid::parse(scalar(value["guid"])) : Guid()), field);
+                        }
                         break;
                     }
                     case AssetRefShape::ScriptProperty: {
