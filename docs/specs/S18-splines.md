@@ -503,3 +503,57 @@ a:setOnComplete(function() ... end)                -- Once only
   knot spacing, the usual case for freehand strokes. Uniform is not offered. Ported tests that assert
   exact uniform-CR positions are re-baselined against a reference centripetal implementation, and
   their topology/UV/layout assertions stay as they are.
+
+## Deviations
+
+Decisions taken during the implementation where the spec was wrong, impossible or ambiguous in a
+detail (each the best correct alternative found; the requirement it serves is named).
+
+1. **Knot property paths are `knots[N].<field>`** (R27 wrote `points[N].position`): the property
+   is named after the scene file's `knots` key and Unity's `Spline.Knots`; the fields are
+   `position`, `tangentIn`, `tangentOut`, `radius`, `roll`, `mode`. Indices are 0-based in the
+   tools, `set_properties` and Lua alike.
+2. **The Spline Extrude's material, shadows and lighting are its GameObject's Mesh** (R6 listed a
+   material and cast/receive shadows on the component). As Unity's SplineExtrude needs a
+   MeshRenderer, Spline Extrude needs a Mesh (added with it): its first submesh's material (any
+   library shader and its features, `.material` files, presets) and its flags are copied to the
+   chunks, and the Mesh itself draws nothing (RenderSystem skips it; `Stream::isGeneratedMesh`
+   leaves its buffers out of the scene, R29).
+3. **Chain2D colliders live on generated static bodies** (R13: "on the entity's Rigidbody2D, a
+   static body is added if missing"): writing the generated chain into the GameObject's own
+   Rigidbody2D would put derived data into the scene file and fight the user's colliders. The
+   chain is the centreline simplified to 1 cm, split into chains of `MAX_COLLIDER_POINTS_2D`
+   points sharing their end points, `MAX_COLLIDERS_2D` chains a body, on engine-owned bodies like
+   the chunks.
+4. **WaterBanks samples the heightmap at its texel centres** (D9 wrote spacing
+   `terrainSize/(N-1)`): the terrain now draws and samples texel `i` at `(i + 0.5) / N`
+   (upstream's texel-centre sampling), so the ground lattice is `terrainSize/N` apart, starting
+   half a texel in; the shoreline still matches what is drawn.
+5. **"Only the chunks intersecting the changed arc range rebuild" (R30)** is implemented as: a
+   chunk rebuilds when the stations it is built from (positions, frames, widths, distances) or
+   the run-wide U inputs change. Since U is the draped distance (R6), an edit that changes the
+   length upstream changes every downstream chunk's U and so rebuilds them; edits of radius,
+   roll, tangents or the end of a spline rebuild only the chunks around them.
+6. **Prefab pieces are GameObjects in Play and in exported games only** (§9): prefab factories
+   exist only while the game runs (`PrefabManager`), so in the editor's edit mode a prefab pool
+   places nothing and the inspector says so; *Bake to GameObjects* places them as real prefab
+   instances (one undo step). Model pools are instanced everywhere.
+7. **A piece's run axis is derived from its bounds** (OpenEngine's rule: the longer horizontal
+   axis, near-square pieces along Z) instead of a "chosen axis" field; fences have a post on every
+   authored knot (FenceLayout's model), without a toggle; the fence gains a `crests` pool.
+8. **Corners (Mitre/Round) apply at the knots of Linear splines**: Catmull-Rom and Bezier splines
+   are smooth through their knots, so a corner there has no turn to build.
+9. **Surface snap** (R26) uses the terrain under the point, then the top of the bounds of the
+   meshes there (the `getModelDropPosition` rule); S26's triangle picking was not on `oe-port`
+   when this stream ended (see the integrator notes in the final report).
+10. **Live Terrain restores every texel the session wrote** before each re-bake (R12 wrote the
+   union of the old and new footprints): a superset of that union, so no stale cut survives.
+11. **Painting needs the blend map to exist**: the bake paints an existing blend map; a layer
+   whose blend map is missing gets a warning (the Terrain tool creates it).
+12. **Every export ships `licenses/OpenEngine-LICENSE.txt`**: every game links the spline module
+   (`SplineSystem` is a scene system), not only those with spline components.
+13. **R20's bake budgets are measured by the editor test `TerrainSplineBakeTests.BakeBudgets`**
+   (the bake is editor code, `editor/util/TerrainSplineBake.cpp`), enforced with
+   `JASPER_TEST_PERF_SLACK` on the benchmark server; R18, R19 and R21 by `je-bench-splines`.
+14. **Only the scene format is bumped (3 -> 4)**; prefab files keep version 5: an older editor
+   preserves a prefab's unknown spline components as unknown data (S03) either way.

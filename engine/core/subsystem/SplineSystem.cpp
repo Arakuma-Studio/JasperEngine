@@ -41,6 +41,7 @@
 #endif
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -60,6 +61,22 @@ namespace{
     double nowMs(){
         return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count();
     }
+
+    // the work the splines did (getWorkMs): SplineSystem::update and the chunk builds and layouts
+    // run as jobs; a build inside the update is the update's
+    std::atomic<uint64_t> workNanoseconds{0};
+    thread_local bool insideUpdate = false;
+
+    struct WorkTimer{
+        std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+        bool counts = !insideUpdate;
+        ~WorkTimer(){
+            if (counts){
+                workNanoseconds.fetch_add(static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    std::chrono::steady_clock::now() - start).count()), std::memory_order_relaxed);
+            }
+        }
+    };
 
     // FNV-1a over values: change detection of settings and chunk inputs (not saved anywhere)
     struct Hasher{
@@ -390,6 +407,8 @@ struct SplineSystem::BuildJob{
     SplineBuildStats stats;
 
     void buildChunk(size_t i){
+        JE_PROFILE_SCOPE("SplineSystem::buildChunk");
+        const WorkTimer timer;
         ChunkMesh& mesh = meshes[i];
         if (kind == Kind::Strip){
             spline::SplineStripMesh strip;
@@ -398,7 +417,7 @@ struct SplineSystem::BuildJob{
             mesh.indices = std::move(strip.indices);
             finishChunkMesh(mesh, strip.bounds);
         }else if (kind == Kind::Water){
-            spline::SplineFillMesh fill = spline::buildSplineFillMesh(field, ground, fillRanges[i], fillParams);
+            spline::SplineFillMesh fill = spline::buildSplineFillMesh(field, ground, stations, fillRanges[i], fillParams);
             mesh.vertices = std::move(fill.vertices);
             mesh.indices = std::move(fill.indices);
             finishChunkMesh(mesh, fill.bounds);
@@ -619,6 +638,8 @@ void SplineSystem::update(double dt){
         return;
     }
     JE_PROFILE_SCOPE("SplineSystem::update");
+    const WorkTimer timer;
+    insideUpdate = true;
     clockMs = nowMs();
 
     // owners whose Spline is gone (or GameObject destroyed) release their chunks
@@ -647,6 +668,11 @@ void SplineSystem::update(double dt){
     }
 
     updateAnimate(dt);
+    insideUpdate = false;
+}
+
+double SplineSystem::getWorkMs(){
+    return static_cast<double>(workNanoseconds.load(std::memory_order_relaxed)) * 1.0e-6;
 }
 
 void SplineSystem::updateConsumers(Entity entity, SplineComponent& spline, Transform& transform){
@@ -754,6 +780,10 @@ void SplineSystem::updateConsumers(Entity entity, SplineComponent& spline, Trans
     }
 
     if (wantsExtrude){
+        // the Mesh is the chunks' template: one submesh holds their material (the Inspector's)
+        if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity); mesh && mesh->numSubmeshes == 0){
+            mesh->numSubmeshes = 1;
+        }
         syncChunkMaterials(entity, resolve);
     }
 }
@@ -1010,7 +1040,7 @@ void SplineSystem::scheduleExtrude(Entity entity, Resolve& resolve, const Spline
         }
         job->fillParams.edgeDrop = extrude.waterEdgeDrop;
         job->fillParams.flowSpeedScale = extrude.flowSpeed;
-        job->fillRanges = spline::carveFillChunks(job->field, job->ground);
+        job->fillRanges = spline::carveFillChunks(job->field);
         const size_t count = job->fillRanges.size();
         job->hashes.resize(count);
         job->rebuild.assign(count, 1);
@@ -1597,6 +1627,8 @@ void SplineSystem::scheduleInstantiate(Entity entity, Resolve& resolve, const Sp
 }
 
 void SplineSystem::BuildJob::layoutPieces(){
+    JE_PROFILE_SCOPE("SplineSystem::layoutPieces");
+    const WorkTimer timer;
     std::vector<spline::SplinePiecePose> placed;
     const uint32_t maxPieces = SplineSystem::MAX_PIECES;
     const SplineInstantiateComponent& c = instantiate;

@@ -3,6 +3,8 @@
 
 #include "AddComponentCmd.h"
 
+#include <algorithm>
+
 #include "Out.h"
 #include "util/CameraTextureLink.h"
 #include "util/ProjectUtils.h"
@@ -32,9 +34,32 @@ bool editor::AddComponentCmd::execute() {
             }
         }
 
+        required.clear();
         for (Entity& entity : entities){
             prefabUndo.capture(project, sceneId, entity);
+            // a spline consumer reads its GameObject's Spline; an extrude draws with its Mesh
+            if (componentType == ComponentType::SplineExtrudeComponent || componentType == ComponentType::SplineInstantiateComponent){
+                std::vector<ComponentType> needs = {ComponentType::SplineComponent};
+                if (componentType == ComponentType::SplineExtrudeComponent) needs.push_back(ComponentType::MeshComponent);
+                const std::vector<ComponentType> has = Catalog::findComponents(scene, entity);
+                for (ComponentType need : needs){
+                    if (std::find(has.begin(), has.end(), need) == has.end()){
+                        ProjectUtils::addEntityComponent(scene, entity, need, sceneProject->entities);
+                        project->recordPrefabComponentAdded(sceneId, entity, need);
+                        required.emplace_back(entity, need);
+                    }
+                }
+            }
             ProjectUtils::addEntityComponent(scene, entity, componentType, sceneProject->entities);
+            // a 2D scene's splines lie in the XY plane (S18 R13)
+            if (componentType == ComponentType::SplineComponent && sceneProject->sceneType == SceneType::SCENE_2D){
+                scene->getComponent<SplineComponent>(entity).spline.setUpAxis(Vector3(0.0f, 0.0f, 1.0f));
+            }
+            for (const auto& [requiredEntity, requiredType] : required){
+                if (requiredEntity == entity && requiredType == ComponentType::SplineComponent && sceneProject->sceneType == SceneType::SCENE_2D){
+                    scene->getComponent<SplineComponent>(entity).spline.setUpAxis(Vector3(0.0f, 0.0f, 1.0f));
+                }
+            }
 
             if (componentType == ComponentType::InstancedMeshComponent &&
                 ProjectUtils::hasModelMeshChildrenWithoutRootGeometry(scene, entity)){
@@ -67,6 +92,9 @@ void editor::AddComponentCmd::undo() {
             // Undoing an add removes only the component introduced by this command. Any
             // ownership configured later belongs to later commands and must not broaden undo.
             ProjectUtils::removeEntityComponent(scene, entity, componentType, sceneProject->entities);
+        }
+        for (auto it = required.rbegin(); it != required.rend(); ++it){
+            ProjectUtils::removeEntityComponent(scene, it->first, it->second, sceneProject->entities);
         }
         prefabUndo.restore(project, sceneId);
 

@@ -203,6 +203,10 @@ namespace jasperengine{
         // false: nothing regenerates until it is true again (the editor's batch edits)
         void setLiveBuilds(bool live);
 
+        // the milliseconds splines have worked since the start, on every thread: the updates, and
+        // the chunk builds and layouts run as jobs (the web's per-frame budget, R17)
+        static double getWorkMs();
+
         // Spline Animate
         void play(Entity follower);
         void pause(Entity follower);

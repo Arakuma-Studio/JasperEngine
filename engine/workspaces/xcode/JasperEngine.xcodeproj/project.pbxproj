@@ -1326,6 +1326,83 @@
 		71F225482C587388006ED3CA /* ParticleSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 71F225462C587388006ED3CA /* ParticleSystem.h */; };
 		71F225492C587388006ED3CA /* ParticleSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71F225472C587388006ED3CA /* ParticleSystem.cpp */; };
 		71F2254A2C587388006ED3CA /* ParticleSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71F225472C587388006ED3CA /* ParticleSystem.cpp */; };
+		53504C4EB24308C2D78335F2 /* SplineClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E5262B21B0E1C90F9 /* SplineClassesLua.cpp */; };
+		53504C4E56FFBE8361FFBEBC /* SplineClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E5262B21B0E1C90F9 /* SplineClassesLua.cpp */; };
+		53504C4E297A11A3049D85C4 /* SplineAnimate.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4EFA373C8F004A166E /* SplineAnimate.h */; };
+		53504C4E283B6FF5F26263BD /* SplineAnimate.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4ECB827EC45A167CF8 /* SplineAnimate.cpp */; };
+		53504C4EC783A95717F91079 /* SplineAnimate.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4ECB827EC45A167CF8 /* SplineAnimate.cpp */; };
+		53504C4EBC6278D3C50D1C80 /* SplineInstantiate.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4EE0E11E493DCC85D9 /* SplineInstantiate.h */; };
+		53504C4E4A7CF4D85FD00022 /* SplineInstantiate.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4ECA3ED81EF74CC1ED /* SplineInstantiate.cpp */; };
+		53504C4E5B3A511C890C7ABB /* SplineInstantiate.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4ECA3ED81EF74CC1ED /* SplineInstantiate.cpp */; };
+		53504C4E311041BDE2CBB621 /* SplineExtrude.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4EF2123EED0D138989 /* SplineExtrude.h */; };
+		53504C4E140794559E828CC2 /* SplineExtrude.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4EDE201094B3D24E0F /* SplineExtrude.cpp */; };
+		53504C4E56B790D48F5577F1 /* SplineExtrude.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4EDE201094B3D24E0F /* SplineExtrude.cpp */; };
+		53504C4EF742F32DB9A652CD /* Spline.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4E6F7778C36C5711E4 /* Spline.h */; };
+		53504C4E77B3D5D8336078AD /* Spline.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E27A52CA89B122B81 /* Spline.cpp */; };
+		53504C4EF482AA7F81590AE0 /* Spline.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E27A52CA89B122B81 /* Spline.cpp */; };
+		53504C4E16F16DBA2F2A836C /* SplineSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4E9DDA578A5B225D1A /* SplineSystem.h */; };
+		53504C4EA09F64AA7A8EF1BB /* SplineSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E0F5C2686D307758B /* SplineSystem.cpp */; };
+		53504C4E537EA3930C89B8DE /* SplineSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E0F5C2686D307758B /* SplineSystem.cpp */; };
+		53504C4EAF31C899D0C8FC77 /* SplineAnimateComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4E8E4CD1EB1353A5AE /* SplineAnimateComponent.h */; };
+		53504C4E782FAB56E1C84DFD /* SplineInstantiateComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4E50BC37FD8319A598 /* SplineInstantiateComponent.h */; };
+		53504C4E9ADEE1AC24CEC7C2 /* SplineExtrudeComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4E8E532CE28FB9449E /* SplineExtrudeComponent.h */; };
+		53504C4EDF9E8180439C2184 /* SplineComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4ED66ADCA350A9F454 /* SplineComponent.h */; };
+		53504C4EC7FF51492947A50D /* SplineVertex.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4E79D1422BA47E13D7 /* SplineVertex.h */; };
+		53504C4E54F8E5B4EDC42011 /* SplineUtility.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4E645199FB18296437 /* SplineUtility.h */; };
+		53504C4EB3F578343986A6D3 /* SplineUtility.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E952C7EB669179C24 /* SplineUtility.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		53504C4EACD9450EE6CF6D7F /* SplineUtility.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E952C7EB669179C24 /* SplineUtility.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		53504C4E7D727BB4D0DF1C0D /* SplineTypes.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4E6313ECCECBEFE6DC /* SplineTypes.h */; };
+		53504C4E7AEE2F3F3F08E766 /* SplineTileLayout.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4E74FEFC878ABAF24E /* SplineTileLayout.h */; };
+		53504C4EB5412187F0808626 /* SplineTileLayout.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E4D2BFDDAC2BBEDDD /* SplineTileLayout.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		53504C4E53FB6FC2352F0AAD /* SplineTileLayout.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E4D2BFDDAC2BBEDDD /* SplineTileLayout.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		53504C4E247A8C0FB778D5B1 /* SplineStroke.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4EB090430B01790B80 /* SplineStroke.h */; };
+		53504C4E76D853AC137DBFD0 /* SplineStroke.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E05C188F08BCA30AD /* SplineStroke.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		53504C4EBDA6F493918FF084 /* SplineStroke.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E05C188F08BCA30AD /* SplineStroke.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		53504C4E7D82D98163CEB318 /* SplineStripBuilder.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4E95A9EFEBD2666D66 /* SplineStripBuilder.h */; };
+		53504C4E2598F2AE6E0538FD /* SplineStripBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4EC2211424335E6E2B /* SplineStripBuilder.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		53504C4E1ECEE2790D06D698 /* SplineStripBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4EC2211424335E6E2B /* SplineStripBuilder.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		53504C4EB64875D16FD2155D /* SplineStep.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4E547582FE1578815D /* SplineStep.h */; };
+		53504C4E8CC0545BE3B310FC /* SplineStep.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E03FC9D432F07C87A /* SplineStep.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		53504C4E5F2B540E82D785F3 /* SplineStep.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E03FC9D432F07C87A /* SplineStep.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		53504C4EEF1E24FDF6DE27B0 /* SplineStations.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4E23CA9444674E80BB /* SplineStations.h */; };
+		53504C4EF0D214D7CFEC3DAD /* SplineStations.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4ED006B958A155AB2C /* SplineStations.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		53504C4EEA2589C051BBFEBD /* SplineStations.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4ED006B958A155AB2C /* SplineStations.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		53504C4E0C5059EE8CB20664 /* SplineStation.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4EB25A99CF8B8B0237 /* SplineStation.h */; };
+		53504C4EF20775A48531A867 /* SplineSpanMitre.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4E32169EE9015BF874 /* SplineSpanMitre.h */; };
+		53504C4E7DCF6B8FFC9DA7A8 /* SplineSpanMitre.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E6187EF768C6D8E16 /* SplineSpanMitre.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		53504C4E9DF8A2AF92763094 /* SplineSpanMitre.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E6187EF768C6D8E16 /* SplineSpanMitre.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		53504C4E6A3F0EF0DEBF0C0D /* SplineProfile.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4E84A1D1F37229B03B /* SplineProfile.h */; };
+		53504C4E40EE6A945E8C004D /* SplineProfile.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E9BAC4AF4DDA62088 /* SplineProfile.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		53504C4E881FA21C7B578AC5 /* SplineProfile.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E9BAC4AF4DDA62088 /* SplineProfile.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		53504C4E6E9865F25DCA6CBB /* SplinePolygonFill.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4E58AE00B5A448F2A4 /* SplinePolygonFill.h */; };
+		53504C4EE478AC23639E4C1B /* SplinePolygonFill.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4ECE6F6688A8B2D255 /* SplinePolygonFill.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		53504C4E88C8EDA9021E7CA6 /* SplinePolygonFill.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4ECE6F6688A8B2D255 /* SplinePolygonFill.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		53504C4E0ACDEB2F17B7CF6A /* SplineJitter.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4E2FC142871B825BA2 /* SplineJitter.h */; };
+		53504C4E8263D265304188DA /* SplineFillMesher.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4E714E068FE68B2986 /* SplineFillMesher.h */; };
+		53504C4E7FE36482CACDF2BD /* SplineFillMesher.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E8F0C2FBD1A84D4C1 /* SplineFillMesher.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		53504C4EFA829BEC1E26A7BA /* SplineFillMesher.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E8F0C2FBD1A84D4C1 /* SplineFillMesher.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		53504C4E9FA6B9437B5352E9 /* SplineFillField.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4EEE45909DC72E5D85 /* SplineFillField.h */; };
+		53504C4E1442127557712BF6 /* SplineFillField.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E267BCE7FC8DBD197 /* SplineFillField.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		53504C4E45326AF2925BF254 /* SplineFillField.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E267BCE7FC8DBD197 /* SplineFillField.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		53504C4E3B46CC4FAC5A1D2A /* SplineFenceLayout.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4E48D05EC158C29F61 /* SplineFenceLayout.h */; };
+		53504C4E98AC43E5FD04CBE0 /* SplineFenceLayout.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E3BA657567C3F2996 /* SplineFenceLayout.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		53504C4ED66516B18D62A80D /* SplineFenceLayout.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E3BA657567C3F2996 /* SplineFenceLayout.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		53504C4E1986F4643746D7B8 /* SplineEvaluator.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4E35A752DB2F28AEDE /* SplineEvaluator.h */; };
+		53504C4E3D1B2816687AD343 /* SplineEvaluator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4EB7CDE6CF172B5386 /* SplineEvaluator.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		53504C4EF40C75C498A48784 /* SplineEvaluator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4EB7CDE6CF172B5386 /* SplineEvaluator.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		53504C4E036ED557307B1BDC /* SplineEndTaper.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4E67B713B65388700E /* SplineEndTaper.h */; };
+		53504C4EA607966684E1B80A /* SplineEndTaper.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E7724DDE8B101DE87 /* SplineEndTaper.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		53504C4E1DDA1AE1814858C7 /* SplineEndTaper.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E7724DDE8B101DE87 /* SplineEndTaper.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		53504C4E0749B1673A19E631 /* SplineData.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4E644E24C8B4B57BA7 /* SplineData.h */; };
+		53504C4EE164529E47712124 /* SplineData.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4EA097CCC1CDD047ED /* SplineData.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		53504C4E6B3B7BD471456655 /* SplineData.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4EA097CCC1CDD047ED /* SplineData.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		53504C4E32D528CD16057BD7 /* SplineCurve.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4EA24A26811FD35C28 /* SplineCurve.h */; };
+		53504C4EE88650EB5869D1BC /* SplineCorner.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4E7DC929A86018E1BE /* SplineCorner.h */; };
+		53504C4EBC4DCF81B42E0D8E /* SplineCorner.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4EEB93988857BFC927 /* SplineCorner.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		53504C4EC06600290E4970F8 /* SplineCorner.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4EEB93988857BFC927 /* SplineCorner.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		53504C4E10199FE28E1D7017 /* SplineCenterline.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4E336121A70779CE74 /* SplineCenterline.h */; };
+		53504C4E44830F1CF4D42348 /* SplineCenterline.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E27A5B4B55284F5FC /* SplineCenterline.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		53504C4EA2680B687788D801 /* SplineCenterline.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E27A5B4B55284F5FC /* SplineCenterline.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
 		5052544384544A0AC8C91F8A /* CurlNoiseAvx2.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50525443FE0D6FD5E2DBAB38 /* CurlNoiseAvx2.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
 		50525443D475987FF83292E4 /* CurlNoiseAvx2.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50525443FE0D6FD5E2DBAB38 /* CurlNoiseAvx2.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
 		5052544395B69AD74AAB753C /* RenderSystemParticles.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50525443EAA8440DF17720D1 /* RenderSystemParticles.cpp */; };
@@ -5624,6 +5701,60 @@
 		71F225442C58736B006ED3CA /* InstancedMeshComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InstancedMeshComponent.h; sourceTree = "<group>"; };
 		71F225462C587388006ED3CA /* ParticleSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleSystem.h; sourceTree = "<group>"; };
 		71F225472C587388006ED3CA /* ParticleSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ParticleSystem.cpp; sourceTree = "<group>"; };
+		53504C4E5262B21B0E1C90F9 /* SplineClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SplineClassesLua.cpp; sourceTree = "<group>"; };
+		53504C4EFA373C8F004A166E /* SplineAnimate.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SplineAnimate.h; sourceTree = "<group>"; };
+		53504C4ECB827EC45A167CF8 /* SplineAnimate.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SplineAnimate.cpp; sourceTree = "<group>"; };
+		53504C4EE0E11E493DCC85D9 /* SplineInstantiate.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SplineInstantiate.h; sourceTree = "<group>"; };
+		53504C4ECA3ED81EF74CC1ED /* SplineInstantiate.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SplineInstantiate.cpp; sourceTree = "<group>"; };
+		53504C4EF2123EED0D138989 /* SplineExtrude.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SplineExtrude.h; sourceTree = "<group>"; };
+		53504C4EDE201094B3D24E0F /* SplineExtrude.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SplineExtrude.cpp; sourceTree = "<group>"; };
+		53504C4E6F7778C36C5711E4 /* Spline.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Spline.h; sourceTree = "<group>"; };
+		53504C4E27A52CA89B122B81 /* Spline.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Spline.cpp; sourceTree = "<group>"; };
+		53504C4E9DDA578A5B225D1A /* SplineSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SplineSystem.h; sourceTree = "<group>"; };
+		53504C4E0F5C2686D307758B /* SplineSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SplineSystem.cpp; sourceTree = "<group>"; };
+		53504C4E8E4CD1EB1353A5AE /* SplineAnimateComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SplineAnimateComponent.h; sourceTree = "<group>"; };
+		53504C4E50BC37FD8319A598 /* SplineInstantiateComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SplineInstantiateComponent.h; sourceTree = "<group>"; };
+		53504C4E8E532CE28FB9449E /* SplineExtrudeComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SplineExtrudeComponent.h; sourceTree = "<group>"; };
+		53504C4ED66ADCA350A9F454 /* SplineComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SplineComponent.h; sourceTree = "<group>"; };
+		53504C4E79D1422BA47E13D7 /* SplineVertex.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SplineVertex.h; sourceTree = "<group>"; };
+		53504C4E645199FB18296437 /* SplineUtility.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SplineUtility.h; sourceTree = "<group>"; };
+		53504C4E952C7EB669179C24 /* SplineUtility.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SplineUtility.cpp; sourceTree = "<group>"; };
+		53504C4E6313ECCECBEFE6DC /* SplineTypes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SplineTypes.h; sourceTree = "<group>"; };
+		53504C4E74FEFC878ABAF24E /* SplineTileLayout.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SplineTileLayout.h; sourceTree = "<group>"; };
+		53504C4E4D2BFDDAC2BBEDDD /* SplineTileLayout.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SplineTileLayout.cpp; sourceTree = "<group>"; };
+		53504C4EB090430B01790B80 /* SplineStroke.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SplineStroke.h; sourceTree = "<group>"; };
+		53504C4E05C188F08BCA30AD /* SplineStroke.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SplineStroke.cpp; sourceTree = "<group>"; };
+		53504C4E95A9EFEBD2666D66 /* SplineStripBuilder.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SplineStripBuilder.h; sourceTree = "<group>"; };
+		53504C4EC2211424335E6E2B /* SplineStripBuilder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SplineStripBuilder.cpp; sourceTree = "<group>"; };
+		53504C4E547582FE1578815D /* SplineStep.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SplineStep.h; sourceTree = "<group>"; };
+		53504C4E03FC9D432F07C87A /* SplineStep.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SplineStep.cpp; sourceTree = "<group>"; };
+		53504C4E23CA9444674E80BB /* SplineStations.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SplineStations.h; sourceTree = "<group>"; };
+		53504C4ED006B958A155AB2C /* SplineStations.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SplineStations.cpp; sourceTree = "<group>"; };
+		53504C4EB25A99CF8B8B0237 /* SplineStation.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SplineStation.h; sourceTree = "<group>"; };
+		53504C4E32169EE9015BF874 /* SplineSpanMitre.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SplineSpanMitre.h; sourceTree = "<group>"; };
+		53504C4E6187EF768C6D8E16 /* SplineSpanMitre.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SplineSpanMitre.cpp; sourceTree = "<group>"; };
+		53504C4E84A1D1F37229B03B /* SplineProfile.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SplineProfile.h; sourceTree = "<group>"; };
+		53504C4E9BAC4AF4DDA62088 /* SplineProfile.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SplineProfile.cpp; sourceTree = "<group>"; };
+		53504C4E58AE00B5A448F2A4 /* SplinePolygonFill.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SplinePolygonFill.h; sourceTree = "<group>"; };
+		53504C4ECE6F6688A8B2D255 /* SplinePolygonFill.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SplinePolygonFill.cpp; sourceTree = "<group>"; };
+		53504C4E2FC142871B825BA2 /* SplineJitter.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SplineJitter.h; sourceTree = "<group>"; };
+		53504C4E714E068FE68B2986 /* SplineFillMesher.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SplineFillMesher.h; sourceTree = "<group>"; };
+		53504C4E8F0C2FBD1A84D4C1 /* SplineFillMesher.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SplineFillMesher.cpp; sourceTree = "<group>"; };
+		53504C4EEE45909DC72E5D85 /* SplineFillField.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SplineFillField.h; sourceTree = "<group>"; };
+		53504C4E267BCE7FC8DBD197 /* SplineFillField.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SplineFillField.cpp; sourceTree = "<group>"; };
+		53504C4E48D05EC158C29F61 /* SplineFenceLayout.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SplineFenceLayout.h; sourceTree = "<group>"; };
+		53504C4E3BA657567C3F2996 /* SplineFenceLayout.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SplineFenceLayout.cpp; sourceTree = "<group>"; };
+		53504C4E35A752DB2F28AEDE /* SplineEvaluator.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SplineEvaluator.h; sourceTree = "<group>"; };
+		53504C4EB7CDE6CF172B5386 /* SplineEvaluator.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SplineEvaluator.cpp; sourceTree = "<group>"; };
+		53504C4E67B713B65388700E /* SplineEndTaper.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SplineEndTaper.h; sourceTree = "<group>"; };
+		53504C4E7724DDE8B101DE87 /* SplineEndTaper.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SplineEndTaper.cpp; sourceTree = "<group>"; };
+		53504C4E644E24C8B4B57BA7 /* SplineData.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SplineData.h; sourceTree = "<group>"; };
+		53504C4EA097CCC1CDD047ED /* SplineData.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SplineData.cpp; sourceTree = "<group>"; };
+		53504C4EA24A26811FD35C28 /* SplineCurve.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SplineCurve.h; sourceTree = "<group>"; };
+		53504C4E7DC929A86018E1BE /* SplineCorner.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SplineCorner.h; sourceTree = "<group>"; };
+		53504C4EEB93988857BFC927 /* SplineCorner.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SplineCorner.cpp; sourceTree = "<group>"; };
+		53504C4E336121A70779CE74 /* SplineCenterline.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SplineCenterline.h; sourceTree = "<group>"; };
+		53504C4E27A5B4B55284F5FC /* SplineCenterline.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SplineCenterline.cpp; sourceTree = "<group>"; };
 		50525443FE0D6FD5E2DBAB38 /* CurlNoiseAvx2.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CurlNoiseAvx2.cpp; sourceTree = "<group>"; };
 		50525443EAA8440DF17720D1 /* RenderSystemParticles.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RenderSystemParticles.cpp; sourceTree = "<group>"; };
 		505254430AB9C85866838AFB /* ParticleSystemState.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleSystemState.h; sourceTree = "<group>"; };
@@ -7670,6 +7801,7 @@
 				564944450D63D10E11014513 /* HtmlUIMediaLua.cpp */,
 				414E494D4500000000000044 /* HtmlUIAnimeLua.cpp */,
 				505645430000000000000178 /* HtmlUIVectorLua.cpp */,
+				53504C4E5262B21B0E1C90F9 /* SplineClassesLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -8521,6 +8653,67 @@
 			path = simd;
 			sourceTree = "<group>";
 		};
+		53504C4EACD7159559E486AD /* spline */ = {
+			isa = PBXGroup;
+			children = (
+				53504C4E27A5B4B55284F5FC /* SplineCenterline.cpp */,
+				53504C4E336121A70779CE74 /* SplineCenterline.h */,
+				53504C4EEB93988857BFC927 /* SplineCorner.cpp */,
+				53504C4E7DC929A86018E1BE /* SplineCorner.h */,
+				53504C4EA24A26811FD35C28 /* SplineCurve.h */,
+				53504C4EA097CCC1CDD047ED /* SplineData.cpp */,
+				53504C4E644E24C8B4B57BA7 /* SplineData.h */,
+				53504C4E7724DDE8B101DE87 /* SplineEndTaper.cpp */,
+				53504C4E67B713B65388700E /* SplineEndTaper.h */,
+				53504C4EB7CDE6CF172B5386 /* SplineEvaluator.cpp */,
+				53504C4E35A752DB2F28AEDE /* SplineEvaluator.h */,
+				53504C4E3BA657567C3F2996 /* SplineFenceLayout.cpp */,
+				53504C4E48D05EC158C29F61 /* SplineFenceLayout.h */,
+				53504C4E267BCE7FC8DBD197 /* SplineFillField.cpp */,
+				53504C4EEE45909DC72E5D85 /* SplineFillField.h */,
+				53504C4E8F0C2FBD1A84D4C1 /* SplineFillMesher.cpp */,
+				53504C4E714E068FE68B2986 /* SplineFillMesher.h */,
+				53504C4E2FC142871B825BA2 /* SplineJitter.h */,
+				53504C4ECE6F6688A8B2D255 /* SplinePolygonFill.cpp */,
+				53504C4E58AE00B5A448F2A4 /* SplinePolygonFill.h */,
+				53504C4E9BAC4AF4DDA62088 /* SplineProfile.cpp */,
+				53504C4E84A1D1F37229B03B /* SplineProfile.h */,
+				53504C4E6187EF768C6D8E16 /* SplineSpanMitre.cpp */,
+				53504C4E32169EE9015BF874 /* SplineSpanMitre.h */,
+				53504C4EB25A99CF8B8B0237 /* SplineStation.h */,
+				53504C4ED006B958A155AB2C /* SplineStations.cpp */,
+				53504C4E23CA9444674E80BB /* SplineStations.h */,
+				53504C4E03FC9D432F07C87A /* SplineStep.cpp */,
+				53504C4E547582FE1578815D /* SplineStep.h */,
+				53504C4EC2211424335E6E2B /* SplineStripBuilder.cpp */,
+				53504C4E95A9EFEBD2666D66 /* SplineStripBuilder.h */,
+				53504C4E05C188F08BCA30AD /* SplineStroke.cpp */,
+				53504C4EB090430B01790B80 /* SplineStroke.h */,
+				53504C4E4D2BFDDAC2BBEDDD /* SplineTileLayout.cpp */,
+				53504C4E74FEFC878ABAF24E /* SplineTileLayout.h */,
+				53504C4E6313ECCECBEFE6DC /* SplineTypes.h */,
+				53504C4E952C7EB669179C24 /* SplineUtility.cpp */,
+				53504C4E645199FB18296437 /* SplineUtility.h */,
+				53504C4E79D1422BA47E13D7 /* SplineVertex.h */,
+			);
+			path = spline;
+			sourceTree = "<group>";
+		};
+		53504C4EFCFB1F58C8147021 /* spline */ = {
+			isa = PBXGroup;
+			children = (
+				53504C4E27A52CA89B122B81 /* Spline.cpp */,
+				53504C4E6F7778C36C5711E4 /* Spline.h */,
+				53504C4EDE201094B3D24E0F /* SplineExtrude.cpp */,
+				53504C4EF2123EED0D138989 /* SplineExtrude.h */,
+				53504C4ECA3ED81EF74CC1ED /* SplineInstantiate.cpp */,
+				53504C4EE0E11E493DCC85D9 /* SplineInstantiate.h */,
+				53504C4ECB827EC45A167CF8 /* SplineAnimate.cpp */,
+				53504C4EFA373C8F004A166E /* SplineAnimate.h */,
+			);
+			path = spline;
+			sourceTree = "<group>";
+		};
 		7162FC2A25962A0E0075B97D /* core */ = {
 			isa = PBXGroup;
 			children = (
@@ -8573,6 +8766,7 @@
 				716803CE2DF75EA200ED71BE /* thread */,
 				7162FC2E25962A0E0075B97D /* util */,
 				50525443F2555146A1CC118F /* particles */,
+				53504C4EACD7159559E486AD /* spline */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -8766,6 +8960,10 @@
 				71451BB6270C9D0F00712643 /* RectTransformComponent.h */,
 				48544D4C0000000000000045 /* UIDocumentComponent.h */,
 				50525443123052FF9913FC01 /* ForceFieldComponent.h */,
+				53504C4ED66ADCA350A9F454 /* SplineComponent.h */,
+				53504C4E8E532CE28FB9449E /* SplineExtrudeComponent.h */,
+				53504C4E50BC37FD8319A598 /* SplineInstantiateComponent.h */,
+				53504C4E8E4CD1EB1353A5AE /* SplineAnimateComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -8853,6 +9051,7 @@
 				71ABBD16277A31BA001CE3AF /* ui */,
 				71F225472C587388006ED3CA /* ParticleSystem.cpp */,
 				71F225462C587388006ED3CA /* ParticleSystem.h */,
+				53504C4EFCFB1F58C8147021 /* spline */,
 			);
 			path = object;
 			sourceTree = "<group>";
@@ -8929,6 +9128,8 @@
 				50525443623A48A4E6A367D1 /* ParticleSubsystem.h */,
 				505254430AB9C85866838AFB /* ParticleSystemState.h */,
 				50525443EAA8440DF17720D1 /* RenderSystemParticles.cpp */,
+				53504C4E0F5C2686D307758B /* SplineSystem.cpp */,
+				53504C4E9DDA578A5B225D1A /* SplineSystem.h */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -12385,6 +12586,37 @@
 				17145B3C2FF7FC5E00543CB7 /* Light2D.h in Headers */,
 				17145B3D2FF7FC5E00543CB7 /* ShadowCaster2D.h in Headers */,
 				71F225482C587388006ED3CA /* ParticleSystem.h in Headers */,
+				53504C4E297A11A3049D85C4 /* SplineAnimate.h in Headers */,
+				53504C4EBC6278D3C50D1C80 /* SplineInstantiate.h in Headers */,
+				53504C4E311041BDE2CBB621 /* SplineExtrude.h in Headers */,
+				53504C4EF742F32DB9A652CD /* Spline.h in Headers */,
+				53504C4E16F16DBA2F2A836C /* SplineSystem.h in Headers */,
+				53504C4EAF31C899D0C8FC77 /* SplineAnimateComponent.h in Headers */,
+				53504C4E782FAB56E1C84DFD /* SplineInstantiateComponent.h in Headers */,
+				53504C4E9ADEE1AC24CEC7C2 /* SplineExtrudeComponent.h in Headers */,
+				53504C4EDF9E8180439C2184 /* SplineComponent.h in Headers */,
+				53504C4EC7FF51492947A50D /* SplineVertex.h in Headers */,
+				53504C4E54F8E5B4EDC42011 /* SplineUtility.h in Headers */,
+				53504C4E7D727BB4D0DF1C0D /* SplineTypes.h in Headers */,
+				53504C4E7AEE2F3F3F08E766 /* SplineTileLayout.h in Headers */,
+				53504C4E247A8C0FB778D5B1 /* SplineStroke.h in Headers */,
+				53504C4E7D82D98163CEB318 /* SplineStripBuilder.h in Headers */,
+				53504C4EB64875D16FD2155D /* SplineStep.h in Headers */,
+				53504C4EEF1E24FDF6DE27B0 /* SplineStations.h in Headers */,
+				53504C4E0C5059EE8CB20664 /* SplineStation.h in Headers */,
+				53504C4EF20775A48531A867 /* SplineSpanMitre.h in Headers */,
+				53504C4E6A3F0EF0DEBF0C0D /* SplineProfile.h in Headers */,
+				53504C4E6E9865F25DCA6CBB /* SplinePolygonFill.h in Headers */,
+				53504C4E0ACDEB2F17B7CF6A /* SplineJitter.h in Headers */,
+				53504C4E8263D265304188DA /* SplineFillMesher.h in Headers */,
+				53504C4E9FA6B9437B5352E9 /* SplineFillField.h in Headers */,
+				53504C4E3B46CC4FAC5A1D2A /* SplineFenceLayout.h in Headers */,
+				53504C4E1986F4643746D7B8 /* SplineEvaluator.h in Headers */,
+				53504C4E036ED557307B1BDC /* SplineEndTaper.h in Headers */,
+				53504C4E0749B1673A19E631 /* SplineData.h in Headers */,
+				53504C4E32D528CD16057BD7 /* SplineCurve.h in Headers */,
+				53504C4EE88650EB5869D1BC /* SplineCorner.h in Headers */,
+				53504C4E10199FE28E1D7017 /* SplineCenterline.h in Headers */,
 				50525443650BD52E6BBF49BF /* ParticleSystemState.h in Headers */,
 				505254434ADCD5E1F0B3DB84 /* ParticleSubsystem.h in Headers */,
 				50525443AC24202F2BF9AF2A /* SimdFloat4.h in Headers */,
@@ -14686,6 +14918,29 @@
 				713D82AF259D307F00567F9F /* InterleavedBuffer.cpp in Sources */,
 				71E54500284D5BB700C68FAB /* Animation.cpp in Sources */,
 				71F2254A2C587388006ED3CA /* ParticleSystem.cpp in Sources */,
+				53504C4EB24308C2D78335F2 /* SplineClassesLua.cpp in Sources */,
+				53504C4E283B6FF5F26263BD /* SplineAnimate.cpp in Sources */,
+				53504C4E4A7CF4D85FD00022 /* SplineInstantiate.cpp in Sources */,
+				53504C4E140794559E828CC2 /* SplineExtrude.cpp in Sources */,
+				53504C4E77B3D5D8336078AD /* Spline.cpp in Sources */,
+				53504C4EA09F64AA7A8EF1BB /* SplineSystem.cpp in Sources */,
+				53504C4EB3F578343986A6D3 /* SplineUtility.cpp in Sources */,
+				53504C4EB5412187F0808626 /* SplineTileLayout.cpp in Sources */,
+				53504C4E76D853AC137DBFD0 /* SplineStroke.cpp in Sources */,
+				53504C4E2598F2AE6E0538FD /* SplineStripBuilder.cpp in Sources */,
+				53504C4E8CC0545BE3B310FC /* SplineStep.cpp in Sources */,
+				53504C4EF0D214D7CFEC3DAD /* SplineStations.cpp in Sources */,
+				53504C4E7DCF6B8FFC9DA7A8 /* SplineSpanMitre.cpp in Sources */,
+				53504C4E40EE6A945E8C004D /* SplineProfile.cpp in Sources */,
+				53504C4EE478AC23639E4C1B /* SplinePolygonFill.cpp in Sources */,
+				53504C4E7FE36482CACDF2BD /* SplineFillMesher.cpp in Sources */,
+				53504C4E1442127557712BF6 /* SplineFillField.cpp in Sources */,
+				53504C4E98AC43E5FD04CBE0 /* SplineFenceLayout.cpp in Sources */,
+				53504C4E3D1B2816687AD343 /* SplineEvaluator.cpp in Sources */,
+				53504C4EA607966684E1B80A /* SplineEndTaper.cpp in Sources */,
+				53504C4EE164529E47712124 /* SplineData.cpp in Sources */,
+				53504C4EBC4DCF81B42E0D8E /* SplineCorner.cpp in Sources */,
+				53504C4E44830F1CF4D42348 /* SplineCenterline.cpp in Sources */,
 				5052544384544A0AC8C91F8A /* CurlNoiseAvx2.cpp in Sources */,
 				5052544395B69AD74AAB753C /* RenderSystemParticles.cpp in Sources */,
 				5052544352E2E18F33804236 /* ParticleSubsystem.cpp in Sources */,
@@ -15222,6 +15477,29 @@
 				7162FD4525963AE00075B97D /* GameObject.cpp in Sources */,
 				71E544FF284D5BB700C68FAB /* Animation.cpp in Sources */,
 				71F225492C587388006ED3CA /* ParticleSystem.cpp in Sources */,
+				53504C4E56FFBE8361FFBEBC /* SplineClassesLua.cpp in Sources */,
+				53504C4EC783A95717F91079 /* SplineAnimate.cpp in Sources */,
+				53504C4E5B3A511C890C7ABB /* SplineInstantiate.cpp in Sources */,
+				53504C4E56B790D48F5577F1 /* SplineExtrude.cpp in Sources */,
+				53504C4EF482AA7F81590AE0 /* Spline.cpp in Sources */,
+				53504C4E537EA3930C89B8DE /* SplineSystem.cpp in Sources */,
+				53504C4EACD9450EE6CF6D7F /* SplineUtility.cpp in Sources */,
+				53504C4E53FB6FC2352F0AAD /* SplineTileLayout.cpp in Sources */,
+				53504C4EBDA6F493918FF084 /* SplineStroke.cpp in Sources */,
+				53504C4E1ECEE2790D06D698 /* SplineStripBuilder.cpp in Sources */,
+				53504C4E5F2B540E82D785F3 /* SplineStep.cpp in Sources */,
+				53504C4EEA2589C051BBFEBD /* SplineStations.cpp in Sources */,
+				53504C4E9DF8A2AF92763094 /* SplineSpanMitre.cpp in Sources */,
+				53504C4E881FA21C7B578AC5 /* SplineProfile.cpp in Sources */,
+				53504C4E88C8EDA9021E7CA6 /* SplinePolygonFill.cpp in Sources */,
+				53504C4EFA829BEC1E26A7BA /* SplineFillMesher.cpp in Sources */,
+				53504C4E45326AF2925BF254 /* SplineFillField.cpp in Sources */,
+				53504C4ED66516B18D62A80D /* SplineFenceLayout.cpp in Sources */,
+				53504C4EF40C75C498A48784 /* SplineEvaluator.cpp in Sources */,
+				53504C4E1DDA1AE1814858C7 /* SplineEndTaper.cpp in Sources */,
+				53504C4E6B3B7BD471456655 /* SplineData.cpp in Sources */,
+				53504C4EC06600290E4970F8 /* SplineCorner.cpp in Sources */,
+				53504C4EA2680B687788D801 /* SplineCenterline.cpp in Sources */,
 				50525443D475987FF83292E4 /* CurlNoiseAvx2.cpp in Sources */,
 				50525443E5ED12E553AB3EF1 /* RenderSystemParticles.cpp in Sources */,
 				50525443E21FA64366D4ADEB /* ParticleSubsystem.cpp in Sources */,
