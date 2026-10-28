@@ -25,9 +25,9 @@ namespace {
                "\n        rotation: [1, 0, 0, 0]\n        scale: [1, 1, 1]\n" + extra;
     }
 
-    std::string scene(const std::string& entities, const std::string& tail = "") {
+    std::string scene(const std::string& entities, uint64_t mainCamera = 0) {
         return "formatVersion: " + std::to_string(StreamMigrations::currentVersion(DocumentKind::Scene)) +
-               "\nid: 1\nname: Test\nsceneType: scene_3d\nmainCamera: 0\nentities:\n" + entities + tail;
+               "\nid: 1\nname: Test\nsceneType: scene_3d\nmainCamera: " + std::to_string(mainCamera) + "\nentities:\n" + entities;
     }
 
     std::string reference(uint64_t target) {
@@ -98,7 +98,7 @@ TEST(SceneMerge, BothSidesAddTheSameIdTheirsIsRenumbered) {
     const std::string ours = scene(entity(1000, "Root") + entity(1050, "Ours"));
     // theirs adds 1050 too, and a GameObject that refers to it
     const std::string theirs = scene(entity(1000, "Root") + entity(1050, "Theirs", "[5, 0, 0]") + entity(1051, "Follower", "[0, 0, 0]", reference(1050)),
-                                     "mainCamera: 1050\n");
+                                     1050);
     const MergeResult result = merge(base, ours, theirs);
     ASSERT_EQ(result.renumbered.size(), 1u);
     const uint64_t renumbered = result.renumbered.at(1050);

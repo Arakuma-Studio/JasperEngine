@@ -30,12 +30,17 @@ TEST(Migrations, SceneV0ToV1) {
     EXPECT_EQ(saved.begin()->first.Scalar(), "formatVersion");
     EXPECT_EQ(saved["formatVersion"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Scene));
     // and nothing else changes but what the later migrations change (scene 1 -> 2: the old
-    // default shadow quality Low is Auto, a light's shadow bias is in texels)
+    // default shadow quality Low is Auto, a light's shadow bias is in texels; 3 -> 4: the
+    // transforms' derived values are not written)
     YAML::Node expected = YAML::Load(readText(fixture("migrations/scene-v0.scene")));
     expected["scene"]["shadowQuality"] = "auto";
     for (YAML::Node entity : expected["entities"]) {
         if (entity["components"] && entity["components"]["light"] && entity["components"]["light"]["shadowBias"])
             entity["components"]["light"]["shadowBias"] = 1.0f;
+        if (entity["components"] && entity["components"]["transform"]) {
+            YAML::Node transform = entity["components"]["transform"];
+            for (const char* key : {"worldPosition", "worldRotation", "worldScale", "localMatrix", "modelMatrix", "normalMatrix"}) transform.remove(key);
+        }
     }
     std::string why;
     EXPECT_TRUE(structurallyEqual(withoutKey(saved, "formatVersion"), expected, &why)) << why;

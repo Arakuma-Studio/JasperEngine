@@ -37,8 +37,8 @@ namespace {
         }
     }
 
-    // a scene of `count` GameObjects in the current format, each with a transform, a mesh-less
-    // light every tenth, a script with properties every fifth; ids from 1000
+    // a scene of `count` GameObjects in the current format, each with a transform, a light every
+    // 400th (a scene has at most MAX_LIGHTS), a script with properties every fifth; ids from 1000
     std::string bigScene(int count, int changedEvery = 0) {
         std::string text = "formatVersion: " + std::to_string(StreamMigrations::currentVersion(DocumentKind::Scene)) +
                            "\nid: 1\nname: Big\nsceneType: scene_3d\nmainCamera: 0\nentities:\n";
@@ -48,7 +48,7 @@ namespace {
             text += "  - type: Entity\n    entity: " + std::to_string(1000 + i) + "\n    name: Object " + std::to_string(i) +
                     "\n    components:\n      transform:\n        position: [" + std::to_string(i % 100) + ", " + (changed ? "7" : "0") +
                     ", " + std::to_string(i / 100) + "]\n        rotation: [1, 0, 0, 0]\n        scale: [1, 1, 1]\n        visible: true\n";
-            if (i % 10 == 0) text += "      light:\n        type: point\n        intensity: " + std::string(changed ? "2.5" : "1") + "\n        range: 10\n";
+            if (i % 400 == 0) text += "      light:\n        type: point\n        intensity: " + std::string(changed ? "2.5" : "1") + "\n        range: 10\n";
             if (i % 5 == 0) {
                 text += "      script:\n        scripts:\n          - type: lua\n            path: Mover.lua\n            className: Mover\n"
                         "            enabled: true\n            properties:\n              - name: speed\n                type: Float\n"
@@ -169,7 +169,7 @@ TEST(VcsBench, EncodeOfTheCurrentSide) {
     double best = 1e9;
     for (int round = 0; round < 4; round++) {
         const Clock::time_point start = Clock::now();
-        const YAML::Node node = Stream::encodeSceneProject(nullptr, decoded.scene.get());
+        const YAML::Node node = encodeScene(decoded);
         const double ms = msSince(start);
         EXPECT_TRUE(node["entities"].IsSequence());
         if (round > 0) best = std::min(best, ms);

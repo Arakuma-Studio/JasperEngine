@@ -169,6 +169,35 @@ fs::path SvnProvider::tempFile(const char* prefix) const {
 
 ProcessResult SvnProvider::svnWithTargets(std::vector<std::string> args, std::span<const RepoPath> paths, int timeoutMs,
                                           const jobs::CancelToken* cancel) const {
+    // status takes no --targets: its paths go on the command line, in chunks (after --, each
+    // with its peg escape), the outputs one after the other
+    if (!args.empty() && args[0] == "status") {
+        constexpr size_t kChunkPaths = 256;
+        ProcessResult combined;
+        for (size_t start = 0; start < paths.size(); start += kChunkPaths) {
+            std::vector<std::string> chunk = args;
+            chunk.push_back("--");
+            for (size_t i = start; i < std::min(paths.size(), start + kChunkPaths); i++) chunk.push_back(pegged(paths[i].empty() ? "." : paths[i]));
+            ProcessResult part = svn(std::move(chunk), timeoutMs, cancel);
+            if (!part.ok()) return part;
+            combined.exitCode = part.exitCode;
+            combined.err += part.err;
+            if (combined.out.empty()) {
+                combined.out = std::move(part.out);
+                continue;
+            }
+            // one <status> document: the later chunks' targets go inside the first's
+            const size_t open = part.out.find("<status>");
+            const size_t close = part.out.rfind("</status>");
+            const size_t end = combined.out.rfind("</status>");
+            if (open == std::string::npos || close == std::string::npos || end == std::string::npos) {
+                combined.out += part.out;
+                continue;
+            }
+            combined.out.insert(end, part.out.substr(open + 8, close - open - 8));
+        }
+        return combined;
+    }
     const fs::path file = tempFile("targets-");
     {
         std::ofstream out(file, std::ios::binary | std::ios::trunc);
@@ -383,11 +412,19 @@ VcsResult SvnProvider::commit(std::span<const RepoPath> paths, std::string_view 
     std::vector<RepoPath> toAdd, toDelete;
     std::vector<const XmlElement*> entries;
     collect(root, "entry", entries);
+    std::set<RepoPath, PathKeyLess> reported;
     for (const XmlElement* entry : entries) {
         const XmlElement* wc = entry->child("wc-status");
         if (!wc) continue;
+        reported.insert(keyOf(entry->attribute("path")));
         if (wc->attribute("item") == "unversioned") toAdd.push_back(keyOf(entry->attribute("path")));
         else if (wc->attribute("item") == "missing") toDelete.push_back(keyOf(entry->attribute("path")));
+    }
+    // a file in an unversioned folder: status says nothing of it ("not found"); it is added
+    // with its folders (an add of a versioned file changes nothing)
+    for (const RepoPath& path : paths) {
+        std::error_code ec;
+        if (!reported.count(path) && fs::exists(absoluteOf(cfg.repoRoot, path), ec)) toAdd.push_back(path);
     }
     if (!toAdd.empty()) {
         const VcsResult added = stage(toAdd);

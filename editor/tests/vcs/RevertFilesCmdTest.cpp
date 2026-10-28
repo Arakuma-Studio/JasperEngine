@@ -62,9 +62,10 @@ namespace {
 
 TEST_F(RevertFilesTest, UndoRedo) {
     VcsService& service = project->getVcs();
-    const std::string headScene = readFile(dir / "Main Scene.scene");
-    const std::string headPng = readFile(dir / "assets/hero.png");
-    const std::string headMeta = readFile(dir / "assets/hero.png.meta");
+    // what HEAD holds (the project's load already wrote its asset identity into the files)
+    const std::string headScene = box.gitOk(dir, {"show", "HEAD:Main Scene.scene"});
+    const std::string headPng = box.gitOk(dir, {"show", "HEAD:assets/hero.png"});
+    const std::string headMeta = box.gitOk(dir, {"show", "HEAD:assets/hero.png.meta"});
 
     // the scene open and saved with a change, then changed again without a save
     SceneProject* scene = mainScene();

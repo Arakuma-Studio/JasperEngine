@@ -64,6 +64,8 @@ namespace jasperengine::editor::vcs::scene {
         static bool parse(std::string_view text, SceneYamlModel& out, std::string* error = nullptr);
         // From a parsed document (cloned first: the node is not changed)
         static bool fromDocument(const YAML::Node& document, SceneYamlModel& out, std::string* error = nullptr);
+        // The same for a document nothing else holds (parse's): it is migrated in place, not copied
+        static bool fromOwnedDocument(YAML::Node document, SceneYamlModel& out, std::string* error = nullptr);
 
         // The document again, in the canonical key order of Stream: the document keys, each
         // GameObject's type, entity, name, active, tag, layer, components (in the order a scene

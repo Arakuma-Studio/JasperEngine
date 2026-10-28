@@ -342,7 +342,8 @@ MergeResult mergeScenes(const SceneYamlModel& base, const SceneYamlModel& ours, 
             const YAML::Node no = vo ? *vo : undefinedNode();
             const YAML::Node nt = vt ? *vt : undefinedNode();
             YAML::Node value;
-            if (out.settings && isDerivedDocumentKey(key)) {
+            // (a prefab's nextEntity is set to the max below: never a conflict)
+            if (out.settings && (isDerivedDocumentKey(key) || key == "nextEntity")) {
                 value = defined(no) ? cloned(no) : cloned(nt);
             } else {
                 value = merger.merge(key, key, nb, no, nt, key, !out.settings);

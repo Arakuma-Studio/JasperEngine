@@ -238,7 +238,7 @@ TEST(GitProvider, ProjectInASubdirectory) {
     ASSERT_NE(snapshot.find("game/new.txt"), nullptr);
     const VcsDirEntry* game = snapshot.findDir("game");
     ASSERT_NE(game, nullptr);
-    EXPECT_EQ(game->state, DirState::Untracked);
+    EXPECT_EQ(game->state, DirState::Changed);   // a modified file outranks an untracked one
     EXPECT_EQ(game->changed, 2u);
     // the project's history only
     std::vector<VcsLogEntry> log;

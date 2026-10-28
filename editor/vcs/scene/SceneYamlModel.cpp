@@ -135,16 +135,25 @@ bool SceneYamlModel::parse(std::string_view text, SceneYamlModel& out, std::stri
         if (error) *error = std::string("not YAML: ") + e.what();
         return false;
     }
-    return fromDocument(document, out, error);
+    return fromOwnedDocument(document, out, error);
 }
 
 bool SceneYamlModel::fromDocument(const YAML::Node& source, SceneYamlModel& out, std::string* error) {
-    out = SceneYamlModel();
     if (!source || !source.IsMap()) {
+        out = SceneYamlModel();
         if (error) *error = "the document is not a map";
         return false;
     }
-    YAML::Node root = YAML::Clone(source);
+    // the migration edits what it reads: the caller's document stays as it was
+    return fromOwnedDocument(YAML::Clone(source), out, error);
+}
+
+bool SceneYamlModel::fromOwnedDocument(YAML::Node root, SceneYamlModel& out, std::string* error) {
+    out = SceneYamlModel();
+    if (!root || !root.IsMap()) {
+        if (error) *error = "the document is not a map";
+        return false;
+    }
     out.kind = root["type"] && root["type"].IsScalar() && root["type"].Scalar() == "Prefab" ? DocumentKind::Prefab : DocumentKind::Scene;
     try {
         // R13: the baseline in the current format before any comparison
@@ -307,15 +316,19 @@ YAML::Node SceneYamlModel::entityNode(uint64_t id, const std::function<bool(uint
             if ((*own)[key]) node[key] = (*own)[key];
         }
     }
-    std::vector<std::pair<std::string, YAML::Node>> components;
-    for (const auto& [key, value] : object.components) {
-        if (key != kGameObjectKey && key != kPrefabInstanceKey) components.emplace_back(key, value);
+    // sorted by index: assigning a YAML::Node (what sorting nodes does) writes through to the
+    // node it shares with the model
+    std::vector<size_t> components;
+    for (size_t i = 0; i < object.components.size(); i++) {
+        const std::string& key = object.components[i].first;
+        if (key != kGameObjectKey && key != kPrefabInstanceKey) components.push_back(i);
     }
-    std::stable_sort(components.begin(), components.end(),
-                     [](const auto& a, const auto& b) { return componentRank(a.first) < componentRank(b.first); });
+    std::stable_sort(components.begin(), components.end(), [&object](size_t a, size_t b) {
+        return componentRank(object.components[a].first) < componentRank(object.components[b].first);
+    });
     if (!components.empty()) {
         YAML::Node map(YAML::NodeType::Map);
-        for (const auto& [key, value] : components) map[key] = value;
+        for (size_t i : components) map[object.components[i].first] = object.components[i].second;
         node["components"] = map;
     }
     if (const YAML::Node* instance = object.component(kPrefabInstanceKey)) node[kPrefabInstanceKey] = *instance;

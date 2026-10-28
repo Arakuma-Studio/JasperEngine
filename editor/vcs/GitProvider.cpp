@@ -197,6 +197,28 @@ ProcessResult GitProvider::gitWithPaths(std::vector<std::string> args, std::span
         for (const RepoPath& path : paths) args.push_back(path);
         return git(std::move(args), timeoutMs, std::move(stdinData), cancel);
     }
+    // only these take a pathspec file (git 2.26+); the readers (ls-files, diff) run per chunk,
+    // their outputs one after the other
+    static const char* const kPathspecFileCommands[] = {"add", "checkout", "commit", "reset", "restore", "rm", "stash"};
+    const bool pathspecFile = !args.empty() && std::any_of(std::begin(kPathspecFileCommands), std::end(kPathspecFileCommands),
+                                                           [&](const char* command) { return args[0] == command; });
+    if (!pathspecFile) {
+        ProcessResult combined;
+        // (256 paths: well under Windows' 32,767-character command line)
+        constexpr size_t kChunkPaths = 256;
+        for (size_t start = 0; start < paths.size(); start += kChunkPaths) {
+            const size_t end = std::min(paths.size(), start + kChunkPaths);
+            std::vector<std::string> chunk = args;
+            chunk.push_back("--");
+            for (size_t i = start; i < end; i++) chunk.push_back(paths[i]);
+            ProcessResult part = git(std::move(chunk), timeoutMs, stdinData, cancel);
+            if (!part.ok()) return part;
+            combined.exitCode = part.exitCode;
+            combined.out += part.out;
+            combined.err += part.err;
+        }
+        return combined;
+    }
     std::error_code ec;
     fs::create_directories(cfg.internalDir, ec);
     const fs::path file = cfg.internalDir / ("pathspec-" + std::to_string(io::currentProcessId()) + "-" + std::to_string(tempCounter++));
