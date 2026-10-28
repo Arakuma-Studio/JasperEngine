@@ -56,6 +56,13 @@ Five runs of `je-bench-splines --count-allocs`, every run within every budget:
 | `empty_scene_allocations` | 0 | 0 | 0 |
 | `spline_animate_follower_us` | <= 0.5 | 0.321 - 0.327 | 0.322 |
 
+`TerrainSplineBakeTests.BakeBudgets` with `JASPER_TEST_PERF_SLACK=1` (median of its runs):
+
+| Metric | Budget | E |
+|---|---|---|
+| Bake of a 1 km road into a 1025^2 heightmap + 1 blend map | <= 150 ms | 46.4 ms |
+| Live Terrain re-bake after a 50 m knot drag | <= 16 ms | 0.60 ms |
+
 R18's `evaluateAtDistance` was 64 ns before its fast path: the cache's up-to-date check is inline,
 the arc lookup starts at the distance's share of the table (`arcEntriesPerUnit`) and walks at most
 four entries before a binary search, the segment index needs no integer division, the located
