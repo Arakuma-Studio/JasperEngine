@@ -619,3 +619,6 @@ What the implementation does differently from the text above, and why.
 - **Overlay culling.** The Scene view overlay re-extracts the visible tiles when the view, the
   navmesh or the area colours change (and at most 64k triangles), instead of keeping one dynamic
   mesh per surface built once per tile change.
+- **Gizmos (R34).** Link start and end handles drag in the Scene view (one undo step per drag);
+  obstacle shapes, surface and modifier volumes and the agent's cylinder are drawn on selection
+  and edited through their Inspector fields (no drag handles of their own).

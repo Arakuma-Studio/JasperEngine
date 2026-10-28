@@ -14,10 +14,13 @@
 #include "navigation/NavGridCellsCmd.h"
 #include "navigation/NavGridBrush.h"
 #include "component/Transform.h"
+#include "component/NavMeshLinkComponent.h"
+#include "command/type/PropertyCmd.h"
 #include "command/CommandHandle.h"
 
 #include <algorithm>
 #include <chrono>
+#include <limits>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -551,5 +554,71 @@ std::vector<NavigationEditor::Finding> NavigationEditor::checkSurfaces(Project* 
     }
     if (surfaces) *surfaces = count;
     return findings;
+}
+
+// ---------------------------------------------------------------- link handles
+
+bool NavigationEditor::beginLinkHandleDrag(Project* project, uint32_t sceneId, Scene* scene, const Ray& ray,
+                                           const std::vector<Entity>& selected) {
+    (void)project;
+    linkDrag = LinkDrag();
+    float bestDistance = std::numeric_limits<float>::max();
+    for (Entity entity : selected) {
+        const NavMeshLinkComponent* link = scene->findComponent<NavMeshLinkComponent>(entity);
+        const Transform* transform = scene->findComponent<Transform>(entity);
+        if (!link || !transform) continue;
+        for (int end = 0; end < 2; end++) {
+            const Vector3 world = transform->modelMatrix * (end ? link->endPoint : link->startPoint);
+            // how far the ray passes from the handle, and the grab radius there (it grows with the distance)
+            const Vector3 toPoint = world - ray.getOrigin();
+            const Vector3 direction = ray.getDirection().normalized();
+            const float along = toPoint.dotProduct(direction);
+            if (along <= 0.0f) continue;
+            const float miss = (toPoint - direction * along).length();
+            const float grab = std::max(0.15f, std::max(link->width * 0.5f, along * 0.02f));
+            if (miss <= grab && along < bestDistance) {
+                bestDistance = along;
+                linkDrag.active = true;
+                linkDrag.sceneId = sceneId;
+                linkDrag.link = entity;
+                linkDrag.end = end == 1;
+                linkDrag.original = end ? link->endPoint : link->startPoint;
+                linkDrag.planePoint = world;
+                linkDrag.planeNormal = transform->worldRotation * Vector3(0, 1, 0);
+            }
+        }
+    }
+    return linkDrag.active;
+}
+
+void NavigationEditor::dragLinkHandle(Scene* scene, const Ray& ray) {
+    if (!linkDrag.active) return;
+    NavMeshLinkComponent* link = scene->findComponent<NavMeshLinkComponent>(linkDrag.link);
+    const Transform* transform = scene->findComponent<Transform>(linkDrag.link);
+    if (!link || !transform) return;
+    const RayReturn hit = ray.intersects(Plane(linkDrag.planeNormal, linkDrag.planePoint));
+    if (!hit.hit) return;
+    // the GameObject's space (the handle moves on the plane it was grabbed on)
+    const Vector3 local = transform->modelMatrix.inverse() * hit.point;
+    (linkDrag.end ? link->endPoint : link->startPoint) = local;
+}
+
+void NavigationEditor::endLinkHandleDrag(Project* project) {
+    if (!linkDrag.active) return;
+    const LinkDrag drag = linkDrag;
+    linkDrag = LinkDrag();
+    SceneProject* sceneProject = project ? project->getScene(drag.sceneId) : nullptr;
+    NavMeshLinkComponent* link = sceneProject && sceneProject->scene ? sceneProject->scene->findComponent<NavMeshLinkComponent>(drag.link) : nullptr;
+    if (!link) return;
+    Vector3& field = drag.end ? link->endPoint : link->startPoint;
+    const Vector3 moved = field;
+    if (moved == drag.original) return;
+    // the command records the value before the drag and sets the dragged one (one undo step)
+    field = drag.original;
+    Command* cmd = new PropertyCmd<Vector3>(project, drag.sceneId, drag.link, ComponentType::NavMeshLinkComponent,
+                                            drag.end ? "endPoint" : "startPoint", moved);
+    CommandHandle::get(drag.sceneId)->addCommand(cmd);
+    cmd->setNoMerge();
+    sceneProject->needUpdateRender = true;
 }
 

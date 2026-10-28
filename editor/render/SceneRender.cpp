@@ -1139,6 +1139,12 @@ void editor::SceneRender::mouseClickEvent(float x, float y, std::vector<Entity> 
         }
     }
 
+    // a selected NavMesh Link's start or end handle under the press: its drag (S19 R34)
+    if (NavigationEditor::get().beginLinkHandleDrag(Backend::getApp().getProject(), getLatticeSceneId(), scene, ownerMouseRay, selEntities)){
+        physicsClick = false;
+        return;
+    }
+
     // the nav-grid brush (S19 R35): a press on the selected NavGrid starts a stroke
     if (NavigationEditor::get().isBrushPainting(scene)){
         physicsClick = false;
@@ -1356,6 +1362,7 @@ void editor::SceneRender::mouseReleaseEvent(float x, float y){
     }
     FluidEditorTools::endStroke();
     NavigationEditor::get().endBrushStroke(Backend::getApp().getProject());
+    NavigationEditor::get().endLinkHandleDrag(Backend::getApp().getProject());
 
     // a physics drag ends its gesture (commit, or settle then commit)
     if (physicsGestureStarted){
@@ -1455,6 +1462,11 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
 
     if (NavigationEditor::get().isBrushPainting(scene)){
         NavigationEditor::get().paintBrushStroke(scene, ownerMouseRay, ImGui::GetIO().KeyShift);
+        return;
+    }
+
+    if (NavigationEditor::get().isDraggingLinkHandle()){
+        NavigationEditor::get().dragLinkHandle(scene, ownerMouseRay);
         return;
     }
 
@@ -2231,7 +2243,8 @@ bool editor::SceneRender::isAnyGizmoSideSelected() const{
 
 // a Scene view brush holds the left button: Paint Dye, or the nav-grid brush (S19)
 bool editor::SceneRender::isFluidPainting() const{
-    return FluidEditorTools::isPainting(scene) || NavigationEditor::get().isBrushPainting(scene);
+    return FluidEditorTools::isPainting(scene) || NavigationEditor::get().isBrushPainting(scene) ||
+           NavigationEditor::get().isDraggingLinkHandle();
 }
 
 bool editor::SceneRender::isTerrainEditing() const{

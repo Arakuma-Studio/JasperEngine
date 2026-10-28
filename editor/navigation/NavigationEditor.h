@@ -96,6 +96,13 @@ namespace jasperengine::editor {
         void beginBrushStroke(Project* project, Scene* scene, const Ray& ray, bool shift);
         void paintBrushStroke(Scene* scene, const Ray& ray, bool shift = false);
         void endBrushStroke(Project* project);
+        // ---- NavMesh Link handles (spec R34): a press near a selected link's start or end drags
+        // it on the link's horizontal plane; the release is one undo step
+        bool beginLinkHandleDrag(Project* project, uint32_t sceneId, Scene* scene, const Ray& ray, const std::vector<Entity>& selected);
+        void dragLinkHandle(Scene* scene, const Ray& ray);
+        void endLinkHandleDrag(Project* project);
+        bool isDraggingLinkHandle() const { return linkDrag.active; }
+
         // the grid cell under a ray (false: it misses the grid's plane)
         static bool cellUnderRay(Scene* scene, Entity grid, const Ray& ray, nav::GridCell& cell);
 
@@ -140,6 +147,16 @@ namespace jasperengine::editor {
         std::vector<DirtyCache> dirtyCache;
 
         std::map<uint32_t, std::vector<Vector3>> queryPaths;
+        struct LinkDrag {
+            bool active = false;
+            uint32_t sceneId = 0;
+            Entity link = NULL_ENTITY;
+            bool end = false;
+            Vector3 original;
+            Vector3 planePoint;
+            Vector3 planeNormal;
+        };
+        LinkDrag linkDrag;
         uint32_t brushScene = 0;
         Entity brushGrid = NULL_ENTITY;
         Brush brush;
