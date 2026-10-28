@@ -18,6 +18,7 @@
 #include "component/ModelComponent.h"
 #include "object/AnimationPlayer.h"
 #include "object/Model.h"
+#include "subsystem/MeshSystem.h"
 #include "subsystem/ActionSystem.h"
 #include "subsystem/RenderSystem.h"
 
@@ -201,13 +202,13 @@ TEST_F(AnimatorSystemTest, EventsLeaderOnlyAllAndSeek){
 // AC8: one Animator driving three skinned meshes of two models fires an event once per pass
 TEST_F(AnimatorSystemTest, EventsOncePerAnimator){
     Model first(&scene);
-    ASSERT_TRUE(first.loadModel(fixturePath("hero_tpose.gltf")));
+    ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(first.getEntity(), fixturePath("hero_tpose.gltf"), false, false, false));
     scene.getComponent<ModelComponent>(first.getEntity()).needUpdateModel = false;
     Model second(&scene);
-    ASSERT_TRUE(second.loadModel(fixturePath("robot_apose.gltf")));
+    ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(second.getEntity(), fixturePath("robot_apose.gltf"), false, false, false));
     scene.getComponent<ModelComponent>(second.getEntity()).needUpdateModel = false;
     Model third(&scene);
-    ASSERT_TRUE(third.loadModel(fixturePath("hero_tpose.gltf")));
+    ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(third.getEntity(), fixturePath("hero_tpose.gltf"), false, false, false));
     scene.getComponent<ModelComponent>(third.getEntity()).needUpdateModel = false;
     scene.addEntityChild(root, first.getEntity(), false);
     scene.addEntityChild(root, second.getEntity(), false);
@@ -352,7 +353,7 @@ TEST_F(AnimatorSystemTest, ExposedWritesOnlyListedBonesAndAttachments){
 // AC11: the Animator's skin matrices are what the render system computes from the bone transforms
 TEST_F(AnimatorSystemTest, SkinMatricesMatchTheRenderSystem){
     Model model(&scene);
-    ASSERT_TRUE(model.loadModel(fixturePath("hero_animated.gltf")));
+    ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(model.getEntity(), fixturePath("hero_animated.gltf"), false, false, false));
     scene.getComponent<ModelComponent>(model.getEntity()).needUpdateModel = false;
     const Entity hero = model.getEntity();
     scene.getComponent<Transform>(hero).position = Vector3(2, 0, -1);
@@ -385,7 +386,7 @@ TEST_F(AnimatorSystemTest, SkinMatricesMatchTheRenderSystem){
 
 TEST_F(AnimatorSystemTest, CullUpdateTransformsAdvancesWithoutWriting){
     Model model(&scene);
-    ASSERT_TRUE(model.loadModel(fixturePath("hero_animated.gltf")));
+    ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(model.getEntity(), fixturePath("hero_animated.gltf"), false, false, false));
     scene.getComponent<ModelComponent>(model.getEntity()).needUpdateModel = false;
     const Entity hero = model.getEntity();
     const Entity camera = scene.createEntity();

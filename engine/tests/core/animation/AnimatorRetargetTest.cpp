@@ -15,6 +15,7 @@
 #include "component/ModelComponent.h"
 #include "object/Model.h"
 #include "pose/HumanBones.h"
+#include "subsystem/MeshSystem.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
 
@@ -47,7 +48,9 @@ namespace {
         Entity load(const std::string& file, float x){
             models.push_back(std::make_unique<Model>(&scene));
             Model& model = *models.back();
-            EXPECT_TRUE(model.loadModel(fixturePath(file)));
+            // as the editor loads a ModelComponent (MeshSystem's update): the file's root nodes
+            // under the model's entity, the root transform kept
+            EXPECT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(model.getEntity(), fixturePath(file), false, false, false));
             // loaded at once (MeshSystem's update would clear the flag the next frame)
             scene.getComponent<ModelComponent>(model.getEntity()).needUpdateModel = false;
             scene.getComponent<Transform>(model.getEntity()).position = Vector3(x, 0, 0);
@@ -57,8 +60,10 @@ namespace {
 
 }
 
+// the clip's own model plays it by path; the same rig from another file (no animations: its
+// hierarchy holds the joints only, so the clip's paths do not bind there) plays it retargeted
 TEST_F(AnimatorRetargeting, SameRigIdentity){
-    const Entity direct = load("hero_tpose.gltf", -1);
+    const Entity direct = load("hero_animated.gltf", -1);
     const Entity retargeted = load("hero_tpose.gltf", 1);
     const std::string walk = fixturePath("hero_animated.gltf") + "#Walk";
     const std::string path = controllerFile("walk", controller({}, {state("Walk", walk)}));
@@ -70,6 +75,7 @@ TEST_F(AnimatorRetargeting, SameRigIdentity){
     ASSERT_TRUE(instance(retargeted).humanoid.valid) << instance(retargeted).humanoid.error;
     ASSERT_TRUE(instance(retargeted).clips[0].retargeted) << "another model file: retargeted";
     EXPECT_FALSE(instance(direct).clips[0].retargeted);
+    ASSERT_EQ(instance(direct).rig.unresolved, 0u) << "the clip binds on its own model";
     for (int frame = 0; frame < 90; frame++){
         step(kDt);
         for (int s = 0; s < pose::HUMAN_BONE_COUNT; s++){
@@ -88,7 +94,7 @@ TEST_F(AnimatorRetargeting, SameRigIdentity){
 }
 
 TEST_F(AnimatorRetargeting, CrossAxisConvention){
-    const Entity hero = load("hero_tpose.gltf", -1);
+    const Entity hero = load("hero_animated.gltf", -1);
     const Entity robot = load("robot_apose.gltf", 1);
     const std::string walk = fixturePath("hero_animated.gltf") + "#Walk";
     const std::string path = controllerFile("walk", controller({}, {state("Walk", walk)}));
@@ -98,6 +104,7 @@ TEST_F(AnimatorRetargeting, CrossAxisConvention){
     ASSERT_TRUE(instance(robot).bound);
     ASSERT_TRUE(instance(robot).humanoid.valid) << instance(robot).humanoid.error;
     ASSERT_TRUE(instance(robot).clips[0].retargeted);
+    ASSERT_EQ(instance(hero).rig.unresolved, 0u);
     using B = pose::HumanBone;
     const std::pair<B, B> segments[] = {{B::LeftUpperArm, B::LeftLowerArm}, {B::LeftLowerArm, B::LeftHand},
                                         {B::RightUpperArm, B::RightLowerArm}, {B::RightLowerArm, B::RightHand},
@@ -259,3 +266,5 @@ TEST_F(AnimatorFootIK, FootLockNoSlide){
     }
     EXPECT_GT(scene.getComponent<Transform>(ankles[1]).worldPosition.z - end.z, 0.01f);
 }
+
+

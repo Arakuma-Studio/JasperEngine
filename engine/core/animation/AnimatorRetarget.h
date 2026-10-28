@@ -10,8 +10,9 @@
 //   the neutral hips in the canonical character frame, scaled by the rigs' humanScale ratio.
 //   Bones that are no slot keep the target's rest (fingers, twist helpers).
 // - Sources: a model file's glTF nodes (readModelFileNodes) and its `.humanoid` sidecar, built
-//   once per model and shared (retargetSource). Targets: the Animator's rig (bone names) and the
-//   sidecar of the Animator's model.
+//   once per model and shared (retargetSource). Targets: the Animator's model file's humanoid
+//   (the same source, its slots mapped to the rig's bones by path), else for a rig without a
+//   readable model the rig's own bones (names, rest) and no sidecar.
 // - Thread-safety: retargetSource is thread safe (a mutex around its cache); bindings are values
 //   owned by one Animator; sampling is pure.
 
@@ -47,7 +48,7 @@ namespace jasperengine::anim{
     struct JASPERENGINE_API RetargetTarget{
         bool valid = false;
         std::string error;
-        pose::Skeleton skeleton;            // the rig's bones (entity names, rest)
+        pose::Skeleton skeleton;            // the model file's nodes (else the rig's bones: names, rest)
         pose::PoseRig rig;
         std::array<int, pose::HUMAN_BONE_COUNT> slotBones{};    // rig bone per slot, -1 unmapped
         Affine hipsParentInverse;

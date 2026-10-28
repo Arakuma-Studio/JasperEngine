@@ -107,6 +107,17 @@ namespace jasperengine::anim{
     JASPERENGINE_API bool wrapFromName(const std::string& name, ClipWrapMode& out);
     // "linear", "step", "<quad|cubic|quart|quint|sine|expo|circ|back|elastic|bounce>_<in|out|in_out>"
     JASPERENGINE_API const char* easeName(EaseType ease);
+    // "clamped_auto", "auto", "free", "linear", "constant", "flat", "broken" ("" for None)
+    JASPERENGINE_API const char* tangentModeName(ClipTangentMode mode);
+    JASPERENGINE_API bool tangentModeFromName(const std::string& name, ClipTangentMode& out);
+    // The tangents of `track`'s keys that have a computed mode (ClampedAuto, Auto, Linear, Flat,
+    // Constant), from their neighbours' values and times (value units per second, componentwise;
+    // a rotation's neighbours on the key's hemisphere); a Free or Broken key without tangents
+    // starts from ClampedAuto's; a key without a mode in a track where any key has one gets the
+    // straight lines' (Linear). Constant keys get the step ease. Nothing when no key has a mode.
+    // Clamped Auto is Unity's: 0 at an extremum and at the ends, else the slope through the
+    // neighbours clamped to 3x the smaller side slope (no overshoot, Fritsch-Carlson).
+    JASPERENGINE_API void applyTangentModes(ClipTrackData& track);
     JASPERENGINE_API bool easeFromName(const std::string& name, EaseType& out);
 
     // The sign of a rotation key value an editor writes into a track (x, y, z, w): negated when

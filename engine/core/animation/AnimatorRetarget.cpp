@@ -103,6 +103,55 @@ void anim::RetargetTarget::build(const AnimatorRig& rigBones, const std::string&
     error.clear();
     skeleton.bones.clear();
     slotBones.fill(-1);
+    // A model file: its humanoid is the file's (every node, the sidecar), the very rig a clip of
+    // that file retargets from, so a clip of the same model plays unchanged; slots map to the
+    // rig's bones by path. The rig's own bones are only a subset of the nodes (those the clips,
+    // their ancestors and the skins name), which can change what the auto-detect finds.
+    if (!modelPath.empty()){
+        std::string fileError;
+        std::shared_ptr<const RetargetSource> file = retargetSource(modelPath, &fileError);
+        if (file){
+            // a file path's rig bone: the same path; the Animator above the model (the rig's path
+            // ends with the file's); or a model whose hierarchy holds its joints only (the file's
+            // path ends with the rig's: its root nodes are no entities). The longest match wins.
+            auto rigBoneOf = [&](const std::string& path) -> int {
+                if (path.empty()) return -1;
+                const int exact = rigBones.findBone(path);
+                if (exact >= 0) return exact;
+                auto endsWith = [](const std::string& text, const std::string& tail){
+                    return text.size() > tail.size() + 1 && text.compare(text.size() - tail.size(), tail.size(), tail) == 0 &&
+                           text[text.size() - tail.size() - 1] == '/';
+                };
+                int best = -1;
+                size_t bestLength = 0;
+                for (size_t i = 0; i < rigBones.bones.size(); i++){
+                    const std::string& candidate = rigBones.bones[i].path;
+                    if (candidate.empty()) continue;
+                    const bool match = endsWith(candidate, path) || endsWith(path, candidate);
+                    const size_t length = std::min(candidate.size(), path.size());
+                    if (match && length > bestLength){
+                        best = (int)i;
+                        bestLength = length;
+                    }
+                }
+                return best;
+            };
+            bool hips = false;
+            for (int s = 0; s < pose::HUMAN_BONE_COUNT; s++){
+                const int bone = file->rig.boneIndex(pose::boneAt(s));
+                slotBones[(size_t)s] = bone >= 0 ? rigBoneOf(file->paths[(size_t)bone]) : -1;
+                if (pose::boneAt(s) == pose::HumanBone::Hips) hips = slotBones[(size_t)s] >= 0;
+            }
+            if (hips){
+                skeleton = file->skeleton;
+                rig = file->rig;
+                hipsParentInverse = file->hipsParent.inverse();
+                valid = true;
+                return;
+            }
+            slotBones.fill(-1);
+        }
+    }
     // the root bone (an animated root) is not part of the skeleton: rig space is the root's own
     const size_t first = rigBones.rootBone ? 1 : 0;
     std::vector<int> skeletonIndex(rigBones.bones.size(), -1);
