@@ -1107,8 +1107,8 @@ rest are reported (`HTMLUI-HTML-0027`, the fix is the conversion) and show their
 px; Opus 128 kb/s stereo) and does not copy the original; files dropped on the Project window
 and video URLs (in `import_files`, or a document's remote `<video src>` when the editor imports
 its references) are converted the same way. It runs your own FFmpeg as a separate program:
-`JASPER_FFMPEG`, else Preferences > External Tools > FFmpeg (`preferences.ffmpeg_path`), else
-`ffmpeg` on `PATH` (never shipped or linked). Without FFmpeg, or
+`JASPER_FFMPEG`, else Preferences > External Tools > FFmpeg (`preferences.ffmpeg_path`: the user sets it;
+read-only over MCP), else `ffmpeg` on `PATH` (never shipped or linked). Without FFmpeg, or
 without an AV1 encoder in it, the file is copied unconverted with `HTMLUI-IMP-0010` and the
 exact command to run; a failed conversion gives `HTMLUI-IMP-0011`. By hand:
 `ffmpeg -i in.mp4 -c:v libsvtav1 -preset 6 -crf 32 -g 60 -pix_fmt yuv420p -c:a libopus -b:a 128k out.webm`.

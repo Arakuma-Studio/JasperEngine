@@ -9,7 +9,10 @@ not served; `jasper://docs` lists the served documents. The guide refers to them
 Paths in every guide are project-relative. Reads follow symbolic links; writes, creates, deletes
 and moves refuse a path that a link leads out of the project's trusted roots (the project folder
 and its configured assets and Lua scripts folders, which may themselves be links) (editor-integration.md,
-"Paths and symbolic links"; docs/mcp/DESIGN.md, Addressing).
+"Paths and symbolic links"; docs/mcp/DESIGN.md, Addressing). Threat model (DESIGN.md, Addressing):
+the sandbox stops misdirected writes and link tricks, not a malicious agent, since project content
+(C++ scripts on Play, ProjectBuild.cmake, Lua) runs code by design; machine-level preferences
+(tool paths, the default export folder) are user-only over MCP.
 
 | File | Resource | Contents |
 |---|---|---|

@@ -28,6 +28,7 @@
 #include "texsynth/SynthesisRecipe.h"
 #include "texsynth/SynthesisSession.h"
 #include "util/ProjectFileWrites.h"
+#include "util/SafeWrite.h"
 #include "SymlinkSupport.h"
 
 #include "json.hpp"
@@ -361,6 +362,38 @@ TEST(SpriteNormalsSession, CheckSpecKinds) {
     bad.settings.alphaThreshold = 2.0f;
     std::vector<sn::Problem> problems = sn::checkSpec(root(), bad);
     EXPECT_EQ(kinds(problems), (std::vector<std::string>{"invalid_settings", "invalid_settings"}));
+}
+
+// The trusted roots are resolved on the main thread when a root setting changes and published
+// whole: workers read a snapshot (never a half-updated list, never resolving themselves)
+TEST(SpriteNormalsSession, TrustedRootsAreAPublishedSnapshot) {
+    namespace sw = jasperengine::editor::safewrite;
+    std::error_code ec;
+    fs::create_directories(project()->getProjectPath() / "assets", ec);
+    const fs::path projectReal = sw::resolvedPath(project()->getProjectPath());
+    const fs::path assetsReal = sw::resolvedPath(project()->getProjectPath() / "assets");
+    std::atomic<bool> stop{false};
+    std::atomic<int> bad{0};
+    std::vector<std::thread> readers;
+    for (int i = 0; i < 4; i++) {
+        readers.emplace_back([&]() {
+            while (!stop.load()) {
+                const std::vector<fs::path> roots = project()->getTrustedRoots();
+                // either configuration, whole: the project first, then (with "assets") the assets folder
+                const bool whole = (roots.size() == 1 && roots[0] == projectReal) ||
+                                   (roots.size() == 2 && roots[0] == projectReal && roots[1] == assetsReal);
+                if (!whole) bad++;
+            }
+        });
+    }
+    for (int i = 0; i < 200; i++) {
+        project()->setAssetsDir(i % 2 ? "." : "assets");
+    }
+    stop = true;
+    for (std::thread& t : readers) t.join();
+    project()->setAssetsDir(".");
+    EXPECT_EQ(bad.load(), 0) << "a reader saw a partial list";
+    EXPECT_EQ(project()->getTrustedRoots(), std::vector<fs::path>{projectReal});
 }
 
 TEST(SpriteNormalsSession, OutputsMustBeInsideTheAssetsDirectory) {

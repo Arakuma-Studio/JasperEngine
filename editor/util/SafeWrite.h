@@ -69,8 +69,16 @@ namespace jasperengine::editor::safewrite {
     // the rest stays lexical; then weakly_canonical (8.3 names, case on Windows). Empty when a link
     // loops (more than 40) or can't be read: inside nothing.
     std::filesystem::path resolvedPath(const std::filesystem::path& path);
-    // `path` is `dir` or below it, lexically (both lexically normal; a trailing separator ignored)
+    // `path` is `dir` or below it, lexically (both lexically normal; a trailing separator ignored;
+    // letter case ignored on Windows and macOS, whose file systems ignore it)
     bool isAtOrBelow(const std::filesystem::path& path, const std::filesystem::path& dir);
+    // The final name of `path` as the editor compares names it owns ("project.yaml",
+    // ".jasperengine", "CMakeLists.txt"): ASCII lower case (any platform: a case-insensitive file
+    // system opens "PROJECT.yaml" as project.yaml), an NTFS stream suffix (":name") and trailing
+    // dots and spaces (Windows drops them) removed; on Windows an existing short (8.3) name's long form
+    std::string comparableName(const std::filesystem::path& path);
+    // comparableName is "project.yaml": a project file, wherever it is
+    bool isProjectFileName(const std::filesystem::path& path);
     // `path` is `dir` or below it once both are resolved (resolvedPath): a symbolic link inside
     // `dir` leading elsewhere is not inside; `dir` itself reached through a link is fine
     bool isInsideResolved(const std::filesystem::path& path, const std::filesystem::path& dir);

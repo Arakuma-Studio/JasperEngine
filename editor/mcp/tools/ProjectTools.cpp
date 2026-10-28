@@ -276,6 +276,50 @@ bool hasUnsaved(const Json& state) {
 
 // ------------------------------------------------------------------ create / open
 
+// An asset or Lua root value (assetsDir / luaDir in project.yaml, editor.assets_dir /
+// scripting.lua_dir): "" when it is a plain project-relative folder, else why it isn't (absolute,
+// a drive, or a ".." step: a root out of the project folder is one only the user sets)
+std::string rootValueRefusal(const std::string& text) {
+    const fs::path value = FileUtils::pathFromUtf8(text);
+    if (value.is_absolute() || value.has_root_name() || value.has_root_directory()) return "\"" + text + "\" is absolute";
+    for (const fs::path& part : value) {
+        if (part == "..") return "\"" + text + "\" has a '..' step";
+    }
+    return std::string();
+}
+
+// A project opened or created over MCP whose project.yaml points its assets or Lua folder out of
+// the project folder (absolute, or with ".."): the editor GUI opens it (the user chose it), an MCP
+// call doesn't (the folder would become a trusted root of the agent's choosing). "" when fine.
+std::string outsideRootsRefusal(const fs::path& projectDir) {
+    const fs::path file = projectDir / "project.yaml";
+    std::error_code ec;
+    if (!fs::is_regular_file(file, ec)) return std::string();
+    YAML::Node node;
+    try {
+        std::ifstream in(file, std::ios::binary);
+        node = YAML::Load(in);
+    } catch (const std::exception& e) {
+        return "its project.yaml can't be read (" + std::string(e.what()) + ")";
+    }
+    if (!node.IsMap()) return std::string();
+    for (const char* key : {"assetsDir", "luaDir"}) {
+        const YAML::Node value = node[key];
+        if (!value) continue;
+        std::string text;
+        try {
+            text = value.as<std::string>();
+        } catch (const std::exception&) {
+            return std::string("its ") + key + " is not a folder name";
+        }
+        if (const std::string why = rootValueRefusal(text); !why.empty()) {
+            return std::string("this project's ") + (std::string(key) == "assetsDir" ? "assets_dir" : "lua_dir") + " (" + why +
+                   ") points outside the project folder; open it from the editor";
+        }
+    }
+    return std::string();
+}
+
 struct SwitchState {
     bool ran = false;
     bool ok = false;
@@ -331,6 +375,10 @@ void switchProjectTool(const CallPtr& call, bool create) {
             call->ok("That project is already open. " + summaryText(data), data);
             return;
         }
+        if (const std::string refusal = outsideRootsRefusal(path); !refusal.empty()) {
+            call->fail("Not opened: " + refusal + ".");
+            return;
+        }
     }
     if (app.isProjectLoading()) {
         call->fail("A project is loading; try again in a moment.");
@@ -370,6 +418,12 @@ void switchProjectTool(const CallPtr& call, bool create) {
     auto switchState = std::make_shared<SwitchState>();
     app.requestProjectChange([switchState, project, path, name, create]() {
         switchState->ran = true;
+        // checked again right before the load (the file may have changed since the call came in)
+        if (const std::string refusal = outsideRootsRefusal(path); !refusal.empty()) {
+            switchState->ok = false;
+            switchState->error = refusal;
+            return;
+        }
         switchState->ok = create ? project->createProjectAt(path, name, &switchState->error)
                                  : project->openProjectNow(path, &switchState->error);
     });
@@ -509,6 +563,9 @@ struct Setting {
     // Validates `value`; applies it when apply is true. Returns false with error.
     std::function<bool(McpContext&, const Json& value, bool apply, std::string& error)> set;
     bool preference = false;   // editor/machine preference, not project.yaml
+    // A machine-level preference naming a program to run or a folder outside the project: only the
+    // user changes it (Edit > Preferences); over MCP it is read-only
+    bool userOnly = false;
 };
 
 template <typename T>
@@ -1318,6 +1375,11 @@ const std::vector<Setting>& settingsTable() {
                 Project* p = ctx.project();
                 std::string text;
                 if (!readString(value, text, error)) return false;
+                // a plain project-relative folder: no absolute path, no ".." (even one that comes back in)
+                if (const std::string why = rootValueRefusal(text); !why.empty()) {
+                    error = why + ": an asset root is a folder of the project, given project-relative without '..'";
+                    return false;
+                }
                 fs::path dir = text.empty() ? fs::path(".") : FileUtils::pathFromUtf8(text).lexically_normal();
                 if (dir != ".") {
                     fs::path absolute;
@@ -1496,6 +1558,7 @@ const std::vector<Setting>& settingsTable() {
             s.key = key;
             s.type = "string";
             s.preference = true;
+            s.userOnly = true;
             s.description = description;
             s.get = [get](McpContext&) { return Json(get()); };
             s.set = [set](McpContext&, const Json& value, bool apply, std::string& error) {
@@ -1531,6 +1594,8 @@ const std::vector<Setting>& settingsTable() {
             s.key = field.key;
             s.type = "string";
             s.preference = true;
+            // the compilers are programs the build runs: user-only (the generator is just a name)
+            s.userOnly = field.member != &LocalBuildSettings::generator;
             s.description = field.description;
             auto member = field.member;
             s.get = [member](McpContext& ctx) {
@@ -1681,6 +1746,7 @@ void getProjectSettingsTool(const CallPtr& call) {
             Json info = {{"type", s->type}, {"description", s->description}};
             if (!s->values.empty()) info["values"] = s->values;
             if (s->preference) info["preference"] = true;
+            if (s->userOnly) info["read_only"] = true;
             schema[s->key] = info;
         }
     }
@@ -1710,6 +1776,11 @@ void setProjectSettingsTool(const CallPtr& call) {
         const Setting* s = findSetting(it.key());
         if (!s) {
             call->fail(unknownKeyMessage(it.key()) + " Nothing was changed.");
+            return;
+        }
+        if (s->userOnly) {
+            call->fail(s->key + " is a machine-level preference only the user changes: change it in Edit > Preferences. "
+                       "Nothing was changed.");
             return;
         }
         std::string error;

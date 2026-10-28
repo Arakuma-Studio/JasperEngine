@@ -1340,6 +1340,26 @@ private:
     std::map<std::string, std::string> copyGuids;
 };
 
+// The project root, its project.yaml or something under a top-level hidden folder (.jasperengine,
+// .trash, .git ...): as named and where the entry resolves (a link inside the project to its root
+// or its .jasperengine is no way in); names compared as the file system may (letter case, Windows
+// aliases). What a tool never moves away or deletes.
+bool isProjectEntry(Project* project, const fs::path& absolute) {
+    auto spelled = [](const fs::path& rel) {
+        if (rel.empty() || rel == ".") return true;
+        if (*rel.begin() == "..") return false;
+        const std::string first = safewrite::comparableName(*rel.begin());
+        if (!first.empty() && first[0] == '.' && first != ".") return true;
+        return std::distance(rel.begin(), rel.end()) == 1 && safewrite::isProjectFileName(rel);
+    };
+    const fs::path normal = absolute.lexically_normal();
+    if (spelled(normal.lexically_relative(project->getProjectPath().lexically_normal()))) return true;
+    const fs::path where = safewrite::entryLocation(normal);
+    const fs::path projectReal = safewrite::resolvedPath(project->getProjectPath());
+    return !where.empty() && !projectReal.empty() && safewrite::isAtOrBelow(where, projectReal) &&
+           spelled(where.lexically_relative(projectReal));
+}
+
 void moveAssetTool(const CallPtr& call) {
     fs::path from, to;
     // a copy only reads its source (a copy out of a linked-in library is fine); a move moves the entry
@@ -1349,23 +1369,20 @@ void moveAssetTool(const CallPtr& call) {
     Project* project = call->ctx().project();
     const std::string fromRel = projectRelative(project, from), toRel = projectRelative(project, to);
     std::string why;
-    if (fromRel.empty() || fromRel == "project.yaml" || fromRel[0] == '.') {
-        call->fail("Can't move " + (fromRel.empty() ? std::string("the project root") : fromRel) + ".");
+    // not the project root, its project.yaml or a hidden folder's contents, nor a file named
+    // project.yaml anywhere (as named or where it resolves)
+    if (isProjectEntry(project, from) || !McpRefs::protectedPlace(project, from, copying ? McpRefs::WriteUse::Write : McpRefs::WriteUse::Entry).empty()) {
+        call->fail("Can't " + std::string(copying ? "copy " : "move ") + (fromRel.empty() ? std::string("the project root") : fromRel) +
+                   ": it is the project root, a project.yaml, or under a hidden folder (or leads there through a link).");
         return;
     }
     // never into a hidden or editor-owned place (.jasperengine, .trash, .git ...; project.yaml,
-    // scenes' generated files): a link moved there would let a build or an export write through it
+    // scenes' generated files): a link moved there would let a build or an export write through it.
+    // Checked as named and where it resolves (a user link to .jasperengine is no way in)
     {
-        const fs::path toRelPath = FileUtils::pathFromUtf8(toRel);
-        bool hidden = false;
-        for (const fs::path& part : toRelPath) {
-            const std::string text = FileUtils::pathToUtf8(part);
-            if (!text.empty() && text[0] == '.' && text != "." && text != "..") hidden = true;
-        }
         std::string owned;
-        if (hidden || toRel == "project.yaml" || isEditorOwnedFile(project, to, owned)) {
-            call->fail("Can't move to " + toRel + ": " + (owned.empty() ? std::string("a hidden or editor-owned place") : owned) +
-                       ". Pick a folder of the project's assets.");
+        if (isEditorOwnedFile(project, to, owned)) {
+            call->fail("Can't move to " + toRel + ": " + owned + " Pick a folder of the project's assets.");
             return;
         }
     }
@@ -1379,13 +1396,37 @@ void moveAssetTool(const CallPtr& call) {
         call->fail(touched);
         return;
     }
-    // moving a link that leads out of the project's trusted roots would relocate an escape hatch
+    // moving a link that leads out of the project's trusted roots (or a folder holding one, at
+    // any depth) would relocate an escape hatch
     {
         std::error_code linkError;
-        if (!copying && fs::is_symlink(fs::symlink_status(from, linkError))) {
+        const fs::file_status status = fs::symlink_status(from, linkError);
+        if (!copying && fs::is_symlink(status)) {
             if (const std::string escape = McpRefs::writeEscape(project, from); !escape.empty()) {
                 call->fail("Can't move " + fromRel + ": it is a link leading out of the project (" + escape +
                            ") — moving the link would take that elsewhere. Copy what it holds instead (move_asset copy: true), or move it yourself.");
+                return;
+            }
+        } else if (!copying && fs::is_directory(status)) {
+            if (const std::string escape = McpRefs::linkOutInside(project, from); !escape.empty()) {
+                call->fail("Can't move " + fromRel + ": it holds a link leading out of the project (" + escape +
+                           ") — moving the folder would take that link elsewhere. Remove the link first, or move the folder yourself.");
+                return;
+            }
+        }
+    }
+    // a copy makes no second project.yaml (the copy of a folder holding one: refused up front; the
+    // writers refuse it too)
+    if (copying) {
+        std::error_code scanError;
+        size_t entries = 0;
+        if (fs::is_directory(from, scanError)) {
+            for (fs::recursive_directory_iterator it(from, fs::directory_options::none, scanError), end; !scanError && it != end && entries < 200000;
+                 it.increment(scanError), entries++) {
+                if (!safewrite::isProjectFileName(it->path())) continue;
+                call->fail("Can't copy " + fromRel + ": it holds " + projectRelative(project, it->path()) +
+                           ", and tools make no file named project.yaml (another one would be a project to open). "
+                           "Copy the folder without it, or in the editor.");
                 return;
             }
         }
@@ -1476,7 +1517,7 @@ void deleteAssetTool(const CallPtr& call) {
             return;
         }
         const std::string rel = projectRelative(project, file.lexically_normal());
-        if (rel.empty() || rel == "project.yaml" || rel[0] == '.') {
+        if (isProjectEntry(project, file)) {
             call->fail("Refusing to delete " + (rel.empty() ? std::string("the project root") : rel) + ".");
             return;
         }

@@ -243,22 +243,46 @@ runs several tool calls in one round-trip, sequentially on the main thread; with
   (to a shared drive): agents write its assets and scripts there. Links
   BELOW those roots are what is checked (one pointing further out is refused); links pointing
   inside a trusted root work. A tool that changes an asset root (`set_project_settings`
-  `editor.assets_dir` / `scripting.lua_dir`) must name a folder inside the project directory
-  itself once resolved (`McpRefs::projectOnlyEscape`): an agent can't make a folder outside the
-  project a trusted root. The roots are resolved when the project loads (or a root setting is
+  `editor.assets_dir` / `scripting.lua_dir`) must name a plain project-relative folder (no absolute
+  path, no `..` step, even one that comes back in) inside the project directory itself once
+  resolved (`McpRefs::projectOnlyEscape`): an agent can't make a folder outside the project a
+  trusted root. The MCP trusted roots are only the configured roots **as the user opened them**:
+  `open_project` (and `create_project`) refuse a project whose project.yaml gives an absolute
+  `assetsDir` / `luaDir` or one with `..` ("points outside the project folder; open it from the
+  editor"); the GUI keeps opening such a project, and once the user has opened it the agent works
+  in its roots. No tool writes, creates, moves (renames to), copies or imports a file named
+  project.yaml in any folder but the project's own, which the editor saves (`safewrite`'s strict
+  scope refuses it in every writer; `McpRefs::protectedPlace` names it up front). Names the editor
+  owns (project.yaml, CMakeLists.txt, `.jasperengine` and other hidden folders, `.scene` /
+  `.prefab`) are compared as the file system may see them (`safewrite::comparableName`: letter case,
+  trailing dots and spaces, NTFS stream suffixes, Windows short names), and folder containment
+  ignores letter case on Windows and macOS; they are checked on the path as named and where it
+  resolves (a link inside the project to its `.jasperengine` or its root is no way in).
+  Machine-level preferences (`preferences.default_export_dir`, `cmake_path`, `emsdk_path`,
+  `ffmpeg_path`, `build_c_compiler`, `build_cxx_compiler`: a folder outside the project or a program
+  to run) are read-only over MCP (`set_project_settings`: "change it in Edit > Preferences"). The roots are resolved when the project loads (or a root setting is
   applied) and **pinned** (`Project::getTrustedRoots`, `safewrite::pinTrustedRoot`): never resolved
   again, so a root moved away and replaced by a link is refused, not followed. A tool can't move,
   rename or delete a trusted root or a folder holding one, nor move anything into a root's place
   (`McpRefs::trustedRootTouched`); `move_asset` never moves into a hidden or editor-owned place
   (`.jasperengine`, `.trash`, project.yaml ...) and never moves a link that leads out of the
-  project (copying what it holds is fine). Build, Play and script compiles refuse an internal
-  folder holding a link out of the project (every entry two levels deep). `build_project` /
+  project, or a folder holding one at any depth (copying what it holds is fine). Build, Play and
+  script compiles refuse an internal folder holding a link out of the project (any depth, links
+  not followed so loops are harmless, bounded at 200,000 entries: `McpRefs::linkOutInside`). `build_project` /
   `generate_shaders` build only into the project's chosen export folder, the default export
   location (or below it) or a folder of the project, and never save an agent's folder as the
-  export folder; `create_project` needs a new or empty folder. A delete or
+  export folder (both outside folders are the user's: neither can be set over MCP); `create_project` needs a new or empty folder. A delete or
   a move's source acts on the entry itself: a link there is trashed or moved, never followed.
   Refused: isError naming the path and where the link leads, with the fix ("use a path that is not
   behind a link to elsewhere, or replace the link with a real folder").
+- **Threat model.** The sandbox stops misdirected or accidental agent writes (a wrong path, a
+  stale assumption about a folder) and link tricks that would carry a write, delete or move
+  outside the trusted roots or into the editor's own files. It does **not** contain a
+  deliberately malicious agent: project content executes code by design (C++ scripts are compiled
+  and loaded into the editor on Play, `ProjectBuild.cmake` runs at CMake configure time, Lua runs in
+  Play), and an agent may edit all of it. What only the user decides stays out of the agent's reach:
+  machine-level preferences (programs to run, folders outside the project), the export folders,
+  and which project (with which roots) is opened with roots outside its folder.
 - **Writes beneath the project.** The check and the write are two steps; a link planted between
   them must not redirect the write. `editor/util/SafeWrite.h` never follows a link below the root
   at the moment it acts (POSIX: `openat` with `O_NOFOLLOW` folder by folder, `O_PATH` / `O_SEARCH`

@@ -2433,24 +2433,26 @@ editor::WindowSettings editor::Project::getWindowSettings() const{
 
 void editor::Project::setAssetsDir(const std::filesystem::path& assetsDir){
     this->assetsDir = assetsDir;
-    getTrustedRoots();   // resolved now, when the setting is applied
+    refreshTrustedRoots();   // resolved now, when the setting is applied
 }
 
 std::vector<std::filesystem::path> editor::Project::getTrustedRoots() const{
-    if (projectPath.empty()) return {};
-    const std::vector<std::filesystem::path> configured = {projectPath, getAssetsPath(), getLuaPath()};
-    if (configured != trustedConfigured){
-        trustedConfigured = configured;
-        trustedResolved.clear();
-        for (const std::filesystem::path& root : configured){
+    const std::shared_ptr<const std::vector<std::filesystem::path>> snapshot = std::atomic_load(&trustedRoots);
+    return snapshot ? *snapshot : std::vector<std::filesystem::path>();
+}
+
+void editor::Project::refreshTrustedRoots(){
+    auto resolvedRoots = std::make_shared<std::vector<std::filesystem::path>>();
+    if (!projectPath.empty()){
+        for (const std::filesystem::path& root : {projectPath, getAssetsPath(), getLuaPath()}){
             const std::filesystem::path resolved = safewrite::resolvedPath(root);
             if (resolved.empty()) continue;
-            if (std::find(trustedResolved.begin(), trustedResolved.end(), resolved) != trustedResolved.end()) continue;
-            trustedResolved.push_back(resolved);
+            if (std::find(resolvedRoots->begin(), resolvedRoots->end(), resolved) != resolvedRoots->end()) continue;
+            resolvedRoots->push_back(resolved);
             safewrite::pinTrustedRoot(resolved);
         }
     }
-    return trustedResolved;
+    std::atomic_store(&trustedRoots, std::shared_ptr<const std::vector<std::filesystem::path>>(std::move(resolvedRoots)));
 }
 
 std::filesystem::path editor::Project::getAssetsDir() const{
@@ -2459,7 +2461,7 @@ std::filesystem::path editor::Project::getAssetsDir() const{
 
 void editor::Project::setLuaDir(const std::filesystem::path& luaDir){
     this->luaDir = luaDir;
-    getTrustedRoots();   // resolved now, when the setting is applied
+    refreshTrustedRoots();   // resolved now, when the setting is applied
 }
 
 std::filesystem::path editor::Project::getLuaDir() const{
@@ -2782,6 +2784,7 @@ void editor::Project::changeAssetRoots(const std::filesystem::path& newAssetsDir
     if (projectPath.empty() || (oldAssetsRoot == newAssetsRoot && oldLuaRoot == newLuaRoot)){
         assetsDir = newAssetsDir;
         luaDir = newLuaDir;
+        refreshTrustedRoots();
         return;
     }
 
@@ -3076,6 +3079,7 @@ void editor::Project::changeAssetRoots(const std::filesystem::path& newAssetsDir
 
     assetsDir = newAssetsDir;
     luaDir = newLuaDir;
+    refreshTrustedRoots();
 
     visitReferences(assetTransform, luaTransform);
 
@@ -5439,6 +5443,7 @@ void editor::Project::resetConfigs() {
     windowIcon.clear();
     assetsDir = defaultAssetsDir;
     luaDir = defaultLuaDir;
+    refreshTrustedRoots();
     scriptDirs.clear();
     cxxStandard = defaultCxxStandard;
     physics2DEnabled = defaultPhysics2DEnabled;
@@ -6009,6 +6014,7 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
         AppSettings::setLastProjectPath(std::filesystem::path());
 
         projectPath = path;
+        refreshTrustedRoots();
         fs::path projectFile = projectPath / "project.yaml";
 
         // Set the project name so libName (used for the generated CMake target
@@ -6025,6 +6031,7 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
                 std::filesystem::create_directories(projectPath);
             }
             Out::info("Created project directory: \"%s\"", projectPath.string().c_str());
+            refreshTrustedRoots();   // the folder exists now
 
             // Inherit the compiler chosen in a previous session so new temp projects
             // don't silently fall back to the Default toolchain every time. Drop a
@@ -6279,6 +6286,7 @@ bool editor::Project::saveProjectToPath(const std::filesystem::path& path) {
     std::filesystem::path oldPath = projectPath;
 
     projectPath = path;
+    refreshTrustedRoots();
 
     // If we're moving from a temp path, handle the file transfers
     if (wasTemp && oldPath != path) {
@@ -6319,6 +6327,7 @@ bool editor::Project::saveProjectToPath(const std::filesystem::path& path) {
 
     // The asset files (and their GUIDs) are under the new root now
     if (oldPath != path) {
+        refreshTrustedRoots();   // the folders exist now
         assetDatabase.open(projectPath);
     }
 
@@ -6371,6 +6380,7 @@ bool editor::Project::loadProject(const std::filesystem::path requestedPath, boo
 
         resetConfigs();
         projectPath = path;
+        refreshTrustedRoots();
 
         // shader manifests of forks are read from this project's files
         // (the project root, else the assets directory: findShaderFile, read when asked, so

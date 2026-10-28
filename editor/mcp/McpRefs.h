@@ -111,6 +111,17 @@ namespace jasperengine::editor::mcp {
         // a trusted root: the assets or Lua folder itself or a folder holding one (moving it away
         // and a link in its place must not re-point a root). "" or the refusal.
         static std::string trustedRootTouched(Project* project, const std::filesystem::path& absolute, bool destination);
+        // A place no tool writes, moves, copies or creates something at: under a hidden folder
+        // (.jasperengine, .git, .trash ...), a file named project.yaml (any folder), the project's
+        // CMakeLists.txt. Checked on the path as named and on where it resolves (a link inside the
+        // project to its .jasperengine or its root is no way in); names compared as the file system
+        // may (letter case, Windows aliases: safewrite::comparableName). "" or the refusal.
+        static std::string protectedPlace(Project* project, const std::filesystem::path& absolute, WriteUse use = WriteUse::Write);
+        // The first symbolic link (or junction) inside the folder `dir` (any depth, links not
+        // followed, so loops are harmless) that leads out of the trusted roots: its writeEscape;
+        // also a refusal when the folder holds more than `maxEntries` entries (too many to check).
+        // "" none.
+        static std::string linkOutInside(Project* project, const std::filesystem::path& dir, size_t maxEntries = 200000);
     };
 
 }

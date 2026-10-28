@@ -790,3 +790,65 @@ TEST(SafeWrite, GuiImportsWorkInALinkedAssetsFolder) {
     EXPECT_EQ(readAll(d.outside / "assets" / "imported" / "font.css"), "/* css */") << "the GUI's import writes into the linked assets folder";
     queue.stop();
 }
+
+TEST(SafeWrite, ProjectFileNamesCompareAsTheFileSystemMay) {
+    // letter case, trailing dots and spaces (Windows drops them) and an NTFS stream suffix
+    for (const char* name : {"project.yaml", "PROJECT.yaml", "Project.YAML", "project.yaml.", "project.yaml ", "project.yaml. .",
+                             "project.yaml:stream", "PROJECT.YAML::$DATA"}) {
+        EXPECT_EQ(sw::comparableName(fs::path("sub") / name), "project.yaml") << name;
+        EXPECT_TRUE(sw::isProjectFileName(fs::path("a") / "b" / name)) << name;
+    }
+    for (const char* name : {"project.yml", "project.yaml.bak", "myproject.yaml", "project", ".project.yaml"}) {
+        EXPECT_FALSE(sw::isProjectFileName(fs::path("sub") / name)) << name;
+    }
+    EXPECT_EQ(sw::comparableName(fs::path(".JasperEngine.")), ".jasperengine");
+    EXPECT_EQ(sw::comparableName(fs::path("CMakeLists.TXT")), "cmakelists.txt");
+    EXPECT_EQ(sw::comparableName(fs::path("a") / ".."), "..");
+    // folder containment: letter case counts only where the file system counts it
+#if defined(_WIN32) || defined(__APPLE__)
+    EXPECT_TRUE(sw::isAtOrBelow(fs::path("/p/Assets/x.png"), fs::path("/p/assets")));
+#else
+    EXPECT_FALSE(sw::isAtOrBelow(fs::path("/p/Assets/x.png"), fs::path("/p/assets")));
+#endif
+    EXPECT_TRUE(sw::isAtOrBelow(fs::path("/p/assets/x.png"), fs::path("/p/assets/")));
+    EXPECT_FALSE(sw::isAtOrBelow(fs::path("/p/assetsx/x.png"), fs::path("/p/assets")));
+}
+
+TEST(SafeWrite, AStrictScopeMakesNoSecondProjectFile) {
+    Dirs d("projectfile");
+    writeText(d.root / "nested" / "project.yaml", "assetsDir: assets\n");   // the user's, from before
+    writeText(d.root / "kit" / "inner" / "PROJECT.yaml", "x\n");
+    writeText(d.root / "a.txt", "a\n");
+    {
+        sw::Scope scope(d.root, true);
+        // the project's own: the editor saves it
+        EXPECT_TRUE(FileUtils::writeFileReplacing(d.root / "project.yaml", "name: p\n"));
+        for (const char* rel : {"sub/project.yaml", "PROJECT.yaml", "project.yaml.", "sub/Project.Yaml", "project.yaml:alt"}) {
+            EXPECT_FALSE(FileUtils::writeFileReplacing(d.root / fs::path(rel), "assetsDir: /etc\n")) << rel;
+            EXPECT_FALSE(fs::exists(d.root / fs::path(rel))) << rel;
+        }
+        std::string error;
+        EXPECT_FALSE(sw::writeFileBeneath(d.root, "deep/er/project.yaml", "x", error));
+        EXPECT_NE(error.find("project.yaml"), std::string::npos) << error;
+        EXPECT_FALSE(sw::createDirBeneath(d.root, "project.YAML", error));
+        std::error_code ec;
+        EXPECT_FALSE(FileUtils::createDirectories(d.root / "x" / "project.yaml", ec));
+        EXPECT_FALSE(FileUtils::renamePath(d.root / "a.txt", d.root / "nested2" / "project.yaml", ec));
+        EXPECT_FALSE(FileUtils::renamePath(d.root / "a.txt", d.root / "Project.yaml", ec));
+        EXPECT_TRUE(fs::exists(d.root / "a.txt"));
+        EXPECT_FALSE(FileUtils::copyPath(d.root / "a.txt", d.root / "copy" / "project.yaml", false, ec));
+        EXPECT_FALSE(FileUtils::copyPath(d.root / "kit", d.root / "kit2", false, ec)) << "a folder holding one isn't copied";
+        EXPECT_FALSE(fs::exists(d.root / "kit2" / "inner" / "PROJECT.yaml"));
+        // one moved as it is (to the trash and back) is not a new one
+        fs::create_directories(d.root / ".trash");
+        EXPECT_TRUE(FileUtils::renamePath(d.root / "nested" / "project.yaml", d.root / ".trash" / "project.yaml", ec)) << ec.message();
+        EXPECT_TRUE(FileUtils::renamePath(d.root / ".trash" / "project.yaml", d.root / "nested" / "project.yaml", ec)) << ec.message();
+    }
+    {
+        // the GUI's scopes (not strict) are unchanged
+        sw::Scope scope(d.root);
+        EXPECT_TRUE(FileUtils::writeFileReplacing(d.root / "gui" / "project.yaml", "name: g\n"));
+    }
+    fs::create_directories(d.root / "plain");
+    EXPECT_TRUE(FileUtils::writeFileReplacing(d.root / "plain" / "project.yaml", "name: g\n")) << "nor are writes outside any scope";
+}

@@ -311,6 +311,8 @@ fs::path defaultOutputDir(Project* project, ExportMode mode) {
 
 // An output folder an agent may build into: the user's saved export folder for the mode, the
 // default export location (or anything below it), or a folder inside the project's trusted roots.
+// Both outside folders are the user's: an agent can't set either (MCP never persists an output
+// folder, and preferences.default_export_dir is read-only over MCP).
 // "" when allowed, else the refusal (the agent can't make the editor write a build anywhere else)
 std::string outputDirRefusal(Project* project, const fs::path& outputDir, ExportMode mode) {
     const fs::path where = safewrite::resolvedPath(outputDir);
@@ -663,15 +665,17 @@ bool openRunLog(BuildRun& run, Project* project) {
     return run.logFile.open(project->getProjectPath(), run.logPath);
 }
 
-// The editor-owned folders a build writes (the internal folder, an output folder inside the
-// project) must stay inside it once links are resolved: CMake and the exporter write there with
-// their own writers, so this is checked up front ("" when fine, else the refusal)
+// The editor-owned folders a build writes (the internal folder, every link in it at any depth, an
+// output folder inside the project) must stay inside the project once links are resolved: CMake and
+// the exporter write there with their own writers, so this is checked up front ("" when fine, else
+// the refusal). An output folder outside the project was let through by outputDirRefusal (the
+// export folder the user chose, or the user's default export location).
 std::string buildFoldersEscape(Project* project, const std::vector<fs::path>& outputs) {
     if (const std::string escape = McpRefs::internalFoldersEscape(project); !escape.empty()) return escape;
     for (const fs::path& dir : outputs) {
         if (dir.empty()) continue;
         const fs::path rel = dir.lexically_normal().lexically_relative(project->getProjectPath().lexically_normal());
-        if (rel.empty() || *rel.begin() == "..") continue;   // outside the project: the user's choice
+        if (rel.empty() || *rel.begin() == "..") continue;   // outside the project: outputDirRefusal's job
         if (const std::string escape = McpRefs::writeEscape(project, dir); !escape.empty()) return escape;
     }
     return std::string();
