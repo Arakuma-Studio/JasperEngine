@@ -12,7 +12,7 @@
 
 #include <gtest/gtest.h>
 
-#include "PhysicsTestScene.h"
+#include "engine/physics/PhysicsTestScene.h"
 
 #include "Catalog.h"
 #include "Factory.h"

@@ -12,10 +12,11 @@
 
 #include <gtest/gtest.h>
 
+#include "support/EditorTestSupport.h"
+
 #include "AppSettings.h"
 #include "EditorHost.h"
 #include "JasperEngine.h"
-#include "Platform.h"
 #include "Project.h"
 #include "animation/AnimationClipIO.h"
 #include "animation/VertexAnimation.h"
@@ -71,7 +72,6 @@ namespace {
         bool ready = false;
         fs::path dir;
         std::unique_ptr<Project> project;
-        std::unique_ptr<editor::Platform> platform;
     };
 
     Headless& headless() {
@@ -86,10 +86,8 @@ namespace {
             std::ofstream(out.dir / "project.yaml") << "name: vateditor\n";
             AppSettings::initialize();
             out.project.reset(new Project());
-            out.platform.reset(new editor::Platform(out.project.get()));
-            static char arg0[] = "jasperengine-editor-tests";
-            static char* argv[] = {arg0, nullptr};
-            Engine::systemInit(1, argv, out.platform.get());
+            // the engine runs already (TestMain, its TestSystem): this project's folders are its paths
+            editor::test::useProjectPaths(out.project.get());
             Engine::pauseGameEvents(true);
             Engine::setAsyncLoading(false);
             out.ready = out.project->loadProject(out.dir, false);
@@ -97,6 +95,8 @@ namespace {
             Engine::setAsyncLoading(false);
             return out;
         }();
+        // every test of the project (the paths end with each test)
+        if (h.project) editor::test::useProjectPaths(h.project.get());
         return h;
     }
 
@@ -290,7 +290,7 @@ namespace {
 // The MCP UI test (tools/mcp/tests/test_vat_inspector.py) plays editor/tests/fixtures/vat/quad.vat:
 // exactly what the writer makes of the quad bake. JASPER_WRITE_VAT_FIXTURE=<dir> writes it there.
 TEST(VatEditorFixture, TheCommittedQuadIsWhatTheWriterMakes) {
-    const fs::path fixture = fs::path(JASPER_EDITOR_TEST_FIXTURES) / "vat";
+    const fs::path fixture = fs::path(JASPER_TEST_FIXTURES_DIR) / "vat";
     const ev::VatEncodedFiles files = encodeQuad(fixture / "quad.vat", "5a7c0de0b1a5e5c0ffee00112233aabb");
     if (const char* out = std::getenv("JASPER_WRITE_VAT_FIXTURE")) {
         writeAll(fs::path(out) / "quad.vat", files.vatText);

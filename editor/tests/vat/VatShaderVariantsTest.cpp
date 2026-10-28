@@ -22,6 +22,8 @@
 
 #include <gtest/gtest.h>
 
+#include "support/EditorTestSupport.h"
+
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -35,21 +37,11 @@ using namespace jasperengine::editor;
 
 namespace {
 
-    // the model probe reads files through System::instance(): a bare one, set once
-    class FileSystemOnly : public System {
-    public:
-        int getScreenWidth() override { return 1000; }
-        int getScreenHeight() override { return 480; }
-    };
-
     class VatShaderVariants : public ::testing::Test {
     protected:
         static void SetUpTestSuite() {
-            static FileSystemOnly* system = nullptr;
-            if (!system) {
-                system = new FileSystemOnly();
-                Engine::systemInit(0, nullptr, system);
-            }
+            // File goes through System::instance(): TestMain's TestSystem (S02)
+            editor::test::ensureEngine();
         }
     };
 

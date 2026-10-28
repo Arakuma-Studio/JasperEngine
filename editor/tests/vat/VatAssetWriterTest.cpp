@@ -9,6 +9,8 @@
 
 #include <gtest/gtest.h>
 
+#include "support/EditorTestSupport.h"
+
 #include "vat/VatAssetWriter.h"
 
 #include "Engine.h"
@@ -30,12 +32,6 @@ namespace fs = std::filesystem;
 namespace ev = jasperengine::editor::vat;
 
 namespace {
-
-    class FileSystemOnly : public System {
-    public:
-        int getScreenWidth() override { return 1000; }
-        int getScreenHeight() override { return 480; }
-    };
 
     fs::path testDir(){
         const fs::path dir = fs::temp_directory_path() / "jasperengine-editor-tests-vat";
@@ -157,11 +153,8 @@ namespace {
     class VatAssetWriter : public ::testing::Test {
     protected:
         static void SetUpTestSuite() {
-            static FileSystemOnly* system = nullptr;
-            if (!system) {
-                system = new FileSystemOnly();
-                Engine::systemInit(0, nullptr, system);
-            }
+            // File goes through System::instance(): TestMain's TestSystem (S02)
+            editor::test::ensureEngine();
         }
     };
 

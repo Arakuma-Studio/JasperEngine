@@ -51,6 +51,8 @@ jasperengine_add_test_target(jasperengine-core-tests
     SOURCES ${CORE_TEST_SOURCES} ${CORE_TEST_ALLOCATION_COUNTER}
         # the animation clip tests' asset root (a temporary directory around each of them)
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimTestEnvironment.cpp
+        # the vertex animation tests' asset root, and their asset and GLB fixtures
+        ${CMAKE_CURRENT_SOURCE_DIR}/vat/VatTestEnvironment.cpp
     INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/support
     DEFINITIONS
         # the repository root: the fixture projects of tools/fixtures (pose and clip tests' models)

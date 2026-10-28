@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 // glTF materials MeshSystem::loadGLTF reads beyond the core slots, for every glTF it loads:
-// KHR_materials_unlit loads as Lighting None (the mode the Inspector's "Lighting: None (unlit)"
-// sets, which the built-in Lit lists), keeping the base colour and its texture; a material
-// without it keeps Auto. The foliage transmission extra the VAT baker writes reads back the
+// KHR_materials_unlit loads as the library Unlit with Lighting None (S11 R4; the mode the
+// Inspector's "Lighting: None (unlit)" sets, which the built-in Lit lists too), keeping the base
+// colour and its texture; a material without it keeps Auto. The foliage transmission extra the VAT baker writes reads back the
 // same way, and the built-in Lit accepts every lighting mode the editor offers for it.
 
 #include <gtest/gtest.h>
+
+#include "support/EditorTestSupport.h"
 
 #include "Catalog.h"
 #include "Engine.h"
@@ -34,21 +36,11 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    // File (the glTF loader's reads) goes through System::instance(): a bare one, set once
-    class FileSystemOnly : public System {
-    public:
-        int getScreenWidth() override { return 1000; }
-        int getScreenHeight() override { return 480; }
-    };
-
     class GltfUnlitMaterial : public ::testing::Test {
     protected:
         static void SetUpTestSuite() {
-            static FileSystemOnly* system = nullptr;
-            if (!system) {
-                system = new FileSystemOnly();
-                Engine::systemInit(0, nullptr, system);
-            }
+            // File goes through System::instance(): TestMain's TestSystem (S02)
+            editor::test::ensureEngine();
         }
     };
 
@@ -138,7 +130,7 @@ TEST_F(GltfUnlitMaterial, KhrMaterialsUnlitLoadsAsLightingNone) {
     EXPECT_FLOAT_EQ(glow.baseColorFactor.y, 0.4f);
     EXPECT_FLOAT_EQ(glow.baseColorFactor.z, 0.2f);
     EXPECT_FALSE(glow.baseColorTexture.empty()) << "the base colour texture is kept";
-    EXPECT_TRUE(glow.shader.empty()) << "drawn by the built-in Lit";
+    EXPECT_EQ(glow.shader, "library:unlit") << "drawn by the library Unlit (S11)";
 
     const Material& plain = materialWithRed(mesh, 0.1f);
     EXPECT_EQ(plain.lighting, MaterialLighting::AUTO);

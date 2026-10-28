@@ -14,7 +14,7 @@
 
 #include <gtest/gtest.h>
 
-#include "VatImportFixtures.h"
+#include "vat/VatImportFixtures.h"
 
 #include "vat/import/VatImport.h"
 

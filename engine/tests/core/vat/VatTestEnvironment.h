@@ -1,9 +1,10 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The engine's System for the vat tests (started once per process by VatTestEnvironment.cpp):
-// asset-relative paths resolve under a fresh temporary asset directory, so tests can write .vat and
-// .vat.glb files and load them through both the asset-relative and the absolute form. Plus the
+// The asset root of the vertex animation tests (jasperengine-core-tests, engine/tests/core/vat):
+// while one of them runs, the test System's asset-relative paths resolve under a fresh temporary
+// asset directory (VatTestEnvironment.cpp sets it around each test of this folder), so tests can
+// write .vat and .vat.glb files and load them through both the asset-relative and the absolute form. Plus the
 // shared fixtures: a small valid asset (data, payload, socket tracks) and a minimal GLB writer.
 
 #ifndef VAT_TEST_ENVIRONMENT_H

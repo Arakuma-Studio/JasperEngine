@@ -5,8 +5,8 @@
 
 #include <gtest/gtest.h>
 
-#include "Engine.h"
 #include "System.h"
+#include "TestSystem.h"
 #include "json.hpp"
 
 #include <cmath>
@@ -28,35 +28,32 @@ namespace {
         return dir.lexically_normal().generic_string();
     }
 
-    class VatTestSystem : public System {
-    public:
-        int getScreenWidth() override { return 640; }
-        int getScreenHeight() override { return 360; }
-        std::string getAssetPath() override { return vattest::assetDir(); }
-    };
+    bool isVatTest(const ::testing::TestInfo& info){
+        const std::string file = std::filesystem::path(info.file()).generic_string();
+        return file.find("/tests/core/vat/") != std::string::npos;
+    }
 
-    class EngineEnvironment : public ::testing::Environment {
+    // the tests of this folder run on their own asset root; the rest of the binary keeps the
+    // test System's (TestPaths::assetDir)
+    class VatAssetRoot : public ::testing::EmptyTestEventListener {
     public:
-        void SetUp() override {
-            static bool started = false;   // the engine starts once per process
-            if (started){
-                return;
-            }
-            started = true;
-            static char name[] = "jasperengine-vat-tests";
-            static char* argv[] = {name, nullptr};
-            Engine::systemInit(1, argv, new VatTestSystem());   // owned by the engine for the process
+        void OnTestStart(const ::testing::TestInfo& info) override {
+            if (isVatTest(info)) test::TestSystem::get().setAssetPath(vattest::assetDir());
         }
-
-        void TearDown() override {
+        void OnTestEnd(const ::testing::TestInfo& info) override {
+            if (isVatTest(info)) test::TestSystem::get().setAssetPath("");
+        }
+        void OnTestProgramEnd(const ::testing::UnitTest&) override {
             std::error_code ignored;
             std::filesystem::remove_all(vattest::assetDir(), ignored);
         }
     };
 
-    // gtest owns the environment; registered when this file is loaded
-    const ::testing::Environment* const engineEnvironment =
-        ::testing::AddGlobalTestEnvironment(new EngineEnvironment());
+    // gtest owns the listener; appended when this file is loaded
+    const bool listenerInstalled = [](){
+        ::testing::UnitTest::GetInstance()->listeners().Append(new VatAssetRoot());
+        return true;
+    }();
 
     void appendU32(std::vector<uint8_t>& out, uint32_t value){
         for (int i = 0; i < 4; i++) out.push_back((uint8_t)(value >> (8 * i)));

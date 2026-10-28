@@ -9,10 +9,11 @@
 
 #include <gtest/gtest.h>
 
+#include "support/EditorTestSupport.h"
+
 #include "AppSettings.h"
 #include "EditorHost.h"
 #include "JasperEngine.h"
-#include "Platform.h"
 #include "Project.h"
 #include "command/CommandHandle.h"
 #include "command/type/CreateEntityCmd.h"
@@ -35,7 +36,6 @@ namespace {
 
     struct HolesHeadless {
         std::unique_ptr<Project> project;
-        std::unique_ptr<editor::Platform> platform;
     };
 
     HolesHeadless& holesHeadless() {
@@ -50,15 +50,15 @@ namespace {
             std::ofstream(dir / "project.yaml") << "name: holes\n";
             AppSettings::initialize();
             out.project.reset(new Project());
-            out.platform.reset(new editor::Platform(out.project.get()));
-            static char arg0[] = "holes";
-            static char* argv[] = {arg0, nullptr};
-            Engine::systemInit(1, argv, out.platform.get());
+            // the engine runs already (TestMain, its TestSystem): this project's folders are its paths
+            editor::test::useProjectPaths(out.project.get());
             Engine::pauseGameEvents(true);
             Engine::setAsyncLoading(false);
             if (!out.project->loadProject(dir, false)) throw std::runtime_error("the test project did not load");
             return out;
         }();
+        // every test of the project (the paths end with each test)
+        if (h.project) editor::test::useProjectPaths(h.project.get());
         return h;
     }
 

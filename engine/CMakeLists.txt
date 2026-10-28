@@ -33,9 +33,6 @@ option(JASPERENGINE_HTMLUI_TESTS "Build jasperengine-htmlui-tests" OFF)
 option(JASPERENGINE_TESTS "Build the unit-test target of this build tree" OFF)
 # the S07 ECS benchmark (tools/performance/run-ecs-bench.py), standalone engine builds only
 option(JASPERENGINE_ECS_BENCH "Build jasperengine-ecs-bench" OFF)
-# googletest suite of the vertex animation asset (engine/tests/vat): .vat IO, payload addressing,
-# playback math, the .vat.glb reader and the pool against the engine library; no GPU or window
-option(JASPERENGINE_VAT_TESTS "Build jasperengine-vat-tests" OFF)
 
 # =============================================================
 # STANDALONE PROJECT SETUP
@@ -1816,6 +1813,3 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     jasperengine_check_cxx_standards()
 endif()
 
-if(JASPERENGINE_VAT_TESTS)
-    add_subdirectory(tests/vat)
-endif()
