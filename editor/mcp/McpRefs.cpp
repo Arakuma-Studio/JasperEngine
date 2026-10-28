@@ -444,9 +444,18 @@ bool McpRefs::resolveProjectPath(Project* project, const std::string& relative, 
 
 std::vector<fs::path> McpRefs::trustedRoots(Project* project) {
     if (!project || project->getProjectPath().empty()) return {};
+    // the project directory, its configured assets directory and its configured Lua scripts
+    // directory (project.yaml as loaded)
     std::vector<fs::path> roots = {project->getProjectPath()};
-    const fs::path assets = project->getAssetsPath();
-    if (!assets.empty() && assets.lexically_normal() != project->getProjectPath().lexically_normal()) roots.push_back(assets);
+    for (const fs::path& configured : {project->getAssetsPath(), project->getLuaPath()}) {
+        if (configured.empty()) continue;
+        const fs::path normal = configured.lexically_normal();
+        bool known = false;
+        for (const fs::path& root : roots) {
+            if (root.lexically_normal() == normal) known = true;
+        }
+        if (!known) roots.push_back(configured);
+    }
     return roots;
 }
 

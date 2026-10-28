@@ -6,6 +6,7 @@
 #include "Backend.h"
 
 #include "McpServer.h"
+#include "McpRefs.h"
 
 #include "App.h"
 
@@ -26,11 +27,7 @@ std::filesystem::path McpWriteScope::projectRoot() {
 std::vector<std::filesystem::path> McpWriteScope::projectRoots() {
     const App& app = Backend::getApp();
     Project* project = const_cast<App&>(app).getProject();
-    if (!project || project->getProjectPath().empty()) return {};
-    std::vector<std::filesystem::path> roots = {project->getProjectPath()};
-    const std::filesystem::path assets = project->getAssetsPath();
-    if (!assets.empty() && assets.lexically_normal() != project->getProjectPath().lexically_normal()) roots.push_back(assets);
-    return roots;
+    return McpRefs::trustedRoots(project);
 }
 
 McpWriteScope::McpWriteScope() : safewrite::Scope(projectRoots(), true) {}

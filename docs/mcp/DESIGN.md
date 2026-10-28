@@ -237,9 +237,10 @@ runs several tool calls in one round-trip, sequentially on the main thread; with
   `McpRefs::writeEscape`: once every link on the way is followed (a dangling one too; the shared
   walk `safewrite::resolvedPath` in `editor/util/SafeWrite.h`, the same one sprite normals'
   output containment uses), the location must be inside one of the project's **trusted roots**:
-  the project directory and its configured assets directory (project.yaml `assetsDir`, as
-  loaded), each resolved once. So a project opened through a link works, and so does a project
-  whose assets folder is itself a link (to a shared drive): agents write its assets there. Links
+  the project directory, its configured assets directory and its configured Lua scripts
+  directory (project.yaml `assetsDir` / `luaDir`, as loaded), each resolved once. So a project
+  opened through a link works, and so does a project whose assets or Lua folder is itself a link
+  (to a shared drive): agents write its assets and scripts there. Links
   BELOW those roots are what is checked (one pointing further out is refused); links pointing
   inside a trusted root work. A tool that changes an asset root (`set_project_settings`
   `editor.assets_dir` / `scripting.lua_dir`) must name a folder inside the project directory

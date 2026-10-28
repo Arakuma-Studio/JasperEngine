@@ -41,8 +41,8 @@ namespace jasperengine::editor::mcp {
         explicit McpWriteScope(std::vector<std::filesystem::path> roots, bool strict = true) : safewrite::Scope(std::move(roots), strict) {}
         // the open project's directory ("" when none)
         static std::filesystem::path projectRoot();
-        // the open project's trusted roots: its directory and its configured assets directory
-        // (project.yaml assetsDir as loaded; each resolved once by the checks), empty when none
+        // the open project's trusted roots (McpRefs::trustedRoots): its directory, its configured
+        // assets directory and its Lua scripts directory (project.yaml as loaded), empty when none
         static std::vector<std::filesystem::path> projectRoots();
     };
 

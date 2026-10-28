@@ -40,7 +40,7 @@
 //   by a file).
 //
 // Trusted roots: a Scope (and Command::writeRoots, McpRefs::trustedRoots) may hold several roots,
-// the project directory and its configured assets directory, each resolved once: a path is
+// the project directory and its configured assets and Lua scripts directories, each resolved once: a path is
 // contained when its link-resolved location lies inside one of them; links BELOW them are checked.
 //
 // The *ResolvedBeneath functions are what callers that accept links INSIDE the root use (the

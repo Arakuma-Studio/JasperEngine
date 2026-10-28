@@ -48,11 +48,21 @@ async def test_a_project_with_a_linked_assets_folder_works(ed: Editor):
     elif (project / "assets").exists():
         shutil.rmtree(project / "assets")
     os.symlink(elsewhere, project / "assets")
+    # ... and its Lua scripts folder a link too
+    scripts = base / "elsewhere" / "scripts"
+    scripts.mkdir(parents=True)
+    if os.path.islink(project / "scripts") or (project / "scripts").is_file():
+        os.remove(project / "scripts")
+    elif (project / "scripts").exists():
+        shutil.rmtree(project / "scripts")
+    os.symlink(scripts, project / "scripts")
+    S["scripts"] = scripts
     yaml = (project / "project.yaml").read_text(encoding="utf-8")
-    if re.search(r"^assetsDir:.*$", yaml, flags=re.M):
-        yaml = re.sub(r"^assetsDir:.*$", "assetsDir: assets", yaml, flags=re.M)
-    else:
-        yaml = yaml.rstrip("\n") + "\nassetsDir: assets\n"
+    for key, value in (("assetsDir", "assets"), ("luaDir", "scripts")):
+        if re.search(rf"^{key}:.*$", yaml, flags=re.M):
+            yaml = re.sub(rf"^{key}:.*$", f"{key}: {value}", yaml, flags=re.M)
+        else:
+            yaml = yaml.rstrip("\n") + f"\n{key}: {value}\n"
     (project / "project.yaml").write_text(yaml, encoding="utf-8")
     S["project"] = project
     S["elsewhere"] = elsewhere
@@ -88,6 +98,26 @@ async def test_a_link_below_the_linked_assets_folder_is_checked(ed: Editor):
     ed.check(not any(further.iterdir()), "nothing written further out")
 
 
+async def test_a_linked_lua_scripts_folder_is_trusted(ed: Editor):
+    if "scripts" not in S:
+        skip("needs the linked project")
+    scripts = S["scripts"]
+    made = await ed.call("create_script", kind="lua", name="TrustedProbe", content="local TrustedProbe = {}\nreturn TrustedProbe\n")
+    ed.check(made["path"].startswith("scripts/"), f"made in the Lua scripts folder: {made}")
+    ed.check((scripts / Path(made["path"]).relative_to("scripts")).is_file(), "it lands under /elsewhere/scripts")
+    await ed.call("write_file", path="scripts/notes.lua", content="return {}\n")
+    ed.check_eq((scripts / "notes.lua").read_text(encoding="utf-8"), "return {}\n", "write_file into the linked Lua folder")
+    # a link below it leading further out: refused
+    further = S["base"] / "further-scripts"
+    further.mkdir()
+    os.symlink(further, scripts / "out")
+    r = await ed.call_raw("write_file", {"path": "scripts/out/x.lua", "content": "return {}\n"})
+    ed.check(r.is_error and "resolves outside the project" in r.text, f"a link below the Lua folder leading further out: {r.text[:400]}")
+    r = await ed.call_raw("create_script", {"kind": "lua", "name": "Escaper", "directory": "scripts/out", "content": "return {}\n"})
+    ed.check(r.is_error, f"create_script through it refused: {r.text[:400]}")
+    ed.check(not any(further.iterdir()), "nothing written further out")
+
+
 async def test_an_asset_root_outside_the_project_is_refused(ed: Editor):
     if "project" not in S:
         skip("needs the linked project")
@@ -95,9 +125,10 @@ async def test_an_asset_root_outside_the_project_is_refused(ed: Editor):
     away = S["base"] / "away"
     away.mkdir()
     os.symlink(away, project / "linkout")
-    for value in ("linkout", "../away", str(away)):
-        r = await ed.call_raw("set_project_settings", {"values": {"editor.assets_dir": value}})
-        ed.check(r.is_error, f"(c) assets_dir {value!r} outside the project is refused: {r.text[:400]}")
+    for key in ("editor.assets_dir", "scripting.lua_dir"):
+        for value in ("linkout", "../away", str(away)):
+            r = await ed.call_raw("set_project_settings", {"values": {key: value}})
+            ed.check(r.is_error, f"(c) {key} {value!r} outside the project is refused: {r.text[:400]}")
     summary = await ed.call("get_project_summary")
     ed.check_eq(summary.get("assets_dir"), "assets", "the assets folder is unchanged")
     # back to the original project
