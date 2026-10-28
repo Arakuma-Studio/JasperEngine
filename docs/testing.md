@@ -69,7 +69,8 @@ waiting click and refused drop (`tools/mcp/tests/test_scene_view*.py`).
   line and fails only when `JASPER_MCP_PERF_SLACK` is set: a shared build server's load alone
   misses those budgets. The benchmark run enforces them on the benchmark-only server E:
   `rb.sh E --img 'JASPER_MCP_PERF_SLACK=1 dbus-run-session -- tools/mcp/run-tests.sh
-  tools/mcp/tests/test_call_cli.py tools/mcp/tests/test_hot_reload.py tools/mcp/tests/test_checks.py'`.
+  tools/mcp/tests/test_call_cli.py tools/mcp/tests/test_hot_reload.py tools/mcp/tests/test_checks.py
+  tools/mcp/tests/test_autosync.py'` (test_autosync.py: the auto-sync scan's CPU and wall-clock budgets).
 - `tools/smoke-test.sh <project>`: see its header. It also checks that the exported project
   configures as a user's game does: no presets file, no warnings as errors, no sanitizer.
 - `tools/build.sh web-gate` serves `build/web` with cross-origin isolation, opens

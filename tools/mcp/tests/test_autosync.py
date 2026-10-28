@@ -13,7 +13,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from harness import Editor, default_fixture, find_key
+from harness import Editor, default_fixture, find_key, over_budget
 import tool_budget
 
 TIMEOUT = 900
@@ -312,8 +312,11 @@ async def test_no_change_timing(ed: Editor):
     auto = m["auto"]
     print(f"no-change auto-sync, {auto['files']} files: {describe(m)}")
     ed.check(auto["complete"], f"the fixture is scanned whole every call: {auto!r}")
-    ed.check(p90(m["write_cpu"]) < 5.0, f"no-change auto-sync too slow (CPU ms): {sorted(m['write_cpu'])!r}")
-    ed.check(statistics.median(m["write_wall"]) < 5.0, f"no-change auto-sync too slow (wall ms): {sorted(m['write_wall'])!r}")
+    # CPU and wall-clock budgets: a shared build server's load alone misses them (enforced on the
+    # benchmark server E with JASPER_MCP_PERF_SLACK, docs/testing.md)
+    over = over_budget("no-change auto-sync, CPU p90", {"write_cpu": p90(m["write_cpu"])}, 5.0, "ms")
+    over |= over_budget("no-change auto-sync, wall median", {"write_wall": statistics.median(m["write_wall"])}, 5.0, "ms")
+    ed.check(not over, f"no-change auto-sync too slow (ms): {over!r}: {describe(m)}")
 
 
 async def test_play_deferred_then_picked_up(ed: Editor):
@@ -381,8 +384,10 @@ async def test_large_project_incremental():
             # the file watcher's journal (S05) needs no scan; the stat scan (watcher off) is incremental
             ed.check(auto.get("source") == "watcher" or (not auto["complete"] and auto["checked"] < files),
                      f"large projects are scanned incrementally: {auto!r}")
-            ed.check(p90(m["read_cpu"]) < 5.0, f"large project scan too slow (CPU ms): {sorted(m['read_cpu'])!r}")
-            ed.check(p90(m["write_cpu"]) < 8.0, f"large project scan + settle too slow (CPU ms): {sorted(m['write_cpu'])!r}")
+            # CPU budgets: enforced on the benchmark server E (JASPER_MCP_PERF_SLACK), a loaded host misses them
+            over = over_budget("large project scan, CPU p90", {"read_cpu": p90(m["read_cpu"])}, 5.0, "ms")
+            over |= over_budget("large project scan + settle, CPU p90", {"write_cpu": p90(m["write_cpu"])}, 8.0, "ms")
+            ed.check(not over, f"large project scan too slow (CPU ms): {over!r}: {describe(m)}")
 
             # a code edit is found on the next call
             touch_write(ed.project / "assets/bulk/code/S123.lua", "return { x = 1 }\n")
