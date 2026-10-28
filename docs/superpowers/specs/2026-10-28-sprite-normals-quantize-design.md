@@ -132,7 +132,8 @@ live preview + tooltips + Help), MCP tool (params, schema enum for preset, guide
 settings echo), docs (guide section "Toon steps" with a worked example; README sentence; contract; merge notes), tool
 budget (stay under the 106,100 cap — put text in the guide, not the schema).
 
-Done: the schema only gains `"toon"` in the preset enum (params stays a loose object); MCP `paramKeys` gains
+Done: the schema only gains `"toon"` in the preset enum (params stays a loose object); that put the tool list 2
+characters over the cap (106,102), so the tool description says "(one undo)" instead of "(one undo step)": 106,097; MCP `paramKeys` gains
 `quantize` (unknown-key list, `params.` field names, `regenerate`'s `paramsDiff`); the CLI echoes `settings.quantize`
 in its JSON (from `settingsToJson`); the session fingerprint and the window's stored settings go through
 `settingsToJson` and need no change. The window's segmented controls name each button for the UI probe
