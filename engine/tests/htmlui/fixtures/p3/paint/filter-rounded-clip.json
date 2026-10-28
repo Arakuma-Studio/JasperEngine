@@ -1,10 +1,10 @@
 {
- "comment": "a colour-filtered element as the only child of a rounded overflow clip (brightness filling it, invert over its top-left corner only), as the first of two children (grayscale, a square drawn after it) and as the second (sepia over a hidden square): drawn, clipped to the rounded padding box. No page background: the filtered element's layer is the frame's first pass. Its layer was once the first pass to hold the clip mask, and layer 0's first pass (the composite) cleared it: nothing was drawn, nor the square after it. Blur and drop-shadow: paint/filter-clip-blur-shadow. Tolerance: as radius-clip-children, the content is clipped by the stencil along the curves (4 samples: five coverage levels, no fade), Skia uses the covered area: single pixels along the curves differ (largest cluster 3 px), and the image is little else than four clipped boxes. Measured 0.487 % on glcore (0.825 % before fork patch P7-F1: the content was clipped by the multisampled mask in the filter's layer and again at its composite, which squared the edge pixels' coverage; the mask now clips the composite only); the cluster limit stays at the default (16 px).",
+ "comment": "a colour-filtered element as the only child of a rounded overflow clip (brightness filling it, invert over its top-left corner only), as the first of two children (grayscale, a square drawn after it) and as the second (sepia over a hidden square): drawn, clipped to the rounded padding box. No page background: the filtered element's layer is the frame's first pass. Its layer was once the first pass to hold the clip mask, and layer 0's first pass (the composite) cleared it: nothing was drawn, nor the square after it. Blur and drop-shadow: paint/filter-clip-blur-shadow. Tolerance: as radius-clip-children, the content is clipped by the stencil along the curves (4 samples: five coverage levels, no fade), Skia uses the covered area: single pixels along the curves differ (largest cluster 3 px), and the image is little else than four clipped boxes. Measured 0.487 % on glcore (0.825 % before fork patch P7-F1: the content was clipped by the multisampled mask in the filter's layer and again at its composite, which squared the edge pixels' coverage; the mask now clips the composite only); the cluster limit stays at the default (16 px). On an NVIDIA RTX 3060 Ti (Vulkan): 0.531 %, cluster 3 px; the limit is 0.68 % (that plus ~28 %, still under the 0.825 % of the double clip before P7-F1).",
  "viewport": [
   400,
   80
  ],
  "tolerance": {
-  "badPercent": 0.5
+  "badPercent": 0.68
  }
 }

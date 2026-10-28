@@ -37,7 +37,8 @@ namespace {
     // ---- the hardware-GPU tolerances ------------------------------------------------------------
     //
     // The goldens are glcore renders on llvmpipe (Mesa's software rasterizer). On a hardware GPU
-    // (measured on an NVIDIA GTX 1080, driver 580, Vulkan; the same tests failed on a GTX 1650)
+    // (measured on an NVIDIA GTX 1080, driver 580, Vulkan, and checked on an RTX 3060 Ti, driver 595; the
+    // same tests failed on a GTX 1650)
     // these effects draw a little or a lot differently, and the owner chose looser tolerances
     // over per-GPU goldens (2026-10-27):
     //   - hash noise built on sin(): fract(sin(x) * 43758.5) and fam_hash_phase() amplify the last
@@ -99,7 +100,7 @@ namespace {
         static const std::map<std::string, HardwareTolerance> tolerances = {
             // t1 / t2: mean colours 4 / 5 apart, histograms 6.0 / 11.3 %, edges 0.44 / 0.50 %;
             // text 1.79 % bad, mean 0.93
-            {"aurora", {{}, means(6, 14.0, 0.65), pixels(2.25, 1.2)}},
+            {"aurora", {{}, means(12, 14.0, 0.65), pixels(2.25, 1.2)}},  // RTX 3060 Ti: mean colours 9 / 7 apart, histograms 13.4 / 10.0 %, edges 0.33 / 0.24 %
             // t0 1.04 % bad, mean 1.20; t1 / t2 in 16 px blocks: largest 23 / 18, mean 1.77 / 2.20,
             // histograms 0.36 / 0.47 %
             {"boids", {pixels(1.3, 1.5), blocks(16, 2.8, 0.6, 30), {}}},
@@ -125,11 +126,11 @@ namespace {
             // 0.18 / 0.37 / 0.39 % bad
             {"pixel-sort", {pixels(0.5), pixels(0.5), {}}},
             // t0 / t1 0.051 / 0.071 % bad
-            {"shatter", {pixels(0.09), pixels(0.09), {}}},
+            {"shatter", {pixels(0.13), pixels(0.13), {}}},  // RTX 3060 Ti: t1 0.0995 % bad
             // t0 within the default; t1 0.13 % bad
             {"smoke-fill", {{}, pixels(0.16), {}}},
             // t1 / t2: mean colours 2 / 3 apart, histograms 2.27 / 3.41 %, edges 0.67 / 1.24 %
-            {"voronoi", {{}, means(4, 4.3, 1.6), {}}},
+            {"voronoi", {{}, means(4, 4.3, 2.4), {}}},  // RTX 3060 Ti: mean colours 2 / 2 apart, histograms 1.90 / 1.03 %, edges 1.84 / 1.77 %
         };
         return tolerances;
     }
