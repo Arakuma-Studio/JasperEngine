@@ -1417,6 +1417,19 @@ void prefabOverridesTool(const CallPtr& call) {
         call->fail("Pass entity (a GameObject of the instance) so the removed GameObjects can be found.");
         return;
     }
+    // an apply without target writes each instance's own prefab: inside the project once links are
+    // resolved (the write itself goes beneath the project too: the call's write scope)
+    if (apply && target.empty()) {
+        for (Entity root : roots) {
+            PrefabObjectRef ref;
+            if (!project->findPrefabObject(sceneId, root, ref) || ref.path.empty()) continue;
+            const fs::path file = ref.path.is_absolute() ? ref.path : project->getProjectPath() / ref.path;
+            if (const std::string escape = McpRefs::writeEscape(project, file); !escape.empty()) {
+                call->fail(escape);
+                return;
+            }
+        }
+    }
 
     const uint64_t since = Out::lastLogId();
     CommandHistory* history = CommandHandle::get(sceneId);

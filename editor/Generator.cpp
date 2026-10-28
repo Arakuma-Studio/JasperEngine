@@ -1440,7 +1440,8 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
     const fs::path agentsFile = projectPath / "AGENTS.md";
     std::error_code ec;
     // any entry there, a link (even a dangling one) included: never written (through)
-    if (fs::exists(fs::symlink_status(agentsFile, ec)) || ec) {
+    const fs::file_status agentsStatus = fs::symlink_status(agentsFile, ec);
+    if (fs::exists(agentsStatus) || (ec && agentsStatus.type() != fs::file_type::not_found)) {
         writeClaudeFile(projectPath);
         return;
     }
@@ -1554,7 +1555,8 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
 void editor::Generator::writeClaudeFile(const fs::path& projectPath) {
     const fs::path claudeFile = projectPath / "CLAUDE.md";
     std::error_code ec;
-    if (fs::exists(fs::symlink_status(claudeFile, ec)) || ec) return;
+    const fs::file_status claudeStatus = fs::symlink_status(claudeFile, ec);
+    if (fs::exists(claudeStatus) || (ec && claudeStatus.type() != fs::file_type::not_found)) return;
     FileUtils::writeIfChanged(claudeFile, "@AGENTS.md\n");
 }
 
