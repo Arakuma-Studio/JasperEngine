@@ -3,6 +3,7 @@
 
 #include "Exporter.h"
 #include "util/EditorScripts.h"
+#include "navigation/NavigationEditor.h"
 #include "asset/AssetFileWrite.h"
 #include "asset/AssetMap.h"
 #include "asset/AssetTypes.h"
@@ -1865,6 +1866,10 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                 warnDroppedPhysics("2D", [](Scene* scene) {
                     return scene->getComponentArray<Rigidbody2DComponent>()->size() > 0 || scene->getComponentArray<Joint2DComponent>()->size() > 0;
                 });
+            }
+            // S19 R42: surfaces of the build that are not baked or out of date
+            for (const NavigationEditor::Finding& finding : NavigationEditor::checkSurfaces(project)) {
+                Out::warning("%s (scene %s). Window > AI > Navigation > Bake All bakes now.", finding.message.c_str(), finding.sceneName.c_str());
             }
             if (!project->isPhysics3DEnabled()) {
                 warnDroppedPhysics("3D", [](Scene* scene) {

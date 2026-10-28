@@ -14,6 +14,7 @@
 #include "component/NavMeshObstacleComponent.h"
 #include "component/NavMeshSurfaceComponent.h"
 #include "component/TerrainComponent.h"
+#include "navigation/NavHash.h"
 #include "component/TilemapComponent.h"
 #include "component/Transform.h"
 #include "io/Data.h"
@@ -188,6 +189,8 @@ struct NavigationSystem::Runtime {
         uint64_t mapRevision = 0;
         std::string loadedPath;
         bool loaded = false;
+        // the source's content hash at the last automatic rebuild (0: none yet)
+        uint64_t sourceHash = 0;
     };
 
     struct GridRequest {
@@ -1219,6 +1222,84 @@ int NavigationSystem::stampGridObstacle(Entity grid, const AABB& worldBounds, ui
     if (changed > 0)
         scene->getComponent<NavGridComponent>(grid).mapDirty = true;
     return changed;
+}
+
+namespace {
+
+    // what a grid's rebuild reads from its source, hashed (spec R36: Auto Rebuild)
+    uint64_t gridSourceHash(Scene* scene, const NavGridComponent& component, Entity grid) {
+        const Entity source = component.sourceEntity == NULL_ENTITY ? grid : component.sourceEntity;
+        NavHasher hasher;
+        hasher.i32((int32_t)component.source);
+        hasher.i32(component.width);
+        hasher.i32(component.height);
+        hasher.f32(component.cellSize);
+        hasher.i32((int32_t)component.layout);
+        hasher.i32(component.emptyCellArea);
+        hasher.boolean(component.collidersBlock);
+        for (const NavGridTileArea& row : component.tileAreas) {
+            hasher.string(row.rect);
+            hasher.i32(row.area);
+        }
+        if (const Transform* transform = scene->findComponent<Transform>(source)) {
+            hasher.floats(&transform->worldPosition.x, 3);
+            hasher.f32(transform->worldRotation.w);
+            hasher.f32(transform->worldRotation.x);
+            hasher.f32(transform->worldRotation.y);
+            hasher.f32(transform->worldRotation.z);
+        }
+        if (const Transform* transform = scene->findComponent<Transform>(grid)) {
+            hasher.floats(&transform->worldPosition.x, 3);
+            hasher.f32(transform->worldRotation.w);
+        }
+        if (component.source == NavGridSource::TILEMAP) {
+            if (const TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(source)) {
+                hasher.u32(tilemap->numTiles);
+                for (unsigned int t = 0; t < tilemap->numTiles; t++) {
+                    const TileData& tile = tilemap->tiles[t];
+                    hasher.string(tile.name);
+                    hasher.i32(tile.rectId);
+                    hasher.f32(tile.position.x);
+                    hasher.f32(tile.position.y);
+                    hasher.f32(tile.width);
+                    hasher.f32(tile.height);
+                }
+                for (unsigned int r = 0; r < tilemap->numTilesRect; r++)
+                    hasher.string(tilemap->tilesRect[r].name);
+            }
+        } else if (component.source == NavGridSource::TERRAIN) {
+            if (const TerrainComponent* terrain = scene->findComponent<TerrainComponent>(source)) {
+                hasher.f32(terrain->terrainSize);
+                hasher.f32(terrain->maxHeight);
+                hasher.string(terrain->heightMap.getPath());
+                hasher.string(terrain->heightMap.getId());
+            }
+        }
+        return hasher.value();
+    }
+
+}
+
+void NavigationSystem::updateGridSources() {
+    auto grids = scene->getComponentArray<NavGridComponent>();
+    for (size_t i = 0; i < grids->size(); i++) {
+        NavGridComponent& component = grids->getComponentFromIndex(i);
+        const Entity entity = grids->getEntity(i);
+        if (!component.enabled || !component.autoRebuild || component.source == NavGridSource::NONE)
+            continue;
+        const uint64_t hash = gridSourceHash(scene, component, entity);
+        Runtime::Grid& state = rt().grids[entity];
+        if (state.sourceHash == hash)
+            continue;
+        // the first look only records it when the cells came from an asset (they are the rebuild)
+        const bool first = state.sourceHash == 0;
+        state.sourceHash = hash;
+        if (first && !component.gridData.path.empty())
+            continue;
+        std::string error;
+        if (!rebuildGrid(entity, error))
+            Log::warn("NavGrid '%s': %s", scene->getEntityName(entity).c_str(), error.c_str());
+    }
 }
 
 bool NavigationSystem::rebuildGrid(Entity grid, std::string& error) {
@@ -2507,6 +2588,8 @@ void NavigationSystem::fixedUpdate(double dt) {
         }
     }
     r.syncSurfaces(*this, scene);
+    // grids that follow their tilemap or terrain
+    updateGridSources();
     // 2. transforms -> agents and obstacles
     r.syncAgents(*this, scene);
     r.syncObstacles(*this, scene, step);

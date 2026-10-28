@@ -1454,7 +1454,7 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
     }
 
     if (NavigationEditor::get().isBrushPainting(scene)){
-        NavigationEditor::get().paintBrushStroke(scene, ownerMouseRay);
+        NavigationEditor::get().paintBrushStroke(scene, ownerMouseRay, ImGui::GetIO().KeyShift);
         return;
     }
 

@@ -26,6 +26,7 @@
 #include "external/IconsFontAwesome6.h"
 #include "navigation/NavigationEditor.h"
 #include "navigation/NavTypes.h"
+#include "navigation/NavBakeCollector.h"
 #include "subsystem/NavigationSystem.h"
 
 #include <algorithm>
@@ -270,6 +271,11 @@ void editor::InspectorWindow::drawNavMeshSurfaceComponent(ComponentType cpType, 
         const int tileSize = surface.overrideTileSize ? surface.tileSize : 64;
         ImGui::TextDisabled("%.3f m voxels, tiles of %.1f m; %d voxels per agent radius", cellSize, cellSize * (float)tileSize,
                             (int)std::ceil(agent.radius / std::max(cellSize, 1e-4f)));
+        // a 2D surface works in points: the same sizes at the scene's points per metre
+        if (surface.plane == nav::NavPlane::XY) {
+            const float points = nav::NavBakeCollector::unitScaleOf(scene, surface);
+            ImGui::TextDisabled("2D: %.1f point voxels, tiles of %.0f points", cellSize * points, cellSize * (float)tileSize * points);
+        }
     }
 
     if (entities.size() != 1) return;
@@ -465,7 +471,7 @@ void editor::InspectorWindow::drawNavMeshLinkComponent(ComponentType cpType, Sce
     RowSettings settingsPoint = settings;
     settingsPoint.help = "In this GameObject's space; drag the handles in the Scene view";
     RowSettings settingsWidth = settings;
-    settingsWidth.help = "0: a point-to-point link; wider links are not supported by Detour and use the centre line";
+    settingsWidth.help = "0: one point-to-point connection; wider: connections side by side, one per agent diameter";
     RowSettings settingsCost = settings;
     settingsCost.help = "Negative: the area's cost; otherwise the cost per metre of this link";
     RowSettings settingsBidirectional;
@@ -675,10 +681,47 @@ void editor::InspectorWindow::drawNavGridComponent(ComponentType cpType, ScenePr
     }
     ImGui::EndDisabled();
     ImGui::SameLine();
-    if (ImGui::Button(ICON_FA_PAINTBRUSH " Paint")) {
-        NavigationEditor::get().setBrushGrid(sceneProject->id, entity);
+    NavigationEditor& navEditor = NavigationEditor::get();
+    const bool brushHere = navEditor.isBrushActive(sceneProject->id) && navEditor.getBrushGrid() == entity;
+    if (!brushHere) {
+        ImGui::BeginDisabled(sceneProject->playState != ScenePlayState::STOPPED);
+        if (ImGui::Button(ICON_FA_PAINTBRUSH " Paint")) navEditor.setBrushGrid(sceneProject->id, entity);
+        ImGui::EndDisabled();
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip("The nav-grid brush in the Scene view: paint, erase or fill areas ([ and ] resize, Shift-drag a line)");
+    } else {
+        if (ImGui::Button(ICON_FA_STOP " Stop Painting")) navEditor.stopBrush();
+        NavigationEditor::Brush& brush = navEditor.getBrush();
+        ImGui::SeparatorText("Nav-Grid Brush");
+        int mode = (int)brush.mode;
+        ImGui::RadioButton("Paint Area", &mode, (int)NavigationEditor::BrushMode::Paint);
+        ImGui::SameLine();
+        ImGui::RadioButton("Erase", &mode, (int)NavigationEditor::BrushMode::Erase);
+        ImGui::SameLine();
+        ImGui::RadioButton("Fill", &mode, (int)NavigationEditor::BrushMode::Fill);
+        brush.mode = (NavigationEditor::BrushMode)mode;
+        if (brush.mode == NavigationEditor::BrushMode::Paint || brush.mode == NavigationEditor::BrushMode::Fill) {
+            DynamicEntries& areas = areaEntries();
+            const int current = std::clamp(brush.area, 0, nav::AREA_COUNT - 1);
+            ImGui::SetNextItemWidth(12 * ImGui::GetFontSize());
+            if (ImGui::BeginCombo("Area##navbrush", areas.names[(size_t)current].c_str())) {
+                for (int a = 0; a < nav::AREA_COUNT; a++) {
+                    if (ImGui::Selectable(areas.names[(size_t)a].c_str(), a == current)) brush.area = a;
+                }
+                ImGui::EndCombo();
+            }
+        }
+        if (brush.mode != NavigationEditor::BrushMode::Fill) {
+            int shape = (int)brush.shape;
+            ImGui::RadioButton("Circle", &shape, (int)NavigationEditor::BrushShape::Circle);
+            ImGui::SameLine();
+            ImGui::RadioButton("Square", &shape, (int)NavigationEditor::BrushShape::Square);
+            brush.shape = (NavigationEditor::BrushShape)shape;
+            ImGui::SetNextItemWidth(12 * ImGui::GetFontSize());
+            ImGui::SliderInt("Size (cells)##navbrush", &brush.size, 1, 64);
+        }
+        ImGui::TextDisabled("Left-drag in the Scene view paints; one stroke is one undo step.");
     }
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("The nav-grid brush in the Scene view: paint, erase or fill areas ([ and ] resize)");
     ImGui::TextDisabled("%d x %d cells, %d painted override(s), %.1f KB", map->getWidth(), map->getHeight(), overrides,
                         (double)map->memoryBytes() / 1024.0);
 }

@@ -180,6 +180,7 @@ quality.atmosphere_quality_*). More: jasper://docs/atmosphere.
   body.position (body.rotation / body.angle), velocity with body.linearVelocity.
 - Layer Collision Matrix (project settings) gates contacts; raycasts take a layer mask. Drop
   or settle objects: place_with_physics (group editor_ux).
+- NavMesh agents, crowds, grid paths: jasper://docs/navigation.
 
 ## Prefabs
 - An edit on a prefab instance is an override of that instance only. Push it to the asset

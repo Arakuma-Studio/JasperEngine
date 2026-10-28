@@ -566,3 +566,56 @@ scenes are `bench_nav_city` (3D) and `nav_2d_topdown` + `nav_tilemap` (2D), unde
 | Agent types beyond one per surface | Like Unity: one surface per agent type; several surfaces may overlap |
 | Tile-cache layers vs static tiles diverge in path quality | Same Recast config; `NavObstacleTest` compares path lengths without obstacles (±2 %) |
 | Grid heights from terrain on hex layouts | Sample at the cell centre; slope uses the neighbour-centre height difference / centre distance |
+
+## Deviations
+
+What the implementation does differently from the text above, and why.
+
+- **Test location.** The tests are under `engine/tests/core/navigation/` (and the bench in
+  `engine/tests/core/bench/NavBench.cpp`), the layout `docs/testing.md` prescribes for core tests,
+  not `engine/tests/navigation/`. `NavLinkTest.GapCrossing` (AC8) is `NavAgentTest.LinkGapCrossing`.
+- **`JASPERENGINE_NAVIGATION=OFF`** strips Recast/Detour only: navmesh bakes, queries and
+  crowds fail (logged once, `NavStubTest`), while Nav Grids (our own A*) keep working.
+- **Tile hashes** cover the geometry, areas and Recast config of a tile, not the area costs or
+  colours: costs are applied by the query filters at runtime, so editing a cost never dirties a
+  bake. The `.navmesh` header still records the area-table hash (R39).
+- **Grid memory.** The reachability index (R17) adds 4 bytes per cell on the map, beside the 11
+  bytes of solver scratch R29 budgets (`NavGridTest.MemoryPerCell` checks both).
+- **Default asset location.** Scenes live at the project root, so the default `.navmesh` is
+  `assets/<scene folder>/<SceneName>/NavMesh-<GameObject>.navmesh` (inside the assets folder, where
+  the engine reads assets), not next to the scene; `.navgrid` files follow the same rule
+  (`NavGrid-<GameObject>.navgrid`).
+- **Braking.** dtCrowd always slows an agent within two radii of its goal. With Auto Braking on,
+  the agent brakes at half its acceleration (`v = sqrt(a d)`), then closes the last centimetres by
+  an eighth per tick, compensating dtCrowd's own slow-down, and arrives within 5 mm of the stopping
+  distance (AC12: speed < 0.05 m/s at the stop). With Auto Braking off, dtCrowd's slow-down remains
+  (Unity's agents do not slow at all).
+- **Non-carving obstacles** are dtCrowd agents that avoidance steers around; after each crowd step
+  the obstacles are put back where their transforms are and agents inside an obstacle's circle are
+  moved out along the navmesh (AC10's "0 overlaps" holds even when a crowd presses on it).
+- **Links.** Detour links are point to point: a link with a `width` bakes ceil(width / 2r)
+  connections side by side across it. A link's end connects only within the tile next to its
+  start's (Detour).
+- **Crowd filters.** dtCrowd has 16 query filters; a crowd whose agents use more than 16 distinct
+  area masks gives the extra ones the all-areas filter (logged once).
+- **2D units.** On XY surfaces agent radius, height, speed and acceleration stay in metres and are
+  converted with the 2D scene's points per metre (`pointsToMeterScale2D`).
+- **DebugUtils** is vendored (licence, completeness) but not compiled: the overlays build their
+  geometry from Detour tiles directly (`NavMesh::getDebugGeometry`).
+- **AC2** compares against a poly count recorded per platform and compiler
+  (`engine/tests/core/fixtures/navigation/bench_nav_city_polys.txt`, updated with
+  `JASPER_TEST_UPDATE_FIXTURES=1`), so a physics-off build checks it without a second build.
+- **AC13**: S22 landed, so the Character Controller driver test is in (`NavAgentTest.CharacterControllerDriver`).
+- **Lua extras** beyond R38: `isOnOffMeshLink`, `currentOffMeshLinkData`, `NavAreas` (masks and
+  `getAreaFromName`, `getAreaCost`, `maskOf`).
+- **R41 version registry.** S03's bump rule (`editor/StreamMigrations.h`) says adding optional
+  components does not bump a document version; old scenes load unchanged and newer editors
+  preserve unknown components, so the scene version stays where it is (no S18 renumbering needed).
+- **`bake_navigation` in play** is refused (a game rebakes with `NavMeshSurface:bakeAsync()`); the
+  other tools work in edit mode and in play as R37 says.
+- **The S31 check** reports navigation findings (tool `navigation`) in a whole-project
+  `check` run rather than behind a flag of its own; the export preflight logs the same warnings
+  and points to Window > AI > Navigation > Bake All.
+- **Overlay culling.** The Scene view overlay re-extracts the visible tiles when the view, the
+  navmesh or the area colours change (and at most 64k triangles), instead of keeping one dynamic
+  mesh per surface built once per tile change.

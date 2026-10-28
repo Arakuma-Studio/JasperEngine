@@ -240,6 +240,10 @@ void NavigationEditor::update(Project* project) {
             system->processBakes(nav::getSettings().webBakeBudgetMs);
             sceneProject.needUpdateRender = true;
         }
+        // grids with Auto Rebuild follow their tilemap or terrain while editing too (R36)
+        if (system && sceneProject.scene->getComponentArray<NavGridComponent>()->size() > 0) {
+            system->updateGridSources();
+        }
     }
     for (size_t i = 0; i < pending.size();) {
         Pending& entry = pending[i];
@@ -418,6 +422,8 @@ struct NavigationEditor::BrushStroke {
     Entity grid = NULL_ENTITY;
     NavGridBrush::Stroke edits;
     nav::GridCell last;
+    // where the stroke began (a Shift-drag's line starts there)
+    nav::GridCell anchor;
     bool started = false;
 };
 
@@ -468,17 +474,30 @@ void NavigationEditor::beginBrushStroke(Project* project, Scene* scene, const Ra
     stroke->grid = brushGrid;
     (void)project;
     // Shift: a straight line from where the last stroke ended
+    stroke->anchor = cell;
     if (shift && hasLastStrokeEnd && brush.mode != BrushMode::Fill) {
         stroke->last = lastStrokeEnd;
+        stroke->anchor = lastStrokeEnd;
         stroke->started = true;
     }
     strokeTo(scene, cell);
 }
 
-void NavigationEditor::paintBrushStroke(Scene* scene, const Ray& ray) {
+void NavigationEditor::paintBrushStroke(Scene* scene, const Ray& ray, bool shift) {
     if (!stroke || stroke->scene != scene || brush.mode == BrushMode::Fill) return;
     nav::GridCell cell;
     if (!cellUnderRay(scene, stroke->grid, ray, cell) || cell == stroke->last) return;
+    if (shift) {
+        // a straight line from the anchor: what the drag painted so far goes back first
+        auto system = scene->getSystem<NavigationSystem>();
+        if (nav::NavGridMap* map = system ? system->getGridMap(stroke->grid) : nullptr) {
+            stroke->edits.revert(*map);
+            stroke->edits = NavGridBrush::Stroke();
+            stroke->last = stroke->anchor;
+            stroke->started = false;
+            strokeTo(scene, stroke->anchor);
+        }
+    }
     strokeTo(scene, cell);
 }
 
@@ -493,5 +512,44 @@ void NavigationEditor::endBrushStroke(Project* project) {
     // the cells are painted already: the command's execute() writes the same values
     CommandHandle::get(done->sceneId)->addCommand(new NavGridCellsCmd(project, done->sceneId, done->grid, cells, "Paint Nav Grid"));
     if (SceneProject* sceneProject = project->getScene(done->sceneId)) sceneProject->needUpdateRender = true;
+}
+
+std::vector<NavigationEditor::Finding> NavigationEditor::checkSurfaces(Project* project, size_t* surfaces) {
+    std::vector<Finding> findings;
+    size_t count = 0;
+    for (SceneProject& sceneProject : project->getScenes()) {
+        if (!sceneProject.scene || sceneProject.filepath.empty()) continue;
+        NavigationSystem* system = systemOf(sceneProject);
+        if (!system) continue;
+        auto array = sceneProject.scene->getComponentArray<NavMeshSurfaceComponent>();
+        std::vector<Entity> entities;
+        for (size_t i = 0; i < array->size(); i++) entities.push_back(array->getEntity(i));
+        std::sort(entities.begin(), entities.end());
+        for (Entity entity : entities) {
+            const NavMeshSurfaceComponent& surface = sceneProject.scene->getComponent<NavMeshSurfaceComponent>(entity);
+            if (!surface.enabled) continue;
+            count++;
+            Finding finding;
+            finding.scenePath = sceneProject.filepath.generic_string();
+            finding.sceneName = sceneProject.name;
+            finding.entityName = sceneProject.scene->getEntityName(entity);
+            const NavSurfaceStatus status = system->getSurfaceStatus(entity);
+            if (surface.navMeshData.empty()) {
+                finding.message = "NavMesh Surface '" + finding.entityName + "' is not baked: its agents find no navmesh in the build "
+                                  "(Bake, or bake_navigation)";
+            } else if (!status.loadError.empty() || status.state == NavBakeState::NOT_BAKED) {
+                finding.message = "NavMesh Surface '" + finding.entityName + "': its navmesh '" + surface.navMeshData.path +
+                                  "' cannot be read" + (status.loadError.empty() ? std::string() : " (" + status.loadError + ")") + "; bake it again";
+            } else {
+                const int dirty = system->countDirtyTiles(entity);
+                if (dirty <= 0) continue;
+                finding.message = "NavMesh Surface '" + finding.entityName + "' is out of date: " + std::to_string(dirty) +
+                                  " tile(s) changed since its bake (Bake, or bake_navigation)";
+            }
+            findings.push_back(std::move(finding));
+        }
+    }
+    if (surfaces) *surfaces = count;
+    return findings;
 }
 

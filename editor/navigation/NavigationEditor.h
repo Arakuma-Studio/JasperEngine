@@ -90,10 +90,11 @@ namespace jasperengine::editor {
         Brush& getBrush() { return brush; }
         // the brush holds the Scene view's left button in this scene (a NavGrid to paint)
         bool isBrushPainting(Scene* scene) const;
-        // A stroke: press, drag, release (one undo step "Paint Nav Grid"); Shift on press draws a
-        // straight line from the last stroke's end. Fill floods the cell pressed.
+        // A stroke: press, drag, release (one undo step "Paint Nav Grid"). Shift held while
+        // dragging paints a straight line from the press to the cursor (Shift on the press: from
+        // the last stroke's end). Fill floods the cell pressed.
         void beginBrushStroke(Project* project, Scene* scene, const Ray& ray, bool shift);
-        void paintBrushStroke(Scene* scene, const Ray& ray);
+        void paintBrushStroke(Scene* scene, const Ray& ray, bool shift = false);
         void endBrushStroke(Project* project);
         // the grid cell under a ray (false: it misses the grid's plane)
         static bool cellUnderRay(Scene* scene, Entity grid, const Ray& ray, nav::GridCell& cell);
@@ -105,6 +106,16 @@ namespace jasperengine::editor {
             auto it = queryPaths.find(sceneId);
             return it != queryPaths.end() ? it->second : none;
         }
+
+        // The export preflight and the CLI check (spec R42): every surface of the loaded scenes
+        // that is not baked, cannot be read or is out of date, as findings (tool "navigation")
+        struct Finding {
+            std::string scenePath;
+            std::string sceneName;
+            std::string entityName;
+            std::string message;
+        };
+        static std::vector<Finding> checkSurfaces(Project* project, size_t* surfaces = nullptr);
 
         // Stale bake (spec R32, R42): tiles whose inputs differ from the baked ones, -1 when
         // not collected; cached per scene revision

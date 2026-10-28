@@ -170,6 +170,9 @@ namespace jasperengine{
         int stampGridObstacle(Entity grid, const AABB& worldBounds, uint8_t area = nav::AREA_NOT_WALKABLE);
         // Rebuilds the cells from the grid's source (Tilemap or Terrain), keeping overridden cells
         bool rebuildGrid(Entity grid, std::string& error);
+        // Rebuilds the grids with Auto Rebuild whose source changed (each fixed tick; the editor
+        // calls it every frame in edit mode)
+        void updateGridSources();
         // whether the grid holds a world point (agents find their grid by it)
         bool gridContains(Entity grid, const Vector3& world);
 
