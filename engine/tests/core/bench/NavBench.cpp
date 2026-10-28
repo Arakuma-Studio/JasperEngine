@@ -142,6 +142,7 @@ int main(int argc, char** argv) {
 
     // ---- incremental: one building moved, its tiles found and rebuilt (collect included)
     NavigationSystem* nav = scene.getSystem<NavigationSystem>().get();
+    nav->setKeepBakeData(true);
     nav->setNavMeshData(fixture.surface, nav::NavMeshData(data), error);
     {
         Transform& building = scene.getComponent<Transform>(fixture.buildings[37]);
@@ -157,7 +158,7 @@ int main(int argc, char** argv) {
     {
         std::mt19937 random(3);
         std::uniform_real_distribution<float> coordinate(-120.0f, 120.0f);
-        std::vector<double> paths, samples, raycasts;
+        std::vector<double> paths, unreachable, samples, raycasts;
         const nav::NavFilter filter = nav::NavFilter::fromSettings(nav::ALL_AREAS);
         const Vector3 extents(1.0f, 2.0f, 1.0f);
         int complete = 0;
@@ -169,8 +170,15 @@ int main(int argc, char** argv) {
                 continue;
             auto t = bench::Clock::now();
             const nav::NavPath path = runtime.findPath(sa.position, sb.position, filter, extents);
-            paths.push_back(msSince(t));
-            complete += path.status == nav::PathStatus::Complete ? 1 : 0;
+            const double ms = msSince(t);
+            // R26 times paths between connected points; a pair across islands (a roof) searches
+            // the whole node budget and fails, timed on its own
+            if (path.status == nav::PathStatus::Complete) {
+                paths.push_back(ms);
+                complete++;
+            } else {
+                unreachable.push_back(ms);
+            }
             t = bench::Clock::now();
             runtime.samplePosition(a, 6.0f, filter);
             samples.push_back(msSince(t));
@@ -179,7 +187,8 @@ int main(int argc, char** argv) {
             raycasts.push_back(msSince(t));
         }
         results.add("query_path_p95_ms", bench::percentile(paths, 0.95), "ms");
-        results.add("query_path_complete_share", (double)complete / std::max<size_t>(1, paths.size()), "of pairs");
+        results.add("query_path_complete_share", (double)complete / std::max<size_t>(1, paths.size() + unreachable.size()), "of pairs");
+        results.add("query_path_unreachable_p95_ms", unreachable.empty() ? 0.0 : bench::percentile(unreachable, 0.95), "ms");
         results.add("query_sample_p95_ms", bench::percentile(samples, 0.95), "ms");
         results.add("query_raycast_p95_ms", bench::percentile(raycasts, 0.95), "ms");
     }

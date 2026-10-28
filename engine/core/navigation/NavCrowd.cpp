@@ -76,6 +76,7 @@ struct NavCrowd::Impl {
     std::vector<uint8_t> onLink;
     // where each obstacle stands (dtCrowd's collision pass would push it like any agent)
     std::vector<std::array<float, 3>> pinned;
+    std::vector<const dtCrowdAgent*> obstacleScratch;
     // the agents whose traversal Detour runs (a fallback, see takeDetourTraversals)
     std::vector<uint8_t> detourLink;
     // the area masks of the 16 query filters (0: unused)
@@ -181,6 +182,7 @@ bool NavCrowd::init(const NavMesh& mesh, int maxAgents, float maxAgentRadius) {
     impl->params.assign((size_t)impl->capacity, NavCrowdAgentParams());
     impl->onLink.assign((size_t)impl->capacity, 0);
     impl->pinned.assign((size_t)impl->capacity, std::array<float, 3>{0.0f, 0.0f, 0.0f});
+    impl->obstacleScratch.reserve((size_t)impl->capacity);
     impl->detourLink.assign((size_t)impl->capacity, 0);
     impl->filterMasks.assign(DT_CROWD_MAX_QUERY_FILTER_TYPE, 0);
     impl->filterMasks[0] = ALL_AREAS;
@@ -293,12 +295,18 @@ void NavCrowd::update(float dt) {
 
     // obstacles stand where their transforms put them
     const int count = impl->crowd->getActiveAgents(impl->active.data(), impl->capacity);
+    std::vector<const dtCrowdAgent*>& obstacles = impl->obstacleScratch;
+    obstacles.clear();
     for (int i = 0; i < count; i++) {
         dtCrowdAgent* ag = impl->active[(size_t)i];
         const int index = (int)(ag - impl->crowd->getEditableAgent(0));
-        if (impl->params[(size_t)index].obstacle)
+        if (impl->params[(size_t)index].obstacle) {
             dtVcopy(ag->npos, impl->pinned[(size_t)index].data());
+            obstacles.push_back(ag);
+        }
     }
+    if (obstacles.empty())
+        return;
 
     // Avoidance is a velocity preference, so a crowd squeezing past a non-carving obstacle can
     // graze it; agents are put back on the obstacle's circle (along the navmesh), the way
@@ -311,11 +319,7 @@ void NavCrowd::update(float dt) {
                 continue;
             float push[3] = {0.0f, 0.0f, 0.0f};
             bool pushed = false;
-            for (int j = 0; j < count; j++) {
-                const dtCrowdAgent* other = impl->active[(size_t)j];
-                const int otherIndex = (int)(other - impl->crowd->getEditableAgent(0));
-                if (!impl->params[(size_t)otherIndex].obstacle)
-                    continue;
+            for (const dtCrowdAgent* other : obstacles) {
                 const float minimum = ag->params.radius + other->params.radius;
                 // vertically apart (another floor): no contact
                 if (std::fabs(ag->npos[1] - other->npos[1]) > (ag->params.height + other->params.height) * 0.5f)
@@ -496,6 +500,19 @@ float NavCrowd::getSteeringDistance(int agent, bool& reachedEnd) const {
     return distance;
 }
 
+float NavCrowd::getSteeringRemaining(int agent, bool& reachedEnd) const {
+    const dtCrowdAgent* ag = impl->agent(agent);
+    reachedEnd = false;
+    if (!ag->active || ag->corridor.getPathCount() == 0)
+        return 0.0f;
+    if (ag->ncorners == 0)
+        return dtVdist(ag->npos, ag->corridor.getTarget());
+    float distance = getSteeringDistance(agent, reachedEnd);
+    if (!reachedEnd)
+        distance += dtVdist(&ag->cornerVerts[(ag->ncorners - 1) * 3], ag->corridor.getTarget());
+    return distance;
+}
+
 void NavCrowd::getCorners(int agent, std::vector<Vector3>& corners, int maxCorners) const {
     corners.clear();
     const dtCrowdAgent* ag = impl->agent(agent);
@@ -513,7 +530,7 @@ void NavCrowd::getCorners(int agent, std::vector<Vector3>& corners, int maxCorne
 }
 
 void NavCrowd::takeOffMeshLinks(float lookahead, std::vector<NavLinkEntry>& entries) {
-    if (!impl->crowd)
+    if (!impl->crowd || !impl->mesh->hasOffMeshConnections())
         return;
     const int count = impl->crowd->getActiveAgents(impl->active.data(), impl->capacity);
     for (int i = 0; i < count; i++) {
@@ -651,6 +668,7 @@ void NavCrowd::setObstacleState(int, const Vector3&, const Vector3&) {}
 void NavCrowd::setVelocity(int, const Vector3&) {}
 float NavCrowd::getRemainingDistance(int, bool& reachedEnd, int) const { reachedEnd = false; return 0.0f; }
 float NavCrowd::getSteeringDistance(int, bool& reachedEnd) const { reachedEnd = false; return 0.0f; }
+float NavCrowd::getSteeringRemaining(int, bool& reachedEnd) const { reachedEnd = false; return 0.0f; }
 void NavCrowd::getCorners(int, std::vector<Vector3>& corners, int) const { corners.clear(); }
 void NavCrowd::takeOffMeshLinks(float, std::vector<NavLinkEntry>&) {}
 void NavCrowd::takeDetourTraversals(std::vector<int>&) {}

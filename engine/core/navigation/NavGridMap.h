@@ -69,6 +69,8 @@ namespace jasperengine::nav {
 
         uint8_t getArea(GridCell cell) const { return areas[(size_t)index(cell)]; }
         uint8_t getAreaAt(int index) const { return areas[(size_t)index]; }
+        // the cells' areas, row by row (the pathfinder's inner loop)
+        const uint8_t* areaData() const { return areas.data(); }
         // false outside the grid or for an area > 15
         bool setArea(GridCell cell, uint8_t area);
         // the cells of [a, b] (corners in any order) clipped to the grid; returns how many changed

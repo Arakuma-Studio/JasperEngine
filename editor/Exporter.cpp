@@ -3687,6 +3687,20 @@ bool editor::Exporter::writeAppleProjectSettings() {
         }
     }
 
+    // Navigation off (Project Settings > Navigation > Include in Builds): Recast/Detour and the
+    // engine's Detour glue stay out, and the engine compiles its navmesh stubs (S19 R42)
+    if (!project->getNavigationSettings().includeInBuilds) {
+        replaceAll(xcodeProject, "\t\t\t\t\tRMLUI_STATIC_LIB,\n", "\t\t\t\t\t\"JASPERENGINE_NAVIGATION=0\",\n\t\t\t\t\tRMLUI_STATIC_LIB,\n");
+        excludedPhysicsSources.insert(excludedPhysicsSources.end(), {
+            "NavDetourSupport.cpp",
+            "Recast.cpp", "RecastAlloc.cpp", "RecastArea.cpp", "RecastAssert.cpp", "RecastContour.cpp", "RecastFilter.cpp",
+            "RecastLayers.cpp", "RecastMesh.cpp", "RecastMeshDetail.cpp", "RecastRasterization.cpp", "RecastRegion.cpp",
+            "DetourAlloc.cpp", "DetourAssert.cpp", "DetourCommon.cpp", "DetourNavMesh.cpp", "DetourNavMeshBuilder.cpp",
+            "DetourNavMeshQuery.cpp", "DetourNode.cpp", "DetourCrowd.cpp", "DetourLocalBoundary.cpp", "DetourObstacleAvoidance.cpp",
+            "DetourPathCorridor.cpp", "DetourPathQueue.cpp", "DetourProximityGrid.cpp", "DetourTileCache.cpp", "DetourTileCacheBuilder.cpp"
+        });
+    }
+
     std::string excludedSources;
     for (const std::string& source : excludedPhysicsSources) {
         if (!excludedSources.empty()) excludedSources += " ";

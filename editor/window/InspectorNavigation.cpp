@@ -136,7 +136,7 @@ namespace {
     }
 
     void warningLine(const char* text) {
-        ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION);
+        ImGui::TextColored(editor::Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION);
         ImGui::SameLine();
         ImGui::TextWrapped("%s", text);
     }

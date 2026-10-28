@@ -111,12 +111,6 @@ namespace {
         if (bidirectional) arrow(a, a + (b - a) * 0.1f + up * (lift * 0.36f));
     }
 
-    Vector3 upOf(Scene* scene, Entity entity, nav::NavPlane plane) {
-        if (plane == nav::NavPlane::XY) return Vector3(0, 0, 1);
-        const Transform* transform = scene->findComponent<Transform>(entity);
-        return transform ? transform->worldRotation * Vector3(0, 1, 0) : Vector3(0, 1, 0);
-    }
-
 }
 
 YAML::Node editor::encodeNavOverlaySettings(const NavOverlaySettings& settings) {

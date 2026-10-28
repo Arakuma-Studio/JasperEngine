@@ -564,6 +564,9 @@ struct NavMesh::Impl {
     // carving: the links of each tile (the mesh process adds them to the tiles it builds)
     std::map<TileKey, std::vector<NavLinkInput>> links;
     uint64_t revision = 0;
+    // whether some tile has off-mesh connections, at linksRevision (a crowd asks every tick)
+    mutable uint64_t linksRevision = UINT64_MAX;
+    mutable bool hasLinks = false;
 
     ~Impl() { release(); }
 
@@ -1370,6 +1373,20 @@ uint64_t NavMesh::getRevision() const {
     return impl->revision;
 }
 
+bool NavMesh::hasOffMeshConnections() const {
+    if (!impl->valid) return false;
+    if (impl->linksRevision != impl->revision) {
+        impl->hasLinks = false;
+        const dtNavMesh* mesh = impl->navMesh;
+        for (int i = 0; i < mesh->getMaxTiles() && !impl->hasLinks; i++) {
+            const dtMeshTile* tile = mesh->getTile(i);
+            impl->hasLinks = tile && tile->header && tile->header->offMeshConCount > 0;
+        }
+        impl->linksRevision = impl->revision;
+    }
+    return impl->hasLinks;
+}
+
 #else // JASPERENGINE_NAVIGATION
 
 // Without Recast/Detour: the data model and its file format work (an editor can read and write
@@ -1427,5 +1444,6 @@ void NavMesh::getDebugGeometry(const std::function<bool(const float*, const floa
 void* NavMesh::detourNavMesh() const { return nullptr; }
 void* NavMesh::detourQuery() const { return nullptr; }
 uint64_t NavMesh::getRevision() const { return 0; }
+bool NavMesh::hasOffMeshConnections() const { return false; }
 
 #endif // JASPERENGINE_NAVIGATION

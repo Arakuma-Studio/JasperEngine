@@ -116,6 +116,9 @@ namespace jasperengine::nav {
         // Distance along the corridor to the target (up to maxCorners corners, then straight),
         // and whether the last corner found is the path's end
         float getRemainingDistance(int agent, bool& reachedEnd, int maxCorners = 64) const;
+        // the corners dtCrowd steers by, then the rest of the way as the crow flies: what an
+        // agent's remainingDistance shows each tick (exact once the end is among the corners)
+        float getSteeringRemaining(int agent, bool& reachedEnd) const;
         // The same from the corners the crowd steered by in its last update (at most 4, no search):
         // exact when reachedEnd, else a lower bound
         float getSteeringDistance(int agent, bool& reachedEnd) const;

@@ -189,6 +189,9 @@ namespace jasperengine{
         // fixed ticks that did navigation work (zero-cost proof: an empty scene leaves it alone)
         uint64_t getWorkingTicks() const { return workingTicks; }
         uint32_t getFixedTick() const { return fixedTick; }
+        // the longest main-thread slice of a time-sliced (web, no threads) bake since the reset
+        double getMaxBakeSliceMs() const { return maxBakeSliceMs; }
+        void resetBakeSliceStats() { maxBakeSliceMs = 0.0; }
 
     private:
         struct Runtime;
@@ -198,6 +201,7 @@ namespace jasperengine{
         bool bakeInBackground = false;
         uint64_t workingTicks = 0;
         uint32_t fixedTick = 0;
+        double maxBakeSliceMs = 0.0;
 
         bool hasNavigationComponents() const;
         Runtime& rt();

@@ -731,8 +731,11 @@ void NavigationSystem::processBakes(double budgetMs) {
         Runtime::Surface& state = entry.second;
         if (!state.bake)
             continue;
-        if (state.bake->isTimeSliced() && !state.bake->isDone() && budgetMs > 0.0)
+        if (state.bake->isTimeSliced() && !state.bake->isDone() && budgetMs > 0.0) {
+            const auto sliceStart = std::chrono::steady_clock::now();
             state.bake->pump(budgetMs);
+            maxBakeSliceMs = std::max(maxBakeSliceMs, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - sliceStart).count());
+        }
         if (!state.bake->isDone())
             continue;
 
@@ -2455,9 +2458,8 @@ void NavigationSystem::Runtime::writeBack(NavigationSystem& system, Scene* scene
             // arrival: within the stopping distance of the destination, once (spec R12)
             if (agent.requested && !agent.arrived && target == NavCrowdTarget::Valid && !agent.onLink) {
                 bool reachedEnd = false;
-                float remaining = crowd.getSteeringDistance(index, reachedEnd);
-                if (!reachedEnd)
-                    remaining = crowd.getRemainingDistance(index, reachedEnd);
+                // along the crowd's corners, the rest as the crow flies (no corridor walk per tick)
+                const float remaining = crowd.getSteeringRemaining(index, reachedEnd);
                 component.remainingDistance = remaining;
                 const float stop = std::max(component.stoppingDistance, MIN_STOPPING_DISTANCE) * scale;
                 if (reachedEnd && remaining <= stop + (component.autoBraking ? ARRIVAL_TOLERANCE * scale : 0.0f)) {

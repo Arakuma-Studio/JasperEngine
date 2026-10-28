@@ -22,6 +22,9 @@ namespace {
     constexpr uint8_t STATE_OPEN = 1;
     constexpr uint8_t STATE_CLOSED = 2;
 
+    // a diagonal step's length, as NavGridMap::neighbours gives it
+    constexpr float SQRT2_STEP = 1.4142135623730951f;
+
     struct HeapGreater {
         template <class Node>
         bool operator()(const Node& a, const Node& b) const {
@@ -132,9 +135,30 @@ GridPath GridSolver::solve(const NavGridMap& map, GridCell start, GridCell goal,
     // the reachability index rejects without a search (spec R17)
     if (!goalOpen && !query.allowPartial)
         return path;
+    // An unreachable goal with allowPartial: the reachable cell closest to it (by the heuristic)
+    // is found from the goal outward, then searched for like any goal, instead of searching all
+    // of the start's component
+    if (!goalOpen) {
+        const int target = nearestReachable(map, start, goal, query);
+        if (target == startIndex) {
+            path.status = PathStatus::Partial;
+            path.cells.push_back(start);
+            smooth(map, path, query, areaCosts);
+            return path;
+        }
+        if (target >= 0) {
+            GridQuery exact = query;
+            exact.allowPartial = false;
+            GridPath partial = solve(map, start, map.cellOf(target), exact, areaCosts);
+            if (partial.status == PathStatus::Complete) {
+                partial.status = PathStatus::Partial;
+                return partial;
+            }
+        }
+        // the area mask splits the component further than the index knows: the full search
+    }
 
     prepare(map.getCellCount());
-    auto visited = [&](int cell) { return generation[(size_t)cell] == current; };
 
     g[(size_t)startIndex] = 0.0f;
     parent[(size_t)startIndex] = -1;
@@ -149,7 +173,14 @@ GridPath GridSolver::solve(const NavGridMap& map, GridCell start, GridCell goal,
     bool found = false;
     GridCell next[NavGridMap::MAX_NEIGHBOURS];
     float steps[NavGridMap::MAX_NEIGHBOURS];
-    const bool diagonalRule = map.getLayout() == GridLayout::Square && map.getNeighbourMode() == 8 && !query.cornerCutting;
+    const uint8_t* areas = map.areaData();
+    // the areas a step may enter: the query's mask without Not Walkable
+    const uint32_t passMask = (uint32_t)query.areaMask & ~(1u << AREA_NOT_WALKABLE);
+    const bool square = map.getLayout() == GridLayout::Square;
+    const bool eight = square && map.getNeighbourMode() == 8;
+    const bool cornerCutting = query.cornerCutting;
+    const bool checkHeights = map.hasHeights();
+    const int width = map.getWidth(), height = map.getHeight();
 
     while (!heap.empty()) {
         std::pop_heap(heap.begin(), heap.end(), HeapGreater());
@@ -170,35 +201,51 @@ GridPath GridSolver::solve(const NavGridMap& map, GridCell start, GridCell goal,
             bestG = g[(size_t)node.cell];
         }
         const GridCell cell = map.cellOf(node.cell);
-        const int count = map.neighbours(cell, next, steps);
-        for (int n = 0; n < count; n++) {
-            const int to = map.index(next[n]);
-            if (!passable(map, to, query))
-                continue;
-            if (diagonalRule && steps[n] > 1.0f) {
-                // no corner cutting: both orthogonal cells of the diagonal must be open
-                const int sideA = map.index(GridCell{next[n].x, cell.y});
-                const int sideB = map.index(GridCell{cell.x, next[n].y});
-                if (!passable(map, sideA, query) || !passable(map, sideB, query))
-                    continue;
-            }
-            if (!map.stepAllowed(node.cell, to, steps[n]))
-                continue;
-            if (visited(to) && state[(size_t)to] == STATE_CLOSED)
-                continue;
-            float cost = steps[n] * areaCosts[map.getAreaAt(to)];
+        const float base = g[(size_t)node.cell];
+        // one step to `to` (its step length): the rules, the cost, the open list
+        auto relax = [&](int to, GridCell nextCell, float step) {
+            if (!((passMask >> areas[to]) & 1u))
+                return;
+            if (checkHeights && !map.stepAllowed(node.cell, to, step))
+                return;
+            const bool seen = generation[(size_t)to] == current;
+            if (seen && state[(size_t)to] == STATE_CLOSED)
+                return;
+            float cost = step * areaCosts[areas[to]];
             if (query.reservations && query.reservations->isReservedByOther(to, query.agent, query.tick))
                 cost *= query.reservationPenalty;
-            const float candidate = g[(size_t)node.cell] + cost;
-            if (visited(to) && candidate >= g[(size_t)to])
-                continue;
+            const float candidate = base + cost;
+            if (seen && candidate >= g[(size_t)to])
+                return;
             generation[(size_t)to] = current;
             g[(size_t)to] = candidate;
             parent[(size_t)to] = node.cell;
             state[(size_t)to] = STATE_OPEN;
-            const float h = map.heuristic(next[n], goal);
+            const float h = map.heuristic(nextCell, goal);
             heap.push_back(HeapNode{candidate + h, h, candidate, to});
             std::push_heap(heap.begin(), heap.end(), HeapGreater());
+        };
+        if (square) {
+            // the square layout by index: right, up, left, down, then the diagonals
+            const int x = cell.x, y = cell.y;
+            const bool right = x + 1 < width, left = x > 0, up = y + 1 < height, down = y > 0;
+            const int i = node.cell;
+            if (right) relax(i + 1, GridCell{x + 1, y}, 1.0f);
+            if (up) relax(i + width, GridCell{x, y + 1}, 1.0f);
+            if (left) relax(i - 1, GridCell{x - 1, y}, 1.0f);
+            if (down) relax(i - width, GridCell{x, y - 1}, 1.0f);
+            if (eight) {
+                auto open = [&](int index) { return ((passMask >> areas[index]) & 1u) != 0; };
+                // no corner cutting: both orthogonal cells of a diagonal must be open
+                if (right && up && (cornerCutting || (open(i + 1) && open(i + width)))) relax(i + 1 + width, GridCell{x + 1, y + 1}, SQRT2_STEP);
+                if (left && up && (cornerCutting || (open(i - 1) && open(i + width)))) relax(i - 1 + width, GridCell{x - 1, y + 1}, SQRT2_STEP);
+                if (left && down && (cornerCutting || (open(i - 1) && open(i - width)))) relax(i - 1 - width, GridCell{x - 1, y - 1}, SQRT2_STEP);
+                if (right && down && (cornerCutting || (open(i + 1) && open(i - width)))) relax(i + 1 - width, GridCell{x + 1, y - 1}, SQRT2_STEP);
+            }
+        } else {
+            const int count = map.neighbours(cell, next, steps);
+            for (int n = 0; n < count; n++)
+                relax(map.index(next[n]), next[n], steps[n]);
         }
     }
 
@@ -215,6 +262,39 @@ GridPath GridSolver::solve(const NavGridMap& map, GridCell start, GridCell goal,
     path.status = found ? PathStatus::Complete : PathStatus::Partial;
     smooth(map, path, query, areaCosts);
     return path;
+}
+
+int GridSolver::nearestReachable(const NavGridMap& map, GridCell start, GridCell goal, const GridQuery& query) {
+    const uint32_t component = map.getComponent(start);
+    if (component == UINT32_MAX)
+        return -1;
+    prepare(map.getCellCount());
+    const int goalIndex = map.index(goal);
+    generation[(size_t)goalIndex] = current;
+    const float goalH = 0.0f;
+    heap.push_back(HeapNode{goalH, goalH, 0.0f, goalIndex});
+    GridCell next[NavGridMap::MAX_NEIGHBOURS];
+    float steps[NavGridMap::MAX_NEIGHBOURS];
+    while (!heap.empty()) {
+        std::pop_heap(heap.begin(), heap.end(), HeapGreater());
+        const HeapNode node = heap.back();
+        heap.pop_back();
+        const GridCell cell = map.cellOf(node.cell);
+        if (passable(map, node.cell, query) && map.getComponent(cell) == component)
+            return node.cell;
+        // every neighbour, walkable or not: the search crosses walls to reach the component
+        const int count = map.neighbours(cell, next, steps);
+        for (int n = 0; n < count; n++) {
+            const int to = map.index(next[n]);
+            if (generation[(size_t)to] == current)
+                continue;
+            generation[(size_t)to] = current;
+            const float h = map.heuristic(next[n], goal);
+            heap.push_back(HeapNode{h, h, 0.0f, to});
+            std::push_heap(heap.begin(), heap.end(), HeapGreater());
+        }
+    }
+    return -1;
 }
 
 bool GridSolver::lineOfSight(const NavGridMap& map, GridCell a, GridCell b, const GridQuery& query, float maxCost,
@@ -292,19 +372,41 @@ void GridSolver::smooth(const NavGridMap& map, GridPath& path, const GridQuery& 
             path.points.push_back(map.cellCenter(cell));
         return;
     }
+    // Only the cells where the path turns are tested: a straight run between two of them is
+    // its own line of sight, so a long corridor costs one test, not one per cell
+    static thread_local std::vector<size_t> turns;
+    turns.clear();
+    turns.push_back(0);
+    const size_t last = path.cells.size() - 1;
+    for (size_t k = 1; k < last; k++) {
+        const GridCell& a = path.cells[k - 1];
+        const GridCell& b = path.cells[k];
+        const GridCell& c = path.cells[k + 1];
+        if (b.x - a.x != c.x - b.x || b.y - a.y != c.y - b.y)
+            turns.push_back(k);
+    }
+    turns.push_back(last);
+
+    auto costOf = [&](size_t k) { return areaCosts[map.getArea(path.cells[k])]; };
     path.points.push_back(map.cellCenter(path.cells.front()));
     size_t anchor = 0;
-    float maxCost = areaCosts[map.getArea(path.cells[0])];
-    for (size_t k = 1; k < path.cells.size(); k++) {
-        maxCost = std::max(maxCost, areaCosts[map.getArea(path.cells[k])]);
-        if (k + 1 < path.cells.size()) {
-            const float nextCost = std::max(maxCost, areaCosts[map.getArea(path.cells[k + 1])]);
-            if (lineOfSight(map, path.cells[anchor], path.cells[k + 1], query, nextCost, areaCosts))
-                continue;
-            path.points.push_back(map.cellCenter(path.cells[k]));
-            anchor = k;
-            maxCost = areaCosts[map.getArea(path.cells[k])];
+    // the costliest cell of the path from the anchor up to `scanned`: a shortcut may not cross a
+    // costlier one
+    float maxCost = costOf(0);
+    size_t scanned = 0;
+    for (size_t t = 1; t + 1 < turns.size(); t++) {
+        float candidate = maxCost;
+        for (size_t k = scanned + 1; k <= turns[t + 1]; k++)
+            candidate = std::max(candidate, costOf(k));
+        if (lineOfSight(map, path.cells[anchor], path.cells[turns[t + 1]], query, candidate, areaCosts)) {
+            maxCost = candidate;
+            scanned = turns[t + 1];
+            continue;
         }
+        anchor = turns[t];
+        path.points.push_back(map.cellCenter(path.cells[anchor]));
+        maxCost = costOf(anchor);
+        scanned = anchor;
     }
     path.points.push_back(map.cellCenter(path.cells.back()));
 }

@@ -154,6 +154,8 @@ namespace jasperengine::nav {
         void* detourQuery() const;
         // Changes whenever tiles change (rebuilds of overlays, crowd corridor checks)
         uint64_t getRevision() const;
+        // whether a tile holds off-mesh connections (links)
+        bool hasOffMeshConnections() const;
 
     private:
         struct Impl;
