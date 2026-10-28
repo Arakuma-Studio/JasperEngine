@@ -552,3 +552,11 @@ Final tree (oe-port 64d735104, S20 and S28, merged; f6c0639f0 and the docs after
   moved them to `core/object`), and the exported build failed; removing those installed engine
   copies before the build fixes it: `tools/smoke-test.sh tools/fixtures/post-processing` (glcore
   and Vulkan), web + web-gate pass on the final tree.
+
+Landing gate (oe-port 6f47d2c48, S22 and S14b, merged; d32267af6 and the docs after it):
+`WERROR=1 tools/build.sh linux`; `gen_tool_docs.py` (229 tools, no change); htmlui glcore and Vulkan
+3,480 ran, 0 failed each (B); unit tests core 1,419 and editor 883 ran, 0 failed (B); MCP
+(the files above): 345 passed, 3 failed, the same three that fail without S16;
+`test_html_ui_phase2::test_mistakes_are_reported` (four copies at once, five rounds) 0 of 20
+failed with the screenshot's HTML document wait, 3 of 20 without it; smoke (glcore and Vulkan,
+the installed engine copies removed first), web + web-gate pass (C).
