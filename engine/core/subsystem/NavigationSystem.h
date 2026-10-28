@@ -191,7 +191,10 @@ namespace jasperengine{
         uint32_t getFixedTick() const { return fixedTick; }
         // the longest main-thread slice of a time-sliced (web, no threads) bake since the reset
         double getMaxBakeSliceMs() const { return maxBakeSliceMs; }
-        void resetBakeSliceStats() { maxBakeSliceMs = 0.0; }
+        void resetBakeSliceStats() { maxBakeSliceMs = 0.0; slowestBakeStepMs = 0.0; slowestBakeStep.clear(); }
+        // the longest single Recast stage of those slices, and which ("regions, tile 7")
+        double getSlowestBakeStepMs() const { return slowestBakeStepMs; }
+        const std::string& getSlowestBakeStep() const { return slowestBakeStep; }
 
     private:
         struct Runtime;
@@ -202,6 +205,8 @@ namespace jasperengine{
         uint64_t workingTicks = 0;
         uint32_t fixedTick = 0;
         double maxBakeSliceMs = 0.0;
+        double slowestBakeStepMs = 0.0;
+        std::string slowestBakeStep;
 
         bool hasNavigationComponents() const;
         Runtime& rt();

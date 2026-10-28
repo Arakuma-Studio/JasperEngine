@@ -83,7 +83,15 @@ void NavBake::pump(double budgetMs) {
                 break;
             active = std::make_unique<NavMeshBuilder::TileJob>(input, queue[next]);
         }
-        if (active->step()) {
+        const char* stage = active->stageName();
+        const auto stepStart = std::chrono::steady_clock::now();
+        const bool finished = active->step();
+        const double stepMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - stepStart).count();
+        if (stepMs > slowestStepMs) {
+            slowestStepMs = stepMs;
+            slowestStep = std::string(stage) + ", tile " + std::to_string(queue[next]);
+        }
+        if (finished) {
             // queue and tiles are the same sorted list: next is the result's slot
             shared->results[next] = std::move(active->result());
             active.reset();

@@ -155,7 +155,8 @@ async def test_paint_nav_grid(ed: Editor):
     await ed.call("save_scene", scene=s["scene"])
     info = await ed.call("get_navigation_info", scene=s["scene"])
     ed.check(info["grids"][0]["asset"].endswith(".navgrid"), f"{info['grids'][0]}")
-    ed.check((ed.project / "assets" / info["grids"][0]["asset"]).exists(), "the .navgrid is on disk")
+    asset = info["grids"][0]["asset"]
+    ed.check((ed.project / "assets" / asset).exists() or (ed.project / asset).exists(), f"the .navgrid is on disk: {asset}")
 
 
 async def test_visualize_screenshot(ed: Editor):

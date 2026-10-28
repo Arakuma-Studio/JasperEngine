@@ -71,6 +71,8 @@ namespace jasperengine::nav {
             bool done() const;
             uint32_t index() const;
             NavTileBuildResult& result();
+            // the stage step() runs next ("gather", "rasterize", ..., "done")
+            const char* stageName() const;
 
         private:
             struct State;

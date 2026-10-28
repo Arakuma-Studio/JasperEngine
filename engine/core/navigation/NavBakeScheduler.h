@@ -22,6 +22,7 @@
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace jasperengine::jobs {
@@ -69,8 +70,13 @@ namespace jasperengine::nav {
         std::vector<NavTileBuildResult>& getResults();
         const std::shared_ptr<const NavBakeInput>& getInput() const { return input; }
         double getElapsedMs() const;
+        // time-sliced: the longest single stage it ran, and which ("rasterize 12.3 ms, tile 4")
+        double getSlowestStepMs() const { return slowestStepMs; }
+        const std::string& getSlowestStep() const { return slowestStep; }
 
     private:
+        double slowestStepMs = 0.0;
+        std::string slowestStep;
         struct Shared;
         std::shared_ptr<const NavBakeInput> input;
         std::shared_ptr<Shared> shared;

@@ -81,6 +81,26 @@ namespace {
         return table;
     }
 
+    NavigationSystem* navSelf(lua_State* L) {
+        auto self = luabridge::get<NavigationSystem*>(L, 1);
+        if (!self || !*self)
+            luaL_argerror(L, 1, "a NavigationSystem (call it with ':')");
+        return *self;
+    }
+
+    Vector3 vectorArg(lua_State* L, int index) {
+        auto value = luabridge::get<Vector3>(L, index);
+        if (!value)
+            luaL_argerror(L, index, "a Vector3");
+        return *value;
+    }
+
+    int pushHit(lua_State* L, bool result, const nav::NavHit& hit) {
+        lua_pushboolean(L, result ? 1 : 0);
+        hitTable(L, hit).push(L);
+        return 2;
+    }
+
     luabridge::LuaRef pathTable(lua_State* L, const nav::NavPath& path) {
         luabridge::LuaRef table = luabridge::newTable(L);
         table["status"] = (int)path.status;
@@ -239,20 +259,24 @@ void LuaBinding::registerNavigationClasses(lua_State *L){
         .addFunction("calculatePath", +[](NavigationSystem* self, const Vector3& from, const Vector3& to, lua_State* L) {
             return pathTable(L, self->calculatePath(from, to, filterArg(L, 4)));
         })
-        .addFunction("samplePosition", +[](NavigationSystem* self, const Vector3& point, float maxDistance, lua_State* L) {
+        // (found, hit): two results, pushed by hand (LuaBridge returns a std::tuple as one table)
+        .addFunction("samplePosition", +[](lua_State* L) -> int {
+            NavigationSystem* self = navSelf(L);
             nav::NavHit hit;
-            const bool found = self->samplePosition(point, maxDistance, hit, filterArg(L, 4));
-            return std::make_tuple(found, hitTable(L, hit));
+            const bool found = self->samplePosition(vectorArg(L, 2), (float)luaL_checknumber(L, 3), hit, filterArg(L, 4));
+            return pushHit(L, found, hit);
         })
-        .addFunction("raycast", +[](NavigationSystem* self, const Vector3& from, const Vector3& to, lua_State* L) {
+        .addFunction("raycast", +[](lua_State* L) -> int {
+            NavigationSystem* self = navSelf(L);
             nav::NavHit hit;
-            const bool blocked = self->raycast(from, to, hit, filterArg(L, 4));
-            return std::make_tuple(blocked, hitTable(L, hit));
+            const bool blocked = self->raycast(vectorArg(L, 2), vectorArg(L, 3), hit, filterArg(L, 4));
+            return pushHit(L, blocked, hit);
         })
-        .addFunction("findClosestEdge", +[](NavigationSystem* self, const Vector3& point, lua_State* L) {
+        .addFunction("findClosestEdge", +[](lua_State* L) -> int {
+            NavigationSystem* self = navSelf(L);
             nav::NavHit hit;
-            const bool found = self->findClosestEdge(point, hit, filterArg(L, 3));
-            return std::make_tuple(found, hitTable(L, hit));
+            const bool found = self->findClosestEdge(vectorArg(L, 2), hit, filterArg(L, 3));
+            return pushHit(L, found, hit);
         })
         .addFunction("isReachable", +[](NavigationSystem* self, const Vector3& from, const Vector3& to, lua_State* L) {
             return self->isReachable(from, to, filterArg(L, 4));

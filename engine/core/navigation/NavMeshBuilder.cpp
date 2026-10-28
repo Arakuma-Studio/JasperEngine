@@ -536,6 +536,21 @@ NavMeshBuilder::TileJob::~TileJob() = default;
 NavMeshBuilder::TileJob::TileJob(TileJob&&) noexcept = default;
 NavMeshBuilder::TileJob& NavMeshBuilder::TileJob::operator=(TileJob&&) noexcept = default;
 
+const char* NavMeshBuilder::TileJob::stageName() const {
+    switch (state->stage) {
+        case Stage::Gather: return "gather";
+        case Stage::Rasterize: return "rasterize";
+        case Stage::Compact: return "compact";
+        case Stage::Areas: return "areas";
+        case Stage::Regions: return "regions";
+        case Stage::Contours: return "contours";
+        case Stage::Detail: return "detail";
+        case Stage::Finish: return "finish";
+        case Stage::Done: return "done";
+    }
+    return "done";
+}
+
 bool NavMeshBuilder::TileJob::step() {
     State& s = *state;
     if (s.stage == Stage::Done)
@@ -615,6 +630,7 @@ NavMeshBuilder::TileJob::TileJob(TileJob&&) noexcept = default;
 NavMeshBuilder::TileJob& NavMeshBuilder::TileJob::operator=(TileJob&&) noexcept = default;
 
 bool NavMeshBuilder::TileJob::step() { return true; }
+const char* NavMeshBuilder::TileJob::stageName() const { return "done"; }
 bool NavMeshBuilder::TileJob::done() const { return true; }
 uint32_t NavMeshBuilder::TileJob::index() const { return state->index; }
 NavTileBuildResult& NavMeshBuilder::TileJob::result() { return state->result; }

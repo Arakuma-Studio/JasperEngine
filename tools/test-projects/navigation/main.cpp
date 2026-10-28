@@ -139,7 +139,8 @@ namespace {
         if (slice <= budget)
             Log::print("[gate] nav slices within budget");
         else
-            Log::error("[gate] nav slice %.2f ms over %.2f ms", slice, budget);
+            Log::error("[gate] nav slice %.2f ms over %.2f ms (slowest stage %.2f ms: %s)", slice, budget,
+                       system->getSlowestBakeStepMs(), system->getSlowestBakeStep().c_str());
         NavGrid cells(&scene, grid);
         cells.setCellArea(nav::GridCell{12, 0}, nav::AREA_NOT_WALKABLE);
         const nav::GridPath path = cells.findPath(nav::GridCell{0, 0}, nav::GridCell{23, 15}, nav::GridQuery());
