@@ -38,6 +38,14 @@ namespace jasperengine::nav {
     constexpr uint8_t FIRST_USER_AREA = 3;
     constexpr uint16_t ALL_AREAS = 0xFFFF;
 
+    // Lua's NavAreas masks (a bit per area)
+    enum class AreaMask : int {
+        All = 65535,
+        Walkable = 1,
+        NotWalkable = 2,
+        Jump = 4
+    };
+
     // Unity's NavMeshPathStatus
     enum class PathStatus : uint8_t {
         Complete,

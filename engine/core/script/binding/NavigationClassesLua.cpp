@@ -23,18 +23,21 @@
 
 using namespace jasperengine;
 // the API generator (tools/lua_api) reads the bound names as written: unqualified
+using nav::AreaMask;
 using nav::AvoidanceQuality;
 using nav::GridCell;
 using nav::GridLayout;
 using nav::PathStatus;
 using nav::QueryFilter;
 
-static_assert(nav::ALL_AREAS == 65535 && (1u << nav::AREA_WALKABLE) == 1 && (1u << nav::AREA_NOT_WALKABLE) == 2 &&
-              (1u << nav::AREA_JUMP) == 4, "NavAreas' masks are the areas' bits");
+static_assert((int)AreaMask::All == nav::ALL_AREAS && (int)AreaMask::Walkable == (1 << nav::AREA_WALKABLE) &&
+              (int)AreaMask::NotWalkable == (1 << nav::AREA_NOT_WALKABLE) && (int)AreaMask::Jump == (1 << nav::AREA_JUMP),
+              "NavAreas' masks are the areas' bits");
 
 namespace luabridge
 {
     template<> struct Stack<nav::PathStatus> : EnumWrapper<nav::PathStatus>{};
+    template<> struct Stack<nav::AreaMask> : EnumWrapper<nav::AreaMask>{};
     template<> struct Stack<nav::AvoidanceQuality> : EnumWrapper<nav::AvoidanceQuality>{};
     template<> struct Stack<nav::GridLayout> : EnumWrapper<nav::GridLayout>{};
     template<> struct Stack<NavAgentDriver> : EnumWrapper<NavAgentDriver>{};
@@ -218,10 +221,10 @@ void LuaBinding::registerNavigationClasses(lua_State *L){
     luabridge::getGlobalNamespace(L)
         .beginNamespace("NavAreas")
         // masks: a bit per area (static_assert below keeps them the areas' bits)
-        .addVariable("All", 65535)
-        .addVariable("Walkable", 1)
-        .addVariable("NotWalkable", 2)
-        .addVariable("Jump", 4)
+        .addVariable("All", AreaMask::All)
+        .addVariable("Walkable", AreaMask::Walkable)
+        .addVariable("NotWalkable", AreaMask::NotWalkable)
+        .addVariable("Jump", AreaMask::Jump)
         .addFunction("getAreaFromName", +[](const std::string& name) { return nav::getSettings().findArea(name); })
         .addFunction("getAreaCost", +[](int area) {
             return area >= 0 && area < nav::AREA_COUNT ? nav::getSettings().areas[(size_t)area].cost : 0.0f;
