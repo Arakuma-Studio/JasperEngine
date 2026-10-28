@@ -644,6 +644,16 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/SceneBackup.cpp
     ${EDITOR_DIR}/PrefabStage.cpp
     ${EDITOR_DIR}/Workspace.cpp
+    ${EDITOR_DIR}/picking/BvhDiskCache.cpp
+    ${EDITOR_DIR}/picking/IconPicker.cpp
+    ${EDITOR_DIR}/picking/ScenePicker.cpp
+    ${EDITOR_DIR}/sceneview/SceneViewController.cpp
+    ${EDITOR_DIR}/sceneview/SceneViewMath.cpp
+    ${EDITOR_DIR}/sceneview/SceneViewState.cpp
+    ${EDITOR_DIR}/sceneview/SceneViewToolbar.cpp
+    ${EDITOR_DIR}/sceneview/SceneViewVisibility.cpp
+    ${EDITOR_DIR}/sceneview/SurfacePlacement.cpp
+    ${EDITOR_DIR}/window/HierarchyVisibilityGutter.cpp
     ${EDITOR_DIR}/Exporter.cpp
 
     ${EDITOR_DIR}/mcp/McpActivityWindow.cpp
@@ -700,6 +710,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/SynthesisTools.cpp
     ${EDITOR_DIR}/mcp/tools/PlacementTools.cpp
     ${EDITOR_DIR}/mcp/tools/EcsTools.cpp
+    ${EDITOR_DIR}/mcp/tools/SceneViewTools.cpp
     ${EDITOR_DIR}/mcp/tools/GameplayTools.cpp
     ${EDITOR_DIR}/mcp/tools/DiagnosticsTools.cpp
     ${EDITOR_DIR}/mcp/tools/OrganisationTools.cpp
@@ -1009,6 +1020,11 @@ list(FILTER JASPERENGINE_EDITOR_UNITY_SKIP INCLUDE REGEX "(^|/)editor/(htmlui|mc
 jasperengine_skip_unity_build(
     REASON "the HTML UI importers and the MCP tools: per-file helper sets with the same names"
     SOURCES ${JASPERENGINE_EDITOR_UNITY_SKIP})
+set(JASPERENGINE_EDITOR_SCENEVIEW_SOURCES ${JASPERENGINE_EDITOR_SOURCES})
+list(FILTER JASPERENGINE_EDITOR_SCENEVIEW_SOURCES INCLUDE REGEX "(^|/)editor/(picking|sceneview)/")
+jasperengine_skip_unity_build(
+    REASON "the Scene view picking and tools (S26): per-file helpers (PI, now, project to view)"
+    SOURCES ${JASPERENGINE_EDITOR_SCENEVIEW_SOURCES})
 
 function(configure_jasperengine_editor_target target_name)
     add_dependencies(${target_name} generate_api_suggestions)

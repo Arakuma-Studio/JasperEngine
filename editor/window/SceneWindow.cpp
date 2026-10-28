@@ -36,6 +36,8 @@
 #include "Theme.h"
 #include "Widgets.h"
 #include "window/GameWindow.h"
+#include "AppSettings.h"
+#include "sceneview/SurfacePlacement.h"
 #include "util/FluidEditorTools.h"
 #include "util/UIProbe.h"
 #include "component/FluidSimulationComponent.h"
@@ -66,6 +68,21 @@ editor::SceneWindow::SceneWindow(Project* project) {
     this->project = project;
     this->mouseLeftDraggedInside = false;
     this->windowFocused = false;
+
+    viewController = std::make_unique<SceneViewController>(project);
+    viewController->collapsedRow = [this](uint32_t viewSceneId, uint32_t sceneId, Entity entity) {
+        return resolveStructureSelection(viewSceneId, sceneId, entity);
+    };
+    viewController->viewSize = [this](uint32_t sceneId, int& w, int& h) {
+        w = getWidth(sceneId);
+        h = getHeight(sceneId);
+    };
+}
+
+editor::SceneWindow::~SceneWindow() = default;
+
+void editor::SceneWindow::renderInactivePanes(SceneProject& sceneProject) {
+    viewController->renderInactivePanes(sceneProject);
 }
 
 void editor::SceneWindow::handleCloseScene(uint32_t sceneId) {
@@ -131,6 +148,7 @@ void editor::SceneWindow::resetProjectState() {
     hasNotification.clear();
     structureSelectionParents.clear();
     closeSceneQueue.clear();
+    viewController->forgetAll();
 }
 
 void editor::SceneWindow::clearSceneState(uint32_t sceneId) {
@@ -159,6 +177,7 @@ void editor::SceneWindow::clearSceneState(uint32_t sceneId) {
     canvasDpiScale.erase(sceneId);
     hasNotification.erase(sceneId);
     structureSelectionParents.erase(sceneId);
+    viewController->forgetScene(sceneId);
     particleOverlay.clear(sceneId);
 
     closeSceneQueue.erase(
@@ -222,36 +241,23 @@ Entity editor::SceneWindow::findSelectableObjectByRay(uint32_t sceneId, float x,
     return resolveStructureSelection(sceneId, hitSceneId, hitEntity);
 }
 
-bool editor::SceneWindow::selectObjectByRay(uint32_t sceneId, float x, float y, bool shiftPressed) {
+// R13, R14: root, drill, same-spot cycling, Shift adds and Ctrl/Cmd toggles; a click on a mesh
+// whose BVH is still building waits for it (SceneViewController)
+bool editor::SceneWindow::selectObjectByRay(uint32_t sceneId, float x, float y, bool shiftPressed, bool ctrlPressed) {
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->sceneRender) {
         return false;
     }
-
-    uint32_t hitSceneId = sceneId;
-    Entity hitEntity = findSelectableObjectByRay(sceneId, x, y, &hitSceneId);
-
-    if (!sceneProject->sceneRender->isAnyGizmoSideSelected()) {
-        if (hitEntity != NULL_ENTITY) {
-            // a selection is of one scene: Shift adds to it only within that scene
-            if (!shiftPressed || project->getSelectedSceneForProperties() != hitSceneId) {
-                project->clearAllSelections(sceneId);
-            }
-            project->addSelectedEntity(hitSceneId, hitEntity);
-            project->setSelectedSceneForProperties(hitSceneId);
-            if (HierarchyWindow* structure = Backend::getApp().getHierarchyWindow()) {
-                structure->revealEntity(hitSceneId, hitEntity);
-            }
-            project->syncSceneRenderEditLayer(sceneId);
-            return true;
-        }
-
-        project->clearAllSelections(sceneId);
-        project->setSelectedSceneForProperties(sceneId);
-        project->syncSceneRenderEditLayer(sceneId);
+    if (sceneProject->sceneRender->isAnyGizmoSideSelected()) {
+        return false;
     }
-
-    return false;
+    SceneClickInput input;
+    input.x = x;
+    input.y = y;
+    input.shift = shiftPressed;
+    input.ctrl = ctrlPressed;
+    const SceneClickOutcome outcome = viewController->click(sceneId, input);
+    return outcome.applied && outcome.click.action != ScenePickClick::Action::CLEAR;
 }
 
 void editor::SceneWindow::requestPlayFocus(uint32_t sceneId) {
@@ -397,30 +403,11 @@ std::string editor::SceneWindow::getWindowTitle(const SceneProject& sceneProject
         ((project->hasSceneUnsavedChanges(sceneProject.id)) ? " *" : "") + "###Scene" + std::to_string(sceneProject.id);
 }
 
-Vector3 editor::SceneWindow::getModelDropPosition(SceneProject* sceneProject, float x, float y, Entity hitEntity) {
-    Ray ray = sceneProject->sceneRender->screenToRay(x, y);
-
-    if (hitEntity != NULL_ENTITY) {
-        AABB entityAABB = sceneProject->sceneRender->getEntitiesAABB({hitEntity});
-        RayReturn entityHit = ray.intersects(entityAABB);
-        if (entityHit) {
-            // If the hit entity is terrain, use its precise surface height instead of the AABB top
-            Vector3 terrainPosition;
-            TerrainComponent* terrain = sceneProject->scene->findComponent<TerrainComponent>(hitEntity);
-            Transform* transform = sceneProject->scene->findComponent<Transform>(hitEntity);
-            if (terrain && transform && sceneProject->scene->getSystem<MeshSystem>()->raycastTerrainSurface(ray, *terrain, *transform, terrainPosition)) {
-                return terrainPosition;
-            }
-            return entityHit.point;
-        }
-    }
-
-    RayReturn hit = ray.intersects(Plane(Vector3(0, 1, 0), Vector3(0, 0, 0)));
-    if (hit) {
-        return hit.point;
-    }
-
-    return sceneProject->sceneRender->getCamera()->getTarget();
+// R16: a triangle, terrain or UI rect under the pointer (pickable layers, the preview left
+// out), else the ground plane, else 10 units along the ray
+editor::SceneSurfaceHit editor::SceneWindow::getDropSurface(SceneProject* sceneProject, float x, float y, const std::unordered_set<Entity>& ignore) {
+    const std::vector<Entity> ignored(ignore.begin(), ignore.end());
+    return viewController->surfaceAt(*sceneProject, x, y, ignored, false);
 }
 
 void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject) {
@@ -511,9 +498,15 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                 modelEntityName = "Model";
                             }
 
-                            Vector3 dropPosition = getModelDropPosition(sceneProject, x, y, selEntity);
-                            CommandHandle::get(sceneProject->id)->addCommandNoMerge(
-                                new ModelLoadCmd(project, sceneProject->id, modelEntityName, dropPosition, droppedAssetPath));
+                            const SceneSurfaceHit surface = getDropSurface(sceneProject, x, y, {});
+                            if (surface.pending) {
+                                // never onto a surface it cannot see yet (R16)
+                                viewController->notifyStatus("Preparing surface\xE2\x80\xA6", 6.0);
+                            } else {
+                                ModelLoadCmd* loadCmd = new ModelLoadCmd(project, sceneProject->id, modelEntityName, surface.point, droppedAssetPath);
+                                loadCmd->setDropSurface(surface.normal, AppSettings::getSceneViewSettings().alignToSurface || ImGui::GetIO().KeyAlt);
+                                CommandHandle::get(sceneProject->id)->addCommandNoMerge(loadCmd);
+                            }
 
                             focusSceneWindow(*sceneProject);
                         }
@@ -789,13 +782,16 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
     }
 }
 
-Vector3 editor::SceneWindow::getPrefabDropPosition(SceneProject* sceneProject, float x, float y, bool& keepZ) {
+Vector3 editor::SceneWindow::getPrefabDropPosition(SceneProject* sceneProject, float x, float y, bool& keepZ, SceneSurfaceHit* surface) {
     keepZ = false;
     if (sceneProject->sceneType == SceneType::SCENE_3D) {
         // On what the pointer is over (the preview itself left out), else the ground plane,
         // else in front of the camera
-        Entity hit = project->findObjectByRayIgnoring(sceneProject->id, x, y, prefabDragEntities);
-        return getModelDropPosition(sceneProject, x, y, hit);
+        const SceneSurfaceHit hit = getDropSurface(sceneProject, x, y, prefabDragEntities);
+        if (surface) {
+            *surface = hit;
+        }
+        return hit.point;
     }
     // 2D and UI: the pointer's world position, the prefab keeping its own depth
     keepZ = true;
@@ -872,15 +868,26 @@ void editor::SceneWindow::updatePrefabDrag(SceneProject* sceneProject, const std
         }
     }
 
-    const Vector3 position = getPrefabDropPosition(sceneProject, x, y, keepZ);
+    SceneSurfaceHit surface;
+    const Vector3 position = getPrefabDropPosition(sceneProject, x, y, keepZ, &surface);
+    const bool onSurface = sceneProject->sceneType == SceneType::SCENE_3D;
+    const bool align = AppSettings::getSceneViewSettings().alignToSurface || ImGui::GetIO().KeyAlt;
     if (prefabDragPreview) {
         if (Transform* transform = sceneProject->scene->findComponent<Transform>(prefabDragPreview->getRootEntity())) {
             Vector3 target = position;
+            Quaternion rotation = transform->rotation;
             if (keepZ) {
                 target.z = transform->position.z;
             }
-            if (transform->position != target) {
+            if (onSurface) {
+                // the prefab's own rotation, as the drop gives it, turned onto the surface
+                const Quaternion prefabRotation = prefabDragPreview->getRootRotation();
+                sceneview::restOnSurface(position, surface.normal, sceneview::familyLocalBounds(sceneProject->scene, prefabDragPreview->getRootEntity()),
+                                         transform->scale, prefabRotation, align, target, rotation);
+            }
+            if (transform->position != target || transform->rotation != rotation) {
                 transform->position = target;
+                transform->rotation = rotation;
                 transform->needUpdate = true;
                 sceneProject->needUpdateRender = true;
             }
@@ -890,6 +897,12 @@ void editor::SceneWindow::updatePrefabDrag(SceneProject* sceneProject, const std
     if (!delivery) {
         return;
     }
+    if (onSurface && surface.pending) {
+        // never onto a surface it cannot see yet (R16): the preview showed it, the drop waits
+        cancelPrefabDrag();
+        viewController->notifyStatus("Preparing surface\xE2\x80\xA6", 6.0);
+        return;
+    }
 
     // The drop: the preview goes, the real instances come as one undo step
     cancelPrefabDrag();
@@ -897,6 +910,9 @@ void editor::SceneWindow::updatePrefabDrag(SceneProject* sceneProject, const std
     for (const fs::path& prefab : prefabs) {
         ImportPrefabCmd* cmd = new ImportPrefabCmd(project, sceneProject->id, prefab, NULL_ENTITY, true);
         cmd->setDropPosition(position, keepZ);
+        if (onSurface) {
+            cmd->setDropSurface(surface.normal, align);
+        }
         commands.push_back(cmd);
     }
     if (commands.size() == 1) {
@@ -1182,6 +1198,9 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                         sceneProject->sceneRender->clearTrackPointSelection();
                         bool changed = selectObjectByRay(sceneId, x, y, io.KeyShift);
                         if (changed) {
+                            // this press was the click: its release must not click again (it
+                            // would cycle to the next object at the same spot)
+                            subSelectionClickConsumesRelease[sceneId] = true;
                             // the mouse through the camera of the scene now edited, so the gizmo
                             // this update places finds it on its body and the drag moves it
                             sceneProject->sceneRender->mouseHoverEvent(x, y);
@@ -1512,7 +1531,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 }
 
                 if (!clearedLatticePoints) {
-                    selectObjectByRay(sceneId, x, y, io.KeyShift);
+                    selectObjectByRay(sceneId, x, y, io.KeyShift, io.KeyCtrl);
                 }
 
                 // Sub-selection is only meaningful while its host entity is the sole
@@ -1665,7 +1684,11 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
 
         SceneRender3D* sceneRender3D = static_cast<SceneRender3D*>(sceneProject->sceneRender);
 
-        float distanceFromTarget = camera->getDistanceFromTarget();
+        // an orthographic view moves as the perspective one framing it would
+        float distanceFromTarget = viewController->navigationDistance(*sceneProject);
+        const bool orthographicView = viewController->isOrthographic(*sceneProject);
+        // an axis pane of Split and Quad pans and zooms, never orbits (R20)
+        const bool axisLocked = viewController->isAxisLocked(*sceneProject);
 
         // Scale factor: movements should be proportional to distance
         // Base movement rate is maintained at around distanceFromTarget = 10
@@ -1673,7 +1696,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
 
         // Check for mouse clicks
         if (draggingMouse[sceneId] && (ImGui::IsMouseDown(ImGuiMouseButton_Middle) || ImGui::IsMouseDown(ImGuiMouseButton_Right))) {
-            if (ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
+            if (ImGui::IsMouseDown(ImGuiMouseButton_Right) && !axisLocked) {
                 walkingMode = true;
 
                 float lookDeltaX = mouseDelta.x;
@@ -1698,24 +1721,22 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                     camera->setUp(0, 1, 0);
                 }
 
+                // Camera Speed (the Scene Camera settings): the wheel steps it while flying
                 if (mouseWheel != 0.0f) {
-                    sceneRender3D->setWalkSpeedOffset(sceneRender3D->getWalkSpeedOffset() + mouseWheel);
+                    viewController->stepFlySpeed(*sceneProject, mouseWheel);
                 }
-                float walkSpeed = DEFAULT_EDITOR_WALK_SPEED + sceneRender3D->getWalkSpeedOffset();
-
+                const SceneCameraSettings& cameraSettings = sceneProject->viewState.camera;
                 sceneRender3D->getUILayer()->showSpeedGauge(
-                    walkSpeed / DEFAULT_EDITOR_WALK_SPEED,
-                    MIN_EDITOR_WALK_SPEED / DEFAULT_EDITOR_WALK_SPEED,
-                    MAX_EDITOR_WALK_SPEED / DEFAULT_EDITOR_WALK_SPEED);
+                    cameraSettings.speed / DEFAULT_EDITOR_WALK_SPEED,
+                    cameraSettings.speedMin / DEFAULT_EDITOR_WALK_SPEED,
+                    cameraSettings.speedMax / DEFAULT_EDITOR_WALK_SPEED);
 
-                // Speed is per second, with the delta clamped so a stall cannot jump
-                float finalSpeed = 1.2f * walkSpeed * distanceScaleFactor *
-                                   std::min(io.DeltaTime, 0.1f);
-
-                // Shift multiplier for faster movement
-                if (ImGui::IsKeyDown(ImGuiMod_Shift)) {
-                    finalSpeed *= 3.0f;
-                }
+                const bool flying = ImGui::IsKeyDown(ImGuiKey_W) || ImGui::IsKeyDown(ImGuiKey_S) || ImGui::IsKeyDown(ImGuiKey_A) ||
+                                    ImGui::IsKeyDown(ImGuiKey_D) || ImGui::IsKeyDown(ImGuiKey_E) || ImGui::IsKeyDown(ImGuiKey_Q);
+                // Speed is per second, with the delta clamped so a stall cannot jump; Shift
+                // multiplies it and Camera Acceleration ramps it up
+                float finalSpeed = 1.2f * viewController->flySpeed(*sceneProject, flying, ImGui::IsKeyDown(ImGuiMod_Shift), io.DeltaTime) *
+                                   distanceScaleFactor * std::min(io.DeltaTime, 0.1f);
 
                 if (ImGui::IsKeyDown(ImGuiKey_W)) {
                     camera->slideForward(finalSpeed);
@@ -1740,11 +1761,15 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 Backend::disableMouseCursor();
             }
             if (ImGui::IsMouseDown(ImGuiMouseButton_Middle)) {
-                if (ImGui::IsKeyDown(ImGuiMod_Shift)) {
+                if (ImGui::IsKeyDown(ImGuiMod_Shift) || axisLocked) {
                     camera->slide(-0.01 * mouseDelta.x * distanceScaleFactor);
                     camera->slideUp(0.01 * mouseDelta.y * distanceScaleFactor);
                 } else if (ImGui::IsKeyDown(ImGuiMod_Ctrl)) {
-                    sceneRender3D->zoomCamera(-0.1f * mouseDelta.y * distanceScaleFactor);
+                    if (orthographicView) {
+                        viewController->orthoZoom(*sceneProject, 0.05f * mouseDelta.y);
+                    } else {
+                        sceneRender3D->zoomCamera(-0.1f * mouseDelta.y * distanceScaleFactor);
+                    }
                 } else {
                     camera->rotatePosition(-0.1 * mouseDelta.x);
                     camera->elevatePosition(0.1 * mouseDelta.y);
@@ -1759,7 +1784,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         }
 
         // Alt+LMB orbit
-        if (draggingMouse[sceneId] && altHeld && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        if (draggingMouse[sceneId] && altHeld && ImGui::IsMouseDown(ImGuiMouseButton_Left) && !axisLocked) {
             camera->rotatePosition(-0.1 * mouseDelta.x);
             camera->elevatePosition(0.1 * mouseDelta.y);
 
@@ -1786,6 +1811,9 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                     // dragging lattice points: the wheel sizes the proportional falloff
                     LatticeFalloff& falloff = LatticeEditorOps::falloff();
                     falloff.radius = std::clamp(falloff.radius * std::pow(1.1f, mouseWheel), 0.01f, 10.0f);
+                } else if (orthographicView) {
+                    // the orthographic half height scales with the wheel (R17)
+                    viewController->orthoZoom(*sceneProject, mouseWheel);
                 } else {
                     sceneRender3D->zoomCamera(2.0f * mouseWheel * distanceScaleFactor);
                 }
@@ -1888,17 +1916,25 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
 }
 
 void editor::SceneWindow::frameAll(uint32_t sceneId) {
-    SceneProject* sceneProject = project->getScene(sceneId);
-    if (sceneProject && sceneProject->sceneType == SceneType::SCENE_3D) {
-        focusOnEntities(sceneProject, sceneProject->entities);
+    // every scene type (S26 R18): what is visible and pickable, the camera's tween
+    if (SceneProject* sceneProject = project->getScene(sceneId); sceneProject && sceneProject->sceneRender) {
+        viewController->frameAll(*sceneProject);
     }
 }
 
 void editor::SceneWindow::viewFrom(uint32_t sceneId, const Vector3& direction) {
     SceneProject* sceneProject = project->getScene(sceneId);
-    if (sceneProject && sceneProject->sceneType == SceneType::SCENE_3D && sceneProject->sceneRender) {
-        snapCameraToDirection(sceneProject->sceneRender->getCamera(), direction);
+    if (!sceneProject || sceneProject->sceneType != SceneType::SCENE_3D || !sceneProject->sceneRender) {
+        return;
     }
+    // the direction the camera looks along: its axis view (orthographic, as the view gizmo's)
+    SceneViewAxis axis = SceneViewAxis::FRONT;
+    if (direction.z < -0.5f) axis = SceneViewAxis::BACK;
+    else if (direction.x < -0.5f) axis = SceneViewAxis::RIGHT;
+    else if (direction.x > 0.5f) axis = SceneViewAxis::LEFT;
+    else if (direction.y < -0.5f) axis = SceneViewAxis::TOP;
+    else if (direction.y > 0.5f) axis = SceneViewAxis::BOTTOM;
+    viewController->setAxisView(*sceneProject, axis);
 }
 
 bool editor::SceneWindow::isHovered() const {
@@ -2036,26 +2072,8 @@ void editor::SceneWindow::focusOnBounds(SceneProject* sceneProject, const AABB& 
     direction.normalize();
     Vector3 newPos = center - direction * distance;
 
-    camera->setPosition(newPos.x, newPos.y, newPos.z);
-    camera->setTarget(center.x, center.y, center.z);
-    sceneProject->needUpdateRender = true;
-}
-
-void editor::SceneWindow::snapCameraToDirection(Camera* camera, const Vector3& direction) {
-    Vector3 target = camera->getWorldTarget();
-    float distance = camera->getDistanceFromTarget();
-
-    Vector3 newPos = target - direction * distance;
-    camera->setPosition(newPos.x, newPos.y, newPos.z);
-
-    // When looking along Y axis, up vector (0,1,0) is parallel to direction — use Z as up instead
-    if (std::abs(direction.y) > 0.9f) {
-        camera->setUp(0, 0, direction.y > 0 ? -1.0f : 1.0f);
-    } else {
-        camera->setUp(0, 1, 0);
-    }
-
-    camera->setTarget(target.x, target.y, target.z);
+    // eased with Camera Easing (R18), the orthographic size following the distance
+    viewController->lookFrom(*sceneProject, newPos, center, camera->getUp());
 }
 
 bool editor::SceneWindow::handleViewportGizmoClick(SceneProject* sceneProject, float canvasX, float canvasY, int canvasWidth) {
@@ -2084,15 +2102,15 @@ bool editor::SceneWindow::handleViewportGizmoClick(SceneProject* sceneProject, f
         return false;
     }
 
-    Camera* camera = sceneProject->sceneRender->getCamera();
-
+    // an arrow: that axis view (orthographic while aligned, R17); the cube: Persp / Iso
     switch (axis) {
-        case ViewportGizmoAxis::POSITIVE_X:  snapCameraToDirection(camera, Vector3(-1, 0, 0)); break; // Look from +X toward origin
-        case ViewportGizmoAxis::NEGATIVE_X:  snapCameraToDirection(camera, Vector3( 1, 0, 0)); break;
-        case ViewportGizmoAxis::POSITIVE_Y:  snapCameraToDirection(camera, Vector3( 0,-1, 0)); break; // Look from +Y (top)
-        case ViewportGizmoAxis::NEGATIVE_Y:  snapCameraToDirection(camera, Vector3( 0, 1, 0)); break;
-        case ViewportGizmoAxis::POSITIVE_Z:  snapCameraToDirection(camera, Vector3( 0, 0,-1)); break;
-        case ViewportGizmoAxis::NEGATIVE_Z:  snapCameraToDirection(camera, Vector3( 0, 0, 1)); break;
+        case ViewportGizmoAxis::POSITIVE_X:  viewController->setAxisView(*sceneProject, SceneViewAxis::RIGHT); break; // Look from +X toward origin
+        case ViewportGizmoAxis::NEGATIVE_X:  viewController->setAxisView(*sceneProject, SceneViewAxis::LEFT); break;
+        case ViewportGizmoAxis::POSITIVE_Y:  viewController->setAxisView(*sceneProject, SceneViewAxis::TOP); break; // Look from +Y (top)
+        case ViewportGizmoAxis::NEGATIVE_Y:  viewController->setAxisView(*sceneProject, SceneViewAxis::BOTTOM); break;
+        case ViewportGizmoAxis::POSITIVE_Z:  viewController->setAxisView(*sceneProject, SceneViewAxis::BACK); break;
+        case ViewportGizmoAxis::NEGATIVE_Z:  viewController->setAxisView(*sceneProject, SceneViewAxis::FRONT); break;
+        case ViewportGizmoAxis::CENTER:      viewController->toggleProjection(*sceneProject); break;
         default: break;
     }
 
@@ -2247,70 +2265,15 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
         ImGui::EndTable();
     }
 
-    if (sceneProject.sceneType == SceneType::SCENE_3D && sceneProject.sceneRender && beginSection("Editor camera")) {
-        Camera* editorCamera = sceneProject.sceneRender->getCamera();
-
-        auto drawFloatSettingRow = [&](const char* name, const char* id, float value, float defaultValue, float dragSpeed, float minValue, float maxValue, const char* format, auto validate, auto apply) {
-            ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0);
-            ImGui::Text("%s", name);
-
-            bool defChanged = std::fabs(value - defaultValue) > 1e-4f;
-            if (defChanged) {
-                ImGui::SameLine();
-                ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(2, ImGui::GetStyle().ItemSpacing.y));
-                ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
-                ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2, ImGui::GetStyle().FramePadding.y));
-                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
-                if (ImGui::Button((std::string(ICON_FA_ROTATE_LEFT) + "##" + id).c_str())) {
-                    apply(defaultValue);
-                    sceneProject.needUpdateRender = true;
-                    project->saveWorkspaceFile();
-                }
-                ImGui::PopStyleColor(2);
-                ImGui::PopStyleVar(3);
-            }
-
-            ImGui::TableSetColumnIndex(1);
-            ImGui::SetNextItemWidth(-1);
-            float editedValue = value;
-            if (ImGui::DragFloat((std::string("##") + id).c_str(), &editedValue, dragSpeed, minValue, maxValue, format)) {
-                apply(editedValue);
-                validate();
-                sceneProject.needUpdateRender = true;
-            }
-            if (ImGui::IsItemDeactivatedAfterEdit()) {
-                project->saveWorkspaceFile();
-            }
-        };
-
-        auto validateNearClip = [&]() {
-            if (editorCamera->getNearClip() >= editorCamera->getFarClip()) {
-                editorCamera->setNearClip(editorCamera->getFarClip() - 0.01f);
-            }
-        };
-        auto validateFarClip = [&]() {
-            if (editorCamera->getFarClip() <= editorCamera->getNearClip()) {
-                editorCamera->setFarClip(editorCamera->getNearClip() + 1.0f);
-            }
-        };
-
-        drawFloatSettingRow(
-            ICON_FA_CAMERA " Editor camera near", "EditorCameraNear",
-            editorCamera->getNearClip(), DEFAULT_EDITOR_CAMERA_NEAR,
-            0.01f, 0.01f, 100.0f, "%.2f", validateNearClip,
-            [&](float v) { editorCamera->setNearClip(v); });
-
-        drawFloatSettingRow(
-            ICON_FA_CAMERA " Editor camera far", "EditorCameraFar",
-            editorCamera->getFarClip(), DEFAULT_EDITOR_CAMERA_FAR,
-            1.0f, 1.0f, 100000.0f, "%.0f", validateFarClip,
-            [&](float v) { editorCamera->setFarClip(v); });
-
-        ImGui::EndTable();
+    if (sceneProject.sceneType == SceneType::SCENE_3D && sceneProject.sceneRender) {
+        // near, far, field of view and speed are the Scene Camera settings (the toolbar's camera)
+        ImGui::SeparatorText("Editor camera");
+        if (ImGui::Button(ICON_FA_CAMERA " Camera\xE2\x80\xA6")) {
+            viewController->openCameraSettings(sceneProject.id);
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SetItemTooltip("Scene Camera: Field of View, Near, Far, Camera Speed, Easing and Acceleration");
     }
-
 }
 
 void editor::SceneWindow::drawLatticeContextMenu(SceneProject& sceneProject) {
@@ -2426,6 +2389,9 @@ void editor::SceneWindow::show() {
                 sceneProject.needUpdateRender = true;
             }
 
+            // the view state, the pane a hover chose, eased moves, a click waiting on a BVH
+            viewController->beginFrame(sceneProject);
+
             // Prefab Mode: its breadcrumbs and controls over the Scene view
             if (isStage) {
                 drawPrefabStageBar(sceneProject);
@@ -2482,6 +2448,11 @@ void editor::SceneWindow::show() {
                 const float postWidth = postToggle ? ImGui::CalcTextSize(postLabel.c_str(), nullptr, true).x +
                                                      ImGui::GetStyle().FramePadding.x * 2.0f + ImGui::GetStyle().ItemSpacing.x : 0.0f;
                 const float rightX = ImGui::GetWindowContentRegionMax().x - gizmosWidth - postWidth;
+                // S26 (R32): bookmarks, layout, projection, layers, measure, rulers, exact pick,
+                // align to surface, Scene Camera
+                if (!isCameraPreview) {
+                    viewController->drawToolbar(sceneProject, rightX);
+                }
                 ImGui::SameLine();
                 if (rightX > ImGui::GetCursorPosX()) {
                     ImGui::SetCursorPosX(rightX);
@@ -2513,6 +2484,11 @@ void editor::SceneWindow::show() {
             ImGui::SetCursorPosY(toolbarRowY + ImGui::GetTextLineHeightWithSpacing());
 
             ImGui::BeginChild(("Canvas" + std::to_string(sceneProject.id)).c_str());
+            // Split and Quad: a child per pane; the active one draws the Scene view below as
+            // Single does, the others their own image (SceneViewController::beginPane)
+            const int paneSlots = viewController->paneSlotCount(sceneProject);
+            for (int paneSlot = 0; paneSlot < paneSlots; viewController->endPane(sceneProject, paneSlot++))
+            if (viewController->beginPane(sceneProject, paneSlot))
             {
                 if (focusCanvasOnNextFrame[sceneProject.id]) {
                     ImGui::SetWindowFocus();
@@ -2611,12 +2587,13 @@ void editor::SceneWindow::show() {
                     // Black until the first render creates the framebuffer.
                     const ImVec2 canvasMin = ImGui::GetCursorScreenPos();
                     Widgets::image(previewTex, canvasAvail, IM_COL32(0, 0, 0, 255));
-                    const ImVec2 afterImage = ImGui::GetCursorScreenPos();
                     particleOverlay.draw(project, &sceneProject, canvasMin, canvasAvail);
-                    // back after the image: an empty item ends the line there (moving the cursor
-                    // alone may not extend the window, ImGui's boundary check)
-                    ImGui::SetCursorScreenPos(afterImage);
-                    ImGui::Dummy(ImVec2(0.0f, 0.0f));
+                    // an item over the image again, after the panel's widgets: the drop targets
+                    // below (BeginDragDropTarget) take the last item, and an empty one a line
+                    // lower would make them unreachable and give the canvas a scrollbar (which
+                    // narrows the view and moves the view gizmo off the view's corner)
+                    ImGui::SetCursorScreenPos(canvasMin);
+                    ImGui::Dummy(canvasAvail);
 
                     // Physics: the HUD, and the labels at their objects
                     if (PhysicsPlacementWindow* physics = Backend::getApp().getPhysicsPlacementWindow()) {
@@ -2693,6 +2670,21 @@ void editor::SceneWindow::show() {
                     }
                 }
 
+                // S26: the view's shortcuts, Ctrl+wheel cycling and the measure tool, before the
+                // selection and camera input (a used left press is not a pick)
+                if (!transitioning && !isCameraPreview) {
+                    const ImVec2 windowPos = ImGui::GetWindowPos();
+                    float pointerX = ImGui::GetIO().MousePos.x - windowPos.x;
+                    float pointerY = ImGui::GetIO().MousePos.y - windowPos.y;
+                    toEngineCanvas(sceneProject.id, pointerX, pointerY);
+                    const bool viewHovered = ImGui::IsWindowHovered();
+                    const bool viewFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && project->getSelectedSceneId() == sceneProject.id;
+                    const bool pressed = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+                    if (viewController->handleInput(sceneProject, pointerX, pointerY, viewHovered, viewFocused) && pressed) {
+                        suppressLeftMouseUntilRelease[sceneProject.id] = true;
+                    }
+                }
+
                 if (!transitioning && !isCameraPreview){
                     drawFluidBrushCursor(&sceneProject);
                     if (UIProbe::enabled() && sceneProject.id == project->getSelectedSceneId()){
@@ -2701,6 +2693,15 @@ void editor::SceneWindow::show() {
                 }
 
                 sceneEventHandler(&sceneProject);
+
+                if (!transitioning && !isCameraPreview) {
+                    const ImVec2 viewMin = ImGui::GetWindowPos();
+                    const ImVec2 engineScale = canvasEngineScale(sceneProject.id);
+                    viewController->drawOverlays(sceneProject, viewMin, ImGui::GetWindowSize(), engineScale.x, engineScale.y);
+                    if (viewController->hasPendingClick(sceneProject.id) && ImGui::IsWindowHovered()) {
+                        ImGui::SetMouseCursor(ImGuiMouseCursor_Progress);
+                    }
+                }
                 drawLatticeContextMenu(sceneProject);
             }
             ImGui::EndChild();

@@ -1,0 +1,211 @@
+{
+ "asset": {
+  "version": "2.0",
+  "generator": "JasperEngine runtime-shaders fixture"
+ },
+ "scene": 0,
+ "scenes": [
+  {
+   "nodes": [
+    0,
+    1
+   ]
+  }
+ ],
+ "nodes": [
+  {
+   "name": "Strip",
+   "mesh": 0,
+   "skin": 0
+  },
+  {
+   "name": "Root",
+   "children": [
+    2
+   ]
+  },
+  {
+   "name": "Tip",
+   "translation": [
+    0,
+    1,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0.20791169081775934,
+    0.9781476007338057
+   ]
+  }
+ ],
+ "meshes": [
+  {
+   "name": "Strip",
+   "primitives": [
+    {
+     "attributes": {
+      "POSITION": 0,
+      "NORMAL": 1,
+      "JOINTS_0": 2,
+      "WEIGHTS_0": 3
+     },
+     "indices": 5,
+     "material": 0,
+     "targets": [
+      {
+       "POSITION": 4
+      }
+     ]
+    }
+   ],
+   "weights": [
+    0.0
+   ],
+   "extras": {
+    "targetNames": [
+     "Bend"
+    ]
+   }
+  }
+ ],
+ "materials": [
+  {
+   "name": "Orange",
+   "pbrMetallicRoughness": {
+    "baseColorFactor": [
+     1.0,
+     0.55,
+     0.1,
+     1.0
+    ],
+    "metallicFactor": 0.0,
+    "roughnessFactor": 0.6
+   },
+   "doubleSided": true
+  }
+ ],
+ "skins": [
+  {
+   "joints": [
+    1,
+    2
+   ],
+   "inverseBindMatrices": 6,
+   "skeleton": 1
+  }
+ ],
+ "accessors": [
+  {
+   "bufferView": 0,
+   "componentType": 5126,
+   "count": 10,
+   "type": "VEC3",
+   "min": [
+    -0.4,
+    0.0,
+    0.0
+   ],
+   "max": [
+    0.4,
+    2.0,
+    0.0
+   ]
+  },
+  {
+   "bufferView": 1,
+   "componentType": 5126,
+   "count": 10,
+   "type": "VEC3"
+  },
+  {
+   "bufferView": 2,
+   "componentType": 5123,
+   "count": 10,
+   "type": "VEC4"
+  },
+  {
+   "bufferView": 3,
+   "componentType": 5126,
+   "count": 10,
+   "type": "VEC4"
+  },
+  {
+   "bufferView": 4,
+   "componentType": 5126,
+   "count": 10,
+   "type": "VEC3",
+   "min": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "max": [
+    0.35,
+    0.0,
+    0.25
+   ]
+  },
+  {
+   "bufferView": 5,
+   "componentType": 5123,
+   "count": 24,
+   "type": "SCALAR"
+  },
+  {
+   "bufferView": 6,
+   "componentType": 5126,
+   "count": 2,
+   "type": "MAT4"
+  }
+ ],
+ "bufferViews": [
+  {
+   "buffer": 0,
+   "byteOffset": 0,
+   "byteLength": 120,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 120,
+   "byteLength": 120,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 240,
+   "byteLength": 80,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 320,
+   "byteLength": 160,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 480,
+   "byteLength": 120,
+   "target": 34962
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 600,
+   "byteLength": 48,
+   "target": 34963
+  },
+  {
+   "buffer": 0,
+   "byteOffset": 648,
+   "byteLength": 128
+  }
+ ],
+ "buffers": [
+  {
+   "byteLength": 776,
+   "uri": "data:application/octet-stream;base64,zczMvgAAAAAAAAAAzczMPgAAAAAAAAAAzczMvgAAAD8AAAAAzczMPgAAAD8AAAAAzczMvgAAgD8AAAAAzczMPgAAgD8AAAAAzczMvgAAwD8AAAAAzczMPgAAwD8AAAAAzczMvgAAAEAAAAAAzczMPgAAAEAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAABAAAAAAAAAAEAAAAAAAAAAQAAAAAAAAABAAAAAAAAAAEAAAAAAAAAAQAAAAAAAAABAAAAAAAAAAEAAAAAAAAAAQAAAAAAAAABAAAAAAAAAIA/AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAQD8AAIA+AAAAAAAAAAAAAEA/AACAPgAAAAAAAAAAAAAAPwAAAD8AAAAAAAAAAAAAAD8AAAA/AAAAAAAAAAAAAIA+AABAPwAAAAAAAAAAAACAPgAAQD8AAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMzOzPAAAAAAAAIA9MzOzPAAAAAAAAIA9MzOzPQAAAAAAAAA+MzOzPQAAAAAAAAA+mplJPgAAAAAAAEA+mplJPgAAAAAAAEA+MzOzPgAAAAAAAIA+MzOzPgAAAAAAAIA+AAABAAMAAAADAAIAAgADAAUAAgAFAAQABAAFAAcABAAHAAYABgAHAAkABgAJAAgAAACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAAIAAAAAAAACAPwAAgD8AAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAAAAAAIA/AAAAAAAAAAAAAIC/AAAAAAAAgD8="
+  }
+ ]
+}

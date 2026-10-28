@@ -44,6 +44,10 @@ namespace jasperengine{
         // them cast shadows when this is the main camera)
         uint32_t cullingMask = LAYER_MASK_EVERYTHING;
 
+        // runtime, editor: the Scene view's own camera, through which the GameObjects hidden
+        // in the Scene view (EntityMetadata::editorFlags) are not drawn. Never saved.
+        bool editorView = false;
+
         Matrix4 projectionMatrix;
         Matrix4 viewMatrix;
         Matrix4 viewProjectionMatrix;

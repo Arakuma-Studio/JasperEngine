@@ -6,6 +6,7 @@
 #include "Scene.h"
 #include "Catalog.h"
 #include "render/SceneRender.h"
+#include "sceneview/SceneViewState.h"
 #include "command/CommandHistory.h"
 #include "render/preview/MaterialRender.h"
 #include "Conector.h"
@@ -191,6 +192,9 @@ namespace jasperengine::editor{
         // FBX model path -> the import its saved model parts were built from
         std::map<std::string, std::string> imports;
         YAML::Node editorCameraState;
+        // this user's Scene view of it: camera settings, layout, bookmarks, measures, filters
+        // (S26, workspace.yaml)
+        SceneViewState viewState;
         // Missing Prefab instances by root entity (Project::getMissingPrefab validates them)
         std::map<Entity, MissingPrefabInstance> missingPrefabs;
         // Set while decoding when a prefab reference resolved to another path by its GUID:
@@ -862,6 +866,9 @@ namespace jasperengine::editor{
         // the authored ones, and while it runs what the game made in it
         std::vector<Entity> getPickableEntities(const SceneProject* sceneProject) const;
         void prepareRuntimeScene(PlayRuntimeScene& entry);
+        // the Scene view's picking (editor/picking) reads the pickable GameObjects and their bounds
+        friend class ScenePicker;
+        friend class SceneViewController;
         std::shared_ptr<PlaySession> buildRuntimeSceneStack(uint32_t sceneId, std::vector<size_t>& stackIndices);
         Entity getSceneCamera(const SceneProject* sceneProject) const;
         void cleanupPlaySession(const std::shared_ptr<PlaySession>& session);
@@ -873,7 +880,10 @@ namespace jasperengine::editor{
         // sizeScene sizes the handles of points and lines; iconsDrawn: lights, cameras and
         // audio sources show icons in this view (only the view's own scene draws them)
         Entity findBestEntityByRay(const std::vector<Entity>& entities, Scene* scene, const Ray& ray, Scene* sizeScene, SceneType sceneType, float& distance, size_t& index, bool iconsDrawn = true) const;
-        bool selectEntitiesInRect(uint32_t sceneId, const std::vector<Entity>& entities, Scene* scene, const Matrix4& vpMatrix, Vector2 start, Vector2 end);
+        // the box select (R15): the BVH's frustum of the box, then every corner inside it; the
+        // view's own scene (viewScene) takes its Layers filter
+        bool selectEntitiesInRect(uint32_t sceneId, const std::vector<Entity>& entities, Scene* scene, const Matrix4& vpMatrix, Vector2 start, Vector2 end,
+                                  const SceneProject* viewScene = nullptr);
         uint32_t selectedScene;
         uint32_t selectedSceneForProperties;
 

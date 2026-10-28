@@ -104,6 +104,16 @@ namespace jasperengine::editor::mcp::w3 {
                     {"minimum", 0}, {"maximum", maximum}, {"default", defaultWidth}};
     }
 
+    // The scene the Scene view tools act on (given, else the playing one, else the selected
+    // one; open and loaded), and a run once its view is laid out (focus: brought forward)
+    SceneProject* resolveSceneViewScene(Project* project, const Json& ref, std::string& error);
+    void whenSceneViewShown(const CallPtr& call, uint32_t sceneId, bool focus, int timeoutMs,
+                            std::function<void(bool ready, const std::string& error)> then);
+    // text + data, with a Scene view image when the call asked for one (screenshot: true)
+    void replyWithSceneShot(const CallPtr& call, uint32_t sceneId, const std::string& text, Json data);
+    // the Scene view camera as set_scene_camera returns it
+    Json sceneViewCameraJson(SceneProject* sceneProject);
+
     // ------------------------------------------------------------ play (PlayTools.cpp)
 
     // {state, scene, ...} of the play session (or "stopped")

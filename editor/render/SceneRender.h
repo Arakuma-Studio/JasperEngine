@@ -304,6 +304,8 @@ namespace jasperengine::editor{
         // (gizmos, overlays), and the views they render into before it
         virtual void addOverlayLayers(std::vector<Engine::ViewLayer>& layers, int width, int height);
         virtual void drawOverlayTargets();
+        // the editor overlays placed after the scene's update get their transforms for a draw
+        void settleOverlayTransforms();
 
         Scene* scene;
         Camera* camera;
@@ -362,6 +364,7 @@ namespace jasperengine::editor{
         void drawSceneView(int width, int height, const std::vector<Scene*>& layerScenes, bool gameLayers);
         virtual void updateSize(int width, int height);
         virtual void setOverlayScale(float scale);
+        float getOverlayScale() const { return overlayScale; }
         float billboardScreenScale(const Vector3& worldPos, float logicalScale) const;
         virtual void updateSelLines(std::vector<OBB> obbs) = 0;
 
@@ -438,6 +441,21 @@ namespace jasperengine::editor{
         // the Scene view's frame draws without the scene's post-processing (update)
         bool viewDisablesPostProcessing = false;
         void endGameViewPass();
+
+        // An inactive pane of the Split and Quad layouts (S26 R20, D8): the scene and its inline
+        // child scenes through the pane's own camera into target, after this frame's draw, with
+        // the icons, grid and selection outlines but no tools layer. gridPlane: 0 the XZ plane,
+        // 1 XY (front and back views), 2 YZ (side views).
+        struct PaneViewFlags {
+            bool shadows = false;
+            bool postProcessing = false;
+            int gridPlane = 0;
+        };
+        void drawPaneView(uint32_t viewId, Entity paneCamera, Framebuffer* target, int width, int height, const PaneViewFlags& flags);
+        // the plane the 3D grid lies in (the 2D views have none)
+        virtual void setGridPlane(int plane) { (void)plane; }
+        virtual int getGridPlane() const { return 0; }
+
         ToolsLayer* getToolsLayer();
         UILayer* getUILayer();
 
