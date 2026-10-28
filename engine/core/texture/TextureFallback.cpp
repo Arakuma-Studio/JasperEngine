@@ -79,21 +79,22 @@ TextureContent TextureFallback::contentOf(const Ktx2Info& info){
 std::vector<GpuTextureFormat> TextureFallback::transcodeCandidates(Ktx2Codec codec, TextureContent content, bool lowMemoryFallback){
     using F = GpuTextureFormat;
     std::vector<F> list;
+    // ETC1S has no ASTC 4x4 or BC7 entry (spec S14 deviation 26): every WebGL2 device that samples
+    // those samples ETC2 or S3TC too, and the web transcoder leaves out their 120 KB of tables
+    const bool etc1s = codec == Ktx2Codec::ETC1S;
     switch (content){
-        case TextureContent::Normal: list = {F::BC5, F::EAC_RG11, F::ASTC_4x4}; break;
-        case TextureContent::Single: list = {F::BC4, F::EAC_R11, F::ASTC_4x4}; break;
+        case TextureContent::Normal:
+            list = etc1s ? std::vector<F>{F::BC5, F::EAC_RG11} : std::vector<F>{F::BC5, F::EAC_RG11, F::ASTC_4x4};
+            break;
+        case TextureContent::Single:
+            list = etc1s ? std::vector<F>{F::BC4, F::EAC_R11} : std::vector<F>{F::BC4, F::EAC_R11, F::ASTC_4x4};
+            break;
         case TextureContent::Hdr: list = {F::BC6H, F::RGB9E5}; break;
         case TextureContent::ColorOpaque:
-            if (codec == Ktx2Codec::ETC1S)
-                list = {F::ETC2_RGB8, F::BC1, F::ASTC_4x4, F::BC7};
-            else
-                list = {F::ASTC_4x4, F::BC7, F::ETC2_RGB8, F::BC1};
+            list = etc1s ? std::vector<F>{F::ETC2_RGB8, F::BC1} : std::vector<F>{F::ASTC_4x4, F::BC7, F::ETC2_RGB8, F::BC1};
             break;
         case TextureContent::ColorAlpha:
-            if (codec == Ktx2Codec::ETC1S)
-                list = {F::ETC2_RGBA8, F::BC3, F::ASTC_4x4, F::BC7};
-            else
-                list = {F::ASTC_4x4, F::BC7, F::ETC2_RGBA8, F::BC3};
+            list = etc1s ? std::vector<F>{F::ETC2_RGBA8, F::BC3} : std::vector<F>{F::ASTC_4x4, F::BC7, F::ETC2_RGBA8, F::BC3};
             break;
     }
     appendLastResort(list, content, lowMemoryFallback);
