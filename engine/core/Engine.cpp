@@ -1502,10 +1502,6 @@ void Engine::systemShutdown(){
     LuaBinding::cleanup();
 
     removeAllSceneLayers(true);
-
-    // the System outlives no engine run: instance() aborts from here on (Log falls back to
-    // stderr); System::hasInstance() is false again
-    System::setSystemInstance(nullptr);
 }
 
 void Engine::systemPause(){

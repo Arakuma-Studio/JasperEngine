@@ -82,9 +82,9 @@ namespace jasperengine {
         std::vector<std::string> args;
 
         static System& instance();
-        // Whether a System instance is set (Engine::systemInit sets it, Engine::systemShutdown
-        // clears it; instance() aborts while none is). It says nothing about the System object
-        // being alive otherwise. For code that also runs without the engine (editor CLI tools).
+        // Whether a System instance is set (Engine::systemInit sets it; instance() aborts while none
+        // is). It says nothing about the System object being alive: Engine::systemShutdown keeps the
+        // instance set. For code that also runs without the engine (editor CLI tools).
         static bool hasInstance() { return systemInstance != nullptr; }
 
         virtual ~System() {}

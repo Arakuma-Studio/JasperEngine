@@ -9,8 +9,8 @@
 using namespace jasperengine;
 
 namespace {
-    // Through the System's log; without one (before Engine::systemInit, after systemShutdown:
-    // a destructor logging during teardown) to stderr, never an abort
+    // Through the System's log; without one (before Engine::systemInit, or code that runs
+    // without the engine: editor CLI tools) to stderr, never an abort
     void emit(const int type, const char* fmt, va_list args) {
         if (System::hasInstance()) {
             System::instance().platformLog(type, fmt, args);

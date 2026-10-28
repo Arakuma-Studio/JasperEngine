@@ -20,9 +20,9 @@ int main(int argc, char** argv){
     jasperengine::test::GpuEnvironment::initEngine(argc, argv);
 
     const int result = RUN_ALL_TESTS();
-    // the engine shuts down after every global environment's TearDown (some still read files
-    // through the System, which Engine::systemShutdown clears) and before the statics are
-    // destroyed, as a game quits
+    // the engine shuts down after every global environment's TearDown (some still compile
+    // documents, reading files through the engine) and before the statics are destroyed, as a
+    // game quits
     jasperengine::test::GpuEnvironment::shutdown();
     return result;
 }
