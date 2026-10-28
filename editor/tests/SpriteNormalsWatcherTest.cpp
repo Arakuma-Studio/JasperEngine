@@ -483,3 +483,33 @@ TEST(SpriteNormalsWatcher, AWakeDuringAScanIsKeptAndNoticesWakeOncePerPath) {
     watcher.noticeGenerated(root() / dir / "copied_normal.png");
     EXPECT_TRUE(watcher.dormant()) << "the same path does not wake it again";
 }
+
+// "Once per path" lasts only until a walk indexes the path: a map noticed, indexed, deleted (the
+// watcher dormant again) and restored from outside the editor wakes it again
+TEST(SpriteNormalsWatcher, ANoticedPathWakesAgainOnceItWasIndexed) {
+    const std::string dir = fresh("renotice");
+    writePng(dir + "/hero.png", disk(32, 80));
+    project()->getSpriteNormalsSettings().autoRegenerate = false;
+    SpriteNormalsWatcher watcher(project());
+    Access::scan(watcher);
+    ASSERT_TRUE(watcher.dormant());
+    // copied in from outside: noticed, and the walk indexes it
+    generate(dir + "/hero.png");
+    const fs::path map = (root() / dir / "hero_normal.png").lexically_normal();
+    const std::string saved = readAll(map);
+    watcher.noticeGenerated(map);
+    EXPECT_FALSE(watcher.dormant());
+    Access::scan(watcher);
+    std::string source, role;
+    ASSERT_TRUE(watcher.generatedInfo(map, source, role));
+    // deleted: the next walk ends dormant
+    fs::remove(map);
+    Access::scan(watcher);
+    ASSERT_TRUE(watcher.dormant());
+    // restored from outside the editor: the notice wakes it again
+    std::ofstream(map, std::ios::binary) << saved;
+    watcher.noticeGenerated(map);
+    EXPECT_FALSE(watcher.dormant()) << "an indexed path is no longer suppressed";
+    Access::scan(watcher);
+    EXPECT_TRUE(watcher.generatedInfo(map, source, role));
+}

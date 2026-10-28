@@ -69,7 +69,8 @@ namespace jasperengine::editor {
         // build directory: the scan's own rules)
         bool wouldIndex(const std::filesystem::path& path) const;
         // The Project window shows a generated PNG: a dormant watcher that has not indexed it walks
-        // the project again, once per path (a path the walk never reaches can't wake it again)
+        // the project again, once per path until a walk indexes it (a path the walk never reaches
+        // can't wake it again)
         void noticeGenerated(const std::filesystem::path& path);
         // whether the last walk found no generated map: no walk until invalidate (or the slow
         // fallback)
@@ -121,7 +122,7 @@ namespace jasperengine::editor {
         bool pausedForPlay = false;
         bool failNextScan = false;                // tests: the next scan throws on its thread
         bool wakePending = false;                 // invalidate() while a scan ran: its result wakes
-        std::set<std::filesystem::path> noticed;  // the paths noticeGenerated woke the watcher for
+        std::set<std::filesystem::path> noticed;  // the paths noticeGenerated woke the watcher for, not indexed since
 
         // auto-regenerate: one at a time, a change during a run re-queues
         std::deque<std::filesystem::path> queue;

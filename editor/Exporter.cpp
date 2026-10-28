@@ -35,6 +35,7 @@
 #include <fstream>
 #include <future>
 #include <iterator>
+#include <limits>
 #include <map>
 #include <set>
 #include <vector>
@@ -2061,16 +2062,23 @@ bool editor::Exporter::copyPngWithoutEditorChunks(const fs::path& source, const 
     std::string ext = source.extension().u8string();
     std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     if (ext != ".png") return false;
+    // an explicit sized read: a short or failed read (an I/O error mid-file) falls back to the
+    // caller's copy_file instead of shipping truncated bytes
+    std::error_code ec;
+    const uintmax_t size = fs::file_size(source, ec);
+    if (ec || size > static_cast<uintmax_t>(std::numeric_limits<std::streamsize>::max())) return false;
     std::ifstream in(source, std::ios::binary);
     if (!in) return false;
-    const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    if (in.bad()) return false;
+    std::vector<uint8_t> bytes(static_cast<size_t>(size));
+    if (size > 0 && (!in.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(size)) ||
+                     in.gcount() != static_cast<std::streamsize>(size))) {
+        return false;
+    }
     // read once: the stripped bytes, or (nothing to strip, not a well-formed PNG) the bytes as read
     std::vector<uint8_t> stripped;
     const std::vector<uint8_t>& shipped = pngchunks::stripEditorChunks(bytes, stripped) ? stripped : bytes;
     std::ofstream out(destination, std::ios::binary | std::ios::trunc);
     if (!out || !out.write(reinterpret_cast<const char*>(shipped.data()), static_cast<std::streamsize>(shipped.size())) || !(out.close(), out)) {
-        std::error_code ec;
         fs::remove(destination, ec);
         return false;   // copied as it is instead
     }

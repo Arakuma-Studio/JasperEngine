@@ -273,7 +273,12 @@ void SpriteNormalsWatcher::collectScan() {
     outputs = std::move(result.outputs);
     hashes = std::move(result.hashes);
     bool anyGenerated = false;
-    for (const auto& entry : outputs) anyGenerated = anyGenerated || !entry.second.role.empty();
+    for (const auto& entry : outputs) {
+        if (entry.second.role.empty()) continue;
+        anyGenerated = true;
+        // indexed: a later notice of this path (deleted, then restored from outside) wakes again
+        noticed.erase(entry.first);
+    }
     if (wakePending) {
         // a file changed while this scan ran (it may have been read before the change): not
         // dormant, and walked again soon
