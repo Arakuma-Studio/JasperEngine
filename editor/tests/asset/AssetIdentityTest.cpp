@@ -236,6 +236,15 @@ TEST(TextReferences, HtmlCssLuaShader) {
     EXPECT_EQ(html[2].target, "b.png");
     EXPECT_EQ(html[2].line, 7u);
 
+    // a video's source and its poster image (S14: the export ships what the HTML UI reads itself)
+    const std::vector<TextReference> video = TextReferences::scanHtml(
+        "<body>\n<video id=\"v\" src=\"video/clip.webm\" poster=\"video/poster.png\" autoplay></video>\n</body>\n");
+    ASSERT_EQ(video.size(), 2u);
+    EXPECT_EQ(video[0].target, "video/clip.webm");
+    EXPECT_EQ(video[1].target, "video/poster.png");
+    EXPECT_EQ(video[1].kind, DepEdgeKind::UIImage);
+    EXPECT_EQ(video[1].line, 2u);
+
     const std::vector<TextReference> css = TextReferences::scanCss("@import url(\"base.css\");\n/* url(x.png) */\nbody{background:url( 'img/bg.png' )}\n");
     ASSERT_EQ(css.size(), 2u);
     EXPECT_EQ(css[0].kind, DepEdgeKind::UIStylesheet);
