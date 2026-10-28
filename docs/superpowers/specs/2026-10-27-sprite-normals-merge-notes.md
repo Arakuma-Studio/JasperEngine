@@ -36,9 +36,12 @@ Phase 1 are engine changes and ship in every game.
   out, or baked into a Vertex Animation.
 - **`library:sprite` reads the Normal Texture** under 2D lights (it was ignored).
 - **A normal map that fails to load shades flat** (it was tilted about 55 degrees).
-- **`Engine::systemShutdown` clears the System instance** (Phase 3): `System::hasInstance()` is false afterwards and
-  `Log` falls back to stderr. Code that reads files or the System after shutdown aborts; the HTML UI test binary now
-  shuts the engine down after `RUN_ALL_TESTS` (integration fix).
+- **Engine internals, no behaviour change at exit:** `System::hasInstance()` is new (true once `Engine::systemInit`
+  set an instance), and `Log` writes to stderr instead of aborting when no instance is set (editor CLI tools that run
+  without the engine). `Engine::systemShutdown` keeps the instance set, as before: Phase 3 had made it clear the
+  instance, which made exit paths that touch the System after shutdown abort (the HTML UI test binary did); the
+  integration pass reverted that. The HTML UI test binary also shuts the engine down after `RUN_ALL_TESTS` now
+  (after every global environment, before the statics, as a game quits).
 
 ## Known limitations
 
@@ -69,8 +72,9 @@ All on `sn/final`, Release, this host (Linux, llvmpipe/lavapipe under Xvfb):
 | `jasperengine-texsynth-tests` | 24/24 passed |
 | `jasperengine-editor-tests` (full) | 841 ran: 835 passed, 6 skipped (environment: SideFX exports, convex decomposition cache), 0 failed |
 | MCP e2e (`run_tests.py -j 3`) | 764 passed, 14 skipped (tools not installed / slow builds), 5 failed: all `test_animation_assets.py`, the missing external fixture `build/fixture-unity` (pre-existing) |
-| htmlui GPU suite, OpenGL (glcore) | 3077/3077 passed, no golden changed |
-| htmlui GPU suite, Vulkan (lavapipe) | 3077/3077 passed |
+| htmlui GPU suite, OpenGL (glcore) | 3077/3077 passed, exit 0, no golden changed |
+| htmlui GPU suite, Vulkan (lavapipe) | 3077/3077 passed, exit 0 |
+| After the `systemShutdown` revert (2fd7b5b37) | editor-tests 841 ran / 835 passed / 6 skipped; MCP sprite normals CLI, check, tool, paint, window, light2d, protocol, docs: 79/79; other CLI/check files (bake-vat CLI, checks, CLI paths, HTML UI checks, place-physics CLI, texture synthesis): 74/74; htmlui glcore and Vulkan 3077/3077 each, exit 0, no abort |
 | `shaders --library sprite --backend all` | 103 variants x 6 backends, 618 compiles, 0 failed |
 | `shaders --library all --backend all` | 42 library shaders, 26,130 compiles, 0 failed |
 | CLI smoke | PNG, GIF (+frames JSON, preview), sheet with `--frame-size` and `--cells-json`, `--dry-run --format json`, paint, exit codes 1/2, `check --normals` (clean, source changed, source missing, JSON) |
