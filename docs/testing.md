@@ -227,7 +227,10 @@ shared `main()` (`TestMain.cpp`) that initialises the engine without a GPU:
 
 `JASPER_TEST_UPDATE_GOLDEN=1` rewrites the goldens a run compares (the HTML UI suite also takes
 `JASPER_HTMLUI_UPDATE_GOLDEN=1`); goldens are only written on glcore, and Vulkan has to match
-them. Re-baseline one suite at a time, look at every changed image before committing it, and say
+them. The goldens are renders of Mesa's llvmpipe (glcore) and lavapipe (Vulkan), the test image's
+devices (`GpuEnvironment::isReferenceRenderer`); a comparison a hardware GPU draws differently gets
+its looser limits from `test::hardwareTolerance(hardware)` (a browser-parity fixture from
+`tolerance.hardware`), measured on that GPU, while the reference renderers keep the strict one. Re-baseline one suite at a time, look at every changed image before committing it, and say
 in the commit why it changed:
 
 ```sh
