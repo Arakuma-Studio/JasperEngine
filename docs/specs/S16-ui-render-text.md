@@ -752,3 +752,8 @@ one line pointing here.
   screenshot's. The shot now also waits for `UIDocumentSystem::isAllLoaded` (documents loaded and
   drawn once), as play's loading and the editor's redraw do (d32267af6). Four copies of the test
   at once, five rounds, on C: 3 of 20 failed without the change, 0 of 20 with it.
+- Merged oe-port 424925911 (S26, BF5, S08; 7dc3a625e): build.sh passes every side's environment
+  names, the Xcode project keeps every object of both sides (and parses again, 89a19be88). S16
+  adds no component field to S08's reflection tables; its reflection goldens take S16's project
+  settings, generated render options and shader key (d7848f9e6); `inspect_ui` is 44 characters
+  shorter so the default listing fits (6e2e283bc).

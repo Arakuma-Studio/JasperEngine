@@ -577,3 +577,16 @@ Landing gate (oe-port 6f47d2c48, S22 and S14b, merged; d32267af6 and the docs af
 `test_html_ui_phase2::test_mistakes_are_reported` (four copies at once, five rounds) 0 of 20
 failed with the screenshot's HTML document wait, 3 of 20 without it; smoke (glcore and Vulkan,
 the installed engine copies removed first), web + web-gate pass (C).
+
+Landing gate on oe-port 424925911 (S26, BF5, S08 merged, 7dc3a625e and after): the Xcode project
+parses with no dangling reference or duplicate id and every `xcode_sync_*.py --check` passes (its
+msdfgen core group had lost its closing lines in the S17 merge; `xcode_sync_s16.py --check` now
+parses the file); `WERROR=1 tools/build.sh linux`; htmlui glcore and Vulkan 3,480 ran, 0 failed
+each, unit tests core 1,452 and editor 1,029 ran, 0 failed (B); MCP (the files above with
+`test_docs.py` and `test_reflection.py`): the three failures without S16, and two of S16 fixed
+since: the default listing 22 characters over its 100,000 with S26's and S08's tools (`inspect_ui`
+44 shorter) and S08's reflection goldens without S16's project settings, generated
+`setHtmlUiRenderOptions` and `htmluiprim` shader key (updated, nothing else in them changed);
+their rerun (`test_reflection`, `test_tool_budget`, `test_html_ui_tools`, `test_tool_conventions`,
+`test_docs`, `test_protocol`): 73 passed, 0 failed; `gen_tool_docs.py` 236 tools; smoke (glcore
+and Vulkan, on the host), web + web-gate pass (C).
