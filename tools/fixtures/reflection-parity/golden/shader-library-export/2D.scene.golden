@@ -1565,12 +1565,12 @@ entities:
         cullingMask: 4294967295
         target: [0, 1.4, 0]
         up: [0, 1, 0]
-        leftClip: 0
-        rightClip: 10
-        bottomClip: 0
-        topClip: 10
+        leftClip: <view>
+        rightClip: <view>
+        bottomClip: <view>
+        topClip: <view>
         yfov: 0.75
-        aspect: 1.8546169
+        aspect: <view>
         nearClip: 0.2
         farClip: 200
         renderToTexture: false

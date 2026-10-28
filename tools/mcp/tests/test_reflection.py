@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -68,6 +69,78 @@ def first_difference(actual: str, expected: str) -> str:
     return "(same lines, different bytes)"
 
 
+# Values the editor computes from its own view (the canvas size of the Scene or Game view), not
+# from the scene: a save writes what the last frame laid out, so they follow the editor's window
+# layout, not the code under test (S26's fix of a stray scrollbar made the Scene view 11 px wider
+# and moved every one of them). They are masked in the goldens and in the re-saves alike:
+# - a RectTransform's scissor, the UI layout's clip rectangle in canvas pixels (Derived);
+# - an autoResize camera's clips and aspect, which updateCamera sets from the canvas each frame
+#   (an orthographic camera its clips, a perspective one its aspect); a camera without autoResize
+#   keeps its own and is compared.
+VIEW_MASKED = "<view>"
+CAMERA_VIEW_KEYS = ("leftClip", "rightClip", "bottomClip", "topClip", "aspect")
+SCISSOR_LINE = re.compile(r"^(\s*)scissor: .*$")
+CAMERA_LINE = re.compile(r"^(\s*)camera:\s*$")
+CAMERA_VIEW_LINE = re.compile(r"^(\s*)(" + "|".join(CAMERA_VIEW_KEYS) + r"): .*$")
+CODE_CAMERA = re.compile(r"^\s*CameraComponent (\w+);\s*$")
+
+
+def masked_view(text: str) -> str:
+    """A saved scene or prefab with the values derived from the editor's view masked"""
+    lines = text.splitlines(keepends=True)
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        scissor = SCISSOR_LINE.match(line.rstrip("\n"))
+        if scissor:
+            out.append(f"{scissor.group(1)}scissor: {VIEW_MASKED}\n")
+            i += 1
+            continue
+        camera = CAMERA_LINE.match(line.rstrip("\n"))
+        if not camera:
+            out.append(line)
+            i += 1
+            continue
+        indent = len(camera.group(1))
+        block = [line]
+        i += 1
+        while i < len(lines) and (not lines[i].strip() or len(lines[i]) - len(lines[i].lstrip()) > indent):
+            block.append(lines[i])
+            i += 1
+        if any(b.strip() == "autoResize: true" for b in block):
+            block = [CAMERA_VIEW_LINE.sub(lambda m: f"{m.group(1)}{m.group(2)}: {VIEW_MASKED}", b.rstrip("\n")) + "\n"
+                     if CAMERA_VIEW_LINE.match(b.rstrip("\n")) else b for b in block]
+        out.extend(block)
+    return "".join(out)
+
+
+def masked_view_code(text: str) -> str:
+    """Generated scene code with an autoResize camera's view-derived assignments masked"""
+    lines = text.splitlines(keepends=True)
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        declared = CODE_CAMERA.match(lines[i].rstrip("\n"))
+        if not declared:
+            out.append(lines[i])
+            i += 1
+            continue
+        name = declared.group(1)
+        block = [lines[i]]
+        i += 1
+        # the component's assignments, up to the line that adds it
+        while i < len(lines) and lines[i].lstrip().startswith(name + "."):
+            block.append(lines[i])
+            i += 1
+        if any(b.strip() == f"{name}.autoResize = true;" for b in block):
+            view = re.compile(r"^(\s*" + re.escape(name) + r"\.(?:" + "|".join(CAMERA_VIEW_KEYS) + r")) = .*;$")
+            block = [view.sub(lambda m: f"{m.group(1)} = {VIEW_MASKED};", b.rstrip("\n")) + "\n" if view.match(b.rstrip("\n")) else b
+                     for b in block]
+        out.extend(block)
+    return "".join(out)
+
+
 def normalized_scene(text: str) -> str:
     """The scene text with its shaderKeys entries sorted: the set is ordered by keys holding
     custom shader ids, which each editor session hands out in its own order"""
@@ -91,11 +164,11 @@ def normalized_scene(text: str) -> str:
         if current:
             entries.append(current)
         out.extend(sorted(entries))
-    return "".join(out)
+    return masked_view("".join(out))
 
 
 def normalized_source(text: str, project: Path) -> str:
-    return text.replace(str(project), "<project>").replace(project.as_posix(), "<project>")
+    return masked_view_code(text.replace(str(project), "<project>").replace(project.as_posix(), "<project>"))
 
 
 def compare_or_update(path: Path, actual: str, what: str, mismatches: list[str]) -> None:
@@ -159,7 +232,7 @@ async def resave(ed: Editor, project: Path, name: str, mismatches: list[str], so
         await ed.call("prefab_mode", action="save", allow_data_loss=True)
         await ed.call("prefab_mode", action="close", unsaved="discard")
         text = (project / rel).read_text(encoding="utf-8")
-        compare_or_update(GOLDEN / name / (rel + ".golden"), text, f"{name}/{rel}", mismatches)
+        compare_or_update(GOLDEN / name / (rel + ".golden"), masked_view(text), f"{name}/{rel}", mismatches)
     await ed.call("save_project")
     compare_or_update(GOLDEN / name / "project.yaml.golden", (project / "project.yaml").read_text(encoding="utf-8"),
                       f"{name}/project.yaml", mismatches)
