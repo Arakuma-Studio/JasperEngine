@@ -72,6 +72,10 @@ namespace jasperengine::editor{
         // the GameObject (after execute)
         Entity getEntity() const { return entity; }
 
+        // "Create Vertex Animation hero" (S24's step names)
+        std::string describe() const override { return "Create Vertex Animation " + spec.name; }
+        const char* typeName() const override { return "CreateVatObjectCmd"; }
+
     private:
         Project* project = nullptr;
         uint32_t sceneId = 0;

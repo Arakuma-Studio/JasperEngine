@@ -285,3 +285,15 @@ void CreateVatCmd::undo(){
 bool CreateVatCmd::affectsStructure() const{
     return placement.mode != VatPlacement::Mode::None;
 }
+
+std::string editor::CreateVatCmd::describe() const{
+    // the .vat names the step (its .vat.glb and payload go with it)
+    for (const File& file : files){
+        if (Util::isVertexAnimationFile(file.path.string())){
+            return "Bake Vertex Animation " + CommandNames::file(file.path);
+        }
+    }
+    std::vector<std::filesystem::path> paths;
+    for (const File& file : files) paths.push_back(file.path);
+    return "Bake Vertex Animation " + CommandNames::files(paths);
+}

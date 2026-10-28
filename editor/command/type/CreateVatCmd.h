@@ -28,6 +28,7 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
 #include "ecs/Entity.h"
 #include "math/Quaternion.h"
 #include "math/Vector3.h"
@@ -77,6 +78,9 @@ namespace jasperengine::editor{
         bool execute() override;
         void undo() override;
         bool affectsStructure() const override;
+        // "Bake Vertex Animation walk.vat" (its .vat; S24's step names)
+        std::string describe() const override;
+        const char* typeName() const override { return "CreateVatCmd"; }
 
         const std::string& getFailure() const{ return failure; }
         void reportFailureTo(std::shared_ptr<std::string> sink){ failureSink = std::move(sink); }

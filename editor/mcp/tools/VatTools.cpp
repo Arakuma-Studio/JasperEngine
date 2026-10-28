@@ -1300,10 +1300,6 @@ void registerVatTools(McpRegistry& registry) {
         "Houdini VAT 3 / OpenVAT export. Without output (or rebake) nothing is written: the report (mode, sizes, errors, warnings with "
         "fixes) and a contact sheet (source vs VAT). The same arguments + output write exactly that (one undo step). "
         "Guide: jasper://docs/vertex-animation.";
-    auto loose = [](Json o) {
-        o.erase("additionalProperties");
-        return o;
-    };
     Json source;
     source["description"] = "GameObject, model, model#Clip, .anim list (+on), .poseanim, or an export path.";
     source["type"] = Json::array({"string", "integer", "array"});
@@ -1316,7 +1312,7 @@ void registerVatTools(McpRegistry& registry) {
     Json place;
     place["description"] = "On write.";
     place["anyOf"] = Json::array({stringEnum("", {"none", "beside", "replace"}),
-                                  loose(object({{"crowd", loose(object({{"count", integer("")}, {"area", number("m")}, {"seed", integer("")}}))}}))});
+                                  object({{"crowd", object({{"count", integer("")}, {"area", number("m")}, {"seed", integer("")}})}})});
     tool.inputSchema = object({
         {"source", source},
         {"scene", sceneRef()},
