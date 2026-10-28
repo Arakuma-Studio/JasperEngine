@@ -51,6 +51,7 @@ from harness import TestFailure
 REPO = Path(__file__).resolve().parents[3]
 FIXTURE = REPO / "tools" / "fixtures" / "physics-placement"
 EDITOR = {"project": str(FIXTURE)}   # only the last test drives an editor (the MCP preview)
+CI = True
 TIMEOUT = 900
 
 CRATE_BOXES = ["Props/Box1", "Props/Box2", "Props/Box3"]

@@ -26,6 +26,7 @@ import ui_input  # noqa: E402
 
 TIMEOUT = 900
 EDITOR = {"create": True, "xvfb": "harness"}
+CI = True
 
 S: dict = {}
 

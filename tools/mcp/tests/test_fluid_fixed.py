@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from htmlui_pixels import decode_png  # noqa: E402,F401  (the screenshots are compared as PNG bytes)
 
 EDITOR = {"create": True, "name": "Fluid Fixed"}
+CI = True
 TIMEOUT = 1200
 
 KEY = "fluidsimulation"

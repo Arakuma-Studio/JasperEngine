@@ -26,6 +26,7 @@ from harness import Editor, skip
 import ui_input
 
 EDITOR = {"xvfb": "harness", "create": True, "name": "Undo UI"}
+CI = True
 TIMEOUT = 900
 
 # find_ui_item labels: the Inspector's Transform X fields (a box selected)

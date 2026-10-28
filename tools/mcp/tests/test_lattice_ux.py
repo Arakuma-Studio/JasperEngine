@@ -27,6 +27,7 @@ import pngdiff  # noqa: E402  (tools/mcp/pngdiff.py)
 
 TIMEOUT = 900
 EDITOR = {"create": True}
+CI = True
 
 S: dict = {}
 

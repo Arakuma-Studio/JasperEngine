@@ -24,6 +24,7 @@ import yaml
 from harness import Editor, find_key
 
 EDITOR = {"create": True, "name": "FBX Test"}
+CI = True
 REPO = Path(__file__).resolve().parents[3]
 FIXTURE = REPO / "editor" / "tests" / "fixtures" / "rigged_cube.fbx"
 GLTF = REPO / "tools" / "fixtures" / "shader-library-export" / "assets" / "models" / "box.gltf"

@@ -30,6 +30,7 @@ import ui_input
 
 TIMEOUT = 900
 EDITOR = {"create": True, "xvfb": "harness"}
+CI = True
 
 S: dict = {}
 

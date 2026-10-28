@@ -22,6 +22,8 @@ import harness
 from harness import TestFailure
 
 TIMEOUT = 3600
+CI_EXCLUDED = ("long-running (about 18 minutes: every lattice shader variant cross-compiled for every graphics API); "
+               "in the full suite (MCP_SUITE=all) on the build servers")
 
 # every backend token the CLI takes besides opengl
 ALL_BACKENDS = "all"

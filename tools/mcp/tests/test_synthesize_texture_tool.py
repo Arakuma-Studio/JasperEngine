@@ -39,6 +39,7 @@ from harness import Editor, TestFailure
 from htmlui_pixels import decode_png
 
 EDITOR = {"create": True, "name": "SynthTool"}
+CI = True
 TIMEOUT = 900
 
 TEX = "assets/textures"

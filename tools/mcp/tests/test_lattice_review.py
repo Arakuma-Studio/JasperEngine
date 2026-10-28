@@ -15,6 +15,7 @@ found by the engine-side review, each driven from Lua while playing.
 from harness import Editor
 
 EDITOR = {"create": True}
+CI = True
 TIMEOUT = 600
 
 S: dict = {}

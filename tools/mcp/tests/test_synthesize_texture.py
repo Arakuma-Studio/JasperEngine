@@ -37,6 +37,7 @@ from pathlib import Path
 import harness
 from harness import TestFailure
 from htmlui_pixels import decode_png
+CI = True
 
 S: dict = {}
 

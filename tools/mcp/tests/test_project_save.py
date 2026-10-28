@@ -19,6 +19,7 @@ import yaml
 from harness import Editor
 
 EDITOR = {"create": True}
+CI = True
 TIMEOUT = 900
 
 

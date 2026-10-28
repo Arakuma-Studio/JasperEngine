@@ -18,7 +18,9 @@ for that long (a slow but working editor, such as one waiting for game frames on
 never trips it; each call has its own timeout, harness.Editor.call_raw).
 
 A file joins the CI suite (--suite ci, the CI workflow's e2e job) by declaring CI = True at module
-level. CI has no copy of the default fixture (harness.default_fixture(): JASPER_FIXTURE, else
+level. A file that is not CI = True is left out for a reason the run prints: it needs the default
+fixture (below), or it declares CI_EXCLUDED = "why" (e.g. long-running, in the nightly full suite);
+a file left out for no reason stops --suite ci (exit 2). CI has no copy of the default fixture (harness.default_fixture(): JASPER_FIXTURE, else
 build/fixture-unity, /fixture or ~/je/fixture-unity; the tests that need it skip without one), so
 such a file must not need it:
 every test that takes an editor runs on EDITOR = {"create": True, ...} or EDITOR = {"project": ...}
@@ -237,11 +239,37 @@ def default_fixture_reason(path: Path) -> str | None:
     return "its tests take the shared editor, and EDITOR has neither \"create\" nor \"project\""
 
 
-def ci_files(tests: Path = TESTS) -> tuple[list[Path], list[str]]:
-    """The CI = True files, and the problems that keep them out of CI."""
-    files = [f for f in sorted(tests.glob("test_*.py")) if is_ci_file(f)]
-    problems = [f"{f.name}: CI = True, but {reason}" for f in files if (reason := default_fixture_reason(f))]
-    return files, problems
+def ci_excluded(path: Path) -> str | None:
+    """A module-level CI_EXCLUDED = "why" (a file left out of CI for a reason of its own)."""
+    value = _module_assignments(path).get("CI_EXCLUDED")
+    if isinstance(value, ast.Constant) and isinstance(value.value, str) and value.value.strip():
+        return value.value.strip()
+    return None
+
+
+def ci_files(tests: Path = TESTS) -> tuple[list[Path], list[str], list[tuple[str, str]]]:
+    """The CI = True files, the problems that stop a CI run, and the files the CI suite leaves out
+    with the reason of each. No file is left out silently: one that is not CI = True either needs
+    the default fixture (CI has no copy of it) or says why in CI_EXCLUDED = "..."; any other is a
+    problem (mark it CI = True, or give the reason)."""
+    files, problems, excluded = [], [], []
+    for f in sorted(tests.glob("test_*.py")):
+        fixture = default_fixture_reason(f)
+        declared = ci_excluded(f)
+        if is_ci_file(f):
+            files.append(f)
+            if fixture:
+                problems.append(f"{f.name}: CI = True, but {fixture}")
+            if declared:
+                problems.append(f"{f.name}: CI = True and CI_EXCLUDED at once")
+        elif declared:
+            excluded.append((f.name, declared))
+        elif fixture:
+            excluded.append((f.name, f"needs the default fixture project, which CI has no copy of ({fixture})"))
+        else:
+            problems.append(f"{f.name}: left out of CI for no reason: it needs no default fixture; declare "
+                            "CI = True, or CI_EXCLUDED = \"why\" (e.g. long-running, in the nightly full suite)")
+    return files, problems, excluded
 
 
 # ---------------------------------------------------------------------------
@@ -269,11 +297,13 @@ def main() -> int:
     if args.worker:
         return worker_main(args)
 
+    excluded: list[tuple[str, str]] = []
     if args.suite == "ci":
-        files, problems = ci_files(args.tests_dir)
+        files, problems, excluded = ci_files(args.tests_dir)
         if args.files:
             wanted = {Path(f).resolve() for f in args.files}
             files = [f for f in files if f.resolve() in wanted]
+            excluded = [(name, why) for name, why in excluded if (args.tests_dir / name).resolve() in wanted]
         for problem in problems:
             print(f"run_tests: {problem}", file=sys.stderr)
         if problems:
@@ -281,6 +311,11 @@ def main() -> int:
         if not files:
             print("run_tests: no CI = True test file", file=sys.stderr)
             return 2
+        # what the suite filter leaves out, said every time (MCP_SUITE=all runs them)
+        print(f"run_tests: --suite ci runs {len(files)} test file(s) and leaves out {len(excluded)}"
+              f"{':' if excluded else ''}", flush=True)
+        for name, why in excluded:
+            print(f"  left out {name}: {why}", flush=True)
     else:
         files = [Path(f).resolve() for f in args.files] or sorted(TESTS.glob("test_*.py"))
     if args.list:
@@ -335,11 +370,13 @@ def main() -> int:
         print(f"CRASH {c}")
     elapsed = time.monotonic() - t0
     print(f"{n['pass']} passed, {n['fail']} failed, {n['skip']} skipped"
-          f"{', ' + str(len(crashed)) + ' crashed' if crashed else ''} in {elapsed:.1f}s")
+          f"{', ' + str(len(crashed)) + ' crashed' if crashed else ''} in {elapsed:.1f}s"
+          f"{f' ({len(excluded)} test file(s) left out by --suite ci)' if args.suite == 'ci' else ''}")
     if args.json:
         args.json.parent.mkdir(parents=True, exist_ok=True)
         args.json.write_text(json.dumps({
-            "suite": args.suite, "files": [f.name for f in files], "passed": n["pass"], "failed": n["fail"],
+            "suite": args.suite, "files": [f.name for f in files],
+            "left_out": [{"file": name, "reason": why} for name, why in excluded], "passed": n["pass"], "failed": n["fail"],
             "skipped": n["skip"], "crashed": crashed, "seconds": round(elapsed, 1), "results": all_results,
         }, indent=1))
     if not all_results and not crashed:

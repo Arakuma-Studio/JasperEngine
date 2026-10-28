@@ -23,6 +23,7 @@ _spec.loader.exec_module(_play)
 decode_png = _play.decode_png
 
 EDITOR = {"create": True, "name": "WaterTest"}
+CI = True
 TIMEOUT = 900
 
 SCENE = "scenes/Water.scene"

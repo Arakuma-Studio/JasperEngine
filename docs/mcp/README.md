@@ -377,6 +377,13 @@ or on a committed one, `EDITOR = {"project": ".../tools/fixtures/<name>"}`. Test
 editor parameter need neither. The runner checks this and exits with status 2 when a `CI = True`
 file relies on the default fixture.
 
+No file is left out of CI silently: a file that is not `CI = True` either needs the default
+fixture (the runner finds that itself) or declares why, `CI_EXCLUDED = "long-running (...); in the
+full suite"`. A file left out for neither reason stops `--suite ci` with status 2. Every CI run
+prints how many files it runs and lists each one it leaves out with its reason, and the summary
+line and `--json` (`left_out`) repeat it. `tools/build.sh mcp-tests` runs the CI suite by default:
+a gate that means the whole suite runs `MCP_SUITE=all`.
+
 Write new test files CI-capable by default: create the project (or use `tools/fixtures/*`), then
 declare `CI = True`. The full suite, default-fixture files included, still runs on the build
 servers (`MCP_SUITE=all tools/build.sh mcp-tests`, which finds `~/je/fixture-unity` there, or

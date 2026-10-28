@@ -32,6 +32,7 @@ import pngdiff  # noqa: E402
 REPO = HERE.parents[2]
 FIXTURE = REPO / "tools" / "fixtures" / "stochastic-tiling"
 EDITOR = {"project": str(FIXTURE)}
+CI = True
 TIMEOUT = 900
 
 SCENE_FILE = "Main Scene.scene"

@@ -22,6 +22,7 @@ from harness import Editor, skip
 import ui_input
 
 EDITOR = {"xvfb": "harness", "create": True, "name": "Search UI"}
+CI = True
 TIMEOUT = 600
 
 
