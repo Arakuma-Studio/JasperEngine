@@ -6081,7 +6081,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         }
         // the Vertex Animation variant ('Vat', 'Vab'): its block and payload (none in a fork
         // without includes/vat.glsl), bound by drawMesh
-        if (meshProperties & (shaderPropertyBit(33) | shaderPropertyBit(34))){
+        if (meshProperties & ShaderPool::getVatProperties(ShaderType::MESH)){
             mesh.submeshes[i].slotVSVat = shaderData.getUniformBlockIndex(UniformBlockType::VS_VAT);
             mesh.submeshes[i].slotVSVatTexture = shaderData.getTextureIndex(TextureShaderType::VAT);
         }
@@ -7448,7 +7448,7 @@ bool RenderSystem::loadSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
     extra.slotVSLattice = latticeVariant ? shaderData.getUniformBlockIndex(UniformBlockType::VS_LATTICE) : -1;
     extra.slotVSLatticeTexture = latticeVariant ? shaderData.getTextureIndex(TextureShaderType::LATTICE) : std::pair<int, int>(-1, -1);
     // the Vertex Animation variant ('Vat', 'Vab'), as the submesh's colour render
-    const bool vatVariant = (properties & (shaderPropertyBit(33) | shaderPropertyBit(34))) != 0;
+    const bool vatVariant = (properties & ShaderPool::getVatProperties(ShaderType::MESH)) != 0;
     extra.slotVSVat = vatVariant ? shaderData.getUniformBlockIndex(UniformBlockType::VS_VAT) : -1;
     extra.slotVSVatTexture = vatVariant ? shaderData.getTextureIndex(TextureShaderType::VAT) : std::pair<int, int>(-1, -1);
 

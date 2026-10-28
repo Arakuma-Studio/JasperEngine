@@ -29,6 +29,7 @@
 #include "object/Light.h"
 #include "object/Model.h"
 #include "object/Primitive.h"
+#include "pool/ShaderPool.h"
 #include "pool/VertexAnimationPool.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/VertexAnimatorSystem.h"
@@ -505,8 +506,8 @@ TEST_F(VatRenderTest, MeshLoadsTheVatAttributesAndDrawsAtRestWithoutAnimator){
     EXPECT_EQ(meshB.submeshes[0].attributes.count(AttributeType::BONEWEIGHTS), 1u);
     // without a skin the bones mesh is not a skinned one: it loads and stands at rest
     EXPECT_FALSE(meshB.submeshes[0].hasSkinning);
-    EXPECT_EQ(meshB.submeshes[0].shaderProperties & (shaderPropertyBit(13) | shaderPropertyBit(33) | shaderPropertyBit(34)), 0u);
-    EXPECT_EQ(meshA.submeshes[0].shaderProperties & (shaderPropertyBit(33) | shaderPropertyBit(34)), 0u);
+    EXPECT_EQ(meshB.submeshes[0].shaderProperties & (shaderPropertyBit(13) | ShaderPool::getVatProperties(ShaderType::MESH)), 0u);
+    EXPECT_EQ(meshA.submeshes[0].shaderProperties & ShaderPool::getVatProperties(ShaderType::MESH), 0u);
 
     Screen screen;
     ASSERT_TRUE(screen.read());
@@ -528,7 +529,7 @@ TEST_F(VatRenderTest, VerticesModeMovesByTheBakedOffsets){
     ASSERT_TRUE(s.settle());
     const MeshComponent& mesh = model.getComponent<MeshComponent>();
     EXPECT_EQ(mesh.vat.variantActive, VatVariant::VERTICES);
-    EXPECT_EQ(mesh.submeshes[0].shaderProperties, plain | shaderPropertyBit(33)) << "the same variant plus 'Vat'";
+    EXPECT_EQ(mesh.submeshes[0].shaderProperties, plain | ShaderPool::getVatProperty(ShaderType::MESH, false)) << "the same variant plus 'Vat'";
 
     struct Case { const char* what; int clip; float now; float speed; float x; float y; };
     const Case cases[] = {
@@ -787,8 +788,8 @@ TEST_F(VatRenderTest, BonesModeSkinsRigidPiecesWithoutShrinkingASpin){
     ASSERT_TRUE(s.settle());
     const MeshComponent& mesh = model.getComponent<MeshComponent>();
     EXPECT_EQ(mesh.vat.variantActive, VatVariant::BONES);
-    EXPECT_NE(mesh.submeshes[0].shaderProperties & shaderPropertyBit(34), 0u) << "'Vab'";
-    EXPECT_EQ(mesh.submeshes[0].shaderProperties & (shaderPropertyBit(13) | shaderPropertyBit(33)), 0u) << "no 'Ski', no 'Vat'";
+    EXPECT_NE(mesh.submeshes[0].shaderProperties & ShaderPool::getVatProperty(ShaderType::MESH, true), 0u) << "'Vab'";
+    EXPECT_EQ(mesh.submeshes[0].shaderProperties & (shaderPropertyBit(13) | ShaderPool::getVatProperty(ShaderType::MESH, false)), 0u) << "no 'Ski', no 'Vat'";
 
     const int middle = screenWidth / 2;
     for (float now : {0.0f, 0.5f, 1.0f, 2.5f, 3.5f}){

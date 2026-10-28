@@ -150,9 +150,9 @@ namespace {
             const uint64_t properties = ShaderPool::getPropertiesFromKey(key);
             const ShaderType type = ShaderPool::getShaderTypeFromKey(key);
             if (type == ShaderType::MESH){
-                out.vertices |= (properties & shaderPropertyBit(33)) != 0;
-                out.bones |= (properties & shaderPropertyBit(34)) != 0;
-                out.rest |= (properties & (shaderPropertyBit(33) | shaderPropertyBit(34))) == 0;
+                out.vertices |= (properties & ShaderPool::getVatProperty(ShaderType::MESH, false)) != 0;
+                out.bones |= (properties & ShaderPool::getVatProperty(ShaderType::MESH, true)) != 0;
+                out.rest |= (properties & ShaderPool::getVatProperties(ShaderType::MESH)) == 0;
                 out.skinning |= (properties & shaderPropertyBit(13)) != 0;
             }else if (type == ShaderType::DEPTH){
                 out.depthVertices |= (properties & shaderPropertyBit(16)) != 0;
