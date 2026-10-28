@@ -118,7 +118,13 @@ int main(int argc, char** argv){
         profileParams.shape = spline::SplineProfileShape::Crown;
         profileParams.width = 8.0f;
         const spline::SplineProfile profile = spline::buildProfile(profileParams);
+        // the ring the sweep emits: OpenEngine's 5 Crown points, its 2 shoulder creases twice
+        size_t ringVertices = 0;
+        for (const spline::SplineProfilePoint& point : profile.points){
+            ringVertices += point.hard ? 2u : 1u;
+        }
         results.add("crown_profile_points", static_cast<double>(profile.points.size()), "points");
+        results.add("crown_ring_vertices", static_cast<double>(ringVertices), "vertices");
         std::vector<spline::SplineStation> stations;
         spline::SplineStripMesh mesh;
         size_t vertices = 0;

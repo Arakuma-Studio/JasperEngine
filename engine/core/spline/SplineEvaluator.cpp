@@ -263,7 +263,39 @@ namespace{
     void locate(const SplineData& s, const SplineCache& c, float d, uint32_t& segment, float& u){
         const size_t count = c.arc.size();
         const float* arc = c.arc.data();
-        size_t index = static_cast<size_t>(std::lower_bound(arc, arc + count, d) - arc);
+        // the first entry >= d (lower_bound): guessed from d's share of the length (the entries
+        // are near evenly spaced along most curves), walked a few entries, else a binary search
+        // of the side the guess left
+        size_t index = count - 1;
+        const float total = arc[count - 1];
+        if (total > 0.0f){
+            const float share = d / total;
+            size_t guess = share > 0.0f ? static_cast<size_t>(share * float(count)) : 0;
+            guess = guess < count ? guess : count - 1;
+            constexpr int WALK = 4;
+            bool found = false;
+            if (arc[guess] < d){
+                for (int w = 0; w < WALK && guess + 1 < count; w++){
+                    guess++;
+                    if (!(arc[guess] < d)){
+                        found = true;
+                        break;
+                    }
+                }
+                index = found ? guess : static_cast<size_t>(std::lower_bound(arc + guess, arc + count, d) - arc);
+            }else{
+                for (int w = 0; w < WALK; w++){
+                    if (guess == 0 || arc[guess - 1] < d){
+                        found = true;
+                        break;
+                    }
+                    guess--;
+                }
+                index = found ? guess : static_cast<size_t>(std::lower_bound(arc, arc + guess, d) - arc);
+            }
+        }else{
+            index = static_cast<size_t>(std::lower_bound(arc, arc + count, d) - arc);
+        }
         if (index >= count){
             index = count - 1;
         }

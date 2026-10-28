@@ -44,7 +44,7 @@
     "cache_rebuild_100_knots_us": {"max": 60, "spec": "R18 cache rebuild of a 100-knot spline"},
     "cache_bytes_100_knots": {"max": 10496, "spec": "R22 cache <= 4 KB + 64 B per knot (100 knots)"},
     "extrude_crown_1km_ms": {"max": 3, "spec": "R19 a 1 km Crown road (7-point profile, stations <= 1 m), stations to chunks"},
-    "crown_profile_points": {"min": 7, "max": 7, "spec": "R19 the Crown profile has 7 points"},
+    "crown_ring_vertices": {"min": 7, "max": 7, "spec": "R19 the 7-point Crown ring: 5 profile points, the 2 shoulder creases split"},
     "instantiate_2000_ms": {"max": 2, "spec": "R19 2,000 pieces placed"},
     "instantiate_2000_pieces": {"min": 2000, "spec": "R19 the layout placed 2,000 pieces"},
     "fit_to_banks_300m_1025_ms": {"max": 25, "spec": "R19 FitToBanks, a 300 m river on a 1025^2 grid"},
