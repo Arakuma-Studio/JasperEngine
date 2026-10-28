@@ -45,6 +45,22 @@ async def play_and_collect(ed: Editor, scene):
     return started, texts
 
 
+def image_difference(a: bytes, b: bytes, step: int = 4) -> float:
+    """Mean absolute RGB difference (0..255) of two same-sized screenshots, sampled every `step` px
+    (the atmosphere tests import it from here)."""
+    wa, ha, ca, ra = decode_png(a)
+    wb, hb, cb, rb = decode_png(b)
+    assert (wa, ha) == (wb, hb), f"sizes differ: {wa}x{ha} vs {wb}x{hb}"
+    total = 0
+    count = 0
+    for y in range(0, ha, step):
+        for x in range(0, wa, step):
+            for k in range(3):
+                total += abs(ra[y][x * ca + k] - rb[y][x * cb + k])
+            count += 3
+    return total / max(count, 1)
+
+
 def problem_texts(started) -> list:
     return [p.get("message", "") for p in started.get("problems", [])]
 

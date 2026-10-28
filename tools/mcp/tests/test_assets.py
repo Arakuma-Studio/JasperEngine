@@ -81,3 +81,19 @@ async def test_text_files(ed: Editor):
     ed.check_eq((ed.project / path).read_text(encoding="utf-8"), "one\ntea\nthree\n", "failed edit leaves bytes intact")
     await ed.call("undo", scope="project")
     ed.check_eq((ed.project / path).read_text(encoding="utf-8"), original, "failed edit adds no undo entry")
+
+
+async def test_texture_settings(ed: Editor):
+    """set_texture_settings changes the sampling of a texture a property holds and names what it
+    refuses (an unknown property, a mipmap filter for magnification)."""
+    image_file(ed, "assets/textures/pixel.png", 8, 8)
+    scene = (await ed.call("create_scene", name="TextureSettings", type="3D"))["scene"]["id"]
+    tex = (await ed.call("create_entity", scene=scene, type="box", name="Pixel"))["entity_id"]
+    prop = "submeshes[0].material.baseColorTexture"
+    await ed.call("set_properties", scene=scene, entity=tex, values={"mesh": {prop: "assets/textures/pixel.png"}})
+    ts = await ed.call("set_texture_settings", scene=scene, entity=tex, component="mesh", property=prop,
+                       mag_filter="nearest", wrap_u="clamp_to_edge")
+    ed.check_eq(ts["property"], prop)
+    await ed.check_error("set_texture_settings", scene=scene, entity=tex, component="mesh", property="nope", contains="texture")
+    await ed.check_error("set_texture_settings", scene=scene, entity=tex, component="mesh", property=prop,
+                         mag_filter="linear_mipmap_linear", contains="nearest or linear")

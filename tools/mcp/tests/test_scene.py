@@ -248,7 +248,9 @@ async def test_model_and_material_link(ed: Editor):
     ed.check("file" not in local and abs(local["roughnessFactor"] - 0.9) < 1e-5, "inline edit makes an independent material")
     ed.check_eq(other["file"], "assets/materials/Linked.material")
     ed.check_eq(other["roughnessFactor"], 0.5)
-    ed.check_eq(path.read_text(), authored, "editing an instance does not rewrite its linked asset")
+    # (the asset database may have given the file its S04 identity, a guid line, meanwhile)
+    content = "".join(line for line in path.read_text().splitlines(keepends=True) if not line.startswith(("guid:", "formerGuids:")))
+    ed.check_eq(content, authored, "editing an instance does not rewrite its linked asset")
     await ed.call("undo", scene=sid)
     ed.check_eq((await value(ed, sid, first, "mesh", "submeshes[0].material"))["file"], "assets/materials/Linked.material")
 

@@ -7,6 +7,7 @@ import asyncio
 import base64
 import contextlib
 import json
+import os
 import socket
 import stat
 import sys
@@ -417,9 +418,12 @@ async def test_http_token_and_protocol_eras():
         status, headers, streamed = await http_post(port, {
             "jsonrpc": "2.0", "id": "streamed", "method": "tools/call", "params": {
                 "name": "editor_status", "arguments": {}, "_meta": {"progressToken": "p1"}}}, headers=legacy)
-        if (status != 200 or not headers.get("content-type", "").startswith("text/event-stream")
+        # S31: every protocol waits for the first message; a call answered before any progress
+        # notification goes as plain JSON, one that reports progress first opens the stream
+        content_type = headers.get("content-type", "")
+        if (status != 200 or not (content_type.startswith("text/event-stream") or content_type.startswith("application/json"))
                 or not streamed or streamed.get("id") != "streamed" or "result" not in streamed):
-            raw.fail(f"a progressToken with Accept SSE must stream the correlated result: {status} {headers} {streamed}")
+            raw.fail(f"a progressToken with Accept SSE must get the correlated result: {status} {headers} {streamed}")
         status, _, _ = await http_post(port, {}, headers=legacy, method="DELETE")
         if status != 200:
             raw.fail(f"DELETE must end a legacy session: {status}")
