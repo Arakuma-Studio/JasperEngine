@@ -11025,6 +11025,8 @@
 				533136582AB9B2F319794A22 /* shape-description.h */,
 			);
 			path = core;
+			sourceTree = "<group>";
+		};
 		434F4D5012F57D78BB1B6072 /* widgets */ = {
 			isa = PBXGroup;
 			children = (
