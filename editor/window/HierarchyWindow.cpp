@@ -1586,6 +1586,8 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
         ImGui::SetScrollHereY(0.5f);
     }
 
+    const float rowMinY = ImGui::GetItemRectMin().y;
+    const float rowMaxY = ImGui::GetItemRectMax().y;
     bool nodeHovered = ImGui::IsItemHovered();
     bool nodeRightClicked = ImGui::IsItemClicked(ImGuiMouseButton_Right);
     const ImGuiID nodeItemId = ImGui::GetItemID();
@@ -2405,6 +2407,8 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
     if (!renamingNode) {
         showPrefabRowArrow(node);
     }
+    // the eye and the hand at the row's left (HierarchyVisibilityGutter.cpp)
+    drawVisibilityGutter(node, rowMinY, rowMaxY);
 
     if (nodeOpen) {
         for (auto& child : node.children) {
@@ -3023,7 +3027,11 @@ void editor::HierarchyWindow::show(){
         revealRequest = {};
     }
 
+    // the rows leave room on their left for the visibility gutter
+    const float gutterWidth = visibilityGutterWidth();
+    ImGui::Indent(gutterWidth);
     showTreeNode(root);
+    ImGui::Unindent(gutterWidth);
     syncSceneWindowSelectionHierarchy(root);
     float treeLastCursorY = ImGui::GetCursorScreenPos().y;
 

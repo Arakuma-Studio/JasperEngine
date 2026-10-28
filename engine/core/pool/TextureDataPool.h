@@ -199,8 +199,8 @@ namespace jasperengine{
 
         static void setProcessingProvider(ProcessingProvider provider);
         // Once a frame, main thread (Engine::systemDraw): swaps finished progressive loads in,
-        // runs the main thread's Basis transcodes (one level a frame once the scenes are loaded,
-        // web builds without threads) and reloads the textures the budget re-planned
+        // runs the main thread's Basis transcodes (a 4 ms slice of each frame once the scenes are
+        // loaded, web builds without threads) and reloads the textures the budget re-planned
         static void update();
         // textureQuality: top mips dropped from streamable textures (0 full ... 3 an eighth)
         static void setTextureQuality(int quality);

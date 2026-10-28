@@ -377,6 +377,8 @@ bool TextureData::loadKtx2Image(Ktx2Image& image, bool decodeToPixels, const Tex
     const int levelWidth = (int)info.levelWidth(image.firstLevel);
     const int levelHeight = (int)info.levelHeight(image.firstLevel);
     const int faces = (int)info.faces;
+    const int firstLevel = (int)image.firstLevel;
+    const int fullLevels = (int)info.levelCount;
     const TextureContent content = TextureFallback::contentOf(info);
 
     GpuTextureFormat format = info.format;
@@ -399,11 +401,9 @@ bool TextureData::loadKtx2Image(Ktx2Image& image, bool decodeToPixels, const Tex
         }
         if (!plan.reason.empty())
             TextureFallback::logOnce(format, true, plan.reason);
-        std::vector<uint8_t> rebased;
-        if (!BasisTranscode::rebase(image, rebased, err))
-            return false;
+        // the session takes the levels (the file's first level and count are kept above)
         BasisTranscode::Session session;
-        if (!session.open(std::move(rebased), err))
+        if (!session.open(std::move(image), err))
             return false;
         const uint32_t count = decodeToPixels ? 1u : session.levelCount();
         out.resize(count);
@@ -488,8 +488,8 @@ bool TextureData::loadKtx2Image(Ktx2Image& image, bool decodeToPixels, const Tex
     setLevels(format, isSrgb, faces, levelWidth, levelHeight, std::move(out));
     setLogicalSize(logicalWidth, logicalHeight);
     flags = flagsFromKeyValues(info);
-    droppedLevels = (int)image.firstLevel;
-    fullLevelCount = (int)info.levelCount;
+    droppedLevels = firstLevel;
+    fullLevelCount = fullLevels;
     transparent = content == TextureContent::ColorAlpha;
     return true;
 }

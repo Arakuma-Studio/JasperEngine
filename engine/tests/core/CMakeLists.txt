@@ -6,8 +6,9 @@
 # CPU suites build and run on Linux, Windows and macOS; *Gpu suites run on Linux (Xvfb).
 #
 # je-bench-jobs and je-bench-memory are the job system and allocator benchmarks (S06 R23-R26),
-# je-bench-diag the crash and hang diagnostics' (S28 R26), je-bench-particles the particle
-# system's (S20 R20-R26, docs/perf/particles.md), je-bench-splines the splines' (S18 R18-R21)
+# je-bench-diag the crash and hang diagnostics' (S28 R26), je-bench-picking the triangle picking
+# budgets (S26 R28-R31, docs/scene-view-picking.md), je-bench-particles the particle system's
+# (S20 R20-R26, docs/perf/particles.md), je-bench-splines the splines' (S18 R18-R21, docs/perf/splines.md)
 # tools/perf/check_bench.py gates on, from their JSON output (docs/jobs-memory.md).
 
 file(GLOB_RECURSE CORE_TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*Test.cpp)
@@ -116,11 +117,12 @@ set_target_properties(jasperengine-core-tests PROPERTIES ENABLE_EXPORTS ON)
 find_package(Threads REQUIRED)
 add_executable(je-bench-jobs ${CMAKE_CURRENT_SOURCE_DIR}/bench/JobsBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
 add_executable(je-bench-memory ${CMAKE_CURRENT_SOURCE_DIR}/bench/MemoryBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
+add_executable(je-bench-picking ${CMAKE_CURRENT_SOURCE_DIR}/bench/PickingBench.cpp)
 add_executable(je-bench-diag ${CMAKE_CURRENT_SOURCE_DIR}/bench/DiagBench.cpp)
 add_executable(je-bench-particles ${CMAKE_CURRENT_SOURCE_DIR}/bench/ParticlesBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
 # je-bench-splines: the spline budgets (S18 R18-R21, docs/perf/splines.md)
 add_executable(je-bench-splines ${CMAKE_CURRENT_SOURCE_DIR}/bench/SplineBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
-foreach(target je-bench-jobs je-bench-memory je-bench-diag je-bench-particles je-bench-splines)
+foreach(target je-bench-jobs je-bench-memory je-bench-picking je-bench-diag je-bench-particles je-bench-splines)
     target_link_libraries(${target} PRIVATE jasperengine Threads::Threads)
     target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/support)
     jasperengine_apply_cxx_standard(${target})

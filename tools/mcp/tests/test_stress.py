@@ -24,6 +24,7 @@ import time
 import uuid
 
 from harness import HTTP_TOKEN, Editor, RawEditor, skip
+import ui_input
 
 
 def _free_port() -> int:
@@ -551,14 +552,15 @@ async def test_calls_while_dialog_open(ed: Editor):
     await ed.call("create_entity", name="Dirty", type="empty", scene=sid)
     _xdotool(display, "windowfocus", "--sync", win)
     await ed.call("wait", frames=5)
-    _xdotool(display, "key", "--clearmodifiers", "ctrl+s")
+    # Ctrl held across frames (ui_input.Ui.key: one frame could read the S with Ctrl up)
+    await ui_input.Ui(ed, win).key("ctrl+s")
     dialog = None
     for _ in range(40):
         st = await ed.call("editor_status")
         dialog = st.get("dialog")
         if dialog:
             break
-        await asyncio.sleep(0.25)
+        await ui_input.frames(ed, 2)
     if not dialog:
         skip("Ctrl+S did not open a dialog under this Xvfb (no window focus?)")
     # reads still work

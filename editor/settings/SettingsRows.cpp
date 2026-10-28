@@ -1740,10 +1740,11 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         {"Scripting", SettingsScope::Preference, 3, "hot reload during play external script editor"},
         {"Undo", SettingsScope::Preference, 4, "undo redo history"},
         {"Lattice", SettingsScope::Preference, 5, "lattice cage deformer"},
-        {"External Tools", SettingsScope::Preference, 6, "cmake compiler emscripten ffmpeg"},
-        {"Logging", SettingsScope::Preference, 7, "log levels"},
-        {"Diagnostics", SettingsScope::Preference, 8, "crash hang watchdog freeze not responding reports"},
-        {"Shader Cache", SettingsScope::Preference, 9, "shaders cache clear"},
+        {"Scene View", SettingsScope::Preference, 6, "picking pick drop surface rulers"},
+        {"External Tools", SettingsScope::Preference, 7, "cmake compiler emscripten ffmpeg"},
+        {"Logging", SettingsScope::Preference, 8, "log levels"},
+        {"Diagnostics", SettingsScope::Preference, 9, "crash hang watchdog freeze not responding reports"},
+        {"Shader Cache", SettingsScope::Preference, 10, "shaders cache clear"},
     };
     for (const SettingsPage& page : pages) {
         // two scopes may share a title (Scripting): names stay unique
@@ -1879,6 +1880,17 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
                [](const LatticeViewSettings& v) { return v.falloffCurve; });
     latticeRow("preferences.lattice.falloff_radius", "Proportional Falloff", "Default Radius", "falloff size",
                [](const LatticeViewSettings& v) { return v.falloffRadius; });
+    // the Scene view toolbar's toggles that follow the user (S26 R12, R16, R25)
+    const char* sceneView = "Scene View";
+    addOrAbort(registry, uiRow("preferences.scene_view.exact_pick", sceneView, "Picking", "Exact Pick", "select click prefab model root",
+        [](SettingsContext&) { return Json(AppSettings::getSceneViewSettings().exactPick); },
+        "A click selects the GameObject under it, never its prefab or model root"));
+    addOrAbort(registry, uiRow("preferences.scene_view.align_to_surface", sceneView, "Drops", "Align to Surface", "drop normal up axis",
+        [](SettingsContext&) { return Json(AppSettings::getSceneViewSettings().alignToSurface); },
+        "Objects dropped into the view turn their up axis onto the surface they land on (Alt while dropping)"));
+    addOrAbort(registry, uiRow("preferences.scene_view.rulers", sceneView, "Views", "Rulers", "ruler scale 2d orthographic",
+        [](SettingsContext&) { return Json(AppSettings::getSceneViewSettings().rulers); },
+        "Top and left rulers in 2D, UI and orthographic axis views"));
     addOrAbort(registry, uiRow("preferences.logging.reset", "Logging", "Category Levels", "Reset", "category levels info",
         [](SettingsContext&) { return Json(AppSettings::getLoggingSettings().categoryLevels.size()); }));
     const char* diagnostics = "Diagnostics";

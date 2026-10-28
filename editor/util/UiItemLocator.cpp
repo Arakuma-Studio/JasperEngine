@@ -28,7 +28,11 @@ namespace {
     bool labelMatches(const std::string& wanted, const char* label) {
         if (wanted == label) return true;
         const char* hidden = std::strstr(label, "##");
-        return hidden && hidden != label && wanted.compare(0, std::string::npos, label, (size_t)(hidden - label)) == 0;
+        const size_t visible = hidden ? (size_t)(hidden - label) : std::strlen(label);
+        if (hidden && hidden != label && wanted.compare(0, std::string::npos, label, visible) == 0) return true;
+        // a row's text after its icon ("<icon>  Name", the Hierarchy's rows)
+        const std::string tail = "  " + wanted;
+        return visible > tail.size() && std::strncmp(label + visible - tail.size(), tail.c_str(), tail.size()) == 0;
     }
 
     bool windowMatches(const std::string& wanted, const ImGuiWindow* window) {

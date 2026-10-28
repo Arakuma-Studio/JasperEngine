@@ -1,5 +1,5 @@
 {
-  "_comment": "Budgets of je-bench-jobs and je-bench-memory (docs/specs/S06-jobs-memory.md R23-R26), je-bench-diag (S28 R26) je-bench-particles (docs/specs/S20-particles.md R20-R26, AC10-AC12) and je-bench-splines (docs/specs/S18-splines.md R18-R21, AC16), measured with min(8, hardware threads - 2) workers on the build server's Linux x64 Release build. check_bench.py fails on a miss.",
+  "_comment": "Budgets of je-bench-jobs and je-bench-memory (docs/specs/S06-jobs-memory.md R23-R26), je-bench-diag (S28 R26), je-bench-particles (docs/specs/S20-particles.md R20-R26, AC10-AC12) and je-bench-splines (docs/specs/S18-splines.md R18-R21, AC16), measured with min(8, hardware threads - 2) workers on the build server's Linux x64 Release build. check_bench.py fails on a miss. je-bench-picking: docs/specs/S26-scene-view.md R28-R31, measured on the benchmark server E.",
   "je-bench-jobs": {
     "submit_throughput_jobs_per_s": {"min": 3000000, "spec": "R23 empty-job submit+execute from one producer"},
     "parallel_for_dispatch_ns": {"max": 150, "spec": "R23 parallelFor of 1 unit, 0 helpers"},
@@ -20,6 +20,24 @@
     "object_pool_new_delete_ns": {"max": 25, "spec": "R26 ObjectPool new+delete"},
     "range_allocator_alloc_free_p99_ns": {"max": 250, "spec": "R26 RangeAllocator allocate+free with 10k live ranges, p99"},
     "stats_and_hooks_overhead_pct": {"max": 2, "spec": "R26 stats per job, one thread (bounds the share of R23), median of 41 paired trials"}
+  },
+  "je-bench-picking": {
+    "pick_p99_ms_1000x1k": {"max": 1.0, "spec": "R28 closest hit, 1,000 entities x 1k tris, p99 of 10k rays"},
+    "pick_p99_ms_1m_plus_500": {"max": 1.0, "spec": "R28 closest hit, one 1M-tri mesh + 500 small meshes, p99 of 10k rays"},
+    "raycast_all_p99_ms": {"max": 2.0, "spec": "R28 raycastAll (the cycling list), p99"},
+    "pick_scalar_p99_ms_1000x1k": {"max": 2.5, "spec": "R28 scalar SIMD path, p99"},
+    "pick_scalar_p99_ms_1m_plus_500": {"max": 2.5, "spec": "R28 scalar SIMD path, p99"},
+    "bvh_build_tris_per_s": {"min": 1500000, "spec": "R29 MeshBvh build on one worker (median of 5 after a warm-up)"},
+    "gather_ms_per_1m_tris": {"max": 5, "spec": "R29 gather on the main thread (median of 15 after 2 warm-ups)"},
+    "bvh_bytes_per_triangle": {"max": 48, "spec": "R29 memory"},
+    "disk_load_ms_1m": {"max": 60, "spec": "R29 disk-cache load of a 1M-tri BVH (median of 15 after 2 warm-ups)"},
+    "scene_bvh_build_ms_100k": {"max": 25, "spec": "R29 SceneBvh build, 100k leaves (median of 15 after 2 warm-ups)"},
+    "scene_bvh_refit_ms_100k_serial": {"max": 3, "spec": "R29 refit of 100k leaves, serial"},
+    "scene_bvh_refit_ms_100k_parallel": {"max": 1.2, "spec": "R29 refit of 100k leaves on the workers"},
+    "scene_bvh_refit_ms_100_dirty": {"max": 0.05, "spec": "R29 refit of 100 dirty leaves"},
+    "skinned_pose_refit_ms_50k": {"max": 3, "spec": "R30 posing and refitting a 50k-vertex, 4-influence mesh (median of 30)"},
+    "skinned_repeat_pick_ms": {"max": 0.05, "spec": "R30 a repeat pick at the same pose epoch costs as a static mesh"},
+    "frame_bookkeeping_1000_dirty_ms": {"max": 0.05, "spec": "R31 per-frame cost with no pick: dirty marks only"}
   },
   "je-bench-particles": {
     "ref_100k_bytes_per_particle": {"max": 64, "spec": "R20 channel storage per particle of the reference stack"},

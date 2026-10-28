@@ -110,6 +110,13 @@ jobs:
           mkdir -p build/test-results
           WERROR=1 tools/build.sh unit-tests 2>&1 | tee build/test-results/unit-build.log
 
+      # S26 AC2: the picking suites again on the scalar slab test (the first run took the CPU's AVX2)
+      - name: Picking on the scalar path
+        run: |
+          set -o pipefail
+          JASPER_PICK_SIMD=scalar UNIT_SUITE=core UNIT_TEST_ARGS='--gtest_filter=MeshBvh.*:SceneBvh.*:MeshRaycast.*:PickCache.*' \
+            WERROR=1 tools/build.sh unit-tests 2>&1 | tee build/test-results/unit-picking-scalar.log
+
       - name: Warnings
         if: always()
         run: python3 tools/ci/warning-summary.py build/test-results/unit-build.log >> "$GITHUB_STEP_SUMMARY"
@@ -530,7 +537,9 @@ jobs:
         run: BUILD_TYPE=Release WEB_PROJECT=texture-formats tools/build.sh web
 
       - name: Browser gate, cooked texture formats
-        run: GATE=texture-formats tools/build.sh web-gate
+        # with the R19 web transcode bench in report mode (the budget is gated on the benchmark
+        # server only: docs/textures.md)
+        run: GATE=texture-formats GATE_ARGS='--query=transcode_bench=report --expect=transcode_web_budgets=report --seconds 10' tools/build.sh web-gate
 
       - name: Cooked-texture runtime size (S14 R21, wasm Release)
         run: |
