@@ -1029,7 +1029,7 @@ void locateUiItemTool(const CallPtr& call) {
     call->afterFrames(2, [call, label]() {
         Json items = Json::array();
         for (const UiItemLocator::Item& item : UiItemLocator::stop()) {
-            items.push_back({{"label", item.label}, {"window", item.window}, {"visible", item.visible},
+            items.push_back({{"label", item.label}, {"window", item.window}, {"visible", item.visible}, {"enabled", item.enabled},
                              {"rect", {{"x", std::round(item.x)}, {"y", std::round(item.y)},
                                        {"width", std::round(item.width)}, {"height", std::round(item.height)}}},
                              {"window_rect", {{"x", std::round(item.windowX)}, {"y", std::round(item.windowY)},
@@ -1386,10 +1386,10 @@ void registerViewTools(McpRegistry& registry) {
         tool.group = "editor_ux";  // S31 tool groups: listed once enabled, callable always
         tool.title = "Find UI Item";
         tool.description =
-            "Where editor controls with this label are drawn now (window coords, as focus_window's rect), to click "
-            "them with send_input or real input. Only drawn items: scroll or open their panel first.";
+            "Where editor controls with this label are drawn now (window coords, as focus_window's rect; enabled false: "
+            "greyed out), to click them with send_input or real input. Only drawn items: scroll or open their panel first.";
         tool.inputSchema = object({
-            {"label", string("Text, or the whole label with its ## id.")},
+            {"label", string("Text (its leading icons optional, then only while drawn in view), or the whole label with its ## id.")},
             {"window", string("Only in windows whose name contains this.")}
         }, {"label"});
         tool.annotations.readOnly = true;

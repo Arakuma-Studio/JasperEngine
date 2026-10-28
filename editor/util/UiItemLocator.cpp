@@ -8,6 +8,7 @@
 
 #include <cstring>
 #include <map>
+#include <string_view>
 
 using namespace jasperengine::editor;
 
@@ -25,10 +26,24 @@ namespace {
         return locator;
     }
 
+    // the whole label, or its text (before "##"), with or without the icons it starts with: Font
+    // Awesome glyphs, the Private Use Area U+E000-U+F8FF (UTF-8 EE xx xx, EF 80-A3 xx), and the
+    // spaces after them ("Rename Crate" finds the Undo History row drawn as "<robot icon>  Rename Crate")
     bool labelMatches(const std::string& wanted, const char* label) {
         if (wanted == label) return true;
-        const char* hidden = std::strstr(label, "##");
-        return hidden && hidden != label && wanted.compare(0, std::string::npos, label, (size_t)(hidden - label)) == 0;
+        std::string_view text(label);
+        if (const char* hidden = std::strstr(label, "##")) text = text.substr(0, (size_t)(hidden - label));
+        if (text.empty()) return false;
+        if (text == wanted) return true;
+        size_t start = 0;
+        while (start + 3 <= text.size()) {
+            const unsigned char lead = (unsigned char)text[start];
+            if (lead != 0xEE && !(lead == 0xEF && (unsigned char)text[start + 1] <= 0xA3)) break;
+            start += 3;
+        }
+        if (start == 0) return false;
+        while (start < text.size() && text[start] == ' ') start++;
+        return text.substr(start) == wanted;
     }
 
     bool windowMatches(const std::string& wanted, const ImGuiWindow* window) {
@@ -62,7 +77,7 @@ std::vector<UiItemLocator::Item> UiItemLocator::stop() {
 
 namespace {
 
-    void record(ImGuiWindow* window, ImGuiID id, const char* label, const ImRect& rect) {
+    void record(ImGuiWindow* window, ImGuiID id, const char* label, const ImRect& rect, ImGuiItemFlags flags) {
         const ImVec2 origin = ImGui::GetMainViewport()->Pos;
         UiItemLocator::Item item;
         item.label = label;
@@ -72,6 +87,7 @@ namespace {
         item.width = rect.GetWidth();
         item.height = rect.GetHeight();
         item.visible = !window->Hidden && window->ClipRect.Contains(rect.GetCenter());
+        item.enabled = (flags & ImGuiItemFlags_Disabled) == 0;
         item.windowX = window->Pos.x - origin.x;
         item.windowY = window->Pos.y - origin.y;
         item.windowWidth = window->Size.x;
@@ -91,7 +107,8 @@ void ImGuiTestEngineHook_ItemAdd(ImGuiContext* context, ImGuiID id, const ImRect
     ImGuiWindow* window = context->CurrentWindow;
     if (!locator.recording || !window || id == 0 || !windowMatches(locator.window, window)) return;
     if (id != window->GetID(locator.label.c_str())) return;
-    record(window, id, locator.label.c_str(), itemData ? itemData->Rect : bb);
+    record(window, id, locator.label.c_str(), itemData ? itemData->Rect : bb,
+           itemData ? itemData->ItemFlags : context->CurrentItemFlags);
 }
 
 void ImGuiTestEngineHook_ItemInfo(ImGuiContext* context, ImGuiID id, const char* label, ImGuiItemStatusFlags) {
@@ -99,7 +116,7 @@ void ImGuiTestEngineHook_ItemInfo(ImGuiContext* context, ImGuiID id, const char*
     ImGuiWindow* window = context->CurrentWindow;
     if (!locator.recording || !label || !window || context->LastItemData.ID != id) return;
     if (!labelMatches(locator.label, label) || !windowMatches(locator.window, window)) return;
-    record(window, id, label, context->LastItemData.Rect);
+    record(window, id, label, context->LastItemData.Rect, context->LastItemData.ItemFlags);
 }
 
 void ImGuiTestEngineHook_Log(ImGuiContext*, const char*, ...) {}

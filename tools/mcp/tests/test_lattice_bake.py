@@ -35,7 +35,7 @@ import sys
 import zlib
 from pathlib import Path
 
-from harness import Editor, skip
+from harness import Editor
 import ui_input
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -466,84 +466,26 @@ async def frames(ed, n=20):
 # -- the inspector's Bake Deformation button --------------------------------------------------------
 
 
-class Ui(ui_input.Ui):
-    """The shared frame-paced input (tools/mcp/ui_input.py), at screen points of the default layout."""
-
-    async def focus(self):
-        super().focus()
-        await self.frames()
-
-    async def click(self, x: int, y: int):
-        await super().click((x, y))
-
-    async def scroll_inspector_to_end(self, at):
-        await self.move(at)
-        for _ in range(120):
-            self.xdo("click", "5")
-        await self.frames(4)
-
-    def window_origin(self):
-        return self.origin
-
-
-INSPECTOR_AT = (1420, 500)  # inside the Inspector of the default layout (1600x900)
-BUTTON_COLORS = ((0x58, 0x58, 0x58), (0x67, 0x67, 0x67), (0x46, 0x46, 0x46))  # ImGuiCol_Button, hovered, active
-DISABLED_COLORS = ((0x4B, 0x4B, 0x4B),)  # the button at DisabledAlpha over the panel (0x383838)
-
-
-def find_wide_button(img, colors, min_width=260):
-    """(x, y) centre of the lowest block of rows holding a run of `colors` at least min_width wide:
-    the inspector's full-width Bake Deformation button once the inspector is scrolled to its end
-    (Add Component, below it, is at most 230 pixels wide)."""
-    width, height, rgba = img
-
-    def matches(i):
-        r, g, b = rgba[i], rgba[i + 1], rgba[i + 2]
-        return any(abs(r - c[0]) <= 3 and abs(g - c[1]) <= 3 and abs(b - c[2]) <= 3 for c in colors)
-
-    rows = {}
-    for y in range(height):
-        xs = [x for x in range(width) if matches((y * width + x) * 4)]
-        # the label breaks the colour in the middle: the row's span and how much of it matches
-        if xs and xs[-1] - xs[0] + 1 >= min_width and len(xs) >= 0.6 * (xs[-1] - xs[0] + 1):
-            rows[y] = (xs[0], xs[-1] - xs[0] + 1)
-    if not rows:
-        return None
-    # the lowest block of consecutive rows
-    ys = sorted(rows)
-    block = [ys[-1]]
-    for y in reversed(ys[:-1]):
-        if y == block[-1] - 1:
-            block.append(y)
-        else:
-            break
-    if len(block) < 8:
-        return None
-    start, run = rows[block[0]]
-    return start + run // 2, (block[0] + block[-1]) // 2
+BAKE_BUTTON = "\uf56e Bake Deformation##lattice_bake"   # ICON_FA_FILE_EXPORT, the Lattice Modifier's Bake row
 
 
 async def click_bake(ed: Editor, entity, expect_enabled=True, shot_name="inspector"):
-    """Selects `entity` and clicks Bake Deformation at the end of its inspector."""
-    ui = Ui(ed)
+    """Selects `entity` and clicks Bake Deformation where the inspector draws it now (find_ui_item,
+    scrolled into view), after checking it is drawn enabled or disabled as expected."""
+    ui = ui_input.for_editor(ed)       # skips without xdotool or the harness's display
     await ed.call("select_entities", scene=S["scene"], entities=[entity])
     await ed.call("focus_window", window="inspector")
     await frames(ed, 10)
-    await ui.focus()
-    await ui.scroll_inspector_to_end(INSPECTOR_AT)
-    await frames(ed, 10)
-    png = await ed.screenshot("editor", path=str(ed.scratch.root / f"{shot_name}.png"), max_width=0)
-    img = pngdiff.decode(png)
-    found = find_wide_button(img, BUTTON_COLORS if expect_enabled else DISABLED_COLORS)
-    if not found:
-        skip(f"no {'enabled' if expect_enabled else 'disabled'} full-width button at the end of the inspector "
-             f"(see {shot_name}.png): the layout moved, update find_wide_button / INSPECTOR_AT")
-    ox, oy = ui.window_origin()
-    await ui.click(ox + found[0], oy + found[1])
+    ui.focus()
+    button = await ui.reveal(BAKE_BUTTON, "Inspector")
+    await ed.screenshot("editor", path=str(ed.scratch.root / f"{shot_name}.png"), max_width=0)
+    ed.check_eq(button["enabled"], expect_enabled, f"Bake Deformation is drawn {'enabled' if expect_enabled else 'disabled'}"
+                                                   f" (see {shot_name}.png): {button}")
+    await ui.click(ui.centre(button["rect"]))
     # away from the inspector, so its hover colours do not stay
-    ui.xdo("mousemove", str(ox + 200), str(oy + 450))
+    await ui.move(ui.at({"x": 200, "y": 450}))
     await frames(ed, 10)
-    return found
+    return button
 
 
 # -- tests ------------------------------------------------------------------------------------------

@@ -9,9 +9,8 @@
   play-time edits checked; Keep Selected applies the checked ones as one step; closing the
   window discards.
 
-Positions come from the editor (focus_window's panel rect, the scene screenshot's
-view_rect_in_window) plus offsets inside the panels measured in the default layout. Every
-action is verified through MCP, so a layout change fails with the screenshots to look at.
+Positions come from the editor: the controls where find_ui_item says they are drawn now, the
+Scene view from the scene screenshot's view_rect_in_window. Every action is verified through MCP.
 Screenshots go to $JE_EVIDENCE_DIR (else the scratch directory).
 """
 
@@ -29,26 +28,22 @@ import ui_input
 EDITOR = {"xvfb": "harness", "create": True, "name": "Undo UI"}
 TIMEOUT = 900
 
-# Inside the Inspector (default layout, a box selected): the X field of Transform's Position, Scale
-INSPECTOR_POSITION_X = (177, 119)
-INSPECTOR_SCALE_X = (177, 169)
-# Inside the Terrain window, a terrain selected: the Raise or Lower Terrain brush
-TERRAIN_RAISE_BRUSH = (150, 190)
-# Inside the bottom dock panel (Undo History): toolbar row, list rows
-UNDO_BACK = (20, 35)
-UNDO_FORWARD = (52, 35)
-UNDO_FILTER = (297, 35)
-UNDO_SHOW_SELECTION = (555, 35)
-UNDO_FIRST_ROW_Y = 63      # "(Start)"
-UNDO_ROW_STEP = 18.9
-UNDO_ROW_X = 120
-# Inside the bottom dock panel (Play Mode Changes): the first two property rows' checkboxes,
-# the buttons, the dock's close button
-PMC_ROW_CHECKBOX = [(45, 115), (45, 140)]
-PMC_KEEP_SELECTED = (52, 243)
-PMC_CLOSE = (1230, 10)
-# The main toolbar's Play button (centred in the 1600-wide window)
-TOOLBAR_PLAY = (764, 36)
+# find_ui_item labels: the Inspector's Transform X fields (a box selected)
+POSITION_X = "##input_x_position"
+SCALE_X = "##input_x_scale"
+# the Terrain window's Raise or Lower Terrain brush
+TERRAIN_RAISE_BRUSH = "##terrain_raise"
+# the Undo History toolbar
+UNDO_HISTORY = "Undo History"
+UNDO_BACK = "##UndoHistoryBack"
+UNDO_FORWARD = "##UndoHistoryForward"
+UNDO_FILTER = "##UndoHistoryFilter"
+UNDO_SHOW_SELECTION = "Show Selection Changes"
+UNDO_START = "(Start)"
+# the Play Mode Changes window: a row's checkbox is labelled with its property
+PLAY_MODE_CHANGES = "Play Mode Changes"
+# the main toolbar's Play button (ICON_FA_PLAY)
+TOOLBAR_PLAY = "\uf04b##MainPlay"
 
 S: dict = {}
 
@@ -108,6 +103,19 @@ async def rect(ed: Editor, window: str, **args) -> dict:
     return (await ed.call("focus_window", window=window, **args))["rect"]
 
 
+async def dock_close_button(ed: Editor, window: str) -> dict:
+    """The rect of the close button on the tab bar of the dock panel showing this window (focused
+    first): the "#CLOSE" item ImGui draws there, inside the top of the panel's rect."""
+    panel = await rect(ed, window)
+    await frames(ed)
+    buttons = [i["rect"] for i in (await ed.call("find_ui_item", label="#CLOSE"))["items"] if i["visible"]]
+    inside = [b for b in buttons
+              if panel["x"] <= b["x"] + b["width"] / 2 <= panel["x"] + panel["width"]
+              and panel["y"] <= b["y"] + b["height"] / 2 <= panel["y"] + 2 * b["height"] + 8]
+    ed.check(inside, f"a close button on the {window} panel's tab bar {panel}: {buttons}")
+    return min(inside, key=lambda b: b["y"])
+
+
 async def frames(ed: Editor, count: int = 3):
     await ed.call("wait", frames=count)
 
@@ -161,8 +169,8 @@ async def test_esc_cancels_an_inspector_drag(ed: Editor):
     sid = await scene(ed, "EscInspector")
     cube = (await ed.call("create_entity", scene=sid, type="box", name="Cube"))["entity_id"]
     await ed.call("select_entities", scene=sid, entities=[cube])
-    inspector = await rect(ed, "inspector")
-    field = ui.at(inspector, INSPECTOR_POSITION_X)
+    await ed.call("focus_window", window="inspector")
+    field = ui.centre((await ui.reveal(POSITION_X, "Inspector"))["rect"])
     before = await position(ed, sid, cube)
     steps = [e["id"] for e in await history(ed, sid)]
     label = await undo_label(ed)
@@ -209,9 +217,9 @@ async def test_esc_cancels_a_terrain_stroke(ed: Editor):
             break
         await asyncio.sleep(0.2)
     ed.check(info.get("height_map_loaded"), f"the height map loaded: {info}")
-    window = await rect(ed, "terrain")
+    await ed.call("focus_window", window="terrain")
     ui.focus()
-    await ui.click(ui.at(window, TERRAIN_RAISE_BRUSH))
+    await ui.click_revealed(TERRAIN_RAISE_BRUSH, "Terrain")
     shot = await ed.call_raw("screenshot", {"view": "scene", "scene": sid})
     view = shot.structured["view_rect_in_window"]
     start = ui.at(view, (view["width"] / 2 + 120, view["height"] / 2 + 80))
@@ -253,15 +261,16 @@ async def test_esc_cancels_a_terrain_stroke(ed: Editor):
     ed.check_eq(len(done), len(steps) + 1, f"one step: {[e['name'] for e in done]}")
     ed.check(done[-1]["name"].startswith("Sculpt Terrain"), f"named: {done[-1]['name']}")
     # leave the brush off for the next tests
-    await ui.click(ui.at(await rect(ed, "terrain"), TERRAIN_RAISE_BRUSH))
+    await ed.call("focus_window", window="terrain")
+    await ui.click_revealed(TERRAIN_RAISE_BRUSH, "Terrain")
 
 
 # -------------------------------------------------------------------------------------- AC15
 
 
-def row_point(ui: Ui, panel: dict, row: int) -> tuple[int, int]:
-    """row 0 = "(Start)", then the listed steps oldest first"""
-    return ui.at(panel, (UNDO_ROW_X, UNDO_FIRST_ROW_Y + UNDO_ROW_STEP * row))
+async def click_row(ui: Ui, name: str):
+    """the Undo History row of the step with this name (its icon left out), else "(Start)" """
+    await ui.click_revealed(name, UNDO_HISTORY)
 
 
 async def newest_applied(ed: Editor, sid: int, **args) -> int | None:
@@ -282,42 +291,42 @@ async def test_undo_history_panel(ed: Editor):
     selection = [e for e in await history(ed, sid, include_selection=True) if e["type"] == "SelectionCmd"]
     ed.check_eq(len(listed), 7, f"create, rename and 5 moves listed: {[e['name'] for e in listed]}")
     ed.check_eq(len(selection), 1, "one selection step")
-    panel = await rect(ed, "undo_history")
+    await ed.call("focus_window", window="undo_history")
     ui.focus()
     await ed.screenshot("editor", path=str(s["out"] / "ac15-1-panel.png"))
 
     # a click on the 2nd row: the create and the rename stay applied, the moves are undone
-    await ui.click(row_point(ui, panel, 2))
+    await click_row(ui, listed[1]["name"])
     ed.check_eq(await newest_applied(ed, sid), listed[1]["id"], "jumped to the 2nd row")
     ed.check_eq(len([e for e in await history(ed, sid) if e["applied"]]), 2, "two applied rows")
     ed.check_eq(await position(ed, sid, cube), [0.0, 0.0, 0.0], "the scene matches: the moves are undone")
     await ed.screenshot("editor", path=str(s["out"] / "ac15-2-jumped.png"))
 
     # "(Start)" reverts everything, Forward redoes one
-    await ui.click(row_point(ui, panel, 0))
+    await click_row(ui, UNDO_START)
     ed.check(not [e for e in await history(ed, sid, include_selection=True) if e["applied"]], "(Start) undid everything")
     ed.check(not (await ed.call("find_entities", scene=sid, name="Crate"))["entities"], "the cube is gone")
-    await ui.click(ui.at(panel, UNDO_FORWARD))
+    await ui.click_revealed(UNDO_FORWARD, UNDO_HISTORY)
     ed.check_eq(await newest_applied(ed, sid), listed[0]["id"], "Forward redid one step")
-    await ui.click(ui.at(panel, UNDO_BACK))
+    await ui.click_revealed(UNDO_BACK, UNDO_HISTORY)
     ed.check_eq(await newest_applied(ed, sid), None, "Back undid it")
 
     # the filter: only the rename row; a click on it jumps there
-    await ui.click(ui.at(panel, UNDO_FILTER))
+    await ui.click_revealed(UNDO_FILTER, UNDO_HISTORY)
     await ui.type("Rename")
     await ed.screenshot("editor", path=str(s["out"] / "ac15-3-filter.png"))
-    await ui.click(row_point(ui, panel, 1))
+    await click_row(ui, listed[1]["name"])
     ed.check_eq(await newest_applied(ed, sid), listed[1]["id"], "the filtered row was the rename")
-    await ui.click(ui.at(panel, UNDO_FILTER))
+    await ui.click_revealed(UNDO_FILTER, UNDO_HISTORY)
     await ui.key("ctrl+a", "BackSpace", "Return")
 
     # Show Selection Changes: the selection step is listed (row 2) and can be jumped to
-    await ui.click(ui.at(panel, UNDO_SHOW_SELECTION))
+    await ui.click_revealed(UNDO_SHOW_SELECTION, UNDO_HISTORY)
     await ed.screenshot("editor", path=str(s["out"] / "ac15-4-selection-shown.png"))
-    await ui.click(row_point(ui, panel, 2))
+    await click_row(ui, selection[0]["name"])
     ed.check_eq(await newest_applied(ed, sid, include_selection=True), selection[0]["id"],
-                "row 2 is the selection step when they are shown")
-    await ui.click(ui.at(panel, UNDO_SHOW_SELECTION))
+                "the selection step is listed and jumped to when they are shown")
+    await ui.click_revealed(UNDO_SHOW_SELECTION, UNDO_HISTORY)
 
     # the memory footer: deleting 100 GameObjects is a big step
     made = await ed.batch([("create_entity", {"scene": sid, "type": "box", "name": f"Bulk{k}"}) for k in range(100)])
@@ -331,20 +340,20 @@ async def test_undo_history_panel(ed: Editor):
 # -------------------------------------------------------------------------------------- AC16
 
 
-async def play_and_drag(ed: Editor, ui: Ui, sid: int, cube: int, fields: list[tuple[int, int]]):
-    """Play started, the Inspector's fields dragged, Stop from the editor's toolbar"""
+async def play_and_drag(ed: Editor, ui: Ui, sid: int, cube: int, fields: list[str]):
+    """Play started, the Inspector's fields (find_ui_item labels) dragged, Stop from the editor's toolbar"""
     started = await ed.call("play", action="start", scene=sid)
     ed.check_eq(started["state"], "playing", "play")
     await ed.call("select_entities", scene=sid, entities=[cube])
-    inspector = await rect(ed, "inspector")
+    await ed.call("focus_window", window="inspector")
     ui.focus()
-    for offset in fields:
-        point = ui.at(inspector, offset)
+    for label in fields:
+        point = ui.centre((await ui.reveal(label, "Inspector"))["rect"])
         await ui.press(point)
         await ui.drag_to(point, 70, 0)
         await ui.release()
     # Stop from the editor (the toolbar's Play button, else Ctrl+P), not through MCP
-    for attempt in (lambda: ui.click(ui.at({"x": 0, "y": 0}, TOOLBAR_PLAY)), lambda: ui.key("ctrl+p")):
+    for attempt in (lambda: ui.click_revealed(TOOLBAR_PLAY), lambda: ui.key("ctrl+p")):
         await attempt()
         for _ in range(20):
             if (await ed.call("get_play_state"))["state"] == "stopped":
@@ -366,17 +375,17 @@ async def test_play_mode_changes_window(ed: Editor):
     edit_scale = await position(ed, sid, cube, "scale")
 
     # two Inspector edits while playing: Stop opens the window with two checked rows
-    await play_and_drag(ed, ui, sid, cube, [INSPECTOR_POSITION_X, INSPECTOR_SCALE_X])
+    await play_and_drag(ed, ui, sid, cube, [POSITION_X, SCALE_X])
     rows = (await ed.call("get_play_changes", scene=sid))["rows"]
     ed.check_eq(len(rows), 2, f"two rows: {rows}")
     ed.check(all(r["keepable"] for r in rows), "both keepable")
     await ed.screenshot("editor", path=str(s["out"] / "ac16-1-window-opened.png"))
-    panel = await rect(ed, "play_mode_changes")
 
-    # uncheck the second row, Keep Selected: one step "Apply Play Mode Changes (1)"
-    await ui.click(ui.at(panel, PMC_ROW_CHECKBOX[1]))
+    # uncheck the Scale row, Keep Selected: one step "Apply Play Mode Changes (1)"
+    await ed.call("focus_window", window="play_mode_changes")
+    await ui.click_revealed("Scale", PLAY_MODE_CHANGES)
     await ed.screenshot("editor", path=str(s["out"] / "ac16-2-unchecked.png"))
-    await ui.click(ui.at(panel, PMC_KEEP_SELECTED))
+    await ui.click_revealed("Keep Selected", PLAY_MODE_CHANGES)
     top = (await history(ed, sid))[-1]
     ed.check_eq(top["name"], "Apply Play Mode Changes (1)", "one step for the kept row")
     ed.check(await position(ed, sid, cube) != edit_position, "the kept Position has its play value")
@@ -387,10 +396,9 @@ async def test_play_mode_changes_window(ed: Editor):
     # closing the window without choosing discards
     steps = [e["id"] for e in await history(ed, sid)]
     kept_position = await position(ed, sid, cube)
-    await play_and_drag(ed, ui, sid, cube, [INSPECTOR_POSITION_X])
+    await play_and_drag(ed, ui, sid, cube, [POSITION_X])
     ed.check_eq((await ed.call("get_play_state"))["pending_play_changes"], 1, "one row pending")
-    panel = await rect(ed, "play_mode_changes")
-    await ui.click(ui.at(panel, PMC_CLOSE))
+    await ui.click(ui.centre(await dock_close_button(ed, "play_mode_changes")))
     await ed.screenshot("editor", path=str(s["out"] / "ac16-4-closed.png"))
     ed.check_eq((await ed.call("get_play_state"))["pending_play_changes"], 0, "closing discarded the rows")
     ed.check_eq([e["id"] for e in await history(ed, sid)], steps, "no step")
