@@ -7,6 +7,7 @@
 
 #include "VcsTestSupport.h"
 
+#include "io/AtomicFile.h"
 #include "vcs/VcsEditorOps.h"
 
 using namespace jasperengine;
@@ -37,11 +38,22 @@ TEST(VcsService, DetectsTheNearestRepositoryAbove) {
 
 TEST(VcsService, NoRepositoryAndProviderNone) {
     VcsSandbox box;
-    fs::create_directories(box.path("plain"));
+    // a folder in no repository: the system's temp folder (the test's own may be inside the
+    // source checkout, which is one)
+    std::error_code ec;
+    const fs::path plain = fs::temp_directory_path(ec) / ("je-vcs-plain-" + std::to_string(io::currentProcessId()));
+    fs::create_directories(plain, ec);
+    struct Cleanup {
+        fs::path dir;
+        ~Cleanup() {
+            std::error_code ignored;
+            fs::remove_all(dir, ignored);
+        }
+    } cleanup{plain};
     VcsService service;
-    service.open(box.path("plain"), box.path("plain/.jasperengine"), box.settings(), false);
+    service.open(plain, plain / ".jasperengine", box.settings(), false);
     ASSERT_TRUE(pumpUntil(service, [&]() { return service.state() != VcsState::Detecting; }));
-    EXPECT_EQ(service.state(), VcsState::NoRepository);
+    EXPECT_EQ(service.state(), VcsState::NoRepository) << service.stateMessage();
     // a repository, but the project says none
     const fs::path repo = box.gitRepo("repo");
     VcsSettings none = box.settings();

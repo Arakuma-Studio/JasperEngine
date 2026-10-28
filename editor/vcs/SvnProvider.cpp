@@ -514,7 +514,9 @@ VcsResult SvnProvider::revert(std::span<const RepoPath> paths) {
 VcsResult SvnProvider::log(const RepoPath* path, int limit, int skip, std::vector<VcsLogEntry>& out) {
     // svn has no skip: the first `skip` of a longer log are passed over
     const int count = std::max(1, limit) + std::max(0, skip);
-    const ProcessResult result = svn({"log", "--xml", "-l", std::to_string(count), "--", pegged(path ? *path : projectTarget())});
+    // @HEAD: the history as the repository has it (a working copy folder's own revision lags
+    // behind the commits of its files)
+    const ProcessResult result = svn({"log", "--xml", "-l", std::to_string(count), "--", std::string(path ? *path : projectTarget()) + "@HEAD"});
     if (!result.ok()) return resultOf(result);
     XmlElement root;
     if (!parseXml(result.out, root)) return VcsResult::failure("svn log: unreadable output");
