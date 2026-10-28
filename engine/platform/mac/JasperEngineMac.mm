@@ -188,6 +188,17 @@ namespace {
     WindowMac::refreshDrawableSize();
 }
 
+// held keys and buttons come up while another window has the keyboard
+- (void)windowDidResignKey:(NSNotification*)notification {
+    (void)notification;
+    Engine::systemFocusChanged(false);
+}
+
+- (void)windowDidBecomeKey:(NSNotification*)notification {
+    (void)notification;
+    Engine::systemFocusChanged(true);
+}
+
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication*)sender {
     (void)sender;
     return YES;

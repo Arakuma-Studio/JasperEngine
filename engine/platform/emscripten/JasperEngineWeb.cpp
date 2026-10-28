@@ -350,6 +350,10 @@ int JasperEngineWeb::init(int argc, char **argv){
     emscripten_set_touchcancel_callback(canvas.c_str(), 0, true, touch_callback);
     emscripten_set_webglcontextlost_callback(canvas.c_str(), 0, true, webgl_context_callback);
     emscripten_set_webglcontextrestored_callback(canvas.c_str(), 0, true, webgl_context_callback);
+    emscripten_set_pointerlockchange_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, 0, true, pointerlock_callback);
+    // not in the capture phase: the IME textarea's own focus and blur (which do not bubble) stay out
+    emscripten_set_blur_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, false, focus_callback);
+    emscripten_set_focus_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, false, focus_callback);
 
     syncWaitTime = 0;
     enabledIDB = false;
@@ -410,6 +414,9 @@ void JasperEngineWeb::unregisterCallbacks(){
     emscripten_set_touchcancel_callback(canvas.c_str(), 0, true, NULL);
     emscripten_set_webglcontextlost_callback(canvas.c_str(), 0, true, NULL);
     emscripten_set_webglcontextrestored_callback(canvas.c_str(), 0, true, NULL);
+    emscripten_set_pointerlockchange_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, 0, true, NULL);
+    emscripten_set_blur_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, false, NULL);
+    emscripten_set_focus_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, false, NULL);
 }
 
 void JasperEngineWeb::changeCanvasSize(int width, int height){
@@ -813,6 +820,11 @@ EM_BOOL JasperEngineWeb::mouse_callback(int eventType, const EmscriptenMouseEven
     if (e->metaKey) modifiers |= D_MODIFIER_SUPER;
 
     jasperengine::Engine::systemMouseMove((float)mousePosX, (float)mousePosY, modifiers);
+    // a capture the browser ended (Esc, the tab hidden) locks again at the next click
+    if (eventType == EMSCRIPTEN_EVENT_MOUSEDOWN && !mouseLocked &&
+        jasperengine::Engine::getMouseMode() == jasperengine::MouseMode::CAPTURED){
+        emscripten_request_pointerlock(canvas.c_str(), 0);
+    }
     if (eventType == EMSCRIPTEN_EVENT_MOUSEDOWN && e->buttons != 0){
         jasperengine::Engine::systemMouseDown(jasperengine_mouse_button(e->button), (float)mousePosX, (float)mousePosY, modifiers);
         // a press on a document text field: the textarea keeps the focus the press would move
@@ -831,6 +843,18 @@ EM_BOOL JasperEngineWeb::mouse_callback(int eventType, const EmscriptenMouseEven
         jasperengine::Engine::systemMouseLeave();
     }
 
+    return 0;
+}
+
+// Input::getPointerLockState: PENDING from setMouseMode(CAPTURED) until the browser locks
+EM_BOOL JasperEngineWeb::pointerlock_callback(int eventType, const EmscriptenPointerlockChangeEvent* e, void* userData) {
+    jasperengine::Engine::systemPointerLockChanged(e->isActive);
+    return 0;
+}
+
+// the page lost the keyboard (another tab, window or app): held keys and buttons come up
+EM_BOOL JasperEngineWeb::focus_callback(int eventType, const EmscriptenFocusEvent* e, void* userData) {
+    jasperengine::Engine::systemFocusChanged(eventType == EMSCRIPTEN_EVENT_FOCUS);
     return 0;
 }
 

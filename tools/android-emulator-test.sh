@@ -15,6 +15,9 @@
 #                       (default 20)
 #   --expect-native-crash require our report and the OS tombstone; a deliberate crash passes
 #                       (implies --no-ready: the fixture may crash before its ready line)
+#   --two-finger-tap    TAP_AFTER seconds (--tap-after, default 10) after the launch, two fingers
+#                       touch the screen together and lift (tools/android-two-finger-tap.sh)
+#   --tap-after SECONDS when --two-finger-tap taps
 #   --scene NAME        launch the app once per --scene (repeatable), with the property
 #                       debug.jasperengine.scene set to NAME (a test project picks what it shows
 #                       by it: tools/test-projects/render-gate); every run is checked on its own
@@ -75,7 +78,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() {
-    sed -n '2,72p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,75p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 2
 }
 
@@ -91,6 +94,8 @@ EXPECT_NATIVE_CRASH=0
 READY=1
 TIMEOUT=120
 SECONDS_TO_RUN=20
+TWO_FINGER_TAP=0
+TAP_AFTER=10
 OUT="build/android-emulator"
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -107,6 +112,8 @@ while [[ $# -gt 0 ]]; do
         --forbid) FORBIDS+=("$2"); shift 2 ;;
         --timeout) TIMEOUT="$2"; shift 2 ;;
         --seconds) SECONDS_TO_RUN="$2"; shift 2 ;;
+        --two-finger-tap) TWO_FINGER_TAP=1; shift ;;
+        --tap-after) TAP_AFTER="$2"; shift 2 ;;
         --scene)
             [[ "$2" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "android-emulator-test: --scene takes a name of letters, digits, _ and - (got $2)" >&2; exit 2; }
             SCENES+=("$2"); shift 2 ;;
@@ -162,6 +169,7 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
     -v "$ROOT:/src" -w /src \
     -e HOME=/src/build/.cache/home \
     -e APK="$APK_IN" -e OUT="/src/$OUT" -e ORDERED="$ORDERED" -e TIMEOUT="$TIMEOUT" -e SECONDS_TO_RUN="$SECONDS_TO_RUN" \
+    -e TWO_FINGER_TAP="$TWO_FINGER_TAP" -e TAP_AFTER="$TAP_AFTER" \
     -e EXPECT_NATIVE_CRASH="$EXPECT_NATIVE_CRASH" \
     -e SCENES="${SCENES[*]+"${SCENES[*]}"}" -e SCREENSHOT_ON_PRESENT="$([[ -n "$GOLDEN" ]] && echo 1 || echo 0)" \
     -e GPU="${EMULATOR_GPU:-swangle_indirect}" \
@@ -248,6 +256,9 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
             adb shell setprop debug.jasperengine.scene "\"$SCENE\""
             log "launching $PACKAGE${SCENE:+ (scene $SCENE)}"
             adb shell monkey -p "$PACKAGE" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
+            if [[ "$TWO_FINGER_TAP" == 1 ]]; then
+                ( sleep "$TAP_AFTER"; bash /src/tools/android-two-finger-tap.sh > "$DIR/tap.log" 2>&1 ) &
+            fi
 
             if grep -q . "$DIR/expect.txt"; then WAIT=$TIMEOUT; else WAIT=$SECONDS_TO_RUN; fi
             start=$SECONDS

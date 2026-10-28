@@ -114,6 +114,27 @@ float: Jolt has no volume for them; use convex shapes), the mass from their dens
 it. Scripts read the surface with `Water.getHeight(scene, x, z)` / `Water.getNormal` /
 `Water.isUnderwater(scene, point)` (Lua API 2.10.1).
 
+### Water Volumes and Buoyancy
+
+For water with a box (or an ocean), a density, a current and drags, add a **Water Volume**
+(`WaterVolumeComponent`, e.g. on the Water GameObject) and give floating bodies a **Buoyancy**
+(`BuoyancyComponent`) instead of the Rigidbody `buoyancy` factor:
+- The volume's surface is its GameObject's world height at `surfaceOffset`, plus the waves of
+  its `library:water` material (`waves: from_material`; the material is the only place their
+  values live). Below it the water fills the local box `size` (XZ the extent, Y the depth), or
+  everything with `infinite`. Where volumes overlap the highest surface wins.
+- A Buoyancy floats its dynamic Rigidbody by Archimedes on columns (2x2, 3x3 on the bottom of
+  its colliders' bounds, or `customPoints`): each carries its share of the colliders' volume
+  (`volumeScale`), pushed up by `density x |g| x` its submerged part and slowed by the volume's
+  `linearDrag` / `angularDrag` (`dragScale`) against the water's own motion (`flow` and the
+  waves rising). A box floats as deep as its density is of the water's. It rides the waves the
+  shader draws (one shader time a frame). A body with a Buoyancy ignores the Rigidbody `buoyancy`.
+- `Water.sample(scene, point)` / `Water.sampleHeight(scene, x, z)` and the `sample_water` tool
+  read the volumes first, then the `library:water` meshes; they work in edit mode.
+- The inspector warns when the mesh is too coarse for the waves (the drawn surface is linear
+  between vertices; things float on the exact curve), when a Buoyancy has no dynamic Rigidbody
+  or no volume to float in, and when it is as dense as the water.
+
 ## Layers, contacts and queries
 
 - Each backend has a Layer Collision Matrix (Project Settings > Physics / Physics 2D), saved in
@@ -128,6 +149,50 @@ it. Scripts read the surface with `Water.getHeight(scene, x, z)` / `Water.getNor
   `ray.direction`; with origin/direction/distance it is in world units.
 - Contacts in Lua: `RegisterEvent(self, self.scene:getPhysicsSystem().beginContact2D, "onHit")`
   fires for every contacting pair in the scene (filter by body).
+
+## Character controllers
+
+A Character Controller (`CharacterControllerComponent`, Unity's) is a kinematic capsule moved by
+script on Jolt's CharacterVirtual. `cc:move(motion)` sweeps it at once (world units, no gravity)
+and returns `CollisionFlags` (SIDES 1, ABOVE 2, BELOW 4); `cc:simpleMove(speed)` ignores `speed.y`,
+adds its own gravity and returns `isGrounded`. Move in `onUpdate` or `onFixedUpdate` (dt is the
+fixed step there), never from a contact callback.
+- It climbs steps up to `stepOffset`, sticks to the floor going down them, slides on walls and
+  treats surfaces steeper than `slopeLimit` as walls. `isGrounded` is Jolt's OnGround: on a too
+  steep surface it is false and `isOnSteepSlope` is true (Unity's isGrounded is any contact below).
+- After every physics step it rides what it stands on (`movingPlatforms`, turning with it with
+  `inheritPlatformYaw`), whether or not a script moved it, and `isGrounded` follows a platform
+  that drops away. `move`'s displacement never includes the platform's.
+- It pushes dynamic bodies with up to `pushStrength` N (`pushBodies`); with `detectCollisions`
+  a kinematic inner body lets rays (`Physics.raycast` returns the controller), triggers and
+  dynamic bodies see it. Its contacts with bodies are not in `onContactAdded3D` (no Rigidbody
+  there); a trigger's are, with `Rigidbody.valid` false on the controller's side.
+- Controllers block each other with `characterCollisions` (both on).
+- `onControllerColliderHit(hit)` in its Lua scripts (and `PhysicsSystem.onControllerColliderHit`)
+  gets each body or controller a move touched: `hit.entity`, `point`, `normal`, `moveDirection`,
+  `moveLength`.
+- Write its Transform to teleport it. A new `height`/`radius`/`center` while playing is tried
+  at once (`cc:trySetSize(h, r, c)` returns false and keeps the old one when it would not fit).
+- `PhysicsSystem:setRootMotion(entity, worldVelocity, yawRate)` (S21's Animator) moves and turns
+  it in every fixed step until the next call.
+- Never on a GameObject with a Rigidbody: Add Component and `add_component` refuse, and one loaded
+  with both does nothing and logs once.
+
+A Character Controller 2D (`CharacterController2DComponent`) is a kinematic, upright capsule moved
+by script: `cc:move(motion)` slides it at once (no gravity) and returns `CollisionFlags`;
+`cc:simpleMove(speed)` adds its own gravity and returns `isGrounded`. Call them in `onUpdate` or
+`onFixedUpdate`, never from a contact callback. Box2D 3.0 has no mover, so the engine slides the
+capsule on Box2D's casts (at most 4 iterations a move). It climbs steps up to `stepOffset`
+(points), treats surfaces steeper than `slopeLimit` as walls (`isOnSteepSlope`), keeps
+`skinWidth` off colliders, sticks to the floor going down steps, is carried by the kinematic or
+dynamic body it stands on (`movingPlatforms`) and pushes dynamic bodies it walks into
+(`pushBodies`: an impulse `pushStrength x dt` along the move; not what it stands on).
+- It has no Box2D body: ray casts, sensors and other controllers do not see it, and it does not
+  turn with a rotating platform. There is no `onControllerColliderHit` in 2D.
+- It cannot share a GameObject with a Rigidbody 2D: Add Component and `add_component` refuse;
+  one loaded with both does nothing and logs once.
+- Its layer, the 2D Layer Collision Matrix and `categoryBits`/`maskBits` filter what it hits.
+- `get_runtime_entity` shows `isGrounded`, `collisionFlags`, `velocity`, `groundEntity`, ...
 
 ## Placing objects with physics (`place_with_physics`)
 
