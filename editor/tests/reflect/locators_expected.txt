@@ -260,3 +260,5 @@
 1052 reflectionprobe/texture cubemap
 1053 uidocument/filename ui_document
 1060 volumetricclouds/weatherMap texture
+1066 navmeshsurface/navMeshData any
+1071 navgrid/gridData any
