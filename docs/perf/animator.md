@@ -53,6 +53,11 @@ core-tests build (RelWithDebInfo, GCC 11, SSE2 pose kernels), `--workers 3 --cou
 | State-machine update, 20 states / 60 transitions | 0.04 µs | ≤ 1.1 µs (R20) |
 | Runtime state of an Animator | 4 640 B | ≤ 8 KB (R20) |
 
+Re-measured after the S29 merge (2026-10-29, five runs on an idle E): Crowd200 p95 2.39 ms
+(2.38-2.50), p50 2.29 ms, main thread p95 0.30 ms; the micro numbers unchanged. The p95 has
+about 0.1 ms of headroom: an earlier batch while E was busy with another job measured 3.0 and
+3.7 ms, so gate it on an idle server.
+
 Where the serial time goes (p50, 4.90 ms in all): the IK about 1.1 ms (the 400 raycasts run on the
 main thread in prepare), the upper and additive layers 0.2 ms, the crossfading quarter 0.4 ms,
 root motion 0.35 ms; the base tree of 5 clips with the rig space, the skins and the writes
