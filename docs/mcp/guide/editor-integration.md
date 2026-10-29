@@ -38,7 +38,8 @@ project.yaml (any folder, any letter case): settings go through `set_project_set
 roots are plain project folders (no absolute path, no `..`). `open_project` refuses a project whose
 assets_dir or lua_dir points outside its folder (the user opens that one in the editor), and the
 machine-level preferences (tool paths, compilers, the default export folder) are read-only: the user
-changes them in Edit > Preferences.
+changes them in Edit > Preferences. `run_build` runs only this project's built player (build it
+first), and `create_project` makes a project beside the current one, not inside it.
 
 ## Reading the API
 

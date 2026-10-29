@@ -30,7 +30,8 @@ def disc(width: int = 32, height: int = 32) -> bytes:
 async def test_a_project_with_a_linked_assets_folder_works(ed: Editor):
     if not symlinks_permitted():
         skip("this process may not create symbolic links")
-    base = Path(tempfile.mkdtemp(prefix="jasper-trusted-"))
+    # beside the current project: create_project over MCP makes a project there, not in an unrelated folder
+    base = Path(tempfile.mkdtemp(prefix="jasper-trusted-", dir=ed.scratch.root))
     S["base"] = base
     summary = await ed.call("get_project_summary")
     S["original"] = summary["path"]

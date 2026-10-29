@@ -1846,6 +1846,9 @@ static bool importFbx(const fs::path& fbxPath, const fs::path& glbPath, const fs
     }
 
     editor::Out::info("Importing %s", fbxName.c_str());
+    // the converted glTF goes to the editor's import cache (.jasperengine/imported), which an MCP
+    // call's deny-by-default guard refuses: the editor names the one file it writes (util/SafeWrite.h)
+    jasperengine::editor::safewrite::EditorInternal ownImport(glbPath);
     const editor::FbxImporter::Result result = editor::FbxImporter::import(fbxPath, glbPath, assetsRoot, force);
     for (const std::string& warning : result.warnings) {
         editor::Out::warning("%s: %s", fbxName.c_str(), warning.c_str());
@@ -5552,6 +5555,9 @@ void editor::Project::stopVertexAnimatorPreviews() {
 }
 
 void editor::Project::copyEngineApiToProject() {
+    // the engine API snapshot and tooling live in the editor's internal folder (an MCP call's
+    // deny-by-default guard refuses it otherwise: util/SafeWrite.h, EditorInternal)
+    safewrite::EditorInternal ownInternal(getProjectInternalPath());
     // Lua API stubs and LSP configuration (lua-language-server, clangd) next to the snapshot.
     // Written even when the engine folder is missing or the copy fails: the stubs are built
     // into the editor.
@@ -6118,6 +6124,9 @@ bool editor::Project::saveProjectFile() {
 
         // Trailing newline: git reports a file without one as changed as soon as
         // anything is appended to it
+        // the editor writes the project's own project.yaml (an MCP call's deny-by-default guard
+        // refuses every other writer: util/SafeWrite.h, EditorInternal)
+        safewrite::EditorInternal ownProjectFile(projectFile);
         if (!FileUtils::writeFileReplacing(projectFile, YAML::Dump(Stream::encodeProject(this)) + "\n", FileUtils::LineEndings::KeepExisting)) {
             Out::error("Failed to write project file: %s", projectFile.string().c_str());
             return false;
@@ -6134,6 +6143,9 @@ bool editor::Project::saveWorkspaceFile() {
     if (projectPath.empty()) {
         return false;
     }
+    // the editor's own per-user workspace, under .jasperengine (a hidden folder the guard refuses
+    // to agents): the editor names it so its own save goes through (util/SafeWrite.h)
+    safewrite::EditorInternal workspaceDir(Workspace::getUserDirectory(projectPath));
     if (!Workspace::save(this)) {
         return false;
     }
@@ -6238,6 +6250,9 @@ bool editor::Project::writeVersionControlMetadata() {
         }
         fin.close();
 
+        // the editor's own .gitignore / .gitattributes at the project root (dot-files the guard
+        // refuses to agents): named so the editor's own refresh goes through
+        safewrite::EditorInternal ownMetadata(target);
         if (!FileUtils::writeIfChanged(target, content)) {
             Out::error("Failed to write %s", target.string().c_str());
             success = false;
@@ -7772,6 +7787,7 @@ fs::path editor::Project::getUserDataPath() const{
     // build has it, every playtest would leave a modified file in the working tree.
     const fs::path path = getProjectInternalPath() / "user" / "rundata";
     std::error_code ec;
+    safewrite::EditorInternal ownRunData(path);   // Play's data folder, under .jasperengine (util/SafeWrite.h)
     FileUtils::createDirectories(path, ec);
     if (ec) {
         Out::error("Failed to create the Play mode data directory: %s", ec.message().c_str());

@@ -797,15 +797,22 @@ namespace jasperengine::editor::safewrite {
 #if defined(_WIN32) || defined(__APPLE__)
     namespace {
         // one path component as a case-insensitive file system compares it (Windows, macOS)
-        fs::path::string_type folded(const fs::path& part) {
-            fs::path::string_type text = part.native();
-            for (auto& c : text) {
-                if (c >= 'A' && c <= 'Z') c = static_cast<fs::path::value_type>(c - 'A' + 'a');
+        // two path components the way the local file system compares names. Windows: NTFS-style
+        // ordinal, case-insensitive (CompareStringOrdinal, the same folding NTFS uses — upper-cases
+        // with the invariant table, so no locale surprises). macOS: ASCII case folding (a plain,
+        // documented approximation of HFS+/APFS case-insensitive volumes; full Unicode case folding
+        // is not applied). Linux never reaches here (case-sensitive).
+        bool nameEqual(const fs::path& a, const fs::path& b) {
 #ifdef _WIN32
-                else if (c > 0x7f) c = static_cast<fs::path::value_type>(towlower(static_cast<wint_t>(c)));
+            const std::wstring wa = a.native(), wb = b.native();
+            return CompareStringOrdinal(wa.c_str(), static_cast<int>(wa.size()),
+                                        wb.c_str(), static_cast<int>(wb.size()), TRUE) == CSTR_EQUAL;
+#else
+            std::string sa = a.string(), sb = b.string();
+            for (char& c : sa) if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+            for (char& c : sb) if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+            return sa == sb;
 #endif
-            }
-            return text;
         }
     }
 #endif
@@ -818,7 +825,7 @@ namespace jasperengine::editor::safewrite {
         for (auto di = d.begin(); di != d.end(); ++di) {
             if (di->empty()) continue;
             while (pi != p.end() && pi->empty()) ++pi;
-            if (pi == p.end() || folded(*pi) != folded(*di)) return false;
+            if (pi == p.end() || !nameEqual(*pi, *di)) return false;
             ++pi;
         }
         return true;
@@ -941,8 +948,8 @@ namespace jasperengine::editor::safewrite {
 
         bool writeSourceBeneath(const fs::path& root, const fs::path& target, ByteSource& source, std::string& error,
                                 std::vector<fs::path>* createdDirs);
-        // (the write scope, below) a file named project.yaml made in an MCP call: the refusal
-        std::string projectFileRefusal(const fs::path& path);
+        // (the write scope, below) deny-by-default: an owned/hidden place written in an MCP call
+        std::string protectedPlaceRefusal(const fs::path& path, bool entry);
     }
 
     bool writeFileBeneath(const fs::path& root, const fs::path& target, const std::string& bytes, std::string& error,
@@ -955,7 +962,7 @@ namespace jasperengine::editor::safewrite {
     namespace {
     bool writeSourceBeneath(const fs::path& root, const fs::path& target, ByteSource& source, std::string& error,
                             std::vector<fs::path>* createdDirs) {
-        if (std::string refusal = projectFileRefusal(absoluteIn(root, target)); !refusal.empty()) {
+        if (std::string refusal = protectedPlaceRefusal(absoluteIn(root, target), false); !refusal.empty()) {
             error = std::move(refusal);
             return false;
         }
@@ -1191,7 +1198,7 @@ namespace jasperengine::editor::safewrite {
     }
 
     bool createDirBeneath(const fs::path& root, const fs::path& target, std::string& error) {
-        if (std::string refusal = projectFileRefusal(absoluteIn(root, target)); !refusal.empty()) {
+        if (std::string refusal = protectedPlaceRefusal(absoluteIn(root, target), false); !refusal.empty()) {
             error = std::move(refusal);
             return false;
         }
@@ -1221,7 +1228,7 @@ namespace jasperengine::editor::safewrite {
     }
 
     bool createDirectoriesBeneath(const fs::path& root, const fs::path& target, std::string& error, std::vector<fs::path>* createdDirs) {
-        if (std::string refusal = projectFileRefusal(absoluteIn(root, target)); !refusal.empty()) {
+        if (std::string refusal = protectedPlaceRefusal(absoluteIn(root, target), false); !refusal.empty()) {
             error = std::move(refusal);
             return false;
         }
@@ -1245,7 +1252,7 @@ namespace jasperengine::editor::safewrite {
     bool renameBeneath(const fs::path& root, const fs::path& from, const fs::path& to, std::string& error, bool replace) {
         // renamed to project.yaml (one moved as it is, to the trash and back, is not a new one)
         if (!isProjectFileName(from)) {
-            if (std::string refusal = projectFileRefusal(absoluteIn(root, to)); !refusal.empty()) {
+            if (std::string refusal = protectedPlaceRefusal(absoluteIn(root, to), true); !refusal.empty()) {
                 error = std::move(refusal);
                 return false;
             }
@@ -1312,7 +1319,7 @@ namespace jasperengine::editor::safewrite {
     }
 
     std::FILE* openFileBeneath(const fs::path& root, const fs::path& target, bool append, std::string& error) {
-        if (std::string refusal = projectFileRefusal(absoluteIn(root, target)); !refusal.empty()) {
+        if (std::string refusal = protectedPlaceRefusal(absoluteIn(root, target), false); !refusal.empty()) {
             error = std::move(refusal);
             return nullptr;
         }
@@ -1682,24 +1689,68 @@ namespace jasperengine::editor::safewrite {
             return Route::Beneath;
         }
 
-        // A file named project.yaml (any folder, any letter case, a Windows alias) created, written,
-        // or reached by a move or a copy in an MCP call (a strict scope): refused but the project's
-        // own (the editor saves it: set_project_settings). Another one would be a project an agent
-        // could open with roots of its choosing. "" when fine.
-        std::string projectFileRefusal(const fs::path& path) {
+        // The editor's own internal writers that reach an owned place name it here (SafeWrite.h,
+        // EditorInternal); an agent-named write gets none.
+        thread_local std::vector<fs::path> editorInternalAllowed;   // spelled (lexically normal)
+        thread_local std::vector<fs::path> editorInternalResolved;  // and resolved
+
+        bool editorInternalCovers(const fs::path& absolute) {
+            if (editorInternalAllowed.empty()) return false;
+            const fs::path resolved = writeLocation(absolute);
+            for (size_t i = 0; i < editorInternalAllowed.size(); i++) {
+                if (isAtOrBelow(absolute, editorInternalAllowed[i])) return true;
+                if (!resolved.empty() && !editorInternalResolved[i].empty() && isAtOrBelow(resolved, editorInternalResolved[i])) return true;
+            }
+            return false;
+        }
+
+        // why `rel` (relative to the project directory, lexically normal) names an editor-owned or
+        // hidden place, "" when it doesn't: a component starting with '.' (hidden), a file named
+        // project.yaml at any depth, or the project's own root CMakeLists.txt. Names are compared as
+        // the file system may (comparableName). ProjectBuild.cmake is not owned.
+        std::string ownedRelReason(const fs::path& rel) {
+            if (rel.empty() || *rel.begin() == "..") return std::string();
+            size_t parts = 0;
+            for (const fs::path& part : rel) {
+                const std::string name = comparableName(part);
+                if (name == ".") continue;
+                parts++;
+                if (!name.empty() && name[0] == '.') {
+                    return "it is under the editor's hidden folder " + FileUtils::pathToUtf8(part) +
+                           " (.jasperengine and other dot-folders are the editor's): tools don't write, create, move or copy files there";
+                }
+            }
+            if (isProjectFileName(rel)) {
+                return "it is a file named project.yaml: the editor writes the project's own (set_project_settings); a tool makes no "
+                       "file of that name in any folder (a second project.yaml would be a project an agent could open)";
+            }
+            if (parts == 1 && comparableName(rel) == "cmakelists.txt") {
+                return "CMakeLists.txt is regenerated on every build; put custom build settings in ProjectBuild.cmake";
+            }
+            return std::string();
+        }
+
+        // Deny by default inside a strict scope: a write / create / rename-to / copy-to of an
+        // editor-owned or hidden place (ownedRelReason), as named and where it resolves, unless an
+        // EditorInternal token covers it. "" when allowed. `entry`: a rename/remove of the entry
+        // itself (its final name as named, not followed).
+        std::string protectedPlaceRefusal(const fs::path& path, bool entry) {
             if (path.empty()) return std::string();
-            const std::vector<const ScopeEntry*> active = activeScopes();
-            if (active.empty()) return std::string();
+            const ScopeEntry* strict = nullptr;
+            for (const ScopeEntry* scope : activeScopes()) {
+                if (scope->strict) { strict = scope; break; }
+            }
+            if (!strict || strict->roots.empty()) return std::string();
             const fs::path absolute = absoluteNormal(path);
-            const fs::path where = writeLocation(absolute);
-            if (!isProjectFileName(absolute) && (where.empty() || !isProjectFileName(where))) return std::string();
-            for (const ScopeEntry* scope : active) {
-                if (!scope->strict) continue;
-                const fs::path own = scope->roots.front() / "project.yaml";
-                if (!where.empty() && isAtOrBelow(where, own) && isAtOrBelow(own, where) && isProjectFileName(absolute)) continue;
-                return shown(absolute) + " is a file named project.yaml: an MCP call creates, writes, moves or copies no file of that "
-                       "name (in any folder, in any letter case) but the project's own, which the editor writes (set_project_settings). "
-                       "Pick another name.";
+            if (editorInternalCovers(absolute)) return std::string();
+            const fs::path where = entry ? entryLocation(absolute) : writeLocation(absolute);
+            // the strict scope's first root is the project directory (resolved and pinned)
+            const fs::path projectRoot = strict->roots.front();
+            for (const fs::path& loc : {absolute, where}) {
+                if (loc.empty() || !isAtOrBelow(loc, projectRoot)) continue;
+                if (std::string why = ownedRelReason(loc.lexically_relative(projectRoot)); !why.empty()) {
+                    return shown(absolute) + ": " + why + ".";
+                }
             }
             return std::string();
         }
@@ -1707,11 +1758,14 @@ namespace jasperengine::editor::safewrite {
         // ... and for a folder copied in an MCP call: one named project.yaml anywhere in it
         // (links not followed; bounded: a folder too big to check is refused)
         std::string projectFileInsideRefusal(const fs::path& from, const fs::path& to) {
-            if (const std::string refusal = projectFileRefusal(to); !refusal.empty()) return refusal;
+            if (const std::string refusal = protectedPlaceRefusal(to, false); !refusal.empty()) return refusal;
             bool strict = false;
             for (const ScopeEntry* scope : activeScopes()) strict = strict || scope->strict;
             std::error_code ec;
-            if (!strict || from.empty() || !fs::is_directory(fs::symlink_status(from, ec))) return std::string();
+            if (!strict || from.empty() || editorInternalCovers(absoluteNormal(to)) ||
+                !fs::is_directory(fs::symlink_status(from, ec))) {
+                return std::string();
+            }
             constexpr size_t kMaxEntries = 200000;
             size_t entries = 0;
             for (fs::recursive_directory_iterator it(from, fs::directory_options::none, ec), end; !ec && it != end; it.increment(ec)) {
@@ -1729,7 +1783,7 @@ namespace jasperengine::editor::safewrite {
         }
 
         int scopedWrite(const fs::path& path, const std::string& content, std::error_code& ec) {
-            if (const std::string refusal = projectFileRefusal(path); !refusal.empty()) return scopedResult(false, refusal, ec);
+            if (const std::string refusal = protectedPlaceRefusal(path, false); !refusal.empty()) return scopedResult(false, refusal, ec);
             fs::path root;
             std::string error;
             const Route r = route(path, false, root, error);
@@ -1738,7 +1792,7 @@ namespace jasperengine::editor::safewrite {
             return scopedResult(writeFileResolvedBeneath(root, path, content, error), error, ec);
         }
         int scopedCreateDirectories(const fs::path& path, std::error_code& ec) {
-            if (const std::string refusal = projectFileRefusal(path); !refusal.empty()) return scopedResult(false, refusal, ec);
+            if (const std::string refusal = protectedPlaceRefusal(path, false); !refusal.empty()) return scopedResult(false, refusal, ec);
             fs::path root;
             std::string error;
             const Route r = route(path, false, root, error);
@@ -1774,9 +1828,10 @@ namespace jasperengine::editor::safewrite {
         }
         int scopedRename(const fs::path& from, const fs::path& to, std::error_code& ec) {
             // either end inside a scope: beneath the innermost root holding both
-            // renamed to project.yaml: refused (one moved as it is, to the trash and back, is not a new one)
+            // renamed into an owned place: refused (an owned entry moved as it is — to the trash and
+            // back — is not a new one, so a project.yaml being relocated is let through)
             if (!isProjectFileName(from)) {
-                if (const std::string refusal = projectFileRefusal(to); !refusal.empty()) return scopedResult(false, refusal, ec);
+                if (const std::string refusal = protectedPlaceRefusal(to, true); !refusal.empty()) return scopedResult(false, refusal, ec);
             }
             fs::path root;
             std::string error;
@@ -1820,6 +1875,19 @@ namespace jasperengine::editor::safewrite {
 
     Scope::~Scope() {
         scopes.pop_back();
+    }
+
+    EditorInternal::EditorInternal(fs::path path) {
+        if (path.empty()) return;
+        editorInternalAllowed.push_back(absoluteNormal(path));
+        editorInternalResolved.push_back(writeLocation(absoluteNormal(path)));
+        pushed = true;
+    }
+
+    EditorInternal::~EditorInternal() {
+        if (!pushed) return;
+        editorInternalAllowed.pop_back();
+        editorInternalResolved.pop_back();
     }
 
     fs::path Scope::current() {

@@ -38,7 +38,10 @@ void editor::RenameFileCmd::moveThumbnail(const fs::path& oldThumbnail, const fs
         return;
     }
 
-    // (in a write scope, beneath its root: FileUtils' scoped helpers)
+    // (in a write scope, beneath its root: FileUtils' scoped helpers). The thumbnail cache is the
+    // editor's own .jasperengine/thumbs, which an MCP call's deny-by-default guard refuses: named
+    // here so the editor's own move goes through (util/SafeWrite.h, EditorInternal)
+    safewrite::EditorInternal ownThumbs(project->getThumbsDir());
     FileUtils::createDirectories(newThumbnail.parent_path(), ec);
     FileUtils::renamePath(oldThumbnail, newThumbnail, ec);
 }

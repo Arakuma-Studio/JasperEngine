@@ -821,8 +821,12 @@ TEST(SafeWrite, AStrictScopeMakesNoSecondProjectFile) {
     writeText(d.root / "a.txt", "a\n");
     {
         sw::Scope scope(d.root, true);
-        // the project's own: the editor saves it
-        EXPECT_TRUE(FileUtils::writeFileReplacing(d.root / "project.yaml", "name: p\n"));
+        // the project's own: the editor saves it, through saveProjectFile's EditorInternal token
+        {
+            sw::EditorInternal ownProjectFile(d.root / "project.yaml");
+            EXPECT_TRUE(FileUtils::writeFileReplacing(d.root / "project.yaml", "name: p\n"));
+        }
+        EXPECT_FALSE(FileUtils::writeFileReplacing(d.root / "project.yaml", "name: q\n")) << "no token: refused";
         for (const char* rel : {"sub/project.yaml", "PROJECT.yaml", "project.yaml.", "sub/Project.Yaml", "project.yaml:alt"}) {
             EXPECT_FALSE(FileUtils::writeFileReplacing(d.root / fs::path(rel), "assetsDir: /etc\n")) << rel;
             EXPECT_FALSE(fs::exists(d.root / fs::path(rel))) << rel;
@@ -851,4 +855,59 @@ TEST(SafeWrite, AStrictScopeMakesNoSecondProjectFile) {
     }
     fs::create_directories(d.root / "plain");
     EXPECT_TRUE(FileUtils::writeFileReplacing(d.root / "plain" / "project.yaml", "name: g\n")) << "nor are writes outside any scope";
+}
+
+TEST(SafeWrite, AStrictScopeDeniesOwnedAndHiddenPlacesByDefault) {
+    Dirs d("ownedplaces");
+    writeText(d.root / "assets" / "ok.txt", "a\n");
+    {
+        sw::Scope scope(d.root, true);
+        // hidden folders, project.yaml at any depth, and the root CMakeLists.txt: refused
+        for (const char* rel : {".jasperengine/x.txt", ".jasperengine/user/build.yaml", ".git/config",
+                                ".trash/x", ".vscode/settings.json", "CMakeLists.txt", "project.yaml",
+                                "sub/project.yaml", "Sub/.JasperEngine/y", "CMAKELISTS.TXT"}) {
+            std::error_code ec;
+            EXPECT_FALSE(FileUtils::writeFileReplacing(d.root / fs::path(rel), "x")) << rel;
+            EXPECT_FALSE(fs::exists(d.root / fs::path(rel))) << rel;
+            (void)ec;
+        }
+        // ProjectBuild.cmake is the agent's: allowed. A plain asset: allowed. A nested CMakeLists.txt
+        // (not the root one) is the user's: allowed
+        EXPECT_TRUE(FileUtils::writeFileReplacing(d.root / "ProjectBuild.cmake", "# mine\n"));
+        EXPECT_TRUE(FileUtils::writeFileReplacing(d.root / "assets" / "new.txt", "b\n"));
+        EXPECT_TRUE(FileUtils::writeFileReplacing(d.root / "sub" / "CMakeLists.txt", "# nested\n"));
+        // an EditorInternal token lets the editor's own writer through, and only at/below its path
+        {
+            sw::EditorInternal ownInternal(d.root / ".jasperengine");
+            EXPECT_TRUE(FileUtils::writeFileReplacing(d.root / ".jasperengine" / "engine-api" / "x.h", "h"));
+            std::error_code ec;
+            EXPECT_TRUE(FileUtils::createDirectories(d.root / ".jasperengine" / "logs", ec));
+            EXPECT_FALSE(FileUtils::writeFileReplacing(d.root / ".git" / "config", "x")) << "the token is narrow";
+            EXPECT_FALSE(FileUtils::writeFileReplacing(d.root / "project.yaml", "x")) << "the token is narrow";
+        }
+        {
+            sw::EditorInternal ownProjectFile(d.root / "project.yaml");
+            EXPECT_TRUE(FileUtils::writeFileReplacing(d.root / "project.yaml", "name: p\n")) << "saveProjectFile's token";
+        }
+        EXPECT_FALSE(FileUtils::writeFileReplacing(d.root / ".jasperengine" / "after.txt", "x")) << "the token is gone";
+    }
+    // no scope (the GUI): owned places write normally
+    EXPECT_TRUE(FileUtils::writeFileReplacing(d.root / ".jasperengine" / "gui.txt", "g"));
+    EXPECT_TRUE(FileUtils::writeFileReplacing(d.root / "project.yaml", "name: g\n"));
+}
+
+TEST(SafeWrite, AnOwnedPlaceIsDeniedWhereItResolvesToo) {
+    SKIP_WITHOUT_SYMLINKS();
+    Dirs d("ownedresolved");
+    fs::create_directories(d.root / ".jasperengine");
+    // a link inside the project pointing at the internal folder (or the root) is no way in
+    fs::create_directory_symlink(d.root / ".jasperengine", d.root / "intlink");
+    fs::create_directory_symlink(d.root, d.root / "rootlink");
+    {
+        sw::Scope scope(d.root, true);
+        EXPECT_FALSE(FileUtils::writeFileReplacing(d.root / "intlink" / "x.txt", "x")) << "through a link to .jasperengine";
+        EXPECT_FALSE(fs::exists(d.root / ".jasperengine" / "x.txt"));
+        EXPECT_FALSE(FileUtils::writeFileReplacing(d.root / "rootlink" / "project.yaml", "x")) << "through a link to the root";
+        EXPECT_FALSE(FileUtils::writeFileReplacing(d.root / "rootlink" / "CMakeLists.txt", "x"));
+    }
 }

@@ -70,6 +70,9 @@ bool editor::DeleteFileCmd::execute(){
 
     try {
         if (!fs::exists(trash)) {
+            // the editor's own .trash (a hidden folder an MCP call's deny-by-default guard refuses):
+            // named so its own creation goes through (util/SafeWrite.h, EditorInternal)
+            safewrite::EditorInternal trashDir(trash);
             safewrite::createDirOrThrow(rootFor(trash), trash);
         }
     } catch (const fs::filesystem_error& e) {
@@ -93,7 +96,10 @@ bool editor::DeleteFileCmd::execute(){
                     // following a link (fs::remove_all without one)
                     safewrite::removeTreeOrThrow(rootFor(file.originalFile), file.originalFile);
                 } else {
-                    // Normal deletion - move to trash with unique name
+                    // Normal deletion - move to trash with unique name. The trash is .trash (a hidden
+                    // folder an MCP call's deny-by-default guard refuses): the editor names it so its
+                    // own trash move goes through (util/SafeWrite.h, EditorInternal)
+                    safewrite::EditorInternal trashDir(trash);
                     if (!fs::exists(trash)) {
                         safewrite::createDirOrThrow(rootFor(trash), trash);
                     }

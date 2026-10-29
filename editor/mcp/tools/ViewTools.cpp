@@ -281,6 +281,12 @@ void finishWithPng(const CaptureJobPtr& job, std::vector<uint8_t> png, int width
             job->fail("save_path: " + error);
             return;
         }
+        // not an editor-owned or hidden file (project.yaml, .jasperengine, CMakeLists.txt ...): a
+        // screenshot is an asset, never a path the editor owns
+        if (const std::string owned = McpRefs::protectedPlace(project, target); !owned.empty()) {
+            job->fail("save_path: " + owned);
+            return;
+        }
         if (!safewrite::writeFileResolvedBeneath(McpRefs::rootFor(project, target), target, std::string(png.begin(), png.end()), error)) {
             job->fail("Could not write the PNG to " + FileUtils::pathToGenericUtf8(target) + ": " + error);
             return;

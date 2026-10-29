@@ -1642,11 +1642,22 @@ bool importLocalFiles(const CallPtr& call, const std::vector<std::string>& local
             call->fail(item + " must be an existing absolute path (or an http(s) URL).");
             return false;
         }
-        if (Util::isInsidePath(source, project->getProjectPath())) {
+        // "already in the project" checked where it resolves, not just as spelled: /proc/self/root,
+        // a \\?\ prefix, a symbolic link or a case variant all land inside the project
+        const fs::path sourceReal = safewrite::resolvedPath(source);
+        const fs::path projectReal = safewrite::resolvedPath(project->getProjectPath());
+        if (Util::isInsidePath(source, project->getProjectPath()) ||
+            (!sourceReal.empty() && !projectReal.empty() && safewrite::isAtOrBelow(sourceReal, projectReal))) {
             call->fail(item + " is already in the project; use move_asset (copy: true) instead.");
             return false;
         }
         const fs::path dest = target / source.filename();
+        // never into an editor-owned or hidden place (.jasperengine, .git, .trash, project.yaml,
+        // CMakeLists.txt), as named or where it resolves
+        if (const std::string owned = McpRefs::protectedPlace(project, dest); !owned.empty()) {
+            call->fail("Can't import to " + projectRelative(project, dest) + ": " + owned);
+            return false;
+        }
         // a link at the destination name leading out of the project: the copy would follow it
         if (const std::string escape = McpRefs::writeEscape(project, dest); !escape.empty()) {
             call->fail(escape);

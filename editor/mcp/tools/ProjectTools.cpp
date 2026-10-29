@@ -320,6 +320,40 @@ std::string outsideRootsRefusal(const fs::path& projectDir) {
     return std::string();
 }
 
+// Where an MCP create_project / Save As may put a new project: a folder beside the currently open
+// project, or under the editor's default projects/export folder (the New Project / Save dialogs
+// start there) — never inside the open project (a nested project is a trap). "" when allowed.
+std::string switchTargetRefusal(Project* project, const fs::path& target) {
+    const fs::path normal = target.lexically_normal();
+    const fs::path cur = project && !project->getProjectPath().empty() ? project->getProjectPath().lexically_normal() : fs::path();
+    // (a) not inside the currently open project
+    if (!cur.empty()) {
+        const fs::path curReal = safewrite::resolvedPath(cur);
+        const fs::path targetReal = safewrite::writeLocation(normal);
+        if ((!curReal.empty() && !targetReal.empty() && safewrite::isAtOrBelow(targetReal, curReal)) ||
+            safewrite::isAtOrBelow(normal, cur)) {
+            return "can't be inside the currently open project (" + FileUtils::pathToGenericUtf8(cur) +
+                   "): a project nested in another is not opened over MCP. Pick a folder beside the project.";
+        }
+    }
+    // (b) its parent is the parent of the current project, or the editor's default projects/export folder
+    std::vector<fs::path> anchors;
+    if (!cur.empty() && cur.has_parent_path()) anchors.push_back(cur.parent_path());
+    if (const fs::path def = AppSettings::getDefaultExportDirectory(); !def.empty()) anchors.push_back(def.lexically_normal());
+    const fs::path parent = normal.parent_path();
+    const fs::path parentReal = safewrite::resolvedPath(parent);
+    for (const fs::path& anchor : anchors) {
+        const fs::path anchorReal = safewrite::resolvedPath(anchor);
+        if (safewrite::isAtOrBelow(parent, anchor) ||
+            (!anchorReal.empty() && !parentReal.empty() && safewrite::isAtOrBelow(parentReal, anchorReal))) {
+            return std::string();
+        }
+    }
+    return "its folder " + FileUtils::pathToGenericUtf8(parent) + " is not beside the current project nor under the editor's "
+           "default projects folder (Edit > Preferences' export folder): create the project from the editor (File > New Project, "
+           "or Save As), then open it with open_project.";
+}
+
 struct SwitchState {
     bool ran = false;
     bool ok = false;
@@ -361,6 +395,10 @@ void switchProjectTool(const CallPtr& call, bool create) {
         if (fs::is_directory(path, ec) && !fs::is_empty(path, ec)) {
             call->fail(FileUtils::pathToGenericUtf8(path) + " is not empty: create_project makes a project in a new or empty folder. "
                        "Pick a new folder (it is created), or create the project in the editor's New Project dialog.");
+            return;
+        }
+        if (const std::string refusal = switchTargetRefusal(project, path); !refusal.empty()) {
+            call->fail("create_project here is refused: " + refusal);
             return;
         }
     } else {
@@ -513,6 +551,10 @@ void saveProjectTool(const CallPtr& call) {
             }
             if (fs::exists(target, ec) && (!fs::is_directory(target, ec) || !fs::is_empty(target, ec))) {
                 call->fail(FileUtils::pathToGenericUtf8(target) + " must be a new or empty directory.");
+                return;
+            }
+            if (const std::string refusal = switchTargetRefusal(project, target); !refusal.empty()) {
+                call->fail("Save As here is refused: " + refusal);
                 return;
             }
         }

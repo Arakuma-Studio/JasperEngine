@@ -440,6 +440,9 @@ public:
     bool open(const fs::path& root, const fs::path& path) {
         close();
         std::string error;
+        // the build log lives in the editor's internal logs folder (.jasperengine/logs), which an
+        // MCP call's deny-by-default guard refuses: the editor names it so its own log opens
+        safewrite::EditorInternal ownLog(path.parent_path());
         file = safewrite::openFileResolvedBeneath(root, path, false, error);
         if (!file) Out::warning("No log file for this run: %s", error.c_str());
         return file != nullptr;
@@ -1692,6 +1695,31 @@ void runBuildTool(const CallPtr& call) {
     if (!fs::is_regular_file(exe, ec) || ::access(exe.c_str(), X_OK) != 0) {
         call->fail("No executable at " + FileUtils::pathToGenericUtf8(exe) + ". Build a Desktop player with build_project first, or pass path.");
         return;
+    }
+    // run_build runs THIS project's built game, not an arbitrary program: the executable must be the
+    // one the last build produced, or this project's player inside a folder builds are allowed into
+    // (the chosen export folder, the default export location, or the project). Otherwise an agent
+    // could run any binary with any arguments.
+    {
+        const fs::path exeReal = safewrite::resolvedPath(exe);
+        bool allowed = false;
+        {
+            std::lock_guard<std::mutex> lock(manager().mutex);
+            const fs::path lastReal = manager().lastExecutable.empty() ? fs::path() : safewrite::resolvedPath(manager().lastExecutable);
+            if (!lastReal.empty() && !exeReal.empty() && lastReal == exeReal) allowed = true;
+        }
+        // a player inside a folder builds are allowed into (the chosen export folder, the default
+        // export location, or the project): user-bounded, since an agent can't set the export
+        // folders. An arbitrary program elsewhere (/bin/sh ...) is refused.
+        if (!allowed && outputDirRefusal(project, exe.parent_path(), ExportMode::Desktop).empty()) {
+            allowed = true;
+        }
+        if (!allowed) {
+            call->fail("run_build runs this project's built game; build it first with build_project (mode desktop). It won't run "
+                       + FileUtils::pathToGenericUtf8(exe) + " — pass no path to run the last build, or a player this project built "
+                       "in its chosen export folder (not an arbitrary program).");
+            return;
+        }
     }
 
     auto run = std::make_shared<PlayerRun>();

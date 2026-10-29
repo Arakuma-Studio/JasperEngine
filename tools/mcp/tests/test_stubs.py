@@ -490,7 +490,8 @@ async def test_clangd_cpp_templates_parse(ed: Editor):
     await wait_tooling(ed)
     await ed.call("set_project_settings", values={"scripting.cxx_standard": 20})
     # Tooling is regenerated on project open/build, rather than on each settings edit.
-    with tempfile.TemporaryDirectory(prefix="jasper-tooling-reopen-") as other:
+    # beside the current project: create_project over MCP makes a project there, not in an unrelated folder
+    with tempfile.TemporaryDirectory(prefix="jasper-tooling-reopen-", dir=ed.scratch.root) as other:
         await ed.call("create_project", path=str(Path(other) / "Other"), name="ToolingReload", unsaved="discard")
         await ed.call("open_project", path=str(ed.project), unsaved="discard")
     await wait_tooling(ed)

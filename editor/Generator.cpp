@@ -904,6 +904,11 @@ std::string editor::Generator::getEditorPluginAbiCheck() {
 }
 
 void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::path& projectInternalPath, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::SceneBuildInfo>& scenes, const std::vector<editor::PrefabSceneInfo>& prefabs, bool vsyncEnabled, const WindowSettings& windowSettings, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard) {
+    // the editor regenerates its own files here (an MCP call's deny-by-default guard refuses them
+    // otherwise): the internal folder, the root CMakeLists.txt, .vscode (util/SafeWrite.h)
+    safewrite::EditorInternal ownInternal(projectInternalPath);
+    safewrite::EditorInternal ownCMake(projectPath / "CMakeLists.txt");
+    safewrite::EditorInternal ownVscode(projectPath / ".vscode");
     fs::path relativeInternalPath = fs::relative(projectInternalPath, projectPath);
     fs::path engineApiRelativePath = relativeInternalPath / "engine-api";
 
@@ -1356,6 +1361,8 @@ std::string luaScriptStub(const std::string& className, const std::string& relPa
 
 void editor::Generator::writeLuaScriptStubs(const fs::path& projectPath, const fs::path& projectInternalPath,
                                             const std::vector<fs::path>& changedFiles) {
+    // the Lua stubs live in the editor's internal folder (util/SafeWrite.h, EditorInternal)
+    safewrite::EditorInternal ownInternal(projectInternalPath);
     try {
         const fs::path stubsDir = projectInternalPath / "engine-api" / "lua" / "scripts";
         // a stubs folder resolving outside the project (a link): nothing written or removed there
@@ -1890,6 +1897,10 @@ void writeClangdConfig(const fs::path& projectPath, const std::string& databaseD
 } // namespace jasperengine::editor
 
 void editor::Generator::writeEditorTooling(const fs::path& projectPath, const fs::path& projectInternalPath, int cxxStandard, const std::vector<fs::path>& scriptDirs) {
+    // the editor's clangd/lua tooling: the internal folder, .clangd and .vscode at the project root
+    safewrite::EditorInternal ownInternal(projectInternalPath);
+    safewrite::EditorInternal ownClangd(projectPath / ".clangd");
+    safewrite::EditorInternal ownVscode(projectPath / ".vscode");
     try {
         const fs::path relativeInternalPath = fs::relative(projectInternalPath, projectPath);
         const fs::path stubsRelative = relativeInternalPath / "engine-api" / "lua";
@@ -2043,6 +2054,7 @@ std::vector<editor::PrefabInstanceInfo> editor::Generator::writePrefabSources(co
 }
 
 void editor::Generator::writeSceneSource(Scene* scene, uint32_t sceneId, const std::string& sceneName, const std::vector<Entity>& entities, const Entity camera, const fs::path& projectPath, const fs::path& projectInternalPath, std::vector<PrefabInstanceInfo>& prefabInstances, const SceneResources& resources){
+    safewrite::EditorInternal ownInternal(projectInternalPath);   // generated sources under .jasperengine
     const fs::path generatedPath = getGeneratedPath(projectInternalPath);
 
     std::string sceneContent = Factory::createScene(0, scene, sceneId, sceneName, entities, camera, projectPath, generatedPath, prefabInstances, resources);
@@ -2054,6 +2066,7 @@ void editor::Generator::writeSceneSource(Scene* scene, uint32_t sceneId, const s
 }
 
 void editor::Generator::clearSceneSource(uint32_t sceneId, const std::string& sceneName, const fs::path& projectInternalPath) {
+    safewrite::EditorInternal ownInternal(projectInternalPath);   // generated sources under .jasperengine
     const fs::path generatedPath = getGeneratedPath(projectInternalPath);
     std::string filename = Factory::sceneToFileName(sceneId, sceneName) + ".cpp";
     const fs::path sourceFile = generatedPath / filename;
@@ -2075,6 +2088,9 @@ bool editor::Generator::hasSceneSource(uint32_t sceneId, const std::string& scen
 }
 
 void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples){
+    // the generated sources (main.cpp, scene and prefab factories) live in the editor's internal
+    // folder, which an MCP call's deny-by-default guard refuses otherwise (util/SafeWrite.h)
+    safewrite::EditorInternal ownInternal(projectInternalPath);
     const fs::path generatedPath = getGeneratedPath(projectInternalPath);
 
     // The editor used to emit a GLFW application host into every project. It is

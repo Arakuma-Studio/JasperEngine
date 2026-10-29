@@ -250,14 +250,23 @@ runs several tool calls in one round-trip, sequentially on the main thread; with
   `open_project` (and `create_project`) refuse a project whose project.yaml gives an absolute
   `assetsDir` / `luaDir` or one with `..` ("points outside the project folder; open it from the
   editor"); the GUI keeps opening such a project, and once the user has opened it the agent works
-  in its roots. No tool writes, creates, moves (renames to), copies or imports a file named
-  project.yaml in any folder but the project's own, which the editor saves (`safewrite`'s strict
-  scope refuses it in every writer; `McpRefs::protectedPlace` names it up front). Names the editor
-  owns (project.yaml, CMakeLists.txt, `.jasperengine` and other hidden folders, `.scene` /
-  `.prefab`) are compared as the file system may see them (`safewrite::comparableName`: letter case,
-  trailing dots and spaces, NTFS stream suffixes, Windows short names), and folder containment
-  ignores letter case on Windows and macOS; they are checked on the path as named and where it
-  resolves (a link inside the project to its `.jasperengine` or its root is no way in).
+  in its roots. **Deny by default (owned and hidden places).** Inside a strict (MCP) scope the
+  writers themselves (`safewrite`: every write, create, rename-to and copy) refuse an editor-owned
+  or hidden place — any path component starting with `.` (`.jasperengine` and all of it, including
+  `user/build.yaml` and the workspace; `.git`, `.trash`, `.vscode`, ...), a file named
+  project.yaml at any depth (the project's own included), and the project's root `CMakeLists.txt`
+  (`ProjectBuild.cmake` is the agent's, so it is not owned) — checked on the spelled path AND where
+  it resolves (a link inside the project to its `.jasperengine` or its root is no way in). The
+  editor's own internal writers (the project.yaml save, the workspace, the asset-database cache,
+  build logs, the trash move, generated sources and the engine-API / Lua / clangd tooling) name the
+  one place they write with a narrow `safewrite::EditorInternal` token; an agent-named write has
+  none, so a tool makes no second project.yaml and reaches nothing under `.jasperengine`. Per-tool
+  checks (`McpRefs::protectedPlace`, `import_files`' destination, `screenshot`'s `save_path`) only
+  turn this into a clear up-front error. Names the editor owns (project.yaml, CMakeLists.txt,
+  `.jasperengine` and other hidden folders, `.scene` / `.prefab`) are compared as the file system
+  may see them (`safewrite::comparableName`: letter case, trailing dots and spaces, NTFS stream
+  suffixes, Windows short names; Windows folder containment folds case with `CompareStringOrdinal`,
+  elsewhere ASCII, macOS an ASCII approximation).
   Machine-level preferences (`preferences.default_export_dir`, `cmake_path`, `emsdk_path`,
   `ffmpeg_path`, `build_c_compiler`, `build_cxx_compiler`: a folder outside the project or a program
   to run) are read-only over MCP (`set_project_settings`: "change it in Edit > Preferences"). The roots are resolved when the project loads (or a root setting is
@@ -271,7 +280,11 @@ runs several tool calls in one round-trip, sequentially on the main thread; with
   not followed so loops are harmless, bounded at 200,000 entries: `McpRefs::linkOutInside`). `build_project` /
   `generate_shaders` build only into the project's chosen export folder, the default export
   location (or below it) or a folder of the project, and never save an agent's folder as the
-  export folder (both outside folders are the user's: neither can be set over MCP); `create_project` needs a new or empty folder. A delete or
+  export folder (both outside folders are the user's: neither can be set over MCP); `run_build`
+  runs only the last build's executable or a player inside a folder builds are allowed into, never
+  an arbitrary program. `create_project` (and Save As) needs a new or empty folder beside the
+  current project or under the editor's default projects/export folder, never inside the open
+  project (a nested project would be a trusted root an agent chose). A delete or
   a move's source acts on the entry itself: a link there is trashed or moved, never followed.
   Refused: isError naming the path and where the link leads, with the fix ("use a path that is not
   behind a link to elsewhere, or replace the link with a real folder").
@@ -304,7 +317,11 @@ runs several tool calls in one round-trip, sequentially on the main thread; with
   saves, the clip, pose and Vertex Animation documents, shader forks, code editor saves, the asset
   root relocation, the clip-hint and `.vat` mesh-field rewrites, thumbnails, HTML UI imports, the
   workspace file, terrain maps, lattice bakes, AGENTS.md / CLAUDE.md) writes beneath the project
-  without changes of its own. Paths outside the project (another project, the editor's settings)
+  without changes of its own — except where it writes an editor-owned or hidden place (project.yaml,
+  the workspace and other `.jasperengine` files, build logs, the trash, generated sources), which
+  the deny-by-default guard refuses unless that writer holds a narrow `safewrite::EditorInternal`
+  token for the one path it writes (a token is thread-local and not inherited by a worker, so the
+  writer names it where it acts). Paths outside the project (another project, the editor's settings)
   and everything outside a scope (the GUI) keep their plain behaviour.
 - **Commands remember the scope.** A `Command` made inside a scope records its root
   (`Command::writeRoot`); `CommandHistory` runs its execute, undo and redo in a scope of that root

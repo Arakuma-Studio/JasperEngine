@@ -215,6 +215,29 @@ namespace jasperengine::editor::safewrite {
     void pinTrustedRoot(const std::filesystem::path& resolvedRoot);
     // The pinned root still is the folder it was (not a link now, resolving to itself)
     bool trustedRootIntact(const std::filesystem::path& resolvedRoot);
+
+    // Deny by default: inside a strict (MCP) scope the writers themselves refuse an editor-owned or
+    // hidden place — any path component starting with '.' (`.jasperengine` and all of it, `.git`,
+    // `.trash`, `.vscode`, ...), any file named `project.yaml` at any depth, and the project's own
+    // root `CMakeLists.txt` — checked on BOTH the spelled path and where it resolves, letter-case and
+    // alias-insensitively. `ProjectBuild.cmake` is NOT owned (agents edit it). The editor's own
+    // internal writers (project.yaml, the workspace, build logs, the trash, generated stubs) name the
+    // one place they write with an EditorInternal token below; agent-named writes get none.
+    //
+    // While an EditorInternal is alive on this thread, writes / creates / renames / copies whose
+    // target is at or below `path` (a file or a folder) are let through that deny-by-default guard
+    // (only the editor-owned-place guard; a path outside the trusted roots is still refused). Narrow:
+    // name the one file or folder the editor writes, not the project. Thread-local, nestable; a worker
+    // does NOT inherit it.
+    class EditorInternal {
+    public:
+        explicit EditorInternal(std::filesystem::path path);
+        ~EditorInternal();
+        EditorInternal(const EditorInternal&) = delete;
+        EditorInternal& operator=(const EditorInternal&) = delete;
+    private:
+        bool pushed = false;
+    };
     // Why the last scoped FileUtils operation on this thread failed ("" when it did not)
     const std::string& lastScopedError();
     // How many scoped FileUtils operations failed on this thread so far (CommandHistory compares
