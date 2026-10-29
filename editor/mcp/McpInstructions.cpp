@@ -157,8 +157,8 @@ More: jasper://docs/cpp-scripting.
   top-left. Put HUDs and menus in a UI scene attached as a child scene (set_child_scene): in a
   2D scene layout groups stack bottom-up and pointer input needs a UI camera.
 - Poses (.poseanim): get/edit/render_pose_animation (jasper://docs/pose-animation).
-- Clips (.anim): edit_animation {clip, create, tracks [{path}]}
-  (jasper://docs/animation); Animator: jasper://docs/animator.
+- Clips (.anim, shared): edit_animation {clip, create, tracks [{path}]}
+  (jasper://docs/animation, jasper://docs/animator).
 
 ## Atmosphere
 A Fog of type "height" is physically based height fog (volumetric: true adds light shafts and
