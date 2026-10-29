@@ -38,6 +38,19 @@ namespace jasperengine{
         // the description get() creates the pipeline from (tests)
         static sg_pipeline_desc makeDesc(const sg_pipeline_desc& base, const PipelineState& state);
 
+        // ---- interning (spec S32 R3): the pipelines of SokolObject::endLoad. Objects whose
+        // descriptions are equal (every field but the label) share one pipeline, counted: a
+        // second object with the same state gets the first one's, ready if it is. release()
+        // destroys it with its last reference; releaseShader() destroys it with its shader.
+        static sg_pipeline acquire(const sg_pipeline_desc& desc);
+        static void release(sg_pipeline pipeline);
+        // one more reference to an interned pipeline (the shader warm-up keeps what it made)
+        static bool retain(sg_pipeline pipeline);
+        static size_t internedSize();
+        // the hash and equality interning uses, field by field (never the struct's bytes: padding)
+        static uint64_t descHash(const sg_pipeline_desc& desc);
+        static bool descEqual(const sg_pipeline_desc& a, const sg_pipeline_desc& b);
+
         // sg_apply_pipeline of the dynamic path, skipped when the pipeline is the one applied
         // last in this pass. True when it was applied
         static bool apply(sg_pipeline pipeline);

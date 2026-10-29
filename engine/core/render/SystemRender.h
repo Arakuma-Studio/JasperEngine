@@ -5,6 +5,7 @@
 #define SystemRender_h
 
 #include "Export.h"
+#include "GpuCreation.h"
 #include "RenderStats.h"
 #include "texture/TextureFormat.h"
 #include <stddef.h>
@@ -104,6 +105,20 @@ namespace jasperengine{
         static PassPreviewResult getPassPreview();
         static TextureRender* getPassPreviewTexture();
         static FramebufferRender* getPassPreviewTarget();
+
+        // ---- asynchronous shader and pipeline creation (spec S32, SokolAsyncCreate)
+
+        // once a frame before the views draw (Engine::runFrame for a game, the editor's loop):
+        // finishes and publishes what is ready, within the frame's budget
+        static void updateGpuCreation();
+        static GpuCreationStats getGpuCreationStats();
+        static bool isGpuCreationIdle();
+        // updates until idle or the timeout (tests, the benchmark): true when idle
+        static bool waitGpuCreationIdle(double timeoutMs);
+        static void resetGpuCreationMax();
+        // applied at setup (the mode); the budget and warm draws also at once
+        static void setShaderCreationSettings(const ShaderCreationSettings& settings);
+        static const ShaderCreationSettings& getShaderCreationSettings();
 
         static void scheduleCleanup(void (*cleanupFunc)(void* cleanupData), void* cleanupData, int32_t numFramesToDefer = 0);
         static void addQueueCommand(void (*custom_cb)(void* custom_data), void* custom_data);

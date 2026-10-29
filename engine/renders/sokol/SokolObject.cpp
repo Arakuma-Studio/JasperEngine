@@ -7,6 +7,7 @@
 #include "math/Vector4.h"
 #include "math/Matrix4.h"
 #include "Log.h"
+#include "SokolAsyncCreate.h"
 #include "SokolCmdQueue.h"
 #include "SokolPipelineCache.h"
 #include "SokolShader.h"
@@ -29,9 +30,11 @@ namespace {
         return index;
     }
 
+    // interned (spec S32 R3): an object with the description of another shares its pipeline,
+    // which is created asynchronously where that compiles. Counted per reference
     sg_pipeline makePipeline(const sg_pipeline_desc& desc){
-        const sg_pipeline pipeline = Engine::isAsyncThread() ? SokolCmdQueue::add_command_make_pipeline(desc) : sg_make_pipeline(desc);
-        // an invalid handle (pool full) is never destroyed, so it is not counted
+        const sg_pipeline pipeline = SokolPipelineCache::acquire(desc);
+        // an invalid handle (pool full) is never released, so it is not counted
         if (pipeline.id != SG_INVALID_ID)
             livePipelines++;
         return pipeline;
@@ -41,11 +44,7 @@ namespace {
         if (pipeline.id == SG_INVALID_ID)
             return;
         livePipelines--;
-        if (Engine::isAsyncThread()){
-            SokolCmdQueue::add_command_destroy_pipeline(pipeline);
-        }else{
-            sg_destroy_pipeline(pipeline);
-        }
+        SokolPipelineCache::release(pipeline);
     }
 }
 
@@ -68,6 +67,48 @@ SokolObject::SokolObject(){
     blendOverride = false;
     blendState = BlendState();
     resetPipelines();
+    resetWarm();
+}
+
+void SokolObject::resetWarm(){
+    for (int i = 0; i < PIPELINE_TYPES; i++){
+        warmedPipeline[i] = SG_INVALID_ID;
+        warmKey[i] = 0;
+    }
+    dynamicWarm.clear();
+}
+
+// GL with a worker context (spec S32 R4): the first draw of a pipeline with this object's
+// bindings waits for its warm draw on the worker, which makes the driver compile the program for
+// this state there. warmed holds the pipeline confirmed, key the warm draw asked for
+bool SokolObject::isWarm(sg_pipeline pipeline, uint32_t& warmed, uint64_t& key){
+    if (warmed == pipeline.id || !SokolAsyncCreate::warmDrawsActive())
+        return true;
+    if (key == 0)
+        key = SokolAsyncCreate::requestWarmDraw(pipeline, bind);
+    if (!SokolAsyncCreate::isWarm(key))
+        return false;
+    warmed = pipeline.id;
+    key = 0;
+    return true;
+}
+
+bool SokolObject::isDynamicWarm(sg_pipeline pipeline){
+    if (!SokolAsyncCreate::warmDrawsActive())
+        return true;
+    for (std::pair<uint32_t, uint64_t>& entry : dynamicWarm){
+        if (entry.first == pipeline.id){
+            if (entry.second == 0)
+                return true;
+            if (!SokolAsyncCreate::isWarm(entry.second))
+                return false;
+            entry.second = 0;
+            return true;
+        }
+    }
+    const uint64_t key = SokolAsyncCreate::requestWarmDraw(pipeline, bind);
+    dynamicWarm.emplace_back(pipeline.id, SokolAsyncCreate::isWarm(key) ? 0 : key);
+    return SokolAsyncCreate::isWarm(key);
 }
 
 // Forgets the variants without destroying them: a copy of this object shares the
@@ -742,8 +783,11 @@ bool SokolObject::beginDraw(const PipelineState& state){
         lastDynamicState = state;
         lastDynamicGeneration = generation;
     }
-    // a failed creation is never applied (see beginDraw(PipelineType))
+    // a failed creation is never applied (see beginDraw(PipelineType)), nor one still being
+    // created (spec S32) or warmed
     if (pipeline.id == SG_INVALID_ID || sg_query_pipeline_state(pipeline) != SG_RESOURCESTATE_VALID)
+        return false;
+    if (!isDynamicWarm(pipeline))
         return false;
 
     SokolPipelineCache::apply(pipeline);
@@ -796,6 +840,12 @@ bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling){
     (void)disableFaceCulling;
 #endif
 
+    {
+        const int index = pipelineIndex(pipType);
+        if (index < PIPELINE_TYPES && !isWarm(selectedPipeline, warmedPipeline[index], warmKey[index]))
+            return false;
+    }
+
     sg_apply_pipeline(selectedPipeline);
     // the dynamic path's "applied last" no longer holds
     SokolPipelineCache::invalidateApplied();
@@ -831,6 +881,7 @@ void SokolObject::destroy(){
         pipeline.id = SG_INVALID_ID;
     }
     resetPipelines();
+    resetWarm();
     bind = {};
     pipeline_desc = {};
     // dynamic pipelines stay in SokolPipelineCache until their shader goes

@@ -14,6 +14,8 @@
 #include "sokol_gfx.h"
 
 #include <map>
+#include <utility>
+#include <vector>
 
 
 namespace jasperengine{
@@ -57,6 +59,16 @@ namespace jasperengine{
         PipelineState lastDynamicState;
         sg_pipeline lastDynamicPipeline;
         uint32_t lastDynamicGeneration;
+
+        // GL warm draws (spec S32): per pipeline type, the pipeline confirmed warm with this
+        // object's bindings and the warm draw requested for it; the dynamic path's the same per
+        // pipeline. A draw waits for its warm draw (beginDraw is false until then)
+        uint32_t warmedPipeline[PIPELINE_TYPES];
+        uint64_t warmKey[PIPELINE_TYPES];
+        std::vector<std::pair<uint32_t, uint64_t>> dynamicWarm;
+        bool isWarm(sg_pipeline pipeline, uint32_t& warmed, uint64_t& key);
+        bool isDynamicWarm(sg_pipeline pipeline);
+        void resetWarm();
 
         // the render state endLoad built the pipelines with, so a variant can be rebuilt from pipeline_desc
         RenderState loadState;

@@ -101,8 +101,12 @@ namespace jasperengine{
         static size_t warmUpAllShaders();
         // built-in variants the build ships precompiled for this backend
         static std::vector<ShaderKey> getPrecompiledShaderKeys();
-        // variants being compiled at runtime
+        // variants being compiled at runtime, or whose GPU program is being created (spec S32)
         static size_t getPendingShaderCount();
+        // pipelines being created (spec S32: off the render thread on Vulkan and Metal)
+        static size_t getPendingPipelineCount();
+        // no shader, pipeline or GL warm draw is being created
+        static bool isGpuCreationIdle();
 
         // ---- Runtime compilation of variants the build lacks (RuntimeShaderCompiler) ----
         // The build carries the compiler (export setting "Runtime shader compilation")

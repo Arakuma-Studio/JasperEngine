@@ -1601,7 +1601,8 @@ namespace{
 }
 
 bool Engine::areScenesLoaded(){
-    bool ready = ShaderPool::getPendingShaderCount() == 0 && !scenes.empty();
+    // and no shader, pipeline or GL warm draw still being created (spec S32 R9)
+    bool ready = ShaderPool::getPendingShaderCount() == 0 && SystemRender::isGpuCreationIdle() && !scenes.empty();
     for (size_t i = 0; ready && i < scenes.size(); i++){
         ready = scenes[i]->getSystem<RenderSystem>()->isAllLoaded();
         // and its HTML UI documents loaded (or failed) and drawn once
@@ -1687,6 +1688,8 @@ void Engine::runFrame(bool draw){
         FrameTimes::beginFrame();
         JE_PROFILE_FRAME();
         latchShaderTime();
+        // the shaders and pipelines created off the render thread that are ready (spec S32)
+        SystemRender::updateGpuCreation();
     }
     JE_PROFILE_SCOPE("Frame");
     SystemRender::setViewTag(SystemRender::FRAME_STATS_FRAME);

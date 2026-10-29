@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SokolShader.h"
+#include "SokolAsyncCreate.h"
 #include "SokolPipelineCache.h"
 
 #include "math/Vector3.h"
@@ -306,13 +307,14 @@ bool SokolShader::createShader(ShaderData& shaderData){
             Log::error("Shader '%s' uses %d texture-sampler pairs but the limit is %d", nm, pairCount, SG_MAX_TEXTURE_SAMPLER_PAIRS);
     }
 
+    // created off the render thread where the backend allows (spec S32): pending until then
     if (Engine::isAsyncThread()){
         shader = SokolCmdQueue::add_command_make_shader(shader_desc);
     }else{
-        shader = sg_make_shader(shader_desc);
+        shader = SokolAsyncCreate::makeShader(shader_desc);
     }
 
-    return isCreated();
+    return shader.id != SG_INVALID_ID && (isCreated() || isPending());
 }
 
 void SokolShader::destroyShader(){
@@ -323,7 +325,7 @@ void SokolShader::destroyShader(){
         if (Engine::isAsyncThread()){
             SokolCmdQueue::add_command_destroy_shader(shader);
         }else{
-            sg_destroy_shader(shader);
+            SokolAsyncCreate::destroyShader(shader);
         }
     }
     
@@ -336,6 +338,10 @@ bool SokolShader::isCreated(){
     }
 
     return false;
+}
+
+bool SokolShader::isPending(){
+    return shader.id != SG_INVALID_ID && sg_isvalid() && SokolAsyncCreate::isPending(shader);
 }
 
 bool SokolShader::isFailed(){

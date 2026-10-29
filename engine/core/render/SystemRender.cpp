@@ -3,6 +3,8 @@
 
 #include "SystemRender.h"
 
+#include "GpuWorkerContext.h"
+#include "sokol/SokolAsyncCreate.h"
 #include "sokol/SokolPassPreview.h"
 #include "sokol/SokolSystem.h"
 #include "Engine.h"
@@ -14,8 +16,51 @@
 
 using namespace jasperengine;
 
+namespace {
+    GpuWorkerContextFactory& workerContextFactory(){
+        static GpuWorkerContextFactory factory;
+        return factory;
+    }
+}
+
+void jasperengine::setGpuWorkerContextFactory(GpuWorkerContextFactory factory){
+    workerContextFactory() = std::move(factory);
+}
+
+const GpuWorkerContextFactory& jasperengine::getGpuWorkerContextFactory(){
+    return workerContextFactory();
+}
+
 void SystemRender::setup(){
     SokolSystem::setup();
+}
+
+void SystemRender::updateGpuCreation(){
+    SokolAsyncCreate::update();
+}
+
+GpuCreationStats SystemRender::getGpuCreationStats(){
+    return SokolAsyncCreate::getStats();
+}
+
+bool SystemRender::isGpuCreationIdle(){
+    return SokolAsyncCreate::isIdle();
+}
+
+bool SystemRender::waitGpuCreationIdle(double timeoutMs){
+    return SokolAsyncCreate::waitIdle(timeoutMs);
+}
+
+void SystemRender::resetGpuCreationMax(){
+    SokolAsyncCreate::resetMaxMainMs();
+}
+
+void SystemRender::setShaderCreationSettings(const ShaderCreationSettings& settings){
+    SokolAsyncCreate::setSettings(settings);
+}
+
+const ShaderCreationSettings& SystemRender::getShaderCreationSettings(){
+    return SokolAsyncCreate::getSettings();
 }
 
 void SystemRender::commitQueue(){

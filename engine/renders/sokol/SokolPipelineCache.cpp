@@ -5,10 +5,12 @@
 
 #include "Engine.h"
 #include "Log.h"
+#include "SokolAsyncCreate.h"
 #include "SokolCmdQueue.h"
 
 #include <atomic>
 #include <mutex>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -32,6 +34,26 @@ namespace {
 
     std::unordered_map<uint64_t, PipelineCacheEntry>& entries(){
         static std::unordered_map<uint64_t, PipelineCacheEntry> map;
+        return map;
+    }
+
+    // an interned pipeline: the description it was made from (its label owned here) and the
+    // references SokolObjects (and the warm-up) hold
+    struct InternEntry {
+        sg_pipeline pipeline;
+        sg_pipeline_desc desc;
+        std::string label;
+        int refs;
+    };
+
+    std::unordered_map<uint64_t, InternEntry>& interned(){
+        static std::unordered_map<uint64_t, InternEntry> map;
+        return map;
+    }
+
+    // pipeline id -> its key in interned()
+    std::unordered_map<uint32_t, uint64_t>& internedKeys(){
+        static std::unordered_map<uint32_t, uint64_t> map;
         return map;
     }
 
@@ -170,8 +192,25 @@ namespace {
         if (Engine::isAsyncThread()){
             SokolCmdQueue::add_command_destroy_pipeline(pipeline);
         }else{
-            sg_destroy_pipeline(pipeline);
+            SokolAsyncCreate::destroyPipeline(pipeline);
         }
+    }
+
+    sg_pipeline createPipeline(const sg_pipeline_desc& desc){
+        // off the render thread where creation compiles (spec S32): pending until then
+        if (Engine::isAsyncThread())
+            return SokolCmdQueue::add_command_make_pipeline(desc);
+        return SokolAsyncCreate::makePipeline(desc);
+    }
+
+    template<typename T>
+    uint64_t mix(uint64_t h, T value){
+        return fnv(h, &value, sizeof(value));
+    }
+
+    uint64_t mixFloat(uint64_t h, float value){
+        // -0 and 0 are the same state
+        return mix(h, value == 0.0f ? 0.0f : value);
     }
 
 }
@@ -235,6 +274,154 @@ sg_pipeline_desc SokolPipelineCache::makeDesc(const sg_pipeline_desc& base, cons
     return desc;
 }
 
+uint64_t SokolPipelineCache::descHash(const sg_pipeline_desc& d){
+    uint64_t h = 14695981039346656037ull;
+    h = mix(h, d.compute);
+    h = mix(h, d.shader.id);
+    for (const sg_vertex_buffer_layout_state& b : d.layout.buffers){
+        h = mix(h, b.stride); h = mix(h, (int)b.step_func); h = mix(h, b.step_rate);
+    }
+    for (const sg_vertex_attr_state& a : d.layout.attrs){
+        h = mix(h, a.buffer_index); h = mix(h, a.offset); h = mix(h, (int)a.format);
+    }
+    h = mix(h, (int)d.depth.pixel_format); h = mix(h, (int)d.depth.compare); h = mix(h, d.depth.write_enabled);
+    h = mixFloat(h, d.depth.bias); h = mixFloat(h, d.depth.bias_slope_scale); h = mixFloat(h, d.depth.bias_clamp);
+    h = mix(h, d.stencil.enabled);
+    for (const sg_stencil_face_state* face : {&d.stencil.front, &d.stencil.back}){
+        h = mix(h, (int)face->compare); h = mix(h, (int)face->fail_op); h = mix(h, (int)face->depth_fail_op); h = mix(h, (int)face->pass_op);
+    }
+    h = mix(h, d.stencil.read_mask); h = mix(h, d.stencil.write_mask); h = mix(h, d.stencil.ref);
+    h = mix(h, d.color_count);
+    for (const sg_color_target_state& c : d.colors){
+        h = mix(h, (int)c.pixel_format); h = mix(h, (int)c.write_mask); h = mix(h, c.blend.enabled);
+        h = mix(h, (int)c.blend.src_factor_rgb); h = mix(h, (int)c.blend.dst_factor_rgb); h = mix(h, (int)c.blend.op_rgb);
+        h = mix(h, (int)c.blend.src_factor_alpha); h = mix(h, (int)c.blend.dst_factor_alpha); h = mix(h, (int)c.blend.op_alpha);
+    }
+    h = mix(h, (int)d.primitive_type); h = mix(h, (int)d.index_type); h = mix(h, (int)d.cull_mode);
+    h = mix(h, (int)d.face_winding); h = mix(h, d.sample_count);
+    h = mixFloat(h, d.blend_color.r); h = mixFloat(h, d.blend_color.g); h = mixFloat(h, d.blend_color.b); h = mixFloat(h, d.blend_color.a);
+    h = mix(h, d.alpha_to_coverage_enabled);
+    return h;
+}
+
+bool SokolPipelineCache::descEqual(const sg_pipeline_desc& a, const sg_pipeline_desc& b){
+    if (a.compute != b.compute || a.shader.id != b.shader.id)
+        return false;
+    for (int i = 0; i < SG_MAX_VERTEXBUFFER_BINDSLOTS; i++){
+        const sg_vertex_buffer_layout_state& x = a.layout.buffers[i];
+        const sg_vertex_buffer_layout_state& y = b.layout.buffers[i];
+        if (x.stride != y.stride || x.step_func != y.step_func || x.step_rate != y.step_rate)
+            return false;
+    }
+    for (int i = 0; i < SG_MAX_VERTEX_ATTRIBUTES; i++){
+        const sg_vertex_attr_state& x = a.layout.attrs[i];
+        const sg_vertex_attr_state& y = b.layout.attrs[i];
+        if (x.buffer_index != y.buffer_index || x.offset != y.offset || x.format != y.format)
+            return false;
+    }
+    if (a.depth.pixel_format != b.depth.pixel_format || a.depth.compare != b.depth.compare ||
+            a.depth.write_enabled != b.depth.write_enabled || a.depth.bias != b.depth.bias ||
+            a.depth.bias_slope_scale != b.depth.bias_slope_scale || a.depth.bias_clamp != b.depth.bias_clamp)
+        return false;
+    auto sameFace = [](const sg_stencil_face_state& x, const sg_stencil_face_state& y){
+        return x.compare == y.compare && x.fail_op == y.fail_op && x.depth_fail_op == y.depth_fail_op && x.pass_op == y.pass_op;
+    };
+    if (a.stencil.enabled != b.stencil.enabled || !sameFace(a.stencil.front, b.stencil.front) ||
+            !sameFace(a.stencil.back, b.stencil.back) || a.stencil.read_mask != b.stencil.read_mask ||
+            a.stencil.write_mask != b.stencil.write_mask || a.stencil.ref != b.stencil.ref)
+        return false;
+    if (a.color_count != b.color_count)
+        return false;
+    for (int i = 0; i < SG_MAX_COLOR_ATTACHMENTS; i++){
+        const sg_color_target_state& x = a.colors[i];
+        const sg_color_target_state& y = b.colors[i];
+        if (x.pixel_format != y.pixel_format || x.write_mask != y.write_mask || x.blend.enabled != y.blend.enabled ||
+                x.blend.src_factor_rgb != y.blend.src_factor_rgb || x.blend.dst_factor_rgb != y.blend.dst_factor_rgb ||
+                x.blend.op_rgb != y.blend.op_rgb || x.blend.src_factor_alpha != y.blend.src_factor_alpha ||
+                x.blend.dst_factor_alpha != y.blend.dst_factor_alpha || x.blend.op_alpha != y.blend.op_alpha)
+            return false;
+    }
+    return a.primitive_type == b.primitive_type && a.index_type == b.index_type && a.cull_mode == b.cull_mode &&
+           a.face_winding == b.face_winding && a.sample_count == b.sample_count &&
+           a.blend_color.r == b.blend_color.r && a.blend_color.g == b.blend_color.g &&
+           a.blend_color.b == b.blend_color.b && a.blend_color.a == b.blend_color.a &&
+           a.alpha_to_coverage_enabled == b.alpha_to_coverage_enabled;
+}
+
+sg_pipeline SokolPipelineCache::acquire(const sg_pipeline_desc& desc){
+    const uint64_t hash = descHash(desc);
+    uint64_t key = hash;
+    std::lock_guard<std::mutex> lock(cacheMutex());
+    auto& map = interned();
+    // another description on the same key is a hash collision: the next key
+    for (;;){
+        auto it = map.find(key);
+        if (it == map.end())
+            break;
+        InternEntry& entry = it->second;
+        if (descEqual(entry.desc, desc) && sg_query_pipeline_state(entry.pipeline) != SG_RESOURCESTATE_INVALID){
+            entry.refs++;
+            return entry.pipeline;
+        }
+        key++;
+    }
+    InternEntry entry;
+    entry.desc = desc;
+    entry.label = desc.label ? desc.label : "";
+    entry.desc.label = nullptr;
+    entry.refs = 1;
+    sg_pipeline_desc create = desc;
+    create.label = entry.label.empty() ? nullptr : entry.label.c_str();
+    entry.pipeline = createPipeline(create);
+    missCount++;
+    if (entry.pipeline.id == SG_INVALID_ID)
+        return entry.pipeline;
+    const sg_pipeline pipeline = entry.pipeline;
+    internedKeys()[pipeline.id] = key;
+    map.emplace(key, std::move(entry));
+    return pipeline;
+}
+
+void SokolPipelineCache::release(sg_pipeline pipeline){
+    if (pipeline.id == SG_INVALID_ID)
+        return;
+    std::lock_guard<std::mutex> lock(cacheMutex());
+    auto keyIt = internedKeys().find(pipeline.id);
+    if (keyIt == internedKeys().end())
+        return;
+    auto& map = interned();
+    auto it = map.find(keyIt->second);
+    if (it == map.end() || it->second.pipeline.id != pipeline.id){
+        internedKeys().erase(keyIt);
+        return;
+    }
+    if (--it->second.refs > 0)
+        return;
+    pipelineGeneration++;
+    if (pipeline.id == lastApplied)
+        lastApplied = SG_INVALID_ID;
+    destroyCachedPipeline(pipeline);
+    map.erase(it);
+    internedKeys().erase(keyIt);
+}
+
+bool SokolPipelineCache::retain(sg_pipeline pipeline){
+    std::lock_guard<std::mutex> lock(cacheMutex());
+    auto keyIt = internedKeys().find(pipeline.id);
+    if (keyIt == internedKeys().end())
+        return false;
+    auto it = interned().find(keyIt->second);
+    if (it == interned().end() || it->second.pipeline.id != pipeline.id)
+        return false;
+    it->second.refs++;
+    return true;
+}
+
+size_t SokolPipelineCache::internedSize(){
+    std::lock_guard<std::mutex> lock(cacheMutex());
+    return interned().size();
+}
+
 sg_pipeline SokolPipelineCache::get(const sg_pipeline_desc& base, const PipelineState& state){
     return get(base, baseHashOf(base), state);
 }
@@ -270,7 +457,8 @@ sg_pipeline SokolPipelineCache::get(const sg_pipeline_desc& base, uint64_t baseH
     }
 
     sg_pipeline_desc desc = makeDesc(base, state);
-    sg_pipeline pipeline = sg_make_pipeline(desc);
+    // off the render thread where creation compiles (spec S32): pending (not drawn) until then
+    sg_pipeline pipeline = SokolAsyncCreate::makePipeline(desc);
     missCount++;
     if (pipeline.id == SG_INVALID_ID)
         return pipeline;
@@ -285,6 +473,20 @@ void SokolPipelineCache::releaseShader(sg_shader shader){
 
     std::lock_guard<std::mutex> lock(cacheMutex());
     pipelineGeneration++;
+    // interned pipelines on it go too, referenced or not: a holder sees an invalid pipeline and
+    // does not draw until it loads again (SokolObject::beginDraw)
+    auto& internMap = interned();
+    for (auto it = internMap.begin(); it != internMap.end();){
+        if (it->second.desc.shader.id == shader.id){
+            if (it->second.pipeline.id == lastApplied)
+                lastApplied = SG_INVALID_ID;
+            destroyCachedPipeline(it->second.pipeline);
+            internedKeys().erase(it->second.pipeline.id);
+            it = internMap.erase(it);
+        }else{
+            ++it;
+        }
+    }
     auto& map = entries();
     for (auto it = map.begin(); it != map.end();){
         if (it->second.shader.id == shader.id){
@@ -306,6 +508,11 @@ void SokolPipelineCache::clear(){
         destroyCachedPipeline(pair.second.pipeline);
     }
     map.clear();
+    for (auto& pair : interned()){
+        destroyCachedPipeline(pair.second.pipeline);
+    }
+    interned().clear();
+    internedKeys().clear();
     lastApplied = SG_INVALID_ID;
 }
 

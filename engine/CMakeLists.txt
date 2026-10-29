@@ -1429,6 +1429,7 @@ set(RENDER_SOKOL_SRC
     renders/sokol/SokolCamera.cpp
     renders/sokol/SokolObject.cpp
     renders/sokol/SokolPipelineCache.cpp
+    renders/sokol/SokolAsyncCreate.cpp
     renders/sokol/SokolShader.cpp
     renders/sokol/SokolCmdQueue.cpp
     renders/sokol/SokolFramebuffer.cpp

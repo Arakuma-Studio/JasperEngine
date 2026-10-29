@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ShaderPool.h"
+#include "render/SystemRender.h"
 
 #include "Log.h"
 #include "Engine.h"
@@ -914,6 +915,10 @@ std::shared_ptr<ShaderRender> ShaderPool::get(ShaderType shaderType, uint64_t pr
     if (shared && shared->isCreated()){
         return shared;
     }
+    // its GPU object is being created off the render thread (spec S32): nothing to do until then
+    if (shared && shared->isPending()){
+        return shared;
+    }
 
     // The build can succeed and the backend still reject the shader (Metal compiles
     // the native library here). Retire the handle so its pool slot is released.
@@ -1150,7 +1155,16 @@ size_t ShaderPool::warmUpAllShaders(){
 }
 
 size_t ShaderPool::getPendingShaderCount(){
-    return RuntimeShaderCompiler::getPendingCount();
+    // compiling at runtime, and GPU objects being created (spec S32)
+    return RuntimeShaderCompiler::getPendingCount() + SystemRender::getGpuCreationStats().pendingShaders;
+}
+
+size_t ShaderPool::getPendingPipelineCount(){
+    return SystemRender::getGpuCreationStats().pendingPipelines;
+}
+
+bool ShaderPool::isGpuCreationIdle(){
+    return SystemRender::isGpuCreationIdle();
 }
 
 bool ShaderPool::isRuntimeCompilationSupported(){

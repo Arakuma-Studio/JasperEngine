@@ -11178,7 +11178,8 @@ _SOKOL_PRIVATE bool _sg_gl_ensure_glsl_bindslot_ranges(const sg_shader_desc* des
 
 _SOKOL_PRIVATE sg_resource_state _sg_gl_create_shader(_sg_shader_t* shd, const sg_shader_desc* desc) {
     SOKOL_ASSERT(shd && desc);
-    SOKOL_ASSERT(!shd->gl.prog);
+    // JasperEngine: async creation (PATCHES.md): a program sokol_async compiled and linked is adopted
+    const GLuint adopted_prog = shd->gl.prog; shd->gl.prog = 0;
     _SG_GL_CHECK_ERROR();
 
     // perform a fatal range-check on GLSL bindslots that's also active
@@ -11196,8 +11197,10 @@ _SOKOL_PRIVATE sg_resource_state _sg_gl_create_shader(_sg_shader_t* shd, const s
     const bool has_fs = desc->fragment_func.source;
     const bool has_cs = desc->compute_func.source;
     SOKOL_ASSERT((has_vs && has_fs) || has_cs);
-    GLuint gl_prog = glCreateProgram();
-    if (has_vs && has_fs) {
+    GLuint gl_prog = adopted_prog ? adopted_prog : glCreateProgram();  // JasperEngine: async creation
+    if (adopted_prog) {
+        // JasperEngine: async creation: compiled and linked already, only the link status is read below
+    } else if (has_vs && has_fs) {
         GLuint gl_vs = _sg_gl_compile_shader(SG_SHADERSTAGE_VERTEX, desc->vertex_func.source);
         GLuint gl_fs = _sg_gl_compile_shader(SG_SHADERSTAGE_FRAGMENT, desc->fragment_func.source);
         if (!(gl_vs && gl_fs)) {
@@ -15826,11 +15829,18 @@ _SOKOL_PRIVATE id<MTLLibrary> _sg_mtl_library_from_bytecode(const void* ptr, siz
     return lib;
 }
 
+// JasperEngine: async creation (PATCHES.md): what sokol_async (sokol_async_impl.h) created ahead
+static id<MTLLibrary> _sgj_mtl_prebuilt_library(const sg_shader_function* func);
+static bool _sgj_mtl_capture_pipeline(MTLRenderPipelineDescriptor* rp_desc);
+static id<MTLRenderPipelineState> _sgj_mtl_prebuilt_pipeline_state(void);
+
 _SOKOL_PRIVATE bool _sg_mtl_create_shader_func(const sg_shader_function* func, const char* label, const char* label_ext, _sg_mtl_shader_func_t* res) {
     SOKOL_ASSERT(res->mtl_lib == _SG_MTL_INVALID_SLOT_INDEX);
     SOKOL_ASSERT(res->mtl_func == _SG_MTL_INVALID_SLOT_INDEX);
-    id<MTLLibrary> mtl_lib = nil;
-    if (func->bytecode.ptr) {
+    id<MTLLibrary> mtl_lib = _sgj_mtl_prebuilt_library(func);  // JasperEngine: async creation
+    if (nil != mtl_lib) {
+        // JasperEngine: async creation: compiled with the completion handler
+    } else if (func->bytecode.ptr) {
         SOKOL_ASSERT(func->bytecode.size > 0);
         mtl_lib = _sg_mtl_library_from_bytecode(func->bytecode.ptr, func->bytecode.size);
     } else if (func->source) {
@@ -16112,7 +16122,10 @@ _SOKOL_PRIVATE sg_resource_state _sg_mtl_create_pipeline(_sg_pipeline_t* pip, co
             }
         #endif
         NSError* err = NULL;
-        id<MTLRenderPipelineState> mtl_rps = [_sg.mtl.device newRenderPipelineStateWithDescriptor:rp_desc error:&err];
+        // JasperEngine: async creation: sokol_async takes the descriptor (the slot stays ALLOC) or gives the state it made
+        if (_sgj_mtl_capture_pipeline(rp_desc)) { _SG_OBJC_RELEASE(rp_desc); return SG_RESOURCESTATE_ALLOC; }
+        id<MTLRenderPipelineState> mtl_rps = _sgj_mtl_prebuilt_pipeline_state();  // JasperEngine: async creation
+        if (nil == mtl_rps) { mtl_rps = [_sg.mtl.device newRenderPipelineStateWithDescriptor:rp_desc error:&err]; }
         _SG_OBJC_RELEASE(rp_desc);
         if (nil == mtl_rps) {
             SOKOL_ASSERT(err);
@@ -21500,6 +21513,9 @@ _SOKOL_PRIVATE void _sg_vk_discard_shader(_sg_shader_t* shd) {
     }
 }
 
+// JasperEngine: async creation (PATCHES.md): the device's pipeline cache, made and saved by sokol_async
+static VkPipelineCache _sgj_vk_pipeline_cache = VK_NULL_HANDLE;
+
 _SOKOL_PRIVATE sg_resource_state _sg_vk_create_pipeline(_sg_pipeline_t* pip, const sg_pipeline_desc* desc) {
     SOKOL_ASSERT(pip && desc);
     SOKOL_ASSERT(_sg.vk.dev);
@@ -21517,7 +21533,7 @@ _SOKOL_PRIVATE sg_resource_state _sg_vk_create_pipeline(_sg_pipeline_t* pip, con
         pip_create_info.stage.module = shd->vk.compute_func.module;
         pip_create_info.stage.pName = shd->vk.compute_func.entry.buf;
         pip_create_info.layout = shd->vk.pip_layout;
-        res = vkCreateComputePipelines(_sg.vk.dev, VK_NULL_HANDLE, 1, &pip_create_info, 0, &pip->vk.pip);
+        res = vkCreateComputePipelines(_sg.vk.dev, _sgj_vk_pipeline_cache, 1, &pip_create_info, 0, &pip->vk.pip);  // JasperEngine: async creation
         if (res != VK_SUCCESS) {
             _SG_ERROR(VULKAN_CREATE_COMPUTE_PIPELINE_FAILED);
             return SG_RESOURCESTATE_FAILED;
@@ -21688,7 +21704,7 @@ _SOKOL_PRIVATE sg_resource_state _sg_vk_create_pipeline(_sg_pipeline_t* pip, con
         pip_create_info.pDynamicState = &dyn_state;
         pip_create_info.layout = shd->vk.pip_layout;
 
-        res = vkCreateGraphicsPipelines(_sg.vk.dev, VK_NULL_HANDLE, 1, &pip_create_info, 0, &pip->vk.pip);
+        res = vkCreateGraphicsPipelines(_sg.vk.dev, _sgj_vk_pipeline_cache, 1, &pip_create_info, 0, &pip->vk.pip);  // JasperEngine: async creation
         if (res != VK_SUCCESS) {
             _SG_ERROR(VULKAN_CREATE_GRAPHICS_PIPELINE_FAILED);
             return SG_RESOURCESTATE_FAILED;
