@@ -18,6 +18,16 @@ namespace {
 
     // what a cooked scene holds: a document's fields (S29's NotWritten ones, the transform's
     // world values and matrices, are recomputed by the engine and left out, as in a .scene)
+    // a struct's engine name: a reflection file may name it through a local alias
+    // (MaterialReflect.cpp's `using PBR = MaterialPbrExtensions`), which the engine does not have
+    std::string engineTypeName(const char* cppType) {
+        static const std::pair<const char*, const char*> aliases[] = {{"PBR::", "MaterialPbrExtensions::"}};
+        std::string type = cppType ? cppType : "";
+        for (const auto& [alias, real] : aliases)
+            if (type.rfind(alias, 0) == 0) type = std::string(real) + type.substr(std::string(alias).size());
+        return type;
+    }
+
     bool cooked(const reflect::FieldDesc& field) {
         return reflect::isSaved(field) && !(field.flags & reflect::NotWritten);
     }
@@ -91,7 +101,7 @@ namespace {
                 errors.push_back(std::string("struct ") + desc.name + " has no C++ type (JE_STRUCT_DESC)");
                 return;
             }
-            const std::string type = desc.cppType;
+            const std::string type = engineTypeName(desc.cppType);
             auto known = guards.find(type);
             if (known != guards.end()) {
                 if (known->second != guard) known->second = "*";
@@ -171,7 +181,7 @@ std::string editor::cook::emitRuntimeFields(std::vector<std::string>& errors) {
     out += "#if defined(JE_RUNTIME_FIELDS_DECLARE)\n\n";
     out += "namespace jasperengine::cook {\n\n";
     for (const StructDesc* desc : emitter.order) {
-        const std::string type = desc->cppType;
+        const std::string type = engineTypeName(desc->cppType);
         out += guardOpen(emitter.guards[type]);
         out += "template<> struct Codec<" + type + "> {\n";
         out += "    static void write(Writer& w, const " + type + "& value);\n";
@@ -187,7 +197,7 @@ std::string editor::cook::emitRuntimeFields(std::vector<std::string>& errors) {
     out += "#if defined(JE_RUNTIME_FIELDS_DEFINE)\n\n";
     out += "namespace jasperengine::cook {\n\n";
     for (const StructDesc* desc : emitter.order) {
-        const std::string type = desc->cppType;
+        const std::string type = engineTypeName(desc->cppType);
         const std::string table = "kStruct_" + identifierOf(type);
         out += guardOpen(emitter.guards[type]);
         out += emitter.tableOf(desc->name, type, desc->fields, table);

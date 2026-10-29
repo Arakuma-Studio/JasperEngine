@@ -20,61 +20,61 @@ template<> struct Codec<MaterialPass> {
 template<> struct TextureVisit<MaterialPass> {
     static void visit(MaterialPass& value, const TextureVisitor& f);
 };
-template<> struct Codec<PBR::Clearcoat> {
-    static void write(Writer& w, const PBR::Clearcoat& value);
-    static void read(Reader& r, PBR::Clearcoat& value);
+template<> struct Codec<MaterialPbrExtensions::Clearcoat> {
+    static void write(Writer& w, const MaterialPbrExtensions::Clearcoat& value);
+    static void read(Reader& r, MaterialPbrExtensions::Clearcoat& value);
 };
-template<> struct TextureVisit<PBR::Clearcoat> {
-    static void visit(PBR::Clearcoat& value, const TextureVisitor& f);
+template<> struct TextureVisit<MaterialPbrExtensions::Clearcoat> {
+    static void visit(MaterialPbrExtensions::Clearcoat& value, const TextureVisitor& f);
 };
-template<> struct Codec<PBR::Sheen> {
-    static void write(Writer& w, const PBR::Sheen& value);
-    static void read(Reader& r, PBR::Sheen& value);
+template<> struct Codec<MaterialPbrExtensions::Sheen> {
+    static void write(Writer& w, const MaterialPbrExtensions::Sheen& value);
+    static void read(Reader& r, MaterialPbrExtensions::Sheen& value);
 };
-template<> struct TextureVisit<PBR::Sheen> {
-    static void visit(PBR::Sheen& value, const TextureVisitor& f);
+template<> struct TextureVisit<MaterialPbrExtensions::Sheen> {
+    static void visit(MaterialPbrExtensions::Sheen& value, const TextureVisitor& f);
 };
-template<> struct Codec<PBR::Anisotropy> {
-    static void write(Writer& w, const PBR::Anisotropy& value);
-    static void read(Reader& r, PBR::Anisotropy& value);
+template<> struct Codec<MaterialPbrExtensions::Anisotropy> {
+    static void write(Writer& w, const MaterialPbrExtensions::Anisotropy& value);
+    static void read(Reader& r, MaterialPbrExtensions::Anisotropy& value);
 };
-template<> struct TextureVisit<PBR::Anisotropy> {
-    static void visit(PBR::Anisotropy& value, const TextureVisitor& f);
+template<> struct TextureVisit<MaterialPbrExtensions::Anisotropy> {
+    static void visit(MaterialPbrExtensions::Anisotropy& value, const TextureVisitor& f);
 };
-template<> struct Codec<PBR::Iridescence> {
-    static void write(Writer& w, const PBR::Iridescence& value);
-    static void read(Reader& r, PBR::Iridescence& value);
+template<> struct Codec<MaterialPbrExtensions::Iridescence> {
+    static void write(Writer& w, const MaterialPbrExtensions::Iridescence& value);
+    static void read(Reader& r, MaterialPbrExtensions::Iridescence& value);
 };
-template<> struct TextureVisit<PBR::Iridescence> {
-    static void visit(PBR::Iridescence& value, const TextureVisitor& f);
+template<> struct TextureVisit<MaterialPbrExtensions::Iridescence> {
+    static void visit(MaterialPbrExtensions::Iridescence& value, const TextureVisitor& f);
 };
-template<> struct Codec<PBR::Transmission> {
-    static void write(Writer& w, const PBR::Transmission& value);
-    static void read(Reader& r, PBR::Transmission& value);
+template<> struct Codec<MaterialPbrExtensions::Transmission> {
+    static void write(Writer& w, const MaterialPbrExtensions::Transmission& value);
+    static void read(Reader& r, MaterialPbrExtensions::Transmission& value);
 };
-template<> struct TextureVisit<PBR::Transmission> {
-    static void visit(PBR::Transmission& value, const TextureVisitor& f);
+template<> struct TextureVisit<MaterialPbrExtensions::Transmission> {
+    static void visit(MaterialPbrExtensions::Transmission& value, const TextureVisitor& f);
 };
-template<> struct Codec<PBR::Volume> {
-    static void write(Writer& w, const PBR::Volume& value);
-    static void read(Reader& r, PBR::Volume& value);
+template<> struct Codec<MaterialPbrExtensions::Volume> {
+    static void write(Writer& w, const MaterialPbrExtensions::Volume& value);
+    static void read(Reader& r, MaterialPbrExtensions::Volume& value);
 };
-template<> struct TextureVisit<PBR::Volume> {
-    static void visit(PBR::Volume& value, const TextureVisitor& f);
+template<> struct TextureVisit<MaterialPbrExtensions::Volume> {
+    static void visit(MaterialPbrExtensions::Volume& value, const TextureVisitor& f);
 };
-template<> struct Codec<PBR::Specular> {
-    static void write(Writer& w, const PBR::Specular& value);
-    static void read(Reader& r, PBR::Specular& value);
+template<> struct Codec<MaterialPbrExtensions::Specular> {
+    static void write(Writer& w, const MaterialPbrExtensions::Specular& value);
+    static void read(Reader& r, MaterialPbrExtensions::Specular& value);
 };
-template<> struct TextureVisit<PBR::Specular> {
-    static void visit(PBR::Specular& value, const TextureVisitor& f);
+template<> struct TextureVisit<MaterialPbrExtensions::Specular> {
+    static void visit(MaterialPbrExtensions::Specular& value, const TextureVisitor& f);
 };
-template<> struct Codec<PBR::Hex> {
-    static void write(Writer& w, const PBR::Hex& value);
-    static void read(Reader& r, PBR::Hex& value);
+template<> struct Codec<MaterialPbrExtensions::Hex> {
+    static void write(Writer& w, const MaterialPbrExtensions::Hex& value);
+    static void read(Reader& r, MaterialPbrExtensions::Hex& value);
 };
-template<> struct TextureVisit<PBR::Hex> {
-    static void visit(PBR::Hex& value, const TextureVisitor& f);
+template<> struct TextureVisit<MaterialPbrExtensions::Hex> {
+    static void visit(MaterialPbrExtensions::Hex& value, const TextureVisitor& f);
 };
 template<> struct Codec<MaterialPbrExtensions> {
     static void write(Writer& w, const MaterialPbrExtensions& value);
@@ -242,102 +242,102 @@ void Codec<MaterialPass>::write(Writer& w, const MaterialPass& value) { writeStr
 void Codec<MaterialPass>::read(Reader& r, MaterialPass& value) { readStruct(r, kStruct_MaterialPass, &value); }
 void TextureVisit<MaterialPass>::visit(MaterialPass& value, const TextureVisitor& f) { visitStructTextures(kStruct_MaterialPass, &value, f); }
 
-const FieldEntry kStruct_PBR__Clearcoat_fields[] = {
-    JE_RF(PBR::Clearcoat, enabled, 0x0d50d8a6u, Bool),
-    JE_RF(PBR::Clearcoat, factor, 0xdfad9e8eu, Float),
-    JE_RF(PBR::Clearcoat, roughness, 0xd765b1adu, Float),
-    JE_RF(PBR::Clearcoat, normalScale, 0x403852c0u, Float),
-    JE_RF(PBR::Clearcoat, map, 0xbd2b01c9u, Texture),
-    JE_RF(PBR::Clearcoat, mapTexCoord, 0xae71997fu, Int),
-    JE_RF(PBR::Clearcoat, normalMap, 0xb64f1734u, Texture),
-    JE_RF(PBR::Clearcoat, normalTexCoord, 0x694d56d4u, Int),
+const FieldEntry kStruct_MaterialPbrExtensions__Clearcoat_fields[] = {
+    JE_RF(MaterialPbrExtensions::Clearcoat, enabled, 0x0d50d8a6u, Bool),
+    JE_RF(MaterialPbrExtensions::Clearcoat, factor, 0xdfad9e8eu, Float),
+    JE_RF(MaterialPbrExtensions::Clearcoat, roughness, 0xd765b1adu, Float),
+    JE_RF(MaterialPbrExtensions::Clearcoat, normalScale, 0x403852c0u, Float),
+    JE_RF(MaterialPbrExtensions::Clearcoat, map, 0xbd2b01c9u, Texture),
+    JE_RF(MaterialPbrExtensions::Clearcoat, mapTexCoord, 0xae71997fu, Int),
+    JE_RF(MaterialPbrExtensions::Clearcoat, normalMap, 0xb64f1734u, Texture),
+    JE_RF(MaterialPbrExtensions::Clearcoat, normalTexCoord, 0x694d56d4u, Int),
 };
-const StructTable kStruct_PBR__Clearcoat{"Clearcoat", kStruct_PBR__Clearcoat_fields, std::size(kStruct_PBR__Clearcoat_fields)};
-void Codec<PBR::Clearcoat>::write(Writer& w, const PBR::Clearcoat& value) { writeStruct(w, kStruct_PBR__Clearcoat, &value); }
-void Codec<PBR::Clearcoat>::read(Reader& r, PBR::Clearcoat& value) { readStruct(r, kStruct_PBR__Clearcoat, &value); }
-void TextureVisit<PBR::Clearcoat>::visit(PBR::Clearcoat& value, const TextureVisitor& f) { visitStructTextures(kStruct_PBR__Clearcoat, &value, f); }
+const StructTable kStruct_MaterialPbrExtensions__Clearcoat{"Clearcoat", kStruct_MaterialPbrExtensions__Clearcoat_fields, std::size(kStruct_MaterialPbrExtensions__Clearcoat_fields)};
+void Codec<MaterialPbrExtensions::Clearcoat>::write(Writer& w, const MaterialPbrExtensions::Clearcoat& value) { writeStruct(w, kStruct_MaterialPbrExtensions__Clearcoat, &value); }
+void Codec<MaterialPbrExtensions::Clearcoat>::read(Reader& r, MaterialPbrExtensions::Clearcoat& value) { readStruct(r, kStruct_MaterialPbrExtensions__Clearcoat, &value); }
+void TextureVisit<MaterialPbrExtensions::Clearcoat>::visit(MaterialPbrExtensions::Clearcoat& value, const TextureVisitor& f) { visitStructTextures(kStruct_MaterialPbrExtensions__Clearcoat, &value, f); }
 
-const FieldEntry kStruct_PBR__Sheen_fields[] = {
-    JE_RF(PBR::Sheen, enabled, 0xfc6290c9u, Bool),
-    JE_RF(PBR::Sheen, color, 0x00ba1dafu, Vector3),
-    JE_RF(PBR::Sheen, roughness, 0x53c6bbbau, Float),
-    JE_RF(PBR::Sheen, map, 0x59a5a3ceu, Texture),
-    JE_RF(PBR::Sheen, mapTexCoord, 0x0d3602f0u, Int),
+const FieldEntry kStruct_MaterialPbrExtensions__Sheen_fields[] = {
+    JE_RF(MaterialPbrExtensions::Sheen, enabled, 0xfc6290c9u, Bool),
+    JE_RF(MaterialPbrExtensions::Sheen, color, 0x00ba1dafu, Vector3),
+    JE_RF(MaterialPbrExtensions::Sheen, roughness, 0x53c6bbbau, Float),
+    JE_RF(MaterialPbrExtensions::Sheen, map, 0x59a5a3ceu, Texture),
+    JE_RF(MaterialPbrExtensions::Sheen, mapTexCoord, 0x0d3602f0u, Int),
 };
-const StructTable kStruct_PBR__Sheen{"Sheen", kStruct_PBR__Sheen_fields, std::size(kStruct_PBR__Sheen_fields)};
-void Codec<PBR::Sheen>::write(Writer& w, const PBR::Sheen& value) { writeStruct(w, kStruct_PBR__Sheen, &value); }
-void Codec<PBR::Sheen>::read(Reader& r, PBR::Sheen& value) { readStruct(r, kStruct_PBR__Sheen, &value); }
-void TextureVisit<PBR::Sheen>::visit(PBR::Sheen& value, const TextureVisitor& f) { visitStructTextures(kStruct_PBR__Sheen, &value, f); }
+const StructTable kStruct_MaterialPbrExtensions__Sheen{"Sheen", kStruct_MaterialPbrExtensions__Sheen_fields, std::size(kStruct_MaterialPbrExtensions__Sheen_fields)};
+void Codec<MaterialPbrExtensions::Sheen>::write(Writer& w, const MaterialPbrExtensions::Sheen& value) { writeStruct(w, kStruct_MaterialPbrExtensions__Sheen, &value); }
+void Codec<MaterialPbrExtensions::Sheen>::read(Reader& r, MaterialPbrExtensions::Sheen& value) { readStruct(r, kStruct_MaterialPbrExtensions__Sheen, &value); }
+void TextureVisit<MaterialPbrExtensions::Sheen>::visit(MaterialPbrExtensions::Sheen& value, const TextureVisitor& f) { visitStructTextures(kStruct_MaterialPbrExtensions__Sheen, &value, f); }
 
-const FieldEntry kStruct_PBR__Anisotropy_fields[] = {
-    JE_RF(PBR::Anisotropy, enabled, 0xf25ddf22u, Bool),
-    JE_RF(PBR::Anisotropy, strength, 0x114211ccu, Float),
-    JE_RF(PBR::Anisotropy, rotation, 0x2780d08bu, Float),
-    JE_RF(PBR::Anisotropy, map, 0x8d4b6645u, Texture),
-    JE_RF(PBR::Anisotropy, mapTexCoord, 0x71d85e13u, Int),
+const FieldEntry kStruct_MaterialPbrExtensions__Anisotropy_fields[] = {
+    JE_RF(MaterialPbrExtensions::Anisotropy, enabled, 0xf25ddf22u, Bool),
+    JE_RF(MaterialPbrExtensions::Anisotropy, strength, 0x114211ccu, Float),
+    JE_RF(MaterialPbrExtensions::Anisotropy, rotation, 0x2780d08bu, Float),
+    JE_RF(MaterialPbrExtensions::Anisotropy, map, 0x8d4b6645u, Texture),
+    JE_RF(MaterialPbrExtensions::Anisotropy, mapTexCoord, 0x71d85e13u, Int),
 };
-const StructTable kStruct_PBR__Anisotropy{"Anisotropy", kStruct_PBR__Anisotropy_fields, std::size(kStruct_PBR__Anisotropy_fields)};
-void Codec<PBR::Anisotropy>::write(Writer& w, const PBR::Anisotropy& value) { writeStruct(w, kStruct_PBR__Anisotropy, &value); }
-void Codec<PBR::Anisotropy>::read(Reader& r, PBR::Anisotropy& value) { readStruct(r, kStruct_PBR__Anisotropy, &value); }
-void TextureVisit<PBR::Anisotropy>::visit(PBR::Anisotropy& value, const TextureVisitor& f) { visitStructTextures(kStruct_PBR__Anisotropy, &value, f); }
+const StructTable kStruct_MaterialPbrExtensions__Anisotropy{"Anisotropy", kStruct_MaterialPbrExtensions__Anisotropy_fields, std::size(kStruct_MaterialPbrExtensions__Anisotropy_fields)};
+void Codec<MaterialPbrExtensions::Anisotropy>::write(Writer& w, const MaterialPbrExtensions::Anisotropy& value) { writeStruct(w, kStruct_MaterialPbrExtensions__Anisotropy, &value); }
+void Codec<MaterialPbrExtensions::Anisotropy>::read(Reader& r, MaterialPbrExtensions::Anisotropy& value) { readStruct(r, kStruct_MaterialPbrExtensions__Anisotropy, &value); }
+void TextureVisit<MaterialPbrExtensions::Anisotropy>::visit(MaterialPbrExtensions::Anisotropy& value, const TextureVisitor& f) { visitStructTextures(kStruct_MaterialPbrExtensions__Anisotropy, &value, f); }
 
-const FieldEntry kStruct_PBR__Iridescence_fields[] = {
-    JE_RF(PBR::Iridescence, enabled, 0xa5aa713cu, Bool),
-    JE_RF(PBR::Iridescence, factor, 0x9e09b4c8u, Float),
-    JE_RF(PBR::Iridescence, ior, 0x1d09c697u, Float),
-    JE_RF(PBR::Iridescence, thicknessNm, 0x59d78f9au, Vector2),
-    JE_RF(PBR::Iridescence, map, 0x66df0e67u, Texture),
-    JE_RF(PBR::Iridescence, mapTexCoord, 0x4984e895u, Int),
+const FieldEntry kStruct_MaterialPbrExtensions__Iridescence_fields[] = {
+    JE_RF(MaterialPbrExtensions::Iridescence, enabled, 0xa5aa713cu, Bool),
+    JE_RF(MaterialPbrExtensions::Iridescence, factor, 0x9e09b4c8u, Float),
+    JE_RF(MaterialPbrExtensions::Iridescence, ior, 0x1d09c697u, Float),
+    JE_RF(MaterialPbrExtensions::Iridescence, thicknessNm, 0x59d78f9au, Vector2),
+    JE_RF(MaterialPbrExtensions::Iridescence, map, 0x66df0e67u, Texture),
+    JE_RF(MaterialPbrExtensions::Iridescence, mapTexCoord, 0x4984e895u, Int),
 };
-const StructTable kStruct_PBR__Iridescence{"Iridescence", kStruct_PBR__Iridescence_fields, std::size(kStruct_PBR__Iridescence_fields)};
-void Codec<PBR::Iridescence>::write(Writer& w, const PBR::Iridescence& value) { writeStruct(w, kStruct_PBR__Iridescence, &value); }
-void Codec<PBR::Iridescence>::read(Reader& r, PBR::Iridescence& value) { readStruct(r, kStruct_PBR__Iridescence, &value); }
-void TextureVisit<PBR::Iridescence>::visit(PBR::Iridescence& value, const TextureVisitor& f) { visitStructTextures(kStruct_PBR__Iridescence, &value, f); }
+const StructTable kStruct_MaterialPbrExtensions__Iridescence{"Iridescence", kStruct_MaterialPbrExtensions__Iridescence_fields, std::size(kStruct_MaterialPbrExtensions__Iridescence_fields)};
+void Codec<MaterialPbrExtensions::Iridescence>::write(Writer& w, const MaterialPbrExtensions::Iridescence& value) { writeStruct(w, kStruct_MaterialPbrExtensions__Iridescence, &value); }
+void Codec<MaterialPbrExtensions::Iridescence>::read(Reader& r, MaterialPbrExtensions::Iridescence& value) { readStruct(r, kStruct_MaterialPbrExtensions__Iridescence, &value); }
+void TextureVisit<MaterialPbrExtensions::Iridescence>::visit(MaterialPbrExtensions::Iridescence& value, const TextureVisitor& f) { visitStructTextures(kStruct_MaterialPbrExtensions__Iridescence, &value, f); }
 
-const FieldEntry kStruct_PBR__Transmission_fields[] = {
-    JE_RF(PBR::Transmission, enabled, 0x1ef235fau, Bool),
-    JE_RF(PBR::Transmission, factor, 0x1707a6cau, Float),
-    JE_RF(PBR::Transmission, map, 0xa1d313cdu, Texture),
-    JE_RF(PBR::Transmission, mapTexCoord, 0x21a3ef8bu, Int),
+const FieldEntry kStruct_MaterialPbrExtensions__Transmission_fields[] = {
+    JE_RF(MaterialPbrExtensions::Transmission, enabled, 0x1ef235fau, Bool),
+    JE_RF(MaterialPbrExtensions::Transmission, factor, 0x1707a6cau, Float),
+    JE_RF(MaterialPbrExtensions::Transmission, map, 0xa1d313cdu, Texture),
+    JE_RF(MaterialPbrExtensions::Transmission, mapTexCoord, 0x21a3ef8bu, Int),
 };
-const StructTable kStruct_PBR__Transmission{"Transmission", kStruct_PBR__Transmission_fields, std::size(kStruct_PBR__Transmission_fields)};
-void Codec<PBR::Transmission>::write(Writer& w, const PBR::Transmission& value) { writeStruct(w, kStruct_PBR__Transmission, &value); }
-void Codec<PBR::Transmission>::read(Reader& r, PBR::Transmission& value) { readStruct(r, kStruct_PBR__Transmission, &value); }
-void TextureVisit<PBR::Transmission>::visit(PBR::Transmission& value, const TextureVisitor& f) { visitStructTextures(kStruct_PBR__Transmission, &value, f); }
+const StructTable kStruct_MaterialPbrExtensions__Transmission{"Transmission", kStruct_MaterialPbrExtensions__Transmission_fields, std::size(kStruct_MaterialPbrExtensions__Transmission_fields)};
+void Codec<MaterialPbrExtensions::Transmission>::write(Writer& w, const MaterialPbrExtensions::Transmission& value) { writeStruct(w, kStruct_MaterialPbrExtensions__Transmission, &value); }
+void Codec<MaterialPbrExtensions::Transmission>::read(Reader& r, MaterialPbrExtensions::Transmission& value) { readStruct(r, kStruct_MaterialPbrExtensions__Transmission, &value); }
+void TextureVisit<MaterialPbrExtensions::Transmission>::visit(MaterialPbrExtensions::Transmission& value, const TextureVisitor& f) { visitStructTextures(kStruct_MaterialPbrExtensions__Transmission, &value, f); }
 
-const FieldEntry kStruct_PBR__Volume_fields[] = {
-    JE_RF(PBR::Volume, enabled, 0x45dbf928u, Bool),
-    JE_RF(PBR::Volume, thickness, 0x42e969abu, Float),
-    JE_RF(PBR::Volume, attenuationColor, 0xcc89b2f0u, Vector3),
-    JE_RF(PBR::Volume, attenuationDistance, 0x5b5e13fau, Float),
+const FieldEntry kStruct_MaterialPbrExtensions__Volume_fields[] = {
+    JE_RF(MaterialPbrExtensions::Volume, enabled, 0x45dbf928u, Bool),
+    JE_RF(MaterialPbrExtensions::Volume, thickness, 0x42e969abu, Float),
+    JE_RF(MaterialPbrExtensions::Volume, attenuationColor, 0xcc89b2f0u, Vector3),
+    JE_RF(MaterialPbrExtensions::Volume, attenuationDistance, 0x5b5e13fau, Float),
 };
-const StructTable kStruct_PBR__Volume{"Volume", kStruct_PBR__Volume_fields, std::size(kStruct_PBR__Volume_fields)};
-void Codec<PBR::Volume>::write(Writer& w, const PBR::Volume& value) { writeStruct(w, kStruct_PBR__Volume, &value); }
-void Codec<PBR::Volume>::read(Reader& r, PBR::Volume& value) { readStruct(r, kStruct_PBR__Volume, &value); }
-void TextureVisit<PBR::Volume>::visit(PBR::Volume& value, const TextureVisitor& f) { visitStructTextures(kStruct_PBR__Volume, &value, f); }
+const StructTable kStruct_MaterialPbrExtensions__Volume{"Volume", kStruct_MaterialPbrExtensions__Volume_fields, std::size(kStruct_MaterialPbrExtensions__Volume_fields)};
+void Codec<MaterialPbrExtensions::Volume>::write(Writer& w, const MaterialPbrExtensions::Volume& value) { writeStruct(w, kStruct_MaterialPbrExtensions__Volume, &value); }
+void Codec<MaterialPbrExtensions::Volume>::read(Reader& r, MaterialPbrExtensions::Volume& value) { readStruct(r, kStruct_MaterialPbrExtensions__Volume, &value); }
+void TextureVisit<MaterialPbrExtensions::Volume>::visit(MaterialPbrExtensions::Volume& value, const TextureVisitor& f) { visitStructTextures(kStruct_MaterialPbrExtensions__Volume, &value, f); }
 
-const FieldEntry kStruct_PBR__Specular_fields[] = {
-    JE_RF(PBR::Specular, enabled, 0xd97278e7u, Bool),
-    JE_RF(PBR::Specular, factor, 0x0d2611ddu, Float),
-    JE_RF(PBR::Specular, color, 0x4b0f8efdu, Vector3),
-    JE_RF(PBR::Specular, ior, 0x792019b0u, Float),
-    JE_RF(PBR::Specular, map, 0x435e7914u, Texture),
-    JE_RF(PBR::Specular, mapTexCoord, 0xee8b678eu, Int),
+const FieldEntry kStruct_MaterialPbrExtensions__Specular_fields[] = {
+    JE_RF(MaterialPbrExtensions::Specular, enabled, 0xd97278e7u, Bool),
+    JE_RF(MaterialPbrExtensions::Specular, factor, 0x0d2611ddu, Float),
+    JE_RF(MaterialPbrExtensions::Specular, color, 0x4b0f8efdu, Vector3),
+    JE_RF(MaterialPbrExtensions::Specular, ior, 0x792019b0u, Float),
+    JE_RF(MaterialPbrExtensions::Specular, map, 0x435e7914u, Texture),
+    JE_RF(MaterialPbrExtensions::Specular, mapTexCoord, 0xee8b678eu, Int),
 };
-const StructTable kStruct_PBR__Specular{"Specular", kStruct_PBR__Specular_fields, std::size(kStruct_PBR__Specular_fields)};
-void Codec<PBR::Specular>::write(Writer& w, const PBR::Specular& value) { writeStruct(w, kStruct_PBR__Specular, &value); }
-void Codec<PBR::Specular>::read(Reader& r, PBR::Specular& value) { readStruct(r, kStruct_PBR__Specular, &value); }
-void TextureVisit<PBR::Specular>::visit(PBR::Specular& value, const TextureVisitor& f) { visitStructTextures(kStruct_PBR__Specular, &value, f); }
+const StructTable kStruct_MaterialPbrExtensions__Specular{"Specular", kStruct_MaterialPbrExtensions__Specular_fields, std::size(kStruct_MaterialPbrExtensions__Specular_fields)};
+void Codec<MaterialPbrExtensions::Specular>::write(Writer& w, const MaterialPbrExtensions::Specular& value) { writeStruct(w, kStruct_MaterialPbrExtensions__Specular, &value); }
+void Codec<MaterialPbrExtensions::Specular>::read(Reader& r, MaterialPbrExtensions::Specular& value) { readStruct(r, kStruct_MaterialPbrExtensions__Specular, &value); }
+void TextureVisit<MaterialPbrExtensions::Specular>::visit(MaterialPbrExtensions::Specular& value, const TextureVisitor& f) { visitStructTextures(kStruct_MaterialPbrExtensions__Specular, &value, f); }
 
-const FieldEntry kStruct_PBR__Hex_fields[] = {
-    JE_RF(PBR::Hex, enabled, 0xb566241du, Bool),
-    JE_RF(PBR::Hex, rotation, 0x63a59d8au, Float),
-    JE_RF(PBR::Hex, contrast, 0x8f48f50eu, Float),
+const FieldEntry kStruct_MaterialPbrExtensions__Hex_fields[] = {
+    JE_RF(MaterialPbrExtensions::Hex, enabled, 0xb566241du, Bool),
+    JE_RF(MaterialPbrExtensions::Hex, rotation, 0x63a59d8au, Float),
+    JE_RF(MaterialPbrExtensions::Hex, contrast, 0x8f48f50eu, Float),
 };
-const StructTable kStruct_PBR__Hex{"Hex", kStruct_PBR__Hex_fields, std::size(kStruct_PBR__Hex_fields)};
-void Codec<PBR::Hex>::write(Writer& w, const PBR::Hex& value) { writeStruct(w, kStruct_PBR__Hex, &value); }
-void Codec<PBR::Hex>::read(Reader& r, PBR::Hex& value) { readStruct(r, kStruct_PBR__Hex, &value); }
-void TextureVisit<PBR::Hex>::visit(PBR::Hex& value, const TextureVisitor& f) { visitStructTextures(kStruct_PBR__Hex, &value, f); }
+const StructTable kStruct_MaterialPbrExtensions__Hex{"Hex", kStruct_MaterialPbrExtensions__Hex_fields, std::size(kStruct_MaterialPbrExtensions__Hex_fields)};
+void Codec<MaterialPbrExtensions::Hex>::write(Writer& w, const MaterialPbrExtensions::Hex& value) { writeStruct(w, kStruct_MaterialPbrExtensions__Hex, &value); }
+void Codec<MaterialPbrExtensions::Hex>::read(Reader& r, MaterialPbrExtensions::Hex& value) { readStruct(r, kStruct_MaterialPbrExtensions__Hex, &value); }
+void TextureVisit<MaterialPbrExtensions::Hex>::visit(MaterialPbrExtensions::Hex& value, const TextureVisitor& f) { visitStructTextures(kStruct_MaterialPbrExtensions__Hex, &value, f); }
 
 const FieldEntry kStruct_MaterialPbrExtensions_fields[] = {
     JE_RF(MaterialPbrExtensions, clearcoat, 0xabaa10f2u, Struct),
