@@ -230,9 +230,10 @@ function Hero:init()
     self.animator.onMontageEnded = function(path, interrupted)
         Log.print("montage ended " .. path .. " " .. tostring(interrupted))
     end
+    RegisterEngineEvent(self, "onUpdate")
 end
 
-function Hero:update()
+function Hero:onUpdate()
     if self.animator:isHumanoid() and not self.said then
         self.said = true
         Log.print("humanoid " .. tostring(self.animator:hasBone("left_hand")))

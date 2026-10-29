@@ -1142,11 +1142,12 @@ controller does not have warn once and do nothing.
 function Hero:init()
     self.animator = GameObject(self.scene, self.entity):getAnimator()
     self.animator.onStateEnter = function(layer, state) print("enter", layer, state) end
+    RegisterEngineEvent(self, "onUpdate")
 end
 
-function Hero:update(dt)
+function Hero:onUpdate()
     local speed = Input.isKeyPressed(Input.KEY_W) and 1 or 0
-    self.animator:setFloat("Speed", speed, 0.1, dt)
+    self.animator:setFloat("Speed", speed, 0.1, Engine.deltatime)
     if Input.isKeyPressed(Input.KEY_SPACE) then self.animator:setTrigger("Jump") end
 end
 ```
