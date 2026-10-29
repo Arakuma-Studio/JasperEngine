@@ -584,7 +584,8 @@ void AnimatorSystem::finalize(Job& job, float dt){
         const bool scripted = component->sendEventsToScripts && LuaBinding::callLuaScriptMethod(scene, entity, event.functionName, event.args);
         // the warning's key hashed in place: a handled event (every frame of a game) builds no string
         uint64_t key = 1469598103934665603ull;
-        for (const std::string* part : {source, &event.functionName}){
+        const std::string* parts[2] = {source, &event.functionName};
+        for (const std::string* part : parts){
             for (char c : *part) key = (key ^ (uint8_t)c) * 1099511628211ull;
             key = (key ^ 0xffu) * 1099511628211ull;
         }
