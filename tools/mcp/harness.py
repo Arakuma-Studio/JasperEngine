@@ -105,6 +105,27 @@ def skip(reason: str) -> None:
     raise Skip(reason)
 
 
+def make_native_player(path: Path, c_body: str) -> Path:
+    """Compile a native fake player at `path` (run_build runs only a native binary named as the
+    project's player, in a folder builds are allowed into). Skips the test without a C compiler."""
+    if not shutil.which("cc"):
+        skip("no C compiler (cc) to build a fake player")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    src = path.parent / (path.name + ".c")
+    src.write_text("#include <stdio.h>\n#include <stdlib.h>\n#include <unistd.h>\n" + c_body)
+    subprocess.run(["cc", "-o", str(path), str(src)], check=True)
+    src.unlink()
+    return path
+
+
+async def project_player_name(ed: "Editor") -> str:
+    """The player executable name run_build expects for this project (from its own message)."""
+    empty = ed.scratch.root / "fake-players" / "empty-dir-for-name"
+    empty.mkdir(parents=True, exist_ok=True)
+    msg = await ed.call("run_build", path=str(empty), expect_error=True)
+    return msg.split("(expected ")[1].split(")")[0]
+
+
 def symlinks_permitted() -> bool:
     """Whether this process may create symbolic links (Windows may not): the symlink tests skip without."""
     probe = Path(tempfile.mkdtemp(prefix="jasper-symlink-probe-"))

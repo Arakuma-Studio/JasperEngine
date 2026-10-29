@@ -1345,19 +1345,28 @@ private:
 // or its .jasperengine is no way in); names compared as the file system may (letter case, Windows
 // aliases). What a tool never moves away or deletes.
 bool isProjectEntry(Project* project, const fs::path& absolute) {
+    // any hidden ('.'-named) component, anywhere in the path (assets/lib/.git too)
     auto spelled = [](const fs::path& rel) {
         if (rel.empty() || rel == ".") return true;
         if (*rel.begin() == "..") return false;
-        const std::string first = safewrite::comparableName(*rel.begin());
-        if (!first.empty() && first[0] == '.' && first != ".") return true;
+        for (const fs::path& part : rel) {
+            const std::string name = safewrite::comparableName(part);
+            if (!name.empty() && name[0] == '.' && name != "." && name != "..") return true;
+        }
         return std::distance(rel.begin(), rel.end()) == 1 && safewrite::isProjectFileName(rel);
     };
     const fs::path normal = absolute.lexically_normal();
     if (spelled(normal.lexically_relative(project->getProjectPath().lexically_normal()))) return true;
     const fs::path where = safewrite::entryLocation(normal);
-    const fs::path projectReal = safewrite::resolvedPath(project->getProjectPath());
-    return !where.empty() && !projectReal.empty() && safewrite::isAtOrBelow(where, projectReal) &&
-           spelled(where.lexically_relative(projectReal));
+    // as the entry resolves, against every trusted root (an assets or Lua root outside the project too)
+    for (const fs::path& root : McpRefs::trustedRoots(project)) {
+        if (!where.empty() && safewrite::isAtOrBelow(where, root) && spelled(where.lexically_relative(root))) {
+            // the root itself is not "an entry of the project"; trustedRootTouched handles roots
+            if (where.lexically_relative(root) == ".") continue;
+            return true;
+        }
+    }
+    return false;
 }
 
 void moveAssetTool(const CallPtr& call) {

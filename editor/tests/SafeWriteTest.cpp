@@ -911,3 +911,26 @@ TEST(SafeWrite, AnOwnedPlaceIsDeniedWhereItResolvesToo) {
         EXPECT_FALSE(FileUtils::writeFileReplacing(d.root / "rootlink" / "CMakeLists.txt", "x"));
     }
 }
+
+TEST(SafeWrite, OwnedPlacesAreDeniedBelowEveryTrustedRoot) {
+    Dirs d("ownedroots");
+    // a strict scope with two roots: the project directory and an assets root outside it
+    fs::create_directories(d.root);
+    fs::create_directories(d.outside / "assets");
+    writeText(d.outside / "assets" / "ok.txt", "a\n");
+    {
+        sw::Scope scope(std::vector<fs::path>{d.root, d.outside / "assets"}, true);
+        // owned/hidden places are refused under the SECOND root too, not only the project root
+        for (const char* rel : {".git/config", ".jasperengine/x", "sub/project.yaml", "PROJECT.yaml"}) {
+            EXPECT_FALSE(FileUtils::writeFileReplacing(d.outside / "assets" / fs::path(rel), "x")) << rel;
+            EXPECT_FALSE(fs::exists(d.outside / "assets" / fs::path(rel))) << rel;
+        }
+        // a plain asset under the assets root is fine
+        EXPECT_TRUE(FileUtils::writeFileReplacing(d.outside / "assets" / "sprites" / "hero.png", "p"));
+        // the root CMakeLists.txt rule is only for the project directory: a CMakeLists.txt under
+        // the assets root (not its top) is the user's, allowed
+        EXPECT_TRUE(FileUtils::writeFileReplacing(d.outside / "assets" / "lib" / "CMakeLists.txt", "# ok\n"));
+        // project.yaml anywhere (even outside both roots) is refused
+        EXPECT_FALSE(FileUtils::writeFileReplacing(d.base / "project.yaml", "x"));
+    }
+}

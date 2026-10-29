@@ -85,6 +85,8 @@ editor::Generator::~Generator() {
 }
 
 bool editor::Generator::cleanBuildDirectory(const fs::path& buildPath) {
+    // the editor's build tree (.jasperengine/build), refused to agents by the deny-by-default guard
+    safewrite::EditorInternal ownBuild(buildPath);
     std::error_code ec;
 
     // Best-effort full wipe first.
@@ -120,6 +122,7 @@ bool editor::Generator::cleanBuildDirectory(const fs::path& buildPath) {
 }
 
 bool editor::Generator::clearStaleCMakeCache(const fs::path& projectPath, const fs::path& buildPath) {
+    safewrite::EditorInternal ownBuild(buildPath);   // the editor's build tree (util/SafeWrite.h)
     fs::path cacheFile = buildPath / "CMakeCache.txt";
     if (!fs::exists(cacheFile)) {
         return true;
@@ -218,6 +221,9 @@ bool editor::Generator::resolveDefaultKit(std::string& cCompiler, std::string& c
 }
 
 bool editor::Generator::configureCMake(const fs::path& projectPath, const fs::path& buildPath, const std::string& configType, const std::string& cCompiler, const std::string& cxxCompiler, const std::string& generator, unsigned int parallelJobs) {
+    // the build tree and its .jasperengine_kit marker (a refused marker would make the next compile
+    // clean the whole build directory): the editor's own (util/SafeWrite.h, EditorInternal)
+    safewrite::EditorInternal ownBuild(buildPath);
     if (!clearStaleCMakeCache(projectPath, buildPath)) {
         return false;
     }
@@ -1712,6 +1718,7 @@ bool mergeLuaRcIgnoreDir(nlohmann::json& root, const std::string& dir) {
 }
 
 void writeLuaRc(const fs::path& projectPath, const std::string& library, const std::string& plugin, const std::string& ignoreDir) {
+    jasperengine::editor::safewrite::EditorInternal ownLuarc(projectPath / ".luarc.json");   // the editor's own dot-file (util/SafeWrite.h)
     using Json = nlohmann::json;
     const fs::path file = projectPath / ".luarc.json";
     const std::string luaVersion = "Lua " LUA_VERSION_MAJOR "." LUA_VERSION_MINOR;
@@ -1922,6 +1929,8 @@ void editor::Generator::writeEditorTooling(const fs::path& projectPath, const fs
 
 std::vector<editor::PrefabInstanceInfo> editor::Generator::writePrefabSources(const std::map<fs::path, Prefab>& prefabAssets, uint32_t sceneId, const fs::path& projectPath, const fs::path& projectInternalPath,
         const std::function<std::string(const fs::path&)>& prefabGuid, const std::map<fs::path, std::shared_ptr<BakedPrefab>>& baked) {
+    // prefab_*.cpp/.h in the editor's generated folder (util/SafeWrite.h, EditorInternal)
+    safewrite::EditorInternal ownGenerated(getGeneratedPath(projectInternalPath));
     const fs::path generatedPath = getGeneratedPath(projectInternalPath);
 
     std::vector<PrefabInstanceInfo> prefabInstances;
@@ -2783,8 +2792,10 @@ void editor::Generator::build(const fs::path projectPath, const fs::path buildPa
     const std::vector<fs::path> writeRoot = safewrite::Scope::currentRoots();
     const bool writeStrict = safewrite::Scope::currentStrict();
     buildFuture = std::async(std::launch::async, [this, projectPath, buildPath, cCompiler, cxxCompiler, generator, parallelJobs, writeRoot, writeStrict]() {
-        // in the write scope of the thread that started the build (an MCP call's project)
+        // in the write scope of the thread that started the build (an MCP call's project); the
+        // build tree is the editor's own, named explicitly on this worker (a token is per thread)
         safewrite::Scope scope(writeRoot, writeStrict);
+        safewrite::EditorInternal ownBuild(buildPath);
         try {
             auto startTime = std::chrono::steady_clock::now();
 

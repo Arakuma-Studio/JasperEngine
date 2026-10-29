@@ -408,8 +408,11 @@ void editor::AssetDatabase::saveCache() const {
     std::error_code ec;
     // the asset-database cache lives in the editor's internal folder (an MCP call's deny-by-default
     // guard refuses it otherwise: util/SafeWrite.h, EditorInternal)
-    safewrite::EditorInternal ownCache(cacheFile().parent_path());
-    editor::FileUtils::createDirectories(cacheFile().parent_path(), ec);   // (in a write scope: beneath its root)
+    if (!fs::is_directory(cacheFile().parent_path(), ec)) {
+        safewrite::EditorInternal makeInternal(cacheFile().parent_path());   // only to make the missing folder
+        editor::FileUtils::createDirectories(cacheFile().parent_path(), ec);   // (in a write scope: beneath its root)
+    }
+    safewrite::EditorInternal ownCache(cacheFile());   // the one cache file (util/SafeWrite.h)
     writeText(cacheFile(), std::string(out.c_str()) + "\n");
 }
 

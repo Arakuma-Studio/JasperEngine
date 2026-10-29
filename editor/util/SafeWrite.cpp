@@ -1228,7 +1228,9 @@ namespace jasperengine::editor::safewrite {
     }
 
     bool createDirectoriesBeneath(const fs::path& root, const fs::path& target, std::string& error, std::vector<fs::path>* createdDirs) {
-        if (std::string refusal = protectedPlaceRefusal(absoluteIn(root, target), false); !refusal.empty()) {
+        std::error_code existing;
+        const bool alreadyDir = fs::is_directory(fs::symlink_status(absoluteIn(root, target), existing)) && !existing;
+        if (std::string refusal = alreadyDir ? std::string() : protectedPlaceRefusal(absoluteIn(root, target), false); !refusal.empty()) {
             error = std::move(refusal);
             return false;
         }
@@ -1708,7 +1710,7 @@ namespace jasperengine::editor::safewrite {
         // hidden place, "" when it doesn't: a component starting with '.' (hidden), a file named
         // project.yaml at any depth, or the project's own root CMakeLists.txt. Names are compared as
         // the file system may (comparableName). ProjectBuild.cmake is not owned.
-        std::string ownedRelReason(const fs::path& rel) {
+        std::string ownedRelReason(const fs::path& rel, bool projectRoot = true) {
             if (rel.empty() || *rel.begin() == "..") return std::string();
             size_t parts = 0;
             for (const fs::path& part : rel) {
@@ -1724,7 +1726,7 @@ namespace jasperengine::editor::safewrite {
                 return "it is a file named project.yaml: the editor writes the project's own (set_project_settings); a tool makes no "
                        "file of that name in any folder (a second project.yaml would be a project an agent could open)";
             }
-            if (parts == 1 && comparableName(rel) == "cmakelists.txt") {
+            if (projectRoot && parts == 1 && comparableName(rel) == "cmakelists.txt") {
                 return "CMakeLists.txt is regenerated on every build; put custom build settings in ProjectBuild.cmake";
             }
             return std::string();
@@ -1744,13 +1746,21 @@ namespace jasperengine::editor::safewrite {
             const fs::path absolute = absoluteNormal(path);
             if (editorInternalCovers(absolute)) return std::string();
             const fs::path where = entry ? entryLocation(absolute) : writeLocation(absolute);
-            // the strict scope's first root is the project directory (resolved and pinned)
-            const fs::path projectRoot = strict->roots.front();
-            for (const fs::path& loc : {absolute, where}) {
-                if (loc.empty() || !isAtOrBelow(loc, projectRoot)) continue;
-                if (std::string why = ownedRelReason(loc.lexically_relative(projectRoot)); !why.empty()) {
-                    return shown(absolute) + ": " + why + ".";
+            // below EVERY trusted root (the project directory first, then the assets and Lua roots,
+            // which may lie outside it): hidden folders and project.yaml anywhere; the root
+            // CMakeLists.txt only at the project directory
+            for (size_t i = 0; i < strict->roots.size(); i++) {
+                const fs::path& root = strict->roots[i];
+                for (const fs::path& loc : {absolute, where}) {
+                    if (loc.empty() || !isAtOrBelow(loc, root)) continue;
+                    if (std::string why = ownedRelReason(loc.lexically_relative(root), i == 0); !why.empty()) {
+                        return shown(absolute) + ": " + why + ".";
+                    }
                 }
+            }
+            // a file named project.yaml wherever it lands (also outside every root)
+            if (isProjectFileName(absolute) || (!where.empty() && isProjectFileName(where))) {
+                return shown(absolute) + ": " + ownedRelReason(fs::path("project.yaml"), false) + ".";
             }
             return std::string();
         }
@@ -1791,8 +1801,17 @@ namespace jasperengine::editor::safewrite {
             if (r == Route::Refused) return scopedResult(false, error, ec);
             return scopedResult(writeFileResolvedBeneath(root, path, content, error), error, ec);
         }
+        // a real folder already there (not a link): creating it again creates nothing, so it is no
+        // write into an owned place (a writer whose token names only its file still ensures its folder)
+        bool existingRealDir(const fs::path& path) {
+            std::error_code ec;
+            return fs::is_directory(fs::symlink_status(absoluteNormal(path), ec)) && !ec;
+        }
+
         int scopedCreateDirectories(const fs::path& path, std::error_code& ec) {
-            if (const std::string refusal = protectedPlaceRefusal(path, false); !refusal.empty()) return scopedResult(false, refusal, ec);
+            if (!existingRealDir(path)) {
+                if (const std::string refusal = protectedPlaceRefusal(path, false); !refusal.empty()) return scopedResult(false, refusal, ec);
+            }
             fs::path root;
             std::string error;
             const Route r = route(path, false, root, error);

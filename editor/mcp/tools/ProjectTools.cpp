@@ -38,6 +38,7 @@
 #include "window/ProjectWindow.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <cctype>
 #include <chrono>
 #include <fstream>
@@ -284,6 +285,10 @@ std::string rootValueRefusal(const std::string& text) {
     if (value.is_absolute() || value.has_root_name() || value.has_root_directory()) return "\"" + text + "\" is absolute";
     for (const fs::path& part : value) {
         if (part == "..") return "\"" + text + "\" has a '..' step";
+        // an editor-owned or hidden folder (.jasperengine, .trash, .git ...) is never an asset root
+        const std::string name = safewrite::comparableName(part);
+        if (!name.empty() && name[0] == '.' && name != ".") return "\"" + text + "\" goes through the hidden folder " + FileUtils::pathToUtf8(part);
+        if (safewrite::isProjectFileName(part) || name == "cmakelists.txt") return "\"" + text + "\" names a file the editor owns";
     }
     return std::string();
 }
@@ -320,38 +325,75 @@ std::string outsideRootsRefusal(const fs::path& projectDir) {
     return std::string();
 }
 
-// Where an MCP create_project / Save As may put a new project: a folder beside the currently open
-// project, or under the editor's default projects/export folder (the New Project / Save dialogs
-// start there) — never inside the open project (a nested project is a trap). "" when allowed.
+// The user's home folder, resolved ("" when unknown)
+fs::path homeFolder() {
+#ifdef _WIN32
+    const char* home = std::getenv("USERPROFILE");
+#else
+    const char* home = std::getenv("HOME");
+#endif
+    if (!home || !*home) return fs::path();
+    return safewrite::resolvedPath(FileUtils::pathFromUtf8(home));
+}
+
+bool samePlace(const fs::path& a, const fs::path& b) {
+    return !a.empty() && !b.empty() && safewrite::isAtOrBelow(a, b) && safewrite::isAtOrBelow(b, a);
+}
+
+// Where an MCP create_project / Save As may put a new project. Allowed: a new or empty folder (not a
+// link) whose parent IS the current project's parent folder (spelled and resolved), or one at or
+// below the user's default export folder (resolved). Below its anchor no path component may be
+// hidden ('.'-named); the anchor may not be the user's home folder itself (a project in the home
+// root gets siblings only through the GUI). "" when allowed.
 std::string switchTargetRefusal(Project* project, const fs::path& target) {
     const fs::path normal = target.lexically_normal();
-    const fs::path cur = project && !project->getProjectPath().empty() ? project->getProjectPath().lexically_normal() : fs::path();
-    // (a) not inside the currently open project
-    if (!cur.empty()) {
-        const fs::path curReal = safewrite::resolvedPath(cur);
-        const fs::path targetReal = safewrite::writeLocation(normal);
-        if ((!curReal.empty() && !targetReal.empty() && safewrite::isAtOrBelow(targetReal, curReal)) ||
-            safewrite::isAtOrBelow(normal, cur)) {
-            return "can't be inside the currently open project (" + FileUtils::pathToGenericUtf8(cur) +
-                   "): a project nested in another is not opened over MCP. Pick a folder beside the project.";
-        }
+    std::error_code ec;
+    if (fs::is_symlink(fs::symlink_status(normal, ec))) {
+        return FileUtils::pathToGenericUtf8(normal) + " is a symbolic link: a new project goes in a real, new or empty folder";
     }
-    // (b) its parent is the parent of the current project, or the editor's default projects/export folder
-    std::vector<fs::path> anchors;
-    if (!cur.empty() && cur.has_parent_path()) anchors.push_back(cur.parent_path());
-    if (const fs::path def = AppSettings::getDefaultExportDirectory(); !def.empty()) anchors.push_back(def.lexically_normal());
     const fs::path parent = normal.parent_path();
     const fs::path parentReal = safewrite::resolvedPath(parent);
-    for (const fs::path& anchor : anchors) {
-        const fs::path anchorReal = safewrite::resolvedPath(anchor);
-        if (safewrite::isAtOrBelow(parent, anchor) ||
-            (!anchorReal.empty() && !parentReal.empty() && safewrite::isAtOrBelow(parentReal, anchorReal))) {
+    const fs::path home = homeFolder();
+    auto hiddenBelow = [](const fs::path& rel) {
+        for (const fs::path& part : rel) {
+            const std::string name = safewrite::comparableName(part);
+            if (!name.empty() && name[0] == '.' && name != "." && name != "..") return true;
+        }
+        return false;
+    };
+    const fs::path cur = project && !project->getProjectPath().empty() ? project->getProjectPath().lexically_normal() : fs::path();
+    // (a) a sibling of the current project: same parent, spelled and resolved
+    if (!cur.empty() && cur.has_parent_path()) {
+        const fs::path curParent = cur.parent_path();
+        if (parent == curParent && samePlace(parentReal, safewrite::resolvedPath(curParent))) {
+            if (samePlace(parentReal, home)) {
+                return "the current project sits in your home folder: create a sibling project there from the editor (File > New Project)";
+            }
+            if (hiddenBelow(normal.filename())) {
+                return "a hidden ('.'-named) folder is not a project folder an MCP call makes";
+            }
             return std::string();
         }
     }
-    return "its folder " + FileUtils::pathToGenericUtf8(parent) + " is not beside the current project nor under the editor's "
-           "default projects folder (Edit > Preferences' export folder): create the project from the editor (File > New Project, "
-           "or Save As), then open it with open_project.";
+    // (b) at or below the user's default export folder (resolved)
+    if (const fs::path def = AppSettings::getDefaultExportDirectory(); !def.empty()) {
+        const fs::path defReal = safewrite::resolvedPath(def);
+        const fs::path targetReal = safewrite::writeLocation(normal);
+        if (!defReal.empty() && !targetReal.empty() && safewrite::isAtOrBelow(targetReal, defReal) && !samePlace(targetReal, defReal)) {
+            if (samePlace(defReal, home)) {
+                return "the default export folder is your home folder: create the project from the editor";
+            }
+            if (hiddenBelow(targetReal.lexically_relative(defReal))) {
+                return "a hidden ('.'-named) folder is not a project folder an MCP call makes";
+            }
+            if (!cur.empty() && safewrite::isAtOrBelow(targetReal, safewrite::resolvedPath(cur))) {
+                return "it is inside the currently open project: a project nested in another is not made over MCP";
+            }
+            return std::string();
+        }
+    }
+    return "it is neither beside the current project (same parent folder) nor under the default export folder "
+           "(Edit > Preferences): create the project from the editor (File > New Project, or Save As), then open it with open_project";
 }
 
 struct SwitchState {

@@ -6143,9 +6143,18 @@ bool editor::Project::saveWorkspaceFile() {
     if (projectPath.empty()) {
         return false;
     }
-    // the editor's own per-user workspace, under .jasperengine (a hidden folder the guard refuses
-    // to agents): the editor names it so its own save goes through (util/SafeWrite.h)
-    safewrite::EditorInternal workspaceDir(Workspace::getUserDirectory(projectPath));
+    // the editor's own per-user workspace file, .jasperengine/user/workspace.yaml (a hidden folder the
+    // guard refuses to agents): the editor names that one file (util/SafeWrite.h); its folder is made
+    // first when missing, under a token for that folder alone
+    const fs::path userDir = Workspace::getUserDirectory(projectPath);
+    {
+        std::error_code ec;
+        if (!fs::is_directory(userDir, ec)) {
+            safewrite::EditorInternal makeUserDir(userDir);
+            FileUtils::createDirectories(userDir, ec);
+        }
+    }
+    safewrite::EditorInternal workspaceFile(userDir / "workspace.yaml");
     if (!Workspace::save(this)) {
         return false;
     }

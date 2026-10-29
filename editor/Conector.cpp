@@ -140,6 +140,9 @@ bool editor::Conector::connect(const fs::path& buildPath, std::string libName, c
         stagingDirs.push_back(privateDir);
     }
 
+    // the in-project staging folder is the editor's build tree (.jasperengine/build/hotreload), refused
+    // to agents by the deny-by-default guard: named here, on whichever thread connects
+    safewrite::EditorInternal ownStaging(buildPath / "hotreload");
     fs::path copyPath;
     for (const fs::path& dir : stagingDirs) {
         std::error_code dirEc;

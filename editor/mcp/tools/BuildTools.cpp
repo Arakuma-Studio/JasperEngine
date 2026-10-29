@@ -280,6 +280,17 @@ std::string appName(Project* project) {
     return project->getName().empty() ? "jasperengine-project" : Factory::toIdentifier(project->getName());
 }
 
+// The file starts like a native executable: ELF, Mach-O (thin or universal) or PE
+[[maybe_unused]] bool isNativeBinary(const fs::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    unsigned char m[4] = {0, 0, 0, 0};
+    if (!in.read(reinterpret_cast<char*>(m), 4)) return false;
+    if (m[0] == 0x7f && m[1] == 'E' && m[2] == 'L' && m[3] == 'F') return true;
+    if (m[0] == 'M' && m[1] == 'Z') return true;
+    const unsigned long v = (unsigned long)m[0] << 24 | (unsigned long)m[1] << 16 | (unsigned long)m[2] << 8 | m[3];
+    return v == 0xfeedfaceUL || v == 0xfeedfacfUL || v == 0xcefaedfeUL || v == 0xcffaedfeUL || v == 0xcafebabeUL;
+}
+
 std::string executableName(Project* project) {
 #ifdef _WIN32
     return appName(project) + ".exe";
@@ -1696,28 +1707,29 @@ void runBuildTool(const CallPtr& call) {
         call->fail("No executable at " + FileUtils::pathToGenericUtf8(exe) + ". Build a Desktop player with build_project first, or pass path.");
         return;
     }
-    // run_build runs THIS project's built game, not an arbitrary program: the executable must be the
-    // one the last build produced, or this project's player inside a folder builds are allowed into
-    // (the chosen export folder, the default export location, or the project). Otherwise an agent
-    // could run any binary with any arguments.
+    // run_build runs THIS project's built game, not an arbitrary program: the resolved executable is
+    // the one this project's last build produced (recorded in memory), or is named as this project's
+    // player inside a folder builds are allowed into; and it must be a native binary (ELF / Mach-O /
+    // PE). An explicit path gets no way around this.
     {
         const fs::path exeReal = safewrite::resolvedPath(exe);
         bool allowed = false;
         {
             std::lock_guard<std::mutex> lock(manager().mutex);
             const fs::path lastReal = manager().lastExecutable.empty() ? fs::path() : safewrite::resolvedPath(manager().lastExecutable);
-            if (!lastReal.empty() && !exeReal.empty() && lastReal == exeReal) allowed = true;
+            if (!lastReal.empty() && !exeReal.empty() && safewrite::isAtOrBelow(exeReal, lastReal) && safewrite::isAtOrBelow(lastReal, exeReal)) {
+                allowed = true;
+            }
         }
-        // a player inside a folder builds are allowed into (the chosen export folder, the default
-        // export location, or the project): user-bounded, since an agent can't set the export
-        // folders. An arbitrary program elsewhere (/bin/sh ...) is refused.
-        if (!allowed && outputDirRefusal(project, exe.parent_path(), ExportMode::Desktop).empty()) {
+        if (!allowed && exe.filename() == executableName(project) &&
+            outputDirRefusal(project, exe.parent_path(), ExportMode::Desktop).empty()) {
             allowed = true;
         }
+        if (allowed && !isNativeBinary(exeReal.empty() ? exe : exeReal)) allowed = false;
         if (!allowed) {
-            call->fail("run_build runs this project's built game; build it first with build_project (mode desktop). It won't run "
-                       + FileUtils::pathToGenericUtf8(exe) + " — pass no path to run the last build, or a player this project built "
-                       "in its chosen export folder (not an arbitrary program).");
+            call->fail("run_build runs this project's built game; build it first with build_project (mode desktop). " +
+                       FileUtils::pathToGenericUtf8(exe) + " is not this project's player (expected the last build, or a native " +
+                       executableName(project) + " in the export folder).");
             return;
         }
     }

@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 
 import pbxproj
-from harness import Editor, skip
+from harness import Editor, make_native_player as make_player, project_player_name as player_name, skip
 
 EDITOR = {"create": True, "name": "Build Test"}
 TIMEOUT = int(os.environ.get("JASPER_BUILD_TIMEOUT", "7200"))
@@ -278,8 +278,10 @@ async def test_generate_shaders(ed: Editor):
 
 
 async def test_run_build_process_handling(ed: Editor):
-    bin_dir = ed.scratch.root / "fake-players"
-    crasher = make_script(bin_dir / "crasher", 'echo "starting $1"\necho "Segmentation fault" >&2\nexit 3\n')
+    name = await player_name(ed)
+    crash_dir = ed.scratch.root / "fake-players" / "crash"
+    crasher = make_player(crash_dir / name, 'int main(int c, char** v){ printf("starting %s\\n", c > 1 ? v[1] : ""); fflush(stdout);'
+                                            ' fprintf(stderr, "Segmentation fault\\n"); return 3; }\n')
     r = await ed.call("run_build", path=str(crasher), seconds=5, args=["--level", "2"], screenshot=False)
     ed.check_eq(r["exit_code"], 3)
     ed.check(r["exited_early"], "exited early")
@@ -288,7 +290,9 @@ async def test_run_build_process_handling(ed: Editor):
     ed.check_in("starting --level", " ".join(r["log"]))
     ed.check(Path(r["log_file"]).read_text().count("starting") == 1, "log file")
 
-    sleeper = make_script(bin_dir / "sleeper", 'echo "pwd=$(pwd)"\nwhile true; do echo tick; sleep 0.5; done\n')
+    sleep_dir = ed.scratch.root / "fake-players" / "sleep"
+    sleeper = make_player(sleep_dir / name, 'int main(void){ char d[4096]; if (getcwd(d, sizeof d)) printf("pwd=%s\\n", d);'
+                                            ' for (;;) { printf("tick\\n"); fflush(stdout); usleep(500000); } }\n')
     t0 = time.monotonic()
     raw = await ed.call_raw("run_build", {"path": str(sleeper), "seconds": 2, "screenshot_after_seconds": 1})
     ed.check(not raw.is_error, raw.text)
@@ -296,7 +300,7 @@ async def test_run_build_process_handling(ed: Editor):
     ed.check(time.monotonic() - t0 < 15, "stopped in time")
     ed.check(r["stopped_by_run_build"], "stopped by run_build")
     ed.check(not r["crashed"], "a stopped player is not a crash")
-    ed.check_in(f"pwd={bin_dir}", r["log"], "runs in its own directory")
+    ed.check_in(f"pwd={sleep_dir.resolve()}", r["log"], "runs in its own directory")
     # no window of its own: the whole screen (the editor) is captured
     ed.check(raw.images, "screenshot image")
     ed.check_in("whole screen", r["screenshot"]["note"])
@@ -304,10 +308,13 @@ async def test_run_build_process_handling(ed: Editor):
     ed.check_eq(mime, "image/png")
     ed.check(data[:8] == b"\x89PNG\r\n\x1a\n", "PNG data")
 
-    await ed.check_error("run_build", path=str(bin_dir / "missing"), contains="No executable")
+    await ed.check_error("run_build", path=str(sleep_dir / "missing"), contains="No executable")
     await ed.check_error("run_build", path="relative", contains="absolute")
-    msg = await ed.call("run_build", path=str(bin_dir), expect_error=True)   # two executables there
-    ed.check_in("No player executable", msg)
+    # a script (not a native binary) named as the player, or a binary under another name: refused
+    script = make_script(ed.scratch.root / "fake-players" / "script" / name, "echo hi\n")
+    await ed.check_error("run_build", path=str(script), contains="not this project's player")
+    other = make_player(ed.scratch.root / "fake-players" / "other" / "tool", "int main(void){ return 0; }\n")
+    await ed.check_error("run_build", path=str(other), contains="not this project's player")
 
 
 async def test_desktop_build_and_run(ed: Editor):
