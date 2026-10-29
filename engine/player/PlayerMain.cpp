@@ -103,6 +103,8 @@ namespace {
 
     bool contentExists(const std::string& relative) {
         if (ResourcePack::contains("content://" + relative)) return true;
+        // the web's pack was fetched by the page and mounted from memory
+        if (relative == "content.jpak" && ResourcePack::contentPack() && platformConfig().contentRoot.empty()) return true;
         FILE* file = System::hasInstance() ? System::instance().platformFopen(FileData::getSystemPath("content://" + relative).c_str(), "rb")
                                            : std::fopen((platformConfig().contentRoot + "/" + relative).c_str(), "rb");
         if (!file) return false;

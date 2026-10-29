@@ -1653,55 +1653,16 @@ bool editor::Exporter::collectWebArtifacts() {
 
 namespace {
 
-    // Our own cross-origin isolation service worker: a static host that sends no COOP/COEP
-    // headers still gets an isolated page (needed for SharedArrayBuffer, so for threads) after
-    // one reload. It adds the headers to every same-origin response it serves.
-    const char* const COI_SERVICE_WORKER = R"js(// Cross-origin isolation for the multithreaded web player (JasperEngine export).
-// Adds Cross-Origin-Opener-Policy and Cross-Origin-Embedder-Policy to the responses of this
-// origin, so browsers allow SharedArrayBuffer on hosts that cannot send those headers.
-self.addEventListener("install", () => self.skipWaiting());
-self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
-self.addEventListener("fetch", (event) => {
-    const request = event.request;
-    if (request.cache === "only-if-cached" && request.mode !== "same-origin") return;
-    event.respondWith(fetch(request).then((response) => {
-        if (response.status === 0) return response;
-        const headers = new Headers(response.headers);
-        headers.set("Cross-Origin-Embedder-Policy", "require-corp");
-        headers.set("Cross-Origin-Opener-Policy", "same-origin");
-        headers.set("Cross-Origin-Resource-Policy", "same-origin");
-        return new Response(response.body, {status: response.status, statusText: response.statusText, headers});
-    }).catch((error) => { console.error(error); throw error; }));
-});
-)js";
-
-    // Picks the player: the pthreads build when the page is cross-origin isolated, else the
-    // single-thread one. Without isolation it registers the service worker above and reloads
-    // once (some hosts then serve an isolated page).
-    std::string webPlayerLoader(const std::string& app) {
-        return std::string(R"js(<script>
-(function () {
-    var isolated = self.crossOriginIsolated === true;
-    if (!isolated && window.isSecureContext && "serviceWorker" in navigator && !sessionStorage.getItem("jasperengine-coi-reload")) {
-        navigator.serviceWorker.register("coi-serviceworker.js").then(function (registration) {
-            if (!navigator.serviceWorker.controller) {
-                sessionStorage.setItem("jasperengine-coi-reload", "1");
-                window.location.reload();
-            }
-        }).catch(function (error) { console.warn("coi-serviceworker: " + error); });
-    }
-    var threads = isolated && typeof SharedArrayBuffer !== "undefined";
-    console.log("crossOriginIsolated=" + isolated + " threads=" + threads);
-    var base = threads ? "threads/" : "";
-    window.Module = window.Module || {};
-    var locate = Module.locateFile;
-    Module.locateFile = function (path, prefix) { return locate ? locate(base + path, prefix) : base + path; };
-    var script = document.createElement("script");
-    script.async = true;
-    script.src = base + ")js") + app + R"js(.js";
-    document.body.appendChild(script);
-})();
-</script>)js";
+    // S06's cross-origin isolation service worker and the loader that picks the single-thread or
+    // the pthreads player: engine/platform/emscripten/web/, shared with the prebuilt web player
+    bool readWebTemplate(const fs::path& targetDir, const char* name, std::string& out) {
+        std::error_code ec;
+        fs::path path = targetDir / "platform" / "emscripten" / "web" / name;
+        if (!fs::is_regular_file(path, ec)) path = editor::FileUtils::getEngineDir() / "platform" / "emscripten" / "web" / name;
+        std::ifstream in(path, std::ios::binary);
+        if (!in) return false;
+        out.assign((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        return true;
     }
 
 }
@@ -1738,9 +1699,16 @@ bool editor::Exporter::collectWebThreadsArtifacts() {
         }
     }
 
-    if (!FileUtils::writeIfChanged(config.destinationDir / "coi-serviceworker.js", COI_SERVICE_WORKER)) {
-        setError("Failed to write coi-serviceworker.js");
-        return false;
+    for (const char* name : {"coi-serviceworker.js", "player-loader.js"}) {
+        std::string text;
+        if (!readWebTemplate(config.targetDir, name, text)) {
+            setError(std::string("The engine has no platform/emscripten/web/") + name);
+            return false;
+        }
+        if (!FileUtils::writeIfChanged(config.destinationDir / name, text)) {
+            setError(std::string("Failed to write ") + name);
+            return false;
+        }
     }
     // what hosts that read a _headers file (and the dev server) send for isolation
     FileUtils::writeIfChanged(config.destinationDir / "_headers",
@@ -1761,7 +1729,8 @@ bool editor::Exporter::collectWebThreadsArtifacts() {
         setError("The web page does not load " + appName + ".js with a <script src>; the multithreaded build cannot be wired in (custom HTML shell?)");
         return false;
     }
-    html.replace(open, close + 9 - open, webPlayerLoader(appName));
+    html.replace(open, close + 9 - open, "<script src=\"player-loader.js\" data-st=\"" + appName + ".js\" data-mt=\"threads/" + appName +
+                                             ".js\" data-worker=\"coi-serviceworker.js\"></script>");
     if (!FileUtils::writeIfChanged(page, html)) {
         setError("Failed to write " + page.string());
         return false;

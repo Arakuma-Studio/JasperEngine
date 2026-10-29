@@ -3,6 +3,9 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
+#include <thread>
+
 #include "player/RunControl.h"
 #include "Log.h"
 #include "TempDir.h"
@@ -75,9 +78,11 @@ TEST_F(RunControlFixture, AfterReadyCountsFromTheReadyFrame) {
 TEST_F(RunControlFixture, ReadyTimeoutExitsSix) {
     LaunchOptions options;
     options.afterReady = true;
-    options.readyTimeout = 0.000001;
+    options.readyTimeout = 0.001;
     RunControl::configure(options);
     RunControl::engineStarted();
+    // (two clock reads a few hundred ns apart are under any timeout: the wait has to pass)
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
     RunControl::frameDrawn(false, {});
     EXPECT_TRUE(RunControl::quitRequested());
     EXPECT_EQ(RunControl::finish(), EXIT_NOT_READY);

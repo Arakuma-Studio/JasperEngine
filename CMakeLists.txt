@@ -646,6 +646,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/publish/BinaryInfo.cpp
     ${EDITOR_DIR}/publish/TreeManifest.cpp
     ${EDITOR_DIR}/publish/PayloadValidator.cpp
+    ${EDITOR_DIR}/publish/Publishing.cpp
     ${EDITOR_DIR}/platform/ExternalTools.cpp
     ${EDITOR_DIR}/platform/AndroidTools.cpp
     ${EDITOR_DIR}/platform/AndroidPackager.cpp
@@ -771,6 +772,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/AssetIdentityTools.cpp
     ${EDITOR_DIR}/mcp/tools/DocsTools.cpp
     ${EDITOR_DIR}/mcp/tools/BuildTools.cpp
+    ${EDITOR_DIR}/mcp/tools/PublishTools.cpp
     ${EDITOR_DIR}/mcp/tools/WorldTools.cpp
     ${EDITOR_DIR}/mcp/tools/AnimationClipTools.cpp
     ${EDITOR_DIR}/mcp/tools/LatticeTools.cpp

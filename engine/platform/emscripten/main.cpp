@@ -11,6 +11,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <span>
 #include <string>
@@ -61,6 +62,31 @@ EM_JS(void, jasperengineTakeContentPack, (unsigned char* destination), {
     Module["jasperContentPack"] = null;
 });
 
+// ... and its content-manifest.json (Module.jasperContentManifest, text), which the player reads
+// from the content root: MEMFS's "/" on the web
+EM_JS(char*, jasperengineTakeContentManifest, (), {
+    const text = Module["jasperContentManifest"];
+    if (typeof text !== "string") return 0;
+    Module["jasperContentManifest"] = null;
+    const length = lengthBytesUTF8(text) + 1;
+    const buffer = _malloc(length);
+    stringToUTF8(text, buffer, length);
+    return buffer;
+});
+
+static void writeFetchedContentManifest() {
+    char* text = jasperengineTakeContentManifest();
+    if (!text)
+        return;
+    if (FILE* file = std::fopen("/content-manifest.json", "wb")) {
+        std::fwrite(text, 1, std::strlen(text), file);
+        std::fclose(file);
+    } else {
+        std::printf("content-manifest.json: cannot write it to the file system\n");
+    }
+    std::free(text);
+}
+
 static void mountFetchedContentPack() {
     const double size = jasperengineContentPackSize();
     if (size <= 0)
@@ -98,6 +124,7 @@ int main(int argc, char **argv) {
     if (jasperengineWatchProbeRequested())
         probeFileWatcher();
     mountFetchedContentPack();
+    writeFetchedContentManifest();
     // the build's settings, then the page's query (and a player's game.json) over them; a page's
     // URL carries queries of its own, so unknown items are not errors
     jasperengine::applyPlatformDefaults();

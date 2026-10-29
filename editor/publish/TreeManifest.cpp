@@ -11,6 +11,7 @@
 #include <algorithm>
 
 using namespace jasperengine;
+using namespace jasperengine::editor;
 using namespace jasperengine::editor::publish;
 namespace fs = std::filesystem;
 

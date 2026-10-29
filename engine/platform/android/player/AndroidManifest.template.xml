@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- (c) Eduardo Doria and contributors. SPDX-License-Identifier: MIT
+     The manifest of a prebuilt Android player's game (docs/specs/S30-shipping.md R13): the editor
+     fills the {{MARKERS}} from Project Settings > Android and links it with aapt2 against the
+     player's compiled resources (stable ids); aapt2 renames the package to the game's id. Class
+     names are fully qualified: they are the player's code, whatever the game's package. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.jaspergameengine.jasperengine"
+    android:versionCode="{{VERSION_CODE}}"
+    android:versionName="{{VERSION_NAME}}">
+
+    <uses-sdk android:minSdkVersion="{{MIN_SDK}}" android:targetSdkVersion="{{TARGET_SDK}}" />
+{{PERMISSIONS}}
+    <uses-feature android:glEsVersion="0x00030000" android:required="true" />
+{{TEXTURE_SUPPORT}}
+    <application
+        android:allowBackup="{{ALLOW_BACKUP}}"
+        android:icon="{{ICON}}"
+        android:label="{{LABEL}}"
+        android:hasCode="true"
+        android:extractNativeLibs="false">
+
+        <activity android:name="com.jaspergameengine.jasperengine.MainActivity"
+            android:label="{{LABEL}}"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|screenLayout|smallestScreenSize|uiMode|density"
+            android:theme="{{THEME}}"{{ORIENTATION}}
+            android:exported="true">
+            <meta-data android:name="android.app.lib_name" android:value="jasperengine-android" />
+            <meta-data android:name="jasperengine.fullscreen" android:value="{{FULLSCREEN}}" />
+            <meta-data android:name="jasperengine.keepScreenOn" android:value="{{KEEP_SCREEN_ON}}" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

@@ -8,6 +8,13 @@ def jasperengineRoot = "../../.."
 def projectSourceRootAbs = file(projectSourceRoot).toString()
 def jasperengineRootAbs = file(jasperengineRoot).toString()
 
+// -PjasperPlayer=true: the prebuilt Android player (docs/specs/S30-shipping.md R13) instead of a
+// game: JASPERENGINE_PLAYER=ON, no project assets, no ads SDK, and aapt2 writes the resource ids
+// it gave (stable-ids.txt) so the editor's aapt2 link of a game gives the same ones
+// (tools/players/android_player.sh collects the outputs)
+def jasperPlayer = project.findProperty("jasperPlayer") == "true"
+def jasperPlayerIds = layout.buildDirectory.file("jasperengine-player/stable-ids.txt").get().asFile
+
 // The assets the APK packs: the project's, without the cooked textures desktop and web load
 // (S14 R9: assets/je-cooked/<family>), synced into the build directory before every build
 def jasperengineAssetsDir = layout.buildDirectory.dir("jasperengine-assets").get().asFile.toString()
@@ -45,7 +52,13 @@ android {
                     abiFilters(*onlyAbis.split(","))
                 }
 
-                arguments "-DANDROID_STL=c++_shared", "-DPROJECT_ROOT="+projectSourceRootAbs
+                arguments "-DANDROID_STL=c++_shared"
+                if (jasperPlayer) {
+                    // 16 KB pages (Android 15): the editor's zipalign -P 16 keeps the alignment
+                    arguments "-DJASPERENGINE_PLAYER=ON", "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
+                } else {
+                    arguments "-DPROJECT_ROOT="+projectSourceRootAbs
+                }
 
                 // CI and tools/build.sh set this to ccache.
                 def launcher = System.getenv("CMAKE_CXX_COMPILER_LAUNCHER")
@@ -74,13 +87,26 @@ android {
         prefab true
     }
 
+    if (jasperPlayer) {
+        androidResources {
+            additionalParameters += ["--emit-ids", jasperPlayerIds.toString()]
+        }
+    }
+
     sourceSets {
         main {
             java.srcDirs = [jasperengineRootAbs+'/platform/android/java']
-            // the editor export drops this and the ads SDK below unless the project enables AdMob
-            java.srcDir jasperengineRootAbs+'/platform/android/java-admob'
-            // the project's assets without the cooked textures other platforms load (S14 R9)
-            assets.srcDirs = [jasperengineAssetsDir,projectSourceRootAbs+'/lua']
+            if (jasperPlayer) {
+                // a player has no ads (a project with AdMob compiles) and no content of its own:
+                // the editor links the game's as assets/game
+                res.srcDir jasperengineRootAbs+'/platform/android/player/res'
+                assets.srcDirs = []
+            } else {
+                // the editor export drops this and the ads SDK below unless the project enables AdMob
+                java.srcDir jasperengineRootAbs+'/platform/android/java-admob'
+                // the project's assets without the cooked textures other platforms load (S14 R9)
+                assets.srcDirs = [jasperengineAssetsDir,projectSourceRootAbs+'/lua']
+            }
         }
     }
 
@@ -91,5 +117,12 @@ dependencies {
     implementation "androidx.appcompat:appcompat:1.6.1"
     implementation "androidx.games:games-activity:2.0.2"
     implementation "androidx.games:games-frame-pacing:2.0.0"
-    implementation "com.google.android.gms:play-services-ads:22.6.0"
+    if (!jasperPlayer) {
+        implementation "com.google.android.gms:play-services-ads:22.6.0"
+    }
+}
+
+if (jasperPlayer) {
+    // the ids file's folder exists before aapt2 writes it
+    tasks.matching { it.name == 'preBuild' }.configureEach { doFirst { jasperPlayerIds.parentFile.mkdirs() } }
 }

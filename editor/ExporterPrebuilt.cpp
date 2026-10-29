@@ -93,10 +93,6 @@ namespace {
         return out;
     }
 
-    std::string pathString(const fs::path& path) {
-        return path.generic_string();
-    }
-
 }
 
 editor::ExportResult editor::Exporter::getResult() const {
@@ -214,7 +210,18 @@ void editor::Exporter::runPlayerBuild() {
     config.graphicBackend = backend.empty() ? backends.front() : backend;
 
     resolvePlayer();
-    const BuildMethodChoice choice = chooseBuildMethod(project, config, player.get());
+    BuildMethodChoice choice = chooseBuildMethod(project, config, player.get());
+    // Auto without the player runtime: a build this computer can compile is made from source
+    // (an engine checkout, or a release editor before its runtimes are downloaded), else the
+    // missing runtime is the error below
+    if (choice.method == BuildMethod::Prebuilt && !player && config.method == BuildMethod::Auto) {
+        const bool canCompile = config.platform == BuildPlatform::Web ? detectEmsdk(config.emsdkPath).found
+                                : config.platform == hostBuildPlatform() && Generator::checkBuildTools().empty();
+        if (canCompile) {
+            choice.method = BuildMethod::Compile;
+            choice.reasons.push_back("no " + playerIdFor(config, config.developmentBuild) + " player runtime installed");
+        }
+    }
     {
         std::lock_guard<std::mutex> lock(progressMutex);
         result.compileReasons = choice.reasons;
@@ -249,6 +256,8 @@ void editor::Exporter::runPlayerBuild() {
             return;
         }
         config.mode = config.platform == BuildPlatform::Web ? ExportMode::Web : ExportMode::Desktop;
+        config.selectedBackends = {shaderBackendOf(config.platform, config.graphicBackend)};
+        config.webMultithreaded = config.webMultithreaded || project->getThreadingSettings().webMultithreaded;
         runExport();
         if (getProgress().failed) return;
         // a Compile build ships the same notices and manifest, so publish treats both alike
@@ -428,7 +437,7 @@ bool editor::Exporter::cookScenes() {
         return false;
     }
     // a build of one platform ships the texture families it loads only (S14 R9)
-    for (const std::string& family : {"desktop", "mobile", "android_etc2", "web"}) {
+    for (const std::string family : {"desktop", "mobile", "android_etc2", "web"}) {
         const bool keep = (family == std::string("desktop") && isDesktopPlatform(config.platform)) ||
                           (family == std::string("web") && config.platform == BuildPlatform::Web) ||
                           ((family == std::string("mobile") || family == std::string("android_etc2")) &&
@@ -664,7 +673,9 @@ bool editor::Exporter::writeContentManifest(bool prebuilt) {
         manifest.prefabs.clear();
         manifest.shaders.clear();
     }
-    for (const std::string& file : filesBelow(contentDir)) {
+    // (a web player reads its pack only: the notices beside the page are not its to check)
+    const bool looseFiles = !(prebuilt && config.platform == BuildPlatform::Web);
+    for (const std::string& file : looseFiles ? filesBelow(contentDir) : std::vector<std::string>{}) {
         if (file == "content-manifest.json" || file == "content.jpak") continue;
         player::ManifestFile entry;
         std::string error;
@@ -817,6 +828,35 @@ bool editor::Exporter::finalizeMacOS() {
 
 // ---------------------------------------------------------------- web (R15)
 
+std::string editor::Exporter::composeWebPage(std::string page, const std::string& title, const std::string& headInclude, bool resize,
+                                             bool hideUi, bool favicon, int canvasWidth, int canvasHeight, bool threads) {
+    auto replaceAll = [&page](const std::string& marker, const std::string& value) {
+        for (size_t at = page.find(marker); at != std::string::npos; at = page.find(marker, at + value.size())) page.replace(at, marker.size(), value);
+    };
+    // what the Compile build's apply.cmake adds to the head
+    std::string extra = headInclude + "\n";
+    if (favicon) extra += "<link rel=\"icon\" href=\"favicon.png\">\n";
+    if (resize)
+        extra += "<style>html, body { margin: 0; width: 100%; min-height: 100%; } #canvas { width: 100% !important; height: 100vh !important; "
+                 "height: 100dvh !important; display: block; border: 0; padding: 0; }</style>\n";
+    if (hideUi) extra += "<style>#status { display: none !important; }</style>\n";
+    if (page.find("{{JASPERENGINE_HEAD_INCLUDE}}") == std::string::npos) {
+        const size_t head = page.find("</head>");
+        if (head != std::string::npos) page.insert(head, extra);
+    } else {
+        replaceAll("{{JASPERENGINE_HEAD_INCLUDE}}", extra);
+    }
+    replaceAll("{{JASPERENGINE_TITLE}}", escapeXml(title));
+    replaceAll("{{JASPERENGINE_THREADS}}", threads ? "true" : "false");
+    replaceAll("{{JASPERENGINE_CANVAS_WIDTH}}", std::to_string(canvasWidth));
+    replaceAll("{{JASPERENGINE_CANVAS_HEIGHT}}", std::to_string(canvasHeight));
+    std::string loader = "<script src=\"player-loader.js\" data-st=\"jasperengine-player-st.js\"";
+    if (threads) loader += " data-mt=\"jasperengine-player-mt.js\" data-worker=\"coi-serviceworker.js\"";
+    loader += " data-pack=\"content.jpak\" data-manifest=\"content-manifest.json\"></script>";
+    replaceAll("{{JASPERENGINE_LOADER}}", loader);
+    return page;
+}
+
 bool editor::Exporter::finalizeWeb() {
     setProgressRaw("Finishing the web build...", 0.9f);
     std::error_code ec;
@@ -836,34 +876,33 @@ bool editor::Exporter::finalizeWeb() {
             return false;
         }
     }
-    // the page: the template's, or the project's own shell with the same markers
+    // the page: the runtime's player.html (staged as index.html), wrapped in the project's own
+    // shell as the Compile build wraps Emscripten's ({{JASPERENGINE_DEFAULT_HTML}})
     std::string page;
-    fs::path shell = project->getProjectPath() / "web" / "shell.html";
-    if (!fs::is_regular_file(shell, ec)) shell = stagingDir / "index.html";
-    if (!readText(shell, page)) {
-        setError("Cannot read " + shell.string());
+    if (!readText(stagingDir / "index.html", page)) {
+        setError("Cannot read the player's index.html");
         return false;
     }
-    const std::string title = project->getWindowSettings().title.empty() ? project->getName() : project->getWindowSettings().title;
-    auto replaceAll = [&page](const std::string& marker, const std::string& value) {
-        for (size_t at = page.find(marker); at != std::string::npos; at = page.find(marker, at + value.size())) page.replace(at, marker.size(), value);
-    };
-    std::string escapedTitle;
-    for (char c : title) {
-        switch (c) {
-            case '<': escapedTitle += "&lt;"; break;
-            case '>': escapedTitle += "&gt;"; break;
-            case '&': escapedTitle += "&amp;"; break;
-            case '"': escapedTitle += "&quot;"; break;
-            default: escapedTitle += c;
+    const WebProjectSettings& web = project->getWebProjectSettings();
+    if (!web.customHtmlShell.empty()) {
+        const fs::path shell = web.customHtmlShell.is_absolute() ? web.customHtmlShell : project->getProjectPath() / web.customHtmlShell;
+        std::string text;
+        if (!readText(shell, text)) {
+            setError("Cannot read the custom web HTML shell " + shell.string());
+            return false;
         }
+        const size_t marker = text.find("{{JASPERENGINE_DEFAULT_HTML}}");
+        if (marker == std::string::npos) {
+            setError("Custom web HTML shell must contain {{JASPERENGINE_DEFAULT_HTML}}");
+            return false;
+        }
+        page = text.replace(marker, std::string("{{JASPERENGINE_DEFAULT_HTML}}").size(), page);
     }
-    replaceAll("{{JASPERENGINE_TITLE}}", escapedTitle);
-    replaceAll("{{JASPERENGINE_THREADS}}", threads ? "true" : "false");
-    replaceAll("{{JASPERENGINE_CANVAS_WIDTH}}", std::to_string(project->getCanvasWidth()));
-    replaceAll("{{JASPERENGINE_CANVAS_HEIGHT}}", std::to_string(project->getCanvasHeight()));
+    page = composeWebPage(page, project->getApplicationName(web.applicationName), web.headInclude, web.resizeCanvasToWindow,
+                          web.hideEmscriptenUI, fs::is_regular_file(contentDir / "icon.png", ec) || !web.favicon.empty(),
+                          project->getCanvasWidth(), project->getCanvasHeight(), threads);
     if (page.find("player-loader.js") == std::string::npos) {
-        setError(shell.string() + " does not load player-loader.js (a custom shell keeps the template's <script src=\"player-loader.js\">)");
+        setError("The web page does not load player-loader.js (a custom shell keeps {{JASPERENGINE_DEFAULT_HTML}} or {{JASPERENGINE_LOADER}})");
         return false;
     }
     std::string error;
@@ -882,8 +921,16 @@ bool editor::Exporter::finalizeWeb() {
     }
     if (fs::is_regular_file(contentDir / "THIRD-PARTY-NOTICES.txt", ec))
         fs::copy_file(contentDir / "THIRD-PARTY-NOTICES.txt", stagingDir / "THIRD-PARTY-NOTICES.txt", fs::copy_options::overwrite_existing, ec);
-    if (fs::is_regular_file(contentDir / "icon.png", ec))
+    if (!web.favicon.empty()) {
+        const fs::path favicon = web.favicon.is_absolute() ? web.favicon : project->getProjectPath() / web.favicon;
+        fs::copy_file(favicon, stagingDir / "favicon.png", fs::copy_options::overwrite_existing, ec);
+        if (ec) {
+            setError("Cannot copy the web favicon " + favicon.string() + ": " + ec.message());
+            return false;
+        }
+    } else if (fs::is_regular_file(contentDir / "icon.png", ec)) {
         fs::copy_file(contentDir / "icon.png", stagingDir / "favicon.png", fs::copy_options::overwrite_existing, ec);
+    }
     std::lock_guard<std::mutex> lock(progressMutex);
     result.executable = stagingDir / "index.html";
     result.artifacts = {stagingDir / "index.html", stagingDir / "content.jpak"};

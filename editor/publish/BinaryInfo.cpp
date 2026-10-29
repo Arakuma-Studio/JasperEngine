@@ -81,17 +81,30 @@ namespace {
             if (info.minLoadAlignment == 0 || align < info.minLoadAlignment) info.minLoadAlignment = align;
         }
         // .gnu.version_r (SHT_GNU_verneed) names the versions it needs, in its linked string table
-        struct Section { uint32_t type; uint64_t offset, size; uint32_t link; };
+        struct Section { uint32_t name, type; uint64_t offset, size; uint32_t link; };
         std::vector<Section> sections;
         for (uint16_t i = 0; i < shnum; i++) {
             const uint64_t sh = shoff + (uint64_t)i * shentsize;
             if (!e.has(sh, shentsize)) break;
             Section s;
+            s.name = e.u32(sh);
             s.type = e.u32(sh + 4);
             s.offset = is64 ? e.u64(sh + 24) : e.u32(sh + 16);
             s.size = is64 ? e.u64(sh + 32) : e.u32(sh + 20);
             s.link = e.u32(sh + (is64 ? 40 : 24));
             sections.push_back(s);
+        }
+        // the section names (e_shstrndx): a .debug_info means DWARF the release splits off
+        const uint16_t shstrndx = e.u16(is64 ? 62 : 50);
+        if (shstrndx < sections.size()) {
+            const Section& names = sections[shstrndx];
+            static const char DEBUG_INFO[] = ".debug_info";
+            for (const Section& s : sections) {
+                const uint64_t at = names.offset + s.name;
+                if (s.name < names.size && e.has(at, sizeof(DEBUG_INFO)) &&
+                    std::memcmp(e.data.data() + at, DEBUG_INFO, sizeof(DEBUG_INFO)) == 0)
+                    info.hasDebugInfo = true;
+            }
         }
         for (const Section& s : sections) {
             if (s.type != 0x6ffffffe || s.link >= sections.size()) continue;

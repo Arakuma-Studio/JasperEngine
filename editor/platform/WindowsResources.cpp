@@ -16,6 +16,8 @@
 #include <windows.h>
 #endif
 
+using namespace jasperengine;
+using namespace jasperengine::editor;
 using namespace jasperengine::editor::platform;
 namespace fs = std::filesystem;
 

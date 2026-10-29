@@ -31,6 +31,7 @@ std::vector<ToolGroupInfo> buildGroups() {
         {"vcs", "Version control: status, locks, commits and scene diffs."},
         {"scripting", "Script hot reload and status, editor-script menus, numeric expressions, graph files."},
         {"html_ui", "HTML UI views in play: scroll, select, activate, expand, collapse and sort list/grid/tree/table views."},
+        {"shipping", "Player runtimes, release prepare/verify, SteamPipe scripts and Steam Deck deploys."},
     };
     if (selftestGroupMode() > 0) {
         groups.push_back({"selftest", "Test-only group of the MCP tests (JASPER_MCP_SELFTEST_GROUP)."});

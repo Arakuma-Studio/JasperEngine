@@ -30,6 +30,8 @@ namespace jasperengine::editor::publish {
         std::string glibcFloor;
         // the smallest PT_LOAD alignment of an ELF (Android: 16 KB pages need 16384)
         uint64_t minLoadAlignment = 0;
+        // an ELF with a .debug_info section (publish prepare moves it to symbols/)
+        bool hasDebugInfo = false;
     };
 
     std::optional<BinaryInfo> inspectBinary(const std::filesystem::path& path, std::string* error);

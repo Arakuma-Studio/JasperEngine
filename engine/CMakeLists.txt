@@ -1756,6 +1756,15 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         )
     endif()
 
+    if(JASPERENGINE_PLAYER AND EMSCRIPTEN)
+        # the web runtime ships both builds side by side (R15): their .js name their own .wasm
+        if(EMSCRIPTEN_THREAD_SUPPORT)
+            set_target_properties(${APP_NAME} PROPERTIES OUTPUT_NAME jasperengine-player-mt)
+        else()
+            set_target_properties(${APP_NAME} PROPERTIES OUTPUT_NAME jasperengine-player-st)
+        endif()
+    endif()
+
     if(WIN32)
         include(${JASPERENGINE_ROOT}/platform/win/WindowsManifest.cmake)
         jasperengine_add_windows_manifest(${APP_NAME})

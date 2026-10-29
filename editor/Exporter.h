@@ -363,6 +363,9 @@ namespace jasperengine::editor {
         static const char* androidPermissionName(const std::string& key);
         static std::string androidOrientationValue(AndroidOrientation orientation);
         static std::string escapeXml(const std::string& value);
+        // a prebuilt web page: the markers filled, the head additions of the Compile shell, the loader tag
+        static std::string composeWebPage(std::string page, const std::string& title, const std::string& headInclude, bool resize,
+                                          bool hideUi, bool favicon, int canvasWidth, int canvasHeight, bool threads);
     };
 
 }

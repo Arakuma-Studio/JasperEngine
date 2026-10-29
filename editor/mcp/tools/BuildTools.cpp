@@ -30,10 +30,15 @@
 #include "Generator.h"
 #include "Out.h"
 #include "Project.h"
+#include "ShippingTypes.h"
+#include "players/PlayerRuntimes.h"
+#include "platform/AndroidTools.h"
+#include "platform/ExternalTools.h"
 #include "pool/ShaderPool.h"
 #include "util/Base64.h"
 #include "util/FileUtils.h"
 
+#include "stb_image.h"
 #include "stb_image_resize2.h"
 #include "stb_image_write.h"
 
@@ -126,6 +131,7 @@ const char* modeName(ExportMode mode) {
         case ExportMode::SourceCode: return "source";
         case ExportMode::Desktop: return "desktop";
         case ExportMode::Web: return "web";
+        case ExportMode::Player: return "player";
     }
     return "source";
 }
@@ -301,6 +307,24 @@ bool isInside(const fs::path& path, const fs::path& root) {
     return true;
 }
 
+// A player build's remembered output dir: this computer's platform keeps the Desktop one, the web
+// the Web one, the others their own (S30)
+std::string playerSettingsKey(BuildPlatform platform) {
+    if (platform == hostBuildPlatform()) return "desktop";
+    if (platform == BuildPlatform::Web) return "web";
+    return std::string("player-") + buildPlatformName(platform);
+}
+
+fs::path defaultPlayerDir(Project* project, BuildPlatform platform) {
+    const fs::path file = project->getProjectPath() / "project.yaml";
+    const std::string key = playerSettingsKey(platform);
+    fs::path dir = AppSettings::getExportTargetDir(file, key);
+    if (!dir.empty()) return dir;
+    const fs::path base = AppSettings::getDefaultExportDirectory();
+    if (!base.empty()) return base / (appName(project) + "-" + key);
+    return project->getProjectInternalPath() / "builds" / key;
+}
+
 fs::path defaultOutputDir(Project* project, ExportMode mode) {
     const fs::path file = project->getProjectPath() / "project.yaml";
     fs::path dir = AppSettings::getExportTargetDir(file, settingsModeKey(mode));
@@ -434,6 +458,7 @@ struct BuildRun {
     size_t warningCount = 0;
     std::ofstream logFile;
     fs::path logPath;
+    ExportResult result;                  // a player build's report (taken before the exporter goes)
 };
 
 // Never destroyed: a build still running at exit must not be joined from a static destructor
@@ -520,10 +545,32 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
     const fs::path outputDir = r.shadersOnly || r.mode == ExportMode::SourceCode ? r.config.targetDir : r.config.destinationDir;
     result["output_dir"] = FileUtils::pathToGenericUtf8(outputDir);
 
+    if (r.mode == ExportMode::Player) {
+        const ExportResult& report = r.result;
+        result["platform"] = buildPlatformName(r.config.platform);
+        result["method_used"] = buildMethodName(report.methodUsed);
+        result["compile_reasons"] = report.compileReasons;
+        result["player_id"] = report.playerId;
+        if (!report.contentManifest.empty()) result["content_manifest"] = FileUtils::pathToGenericUtf8(report.contentManifest);
+        for (const BuildWarning& warning : report.warnings) result["warnings"].push_back({{"code", warning.code}, {"message", warning.message}});
+        if (!report.notes.empty()) result["notes"] = report.notes;
+    }
     if (progress.finished && !progress.failed) {
         result["artifacts"] = artifactsJson(outputDir);
         std::string message;
-        if (r.shadersOnly) {
+        if (r.mode == ExportMode::Player) {
+            const ExportResult& report = r.result;
+            if (!report.executable.empty()) result["executable"] = FileUtils::pathToGenericUtf8(report.executable);
+            message = std::string("Built ") + buildPlatformName(r.config.platform) + " (" +
+                      (report.methodUsed == BuildMethod::Prebuilt ? "prebuilt player " + report.playerId : "compiled") + ") in " +
+                      FileUtils::pathToGenericUtf8(outputDir) + ".";
+            for (const std::string& note : report.notes) message += " " + note + ".";
+            if (r.config.platform == hostBuildPlatform() && !report.executable.empty()) {
+                message += " Try it with run_build.";
+                std::lock_guard<std::mutex> lock(manager().mutex);
+                manager().lastExecutable = report.executable;
+            }
+        } else if (r.shadersOnly) {
             message = "Shaders generated in " + FileUtils::pathToGenericUtf8(outputDir) + ".";
         } else if (r.mode == ExportMode::Desktop) {
             const fs::path exe = outputDir / r.executableName;
@@ -598,6 +645,7 @@ void watchRun(std::shared_ptr<BuildRun> run) {
     {
         // joins the export thread, which has returned
         std::lock_guard<std::mutex> lock(r.mutex);
+        if (r.exporter) r.result = r.exporter->getResult();
         r.exporter.reset();
     }
     finishRun(run, progress);
@@ -680,12 +728,20 @@ void buildProjectTool(const CallPtr& call) {
     // ---- mode
     const std::string modeText = lowerText(args.value("mode", "desktop"));
     ExportMode mode;
+    // desktop and web are player builds for this computer and for the web (S30 R32)
+    BuildPlatform platform = hostBuildPlatform();
     if (modeText == "source" || modeText == "source_code" || modeText == "sourcecode") mode = ExportMode::SourceCode;
-    else if (modeText == "desktop" || modeText == "player") mode = ExportMode::Desktop;
-    else if (modeText == "web") mode = ExportMode::Web;
-    else {
-        call->fail("mode must be desktop (a runnable player for this computer), web (WebAssembly player, needs emsdk) or "
-                   "source (the C++ source project, for any platform).");
+    else if (modeText == "player" || modeText == "desktop" || modeText == "web") {
+        mode = ExportMode::Player;
+        if (modeText == "web") platform = BuildPlatform::Web;
+        if (modeText == "player" && args.contains("platform") && args["platform"].is_string() &&
+            !parseBuildPlatform(lowerText(args["platform"].get<std::string>()), platform)) {
+            call->fail("platform must be windows, macos, linux, android, ios or web.");
+            return;
+        }
+    } else {
+        call->fail("mode must be player (a game for platform: windows, macos, linux, android, ios or web), desktop (this computer), "
+                   "web, or source (the C++ source project, for any platform).");
         return;
     }
 
@@ -741,7 +797,7 @@ void buildProjectTool(const CallPtr& call) {
             return;
         }
     } else {
-        outputDir = defaultOutputDir(project, mode);
+        outputDir = mode == ExportMode::Player ? defaultPlayerDir(project, platform) : defaultOutputDir(project, mode);
     }
     outputDir = outputDir.lexically_normal();
     if (outputDir.filename().empty()) outputDir = outputDir.parent_path();
@@ -788,6 +844,46 @@ void buildProjectTool(const CallPtr& call) {
         } else {
             platformBackends(hostPlatformName(), config.selectedBackends);
         }
+    } else if (mode == ExportMode::Player) {
+        config.platform = platform;
+        const std::vector<std::string> backends = jasperengine::editor::platformBackends(platform);
+        std::string backend;
+        if (platform == hostBuildPlatform()) {
+            // this computer's player remembers its API as the Desktop build did
+            const auto& settings = project->getDesktopExportSettings();
+            if (settings.graphicBackendConfigured) backend = normalizeBackend(Exporter::getCMakeGraphicBackend(settings.graphicBackend));
+        }
+        if (args.contains("graphics_api") && args["graphics_api"].is_string()) {
+            backend = normalizeBackend(args["graphics_api"].get<std::string>());
+            if (backend.empty() || std::find(backends.begin(), backends.end(), backend) == backends.end()) {
+                std::string valid;
+                for (const std::string& b : backends) valid += " " + b;
+                call->fail("graphics_api for " + std::string(buildPlatformName(platform)) + " is one of:" + valid + ".");
+                return;
+            }
+            ShaderBackend shaderBackend = shaderBackendOf(platform, backend);
+            if (platform == hostBuildPlatform()) {
+                auto& desktop = project->getDesktopExportSettings();
+                projectDirty = projectDirty || !desktop.graphicBackendConfigured || desktop.graphicBackend != shaderBackend;
+                desktop.graphicBackend = shaderBackend;
+                desktop.graphicBackendConfigured = true;
+            }
+        }
+        if (backend.empty() || std::find(backends.begin(), backends.end(), backend) == backends.end()) backend = backends.front();
+        config.graphicBackend = backend;
+        config.selectedBackends = {shaderBackendOf(platform, backend)};
+        const std::string method = lowerText(args.value("method", "auto"));
+        if (!parseBuildMethod(method, config.method)) {
+            call->fail("method must be auto (the project's choice), prebuilt or compile.");
+            return;
+        }
+        config.developmentBuild = args.value("development", false);
+        const std::string format = lowerText(args.value("android_format", "apk"));
+        if (format != "apk" && format != "aab") {
+            call->fail("android_format must be apk or aab.");
+            return;
+        }
+        config.androidFormat = format == "aab" ? AndroidFormat::Aab : AndroidFormat::Apk;
     } else {
         ShaderBackend backend = ShaderBackend::GLES3;
         if (mode == ExportMode::Desktop) {
@@ -831,7 +927,17 @@ void buildProjectTool(const CallPtr& call) {
         }
         config.buildType = buildType;
     }
-    if (mode == ExportMode::Desktop) {
+    if (mode == ExportMode::Player) {
+        const LocalBuildSettings build = AppSettings::getBuildSettings(projectFile);
+        config.cmakeCCompiler = build.cCompiler;
+        config.cmakeCxxCompiler = build.cxxCompiler;
+        config.cmakeGenerator = build.generator;
+        config.buildJobs = build.buildJobs;
+        config.emsdkPath = AppSettings::getEmsdkPath();
+        // Android signing: the environment's (never stored, never an argument)
+        if (const char* value = std::getenv("JASPER_ANDROID_KS_PASS")) config.keystorePassword = value;
+        if (const char* value = std::getenv("JASPER_ANDROID_KEY_PASS")) config.keyPassword = value;
+    } else if (mode == ExportMode::Desktop) {
         const std::string missing = Generator::checkBuildTools();
         if (!missing.empty()) {
             call->fail("Missing build tools for a Desktop player:\n" + missing +
@@ -910,10 +1016,12 @@ void buildProjectTool(const CallPtr& call) {
         call->fail("Could not write the project file (see the console).");
         return;
     }
-    AppSettings::setExportTargetDir(projectFile, settingsModeKey(mode), outputDir);
+    AppSettings::setExportTargetDir(projectFile, mode == ExportMode::Player ? playerSettingsKey(platform) : settingsModeKey(mode), outputDir);
 
     // ---- start
-    const char* modeLabel = mode == ExportMode::SourceCode ? "Export source" : mode == ExportMode::Desktop ? "Build Desktop player" : "Build Web player";
+    const std::string playerLabel = std::string("Build ") + buildPlatformName(platform);
+    const char* modeLabel = mode == ExportMode::SourceCode ? "Export source" : mode == ExportMode::Desktop ? "Build Desktop player"
+                          : mode == ExportMode::Player ? playerLabel.c_str() : "Build Web player";
     auto run = std::make_shared<BuildRun>();
     run->job = ctx.jobs().create("build", std::string(modeLabel) + (mode == ExportMode::SourceCode ? "" : " (" + config.buildType + ")"),
                                  JobBusy::Export);
@@ -1052,6 +1160,42 @@ void getBuildInfoTool(const CallPtr& call) {
         {"output_dir", FileUtils::pathToGenericUtf8(defaultOutputDir(project, ExportMode::SourceCode))}
     };
     data["all_backends"] = allBackendTokens();
+
+    // S30: the prebuilt player runtimes of every platform, and what each platform's build lacks
+    const std::vector<PlayerInfo> installed = PlayerRuntimes::list();
+    Json players = Json::array();
+    Json platforms = Json::object();
+    for (BuildPlatform target : {BuildPlatform::Windows, BuildPlatform::Linux, BuildPlatform::MacOS, BuildPlatform::Android,
+                                 BuildPlatform::IOS, BuildPlatform::Web}) {
+        for (const std::string& backend : jasperengine::editor::platformBackends(target)) {
+            for (bool development : {false, true}) {
+                const std::string id = PlayerRuntimes::runtimeId(buildPlatformName(target), platformArch(target), backend, development);
+                auto it = std::find_if(installed.begin(), installed.end(), [&id](const PlayerInfo& p) {
+                    return p.id == id && p.engineVersion == PlayerRuntimes::editorVersion();
+                });
+                Json item = {{"id", id}, {"installed", it != installed.end()}};
+                if (it != installed.end()) item["size_mb"] = std::round(double(it->sizeBytes) / (1024.0 * 1024.0) * 10.0) / 10.0;
+                players.push_back(item);
+            }
+        }
+        Json missingTools = Json::array();
+        if (target == BuildPlatform::Android) {
+            const platform::AndroidToolchain tools =
+                platform::AndroidTools::discover(project->getAndroidProjectSettings().targetSdk, false, false);
+            for (const std::string& tool : tools.missing) missingTools.push_back(tool);
+        } else if (target == BuildPlatform::IOS) {
+#ifdef __APPLE__
+            if (!platform::ExternalTools::xcodebuild().found()) missingTools.push_back("xcodebuild (Xcode)");
+#else
+            missingTools.push_back("a Mac with Xcode (the build is the Xcode project)");
+#endif
+        }
+        platforms[buildPlatformName(target)] = {{"tools_missing", missingTools},
+                                                {"output_dir", FileUtils::pathToGenericUtf8(defaultPlayerDir(project, target))}};
+    }
+    data["players"] = players;
+    data["platforms"] = platforms;
+    data["build_method"] = project->getBuildMethod();
 
     Json scenes = Json::array();
     const uint32_t startId = project->getStartSceneId();
@@ -1362,6 +1506,7 @@ struct PlayerRun {
     std::vector<PlayerShot> shots;   // timed screenshots (sorted)
     fs::path exe;
     fs::path logPath;
+    fs::path playerShot;             // the player's own --screenshot (run_build quit_after/screenshot_frame)
     // input script
     std::vector<PlayerAction> actions;
     size_t nextAction = 0;
@@ -1445,6 +1590,46 @@ void runPlayerInput(PlayerRun& run, double elapsed) {
             return;
         }
     }
+}
+
+// The player's own --screenshot (R20), scaled to max_width like a window capture
+ScreenCapture loadPlayerShot(const fs::path& path, int maxWidth) {
+    ScreenCapture capture;
+    std::ifstream in(path, std::ios::binary);
+    if (!in) {
+        capture.note = "the player wrote no screenshot (it quit before the frame, or its capture failed: see the log)";
+        return capture;
+    }
+    const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    int w = 0, h = 0, channels = 0;
+    unsigned char* pixels = stbi_load_from_memory(bytes.data(), static_cast<int>(bytes.size()), &w, &h, &channels, 3);
+    if (!pixels) {
+        capture.note = "the player's screenshot is not a PNG";
+        return capture;
+    }
+    int finalW = w, finalH = h;
+    std::vector<uint8_t> scaled;
+    const unsigned char* data = pixels;
+    if (w > maxWidth) {
+        finalW = maxWidth;
+        finalH = std::max(1, static_cast<int>(std::lround(double(h) * maxWidth / w)));
+        scaled.resize(static_cast<size_t>(finalW) * finalH * 3);
+        if (stbir_resize_uint8_srgb(pixels, w, h, 0, scaled.data(), finalW, finalH, 0, STBIR_RGB)) data = scaled.data();
+        else {
+            finalW = w;
+            finalH = h;
+        }
+    }
+    auto append = [](void* context, void* chunk, int size) {
+        auto* out = static_cast<std::vector<uint8_t>*>(context);
+        out->insert(out->end(), static_cast<uint8_t*>(chunk), static_cast<uint8_t*>(chunk) + size);
+    };
+    capture.ok = stbi_write_png_to_func(append, &capture.png, finalW, finalH, 3, data, finalW * 3) != 0;
+    stbi_image_free(pixels);
+    capture.width = finalW;
+    capture.height = finalH;
+    capture.note = "the player's frame (" + std::to_string(w) + "x" + std::to_string(h) + ", " + FileUtils::pathToGenericUtf8(path) + ")";
+    return capture;
 }
 
 void finishPlayerRun(const CallPtr& call, const std::shared_ptr<PlayerRun>& run) {
@@ -1559,6 +1744,14 @@ void finishPlayerRun(const CallPtr& call, const std::shared_ptr<PlayerRun>& run)
         else text += " Input: all " + std::to_string(run->actions.size()) + " action(s) sent (" + run->inputMethod + ").";
     }
 
+    if (!run->playerShot.empty()) {
+        PlayerShot shot;
+        shot.at = ran;
+        shot.done = true;
+        shot.label = "screenshot";
+        shot.capture = loadPlayerShot(run->playerShot, run->maxWidth);
+        run->shots.push_back(shot);
+    }
     std::stable_sort(run->shots.begin(), run->shots.end(), [](const PlayerShot& a, const PlayerShot& b) { return a.at < b.at; });
     Json shots = Json::array();
     for (const PlayerShot& shot : run->shots) {
@@ -1702,8 +1895,35 @@ void runBuildTool(const CallPtr& call) {
     run->secondsGiven = args.contains("seconds") && args["seconds"].is_number();
     run->inputEnd = inputEnd;
 
+    // the player's own run control (R17): it counts the frames, quits and writes its frame itself,
+    // so no window capture is needed (and it works headless)
+    std::vector<std::string> controlArgs;
+    if (args.contains("quit_after") && args["quit_after"].is_number_integer())
+        controlArgs.insert(controlArgs.end(), {"--quit-after", std::to_string(args["quit_after"].get<long long>())});
+    if (args.contains("fixed_fps") && args["fixed_fps"].is_number())
+        controlArgs.insert(controlArgs.end(), {"--fixed-fps", std::to_string(args["fixed_fps"].get<double>())});
+    if (args.value("after_ready", false)) controlArgs.push_back("--after-ready");
+    if (args.value("headless", false)) controlArgs.push_back("--headless");
+    const bool playerControl = !controlArgs.empty() || args.contains("screenshot_frame");
+    if (playerControl) {
+        if (args.contains("screenshot_frame") && args["screenshot_frame"].is_number_integer())
+            controlArgs.insert(controlArgs.end(), {"--screenshot-frame", std::to_string(args["screenshot_frame"].get<long long>())});
+        if (!run->actions.empty() && args.value("headless", false)) {
+            call->fail("input needs the player's window: run without headless.");
+            return;
+        }
+        // the player ends the run itself: seconds is only the limit
+        if (!run->secondsGiven) run->seconds = 300.0;
+    }
     const bool wantScreenshot = args.value("screenshot", run->shots.empty() && !hasInputShots);
-    if (wantScreenshot && run->shots.empty()) {
+    if (playerControl && wantScreenshot && run->shots.empty()) {
+        const fs::path logs = project->getProjectInternalPath() / "logs";
+        fs::create_directories(logs, ec);
+        static std::atomic<unsigned> shotCounter{0};
+        run->playerShot = logs / ("run-shot-" + std::to_string(++shotCounter) + ".png");
+        fs::remove(run->playerShot, ec);
+        controlArgs.insert(controlArgs.end(), {"--screenshot", run->playerShot.string()});
+    } else if (wantScreenshot && run->shots.empty()) {
         PlayerShot shot;
         const double after = args.value("screenshot_after_seconds", std::min(3.0, run->seconds * 0.8));
         shot.at = std::max(0.1, std::min(after, run->seconds));
@@ -1727,6 +1947,7 @@ void runBuildTool(const CallPtr& call) {
         }
     }
     argStrings.push_back(exe.string());
+    argStrings.insert(argStrings.end(), controlArgs.begin(), controlArgs.end());
     if (args.contains("args") && args["args"].is_array()) {
         for (const Json& a : args["args"]) {
             if (!a.is_string()) {
@@ -1888,18 +2109,21 @@ void registerBuildTools(McpRegistry& registry) {
         tool.activity = ToolActivity::Build;  // busy policy (McpServer::busyRefusal)
         tool.title = "Build Project";
         tool.description =
-            "File > Build Settings > Build, as a job. desktop: a player for this computer (the first one compiles "
-            "the engine: minutes); web: WebAssembly (needs emsdk); source: a standalone C++/CMake project. "
+            "File > Build Settings > Build, as a job. player: a game for platform (a prebuilt player, or compiled "
+            "when the project needs native code); desktop/web: this computer/the web; source: a C++/CMake project. "
             "Saves all scenes first. Past timeout_seconds a {job_id} (get_job). Result: output_dir, artifacts, "
             "executable, errors [{file, line, message}], warnings, log_file. Don't edit scenes or play meanwhile.";
         tool.inputSchema = object({
-            {"mode", withDefault(stringEnum("", {"desktop", "web", "source"}), "desktop")},
+            {"mode", withDefault(stringEnum("", {"player", "desktop", "web", "source"}), "desktop")},
             {"output_dir", string("Absolute, outside the project. Default: last for mode.")},
             {"overwrite", withDefault(boolean("source: allow a non-empty output_dir."), false)},
             {"start_scene", sceneRef("Also set as the start scene. Default: project's.")},
             {"allow_missing_assets", withDefault(boolean("Build despite missing assets (list_missing_assets)."), false)},
             {"graphics_api", string("desktop: opengl/vulkan/d3d11/metal-macos (per OS); web: opengles. Remembered.")},
-            {"platform", stringEnum("source: shader target platform.", {"windows", "macos", "linux", "android", "ios", "web"})},
+            {"platform", stringEnum("player: target (default this computer); source: shader target.", {"windows", "macos", "linux", "android", "ios", "web"})},
+            {"method", withDefault(stringEnum("Default: the project's.", {"auto", "prebuilt", "compile"}), "auto")},
+            {"development", withDefault(boolean(""), false)},
+            {"android_format", withDefault(stringEnum("", {"apk", "aab"}), "apk")},
             {"backends", array(stringItem, "source: opengl/opengles/d3d11/metal-macos/metal-ios/vulkan/all. Remembered.")},
             {"build_type", withDefault(stringEnum("", {"Release", "Debug", "RelWithDebInfo", "MinSizeRel"}), "Release")},
             {"build_jobs", integer("desktop: 0 = auto. Default: preferences.build_jobs.")},
@@ -1959,6 +2183,11 @@ void registerBuildTools(McpRegistry& registry) {
             {"screenshot_after_seconds", number("Default min(3, 0.8 * seconds).")},
             {"max_width", withDefault(integer("", 64, 4096), 1280)},
             {"args", array(stringItem, "Player arguments.")},
+            {"headless", boolean("No window.")},
+            {"quit_after", integer("Frames, then exit.", 1, 1000000)},
+            {"fixed_fps", number("", 1, 1000)},
+            {"after_ready", boolean("Count from Engine ready.")},
+            {"screenshot_frame", integer("The player's own capture.", 1, 1000000)},
             {"log_lines", withDefault(integer("", 0, 2000), 80)}
         });
         tool.annotations.openWorld = true;

@@ -11,6 +11,10 @@
 #   tools/build.sh htmlui-editor-tests      builds the linux editor with jasperengine-htmlui-editor-tests, runs them
 #   tools/build.sh mcp-tests [args...]  the MCP tests against build/linux/editor-install (run tools/build.sh linux first)
 #   tools/build.sh web-gate            the web build (tools/build.sh web) in headless Chrome (tools/web/browser_gate.py)
+#   tools/build.sh players             the prebuilt player runtimes (S30) into build/players/<id>/:
+#                                      PLAYER_PLATFORM=linux (default; PLAYER_BACKENDS="glcore gles3 vulkan")
+#                                      or web (single-thread and pthreads) or android; PLAYER_FLAVOURS="release development";
+#                                      PLAYER_ZIP=1 also writes the archives into build/players/archives/
 #   tools/build.sh shell <target>      interactive shell in that target's image
 #   tools/build.sh exec <target> <command...>  that command in the image (e.g. exec linux tools/ci/check-presets.sh)
 #
@@ -90,7 +94,7 @@ if [[ "$TARGET" == shell || "$TARGET" == exec ]]; then
     TARGET="$1"; shift
 fi
 case "$TARGET" in
-    linux|web|android|unit-tests|htmlui-tests|htmlui-editor-tests|mcp-tests|web-gate) ;;
+    linux|web|android|unit-tests|htmlui-tests|htmlui-editor-tests|mcp-tests|web-gate|players) ;;
     *) usage ;;
 esac
 if [[ $EXEC_MODE -eq 1 ]]; then
@@ -110,6 +114,12 @@ IMAGE_TARGET="$TARGET"
 case "$TARGET" in
     unit-tests|htmlui-tests|htmlui-editor-tests|mcp-tests) IMAGE_TARGET=linux ;;
     web-gate) IMAGE_TARGET=web ;;
+    players)
+        case "${PLAYER_PLATFORM:-linux}" in
+            web) IMAGE_TARGET=web ;;
+            android) IMAGE_TARGET=android ;;
+            *) IMAGE_TARGET=linux ;;
+        esac ;;
 esac
 IMAGE="jasperengine/${IMAGE_TARGET}-build"
 OUT="build/$IMAGE_TARGET"
@@ -119,6 +129,8 @@ CACHE="build/.cache"
 MAIN="$(cd "$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)"
 JOBS_FLAG=""
 [[ -n "${JOBS:-}" ]] && JOBS_FLAG="-j $JOBS"
+# KEEP_GOING=1: Ninja builds every target it can after a failure (all the errors of one run)
+[[ "${KEEP_GOING:-0}" == 1 ]] && JOBS_FLAG="$JOBS_FLAG -- -k 0"
 
 # Rebuilding an unchanged image is a no-op thanks to the layer cache. The containers run the
 # image by id: other worktrees (with another Dockerfile) may retag the shared name meanwhile.
@@ -352,6 +364,69 @@ web)
         cmake --preset $PRESET -S engine -B $WEB_DIR -DCMAKE_BUILD_TYPE=$BT $PROJECT_FLAGS $OPTION_FLAGS $SIMD_FLAGS $CCACHE_FLAGS
         cmake --build $WEB_DIR --target $ENGINE_TARGET $JOBS_FLAG
     "
+    ;;
+players)
+    PLAYER_PLATFORM="${PLAYER_PLATFORM:-linux}"
+    PLAYER_FLAVOURS="${PLAYER_FLAVOURS:-release development}"
+    PLAYERS_OUT=build/players
+    ZIP_FLAG=""
+    [[ "${PLAYER_ZIP:-0}" == 1 ]] && ZIP_FLAG="--zip $PLAYERS_OUT/archives"
+    for flavour in $PLAYER_FLAVOURS; do
+        [[ "$flavour" =~ ^(release|development)$ ]] || { echo "PLAYER_FLAVOURS lists release and development (got $flavour)" >&2; exit 1; }
+    done
+    case "$PLAYER_PLATFORM" in
+    linux)
+        PLAYER_BACKENDS="${PLAYER_BACKENDS:-glcore gles3 vulkan}"
+        for backend in $PLAYER_BACKENDS; do
+            [[ "$backend" =~ ^(glcore|gles3|vulkan)$ ]] || { echo "PLAYER_BACKENDS lists glcore, gles3 and vulkan (got $backend)" >&2; exit 1; }
+        done
+        run bash -euo pipefail -c "
+            for flavour in $PLAYER_FLAVOURS; do
+                for backend in $PLAYER_BACKENDS; do
+                    id=linux-x64-\$backend-\$flavour
+                    dev=OFF; [[ \$flavour == development ]] && dev=ON
+                    cmake --preset engine-linux-release -S engine -B build/players-build/\$id -DCMAKE_BUILD_TYPE=Release \
+                        -DJASPERENGINE_PLAYER=ON -DGRAPHIC_BACKEND=\$backend -DJASPERENGINE_DEVELOPMENT_BUILD=\$dev \
+                        $OPTION_FLAGS $ENGINE_WARNING_FLAGS $CCACHE_FLAGS
+                    cmake --build build/players-build/\$id --target jasperengine-player $JOBS_FLAG
+                    # shipped pre-stripped (R23): the symbols are the build tree's
+                    strip --strip-debug -o build/players-build/\$id/jasperengine-player.stripped build/players-build/\$id/jasperengine-player
+                    mkdir -p build/players-build/\$id/package
+                    mv build/players-build/\$id/jasperengine-player.stripped build/players-build/\$id/package/jasperengine-player
+                    python3 tools/players/package_player.py --platform linux --arch x64 --backend \$backend --flavour \$flavour \
+                        --build build/players-build/\$id/package --out $PLAYERS_OUT $ZIP_FLAG
+                done
+            done
+        "
+        ;;
+    web)
+        run bash -euo pipefail -c "
+            for flavour in $PLAYER_FLAVOURS; do
+                id=web-wasm32-gles3-\$flavour
+                dev=OFF; bt=Release; [[ \$flavour == development ]] && { dev=ON; }
+                for threads in OFF ON; do
+                    tree=build/players-build/\$id-threads\$threads
+                    cmake --preset engine-web-release -S engine -B \$tree -DCMAKE_BUILD_TYPE=\$bt -DJASPERENGINE_PLAYER=ON \
+                        -DGRAPHIC_BACKEND=gles3 -DEMSCRIPTEN_THREAD_SUPPORT=\$threads -DJASPERENGINE_DEVELOPMENT_BUILD=\$dev \
+                        $OPTION_FLAGS $CCACHE_FLAGS
+                    cmake --build \$tree --target jasperengine-player $JOBS_FLAG
+                done
+                python3 tools/players/package_player.py --platform web --arch wasm32 --backend gles3 --flavour \$flavour \
+                    --build build/players-build/\$id-threadsOFF --build-mt build/players-build/\$id-threadsON --out $PLAYERS_OUT $ZIP_FLAG
+            done
+        "
+        ;;
+    android)
+        run bash -euo pipefail -c "
+            for flavour in $PLAYER_FLAVOURS; do
+                CMAKE_CXX_COMPILER_LAUNCHER=ccache tools/players/android_player.sh \$flavour build/players-build/android-\$flavour
+                python3 tools/players/package_player.py --platform android --arch universal --backend gles3 --flavour \$flavour \
+                    --android-dir build/players-build/android-\$flavour --out $PLAYERS_OUT $ZIP_FLAG
+            done
+        "
+        ;;
+    *) echo "PLAYER_PLATFORM is linux, web or android here (Windows, macOS and iOS runtimes build in CI: .github/workflows)" >&2; exit 1 ;;
+    esac
     ;;
 unit-tests)
     BT="${BUILD_TYPE:-RelWithDebInfo}"
