@@ -483,3 +483,18 @@ Unit tests in `engine/tests/core/animation/` (`Animator*.cpp`), editor tests in
 ## 11. Progress
 
 - [x] Re-scope and revised spec.
+- [x] Runtime: asset formats and IO (`AnimatorAssetIO`), pool, SoA poses with SIMD back ends,
+  rig binding, compiled controllers, blend trees, state machines, layers / masks / additive,
+  montages, events, IK stack (TwoBone, FABRIK, LookAt, FootIK, FootLock), root motion,
+  humanoid retargeting, `AnimatorSystem` (parallel wave, skins, culling, Exposed writes).
+- [x] Component, S08 reflection, Lua (`Animator`, `AnimatorStateInfo`), script events.
+- [x] Editor: Animator window (graph canvas, layers, parameters, preview, live debugging),
+  Inspector (component, state / transition / layer / blend tree, controller / mask / montage
+  assets), Project window assets and icons, menus and commands, curves-view tangent modes and
+  handles, Animator clips in the clip dropdown, particle-aware previews, asset renames.
+- [x] MCP tools (group `animation`), the guide line, `docs/mcp/guide/animator.md`, user docs,
+  Lua API and glossary.
+- [x] Tests: core (`Animator*`, `ClipTangentModes`), GPU golden (`AnimatorGpu`), editor
+  (`AnimatorEditor`), MCP (`test_animator.py`); bench `je-bench-anim`.
+- [ ] Gate: linux WERROR GL and Vulkan, ASan+UBSan, web, Android, MCP full suite, smoke, E
+  benches (`docs/perf/animator.md`), Xcode sync, final oe-port merge.
