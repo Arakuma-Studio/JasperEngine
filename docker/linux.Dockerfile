@@ -68,3 +68,10 @@ RUN wget -q -O /tmp/uv.tar.gz \
     && install -m 0755 /tmp/uv-x86_64-unknown-linux-gnu/uv /tmp/uv-x86_64-unknown-linux-gnu/uvx /usr/local/bin/ \
     && rm -rf /tmp/uv.tar.gz /tmp/uv-x86_64-unknown-linux-gnu \
     && uv --version
+
+# The version-control integration's tests (docs/specs/S29-version-control.md) run git-lfs and svn
+# against temporary local repositories (a fake LFS lock server on 127.0.0.1, svnadmin + file://).
+# A layer of its own, after every other one, so cached images keep theirs.
+RUN apt-get update && apt-get install -y --no-install-recommends git-lfs subversion \
+    && rm -rf /var/lib/apt/lists/* \
+    && git lfs version && svn --version --quiet

@@ -26,19 +26,25 @@ namespace {
         JE_FIELD(Transform, position, .flags = NonStructural, .updateFlags = UpdateFlags_Transform | UpdateFlags_Layout_Anchors),
         JE_FIELD(Transform, rotation, .flags = NonStructural, .updateFlags = UpdateFlags_Transform, .drawer = "quatEuler"),
         JE_FIELD(Transform, scale, .flags = NonStructural, .updateFlags = UpdateFlags_Transform | UpdateFlags_Rigidbody2D | UpdateFlags_Rigidbody),
-        // the world values and matrices the transform system computes: saved, not edited
-        JE_FIELD(Transform, worldPosition, .flags = Derived | Hidden),
-        JE_FIELD(Transform, worldRotation, .flags = Derived | Hidden),
-        JE_FIELD(Transform, worldScale, .flags = Derived | Hidden),
-        JE_FIELD(Transform, localMatrix, .flags = Derived | Hidden),
-        JE_FIELD(Transform, modelMatrix, .flags = Derived | Hidden),
-        JE_FIELD(Transform, normalMatrix, .flags = Derived | Hidden),
+        // the world values and matrices the transform system computes: neither edited nor written
+        // (docs/specs/S29-version-control.md R20; older files' are read, then recomputed)
+        JE_FIELD(Transform, worldPosition, .flags = Derived | Hidden | NotWritten),
+        JE_FIELD(Transform, worldRotation, .flags = Derived | Hidden | NotWritten),
+        JE_FIELD(Transform, worldScale, .flags = Derived | Hidden | NotWritten),
+        JE_FIELD(Transform, localMatrix, .flags = Derived | Hidden | NotWritten),
+        JE_FIELD(Transform, modelMatrix, .flags = Derived | Hidden | NotWritten),
+        JE_FIELD(Transform, normalMatrix, .flags = Derived | Hidden | NotWritten),
         JE_FIELD(Transform, visible),
         JE_FIELD(Transform, billboardRotation, .updateFlags = UpdateFlags_Transform),
         JE_FIELD(Transform, billboard, .updateFlags = UpdateFlags_Transform),
         JE_FIELD(Transform, fakeBillboard, .updateFlags = UpdateFlags_Transform),
         JE_FIELD(Transform, cylindricalBillboard, .updateFlags = UpdateFlags_Transform),
     };
+
+    // the world values are not in the file: the transform pass computes them (R20)
+    void transformPostDecode(void* comp, const DecodeContext&) {
+        static_cast<Transform*>(comp)->needUpdate = true;
+    }
 
     std::string transformCodegen(EntityRegistry* registry, Entity entity, const CodegenContext& ctx) {
         return Factory::createTransform(ctx.indentSpaces, registry, entity, ctx.sceneName, ctx.entityName, false, ctx.assignExisting,
@@ -235,6 +241,7 @@ const ComponentDesc kTransformDesc{
     .icon = ICON_FA_UP_DOWN_LEFT_RIGHT,
     .body = JE_STRUCT_DESC(Transform, "Transform", kTransformFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(Transform),
+    .postDecode = &transformPostDecode,
     .codegen = &transformCodegen,
 };
 

@@ -20,6 +20,11 @@ using namespace jasperengine::editor;
 
 std::string StatusBar::transientText;
 double StatusBar::transientUntil = 0.0;
+std::function<void()> StatusBar::versionControlSegment;
+
+void StatusBar::setVersionControlSegment(std::function<void()> draw) {
+    versionControlSegment = std::move(draw);
+}
 
 void StatusBar::setTransientMessage(const std::string& text, double seconds) {
     transientText = text;
@@ -80,6 +85,7 @@ void StatusBar::show() {
             }
             ImGui::SameLine();
         }
+        if (versionControlSegment) versionControlSegment();
         const FileWatchService::Stats stats = FileWatchService::get().stats();
         HotReloadService& reloads = HotReloadService::get();
         std::string label;

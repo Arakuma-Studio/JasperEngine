@@ -77,6 +77,7 @@ namespace jasperengine::editor {
         int m_mobilePbrTierIndex = 1;
         bool m_packNativeResources = false;
         bool m_versionControlMetadata = true;
+        VcsProjectSettings m_vcs;
         char m_webApplicationNameBuffer[256] = {0};
         fs::path m_webFavicon;
         fs::path m_webCustomHtmlShell;

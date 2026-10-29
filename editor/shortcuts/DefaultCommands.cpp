@@ -156,6 +156,15 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("assets.emptyTrash", "Empty Trash...", AppMenuCommand::ClearTrash).agentSafe = false;
     b.add("assets.clearShaderWarmup", "Clear Shader Warm-up List", C::Editor).description =
         "Empty the project's shader warm-up list (ShaderWarmup.json): Record During Play builds it again";
+    // S29: the Project window's selected files; Commit... opens the Commit window either way
+    b.menu("assets.vcs.commit", "Commit...", AppMenuCommand::VcsCommit).description = "Version control: commit changed files (the Commit window)";
+    b.menu("assets.vcs.revert", "Revert...", AppMenuCommand::VcsRevert).description = "Version control: discard the selected files' changes (undoable)";
+    b.menu("assets.vcs.lock", "Lock", AppMenuCommand::VcsLock).description = "Version control: lock the selected files on the server";
+    b.menu("assets.vcs.unlock", "Unlock", AppMenuCommand::VcsUnlock).description = "Version control: release the selected files' locks";
+    b.menu("assets.vcs.history", "Show History", AppMenuCommand::VcsShowHistory).description = "Version control: the selected file's history";
+    b.menu("assets.vcs.diff", "Diff Against Baseline", AppMenuCommand::VcsDiffAgainstBaseline).description =
+        "Version control: the selected file against its last commit (scenes and prefabs: the Scene Diff)";
+    b.menu("assets.vcs.refresh", "Refresh Version Control", AppMenuCommand::VcsRefresh).description = "Version control: read the status and the locks now";
     b.menu("scripts.reload", "Reload Scripts", AppMenuCommand::ScriptsReload);
     b.menu("scripts.rebuildCpp", "Rebuild C++ Scripts", AppMenuCommand::ScriptsRebuildCpp);
     b.menu("scripts.cancelBuild", "Cancel Script Build", AppMenuCommand::ScriptsCancelBuild);
@@ -203,6 +212,10 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("window.systems", "Systems", AppMenuCommand::ToggleSystems);
     b.menu("window.jobsMemory", "Jobs & Memory", AppMenuCommand::ToggleJobsMemory);
     b.menu("window.mcpActivity", "MCP Server", AppMenuCommand::ToggleMcpActivity);
+    b.menu("window.vcs.commit", "Commit", AppMenuCommand::ToggleVcsCommit);
+    b.menu("window.vcs.history", "History", AppMenuCommand::ToggleVcsHistory);
+    b.menu("window.vcs.sceneDiff", "Scene Diff", AppMenuCommand::ToggleVcsSceneDiff);
+    b.menu("window.vcs.conflicts", "Conflicts", AppMenuCommand::ToggleVcsConflicts);
     b.menu("window.detachableWindows", "Detachable Windows", AppMenuCommand::ToggleDetachableWindows);
 
     b.group = "Layouts";

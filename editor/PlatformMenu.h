@@ -36,6 +36,8 @@ struct PlatformMenuItem {
     PlatformMenuCommand command;
     bool enabled = true;
     bool checked = false;
+    // why a disabled item is disabled (the ImGui menu's tooltip)
+    std::string tooltip;
     std::vector<PlatformMenuItem> children;
 
     bool operator==(const PlatformMenuItem& other) const {
@@ -46,6 +48,7 @@ struct PlatformMenuItem {
             && command == other.command
             && enabled == other.enabled
             && checked == other.checked
+            && tooltip == other.tooltip
             && children == other.children;
     }
 };

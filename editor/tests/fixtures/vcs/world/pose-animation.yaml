@@ -1,0 +1,356 @@
+Main Scene:
+  Directional Light:
+    position: [0, 10, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 10, 0, 1]
+  Ground:
+    position: [0, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [8, 1, 8]
+    modelMatrix: [8, 0, 0, 0, 0, 1, 0, 0, 0, 0, 8, 0, 0, 0, 0, 1]
+  Hero:
+    position: [-0.75, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -0.75, 0, 0, 1]
+  Hero/mixamorig:Hips:
+    position: [-0.75, 0.95, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -0.75, 0.95, 0, 1]
+  Hero/mixamorig:Hips/mixamorig:LeftUpLeg:
+    position: [-0.65999997, 0.9, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -0.65999997, 0.9, 0, 1]
+  Hero/mixamorig:Hips/mixamorig:LeftUpLeg/mixamorig:LeftLeg:
+    position: [-0.65999997, 0.49999997, 0.01]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -0.65999997, 0.49999997, 0.01, 1]
+  Hero/mixamorig:Hips/mixamorig:LeftUpLeg/mixamorig:LeftLeg/mixamorig:LeftFoot:
+    position: [-0.65999997, 0.07999998, -0.02]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -0.65999997, 0.07999998, -0.02, 1]
+  Hero/mixamorig:Hips/mixamorig:LeftUpLeg/mixamorig:LeftLeg/mixamorig:LeftFoot/mixamorig:LeftToeBase:
+    position: [-0.65999997, 0.019999985, 0.11]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -0.65999997, 0.019999985, 0.11, 1]
+  Hero/mixamorig:Hips/mixamorig:LeftUpLeg/mixamorig:LeftLeg/mixamorig:LeftFoot/mixamorig:LeftToeBase/mixamorig:LeftToe_End:
+    position: [-0.65999997, 0.019999985, 0.19]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -0.65999997, 0.019999985, 0.19, 1]
+  Hero/mixamorig:Hips/mixamorig:RightUpLeg:
+    position: [-0.84000003, 0.9, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -0.84000003, 0.9, 0, 1]
+  Hero/mixamorig:Hips/mixamorig:RightUpLeg/mixamorig:RightLeg:
+    position: [-0.84000003, 0.49999997, 0.01]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -0.84000003, 0.49999997, 0.01, 1]
+  Hero/mixamorig:Hips/mixamorig:RightUpLeg/mixamorig:RightLeg/mixamorig:RightFoot:
+    position: [-0.84000003, 0.07999998, -0.02]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -0.84000003, 0.07999998, -0.02, 1]
+  Hero/mixamorig:Hips/mixamorig:RightUpLeg/mixamorig:RightLeg/mixamorig:RightFoot/mixamorig:RightToeBase:
+    position: [-0.84000003, 0.019999985, 0.11]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -0.84000003, 0.019999985, 0.11, 1]
+  Hero/mixamorig:Hips/mixamorig:RightUpLeg/mixamorig:RightLeg/mixamorig:RightFoot/mixamorig:RightToeBase/mixamorig:RightToe_End:
+    position: [-0.84000003, 0.019999985, 0.19]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -0.84000003, 0.019999985, 0.19, 1]
+  Hero/mixamorig:Hips/mixamorig:Spine:
+    position: [-0.75, 1.05, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -0.75, 1.05, 0, 1]
+  Hero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1:
+    position: [-0.75, 1.17, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -0.75, 1.17, 0, 1]
+  Hero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2:
+    position: [-0.75, 1.3, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -0.75, 1.3, 0, 1]
+  Hero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:LeftShoulder:
+    position: [-0.69, 1.42, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -0.69, 1.42, 0, 1]
+  Hero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:LeftShoulder/mixamorig:LeftArm:
+    position: [-0.57, 1.42, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -0.57, 1.42, 0, 1]
+  Hero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:LeftShoulder/mixamorig:LeftArm/mixamorig:LeftForeArm:
+    position: [-0.29, 1.42, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -0.29, 1.42, 0, 1]
+  Hero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:LeftShoulder/mixamorig:LeftArm/mixamorig:LeftForeArm/mixamorig:LeftHand:
+    position: [-0.030000001, 1.42, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -0.030000001, 1.42, 0, 1]
+  Hero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:LeftShoulder/mixamorig:LeftArm/mixamorig:LeftForeArm/mixamorig:LeftHand/mixamorig:LeftHandIndex1:
+    position: [0.060000002, 1.42, 0.025]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0.060000002, 1.42, 0.025, 1]
+  Hero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:LeftShoulder/mixamorig:LeftArm/mixamorig:LeftForeArm/mixamorig:LeftHand/mixamorig:LeftHandIndex1/mixamorig:LeftHandIndex2:
+    position: [0.1, 1.42, 0.025]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0.1, 1.42, 0.025, 1]
+  Hero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:LeftShoulder/mixamorig:LeftArm/mixamorig:LeftForeArm/mixamorig:LeftHand/mixamorig:LeftHandIndex1/mixamorig:LeftHandIndex2/mixamorig:LeftHandIndex3:
+    position: [0.13, 1.42, 0.025]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0.13, 1.42, 0.025, 1]
+  Hero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:LeftShoulder/mixamorig:LeftArm/mixamorig:LeftForeArm/mixamorig:LeftHand/mixamorig:LeftHandMiddle1:
+    position: [0.065, 1.42, -0.005]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0.065, 1.42, -0.005, 1]
+  Hero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:LeftShoulder/mixamorig:LeftArm/mixamorig:LeftForeArm/mixamorig:LeftHand/mixamorig:LeftHandMiddle1/mixamorig:LeftHandMiddle2:
+    position: [0.11, 1.42, -0.005]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0.11, 1.42, -0.005, 1]
+  Hero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:LeftShoulder/mixamorig:LeftArm/mixamorig:LeftForeArm/mixamorig:LeftHand/mixamorig:LeftHandMiddle1/mixamorig:LeftHandMiddle2/mixamorig:LeftHandMiddle3:
+    position: [0.143, 1.42, -0.005]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0.143, 1.42, -0.005, 1]
+  Hero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:LeftShoulder/mixamorig:LeftArm/mixamorig:LeftForeArm/mixamorig:LeftHand/mixamorig:LeftHandThumb1:
+    position: [-0.005000001, 1.41, 0.03]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -0.005000001, 1.41, 0.03, 1]
+  Hero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:LeftShoulder/mixamorig:LeftArm/mixamorig:LeftForeArm/mixamorig:LeftHand/mixamorig:LeftHandThumb1/mixamorig:LeftHandThumb2:
+    position: [0.02, 1.405, 0.055]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0.02, 1.405, 0.055, 1]
+  Hero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:LeftShoulder/mixamorig:LeftArm/mixamorig:LeftForeArm/mixamorig:LeftHand/mixamorig:LeftHandThumb1/mixamorig:LeftHandThumb2/mixamorig:LeftHandThumb3:
+    position: [0.04, 1.4, 0.075]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0.04, 1.4, 0.075, 1]
+  Hero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:Neck:
+    position: [-0.75, 1.48, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -0.75, 1.48, 0, 1]
+  Hero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:Neck/mixamorig:Head:
+    position: [-0.75, 1.5600001, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -0.75, 1.5600001, 0, 1]
+  Hero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:Neck/mixamorig:Head/mixamorig:HeadTop_End:
+    position: [-0.75, 1.75, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -0.75, 1.75, 0, 1]
+  Hero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:RightShoulder:
+    position: [-0.81, 1.42, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -0.81, 1.42, 0, 1]
+  Hero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:RightShoulder/mixamorig:RightArm:
+    position: [-0.93, 1.42, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -0.93, 1.42, 0, 1]
+  Hero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:RightShoulder/mixamorig:RightArm/mixamorig:RightForeArm:
+    position: [-1.21, 1.42, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -1.21, 1.42, 0, 1]
+  Hero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:RightShoulder/mixamorig:RightArm/mixamorig:RightForeArm/mixamorig:RightHand:
+    position: [-1.47, 1.42, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -1.47, 1.42, 0, 1]
+  Hero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:RightShoulder/mixamorig:RightArm/mixamorig:RightForeArm/mixamorig:RightHand/mixamorig:RightHandIndex1:
+    position: [-1.5600001, 1.42, 0.025]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -1.5600001, 1.42, 0.025, 1]
+  Hero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:RightShoulder/mixamorig:RightArm/mixamorig:RightForeArm/mixamorig:RightHand/mixamorig:RightHandIndex1/mixamorig:RightHandIndex2:
+    position: [-1.6, 1.42, 0.025]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -1.6, 1.42, 0.025, 1]
+  Hero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:RightShoulder/mixamorig:RightArm/mixamorig:RightForeArm/mixamorig:RightHand/mixamorig:RightHandIndex1/mixamorig:RightHandIndex2/mixamorig:RightHandIndex3:
+    position: [-1.63, 1.42, 0.025]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -1.63, 1.42, 0.025, 1]
+  Hero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:RightShoulder/mixamorig:RightArm/mixamorig:RightForeArm/mixamorig:RightHand/mixamorig:RightHandMiddle1:
+    position: [-1.565, 1.42, -0.005]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -1.565, 1.42, -0.005, 1]
+  Hero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:RightShoulder/mixamorig:RightArm/mixamorig:RightForeArm/mixamorig:RightHand/mixamorig:RightHandMiddle1/mixamorig:RightHandMiddle2:
+    position: [-1.61, 1.42, -0.005]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -1.61, 1.42, -0.005, 1]
+  Hero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:RightShoulder/mixamorig:RightArm/mixamorig:RightForeArm/mixamorig:RightHand/mixamorig:RightHandMiddle1/mixamorig:RightHandMiddle2/mixamorig:RightHandMiddle3:
+    position: [-1.643, 1.42, -0.005]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -1.643, 1.42, -0.005, 1]
+  Hero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:RightShoulder/mixamorig:RightArm/mixamorig:RightForeArm/mixamorig:RightHand/mixamorig:RightHandThumb1:
+    position: [-1.495, 1.41, 0.03]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -1.495, 1.41, 0.03, 1]
+  Hero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:RightShoulder/mixamorig:RightArm/mixamorig:RightForeArm/mixamorig:RightHand/mixamorig:RightHandThumb1/mixamorig:RightHandThumb2:
+    position: [-1.52, 1.405, 0.055]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -1.52, 1.405, 0.055, 1]
+  Hero/mixamorig:Hips/mixamorig:Spine/mixamorig:Spine1/mixamorig:Spine2/mixamorig:RightShoulder/mixamorig:RightArm/mixamorig:RightForeArm/mixamorig:RightHand/mixamorig:RightHandThumb1/mixamorig:RightHandThumb2/mixamorig:RightHandThumb3:
+    position: [-1.54, 1.4, 0.075]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -1.54, 1.4, 0.075, 1]
+  Main Camera:
+    position: [0, 0.9, 3.5]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0.9, 3.5, 1]
+  Robot:
+    position: [0.75, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0.75, 0, 0, 1]
+  Robot/pelvis:
+    position: [0.75, 0.827, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0.75, 0.827, 0, 1]
+  Robot/pelvis/spine:
+    position: [0.75, 0.92700005, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0.75, 0.92700005, 0, 1]
+  Robot/pelvis/spine/spine.001:
+    position: [0.75, 1.1170001, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0.75, 1.1170001, 0, 1]
+  Robot/pelvis/spine/spine.001/neck:
+    position: [0.75, 1.3570001, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0.75, 1.3570001, 0, 1]
+  Robot/pelvis/spine/spine.001/neck/head:
+    position: [0.75, 1.4370002, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0.75, 1.4370002, 0, 1]
+  Robot/pelvis/spine/spine.001/shoulder.L:
+    position: [0.81, 1.2970002, 0]
+    rotation: [0.7071066, 0, 0, -0.70710695]
+    scale: [1.0000006, 1.0000006, 1]
+    modelMatrix: [-4.7683744e-07, -1.0000005, 0, 0, 1.0000005, -4.7683744e-07, 0, 0, 0, 0, 1, 0, 0.81, 1.2970002, 0, 1]
+  Robot/pelvis/spine/spine.001/shoulder.L/upper_arm.L:
+    position: [0.93000007, 1.2970002, 0]
+    rotation: [0.4226181, 0, 0, -0.9063078]
+    scale: [1.0000006, 1.0000006, 1]
+    modelMatrix: [-0.6427882, -0.76604456, 0, 0, 0.76604456, -0.6427882, 0, 0, 0, 0, 1, 0, 0.93000007, 1.2970002, 0, 1]
+  Robot/pelvis/spine/spine.001/shoulder.L/upper_arm.L/upper_arm_twist.L:
+    position: [1.0586956, 1.1890118, 0]
+    rotation: [0.4226181, 0, 0, -0.9063078]
+    scale: [1.0000006, 1.0000006, 1]
+    modelMatrix: [-0.6427882, -0.76604456, 0, 0, 0.76604456, -0.6427882, 0, 0, 0, 0, 1, 0, 1.0586956, 1.1890118, 0, 1]
+  Robot/pelvis/spine/spine.001/shoulder.L/upper_arm.L/upper_arm_twist.L/forearm.L:
+    position: [1.187391, 1.0810235, 0]
+    rotation: [0.4226181, 0, 0, -0.9063078]
+    scale: [1.0000006, 1.0000006, 1]
+    modelMatrix: [-0.6427882, -0.76604456, 0, 0, 0.76604456, -0.6427882, 0, 0, 0, 0, 1, 0, 1.187391, 1.0810235, 0, 1]
+  Robot/pelvis/spine/spine.001/shoulder.L/upper_arm.L/upper_arm_twist.L/forearm.L/hand.L:
+    position: [1.426397, 0.88047355, 0]
+    rotation: [0.4226181, 0, 0, -0.9063078]
+    scale: [1.0000006, 1.0000006, 1]
+    modelMatrix: [-0.6427882, -0.76604456, 0, 0, 0.76604456, -0.6427882, 0, 0, 0, 0, 1, 0, 1.426397, 0.88047355, 0, 1]
+  Robot/pelvis/spine/spine.001/shoulder.R:
+    position: [0.69, 1.2970002, 0]
+    rotation: [0.7071066, 0, 0, 0.70710695]
+    scale: [1.0000006, 1.0000006, 1]
+    modelMatrix: [-4.7683744e-07, 1.0000005, 0, 0, -1.0000005, -4.7683744e-07, 0, 0, 0, 0, 1, 0, 0.69, 1.2970002, 0, 1]
+  Robot/pelvis/spine/spine.001/shoulder.R/upper_arm.R:
+    position: [0.56999993, 1.2970002, 0]
+    rotation: [0.4226181, 0, 0, 0.9063078]
+    scale: [1.0000006, 1.0000006, 1]
+    modelMatrix: [-0.6427882, 0.76604456, 0, 0, -0.76604456, -0.6427882, 0, 0, 0, 0, 1, 0, 0.56999993, 1.2970002, 0, 1]
+  Robot/pelvis/spine/spine.001/shoulder.R/upper_arm.R/upper_arm_twist.R:
+    position: [0.44130445, 1.1890118, 0]
+    rotation: [0.4226181, 0, 0, 0.9063078]
+    scale: [1.0000006, 1.0000006, 1]
+    modelMatrix: [-0.6427882, 0.76604456, 0, 0, -0.76604456, -0.6427882, 0, 0, 0, 0, 1, 0, 0.44130445, 1.1890118, 0, 1]
+  Robot/pelvis/spine/spine.001/shoulder.R/upper_arm.R/upper_arm_twist.R/forearm.R:
+    position: [0.31260896, 1.0810235, 0]
+    rotation: [0.4226181, 0, 0, 0.9063078]
+    scale: [1.0000006, 1.0000006, 1]
+    modelMatrix: [-0.6427882, 0.76604456, 0, 0, -0.76604456, -0.6427882, 0, 0, 0, 0, 1, 0, 0.31260896, 1.0810235, 0, 1]
+  Robot/pelvis/spine/spine.001/shoulder.R/upper_arm.R/upper_arm_twist.R/forearm.R/hand.R:
+    position: [0.07360305, 0.88047355, 0]
+    rotation: [0.4226181, 0, 0, 0.9063078]
+    scale: [1.0000006, 1.0000006, 1]
+    modelMatrix: [-0.6427882, 0.76604456, 0, 0, -0.76604456, -0.6427882, 0, 0, 0, 0, 1, 0, 0.07360305, 0.88047355, 0, 1]
+  Robot/pelvis/thigh.L:
+    position: [0.84000003, 0.777, 0]
+    rotation: [0, 0, 0.0124969985, 0.9999219]
+    scale: [1.0000002, 1.0000004, 1.0000001]
+    modelMatrix: [-1.0000002, 0, 0, 0, 0, -0.999688, 0.024992054, 0, 0, 0.024992049, 0.9996878, 0, 0.84000003, 0.777, 0, 1]
+  Robot/pelvis/thigh.L/shin.L:
+    position: [0.84000003, 0.4370001, 0.008499948]
+    rotation: [0, 0, -0.03564673, 0.99936455]
+    scale: [1.0000002, 1.0000004, 1.0000001]
+    modelMatrix: [-1.0000002, 0, 0, 0, 0, -0.997459, -0.07124816, 0, 0, -0.07124819, 0.99745876, 0, 0.84000003, 0.4370001, 0.008499948, 1]
+  Robot/pelvis/thigh.L/shin.L/foot.L:
+    position: [0.84000003, 0.07999954, -0.017000481]
+    rotation: [0, 0, 0.5389532, 0.8423358]
+    scale: [1.0000002, 1.0000008, 1.0000006]
+    modelMatrix: [-1.0000002, 0, 0, 0, 0, -0.41905951, 0.90795946, 0, 0, 0.9079596, 0.4190594, 0, 0.84000003, 0.07999954, -0.017000481, 1]
+  Robot/pelvis/thigh.L/shin.L/foot.L/toe.L:
+    position: [0.84000003, 0.019999433, 0.112999335]
+    rotation: [0, 0, 0.7071062, 0.7071074]
+    scale: [1.0000002, 1.0000008, 1.0000006]
+    modelMatrix: [-1.0000002, 0, 0, 0, 0, -1.9967556e-06, 1.0000006, 0, 0, 1.0000007, 1.937151e-06, 0, 0.84000003, 0.019999433, 0.112999335, 1]
+  Robot/pelvis/thigh.R:
+    position: [0.65999997, 0.777, 0]
+    rotation: [0, 0, 0.0124969985, 0.9999219]
+    scale: [1.0000002, 1.0000004, 1.0000001]
+    modelMatrix: [-1.0000002, 0, 0, 0, 0, -0.999688, 0.024992054, 0, 0, 0.024992049, 0.9996878, 0, 0.65999997, 0.777, 0, 1]
+  Robot/pelvis/thigh.R/shin.R:
+    position: [0.65999997, 0.4370001, 0.008499948]
+    rotation: [0, 0, -0.03564673, 0.99936455]
+    scale: [1.0000002, 1.0000004, 1.0000001]
+    modelMatrix: [-1.0000002, 0, 0, 0, 0, -0.997459, -0.07124816, 0, 0, -0.07124819, 0.99745876, 0, 0.65999997, 0.4370001, 0.008499948, 1]
+  Robot/pelvis/thigh.R/shin.R/foot.R:
+    position: [0.65999997, 0.07999954, -0.017000481]
+    rotation: [0, 0, 0.5389532, 0.8423358]
+    scale: [1.0000002, 1.0000008, 1.0000006]
+    modelMatrix: [-1.0000002, 0, 0, 0, 0, -0.41905951, 0.90795946, 0, 0, 0.9079596, 0.4190594, 0, 0.65999997, 0.07999954, -0.017000481, 1]
+  Robot/pelvis/thigh.R/shin.R/foot.R/toe.R:
+    position: [0.65999997, 0.019999433, 0.112999335]
+    rotation: [0, 0, 0.7071062, 0.7071074]
+    scale: [1.0000002, 1.0000008, 1.0000006]
+    modelMatrix: [-1.0000002, 0, 0, 0, 0, -1.9967556e-06, 1.0000006, 0, 0, 1.0000007, 1.937151e-06, 0, 0.65999997, 0.019999433, 0.112999335, 1]

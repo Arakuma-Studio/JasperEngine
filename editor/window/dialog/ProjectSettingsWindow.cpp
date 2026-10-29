@@ -1025,6 +1025,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
 
     m_packNativeResources = project->shouldPackNativeResources();
     m_versionControlMetadata = project->hasVersionControlMetadata();
+    m_vcs = project->getVcsProjectSettings();
 
     m_tags = project->getTags();
     m_layerNames = project->getLayerNames();
@@ -2299,6 +2300,28 @@ void ProjectSettingsWindow::drawEditorSettings() {
                 "working directory, this machine's build settings and each developer's own layout stay out "
                 "of the repository. A file the editor did not generate is never replaced.");
         }
+        // S29: the project's version control (project.yaml versionControl)
+        const VcsProjectSettings vcsDefaults;
+        if (settingsui::beginRow("editor.vcs.provider")) {
+            if (projectBeginSettingsRow("Version Control", m_vcs.provider != vcsDefaults.provider)) m_vcs.provider = vcsDefaults.provider;
+            int provider = static_cast<int>(m_vcs.provider);
+            const char* providers[] = {"Auto", "Git", "Subversion", "None"};
+            ImGui::SetNextItemWidth(Theme::dpi(160.0f));
+            if (ImGui::Combo("##VcsProvider", &provider, providers, 4)) m_vcs.provider = static_cast<vcs::ProviderChoice>(provider);
+            endSettingsRow("Auto finds the nearest .git or .svn above the project. None turns the editor's version control off.");
+        }
+        if (settingsui::beginRow("editor.vcs.lfs")) {
+            if (projectBeginSettingsRow("Git LFS", m_vcs.lfs != vcsDefaults.lfs)) m_vcs.lfs = vcsDefaults.lfs;
+            ImGui::Checkbox("##VcsLfs", &m_vcs.lfs);
+            endSettingsRow("The generated .gitattributes stores images, models, audio and fonts in Git LFS and makes them "
+                "lockable, so two people never edit the same binary. Scenes, prefabs and .meta files stay text.");
+        }
+        if (settingsui::beginRow("editor.vcs.lock_scenes")) {
+            if (projectBeginSettingsRow("Lockable Scenes", m_vcs.lockScenes != vcsDefaults.lockScenes)) m_vcs.lockScenes = vcsDefaults.lockScenes;
+            ImGui::Checkbox("##VcsLockScenes", &m_vcs.lockScenes);
+            endSettingsRow("Scenes and prefabs lockable too. They are no LFS objects: whether a lock on them works depends on "
+                "the server (Smart Merge usually makes locks on scenes unnecessary).");
+        }
 
 
         if (settingsui::beginRow("editor.assets_dir")) {
@@ -2986,6 +3009,7 @@ bool ProjectSettingsWindow::applySettings() {
 
     m_project->setPackNativeResources(m_packNativeResources);
     m_project->setVersionControlMetadata(m_versionControlMetadata);
+    m_project->setVcsProjectSettings(m_vcs);
 
     // a name typed into New Tag Name but not added yet is kept rather than lost
     std::vector<std::string> tags = m_tags;

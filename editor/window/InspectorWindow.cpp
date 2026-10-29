@@ -1606,6 +1606,9 @@ void editor::InspectorWindow::handleComponentMenu(const char* popupId, SceneProj
 
         ImGui::EndDisabled();
 
+        // S29: the component against the version control baseline
+        drawVcsComponentMenuItems(sceneProject, entities, cpType, readOnly);
+
         // S17: a hot reload patches an .html document in place; this one loads it again as before
         if (cpType == ComponentType::UIDocumentComponent && !entities.empty()) {
             std::shared_ptr<UIDocumentSystem> documents = sceneProject->scene->getSystem<UIDocumentSystem>();
@@ -11398,10 +11401,15 @@ void editor::InspectorWindow::show(){
             window->layoutLast = std::move(window->layoutDrawing);
         }
     } layoutFinish{this};
-    // texture files selected in the Project window: their import settings (S14 R22)
+    // texture files selected in the Project window: their import settings (S14 R22), read only
+    // while someone else holds their lock (S29 R28)
     if (!project->getInspectedAssets().empty()) {
         if (!textureImporter) textureImporter = std::make_unique<TextureImporterView>(project);
-        if (textureImporter->draw(project->getInspectedAssets())) {
+        const bool assetsLocked = drawVcsLockBanner(project->getInspectedAssets());
+        if (assetsLocked) ImGui::BeginDisabled(true);
+        const bool drewAssets = textureImporter->draw(project->getInspectedAssets());
+        if (assetsLocked) ImGui::EndDisabled();
+        if (drewAssets) {
             ImGui::End();
             return;
         }
@@ -11429,6 +11437,17 @@ void editor::InspectorWindow::show(){
     std::vector<Entity> entities = project->getSelectedEntities(sceneProject->id);
     layoutDrawing.sceneId = sceneProject->id;
     layoutDrawing.entities = entities;
+
+    // S29 R28: the open document's lock; another user's makes the Inspector read only
+    bool documentLocked = false;
+    {
+        std::filesystem::path document = sceneProject->filepath;
+        if (const PrefabStage* stage = project->getPrefabStage(sceneProject->id)) document = stage->assetPath;
+        if (!document.empty()) {
+            if (document.is_relative()) document = project->getProjectPath() / document;
+            documentLocked = drawVcsLockBanner({document});
+        }
+    }
 
     if (updateInspectedParticleAsset(sceneProject, entities)) {
         stopTransientPreviews();
@@ -11491,7 +11510,7 @@ void editor::InspectorWindow::show(){
                 return std::find(authored.begin(), authored.end(), entity) == authored.end();
             });
 
-        drawGameObjectHeader(sceneProject, entities, names, isRuntimeSelection);
+        drawGameObjectHeader(sceneProject, entities, names, isRuntimeSelection || documentLocked);
 
         ImGui::Dummy(ImVec2(0.0f, ImGui::GetStyle().ItemSpacing.y * 0.5f));
 
@@ -11508,8 +11527,8 @@ void editor::InspectorWindow::show(){
 
         for (ComponentType& cpType : components){
 
-            // Context menu and body disabled for a runtime selection
-            const bool compReadOnly = isRuntimeSelection;
+            // Context menu and body disabled for a runtime selection, or a document locked by someone else
+            const bool compReadOnly = isRuntimeSelection || documentLocked;
             bool headerOpen = drawComponentHeader(sceneProject, entities, cpType, isPrefab, compReadOnly);
 
             if (headerOpen){
