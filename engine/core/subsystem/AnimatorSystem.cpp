@@ -153,7 +153,10 @@ anim::AnimatorInstance* AnimatorSystem::instance(Entity entity){
     if (!component) return nullptr;
     if (!component->runtime) component->runtime = std::make_shared<anim::AnimatorInstance>();
     anim::AnimatorInstance& runtime = *component->runtime;
-    if (component->needsLoad || !runtime.controller) loadController(entity, *component, runtime);
+    // a controller edited since (its pool entry reloaded or dropped) loads again
+    if (component->needsLoad || !runtime.controller || AnimatorAssetPool::getGeneration(component->controller.path) != runtime.controllerGeneration){
+        loadController(entity, *component, runtime);
+    }
     return &runtime;
 }
 
@@ -682,7 +685,9 @@ bool AnimatorSystem::preview(Entity entity, float dt, std::string* error){
     }
     if (!component->runtime) component->runtime = std::make_shared<anim::AnimatorInstance>();
     anim::AnimatorInstance& instance = *component->runtime;
-    if (component->needsLoad || !instance.controller) loadController(entity, *component, instance);
+    if (component->needsLoad || !instance.controller || AnimatorAssetPool::getGeneration(component->controller.path) != instance.controllerGeneration){
+        loadController(entity, *component, instance);
+    }
     if (!instance.controller){
         if (error) *error = instance.controllerError.empty() ? std::string("the Animator has no controller") : instance.controllerError;
         return false;

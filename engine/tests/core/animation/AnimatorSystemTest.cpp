@@ -575,3 +575,24 @@ TEST_F(AnimatorSystemTest, PlayerScenesUnchanged){
         EXPECT_EQ(std::memcmp(&p, &withSystem[(size_t)i], sizeof(Vector3)), 0) << "frame " << i;
     }
 }
+
+// an edit-mode preview of an Animator whose controller file changed (its pool entry dropped, as a
+// document commit or the hot reload does) evaluates the new controller, the runtime kept
+TEST_F(AnimatorSystemTest, PreviewPicksUpAnEditedController){
+    const std::string clipPath = clip("slide", slide("Hips", 1.0f));
+    ControllerDef def = oneState(clipPath);
+    const std::string path = controllerFile("edited", def);
+    animator(path);
+    std::string error;
+    ASSERT_TRUE(system().preview(root, 0.1f, &error)) << error;
+    ASSERT_EQ(instance().controller->layers.size(), 1u);
+    LayerDef upper;
+    upper.name = "Upper";
+    upper.machine.states = {state("Still", "")};
+    def.layers.push_back(upper);
+    animtest::writeAsset(path, anim::writeController(def));
+    AnimatorAssetPool::invalidate(path);
+    ASSERT_TRUE(system().preview(root, 0.1f, &error)) << error;
+    EXPECT_EQ(instance().controller->layers.size(), 2u) << "the edited controller";
+    EXPECT_EQ(instance().layers.size(), 2u);
+}
