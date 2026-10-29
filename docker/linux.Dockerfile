@@ -75,3 +75,31 @@ RUN wget -q -O /tmp/uv.tar.gz \
 RUN apt-get update && apt-get install -y --no-install-recommends git-lfs subversion \
     && rm -rf /var/lib/apt/lists/* \
     && git lfs version && svn --version --quiet
+
+# The language-server checks of the MCP suite (tools/mcp/tests/test_stubs.py, test_html_ui_docs.py,
+# test_html_ui_examples.py) run lua-language-server --check and clangd --check for real; without
+# them those tests skip. The versions the HTML UI acceptance runs used, pinned by version and
+# sha256, bumped by hand (22.04's apt clangd is 14). Test tools only: nothing of them ships.
+# A layer of its own, after every other one, so cached images keep theirs.
+ARG LUALS_VERSION=3.19.1
+ARG LUALS_SHA256=e9235d2d72ef55bc41cf8c99cda2ed64777682024b4bb81f5dea425060c5cbb8
+ARG CLANGD_VERSION=18.1.3
+ARG CLANGD_SHA256=775f6ac798d9c599258e3f4fa14d0af908b1801d38250e72a18fb907b28a1be6
+RUN wget -q -O /tmp/luals.tar.gz \
+        "https://github.com/LuaLS/lua-language-server/releases/download/${LUALS_VERSION}/lua-language-server-${LUALS_VERSION}-linux-x64.tar.gz" \
+    && echo "${LUALS_SHA256}  /tmp/luals.tar.gz" | sha256sum -c - \
+    && mkdir -p /opt/lua-language-server && tar -xzf /tmp/luals.tar.gz -C /opt/lua-language-server \
+    && printf '%s\n' '#!/bin/sh' \
+        '# its log and meta files go to the user cache (the build runs as the host user: /opt is read-only to it)' \
+        'cache="${XDG_CACHE_HOME:-$HOME/.cache}/lua-language-server"' \
+        'exec /opt/lua-language-server/bin/lua-language-server --logpath="$cache/log" --metapath="$cache/meta" "$@"' \
+        > /usr/local/bin/lua-language-server \
+    && chmod 0755 /usr/local/bin/lua-language-server \
+    && wget -q -O /tmp/clangd.zip \
+        "https://github.com/clangd/clangd/releases/download/${CLANGD_VERSION}/clangd-linux-${CLANGD_VERSION}.zip" \
+    && echo "${CLANGD_SHA256}  /tmp/clangd.zip" | sha256sum -c - \
+    && python3 -m zipfile -e /tmp/clangd.zip /opt \
+    && chmod 0755 /opt/clangd_${CLANGD_VERSION}/bin/clangd \
+    && ln -s /opt/clangd_${CLANGD_VERSION}/bin/clangd /usr/local/bin/clangd \
+    && rm -f /tmp/luals.tar.gz /tmp/clangd.zip \
+    && lua-language-server --version && clangd --version
