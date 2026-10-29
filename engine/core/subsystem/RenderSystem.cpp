@@ -2527,6 +2527,8 @@ void RenderSystem::loadProbeFilter(){
     probeFilterRender.beginLoad(PrimitiveType::TRIANGLES);
     probeFilterRender.setShader(probeFilterShader.get());
     probeFilterSlotParams = probeFilterShader.get()->shaderData.getUniformBlockIndex(UniformBlockType::PROBE_FILTER_FS_PARAMS);
+    // a pass of the frame: created at once, never skipped (spec S32 §6.4)
+    probeFilterRender.setImmediatePipelines(true);
     if (!probeFilterRender.endLoad(PIP_RTT_COLORONLY, false, false, CullingMode::BACK, WindingOrder::CCW))
         return;
 
@@ -4016,6 +4018,8 @@ bool RenderSystem::loadUber(uint32_t features){
     uberSlotBlur = shaderData.getTextureIndexByName("u_blurTexture");
     uberSlotHalation = shaderData.getTextureIndexByName("u_halationTexture");
     uberSlotHalationWide = shaderData.getTextureIndexByName("u_halationWideTexture");
+    // a pass of the frame: created at once, never skipped (spec S32 §6.4)
+    uberRender.setImmediatePipelines(true);
     if (!uberRender.endLoad(PIP_RTT | PIP_DEFAULT, false, true, CullingMode::BACK, WindingOrder::CCW)){
         uberShader.reset();
         uberFeatures = 0;
@@ -4265,6 +4269,8 @@ bool RenderSystem::loadBloomProgram(BloomProgramKind kind){
     program.slotSource = shaderData.getTextureIndexByName("u_sourceTexture");
     program.slotLevel = shaderData.getTextureIndexByName("u_levelTexture");
     // SRGB8A8 targets without depth, written whole
+    // a pass of the frame: created at once, never skipped (spec S32 §6.4)
+    program.render.setImmediatePipelines(true);
     if (!program.render.endLoad(PIP_POST, false, false, CullingMode::BACK, WindingOrder::CCW)){
         program.render.destroy();
         program.shader.reset();
@@ -4788,6 +4794,8 @@ bool RenderSystem::loadShadowCaster2DPass(unsigned int vertexCapacity){
         render.addAttribute(shaderData.getAttrIndex(attr.first), shadowCaster2DBuffer.getRender(), attr.second.getElements(), attr.second.getDataType(), shadowCaster2DBuffer.getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
     }
 
+    // a pass of the frame: created at once, never skipped (spec S32 §6.4)
+    render.setImmediatePipelines(true);
     if (!render.endLoad(PIP_DEPTH, false, true, CullingMode::BACK, WindingOrder::CCW)){
         return false;
     }
@@ -8334,6 +8342,8 @@ void RenderSystem::loadSSAO(){
     ssaoRender.beginLoad(PrimitiveType::TRIANGLES);
     ssaoRender.setShader(ssaoShader.get());
     ssaoSlotParams = ssaoShader.get()->shaderData.getUniformBlockIndex(UniformBlockType::SSAO_FS_PARAMS);
+    // a pass of the frame: created at once, never skipped (spec S32 §6.4)
+    ssaoRender.setImmediatePipelines(true);
     if (!ssaoRender.endLoad(PIP_EFFECT, false, true, CullingMode::BACK, WindingOrder::CCW))
         return;
 
@@ -8341,6 +8351,8 @@ void RenderSystem::loadSSAO(){
     ssaoBlurRender.beginLoad(PrimitiveType::TRIANGLES);
     ssaoBlurRender.setShader(ssaoBlurShader.get());
     ssaoBlurSlotParams = ssaoBlurShader.get()->shaderData.getUniformBlockIndex(UniformBlockType::SSAO_BLUR_FS_PARAMS);
+    // a pass of the frame: created at once, never skipped (spec S32 §6.4)
+    ssaoBlurRender.setImmediatePipelines(true);
     if (!ssaoBlurRender.endLoad(PIP_EFFECT, false, true, CullingMode::BACK, WindingOrder::CCW))
         return;
 
@@ -8868,6 +8880,8 @@ void RenderSystem::loadSceneColorCopy(){
     sceneColorCopyRender.beginLoad(PrimitiveType::TRIANGLES);
     sceneColorCopyRender.setShader(sceneColorCopyShader.get());
     sceneColorCopySlotParams = sceneColorCopyShader.get()->shaderData.getUniformBlockIndex(UniformBlockType::BLIT_FS_PARAMS);
+    // a pass of the frame: created at once, never skipped (spec S32 §6.4)
+    sceneColorCopyRender.setImmediatePipelines(true);
     if (!sceneColorCopyRender.endLoad(PIP_EFFECT, false, true, CullingMode::BACK, WindingOrder::CCW))
         return;
     sceneColorCopyLoaded = true;
@@ -9143,6 +9157,8 @@ void RenderSystem::loadSSR(){
     ssrRender.beginLoad(PrimitiveType::TRIANGLES);
     ssrRender.setShader(ssrShader.get());
     ssrSlotParams = ssrShader.get()->shaderData.getUniformBlockIndex(UniformBlockType::SSR_FS_PARAMS);
+    // a pass of the frame: created at once, never skipped (spec S32 §6.4)
+    ssrRender.setImmediatePipelines(true);
     if (!ssrRender.endLoad(PIP_EFFECT, false, true, CullingMode::BACK, WindingOrder::CCW))
         return;
 
@@ -9150,6 +9166,8 @@ void RenderSystem::loadSSR(){
     ssrBlurRender.beginLoad(PrimitiveType::TRIANGLES);
     ssrBlurRender.setShader(ssrBlurShader.get());
     ssrBlurSlotParams = ssrBlurShader.get()->shaderData.getUniformBlockIndex(UniformBlockType::SSR_BLUR_FS_PARAMS);
+    // a pass of the frame: created at once, never skipped (spec S32 §6.4)
+    ssrBlurRender.setImmediatePipelines(true);
     if (!ssrBlurRender.endLoad(PIP_EFFECT, false, true, CullingMode::BACK, WindingOrder::CCW))
         return;
 
@@ -9158,6 +9176,8 @@ void RenderSystem::loadSSR(){
     compositeRender.beginLoad(PrimitiveType::TRIANGLES);
     compositeRender.setShader(compositeShader.get());
     compositeSlotParams = compositeShader.get()->shaderData.getUniformBlockIndex(UniformBlockType::COMPOSITE_FS_PARAMS);
+    // a pass of the frame: created at once, never skipped (spec S32 §6.4)
+    compositeRender.setImmediatePipelines(true);
     if (!compositeRender.endLoad(PIP_RTT | PIP_DEFAULT, false, true, CullingMode::BACK, WindingOrder::CCW))
         return;
 
@@ -9373,6 +9393,8 @@ void RenderSystem::loadBlit(){
     blitRender.beginLoad(PrimitiveType::TRIANGLES);
     blitRender.setShader(blitShader.get());
     blitSlotParams = blitShader.get()->shaderData.getUniformBlockIndex(UniformBlockType::BLIT_FS_PARAMS);
+    // a pass of the frame: created at once, never skipped (spec S32 §6.4)
+    blitRender.setImmediatePipelines(true);
     if (!blitRender.endLoad(PIP_RTT | PIP_DEFAULT, false, true, CullingMode::BACK, WindingOrder::CCW))
         return;
 
@@ -9528,6 +9550,8 @@ void RenderSystem::loadPostProcess(){
         // the chain never targets the swapchain directly, renderPostProcess blits for that
         // PIP_RTT into buffer 0 and the destination (colour targets with depth-stencil),
         // PIP_EFFECT into the others (depth only)
+        // a pass of the frame: created at once, never skipped (spec S32 §6.4)
+        pass.render.setImmediatePipelines(true);
         if (!pass.render.endLoad(PIP_RTT | PIP_EFFECT, false, true, CullingMode::BACK, WindingOrder::CCW))
             return;
 

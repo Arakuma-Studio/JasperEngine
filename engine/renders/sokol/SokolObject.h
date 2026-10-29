@@ -63,6 +63,8 @@ namespace jasperengine{
         // GL warm draws (spec S32): per pipeline type, the pipeline confirmed warm with this
         // object's bindings and the warm draw requested for it; the dynamic path's the same per
         // pipeline. A draw waits for its warm draw (beginDraw is false until then)
+        // created at once and never waiting for a warm draw (ObjectRender::setImmediatePipelines)
+        bool immediatePipelines = false;
         uint32_t warmedPipeline[PIPELINE_TYPES];
         uint64_t warmKey[PIPELINE_TYPES];
         std::vector<std::pair<uint32_t, uint64_t>> dynamicWarm;
@@ -136,6 +138,9 @@ namespace jasperengine{
         void addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture);
         void addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture, TextureRender* samplerOf);
         void setBlendState(const BlendState& state);
+        void setImmediatePipelines(bool immediate);
+        bool isReady() const;
+        uint32_t getPipelineId(PipelineType pipType) const;
         bool endLoad(uint16_t pipelines, const RenderState& state, int msaaSamples = 1);
         // records shader, vertex layout and index type for beginDraw(PipelineState); creates no pipeline
         bool endLoadDynamic(PrimitiveType primitiveType, IndexType indexType);

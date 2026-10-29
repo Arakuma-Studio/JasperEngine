@@ -214,11 +214,18 @@ namespace {
         }
     }
 
-    sg_pipeline createPipeline(const sg_pipeline_desc& desc){
+    sg_pipeline createPipeline(const sg_pipeline_desc& desc, bool immediate){
         // off the render thread where creation compiles (spec S32): pending until then
         if (Engine::isAsyncThread())
             return SokolCmdQueue::add_command_make_pipeline(desc);
-        return SokolAsyncCreate::makePipeline(desc);
+        return immediate ? SokolAsyncCreate::makePipelineNow(desc) : SokolAsyncCreate::makePipeline(desc);
+    }
+
+    // an immediate caller's pipeline that is still being created (the warm-up made it, or a
+    // content object first) is waited for
+    void finishNow(sg_pipeline pipeline, bool immediate){
+        if (immediate && !Engine::isAsyncThread() && SokolAsyncCreate::isPending(pipeline))
+            SokolAsyncCreate::waitFor(pipeline);
     }
 
     template<typename T>
@@ -366,7 +373,7 @@ bool SokolPipelineCache::descEqual(const sg_pipeline_desc& a, const sg_pipeline_
            a.alpha_to_coverage_enabled == b.alpha_to_coverage_enabled;
 }
 
-sg_pipeline SokolPipelineCache::acquire(const sg_pipeline_desc& desc){
+sg_pipeline SokolPipelineCache::acquire(const sg_pipeline_desc& desc, bool immediate){
     const uint64_t hash = descHash(desc);
     uint64_t key = hash;
     std::lock_guard<std::mutex> lock(cacheMutex());
@@ -381,6 +388,7 @@ sg_pipeline SokolPipelineCache::acquire(const sg_pipeline_desc& desc){
             entry.refs++;
             if (recorder())
                 record(entry.pipeline, entry.desc);
+            finishNow(entry.pipeline, immediate);
             return entry.pipeline;
         }
         key++;
@@ -392,7 +400,7 @@ sg_pipeline SokolPipelineCache::acquire(const sg_pipeline_desc& desc){
     entry.refs = 1;
     sg_pipeline_desc create = desc;
     create.label = entry.label.empty() ? nullptr : entry.label.c_str();
-    entry.pipeline = createPipeline(create);
+    entry.pipeline = createPipeline(create, immediate);
     missCount++;
     record(entry.pipeline, desc);
     if (entry.pipeline.id == SG_INVALID_ID)
@@ -450,7 +458,7 @@ size_t SokolPipelineCache::internedSize(){
 }
 
 sg_pipeline SokolPipelineCache::get(const sg_pipeline_desc& base, const PipelineState& state){
-    return get(base, baseHashOf(base), state);
+    return get(base, baseHashOf(base), state, false);
 }
 
 uint64_t SokolPipelineCache::baseHash(const sg_pipeline_desc& base){
@@ -461,7 +469,7 @@ uint32_t SokolPipelineCache::generation(){
     return pipelineGeneration.load();
 }
 
-sg_pipeline SokolPipelineCache::get(const sg_pipeline_desc& base, uint64_t baseHash, const PipelineState& state){
+sg_pipeline SokolPipelineCache::get(const sg_pipeline_desc& base, uint64_t baseHash, const PipelineState& state, bool immediate){
     uint64_t key = baseHash ^ state.hash();
 
     std::lock_guard<std::mutex> lock(cacheMutex());
@@ -475,6 +483,7 @@ sg_pipeline SokolPipelineCache::get(const sg_pipeline_desc& base, uint64_t baseH
         if (entry.shader.id == base.shader.id && entry.baseHash == baseHash && entry.state == state){
             if (recorder() && !recorded().count(entry.pipeline.id))
                 record(entry.pipeline, makeDesc(base, state));
+            finishNow(entry.pipeline, immediate);
             return entry.pipeline;
         }
         key++;
@@ -488,7 +497,7 @@ sg_pipeline SokolPipelineCache::get(const sg_pipeline_desc& base, uint64_t baseH
 
     sg_pipeline_desc desc = makeDesc(base, state);
     // off the render thread where creation compiles (spec S32): pending (not drawn) until then
-    sg_pipeline pipeline = SokolAsyncCreate::makePipeline(desc);
+    sg_pipeline pipeline = immediate ? SokolAsyncCreate::makePipelineNow(desc) : SokolAsyncCreate::makePipeline(desc);
     missCount++;
     record(pipeline, desc);
     if (pipeline.id == SG_INVALID_ID)

@@ -25,7 +25,8 @@ namespace jasperengine{
         static sg_pipeline get(const sg_pipeline_desc& base, const PipelineState& state);
         // the same with the base's hash computed once by the caller (baseHash()): hashing the
         // vertex layout costs more than the lookup
-        static sg_pipeline get(const sg_pipeline_desc& base, uint64_t baseHash, const PipelineState& state);
+        // immediate: created at once (a pending one is waited for), for the passes of the frame
+        static sg_pipeline get(const sg_pipeline_desc& base, uint64_t baseHash, const PipelineState& state, bool immediate = false);
         static uint64_t baseHash(const sg_pipeline_desc& base);
         // bumped whenever pipelines are destroyed (releaseShader, clear): a pipeline a caller kept
         // from get() is valid while it is the same
@@ -43,7 +44,7 @@ namespace jasperengine{
         // descriptions are equal (every field but the label) share one pipeline, counted: a
         // second object with the same state gets the first one's, ready if it is. release()
         // destroys it with its last reference; releaseShader() destroys it with its shader.
-        static sg_pipeline acquire(const sg_pipeline_desc& desc);
+        static sg_pipeline acquire(const sg_pipeline_desc& desc, bool immediate = false);
         static void release(sg_pipeline pipeline);
         // one more reference to an interned pipeline (the shader warm-up keeps what it made)
         static bool retain(sg_pipeline pipeline);

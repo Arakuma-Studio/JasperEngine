@@ -32,8 +32,8 @@ namespace {
 
     // interned (spec S32 R3): an object with the description of another shares its pipeline,
     // which is created asynchronously where that compiles. Counted per reference
-    sg_pipeline makePipeline(const sg_pipeline_desc& desc){
-        const sg_pipeline pipeline = SokolPipelineCache::acquire(desc);
+    sg_pipeline makePipeline(const sg_pipeline_desc& desc, bool immediate){
+        const sg_pipeline pipeline = SokolPipelineCache::acquire(desc, immediate);
         // an invalid handle (pool full) is never released, so it is not counted
         if (pipeline.id != SG_INVALID_ID)
             livePipelines++;
@@ -82,7 +82,7 @@ void SokolObject::resetWarm(){
 // bindings waits for its warm draw on the worker, which makes the driver compile the program for
 // this state there. warmed holds the pipeline confirmed, key the warm draw asked for
 bool SokolObject::isWarm(sg_pipeline pipeline, uint32_t& warmed, uint64_t& key){
-    if (warmed == pipeline.id || !SokolAsyncCreate::warmDrawsActive())
+    if (warmed == pipeline.id || immediatePipelines || !SokolAsyncCreate::warmDrawsActive())
         return true;
     if (key == 0)
         key = SokolAsyncCreate::requestWarmDraw(pipeline, bind);
@@ -94,7 +94,7 @@ bool SokolObject::isWarm(sg_pipeline pipeline, uint32_t& warmed, uint64_t& key){
 }
 
 bool SokolObject::isDynamicWarm(sg_pipeline pipeline){
-    if (!SokolAsyncCreate::warmDrawsActive())
+    if (immediatePipelines || !SokolAsyncCreate::warmDrawsActive())
         return true;
     for (std::pair<uint32_t, uint64_t>& entry : dynamicWarm){
         if (entry.first == pipeline.id){
@@ -496,6 +496,23 @@ sg_blend_op SokolObject::getBlendOp(BlendOperation operation){
     return _SG_BLENDOP_DEFAULT;
 }
 
+bool SokolObject::isReady() const{
+    for (const sg_pipeline& pipeline : pipelines){
+        if (pipeline.id != SG_INVALID_ID && sg_query_pipeline_state(pipeline) != SG_RESOURCESTATE_VALID)
+            return false;
+    }
+    return true;
+}
+
+uint32_t SokolObject::getPipelineId(PipelineType pipType) const{
+    const int index = pipelineIndex(pipType);
+    return index < PIPELINE_TYPES ? pipelines[index].id : SG_INVALID_ID;
+}
+
+void SokolObject::setImmediatePipelines(bool immediate){
+    immediatePipelines = immediate;
+}
+
 void SokolObject::setBlendState(const BlendState& state){
     blendOverride = true;
     blendState = state;
@@ -744,7 +761,7 @@ bool SokolObject::endLoad(uint16_t types, const RenderState& state, int samples)
             continue;
         }
         sg_pipeline& pipeline = pipelineOf(type);
-        pipeline = makePipeline(makePipelineDesc(type));
+        pipeline = makePipeline(makePipelineDesc(type), immediatePipelines);
         if (pipeline.id == SG_INVALID_ID){
             return false;
         }
@@ -778,7 +795,7 @@ bool SokolObject::beginDraw(const PipelineState& state){
     if (lastDynamicPipeline.id != SG_INVALID_ID && lastDynamicGeneration == generation && lastDynamicState == state){
         pipeline = lastDynamicPipeline;
     }else{
-        pipeline = SokolPipelineCache::get(baseDesc, dynamicBaseHash, state);
+        pipeline = SokolPipelineCache::get(baseDesc, dynamicBaseHash, state, immediatePipelines);
         lastDynamicPipeline = pipeline;
         lastDynamicState = state;
         lastDynamicGeneration = generation;
@@ -824,7 +841,7 @@ bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling){
                 sg_pipeline_desc desc = makePipelineDesc(pipType);
                 if (desc.cull_mode == SG_CULLMODE_BACK || desc.cull_mode == SG_CULLMODE_FRONT){
                     desc.cull_mode = SG_CULLMODE_NONE;
-                    variant = makePipeline(desc);
+                    variant = makePipeline(desc, immediatePipelines);
                 }else{
                     // already culls nothing: the pipeline is its own variant
                     noCullSame |= (uint16_t)(1u << index);

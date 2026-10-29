@@ -90,7 +90,7 @@ rows. list_assets search: t: l: ext: path: re: ref: missing:. Layouts, labels, s
 bookmarks: edit_* (jasper://docs/editor-integration).
 
 ## Code (Lua, C++, shaders, materials)
-The project is a normal folder (`editor_status`: project.path). Work in it and read, edit,
+The project is a normal folder (`editor_status`: project.path). Work in it: read, edit,
 grep and git its scripts, shaders and .material files with your own tools. Engine API to grep: .jasperengine/engine-api/ (C++ headers) and its lua/
 folder (Lua API stubs). Your file edits are reloaded before your next call, whose result
 carries `external_changes` {changed, reloaded, problems: [{path, line, message}]}: fix those
@@ -105,8 +105,8 @@ read_file / search_files are for clients without file access; sync_files forces 
 
 ## Project layout
 project.yaml (settings, scenes, start scene), *.scene, *.prefab, assets/ (assetsDir), Lua scripts (luaDir), ProjectBuild.cmake.
-A .scene belongs to the project only while project.yaml lists it (Scenes in Build): add a
-scene created outside the editor before opening, playing or building it.
+A .scene is in the project only while project.yaml lists it (Scenes in Build): add one
+created outside the editor before opening, playing or building it.
 .jasperengine/ and the root CMakeLists.txt are generated on every play/build: never edit them.
 )JE"
 R"JE(
@@ -170,7 +170,7 @@ quality.atmosphere_quality_*). More: jasper://docs/atmosphere.
 ## Physics
 - Add a body and its collider to the SAME GameObject in one step (edit_colliders with
   body_type + add). A Rigidbody without a Collider does not collide. Dynamic for
-  actors, static for floors and level geometry, kinematic for scripted movers.
+  actors, static for floors and walls, kinematic for scripted movers.
 - Collider sizes are local, scaled by the GameObject's scale: never pre-scale them. Never
   guess sizes: omit them to fit the mesh bounds.
 - Mass comes from collider volume/area x density (3D default 1000, water; 2D 1 per square
@@ -191,11 +191,11 @@ quality.atmosphere_quality_*). More: jasper://docs/atmosphere.
   with Apply, or edit the asset in Prefab Mode. Instances cannot be restructured (reparent,
   reorder, move out): open the prefab instead. Variants are prefabs based on another prefab.
 - Runtime: GameObject.instantiate(prefabAsset [, scene] [, position, rotation] [, parent])
-  returns the new root named "<name>(Clone)", scripts already initialized (without scene or
-  parent it goes to the active scene); GameObject.destroy(go [, delay]).
+  returns the new root named "<name>(Clone)", scripts already initialized (no scene or parent: the
+  active scene); GameObject.destroy(go [, delay]).
   Get the PrefabAsset from a script property of type Prefab (preferred) or
-  PrefabAsset.load("path/Name"). A prefab that is only loaded by path, never placed or
-  referenced, must be marked standalone or the build will not contain it.
+  PrefabAsset.load("path/Name"). A prefab only loaded by path, never placed or
+  referenced, must be marked standalone or builds leave it out.
 
 ## Shaders and materials
 Library first: list_shaders, the engine's shaders ("library:<name>"; with name: parameters,
@@ -203,12 +203,13 @@ textures, features). A mesh shader goes on a submesh material
 (set_properties submeshes[0].material.shader, or a .material file: create_material /
 update_material) with .shaderParams.<member> (colours linear, "#RRGGBB" is sRGB),
 .shaderTextures.<uniform> and .shaderFeatures; UI, Points, Lines and Sky take customShader plus
-shaderUniforms. Outlines and stencil effects: apply_material_preset (list_material_presets), then
-tune its extraPass and stencil. Shaders with scene_inputs (cost_note) cost a depth
-pass or colour copy per camera and must draw transparent. Fork only
-when nothing fits: fork_shader copies the built-in shader and sets customShader. Read a fork
-before editing (its rules: jasper://docs/shaders); its parameters are the u_fs_customParams
-block (set_shader_uniform). A failing shader draws as the built-in one (error in the Console).
+shaderUniforms. Outlines, stencil effects: apply_material_preset (list_material_presets), then
+tune its extraPass and stencil. Shaders with scene_inputs (cost_note) cost a depth pass or
+colour copy per camera and draw transparent. Fork only when nothing fits: fork_shader copies
+the built-in shader, sets customShader; read it before editing (jasper://docs/shaders); its
+parameters are the u_fs_customParams block (set_shader_uniform). A failing shader draws as the
+built-in one (Console error). Async variants: screenshot once get_render_stats
+shader_creation pending_* are 0.
 Built-in Lit lobes (a material's pbr: clear coat, sheen, transmission...), Lit Quality and light
 units: jasper://docs/materials.
 

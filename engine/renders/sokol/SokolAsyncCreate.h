@@ -9,6 +9,7 @@
 #include "sokol_gfx.h"
 
 #include <cstdint>
+#include <string>
 
 namespace jasperengine {
 
@@ -48,6 +49,12 @@ namespace jasperengine {
         static void initPipeline(sg_pipeline pipeline, const sg_pipeline_desc& desc);
         static void destroyPipeline(sg_pipeline pipeline);
         static bool isPending(sg_pipeline pipeline);
+        // created now on the render thread (the passes of the frame: ObjectRender::setImmediatePipelines),
+        // its shader waited for when it is pending
+        static sg_pipeline makePipelineNow(const sg_pipeline_desc& desc);
+        // until the creation ended and is published (an immediate caller's interned pipeline)
+        static void waitFor(sg_pipeline pipeline);
+        static void waitFor(sg_shader shader);
 
         // GL with a worker context and warm draws on: a warm draw of the pipeline with these
         // bindings (one per driver variant: program, state, texture formats and samplers), and its
@@ -70,6 +77,8 @@ namespace jasperengine {
         // the Vulkan pipeline cache is saved now (and at shutdown, and at most once a minute
         // after new pipelines)
         static void savePipelineCache();
+        // where this device's pipeline cache is kept (empty without Vulkan)
+        static std::string getPipelineCachePath();
     };
 
 }

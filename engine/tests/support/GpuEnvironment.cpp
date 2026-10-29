@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "GpuEnvironment.h"
+#include "render/SystemRender.h"
 
 #include "HeadlessContext.h"
 #include "TestSystem.h"
@@ -98,7 +99,9 @@ void GpuEnvironment::setView(int screenWidth, int screenHeight, int canvasWidth,
 bool GpuEnvironment::runFrames(std::function<bool()> ready, int maxFrames){
     for (int i = 0; i < maxFrames; i++){
         Engine::systemDraw();
-        if (!ready || ready()){
+        // and nothing still being created off the render thread (spec S32): what is pending
+        // is not drawn yet
+        if ((!ready || ready()) && SystemRender::isGpuCreationIdle()){
             drawFrames(2);
             return true;
         }

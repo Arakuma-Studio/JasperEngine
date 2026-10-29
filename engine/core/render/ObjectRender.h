@@ -49,6 +49,11 @@ namespace jasperengine {
         // color blending of the color pipelines (PIP_DEFAULT*, PIP_RTT*, PIP_MSAA*, PIP_EFFECT)
         // instead of the render state's blend; between beginLoad and endLoad
         void setBlendState(const BlendState& state);
+        // A pass of the frame (post-processing, SSAO, composites, blits): its pipelines are
+        // created at once and drawn without waiting for a GL warm draw (spec S32 §6.4). A skipped
+        // pass would leave its target undefined for the pass reading it. Content (meshes,
+        // particles, UI) leaves it off and is drawn once its pipelines are ready. Before endLoad.
+        void setImmediatePipelines(bool immediate);
         // builds every pipeline type in pipelines with the render state; the PIP_MSAA* types
         // take msaaSamples (the post-processed camera's multisampled target, 2 or 4)
         bool endLoad(uint16_t pipelines, const RenderState& state, int msaaSamples = 1);
@@ -72,6 +77,11 @@ namespace jasperengine {
         void draw(unsigned int baseElement, unsigned int vertexCount, unsigned int instanceCount);
 
         void destroy();
+
+        // every pipeline endLoad made is created (spec S32: none pending or failed)
+        bool isReady() const;
+        // the backend handle id of a pipeline type (0: none), for diagnostics and tests
+        uint32_t getPipelineId(PipelineType pipType) const;
 
         // pipelines made by every object and not destroyed yet (diagnostics)
         static int getLivePipelineCount();

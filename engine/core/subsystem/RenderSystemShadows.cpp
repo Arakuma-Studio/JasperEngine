@@ -1493,6 +1493,8 @@ bool RenderSystem::loadShadowRestore(){
     ShaderData& data = shadowRestoreShader->shaderData;
     shadowRestoreSlotParams = data.getUniformBlockIndexByName("u_fs_shadowRestore");
     shadowRestoreSourceSlot = data.getTextureIndexByName("u_shadowSource");
+    // a pass of the frame: created at once, never skipped (spec S32 §6.4)
+    shadowRestoreRender.setImmediatePipelines(true);
     if (!shadowRestoreRender.endLoadDynamic(PrimitiveType::TRIANGLES, IndexType::NONE))
         return false;
     shadowRestoreLoaded = true;
@@ -1892,6 +1894,8 @@ void RenderSystem::renderShadowAtlasDebug(){
             return;
         shadowAtlasViewRender.beginLoad(PrimitiveType::TRIANGLES);
         shadowAtlasViewRender.setShader(shadowAtlasViewShader.get());
+        // a pass of the frame: created at once, never skipped (spec S32 §6.4)
+        shadowAtlasViewRender.setImmediatePipelines(true);
         if (!shadowAtlasViewRender.endLoadDynamic(PrimitiveType::TRIANGLES, IndexType::NONE))
             return;
         shadowAtlasViewLoaded = true;

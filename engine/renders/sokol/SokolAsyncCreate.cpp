@@ -4,6 +4,7 @@
 #include "SokolAsyncCreate.h"
 
 #include "sokol_async.h"
+#include "SokolPipelineCache.h"
 
 #include "Engine.h"
 #include "Log.h"
@@ -962,6 +963,93 @@ bool SokolAsyncCreate::isWarm(uint64_t warmKey){
     return warmKey == 0 || s.warmDone.count(warmKey) > 0 || !s.warmPending.count(warmKey);
 }
 
+namespace {
+
+    // collects what finished and publishes it: within the frame's budget (one at least), or
+    // everything when unlimited (a wait), deferred GL programs included
+    void pump(State& s, bool unlimited){
+        MainWork work(s);
+        JE_PROFILE_SCOPE("GPU create publish");
+        const Clock::time_point start = Clock::now();
+
+        // what the worker finished
+        std::vector<Task> finished;
+        {
+            std::lock_guard<std::mutex> lock(s.mutex);
+            finished.swap(s.finished);
+        }
+        for (const Task& task : finished){
+            if (task.kind == Task::Kind::Warm){
+                s.warmPending.erase(task.warmKey);
+                s.warmDone.insert(task.warmKey);
+                s.stats.warmDraws++;
+                continue;
+            }
+            const bool pipeline = task.kind == Task::Kind::Pipeline;
+            if (pipeline){
+                auto it = s.pipelines.find(task.id);
+                if (it != s.pipelines.end())
+                    it->second->stage = Stage::Completed;
+            }else{
+                auto it = s.shaders.find(task.id);
+                if (it != s.shaders.end())
+                    it->second->stage = Stage::Completed;
+            }
+            s.completed.push_back(Completion{pipeline, task.id});
+        }
+
+        // what the GL driver and Metal finished (asked without waiting)
+        bool deferredTaken = false;
+        for (auto& [id, job] : s.shaders){
+            if (job->stage != Stage::Running)
+                continue;
+            bool ready = false;
+            if (job->path == Path::GlIssued){
+                if (s.mode == GpuCreationMode::GlParallel){
+                    ready = unlimited || sgj_gl_is_complete(&job->issued);
+                }else if (unlimited || (!deferredTaken && s.frame >= job->issuedFrame + DEFERRED_FRAMES)){
+                    // one a frame: a driver that compiled nothing meanwhile waits in one frame for one
+                    ready = true;
+                    deferredTaken = true;
+                }
+            }else if (job->path == Path::Metal){
+                ready = sgj_mtl_job_ready(job->metal);
+            }
+            if (ready){
+                job->stage = Stage::Completed;
+                s.completed.push_back(Completion{false, id});
+            }
+        }
+        if (s.mode == GpuCreationMode::Metal){
+            for (auto& [id, job] : s.pipelines){
+                if (job->stage == Stage::Running && job->path == Path::Metal && sgj_mtl_job_ready(job->metal)){
+                    job->stage = Stage::Completed;
+                    s.completed.push_back(Completion{true, id});
+                }
+            }
+        }
+
+        // published in completion order, within the budget; one at least
+        const double budget = s.settings.mainThreadBudgetMs;
+        size_t published = 0;
+        while (!s.completed.empty()){
+            if (!unlimited && published > 0 && msSince(start) >= budget)
+                break;
+            const Completion next = s.completed.front();
+            s.completed.pop_front();
+            if (next.pipeline){
+                publishPipeline(s, next.id);
+            }else{
+                publishShader(s, next.id);
+            }
+            published++;
+        }
+        flushDeferredShaderDestroys(s);
+        s.frameSpentMs += msSince(start);
+    }
+
+}
+
 void SokolAsyncCreate::update(){
     State& s = state();
     if (!s.setUp)
@@ -978,88 +1066,44 @@ void SokolAsyncCreate::update(){
     if (s.shaders.empty() && s.pipelines.empty() && s.warmPending.empty() && s.deferredShaderDestroys.empty() && s.completed.empty())
         return;
 
-    MainWork work(s);
-    JE_PROFILE_SCOPE("GPU create publish");
-    const Clock::time_point start = Clock::now();
-
-    // what the worker finished
-    std::vector<Task> finished;
-    {
-        std::lock_guard<std::mutex> lock(s.mutex);
-        finished.swap(s.finished);
-    }
-    for (const Task& task : finished){
-        if (task.kind == Task::Kind::Warm){
-            s.warmPending.erase(task.warmKey);
-            s.warmDone.insert(task.warmKey);
-            s.stats.warmDraws++;
-            continue;
-        }
-        const bool pipeline = task.kind == Task::Kind::Pipeline;
-        if (pipeline){
-            auto it = s.pipelines.find(task.id);
-            if (it != s.pipelines.end())
-                it->second->stage = Stage::Completed;
-        }else{
-            auto it = s.shaders.find(task.id);
-            if (it != s.shaders.end())
-                it->second->stage = Stage::Completed;
-        }
-        s.completed.push_back(Completion{pipeline, task.id});
-    }
-
-    // what the GL driver and Metal finished (asked without waiting)
-    bool deferredTaken = false;
-    for (auto& [id, job] : s.shaders){
-        if (job->stage != Stage::Running)
-            continue;
-        bool ready = false;
-        if (job->path == Path::GlIssued){
-            if (s.mode == GpuCreationMode::GlParallel){
-                ready = sgj_gl_is_complete(&job->issued);
-            }else if (!deferredTaken && s.frame >= job->issuedFrame + DEFERRED_FRAMES){
-                // one a frame: a driver that compiled nothing meanwhile waits in one frame for one
-                ready = true;
-                deferredTaken = true;
-            }
-        }else if (job->path == Path::Metal){
-            ready = sgj_mtl_job_ready(job->metal);
-        }
-        if (ready){
-            job->stage = Stage::Completed;
-            s.completed.push_back(Completion{false, id});
-        }
-    }
-    if (s.mode == GpuCreationMode::Metal){
-        for (auto& [id, job] : s.pipelines){
-            if (job->stage == Stage::Running && job->path == Path::Metal && sgj_mtl_job_ready(job->metal)){
-                job->stage = Stage::Completed;
-                s.completed.push_back(Completion{true, id});
-            }
-        }
-    }
-
-    // published in completion order, within the budget; one at least
-    const double budget = s.settings.mainThreadBudgetMs;
-    size_t published = 0;
-    while (!s.completed.empty()){
-        if (published > 0 && msSince(start) >= budget)
-            break;
-        const Completion next = s.completed.front();
-        s.completed.pop_front();
-        if (next.pipeline){
-            publishPipeline(s, next.id);
-        }else{
-            publishShader(s, next.id);
-        }
-        published++;
-    }
-    flushDeferredShaderDestroys(s);
-    s.frameSpentMs = msSince(start);
+    pump(s, false);
 
     if (s.vkCacheDirty && s.pipelines.empty() &&
             std::chrono::duration<double>(Clock::now() - s.vkCacheSaved).count() >= VK_CACHE_SAVE_INTERVAL_S)
         writeVkCache(s);
+}
+
+sg_pipeline SokolAsyncCreate::makePipelineNow(const sg_pipeline_desc& desc){
+    State& s = state();
+    if (asyncOn(s) && s.shaders.count(desc.shader.id))
+        waitFor(desc.shader);
+    MainWork work(s);
+    JE_PROFILE_SCOPE("GPU pipeline create");
+    const Clock::time_point start = Clock::now();
+    const sg_pipeline pipeline = sg_make_pipeline(&desc);
+    noteCreate(s, msSince(start));
+    s.stats.createdPipelines++;
+    if (s.caps.pipeline_on_thread)
+        s.vkCacheDirty = true;
+    return pipeline;
+}
+
+void SokolAsyncCreate::waitFor(sg_pipeline pipeline){
+    State& s = state();
+    while (s.setUp && isPending(pipeline)){
+        pump(s, true);
+        if (isPending(pipeline))
+            std::this_thread::sleep_for(std::chrono::microseconds(200));
+    }
+}
+
+void SokolAsyncCreate::waitFor(sg_shader shader){
+    State& s = state();
+    while (s.setUp && isPending(shader)){
+        pump(s, true);
+        if (isPending(shader))
+            std::this_thread::sleep_for(std::chrono::microseconds(200));
+    }
 }
 
 bool SokolAsyncCreate::isIdle(){
@@ -1090,6 +1134,7 @@ GpuCreationStats SokolAsyncCreate::getStats(){
     stats.pendingShaders = s.shaders.size();
     stats.pendingPipelines = s.pipelines.size();
     stats.pendingWarmDraws = s.warmPending.size();
+    stats.internedPipelines = SokolPipelineCache::internedSize();
     return stats;
 }
 
@@ -1103,4 +1148,8 @@ void SokolAsyncCreate::savePipelineCache(){
     State& s = state();
     if (s.setUp && s.caps.pipeline_on_thread)
         writeVkCache(s);
+}
+
+std::string SokolAsyncCreate::getPipelineCachePath(){
+    return state().vkCachePath;
 }
