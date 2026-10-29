@@ -14,7 +14,8 @@
 #   tools/build.sh players             the prebuilt player runtimes (S30) into build/players/<id>/:
 #                                      PLAYER_PLATFORM=linux (default; PLAYER_BACKENDS="glcore gles3 vulkan")
 #                                      or web (single-thread and pthreads) or android; PLAYER_FLAVOURS="release development";
-#                                      PLAYER_ZIP=1 also writes the archives into build/players/archives/
+#                                      PLAYER_ZIP=1 also writes the archives into build/players/archives/;
+#                                      android: PLAYER_ANDROID_ABIS=x86_64 builds only those ABIs (an emulator's)
 #   tools/build.sh shell <target>      interactive shell in that target's image
 #   tools/build.sh exec <target> <command...>  that command in the image (e.g. exec linux tools/ci/check-presets.sh)
 #                                      (target runtime: the no-compiler image, docker/runtime.Dockerfile:
@@ -80,7 +81,7 @@ EDITOR_MIN_TESTS=150
 HTMLUI_MAX_SKIPPED=75
 
 usage() {
-    sed -n '2,69p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,70p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 1
 }
 
@@ -429,7 +430,8 @@ players)
             for flavour in $PLAYER_FLAVOURS; do
                 for backend in $PLAYER_BACKENDS; do
                     dir=build/players-build/android-\$backend-\$flavour
-                    CMAKE_CXX_COMPILER_LAUNCHER=ccache tools/players/android_player.sh \$flavour \$dir \$backend
+                    CMAKE_CXX_COMPILER_LAUNCHER=ccache JASPERENGINE_ANDROID_ABIS=${PLAYER_ANDROID_ABIS:-} \
+                        tools/players/android_player.sh \$flavour \$dir \$backend
                     python3 tools/players/package_player.py --platform android --arch universal --backend \$backend --flavour \$flavour \
                         --android-dir \$dir --out $PLAYERS_OUT $ZIP_FLAG
                 done
