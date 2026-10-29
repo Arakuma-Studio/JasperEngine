@@ -2370,3 +2370,33 @@ entities:
         collidersBlock: true
         autoRebuild: false
         gridData: ""
+  - type: Entity
+    entity: 1074
+    name: VertexAnimatorComponent
+    components:
+      transform:
+        position: [73, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [0, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      vertexanimator:
+        enabled: false
+        animation: Reflection parity
+        guid: Reflection parity
+        defaultClip: "text: [1, 2]"
+        playAutomatically: false
+        speed: 5.8
+        randomStart: false
+        defaultFadeTime: 5.2
+        instanceEvents: true
+        attachments: []
