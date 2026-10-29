@@ -47,7 +47,7 @@ namespace {
         }
         w.varint(written.size());
         rt::WriteContext ctx;
-        cook::SceneCooker::describe(registry, entity, ctx);
+        editor::cook::SceneCooker::describe(registry, entity, ctx);
         for (const auto& [table, component] : written) {
             if (noParent && std::string_view(table->cppName) == "Transform") {
                 Transform copy = *static_cast<const Transform*>(component);
@@ -61,7 +61,7 @@ namespace {
 
 }
 
-void cook::SceneCooker::describe(const EntityRegistry* registry, Entity entity, rt::WriteContext& ctx) {
+void editor::cook::SceneCooker::describe(const EntityRegistry* registry, Entity entity, rt::WriteContext& ctx) {
     ctx.registry = registry;
     ctx.entity = entity;
     const Signature signature = registry->getSignature(entity);
@@ -71,7 +71,7 @@ void cook::SceneCooker::describe(const EntityRegistry* registry, Entity entity, 
     ctx.terrainHeightmap = terrain && !terrain->heightMap.empty();
 }
 
-std::vector<uint8_t> cook::SceneCooker::cookScene(Scene* scene, uint32_t sceneId, const std::vector<Entity>& entities, Entity camera,
+std::vector<uint8_t> editor::cook::SceneCooker::cookScene(Scene* scene, uint32_t sceneId, const std::vector<Entity>& entities, Entity camera,
                                                   const SceneResources& resources) {
     rt::StringTable strings;
     // a scene's GameObjects keep their ids
@@ -124,7 +124,7 @@ std::vector<uint8_t> cook::SceneCooker::cookScene(Scene* scene, uint32_t sceneId
                             strings.strings());
 }
 
-std::vector<uint8_t> cook::SceneCooker::cookPrefab(const std::filesystem::path& prefabPath, const BakedPrefab& baked,
+std::vector<uint8_t> editor::cook::SceneCooker::cookPrefab(const std::filesystem::path& prefabPath, const BakedPrefab& baked,
                                                    const std::string& guid, uint32_t id) {
     Scene* scene = baked.scene.get();
     const Entity root = (scene && scene->isEntityCreated(baked.root)) ? baked.root : NULL_ENTITY;
@@ -229,7 +229,7 @@ std::vector<uint8_t> cook::SceneCooker::cookPrefab(const std::filesystem::path& 
                             strings.strings());
 }
 
-bool cook::SceneCooker::cookProject(Project* project, std::vector<CookedFileBytes>& files, std::vector<CookedPrefabInfo>& prefabs,
+bool editor::cook::SceneCooker::cookProject(Project* project, std::vector<editor::cook::CookedFileBytes>& files, std::vector<editor::cook::CookedPrefabInfo>& prefabs,
                                     std::string& error) {
     for (const SceneProject& sceneProject : project->getScenes()) {
         if (!sceneProject.scene) {

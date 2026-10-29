@@ -46,6 +46,15 @@ option(JASPERENGINE_NAVIGATION "Compile Recast/Detour navigation meshes and crow
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     cmake_minimum_required(VERSION 3.20)
 
+    # The prebuilt player (docs/specs/S30-shipping.md R1): the engine with engine/player as its
+    # project, which runs any game's cooked content (game.json, scenes/*.jscn) instead of
+    # compiled-in scenes
+    option(JASPERENGINE_PLAYER "Build jasperengine-player, the prebuilt player of shipped games" OFF)
+    if(JASPERENGINE_PLAYER)
+        set(APP_NAME jasperengine-player)
+        set(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/player)
+    endif()
+
     if(NOT DEFINED APP_NAME)
         set(APP_NAME jasperengine-project)
     endif()
@@ -178,6 +187,47 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         endif()
     endif()
     message(STATUS "Graphic backend is set to ${GRAPHIC_BACKEND}")
+
+    if(JASPERENGINE_PLAYER)
+        # <platform>-<arch>-<backend>-<flavour> (R8): content-manifest.json names the player it
+        # was built for, and the player refuses other content (exit 5)
+        if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+            set(JE_PLAYER_PLATFORM windows)
+        elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+            set(JE_PLAYER_PLATFORM macos)
+        elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+            set(JE_PLAYER_PLATFORM ios)
+        elseif(CMAKE_SYSTEM_NAME STREQUAL "Android")
+            set(JE_PLAYER_PLATFORM android)
+        elseif(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+            set(JE_PLAYER_PLATFORM web)
+        else()
+            set(JE_PLAYER_PLATFORM linux)
+        endif()
+        if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+            set(JE_PLAYER_ARCH wasm32)
+        elseif(CMAKE_SYSTEM_NAME STREQUAL "Android" OR CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+            # one runtime holds every ABI (Android) or slice (a universal macOS binary)
+            set(JE_PLAYER_ARCH universal)
+        elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+            set(JE_PLAYER_ARCH arm64)
+        elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
+            set(JE_PLAYER_ARCH arm64)
+        else()
+            set(JE_PLAYER_ARCH x64)
+        endif()
+        # (the web runtime holds a single-thread and a pthreads build of one id: the page picks one)
+        set(JE_PLAYER_BACKEND ${GRAPHIC_BACKEND})
+        if(JASPERENGINE_DEVELOPMENT_BUILD OR CMAKE_BUILD_TYPE STREQUAL "Debug")
+            set(JE_PLAYER_FLAVOUR development)
+        else()
+            set(JE_PLAYER_FLAVOUR release)
+        endif()
+        set(JASPERENGINE_PLAYER_ID "${JE_PLAYER_PLATFORM}-${JE_PLAYER_ARCH}-${JE_PLAYER_BACKEND}-${JE_PLAYER_FLAVOUR}" CACHE STRING
+            "The player's runtime id (set from the platform, backend and flavour)" FORCE)
+        add_definitions("-DJASPERENGINE_PLAYER" "-DJASPERENGINE_PLAYER_ID=\"${JASPERENGINE_PLAYER_ID}\"")
+        message(STATUS "Player runtime ${JASPERENGINE_PLAYER_ID}")
+    endif()
 
     if(NOT APP_BACKEND)
         if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -1011,6 +1061,7 @@ endif()
 set(JASPERENGINE_SRCS
     core/Engine.cpp
     core/PlatformConfig.cpp
+    core/player/ContentManifest.cpp
     core/player/Launch.cpp
     core/player/LaunchOptions.cpp
     core/player/PlayerConfig.cpp

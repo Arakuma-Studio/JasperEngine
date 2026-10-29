@@ -187,6 +187,10 @@ void HttpClient::setHostRewrite(std::map<std::string, std::string> rewrites){
     hostRewrite = std::move(rewrites);
 }
 
+void HttpClient::setMaxFileSize(long long bytes){
+    maxFileSize = bytes > 0 ? bytes : kMaxFileSize;
+}
+
 void HttpClient::setTimeoutSeconds(int seconds){
     timeoutSeconds = seconds > 0 ? seconds : kDefaultTimeoutSeconds;
 }
@@ -355,7 +359,7 @@ HttpResponse HttpClient::get(const std::string& url){
             << "location\n"
             << "max-redirs = 5\n"
             << "max-time = " << timeoutSeconds << "\n"
-            << "max-filesize = " << kMaxFileSize << "\n"
+            << "max-filesize = " << maxFileSize << "\n"
             << "fail-with-body\n"
             << "write-out = \"%{http_code} %{content_type} %{url_effective}\\n\"\n"
             << "silent\n"

@@ -55,6 +55,8 @@ namespace jasperengine::editor::htmlui {
         void setHostRewrite(std::map<std::string, std::string> rewrites);
         const std::map<std::string, std::string>& getHostRewrite() const { return hostRewrite; }
         void setTimeoutSeconds(int seconds);
+        // the largest body this client accepts (kMaxFileSize by default; a player runtime is larger)
+        void setMaxFileSize(long long bytes);
 
         // Process-wide defaults every client starts with (the fixture-server tests)
         static void setDefaultHostRewrite(std::map<std::string, std::string> rewrites);
@@ -77,6 +79,7 @@ namespace jasperengine::editor::htmlui {
         static bool readBody(const HttpResponse& response, std::string& body);
 
     private:
+        long long maxFileSize = kMaxFileSize;
         HttpResponse getFromMirror(const std::string& mirror, const std::string& url);
         std::string rewrite(const std::string& url) const;
         std::string unrewrite(const std::string& url) const;

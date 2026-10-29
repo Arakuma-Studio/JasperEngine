@@ -38,6 +38,18 @@ namespace jasperengine {
         // the root assets/, lua/, game.json and the cooked scenes live in (empty: the platform's
         // own paths, relative to the working directory or set at build time)
         std::string contentRoot;
+
+        // Player > Logging and Crash Handling of a prebuilt player (game.json); a Compile build
+        // has them as macros. -1 / empty: the build's own
+        std::string logLevel;
+        int logFile = -1;
+        int logBacktrace = -1;
+        int crashHandler = -1;
+        int crashLogTail = -1;
+        int crashDumpWithHeap = -1;
+        int hangWatchdog = -1;
+        int hangMs = 0;
+        int crashWebOverlay = -1;
     };
 
     JASPERENGINE_API PlatformConfig& platformConfig();

@@ -2089,6 +2089,8 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (project->isDevelopmentBuild()) {
             exportNode["developmentBuild"] = true;
         }
+        if (project->getBuildMethod() != "auto") exportNode["method"] = project->getBuildMethod();
+        if (project->isPackContent()) exportNode["pack"] = true;
 
         const DesktopExportSettings& desktop = project->getDesktopExportSettings();
         if (desktop.graphicBackendConfigured) {
@@ -2175,6 +2177,8 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (ios.supportsHighRefreshRate != defaultIOS.supportsHighRefreshRate) iosNode["supportsHighRefreshRate"] = ios.supportsHighRefreshRate;
         if (ios.admobEnabled != defaultIOS.admobEnabled) iosNode["admobEnabled"] = ios.admobEnabled;
         if (!ios.admobAppId.empty()) iosNode["admobAppId"] = ios.admobAppId;
+        if (!ios.teamId.empty()) iosNode["teamId"] = ios.teamId;
+        if (ios.exportMethod != defaultIOS.exportMethod) iosNode["exportMethod"] = ios.exportMethod;
         if (iosNode.size() != 0) root["ios"] = iosNode;
     }
 
@@ -2219,6 +2223,13 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (android.keepScreenOn != defaults.keepScreenOn) androidNode["keepScreenOn"] = android.keepScreenOn;
         if (android.admobEnabled != defaults.admobEnabled) androidNode["admobEnabled"] = android.admobEnabled;
         if (!android.admobAppId.empty()) androidNode["admobAppId"] = android.admobAppId;
+        if (android.packageFormat != defaults.packageFormat) androidNode["packageFormat"] = android.packageFormat;
+        if (!android.keystorePath.empty() || !android.keystoreAlias.empty()) {
+            YAML::Node keystoreNode;
+            keystoreNode["path"] = android.keystorePath.generic_string();
+            keystoreNode["alias"] = android.keystoreAlias;
+            androidNode["keystore"] = keystoreNode;
+        }
         if (androidNode.size()) root["android"] = androidNode;
     }
 
@@ -2644,6 +2655,11 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         }
 
         project->setDevelopmentBuild(exportNode["developmentBuild"] && exportNode["developmentBuild"].as<bool>());
+        if (exportNode["method"] && exportNode["method"].IsScalar()) {
+            const std::string method = exportNode["method"].as<std::string>();
+            project->setBuildMethod(method == "prebuilt" || method == "compile" ? method : "auto");
+        }
+        project->setPackContent(exportNode["pack"] && exportNode["pack"].as<bool>());
 
         if (exportNode["desktop"] && exportNode["desktop"].IsMap()) {
             const YAML::Node& desktopNode = exportNode["desktop"];
@@ -2719,6 +2735,11 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (iosNode["supportsHighRefreshRate"].IsDefined()) ios.supportsHighRefreshRate = YamlNumbers::as<bool>(iosNode["supportsHighRefreshRate"]);
         if (iosNode["admobEnabled"].IsDefined()) ios.admobEnabled = YamlNumbers::as<bool>(iosNode["admobEnabled"]);
         if (iosNode["admobAppId"]) ios.admobAppId = iosNode["admobAppId"].as<std::string>();
+        if (iosNode["teamId"]) ios.teamId = iosNode["teamId"].as<std::string>();
+        if (iosNode["exportMethod"]) {
+            const std::string method = iosNode["exportMethod"].as<std::string>();
+            if (method == "development" || method == "ad-hoc" || method == "app-store") ios.exportMethod = method;
+        }
     }
 
     if (node["android"] && node["android"].IsMap()) {
@@ -2756,6 +2777,11 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (androidNode["keepScreenOn"].IsDefined()) android.keepScreenOn = YamlNumbers::as<bool>(androidNode["keepScreenOn"]);
         if (androidNode["admobEnabled"].IsDefined()) android.admobEnabled = YamlNumbers::as<bool>(androidNode["admobEnabled"]);
         if (androidNode["admobAppId"]) android.admobAppId = androidNode["admobAppId"].as<std::string>();
+        if (androidNode["packageFormat"]) android.packageFormat = androidNode["packageFormat"].as<std::string>() == "aab" ? "aab" : "apk";
+        if (androidNode["keystore"] && androidNode["keystore"].IsMap()) {
+            if (androidNode["keystore"]["path"]) android.keystorePath = androidNode["keystore"]["path"].as<std::string>();
+            if (androidNode["keystore"]["alias"]) android.keystoreAlias = androidNode["keystore"]["alias"].as<std::string>();
+        }
     }
 
     if (node["startSceneId"]) {

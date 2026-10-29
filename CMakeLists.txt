@@ -601,6 +601,12 @@ set(TINYEXPR_SOURCES libs/tinyexpr/tinyexpr.c)
 set_property(SOURCE ${TINYEXPR_SOURCES} APPEND PROPERTY COMPILE_OPTIONS ${EXTERNAL_WARNING_FLAG})
 set_property(SOURCE ${TINYEXPR_SOURCES} APPEND PROPERTY COMPILE_DEFINITIONS TE_POW_FROM_RIGHT TE_NAT_LOG)
 
+# miniz reads and writes the zip archives of the prebuilt players and of Android packages
+# (editor/players, editor/android; docs/specs/S30-shipping.md D8). Editor only: players never link it.
+set(MINIZ_SOURCES libs/miniz/miniz.c)
+set_property(SOURCE ${MINIZ_SOURCES} APPEND PROPERTY COMPILE_OPTIONS ${EXTERNAL_WARNING_FLAG})
+set_property(SOURCE ${MINIZ_SOURCES} APPEND PROPERTY COMPILE_DEFINITIONS MINIZ_NO_ZLIB_COMPATIBLE_NAMES)
+
 # ImGui has no target of its own; only one of these backends builds per platform
 set_property(
     SOURCE
@@ -633,6 +639,19 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/cli/ShippingCommands.cpp
     ${EDITOR_DIR}/cook/RuntimeFieldsEmitter.cpp
     ${EDITOR_DIR}/cook/SceneCooker.cpp
+    ${EDITOR_DIR}/cook/JPakWriter.cpp
+    ${EDITOR_DIR}/util/ZipArchive.cpp
+    ${EDITOR_DIR}/players/PlayerRuntimes.cpp
+    ${EDITOR_DIR}/publish/Notices.cpp
+    ${EDITOR_DIR}/publish/BinaryInfo.cpp
+    ${EDITOR_DIR}/publish/TreeManifest.cpp
+    ${EDITOR_DIR}/publish/PayloadValidator.cpp
+    ${EDITOR_DIR}/platform/ExternalTools.cpp
+    ${EDITOR_DIR}/platform/AndroidTools.cpp
+    ${EDITOR_DIR}/platform/AndroidPackager.cpp
+    ${EDITOR_DIR}/platform/WindowsResources.cpp
+    ${EDITOR_DIR}/platform/MacBundle.cpp
+    ${EDITOR_DIR}/platform/IosProject.cpp
     ${EDITOR_DIR}/App.cpp
     ${EDITOR_DIR}/AppCommands.cpp
     ${EDITOR_DIR}/AppSettings.cpp
@@ -702,6 +721,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/sceneview/SurfacePlacement.cpp
     ${EDITOR_DIR}/window/HierarchyVisibilityGutter.cpp
     ${EDITOR_DIR}/Exporter.cpp
+    ${EDITOR_DIR}/ExporterPrebuilt.cpp
+    ${EDITOR_DIR}/ShippingTypes.cpp
 
     ${EDITOR_DIR}/mcp/McpActivityWindow.cpp
     ${EDITOR_DIR}/window/JobsMemoryWindow.cpp
@@ -1086,6 +1107,7 @@ set(JASPERENGINE_EDITOR_SOURCES
 
     ${IMGUI_SOURCES}
     ${TINYEXPR_SOURCES}
+    ${MINIZ_SOURCES}
     ${BACKEND_SOURCES}
 )
 
@@ -1127,6 +1149,7 @@ function(configure_jasperengine_editor_target target_name)
         ${IMGUI_DIR}
         ${IMGUI_DIR}/backends
         libs/tinyexpr
+        libs/miniz
         ${OPENGL_INCLUDE_DIR}
     )
 

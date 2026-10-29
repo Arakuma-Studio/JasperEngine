@@ -228,6 +228,9 @@ void System::installLogSinks(){
 #ifdef JASPERENGINE_LOG_FILE
     options.fileLog = JASPERENGINE_LOG_FILE != 0;
 #endif
+    // a prebuilt player's Player > Logging (game.json)
+    if (platformConfig().logFile >= 0)
+        options.fileLog = platformConfig().logFile != 0;
     if (options.fileLog) {
         options.userDataPath = getUserDataPath();
     }

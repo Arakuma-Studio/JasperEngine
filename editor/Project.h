@@ -579,6 +579,9 @@ namespace jasperengine::editor{
         // Google Mobile Ads is linked only when enabled
         bool admobEnabled = false;
         std::string admobAppId;
+        // S30: the team that signs a device build, and the archive's export method
+        std::string teamId;
+        std::string exportMethod = "development";   // development, ad-hoc, app-store
     };
 
     enum class AndroidOrientation {
@@ -612,6 +615,12 @@ namespace jasperengine::editor{
         // Google Mobile Ads is compiled in only when enabled
         bool admobEnabled = false;
         std::string admobAppId;
+        // S30: a prebuilt player's package (apk or aab), and the release keystore (its passwords
+        // are never saved: the build asks, or JASPER_ANDROID_KS_PASS / JASPER_ANDROID_KEY_PASS);
+        // no keystore: the debug one (~/.android/debug.keystore)
+        std::string packageFormat = "apk";
+        std::filesystem::path keystorePath;
+        std::string keystoreAlias;
     };
 
     // Google's sample AdMob apps, which only serve test ads. Exports never fall back to them.
@@ -733,6 +742,8 @@ namespace jasperengine::editor{
         // Build Settings > Development Build (S15 R39): a Release game with the profiler and its
         // --profile options (export: developmentBuild, default off)
         bool developmentBuild = false;
+        std::string buildMethod = "auto";
+        bool packContent = false;
         ApplicationSettings applicationSettings;
         WebProjectSettings webProjectSettings;
         LinuxProjectSettings linuxProjectSettings;
@@ -1465,6 +1476,18 @@ namespace jasperengine::editor{
         const DesktopExportSettings& getDesktopExportSettings() const;
         bool isDevelopmentBuild() const { return developmentBuild; }
         void setDevelopmentBuild(bool enabled) { developmentBuild = enabled; }
+        // Build Settings > Build Method (S30 R29): auto, prebuilt or compile; Pack Content
+        const std::string& getBuildMethod() const { return buildMethod; }
+        void setBuildMethod(const std::string& method) { buildMethod = method; }
+        bool isPackContent() const { return packContent; }
+        void setPackContent(bool enabled) { packContent = enabled; }
+        // S30: what the generated main.cpp gives SceneManager::registerScene, for game.json
+        void collectInvolvedScenesForExport(uint32_t sceneId, std::vector<uint32_t>& involvedSceneIds) {
+            collectInvolvedScenes(sceneId, involvedSceneIds);
+        }
+        void collectStartActiveScenesForExport(uint32_t sceneId, std::vector<uint32_t>& activeSceneIds) {
+            collectStartActiveScenes(sceneId, activeSceneIds);
+        }
         ApplicationSettings& getApplicationSettings();
         const ApplicationSettings& getApplicationSettings() const;
 

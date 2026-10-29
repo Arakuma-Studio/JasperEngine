@@ -749,6 +749,16 @@ bool editor::Exporter::generateShaders(const ExportConfig& cfg) {
 }
 
 void editor::Exporter::runExport() {
+    // a player for a target: prebuilt, or this export's Desktop/Web build (S30 D1)
+    if (project && config.mode == ExportMode::Player) {
+        if (config.method == BuildMethod::Auto) {
+            BuildMethod saved = BuildMethod::Auto;
+            if (parseBuildMethod(project->getBuildMethod(), saved)) config.method = saved;
+        }
+        config.packNativeResources = config.packNativeResources || project->isPackContent();
+        runPlayerBuild();
+        return;
+    }
     const bool shaderGenerationOnly = (project == nullptr);
     if (project && config.mode == ExportMode::Web)
         config.webMultithreaded = config.webMultithreaded || project->getThreadingSettings().webMultithreaded;
@@ -1835,6 +1845,18 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                 project->saveSceneToPath(sceneProject.id, sceneProject.filepath);
             }
 
+            // S30: a prebuilt player's cooked scenes and prefabs, from the scenes as they are
+            // loaded now (the same GameObjects the generated sources describe)
+            cookedFiles.clear();
+            cookedPrefabs.clear();
+            if (imported && config.mode == ExportMode::Player) {
+                std::string cookError;
+                if (!cook::SceneCooker::cookProject(project, cookedFiles, cookedPrefabs, cookError)) {
+                    importError = "Cooking the scenes: " + cookError;
+                    imported = false;
+                }
+            }
+
             // The UI Documents the build ships, checked by checkHtmlUIReferences()
             htmlUIDocuments.clear();
             for (const auto& sceneProject : scenes) {
@@ -2236,6 +2258,7 @@ bool editor::Exporter::cookTextures() {
     std::vector<std::string> platforms;
     if (config.mode == ExportMode::Desktop) platforms = {"linux"};
     else if (config.mode == ExportMode::Web) platforms = {"web"};
+    else if (config.mode == ExportMode::Player) platforms = {buildPlatformName(config.platform)};
     else platforms = {"windows", "linux", "macos", "ios", "android", "web"};
     const std::vector<TextureFamily> families =
         TextureCookQueue::familiesForExport(platforms, project->getTextureSettings().androidEtc2Fallback);
@@ -3163,6 +3186,10 @@ std::string editor::Exporter::buildScriptDirIncludes() const {
 }
 
 std::vector<std::pair<std::string, unsigned int>> editor::Exporter::getSceneMaxValues() const {
+    return sceneMaxValuesOf(project);
+}
+
+std::vector<std::pair<std::string, unsigned int>> editor::Exporter::sceneMaxValuesOf(const Project* project) {
     // Aggregate the per-scene maxima into a single project-wide capacity for each
     // HybridArray. SceneProject::maxValues is refreshed for every scene during
     // loadAndSaveAllScenes(), which always runs before copyEngine().
@@ -4432,8 +4459,10 @@ namespace {
 }
 
 bool editor::Exporter::writeEffectLicense() {
-    // copyEngine put the engine's shaderlib next to the export
-    const fs::path effects = config.targetDir / "shaderlib" / "effects";
+    // copyEngine put the engine's shaderlib next to the export (a prebuilt build has none: the
+    // editor's own)
+    const fs::path shaderlib = shaderlibSourceDir();
+    const fs::path effects = shaderlib / "effects";
     std::string error;
     // Every UI effect is compiled with the effects include library, which ports functions of
     // the shaders.com kit (engine/shaderlib/effects/LICENSE.shaders-com.txt lists it with the
@@ -4458,7 +4487,7 @@ bool editor::Exporter::writeEffectLicense() {
     const bool postFx = std::any_of(config.selectedShaderKeys.begin(), config.selectedShaderKeys.end(), [postFxBits](ShaderKey key) {
         return ShaderPool::getShaderTypeFromKey(key) == ShaderType::BLIT && (ShaderPool::getPropertiesFromKey(key) & postFxBits) != 0;
     });
-    if (!writeNotice(postFx, config.targetDir, postFxLicensePath(), config.targetDir / "shaderlib" / "includes" / "LICENSE.post-fx.txt", error)) {
+    if (!writeNotice(postFx, config.targetDir, postFxLicensePath(), shaderlib / "includes" / "LICENSE.post-fx.txt", error)) {
         setError("The post FX notice: " + error);
         return false;
     }
@@ -4522,6 +4551,18 @@ std::string editor::Exporter::getCMakeGraphicBackend(::jasperengine::ShaderBacke
         case ShaderBackend::Vulkan:     return "vulkan";
         default:                        return "glcore";
     }
+}
+
+const char* editor::Exporter::androidPermissionName(const std::string& key) {
+    return androidPermissionManifestName(key);
+}
+
+std::string editor::Exporter::androidOrientationValue(AndroidOrientation orientation) {
+    return androidOrientationManifestValue(orientation);
+}
+
+std::string editor::Exporter::escapeXml(const std::string& value) {
+    return escapeXmlAttribute(value);
 }
 
 editor::EmsdkInfo editor::Exporter::detectEmsdk(const std::string& overridePath) {

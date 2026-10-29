@@ -5,6 +5,7 @@
 
 #include "Scene.h"
 #include "serialization/RuntimeFields.h"
+#include "util/Fnv.h"
 
 using namespace jasperengine;
 using namespace jasperengine::cook;
@@ -26,6 +27,56 @@ namespace jasperengine::cook {
             cook::read(r, pass.uniforms);
             cook::read(r, pass.textures);
             pass.scale = r.f32();
+        }
+    };
+
+    // the engine's own post-processing table (PostProcessingSettings::getFields): one record
+    // per field, {u32 FNV-1a 32 of its name, u8 type, u32 length, value}; a reader skips a field
+    // it does not know
+    template<>
+    struct Codec<PostProcessingSettings> {
+        using Type = PostProcessingSettings::FieldType;
+        static void write(Writer& w, const PostProcessingSettings& settings) {
+            for (const PostProcessingSettings::Field& field : PostProcessingSettings::getFields()) {
+                const void* value = settings.getFieldRef(field);
+                w.u32(fnv1a32(field.name));
+                w.u8(static_cast<uint8_t>(field.type));
+                const size_t at = w.beginLength();
+                switch (field.type) {
+                    case Type::Bool: w.boolean(*static_cast<const bool*>(value)); break;
+                    case Type::Int: w.svarint(*static_cast<const int*>(value)); break;
+                    case Type::Enum: w.svarint(*static_cast<const int*>(value)); break;
+                    case Type::Float: w.f32(*static_cast<const float*>(value)); break;
+                    case Type::Vector3: cook::write(w, *static_cast<const Vector3*>(value)); break;
+                    case Type::String: w.string(*static_cast<const std::string*>(value)); break;
+                    case Type::Asset: cook::write(w, *static_cast<const AssetRef*>(value)); break;
+                }
+                w.endLength(at);
+            }
+            w.u32(0);
+        }
+        static void read(Reader& r, PostProcessingSettings& settings) {
+            const std::vector<PostProcessingSettings::Field>& fields = PostProcessingSettings::getFields();
+            while (!r.failed()) {
+                const uint32_t id = r.u32();
+                if (id == 0) break;
+                const Type type = static_cast<Type>(r.u8());
+                Reader value = r.record();
+                const PostProcessingSettings::Field* field = nullptr;
+                for (const PostProcessingSettings::Field& candidate : fields)
+                    if (fnv1a32(candidate.name) == id) field = &candidate;
+                if (!field || field->type != type) continue;
+                void* ref = field->ref(settings);
+                switch (type) {
+                    case Type::Bool: *static_cast<bool*>(ref) = value.boolean(); break;
+                    case Type::Int: *static_cast<int*>(ref) = static_cast<int>(value.svarint()); break;
+                    case Type::Enum: *static_cast<int*>(ref) = static_cast<int>(value.svarint()); break;
+                    case Type::Float: *static_cast<float*>(ref) = value.f32(); break;
+                    case Type::Vector3: cook::read(value, *static_cast<Vector3*>(ref)); break;
+                    case Type::String: *static_cast<std::string*>(ref) = value.string(); break;
+                    case Type::Asset: cook::read(value, *static_cast<AssetRef*>(ref)); break;
+                }
+            }
         }
     };
 

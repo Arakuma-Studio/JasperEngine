@@ -1406,6 +1406,8 @@ namespace {
     #ifdef JASPERENGINE_LOG_BACKTRACE
         config.backtraceOnError = JASPERENGINE_LOG_BACKTRACE != 0;
     #endif
+        if (platformConfig().logBacktrace >= 0)
+            config.backtraceOnError = platformConfig().logBacktrace != 0;
     #ifndef NDEBUG
         // debug builds always do
         config.backtraceOnError = true;
@@ -1415,6 +1417,12 @@ namespace {
     #ifdef JASPERENGINE_LOG_LEVEL
         Logger::applyLevelSpec(JASPERENGINE_LOG_LEVEL);
     #endif
+        // a prebuilt player's Player > Logging level (game.json)
+        if (!platformConfig().logLevel.empty()) {
+            std::string error;
+            if (!Logger::applyLevelSpec(platformConfig().logLevel, &error))
+                fprintf(stderr, "game.json logging level: %s\n", error.c_str());
+        }
         if (const char* level = std::getenv("JASPER_LOG_LEVEL")) {
             std::string error;
             if (level[0] != '\0' && !Logger::applyLevelSpec(level, &error)) {
@@ -1454,17 +1462,25 @@ namespace {
     // A game's crash reports (<user data>/crash) and, in a development build, its main-thread
     // hang watchdog (docs/crash-diagnostics.md)
     [[maybe_unused]] void startGameDiagnostics(System* system){
+        // a prebuilt player's Player > Crash Handling (game.json) over the build's
+        const PlatformConfig& platform = platformConfig();
+        auto setting = [](int runtime, int built) { return runtime >= 0 ? runtime != 0 : built != 0; };
     #if JASPERENGINE_CRASH_HANDLER
+        if (!setting(platform.crashHandler, 1)) {
+            (void)system;
+            return;
+        }
         diag::crash::Config config;
         // the window title: the project's name (a prebuilt player's game.json, a Compile
         // build's macro, both through the platform configuration)
         // (the configuration lives for the whole run, so its text does)
         config.product = platformConfig().title.empty() ? "JasperEngine Game" : platformConfig().title.c_str();
         config.root = system->getCrashReportPath();
-        config.includeLogTail = JASPERENGINE_CRASH_LOG_TAIL != 0;
-        config.dumpKind = JASPERENGINE_CRASH_DUMP_WITH_HEAP ? diag::crash::DumpKind::WithHeap : diag::crash::DumpKind::Small;
+        config.includeLogTail = setting(platform.crashLogTail, JASPERENGINE_CRASH_LOG_TAIL);
+        config.dumpKind = setting(platform.crashDumpWithHeap, JASPERENGINE_CRASH_DUMP_WITH_HEAP) ? diag::crash::DumpKind::WithHeap
+                                                                                                  : diag::crash::DumpKind::Small;
         config.backend = graphicBackendName();
-        config.webOverlay = JASPERENGINE_CRASH_WEB_OVERLAY != 0;
+        config.webOverlay = setting(platform.crashWebOverlay, JASPERENGINE_CRASH_WEB_OVERLAY);
         #if !defined(__EMSCRIPTEN__)
         // no report root (the unit tests' System): no handler either
         if (config.root.empty()) return;
@@ -1474,13 +1490,19 @@ namespace {
     #endif
     #if JASPERENGINE_DEVELOPMENT_BUILD && JASPERENGINE_CRASH_HANG_WATCHDOG && !defined(__EMSCRIPTEN__)
         // the browser owns the web's main thread
+        if (!setting(platform.hangWatchdog, 1)) {
+            (void)system;
+            return;
+        }
         diag::WatchdogConfig watch;
-        watch.thresholdMs = JASPERENGINE_CRASH_HANG_MS;
+        watch.thresholdMs = platform.hangMs > 0 ? platform.hangMs : JASPERENGINE_CRASH_HANG_MS;
         if (!platformConfig().title.empty())
             watch.product = platformConfig().title.c_str();
         diag::watchdog::start(watch);
         engineOwnsDiagnostics = true;
     #endif
+        (void)setting;
+        (void)platform;
         (void)system;
     }
 #endif

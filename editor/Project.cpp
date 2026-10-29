@@ -4926,6 +4926,8 @@ void editor::Project::resetConfigs() {
     inputActionsAsset.clear();
     setInputDeadzone(defaultInputDeadzone);
     playerCrash = PlayerCrashSettings();
+    buildMethod = "auto";
+    packContent = false;
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
     setHtmlUiRenderSettings(HtmlUiRenderSettings());
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){

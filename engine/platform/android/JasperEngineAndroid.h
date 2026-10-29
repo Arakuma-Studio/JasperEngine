@@ -25,6 +25,9 @@ public:
     virtual void quit() override;
 
     virtual std::string getUserDataPath() override;
+    // a prebuilt player's content (game/ of the APK's assets, S30); else the assets root
+    virtual std::string getAssetPath() override;
+    virtual std::string getLuaPath() override;
 
     virtual FILE* platformFopen(const char* fname, const char* mode) override;
 
