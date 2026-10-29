@@ -35,6 +35,7 @@
 #include "command/PlayChangeReview.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "component/ScriptComponent.h"
+#include "component/NavMeshAgentComponent.h"
 #include "script/LuaBinding.h"
 #include "util/EntityPath.h"
 #include "window/PlayInput.h"
@@ -2044,6 +2045,20 @@ void addRuntimeState(Scene* scene, Entity entity, ComponentType type, const std:
         put("groundEntity", c->groundEntity == NULL_ENTITY ? Json() : Json(c->groundEntity));
         put("groundVelocity", vec3(c->groundVelocity));
         put("refusedWithRigidbody", c->refusedWithRigidbody);
+    }
+    if (type == ComponentType::NavMeshAgentComponent) {
+        // what the crowd says (S19 R37)
+        const NavMeshAgentComponent* c = scene->findComponent<NavMeshAgentComponent>(entity);
+        if (!c) return;
+        auto vec3 = [](const Vector3& v) { return Json::array({v.x, v.y, v.z}); };
+        put("destination", vec3(c->destination));
+        put("pathStatus", nav::pathStatusName(c->pathStatus));
+        put("pathPending", c->pathPending);
+        put("remainingDistance", c->remainingDistance);
+        put("velocity", vec3(c->velocity));
+        put("desiredVelocity", vec3(c->desiredVelocity));
+        put("isOnNavMesh", c->isOnNavMesh);
+        put("isOnOffMeshLink", c->isOnOffMeshLink);
     }
 }
 

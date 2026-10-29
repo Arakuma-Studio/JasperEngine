@@ -105,6 +105,13 @@ namespace jasperengine::editor::reflect {
     extern const ComponentDesc kBuoyancyDesc;
     extern const ComponentDesc kPoseAnimatorDesc;
     extern const ComponentDesc kAnimationPlayerDesc;
+    // navigation (S19, NavigationReflect.cpp)
+    extern const ComponentDesc kNavMeshSurfaceDesc;
+    extern const ComponentDesc kNavMeshAgentDesc;
+    extern const ComponentDesc kNavMeshObstacleDesc;
+    extern const ComponentDesc kNavMeshLinkDesc;
+    extern const ComponentDesc kNavMeshModifierDesc;
+    extern const ComponentDesc kNavGridDesc;
     extern const ComponentDesc kAnimatorDesc;
 
 }

@@ -261,4 +261,5 @@
 1053 uidocument/filename ui_document
 1060 volumetricclouds/weatherMap texture
 1066 poseanimator/animation pose_animation
-1068 animator/controller animator_controller
+1068 navmeshsurface/navMeshData any
+1073 navgrid/gridData any

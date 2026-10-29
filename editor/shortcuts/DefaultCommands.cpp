@@ -196,6 +196,7 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("window.playModeChanges", "Play Mode Changes", AppMenuCommand::TogglePlayModeChanges);
     b.menu("window.terrain", "Terrain", AppMenuCommand::ToggleTerrain);
     b.menu("window.inputActions", "Input Actions", AppMenuCommand::ToggleInputActions);
+    b.menu("window.navigation", "Navigation", AppMenuCommand::ToggleNavigation);
     b.menu("window.textureSynthesis", "Texture Synthesis", AppMenuCommand::ToggleTextureSynthesis);
     b.menu("window.physicsPlacement", "Physics Placement", AppMenuCommand::TogglePhysicsPlacement);
     b.menu("window.missingAssets", "Missing Assets", AppMenuCommand::ToggleMissingAssets);

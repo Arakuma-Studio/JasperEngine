@@ -19,7 +19,7 @@ a centre pixel outside the baseline's rgb +- tolerance; crossOriginIsolated diff
 baseline's isolated; a line of the baseline's "console" list ({"text", "level"}: log, info,
 warning, error) missing, at another console level, or (with "ordered": true) out of order. An
 error the "console" list names is expected and fails nothing. A baseline may also give "query" (items added to the
-page URL's query), "init_script" (JavaScript run before the page's own scripts), "eval" with "eval_expect" (substrings
+page URL's query), "seconds" (the run length when --seconds is not given), "init_script" (JavaScript run before the page's own scripts), "eval" with "eval_expect" (substrings
 its value must contain), and "allow": substrings of console lines and uncaught exceptions that are expected (a
 deliberate crash) and fail nothing. Exit 2 when the gate itself cannot run (no Chrome, no page target).
 
@@ -315,7 +315,9 @@ def main() -> int:
     args = parser.parse_args()
 
     baseline = json.loads(args.baseline.read_text()) if args.baseline else {}
-    seconds = args.seconds if args.seconds is not None else (2.0 if args.until_ready else 10.0)
+    # a baseline's "seconds" is its own default run length (a scene that needs a while: S19's bakes)
+    default_seconds = (2.0 if args.until_ready else 10.0)
+    seconds = args.seconds if args.seconds is not None else float(baseline.get("seconds", default_seconds))
     if not (args.root / args.page).is_file():
         print(f"browser_gate: no {args.page} in {args.root}", file=sys.stderr)
         return 2

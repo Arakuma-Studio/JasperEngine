@@ -31,9 +31,11 @@ namespace jasperengine {
         ParticleEffect = 15,  // a .particles effect (S20)
         AnimationClip = 16,     // an .anim clip (Animation Player clips; its GUID in its JSON)
         PoseAnimation = 17,     // a .poseanim pose animation (Pose Animator's animation)
-        AnimatorController = 18,    // a .controller Animator Controller (S21; its GUID in its JSON)
-        AvatarMask = 19,            // a .mask avatar mask (S21)
-        AnimationMontage = 20       // a .montage animation montage (S21)
+        NavMesh = 18,         // a baked .navmesh (S19)
+        NavGrid = 19,         // a .navgrid's cells (S19)
+        AnimatorController = 20,    // a .controller Animator Controller (S21; its GUID in its JSON)
+        AvatarMask = 21,            // a .mask avatar mask (S21)
+        AnimationMontage = 22       // a .montage animation montage (S21)
     };
 
     // The lowercase names used by Lua (AssetRef.type), MCP and the editor ("texture", "model", ...)
@@ -56,6 +58,8 @@ namespace jasperengine {
             case AssetType::ParticleEffect: return "particle_effect";
             case AssetType::AnimationClip: return "animation_clip";
             case AssetType::PoseAnimation: return "pose_animation";
+            case AssetType::NavMesh: return "navmesh";
+            case AssetType::NavGrid: return "navgrid";
             case AssetType::AnimatorController: return "animator_controller";
             case AssetType::AvatarMask: return "avatar_mask";
             case AssetType::AnimationMontage: return "animation_montage";

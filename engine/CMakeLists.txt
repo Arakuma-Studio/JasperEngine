@@ -33,6 +33,10 @@ option(JASPERENGINE_HTMLUI_TESTS "Build jasperengine-htmlui-tests" OFF)
 option(JASPERENGINE_TESTS "Build the unit-test target of this build tree" OFF)
 # the S07 ECS benchmark (tools/performance/run-ecs-bench.py), standalone engine builds only
 option(JASPERENGINE_ECS_BENCH "Build jasperengine-ecs-bench" OFF)
+# Navigation meshes, queries and crowds (Recast/Detour, engine/libs/recastnavigation, spec S19);
+# OFF leaves the library out and the navmesh API fails (grids keep working). The export sets it
+# from Project Settings > Navigation.
+option(JASPERENGINE_NAVIGATION "Compile Recast/Detour navigation meshes and crowds" ON)
 
 # =============================================================
 # STANDALONE PROJECT SETUP
@@ -862,6 +866,9 @@ add_subdirectory(libs/sheenbidi)
 add_subdirectory(libs/meshoptimizer)
 # the HTML UI's MTSDF glyphs (S16)
 add_subdirectory(libs/msdfgen)
+if(JASPERENGINE_NAVIGATION)
+    add_subdirectory(libs/recastnavigation)
+endif()
 # Cooked textures (S14, docs/textures.md): Zstandard (zstd_decompress in every game, zstd for the
 # cook), the Basis Universal transcoder of web textures (the web runtime, the editor's previews
 # and the tests; native games never load Basis files) and, in the editor tree only
@@ -962,6 +969,11 @@ foreach(lib IN ITEMS
     dav1d dav1d_bitdepth_8 dav1d_bitdepth_16 opus webm ${JASPERENGINE_PHYSICS_LIBS} ${JASPERENGINE_TEXTURE_LIBS})
     target_compile_options(${lib} PRIVATE ${EXTERNAL_WARNING_FLAG})
 endforeach()
+if(JASPERENGINE_NAVIGATION)
+    target_compile_options(recastnavigation PRIVATE ${EXTERNAL_WARNING_FLAG})
+    target_compile_options(recastnavigation_debugdraw PRIVATE ${EXTERNAL_WARNING_FLAG})
+    jasperengine_apply_cxx_standard(recastnavigation recastnavigation_debugdraw)
+endif()
 
 # One C++ standard for every object of the binary: libc++ template definitions instantiated
 # at two standards across a library boundary (tinygltf and RmlUi pass std containers into
@@ -1394,6 +1406,9 @@ list(APPEND JASPERENGINE_SRCS ${HTMLUI_WIDGETS_SRCS})
 # Particles (S20): the SIMD kernels' flags, the subsystem and its drawing
 include(core/particles/ParticleSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_PARTICLE_SRCS} ${JASPERENGINE_PARTICLE_SYSTEM_SRCS})
+# Navigation (S19): navmeshes, crowds, grids, the NavigationSystem and its Lua objects
+include(core/navigation/NavigationSources.cmake)
+list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_NAVIGATION_SRCS})
 include(libs/lucide/lucide.cmake)
 
 if(JASPERENGINE_PHYSICS_2D)
@@ -1491,6 +1506,9 @@ jasperengine_skip_unity_build(
 jasperengine_skip_unity_build(
     REASON "the particle kernels build with their own floating-point flags"
     SOURCES ${JASPERENGINE_PARTICLE_SRCS})
+jasperengine_skip_unity_build(
+    REASON "the navigation sources: file-local Detour helpers and constants with the same names"
+    SOURCES ${JASPERENGINE_NAVIGATION_SRCS})
 jasperengine_target_unity_build(jasperengine)
 
 target_compile_definitions(jasperengine
@@ -1500,6 +1518,7 @@ target_compile_definitions(jasperengine
         JASPERENGINE_PROFILER=$<BOOL:${JASPERENGINE_PROFILER}>
         JASPERENGINE_DEVELOPMENT_BUILD=$<OR:$<BOOL:${JASPERENGINE_DEVELOPMENT_BUILD}>,$<CONFIG:Debug>>
         JASPERENGINE_TRACY=$<BOOL:${JASPERENGINE_TRACY}>
+        JASPERENGINE_NAVIGATION=$<BOOL:${JASPERENGINE_NAVIGATION}>
     PRIVATE
         $<$<BOOL:${JE_JOLT_OWN_POOL}>:JE_JOLT_OWN_POOL>
 )
@@ -1537,6 +1556,9 @@ target_link_libraries(
     dav1d opus webm zstd_decompress
     ${JASPERENGINE_PHYSICS_LIBS}
 )
+if(JASPERENGINE_NAVIGATION)
+    target_link_libraries(jasperengine PRIVATE recastnavigation)
+endif()
 if(JASPERENGINE_BASIS_TRANSCODER)
     target_link_libraries(jasperengine PUBLIC basisu_transcoder)
     target_compile_definitions(jasperengine PUBLIC JASPERENGINE_BASIS_TRANSCODER)

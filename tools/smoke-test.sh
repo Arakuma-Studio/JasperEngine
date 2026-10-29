@@ -5,6 +5,7 @@
 #   2. build the exported standalone CMake project
 #   3. run the game under a virtual X server and screenshot it
 #   4. open the project in the editor GUI and screenshot it
+#   5. bake a navmesh and query a path through the editor's MCP tools (tools/mcp/nav_smoke.py)
 #
 #   tools/smoke-test.sh <editor-project-dir>
 #
@@ -225,6 +226,11 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
         : > editor.log
         run editor editor-console.log 20 dbus-run-session -- "$EDITOR"
         check_log editor editor.log editor-console.log
+
+        # S19: a NavMesh Surface baked and a path queried through the MCP tools, in a new project
+        echo "== navigation"
+        UV="$(command -v uv || echo "$HOME/.local/bin/uv")"
+        (cd /src && JASPER_EDITOR="$EDITOR" dbus-run-session -- "$UV" run --quiet --no-project --with-requirements tools/mcp/requirements.txt python tools/mcp/nav_smoke.py) || { echo "FAIL: navigation"; exit 1; }
 
         echo "PASS"
     '

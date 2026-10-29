@@ -8,6 +8,7 @@
 #include "ToolsLayer.h"
 #include "UILayer.h"
 #include "RenderUtil.h"
+#include "navigation/NavigationOverlay.h"
 #include "command/Command.h"
 #include "command/CommandHistory.h"
 
@@ -50,6 +51,8 @@ namespace jasperengine::editor{
         float rotationSnapDegrees = 15.0f;
         // every lattice's cage, not only the selected ones' (faint)
         bool showAllLattices     = false;
+        // the AI Navigation overlay (S19; navigation/NavigationOverlay.h)
+        NavOverlaySettings navigation;
     };
 
     struct CameraObjects{
@@ -224,6 +227,10 @@ namespace jasperengine::editor{
         // size the Scene view draws at, in engine pixels
         int viewWidth = 0;
         int viewHeight = 0;
+
+        // --- the AI Navigation overlay (S19, editor/navigation/NavigationOverlay.cpp) ---
+        std::unique_ptr<NavigationOverlay> navigationOverlay;
+        void updateNavigationOverlay(const std::vector<Entity>& selEntities);
 
         // --- lattices: cages, point gizmo and drag (editor/lattice/LatticeSceneRender.cpp) ---
         struct LatticeCageLines{

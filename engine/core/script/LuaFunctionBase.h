@@ -21,6 +21,8 @@ namespace jasperengine{
     class Contact3D;
     class CollideShapeResult3D;
     struct ControllerColliderHit;
+    class NavMeshAgent;
+    class NavMeshSurface;
     class InputActionEvent;
     struct ParticleCollisionInfo;
     struct ParticleDeathInfo;
@@ -79,6 +81,8 @@ namespace jasperengine{
         // a copy of the event (its args read as a 1-based table: AnimationEvent.args)
         void push_value(lua_State *vm, const AnimationEvent &o);
         void push_value(lua_State *vm, ControllerColliderHit o);
+        void push_value(lua_State *vm, NavMeshAgent o);
+        void push_value(lua_State *vm, NavMeshSurface o);
         // an input action's callback gets the event itself: event:consume() reaches it
         void push_value(lua_State *vm, const InputActionEvent& o);
 

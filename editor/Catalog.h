@@ -154,6 +154,12 @@ namespace jasperengine::editor{
         PoseAnimatorComponent,
         // Unity's legacy Animation component (animation clips spec 3.2)
         AnimationPlayerComponent,
+        NavMeshSurfaceComponent,
+        NavMeshAgentComponent,
+        NavMeshObstacleComponent,
+        NavMeshLinkComponent,
+        NavMeshModifierComponent,
+        NavGridComponent,
         // Unity's Animator (docs/specs/S21-animation.md)
         AnimatorComponent
     };
