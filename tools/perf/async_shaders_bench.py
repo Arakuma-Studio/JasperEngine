@@ -71,8 +71,10 @@ async def wait_idle(ed: Editor, timeout_frames: int = 3000) -> None:
 
 async def frames_of(ed: Editor, frames: int) -> list[dict]:
     capture = await ed.call("capture_profile", frames=frames, gpu=False)
+    # (frames are numbered as the editor counts them: the capture's first is first_frame)
+    first = int(capture.get("first_frame", 0))
     out = []
-    for index in range(frames):
+    for index in range(first, first + int(capture.get("frames", frames))):
         frame = await ed.call("get_cpu_profile", capture_id=capture["capture_id"], frame=index, view="tree",
                               thread="main", filter="GPU", max_rows=200)
         out.append({"frame_ms": float(frame.get("frame_ms") or 0.0), "creation_ms": main_creation_ms(frame.get("rows", []))})
