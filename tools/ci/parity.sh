@@ -28,7 +28,8 @@ for dir in "${fixtures[@]}"; do
     rm -rf "$out"; mkdir -p "$out"
     ok=1
     for method in compile prebuilt; do
-        if ! SMOKE_METHOD=$method SMOKE_DIR="build/parity-$method" tools/smoke-test.sh "$dir" > "$out/$method.log" 2>&1; then
+        # both run the player's own frame (--after-ready --quit-after 30 --fixed-fps 60 --screenshot)
+        if ! SMOKE_PLAY=1 SMOKE_METHOD=$method SMOKE_DIR="build/parity-$method" tools/smoke-test.sh "$dir" > "$out/$method.log" 2>&1; then
             echo "FAIL: $name ($method): $(tail -3 "$out/$method.log" | tr '\n' ' ')"
             ok=0
             break

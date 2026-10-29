@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates python3 file git \
         libx11-6 libxcursor1 libxi6 libxrandr2 libxext6 libxkbcommon0 \
         libwayland-client0 libwayland-cursor0 libwayland-egl1 libdecor-0-0 \
-        libgl1 libegl1 libgl1-mesa-dri libvulkan1 mesa-vulkan-drivers libdbus-1-3 dbus \
+        libgl1 libegl1 libgles2 libgl1-mesa-dri libvulkan1 mesa-vulkan-drivers libdbus-1-3 dbus \
         xvfb xauth x11-utils x11-apps imagemagick wget \
     && rm -rf /var/lib/apt/lists/*
 

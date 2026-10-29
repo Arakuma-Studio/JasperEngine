@@ -11,6 +11,8 @@
 #
 # SMOKE_METHOD=prebuilt needs the player runtimes (tools/build.sh players, build/players;
 # SMOKE_PLAYERS_DIR=build/<dir> for others). SMOKE_QUIT_AFTER (30) frames are run there.
+# SMOKE_PLAY=1 (the default for prebuilt) runs a compiled game the same way, with its own
+# frame as game.png (tools/ci/parity.sh compares the two methods' frames).
 #
 #   tools/smoke-test.sh <editor-project-dir>
 #
@@ -71,7 +73,7 @@ METHOD="${SMOKE_METHOD:-prebuilt}"
 PLAYERS="${SMOKE_PLAYERS_DIR:-build/players}"
 [[ "$PLAYERS" =~ ^build/[A-Za-z0-9_./-]+$ ]] || { echo "SMOKE_PLAYERS_DIR must be build/<dir> (got $PLAYERS)" >&2; exit 1; }
 
-[[ $# -eq 1 && -f "$1/project.yaml" ]] || { sed -n '2,50p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+[[ $# -eq 1 && -f "$1/project.yaml" ]] || { sed -n '2,52p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 PROJECT="$(cd "$1" && pwd)"
 [[ -x "$ROOT/$EDITOR" ]] || { echo "No editor at $EDITOR; run tools/build.sh linux" >&2; exit 1; }
 
@@ -122,6 +124,7 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
     -e SMOKE_READY_TIMEOUT="${SMOKE_READY_TIMEOUT:-300}" \
     -e SMOKE_READY_SETTLE="${SMOKE_READY_SETTLE:-2}" \
     -e SMOKE_METHOD="$METHOD" \
+    -e SMOKE_PLAY="${SMOKE_PLAY:-$([[ "$METHOD" == prebuilt ]] && echo 1 || echo 0)}" \
     -e SMOKE_QUIT_AFTER="${SMOKE_QUIT_AFTER:-30}" \
     -e JASPER_PLAYERS_DIR="/src/$PLAYERS" \
     "$IMAGE" bash -euo pipefail -c '
@@ -251,7 +254,7 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
 
         echo "== run game"
         # word splitting of SMOKE_GAME_ENV is wanted: one NAME=value per word
-        if [[ "$SMOKE_METHOD" == prebuilt ]]; then
+        if [[ "$SMOKE_PLAY" == 1 ]]; then
             # shellcheck disable=SC2086
             play game $SMOKE_GAME_ENV -- $SMOKE_GAME_ARGS
         else
@@ -268,7 +271,7 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
             label="${words[0]}"
             [[ "$label" =~ ^[A-Za-z0-9_.-]+$ ]] || { echo "FAIL: SMOKE_GAME_RUNS name \"$label\""; exit 1; }
             echo "== run game ($label)"
-            if [[ "$SMOKE_METHOD" == prebuilt ]]; then
+            if [[ "$SMOKE_PLAY" == 1 ]]; then
                 # shellcheck disable=SC2086
                 play "game-$label" $SMOKE_GAME_ENV "${words[@]:1}" --
             else
