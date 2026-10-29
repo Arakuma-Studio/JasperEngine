@@ -501,5 +501,13 @@ Unit tests in `engine/tests/core/animation/` (`Animator*.cpp`), editor tests in
   Lua API and glossary.
 - [x] Tests: core (`Animator*`, `ClipTangentModes`), GPU golden (`AnimatorGpu`), editor
   (`AnimatorEditor`), MCP (`test_animator.py`); bench `je-bench-anim`.
-- [ ] Gate: linux WERROR GL and Vulkan, ASan+UBSan, web, Android, MCP full suite, smoke, E
-  benches (`docs/perf/animator.md`), Xcode sync, final oe-port merge.
+- [x] Gate on oe-port `1608d1588` (S29) merged: linux WERROR editor build; core suite 1,864
+  passed; Vulkan (lavapipe) `Animator*` / `ClipTangentModes*` incl. the GPU golden, 68 passed;
+  ASan+UBSan animation suites, 146 passed; web gates (simd128 and scalar) pass with the same pose;
+  Android emulator (`tools/test-projects/animator`) passes; smoke passes; E bench: Crowd200 p95
+  2.39 ms median of five (`docs/perf/animator.md`); Xcode project synced. Full MCP suite: S21's
+  failures fixed and re-run green (the Clips guide bullet, the reflection-parity resave / codegen
+  goldens); the remaining failures fail on `sync/origin-main-3` too, which has S29 and not
+  S21 (`test_pose_runtime`, `test_lattice` screenshot, `test_post_fx_golden`, the CLI
+  `check --shaders` `map::at` abort, `test_place_physics_cli`), or are oe-port's own
+  (`test_scene_inputs` expects an older shader message; `sync/origin-main-3` has the fix).
