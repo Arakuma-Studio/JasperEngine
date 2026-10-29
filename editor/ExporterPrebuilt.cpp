@@ -114,6 +114,20 @@ std::string editor::Exporter::playerIdFor(const ExportConfig& cfg, bool developm
     return PlayerRuntimes::runtimeId(buildPlatformName(cfg.platform), platformArch(cfg.platform), backend, development);
 }
 
+namespace {
+
+    // a source as a reason names it: project-relative inside the project, else as it is
+    std::string projectRelativeName(const Project* project, const fs::path& path) {
+        const fs::path root = project->getProjectPath();
+        if (!root.empty()) {
+            const fs::path relative = path.lexically_normal().lexically_relative(root.lexically_normal());
+            if (!relative.empty() && *relative.begin() != "..") return relative.generic_string();
+        }
+        return path.lexically_normal().generic_string();
+    }
+
+}
+
 editor::BuildMethodChoice editor::Exporter::chooseBuildMethod(Project* proj, const ExportConfig& cfg, const PlayerInfo* playerInfo) {
     BuildMethodChoice choice;
     // (a) C++ scripts: what a script directory compiles (Generator::writeSourceFiles)
@@ -130,17 +144,15 @@ editor::BuildMethodChoice editor::Exporter::chooseBuildMethod(Project* proj, con
                 continue;
             }
             if (it->is_regular_file(ec) && isCppSourceFile(it->path()) && !isCppHeaderFile(it->path()))
-                sources.push_back(fs::relative(it->path(), proj->getProjectPath(), ec).generic_string());
+                sources.push_back(projectRelativeName(proj, it->path()));
         }
     }
     // and the C++ scripts the scenes and the prefabs scripts instantiate use (what the Compile
     // path compiles: Exporter::copyCppScripts), wherever they are
     for (const SceneScriptSource& script : proj->getBuildCppScripts()) {
         if (script.path.empty()) continue;
-        std::error_code ec;
         const fs::path source = script.path.is_absolute() ? script.path : proj->getProjectPath() / script.path;
-        const fs::path relative = fs::relative(source, proj->getProjectPath(), ec);
-        const std::string name = (ec || relative.empty()) ? source.generic_string() : relative.generic_string();
+        const std::string name = projectRelativeName(proj, source);
         if (std::find(sources.begin(), sources.end(), name) == sources.end()) sources.push_back(name);
     }
     std::sort(sources.begin(), sources.end());

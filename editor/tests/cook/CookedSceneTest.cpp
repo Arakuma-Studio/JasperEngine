@@ -12,6 +12,8 @@
 #include "reflect/ReflectTestSupport.h"
 
 #include "Catalog.h"
+#include "component/ActionComponent.h"
+#include "component/AudioSourceComponent.h"
 #include "cook/RuntimeFieldsEmitter.h"
 #include "cook/SceneCooker.h"
 #include "reflect/Reflect.h"
@@ -35,7 +37,13 @@ namespace cooked_scene_test {
     // Keys of a component's encode that a cooked scene does not carry over as they are, each
     // for a reason that holds in the Factory (Compile) path too
     const std::map<std::string, std::set<std::string>>& derivedKeys() {
-        static const std::map<std::string, std::set<std::string>> keys = {};
+        static const std::map<std::string, std::set<std::string>> keys = {
+            // a build starts every action and audio source stopped; a saved Running, Paused or
+            // Playing state is replayed through its triggers (the generated code of the Compile
+            // path does the same): checkPlaybackState checks that instead
+            {"action", {"state"}},
+            {"audiosource", {"state"}},
+        };
         return keys;
     }
 
@@ -76,6 +84,23 @@ namespace cooked_scene_test {
         return CookedSceneLoader::loadScene(to.scene->scene, std::span<const uint8_t>(bytes.data(), bytes.size()), &error);
     }
 
+    // what a saved playback state became after the load (ComponentHooks.cpp afterAction /
+    // afterAudioSource): stopped, with the triggers that start (and pause) it
+    void checkPlaybackState(const reflect::ComponentDesc& desc, Scene* source, Scene* loaded, Entity entity) {
+        if (desc.type == ComponentType::ActionComponent) {
+            const ActionComponent& before = source->getComponent<ActionComponent>(entity);
+            const ActionComponent& after = loaded->getComponent<ActionComponent>(entity);
+            EXPECT_EQ(after.state, ActionComponent().state);
+            EXPECT_EQ(after.startTrigger, before.state != ActionState::Stopped) << "action state " << static_cast<int>(before.state);
+            EXPECT_EQ(after.pauseTrigger, before.state == ActionState::Paused) << "action state " << static_cast<int>(before.state);
+        } else if (desc.type == ComponentType::AudioSourceComponent) {
+            const AudioSourceComponent& before = source->getComponent<AudioSourceComponent>(entity);
+            const AudioSourceComponent& after = loaded->getComponent<AudioSourceComponent>(entity);
+            EXPECT_EQ(after.state, AudioSourceState::Stopped);
+            EXPECT_EQ(after.startTrigger, before.state == AudioSourceState::Playing) << "audio state " << static_cast<int>(before.state);
+        }
+    }
+
     // the component types whose tables the random values fill (a codec component's state is more
     // than its table: the fixture's values cover those)
     bool randomizable(const reflect::ComponentDesc& desc) {
@@ -110,6 +135,7 @@ TEST(CookedScene, RoundTripEveryComponent) {
             ASSERT_TRUE(loaded.scene->scene->isEntityCreated(entity)) << desc->cppName;
             EXPECT_EQ(encodeOf(*desc, loaded.scene->scene, entity), encodeOf(*desc, scene, entity))
                 << desc->cppName << " sample " << sample;
+            checkPlaybackState(*desc, scene, loaded.scene->scene, entity);
             checked++;
         }
     }

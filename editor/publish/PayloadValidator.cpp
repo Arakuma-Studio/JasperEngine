@@ -122,6 +122,21 @@ namespace {
         }
     }
 
+    // an executable file of the build that is a binary (not a script): ELF or Mach-O magic
+    bool isExecutableBinary(const fs::path& path, BuildPlatform platform) {
+        if (platform != BuildPlatform::Linux && platform != BuildPlatform::MacOS) return false;
+        std::error_code ec;
+        if ((fs::status(path, ec).permissions() & fs::perms::owner_exec) == fs::perms::none) return false;
+        std::ifstream in(path, std::ios::binary);
+        unsigned char magic[4] = {};
+        if (!in.read(reinterpret_cast<char*>(magic), 4)) return false;
+        const bool elf = magic[0] == 0x7f && magic[1] == 'E' && magic[2] == 'L' && magic[3] == 'F';
+        const uint32_t word = magic[0] | (magic[1] << 8) | (magic[2] << 16) | (uint32_t(magic[3]) << 24);
+        const bool macho = word == 0xFEEDFACEu || word == 0xFEEDFACFu || word == 0xCEFAEDFEu || word == 0xCFFAEDFEu ||
+                           word == 0xBEBAFECAu || word == 0xCAFEBABEu;
+        return elf || macho;
+    }
+
     void checkAndroid(const fs::path& apk, const std::string& relative, const ValidationTarget& target, std::vector<std::string>& findings) {
         ZipReader zip;
         std::string error;
@@ -235,7 +250,9 @@ bool publish::validatePayload(const fs::path& root, const ValidationTarget& targ
             checkAndroid(path, relative, target, findings);
             continue;
         }
-        if (isExecutableName(path, target.platform)) checkBinary(path, relative, target.arch, target.platform, findings);
+        // the libraries, and every binary executable (the main one is checked below)
+        if (relative != target.executable && (isExecutableName(path, target.platform) || isExecutableBinary(path, target.platform)))
+            checkBinary(path, relative, target.arch, target.platform, findings);
     }
 
     // the main executable: present, right format, executable
