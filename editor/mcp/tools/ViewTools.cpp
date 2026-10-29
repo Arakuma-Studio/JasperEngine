@@ -629,9 +629,10 @@ void captureEditor(const CaptureJobPtr& job) {
         // a frame that was not rendered (idle, minimized) drops the callback: ask again
         if (++*attempts % 2 == 0) request();
         return false;
-    }, std::min(job->remainingMs(), 10000), [job, readback](bool timedOut) {
+    // up to the call's own timeout (timeout_seconds): a loaded host can take seconds per frame
+    }, job->remainingMs(), [job, readback](bool timedOut) {
         if (timedOut || !readback->done) {
-            job->fail("The editor window did not render a frame to read (minimized?).");
+            job->fail("The editor window did not render a frame to read within the call's timeout_seconds (minimized?).");
             return;
         }
         const int width = readback->width;

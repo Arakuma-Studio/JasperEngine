@@ -83,9 +83,10 @@ async def test_run_build_flags_lua_errors(ed: Editor):
     broken = make_script(bin_dir / "broken", (
         'echo "Scene loaded"\n'
         'echo "(ERROR): Lua init() failed for \'PlayerProbe\': scripts/PlayerProbe.lua:12: boom"\n'
-        'echo "(WARN): something odd"\n'
-        'sleep 30\n'))
-    raw = await ed.call_raw("run_build", {"path": str(broken), "seconds": 0.5, "screenshot": False})
+        'echo "(WARN): something odd"\n'))
+    # the run ends when the player exits (its output read to the end), not after a fixed half
+    # second a loaded host may spend starting the shell
+    raw = await ed.call_raw("run_build", {"path": str(broken), "seconds": 30, "screenshot": False})
     ed.check(not raw.is_error, raw.text)
     r = raw.value
     ed.check_eq(r["error_count"], 1, f"errors: {r}")
