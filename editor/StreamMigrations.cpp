@@ -268,11 +268,46 @@ namespace {
         migrateParticleSystems(root["members"], log);
     }
 
-    // Scene 3 -> 4: S29's step (it lands before S18 and brings its own code here; until then an
-    // identity, so this branch's scenes chain through it)
-    void sceneV3ToV4(YAML::Node& root, MigrationLog& log){
-        (void)root;
-        (void)log;
+    // ---------------------------------------------------------------- derived transform values (S29 R20)
+
+    // the values the transform pass computes on load, written until scene 4 / prefab 6
+    const char* const kDerivedTransformKeys[] = {"worldPosition", "worldRotation", "worldScale", "localMatrix", "modelMatrix", "normalMatrix"};
+
+    // Every transform map below node: GameObjects (children, prefab members), prefab instance
+    // overrides and added GameObjects alike
+    int dropDerivedTransformKeys(YAML::Node node){
+        int dropped = 0;
+        if (node.IsMap()){
+            for (auto it = node.begin(); it != node.end(); ++it){
+                YAML::Node value = it->second;
+                if (it->first.IsScalar() && it->first.Scalar() == "transform" && value.IsMap()){
+                    for (const char* key : kDerivedTransformKeys){
+                        if (value[key]){
+                            value.remove(key);
+                            dropped++;
+                        }
+                    }
+                }else{
+                    dropped += dropDerivedTransformKeys(value);
+                }
+            }
+        }else if (node.IsSequence()){
+            for (YAML::Node child : node){
+                dropped += dropDerivedTransformKeys(child);
+            }
+        }
+        return dropped;
+    }
+
+    // Scene 3 -> 4: the transforms' derived values are no longer written (version control diffs
+    // and merges see only what was authored); loading computes them as it always did
+    void sceneV3ToV4(YAML::Node& root, MigrationLog&){
+        dropDerivedTransformKeys(root["entities"]);
+    }
+
+    // Prefab 5 -> 6: the same for its members (and the instances nested in them)
+    void prefabV5ToV6(YAML::Node& root, MigrationLog&){
+        dropDerivedTransformKeys(root["members"]);
     }
 
     // Scene 4 -> 5 (S18 splines): the Spline, Spline Extrude, Spline Instantiate and Spline
@@ -296,7 +331,7 @@ int StreamMigrations::currentVersion(DocumentKind kind){
         case DocumentKind::Project: return 1;
         case DocumentKind::Material: return 1;
         // Prefab::FILE_VERSION
-        case DocumentKind::Prefab: return 5;
+        case DocumentKind::Prefab: return 6;
     }
     return 0;
 }
@@ -332,7 +367,7 @@ const std::vector<Migration>& StreamMigrations::table(DocumentKind kind){
         {0, 1, "stamp the scene format version", sceneV0ToV1},
         {1, 2, "shadow bias in shadow texels, shadow quality Low to Auto", sceneV1ToV2},
         {2, 3, "particle systems to effects on their targets", sceneV2ToV3},
-        {3, 4, "S29's scene step (identity until S29 lands)", sceneV3ToV4},
+        {3, 4, "derived transform values no longer written", sceneV3ToV4},
         {4, 5, "splines (identity: an older scene has none)", sceneV4ToV5},
     };
     static const std::vector<Migration> project = {
@@ -345,6 +380,7 @@ const std::vector<Migration>& StreamMigrations::table(DocumentKind kind){
     static const std::vector<Migration> prefab = {
         {3, 4, "shadow bias in shadow texels", prefabV3ToV4},
         {4, 5, "particle systems to effects on their targets", prefabV4ToV5},
+        {5, 6, "derived transform values no longer written", prefabV5ToV6},
     };
 
     switch (kind){

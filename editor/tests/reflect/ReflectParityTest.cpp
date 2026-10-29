@@ -156,6 +156,25 @@ PARITY_COMPONENT(LayoutGroup)
 PARITY_COMPONENT(Text)
 PARITY_COMPONENT(Image)
 PARITY(Transform, Transform, encodeTransform, decodeTransform)
+// a document (a scene or prefab file) leaves out the derived world values (S29 R20); every other
+// encode is the legacy text
+TEST(ReflectParity, TransformDocumentEncodeLeavesOutDerivedValues) {
+    Transform transform;
+    transform.position = Vector3(1, 2, 3);
+    transform.worldPosition = Vector3(4, 5, 6);
+    YAML::Node legacy = LegacyCodecs::encodeTransform(transform);
+    EXPECT_EQ(YAML::Dump(reflect::encodeValue(ComponentType::Transform, &transform)), YAML::Dump(legacy));
+    YAML::Node written;
+    {
+        reflect::DocumentEncodeScope document;
+        written = reflect::encodeValue(ComponentType::Transform, &transform);
+    }
+    for (const char* key : {"worldPosition", "worldRotation", "worldScale", "localMatrix", "modelMatrix", "normalMatrix"}) {
+        EXPECT_FALSE(written[key].IsDefined()) << key;
+        legacy.remove(key);
+    }
+    EXPECT_EQ(YAML::Dump(written), YAML::Dump(legacy));
+}
 PARITY_COMPONENT(Joint2D)
 PARITY_COMPONENT(Joint3D)
 PARITY_COMPONENT(Action)

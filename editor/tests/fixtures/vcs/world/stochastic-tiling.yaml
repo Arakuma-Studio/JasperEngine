@@ -1,0 +1,61 @@
+Main Scene:
+  Directional Light:
+    position: [0, 10, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 10, 0, 1]
+  Ground:
+    position: [0, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+  LitBox:
+    position: [-113, 1.5, 3]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -113, 1.5, 3, 1]
+  LitCam:
+    position: [-120, 7, -14]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -120, 7, -14, 1]
+  LitFoliage:
+    position: [-124, 2, 2]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -124, 2, 2, 1]
+  LitGround:
+    position: [-120, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -120, 0, 0, 1]
+  LitSpot:
+    position: [-124, 8, 10]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -124, 8, 10, 1]
+  PlaneCam:
+    position: [120, 11, -16]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 120, 11, -16, 1]
+  SimpleLitQuad:
+    position: [120, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1.2, 1, 1.2]
+    modelMatrix: [1.2, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1.2, 0, 120, 0, 0, 1]
+  TerrainCam:
+    position: [0, 4.5, -40]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 4.5, -40, 1]
+  TriplanarBox:
+    position: [129, 2.5, 5]
+    rotation: [1, 0, 0, 0]
+    scale: [5, 5, 5]
+    modelMatrix: [5, 0, 0, 0, 0, 5, 0, 0, 0, 0, 5, 0, 129, 2.5, 5, 1]
+  UnlitStripes:
+    position: [111, 2.5, 6]
+    rotation: [0.70710677, -0.70710677, 0, 0]
+    scale: [0.5, 1, 0.5]
+    modelMatrix: [0.5, 0, 0, 0, 0, 5.9604645e-08, -0.99999994, 0, 0, 0.49999997, 2.9802322e-08, 0, 111, 2.5, 6, 1]

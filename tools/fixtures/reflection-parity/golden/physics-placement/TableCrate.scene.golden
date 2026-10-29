@@ -1,4 +1,4 @@
-formatVersion: 3
+formatVersion: 4
 guid: 1082f39094f679d9fd1c631216e5bc6a
 id: 2685538481
 name: TableCrate
@@ -63,12 +63,6 @@ entities:
         position: [0, 10, 0]
         rotation: [1, 0, 0, 0]
         scale: [1, 1, 1]
-        worldPosition: [0, 10, 0]
-        worldRotation: [1, 0, 0, 0]
-        worldScale: [1, 1, 1]
-        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 10, 0, 1]]
-        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 10, 0, 1]]
-        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, -10], [0, 0, 1, 0], [0, 0, 0, 1]]
         visible: true
         billboardRotation: [1, 0, 0, 0]
         billboard: false
@@ -120,12 +114,6 @@ entities:
         position: [0, -0.1, 0]
         rotation: [1, 0, 0, 0]
         scale: [12, 0.2, 12]
-        worldPosition: [0, -0.1, 0]
-        worldRotation: [1, 0, 0, 0]
-        worldScale: [12, 0.2, 12]
-        localMatrix: [[12, 0, 0, 0], [0, 0.2, 0, 0], [0, 0, 12, 0], [0, -0.1, 0, 1]]
-        modelMatrix: [[12, 0, 0, 0], [0, 0.2, 0, 0], [0, 0, 12, 0], [0, -0.1, 0, 1]]
-        normalMatrix: [[0.08333333, 0, 0, 0], [0, 4.9999995, 0, 0.5], [0, 0, 0.08333333, -0], [0, 0, 0, 1]]
         visible: true
         billboardRotation: [1, 0, 0, 0]
         billboard: false
@@ -260,12 +248,6 @@ entities:
         position: [0, 0, 0]
         rotation: [1, 0, 0, 0]
         scale: [1, 1, 1]
-        worldPosition: [0, 0, 0]
-        worldRotation: [1, 0, 0, 0]
-        worldScale: [1, 1, 1]
-        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
-        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
-        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
         visible: true
         billboardRotation: [1, 0, 0, 0]
         billboard: false
@@ -280,12 +262,6 @@ entities:
             position: [0, 0.95, 0]
             rotation: [1, 0, 0, 0]
             scale: [1.6, 0.1, 1]
-            worldPosition: [0, 0.95, 0]
-            worldRotation: [1, 0, 0, 0]
-            worldScale: [1.6, 0.1, 1]
-            localMatrix: [[1.6, 0, 0, 0], [0, 0.1, 0, 0], [0, 0, 1, 0], [0, 0.95, 0, 1]]
-            modelMatrix: [[1.6, 0, 0, 0], [0, 0.1, 0, 0], [0, 0, 1, 0], [0, 0.95, 0, 1]]
-            normalMatrix: [[0.62499994, 0, 0, 0], [0, 9.999999, 0, -9.499999], [0, 0, 1, 0], [0, 0, 0, 1]]
             visible: true
             billboardRotation: [1, 0, 0, 0]
             billboard: false
@@ -420,12 +396,6 @@ entities:
             position: [-0.7, 0.45, -0.4]
             rotation: [1, 0, 0, 0]
             scale: [0.08, 0.9, 0.08]
-            worldPosition: [-0.7, 0.45, -0.4]
-            worldRotation: [1, 0, 0, 0]
-            worldScale: [0.08, 0.9, 0.08]
-            localMatrix: [[0.08, 0, 0, 0], [0, 0.9, 0, 0], [0, 0, 0.08, 0], [-0.7, 0.45, -0.4, 1]]
-            modelMatrix: [[0.08, 0, 0, 0], [0, 0.9, 0, 0], [0, 0, 0.08, 0], [-0.7, 0.45, -0.4, 1]]
-            normalMatrix: [[12.500001, 0, 0, 8.75], [0, 1.1111112, 0, -0.5], [0, 0, 12.500001, 5.0000005], [0, 0, 0, 1]]
             visible: true
             billboardRotation: [1, 0, 0, 0]
             billboard: false
@@ -560,12 +530,6 @@ entities:
             position: [0.7, 0.45, -0.4]
             rotation: [1, 0, 0, 0]
             scale: [0.08, 0.9, 0.08]
-            worldPosition: [0.7, 0.45, -0.4]
-            worldRotation: [1, 0, 0, 0]
-            worldScale: [0.08, 0.9, 0.08]
-            localMatrix: [[0.08, 0, 0, 0], [0, 0.9, 0, 0], [0, 0, 0.08, 0], [0.7, 0.45, -0.4, 1]]
-            modelMatrix: [[0.08, 0, 0, 0], [0, 0.9, 0, 0], [0, 0, 0.08, 0], [0.7, 0.45, -0.4, 1]]
-            normalMatrix: [[12.500001, 0, 0, -8.75], [0, 1.1111112, 0, -0.5], [0, -0, 12.500001, 5.0000005], [0, 0, 0, 1]]
             visible: true
             billboardRotation: [1, 0, 0, 0]
             billboard: false
@@ -700,12 +664,6 @@ entities:
             position: [-0.7, 0.45, 0.4]
             rotation: [1, 0, 0, 0]
             scale: [0.08, 0.9, 0.08]
-            worldPosition: [-0.7, 0.45, 0.4]
-            worldRotation: [1, 0, 0, 0]
-            worldScale: [0.08, 0.9, 0.08]
-            localMatrix: [[0.08, 0, 0, 0], [0, 0.9, 0, 0], [0, 0, 0.08, 0], [-0.7, 0.45, 0.4, 1]]
-            modelMatrix: [[0.08, 0, 0, 0], [0, 0.9, 0, 0], [0, 0, 0.08, 0], [-0.7, 0.45, 0.4, 1]]
-            normalMatrix: [[12.500001, 0, 0, 8.75], [0, 1.1111112, 0, -0.5], [0, 0, 12.500001, -5.0000005], [0, 0, 0, 1]]
             visible: true
             billboardRotation: [1, 0, 0, 0]
             billboard: false
@@ -840,12 +798,6 @@ entities:
             position: [0.7, 0.45, 0.4]
             rotation: [1, 0, 0, 0]
             scale: [0.08, 0.9, 0.08]
-            worldPosition: [0.7, 0.45, 0.4]
-            worldRotation: [1, 0, 0, 0]
-            worldScale: [0.08, 0.9, 0.08]
-            localMatrix: [[0.08, 0, 0, 0], [0, 0.9, 0, 0], [0, 0, 0.08, 0], [0.7, 0.45, 0.4, 1]]
-            modelMatrix: [[0.08, 0, 0, 0], [0, 0.9, 0, 0], [0, 0, 0.08, 0], [0.7, 0.45, 0.4, 1]]
-            normalMatrix: [[12.500001, 0, 0, -8.75], [0, 1.1111112, 0, -0.5], [0, 0, 12.500001, -5.0000005], [0, 0, 0, 1]]
             visible: true
             billboardRotation: [1, 0, 0, 0]
             billboard: false
@@ -980,12 +932,6 @@ entities:
         position: [0, 0, 0]
         rotation: [1, 0, 0, 0]
         scale: [1, 1, 1]
-        worldPosition: [0, 0, 0]
-        worldRotation: [1, 0, 0, 0]
-        worldScale: [1, 1, 1]
-        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
-        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
-        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
         visible: true
         billboardRotation: [1, 0, 0, 0]
         billboard: false
@@ -1000,12 +946,6 @@ entities:
             position: [0, 1, 0]
             rotation: [1, 0, 0, 0]
             scale: [1, 1, 1]
-            worldPosition: [0, 1, 0]
-            worldRotation: [1, 0, 0, 0]
-            worldScale: [1, 1, 1]
-            localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 1, 0, 1]]
-            modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 1, 0, 1]]
-            normalMatrix: [[1, 0, 0, 0], [0, 1, 0, -1], [0, 0, 1, 0], [0, 0, 0, 1]]
             visible: true
             billboardRotation: [1, 0, 0, 0]
             billboard: false
@@ -1020,12 +960,6 @@ entities:
                 position: [0, 0.02, 0]
                 rotation: [1, 0, 0, 0]
                 scale: [0.6, 0.04, 0.6]
-                worldPosition: [0, 1.02, 0]
-                worldRotation: [1, 0, 0, 0]
-                worldScale: [0.6, 0.04, 0.6]
-                localMatrix: [[0.6, 0, 0, 0], [0, 0.04, 0, 0], [0, 0, 0.6, 0], [0, 0.02, 0, 1]]
-                modelMatrix: [[0.6, 0, 0, 0], [0, 0.04, 0, 0], [0, 0, 0.6, 0], [0, 1.02, 0, 1]]
-                normalMatrix: [[1.6666666, 0, 0, 0], [0, 25, 0, -25.5], [0, 0, 1.6666666, 0], [0, 0, 0, 1]]
                 visible: true
                 billboardRotation: [1, 0, 0, 0]
                 billboard: false
@@ -1160,12 +1094,6 @@ entities:
                 position: [0, 0.23, 0.28]
                 rotation: [1, 0, 0, 0]
                 scale: [0.6, 0.38, 0.04]
-                worldPosition: [0, 1.23, 0.28]
-                worldRotation: [1, 0, 0, 0]
-                worldScale: [0.6, 0.38, 0.04]
-                localMatrix: [[0.6, 0, 0, 0], [0, 0.38, 0, 0], [0, 0, 0.04, 0], [0, 0.23, 0.28, 1]]
-                modelMatrix: [[0.6, 0, 0, 0], [0, 0.38, 0, 0], [0, 0, 0.04, 0], [0, 1.23, 0.28, 1]]
-                normalMatrix: [[1.6666666, 0, 0, 0], [0, 2.631579, 0, -3.2368422], [0, 0, 25, -7.0000005], [0, 0, 0, 0.99999994]]
                 visible: true
                 billboardRotation: [1, 0, 0, 0]
                 billboard: false
@@ -1300,12 +1228,6 @@ entities:
                 position: [0, 0.23, -0.28]
                 rotation: [1, 0, 0, 0]
                 scale: [0.6, 0.38, 0.04]
-                worldPosition: [0, 1.23, -0.28]
-                worldRotation: [1, 0, 0, 0]
-                worldScale: [0.6, 0.38, 0.04]
-                localMatrix: [[0.6, 0, 0, 0], [0, 0.38, 0, 0], [0, 0, 0.04, 0], [0, 0.23, -0.28, 1]]
-                modelMatrix: [[0.6, 0, 0, 0], [0, 0.38, 0, 0], [0, 0, 0.04, 0], [0, 1.23, -0.28, 1]]
-                normalMatrix: [[1.6666666, 0, 0, 0], [0, 2.631579, 0, -3.2368422], [0, -0, 25, 7.0000005], [0, 0, 0, 0.99999994]]
                 visible: true
                 billboardRotation: [1, 0, 0, 0]
                 billboard: false
@@ -1440,12 +1362,6 @@ entities:
                 position: [0.28, 0.23, 0]
                 rotation: [1, 0, 0, 0]
                 scale: [0.04, 0.38, 0.52]
-                worldPosition: [0.28, 1.23, 0]
-                worldRotation: [1, 0, 0, 0]
-                worldScale: [0.04, 0.38, 0.52]
-                localMatrix: [[0.04, 0, 0, 0], [0, 0.38, 0, 0], [0, 0, 0.52, 0], [0.28, 0.23, 0, 1]]
-                modelMatrix: [[0.04, 0, 0, 0], [0, 0.38, 0, 0], [0, 0, 0.52, 0], [0.28, 1.23, 0, 1]]
-                normalMatrix: [[25, 0, 0, -7], [0, 2.631579, 0, -3.2368422], [0, 0, 1.923077, 0], [0, 0, 0, 1]]
                 visible: true
                 billboardRotation: [1, 0, 0, 0]
                 billboard: false
@@ -1580,12 +1496,6 @@ entities:
                 position: [-0.28, 0.23, 0]
                 rotation: [1, 0, 0, 0]
                 scale: [0.04, 0.38, 0.52]
-                worldPosition: [-0.28, 1.23, 0]
-                worldRotation: [1, 0, 0, 0]
-                worldScale: [0.04, 0.38, 0.52]
-                localMatrix: [[0.04, 0, 0, 0], [0, 0.38, 0, 0], [0, 0, 0.52, 0], [-0.28, 0.23, 0, 1]]
-                modelMatrix: [[0.04, 0, 0, 0], [0, 0.38, 0, 0], [0, 0, 0.52, 0], [-0.28, 1.23, 0, 1]]
-                normalMatrix: [[25, 0, 0, 7], [0, 2.631579, 0, -3.2368422], [0, 0, 1.923077, 0], [0, 0, 0, 1]]
                 visible: true
                 billboardRotation: [1, 0, 0, 0]
                 billboard: false
@@ -1720,12 +1630,6 @@ entities:
             position: [-0.1, 1.75, -0.08]
             rotation: [0.9711459, 0.0944763, 0.21868433, 0.011275267]
             scale: [0.14, 0.14, 0.14]
-            worldPosition: [-0.1, 1.75, -0.08]
-            worldRotation: [0.9711459, 0.0944763, 0.21868433, 0.011275267]
-            worldScale: [0.14, 0.14, 0.14]
-            localMatrix: [[0.12657401, 0.008850916, -0.059166566, 0], [0.0027189557, 0.1374652, 0.02638048, 0], [0.0597631, -0.024999673, 0.12411039, 0], [-0.1, 1.75, -0.08, 1]]
-            modelMatrix: [[0.12657401, 0.008850916, -0.059166566, 0], [0.0027189557, 0.1374652, 0.02638048, 0], [0.0597631, -0.024999673, 0.12411039, 0], [-0.1, 1.75, -0.08, 1]]
-            normalMatrix: [[6.4578567, 0.45157737, -3.0187018, -0.38597086], [0.13872233, 7.0135293, 1.3459426, -12.152128], [3.0491374, -1.2754933, 6.3321624, 3.0436], [0, 0, -0, 1]]
             visible: true
             billboardRotation: [1, 0, 0, 0]
             billboard: false
@@ -1860,12 +1764,6 @@ entities:
             position: [0.09, 2, 0.06]
             rotation: [0.92626995, -0.1095227, 0.32971215, 0.14600974]
             scale: [0.12, 0.12, 0.12]
-            worldPosition: [0.09, 2, 0.06]
-            worldRotation: [0.92626995, -0.1095227, 0.32971215, 0.14600974]
-            worldScale: [0.12, 0.12, 0.12]
-            localMatrix: [[0.08879305, 0.023792034, -0.07713452, 0], [-0.041125298, 0.112004615, -0.012793537, 0], [0.069458656, 0.035901304, 0.091030724, 0], [0.09, 2, 0.06, 1]]
-            modelMatrix: [[0.08879305, 0.023792034, -0.07713452, 0], [-0.041125298, 0.112004615, -0.012793537, 0], [0.069458656, 0.035901304, 0.091030724, 0], [0.09, 2, 0.06, 1]]
-            normalMatrix: [[6.166184, 1.6522242, -5.3565636, -3.5380113], [-2.8559234, 7.7780986, -0.88843936, -15.245858], [4.8235173, 2.4931464, 6.321577, -5.7997036], [0, 0, 0, 1]]
             visible: true
             billboardRotation: [1, 0, 0, 0]
             billboard: false
@@ -2000,12 +1898,6 @@ entities:
             position: [0, 2.3, 0.1]
             rotation: [0.9603504, 0.2612609, 0.01943667, -0.09535242]
             scale: [0.16, 0.1, 0.12]
-            worldPosition: [0, 2.3, 0.1]
-            worldRotation: [0.9603504, 0.2612609, 0.01943667, -0.09535242]
-            worldScale: [0.16, 0.1, 0.12]
-            localMatrix: [[0.15696964, -0.027677981, -0.013944919, 0], [0.019329956, 0.08453014, 0.049809735, 0], [-0.0014990026, -0.060661282, 0.10352758, 0], [0, 2.3, 0.1, 1]]
-            modelMatrix: [[0.15696964, -0.027677981, -0.013944919, 0], [0.019329956, 0.08453014, 0.049809735, 0], [-0.0014990026, -0.060661282, 0.10352758, 0], [0, 2.3, 0.1, 1]]
-            normalMatrix: [[6.131627, -1.0811712, -0.5447235, 2.541166], [1.9329956, 8.453013, 4.980974, -19.940027], [-0.10409743, -4.2125893, 7.189417, 8.970014], [0, 0, -0, 1]]
             visible: true
             billboardRotation: [1, 0, 0, 0]
             billboard: false
@@ -2140,12 +2032,6 @@ entities:
         position: [3.5, 0, 0]
         rotation: [1, 0, 0, 0]
         scale: [1, 1, 1]
-        worldPosition: [3.5, 0, 0]
-        worldRotation: [1, 0, 0, 0]
-        worldScale: [1, 1, 1]
-        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [3.5, 0, 0, 1]]
-        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [3.5, 0, 0, 1]]
-        normalMatrix: [[1, 0, 0, -3.5], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
         visible: true
         billboardRotation: [1, 0, 0, 0]
         billboard: false
@@ -2160,12 +2046,6 @@ entities:
             position: [0, 0.5, 0]
             rotation: [1, 0, 0, 0]
             scale: [1, 1, 1]
-            worldPosition: [3.5, 0.5, 0]
-            worldRotation: [1, 0, 0, 0]
-            worldScale: [1, 1, 1]
-            localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0.5, 0, 1]]
-            modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [3.5, 0.5, 0, 1]]
-            normalMatrix: [[1, 0, 0, -3.5], [0, 1, 0, -0.5], [0, 0, 1, 0], [0, 0, 0, 1]]
             visible: true
             billboardRotation: [1, 0, 0, 0]
             billboard: false
@@ -2300,12 +2180,6 @@ entities:
             position: [0.8, 0.5, 0]
             rotation: [1, 0, 0, 0]
             scale: [1, 1, 1]
-            worldPosition: [4.3, 0.5, 0]
-            worldRotation: [1, 0, 0, 0]
-            worldScale: [1, 1, 1]
-            localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0.8, 0.5, 0, 1]]
-            modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [4.3, 0.5, 0, 1]]
-            normalMatrix: [[1, 0, 0, -4.3], [0, 1, 0, -0.5], [0, 0, 1, 0], [0, 0, 0, 1]]
             visible: true
             billboardRotation: [1, 0, 0, 0]
             billboard: false
@@ -2440,12 +2314,6 @@ entities:
         position: [1.8, 3.4, -5.8]
         rotation: [1, 0, 0, 0]
         scale: [1, 1, 1]
-        worldPosition: [1.8, 3.4, -5.8]
-        worldRotation: [1, 0, 0, 0]
-        worldScale: [1, 1, 1]
-        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [1.8, 3.4, -5.8, 1]]
-        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [1.8, 3.4, -5.8, 1]]
-        normalMatrix: [[1, 0, 0, -1.8], [0, 1, 0, -3.4], [0, -0, 1, 5.8], [0, 0, 0, 1]]
         visible: true
         billboardRotation: [1, 0, 0, 0]
         billboard: false

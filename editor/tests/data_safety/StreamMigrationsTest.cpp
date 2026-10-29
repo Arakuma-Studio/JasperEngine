@@ -106,8 +106,8 @@ TEST(StreamMigrations, SceneV1ToV2ShadowBiasInTexels){
         "{name: Tuned, components: {light: {type: point, shadowBias: 1}}}]}");
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
     EXPECT_EQ(result.versionRead, 1);
-    // 1 -> 2, then 2 -> 3 (S20's particle systems: none here), then 3 -> 4 (S29's) and 4 -> 5
-    // (S18's splines: identity)
+    // 1 -> 2, then 2 -> 3 (S20's particle systems: none here), 3 -> 4 (S29's derived transform
+    // values: none here) and 4 -> 5 (S18's splines: identity)
     ASSERT_EQ(result.applied.size(), 4u);
     EXPECT_EQ(root["formatVersion"].as<int>(), 5);
     EXPECT_EQ(root["scene"]["shadowQuality"].as<std::string>(), "auto");
@@ -130,7 +130,7 @@ TEST(StreamMigrations, PrefabV3ToV4ShadowBiasInTexels){
         "{type: Prefab, version: 3, members: [{type: Entity, entity: 1001, components: {light: {type: spot, shadowBias: 0.002}}}]}");
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Prefab, root);
     EXPECT_TRUE(result.migrated());
-    EXPECT_EQ(root["version"].as<int>(), 5);
+    EXPECT_EQ(root["version"].as<int>(), 6);
     EXPECT_FLOAT_EQ(root["members"][0]["components"]["light"]["shadowBias"].as<float>(), 1.0f);
 }
 
@@ -201,7 +201,7 @@ TEST(StreamMigrations, PrefabV4ToV5ParticleSystems){
         "{type: Entity, entity: 1002, name: Dust FX, components: {action: {target: 1001}, particlesystem: {rate: 9}}}]}");
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Prefab, root);
     EXPECT_TRUE(result.migrated());
-    EXPECT_EQ(root["version"].as<int>(), 5);
+    EXPECT_EQ(root["version"].as<int>(), 6);
     EXPECT_TRUE(root["members"][0]["components"]["particlesystem"]);
     EXPECT_FALSE(root["members"][1]["components"]["particlesystem"]);
 }

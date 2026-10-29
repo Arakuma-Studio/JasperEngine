@@ -31,6 +31,17 @@ set_target_properties(je_log_crash_helper PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
     FOLDER "tests")
 
+# the child ProcessExecTest runs (argument echo, environment, timeouts, a process tree, floods)
+add_executable(je_vcs_process_helper ${CMAKE_CURRENT_LIST_DIR}/vcs/ProcessHelper.cpp)
+set_target_properties(je_vcs_process_helper PROPERTIES
+    CXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
+    CXX_STANDARD_REQUIRED ON
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+    FOLDER "tests")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_link_libraries(je_vcs_process_helper PRIVATE Threads::Threads)
+endif()
+
 jasperengine_add_test_target(jasperengine-editor-tests
     EDITOR
     SOURCES ${EDITOR_TEST_SOURCES}
@@ -43,11 +54,12 @@ jasperengine_add_test_target(jasperengine-editor-tests
         # tests that run the editor binary (CLI exit codes)
         JASPER_TEST_EDITOR_BINARY="$<TARGET_FILE:jasperengine-editor>"
         JASPER_TEST_LOG_CRASH_HELPER="$<TARGET_FILE:je_log_crash_helper>"
+        JASPER_TEST_VCS_PROCESS_HELPER="$<TARGET_FILE:je_vcs_process_helper>"
         # whether this build compiles V-HACD (engine/CMakeLists.txt): the test of the build without
         # it is registered only there, not skipped here (S02 R11, no skipped editor test)
         JASPER_TEST_CONVEX_DECOMPOSITION=$<BOOL:${JASPERENGINE_CONVEX_DECOMPOSITION}>
 )
-add_dependencies(jasperengine-editor-tests jasperengine-editor je_log_crash_helper)
+add_dependencies(jasperengine-editor-tests jasperengine-editor je_log_crash_helper je_vcs_process_helper)
 
 # A process with nothing but the engine (the editor's static App builds a Scene before main, so
 # the test binary can't make a PlacementWorld before Jolt is set up); run by PlacementWorldTest
