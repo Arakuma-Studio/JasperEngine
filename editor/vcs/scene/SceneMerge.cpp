@@ -401,26 +401,30 @@ MergeResult mergeScenes(const SceneYamlModel& base, const SceneYamlModel& ours, 
 MergeResult mergeSceneTexts(const std::string& baseText, const std::string& oursText, const std::string& theirsText,
                             const std::map<std::string, MergeSide>& resolutions) {
     MergeResult result;
-    SceneYamlModel base, ours, theirs;
-    std::string error;
-    if (!SceneYamlModel::parse(oursText, ours, &error)) {
-        result.error = "ours: " + error;
-        return result;
-    }
-    if (!SceneYamlModel::parse(theirsText, theirs, &error)) {
-        result.error = "theirs: " + error;
-        return result;
-    }
     // no base (both added the file): an empty document of the same kind
     const bool emptyBase = baseText.find_first_not_of(" \t\r\n") == std::string::npos;
-    if (emptyBase) {
-        base.kind = ours.kind;
-        base.objects.emplace(kSceneSettingsId, SceneObject{kSceneSettingsId, "Scene Settings", 0, 0, "Entity", true, {}});
-    } else if (!SceneYamlModel::parse(baseText, base, &error)) {
-        result.error = "base: " + error;
+    std::vector<std::string_view> texts = {oursText, theirsText};
+    if (!emptyBase) texts.push_back(baseText);
+    std::vector<SceneYamlModel> models;
+    std::vector<std::string> errors;
+    if (!SceneYamlModel::parseAll(texts, models, errors)) {
+        static const char* const sides[] = {"ours", "theirs", "base"};
+        for (size_t i = 0; i < errors.size(); i++) {
+            if (!errors[i].empty()) {
+                result.error = std::string(sides[i]) + ": " + errors[i];
+                break;
+            }
+        }
         return result;
     }
-    return mergeScenes(base, ours, theirs, resolutions);
+    SceneYamlModel base;
+    if (emptyBase) {
+        base.kind = models[0].kind;
+        base.objects.emplace(kSceneSettingsId, SceneObject{kSceneSettingsId, "Scene Settings", 0, 0, "Entity", true, {}});
+    } else {
+        base = std::move(models[2]);
+    }
+    return mergeScenes(base, models[0], models[1], resolutions);
 }
 
 std::string conflictsText(const std::string& file, const std::vector<MergeConflict>& conflicts) {

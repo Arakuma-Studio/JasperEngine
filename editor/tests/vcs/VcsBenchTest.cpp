@@ -148,12 +148,12 @@ TEST(VcsBench, DiffOfATwoThousandEntityScene) {
         // on a job thread, as the editor runs it
         std::thread job([&]() {
             const Clock::time_point start = Clock::now();
-            scene::SceneYamlModel a, b;
-            std::string error;
-            EXPECT_TRUE(scene::SceneYamlModel::parse(base, a, &error)) << error;
-            EXPECT_TRUE(scene::SceneYamlModel::parse(current, b, &error)) << error;
+            // both sides at once, as scene-diff and the merge driver read them
+            std::vector<scene::SceneYamlModel> models;
+            std::vector<std::string> errors;
+            EXPECT_TRUE(scene::SceneYamlModel::parseAll({base, current}, models, errors)) << errors[0] << errors[1];
             parseMs = msSince(start);
-            const scene::SceneDiffResult diff = scene::diffScenes(a, b);
+            const scene::SceneDiffResult diff = scene::diffScenes(models[0], models[1]);
             ms = msSince(start);
             modified = diff.modified;
         });
@@ -164,7 +164,7 @@ TEST(VcsBench, DiffOfATwoThousandEntityScene) {
         }
     }
     EXPECT_EQ(modified, 40u);
-    std::printf("[ VcsBench ] (of which parsing both sides: %.2f ms; %zu bytes each)\n", bestParse, base.size());
+    std::printf("[ VcsBench ] (of which parsing both sides, each on a job: %.2f ms; %zu bytes each)\n", bestParse, base.size());
     budget("scene diff, 2,000 GameObjects (parse both + diff)", best, 150.0);
 }
 

@@ -3,6 +3,8 @@
 
 #include "vcs/scene/SceneYamlModel.h"
 
+#include "jobs/JobSystem.h"
+
 #include "DocumentFile.h"
 #include "reflect/Reflect.h"
 
@@ -147,6 +149,17 @@ bool SceneYamlModel::parse(std::string_view text, SceneYamlModel& out, std::stri
         return false;
     }
     return fromOwnedDocument(document, out, error);
+}
+
+bool SceneYamlModel::parseAll(const std::vector<std::string_view>& texts, std::vector<SceneYamlModel>& out, std::vector<std::string>& errors) {
+    out.assign(texts.size(), SceneYamlModel());
+    errors.assign(texts.size(), std::string());
+    // each unit owns its document: yaml-cpp nodes of different documents share nothing
+    jobs::parallelFor(texts.size(), [&](size_t i) {
+        std::string error;
+        if (!parse(texts[i], out[i], &error)) errors[i] = error.empty() ? std::string("unreadable") : error;
+    });
+    return std::all_of(errors.begin(), errors.end(), [](const std::string& error) { return error.empty(); });
 }
 
 bool SceneYamlModel::fromDocument(const YAML::Node& source, SceneYamlModel& out, std::string* error) {

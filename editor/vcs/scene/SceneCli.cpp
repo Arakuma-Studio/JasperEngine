@@ -111,20 +111,23 @@ int runSceneDiffCommand(int argc, char** argv, const char* executableName) {
                   << "(as `git difftool -x \"" << executableName << " scene-diff\"`).\n";
         return 2;
     }
-    SceneYamlModel models[2];
+    std::string texts[2];
     for (int side = 0; side < 2; side++) {
-        std::string text, error;
-        // /dev/null (an added or deleted file): an empty document
-        if (!readText(files[side], text)) {
+        if (!readText(files[side], texts[side])) {
             std::cerr << "scene-diff: could not read " << files[side].string() << "\n";
             return 2;
         }
-        if (text.find_first_not_of(" \t\r\n") == std::string::npos) {
+    }
+    // both sides at once; /dev/null (an added or deleted file) is an empty document
+    std::vector<SceneYamlModel> models;
+    std::vector<std::string> errors;
+    SceneYamlModel::parseAll({texts[0], texts[1]}, models, errors);
+    for (int side = 0; side < 2; side++) {
+        if (texts[side].find_first_not_of(" \t\r\n") == std::string::npos) {
+            models[side] = SceneYamlModel();
             models[side].objects.emplace(kSceneSettingsId, SceneObject{kSceneSettingsId, "Scene Settings", 0, 0, "Entity", true, {}});
-            continue;
-        }
-        if (!SceneYamlModel::parse(text, models[side], &error)) {
-            std::cerr << "scene-diff: " << files[side].string() << ": " << error << "\n";
+        } else if (!errors[side].empty()) {
+            std::cerr << "scene-diff: " << files[side].string() << ": " << errors[side] << "\n";
             return 2;
         }
     }

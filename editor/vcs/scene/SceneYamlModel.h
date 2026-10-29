@@ -62,6 +62,9 @@ namespace jasperengine::editor::vcs::scene {
 
         // Parses and migrates; false with *error for text that is no scene or prefab
         static bool parse(std::string_view text, SceneYamlModel& out, std::string* error = nullptr);
+        // Several documents at once (the sides of a diff or a merge), each on a job of its own:
+        // out[i] and errors[i] (empty when it read) for texts[i]; true when every one read
+        static bool parseAll(const std::vector<std::string_view>& texts, std::vector<SceneYamlModel>& out, std::vector<std::string>& errors);
         // From a parsed document (cloned first: the node is not changed)
         static bool fromDocument(const YAML::Node& document, SceneYamlModel& out, std::string* error = nullptr);
         // The same for a document nothing else holds (parse's): it is migrated in place, not copied
