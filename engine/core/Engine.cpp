@@ -1066,7 +1066,11 @@ void Engine::beginCompositeFramebuffer(){
 #else
     const bool stacked = false;
 #endif
-    if (framebuffer || !(stacked || captureFrame))
+    // a run that writes a screenshot draws offscreen from its first frame, so the capture frame
+    // needs no pipeline the frames before did not (formats of the window and the composite can
+    // differ: a pipeline made on the capture frame would leave it empty)
+    const bool screenshotRun = player::RunControl::isActive() && player::RunControl::wantsScreenshot();
+    if (framebuffer || !(stacked || captureFrame || screenshotRun))
         return;
 
     if (ensureCompositeFramebuffer())

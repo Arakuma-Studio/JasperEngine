@@ -52,6 +52,8 @@ namespace jasperengine::player {
         // Engine::runFrame, before the draw: the frame draws into the engine's composite
         // framebuffer, so its pixels can be read after it
         static bool wantsOffscreenFrame();
+        // a screenshot is still to be written (the run draws offscreen from its first frame)
+        static bool wantsScreenshot();
         // after the frame drew and committed: readSignalled is the engine's ready state, reader
         // reads the composite (null when the frame was not offscreen)
         static void frameDrawn(bool readySignalled, const FrameReader& reader);

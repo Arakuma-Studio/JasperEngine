@@ -135,6 +135,11 @@ bool RunControl::wantsReadySignal() {
     return state().options.afterReady;
 }
 
+bool RunControl::wantsScreenshot() {
+    const State& s = state();
+    return s.active && !s.options.screenshot.empty() && !s.screenshotWritten;
+}
+
 bool RunControl::wantsOffscreenFrame() {
     const State& s = state();
     if (!s.active || s.options.screenshot.empty() || s.screenshotWritten) return false;
