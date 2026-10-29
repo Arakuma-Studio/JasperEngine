@@ -1240,7 +1240,7 @@ void AnimatorWindow::drawStateInspector(ControllerDef& def, StateDef& state){
     std::string undo = "Edit State " + state.name;
     char name[128];
     std::snprintf(name, sizeof(name), "%s", state.name.c_str());
-    if (ImGui::InputText("Name", name, sizeof(name), ImGuiInputTextFlags_EnterReturnsTrue) && name[0]){
+    if (ImGui::InputText("Name", name, sizeof(name), ImGuiInputTextFlags_EnterReturnsTrue) && name[0] && state.name != name){
         StateMachineDef* machine = machineOf(def);
         const std::string from = state.name;
         const std::string to = uniqueName(*machine, name);
