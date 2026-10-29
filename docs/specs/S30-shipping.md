@@ -930,9 +930,28 @@ Kept current so the work can continue after an interruption.
   - tests: editor `CookedScene.*`, `RuntimeFields.Generated`, `PayloadValidator.*`,
     `Publishing.*`, `PublishSteam.*`, `PublishDeck.*`, `PlayerInstall.*`, `BuildMethod.*`; MCP
     `test_build_method.py`, `test_publish.py`.
-- **Next:** editor build green, the real `RuntimeFields.gen.inc`, unit tests (and ASan), the
-  players and the end-to-end checks (linux, web with and without isolation, Android emulator),
-  MCP suite, merge oe-port, TOOLS.md, the gate.
+- **Verified (remote servers):**
+  - Linux players glcore / gles3 / vulkan, built with warnings as errors. They build the fixture
+    in the compiler-free image (`docker/runtime.Dockerfile`) and run it headless. Each matches
+    its golden and repeats exactly. The contexts it reports:
+    - glcore: `4.5 (Core Profile) Mesa`;
+    - gles3: `OpenGL ES 3.2 Mesa`, and only gles3 links `libGLESv2`;
+    - vulkan: `Vulkan 1.4.318`.
+  - Web: all four modes pass with a checked frame. The modes are threaded, single-thread, the
+    COI worker, and no isolation falling back to single-thread (S06 AC20/AC21).
+  - Android: the prebuilt-path development APK passes the emulator check
+    (`tools/ci/android_prebuilt.sh`).
+  - The `xcode_sync_*.py --check` scripts pass.
+- **S18 (scene format 5):** spline fields are S08 fields with a `cppPath` through `SplineData`'s
+  editable accessors. The emitter now writes those as `JE_RF_ACCESSOR` + `JE_RF_PATH`
+  (`writePath` / `readPath` in `CookCodecs.h`). A `spline` afterLoad hook keeps the decode's
+  invariants (radii, the unit up axis) and bumps the curve's version. Covered by the
+  `CookedScene.SplineCurveThroughAccessors` test.
+- **Next:**
+  - regenerate `RuntimeFields.gen.inc`;
+  - run the unit tests (and ASan), the MCP suite, and smoke (compile and prebuilt);
+  - measure the release Android size (`tools/ci/android_size.sh`);
+  - merge oe-port, regenerate TOOLS.md, and run the gate.
 
 ### Integrator notes
 
