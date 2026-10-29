@@ -87,7 +87,7 @@ async def test_manifest_rules(ed: Editor):
         ui = FRAG.replace("// @shader mesh", "// @shader ui")
         await write_fork(ed, "shaders/soft_ui", ui)
         r = await ed.call("check_shader", shader="shaders/soft_ui", shader_type="ui", timeout=300)
-        ed.check(any("needs @shader mesh or points" in m for m in messages(r)), f"ui refused: {r!r}")
+        ed.check(any("needs @shader mesh" in m and "points" in m for m in messages(r)), f"ui refused: {r!r}")
 
         # opaque: drawn before the scene it reads
         opaque = FRAG.replace("// @state blend=alpha zwrite=off", "// @state blend=opaque")

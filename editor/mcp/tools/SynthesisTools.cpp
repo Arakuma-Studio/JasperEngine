@@ -861,7 +861,7 @@ void registerSynthesisTools(McpRegistry& registry) {
         {"border", withDefault(number("", 0.0001, 0.5), 0.125)},
         {"seed", [] {
              Json j;
-             j["anyOf"] = Json::array({Json{{"type", "integer"}, {"minimum", 0}}, Json{{"type", "string"}, {"pattern", "^[0-9]{1,20}$"}}});
+             j["anyOf"] = Json::array({Json{{"type", "integer"}, {"minimum", 0}}, Json{{"type", "string"}}});   // (the handler checks the digits: no pattern, S31's subset)
              return j;
          }()},
         {"output", string("")},
