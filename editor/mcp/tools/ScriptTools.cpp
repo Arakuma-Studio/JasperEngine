@@ -395,13 +395,17 @@ Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool ful
         if (it != sync.sequences.end()) change.sequence = it->second;
     }
     const ApplyResult applied = HotReloadService::get().apply(set, options);
+    // the schema changes the watcher found when it reloaded an edited script before this sync
+    // (a change it reloaded already is not reloaded again: its report comes from the watcher)
+    Json scriptProperties = applied.scriptProperties;
+    for (const Json& item : HotReloadService::get().takeLateScriptProperties()) scriptProperties.push_back(item);
 
     Json allNotes = notes;
     for (const Json& note : applied.notes) allNotes.push_back(note);
     Json result = {
         {"changed", {{"added", added}, {"modified", modified}, {"removed", removed}}},
         {"code_editor", applied.codeEditor},
-        {"script_properties", applied.scriptProperties},
+        {"script_properties", scriptProperties},
         {"problems", applied.problems},
         {"notes", allNotes},
         {"reloaded", applied.reloaded},

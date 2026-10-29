@@ -430,6 +430,11 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
     const bool anyExternal = std::any_of(changes.begin(), changes.end(), [](const FileChange& c) { return c.origin == ChangeOrigin::External; });
     if (options.fromWatcher && anyExternal) {
         for (const Json& problem : result.problems) addLateProblem(problem);
+        for (const Json& item : result.scriptProperties) {
+            // no MCP client takes them: the oldest go
+            if (lateScriptProperties.size() >= RELOAD_LATE_MAX) lateScriptProperties.pop_front();
+            lateScriptProperties.push_back(item);
+        }
         if (!result.uiReloaded.empty()) {
             lateUi.push_back({std::chrono::steady_clock::now(), result.uiReloaded});
             while (lateUi.size() > RELOAD_LATE_MAX) lateUi.pop_front();
@@ -665,6 +670,13 @@ Json HotReloadService::takeLateProblems() {
         if (exists == late.existed && (!exists || now.sameContent(late.stat))) out.push_back(late.problem);
     }
     lateProblems.clear();
+    return out;
+}
+
+Json HotReloadService::takeLateScriptProperties() {
+    Json out = Json::array();
+    for (const Json& item : lateScriptProperties) out.push_back(item);
+    lateScriptProperties.clear();
     return out;
 }
 
