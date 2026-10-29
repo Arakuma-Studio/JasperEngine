@@ -4186,7 +4186,7 @@ The history, newest first: {revision, author, date, message}, of the project or 
 
 Group: `vcs` (listed once `tool_groups` enables it, callable either way). Hints: read-only
 
-Version control state: provider (git/svn), branch, ahead/behind, last error, and the project's changed files {path, index, worktree, conflict?, lock?, lock_owner?, remote_changed?} (500 max). refresh polls now, with the locks (network). jasper://vcs/status holds the summary.
+Version control state: provider (git/svn), branch, ahead/behind, last error, and the project's changed files {path, index, worktree, conflict?, lock?, lock_owner?, remote_changed?} (500 max). refresh polls now, with the locks (network). jasper://vcs/status holds the summary; jasper://docs/version-control the workflow.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
