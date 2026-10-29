@@ -15,6 +15,7 @@
 #include "Export.h"
 #include "JasperEngine.h"
 #include "serialization/CookCodecs.h"
+#include "serialization/codecs/CustomCodecs.h"
 #include "registry/EntityRegistry.h"
 
 #include <span>
