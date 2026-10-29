@@ -382,11 +382,13 @@ async def test_autosync_reports_a_broken_vat(ed: Editor):
     await asyncio.sleep(0.05)
     data = json.loads(good)
     data["layout"]["layout_hash"] = "0" * 16
-    vat.write_text(json.dumps(data, indent=2))
+    broken = json.dumps(data, indent=2)
+    vat.write_text(broken)
     r = await ed.call_raw("editor_status")
     ext = (r.structured or {}).get("external_changes") or {}
     found = [p for p in ext.get("problems", []) if p.get("path") == "assets/models/rigid_arm.vat"]
-    check(found and "vat-layout-mismatch" in found[0]["message"], f"auto-sync reports the mismatch: {ext}")
+    check(found and "vat-layout-mismatch" in found[0]["message"],
+          f"auto-sync reports the mismatch: {ext} (the file is {'as written' if vat.read_text() == broken else 'rewritten'})")
     await asyncio.sleep(0.05)
     vat.write_text(good)
     r = await ed.call_raw("editor_status")
