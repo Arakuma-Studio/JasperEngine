@@ -63,7 +63,9 @@ def check(cond, message: str) -> None:
 
 
 def files_under(project: Path) -> set[str]:
-    return {p.relative_to(project).as_posix() for p in (project / "assets").rglob("*") if p.is_file()}
+    # (not the asset database's sidecars, S04: it gives a file it adopts a .meta in the
+    # background, whatever reads the file)
+    return {p.relative_to(project).as_posix() for p in (project / "assets").rglob("*") if p.is_file() and p.suffix != ".meta"}
 
 
 def copy_fixtures(project: Path) -> None:
