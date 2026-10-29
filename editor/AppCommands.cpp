@@ -66,6 +66,8 @@ void editor::App::registerCommands(){
         bind(id, nullptr, std::move(enabled), std::move(keyGate));
     };
 
+    bind("assets.clearShaderWarmup", [this](const CommandArgs&) { project.clearShaderWarmup(); });
+
     auto busy = [this]() { return project.isAnyScenePlaying(); };
     auto notBusy = [busy]() { return !busy(); };
     // Duplicate, Delete and Rename leave the Project window and the Jobs & Memory panel to

@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "render/GpuCreation.h"
 #include <array>
 #include <functional>
 #include <string>
@@ -99,6 +100,33 @@ namespace jasperengine::editor {
 
     // Project Settings > Player > Threading (project.yaml `threading:`): baked into the
     // generated main as Engine::setThreadingSettings. -1 is Auto.
+    // Project Settings > Graphics > Shader Creation (spec S32): the engine's ShaderCreationSettings
+    // and the editor's shader warm-up options, on a reflection table (editor/reflect/
+    // ShaderCreationReflect.cpp: the project file's shaderCreation block, the settings rows)
+    struct ShaderCreationProjectSettings {
+        bool asyncCreation = true;
+        float mainThreadBudgetMs = 2.0f;     // 0.5-16
+        bool glWarmDraws = true;
+        bool recordDuringPlay = false;       // the editor's Play records the warm-up list
+        bool includeInBuilds = true;         // exports build and ship the list's variants
+        bool holdFirstScene = true;          // a game's first scene waits for the list
+
+        ShaderCreationSettings engineSettings() const{
+            ShaderCreationSettings settings;
+            settings.asyncCreation = asyncCreation;
+            settings.mainThreadBudgetMs = mainThreadBudgetMs;
+            settings.glWarmDraws = glWarmDraws;
+            settings.holdFirstSceneForWarmup = holdFirstScene;
+            return settings;
+        }
+        bool operator==(const ShaderCreationProjectSettings& other) const{
+            return asyncCreation == other.asyncCreation && mainThreadBudgetMs == other.mainThreadBudgetMs &&
+                   glWarmDraws == other.glWarmDraws && recordDuringPlay == other.recordDuringPlay &&
+                   includeInBuilds == other.includeInBuilds && holdFirstScene == other.holdFirstScene;
+        }
+        bool operator!=(const ShaderCreationProjectSettings& other) const{ return !(*this == other); }
+    };
+
     struct ThreadingProjectSettings {
         int workers = -1;                // 1-15
         int reservedFrameWorkers = -1;   // 0-4
@@ -271,7 +299,7 @@ namespace jasperengine::editor {
         void writeSceneSource(Scene* scene, uint32_t sceneId, const std::string& sceneName, const std::vector<Entity>& entities, const Entity camera, const fs::path& projectPath, const fs::path& projectInternalPath, std::vector<PrefabInstanceInfo>& prefabInstances, const SceneResources& resources);
         void clearSceneSource(uint32_t sceneId, const std::string& sceneName, const fs::path& projectInternalPath);
         bool hasSceneSource(uint32_t sceneId, const std::string& sceneName, const fs::path& projectInternalPath) const;
-        void configure(const std::vector<SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode = Scaling::FITWIDTH, TextureStrategy textureStrategy = TextureStrategy::NONE, unsigned int canvasWidth = 1280, unsigned int canvasHeight = 720, bool vsyncEnabled = true, const WindowSettings& windowSettings = WindowSettings(), const LoadingSettings& loadingSettings = LoadingSettings(), const TagsAndLayers& tagsAndLayers = TagsAndLayers(), int htmlUiMsaaSamples = 4, const ThreadingProjectSettings& threading = ThreadingProjectSettings(), const HtmlUiRenderSettings& htmlUiRender = HtmlUiRenderSettings(), PbrTier mobilePbrTier = PbrTier::REDUCED);
+        void configure(const std::vector<SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode = Scaling::FITWIDTH, TextureStrategy textureStrategy = TextureStrategy::NONE, unsigned int canvasWidth = 1280, unsigned int canvasHeight = 720, bool vsyncEnabled = true, const WindowSettings& windowSettings = WindowSettings(), const LoadingSettings& loadingSettings = LoadingSettings(), const TagsAndLayers& tagsAndLayers = TagsAndLayers(), int htmlUiMsaaSamples = 4, const ThreadingProjectSettings& threading = ThreadingProjectSettings(), const HtmlUiRenderSettings& htmlUiRender = HtmlUiRenderSettings(), PbrTier mobilePbrTier = PbrTier::REDUCED, const ShaderCreationProjectSettings& shaderCreation = ShaderCreationProjectSettings());
         void build(const fs::path projectPath, const fs::path buildPath, const std::string& cCompiler = "", const std::string& cxxCompiler = "", const std::string& generator = "", unsigned int parallelJobs = 0);
         // the project's Atmosphere Quality per platform group (desktop, mobile, web) the game
         // starts with; set before configure()

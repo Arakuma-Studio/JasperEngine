@@ -101,6 +101,13 @@ namespace jasperengine{
         static size_t warmUpAllShaders();
         // built-in variants the build ships precompiled for this backend
         static std::vector<ShaderKey> getPrecompiledShaderKeys();
+        // The key of the variant whose GPU program has this backend handle id (the warm-up's
+        // recording, spec S32); false when none has it
+        static bool findKeyOfHandle(uint32_t handleId, ShaderKey& key);
+        // A file the build embeds next to its shaders in the shader headers (the warm-up list,
+        // "warmup"); empty when the build embeds none of that name
+        static std::string getEmbeddedData(const std::string& name);
+
         // variants being compiled at runtime, or whose GPU program is being created (spec S32)
         static size_t getPendingShaderCount();
         // pipelines being created (spec S32: off the render thread on Vulkan and Metal)

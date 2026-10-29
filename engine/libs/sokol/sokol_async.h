@@ -27,7 +27,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
+// sokol_gfx.h guards only its declarations: sokol.cpp, which includes it with SOKOL_IMPL first,
+// must not enter its implementation twice
+#ifndef SOKOL_GFX_INCLUDED
 #include "sokol_gfx.h"
+#endif
 
 #if defined(__cplusplus)
 extern "C" {

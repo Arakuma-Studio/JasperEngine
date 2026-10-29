@@ -12,6 +12,7 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 using namespace jasperengine;
@@ -55,6 +56,23 @@ namespace {
     std::unordered_map<uint32_t, uint64_t>& internedKeys(){
         static std::unordered_map<uint32_t, uint64_t> map;
         return map;
+    }
+
+    std::function<void(const sg_pipeline_desc&)>& recorder(){
+        static std::function<void(const sg_pipeline_desc&)> function;
+        return function;
+    }
+
+    // the pipelines reported since the recorder was set: each once, a hit as well as a miss (a
+    // pipeline made before the recording started is still one the recorded run uses)
+    std::unordered_set<uint32_t>& recorded(){
+        static std::unordered_set<uint32_t> ids;
+        return ids;
+    }
+
+    void record(sg_pipeline pipeline, const sg_pipeline_desc& desc){
+        if (recorder() && pipeline.id != SG_INVALID_ID && recorded().insert(pipeline.id).second)
+            recorder()(desc);
     }
 
     uint64_t missCount = 0;
@@ -361,6 +379,8 @@ sg_pipeline SokolPipelineCache::acquire(const sg_pipeline_desc& desc){
         InternEntry& entry = it->second;
         if (descEqual(entry.desc, desc) && sg_query_pipeline_state(entry.pipeline) != SG_RESOURCESTATE_INVALID){
             entry.refs++;
+            if (recorder())
+                record(entry.pipeline, entry.desc);
             return entry.pipeline;
         }
         key++;
@@ -374,6 +394,7 @@ sg_pipeline SokolPipelineCache::acquire(const sg_pipeline_desc& desc){
     create.label = entry.label.empty() ? nullptr : entry.label.c_str();
     entry.pipeline = createPipeline(create);
     missCount++;
+    record(entry.pipeline, desc);
     if (entry.pipeline.id == SG_INVALID_ID)
         return entry.pipeline;
     const sg_pipeline pipeline = entry.pipeline;
@@ -417,6 +438,12 @@ bool SokolPipelineCache::retain(sg_pipeline pipeline){
     return true;
 }
 
+void SokolPipelineCache::setRecorder(std::function<void(const sg_pipeline_desc& desc)> function){
+    std::lock_guard<std::mutex> lock(cacheMutex());
+    recorder() = std::move(function);
+    recorded().clear();
+}
+
 size_t SokolPipelineCache::internedSize(){
     std::lock_guard<std::mutex> lock(cacheMutex());
     return interned().size();
@@ -445,8 +472,11 @@ sg_pipeline SokolPipelineCache::get(const sg_pipeline_desc& base, uint64_t baseH
         if (it == map.end())
             break;
         const PipelineCacheEntry& entry = it->second;
-        if (entry.shader.id == base.shader.id && entry.baseHash == baseHash && entry.state == state)
+        if (entry.shader.id == base.shader.id && entry.baseHash == baseHash && entry.state == state){
+            if (recorder() && !recorded().count(entry.pipeline.id))
+                record(entry.pipeline, makeDesc(base, state));
             return entry.pipeline;
+        }
         key++;
     }
 
@@ -460,6 +490,7 @@ sg_pipeline SokolPipelineCache::get(const sg_pipeline_desc& base, uint64_t baseH
     // off the render thread where creation compiles (spec S32): pending (not drawn) until then
     sg_pipeline pipeline = SokolAsyncCreate::makePipeline(desc);
     missCount++;
+    record(pipeline, desc);
     if (pipeline.id == SG_INVALID_ID)
         return pipeline;
 

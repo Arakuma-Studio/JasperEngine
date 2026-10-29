@@ -154,6 +154,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("assets.scenesInBuild", "Scenes in Build...", AppMenuCommand::ProjectScenes);
     b.menu("assets.prefabs", "Prefabs...", AppMenuCommand::ProjectPrefabs);
     b.menu("assets.emptyTrash", "Empty Trash...", AppMenuCommand::ClearTrash).agentSafe = false;
+    b.add("assets.clearShaderWarmup", "Clear Shader Warm-up List", C::Editor).description =
+        "Empty the project's shader warm-up list (ShaderWarmup.json): Record During Play builds it again";
     b.menu("scripts.reload", "Reload Scripts", AppMenuCommand::ScriptsReload);
     b.menu("scripts.rebuildCpp", "Rebuild C++ Scripts", AppMenuCommand::ScriptsRebuildCpp);
     b.menu("scripts.cancelBuild", "Cancel Script Build", AppMenuCommand::ScriptsCancelBuild);

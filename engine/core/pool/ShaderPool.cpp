@@ -1154,6 +1154,26 @@ size_t ShaderPool::warmUpAllShaders(){
     return notReady;
 }
 
+bool ShaderPool::findKeyOfHandle(uint32_t handleId, ShaderKey& key){
+    if (handleId == 0)
+        return false;
+    for (const auto& entry : getMap()){
+        if (entry.second && entry.second->backend.get().id == handleId){
+            key = entry.first;
+            return true;
+        }
+    }
+    return false;
+}
+
+std::string ShaderPool::getEmbeddedData(const std::string& name){
+    const std::string base64 = getBase64Shader(name);
+    if (base64.empty())
+        return std::string();
+    const std::vector<unsigned char> bytes = Base64::decode(base64);
+    return std::string(bytes.begin(), bytes.end());
+}
+
 size_t ShaderPool::getPendingShaderCount(){
     // compiling at runtime, and GPU objects being created (spec S32)
     return RuntimeShaderCompiler::getPendingCount() + SystemRender::getGpuCreationStats().pendingShaders;

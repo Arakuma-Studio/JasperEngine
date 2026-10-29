@@ -154,6 +154,7 @@
 #endif
 
 #include "Export.h"
+#include "render/GpuCreation.h"
 #include "System.h"
 #include "util/FunctionSubscribe.h"
 #include "math/Rect.h"
@@ -565,6 +566,11 @@ namespace jasperengine {
         // the thread counts on the next launch. The generated game main calls it first.
         static void setThreadingSettings(const ThreadingSettings& settings);
         static const ThreadingSettings& getThreadingSettings();
+
+        // How shaders and pipelines are created (spec S32); the generated game main calls it when
+        // the project's differ from the defaults. The mode applies when the view loads
+        static void setShaderCreationSettings(const ShaderCreationSettings& settings);
+        static const ShaderCreationSettings& getShaderCreationSettings();
 
         static void setFramebuffer(Framebuffer* framebuffer);
         static Framebuffer* getFramebuffer();

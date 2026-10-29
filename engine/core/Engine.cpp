@@ -13,6 +13,7 @@
 #include "Input.h"
 #include "input/InputActions.h"
 #include "render/SystemRender.h"
+#include "shader/ShaderWarmup.h"
 #include "script/LuaBinding.h"
 #include "manager/SceneManager.h"
 #include "subsystem/AudioSystem.h"
@@ -1511,8 +1512,20 @@ void Engine::systemInit(int argc, char* argv[], System* system){
     startJobs();
 }
 
+void Engine::setShaderCreationSettings(const ShaderCreationSettings& settings){
+    SystemRender::setShaderCreationSettings(settings);
+}
+
+const ShaderCreationSettings& Engine::getShaderCreationSettings(){
+    return SystemRender::getShaderCreationSettings();
+}
+
 void Engine::systemViewLoaded(){
     SystemRender::setup();
+#ifndef JASPERENGINE_EDITOR
+    // what the export recorded is created before the scenes need it (spec S32 R12)
+    ShaderWarmup::beginShipped();
+#endif
 
     if (mouseCursorType != CursorType::ARROW){
         System::instance().setMouseCursor(mouseCursorType);
@@ -1603,6 +1616,9 @@ namespace{
 bool Engine::areScenesLoaded(){
     // and no shader, pipeline or GL warm draw still being created (spec S32 R9)
     bool ready = ShaderPool::getPendingShaderCount() == 0 && SystemRender::isGpuCreationIdle() && !scenes.empty();
+    // a game replaying its warm-up list holds its first scene until the list is ready (spec S32 R12)
+    if (ready && SystemRender::getShaderCreationSettings().holdFirstSceneForWarmup)
+        ready = ShaderWarmup::isDone();
     for (size_t i = 0; ready && i < scenes.size(); i++){
         ready = scenes[i]->getSystem<RenderSystem>()->isAllLoaded();
         // and its HTML UI documents loaded (or failed) and drawn once
@@ -1688,8 +1704,10 @@ void Engine::runFrame(bool draw){
         FrameTimes::beginFrame();
         JE_PROFILE_FRAME();
         latchShaderTime();
-        // the shaders and pipelines created off the render thread that are ready (spec S32)
+        // the shaders and pipelines created off the render thread that are ready, and a step of
+        // the warm-up list (spec S32)
         SystemRender::updateGpuCreation();
+        ShaderWarmup::update();
     }
     JE_PROFILE_SCOPE("Frame");
     SystemRender::setViewTag(SystemRender::FRAME_STATS_FRAME);

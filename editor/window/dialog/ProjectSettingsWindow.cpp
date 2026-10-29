@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "ProjectSettingsWindow.h"
+#include "shortcuts/CommandCatalog.h"
+#include "settings/SettingsRegistry.h"
+#include "reflect/Reflect.h"
+#include "command/type/ShaderCreationSettingsCmd.h"
 #include "texture/TextureCookReport.h"
 #include "util/FileDialogs.h"
 #include "Backend.h"
@@ -1015,6 +1019,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
 
     m_loadingSettings = project->getLoadingSettings();
     m_threading = project->getThreadingSettings();
+    m_shaderCreation = project->getShaderCreationSettings();
     m_htmlUiRender = project->getHtmlUiRenderSettings();
     m_navigation = project->getNavigationSettings();
 
@@ -1635,6 +1640,8 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
             }
         }
 
+        drawShaderCreationSettings();
+
         if (settingsui::beginRow("graphics.runtime_shaders")) {
             if (projectBeginSettingsRow("Runtime Shader Compilation", m_runtimeShadersEnabled != Project::defaultRuntimeShadersEnabled)) {
                 m_runtimeShadersEnabled = Project::defaultRuntimeShadersEnabled;
@@ -1645,6 +1652,63 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
                 "variants in Build Settings > Shaders and leaves out what draws with any other. Play always compiles.");
         }
     });
+}
+
+// "mainThreadBudgetMs" -> "main_thread_budget_ms": the field's settings key
+static std::string shaderCreationKey(const char* name) {
+    std::string out;
+    for (const char* c = name; *c; c++) {
+        if (std::isupper(static_cast<unsigned char>(*c))) {
+            if (!out.empty()) out += '_';
+            out += static_cast<char>(std::tolower(static_cast<unsigned char>(*c)));
+        } else {
+            out += *c;
+        }
+    }
+    return out;
+}
+
+// Graphics > Shader Creation and Shader Warm-up (spec S32): the rows of the reflection table
+// (labels, tooltips and the budget's range are its), and the warm-up list's count with Clear
+void ProjectSettingsWindow::drawShaderCreationSettings() {
+    const ShaderCreationProjectSettings defaults;
+    for (const char* section : {"Shader Creation", "Shader Warm-up"}) {
+        if (!settingsui::sectionVisible(section)) continue;
+        ImGui::SeparatorText(section);
+        for (const reflect::FieldDesc& field : reflect::shaderCreationStruct().fields) {
+            const std::string key = std::string("shader_creation.") + shaderCreationKey(field.name);
+            const SettingRow* row = SettingsRegistry::get().find(key);
+            if (!row || row->section != section || !settingsui::beginRow(key.c_str())) continue;
+            void* value = field.ref(&m_shaderCreation);
+            const void* base = field.ref(const_cast<ShaderCreationProjectSettings*>(&defaults));
+            const std::string id = std::string("##") + field.name;
+            if (field.kind == reflect::Kind::Bool) {
+                bool& b = *static_cast<bool*>(value);
+                if (projectBeginSettingsRow(field.label, b != *static_cast<const bool*>(base))) b = *static_cast<const bool*>(base);
+                ImGui::Checkbox(id.c_str(), &b);
+            } else {
+                float& f = *static_cast<float*>(value);
+                if (projectBeginSettingsRow(field.label, f != *static_cast<const float*>(base))) f = *static_cast<const float*>(base);
+                ImGui::SliderFloat(id.c_str(), &f, field.min, field.max, field.format ? field.format : "%.1f");
+                f = std::clamp(f, field.min, field.max);
+            }
+            endSettingsRow(field.tooltip ? field.tooltip : "");
+        }
+        if (std::string(section) == "Shader Warm-up" && settingsui::beginRow("shader_creation.warmup_entries")) {
+            const SettingRow* row = SettingsRegistry::get().find("shader_creation.warmup_entries");
+            SettingsContext ctx;
+            ctx.projectPtr = m_project;
+            const mcp::Json counts = row && row->get ? row->get(ctx) : mcp::Json();
+            projectBeginSettingsRow("Warm-up List");
+            ImGui::Text("%d shaders, %d pipelines", counts.value("shaders", 0), counts.value("pipelines", 0));
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Clear##ShaderWarmup")) {
+                const CommandDef* clear = CommandCatalog::editor().find("assets.clearShaderWarmup");
+                if (clear && clear->run) clear->run(CommandArgs{});
+            }
+            endSettingsRow(row ? row->tooltip.c_str() : "");
+        }
+    }
 }
 
 void ProjectSettingsWindow::drawQualitySettings() {
@@ -2906,6 +2970,10 @@ bool ProjectSettingsWindow::applySettings() {
     // undoable: the reserve applies to the editor's job system at once
     if (m_threading != m_project->getThreadingSettings()) {
         m_project->getProjectCommandHistory()->addCommand(new ThreadingSettingsCmd(m_project, m_threading));
+    }
+    // undoable: the budget and warm draws apply to the editor at once
+    if (m_shaderCreation != m_project->getShaderCreationSettings()) {
+        m_project->getProjectCommandHistory()->addCommand(new ShaderCreationSettingsCmd(m_project, m_shaderCreation));
     }
     // undoable: the editor's documents follow at once
     if (m_htmlUiRender != m_project->getHtmlUiRenderSettings()) {

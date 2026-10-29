@@ -3,6 +3,7 @@
 
 #include "EditorFrame.h"
 #include "render/SystemRender.h"
+#include "shader/ShaderWarmup.h"
 #include "diag/HangWatchdog.h"
 
 #include "AppSettings.h"
@@ -162,6 +163,8 @@ bool EditorFrame::run(EditorFrameState& state){
         // the shaders and pipelines created off the render thread that are ready (spec S32); the
         // loop keeps drawing while any is pending (renderRequested), so they show up unprompted
         SystemRender::updateGpuCreation();
+        // what Play recorded for the shader warm-up list
+        ShaderWarmup::update();
     }
 
     renderer->newFrame();

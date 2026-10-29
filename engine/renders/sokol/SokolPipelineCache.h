@@ -10,6 +10,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 
 namespace jasperengine{
 
@@ -47,6 +48,10 @@ namespace jasperengine{
         // one more reference to an interned pipeline (the shader warm-up keeps what it made)
         static bool retain(sg_pipeline pipeline);
         static size_t internedSize();
+        // every pipeline created from now (interned and dynamic) is reported with the description
+        // it was asked with (the shader warm-up's recording, spec S32 R10); any thread, under the
+        // cache's lock: the recorder only queues
+        static void setRecorder(std::function<void(const sg_pipeline_desc& desc)> recorder);
         // the hash and equality interning uses, field by field (never the struct's bytes: padding)
         static uint64_t descHash(const sg_pipeline_desc& desc);
         static bool descEqual(const sg_pipeline_desc& a, const sg_pipeline_desc& b);

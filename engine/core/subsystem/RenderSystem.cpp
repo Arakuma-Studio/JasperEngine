@@ -52,6 +52,26 @@ using namespace jasperengine;
 using namespace jasperengine::rendershared;
 
 namespace {
+
+    // The nearest variant that is ready while `properties` is still being built or created
+    // (spec S32 R8): the first of ShaderPool::getFallbackProperties (layout-compatible by
+    // construction) that is ready, with `customId` and then, for a built-in Lit reference, with
+    // the built-in id. None is requested: only what is already there stands in. Null: none ready.
+    std::shared_ptr<ShaderRender> readyStandIn(ShaderType type, uint64_t properties, uint16_t& customId, bool builtinToo){
+        for (uint64_t candidate : ShaderPool::getFallbackProperties(type, properties)){
+            if (ShaderPool::isShaderReady(type, candidate, customId))
+                return ShaderPool::get(type, candidate, customId);
+            if (builtinToo && customId != 0 && ShaderPool::isShaderReady(type, candidate, 0)){
+                customId = 0;
+                return ShaderPool::get(type, candidate, 0);
+            }
+        }
+        return nullptr;
+    }
+
+}
+
+namespace {
     constexpr int SPOT_MASK_TILE_SIZE = 256;
 
     static_assert(sizeof(Matrix4) == sizeof(float) * 16);
@@ -5476,7 +5496,8 @@ void RenderSystem::setDisableFixedResolution(bool disableFixedResolution){
 }
 
 bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelines, InstancedMeshComponent* instmesh, TerrainComponent* terrain){
-    bool builtinStandIn = false;
+    // a ready variant draws for one still being built or created (spec S32 R8)
+    bool standIn = false;
 
     if (!Engine::isViewLoaded()) 
         return false;
@@ -5702,6 +5723,14 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                                depthShaderSrc.c_str(), scene->getEntityName(entity).c_str());
                     mesh.submeshes[i].customDepthShaderId = 0;
                     mesh.submeshes[i].depthShader = ShaderPool::get(ShaderType::DEPTH, mesh.submeshes[i].depthShaderProperties, 0);
+                }else if (!ShaderPool::isShaderBuildFailed(ShaderType::DEPTH, mesh.submeshes[i].depthShaderProperties, mesh.submeshes[i].customDepthShaderId)){
+                    // the nearest ready depth variant while this one builds (spec S32 R8)
+                    uint16_t standInId = mesh.submeshes[i].customDepthShaderId;
+                    std::shared_ptr<ShaderRender> nearest = readyStandIn(ShaderType::DEPTH, mesh.submeshes[i].depthShaderProperties, standInId, false);
+                    if (nearest){
+                        mesh.submeshes[i].depthShader = nearest;
+                        standIn = true;
+                    }
                 }
             }
             if (mesh.submeshes[i].depthShader->isCreated()){
@@ -5723,6 +5752,15 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         if (variant.gbuffer){
             mesh.submeshes[i].gbufferShaderProperties = variant.gbufferProperties;
             mesh.submeshes[i].gbufferShader = ShaderPool::get(ShaderType::GBUFFER, mesh.submeshes[i].gbufferShaderProperties);
+            if (!mesh.submeshes[i].gbufferShader->isCreated() &&
+                    !ShaderPool::isShaderBuildFailed(ShaderType::GBUFFER, mesh.submeshes[i].gbufferShaderProperties)){
+                uint16_t standInId = 0;
+                std::shared_ptr<ShaderRender> nearest = readyStandIn(ShaderType::GBUFFER, mesh.submeshes[i].gbufferShaderProperties, standInId, false);
+                if (nearest){
+                    mesh.submeshes[i].gbufferShader = nearest;
+                    standIn = true;
+                }
+            }
             if (!mesh.submeshes[i].gbufferShader->isCreated())
                 shadersReady = false;
         }
@@ -5744,7 +5782,19 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                 if (plain->isCreated()){
                     mesh.submeshes[i].customShaderId = 0;
                     mesh.submeshes[i].shader = plain;
-                    builtinStandIn = true;
+                    standIn = true;
+                }
+            }
+            if (!mesh.submeshes[i].shader->isCreated() &&
+                    !ShaderPool::isShaderBuildFailed(ShaderType::MESH, mesh.submeshes[i].shaderProperties, mesh.submeshes[i].customShaderId)){
+                // the nearest variant that is ready (the key's own properties stay: what the draw
+                // binds follows the stand-in's reflection, as for a variant a build lacks)
+                std::shared_ptr<ShaderRender> nearest = readyStandIn(ShaderType::MESH, mesh.submeshes[i].shaderProperties,
+                    mesh.submeshes[i].customShaderId, ShaderReference::isBuiltin(meshShaderSrc));
+                // (customShaderId is the stand-in's now: 0 when the built-in Lit's plain variant came)
+                if (nearest){
+                    mesh.submeshes[i].shader = nearest;
+                    standIn = true;
                 }
             }
             if (!mesh.submeshes[i].shader->isCreated())
@@ -6421,9 +6471,9 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
     }
 
     mesh.needReload = false;
-    // loaded with the current environment; a plain variant standing in for a built-in Lit one
-    // still building reloads once that one is ready
-    mesh.needVariantReload = builtinStandIn;
+    // loaded with the current environment; a variant standing in for one still building (or its
+    // GPU object being created) reloads once that one is ready
+    mesh.needVariantReload = standIn;
     mesh.needUpdateShaderUniforms = false;
     mesh.needUpdateAABB = true;
     mesh.loadCalled = true;

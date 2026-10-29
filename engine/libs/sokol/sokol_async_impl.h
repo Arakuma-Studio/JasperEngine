@@ -34,8 +34,10 @@
     #endif
 #endif
 
-#if defined(SOKOL_METAL) && !__has_feature(objc_arc)
-    #error "sokol_async_impl.h needs ARC (sokol's CMake target compiles sokol.cpp with -fobjc-arc)"
+#if defined(SOKOL_METAL)
+    #if !__has_feature(objc_arc)
+        #error "sokol_async_impl.h needs ARC (sokol's CMake target compiles sokol.cpp with -fobjc-arc)"
+    #endif
 #endif
 
 namespace {

@@ -434,6 +434,8 @@ namespace jasperengine::editor::reflect {
     // an alias, every field OmitIfDefault
     const StructDesc& postProcessingStruct();
     std::vector<const EnumDesc*> postProcessingEnums();
+    // Project Settings > Graphics > Shader Creation (ShaderCreationProjectSettings, spec S32)
+    const StructDesc& shaderCreationStruct();
     // the rows the struct can hold (a static check of the engine table's size)
     size_t postProcessingFieldCapacity();
 

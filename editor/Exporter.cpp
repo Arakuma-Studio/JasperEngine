@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Exporter.h"
+#include "shader/ShaderWarmup.h"
 #include "util/EditorScripts.h"
 #include "navigation/NavigationEditor.h"
 #include "asset/AssetFileWrite.h"
@@ -891,11 +892,33 @@ void editor::Exporter::resolveShaderKeys() {
     for (ShaderKey key : config.shaderAdditions) {
         keys.insert(ShaderPool::normalizeKey(key));
     }
+    // the shader warm-up list's variants (spec S32 R11): what Play used ships, even when no scene
+    // records it (a material a script swaps in)
+    if (project->getShaderCreationSettings().includeInBuilds && loadShaderWarmup()) {
+        for (ShaderKey key : ShaderWarmup::getShaderKeys()) {
+            keys.insert(ShaderPool::normalizeKey(key));
+        }
+    }
     for (ShaderKey key : config.shaderExclusions) {
         keys.erase(ShaderPool::normalizeKey(key));
     }
 
     config.selectedShaderKeys = std::move(keys);
+}
+
+// the project's warm-up list into ShaderWarmup (false: none, or unreadable, which is warned)
+bool editor::Exporter::loadShaderWarmup() {
+    ShaderWarmup::clear();
+    const fs::path path = project->getShaderWarmupPath();
+    if (!fs::exists(path)) {
+        return false;
+    }
+    std::string error;
+    if (!ShaderWarmup::load(path.string(), &error)) {
+        Out::warning("Shader warm-up list not exported: %s", error.c_str());
+        return false;
+    }
+    return true;
 }
 
 fs::path editor::Exporter::getExportProjectRoot() const {
@@ -4343,6 +4366,25 @@ bool editor::Exporter::buildAndSaveShaders() {
             }
 
             current++;
+        }
+    }
+
+    // the warm-up list of what this export built (spec S32 R11): a file next to the shaders, or an
+    // entry ("warmup") of each shader header
+    std::string warmupList;
+    if (project && project->getShaderCreationSettings().includeInBuilds && loadShaderWarmup()) {
+        warmupList = ShaderWarmup::filteredString(std::vector<ShaderKey>(config.selectedShaderKeys.begin(), config.selectedShaderKeys.end()));
+        if (config.shaderOutputFormat == ShaderOutputFormat::Header) {
+            const std::string encoded = Base64::encode(reinterpret_cast<const unsigned char*>(warmupList.data()), warmupList.size());
+            for (ShaderBackend backend : backends) {
+                headerShaders[ShaderPool::getShaderLangStr(backend)].push_back({"warmup", encoded});
+            }
+        } else {
+            const io::WriteResult written = io::writeFileAtomic(shadersDst / "warmup.json", warmupList + "\n");
+            if (!written.ok()) {
+                setError("Failed to write the shader warm-up list: " + written.message);
+                return false;
+            }
         }
     }
 

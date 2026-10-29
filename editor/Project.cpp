@@ -94,6 +94,7 @@
 #include "texture/TextureCookQueue.h"
 #include "component/UIDocumentComponent.h"
 #include "Engine.h"
+#include "shader/ShaderWarmup.h"
 #include "Input.h"
 #include "input/InputActions.h"
 #include "pool/ShaderPool.h"
@@ -2579,6 +2580,64 @@ void editor::Project::setThreadingSettings(const ThreadingProjectSettings& setti
     }
 }
 
+const editor::ShaderCreationProjectSettings& editor::Project::getShaderCreationSettings() const{
+    return shaderCreationSettings;
+}
+
+void editor::Project::setShaderCreationSettings(const ShaderCreationProjectSettings& settings){
+    const bool changed = settings != shaderCreationSettings;
+    shaderCreationSettings = settings;
+    Engine::setShaderCreationSettings(settings.engineSettings());
+    if (changed && modelLoaded){
+        markGeneratedSourcesDirty();
+    }
+}
+
+std::filesystem::path editor::Project::getShaderWarmupPath() const{
+    return getProjectPath() / "ShaderWarmup.json";
+}
+
+void editor::Project::finishShaderWarmupRecording(){
+    if (!ShaderWarmup::isRecording())
+        return;
+    ShaderWarmup::stopRecording();
+    const std::filesystem::path path = getShaderWarmupPath();
+    // what earlier runs recorded stays: this run's entries are added to the file's
+    std::ifstream file(path, std::ios::binary);
+    if (file) {
+        std::stringstream text;
+        text << file.rdbuf();
+        std::string error;
+        if (!ShaderWarmup::mergeFromString(text.str(), &error))
+            Out::warning("Shader warm-up list %s was not readable (%s): it is replaced", path.string().c_str(), error.c_str());
+    }
+    std::string error;
+    if (ShaderWarmup::save(path.string(), &error)) {
+        Out::info("Shader warm-up list: %zu shaders, %zu pipelines (%s)", ShaderWarmup::getShaderCount(),
+                  ShaderWarmup::getPipelineCount(), path.filename().string().c_str());
+    } else {
+        Out::error("Shader warm-up list not saved: %s", error.c_str());
+    }
+    ShaderWarmup::clear();
+}
+
+bool editor::Project::clearShaderWarmup(){
+    if (ShaderWarmup::isRecording()) {
+        ShaderWarmup::stopRecording();
+        ShaderWarmup::startRecording();
+    }
+    ShaderWarmup::clear();
+    std::string error;
+    const std::filesystem::path path = getShaderWarmupPath();
+    if (!std::filesystem::exists(path))
+        return true;
+    if (!ShaderWarmup::save(path.string(), &error)) {
+        Out::error("Shader warm-up list not cleared: %s", error.c_str());
+        return false;
+    }
+    return true;
+}
+
 editor::TerrainEditorSettings& editor::Project::getTerrainEditorSettings(){
     return terrainEditorSettings;
 }
@@ -4932,6 +4991,7 @@ void editor::Project::resetConfigs() {
         setShadowTier(platform, ShadowTiers::defaultTier(platform));
     }
     setThreadingSettings(ThreadingProjectSettings());
+    setShaderCreationSettings(ShaderCreationProjectSettings());
     windowMode = defaultWindowMode;
     windowWidth = defaultWindowWidth;
     windowHeight = defaultWindowHeight;
@@ -6516,7 +6576,7 @@ void editor::Project::configureGenerator() {
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
     generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
-    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier);
+    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier, shaderCreationSettings);
 }
 
 std::vector<editor::SceneScriptSource> editor::Project::prepareScriptBuild() {
@@ -8529,7 +8589,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
     generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
-    generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier);
+    generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier, shaderCreationSettings);
     if (hasMissingSceneSources()) {
         generatedSourcesDirty.store(true);
     }
@@ -8990,6 +9050,11 @@ void editor::Project::start(uint32_t sceneId) {
             return;
         }
     }
+    // Record During Play (spec S32 R10): every pipeline Play uses joins the warm-up list at Stop
+    if (shaderCreationSettings.recordDuringPlay && !ShaderWarmup::isRecording()) {
+        ShaderWarmup::clear();
+        ShaderWarmup::startRecording();
+    }
 
     // An MCP agent's export or C++ script build would race Play's own script build
     const std::string busyReason = editor::getEditorHost().backgroundWorkConflict("play");
@@ -9168,6 +9233,7 @@ void editor::Project::stop(uint32_t sceneId) {
     }
     const diag::BusyScope busy("Stopping Play", 120'000);
     EditorDiagnostics::setPlaying(false, sceneProject->name);
+    finishShaderWarmupRecording();
 
     if (sceneProject->playState == ScenePlayState::STOPPED) {
         Out::warning("Scene %u is not currently playing", sceneId);
