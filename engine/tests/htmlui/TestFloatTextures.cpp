@@ -47,7 +47,7 @@ namespace {
         return TestSystem::get().countLogs(D_LOG_ERROR, text);
     }
 
-    float halfToFloat(uint16_t h){
+    float halfBitsToFloat(uint16_t h){
         const uint32_t sign = (h & 0x8000u) << 16;
         const uint32_t exponent = (h >> 10) & 0x1Fu;
         const uint32_t mantissa = h & 0x3FFu;
@@ -495,7 +495,7 @@ TEST_F(FloatTextureTest, Rgba16fAnd32fHoldExactValues){
     const std::vector<float> floats = floatTexels(width * height);
     std::vector<float> halvesAsFloats(halves.size());
     for (size_t i = 0; i < halves.size(); i++)
-        halvesAsFloats[i] = halfToFloat(halves[i]);
+        halvesAsFloats[i] = halfBitsToFloat(halves[i]);
 
     for (ColorFormat format : {ColorFormat::RGBA16F, ColorFormat::RGBA32F}){
         const bool half = format == ColorFormat::RGBA16F;
