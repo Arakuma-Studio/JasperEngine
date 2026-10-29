@@ -1,0 +1,6 @@
+# tools/android-emulator-test.sh --ordered --expect-file: what the animator project logs on Android
+# (`logcat -v tag`): the pose kernels (sse2 on the x86_64 emulator, neon on arm64 devices), the
+# states the trigger reached (both humanoids), and the left feet of the held poses
+I/JasperEngine: [gate] animator pose kernels:
+I/JasperEngine: [gate] animator Move Move humanoid 1 1
+I/JasperEngine: [gate] animator left_foot

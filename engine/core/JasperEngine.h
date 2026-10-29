@@ -157,6 +157,7 @@
 #include "object/Model.h"
 #include "object/PoseAnimator.h"
 #include "object/AnimationPlayer.h"
+#include "object/Animator.h"
 #include "object/GameObject.h"
 #include "object/ShadowCaster2D.h"
 #include "object/Points.h"
