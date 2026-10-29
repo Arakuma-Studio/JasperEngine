@@ -215,7 +215,6 @@ units: jasper://docs/materials.
 Textures from examples: synthesize_texture (group assets_pipeline,
 jasper://docs/texture-synthesis). GPU fluid: create_entity type fluid_simulation
 (jasper://docs/fluid). Bend/squash: edit_lattice (group animation, jasper://docs/lattice).
-Roads, rivers: edit_spline (group splines, jasper://docs/splines).
 
 ## Post-processing
 Main camera only: apply_post_processing_preset (film, vhs, mobile_adaptive...), then
