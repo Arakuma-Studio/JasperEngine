@@ -17,6 +17,7 @@
 #include "Factory.h"
 #include "Out.h"
 #include "Stream.h"
+#include "reflect/Reflect.h"
 #include "util/FileUtils.h"
 #include "util/Util.h"
 #include "util/YamlNumbers.h"
@@ -706,6 +707,8 @@ std::vector<std::filesystem::path> editor::Project::endPrefabSaveScope() {
 }
 
 YAML::Node editor::Project::encodePrefabNode(const std::filesystem::path& filepath) const {
+    // a prefab file: without the values loading computes (S29 R20)
+    reflect::DocumentEncodeScope document;
     const Prefab* prefab = getPrefab(filepath);
     if (!prefab || !prefab->registry) {
         return YAML::Node();

@@ -1,0 +1,77 @@
+Main Scene:
+  Game:
+    position: [0, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+Saved:
+  Block 1:
+    position: [-0.6, 1.5, -3.6]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -0.6, 1.5, -3.6, 1]
+  Block 2:
+    position: [0.9, 1.5, -3.6]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0.9, 1.5, -3.6, 1]
+  Block 3:
+    position: [2.4, 1.5, -3.6]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 2.4, 1.5, -3.6, 1]
+  Block 4:
+    position: [3.9, 1.5, -3.6]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 3.9, 1.5, -3.6, 1]
+  Bump:
+    position: [-1.8, 0, 1.2]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -1.8, 0, 1.2, 1]
+  Camera:
+    position: [0, 5.5, 10]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 5.5, 10, 1]
+  Depth grid volume:
+    position: [-3.2, 1.25, 0.6]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -3.2, 1.25, 0.6, 1]
+  Directional Light:
+    position: [0, 10, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 10, 0, 1]
+  Glass sphere:
+    position: [2.2, 1.6, -2]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 2.2, 1.6, -2, 1]
+  Glow sphere:
+    position: [1.8, 0.3, 1.4]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1.8, 0.3, 1.4, 1]
+  Ground:
+    position: [0, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+  Haze sprite:
+    position: [-0.2, 2, -2.8]
+    rotation: [1, 0, 0, 0]
+    scale: [0.034375, 0.034375, 0.034375]
+    modelMatrix: [0.034375, 0, 0, 0, 0, 0.034375, 0, 0, 0, 0, 0.034375, 0, -0.2, 2, -2.8, 1]
+  Soft points:
+    position: [5, 0, 1.5]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 5, 0, 1.5, 1]
+  Tilted box:
+    position: [-4, 0.4, 0]
+    rotation: [0.9422737, 0.17429416, 0.27781066, 0.067550614]
+    scale: [1, 1, 1]
+    modelMatrix: [0.8365163, 0.22414389, -0.5, 0, -0.030460782, 0.9301169, 0.36599815, 0, 0.5470947, -0.290933, 0.7848856, 0, -4, 0.4, 0, 1]

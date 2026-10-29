@@ -1,4 +1,4 @@
-formatVersion: 3
+formatVersion: 4
 guid: 7ee0ed86c1403d0c6603f0a7ff3ea8c0
 id: 1824306547
 name: Hex
@@ -82,12 +82,6 @@ entities:
         position: [0, 10, 0]
         rotation: [1, 0, 0, 0]
         scale: [1, 1, 1]
-        worldPosition: [0, 10, 0]
-        worldRotation: [1, 0, 0, 0]
-        worldScale: [1, 1, 1]
-        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 10, 0, 1]]
-        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 10, 0, 1]]
-        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, -10], [0, 0, 1, 0], [0, 0, 0, 1]]
         visible: true
         billboardRotation: [1, 0, 0, 0]
         billboard: false
@@ -139,12 +133,6 @@ entities:
         position: [0, 0, 0]
         rotation: [1, 0, 0, 0]
         scale: [1, 1, 1]
-        worldPosition: [0, 0, 0]
-        worldRotation: [1, 0, 0, 0]
-        worldScale: [1, 1, 1]
-        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
-        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
-        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
         visible: true
         billboardRotation: [1, 0, 0, 0]
         billboard: false
@@ -360,12 +348,6 @@ entities:
         position: [0, 40, 60]
         rotation: [1, 0, 0, 0]
         scale: [1, 1, 1]
-        worldPosition: [0, 40, 60]
-        worldRotation: [1, 0, 0, 0]
-        worldScale: [1, 1, 1]
-        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 40, 60, 1]]
-        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 40, 60, 1]]
-        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, -40], [0, 0, 1, -60], [0, 0, 0, 1]]
         visible: true
         billboardRotation: [1, 0, 0, 0]
         billboard: false
@@ -401,12 +383,6 @@ entities:
         position: [0, 8, 30]
         rotation: [1, 0, 0, 0]
         scale: [6, 1, 6]
-        worldPosition: [0, 8, 30]
-        worldRotation: [1, 0, 0, 0]
-        worldScale: [6, 1, 6]
-        localMatrix: [[6, 0, 0, 0], [0, 1, 0, 0], [0, 0, 6, 0], [0, 8, 30, 1]]
-        modelMatrix: [[6, 0, 0, 0], [0, 1, 0, 0], [0, 0, 6, 0], [0, 8, 30, 1]]
-        normalMatrix: [[0.16666667, 0, 0, 0], [0, 1, 0, -8], [0, 0, 0.16666667, -5], [0, 0, 0, 1]]
         visible: true
         billboardRotation: [1, 0, 0, 0]
         billboard: false

@@ -36,6 +36,11 @@ namespace jasperengine::editor {
 class FileUtils {
 public:
     static std::filesystem::path getExecutableDir() {
+        return getExecutablePath().parent_path();
+    }
+
+    // The running editor's executable, absolute (the scene merge driver git runs, S29 R22)
+    static std::filesystem::path getExecutablePath() {
         namespace fs = std::filesystem;
 
         fs::path executablePath;
@@ -96,7 +101,7 @@ public:
             normalizedPath = executablePath;
         }
 
-        return normalizedPath.parent_path();
+        return normalizedPath;
     }
 
     // Inside JasperEngine.app the SDK sits in Contents/Resources: codesign treats

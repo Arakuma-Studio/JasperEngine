@@ -53,6 +53,8 @@ namespace jasperengine::editor{
 
         // "Set Import Compression (a.png)"
         std::string describe() const override;
+        // the project-relative asset whose sidecar it writes (lock-on-edit, S29 R12)
+        const std::filesystem::path& getAsset() const { return asset; }
         const char* typeName() const override { return "SetAssetMetaCmd"; }
         bool isNoOp() const override;
         size_t memoryBytes() const override;

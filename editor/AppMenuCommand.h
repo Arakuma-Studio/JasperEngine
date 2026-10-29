@@ -100,7 +100,19 @@ namespace jasperengine::editor {
         LayoutLoadFromFile,
         TogglePoseAnimation,          // Window > Animation > Pose Animation
         AssetsCreatePoseAnimation,
-        AssetsCreateAnimationClip     // shown only once AnimationClipAppHooks::createClipAsset is set
+        AssetsCreateAnimationClip,    // shown only once AnimationClipAppHooks::createClipAsset is set
+        // S29: Assets > Version Control (the Project window's selection) and Window > Version Control
+        VcsCommit,
+        VcsRevert,
+        VcsLock,
+        VcsUnlock,
+        VcsShowHistory,
+        VcsDiffAgainstBaseline,
+        VcsRefresh,
+        ToggleVcsCommit,
+        ToggleVcsHistory,
+        ToggleVcsSceneDiff,
+        ToggleVcsConflicts
     };
 
 }

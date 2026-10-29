@@ -273,6 +273,8 @@ void editor::InspectorWindow::drawPrefabPropertyLabel(const std::string& label){
         ImGui::PopFont();
         drawPrefabOverrideBar(cellMin.y, cellMax.y);
     }
+    // S29: differs from the version control baseline (its own menu unless the prefab's is shown)
+    const bool vcsChanged = !property.empty() && drawVcsPropertyMarker(property, cellMin, cellMax, !overridden);
     if (!overridden){
         return;
     }
@@ -290,6 +292,13 @@ void editor::InspectorWindow::drawPrefabPropertyLabel(const std::string& label){
     if (ImGui::BeginPopup(popupId.c_str())){
         ImGui::TextDisabled("%s", label.c_str());
         drawPrefabApplyRevertItems(prefabRow.sceneProject, prefabRow.entities, prefabRow.type, property, 0, prefabRow.readOnly);
+        const vcs::scene::ObjectDiff* vcsObject = nullptr;
+        const vcs::scene::ComponentDiff* vcsComponent = nullptr;
+        if (const vcs::scene::PropertyDiff* vcsProperty = vcsChanged ?
+                findVcsPropertyDiff(prefabRow.sceneProject, prefabRow.entities, prefabRow.type, property, &vcsObject, &vcsComponent) : nullptr){
+            ImGui::Separator();
+            drawVcsBaselineItems(prefabRow.sceneProject, *vcsObject, vcsComponent, vcsProperty, prefabRow.readOnly);
+        }
         ImGui::EndPopup();
     }
     ImGui::EndDisabled();

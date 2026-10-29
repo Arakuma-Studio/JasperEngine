@@ -1,0 +1,16 @@
+Particles:
+  Camera:
+    position: [0, 1.5, 7]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1.5, 7, 1]
+  Fire:
+    position: [-1.5, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -1.5, 0, 0, 1]
+  Sparks:
+    position: [1.5, 1, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1.5, 1, 0, 1]
