@@ -45,6 +45,8 @@ namespace {
             // Vertex Animations as clips (their JSON "guid"); the generated "<x>.vat.glb" beside one
             // is a model with a meta like any other
             {{AssetType::VertexAnimation, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".vat"}},
+            {{AssetType::NavMesh, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".navmesh"}},
+            {{AssetType::NavGrid, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".navgrid"}},
         };
         return table;
     }

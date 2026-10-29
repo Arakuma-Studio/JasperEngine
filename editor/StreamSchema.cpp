@@ -67,7 +67,7 @@ const std::vector<std::string>& StreamSchema::knownRootKeys(RootKind kind) {
             "addedTo", "childIndex", "parentRegistryEntity", "prefabRootRegistryEntity", "prefabPath"}},
         // the editor state an older project.yaml held (Workspace::adoptLegacyProjectState) and
         // its build settings (AppSettings, build.yaml) are read too
-        {RootKind::Project, {"formatVersion", "android", "application", "assetLabels", "assetsDir", "atmosphereQuality", "canvasHeight", "canvasWidth", "cxxStandard", "export", "graphics", "htmlUiGlyphAtlasMiB", "htmlUiMsaaSamples", "htmlUiSdfPrimitives", "htmlUiTransformAwareText", "ignoredLayerCollisions", "input", "ios", "layers", "linux", "loading", "luaDir", "macos", "mobilePbrTier", "name", "packNativeResources", "physics2D", "physics3D", "playerLogging", "runtimeShaders", "savedSearches", "scalingMode", "scenes", "scriptDirs", "standalonePrefabs", "startSceneId", "tags", "texture", "textureStrategy", "threading", "versionControlMetadata", "vsync", "web", "windowHeight", "windowIcon", "windowMode", "windowResizable", "windowTitle", "windowWidth", "windows",
+        {RootKind::Project, {"formatVersion", "android", "application", "assetLabels", "assetsDir", "atmosphereQuality", "canvasHeight", "canvasWidth", "cxxStandard", "export", "graphics", "htmlUiGlyphAtlasMiB", "htmlUiMsaaSamples", "htmlUiSdfPrimitives", "htmlUiTransformAwareText", "ignoredLayerCollisions", "input", "ios", "layers", "linux", "loading", "luaDir", "macos", "mobilePbrTier", "name", "navigation", "packNativeResources", "physics2D", "physics3D", "playerLogging", "runtimeShaders", "savedSearches", "scalingMode", "scenes", "scriptDirs", "standalonePrefabs", "startSceneId", "tags", "texture", "textureStrategy", "threading", "versionControlMetadata", "vsync", "web", "windowHeight", "windowIcon", "windowMode", "windowResizable", "windowTitle", "windowWidth", "windows",
             "cmakeBuildJobs", "cmakeCCompiler", "cmakeCxxCompiler", "cmakeGenerator", "selectedScene", "tabs", "terrainEditor"}},
         {RootKind::Material, {}},
         {RootKind::PrefabHeader, {"type", "version", "guid", "formerGuids", "labels", "nextEntity", "root", "members", "stripped"}},
@@ -307,6 +307,57 @@ const EnumTable<FogType>& StreamSchema::fogType() {
 
 const EnumTable<FogColorMode>& StreamSchema::fogColorMode() {
     static const EnumTable<FogColorMode> table(reflect::enums::kFogColorMode);
+    return table;
+}
+
+// ---- navigation (S19): from their reflection tables (editor/reflect/components/NavigationReflect.cpp)
+const EnumTable<NavCollectObjects>& StreamSchema::navCollectObjects() {
+    static const EnumTable<NavCollectObjects> table(reflect::enums::kNavCollectObjects);
+    return table;
+}
+
+const EnumTable<NavUseGeometry>& StreamSchema::navUseGeometry() {
+    static const EnumTable<NavUseGeometry> table(reflect::enums::kNavUseGeometry);
+    return table;
+}
+
+const EnumTable<nav::NavPlane>& StreamSchema::navPlane() {
+    static const EnumTable<nav::NavPlane> table(reflect::enums::kNavPlane);
+    return table;
+}
+
+const EnumTable<nav::AvoidanceQuality>& StreamSchema::navAvoidanceQuality() {
+    static const EnumTable<nav::AvoidanceQuality> table(reflect::enums::kNavAvoidanceQuality);
+    return table;
+}
+
+const EnumTable<NavAgentDriver>& StreamSchema::navAgentDriver() {
+    static const EnumTable<NavAgentDriver> table(reflect::enums::kNavAgentDriver);
+    return table;
+}
+
+const EnumTable<NavObstacleShape>& StreamSchema::navObstacleShape() {
+    static const EnumTable<NavObstacleShape> table(reflect::enums::kNavObstacleShape);
+    return table;
+}
+
+const EnumTable<NavModifierInclusion>& StreamSchema::navModifierInclusion() {
+    static const EnumTable<NavModifierInclusion> table(reflect::enums::kNavModifierInclusion);
+    return table;
+}
+
+const EnumTable<nav::GridLayout>& StreamSchema::navGridLayout() {
+    static const EnumTable<nav::GridLayout> table(reflect::enums::kNavGridLayout);
+    return table;
+}
+
+const EnumTable<nav::GridMovement>& StreamSchema::navGridMovement() {
+    static const EnumTable<nav::GridMovement> table(reflect::enums::kNavGridMovement);
+    return table;
+}
+
+const EnumTable<NavGridSource>& StreamSchema::navGridSource() {
+    static const EnumTable<NavGridSource> table(reflect::enums::kNavGridSource);
     return table;
 }
 

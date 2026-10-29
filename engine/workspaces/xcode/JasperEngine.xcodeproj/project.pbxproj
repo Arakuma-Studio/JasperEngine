@@ -32,8 +32,10 @@
 		5E5150000000000000000022 /* SokolVramTracker.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E515000000000000000000F /* SokolVramTracker.cpp */; };
 		5E5150000000000000000023 /* SokolVramTracker.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E515000000000000000000F /* SokolVramTracker.cpp */; };
 		5E5150000000000000000024 /* ProfilerClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000012 /* ProfilerClassesLua.cpp */; };
+		434F4D5013C4D3B49EF03202 /* NavigationClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50EAA5F8D796EE7407 /* NavigationClassesLua.cpp */; };
 		434F4D50C6EF06C129A2C1A1 /* GameplayClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D500FDED71A67F616CA /* GameplayClassesLua.cpp */; };
 		5E5150000000000000000025 /* ProfilerClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000012 /* ProfilerClassesLua.cpp */; };
+		434F4D503899BB473A74451C /* NavigationClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50EAA5F8D796EE7407 /* NavigationClassesLua.cpp */; };
 		434F4D5077FD9C84C36F4F2D /* GameplayClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D500FDED71A67F616CA /* GameplayClassesLua.cpp */; };
 		5E5280000000000000000042 /* CrashClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000041 /* CrashClassesLua.cpp */; };
 		5E5280000000000000000043 /* CrashClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5280000000000000000041 /* CrashClassesLua.cpp */; };
@@ -228,19 +230,34 @@
 		7105CAA92AD61BD5007C91BA /* Box2DAux.h in Headers */ = {isa = PBXBuildFile; fileRef = 7105CAA72AD61BD5007C91BA /* Box2DAux.h */; };
 		7105CAAC2AD61C7A007C91BA /* RigidbodyComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 7105CAAA2AD61C7A007C91BA /* RigidbodyComponent.h */; };
 		7105CAAD2AD61C7A007C91BA /* Joint3DComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 7105CAAB2AD61C7A007C91BA /* Joint3DComponent.h */; };
+		434F4D50A1A57507BA6D85CA /* NavMeshSurfaceComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50FA23743016BE638E /* NavMeshSurfaceComponent.h */; };
+		434F4D50E6841023E8E1031C /* NavMeshObstacleComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50A9C198B2C988B1E7 /* NavMeshObstacleComponent.h */; };
+		434F4D501DDCEF04D32DB5C4 /* NavMeshModifierComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5028AB2A2ABAB172AB /* NavMeshModifierComponent.h */; };
+		434F4D5058A129D2B33D7E72 /* NavMeshLinkComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50D93D6F4E152C7E5A /* NavMeshLinkComponent.h */; };
+		434F4D5017B9D002575B79DF /* NavMeshAgentComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D508A7F6572486879B7 /* NavMeshAgentComponent.h */; };
+		434F4D5075735AFED2B2DCB1 /* NavGridComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5003E7D325332524ED /* NavGridComponent.h */; };
 		434F4D5047A84905C0348B5B /* BuoyancyComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5061DEA5CCD068915F /* BuoyancyComponent.h */; };
 		434F4D509DF77520FB09D297 /* WaterVolumeComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50CB4A6D444125276A /* WaterVolumeComponent.h */; };
 		434F4D501E30D64F308D59B4 /* CharacterControllerComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5053DC96D5A818F616 /* CharacterControllerComponent.h */; };
 		7105CAB22AD61CB6007C91BA /* Joint3D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105CAAE2AD61CB5007C91BA /* Joint3D.cpp */; };
+		434F4D5040BB769427241CFA /* NavMeshSurface.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5046529486003E4C4B /* NavMeshSurface.cpp */; };
+		434F4D50765318B169FF9336 /* NavMeshAgent.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50E98D19B39AEDAE3F /* NavMeshAgent.cpp */; };
+		434F4D50C07376449AC14165 /* NavGrid.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50551C7E4A562A3460 /* NavGrid.cpp */; };
 		434F4D50421DB7150F3F7B7B /* Buoyancy.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5062D223094E060126 /* Buoyancy.cpp */; };
 		434F4D50BF25EC1914E550C7 /* CharacterController.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50924F742EE4F8B55A /* CharacterController.cpp */; };
 		7105CAB32AD61CB6007C91BA /* Joint3D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105CAAE2AD61CB5007C91BA /* Joint3D.cpp */; };
+		434F4D50CD8A1CEEB121BCD9 /* NavMeshSurface.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5046529486003E4C4B /* NavMeshSurface.cpp */; };
+		434F4D50C6F72FF31DC6E24F /* NavMeshAgent.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50E98D19B39AEDAE3F /* NavMeshAgent.cpp */; };
+		434F4D506033C70EDC0D332C /* NavGrid.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50551C7E4A562A3460 /* NavGrid.cpp */; };
 		434F4D50FB45A656669C7D41 /* Buoyancy.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5062D223094E060126 /* Buoyancy.cpp */; };
 		434F4D506186EF2152BDFE1F /* CharacterController.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50924F742EE4F8B55A /* CharacterController.cpp */; };
 		7105CAB42AD61CB6007C91BA /* Rigidbody.h in Headers */ = {isa = PBXBuildFile; fileRef = 7105CAAF2AD61CB5007C91BA /* Rigidbody.h */; };
 		7105CAB52AD61CB6007C91BA /* Rigidbody.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105CAB02AD61CB6007C91BA /* Rigidbody.cpp */; };
 		7105CAB62AD61CB6007C91BA /* Rigidbody.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105CAB02AD61CB6007C91BA /* Rigidbody.cpp */; };
 		7105CAB72AD61CB6007C91BA /* Joint3D.h in Headers */ = {isa = PBXBuildFile; fileRef = 7105CAB12AD61CB6007C91BA /* Joint3D.h */; };
+		434F4D50BF628E830AFCD2F4 /* NavMeshSurface.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50FF0F53AEA589E855 /* NavMeshSurface.h */; };
+		434F4D50BD7DB5400DD8D0FB /* NavMeshAgent.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D508CA2EF5F39B88F23 /* NavMeshAgent.h */; };
+		434F4D508300DB4D63B7EFE8 /* NavGrid.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50AADFCBEAD03B80DC /* NavGrid.h */; };
 		434F4D5078E5688AFE157716 /* Buoyancy.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5054A2EC3C6D818D80 /* Buoyancy.h */; };
 		434F4D502136CA306C5110A0 /* CharacterController.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5032C290E7DCD91FA2 /* CharacterController.h */; };
 		434F4D505A097F599EE4B973 /* ControllerColliderHit.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50BD439D531664D226 /* ControllerColliderHit.h */; };
@@ -1085,10 +1102,100 @@
 		71ABBD4527A879D4001CE3AF /* Button.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71ABBD4227A879D4001CE3AF /* Button.cpp */; };
 		71ABBD4627A879D4001CE3AF /* Button.h in Headers */ = {isa = PBXBuildFile; fileRef = 71ABBD4327A879D4001CE3AF /* Button.h */; };
 		71ABBD4927A87A2E001CE3AF /* MeshSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71ABBD4727A87A2E001CE3AF /* MeshSystem.cpp */; };
+		434F4D50943B51C93169DBAD /* DetourTileCacheBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D505F5387C448227749 /* DetourTileCacheBuilder.cpp */; };
+		434F4D50D1A59C0FC110889D /* DetourTileCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50329545138461F5C4 /* DetourTileCache.cpp */; };
+		434F4D500E5633214DA13846 /* DetourProximityGrid.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50B907AE8C6AB40683 /* DetourProximityGrid.cpp */; };
+		434F4D50B6E0C9D391FC0B1D /* DetourPathQueue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D509157513DBA745634 /* DetourPathQueue.cpp */; };
+		434F4D50DEF713ACE5DA93B1 /* DetourPathCorridor.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5036CFDC701FC55946 /* DetourPathCorridor.cpp */; };
+		434F4D50BF625D953FB30485 /* DetourObstacleAvoidance.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D507DF3BE51CFD5C5F7 /* DetourObstacleAvoidance.cpp */; };
+		434F4D50AE2B29DE79361EED /* DetourLocalBoundary.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50349C0BD2DE20EA72 /* DetourLocalBoundary.cpp */; };
+		434F4D50A072DE5133BDED46 /* DetourCrowd.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50BCEF162CE4955C66 /* DetourCrowd.cpp */; };
+		434F4D5003D27ADB3845BCB5 /* DetourNode.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5017FDC5922D8B5C97 /* DetourNode.cpp */; };
+		434F4D503122DA67506501D1 /* DetourNavMeshQuery.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50D5BAF1BE1A996F07 /* DetourNavMeshQuery.cpp */; };
+		434F4D503660A157BB388A32 /* DetourNavMeshBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D507315D03BE1E5CC7A /* DetourNavMeshBuilder.cpp */; };
+		434F4D509DBED9D557B113EA /* DetourNavMesh.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D506B9A2467E64698C0 /* DetourNavMesh.cpp */; };
+		434F4D50ED8C81C79F2CDD81 /* DetourCommon.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50A6C23968FC0EDE06 /* DetourCommon.cpp */; };
+		434F4D50E38158BE7AA9BF57 /* DetourAssert.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50F4D947BF0604C989 /* DetourAssert.cpp */; };
+		434F4D50E1D4E9D0B1295DC6 /* DetourAlloc.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D508C178E4B7F711B9E /* DetourAlloc.cpp */; };
+		434F4D509AC523A76492FB90 /* RecastRegion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D501B5968BAB93F2F45 /* RecastRegion.cpp */; };
+		434F4D5044DCED4A734BA50C /* RecastRasterization.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D508C93C8B2CC568514 /* RecastRasterization.cpp */; };
+		434F4D502A3B087C6021014B /* RecastMeshDetail.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D505CFD549A77597DFF /* RecastMeshDetail.cpp */; };
+		434F4D50B68FD042E9D09B8E /* RecastMesh.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5091690D9E0B2F3C5A /* RecastMesh.cpp */; };
+		434F4D508A03C7BD940B7F11 /* RecastLayers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50FF80CB928F35E514 /* RecastLayers.cpp */; };
+		434F4D50B2596EC5602FDE98 /* RecastFilter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5089C4FC4647EC0070 /* RecastFilter.cpp */; };
+		434F4D50291C4CF2F465F450 /* RecastContour.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5011F56AA0514C5E86 /* RecastContour.cpp */; };
+		434F4D506D974659D7DE372B /* RecastAssert.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5089633425A2936F3F /* RecastAssert.cpp */; };
+		434F4D50E3CBC29CEE0A0F33 /* RecastArea.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5006355EE9443DC97D /* RecastArea.cpp */; };
+		434F4D50384E6C619111D7B2 /* RecastAlloc.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5028727BD964D1004D /* RecastAlloc.cpp */; };
+		434F4D504D8B3B97405B1DBD /* Recast.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50C0DBD5E8332448B7 /* Recast.cpp */; };
+		434F4D50A89F7CB39C341C5A /* MeshTriangles.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D502BB0856969B090ED /* MeshTriangles.cpp */; };
+		434F4D5002574EE9DD963818 /* NavigationSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D505C20F443A867F506 /* NavigationSystem.cpp */; };
+		434F4D50A791EEB9D28893D5 /* NavTypes.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50B1509F8AFD7E89EA /* NavTypes.cpp */; };
+		434F4D5097CEFBFEF2FEEF48 /* NavMeshBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50981A652B17761328 /* NavMeshBuilder.cpp */; };
+		434F4D50F98776DC7DB106B1 /* NavMesh.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5031C63121EB11B5F4 /* NavMesh.cpp */; };
+		434F4D500E2CFA86E98D43EA /* NavGridMap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50F4AEB4D13E1C1D26 /* NavGridMap.cpp */; };
+		434F4D5009D40F9FBE80051E /* NavDetourSupport.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50BAD26AB8F4131F62 /* NavDetourSupport.cpp */; };
+		434F4D501BD422DEC07B8442 /* NavCrowd.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5074A747290726749F /* NavCrowd.cpp */; };
+		434F4D5073887A78569D5C29 /* NavBakeScheduler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50342CD1D24AE68E2D /* NavBakeScheduler.cpp */; };
+		434F4D5095CD55B8540D763A /* NavBakeInput.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50C0CDEEDFACA8872A /* NavBakeInput.cpp */; };
+		434F4D507987427848437244 /* NavBakeCollector.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5066C83C44BD3058B1 /* NavBakeCollector.cpp */; };
+		434F4D50941B4923E779AF6A /* GridPathfinder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50CF9183C86C5E3D30 /* GridPathfinder.cpp */; };
 		511A000C0000000000000000 /* MeshSystemGltfPbr.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 511A000B0000000000000000 /* MeshSystemGltfPbr.cpp */; };
 		71ABBD4A27A87A2E001CE3AF /* MeshSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71ABBD4727A87A2E001CE3AF /* MeshSystem.cpp */; };
+		434F4D503C27EFEA94FF1D70 /* DetourTileCacheBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D505F5387C448227749 /* DetourTileCacheBuilder.cpp */; };
+		434F4D50D6787AE649205EED /* DetourTileCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50329545138461F5C4 /* DetourTileCache.cpp */; };
+		434F4D50A266130993E3C2EF /* DetourProximityGrid.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50B907AE8C6AB40683 /* DetourProximityGrid.cpp */; };
+		434F4D507C7F9B0E35F0BFB8 /* DetourPathQueue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D509157513DBA745634 /* DetourPathQueue.cpp */; };
+		434F4D508D752A028480F9FE /* DetourPathCorridor.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5036CFDC701FC55946 /* DetourPathCorridor.cpp */; };
+		434F4D503F6F0C88A3F46E76 /* DetourObstacleAvoidance.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D507DF3BE51CFD5C5F7 /* DetourObstacleAvoidance.cpp */; };
+		434F4D5071F7A49711CA355B /* DetourLocalBoundary.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50349C0BD2DE20EA72 /* DetourLocalBoundary.cpp */; };
+		434F4D50A7E7C7FD019E1FB7 /* DetourCrowd.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50BCEF162CE4955C66 /* DetourCrowd.cpp */; };
+		434F4D505B68012EC5106F98 /* DetourNode.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5017FDC5922D8B5C97 /* DetourNode.cpp */; };
+		434F4D50F0EAEA0FE57C8EBE /* DetourNavMeshQuery.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50D5BAF1BE1A996F07 /* DetourNavMeshQuery.cpp */; };
+		434F4D506A1224486C6318BB /* DetourNavMeshBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D507315D03BE1E5CC7A /* DetourNavMeshBuilder.cpp */; };
+		434F4D50BCC6818ECFBAFB9C /* DetourNavMesh.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D506B9A2467E64698C0 /* DetourNavMesh.cpp */; };
+		434F4D506FE0C6D087FCE511 /* DetourCommon.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50A6C23968FC0EDE06 /* DetourCommon.cpp */; };
+		434F4D504F3AA1185AA711D5 /* DetourAssert.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50F4D947BF0604C989 /* DetourAssert.cpp */; };
+		434F4D50054DBA07BE7F5EDD /* DetourAlloc.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D508C178E4B7F711B9E /* DetourAlloc.cpp */; };
+		434F4D509321A86FCD78DBAE /* RecastRegion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D501B5968BAB93F2F45 /* RecastRegion.cpp */; };
+		434F4D5020C26A634FC61CFA /* RecastRasterization.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D508C93C8B2CC568514 /* RecastRasterization.cpp */; };
+		434F4D5040F36537DB2947FA /* RecastMeshDetail.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D505CFD549A77597DFF /* RecastMeshDetail.cpp */; };
+		434F4D507A85E20FDA9FAC36 /* RecastMesh.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5091690D9E0B2F3C5A /* RecastMesh.cpp */; };
+		434F4D50F1C0AF138F07D3FA /* RecastLayers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50FF80CB928F35E514 /* RecastLayers.cpp */; };
+		434F4D5019E77184D9CF8F8A /* RecastFilter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5089C4FC4647EC0070 /* RecastFilter.cpp */; };
+		434F4D50EB7B3F92AF880C14 /* RecastContour.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5011F56AA0514C5E86 /* RecastContour.cpp */; };
+		434F4D5001B3E5D7E300A7C7 /* RecastAssert.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5089633425A2936F3F /* RecastAssert.cpp */; };
+		434F4D5009A50D8B92F7DC48 /* RecastArea.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5006355EE9443DC97D /* RecastArea.cpp */; };
+		434F4D508489895867303F0D /* RecastAlloc.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5028727BD964D1004D /* RecastAlloc.cpp */; };
+		434F4D5056A002D24336A68C /* Recast.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50C0DBD5E8332448B7 /* Recast.cpp */; };
+		434F4D5011437D02A351D3FF /* MeshTriangles.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D502BB0856969B090ED /* MeshTriangles.cpp */; };
+		434F4D508F557C6D3C6B6844 /* NavigationSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D505C20F443A867F506 /* NavigationSystem.cpp */; };
+		434F4D502BEB4E8A6C2FD031 /* NavTypes.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50B1509F8AFD7E89EA /* NavTypes.cpp */; };
+		434F4D507A2EDF915D0308DE /* NavMeshBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50981A652B17761328 /* NavMeshBuilder.cpp */; };
+		434F4D50B2D16FCF2FB9EC8B /* NavMesh.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5031C63121EB11B5F4 /* NavMesh.cpp */; };
+		434F4D5067D6FCFAC15F4103 /* NavGridMap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50F4AEB4D13E1C1D26 /* NavGridMap.cpp */; };
+		434F4D50289D1C8826B7765E /* NavDetourSupport.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50BAD26AB8F4131F62 /* NavDetourSupport.cpp */; };
+		434F4D50FE368A8A4844EE5E /* NavCrowd.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5074A747290726749F /* NavCrowd.cpp */; };
+		434F4D50A6F712909FB6E600 /* NavBakeScheduler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50342CD1D24AE68E2D /* NavBakeScheduler.cpp */; };
+		434F4D5072519F22CAEEEF24 /* NavBakeInput.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50C0CDEEDFACA8872A /* NavBakeInput.cpp */; };
+		434F4D5065D1D012FCAE4817 /* NavBakeCollector.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5066C83C44BD3058B1 /* NavBakeCollector.cpp */; };
+		434F4D50150191D288E00CDA /* GridPathfinder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50CF9183C86C5E3D30 /* GridPathfinder.cpp */; };
 		511A000D0000000000000000 /* MeshSystemGltfPbr.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 511A000B0000000000000000 /* MeshSystemGltfPbr.cpp */; };
 		71ABBD4B27A87A2E001CE3AF /* MeshSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 71ABBD4827A87A2E001CE3AF /* MeshSystem.h */; };
+		434F4D5030DE4ED4671C2A46 /* MeshTriangles.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50290007DFE40AC9CB /* MeshTriangles.h */; };
+		434F4D50BD0DE86696C01B02 /* NavigationSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50918B791D9DA25DA7 /* NavigationSystem.h */; };
+		434F4D50C2498E27D7F92D4C /* NavTypes.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D503F0117111AE20581 /* NavTypes.h */; };
+		434F4D50BF5A65EC34286EE5 /* NavMeshBuilder.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50A02A4DCD5915D953 /* NavMeshBuilder.h */; };
+		434F4D5058281E12648D6136 /* NavMesh.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5040FAD2211D648552 /* NavMesh.h */; };
+		434F4D503DBDEBF96C400D9F /* NavHash.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D500863C1B8D792963F /* NavHash.h */; };
+		434F4D508BA5CDC36E37C599 /* NavGridMap.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D506D748738C63AB26E /* NavGridMap.h */; };
+		434F4D5063879D41A5B32213 /* NavFrame.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D504E9D3F50492E818B /* NavFrame.h */; };
+		434F4D50DD3B31EB0F003DE1 /* NavDetourSupport.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50C5C51706A9B9F13D /* NavDetourSupport.h */; };
+		434F4D50D79B6E6D651F86F2 /* NavCrowd.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D5025F8C1CAE3733BF4 /* NavCrowd.h */; };
+		434F4D50D3BFC089717D6507 /* NavBakeScheduler.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D505C8A73998E744954 /* NavBakeScheduler.h */; };
+		434F4D50982444C4AD8FD9F2 /* NavBakeInput.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D501407264F2525CAF4 /* NavBakeInput.h */; };
+		434F4D5010132089B935ED07 /* NavBakeCollector.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D505BEF67FC644D1E0D /* NavBakeCollector.h */; };
+		434F4D50E4E9CA07157570FA /* GridPathfinder.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D502EADFE33034F27D8 /* GridPathfinder.h */; };
 		71AD5E702E9F2B86004951AB /* ScriptBase.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71AD5E6E2E9F2B86004951AB /* ScriptBase.cpp */; };
 		71AD5E712E9F2B86004951AB /* ScriptProperty.h in Headers */ = {isa = PBXBuildFile; fileRef = 71AD5E6F2E9F2B86004951AB /* ScriptProperty.h */; };
 		71AD5E722E9F2B86004951AB /* ScriptBase.h in Headers */ = {isa = PBXBuildFile; fileRef = 71AD5E6D2E9F2B86004951AB /* ScriptBase.h */; };
@@ -4226,6 +4333,7 @@
 		5E5150000000000000000010 /* SokolVramTracker.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SokolVramTracker.h; sourceTree = "<group>"; };
 		5E5150000000000000000011 /* Profile.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Profile.h; sourceTree = "<group>"; };
 		5E5150000000000000000012 /* ProfilerClassesLua.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ProfilerClassesLua.cpp; sourceTree = "<group>"; };
+		434F4D50EAA5F8D796EE7407 /* NavigationClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = NavigationClassesLua.cpp; sourceTree = "<group>"; };
 		434F4D500FDED71A67F616CA /* GameplayClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GameplayClassesLua.cpp; sourceTree = "<group>"; };
 		5E5280000000000000000041 /* CrashClassesLua.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = CrashClassesLua.cpp; sourceTree = "<group>"; };
 		5E5150000000000000000013 /* RenderStats.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RenderStats.h; sourceTree = "<group>"; };
@@ -4385,15 +4493,27 @@
 		7105CAA72AD61BD5007C91BA /* Box2DAux.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Box2DAux.h; sourceTree = "<group>"; };
 		7105CAAA2AD61C7A007C91BA /* RigidbodyComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RigidbodyComponent.h; sourceTree = "<group>"; };
 		7105CAAB2AD61C7A007C91BA /* Joint3DComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Joint3DComponent.h; sourceTree = "<group>"; };
+		434F4D50FA23743016BE638E /* NavMeshSurfaceComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NavMeshSurfaceComponent.h; sourceTree = "<group>"; };
+		434F4D50A9C198B2C988B1E7 /* NavMeshObstacleComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NavMeshObstacleComponent.h; sourceTree = "<group>"; };
+		434F4D5028AB2A2ABAB172AB /* NavMeshModifierComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NavMeshModifierComponent.h; sourceTree = "<group>"; };
+		434F4D50D93D6F4E152C7E5A /* NavMeshLinkComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NavMeshLinkComponent.h; sourceTree = "<group>"; };
+		434F4D508A7F6572486879B7 /* NavMeshAgentComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NavMeshAgentComponent.h; sourceTree = "<group>"; };
+		434F4D5003E7D325332524ED /* NavGridComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NavGridComponent.h; sourceTree = "<group>"; };
 		434F4D5061DEA5CCD068915F /* BuoyancyComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = BuoyancyComponent.h; sourceTree = "<group>"; };
 		434F4D50CB4A6D444125276A /* WaterVolumeComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WaterVolumeComponent.h; sourceTree = "<group>"; };
 		434F4D5053DC96D5A818F616 /* CharacterControllerComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CharacterControllerComponent.h; sourceTree = "<group>"; };
 		7105CAAE2AD61CB5007C91BA /* Joint3D.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Joint3D.cpp; sourceTree = "<group>"; };
+		434F4D5046529486003E4C4B /* NavMeshSurface.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../navigation/NavMeshSurface.cpp; sourceTree = "<group>"; };
+		434F4D50E98D19B39AEDAE3F /* NavMeshAgent.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../navigation/NavMeshAgent.cpp; sourceTree = "<group>"; };
+		434F4D50551C7E4A562A3460 /* NavGrid.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../navigation/NavGrid.cpp; sourceTree = "<group>"; };
 		434F4D5062D223094E060126 /* Buoyancy.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Buoyancy.cpp; sourceTree = "<group>"; };
 		434F4D50924F742EE4F8B55A /* CharacterController.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CharacterController.cpp; sourceTree = "<group>"; };
 		7105CAAF2AD61CB5007C91BA /* Rigidbody.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Rigidbody.h; sourceTree = "<group>"; };
 		7105CAB02AD61CB6007C91BA /* Rigidbody.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Rigidbody.cpp; sourceTree = "<group>"; };
 		7105CAB12AD61CB6007C91BA /* Joint3D.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Joint3D.h; sourceTree = "<group>"; };
+		434F4D50FF0F53AEA589E855 /* NavMeshSurface.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../navigation/NavMeshSurface.h; sourceTree = "<group>"; };
+		434F4D508CA2EF5F39B88F23 /* NavMeshAgent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../navigation/NavMeshAgent.h; sourceTree = "<group>"; };
+		434F4D50AADFCBEAD03B80DC /* NavGrid.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../navigation/NavGrid.h; sourceTree = "<group>"; };
 		434F4D5054A2EC3C6D818D80 /* Buoyancy.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Buoyancy.h; sourceTree = "<group>"; };
 		434F4D5032C290E7DCD91FA2 /* CharacterController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CharacterController.h; sourceTree = "<group>"; };
 		434F4D50BD439D531664D226 /* ControllerColliderHit.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ControllerColliderHit.h; sourceTree = "<group>"; };
@@ -5695,8 +5815,60 @@
 		71ABBD4227A879D4001CE3AF /* Button.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Button.cpp; sourceTree = "<group>"; };
 		71ABBD4327A879D4001CE3AF /* Button.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Button.h; sourceTree = "<group>"; };
 		71ABBD4727A87A2E001CE3AF /* MeshSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MeshSystem.cpp; sourceTree = "<group>"; };
+		434F4D505F5387C448227749 /* DetourTileCacheBuilder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../../libs/recastnavigation/DetourTileCache/Source/DetourTileCacheBuilder.cpp; sourceTree = "<group>"; };
+		434F4D50329545138461F5C4 /* DetourTileCache.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../../libs/recastnavigation/DetourTileCache/Source/DetourTileCache.cpp; sourceTree = "<group>"; };
+		434F4D50B907AE8C6AB40683 /* DetourProximityGrid.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../../libs/recastnavigation/DetourCrowd/Source/DetourProximityGrid.cpp; sourceTree = "<group>"; };
+		434F4D509157513DBA745634 /* DetourPathQueue.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../../libs/recastnavigation/DetourCrowd/Source/DetourPathQueue.cpp; sourceTree = "<group>"; };
+		434F4D5036CFDC701FC55946 /* DetourPathCorridor.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../../libs/recastnavigation/DetourCrowd/Source/DetourPathCorridor.cpp; sourceTree = "<group>"; };
+		434F4D507DF3BE51CFD5C5F7 /* DetourObstacleAvoidance.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../../libs/recastnavigation/DetourCrowd/Source/DetourObstacleAvoidance.cpp; sourceTree = "<group>"; };
+		434F4D50349C0BD2DE20EA72 /* DetourLocalBoundary.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../../libs/recastnavigation/DetourCrowd/Source/DetourLocalBoundary.cpp; sourceTree = "<group>"; };
+		434F4D50BCEF162CE4955C66 /* DetourCrowd.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../../libs/recastnavigation/DetourCrowd/Source/DetourCrowd.cpp; sourceTree = "<group>"; };
+		434F4D5017FDC5922D8B5C97 /* DetourNode.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../../libs/recastnavigation/Detour/Source/DetourNode.cpp; sourceTree = "<group>"; };
+		434F4D50D5BAF1BE1A996F07 /* DetourNavMeshQuery.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../../libs/recastnavigation/Detour/Source/DetourNavMeshQuery.cpp; sourceTree = "<group>"; };
+		434F4D507315D03BE1E5CC7A /* DetourNavMeshBuilder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../../libs/recastnavigation/Detour/Source/DetourNavMeshBuilder.cpp; sourceTree = "<group>"; };
+		434F4D506B9A2467E64698C0 /* DetourNavMesh.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../../libs/recastnavigation/Detour/Source/DetourNavMesh.cpp; sourceTree = "<group>"; };
+		434F4D50A6C23968FC0EDE06 /* DetourCommon.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../../libs/recastnavigation/Detour/Source/DetourCommon.cpp; sourceTree = "<group>"; };
+		434F4D50F4D947BF0604C989 /* DetourAssert.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../../libs/recastnavigation/Detour/Source/DetourAssert.cpp; sourceTree = "<group>"; };
+		434F4D508C178E4B7F711B9E /* DetourAlloc.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../../libs/recastnavigation/Detour/Source/DetourAlloc.cpp; sourceTree = "<group>"; };
+		434F4D501B5968BAB93F2F45 /* RecastRegion.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../../libs/recastnavigation/Recast/Source/RecastRegion.cpp; sourceTree = "<group>"; };
+		434F4D508C93C8B2CC568514 /* RecastRasterization.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../../libs/recastnavigation/Recast/Source/RecastRasterization.cpp; sourceTree = "<group>"; };
+		434F4D505CFD549A77597DFF /* RecastMeshDetail.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../../libs/recastnavigation/Recast/Source/RecastMeshDetail.cpp; sourceTree = "<group>"; };
+		434F4D5091690D9E0B2F3C5A /* RecastMesh.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../../libs/recastnavigation/Recast/Source/RecastMesh.cpp; sourceTree = "<group>"; };
+		434F4D50FF80CB928F35E514 /* RecastLayers.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../../libs/recastnavigation/Recast/Source/RecastLayers.cpp; sourceTree = "<group>"; };
+		434F4D5089C4FC4647EC0070 /* RecastFilter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../../libs/recastnavigation/Recast/Source/RecastFilter.cpp; sourceTree = "<group>"; };
+		434F4D5011F56AA0514C5E86 /* RecastContour.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../../libs/recastnavigation/Recast/Source/RecastContour.cpp; sourceTree = "<group>"; };
+		434F4D5089633425A2936F3F /* RecastAssert.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../../libs/recastnavigation/Recast/Source/RecastAssert.cpp; sourceTree = "<group>"; };
+		434F4D5006355EE9443DC97D /* RecastArea.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../../libs/recastnavigation/Recast/Source/RecastArea.cpp; sourceTree = "<group>"; };
+		434F4D5028727BD964D1004D /* RecastAlloc.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../../libs/recastnavigation/Recast/Source/RecastAlloc.cpp; sourceTree = "<group>"; };
+		434F4D50C0DBD5E8332448B7 /* Recast.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../../libs/recastnavigation/Recast/Source/Recast.cpp; sourceTree = "<group>"; };
+		434F4D502BB0856969B090ED /* MeshTriangles.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../util/MeshTriangles.cpp; sourceTree = "<group>"; };
+		434F4D505C20F443A867F506 /* NavigationSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = NavigationSystem.cpp; sourceTree = "<group>"; };
+		434F4D50B1509F8AFD7E89EA /* NavTypes.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../navigation/NavTypes.cpp; sourceTree = "<group>"; };
+		434F4D50981A652B17761328 /* NavMeshBuilder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../navigation/NavMeshBuilder.cpp; sourceTree = "<group>"; };
+		434F4D5031C63121EB11B5F4 /* NavMesh.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../navigation/NavMesh.cpp; sourceTree = "<group>"; };
+		434F4D50F4AEB4D13E1C1D26 /* NavGridMap.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../navigation/NavGridMap.cpp; sourceTree = "<group>"; };
+		434F4D50BAD26AB8F4131F62 /* NavDetourSupport.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../navigation/NavDetourSupport.cpp; sourceTree = "<group>"; };
+		434F4D5074A747290726749F /* NavCrowd.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../navigation/NavCrowd.cpp; sourceTree = "<group>"; };
+		434F4D50342CD1D24AE68E2D /* NavBakeScheduler.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../navigation/NavBakeScheduler.cpp; sourceTree = "<group>"; };
+		434F4D50C0CDEEDFACA8872A /* NavBakeInput.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../navigation/NavBakeInput.cpp; sourceTree = "<group>"; };
+		434F4D5066C83C44BD3058B1 /* NavBakeCollector.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../navigation/NavBakeCollector.cpp; sourceTree = "<group>"; };
+		434F4D50CF9183C86C5E3D30 /* GridPathfinder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ../navigation/GridPathfinder.cpp; sourceTree = "<group>"; };
 		511A000B0000000000000000 /* MeshSystemGltfPbr.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = MeshSystemGltfPbr.cpp; sourceTree = "<group>"; };
 		71ABBD4827A87A2E001CE3AF /* MeshSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MeshSystem.h; sourceTree = "<group>"; };
+		434F4D50290007DFE40AC9CB /* MeshTriangles.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../util/MeshTriangles.h; sourceTree = "<group>"; };
+		434F4D50918B791D9DA25DA7 /* NavigationSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NavigationSystem.h; sourceTree = "<group>"; };
+		434F4D503F0117111AE20581 /* NavTypes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../navigation/NavTypes.h; sourceTree = "<group>"; };
+		434F4D50A02A4DCD5915D953 /* NavMeshBuilder.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../navigation/NavMeshBuilder.h; sourceTree = "<group>"; };
+		434F4D5040FAD2211D648552 /* NavMesh.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../navigation/NavMesh.h; sourceTree = "<group>"; };
+		434F4D500863C1B8D792963F /* NavHash.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../navigation/NavHash.h; sourceTree = "<group>"; };
+		434F4D506D748738C63AB26E /* NavGridMap.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../navigation/NavGridMap.h; sourceTree = "<group>"; };
+		434F4D504E9D3F50492E818B /* NavFrame.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../navigation/NavFrame.h; sourceTree = "<group>"; };
+		434F4D50C5C51706A9B9F13D /* NavDetourSupport.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../navigation/NavDetourSupport.h; sourceTree = "<group>"; };
+		434F4D5025F8C1CAE3733BF4 /* NavCrowd.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../navigation/NavCrowd.h; sourceTree = "<group>"; };
+		434F4D505C8A73998E744954 /* NavBakeScheduler.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../navigation/NavBakeScheduler.h; sourceTree = "<group>"; };
+		434F4D501407264F2525CAF4 /* NavBakeInput.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../navigation/NavBakeInput.h; sourceTree = "<group>"; };
+		434F4D505BEF67FC644D1E0D /* NavBakeCollector.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../navigation/NavBakeCollector.h; sourceTree = "<group>"; };
+		434F4D502EADFE33034F27D8 /* GridPathfinder.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ../navigation/GridPathfinder.h; sourceTree = "<group>"; };
 		71AD5E6D2E9F2B86004951AB /* ScriptBase.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ScriptBase.h; sourceTree = "<group>"; };
 		71AD5E6E2E9F2B86004951AB /* ScriptBase.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ScriptBase.cpp; sourceTree = "<group>"; };
 		71AD5E6F2E9F2B86004951AB /* ScriptProperty.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ScriptProperty.h; sourceTree = "<group>"; };
@@ -8128,6 +8300,7 @@
 				7105A55C28B305B20092EA05 /* GameObjectClassesLua.cpp */,
 				716803C72DF75E6F00ED71BE /* ThreadClassesLua.cpp */,
 				5E5150000000000000000012 /* ProfilerClassesLua.cpp */,
+				434F4D50EAA5F8D796EE7407 /* NavigationClassesLua.cpp */,
 				434F4D500FDED71A67F616CA /* GameplayClassesLua.cpp */,
 				5E5280000000000000000041 /* CrashClassesLua.cpp */,
 				7105A56028B305B20092EA05 /* UtilClassesLua.cpp */,
@@ -9301,6 +9474,12 @@
 				434F4D50C5DE5B71BE8D8759 /* CharacterController2DComponent.h */,
 				434F4D5084D5F77E117B1988 /* CharacterCollision.h */,
 				7105CAAB2AD61C7A007C91BA /* Joint3DComponent.h */,
+				434F4D50FA23743016BE638E /* NavMeshSurfaceComponent.h */,
+				434F4D50A9C198B2C988B1E7 /* NavMeshObstacleComponent.h */,
+				434F4D5028AB2A2ABAB172AB /* NavMeshModifierComponent.h */,
+				434F4D50D93D6F4E152C7E5A /* NavMeshLinkComponent.h */,
+				434F4D508A7F6572486879B7 /* NavMeshAgentComponent.h */,
+				434F4D5003E7D325332524ED /* NavGridComponent.h */,
 				434F4D5061DEA5CCD068915F /* BuoyancyComponent.h */,
 				434F4D50CB4A6D444125276A /* WaterVolumeComponent.h */,
 				434F4D5053DC96D5A818F616 /* CharacterControllerComponent.h */,
@@ -9496,8 +9675,60 @@
 				717AD96B290B661A007D7DB5 /* AudioSystem.cpp */,
 				717AD96C290B661A007D7DB5 /* AudioSystem.h */,
 				71ABBD4727A87A2E001CE3AF /* MeshSystem.cpp */,
+				434F4D505F5387C448227749 /* DetourTileCacheBuilder.cpp */,
+				434F4D50329545138461F5C4 /* DetourTileCache.cpp */,
+				434F4D50B907AE8C6AB40683 /* DetourProximityGrid.cpp */,
+				434F4D509157513DBA745634 /* DetourPathQueue.cpp */,
+				434F4D5036CFDC701FC55946 /* DetourPathCorridor.cpp */,
+				434F4D507DF3BE51CFD5C5F7 /* DetourObstacleAvoidance.cpp */,
+				434F4D50349C0BD2DE20EA72 /* DetourLocalBoundary.cpp */,
+				434F4D50BCEF162CE4955C66 /* DetourCrowd.cpp */,
+				434F4D5017FDC5922D8B5C97 /* DetourNode.cpp */,
+				434F4D50D5BAF1BE1A996F07 /* DetourNavMeshQuery.cpp */,
+				434F4D507315D03BE1E5CC7A /* DetourNavMeshBuilder.cpp */,
+				434F4D506B9A2467E64698C0 /* DetourNavMesh.cpp */,
+				434F4D50A6C23968FC0EDE06 /* DetourCommon.cpp */,
+				434F4D50F4D947BF0604C989 /* DetourAssert.cpp */,
+				434F4D508C178E4B7F711B9E /* DetourAlloc.cpp */,
+				434F4D501B5968BAB93F2F45 /* RecastRegion.cpp */,
+				434F4D508C93C8B2CC568514 /* RecastRasterization.cpp */,
+				434F4D505CFD549A77597DFF /* RecastMeshDetail.cpp */,
+				434F4D5091690D9E0B2F3C5A /* RecastMesh.cpp */,
+				434F4D50FF80CB928F35E514 /* RecastLayers.cpp */,
+				434F4D5089C4FC4647EC0070 /* RecastFilter.cpp */,
+				434F4D5011F56AA0514C5E86 /* RecastContour.cpp */,
+				434F4D5089633425A2936F3F /* RecastAssert.cpp */,
+				434F4D5006355EE9443DC97D /* RecastArea.cpp */,
+				434F4D5028727BD964D1004D /* RecastAlloc.cpp */,
+				434F4D50C0DBD5E8332448B7 /* Recast.cpp */,
+				434F4D502BB0856969B090ED /* MeshTriangles.cpp */,
+				434F4D505C20F443A867F506 /* NavigationSystem.cpp */,
+				434F4D50B1509F8AFD7E89EA /* NavTypes.cpp */,
+				434F4D50981A652B17761328 /* NavMeshBuilder.cpp */,
+				434F4D5031C63121EB11B5F4 /* NavMesh.cpp */,
+				434F4D50F4AEB4D13E1C1D26 /* NavGridMap.cpp */,
+				434F4D50BAD26AB8F4131F62 /* NavDetourSupport.cpp */,
+				434F4D5074A747290726749F /* NavCrowd.cpp */,
+				434F4D50342CD1D24AE68E2D /* NavBakeScheduler.cpp */,
+				434F4D50C0CDEEDFACA8872A /* NavBakeInput.cpp */,
+				434F4D5066C83C44BD3058B1 /* NavBakeCollector.cpp */,
+				434F4D50CF9183C86C5E3D30 /* GridPathfinder.cpp */,
 				511A000B0000000000000000 /* MeshSystemGltfPbr.cpp */,
 				71ABBD4827A87A2E001CE3AF /* MeshSystem.h */,
+				434F4D50290007DFE40AC9CB /* MeshTriangles.h */,
+				434F4D50918B791D9DA25DA7 /* NavigationSystem.h */,
+				434F4D503F0117111AE20581 /* NavTypes.h */,
+				434F4D50A02A4DCD5915D953 /* NavMeshBuilder.h */,
+				434F4D5040FAD2211D648552 /* NavMesh.h */,
+				434F4D500863C1B8D792963F /* NavHash.h */,
+				434F4D506D748738C63AB26E /* NavGridMap.h */,
+				434F4D504E9D3F50492E818B /* NavFrame.h */,
+				434F4D50C5C51706A9B9F13D /* NavDetourSupport.h */,
+				434F4D5025F8C1CAE3733BF4 /* NavCrowd.h */,
+				434F4D505C8A73998E744954 /* NavBakeScheduler.h */,
+				434F4D501407264F2525CAF4 /* NavBakeInput.h */,
+				434F4D505BEF67FC644D1E0D /* NavBakeCollector.h */,
+				434F4D502EADFE33034F27D8 /* GridPathfinder.h */,
 				71E824922A9C242B00C8E6F2 /* PhysicsSystem.cpp */,
 				71E824932A9C242B00C8E6F2 /* PhysicsSystem.h */,
 				7162FC7025962A0E0075B97D /* RenderSystem.cpp */,
@@ -10956,9 +11187,15 @@
 				71E824892A9C23A600C8E6F2 /* Joint2D.h */,
 				434F4D5094FA8E0734344B34 /* CharacterController2D.h */,
 				7105CAAE2AD61CB5007C91BA /* Joint3D.cpp */,
+				434F4D5046529486003E4C4B /* NavMeshSurface.cpp */,
+				434F4D50E98D19B39AEDAE3F /* NavMeshAgent.cpp */,
+				434F4D50551C7E4A562A3460 /* NavGrid.cpp */,
 				434F4D5062D223094E060126 /* Buoyancy.cpp */,
 				434F4D50924F742EE4F8B55A /* CharacterController.cpp */,
 				7105CAB12AD61CB6007C91BA /* Joint3D.h */,
+				434F4D50FF0F53AEA589E855 /* NavMeshSurface.h */,
+				434F4D508CA2EF5F39B88F23 /* NavMeshAgent.h */,
+				434F4D50AADFCBEAD03B80DC /* NavGrid.h */,
 				434F4D5054A2EC3C6D818D80 /* Buoyancy.h */,
 				434F4D5032C290E7DCD91FA2 /* CharacterController.h */,
 				434F4D50BD439D531664D226 /* ControllerColliderHit.h */,
@@ -13099,11 +13336,20 @@
 				71651FF22AA804B4008D9BF5 /* Manifold2D.h in Headers */,
 				71ABBD4127A879B9001CE3AF /* ButtonComponent.h in Headers */,
 				7105CAB72AD61CB6007C91BA /* Joint3D.h in Headers */,
+				434F4D50BF628E830AFCD2F4 /* NavMeshSurface.h in Headers */,
+				434F4D50BD7DB5400DD8D0FB /* NavMeshAgent.h in Headers */,
+				434F4D508300DB4D63B7EFE8 /* NavGrid.h in Headers */,
 				434F4D5078E5688AFE157716 /* Buoyancy.h in Headers */,
 				434F4D502136CA306C5110A0 /* CharacterController.h in Headers */,
 				434F4D505A097F599EE4B973 /* ControllerColliderHit.h in Headers */,
 				7181A0AD2BC8B6B400AC230B /* PanelComponent.h in Headers */,
 				7105CAAD2AD61C7A007C91BA /* Joint3DComponent.h in Headers */,
+				434F4D50A1A57507BA6D85CA /* NavMeshSurfaceComponent.h in Headers */,
+				434F4D50E6841023E8E1031C /* NavMeshObstacleComponent.h in Headers */,
+				434F4D501DDCEF04D32DB5C4 /* NavMeshModifierComponent.h in Headers */,
+				434F4D5058A129D2B33D7E72 /* NavMeshLinkComponent.h in Headers */,
+				434F4D5017B9D002575B79DF /* NavMeshAgentComponent.h in Headers */,
+				434F4D5075735AFED2B2DCB1 /* NavGridComponent.h in Headers */,
 				434F4D5047A84905C0348B5B /* BuoyancyComponent.h in Headers */,
 				434F4D509DF77520FB09D297 /* WaterVolumeComponent.h in Headers */,
 				434F4D501E30D64F308D59B4 /* CharacterControllerComponent.h in Headers */,
@@ -13163,6 +13409,20 @@
 				71E54514284D5BE000C68FAB /* ScaleTracksComponent.h in Headers */,
 				717AD992292FC30A007D7DB5 /* Framebuffer.h in Headers */,
 				71ABBD4B27A87A2E001CE3AF /* MeshSystem.h in Headers */,
+				434F4D5030DE4ED4671C2A46 /* MeshTriangles.h in Headers */,
+				434F4D50BD0DE86696C01B02 /* NavigationSystem.h in Headers */,
+				434F4D50C2498E27D7F92D4C /* NavTypes.h in Headers */,
+				434F4D50BF5A65EC34286EE5 /* NavMeshBuilder.h in Headers */,
+				434F4D5058281E12648D6136 /* NavMesh.h in Headers */,
+				434F4D503DBDEBF96C400D9F /* NavHash.h in Headers */,
+				434F4D508BA5CDC36E37C599 /* NavGridMap.h in Headers */,
+				434F4D5063879D41A5B32213 /* NavFrame.h in Headers */,
+				434F4D50DD3B31EB0F003DE1 /* NavDetourSupport.h in Headers */,
+				434F4D50D79B6E6D651F86F2 /* NavCrowd.h in Headers */,
+				434F4D50D3BFC089717D6507 /* NavBakeScheduler.h in Headers */,
+				434F4D50982444C4AD8FD9F2 /* NavBakeInput.h in Headers */,
+				434F4D5010132089B935ED07 /* NavBakeCollector.h in Headers */,
+				434F4D50E4E9CA07157570FA /* GridPathfinder.h in Headers */,
 				AE477AACA9CD044D49CC9570 /* LatticeSystem.h in Headers */,
 				376712A19E5CE766E9535136 /* Lattice.h in Headers */,
 				214D393A231656D11BAC9A6F /* LatticeTypes.h in Headers */,
@@ -15485,6 +15745,44 @@
 				713D82AE259D307F00567F9F /* Engine.cpp in Sources */,
 				71ABBD1D277A31BA001CE3AF /* Text.cpp in Sources */,
 				71ABBD4A27A87A2E001CE3AF /* MeshSystem.cpp in Sources */,
+				434F4D503C27EFEA94FF1D70 /* DetourTileCacheBuilder.cpp in Sources */,
+				434F4D50D6787AE649205EED /* DetourTileCache.cpp in Sources */,
+				434F4D50A266130993E3C2EF /* DetourProximityGrid.cpp in Sources */,
+				434F4D507C7F9B0E35F0BFB8 /* DetourPathQueue.cpp in Sources */,
+				434F4D508D752A028480F9FE /* DetourPathCorridor.cpp in Sources */,
+				434F4D503F6F0C88A3F46E76 /* DetourObstacleAvoidance.cpp in Sources */,
+				434F4D5071F7A49711CA355B /* DetourLocalBoundary.cpp in Sources */,
+				434F4D50A7E7C7FD019E1FB7 /* DetourCrowd.cpp in Sources */,
+				434F4D505B68012EC5106F98 /* DetourNode.cpp in Sources */,
+				434F4D50F0EAEA0FE57C8EBE /* DetourNavMeshQuery.cpp in Sources */,
+				434F4D506A1224486C6318BB /* DetourNavMeshBuilder.cpp in Sources */,
+				434F4D50BCC6818ECFBAFB9C /* DetourNavMesh.cpp in Sources */,
+				434F4D506FE0C6D087FCE511 /* DetourCommon.cpp in Sources */,
+				434F4D504F3AA1185AA711D5 /* DetourAssert.cpp in Sources */,
+				434F4D50054DBA07BE7F5EDD /* DetourAlloc.cpp in Sources */,
+				434F4D509321A86FCD78DBAE /* RecastRegion.cpp in Sources */,
+				434F4D5020C26A634FC61CFA /* RecastRasterization.cpp in Sources */,
+				434F4D5040F36537DB2947FA /* RecastMeshDetail.cpp in Sources */,
+				434F4D507A85E20FDA9FAC36 /* RecastMesh.cpp in Sources */,
+				434F4D50F1C0AF138F07D3FA /* RecastLayers.cpp in Sources */,
+				434F4D5019E77184D9CF8F8A /* RecastFilter.cpp in Sources */,
+				434F4D50EB7B3F92AF880C14 /* RecastContour.cpp in Sources */,
+				434F4D5001B3E5D7E300A7C7 /* RecastAssert.cpp in Sources */,
+				434F4D5009A50D8B92F7DC48 /* RecastArea.cpp in Sources */,
+				434F4D508489895867303F0D /* RecastAlloc.cpp in Sources */,
+				434F4D5056A002D24336A68C /* Recast.cpp in Sources */,
+				434F4D5011437D02A351D3FF /* MeshTriangles.cpp in Sources */,
+				434F4D508F557C6D3C6B6844 /* NavigationSystem.cpp in Sources */,
+				434F4D502BEB4E8A6C2FD031 /* NavTypes.cpp in Sources */,
+				434F4D507A2EDF915D0308DE /* NavMeshBuilder.cpp in Sources */,
+				434F4D50B2D16FCF2FB9EC8B /* NavMesh.cpp in Sources */,
+				434F4D5067D6FCFAC15F4103 /* NavGridMap.cpp in Sources */,
+				434F4D50289D1C8826B7765E /* NavDetourSupport.cpp in Sources */,
+				434F4D50FE368A8A4844EE5E /* NavCrowd.cpp in Sources */,
+				434F4D50A6F712909FB6E600 /* NavBakeScheduler.cpp in Sources */,
+				434F4D5072519F22CAEEEF24 /* NavBakeInput.cpp in Sources */,
+				434F4D5065D1D012FCAE4817 /* NavBakeCollector.cpp in Sources */,
+				434F4D50150191D288E00CDA /* GridPathfinder.cpp in Sources */,
 				49BAE5C2846632C9D339184A /* LatticeSystem.cpp in Sources */,
 				76DC1432680F473127DEA3AD /* Lattice.cpp in Sources */,
 				FB2FEDD3DF5C79019ECDB72E /* LatticeSolver.cpp in Sources */,
@@ -15542,6 +15840,9 @@
 				710506AF297F4483002DD23C /* Primitive.cpp in Sources */,
 				7105CAB62AD61CB6007C91BA /* Rigidbody.cpp in Sources */,
 				7105CAB32AD61CB6007C91BA /* Joint3D.cpp in Sources */,
+				434F4D50CD8A1CEEB121BCD9 /* NavMeshSurface.cpp in Sources */,
+				434F4D50C6F72FF31DC6E24F /* NavMeshAgent.cpp in Sources */,
+				434F4D506033C70EDC0D332C /* NavGrid.cpp in Sources */,
 				434F4D50FB45A656669C7D41 /* Buoyancy.cpp in Sources */,
 				434F4D506186EF2152BDFE1F /* CharacterController.cpp in Sources */,
 				713D82B3259D307F00567F9F /* SokolObject.cpp in Sources */,
@@ -15583,6 +15884,7 @@
 				5E5150000000000000000020 /* SokolTraceHub.cpp in Sources */,
 				5E5150000000000000000022 /* SokolVramTracker.cpp in Sources */,
 				5E5150000000000000000024 /* ProfilerClassesLua.cpp in Sources */,
+				434F4D5013C4D3B49EF03202 /* NavigationClassesLua.cpp in Sources */,
 				434F4D50C6EF06C129A2C1A1 /* GameplayClassesLua.cpp in Sources */,
 				5E5280000000000000000042 /* CrashClassesLua.cpp in Sources */,
 				48544D4C0000000000000004 /* HtmlUI.cpp in Sources */,
@@ -16009,6 +16311,7 @@
 				5E5150000000000000000021 /* SokolTraceHub.cpp in Sources */,
 				5E5150000000000000000023 /* SokolVramTracker.cpp in Sources */,
 				5E5150000000000000000025 /* ProfilerClassesLua.cpp in Sources */,
+				434F4D503899BB473A74451C /* NavigationClassesLua.cpp in Sources */,
 				434F4D5077FD9C84C36F4F2D /* GameplayClassesLua.cpp in Sources */,
 				5E5280000000000000000043 /* CrashClassesLua.cpp in Sources */,
 				71A41CB529AC3D7C006953D3 /* SokolCmdQueue.cpp in Sources */,
@@ -16106,6 +16409,44 @@
 				7162FD4325963AE00075B97D /* Camera.cpp in Sources */,
 				71ABBD1C277A31BA001CE3AF /* Text.cpp in Sources */,
 				71ABBD4927A87A2E001CE3AF /* MeshSystem.cpp in Sources */,
+				434F4D50943B51C93169DBAD /* DetourTileCacheBuilder.cpp in Sources */,
+				434F4D50D1A59C0FC110889D /* DetourTileCache.cpp in Sources */,
+				434F4D500E5633214DA13846 /* DetourProximityGrid.cpp in Sources */,
+				434F4D50B6E0C9D391FC0B1D /* DetourPathQueue.cpp in Sources */,
+				434F4D50DEF713ACE5DA93B1 /* DetourPathCorridor.cpp in Sources */,
+				434F4D50BF625D953FB30485 /* DetourObstacleAvoidance.cpp in Sources */,
+				434F4D50AE2B29DE79361EED /* DetourLocalBoundary.cpp in Sources */,
+				434F4D50A072DE5133BDED46 /* DetourCrowd.cpp in Sources */,
+				434F4D5003D27ADB3845BCB5 /* DetourNode.cpp in Sources */,
+				434F4D503122DA67506501D1 /* DetourNavMeshQuery.cpp in Sources */,
+				434F4D503660A157BB388A32 /* DetourNavMeshBuilder.cpp in Sources */,
+				434F4D509DBED9D557B113EA /* DetourNavMesh.cpp in Sources */,
+				434F4D50ED8C81C79F2CDD81 /* DetourCommon.cpp in Sources */,
+				434F4D50E38158BE7AA9BF57 /* DetourAssert.cpp in Sources */,
+				434F4D50E1D4E9D0B1295DC6 /* DetourAlloc.cpp in Sources */,
+				434F4D509AC523A76492FB90 /* RecastRegion.cpp in Sources */,
+				434F4D5044DCED4A734BA50C /* RecastRasterization.cpp in Sources */,
+				434F4D502A3B087C6021014B /* RecastMeshDetail.cpp in Sources */,
+				434F4D50B68FD042E9D09B8E /* RecastMesh.cpp in Sources */,
+				434F4D508A03C7BD940B7F11 /* RecastLayers.cpp in Sources */,
+				434F4D50B2596EC5602FDE98 /* RecastFilter.cpp in Sources */,
+				434F4D50291C4CF2F465F450 /* RecastContour.cpp in Sources */,
+				434F4D506D974659D7DE372B /* RecastAssert.cpp in Sources */,
+				434F4D50E3CBC29CEE0A0F33 /* RecastArea.cpp in Sources */,
+				434F4D50384E6C619111D7B2 /* RecastAlloc.cpp in Sources */,
+				434F4D504D8B3B97405B1DBD /* Recast.cpp in Sources */,
+				434F4D50A89F7CB39C341C5A /* MeshTriangles.cpp in Sources */,
+				434F4D5002574EE9DD963818 /* NavigationSystem.cpp in Sources */,
+				434F4D50A791EEB9D28893D5 /* NavTypes.cpp in Sources */,
+				434F4D5097CEFBFEF2FEEF48 /* NavMeshBuilder.cpp in Sources */,
+				434F4D50F98776DC7DB106B1 /* NavMesh.cpp in Sources */,
+				434F4D500E2CFA86E98D43EA /* NavGridMap.cpp in Sources */,
+				434F4D5009D40F9FBE80051E /* NavDetourSupport.cpp in Sources */,
+				434F4D501BD422DEC07B8442 /* NavCrowd.cpp in Sources */,
+				434F4D5073887A78569D5C29 /* NavBakeScheduler.cpp in Sources */,
+				434F4D5095CD55B8540D763A /* NavBakeInput.cpp in Sources */,
+				434F4D507987427848437244 /* NavBakeCollector.cpp in Sources */,
+				434F4D50941B4923E779AF6A /* GridPathfinder.cpp in Sources */,
 				5AA6D17000D268974599294F /* LatticeSystem.cpp in Sources */,
 				B0894968B112621342ACBE5C /* Lattice.cpp in Sources */,
 				99B5733A395E368B9283F7EB /* LatticeSolver.cpp in Sources */,
@@ -16164,6 +16505,9 @@
 				710506AE297F4483002DD23C /* Primitive.cpp in Sources */,
 				7105CAB52AD61CB6007C91BA /* Rigidbody.cpp in Sources */,
 				7105CAB22AD61CB6007C91BA /* Joint3D.cpp in Sources */,
+				434F4D5040BB769427241CFA /* NavMeshSurface.cpp in Sources */,
+				434F4D50765318B169FF9336 /* NavMeshAgent.cpp in Sources */,
+				434F4D50C07376449AC14165 /* NavGrid.cpp in Sources */,
 				434F4D50421DB7150F3F7B7B /* Buoyancy.cpp in Sources */,
 				434F4D50BF25EC1914E550C7 /* CharacterController.cpp in Sources */,
 				7162FD5825963AE00075B97D /* InterleavedBuffer.cpp in Sources */,
@@ -18827,6 +19171,10 @@
 				);
 				EXCLUDED_SOURCE_FILE_NAMES = "";
 				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../libs/recastnavigation/Recast/Include",
+					"$(SRCROOT)/../../libs/recastnavigation/Detour/Include",
+					"$(SRCROOT)/../../libs/recastnavigation/DetourCrowd/Include",
+					"$(SRCROOT)/../../libs/recastnavigation/DetourTileCache/Include",
 					"$(SRCROOT)/../../core",
 					"$(SRCROOT)/../../renders",
 					"$(SRCROOT)/../../libs",
@@ -18879,6 +19227,10 @@
 				);
 				EXCLUDED_SOURCE_FILE_NAMES = "";
 				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../libs/recastnavigation/Recast/Include",
+					"$(SRCROOT)/../../libs/recastnavigation/Detour/Include",
+					"$(SRCROOT)/../../libs/recastnavigation/DetourCrowd/Include",
+					"$(SRCROOT)/../../libs/recastnavigation/DetourTileCache/Include",
 					"$(SRCROOT)/../../core",
 					"$(SRCROOT)/../../renders",
 					"$(SRCROOT)/../../libs",
@@ -19338,6 +19690,10 @@
 				);
 				EXCLUDED_SOURCE_FILE_NAMES = "";
 				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../libs/recastnavigation/Recast/Include",
+					"$(SRCROOT)/../../libs/recastnavigation/Detour/Include",
+					"$(SRCROOT)/../../libs/recastnavigation/DetourCrowd/Include",
+					"$(SRCROOT)/../../libs/recastnavigation/DetourTileCache/Include",
 					"$(SRCROOT)/../../core",
 					"$(SRCROOT)/../../renders",
 					"$(SRCROOT)/../../libs",
@@ -19393,6 +19749,10 @@
 				);
 				EXCLUDED_SOURCE_FILE_NAMES = "";
 				HEADER_SEARCH_PATHS = (
+					"$(SRCROOT)/../../libs/recastnavigation/Recast/Include",
+					"$(SRCROOT)/../../libs/recastnavigation/Detour/Include",
+					"$(SRCROOT)/../../libs/recastnavigation/DetourCrowd/Include",
+					"$(SRCROOT)/../../libs/recastnavigation/DetourTileCache/Include",
 					"$(SRCROOT)/../../core",
 					"$(SRCROOT)/../../renders",
 					"$(SRCROOT)/../../libs",

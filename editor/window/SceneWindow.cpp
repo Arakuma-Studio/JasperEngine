@@ -2264,6 +2264,34 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
         ImGui::EndTable();
     }
 
+    // the AI Navigation overlay (S19): saved with the workspace, per scene
+    if (beginSection("AI Navigation")) {
+        NavOverlaySettings& nav = sceneProject.displaySettings.navigation;
+        drawSettingRow(ICON_FA_ROUTE " AI Navigation overlay", nav.enabled);
+        drawSettingRow("    Show NavMesh", nav.showNavMesh, !nav.enabled);
+        drawSettingRow("    Show Tile Bounds", nav.showTileBounds, !nav.enabled);
+        drawSettingRow("    Show HeightMesh", nav.showHeightMesh, !nav.enabled);
+        drawSettingRow("    Show NavGrid", nav.showGrid, !nav.enabled);
+        drawSettingRow("    Show Links", nav.showLinks, !nav.enabled);
+        drawSettingRow("    Show Obstacles", nav.showObstacles, !nav.enabled);
+        drawSettingRow("    Show Avoidance", nav.showAvoidance, !nav.enabled);
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0);
+        ImGui::BeginDisabled(!nav.enabled);
+        ImGui::TextUnformatted("    Show Agent Paths");
+        ImGui::TableSetColumnIndex(1);
+        int paths = (int)nav.showPaths;
+        const char* names[] = {"None", "Selected", "All"};
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::Combo("##navpaths", &paths, names, 3)) {
+            nav.showPaths = (NavOverlaySettings::Paths)paths;
+            sceneProject.needUpdateRender = true;
+            project->saveWorkspaceFile();
+        }
+        ImGui::EndDisabled();
+        ImGui::EndTable();
+    }
+
     // Physics Placement's own gizmos: per user, like its panel (every 3D Scene view)
     if (sceneProject.sceneType == SceneType::SCENE_3D && beginSection("Physics Placement")) {
         PhysicsPlacementWindow* physics = Backend::getApp().getPhysicsPlacementWindow();

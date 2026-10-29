@@ -185,6 +185,7 @@ quality.atmosphere_quality_*). More: jasper://docs/atmosphere.
   body.position (body.rotation / body.angle), velocity with body.linearVelocity.
 - Layer Collision Matrix (project settings) gates contacts; raycasts take a layer mask. Drop
   or settle objects: place_with_physics (group editor_ux).
+- Navigation: jasper://docs/navigation.
 
 ## Prefabs
 - An edit on a prefab instance is an override of that instance only. Push it to the asset
@@ -236,7 +237,7 @@ Calls time out: get_editor_health (answers mid-hang) tells hung from slow; get_c
 
 ## Build and ship
 Scenes in Build order and the start scene live in project.yaml (project tools). Export
-(Build Settings, build_project) makes a CMake project or players per platform (a long job).
+(Build Settings, build_project) makes a CMake project or players per platform.
 Before exporting: scenes saved, Console clean in play, the start scene right.
 )JE"
 R"JE(

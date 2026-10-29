@@ -47,8 +47,10 @@ namespace {
 }
 
 TEST(AnimationClipContract, CatalogKnowsTheAnimationPlayer){
-    // appended after it (prefab override masks use the ordinal): the Vertex Animator is last
-    EXPECT_EQ(static_cast<int>(ComponentType::VertexAnimatorComponent), static_cast<int>(ComponentType::AnimationPlayerComponent) + 1);
+    // within the types every loop runs over (S19's navigation components follow it)
+    EXPECT_LE(static_cast<int>(ComponentType::AnimationPlayerComponent), static_cast<int>(LastComponentType));
+    EXPECT_LT(static_cast<int>(ComponentType::AnimationPlayerComponent), ComponentTypeCount);
+    // and upstream's Vertex Animator is last
     EXPECT_EQ(LastComponentType, ComponentType::VertexAnimatorComponent);
     EXPECT_EQ(ComponentTypeCount, static_cast<int>(ComponentType::VertexAnimatorComponent) + 1);
     EXPECT_EQ(Catalog::getComponentType("animationplayer"), ComponentType::AnimationPlayerComponent);

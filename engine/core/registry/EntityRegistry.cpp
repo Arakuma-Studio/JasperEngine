@@ -95,6 +95,12 @@ EntityRegistry::EntityRegistry() {
     registerComponent<BuoyancyComponent>(ComponentOrder::Insertion, "BuoyancyComponent");
     registerComponent<PoseAnimatorComponent>(ComponentOrder::Insertion, "PoseAnimatorComponent");
     registerComponent<AnimationPlayerComponent>(ComponentOrder::Insertion, "AnimationPlayerComponent");
+    registerComponent<NavMeshSurfaceComponent>(ComponentOrder::Insertion, "NavMeshSurfaceComponent");
+    registerComponent<NavMeshAgentComponent>(ComponentOrder::Insertion, "NavMeshAgentComponent");
+    registerComponent<NavMeshObstacleComponent>(ComponentOrder::Insertion, "NavMeshObstacleComponent");
+    registerComponent<NavMeshLinkComponent>(ComponentOrder::Insertion, "NavMeshLinkComponent");
+    registerComponent<NavMeshModifierComponent>(ComponentOrder::Insertion, "NavMeshModifierComponent");
+    registerComponent<NavGridComponent>(ComponentOrder::Insertion, "NavGridComponent");
     registerComponent<VertexAnimatorComponent>(ComponentOrder::Insertion, "VertexAnimatorComponent");
 
     // complete: markChangedComponent may look into it

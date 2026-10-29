@@ -26,6 +26,8 @@
 #include "component/ModelComponent.h"
 #include "component/PoseAnimatorComponent.h"
 #include "component/AnimationPlayerComponent.h"
+#include "component/NavGridComponent.h"
+#include "component/NavMeshSurfaceComponent.h"
 #include "component/PointsComponent.h"
 #include "component/PrefabComponent.h"
 #include "component/ReflectionProbeComponent.h"
@@ -626,6 +628,8 @@ TEST(AssetRefSchema, CoversAllFields) {
         {C::PoseAnimatorComponent, "animation"},
         // upstream's Animation Player: each clip entry, an .anim by GUID or a model's sub-clip
         {C::AnimationPlayerComponent, "clips[]"},
+        // S19: a surface's baked .navmesh and a grid's .navgrid cells
+        {C::NavMeshSurfaceComponent, "navMeshData"}, {C::NavGridComponent, "gridData"},
         // upstream's Vertex Animator: its .vat, by GUID, with the mesh beside it
         {C::VertexAnimatorComponent, "animation"},
     };
@@ -655,6 +659,8 @@ TEST(AssetRefSchema, CoversAllFields) {
     registry.addComponent<UIDocumentComponent>(entity, UIDocumentComponent{});
     registry.addComponent<PointsComponent>(entity, PointsComponent{});
     registry.addComponent<LineRendererComponent>(entity, LineRendererComponent{});
+    registry.addComponent<NavMeshSurfaceComponent>(entity, NavMeshSurfaceComponent{});
+    registry.addComponent<NavGridComponent>(entity, NavGridComponent{});
     TerrainComponent terrain;
     terrain.blendMaps.resize(1);
     terrain.surfaceLayers.resize(1);

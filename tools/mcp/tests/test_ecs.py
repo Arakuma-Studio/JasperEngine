@@ -22,9 +22,10 @@ EVIDENCE = Path(__file__).resolve().parents[3] / "build" / "evidence"
 
 SYSTEMS = ["ActionSystem", "MeshSystem", "UISystem", "UIDocumentSystem", "RenderSystem", "PhysicsSystem", "ParticleSubsystem", "AudioSystem"]
 # every scene system in schedule order: upstream's pose animator, lattice deformer, vertex
-# animator and fluid simulation systems too (the timing checks stay on SYSTEMS: those have nothing to do in these scenes)
+# animator and fluid simulation systems and S19's navigation too (the timing checks stay on
+# SYSTEMS: those have nothing to do in these scenes)
 ALL_SYSTEMS = ["ActionSystem", "PoseAnimatorSystem", "MeshSystem", "LatticeSystem", "VertexAnimatorSystem", "UISystem", "UIDocumentSystem", "FluidSystem", "RenderSystem",
-               "PhysicsSystem", "ParticleSubsystem", "AudioSystem"]
+               "NavigationSystem", "PhysicsSystem", "ParticleSubsystem", "AudioSystem"]
 
 
 def type_count(stats, name):
