@@ -199,6 +199,7 @@ void SokolSystem::shutdown(){
     SokolCmdQueue::finish();
     // creations end (or are cancelled) before the pipelines and shaders go
     SokolAsyncCreate::shutdown();
+    SokolAsyncCreate::forgetWarmDraws();
     SokolPassPreview::destroy();
     SokolPipelineCache::clear();
     SokolTraceHub::uninstall();

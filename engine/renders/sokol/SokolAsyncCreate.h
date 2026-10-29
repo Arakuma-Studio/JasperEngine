@@ -35,6 +35,8 @@ namespace jasperengine {
         // after sg_setup / before sg_shutdown
         static void setup();
         static void shutdown();
+        // the warm draws done are forgotten (the render system goes: a new context reuses names)
+        static void forgetWarmDraws();
         static void setSettings(const ShaderCreationSettings& settings);
         static const ShaderCreationSettings& getSettings();
 

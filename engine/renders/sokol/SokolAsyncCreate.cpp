@@ -679,9 +679,9 @@ void SokolAsyncCreate::shutdown(){
         s.worker.join();
     s.workerContext.reset();
     s.finished.clear();
+    // what was warmed stays warm while the GL context lives (a setting toggled sets the creation
+    // up again over the same programs); forgetWarmDraws drops it with the context
     s.warmPending.clear();
-    s.warmDone.clear();
-    s.warmByProgram.clear();
 
     // Metal's handlers write into their jobs: they run before the jobs go
     for (const auto& [id, job] : s.shaders){
@@ -1171,6 +1171,12 @@ void SokolAsyncCreate::savePipelineCache(){
     State& s = state();
     if (s.setUp && s.caps.pipeline_on_thread)
         writeVkCache(s);
+}
+
+void SokolAsyncCreate::forgetWarmDraws(){
+    State& s = state();
+    s.warmDone.clear();
+    s.warmByProgram.clear();
 }
 
 std::string SokolAsyncCreate::getPipelineCachePath(){
