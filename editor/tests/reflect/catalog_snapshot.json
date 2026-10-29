@@ -32471,6 +32471,394 @@
    "type": 72,
    "type_of_key": 72,
    "type_of_name": 72
+  },
+  {
+   "display_name": "Animator",
+   "enum_options": {
+    "cullingMode": [
+     [
+      0,
+      "always_animate",
+      "Always Animate"
+     ],
+     [
+      1,
+      "cull_update_transforms",
+      "Cull Update Transforms"
+     ],
+     [
+      2,
+      "cull_completely",
+      "Cull Completely"
+     ]
+    ],
+    "eventMode": [
+     [
+      0,
+      "leader_only",
+      "Leader Only"
+     ],
+     [
+      1,
+      "all",
+      "All"
+     ]
+    ],
+    "retarget": [
+     [
+      0,
+      "auto",
+      "Auto"
+     ],
+     [
+      1,
+      "off",
+      "Off"
+     ]
+    ],
+    "updateMode": [
+     [
+      0,
+      "normal",
+      "Normal"
+     ],
+     [
+      1,
+      "animate_physics",
+      "Animate Physics"
+     ],
+     [
+      2,
+      "unscaled_time",
+      "Unscaled Time"
+     ]
+    ],
+    "writeBones": [
+     [
+      0,
+      "all",
+      "All"
+     ],
+     [
+      1,
+      "exposed",
+      "Exposed"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef9582",
+   "key": "animator",
+   "known_keys": [
+    "applyRootMotion",
+    "clipOverrides",
+    "controller",
+    "cullingMode",
+    "enabled",
+    "eventMode",
+    "exposedBones",
+    "ik",
+    "retarget",
+    "rootMotionBone",
+    "sendEventsToScripts",
+    "speed",
+    "updateMode",
+    "writeBones"
+   ],
+   "name": "AnimatorComponent",
+   "properties_of_default": {
+    "applyRootMotion": [
+     0,
+     0,
+     true
+    ],
+    "clipOverrides": [
+     15,
+     17592186044416,
+     true
+    ],
+    "controller": [
+     18,
+     17592186044416,
+     true
+    ],
+    "cullingMode": [
+     13,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "eventMode": [
+     13,
+     0,
+     true
+    ],
+    "exposedBones": [
+     15,
+     17592186044416,
+     true
+    ],
+    "ik": [
+     15,
+     17592186044416,
+     true
+    ],
+    "retarget": [
+     13,
+     17592186044416,
+     true
+    ],
+    "rootMotionBone": [
+     1,
+     17592186044416,
+     true
+    ],
+    "sendEventsToScripts": [
+     0,
+     0,
+     true
+    ],
+    "speed": [
+     2,
+     0,
+     true
+    ],
+    "updateMode": [
+     13,
+     0,
+     true
+    ],
+    "writeBones": [
+     13,
+     17592186044416,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "applyRootMotion": [
+     0,
+     0,
+     true
+    ],
+    "clipOverrides": [
+     15,
+     17592186044416,
+     true
+    ],
+    "clipOverrides[].original": [
+     1,
+     17592186044416,
+     true
+    ],
+    "clipOverrides[].replacement": [
+     1,
+     17592186044416,
+     true
+    ],
+    "controller": [
+     18,
+     17592186044416,
+     true
+    ],
+    "cullingMode": [
+     13,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "eventMode": [
+     13,
+     0,
+     true
+    ],
+    "exposedBones": [
+     15,
+     17592186044416,
+     true
+    ],
+    "ik": [
+     15,
+     17592186044416,
+     true
+    ],
+    "ik[].boneWeights": [
+     15,
+     0,
+     true
+    ],
+    "ik[].bones": [
+     15,
+     17592186044416,
+     true
+    ],
+    "ik[].clampAngle": [
+     2,
+     0,
+     true
+    ],
+    "ik[].contactParameter": [
+     1,
+     0,
+     true
+    ],
+    "ik[].enabled": [
+     0,
+     0,
+     true
+    ],
+    "ik[].footHeight": [
+     2,
+     0,
+     true
+    ],
+    "ik[].forwardAxis": [
+     5,
+     0,
+     true
+    ],
+    "ik[].iterations": [
+     8,
+     0,
+     true
+    ],
+    "ik[].layerMask": [
+     9,
+     0,
+     true
+    ],
+    "ik[].maxFootAngle": [
+     2,
+     0,
+     true
+    ],
+    "ik[].name": [
+     1,
+     17592186044416,
+     true
+    ],
+    "ik[].pelvis": [
+     1,
+     17592186044416,
+     true
+    ],
+    "ik[].pole": [
+     16,
+     0,
+     true
+    ],
+    "ik[].polePosition": [
+     5,
+     0,
+     true
+    ],
+    "ik[].rayLength": [
+     2,
+     0,
+     true
+    ],
+    "ik[].rayStart": [
+     2,
+     0,
+     true
+    ],
+    "ik[].releaseTime": [
+     2,
+     0,
+     true
+    ],
+    "ik[].smoothing": [
+     2,
+     0,
+     true
+    ],
+    "ik[].speedThreshold": [
+     2,
+     0,
+     true
+    ],
+    "ik[].target": [
+     16,
+     0,
+     true
+    ],
+    "ik[].targetPosition": [
+     5,
+     0,
+     true
+    ],
+    "ik[].tolerance": [
+     2,
+     0,
+     true
+    ],
+    "ik[].type": [
+     13,
+     17592186044416,
+     true
+    ],
+    "ik[].usePole": [
+     0,
+     0,
+     true
+    ],
+    "ik[].useTargetRotation": [
+     0,
+     0,
+     true
+    ],
+    "ik[].weight": [
+     2,
+     0,
+     true
+    ],
+    "ik[].weightParameter": [
+     1,
+     0,
+     true
+    ],
+    "retarget": [
+     13,
+     17592186044416,
+     true
+    ],
+    "rootMotionBone": [
+     1,
+     17592186044416,
+     true
+    ],
+    "sendEventsToScripts": [
+     0,
+     0,
+     true
+    ],
+    "speed": [
+     2,
+     0,
+     true
+    ],
+    "updateMode": [
+     13,
+     0,
+     true
+    ],
+    "writeBones": [
+     13,
+     17592186044416,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 73,
+   "type_of_key": 73,
+   "type_of_name": 73
   }
  ],
  "ease_options": [
@@ -32746,6 +33134,223 @@
    "speed": [
     2,
     0,
+    true
+   ]
+  },
+  "AnimatorComponent": {
+   "applyRootMotion": [
+    0,
+    0,
+    true
+   ],
+   "clipOverrides": [
+    15,
+    17592186044416,
+    true
+   ],
+   "clipOverrides[N].original": [
+    1,
+    17592186044416,
+    true
+   ],
+   "clipOverrides[N].replacement": [
+    1,
+    17592186044416,
+    true
+   ],
+   "controller": [
+    18,
+    17592186044416,
+    true
+   ],
+   "cullingMode": [
+    13,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "eventMode": [
+    13,
+    0,
+    true
+   ],
+   "exposedBones": [
+    15,
+    17592186044416,
+    true
+   ],
+   "ik": [
+    15,
+    17592186044416,
+    true
+   ],
+   "ik[N].boneWeights": [
+    15,
+    0,
+    true
+   ],
+   "ik[N].bones": [
+    15,
+    17592186044416,
+    true
+   ],
+   "ik[N].clampAngle": [
+    2,
+    0,
+    true
+   ],
+   "ik[N].contactParameter": [
+    1,
+    0,
+    true
+   ],
+   "ik[N].enabled": [
+    0,
+    0,
+    true
+   ],
+   "ik[N].footHeight": [
+    2,
+    0,
+    true
+   ],
+   "ik[N].forwardAxis": [
+    5,
+    0,
+    true
+   ],
+   "ik[N].iterations": [
+    8,
+    0,
+    true
+   ],
+   "ik[N].layerMask": [
+    9,
+    0,
+    true
+   ],
+   "ik[N].maxFootAngle": [
+    2,
+    0,
+    true
+   ],
+   "ik[N].name": [
+    1,
+    17592186044416,
+    true
+   ],
+   "ik[N].pelvis": [
+    1,
+    17592186044416,
+    true
+   ],
+   "ik[N].pole": [
+    16,
+    0,
+    true
+   ],
+   "ik[N].polePosition": [
+    5,
+    0,
+    true
+   ],
+   "ik[N].rayLength": [
+    2,
+    0,
+    true
+   ],
+   "ik[N].rayStart": [
+    2,
+    0,
+    true
+   ],
+   "ik[N].releaseTime": [
+    2,
+    0,
+    true
+   ],
+   "ik[N].smoothing": [
+    2,
+    0,
+    true
+   ],
+   "ik[N].speedThreshold": [
+    2,
+    0,
+    true
+   ],
+   "ik[N].target": [
+    16,
+    0,
+    true
+   ],
+   "ik[N].targetPosition": [
+    5,
+    0,
+    true
+   ],
+   "ik[N].tolerance": [
+    2,
+    0,
+    true
+   ],
+   "ik[N].type": [
+    13,
+    17592186044416,
+    true
+   ],
+   "ik[N].usePole": [
+    0,
+    0,
+    true
+   ],
+   "ik[N].useTargetRotation": [
+    0,
+    0,
+    true
+   ],
+   "ik[N].weight": [
+    2,
+    0,
+    true
+   ],
+   "ik[N].weightParameter": [
+    1,
+    0,
+    true
+   ],
+   "retarget": [
+    13,
+    17592186044416,
+    true
+   ],
+   "rootMotionBone": [
+    1,
+    17592186044416,
+    true
+   ],
+   "sendEventsToScripts": [
+    0,
+    0,
+    true
+   ],
+   "speed": [
+    2,
+    0,
+    true
+   ],
+   "updateMode": [
+    13,
+    0,
+    true
+   ],
+   "writeBones": [
+    13,
+    17592186044416,
     true
    ]
   },
