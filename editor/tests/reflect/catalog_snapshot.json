@@ -22997,11 +22997,6 @@
    ],
    "name": "AnimationComponent",
    "properties_of_default": {
-    "actionFrameCount": [
-     9,
-     0,
-     true
-    ],
     "defaultFadeTime": [
      2,
      0,
@@ -23024,11 +23019,6 @@
     ]
    },
    "properties_without_component": {
-    "actionFrameCount": [
-     9,
-     0,
-     true
-    ],
     "defaultFadeTime": [
      2,
      0,
@@ -34044,6 +34034,166 @@
    "type": 76,
    "type_of_key": 76,
    "type_of_name": 76
+  },
+  {
+   "display_name": "Vertex Animator",
+   "enum_options": {},
+   "has_enabled": true,
+   "icon": "ee94b3",
+   "key": "vertexanimator",
+   "known_keys": [
+    "animation",
+    "attachments",
+    "defaultClip",
+    "defaultFadeTime",
+    "enabled",
+    "guid",
+    "instanceClips",
+    "instanceEvents",
+    "instanceSpeeds",
+    "playAutomatically",
+    "randomStart",
+    "speed"
+   ],
+   "name": "VertexAnimatorComponent",
+   "properties_of_default": {
+    "animation": [
+     1,
+     35184372088832,
+     true
+    ],
+    "attachments": [
+     15,
+     0,
+     true
+    ],
+    "defaultClip": [
+     1,
+     0,
+     true
+    ],
+    "defaultFadeTime": [
+     2,
+     35184372088832,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "guid": [
+     1,
+     35184372088832,
+     true
+    ],
+    "instanceClips": [
+     15,
+     35184372088832,
+     true
+    ],
+    "instanceEvents": [
+     0,
+     0,
+     true
+    ],
+    "instanceSpeeds": [
+     15,
+     35184372088832,
+     true
+    ],
+    "playAutomatically": [
+     0,
+     0,
+     true
+    ],
+    "randomStart": [
+     0,
+     0,
+     true
+    ],
+    "speed": [
+     2,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "animation": [
+     1,
+     35184372088832,
+     true
+    ],
+    "attachments": [
+     15,
+     0,
+     true
+    ],
+    "attachments[].entity": [
+     16,
+     0,
+     true
+    ],
+    "attachments[].socket": [
+     1,
+     0,
+     true
+    ],
+    "defaultClip": [
+     1,
+     0,
+     true
+    ],
+    "defaultFadeTime": [
+     2,
+     35184372088832,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "guid": [
+     1,
+     35184372088832,
+     true
+    ],
+    "instanceClips": [
+     15,
+     35184372088832,
+     true
+    ],
+    "instanceEvents": [
+     0,
+     0,
+     true
+    ],
+    "instanceSpeeds": [
+     15,
+     35184372088832,
+     true
+    ],
+    "playAutomatically": [
+     0,
+     0,
+     true
+    ],
+    "randomStart": [
+     0,
+     0,
+     true
+    ],
+    "speed": [
+     2,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 77,
+   "type_of_key": 77,
+   "type_of_name": 77
   }
  ],
  "ease_options": [
@@ -34244,11 +34394,6 @@
    ]
   },
   "AnimationComponent": {
-   "actionFrameCount": [
-    9,
-    0,
-    true
-   ],
    "defaultFadeTime": [
     2,
     0,
@@ -39536,6 +39681,68 @@
    "textureWidth": [
     8,
     274877906944,
+    true
+   ]
+  },
+  "VertexAnimatorComponent": {
+   "animation": [
+    1,
+    35184372088832,
+    true
+   ],
+   "attachments": [
+    15,
+    0,
+    true
+   ],
+   "defaultClip": [
+    1,
+    0,
+    true
+   ],
+   "defaultFadeTime": [
+    2,
+    35184372088832,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "guid": [
+    1,
+    35184372088832,
+    true
+   ],
+   "instanceClips": [
+    15,
+    35184372088832,
+    true
+   ],
+   "instanceEvents": [
+    0,
+    0,
+    true
+   ],
+   "instanceSpeeds": [
+    15,
+    35184372088832,
+    true
+   ],
+   "playAutomatically": [
+    0,
+    0,
+    true
+   ],
+   "randomStart": [
+    0,
+    0,
+    true
+   ],
+   "speed": [
+    2,
+    0,
     true
    ]
   },

@@ -2516,3 +2516,27 @@ entities:
         lateralOffset: 6
         verticalOffset: 4.9
         playOnAwake: false
+  - type: Entity
+    entity: 1078
+    name: VertexAnimatorComponent
+    components:
+      transform:
+        position: [77, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      vertexanimator:
+        enabled: false
+        animation: "text: [1, 2]"
+        guid: Reflection parity
+        defaultClip: Reflection parity
+        playAutomatically: false
+        speed: 1.5
+        randomStart: false
+        defaultFadeTime: 8.5
+        instanceEvents: true
+        attachments: []
