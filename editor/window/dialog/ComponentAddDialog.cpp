@@ -104,6 +104,12 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::NavMeshModifierComponent, "Sets the area of a GameObject or a volume, or leaves it out of bakes"},
             {ComponentType::NavGridComponent, "A square or hex grid with area costs for tile and strategy games"},
         }},
+        {"Spline", ICON_FA_BEZIER_CURVE, {
+            {ComponentType::SplineComponent, "A curve of knots that roads, fences and followers use"},
+            {ComponentType::SplineExtrudeComponent, "Sweeps a road, path, wall, tube or water along the Spline"},
+            {ComponentType::SplineInstantiateComponent, "Places models or prefabs along the Spline (rows, tiles, fences)"},
+            {ComponentType::SplineAnimateComponent, "Moves this GameObject along another GameObject's Spline"},
+        }},
         {"Audio", ICON_FA_VOLUME_HIGH, {
             {ComponentType::AudioSourceComponent, "Plays an audio clip"},
         }},

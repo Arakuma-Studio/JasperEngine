@@ -793,6 +793,7 @@ include_directories(core/io)
 include_directories(core/io/watch)
 include_directories(core/manager)
 include_directories(core/math)
+include_directories(core/spline)
 include_directories(core/object)
 include_directories(core/object/sound)
 include_directories(core/object/ui)
@@ -1232,6 +1233,10 @@ set(JASPERENGINE_SRCS
     core/object/environment/Water.cpp
     core/object/environment/WaterVolume.cpp
     core/object/physics/Buoyancy.cpp
+    core/object/spline/Spline.cpp
+    core/object/spline/SplineExtrude.cpp
+    core/object/spline/SplineInstantiate.cpp
+    core/object/spline/SplineAnimate.cpp
     core/object/environment/VolumetricClouds.cpp
     core/object/ui/Button.cpp
     core/object/ui/LayoutGroup.cpp
@@ -1301,6 +1306,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/GameObjectClassesLua.cpp
     core/script/binding/ProfilerClassesLua.cpp
     core/script/binding/GameplayClassesLua.cpp
+    core/script/binding/SplineClassesLua.cpp
     core/script/binding/ThreadClassesLua.cpp
     core/script/binding/HtmlUIVectorLua.cpp
     core/script/binding/HtmlUIMediaLua.cpp
@@ -1325,6 +1331,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/AudioSystem.cpp
     core/subsystem/MeshSystem.cpp
     core/subsystem/LatticeSystem.cpp
+    core/subsystem/SplineSystem.cpp
     core/lattice/LatticeSolver.cpp
     core/lattice/LatticePresets.cpp
     core/lattice/LatticeRender.cpp
@@ -1409,6 +1416,9 @@ list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_PARTICLE_SRCS} ${JASPERENGINE_PARTI
 # Navigation (S19): navmeshes, crowds, grids, the NavigationSystem and its Lua objects
 include(core/navigation/NavigationSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_NAVIGATION_SRCS})
+# Splines (S18): the core, geometry and layouts (no contraction, bit-identical output)
+include(core/spline/SplineSources.cmake)
+list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_SPLINE_SRCS})
 include(libs/lucide/lucide.cmake)
 
 if(JASPERENGINE_PHYSICS_2D)
@@ -1509,6 +1519,11 @@ jasperengine_skip_unity_build(
 jasperengine_skip_unity_build(
     REASON "the navigation sources: file-local Detour helpers and constants with the same names"
     SOURCES ${JASPERENGINE_NAVIGATION_SRCS})
+if(JASPERENGINE_SPLINE_SRCS)
+    jasperengine_skip_unity_build(
+        REASON "the spline sources build with their own floating-point flags"
+        SOURCES ${JASPERENGINE_SPLINE_SRCS})
+endif()
 jasperengine_target_unity_build(jasperengine)
 
 target_compile_definitions(jasperengine

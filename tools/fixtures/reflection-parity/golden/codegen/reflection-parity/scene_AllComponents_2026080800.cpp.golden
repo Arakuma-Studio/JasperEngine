@@ -82,7 +82,11 @@ void create_scene_AllComponents_2026080800(Scene* scene){
     scene->recreateEntity(1072);
     scene->recreateEntity(1073);
     scene->recreateEntity(1074);
-    scene->setLastEntity(1074);
+    scene->recreateEntity(1075);
+    scene->recreateEntity(1076);
+    scene->recreateEntity(1077);
+    scene->recreateEntity(1078);
+    scene->setLastEntity(1078);
 
     {
         // Entity 1001 (Transform)
@@ -2342,8 +2346,178 @@ void create_scene_AllComponents_2026080800(Scene* scene){
     }
 
     {
-        // Entity 1074 (AnimatorComponent)
-        scene->setEntityName(1074, "AnimatorComponent");
+        // Entity 1074 (SplineComponent)
+        scene->setEntityName(1074, "SplineComponent");
+
+        // Entity components initialization
+        SplineComponent spline;
+        spline.enabled = false;
+        spline.spline.editableType() = spline::SplineType::CubicBezier;
+        spline.spline.editableClosed() = true;
+        spline.spline.editableUpAxis() = Vector3(0.677934f, 0.659361f, 0.325037f);
+        spline.spline.editableKnots().push_back({Vector3(0.000000f, 0.000000f, 0.000000f), Vector3(0.000000f, 0.000000f, 0.000000f), Vector3(0.000000f, 0.000000f, 0.000000f), 3.000000f, 0.000000f, spline::TangentMode::Mirrored});
+        spline.spline.editableKnots().push_back({Vector3(10.000000f, 1.000000f, 5.000000f), Vector3(-2.000000f, 0.000000f, 0.000000f), Vector3(2.000000f, 0.000000f, 0.000000f), 4.500000f, 12.000000f, spline::TangentMode::Broken});
+        spline.terrain.region = SplineTerrainRegion::Area;
+        spline.terrain.extraWidth = 4.600000f;
+        spline.terrain.falloff = 2.800000f;
+        spline.terrain.flatten = false;
+        spline.terrain.flattenMode = SplineFlattenMode::FillOnly;
+        spline.terrain.heightOffset = 9.000000f;
+        spline.terrain.paint = true;
+        spline.terrain.paintLayer = 2;
+        spline.terrain.paintStrength = 1.200000f;
+        spline.terrain.paintFalloff = 5.800000f;
+        spline.terrain.paintNoise = 0.900000f;
+        spline.terrain.clearFoliage = true;
+        spline.terrain.foliageMask = 5;
+        scene->addComponent<SplineComponent>(1074, spline);
+
+        Transform transform;
+        transform.position = Vector3(73.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1074, transform);
+    }
+
+    {
+        // Entity 1075 (SplineExtrudeComponent)
+        scene->setEntityName(1075, "SplineExtrudeComponent");
+
+        // Entity components initialization
+        SplineExtrudeComponent splineExtrude;
+        splineExtrude.enabled = false;
+        splineExtrude.shape = SplineExtrudeShape::WaterBanks;
+        splineExtrude.widthSource = SplineWidthSource::Constant;
+        splineExtrude.edgeDrop = 8.000000f;
+        splineExtrude.edgeInset = 4.400000f;
+        splineExtrude.crownRise = 8.700000f;
+        splineExtrude.shoulderWidth = 0.700000f;
+        splineExtrude.shoulderDrop = 4.100000f;
+        splineExtrude.thickness = 8.200000f;
+        splineExtrude.grade = SplineGrade::Stepped;
+        splineExtrude.stepHeight = 4.700000f;
+        splineExtrude.tubeSides = 3;
+        splineExtrude.customProfile.push_back({Vector2(-1.000000f, 0.000000f), false, true});
+        splineExtrude.customProfile.push_back({Vector2(0.000000f, 0.500000f), true, false});
+        splineExtrude.customProfile.push_back({Vector2(1.000000f, 0.000000f), false, true});
+        splineExtrude.customClosed = true;
+        splineExtrude.maxHalfWidth = 0.600000f;
+        splineExtrude.waterEdgeDrop = 7.100000f;
+        splineExtrude.seaLevelFloor = true;
+        splineExtrude.seaLevel = 4.100000f;
+        splineExtrude.flow = true;
+        splineExtrude.flowSpeed = 3.500000f;
+        splineExtrude.tilesPerMetreU = 3.100000f;
+        splineExtrude.tilesPerMetreV = 1.500000f;
+        splineExtrude.levelCourseV = true;
+        splineExtrude.corners = SplineCornerStyle::Round;
+        splineExtrude.endCaps = false;
+        splineExtrude.endTaper = 8.600000f;
+        splineExtrude.lateralOffset = 3.200000f;
+        splineExtrude.verticalOffset = 1.800000f;
+        splineExtrude.conform = SplineConform::TerrainHeightAndSlope;
+        splineExtrude.slopeBlend = 6.100000f;
+        splineExtrude.stationSpacing = 8.100000f;
+        splineExtrude.collision = SplineCollision::Chain2D;
+        scene->addComponent<SplineExtrudeComponent>(1075, splineExtrude);
+
+        Transform transform;
+        transform.position = Vector3(74.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1075, transform);
+    }
+
+    {
+        // Entity 1076 (SplineInstantiateComponent)
+        scene->setEntityName(1076, "SplineInstantiateComponent");
+
+        // Entity components initialization
+        SplineInstantiateComponent splineInstantiate;
+        splineInstantiate.enabled = false;
+        splineInstantiate.mode = SplineInstantiateMode::Fence;
+        splineInstantiate.spacing = 7.900000f;
+        splineInstantiate.fit = SplineSpacingFit::FixedPitch;
+        splineInstantiate.postPitch = 0.500000f;
+        splineInstantiate.spanMaxStretch = 2.800000f;
+        splineInstantiate.fenceGrade = SplineGrade::Stepped;
+        splineInstantiate.crestPitch = 0.700000f;
+        splineInstantiate.spanOverrides.push_back({0, 1, SplineSpanOverrideKind::Gate, 0});
+        splineInstantiate.lateralOffset = 8.800000f;
+        splineInstantiate.verticalOffset = 8.600000f;
+        splineInstantiate.spacingJitter = 1.200000f;
+        splineInstantiate.yawJitter = 2.900000f;
+        splineInstantiate.lateralJitter = 6.400000f;
+        splineInstantiate.scaleRange = Vector2(8.400000f, 3.000000f);
+        splineInstantiate.dropout = 5.400000f;
+        splineInstantiate.endTrim = 3.400000f;
+        splineInstantiate.plantMode = SplinePlantMode::Pivot;
+        splineInstantiate.maxTilt = 6.900000f;
+        splineInstantiate.conform = SplineConform::TerrainHeightAndSlope;
+        splineInstantiate.slopeBlend = 4.200000f;
+        splineInstantiate.stationSpacing = 0.300000f;
+        scene->addComponent<SplineInstantiateComponent>(1076, splineInstantiate);
+
+        Transform transform;
+        transform.position = Vector3(75.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1076, transform);
+    }
+
+    {
+        // Entity 1077 (SplineAnimateComponent)
+        scene->setEntityName(1077, "SplineAnimateComponent");
+
+        // Entity components initialization
+        SplineAnimateComponent splineAnimate;
+        splineAnimate.enabled = false;
+        splineAnimate.method = SplineAnimateMethod::Speed;
+        splineAnimate.duration = 5.200000f;
+        splineAnimate.speed = 4.700000f;
+        splineAnimate.loop = SplineLoop::PingPong;
+        splineAnimate.easing = SplineEasing::EaseInOut;
+        splineAnimate.alignment = SplineAlignment::World;
+        splineAnimate.startOffset = 3.800000f;
+        splineAnimate.lateralOffset = 6.000000f;
+        splineAnimate.verticalOffset = 4.900000f;
+        splineAnimate.playOnAwake = false;
+        scene->addComponent<SplineAnimateComponent>(1077, splineAnimate);
+
+        Transform transform;
+        transform.position = Vector3(76.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1077, transform);
+    }
+
+    {
+        // Entity 1078 (AnimatorComponent)
+        scene->setEntityName(1078, "AnimatorComponent");
 
         // Entity components initialization
         AnimatorComponent animator;
@@ -2372,10 +2546,10 @@ void create_scene_AllComponents_2026080800(Scene* scene){
             animator.ik.push_back(animator_ik0);
         }
         animator.needsLoad = true;
-        scene->addComponent<AnimatorComponent>(1074, animator);
+        scene->addComponent<AnimatorComponent>(1078, animator);
 
         Transform transform;
-        transform.position = Vector3(73.000000f, 0.000000f, 0.000000f);
+        transform.position = Vector3(77.000000f, 0.000000f, 0.000000f);
         transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
         transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
         transform.visible = true;
@@ -2384,7 +2558,7 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         transform.cylindricalBillboard = false;
         transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
         transform.parent = NULL_ENTITY;
-        scene->addComponent<Transform>(1074, transform);
+        scene->addComponent<Transform>(1078, transform);
     }
 
     // Default Camera 1

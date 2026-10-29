@@ -118,7 +118,8 @@ Wrapper class names accepted as `type` (case-insensitive): `GameObject`, `Camera
 `InputField`, `Bone`, `Fog`, `LocalVolumetricFog`, `VolumetricClouds`, `Skybox`, `ReflectionProbe`, `FluidSimulation`, `Rigidbody2D`, `Joint2D`, `CharacterController2D`,
 `Rigidbody`, `Joint3D`, `CharacterController`, `Action`, `Tween`, `AlphaTween`, `ColorTween`, `PositionTween`,
 `RotationTween`, `ScaleTween`, `Animation`, `ParticleSystem`, `SpriteAnimation`,
-`KeyframeTracks`, `MorphTracks`, `LatticeTracks`, `RotateTracks`, `ScaleTracks`, `TranslateTracks`, `EntityHandle`.
+`KeyframeTracks`, `MorphTracks`, `LatticeTracks`, `RotateTracks`, `ScaleTracks`, `TranslateTracks`, `Spline`, `SplineExtrude`,
+`SplineInstantiate`, `SplineAnimate`, `EntityHandle`.
 An unknown name falls back to `EntityHandle` (with a warning in the log).
 
 The wrapper only wraps the entity; it does not check the entity really has that component.
@@ -1648,6 +1649,38 @@ Writing offsets stops a running tween. Tweens and jiggle do not run in the edito
 offsets, poses and followers show there too. Scripts must not edit `comp.offsets[i]` (a copy):
 use the methods. Physics colliders keep the rest shape.
 
+### 4.20 Spline, SplineExtrude, SplineInstantiate, SplineAnimate (EntityHandle)
+
+A GameObject's curve and what it builds (`jasper://docs/splines`). `self.entity:getSpline()`,
+`getSplineExtrude()`, `getSplineInstantiate()`, `getSplineAnimate()` add the component when it
+is missing. Spline queries are world space: distances and radii are local values times the
+GameObject's largest axis scale. Knot indices are 0-based; returned lists are Lua arrays.
+
+```lua
+local road = self.scene:findEntity("Road")
+local s = GameObject(self.scene, road):getSpline()
+local f = s:evaluateAtDistance(12.5)          -- SplineFrame: position, forward, right, up, radius, roll
+local hit = s:getClosestPoint(player.position) -- SplineHit: t, distance, position, segment
+s:addKnot(Vector3(10, 0, 4)); s:setKnotPosition(1, Vector3(4, 0, 2)); s:removeKnot(3)
+local a = cart:getSplineAnimate(); a.speed = 6; a.loop = SplineLoop.PingPong; a:play()
+a:setOnComplete(function() Log.print("arrived") end)   -- Once only
+```
+
+| Member | Notes |
+|---|---|
+| Spline `type` (`SplineType`), `closed`, `is3D` (false: up axis Z, the XY plane), `enabled` | rw |
+| `getKnotCount()`, `getKnotPositions()`, `getKnotPosition(i)` / `setKnotPosition(i, v)` | world; edits regenerate the consumers within the frame budget |
+| `addKnot(v)`, `insertKnot(i, v)`, `removeKnot(i)` (two stay), `clearKnots()` | |
+| `getKnotRadius/setKnotRadius(i, r)`, `getKnotRoll/setKnotRoll(i, deg)`, `getKnotTangentIn/Out(i)`, `setKnotTangents(i, in, out)`, `getKnotMode/setKnotMode(i, SplineTangentMode)` | handles local |
+| `getLength()`, `evaluate(t)` (t 0-1), `evaluateAtDistance(d)`, `getPosition(t)`, `tToDistance(t)`, `distanceToT(d)` | |
+| `getClosestPoint(v)`, `getClosestPointXZ(x, z)`, `getSignedDistance(v)` (to the tube: < 0 inside), `getSignedDistanceXZ(x, z)` (a closed spline's inside is < 0), `getSignedDistanceBandXZ(x, z)` (a ring, never a disc) | |
+| `sampleUniform(n)` (frames), `resample(spacing)`, `simplify(tolerance)` (knots removed) | |
+| SplineExtrude `shape` (`SplineExtrudeShape`), `widthSource`, `width`, `edgeDrop`, `edgeInset`, `crownRise`, `shoulderWidth`, `shoulderDrop`, `thickness`, `height`, `grade` (`SplineGrade`), `stepHeight`, `tubeSides`, `maxHalfWidth`, `waterEdgeDrop`, `flow`, `flowSpeed`, `tilesPerMetreU/V`, `levelCourseV`, `corners` (`SplineCornerStyle`), `endCaps`, `endTaper`, `lateralOffset`, `verticalOffset`, `conform` (`SplineConform`), `slopeBlend`, `stationSpacing`, `collision` (`SplineCollision`) | rw; `vertexCount`, `chunkCount`, `pending` ro; `rebuild()` |
+| SplineInstantiate `mode` (`SplineInstantiateMode`), `spacing`, `fit` (`SplineSpacingFit`), `postPitch`, `spanMaxStretch`, `fenceGrade`, `crestPitch`, `lateralOffset`, `verticalOffset`, `spacingJitter`, `yawJitter`, `lateralJitter`, `scaleRange` (Vector2), `dropout`, `seed`, `endTrim`, `plantMode` (`SplinePlantMode`), `maxTilt`, `conform`, `slopeBlend`, `stationSpacing` | rw; `addItem(path, weight)`, `clearItems()`, `itemCount`, `instanceCount`, `pending`, `rebuild()` |
+| SplineAnimate `spline` (the GameObject with the Spline), `method` (`SplineAnimateMethod`), `duration`, `speed`, `loop` (`SplineLoop`), `easing` (`SplineEasing`), `alignment` (`SplineAlignment`), `startOffset` (0-1), `lateralOffset`, `verticalOffset`, `playOnAwake` | rw |
+| `play()`, `pause()`, `restart()`, `playing`, `completed`, `normalizedTime`, `distance` (rw: moves the follower) | constant world speed along the curve; a 2D spline turns the follower about Z |
+| `onComplete` (`FunctionSubscribe`), `setOnComplete(fn)` | Once: called at the end |
+
 ## 5. Enums (exact Lua spelling; values are integers)
 
 | Namespace | Values |
@@ -1720,6 +1753,21 @@ use the methods. Physics colliders keep the rest shape.
 | `LatticeJiggleAnchor` | `NONE`, `NEGATIVE_X`, `POSITIVE_X`, `NEGATIVE_Y`, `POSITIVE_Y`, `NEGATIVE_Z`, `POSITIVE_Z` |
 | `LatticeStage` | `BEFORE_SKINNING`, `AFTER_SKINNING` |
 | `LatticeMaskChannel` | `NONE`, `RED`, `GREEN`, `BLUE`, `ALPHA`, `INVERTED_RED`, `INVERTED_GREEN`, `INVERTED_BLUE`, `INVERTED_ALPHA` |
+| `SplineType` | `Linear`, `CatmullRom`, `CubicBezier` |
+| `SplineTangentMode` | `Mirrored`, `Aligned`, `Broken` |
+| `SplineExtrudeShape` | `Flat`, `Bevel`, `Crown`, `Rectangle`, `Tube`, `Custom`, `Fill`, `WaterBanks` |
+| `SplineWidthSource` | `Radius`, `Constant` |
+| `SplineCornerStyle` | `None`, `Mitre`, `Round` |
+| `SplineGrade` | `Racked`, `Stepped` |
+| `SplineConform` | `None`, `TerrainHeight`, `TerrainHeightAndSlope` |
+| `SplineCollision` | `None`, `Mesh`, `Chain2D` |
+| `SplineInstantiateMode` | `Spacing`, `Tile`, `Fence` |
+| `SplineSpacingFit` | `FitToLength`, `FixedPitch` |
+| `SplinePlantMode` | `BoundsMin`, `Pivot` |
+| `SplineAnimateMethod` | `Duration`, `Speed` |
+| `SplineLoop` | `Once`, `Loop`, `PingPong` |
+| `SplineEasing` | `None`, `EaseIn`, `EaseOut`, `EaseInOut` |
+| `SplineAlignment` | `None`, `SplineTangent`, `SplineTangentAndUp`, `World` |
 
 There is no separate Rigidbody2D type enum: both Rigidbody2D and Rigidbody use `BodyType`.
 There is no `Collider2D`/`Collider3D` class: colliders are created/queried through the

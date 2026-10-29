@@ -428,6 +428,12 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::NavMeshLinkComponent: return &InspectorWindow::drawNavMeshLinkComponent;
         case ComponentType::NavMeshModifierComponent: return &InspectorWindow::drawNavMeshModifierComponent;
         case ComponentType::NavGridComponent: return &InspectorWindow::drawNavGridComponent;
+        // the knot table synced with the Scene view, Edit Spline and Draw, the terrain bake, the
+        // generators' warnings, Bake to GameObjects (InspectorSplines.cpp)
+        case ComponentType::SplineComponent: return &InspectorWindow::drawSplineComponent;
+        case ComponentType::SplineExtrudeComponent: return &InspectorWindow::drawSplineExtrudeComponent;
+        case ComponentType::SplineInstantiateComponent: return &InspectorWindow::drawSplineInstantiateComponent;
+        case ComponentType::SplineAnimateComponent: return &InspectorWindow::drawSplineAnimateComponent;
         case ComponentType::AnimatorComponent: return &InspectorWindow::drawAnimatorComponent;
         default: return nullptr;
     }

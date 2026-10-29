@@ -92,7 +92,7 @@ bookmarks: edit_* (jasper://docs/editor-integration).
 ## Code (Lua, C++, shaders, materials)
 The project is a normal folder (`editor_status`: project.path). Work in it and read, edit,
 grep and git its scripts, shaders and .material files with your own tools. Engine API to grep: .jasperengine/engine-api/ (C++ headers) and its lua/
-folder (Lua API stubs). Your file edits are reloaded before your next call, whose result
+(Lua API stubs). Your file edits are reloaded before your next call, whose result
 carries `external_changes` {changed, reloaded, problems: [{path, line, message}]}: fix those
 problems first. During play a saved Lua script reloads in place, keeping its instances
 (external_changes.script_reload; a file that fails keeps its old code running); C++ waits for

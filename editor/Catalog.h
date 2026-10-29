@@ -75,9 +75,11 @@ namespace jasperengine::editor{
         UpdateFlags_PoseAnimator_Reload = (uint64_t)1 << 42,
         // an Animation Player's clip list changed: the next update reloads and rebinds it
         UpdateFlags_AnimationPlayer_Reload = (uint64_t)1 << 43,
+        // a Spline's knots, type, closed flag or up axis was written in place: bumps its version
+        UpdateFlags_Spline              = (uint64_t)1 << 44,
         // an Animator's controller or a setting it binds with changed: the next update loads and
         // rebinds it, keeping its states (S21)
-        UpdateFlags_Animator_Reload = (uint64_t)1 << 44,
+        UpdateFlags_Animator_Reload = (uint64_t)1 << 45,
         // handlers that touch the whole scene, must be masked out when applying all flags
         UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Scene_Mesh_Variant | UpdateFlags_Reflection_Probe_Recapture_All
     };
@@ -160,6 +162,11 @@ namespace jasperengine::editor{
         NavMeshLinkComponent,
         NavMeshModifierComponent,
         NavGridComponent,
+        // S18 splines
+        SplineComponent,
+        SplineExtrudeComponent,
+        SplineInstantiateComponent,
+        SplineAnimateComponent,
         // Unity's Animator (docs/specs/S21-animation.md)
         AnimatorComponent
     };

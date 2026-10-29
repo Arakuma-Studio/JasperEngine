@@ -603,19 +603,17 @@ void SceneRender::beginLatticeDrag(Entity entity, const Vector3& pivot, const Qu
     LatticeEditorOps::endContinuousEdit(sceneId);
 }
 
-void SceneRender::dragLatticeGizmo(Project* project, uint32_t sceneId, bool invertRotationSnap){
+bool SceneRender::gizmoDragDelta(const Vector3& pivot, const Quaternion& rotation, bool invertRotationSnap, Matrix4& delta){
     ToolsLayer& tools = gizmoTools();
     RayReturn rretrun = mouseRay.intersects(cursorPlane);
     if (!rretrun){
-        return;
+        return false;
     }
 
-    const Matrix4 gizmoRMatrix = latticeDrag.rotation.getRotationMatrix();
-    const Vector3 pivot = latticeDrag.pivot;
+    const Matrix4 gizmoRMatrix = rotation.getRotationMatrix();
     const GizmoSelected gizmo = tools.getGizmoSelected();
     const GizmoSideSelected side = tools.getGizmoSideSelected();
 
-    Matrix4 delta;
     if (gizmo == GizmoSelected::TRANSLATE && side != GizmoSideSelected::NONE){
         tools.mouseDrag(rretrun.point);
         Vector3 deltaPos = gizmoRMatrix.inverse() * ((rretrun.point + cursorStartOffset) - gizmoStartPosition);
@@ -648,8 +646,8 @@ void SceneRender::dragLatticeGizmo(Project* project, uint32_t sceneId, bool inve
         float sign = cursorStartOffset.crossProduct(lastPoint).dotProduct(cursorPlane.normal);
         float angle = snapRotationAngle((sign < 0) ? -origAngle : origAngle, invertRotationSnap);
 
-        Quaternion rotation(Angle::radToDefault(angle), rotationAxis);
-        delta = Matrix4::translateMatrix(pivot) * rotation.getRotationMatrix() * Matrix4::translateMatrix(-pivot);
+        const Quaternion turn(Angle::radToDefault(angle), rotationAxis);
+        delta = Matrix4::translateMatrix(pivot) * turn.getRotationMatrix() * Matrix4::translateMatrix(-pivot);
 
     }else if (gizmo == GizmoSelected::SCALE && side != GizmoSideSelected::NONE){
         tools.mouseDrag(rretrun.point);
@@ -691,10 +689,17 @@ void SceneRender::dragLatticeGizmo(Project* project, uint32_t sceneId, bool inve
         delta = Matrix4::translateMatrix(move);
 
     }else{
-        return;
+        return false;
     }
 
-    dragLatticePoints(project, sceneId, delta);
+    return true;
+}
+
+void SceneRender::dragLatticeGizmo(Project* project, uint32_t sceneId, bool invertRotationSnap){
+    Matrix4 delta;
+    if (gizmoDragDelta(latticeDrag.pivot, latticeDrag.rotation, invertRotationSnap, delta)){
+        dragLatticePoints(project, sceneId, delta);
+    }
 }
 
 void SceneRender::dragLatticePoints(Project* project, uint32_t sceneId, const Matrix4& worldDelta){

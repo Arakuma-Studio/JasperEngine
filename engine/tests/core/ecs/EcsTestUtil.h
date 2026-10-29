@@ -14,7 +14,7 @@ namespace jasperengine::test {
     // the SubSystems a Scene schedules, in registration order
     inline const std::vector<std::string>& subSystemNames(){
         static const std::vector<std::string> names{
-            "ActionSystem", "AnimatorSystem", "PoseAnimatorSystem", "MeshSystem", "LatticeSystem", "UISystem", "UIDocumentSystem", "FluidSystem", "RenderSystem",
+            "ActionSystem", "AnimatorSystem", "PoseAnimatorSystem", "SplineSystem", "MeshSystem", "LatticeSystem", "UISystem", "UIDocumentSystem", "FluidSystem", "RenderSystem",
             "NavigationSystem", "PhysicsSystem", "ParticleSubsystem", "AudioSystem"
         };
         return names;

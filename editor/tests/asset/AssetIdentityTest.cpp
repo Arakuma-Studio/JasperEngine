@@ -630,6 +630,10 @@ TEST(AssetRefSchema, CoversAllFields) {
         {C::AnimationPlayerComponent, "clips[]"},
         // S19: a surface's baked .navmesh and a grid's .navgrid cells
         {C::NavMeshSurfaceComponent, "navMeshData"}, {C::NavGridComponent, "gridData"},
+        // S18: the model or prefab of each entry of a spline placer's pools
+        {C::SplineInstantiateComponent, "items[].asset"}, {C::SplineInstantiateComponent, "posts[].asset"},
+        {C::SplineInstantiateComponent, "spans[].asset"}, {C::SplineInstantiateComponent, "gates[].asset"},
+        {C::SplineInstantiateComponent, "crests[].asset"}, {C::SplineInstantiateComponent, "caps[].asset"},
         // S21's Animator: its Animator Controller (the clips and masks are in the .controller)
         {C::AnimatorComponent, "controller"},
     };

@@ -2372,18 +2372,158 @@ entities:
         gridData: ""
   - type: Entity
     entity: 1074
-    name: AnimatorComponent
+    name: SplineComponent
     components:
       transform:
         position: [73, 0, 0]
         rotation: [1, 0, 0, 0]
         scale: [1, 1, 1]
-        worldPosition: [0, 0, 0]
-        worldRotation: [1, 0, 0, 0]
-        worldScale: [1, 1, 1]
-        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
-        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
-        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      spline:
+        enabled: false
+        type: bezier
+        closed: true
+        upAxis: [7.3, 7.1, 3.5]
+        knots:
+          - {p: [0, 0, 0], r: 3}
+          - {p: [10, 1, 5], in: [-2, 0, 0], out: [2, 0, 0], r: 4.5, roll: 12, mode: broken}
+        terrain:
+          region: area
+          extraWidth: 4.6
+          falloff: 2.8
+          flatten: false
+          flattenMode: fill_only
+          heightOffset: 9
+          paint: true
+          paintLayer: 2
+          paintStrength: 1.2
+          paintFalloff: 5.8
+          paintNoise: 0.9
+          clearFoliage: true
+          foliageMask: 5
+  - type: Entity
+    entity: 1075
+    name: SplineExtrudeComponent
+    components:
+      transform:
+        position: [74, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      splineextrude:
+        enabled: false
+        shape: water_banks
+        widthSource: constant
+        edgeDrop: 8
+        edgeInset: 4.4
+        crownRise: 8.7
+        shoulderWidth: 0.7
+        shoulderDrop: 4.1
+        thickness: 8.2
+        grade: stepped
+        stepHeight: 4.7
+        tubeSides: 3
+        customProfile:
+          - {p: [-1, 0], grounded: true}
+          - {p: [0, 0.5], hard: true}
+          - {p: [1, 0], grounded: true}
+        customClosed: true
+        maxHalfWidth: 0.6
+        waterEdgeDrop: 7.1
+        seaLevelFloor: true
+        seaLevel: 4.1
+        flow: true
+        flowSpeed: 3.5
+        tilesPerMetreU: 3.1
+        tilesPerMetreV: 1.5
+        levelCourseV: true
+        corners: round
+        endCaps: false
+        endTaper: 8.6
+        lateralOffset: 3.2
+        verticalOffset: 1.8
+        conform: terrain_height_and_slope
+        slopeBlend: 6.1
+        stationSpacing: 8.1
+        collision: chain_2d
+  - type: Entity
+    entity: 1076
+    name: SplineInstantiateComponent
+    components:
+      transform:
+        position: [75, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      splineinstantiate:
+        enabled: false
+        mode: fence
+        spacing: 7.9
+        fit: fixed_pitch
+        postPitch: 0.5
+        spanMaxStretch: 2.8
+        fenceGrade: stepped
+        crestPitch: 0.7
+        spanOverrides:
+          - {knot: 0, span: 1, kind: gate, piece: 0}
+        lateralOffset: 8.8
+        verticalOffset: 8.6
+        spacingJitter: 1.2
+        yawJitter: 2.9
+        lateralJitter: 6.4
+        scaleRange: [8.4, 3]
+        dropout: 5.4
+        endTrim: 3.4
+        plantMode: pivot
+        maxTilt: 6.9
+        conform: terrain_height_and_slope
+        slopeBlend: 4.2
+        stationSpacing: 0.3
+  - type: Entity
+    entity: 1077
+    name: SplineAnimateComponent
+    components:
+      transform:
+        position: [76, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      splineanimate:
+        enabled: false
+        method: speed
+        duration: 5.2
+        speed: 4.7
+        loop: ping_pong
+        easing: ease_in_out
+        alignment: world
+        startOffset: 3.8
+        lateralOffset: 6
+        verticalOffset: 4.9
+        playOnAwake: false
+  - type: Entity
+    entity: 1078
+    name: AnimatorComponent
+    components:
+      transform:
+        position: [77, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
         visible: true
         billboardRotation: [1, 0, 0, 0]
         billboard: false

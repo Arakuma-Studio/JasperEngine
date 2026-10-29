@@ -503,3 +503,71 @@ a:setOnComplete(function() ... end)                -- Once only
   knot spacing, the usual case for freehand strokes. Uniform is not offered. Ported tests that assert
   exact uniform-CR positions are re-baselined against a reference centripetal implementation, and
   their topology/UV/layout assertions stay as they are.
+
+## Deviations
+
+Decisions taken during the implementation where the spec was wrong, impossible or ambiguous in a
+detail (each the best correct alternative found; the requirement it serves is named).
+
+1. **Knot property paths are `knots[N].<field>`** (R27 wrote `points[N].position`): the property
+   is named after the scene file's `knots` key and Unity's `Spline.Knots`; the fields are
+   `position`, `tangentIn`, `tangentOut`, `radius`, `roll`, `mode`. Indices are 0-based in the
+   tools, `set_properties` and Lua alike.
+2. **The Spline Extrude's material, shadows and lighting are its GameObject's Mesh** (R6 listed a
+   material and cast/receive shadows on the component). As Unity's SplineExtrude needs a
+   MeshRenderer, Spline Extrude needs a Mesh (added with it): its first submesh's material (any
+   library shader and its features, `.material` files, presets) and its flags are copied to the
+   chunks, and the Mesh itself draws nothing (RenderSystem skips it; `Stream::isGeneratedMesh`
+   leaves its buffers out of the scene, R29).
+3. **Chain2D colliders live on generated static bodies** (R13: "on the entity's Rigidbody2D, a
+   static body is added if missing"): writing the generated chain into the GameObject's own
+   Rigidbody2D would put derived data into the scene file and fight the user's colliders. The
+   centreline (simplified to 2 mm of physics scale) becomes Box2D chains of at most
+   `MAX_COLLIDER_POINTS_2D` points overlapping by three, with ghost points past open ends, each
+   made twice (reversed), so the edge collides from both sides along its whole length like
+   Unity's EdgeCollider2D (a Box2D chain is one-sided and skips its end edges); on engine-owned
+   bodies like the chunks.
+4. **WaterBanks samples the heightmap at its texel centres** (D9 wrote spacing
+   `terrainSize/(N-1)`): the terrain now draws and samples texel `i` at `(i + 0.5) / N`
+   (upstream's texel-centre sampling), so the ground lattice is `terrainSize/N` apart, starting
+   half a texel in; the shoreline still matches what is drawn.
+5. **"Only the chunks intersecting the changed arc range rebuild" (R30)** is implemented as: a
+   chunk rebuilds when the stations it is built from (positions, frames, widths, distances) or
+   the run-wide U inputs change. Since U is the draped distance (R6), an edit that changes the
+   length upstream changes every downstream chunk's U and so rebuilds them; edits of radius,
+   roll, tangents or the end of a spline rebuild only the chunks around them.
+6. **Prefab pieces are GameObjects in Play and in exported games only** (§9): prefab factories
+   exist only while the game runs (`PrefabManager`), so in the editor's edit mode a prefab pool
+   places nothing and the inspector says so; *Bake to GameObjects* places them as real prefab
+   instances (one undo step). Model pools are instanced everywhere.
+7. **A piece's run axis is derived from its bounds** (OpenEngine's rule: the longer horizontal
+   axis, near-square pieces along Z) instead of a "chosen axis" field; fences have a post on every
+   authored knot (FenceLayout's model), without a toggle; the fence gains a `crests` pool.
+8. **Corners (Mitre/Round) apply at the knots of Linear splines**: Catmull-Rom and Bezier splines
+   are smooth through their knots, so a corner there has no turn to build.
+9. **Live Terrain restores every texel the session wrote** before each re-bake (R12 wrote the
+   union of the old and new footprints): a superset of that union, so no stale cut survives.
+10. **Painting needs the blend map to exist**: the bake paints an existing blend map; a layer
+   whose blend map is missing gets a warning (the Terrain tool creates it).
+11. **Every export ships `licenses/OpenEngine-LICENSE.txt`**: every game links the spline module
+   (`SplineSystem` is a scene system), not only those with spline components.
+12. **R20's bake budgets are measured by the editor test `TerrainSplineBakeTests.BakeBudgets`**
+   (the bake is editor code, `editor/util/TerrainSplineBake.cpp`), enforced with
+   `JASPER_TEST_PERF_SLACK` on the benchmark server; R18, R19 and R21 by `je-bench-splines`.
+13. **Only the scene format is bumped (4 -> 5, after S29's 3 -> 4)**; prefab files keep their
+   version: an older editor preserves a prefab's unknown spline components as unknown data (S03)
+   either way.
+14. **R19's "7-point" Crown is OpenEngine's 5-point Crown with its two shoulder creases split**:
+   a crease emits its vertex twice (split normals), so a ring has 7 vertices, which is what the
+   build cost depends on; `je-bench-splines` gates `crown_ring_vertices` = 7.
+15. **AC15's cross-compiler hash** is pinned on GCC (`ROAD_FIXTURE_VERTEX_HASH`); Clang and MSVC CI
+   jobs check the same constant (there is one Linux compiler on the build servers).
+16. **The four components are on S08's reflection tables** (R29 named `editor/Stream.cpp`):
+   `editor/reflect/components/SplinesReflect.cpp` describes them, and the scene codec, Catalog
+   properties, MCP schema, prefab overrides, undo and exported code all come from it. R29's file
+   format is kept: values at their defaults are omitted, and knots, profile points, pool entries
+   and span overrides are flow maps, one per line.
+17. **The MCP guide is not grown**: the splines detail is in `jasper://docs/splines`, and the
+   `splines` group description points there. The group's name in the generated "Tool groups"
+   line (9 bytes) took the guide over its 16,384-byte budget, so the Code section's "its lua/
+   folder (Lua API stubs)" became "its lua/ (Lua API stubs)" (16,383 bytes, limit unchanged).

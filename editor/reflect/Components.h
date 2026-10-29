@@ -112,6 +112,10 @@ namespace jasperengine::editor::reflect {
     extern const ComponentDesc kNavMeshLinkDesc;
     extern const ComponentDesc kNavMeshModifierDesc;
     extern const ComponentDesc kNavGridDesc;
+    extern const ComponentDesc kSplineDesc;
+    extern const ComponentDesc kSplineExtrudeDesc;
+    extern const ComponentDesc kSplineInstantiateDesc;
+    extern const ComponentDesc kSplineAnimateDesc;
     extern const ComponentDesc kAnimatorDesc;
 
 }

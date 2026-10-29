@@ -9,7 +9,8 @@
 # je-bench-diag the crash and hang diagnostics' (S28 R26), je-bench-picking the triangle picking
 # budgets (S26 R28-R31, docs/scene-view-picking.md), je-bench-particles the particle system's
 # (S20 R20-R26, docs/perf/particles.md), je-bench-nav navigation's (S19 R25-R30,
-# docs/perf/navigation.md), je-bench-anim the Animator's (S21 R19-R20, docs/perf/animator.md)
+# docs/perf/navigation.md), je-bench-splines the splines' (S18 R18-R21, docs/perf/splines.md),
+# je-bench-anim the Animator's (S21 R19-R20, docs/perf/animator.md)
 # tools/perf/check_bench.py gates on, from their JSON output (docs/jobs-memory.md).
 
 file(GLOB_RECURSE CORE_TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*Test.cpp)
@@ -127,8 +128,10 @@ add_executable(je-bench-picking ${CMAKE_CURRENT_SOURCE_DIR}/bench/PickingBench.c
 add_executable(je-bench-diag ${CMAKE_CURRENT_SOURCE_DIR}/bench/DiagBench.cpp)
 add_executable(je-bench-particles ${CMAKE_CURRENT_SOURCE_DIR}/bench/ParticlesBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
 add_executable(je-bench-nav ${CMAKE_CURRENT_SOURCE_DIR}/bench/NavBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
+# je-bench-splines: the spline budgets (S18 R18-R21, docs/perf/splines.md)
+add_executable(je-bench-splines ${CMAKE_CURRENT_SOURCE_DIR}/bench/SplineBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
 add_executable(je-bench-anim ${CMAKE_CURRENT_SOURCE_DIR}/bench/AnimBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
-foreach(target je-bench-jobs je-bench-memory je-bench-picking je-bench-diag je-bench-particles je-bench-nav je-bench-anim)
+foreach(target je-bench-jobs je-bench-memory je-bench-picking je-bench-diag je-bench-particles je-bench-nav je-bench-splines je-bench-anim)
     target_link_libraries(${target} PRIVATE jasperengine Threads::Threads)
     target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/support)
     jasperengine_apply_cxx_standard(${target})
@@ -136,7 +139,7 @@ foreach(target je-bench-jobs je-bench-memory je-bench-picking je-bench-diag je-b
     set_target_properties(${target} PROPERTIES FOLDER "tests")
 endforeach()
 
-foreach(target jasperengine-core-tests je-bench-jobs je-bench-memory je-bench-particles je-bench-nav je-bench-anim)
+foreach(target jasperengine-core-tests je-bench-jobs je-bench-memory je-bench-particles je-bench-nav je-bench-splines je-bench-anim)
     if(CORE_TEST_COUNTS_ALLOCATIONS)
         target_compile_definitions(${target} PRIVATE JE_TEST_COUNTS_ALLOCATIONS)
         target_link_options(${target} PRIVATE "-Wl,--wrap=malloc" "-Wl,--wrap=calloc" "-Wl,--wrap=realloc" "-rdynamic")

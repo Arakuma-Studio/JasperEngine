@@ -9,6 +9,7 @@
 #include "util/CameraTextureLink.h"
 #include "subsystem/RenderSystem.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/SplineComponent.h"
 #include "external/IconsFontAwesome6.h"
 #include "lattice/LatticeTypes.h"
 #include "pose/PoseAnimatorRuntime.h"
@@ -1061,6 +1062,19 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
     if (updateFlags & UpdateFlags_Particles){
         if (ParticleSystemComponent* particles = registry->findComponent<ParticleSystemComponent>(entity)){
             particles->needReload = true;
+        }
+    }
+    if (updateFlags & UpdateFlags_Spline){
+        // a knot, the type, closed or the up axis was written in place: a new version (radii
+        // kept non-negative, the up axis a unit one, as the setters keep them)
+        if (SplineComponent* spline = registry->findComponent<SplineComponent>(entity)){
+            for (spline::SplineKnot& knot : spline->spline.editableKnots()){
+                knot.radius = std::isfinite(knot.radius) ? std::max(0.0f, knot.radius) : 0.0f;
+            }
+            Vector3& up = spline->spline.editableUpAxis();
+            const float length = up.length();
+            up = (std::isfinite(length) && length > 0.0f) ? up / length : Vector3(0.0f, 1.0f, 0.0f);
+            spline->spline.markDirty();
         }
     }
     if (updateFlags & UpdateFlags_Lattice){

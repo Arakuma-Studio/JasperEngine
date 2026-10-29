@@ -1,0 +1,103 @@
+formatVersion: 5
+id: 4180
+name: Splines
+scene:
+  backgroundColor: [0.25, 0.45, 0.65, 1]
+  shadowQuality: auto
+  meshLodEnabled: false
+  meshLodThreshold: 1
+  depthPrepassEnabled: false
+  lightState: on
+  globalIlluminationIntensity: 0.2
+  globalIlluminationColor: [1, 1, 1]
+  ambientLight2DIntensity: 1
+  ambientLight2DColor: [1, 1, 1]
+  shadow2DQuality: low
+  ssaoEnabled: false
+  ssaoRadius: 0.5
+  ssaoIntensity: 1
+  ssaoBias: 0.025
+  ssrEnabled: false
+  ssrMaxDistance: 8
+  ssrThickness: 0.5
+  ssrMaxSteps: 48
+  ssrIntensity: 1
+  ssrBlur: 0
+  gravity2D: [0, -9.81]
+  gravity3D: [0, -9.81, 0]
+  fixedResolutionEnabled: false
+  fixedResolutionWidth: 640
+  fixedResolutionHeight: 360
+  fixedResolutionFilter: nearest
+  enableUIEvents: not_set
+sceneType: scene_3d
+mainCamera: 0
+maxValues:
+  maxSubmeshes: 0
+  maxTilemapTilesRect: 0
+  maxTilemapTiles: 0
+  maxExternalBuffers: 0
+  maxSpriteFrames: 0
+  maxBones: 0
+  maxColliders2D: 0
+  maxColliderPoints2D: 0
+  maxColliders3D: 0
+  maxColliderVertices3D: 0
+  maxColliderIndices3D: 0
+entities:
+  - type: Entity
+    entity: 1001
+    name: Road
+    components:
+      transform:
+        position: [0, 0, 0]
+      spline:
+        enabled: true
+        knots:
+          - {p: [0, 0, 0], r: 4}
+          - {p: [20, 0, 5], r: 4, roll: 3}
+          - {p: [40, 1, 0], r: 4}
+        terrain:
+          flattenMode: cut_only
+          heightOffset: -0.12
+      mesh:
+        enabled: true
+      splineextrude:
+        enabled: true
+        shape: crown
+        conform: terrain_height
+        tilesPerMetreU: 0.125
+  - type: Entity
+    entity: 1002
+    name: Fence
+    components:
+      transform:
+        position: [0, 0, 10]
+      spline:
+        enabled: true
+        type: linear
+        knots:
+          - {p: [0, 0, 0]}
+          - {p: [10, 0, 0], in: [-1, 0, 0], out: [1, 0, 0], mode: broken}
+      splineinstantiate:
+        enabled: true
+        mode: fence
+        posts:
+          - {asset: splines/fence_post.gltf}
+        spans:
+          - {asset: splines/fence_rail.gltf, weight: 2}
+        spanOverrides:
+          - {knot: 0, span: 1, kind: gate, piece: 0}
+        seed: 7
+  - type: Entity
+    entity: 1003
+    name: Cart
+    components:
+      transform:
+        position: [0, 0, 0]
+      splineanimate:
+        enabled: true
+        spline: 1001
+        loop: ping_pong
+        speed: 6
+        method: speed
