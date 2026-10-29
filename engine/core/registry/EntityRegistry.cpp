@@ -101,6 +101,10 @@ EntityRegistry::EntityRegistry() {
     registerComponent<NavMeshLinkComponent>(ComponentOrder::Insertion, "NavMeshLinkComponent");
     registerComponent<NavMeshModifierComponent>(ComponentOrder::Insertion, "NavMeshModifierComponent");
     registerComponent<NavGridComponent>(ComponentOrder::Insertion, "NavGridComponent");
+    registerComponent<SplineComponent>(ComponentOrder::Insertion, "SplineComponent");
+    registerComponent<SplineExtrudeComponent>(ComponentOrder::Insertion, "SplineExtrudeComponent");
+    registerComponent<SplineInstantiateComponent>(ComponentOrder::Insertion, "SplineInstantiateComponent");
+    registerComponent<SplineAnimateComponent>(ComponentOrder::Insertion, "SplineAnimateComponent");
 
     // complete: markChangedComponent may look into it
     std::lock_guard<std::mutex> lock(liveRegistriesMutex());

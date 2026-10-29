@@ -1,0 +1,5 @@
+# tools/android-emulator-test.sh --ordered --expect-file: what the splines project logs on Android
+# (`logcat -v tag`): the road built, the knot moved from Lua, the rebuild within its budget
+I/JasperEngine: [gate] splines
+I/JasperEngine: [gate] knot moved from Lua
+I/JasperEngine: [gate] spline rebuild within budget

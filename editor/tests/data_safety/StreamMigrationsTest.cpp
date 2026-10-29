@@ -49,12 +49,12 @@ TEST(StreamMigrations, MigrateStampsVersionFirst){
     YAML::Node root = YAML::Load("{name: Level1, entities: [{name: A}]}");
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
     EXPECT_EQ(result.versionRead, 0);
-    EXPECT_EQ(result.versionCurrent, 4);
+    EXPECT_EQ(result.versionCurrent, 5);
     EXPECT_TRUE(result.migrated());
     EXPECT_FALSE(result.newer());
     ASSERT_TRUE(root.IsMap());
     EXPECT_EQ(root.begin()->first.Scalar(), "formatVersion");
-    EXPECT_EQ(root["formatVersion"].as<int>(), 4);
+    EXPECT_EQ(root["formatVersion"].as<int>(), 5);
     EXPECT_EQ(root["name"].as<std::string>(), "Level1");
     EXPECT_EQ(root["entities"][0]["name"].as<std::string>(), "A");
     EXPECT_EQ(root.size(), 3u);
@@ -62,7 +62,7 @@ TEST(StreamMigrations, MigrateStampsVersionFirst){
     // current: nothing to do
     const MigrationResult again = StreamMigrations::migrate(DocumentKind::Scene, root);
     EXPECT_FALSE(again.migrated());
-    EXPECT_EQ(again.versionRead, 4);
+    EXPECT_EQ(again.versionRead, 5);
 }
 
 TEST(StreamMigrations, NewerIsLeftUntouched){
@@ -71,8 +71,8 @@ TEST(StreamMigrations, NewerIsLeftUntouched){
     EXPECT_TRUE(result.newer());
     EXPECT_FALSE(result.migrated());
     EXPECT_EQ(root["formatVersion"].as<int>(), 99);
-    EXPECT_EQ(StreamMigrations::newerFormatMessage(DocumentKind::Scene, 5),
-            "Written by a newer JasperEngine (scene format 5; this editor writes 4).");
+    EXPECT_EQ(StreamMigrations::newerFormatMessage(DocumentKind::Scene, 6),
+            "Written by a newer JasperEngine (scene format 6; this editor writes 5).");
 }
 
 TEST(StreamMigrations, OldPrefabsAreLeftToThePrefabLoader){
@@ -107,9 +107,9 @@ TEST(StreamMigrations, SceneV1ToV2ShadowBiasInTexels){
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
     EXPECT_EQ(result.versionRead, 1);
     // 1 -> 2, then 2 -> 3 (S20's particle systems: none here), 3 -> 4 (S29's derived transform
-    // values: none here)
-    ASSERT_EQ(result.applied.size(), 3u);
-    EXPECT_EQ(root["formatVersion"].as<int>(), 4);
+    // values: none here) and 4 -> 5 (S18's splines: identity)
+    ASSERT_EQ(result.applied.size(), 4u);
+    EXPECT_EQ(root["formatVersion"].as<int>(), 5);
     EXPECT_EQ(root["scene"]["shadowQuality"].as<std::string>(), "auto");
     EXPECT_FLOAT_EQ(root["entities"][0]["components"]["light"]["shadowBias"].as<float>(), 1.0f);
     EXPECT_FLOAT_EQ(root["entities"][1]["children"][0]["components"]["light"]["shadowBias"].as<float>(), 1.0f);
@@ -162,8 +162,9 @@ TEST(StreamMigrations, SceneV2ToV3ParticleSystemsMoveToTheirTargets){
         "{type: Entity, entity: 1003, name: Lonely, components: {particlesystem: {rate: 3}}}]}");
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
     EXPECT_EQ(result.versionRead, 2);
-    ASSERT_EQ(result.applied.size(), 2u);
-    EXPECT_EQ(root["formatVersion"].as<int>(), 4);
+    // 2 -> 3, then S29's 3 -> 4 and S18's identity 4 -> 5
+    ASSERT_EQ(result.applied.size(), 3u);
+    EXPECT_EQ(root["formatVersion"].as<int>(), 5);
 
     const YAML::Node fire = root["entities"][0]["components"];
     ASSERT_TRUE(fire["particlesystem"]);

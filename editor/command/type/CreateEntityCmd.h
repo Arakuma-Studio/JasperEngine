@@ -78,7 +78,22 @@ namespace jasperengine::editor{
         // LatticeEditorOps::createLattice, which fits and binds it around the selection
         LATTICE,
         LOCAL_VOLUMETRIC_FOG,
-        VOLUMETRIC_CLOUDS
+        VOLUMETRIC_CLOUDS,
+        // GameObject › Spline (S18 R23): a spline configured by its preset (SplinePresets).
+        // SPLINE_DRAW is an empty spline the Draw Spline tool starts on.
+        SPLINE_EMPTY,
+        SPLINE_DRAW,
+        SPLINE_ROAD,
+        SPLINE_PATH,
+        SPLINE_WALL,
+        SPLINE_FENCE,
+        SPLINE_RIVER,
+        SPLINE_LAKE,
+        SPLINE_CIRCLE,
+        SPLINE_SQUARE,
+        SPLINE_EDGE_2D,
+        SPLINE_FILL_2D,
+        SPLINE_CIRCLE_2D
     };
 
     class CreateEntityCmd: public Command{

@@ -14,6 +14,7 @@
 #include "component/PointsComponent.h"
 #include "picking/SceneBvh.h"
 #include "render/SceneRender.h"
+#include "subsystem/SplineSystem.h"
 
 #include <algorithm>
 #include <cfloat>
@@ -163,8 +164,22 @@ PickFilter ScenePicker::makeFilter(const SceneProject* layerScene, const ScenePr
     auto pickable = std::make_shared<std::unordered_set<Entity>>();
     const std::vector<Entity> entities = project->getPickableEntities(layerScene);
     pickable->insert(entities.begin(), entities.end());
-    filter.accept = [pickable](Entity entity){ return pickable->count(entity) > 0; };
+    // what a spline builds is picked as its GameObject (pickedEntity)
+    std::shared_ptr<SplineSystem> splines = layerScene->scene ? layerScene->scene->findSystem<SplineSystem>() : nullptr;
+    filter.accept = [pickable, splines](Entity entity){
+        if (pickable->count(entity) > 0){
+            return true;
+        }
+        const Entity owner = splines ? splines->getGeneratedOwner(entity) : NULL_ENTITY;
+        return owner != NULL_ENTITY && pickable->count(owner) > 0;
+    };
     return filter;
+}
+
+Entity ScenePicker::pickedEntity(Scene* scene, Entity hit){
+    std::shared_ptr<SplineSystem> splines = scene ? scene->findSystem<SplineSystem>() : nullptr;
+    const Entity owner = splines ? splines->getGeneratedOwner(hit) : NULL_ENTITY;
+    return owner != NULL_ENTITY ? owner : hit;
 }
 
 void ScenePicker::pickLayer(const Project::SceneViewLayer& layer, SceneProject* viewScene, const Ray& ray, bool waitForBvh,
@@ -222,7 +237,7 @@ void ScenePicker::pickLayer(const Project::SceneViewLayer& layer, SceneProject* 
     for (const PickHit& hit : hits){
         ScenePickEntry entry;
         entry.sceneId = layer.sceneId;
-        entry.entity = hit.entity;
+        entry.entity = pickedEntity(scene, hit.entity);
         entry.hit = hit;
         if (std::find(out.begin(), out.end(), entry) != out.end()){
             continue;
@@ -405,7 +420,14 @@ Entity ScenePicker::bestOnRay(const std::vector<Entity>& entities, Scene* scene,
     auto accepted = std::make_shared<std::unordered_set<Entity>>(entities.begin(), entities.end());
     PickFilter filter;
     filter.kinds = PICK_ALL & ~PICK_ICON;
-    filter.accept = [accepted](Entity entity){ return accepted->count(entity) > 0; };
+    std::shared_ptr<SplineSystem> splines = scene->findSystem<SplineSystem>();
+    filter.accept = [accepted, splines](Entity entity){
+        if (accepted->count(entity) > 0){
+            return true;
+        }
+        const Entity owner = splines ? splines->getGeneratedOwner(entity) : NULL_ENTITY;
+        return owner != NULL_ENTITY && accepted->count(owner) > 0;
+    };
     // the editor's incidental queries (what a press lands on, the physics snap's arming) never
     // build a mesh's tree on the main thread: one still building answers with its bounds
     filter.waitForBvh = false;
@@ -425,7 +447,7 @@ Entity ScenePicker::bestOnRay(const std::vector<Entity>& entities, Scene* scene,
         }
     };
     for (const PickHit& hit : hits){
-        consider(hit.entity, hit.distance / rayLength);
+        consider(pickedEntity(scene, hit.entity), hit.distance / rayLength);
     }
     // points, lines and (when drawn) icons: the view-sized boxes the old picker tested
     for (Entity entity : entities){

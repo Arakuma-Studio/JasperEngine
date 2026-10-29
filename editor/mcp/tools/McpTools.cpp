@@ -56,6 +56,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerScriptingTools, "Scripting: hot reload, script status, editor menus, expressions", "scripting"},   // S23
     {registerGraphTools, "Graphs", "scripting"},   // S23
     {registerGameplayTools, "Gameplay: input, character controller, water", "gameplay"},   // S22
+    {registerSplineTools, "Splines: roads, walls, placement, terrain and water", "splines"},   // S18
     {registerParticleTools, "Particles: effects and playback", "particles"},   // S20
     {registerOrganisationTools, "Search, shortcuts, layouts, labels, saved searches and bookmarks", "organisation"},   // S25
     {registerNavigationTools, "Navigation: navmeshes, agents, crowds and grids", "navigation"},   // S19

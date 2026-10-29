@@ -310,6 +310,15 @@ namespace {
         dropDerivedTransformKeys(root["members"]);
     }
 
+    // Scene 4 -> 5 (S18 splines): the Spline, Spline Extrude, Spline Instantiate and Spline
+    // Animate components. An older scene has none of them, so it reads unchanged (identity); the
+    // version tells an older editor that it cannot read them, whose unknown-data preservation
+    // keeps them through its saves.
+    void sceneV4ToV5(YAML::Node& root, MigrationLog& log){
+        (void)root;
+        (void)log;
+    }
+
 }
 
 const char* StreamMigrations::versionKey(DocumentKind kind){
@@ -318,7 +327,7 @@ const char* StreamMigrations::versionKey(DocumentKind kind){
 
 int StreamMigrations::currentVersion(DocumentKind kind){
     switch (kind){
-        case DocumentKind::Scene: return 4;
+        case DocumentKind::Scene: return 5;
         case DocumentKind::Project: return 1;
         case DocumentKind::Material: return 1;
         // Prefab::FILE_VERSION
@@ -359,6 +368,7 @@ const std::vector<Migration>& StreamMigrations::table(DocumentKind kind){
         {1, 2, "shadow bias in shadow texels, shadow quality Low to Auto", sceneV1ToV2},
         {2, 3, "particle systems to effects on their targets", sceneV2ToV3},
         {3, 4, "derived transform values no longer written", sceneV3ToV4},
+        {4, 5, "splines (identity: an older scene has none)", sceneV4ToV5},
     };
     static const std::vector<Migration> project = {
         {0, 1, "stamp the project format version", projectV0ToV1},

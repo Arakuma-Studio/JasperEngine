@@ -20,6 +20,9 @@ namespace jasperengine::editor {
         ComponentType componentType;
 
         bool wasModified;
+        // the components the added one requires that the GameObject lacked (a Spline Extrude's
+        // Spline and Mesh, Unity's RequireComponent): added with it, removed with its undo
+        std::vector<std::pair<Entity, ComponentType>> required;
         // Unity: a component added to a prefab instance's GameObject is an added component
         // override of that instance
         PrefabEditUndo prefabUndo;
