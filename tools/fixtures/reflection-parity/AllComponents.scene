@@ -2168,3 +2168,33 @@ entities:
         playAutomatically: false
         speed: 2.5
         defaultFadeTime: 0.5
+  - type: Entity
+    entity: 1068
+    name: VertexAnimatorComponent
+    components:
+      transform:
+        position: [67, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [0, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      vertexanimator:
+        enabled: false
+        animation: Reflection parity
+        guid: "text: [1, 2]"
+        defaultClip: Reflection parity
+        playAutomatically: false
+        speed: 8.2
+        randomStart: false
+        defaultFadeTime: 5.6
+        instanceEvents: true
+        attachments: []

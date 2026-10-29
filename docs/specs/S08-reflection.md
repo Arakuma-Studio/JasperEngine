@@ -523,7 +523,14 @@ Recorded by the implementation (branch `feat/s08-reflection`).
   struct whose `entity` is an entity reference; `attachments`, `instanceClips` and
   `instanceSpeeds` are whole lists); its drawer stays upstream's (`InspectorWindowVat.cpp`),
   registered in the drawer lookup. Its `.vat` is an `AssetRefSchema` row (the `GuidSibling`
-  shape). No format bump.
+  shape). No format bump. No tree has both it and the hand codecs of the others, so its goldens
+  were taken on the merged tree, where its codec and drawer are upstream's hand ones: the
+  AllComponents fixture keeps its entities and gains the Vertex Animator's as
+  `JASPER_REFLECT_WRITE_FIXTURE=1` generated it (a whole regeneration would re-randomize every
+  entity after the Mesh's morph weights and empty the Animation Player's clips); the catalog
+  snapshot, the locators and the MCP goldens were captured with their tooling from that fixture,
+  and differ from round 2's by the Vertex Animator only (and `actionFrameCount`, the accepted
+  deviation above, no longer recorded).
 - **Legacy oracle kept.** `editor/tests/reflect/legacy/` (the deleted hand codecs, test-only)
   stays so the parity fuzzers can keep running. D5 deletes it once S08 completes. Deleting it is
   a follow-up for the integrator after merge, and the goldens do not depend on it.
