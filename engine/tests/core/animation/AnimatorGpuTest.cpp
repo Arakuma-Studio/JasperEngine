@@ -142,7 +142,9 @@ TEST(AnimatorGpu, ThreeControllerPosesAndARetargetedWalk){
         animator.play(figures[i].state, 0, figures[i].time);
         animator.play(figures[i].waving ? "Wave" : "Off", 1, 0.4f);
         animator.setLayerWeight(1, figures[i].waving ? 1.0f : 0.0f);
-        if (std::string(figures[i].model) == "robot_apose.gltf") EXPECT_TRUE(animator.isHumanoid());
+        if (std::string(figures[i].model) == "robot_apose.gltf"){
+            EXPECT_TRUE(animator.isHumanoid());
+        }
     }
     ASSERT_TRUE(GpuEnvironment::runFrames([current](){ return current->getSystem<RenderSystem>()->isAllLoaded(); }));
     for (size_t i = 0; i < animators.size(); i++){
