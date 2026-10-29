@@ -13,6 +13,7 @@
 #include "render/SystemRender.h"
 #include "pool/ShaderPool.h"
 #include "pool/TexturePool.h"
+#include "pool/MeshBufferPool.h"
 #include "math/Vector3.h"
 #include "texture/IBLEnvironment.h"
 #include "util/Angle.h"
@@ -5650,11 +5651,24 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         if (bufferRender->isCreated() && bufferRender->getCreatedUsage() != buf.second->getUsage()) {
             bufferRender->destroyBuffer();
         }
+        // A shared GPU buffer (the bytes of a model file every Model of it draws, MeshBufferPool)
+        // of other bytes than the buffer shows now (written since: an edited buffer gets one
+        // of its own; re-pointed at another parse) is let go
+        if (bufferRender->isShared() && !MeshBufferPool::holdsSource(*bufferRender, *buf.second)) {
+            bufferRender->destroyBuffer();
+        }
 
         if (!bufferRender->isCreated()) {
-            if (!bufferRender->createBuffer(buf.second->getSize(), buf.second->getData(), buf.second->getType(), buf.second->getUsage())) {
-                Log::error("Cannot create GPU buffer '%s' (%zu bytes) for mesh entity %lu; resource pool may be exhausted",
-                           buf.first.c_str(), buf.second->getSize(), entity);
+            const uint64_t poolFullBefore = SystemRender::getResourcePoolExhaustions();
+            if (!MeshBufferPool::createRender(*buf.second)) {
+                // a full pool is logged once by SokolSystem, not once per mesh
+                if (SystemRender::getResourcePoolExhaustions() != poolFullBefore){
+                    Log::verbose("Cannot create GPU buffer '%s' (%zu bytes) for mesh entity %lu: a GPU pool is full",
+                                 buf.first.c_str(), buf.second->getSize(), entity);
+                }else{
+                    Log::error("Cannot create GPU buffer '%s' (%zu bytes) for mesh entity %lu",
+                               buf.first.c_str(), buf.second->getSize(), entity);
+                }
                 for (BufferRender* created : buffersCreatedThisLoad) {
                     created->destroyBuffer();
                 }
@@ -6727,14 +6741,15 @@ void RenderSystem::pollMeshLod(MeshComponent& mesh, Submesh& submesh){
         submesh.lodData = MeshLodPool::get(submesh.lodKey);
         if (!submesh.lodData)
             return;
-        submesh.lodIndices.setData(submesh.lodData->indices.data(), submesh.lodData->indices.size());
+        // the pool's level set: every mesh of the same geometry draws its levels from one buffer
         submesh.lodIndices.setType(BufferType::INDEX_BUFFER);
         submesh.lodIndices.setUsage(BufferUsage::IMMUTABLE);
+        submesh.lodIndices.setData(submesh.lodData->indices.data(), submesh.lodData->indices.size(), submesh.lodData);
         updateMeshLodErrors(mesh);
     }
 
     if (submesh.lodData->numLevels > 1 && !submesh.lodIndices.getRender()->isCreated()){
-        submesh.lodIndices.getRender()->createBuffer(submesh.lodIndices.getSize(), submesh.lodIndices.getData(), BufferType::INDEX_BUFFER, BufferUsage::IMMUTABLE);
+        MeshBufferPool::createRender(submesh.lodIndices);
     }
 }
 
@@ -7083,7 +7098,8 @@ bool RenderSystem::bindSmoothNormals(ObjectRender& render, ShaderData& shaderDat
     // once per entry: on the async thread the buffer is created later, isCreated() is false
     // until then, and the other renders of the submesh bind the same buffer
     if (!entry.created){
-        if (entry.data.empty() || !entry.buffer.createBuffer((unsigned int)entry.data.size(), entry.data.data(), BufferType::VERTEX_BUFFER, BufferUsage::IMMUTABLE))
+        // one buffer for every mesh of the same geometry (keyed by what it is made of)
+        if (entry.data.empty() || !MeshBufferPool::acquireContent(entry.buffer, entry.key, BufferType::VERTEX_BUFFER, entry.data.data(), entry.data.size()))
             return false;
         entry.created = true;
     }
@@ -7847,11 +7863,14 @@ void RenderSystem::updateMeshBuffers(MeshComponent& mesh){
     if (mesh.needUpdateBones){
         const unsigned int size = static_cast<unsigned int>(
             mesh.bonesMatrix.size() * sizeof(Matrix4));
+        bool uploaded = true;
         if (mesh.bonesBuffer.isCreated())
-            mesh.bonesBuffer.updateBuffer(size, mesh.bonesMatrix.data());
+            uploaded = mesh.bonesBuffer.updateBuffer(size, mesh.bonesMatrix.data()) && uploaded;
         if (mesh.bonesTexture.isCreated())
-            mesh.bonesTexture.updateTexture(mesh.bonesMatrix.data(), size);
-        mesh.needUpdateBones = false;
+            uploaded = mesh.bonesTexture.updateTexture(mesh.bonesMatrix.data(), size) && uploaded;
+        // past the frame's stream staging buffer (Engine::GpuResourceLimits::streamStagingBytes,
+        // logged): uploaded next frame, not never (a static mesh uploads its bones once)
+        mesh.needUpdateBones = !uploaded && size > 0;
     }
 
     // the lattice records (LatticeRender::prepare), while the lattice variant is loaded: whole
@@ -7875,16 +7894,24 @@ void RenderSystem::updateMeshBuffers(MeshComponent& mesh){
     if (!mesh.needUpdateBuffer)
         return;
 
-    if (mesh.buffer.getUsage() != BufferUsage::IMMUTABLE)
+    // a STREAM upload past the frame's stream staging buffer is tried again next frame
+    bool refused = false;
+    if (mesh.buffer.getUsage() == BufferUsage::STREAM)
+        refused |= !mesh.buffer.getRender()->updateBuffer(mesh.buffer.getSize(), mesh.buffer.getData()) && mesh.buffer.getSize() > 0;
+    else if (mesh.buffer.getUsage() != BufferUsage::IMMUTABLE)
         mesh.buffer.getRender()->updateBuffer(mesh.buffer.getSize(), mesh.buffer.getData());
-    if (mesh.indices.getUsage() != BufferUsage::IMMUTABLE)
+    if (mesh.indices.getUsage() == BufferUsage::STREAM)
+        refused |= !mesh.indices.getRender()->updateBuffer(mesh.indices.getSize(), mesh.indices.getData()) && mesh.indices.getSize() > 0;
+    else if (mesh.indices.getUsage() != BufferUsage::IMMUTABLE)
         mesh.indices.getRender()->updateBuffer(mesh.indices.getSize(), mesh.indices.getData());
     for (int i = 0; i < mesh.numExternalBuffers; i++){
-        if (mesh.eBuffers[i].getUsage() != BufferUsage::IMMUTABLE)
+        if (mesh.eBuffers[i].getUsage() == BufferUsage::STREAM)
+            refused |= !mesh.eBuffers[i].getRender()->updateBuffer(mesh.eBuffers[i].getSize(), mesh.eBuffers[i].getData()) && mesh.eBuffers[i].getSize() > 0;
+        else if (mesh.eBuffers[i].getUsage() != BufferUsage::IMMUTABLE)
             mesh.eBuffers[i].getRender()->updateBuffer(mesh.eBuffers[i].getSize(), mesh.eBuffers[i].getData());
     }
 
-    mesh.needUpdateBuffer = false;
+    mesh.needUpdateBuffer = refused;
 }
 
 // Once per frame, before any pass: the depth passes take their instance count from here.
@@ -7897,18 +7924,20 @@ void RenderSystem::updateInstanceBuffers(){
         if (!instmesh.needUpdateBuffer)
             continue;
 
-        // setData here because component can change order and lose reference
+        // setData here because component can change order and lose reference; an upload past
+        // the frame's stream staging buffer is tried again next frame
+        bool refused = false;
         if (instmesh.numVisible > 0 && !instmesh.renderInstances.empty()){
             instmesh.buffer.setData((unsigned char*)(&instmesh.renderInstances[0]), sizeof(InstanceRenderData)*instmesh.numVisible);
-            instmesh.buffer.getRender()->updateBuffer(instmesh.buffer.getSize(), instmesh.buffer.getData());
+            refused |= !instmesh.buffer.getRender()->updateBuffer(instmesh.buffer.getSize(), instmesh.buffer.getData());
         }
         // a VAT batch's states, in the same order
         if (instmesh.numVisible > 0 && instmesh.renderVat.size() >= instmesh.numVisible && instmesh.vatBuffer.getRender()->isCreated()){
             instmesh.vatBuffer.setData((unsigned char*)(&instmesh.renderVat[0]), sizeof(InstanceVatRenderData)*instmesh.numVisible);
-            instmesh.vatBuffer.getRender()->updateBuffer(instmesh.vatBuffer.getSize(), instmesh.vatBuffer.getData());
+            refused |= !instmesh.vatBuffer.getRender()->updateBuffer(instmesh.vatBuffer.getSize(), instmesh.vatBuffer.getData());
         }
 
-        instmesh.needUpdateBuffer = false;
+        instmesh.needUpdateBuffer = refused;
     }
 
     uploadInstanceViews(rv());
@@ -7936,7 +7965,9 @@ void RenderSystem::uploadInstanceViews(InstanceView* views, size_t count){
             render->createBuffer(view.capacity, nullptr, BufferType::VERTEX_BUFFER, BufferUsage::STREAM);
         }
         view.buffer.setData((unsigned char*)view.data.data(), size);
-        render->updateBuffer(size, view.buffer.getData());
+        // past the frame's stream staging buffer: tried again next frame
+        if (size > 0 && !render->updateBuffer(size, view.buffer.getData()))
+            view.needUpload = true;
 
         // the VAT batches' states, alike
         if (!view.vatData.empty()){
@@ -7949,7 +7980,8 @@ void RenderSystem::uploadInstanceViews(InstanceView* views, size_t count){
                 vatRender->createBuffer(view.vatCapacity, nullptr, BufferType::VERTEX_BUFFER, BufferUsage::STREAM);
             }
             view.vatBuffer.setData((unsigned char*)view.vatData.data(), vatSize);
-            vatRender->updateBuffer(vatSize, view.vatBuffer.getData());
+            if (!vatRender->updateBuffer(vatSize, view.vatBuffer.getData()))
+                view.needUpload = true;
         }
     }
 }
@@ -7963,11 +7995,14 @@ void RenderSystem::updateTerrainNodesBuffer(TerrainView& view){
     if (!view.needUpdateNodesBuffer)
         return;
 
+    // past the frame's stream staging buffer: tried again next frame
+    bool refused = false;
     for (int s = 0; s < 2; s++){
-        view.nodesbuffer[s].getRender()->updateBuffer(view.nodesbuffer[s].getSize(), view.nodesbuffer[s].getData());
+        if (view.nodesbuffer[s].getSize() > 0)
+            refused |= !view.nodesbuffer[s].getRender()->updateBuffer(view.nodesbuffer[s].getSize(), view.nodesbuffer[s].getData());
     }
 
-    view.needUpdateNodesBuffer = false;
+    view.needUpdateNodesBuffer = refused;
 }
 
 bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, int terrainView, int instanceView, const LodView* lodView){
@@ -11737,8 +11772,9 @@ void RenderSystem::getLoadCount(size_t& loaded, size_t& total) const{
     auto meshes = scene->getComponentArray<MeshComponent>();
     for (int i = 0; i < meshes->size(); i++) {
         const MeshComponent& mesh = meshes->getComponentFromIndex(i);
-        // a mesh drawing its previous variant while the new one builds is still loading
-        count((mesh.loaded && !mesh.needVariantReload) || (!mesh.loadCalled && isMeshShaderUnavailable(mesh)));
+        // a mesh drawing its previous variant while the new one builds is still loading; one
+        // whose load found a GPU pool full has failed (not drawn, nothing to wait for)
+        count((mesh.loaded && !mesh.needVariantReload) || mesh.loadFailed || (!mesh.loadCalled && isMeshShaderUnavailable(mesh)));
     }
 
     // Check UIComponents
@@ -13560,8 +13596,21 @@ void RenderSystem::update(double dt){
             if (mesh.loaded && mesh.needReload){
                 destroyMesh(entity, mesh);
             }
+            // a load that failed for want of a GPU object is tried again once the pools that were
+            // full have room (the failed loads try in turn until one fills them again)
+            if (mesh.loadFailed && SystemRender::hasResourcePoolRoom()){
+                mesh.loadFailed = false;
+                mesh.loadCalled = false;
+            }
             if (!mesh.loadCalled){
-                loadMesh(entity, mesh, pipelines, instmesh, terrain);
+                const uint64_t poolFullBefore = SystemRender::getResourcePoolExhaustions();
+                if (!loadMesh(entity, mesh, pipelines, instmesh, terrain) &&
+                        SystemRender::getResourcePoolExhaustions() != poolFullBefore){
+                    // failed: not drawn, not loading, not tried every frame (SokolSystem logged
+                    // the pool that is full)
+                    mesh.loadFailed = true;
+                    mesh.loadCalled = true;
+                }
             }
             if (mesh.needUpdateAABB || transform.needUpdate){
                 // Bones cancel out this mesh's model matrix, so the shader draws at

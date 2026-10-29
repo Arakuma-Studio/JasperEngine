@@ -14,6 +14,7 @@
 #include "sokol_gfx.h"
 
 #include <map>
+#include <memory>
 #include <vector>
 
 
@@ -33,13 +34,16 @@ namespace jasperengine{
     };
 
     // References to SokolPipelineCache's shared pipeline variants (acquireVariant): a copy takes
-    // references of its own, clear() and the destructor release them
+    // references of its own, clear() and the destructor release them. A reference made in an
+    // earlier render context (SystemRender::getContextId) is neither retained nor released (the
+    // context's shutdown destroyed the variants; sokol may hand their ids out again) and is not found
     class SokolVariantRefs{
     public:
         struct Variant {
             uint8_t kind;
             uint8_t type; // pipeline type, by bit index
             sg_pipeline pipeline;
+            uint64_t context; // SystemRender::getContextId it was acquired in
         };
 
         SokolVariantRefs() = default;
@@ -47,10 +51,11 @@ namespace jasperengine{
         SokolVariantRefs& operator=(const SokolVariantRefs& rhs);
         ~SokolVariantRefs();
 
-        // the variant of that kind and type this object holds (its pipeline SG_INVALID_ID when
-        // it could not be made), null when it holds none
+        // the variant of that kind and type this object holds in the current context (its
+        // pipeline SG_INVALID_ID when it could not be made), null when it holds none
         const Variant* find(uint8_t kind, uint8_t type) const;
-        // a reference acquired by the caller
+        // a reference acquired by the caller in the current context (replaces one of that kind
+        // and type from an earlier context)
         void add(uint8_t kind, uint8_t type, sg_pipeline pipeline);
         void clear();
 
@@ -69,6 +74,10 @@ namespace jasperengine{
         // the pipeline types (PipelineType), by bit index
         static constexpr int PIPELINE_TYPES = 16;
         sg_pipeline pipelines[PIPELINE_TYPES];
+        // Pipelines are shared by every object loaded with the same description (thousands of
+        // meshes of one model and material draw with one): held here, copies hold them too,
+        // destroyed with their last holder
+        std::shared_ptr<void> pipelineRefs[PIPELINE_TYPES];
 
         sg_pipeline_desc pipeline_desc;
 
@@ -171,7 +180,9 @@ namespace jasperengine{
         // applied last in this pass
         bool beginDraw(const PipelineState& state);
         void applyUniformBlock(int slot, unsigned int count, void* data);
-        void draw(unsigned int baseElement, unsigned int vertexCount, unsigned int instanceCount);
+        // false: skipped, its uniforms did not fit the frame's uniform buffer (SokolSystem::reserveUniformBytes)
+        // or its descriptor sets the descriptor buffer (SokolSystem::reserveDescriptorBytes)
+        bool draw(unsigned int baseElement, unsigned int vertexCount, unsigned int instanceCount);
 
         void destroy();
 

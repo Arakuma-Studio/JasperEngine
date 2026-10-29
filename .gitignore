@@ -78,3 +78,6 @@ $RECYCLE.BIN/
 # Python bytecode from importing tools/*.py
 __pycache__/
 .claude/
+
+# HTML UI effect cost reports written by EffectPerfTest when run from the repository root
+htmlui-effects-cost*.json

@@ -40,6 +40,7 @@ class TransformState;
 class LayoutDetails;
 class ElementCascade;
 class LineClampAccess;
+class ElementEffects;
 struct ElementMeta;
 struct StackingContextChild;
 
@@ -904,6 +905,7 @@ private:
 	friend class Rml::ElementScroll;
 	friend class Rml::ElementCascade;
 	friend class Rml::LineClampAccess;
+	friend class Rml::ElementEffects; // fork (P7-F2): a descendant's filters extend its ancestor's filter region
 	friend RMLUICORE_API void Rml::ReleaseFontResources();
 };
 

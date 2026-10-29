@@ -1789,7 +1789,10 @@ bool MeshSystem::loadGLTFBuffer(int bufferViewIndex, MeshComponent& mesh, ModelC
             mesh.eBuffers[mesh.numExternalBuffers].setType(BufferType::INDEX_BUFFER);
         }
 
-        mesh.eBuffers[mesh.numExternalBuffers].setData(bufferData.data() + bufferView.byteOffset, bufferView.byteLength);
+        // the parse's bytes, never written after it (a load only appends converted copies): every
+        // mesh showing them, of every Model of the file, draws from one GPU buffer (MeshBufferPool)
+        mesh.eBuffers[mesh.numExternalBuffers].setData(bufferData.data() + bufferView.byteOffset, bufferView.byteLength,
+                                                       std::static_pointer_cast<const void>(model.gltfModel));
         mesh.eBuffers[mesh.numExternalBuffers].setStride(stride);
         mesh.eBuffers[mesh.numExternalBuffers].setName(name);
         mesh.eBuffers[mesh.numExternalBuffers].setRenderAttributes(false);
@@ -6004,6 +6007,10 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
 }
 
 // An OBJ index is -1 when the face omits that attribute, and a corrupt file can point past the array
+// the bytes of an OBJ parse loadOBJ builds (Buffer::setShareSource ids)
+static const uint64_t OBJ_SHARE_VERTICES = 1;
+static const uint64_t OBJ_SHARE_INDICES = 2;
+
 static bool objIndexInRange(int index, size_t elements, size_t arraySize){
     return index >= 0 && (elements * static_cast<size_t>(index) + elements) <= arraySize;
 }
@@ -6319,6 +6326,12 @@ bool MeshSystem::loadOBJ(Entity entity, const std::string filename, bool asyncLo
             mesh.indices.setRenderAttributes(false);
         }
     }
+
+    // built from the parse alone: every Model of the file draws the same bytes, from one GPU
+    // vertex and one index buffer (MeshBufferPool)
+    const std::shared_ptr<const void> objSource = std::static_pointer_cast<const void>(model.objModel);
+    mesh.buffer.setShareSource(objSource, OBJ_SHARE_VERTICES);
+    mesh.indices.setShareSource(objSource, OBJ_SHARE_INDICES);
 
     std::reverse(mesh.submeshes.data(), mesh.submeshes.data() + mesh.numSubmeshes);
 

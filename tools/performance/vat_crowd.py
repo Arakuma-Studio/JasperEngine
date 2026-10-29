@@ -16,9 +16,9 @@ real baker): the script runs them into its work directory unless --bundle names 
         [--frames 60] [--warmup 30] [--cases skinned,vat_vertices,vat_bones] [--output DIR]
 
 `--count 1000,2000` runs both sizes. The table's `drawn` column is the heroes the frame drew
-(instances / 3 materials): a skinned crowd stops drawing past ~1,000 heroes on a desktop GL
-build (each skinned Model creates its own GPU buffers, 7 for the hero, and sokol's buffer pool
-holds 8,192), see tools/performance/vat-crowd.md.
+(instances / 3 materials): every hero in both cases (Crowd.lua keeps its Models; the skinned
+Models of the hero share one set of vertex and index buffers, MeshBufferPool, and their
+pipelines; a full GPU pool would be logged, see tools/performance/vat-crowd.md).
 
 Without a DISPLAY the editor runs under xvfb-run with software GL (llvmpipe: the numbers are
 relative to each other, not to a GPU).

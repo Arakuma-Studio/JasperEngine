@@ -28,6 +28,12 @@ LayerHandle RenderInterface::PushLayer()
 	return {};
 }
 
+LayerHandle RenderInterface::PushLayerRegion(Rectanglei& region)
+{
+	region = Rectanglei::MakeInvalid();
+	return PushLayer();
+}
+
 void RenderInterface::CompositeLayers(LayerHandle /*source*/, LayerHandle /*destination*/, BlendMode /*blend_mode*/,
 	Span<const CompiledFilterHandle> /*filters*/)
 {}

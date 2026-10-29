@@ -119,6 +119,7 @@ template<>
 void prepare<MeshComponent>(MeshComponent& mesh, Entity sourceEntity, CloneContext& ctx) {
     mesh.loaded = false;
     mesh.loadCalled = false;
+    mesh.loadFailed = false;
     mesh.needReload = false;
     resetBuffer(mesh.buffer);
     resetBuffer(mesh.indices);
@@ -784,28 +785,29 @@ std::vector<Entity> EntityCloner::collectHierarchy(EntityRegistry* registry, Ent
         return meshSystem && meshSystem->getFoliageOwner(entity) != NULL_ENTITY;
     };
 
-    // Transform descendants: the branch that follows the root in the Transform array
+    // Transform descendants: the branch that follows the root in the Transform array (walked by
+    // entity: with the holes of GameObjects destroyed before, an index walk is O(log n) a step)
     const ComponentId transformId = registry->getComponentId<Transform>();
     if (hasComponentSignature(registry, root, transformId)) {
         auto transforms = registry->getComponentArray<Transform>();
         std::unordered_set<Entity> skipped;
-        for (size_t i = transforms->getIndex(root) + 1; i < transforms->size(); i++) {
-            const Entity parent = transforms->getComponentFromIndex(i).parent;
-            const Entity entity = transforms->getEntity(i);
+        transforms->forEachAfter(root, [&](Entity entity, const Transform& transform) {
+            const Entity parent = transform.parent;
             if (skipped.count(parent)) {
                 skipped.insert(entity);
-                continue;
+                return true;
             }
             if (!inSet.count(parent)) {
-                break;
+                return false;
             }
             if (isFoliage(entity)) {
                 skipped.insert(entity);
-                continue;
+                return true;
             }
             result.push_back(entity);
             inSet.insert(entity);
-        }
+            return true;
+        });
     }
 
     // GameObjects without a Transform that belong to these: actions acting on them (their
@@ -824,12 +826,12 @@ std::vector<Entity> EntityCloner::collectHierarchy(EntityRegistry* registry, Ent
     size_t scanned = 0;
     while (added) {
         added = false;
-        for (size_t i = 0; i < actions->size(); i++) {
-            const Entity entity = actions->getEntity(i);
-            if (inSet.count(actions->getComponentFromIndex(i).target) && addOwned(entity)) {
+        actions->forEach([&](Entity entity, const ActionComponent& action) {
+            if (inSet.count(action.target) && addOwned(entity)) {
                 added = true;
             }
-        }
+            return true;
+        });
         for (; scanned < result.size(); scanned++) {
             const Entity entity = result[scanned];
             if (ModelComponent* model = registry->findComponent<ModelComponent>(entity)) {

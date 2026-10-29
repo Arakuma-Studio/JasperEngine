@@ -6891,6 +6891,9 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
 
     sceneProject->playState = ScenePlayState::SAVING;
     fs::path savePath = path;
+    // the save reads component arrays (this scene's, the other open scenes' scripts, the
+    // prefabs') while the frames go on: their holes are closed before it starts, by this thread
+    compactAllComponents();
 
     // the worker writes in the write scope of the thread that started it (an MCP call's project)
     const std::vector<fs::path> writeRoot = safewrite::Scope::currentRoots();

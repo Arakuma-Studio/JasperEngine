@@ -740,7 +740,10 @@ void Scene::destroy(){
     }
 }
 
+// Each phase starts with the holes of entities destroyed since closed (ComponentArray): the
+// systems then find a packed array, and nothing destroyed before keeps a hole across frames
 void Scene::draw(){
+    compactComponents();
     for (auto const& pair : systems){
         pair.second->draw();
     }
@@ -748,12 +751,14 @@ void Scene::draw(){
 
 
 void Scene::update(double dt){
+    compactComponents();
     for (auto const& pair : systems){
         pair.second->update(dt);
     }
 }
 
 void Scene::fixedUpdate(double dt){
+    compactComponents();
     for (auto const& pair : systems){
         pair.second->fixedUpdate(dt);
     }

@@ -215,12 +215,21 @@ bool EntityRegistry::isInHierarchy(Entity entity){
         return false;
     }
     auto transforms = componentManager.getComponentArray<Transform>();
-    const size_t index = transforms->getIndex(entity);
-    if (transforms->getComponentFromIndex(index).parent != NULL_ENTITY){
+    const Transform* transform = transforms->findComponent(entity);
+    if (!transform){
+        return false;
+    }
+    if (transform->parent != NULL_ENTITY){
         return true;
     }
-    // children follow their parent in the array (its branch)
-    return index + 1 < transforms->size() && transforms->getComponentFromIndex(index + 1).parent == entity;
+    // children follow their parent in the array (its branch); by entity, not index: destroying
+    // entities one by one leaves holes, which an index read would rank in O(log n) (ComponentArray)
+    bool hasChild = false;
+    transforms->forEachAfter(entity, [&hasChild, entity](Entity, const Transform& next){
+        hasChild = next.parent == entity;
+        return false;
+    });
+    return hasChild;
 }
 
 Entity EntityRegistry::createEntity() {
@@ -293,6 +302,10 @@ void EntityRegistry::destroyEntities(const std::vector<Entity>& entities) {
     for (Entity entity : doomed) {
         entityManager.destroy(entity);
     }
+}
+
+void EntityRegistry::compactComponents() {
+    componentManager.compactAll();
 }
 
 Signature EntityRegistry::getSignature(Entity entity) const {
@@ -571,6 +584,7 @@ void EntityRegistry::clear() {
     }
     // Reset user counter to just before the user range
     entityManager.setLastUserEntity(EntityManager::lastSystemEntity());
+    compactComponents();
 }
 
 void EntityRegistry::addEntityChild(Entity parent, Entity child, bool changeTransform){

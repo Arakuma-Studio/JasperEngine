@@ -515,3 +515,16 @@ Not touched: `editor/mcp/McpInstructions.cpp` (Phase 3 owns the agent guide line
     Animation baked with mirrored geometry.
 - 5.2: also a mirrored single-sided shadow caster (its shadow present and at the unmirrored one's place) and the
   sharing and release of the variants (`ObjectRender::getSharedVariantCount`).
+
+## Amendments (2026-10-29, merge with engine-fixes 1-4)
+
+- The base pipelines of the fixed path are now shared too (engine-fixes: every object loaded with the same description
+  holds the same pipeline, `SokolObject::pipelineRefs`). The variants are still made from the object's own description
+  (`makePipelineDesc`, the one its shared base was made from) and shared through `SokolPipelineCache`; the editor's
+  no-cull view is `VARIANT_NO_CULL` (engine-fixes' per-object no-cull pipelines are not kept). A variant reference
+  records the render context it was acquired in (`SystemRender::getContextId`, as the shared bases do): one from an
+  earlier context is neither retained nor released (that context's shutdown destroyed it) and is made again.
+- A variant draw is skipped like any other when its uniforms or descriptors do not fit the frame's buffers
+  (`SokolObject::draw` returns false). Model copies sharing their vertex and index buffers (`MeshBufferPool`) choose
+  their variant per draw from their own transform: a mirrored copy of an unmirrored one draws reversed
+  (`SharedMeshBuffersTest.MirroredCopiesSharingBuffersDrawWithTheReversedWindingVariant`).

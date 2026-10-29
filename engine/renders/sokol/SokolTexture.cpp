@@ -5,12 +5,15 @@
 #include "SokolTexture.h"
 #include "Log.h"
 #include "SokolCmdQueue.h"
+#include "SokolSystem.h"
 #include "render/SystemRender.h"
 #include "Engine.h"
 #include "texture/TextureData.h"
 
 #include <cstring>
 #include <cstdlib>
+#include <memory>
+#include <mutex>
 
 #include "meshoptimizer.h"
 
@@ -48,6 +51,62 @@ VkResult createSokolImage(VkDevice device, const VkImageCreateInfo* createInfo,
 #endif
 
 using namespace jasperengine;
+
+namespace {
+    // The sampler of every float data texture (createDynamicTexture: bones, lattice records),
+    // which only texelFetch reads: one for all of them, not one each (a skinned mesh has a
+    // bones texture: 10,000 of them would each hold a sampler). Destroyed with its last holder.
+    struct SharedDataSampler {
+        sg_sampler sampler = {SG_INVALID_ID};
+        uint64_t context = 0;
+
+        ~SharedDataSampler(){
+            if (sampler.id == SG_INVALID_ID || context != SystemRender::getContextId() || !sg_isvalid())
+                return;
+            if (Engine::isAsyncThread()){
+                SokolCmdQueue::add_command_destroy_sampler(sampler);
+            }else{
+                sg_destroy_sampler(sampler);
+            }
+        }
+    };
+
+    std::mutex& getDataSamplerMutex(){
+        static std::mutex* mutex = new std::mutex();
+        return *mutex;
+    }
+
+    std::shared_ptr<SharedDataSampler> getDataSampler(){
+        std::lock_guard<std::mutex> lock(getDataSamplerMutex());
+        static std::weak_ptr<SharedDataSampler>* cached = new std::weak_ptr<SharedDataSampler>();
+        std::shared_ptr<SharedDataSampler> shared = cached->lock();
+        if (shared && shared->context == SystemRender::getContextId()){
+            const sg_resource_state state = sg_query_sampler_state(shared->sampler);
+            // one the loading thread made is drawn by the main thread once the queue has run
+            if (state == SG_RESOURCESTATE_VALID || (state == SG_RESOURCESTATE_ALLOC && Engine::isAsyncThread()))
+                return shared;
+        }
+
+        sg_sampler_desc samplerDesc = {};
+        samplerDesc.min_filter = SG_FILTER_NEAREST;
+        samplerDesc.mag_filter = SG_FILTER_NEAREST;
+        samplerDesc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
+        samplerDesc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
+        samplerDesc.label = "data-texture-sampler";
+
+        shared = std::make_shared<SharedDataSampler>();
+        shared->context = SystemRender::getContextId();
+        if (Engine::isAsyncThread()){
+            shared->sampler = SokolCmdQueue::add_command_make_sampler(samplerDesc);
+        }else{
+            shared->sampler = sg_make_sampler(samplerDesc);
+        }
+        if (shared->sampler.id == SG_INVALID_ID)
+            return nullptr;
+        *cached = shared;
+        return shared;
+    }
+}
 
 const void* SokolTexture::getVulkanView(sg_view view) {
 #if (defined(JASPERENGINE_EDITOR) || defined(JASPERENGINE_TEXTURE_READBACK)) && defined(SOKOL_VULKAN)
@@ -453,19 +512,15 @@ bool SokolTexture::createDynamicTexture(const std::string& label, int width, int
     imageDesc.pixel_format = SG_PIXELFORMAT_RGBA32F;
     imageDesc.label = label.c_str();
 
-    sg_sampler_desc samplerDesc = {};
-    samplerDesc.min_filter = SG_FILTER_NEAREST;
-    samplerDesc.mag_filter = SG_FILTER_NEAREST;
-    samplerDesc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
-    samplerDesc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
-
     if (Engine::isAsyncThread()){
         image = SokolCmdQueue::add_command_make_image(imageDesc);
-        sampler = SokolCmdQueue::add_command_make_sampler(samplerDesc);
     }else{
         image = sg_make_image(imageDesc);
-        sampler = sg_make_sampler(samplerDesc);
     }
+    // nearest, clamped: the one of every data texture
+    std::shared_ptr<SharedDataSampler> shared = getDataSampler();
+    sharedSampler = shared;
+    sampler = shared ? shared->sampler : sg_sampler{SG_INVALID_ID};
     createTextureView(label.c_str());
     return image.id != SG_INVALID_ID && sampler.id != SG_INVALID_ID && view.id != SG_INVALID_ID;
 }
@@ -547,22 +602,24 @@ bool SokolTexture::createDynamicColorTexture(const std::string& label, int width
     return image.id != SG_INVALID_ID && sampler.id != SG_INVALID_ID && view.id != SG_INVALID_ID;
 }
 
-void SokolTexture::updateTexture(const void* data, size_t size){
+bool SokolTexture::updateTexture(const void* data, size_t size){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     if (image.id == SG_INVALID_ID || !data || size == 0)
-        return;
+        return false;
     // sokol reads width * height * bpp bytes whatever the size says
     if (streamBytes != 0 && size != streamBytes){
         Log::error("Dynamic texture update of %zu bytes ignored: the texture takes %zu", size, streamBytes);
-        return;
+        return false;
     }
 
     sg_image_data imageData = {};
     imageData.mip_levels[0] = {data, size};
-    if (Engine::isAsyncThread())
+    if (Engine::isAsyncThread()){
+        // budgeted when the render thread runs it (a refused one is counted and logged there)
         SokolCmdQueue::add_command_update_image(image, imageData);
-    else
-        sg_update_image(image, imageData);
+        return true;
+    }
+    return SokolSystem::updateImage(image, imageData);
 }
 
 bool SokolTexture::createTextureCubeWithMips(
@@ -743,7 +800,10 @@ void SokolTexture::destroyTexture(){
             sg_destroy_image(image);
         }
     }
-    if (sampler.id != SG_INVALID_ID && sg_isvalid()){
+    // the data textures' sampler is let go (destroyed with its last holder), another destroyed
+    const bool samplerShared = sharedSampler && static_cast<SharedDataSampler*>(sharedSampler.get())->sampler.id == sampler.id;
+    sharedSampler.reset();
+    if (!samplerShared && sampler.id != SG_INVALID_ID && sg_isvalid()){
         if (Engine::isAsyncThread()){
             SokolCmdQueue::add_command_destroy_sampler(sampler);
         }else{
