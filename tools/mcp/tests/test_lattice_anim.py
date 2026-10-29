@@ -385,6 +385,16 @@ end
 function LatticeAnimProbe:next(phase)
     self.phase = phase
     self.phaseTime = 0
+    self.settled = 0
+end
+
+-- The phases wait on the animations' own clocks, not on the summed frame deltas: an animation
+-- advances once it runs (its start takes a frame or two, each up to Engine's 0.25 s cap on a
+-- loaded machine), and the offsets lag their clock by up to two frames. A phase's state held for three updates
+-- in a row is reached (20 s of frames: given up, its values go out as they are).
+function LatticeAnimProbe:reached(condition)
+    self.settled = condition and (self.settled or 0) + 1 or 0
+    return self.settled >= 3 or self.phaseTime >= 20
 end
 
 function LatticeAnimProbe:onUpdate()
@@ -398,7 +408,7 @@ function LatticeAnimProbe:onUpdate()
             self.sampled = true
             out("sampleA", string.format("[%.6f,%.6f,%.6f]", tc, dt, cage:getOffsetAt(4).y))
         end
-        if self.phaseTime >= 0.8 then
+        if self:reached(tc >= 0.8) then
             out("aHeld4", v3(cage:getOffsetAt(4)))
             out("aShared", v3(cage:getOffsetAt(10)))
             out("aRest22", v3(cage:getOffsetAt(22)))
@@ -408,13 +418,13 @@ function LatticeAnimProbe:onUpdate()
             self:next("fade")
         end
     elseif self.phase == "fade" then
-        if not self.mid and self.phaseTime >= 0.5 then
+        if not self.mid and self.animB.blendWeight >= 0.3 and self.animA.blendWeight >= 0.3 then
             self.mid = true
             out("midShared", v3(cage:getOffsetAt(10)))
             out("midHeld4", v3(cage:getOffsetAt(4)))
             out("midWeights", string.format("[%.6f,%.6f]", self.animA.blendWeight, self.animB.blendWeight))
         end
-        if self.phaseTime >= 1.6 then
+        if self:reached(self.mid and self.animA:isStopped() and self.trackB:getTimeCount() >= 0.8) then
             out("end4", v3(cage:getOffsetAt(4)))
             out("end22", v3(cage:getOffsetAt(22)))
             out("endShared", v3(cage:getOffsetAt(10)))
