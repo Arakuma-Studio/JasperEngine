@@ -4,8 +4,8 @@
 # (docs/specs/S30-shipping.md R13), into OUT (default build/players-build/android-<flavour>):
 #
 #   res-flat.zip     the player's compiled resources (aapt2 .flat files, the app's and its libraries')
-#   stable-ids.txt   the ids aapt2 gave them (--emit-ids): the game's link gives the same ones, which
-#                    the dex's R constants hold
+#   stable-ids.txt   the ids aapt2 gave them (read from the APK with aapt2 dump resources): the
+#                    game's link (--stable-ids) gives the same ones, which the dex's R constants hold
 #   classes*.dex     the player's code
 #   lib/<abi>/*.so   the engine and the C++ runtime per ABI
 #
@@ -35,15 +35,29 @@ OUT="$(cd "$OUT" && pwd)"
 
 APK="$(find "$APP/build/outputs/apk/$VARIANT" -name '*.apk' | head -n 1)"
 [[ -n "$APK" ]] || { echo "no APK under $APP/build/outputs/apk/$VARIANT" >&2; exit 1; }
-IDS="$APP/build/jasperengine-player/stable-ids.txt"
-[[ -s "$IDS" ]] || { echo "aapt2 wrote no $IDS (androidResources --emit-ids)" >&2; exit 1; }
-cp "$IDS" "$OUT/stable-ids.txt"
+AAPT2="$(ls -d "$ANDROID_HOME"/build-tools/*/aapt2 2>/dev/null | sort -V | tail -n 1)"
+[[ -x "$AAPT2" ]] || { echo "no aapt2 under $ANDROID_HOME/build-tools" >&2; exit 1; }
+"$AAPT2" dump resources "$APK" > "$OUT/resources.txt"
 
 python3 - "$APK" "$APP/build/intermediates" "$VARIANT" "$OUT" <<'PY'
-import sys, zipfile
+import re, sys, zipfile
 from pathlib import Path
 
 apk, intermediates, variant, out = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3], Path(sys.argv[4])
+# aapt2's --stable-ids format, "<package>:<type>/<name> = 0x<id>", from `aapt2 dump resources`
+package, ids = None, []
+for line in (out / "resources.txt").read_text().splitlines():
+    found = re.match(r"\s*Package name=(\S+)", line)
+    if found:
+        package = found.group(1)
+        continue
+    found = re.match(r"\s*resource (0x[0-9a-f]{8}) ([\w.]+/[\w.$-]+)", line)
+    if found and package:
+        ids.append(f"{package}:{found.group(2)} = {found.group(1)}")
+if not ids:
+    sys.exit("aapt2 dump resources listed no resource ids")
+(out / "stable-ids.txt").write_text("\n".join(ids) + "\n")
+(out / "resources.txt").unlink()
 # the code and the native libraries as the APK holds them
 with zipfile.ZipFile(apk) as zipped:
     for name in zipped.namelist():

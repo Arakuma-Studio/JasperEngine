@@ -35,10 +35,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends --only-upgrade 
     fi \
     && ! keytool -list -cacerts -storepass changeit | grep -qi 'emsign_ecc_root_ca__g3'
 
-# The editor's runtime libraries (X11, GL, D-Bus), so the editor built in docker/linux.Dockerfile
+# The editor's runtime libraries (X11, GL, D-Bus) and python3 (the player packaging), so the editor built in docker/linux.Dockerfile
 # can make a prebuilt Android build here, with this image's SDK and JDK and no NDK or Gradle
 # (S30 R13; the emulator check of a prebuilt APK). A layer of its own, after every other one.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libx11-6 libxcursor1 libxi6 libxrandr2 libxext6 libxkbcommon0 libwayland-client0 libwayland-cursor0 \
-        libwayland-egl1 libgl1 libegl1 libgl1-mesa-dri libvulkan1 libdbus-1-3 dbus xvfb xauth \
+        libwayland-egl1 libgl1 libegl1 libgl1-mesa-dri libvulkan1 libdbus-1-3 dbus xvfb xauth python3 \
     && rm -rf /var/lib/apt/lists/* && dbus-uuidgen > /etc/machine-id

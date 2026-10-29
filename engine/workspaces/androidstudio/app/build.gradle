@@ -9,13 +9,12 @@ def projectSourceRootAbs = file(projectSourceRoot).toString()
 def jasperengineRootAbs = file(jasperengineRoot).toString()
 
 // -PjasperPlayer=true: the prebuilt Android player (docs/specs/S30-shipping.md R13) instead of a
-// game: JASPERENGINE_PLAYER=ON, no project assets, no ads SDK, and aapt2 writes the resource ids
-// it gave (stable-ids.txt) so the editor's aapt2 link of a game gives the same ones
-// (tools/players/android_player.sh collects the outputs)
+// game: JASPERENGINE_PLAYER=ON, no project assets, no ads SDK; the resource ids aapt2 gave are
+// read back from the APK (stable-ids.txt) so the editor's aapt2 link of a game gives the same ones
+// (tools/players/android_player.sh collects the outputs, and the ids from the APK)
 def jasperPlayer = project.findProperty("jasperPlayer") == "true"
 // -PjasperBackend=gles3|vulkan: the player's graphics backend (the engine's default otherwise)
 def jasperBackend = project.findProperty("jasperBackend")
-def jasperPlayerIds = layout.buildDirectory.file("jasperengine-player/stable-ids.txt").get().asFile
 
 // The assets the APK packs: the project's, without the cooked textures desktop and web load
 // (S14 R9: assets/je-cooked/<family>), synced into the build directory before every build
@@ -92,12 +91,6 @@ android {
         prefab true
     }
 
-    if (jasperPlayer) {
-        androidResources {
-            additionalParameters += ["--emit-ids", jasperPlayerIds.toString()]
-        }
-    }
-
     sourceSets {
         main {
             java.srcDirs = [jasperengineRootAbs+'/platform/android/java']
@@ -125,9 +118,4 @@ dependencies {
     if (!jasperPlayer) {
         implementation "com.google.android.gms:play-services-ads:22.6.0"
     }
-}
-
-if (jasperPlayer) {
-    // the ids file's folder exists before aapt2 writes it
-    tasks.matching { it.name == 'preBuild' }.configureEach { doFirst { jasperPlayerIds.parentFile.mkdirs() } }
 }
