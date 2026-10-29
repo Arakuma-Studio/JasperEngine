@@ -360,10 +360,9 @@ std::string SokolPipelineRecord::toJson(const sg_pipeline_desc& d){
     out["depth"] = json{{"format", tokenOf(d.depth.pixel_format)}, {"compare", tokenOf(d.depth.compare)},
                         {"write", d.depth.write_enabled},
                         {"bias", json::array({d.depth.bias, d.depth.bias_slope_scale, d.depth.bias_clamp})}};
-    if (d.stencil.enabled){
-        out["stencil"] = json{{"front", faceJson(d.stencil.front)}, {"back", faceJson(d.stencil.back)},
-                              {"read_mask", d.stencil.read_mask}, {"write_mask", d.stencil.write_mask}, {"ref", d.stencil.ref}};
-    }
+    // written whether it is enabled or not: interning compares every field
+    out["stencil"] = json{{"enabled", d.stencil.enabled}, {"front", faceJson(d.stencil.front)}, {"back", faceJson(d.stencil.back)},
+                          {"read_mask", d.stencil.read_mask}, {"write_mask", d.stencil.write_mask}, {"ref", d.stencil.ref}};
     out["color_count"] = d.color_count;
     json colors = json::array();
     for (int i = 0; i < SG_MAX_COLOR_ATTACHMENTS; i++){
@@ -432,7 +431,8 @@ namespace {
         }
         if (node.contains("stencil") && node["stencil"].is_object()){
             const json& stencil = node["stencil"];
-            d.stencil.enabled = true;
+            // a stencil object without "enabled" is an enabled one
+            d.stencil.enabled = stencil.value("enabled", true);
             if (!faceOf(stencil.value("front", json::object()), d.stencil.front, error) ||
                     !faceOf(stencil.value("back", json::object()), d.stencil.back, error) ||
                     !numberOf(stencil, "read_mask", d.stencil.read_mask, error) || !numberOf(stencil, "write_mask", d.stencil.write_mask, error) ||

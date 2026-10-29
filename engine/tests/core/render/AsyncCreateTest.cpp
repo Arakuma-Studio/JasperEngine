@@ -462,9 +462,18 @@ TEST_F(AsyncCreateGpu, AnImmediatePassIsCreatedAtOnce){
 
 TEST_F(AsyncCreateGpu, AFailedCreationIsFailed){
     JASPER_REQUIRE_GPU();
-    // a pipeline of a shader that does not exist: FAILED at prepare, never pending
+    // a pipeline of a shader that is gone (a stale handle): FAILED at prepare, never pending
+    ShaderData gone;
+    std::string goneError;
+    ASSERT_TRUE(compileFlat("tests/async_gone.frag", gone, goneError)) << goneError;
+    ShaderRender goneShader;
+    ASSERT_TRUE(goneShader.createShader(gone));
+    ASSERT_TRUE(SystemRender::waitGpuCreationIdle(30000));
+    const sg_shader stale = goneShader.backend.get();
+    goneShader.destroyShader();
+    ASSERT_TRUE(SystemRender::waitGpuCreationIdle(30000));
     sg_pipeline_desc desc = {};
-    desc.shader.id = 0x00ffffffu;
+    desc.shader = stale;
     desc.layout.attrs[0].format = SG_VERTEXFORMAT_FLOAT3;
     const sg_pipeline pipeline = SokolAsyncCreate::makePipeline(desc);
     EXPECT_FALSE(SokolAsyncCreate::isPending(pipeline));
