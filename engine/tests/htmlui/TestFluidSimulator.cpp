@@ -427,8 +427,9 @@ TEST_F(FluidSimulatorTest, HalfFloatFallbackGivesTheSameImage){
     const RenderFeatures& features = SystemRender::getFeatures();
     std::printf("[fluid] RG16F render %d filter %d, R16F render %d filter %d: compact formats %d\n", (int)features.renderRG16F,
                 (int)features.filterRG16F, (int)features.renderR16F, (int)features.filterR16F, (int)a.getStats().compactFormats);
-    if (features.renderRG16F && features.filterRG16F && features.renderR16F)
+    if (features.renderRG16F && features.filterRG16F && features.renderR16F) {
         EXPECT_TRUE(a.getStats().compactFormats);
+    }
     EXPECT_LT(b.getStats().gpuBytes, compactBytes * 2);
 }
 

@@ -322,8 +322,9 @@ TEST(RenderFilterRegion, DescendantFilterExtentInTheParentsRegion){
                 ASSERT_TRUE(renderLayer(descendantDocument(parentFilter, childFilter), samples, filtered));
                 ASSERT_TRUE(renderLayer(descendantDocument("none", childFilter), samples, reference));
                 EXPECT_LE(maxAlphaDifference(filtered.rgba, reference.rgba), 1) << "the child's filter was cut by its parent's filter region";
-                if (std::string(parentFilter) == "brightness(1)")
+                if (std::string(parentFilter) == "brightness(1)") {
                     EXPECT_LE(maxDifference(filtered.rgba, 0, 0, reference.rgba, 0, 0, kSize, kSize), 1);
+                }
             }
             // a blurred child at the parent's edge: its blur spreads 18 px beyond the parent's box
             SCOPED_TRACE(std::string(parentFilter) + " parent, blurred child at its edge");
@@ -409,8 +410,9 @@ TEST(RenderFilterRegion, HugeRegionsAreCropped){
             std::vector<uint8_t> rgba;
             ASSERT_TRUE(render.readLayer(rgba));
             const PixelProbe probe{rgba, kSize};
-            if (c.drawn)
+            if (c.drawn) {
                 EXPECT_GT(int(probe.at(40, 80)[3]), 0) << "nothing drawn";
+            }
             else
                 EXPECT_EQ(int(probe.at(40, 80)[3]), 0) << "drawn from beyond the region limit";
             // one layer and one post-process set of at most the limit's size

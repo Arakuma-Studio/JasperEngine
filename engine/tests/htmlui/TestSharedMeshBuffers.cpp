@@ -838,8 +838,9 @@ TEST_F(SharedMeshBuffersTest, FullPoolIsReportedOnceAndItsMeshFailsUntilThereIsR
     // one error naming the pool and its limit (none more for the mesh), whoever ran out first
     const std::string message = "GPU buffer pool full: all " + std::to_string(limit) + " buffers are in use";
     const size_t errors = TestSystem::get().countLogs(D_LOG_ERROR, message);
-    if (exhaustionsBefore == 0)
+    if (exhaustionsBefore == 0) {
         EXPECT_EQ(errors, 1u) << errorLines();
+    }
     else
         EXPECT_LE(errors, 1u);
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR, "Cannot create GPU buffer"), 0u) << "the mesh's failure is not an error of its own";

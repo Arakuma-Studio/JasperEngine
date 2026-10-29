@@ -114,8 +114,9 @@ namespace {
 TEST(Phase6Cross, AVideoRemovedWhileItsFrameIsRecorded){
     {
         EffectScene probe;
-        if (!probe.valid())
+        if (!probe.valid()) {
             GTEST_SKIP() << "no GPU";
+        }
     }
     ASSERT_TRUE(warmUp({"chromatic-aberration", "time-trail", "frosted-glass"}));
     FixedEffectTime clock(1.0);
@@ -175,8 +176,9 @@ TEST(Phase6Cross, AVideoRemovedWhileItsFrameIsRecorded){
 TEST(Phase6Cross, StatefulEffectsOnAVideo){
     {
         EffectScene probe;
-        if (!probe.valid())
+        if (!probe.valid()) {
             GTEST_SKIP() << "no GPU";
+        }
     }
     TestSystem::get().clearLogs();
     ASSERT_TRUE(warmUp({"time-trail", "data-mosh"}));
@@ -267,8 +269,9 @@ TEST(Phase6Cross, StatefulEffectsOnAVideo){
 TEST(Phase6Cross, ClampedJustifiedTextInsideEffects){
     {
         EffectScene probe;
-        if (!probe.valid())
+        if (!probe.valid()) {
             GTEST_SKIP() << "no GPU";
+        }
     }
     TestSystem::get().clearLogs();
     ASSERT_TRUE(warmUp({"stripes", "chromatic-aberration", "time-trail", "holographic", "frosted-glass"}));
@@ -317,8 +320,9 @@ TEST(Phase6Cross, ClampedJustifiedTextInsideEffects){
 TEST(Phase6Cross, ClampedJustifiedTextInATextureDocument){
     {
         EffectScene probe;
-        if (!probe.valid())
+        if (!probe.valid()) {
             GTEST_SKIP() << "no GPU";
+        }
     }
     TestSystem::get().clearLogs();
     ASSERT_TRUE(warmUp({"stripes"}));

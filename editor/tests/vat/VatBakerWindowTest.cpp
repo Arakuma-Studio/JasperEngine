@@ -420,9 +420,15 @@ TEST_F(VatBakerWindow_, FixButtonsApplyToTheSettings) {
             EXPECT_LT(window->getSpec().fps, 240.0f);
             EXPECT_NE(fix.label.find("Lower to"), std::string::npos) << fix.label;
         }
-        if (fix.setting == "preset") EXPECT_EQ(window->getSpec().preset, VatPreset::Desktop);
-        if (fix.setting == "normals") EXPECT_FALSE(window->getSpec().normals);
-        if (fix.setting == "mode") EXPECT_EQ(window->getSpec().mode, VatModeChoice::Bones);
+        if (fix.setting == "preset") {
+            EXPECT_EQ(window->getSpec().preset, VatPreset::Desktop);
+        }
+        if (fix.setting == "normals") {
+            EXPECT_FALSE(window->getSpec().normals);
+        }
+        if (fix.setting == "mode") {
+            EXPECT_EQ(window->getSpec().mode, VatModeChoice::Bones);
+        }
         if (fix.setting == "fps" || fix.setting == "preset" || fix.setting == "mode") {
             EXPECT_FALSE(hasKind(window->getIssues(), "too_large")) << fix.label << ": " << kinds(window->getIssues());
         }

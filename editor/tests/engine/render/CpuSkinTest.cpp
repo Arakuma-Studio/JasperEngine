@@ -936,7 +936,9 @@ TEST_F(CpuSkin_, ClipPosesMatchThePlainMathReference) {
             EXPECT_EQ(compared.vertices, source.vertexCount());
             EXPECT_LT(compared.position.value, 1e-4) << "vertex " << compared.position.at;
             EXPECT_LT(compared.normal.value, 1e-4) << "vertex " << compared.normal.at;
-            if (fraction > 0.0f) EXPECT_GT(compared.moved, 0.01) << "the clip poses the mesh";
+            if (fraction > 0.0f) {
+                EXPECT_GT(compared.moved, 0.01) << "the clip poses the mesh";
+            }
             // shared vertices deform alike
             for (size_t v = 0; v < source.vertexCount(); v++) {
                 EXPECT_EQ(result.positions[v], result.positions[source.canonical[v]]);

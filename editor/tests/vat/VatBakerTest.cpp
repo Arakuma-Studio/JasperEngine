@@ -994,7 +994,9 @@ TEST_F(VatBaker_, EstimateAgreesWithTheBake) {
         ASSERT_TRUE(session.run()) << session.error();
         const VatReport& report = session.result()->report;
         EXPECT_EQ(estimate.vertices, report.vertices);
-        if (mode == VatModeChoice::Bones) EXPECT_EQ(estimate.bones, report.bones);
+        if (mode == VatModeChoice::Bones) {
+            EXPECT_EQ(estimate.bones, report.bones);
+        }
         EXPECT_EQ(estimate.width, report.width);
         EXPECT_EQ(estimate.height, report.height);
         EXPECT_EQ(estimate.bytes, report.bytes);
@@ -1034,7 +1036,9 @@ TEST_F(VatBaker_, CheckFindsEveryProblemBeforeSampling) {
     EXPECT_TRUE(hasKind(bigIssues, "too_large", &error)) << kinds(bigIssues);
     EXPECT_TRUE(error);
     for (const VatIssue& issue : bigIssues) {
-        if (issue.kind == "too_large") EXPECT_GE(issue.fixes.size(), 3u);
+        if (issue.kind == "too_large") {
+            EXPECT_GE(issue.fixes.size(), 3u);
+        }
     }
     // float Vertices of Walk and Idle at 240 fps: fits, but over the 32 MB of mobile
     VatBakeSpec heavy = modelSpec("hero.gltf", {"Walk", "Idle"});

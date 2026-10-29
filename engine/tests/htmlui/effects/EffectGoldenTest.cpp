@@ -192,8 +192,9 @@ TEST_P(EffectGoldenTest, GoldensAndInvariants){
     const EffectManifest* m = EffectRegistry::get().find(GetParam());
     ASSERT_NE(m, nullptr);
     EffectScene scene;
-    if (!scene.valid())
+    if (!scene.valid()) {
         GTEST_SKIP() << "no GPU";
+    }
     ASSERT_TRUE(warmUpEffect(*m)) << m->name << ": its variants do not compile";
     const std::string fixture = fixtureOf(*m);
     // transitions are captured part-way (5.2: progress 40%)

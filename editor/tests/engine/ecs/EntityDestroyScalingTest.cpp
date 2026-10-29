@@ -199,7 +199,9 @@ TEST(EntityDestroyScaling, PerEntityCostDoesNotGrowWithTheScene) {
 // JASPER_DESTROY_PROFILE=<copies> times the teardowns of one crowd of that size (for profiling)
 TEST(EntityDestroyScaling, Profile) {
     const char* copies = std::getenv("JASPER_DESTROY_PROFILE");
-    if (!copies) GTEST_SKIP() << "set JASPER_DESTROY_PROFILE=<model copies>";
+    if (!copies) {
+        GTEST_SKIP() << "set JASPER_DESTROY_PROFILE=<model copies>";
+    }
     for (Teardown teardown : {Teardown::DestroyEach, Teardown::DestroyEachBackwards, Teardown::DestroyEachReadingByIndex,
                               Teardown::ModelHandles, Teardown::DestroyImmediate, Teardown::DeleteScene, Teardown::Clear}) {
         teardownSecondsPerEntity(std::atoi(copies), teardown);

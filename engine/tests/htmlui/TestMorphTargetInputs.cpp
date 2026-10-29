@@ -221,10 +221,12 @@ TEST_F(MorphTargetInputsTest, OneTargetMeshFeedsEveryInputItsPipelinesDeclare){
             EXPECT_TRUE(mesh.submeshes[0].hasMorphTarget);
             EXPECT_EQ(mesh.submeshes[0].hasMorphNormal, kind != TargetKind::Positions);
             EXPECT_EQ(mesh.submeshes[0].hasMorphTangent, kind == TargetKind::PositionsNormalsTangents);
-            if (passes == Passes::ShadowsAndPrepass)
+            if (passes == Passes::ShadowsAndPrepass) {
                 EXPECT_TRUE(mesh.submeshes[0].depthShader) << "the depth pipelines are made";
-            if (passes == Passes::Ssr)
+            }
+            if (passes == Passes::Ssr) {
                 EXPECT_TRUE(mesh.submeshes[0].gbufferShader) << "the G-buffer pipeline is made";
+            }
             EXPECT_EQ(ObjectRender::getUnfedVertexInputLoads(), unfedBefore)
                 << "every morph input the shaders declare has a buffer (the mesh has one target)";
 

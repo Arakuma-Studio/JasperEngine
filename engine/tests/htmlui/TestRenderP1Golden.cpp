@@ -451,8 +451,9 @@ TEST_F(RmlRendererP1GoldenTest, MsaaRounded){
     }
     // (with the SDF primitives, S16 R8, one sample is antialiased as well: the edges barely differ,
     // both are partial)
-    if (RmlRenderer::isSdfPrimitives())
+    if (RmlRenderer::isSdfPrimitives()) {
         EXPECT_LE(differentEdgePixels, 20);
+    }
     else
         EXPECT_GT(differentEdgePixels, 20);
     EXPECT_GT(partialEdgePixels, 20);

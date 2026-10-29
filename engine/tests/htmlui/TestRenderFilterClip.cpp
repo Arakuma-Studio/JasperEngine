@@ -126,8 +126,9 @@ div { display: block; }
         EXPECT_TRUE(probe.is(14, 49, filter.r, filter.g, filter.b, 255, 4)) << "near the bottom-left corner's arc";
         EXPECT_TRUE(probe.is(61, 49, filter.r, filter.g, filter.b, 255, 4)) << "near the bottom-right corner's arc";
         // one sample: the clip is the stencil's, every pixel is in or out; nothing fades
-        if (samples == 1)
+        if (samples == 1) {
             EXPECT_EQ(partialPixels(rgba), 0u) << "pixels partly covered: the filter's result faded at the clip";
+        }
         // inside the rounded box: the filtered element (layer 0 is premultiplied, the colours are opaque)
         EXPECT_TRUE(probe.is(20, 16, filter.r, filter.g, filter.b, 255, 4)) << "inside the top-left corner's arc";
         EXPECT_TRUE(probe.is(16, 47, filter.r, filter.g, filter.b, 255, 4)) << "inside the bottom-left corner's arc";
@@ -135,8 +136,9 @@ div { display: block; }
         EXPECT_TRUE(probe.is(52, 46, filter.r, filter.g, filter.b, 255, 4)) << "inside the bottom-right corner's arc";
         EXPECT_TRUE(probe.is(9, 31, filter.r, filter.g, filter.b, 255, 4)) << "at the clip's left edge";
         EXPECT_TRUE(probe.is(38, 54, filter.r, filter.g, filter.b, 255, 4)) << "at the clip's bottom edge";
-        if (sibling == Sibling::AFTER)
+        if (sibling == Sibling::AFTER) {
             EXPECT_TRUE(probe.is(38, 32, 0x20, 0xe0, 0x40, 255, 4)) << "the sibling drawn after the filtered element";
+        }
         else
             EXPECT_TRUE(probe.is(38, 32, filter.r, filter.g, filter.b, 255, 4)) << "the middle of the clip";
 
@@ -168,8 +170,9 @@ TEST(RenderFilterClip, FilteredChildOfRoundedOverflowClip){
                 expectClipped(rgba, filter, sibling, samples);
                 if (sibling == Sibling::NONE)
                     onlyChild = rgba;
-                else if (sibling == Sibling::BEFORE)
+                else if (sibling == Sibling::BEFORE) {
                     EXPECT_EQ(differingPixels(onlyChild, rgba), 0u) << "the sibling hidden under the filtered element changed the image";
+                }
             }
         }
     }
@@ -316,8 +319,9 @@ div { display: block; }
                 const int outside[][2] = {{16, 8}, {63, 8}, {16, 55}, {63, 55}, {12, 31}, {68, 31}, {40, 5}, {40, 58}};
                 for (const auto& p : outside)
                     EXPECT_EQ(int(probe.at(p[0], p[1])[3]), 0) << "drawn at (" << p[0] << ", " << p[1] << "), outside the clip";
-                if (samples == 1)
+                if (samples == 1) {
                     EXPECT_EQ(partialPixels(rgba), 0u) << "pixels partly covered: the filter's result faded at the clip";
+                }
             }
         }
     }
