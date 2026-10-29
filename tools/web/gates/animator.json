@@ -6,7 +6,7 @@
   "console": [
     {"text": "[gate] animator pose kernels: ", "level": "log"},
     {"text": "[gate] animator Move Move humanoid 1 1", "level": "log"},
-    {"text": "[gate] animator left_foot ", "level": "log"}
+    {"text": "[gate] animator left_foot -0.71 0.10 -0.16 / 0.89 0.09 -0.14", "level": "log"}
   ],
   "ordered": true
 }

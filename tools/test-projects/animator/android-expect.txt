@@ -3,4 +3,4 @@
 # states the trigger reached (both humanoids), and the left feet of the held poses
 I/JasperEngine: [gate] animator pose kernels:
 I/JasperEngine: [gate] animator Move Move humanoid 1 1
-I/JasperEngine: [gate] animator left_foot
+I/JasperEngine: [gate] animator left_foot -0.71 0.10 -0.16 / 0.89 0.09 -0.14

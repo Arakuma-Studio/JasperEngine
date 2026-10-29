@@ -1542,7 +1542,8 @@ if(JASPERENGINE_BASIS_TRANSCODER)
     target_compile_definitions(jasperengine PUBLIC JASPERENGINE_BASIS_TRANSCODER)
 endif()
 # the Animator's pose kernels (docs/specs/S21-animation.md R17): SIMD and scalar give the same
-# bits only without floating-point contraction; WebAssembly builds them with simd128 like the
+# bits only without floating-point contraction; WebAssembly builds the kernels (AnimatorPose.cpp
+# only: the others include Jolt, whose SSE detection simd128 would trip) with simd128 like the
 # particle kernels (JASPERENGINE_WASM_SIMD)
 set(JASPERENGINE_ANIMATOR_SRCS core/animation/AnimatorPose.cpp core/animation/AnimatorIK.cpp core/animation/AnimatorInstance.cpp)
 if(MSVC)
@@ -1550,14 +1551,14 @@ if(MSVC)
 else()
     set(JASPERENGINE_ANIMATOR_FLAGS -ffp-contract=off)
 endif()
+set_source_files_properties(${JASPERENGINE_ANIMATOR_SRCS} PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_ANIMATOR_FLAGS}")
 if(EMSCRIPTEN)
     if(JASPERENGINE_WASM_SIMD)
-        list(APPEND JASPERENGINE_ANIMATOR_FLAGS -msimd128)
+        set_source_files_properties(core/animation/AnimatorPose.cpp PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_ANIMATOR_FLAGS};-msimd128")
     else()
-        set_source_files_properties(${JASPERENGINE_ANIMATOR_SRCS} PROPERTIES COMPILE_DEFINITIONS JASPERENGINE_SIMD_DISABLE)
+        set_source_files_properties(core/animation/AnimatorPose.cpp PROPERTIES COMPILE_DEFINITIONS JASPERENGINE_SIMD_DISABLE)
     endif()
 endif()
-set_source_files_properties(${JASPERENGINE_ANIMATOR_SRCS} PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_ANIMATOR_FLAGS}")
 jasperengine_skip_unity_build(
     REASON "the Animator's pose kernels: no floating-point contraction, per unit"
     SOURCES ${JASPERENGINE_ANIMATOR_SRCS})

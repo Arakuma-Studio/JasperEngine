@@ -3767,6 +3767,42 @@
 		4A534E47F87D5FF11AC2A146 /* Ktx2Detail.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47979EFB31D7BE0582 /* Ktx2Detail.h */; };
 		4A534E47178DC2D457E6C7CF /* ThreadPoolManagerLua.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47BE01A205C9521034 /* ThreadPoolManagerLua.h */; };
 		4A534E474CAEE9AEB993E80D /* CubeLut.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476546F72D989CD289 /* CubeLut.h */; };
+		4A534E47BCF812E39A4E32EC /* AnimatorAssetIO.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479C77AC47B5DE2060 /* AnimatorAssetIO.cpp */; };
+		4A534E4760FA85EA63BA6FA5 /* AnimatorAssetIO.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479C77AC47B5DE2060 /* AnimatorAssetIO.cpp */; };
+		4A534E474F614C06CD7CDAD3 /* AnimatorIK.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472DCB2AA8B6A8E67E /* AnimatorIK.cpp */; };
+		4A534E471B8FD86F7F15C4DF /* AnimatorIK.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472DCB2AA8B6A8E67E /* AnimatorIK.cpp */; };
+		4A534E47CBA078AD17238AB6 /* AnimatorInstance.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F086099D072A9F80 /* AnimatorInstance.cpp */; };
+		4A534E478954610132FAB175 /* AnimatorInstance.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F086099D072A9F80 /* AnimatorInstance.cpp */; };
+		4A534E47C23402E60248379D /* AnimatorPose.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4720C4B60746A8C15C /* AnimatorPose.cpp */; };
+		4A534E47586034BACE6D7EEA /* AnimatorPose.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4720C4B60746A8C15C /* AnimatorPose.cpp */; };
+		4A534E471E44FBA8F03BF451 /* AnimatorRetarget.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474F2FDF1F705E1A11 /* AnimatorRetarget.cpp */; };
+		4A534E474EB90D13AC63955C /* AnimatorRetarget.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474F2FDF1F705E1A11 /* AnimatorRetarget.cpp */; };
+		4A534E47236B792DE1D98A49 /* AnimatorRig.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47102990E89B7B7714 /* AnimatorRig.cpp */; };
+		4A534E479FBFD063AD7BF403 /* AnimatorRig.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47102990E89B7B7714 /* AnimatorRig.cpp */; };
+		4A534E476146BD7B767F3B7C /* BlendTree.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4776A7B96FF30A72E1 /* BlendTree.cpp */; };
+		4A534E47D5271E135AF0AF39 /* BlendTree.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4776A7B96FF30A72E1 /* BlendTree.cpp */; };
+		4A534E4777085AFD34BEDF34 /* CompiledController.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47FAA202AB514AD758 /* CompiledController.cpp */; };
+		4A534E47D0F163A8BEC1BCE6 /* CompiledController.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47FAA202AB514AD758 /* CompiledController.cpp */; };
+		4A534E4744F07FF600222B55 /* Animator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471C332E4A0689FCA6 /* Animator.cpp */; };
+		4A534E47218C442183265D7F /* Animator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471C332E4A0689FCA6 /* Animator.cpp */; };
+		4A534E47143B4D85C7260C54 /* AnimatorAssetPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4747A8F24B4EDAE82D /* AnimatorAssetPool.cpp */; };
+		4A534E479173156330A35D24 /* AnimatorAssetPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4747A8F24B4EDAE82D /* AnimatorAssetPool.cpp */; };
+		4A534E47B21F9A6344B4CC05 /* AnimatorSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E0260560EBB7D200 /* AnimatorSystem.cpp */; };
+		4A534E475068D6F918B554F4 /* AnimatorSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E0260560EBB7D200 /* AnimatorSystem.cpp */; };
+		4A534E47EA3BD9DE28264D30 /* AnimatorAssetIO.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E473601F0BEFEDBB05E /* AnimatorAssetIO.h */; };
+		4A534E47845327B5D4088536 /* AnimatorIK.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E472E406E1C9F3B5596 /* AnimatorIK.h */; };
+		4A534E47623A6E49E3B3510A /* AnimatorInstance.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475A06DAA2833CE302 /* AnimatorInstance.h */; };
+		4A534E47B09344EFDDB97A20 /* AnimatorPose.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E471DB6C088FD499E72 /* AnimatorPose.h */; };
+		4A534E47C89949E349F7F1EE /* AnimatorRetarget.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475254B917C543D2C2 /* AnimatorRetarget.h */; };
+		4A534E4781AC1292CAF4E423 /* AnimatorRig.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D1FCE22AECBD9997 /* AnimatorRig.h */; };
+		4A534E475D209A9B4CD3B8FC /* AnimatorTypes.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E479722A2736F8C069A /* AnimatorTypes.h */; };
+		4A534E475109D5A15AE0BF2F /* BlendTree.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4758D1BA7958B0F9E6 /* BlendTree.h */; };
+		4A534E47783FA923EFEECACC /* CompiledController.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D23EF816E5BA4858 /* CompiledController.h */; };
+		4A534E472DB90FF59A6093EA /* ControllerDef.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E703941CFA88446C /* ControllerDef.h */; };
+		4A534E474237BDAE46DC9EE9 /* AnimatorComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4706012CF545934783 /* AnimatorComponent.h */; };
+		4A534E47B08F761D851139AA /* Animator.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47CAAFBC3B8A6B9358 /* Animator.h */; };
+		4A534E47A4AFF745E6C79336 /* AnimatorAssetPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475859F759CDED73BC /* AnimatorAssetPool.h */; };
+		4A534E4719ED4496CD61367E /* AnimatorSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C7892946585F9415 /* AnimatorSystem.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -7556,6 +7592,31 @@
 		4A534E47979EFB31D7BE0582 /* Ktx2Detail.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Ktx2Detail.h; sourceTree = "<group>"; };
 		4A534E47BE01A205C9521034 /* ThreadPoolManagerLua.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ThreadPoolManagerLua.h; sourceTree = "<group>"; };
 		4A534E476546F72D989CD289 /* CubeLut.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CubeLut.h; sourceTree = "<group>"; };
+		4A534E479C77AC47B5DE2060 /* AnimatorAssetIO.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimatorAssetIO.cpp; sourceTree = "<group>"; };
+		4A534E472DCB2AA8B6A8E67E /* AnimatorIK.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimatorIK.cpp; sourceTree = "<group>"; };
+		4A534E47F086099D072A9F80 /* AnimatorInstance.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimatorInstance.cpp; sourceTree = "<group>"; };
+		4A534E4720C4B60746A8C15C /* AnimatorPose.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimatorPose.cpp; sourceTree = "<group>"; };
+		4A534E474F2FDF1F705E1A11 /* AnimatorRetarget.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimatorRetarget.cpp; sourceTree = "<group>"; };
+		4A534E47102990E89B7B7714 /* AnimatorRig.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimatorRig.cpp; sourceTree = "<group>"; };
+		4A534E4776A7B96FF30A72E1 /* BlendTree.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = BlendTree.cpp; sourceTree = "<group>"; };
+		4A534E47FAA202AB514AD758 /* CompiledController.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CompiledController.cpp; sourceTree = "<group>"; };
+		4A534E471C332E4A0689FCA6 /* Animator.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Animator.cpp; sourceTree = "<group>"; };
+		4A534E4747A8F24B4EDAE82D /* AnimatorAssetPool.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimatorAssetPool.cpp; sourceTree = "<group>"; };
+		4A534E47E0260560EBB7D200 /* AnimatorSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimatorSystem.cpp; sourceTree = "<group>"; };
+		4A534E473601F0BEFEDBB05E /* AnimatorAssetIO.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimatorAssetIO.h; sourceTree = "<group>"; };
+		4A534E472E406E1C9F3B5596 /* AnimatorIK.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimatorIK.h; sourceTree = "<group>"; };
+		4A534E475A06DAA2833CE302 /* AnimatorInstance.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimatorInstance.h; sourceTree = "<group>"; };
+		4A534E471DB6C088FD499E72 /* AnimatorPose.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimatorPose.h; sourceTree = "<group>"; };
+		4A534E475254B917C543D2C2 /* AnimatorRetarget.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimatorRetarget.h; sourceTree = "<group>"; };
+		4A534E47D1FCE22AECBD9997 /* AnimatorRig.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimatorRig.h; sourceTree = "<group>"; };
+		4A534E479722A2736F8C069A /* AnimatorTypes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimatorTypes.h; sourceTree = "<group>"; };
+		4A534E4758D1BA7958B0F9E6 /* BlendTree.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = BlendTree.h; sourceTree = "<group>"; };
+		4A534E47D23EF816E5BA4858 /* CompiledController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CompiledController.h; sourceTree = "<group>"; };
+		4A534E47E703941CFA88446C /* ControllerDef.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ControllerDef.h; sourceTree = "<group>"; };
+		4A534E4706012CF545934783 /* AnimatorComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimatorComponent.h; sourceTree = "<group>"; };
+		4A534E47CAAFBC3B8A6B9358 /* Animator.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Animator.h; sourceTree = "<group>"; };
+		4A534E475859F759CDED73BC /* AnimatorAssetPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimatorAssetPool.h; sourceTree = "<group>"; };
+		4A534E47C7892946585F9415 /* AnimatorSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimatorSystem.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -8965,6 +9026,24 @@
 				4A534E47BCB011C3E31AFD7C /* KeyframeSampling.h */,
 				4A534E47D4B21584C2974167 /* ModelSubClips.h */,
 				4A534E47EBF307C4032AEC37 /* ClipTypes.h */,
+				4A534E479C77AC47B5DE2060 /* AnimatorAssetIO.cpp */,
+				4A534E472DCB2AA8B6A8E67E /* AnimatorIK.cpp */,
+				4A534E47F086099D072A9F80 /* AnimatorInstance.cpp */,
+				4A534E4720C4B60746A8C15C /* AnimatorPose.cpp */,
+				4A534E474F2FDF1F705E1A11 /* AnimatorRetarget.cpp */,
+				4A534E47102990E89B7B7714 /* AnimatorRig.cpp */,
+				4A534E4776A7B96FF30A72E1 /* BlendTree.cpp */,
+				4A534E47FAA202AB514AD758 /* CompiledController.cpp */,
+				4A534E473601F0BEFEDBB05E /* AnimatorAssetIO.h */,
+				4A534E472E406E1C9F3B5596 /* AnimatorIK.h */,
+				4A534E475A06DAA2833CE302 /* AnimatorInstance.h */,
+				4A534E471DB6C088FD499E72 /* AnimatorPose.h */,
+				4A534E475254B917C543D2C2 /* AnimatorRetarget.h */,
+				4A534E47D1FCE22AECBD9997 /* AnimatorRig.h */,
+				4A534E479722A2736F8C069A /* AnimatorTypes.h */,
+				4A534E4758D1BA7958B0F9E6 /* BlendTree.h */,
+				4A534E47D23EF816E5BA4858 /* CompiledController.h */,
+				4A534E47E703941CFA88446C /* ControllerDef.h */,
 			);
 			path = animation;
 			sourceTree = "<group>";
@@ -9305,6 +9384,7 @@
 				50525443123052FF9913FC01 /* ForceFieldComponent.h */,
 				4A534E471DC3BCA4A8B475EF /* LocalVolumetricFogComponent.h */,
 				4A534E477FA16D2FFF58EDBF /* VolumetricCloudsComponent.h */,
+				4A534E4706012CF545934783 /* AnimatorComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -9396,6 +9476,8 @@
 				4A534E474E482C208244479A /* AnimationPlayer.h */,
 				71F225472C587388006ED3CA /* ParticleSystem.cpp */,
 				71F225462C587388006ED3CA /* ParticleSystem.h */,
+				4A534E471C332E4A0689FCA6 /* Animator.cpp */,
+				4A534E47CAAFBC3B8A6B9358 /* Animator.h */,
 			);
 			path = object;
 			sourceTree = "<group>";
@@ -9484,6 +9566,8 @@
 				4A534E47A446C390022502AD /* CharacterControllerSystem.h */,
 				4A534E47D9E68E3569D469E0 /* TransformPropagation.h */,
 				4A534E47328417798EA73AFA /* WaterSystem.h */,
+				4A534E47E0260560EBB7D200 /* AnimatorSystem.cpp */,
+				4A534E47C7892946585F9415 /* AnimatorSystem.h */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -10702,6 +10786,8 @@
 				4A534E47454541377D81967E /* AnimationClipPool.cpp */,
 				4A534E477A468AF36BAE7CED /* AnimationClipPool.h */,
 				4A534E47D8CD22ABA46E1C50 /* AnimationClipPoolTesting.h */,
+				4A534E4747A8F24B4EDAE82D /* AnimatorAssetPool.cpp */,
+				4A534E475859F759CDED73BC /* AnimatorAssetPool.h */,
 			);
 			path = pool;
 			sourceTree = "<group>";
@@ -13476,6 +13562,20 @@
 				4A534E47F87D5FF11AC2A146 /* Ktx2Detail.h in Headers */,
 				4A534E47178DC2D457E6C7CF /* ThreadPoolManagerLua.h in Headers */,
 				4A534E474CAEE9AEB993E80D /* CubeLut.h in Headers */,
+				4A534E47EA3BD9DE28264D30 /* AnimatorAssetIO.h in Headers */,
+				4A534E47845327B5D4088536 /* AnimatorIK.h in Headers */,
+				4A534E47623A6E49E3B3510A /* AnimatorInstance.h in Headers */,
+				4A534E47B09344EFDDB97A20 /* AnimatorPose.h in Headers */,
+				4A534E47C89949E349F7F1EE /* AnimatorRetarget.h in Headers */,
+				4A534E4781AC1292CAF4E423 /* AnimatorRig.h in Headers */,
+				4A534E475D209A9B4CD3B8FC /* AnimatorTypes.h in Headers */,
+				4A534E475109D5A15AE0BF2F /* BlendTree.h in Headers */,
+				4A534E47783FA923EFEECACC /* CompiledController.h in Headers */,
+				4A534E472DB90FF59A6093EA /* ControllerDef.h in Headers */,
+				4A534E474237BDAE46DC9EE9 /* AnimatorComponent.h in Headers */,
+				4A534E47B08F761D851139AA /* Animator.h in Headers */,
+				4A534E47A4AFF745E6C79336 /* AnimatorAssetPool.h in Headers */,
+				4A534E4719ED4496CD61367E /* AnimatorSystem.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -15790,6 +15890,17 @@
 				4A534E4742B055E8016AAB01 /* ToolchainFingerprint.cpp in Sources */,
 				4A534E476744EC521C7A4AFD /* WaterSystem.cpp in Sources */,
 				4A534E47A2DF41E61E74E1FF /* Ktx2Write.cpp in Sources */,
+				4A534E47BCF812E39A4E32EC /* AnimatorAssetIO.cpp in Sources */,
+				4A534E474F614C06CD7CDAD3 /* AnimatorIK.cpp in Sources */,
+				4A534E47CBA078AD17238AB6 /* AnimatorInstance.cpp in Sources */,
+				4A534E47C23402E60248379D /* AnimatorPose.cpp in Sources */,
+				4A534E471E44FBA8F03BF451 /* AnimatorRetarget.cpp in Sources */,
+				4A534E47236B792DE1D98A49 /* AnimatorRig.cpp in Sources */,
+				4A534E476146BD7B767F3B7C /* BlendTree.cpp in Sources */,
+				4A534E4777085AFD34BEDF34 /* CompiledController.cpp in Sources */,
+				4A534E4744F07FF600222B55 /* Animator.cpp in Sources */,
+				4A534E47143B4D85C7260C54 /* AnimatorAssetPool.cpp in Sources */,
+				4A534E47B21F9A6344B4CC05 /* AnimatorSystem.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -16390,6 +16501,17 @@
 				4A534E472A547FE67AA08421 /* ToolchainFingerprint.cpp in Sources */,
 				4A534E4732EBCE8A0413BA29 /* WaterSystem.cpp in Sources */,
 				4A534E47762E1E309584ABA2 /* Ktx2Write.cpp in Sources */,
+				4A534E4760FA85EA63BA6FA5 /* AnimatorAssetIO.cpp in Sources */,
+				4A534E471B8FD86F7F15C4DF /* AnimatorIK.cpp in Sources */,
+				4A534E478954610132FAB175 /* AnimatorInstance.cpp in Sources */,
+				4A534E47586034BACE6D7EEA /* AnimatorPose.cpp in Sources */,
+				4A534E474EB90D13AC63955C /* AnimatorRetarget.cpp in Sources */,
+				4A534E479FBFD063AD7BF403 /* AnimatorRig.cpp in Sources */,
+				4A534E47D5271E135AF0AF39 /* BlendTree.cpp in Sources */,
+				4A534E47D0F163A8BEC1BCE6 /* CompiledController.cpp in Sources */,
+				4A534E47218C442183265D7F /* Animator.cpp in Sources */,
+				4A534E479173156330A35D24 /* AnimatorAssetPool.cpp in Sources */,
+				4A534E475068D6F918B554F4 /* AnimatorSystem.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
