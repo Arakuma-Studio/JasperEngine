@@ -981,3 +981,8 @@ Kept current so the work can continue after an interruption.
 - `--after-ready` together with `--fixed-fps` holds the game's update events and clocks until the
   ready frame (loading and drawing go on), so a run's frames repeat exactly.
 
+- `check`'s summary aborted with `map::at` on every non-quiet `check --shaders` run (S19's
+  `navigation` category had no unit). Fixed in 5ed9c9038. BF7 cherry-picks it with a regression
+  test, so the next oe-port merge takes it cleanly.
+- The OpenEngine notice of `core/spline` (S18) is copied from `Exporter::engineSourceDir()`. That
+  is the export's engine copy, or the editor's own engine dir in a prebuilt build.
