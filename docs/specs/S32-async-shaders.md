@@ -609,3 +609,26 @@ public:
 
 - Spec written at oe-port 0c22d3b91 (branch `feat/s32-async-shaders`). The GL probe numbers in
   §3 come from a throwaway program run on A in the Docker image.
+- **Done (4ea7516a5, not yet build-verified):**
+  - `engine/libs/sokol/sokol_async.h` + `sokol_async_impl.h` (included by `sokol.cpp`); the
+    patches in `sokol_gfx.h` (GL adopt, Vulkan `_sgj_vk_pipeline_cache`, Metal hooks): 11
+    `JasperEngine: async creation` markers so far;
+  - `engine/renders/sokol/SokolAsyncCreate.{h,cpp}` (worker thread, modes, budget, deferred
+    destroys, the Vulkan cache file, warm-draw jobs);
+  - `engine/core/render/GpuCreation.h` (settings, stats) and `GpuWorkerContext.h` (factory,
+    defined in `SystemRender.cpp`);
+  - `SystemRender` facade; `SokolShader`/`ShaderRender::isPending`; `ShaderPool::get` early
+    return, `getPendingPipelineCount`, `isGpuCreationIdle`;
+  - SokolCmdQueue MAKE/DESTROY routed (no deferred dealloc for shaders and pipelines);
+  - interning `SokolPipelineCache::acquire/release/retain`; SokolObject warm gating;
+  - `Engine::runFrame` (own frame) and `EditorFrame` call `updateGpuCreation`, and the editor
+    keeps drawing while not idle; `areScenesLoaded` waits for idle.
+- **Next:**
+  - build GL and Vulkan; platform worker contexts (editor Linux/Win/Mac backends, game Linux,
+    Win, Mac GL, Android EGL, the test HeadlessContext; `XInitThreads` in the game's
+    WindowLinux);
+  - the Xcode pbxproj entry for `SokolAsyncCreate.cpp`; `PATCHES.md` and the marker test;
+  - stand-ins (RenderSystem `standIn`), the pass-swap audit, HTML UI warm-up at load;
+  - `ShaderWarmup` (record, export hook, replay); `ShaderCreationSettings` reflection, Project
+    Settings rows, the Generator emit; the status bar, `get_render_stats`, Lua, docs and the guide
+    line; tests, goldens, E bench, gates.
