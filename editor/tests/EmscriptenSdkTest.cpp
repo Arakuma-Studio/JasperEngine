@@ -82,7 +82,7 @@ TEST(EmscriptenSdk, DetectsTheLayoutAndConfigWithoutEmcmake) {
 
     // what emcmake.py adds, as plain argv entries
     std::string error;
-    const auto args = Exporter::emscriptenCMakeArgs(info, false, error);
+    const auto args = Exporter::emscriptenCMakeArgs(info, false, Exporter::emscriptenEnvironment(info), error);
     EXPECT_TRUE(error.empty()) << error;
     EXPECT_TRUE(contains(args, "-DCMAKE_TOOLCHAIN_FILE=" + info.toolchainFile)) << ::testing::PrintToString(args);
     EXPECT_TRUE(contains(args, "-DCMAKE_CROSSCOMPILING_EMULATOR=" + sdk.node.string())) << ::testing::PrintToString(args);
@@ -149,4 +149,55 @@ TEST(EmscriptenSdk, WebBuildsRefuseFoldersCmdWouldExpand) {
 #else
     EXPECT_EQ(Exporter::webBuildRefusal({"/srv/100%/web"}), "");
 #endif
+}
+
+TEST(EmscriptenSdk, WindowsGeneratorFollowsEmcmake) {
+    const fs::path base = fs::temp_directory_path() / ("jasper-emgen-" + std::to_string(::getpid()));
+    fs::remove_all(base);
+    const fs::path ninjaDir = base / "ninja dir", makeDir = base / "mingw", batDir = base / "bat";
+    writeFile(ninjaDir / "ninja.exe", "x");
+    writeFile(makeDir / "mingw32-make.exe", "x");
+    writeFile(batDir / "ninja.bat", "x");
+    std::string error;
+    using Env = CommandRunner::Environment;
+    // a generator given, or CMAKE_GENERATOR in the environment: nothing added (CMake reads it)
+    EXPECT_TRUE(Exporter::emscriptenWindowsGeneratorArgs(Env{{"PATH", ninjaDir.string()}}, true, error).empty());
+    EXPECT_TRUE(Exporter::emscriptenWindowsGeneratorArgs(Env{{"CMAKE_GENERATOR", "Ninja Multi-Config"}, {"PATH", ""}}, false, error).empty());
+    EXPECT_TRUE(error.empty());
+    // looked up on the SDK environment's PATH: MinGW Makefiles first, then Ninja
+    EXPECT_EQ(Exporter::emscriptenWindowsGeneratorArgs(Env{{"PATH", "\"" + ninjaDir.string() + "\";" + makeDir.string()}}, false, error),
+              (std::vector<std::string>{"-G", "MinGW Makefiles"}));
+    EXPECT_EQ(Exporter::emscriptenWindowsGeneratorArgs(Env{{"PATH", batDir.string() + ";" + ninjaDir.string()}}, false, error),
+              (std::vector<std::string>{"-G", "Ninja"}));
+    // a ninja.bat is no ninja; nothing found: the error says what to install
+    EXPECT_TRUE(Exporter::emscriptenWindowsGeneratorArgs(Env{{"PATH", batDir.string()}}, false, error).empty());
+    EXPECT_NE(error.find("Ninja"), std::string::npos);
+    std::error_code ec;
+    fs::remove_all(base, ec);
+}
+
+TEST(EmscriptenSdk, WebBuildsRefuseFileNamesCmdWouldExpand) {
+    const fs::path base = fs::temp_directory_path() / ("jasper-emtree-" + std::to_string(::getpid()));
+    fs::remove_all(base);
+    const fs::path assets = base / "assets", lua = base / "lua";
+    writeFile(assets / "ok & fine (1)" / "hero!.png", "x");
+    writeFile(lua / "main.lua", "x");
+    EXPECT_EQ(Exporter::webTreePathRefusal({assets, lua, base / "missing"}), "");
+    writeFile(lua / "deep" / "er" / "50%off.lua", "x");
+    const std::string refusal = Exporter::webTreePathRefusal({assets, lua});
+    EXPECT_NE(refusal.find("rename"), std::string::npos) << refusal;
+    EXPECT_NE(refusal.find("50%off.lua"), std::string::npos) << refusal;
+    // a folder name too
+    fs::remove(lua / "deep" / "er" / "50%off.lua");
+    fs::create_directories(assets / "%TEMP%");
+    EXPECT_NE(Exporter::webTreePathRefusal({assets, lua}).find("%TEMP%"), std::string::npos);
+    fs::remove(assets / "%TEMP%");
+    // bounded: more entries than allowed is refused (it can't be checked)
+    EXPECT_NE(Exporter::webTreePathRefusal({assets, lua}, 2).find("too many"), std::string::npos);
+    EXPECT_EQ(Exporter::webTreePathRefusal({assets, lua}, 100), "");
+#ifndef _WIN32
+    EXPECT_EQ(Exporter::webTreeRefusal({assets}), "");   // applied on Windows only
+#endif
+    std::error_code ec;
+    fs::remove_all(base, ec);
 }

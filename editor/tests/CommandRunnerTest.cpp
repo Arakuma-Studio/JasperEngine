@@ -232,6 +232,18 @@ TEST(CommandRunner, WindowsProgramResolutionNeverUsesTheCurrentFolderOrBatchFile
     EXPECT_NE(CommandRunner::resolveWindowsProgram("emcmake.bat", {a, b}, resolved).find("batch file"), std::string::npos);
     EXPECT_NE(CommandRunner::resolveWindowsProgram("SCRIPT.CMD", {a, b}, resolved).find("batch file"), std::string::npos);
     EXPECT_NE(CommandRunner::resolveWindowsProgram(a / "emcmake.bat", {}, resolved).find("batch file"), std::string::npos);
+    // a dot in a bare name is no extension of a program: .exe / .com still added, never .bat / .cmd
+    touch(b / "tool-1.2.exe");
+    touch(a / "run-1.2.bat");
+    EXPECT_EQ(CommandRunner::resolveWindowsProgram("tool-1.2", {a, b}, resolved), "");
+    EXPECT_EQ(resolved, b / "tool-1.2.exe");
+    EXPECT_NE(CommandRunner::resolveWindowsProgram("run-1.2", {a, b}, resolved), "");
+    touch(b / "tool-1.2");
+    EXPECT_EQ(CommandRunner::resolveWindowsProgram(b / "tool-1.2", {}, resolved), "");
+    EXPECT_EQ(resolved, b / "tool-1.2.exe");   // the .exe first, even with a file spelled so beside it
+    touch(b / "only-1.2");
+    EXPECT_EQ(CommandRunner::resolveWindowsProgram(b / "only-1.2", {}, resolved), "");
+    EXPECT_EQ(resolved, b / "only-1.2");       // then as spelled
     // a path is used as given (extension added when missing)
     EXPECT_EQ(CommandRunner::resolveWindowsProgram(b / "tool.exe", {}, resolved), "");
     EXPECT_EQ(resolved, b / "tool.exe");
@@ -289,4 +301,23 @@ TEST(CommandRunner, LaunchDetachedReportsExecFailureLeavesNoChildAndInheritsNoDe
     ::close(held);
     std::error_code ec;
     fs::remove_all(base, ec);
+}
+
+TEST(CommandRunner, CloexecPipesAreNotInheritedBySpawnedPrograms) {
+    int fds[2];
+    ASSERT_TRUE(CommandRunner::makeCloexecPipe(fds));
+    EXPECT_TRUE(::fcntl(fds[0], F_GETFD) & FD_CLOEXEC);
+    EXPECT_TRUE(::fcntl(fds[1], F_GETFD) & FD_CLOEXEC);
+    // a program run meanwhile doesn't hold the write end: closing ours gives end-of-file at once
+    CommandRunner runner;
+    std::vector<std::string> lines;
+    ASSERT_TRUE(runner.run({"/bin/sh", "-c", "ls /proc/$$/fd"}, fs::path(), [&lines](const std::string& line) { lines.push_back(line); }));
+    for (const std::string& line : lines) {
+        EXPECT_NE(line, std::to_string(fds[0]));
+        EXPECT_NE(line, std::to_string(fds[1]));
+    }
+    ::close(fds[1]);
+    char byte = 0;
+    EXPECT_EQ(::read(fds[0], &byte, 1), 0);
+    ::close(fds[0]);
 }

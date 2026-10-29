@@ -56,6 +56,16 @@ namespace jasperengine::editor {
         // false + error when it could not be started (an exec failure is reported, not hidden).
         static bool launchDetached(const fs::path& exe, const fs::path& workingDir, std::string& error);
 
+#ifndef _WIN32
+        // A pipe whose ends are close-on-exec from the moment they exist: pipe2(O_CLOEXEC) where
+        // there is one, else pipe + fcntl while holding spawnMutex(), which every spawner holds
+        // around its fork / posix_spawn, so no concurrently started child inherits them (and keeps
+        // a reader waiting for an end-of-file that never comes). false (errno set) on failure.
+        static bool makeCloexecPipe(int fds[2]);
+        // Held around every fork / posix_spawn the editor does (see makeCloexecPipe)
+        static std::mutex& spawnMutex();
+#endif
+
         // Request cancellation and terminate the running process (if any).
         void cancel();
         bool isCancelRequested() const;

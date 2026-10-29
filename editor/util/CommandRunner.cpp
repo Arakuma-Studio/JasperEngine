@@ -305,14 +305,17 @@ std::string editor::CommandRunner::resolveWindowsProgram(const fs::path& program
         }
         return std::string();
     };
-    // a name without an extension: .exe, then .com (what CreateProcessW tries; never .bat / .cmd)
+    // .exe / .com as given; any other name (none, or a dot in it: "tool-1.2") gets .exe, then .com
+    // added (PATHEXT-style), then is tried as spelled; never .bat / .cmd
     auto candidatesOf = [&](const fs::path& base) {
         std::vector<fs::path> list;
-        if (base.has_extension()) {
+        const std::string ext = lowerExtension(base);
+        if (ext == ".exe" || ext == ".com") {
             list.push_back(base);
         } else {
             list.push_back(fs::path(base.native() + fs::path(".exe").native()));
             list.push_back(fs::path(base.native() + fs::path(".com").native()));
+            if (!ext.empty()) list.push_back(base);
         }
         return list;
     };
@@ -543,6 +546,25 @@ namespace {
 }
 #endif
 
+#ifndef _WIN32
+std::mutex& editor::CommandRunner::spawnMutex() {
+    static std::mutex* mutex = new std::mutex();   // never destroyed: spawns may run at exit
+    return *mutex;
+}
+
+bool editor::CommandRunner::makeCloexecPipe(int fds[2]) {
+#if defined(__linux__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__)
+    return ::pipe2(fds, O_CLOEXEC) == 0;
+#else
+    std::lock_guard<std::mutex> lock(spawnMutex());
+    if (::pipe(fds) != 0) return false;
+    ::fcntl(fds[0], F_SETFD, FD_CLOEXEC);
+    ::fcntl(fds[1], F_SETFD, FD_CLOEXEC);
+    return true;
+#endif
+}
+#endif
+
 bool editor::CommandRunner::launchDetached(const fs::path& exe, const fs::path& workingDir, std::string& error) {
     error.clear();
 #ifdef _WIN32
@@ -565,19 +587,21 @@ bool editor::CommandRunner::launchDetached(const fs::path& exe, const fs::path& 
     // the exec result comes back through a close-on-exec pipe: closed unread when exec works,
     // the errno when it doesn't
     int errorPipe[2];
-    if (::pipe(errorPipe) != 0) {
+    if (!makeCloexecPipe(errorPipe)) {
         error = std::string("pipe: ") + strerror(errno);
         return false;
     }
-    ::fcntl(errorPipe[0], F_SETFD, FD_CLOEXEC);
-    ::fcntl(errorPipe[1], F_SETFD, FD_CLOEXEC);
     const std::string exeText = exe.string();
     const std::string dirText = workingDir.string();
     long maxFd = ::sysconf(_SC_OPEN_MAX);
     if (maxFd < 0 || maxFd > 65536) maxFd = 65536;
     char* const childArgv[] = { const_cast<char*>(exeText.c_str()), nullptr };
 
-    const pid_t child = ::fork();
+    pid_t child = -1;
+    {
+        std::lock_guard<std::mutex> spawning(spawnMutex());
+        child = ::fork();
+    }
     if (child < 0) {
         error = std::string("fork: ") + strerror(errno);
         ::close(errorPipe[0]);
@@ -849,7 +873,7 @@ bool editor::CommandRunner::run(const std::vector<std::string>& argv, const fs::
         return exitCode == 0;
     #else
         int pipefd[2];
-        if (pipe(pipefd) != 0) {
+        if (!makeCloexecPipe(pipefd)) {
             Out::error("Failed to create pipe (POSIX): %s", strerror(errno));
             return false;
         }
@@ -896,7 +920,11 @@ bool editor::CommandRunner::run(const std::vector<std::string>& argv, const fs::
             for (std::string& entry : envStrings) envp.push_back(entry.data());
             envp.push_back(nullptr);
         }
-        int spawnResult = posix_spawnp(&pid, cargv[0], &actions, &attr, cargv.data(), environment ? envp.data() : environ);
+        int spawnResult = 0;
+        {
+            std::lock_guard<std::mutex> spawning(spawnMutex());
+            spawnResult = posix_spawnp(&pid, cargv[0], &actions, &attr, cargv.data(), environment ? envp.data() : environ);
+        }
         posix_spawnattr_destroy(&attr);
         posix_spawn_file_actions_destroy(&actions);
         close(pipefd[1]);

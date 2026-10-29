@@ -250,9 +250,24 @@ namespace jasperengine::editor {
         static std::string getCMakeGraphicBackend(::jasperengine::ShaderBackend backend);
         static EmsdkInfo detectEmsdk(const std::string& overridePath);
         // What emcmake.py adds to a CMake configure: the Emscripten toolchain file, node as the
-        // cross-compiling emulator, and on Windows a generator (MinGW Makefiles, else Ninja) when
-        // none is given. "" error when it can't (Windows without either generator).
-        static std::vector<std::string> emscriptenCMakeArgs(const EmsdkInfo& sdk, bool generatorGiven, std::string& error);
+        // cross-compiling emulator, and on Windows a generator (emscriptenWindowsGeneratorArgs).
+        // `env` is the environment CMake runs in (emscriptenEnvironment). error set when it can't.
+        static std::vector<std::string> emscriptenCMakeArgs(const EmsdkInfo& sdk, bool generatorGiven,
+                                                            const CommandRunner::Environment& env, std::string& error);
+        // emcmake.py's Windows generator choice (platform-independent, for tests): nothing when a
+        // generator is given or CMAKE_GENERATOR is set in `env`; else -G "MinGW Makefiles" when
+        // mingw32-make is on env's PATH (';'-separated), else -G Ninja when ninja is; else error.
+        static std::vector<std::string> emscriptenWindowsGeneratorArgs(const CommandRunner::Environment& env, bool generatorGiven,
+                                                                       std::string& error);
+        // Windows Web builds: the first file or folder below `roots` (what the build copies or
+        // compiles: assets, Lua, C++ script folders) whose path holds '%' or '"' (emcc.bat runs
+        // through cmd.exe), as a refusal; "" when none. At most maxEntries are looked at: more is
+        // refused too (it can't be checked). Platform-independent; webTreeRefusal applies it on
+        // Windows only.
+        static std::string webTreePathRefusal(const std::vector<fs::path>& roots, size_t maxEntries = 200000);
+        static std::string webTreeRefusal(const std::vector<fs::path>& roots);
+        // The folders a Web build of `project` takes files from (assets, Lua, C++ script folders)
+        static std::vector<fs::path> webSourceRoots(Project* project);
         // The environment the SDK's tools run in: this process's, with the SDK folders first on
         // PATH and EMSDK / EM_CONFIG / EMSDK_NODE / EMSDK_PYTHON set (what emsdk_env sets)
         static CommandRunner::Environment emscriptenEnvironment(const EmsdkInfo& sdk);

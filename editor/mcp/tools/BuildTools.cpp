@@ -945,13 +945,14 @@ void buildProjectTool(const CallPtr& call) {
         config.emsdkPath = AppSettings::getEmsdkPath();
         const EmsdkInfo emsdk = Exporter::detectEmsdk(config.emsdkPath);
         if (!emsdk.found) {
-            call->fail("Emscripten SDK not found: set preferences.emsdk_path (set_project_settings) to the emsdk root, set "
-                       "EMSDK, or put emcc on PATH. Or export mode source.");
+            call->fail("Emscripten SDK not found: the user sets it in Edit > Preferences > External Tools (preferences.emsdk_path "
+                       "is read-only over MCP), or sets EMSDK / puts emcc on PATH before starting the editor. Or export mode source.");
             return;
         }
-        if (const std::string refusal = Exporter::webBuildRefusal(
-                {project->getProjectPath(), Exporter::buildCacheDirFor(project, ExportMode::Web), outputDir});
-            !refusal.empty()) {
+        std::string refusal = Exporter::webBuildRefusal(
+            {project->getProjectPath(), Exporter::buildCacheDirFor(project, ExportMode::Web), outputDir});
+        if (refusal.empty()) refusal = Exporter::webTreeRefusal(Exporter::webSourceRoots(project));
+        if (!refusal.empty()) {
             call->fail(refusal + ".");
             return;
         }
@@ -1145,7 +1146,7 @@ void getBuildInfoTool(const CallPtr& call) {
     const EmsdkInfo emsdk = Exporter::detectEmsdk(AppSettings::getEmsdkPath());
     data["web"] = {
         {"available", emsdk.found},
-        {"emsdk", emsdk.found ? emsdk.description : std::string("not found (set preferences.emsdk_path)")},
+        {"emsdk", emsdk.found ? emsdk.description : std::string("not found (the user sets it in Edit > Preferences > External Tools; read-only over MCP)")},
         {"output_dir", FileUtils::pathToGenericUtf8(defaultOutputDir(project, ExportMode::Web))}
     };
     const auto& sourceSettings = project->getSourceCodeExportSettings();
@@ -1852,14 +1853,18 @@ void runBuildTool(const CallPtr& call) {
     const std::string workDir = exe.parent_path().string();
 
     int pipeFds[2];
-    if (::pipe(pipeFds) != 0) {
+    if (!CommandRunner::makeCloexecPipe(pipeFds)) {
         call->fail("Could not create a pipe for the player's output.");
         return;
     }
     long maxFd = ::sysconf(_SC_OPEN_MAX);
     if (maxFd < 0 || maxFd > 65536) maxFd = 65536;
 
-    const pid_t pid = ::fork();
+    pid_t pid = -1;
+    {
+        std::lock_guard<std::mutex> spawning(CommandRunner::spawnMutex());   // see makeCloexecPipe
+        pid = ::fork();
+    }
     if (pid < 0) {
         ::close(pipeFds[0]);
         ::close(pipeFds[1]);

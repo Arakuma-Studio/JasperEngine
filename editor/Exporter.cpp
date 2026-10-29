@@ -773,7 +773,8 @@ void editor::Exporter::runExport() {
 
     if (buildMode && config.mode == ExportMode::Web) {
         // emcc.bat runs through cmd.exe on Windows: no '%' in the folders it is given
-        const std::string refusal = webBuildRefusal({project->getProjectPath(), getBuildCacheDir(), config.destinationDir});
+        std::string refusal = webBuildRefusal({project->getProjectPath(), getBuildCacheDir(), config.destinationDir});
+        if (refusal.empty()) refusal = webTreeRefusal(webSourceRoots(project));   // the files it copies / compiles
         if (!refusal.empty()) {
             setError(refusal + ".");
             return;
@@ -1141,7 +1142,8 @@ bool editor::Exporter::configureBuild() {
         // through cmd.exe, which parses its arguments), in the SDK's environment (below)
         argv = { Generator::cmakeProgram() };
         std::string emError;
-        for (const std::string& arg : emscriptenCMakeArgs(emsdk, !config.cmakeGenerator.empty(), emError)) argv.push_back(arg);
+        const CommandRunner::Environment sdkEnv = emscriptenEnvironment(emsdk);
+        for (const std::string& arg : emscriptenCMakeArgs(emsdk, !config.cmakeGenerator.empty(), sdkEnv, emError)) argv.push_back(arg);
         if (!emError.empty()) {
             setError("Web build: " + emError + ".");
             return false;
@@ -4358,7 +4360,32 @@ editor::EmsdkInfo editor::Exporter::detectEmsdk(const std::string& overridePath)
     return info;
 }
 
-std::vector<std::string> editor::Exporter::emscriptenCMakeArgs(const EmsdkInfo& sdk, bool generatorGiven, std::string& error) {
+std::vector<std::string> editor::Exporter::emscriptenWindowsGeneratorArgs(const CommandRunner::Environment& env, bool generatorGiven,
+                                                                          std::string& error) {
+    error.clear();
+    // emcmake.py: only when neither -G nor CMAKE_GENERATOR picks one (CMake reads that itself)
+    if (generatorGiven || !CommandRunner::variable(env, "CMAKE_GENERATOR").empty()) return {};
+    std::vector<fs::path> dirs;
+    const std::string path = CommandRunner::variable(env, "PATH");
+    size_t pos = 0;
+    while (pos <= path.size()) {
+        size_t end = path.find(';', pos);
+        if (end == std::string::npos) end = path.size();
+        std::string dir = path.substr(pos, end - pos);
+        pos = end + 1;
+        if (dir.size() >= 2 && dir.front() == '"' && dir.back() == '"') dir = dir.substr(1, dir.size() - 2);
+        if (!dir.empty()) dirs.push_back(fs::path(dir));
+    }
+    fs::path found;
+    if (CommandRunner::resolveWindowsProgram("mingw32-make", dirs, found).empty()) return {"-G", "MinGW Makefiles"};
+    if (CommandRunner::resolveWindowsProgram("ninja", dirs, found).empty()) return {"-G", "Ninja"};
+    error = "no CMake generator for Emscripten: install Ninja (https://ninja-build.org) or mingw32-make and put it on PATH, "
+            "or set CMAKE_GENERATOR";
+    return {};
+}
+
+std::vector<std::string> editor::Exporter::emscriptenCMakeArgs(const EmsdkInfo& sdk, bool generatorGiven,
+                                                               const CommandRunner::Environment& env, std::string& error) {
     error.clear();
     std::vector<std::string> args;
     auto cmakePath = [](std::string path) {
@@ -4369,22 +4396,51 @@ std::vector<std::string> editor::Exporter::emscriptenCMakeArgs(const EmsdkInfo& 
     args.push_back("-DCMAKE_TOOLCHAIN_FILE=" + cmakePath(sdk.toolchainFile));
     if (!sdk.node.empty()) args.push_back("-DCMAKE_CROSSCOMPILING_EMULATOR=" + cmakePath(sdk.node));
 #ifdef _WIN32
-    // keep CMake from picking Visual Studio: MinGW Makefiles, else Ninja (as emcmake does)
-    if (!generatorGiven) {
-        if (!ShellEnv::findExecutable("mingw32-make").empty()) {
-            args.push_back("-G");
-            args.push_back("MinGW Makefiles");
-        } else if (!ShellEnv::findExecutable("ninja").empty()) {
-            args.push_back("-G");
-            args.push_back("Ninja");
-        } else {
-            error = "no CMake generator for Emscripten: install Ninja (https://ninja-build.org) or mingw32-make and put it on PATH";
-        }
-    }
+    // keep CMake from picking Visual Studio, as emcmake does (looked up on the SDK environment's PATH)
+    for (const std::string& arg : emscriptenWindowsGeneratorArgs(env, generatorGiven, error)) args.push_back(arg);
 #else
     (void)generatorGiven;
+    (void)env;
 #endif
     return args;
+}
+
+std::string editor::Exporter::webTreePathRefusal(const std::vector<fs::path>& roots, size_t maxEntries) {
+    size_t seen = 0;
+    for (const fs::path& root : roots) {
+        std::error_code ec;
+        if (root.empty() || !fs::is_directory(root, ec)) continue;
+        if (const std::string refusal = webPathRefusal({root}); !refusal.empty()) return refusal;
+        fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec), end;
+        for (; !ec && it != end; it.increment(ec)) {
+            if (++seen > maxEntries) {
+                return "Web builds on Windows check every file name for % and this project has more than " + std::to_string(maxEntries) +
+                       " files in " + root.string() + ": too many to check";
+            }
+            const std::string name = it->path().filename().string();
+            if (name.find_first_of("%\"") != std::string::npos) {
+                return "Web builds on Windows can't use a file or folder whose name contains % (or \"): rename " + it->path().string();
+            }
+        }
+    }
+    return std::string();
+}
+
+std::string editor::Exporter::webTreeRefusal(const std::vector<fs::path>& roots) {
+#ifdef _WIN32
+    return webTreePathRefusal(roots);
+#else
+    (void)roots;
+    return std::string();
+#endif
+}
+
+std::vector<fs::path> editor::Exporter::webSourceRoots(Project* project) {
+    std::vector<fs::path> roots = {project->getAssetsPath(), project->getLuaPath()};
+    for (const fs::path& dir : project->getScriptDirs()) {
+        roots.push_back(dir.is_absolute() ? dir : (project->getProjectPath() / dir).lexically_normal());
+    }
+    return roots;
 }
 
 editor::CommandRunner::Environment editor::Exporter::emscriptenEnvironment(const EmsdkInfo& sdk) {
