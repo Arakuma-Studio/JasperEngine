@@ -58,6 +58,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerGameplayTools, "Gameplay: input, character controller, water", "gameplay"},   // S22
     {registerParticleTools, "Particles: effects and playback", "particles"},   // S20
     {registerOrganisationTools, "Search, shortcuts, layouts, labels, saved searches and bookmarks", "organisation"},   // S25
+    {registerNavigationTools, "Navigation: navmeshes, agents, crowds and grids", "navigation"},   // S19
     {registerVcsTools, "Git/SVN status, diffs, commits, locks", "vcs"},   // S29
 };
 

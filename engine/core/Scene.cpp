@@ -17,6 +17,7 @@
 #include "subsystem/PoseAnimatorSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/PhysicsSystem.h"
+#include "subsystem/NavigationSystem.h"
 #include "picking/SceneBvh.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "util/Color.h"
@@ -46,6 +47,8 @@ void Scene::init(){
     registerSystem<UIDocumentSystem>();
     registerSystem<FluidSystem>();
     registerSystem<RenderSystem>();
+    // before physics: agents set their bodies' velocities before the world steps (S19 D2)
+    registerSystem<NavigationSystem>();
     registerSystem<PhysicsSystem>();
     // after physics (world collisions query it, never while it steps) and the transforms
     registerSystem<ParticleSubsystem>();

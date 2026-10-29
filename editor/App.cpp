@@ -30,6 +30,7 @@
 #include "command/type/DuplicateEntityCmd.h"
 #include "command/type/RemoveChildSceneCmd.h"
 #include "lattice/LatticeSceneTools.h"
+#include "navigation/NavigationEditor.h"
 #include "util/EntityClipboard.h"
 #include "mcp/McpActivityWindow.h"
 #include "window/JobsMemoryWindow.h"
@@ -41,6 +42,7 @@
 #include "window/UndoHistoryWindow.h"
 #include "window/vcs/VcsUi.h"
 #include "window/InputActionsWindow.h"
+#include "navigation/NavigationWindow.h"
 #include "command/PlayChangeReview.h"
 #include "pose/PoseEditSession.h"
 #include "mcp/McpServer.h"
@@ -184,6 +186,7 @@ editor::App::App(){
     vcsUi = new vcs::VcsUi(&project);
     StatusBar::setVersionControlSegment([this]() { vcsUi->drawStatusBarSegment(); });
     inputActionsWindow = new InputActionsWindow(&project);
+    navigationWindow = new NavigationWindow(&project);
     playModeChangesWindow = new PlayModeChangesWindow(&project);
     searchPalette = new SearchPalette(this);
     shortcutsWindow = new ShortcutsWindow(CommandCatalog::editor(), shortcutDispatcher);
@@ -645,6 +648,9 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         }),
         catalogItem("window.terrain", windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
         catalogItem("window.inputActions", windowMenuLabel(InputActionsWindow::WINDOW_NAME)),
+        menuSubmenu("AI", {
+            catalogItem("window.navigation", windowMenuLabel(NavigationWindow::WINDOW_NAME))
+        }),
         menuSubmenu("Assets", {
             catalogItem("window.missingAssets", windowMenuLabel(MissingAssetsWindow::WINDOW_NAME)),
             catalogItem("window.assetReferences", windowMenuLabel(AssetReferencesWindow::WINDOW_NAME))
@@ -870,6 +876,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleInputActions:
             showEditorWindow(inputActionsWindow);
+            break;
+        case AppMenuCommand::ToggleNavigation:
+            showEditorWindow(navigationWindow);
             break;
         case AppMenuCommand::TogglePlayModeChanges:
             showEditorWindow(playModeChangesWindow);
@@ -2608,6 +2617,7 @@ void editor::App::show(){
     undoHistoryWindow->show();
     vcsUi->show();
     inputActionsWindow->show();
+    navigationWindow->show();
     playModeChangesWindow->show();
     bookmarksWindow->show();
     codeEditor->show();
@@ -3199,6 +3209,8 @@ void editor::App::engineRender(){
     // scripts saved while a scene plays swap in here, at the frame boundary (no Lua runs now)
     ScriptStatus::get().update();
     ScriptReloadService::get().update();
+    // navigation bakes of the stopped scenes: landed and saved (.navmesh) as they finish
+    NavigationEditor::get().update(&project);
     project.updateGeneratedSources();
     // clip previews (the Animation window's clip mode, MCP preview_animation) advance every frame
     if (animationClipAppHooks().frame) {

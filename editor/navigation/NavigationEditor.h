@@ -1,0 +1,172 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+
+#pragma once
+
+// The editor's side of navigation bakes and assets (docs/navigation.md):
+// - bakes run on the Background lane while the editor keeps drawing; update() (every frame)
+//   lands them and writes the .navmesh through S03 atomic writes, at the surface's asset or at
+//   the default location (assets/<scene dir>/<SceneName>/NavMesh-<Entity>.navmesh), with an
+//   S04 GUID, and points the surface's navMeshData at it;
+// - a scene save first writes the .navgrid of every grid whose cells changed;
+// - the Inspector, the Navigation window and the MCP tools start, cancel and clear bakes here.
+
+#include "Scene.h"
+#include "subsystem/NavigationSystem.h"
+#include "math/Ray.h"
+
+#include <filesystem>
+#include <functional>
+#include <map>
+#include <memory>
+#include <string>
+#include <vector>
+
+namespace jasperengine::editor {
+
+    class Project;
+    struct SceneProject;
+
+    class NavigationEditor {
+    public:
+        using BakeCallback = std::function<void(const NavBakeResult& result)>;
+
+        static NavigationEditor& get();
+
+        // The scene's navigation system, set up for the editor (tile records kept, Background
+        // lane); null without a scene
+        static NavigationSystem* systemOf(SceneProject& sceneProject);
+
+        // Starts a bake (Not baked / Dirty: the changed tiles; FULL: every tile; CLEAR: none,
+        // the asset removed). onDone runs on the main thread once it ended (saved or not).
+        bool bake(Project* project, uint32_t sceneId, Entity surface, NavBakeMode mode, std::string& error,
+                  BakeCallback onDone = nullptr);
+        // Every surface of the scene (Bake All)
+        int bakeAll(Project* project, uint32_t sceneId, NavBakeMode mode, std::string& error);
+        bool cancel(Project* project, uint32_t sceneId, Entity surface);
+        // Removes the navmesh and its asset (Unity's Clear)
+        bool clear(Project* project, uint32_t sceneId, Entity surface, std::string& error);
+
+        // Every frame: pumps the bakes, saves the finished ones
+        void update(Project* project);
+        // a bake is running (the editor keeps drawing frames)
+        bool isBusy() const { return !pending.empty(); }
+        bool isBaking(uint32_t sceneId, Entity surface) const;
+
+        // Before a scene is encoded: the .navgrid of every grid whose cells changed is written
+        // and its gridData set
+        void saveSceneAssets(Project* project, SceneProject& sceneProject);
+
+        // assets/<scene dir>/<SceneName>/<prefix>-<EntityName>.<extension> (absolute)
+        static std::filesystem::path defaultAssetPath(Project* project, const SceneProject& sceneProject, Entity entity,
+                                                      const std::string& prefix, const std::string& extension);
+        // Writes bytes to the asset (absolute path) atomically, gives it a GUID and returns its
+        // reference (path relative to the assets folder)
+        static bool writeAsset(Project* project, const std::filesystem::path& file, const std::vector<uint8_t>& bytes,
+                               AssetRef& ref, std::string& error);
+        // The surface's navmesh file: its asset, else the default location
+        static std::filesystem::path navMeshFileOf(Project* project, const SceneProject& sceneProject, Entity surface);
+
+        // ---- grids (undoable: NavGridCellsCmd)
+        // Rebuild from the grid's source, keeping brush-painted cells ("Rebuild Nav Grid")
+        bool rebuildGrid(Project* project, uint32_t sceneId, Entity grid, std::string* error = nullptr);
+        // Clears the override bits and rebuilds ("Reset Nav Grid Overrides")
+        bool resetGridOverrides(Project* project, uint32_t sceneId, Entity grid, std::string* error = nullptr);
+
+        // ---- the nav-grid brush (spec R35; the Scene view routes it like the terrain brush)
+        enum class BrushMode { Paint, Erase, Fill };
+        enum class BrushShape { Circle, Square };
+        struct Brush {
+            BrushMode mode = BrushMode::Paint;
+            BrushShape shape = BrushShape::Circle;
+            int area = nav::AREA_NOT_WALKABLE;
+            // diameter in cells
+            int size = 1;
+        };
+        void setBrushGrid(uint32_t sceneId, Entity grid) { brushScene = sceneId; brushGrid = grid; }
+        void stopBrush() { brushGrid = NULL_ENTITY; }
+        bool isBrushActive(uint32_t sceneId) const { return brushGrid != NULL_ENTITY && brushScene == sceneId; }
+        Entity getBrushGrid() const { return brushGrid; }
+        Brush& getBrush() { return brush; }
+        // the brush holds the Scene view's left button in this scene (a NavGrid to paint)
+        bool isBrushPainting(Scene* scene) const;
+        // A stroke: press, drag, release (one undo step "Paint Nav Grid"). Shift held while
+        // dragging paints a straight line from the press to the cursor (Shift on the press: from
+        // the last stroke's end). Fill floods the cell pressed.
+        void beginBrushStroke(Project* project, Scene* scene, const Ray& ray, bool shift);
+        void paintBrushStroke(Scene* scene, const Ray& ray, bool shift = false);
+        void endBrushStroke(Project* project);
+        // ---- NavMesh Link handles (spec R34): a press near a selected link's start or end drags
+        // it on the link's horizontal plane; the release is one undo step
+        bool beginLinkHandleDrag(Project* project, uint32_t sceneId, Scene* scene, const Ray& ray, const std::vector<Entity>& selected);
+        void dragLinkHandle(Scene* scene, const Ray& ray);
+        void endLinkHandleDrag(Project* project);
+        bool isDraggingLinkHandle() const { return linkDrag.active; }
+
+        // the grid cell under a ray (false: it misses the grid's plane)
+        static bool cellUnderRay(Scene* scene, Entity grid, const Ray& ray, nav::GridCell& cell);
+
+        // ---- the overlay's query path (visualize_navigation path), world points
+        void setQueryPath(uint32_t sceneId, std::vector<Vector3> points) { queryPaths[sceneId] = std::move(points); }
+        const std::vector<Vector3>& getQueryPath(uint32_t sceneId) const {
+            static const std::vector<Vector3> none;
+            auto it = queryPaths.find(sceneId);
+            return it != queryPaths.end() ? it->second : none;
+        }
+
+        // The export preflight and the CLI check (spec R42): every surface of the loaded scenes
+        // that is not baked, cannot be read or is out of date, as findings (tool "navigation")
+        struct Finding {
+            std::string scenePath;
+            std::string sceneName;
+            std::string entityName;
+            std::string message;
+        };
+        static std::vector<Finding> checkSurfaces(Project* project, size_t* surfaces = nullptr);
+
+        // Stale bake (spec R32, R42): tiles whose inputs differ from the baked ones, -1 when
+        // not collected; cached per scene revision
+        int dirtyTiles(Project* project, uint32_t sceneId, Entity surface);
+
+    private:
+        struct Pending {
+            uint32_t sceneId = 0;
+            Entity surface = NULL_ENTITY;
+            NavBakeMode mode = NavBakeMode::DIRTY;
+            std::vector<BakeCallback> callbacks;
+        };
+        std::vector<Pending> pending;
+
+        struct DirtyCache {
+            uint32_t sceneId = 0;
+            Entity surface = NULL_ENTITY;
+            uint64_t revision = 0;
+            double checkedAt = 0.0;
+            int dirty = -1;
+        };
+        std::vector<DirtyCache> dirtyCache;
+
+        std::map<uint32_t, std::vector<Vector3>> queryPaths;
+        struct LinkDrag {
+            bool active = false;
+            uint32_t sceneId = 0;
+            Entity link = NULL_ENTITY;
+            bool end = false;
+            Vector3 original;
+            Vector3 planePoint;
+            Vector3 planeNormal;
+        };
+        LinkDrag linkDrag;
+        uint32_t brushScene = 0;
+        Entity brushGrid = NULL_ENTITY;
+        Brush brush;
+        struct BrushStroke;
+        std::shared_ptr<BrushStroke> stroke;
+        nav::GridCell lastStrokeEnd;
+        bool hasLastStrokeEnd = false;
+        void strokeTo(Scene* scene, nav::GridCell cell);
+
+        void finish(Project* project, Pending& entry, const NavBakeResult& result);
+    };
+
+}

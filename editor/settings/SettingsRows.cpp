@@ -1107,6 +1107,60 @@ std::vector<Setting> mcpSettingsTable() {
         add(boolSetting("physics2d.enabled", "2D physics (Box2D). Off leaves Rigidbody2Ds and joints out of builds.",
                         [](Project& p) { return p.isPhysics2DEnabled(); }, [](Project& p, bool v) { p.setPhysics2DEnabled(v); }));
         add(layerCollisionSetting("physics2d.layer_collision_matrix", false));
+        // ---- navigation (S19; agent types and areas: Window > AI > Navigation, set_navigation_settings)
+        add(boolSetting("navigation.include_in_builds", "Recast/Detour in exported builds. Off: navmesh bakes, queries and agents fail; grids still work.",
+                        [](Project& p) { return p.getNavigationSettings().includeInBuilds; },
+                        [](Project& p, bool v) { NavigationProjectSettings n = p.getNavigationSettings(); n.includeInBuilds = v; p.setNavigationSettings(n); }));
+        {
+            struct NavCount {
+                const char* key;
+                const char* description;
+                int maximum;
+                int nav::NavigationSettings::*field;
+            };
+            const NavCount counts[] = {
+                {"navigation.crowd_max_agents", "Agents per crowd (one per surface and agent type) before it grows, with a warning (1-4096).", 4096, &nav::NavigationSettings::crowdMaxAgents},
+                {"navigation.max_grid_solves_per_tick", "Grid path requests solved per fixed tick; the rest wait (1-4096).", 4096, &nav::NavigationSettings::maxGridSolvesPerTick},
+            };
+            for (const NavCount& count : counts) {
+                Setting s;
+                s.key = count.key;
+                s.type = "int";
+                s.description = count.description;
+                const auto field = count.field;
+                const int maximum = count.maximum;
+                s.get = [field](SettingsContext& ctx) { return Json(ctx.project()->getNavigationSettings().settings.*field); };
+                s.set = [field, maximum](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                    long long v;
+                    if (!readInt(value, 1, maximum, v, error)) return false;
+                    if (apply) {
+                        NavigationProjectSettings n = ctx.project()->getNavigationSettings();
+                        n.settings.*field = static_cast<int>(v);
+                        ctx.project()->setNavigationSettings(n);
+                    }
+                    return true;
+                };
+                add(s);
+            }
+        }
+        {
+            Setting s;
+            s.key = "navigation.web_bake_budget_ms";
+            s.type = "number";
+            s.description = "Main-thread bake time per frame without worker threads (web), ms (0.5-50).";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getNavigationSettings().settings.webBakeBudgetMs); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                double v;
+                if (!readNumber(value, 0.5, 50.0, v, error)) return false;
+                if (apply) {
+                    NavigationProjectSettings n = ctx.project()->getNavigationSettings();
+                    n.settings.webBakeBudgetMs = static_cast<float>(v);
+                    ctx.project()->setNavigationSettings(n);
+                }
+                return true;
+            };
+            add(s);
+        }
 
         // ---- input (S22)
         add(pathSetting("input.actions", "The Input Actions asset Play and the game load at start (an .inputactions file in the assets directory).",
@@ -1775,6 +1829,10 @@ const Placement placements[] = {
     {"physics.layer_collision_matrix", "Physics", "Layer Collision Matrix", "Layer Collision Matrix", "layers collide"},
     {"physics2d.enabled", "Physics 2D", "", "2D Physics", "box2d rigidbody 2d"},
     {"physics2d.layer_collision_matrix", "Physics 2D", "Layer Collision Matrix", "Layer Collision Matrix", "layers collide"},
+    {"navigation.include_in_builds", "Navigation", "", "Include in Builds", "navmesh recast detour strip export"},
+    {"navigation.crowd_max_agents", "Navigation", "", "Crowd Max Agents", "navmesh agents crowd"},
+    {"navigation.max_grid_solves_per_tick", "Navigation", "", "Grid Solves per Tick", "nav grid a* pathfinding"},
+    {"navigation.web_bake_budget_ms", "Navigation", "", "Web Bake Budget", "navmesh bake web single thread"},
     {"input.actions", "Input", "", "Default Actions Asset", "input actions bindings controls keyboard gamepad touch inputactions"},
     {"input.deadzone", "Input", "", "Default Deadzone", "input stick axis analog gamepad dead zone"},
     {"scripting.lua_dir", "Scripting", "", "Lua Directory", "lua"},
@@ -1906,6 +1964,7 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         {"Scripting", SettingsScope::Project, 7, "lua c++"},
         {"Tags and Layers", SettingsScope::Project, 8, "tags layers"},
         {"Editor", SettingsScope::Project, 9, "version control assets labels"},
+        {"Navigation", SettingsScope::Project, 10, "navigation navmesh agents areas crowd grid pathfinding ai"},
         {"General", SettingsScope::Preference, 0, "editor auto save backup html ui"},
         {"Code Editor", SettingsScope::Preference, 1, "font"},
         {"Asset Pipeline", SettingsScope::Preference, 2, "refresh watcher hot reload"},

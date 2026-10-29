@@ -150,12 +150,18 @@ namespace jasperengine::editor{
         BuoyancyComponent,
         PoseAnimatorComponent,
         // Unity's legacy Animation component (animation clips spec 3.2)
-        AnimationPlayerComponent
+        AnimationPlayerComponent,
+        NavMeshSurfaceComponent,
+        NavMeshAgentComponent,
+        NavMeshObstacleComponent,
+        NavMeshLinkComponent,
+        NavMeshModifierComponent,
+        NavGridComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::AnimationPlayerComponent;
+    constexpr ComponentType LastComponentType = ComponentType::NavGridComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
     // (S12's name for it)
     constexpr ComponentType LAST_COMPONENT_TYPE = LastComponentType;

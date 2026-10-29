@@ -78,6 +78,7 @@ namespace jasperengine::editor::mcp {
     void installPoseSyncHook(McpContext& context);
 
     void registerOrganisationTools(McpRegistry& registry);
+    void registerNavigationTools(McpRegistry& registry);
     void registerVcsTools(McpRegistry& registry);   // S29 (VcsTools.cpp)
 
     // list_assets search and saved searches (OrganisationTools.cpp): an R20 search over the asset

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 //
 // Jolt shapes from scene data, shared by the scene's PhysicsSystem and the edit-time
-// PlacementWorld: the process-wide Jolt setup, the mesh geometry a shape reads (submesh
-// POSITION/INDEX views, multi-node models, child meshes in body space) and the builders of
-// every Collider3D type.
+// PlacementWorld: the process-wide Jolt setup, the mesh geometry a shape reads in body space
+// (its submesh views and triangles come from util/MeshTriangles) and the builders of every
+// Collider3D type.
 //
 // Engine-internal, not installed: Jolt is a static library linked into the shared engine, so
 // only libjasperengine may call it.
@@ -37,26 +37,6 @@ namespace jasperengine {
 
     class JoltShapeBuilder {
     public:
-        // POSITION/INDEX buffers one submesh reads: component-level first, overridden by
-        // any per-submesh attribute.
-        struct MeshSourceView {
-            Buffer* vertexBuffer = NULL;
-            Attribute vertexAttr;
-            Buffer* indexBuffer = NULL;
-            Attribute indexAttr;
-        };
-
-        // Submeshes commonly share one POSITION buffer and differ only in their indices,
-        // so a range is added once and its vertices reused.
-        typedef std::tuple<const void*, size_t, size_t> VertexRange;
-
-        static VertexRange vertexRange(const MeshSourceView& view);
-        static std::vector<MeshSourceView> collectMeshSourceViews(MeshComponent* mesh);
-
-        // A multi-node glTF root is only a hierarchy container, with the geometry living in
-        // its mesh-node children, so a shape sourced from it falls back to those nodes.
-        static std::vector<Entity> meshSourceEntities(Scene* scene, Entity meshEntity);
-
         // Source vertices are in their own entity's space, which is the body's only when one
         // entity owns both. Brings them into body-local (rotation-free, world-scaled) space.
         static Matrix4 meshToBodyMatrix(Scene* scene, Entity bodyEntity, Entity meshEntity);
@@ -65,8 +45,6 @@ namespace jasperengine {
         // space into a frame at the entity's world position and rotation, scale and any shear (a
         // turned child of a non-uniformly scaled parent) included, as the renderer draws it
         static Matrix4 entityLinearMatrix(Scene* scene, Entity entity);
-        // Determinant of a matrix's 3x3 linear part: negative when it mirrors
-        static float linearDeterminant(const Matrix4& matrix);
 
         // Transform::worldScale is the entity's accumulated scale, resolved by
         // RenderSystem::updateTransform. Identity when there is no Transform, matching an
@@ -80,16 +58,6 @@ namespace jasperengine {
         // index buffer are plain triangle lists. False when meshEntity has no mesh geometry.
         static bool appendTriangles(Scene* scene, Entity bodyEntity, Entity meshEntity,
                                     std::vector<Vector3>& vertices, std::vector<uint32_t>& indices);
-        // The triangles of one mesh component, its vertices brought through toBody
-        static void appendMeshTriangles(MeshComponent* mesh, const Matrix4& toBody,
-                                        std::vector<Vector3>& vertices, std::vector<uint32_t>& indices);
-
-        // Hull, mesh and heightfield shapes read their geometry from an entity, and that
-        // geometry can land several frames after Scene::load: models are parsed on a worker
-        // thread and terrains wait on their heightmap. The parent walk covers multi-node models,
-        // whose child meshes are filled in by the ancestor holding the ModelComponent.
-        static bool isGeometryLoading(Scene* scene, Entity entity);
-
         // One heightfield sample per heightmap texel (the smaller side), at least 4 and at most
         // MAX_HEIGHTFIELD_SAMPLES (a larger heightmap is resampled through sampleTerrainSurface)
         static constexpr unsigned int MAX_HEIGHTFIELD_SAMPLES = 1025;

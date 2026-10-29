@@ -798,6 +798,7 @@ void LuaBinding::registerClasses(lua_State *L){
     registerThreadClasses(L);
     registerProfilerClasses(L);
     registerGameplayClasses(L);
+    registerNavigationClasses(L);
     registerCrashClasses(L);
     registerHtmlUIClasses(L);
     registerHtmlUIAnimeClasses(L);

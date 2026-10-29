@@ -14,6 +14,8 @@ extern unsigned int bulb_icon_png_len;
 
 #include "Backend.h"
 #include "Project.h"
+#include "navigation/NavigationEditor.h"
+#include "imgui.h"
 #include "command/CommandHandle.h"
 #include "command/type/ObjectTransformCmd.h"
 #include "command/type/PropertyCmd.h"
@@ -130,6 +132,7 @@ editor::SceneRender::~SceneRender(){
     }
 
     destroyLatticeCages();
+    navigationOverlay.reset();
     delete terrainBrushLines;
     delete physicsLines;
     delete camera;
@@ -563,6 +566,7 @@ void editor::SceneRender::hideAllGizmos(){
     uilayer.setSelectionBoxVisible(false);
     uilayer.setCameraGaugeVisible(false);
     hideLatticeCages();
+    if (navigationOverlay) navigationOverlay->hide();
 }
 
 void editor::SceneRender::setPlayMode(bool isPlaying){
@@ -1201,6 +1205,7 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
 
     updateLatticeCages(selEntities, entities, editedLattice);
     updatePhysicsOverlay(physics, physicsSceneId);
+    updateNavigationOverlay(selEntities);
 
     uilayer.setViewGizmoImageVisible(true);
 }
@@ -1243,6 +1248,19 @@ void editor::SceneRender::mouseClickEvent(float x, float y, std::vector<Entity> 
             updateTerrainBrushCursor();
             return;
         }
+    }
+
+    // a selected NavMesh Link's start or end handle under the press: its drag (S19 R34)
+    if (NavigationEditor::get().beginLinkHandleDrag(Backend::getApp().getProject(), getLatticeSceneId(), scene, ownerMouseRay, selEntities)){
+        physicsClick = false;
+        return;
+    }
+
+    // the nav-grid brush (S19 R35): a press on the selected NavGrid starts a stroke
+    if (NavigationEditor::get().isBrushPainting(scene)){
+        physicsClick = false;
+        NavigationEditor::get().beginBrushStroke(Backend::getApp().getProject(), scene, ownerMouseRay, ImGui::GetIO().KeyShift);
+        return;
     }
 
     // Paint Dye: a press on the fluid's Sprite starts a stroke; elsewhere it does nothing
@@ -1459,6 +1477,8 @@ void editor::SceneRender::mouseReleaseEvent(float x, float y){
         terrainEditWindow->endStroke();
     }
     FluidEditorTools::endStroke();
+    NavigationEditor::get().endBrushStroke(Backend::getApp().getProject());
+    NavigationEditor::get().endLinkHandleDrag(Backend::getApp().getProject());
 
     // a physics drag ends its gesture (commit, or settle then commit)
     if (physicsGestureStarted){
@@ -1615,6 +1635,16 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
 
     if (FluidEditorTools::isPainting(scene)){
         FluidEditorTools::paintStroke(scene, ownerMouseRay);
+        return;
+    }
+
+    if (NavigationEditor::get().isBrushPainting(scene)){
+        NavigationEditor::get().paintBrushStroke(scene, ownerMouseRay, ImGui::GetIO().KeyShift);
+        return;
+    }
+
+    if (NavigationEditor::get().isDraggingLinkHandle()){
+        NavigationEditor::get().dragLinkHandle(scene, ownerMouseRay);
         return;
     }
 
@@ -2400,8 +2430,10 @@ bool editor::SceneRender::isAnyGizmoSideSelected() const{
     return (tools.getGizmoSideSelected() != editor::GizmoSideSelected::NONE || tools.getGizmo2DSideSelected() != Gizmo2DSideSelected::NONE);
 }
 
+// a Scene view brush holds the left button: Paint Dye, or the nav-grid brush (S19)
 bool editor::SceneRender::isFluidPainting() const{
-    return FluidEditorTools::isPainting(scene);
+    return FluidEditorTools::isPainting(scene) || NavigationEditor::get().isBrushPainting(scene) ||
+           NavigationEditor::get().isDraggingLinkHandle();
 }
 
 bool editor::SceneRender::isTerrainEditing() const{
@@ -3661,4 +3693,24 @@ void editor::SceneRender::drawCameraFrustumLines(LineRenderer* lines, const Came
         lines->addLine(up2, up3, color);
         lines->addLine(up3, up1, color);
     }
+}
+
+// the AI Navigation overlay of the scene this view shows (only built once a navigation
+// component is in the scene: an empty scene pays nothing)
+void editor::SceneRender::updateNavigationOverlay(const std::vector<Entity>& selEntities){
+    const bool any = scene->getComponentArray<NavMeshSurfaceComponent>()->size() > 0 || scene->getComponentArray<NavGridComponent>()->size() > 0 ||
+                     scene->getComponentArray<NavMeshLinkComponent>()->size() > 0 || scene->getComponentArray<NavMeshObstacleComponent>()->size() > 0 ||
+                     scene->getComponentArray<NavMeshAgentComponent>()->size() > 0 || scene->getComponentArray<NavMeshModifierComponent>()->size() > 0;
+    if (!any){
+        if (navigationOverlay) navigationOverlay->hide();
+        return;
+    }
+    Project* project = Backend::getApp().getProject();
+    SceneProject* sceneProject = project ? project->getScene(getLatticeSceneId()) : nullptr;
+    if (!sceneProject || sceneProject->scene != scene){
+        return;
+    }
+    if (!navigationOverlay) navigationOverlay = std::make_unique<NavigationOverlay>(scene);
+    const std::set<Entity> selected(selEntities.begin(), selEntities.end());
+    navigationOverlay->update(*sceneProject, camera, selected, displaySettings.navigation);
 }

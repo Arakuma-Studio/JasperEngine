@@ -11,6 +11,7 @@
 #include "reload/HotReloadService.h"
 #include "asset/AssetRefSchema.h"
 #include "asset/AssetFileWrite.h"
+#include "navigation/NavigationEditor.h"
 #include "util/CrashHook.h"
 #include "util/Scheduler.h"
 #include "io/AtomicFile.h"
@@ -2680,6 +2681,21 @@ const editor::PhysicsPlacementSettings& editor::Project::getPhysicsPlacementSett
     return physicsPlacementSettings;
 }
 
+const editor::NavigationProjectSettings& editor::Project::getNavigationSettings() const{
+    return navigationSettings;
+}
+
+void editor::Project::setNavigationSettings(const NavigationProjectSettings& settings){
+    const bool changed = settings != navigationSettings;
+    navigationSettings = settings;
+    navigationSettings.settings.sanitize();
+    nav::setSettings(navigationSettings.settings);
+    // the standalone build's main.cpp and CMake settings carry them
+    if (modelLoaded && changed){
+        markGeneratedSourcesDirty();
+    }
+}
+
 bool editor::Project::isSimulateTouch() const{
     return simulateTouch;
 }
@@ -5044,6 +5060,7 @@ void editor::Project::resetConfigs() {
     loadingSettings = {};
     terrainEditorSettings = {};
     physicsPlacementSettings = {};
+    setNavigationSettings(NavigationProjectSettings());
     simulateTouch = false;
     // nothing reloads into a project that is going (S05), nothing cooks for it (S14)
     HotReloadService::get().stopWatching();
@@ -6421,6 +6438,8 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
     // paths assigned since the last save get their assets' GUIDs (S04); a background save
     // had it done on the main thread (resolving may reload what a moved path feeds)
     if (sceneProject->playState != ScenePlayState::SAVING) {
+        // the grids' changed cells go to their .navgrid files first (S19 R35)
+        NavigationEditor::get().saveSceneAssets(this, *sceneProject);
         resolveSceneAssetRefs(*sceneProject, false);
     }
 
@@ -6614,6 +6633,7 @@ void editor::Project::configureGenerator() {
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
     generator.setAtmosphereQuality(atmosphereQuality);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
+    generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
     generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
     generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier);
 }
@@ -6669,6 +6689,7 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
     }
 
     editor::getEditorHost().stopTransientPreviews();
+    NavigationEditor::get().saveSceneAssets(this, *sceneProject);
     resolveSceneAssetRefs(*sceneProject, false);
     for (auto& [prefabPath, prefab] : prefabAssets) {
         if (prefab.registry && prefab.instances.count(sceneId) && (prefab.isModified || prefab.needsUpgrade)) {
@@ -8625,6 +8646,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
     generator.setAtmosphereQuality(atmosphereQuality);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
+    generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
     generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
     generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, threadingSettings, htmlUiRender, mobilePbrTier);
     if (hasMissingSceneSources()) {

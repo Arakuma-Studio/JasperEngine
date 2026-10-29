@@ -47,8 +47,9 @@ namespace {
 }
 
 TEST(AnimationClipContract, CatalogKnowsTheAnimationPlayer){
-    EXPECT_EQ(LastComponentType, ComponentType::AnimationPlayerComponent);
-    EXPECT_EQ(ComponentTypeCount, static_cast<int>(ComponentType::AnimationPlayerComponent) + 1);
+    // within the types every loop runs over (S19's navigation components follow it)
+    EXPECT_LE(static_cast<int>(ComponentType::AnimationPlayerComponent), static_cast<int>(LastComponentType));
+    EXPECT_LT(static_cast<int>(ComponentType::AnimationPlayerComponent), ComponentTypeCount);
     EXPECT_EQ(Catalog::getComponentType("animationplayer"), ComponentType::AnimationPlayerComponent);
     EXPECT_EQ(Catalog::getComponentType("AnimationPlayerComponent"), ComponentType::AnimationPlayerComponent);
     EXPECT_EQ(Catalog::getComponentName(ComponentType::AnimationPlayerComponent, false), "AnimationPlayerComponent");

@@ -42,6 +42,8 @@ namespace {
             // engine's YAML assets do; pose animations have a meta like other data files
             {{AssetType::AnimationClip, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".anim"}},
             {{AssetType::PoseAnimation, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".poseanim"}},
+            {{AssetType::NavMesh, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".navmesh"}},
+            {{AssetType::NavGrid, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".navgrid"}},
         };
         return table;
     }
