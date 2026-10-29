@@ -829,6 +829,10 @@ int TextureData::getBytesPerChannel(ColorFormat format){
     }
 }
 
+bool TextureData::isCodeFloatData() const{
+    return isFloatFormat(color_format) && levels.empty() && gpuFormat != GpuTextureFormat::RGBA16F;
+}
+
 bool TextureData::isFloatFormat(ColorFormat format){
     return getFloatFormatChannels(format) > 0;
 }

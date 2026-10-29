@@ -647,7 +647,9 @@ TEST_F(FloatTextureTest, TextureSetDataThroughThePool){
 }
 
 TEST_F(FloatTextureTest, EightBitPathsUnchanged){
-    // RGBA8 with a mipmap filter: generated mipmaps, level 0 the uploaded bytes
+    // RGBA8 with a mipmap filter: level 0 the uploaded bytes. createTexture makes no mipmaps
+    // (S14: they are made on the CPU, the pool's prepared levels through createTextureLevels;
+    // upstream's createTexture generated them), the pool's path below has the chain
     const int w = 8, h = 4;
     std::vector<uint8_t> rgba(static_cast<size_t>(w) * h * 4);
     for (size_t i = 0; i < rgba.size(); i++)
@@ -656,7 +658,7 @@ TEST_F(FloatTextureTest, EightBitPathsUnchanged){
     ASSERT_TRUE(createFromData(mipmapped, "rgba8-mipmapped", ColorFormat::RGBA, rgba.data(), rgba.size(),
                                TextureFilter::LINEAR_MIPMAP_LINEAR, TextureWrap::REPEAT, w, h));
     EXPECT_EQ(imageDesc(mipmapped).pixel_format, SG_PIXELFORMAT_RGBA8);
-    EXPECT_EQ(imageDesc(mipmapped).num_mipmaps, 4);   // 8x4, 4x2, 2x1, 1x1
+    EXPECT_EQ(imageDesc(mipmapped).num_mipmaps, 1);
     EXPECT_EQ(samplerDesc(mipmapped).min_filter, SG_FILTER_LINEAR);
     EXPECT_EQ(samplerDesc(mipmapped).mipmap_filter, SG_FILTER_LINEAR);
     std::vector<uint8_t> raw;
@@ -665,6 +667,17 @@ TEST_F(FloatTextureTest, EightBitPathsUnchanged){
     ASSERT_TRUE(readTexturePixels(mipmapped, w, h, 4, raw));
     EXPECT_EQ(raw, rgba);
     mipmapped.destroyTexture();
+    {
+        Texture pooled;
+        pooled.setMinFilter(TextureFilter::LINEAR_MIPMAP_LINEAR);
+        pooled.setData("rgba8-pooled-mipmapped", TextureData(w, h, static_cast<unsigned int>(rgba.size()), ColorFormat::RGBA, 4, rgba.data()));
+        TextureRender* render = pooled.getRender();
+        ASSERT_NE(render, nullptr);
+        EXPECT_EQ(imageDesc(*render).pixel_format, SG_PIXELFORMAT_RGBA8);
+        EXPECT_EQ(imageDesc(*render).num_mipmaps, 4);   // 8x4, 4x2, 2x1, 1x1
+        EXPECT_EQ(samplerDesc(*render).mipmap_filter, SG_FILTER_LINEAR);
+        pooled.destroy();
+    }
 
     // RGBA8 nearest and R8 linear: one level, the bytes
     TextureRender nearest;

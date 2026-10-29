@@ -210,6 +210,10 @@ namespace jasperengine {
         // crop/resize/fitSize/flipVertical copy their texels whole; hasAlpha reads alpha < 1;
         // fixAlphaBorder and getColorComponent are 8-bit only
         static bool isFloatFormat(ColorFormat format);
+        // Float data made in code (the constructor above with a float format, no levels): the
+        // texture pool uploads it as it is, in its format. A decoded float file (.hdr, .exr) is
+        // RGBA32F too, but its gpuFormat is the RGBA16F the importer's processing makes of it
+        bool isCodeFloatData() const;
         // the channel count a float format's data has (0 for the others, whose data says it)
         static int getFloatFormatChannels(ColorFormat format);
         // "RGBA", "RED", "RED16", "SRGB8A8", "RGBA16F", "RGBA32F", "R32F", "RG16F", "R16F" (messages)
