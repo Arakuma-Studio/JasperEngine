@@ -1055,7 +1055,7 @@ int Engine::defaultStreamStagingBytes(){
 }
 
 int Engine::defaultDescriptorBytes(){
-    return (smallGpuMemoryPlatform() ? 16 : 32) * 1024 * 1024;
+    return (smallGpuMemoryPlatform() ? 16 : 64) * 1024 * 1024;
 }
 
 namespace{

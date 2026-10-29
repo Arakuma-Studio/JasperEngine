@@ -293,7 +293,7 @@ namespace jasperengine {
         // budgets: SystemRender::getUniformBytes*, getStreamBytes*, getDescriptorBytes*.
 
         // GpuResourceLimits' per-frame buffer defaults for this platform: uniformBytes 64 MB
-        // desktop, 16 MB mobile/web; streamStagingBytes 48 MB / 16 MB; descriptorBytes 32 MB / 16 MB
+        // desktop, 16 MB mobile/web; streamStagingBytes 48 MB / 16 MB; descriptorBytes 64 MB / 16 MB
         static int defaultUniformBytes();
         static int defaultStreamStagingBytes();
         static int defaultDescriptorBytes();
@@ -334,10 +334,10 @@ namespace jasperengine {
             // skipped and the first such frame logged (SokolSystem::reserveDescriptorBytes). A
             // skinned hero of 3 materials in shadow-casting light takes 768 bytes a frame on an
             // NVIDIA GTX 1650 (4-16 byte descriptors; measured by SharedMeshBuffersTest); devices
-            // with 32-64 byte image descriptors (AMD) take up to ~6x that. Allocated once per
-            // frame in flight (2) in host-visible memory: 32 MB on desktop (~7,000 such heroes
-            // with the largest descriptors; 64 MB allocated), 16 MB on Android, iOS and the web
-            // (sokol's default; 32 MB allocated).
+            // with 32-64 byte image descriptors (AMD) take up to ~6x that; S10's cascades draw it in more passes
+            // (15,120 bytes on lavapipe). Allocated once per frame in flight (2) in host-visible memory: 64 MB
+            // on desktop (~4,400 such heroes with the largest descriptors; 128 MB allocated), 16 MB on Android,
+            // iOS and the web (sokol's default; 32 MB allocated).
             int descriptorBytes = defaultDescriptorBytes();
             // slots of WebGPU's bind group cache (a power of 2): a draw whose textures, samplers
             // and storage buffers are not in it creates a bind group (CPU time, never a dropped
