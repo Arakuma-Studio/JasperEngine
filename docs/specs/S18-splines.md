@@ -562,8 +562,12 @@ detail (each the best correct alternative found; the requirement it serves is na
    build cost depends on; `je-bench-splines` gates `crown_ring_vertices` = 7.
 15. **AC15's cross-compiler hash** is pinned on GCC (`ROAD_FIXTURE_VERTEX_HASH`); Clang and MSVC CI
    jobs check the same constant (there is one Linux compiler on the build servers).
-17. **The four components are on S08's reflection tables** (R29 named `editor/Stream.cpp`):
+16. **The four components are on S08's reflection tables** (R29 named `editor/Stream.cpp`):
    `editor/reflect/components/SplinesReflect.cpp` describes them, and the scene codec, Catalog
    properties, MCP schema, prefab overrides, undo and exported code all come from it. R29's file
    format is kept: values at their defaults are omitted, and knots, profile points, pool entries
    and span overrides are flow maps, one per line.
+17. **The MCP guide is not grown**: the splines detail is in `jasper://docs/splines`, and the
+   `splines` group description points there. The group's name in the generated "Tool groups"
+   line (9 bytes) took the guide over its 16,384-byte budget, so the Code section's "its lua/
+   folder (Lua API stubs)" became "its lua/ (Lua API stubs)" (16,383 bytes, limit unchanged).
