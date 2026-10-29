@@ -1059,6 +1059,8 @@
 		718FDDFA2837CA9A00AF314C /* hlsl5.h in Headers */ = {isa = PBXBuildFile; fileRef = 718FDDF42837CA9A00AF314C /* hlsl5.h */; };
 		71A41CB529AC3D7C006953D3 /* SokolCmdQueue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71A41CB329AC3D7C006953D3 /* SokolCmdQueue.cpp */; };
 		503152450000000000000002 /* SokolPipelineCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 503152450000000000000001 /* SokolPipelineCache.cpp */; };
+		4A534E47EB7156F768781A70 /* SokolPipelineRecord.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473EEFED3C38291919 /* SokolPipelineRecord.cpp */; };
+		4A534E4740DBFF022F639510 /* SokolPipelineRecord.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473EEFED3C38291919 /* SokolPipelineRecord.cpp */; };
 		4A534E4785AE12AB3B5E80F8 /* SokolAsyncCreate.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471E02C02FC21B68F3 /* SokolAsyncCreate.cpp */; };
 		4A534E476D17E19CDFE75BF5 /* SokolAsyncCreate.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471E02C02FC21B68F3 /* SokolAsyncCreate.cpp */; };
 		503152450000000000000003 /* SokolPipelineCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 503152450000000000000001 /* SokolPipelineCache.cpp */; };
@@ -5357,6 +5359,8 @@
 		718FDDF42837CA9A00AF314C /* hlsl5.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hlsl5.h; sourceTree = "<group>"; };
 		71A41CB329AC3D7C006953D3 /* SokolCmdQueue.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SokolCmdQueue.cpp; sourceTree = "<group>"; };
 		503152450000000000000001 /* SokolPipelineCache.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SokolPipelineCache.cpp; sourceTree = "<group>"; };
+		4A534E473EEFED3C38291919 /* SokolPipelineRecord.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SokolPipelineRecord.cpp; sourceTree = "<group>"; };
+		4A534E47C67B1C8F0FEB31CA /* SokolPipelineRecord.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SokolPipelineRecord.h; sourceTree = "<group>"; };
 		4A534E471E02C02FC21B68F3 /* SokolAsyncCreate.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SokolAsyncCreate.cpp; sourceTree = "<group>"; };
 		4A534E476EBDA3542990B38F /* SokolAsyncCreate.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SokolAsyncCreate.h; sourceTree = "<group>"; };
 		503152450000000000000010 /* PipelineState.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PipelineState.h; sourceTree = "<group>"; };
@@ -9768,6 +9772,8 @@
 				4A534E471E02C02FC21B68F3 /* SokolAsyncCreate.cpp */,
 				4A534E476EBDA3542990B38F /* SokolAsyncCreate.h */,
 				503152450000000000000001 /* SokolPipelineCache.cpp */,
+				4A534E473EEFED3C38291919 /* SokolPipelineRecord.cpp */,
+				4A534E47C67B1C8F0FEB31CA /* SokolPipelineRecord.h */,
 				503152450000000000000011 /* SokolPipelineCache.h */,
 				71A41CB429AC3D7C006953D3 /* SokolCmdQueue.h */,
 				71CC83A926B8D54800EEBB93 /* SokolFramebuffer.cpp */,
@@ -15616,6 +15622,7 @@
 				5330334691A83E230FB5ECB5 /* AtomicFile.cpp in Sources */,
 				71A41CB629AC3D7C006953D3 /* SokolCmdQueue.cpp in Sources */,
 				503152450000000000000003 /* SokolPipelineCache.cpp in Sources */,
+				4A534E47EB7156F768781A70 /* SokolPipelineRecord.cpp in Sources */,
 				4A534E4785AE12AB3B5E80F8 /* SokolAsyncCreate.cpp in Sources */,
 				7105A56B28B305B20092EA05 /* UtilClassesLua.cpp in Sources */,
 				414E494D4500000000000046 /* HtmlUIAnimeLua.cpp in Sources */,
@@ -16273,6 +16280,7 @@
 				5E5280000000000000000043 /* CrashClassesLua.cpp in Sources */,
 				71A41CB529AC3D7C006953D3 /* SokolCmdQueue.cpp in Sources */,
 				503152450000000000000002 /* SokolPipelineCache.cpp in Sources */,
+				4A534E4740DBFF022F639510 /* SokolPipelineRecord.cpp in Sources */,
 				4A534E476D17E19CDFE75BF5 /* SokolAsyncCreate.cpp in Sources */,
 				7105A56A28B305B20092EA05 /* UtilClassesLua.cpp in Sources */,
 				414E494D4500000000000045 /* HtmlUIAnimeLua.cpp in Sources */,
