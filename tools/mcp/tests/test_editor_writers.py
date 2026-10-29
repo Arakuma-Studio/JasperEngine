@@ -9,7 +9,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from harness import Editor, skip
+from harness import Editor, make_native_player, project_player_name, record_built_player, skip
 
 EDITOR = {"create": True, "name": "Editor Writers"}
 TIMEOUT = 1500
@@ -100,17 +100,33 @@ async def test_create_project_only_beside_or_under_the_export_folder(ed: Editor)
 async def test_run_build_runs_only_this_projects_player(ed: Editor):
     project = await project_dir(ed)
     marker = Path(tempfile.mkdtemp(prefix="jasper-r8-marker-")) / "ran"
+    other_project = Path(tempfile.mkdtemp(prefix="jasper-r9-other-project-"))
     try:
+        name = await project_player_name(ed)
+        body = 'int main(void){ FILE* f = fopen("' + str(marker) + '", "w"); if (f) fclose(f); return 0; }\n'
+        # this project's recorded build runs
+        player = make_native_player(ed.scratch.root / "fake-players" / "mine" / name, body)
+        record_built_player(project, player)   # stands in for build_project mode=desktop
+        r = await ed.call_raw("run_build", {"path": str(player), "seconds": 1, "screenshot": False})
+        ed.check(not r.is_error, f"this project's recorded player runs: {r.text[:240]}")
+        ed.check(marker.exists(), "the recorded player ran")
+        marker.unlink()
+        # a player another project recorded is not this project's: refused
+        theirs = make_native_player(ed.scratch.root / "fake-players" / "theirs" / name, body)
+        (other_project / "project.yaml").write_text("name: Other\n")
+        record_built_player(other_project, theirs)
+        # a user script in the project, and a system program: never built here, refused
         tool = project / "tools" / "deploy"
         tool.parent.mkdir(parents=True, exist_ok=True)
         tool.write_text(f"#!/bin/sh\necho ran > {marker}\n")
         tool.chmod(0o755)
-        for path in (str(tool), "/bin/sh"):
+        for path in (str(theirs), str(tool), "/bin/sh"):
             r = await ed.call_raw("run_build", {"path": path, "seconds": 1, "screenshot": False})
-            ed.check(r.is_error and "this project's built game" in r.text, f"run_build {path}: {r.text[:240]}")
+            ed.check(r.is_error and "this project built" in r.text, f"run_build {path}: {r.text[:240]}")
         ed.check(not marker.exists(), "nothing ran")
     finally:
         shutil.rmtree(marker.parent, ignore_errors=True)
+        shutil.rmtree(other_project, ignore_errors=True)
 
 
 async def test_asset_roots_are_not_hidden_folders(ed: Editor):

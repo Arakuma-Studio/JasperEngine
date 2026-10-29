@@ -240,6 +240,20 @@ std::string editor::CommandRunner::quoteArgv(const std::vector<std::string>& arg
 #endif
 }
 
+std::string editor::CommandRunner::capture(const std::vector<std::string>& argv) {
+    CommandRunner runner;
+    runner.quiet = true;
+    std::string output;
+    const bool ok = runner.run(argv, fs::path(), [&output](const std::string& line) {
+        output += line;
+        output.push_back('\n');
+    });
+    if (!ok) return "";
+    while (!output.empty() && (output.back() == '\n' || output.back() == '\r' || output.back() == ' '))
+        output.pop_back();
+    return output;
+}
+
 bool editor::CommandRunner::runShell(const std::string& command, const fs::path& workingDir, const std::function<void(const std::string&)>& onLine) {
 #ifdef _WIN32
     return run({"cmd.exe", "/s", "/c", command}, workingDir, onLine);
@@ -309,7 +323,7 @@ bool editor::CommandRunner::run(const std::vector<std::string>& argv, const fs::
             CloseHandle(hReadPipe);
             CloseHandle(hWritePipe);
             if (hJob) CloseHandle(hJob);
-            Out::error("Failed to create process. Error code: %lu", err);
+            if (!quiet) Out::error("Failed to create process. Error code: %lu", err);
             return false;
         }
 
@@ -400,7 +414,7 @@ bool editor::CommandRunner::run(const std::vector<std::string>& argv, const fs::
             emit(accumulator);
         }
 
-        if (exitCode != 0) {
+        if (exitCode != 0 && !quiet) {
             Out::build("Process exited with code %lu", exitCode);
         }
 
@@ -463,7 +477,7 @@ bool editor::CommandRunner::run(const std::vector<std::string>& argv, const fs::
 
         if (spawnResult != 0) {
             close(pipefd[0]);
-            Out::error("Failed to spawn process (POSIX): %s", strerror(spawnResult));
+            if (!quiet) Out::error("Failed to spawn process (POSIX): %s", strerror(spawnResult));
             return false;
         }
 
@@ -571,7 +585,7 @@ bool editor::CommandRunner::run(const std::vector<std::string>& argv, const fs::
 
         if (WIFEXITED(status)) {
             int code = WEXITSTATUS(status);
-            if (code != 0) {
+            if (code != 0 && !quiet) {
                 Out::build("Process exited with code %d", code);
             }
             return code == 0;

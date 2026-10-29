@@ -12,6 +12,7 @@
 #include "util/Base64.h"
 #include "util/FbxImporter.h"
 #include "util/FileUtils.h"
+#include "util/ShellEnv.h"
 #include "util/MsBuildProgress.h"
 #include "util/ShaderHeaderBuilder.h"
 #include "pool/ShaderPool.h"
@@ -4166,19 +4167,18 @@ editor::EmsdkInfo editor::Exporter::detectEmsdk(const std::string& overridePath)
         return info;
     }
 
+    // No shell: `where emcmake.bat` run directly on Windows; elsewhere PATH searched in-process
+    // (what `command -v emcmake` did).
 #ifdef _WIN32
-    if (!CommandRunner::runCaptureNoWindow("where emcmake.bat 2>nul").empty()) {
-        info.found = true;
-        info.emcmake = "emcmake";
-        info.description = "on PATH";
-    }
+    const bool onPath = !CommandRunner::capture({"where", "emcmake.bat"}).empty();
 #else
-    if (std::system("command -v emcmake >/dev/null 2>&1") == 0) {
+    const bool onPath = !ShellEnv::findExecutable("emcmake").empty();
+#endif
+    if (onPath) {
         info.found = true;
         info.emcmake = "emcmake";
         info.description = "on PATH";
     }
-#endif
 
     return info;
 }

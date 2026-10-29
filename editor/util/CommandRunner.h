@@ -34,6 +34,13 @@ namespace jasperengine::editor {
         bool run(const std::vector<std::string>& argv, const fs::path& workingDir,
                  const std::function<void(const std::string&)>& onLine = {});
 
+        // Runs `argv` DIRECTLY like run(), quietly (no exit-code or spawn-failure line in the
+        // console), in the current folder, and returns its output (stdout and stderr) with trailing
+        // whitespace trimmed when it exits 0, "" otherwise. For tool probes (`which g++`,
+        // `g++ -dumpmachine`, `ninja --version`): a tool path with spaces or shell metacharacters
+        // is one literal argument.
+        static std::string capture(const std::vector<std::string>& argv);
+
         // Runs `command` through the platform shell (/bin/sh -c, cmd.exe /s /c) in
         // workingDir. ONLY for a step that genuinely needs the shell (sourcing an
         // environment script); never build it from agent- or user-controlled
@@ -67,6 +74,7 @@ namespace jasperengine::editor {
         void terminateCurrentProcess();
 
         std::atomic<bool> cancelRequested{false};
+        bool quiet = false;   // capture(): no "exited with code" / spawn-failure lines
 
 #ifdef _WIN32
         HANDLE currentProcessHandle = NULL;

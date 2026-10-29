@@ -2546,29 +2546,18 @@ editor::CMakeInfo editor::Generator::detectCMake() {
 std::vector<editor::CMakeKit> editor::Generator::detectAvailableKits() {
     std::vector<CMakeKit> kits;
 
-    auto runCmd = [](const std::string& cmd) -> std::string {
-#ifdef _WIN32
-        return CommandRunner::runCaptureNoWindow(cmd + " 2>nul");
-#else
-        FILE* pipe = popen((cmd + " 2>/dev/null").c_str(), "r");
-        if (!pipe) return "";
-        std::string result;
-        char buffer[256];
-        while (fgets(buffer, sizeof(buffer), pipe)) {
-            result += buffer;
-        }
-        pclose(pipe);
-        while (!result.empty() && (result.back() == '\n' || result.back() == '\r' || result.back() == ' '))
-            result.pop_back();
-        return result;
-#endif
+    // Each probe runs its program DIRECTLY with an argument list (CommandRunner::capture: no shell,
+    // so a compiler / tool path holding spaces or metacharacters is one literal argument); its
+    // output when it exits 0, "" otherwise.
+    auto runCmd = [](const std::vector<std::string>& argv) -> std::string {
+        return CommandRunner::capture(argv);
     };
 
     auto findCompiler = [&runCmd](const std::string& compiler) -> std::string {
 #ifdef _WIN32
-        std::string result = runCmd("where " + compiler);
+        std::string result = runCmd({"where", compiler});
 #else
-        std::string result = runCmd("which " + compiler);
+        std::string result = runCmd({"which", compiler});
 #endif
         size_t nl = result.find('\n');
         if (nl != std::string::npos) result = result.substr(0, nl);
@@ -2609,8 +2598,8 @@ std::vector<editor::CMakeKit> editor::Generator::detectAvailableKits() {
         std::string cxxPath = findCompiler("g++");
         if (!cxxPath.empty()) {
             std::string ccPath = findCompiler("gcc");
-            std::string version = runCmd("\"" + cxxPath + "\" -dumpfullversion -dumpversion");
-            std::string machine = runCmd("\"" + cxxPath + "\" -dumpmachine");
+            std::string version = runCmd({cxxPath, "-dumpfullversion", "-dumpversion"});
+            std::string machine = runCmd({cxxPath, "-dumpmachine"});
 
             CMakeKit kit;
             kit.cxxCompiler = cxxPath;
@@ -2630,7 +2619,7 @@ std::vector<editor::CMakeKit> editor::Generator::detectAvailableKits() {
         std::string cxxPath = findCompiler("clang++");
         if (!cxxPath.empty()) {
             std::string ccPath = findCompiler("clang");
-            std::string versionOutput = runCmd("\"" + cxxPath + "\" --version");
+            std::string versionOutput = runCmd({cxxPath, "--version"});
             std::string version;
             size_t nl = versionOutput.find('\n');
             std::string firstLine = (nl != std::string::npos) ? versionOutput.substr(0, nl) : versionOutput;
@@ -2640,7 +2629,7 @@ std::vector<editor::CMakeKit> editor::Generator::detectAvailableKits() {
                 size_t vend = firstLine.find_first_of(" (", vpos);
                 version = (vend != std::string::npos) ? firstLine.substr(vpos, vend - vpos) : firstLine.substr(vpos);
             }
-            std::string machine = runCmd("\"" + cxxPath + "\" -dumpmachine");
+            std::string machine = runCmd({cxxPath, "-dumpmachine"});
 
             CMakeKit kit;
             kit.cxxCompiler = cxxPath;
@@ -2660,7 +2649,7 @@ std::vector<editor::CMakeKit> editor::Generator::detectAvailableKits() {
                 // Verify ninja actually executes: a broken binary (e.g. a pip
                 // wrapper copied out of its Scripts folder, or a blocked
                 // download) passes the PATH check but fails when CMake runs it.
-                if (!ninjaPath.empty() && !runCmd("\"" + ninjaPath + "\" --version").empty()) {
+                if (!ninjaPath.empty() && !runCmd({ninjaPath, "--version"}).empty()) {
                     kit.generator = "Ninja";
                 } else if (ninjaPath.empty()) {
                     kit.available = false;
@@ -2688,7 +2677,7 @@ std::vector<editor::CMakeKit> editor::Generator::detectAvailableKits() {
         std::string vswhere = CommandRunner::findVswherePath();
         std::string vsName;
         if (!vswhere.empty()) {
-            vsName = runCmd("\"" + vswhere + "\" -products * -latest -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property displayName");
+            vsName = runCmd({vswhere, "-products", "*", "-latest", "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "displayName"});
         }
         // cl.exe on PATH (e.g. a Developer Command Prompt) also signals MSVC is
         // available even if vswhere cannot be located.
@@ -2698,7 +2687,7 @@ std::vector<editor::CMakeKit> editor::Generator::detectAvailableKits() {
             kit.displayName = vsName.empty() ? "MSVC" : vsName;
             // Pin a generator both the selected CMake and an installed VS
             // support, newest first: MSYS2 CMake would default to Ninja/GCC.
-            const std::string cmakeHelp = runCmd(cmakeExecutable() + " --help");
+            const std::string cmakeHelp = runCmd({cmakeProgram(), "--help"});
             const std::regex vsGenerator("Visual Studio ([0-9]+) [0-9]{4}");
             std::map<int, std::string, std::greater<int>> generators;
             for (std::sregex_iterator it(cmakeHelp.begin(), cmakeHelp.end(), vsGenerator), end; it != end; ++it) {
@@ -2707,7 +2696,7 @@ std::vector<editor::CMakeKit> editor::Generator::detectAvailableKits() {
             for (const auto& entry : generators) {
                 if (!vswhere.empty()) {
                     const std::string versionRange = "[" + std::to_string(entry.first) + "," + std::to_string(entry.first + 1) + ")";
-                    const std::string name = runCmd("\"" + vswhere + "\" -products * -latest -version \"" + versionRange + "\" -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property displayName");
+                    const std::string name = runCmd({vswhere, "-products", "*", "-latest", "-version", versionRange, "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "displayName"});
                     if (name.empty()) continue;
                     kit.displayName = name;
                 } else {
@@ -2722,7 +2711,7 @@ std::vector<editor::CMakeKit> editor::Generator::detectAvailableKits() {
                 // Also supports CMake distributions without VS generators.
                 // vcvars supplies cl/SDK paths when cl is not already on PATH.
                 const std::string ninjaPath = findCompiler("ninja");
-                if (!ninjaPath.empty() && !runCmd("\"" + ninjaPath + "\" --version").empty() &&
+                if (!ninjaPath.empty() && !runCmd({ninjaPath, "--version"}).empty() &&
                     (clOnPath || !CommandRunner::findVcvarsall().empty())) {
                     kit.generator = "Ninja";
                     kit.cCompiler = "cl";
@@ -2744,18 +2733,15 @@ std::vector<editor::CMakeKit> editor::Generator::detectAvailableKits() {
 std::string editor::Generator::checkBuildTools(bool requireEditorCompatibility, CMakeKit* resolvedDefaultKit) {
     std::string missing;
 
+    // No shell: Windows runs `where <name>` directly (CommandRunner::capture, the argument quoted
+    // by its helper), elsewhere the PATH is searched in-process like `command -v` would.
+    auto commandExists = [](const char* cmd) -> bool {
 #ifdef _WIN32
-    auto commandExists = [](const char* cmd) -> bool {
-        // `where` prints the path when found, nothing when not. Use the no-window
-        // runner so this probe doesn't flash a cmd.exe window.
-        return !CommandRunner::runCaptureNoWindow(std::string("where ") + cmd + " 2>nul").empty();
-    };
+        return !CommandRunner::capture({"where", cmd}).empty();
 #else
-    auto commandExists = [](const char* cmd) -> bool {
-        std::string check = std::string("command -v ") + cmd + " >/dev/null 2>&1";
-        return system(check.c_str()) == 0;
-    };
+        return !ShellEnv::findExecutable(cmd).empty();
 #endif
+    };
 
     const CMakeInfo cmakeInfo = detectCMake();
     if (!cmakeInfo.error.empty()) {

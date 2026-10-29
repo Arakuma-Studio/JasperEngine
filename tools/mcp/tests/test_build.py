@@ -3,7 +3,8 @@
 Starts from a brand-new project (`mcp --create`): saves its scene, sets the start scene, exports
 the C++ source project (its Xcode workspace compiles the project's generated sources in both app
 targets: checked by parsing project.pbxproj, no Xcode needed), cancels a Desktop build, generates shaders and checks run_build's process
-handling with stand-in "players" (shell scripts).
+handling with small native stand-in players (recorded with harness.record_built_player in place of
+the Desktop build, since run_build runs only the recorded build, unchanged).
 
 The full Desktop build (compiles the engine from source with cmake + g++, ~20-60 min at 3 jobs on
 this host) and running the real player are slow: set JASPER_SLOW_BUILD=1 to run them.
@@ -11,12 +12,17 @@ this host) and running the real player are slow: set JASPER_SLOW_BUILD=1 to run 
 
 import asyncio
 import os
+import shutil
 import stat
+import tempfile
 import time
 from pathlib import Path
 
+import yaml
+
 import pbxproj
-from harness import Editor, make_native_player as make_player, project_player_name as player_name, skip
+from harness import (Editor, make_native_player as make_player, project_player_name as player_name, record_built_player,
+                     skip, symlinks_permitted)
 
 EDITOR = {"create": True, "name": "Build Test"}
 TIMEOUT = int(os.environ.get("JASPER_BUILD_TIMEOUT", "7200"))
@@ -282,6 +288,7 @@ async def test_run_build_process_handling(ed: Editor):
     crash_dir = ed.scratch.root / "fake-players" / "crash"
     crasher = make_player(crash_dir / name, 'int main(int c, char** v){ printf("starting %s\\n", c > 1 ? v[1] : ""); fflush(stdout);'
                                             ' fprintf(stderr, "Segmentation fault\\n"); return 3; }\n')
+    record_built_player(ed.project, crasher)   # stands in for build_project mode=desktop
     r = await ed.call("run_build", path=str(crasher), seconds=5, args=["--level", "2"], screenshot=False)
     ed.check_eq(r["exit_code"], 3)
     ed.check(r["exited_early"], "exited early")
@@ -293,6 +300,7 @@ async def test_run_build_process_handling(ed: Editor):
     sleep_dir = ed.scratch.root / "fake-players" / "sleep"
     sleeper = make_player(sleep_dir / name, 'int main(void){ char d[4096]; if (getcwd(d, sizeof d)) printf("pwd=%s\\n", d);'
                                             ' for (;;) { printf("tick\\n"); fflush(stdout); usleep(500000); } }\n')
+    record_built_player(ed.project, sleeper)
     t0 = time.monotonic()
     raw = await ed.call_raw("run_build", {"path": str(sleeper), "seconds": 2, "screenshot_after_seconds": 1})
     ed.check(not raw.is_error, raw.text)
@@ -310,11 +318,111 @@ async def test_run_build_process_handling(ed: Editor):
 
     await ed.check_error("run_build", path=str(sleep_dir / "missing"), contains="No executable")
     await ed.check_error("run_build", path="relative", contains="absolute")
-    # a script (not a native binary) named as the player, or a binary under another name: refused
+    # a script or a binary the build did not record (named as the player or not): refused
     script = make_script(ed.scratch.root / "fake-players" / "script" / name, "echo hi\n")
-    await ed.check_error("run_build", path=str(script), contains="not this project's player")
+    await ed.check_error("run_build", path=str(script), contains="not built by this editor")
     other = make_player(ed.scratch.root / "fake-players" / "other" / "tool", "int main(void){ return 0; }\n")
-    await ed.check_error("run_build", path=str(other), contains="not this project's player")
+    await ed.check_error("run_build", path=str(other), contains="not built by this editor")
+
+
+async def test_run_build_refuses_unrecorded_or_changed_players(ed: Editor):
+    """run_build runs only the file the last Desktop build recorded (.jasperengine/user/runbuild.yaml),
+    unchanged: everything else is refused with the reason, and nothing runs."""
+    name = await player_name(ed)
+    root = ed.scratch.root / "fake-players"
+    marker = ed.scratch.root / "ran-marker"
+    quick = ('int main(void){ FILE* f = fopen("' + str(marker) + '", "a"); if (f) { fputs("ran\\n", f); fclose(f); }'
+             ' printf("quick ran\\n"); return 0; }\n')
+
+    async def refused(path: Path, why: str) -> None:
+        r = await ed.call_raw("run_build", {"path": str(path), "seconds": 1, "screenshot": False})
+        ed.check(r.is_error and "this project built" in r.text and why in r.text, f"run_build {path}: {r.text[:300]}")
+        ed.check(not marker.exists(), f"nothing ran for {path}")
+
+    # recorded and unchanged: runs (the baseline every refusal below differs from by one thing)
+    ok = make_player(root / "ok" / name, quick)
+    record_built_player(ed.project, ok)
+    r = await ed.call("run_build", path=str(ok), seconds=2, screenshot=False)
+    ed.check_in("quick ran", " ".join(r["log"]))
+    ed.check(marker.exists(), "the recorded player ran")
+    marker.unlink()
+
+    # a player that was never recorded: the same bytes at another path, and nothing built at all
+    never = make_player(root / "never" / name, quick)
+    await refused(never, "not built by this editor")
+    await refused(never.parent, "not built by this editor")          # its folder: finds it by name, still refused
+    # a copy of a system program, named as the player; the system program itself
+    system_program = Path(os.path.realpath(shutil.which("true") or "/bin/true"))
+    copied = root / "copy" / name
+    copied.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(system_program, copied)
+    await refused(copied, "not built by this editor")
+    await refused(system_program, "not built by this editor")
+    # a copy of the recorded player itself (same bytes, same name, another file)
+    twin = root / "twin" / name
+    twin.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(ok, twin)
+    await refused(twin, "not built by this editor")
+
+    # a symbolic link to the recorded player (and a link recorded as the player)
+    if symlinks_permitted():
+        link = root / "link" / name
+        link.parent.mkdir(parents=True, exist_ok=True)
+        link.symlink_to(ok)
+        await refused(link, "symbolic link")
+        record_built_player(ed.project, link)    # the record resolves it; the link itself never runs
+        await refused(link, "symbolic link")
+
+    # recorded, then its bytes changed: appended, and overwritten in place with the mtime put back
+    grown = make_player(root / "grown" / name, quick)
+    record_built_player(ed.project, grown)
+    with open(grown, "ab") as f:
+        f.write(b"\0")
+    await refused(grown, "contents changed")
+    patched = make_player(root / "patched" / name, quick)
+    record_built_player(ed.project, patched)
+    st = patched.stat()
+    data = bytearray(patched.read_bytes())
+    data[-1] ^= 0xFF
+    with open(patched, "r+b") as f:
+        f.write(bytes(data))
+    os.utime(patched, ns=(st.st_atime_ns, st.st_mtime_ns))
+    ed.check_eq(patched.stat().st_mtime_ns, st.st_mtime_ns, "mtime restored")
+    await refused(patched, "contents changed")
+
+    # recorded, then only its mtime changed
+    touched = make_player(root / "touched" / name, quick)
+    record_built_player(ed.project, touched)
+    st = touched.stat()
+    os.utime(touched, ns=(st.st_atime_ns, st.st_mtime_ns - 30 * 10**9))
+    await refused(touched, "modified since")
+
+    # recorded, then replaced by a new file with the same bytes (another inode)
+    swapped = make_player(root / "swapped" / name, quick)
+    record_built_player(ed.project, swapped)
+    fresh = swapped.with_name(name + ".new")
+    shutil.copy2(swapped, fresh)
+    os.replace(fresh, swapped)
+    await refused(swapped, "replaced since")
+
+    # a renamed project: a binary named as its new player in the build folder was not built by it;
+    # the player the build recorded under the old name still runs (it is the built file, unchanged)
+    out = root / "out"
+    built = make_player(out / name, quick)
+    record_built_player(ed.project, built)
+    old_project_name = (await ed.call("get_project_summary"))["name"]
+    await ed.call("save_project", name="Renamed Build Test", untitled_scene_dir="scenes")
+    try:
+        new_name = await player_name(ed)
+        ed.check(new_name != name, f"the player name follows the project name: {new_name}")
+        renamed = out / new_name
+        shutil.copy2(built, renamed)
+        await refused(renamed, "not built by this editor")
+        await refused(out, "not built by this editor")               # the folder finds the new name
+        r = await ed.call("run_build", path=str(built), seconds=2, screenshot=False)
+        ed.check_in("quick ran", " ".join(r["log"]))
+    finally:
+        await ed.call("save_project", name=old_project_name, untitled_scene_dir="scenes")
 
 
 async def test_desktop_build_and_run(ed: Editor):
@@ -329,7 +437,14 @@ async def test_desktop_build_and_run(ed: Editor):
     ed.check_eq(job["status"], "succeeded", f"{job}")
     exe = Path(job["result"]["executable"])
     ed.check(exe.exists(), f"player at {exe}")
+    # the build recorded the player (.jasperengine/user/runbuild.yaml) in the format the test
+    # fixture writes: the fixture's entry for the same file is identical
+    recorded = yaml.safe_load((ed.project / ".jasperengine" / "user" / "runbuild.yaml").read_text())
+    ed.check(isinstance(recorded, dict) and "desktop" in recorded, f"record: {recorded}")
+    with tempfile.TemporaryDirectory() as tmp:
+        ed.check_eq(recorded["desktop"], record_built_player(tmp, exe), "the build's record = the fixture's")
 
+    # run_build with no path runs what the build just produced, with no fixture involved
     raw = await ed.call_raw("run_build", {"seconds": 8, "screenshot_after_seconds": 6})
     ed.check(not raw.is_error, raw.text)
     r = raw.value
@@ -342,6 +457,11 @@ async def test_desktop_build_and_run(ed: Editor):
     shot = ed.scratch.root / "player.png"
     shot.write_bytes(raw.images[0][0])
     print(f"[test] player screenshot: {shot}")
+    # once the built player changes it no longer runs
+    st = exe.stat()
+    os.utime(exe, ns=(st.st_atime_ns, st.st_mtime_ns + 10**9))
+    await ed.check_error("run_build", {"seconds": 1, "screenshot": False}, contains="modified since")
+    os.utime(exe, ns=(st.st_atime_ns, st.st_mtime_ns))
 
     # compile errors come back as file:line: a broken source in a script directory
     (ed.project / "cpp").mkdir(exist_ok=True)

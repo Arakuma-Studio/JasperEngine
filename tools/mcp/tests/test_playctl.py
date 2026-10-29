@@ -5,7 +5,7 @@ import shutil
 import stat
 from pathlib import Path
 
-from harness import Editor, make_native_player, project_player_name, skip
+from harness import Editor, make_native_player, project_player_name, record_built_player, skip
 
 EDITOR = {"create": True, "name": "Play Clock"}
 
@@ -83,6 +83,7 @@ async def test_run_build_flags_lua_errors(ed: Editor):
         'int main(void){ printf("Scene loaded\\n");'
         ' printf("(ERROR): Lua init() failed for \'PlayerProbe\': scripts/PlayerProbe.lua:12: boom\\n");'
         ' printf("(WARN): something odd\\n"); fflush(stdout); sleep(30); return 0; }\n'))
+    record_built_player(ed.project, broken)   # stands in for build_project mode=desktop
     raw = await ed.call_raw("run_build", {"path": str(broken), "seconds": 0.5, "screenshot": False})
     ed.check(not raw.is_error, raw.text)
     r = raw.value
@@ -103,6 +104,7 @@ async def test_run_build_input_reaches_window(ed: Editor):
     name = await project_player_name(ed)
     player = make_native_player(ed.scratch.root / "fake-players" / "xev" / name, (
         'int main(void){ execl("' + xev + '", "xev", "-geometry", "400x300+0+0", (char*)0); return 127; }\n'))
+    record_built_player(ed.project, player)
     raw = await ed.call_raw("run_build", {
         "path": str(player),
         "input_delay_seconds": 0.1,

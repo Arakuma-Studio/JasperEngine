@@ -13,7 +13,7 @@ from pathlib import Path
 
 import yaml
 
-from harness import Editor, skip, symlinks_permitted
+from harness import Editor, make_native_player, project_player_name, record_built_player, skip, symlinks_permitted
 
 EDITOR = {"create": True, "name": "Owned Places"}
 TIMEOUT = 900
@@ -111,9 +111,26 @@ async def test_build_settings_cannot_be_slipped_in_through_build_yaml(ed: Editor
 async def test_run_build_refuses_an_arbitrary_program(ed: Editor):
     v = victim()
     try:
+        # a recorded build exists (the fixture stands in for build_project mode=desktop): it does not
+        # make any other program runnable
+        name = await project_player_name(ed)
+        player = make_native_player(ed.scratch.root / "fake-players" / "built" / name, "int main(void){ return 0; }\n")
+        record_built_player(ed.project, player)
         r = await ed.call_raw("run_build", {"path": "/bin/sh", "args": ["-c", f"echo pwn > {v}/run_build.txt"],
                                             "seconds": 1, "screenshot": False})
-        ed.check(r.is_error and "this project's built game" in r.text, f"run_build /bin/sh: {r.text[:200]}")
+        ed.check(r.is_error and "this project built" in r.text, f"run_build /bin/sh: {r.text[:200]}")
+        # a copy of the shell named as the player, beside the recorded one: refused too
+        shell_copy = ed.scratch.root / "fake-players" / "shell" / name
+        shell_copy.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(os.path.realpath("/bin/sh"), shell_copy)
+        r = await ed.call_raw("run_build", {"path": str(shell_copy), "args": ["-c", f"echo pwn > {v}/run_build.txt"],
+                                            "seconds": 1, "screenshot": False})
+        ed.check(r.is_error and "not built by this editor" in r.text, f"run_build a copy of /bin/sh: {r.text[:200]}")
+        # the agent can't record one itself: the record is the editor's own file
+        entry = yaml.safe_load((ed.project / ".jasperengine" / "user" / "runbuild.yaml").read_text())
+        forged = {"desktop": dict(entry["desktop"], resolved=str(shell_copy.resolve()))}
+        r = await ed.call_raw("write_file", {"path": ".jasperengine/user/runbuild.yaml", "content": yaml.safe_dump(forged)})
+        ed.check(r.is_error, f"write runbuild.yaml over MCP: {r.text[:200]}")
         await asyncio.sleep(1)
         ed.check(not (v / "run_build.txt").exists(), "nothing ran")
     finally:
