@@ -8,6 +8,7 @@
 
 #include "vcs/VcsStatusPoller.h"
 
+#include "LogCapture.h"
 #include "Out.h"
 
 #include <gtest/gtest.h>
@@ -111,7 +112,7 @@ TEST(VcsStatusPoller, StopDuringAPollJoins) {
 }
 
 TEST(VcsStatusPoller, ThrowingPollIsLoggedAndPollingContinues) {
-    const uint64_t logCursor = Out::lastLogId();
+    jasperengine::test::LogCapture log;
     std::atomic<int> polls{0};
     VcsStatusPoller poller;
     poller.setIntervalSeconds(kNeverSeconds);
@@ -122,16 +123,7 @@ TEST(VcsStatusPoller, ThrowingPollIsLoggedAndPollingContinues) {
     poller.wake();
     EXPECT_TRUE(waitForPolls(polls, 2));
     poller.stop();
-    // (the logger's history fills from its own thread)
-    bool logged = false;
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
-    while (!logged && std::chrono::steady_clock::now() < deadline) {
-        for (const LogEntry& entry : Out::getLogsSince(logCursor)) {
-            if (entry.message.find("je-vcs-test: status poll failed: status command failed") != std::string::npos) logged = true;
-        }
-        if (!logged) std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    }
-    EXPECT_TRUE(logged);
+    EXPECT_EQ(log.count(D_LOG_WARN, "je-vcs-test: status poll failed: status command failed"), 1u);
 }
 
 TEST(VcsStatusPoller, NonPositiveIntervalRestoresTheDefault) {
