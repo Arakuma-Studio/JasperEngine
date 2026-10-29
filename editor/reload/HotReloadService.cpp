@@ -288,7 +288,7 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
     // What to reload, by kind: external changes all; the editor's own writes only where
     // others read them (materials linked elsewhere, textures, HTML UI documents)
     std::map<std::string, std::vector<fs::path>> external, editorWritten;
-    std::vector<fs::path> openDocuments;
+    std::vector<fs::path> openDocuments, gone;
     for (const FileChange& change : changes) {
         const std::string relPath = relative(change.path);
         result.handled.push_back(change.path);
@@ -304,6 +304,8 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
             case FileChangeKind::Rescan: break;
         }
         if (change.directory) continue;
+        if (change.kind == FileChangeKind::Removed) gone.push_back(change.path);
+        if (change.kind == FileChangeKind::Moved) gone.push_back(change.oldPath);
         if (change.kind == FileChangeKind::Removed) {
             notify(change.path, reload::kindOf(change.path), Event::Dropped);
             // a removed HTML document is reported missing by its scene's documents
@@ -394,6 +396,7 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
     }
     reload::reloadCodeEditorBuffers(ctx, code, options.full);
     reload::reloadScripts(ctx, scripts, options.full);
+    reload::removeScriptClasses(ctx, gone);
     reload::reloadMaterials(ctx, both("material"));
     reload::reloadShaders(ctx, files(external, "shader"));
     std::vector<fs::path> textures;
