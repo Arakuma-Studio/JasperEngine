@@ -3,7 +3,8 @@
 // agent needs (names, addressing, the loop, undo, code, layout) and a short digest per area;
 // an area's detail lives in docs/mcp/guide/<area>.md (served as jasper://docs/<area>), which
 // its digest points to. Its limits are the "guide" entry of tools/mcp/budget.json (the whole
-// text, with the generated tool groups section, and each "## " section), gated by
+// text, with the generated tool groups section, the headroom it must leave for later specs,
+// and each "## " section), gated by
 // tools/mcp/tool_budget.py --check; docs/mcp/conventions.md ("The agent guide") has the rule.
 // Every tool and parameter name it mentions must exist (tools/mcp/tests/test_autosync.py
 // checks them against tools/list).
@@ -124,18 +125,12 @@ Engine.gameTime, Engine.frameCount. Log.print/warn/error take ONE string (use ..
 on_start, getComponent or setProperty (timers: Timer.after/every).
 
 ## C++ scripts
-Two kinds (create_script): a ScriptBase subclass, or a subclass of the GameObject's own class
-(Mesh, Primitive, Sprite, ...) to call its methods on `this`. No reflection macros
-(GENERATED_BODY, GDCLASS): inherit, declare a (jasperengine::Scene*, jasperengine::Entity)
-constructor, expose fields with DPROPERTY("Speed") (DPROPERTY("Tint", Color4) for colors).
-Includes are flat and quoted ("ScriptBase.h", "Engine.h", "Input.h", "Log.h", "Mesh.h"), never
-<core/...>. REGISTER_ENGINE_EVENT(onUpdate) in the constructor, UNREGISTER_ENGINE_EVENT in the
-destructor; components: REGISTER_BUTTON_EVENT / REGISTER_UI_EVENT / REGISTER_COMPONENT_EVENT
-(+ UNREGISTER_*). Log::print("x %f", x), never printf or std::cout. Keys are D_KEY_*. Angles are
-DEGREES: Quaternion(angle, axis); std::sin/cos want radians (Angle::defaultToRad). Script
-directories are include roots compiled whole (a build runs only with an enabled C++ script
-attached); build settings go in ProjectBuild.cmake, never the generated CMakeLists.txt.
-More: jasper://docs/cpp-scripting.
+Read jasper://docs/cpp-scripting before your first one. A ScriptBase subclass, or a subclass of
+the GameObject's own class (Mesh, Sprite, ...) to call its methods on `this` (create_script). No
+reflection macros: declare a (jasperengine::Scene*, jasperengine::Entity) constructor, expose
+fields with DPROPERTY("Speed"). Includes are flat and quoted ("ScriptBase.h"), never <core/...>.
+REGISTER_ENGINE_EVENT(onUpdate) in the constructor, UNREGISTER_ENGINE_EVENT in the destructor.
+Log::print, never printf or std::cout. Angles are DEGREES. Build settings go in ProjectBuild.cmake.
 
 ## Play and time
 - play: start, stop, pause, resume, step (frames), restart; clock options with any action (or
@@ -169,48 +164,27 @@ quality.atmosphere_quality_*). More: jasper://docs/atmosphere.
 
 ## Physics
 - Add a body and its collider to the SAME GameObject in one step (edit_colliders with
-  body_type + add). A Rigidbody without a Collider does not collide. Dynamic for
-  actors, static for floors and level geometry, kinematic for scripted movers.
-- Collider sizes are local, scaled by the GameObject's scale: never pre-scale them. Never
-  guess sizes: omit them to fit the mesh bounds.
-- Mass comes from collider volume/area x density (3D default 1000, water; 2D 1 per square
-  meter), never set directly. Size forces as mass x acceleration; if they get huge, lower the
-  density.
-- Continuous forces and torques go in onFixedUpdate, never onUpdate, and are NOT multiplied by
-  deltatime. Rigidbody (3D): applyForce(f), applyForce(f, point), applyTorque(t), applyImpulse;
-  mass: body.mass. Rigidbody2D: applyForceToCenter(f, true), applyForce(f, point, true),
-  applyLinearImpulseToCenter(i, true); mass: body:getMass().
-- Never move a body by writing its transform in onFixedUpdate (overwritten). Teleport with
-  body.position (body.rotation / body.angle), velocity with body.linearVelocity.
-- Layer Collision Matrix (project settings) gates contacts; raycasts take a layer mask. Drop
-  or settle objects: place_with_physics (group editor_ux).
-- Navigation: jasper://docs/navigation.
+  body_type + add); a Rigidbody without a Collider does not collide.
+- Collider sizes are local (scaled by the GameObject's scale): never pre-scale or guess them;
+  omit them to fit the mesh bounds. Mass is collider size x density, never set directly.
+- Forces go in onFixedUpdate, not multiplied by deltatime. Move a body through body.position /
+  body.linearVelocity, never its transform. 3D and 2D APIs differ: jasper://docs/physics.
+- Drop or settle objects: place_with_physics (group editor_ux). Navigation: jasper://docs/navigation.
 
 ## Prefabs
-- An edit on a prefab instance is an override of that instance only. Push it to the asset
-  with Apply, or edit the asset in Prefab Mode. Instances cannot be restructured (reparent,
-  reorder, move out): open the prefab instead. Variants are prefabs based on another prefab.
-- Runtime: GameObject.instantiate(prefabAsset [, scene] [, position, rotation] [, parent])
-  returns the new root named "<name>(Clone)", scripts already initialized (without scene or
-  parent it goes to the active scene); GameObject.destroy(go [, delay]).
-  Get the PrefabAsset from a script property of type Prefab (preferred) or
-  PrefabAsset.load("path/Name"). A prefab that is only loaded by path, never placed or
-  referenced, must be marked standalone or the build will not contain it.
+An edit on a prefab instance overrides that instance only: Apply it to the asset, or edit the
+asset in Prefab Mode (instances cannot be restructured). Runtime: GameObject.instantiate(prefab
+[, scene] [, position, rotation] [, parent]) returns "<name>(Clone)"; GameObject.destroy(go).
+Prefer a Prefab script property; a prefab only loaded by path (PrefabAsset.load) must be marked
+standalone or the build lacks it. More: jasper://docs/prefabs.
 
 ## Shaders and materials
-Library first: list_shaders, the engine's shaders ("library:<name>"; with name: parameters,
-textures, features). A mesh shader goes on a submesh material
-(set_properties submeshes[0].material.shader, or a .material file: create_material /
-update_material) with .shaderParams.<member> (colours linear, "#RRGGBB" is sRGB),
-.shaderTextures.<uniform> and .shaderFeatures; UI, Points, Lines and Sky take customShader plus
-shaderUniforms. Outlines and stencil effects: apply_material_preset (list_material_presets), then
-tune its extraPass and stencil. Shaders with scene_inputs (cost_note) cost a depth
-pass or colour copy per camera and must draw transparent. Fork only
-when nothing fits: fork_shader copies the built-in shader and sets customShader. Read a fork
-before editing (its rules: jasper://docs/shaders); its parameters are the u_fs_customParams
-block (set_shader_uniform). A failing shader draws as the built-in one (error in the Console).
-Built-in Lit lobes (a material's pbr: clear coat, sheen, transmission...), Lit Quality and light
-units: jasper://docs/materials.
+Library first: list_shaders ("library:<name>"; with name: its parameters). A mesh shader goes on
+a submesh material (set_properties submeshes[0].material.shader, or create_material /
+update_material) with .shaderParams.<member> (colours linear, "#RRGGBB" sRGB); UI, Points, Lines
+and Sky take customShader. Outlines and stencil: apply_material_preset. fork_shader only when
+nothing fits; read the fork first. A failing shader draws as the built-in one. Rules, costs,
+uniforms: jasper://docs/shaders; Lit lobes, Lit Quality, light units: jasper://docs/materials.
 
 Textures from examples: synthesize_texture (group assets_pipeline,
 jasper://docs/texture-synthesis). GPU fluid: create_entity type fluid_simulation
@@ -223,16 +197,13 @@ inspect_color_lut a .cube. Mobile: in-shader colour, low render scale or dynamic
 passes (jasper://docs/post-processing).
 
 ## Shadows
-A light's shadows, softShadows, shadowStrength, shadowBias/shadowNormalBias (shadow texels,
-1 fits nearly always), mapResolution (0: the tier's); the scene's shadows_quality (auto:
-the platform's tier), shadow_distance; meshes that never move: staticShadowCaster true (cached).
-Verify with get_shadow_stats and the shadows_debug_view setting (jasper://docs/shadows).
+A light's shadows, softShadows, shadowBias/shadowNormalBias (shadow texels: leave at 1); the
+scene's shadows_quality and shadow_distance; meshes that never move: staticShadowCaster true.
+Verify with get_shadow_stats and shadows_debug_view (jasper://docs/shadows).
 
 ## Profiling
-The profiling group: get_frame_times (the always-on history), capture_profile then
-get_cpu_profile (capture_id, frame worst), get_gpu_passes (each pass's GPU ms; with capture_id
-per-label medians), capture_pass_output, get_vram_report, get_render_stats. Compare medians,
-not single frames (jasper://docs/profiling).
+The profiling group (get_frame_times, capture_profile, get_gpu_passes, get_vram_report...):
+compare medians, not single frames (jasper://docs/profiling).
 Calls time out: get_editor_health (answers mid-hang) tells hung from slow; get_crash_reports
 (jasper://docs/crash-diagnostics).
 
