@@ -234,9 +234,9 @@ function Hero:init()
 end
 
 function Hero:onUpdate()
-    if self.animator:isHumanoid() and not self.said then
+    if self.animator:isLoaded() and not self.said then
         self.said = true
-        Log.print("humanoid " .. tostring(self.animator:hasBone("left_hand")))
+        Log.print("humanoid " .. tostring(self.animator:isHumanoid() and self.animator:hasBone("left_hand")))
     end
 end
 

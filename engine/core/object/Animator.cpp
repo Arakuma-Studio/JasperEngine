@@ -404,7 +404,7 @@ Quaternion Animator::getDeltaRotation() const{
 
 bool Animator::isHumanoid() const{
     anim::AnimatorInstance* instance = runtime();
-    return instance && instance->humanoid.valid;
+    return instance && instance->bound && instance->humanoid.valid;
 }
 
 FunctionSubscribe<void(const AnimationEvent&)>& Animator::getOnEvent(){
