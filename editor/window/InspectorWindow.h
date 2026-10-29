@@ -27,7 +27,10 @@
 #include "soloud_wav.h"
 
 #include <array>
+#include <filesystem>
 #include <functional>
+#include <map>
+#include <memory>
 #include <set>
 
 namespace jasperengine::particles {
@@ -46,6 +49,11 @@ namespace jasperengine::editor{
     class CommandHistory;
     class ForkShaderCmd;
     class MultiPropertyCmd;
+    class AnimationClipDocument;
+    struct InspectorClipState;
+    struct InspectorClipStateDeleter{
+        void operator()(InspectorClipState* state) const;
+    };
 
     enum class RowPropertyType{
         Label,
@@ -200,6 +208,10 @@ namespace jasperengine::editor{
 
         std::map<std::string, bool> textureCubeSingleMode;
 
+        // the scene whose history a Blend Shapes slider drag merges into (finishMorphEdit marks
+        // it: no command pointer is kept across frames), 0 when none
+        uint32_t morphEditScene = 0;
+
         // Lattice inspector state (edits apply through LatticeEditorOps when a field is let go)
         int latticeResolutionPending[3] = {3, 3, 3};
         int latticeResolutionAxis = -1;      // axis field being edited, -1 none
@@ -272,9 +284,49 @@ namespace jasperengine::editor{
         };
         std::vector<ActionPreviewState> actionPreviewStates;
 
+        // PreviewOwner tokens of the action preview's roots (animation clips 9.R7): acquiring them
+        // stops the Animation window or Pose window preview of the same model first
+        std::vector<int> actionPreviewOwners;
+        void releaseActionPreviewOwners();
+
         void startActionPreview(Entity entity, Scene* scene, SceneProject* sceneProject);
         void stopActionPreview(Scene* scene, SceneProject* sceneProject);
         void stopActionPreviewIfActive();
+
+        // ---- animation clips (InspectorWindowClips.cpp; spec 4.2, 9.R30) ----
+        // caches, popup state and error lines of the clip sections (defined in
+        // InspectorWindowClips.cpp, so this header needs none of the clip headers)
+        std::unique_ptr<InspectorClipState, InspectorClipStateDeleter> clipStatePtr;
+        InspectorClipState& clipState();
+        // Unity's activeObject: a programmatic selection change (MCP, undo) after the Project
+        // window set an asset shows the selection again; user clicks clear it at their sites
+        void trackInspectedObject();
+        // ProjectWindow::revealAsset (InspectorWindow.cpp, which has the App)
+        void revealAssetInProject(const std::filesystem::path& absolutePath);
+
+        void setPlayerClipEntry(ComponentType cpType, SceneProject* sceneProject, Entity entity, size_t index, const std::string& stored);
+        void removePlayerClipEntry(ComponentType cpType, SceneProject* sceneProject, Entity entity, size_t index);
+        bool usePlayerClipFiles(ComponentType cpType, SceneProject* sceneProject, Entity entity, size_t index, const std::vector<std::string>& files);
+        void drawAnimationPlayerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawAnimationPlayerClips(ComponentType cpType, SceneProject* sceneProject, Entity entity);
+        void drawPlayerClipNameRow(ComponentType cpType, SceneProject* sceneProject, Entity entity, size_t index);
+        void drawPlayerDefaultClipRow(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
+        void drawAnimationPlayerBindings(SceneProject* sceneProject, Entity entity);
+        void drawAnimationPlayerStates(ComponentType cpType, SceneProject* sceneProject, Entity entity);
+        // the inspected .anim (or model with clips): true when it drew the window's contents
+        bool drawInspectedAsset();
+        void drawAssetHeader(const char* icon, const std::filesystem::path& asset, const char* kind);
+        void drawClipAsset(const std::filesystem::path& asset, const std::string& reference);
+        void drawModelClipsAsset(const std::filesystem::path& asset, const std::string& model);
+        void drawClipDocument(AnimationClipDocument& document, const std::string& reference);
+        // the Model section: the clip buttons of an entity animation row that stands for a
+        // sub-clip, and the rows of the sub-clips no entity row shows
+        float modelRowClipButtonsWidth() const;
+        void drawModelRowClipButtons(SceneProject* sceneProject, Entity model, const std::string& subClip, const std::string& entityName);
+        void drawModelClipRows(ComponentType cpType, SceneProject* sceneProject, Entity entity, const std::vector<std::string>& shownInRows);
+        std::vector<std::string> modelSubClipNames(const std::string& model);
+        void drawAnimationClipButtons(SceneProject* sceneProject, Entity entity);
+        void updateParticlePreviewSnapshot(YAML::Node& components, const ParticleSystemComponent& particles);
 
         // Dirty material helpers
         void markMaterialDirty(unsigned int sceneId, Entity entity, int submeshIndex, const std::string& relativePath);
@@ -371,6 +423,12 @@ namespace jasperengine::editor{
         void endPrefabComponent();
         // The overridden names matching a property row (exact, "*", or nested in it), per entity
         std::vector<std::string> prefabOverridesOf(SceneProject* sceneProject, Entity entity, ComponentType type, const std::string& property) const;
+    public:
+        // The overridden property names a row's Apply/Revert covers: the row's property, the
+        // ones inside it ("clips[0]" covers "clips[0].clip" and its "clips[0].guid") and the one it
+        // is part of
+        static std::vector<std::string> matchingPrefabOverrides(const std::set<std::string>& names, const std::string& property);
+    private:
         bool isPrefabPropertyOverridden(SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType type, const std::string& property) const;
         // Unity's blue bar at the Inspector's left margin, from y0 to y1
         void drawPrefabOverrideBar(float y0, float y1);
@@ -600,6 +658,8 @@ namespace jasperengine::editor{
 
         void drawTransform(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawMeshComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // the morph target weights of a mesh with blend shapes (names from its model)
+        void drawBlendShapes(SceneProject* sceneProject, const std::vector<Entity>& entities);
         void drawModelComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawUIComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawInputFieldComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
@@ -641,6 +701,7 @@ namespace jasperengine::editor{
                              SceneProject* sceneProject, const std::vector<Entity>& entities, bool visible = true);
         void drawReflectionProbeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawUIDocumentComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawPoseAnimatorComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawCameraComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawAudioComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawSkyboxComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
@@ -738,6 +799,23 @@ namespace jasperengine::editor{
         bool addComponentToSelection(ComponentType type, std::string* why = nullptr);
         // true once after Add Tag... or Add Layer...: the App opens Project Settings on Tags and Layers
         bool consumeTagsAndLayersRequest();
+
+        // ---- Record sources (animation clips 9.R5; the rows and the window test hook call them) ----
+
+        // A Transform position / rotation / scale row edit of `entities` (`valueOf`: an entity's
+        // new value, x y z or rotation x y z w): when Record claims the channel for some of them,
+        // the claimed ones are recorded (live value + key at the playhead, one merge key until the
+        // row is let go: finishRecordRow) and the others stay as they are; false: Record does not
+        // take it (the row builds its PropertyCmd)
+        bool recordRowEdit(SceneProject* sceneProject, ComponentType cpType, const std::string& id,
+                           const std::vector<Entity>& entities, const std::function<std::vector<float>(Entity)>& valueOf);
+        // the row was let go (deactivated): its record gesture ends
+        void finishRecordRow();
+        // The Blend Shapes rows (MeshComponent morph weights): weight `index` of `entities` set to
+        // `value`; recorded when Record claims the channel, else one scene step per drag (the
+        // command notifies the channel write listeners); finishMorphEdit when the slider is let go
+        bool setMorphWeight(SceneProject* sceneProject, const std::vector<Entity>& entities, int index, float value);
+        void finishMorphEdit();
         // The rows of the last frame the Inspector was drawn (get_inspector_layout)
         const InspectorLayout& getLastLayout() const;
         // "Float", "Color3L"...: the widget a row draws

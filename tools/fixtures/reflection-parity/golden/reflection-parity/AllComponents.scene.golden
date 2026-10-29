@@ -99,6 +99,7 @@ shaderKeys:
   - type: particles
   - type: particles
     properties: 512
+  - type: htmluiprim
   - type: particles
     customShader: library:particles#BLEND_ALPHA
   - type: particles
@@ -201,7 +202,8 @@ entities:
           []
         normAdjustJoint: 1
         normAdjustWeight: 1
-        morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
+        morphWeights: [0.5, 0, 0.25, 0, 0, 0, 0, 0]
+        morphTargetCount: 4
         aabb:
           min: [0, 0, 0]
           max: [0, 0, 0]
@@ -433,6 +435,7 @@ entities:
         enabled: false
         filename: ""
         mergeStaticMeshes: true
+        animationEntities: false
         skeleton: 0
         animations:
           []
@@ -2176,7 +2179,7 @@ entities:
         dragScale: 0.9
   - type: Entity
     entity: 1066
-    name: NavMeshSurfaceComponent
+    name: PoseAnimatorComponent
     components:
       transform:
         position: [65, 0, 0]
@@ -2188,6 +2191,61 @@ entities:
         localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [65, 0, 0, 1]]
         modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [65, 0, 0, 1]]
         normalMatrix: [[1, 0, 0, -65], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      poseanimator:
+        animation: animations/parity.poseanim
+        autoplay: false
+        speed: 2.5
+        weight: 0.5
+  - type: Entity
+    entity: 1067
+    name: AnimationPlayerComponent
+    components:
+      transform:
+        position: [66, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [66, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [66, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [66, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, -66], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      animationplayer:
+        enabled: false
+        clips:
+          - clip: animations/parity.anim
+            name: Parity
+            wrap: loop
+          - clip: models/parity.gltf#Run
+            wrap: ping_pong
+        defaultClip: Parity
+        playAutomatically: false
+        speed: 2.5
+        defaultFadeTime: 0.5
+  - type: Entity
+    entity: 1068
+    name: NavMeshSurfaceComponent
+    components:
+      transform:
+        position: [67, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [67, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [67, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [67, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, -67], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
         visible: true
         billboardRotation: [1, 0, 0, 0]
         billboard: false
@@ -2211,19 +2269,19 @@ entities:
         runtimeCarving: true
         navMeshData: ""
   - type: Entity
-    entity: 1067
+    entity: 1069
     name: NavMeshAgentComponent
     components:
       transform:
-        position: [66, 0, 0]
+        position: [68, 0, 0]
         rotation: [1, 0, 0, 0]
         scale: [1, 1, 1]
-        worldPosition: [66, 0, 0]
+        worldPosition: [68, 0, 0]
         worldRotation: [1, 0, 0, 0]
         worldScale: [1, 1, 1]
-        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [66, 0, 0, 1]]
-        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [66, 0, 0, 1]]
-        normalMatrix: [[1, 0, 0, -66], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [68, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [68, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, -68], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
         visible: true
         billboardRotation: [1, 0, 0, 0]
         billboard: false
@@ -2250,19 +2308,19 @@ entities:
         driver: none
         surface: 0
   - type: Entity
-    entity: 1068
+    entity: 1070
     name: NavMeshObstacleComponent
     components:
       transform:
-        position: [67, 0, 0]
+        position: [69, 0, 0]
         rotation: [1, 0, 0, 0]
         scale: [1, 1, 1]
-        worldPosition: [67, 0, 0]
+        worldPosition: [69, 0, 0]
         worldRotation: [1, 0, 0, 0]
         worldScale: [1, 1, 1]
-        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [67, 0, 0, 1]]
-        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [67, 0, 0, 1]]
-        normalMatrix: [[1, 0, 0, -67], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [69, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [69, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, -69], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
         visible: true
         billboardRotation: [1, 0, 0, 0]
         billboard: false
@@ -2280,19 +2338,19 @@ entities:
         timeToStationary: 6.3
         carveOnlyStationary: false
   - type: Entity
-    entity: 1069
+    entity: 1071
     name: NavMeshLinkComponent
     components:
       transform:
-        position: [68, 0, 0]
+        position: [70, 0, 0]
         rotation: [1, 0, 0, 0]
         scale: [1, 1, 1]
-        worldPosition: [68, 0, 0]
+        worldPosition: [70, 0, 0]
         worldRotation: [1, 0, 0, 0]
         worldScale: [1, 1, 1]
-        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [68, 0, 0, 1]]
-        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [68, 0, 0, 1]]
-        normalMatrix: [[1, 0, 0, -68], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [70, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [70, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, -70], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
         visible: true
         billboardRotation: [1, 0, 0, 0]
         billboard: false
@@ -2309,19 +2367,19 @@ entities:
         autoUpdatePosition: true
         area: 4
   - type: Entity
-    entity: 1070
+    entity: 1072
     name: NavMeshModifierComponent
     components:
       transform:
-        position: [69, 0, 0]
+        position: [71, 0, 0]
         rotation: [1, 0, 0, 0]
         scale: [1, 1, 1]
-        worldPosition: [69, 0, 0]
+        worldPosition: [71, 0, 0]
         worldRotation: [1, 0, 0, 0]
         worldScale: [1, 1, 1]
-        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [69, 0, 0, 1]]
-        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [69, 0, 0, 1]]
-        normalMatrix: [[1, 0, 0, -69], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [71, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [71, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, -71], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
         visible: true
         billboardRotation: [1, 0, 0, 0]
         billboard: false
@@ -2337,19 +2395,19 @@ entities:
         volumeCenter: [4.3, 6.1, 6.9]
         volumeSize: [0.6, 4.8, 8.9]
   - type: Entity
-    entity: 1071
+    entity: 1073
     name: NavGridComponent
     components:
       transform:
-        position: [70, 0, 0]
+        position: [72, 0, 0]
         rotation: [1, 0, 0, 0]
         scale: [1, 1, 1]
-        worldPosition: [70, 0, 0]
+        worldPosition: [72, 0, 0]
         worldRotation: [1, 0, 0, 0]
         worldScale: [1, 1, 1]
-        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [70, 0, 0, 1]]
-        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [70, 0, 0, 1]]
-        normalMatrix: [[1, 0, 0, -70], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [72, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [72, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, -72], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
         visible: true
         billboardRotation: [1, 0, 0, 0]
         billboard: false

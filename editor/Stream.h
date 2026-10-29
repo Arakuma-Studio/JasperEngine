@@ -377,6 +377,7 @@ namespace jasperengine::editor {
 
         static YAML::Node encodeSceneProject(const Project* project, const SceneProject* sceneProject);
         static void decodeSceneProject(SceneProject* sceneProject, const YAML::Node& node, bool loadScene);
+        static void decodeSceneCppScripts(SceneProject* sceneProject, const YAML::Node& node);
         // reservedBelow: user ids under it are reserved too and new ones start above it (a
         // prefab stage: ids its prefab handed out once, its nextEntity, are never given to
         // the members of the instances nested in it)
@@ -509,6 +510,21 @@ namespace jasperengine::editor {
 
         static YAML::Node encodeLatticeTracksComponent(const LatticeTracksComponent& tracks);
         static LatticeTracksComponent decodeLatticeTracksComponent(const YAML::Node& node, const LatticeTracksComponent* oldTracks = nullptr);
+
+        // the Pose Animator and the Animation Player keep their own codecs (a missing key is the
+        // default, not the old value; the runtime state of a component decoded over stays)
+        static YAML::Node encodePoseAnimatorComponent(const PoseAnimatorComponent& animator);
+        static PoseAnimatorComponent decodePoseAnimatorComponent(const YAML::Node& node, const PoseAnimatorComponent* oldAnimator = nullptr);
+
+        // Animation Player (spec 3.2, 9.R8/R14/R25): the authored fields only. clips[] entries
+        // are {clip, guid, name, wrap}: clip is the path hint (asset-relative .anim or
+        // "<model>#<clip>"), guid the .anim's GUID (empty, and not written, for sub-clips),
+        // name and wrap written when set. A plain string entry reads as {clip}. Decoding never
+        // loads (play startup decodes off the main thread). Over an old component its runtime
+        // stays (states, rest values) and a changed clip list sets needsLoad; the callbacks
+        // are cleared.
+        static YAML::Node encodeAnimationPlayerComponent(const AnimationPlayerComponent& player);
+        static AnimationPlayerComponent decodeAnimationPlayerComponent(const YAML::Node& node, const AnimationPlayerComponent* oldPlayer = nullptr);
 
         static YAML::Node encodeParticleSystemComponent(const ParticleSystemComponent& particles);
         static ParticleSystemComponent decodeParticleSystemComponent(const YAML::Node& node, const ParticleSystemComponent* oldParticles = nullptr);

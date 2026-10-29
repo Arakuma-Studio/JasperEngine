@@ -122,6 +122,9 @@ static bool IsScrollbarPart(const Element* element, Element* scroll_container)
 {
 	if (!element || element->GetParentNode() != scroll_container)
 		return false;
+	// (ElementScroll gives its scrollbars and corner 'clip: 1': a child whose clip is auto is none of them)
+	if (element->GetComputedValues().clip() == Style::Clip::Type::Auto)
+		return false;
 	ElementScroll* scroll = scroll_container->GetElementScroll();
 	if (element == scroll->GetScrollbar(ElementScroll::VERTICAL) || element == scroll->GetScrollbar(ElementScroll::HORIZONTAL))
 		return true;
@@ -180,7 +183,12 @@ bool ElementUtilities::GetClippingRegion(Element* element, Rectanglei& out_clip_
 					const ClipMaskOperation clip_operation = (out_clip_mask_list->empty() ? ClipMaskOperation::Set : ClipMaskOperation::Intersect);
 					const Vector2f absolute_offset = clipping_element->GetAbsoluteOffset(BoxArea::Border).Round();
 					if (*clip_geometry)
-						out_clip_mask_list->push_back(ClipMaskGeometry{clip_operation, clip_geometry, absolute_offset, transform});
+					{
+						ClipMaskGeometry clip{clip_operation, clip_geometry, absolute_offset, transform};
+						clip.has_shape = true;
+						clip.shape = clipping_element->GetElementBackgroundBorder()->GetClipShape(clipping_element, clip_area);
+						out_clip_mask_list->push_back(clip);
+					}
 				}
 
 				// If we only have border-radius then we add this element to the scissor region as well as the clip mask. This may help with e.g.
@@ -260,6 +268,23 @@ bool ElementUtilities::GetClippingRegion(Element* element, Rectanglei& out_clip_
 	return clip_region.Valid();
 }
 
+const void* ElementUtilities::GetClipMemoKey(Element* offset_parent)
+{
+	// (the elements GetClippingRegion's walk passes without merging a region: 'clip: auto' and no overflow to clip; their
+	// children are clipped as they are)
+	static const int unclipped = 0;
+	Element* key = offset_parent;
+	while (key)
+	{
+		const ComputedValues& computed = key->GetComputedValues();
+		if (computed.clip() != Style::Clip::Type::Auto || computed.overflow_x() != Style::Overflow::Visible ||
+			computed.overflow_y() != Style::Overflow::Visible)
+			return key;
+		key = key->GetOffsetParent();
+	}
+	return &unclipped;
+}
+
 bool ElementUtilities::SetClippingRegion(Element* element, bool force_clip_self)
 {
 	Context* context = element->GetContext();
@@ -268,10 +293,38 @@ bool ElementUtilities::SetClippingRegion(Element* element, bool force_clip_self)
 
 	RenderManager& render_manager = context->GetRenderManager();
 
+	// Fork (S16-F6): an element whose own 'clip' is auto is clipped as every such element of its offset parent (the walk
+	// starts there; a scroll container's scrollbars, which differ, have 'clip: 1'), and as its offset parent when that does
+	// not clip (GetClipMemoKey): the region found for the first is used for the others of the render pass, without walking
+	// the ancestors and building the mask list again.
+	const void* memo_key = nullptr;
+	if (render_manager.PaintShortcuts() && !force_clip_self && element->GetComputedValues().clip() == Style::Clip::Type::Auto)
+		memo_key = GetClipMemoKey(element->GetOffsetParent());
+	if (memo_key)
+	{
+		if (const RenderManager::ClipMemo* memo = render_manager.FindClipMemo(memo_key))
+		{
+			if (memo->scissor)
+				render_manager.SetScissorRegion(memo->region);
+			else
+				render_manager.DisableScissorRegion();
+			if (render_manager.GetState().clip_mask_list != memo->masks)
+				render_manager.SetClipMask(memo->masks);
+			return true;
+		}
+	}
+
 	Rectanglei clip_region;
 	ClipMaskGeometryList clip_mask_list;
 
 	const bool scissoring_enabled = GetClippingRegion(element, clip_region, &clip_mask_list, force_clip_self);
+	if (memo_key)
+	{
+		RenderManager::ClipMemo& memo = render_manager.AddClipMemo(memo_key);
+		memo.scissor = scissoring_enabled;
+		memo.region = clip_region;
+		memo.masks = clip_mask_list;
+	}
 	if (scissoring_enabled)
 		render_manager.SetScissorRegion(clip_region);
 	else
@@ -300,7 +353,10 @@ ScopedReplacedContentClip::ScopedReplacedContentClip(Element* element, bool enab
 	ClipMaskGeometryList clip_mask_list = saved_state.clip_mask_list;
 	// The first mask of a list sets the stencil, the others intersect it (as GetClippingRegion's lists).
 	const ClipMaskOperation operation = (clip_mask_list.empty() ? ClipMaskOperation::Set : ClipMaskOperation::Intersect);
-	clip_mask_list.push_back(ClipMaskGeometry{operation, clip_geometry, element->GetAbsoluteOffset(BoxArea::Border).Round(), transform});
+	ClipMaskGeometry clip{operation, clip_geometry, element->GetAbsoluteOffset(BoxArea::Border).Round(), transform};
+	clip.has_shape = true;
+	clip.shape = element->GetElementBackgroundBorder()->GetClipShape(element, BoxArea::Content);
+	clip_mask_list.push_back(clip);
 	manager->SetClipMask(std::move(clip_mask_list));
 }
 

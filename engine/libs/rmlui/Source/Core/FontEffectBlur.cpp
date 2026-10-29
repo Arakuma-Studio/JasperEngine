@@ -53,6 +53,15 @@ bool FontEffectBlur::Initialise(int _width)
 	return true;
 }
 
+bool FontEffectBlur::GetDistanceEffect(DistanceEffect& effect) const
+{
+	// the kernel's standard deviation (Initialise)
+	effect.dilation = 0.f;
+	effect.sigma = .4f * float(width);
+	effect.offset = Vector2f(0.f);
+	return true;
+}
+
 bool FontEffectBlur::GetGlyphMetrics(Vector2i& origin, Vector2i& dimensions, const FontGlyph& /*glyph*/) const
 {
 	if (dimensions.x * dimensions.y > 0)

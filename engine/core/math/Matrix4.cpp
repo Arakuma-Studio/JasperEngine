@@ -126,10 +126,12 @@ Vector3 Matrix4::operator*(const Vector3 &v) const{
 
     for (int r=0;r<4;r++)
     {
-        for (int c=0;c<3;c++)
-            prod[r] += v[c]*get(c,r);
-
-        prod[r] += get(3,r);
+        // Direct fields avoid out-of-line Vector3::operator[] calls in the
+        // render hot path. Keep the original accumulation and divide order.
+        prod[r] += v.x * matrix[0][r];
+        prod[r] += v.y * matrix[1][r];
+        prod[r] += v.z * matrix[2][r];
+        prod[r] += matrix[3][r];
     }
 
     float div = 1.0 / prod[3];
@@ -141,11 +143,11 @@ Vector4 Matrix4::operator*(const Vector4 &v) const{
 
     float prod[4] = { 0,0,0,0 };
 
-    int i, j;
-    for(j=0; j<4; ++j) {
-        prod[j] = 0.f;
-        for(i=0; i<4; ++i)
-            prod[j] += get(i,j) * v[i];
+    for(int j=0; j<4; ++j) {
+        prod[j] += matrix[0][j] * v.x;
+        prod[j] += matrix[1][j] * v.y;
+        prod[j] += matrix[2][j] * v.z;
+        prod[j] += matrix[3][j] * v.w;
     }
 
     return Vector4(prod[0] ,prod[1] ,prod[2], prod[3]);

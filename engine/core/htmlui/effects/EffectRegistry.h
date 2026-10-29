@@ -105,8 +105,6 @@ namespace jasperengine::htmlui {
 
         // what parsing the built-in manifests reported (empty unless the table is broken)
         const std::vector<EffectDiagnostic>& builtinDiagnostics() const;
-        // manifests and instancers kept alive after a project effect was declared again
-        size_t graveyardSize() const;
         // the project effect declared for a .frag, or nullptr (custom shader name resolver)
         const EffectManifest* findByCustomShader(const std::string& customShaderName) const;
 

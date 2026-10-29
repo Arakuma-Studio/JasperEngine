@@ -122,7 +122,9 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::UIDocumentComponent, "HTML/CSS document rendered by the engine"},
         }},
         {"Animation", ICON_FA_FILM, {
+            {ComponentType::AnimationPlayerComponent, "Plays shared animation clips (.anim, model clips) with fades and events"},
             {ComponentType::AnimationComponent, "Plays a sequence of actions"},
+            {ComponentType::PoseAnimatorComponent, "Plays a pose animation (.poseanim) on a humanoid model"},
             {ComponentType::SpriteAnimationComponent, "Flips through sprite frames"},
             {ComponentType::ActionComponent, "Start, pause and stop state of an animation step"},
             {ComponentType::TweenComponent, "Duration, easing and looping of a tween"},

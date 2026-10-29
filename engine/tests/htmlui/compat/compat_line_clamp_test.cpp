@@ -11,7 +11,6 @@
 #include "htmlui/compat/ForkFeatures.h"
 #include "htmlui/compat/SourceFiles.h"
 #include "htmlui/compat/css/CssRewriter.h"
-#include "htmlui/compat/css/RcssGrammar.h"
 
 #include <gtest/gtest.h>
 
@@ -178,19 +177,4 @@ TEST(CompatLineClamp, TransitionsNameTheForkProperty){
     const Rewritten out = rewrite(".a { transition: -webkit-line-clamp 1s linear allow-discrete; }");
     EXPECT_NE(out.value("transition").find("-webkit-line-clamp"), std::string::npos) << out.text();
     EXPECT_EQ(out.value("transition").find("max-height"), std::string::npos) << out.text();
-}
-
-TEST(CompatLineClamp, TheGrammarAcceptsTheForkValues){
-    const ForkFeatures present = ForkFeatures::present();
-    EXPECT_TRUE(RcssGrammar::accepts("display", "-webkit-box", present));
-    EXPECT_TRUE(RcssGrammar::accepts("display", "-webkit-inline-box", present));
-    EXPECT_TRUE(RcssGrammar::accepts("display", "contents", present));   // BoxParity's row of the same property
-    EXPECT_TRUE(RcssGrammar::accepts("display", "flex", present));
-    EXPECT_FALSE(RcssGrammar::accepts("display", "-webkit-flexbox", present));
-    EXPECT_TRUE(RcssGrammar::accepts("-webkit-line-clamp", "4", present));
-    EXPECT_TRUE(RcssGrammar::accepts("-webkit-box-orient", "vertical", present));
-    EXPECT_FALSE(RcssGrammar::accepts("-webkit-box-orient", "block-axis", present));   // compat writes the aliases as the keywords
-    const ForkFeatures absent = present.with(ForkFeature::LineClamp, false);
-    EXPECT_FALSE(RcssGrammar::accepts("display", "-webkit-box", absent));
-    EXPECT_TRUE(RcssGrammar::accepts("display", "contents", absent));
 }

@@ -93,6 +93,14 @@
 #include "subsystem/ActionSystem.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/AudioSystem.h"
+#include "pose/PoseAnimatorRuntime.h"
+#include "pose/PoseInspectorHooks.h"
+#include "pose/PoseEditSession.h"
+#include "animation/PreviewOwner.h"
+#include "animation/ClipRecordHooks.h"
+#include "command/type/MorphWeightsCmd.h"
+#include "window/InspectorWindowClips.h"
+#include "component/AnimationPlayerComponent.h"
 #include "action/Action.h"
 #include "pool/TexturePool.h"
 #include "yaml-cpp/yaml.h"
@@ -132,6 +140,17 @@ static void markTextureUpdate(Scene* scene, Entity entity, editor::ComponentType
     if (componentType == editor::ComponentType::SkyboxComponent) {
         scene->getComponent<SkyboxComponent>(entity).needUpdateTexture = true;
     }
+}
+
+// Record (animation clips 9.R5): a row value as ClipRecordValue lays it out
+static std::vector<float> vector3Value(const Vector3& value) {
+    return {value.x, value.y, value.z};
+}
+
+static std::vector<float> rotationValue(const Quaternion& value) {
+    std::vector<float> out(4);
+    quaternionToXYZW(value, out.data());
+    return out;
 }
 
 // the dropdowns of the component enums: their reflection tables' labels and Inspector order
@@ -726,6 +745,7 @@ void editor::InspectorWindow::clearSceneState(uint32_t sceneId) {
     if (actionPreviewing && actionPreviewSceneId == sceneId) {
         // The scene is already deleted, drop the snapshots instead of restoring them
         actionPreviewStates.clear();
+        releaseActionPreviewOwners();
         actionPreviewing = false;
         actionPreviewPlaying = false;
         actionPreviewEntity = NULL_ENTITY;
@@ -2914,11 +2934,15 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             defChanged = compareVectorFloat((float*)&newValue, defArr, 3, compThreshold);
         }
         if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
-            for (Entity& entity : entities){
-                cmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, static_cast<Vector3>(defArr), settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
-                finishProperty = true;
+            // Record keys a claimed Transform channel instead (animation clips 9.R5)
+            if (!recordRowEdit(sceneProject, cpType, id, entities, [&](Entity entity){ (void)entity; return vector3Value(static_cast<Vector3>(defArr)); })){
+                for (Entity& entity : entities){
+                    cmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, static_cast<Vector3>(defArr), settings.onValueChanged);
+                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                    finishProperty = true;
+                }
             }
+            finishProperty = true;
         }
 
         ImGui::BeginGroup();
@@ -2991,11 +3015,19 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         const bool edited_x = numericField(settings.unit, entities.size(), false, [&]() { return ImGui::DragFloat(("##input_x_"+id).c_str(), &(newValue.x), settings.stepSize, min, max, settings.format); });
         const std::vector<double> perObject_x = perObjectValues(edited_x, entities, [&](Entity e) { return eValue[e].x; }, settings.unit);
         if (edited_x){
-            size_t objectIndex_x = 0;
-            for (Entity& entity : entities){
-                if (!perObject_x.empty()) newValue.x = static_cast<float>(perObject_x[objectIndex_x++]);
-                cmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, Vector3(newValue.x, eValue[entity].y, eValue[entity].z), settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+            // each object's value: the field's, or its own result of a per-object expression
+            std::map<Entity, float> value_x;
+            for (size_t objectIndex = 0; objectIndex < entities.size(); objectIndex++){
+                value_x[entities[objectIndex]] = perObject_x.empty() ? newValue.x : static_cast<float>(perObject_x[objectIndex]);
+            }
+            // Record keys a claimed Transform channel instead (animation clips 9.R5)
+            if (!recordRowEdit(sceneProject, cpType, id, entities, [&](Entity entity){ return vector3Value(Vector3(value_x[entity], eValue[entity].y, eValue[entity].z)); })){
+                for (Entity& entity : entities){
+                    auto* rowCmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, Vector3(value_x[entity], eValue[entity].y, eValue[entity].z), settings.onValueChanged);
+                    rowCmd->setShownComponents(0b110);   // y and z as shown: x is the edit
+                    cmd = rowCmd;
+                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                }
             }
         }
 
@@ -3026,11 +3058,19 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         const bool edited_y = numericField(settings.unit, entities.size(), false, [&]() { return ImGui::DragFloat(("##input_y_"+id).c_str(), &(newValue.y), settings.stepSize, min, max, settings.format); });
         const std::vector<double> perObject_y = perObjectValues(edited_y, entities, [&](Entity e) { return eValue[e].y; }, settings.unit);
         if (edited_y){
-            size_t objectIndex_y = 0;
-            for (Entity& entity : entities){
-                if (!perObject_y.empty()) newValue.y = static_cast<float>(perObject_y[objectIndex_y++]);
-                cmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, Vector3(eValue[entity].x, newValue.y, eValue[entity].z), settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+            // each object's value: the field's, or its own result of a per-object expression
+            std::map<Entity, float> value_y;
+            for (size_t objectIndex = 0; objectIndex < entities.size(); objectIndex++){
+                value_y[entities[objectIndex]] = perObject_y.empty() ? newValue.y : static_cast<float>(perObject_y[objectIndex]);
+            }
+            // Record keys a claimed Transform channel instead (animation clips 9.R5)
+            if (!recordRowEdit(sceneProject, cpType, id, entities, [&](Entity entity){ return vector3Value(Vector3(eValue[entity].x, value_y[entity], eValue[entity].z)); })){
+                for (Entity& entity : entities){
+                    auto* rowCmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, Vector3(eValue[entity].x, value_y[entity], eValue[entity].z), settings.onValueChanged);
+                    rowCmd->setShownComponents(0b101);   // x and z as shown: y is the edit
+                    cmd = rowCmd;
+                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                }
             }
         }
 
@@ -3061,11 +3101,19 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         const bool edited_z = numericField(settings.unit, entities.size(), false, [&]() { return ImGui::DragFloat(("##input_z_"+id).c_str(), &(newValue.z), settings.stepSize, min, max, settings.format); });
         const std::vector<double> perObject_z = perObjectValues(edited_z, entities, [&](Entity e) { return eValue[e].z; }, settings.unit);
         if (edited_z){
-            size_t objectIndex_z = 0;
-            for (Entity& entity : entities){
-                if (!perObject_z.empty()) newValue.z = static_cast<float>(perObject_z[objectIndex_z++]);
-                cmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, Vector3(eValue[entity].x, eValue[entity].y, newValue.z), settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+            // each object's value: the field's, or its own result of a per-object expression
+            std::map<Entity, float> value_z;
+            for (size_t objectIndex = 0; objectIndex < entities.size(); objectIndex++){
+                value_z[entities[objectIndex]] = perObject_z.empty() ? newValue.z : static_cast<float>(perObject_z[objectIndex]);
+            }
+            // Record keys a claimed Transform channel instead (animation clips 9.R5)
+            if (!recordRowEdit(sceneProject, cpType, id, entities, [&](Entity entity){ return vector3Value(Vector3(eValue[entity].x, eValue[entity].y, value_z[entity])); })){
+                for (Entity& entity : entities){
+                    auto* rowCmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, Vector3(eValue[entity].x, eValue[entity].y, value_z[entity]), settings.onValueChanged);
+                    rowCmd->setShownComponents(0b011);   // x and y as shown: z is the edit
+                    cmd = rowCmd;
+                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                }
             }
         }
 
@@ -3316,11 +3364,15 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             defChanged = compareVectorFloat((float*)&qValue, defArr, 4, compThreshold);
         }
         if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
-            for (Entity& entity : entities){
-                cmd = new PropertyCmd<Quaternion>(project, sceneProject->id, entity, cpType, id, static_cast<Quaternion>(defArr), settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
-                finishProperty = true;
+            // Record keys a claimed Transform channel instead (animation clips 9.R5)
+            if (!recordRowEdit(sceneProject, cpType, id, entities, [&](Entity entity){ (void)entity; return rotationValue(static_cast<Quaternion>(defArr)); })){
+                for (Entity& entity : entities){
+                    cmd = new PropertyCmd<Quaternion>(project, sceneProject->id, entity, cpType, id, static_cast<Quaternion>(defArr), settings.onValueChanged);
+                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                    finishProperty = true;
+                }
             }
+            finishProperty = true;
         }
 
         ImGui::BeginGroup();
@@ -3346,11 +3398,17 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         const bool edited_x = numericField(NumericUnit::Degrees, entities.size(), false, [&]() { return ImGui::DragFloat(("##input_x_"+id).c_str(), &(newValue.x), settings.stepSize, 0.0f, 0.0f, (std::string(settings.format) + "°").c_str()); });
         const std::vector<double> perObject_x = perObjectValues(edited_x, entities, [&](Entity e) { return eValue[e].x; }, NumericUnit::Degrees);
         if (edited_x){
-            size_t objectIndex_x = 0;
-            for (Entity& entity : entities){
-                if (!perObject_x.empty()) newValue.x = static_cast<float>(perObject_x[objectIndex_x++]);
-                cmd = new PropertyCmd<Quaternion>(project, sceneProject->id, entity, cpType, id, Quaternion(newValue.x, eValue[entity].y, eValue[entity].z, order), settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+            // each object's value: the field's, or its own result of a per-object expression
+            std::map<Entity, float> value_x;
+            for (size_t objectIndex = 0; objectIndex < entities.size(); objectIndex++){
+                value_x[entities[objectIndex]] = perObject_x.empty() ? newValue.x : static_cast<float>(perObject_x[objectIndex]);
+            }
+            // Record keys a claimed Transform channel instead (animation clips 9.R5)
+            if (!recordRowEdit(sceneProject, cpType, id, entities, [&](Entity entity){ return rotationValue(Quaternion(value_x[entity], eValue[entity].y, eValue[entity].z, order)); })){
+                for (Entity& entity : entities){
+                    cmd = new PropertyCmd<Quaternion>(project, sceneProject->id, entity, cpType, id, Quaternion(value_x[entity], eValue[entity].y, eValue[entity].z, order), settings.onValueChanged);
+                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                }
             }
         }
 
@@ -3381,11 +3439,17 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         const bool edited_y = numericField(NumericUnit::Degrees, entities.size(), false, [&]() { return ImGui::DragFloat(("##input_y_"+id).c_str(), &(newValue.y), settings.stepSize, 0.0f, 0.0f, "%.2f°"); });
         const std::vector<double> perObject_y = perObjectValues(edited_y, entities, [&](Entity e) { return eValue[e].y; }, NumericUnit::Degrees);
         if (edited_y){
-            size_t objectIndex_y = 0;
-            for (Entity& entity : entities){
-                if (!perObject_y.empty()) newValue.y = static_cast<float>(perObject_y[objectIndex_y++]);
-                cmd = new PropertyCmd<Quaternion>(project, sceneProject->id, entity, cpType, id, Quaternion(eValue[entity].x, newValue.y, eValue[entity].z, order), settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+            // each object's value: the field's, or its own result of a per-object expression
+            std::map<Entity, float> value_y;
+            for (size_t objectIndex = 0; objectIndex < entities.size(); objectIndex++){
+                value_y[entities[objectIndex]] = perObject_y.empty() ? newValue.y : static_cast<float>(perObject_y[objectIndex]);
+            }
+            // Record keys a claimed Transform channel instead (animation clips 9.R5)
+            if (!recordRowEdit(sceneProject, cpType, id, entities, [&](Entity entity){ return rotationValue(Quaternion(eValue[entity].x, value_y[entity], eValue[entity].z, order)); })){
+                for (Entity& entity : entities){
+                    cmd = new PropertyCmd<Quaternion>(project, sceneProject->id, entity, cpType, id, Quaternion(eValue[entity].x, value_y[entity], eValue[entity].z, order), settings.onValueChanged);
+                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                }
             }
         }
 
@@ -3416,11 +3480,17 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         const bool edited_z = numericField(NumericUnit::Degrees, entities.size(), false, [&]() { return ImGui::DragFloat(("##input_z_"+id).c_str(), &(newValue.z), settings.stepSize, 0.0f, 0.0f, "%.2f°"); });
         const std::vector<double> perObject_z = perObjectValues(edited_z, entities, [&](Entity e) { return eValue[e].z; }, NumericUnit::Degrees);
         if (edited_z){
-            size_t objectIndex_z = 0;
-            for (Entity& entity : entities){
-                if (!perObject_z.empty()) newValue.z = static_cast<float>(perObject_z[objectIndex_z++]);
-                cmd = new PropertyCmd<Quaternion>(project, sceneProject->id, entity, cpType, id, Quaternion(eValue[entity].x, eValue[entity].y, newValue.z, order), settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+            // each object's value: the field's, or its own result of a per-object expression
+            std::map<Entity, float> value_z;
+            for (size_t objectIndex = 0; objectIndex < entities.size(); objectIndex++){
+                value_z[entities[objectIndex]] = perObject_z.empty() ? newValue.z : static_cast<float>(perObject_z[objectIndex]);
+            }
+            // Record keys a claimed Transform channel instead (animation clips 9.R5)
+            if (!recordRowEdit(sceneProject, cpType, id, entities, [&](Entity entity){ return rotationValue(Quaternion(eValue[entity].x, eValue[entity].y, value_z[entity], order)); })){
+                for (Entity& entity : entities){
+                    cmd = new PropertyCmd<Quaternion>(project, sceneProject->id, entity, cpType, id, Quaternion(eValue[entity].x, eValue[entity].y, value_z[entity], order), settings.onValueChanged);
+                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                }
             }
         }
 
@@ -5531,9 +5601,168 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             cmd = nullptr;
         }
         finishProperty = false;
+        // a recorded edit: one key edit per row edit
+        finishRecordRow();
     }
 
     return result;
+}
+
+// ---- Record sources (animation clips 9.R5) ----
+
+bool editor::InspectorWindow::recordRowEdit(SceneProject* sceneProject, ComponentType cpType, const std::string& id,
+                                            const std::vector<Entity>& entities, const std::function<std::vector<float>(Entity)>& valueOf){
+    if (!sceneProject || cpType != ComponentType::Transform) return false;
+    const std::vector<ClipChannel> channels = ClipRecordHooks::channelsOf(cpType, id);
+    if (channels.size() != 1) return false;
+    const ClipChannel channel = channels.front();
+    if (!ClipRecordHooks::claimsAny(sceneProject->id, entities, channel)) return false;
+    const std::string mergeKey = ClipRecordHooks::gestureMergeKey(RecordSource::Inspector, nullptr);
+    for (Entity entity : entities){
+        // the selection's GameObjects Record does not key stay as they are
+        if (!ClipRecordHooks::claims(sceneProject->id, entity, channel)) continue;
+        ClipRecordValue value;
+        value.channel = channel;
+        value.value = valueOf(entity);
+        ClipRecordHooks::record(sceneProject->id, entity, value, mergeKey);
+    }
+    return true;
+}
+
+void editor::InspectorWindow::finishRecordRow(){
+    // the row's record gesture (only the Inspector's: another source's stays open)
+    ClipRecordHooks::endGesture(RecordSource::Inspector);
+}
+
+bool editor::InspectorWindow::setMorphWeight(SceneProject* sceneProject, const std::vector<Entity>& entities, int index, float value){
+    if (!sceneProject || !sceneProject->scene || index < 0 || index >= MAX_MORPHTARGETS || !std::isfinite(value)) return false;
+    Scene* scene = sceneProject->scene;
+    // meshes with blend shapes (the rows show for those only)
+    std::vector<Entity> meshes;
+    for (Entity entity : entities){
+        const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        bool morphs = false;
+        for (unsigned int s = 0; mesh && s < mesh->numSubmeshes; s++) morphs = morphs || mesh->submeshes[s].hasMorphTarget;
+        if (morphs) meshes.push_back(entity);
+    }
+    if (meshes.empty()) return false;
+    // Record keys the claimed meshes (the others stay as they are)
+    if (ClipRecordHooks::claimsAny(sceneProject->id, meshes, ClipChannel::Morph)){
+        const std::string mergeKey = ClipRecordHooks::gestureMergeKey(RecordSource::Inspector, nullptr);
+        for (Entity entity : meshes){
+            if (!ClipRecordHooks::claims(sceneProject->id, entity, ClipChannel::Morph)) continue;
+            const MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
+            ClipRecordValue record;
+            record.channel = ClipChannel::Morph;
+            record.value.assign(mesh.morphWeights, mesh.morphWeights + MAX_MORPHTARGETS);
+            record.value[(size_t)index] = value;
+            ClipRecordHooks::record(sceneProject->id, entity, record, mergeKey);
+        }
+        return true;
+    }
+    std::vector<editor::MorphWeightsCmd::Target> targets;
+    for (Entity entity : meshes){
+        const MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
+        editor::MorphWeightsCmd::Target target;
+        target.entity = entity;
+        std::copy(mesh.morphWeights, mesh.morphWeights + MAX_MORPHTARGETS, target.after.begin());
+        target.after[(size_t)index] = value;
+        targets.push_back(target);
+    }
+    auto* weightsCommand = new editor::MorphWeightsCmd(project, sceneProject->id, targets);
+    weightsCommand->setEditedWeights({(size_t)index});   // the row's weight is the edit, the others as shown
+    Command* command = weightsCommand;
+    if (!CommandHandle::get(sceneProject->id)->addCommand(command)) return false;
+    morphEditScene = sceneProject->id;
+    return true;
+}
+
+void editor::InspectorWindow::finishMorphEdit(){
+    // the next slider edit is its own undo step (the history is marked; no pointer is kept)
+    if (morphEditScene != 0 && project->getScene(morphEditScene)) CommandHandle::get(morphEditScene)->mark();
+    morphEditScene = 0;
+    finishRecordRow();
+}
+
+void editor::InspectorWindow::drawBlendShapes(SceneProject* sceneProject, const std::vector<Entity>& entities){
+    Scene* scene = sceneProject->scene;
+    // meshes with morph targets only
+    std::vector<Entity> meshes;
+    for (Entity entity : entities){
+        const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        bool morphs = false;
+        for (unsigned int s = 0; mesh && s < mesh->numSubmeshes; s++) morphs = morphs || mesh->submeshes[s].hasMorphTarget;
+        if (morphs) meshes.push_back(entity);
+    }
+    if (meshes.empty() || meshes.size() != entities.size()) return;
+
+    // the target names of the first mesh (its own, from the model file: two meshes of a model can
+    // name their targets differently), else its model's (the ModelComponent on it or an ancestor)
+    std::map<int, std::string> names;
+    const std::vector<std::string>& ownNames = scene->getComponent<MeshComponent>(meshes.front()).morphTargetNames;
+    for (size_t i = 0; i < ownNames.size(); i++) names[(int)i] = ownNames[i];
+    Entity owner = ownNames.empty() ? meshes.front() : NULL_ENTITY;
+    for (int depth = 0; owner != NULL_ENTITY && depth < 256; depth++){
+        if (const ModelComponent* model = scene->findComponent<ModelComponent>(owner)){
+            for (const auto& entry : model->morphNameMapping) names[entry.second] = entry.first;
+            break;
+        }
+        const Transform* transform = scene->findComponent<Transform>(owner);
+        owner = transform ? transform->parent : NULL_ENTITY;
+    }
+    // the meshes' own target count (their morph position attributes)
+    int count = 0;
+    for (Entity entity : meshes){
+        const MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
+        for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+            int targets = 0;
+            for (int a = (int)AttributeType::MORPHTARGET0; a <= (int)AttributeType::MORPHTARGET7; a++){
+                if (mesh.submeshes[s].attributes.count((AttributeType)a)) targets++;
+            }
+            count = std::max(count, targets);
+        }
+    }
+    if (count == 0) count = names.empty() ? MAX_MORPHTARGETS : std::min(MAX_MORPHTARGETS, names.rbegin()->first + 1);
+
+    if (!ImGui::TreeNodeEx("Blend Shapes##mesh_blend_shapes", ImGuiTreeNodeFlags_SpanAvailWidth)) return;
+    const bool recording = ClipRecordHooks::claimsAny(sceneProject->id, meshes, ClipChannel::Morph);
+    size_t claimed = 0;
+    bool animated = false;
+    for (Entity entity : meshes){
+        if (ClipRecordHooks::claims(sceneProject->id, entity, ClipChannel::Morph)) claimed++;
+        animated = animated || ClipRecordHooks::animates(sceneProject->id, entity, ClipChannel::Morph);
+    }
+    if (recording && claimed < meshes.size()){
+        ImGui::TextColored(Theme::Colors::WarningText, "Record keys %zu of the %zu selected; the others stay as they are", claimed, meshes.size());
+    }
+    // Unity: animated fields red, fields Record would start keying fainter
+    const ImVec4 recordTint = ImLerp(Theme::Colors::ErrorText, ImVec4(0, 0, 0, 1), animated ? 0.55f : 0.78f);
+    beginTable(ComponentType::MeshComponent, getLabelSize("Blend Shape 00"), "mesh_blend_shapes");
+    for (int i = 0; i < count; i++){
+        float value = scene->getComponent<MeshComponent>(meshes.front()).morphWeights[i];
+        bool mixed = false;
+        for (Entity entity : meshes){
+            mixed = mixed || std::fabs(scene->getComponent<MeshComponent>(entity).morphWeights[i] - value) > 1e-5f;
+        }
+        auto it = names.find(i);
+        const std::string label = it != names.end() && !it->second.empty() ? it->second : "Weight " + std::to_string(i);
+        propertyHeader(label);
+        ImGui::PushID(i);
+        // Unity tints the fields Record keys
+        if (recording) ImGui::PushStyleColor(ImGuiCol_FrameBg, recordTint);
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::SliderFloat("##weight", &value, 0.0f, 1.0f, mixed ? "--" : "%.3f")){
+            setMorphWeight(sceneProject, meshes, i, value);
+        }
+        if (recording) ImGui::PopStyleColor();
+        if (ImGui::IsItemDeactivated()) finishMorphEdit();
+        ImGui::SetItemTooltip("%s", !recording ? "The blend shape's weight (0 to 1)"
+                                    : claimed < meshes.size() ? "Record keys this weight at the playhead on the selected meshes it animates; the others stay as they are"
+                                    : "Record keys this weight at the playhead");
+        ImGui::PopID();
+    }
+    endTable();
+    ImGui::TreePop();
 }
 
 bool editor::InspectorWindow::propertyRowWithAutoButton(RowPropertyType propType, ComponentType cpType, std::string id, std::string label, std::string autoId, std::string autoLabel, SceneProject* sceneProject, std::vector<Entity> entities, RowSettings settings) {
@@ -5628,6 +5857,17 @@ void editor::InspectorWindow::drawTransform(ComponentType cpType, SceneProject* 
         }
     }
 
+    // the bones of a character the Pose Animation window poses belong to the pose: read-only
+    bool posedBones = false;
+    if (PoseEditSession* pose = PoseEditSession::active(); pose && sceneProject && pose->bonesApplied()){
+        for (Entity entity : entities){
+            if (entity != pose->model() && pose->ownsEntity(sceneProject->id, entity)) posedBones = true;
+        }
+    }
+    if (posedBones){
+        ImGui::TextColored(Theme::Colors::WarningText, "Posed by the Pose Animation window (read-only)");
+    }
+
     // a Lattice Follower's driven channels: LatticeSystem puts them back every frame, so they
     // are shown read-only (Unity's driven properties); the Scene view's tools move the rest
     bool drivenChannel[3] = {false, false, false};
@@ -5644,17 +5884,50 @@ void editor::InspectorWindow::drawTransform(ComponentType cpType, SceneProject* 
         }
     }
 
+    // Record (animation clips 9.R5): the rows it keys are tinted red (Unity); GameObjects of the
+    // selection it does not key stay as they are
+    bool recorded[3] = {false, false, false};
+    bool animated[3] = {false, false, false};
+    const ClipChannel recordChannels[3] = {ClipChannel::Position, ClipChannel::Rotation, ClipChannel::Scale};
+    size_t unrecorded = 0;
+    if (sceneProject) {
+        for (int channel = 0; channel < 3; channel++){
+            recorded[channel] = ClipRecordHooks::claimsAny(sceneProject->id, entities, recordChannels[channel]);
+            for (Entity entity : entities){
+                animated[channel] = animated[channel] || (recorded[channel] && ClipRecordHooks::animates(sceneProject->id, entity, recordChannels[channel]));
+            }
+        }
+        if (recorded[0]) {
+            for (Entity entity : entities) {
+                if (!ClipRecordHooks::claims(sceneProject->id, entity, ClipChannel::Position)) unrecorded++;
+            }
+        }
+    }
+    if (unrecorded > 0) {
+        ImGui::TextColored(Theme::Colors::WarningText, "Record keys %zu of the %zu selected; the others stay as they are",
+                           entities.size() - unrecorded, entities.size());
+    }
+    // Unity: an animated row red, a row Record would start keying a fainter red
+    const ImVec4 animatedTint = ImLerp(Theme::Colors::ErrorText, ImVec4(0, 0, 0, 1), 0.55f);
+    const ImVec4 recordTint = ImLerp(Theme::Colors::ErrorText, ImVec4(0, 0, 0, 1), 0.78f);
+
     beginTable(cpType, getLabelSize("billboard"));
 
     settingsPos.unit = NumericUnit::Meters;
-    ImGui::BeginDisabled(drivenChannel[0]);
+    ImGui::BeginDisabled(posedBones || drivenChannel[0]);
+    if (recorded[0]) ImGui::PushStyleColor(ImGuiCol_FrameBg, animated[0] ? animatedTint : recordTint);
     propertyRow(RowPropertyType::Vector3, cpType, "position", "Position", sceneProject, entities, settingsPos);
+    if (recorded[0]) ImGui::PopStyleColor();
     ImGui::EndDisabled();
-    ImGui::BeginDisabled(drivenChannel[1]);
+    ImGui::BeginDisabled(posedBones || drivenChannel[1]);
+    if (recorded[1]) ImGui::PushStyleColor(ImGuiCol_FrameBg, animated[1] ? animatedTint : recordTint);
     propertyRow(RowPropertyType::Quat, cpType, "rotation", "Rotation", sceneProject, entities);
+    if (recorded[1]) ImGui::PopStyleColor();
     ImGui::EndDisabled();
-    ImGui::BeginDisabled(drivenChannel[2]);
+    ImGui::BeginDisabled(posedBones || drivenChannel[2]);
+    if (recorded[2]) ImGui::PushStyleColor(ImGuiCol_FrameBg, animated[2] ? animatedTint : recordTint);
     propertyRow(RowPropertyType::Vector3, cpType, "scale", "Scale", sceneProject, entities);
+    if (recorded[2]) ImGui::PopStyleColor();
     ImGui::EndDisabled();
     propertyRow(RowPropertyType::Bool, cpType, "visible", "Visible", sceneProject, entities);
     propertyRow(RowPropertyType::Bool, cpType, "billboard", "Billboard", sceneProject, entities);
@@ -6807,6 +7080,9 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
 
     endTable();
 
+    // the morph target weights (Record keys them, animation clips 9.R5)
+    drawBlendShapes(sceneProject, entities);
+
     drawCustomShaderRow(cpType, ShaderType::MESH, sceneProject, entities);
 
     unsigned int numSubmeshes = sceneProject->scene->getComponent<MeshComponent>(entities[0]).numSubmeshes;
@@ -7172,7 +7448,9 @@ void editor::InspectorWindow::drawModelComponent(ComponentType cpType, SceneProj
     beginTable(cpType, getLabelSize("Animation 00"), "model_animations_header");
     propertyHeader("Animations", -1, false, false);
     ImGui::Text("%zu", model.animations.size());
-    if (drawSummaryAddButton("Add Animation##model_animations_add")) {
+    // a model played by an Animation Player has no entity animations (R15)
+    if (drawSummaryAddButton("Add Animation##model_animations_add", 0.0f, model.animationEntities,
+                             "The model is played by an Animation Player (no entity animations)")) {
         MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
         for (Entity entity : entities) {
             if (ModelComponent* modelComp = sceneProject->scene->findComponent<ModelComponent>(entity)) {
@@ -7187,14 +7465,24 @@ void editor::InspectorWindow::drawModelComponent(ComponentType cpType, SceneProj
     endTable();
 
     if (model.animations.empty()) {
+        drawModelClipRows(cpType, sceneProject, entities[0], {});
         return;
     }
+
+    // the loader's entities keep duplicate glTF names: the rows show the sub-clip names
+    const std::vector<std::string> subClipNames = modelSubClipNames(model.filename);
+
+    // the rows standing for a sub-clip carry its clip buttons (Add to Animation Player, Extract)
+    const float clipButtonsWidth = modelRowClipButtonsWidth();
+    std::vector<std::string> shownInRows;
 
     const float animationFirstColSize = getLabelSize("Animation 00");
     const float clearButtonFramePadding = ImGui::GetStyle().FramePadding.x / 4.0f;
     const float deleteButtonWidth = ImGui::CalcTextSize(ICON_FA_TRASH_CAN).x + clearButtonFramePadding * 2.0f;
     const float rowSpacing = ImGui::GetStyle().ItemSpacing.x;
-    const float valueColWidth = std::max(0.0f, ImGui::GetContentRegionAvail().x - animationFirstColSize - ImGui::GetStyle().CellPadding.x * 2.0f);
+    // the label column beginTable gives the table (Unity's ~40% label width), so the rows' buttons fit
+    const float labelColWidth = std::max(animationFirstColSize, std::min(ImGui::GetContentRegionAvail().x * 0.4f, Theme::dpi(180.0f)));
+    const float valueColWidth = std::max(0.0f, ImGui::GetContentRegionAvail().x - labelColWidth - ImGui::GetStyle().CellPadding.x * 4.0f);
 
     beginTable(cpType, animationFirstColSize, "model_animations");
 
@@ -7204,20 +7492,31 @@ void editor::InspectorWindow::drawModelComponent(ComponentType cpType, SceneProj
         std::string propId = "animations[" + std::to_string(i) + "]";
         Entity animEntity = model.animations[i];
         std::string animationLabel = "Animation " + std::to_string(i);
+        std::string rowSubClip;
+        std::string rowEntityName;
         if (animEntity != NULL_ENTITY && sceneProject->scene->isEntityCreated(animEntity)) {
             if (sceneProject->scene->findComponent<AnimationComponent>(animEntity)) {
-                std::string entityName = sceneProject->scene->getEntityName(animEntity);
-                if (!entityName.empty()) {
-                    animationLabel = entityName;
+                rowEntityName = sceneProject->scene->getEntityName(animEntity);
+                animationLabel = inspectorclips::modelAnimationRowLabel(rowEntityName, subClipNames, i, animationLabel);
+                if (i < subClipNames.size() && animationLabel == subClipNames[i] &&
+                    std::find(shownInRows.begin(), shownInRows.end(), animationLabel) == shownInRows.end()) {
+                    rowSubClip = animationLabel;
+                    shownInRows.push_back(rowSubClip);
                 }
             }
         }
+        const float rowButtons = rowSubClip.empty() ? 0.0f : clipButtonsWidth;
 
         RowSettings settingsAnimation;
         settingsAnimation.entityFilter.set(sceneProject->scene->getComponentId<AnimationComponent>());
-        settingsAnimation.secondColSize = std::max(0.0f, valueColWidth - deleteButtonWidth - rowSpacing);
+        settingsAnimation.secondColSize = std::max(0.0f, valueColWidth - deleteButtonWidth - rowSpacing - rowButtons);
 
         propertyRow(RowPropertyType::LocalEntity, cpType, propId, animationLabel, sceneProject, entities, settingsAnimation);
+
+        if (!rowSubClip.empty() && rowButtons > 0.0f) {
+            ImGui::SameLine();
+            drawModelRowClipButtons(sceneProject, entities[0], rowSubClip, rowEntityName);
+        }
 
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
@@ -7252,6 +7551,8 @@ void editor::InspectorWindow::drawModelComponent(ComponentType cpType, SceneProj
     }
 
     endTable();
+
+    drawModelClipRows(cpType, sceneProject, entities[0], shownInRows);
 }
 
 void editor::InspectorWindow::drawUIComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
@@ -9733,6 +10034,182 @@ void editor::InspectorWindow::drawUIDocumentComponent(ComponentType cpType, Scen
     ImGui::EndChild();
 }
 
+void editor::InspectorWindow::drawPoseAnimatorComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    PoseAnimatorComponent& animator = sceneProject->scene->getComponent<PoseAnimatorComponent>(entities[0]);
+
+    RowSettings animationSettings;
+    animationSettings.help = "Pose animation file (.poseanim), relative to the assets folder.";
+
+    RowSettings autoplaySettings;
+    autoplaySettings.help = "Plays when the game starts. Off: a script calls play() or goToPose().";
+
+    RowSettings speedSettings;
+    speedSettings.secondColSize = 6 * ImGui::GetFontSize();
+    speedSettings.help = "Playback speed: 1 = authored timing, negative plays backwards.";
+
+    RowSettings weightSettings;
+    weightSettings.secondColSize = 6 * ImGui::GetFontSize();
+    weightSettings.help = "Blend over the Model's animation clips (or its rest pose): 0 = the clips only, 1 = the pose animation only.";
+
+    beginTable(cpType, getLabelSize("Animation"));
+
+    if (entities.size() == 1) {
+        Entity entity = entities[0];
+
+        auto setAnimationPath = [&](const std::filesystem::path& selectedPath) -> bool {
+            std::filesystem::path assetsPath = std::filesystem::absolute(project->getAssetsPath()).lexically_normal();
+            std::filesystem::path filePath = std::filesystem::absolute(project->resolveAssetPath(selectedPath)).lexically_normal();
+
+            std::error_code errorCode;
+            std::filesystem::path relative = std::filesystem::relative(filePath, assetsPath, errorCode);
+            const std::string relativePath = relative.generic_string();
+            if (errorCode || relative.empty() || *relative.begin() == ".." || !Util::isPoseAnimationFile(relativePath)) {
+                ImGui::OpenPopup("Pose Animation Error");
+                return false;
+            }
+
+            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(
+                new PropertyCmd<std::string>(project, sceneProject->id, entity, cpType, "animation", relativePath)
+            );
+            return true;
+        };
+
+        const std::string currentPath = animator.animation;
+
+        prefabRowProperty = "animation";
+        if (propertyHeader("Animation", -1, !currentPath.empty())) {
+            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(
+                new PropertyCmd<std::string>(project, sceneProject->id, entity, cpType, "animation", "")
+            );
+        }
+
+        const std::string displayName = currentPath.empty() ? "< Not set >" : std::filesystem::path(currentPath).filename().string();
+        const float availWidth = ImGui::GetContentRegionAvail().x;
+        const float buttonWidth = ImGui::CalcTextSize(ICON_FA_FOLDER_OPEN).x + ImGui::GetStyle().FramePadding.x * 2;
+
+        ImGui::BeginGroup();
+
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, Theme::Colors::filenameLabel);
+        ImGui::BeginChild("poseanimatorfile", ImVec2(availWidth - buttonWidth - ImGui::GetStyle().ItemSpacing.x, ImGui::GetFrameHeight()),
+            false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+        const float textWidth = ImGui::CalcTextSize(displayName.c_str()).x;
+        const float childAvail = ImGui::GetContentRegionAvail().x;
+        ImGui::SetCursorPosX(std::max(0.0f, childAvail - textWidth - 2));
+        ImGui::SetCursorPosY(ImGui::GetStyle().FramePadding.y);
+        if (currentPath.empty())
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+        ImGui::Text("%s", displayName.c_str());
+        if (currentPath.empty())
+            ImGui::PopStyleColor();
+        ImGui::EndChild();
+        if (!currentPath.empty()){
+            ImGui::SetItemTooltip("%s", currentPath.c_str());
+        }
+        ImGui::PopStyleColor();
+
+        ImGui::SameLine();
+
+        if (ImGui::Button(ICON_FA_FOLDER_OPEN "##poseanimator_load")) {
+            std::string path = editor::FileDialogs::openFileDialog(project->getAssetsPath().string(), FILE_DIALOG_POSE_ANIMATION);
+            if (!path.empty()) {
+                setAnimationPath(path);
+            }
+        }
+
+        ImGui::EndGroup();
+
+        if (sceneProject->playState == ScenePlayState::STOPPED) {
+            if (ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files", ImGuiDragDropFlags_AcceptBeforeDelivery)) {
+                    std::vector<std::string> receivedStrings = editor::Util::getStringsFromPayload(payload);
+                    if (!receivedStrings.empty() && Util::isPoseAnimationFile(receivedStrings[0]) && payload->IsDelivery()) {
+                        if (setAnimationPath(std::filesystem::path(receivedStrings[0]))) {
+                            ImGui::SetWindowFocus(InspectorWindow::WINDOW_NAME);
+                        }
+                    }
+                }
+                ImGui::EndDragDropTarget();
+            }
+        }
+
+        if (ImGui::BeginPopupModal("Pose Animation Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::Text("Selected file must be a .poseanim file within the assets directory.");
+            ImGui::Separator();
+            const float buttonModalWidth = 120;
+            ImGui::SetCursorPosX((ImGui::GetWindowSize().x - buttonModalWidth) * 0.5f);
+            if (ImGui::Button("OK", ImVec2(buttonModalWidth, 0))) {
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
+        }
+    }else{
+        propertyRow(RowPropertyType::String, cpType, "animation", "Animation", sceneProject, entities, animationSettings);
+    }
+
+    propertyRow(RowPropertyType::Bool, cpType, "autoplay", "Autoplay", sceneProject, entities, autoplaySettings);
+    propertyRow(RowPropertyType::Float, cpType, "speed", "Speed", sceneProject, entities, speedSettings);
+    propertyRow(RowPropertyType::Float_0_1, cpType, "weight", "Weight", sceneProject, entities, weightSettings);
+
+    // Bake (pose baker) and Open (Pose Animation window): shown once the editor tasks hook them in
+    const PoseInspectorHooks& hooks = poseInspectorHooks();
+    if (entities.size() == 1 && (hooks.bake || hooks.open)) {
+        const Entity entity = entities[0];
+        const bool stopped = sceneProject->playState == ScenePlayState::STOPPED;
+        propertyHeader("");
+        ImGui::BeginDisabled(animator.animation.empty());
+        if (hooks.open) {
+            if (ImGui::Button(ICON_FA_PERSON_RUNNING " Open##poseanimator_open")) {
+                hooks.open(project, sceneProject->id, entity, animator.animation);
+            }
+            ImGui::SetItemTooltip("Edit the pose animation in the Pose Animation window");
+            if (hooks.bake) ImGui::SameLine();
+        }
+        if (hooks.bake) {
+            // as the Pose Animation window's Bake: to a shared Animation Clip (primary) or into the scene
+            ImGui::BeginDisabled(!stopped);
+            if (ImGui::Button(ICON_FA_FILM " Bake " ICON_FA_CARET_DOWN "##poseanimator_bake")) {
+                ImGui::OpenPopup("##poseanimator_bake_menu");
+            }
+            UIProbe::item("poseanimator.bake");
+            ImGui::SetItemTooltip("Bake the pose animation to an Animation Clip (.anim, shared) or into the scene (one undo step)");
+            if (ImGui::BeginPopup("##poseanimator_bake_menu")) {
+                if (hooks.bakeToClip) {
+                    if (ImGui::MenuItem(ICON_FA_FILM " Bake to Animation Clip")) {
+                        hooks.bakeToClip(project, sceneProject->id, entity, animator.animation);
+                    }
+                    UIProbe::item("poseanimator.bakeMenu.clip");
+                    ImGui::SetItemTooltip("Writes <name>.anim next to the pose animation (baking again updates it) and lists it in the\n"
+                                          "Model's Animation Player: one clip any character with the same bones can play.");
+                }
+                if (ImGui::MenuItem(ICON_FA_DIAGRAM_PROJECT " Bake into Scene")) {
+                    hooks.bake(project, sceneProject->id, entity, animator.animation);
+                }
+                UIProbe::item("poseanimator.bakeMenu.scene");
+                ImGui::SetItemTooltip("Bake to an Animation of this Model in the scene (baking again updates it).\n"
+                                      "Plays with Model:playAnimation(name) and in the Animation window.");
+                ImGui::EndPopup();
+            }
+            ImGui::EndDisabled();
+        }
+        ImGui::EndDisabled();
+    }
+
+    endTable();
+
+    // what the animator does while playing
+    if (entities.size() == 1 && sceneProject->playState != ScenePlayState::STOPPED) {
+        const pose::PoseAnimatorRuntime* runtime = animator.runtime.get();
+        if (runtime && runtime->failed) {
+            ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.4f, 1.0f), "%s", runtime->error.c_str());
+        }else if (runtime && runtime->isLoaded()) {
+            ImGui::TextDisabled("%s  %.2f / %.2f s", animator.playing ? "Playing" : (runtime->transitionActive && !runtime->transitionArrived ? "Go to pose" : "Paused"),
+                                animator.time, runtime->length);
+        }else if (!animator.animation.empty()) {
+            ImGui::TextDisabled("Loading...");
+        }
+    }
+}
+
 void editor::InspectorWindow::drawReflectionProbeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     ReflectionProbeComponent& probe = sceneProject->scene->getComponent<ReflectionProbeComponent>(entities[0]);
 
@@ -10600,6 +11077,16 @@ void editor::InspectorWindow::startActionPreview(Entity entity, Scene* scene, Sc
     ActionComponent* actionComp = scene->findComponent<ActionComponent>(entity);
     if (!actionComp) return;
 
+    // One pose owner per root (animation clips 9.R7): an Animation window or Pose window preview
+    // of the entities the preview writes stops (and restores) before the snapshot is taken
+    releaseActionPreviewOwners();
+    actionPreviewOwners = inspectorclips::acquirePreviewOwners(sceneProject->id, scene, entity, [this]() { stopActionPreviewIfActive(); });
+    actionComp = scene->findComponent<ActionComponent>(entity);
+    if (!actionComp) {
+        releaseActionPreviewOwners();
+        return;
+    }
+
     actionPreviewStates.clear();
     actionPreviewEntity = entity;
     actionPreviewSceneId = sceneProject->id;
@@ -10647,8 +11134,18 @@ void editor::InspectorWindow::startActionPreview(Entity entity, Scene* scene, Sc
     actionPreviewing = true;
 }
 
+void editor::InspectorWindow::releaseActionPreviewOwners() {
+    // moved out first: a token is released once, also when a release runs a stop
+    const std::vector<int> tokens = std::move(actionPreviewOwners);
+    actionPreviewOwners.clear();
+    for (int token : tokens) {
+        PreviewOwner::release(token);
+    }
+}
+
 void editor::InspectorWindow::stopActionPreviewIfActive() {
     if (!actionPreviewing) {
+        releaseActionPreviewOwners();
         return;
     }
 
@@ -10663,6 +11160,7 @@ void editor::InspectorWindow::stopActionPreviewIfActive() {
     actionPreviewPlaying = false;
     actionPreviewEntity = NULL_ENTITY;
     actionPreviewSceneId = 0;
+    releaseActionPreviewOwners();
 }
 
 void editor::InspectorWindow::stopActionPreview(Scene* scene, SceneProject* sceneProject) {
@@ -10713,6 +11211,7 @@ void editor::InspectorWindow::stopActionPreview(Scene* scene, SceneProject* scen
     actionPreviewPlaying = false;
     actionPreviewEntity = NULL_ENTITY;
     actionPreviewSceneId = 0;
+    releaseActionPreviewOwners();
     if (sceneProject) {
         sceneProject->needUpdateRender = true;
     }
@@ -10843,12 +11342,19 @@ template void editor::InspectorWindow::drawTrackValues<ScaleTracksComponent, Vec
     const Vector3&, const char*, std::vector<Vector3> ScaleTracksComponent::*, const char*,
     const std::function<void(MultiPropertyCmd*, Entity, ScaleTracksComponent*, size_t)>&, const std::function<void(MultiPropertyCmd*, Entity, ScaleTracksComponent*)>&);
 
-// ---------------------------------------------------------------- Lattice (spec §9.1)
+void editor::InspectorWindow::revealAssetInProject(const std::filesystem::path& absolutePath){
+    if (ProjectWindow* projectWindow = Backend::getApp().getProjectWindow()) {
+        projectWindow->revealAsset(absolutePath);
+    }
+}
 
+// ---------------------------------------------------------------- Lattice (spec §9.1)
 
 void editor::InspectorWindow::show(){
     // Flush any debounced material file writes
     flushDirtyMaterials(ImGui::GetIO().DeltaTime);
+
+    trackInspectedObject();
 
     // fluid previews keep their Scene view redrawing; they and the Paint Dye brush end with
     // what they work on (FluidEditorTools)
@@ -10899,6 +11405,14 @@ void editor::InspectorWindow::show(){
             ImGui::End();
             return;
         }
+    }
+    // the inspected .anim (or model clips) the Project window's last click chose: drawn instead of
+    // the scene selection, never touching a scene (R30)
+    if (drawInspectedAsset()) {
+        stopSoundPreview();
+        stopActionPreviewIfActive();
+        ImGui::End();
+        return;
     }
 
     uint32_t propertiesSceneId = project->getSelectedSceneForProperties();

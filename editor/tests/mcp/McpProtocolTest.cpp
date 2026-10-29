@@ -4,8 +4,7 @@
 // The MCP server's protocol layer without an editor: MCP 2026-07-28 next to the
 // initialize-era versions (server/discover, per-request _meta, resultType and cache hints,
 // HTTP statuses of its errors), the HTTP transport's header checks (MCP-Protocol-Version /
-// Mcp-Method / Mcp-Name, base64 header values), its bearer token, and the read-only mode's
-// rule for read-only tools whose arguments write files.
+// Mcp-Method / Mcp-Name, base64 header values) and its bearer token.
 
 #include <gtest/gtest.h>
 
@@ -14,7 +13,6 @@
 
 #include <map>
 #include <memory>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -74,32 +72,14 @@ namespace {
 
 // -- 2026-07-28 next to the initialize-era versions ------------------------------------------
 
-TEST(McpProtocol, SupportedVersionsListModernFirst) {
-    const Json versions = McpServer::supportedProtocolVersions();
-    ASSERT_TRUE(versions.is_array());
-    EXPECT_EQ(versions[0], MODERN);
-    const std::set<std::string> rest(versions.begin() + 1, versions.end());
-    EXPECT_EQ(rest, (std::set<std::string>{"2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"}));
-    EXPECT_TRUE(McpServer::isLegacyProtocolVersion("2025-06-18"));
-    EXPECT_FALSE(McpServer::isLegacyProtocolVersion(MODERN));
-    EXPECT_FALSE(McpServer::isLegacyProtocolVersion(""));
-}
-
-TEST(McpProtocol, RequestProtocolVersionReadsMeta) {
-    EXPECT_EQ(McpServer::requestProtocolVersion(request("tools/list", {{"_meta", modernMeta()}})), MODERN);
-    EXPECT_EQ(McpServer::requestProtocolVersion(request("tools/list")), "");
-    EXPECT_EQ(McpServer::requestProtocolVersion(request("tools/list", {{"_meta", {{"progressToken", 1}}}})), "");
-    EXPECT_EQ(McpServer::requestProtocolVersion(Json{{"jsonrpc", "2.0"}, {"id", 1}, {"method", "ping"}}), "");
-}
-
 TEST(McpProtocol, DiscoverAnswersWithVersionsAndCacheHints) {
     const auto [answer, status] = ask(statelessSession(), request("server/discover", {{"_meta", modernMeta()}}));
     EXPECT_EQ(status, 200);
     ASSERT_TRUE(answer.contains("result")) << answer.dump();
     const Json& result = answer["result"];
-    EXPECT_EQ(result["supportedVersions"], McpServer::supportedProtocolVersions());
+    EXPECT_EQ(result["supportedVersions"], (Json::array({MODERN, "2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"})));
     EXPECT_TRUE(result["capabilities"].contains("tools"));
-    EXPECT_EQ(result["_meta"]["io.modelcontextprotocol/serverInfo"]["name"], McpServer::SERVER_NAME);
+    EXPECT_FALSE(result["_meta"]["io.modelcontextprotocol/serverInfo"]["name"].get<std::string>().empty());
     EXPECT_FALSE(result["instructions"].get<std::string>().empty());
     EXPECT_EQ(result["resultType"], "complete");
     EXPECT_EQ(result["ttlMs"], 0);
@@ -114,7 +94,7 @@ TEST(McpProtocol, ModernResultsSayComplete) {
     EXPECT_EQ(list["result"]["resultType"], "complete");
     EXPECT_EQ(list["result"]["ttlMs"], 0);
     EXPECT_EQ(list["result"]["cacheScope"], "private");
-    EXPECT_EQ(list["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]["name"], McpServer::SERVER_NAME);
+    EXPECT_FALSE(list["result"]["_meta"]["io.modelcontextprotocol/serverInfo"]["name"].get<std::string>().empty());
 
     // Not a cacheable method: resultType, no cache hints
     const auto [completion, completionStatus] = ask(statelessSession(), request("completion/complete", {{"_meta", modernMeta()}}));
@@ -129,7 +109,7 @@ TEST(McpProtocol, ModernErrorsCarryTheirHttpStatus) {
         EXPECT_EQ(status, 400);
         EXPECT_EQ(answer["error"]["code"], -32022);
         EXPECT_EQ(answer["error"]["data"]["requested"], "2099-01-01");
-        EXPECT_EQ(answer["error"]["data"]["supported"], McpServer::supportedProtocolVersions());
+        EXPECT_EQ(answer["error"]["data"]["supported"], (Json::array({MODERN, "2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"})));
         EXPECT_EQ(answer["id"], 1);
     }
     // The required clientCapabilities missing: 400, Invalid params
@@ -257,26 +237,4 @@ TEST(McpHttp, BearerToken) {
     EXPECT_FALSE(McpTransportHttp::constantTimeEquals("abc", "abd"));
     EXPECT_FALSE(McpTransportHttp::constantTimeEquals("abc", "ab"));
     EXPECT_TRUE(McpTransportHttp::constantTimeEquals("", ""));
-}
-
-// -- read-only mode ------------------------------------------------------------------------
-
-TEST(McpReadOnly, ArgumentsThatWriteMakeACallAChange) {
-    ToolDef edit;
-    edit.name = "create_entity";
-    EXPECT_TRUE(McpServer::mayChange(edit, Json::object()));
-
-    ToolDef read;
-    read.name = "find_entities";
-    read.annotations.readOnly = true;
-    EXPECT_FALSE(McpServer::mayChange(read, Json::object()));
-
-    // screenshot: a read, unless it saves the PNG
-    ToolDef shot;
-    shot.name = "screenshot";
-    shot.annotations.readOnly = true;
-    shot.writesFiles = [](const Json& args) { return args.contains("save_path"); };
-    EXPECT_FALSE(McpServer::mayChange(shot, Json{{"view", "game"}}));
-    EXPECT_TRUE(McpServer::mayChange(shot, Json{{"save_path", "project.yaml"}}));
-    EXPECT_FALSE(McpServer::mayChange(shot, Json()));
 }

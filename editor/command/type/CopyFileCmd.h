@@ -6,6 +6,7 @@
 #include "command/Command.h"
 #include "command/CommandNames.h"
 #include "Project.h"
+#include "animation/AnimationClipDocument.h"
 #include <map>
 #include <vector>
 #include <string>
@@ -34,6 +35,8 @@ namespace jasperengine::editor{
         bool overwrite = false;
         // the GUIDs the copies got (by project-relative path), given again by a redo
         std::map<std::string, std::string> copyGuids;
+        // moves: .anim files whose preview/source paths followed (animation clips spec 9.R26)
+        std::vector<ClipHintEdit> clipHintEdits;
 
     public:
         CopyFileCmd(Project* project, std::vector<std::string> sourceFiles, std::string currentDirectory, std::string targetDirectory, bool copy);

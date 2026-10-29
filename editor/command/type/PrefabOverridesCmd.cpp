@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "PrefabOverridesCmd.h"
+#include "pose/PoseEditSession.h"
 
 #include "command/type/AddEntityToPrefabCmd.h"
 #include "command/type/DeleteEntityCmd.h"
@@ -111,6 +112,8 @@ void editor::PrefabOverridesCmd::undo(){
 editor::PrefabOverridesCmd* editor::PrefabOverridesCmd::revertAll(Project* project, uint32_t sceneId, Entity root){
     using Kind = PrefabOverrideEntry::Kind;
     using Operation = PrefabOverrideCmd::Operation;
+    // a posed character's bones are no overrides: back to rest before they are listed and reverted
+    PoseEditSession::suspendActiveFor(sceneId, {root});
     const std::vector<PrefabOverrideEntry> entries = project->getPrefabOverrideEntries(sceneId, root);
     // Added GameObjects first (their delete reads the scene as it is), removed GameObjects
     // before components (a reverted component pointing at one finds it back)
@@ -153,6 +156,8 @@ editor::PrefabOverridesCmd* editor::PrefabOverridesCmd::applyAll(Project* projec
         return nullptr;
     }
     const std::filesystem::path rootPath = component->path;
+    // a posed character's bones are no overrides: back to rest before they are listed
+    PoseEditSession::suspendActiveFor(sceneId, {root});
     const std::vector<PrefabOverrideEntry> entries = project->getPrefabOverrideEntries(sceneId, root);
     // Added GameObjects first: each reads where it is when made
     std::vector<std::unique_ptr<Command>> steps;

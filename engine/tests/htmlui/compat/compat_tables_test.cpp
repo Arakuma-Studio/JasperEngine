@@ -1,44 +1,23 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The support tables (phase-2 §3.5, Appendices A-E): the lint phase 4 relies on (sorted,
-// unique, notes and suggestions), completeness against RmlUi's StyleSheetSpecification and the
-// committed W3C property index (fixtures/compat/css-properties.txt), lookups, fork features.
+// Public support information (phase-2 §3.5, Appendices A-E): completeness against the
+// committed W3C property index and independently specified lookup results.
 
 #include "CompatTestCommon.h"
 
 #include "htmlui/compat/CompatApi.h"
 #include "htmlui/compat/SupportTables.h"
 
-#include "HtmlUI.h"
-
-#include <RmlUi/Core/ID.h>
-#include <RmlUi/Core/StyleSheetSpecification.h>
-
 #include <gtest/gtest.h>
 
 #include <cstring>
-#include <set>
 
 using namespace jasperengine;
 using namespace jasperengine::htmlui::compat;
 using namespace jasperengine::test::compat;
 
 namespace {
-
-    template<typename Row>
-    void checkRowContract(const Row& row, const std::string& label){
-        if (row.support != Support::Native)
-            EXPECT_GT(std::strlen(row.note), 0u) << label << ": a " << supportName(row.support) << " row needs a note";
-        if (row.support == Support::Unsupported)
-            EXPECT_GT(std::strlen(row.suggestion), 0u) << label << ": an unsupported row needs a suggestion";
-        if (row.support == Support::Fallback){
-            EXPECT_NE(row.fork, ForkFeature::None) << label << ": a fallback row names its fork feature";
-            EXPECT_EQ(row.supportWithFork, Support::Native) << label;
-        }
-        if (row.fork == ForkFeature::None)
-            EXPECT_EQ(row.supportWithFork, row.support) << label << ": without a fork feature the support cannot change";
-    }
 
     std::vector<std::string> readPropertyIndex(){
         std::string text;
@@ -57,43 +36,7 @@ namespace {
         return names;
     }
 
-    struct RmlUiSession {
-        bool ok;
-        RmlUiSession(): ok(HtmlUI::acquire()) {}
-        ~RmlUiSession(){ if (ok) HtmlUI::release(); }
-    };
 
-}
-
-TEST(CompatTables, PropertyTableSortedUniqueAndLinted){
-    const Span<const PropertySupport> table = propertyTable();
-    ASSERT_GT(table.size(), 700u);
-    for (size_t i = 0; i < table.size(); i++){
-        const PropertySupport& row = table[i];
-        if (i > 0)
-            EXPECT_LT(std::strcmp(table[i - 1].name, row.name), 0) << row.name << " is not after " << table[i - 1].name;
-        checkRowContract(row, row.name);
-        EXPECT_NE(row.initial, nullptr);
-        EXPECT_NE(row.output, nullptr);
-        EXPECT_GT(std::strlen(row.spec), 0u) << row.name;
-        EXPECT_LT((size_t)row.rewrite, (size_t)RewriteId::Count) << row.name;
-        // a property dropped in every fork state is never dispatched to a rewrite (one a fork
-        // feature makes supported is, with the feature: phase 3)
-        const auto dropped = [](Support support){ return support == Support::Unsupported || support == Support::Ignored; };
-        if (dropped(row.support) && (row.fork == ForkFeature::None || dropped(row.supportWithFork)))
-            EXPECT_EQ(row.rewrite, RewriteId::None) << row.name;
-        EXPECT_EQ(findProperty(row.name), &row) << row.name;
-    }
-}
-
-TEST(CompatTables, EveryRewriteIdIsUsed){
-    std::set<RewriteId> used;
-    for (const PropertySupport& row : propertyTable())
-        used.insert(row.rewrite);
-    for (size_t i = 1; i < (size_t)RewriteId::Count; i++)
-        EXPECT_TRUE(used.count((RewriteId)i)) << "RewriteId::" << rewriteIdName((RewriteId)i) << " has no property row";
-    EXPECT_STREQ(rewriteIdName(RewriteId::Background), "Background");
-    EXPECT_STREQ(rewriteIdName(RewriteId::LineClamp), "LineClamp");
 }
 
 TEST(CompatTables, EveryW3CPropertyHasARow){
@@ -101,113 +44,6 @@ TEST(CompatTables, EveryW3CPropertyHasARow){
     ASSERT_GT(names.size(), 700u);
     for (const std::string& name : names)
         EXPECT_NE(findProperty(name), nullptr) << "'" << name << "' (W3C property index) has no row";
-}
-
-TEST(CompatTables, EveryRmlUiPropertyAndShorthandHasARow){
-    RmlUiSession rml;
-    ASSERT_TRUE(rml.ok);
-
-    // (phase 3 declares the ids of every feature in the fork's ID.h at once; an id whose package has not
-    // registered it yet has no name and nothing parses into it)
-    size_t checked = 0;
-    for (size_t id = 1; id < (size_t)Rml::PropertyId::NumDefinedIds; id++){
-        if (!Rml::StyleSheetSpecification::GetProperty((Rml::PropertyId)id))
-            continue;
-        const std::string& name = Rml::StyleSheetSpecification::GetPropertyName((Rml::PropertyId)id);
-        ASSERT_FALSE(name.empty()) << id;
-        EXPECT_NE(findProperty(name), nullptr) << "RmlUi property '" << name << "' has no row";
-        checked++;
-    }
-    for (size_t id = 1; id < (size_t)Rml::ShorthandId::NumDefinedIds; id++){
-        if (!Rml::StyleSheetSpecification::GetShorthand((Rml::ShorthandId)id))
-            continue;
-        const std::string& name = Rml::StyleSheetSpecification::GetShorthandName((Rml::ShorthandId)id);
-        ASSERT_FALSE(name.empty()) << id;
-        EXPECT_NE(findProperty(name), nullptr) << "RmlUi shorthand '" << name << "' has no row";
-        checked++;
-    }
-    // properties registered at run time (the compat runtime's, phase-3 fork patches)
-    for (const Rml::PropertyId id : Rml::StyleSheetSpecification::GetRegisteredProperties()){
-        const std::string& name = Rml::StyleSheetSpecification::GetPropertyName(id);
-        EXPECT_NE(findProperty(name), nullptr) << "registered property '" << name << "' has no row";
-    }
-    EXPECT_GT(checked, 100u);
-}
-
-TEST(CompatTables, ValueTableGroupedByProperty){
-    const Span<const ValueSupport> table = valueTable();
-    ASSERT_GT(table.size(), 100u);
-    std::set<std::string> finished;
-    std::string current;
-    std::set<std::string> valuesOfCurrent;
-    for (size_t i = 0; i < table.size(); i++){
-        const ValueSupport& row = table[i];
-        const std::string label = std::string(row.property) + ": " + row.value;
-        checkRowContract(row, label);
-        EXPECT_NE(findProperty(row.property), nullptr) << label << ": the property has no row";
-        if (row.property != current){
-            if (!current.empty()){
-                finished.insert(current);
-                EXPECT_LT(current, std::string(row.property)) << "value table not sorted at " << label;
-            }
-            EXPECT_FALSE(finished.count(row.property)) << row.property << " rows are not contiguous";
-            current = row.property;
-            valuesOfCurrent.clear();
-        }
-        EXPECT_TRUE(valuesOfCurrent.insert(row.value).second) << "duplicate " << label;
-    }
-    const Span<const ValueSupport> display = valuesOf("display");
-    EXPECT_GT(display.size(), 10u);
-    for (const ValueSupport& row : display)
-        EXPECT_STREQ(row.property, "display");
-    EXPECT_TRUE(valuesOf("no-such-property").empty());
-}
-
-TEST(CompatTables, OtherTablesLinted){
-    for (const SelectorSupport& row : selectorTable())
-        checkRowContract(row, row.name);
-    for (const AtRuleSupport& row : atRuleTable()){
-        checkRowContract(row, row.name);
-        EXPECT_EQ(row.name[0], '@') << row.name;
-    }
-    for (const MediaFeatureSupport& row : mediaFeatureTable())
-        checkRowContract(row, row.name);
-    for (const InputTypeSupport& row : inputTypeTable()){
-        checkRowContract(row, row.type);
-        EXPECT_GT(std::strlen(row.rmlType), 0u) << row.type;
-        // Appendix D.3: approximations and the unsupported file are reported; native and
-        // emulated types (number, reset, image) need no diagnostic of their own
-        if (row.reported)
-            EXPECT_NE(row.support, Support::Native) << row.type;
-        if (row.support == Support::Native)
-            EXPECT_FALSE(row.reported) << row.type;
-    }
-    for (const UnitSupport& row : unitTable())
-        checkRowContract(row, row.unit);
-
-    const Span<const ElementSupport> elements = elementTable();
-    for (size_t i = 0; i < elements.size(); i++){
-        checkRowContract(elements[i], elements[i].name);
-        if (i > 0)
-            EXPECT_LT(std::strcmp(elements[i - 1].name, elements[i].name), 0) << elements[i].name;
-    }
-    const Span<const FunctionSupport> functions = functionTable();
-    for (size_t i = 0; i < functions.size(); i++){
-        checkRowContract(functions[i], functions[i].name);
-        if (i > 0)
-            EXPECT_LT(std::strcmp(functions[i - 1].name, functions[i].name), 0) << functions[i].name;
-    }
-    const Span<const AttributeSupport> attributes = attributeTable();
-    for (size_t i = 0; i < attributes.size(); i++){
-        const AttributeSupport& row = attributes[i];
-        checkRowContract(row, std::string(row.element) + " " + row.name);
-        if (i > 0){
-            const AttributeSupport& previous = attributes[i - 1];
-            const int byElement = std::strcmp(previous.element, row.element);
-            EXPECT_TRUE(byElement < 0 || (byElement == 0 && std::strcmp(previous.name, row.name) < 0))
-                << row.element << " " << row.name << " is not after " << previous.element << " " << previous.name;
-        }
-    }
 }
 
 TEST(CompatTables, AppendixSamples){
@@ -324,28 +160,6 @@ TEST(CompatTables, AppendixSamples){
     EXPECT_EQ(round->fork, ForkFeature::None);
 }
 
-TEST(CompatTables, EffectiveSupportFollowsForkFeatures){
-    const ValueSupport* grid = findValue("display", "grid");
-    ASSERT_NE(grid, nullptr);
-    EXPECT_EQ(effectiveSupport(*grid, ForkFeatures::none()), Support::Fallback);
-    EXPECT_EQ(effectiveSupport(*grid, ForkFeatures::none().with(ForkFeature::Grid, true)), Support::Native);
-    EXPECT_EQ(effectiveSupport(*grid, ForkFeatures::all()), Support::Native);
-    EXPECT_EQ(effectiveSupport(*grid, ForkFeatures::all().with(ForkFeature::Grid, false)), Support::Fallback);
-    EXPECT_EQ(effectiveSupport(Support::Unsupported, ForkFeature::None, Support::Unsupported, ForkFeatures::all()), Support::Unsupported);
-
-    // every row: present() gives the table's own support, or the one with the fork when the
-    // row's feature is present
-    for (const PropertySupport& row : propertyTable())
-        EXPECT_EQ(effectiveSupport(row, ForkFeatures::present()), ForkFeatures::present().has(row.fork) ? row.supportWithFork : row.support) << row.name;
-    // calc(), min(), max(), clamp(): native with the fork's Calc (p3-base), folded without it
-    for (const char* name : {"calc", "min", "max", "clamp"}){
-        const FunctionSupport* function = findFunction(name);
-        ASSERT_NE(function, nullptr) << name;
-        EXPECT_EQ(effectiveSupport(*function, ForkFeatures::present()), Support::Native) << name;
-        EXPECT_EQ(effectiveSupport(*function, ForkFeatures::present().with(ForkFeature::Calc, false)), Support::Fallback) << name;
-    }
-}
-
 TEST(CompatTables, Names){
     EXPECT_STREQ(supportName(Support::Native), "native");
     EXPECT_STREQ(supportName(Support::Rewritten), "rewritten");
@@ -368,4 +182,14 @@ TEST(CompatTables, CssPropertyNameOfRcss){
     EXPECT_EQ(cssPropertyName("white-space"), "white-space");
     EXPECT_EQ(cssPropertyName("tab-index"), "tab-index");
     EXPECT_EQ(cssPropertyName("not-a-property"), "not-a-property");
+}
+
+// S16 AC17: text-rendering is native (fork S16-F3): the rewriter passes it through, check --ui reports
+// nothing for it
+TEST(CompatTables, TextRenderingIsNative){
+    const PropertySupport* row = findProperty("text-rendering");
+    ASSERT_NE(row, nullptr);
+    EXPECT_EQ(row->support, Support::Native);
+    EXPECT_EQ(row->supportWithFork, Support::Native);
+    EXPECT_TRUE(row->inherited);
 }

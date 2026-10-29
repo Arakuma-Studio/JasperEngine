@@ -159,6 +159,10 @@ namespace jasperengine::editor{
     public:
         // Called after any command apply/undo/redo with the scene id and affectsStructure().
         static std::function<void(size_t, bool)> onSceneModified;
+        // Called before an undo() or redo() step, with the history's scene id (the Pose Animation
+        // window puts a posed character's rest bones back: the step runs on the rest, which the
+        // pose saves again afterwards)
+        static std::function<void(size_t)> beforeStep;
 
         // Runs before every push, undo, redo, jump and trim: false refuses it, with the reason
         // ("Busy: <reason>" for the user). Open interactive edits of other histories are

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "DuplicateEntityCmd.h"
+#include "pose/PoseEditSession.h"
 
 #include "command/PlayChangeReview.h"
 
@@ -31,6 +32,8 @@ bool editor::DuplicateEntityCmd::execute(){
     if (!sceneProject || sourceEntities.empty()){
         return false;
     }
+    // a posed character goes back to its rest bones first: they are what the copies get (also on redo)
+    PoseEditSession::suspendActiveFor(sceneId, sourceEntities);
 
     Scene* scene = sceneProject->scene;
 

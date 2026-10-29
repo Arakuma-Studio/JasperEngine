@@ -8,6 +8,10 @@
 
 namespace Rml {
 
+// Fork (S16-F6): RenderManager::LastPaintShortcuts
+static bool last_paint_shortcuts = false;
+
+
 RenderManager::RenderManager(RenderInterface* render_interface) : render_interface(render_interface), texture_database(MakeUnique<TextureDatabase>())
 {
 	RMLUI_ASSERT(render_interface);
@@ -51,7 +55,15 @@ void RenderManager::PrepareRender(Vector2i dimensions)
 	RMLUI_ASSERTMSG(render_stack.empty(), "Unbalanced render stack detected, ensure every PushLayer call has a corresponding call to PopLayer.");
 #endif
 
+	ResetClipMemo();
+	paint_shortcuts = render_interface->CullsOffscreenPaint();
+	last_paint_shortcuts = paint_shortcuts;
 	SetViewport(dimensions);
+}
+
+bool RenderManager::LastPaintShortcuts()
+{
+	return last_paint_shortcuts;
 }
 
 void RenderManager::SetViewport(Vector2i dimensions)
@@ -156,6 +168,10 @@ void RenderManager::SetClipMask(ClipMaskGeometryList in_clip_elements)
 
 void RenderManager::SetTransform(const Matrix4f* p_new_transform)
 {
+	// Fork (S16-F6): most elements have no transform, as the state: nothing to compare (two calls per element rendered)
+	if (!p_new_transform && transform_identity && paint_shortcuts)
+		return;
+
 	static const Matrix4f identity_transform = Matrix4f::Identity();
 	const Matrix4f& new_transform = (p_new_transform ? *p_new_transform : identity_transform);
 
@@ -164,6 +180,7 @@ void RenderManager::SetTransform(const Matrix4f* p_new_transform)
 		render_interface->SetTransform(p_new_transform);
 		state.transform = new_transform;
 	}
+	transform_identity = (!p_new_transform || state.transform == identity_transform);
 }
 
 void RenderManager::ApplyClipMask(const ClipMaskGeometryList& clip_elements)
@@ -180,12 +197,67 @@ void RenderManager::ApplyClipMask(const ClipMaskGeometryList& clip_elements)
 			RMLUI_ASSERT(element_clip.geometry->render_manager == this);
 			SetTransform(element_clip.transform);
 			if (CompiledGeometryHandle handle = GetCompiledGeometryHandle(element_clip.geometry->resource_handle))
-				render_interface->RenderToClipMask(element_clip.operation, handle, element_clip.absolute_offset);
+			{
+				if (element_clip.has_shape)
+				{
+					ClipShape shape = element_clip.shape;
+					shape.transform = element_clip.transform;
+					render_interface->RenderToClipMaskShape(element_clip.operation, handle, element_clip.absolute_offset, shape);
+				}
+				else
+					render_interface->RenderToClipMask(element_clip.operation, handle, element_clip.absolute_offset);
+			}
 		}
 
 		// Apply the initially set transform in case it was changed.
 		SetTransform(&initial_transform);
 	}
+}
+
+void RenderManager::RequestRender()
+{
+	render_requested = true;
+}
+
+bool RenderManager::ConsumeRenderRequest()
+{
+	const bool requested = render_requested;
+	render_requested = false;
+	return requested;
+}
+
+bool RenderManager::SupportsPrimitives() const
+{
+	return render_interface->SupportsPrimitives();
+}
+
+void RenderManager::RenderPrimitives(Span<const BoxPrimitive> primitives, Vector2f translation)
+{
+	// pixel-snapped as Geometry::Render snaps the mesh path's translation (S16-F1)
+	if (!primitives.empty())
+		render_interface->RenderPrimitives(primitives, translation.Round());
+}
+
+bool RenderManager::SupportsGradientPrimitive(const CompiledShader& shader, CompiledShaderHandle& handle)
+{
+	handle = {};
+	if (!shader || shader.render_manager != this || !render_interface->SupportsPrimitives() ||
+		!render_interface->SupportsGradientPrimitive(shader.resource_handle))
+		return false;
+	handle = shader.resource_handle;
+	return true;
+}
+
+bool RenderManager::IsOutsideScissor(Rectanglef rectangle)
+{
+	if (!state.scissor_region.Valid() || !render_interface->CullsOffscreenPaint())
+		return false;
+	static const Matrix4f identity = Matrix4f::Identity();
+	if (state.transform != identity)
+		return false;
+	const Rectanglei& scissor = state.scissor_region;
+	return rectangle.Right() <= (float)scissor.Left() || rectangle.Left() >= (float)scissor.Right() || rectangle.Bottom() <= (float)scissor.Top() ||
+		rectangle.Top() >= (float)scissor.Bottom();
 }
 
 void RenderManager::SetState(const RenderState& next)
@@ -199,6 +271,7 @@ void RenderManager::SetState(const RenderState& next)
 
 void RenderManager::ResetState()
 {
+	ResetClipMemo();
 	SetState(RenderState{});
 }
 

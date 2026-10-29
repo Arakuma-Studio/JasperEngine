@@ -277,7 +277,8 @@ TEST_F(RmlRendererGoldenTest, Many){
     ASSERT_NE(test.loadFromMemory(rml, "render/many.html"), nullptr);
     ASSERT_TRUE(test.renderUntilDrawn());
     EXPECT_LT(test.renderer.getGeometryBufferCount(), 64u);
-    EXPECT_GE(test.renderer.getLastFrameDrawCount(), 5000u);
+    // every box submitted (S16: batched into a few draws)
+    EXPECT_GE(test.renderer.getStats().geometrySubmitted, 5000u);
 
     std::vector<uint8_t> screen;
     ASSERT_TRUE(test.readScreen(screen));

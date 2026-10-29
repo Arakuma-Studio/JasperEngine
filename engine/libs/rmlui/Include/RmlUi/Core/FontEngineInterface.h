@@ -122,6 +122,24 @@ public:
 	/// Called by RmlUi when it wants to garbage collect memory used by fonts.
 	/// @note All existing FontFaceHandles and FontEffectsHandles are considered invalid after this call.
 	virtual void ReleaseFontResources();
+
+	/// Fork (S16-F3): transform-aware text. The render manager's raster scale (device pixels per document pixel) that the
+	/// larger singular value of an element's transform multiplies into its TextShapingContext::raster_scale. The default, 0:
+	/// text is rasterized at the font engine's own scale whatever the transform (RmlUi's behaviour).
+	virtual float GetBaseRasterScale(RenderManager& render_manager);
+	/// Fork (S16-F3): makes what the string's bitmap glyphs at the context's raster scale miss, within the font engine's
+	/// per-frame budget; true when all of them are ready (the default: true, nothing to make).
+	virtual bool PrepareGlyphs(FontFaceHandle handle, StringView string, const TextShapingContext& text_shaping_context);
+	/// Fork (S16-F3): asks for the string's glyphs in the distance-field atlas (made in the background); true when all of them
+	/// are there and GenerateString can draw it with TextShapingContext::distance_field. The default: false.
+	virtual bool PrepareDistanceGlyphs(FontFaceHandle handle, StringView string, const TextShapingContext& text_shaping_context);
+	/// Fork (S16-F3): whether GenerateString draws a text-shadow of this blur radius (px) itself, from a distance field
+	/// (TextShapingContext::shadow_blur), instead of the element blurring it through a layer. The default: false.
+	virtual bool SupportsGpuTextShadow(FontFaceHandle handle, float blur_radius);
+	/// Fork (S16-F3): a text effect was drawn the slow way this frame (a blurred text-shadow through a layer), for statistics.
+	virtual void ReportTextEffectFallback(RenderManager& render_manager);
+	/// Fork (S16-F3): a text element generated its geometry this frame, for statistics.
+	virtual void ReportTextRegeneration(RenderManager& render_manager);
 };
 
 } // namespace Rml

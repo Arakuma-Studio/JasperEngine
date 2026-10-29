@@ -54,16 +54,6 @@ members:
                   foliageTransmission: 0
                   alphaMode: AUTO
                   emissiveFactor: [0, 0, 0]
-                  baseColorTexture:
-                    textureType: 2D
-                    source: path
-                    path: sprites/plane-sheet.png
-                    guid: a24fdc2bf2f6147f4b94acb3faf772da
-                    minFilter: linear
-                    magFilter: linear
-                    wrapU: clamp_to_edge
-                    wrapV: clamp_to_edge
-                    releaseDataAfterLoad: true
                   baseColorTexCoord: 0
                   metallicRoughnessTexCoord: 0
                   occlusionTexCoord: 0
@@ -88,7 +78,6 @@ members:
                 hasMorphTangent: false
             normAdjustJoint: 1
             normAdjustWeight: 1
-            morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
             aabb:
               min: [0, 0, 0]
               max: [0, 0, 0]
@@ -168,15 +157,6 @@ components:
             - 1
             - 1
           alphaMode: AUTO
-          baseColorTexture:
-            textureType: 2D
-            source: path
-            path: sprites/plane-sheet.png
-            minFilter: linear
-            magFilter: linear
-            wrapU: clamp_to_edge
-            wrapV: clamp_to_edge
-            releaseDataAfterLoad: true
   sprite:
     width: 88
     height: 73

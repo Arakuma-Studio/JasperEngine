@@ -13,7 +13,8 @@
 //   BUILD_TYPE=Release WEB_THREADS=1 WEB_PROJECT=navigation tools/build.sh web ; WEB_THREADS=1 GATE=navigation tools/build.sh web-gate
 // (the slice budget is a release budget: a Debug wasm build's Recast stages are several times slower)
 //   ANDROID_PROJECT=navigation tools/build.sh android (tools/android-emulator-test.sh --expect-file
-//   tools/test-projects/navigation/android-expect.txt)
+//   tools/test-projects/navigation/android-expect.txt --golden tools/test-projects/navigation/golden:
+//   the city under a sun, as the emulator shows it)
 
 #include "JasperEngine.h"
 
@@ -26,6 +27,8 @@ using namespace jasperengine;
 
 Scene scene;
 Camera camera(&scene);
+// (the screen golden's: a light and colours, which the bake does not read)
+Light sun(&scene);
 
 namespace {
 
@@ -53,6 +56,7 @@ namespace {
         Primitive* shape = new Primitive(&scene);
         shape->createBox(w, h, d);
         shape->setPosition(x, y, z);
+        shape->setColor(0.85f, 0.45f, 0.2f);
         return shape->getEntity();
     }
 
@@ -65,6 +69,7 @@ namespace {
     void buildCity() {
         Primitive* floor = new Primitive(&scene);
         floor->createPlane(64.0f, 64.0f);
+        floor->setColor(0.55f, 0.55f, 0.5f);
         cityFloor = floor->getEntity();
         NavMeshSurfaceComponent surface;
         surface.useGeometry = NavUseGeometry::RENDER_MESHES;
@@ -197,6 +202,10 @@ JASPERENGINE_INIT void init(){
     camera.setPosition(0, 60, 60);
     camera.setTarget(0, 0, 0);
     scene.setCamera(&camera);
+    scene.setBackgroundColor(0.45f, 0.62f, 0.85f);
+    sun.setType(LightType::DIRECTIONAL);
+    sun.setDirection(-0.5f, -1.0f, -0.4f);
+    sun.setIntensity(3.0f);
     buildCity();
     buildTopDown();
     buildAgentAndGrid();

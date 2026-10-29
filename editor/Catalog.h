@@ -71,6 +71,10 @@ namespace jasperengine::editor{
         UpdateFlags_Lattice             = (uint64_t)1 << 40,
         // a particle system's effect changed (asset, inline document, exposed values, seed)
         UpdateFlags_Particles           = (uint64_t)1 << 41,
+        // a Pose Animator's animation path changed: load it again
+        UpdateFlags_PoseAnimator_Reload = (uint64_t)1 << 42,
+        // an Animation Player's clip list changed: the next update reloads and rebinds it
+        UpdateFlags_AnimationPlayer_Reload = (uint64_t)1 << 43,
         // handlers that touch the whole scene, must be masked out when applying all flags
         UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Scene_Mesh_Variant | UpdateFlags_Reflection_Probe_Recapture_All
     };
@@ -144,6 +148,9 @@ namespace jasperengine::editor{
         CharacterControllerComponent,
         WaterVolumeComponent,
         BuoyancyComponent,
+        PoseAnimatorComponent,
+        // Unity's legacy Animation component (animation clips spec 3.2)
+        AnimationPlayerComponent,
         NavMeshSurfaceComponent,
         NavMeshAgentComponent,
         NavMeshObstacleComponent,

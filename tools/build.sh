@@ -39,6 +39,9 @@
 # HTMLUI_TEST_ARGS goes to the test binary (e.g. --gtest_filter=Golden*),
 # JASPER_HTMLUI_UPDATE_GOLDEN=1 rewrites the golden images (glcore only).
 # JASPER_HTMLUI_WRITE_ACTUAL=1 keeps every compared image in the test output directory (both backends).
+# JASPER_HTMLUI_S16_OFF=1 runs the HTML UI tests with S16's batching, SDF primitives and transform-aware
+# text off (docs/specs/S16-ui-render-text.md AC1); JASPER_HTMLUI_BATCHING=0 / JASPER_HTMLUI_SDF_PRIMITIVES=0
+# turn one of them off.
 # JASPER_ZERO_COST_UPDATE=1 rewrites the built-in Lit's zero-cost hash list (ShaderZeroCostTest, unit-tests).
 # htmlui-editor-tests: HTMLUI_TEST_ARGS goes to the test binary, RUN=0 builds only,
 # HTMLUI_LIVE_NETWORK=1 adds the live Google Fonts test.
@@ -49,6 +52,8 @@
 # web, android: WEB_PROJECT=<name> / ANDROID_PROJECT=<name> build the test project
 # tools/test-projects/<name>/ instead of engine/project, into build/web-<name> or
 # build/android-<name> (core-utilities: the logger and Lua Timer, S09).
+# android: ANDROID_ABIS="x86_64" (comma separated) builds only those ABIs (the emulator's is
+# x86_64); the default is every ABI an export ships.
 # web, web-gate: WASM_SIMD=0 builds (and gates) the scalar particle kernels instead of simd128
 # (-DJASPERENGINE_WASM_SIMD=OFF), next to the default build (build/web*-scalar).
 # web-gate: GATE=sample-project (default, build/web), sample-project-threads (build/web-threads)
@@ -69,7 +74,7 @@ EDITOR_MIN_TESTS=150
 HTMLUI_MAX_SKIPPED=75
 
 usage() {
-    sed -n '2,54p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,63p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 1
 }
 
@@ -189,7 +194,9 @@ CPUS="${CPUS:-${DOCKER_CPUS:-${JOBS:-}}}"
 ENV_FLAGS=()
 for name in JASPER_HTMLUI_UPDATE_GOLDEN JASPER_HTMLUI_WRITE_ACTUAL JASPER_TEST_UPDATE_GOLDEN JASPER_TEST_WRITE_ACTUAL \
             JASPER_TEST_KEEP_TEMP JASPER_REFLECT_WRITE_FIXTURE JASPER_BENCH_ENTITIES JASPER_HTMLUI_PERF_SLACK JASPER_TEST_PERF_SLACK \
-            HTMLUI_LIVE_NETWORK JASPER_CHROME JASPER_ZERO_COST_UPDATE JASPER_PICK_SIMD JASPER_TEST_UPDATE_FIXTURES; do
+            HTMLUI_LIVE_NETWORK JASPER_CHROME JASPER_ZERO_COST_UPDATE JASPER_PICK_SIMD \
+            JASPER_HTMLUI_S16_OFF JASPER_HTMLUI_BATCHING JASPER_HTMLUI_SDF_PRIMITIVES JASPERENGINE_GPU_TIMER JASPER_HTMLUI_PROFILE \
+            JASPER_TEST_UPDATE_FIXTURES; do
     # (JASPER_HTMLUI_PERF_SLACK: the HTML UI performance tests' tolerance on a loaded host, compat_perf_test.cpp;
     # JASPER_TEST_PERF_SLACK: the core tests' wall-clock budgets are enforced only when it is set;
     # JASPER_PICK_SIMD: the picking BVH's slab test path, scalar|avx2|neon, S26 AC2;
@@ -494,6 +501,12 @@ android)
         APK_DIR="$OUT-$ANDROID_PROJECT"
         # app/build.gradle builds this project instead of engine/project
         PROJECT_ENV="JASPERENGINE_PROJECT_ROOT=/src/tools/test-projects/$ANDROID_PROJECT"
+    fi
+    if [[ -n "${ANDROID_ABIS:-}" ]]; then
+        [[ "$ANDROID_ABIS" =~ ^(arm64-v8a|armeabi-v7a|x86|x86_64)(,(arm64-v8a|armeabi-v7a|x86|x86_64))*$ ]] \
+            || { echo "ANDROID_ABIS must list arm64-v8a, armeabi-v7a, x86, x86_64 (got $ANDROID_ABIS)" >&2; exit 1; }
+        # app/build.gradle builds only these
+        PROJECT_ENV="$PROJECT_ENV JASPERENGINE_ANDROID_ABIS=$ANDROID_ABIS"
     fi
     mkdir -p "$ROOT/$APK_DIR"
     run bash -euo pipefail -c "

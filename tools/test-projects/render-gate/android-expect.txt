@@ -1,0 +1,4 @@
+# tools/android-emulator-test.sh --expect-file with --scene lit3d --scene ui2d --scene htmlui and
+# --golden tools/test-projects/render-gate/golden: the scene the run asked for started ({scene} is
+# the run's --scene); the runner adds the ready and presented lines and screenshots the device then
+I/JasperEngine: [render-gate] scene {scene}

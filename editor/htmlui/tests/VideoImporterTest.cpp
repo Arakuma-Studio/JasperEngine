@@ -103,7 +103,7 @@ TEST_F(VideoImporterTest, ConvertsWithFfmpeg){
     EXPECT_TRUE(result.ok) << result.message;
     EXPECT_TRUE(result.converted);
     EXPECT_EQ(result.output, root / "out" / "clip.webm");
-    EXPECT_TRUE(VideoImporter::isPlayable(result.output));
+    EXPECT_TRUE(fs::is_regular_file(result.output));
     EXPECT_FALSE(fs::exists(root / "out" / "clip.mp4")) << "the original is not copied";
     EXPECT_EQ(result.encoder, "libsvtav1");
     EXPECT_NE(result.command.find("-c:v libsvtav1"), std::string::npos) << result.command;

@@ -28,6 +28,7 @@ Libraries of the engine, the editor and the tools:
 | [SheenBidi](https://github.com/Tehreer/SheenBidi) | 3.0 | `engine/libs/sheenbidi/` (`LICENSE`) | Apache-2.0 | the Unicode bidirectional algorithm |
 | [Tracy](https://github.com/wolfpld/tracy) | 0.11.1 (the client, `public/`) | `engine/libs/tracy/` (`LICENSE`) | BSD-3-Clause | optional remote profiling of development games (`JASPERENGINE_TRACY`, off by default; never in the editor or release games) |
 | [meshoptimizer](https://github.com/zeux/meshoptimizer) | 1.2 | `engine/libs/meshoptimizer/` (`LICENSE.md`) | MIT | mesh LODs and optimisation |
+| [msdfgen](https://github.com/Chlumsky/msdfgen) | 1.13.0 (`master` at `1c106ed81178`), `core/` only; local change: `core/base.h` includes the hand-written `msdfgen-config.h` | `engine/libs/msdfgen/` (`LICENSE.txt`) | MIT | the HTML UI's MTSDF glyph atlas (scaling text, GPU text effects) |
 | [recastnavigation](https://github.com/recastnavigation/recastnavigation) (Recast, Detour, DetourCrowd, DetourTileCache, DebugUtils) | 1.6.0 (`v1.6.0`, `6dc1667f5803`) | `engine/libs/recastnavigation/` (`License.txt`, `README.jasper.md`; one local patch, the crowd's avoidance priority, `PATCHES.md`) | zlib | navigation meshes, path queries, crowds and carving obstacles (`engine/core/navigation/`); games built with `JASPERENGINE_NAVIGATION` off leave it out |
 | [RmlUi](https://github.com/mikke89/RmlUi) | 6.3 (`ba95ffe8bfb6`), JasperEngine's fork | `engine/libs/rmlui/` (`LICENSE.txt`; Taffy's below, `LICENSE-taffy.txt`) | MIT | the HTML/CSS UI |
 | [glslang](https://github.com/KhronosGroup/glslang) | 15.1.0 | `engine/libs/shadercompiler/libs/glslang/` (`LICENSE.txt`) | BSD-3-Clause and the others `LICENSE.txt` lists | GLSL to SPIR-V in the shader compiler |
@@ -38,13 +39,13 @@ Libraries of the engine, the editor and the tools:
 | [yaml-cpp](https://github.com/jbeder/yaml-cpp) | 0.8.0 | `libs/yaml-cpp/` (`LICENSE`) | MIT | the editor's scene, project and settings files |
 | [googletest](https://github.com/google/googletest) | 1.17.0 (googletest and googlemock) | `libs/googletest/` (`LICENSE`, `README.jasper.md`) | BSD-3-Clause | the unit tests only: tests only, never shipped |
 
-`engine/libs/shadercompiler/` itself (`src/`, the CMake build) is JasperEngine's own code (MIT, like the engine). Portions of the build and test tooling are adapted from [OpenEngine](https://github.com/Game-Crafters-Guild/OpenEngine) (MIT, Copyright (c) 2026 Gamecrafters Guild Limited and contributors), with that notice kept in each file: `engine/cmake/JasperSanitizers.cmake` (sanitizer flags, MSVC AddressSanitizer runtime staging), `tools/web/serve.py` and `tools/web/browser_gate.py` (the headless-Chrome web gate).
+`engine/libs/shadercompiler/` itself (`src/`, the CMake build) is JasperEngine's own code (MIT, like the engine). Portions of the build and test tooling are adapted from [OpenEngine](https://github.com/Game-Crafters-Guild/OpenEngine) (MIT, Copyright (c) 2026 Gamecrafters Guild Limited and contributors), with that notice kept in each file: `engine/cmake/JasperSanitizers.cmake` (sanitizer flags, MSVC AddressSanitizer runtime staging), `tools/web/serve.py` and `tools/web/browser_gate.py` (the headless-Chrome web gate). The rounded-rectangle distance, pixel footprint, box-filter coverage, `erf` and Gaussian edge functions of the HTML UI's shaders (`engine/shaderlib/includes/htmlui_sdf.glsl`) are OpenEngine's (`Engine/Modules/Rendering/Shaders/UI/sdf_functions.glsl`), with its notice in that file.
 
 Vector graphics of the HTML/CSS UI (all MIT):
 
 | Library | Version | Location | Used for |
 |---|---|---|---|
-| [ThorVG](https://github.com/thorvg/thorvg) | 1.2.0 (`caa5af1167d7`), local change: no global `operator new`/`delete` under ASan | `engine/libs/thorvg/` (`LICENSE`) | Lottie (`<lottie>`), CPU renderer |
+| [ThorVG](https://github.com/thorvg/thorvg) | 1.2.0 (`caa5af1167d7`) | `engine/libs/thorvg/` (`LICENSE`; one local patch: its global `operator new`/`delete` replacement removed, with the one allocation that relied on it (`rleRender`) made a `new`, noted in `CMakeLists.txt`) | Lottie (`<lottie>`), CPU renderer |
 | [LunaSVG](https://github.com/sammycage/lunasvg) | 3.5.0 (`cf3594d5232e`) | `engine/libs/lunasvg/` (`LICENSE`) | SVG (RmlUi's SVG plugin, `.svg` textures) |
 | [plutovg](https://github.com/sammycage/plutovg) | 1.3.3 (bundled with LunaSVG) | `engine/libs/lunasvg/plutovg/` (`LICENSE`; its rasteriser derives from FreeType's, `source/FTL.TXT`) | LunaSVG's rasteriser |
 

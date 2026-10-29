@@ -357,6 +357,28 @@ void prepare<UIDocumentComponent>(UIDocumentComponent& document, Entity, CloneCo
 }
 
 template<>
+void prepare<PoseAnimatorComponent>(PoseAnimatorComponent& animator, Entity, CloneContext&) {
+    // the copy builds its own rig on its own bones and starts as a loaded scene starts it
+    animator.playing = false;
+    animator.time = 0;
+    animator.started = false;
+    animator.needsLoad = true;
+    animator.runtime.reset();
+    animator.onFinish.clear();
+}
+
+template<>
+void prepare<AnimationPlayerComponent>(AnimationPlayerComponent& player, Entity, CloneContext&) {
+    // the authored fields are copied; the copy binds its own hierarchy and starts as a loaded
+    // scene starts it (playAutomatically on its first update), with no callbacks
+    player.needsLoad = true;
+    player.started = false;
+    player.runtime.reset();
+    player.onEvent.clear();
+    player.onFinish.clear();
+}
+
+template<>
 void prepare<FluidSimulationComponent>(FluidSimulationComponent& fluid, Entity sourceEntity, CloneContext& ctx) {
     // the copy runs its own simulation (its own targets and output), restarted from its
     // settings: the simulator clone() made for it when the original had one (the copied
@@ -785,6 +807,8 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<LatticeModifierComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<LatticeFollowerComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<LatticeTracksComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<PoseAnimatorComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<AnimationPlayerComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ScriptComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
 }
 

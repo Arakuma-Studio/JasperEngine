@@ -36,6 +36,11 @@ namespace jasperengine::editor {
         // back for MCP). Synchronous, main thread. False when it is not created or the read fails.
         static bool readRenderPixels(FramebufferRender* render, int width, int height, std::vector<uint8_t>& rgba);
 
+        // The framebuffer's colour as width * height RGBA8, rows top first (the engine draws
+        // render targets top row first on every backend). Synchronous GPU readback: main
+        // thread, after the draw. False when the framebuffer is not created or the readback fails.
+        static bool readFramebufferRGBA(Framebuffer* framebuffer, std::vector<uint8_t>& out);
+
         static Vector2 getRectTransformCenter(Scene* scene, Entity entity, const RectTransformComponent& layout);
     };
 }

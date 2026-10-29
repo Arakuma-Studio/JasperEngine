@@ -11,6 +11,9 @@
 #include "pool/TexturePool.h"
 #include "pool/TextureDataPool.h"
 #include "pool/SoundPool.h"
+#include "pool/AnimationClipPool.h"
+#include "animation/AnimationClip.h"
+#include "animation/ModelSubClips.h"
 #include "thread/ResourceProgress.h"
 
 #include <algorithm>
@@ -388,7 +391,7 @@ float SceneManager::getPreloadProgress(uint32_t id) {
     if (preload->total == 0) return 1.0f;
 
     const SceneResources& pending = preload->pending;
-    size_t remaining = pending.textures.size() + pending.sounds.size() + pending.models.size();
+    size_t remaining = pending.textures.size() + pending.sounds.size() + pending.models.size() + pending.clips.size();
     return (float)(preload->total - remaining) / (float)preload->total;
 }
 
@@ -406,6 +409,7 @@ void SceneManager::cancelPreload(uint32_t id) {
     if (!Engine::isAsyncLoading()) {
         preload->pending.textures.clear();
         preload->pending.sounds.clear();
+        preload->pending.clips.clear();
     }
 }
 
@@ -445,13 +449,16 @@ void SceneManager::startPreload(uint32_t id) {
         for (const std::string& model : resources.models) {
             addFile(pending.models, model);
         }
+        for (const std::string& clip : resources.clips) {
+            addFile(pending.clips, clip);
+        }
     }
 
     preload = findPreload(id);
     if (!preload) return;
 
     preload->started = true;
-    preload->total = pending.textures.size() + pending.sounds.size() + pending.models.size();
+    preload->total = pending.textures.size() + pending.sounds.size() + pending.models.size() + pending.clips.size();
     preload->pending = std::move(pending);
 }
 
@@ -527,7 +534,36 @@ void SceneManager::updatePreloads() {
             it = pending.models.erase(it);
         }
 
-        const bool inFlight = !pending.textures.empty() || !pending.sounds.empty() || !pending.models.empty();
+        // .anim clips are small and parse on this thread; a sub-clip waits for its model's
+        // preload, then builds on the thread pool in async loading (AnimationClipPool::pollOrLoad)
+        for (auto it = pending.clips.begin(); it != pending.clips.end();) {
+            anim::SubClipReference reference;
+            if (anim::parseSubClipReference(*it, reference)) {
+                // the same file however its path is spelled
+                const std::string modelKey = AnimationClipPool::getKey(reference.model);
+                auto sameModel = [&modelKey](const std::string& model) { return AnimationClipPool::getKey(model) == modelKey; };
+                if (std::any_of(pending.models.begin(), pending.models.end(), sameModel)) {
+                    ++it;
+                    continue;
+                }
+            }
+            const std::string clip = *it;
+            std::string error;
+            bool loading = false;
+            std::shared_ptr<const AnimationClip> loaded = AnimationClipPool::pollOrLoad(clip, loading, &error);
+            if (loading) {
+                ++it;
+                continue;
+            }
+            if (!loaded) {
+                Log::warn("Preload of animation clip %s failed: %s", clip.c_str(), error.c_str());
+            }
+            keep(std::const_pointer_cast<AnimationClip>(loaded), [clip]() { AnimationClipPool::releaseUnused(clip); });
+            it = pending.clips.erase(it);
+            if (oneFile) return;
+        }
+
+        const bool inFlight = !pending.textures.empty() || !pending.sounds.empty() || !pending.models.empty() || !pending.clips.empty();
         if (preload.cancelled && !inFlight) {
             releasePreload(preload);
             preloads.erase(preloads.begin() + i);

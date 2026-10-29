@@ -6,6 +6,7 @@
 #include "command/Command.h"
 #include "command/CommandNames.h"
 #include "Project.h"
+#include "animation/AnimationClipDocument.h"
 #include <vector>
 #include <string>
 #include <filesystem>
@@ -22,6 +23,10 @@ namespace jasperengine::editor{
         fs::path oldFilename;
         fs::path newFilename;
         fs::path directory;
+
+        // .anim files whose preview/source paths followed the rename (animation clips spec
+        // 9.R26), put back by the undo
+        std::vector<ClipHintEdit> clipHintEdits;
 
         // AssetOps::move: the file and its meta, GUIDs kept, references refreshed in memory
         bool renameFile(const fs::path& source, const fs::path& destination);

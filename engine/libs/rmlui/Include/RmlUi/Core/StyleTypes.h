@@ -148,6 +148,10 @@ namespace Style {
 	enum class FontStyle : uint8_t { Normal, Italic };
 	enum class FontWeight : uint16_t { Auto = 0, Normal = 400, Bold = 700 }; // Any definite value in the range [1,1000] is valid.
 	enum class FontKerning : uint8_t { Auto, Normal, None };
+	// Fork (S16-F3): optimizeSpeed draws text as a bitmap at the context's scale whatever its transform (stretched under one);
+	// auto and optimizeLegibility rasterize it at its on-screen scale, from distance fields while that scale animates;
+	// geometricPrecision always draws it from distance fields.
+	enum class TextRendering : uint8_t { Auto, OptimizeSpeed, OptimizeLegibility, GeometricPrecision };
 
 	// 'start' and 'end' are computed as such and resolve against 'direction' (ComputedValues::text_align() returns the
 	// resolved value; phase 3, p3-text).

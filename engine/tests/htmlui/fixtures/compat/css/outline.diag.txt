@@ -1,4 +1,0 @@
-compat/css/outline.css:3:35: info: the gap of outline-offset is filled with the outline color [HTMLUI-CSS-0005]
-compat/css/outline.css:4:38: info: a negative outline-offset is drawn as an inset ring of the outline width [HTMLUI-CSS-0005]
-compat/css/outline.css:8:11: info: 'outline-style: dashed' is drawn solid [HTMLUI-CSS-0005]
-compat/css/outline.css:16:38: info: outline width and offset in different units: the offset is dropped [HTMLUI-CSS-0005]

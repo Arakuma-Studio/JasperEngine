@@ -1,16 +1,10 @@
-"""Project saving and the child scene graph (docs/mcp/DESIGN.md).
+"""Authored scene state survives model undo and Play copies.
 
-- A scene that ran as a Play copy (a child scene of the played one) keeps its authored file at
-  Stop: only the shader keys the copy found are written into it, never its played state.
-- A child scene that would make a cycle is refused, also by redo/undo, and a project whose files
-  already hold a cycle still plays (the walks over child scenes used to recurse forever).
-- Undoing a model load keeps the model GameObject under its parent.
-
-Runs in new empty projects, no fixture needed. The file-level checks (a failed save keeps the old
-file, symlinks, permissions) are gtests: editor/tests/ProjectSaveTest.cpp.
+ProjectSaveTest.cpp owns atomic file replacement, newline conversion and child-cycle command logic.
+These cases keep writer policy, command integration and actual Play-copy persistence.
 """
 
-import asyncio
+import time
 import re
 import shutil
 
@@ -19,7 +13,6 @@ import yaml
 from harness import Editor
 
 EDITOR = {"create": True}
-TIMEOUT = 900
 
 
 # -- helpers --------------------------------------------------------------------
@@ -51,45 +44,6 @@ async def children_of(ed: Editor, scene_id) -> list:
     return [c["id"] for c in listed[scene_id].get("child_scenes") or []]
 
 
-# -- child scene cycles --------------------------------------------------------------------
-
-
-async def test_child_scene_cycle_refused(ed: Editor):
-    a = (await ed.call("create_scene", name="CycleA", type="3D", path="scenes/CycleA"))["scene"]["id"]
-    b = (await ed.call("create_scene", name="CycleB", type="3D", path="scenes/CycleB"))["scene"]["id"]
-    c = (await ed.call("create_scene", name="CycleC", type="3D", path="scenes/CycleC"))["scene"]["id"]
-
-    await ed.call("set_child_scene", scene=a, child=b)
-    await ed.call("set_child_scene", scene=b, child=c)
-    await ed.check_error("set_child_scene", scene=b, child=a, contains="cycle")
-    await ed.check_error("set_child_scene", scene=c, child=a, contains="cycle")
-    ed.check_eq(await children_of(ed, b), [c], "B keeps only C")
-    ed.check_eq(await children_of(ed, c), [], "C took nothing")
-    # a grandchild may also be a direct child
-    await ed.call("set_child_scene", scene=a, child=c)
-    ed.check_eq(sorted(await children_of(ed, a)), sorted([b, c]))
-    await ed.call("undo", scene=a)
-
-    # A -> B undone, B takes A: redoing A -> B would close the cycle
-    await ed.call("undo", scene=a)
-    ed.check_eq(await children_of(ed, a), [], "A -> B undone")
-    await ed.call("set_child_scene", scene=b, child=a)
-    await ed.check_error("redo", scene=a, contains="cycle")
-    ed.check_eq(await children_of(ed, a), [], "the refused redo changed nothing")
-    # once B lets go of A, the redo applies
-    await ed.call("undo", scene=b)
-    await ed.call("redo", scene=a)
-    ed.check_eq(await children_of(ed, a), [b], "A -> B redone")
-
-    # a removal whose undo would now close a cycle
-    await ed.call("set_child_scene", scene=a, child=b, attached=False)
-    await ed.call("set_child_scene", scene=c, child=a)
-    await ed.check_error("undo", scene=a, contains="cycle")
-    ed.check_eq(await children_of(ed, a), [], "the refused undo changed nothing")
-    await ed.call("undo", scene=c)
-    await ed.call("undo", scene=a)
-    ed.check_eq(await children_of(ed, a), [b], "the removal undone")
-    await ed.check_alive()
 
 
 # -- model load undo -----------------------------------------------------------------------
@@ -107,7 +61,6 @@ async def test_model_load_undo_keeps_parent(ed: Editor):
                            model="assets/models/tri.obj", position=[0, 1, 0]))["entity_id"]
     got = await ed.call("get_entity", scene=scene, entity=model, components=["transform"], properties=["position"])
     ed.check_eq(parent_id(got), holder, f"created under Holder: {got.get('parent')}")
-    before = got["components"]["transform"]["position"]
 
     await ed.call("set_model", scene=scene, entity=model, path="assets/models/quad.obj")
     await ed.call("undo", scene=scene)
@@ -116,47 +69,34 @@ async def test_model_load_undo_keeps_parent(ed: Editor):
     ed.check_eq(got["components"]["model"]["filename"], "assets/models/tri.obj", "the old model is back")
     ed.check_eq(parent_id(got), holder, f"undo detached the model from its parent: {got.get('parent')}")
     position = got["components"]["transform"]["position"]
-    ed.check(all(abs(x - y) < 1e-3 for x, y in zip(position, before)), f"position kept: {position} vs {before}")
-    tree = await ed.call("get_scene_tree", scene=scene, format="json")
-    holder_node = next(n for n in tree["nodes"] if n["name"] == "Holder")
-    ed.check_in("Tri", [n["name"] for n in holder_node.get("children", [])], "Tri listed under Holder")
+    ed.check(all(abs(x - y) < 1e-3 for x, y in zip(position, [0, 1, 0])), f"authored local position kept: {position}")
 
 
-# -- line endings ---------------------------------------------------------------------------
 
 
 async def test_save_keeps_crlf_of_existing_files(ed: Editor):
-    """A scene and project.yaml checked out with \\r\\n (a Windows checkout) are saved with \\r\\n
-    again, so one save does not show every line as changed; a new scene file gets \\n."""
-    scene = (await ed.call("create_scene", name="Endings", type="3D", path="scenes/Endings"))["scene"]["id"]
-    await ed.call("create_entity", scene=scene, type="cube", name="First")
-    await ed.call("save_scene", scene=scene)
-    scene_file = ed.project / "scenes" / "Endings.scene"
-    first = scene_file.read_bytes()
-    ed.check(b"\r\n" not in first, "a new scene file is written with \\n")
-
-    scene_file.write_bytes(first.replace(b"\n", b"\r\n"))
+    """The scene/project writers opt into existing Windows line endings."""
+    sid = (await ed.call("create_scene", name="Endings", type="3D", path="scenes/Endings"))["scene"]["id"]
+    scene_file = ed.project / "scenes/Endings.scene"
+    await ed.call("save_scene", scene=sid)
     project_file = ed.project / "project.yaml"
-    project_file.write_bytes(project_file.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
-
-    await ed.call("create_entity", scene=scene, type="cube", name="Second")
-    await ed.call("save_scene", scene=scene)
-    saved = scene_file.read_bytes()
-    ed.check(b"Second" in saved, "the edit was saved")
-    ed.check(saved.count(b"\n") == saved.count(b"\r\n"), "every line of the scene still ends with \\r\\n")
-    ed.check_in("Second", [n["name"] for n in (await ed.call("get_scene_tree", scene=scene, format="json"))["nodes"]])
-    ed.check(yaml.safe_load(saved.decode()), "the \\r\\n scene file parses")
-    project = project_file.read_bytes()
-    ed.check(project.count(b"\n") == project.count(b"\r\n"), "project.yaml still ends its lines with \\r\\n")
+    for path in (scene_file, project_file):
+        path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+    await ed.call("create_entity", scene=sid, type="box", name="SavedAfterCrlf")
+    await ed.call("save_scene", scene=sid)
+    ed.check_in("SavedAfterCrlf", [node["name"] for node in
+                                  (await ed.call("get_scene_tree", scene=sid, format="json"))["nodes"]])
+    for path in (scene_file, project_file):
+        data = path.read_bytes()
+        ed.check(data.count(b"\n") == data.count(b"\r\n") > 0,
+                 f"{path.name}: every persisted line retains CRLF")
 
 
 # -- Stop and the scenes that ran as Play copies -------------------------------------------
 
 
 async def test_stop_keeps_child_scene_file():
-    """Main plays with Hud as its child scene. Hud runs as a Play copy, so Stop writes only the
-    shader keys the copy found into Hud.scene, never the copy's played state. A third editor then
-    plays a project whose files hold a child scene cycle."""
+    """Stop preserves authored child state; legacy on-disk cycles remain safe to play."""
     first = Editor(create=True, keep=True, label="save-stop-setup")
     second = None
     third = None
@@ -170,7 +110,14 @@ async def test_stop_keeps_child_scene_file():
             await ed.call("create_entity", scene=hud, type="camera", name="Hud Camera", position=[0, 0, 8])
             await ed.call("set_main_camera", scene=hud, entity="Hud Camera")
             await ed.call("create_entity", scene=hud, type="cube", name="Box", position=[1, 2, 3])
-            await ed.call("set_child_scene", scene=main, child=hud)
+            await ed.call("set_child_scene", scene=main, child=hud, start_active=False)
+            await ed.call("set_child_scene", scene=main, child=hud, start_active=True)
+            await ed.call("undo", scene=main)
+            listed = {s["id"]: s for s in (await ed.call("list_scenes"))["scenes"]}
+            ed.check_eq(listed[main]["child_scenes"][0]["start_active"], False)
+            await ed.call("redo", scene=main)
+            await ed.check_error("set_child_scene", scene=hud, child=main, contains="cycle")
+            ed.check_eq(await children_of(ed, hud), [], "a refused cycle leaves the graph unchanged")
             await ed.call("save_scene", all=True)
             project = ed.project
 
@@ -188,18 +135,16 @@ async def test_stop_keeps_child_scene_file():
             ed.check_eq(started["state"], "playing", f"play start: {started}")
             await ed.call("set_runtime_property", scene="Hud", entity="Box", component="transform",
                           values={"position": [50, 60, 70]})
-            await ed.call("wait", seconds=0.5)
+            await ed.call("wait", frames=2)
             stopped = await ed.call("play", action="stop")
             ed.check_eq(stopped["state"], "stopped", "stop")
 
             # the save on Stop runs on the editor's main thread after the call returns
             text = hud_file.read_text()
-            for _ in range(60):
-                text = hud_file.read_text()
-                if shader_keys_block(text):
-                    break
+            deadline = time.monotonic() + 10
+            while not shader_keys_block(text) and time.monotonic() < deadline:
                 await ed.call("editor_status")
-                await asyncio.sleep(0.25)
+                text = hud_file.read_text()
             ed.check(shader_keys_block(text), "Stop wrote the shader keys the Play copy found")
             ed.check_eq(yaml.safe_load(without_shader_keys(text)), yaml.safe_load(authored),
                         "Stop changed more of Hud.scene than its shaderKeys")

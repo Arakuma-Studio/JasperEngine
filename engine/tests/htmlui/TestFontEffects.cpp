@@ -267,7 +267,9 @@ TEST_F(RmlFontEffectsTest, EffectPagePixels){
     }
 }
 
-TEST_F(RmlFontEffectsTest, VersionBumpsOnNewEffectGlyph){
+// S16: effect glyphs go into their pages in place (the renderer uploads the page again): no text is
+// made again for a new effect glyph, the handle's version stays
+TEST_F(RmlFontEffectsTest, EffectGlyphsKeepTheVersion){
     Rml::FontFaceHandle face = handle("sans-serif", 24);
     const Rml::FontEffectsHandle outline = prepare(face, parse("outline(1px black)"));
 
@@ -275,23 +277,16 @@ TEST_F(RmlFontEffectsTest, VersionBumpsOnNewEffectGlyph){
     const int start = engine.GetVersion(face);
     EXPECT_EQ(engine.getEffectPageCount(), 0u);
 
-    // the base glyph exists, the effect glyph is new: one bump
+    // the base glyph exists, the effect glyph is new: it gets a page
     generate(face, outline, "a");
-    EXPECT_EQ(engine.GetVersion(face), start + 1);
     EXPECT_EQ(engine.getEffectPageCount(), 1u);
-    // nothing new
     generate(face, outline, "aaa");
     generate(face, 0, "a");
-    EXPECT_EQ(engine.GetVersion(face), start + 1);
-    // a new glyph: one bump for both its pages
     generate(face, outline, "b");
-    EXPECT_EQ(engine.GetVersion(face), start + 2);
-    // another effect: new effect glyphs
     generate(face, prepare(face, parse("outline(2px black)")), "b");
-    EXPECT_EQ(engine.GetVersion(face), start + 3);
     // a shadow makes no glyphs of its own
     generate(face, prepare(face, parse("shadow(1px 1px black)")), "ab");
-    EXPECT_EQ(engine.GetVersion(face), start + 3);
+    EXPECT_EQ(engine.GetVersion(face), start);
     EXPECT_EQ(engine.getEffectPageCount(), 1u);
 
     // a space has no ink: no effect quad, no failure
@@ -524,4 +519,30 @@ TEST_F(RmlFontEffectsTest, DocumentWithEffectsRenders){
 
     document->Close();
     context->Update();
+}
+
+// (upstream) per-context raster density, read by the production shape decorators too: independent
+// render managers keep their own scale
+TEST(RmlFontEffectsRasterScale, PerContextRasterScale){
+    ASSERT_FALSE(HtmlUI::isInitialized());
+    FontRegistry::clear();
+    RecordingRenderInterface firstRenderer, otherRenderer;
+    RmlFontEngine engine;
+    Rml::SetSystemInterface(&HtmlUI::getSystemInterface());
+    Rml::SetFileInterface(&HtmlUI::getFileInterface());
+    Rml::SetFontEngineInterface(&engine);
+    ASSERT_TRUE(Rml::Initialise());
+    Rml::Context* first = Rml::CreateContext("font-scale-first", Rml::Vector2i(640, 360), &firstRenderer);
+    Rml::Context* other = Rml::CreateContext("font-scale-other", Rml::Vector2i(320, 180), &otherRenderer);
+    ASSERT_TRUE(first && other);
+    engine.setRasterScale(first->GetRenderManager(), 2.0f);
+    EXPECT_FLOAT_EQ(engine.getRasterScale(first->GetRenderManager()), 2.0f);
+    EXPECT_FLOAT_EQ(engine.getRasterScale(other->GetRenderManager()), 1.0f);
+    engine.setRasterScale(other->GetRenderManager(), 1.5f);
+    EXPECT_FLOAT_EQ(engine.getRasterScale(first->GetRenderManager()), 2.0f);
+    EXPECT_FLOAT_EQ(engine.getRasterScale(other->GetRenderManager()), 1.5f);
+    Rml::RemoveContext("font-scale-first");
+    Rml::RemoveContext("font-scale-other");
+    Rml::Shutdown();
+    FontRegistry::clear();
 }

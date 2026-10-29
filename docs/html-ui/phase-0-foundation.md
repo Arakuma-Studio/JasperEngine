@@ -59,7 +59,7 @@ When phase 0 is merged into `html-ui`:
    (lavapipe) in the Linux Docker image via `tools/build.sh htmlui-tests`, and passes: unit
    tests plus golden-image tests that render through the real engine renderer, read the
    target back, and compare against `engine/tests/htmlui/golden/*.png`.
-7. MCP end-to-end tests `tools/mcp/tests/test_html_ui_component.py` and
+7. MCP end-to-end tests `tools/mcp/tests/test_html_ui_editor.py` and
    `tools/mcp/tests/test_html_ui_basic.py` pass against the real editor.
 8. `docs/html-ui/svg-benchmark.md` holds the LunaSVG / ThorVG / nanosvg benchmark results
    (native x86-64 and wasm) and the decision for phase 1.
@@ -1149,7 +1149,6 @@ public:
     void setRasterScale(float scale);   // physical px per document px; change -> clear glyphs/pages, version++
     float getRasterScale() const;
     size_t getPageCount() const;        // tests
-    std::vector<const FontFace*> getChain(Rml::FontFaceHandle handle) const;   // tests
     static std::vector<std::string> splitFamilyList(const std::string& families);
 };
 ```
@@ -1849,7 +1848,7 @@ Goal: section 3.7.
 Owns: `UIDocumentComponent.h`, `UIDocumentSystem.{h,cpp}`, `HtmlUIContext.{h,cpp}`
 (everything except `HtmlUIContextRender.cpp`), `UIDocument.{h,cpp}`, `UIElement.{h,cpp}`,
 `engine/tests/htmlui/TestDocument*.cpp`, `TestInput*.cpp`, `fixtures/ecs/**`,
-`tools/mcp/tests/test_html_ui_component.py`.
+`tools/mcp/tests/test_html_ui_editor.py`.
 
 Touches additively: `Scene.cpp` (include + registration line), `EntityRegistry.{h,cpp}`,
 `JasperEngine.h`, `EntityCloner.cpp`, `Engine.cpp` (3.7.3), editor files of 3.7.5 rows
@@ -1859,7 +1858,7 @@ Dependencies: p0-foundation. Document loading, layout, z-order and input are tes
 without rendering (context `update()` only; no `render()` calls), so the skeleton
 renderer is enough. `HtmlUIContext::render/composite` arrive with p0-render.
 
-Tests: 5.1 ECS list; `test_html_ui_component.py` (5.3). Builds: linux glcore editor +
+Tests: 5.1 ECS list; `test_html_ui_editor.py` (5.3). Builds: linux glcore editor +
 engine sample, htmlui-tests glcore, web, android.
 
 ### Wave 3 (after p0-render, p0-font, p0-ecs are merged)
@@ -2020,7 +2019,7 @@ filtering), do not add per-backend goldens.
 
 ### 5.3 MCP end-to-end tests
 
-`tools/mcp/tests/test_html_ui_component.py` (p0-ecs; non-visual):
+`tools/mcp/tests/test_html_ui_editor.py` (p0-ecs; non-visual):
 - `add_component` `UIDocument` with `{"filename": "assets/ui/basic.html", "sortOrder": 2}` (MCP
   paths are project-relative; the fixture's assets are in `assets/`, the component stores
   the asset-relative `ui/basic.html`) on a
@@ -2086,7 +2085,7 @@ All must hold before phase 0 is merged into `main`:
 - [ ] Existing behavior unchanged: STBText characterization tests pass;
       `test_protocol.py`, `test_ui_anchors.py` and the other existing MCP tests pass with
       the glcore editor; `BlendStateTest.DefaultUnchanged` passes.
-- [ ] `test_html_ui_component.py` and `test_html_ui_basic.py` pass (glcore editor), and
+- [ ] `test_html_ui_editor.py` and `test_html_ui_basic.py` pass (glcore editor), and
       `test_html_ui_basic.py` also passes with the vulkan editor.
 - [ ] Web build shows the document in headless Chrome; the exported Linux game shows it
       with no missing-shader errors.

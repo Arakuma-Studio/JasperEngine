@@ -6,6 +6,7 @@
 #include "Project.h"
 #include "component/FluidSimulationComponent.h"
 #include "component/BuoyancyComponent.h"
+#include "animation/ClipTypes.h"
 #include "component/ForceFieldComponent.h"
 #include "component/LatticeComponent.h"
 #include "component/LatticeModifierComponent.h"
@@ -274,6 +275,15 @@ namespace {
     constexpr EnumItem kWaterVolumeWavesItems[] = {
         {v(WaterVolumeWaves::FROM_MATERIAL), "from_material", "From Material", "WaterVolumeWaves::FROM_MATERIAL"},
         {v(WaterVolumeWaves::NONE), "none", "None", "WaterVolumeWaves::NONE"},
+    };
+
+    // an Animation Player clip entry's wrap (anim::wrapName): default is the clip's own
+    constexpr EnumItem kClipWrapModeItems[] = {
+        {v(ClipWrapMode::Default), "default", "Default", "ClipWrapMode::Default"},
+        {v(ClipWrapMode::Once), "once", "Once", "ClipWrapMode::Once"},
+        {v(ClipWrapMode::Loop), "loop", "Loop", "ClipWrapMode::Loop"},
+        {v(ClipWrapMode::PingPong), "ping_pong", "Ping Pong", "ClipWrapMode::PingPong"},
+        {v(ClipWrapMode::ClampForever), "clamp_forever", "Clamp Forever", "ClipWrapMode::ClampForever"},
     };
 
     constexpr EnumItem kBuoyancyColumnsItems[] = {
@@ -565,6 +575,7 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kForceFieldKind{"ForceFieldKind", kForceFieldKindItems, v(ForceFieldKind::Directional)};
     const EnumDesc kWaterVolumeWaves{"WaterVolumeWaves", kWaterVolumeWavesItems, v(WaterVolumeWaves::FROM_MATERIAL)};
     const EnumDesc kBuoyancyColumns{"BuoyancyColumns", kBuoyancyColumnsItems, v(BuoyancyColumns::AUTO_2x2)};
+    const EnumDesc kClipWrapMode{"ClipWrapMode", kClipWrapModeItems, v(ClipWrapMode::Default)};
     const EnumDesc kFluidOutput{"FluidOutput", kFluidOutputItems, v(FluidOutput::MATERIAL), nullptr, kFluidOutputOrder};
     const EnumDesc kLatticeInterpolation{"LatticeInterpolation", kLatticeInterpolationItems, v(LatticeInterpolation::CUBIC)};
     const EnumDesc kLatticeOutside{"LatticeOutside", kLatticeOutsideItems, v(LatticeOutside::FADE)};

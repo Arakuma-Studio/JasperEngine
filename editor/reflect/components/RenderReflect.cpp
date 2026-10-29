@@ -198,6 +198,9 @@ namespace {
         JE_FIELD(MeshComponent, shaderUniforms, .ops = &ops::ShaderUniformValues, .updateFlags = UpdateFlags_Shader_Uniforms),
         JE_FIELD(MeshComponent, numSubmeshes),
         JE_FIELD(MeshComponent, submeshes, .flags = ListTemplate, .updateFlags = kSubmeshAll),
+        // one blend shape weight each ("morphWeights[2]"), so a prefab instance overrides weights
+        // one by one (the Inspector's Blend Shapes rows, animation clips T3c); read every frame
+        JE_FIELD(MeshComponent, morphWeights, .flags = ListElements | ListTemplate | NoCodegen),
     };
 
     // A mesh's geometry regenerated from a model file, sprite, tilemap, polygon or terrain is not
@@ -224,6 +227,9 @@ namespace {
         JE_FIELD(ModelComponent, enabled),
         JE_FIELD(ModelComponent, filename, .updateFlags = kModel, .asset = AssetKind::Model, .label = "Model"),
         JE_FIELD(ModelComponent, mergeStaticMeshes, .updateFlags = kModel),
+        // read by the loader on the next load or reload; the scene step that turns it off ("Use
+        // Animation Player", 9.R15) removes the animation entities itself
+        JE_FIELD(ModelComponent, animationEntities),
         JE_FIELD(ModelComponent, skeleton, .ops = &ops::Entity, .updateFlags = kMeshReload),
         JE_FIELD(ModelComponent, animations, .flags = ListWhole | ListElements, .elementOps = &ops::Entity),
     };
@@ -472,7 +478,7 @@ namespace {
     constexpr const char* kPolygonExtraKeys[] = {"points"};
 
     // the keys its codec reads
-    constexpr const char* kMeshKnownKeys[] = {"aabb", "autoTransparency", "bonesMatrix", "buffer", "castShadows", "cullingMode", "customDepthShader", "customShader", "eBuffers", "enabled", "indices", "lodBias", "lodEnabled", "morphWeights", "normAdjustJoint", "normAdjustWeight", "receiveIBL", "receiveLights", "receiveShadows", "renderInReflectionProbes", "shaderUniforms", "shadowsBillboard", "staticShadowCaster", "submeshes", "transparent", "verticesAABB", "windingOrder", "worldAABB"};
+    constexpr const char* kMeshKnownKeys[] = {"aabb", "autoTransparency", "bonesMatrix", "buffer", "castShadows", "cullingMode", "customDepthShader", "customShader", "eBuffers", "enabled", "indices", "lodBias", "lodEnabled", "morphTargetCount", "morphWeights", "normAdjustJoint", "normAdjustWeight", "receiveIBL", "receiveLights", "receiveShadows", "renderInReflectionProbes", "shaderUniforms", "shadowsBillboard", "staticShadowCaster", "submeshes", "transparent", "verticesAABB", "windingOrder", "worldAABB"};
 
 }
 
@@ -488,7 +494,7 @@ const ComponentDesc kMeshDesc{
 namespace {
 
     // the keys its codec reads
-    constexpr const char* kModelKnownKeys[] = {"animations", "bonesIdMapping", "bonesNameMapping", "enabled", "filename", "mergeStaticMeshes", "meshNodesMapping", "nodesIdMapping", "skeleton"};
+    constexpr const char* kModelKnownKeys[] = {"animationEntities", "animations", "bonesIdMapping", "bonesNameMapping", "enabled", "filename", "mergeStaticMeshes", "meshNodesMapping", "nodesIdMapping", "skeleton"};
 
 }
 

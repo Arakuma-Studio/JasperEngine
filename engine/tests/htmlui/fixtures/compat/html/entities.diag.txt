@@ -1,7 +1,0 @@
-compat/html/entities.html:2:50: info: HTML parse error: missing semicolon after character reference; recovered as browsers do [HTMLUI-HTML-0001]
-compat/html/entities.html:2:68: info: HTML parse error: missing semicolon after character reference; recovered as browsers do [HTMLUI-HTML-0001]
-compat/html/entities.html:3:47: info: HTML parse error: null character reference; recovered as browsers do [HTMLUI-HTML-0001]
-compat/html/entities.html:3:52: info: HTML parse error: control character reference; recovered as browsers do [HTMLUI-HTML-0001]
-compat/html/entities.html:4:11: info: HTML parse error: invalid first character of tag name; recovered as browsers do [HTMLUI-HTML-0001]
-compat/html/entities.html:4:26: info: unknown element <b<> is rendered as a generic inline element, as in browsers (fix: use a standard element (div, span, ...)) [HTMLUI-HTML-0018]
-compat/html/entities.html:4:30: info: HTML parse error: unexpected solidus in tag; recovered as browsers do [HTMLUI-HTML-0001]

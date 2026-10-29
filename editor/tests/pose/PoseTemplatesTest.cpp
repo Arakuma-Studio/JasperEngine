@@ -1,0 +1,547 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+
+// Pose animation templates (spec: pose animation phase 6, sections 2, 3 and 7): the built-in
+// templates (editor/resources/pose-templates, read from the source folder here; the editor embeds
+// the same files) load without warnings, realise on the two fixture rigs (the skeletons of
+// tools/fixtures/pose-animation's hero_tpose.gltf and robot_apose.gltf, read from the glTF files)
+// without limit hits, loop seamlessly and have exact mirrored halves; and the template store
+// (editor/pose/PoseTemplates: list, load, shadowing, save and delete as undoable steps).
+
+#include "pose/TestUtil.h"
+
+#include "command/CommandHistory.h"
+#include "command/type/RemoveFilesCmd.h"
+#include "pose/PoseAnimatorRuntime.h"
+#include "pose/PoseDofs.h"
+#include "pose/PoseRealisation.h"
+#include "pose/PoseSampler.h"
+#include "pose/PoseTemplates.h"
+
+#include "json.hpp"
+
+#include <gtest/gtest.h>
+
+#include <atomic>
+#include <chrono>
+#include <cmath>
+#include <fstream>
+#include <iterator>
+#include <map>
+#include <optional>
+#include <set>
+
+using namespace posetest;
+using namespace jasperengine::editor;
+namespace fs = std::filesystem;
+
+#ifndef JASPER_TEST_REPO_DIR
+#error "JASPER_TEST_REPO_DIR (the repository root) is set by editor/tests/EditorTests.cmake"
+#endif
+
+
+namespace {
+
+    using Json = nlohmann::json;
+
+    std::string readText(const fs::path& path){
+        std::ifstream in(path, std::ios::binary);
+        return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    }
+
+    // The skeleton of a fixture glTF: the skin's joints with their node TRS; the ancestors of a
+    // joint that are not joints (the scene root node) are folded into its rest transform (they
+    // are identity in the fixtures, checked)
+    Skeleton gltfSkeleton(const fs::path& file){
+        const Json gltf = Json::parse(readText(file));
+        const Json& nodes = gltf["nodes"];
+        const Json& joints = gltf["skins"][0]["joints"];
+        std::vector<int> parentOf(nodes.size(), -1);
+        for (size_t n = 0; n < nodes.size(); n++){
+            for (const Json& child : nodes[n].value("children", Json::array())){
+                parentOf[child.get<int>()] = static_cast<int>(n);
+            }
+        }
+        std::map<int, int> boneOfNode;
+        for (size_t j = 0; j < joints.size(); j++){
+            boneOfNode[joints[j].get<int>()] = static_cast<int>(j);
+        }
+        Skeleton skeleton;
+        for (size_t j = 0; j < joints.size(); j++){
+            const int node = joints[j].get<int>();
+            const Json& n = nodes[node];
+            SkeletonBone bone;
+            bone.name = n["name"].get<std::string>();
+            if (n.contains("translation")){
+                bone.position = Vector3(n["translation"][0].get<float>(), n["translation"][1].get<float>(), n["translation"][2].get<float>());
+            }
+            if (n.contains("rotation")){
+                // glTF stores x, y, z, w
+                bone.rotation = Quaternion(n["rotation"][3].get<float>(), n["rotation"][0].get<float>(),
+                                           n["rotation"][1].get<float>(), n["rotation"][2].get<float>());
+            }
+            if (n.contains("scale")){
+                bone.scale = Vector3(n["scale"][0].get<float>(), n["scale"][1].get<float>(), n["scale"][2].get<float>());
+            }
+            int parent = parentOf[node];
+            while (parent >= 0 && !boneOfNode.count(parent)){
+                const Json& ancestor = nodes[parent];
+                EXPECT_FALSE(ancestor.contains("translation") || ancestor.contains("rotation") || ancestor.contains("scale") ||
+                             ancestor.contains("matrix")) << file << ": a non-joint ancestor with a transform (not folded here)";
+                parent = parentOf[parent];
+            }
+            bone.parent = parent >= 0 ? boneOfNode[parent] : -1;
+            skeleton.bones.push_back(bone);
+        }
+        return skeleton;
+    }
+
+    struct FixtureRig {
+        std::string label;
+        std::shared_ptr<PoseRig> rig;
+    };
+
+    const std::vector<FixtureRig>& fixtureRigs(){
+        static const std::vector<FixtureRig> rigs = [](){
+            std::vector<FixtureRig> out;
+            for (const char* name : {"hero_tpose", "robot_apose"}){
+                const Skeleton skeleton = gltfSkeleton(fs::path(JASPER_TEST_REPO_DIR "/tools/fixtures/pose-animation/assets/models") / (std::string(name) + ".gltf"));
+                auto rig = std::make_shared<PoseRig>();
+                std::string error;
+                if (!rig->build(skeleton, autoDetectHumanoid(skeleton), &error)){
+                    ADD_FAILURE() << name << ": " << error;
+                    continue;
+                }
+                out.push_back({name, rig});
+            }
+            return out;
+        }();
+        return rigs;
+    }
+
+    // spec section 3: name -> category, pose count, loop
+    struct Expected {
+        const char* category;
+        size_t poses;
+        bool loop;
+        size_t mirroredHalf;   // poses [half, 2 * half) mirror poses [0, half); 0 = no mirrored halves
+    };
+
+    const std::map<std::string, Expected>& expected(){
+        static const std::map<std::string, Expected> table = {
+            {"Idle", {"Basics", 2, true, 0}},
+            {"Walk", {"Locomotion", 4, true, 2}},
+            {"Run", {"Locomotion", 4, true, 2}},
+            {"Sneak", {"Locomotion", 4, true, 2}},
+            {"Cartoon Walk", {"Locomotion", 8, true, 4}},
+            {"Jump", {"Actions", 6, false, 0}},
+            {"Wave", {"Gestures", 2, true, 0}},
+            {"Sit Down", {"Actions", 4, false, 0}},
+            {"Punch", {"Actions", 4, false, 0}},
+            {"Bow", {"Gestures", 3, false, 0}},
+        };
+        return table;
+    }
+
+    struct TempProject {
+        fs::path path;
+        TempProject(){
+            static std::atomic<int> counter{0};
+            path = fs::temp_directory_path() / ("jasper-posetemplates-" + std::to_string(
+                std::chrono::steady_clock::now().time_since_epoch().count()) + "-" + std::to_string(counter++));
+            fs::create_directories(path);
+        }
+        ~TempProject(){
+            std::error_code ec;
+            fs::remove_all(path, ec);
+        }
+    };
+
+    void write(const fs::path& path, const std::string& text){
+        std::ofstream out(path, std::ios::binary | std::ios::trunc);
+        out << text;
+    }
+
+    const PoseTemplate& builtin(const std::string& name){
+        for (const PoseTemplate& t : PoseTemplates::builtins()){
+            if (t.info.name == name){
+                return t;
+            }
+        }
+        throw std::runtime_error("no built-in template " + name);
+    }
+
+}
+
+TEST(PoseTemplates, BuiltinsLoadWithoutWarnings){
+    const std::vector<PoseTemplateResource> resources = PoseTemplates::builtinResources();
+    ASSERT_EQ(resources.size(), expected().size());
+    for (const PoseTemplateResource& resource : resources){
+        PoseAnimationData data;
+        std::vector<std::string> warnings;
+        std::string error;
+        std::optional<PoseAnimationTemplateInfo> info;
+        ASSERT_TRUE(parsePoseAnimation(resource.text, data, warnings, &error, &info)) << resource.fileName << ": " << error;
+        EXPECT_TRUE(warnings.empty()) << resource.fileName << ": " << (warnings.empty() ? "" : warnings[0]);
+        ASSERT_TRUE(info.has_value()) << resource.fileName << " has no template object";
+        EXPECT_TRUE(data.previewModel.empty()) << resource.fileName << ": a template has no preview model";
+        EXPECT_FALSE(info->description.empty()) << resource.fileName;
+        // the file is the deterministic text of its data (written by the tools, not by hand)
+        EXPECT_EQ(writePoseAnimation(data, &*info), resource.text) << resource.fileName;
+        auto it = expected().find(info->name);
+        ASSERT_NE(it, expected().end()) << resource.fileName << ": unexpected template '" << info->name << "'";
+        EXPECT_EQ(info->category, it->second.category) << info->name;
+        EXPECT_EQ(data.poses.size(), it->second.poses) << info->name;
+        EXPECT_EQ(data.settings.loop, it->second.loop) << info->name;
+        EXPECT_TRUE(data.settings.humanize.jointLimits) << info->name;
+    }
+    // every expected template is there once, built-ins sorted by category then name
+    const std::vector<PoseTemplate>& parsed = PoseTemplates::builtins();
+    ASSERT_EQ(parsed.size(), expected().size());
+    std::set<std::string> names;
+    for (size_t i = 0; i < parsed.size(); i++){
+        names.insert(parsed[i].info.name);
+        EXPECT_FALSE(parsed[i].info.user);
+        if (i > 0){
+            const auto& a = parsed[i - 1].info;
+            const auto& b = parsed[i].info;
+            EXPECT_TRUE(a.category < b.category || (a.category == b.category && a.name < b.name)) << a.name << " / " << b.name;
+        }
+    }
+    EXPECT_EQ(names.size(), expected().size());
+    EXPECT_EQ(builtin("Idle").data.settings.humanize.enabled, true);
+    EXPECT_NEAR(builtin("Idle").data.settings.humanize.life, 1.0f, 1e-4);
+    EXPECT_NEAR(builtin("Idle").data.settings.humanize.movingHolds, 0.2f, 1e-4);
+    EXPECT_NEAR(builtin("Sneak").data.settings.stepRate, 8.0f, 1e-4);
+    EXPECT_NEAR(builtin("Wave").data.settings.looseness, 0.6f, 1e-4);
+    EXPECT_NEAR(builtin("Punch").data.settings.transition.anticipation, 0.2f, 1e-4);
+    EXPECT_NEAR(builtin("Walk").data.settings.weights[static_cast<int>(BodyGroup::Legs)], 0.0f, 1e-6);
+    // the feel is the animation's: per-pose transitions only where a template needs them (Jump's
+    // moves into floor contacts, Punch's slower pull back after the extension); Jump's way up uses
+    // the file's Rubbery feel
+    for (const PoseTemplate& t : PoseTemplates::builtins()){
+        for (size_t i = 0; i < t.data.poses.size(); i++){
+            const PoseKey& key = t.data.poses[i];
+            if (t.info.name != "Jump" && !(t.info.name == "Punch" && key.name == "Extend")){
+                EXPECT_FALSE(key.customTransition) << t.info.name << " pose " << i << " has its own transition";
+            }
+            if (key.grounded){
+                EXPECT_EQ(key.lift, 0.0f) << t.info.name << " pose " << i << ": a leftover lift on a grounded pose";
+            }
+        }
+    }
+    const PoseAnimationData& jump = builtin("Jump").data;
+    ASSERT_EQ(jump.poses.size(), 6u);
+    EXPECT_FALSE(jump.poses[2].customTransition) << "Launch -> Apex uses the Rubbery feel";
+    for (size_t i : {0u, 1u, 3u, 4u}){
+        ASSERT_TRUE(jump.poses[i].customTransition) << "into a floor contact: pose " << i;
+        EXPECT_LE(jump.poses[i].transition.overshoot, 0.15f) << "pose " << i;
+    }
+}
+
+TEST(PoseTemplates, FixtureRigsReadFromTheGltfFiles){
+    ASSERT_EQ(fixtureRigs().size(), 2u);
+    EXPECT_TRUE(fixtureRigs()[0].rig->has(HumanBone::UpperChest));    // hero: Mixamo Spine2
+    EXPECT_FALSE(fixtureRigs()[1].rig->has(HumanBone::UpperChest));   // robot: no upper chest
+}
+
+TEST(PoseTemplates, NoLimitHitsOnTheFixtureRigs){
+    for (const PoseTemplate& t : PoseTemplates::builtins()){
+        // the key poses themselves are within the limits (rig independent)
+        for (size_t i = 0; i < t.data.poses.size(); i++){
+            BodyPose body = t.data.poses[i].body;
+            const std::vector<int> hits = clampToLimits(body);
+            EXPECT_TRUE(hits.empty()) << t.info.name << " pose " << i << ": " << (hits.empty() ? "" : dofName(hits[0]));
+        }
+        for (const FixtureRig& fixture : fixtureRigs()){
+            const auto realised = realisePoseAnimation(t.data, fixture.rig);
+            ASSERT_TRUE(realised) << t.info.name << " on " << fixture.label;
+            for (size_t i = 0; i < realised->metrics.size(); i++){
+                EXPECT_TRUE(realised->metrics[i].limitHits.empty()) << t.info.name << " pose " << i << " on " << fixture.label;
+            }
+            // the frames (bake and runtime) come back within the limits, up to the decomposition's rounding
+            for (size_t f = 0; f < realised->frames.size(); f++){
+                const BodyPose body = fixture.rig->toBodyPose(realised->frames[f]);
+                for (int b = 0; b < HUMAN_BONE_COUNT; b++){
+                    const HumanBone bone = boneAt(b);
+                    if (!fixture.rig->has(bone)){
+                        continue;
+                    }
+                    for (int k = 0; k < DOFS_PER_BONE; k++){
+                        const DofInfo& dof = dofInfo(dofIndex(bone, k));
+                        const float value = body.angles[dofIndex(bone, k)];
+                        EXPECT_GE(value, dof.minDegrees - 0.5f) << t.info.name << " frame " << f << " on " << fixture.label << ": " << dofName(dofIndex(bone, k));
+                        EXPECT_LE(value, dof.maxDegrees + 0.5f) << t.info.name << " frame " << f << " on " << fixture.label << ": " << dofName(dofIndex(bone, k));
+                    }
+                }
+            }
+        }
+    }
+}
+
+TEST(PoseTemplates, LoopsAreSeamless){
+    for (const PoseTemplate& t : PoseTemplates::builtins()){
+        if (!t.data.settings.loop){
+            continue;
+        }
+        for (const FixtureRig& fixture : fixtureRigs()){
+            const PoseRig& rig = *fixture.rig;
+            PoseAnimationData data = t.data;
+            // choppiness (Sneak) quantises time on purpose: the curve under it must be seamless
+            data.settings.stepRate = 0.0f;
+            const SamplerInput input = makeSamplerInput(data, realiseKeys(data, rig, rig.skin()), &rig);
+            const double length = input.timeline.length;
+            HumanPose a, b;
+            sample(input, 0.0f, a);
+            sample(input, static_cast<float>(length), b);
+            for (int s = 0; s < HUMAN_BONE_COUNT; s++){
+                EXPECT_LT(radToDeg(rotationError(a.rotations[s], b.rotations[s])), 0.01) << t.info.name << " on " << fixture.label;
+            }
+            EXPECT_LT((Vec3d(rig.hipsWorldPosition(a)) - Vec3d(rig.hipsWorldPosition(b))).length(), 1e-4 * rig.humanScale());
+            // no jump anywhere across the wrap (fine steps over the last and first 0.1 s)
+            HumanPose previous, current;
+            const double dt = 2.5e-4;
+            sample(input, static_cast<float>(length - 0.1), previous);
+            for (double at = length - 0.1 + dt; at <= length + 0.1; at += dt){
+                const double wrapped = at > length ? at - length : at;
+                sample(input, static_cast<float>(wrapped), current);
+                for (int s = 0; s < HUMAN_BONE_COUNT; s++){
+                    EXPECT_LT(radToDeg(rotationError(previous.rotations[s], current.rotations[s])), 1.5)
+                        << t.info.name << " on " << fixture.label << ": " << humanBoneName(boneAt(s)) << " at " << at;
+                }
+                previous = current;
+            }
+            // the actual (choppy) playback also returns to its first frame
+            if (t.data.settings.stepRate > 0.0f){
+                const auto realised = realisePoseAnimation(t.data, fixture.rig);
+                ASSERT_TRUE(realised);
+                for (int s = 0; s < HUMAN_BONE_COUNT; s++){
+                    EXPECT_LT(radToDeg(rotationError(realised->frames.front().rotations[s], realised->frames.back().rotations[s])), 0.01)
+                        << t.info.name;
+                }
+            }
+        }
+    }
+}
+
+// goToPose (phase 2, 4.8 frames' rules on live transitions): between two grounded keys of every
+// template the body never sinks into the floor (it did by up to 0.29 humanScale, Sneak 0 -> 3)
+// and with joint limits on the bones stay within them
+TEST(PoseTemplates, GoToPoseBetweenGroundedKeysStaysOnTheFloor){
+    std::vector<std::pair<std::string, std::shared_ptr<PoseRig>>> rigs = {{"tpose (skinned)", tposeRig().skinned}};
+    for (const FixtureRig& fixture : fixtureRigs()){
+        rigs.push_back({fixture.label, fixture.rig});
+    }
+    for (const PoseTemplate& t : PoseTemplates::builtins()){
+        for (const auto& [label, rig] : rigs){
+            PoseAnimatorRuntime runtime;
+            runtime.data = t.data;
+            runtime.dataLoaded = true;
+            std::string error;
+            ASSERT_TRUE(runtime.build(rig, &error)) << t.info.name << " on " << label << ": " << error;
+            const double scale = rig->humanScale();
+            double worst = 1e9;
+            for (size_t i = 0; i < runtime.keys().size(); i++){
+                for (size_t j = 0; j < runtime.keys().size(); j++){
+                    if (i == j || !t.data.poses[i].grounded || !t.data.poses[j].grounded){
+                        continue;
+                    }
+                    runtime.displayed = runtime.keys()[i];
+                    runtime.hasDisplayed = true;
+                    PoseGoTo request;
+                    request.key = static_cast<int>(j);
+                    ASSERT_TRUE(runtime.startTransition(request));
+                    EXPECT_TRUE(runtime.transitionFromGrounded) << t.info.name << " key " << i;
+                    HumanPose pose;
+                    for (float time = 0.0f; time < runtime.transitionSettle; time += 1.0f / 120.0f){
+                        runtime.transitionPose(time, pose);
+                        const double height = (rig->lowestPointPrecise(pose, rig->skin()) - rig->floorHeight()) / scale;
+                        worst = std::min(worst, height);
+                        EXPECT_LT(std::fabs(height), 1e-3) << t.info.name << " on " << label << ": " << i << " -> " << j << " at " << time;
+                        if (!t.data.settings.humanize.jointLimits){
+                            continue;
+                        }
+                        const BodyPose body = rig->toBodyPose(pose);
+                        for (int b = 0; b < HUMAN_BONE_COUNT; b++){
+                            if (!rig->has(boneAt(b))) continue;
+                            for (int k = 0; k < DOFS_PER_BONE; k++){
+                                const int dof = dofIndex(boneAt(b), k);
+                                EXPECT_GE(body.angles[dof], dofInfo(dof).minDegrees - 0.5f) << t.info.name << " on " << label << ": " << dofName(dof);
+                                EXPECT_LE(body.angles[dof], dofInfo(dof).maxDegrees + 0.5f) << t.info.name << " on " << label << ": " << dofName(dof);
+                            }
+                        }
+                    }
+                }
+            }
+            EXPECT_GT(worst, -1e-3) << t.info.name << " on " << label;
+        }
+    }
+}
+
+// a goToPose from a grounded key to a lifted one (Jump) leaves the floor with the hips' ease,
+// arrives at the key's lift and is never below the floor on the way
+TEST(PoseTemplates, GoToPoseLaunchFadesTheGroundOut){
+    const PoseAnimationData& jump = builtin("Jump").data;
+    const std::shared_ptr<PoseRig> rig = tposeRig().skinned;
+    PoseAnimatorRuntime runtime;
+    runtime.data = jump;
+    runtime.dataLoaded = true;
+    std::string error;
+    ASSERT_TRUE(runtime.build(rig, &error)) << error;
+    int grounded = -1, lifted = -1;
+    for (size_t i = 0; i < jump.poses.size(); i++){
+        if (jump.poses[i].grounded && grounded < 0) grounded = static_cast<int>(i);
+        if (!jump.poses[i].grounded && lifted < 0) lifted = static_cast<int>(i);
+    }
+    ASSERT_GE(grounded, 0);
+    ASSERT_GE(lifted, 0);
+    runtime.displayed = runtime.keys()[grounded];
+    runtime.hasDisplayed = true;
+    PoseGoTo request;
+    request.key = lifted;
+    ASSERT_TRUE(runtime.startTransition(request));
+    EXPECT_TRUE(runtime.transitionFromGrounded);
+    HumanPose pose;
+    for (float time = 0.0f; time < runtime.transitionSettle; time += 1.0f / 120.0f){
+        runtime.transitionPose(time, pose);
+        EXPECT_GT((rig->lowestPointPrecise(pose, rig->skin()) - rig->floorHeight()) / rig->humanScale(), -1e-3) << time;
+    }
+    runtime.transitionPose(runtime.transitionSettle, pose);
+    EXPECT_NEAR(rig->lowestPointPrecise(pose, rig->skin()), rig->lowestPointPrecise(runtime.keys()[lifted], rig->skin()), 1e-3 * rig->humanScale());
+    // and back: a landing from the air
+    runtime.displayed = runtime.keys()[lifted];
+    request.key = grounded;
+    ASSERT_TRUE(runtime.startTransition(request));
+    EXPECT_FALSE(runtime.transitionFromGrounded);
+    for (float time = 0.0f; time < runtime.transitionSettle; time += 1.0f / 120.0f){
+        runtime.transitionPose(time, pose);
+        EXPECT_GT((rig->lowestPointPrecise(pose, rig->skin()) - rig->floorHeight()) / rig->humanScale(), -1e-3) << time;
+    }
+}
+
+TEST(PoseTemplates, MirroredHalvesAreExactMirrors){
+    for (const PoseTemplate& t : PoseTemplates::builtins()){
+        const size_t half = expected().at(t.info.name).mirroredHalf;
+        for (size_t i = 0; i < half; i++){
+            const PoseKey& a = t.data.poses[i];
+            const PoseKey& b = t.data.poses[i + half];
+            const BodyPose mirrored = mirrorBodyPose(a.body);
+            for (int d = 0; d < DOF_COUNT; d++){
+                EXPECT_FLOAT_EQ(b.body.angles[d], mirrored.angles[d]) << t.info.name << " pose " << i + half << " " << dofName(d);
+            }
+            EXPECT_FLOAT_EQ(b.body.offset.x, mirrored.offset.x) << t.info.name;
+            EXPECT_FLOAT_EQ(b.body.offset.z, mirrored.offset.z) << t.info.name;
+            EXPECT_EQ(a.grounded, b.grounded) << t.info.name;
+            EXPECT_FLOAT_EQ(a.lift, b.lift) << t.info.name;
+            EXPECT_FLOAT_EQ(a.hold, b.hold) << t.info.name;
+        }
+    }
+}
+
+TEST(PoseTemplates, StoreListsLoadsShadowsSavesAndDeletes){
+    TempProject project;
+    // a project without templates lists the built-ins
+    std::vector<PoseTemplateInfo> list = PoseTemplates::list(project.path);
+    ASSERT_EQ(list.size(), expected().size());
+    PoseTemplate walk;
+    std::string error;
+    ASSERT_TRUE(PoseTemplates::load(project.path, "walk", walk, &error)) << error;   // case-insensitive
+    EXPECT_EQ(walk.info.name, "Walk");
+    EXPECT_FALSE(walk.info.user);
+    EXPECT_FALSE(PoseTemplates::load(project.path, "Moonwalk", walk, &error));
+    EXPECT_NE(error.find("Cartoon Walk"), std::string::npos) << "the error lists the templates: " << error;
+
+    CommandHistory history;
+    int changes = 0;
+    PoseTemplates::setFilesChangedHook([&changes](const std::vector<fs::path>&){ changes++; });
+
+    // save a project template named like a built-in: it shadows it
+    PoseAnimationData mine = builtin("Bow").data;
+    mine.previewModel = "models/hero.gltf";
+    mine.poses.resize(2);
+    fs::path file;
+    ASSERT_TRUE(PoseTemplates::save(history, project.path, " Walk ", "my walk", "Mine", mine, &error, &file)) << error;
+    EXPECT_EQ(file, PoseTemplates::userDirectory(project.path) / "Walk.poseanim");
+    EXPECT_TRUE(fs::is_regular_file(file));
+    EXPECT_EQ(changes, 1);
+    list = PoseTemplates::list(project.path);
+    ASSERT_EQ(list.size(), expected().size());     // the built-in Walk is shadowed
+    EXPECT_TRUE(list.back().user);
+    EXPECT_EQ(list.back().name, "Walk");
+    EXPECT_EQ(list.back().category, "Mine");
+    EXPECT_EQ(list.back().poseCount, 2u);
+    for (size_t i = 0; i + 1 < list.size(); i++){
+        EXPECT_FALSE(list[i].user) << "built-ins first";
+        EXPECT_NE(list[i].name, "Walk");
+    }
+    ASSERT_TRUE(PoseTemplates::load(project.path, "WALK", walk, &error)) << error;
+    EXPECT_TRUE(walk.info.user);
+    EXPECT_EQ(walk.info.description, "my walk");
+    EXPECT_TRUE(walk.data.previewModel.empty()) << "saved without the preview model";
+    EXPECT_TRUE(walk.warnings.empty());
+    EXPECT_EQ(walk.data.poses.size(), 2u);
+
+    // saving again overwrites the same file (one more undo step)
+    mine.poses.resize(1);
+    ASSERT_TRUE(PoseTemplates::save(history, project.path, "walk", "shorter", "Mine", mine, &error, &file)) << error;
+    EXPECT_EQ(file.filename(), "Walk.poseanim");
+    ASSERT_TRUE(PoseTemplates::load(project.path, "Walk", walk, &error));
+    EXPECT_EQ(walk.data.poses.size(), 1u);
+    EXPECT_EQ(walk.info.name, "walk");
+    history.undo();
+    ASSERT_TRUE(PoseTemplates::load(project.path, "Walk", walk, &error));
+    EXPECT_EQ(walk.data.poses.size(), 2u) << "undo restores the previous file";
+
+    // delete is undoable; built-ins cannot be deleted
+    EXPECT_FALSE(PoseTemplates::remove(history, project.path, "Bow", &error));
+    EXPECT_NE(error.find("built-in"), std::string::npos) << error;
+    EXPECT_FALSE(PoseTemplates::remove(history, project.path, "Nothing", &error));
+    ASSERT_TRUE(PoseTemplates::remove(history, project.path, "walk", &error)) << error;
+    EXPECT_FALSE(fs::exists(file));
+    ASSERT_TRUE(PoseTemplates::load(project.path, "Walk", walk, &error));
+    EXPECT_FALSE(walk.info.user) << "the built-in is back";
+    history.undo();
+    EXPECT_TRUE(fs::exists(file));
+    ASSERT_TRUE(PoseTemplates::load(project.path, "Walk", walk, &error));
+    EXPECT_TRUE(walk.info.user);
+    history.redo();
+    EXPECT_FALSE(fs::exists(file));
+    history.undo();
+    history.undo();
+    EXPECT_FALSE(fs::exists(file)) << "undoing the first save removes the file";
+    EXPECT_FALSE(fs::exists(PoseTemplates::userDirectory(project.path))) << "and the folder it created";
+
+    // a removal that cannot complete removes nothing
+    TempProject other;
+    write(other.path / "a.poseanim", "a");
+    RemoveFilesCmd* failing = new RemoveFilesCmd({other.path / "a.poseanim", other.path / "missing.poseanim"}, nullptr);
+    EXPECT_FALSE(history.addCommand(failing));   // deleted by the history
+    EXPECT_TRUE(fs::exists(other.path / "a.poseanim"));
+
+    // names
+    EXPECT_FALSE(PoseTemplates::validName("   ", &error));
+    EXPECT_FALSE(PoseTemplates::validName(std::string(65, 'a'), &error));
+    EXPECT_FALSE(PoseTemplates::validName("a\nb", &error));
+    EXPECT_EQ(PoseTemplates::userFile(project.path, "a/b:c?").filename(), "a_b_c_.poseanim");
+    PoseTemplates::setFilesChangedHook(nullptr);
+}
+
+TEST(PoseTemplates, ApplyReplacesOrAppends){
+    const PoseAnimationData& wave = builtin("Wave").data;
+    PoseAnimationData target = builtin("Jump").data;
+    target.previewModel = "models/robot.gltf";
+    PoseAnimationData replaced = target;
+    PoseTemplates::apply(wave, replaced, PoseTemplateApply::Replace);
+    EXPECT_EQ(replaced.poses.size(), wave.poses.size());
+    EXPECT_EQ(replaced.settings.loop, wave.settings.loop);
+    EXPECT_NEAR(replaced.settings.looseness, wave.settings.looseness, 1e-6);
+    EXPECT_EQ(replaced.previewModel, "models/robot.gltf") << "replace keeps the preview model";
+    PoseAnimationData appended = target;
+    PoseTemplates::apply(wave, appended, PoseTemplateApply::Append);
+    ASSERT_EQ(appended.poses.size(), target.poses.size() + wave.poses.size());
+    EXPECT_EQ(appended.poses.back().name, wave.poses.back().name);
+    EXPECT_EQ(appended.settings.loop, target.settings.loop) << "append keeps the settings";
+    const PoseAnimationData fresh = PoseTemplates::newAnimation(wave, "models/hero.gltf");
+    EXPECT_EQ(fresh.previewModel, "models/hero.gltf");
+    EXPECT_EQ(fresh.poses.size(), wave.poses.size());
+}

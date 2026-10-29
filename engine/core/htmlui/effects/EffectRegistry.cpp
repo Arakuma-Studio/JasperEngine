@@ -134,11 +134,6 @@ const EffectManifest* EffectRegistry::findByCustomShader(const std::string& cust
     return nullptr;
 }
 
-size_t EffectRegistry::graveyardSize() const{
-    std::lock_guard<std::recursive_mutex> lock(mutex);
-    return graveyard.size() + (rmlState() ? rmlState()->oldDecorators.size() + rmlState()->oldFilters.size() : 0);
-}
-
 ShaderKey EffectRegistry::shaderKey(const EffectManifest& m, bool filterForm) const{
     std::lock_guard<std::recursive_mutex> lock(mutex);
     const uint32_t generation = ShaderPool::getCustomShaderGeneration();

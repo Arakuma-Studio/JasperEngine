@@ -15,8 +15,8 @@
 file(GLOB_RECURSE CORE_TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*Test.cpp)
 
 # The allocation counter of the zero-allocation tests and the benches. It counts at malloc,
-# wrapped by GNU ld (the vendored ThorVG already replaces the plain operator new), so it counts
-# on Linux; elsewhere those tests skip.
+# wrapped by GNU ld (it replaces the plain operator new with malloc), so it counts on Linux;
+# elsewhere those tests skip.
 set(CORE_TEST_ALLOCATION_COUNTER ${CMAKE_CURRENT_SOURCE_DIR}/support/AllocationCounter.cpp)
 set(CORE_TEST_COUNTS_ALLOCATIONS OFF)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -50,7 +50,12 @@ endif()
 
 jasperengine_add_test_target(jasperengine-core-tests
     SOURCES ${CORE_TEST_SOURCES} ${CORE_TEST_ALLOCATION_COUNTER}
+        # the animation clip tests' asset root (a temporary directory around each of them)
+        ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimTestEnvironment.cpp
     INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/support
+    DEFINITIONS
+        # the repository root: the fixture projects of tools/fixtures (pose and clip tests' models)
+        JASPER_TEST_REPO_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../.."
     # the KTX2 tests write Zstandard supercompressed files (games link the decoder only)
     LINK zstd
     DEFINITIONS

@@ -225,7 +225,7 @@ void create_scene_Prefab_Scene_1(Scene* scene){
         mesh.lodEnabled = true;
         mesh.lodBias = 1.000000f;
         mesh.renderInReflectionProbes = true;
-        mesh.transparent = true;
+        mesh.transparent = false;
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
@@ -239,11 +239,6 @@ void create_scene_Prefab_Scene_1(Scene* scene){
         mesh.submeshes[0].material.foliageTransmission = 0.000000f;
         mesh.submeshes[0].material.alphaMode = static_cast<MaterialAlphaMode>(0);
         mesh.submeshes[0].material.emissiveFactor = Vector3(0.000000f, 0.000000f, 0.000000f);
-        mesh.submeshes[0].material.baseColorTexture.setPath("sprites/rock-down.png");
-        mesh.submeshes[0].material.baseColorTexture.setMinFilter(TextureFilter::LINEAR);
-        mesh.submeshes[0].material.baseColorTexture.setMagFilter(TextureFilter::LINEAR);
-        mesh.submeshes[0].material.baseColorTexture.setWrapU(TextureWrap::CLAMP_TO_EDGE);
-        mesh.submeshes[0].material.baseColorTexture.setWrapV(TextureWrap::CLAMP_TO_EDGE);
         mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLES;
         mesh.submeshes[0].vertexCount = 6;
         mesh.submeshes[0].faceCulling = false;
@@ -340,7 +335,7 @@ void create_scene_Prefab_Scene_1(Scene* scene){
         mesh.lodEnabled = true;
         mesh.lodBias = 1.000000f;
         mesh.renderInReflectionProbes = true;
-        mesh.transparent = true;
+        mesh.transparent = false;
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
@@ -354,11 +349,6 @@ void create_scene_Prefab_Scene_1(Scene* scene){
         mesh.submeshes[0].material.foliageTransmission = 0.000000f;
         mesh.submeshes[0].material.alphaMode = static_cast<MaterialAlphaMode>(0);
         mesh.submeshes[0].material.emissiveFactor = Vector3(0.000000f, 0.000000f, 0.000000f);
-        mesh.submeshes[0].material.baseColorTexture.setPath("sprites/plane-sheet.png");
-        mesh.submeshes[0].material.baseColorTexture.setMinFilter(TextureFilter::LINEAR);
-        mesh.submeshes[0].material.baseColorTexture.setMagFilter(TextureFilter::LINEAR);
-        mesh.submeshes[0].material.baseColorTexture.setWrapU(TextureWrap::CLAMP_TO_EDGE);
-        mesh.submeshes[0].material.baseColorTexture.setWrapV(TextureWrap::CLAMP_TO_EDGE);
         mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLES;
         mesh.submeshes[0].vertexCount = 6;
         mesh.submeshes[0].faceCulling = false;
@@ -455,7 +445,7 @@ void create_scene_Prefab_Scene_1(Scene* scene){
         mesh.lodEnabled = true;
         mesh.lodBias = 1.000000f;
         mesh.renderInReflectionProbes = true;
-        mesh.transparent = true;
+        mesh.transparent = false;
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
@@ -469,11 +459,6 @@ void create_scene_Prefab_Scene_1(Scene* scene){
         mesh.submeshes[0].material.foliageTransmission = 0.000000f;
         mesh.submeshes[0].material.alphaMode = static_cast<MaterialAlphaMode>(0);
         mesh.submeshes[0].material.emissiveFactor = Vector3(0.000000f, 0.000000f, 0.000000f);
-        mesh.submeshes[0].material.baseColorTexture.setPath("sprites/plane-sheet.png");
-        mesh.submeshes[0].material.baseColorTexture.setMinFilter(TextureFilter::LINEAR);
-        mesh.submeshes[0].material.baseColorTexture.setMagFilter(TextureFilter::LINEAR);
-        mesh.submeshes[0].material.baseColorTexture.setWrapU(TextureWrap::CLAMP_TO_EDGE);
-        mesh.submeshes[0].material.baseColorTexture.setWrapV(TextureWrap::CLAMP_TO_EDGE);
         mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLES;
         mesh.submeshes[0].vertexCount = 6;
         mesh.submeshes[0].faceCulling = false;
@@ -538,7 +523,7 @@ void create_scene_Prefab_Scene_1(Scene* scene){
         mesh.lodEnabled = true;
         mesh.lodBias = 1.000000f;
         mesh.renderInReflectionProbes = true;
-        mesh.transparent = true;
+        mesh.transparent = false;
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
@@ -552,11 +537,6 @@ void create_scene_Prefab_Scene_1(Scene* scene){
         mesh.submeshes[0].material.foliageTransmission = 0.000000f;
         mesh.submeshes[0].material.alphaMode = static_cast<MaterialAlphaMode>(0);
         mesh.submeshes[0].material.emissiveFactor = Vector3(0.000000f, 0.000000f, 0.000000f);
-        mesh.submeshes[0].material.baseColorTexture.setPath("sprites/rock.png");
-        mesh.submeshes[0].material.baseColorTexture.setMinFilter(TextureFilter::LINEAR);
-        mesh.submeshes[0].material.baseColorTexture.setMagFilter(TextureFilter::LINEAR);
-        mesh.submeshes[0].material.baseColorTexture.setWrapU(TextureWrap::CLAMP_TO_EDGE);
-        mesh.submeshes[0].material.baseColorTexture.setWrapV(TextureWrap::CLAMP_TO_EDGE);
         mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLES;
         mesh.submeshes[0].vertexCount = 6;
         mesh.submeshes[0].faceCulling = false;
@@ -642,7 +622,7 @@ void create_scene_Prefab_Scene_1(Scene* scene){
         mesh.lodEnabled = true;
         mesh.lodBias = 1.000000f;
         mesh.renderInReflectionProbes = true;
-        mesh.transparent = true;
+        mesh.transparent = false;
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
@@ -656,11 +636,6 @@ void create_scene_Prefab_Scene_1(Scene* scene){
         mesh.submeshes[0].material.foliageTransmission = 0.000000f;
         mesh.submeshes[0].material.alphaMode = static_cast<MaterialAlphaMode>(0);
         mesh.submeshes[0].material.emissiveFactor = Vector3(0.000000f, 0.000000f, 0.000000f);
-        mesh.submeshes[0].material.baseColorTexture.setPath("sprites/rock.png");
-        mesh.submeshes[0].material.baseColorTexture.setMinFilter(TextureFilter::LINEAR);
-        mesh.submeshes[0].material.baseColorTexture.setMagFilter(TextureFilter::LINEAR);
-        mesh.submeshes[0].material.baseColorTexture.setWrapU(TextureWrap::CLAMP_TO_EDGE);
-        mesh.submeshes[0].material.baseColorTexture.setWrapV(TextureWrap::CLAMP_TO_EDGE);
         mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLES;
         mesh.submeshes[0].vertexCount = 6;
         mesh.submeshes[0].faceCulling = false;
@@ -762,9 +737,9 @@ void create_scene_Prefab_Scene_1(Scene* scene){
 
     scene->setCamera(cameraEntity);
 
-    scene->setBackgroundColor(Vector4(0.000000f, 0.000000f, 0.000000f, 1.000000f));
+    scene->setBackgroundColor(Vector4(0.100000f, 0.100000f, 0.100000f, 1.000000f));
     scene->setShadowQuality(ShadowQuality::AUTO);
-    scene->setMeshLodEnabled(true);
+    scene->setMeshLodEnabled(false);
     scene->setMeshLodThreshold(1.000000f);
     scene->setDepthPrepassEnabled(false);
     scene->setGlobalIllumination(0.100000f);
@@ -773,7 +748,7 @@ void create_scene_Prefab_Scene_1(Scene* scene){
     scene->setAmbientLight2D(1.000000f);
     scene->setAmbientLight2D(Vector3(1.000000f, 1.000000f, 1.000000f));
     scene->setShadow2DQuality(ShadowQuality::LOW);
-    scene->setGravity2D(Vector2(0.000000f, -9.810000f));
+    scene->setGravity2D(Vector2(0.000000f, 0.000000f));
     scene->setGravity3D(Vector3(0.000000f, -9.810000f, 0.000000f));
     scene->setLightState(LightState::AUTO);
     scene->setSSAOEnabled(false);
@@ -794,45 +769,5 @@ void create_scene_Prefab_Scene_1(Scene* scene){
 
 SceneResources resources_scene_Prefab_Scene_1(){
     SceneResources resources;
-    {
-        Texture texture;
-        texture.setPath("sprites/rock-down.png");
-        texture.setMinFilter(TextureFilter::LINEAR);
-        texture.setMagFilter(TextureFilter::LINEAR);
-        texture.setWrapU(TextureWrap::CLAMP_TO_EDGE);
-        texture.setWrapV(TextureWrap::CLAMP_TO_EDGE);
-        texture.setAlphaBorderAuto(true);
-        resources.textures.push_back(texture);
-    }
-    {
-        Texture texture;
-        texture.setPath("sprites/plane-sheet.png");
-        texture.setMinFilter(TextureFilter::LINEAR);
-        texture.setMagFilter(TextureFilter::LINEAR);
-        texture.setWrapU(TextureWrap::CLAMP_TO_EDGE);
-        texture.setWrapV(TextureWrap::CLAMP_TO_EDGE);
-        texture.setAlphaBorderAuto(true);
-        resources.textures.push_back(texture);
-    }
-    {
-        Texture texture;
-        texture.setPath("sprites/rock.png");
-        texture.setMinFilter(TextureFilter::LINEAR);
-        texture.setMagFilter(TextureFilter::LINEAR);
-        texture.setWrapU(TextureWrap::CLAMP_TO_EDGE);
-        texture.setWrapV(TextureWrap::CLAMP_TO_EDGE);
-        texture.setAlphaBorderAuto(true);
-        resources.textures.push_back(texture);
-    }
-    {
-        Texture texture;
-        texture.setPath("sprites/ground.png");
-        texture.setMinFilter(TextureFilter::LINEAR);
-        texture.setMagFilter(TextureFilter::LINEAR);
-        texture.setWrapU(TextureWrap::CLAMP_TO_EDGE);
-        texture.setWrapV(TextureWrap::CLAMP_TO_EDGE);
-        texture.setAlphaBorderAuto(true);
-        resources.textures.push_back(texture);
-    }
     return resources;
 }

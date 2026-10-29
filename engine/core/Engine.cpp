@@ -31,6 +31,8 @@
 #include "component/InputFieldComponent.h"
 #include "component/AudioSourceComponent.h"
 #include "component/ActionComponent.h"
+#include "component/PoseAnimatorComponent.h"
+#include "component/AnimationPlayerComponent.h"
 #include "pool/TexturePool.h"
 #include "pool/SoundPool.h"
 #include "pool/TextureDataPool.h"
@@ -38,6 +40,7 @@
 #include "pool/FontPool.h"
 #include "pool/ModelPool.h"
 #include "pool/MeshLodPool.h"
+#include "pool/AnimationClipPool.h"
 #include "shader/RuntimeShaderCompiler.h"
 #include "io/AssetIOService.h"
 #include "jobs/JobSystem.h"
@@ -1080,6 +1083,7 @@ void Engine::clearPools(){
     FontPool::clear();
     ModelPool::clear();
     MeshLodPool::clear();
+    AnimationClipPool::clear();
 }
 
 void Engine::clearUnusedPools(){
@@ -1090,6 +1094,7 @@ void Engine::clearUnusedPools(){
     FontPool::clearUnused();
     ModelPool::clearUnused();
     MeshLodPool::clearUnused();
+    AnimationClipPool::clearUnused();
 }
 
 void Engine::removeSubscriptionsByTag(const std::string& substring) {
@@ -1244,6 +1249,18 @@ void Engine::clearComponentSubscriptions(Scene* scene) {
 
     // contact and activation events a script subscribed to on the scene's physics
     scene->getSystem<PhysicsSystem>()->clearSubscriptions();
+
+    auto animators = scene->getComponentArray<PoseAnimatorComponent>();
+    for (size_t i = 0; i < animators->size(); i++) {
+        animators->getComponentFromIndex(i).onFinish.clear();
+    }
+
+    auto players = scene->getComponentArray<AnimationPlayerComponent>();
+    for (size_t i = 0; i < players->size(); i++) {
+        AnimationPlayerComponent& player = players->getComponentFromIndex(i);
+        player.onEvent.clear();
+        player.onFinish.clear();
+    }
 }
 
 void Engine::computeViewLayout(int screenWidth, int screenHeight, int preferredWidth, int preferredHeight, Scaling scalingMode,
@@ -1567,6 +1584,13 @@ namespace{
     // the frames signalReadyOnce counted (frame stats: Engine::drawView names its view's line by it)
     uint64_t frameStatsFrames = 0;
 
+    // the ready line was logged; the frames presented since (Engine::systemFramePresented)
+    bool readySignalled = false;
+    uint64_t presentedSinceReady = 0;
+    // presented frames after the ready line before "Engine presented:" is logged: the screen
+    // then shows the loaded scenes, whatever the swap chain's depth
+    constexpr uint64_t PRESENTED_FRAMES_SIGNAL = 30;
+
     bool frameStatsEveryFrame(){
         static const bool all = [](){
             const char* value = std::getenv("JASPERENGINE_FRAME_STATS");
@@ -1630,6 +1654,7 @@ void Engine::signalReadyOnce(){
     readyFrames = areScenesLoaded() ? readyFrames + 1 : 0;
     if (readyFrames >= 10){
         signalled = true;
+        readySignalled = true;
         signalledFrame = frames;
         Log::print("Engine ready: every scene loaded and no shader build pending (frame %llu)", (unsigned long long)frames);
         for (Scene* scene : scenes){
@@ -1640,6 +1665,13 @@ void Engine::signalReadyOnce(){
 
 void Engine::systemDraw(){
     runFrame(true);
+}
+
+void Engine::systemFramePresented(){
+    if (!readySignalled || presentedSinceReady >= PRESENTED_FRAMES_SIGNAL)
+        return;
+    if (++presentedSinceReady == PRESENTED_FRAMES_SIGNAL)
+        Log::print("Engine presented: %llu frames since ready", (unsigned long long)presentedSinceReady);
 }
 
 void Engine::systemUpdate(){

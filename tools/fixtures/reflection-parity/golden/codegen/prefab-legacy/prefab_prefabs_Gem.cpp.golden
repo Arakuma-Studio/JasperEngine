@@ -65,11 +65,6 @@ bool build_prefab_prefabs_Gem(Scene* scene, Entity root, std::vector<Entity>& me
         mesh.submeshes[0].material.foliageTransmission = 0.000000f;
         mesh.submeshes[0].material.alphaMode = static_cast<MaterialAlphaMode>(0);
         mesh.submeshes[0].material.emissiveFactor = Vector3(0.000000f, 0.000000f, 0.000000f);
-        mesh.submeshes[0].material.baseColorTexture.setPath("sprites/plane-sheet.png");
-        mesh.submeshes[0].material.baseColorTexture.setMinFilter(TextureFilter::LINEAR);
-        mesh.submeshes[0].material.baseColorTexture.setMagFilter(TextureFilter::LINEAR);
-        mesh.submeshes[0].material.baseColorTexture.setWrapU(TextureWrap::CLAMP_TO_EDGE);
-        mesh.submeshes[0].material.baseColorTexture.setWrapV(TextureWrap::CLAMP_TO_EDGE);
         mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLES;
         mesh.submeshes[0].vertexCount = 6;
         mesh.submeshes[0].faceCulling = false;

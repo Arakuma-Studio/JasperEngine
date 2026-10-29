@@ -60,9 +60,11 @@ namespace jasperengine::editor{
         static LatticeFalloff& falloff();
 
         // --- edits (one undo step each) ---
+        // `record`: the Inspector's Offset row asks Record (animation clips 9.R5) to key the edit
+        // when it claims the lattice; other callers (MCP, menus) leave it false: a scene step
         static bool setOffsets(Project* project, uint32_t sceneId, Entity lattice,
                                const std::vector<int>& points, const std::vector<Vector3>& offsets,
-                               std::string* error = nullptr);
+                               std::string* error = nullptr, bool record = false);
         // applies `localTransform` (lattice local space, about `pivot` in local space) to the
         // current positions of `points`, plus falloff-weighted neighbours
         static bool transformPoints(Project* project, uint32_t sceneId, Entity lattice,
@@ -117,6 +119,11 @@ namespace jasperengine::editor{
                          std::string* note = nullptr, std::string* error = nullptr);
         // whether bake() can run on the target, with the reason when it cannot (inspector tooltip)
         static bool canBake(Scene* scene, Entity target, std::string* reason = nullptr);
+        // What a bake reads is the scene's rest: the clip previews of the target, its meshes and
+        // bound lattices (or of a root above them) restore and a pose suspends (animation clips
+        // 9.R6/R7). bake() calls it first; a caller that asks canBake right before bake calls it
+        // before canBake
+        static void restoreForBake(uint32_t sceneId, Scene* scene, Entity target);
 
         // creates a lattice entity fitted around `targets` (or a unit lattice at `fallbackPosition`
         // without targets) and binds it to them, one undo step; NULL_ENTITY on failure
@@ -137,6 +144,7 @@ namespace jasperengine::editor{
         // held): it merges into the previous continuous edit of the same lattice, so the whole
         // edit is one undo step, until endContinuousEdit (the drag's release, the widget's
         // deactivation) closes it
+        // (a continuous edit is the Scene view's point drag: Record keys it when it claims the lattice)
         static bool setOffsetsContinuous(Project* project, uint32_t sceneId, Entity lattice,
                                          const std::vector<int>& points, const std::vector<Vector3>& offsets,
                                          std::string* error = nullptr);

@@ -79,7 +79,9 @@ void create_scene_AllComponents_2026080800(Scene* scene){
     scene->recreateEntity(1069);
     scene->recreateEntity(1070);
     scene->recreateEntity(1071);
-    scene->setLastEntity(1071);
+    scene->recreateEntity(1072);
+    scene->recreateEntity(1073);
+    scene->setLastEntity(1073);
 
     {
         // Entity 1001 (Transform)
@@ -140,6 +142,10 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         mesh.autoTransparency = false;
         mesh.cullingMode = CullingMode::FRONT;
         mesh.windingOrder = WindingOrder::CCW;
+        mesh.morphWeights[0] = 0.500000f;
+        mesh.morphWeights[2] = 0.250000f;
+        mesh.morphWeightsSet = true;
+        mesh.morphTargetCount = 4;
         mesh.vertexCount = 0;
         mesh.numSubmeshes = 0;
         mesh.enabled = false;
@@ -335,6 +341,7 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         ModelComponent modelcomp;
         modelcomp.filename = "";
         modelcomp.mergeStaticMeshes = true;
+        modelcomp.animationEntities = false;
         modelcomp.skeleton = NULL_ENTITY;
         modelcomp.enabled = false;
         scene->addComponent<ModelComponent>(1009, modelcomp);
@@ -2071,8 +2078,65 @@ void create_scene_AllComponents_2026080800(Scene* scene){
     }
 
     {
-        // Entity 1066 (NavMeshSurfaceComponent)
-        scene->setEntityName(1066, "NavMeshSurfaceComponent");
+        // Entity 1066 (PoseAnimatorComponent)
+        scene->setEntityName(1066, "PoseAnimatorComponent");
+
+        // Entity components initialization
+        PoseAnimatorComponent poseanimator;
+        poseanimator.animation = "animations/parity.poseanim";
+        poseanimator.autoplay = false;
+        poseanimator.speed = 2.500000f;
+        poseanimator.weight = 0.500000f;
+        scene->addComponent<PoseAnimatorComponent>(1066, poseanimator);
+
+        Transform transform;
+        transform.position = Vector3(65.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1066, transform);
+    }
+
+    {
+        // Entity 1067 (AnimationPlayerComponent)
+        scene->setEntityName(1067, "AnimationPlayerComponent");
+
+        // Entity components initialization
+        AnimationPlayerComponent animationplayer;
+        animationplayer.enabled = false;
+        animationplayer.clips.resize(2);
+        animationplayer.clips[0].clip = "animations/parity.anim";
+        animationplayer.clips[0].name = "Parity";
+        animationplayer.clips[0].wrap = ClipWrapMode::Loop;
+        animationplayer.clips[1].clip = "models/parity.gltf#Run";
+        animationplayer.clips[1].wrap = ClipWrapMode::PingPong;
+        animationplayer.defaultClip = "Parity";
+        animationplayer.playAutomatically = false;
+        animationplayer.speed = 2.500000f;
+        animationplayer.defaultFadeTime = 0.500000f;
+        scene->addComponent<AnimationPlayerComponent>(1067, animationplayer);
+
+        Transform transform;
+        transform.position = Vector3(66.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1067, transform);
+    }
+
+    {
+        // Entity 1068 (NavMeshSurfaceComponent)
+        scene->setEntityName(1068, "NavMeshSurfaceComponent");
 
         // Entity components initialization
         NavMeshSurfaceComponent navSurface;
@@ -2092,10 +2156,10 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         navSurface.runtimeCarving = true;
         navSurface.navMeshData = "";
         navSurface.enabled = false;
-        scene->addComponent<NavMeshSurfaceComponent>(1066, navSurface);
+        scene->addComponent<NavMeshSurfaceComponent>(1068, navSurface);
 
         Transform transform;
-        transform.position = Vector3(65.000000f, 0.000000f, 0.000000f);
+        transform.position = Vector3(67.000000f, 0.000000f, 0.000000f);
         transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
         transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
         transform.visible = true;
@@ -2104,12 +2168,12 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         transform.cylindricalBillboard = false;
         transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
         transform.parent = NULL_ENTITY;
-        scene->addComponent<Transform>(1066, transform);
+        scene->addComponent<Transform>(1068, transform);
     }
 
     {
-        // Entity 1067 (NavMeshAgentComponent)
-        scene->setEntityName(1067, "NavMeshAgentComponent");
+        // Entity 1069 (NavMeshAgentComponent)
+        scene->setEntityName(1069, "NavMeshAgentComponent");
 
         // Entity components initialization
         NavMeshAgentComponent navAgent;
@@ -2132,68 +2196,7 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         navAgent.driver = NavAgentDriver::NONE;
         navAgent.surface = NULL_ENTITY;
         navAgent.enabled = false;
-        scene->addComponent<NavMeshAgentComponent>(1067, navAgent);
-
-        Transform transform;
-        transform.position = Vector3(66.000000f, 0.000000f, 0.000000f);
-        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
-        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
-        transform.visible = true;
-        transform.billboard = false;
-        transform.fakeBillboard = false;
-        transform.cylindricalBillboard = false;
-        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
-        transform.parent = NULL_ENTITY;
-        scene->addComponent<Transform>(1067, transform);
-    }
-
-    {
-        // Entity 1068 (NavMeshObstacleComponent)
-        scene->setEntityName(1068, "NavMeshObstacleComponent");
-
-        // Entity components initialization
-        NavMeshObstacleComponent navObstacle;
-        navObstacle.shape = NavObstacleShape::BOX;
-        navObstacle.center = Vector3(4.900000f, 3.000000f, 0.500000f);
-        navObstacle.size = Vector3(4.200000f, 6.200000f, 4.200000f);
-        navObstacle.radius = 1.700000f;
-        navObstacle.height = 2.000000f;
-        navObstacle.carve = true;
-        navObstacle.moveThreshold = 5.200000f;
-        navObstacle.timeToStationary = 6.300000f;
-        navObstacle.carveOnlyStationary = false;
-        navObstacle.enabled = false;
-        scene->addComponent<NavMeshObstacleComponent>(1068, navObstacle);
-
-        Transform transform;
-        transform.position = Vector3(67.000000f, 0.000000f, 0.000000f);
-        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
-        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
-        transform.visible = true;
-        transform.billboard = false;
-        transform.fakeBillboard = false;
-        transform.cylindricalBillboard = false;
-        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
-        transform.parent = NULL_ENTITY;
-        scene->addComponent<Transform>(1068, transform);
-    }
-
-    {
-        // Entity 1069 (NavMeshLinkComponent)
-        scene->setEntityName(1069, "NavMeshLinkComponent");
-
-        // Entity components initialization
-        NavMeshLinkComponent navLink;
-        navLink.agentType = 1;
-        navLink.startPoint = Vector3(5.600000f, 3.600000f, 7.300000f);
-        navLink.endPoint = Vector3(5.000000f, 3.700000f, 0.800000f);
-        navLink.width = 0.000000f;
-        navLink.costModifier = 4.900000f;
-        navLink.bidirectional = false;
-        navLink.autoUpdatePosition = true;
-        navLink.area = 4;
-        navLink.enabled = false;
-        scene->addComponent<NavMeshLinkComponent>(1069, navLink);
+        scene->addComponent<NavMeshAgentComponent>(1069, navAgent);
 
         Transform transform;
         transform.position = Vector3(68.000000f, 0.000000f, 0.000000f);
@@ -2209,20 +2212,22 @@ void create_scene_AllComponents_2026080800(Scene* scene){
     }
 
     {
-        // Entity 1070 (NavMeshModifierComponent)
-        scene->setEntityName(1070, "NavMeshModifierComponent");
+        // Entity 1070 (NavMeshObstacleComponent)
+        scene->setEntityName(1070, "NavMeshObstacleComponent");
 
         // Entity components initialization
-        NavMeshModifierComponent navModifier;
-        navModifier.overrideInclusion = NavModifierInclusion::EXCLUDE;
-        navModifier.overrideArea = true;
-        navModifier.area = 5;
-        navModifier.applyToChildren = false;
-        navModifier.useVolume = true;
-        navModifier.volumeCenter = Vector3(4.300000f, 6.100000f, 6.900000f);
-        navModifier.volumeSize = Vector3(0.600000f, 4.800000f, 8.900000f);
-        navModifier.enabled = false;
-        scene->addComponent<NavMeshModifierComponent>(1070, navModifier);
+        NavMeshObstacleComponent navObstacle;
+        navObstacle.shape = NavObstacleShape::BOX;
+        navObstacle.center = Vector3(4.900000f, 3.000000f, 0.500000f);
+        navObstacle.size = Vector3(4.200000f, 6.200000f, 4.200000f);
+        navObstacle.radius = 1.700000f;
+        navObstacle.height = 2.000000f;
+        navObstacle.carve = true;
+        navObstacle.moveThreshold = 5.200000f;
+        navObstacle.timeToStationary = 6.300000f;
+        navObstacle.carveOnlyStationary = false;
+        navObstacle.enabled = false;
+        scene->addComponent<NavMeshObstacleComponent>(1070, navObstacle);
 
         Transform transform;
         transform.position = Vector3(69.000000f, 0.000000f, 0.000000f);
@@ -2238,8 +2243,67 @@ void create_scene_AllComponents_2026080800(Scene* scene){
     }
 
     {
-        // Entity 1071 (NavGridComponent)
-        scene->setEntityName(1071, "NavGridComponent");
+        // Entity 1071 (NavMeshLinkComponent)
+        scene->setEntityName(1071, "NavMeshLinkComponent");
+
+        // Entity components initialization
+        NavMeshLinkComponent navLink;
+        navLink.agentType = 1;
+        navLink.startPoint = Vector3(5.600000f, 3.600000f, 7.300000f);
+        navLink.endPoint = Vector3(5.000000f, 3.700000f, 0.800000f);
+        navLink.width = 0.000000f;
+        navLink.costModifier = 4.900000f;
+        navLink.bidirectional = false;
+        navLink.autoUpdatePosition = true;
+        navLink.area = 4;
+        navLink.enabled = false;
+        scene->addComponent<NavMeshLinkComponent>(1071, navLink);
+
+        Transform transform;
+        transform.position = Vector3(70.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1071, transform);
+    }
+
+    {
+        // Entity 1072 (NavMeshModifierComponent)
+        scene->setEntityName(1072, "NavMeshModifierComponent");
+
+        // Entity components initialization
+        NavMeshModifierComponent navModifier;
+        navModifier.overrideInclusion = NavModifierInclusion::EXCLUDE;
+        navModifier.overrideArea = true;
+        navModifier.area = 5;
+        navModifier.applyToChildren = false;
+        navModifier.useVolume = true;
+        navModifier.volumeCenter = Vector3(4.300000f, 6.100000f, 6.900000f);
+        navModifier.volumeSize = Vector3(0.600000f, 4.800000f, 8.900000f);
+        navModifier.enabled = false;
+        scene->addComponent<NavMeshModifierComponent>(1072, navModifier);
+
+        Transform transform;
+        transform.position = Vector3(71.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1072, transform);
+    }
+
+    {
+        // Entity 1073 (NavGridComponent)
+        scene->setEntityName(1073, "NavGridComponent");
 
         // Entity components initialization
         NavGridComponent navGrid;
@@ -2261,10 +2325,10 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         navGrid.autoRebuild = false;
         navGrid.gridData = "";
         navGrid.enabled = false;
-        scene->addComponent<NavGridComponent>(1071, navGrid);
+        scene->addComponent<NavGridComponent>(1073, navGrid);
 
         Transform transform;
-        transform.position = Vector3(70.000000f, 0.000000f, 0.000000f);
+        transform.position = Vector3(72.000000f, 0.000000f, 0.000000f);
         transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
         transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
         transform.visible = true;
@@ -2273,7 +2337,7 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         transform.cylindricalBillboard = false;
         transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
         transform.parent = NULL_ENTITY;
-        scene->addComponent<Transform>(1071, transform);
+        scene->addComponent<Transform>(1073, transform);
     }
 
     // Default Camera 1
@@ -2363,5 +2427,8 @@ SceneResources resources_scene_AllComponents_2026080800(){
         Texture texture;
         resources.textures.push_back(texture);
     }
+    resources.models.push_back("models/parity.gltf");
+    resources.clips.push_back("animations/parity.anim");
+    resources.clips.push_back("models/parity.gltf#Run");
     return resources;
 }

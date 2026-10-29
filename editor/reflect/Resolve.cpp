@@ -87,8 +87,13 @@ namespace {
 
     bool parseIndex(std::string_view path, size_t& pos, size_t& value) {
         if (pos >= path.size() || path[pos] < '0' || path[pos] > '9') return false;
+        // one spelling per index ("00" would alias "0" under another override name), and no
+        // value that wraps around
+        if (path[pos] == '0' && pos + 1 < path.size() && path[pos + 1] >= '0' && path[pos + 1] <= '9') return false;
         size_t parsed = 0;
+        size_t digits = 0;
         while (pos < path.size() && path[pos] >= '0' && path[pos] <= '9') {
+            if (++digits > 9) return false;
             parsed = parsed * 10 + static_cast<size_t>(path[pos] - '0');
             pos++;
         }

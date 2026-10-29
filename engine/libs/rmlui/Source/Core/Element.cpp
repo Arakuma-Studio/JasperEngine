@@ -241,6 +241,19 @@ void Element::UpdateProperties(const float dp_ratio, const Vector2f vp_dimension
 	}
 }
 
+bool Element::GetPaintBounds(Rectanglef& out_bounds)
+{
+	// (a subclass may paint more in OnRender: unknown unless it says)
+	if (GetClassIdentifier() != Element::GetStaticClassIdentifier() || GetNumBoxes() != 1)
+		return false;
+	float reach = 0.f;
+	if (!meta->background_border.GetInkReach(reach))
+		return false;
+	const Vector2f position = GetAbsoluteOffset(BoxArea::Border);
+	out_bounds = Rectanglef::FromPositionSize(position - Vector2f(reach), main_box.GetSize(BoxArea::Border) + Vector2f(2.f * reach));
+	return true;
+}
+
 void Element::Render()
 {
 #ifdef RMLUI_TRACY_PROFILING
@@ -264,6 +277,27 @@ void Element::Render()
 	if (stacking_context_dirty)
 		BuildLocalStackingContext();
 
+	// Fork (S16-F6): an element with nothing to paint but its own (no transform, effects, stacking children or ellipsis)
+	// whose paint bounds lie wholly outside the scissor its clipping region sets (kept by SetClippingRegion for the other
+	// elements of its key) is passed over before any state is set: a long scrolled list's hidden rows cost a few tests
+	if (!transform_state && !dirty_transform && !dirty_perspective && stacking_context.empty() && !local_stacking_context &&
+		!draws_line_clamp_ellipsis && computed.clip() == Style::Clip::Type::Auto && !effects.NeedsRenderEffects(computed.opacity(), computed.has_mask_image()))
+	{
+		RenderManager* render_manager = GetRenderManager();
+		if (render_manager && render_manager->PaintShortcuts())
+		{
+			const RenderManager::ClipMemo* memo = render_manager->FindClipMemo(ElementUtilities::GetClipMemoKey(GetOffsetParent()));
+			Rectanglef bounds;
+			if (memo && memo->scissor && GetPaintBounds(bounds))
+			{
+				const Rectanglei& scissor = memo->region;
+				if (bounds.Right() <= (float)scissor.Left() || bounds.Left() >= (float)scissor.Right() || bounds.Bottom() <= (float)scissor.Top() ||
+					bounds.Top() >= (float)scissor.Bottom())
+					return;
+			}
+		}
+	}
+
 	UpdateTransformState();
 	ElementUtilities::ApplyTransform(*this);
 
@@ -274,10 +308,26 @@ void Element::Render()
 	// A hidden element (CSS visibility) paints nothing of its own; its visible descendants paint (phase 3, p3-paint).
 	if (computed.visibility() == Style::Visibility::Visible && ElementUtilities::SetClippingRegion(this))
 	{
-		meta->background_border.Render(this);
-		if (effects.NeedsRenderEffects(computed.opacity(), computed.has_mask_image()))
-			effects.RenderEffects(RenderStage::Decoration);
-		meta->background_border.RenderBorder(this);
+		// Fork (S16-F4): a background, border and box shadow wholly outside the scissor region are not painted (a long
+		// scrolled list draws its visible rows only); the decorators are inside the border box
+		float reach = 0.f;
+		bool outside = false;
+		if (GetNumBoxes() == 1 && meta->background_border.GetInkReach(reach))
+		{
+			if (RenderManager* render_manager = GetRenderManager())
+			{
+				const Vector2f position = GetAbsoluteOffset(BoxArea::Border);
+				const Vector2f size = main_box.GetSize(BoxArea::Border);
+				outside = render_manager->IsOutsideScissor(Rectanglef::FromPositionSize(position - Vector2f(reach), size + Vector2f(2.f * reach)));
+			}
+		}
+		if (!outside)
+		{
+			meta->background_border.Render(this);
+			if (effects.NeedsRenderEffects(computed.opacity(), computed.has_mask_image()))
+				effects.RenderEffects(RenderStage::Decoration);
+			meta->background_border.RenderBorder(this);
+		}
 
 		{
 			RMLUI_ZoneScopedNC("OnRender", 0x228B22);
@@ -2146,6 +2196,13 @@ ElementBackgroundBorder* Element::GetElementBackgroundBorder() const
 	return &meta->background_border;
 }
 
+bool Element::IsPaintedAsPrimitives(const char** reason) const
+{
+	if (reason)
+		*reason = meta->background_border.GetPaintReason();
+	return meta->background_border.IsPaintedAsPrimitives();
+}
+
 ElementScroll* Element::GetElementScroll() const
 {
 	return &meta->scroll;
@@ -3982,11 +4039,21 @@ void Element::UpdateTransformState()
 			transform_state->SetTransform(nullptr);
 
 		perspective_or_transform_changed |= (had_transform != have_transform);
+
+		// Fork (S16-F6): done until something dirties it again (RmlUi 6.3 kept the flag set: once dirtied, an element
+		// computed its transform anew at every render, and it is dirtied again whenever an input of it changes:
+		// a transform property, its offset or box while it has a transform state, its stacking parent's transform)
+		if (RenderManager::LastPaintShortcuts())
+			dirty_transform = false;
 	}
 
 	// A change in perspective or transform will require an update to children transforms as well.
 	if (perspective_or_transform_changed)
 	{
+		// Fork (S16-F6): and changes the clipping regions of the elements it clips
+		if (RenderManager* render_manager = GetRenderManager())
+			render_manager->ResetClipMemo();
+
 		for (Element* stacking_child : stacking_context)
 			stacking_child->DirtyTransformState(false, true);
 	}

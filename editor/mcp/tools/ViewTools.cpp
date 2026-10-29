@@ -27,6 +27,7 @@
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
+#include "subsystem/UIDocumentSystem.h"
 #include "object/ui/UIDocument.h"
 #include "util/Base64.h"
 #include "util/FileUtils.h"
@@ -37,10 +38,13 @@
 #include "window/profiler/FrameDebuggerWindow.h"
 #include "window/profiler/ProfilerWindow.h"
 #include "window/PlayModeChangesWindow.h"
+#include "window/PoseAnimationWindow.h"
 #include "window/SceneWindow.h"
 #include "window/SystemsWindow.h"
 #include "window/UndoHistoryWindow.h"
 #include "util/UiItemLocator.h"
+#include "pose/PoseAnimationDocument.h"
+#include "pose/PoseViewport.h"
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -80,6 +84,10 @@ bool sceneContentLoaded(SceneProject* sp) {
     if (rs && !rs->isAllLoaded()) return false;
     auto us = sp->scene->getSystem<UISystem>();
     if (us && us->hasPendingImages()) return false;
+    // its HTML documents loaded (or failed) and drawn once: the first frame waits for the HTML UI
+    // shaders, which are made when a document first draws (on a software rasterizer, seconds)
+    auto ds = sp->scene->getSystem<UIDocumentSystem>();
+    if (ds && !ds->isAllLoaded()) return false;
     // pinned stateful UI effects still replaying their state (phase 6): drawn a few frames later
     if (UIDocument::getPendingEffectReplays() > 0) return false;
     auto ms = sp->scene->getSystem<MeshSystem>();
@@ -1165,6 +1173,129 @@ void locateUiItemTool(const CallPtr& call) {
     });
 }
 
+// The Scene view of the posed scene and its pose handles (phase 5), null when not posing there
+PoseViewport* posedViewport(Project* project, PoseEditSession& session) {
+    if (!session.bound()) return nullptr;
+    SceneProject* sp = project->getScene(session.sceneId());
+    if (!sp || !sp->sceneRender) return nullptr;
+    return sp->sceneRender->getPoseViewport();
+}
+
+// focus_window pose_animation's `pose` object: {entity, path, index, play}, applied in that order
+bool focusPoseAnimation(const CallPtr& call, PoseAnimationWindow* window) {
+    const Json& args = call->args();
+    const Json& pose = args["pose"];
+    if (!pose.is_object()) {
+        call->fail("pose must be an object {entity, path, index, play, tab}.");
+        return false;
+    }
+    for (auto it = pose.begin(); it != pose.end(); ++it) {
+        const std::string& key = it.key();
+        if (key != "entity" && key != "path" && key != "index" && key != "play" && key != "tab") {
+            call->fail("pose." + key + ": unknown key (valid: entity, path, index, play, tab).");
+            return false;
+        }
+    }
+    Project* project = call->ctx().project();
+    std::string error;
+    if (pose.contains("entity")) {
+        SceneProject* sp = resolveViewScene(project, args.contains("scene") ? args["scene"] : Json(), error);
+        if (!sp) {
+            call->fail(error);
+            return false;
+        }
+        const Entity entity = w3::resolveLiveEntity(project, sp, pose["entity"], error);
+        if (entity == NULL_ENTITY) {
+            call->fail("pose.entity: " + error);
+            return false;
+        }
+        if (!window->bindCharacter(sp->id, entity, &error)) {
+            call->fail("pose.entity: " + error);
+            return false;
+        }
+    }
+    if (pose.contains("path")) {
+        if (!pose["path"].is_string() || !window->openAnimation(pose["path"].get<std::string>(), &error)) {
+            call->fail("pose.path: " + (error.empty() ? std::string("a .poseanim path (string)") : error));
+            return false;
+        }
+    }
+    PoseEditSession& session = window->getSession();
+    if (pose.contains("index")) {
+        const int count = session.document() ? static_cast<int>(session.document()->data().poses.size()) : 0;
+        if (!pose["index"].is_number_integer() || pose["index"].get<int>() < 0 || pose["index"].get<int>() >= count) {
+            call->fail("pose.index: a pose index 0.." + std::to_string(count - 1) + " of the open animation.");
+            return false;
+        }
+        window->selectPose(pose["index"].get<int>());
+    }
+    if (pose.contains("play")) {
+        if (!pose["play"].is_boolean()) {
+            call->fail("pose.play: true plays the preview, false stops it.");
+            return false;
+        }
+        if (!session.bound() || !session.document()) {
+            call->fail("pose.play: bind a character (pose.entity) and open an animation (pose.path) first.");
+            return false;
+        }
+        if (pose["play"].get<bool>()) window->play();
+        else window->stop();
+    }
+    if (pose.contains("tab")) {
+        if (!pose["tab"].is_string()) {
+            call->fail("pose.tab: Pose, Feel, Humanize, Templates or map_bones (the bone mapping popup).");
+            return false;
+        }
+        const std::string tab = pose["tab"].get<std::string>();
+        if (tab == "map_bones") {
+            if (!window->openMappingFor(&error)) {
+                call->fail("pose.tab: " + error);
+                return false;
+            }
+        } else {
+            window->selectTab(tab);
+        }
+    }
+    return true;
+}
+
+Json poseWindowState(const CallPtr& call) {
+    PoseAnimationWindow::State state = call->ctx().app().getPoseAnimationWindow()->getState();
+    Json data = {{"character", state.character.empty() ? Json() : Json(state.character)},
+                 {"rig", state.rig.empty() ? Json() : Json(state.rig)},
+                 {"animation", state.animation.empty() ? Json() : Json(state.animation)},
+                 {"pose_count", state.poseCount}, {"primary", state.primary}, {"selection", state.selection},
+                 {"mode", state.mode}, {"time", state.time}, {"length", state.length}, {"playing", state.playing},
+                 {"tab", state.tab}, {"scene_keys", state.sceneKeys}, {"editable", state.editable},
+                 {"layout", state.layout}, {"thumbnail_height", state.thumbnailHeight},
+                 {"menu", state.menu.empty() ? Json() : Json(state.menu)}};
+    if (state.entity != NULL_ENTITY) {
+        if (SceneProject* sp = call->ctx().project()->getScene(state.sceneId)) {
+            if (sp->scene && sp->scene->isEntityCreated(state.entity)) data["entity"] = McpRefs::entityJson(sp, state.entity);
+        }
+    }
+    if (!state.emptyState.empty()) data["empty_state"] = state.emptyState;
+    if (!state.status.empty()) data["status"] = state.status;
+    // the Templates tab (phase 6) while it shows: the cards after the filter
+    if (state.templates.shown) {
+        data["templates"] = {{"cards", state.templates.cards}, {"user", state.templates.user},
+                             {"visible", state.templates.visible}, {"thumbnails", state.templates.thumbnails}, {"hint", state.templates.hint},
+                             {"category", state.templates.category}, {"search", state.templates.search}};
+    }
+    // the Scene view posing the character (phase 5): handles in Scene view pixels, ghosts, floor
+    PoseEditSession& session = call->ctx().app().getPoseAnimationWindow()->getSession();
+    if (PoseViewport* viewport = posedViewport(call->ctx().project(), session)) {
+        const PoseViewport::State view = viewport->getState();
+        data["viewport"] = {{"posing", view.posing}, {"previewing", view.previewing}, {"handle_count", view.visibleHandles},
+                            {"active_joint", view.activeJoint.empty() ? Json() : Json(view.activeJoint)},
+                            {"ghosts", view.ghosts}, {"floor", view.floor}, {"contacts", view.contacts},
+                            {"balanced", view.balanceShown ? Json(view.balanced) : Json()},
+                            {"global_edit", session.globalEditActive()},
+                            {"view", Json::array({view.viewWidth, view.viewHeight})}};
+    }
+    return data;
+}
+
 void focusWindowTool(const CallPtr& call) {
     const Json& args = call->args();
     McpContext& ctx = call->ctx();
@@ -1263,15 +1394,24 @@ void focusWindowTool(const CallPtr& call) {
     } else if (window == "play_mode_changes") {
         app.getPlayModeChangesWindow()->setOpen(true);
         imguiName = PlayModeChangesWindow::WINDOW_NAME;
+    } else if (window == "pose_animation") {
+        PoseAnimationWindow* pw = app.getPoseAnimationWindow();
+        pw->requestFocus();
+        imguiName = PoseAnimationWindow::WINDOW_NAME;
+        if (args.contains("pose") && !focusPoseAnimation(call, pw)) return;
     } else if (window == "texture_synthesis") {
         app.getTextureSynthesisWindow()->open();
         imguiName = TextureSynthesisWindow::WINDOW_NAME;
     } else {
-        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, terrain, mcp, "
+        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, pose_animation, terrain, mcp, "
                    "systems, jobs_memory, profiler, frame_debugger, preferences, undo_history, play_mode_changes, texture_synthesis.");
         return;
     }
-    // A window opened just now exists after its next draw
+    if (args.contains("pose") && window != "pose_animation") {
+        call->fail("pose: only for window \"pose_animation\".");
+        return;
+    }
+    // A window opened just now exists after its next draw.
     call->afterFrames(1, [call, imguiName, window]() {
         if (window != "game") ImGui::SetWindowFocus(imguiName.c_str());
         call->afterFrames(2, [call, imguiName, window]() {
@@ -1302,6 +1442,10 @@ void focusWindowTool(const CallPtr& call) {
                                                           {"width", std::round(row.width)}, {"height", std::round(row.height)}}}});
                 }
                 data["rows"] = rows;
+            }
+            if (window == "pose_animation") {
+                data["state"] = poseWindowState(call);
+                if (w) data["pos"] = {w->Pos.x - ImGui::GetMainViewport()->Pos.x, w->Pos.y - ImGui::GetMainViewport()->Pos.y};
             }
             if (!w) {
                 call->fail("The " + window + " window does not exist (closed panel?).", data);
@@ -1427,7 +1571,7 @@ Json sceneViewCameraJson(SceneProject* sceneProject) {
 void registerViewTools(McpRegistry& registry) {
     using namespace schema;
 
-    const Json viewScene = sceneRef("Default: playing, else selected.");
+    const Json viewScene = sceneRef();
     const Json sceneShot = withDefault(boolean("Also return a Scene view image."), false);
     const Json maxWidth = w3::maxWidthArgSchema(8192, 768);
 
@@ -1436,9 +1580,9 @@ void registerViewTools(McpRegistry& registry) {
         tool.name = "screenshot";
         tool.title = "Screenshot";
         tool.description =
-            "Capture a view as PNG. game: the running game, or (stopped) the selected scene through its camera. "
-            "scene: the Scene view with gizmos (aim: set_scene_camera / frame_entity). editor: the whole window. "
-            "canvas_rect_in_image maps image -> send_input coords; warns on a flat image.";
+            "Capture a view as PNG. game: the running game, or (stopped) the selected scene through its "
+            "camera. scene: the Scene view with gizmos (aim: set_scene_camera / frame_entity). editor: the "
+            "whole window. canvas_rect_in_image maps image -> send_input coords; warns on a flat image.";
         tool.inputSchema = object({
             {"view", withDefault(stringEnum("", {"game", "scene", "editor"}), "game")},
             {"scene", sceneRef("scene view: whose tab; stopped game view: preview it (selects it).")},
@@ -1465,7 +1609,7 @@ void registerViewTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"scene", viewScene},
             {"position", vec3("")},
-            {"target", vec3("Look-at point.")},
+            {"target", vec3("")},
             {"orbit", object({{"yaw", number("")}, {"pitch", number("")}})},
             {"distance", number("", 0.2, 2000)},
             {"center", vec2("World point at the view centre.")},
@@ -1508,13 +1652,17 @@ void registerViewTools(McpRegistry& registry) {
         tool.name = "focus_window";
         tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Focus Window";
+        // pose: {entity (bind), path (.poseanim), index (pose it), play (preview), tab (Pose, Feel,
+        // Humanize, an added tab, or map_bones: the mapping popup)}; the result has the window's
+        // state. Budget-neutral with the pose_animation window added.
         tool.description =
             "Open and bring an editor panel to the front, e.g. to show a watching human. Not needed before "
             "screenshot. console: returns what it shows (rows, categories, selection); preferences: opens a page; "
-            "systems: returns each row's Enabled checkbox rect.";
+            "systems: returns each row's Enabled checkbox rect; pose_animation: pose {entity, path, index, play, tab}.";
         tool.inputSchema = object({
-            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "terrain", "mcp",
-                                       "systems", "jobs_memory", "profiler", "frame_debugger", "preferences", "undo_history", "play_mode_changes", "texture_synthesis"})},
+            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "pose_animation",
+                                       "terrain", "mcp", "systems", "jobs_memory", "profiler", "frame_debugger", "preferences",
+                                       "undo_history", "play_mode_changes", "texture_synthesis"})},
             {"scene", sceneRef("window scene: whose tab.")},
             {"console", object({
                 {"hidden_categories", array(string(""), "The Category filter: categories not shown.")},
@@ -1523,7 +1671,8 @@ void registerViewTools(McpRegistry& registry) {
             })},
             {"page", string("preferences: General, Code Editor, Undo, External Tools, Logging, Shader Cache.")},
             {"close", boolean("preferences: close it.")},
-            {"profiler", object({{"load", string("A .jetrace.json to load (as Load).")}})}
+            {"profiler", object({{"load", string("A .jetrace.json to load (as Load).")}})},
+            {"pose", anyObject("")}
         }, {"window"});
         tool.annotations.idempotent = true;
         tool.handler = focusWindowTool;
@@ -1557,7 +1706,7 @@ void registerViewTools(McpRegistry& registry) {
             "project = the canvas size (a project setting); the game renders at render_size.";
         tool.inputSchema = object({
             {"aspect", stringEnum("", {"free", "project", "16:9", "16:10", "4:3", "9:16"})},
-            {"scale", number("Zoom.", 1, 5)},
+            {"scale", number("", 1, 5)},
             {"maximize_on_play", boolean("")},
             {"show_stats", boolean("")},
             {"simulate_touch", boolean("Mouse = one finger. Not while playing.")},
