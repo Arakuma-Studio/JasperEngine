@@ -199,6 +199,41 @@ template<> struct Codec<AnimationPlayerClip> {
 template<> struct TextureVisit<AnimationPlayerClip> {
     static void visit(AnimationPlayerClip& value, const TextureVisitor& f);
 };
+template<> struct Codec<spline::SplineKnot> {
+    static void write(Writer& w, const spline::SplineKnot& value);
+    static void read(Reader& r, spline::SplineKnot& value);
+};
+template<> struct TextureVisit<spline::SplineKnot> {
+    static void visit(spline::SplineKnot& value, const TextureVisitor& f);
+};
+template<> struct Codec<SplineTerrainSettings> {
+    static void write(Writer& w, const SplineTerrainSettings& value);
+    static void read(Reader& r, SplineTerrainSettings& value);
+};
+template<> struct TextureVisit<SplineTerrainSettings> {
+    static void visit(SplineTerrainSettings& value, const TextureVisitor& f);
+};
+template<> struct Codec<SplineProfilePoint> {
+    static void write(Writer& w, const SplineProfilePoint& value);
+    static void read(Reader& r, SplineProfilePoint& value);
+};
+template<> struct TextureVisit<SplineProfilePoint> {
+    static void visit(SplineProfilePoint& value, const TextureVisitor& f);
+};
+template<> struct Codec<SplinePoolEntry> {
+    static void write(Writer& w, const SplinePoolEntry& value);
+    static void read(Reader& r, SplinePoolEntry& value);
+};
+template<> struct TextureVisit<SplinePoolEntry> {
+    static void visit(SplinePoolEntry& value, const TextureVisitor& f);
+};
+template<> struct Codec<SplineSpanOverride> {
+    static void write(Writer& w, const SplineSpanOverride& value);
+    static void read(Reader& r, SplineSpanOverride& value);
+};
+template<> struct TextureVisit<SplineSpanOverride> {
+    static void visit(SplineSpanOverride& value, const TextureVisitor& f);
+};
 
 }
 
@@ -621,6 +656,70 @@ const StructTable kStruct_AnimationPlayerClip{"AnimationPlayerClip", kStruct_Ani
 void Codec<AnimationPlayerClip>::write(Writer& w, const AnimationPlayerClip& value) { writeStruct(w, kStruct_AnimationPlayerClip, &value); }
 void Codec<AnimationPlayerClip>::read(Reader& r, AnimationPlayerClip& value) { readStruct(r, kStruct_AnimationPlayerClip, &value); }
 void TextureVisit<AnimationPlayerClip>::visit(AnimationPlayerClip& value, const TextureVisitor& f) { visitStructTextures(kStruct_AnimationPlayerClip, &value, f); }
+
+const FieldEntry kStruct_spline__SplineKnot_fields[] = {
+    JE_RF(spline::SplineKnot, position, 0x33bfcea4u, Vector3),
+    JE_RF(spline::SplineKnot, tangentIn, 0x43085173u, Vector3),
+    JE_RF(spline::SplineKnot, tangentOut, 0xae3ae160u, Vector3),
+    JE_RF(spline::SplineKnot, radius, 0x35bfd1cau, Float),
+    JE_RF(spline::SplineKnot, rollDeg, 0x4338869fu, Float),
+    JE_RF(spline::SplineKnot, mode, 0xd167331fu, Enum),
+};
+const StructTable kStruct_spline__SplineKnot{"SplineKnot", kStruct_spline__SplineKnot_fields, std::size(kStruct_spline__SplineKnot_fields)};
+void Codec<spline::SplineKnot>::write(Writer& w, const spline::SplineKnot& value) { writeStruct(w, kStruct_spline__SplineKnot, &value); }
+void Codec<spline::SplineKnot>::read(Reader& r, spline::SplineKnot& value) { readStruct(r, kStruct_spline__SplineKnot, &value); }
+void TextureVisit<spline::SplineKnot>::visit(spline::SplineKnot& value, const TextureVisitor& f) { visitStructTextures(kStruct_spline__SplineKnot, &value, f); }
+
+const FieldEntry kStruct_SplineTerrainSettings_fields[] = {
+    JE_RF(SplineTerrainSettings, region, 0xb3e5c996u, Enum),
+    JE_RF(SplineTerrainSettings, extraWidth, 0x885791e4u, Float),
+    JE_RF(SplineTerrainSettings, falloff, 0x8819ddccu, Float),
+    JE_RF(SplineTerrainSettings, flatten, 0x3948068cu, Bool),
+    JE_RF(SplineTerrainSettings, flattenMode, 0xa5ec3f4fu, Enum),
+    JE_RF(SplineTerrainSettings, heightOffset, 0x8db05cb6u, Float),
+    JE_RF(SplineTerrainSettings, paint, 0x4c4c7e66u, Bool),
+    JE_RF(SplineTerrainSettings, paintLayer, 0xbc41ab0bu, UInt),
+    JE_RF(SplineTerrainSettings, paintStrength, 0x7b3822efu, Float),
+    JE_RF(SplineTerrainSettings, paintFalloff, 0x9fde3ed0u, Float),
+    JE_RF(SplineTerrainSettings, paintNoise, 0xb24a7800u, Float),
+    JE_RF(SplineTerrainSettings, clearFoliage, 0x9ddd40aeu, Bool),
+    JE_RF(SplineTerrainSettings, foliageMask, 0x70db1fa9u, UInt),
+    JE_RF_ENTITY(SplineTerrainSettings, terrain, 0x1975f77bu, Entity),
+};
+const StructTable kStruct_SplineTerrainSettings{"SplineTerrainSettings", kStruct_SplineTerrainSettings_fields, std::size(kStruct_SplineTerrainSettings_fields)};
+void Codec<SplineTerrainSettings>::write(Writer& w, const SplineTerrainSettings& value) { writeStruct(w, kStruct_SplineTerrainSettings, &value); }
+void Codec<SplineTerrainSettings>::read(Reader& r, SplineTerrainSettings& value) { readStruct(r, kStruct_SplineTerrainSettings, &value); }
+void TextureVisit<SplineTerrainSettings>::visit(SplineTerrainSettings& value, const TextureVisitor& f) { visitStructTextures(kStruct_SplineTerrainSettings, &value, f); }
+
+const FieldEntry kStruct_SplineProfilePoint_fields[] = {
+    JE_RF(SplineProfilePoint, position, 0x2c603753u, Vector2),
+    JE_RF(SplineProfilePoint, hard, 0x624475f0u, Bool),
+    JE_RF(SplineProfilePoint, grounded, 0x20a281f3u, Bool),
+};
+const StructTable kStruct_SplineProfilePoint{"SplineProfilePoint", kStruct_SplineProfilePoint_fields, std::size(kStruct_SplineProfilePoint_fields)};
+void Codec<SplineProfilePoint>::write(Writer& w, const SplineProfilePoint& value) { writeStruct(w, kStruct_SplineProfilePoint, &value); }
+void Codec<SplineProfilePoint>::read(Reader& r, SplineProfilePoint& value) { readStruct(r, kStruct_SplineProfilePoint, &value); }
+void TextureVisit<SplineProfilePoint>::visit(SplineProfilePoint& value, const TextureVisitor& f) { visitStructTextures(kStruct_SplineProfilePoint, &value, f); }
+
+const FieldEntry kStruct_SplinePoolEntry_fields[] = {
+    JE_RF(SplinePoolEntry, asset, 0x3c5643a4u, AssetPath),
+    JE_RF(SplinePoolEntry, weight, 0xbaaeb53cu, Float),
+};
+const StructTable kStruct_SplinePoolEntry{"SplinePoolEntry", kStruct_SplinePoolEntry_fields, std::size(kStruct_SplinePoolEntry_fields)};
+void Codec<SplinePoolEntry>::write(Writer& w, const SplinePoolEntry& value) { writeStruct(w, kStruct_SplinePoolEntry, &value); }
+void Codec<SplinePoolEntry>::read(Reader& r, SplinePoolEntry& value) { readStruct(r, kStruct_SplinePoolEntry, &value); }
+void TextureVisit<SplinePoolEntry>::visit(SplinePoolEntry& value, const TextureVisitor& f) { visitStructTextures(kStruct_SplinePoolEntry, &value, f); }
+
+const FieldEntry kStruct_SplineSpanOverride_fields[] = {
+    JE_RF(SplineSpanOverride, knot, 0xff6319f8u, UInt),
+    JE_RF(SplineSpanOverride, span, 0x5bd9613eu, UInt),
+    JE_RF(SplineSpanOverride, kind, 0x30862d08u, Enum),
+    JE_RF(SplineSpanOverride, piece, 0xb30ae498u, UInt),
+};
+const StructTable kStruct_SplineSpanOverride{"SplineSpanOverride", kStruct_SplineSpanOverride_fields, std::size(kStruct_SplineSpanOverride_fields)};
+void Codec<SplineSpanOverride>::write(Writer& w, const SplineSpanOverride& value) { writeStruct(w, kStruct_SplineSpanOverride, &value); }
+void Codec<SplineSpanOverride>::read(Reader& r, SplineSpanOverride& value) { readStruct(r, kStruct_SplineSpanOverride, &value); }
+void TextureVisit<SplineSpanOverride>::visit(SplineSpanOverride& value, const TextureVisitor& f) { visitStructTextures(kStruct_SplineSpanOverride, &value, f); }
 
 const FieldEntry kBody_Transform_fields[] = {
     JE_RF(Transform, position, 0x89d4084cu, Vector3),
@@ -1651,6 +1750,107 @@ const FieldEntry kBody_NavGridComponent_fields[] = {
 };
 const StructTable kBody_NavGridComponent{"navgrid", kBody_NavGridComponent_fields, std::size(kBody_NavGridComponent_fields)};
 
+JE_RF_ACCESSOR(SplineComponent, type, spline.editableType())
+JE_RF_ACCESSOR(SplineComponent, closed, spline.editableClosed())
+JE_RF_ACCESSOR(SplineComponent, upAxis, spline.editableUpAxis())
+JE_RF_ACCESSOR(SplineComponent, knots, spline.editableKnots())
+const FieldEntry kBody_SplineComponent_fields[] = {
+    JE_RF(SplineComponent, enabled, 0x89dbfd43u, Bool),
+    JE_RF_PATH(SplineComponent, type, 0xba66c426u, Enum),
+    JE_RF_PATH(SplineComponent, closed, 0x32dfed42u, Bool),
+    JE_RF_PATH(SplineComponent, upAxis, 0xd31984f6u, Vector3),
+    JE_RF_PATH(SplineComponent, knots, 0x618e7261u, Array),
+    JE_RF(SplineComponent, terrain, 0xdb74c0e7u, Struct),
+};
+const StructTable kBody_SplineComponent{"spline", kBody_SplineComponent_fields, std::size(kBody_SplineComponent_fields)};
+
+const FieldEntry kBody_SplineExtrudeComponent_fields[] = {
+    JE_RF(SplineExtrudeComponent, enabled, 0xec8f3eb6u, Bool),
+    JE_RF(SplineExtrudeComponent, shape, 0x8c56416eu, Enum),
+    JE_RF(SplineExtrudeComponent, widthSource, 0x7e1a9062u, Enum),
+    JE_RF(SplineExtrudeComponent, width, 0x80b2c717u, Float),
+    JE_RF(SplineExtrudeComponent, edgeDrop, 0x7cbed191u, Float),
+    JE_RF(SplineExtrudeComponent, edgeInset, 0xeb9de409u, Float),
+    JE_RF(SplineExtrudeComponent, crownRise, 0xcc19f025u, Float),
+    JE_RF(SplineExtrudeComponent, shoulderWidth, 0x265df7cfu, Float),
+    JE_RF(SplineExtrudeComponent, shoulderDrop, 0xcc07639cu, Float),
+    JE_RF(SplineExtrudeComponent, thickness, 0xd78f25edu, Float),
+    JE_RF(SplineExtrudeComponent, height, 0xf5b8385au, Float),
+    JE_RF(SplineExtrudeComponent, grade, 0xfabdf1ccu, Enum),
+    JE_RF(SplineExtrudeComponent, stepHeight, 0x89d1ef88u, Float),
+    JE_RF(SplineExtrudeComponent, tubeSides, 0x1c61575du, UInt),
+    JE_RF(SplineExtrudeComponent, customProfile, 0x78c815dbu, Array),
+    JE_RF(SplineExtrudeComponent, customClosed, 0x7aecbc22u, Bool),
+    JE_RF(SplineExtrudeComponent, maxHalfWidth, 0x2c455fecu, Float),
+    JE_RF(SplineExtrudeComponent, waterEdgeDrop, 0xa97abc74u, Float),
+    JE_RF(SplineExtrudeComponent, seaLevelFloor, 0xa70bb024u, Bool),
+    JE_RF(SplineExtrudeComponent, seaLevel, 0x1f74fbfau, Float),
+    JE_RF(SplineExtrudeComponent, flow, 0xf1657e9du, Bool),
+    JE_RF(SplineExtrudeComponent, flowSpeed, 0xc4e52d08u, Float),
+    JE_RF(SplineExtrudeComponent, tilesPerMetreU, 0xfa795b8bu, Float),
+    JE_RF(SplineExtrudeComponent, tilesPerMetreV, 0xfb795d1eu, Float),
+    JE_RF(SplineExtrudeComponent, levelCourseV, 0xa18ff17au, Bool),
+    JE_RF(SplineExtrudeComponent, corners, 0x94c91f51u, Enum),
+    JE_RF(SplineExtrudeComponent, endCaps, 0x0dbae8e3u, Bool),
+    JE_RF(SplineExtrudeComponent, endTaper, 0xcbe408f8u, Float),
+    JE_RF(SplineExtrudeComponent, lateralOffset, 0x0ba040cfu, Float),
+    JE_RF(SplineExtrudeComponent, verticalOffset, 0x33306e10u, Float),
+    JE_RF(SplineExtrudeComponent, conform, 0x4bdf8f51u, Enum),
+    JE_RF(SplineExtrudeComponent, slopeBlend, 0xe27ab4fbu, Float),
+    JE_RF(SplineExtrudeComponent, stationSpacing, 0x8a5860c0u, Float),
+    JE_RF(SplineExtrudeComponent, collision, 0x9236fa57u, Enum),
+};
+const StructTable kBody_SplineExtrudeComponent{"splineextrude", kBody_SplineExtrudeComponent_fields, std::size(kBody_SplineExtrudeComponent_fields)};
+
+const FieldEntry kBody_SplineInstantiateComponent_fields[] = {
+    JE_RF(SplineInstantiateComponent, enabled, 0x14cd66cbu, Bool),
+    JE_RF(SplineInstantiateComponent, mode, 0xb3113475u, Enum),
+    JE_RF(SplineInstantiateComponent, items, 0x9387fb5au, Array),
+    JE_RF(SplineInstantiateComponent, posts, 0x58ecbf49u, Array),
+    JE_RF(SplineInstantiateComponent, spans, 0x53b55bffu, Array),
+    JE_RF(SplineInstantiateComponent, gates, 0xfb689bf6u, Array),
+    JE_RF(SplineInstantiateComponent, crests, 0xd82a5b4eu, Array),
+    JE_RF(SplineInstantiateComponent, caps, 0x36d2b83fu, Array),
+    JE_RF(SplineInstantiateComponent, spacing, 0xbca68ad3u, Float),
+    JE_RF(SplineInstantiateComponent, fit, 0x60bc20f5u, Enum),
+    JE_RF(SplineInstantiateComponent, postPitch, 0x2b92ed56u, Float),
+    JE_RF(SplineInstantiateComponent, spanMaxStretch, 0x6cebecc5u, Float),
+    JE_RF(SplineInstantiateComponent, fenceGrade, 0xaa46df32u, Enum),
+    JE_RF(SplineInstantiateComponent, crestPitch, 0x49e9af15u, Float),
+    JE_RF(SplineInstantiateComponent, spanOverrides, 0xd235655fu, Array),
+    JE_RF(SplineInstantiateComponent, lateralOffset, 0xa1007822u, Float),
+    JE_RF(SplineInstantiateComponent, verticalOffset, 0x72b1c2cfu, Float),
+    JE_RF(SplineInstantiateComponent, spacingJitter, 0x5bc23d61u, Float),
+    JE_RF(SplineInstantiateComponent, yawJitter, 0xf9b6bd47u, Float),
+    JE_RF(SplineInstantiateComponent, lateralJitter, 0x691f051bu, Float),
+    JE_RF(SplineInstantiateComponent, scaleRange, 0x160e5a51u, Vector2),
+    JE_RF(SplineInstantiateComponent, dropout, 0x9e1b3845u, Float),
+    JE_RF(SplineInstantiateComponent, seed, 0xceb011a7u, UInt),
+    JE_RF(SplineInstantiateComponent, endTrim, 0x9d41e153u, Float),
+    JE_RF(SplineInstantiateComponent, plantMode, 0xfc99bf3cu, Enum),
+    JE_RF(SplineInstantiateComponent, maxTilt, 0x9a0d36a7u, Float),
+    JE_RF(SplineInstantiateComponent, conform, 0xb172a9a4u, Enum),
+    JE_RF(SplineInstantiateComponent, slopeBlend, 0xa24aa1bcu, Float),
+    JE_RF(SplineInstantiateComponent, stationSpacing, 0xe377ffefu, Float),
+};
+const StructTable kBody_SplineInstantiateComponent{"splineinstantiate", kBody_SplineInstantiateComponent_fields, std::size(kBody_SplineInstantiateComponent_fields)};
+
+const FieldEntry kBody_SplineAnimateComponent_fields[] = {
+    JE_RF(SplineAnimateComponent, enabled, 0x12059224u, Bool),
+    JE_RF_ENTITY(SplineAnimateComponent, spline, 0x61958e1eu, Entity),
+    JE_RF(SplineAnimateComponent, method, 0x712d5516u, Enum),
+    JE_RF(SplineAnimateComponent, duration, 0xf3c7f93bu, Float),
+    JE_RF(SplineAnimateComponent, speed, 0x7b03e8fau, Float),
+    JE_RF(SplineAnimateComponent, loop, 0x26d20d15u, Enum),
+    JE_RF(SplineAnimateComponent, easing, 0x3b24ba36u, Enum),
+    JE_RF(SplineAnimateComponent, alignment, 0x816f0ac8u, Enum),
+    JE_RF(SplineAnimateComponent, startOffset, 0xecbfd07au, Float),
+    JE_RF(SplineAnimateComponent, lateralOffset, 0xab197019u, Float),
+    JE_RF(SplineAnimateComponent, verticalOffset, 0x19706a1eu, Float),
+    JE_RF(SplineAnimateComponent, playOnAwake, 0x53189c7bu, Bool),
+};
+const StructTable kBody_SplineAnimateComponent{"splineanimate", kBody_SplineAnimateComponent_fields, std::size(kBody_SplineAnimateComponent_fields)};
+
 const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(Transform, "transform", 0xe1ad931bu),
     JE_RF_COMPONENT(ScriptComponent, "script", 0x203e6faau),
@@ -1737,6 +1937,10 @@ const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(NavMeshLinkComponent, "navmeshlink", 0xa1d9c27fu),
     JE_RF_COMPONENT(NavMeshModifierComponent, "navmeshmodifier", 0x3167dddau),
     JE_RF_COMPONENT(NavGridComponent, "navgrid", 0x1773f70au),
+    JE_RF_COMPONENT(SplineComponent, "spline", 0x48e0cb7cu),
+    JE_RF_COMPONENT(SplineExtrudeComponent, "splineextrude", 0xb0174211u),
+    JE_RF_COMPONENT(SplineInstantiateComponent, "splineinstantiate", 0x9d3ddbf4u),
+    JE_RF_COMPONENT(SplineAnimateComponent, "splineanimate", 0x9d69db6bu),
     JE_RF_COMPONENTS_END
 };
 
