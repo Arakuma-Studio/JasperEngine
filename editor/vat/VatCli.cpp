@@ -896,6 +896,10 @@ namespace{
         ::jasperengine::Engine::pauseGameEvents(true);
         ::jasperengine::Engine::setAsyncLoading(false);
 
+        // the asset database's identities stay in memory (S04: no metas or in-file GUIDs
+        // written for the project's other files): a usage error or a dry run writes nothing,
+        // a bake writes its .vat and .vat.glb only (the editor gives the mesh its meta)
+        project.setReadOnlyAssets(true);
         if (!project.loadProject(o.project, false)){
             return run.fail(2, "usage", "the project could not be loaded: " + FileUtils::pathToUtf8(o.project), "give a project directory or its project.yaml");
         }

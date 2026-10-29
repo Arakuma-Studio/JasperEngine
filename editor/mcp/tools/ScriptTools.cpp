@@ -43,6 +43,8 @@
 #include "texture/Texture.h"
 #include "util/FileUtils.h"
 #include "util/ProjectChecks.h"
+#include "vat/VatBakeSession.h"
+#include "animation/VertexAnimation.h"
 #include "util/ProjectUtils.h"
 #include "util/ScriptParser.h"
 #include "util/Util.h"
@@ -343,11 +345,30 @@ Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool ful
 
     Json allNotes = notes;
     for (const Json& note : applied.notes) allNotes.push_back(note);
+    // a changed .vat that doesn't match its .vat.glb does not load (vat-layout-mismatch,
+    // vat-mesh-mismatch): reported whether this call or the watcher reloaded it (upstream's
+    // vatFileChanged; the animation handler reports it with the reload it runs)
+    Json problems = applied.problems;
+    if (Project* project = ctx.project()) {
+        for (const fs::path& path : changed) {
+            const std::string text = FileUtils::pathToUtf8(path);
+            std::error_code ec;
+            if (!Util::isVertexAnimationFile(text) || !fs::is_regular_file(path, ec)) continue;
+            std::string content;
+            if (!ProjectChecks::readFile(path, content) || !::jasperengine::vat::parseVat(content).ok()) continue;
+            const std::string rel = FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(path));
+            for (const ::jasperengine::editor::vat::VatIssue& issue : ::jasperengine::editor::vat::checkVatStaleness(project, rel)) {
+                if (!issue.error) continue;
+                const Json problem = {{"path", rel}, {"message", issue.kind + ": " + issue.message + ". Fix: " + issue.fix + "."}};
+                if (std::find(problems.begin(), problems.end(), problem) == problems.end()) problems.push_back(problem);
+            }
+        }
+    }
     Json result = {
         {"changed", {{"added", added}, {"modified", modified}, {"removed", removed}}},
         {"code_editor", applied.codeEditor},
         {"script_properties", applied.scriptProperties},
-        {"problems", applied.problems},
+        {"problems", problems},
         {"notes", allNotes},
         {"reloaded", applied.reloaded},
         {"pending", applied.pending}
