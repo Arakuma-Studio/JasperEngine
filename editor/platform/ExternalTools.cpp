@@ -118,9 +118,9 @@ ToolLocation ExternalTools::strip() {
 }
 
 ToolLocation ExternalTools::ssh() {
-    return find("ssh", "", {}, "", "OpenSSH");
+    return find("ssh", "ssh", {}, "", "OpenSSH");
 }
 
 ToolLocation ExternalTools::scp() {
-    return find("scp", "", {}, "", "OpenSSH");
+    return find("scp", "scp", {}, "", "OpenSSH");
 }

@@ -84,7 +84,7 @@
         start(!!data.mt && isolated, isolated);
         return;
     }
-    var canRegister = window.isSecureContext && "serviceWorker" in navigator && !!data.worker;
+    var canRegister = window.isSecureContext && !!navigator.serviceWorker && !!data.worker;
     var tried = false;
     try { tried = sessionStorage.getItem(TRIED) === "1"; } catch (e) { tried = true; }
     // a worker that already controls this page and did not isolate it never will

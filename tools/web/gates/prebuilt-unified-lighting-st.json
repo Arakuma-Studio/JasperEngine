@@ -1,0 +1,7 @@
+{
+  "description": "tools/fixtures/unified-lighting built with Web: Multithreaded off: no pthreads player and no service worker ship; served without COOP/COEP it runs single-thread.",
+  "isolated": false,
+  "expect": [
+    "crossOriginIsolated=false threads=false"
+  ]
+}

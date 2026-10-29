@@ -1,0 +1,7 @@
+{
+  "description": "tools/fixtures/unified-lighting built with the prebuilt web player (jasperengine-editor build --platform web, S30 AC2) with Web: Multithreaded on, in the headless shell (SwiftShader WebGL2): served with COOP/COEP, or without them (coi-serviceworker.js isolates the page after one reload). Either way the pthreads player runs.",
+  "isolated": true,
+  "expect": [
+    "crossOriginIsolated=true threads=true"
+  ]
+}

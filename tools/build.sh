@@ -17,13 +17,15 @@
 #                                      PLAYER_ZIP=1 also writes the archives into build/players/archives/
 #   tools/build.sh shell <target>      interactive shell in that target's image
 #   tools/build.sh exec <target> <command...>  that command in the image (e.g. exec linux tools/ci/check-presets.sh)
+#                                      (target runtime: the no-compiler image, docker/runtime.Dockerfile:
+#                                      exec runtime python3 tools/ci/test_player_cli.py runs the S30 player CLI test)
 #
 # BUILD_TYPE overrides the CMake build type (default Release; Debug for web; RelWithDebInfo for
 # unit-tests; Debug for every sanitizer build). SKIP_ENGINE=1 builds only the editor for linux.
 # JOBS caps build parallelism and, with CPUS (default: DOCKER_CPUS, else JOBS), the CPUs the
 # container may use (docker --cpus), which also caps what ignores JOBS: the Android gradle/ninja
 # build and the test binaries. DOCKER_CPUS is the same cap under the name tools/smoke-test.sh
-# passes (e.g. DOCKER_CPUS=4 on a shared host).
+# passes (e.g. DOCKER_CPUS=4 on a shared host). KEEP_GOING=1 lets Ninja build on past a failure.
 # GRAPHIC_BACKEND=vulkan builds the linux editor for Vulkan (build/linux/editor-vulkan), and
 # runs the core tests' GPU suites on Vulkan (lavapipe) for unit-tests.
 # SANITIZE=address,undefined or SANITIZE=thread (linux, unit-tests, htmlui-tests) builds with
@@ -78,7 +80,7 @@ EDITOR_MIN_TESTS=150
 HTMLUI_MAX_SKIPPED=75
 
 usage() {
-    sed -n '2,63p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,69p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 1
 }
 
@@ -95,6 +97,8 @@ if [[ "$TARGET" == shell || "$TARGET" == exec ]]; then
 fi
 case "$TARGET" in
     linux|web|android|unit-tests|htmlui-tests|htmlui-editor-tests|mcp-tests|web-gate|players) ;;
+    # the no-compiler image (docker/runtime.Dockerfile): shell and exec only
+    runtime) [[ $SHELL_MODE -eq 1 || $EXEC_MODE -eq 1 ]] || usage ;;
     *) usage ;;
 esac
 if [[ $EXEC_MODE -eq 1 ]]; then
@@ -417,11 +421,18 @@ players)
         "
         ;;
     android)
+        PLAYER_BACKENDS="${PLAYER_BACKENDS:-gles3 vulkan}"
+        for backend in $PLAYER_BACKENDS; do
+            [[ "$backend" =~ ^(gles3|vulkan)$ ]] || { echo "PLAYER_BACKENDS lists gles3 and vulkan for android (got $backend)" >&2; exit 1; }
+        done
         run bash -euo pipefail -c "
             for flavour in $PLAYER_FLAVOURS; do
-                CMAKE_CXX_COMPILER_LAUNCHER=ccache tools/players/android_player.sh \$flavour build/players-build/android-\$flavour
-                python3 tools/players/package_player.py --platform android --arch universal --backend gles3 --flavour \$flavour \
-                    --android-dir build/players-build/android-\$flavour --out $PLAYERS_OUT $ZIP_FLAG
+                for backend in $PLAYER_BACKENDS; do
+                    dir=build/players-build/android-\$backend-\$flavour
+                    CMAKE_CXX_COMPILER_LAUNCHER=ccache tools/players/android_player.sh \$flavour \$dir \$backend
+                    python3 tools/players/package_player.py --platform android --arch universal --backend \$backend --flavour \$flavour \
+                        --android-dir \$dir --out $PLAYERS_OUT $ZIP_FLAG
+                done
             done
         "
         ;;

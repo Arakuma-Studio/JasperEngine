@@ -13,6 +13,8 @@ def jasperengineRootAbs = file(jasperengineRoot).toString()
 // it gave (stable-ids.txt) so the editor's aapt2 link of a game gives the same ones
 // (tools/players/android_player.sh collects the outputs)
 def jasperPlayer = project.findProperty("jasperPlayer") == "true"
+// -PjasperBackend=gles3|vulkan: the player's graphics backend (the engine's default otherwise)
+def jasperBackend = project.findProperty("jasperBackend")
 def jasperPlayerIds = layout.buildDirectory.file("jasperengine-player/stable-ids.txt").get().asFile
 
 // The assets the APK packs: the project's, without the cooked textures desktop and web load
@@ -56,6 +58,9 @@ android {
                 if (jasperPlayer) {
                     // 16 KB pages (Android 15): the editor's zipalign -P 16 keeps the alignment
                     arguments "-DJASPERENGINE_PLAYER=ON", "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
+                    if (jasperBackend) {
+                        arguments "-DGRAPHIC_BACKEND="+jasperBackend
+                    }
                 } else {
                     arguments "-DPROJECT_ROOT="+projectSourceRootAbs
                 }

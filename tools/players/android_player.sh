@@ -9,7 +9,7 @@
 #   classes*.dex     the player's code
 #   lib/<abi>/*.so   the engine and the C++ runtime per ABI
 #
-#   tools/players/android_player.sh <release|development> [OUT]
+#   tools/players/android_player.sh <release|development> [OUT] [gles3|vulkan]
 #
 # Runs inside the android build image (tools/build.sh players with PLAYER_PLATFORM=android). Then
 # tools/players/package_player.py --platform android --android-dir OUT makes the runtime.
@@ -17,6 +17,8 @@ set -euo pipefail
 
 FLAVOUR="${1:?release or development}"
 OUT="${2:-build/players-build/android-$FLAVOUR}"
+BACKEND="${3:-gles3}"
+[[ "$BACKEND" == gles3 || "$BACKEND" == vulkan ]] || { echo "backend is gles3 or vulkan (got $BACKEND)" >&2; exit 1; }
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 case "$FLAVOUR" in
     release) TASK=assembleRelease; VARIANT=release ;;
@@ -25,7 +27,7 @@ case "$FLAVOUR" in
 esac
 APP="$ROOT/engine/workspaces/androidstudio/app"
 
-(cd "$ROOT/engine/workspaces/androidstudio" && ./gradlew --no-daemon -PjasperPlayer=true clean "$TASK")
+(cd "$ROOT/engine/workspaces/androidstudio" && ./gradlew --no-daemon -PjasperPlayer=true -PjasperBackend="$BACKEND" clean "$TASK")
 
 rm -rf "$OUT"
 mkdir -p "$OUT"

@@ -1,0 +1,8 @@
+{
+  "description": "The same build served without COOP/COEP and with the service worker unavailable (init_script removes navigator.serviceWorker): the loader falls back to the single-thread player (S06 AC21, S30 R15).",
+  "isolated": false,
+  "init_script": "delete Navigator.prototype.serviceWorker;",
+  "expect": [
+    "crossOriginIsolated=false threads=false"
+  ]
+}

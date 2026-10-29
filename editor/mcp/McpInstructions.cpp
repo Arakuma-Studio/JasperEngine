@@ -237,8 +237,8 @@ Calls time out: get_editor_health (answers mid-hang) tells hung from slow; get_c
 (jasper://docs/crash-diagnostics).
 
 ## Build and ship
-Scenes in Build order and the start scene live in project.yaml (project tools). Export
-(Build Settings, build_project) makes a CMake project or players per platform.
+Scenes in Build order and the start scene live in project.yaml (project tools).
+build_project: a game per platform or a CMake project; ship: jasper://docs/shipping.
 Before exporting: scenes saved, Console clean in play, the start scene right.
 )JE"
 R"JE(
