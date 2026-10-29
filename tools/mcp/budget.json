@@ -9,7 +9,9 @@
         "with what core gave up for it, and the default listing must still fit.",
         "guide: the agent guide (initialize.instructions = jasper://guide), in UTF-8 bytes: the whole text with its",
         "generated tool groups section, and each '## ' section (the text before the first one counts as a section);",
-        "sections names a section's own limit. Area detail goes to docs/mcp/guide/<area>.md, never into a raised limit."
+        "sections names a section's own limit. headroom_bytes: the whole text must stay that far under bytes, room",
+        "for the tool groups and digest lines later specs add. Area detail goes to docs/mcp/guide/<area>.md, never",
+        "into a raised limit or a smaller headroom."
     ],
     "default_listing": {
         "chars": 100000,
@@ -22,6 +24,7 @@
     "tool_default": 1500,
     "guide": {
         "bytes": 16384,
+        "headroom_bytes": 1500,
         "section_bytes": 1500,
         "sections": {}
     },
