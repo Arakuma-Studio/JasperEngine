@@ -29,6 +29,7 @@
 #include "Generator.h"
 #include "Out.h"
 #include "Project.h"
+#include "util/BuiltPlayers.h"
 #include "pool/ShaderPool.h"
 #include "util/Base64.h"
 #include "util/FileUtils.h"
@@ -45,6 +46,10 @@
 #include <cstdlib>
 #include <fstream>
 #include <map>
+#include <cstdint>
+#ifndef _WIN32
+#include <sys/stat.h>
+#endif
 #include <memory>
 #include <mutex>
 #include <regex>
@@ -281,16 +286,6 @@ std::string appName(Project* project) {
 }
 
 // The file starts like a native executable: ELF, Mach-O (thin or universal) or PE
-[[maybe_unused]] bool isNativeBinary(const fs::path& path) {
-    std::ifstream in(path, std::ios::binary);
-    unsigned char m[4] = {0, 0, 0, 0};
-    if (!in.read(reinterpret_cast<char*>(m), 4)) return false;
-    if (m[0] == 0x7f && m[1] == 'E' && m[2] == 'L' && m[3] == 'F') return true;
-    if (m[0] == 'M' && m[1] == 'Z') return true;
-    const unsigned long v = (unsigned long)m[0] << 24 | (unsigned long)m[1] << 16 | (unsigned long)m[2] << 8 | m[3];
-    return v == 0xfeedfaceUL || v == 0xfeedfacfUL || v == 0xcefaedfeUL || v == 0xcffaedfeUL || v == 0xcafebabeUL;
-}
-
 std::string executableName(Project* project) {
 #ifdef _WIN32
     return appName(project) + ".exe";
@@ -332,12 +327,31 @@ std::string outputDirRefusal(Project* project, const fs::path& outputDir, Export
         const fs::path real = safewrite::resolvedPath(dir);
         return !real.empty() && !where.empty() && safewrite::isAtOrBelow(where, real);
     };
+    // never under a hidden ('.'-named) component (.jasperengine and the like): a build there would
+    // write through the editor's own folders. Checked against every trusted root and the export
+    // folders, where the output resolves.
+    auto hiddenUnder = [&](const fs::path& dir) {
+        if (dir.empty() || where.empty()) return false;
+        const fs::path real = safewrite::resolvedPath(dir);
+        if (real.empty() || !safewrite::isAtOrBelow(where, real)) return false;
+        for (const fs::path& part : where.lexically_relative(real)) {
+            const std::string name = safewrite::comparableName(part);
+            if (!name.empty() && name[0] == '.' && name != "." && name != "..") return true;
+        }
+        return false;
+    };
     const fs::path file = project->getProjectPath() / "project.yaml";
-    if (below(AppSettings::getExportTargetDir(file, settingsModeKey(mode)))) return std::string();
-    if (below(AppSettings::getDefaultExportDirectory())) return std::string();
-    if (below(defaultOutputDir(project, mode))) return std::string();
-    for (const fs::path& root : McpRefs::trustedRoots(project)) {
-        if (below(root)) return std::string();
+    std::vector<fs::path> allowed = { AppSettings::getExportTargetDir(file, settingsModeKey(mode)),
+                                      AppSettings::getDefaultExportDirectory(), defaultOutputDir(project, mode) };
+    for (const fs::path& root : McpRefs::trustedRoots(project)) allowed.push_back(root);
+    for (const fs::path& dir : allowed) {
+        if (hiddenUnder(dir)) {
+            return "output_dir " + FileUtils::pathToGenericUtf8(outputDir) + " resolves under a hidden folder (.jasperengine and the "
+                   "like are the editor's): choose an output folder that is not inside one.";
+        }
+    }
+    for (const fs::path& dir : allowed) {
+        if (below(dir)) return std::string();
     }
     return "output_dir " + FileUtils::pathToGenericUtf8(outputDir) + " is not the export folder chosen for this project, the default "
            "export location or a folder of the project. Fix: choose the output folder in Build Settings (or Preferences' default "
@@ -585,6 +599,8 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
             const fs::path exe = outputDir / r.executableName;
             result["executable"] = FileUtils::pathToGenericUtf8(exe);
             message = "Built the Desktop player " + FileUtils::pathToGenericUtf8(exe) + ". Try it with run_build.";
+            // record its full identity so run_build runs only this file, unchanged (util/BuiltPlayers.h)
+            builtplayers::record(r.projectPath / ".jasperengine", exe, modeName(ExportMode::Desktop));
             std::lock_guard<std::mutex> lock(manager().mutex);
             manager().lastExecutable = exe;
         } else if (r.mode == ExportMode::Web) {
@@ -1707,31 +1723,14 @@ void runBuildTool(const CallPtr& call) {
         call->fail("No executable at " + FileUtils::pathToGenericUtf8(exe) + ". Build a Desktop player with build_project first, or pass path.");
         return;
     }
-    // run_build runs THIS project's built game, not an arbitrary program: the resolved executable is
-    // the one this project's last build produced (recorded in memory), or is named as this project's
-    // player inside a folder builds are allowed into; and it must be a native binary (ELF / Mach-O /
-    // PE). An explicit path gets no way around this.
-    {
-        const fs::path exeReal = safewrite::resolvedPath(exe);
-        bool allowed = false;
-        {
-            std::lock_guard<std::mutex> lock(manager().mutex);
-            const fs::path lastReal = manager().lastExecutable.empty() ? fs::path() : safewrite::resolvedPath(manager().lastExecutable);
-            if (!lastReal.empty() && !exeReal.empty() && safewrite::isAtOrBelow(exeReal, lastReal) && safewrite::isAtOrBelow(lastReal, exeReal)) {
-                allowed = true;
-            }
-        }
-        if (!allowed && exe.filename() == executableName(project) &&
-            outputDirRefusal(project, exe.parent_path(), ExportMode::Desktop).empty()) {
-            allowed = true;
-        }
-        if (allowed && !isNativeBinary(exeReal.empty() ? exe : exeReal)) allowed = false;
-        if (!allowed) {
-            call->fail("run_build runs this project's built game; build it first with build_project (mode desktop). " +
-                       FileUtils::pathToGenericUtf8(exe) + " is not this project's player (expected the last build, or a native " +
-                       executableName(project) + " in the export folder).");
-            return;
-        }
+    // run_build runs ONLY the executable this project's build produced, UNCHANGED: the editor
+    // recorded its identity (resolved path, device/inode, size, mtime, SHA-256) right after the build
+    // in .jasperengine/user, which agents can't write; every field must still match and the path must
+    // not be a symbolic link (util/BuiltPlayers.h). No other program runs.
+    if (const std::string why = builtplayers::verify(project->getProjectInternalPath(), exe); !why.empty()) {
+        call->fail("run_build runs the player this project built, unchanged; build it first with build_project (mode desktop). " +
+                   FileUtils::pathToGenericUtf8(exe) + ": " + why + ".");
+        return;
     }
 
     auto run = std::make_shared<PlayerRun>();

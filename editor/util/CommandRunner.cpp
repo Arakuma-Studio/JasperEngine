@@ -6,6 +6,7 @@
 #include "editor/Out.h"
 
 #include <cstdlib>
+#include <vector>
 #include <chrono>
 #include <cstring>
 #include <cerrno>
@@ -196,7 +197,59 @@ void editor::CommandRunner::terminateCurrentProcess() {
     #endif
 }
 
-bool editor::CommandRunner::run(const std::string& command, const fs::path& workingDir, const std::function<void(const std::string&)>& onLine) {
+#ifdef _WIN32
+namespace {
+    // One argv entry quoted for a Windows command line per the rules the C runtime's argv parser
+    // (and CommandLineToArgvW) use: wrap in quotes, double any run of backslashes that precedes a
+    // quote or the closing quote, and escape embedded quotes with a backslash. So a value with
+    // spaces, quotes or metacharacters reaches the program as one literal argument.
+    std::string quoteWin(const std::string& arg) {
+        if (!arg.empty() && arg.find_first_of(" \t\n\v\"") == std::string::npos) return arg;
+        std::string out = "\"";
+        for (size_t i = 0; ; i++) {
+            size_t backslashes = 0;
+            while (i < arg.size() && arg[i] == '\\') { backslashes++; i++; }
+            if (i == arg.size()) { out.append(backslashes * 2, '\\'); break; }
+            if (arg[i] == '"') { out.append(backslashes * 2 + 1, '\\'); out.push_back('"'); }
+            else { out.append(backslashes, '\\'); out.push_back(arg[i]); }
+        }
+        out.push_back('"');
+        return out;
+    }
+    std::string argvToCommandLine(const std::vector<std::string>& argv) {
+        std::string line;
+        for (const std::string& a : argv) { if (!line.empty()) line.push_back(' '); line += quoteWin(a); }
+        return line;
+    }
+}
+#endif
+
+std::string editor::CommandRunner::quoteArgv(const std::vector<std::string>& argv) {
+#ifdef _WIN32
+    return argvToCommandLine(argv);
+#else
+    // POSIX: single-quote each argument (only used for symmetry; the shell path is rare)
+    std::string line;
+    for (const std::string& a : argv) {
+        if (!line.empty()) line.push_back(' ');
+        line.push_back('\'');
+        for (char c : a) { if (c == '\'') line += "'\\''"; else line.push_back(c); }
+        line.push_back('\'');
+    }
+    return line;
+#endif
+}
+
+bool editor::CommandRunner::runShell(const std::string& command, const fs::path& workingDir, const std::function<void(const std::string&)>& onLine) {
+#ifdef _WIN32
+    return run({"cmd.exe", "/s", "/c", command}, workingDir, onLine);
+#else
+    return run({"/bin/sh", "-c", command}, workingDir, onLine);
+#endif
+}
+
+bool editor::CommandRunner::run(const std::vector<std::string>& argv, const fs::path& workingDir, const std::function<void(const std::string&)>& onLine) {
+    if (argv.empty()) return false;
     cancelRequested.store(false, std::memory_order_relaxed);
 
     auto emit = [&onLine](const std::string& line) {
@@ -225,7 +278,10 @@ bool editor::CommandRunner::run(const std::string& command, const fs::path& work
         si.hStdInput  = nullptr;
 
         PROCESS_INFORMATION pi{};
-        std::string cmdLine = "cmd.exe " + cmdQuoting(command);
+        // argv quoted per the C runtime's rules (quoteWin): CreateProcessW splits argv[0] off and
+        // passes the rest to the child verbatim; no shell parses it, so a value with metacharacters
+        // is one literal argument. cmd.exe (runShell) is just another argv[0] here.
+        std::string cmdLine = argvToCommandLine(argv);
 
         // Track the whole child tree in a job object so cancellation can kill
         // cmake and the compilers it spawns, not only cmd.exe. KILL_ON_JOB_CLOSE
@@ -379,27 +435,28 @@ bool editor::CommandRunner::run(const std::string& command, const fs::path& work
         posix_spawn_file_actions_addclose(&actions, pipefd[1]);
 
         pid_t pid = 0;
-        std::string workDirStr = workingDir.string();
-        std::string cdPrefix;
+        const std::string workDirStr = workingDir.string();
+        // the program runs in workingDir without a shell: chdir in the child before exec
         if (!workDirStr.empty()) {
-            cdPrefix = "cd \"" + workDirStr + "\" && ";
+            posix_spawn_file_actions_addchdir_np(&actions, workDirStr.c_str());
         }
-        std::string shellCommand = cdPrefix + command;
 
-        char *argv[] = { const_cast<char*>("/bin/sh"),
-                        const_cast<char*>("-c"),
-                        const_cast<char*>(shellCommand.c_str()),
-                        nullptr };
+        // argv passed verbatim to the program: no /bin/sh, so no word-splitting or substitution
+        std::vector<char*> cargv;
+        cargv.reserve(argv.size() + 1);
+        for (const std::string& a : argv) cargv.push_back(const_cast<char*>(a.c_str()));
+        cargv.push_back(nullptr);
 
-        // Place the shell in its own process group so cancellation can signal
-        // the whole tree: killing only the shell would orphan cmake and the
+        // Place the child in its own process group so cancellation can signal
+        // the whole tree: killing only it would orphan cmake and the
         // compilers it spawned, leaving them running (and holding build locks).
         posix_spawnattr_t attr;
         posix_spawnattr_init(&attr);
         posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETPGROUP);
         posix_spawnattr_setpgroup(&attr, 0);
 
-        int spawnResult = posix_spawn(&pid, "/bin/sh", &actions, &attr, argv, environ);
+        // posix_spawnp searches PATH for a bare program name; an absolute path is used as given
+        int spawnResult = posix_spawnp(&pid, cargv[0], &actions, &attr, cargv.data(), environ);
         posix_spawnattr_destroy(&attr);
         posix_spawn_file_actions_destroy(&actions);
         close(pipefd[1]);

@@ -356,32 +356,38 @@ bool editor::Generator::configureCMake(const fs::path& projectPath, const fs::pa
         return out;
     };
 
-    std::string cmakeCommand = cmakeExecutable() + " ";
-    if (!generator.empty()) {
-        cmakeCommand += "-G \"" + generator + "\" ";
+    // A CMake generator name an agent could have set must be one CMake actually knows: an arbitrary
+    // string is refused (never pasted into a command line). "" is CMake's platform default.
+    if (!generator.empty() && !isKnownGenerator(generator)) {
+        Out::error("Unknown CMake generator \"%s\"; set it in Preferences > External Tools to one CMake supports (e.g. Ninja, Unix Makefiles).", generator.c_str());
+        return false;
     }
-    if (!platform.empty()) {
-        cmakeCommand += "-A " + platform + " ";
-    }
-    if (!cCompiler.empty()) {
-        cmakeCommand += "-DCMAKE_C_COMPILER=\"" + toCMakePath(cCompiler) + "\" ";
-    }
-    if (!cxxCompiler.empty()) {
-        cmakeCommand += "-DCMAKE_CXX_COMPILER=\"" + toCMakePath(cxxCompiler) + "\" ";
-    }
-    cmakeCommand += "-DCMAKE_BUILD_TYPE=" + configType + " ";
+
+    // Launched as an argv array (CommandRunner::run), never through a shell: a project path or a
+    // setting that holds shell metacharacters ($(...), ;, ") is one literal argument, not a command.
+    std::vector<std::string> cmakeArgv = { cmakeProgram() };
+    if (!generator.empty()) { cmakeArgv.push_back("-G"); cmakeArgv.push_back(generator); }
+    if (!platform.empty()) { cmakeArgv.push_back("-A"); cmakeArgv.push_back(platform); }
+    if (!cCompiler.empty()) cmakeArgv.push_back("-DCMAKE_C_COMPILER=" + toCMakePath(cCompiler));
+    if (!cxxCompiler.empty()) cmakeArgv.push_back("-DCMAKE_CXX_COMPILER=" + toCMakePath(cxxCompiler));
+    cmakeArgv.push_back("-DCMAKE_BUILD_TYPE=" + configType);
     // When configuring from inside the editor, ensure the generated project builds
     // in "plugin" mode (no Factory main.cpp/scene sources added).
-    cmakeCommand += "-DJASPERENGINE_EDITOR_PLUGIN=ON ";
+    cmakeArgv.push_back("-DJASPERENGINE_EDITOR_PLUGIN=ON");
     // The generated CMakeLists.txt stays machine-independent; the effective
     // local limit is supplied through the build tree's cache on every configure.
-    cmakeCommand += "-DJASPERENGINE_PARALLEL_BUILD_JOBS=" + std::to_string(parallelJobs) + " ";
-    cmakeCommand += "\"" + toCMakePath(projectPath.string()) + "\" ";
-    cmakeCommand += "-B \"" + toCMakePath(buildPath.string()) + "\" ";
-    cmakeCommand += "-DJASPERENGINE_LIB_DIR=\"" + toCMakePath(exePath.string()) + "\"";
+    cmakeArgv.push_back("-DJASPERENGINE_PARALLEL_BUILD_JOBS=" + std::to_string(parallelJobs));
+    cmakeArgv.push_back(toCMakePath(projectPath.string()));
+    cmakeArgv.push_back("-B");
+    cmakeArgv.push_back(toCMakePath(buildPath.string()));
+    cmakeArgv.push_back("-DJASPERENGINE_LIB_DIR=" + toCMakePath(exePath.string()));
 
-    Out::info("Configuring CMake project with command: %s", cmakeCommand.c_str());
-    bool result = commandRunner.run(CommandRunner::msvcEnvPrefix(generator) + cmakeCommand, projectPath);
+    Out::info("Configuring CMake project (%s)...", cmakeProgram().c_str());
+    const std::string msvcEnv = CommandRunner::msvcEnvPrefix(generator);
+    // the MSVC environment is loaded by sourcing vcvars, which needs a shell; the cmake arguments are
+    // still quoted per the C runtime's rules (CommandRunner::quoteArgv), not interpolated
+    bool result = msvcEnv.empty() ? commandRunner.run(cmakeArgv, projectPath)
+                                  : commandRunner.runShell(msvcEnv + CommandRunner::quoteArgv(cmakeArgv), projectPath);
 
     // Record which kit was used so we can detect changes next time.
     if (result) {
@@ -411,12 +417,14 @@ unsigned int editor::Generator::getMaxParallelBuildJobs() {
 }
 
 bool editor::Generator::buildProject(const fs::path& buildPath, const std::string& configType, const std::string& generator, unsigned int parallelJobs) {
-    std::string buildCommand = cmakeExecutable() + " --build \"" + buildPath.string() + "\" --config " + configType;
-    buildCommand += " --parallel " + std::to_string(parallelJobs);
+    std::vector<std::string> buildArgv = { cmakeProgram(), "--build", buildPath.string(),
+                                           "--config", configType, "--parallel", std::to_string(parallelJobs) };
     Out::info("Building project with %u parallel jobs...", parallelJobs);
     // The build step invokes the compiler/linker again, so it needs the same
-    // MSVC environment as configure (see CommandRunner::msvcEnvPrefix).
-    return commandRunner.run(CommandRunner::msvcEnvPrefix(generator) + buildCommand, buildPath);
+    // MSVC environment as configure (see CommandRunner::msvcEnvPrefix). Launched as argv (no shell).
+    const std::string msvcEnv = CommandRunner::msvcEnvPrefix(generator);
+    return msvcEnv.empty() ? commandRunner.run(buildArgv, buildPath)
+                           : commandRunner.runShell(msvcEnv + CommandRunner::quoteArgv(buildArgv), buildPath);
 }
 
 // The Jolt configuration the editor's engine library was built with, as compile definitions.
@@ -2452,6 +2460,28 @@ std::string editor::Generator::cmakeExecutable() {
     const std::string configured = AppSettings::getCMakePath();
     // Quoted: an install path may contain spaces ("Program Files", a bundle).
     return configured.empty() ? "cmake" : ("\"" + configured + "\"");
+}
+
+std::string editor::Generator::cmakeProgram() {
+    // The program path unquoted, for an argv array (CommandRunner::run quotes nothing: argv[0] is
+    // passed as-is / looked up on PATH).
+    const std::string configured = AppSettings::getCMakePath();
+    return configured.empty() ? "cmake" : configured;
+}
+
+bool editor::Generator::isKnownGenerator(const std::string& generator) {
+    // CMake's generator names (cmake --help "Generators"); the base name of a Visual Studio entry
+    // carries a version, so those are matched by prefix. A value outside this set is refused rather
+    // than handed to CMake.
+    static const char* const kExact[] = {
+        "Ninja", "Ninja Multi-Config", "Unix Makefiles", "MinGW Makefiles", "MSYS Makefiles",
+        "NMake Makefiles", "NMake Makefiles JOM", "Borland Makefiles", "Watcom WMake", "Xcode",
+        "Green Hills MULTI",
+    };
+    for (const char* name : kExact) {
+        if (generator == name) return true;
+    }
+    return generator.rfind("Visual Studio ", 0) == 0;
 }
 
 std::string editor::Generator::probeCMakeVersion(const std::string& path) {

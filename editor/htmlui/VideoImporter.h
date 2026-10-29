@@ -57,6 +57,9 @@ namespace jasperengine::editor::htmlui {
         // streams). toneMap: HDR (PQ/HLG) input mapped to BT.709 SDR (zscale + tonemap, hable)
         static std::string conversionCommand(const std::string& ffmpeg, const std::string& encoder, const std::filesystem::path& input,
                                              const std::filesystem::path& output, bool toneMap = false);
+        // ... as an argv array (no shell): each path and option is one literal argument
+        static std::vector<std::string> conversionArgv(const std::string& ffmpeg, const std::string& encoder,
+                                                        const std::filesystem::path& input, const std::filesystem::path& output, bool toneMap = false);
         // the input's first video stream has a PQ or HLG transfer (ffprobe next to `ffmpeg`;
         // false when there is none or it cannot tell)
         static bool isHdrInput(const std::string& ffmpeg, const std::filesystem::path& input);

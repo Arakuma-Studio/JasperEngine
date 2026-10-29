@@ -950,6 +950,8 @@ namespace jasperengine::editor::safewrite {
                                 std::vector<fs::path>* createdDirs);
         // (the write scope, below) deny-by-default: an owned/hidden place written in an MCP call
         std::string protectedPlaceRefusal(const fs::path& path, bool entry);
+        // (the write scope, below) a strict (MCP) scope is in force on this thread
+        bool strictScopeActive();
     }
 
     bool writeFileBeneath(const fs::path& root, const fs::path& target, const std::string& bytes, std::string& error,
@@ -1108,6 +1110,9 @@ namespace jasperengine::editor::safewrite {
                             wrote = false;
                             code = EIO;
                         }
+                        // a replaced file keeps its permissions, but an MCP call never grants (or
+                        // keeps) the execute bits: an agent can't turn a file into a program
+                        if (strictScopeActive()) keep &= ~static_cast<mode_t>(0111);
                         if (wrote && existingFile) (void)::fchmod(fd, keep);
                         if (::close(fd) != 0 && wrote) {
                             code = errno;
@@ -1736,6 +1741,13 @@ namespace jasperengine::editor::safewrite {
         // editor-owned or hidden place (ownedRelReason), as named and where it resolves, unless an
         // EditorInternal token covers it. "" when allowed. `entry`: a rename/remove of the entry
         // itself (its final name as named, not followed).
+        bool strictScopeActive() {
+            for (const ScopeEntry* scope : activeScopes()) {
+                if (scope->strict) return true;
+            }
+            return false;
+        }
+
         std::string protectedPlaceRefusal(const fs::path& path, bool entry) {
             if (path.empty()) return std::string();
             const ScopeEntry* strict = nullptr;

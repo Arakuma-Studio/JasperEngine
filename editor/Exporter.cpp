@@ -1085,50 +1085,44 @@ bool editor::Exporter::configureBuild() {
         return out;
     };
 
-    std::string cmd;
+    if (!config.cmakeGenerator.empty() && !Generator::isKnownGenerator(config.cmakeGenerator)) {
+        setError("Unknown CMake generator \"" + config.cmakeGenerator + "\"; set it in Preferences > External Tools.");
+        return false;
+    }
+    // launched as an argv array, never a shell (CommandRunner::run): the target path and the build
+    // settings are literal arguments, so metacharacters in them can't start a command
+    std::vector<std::string> argv;
     if (config.mode == ExportMode::Web) {
-        // The emcmake wrapper injects the Emscripten toolchain file; the
-        // subsequent cmake --build needs no wrapper. emcmake resolves the cmake
-        // it wraps itself, so the editor override does not apply here.
-        // Keep the SDK wrapper: it selects Python using the SDK environment.
-        // Calling emcmake.py with an arbitrary system python3 can break a
-        // correctly configured SDK and does not fix an outdated interpreter.
-        cmd = "\"" + toCMakePath(emcmake) + "\" cmake ";
+        // The emcmake wrapper injects the Emscripten toolchain file; the subsequent cmake --build
+        // needs no wrapper. emcmake resolves the cmake it wraps itself. Keep the SDK wrapper: it
+        // selects Python using the SDK environment.
+        argv = { emcmake, "cmake" };
     } else {
-        cmd = Generator::cmakeExecutable() + " ";
-        if (!config.cmakeGenerator.empty()) {
-            cmd += "-G \"" + config.cmakeGenerator + "\" ";
-        }
-        if (!platform.empty()) {
-            cmd += "-A " + platform + " ";
-        }
-        if (!config.cmakeCCompiler.empty()) {
-            cmd += "-DCMAKE_C_COMPILER=\"" + toCMakePath(config.cmakeCCompiler) + "\" ";
-        }
-        if (!config.cmakeCxxCompiler.empty()) {
-            cmd += "-DCMAKE_CXX_COMPILER=\"" + toCMakePath(config.cmakeCxxCompiler) + "\" ";
-        }
+        argv = { Generator::cmakeProgram() };
+        if (!config.cmakeGenerator.empty()) { argv.push_back("-G"); argv.push_back(config.cmakeGenerator); }
+        if (!platform.empty()) { argv.push_back("-A"); argv.push_back(platform); }
+        if (!config.cmakeCCompiler.empty()) argv.push_back("-DCMAKE_C_COMPILER=" + toCMakePath(config.cmakeCCompiler));
+        if (!config.cmakeCxxCompiler.empty()) argv.push_back("-DCMAKE_CXX_COMPILER=" + toCMakePath(config.cmakeCxxCompiler));
     }
-    cmd += "-DCMAKE_BUILD_TYPE=" + config.buildType + " ";
-    if (!config.graphicBackend.empty()) {
-        cmd += "-DGRAPHIC_BACKEND=" + config.graphicBackend + " ";
-    }
-    cmd += "\"" + toCMakePath(config.targetDir.string()) + "\" ";
-    cmd += "-B \"" + toCMakePath(buildDir.string()) + "\"";
+    argv.push_back("-DCMAKE_BUILD_TYPE=" + config.buildType);
+    if (!config.graphicBackend.empty()) argv.push_back("-DGRAPHIC_BACKEND=" + config.graphicBackend);
+    argv.push_back(toCMakePath(config.targetDir.string()));
+    argv.push_back("-B");
+    argv.push_back(toCMakePath(buildDir.string()));
 
-    if (config.mode == ExportMode::Desktop) {
-        cmd = CommandRunner::msvcEnvPrefix(getEffectiveGenerator()) + cmd;
-    }
+    const std::string msvcEnv = config.mode == ExportMode::Desktop ? CommandRunner::msvcEnvPrefix(getEffectiveGenerator()) : std::string();
 
-    Out::info("Configuring export build: %s", cmd.c_str());
+    Out::info("Configuring export build (%zu args)...", argv.size());
     bool incompatiblePython = false;
-    bool ok = commandRunner.run(cmd, config.targetDir, [this, &incompatiblePython](const std::string& line) {
+    auto onConfigure = [this, &incompatiblePython](const std::string& line) {
         if (line.find("TypeError: 'type' object is not subscriptable") != std::string::npos) {
             incompatiblePython = true;
         }
         Out::build("%s", line.c_str());
         setDetail(line);
-    });
+    };
+    bool ok = msvcEnv.empty() ? commandRunner.run(argv, config.targetDir, onConfigure)
+                              : commandRunner.runShell(msvcEnv + CommandRunner::quoteArgv(argv), config.targetDir, onConfigure);
 
     if (!ok) {
         if (isCancelled()) {
@@ -1164,21 +1158,19 @@ bool editor::Exporter::runBuild() {
     // build with a different one either fails or reconfigures the tree.
     const std::string cmakeCmd = config.mode == ExportMode::Web
         ? std::string("cmake")
-        : Generator::cmakeExecutable();
+        : Generator::cmakeProgram();
 
-    std::string cmd = cmakeCmd + " --build \"" + buildDir.string() + "\" --config " + config.buildType + " --parallel " + std::to_string(jobs);
-    if (config.mode == ExportMode::Desktop) {
-        // The build step invokes the compiler/linker, so it needs the same
-        // MSVC environment as configure.
-        cmd = CommandRunner::msvcEnvPrefix(getEffectiveGenerator()) + cmd;
-    }
+    std::vector<std::string> argv = { cmakeCmd, "--build", buildDir.string(), "--config", config.buildType,
+                                      "--parallel", std::to_string(jobs) };
+    // The build step invokes the compiler/linker, so it needs the same MSVC environment as configure.
+    const std::string msvcEnv = config.mode == ExportMode::Desktop ? CommandRunner::msvcEnvPrefix(getEffectiveGenerator()) : std::string();
 
     // Initialization only predicts the work denominator. Do not advance the
     // bar until MSBuild confirms work by emitting a source filename.
     MsBuildProgress msBuildProgress(buildDir, config.buildType);
 
     Out::info("Building export with %u parallel jobs...", jobs);
-    bool ok = commandRunner.run(cmd, buildDir, [this, &msBuildProgress](const std::string& line) {
+    auto onBuild = [this, &msBuildProgress](const std::string& line) {
         Out::build("%s", line.c_str());
         float fraction = 0.0f;
         bool hasProgress = parseBuildProgress(line, fraction);
@@ -1195,7 +1187,9 @@ bool editor::Exporter::runBuild() {
                     + (buildEnd - BUILD_PROGRESS_START) * fraction;
             }
         }
-    });
+    };
+    bool ok = msvcEnv.empty() ? commandRunner.run(argv, buildDir, onBuild)
+                              : commandRunner.runShell(msvcEnv + CommandRunner::quoteArgv(argv), buildDir, onBuild);
 
     if (!ok) {
         if (isCancelled()) {
@@ -1293,10 +1287,10 @@ bool editor::Exporter::collectDesktopArtifacts() {
     }
 
 #if defined(__linux__)
-    const std::string settingsCommand = Generator::cmakeExecutable() + " -DAPP_FILE=\""
-        + (fs::absolute(config.destinationDir) / exeName).string() + "\" -DWEB=OFF -P \""
-        + (projectRoot / "export-settings" / "apply.cmake").string() + "\"";
-    if (!commandRunner.run(settingsCommand, config.targetDir, [](const std::string& line) { Out::build("%s", line.c_str()); })) {
+    const std::vector<std::string> settingsArgv = { Generator::cmakeProgram(),
+        "-DAPP_FILE=" + (fs::absolute(config.destinationDir) / exeName).string(), "-DWEB=OFF",
+        "-P", (projectRoot / "export-settings" / "apply.cmake").string() };
+    if (!commandRunner.run(settingsArgv, config.targetDir, [](const std::string& line) { Out::build("%s", line.c_str()); })) {
         setError("Failed to generate Linux launcher");
         return false;
     }

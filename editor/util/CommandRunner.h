@@ -4,6 +4,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 #include <filesystem>
 #include <functional>
 #include <atomic>
@@ -23,11 +24,22 @@ namespace jasperengine::editor {
     // Shared by the play-mode Generator and the export pipeline.
     class CommandRunner {
     public:
-        // Runs the command through the platform shell in workingDir, streaming
-        // each output line to onLine (Out::build when omitted). Blocks until the
-        // process exits. Returns true when the exit code is 0.
-        bool run(const std::string& command, const fs::path& workingDir,
+        // Runs `argv` DIRECTLY (no shell: argv[0] is the program, the rest its
+        // arguments, each passed verbatim — no word-splitting, globbing or
+        // substitution) in workingDir, streaming each output line to onLine
+        // (Out::build when omitted). Blocks until the process exits. Returns true
+        // when the exit code is 0. This is how the editor launches CMake, the
+        // compilers, ffmpeg and every other tool: a path or a setting that holds
+        // shell metacharacters cannot start a second command.
+        bool run(const std::vector<std::string>& argv, const fs::path& workingDir,
                  const std::function<void(const std::string&)>& onLine = {});
+
+        // Runs `command` through the platform shell (/bin/sh -c, cmd.exe /s /c) in
+        // workingDir. ONLY for a step that genuinely needs the shell (sourcing an
+        // environment script); never build it from agent- or user-controlled
+        // strings — pass those as argv to run() above instead.
+        bool runShell(const std::string& command, const fs::path& workingDir,
+                      const std::function<void(const std::string&)>& onLine = {});
 
         // Request cancellation and terminate the running process (if any).
         void cancel();
@@ -38,6 +50,10 @@ namespace jasperengine::editor {
         // (vcvars) so non-Visual-Studio generators such as Ninja can find the
         // Windows SDK and CRT libraries. Returns "" when not needed / not found.
         static std::string msvcEnvPrefix(const std::string& generator);
+
+        // `argv` as one command line quoted per the C runtime's rules (Windows): for the rare case
+        // that needs a shell wrapper (sourcing vcvars) while keeping each argument literal.
+        static std::string quoteArgv(const std::vector<std::string>& argv);
 
 #ifdef _WIN32
         static std::string runCaptureNoWindow(const std::string& command);

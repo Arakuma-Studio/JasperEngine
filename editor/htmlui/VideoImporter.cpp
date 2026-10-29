@@ -122,7 +122,7 @@ std::vector<std::string> VideoImporter::av1Encoders(const std::string& ffmpeg){
         return found;
     std::string output;
     CommandRunner runner;
-    runner.run(quote(ffmpeg) + " -hide_banner -encoders", fs::current_path(), [&output](const std::string& line){ output += line + "\n"; });
+    runner.run({ffmpeg, "-hide_banner", "-encoders"}, fs::current_path(), [&output](const std::string& line){ output += line + "\n"; });
     for (const char* name : {"libsvtav1", "libaom-av1", "librav1e"}){
         if (output.find(std::string(" ") + name + " ") != std::string::npos)
             found.push_back(name);
@@ -130,24 +130,41 @@ std::vector<std::string> VideoImporter::av1Encoders(const std::string& ffmpeg){
     return found;
 }
 
-std::string VideoImporter::conversionCommand(const std::string& ffmpeg, const std::string& encoder, const fs::path& input,
-                                             const fs::path& output, bool toneMap){
-    std::string video;
+std::vector<std::string> VideoImporter::conversionArgv(const std::string& ffmpeg, const std::string& encoder, const fs::path& input,
+                                                       const fs::path& output, bool toneMap){
+    std::vector<std::string> video;
     if (encoder == "libsvtav1")
-        video = "-c:v libsvtav1 -preset 6 -crf 32";
+        video = {"-c:v", "libsvtav1", "-preset", "6", "-crf", "32"};
     else if (encoder == "libaom-av1")
-        video = "-c:v libaom-av1 -cpu-used 6 -row-mt 1 -crf 30 -b:v 0";
+        video = {"-c:v", "libaom-av1", "-cpu-used", "6", "-row-mt", "1", "-crf", "30", "-b:v", "0"};
     else
-        video = "-c:v librav1e -speed 6 -qp 100";
+        video = {"-c:v", "librav1e", "-speed", "6", "-qp", "100"};
     // keyframes every 2 s (seeks decode at most that much), at most 4096 px, even sizes for 4:2:0
     std::string chain = "scale='min(4096,iw)':'min(4096,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2";
     // HDR to SDR: linear light, BT.709 primaries, Hable's curve, back to BT.709 limited range
     if (toneMap)
         chain = "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv," + chain;
-    const std::string filter = "-vf " + quote(chain);
-    return quote(ffmpeg) + " -nostdin -hide_banner -y -i " + quote(pathString(input)) + " -map 0:v:0? -map 0:a:0? " + filter + " " + video +
-           " -g 60 -keyint_min 60 -force_key_frames " + quote("expr:gte(t,n_forced*2)") + " -pix_fmt " +
-           "yuv420p -c:a libopus -b:a 128k -ac 2 -f webm " + quote(pathString(output));
+    std::vector<std::string> argv = { ffmpeg, "-nostdin", "-hide_banner", "-y", "-i", pathString(input),
+                                      "-map", "0:v:0?", "-map", "0:a:0?", "-vf", chain };
+    argv.insert(argv.end(), video.begin(), video.end());
+    for (const char* a : {"-g", "60", "-keyint_min", "60", "-force_key_frames", "expr:gte(t,n_forced*2)",
+                          "-pix_fmt", "yuv420p", "-c:a", "libopus", "-b:a", "128k", "-ac", "2", "-f", "webm"}) {
+        argv.push_back(a);
+    }
+    argv.push_back(pathString(output));
+    return argv;
+}
+
+std::string VideoImporter::conversionCommand(const std::string& ffmpeg, const std::string& encoder, const fs::path& input,
+                                             const fs::path& output, bool toneMap){
+    // a human-readable line (shown with HTMLUI-IMP-0010/0011 so a user can run it by hand); the
+    // import itself runs the argv array, never this string
+    std::string line;
+    for (const std::string& a : conversionArgv(ffmpeg, encoder, input, output, toneMap)) {
+        if (!line.empty()) line.push_back(' ');
+        line += quote(a);
+    }
+    return line;
 }
 
 bool VideoImporter::isHdrInput(const std::string& ffmpeg, const fs::path& input){
@@ -162,8 +179,9 @@ bool VideoImporter::isHdrInput(const std::string& ffmpeg, const fs::path& input)
         return false;
     std::string output;
     CommandRunner runner;
-    runner.run(quote(pathString(ffprobe)) + " -v error -select_streams v:0 -show_entries stream=color_transfer -of csv=p=0 " +
-                   quote(pathString(input)), fs::current_path(), [&output](const std::string& line){ output += line + "\n"; });
+    runner.run({pathString(ffprobe), "-v", "error", "-select_streams", "v:0", "-show_entries",
+                "stream=color_transfer", "-of", "csv=p=0", pathString(input)}, fs::current_path(),
+               [&output](const std::string& line){ output += line + "\n"; });
     return output.find("smpte2084") != std::string::npos || output.find("arib-std-b67") != std::string::npos;
 }
 
@@ -172,7 +190,7 @@ bool VideoImporter::hasToneMapping(const std::string& ffmpeg){
         return false;
     std::string output;
     CommandRunner runner;
-    runner.run(quote(ffmpeg) + " -hide_banner -filters", fs::current_path(), [&output](const std::string& line){ output += line + "\n"; });
+    runner.run({ffmpeg, "-hide_banner", "-filters"}, fs::current_path(), [&output](const std::string& line){ output += line + "\n"; });
     return output.find(" zscale ") != std::string::npos && output.find(" tonemap ") != std::string::npos;
 }
 
@@ -244,7 +262,7 @@ VideoImportResult VideoImporter::importFile(const fs::path& input, const fs::pat
     std::string tail;
     const auto start = std::chrono::steady_clock::now();
     CommandRunner runner;
-    const bool success = runner.run(result.command, targetDir, [&](const std::string& line){
+    const bool success = runner.run(conversionArgv(result.ffmpeg, result.encoder, input, output, result.toneMapped), targetDir, [&](const std::string& line){
         tail += line + "\n";
         if (tail.size() > 4000)
             tail.erase(0, tail.size() - 4000);

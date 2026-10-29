@@ -934,3 +934,31 @@ TEST(SafeWrite, OwnedPlacesAreDeniedBelowEveryTrustedRoot) {
         EXPECT_FALSE(FileUtils::writeFileReplacing(d.base / "project.yaml", "x"));
     }
 }
+
+#ifndef _WIN32
+TEST(SafeWrite, AStrictScopeNeverGrantsExecuteBits) {
+    Dirs d("execbits");
+    // a file the user made executable (0755)
+    writeText(d.root / "run.sh", "#!/bin/sh\n");
+    chmod((d.root / "run.sh").c_str(), 0755);
+    {
+        sw::Scope scope(d.root, true);
+        EXPECT_TRUE(FileUtils::writeFileReplacing(d.root / "run.sh", "#!/bin/sh\nid\n"));
+    }
+    struct stat st{};
+    ASSERT_EQ(::stat((d.root / "run.sh").c_str(), &st), 0);
+    EXPECT_EQ(st.st_mode & 0111, 0u) << "a strict-scope replace drops the execute bits";
+    // a brand-new strict-scope file is not executable either
+    {
+        sw::Scope scope(d.root, true);
+        EXPECT_TRUE(FileUtils::writeFileReplacing(d.root / "new.txt", "x"));
+    }
+    ASSERT_EQ(::stat((d.root / "new.txt").c_str(), &st), 0);
+    EXPECT_EQ(st.st_mode & 0111, 0u);
+    // outside a strict scope (the GUI) an executable file keeps its bits
+    chmod((d.root / "run.sh").c_str(), 0755);
+    EXPECT_TRUE(FileUtils::writeFileReplacing(d.root / "run.sh", "#!/bin/sh\necho ok\n"));
+    ASSERT_EQ(::stat((d.root / "run.sh").c_str(), &st), 0);
+    EXPECT_NE(st.st_mode & 0111, 0u) << "the GUI keeps a file's execute bits";
+}
+#endif

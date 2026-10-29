@@ -353,6 +353,7 @@ std::string switchTargetRefusal(Project* project, const fs::path& target) {
     }
     const fs::path parent = normal.parent_path();
     const fs::path parentReal = safewrite::resolvedPath(parent);
+    const fs::path targetReal = safewrite::writeLocation(normal);
     const fs::path home = homeFolder();
     auto hiddenBelow = [](const fs::path& rel) {
         for (const fs::path& part : rel) {
@@ -361,14 +362,18 @@ std::string switchTargetRefusal(Project* project, const fs::path& target) {
         }
         return false;
     };
+    // never the home folder itself, nor a folder directly in it (a project there gets siblings only
+    // through the GUI): checked where the target and its parent resolve
+    if (!home.empty() && (samePlace(targetReal, home) || samePlace(parentReal, home))) {
+        return "it is your home folder (or a folder directly inside it): create the project from the editor (File > New Project)";
+    }
     const fs::path cur = project && !project->getProjectPath().empty() ? project->getProjectPath().lexically_normal() : fs::path();
     // (a) a sibling of the current project: same parent, spelled and resolved
     if (!cur.empty() && cur.has_parent_path()) {
         const fs::path curParent = cur.parent_path();
-        if (parent == curParent && samePlace(parentReal, safewrite::resolvedPath(curParent))) {
-            if (samePlace(parentReal, home)) {
-                return "the current project sits in your home folder: create a sibling project there from the editor (File > New Project)";
-            }
+        // not when the project's parent is a filesystem / drive root: "beside it" would be the root
+        const bool parentIsRoot = curParent == curParent.root_path() || !curParent.has_relative_path();
+        if (!parentIsRoot && parent == curParent && samePlace(parentReal, safewrite::resolvedPath(curParent))) {
             if (hiddenBelow(normal.filename())) {
                 return "a hidden ('.'-named) folder is not a project folder an MCP call makes";
             }
@@ -378,11 +383,7 @@ std::string switchTargetRefusal(Project* project, const fs::path& target) {
     // (b) at or below the user's default export folder (resolved)
     if (const fs::path def = AppSettings::getDefaultExportDirectory(); !def.empty()) {
         const fs::path defReal = safewrite::resolvedPath(def);
-        const fs::path targetReal = safewrite::writeLocation(normal);
         if (!defReal.empty() && !targetReal.empty() && safewrite::isAtOrBelow(targetReal, defReal) && !samePlace(targetReal, defReal)) {
-            if (samePlace(defReal, home)) {
-                return "the default export folder is your home folder: create the project from the editor";
-            }
             if (hiddenBelow(targetReal.lexically_relative(defReal))) {
                 return "a hidden ('.'-named) folder is not a project folder an MCP call makes";
             }
@@ -1688,6 +1689,12 @@ const std::vector<Setting>& settingsTable() {
             s.set = [member](McpContext& ctx, const Json& value, bool apply, std::string& error) {
                 std::string text;
                 if (!readString(value, text, error)) return false;
+                // the generator is a name CMake must recognise (it drives the build command): an
+                // arbitrary string is refused, never stored
+                if (member == &LocalBuildSettings::generator && !text.empty() && !Generator::isKnownGenerator(text)) {
+                    error = "not a CMake generator name (e.g. \"Ninja\", \"Unix Makefiles\", \"Visual Studio 17 2022\")";
+                    return false;
+                }
                 if (apply) {
                     const fs::path file = ctx.project()->getProjectPath() / "project.yaml";
                     LocalBuildSettings build = AppSettings::getBuildSettings(file);
