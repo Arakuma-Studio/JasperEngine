@@ -71,8 +71,8 @@ TEST(StreamMigrations, NewerIsLeftUntouched){
     EXPECT_TRUE(result.newer());
     EXPECT_FALSE(result.migrated());
     EXPECT_EQ(root["formatVersion"].as<int>(), 99);
-    EXPECT_EQ(StreamMigrations::newerFormatMessage(DocumentKind::Scene, 5),
-            "Written by a newer JasperEngine (scene format 5; this editor writes 4).");
+    EXPECT_EQ(StreamMigrations::newerFormatMessage(DocumentKind::Scene, 6),
+            "Written by a newer JasperEngine (scene format 6; this editor writes 5).");
 }
 
 TEST(StreamMigrations, OldPrefabsAreLeftToThePrefabLoader){
