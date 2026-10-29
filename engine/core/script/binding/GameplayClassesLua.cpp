@@ -156,8 +156,10 @@ void LuaBinding::registerGameplayClasses(lua_State *L){
         .addFunction("consume", &InputActionEvent::consume)
         .endClass();
 
+    // (not "FunctionSubscribe_V_IAE": that is upstream's (int, AnimationEvent) of the Vertex
+    // Animator's instance events; one Lua name for two types asserts in LuaBridge's debug builds)
     luabridge::getGlobalNamespace(L)
-        .beginClass<FunctionSubscribe<void(InputActionEvent&)>>("FunctionSubscribe_V_IAE")
+        .beginClass<FunctionSubscribe<void(InputActionEvent&)>>("FunctionSubscribe_V_InputActionEvent")
         .addFunction("__call", &FunctionSubscribe<void(InputActionEvent&)>::call)
         .addFunction("call", &FunctionSubscribe<void(InputActionEvent&)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(InputActionEvent&)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(InputActionEvent&)>::add)
