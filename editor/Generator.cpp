@@ -383,11 +383,15 @@ bool editor::Generator::configureCMake(const fs::path& projectPath, const fs::pa
     cmakeArgv.push_back("-DJASPERENGINE_LIB_DIR=" + toCMakePath(exePath.string()));
 
     Out::info("Configuring CMake project (%s)...", cmakeProgram().c_str());
-    const std::string msvcEnv = CommandRunner::msvcEnvPrefix(generator);
-    // the MSVC environment is loaded by sourcing vcvars, which needs a shell; the cmake arguments are
-    // still quoted per the C runtime's rules (CommandRunner::quoteArgv), not interpolated
-    bool result = msvcEnv.empty() ? commandRunner.run(cmakeArgv, projectPath)
-                                  : commandRunner.runShell(msvcEnv + CommandRunner::quoteArgv(cmakeArgv), projectPath);
+    // Windows + Ninja: the MSVC environment vcvars sets (loaded once, cached), cmake launched
+    // directly with it: no shell sees the project path or a build setting
+    CommandRunner::Environment msvcEnv;
+    std::string msvcError;
+    if (!CommandRunner::msvcEnvironment(generator, msvcEnv, msvcError)) {
+        Out::error("%s", msvcError.c_str());
+        return false;
+    }
+    bool result = commandRunner.run(cmakeArgv, projectPath, {}, msvcEnv.empty() ? nullptr : &msvcEnv);
 
     // Record which kit was used so we can detect changes next time.
     if (result) {
@@ -421,10 +425,14 @@ bool editor::Generator::buildProject(const fs::path& buildPath, const std::strin
                                            "--config", configType, "--parallel", std::to_string(parallelJobs) };
     Out::info("Building project with %u parallel jobs...", parallelJobs);
     // The build step invokes the compiler/linker again, so it needs the same
-    // MSVC environment as configure (see CommandRunner::msvcEnvPrefix). Launched as argv (no shell).
-    const std::string msvcEnv = CommandRunner::msvcEnvPrefix(generator);
-    return msvcEnv.empty() ? commandRunner.run(buildArgv, buildPath)
-                           : commandRunner.runShell(msvcEnv + CommandRunner::quoteArgv(buildArgv), buildPath);
+    // MSVC environment as configure (see CommandRunner::msvcEnvironment). Launched as argv (no shell).
+    CommandRunner::Environment msvcEnv;
+    std::string msvcError;
+    if (!CommandRunner::msvcEnvironment(generator, msvcEnv, msvcError)) {
+        Out::error("%s", msvcError.c_str());
+        return false;
+    }
+    return commandRunner.run(buildArgv, buildPath, {}, msvcEnv.empty() ? nullptr : &msvcEnv);
 }
 
 // The Jolt configuration the editor's engine library was built with, as compile definitions.

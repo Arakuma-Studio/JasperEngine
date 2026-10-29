@@ -12,10 +12,12 @@
 
 #include <unistd.h>
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <vector>
 
 using namespace jasperengine::editor;
 namespace fs = std::filesystem;
@@ -86,4 +88,114 @@ TEST(CommandRunner, CaptureTimesOutAndTheCMakeVersionProbeTakesAnArgv) {
 
     std::error_code ec;
     fs::remove_all(base, ec);
+}
+
+namespace {
+
+    // `text` (ASCII / UTF-8 BMP + one astral char via \U) as UTF-16LE bytes, the way cmd.exe /u writes
+    std::string utf16le(const std::u16string& text, bool bom) {
+        std::string out;
+        if (bom) out += "\xFF\xFE";
+        for (char16_t c : text) {
+            out.push_back(static_cast<char>(c & 0xFF));
+            out.push_back(static_cast<char>((c >> 8) & 0xFF));
+        }
+        return out;
+    }
+
+    const std::string* lookup(const CommandRunner::Environment& env, const std::string& name) {
+        for (const auto& entry : env) {
+            if (entry.first == name) return &entry.second;
+        }
+        return nullptr;
+    }
+
+}
+
+TEST(CommandRunner, ParsesTheEnvironmentSetPrintsInUtf16) {
+    const std::u16string text =
+        u"=C:=C:\\Users\\dev\r\n"                                  // drive entry: skipped
+        u"=ExitCode=00000000\r\n"
+        u"ALLUSERSPROFILE=C:\\ProgramData\r\n"
+        u"Path=C:\\Program Files\\Microsoft Visual Studio\\VC\\bin;C:\\Windows\\system32;;\"C:\\quoted;dir\"\r\n"
+        u"INCLUDE=C:\\SDK\\include;C:\\VC\\include\r\n"
+        u"\r\n"
+        u"**********************************************************************\r\n"   // banner: no '='
+        u"  indented=not a variable\r\n"
+        u"VSCMD_ARG_TGT_ARCH=x64\r\n"
+        u"WEIRD=a=b=c\r\n"
+        u"UNICODE_DIR=C:\\Users\\J\u00f6rg\\\u65e5\u672c \U0001F600\r\n"
+        u"EMPTY=\r\n"
+        u"PATH=C:\\later\\wins\n"                                  // LF only, same name in other case
+        u"LAST=no newline at the end";
+    for (bool bom : {true, false}) {
+        const auto env = CommandRunner::parseEnvironmentOutput(utf16le(text, bom));
+        for (const auto& entry : env) {
+            EXPECT_FALSE(entry.first.empty());
+            EXPECT_NE(entry.first[0], '=');
+            EXPECT_NE(entry.first[0], ' ');
+        }
+        // one PATH, the last value, under the first spelling, with its semicolons kept
+        ASSERT_NE(lookup(env, "Path"), nullptr);
+        EXPECT_EQ(*lookup(env, "Path"), "C:\\later\\wins");
+        EXPECT_EQ(lookup(env, "PATH"), nullptr);
+        ASSERT_NE(lookup(env, "INCLUDE"), nullptr);
+        EXPECT_EQ(*lookup(env, "INCLUDE"), "C:\\SDK\\include;C:\\VC\\include");
+        ASSERT_NE(lookup(env, "WEIRD"), nullptr);
+        EXPECT_EQ(*lookup(env, "WEIRD"), "a=b=c");
+        ASSERT_NE(lookup(env, "UNICODE_DIR"), nullptr);
+        EXPECT_EQ(*lookup(env, "UNICODE_DIR"), "C:\\Users\\J\xC3\xB6rg\\\xE6\x97\xA5\xE6\x9C\xAC \xF0\x9F\x98\x80");
+        ASSERT_NE(lookup(env, "EMPTY"), nullptr);
+        EXPECT_EQ(*lookup(env, "EMPTY"), "");
+        ASSERT_NE(lookup(env, "LAST"), nullptr);
+        EXPECT_EQ(*lookup(env, "LAST"), "no newline at the end");
+        EXPECT_EQ(lookup(env, "  indented"), nullptr);
+        EXPECT_EQ(env.size(), 8u);   // ALLUSERSPROFILE EMPTY INCLUDE LAST Path UNICODE_DIR VSCMD_ARG_TGT_ARCH WEIRD
+    }
+}
+
+TEST(CommandRunner, ParsesOddEnvironmentOutput) {
+    // 8-bit text (no UTF-16), CRLF, sorted case-insensitively for the CreateProcess block
+    const auto env = CommandRunner::parseEnvironmentOutput("zeta=1\r\nAlpha=2\r\n=D:=D:\\\r\nbeta=3\r\nnot a line\r\n");
+    ASSERT_EQ(env.size(), 3u);
+    EXPECT_EQ(env[0].first, "Alpha");
+    EXPECT_EQ(env[1].first, "beta");
+    EXPECT_EQ(env[2].first, "zeta");
+
+    // an odd byte count (a truncated read) drops only the last half code unit; a lone surrogate is U+FFFD
+    std::string bytes = utf16le(u"A=1\r\nB=x", false);
+    bytes += "\x3D\xD8";            // high surrogate with nothing after it
+    bytes += "\x41";                // and a stray last byte
+    const auto odd = CommandRunner::parseEnvironmentOutput(bytes);
+    ASSERT_EQ(odd.size(), 2u);
+    EXPECT_EQ(odd[1].second, "x\xEF\xBF\xBD");
+
+    // empty input, and a UTF-8 BOM
+    EXPECT_TRUE(CommandRunner::parseEnvironmentOutput("").empty());
+    const auto bom = CommandRunner::parseEnvironmentOutput("\xEF\xBB\xBFONE=1\n");
+    ASSERT_EQ(bom.size(), 1u);
+    EXPECT_EQ(bom[0].first, "ONE");
+
+    // off Windows nothing is loaded: no environment, no error
+    CommandRunner::Environment msvc;
+    std::string error;
+    EXPECT_TRUE(CommandRunner::msvcEnvironment("Ninja", msvc, error));
+#ifndef _WIN32
+    EXPECT_TRUE(msvc.empty());
+#endif
+    EXPECT_TRUE(error.empty());
+}
+
+TEST(CommandRunner, RunPassesTheGivenEnvironmentOnly) {
+    // the child sees exactly the given environment (what the MSVC one is on Windows)
+    CommandRunner runner;
+    const CommandRunner::Environment env = {{"JASPER_A", "one;two=three"}, {"PATH", "/nonexistent-dir"}};
+    std::vector<std::string> lines;
+    ASSERT_TRUE(runner.run({"/usr/bin/env"}, fs::path(), [&lines](const std::string& line) { lines.push_back(line); }, &env));
+    std::sort(lines.begin(), lines.end());
+    EXPECT_EQ(lines, (std::vector<std::string>{"JASPER_A=one;two=three", "PATH=/nonexistent-dir"}));
+    // without one, the editor's environment
+    lines.clear();
+    ASSERT_TRUE(runner.run({"/usr/bin/env"}, fs::path(), [&lines](const std::string& line) { lines.push_back(line); }));
+    EXPECT_GT(lines.size(), 2u);
 }

@@ -1111,7 +1111,13 @@ bool editor::Exporter::configureBuild() {
     argv.push_back("-B");
     argv.push_back(toCMakePath(buildDir.string()));
 
-    const std::string msvcEnv = config.mode == ExportMode::Desktop ? CommandRunner::msvcEnvPrefix(getEffectiveGenerator()) : std::string();
+    // Windows + Ninja: the MSVC environment (vcvars, loaded once and cached), cmake launched with it
+    CommandRunner::Environment msvcEnv;
+    std::string msvcError;
+    if (config.mode == ExportMode::Desktop && !CommandRunner::msvcEnvironment(getEffectiveGenerator(), msvcEnv, msvcError)) {
+        setError(msvcError);
+        return false;
+    }
 
     Out::info("Configuring export build (%zu args)...", argv.size());
     bool incompatiblePython = false;
@@ -1122,8 +1128,7 @@ bool editor::Exporter::configureBuild() {
         Out::build("%s", line.c_str());
         setDetail(line);
     };
-    bool ok = msvcEnv.empty() ? commandRunner.run(argv, config.targetDir, onConfigure)
-                              : commandRunner.runShell(msvcEnv + CommandRunner::quoteArgv(argv), config.targetDir, onConfigure);
+    bool ok = commandRunner.run(argv, config.targetDir, onConfigure, msvcEnv.empty() ? nullptr : &msvcEnv);
 
     if (!ok) {
         if (isCancelled()) {
@@ -1164,7 +1169,12 @@ bool editor::Exporter::runBuild() {
     std::vector<std::string> argv = { cmakeCmd, "--build", buildDir.string(), "--config", config.buildType,
                                       "--parallel", std::to_string(jobs) };
     // The build step invokes the compiler/linker, so it needs the same MSVC environment as configure.
-    const std::string msvcEnv = config.mode == ExportMode::Desktop ? CommandRunner::msvcEnvPrefix(getEffectiveGenerator()) : std::string();
+    CommandRunner::Environment msvcEnv;
+    std::string msvcError;
+    if (config.mode == ExportMode::Desktop && !CommandRunner::msvcEnvironment(getEffectiveGenerator(), msvcEnv, msvcError)) {
+        setError(msvcError);
+        return false;
+    }
 
     // Initialization only predicts the work denominator. Do not advance the
     // bar until MSBuild confirms work by emitting a source filename.
@@ -1189,8 +1199,7 @@ bool editor::Exporter::runBuild() {
             }
         }
     };
-    bool ok = msvcEnv.empty() ? commandRunner.run(argv, buildDir, onBuild)
-                              : commandRunner.runShell(msvcEnv + CommandRunner::quoteArgv(argv), buildDir, onBuild);
+    bool ok = commandRunner.run(argv, buildDir, onBuild, msvcEnv.empty() ? nullptr : &msvcEnv);
 
     if (!ok) {
         if (isCancelled()) {

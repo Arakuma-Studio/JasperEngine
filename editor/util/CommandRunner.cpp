@@ -12,6 +12,9 @@
 #include <cerrno>
 #include <thread>
 #include <condition_variable>
+#include <algorithm>
+#include <cstdint>
+#include <map>
 
 #ifdef _WIN32
     #include <io.h>
@@ -30,6 +33,70 @@ using namespace jasperengine;
 namespace {
     constexpr std::chrono::milliseconds kReadSleepMs{10};
     constexpr std::chrono::milliseconds kKillGracePeriod{100};
+
+    char asciiLower(char c) {
+        return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
+    }
+
+    bool equalIgnoreCase(const std::string& a, const std::string& b) {
+        if (a.size() != b.size()) return false;
+        for (size_t i = 0; i < a.size(); i++) {
+            if (asciiLower(a[i]) != asciiLower(b[i])) return false;
+        }
+        return true;
+    }
+
+    bool lessIgnoreCase(const std::string& a, const std::string& b) {
+        const size_t n = std::min(a.size(), b.size());
+        for (size_t i = 0; i < n; i++) {
+            const unsigned char x = static_cast<unsigned char>(asciiLower(a[i]));
+            const unsigned char y = static_cast<unsigned char>(asciiLower(b[i]));
+            if (x != y) return x < y;
+        }
+        return a.size() < b.size();
+    }
+
+    void appendUtf8(std::string& out, std::uint32_t cp) {
+        if (cp < 0x80) {
+            out.push_back(static_cast<char>(cp));
+        } else if (cp < 0x800) {
+            out.push_back(static_cast<char>(0xC0 | (cp >> 6)));
+            out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+        } else if (cp < 0x10000) {
+            out.push_back(static_cast<char>(0xE0 | (cp >> 12)));
+            out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+        } else {
+            out.push_back(static_cast<char>(0xF0 | (cp >> 18)));
+            out.push_back(static_cast<char>(0x80 | ((cp >> 12) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+        }
+    }
+
+    // UTF-16LE bytes from `start` as UTF-8 (an unpaired surrogate becomes U+FFFD, an odd last byte
+    // is dropped)
+    std::string utf16leToUtf8(const std::string& bytes, size_t start) {
+        std::string out;
+        out.reserve((bytes.size() - start) / 2);
+        auto unitAt = [&bytes](size_t i) -> std::uint32_t {
+            return static_cast<std::uint32_t>(static_cast<unsigned char>(bytes[i])) |
+                   (static_cast<std::uint32_t>(static_cast<unsigned char>(bytes[i + 1])) << 8);
+        };
+        for (size_t i = start; i + 1 < bytes.size(); i += 2) {
+            const std::uint32_t unit = unitAt(i);
+            if (unit >= 0xD800 && unit <= 0xDBFF && i + 3 < bytes.size()) {
+                const std::uint32_t low = unitAt(i + 2);
+                if (low >= 0xDC00 && low <= 0xDFFF) {
+                    appendUtf8(out, 0x10000 + ((unit - 0xD800) << 10) + (low - 0xDC00));
+                    i += 2;
+                    continue;
+                }
+            }
+            appendUtf8(out, (unit >= 0xD800 && unit <= 0xDFFF) ? 0xFFFD : unit);
+        }
+        return out;
+    }
 }
 
 #ifdef _WIN32
@@ -69,7 +136,146 @@ std::string editor::CommandRunner::findVcvarsall() {
 }
 #endif
 
-std::string editor::CommandRunner::msvcEnvPrefix(const std::string& generator) {
+editor::CommandRunner::Environment editor::CommandRunner::parseEnvironmentOutput(const std::string& bytes) {
+    std::string text;
+    if (bytes.size() >= 2 && static_cast<unsigned char>(bytes[0]) == 0xFF && static_cast<unsigned char>(bytes[1]) == 0xFE) {
+        text = utf16leToUtf8(bytes, 2);
+    } else if (bytes.size() >= 2 && bytes[0] != '\0' && bytes[1] == '\0') {
+        text = utf16leToUtf8(bytes, 0);   // cmd.exe /u writes UTF-16LE without a BOM
+    } else {
+        text = bytes;
+    }
+    if (text.size() >= 3 && text.compare(0, 3, "\xEF\xBB\xBF") == 0) text.erase(0, 3);
+
+    Environment env;
+    size_t pos = 0;
+    while (pos < text.size()) {
+        size_t end = text.find('\n', pos);
+        if (end == std::string::npos) end = text.size();
+        std::string line = text.substr(pos, end - pos);
+        pos = end + 1;
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        const size_t eq = line.find('=');
+        // no '=' (banner text), an empty name (the "=C:=C:\\..." drive entries), a name starting
+        // with whitespace, or a stray NUL: not a variable
+        if (eq == std::string::npos || eq == 0 || line[0] == ' ' || line[0] == '\t' ||
+            line.find('\0') != std::string::npos) {
+            continue;
+        }
+        std::string name = line.substr(0, eq);
+        std::string value = line.substr(eq + 1);
+        auto same = std::find_if(env.begin(), env.end(), [&name](const auto& entry) { return equalIgnoreCase(entry.first, name); });
+        if (same != env.end()) {
+            same->second = std::move(value);
+        } else {
+            env.emplace_back(std::move(name), std::move(value));
+        }
+    }
+    std::stable_sort(env.begin(), env.end(), [](const auto& a, const auto& b) { return lessIgnoreCase(a.first, b.first); });
+    return env;
+}
+
+#ifdef _WIN32
+namespace {
+    std::wstring widen(const std::string& text, UINT codePage) {
+        if (text.empty()) return std::wstring();
+        const int size = MultiByteToWideChar(codePage, 0, text.data(), static_cast<int>(text.size()), nullptr, 0);
+        if (size <= 0) return std::wstring();
+        std::wstring wide(static_cast<size_t>(size), L'\0');
+        MultiByteToWideChar(codePage, 0, text.data(), static_cast<int>(text.size()), wide.data(), size);
+        return wide;
+    }
+
+    // A CreateProcessW (CREATE_UNICODE_ENVIRONMENT) block: NAME=VALUE\0 ... \0
+    std::wstring environmentBlock(const editor::CommandRunner::Environment& env) {
+        std::wstring block;
+        for (const auto& entry : env) {
+            block += widen(entry.first, CP_UTF8);
+            block.push_back(L'=');
+            block += widen(entry.second, CP_UTF8);
+            block.push_back(L'\0');
+        }
+        if (env.empty()) block.push_back(L'\0');
+        block.push_back(L'\0');
+        return block;
+    }
+
+    // argv[0] without a folder: the first <dir>\<name> (.exe / .com when it has no extension) on
+    // the environment's PATH, the way cmd.exe found it after vcvars; "" when none (CreateProcessW
+    // then searches as usual)
+    std::wstring findOnEnvironmentPath(const std::string& program, const editor::CommandRunner::Environment& env) {
+        if (program.empty() || program.find_first_of("\\/:") != std::string::npos) return std::wstring();
+        const std::string* path = nullptr;
+        for (const auto& entry : env) {
+            if (equalIgnoreCase(entry.first, "PATH")) path = &entry.second;
+        }
+        if (!path) return std::wstring();
+        const std::wstring name = widen(program, CP_ACP);
+        const bool hasExtension = std::filesystem::path(name).has_extension();
+        const std::wstring dirs = widen(*path, CP_UTF8);
+        size_t pos = 0;
+        while (pos <= dirs.size()) {
+            size_t end = dirs.find(L';', pos);
+            if (end == std::wstring::npos) end = dirs.size();
+            std::wstring dir = dirs.substr(pos, end - pos);
+            pos = end + 1;
+            if (dir.size() >= 2 && dir.front() == L'"' && dir.back() == L'"') dir = dir.substr(1, dir.size() - 2);
+            if (dir.empty()) continue;
+            for (const wchar_t* ext : {L"", L".exe", L".com"}) {
+                if (hasExtension != (ext[0] == L'\0')) continue;
+                std::error_code ec;
+                const std::filesystem::path candidate = std::filesystem::path(dir) / (name + ext);
+                if (std::filesystem::is_regular_file(candidate, ec)) return candidate.wstring();
+            }
+        }
+        return std::wstring();
+    }
+
+    // Runs `commandLine` with the system folder's cmd.exe, hidden, and collects everything it
+    // writes to stdout/stderr. False when it could not be started.
+    bool runCmdCollect(std::wstring commandLine, std::string& bytes, DWORD& exitCode) {
+        wchar_t systemDir[MAX_PATH];
+        const UINT length = GetSystemDirectoryW(systemDir, MAX_PATH);
+        if (length == 0 || length >= MAX_PATH) return false;
+        const std::wstring cmdExe = std::wstring(systemDir, length) + L"\\cmd.exe";
+
+        SECURITY_ATTRIBUTES sa{ sizeof(sa), nullptr, TRUE };
+        HANDLE hRead = nullptr, hWrite = nullptr;
+        if (!CreatePipe(&hRead, &hWrite, &sa, 0)) return false;
+        SetHandleInformation(hRead, HANDLE_FLAG_INHERIT, 0);
+        STARTUPINFOW si{};
+        si.cb = sizeof(si);
+        si.dwFlags = STARTF_USESTDHANDLES;
+        si.hStdOutput = hWrite;
+        si.hStdError = hWrite;
+        si.hStdInput = nullptr;
+        PROCESS_INFORMATION pi{};
+        if (!CreateProcessW(cmdExe.c_str(), commandLine.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW,
+                            nullptr, nullptr, &si, &pi)) {
+            CloseHandle(hRead);
+            CloseHandle(hWrite);
+            return false;
+        }
+        CloseHandle(hWrite);
+        char buffer[4096];
+        DWORD bytesRead = 0;
+        while (ReadFile(hRead, buffer, sizeof(buffer), &bytesRead, nullptr) && bytesRead > 0) {
+            bytes.append(buffer, bytesRead);
+        }
+        CloseHandle(hRead);
+        WaitForSingleObject(pi.hProcess, INFINITE);
+        exitCode = 1;
+        GetExitCodeProcess(pi.hProcess, &exitCode);
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+        return true;
+    }
+}
+#endif
+
+bool editor::CommandRunner::msvcEnvironment(const std::string& generator, Environment& env, std::string& error) {
+    env.clear();
+    error.clear();
 #ifdef _WIN32
     // Ninja (unlike the Visual Studio generator) runs the compiler directly and
     // does NOT set up the MSVC toolchain environment. A standalone Clang or MSVC
@@ -77,20 +283,64 @@ std::string editor::CommandRunner::msvcEnvPrefix(const std::string& generator) {
     // linking fails with errors like "could not open 'kernel32.lib'". Loading
     // vcvars populates INCLUDE/LIB/PATH so the SDK is found. The Visual Studio
     // generator configures this itself, and MinGW must not use MSVC's env.
-    if (generator == "Ninja") {
-        std::string vcvars = findVcvarsall();
-        if (!vcvars.empty()) {
-            // Do NOT suppress vcvars output: when it cannot find the Windows SDK
-            // it prints "[ERROR:...]" diagnostics that are essential for
-            // troubleshooting missing '*.lib' link failures. The banner is a
-            // few harmless lines on success.
-            return "call \"" + vcvars + "\" x64 && ";
-        }
+    if (generator != "Ninja") return true;
+    const std::string vcvars = findVcvarsall();
+    if (vcvars.empty()) {
         Out::warning("Could not locate the Visual Studio environment (vcvarsall.bat). If linking fails with missing '*.lib' files, run the editor from a Developer Command Prompt or install the Windows SDK with Visual Studio.");
+        return true;
     }
-#endif
+    const std::string arch = "x64";
+
+    static std::mutex cacheMutex;
+    static std::map<std::string, Environment> cache;   // vcvars path + arch -> environment
+    std::lock_guard<std::mutex> lock(cacheMutex);
+    const std::string key = vcvars + "|" + arch;
+    if (const auto it = cache.find(key); it != cache.end()) {
+        env = it->second;
+        return true;
+    }
+
+    // the vcvars path is the only value in the cmd.exe line: inside quotes & | < > ^ ( ) are
+    // literal, so only what quotes can't protect is refused ('"' ends them, '%' expands a
+    // variable even inside them, a control character could end the line)
+    const std::wstring script = std::filesystem::path(vcvars).wstring();
+    const bool unsafe = std::any_of(script.begin(), script.end(), [](wchar_t c) { return c == L'"' || c == L'%' || c < 0x20; });
+    if (unsafe) {
+        error = "The Visual Studio environment script " + vcvars + " has a '\"', '%' or control character in its path, "
+                "which cmd.exe can't be given safely; run the editor from a Developer Command Prompt or use the Visual Studio generator.";
+        return false;
+    }
+    const std::wstring warch = widen(arch, CP_UTF8);
+    std::string bytes;
+    DWORD exitCode = 1;
+    const bool ran = runCmdCollect(L"cmd.exe /d /u /v:off /s /c \"call \"" + script + L"\" " + warch + L" >nul 2>&1 && set\"", bytes, exitCode);
+    Environment loaded = (ran && exitCode == 0) ? parseEnvironmentOutput(bytes) : Environment();
+    const bool hasPath = std::any_of(loaded.begin(), loaded.end(), [](const auto& entry) { return equalIgnoreCase(entry.first, "PATH"); });
+    if (!hasPath) {
+        // its own diagnostics ("[ERROR:...]" when it can't find the Windows SDK) to the console
+        std::string output;
+        DWORD diagnosticExit = 1;
+        if (runCmdCollect(L"cmd.exe /d /v:off /s /c \"call \"" + script + L"\" " + warch + L"\"", output, diagnosticExit)) {
+            size_t pos = 0;
+            while (pos < output.size()) {
+                size_t end = output.find('\n', pos);
+                if (end == std::string::npos) end = output.size();
+                std::string line = output.substr(pos, end - pos);
+                pos = end + 1;
+                if (!line.empty() && line.back() == '\r') line.pop_back();
+                if (!line.empty()) Out::build("%s", line.c_str());
+            }
+        }
+        error = "Could not load the Visual Studio environment (" + vcvars + " " + arch + "): see the Console for its output.";
+        return false;
+    }
+    cache[key] = loaded;
+    env = std::move(loaded);
+    return true;
+#else
     (void)generator;
-    return "";
+    return true;
+#endif
 }
 
 void editor::CommandRunner::cancel() {
@@ -116,8 +366,8 @@ void editor::CommandRunner::terminateCurrentProcess() {
             jobSnapshot = currentJobHandle;
         }
         if (jobSnapshot) {
-            // Kills every process in the job: cmd.exe plus the cmake/compiler
-            // tree it spawned.
+            // Kills every process in the job: cmake plus the build tool /
+            // compiler tree it spawned.
             TerminateJobObject(jobSnapshot, 1);
         } else if (handleSnapshot) {
             TerminateProcess(handleSnapshot, 1);
@@ -171,22 +421,6 @@ namespace {
 }
 #endif
 
-std::string editor::CommandRunner::quoteArgv(const std::vector<std::string>& argv) {
-#ifdef _WIN32
-    return argvToCommandLine(argv);
-#else
-    // POSIX: single-quote each argument (only used for symmetry; the shell path is rare)
-    std::string line;
-    for (const std::string& a : argv) {
-        if (!line.empty()) line.push_back(' ');
-        line.push_back('\'');
-        for (char c : a) { if (c == '\'') line += "'\\''"; else line.push_back(c); }
-        line.push_back('\'');
-    }
-    return line;
-#endif
-}
-
 std::string editor::CommandRunner::capture(const std::vector<std::string>& argv, int timeoutMs) {
     CommandRunner runner;
     runner.quiet = true;
@@ -224,15 +458,8 @@ std::string editor::CommandRunner::capture(const std::vector<std::string>& argv,
     return output;
 }
 
-bool editor::CommandRunner::runShell(const std::string& command, const fs::path& workingDir, const std::function<void(const std::string&)>& onLine) {
-#ifdef _WIN32
-    return run({"cmd.exe", "/s", "/c", command}, workingDir, onLine);
-#else
-    return run({"/bin/sh", "-c", command}, workingDir, onLine);
-#endif
-}
-
-bool editor::CommandRunner::run(const std::vector<std::string>& argv, const fs::path& workingDir, const std::function<void(const std::string&)>& onLine) {
+bool editor::CommandRunner::run(const std::vector<std::string>& argv, const fs::path& workingDir, const std::function<void(const std::string&)>& onLine,
+                                const Environment* environment) {
     if (argv.empty()) return false;
     cancelRequested.store(false, std::memory_order_relaxed);
 
@@ -254,8 +481,8 @@ bool editor::CommandRunner::run(const std::vector<std::string>& argv, const fs::
         }
         SetHandleInformation(hReadPipe, HANDLE_FLAG_INHERIT, 0);
 
-        STARTUPINFOA si{};
-        si.cb = sizeof(STARTUPINFOA);
+        STARTUPINFOW si{};
+        si.cb = sizeof(STARTUPINFOW);
         si.dwFlags = STARTF_USESTDHANDLES;
         si.hStdOutput = hWritePipe;
         si.hStdError  = hWritePipe;
@@ -264,8 +491,13 @@ bool editor::CommandRunner::run(const std::vector<std::string>& argv, const fs::
         PROCESS_INFORMATION pi{};
         // argv quoted per the C runtime's rules (quoteWin): CreateProcessW splits argv[0] off and
         // passes the rest to the child verbatim; no shell parses it, so a value with metacharacters
-        // is one literal argument. cmd.exe (runShell) is just another argv[0] here.
-        std::string cmdLine = argvToCommandLine(argv);
+        // is one literal argument. The arguments are in the active code page (what CreateProcessA
+        // took before); an environment (the MSVC one) is passed as a UTF-16 block, and argv[0] is
+        // found on its PATH first.
+        std::wstring cmdLine = widen(argvToCommandLine(argv), CP_ACP);
+        const std::wstring application = environment ? findOnEnvironmentPath(argv[0], *environment) : std::wstring();
+        std::wstring envBlock = environment ? environmentBlock(*environment) : std::wstring();
+        const std::wstring workDir = workingDir.wstring();
 
         // Track the whole child tree in a job object so cancellation can kill
         // cmake and the compilers it spawns, not only cmd.exe. KILL_ON_JOB_CLOSE
@@ -277,15 +509,15 @@ bool editor::CommandRunner::run(const std::vector<std::string>& argv, const fs::
             SetInformationJobObject(hJob, JobObjectExtendedLimitInformation, &jobLimits, sizeof(jobLimits));
         }
 
-        if (!CreateProcessA(
-                nullptr,
+        if (!CreateProcessW(
+                application.empty() ? nullptr : application.c_str(),
                 cmdLine.data(),
                 nullptr,
                 nullptr,
                 TRUE,
-                CREATE_NO_WINDOW | CREATE_SUSPENDED,
-                nullptr,
-                workingDir.empty() ? nullptr : workingDir.string().c_str(),
+                CREATE_NO_WINDOW | CREATE_SUSPENDED | (environment ? CREATE_UNICODE_ENVIRONMENT : 0),
+                environment ? static_cast<LPVOID>(envBlock.data()) : nullptr,
+                workDir.empty() ? nullptr : workDir.c_str(),
                 &si,
                 &pi))
         {
@@ -440,7 +672,16 @@ bool editor::CommandRunner::run(const std::vector<std::string>& argv, const fs::
         posix_spawnattr_setpgroup(&attr, 0);
 
         // posix_spawnp searches PATH for a bare program name; an absolute path is used as given
-        int spawnResult = posix_spawnp(&pid, cargv[0], &actions, &attr, cargv.data(), environ);
+        // an environment given: the child's whole environment (PATH lookup of argv[0] still uses ours)
+        std::vector<std::string> envStrings;
+        std::vector<char*> envp;
+        if (environment) {
+            envStrings.reserve(environment->size());
+            for (const auto& entry : *environment) envStrings.push_back(entry.first + "=" + entry.second);
+            for (std::string& entry : envStrings) envp.push_back(entry.data());
+            envp.push_back(nullptr);
+        }
+        int spawnResult = posix_spawnp(&pid, cargv[0], &actions, &attr, cargv.data(), environment ? envp.data() : environ);
         posix_spawnattr_destroy(&attr);
         posix_spawn_file_actions_destroy(&actions);
         close(pipefd[1]);
