@@ -30,7 +30,11 @@ APP="$ROOT/engine/workspaces/androidstudio/app"
 # no `clean`: its native step needs the CMake AGP installs only while building; the APK of an
 # earlier run goes, the merged resources are rewritten by the build
 rm -rf "$APP/build/outputs/apk"
-(cd "$ROOT/engine/workspaces/androidstudio" && ./gradlew --no-daemon -PjasperPlayer=true -PjasperBackend="$BACKEND" "$TASK")
+# android.precompileDependenciesResources=false: the libraries' resources (appcompat's layouts,
+# animations...) are compiled into merged_res with the app's, instead of into Gradle's transform
+# cache, so res-flat.zip below holds every resource the player links
+(cd "$ROOT/engine/workspaces/androidstudio" && ./gradlew --no-daemon -PjasperPlayer=true -PjasperBackend="$BACKEND" \
+    -Pandroid.precompileDependenciesResources=false "$TASK")
 
 rm -rf "$OUT"
 mkdir -p "$OUT"
