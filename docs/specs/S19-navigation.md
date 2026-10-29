@@ -671,3 +671,5 @@ protocol, groups, docs 53/53 (listing core 98303 of 100k, guide 16366 of 16384);
 (post-processing, with the navigation step) pass; web: the sample project's gate pass (C), the
 navigation single-threaded gate on E 3/3 with the same hashes; Android emulator (A) with the
 screen golden pass.
+ASan+UBSan (B) on the merged tree, navigation, reflection, stream, ECS and scheduler suites: core
+83/83, editor 189/189, no sanitizer reports.
