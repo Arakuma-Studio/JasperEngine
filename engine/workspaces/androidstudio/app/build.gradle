@@ -37,6 +37,13 @@ android {
                 abiFilters "x86"
                 abiFilters "armeabi-v7a"
                 abiFilters "x86_64"
+                // JASPERENGINE_ANDROID_ABIS (comma separated) builds only those: tools/build.sh
+                // android's ANDROID_ABIS, x86_64 for tools/android-emulator-test.sh
+                def onlyAbis = System.getenv("JASPERENGINE_ANDROID_ABIS")
+                if (onlyAbis) {
+                    abiFilters.clear()
+                    abiFilters(*onlyAbis.split(","))
+                }
 
                 arguments "-DANDROID_STL=c++_shared", "-DPROJECT_ROOT="+projectSourceRootAbs
 
