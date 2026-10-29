@@ -577,6 +577,14 @@ void RenderSystem::updateShadowCasters(){
         }
         if (morphs)
             revision.add(mesh.morphWeights);
+        // upstream's Vertex Animator moves the vertices on the GPU: what it plays (the payload,
+        // the u_vs_vat block's clips and times) is what it casts, so the cached shadow follows it
+        if (mesh.vat.variantActive != VatVariant::NONE){
+            revision.add(mesh.vat.variantActive);
+            revision.add(mesh.vat.texture);
+            for (const Vector4& v : mesh.vat.block)
+                revision.add(v);
+        }
         state.revision = (uint32_t)(revision.value ^ (revision.value >> 32));
 
         const bool terrain = scene->findComponent<TerrainComponent>(entity) != nullptr;
