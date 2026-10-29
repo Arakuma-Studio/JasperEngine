@@ -192,7 +192,9 @@ TEST_F(AnimatorEditor, CommitsMergeByKeyAndReloadOutsideChanges) {
     parameter.name = "Outside";
     outside.parameters.push_back(parameter);
     writeAll(file, anim::writeController(outside));
-    stale.layers[0].weight = 0.5f;
+    anim::StateDef staleState;
+    staleState.name = "Stale";
+    stale.layers[0].machine.states.push_back(staleState);
     EXPECT_FALSE(document->commit(stale, "Edit", "", &error));
     EXPECT_NE(error.find("changed on disk"), std::string::npos) << error;
     ASSERT_EQ(document->controller().parameters.size(), 1u) << "reloaded";
