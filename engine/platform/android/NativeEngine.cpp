@@ -25,6 +25,12 @@
 #include "Input.h"
 #include "Log.h"
 #include "util/StringUtils.h"
+#include "../common/PlatformDefaults.h"
+#include "player/Launch.h"
+
+#include <sys/system_properties.h>
+#include <cstdlib>
+#include <sstream>
 
 #define MAX_GL_ERRORS 200
 
@@ -640,6 +646,22 @@ NativeEngine::NativeEngine(struct android_app *app) {
     SwappyGL_setSwapIntervalNS(SWAPPY_SWAP_60FPS);
 
     setupJNI();
+
+    // An app has no command line: the launch options come from a system property instead
+    // (adb shell setprop debug.jasperengine.args "--quit-after 600 --fixed-fps 60", as
+    // tools/android-emulator-test.sh does), then a player's game.json (S30 R17)
+    jasperengine::applyPlatformDefaults();
+    std::vector<std::string> launchArgs;
+    char property[PROP_VALUE_MAX] = {};
+    if (__system_property_get("debug.jasperengine.args", property) > 0) {
+        std::istringstream words(property);
+        for (std::string word; words >> word;) launchArgs.push_back(word);
+    }
+    const int launched = jasperengine::player::launch(launchArgs, jasperengine::player::ParseMode::Lenient);
+    if (launched >= 0) {
+        __android_log_print(ANDROID_LOG_ERROR, "JasperEngine", "exiting with code %d (launch options or content)", launched);
+        std::exit(launched);
+    }
 
     jasperengine::Engine::systemInit(0, nullptr, new JasperEngineAndroid());
 }

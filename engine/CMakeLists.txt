@@ -1010,6 +1010,10 @@ endif()
 
 set(JASPERENGINE_SRCS
     core/Engine.cpp
+    core/PlatformConfig.cpp
+    core/player/Launch.cpp
+    core/player/LaunchOptions.cpp
+    core/player/RunControl.cpp
     core/Input.cpp
     core/input/InputControlPath.cpp
     core/input/InputActionAsset.cpp
@@ -1161,6 +1165,7 @@ set(JASPERENGINE_SRCS
     core/io/Data.cpp
     core/io/File.cpp
     core/io/FileData.cpp
+    core/io/JPak.cpp
     core/io/ResourcePack.cpp
     core/io/watch/ExpectedWriteLedger.cpp
     core/io/watch/FileChangeCoalescer.cpp
@@ -1257,6 +1262,7 @@ set(JASPERENGINE_SRCS
     core/physics/JoltShapeBuilder.cpp
     core/physics/PlacementWorld.cpp
     core/render/AtmosphereMath.cpp
+    core/render/FrameReadback.cpp
     core/render/AtmosphereNoise.cpp
     core/render/AtmospherePresets.cpp
     core/render/AtmosphereQuality.cpp
@@ -1377,6 +1383,7 @@ set(JASPERENGINE_SRCS
     core/util/LunaSVGRuntime.cpp
     core/util/PostColorLut.cpp
     core/util/Scheduler.cpp
+    core/util/Sha256.cpp
     core/util/STBText.cpp
     core/util/StringUtils.cpp
     core/util/SubscriptionOwnerIndex.cpp

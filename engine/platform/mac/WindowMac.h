@@ -29,6 +29,11 @@ namespace jasperengine {
         // Without a regular activation policy a non-bundled process launches as
         // a background agent: no dock icon, no menu bar, never active.
         static void setupApplication();
+        // --headless (docs/specs/S30-shipping.md R17): no Dock icon or menu bar
+        // (NSApplicationActivationPolicyProhibited) and a window that is on screen for the
+        // drawable but fully transparent and click-through, so nothing is ever seen
+        static void setupHeadlessApplication();
+        static void showHeadless();
 
         // A menu bar with nothing but Quit, so Cmd+Q behaves as users expect.
         // The editor builds its own instead.

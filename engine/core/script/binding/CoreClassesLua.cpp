@@ -22,6 +22,7 @@
 #include "asset/AssetMap.h"
 #include "Input.h"
 #include "System.h"
+#include "player/RunControl.h"
 #include "registry/PhysicsLayers.h"
 #include "math/Ray.h"
 #include "picking/MeshRaycast.h"
@@ -1121,6 +1122,9 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("timeScale", &Engine::getTimeScale, &Engine::setTimeScale)
         .addStaticProperty("fixedDeltatime", &Engine::getFixedDeltatime, &Engine::setFixedDeltatime)
         .addStaticProperty("gameTime", &Engine::getGameTime)
+        // a shipped game run with --headless, and the end of a run with its exit code (S30 R19)
+        .addStaticFunction("isHeadless", &Engine::isHeadless)
+        .addStaticFunction("quit", [] (std::optional<int> code) { Engine::quit(code.value_or(0)); })
         .addStaticProperty("frameCount", &Engine::getGameFrames)
         .addStaticProperty("asyncLoading", &Engine::isAsyncLoading, &Engine::setAsyncLoading)
         .addStaticFunction("startAsyncThread", &Engine::startAsyncThread)
@@ -2370,6 +2374,22 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("setWindowResizable", [] (bool resizable) { System::instance().setWindowResizable(resizable); })
         .addStaticFunction("setWindowTitle", [] (const std::string& title) { System::instance().setWindowTitle(title); })
         .addStaticFunction("quit", [] () { System::instance().quit(); })
+        // the game's command line arguments: what follows "--" (a prebuilt player), or what the
+        // engine's options do not use (a Compile build)
+        .addStaticFunction("getArgs", [] (lua_State* L) -> luabridge::LuaRef {
+            luabridge::LuaRef table = luabridge::newTable(L);
+            int index = 1;
+            for (const std::string& arg : player::RunControl::options().scriptArgs)
+                table[index++] = arg;
+            return table;
+        })
+        .addStaticProperty("args", [] (lua_State* L) -> luabridge::LuaRef {
+            luabridge::LuaRef table = luabridge::newTable(L);
+            int index = 1;
+            for (const std::string& arg : player::RunControl::options().scriptArgs)
+                table[index++] = arg;
+            return table;
+        })
         .addStaticFunction("getDirSeparator", [] () { return System::instance().getDirSeparator(); })
         .addStaticFunction("getAssetPath", [] () { return System::instance().getAssetPath(); })
         .addStaticFunction("getUserDataPath", [] () { return System::instance().getUserDataPath(); })

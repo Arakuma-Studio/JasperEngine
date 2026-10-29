@@ -20,25 +20,15 @@
 #include "WindowMac.h"
 
 #include "Engine.h"
+#include "PlatformConfig.h"
+#include "player/RunControl.h"
+#if defined(SOKOL_METAL)
+#include "../apple/MetalReadback.h"
+#endif
 
 #import "JasperEngineGameController.h"
 
-#ifndef JASPERENGINE_VSYNC_ENABLED
-#define JASPERENGINE_VSYNC_ENABLED 1
-#endif
-
-// 0 = windowed, 1 = maximized (zoomed), 2 = fullscreen
-#ifndef JASPERENGINE_WINDOW_MODE
-#define JASPERENGINE_WINDOW_MODE 0
-#endif
-
-#ifndef JASPERENGINE_WINDOW_RESIZABLE
-#define JASPERENGINE_WINDOW_RESIZABLE 1
-#endif
-
-#ifndef JASPERENGINE_WINDOW_TITLE
-#define JASPERENGINE_WINDOW_TITLE "JasperEngine"
-#endif
+#include <cstdlib>
 
 using namespace jasperengine;
 
@@ -59,7 +49,7 @@ namespace {
         VulkanContextConfig config;
         config.surfaceExtension = VK_EXT_METAL_SURFACE_EXTENSION_NAME;
         config.createSurface = createWindowSurface;
-        config.vsync = JASPERENGINE_VSYNC_ENABLED != 0;
+        config.vsync = platformConfig().vsync;
         return VulkanContext::create(config);
     }
 #else
@@ -80,11 +70,12 @@ namespace {
 - (void)applicationDidFinishLaunching:(NSNotification*)notification {
     (void)notification;
 
+    const PlatformConfig& platform = platformConfig();
     WindowMacConfig config;
-    config.title = JASPERENGINE_WINDOW_TITLE;
-    config.width = DEFAULT_WINDOW_WIDTH;
-    config.height = DEFAULT_WINDOW_HEIGHT;
-    config.resizable = JASPERENGINE_WINDOW_RESIZABLE;
+    config.title = platform.title;
+    config.width = platform.width;
+    config.height = platform.height;
+    config.resizable = platform.resizable;
 
     WindowMac::create(config);
     WindowMac::setWindowDelegate((__bridge void*)self);
@@ -111,7 +102,9 @@ namespace {
     gameView.delegate = self;
 
     WindowMac::setContentView((__bridge void*)gameView);
-    static_cast<CAMetalLayer*>(gameView.layer).displaySyncEnabled = JASPERENGINE_VSYNC_ENABLED ? YES : NO;
+    static_cast<CAMetalLayer*>(gameView.layer).displaySyncEnabled = platform.vsync ? YES : NO;
+    // --screenshot reads the composite on sokol's queue
+    installMetalReadback();
 #elif defined(SOKOL_VULKAN)
     gameView = [[MacViewVulkan alloc] initWithFrame:viewFrame];
     WindowMac::setContentView((__bridge void*)gameView);
@@ -134,16 +127,20 @@ namespace {
 
     WindowMac::setContentView((__bridge void*)gameView);
     [gameView makeContextCurrent];
-    [gameView setSwapInterval:JASPERENGINE_VSYNC_ENABLED ? 1 : 0];
+    [gameView setSwapInterval:platform.vsync ? 1 : 0];
 #endif
 
     Engine::systemViewLoaded();
     Engine::systemViewChanged();
 
-    [JasperEngineGameController start];
-
-    WindowMac::show(true);
-    WindowMac::applyInitialWindowMode(JASPERENGINE_WINDOW_MODE == 1, JASPERENGINE_WINDOW_MODE == 2);
+    if (platform.headless) {
+        // no input, nothing seen; the frames render all the same
+        WindowMac::showHeadless();
+    } else {
+        [JasperEngineGameController start];
+        WindowMac::show(true);
+        WindowMac::applyInitialWindowMode(platform.windowMode == 1, platform.windowMode == 2);
+    }
 
     // A timer-driven loop keeps the run loop live, so Cocoa still delivers
     // input and window events between frames. VSync paces the actual rate.
@@ -229,6 +226,8 @@ namespace {
 #endif
     gameView = nil;
     WindowMac::destroy();
+    // [NSApp terminate:] exits with 0 after this: a run's own code (R19) goes first
+    std::exit(player::RunControl::finish());
 }
 
 @end
@@ -237,8 +236,12 @@ int JasperEngineMac::init(int argc, char **argv) {
     @autoreleasepool {
         Engine::systemInit(argc, argv, new SystemMac());
 
-        WindowMac::setupApplication();
-        WindowMac::installMinimalMenuBar(JASPERENGINE_WINDOW_TITLE);
+        if (platformConfig().headless) {
+            WindowMac::setupHeadlessApplication();
+        } else {
+            WindowMac::setupApplication();
+            WindowMac::installMinimalMenuBar(platformConfig().title);
+        }
 
         JasperEngineMacDelegate* delegate = [[JasperEngineMacDelegate alloc] init];
         [NSApp setDelegate:delegate];

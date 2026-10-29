@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "System.h"
+#include "PlatformConfig.h"
 #include "util/XMLUtils.h"
 #include "util/Base64.h"
 #include "Log.h"
@@ -23,6 +24,10 @@ System& System::instance(){
     }
 
     return *systemInstance;
+}
+
+bool System::hasInstance(){
+    return systemInstance != nullptr;
 }
 
 void System::setSystemInstance(System* system){
@@ -169,6 +174,17 @@ std::string System::getLuaPath(){
 
 std::string System::getShaderPath(){
     return getAssetPath() + "/" + "shaders";
+}
+
+std::string System::getContentPath(){
+    const std::string& root = platformConfig().contentRoot;
+    if (!root.empty())
+        return root;
+    const std::string assets = getAssetPath();
+    const size_t slash = assets.find_last_of("/\\");
+    if (slash == std::string::npos)
+        return assets.empty() ? "" : ".";
+    return slash == 0 ? "/" : assets.substr(0, slash);
 }
 
 std::string System::getImportPath(){

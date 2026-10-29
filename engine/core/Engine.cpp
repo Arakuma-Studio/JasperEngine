@@ -53,6 +53,9 @@
 #endif
 
 #include "sokol_time.h"
+#include "PlatformConfig.h"
+#include "player/RunControl.h"
+#include "render/FrameReadback.h"
 #if defined(__APPLE__)
     #include <TargetConditionals.h>
 #endif
@@ -127,6 +130,7 @@ double Engine::updateTime = 1.0 / 60.0; //60Hz
 double Engine::timeScale = 1.0;
 double Engine::fixedDeltatime = 0.0;
 double Engine::gameTime = 0.0;
+bool Engine::captureFrame = false;
 double Engine::shaderTime = 0.0;
 bool Engine::shaderTimeFixed = false;
 uint64_t Engine::gameFrames = 0;
@@ -1055,15 +1059,38 @@ bool Engine::ensureCompositeFramebuffer(){
 void Engine::beginCompositeFramebuffer(){
 // each scene opens its own swapchain pass and the sokol Vulkan backend takes only one
 // per commit, so stacked scenes draw offscreen and are presented once. The other
-// backends draw them straight to the swapchain (re-check when sokol_gfx is updated)
+// backends draw them straight to the swapchain (re-check when sokol_gfx is updated).
+// A screenshot's capture frame draws offscreen on every backend, to be read after it.
 #if defined(SOKOL_VULKAN)
-    if (framebuffer || scenes.size() <= 1)
+    const bool stacked = scenes.size() > 1;
+#else
+    const bool stacked = false;
+#endif
+    if (framebuffer || !(stacked || captureFrame))
         return;
 
     if (ensureCompositeFramebuffer())
         framebuffer = &compositeFramebuffer;
-#endif
 }
+
+bool Engine::readCompositeFrame(std::vector<uint8_t>& rgba, int& width, int& height, std::string& error){
+    if (!compositeFramebuffer.isCreated()){
+        error = "the frame did not draw offscreen (no view yet)";
+        return false;
+    }
+    width = static_cast<int>(compositeFramebuffer.getWidth());
+    height = static_cast<int>(compositeFramebuffer.getHeight());
+    return FrameReadback::readFramebuffer(compositeFramebuffer, rgba, &error);
+}
+
+bool Engine::isHeadless(){
+    return player::RunControl::isHeadless();
+}
+
+void Engine::quit(int code){
+    player::RunControl::requestQuit(code);
+}
+
 
 void Engine::endCompositeFramebuffer(){
     if (framebuffer != &compositeFramebuffer)
@@ -1429,11 +1456,9 @@ namespace {
     [[maybe_unused]] void startGameDiagnostics(System* system){
     #if JASPERENGINE_CRASH_HANDLER
         diag::crash::Config config;
-        #ifdef JASPERENGINE_WINDOW_TITLE
-        config.product = JASPERENGINE_WINDOW_TITLE;
-        #else
-        config.product = "JasperEngine Game";
-        #endif
+        // the window title: the project's name (a prebuilt player's game.json, a Compile
+        // build's macro, both through the platform configuration)
+        config.product = platformConfig().title.empty() ? "JasperEngine Game" : platformConfig().title;
         config.root = system->getCrashReportPath();
         config.includeLogTail = JASPERENGINE_CRASH_LOG_TAIL != 0;
         config.dumpKind = JASPERENGINE_CRASH_DUMP_WITH_HEAP ? diag::crash::DumpKind::WithHeap : diag::crash::DumpKind::Small;
@@ -1450,9 +1475,8 @@ namespace {
         // the browser owns the web's main thread
         diag::WatchdogConfig watch;
         watch.thresholdMs = JASPERENGINE_CRASH_HANG_MS;
-        #ifdef JASPERENGINE_WINDOW_TITLE
-        watch.product = JASPERENGINE_WINDOW_TITLE;
-        #endif
+        if (!platformConfig().title.empty())
+            watch.product = platformConfig().title;
         diag::watchdog::start(watch);
         engineOwnsDiagnostics = true;
     #endif
@@ -1470,6 +1494,8 @@ void Engine::systemInit(int argc, char* argv[], System* system){
         startGameLogger(system, std::vector<std::string>(argv, argv + argc));
     }
     Logger::setThreadName("main");
+    // the launch options' error watch and fixed frame time (player::launch parsed them)
+    player::RunControl::engineStarted();
 #ifndef JASPERENGINE_EDITOR
     startGameDiagnostics(system);
 #endif
@@ -1636,7 +1662,8 @@ void Engine::signalReadyOnce(){
     static int readyFrames = 0;
     uint64_t& frames = frameStatsFrames;
     static uint64_t signalledFrame = 0;
-    if (!enabled)
+    // --after-ready counts frames from the ready line, whatever the environment says
+    if (!enabled && !player::RunControl::wantsReadySignal())
         return;
     if (signalled){
         if (frameStats){
@@ -1665,6 +1692,10 @@ void Engine::signalReadyOnce(){
 
 void Engine::systemDraw(){
     runFrame(true);
+}
+
+bool Engine::isReadySignalled(){
+    return readySignalled;
 }
 
 void Engine::systemFramePresented(){
@@ -1788,6 +1819,9 @@ void Engine::runFrame(bool draw){
 
     // a transition requested during the last frame; one requested by its factory waits again
     SceneManager::applyPendingLoad();
+
+    // a --screenshot run's capture frame draws offscreen (R20); a run without it never does
+    captureFrame = draw && player::RunControl::isActive() && player::RunControl::wantsOffscreenFrame();
 
     // before the update, which bakes the PIP_RTT pipelines from the target in use
     if (draw)
@@ -1925,6 +1959,13 @@ void Engine::runFrame(bool draw){
     // it counts drawn frames
     if (draw)
         signalReadyOnce();
+
+    // the launch options' frame count, screenshot and quit (docs/specs/S30-shipping.md R17)
+    if (draw && player::RunControl::isActive()){
+        const bool captured = captureFrame;
+        captureFrame = false;
+        player::RunControl::frameDrawn(readySignalled, captured ? player::FrameReader(&Engine::readCompositeFrame) : player::FrameReader());
+    }
 
 #if JASPERENGINE_PROFILER
     // the built-in monitors, and the command line's capture once the scenes are loaded

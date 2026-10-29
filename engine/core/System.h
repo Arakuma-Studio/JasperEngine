@@ -80,6 +80,8 @@ namespace jasperengine {
         std::vector<std::string> args;
 
         static System& instance();
+        // false before the platform set one (the unit tests, the editor's command line)
+        static bool hasInstance();
 
         virtual ~System() {}
 
@@ -136,6 +138,10 @@ namespace jasperengine {
         virtual std::string getCrashReportPath();
         virtual std::string getLuaPath();
         virtual std::string getShaderPath();
+        // The root of a shipped game's content (content://): game.json, content-manifest.json,
+        // the cooked scenes and prefabs, with assets/ and lua/ below it. A player's content
+        // root (PlatformConfig), else the directory above the asset path
+        virtual std::string getContentPath();
         // Where the editor keeps the models it imports (FBX converted to .glb); empty when
         // each import sits next to its source, as in an exported game
         virtual std::string getImportPath();
