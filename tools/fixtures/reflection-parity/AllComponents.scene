@@ -2168,3 +2168,48 @@ entities:
         playAutomatically: false
         speed: 2.5
         defaultFadeTime: 0.5
+  - type: Entity
+    entity: 1068
+    name: AnimatorComponent
+    components:
+      transform:
+        position: [67, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [0, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      animator:
+        enabled: false
+        controller: animations/parity.controller
+        speed: 7.4
+        applyRootMotion: true
+        rootMotionBone: Reflection parity
+        updateMode: unscaled_time
+        cullingMode: cull_completely
+        writeBones: exposed
+        exposedBones:
+          - Hips/Spine
+          - left_hand
+        eventMode: all
+        sendEventsToScripts: false
+        retarget: off
+        clipOverrides:
+          - original: animations/parity.anim
+            replacement: "models/parity.gltf#Run"
+        ik:
+          - name: LeftHand
+            type: two_bone
+            weight: 0.5
+            bones:
+              - left_upper_arm
+              - left_lower_arm
+              - left_hand
