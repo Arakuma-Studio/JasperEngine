@@ -111,6 +111,11 @@ namespace jasperengine::editor {
         bool includeInBuilds = true;         // exports build and ship the list's variants
         bool holdFirstScene = true;          // a game's first scene waits for the list
 
+        // the budget into its range (a hand-edited project.yaml)
+        void clamp(){
+            if (!(mainThreadBudgetMs >= 0.5f)) mainThreadBudgetMs = 0.5f;
+            if (mainThreadBudgetMs > 16.0f) mainThreadBudgetMs = 16.0f;
+        }
         ShaderCreationSettings engineSettings() const{
             ShaderCreationSettings settings;
             settings.asyncCreation = asyncCreation;

@@ -2819,6 +2819,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             reflect::DecodeContext ctx;
             ctx.component = "shaderCreation";
             reflect::decode(reflect::shaderCreationStruct(), node["shaderCreation"], &shaderCreation, ctx);
+            shaderCreation.clamp();
         }
         project->setShaderCreationSettings(shaderCreation);
     }

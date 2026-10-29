@@ -565,9 +565,15 @@ TEST_F(AsyncCreateGpu, AStandInDrawsWhileTheVariantIsPending){
     second->setColor(0.9f, 0.4f, 0.2f);
     second->setPosition(1.4f, 0.0f, 0.0f);
     GpuEnvironment::drawFrames(3);
-    ASSERT_GT(ShaderPool::getPendingShaderCount(), 0u) << "the fogged variants are still pending";
-    const std::vector<uint8_t> standIn = readTarget();
-    EXPECT_LT(meanDifference(standIn, unfogged), 1.0) << "both cubes draw their unfogged variants meanwhile";
+    // GL, D3D11, Metal: the fogged programs are pending, so the second cube draws its stand-in.
+    // Vulkan creates programs at once and only the pipelines wait: the cube shows up once they
+    // are made (a pipeline has no stand-in)
+    const bool programsPending = ShaderPool::getPendingShaderCount() > 0;
+    ASSERT_TRUE(programsPending || SystemRender::getGpuCreationStats().pendingPipelines > 0) << "the fogged variants are still pending";
+    if (programsPending){
+        const std::vector<uint8_t> standIn = readTarget();
+        EXPECT_LT(meanDifference(standIn, unfogged), 1.0) << "both cubes draw their unfogged variants meanwhile";
+    }
 
     Scene* current = &scene;
     ASSERT_TRUE(GpuEnvironment::runFrames([current](){ return current->getSystem<RenderSystem>()->isAllLoaded(); }, 3000));

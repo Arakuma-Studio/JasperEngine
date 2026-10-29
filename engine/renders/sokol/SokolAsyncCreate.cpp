@@ -627,8 +627,8 @@ void SokolAsyncCreate::setup(){
     s.frameMainMs = s.frameSpentMs = 0.0;
     sgj_async_setup();
     s.caps = sgj_async_query_caps();
-    if (const char* delay = std::getenv("JASPER_ASYNC_SHADERS_DELAY_MS"))
-        s.delayMs = std::max(0, std::atoi(delay));
+    const char* delay = std::getenv("JASPER_ASYNC_SHADERS_DELAY_MS");
+    s.delayMs = delay ? std::max(0, std::atoi(delay)) : 0;
 
     const std::string forced = forcedMode();
     GpuCreationMode mode = GpuCreationMode::Sync;

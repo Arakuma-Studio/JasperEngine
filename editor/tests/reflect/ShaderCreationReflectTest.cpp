@@ -29,6 +29,8 @@ namespace {
         reflect::DecodeContext ctx;
         ctx.component = "shaderCreation";
         reflect::decode(reflect::shaderCreationStruct(), node, &settings, ctx);
+        // as the project file's decode (Stream)
+        settings.clamp();
         return settings;
     }
 
