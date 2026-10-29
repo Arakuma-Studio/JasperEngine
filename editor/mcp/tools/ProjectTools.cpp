@@ -33,6 +33,7 @@
 #include "util/CxxStandards.h"
 #include "util/FileUtils.h"
 #include "util/SafeWrite.h"
+#include "util/ShellEnv.h"
 #include "window/CodeEditor.h"
 #include "window/ConsoleWindow.h"
 #include "window/ProjectWindow.h"
@@ -325,15 +326,16 @@ std::string outsideRootsRefusal(const fs::path& projectDir) {
     return std::string();
 }
 
-// The user's home folder, resolved ("" when unknown)
+// The user's home folder, resolved ("" when unknown): $HOME / %USERPROFILE%, else the account's
+// own (getpwuid, SHGetKnownFolderPath) so an unset HOME doesn't switch the home rules off
 fs::path homeFolder() {
-#ifdef _WIN32
-    const char* home = std::getenv("USERPROFILE");
-#else
-    const char* home = std::getenv("HOME");
-#endif
-    if (!home || !*home) return fs::path();
-    return safewrite::resolvedPath(FileUtils::pathFromUtf8(home));
+    const fs::path home = ShellEnv::homeDirectory();
+    if (home.empty()) return fs::path();
+    return safewrite::resolvedPath(home);
+}
+
+bool isFilesystemRoot(const fs::path& path) {
+    return !path.empty() && (path == path.root_path() || !path.has_relative_path());
 }
 
 bool samePlace(const fs::path& a, const fs::path& b) {
@@ -367,12 +369,37 @@ std::string switchTargetRefusal(Project* project, const fs::path& target) {
     if (!home.empty() && (samePlace(targetReal, home) || samePlace(parentReal, home))) {
         return "it is your home folder (or a folder directly inside it): create the project from the editor (File > New Project)";
     }
+    // ... and the same for EVERY folder the call would create on the way (<home>/bin/z would make
+    // <home>/bin): none may be the home folder, directly inside it, or directly in a filesystem root
+    {
+        fs::path existing = normal;
+        std::vector<fs::path> missing;
+        std::error_code ex;
+        while (!fs::exists(fs::symlink_status(existing, ex)) && existing.has_relative_path() && existing.has_parent_path() &&
+               existing != existing.parent_path()) {
+            missing.insert(missing.begin(), existing.filename());
+            existing = existing.parent_path();
+        }
+        fs::path made = safewrite::resolvedPath(existing);
+        for (const fs::path& name : missing) {
+            const fs::path above = made;
+            made /= name;
+            if (!home.empty() && (samePlace(made, home) || samePlace(above, home))) {
+                return "it would create " + FileUtils::pathToGenericUtf8(made) +
+                       " directly in your home folder: create the project from the editor (File > New Project)";
+            }
+            if (isFilesystemRoot(above)) {
+                return "it would create " + FileUtils::pathToGenericUtf8(made) + " directly in a filesystem root";
+            }
+        }
+    }
     const fs::path cur = project && !project->getProjectPath().empty() ? project->getProjectPath().lexically_normal() : fs::path();
     // (a) a sibling of the current project: same parent, spelled and resolved
     if (!cur.empty() && cur.has_parent_path()) {
         const fs::path curParent = cur.parent_path();
-        // not when the project's parent is a filesystem / drive root: "beside it" would be the root
-        const bool parentIsRoot = curParent == curParent.root_path() || !curParent.has_relative_path();
+        // not when the project's parent is a filesystem / drive root, spelled or once resolved (a
+        // link to "/"): "beside it" would be the root
+        const bool parentIsRoot = isFilesystemRoot(curParent) || isFilesystemRoot(safewrite::resolvedPath(curParent));
         if (!parentIsRoot && parent == curParent && samePlace(parentReal, safewrite::resolvedPath(curParent))) {
             if (hiddenBelow(normal.filename())) {
                 return "a hidden ('.'-named) folder is not a project folder an MCP call makes";

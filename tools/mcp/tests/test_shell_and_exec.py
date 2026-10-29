@@ -150,3 +150,23 @@ async def test_create_project_keeps_away_from_home(ed: Editor):
         r = await ed.call_raw("create_project", {"path": str(target), "name": "H", "unsaved": "discard"}, timeout=300)
         ed.check(r.is_error, f"create_project {target}: {r.text[:240]}")
         ed.check_eq((await ed.call("get_project_summary"))["path"], str(project), "the project stays open")
+    # deeper targets that would CREATE a folder directly in the home folder (<home>/bin on the way to
+    # <home>/bin/z), also spelled through a link to the home folder: refused, nothing made. The
+    # editor's home (the harness's <scratch>/home, below the export folder, so only the home rule
+    # can refuse these)
+    home = ed.scratch.root / "home"
+    if not home.is_dir():
+        skip("no harness home folder")
+    link = project.parent / "homelink-r10"
+    if link.is_symlink():
+        link.unlink()
+    os.symlink(home, link)
+    try:
+        before = sorted(p.name for p in home.iterdir())
+        for target in (home / "bin" / "z", home / "Documents" / "deep" / "er", link / "bin" / "z"):
+            r = await ed.call_raw("create_project", {"path": str(target), "name": "H", "unsaved": "discard"}, timeout=300)
+            ed.check(r.is_error and "home folder" in r.text, f"create_project {target}: {r.text[:240]}")
+            ed.check_eq((await ed.call("get_project_summary"))["path"], str(project), "the project stays open")
+        ed.check_eq(sorted(p.name for p in home.iterdir()), before, "no folder made in the home folder")
+    finally:
+        link.unlink()

@@ -36,8 +36,8 @@ namespace jasperengine::editor {
         // compilers, ffmpeg and every other tool: a path or a setting that holds
         // shell metacharacters cannot start a second command.
         // environment (optional): the child's WHOLE environment instead of the editor's (the MSVC
-        // environment below). Windows: argv[0] without a folder is looked up on that
-        // environment's PATH first (as cmd.exe would after vcvars), then as CreateProcessW does.
+        // or Emscripten environment). Windows: argv[0] is resolved by resolveWindowsProgram (on
+        // that environment's PATH when given; never the current folder; batch files refused).
         bool run(const std::vector<std::string>& argv, const fs::path& workingDir,
                  const std::function<void(const std::string&)>& onLine = {},
                  const Environment* environment = nullptr);
@@ -49,6 +49,12 @@ namespace jasperengine::editor {
         // metacharacters is one literal argument. timeoutMs > 0: the process is terminated after
         // that long and "" returned (a GUI program asked for --version may never answer).
         static std::string capture(const std::vector<std::string>& argv, int timeoutMs = 0);
+
+        // Starts `exe` (no arguments) detached in workingDir: no shell, its own session / process
+        // group, stdin/stdout/stderr on the null device, no other descriptor or handle inherited,
+        // and no child left to the editor (POSIX: a double fork, the intermediate reaped at once).
+        // false + error when it could not be started (an exec failure is reported, not hidden).
+        static bool launchDetached(const fs::path& exe, const fs::path& workingDir, std::string& error);
 
         // Request cancellation and terminate the running process (if any).
         void cancel();
@@ -73,6 +79,20 @@ namespace jasperengine::editor {
         // drive entries) skipped; a name seen again (case-insensitively) keeps the last value; sorted
         // by name case-insensitively, as a CreateProcess environment block wants.
         static Environment parseEnvironmentOutput(const std::string& bytes);
+
+        // This process's environment (Windows: without the "=C:" drive entries)
+        static Environment currentEnvironment();
+        // Sets NAME (case-insensitively on Windows, keeping the block sorted), adding it when missing
+        static void setVariable(Environment& env, const std::string& name, const std::string& value);
+        // NAME's value, "" when unset
+        static std::string variable(const Environment& env, const std::string& name);
+
+        // How run() picks the program on Windows (portable, for tests): a name with a folder is used
+        // as given; a bare name is looked for in searchDirs in order (the editor's folder, the
+        // system folders, then PATH: never the current folder); without an extension .exe, then
+        // .com. A .bat / .cmd is refused: Windows runs batch files through cmd.exe, which parses
+        // their arguments (BatBadBut). "" with `resolved` set, else why it can't run.
+        static std::string resolveWindowsProgram(const fs::path& program, const std::vector<fs::path>& searchDirs, fs::path& resolved);
 
 #ifdef _WIN32
         static std::string findVswherePath();

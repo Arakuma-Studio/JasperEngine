@@ -10,13 +10,17 @@
 #include "Generator.h"
 #include "util/CommandRunner.h"
 
+#include <fcntl.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace jasperengine::editor;
@@ -198,4 +202,91 @@ TEST(CommandRunner, RunPassesTheGivenEnvironmentOnly) {
     lines.clear();
     ASSERT_TRUE(runner.run({"/usr/bin/env"}, fs::path(), [&lines](const std::string& line) { lines.push_back(line); }));
     EXPECT_GT(lines.size(), 2u);
+}
+
+TEST(CommandRunner, WindowsProgramResolutionNeverUsesTheCurrentFolderOrBatchFiles) {
+    const fs::path base = fs::temp_directory_path() / ("jasper-resolve-" + std::to_string(::getpid()));
+    fs::remove_all(base);
+    const fs::path a = base / "a", b = base / "b", cwd = base / "cwd";
+    for (const fs::path& dir : {a, b, cwd}) fs::create_directories(dir);
+    auto touch = [](const fs::path& path) { std::ofstream(path, std::ios::binary) << "x"; };
+    touch(b / "tool.exe");
+    touch(a / "emcmake.bat");
+    touch(a / "script.cmd");
+    touch(b / "other.com");
+    touch(cwd / "planted.exe");
+    const fs::path previous = fs::current_path();
+    fs::current_path(cwd);
+
+    fs::path resolved;
+    // a bare name: the search folders in order, .exe then .com added
+    EXPECT_EQ(CommandRunner::resolveWindowsProgram("tool", {a, b}, resolved), "");
+    EXPECT_EQ(resolved, b / "tool.exe");
+    EXPECT_EQ(CommandRunner::resolveWindowsProgram("other", {a, b}, resolved), "");
+    EXPECT_EQ(resolved, b / "other.com");
+    // never the current folder
+    EXPECT_NE(CommandRunner::resolveWindowsProgram("planted", {a, b}, resolved), "");
+    EXPECT_NE(CommandRunner::resolveWindowsProgram("planted.exe", {a, b}, resolved), "");
+    // a batch file is never picked by a bare name, and refused when named
+    EXPECT_NE(CommandRunner::resolveWindowsProgram("emcmake", {a, b}, resolved).find("not found"), std::string::npos);
+    EXPECT_NE(CommandRunner::resolveWindowsProgram("emcmake.bat", {a, b}, resolved).find("batch file"), std::string::npos);
+    EXPECT_NE(CommandRunner::resolveWindowsProgram("SCRIPT.CMD", {a, b}, resolved).find("batch file"), std::string::npos);
+    EXPECT_NE(CommandRunner::resolveWindowsProgram(a / "emcmake.bat", {}, resolved).find("batch file"), std::string::npos);
+    // a path is used as given (extension added when missing)
+    EXPECT_EQ(CommandRunner::resolveWindowsProgram(b / "tool.exe", {}, resolved), "");
+    EXPECT_EQ(resolved, b / "tool.exe");
+    EXPECT_EQ(CommandRunner::resolveWindowsProgram(b / "tool", {}, resolved), "");
+    EXPECT_EQ(resolved, b / "tool.exe");
+    EXPECT_NE(CommandRunner::resolveWindowsProgram(b / "missing", {}, resolved), "");
+    EXPECT_TRUE(resolved.empty());
+
+    fs::current_path(previous);
+    std::error_code ec;
+    fs::remove_all(base, ec);
+}
+
+TEST(CommandRunner, LaunchDetachedReportsExecFailureLeavesNoChildAndInheritsNoDescriptor) {
+    const fs::path base = fs::temp_directory_path() / ("jasper-detached-" + std::to_string(::getpid()));
+    fs::remove_all(base);
+    const fs::path dir = base / "player dir $(x) & co";
+    fs::create_directories(dir);
+    // a descriptor the editor holds open WITHOUT close-on-exec
+    const fs::path probe = base / "inherited-probe";
+    const int held = ::open(probe.c_str(), O_CREAT | O_RDWR, 0600);
+    ASSERT_GE(held, 0);
+
+    const fs::path out = base / "fds.txt";
+    const fs::path player = dir / "player";
+    std::ofstream(player, std::ios::binary) << "#!/bin/sh\npwd > '" << (base / "pwd.txt").string() << "'\n"
+                                            << "for f in /proc/$$/fd/*; do readlink \"$f\"; done > '" << out.string() << "'\n";
+    fs::permissions(player, fs::perms::owner_all, fs::perm_options::replace);
+
+    std::string error;
+    ASSERT_TRUE(CommandRunner::launchDetached(player, dir, error)) << error;
+    // the intermediate child is reaped already: nothing to collect
+    int status = 0;
+    EXPECT_LE(::waitpid(-1, &status, WNOHANG), 0);
+    for (int i = 0; i < 100 && !fs::exists(out); i++) std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::ifstream fds(out);
+    const std::string listed((std::istreambuf_iterator<char>(fds)), std::istreambuf_iterator<char>());
+    EXPECT_FALSE(listed.empty());
+    EXPECT_EQ(listed.find("inherited-probe"), std::string::npos) << listed;
+    std::ifstream pwd(base / "pwd.txt");
+    std::string where;
+    std::getline(pwd, where);
+    EXPECT_EQ(fs::path(where), fs::canonical(dir));
+
+    // exec failures are reported, not hidden behind "Running"
+    EXPECT_FALSE(CommandRunner::launchDetached(dir / "missing", dir, error));
+    EXPECT_FALSE(error.empty());
+    const fs::path notExecutable = dir / "data";
+    std::ofstream(notExecutable, std::ios::binary) << "data";
+    fs::permissions(notExecutable, fs::perms::owner_read | fs::perms::owner_write, fs::perm_options::replace);
+    EXPECT_FALSE(CommandRunner::launchDetached(notExecutable, dir, error));
+    EXPECT_NE(error.find("ermission"), std::string::npos) << error;
+
+    ::close(held);
+    std::error_code ec;
+    fs::remove_all(base, ec);
 }

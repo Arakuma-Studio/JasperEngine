@@ -16,12 +16,9 @@
 #include "Factory.h"
 #include "SettingsCategoryList.h"
 
+#include "util/CommandRunner.h"
+
 #include <cstdlib>
-#ifndef _WIN32
-#include <unistd.h>
-#include <fcntl.h>
-#include <sys/types.h>
-#endif
 
 #include <vector>
 
@@ -639,36 +636,11 @@ void ExportWindow::launchBuiltPlayer() {
     }
 
     // The player resolves assets and lua relative to its working directory. Launched detached
-    // WITHOUT a shell (no std::system): the path is passed as an argument, so metacharacters in the
-    // export folder can't start a second command.
-    const std::string dir = exePath.parent_path().string();
-    const std::string exe = exePath.string();
-    #ifdef _WIN32
-    std::wstring wexe = exePath.wstring();
-    std::wstring wdir = exePath.parent_path().wstring();
-    STARTUPINFOW si{}; si.cb = sizeof(si);
-    PROCESS_INFORMATION pi{};
-    // CreateProcessW with the application name set: lpCommandLine is only argv (quoted)
-    std::wstring cmdLine = L"\"" + wexe + L"\"";
-    std::vector<wchar_t> buf(cmdLine.begin(), cmdLine.end()); buf.push_back(0);
-    const BOOL ok = CreateProcessW(wexe.c_str(), buf.data(), nullptr, nullptr, FALSE,
-                                   CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS, nullptr, wdir.c_str(), &si, &pi);
-    if (ok) { CloseHandle(pi.hProcess); CloseHandle(pi.hThread); }
-    #else
-    const pid_t pid = ::fork();
-    bool ok = pid >= 0;
-    if (pid == 0) {
-        ::setsid();
-        if (::chdir(dir.c_str()) != 0) ::_exit(126);
-        const int devnull = ::open("/dev/null", O_RDWR);
-        if (devnull >= 0) { ::dup2(devnull, 1); ::dup2(devnull, 2); }
-        char* const argv[] = { const_cast<char*>(exe.c_str()), nullptr };
-        ::execv(exe.c_str(), argv);
-        ::_exit(127);
-    }
-    #endif
-    if (!ok) {
-        Out::error("Build And Run: could not start %s", exePath.string().c_str());
+    // WITHOUT a shell (the path is one argument), inheriting no descriptor, and never left as a
+    // zombie child of the editor; an exec failure is reported (CommandRunner::launchDetached)
+    std::string error;
+    if (!CommandRunner::launchDetached(exePath, exePath.parent_path(), error)) {
+        Out::error("Build And Run: could not start %s: %s", exePath.string().c_str(), error.c_str());
     } else {
         Out::info("Running %s", exePath.string().c_str());
     }

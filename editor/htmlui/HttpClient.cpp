@@ -344,6 +344,10 @@ HttpResponse HttpClient::get(const std::string& url){
         out << "url = " << configValue(requestUrl) << "\n"
             << "output = " << configValue(body.string()) << "\n"
             << "user-agent = " << configValue(kUserAgent) << "\n"
+            // http(s) only, also after a redirect: remote content (a Lottie image ref, a Google
+            // Fonts src) can't make curl read file:// or another scheme
+            << "proto = \"=https,http\"\n"
+            << "proto-redir = \"=https,http\"\n"
             << "location\n"
             << "max-redirs = 5\n"
             << "max-time = " << timeoutSeconds << "\n"

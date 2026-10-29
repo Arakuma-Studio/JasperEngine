@@ -12,6 +12,7 @@
 #include <cerrno>
 #include <thread>
 #include <condition_variable>
+#include <cwchar>
 #include <algorithm>
 #include <cstdint>
 #include <map>
@@ -200,35 +201,50 @@ namespace {
         return block;
     }
 
-    // argv[0] without a folder: the first <dir>\<name> (.exe / .com when it has no extension) on
-    // the environment's PATH, the way cmd.exe found it after vcvars; "" when none (CreateProcessW
-    // then searches as usual)
-    std::wstring findOnEnvironmentPath(const std::string& program, const editor::CommandRunner::Environment& env) {
-        if (program.empty() || program.find_first_of("\\/:") != std::string::npos) return std::wstring();
-        const std::string* path = nullptr;
-        for (const auto& entry : env) {
-            if (equalIgnoreCase(entry.first, "PATH")) path = &entry.second;
-        }
-        if (!path) return std::wstring();
-        const std::wstring name = widen(program, CP_ACP);
-        const bool hasExtension = std::filesystem::path(name).has_extension();
-        const std::wstring dirs = widen(*path, CP_UTF8);
-        size_t pos = 0;
-        while (pos <= dirs.size()) {
-            size_t end = dirs.find(L';', pos);
-            if (end == std::wstring::npos) end = dirs.size();
-            std::wstring dir = dirs.substr(pos, end - pos);
-            pos = end + 1;
-            if (dir.size() >= 2 && dir.front() == L'"' && dir.back() == L'"') dir = dir.substr(1, dir.size() - 2);
-            if (dir.empty()) continue;
-            for (const wchar_t* ext : {L"", L".exe", L".com"}) {
-                if (hasExtension != (ext[0] == L'\0')) continue;
-                std::error_code ec;
-                const std::filesystem::path candidate = std::filesystem::path(dir) / (name + ext);
-                if (std::filesystem::is_regular_file(candidate, ec)) return candidate.wstring();
+    std::string narrow(const wchar_t* text, size_t length) {
+        if (length == 0) return std::string();
+        const int size = WideCharToMultiByte(CP_UTF8, 0, text, static_cast<int>(length), nullptr, 0, nullptr, nullptr);
+        if (size <= 0) return std::string();
+        std::string out(static_cast<size_t>(size), '\0');
+        WideCharToMultiByte(CP_UTF8, 0, text, static_cast<int>(length), out.data(), size, nullptr, nullptr);
+        return out;
+    }
+
+    // Where a bare program name is looked for (resolveWindowsProgram): the editor's own folder,
+    // the system and Windows folders (as CreateProcessW does, minus the current folder), then the
+    // PATH of the environment the program gets (`environment`, else the editor's)
+    std::vector<std::filesystem::path> windowsSearchDirs(const editor::CommandRunner::Environment* environment) {
+        std::vector<std::filesystem::path> dirs;
+        wchar_t buffer[MAX_PATH];
+        DWORD length = GetModuleFileNameW(nullptr, buffer, MAX_PATH);
+        if (length > 0 && length < MAX_PATH) dirs.push_back(std::filesystem::path(std::wstring(buffer, length)).parent_path());
+        UINT size = GetSystemDirectoryW(buffer, MAX_PATH);
+        if (size > 0 && size < MAX_PATH) dirs.push_back(std::filesystem::path(std::wstring(buffer, size)));
+        size = GetWindowsDirectoryW(buffer, MAX_PATH);
+        if (size > 0 && size < MAX_PATH) dirs.push_back(std::filesystem::path(std::wstring(buffer, size)));
+        std::wstring path;
+        if (environment) {
+            for (const auto& entry : *environment) {
+                if (equalIgnoreCase(entry.first, "PATH")) path = widen(entry.second, CP_UTF8);
+            }
+        } else {
+            const DWORD needed = GetEnvironmentVariableW(L"PATH", nullptr, 0);
+            if (needed > 0) {
+                path.resize(needed);
+                const DWORD got = GetEnvironmentVariableW(L"PATH", path.data(), needed);
+                path.resize(got < needed ? got : 0);
             }
         }
-        return std::wstring();
+        size_t pos = 0;
+        while (pos <= path.size()) {
+            size_t end = path.find(L';', pos);
+            if (end == std::wstring::npos) end = path.size();
+            std::wstring dir = path.substr(pos, end - pos);
+            pos = end + 1;
+            if (dir.size() >= 2 && dir.front() == L'"' && dir.back() == L'"') dir = dir.substr(1, dir.size() - 2);
+            if (!dir.empty()) dirs.push_back(std::filesystem::path(dir));
+        }
+        return dirs;
     }
 
     // Runs `commandLine` with the system folder's cmd.exe, hidden, and collects everything it
@@ -272,6 +288,112 @@ namespace {
     }
 }
 #endif
+
+std::string editor::CommandRunner::resolveWindowsProgram(const fs::path& program, const std::vector<fs::path>& searchDirs, fs::path& resolved) {
+    resolved.clear();
+    if (program.empty()) return "no program given";
+    auto lowerExtension = [](const fs::path& path) {
+        std::string ext = path.extension().string();
+        for (char& c : ext) c = asciiLower(c);
+        return ext;
+    };
+    auto batchRefusal = [&](const fs::path& path) -> std::string {
+        const std::string ext = lowerExtension(path);
+        if (ext == ".bat" || ext == ".cmd") {
+            return path.string() + " is a batch file: Windows runs those through cmd.exe, which would parse its "
+                   "arguments (paths with & | < > ^ % could run commands); point the setting at the program itself (.exe)";
+        }
+        return std::string();
+    };
+    // a name without an extension: .exe, then .com (what CreateProcessW tries; never .bat / .cmd)
+    auto candidatesOf = [&](const fs::path& base) {
+        std::vector<fs::path> list;
+        if (base.has_extension()) {
+            list.push_back(base);
+        } else {
+            list.push_back(fs::path(base.native() + fs::path(".exe").native()));
+            list.push_back(fs::path(base.native() + fs::path(".com").native()));
+        }
+        return list;
+    };
+    if (const std::string why = batchRefusal(program); !why.empty()) return why;
+    std::error_code ec;
+    const std::string text = program.string();
+    const bool hasFolder = program.has_parent_path() || text.find_first_of("\\/:") != std::string::npos;
+    if (hasFolder) {
+        // as given (relative to the current folder only when spelled so, never searched)
+        const fs::path base = program.is_absolute() ? program : fs::absolute(program, ec);
+        for (const fs::path& candidate : candidatesOf(base)) {
+            if (fs::is_regular_file(candidate, ec)) {
+                resolved = candidate;
+                return std::string();
+            }
+        }
+        return text + " was not found";
+    }
+    for (const fs::path& dir : searchDirs) {
+        if (dir.empty()) continue;
+        for (const fs::path& candidate : candidatesOf(dir / program)) {
+            if (!fs::is_regular_file(candidate, ec)) continue;
+            if (const std::string why = batchRefusal(candidate); !why.empty()) return why;
+            resolved = candidate;
+            return std::string();
+        }
+    }
+    return text + " was not found on PATH";
+}
+
+editor::CommandRunner::Environment editor::CommandRunner::currentEnvironment() {
+    Environment env;
+#ifdef _WIN32
+    wchar_t* block = GetEnvironmentStringsW();
+    if (!block) return env;
+    for (const wchar_t* entry = block; *entry; entry += std::wcslen(entry) + 1) {
+        const std::string text = narrow(entry, std::wcslen(entry));
+        const size_t eq = text.find('=');
+        if (eq == std::string::npos || eq == 0) continue;   // the "=C:=C:\\..." drive entries
+        setVariable(env, text.substr(0, eq), text.substr(eq + 1));
+    }
+    FreeEnvironmentStringsW(block);
+#else
+    for (char** entry = environ; entry && *entry; ++entry) {
+        const std::string text(*entry);
+        const size_t eq = text.find('=');
+        if (eq == std::string::npos || eq == 0) continue;
+        env.emplace_back(text.substr(0, eq), text.substr(eq + 1));
+    }
+#endif
+    return env;
+}
+
+void editor::CommandRunner::setVariable(Environment& env, const std::string& name, const std::string& value) {
+    for (auto& entry : env) {
+#ifdef _WIN32
+        const bool same = equalIgnoreCase(entry.first, name);
+#else
+        const bool same = entry.first == name;
+#endif
+        if (same) {
+            entry.second = value;
+            return;
+        }
+    }
+    env.emplace_back(name, value);
+#ifdef _WIN32
+    std::stable_sort(env.begin(), env.end(), [](const auto& a, const auto& b) { return lessIgnoreCase(a.first, b.first); });
+#endif
+}
+
+std::string editor::CommandRunner::variable(const Environment& env, const std::string& name) {
+    for (const auto& entry : env) {
+#ifdef _WIN32
+        if (equalIgnoreCase(entry.first, name)) return entry.second;
+#else
+        if (entry.first == name) return entry.second;
+#endif
+    }
+    return std::string();
+}
 
 bool editor::CommandRunner::msvcEnvironment(const std::string& generator, Environment& env, std::string& error) {
     env.clear();
@@ -421,6 +543,89 @@ namespace {
 }
 #endif
 
+bool editor::CommandRunner::launchDetached(const fs::path& exe, const fs::path& workingDir, std::string& error) {
+    error.clear();
+#ifdef _WIN32
+    const std::wstring wexe = exe.wstring();
+    const std::wstring wdir = workingDir.wstring();
+    STARTUPINFOW si{};
+    si.cb = sizeof(si);
+    PROCESS_INFORMATION pi{};
+    // the application name set: lpCommandLine is only argv[0] (quoted); nothing inherited
+    std::wstring cmdLine = L"\"" + wexe + L"\"";
+    if (!CreateProcessW(wexe.c_str(), cmdLine.data(), nullptr, nullptr, FALSE, CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS,
+                        nullptr, wdir.empty() ? nullptr : wdir.c_str(), &si, &pi)) {
+        error = "CreateProcess failed (error " + std::to_string(GetLastError()) + ")";
+        return false;
+    }
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    return true;
+#else
+    // the exec result comes back through a close-on-exec pipe: closed unread when exec works,
+    // the errno when it doesn't
+    int errorPipe[2];
+    if (::pipe(errorPipe) != 0) {
+        error = std::string("pipe: ") + strerror(errno);
+        return false;
+    }
+    ::fcntl(errorPipe[0], F_SETFD, FD_CLOEXEC);
+    ::fcntl(errorPipe[1], F_SETFD, FD_CLOEXEC);
+    const std::string exeText = exe.string();
+    const std::string dirText = workingDir.string();
+    long maxFd = ::sysconf(_SC_OPEN_MAX);
+    if (maxFd < 0 || maxFd > 65536) maxFd = 65536;
+    char* const childArgv[] = { const_cast<char*>(exeText.c_str()), nullptr };
+
+    const pid_t child = ::fork();
+    if (child < 0) {
+        error = std::string("fork: ") + strerror(errno);
+        ::close(errorPipe[0]);
+        ::close(errorPipe[1]);
+        return false;
+    }
+    if (child == 0) {
+        // async-signal-safe calls only from here on
+        auto fail = [&errorPipe](int code, int exitCode) {
+            ssize_t ignored = ::write(errorPipe[1], &code, sizeof code);
+            (void)ignored;
+            ::_exit(exitCode);
+        };
+        const pid_t grandchild = ::fork();
+        if (grandchild < 0) fail(errno, 1);
+        if (grandchild > 0) ::_exit(0);   // the intermediate: reaped by the editor right away
+        ::setsid();
+        const int devnull = ::open("/dev/null", O_RDWR);
+        if (devnull >= 0) {
+            ::dup2(devnull, 0);
+            ::dup2(devnull, 1);
+            ::dup2(devnull, 2);
+        }
+        for (int fd = 3; fd < maxFd; fd++) {
+            if (fd != errorPipe[1]) ::close(fd);
+        }
+        if (!dirText.empty() && ::chdir(dirText.c_str()) != 0) fail(errno, 126);
+        ::execv(exeText.c_str(), childArgv);
+        fail(errno, 127);
+    }
+    ::close(errorPipe[1]);
+    int status = 0;
+    while (::waitpid(child, &status, 0) == -1 && errno == EINTR) {
+    }
+    int childError = 0;
+    ssize_t got = 0;
+    do {
+        got = ::read(errorPipe[0], &childError, sizeof childError);
+    } while (got == -1 && errno == EINTR);
+    ::close(errorPipe[0]);
+    if (got == static_cast<ssize_t>(sizeof childError)) {
+        error = strerror(childError);
+        return false;
+    }
+    return true;
+#endif
+}
+
 std::string editor::CommandRunner::capture(const std::vector<std::string>& argv, int timeoutMs) {
     CommandRunner runner;
     runner.quiet = true;
@@ -492,10 +697,20 @@ bool editor::CommandRunner::run(const std::vector<std::string>& argv, const fs::
         // argv quoted per the C runtime's rules (quoteWin): CreateProcessW splits argv[0] off and
         // passes the rest to the child verbatim; no shell parses it, so a value with metacharacters
         // is one literal argument. The arguments are in the active code page (what CreateProcessA
-        // took before); an environment (the MSVC one) is passed as a UTF-16 block, and argv[0] is
-        // found on its PATH first.
+        // took before); an environment (the MSVC or Emscripten one) is passed as a UTF-16 block, and
+        // argv[0] is found on its PATH.
         std::wstring cmdLine = widen(argvToCommandLine(argv), CP_ACP);
-        const std::wstring application = environment ? findOnEnvironmentPath(argv[0], *environment) : std::wstring();
+        // the program resolved here, never searched for by CreateProcessW (which would look in the
+        // current folder first); a .bat / .cmd is refused (Windows would run it through cmd.exe)
+        fs::path program;
+        const std::string notRunnable = resolveWindowsProgram(fs::path(widen(argv[0], CP_ACP)), windowsSearchDirs(environment), program);
+        if (!notRunnable.empty()) {
+            CloseHandle(hReadPipe);
+            CloseHandle(hWritePipe);
+            if (!quiet) Out::error("Not started: %s.", notRunnable.c_str());
+            return false;
+        }
+        const std::wstring application = program.wstring();
         std::wstring envBlock = environment ? environmentBlock(*environment) : std::wstring();
         const std::wstring workDir = workingDir.wstring();
 
@@ -510,7 +725,7 @@ bool editor::CommandRunner::run(const std::vector<std::string>& argv, const fs::
         }
 
         if (!CreateProcessW(
-                application.empty() ? nullptr : application.c_str(),
+                application.c_str(),
                 cmdLine.data(),
                 nullptr,
                 nullptr,

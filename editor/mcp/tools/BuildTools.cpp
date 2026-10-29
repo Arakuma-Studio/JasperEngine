@@ -495,6 +495,7 @@ struct BuildRun {
     ExportConfig config;
     fs::path projectPath;
     std::string executableName;
+    fs::path producedExecutable;          // the player the exporter actually wrote (Desktop)
     std::mutex mutex;                     // guards exporter
     std::unique_ptr<Exporter> exporter;
     std::thread worker;                   // generate_shaders: runs Exporter::generateShaders
@@ -596,11 +597,16 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
         if (r.shadersOnly) {
             message = "Shaders generated in " + FileUtils::pathToGenericUtf8(outputDir) + ".";
         } else if (r.mode == ExportMode::Desktop) {
-            const fs::path exe = outputDir / r.executableName;
+            // the file the exporter wrote (its name fixed when the export started), not one computed
+            // from the project now: a rename meanwhile can't make another file the recorded player
+            const fs::path exe = r.producedExecutable.empty() ? outputDir / r.executableName : r.producedExecutable;
             result["executable"] = FileUtils::pathToGenericUtf8(exe);
             message = "Built the Desktop player " + FileUtils::pathToGenericUtf8(exe) + ". Try it with run_build.";
-            // record its full identity so run_build runs only this file, unchanged (util/BuiltPlayers.h)
-            builtplayers::record(r.projectPath / ".jasperengine", exe, modeName(ExportMode::Desktop));
+            // record its full identity so run_build runs only this file, unchanged (util/BuiltPlayers.h);
+            // still inside the job (edits refused until it succeeds below)
+            if (!r.producedExecutable.empty()) {
+                builtplayers::record(r.projectPath / ".jasperengine", r.producedExecutable, modeName(ExportMode::Desktop));
+            }
             std::lock_guard<std::mutex> lock(manager().mutex);
             manager().lastExecutable = exe;
         } else if (r.mode == ExportMode::Web) {
@@ -670,6 +676,7 @@ void watchRun(std::shared_ptr<BuildRun> run) {
     {
         // joins the export thread, which has returned
         std::lock_guard<std::mutex> lock(r.mutex);
+        if (r.exporter) r.producedExecutable = r.exporter->getProducedExecutable();
         r.exporter.reset();
     }
     finishRun(run, progress);
@@ -939,7 +946,7 @@ void buildProjectTool(const CallPtr& call) {
         const EmsdkInfo emsdk = Exporter::detectEmsdk(config.emsdkPath);
         if (!emsdk.found) {
             call->fail("Emscripten SDK not found: set preferences.emsdk_path (set_project_settings) to the emsdk root, set "
-                       "EMSDK, or put emcmake on PATH. Or export mode source.");
+                       "EMSDK, or put emcc on PATH. Or export mode source.");
             return;
         }
     }
@@ -1728,8 +1735,15 @@ void runBuildTool(const CallPtr& call) {
     // in .jasperengine/user, which agents can't write; every field must still match and the path must
     // not be a symbolic link (util/BuiltPlayers.h). No other program runs.
     if (const std::string why = builtplayers::verify(project->getProjectInternalPath(), exe); !why.empty()) {
-        call->fail("run_build runs the player this project built, unchanged; build it first with build_project (mode desktop). " +
-                   FileUtils::pathToGenericUtf8(exe) + ": " + why + ".");
+        std::string fix = " Build it with build_project (mode desktop), then run_build runs that player.";
+        if (why.find("not built by this editor") != std::string::npos) {
+            // e.g. a player exported from the GUI Export window: it was built, but not by build_project
+            fix = " run_build only runs the player build_project made for this project (a player exported from the Export "
+                  "window is not recorded): build it with build_project (mode desktop), or run it from the Export window "
+                  "(Build And Run).";
+        }
+        call->fail("run_build runs the player this project built, unchanged. " + FileUtils::pathToGenericUtf8(exe) + ": " + why +
+                   "." + fix);
         return;
     }
 

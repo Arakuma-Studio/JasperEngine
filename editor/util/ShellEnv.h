@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <filesystem>
 #include <string>
 
 namespace jasperengine::editor {
@@ -23,6 +24,10 @@ namespace jasperengine::editor {
 
         // Absolute path of a command found on PATH, or "" when it is not on it.
         static std::string findExecutable(const std::string& command);
+
+        // The user's home folder: $HOME (Windows: %USERPROFILE%), else the account's own
+        // (getpwuid; Windows: SHGetKnownFolderPath(FOLDERID_Profile)). Empty when unknown.
+        static std::filesystem::path homeDirectory();
     };
 
 }

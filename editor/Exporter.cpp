@@ -696,10 +696,13 @@ void editor::Exporter::startExport(Project* proj, const ExportConfig& cfg) {
     this->project = proj;
     this->config = cfg;
     cancelRequested.store(false);
+    this->fixedAppName.clear();
+    this->fixedAppName = getAppName();
     {
         std::lock_guard<std::mutex> lock(progressMutex);
         this->progress = ExportProgress();
         this->progress.started = true;
+        this->producedExecutable.clear();
     }
 
     // Launch export process in a separate thread so UI does not block
@@ -714,10 +717,13 @@ bool editor::Exporter::exportProject(Project* proj, const ExportConfig& cfg) {
     this->project = proj;
     this->config = cfg;
     cancelRequested.store(false);
+    this->fixedAppName.clear();
+    this->fixedAppName = getAppName();
     {
         std::lock_guard<std::mutex> lock(progressMutex);
         this->progress = ExportProgress();
         this->progress.started = true;
+        this->producedExecutable.clear();
     }
 
     runExport();
@@ -890,10 +896,16 @@ fs::path editor::Exporter::getAssetsSourceDir() const {
 }
 
 std::string editor::Exporter::getAppName() const {
-    if (project->getName().empty()) {
+    if (!fixedAppName.empty()) return fixedAppName;   // fixed at the start of the export
+    if (!project || project->getName().empty()) {
         return "jasperengine-project";
     }
     return Factory::toIdentifier(project->getName());
+}
+
+fs::path editor::Exporter::getProducedExecutable() const {
+    std::lock_guard<std::mutex> lock(progressMutex);
+    return producedExecutable;
 }
 
 fs::path editor::Exporter::getBuildCacheDir() const {
@@ -1025,17 +1037,16 @@ bool editor::Exporter::configureBuild() {
     // different toolchain because it rebuilds the engine from source.
     const std::string platform = config.mode == ExportMode::Desktop
         ? Generator::getGeneratorPlatform(config.cmakeGenerator) : "";
-    std::string emcmake;
+    EmsdkInfo emsdk;
     std::string kitId;
     if (config.mode == ExportMode::Web) {
-        EmsdkInfo emsdk = detectEmsdk(config.emsdkPath);
+        emsdk = detectEmsdk(config.emsdkPath);
         if (!emsdk.found) {
-            setError("Emscripten SDK not found. Set it in Preferences > External Tools, set EMSDK, or add emcmake to PATH.");
+            setError("Emscripten SDK not found. Set it in Preferences > External Tools, set EMSDK, or add emcc to PATH.");
             return false;
         }
-        emcmake = emsdk.emcmake;
         Out::info("Using Emscripten %s", emsdk.description.c_str());
-        kitId = "web\n" + emcmake + "\n" + config.buildType + "\n" + config.graphicBackend;
+        kitId = "web\n" + Generator::cmakeProgram() + "\n" + emsdk.toolchainFile + "\n" + config.buildType + "\n" + config.graphicBackend;
     } else {
         std::string effectiveGenerator = getEffectiveGenerator();
         // The Xcode generator builds a macOS .app bundle (MACOSX_BUNDLE in the
@@ -1094,10 +1105,15 @@ bool editor::Exporter::configureBuild() {
     // settings are literal arguments, so metacharacters in them can't start a command
     std::vector<std::string> argv;
     if (config.mode == ExportMode::Web) {
-        // The emcmake wrapper injects the Emscripten toolchain file; the subsequent cmake --build
-        // needs no wrapper. emcmake resolves the cmake it wraps itself. Keep the SDK wrapper: it
-        // selects Python using the SDK environment.
-        argv = { emcmake, "cmake" };
+        // CMake run directly with what emcmake.py adds (no emcmake wrapper: emcmake.bat would run
+        // through cmd.exe, which parses its arguments), in the SDK's environment (below)
+        argv = { Generator::cmakeProgram() };
+        std::string emError;
+        for (const std::string& arg : emscriptenCMakeArgs(emsdk, !config.cmakeGenerator.empty(), emError)) argv.push_back(arg);
+        if (!emError.empty()) {
+            setError("Web build: " + emError + ".");
+            return false;
+        }
     } else {
         argv = { Generator::cmakeProgram() };
         if (!config.cmakeGenerator.empty()) { argv.push_back("-G"); argv.push_back(config.cmakeGenerator); }
@@ -1112,12 +1128,15 @@ bool editor::Exporter::configureBuild() {
     argv.push_back(toCMakePath(buildDir.string()));
 
     // Windows + Ninja: the MSVC environment (vcvars, loaded once and cached), cmake launched with it
-    CommandRunner::Environment msvcEnv;
+    CommandRunner::Environment toolEnv;
     std::string msvcError;
-    if (config.mode == ExportMode::Desktop && !CommandRunner::msvcEnvironment(getEffectiveGenerator(), msvcEnv, msvcError)) {
+    if (config.mode == ExportMode::Desktop && !CommandRunner::msvcEnvironment(getEffectiveGenerator(), toolEnv, msvcError)) {
         setError(msvcError);
         return false;
     }
+
+    // Web: the SDK's environment (PATH, EMSDK, EM_CONFIG, EMSDK_NODE, EMSDK_PYTHON) for CMake and emcc
+    if (config.mode == ExportMode::Web) toolEnv = emscriptenEnvironment(emsdk);
 
     Out::info("Configuring export build (%zu args)...", argv.size());
     bool incompatiblePython = false;
@@ -1128,7 +1147,7 @@ bool editor::Exporter::configureBuild() {
         Out::build("%s", line.c_str());
         setDetail(line);
     };
-    bool ok = commandRunner.run(argv, config.targetDir, onConfigure, msvcEnv.empty() ? nullptr : &msvcEnv);
+    bool ok = commandRunner.run(argv, config.targetDir, onConfigure, toolEnv.empty() ? nullptr : &toolEnv);
 
     if (!ok) {
         if (isCancelled()) {
@@ -1160,20 +1179,22 @@ bool editor::Exporter::runBuild() {
     unsigned int jobs = config.buildJobs == 0 ? Generator::getAutomaticParallelBuildJobs() : config.buildJobs;
     jobs = std::min(jobs, Generator::getMaxParallelBuildJobs());
 
-    // A Web tree was configured by the cmake emcmake picked, and driving its
-    // build with a different one either fails or reconfigures the tree.
-    const std::string cmakeCmd = config.mode == ExportMode::Web
-        ? std::string("cmake")
-        : Generator::cmakeProgram();
+    // the CMake that configured the tree (Web too: no emcmake picking its own any more)
+    const std::string cmakeCmd = Generator::cmakeProgram();
 
     std::vector<std::string> argv = { cmakeCmd, "--build", buildDir.string(), "--config", config.buildType,
                                       "--parallel", std::to_string(jobs) };
     // The build step invokes the compiler/linker, so it needs the same MSVC environment as configure.
-    CommandRunner::Environment msvcEnv;
+    CommandRunner::Environment toolEnv;
     std::string msvcError;
-    if (config.mode == ExportMode::Desktop && !CommandRunner::msvcEnvironment(getEffectiveGenerator(), msvcEnv, msvcError)) {
+    if (config.mode == ExportMode::Desktop && !CommandRunner::msvcEnvironment(getEffectiveGenerator(), toolEnv, msvcError)) {
         setError(msvcError);
         return false;
+    }
+    // Web: emcc runs in the SDK's environment
+    if (config.mode == ExportMode::Web) {
+        const EmsdkInfo emsdk = detectEmsdk(config.emsdkPath);
+        if (emsdk.found) toolEnv = emscriptenEnvironment(emsdk);
     }
 
     // Initialization only predicts the work denominator. Do not advance the
@@ -1199,7 +1220,7 @@ bool editor::Exporter::runBuild() {
             }
         }
     };
-    bool ok = commandRunner.run(argv, buildDir, onBuild, msvcEnv.empty() ? nullptr : &msvcEnv);
+    bool ok = commandRunner.run(argv, buildDir, onBuild, toolEnv.empty() ? nullptr : &toolEnv);
 
     if (!ok) {
         if (isCancelled()) {
@@ -1247,10 +1268,18 @@ bool editor::Exporter::collectDesktopArtifacts() {
         return false;
     }
 
-    fs::copy_file(exePath, config.destinationDir / exeName, fs::copy_options::overwrite_existing, ec);
+    // a symbolic link at the player's name is replaced, never written through
+    const fs::path producedPath = config.destinationDir / exeName;
+    if (fs::is_symlink(fs::symlink_status(producedPath, ec))) fs::remove(producedPath, ec);
+    ec.clear();
+    fs::copy_file(exePath, producedPath, fs::copy_options::overwrite_existing, ec);
     if (ec) {
         setError("Failed to copy executable: " + ec.message());
         return false;
+    }
+    {
+        std::lock_guard<std::mutex> lock(progressMutex);
+        producedExecutable = producedPath;
     }
     if (!copyLicenses()) {
         return false;
@@ -4137,30 +4166,134 @@ std::string editor::Exporter::getCMakeGraphicBackend(::jasperengine::ShaderBacke
     }
 }
 
+namespace {
+    // A folder holding Emscripten itself: its CMake toolchain file and emcc
+    bool isEmscriptenDir(const fs::path& dir) {
+        std::error_code ec;
+        return fs::is_regular_file(dir / "cmake" / "Modules" / "Platform" / "Emscripten.cmake", ec) &&
+               (fs::exists(dir / "emcc", ec) || fs::exists(dir / "emcc.bat", ec) || fs::exists(dir / "emcc.py", ec));
+    }
+
+    bool isEmsdkRoot(const fs::path& dir) {
+        std::error_code ec;
+        return !dir.empty() && (fs::exists(dir / "emsdk.py", ec) || fs::exists(dir / "emsdk", ec) || fs::exists(dir / "emsdk.bat", ec));
+    }
+
+    // The newest <base>/<version>/<rel> (emsdk installs tools as node/20.18.0_64bit/bin/node ...)
+    fs::path newestTool(const fs::path& base, const fs::path& rel) {
+        std::error_code ec;
+        if (!fs::is_directory(base, ec)) return fs::path();
+        std::vector<fs::path> found;
+        for (const auto& entry : fs::directory_iterator(base, ec)) {
+            const fs::path candidate = entry.path() / rel;
+            if (fs::is_regular_file(candidate, ec)) found.push_back(candidate);
+        }
+        if (found.empty()) return fs::path();
+        std::sort(found.begin(), found.end());
+        return found.back();
+    }
+
+    // NODE_JS from a .emscripten config (Python): a quoted path, or emsdk_path + '/...' (what emsdk
+    // writes; emsdk_path is the config's folder). "" when it says something else.
+    fs::path configNode(const fs::path& configFile) {
+        std::ifstream in(configFile);
+        std::string line;
+        while (std::getline(in, line)) {
+            size_t at = line.find_first_not_of(" \t");
+            if (at == std::string::npos || line.compare(at, 7, "NODE_JS") != 0) continue;
+            const size_t eq = line.find('=', at);
+            if (eq == std::string::npos) continue;
+            std::string value = line.substr(eq + 1);
+            auto quoted = [](const std::string& text) -> std::string {
+                const size_t open = text.find_first_of("'\"");
+                if (open == std::string::npos) return std::string();
+                const size_t close = text.find(text[open], open + 1);
+                return close == std::string::npos ? std::string() : text.substr(open + 1, close - open - 1);
+            };
+            const size_t first = value.find_first_not_of(" \t");
+            if (first == std::string::npos) continue;
+            value = value.substr(first);
+            if (value.rfind("emsdk_path", 0) == 0) {
+                const std::string rest = quoted(value);
+                if (!rest.empty()) return configFile.parent_path() / fs::path(rest).relative_path();
+            } else if (value[0] == '\'' || value[0] == '"') {
+                const std::string path = quoted(value);
+                if (!path.empty()) return fs::path(path);
+            }
+        }
+        return fs::path();
+    }
+
+    void fillEmsdk(editor::EmsdkInfo& info, const fs::path& emscripten, const fs::path& emsdkHint, const std::string& source) {
+        std::error_code ec;
+        info.found = true;
+        info.emscripten = emscripten.string();
+        info.toolchainFile = (emscripten / "cmake" / "Modules" / "Platform" / "Emscripten.cmake").string();
+        fs::path root = emsdkHint;
+        if (root.empty() || !isEmsdkRoot(root)) {
+            const fs::path above = emscripten.parent_path().parent_path();   // <emsdk>/upstream/emscripten
+            root = isEmsdkRoot(above) ? above : fs::path();
+        }
+        info.emsdkRoot = root.string();
+        info.description = "from " + source + " (" + emscripten.string() + ")";
+
+        // the config emcc reads: EM_CONFIG (a file), else <emscripten>/.emscripten, the emsdk's, ~/.emscripten
+        fs::path config;
+        if (const char* env = std::getenv("EM_CONFIG"); env && *env && std::string(env).find_first_of("\n;") == std::string::npos &&
+            fs::is_regular_file(fs::path(env), ec)) {
+            config = fs::path(env);
+        }
+        const fs::path home = editor::ShellEnv::homeDirectory();
+        for (const fs::path& candidate : {emscripten / ".emscripten", root.empty() ? fs::path() : root / ".emscripten",
+                                          home.empty() ? fs::path() : home / ".emscripten"}) {
+            if (!config.empty()) break;
+            if (!candidate.empty() && fs::is_regular_file(candidate, ec)) config = candidate;
+        }
+        info.configFile = config.string();
+
+#ifdef _WIN32
+        const fs::path nodeRel = fs::path("bin") / "node.exe";
+        const fs::path pythonRel = "python.exe";
+#else
+        const fs::path nodeRel = fs::path("bin") / "node";
+        const fs::path pythonRel = fs::path("bin") / "python3";
+#endif
+        fs::path node = config.empty() ? fs::path() : configNode(config);
+        if (!node.empty() && !fs::is_regular_file(node, ec)) node.clear();
+        if (node.empty() && !root.empty()) node = newestTool(root / "node", nodeRel);
+        if (node.empty()) {
+            if (const char* env = std::getenv("EMSDK_NODE"); env && *env && fs::is_regular_file(fs::path(env), ec)) node = fs::path(env);
+        }
+        info.node = node.string();
+        const fs::path python = root.empty() ? fs::path() : newestTool(root / "python", pythonRel);
+        info.python = python.string();
+
+        info.pathDirs.clear();
+        auto addDir = [&info](const fs::path& dir) {
+            if (dir.empty()) return;
+            const std::string text = dir.string();
+            if (std::find(info.pathDirs.begin(), info.pathDirs.end(), text) == info.pathDirs.end()) info.pathDirs.push_back(text);
+        };
+        addDir(root);
+        addDir(emscripten);
+        if (!node.empty()) addDir(node.parent_path());
+        if (!python.empty()) addDir(python.parent_path());
+    }
+}
+
 editor::EmsdkInfo editor::Exporter::detectEmsdk(const std::string& overridePath) {
     EmsdkInfo info;
 
-#ifdef _WIN32
-    const char* emcmakeName = "emcmake.bat";
-#else
-    const char* emcmakeName = "emcmake";
-#endif
-
     auto tryRoot = [&](const fs::path& root, const std::string& source) -> bool {
         if (root.empty()) return false;
-        std::error_code ec;
         // Accept both the emsdk root and the emscripten dir pointed at directly.
-        const fs::path candidates[] = {
-            root / "upstream" / "emscripten" / emcmakeName,
-            root / emcmakeName
-        };
-        for (const fs::path& candidate : candidates) {
-            if (fs::exists(candidate, ec)) {
-                info.found = true;
-                info.emcmake = candidate.string();
-                info.description = "from " + source;
-                return true;
-            }
+        if (isEmscriptenDir(root / "upstream" / "emscripten")) {
+            fillEmsdk(info, root / "upstream" / "emscripten", root, source);
+            return true;
+        }
+        if (isEmscriptenDir(root)) {
+            fillEmsdk(info, root, fs::path(), source);
+            return true;
         }
         return false;
     };
@@ -4176,18 +4309,71 @@ editor::EmsdkInfo editor::Exporter::detectEmsdk(const std::string& overridePath)
         return info;
     }
 
-    // No shell: `where emcmake.bat` run directly on Windows; elsewhere PATH searched in-process
-    // (what `command -v emcmake` did).
-#ifdef _WIN32
-    const bool onPath = !CommandRunner::capture({"where", "emcmake.bat"}).empty();
-#else
-    const bool onPath = !ShellEnv::findExecutable("emcmake").empty();
-#endif
-    if (onPath) {
-        info.found = true;
-        info.emcmake = "emcmake";
-        info.description = "on PATH";
+    // emcc on PATH (no shell: PATH searched in-process), its real folder (a distribution's
+    // /usr/bin/emcc links into /usr/share/emscripten)
+    const std::string emcc = ShellEnv::findExecutable("emcc");
+    if (!emcc.empty()) {
+        std::error_code ec;
+        const fs::path real = fs::weakly_canonical(fs::path(emcc), ec);
+        for (const fs::path& dir : {real.parent_path(), fs::path(emcc).parent_path()}) {
+            if (isEmscriptenDir(dir)) {
+                fillEmsdk(info, dir, fs::path(), "PATH");
+                break;
+            }
+        }
     }
 
     return info;
+}
+
+std::vector<std::string> editor::Exporter::emscriptenCMakeArgs(const EmsdkInfo& sdk, bool generatorGiven, std::string& error) {
+    error.clear();
+    std::vector<std::string> args;
+    auto cmakePath = [](std::string path) {
+        std::replace(path.begin(), path.end(), '\\', '/');
+        return path;
+    };
+    // what emcmake.py adds (emscripten/emcmake.py)
+    args.push_back("-DCMAKE_TOOLCHAIN_FILE=" + cmakePath(sdk.toolchainFile));
+    if (!sdk.node.empty()) args.push_back("-DCMAKE_CROSSCOMPILING_EMULATOR=" + cmakePath(sdk.node));
+#ifdef _WIN32
+    // keep CMake from picking Visual Studio: MinGW Makefiles, else Ninja (as emcmake does)
+    if (!generatorGiven) {
+        if (!ShellEnv::findExecutable("mingw32-make").empty()) {
+            args.push_back("-G");
+            args.push_back("MinGW Makefiles");
+        } else if (!ShellEnv::findExecutable("ninja").empty()) {
+            args.push_back("-G");
+            args.push_back("Ninja");
+        } else {
+            error = "no CMake generator for Emscripten: install Ninja (https://ninja-build.org) or mingw32-make and put it on PATH";
+        }
+    }
+#else
+    (void)generatorGiven;
+#endif
+    return args;
+}
+
+editor::CommandRunner::Environment editor::Exporter::emscriptenEnvironment(const EmsdkInfo& sdk) {
+    CommandRunner::Environment env = CommandRunner::currentEnvironment();
+#ifdef _WIN32
+    const char separator = ';';
+#else
+    const char separator = ':';
+#endif
+    std::string path;
+    for (const std::string& dir : sdk.pathDirs) {
+        path += dir;
+        path.push_back(separator);
+    }
+    const std::string current = CommandRunner::variable(env, "PATH");
+    path += current;
+    if (!path.empty() && path.back() == separator) path.pop_back();
+    CommandRunner::setVariable(env, "PATH", path);
+    if (!sdk.emsdkRoot.empty()) CommandRunner::setVariable(env, "EMSDK", sdk.emsdkRoot);
+    if (!sdk.configFile.empty()) CommandRunner::setVariable(env, "EM_CONFIG", sdk.configFile);
+    if (!sdk.node.empty()) CommandRunner::setVariable(env, "EMSDK_NODE", sdk.node);
+    if (!sdk.python.empty()) CommandRunner::setVariable(env, "EMSDK_PYTHON", sdk.python);
+    return env;
 }

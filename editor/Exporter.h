@@ -77,9 +77,19 @@ namespace jasperengine::editor {
         std::string errorMessage;
     };
 
+    // The Emscripten SDK a Web build uses. No emcmake wrapper (emcmake.bat would run through
+    // cmd.exe, which parses its arguments): CMake is run directly with what emcmake.py adds
+    // (Exporter::emscriptenCMakeArgs) and the SDK environment emsdk_env would set
+    // (Exporter::emscriptenEnvironment), both from the SDK's layout and its .emscripten config.
     struct EmsdkInfo {
         bool found = false;
-        std::string emcmake;                 // emcmake command or full path
+        std::string emscripten;              // the emscripten folder (emcc, cmake/Modules/Platform)
+        std::string toolchainFile;           // <emscripten>/cmake/Modules/Platform/Emscripten.cmake
+        std::string emsdkRoot;               // the emsdk holding it ("" when emscripten stands alone)
+        std::string configFile;              // the .emscripten emcc reads ("" none found: its default)
+        std::string node;                    // node.js (CMAKE_CROSSCOMPILING_EMULATOR, EMSDK_NODE), "" none
+        std::string python;                  // the SDK's own python (EMSDK_PYTHON), "" none
+        std::vector<std::string> pathDirs;   // SDK folders put first on PATH (as emsdk_env does)
         std::string description;             // where it was found, for the UI
     };
 
@@ -92,6 +102,10 @@ namespace jasperengine::editor {
         std::atomic<bool> cancelRequested{false};
 
         std::thread exportThread;
+        // the app (player) name, fixed when the export starts: a rename while it builds can't change
+        // which file is produced and recorded
+        std::string fixedAppName;
+        fs::path producedExecutable;             // guarded by progressMutex
 
         ShaderBuilder shaderBuilder;
         CommandRunner commandRunner;
@@ -235,6 +249,16 @@ namespace jasperengine::editor {
         static std::string getShaderDisplayName(ShaderType type, uint64_t properties, uint16_t customId = 0);
         static std::string getCMakeGraphicBackend(::jasperengine::ShaderBackend backend);
         static EmsdkInfo detectEmsdk(const std::string& overridePath);
+        // What emcmake.py adds to a CMake configure: the Emscripten toolchain file, node as the
+        // cross-compiling emulator, and on Windows a generator (MinGW Makefiles, else Ninja) when
+        // none is given. "" error when it can't (Windows without either generator).
+        static std::vector<std::string> emscriptenCMakeArgs(const EmsdkInfo& sdk, bool generatorGiven, std::string& error);
+        // The environment the SDK's tools run in: this process's, with the SDK folders first on
+        // PATH and EMSDK / EM_CONFIG / EMSDK_NODE / EMSDK_PYTHON set (what emsdk_env sets)
+        static CommandRunner::Environment emscriptenEnvironment(const EmsdkInfo& sdk);
+        // The Desktop player the last export produced (destination folder / name fixed when the
+        // export started); empty when none was.
+        fs::path getProducedExecutable() const;
     };
 
 }

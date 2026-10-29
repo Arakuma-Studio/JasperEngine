@@ -264,6 +264,10 @@ async def test_cancel_desktop_build(ed: Editor):
     msg = await ed.call("set_project_settings", values={"quality.vsync": True}, expect_error=True)
     ed.check_in(job_id, msg)
     await ed.call("create_project", path=str(ed.scratch.root / "not-now"), expect_error=True)
+    # renaming the project (its player's name) is refused for the whole job: what the build writes
+    # and records is the name it started with
+    msg = await ed.call("save_project", name="Renamed Mid Build", expect_error=True)
+    ed.check_in(job_id, msg)
 
     await ed.call("cancel_job", job_id=job_id)
     job = await wait_job(ed, job_id, 180, poll=1.0)
@@ -437,6 +441,7 @@ async def test_desktop_build_and_run(ed: Editor):
     ed.check_eq(job["status"], "succeeded", f"{job}")
     exe = Path(job["result"]["executable"])
     ed.check(exe.exists(), f"player at {exe}")
+    ed.check_eq(exe.name, (await ed.call("get_build_info"))["desktop"]["executable_name"], "the player's name")
     # the build recorded the player (.jasperengine/user/runbuild.yaml) in the format the test
     # fixture writes: the fixture's entry for the same file is identical
     recorded = yaml.safe_load((ed.project / ".jasperengine" / "user" / "runbuild.yaml").read_text())
