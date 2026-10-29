@@ -12,6 +12,9 @@ A runtime is a directory named by its id (<platform>-<arch>-<backend>-<flavour>)
                               and page; a macOS bundle)
     android/ | ios/           the platform template (R13, R14)
     licenses/                 <lib>-LICENSE of every library the player links (engine/notices.json)
+    symbols/                  the player's debug information (--symbols: the .debug of a stripped
+                              Linux player, Android's unstripped libraries); never staged into a build,
+                              archived on its own as jasperengine-player-<id>-<version>-symbols.zip
     THIRD-PARTY-NOTICES.txt   their NOTICE.md rows
 
 --zip DIR also writes jasperengine-player-<id>-<engineVersion>.zip there (what `players install`
@@ -227,6 +230,10 @@ def package(args: argparse.Namespace) -> Path:
             "executable": executable,
         }
         (temp / "player-info.json").write_text(json.dumps(info, indent=2) + "\n", encoding="utf-8")
+        # the debug information stays with the runtime (publish prepare copies it into a release's
+        # symbols/), and never in what a build stages
+        if args.symbols and Path(args.symbols).is_dir():
+            shutil.copytree(args.symbols, temp / "symbols", symlinks=True)
         shutil.rmtree(runtime, ignore_errors=True)
         os.replace(temp, runtime)
     finally:
@@ -238,13 +245,21 @@ def package(args: argparse.Namespace) -> Path:
         archive = zip_dir / f"jasperengine-player-{runtime_id}-{info['engineVersion']}.zip"
         with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zipped:
             for path in sorted(runtime.rglob("*")):
-                if path.is_symlink() or path.is_dir():
+                if path.is_symlink() or path.is_dir() or "symbols" == path.relative_to(runtime).parts[0]:
                     continue
                 entry = zipfile.ZipInfo.from_file(path, path.relative_to(runtime).as_posix())
                 entry.compress_type = zipfile.ZIP_DEFLATED
                 with path.open("rb") as stream:
                     zipped.writestr(entry, stream.read())
         print(f"archive: {archive} sha256 {sha256(archive)} size {archive.stat().st_size}")
+        symbols = runtime / "symbols"
+        if symbols.is_dir():
+            symbol_archive = zip_dir / f"jasperengine-player-{runtime_id}-{info['engineVersion']}-symbols.zip"
+            with zipfile.ZipFile(symbol_archive, "w", zipfile.ZIP_DEFLATED) as zipped:
+                for path in sorted(symbols.rglob("*")):
+                    if path.is_file() and not path.is_symlink():
+                        zipped.write(path, path.relative_to(symbols).as_posix())
+            print(f"symbols: {symbol_archive} size {symbol_archive.stat().st_size}")
     return runtime
 
 
@@ -258,6 +273,8 @@ def main() -> int:
     parser.add_argument("--build-mt", help="web: the pthreads player's build tree")
     parser.add_argument("--android-dir", help="android: the collected Gradle outputs")
     parser.add_argument("--ios-dir", help="ios: the xcframework and template")
+    parser.add_argument("--symbols", help="the player's debug information (unstripped libraries, .debug files): the "
+                                           "runtime's symbols/, archived on their own (-symbols.zip)")
     parser.add_argument("--out", required=True, help="the players directory the runtime goes into")
     parser.add_argument("--zip", help="also write the runtime's archive into this directory")
     parser.add_argument("--engine-version", help="default: git describe")

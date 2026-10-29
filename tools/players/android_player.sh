@@ -7,7 +7,9 @@
 #   stable-ids.txt   the ids aapt2 gave them (read from the APK with aapt2 dump resources): the
 #                    game's link (--stable-ids) gives the same ones, which the dex's R constants hold
 #   classes*.dex     the player's code
-#   lib/<abi>/*.so   the engine and the C++ runtime per ABI
+#   lib/<abi>/*.so   the engine and the C++ runtime per ABI, as the APK holds them (stripped in
+#                    a release build)
+#   symbols/lib/<abi>/*.so  the same libraries before stripping (the runtime's symbols)
 #
 #   tools/players/android_player.sh <release|development> [OUT] [gles3|vulkan]
 #
@@ -94,6 +96,12 @@ with zipfile.ZipFile(out / "res-flat.zip", "w", zipfile.ZIP_STORED) as zipped:
         names.add(flat.name)
         zipped.write(flat, flat.name)
 flats = sorted(names)
+# the libraries before AGP stripped them: the runtime's symbols (R23), per ABI
+unstripped = sorted(intermediates.glob(f"merged_native_libs/{variant}/**/lib/*/*.so"))
+for library in unstripped:
+    target = out / "symbols" / "lib" / library.parent.name / library.name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(library.read_bytes())
 print(f"collected {len(flats)} resources, {sum(1 for _ in out.glob('classes*.dex'))} dex, "
       f"{sum(1 for _ in out.glob('lib/*/*.so'))} libraries into {out}")
 PY

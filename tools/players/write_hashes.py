@@ -29,7 +29,8 @@ def main() -> int:
     entries = []
     for archive in sorted(args.archives.rglob("*.zip")) if args.archives.is_dir() else []:
         match = NAME.match(archive.name)
-        if not match:
+        # a runtime's symbols archive is not installed through the table
+        if not match or archive.name.endswith("-symbols.zip"):
             continue
         digest = hashlib.sha256(archive.read_bytes()).hexdigest()
         entries.append(f'    {{"{match["id"]}", "{digest}", {archive.stat().st_size}ull}},')

@@ -390,16 +390,21 @@ players)
                 for backend in $PLAYER_BACKENDS; do
                     id=linux-x64-\$backend-\$flavour
                     dev=OFF; [[ \$flavour == development ]] && dev=ON
+                    # Release code with debug information, split off below (R23)
                     cmake --preset engine-linux-release -S engine -B build/players-build/\$id -DCMAKE_BUILD_TYPE=Release \
+                        -DCMAKE_C_FLAGS=-g -DCMAKE_CXX_FLAGS=-g \
                         -DJASPERENGINE_PLAYER=ON -DGRAPHIC_BACKEND=\$backend -DJASPERENGINE_DEVELOPMENT_BUILD=\$dev \
                         $OPTION_FLAGS $ENGINE_WARNING_FLAGS $CCACHE_FLAGS
                     cmake --build build/players-build/\$id --target jasperengine-player $JOBS_FLAG
-                    # shipped pre-stripped (R23): the symbols are the build tree's
-                    strip --strip-debug -o build/players-build/\$id/jasperengine-player.stripped build/players-build/\$id/jasperengine-player
-                    mkdir -p build/players-build/\$id/package
-                    mv build/players-build/\$id/jasperengine-player.stripped build/players-build/\$id/package/jasperengine-player
+                    # shipped stripped (R23): the debug information goes to the runtime's symbols/
+                    # (its own archive), the player keeps a debug link to it
+                    pkg=build/players-build/\$id/package
+                    rm -rf \$pkg && mkdir -p \$pkg/symbols
+                    objcopy --only-keep-debug build/players-build/\$id/jasperengine-player \$pkg/symbols/jasperengine-player.debug
+                    strip --strip-debug --strip-unneeded -o \$pkg/jasperengine-player build/players-build/\$id/jasperengine-player
+                    (cd \$pkg/symbols && objcopy --add-gnu-debuglink=jasperengine-player.debug ../jasperengine-player)
                     python3 tools/players/package_player.py --platform linux --arch x64 --backend \$backend --flavour \$flavour \
-                        --build build/players-build/\$id/package --out $PLAYERS_OUT $ZIP_FLAG
+                        --build \$pkg --symbols \$pkg/symbols --out $PLAYERS_OUT $ZIP_FLAG
                 done
             done
         "
@@ -433,7 +438,7 @@ players)
                     CMAKE_CXX_COMPILER_LAUNCHER=ccache JASPERENGINE_ANDROID_ABIS=${PLAYER_ANDROID_ABIS:-} \
                         tools/players/android_player.sh \$flavour \$dir \$backend
                     python3 tools/players/package_player.py --platform android --arch universal --backend \$backend --flavour \$flavour \
-                        --android-dir \$dir --out $PLAYERS_OUT $ZIP_FLAG
+                        --android-dir \$dir --symbols \$dir/symbols --out $PLAYERS_OUT $ZIP_FLAG
                 done
             done
         "
