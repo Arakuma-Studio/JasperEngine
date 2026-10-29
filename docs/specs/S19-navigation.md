@@ -657,3 +657,17 @@ Evidence on the final tree (323587682 + a61b23298): linux Vulkan WERROR (D) clea
 core 82/82, editor 186/186 (navigation, reflection, stream, ECS, scheduler filters), no sanitizer
 reports. The first run leaked every scene in two S08 tests (ReflectMcpRead, ReflectedValueCmd: no
 releaseScenes before the Project goes); a61b23298 releases them as the other editor tests do.
+Merged oe-port 184010f94 (S16, upstream round 2, BF5, BF3, S08 follow-up) at 3a4c20a8f: upstream's
+PoseAnimator and AnimationPlayer keep component types 65 and 66, navigation's six follow (67..72);
+AssetType NavMesh/NavGrid are 18/19. The reflection fixture, its goldens, the Catalog snapshot and
+the locators are oe-port's plus navigation only. Follow-ups: 7be1f53e8 (AssetRefSchema's member
+list, the Animation Player test no longer assumes the last type), 58d22d6ed (the agent guide was
+16430 bytes over 16384 with navigation's group and pointer: the pointer is one short line and two
+Physics/Build lines say the same in fewer words; 16366 now). The navigation test project has a sun
+and colours and an emulator screen golden (tools/test-projects/navigation/golden/screen.png).
+Re-gate: xcode_sync_* --check all pass; linux GL and Vulkan WERROR (0 warnings); core 1796/1796,
+editor 1265/1265; MCP_SUITE=all navigation, reflection, lua_api_json, budget, conventions,
+protocol, groups, docs 53/53 (listing core 98303 of 100k, guide 16366 of 16384); smoke
+(post-processing, with the navigation step) pass; web: the sample project's gate pass (C), the
+navigation single-threaded gate on E 3/3 with the same hashes; Android emulator (A) with the
+screen golden pass.
