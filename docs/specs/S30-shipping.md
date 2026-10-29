@@ -870,3 +870,28 @@ S14/S14b, S15, S19-S28 and S31. What the tree has now, and what S30 does about i
   so miniz 3.0.2 is vendored as D8 says.
 - **Fixtures:** `tools/fixtures/unified-lighting` (Lua only) and `tools/fixtures/prefab-runtime`
   (C++ scripts in `cpp/`) exist as AC1/AC3 expect.
+
+## Progress
+
+Kept current so the work can continue after an interruption.
+
+- **Done (committed, building next):** streaming SHA-256 (`engine/core/util/Sha256`), FNV
+  (`util/Fnv.h`), `.jpak` reader (`io/JPak`) mounted through `ResourcePack` (keys `assets/`,
+  `lua/`, `assets/shaders/`, content-relative), `content://` paths and `System::getContentPath`,
+  `PlatformConfig` (runtime window/vsync/title/appId/storage/icon/headless/silent/content root)
+  filled by `platform/common/PlatformDefaults.h` on every platform's main, `player::launch`
+  (LaunchOptions strict in a player, lenient in Compile builds and the web query, Android from
+  `debug.jasperengine.args`), `RunControl` (frame counting, after-ready, ready timeout,
+  screenshot via the composite framebuffer, quit, exit codes 0/2/3/4/5/6/7), `FrameReadback`
+  (glcore, gles3, Vulkan, D3D11; Metal through `platform/apple/MetalReadback.h`), headless on
+  Linux/Windows/macOS, Lua `Engine.isHeadless()`, `Engine.quit(code)`, `System.args`/`getArgs()`.
+  Core tests: `Sha256.*`, `JPak.*`, `LaunchOptions.*`, `RunControlFixture.*`.
+- **Written, not yet built:** cooked format (`serialization/CookStream`, `CookCodecs`,
+  `CookedScene`, `SceneSettingsCodec`, `codecs/CookTypes.h`, `codecs/ComponentHooks.cpp`),
+  `RuntimeFields.{h,cpp}` + bootstrap `RuntimeFields.gen.inc`, editor emitter
+  (`editor/cook/RuntimeFieldsEmitter`, `jasperengine-editor reflect --emit-runtime-fields`),
+  `editor/cook/SceneCooker`, `player/PlayerConfig` (game.json).
+- **Next:** build editor + emit the real `.gen.inc` on a server (fetch it back), AC4 round-trip
+  test, PlayerMain + `JASPERENGINE_PLAYER` CMake, ContentManifest, Exporter prebuilt method,
+  player runtimes (miniz, install/download), publish (validator, prepare/verify, Steam, Deck),
+  CLI, MCP `shipping` group, UI, CI/docker/smoke/web template, notices, docs.
