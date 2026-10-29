@@ -7,6 +7,7 @@
 #include <thread>
 
 #include "player/RunControl.h"
+#include "Engine.h"
 #include "Log.h"
 #include "TempDir.h"
 
@@ -168,4 +169,29 @@ TEST_F(RunControlFixture, FirstQuitCodeWins) {
     RunControl::requestQuit(7);
     RunControl::requestQuit(0);
     EXPECT_EQ(RunControl::finish(), 7);
+}
+
+// --after-ready --fixed-fps: the simulation is held until the ready frame, so every run's frames
+// are the same whatever the frames before ready took (S30 AC1's goldens)
+TEST_F(RunControlFixture, FixedFpsAfterReadyHoldsTheSimulationUntilReady) {
+    LaunchOptions options;
+    options.afterReady = true;
+    options.fixedFps = 60.0;
+    options.quitAfter = 5;
+    RunControl::configure(options);
+    RunControl::engineStarted();
+    EXPECT_TRUE(Engine::isSimulationHeld());
+    RunControl::frameDrawn(false, {});
+    EXPECT_TRUE(Engine::isSimulationHeld());
+    RunControl::frameDrawn(true, {});
+    EXPECT_FALSE(Engine::isSimulationHeld());
+    RunControl::reset();
+    Engine::setFixedDeltatime(0.0);
+
+    // without --after-ready nothing is held
+    options.afterReady = false;
+    RunControl::configure(options);
+    RunControl::engineStarted();
+    EXPECT_FALSE(Engine::isSimulationHeld());
+    Engine::setFixedDeltatime(0.0);
 }

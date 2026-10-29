@@ -7,6 +7,7 @@
 #include "support/TestTempDir.h"
 
 #include "Exporter.h"
+#include "Generator.h"
 #include "Project.h"
 #include "players/PlayerRuntimes.h"
 
@@ -65,6 +66,20 @@ TEST(BuildMethod, CppScriptsCompile) {
     EXPECT_TRUE(hasReason(choice, "C++ scripts (")) << (choice.reasons.empty() ? "" : choice.reasons.front());
     EXPECT_TRUE(hasReason(choice, "Player.cpp"));
     EXPECT_FALSE(hasReason(choice, "Player.h")) << "a header alone compiles nothing";
+}
+
+TEST(BuildMethod, CppScriptsOfTheScenesCompile) {
+    // a C++ script a scene uses, outside any script directory (tools/fixtures/prefab-runtime)
+    TestTempDir dir("build-method");
+    TestTempDir::write(dir / "cpp/Spawner.cpp", "int spawner;\n");
+    Project project;
+    SceneProject& scene = addScene(project, 1);
+    SceneScriptSource script;
+    script.path = dir / "cpp/Spawner.cpp";
+    scene.cppScripts.push_back(script);
+    const BuildMethodChoice choice = Exporter::chooseBuildMethod(&project, linuxConfig(), nullptr);
+    EXPECT_EQ(choice.method, BuildMethod::Compile);
+    EXPECT_TRUE(hasReason(choice, "Spawner.cpp")) << (choice.reasons.empty() ? "" : choice.reasons.front());
 }
 
 TEST(BuildMethod, CapacitiesAboveThePlayersCompile) {

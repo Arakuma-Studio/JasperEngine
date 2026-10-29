@@ -133,6 +133,16 @@ editor::BuildMethodChoice editor::Exporter::chooseBuildMethod(Project* proj, con
                 sources.push_back(fs::relative(it->path(), proj->getProjectPath(), ec).generic_string());
         }
     }
+    // and the C++ scripts the scenes and the prefabs scripts instantiate use (what the Compile
+    // path compiles: Exporter::copyCppScripts), wherever they are
+    for (const SceneScriptSource& script : proj->getBuildCppScripts()) {
+        if (script.path.empty()) continue;
+        std::error_code ec;
+        const fs::path source = script.path.is_absolute() ? script.path : proj->getProjectPath() / script.path;
+        const fs::path relative = fs::relative(source, proj->getProjectPath(), ec);
+        const std::string name = (ec || relative.empty()) ? source.generic_string() : relative.generic_string();
+        if (std::find(sources.begin(), sources.end(), name) == sources.end()) sources.push_back(name);
+    }
     std::sort(sources.begin(), sources.end());
     if (!sources.empty()) {
         std::string list;

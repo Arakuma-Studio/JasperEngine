@@ -31,6 +31,9 @@ namespace {
         bool quit = false;
         int quitCode = EXIT_OK;
         bool screenshotWritten = false;
+        // --after-ready with --fixed-fps: the simulation waits for the ready frame, so a run's
+        // frames are the same every time (the frames before it depend on how long shaders take)
+        bool heldUntilReady = false;
         std::atomic<bool> errorLogged{false};
         Logger::SinkId errorSink = 0;
     };
@@ -90,6 +93,8 @@ void RunControl::reset() {
     s.quit = false;
     s.quitCode = EXIT_OK;
     s.screenshotWritten = false;
+    if (s.heldUntilReady) Engine::setSimulationHeld(false);
+    s.heldUntilReady = false;
     s.errorLogged.store(false);
 }
 
@@ -110,6 +115,10 @@ void RunControl::engineStarted() {
     s.started = std::chrono::steady_clock::now();
     if (s.options.fixedFps > 0.0)
         Engine::setFixedDeltatime(1.0 / s.options.fixedFps);
+    if (s.options.fixedFps > 0.0 && s.options.afterReady) {
+        Engine::setSimulationHeld(true);
+        s.heldUntilReady = true;
+    }
     if (s.options.failOnError && s.errorSink == 0 && Logger::isInitialized())
         s.errorSink = Logger::addSink(std::make_unique<ErrorWatchSink>());
 }
@@ -143,6 +152,10 @@ void RunControl::frameDrawn(bool readySignalled, const FrameReader& reader) {
     if (!s.counting) {
         if (readySignalled) {
             s.counting = true;
+            if (s.heldUntilReady) {
+                Engine::setSimulationHeld(false);
+                s.heldUntilReady = false;
+            }
         } else {
             const double waited = std::chrono::duration<double>(std::chrono::steady_clock::now() - s.started).count();
             if (waited > s.options.readyTimeout) {

@@ -38,6 +38,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 FIXTURES = REPO / "tools" / "fixtures"
+sys.path.insert(0, str(REPO / "tools" / "mcp"))
+import pngdiff  # noqa: E402
 
 
 class Failure(Exception):
@@ -119,6 +121,9 @@ def check_linux(args, players: Path, out: Path) -> None:
                        cwd=exe.parent, timeout=600, check=False)
             if game.returncode != 0 or not shot.is_file():
                 raise Failure(f"linux {backend}: the player exited {game.returncode}\n{game.stdout[-3000:]}\n{game.stderr[-3000:]}")
+            # a frame of one colour is nothing drawn over the clear colour: never a pass, nor a golden
+            if pngdiff.flat(pngdiff.load(shot), tolerance=8):
+                raise Failure(f"linux {backend}: the frame is one colour (nothing drawn): {shot}\n{game.stdout[-3000:]}\n{game.stderr[-3000:]}")
             golden = goldens / f"prebuilt-linux-{backend}.png"
             if args.write_goldens:
                 golden.parent.mkdir(parents=True, exist_ok=True)
