@@ -661,7 +661,7 @@ void registerVcsTools(McpRegistry& registry) {
         tool.description =
             "Version control state: provider (git/svn), branch, ahead/behind, last error, and the project's changed files "
             "{path, index, worktree, conflict?, lock?, lock_owner?, remote_changed?} (500 max). refresh polls now, with the "
-            "locks (network). jasper://vcs/status holds the summary.";
+            "locks (network). jasper://vcs/status holds the summary; jasper://docs/version-control the workflow.";
         tool.inputSchema = object({
             {"paths", pathsSchema("Only these files or folders (project-relative).")},
             {"include_clean", withDefault(boolean("Lockable and locked files without changes too."), false)},
