@@ -701,6 +701,8 @@ std::string publish::vdfString(const std::string& value, std::string& error) {
 
 bool publish::writeSteamScripts(const fs::path& releaseDir, bool preview, const std::string& branch, fs::path& appScript,
                                 std::vector<fs::path>& depotScripts, std::string& error) {
+    // vdfString reports through `error`: an earlier call's message must not read as this one's
+    error.clear();
     std::vector<std::string> problems;
     ReleaseInfo info;
     if (!verifyRelease(releaseDir, problems, &info)) {
