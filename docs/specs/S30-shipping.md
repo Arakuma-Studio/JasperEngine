@@ -797,3 +797,76 @@ std::expected<std::map<std::string, TreeEntry>, std::vector<std::string>> treeMa
   forced; fixtures that need it seed themselves.
 - **Zip writer.** Default: vendor `miniz` 3.x (MIT) in `libs/miniz` for the editor only, with a
   `NOTICE.md` row. Players never link it.
+
+## Re-check (2026-10-29, oe-port at 0c22d3b91)
+
+The spec was written before three rounds of upstream catch-up and the landing of S02-S09,
+S14/S14b, S15, S19-S28 and S31. What the tree has now, and what S30 does about it:
+
+- **Exporter** (`editor/Exporter.{h,cpp}`, now 4,581 lines; §3 line numbers are stale).
+  `runExport` runs `prepareCacheTarget`/`checkTargetDir`, `clearGenerated`,
+  `loadAndSaveAllScenes`, **`checkMissingAssets` (S04)**, `resolveShaderKeys`, `copyGenerated`,
+  `copyLua`, `checkHtmlUIReferences`, **`cookTextures` (S14, `assets/je-cooked/<family>`)**,
+  `copyAssets`, **`writeAssetMap` (S04, `assetmap.bin`)**, `copyCustomShaderSources`,
+  `copyCppScripts`, `copyEngine`, `buildAndSaveShaders`, `writeEffectLicense` (now three notices:
+  shaders.com, WebGL fluid, post-FX) and, for builds, configure/build/collect. S30's Prebuilt
+  method reuses all content steps up to `writeEffectLicense` unchanged (R6) and replaces only
+  `copyGenerated`, `copyCppScripts`, `copyEngine` and configure/build/collect.
+- **Web threads and COOP/COEP (S06, landed).** `ExportConfig::webMultithreaded` (Project
+  Settings > Player > Threading > Web: Multithreaded) builds a second Emscripten tree
+  (`build-threads`) into `threads/`, writes `_headers` and S06's **own** cross-origin isolation
+  service worker (`COI_SERVICE_WORKER`, inline in `Exporter.cpp`) and swaps the page's
+  `<script src>` for a loader. The loader starts the single-thread player *and* reloads at the
+  same time when not isolated (a reload in the middle of a load), and nothing tests a server
+  without isolation (S06 AC21's open half). **Decision (supersedes D7):** keep S06's first-party
+  worker (no third-party notice needed, nothing vendored) but move it to
+  `engine/platform/emscripten/web/coi-serviceworker.js` and the loader to
+  `engine/platform/emscripten/web/player-loader.js`, shared by the Compile and Prebuilt web
+  outputs; the loader decides once (isolated: `mt`; not isolated and a worker can be installed
+  and was not tried this session: register, wait for it to control, reload, without starting a
+  player; otherwise `st`). The browser gate covers threaded, worker-isolated and
+  worker-blocked single-thread runs; this closes S06 AC20/AC21.
+- **S02** landed `tools/web/serve.py` and `browser_gate.py` with **`--no-isolation`** (the spec's
+  `--no-isolation-headers`: we use the existing name), baselines with `isolated`, `query`,
+  `init_script`, `expect`, `console`, `allow`; `tools/mcp/pngdiff.py` (the spec's
+  `pngdiff.py`); `tools/ci/check-notices.py` (NOTICE.md rows + licence files, `--installed`,
+  `--install-manifest`, says "S30 reuses this for exported games"); `tools/ci/gtest-gate.py`;
+  the nightly workflow (`linux`, `web-threads`, `report`); docker images `linux`,
+  `linux-backends`, `web`, `android`, `android-emulator` (no runtime image yet: S30 adds
+  `docker/runtime.Dockerfile`). `engine/notices.json` builds on check-notices' library list
+  instead of a second scanner.
+- **S03** `engine/core/io/AtomicFile.h`: `writeFileAtomic`, `publishFile`, `renameWithRetry`,
+  `makeTemporarySiblingPath`; used for staging swaps, installs and release renames.
+- **S04** GUIDs, `assetmap.bin`, missing-asset check: cooked scenes carry resolved paths, the
+  asset map ships in content as today.
+- **S08** reflection (`editor/reflect/`): `Kind`, `FieldDesc` (member thunks, `cppPath`, flags
+  `NoSave`/`Proxy`/`Transient`/`Derived`/`OmitIfDefault`…), `StructDesc`, `ComponentDesc` with
+  optional `ComponentCodec` and `codegen` (35 components keep a codec or a Factory codegen:
+  mesh, model, terrain, tilemap, sprite, UI, script, particles, skybox, physics bodies,
+  navigation, animation tracks, lattice, pose, gameplay…). The runtime field emitter (R4) reads
+  these tables; components whose table holds every saved key (the S22 gameplay ones, force
+  field, navigation agents…) need no hand-written runtime codec, only the generic table path.
+- **S09** `--log-level` is already parsed by `Engine::systemInit` (`startGameLogger`); the
+  player's LaunchOptions accept and forward it rather than parse it twice.
+- **S15** Development Build (`ExportConfig::developmentBuild`, `Project::isDevelopmentBuild`,
+  `JASPERENGINE_DEVELOPMENT_BUILD`, `--profile*` flags): the `development` flavour is that.
+- **S28** crash reporting is installed by `Engine::systemInit` for every non-editor build
+  (`startGameDiagnostics`); its product name comes from the `JASPERENGINE_WINDOW_TITLE`
+  macro. Players link it unchanged and set the product name from `game.json` at runtime.
+- **S19** navigation, **S20** particles, **S21/S22**, upstream lattice/fluid/pose/water/FBX: new
+  components the cook covers through their tables and codecs.
+- **S31** MCP: tool groups (`McpTools.cpp` module rows), `tools/mcp/budget.json`; the core listing
+  is ~98.3k of 100k characters and the guide 16,366 of 16,384 bytes. New tools go in a
+  `shipping` group; `build_project`/`run_build`/`get_build_info` (core) grow by as few schema
+  characters as possible, paid for by shortening their own descriptions; the guide gets one
+  line and `docs/mcp/guide/shipping.md` the detail.
+- **Still true:** every build compiles; `ExportMode` is `{SourceCode, Desktop, Web}`; Build
+  Settings builds players only for the host desktop and web; scenes are generated C++; project
+  settings are compile-time macros (window, vsync, capacities in `Engine.h`, now also
+  `MAX_MESH_LODS`, `MAX_TEXT_FONTS`, `MAX_MORPHTARGETS`); `resources.pak` is `DXPK1`; desktop
+  content paths are relative to the working directory; `run_build` screenshots with X11
+  `import`; the smoke test compiles (and now also opens the editor and runs S19's
+  `nav_smoke.py`); no zip code in the repository (basisu's `basisu_miniz.h` has no archive API),
+  so miniz 3.0.2 is vendored as D8 says.
+- **Fixtures:** `tools/fixtures/unified-lighting` (Lua only) and `tools/fixtures/prefab-runtime`
+  (C++ scripts in `cpp/`) exist as AC1/AC3 expect.
