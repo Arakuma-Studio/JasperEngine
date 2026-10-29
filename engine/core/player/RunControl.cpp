@@ -31,8 +31,9 @@ namespace {
         bool quit = false;
         int quitCode = EXIT_OK;
         bool screenshotWritten = false;
-        // --after-ready with --fixed-fps: the simulation waits for the ready frame, so a run's
-        // frames are the same every time (the frames before it depend on how long shaders take)
+        // --after-ready with --fixed-fps: the game's update events and clocks (scripts, timers)
+        // start at the ready frame, so a run's frames are the same every time (how many frames
+        // come before it depends on how long shaders take). Loading and drawing go on meanwhile.
         bool heldUntilReady = false;
         std::atomic<bool> errorLogged{false};
         Logger::SinkId errorSink = 0;
@@ -93,7 +94,7 @@ void RunControl::reset() {
     s.quit = false;
     s.quitCode = EXIT_OK;
     s.screenshotWritten = false;
-    if (s.heldUntilReady) Engine::setSimulationHeld(false);
+    if (s.heldUntilReady) Engine::pauseGameEvents(false);
     s.heldUntilReady = false;
     s.errorLogged.store(false);
 }
@@ -116,7 +117,7 @@ void RunControl::engineStarted() {
     if (s.options.fixedFps > 0.0)
         Engine::setFixedDeltatime(1.0 / s.options.fixedFps);
     if (s.options.fixedFps > 0.0 && s.options.afterReady) {
-        Engine::setSimulationHeld(true);
+        Engine::pauseGameEvents(true);
         s.heldUntilReady = true;
     }
     if (s.options.failOnError && s.errorSink == 0 && Logger::isInitialized())
@@ -158,7 +159,7 @@ void RunControl::frameDrawn(bool readySignalled, const FrameReader& reader) {
         if (readySignalled) {
             s.counting = true;
             if (s.heldUntilReady) {
-                Engine::setSimulationHeld(false);
+                Engine::pauseGameEvents(false);
                 s.heldUntilReady = false;
             }
         } else {

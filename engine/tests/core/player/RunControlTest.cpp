@@ -171,20 +171,20 @@ TEST_F(RunControlFixture, FirstQuitCodeWins) {
     EXPECT_EQ(RunControl::finish(), 7);
 }
 
-// --after-ready --fixed-fps: the simulation is held until the ready frame, so every run's frames
-// are the same whatever the frames before ready took (S30 AC1's goldens)
-TEST_F(RunControlFixture, FixedFpsAfterReadyHoldsTheSimulationUntilReady) {
+// --after-ready --fixed-fps: the game's update events wait for the ready frame, so every run's
+// frames are the same whatever the frames before ready took (S30 AC1's goldens)
+TEST_F(RunControlFixture, FixedFpsAfterReadyHoldsGameEventsUntilReady) {
     LaunchOptions options;
     options.afterReady = true;
     options.fixedFps = 60.0;
     options.quitAfter = 5;
     RunControl::configure(options);
     RunControl::engineStarted();
-    EXPECT_TRUE(Engine::isSimulationHeld());
+    EXPECT_TRUE(Engine::areGameEventsPaused());
     RunControl::frameDrawn(false, {});
-    EXPECT_TRUE(Engine::isSimulationHeld());
+    EXPECT_TRUE(Engine::areGameEventsPaused());
     RunControl::frameDrawn(true, {});
-    EXPECT_FALSE(Engine::isSimulationHeld());
+    EXPECT_FALSE(Engine::areGameEventsPaused());
     RunControl::reset();
     Engine::setFixedDeltatime(0.0);
 
@@ -192,6 +192,6 @@ TEST_F(RunControlFixture, FixedFpsAfterReadyHoldsTheSimulationUntilReady) {
     options.afterReady = false;
     RunControl::configure(options);
     RunControl::engineStarted();
-    EXPECT_FALSE(Engine::isSimulationHeld());
+    EXPECT_FALSE(Engine::areGameEventsPaused());
     Engine::setFixedDeltatime(0.0);
 }
