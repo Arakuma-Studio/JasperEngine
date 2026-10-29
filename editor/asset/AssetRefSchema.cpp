@@ -153,6 +153,8 @@ namespace {
         row(C::PoseAnimatorComponent, "animation", Shape::Asset, AssetType::PoseAnimation, Base::Assets);
         // each entry: "clips[2]" (an .anim, or the model of a "<model>#<clip>" sub-clip)
         row(C::AnimationPlayerComponent, "clips[]", Shape::ClipEntry, AssetType::AnimationClip, Base::Assets);
+        row(C::NavMeshSurfaceComponent, "navMeshData", Shape::Asset, AssetType::NavMesh, Base::Assets);
+        row(C::NavGridComponent, "gridData", Shape::Asset, AssetType::NavGrid, Base::Assets);
         // each pool entry: "posts[1].asset" (and "assetGuid"); a model or a prefab
         for (const char* pool : kSplinePools) {
             row(C::SplineInstantiateComponent, std::string(pool) + "[].asset", Shape::Asset, AssetType::Unknown, Base::Assets);

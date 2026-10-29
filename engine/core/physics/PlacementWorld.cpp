@@ -22,6 +22,7 @@
 #include "subsystem/MeshSystem.h"
 #include "subsystem/SplineSystem.h"
 #include "subsystem/RenderSystem.h"
+#include "util/MeshTriangles.h"
 
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "JoltShapeBuilder.h"
@@ -726,7 +727,7 @@ namespace {
     }
 
     bool partGeometry(Entity entity, MeshComponent* mesh, PartGeometry& out) const {
-        JoltShapeBuilder::appendMeshTriangles(mesh, Matrix4(), out.local, out.indices);
+        MeshTriangles::appendMeshTriangles(mesh, Matrix4(), out.local, out.indices);
         weldExact(out.local, out.indices);
         if (out.local.empty()) return false;
         const Matrix4 linear = linearOf(entity);
@@ -938,7 +939,7 @@ namespace {
             }
         }
         for (Entity e : entities) {
-            if (JoltShapeBuilder::isGeometryLoading(scene, e)) {
+            if (MeshTriangles::isGeometryLoading(scene, e)) {
                 if (why) *why = "mesh still loading";
                 return false;
             }
@@ -953,7 +954,7 @@ namespace {
                 const Collider3D& c = body->colliders[i];
                 if ((c.type == Collider3DType::CONVEX_HULL || c.type == Collider3DType::MESH) &&
                     c.source != Collider3DSource::RAW_VERTICES && c.source != Collider3DSource::RAW_MESH) {
-                    for (Entity source : JoltShapeBuilder::meshSourceEntities(scene, c.sourceEntity == NULL_ENTITY ? e : c.sourceEntity)) {
+                    for (Entity source : MeshTriangles::meshSourceEntities(scene, c.sourceEntity == NULL_ENTITY ? e : c.sourceEntity)) {
                         authoredSources.insert(source);
                     }
                 }
@@ -1331,7 +1332,7 @@ struct PlacementWorld::Impl {
         std::vector<Vector3> vertices;
         std::vector<uint32_t> indices;
         // in the body's frame, mirrored triangles wound back (appendMeshTriangles)
-        JoltShapeBuilder::appendMeshTriangles(mesh, shapes().linearOf(entity), vertices, indices);
+        MeshTriangles::appendMeshTriangles(mesh, shapes().linearOf(entity), vertices, indices);
         weldExact(vertices, indices);
         if (indices.empty()) return nullptr;
 
@@ -1390,7 +1391,7 @@ struct PlacementWorld::Impl {
     // Static bodies for one entity's own components. False while its geometry is still
     // loading, so a later call tries again.
     bool addStaticContext(Entity entity, std::vector<JPH::BodyID>& added) {
-        if (JoltShapeBuilder::isGeometryLoading(scene, entity)) return false;
+        if (MeshTriangles::isGeometryLoading(scene, entity)) return false;
         resolveTransform(scene, entity);
         Transform* transform = scene->findComponent<Transform>(entity);
         if (!transform) return true;

@@ -31288,6 +31288,1189 @@
    "type": 66,
    "type_of_key": 66,
    "type_of_name": 66
+  },
+  {
+   "display_name": "NavMesh Surface",
+   "enum_options": {
+    "collectObjects": [
+     [
+      0,
+      "all",
+      "All Game Objects"
+     ],
+     [
+      1,
+      "volume",
+      "Volume"
+     ],
+     [
+      2,
+      "children",
+      "Current Object Hierarchy"
+     ]
+    ],
+    "plane": [
+     [
+      0,
+      "xz",
+      "XZ (3D)"
+     ],
+     [
+      1,
+      "xy",
+      "XY (2D)"
+     ]
+    ],
+    "useGeometry": [
+     [
+      0,
+      "render_meshes",
+      "Render Meshes"
+     ],
+     [
+      1,
+      "physics_colliders",
+      "Physics Colliders"
+     ],
+     [
+      2,
+      "both",
+      "Both"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef9397",
+   "key": "navmeshsurface",
+   "known_keys": [
+    "agentType",
+    "cellSize",
+    "collectObjects",
+    "defaultArea",
+    "enabled",
+    "includeLayers",
+    "minRegionArea",
+    "navMeshData",
+    "navMeshDataGuid",
+    "overrideCellSize",
+    "overrideTileSize",
+    "plane",
+    "runtimeCarving",
+    "tileSize",
+    "useGeometry",
+    "volumeCenter",
+    "volumeSize"
+   ],
+   "name": "NavMeshSurfaceComponent",
+   "properties_of_default": {
+    "agentType": [
+     8,
+     0,
+     true
+    ],
+    "cellSize": [
+     2,
+     0,
+     true
+    ],
+    "collectObjects": [
+     13,
+     0,
+     true
+    ],
+    "defaultArea": [
+     8,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "includeLayers": [
+     9,
+     0,
+     true
+    ],
+    "minRegionArea": [
+     2,
+     0,
+     true
+    ],
+    "navMeshData": [
+     18,
+     0,
+     true
+    ],
+    "overrideCellSize": [
+     0,
+     0,
+     true
+    ],
+    "overrideTileSize": [
+     0,
+     0,
+     true
+    ],
+    "plane": [
+     13,
+     0,
+     true
+    ],
+    "runtimeCarving": [
+     0,
+     0,
+     true
+    ],
+    "tileSize": [
+     8,
+     0,
+     true
+    ],
+    "useGeometry": [
+     13,
+     0,
+     true
+    ],
+    "volumeCenter": [
+     5,
+     0,
+     true
+    ],
+    "volumeSize": [
+     5,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "agentType": [
+     8,
+     0,
+     true
+    ],
+    "cellSize": [
+     2,
+     0,
+     true
+    ],
+    "collectObjects": [
+     13,
+     0,
+     true
+    ],
+    "defaultArea": [
+     8,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "includeLayers": [
+     9,
+     0,
+     true
+    ],
+    "minRegionArea": [
+     2,
+     0,
+     true
+    ],
+    "navMeshData": [
+     18,
+     0,
+     true
+    ],
+    "overrideCellSize": [
+     0,
+     0,
+     true
+    ],
+    "overrideTileSize": [
+     0,
+     0,
+     true
+    ],
+    "plane": [
+     13,
+     0,
+     true
+    ],
+    "runtimeCarving": [
+     0,
+     0,
+     true
+    ],
+    "tileSize": [
+     8,
+     0,
+     true
+    ],
+    "useGeometry": [
+     13,
+     0,
+     true
+    ],
+    "volumeCenter": [
+     5,
+     0,
+     true
+    ],
+    "volumeSize": [
+     5,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 67,
+   "type_of_key": 67,
+   "type_of_name": 67
+  },
+  {
+   "display_name": "NavMesh Agent",
+   "enum_options": {
+    "driver": [
+     [
+      0,
+      "transform",
+      "Transform"
+     ],
+     [
+      1,
+      "rigidbody",
+      "Rigidbody"
+     ],
+     [
+      2,
+      "character_controller",
+      "Character Controller"
+     ],
+     [
+      3,
+      "none",
+      "None"
+     ]
+    ],
+    "obstacleAvoidance": [
+     [
+      0,
+      "none",
+      "None"
+     ],
+     [
+      1,
+      "low",
+      "Low Quality"
+     ],
+     [
+      2,
+      "medium",
+      "Medium Quality"
+     ],
+     [
+      3,
+      "good",
+      "Good Quality"
+     ],
+     [
+      4,
+      "high",
+      "High Quality"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ee9592",
+   "key": "navmeshagent",
+   "known_keys": [
+    "acceleration",
+    "agentType",
+    "angularSpeed",
+    "areaMask",
+    "autoBraking",
+    "autoRepath",
+    "autoTraverseOffMeshLink",
+    "avoidancePriority",
+    "baseOffset",
+    "driver",
+    "enabled",
+    "height",
+    "obstacleAvoidance",
+    "radius",
+    "speed",
+    "stoppingDistance",
+    "surface",
+    "updatePosition",
+    "updateRotation"
+   ],
+   "name": "NavMeshAgentComponent",
+   "properties_of_default": {
+    "acceleration": [
+     2,
+     0,
+     true
+    ],
+    "agentType": [
+     8,
+     0,
+     true
+    ],
+    "angularSpeed": [
+     2,
+     0,
+     true
+    ],
+    "areaMask": [
+     8,
+     0,
+     true
+    ],
+    "autoBraking": [
+     0,
+     0,
+     true
+    ],
+    "autoRepath": [
+     0,
+     0,
+     true
+    ],
+    "autoTraverseOffMeshLink": [
+     0,
+     0,
+     true
+    ],
+    "avoidancePriority": [
+     8,
+     0,
+     true
+    ],
+    "baseOffset": [
+     2,
+     0,
+     true
+    ],
+    "driver": [
+     13,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "height": [
+     2,
+     0,
+     true
+    ],
+    "obstacleAvoidance": [
+     13,
+     0,
+     true
+    ],
+    "radius": [
+     2,
+     0,
+     true
+    ],
+    "speed": [
+     2,
+     0,
+     true
+    ],
+    "stoppingDistance": [
+     2,
+     0,
+     true
+    ],
+    "surface": [
+     16,
+     0,
+     true
+    ],
+    "updatePosition": [
+     0,
+     0,
+     true
+    ],
+    "updateRotation": [
+     0,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "acceleration": [
+     2,
+     0,
+     true
+    ],
+    "agentType": [
+     8,
+     0,
+     true
+    ],
+    "angularSpeed": [
+     2,
+     0,
+     true
+    ],
+    "areaMask": [
+     8,
+     0,
+     true
+    ],
+    "autoBraking": [
+     0,
+     0,
+     true
+    ],
+    "autoRepath": [
+     0,
+     0,
+     true
+    ],
+    "autoTraverseOffMeshLink": [
+     0,
+     0,
+     true
+    ],
+    "avoidancePriority": [
+     8,
+     0,
+     true
+    ],
+    "baseOffset": [
+     2,
+     0,
+     true
+    ],
+    "driver": [
+     13,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "height": [
+     2,
+     0,
+     true
+    ],
+    "obstacleAvoidance": [
+     13,
+     0,
+     true
+    ],
+    "radius": [
+     2,
+     0,
+     true
+    ],
+    "speed": [
+     2,
+     0,
+     true
+    ],
+    "stoppingDistance": [
+     2,
+     0,
+     true
+    ],
+    "surface": [
+     16,
+     0,
+     true
+    ],
+    "updatePosition": [
+     0,
+     0,
+     true
+    ],
+    "updateRotation": [
+     0,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 68,
+   "type_of_key": 68,
+   "type_of_name": 68
+  },
+  {
+   "display_name": "NavMesh Obstacle",
+   "enum_options": {
+    "shape": [
+     [
+      0,
+      "capsule",
+      "Capsule"
+     ],
+     [
+      1,
+      "box",
+      "Box"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef819e",
+   "key": "navmeshobstacle",
+   "known_keys": [
+    "carve",
+    "carveOnlyStationary",
+    "center",
+    "enabled",
+    "height",
+    "moveThreshold",
+    "radius",
+    "shape",
+    "size",
+    "timeToStationary"
+   ],
+   "name": "NavMeshObstacleComponent",
+   "properties_of_default": {
+    "carve": [
+     0,
+     0,
+     true
+    ],
+    "carveOnlyStationary": [
+     0,
+     0,
+     true
+    ],
+    "center": [
+     5,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "height": [
+     2,
+     0,
+     true
+    ],
+    "moveThreshold": [
+     2,
+     0,
+     true
+    ],
+    "radius": [
+     2,
+     0,
+     true
+    ],
+    "shape": [
+     13,
+     0,
+     true
+    ],
+    "size": [
+     5,
+     0,
+     true
+    ],
+    "timeToStationary": [
+     2,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "carve": [
+     0,
+     0,
+     true
+    ],
+    "carveOnlyStationary": [
+     0,
+     0,
+     true
+    ],
+    "center": [
+     5,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "height": [
+     2,
+     0,
+     true
+    ],
+    "moveThreshold": [
+     2,
+     0,
+     true
+    ],
+    "radius": [
+     2,
+     0,
+     true
+    ],
+    "shape": [
+     13,
+     0,
+     true
+    ],
+    "size": [
+     5,
+     0,
+     true
+    ],
+    "timeToStationary": [
+     2,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 69,
+   "type_of_key": 69,
+   "type_of_name": 69
+  },
+  {
+   "display_name": "NavMesh Link",
+   "enum_options": {},
+   "has_enabled": true,
+   "icon": "ee9388",
+   "key": "navmeshlink",
+   "known_keys": [
+    "agentType",
+    "area",
+    "autoUpdatePosition",
+    "bidirectional",
+    "costModifier",
+    "enabled",
+    "endPoint",
+    "startPoint",
+    "width"
+   ],
+   "name": "NavMeshLinkComponent",
+   "properties_of_default": {
+    "agentType": [
+     8,
+     0,
+     true
+    ],
+    "area": [
+     8,
+     0,
+     true
+    ],
+    "autoUpdatePosition": [
+     0,
+     0,
+     true
+    ],
+    "bidirectional": [
+     0,
+     0,
+     true
+    ],
+    "costModifier": [
+     2,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "endPoint": [
+     5,
+     0,
+     true
+    ],
+    "startPoint": [
+     5,
+     0,
+     true
+    ],
+    "width": [
+     2,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "agentType": [
+     8,
+     0,
+     true
+    ],
+    "area": [
+     8,
+     0,
+     true
+    ],
+    "autoUpdatePosition": [
+     0,
+     0,
+     true
+    ],
+    "bidirectional": [
+     0,
+     0,
+     true
+    ],
+    "costModifier": [
+     2,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "endPoint": [
+     5,
+     0,
+     true
+    ],
+    "startPoint": [
+     5,
+     0,
+     true
+    ],
+    "width": [
+     2,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 70,
+   "type_of_key": 70,
+   "type_of_name": 70
+  },
+  {
+   "display_name": "NavMesh Modifier",
+   "enum_options": {
+    "overrideInclusion": [
+     [
+      0,
+      "auto",
+      "Remove Object"
+     ],
+     [
+      1,
+      "include",
+      "Add or Modify Object"
+     ],
+     [
+      2,
+      "exclude",
+      "Remove Object (always)"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef97ae",
+   "key": "navmeshmodifier",
+   "known_keys": [
+    "applyToChildren",
+    "area",
+    "enabled",
+    "overrideArea",
+    "overrideInclusion",
+    "useVolume",
+    "volumeCenter",
+    "volumeSize"
+   ],
+   "name": "NavMeshModifierComponent",
+   "properties_of_default": {
+    "applyToChildren": [
+     0,
+     0,
+     true
+    ],
+    "area": [
+     8,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "overrideArea": [
+     0,
+     0,
+     true
+    ],
+    "overrideInclusion": [
+     13,
+     0,
+     true
+    ],
+    "useVolume": [
+     0,
+     0,
+     true
+    ],
+    "volumeCenter": [
+     5,
+     0,
+     true
+    ],
+    "volumeSize": [
+     5,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "applyToChildren": [
+     0,
+     0,
+     true
+    ],
+    "area": [
+     8,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "overrideArea": [
+     0,
+     0,
+     true
+    ],
+    "overrideInclusion": [
+     13,
+     0,
+     true
+    ],
+    "useVolume": [
+     0,
+     0,
+     true
+    ],
+    "volumeCenter": [
+     5,
+     0,
+     true
+    ],
+    "volumeSize": [
+     5,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 71,
+   "type_of_key": 71,
+   "type_of_name": 71
+  },
+  {
+   "display_name": "Nav Grid",
+   "enum_options": {
+    "layout": [
+     [
+      0,
+      "square",
+      "Square"
+     ],
+     [
+      1,
+      "hex",
+      "Hex (pointy-top)"
+     ]
+    ],
+    "movement": [
+     [
+      0,
+      "free",
+      "Free (smoothed)"
+     ],
+     [
+      1,
+      "cell_centres",
+      "Cell Centres"
+     ]
+    ],
+    "plane": [
+     [
+      0,
+      "xz",
+      "XZ (3D)"
+     ],
+     [
+      1,
+      "xy",
+      "XY (2D)"
+     ]
+    ],
+    "source": [
+     [
+      0,
+      "none",
+      "None (painted)"
+     ],
+     [
+      1,
+      "tilemap",
+      "Tilemap"
+     ],
+     [
+      2,
+      "terrain",
+      "Terrain"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef808a",
+   "key": "navgrid",
+   "known_keys": [
+    "autoRebuild",
+    "cellSize",
+    "collidersBlock",
+    "emptyCellArea",
+    "enabled",
+    "gridData",
+    "gridDataGuid",
+    "height",
+    "layout",
+    "maxSlope",
+    "maxStep",
+    "movement",
+    "neighbours",
+    "plane",
+    "reservationLookahead",
+    "reservationPenalty",
+    "source",
+    "sourceEntity",
+    "tileAreas",
+    "width"
+   ],
+   "name": "NavGridComponent",
+   "properties_of_default": {
+    "autoRebuild": [
+     0,
+     0,
+     true
+    ],
+    "cellSize": [
+     2,
+     0,
+     true
+    ],
+    "collidersBlock": [
+     0,
+     0,
+     true
+    ],
+    "emptyCellArea": [
+     8,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "gridData": [
+     18,
+     0,
+     true
+    ],
+    "height": [
+     8,
+     0,
+     true
+    ],
+    "layout": [
+     13,
+     0,
+     true
+    ],
+    "maxSlope": [
+     2,
+     0,
+     true
+    ],
+    "maxStep": [
+     2,
+     0,
+     true
+    ],
+    "movement": [
+     13,
+     0,
+     true
+    ],
+    "neighbours": [
+     8,
+     0,
+     true
+    ],
+    "plane": [
+     13,
+     0,
+     true
+    ],
+    "reservationLookahead": [
+     2,
+     0,
+     true
+    ],
+    "reservationPenalty": [
+     2,
+     0,
+     true
+    ],
+    "source": [
+     13,
+     0,
+     true
+    ],
+    "sourceEntity": [
+     16,
+     0,
+     true
+    ],
+    "tileAreas": [
+     15,
+     0,
+     false
+    ],
+    "width": [
+     8,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "autoRebuild": [
+     0,
+     0,
+     true
+    ],
+    "cellSize": [
+     2,
+     0,
+     true
+    ],
+    "collidersBlock": [
+     0,
+     0,
+     true
+    ],
+    "emptyCellArea": [
+     8,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "gridData": [
+     18,
+     0,
+     true
+    ],
+    "height": [
+     8,
+     0,
+     true
+    ],
+    "layout": [
+     13,
+     0,
+     true
+    ],
+    "maxSlope": [
+     2,
+     0,
+     true
+    ],
+    "maxStep": [
+     2,
+     0,
+     true
+    ],
+    "movement": [
+     13,
+     0,
+     true
+    ],
+    "neighbours": [
+     8,
+     0,
+     true
+    ],
+    "plane": [
+     13,
+     0,
+     true
+    ],
+    "reservationLookahead": [
+     2,
+     0,
+     true
+    ],
+    "reservationPenalty": [
+     2,
+     0,
+     true
+    ],
+    "source": [
+     13,
+     0,
+     true
+    ],
+    "sourceEntity": [
+     16,
+     0,
+     true
+    ],
+    "tileAreas": [
+     15,
+     0,
+     false
+    ],
+    "width": [
+     8,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 72,
+   "type_of_key": 72,
+   "type_of_name": 72
   }
  ],
  "ease_options": [
@@ -34384,6 +35567,423 @@
    ],
    "values": [
     15,
+    0,
+    true
+   ]
+  },
+  "NavGridComponent": {
+   "autoRebuild": [
+    0,
+    0,
+    true
+   ],
+   "cellSize": [
+    2,
+    0,
+    true
+   ],
+   "collidersBlock": [
+    0,
+    0,
+    true
+   ],
+   "emptyCellArea": [
+    8,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "gridData": [
+    18,
+    0,
+    true
+   ],
+   "height": [
+    8,
+    0,
+    true
+   ],
+   "layout": [
+    13,
+    0,
+    true
+   ],
+   "maxSlope": [
+    2,
+    0,
+    true
+   ],
+   "maxStep": [
+    2,
+    0,
+    true
+   ],
+   "movement": [
+    13,
+    0,
+    true
+   ],
+   "neighbours": [
+    8,
+    0,
+    true
+   ],
+   "plane": [
+    13,
+    0,
+    true
+   ],
+   "reservationLookahead": [
+    2,
+    0,
+    true
+   ],
+   "reservationPenalty": [
+    2,
+    0,
+    true
+   ],
+   "source": [
+    13,
+    0,
+    true
+   ],
+   "sourceEntity": [
+    16,
+    0,
+    true
+   ],
+   "tileAreas": [
+    15,
+    0,
+    false
+   ],
+   "width": [
+    8,
+    0,
+    true
+   ]
+  },
+  "NavMeshAgentComponent": {
+   "acceleration": [
+    2,
+    0,
+    true
+   ],
+   "agentType": [
+    8,
+    0,
+    true
+   ],
+   "angularSpeed": [
+    2,
+    0,
+    true
+   ],
+   "areaMask": [
+    8,
+    0,
+    true
+   ],
+   "autoBraking": [
+    0,
+    0,
+    true
+   ],
+   "autoRepath": [
+    0,
+    0,
+    true
+   ],
+   "autoTraverseOffMeshLink": [
+    0,
+    0,
+    true
+   ],
+   "avoidancePriority": [
+    8,
+    0,
+    true
+   ],
+   "baseOffset": [
+    2,
+    0,
+    true
+   ],
+   "driver": [
+    13,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "height": [
+    2,
+    0,
+    true
+   ],
+   "obstacleAvoidance": [
+    13,
+    0,
+    true
+   ],
+   "radius": [
+    2,
+    0,
+    true
+   ],
+   "speed": [
+    2,
+    0,
+    true
+   ],
+   "stoppingDistance": [
+    2,
+    0,
+    true
+   ],
+   "surface": [
+    16,
+    0,
+    true
+   ],
+   "updatePosition": [
+    0,
+    0,
+    true
+   ],
+   "updateRotation": [
+    0,
+    0,
+    true
+   ]
+  },
+  "NavMeshLinkComponent": {
+   "agentType": [
+    8,
+    0,
+    true
+   ],
+   "area": [
+    8,
+    0,
+    true
+   ],
+   "autoUpdatePosition": [
+    0,
+    0,
+    true
+   ],
+   "bidirectional": [
+    0,
+    0,
+    true
+   ],
+   "costModifier": [
+    2,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "endPoint": [
+    5,
+    0,
+    true
+   ],
+   "startPoint": [
+    5,
+    0,
+    true
+   ],
+   "width": [
+    2,
+    0,
+    true
+   ]
+  },
+  "NavMeshModifierComponent": {
+   "applyToChildren": [
+    0,
+    0,
+    true
+   ],
+   "area": [
+    8,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "overrideArea": [
+    0,
+    0,
+    true
+   ],
+   "overrideInclusion": [
+    13,
+    0,
+    true
+   ],
+   "useVolume": [
+    0,
+    0,
+    true
+   ],
+   "volumeCenter": [
+    5,
+    0,
+    true
+   ],
+   "volumeSize": [
+    5,
+    0,
+    true
+   ]
+  },
+  "NavMeshObstacleComponent": {
+   "carve": [
+    0,
+    0,
+    true
+   ],
+   "carveOnlyStationary": [
+    0,
+    0,
+    true
+   ],
+   "center": [
+    5,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "height": [
+    2,
+    0,
+    true
+   ],
+   "moveThreshold": [
+    2,
+    0,
+    true
+   ],
+   "radius": [
+    2,
+    0,
+    true
+   ],
+   "shape": [
+    13,
+    0,
+    true
+   ],
+   "size": [
+    5,
+    0,
+    true
+   ],
+   "timeToStationary": [
+    2,
+    0,
+    true
+   ]
+  },
+  "NavMeshSurfaceComponent": {
+   "agentType": [
+    8,
+    0,
+    true
+   ],
+   "cellSize": [
+    2,
+    0,
+    true
+   ],
+   "collectObjects": [
+    13,
+    0,
+    true
+   ],
+   "defaultArea": [
+    8,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "includeLayers": [
+    9,
+    0,
+    true
+   ],
+   "minRegionArea": [
+    2,
+    0,
+    true
+   ],
+   "navMeshData": [
+    18,
+    0,
+    true
+   ],
+   "overrideCellSize": [
+    0,
+    0,
+    true
+   ],
+   "overrideTileSize": [
+    0,
+    0,
+    true
+   ],
+   "plane": [
+    13,
+    0,
+    true
+   ],
+   "runtimeCarving": [
+    0,
+    0,
+    true
+   ],
+   "tileSize": [
+    8,
+    0,
+    true
+   ],
+   "useGeometry": [
+    13,
+    0,
+    true
+   ],
+   "volumeCenter": [
+    5,
+    0,
+    true
+   ],
+   "volumeSize": [
+    5,
     0,
     true
    ]

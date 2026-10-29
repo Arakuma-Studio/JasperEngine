@@ -1105,6 +1105,9 @@ if(WIN32)
     list(APPEND JASPERENGINE_EDITOR_SOURCES ${EDITOR_DIR}/util/MsBuildProgress.cpp)
 endif()
 
+# navigation (S19): its own list, so the streams adding editor files do not meet here
+include(${EDITOR_DIR}/navigation/NavigationEditorSources.cmake)
+
 # The engine build C++ script libraries must be made for (S23 toolchain fingerprint): the
 # editor version, on this one file (as on the engine's ToolchainFingerprint.cpp)
 set_source_files_properties(${EDITOR_DIR}/util/EditorFingerprint.cpp PROPERTIES

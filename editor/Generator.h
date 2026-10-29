@@ -165,6 +165,8 @@ namespace jasperengine::editor {
         // Project Settings > Input: the actions asset (assets-relative, "" none) and the deadzone
         std::string inputActionsAsset;
         float inputDeadzone = 0.15f;
+        // Project Settings > Navigation: the statements main.cpp runs (nav::setSettings), "" defaults
+        std::string navigationSettingsCode;
         // Project Settings > Texture per platform group (desktop, mobile, web; S14 R12)
         std::array<int, 3> textureQuality = {0, 0, 0};
         std::array<int, 3> textureBudgetMB = {0, 512, 384};
@@ -276,6 +278,8 @@ namespace jasperengine::editor {
         void setAtmosphereQuality(const std::array<AtmosphereQuality, 3>& quality) { atmosphereQuality = quality; }
         // the Input Actions the game starts with (InputActions::loadDefault); set before configure()
         void setInputSettings(const std::string& actionsAsset, float deadzone) { inputActionsAsset = actionsAsset; inputDeadzone = deadzone; }
+        // the navigation settings the game starts with (generateNavigationSettingsCode); set before configure()
+        void setNavigationSettingsCode(const std::string& code) { navigationSettingsCode = code; }
         void setTextureDefaults(const std::array<int, 3>& quality, const std::array<int, 3>& budgetMB, const std::array<bool, 3>& lowMemory) {
             textureQuality = quality;
             textureBudgetMB = budgetMB;

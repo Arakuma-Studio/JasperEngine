@@ -473,6 +473,20 @@ namespace jasperengine::editor {
         static YAML::Node encodeRigidbodyComponent(const RigidbodyComponent& body);
         static RigidbodyComponent decodeRigidbodyComponent(const YAML::Node& node, const RigidbodyComponent* oldBody = nullptr, const Vector3& bodyScale = Vector3::UNIT_SCALE);
 
+        // navigation (S19, StreamNavigation.cpp)
+        static YAML::Node encodeNavMeshSurfaceComponent(const NavMeshSurfaceComponent& component);
+        static NavMeshSurfaceComponent decodeNavMeshSurfaceComponent(const YAML::Node& node, const NavMeshSurfaceComponent* oldComponent = nullptr);
+        static YAML::Node encodeNavMeshAgentComponent(const NavMeshAgentComponent& component);
+        static NavMeshAgentComponent decodeNavMeshAgentComponent(const YAML::Node& node, const NavMeshAgentComponent* oldComponent = nullptr);
+        static YAML::Node encodeNavMeshObstacleComponent(const NavMeshObstacleComponent& component);
+        static NavMeshObstacleComponent decodeNavMeshObstacleComponent(const YAML::Node& node, const NavMeshObstacleComponent* oldComponent = nullptr);
+        static YAML::Node encodeNavMeshLinkComponent(const NavMeshLinkComponent& component);
+        static NavMeshLinkComponent decodeNavMeshLinkComponent(const YAML::Node& node, const NavMeshLinkComponent* oldComponent = nullptr);
+        static YAML::Node encodeNavMeshModifierComponent(const NavMeshModifierComponent& component);
+        static NavMeshModifierComponent decodeNavMeshModifierComponent(const YAML::Node& node, const NavMeshModifierComponent* oldComponent = nullptr);
+        static YAML::Node encodeNavGridComponent(const NavGridComponent& component);
+        static NavGridComponent decodeNavGridComponent(const YAML::Node& node, const NavGridComponent* oldComponent = nullptr);
+
         static std::string actionStateToString(ActionState state);
         static ActionState stringToActionState(const std::string& str);
 

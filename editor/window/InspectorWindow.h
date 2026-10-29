@@ -745,6 +745,15 @@ namespace jasperengine::editor{
         // the last spline terrain bake's or Bake to GameObjects' message
         std::string splineBakeMessage;
         void drawJoint3DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // navigation (InspectorNavigation.cpp)
+        void drawNavMeshSurfaceComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawNavMeshAgentComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawNavMeshObstacleComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawNavMeshLinkComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawNavMeshModifierComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawNavGridComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void navAreaMaskRow(ComponentType cpType, const std::string& id, const std::string& label, SceneProject* sceneProject,
+                            std::vector<Entity> entities, const char* help);
         void drawActionComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawPositionTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawRotationTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

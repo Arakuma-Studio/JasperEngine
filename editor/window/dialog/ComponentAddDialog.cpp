@@ -96,6 +96,14 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::Joint2DComponent, "Connects two 2D Rigidbodies"},
             {ComponentType::CharacterController2DComponent, "A capsule moved by script that climbs steps and slopes"},
         }},
+        {"Navigation", ICON_FA_ROUTE, {
+            {ComponentType::NavMeshSurfaceComponent, "Bakes a navmesh for one agent type from the scene's static geometry"},
+            {ComponentType::NavMeshAgentComponent, "Walks to destinations on the navmesh or a Nav Grid, avoiding others"},
+            {ComponentType::NavMeshObstacleComponent, "Agents steer around it, or it carves the navmesh at runtime"},
+            {ComponentType::NavMeshLinkComponent, "A jump, gap or ladder connection agents can traverse"},
+            {ComponentType::NavMeshModifierComponent, "Sets the area of a GameObject or a volume, or leaves it out of bakes"},
+            {ComponentType::NavGridComponent, "A square or hex grid with area costs for tile and strategy games"},
+        }},
         {"Spline", ICON_FA_BEZIER_CURVE, {
             {ComponentType::SplineComponent, "A curve of knots that roads, fences and followers use"},
             {ComponentType::SplineExtrudeComponent, "Sweeps a road, path, wall, tube or water along the Spline"},

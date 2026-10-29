@@ -74,6 +74,17 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kUIDocumentRenderMode;
     extern const EnumDesc kUIEventState;
     extern const EnumDesc kWindingOrder;
+    // navigation (S19, editor/reflect/components/NavigationReflect.cpp)
+    extern const EnumDesc kNavCollectObjects;
+    extern const EnumDesc kNavUseGeometry;
+    extern const EnumDesc kNavPlane;
+    extern const EnumDesc kNavAvoidanceQuality;
+    extern const EnumDesc kNavAgentDriver;
+    extern const EnumDesc kNavObstacleShape;
+    extern const EnumDesc kNavModifierInclusion;
+    extern const EnumDesc kNavGridLayout;
+    extern const EnumDesc kNavGridMovement;
+    extern const EnumDesc kNavGridSource;
     // the spline components' (editor/reflect/components/SplinesReflect.cpp)
     extern const EnumDesc kSplineType;
     extern const EnumDesc kSplineTangentMode;
