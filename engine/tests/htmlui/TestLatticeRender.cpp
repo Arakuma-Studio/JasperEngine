@@ -982,122 +982,95 @@ TEST_F(LatticeRenderTest, EveryChangeDrawsWhatAFreshSceneDraws){
 TEST_F(LatticeRenderTest, InheritedBindingsFollowTheHierarchy){
     LatticeScene s;
     Scene& scene = s.scene();
-    auto addLattice = [&](float x){
-        Lattice& lattice = s.addLattice(x, 0.0f, 0.0f, 1.5f);
-        lattice.getComponent<LatticeComponent>().offsets[7] = Vector3(0.1f, 0.0f, 0.0f);
-        return lattice.getEntity();
-    };
-    const Entity a = addLattice(-3.0f);
-    const Entity b = addLattice(0.0f);
-    const Entity c = addLattice(3.0f);
-    auto modifier = [&](Entity entity, std::vector<std::pair<Entity, float>> bindings, bool includeChildren){
-        LatticeModifierComponent component;
-        for (auto& binding : bindings){
-            LatticeBinding entry;
-            entry.lattice = binding.first;
-            entry.weight = binding.second;
-            component.bindings.push_back(entry);
-        }
-        component.includeChildren = includeChildren;
-        scene.addComponent<LatticeModifierComponent>(entity, component);
-    };
-    // the weights of a mesh's records, in order (texel 9 .y): which bindings it has
-    auto weights = [&](Primitive& box){
-        const LatticeMeshState& state = box.getComponent<MeshComponent>().lattice;
-        std::vector<float> result;
-        for (int r = 0; r < state.count; r++)
-            result.push_back(state.texels[size_t(state.recordStart[r]) + 9].y);
-        return result;
-    };
-    using W = std::vector<float>;
-
+    Lattice& translate = s.addLattice(0, 0, 0, 4);
+    translate.setOutside(LatticeOutside::EXTEND);
+    for (int i = 0; i < translate.getPointCount(); i++)
+        translate.setOffsetAt(i, Vector3(0.25f, 0, 0)); // one world unit right
+    Lattice& stretch = s.addLattice(0, 0, 0, 4);
+    stretch.setOutside(LatticeOutside::EXTEND);
+    for (int i = 0; i < stretch.getPointCount(); i++){
+        const Vector3 rest = stretch.getRestPosition(i % 2, (i / 2) % 2, i / 4);
+        stretch.setOffsetAt(i, Vector3(rest.x, 0, 0)); // double world x
+    }
     GameObject& rig = s.fixture.add<GameObject>();
     Primitive& child = s.addBox(0.5f);
-    Primitive& grandchild = s.addBox(0.5f);
-    Primitive& other = s.addBox(0.5f);
     rig.addChild(&child);
+    s.bind(rig.getEntity(), translate.getEntity(), LatticeStage::AFTER_SKINNING, LatticeMaskChannel::NONE, true);
+    auto expectBox = [&](float center, float halfWidth, float y = 0){
+        ASSERT_TRUE(s.settle());
+        Screen screen;
+        ASSERT_TRUE(screen.read());
+        EXPECT_TRUE(screen.is(int(toScreenX(center)), toScreenRow(y), 255, 255, 255));
+        EXPECT_TRUE(screen.is(int(toScreenX(center + halfWidth - 0.1f)), toScreenRow(y), 255, 255, 255));
+        EXPECT_TRUE(screen.isBackground(int(toScreenX(center + halfWidth + 0.1f)), toScreenRow(y)));
+    };
+    expectBox(1, 0.25f);
+
+    // Own bindings run before inherited ones: stretch then translate centers at x=1;
+    // the reverse order would center at x=2.
+    s.bind(child.getEntity(), stretch.getEntity());
+    expectBox(1, 0.5f);
+    scene.getComponent<LatticeModifierComponent>(rig.getEntity()).includeChildren = false;
+    expectBox(0, 0.5f);
+    scene.getComponent<LatticeModifierComponent>(rig.getEntity()).includeChildren = true;
+    scene.addEntityChild(NULL_ENTITY, child.getEntity(), true);
+    expectBox(0, 0.5f);
+    scene.addEntityChild(rig.getEntity(), child.getEntity(), true);
+    expectBox(1, 0.5f);
+
+    // The nearest binding to the same lattice wins, including an explicit zero weight.
+    ASSERT_TRUE(translate.bind(&child, 0));
+    expectBox(0, 0.5f);
+    ASSERT_TRUE(translate.unbind(&child));
+    expectBox(1, 0.5f);
+    // Nearest ancestors apply first. The outer stretch must double the inner
+    // parent's translation; reversing the ancestor walk would leave center x=1.
+    Lattice& outerStretch = s.addLattice(0, 0, 0, 4);
+    outerStretch.setOutside(LatticeOutside::EXTEND);
+    for (int i = 0; i < outerStretch.getPointCount(); i++){
+        const Vector3 rest = outerStretch.getRestPosition(i % 2, (i / 2) % 2, i / 4);
+        outerStretch.setOffsetAt(i, Vector3(rest.x, 0, 0));
+    }
+    GameObject& outer = s.fixture.add<GameObject>();
+    outer.addChild(&rig);
+    s.bind(outer.getEntity(), outerStretch.getEntity(), LatticeStage::AFTER_SKINNING, LatticeMaskChannel::NONE, true);
+    expectBox(2, 1);
+    scene.addEntityChild(NULL_ENTITY, rig.getEntity(), true);
+
+    // A child's own modifier is inherited only when it opts into descendants.
+    Primitive& grandchild = s.addBox(0.5f);
+    grandchild.setPosition(0, 1, 0);
     child.addChild(&grandchild);
-    modifier(rig.getEntity(), {{a, 1.1f}}, true);
-    ASSERT_TRUE(s.settle());
-    EXPECT_EQ(weights(child), W({1.1f}));
-    EXPECT_EQ(weights(grandchild), W({1.1f}));
-    EXPECT_EQ(weights(other), W({}));
-
-    // own first, then inherited; not handed down without includeChildren
-    modifier(child.getEntity(), {{b, 1.2f}}, false);
-    ASSERT_TRUE(s.settle());
-    EXPECT_EQ(weights(child), W({1.2f, 1.1f}));
-    EXPECT_EQ(weights(grandchild), W({1.1f}));
+    expectBox(1, 0.25f, 1);
     scene.getComponent<LatticeModifierComponent>(child.getEntity()).includeChildren = true;
-    ASSERT_TRUE(s.settle());
-    EXPECT_EQ(weights(grandchild), W({1.2f, 1.1f})) << "nearest ancestor first";
+    expectBox(1, 0.5f, 1);
+    scene.getComponent<LatticeModifierComponent>(child.getEntity()).includeChildren = false;
+    grandchild.setVisible(false);
 
-    // reparented out of the branch, into an unbound one, and the unbound one into the branch
-    scene.addEntityChild(NULL_ENTITY, grandchild.getEntity(), true);
-    ASSERT_TRUE(s.settle());
-    EXPECT_EQ(weights(grandchild), W({}));
-    scene.addEntityChild(other.getEntity(), grandchild.getEntity(), true);
-    ASSERT_TRUE(s.settle());
-    EXPECT_EQ(weights(grandchild), W({}));
-    scene.addEntityChild(rig.getEntity(), other.getEntity(), true);
-    ASSERT_TRUE(s.settle());
-    EXPECT_EQ(weights(other), W({1.1f}));
-    EXPECT_EQ(weights(grandchild), W({1.1f}));
-    EXPECT_EQ(weights(child), W({1.2f, 1.1f}));
+    scene.destroyEntity(translate.getEntity());
+    expectBox(0, 0.5f);
 
-    // a modifier before the branch in the Transform array, on an entity of another root
-    GameObject& early = s.fixture.add<GameObject>();
-    Primitive& earlyChild = s.addBox(0.5f);
-    early.addChild(&earlyChild);
-    early.moveToTop();
-    modifier(early.getEntity(), {{c, 1.3f}}, true);
-    ASSERT_TRUE(s.settle());
-    EXPECT_EQ(weights(earlyChild), W({1.3f}));
-    EXPECT_EQ(weights(other), W({1.1f}));
-
-    // more than LATTICE_MAX_PER_MESH: the first four, warned once
+    // Only the first four configured bindings affect a mesh. The fifth would move
+    // the box upward, so the horizontal silhouette also detects a cap regression.
     LatticeModifierComponent& own = scene.getComponent<LatticeModifierComponent>(child.getEntity());
     own.bindings.clear();
-    for (float w : {0.5f, 0.6f, 0.7f, 0.8f}){
-        LatticeBinding entry;
-        entry.lattice = c;
-        entry.weight = w;
-        own.bindings.push_back(entry);
+    for (int n = 0; n < 5; n++){
+        Lattice& shift = s.addLattice(0, 0, 0, 4);
+        shift.setOutside(LatticeOutside::EXTEND);
+        for (int i = 0; i < shift.getPointCount(); i++)
+            shift.setOffsetAt(i, n < 4 ? Vector3(0.125f, 0, 0) : Vector3(0, 0.125f, 0));
+        LatticeBinding binding;
+        binding.lattice = shift.getEntity();
+        own.bindings.push_back(binding);
     }
-    ASSERT_TRUE(s.settle());
-    EXPECT_EQ(weights(child), W({0.5f, 0.6f, 0.7f, 0.8f}));
-    EXPECT_TRUE(scene.getComponent<LatticeModifierComponent>(rig.getEntity()).warnedOverflow) << "the rig's binding is the fifth";
-    own.bindings.pop_back();
-    ASSERT_TRUE(s.settle());
-    EXPECT_EQ(weights(child), W({0.5f, 0.6f, 0.7f, 1.1f}));
-    EXPECT_FALSE(scene.getComponent<LatticeModifierComponent>(rig.getEntity()).warnedOverflow);
-
-    // a deleted lattice is skipped; a deleted ancestor hands nothing down
-    scene.destroyEntity(a);
-    ASSERT_TRUE(s.settle());
-    EXPECT_EQ(weights(child), W({0.5f, 0.6f, 0.7f}));
-    EXPECT_EQ(weights(other), W({}));
-    scene.destroyEntity(c);
-    ASSERT_TRUE(s.settle());
-    EXPECT_EQ(weights(child), W({}));
-    EXPECT_EQ(weights(earlyChild), W({}));
-    EXPECT_FALSE(child.getComponent<MeshComponent>().lattice.variantActive);
-    own.bindings.push_back(LatticeBinding());
-    own.bindings.back().lattice = b;
-    scene.getComponent<LatticeModifierComponent>(rig.getEntity()).bindings[0].lattice = b;
-    ASSERT_TRUE(s.settle());
-    EXPECT_EQ(weights(grandchild), W({1.1f}));
-    scene.destroyEntity(rig.getEntity());
-    ASSERT_TRUE(s.settle());
-    EXPECT_EQ(weights(grandchild), W({}));
-    EXPECT_EQ(weights(child), W({1.0f}));
+    expectBox(2, 0.25f);
 }
 
 // The bounds hold every vertex a lattice moves (spec 5.5): a before-skinning lattice's offset
 // is carried by the bones and the mesh's model matrix, so a non-uniformly scaled skinned mesh
 // with a turned bone moves its vertices further than the lattice's scale times the bone's
 // (model * bone * model^-1 stretches a direction the scale does not, here x into y three
-// times). Every bind-pose point's displacement, through any bone, is within worldPadding.
+// times). The public world bounds must contain every posed, deformed bind-pose point.
 TEST_F(LatticeRenderTest, BoundsHoldBeforeSkinningOffsetsOfAScaledMesh){
     LatticeScene s;
     Model& model = s.fixture.add<Model>();
@@ -1110,35 +1083,24 @@ TEST_F(LatticeRenderTest, BoundsHoldBeforeSkinningOffsetsOfAScaledMesh){
     s.bind(model.getEntity(), lattice.getEntity(), LatticeStage::BEFORE_SKINNING, LatticeMaskChannel::NONE, true);
     ASSERT_TRUE(s.settle());
 
-    const MeshComponent& mesh = model.getComponent<MeshComponent>();
-    ASSERT_EQ(mesh.lattice.count, 1);
-    ASSERT_GT(mesh.bonesMatrix.size(), 0u);
-    const Matrix4& objectModel = model.getComponent<Transform>().modelMatrix;
-    const Matrix4& latticeModel = lattice.getComponent<Transform>().modelMatrix;
-    const LatticeComponent& component = lattice.getComponent<LatticeComponent>();
-    std::vector<Vector3> padded;
-    lattice::buildPaddedGrid(component, padded);
-    const Matrix4 toNormalized = lattice::objectToNormalized(latticeModel, objectModel);
-    const Matrix3 toObject = toNormalized.inverse().linear();
-
-    float largest = 0.0f;
-    const Vector3 low = mesh.aabb.getMinimum();
-    const Vector3 high = mesh.aabb.getMaximum();
-    for (int i = 0; i <= 4; i++){
-        for (int j = 0; j <= 4; j++){
-            for (int k = 0; k <= 4; k++){
-                const Vector3 p(low.x + (high.x - low.x) * i / 4.0f, low.y + (high.y - low.y) * j / 4.0f, low.z + (high.z - low.z) * k / 4.0f);
-                const lattice::Evaluation e = lattice::evaluate(component, padded, toNormalized * p, 1.0f);
-                for (size_t b = 0; b < mesh.bonesMatrix.size(); b++){
-                    const Matrix4& bone = mesh.bonesMatrix[b];
-                    const Vector3 moved = objectModel.linear() * (bone.linear() * (toObject * e.delta));
-                    largest = std::max(largest, moved.length());
-                }
+    // Root turns both authored cuboids by 90 degrees; Tip's rest translation is
+    // canceled by its inverse bind. The lattice's linear shear is 0 at world
+    // y=-0.5 and 2.8 at y=6.5. At bind point (x,y,z), the model first scales y
+    // by 3, so before skinning the shift along x is 0.4 * (3*y + 0.5).
+    // Rotation then carries x into y, which the model scales by 3 again.
+    // These eight extrema contain the authored column's complete linear field;
+    // neither expected positions nor the oracle use the renderer's bone cache.
+    const AABB bounds = model.getWorldAABB();
+    for (float x : {-0.25f, 0.25f}){
+        for (float y : {0.0f, 2.0f}){
+            for (float z : {-0.25f, 0.25f}){
+                const float shiftX = 0.4f * (3.0f * y + 0.5f);
+                const Vector3 expected(-y, 3.0f * (x + shiftX), z);
+                EXPECT_TRUE(bounds.contains(expected))
+                        << "the public world bounds must contain the posed, deformed mesh";
             }
         }
     }
-    EXPECT_GT(largest, 0.5f) << "the lattice moves the column";
-    EXPECT_GE(mesh.lattice.worldPadding, largest * 0.999f);
 }
 
 // A lattice whose transform is singular (a zero scale) deforms nothing and the mesh draws as

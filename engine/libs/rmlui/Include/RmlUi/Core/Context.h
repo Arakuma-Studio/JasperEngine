@@ -58,6 +58,9 @@ public:
 	bool Update();
 	/// Renders all visible elements in the context's documents.
 	bool Render();
+	/// Fork (S16-F1): every element's background, border, outline and box shadow is generated again (the render interface
+	/// started or stopped drawing primitives).
+	void DirtyBackgrounds();
 
 	/// Creates a new, empty document and places it into this context.
 	/// @param[in] instancer_name The name of the instancer used to create the document.

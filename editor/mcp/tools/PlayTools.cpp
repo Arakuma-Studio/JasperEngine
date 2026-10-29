@@ -2097,7 +2097,7 @@ void getRuntimeEntityTool(const CallPtr& call) {
                 try {
                     // context reads give enum names and resolvable entity refs; custom values stay
                     // out of this listing (they can be large)
-                    props[name] = property.type == PropertyType::Custom ? McpValues::toJson(project, name, property)
+                    props[name] = property.type == PropertyType::Custom ? McpValues::toJson(project, type, name, property)
                                                                          : McpValues::readProperty(ctx, name, property);
                 } catch (const std::exception&) {
                     props[name] = "<unreadable>";
@@ -3541,9 +3541,9 @@ void registerPlayTools(McpRegistry& registry) {
             {"scene", sceneRef("start: default the start scene (else selected).")},
             {"wait", withDefault(boolean("start only."), true)},
             {"timeout_seconds", withDefault(number("start/stop: then return a job.", 1, 3600), 120)},
-            {"frames", withDefault(integer("step only.", 1, 600), 1)},
-            {"time_scale", withDefault(number("Engine.timeScale.", 0, 100), 1)},
-            {"fixed_fps", withDefault(integer("Frames advance exactly 1/fixed_fps s; 0 = real time.", 0, 1000), 0)},
+            {"frames", withDefault(integer("", 1, 600), 1)},
+            {"time_scale", withDefault(number("", 0, 100), 1)},
+            {"fixed_fps", withDefault(integer("0 = real time.", 0, 1000), 0)},
             {"auto_pause", withDefault(boolean(""), false)},
             {"screenshot", screenshotOption},
             {"max_width", maxWidth},
@@ -3639,6 +3639,8 @@ void registerPlayTools(McpRegistry& registry) {
             {"max_width", maxWidth}
         });
         tool.handler = waitTool;
+        // runs the game, changes nothing (busy policy: McpServer::busyRefusal)
+        tool.activity = ToolActivity::Control;
         registry.addTool(std::move(tool));
     }
 
@@ -3674,7 +3676,7 @@ void registerPlayTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"scene", runtimeScene},
             {"name_contains", string("Case-insensitive.")},
-            {"component", componentName("Has this component.")},
+            {"component", componentName("")},
             {"created_only", withDefault(boolean("Runtime-spawned only."), false)},
             {"with_components", withDefault(boolean(""), false)},
             {"limit", withDefault(integer("", 1, 5000), 200)}
@@ -3754,6 +3756,8 @@ void registerPlayTools(McpRegistry& registry) {
             {"max_width", maxWidth}
         }, {"events"});
         tool.handler = sendInputTool;
+        // input into the running game, changes nothing (busy policy: McpServer::busyRefusal)
+        tool.activity = ToolActivity::Control;
         registry.addTool(std::move(tool));
     }
 }

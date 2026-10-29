@@ -23,10 +23,54 @@ namespace jasperengine::editor{
         FILE_DIALOG_PREFAB = 1 << 6,
         FILE_DIALOG_MATERIAL = 1 << 7,
         FILE_DIALOG_HTML = 1 << 8,
-        FILE_DIALOG_COLOR_LUT = 1 << 9
+        FILE_DIALOG_COLOR_LUT = 1 << 9,
+        FILE_DIALOG_POSE_ANIMATION = 1 << 10,
+        FILE_DIALOG_ANIMATION_CLIP = 1 << 11
     };
 
     class FileDialogs{
+
+    private:
+        static std::vector<nfdfilteritem_t> filterItemsFor(int filterFlags) {
+            std::vector<nfdfilteritem_t> filterItems;
+            if (filterFlags & FILE_DIALOG_IMAGE) {
+                filterItems.push_back({ "Image files", "png,jpg,jpeg,bmp,tga,gif,hdr,psd,pic,pnm,svg" });
+            }
+            if (filterFlags & FILE_DIALOG_FONT) {
+                filterItems.push_back({ "Font files", "ttf,otf" });
+            }
+            if (filterFlags & FILE_DIALOG_MODEL) {
+                filterItems.push_back({ "Model files", "gltf,glb,obj,fbx" });
+            }
+            if (filterFlags & FILE_DIALOG_AUDIO) {
+                filterItems.push_back({ "Sound files", "wav,ogg,mp3,flac" });
+            }
+            if (filterFlags & FILE_DIALOG_SHADER) {
+                filterItems.push_back({ "Shader files", "vert,frag" });
+            }
+            if (filterFlags & FILE_DIALOG_SCRIPT) {
+                filterItems.push_back({ "Script files", "lua,cpp,cc,cxx,h,hh,hpp,hxx" });
+            }
+            if (filterFlags & FILE_DIALOG_PREFAB) {
+                filterItems.push_back({ "Prefabs", "prefab" });
+            }
+            if (filterFlags & FILE_DIALOG_MATERIAL) {
+                filterItems.push_back({ "Material files", "material" });
+            }
+            if (filterFlags & FILE_DIALOG_HTML) {
+                filterItems.push_back({ "HTML documents", "html,htm,rml" });
+            }
+            if (filterFlags & FILE_DIALOG_COLOR_LUT) {
+                filterItems.push_back({ "Color LUTs", "cube" });
+            }
+            if (filterFlags & FILE_DIALOG_POSE_ANIMATION) {
+                filterItems.push_back({ "Pose animations", "poseanim" });
+            }
+            if (filterFlags & FILE_DIALOG_ANIMATION_CLIP) {
+                filterItems.push_back({ "Animation clips", "anim" });
+            }
+            return filterItems;
+        }
 
     public:
         inline static std::string openFileDialog(std::string defaultPath = "", int filterFlags = FILE_DIALOG_ALL, bool selectDirectory = false) {
@@ -54,37 +98,7 @@ namespace jasperengine::editor{
                 nfdu8char_t* path;
                 nfdopendialogu8args_t args = {0};
 
-                std::vector<nfdfilteritem_t> filterItems;
-                if (filterFlags & FILE_DIALOG_IMAGE) {
-                    filterItems.push_back({ "Image files", "png,jpg,jpeg,bmp,tga,gif,hdr,psd,pic,pnm,svg" });
-                }
-                if (filterFlags & FILE_DIALOG_FONT) {
-                    filterItems.push_back({ "Font files", "ttf,otf" });
-                }
-                if (filterFlags & FILE_DIALOG_MODEL) {
-                    filterItems.push_back({ "Model files", "gltf,glb,obj,fbx" });
-                }
-                if (filterFlags & FILE_DIALOG_AUDIO) {
-                    filterItems.push_back({ "Sound files", "wav,ogg,mp3,flac" });
-                }
-                if (filterFlags & FILE_DIALOG_SHADER) {
-                    filterItems.push_back({ "Shader files", "vert,frag" });
-                }
-                if (filterFlags & FILE_DIALOG_SCRIPT) {
-                    filterItems.push_back({ "Script files", "lua,cpp,cc,cxx,h,hh,hpp,hxx" });
-                }
-                if (filterFlags & FILE_DIALOG_PREFAB) {
-                    filterItems.push_back({ "Prefabs", "prefab" });
-                }
-                if (filterFlags & FILE_DIALOG_MATERIAL) {
-                    filterItems.push_back({ "Material files", "material" });
-                }
-                if (filterFlags & FILE_DIALOG_HTML) {
-                    filterItems.push_back({ "HTML documents", "html,htm,rml" });
-                }
-                if (filterFlags & FILE_DIALOG_COLOR_LUT) {
-                    filterItems.push_back({ "Color LUTs", "cube" });
-                }
+                std::vector<nfdfilteritem_t> filterItems = filterItemsFor(filterFlags);
 
                 if (!filterItems.empty()) {
                     args.filterCount = (nfdfiltersize_t)filterItems.size();
@@ -110,6 +124,38 @@ namespace jasperengine::editor{
                 }
             }
 
+            return retPath;
+        }
+
+        // A save dialog (Create New Clip...): the chosen path, empty when cancelled. The
+        // dialog asks before replacing an existing file on most platforms; callers that must
+        // not replace one check it themselves.
+        inline static std::string saveFileDialog(std::string defaultPath = "", std::string defaultName = "", int filterFlags = FILE_DIALOG_ALL) {
+            std::string retPath;
+            nfdu8char_t* path;
+            nfdsavedialogu8args_t args = {0};
+
+            std::vector<nfdfilteritem_t> filterItems = filterItemsFor(filterFlags);
+            if (!filterItems.empty()) {
+                args.filterCount = (nfdfiltersize_t)filterItems.size();
+                args.filterList = filterItems.data();
+            }
+            args.defaultPath = defaultPath.empty() ? nullptr : defaultPath.c_str();
+            args.defaultName = defaultName.empty() ? nullptr : defaultName.c_str();
+            args.parentWindow = *static_cast<nfdwindowhandle_t*>(Backend::getNFDWindowHandle());
+
+            const nfdresult_t res = NFD_SaveDialogU8_With(&path, &args);
+            switch (res) {
+                case NFD_OKAY:
+                    retPath = path;
+                    NFD_FreePathU8(path);
+                    break;
+                case NFD_ERROR:
+                    printf("Error: %s\n", NFD_GetError());
+                    break;
+                default:
+                    break;
+            }
             return retPath;
         }
 

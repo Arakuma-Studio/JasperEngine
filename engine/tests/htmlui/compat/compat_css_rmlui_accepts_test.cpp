@@ -7,7 +7,6 @@
 // which only appears at runtime).
 
 #include "CssCaseRunner.h"
-#include "CompatRuntimeStandIns.h"
 
 #include "htmlui/compat/RmlLogTranslator.h"
 
@@ -26,26 +25,24 @@ namespace {
 
     void expectAccepted(const ForkFeatures& fork){
         ASSERT_TRUE(HtmlUI::acquire());
-        registerCompatRuntimeStandIns();
         const std::string root = cssCaseRoot();
         const std::vector<std::string> cases = listCssCases(root);
         ASSERT_FALSE(cases.empty());
         for (const std::string& name : cases){
-            const CssCaseResult result = runCssCase(root, name, fork);
             size_t index = 0;
-            for (const auto& sheet : result.sheets){
-                if (sheet.first.empty())
+            for (const std::string& sheet : runCssCase(root, name, fork)){
+                if (sheet.empty())
                     continue;
                 RmlLogTranslator::Capture capture;
                 {
-                    Rml::StreamMemory stream(reinterpret_cast<const Rml::byte*>(sheet.first.data()), sheet.first.size());
+                    Rml::StreamMemory stream(reinterpret_cast<const Rml::byte*>(sheet.data()), sheet.size());
                     stream.SetSourceURL("@htmlui/doc/0000000000000000/compat/css/" + name + "-" + std::to_string(index) + ".rcss");
                     Rml::Factory::InstanceStyleSheetStream(&stream);
                 }
                 for (const RmlLogTranslator::Capture::Message& message : capture.messages()){
                     if (message.severity == Severity::Info || RmlLogTranslator::isUnsetSentinel(message.text))
                         continue;
-                    ADD_FAILURE() << name << ": RmlUi: " << message.text << "\n" << sheet.first;
+                    ADD_FAILURE() << name << ": RmlUi: " << message.text << "\n" << sheet;
                 }
                 index++;
             }

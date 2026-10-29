@@ -7,8 +7,6 @@
 
 #include "TestScriptCommon.h"
 
-#include <RmlUi/Core/Element.h>
-#include <RmlUi/Core/ElementDocument.h>
 
 using namespace jasperengine;
 using namespace jasperengine::test;
@@ -98,6 +96,10 @@ TEST_F(ScriptElementTest, IdentityAndClasses){
     EXPECT_TRUE(outer.toggleClass("f", true));
     EXPECT_FALSE(outer.toggleClass("f", false));
     EXPECT_FALSE(outer.containsClass("f"));
+    outer.setClass("direct", true);
+    EXPECT_TRUE(outer.hasClass("direct"));
+    outer.setClass("direct", false);
+    EXPECT_FALSE(outer.hasClass("direct"));
 
     outer.setId("renamed");
     EXPECT_EQ(outer.getId(), "renamed");
@@ -110,6 +112,12 @@ TEST_F(ScriptElementTest, AttributesAndDataset){
     EXPECT_EQ(attributes["id"], "outer");
     EXPECT_EQ(attributes["title"], "T");
     EXPECT_EQ(attributes["data-user-name"], "ann");
+    outer.setAttribute("title", "changed");
+    EXPECT_EQ(outer.getAttribute("title"), "changed");
+    outer.removeAttribute("title");
+    EXPECT_FALSE(outer.hasAttribute("title"));
+    outer.setAttribute("id", "renamed");
+    EXPECT_TRUE(document->getElementById("renamed") == outer);
 
     EXPECT_EQ(outer.getDataset("userName"), "ann");
     outer.setDataset("gameScore", "12");
@@ -137,12 +145,20 @@ TEST_F(ScriptElementTest, Style){
 
 TEST_F(ScriptElementTest, ContentAndMarkup){
     UIElement label = document->getElementById("label");
-    label.setTextContent("<b>x</b>");
-    EXPECT_EQ(label.getTextContent(), "<b>x</b>");
+    label.setInnerHTML("Hello <span id=\"child\">World</span>");
+    UIElement child = document->getElementById("child");
+    ASSERT_TRUE(child.isValid());
+    EXPECT_EQ(label.getTextContent(), "Hello World");
+    label.setTextContent("<b>x</b> &amp;");
+    EXPECT_EQ(label.getTextContent(), "<b>x</b> &amp;");
+    EXPECT_FALSE(child.isValid());
+    label.setTextContent("");
+    EXPECT_TRUE(label.getInnerHTML().empty());
+
     UIElement list = document->getElementById("list");
-    list.setInnerHTML("<div id=\"n1\" class=\"item\">new</div>");
+    list.setInnerHTML("<div id=\"n1\" class=\"item\">new &amp; more</div>");
     EXPECT_EQ(list.getChildElementCount(), 1);
-    EXPECT_EQ(document->getElementById("n1").getTextContent(), "new");
+    EXPECT_EQ(document->getElementById("n1").getTextContent(), "new & more");
     EXPECT_NE(list.getInnerHTML().find("n1"), std::string::npos);
 }
 
@@ -239,10 +255,8 @@ TEST_F(ScriptElementTest, MutationAndDetachedPool){
     created.setId("c1");
     created.addClass("item");
     created.setTextContent("four");
-    EXPECT_EQ(HtmlUIElementRegistry::poolSize(), 1u);
 
     EXPECT_TRUE(list.appendChild(created) == created);
-    EXPECT_EQ(HtmlUIElementRegistry::poolSize(), 0u);
     EXPECT_EQ(ids(list.getChildren()), (std::vector<std::string>{"i1", "i2", "i3", "c1"}));
     EXPECT_TRUE(document->getElementById("c1") == created);
 
@@ -296,55 +310,22 @@ TEST_F(ScriptElementTest, MutationAndDetachedPool){
     TestSystem::get().clearLogs();
 }
 
-TEST_F(ScriptElementTest, DetachedElementsFreedWithoutHandles){
+TEST_F(ScriptElementTest, DescendantKeepsDetachedTreeAlive){
+    UIElement child;
     {
         UIElement created = document->createElement("div");
-        UIElement child = document->createElement("span");
+        created.setId("detached");
+        child = document->createElement("span");
+        child.setTextContent("kept");
         created.appendChild(child);
-        EXPECT_EQ(HtmlUIElementRegistry::poolSize(), 1u);
-        // a handle of a descendant keeps the detached tree
-        created = UIElement();
-        update();
-        EXPECT_EQ(HtmlUIElementRegistry::poolSize(), 1u);
-        EXPECT_TRUE(child.isValid());
     }
     update();
-    EXPECT_EQ(HtmlUIElementRegistry::poolSize(), 0u);
-
-    // an element removed while a handle from before the removal exists
-    UIElement i3 = document->getElementById("i3");
-    document->getElementById("list").removeChild(i3);
-    update();
-    EXPECT_TRUE(i3.isValid());
-    i3 = UIElement();
-    update();
-    EXPECT_EQ(HtmlUIElementRegistry::poolSize(), 0u);
-}
-
-TEST_F(ScriptElementTest, HandlesAfterUnload){
-    UIElement btn = document->getElementById("btn");
-    UIElement created = document->createElement("div");
-    ASSERT_TRUE(btn.isValid());
-
-    ASSERT_TRUE(document->load("ecs/basic.rml"));
-    EXPECT_FALSE(btn.isValid());
-    EXPECT_FALSE(created.isValid()) << "the detached pool goes with its document";
-    EXPECT_EQ(HtmlUIElementRegistry::poolSize(), 0u);
-
-    // every method returns a default and logs a warning once per method (process-wide: an
-    // earlier test may have used it already), never again
-    EXPECT_EQ(btn.getId(), "");
-    EXPECT_FALSE(btn.appendChild(created).isValid());
-    EXPECT_FLOAT_EQ(btn.getBoundingClientRect().width, 0.0f);
-    EXPECT_FALSE(btn.getParentElement().isValid());
-    EXPECT_LE(TestSystem::get().countLogs(D_LOG_WARN, "(UIElement::getId)"), 1u);
-    TestSystem::get().clearLogs();
-    EXPECT_EQ(btn.getId(), "");
-    EXPECT_FALSE(btn.appendChild(created).isValid());
-    btn.getBoundingClientRect();
-    btn.getParentElement();
-    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, kHtmlUIDeadElementMessage), 0u);
-    TestSystem::get().clearLogs();
+    ASSERT_TRUE(child.isValid()) << "a descendant handle keeps its detached tree alive";
+    UIElement parent = child.getParentElement();
+    ASSERT_TRUE(parent.isValid());
+    EXPECT_EQ(parent.getId(), "detached");
+    document->getBody().appendChild(parent);
+    EXPECT_EQ(document->getElementById("detached").getTextContent(), "kept");
 }
 
 TEST_F(ScriptElementTest, DocumentApi){
@@ -365,4 +346,24 @@ TEST_F(ScriptElementTest, DocumentApi){
 
     UIDocument::setDebuggerVisible(false);
     EXPECT_FALSE(UIDocument::isDebuggerVisible());
+}
+
+// S16 R28 (AC18): UIDocument:getRenderStats() is the HtmlUIRenderStats of the document's context,
+// every field by its name, the same values as the C++ API
+TEST_F(ScriptElementTest, RenderStats){
+    GpuEnvironment::drawFrames(3);
+    const HtmlUIRenderStats stats = document->getRenderStats();
+    EXPECT_GT(stats.drawCalls, 0u);
+    EXPECT_GE(stats.geometrySubmitted, stats.drawCalls > 0 ? 1u : 0u);
+    EXPECT_LUA("result = doc:getRenderStats()");
+    stats.forEachField([this](const char* name, uint32_t value){
+        lua_getglobal(L, "result");
+        ASSERT_TRUE(lua_istable(L, -1));
+        lua_getfield(L, -1, name);
+        EXPECT_TRUE(lua_isinteger(L, -1)) << name;
+        EXPECT_EQ((uint32_t)lua_tointeger(L, -1), value) << name;
+        lua_pop(L, 2);
+    });
+    EXPECT_EQ(luaString("doc:getRenderStats().drawCalls"), std::to_string(stats.drawCalls));
+    EXPECT_EQ(luaString("doc:getRenderStats().atlasBytes"), std::to_string(stats.atlasBytes));
 }

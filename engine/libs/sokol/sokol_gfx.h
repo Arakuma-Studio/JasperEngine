@@ -10885,6 +10885,16 @@ _SOKOL_PRIVATE void _sg_gl_texstorage(const _sg_image_t* img) {
                 glTexStorage3D(tgt, num_mips, ifmt, w, h, depth);
             #endif
         }
+        // JasperEngine fix: the levels the texture has are stated as its max level too. sokol's
+        // samplers always use a mipmapped min filter, and GL then needs every level from base to
+        // max level; immutable storage clamps that range to its levels (GLES 3.0 3.8.14), but a GL
+        // that ignores TEXTURE_IMMUTABLE_LEVELS there (the Android emulator's GLES translator on
+        // legacy SwiftShader, -gpu swiftshader_indirect) calls a one-level texture incomplete and
+        // samples zeros: no text, no HTML UI, no post-processing. A multisample texture has no
+        // levels to state.
+        if (!msaa) {
+            glTexParameteri(tgt, GL_TEXTURE_MAX_LEVEL, num_mips - 1);
+        }
     #else
         glTexParameteri(tgt, GL_TEXTURE_MAX_LEVEL, num_mips - 1);
     #endif

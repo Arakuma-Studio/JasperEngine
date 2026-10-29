@@ -125,6 +125,8 @@ TEST(RmlRendererTest, GeometryLifetime){
 
 TEST(RmlRendererTest, GeometryLifetimeThroughContext){
     JASPER_REQUIRE_GPU();
+    // (the boxes as meshes: SDF primitives make no geometry)
+    ClassicReplay classic;
     RenderTestContext test;
     ASSERT_TRUE(test.isValid());
 
@@ -347,11 +349,13 @@ TEST(RmlRendererTest, WaitsForShaders){
 
 TEST(RmlRendererTest, GeometryStorage){
     JASPER_REQUIRE_GPU();
+    S16On s16;
     RenderTestContext test;
     ASSERT_TRUE(test.isValid());
 
-    // 5000 quads (400 KB of vertices, 120 KB of indices): drawn from the frame's transient
-    // buffers in their first frame, from shared pages afterwards
+    // 5000 quads (400 KB of vertices, 120 KB of indices). Batched (S16, the default): instances
+    // gathered into a few draws, from the run cache afterwards. Unbatched: drawn from the frame's
+    // transient buffers in their first frame, from shared pages afterwards
     std::vector<std::unique_ptr<Quad>> quads;
     for (int i = 0; i < 5000; i++){
         const int x = (i % 125) * 5;
@@ -387,6 +391,24 @@ TEST(RmlRendererTest, GeometryStorage){
         drawn = drawAll();
     }
     ASSERT_TRUE(drawn);
+    EXPECT_EQ(test.renderer.getStats().geometrySubmitted, 5000u);
+    EXPECT_LE(test.renderer.getLastFrameDrawCount(), 3u);
+    probeLayer();
+    {
+        // the next frames come from the run cache: nothing created, nothing gathered
+        const uint64_t created = test.renderer.getGpuCreateCount();
+        ASSERT_TRUE(drawAll());
+        EXPECT_EQ(test.renderer.getGpuCreateCount(), created);
+        EXPECT_EQ(test.renderer.getStats().verticesGathered, 0u);
+        EXPECT_EQ(test.renderer.getStats().geometrySubmitted, 5000u);
+        EXPECT_LE(test.renderer.getLastFrameDrawCount(), 3u);
+        probeLayer();
+    }
+
+    // the unbatched replay: every geometry its own draw from persistent storage
+    const bool batching = RmlRenderer::isBatching();
+    RmlRenderer::setBatchingForTesting(false);
+    ASSERT_TRUE(drawAll());
     EXPECT_EQ(test.renderer.getLastFrameDrawCount(), 5000u);
     probeLayer();
 
@@ -404,7 +426,9 @@ TEST(RmlRendererTest, GeometryStorage){
     }
     EXPECT_EQ(test.renderer.getGpuCreateCount(), created);
     EXPECT_EQ(test.renderer.getLastFrameDrawCount(), 5000u);
+    EXPECT_EQ(test.renderer.getStats().geometrySubmitted, 5000u);
     probeLayer();
+    RmlRenderer::setBatchingForTesting(batching);
 
     for (const std::unique_ptr<Quad>& quad : quads){
         test.renderer.ReleaseGeometry(quad->handle);
@@ -415,6 +439,8 @@ TEST(RmlRendererTest, GeometryStorage){
 
 TEST(RmlRendererTest, NoLeaksAfterContextDestroy){
     JASPER_REQUIRE_GPU();
+    // (the geometry pages and transient buffers of the unbatched replay)
+    ClassicReplay classic;
     RenderTestContext test;
     ASSERT_TRUE(test.isValid());
     ASSERT_NE(test.load("render/images.rml"), nullptr);

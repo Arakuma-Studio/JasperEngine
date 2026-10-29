@@ -16,12 +16,39 @@
 
 namespace jasperengine {
 
+    class GlyphAtlas;
+
     // What every Rml::TextureHandle points to (phase 1). Every UI texture holds premultiplied
     // RGBA8 (or R8 coverage): each upload path premultiplies, the shaders never do.
     // RmlRenderer::ReleaseTexture deletes the struct, which destroys what it owns.
     struct JASPERENGINE_API HtmlUITexture {
         enum class Kind : uint8_t { STATIC, DYNAMIC, RENDER_TARGET, EXTERNAL };
+        // how draws read it (S16): premultiplied RGBA; R8 coverage whose .r tints every channel
+        // (glyph atlas pages); an MTSDF glyph page (RGBA8 distances, the HTMLUI_PRIM glyph mode)
+        enum class Sample : uint8_t { RGBA, COVERAGE, MSDF };
         Kind kind = Kind::STATIC;
+        Sample sample = Sample::RGBA;
+        // a block of texels that sample as exactly 1.0 (a glyph page's reserved white block): the
+        // batched replay draws untextured geometry with this texture at that UV
+        bool hasWhiteTexel = false;
+        float whiteU = 0.0f, whiteV = 0.0f;
+        // a saved layer (SaveLayerAsTexture/SaveLayerIntoTexture: box shadows drawn as textures)
+        bool savedLayer = false;
+        // MSDF: the atlas distance range in texels, and the effect drawn from it (S16 R17): 0 the glyph,
+        // 1 dilated by textEffect[1] (an outline), 2 dilated and blurred by a Gaussian of sigma
+        // textEffect[2] (glow, blur, a blurred text-shadow), lengths in document px. A page's effect
+        // variant is an EXTERNAL texture on the page's GPU image
+        float distanceRange = 0.0f;
+        float textEffect[3] = {0.0f, 0.0f, 0.0f};
+        // glyph atlas pages and their variants (S16 R13): the renderer writes the frame it last drew
+        // the texture here, which the font engine's page shares (its LRU eviction)
+        std::shared_ptr<uint64_t> drawFrame;
+        // a glyph atlas page (S16, DYNAMIC): its texels, shared with the font engine's page, which
+        // bumps the generation when glyphs are added; the renderer uploads a newer generation
+        // before a frame draws (RmlRenderer::updateAtlasTextures), the texture stays the same
+        std::shared_ptr<const GlyphAtlas> atlas;
+        std::shared_ptr<const uint64_t> atlasGeneration;
+        uint64_t uploadedGeneration = UINT64_MAX;
         TextureRender* render = nullptr;            // sampled texture
         std::unique_ptr<TextureRender> ownedRender; // STATIC/DYNAMIC created by the UI code
         std::unique_ptr<Framebuffer> ownedTarget;   // RENDER_TARGET (SaveLayerAsTexture)

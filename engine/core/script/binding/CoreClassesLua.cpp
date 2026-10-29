@@ -955,6 +955,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("BLOOM", ShaderType::BLOOM)
         .addVariable("HTMLUI", ShaderType::HTMLUI)
         .addVariable("HTMLUI_GRADIENT", ShaderType::HTMLUI_GRADIENT)
+        .addVariable("HTMLUI_PRIM", ShaderType::HTMLUI_PRIM)
         .addVariable("HTMLUI_POST", ShaderType::HTMLUI_POST)
         .addVariable("UI_EFFECT", ShaderType::UI_EFFECT)
         .addVariable("PROBE_FILTER", ShaderType::PROBE_FILTER)
@@ -1472,6 +1473,20 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(wchar_t)>::call)
         .addFunction("call", &FunctionSubscribe<void(wchar_t)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(wchar_t)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(wchar_t)>::add)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<FunctionSubscribe<void(const std::string&)>>("FunctionSubscribe_V_S")
+        .addFunction("__call", &FunctionSubscribe<void(const std::string&)>::call)
+        .addFunction("call", &FunctionSubscribe<void(const std::string&)>::call)
+        .addFunction("add", (bool (FunctionSubscribe<void(const std::string&)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(const std::string&)>::add)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<FunctionSubscribe<void(const AnimationEvent&)>>("FunctionSubscribe_V_AE")
+        .addFunction("__call", &FunctionSubscribe<void(const AnimationEvent&)>::call)
+        .addFunction("call", &FunctionSubscribe<void(const AnimationEvent&)>::call)
+        .addFunction("add", (bool (FunctionSubscribe<void(const AnimationEvent&)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(const AnimationEvent&)>::add)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

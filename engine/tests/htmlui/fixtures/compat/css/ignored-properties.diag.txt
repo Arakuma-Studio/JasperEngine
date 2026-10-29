@@ -122,7 +122,6 @@ compat/css/ignored-properties.css:123:3: info: 'table-layout' has no effect in t
 compat/css/ignored-properties.css:124:3: info: 'text-align-last' has no effect in the engine; dropped [HTMLUI-CSS-0003]
 compat/css/ignored-properties.css:125:3: info: 'text-autospace' has no effect in the engine; dropped [HTMLUI-CSS-0003]
 compat/css/ignored-properties.css:126:3: info: 'text-justify' has no effect in the engine; dropped [HTMLUI-CSS-0003]
-compat/css/ignored-properties.css:127:3: info: 'text-rendering' has no effect in the engine; dropped [HTMLUI-CSS-0003]
 compat/css/ignored-properties.css:128:3: info: 'text-size-adjust' has no effect in the engine; dropped [HTMLUI-CSS-0003]
 compat/css/ignored-properties.css:129:3: info: 'text-spacing' has no effect in the engine; dropped [HTMLUI-CSS-0003]
 compat/css/ignored-properties.css:130:3: info: 'text-spacing-trim' has no effect in the engine; dropped [HTMLUI-CSS-0003]

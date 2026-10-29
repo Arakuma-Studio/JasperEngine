@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "AssetRefEditor.h"
+#include "animation/ModelSubClips.h"
 #include "particles/ParticleEffectCodec.h"
 #include "particles/ParticleModules.h"
 
@@ -311,6 +312,32 @@ namespace {
                     return false;
                 }
                 parent[key] = particles::ParticleEffectCodec::write(document);
+                break;
+            }
+            case AssetRefShape::ClipEntry: {
+                // an .anim entry takes the path and GUID; a sub-clip entry ("<model>#<clip>") its
+                // new model, keeping the clip part (and no GUID)
+                YAML::Node list = parent[key];
+                if (!list || !list.IsSequence() || index < 0 || static_cast<size_t>(index) >= list.size()) {
+                    error = "the file has no " + target.locator;
+                    return false;
+                }
+                YAML::Node entry = list[static_cast<size_t>(index)];
+                if (!entry.IsMap()) {
+                    YAML::Node map(YAML::NodeType::Map);
+                    map["clip"] = entry.IsScalar() ? entry.as<std::string>() : std::string();
+                    list[static_cast<size_t>(index)] = map;
+                    entry.reset(list[static_cast<size_t>(index)]);
+                }
+                const std::string clip = entry["clip"] && entry["clip"].IsScalar() ? entry["clip"].as<std::string>() : std::string();
+                anim::SubClipReference sub;
+                if (anim::parseSubClipReference(clip, sub)) {
+                    entry["clip"] = clear ? std::string() : anim::formatSubClipReference(hint, sub.clip);
+                    entry.remove("guid");
+                } else {
+                    entry["clip"] = clear ? std::string() : hint;
+                    if (!clear && !newRef.guid.isNull()) entry["guid"] = newRef.guid.str(); else entry.remove("guid");
+                }
                 break;
             }
             case AssetRefShape::ScriptProperty: {

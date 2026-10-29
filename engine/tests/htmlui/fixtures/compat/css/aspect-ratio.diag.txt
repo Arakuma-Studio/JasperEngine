@@ -1,4 +1,0 @@
-compat/css/aspect-ratio.css:2:9: warning: 'aspect-ratio' is not supported; dropped (fix: set an explicit height, or height: 0; padding-bottom: <ratio %>) [HTMLUI-CSS-0002]
-compat/css/aspect-ratio.css:3:13: info: 'aspect-ratio' is not supported; dropped (fix: set an explicit height, or height: 0; padding-bottom: <ratio %>) [HTMLUI-CSS-0002]
-compat/css/aspect-ratio.css:4:16: info: 'aspect-ratio' is not supported; dropped (fix: set an explicit height, or height: 0; padding-bottom: <ratio %>) [HTMLUI-CSS-0002]
-compat/css/aspect-ratio.css:5:7: info: 'aspect-ratio' is not supported; dropped (fix: set an explicit height, or height: 0; padding-bottom: <ratio %>) [HTMLUI-CSS-0002]

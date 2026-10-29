@@ -5,6 +5,7 @@
 
 #include "AppSettings.h"
 #include "Project.h"
+#include "animation/ClipRecordHooks.h"
 #include "command/CommandHandle.h"
 #include "command/type/AddComponentCmd.h"
 #include "command/type/CreateEntityCmd.h"
@@ -13,6 +14,7 @@
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/ObjectTransformCmd.h"
 #include "lattice/LatticeSolver.h"
+#include "pose/PoseEditSession.h"
 #include "render/SceneRender.h"
 #include "subsystem/LatticeSystem.h"
 #include "component/LatticeFollowerComponent.h"
@@ -125,17 +127,51 @@ namespace{
         return CommandHandle::get(sceneId)->addCommand(command);
     }
 
+    // Record (animation clips 9.R5): a claimed lattice's edit asked to record by its source (the
+    // Scene view's point drag: a continuous edit, one gesture until endContinuousEdit; the
+    // Inspector's Offset row: one gesture per edit) writes the live offsets and keys the changed
+    // points at the playhead, with no command. Edits not asked to record (MCP edit_lattice, menus,
+    // presets) always stay scene steps, whatever gesture another source has open (T3c review I4).
+    bool recordOffsets(uint32_t sceneId, Entity entity, const LatticeComponent& lattice,
+                       const std::vector<Vector3>& offsets, bool continuous, bool record){
+        if (!record || !ClipRecordHooks::claims(sceneId, entity, ClipChannel::Lattice)) return false;
+        ClipRecordValue value;
+        value.channel = ClipChannel::Lattice;
+        for (size_t i = 0; i < offsets.size(); i++){
+            const Vector3 before = i < lattice.offsets.size() ? lattice.offsets[i] : Vector3(0, 0, 0);
+            if (offsets[i] == before) continue;
+            value.points.push_back((int)i);
+            value.value.insert(value.value.end(), {offsets[i].x, offsets[i].y, offsets[i].z});
+        }
+        if (value.points.empty()) return true;
+        const RecordSource source = continuous ? RecordSource::LatticeDrag : RecordSource::Inspector;
+        bool opened = false;
+        const std::string mergeKey = ClipRecordHooks::gestureMergeKey(source, &opened);
+        ClipRecordHooks::record(sceneId, entity, value, mergeKey);
+        if (opened && !continuous) ClipRecordHooks::endGesture(source);
+        return true;
+    }
+
+    // `explicitPoints`: the points the edit sets by index (setOffsets), the new rest of a clip
+    // preview even when equal to what it shows (a write of them while a preview shows the
+    // lattice is a step even when the offsets shown do not change)
     bool pushOffsets(Project* project, uint32_t sceneId, Entity entity, const LatticeComponent& lattice,
-                     const std::vector<Vector3>& offsets, bool continuous, std::string* error){
+                     const std::vector<Vector3>& offsets, bool continuous, bool record, std::string* error,
+                     const std::vector<int>& explicitPoints = {}){
         for (const Vector3& offset : offsets){
             if (!isFinite(offset)){
                 return fail(error, "the edit gives a point a non-finite offset");
             }
         }
-        if (offsets == lattice.offsets){
+        if (offsets == lattice.offsets && (explicitPoints.empty() || !ClipRecordHooks::previews(sceneId, entity, ClipChannel::Lattice))){
             return true; // nothing changes: no undo step
         }
-        Command* command = new LatticePointsCmd(project, sceneId, entity, offsets, continuous);
+        if (recordOffsets(sceneId, entity, lattice, offsets, continuous, record)){
+            return true;
+        }
+        auto* points = new LatticePointsCmd(project, sceneId, entity, offsets, continuous);
+        points->setExplicitPoints(explicitPoints);
+        Command* command = points;
         bool added = continuous ? CommandHandle::get(sceneId)->addCommand(command) : push(sceneId, command);
         return added ? true : fail(error, "the lattice could not be edited");
     }
@@ -577,7 +613,7 @@ std::vector<Vector3> LatticeEditorOps::transformedOffsets(int rx, int ry, int rz
 // --- edits ---
 
 bool LatticeEditorOps::setOffsets(Project* project, uint32_t sceneId, Entity entity,
-                                  const std::vector<int>& points, const std::vector<Vector3>& offsets, std::string* error){
+                                  const std::vector<int>& points, const std::vector<Vector3>& offsets, std::string* error, bool record){
     SceneProject* sceneProject = sceneOf(project, sceneId, error);
     if (!sceneProject) return false;
     LatticeComponent* lattice = latticeOf(sceneProject->scene, entity, error);
@@ -596,7 +632,7 @@ bool LatticeEditorOps::setOffsets(Project* project, uint32_t sceneId, Entity ent
     for (size_t n = 0; n < points.size(); n++){
         result[(size_t)points[n]] = offsets[n];
     }
-    return pushOffsets(project, sceneId, entity, *lattice, result, false, error);
+    return pushOffsets(project, sceneId, entity, *lattice, result, false, record, error, points);
 }
 
 bool LatticeEditorOps::setOffsetsContinuous(Project* project, uint32_t sceneId, Entity entity,
@@ -616,11 +652,13 @@ bool LatticeEditorOps::setOffsetsContinuous(Project* project, uint32_t sceneId, 
     for (size_t n = 0; n < points.size(); n++){
         result[(size_t)points[n]] = offsets[n];
     }
-    return pushOffsets(project, sceneId, entity, *lattice, result, true, error);
+    return pushOffsets(project, sceneId, entity, *lattice, result, true, true, error);
 }
 
 void LatticeEditorOps::endContinuousEdit(uint32_t sceneId){
     CommandHandle::get(sceneId)->mark();
+    // a recorded drag: one key edit per drag
+    ClipRecordHooks::endGesture(RecordSource::LatticeDrag);
 }
 
 bool LatticeEditorOps::transformPoints(Project* project, uint32_t sceneId, Entity entity,
@@ -641,7 +679,7 @@ bool LatticeEditorOps::transformPoints(Project* project, uint32_t sceneId, Entit
 
     std::vector<Vector3> result = transformedOffsets(lattice->resolutionX, lattice->resolutionY, lattice->resolutionZ,
                                                      lattice->offsets, points, localTransform, pivot, falloff);
-    return pushOffsets(project, sceneId, entity, *lattice, result, false, error);
+    return pushOffsets(project, sceneId, entity, *lattice, result, false, false, error);
 }
 
 bool LatticeEditorOps::resetPoints(Project* project, uint32_t sceneId, Entity entity, const std::vector<int>& points, std::string* error){
@@ -660,7 +698,7 @@ bool LatticeEditorOps::resetPoints(Project* project, uint32_t sceneId, Entity en
             result[(size_t)index] = Vector3(0, 0, 0);
         }
     }
-    return pushOffsets(project, sceneId, entity, *lattice, result, false, error);
+    return pushOffsets(project, sceneId, entity, *lattice, result, false, false, error);
 }
 
 bool LatticeEditorOps::applyPreset(Project* project, uint32_t sceneId, Entity entity,
@@ -694,7 +732,7 @@ bool LatticeEditorOps::applyPreset(Project* project, uint32_t sceneId, Entity en
     }
     std::vector<Vector3> result = lattice->offsets;
     lattice::applyPreset(lattice->resolutionX, lattice->resolutionY, lattice->resolutionZ, result, proportional, points);
-    return pushOffsets(project, sceneId, entity, *lattice, result, false, error);
+    return pushOffsets(project, sceneId, entity, *lattice, result, false, false, error);
 }
 
 bool LatticeEditorOps::mirror(Project* project, uint32_t sceneId, Entity entity, lattice::LatticeAxis axis, bool fromPositive, std::string* error){
@@ -709,7 +747,7 @@ bool LatticeEditorOps::mirror(Project* project, uint32_t sceneId, Entity entity,
 
     std::vector<Vector3> result = lattice->offsets;
     lattice::mirror(lattice->resolutionX, lattice->resolutionY, lattice->resolutionZ, result, axis, fromPositive);
-    return pushOffsets(project, sceneId, entity, *lattice, result, false, error);
+    return pushOffsets(project, sceneId, entity, *lattice, result, false, false, error);
 }
 
 bool LatticeEditorOps::setResolution(Project* project, uint32_t sceneId, Entity entity, int rx, int ry, int rz, std::string* error){
@@ -726,7 +764,6 @@ bool LatticeEditorOps::setResolution(Project* project, uint32_t sceneId, Entity 
     if (!lattice){
         return fail(error, entityLabel(sceneProject->scene, entity) + " is not a lattice (it has no Lattice component)");
     }
-
     if (!validResolution(rx) || !validResolution(ry) || !validResolution(rz)){
         return fail(error, "resolution must be " + std::to_string(LATTICE_MIN_RESOLUTION) + ".." + std::to_string(LATTICE_MAX_RESOLUTION) +
                     " points per axis, not " + std::to_string(rx) + "x" + std::to_string(ry) + "x" + std::to_string(rz));
@@ -738,6 +775,15 @@ bool LatticeEditorOps::setResolution(Project* project, uint32_t sceneId, Entity 
                         (int)lattice->offsets.size() != oldX * oldY * oldZ;
     if (!broken && rx == lattice->resolutionX && ry == lattice->resolutionY && rz == lattice->resolutionZ){
         return true;
+    }
+
+    // the rest offsets are resampled, not a preview's (a layout change takes no shown-value
+    // merge in LatticePointsCmd): the previews of the lattice restore first (clips 9.R7), after
+    // the checks (a refused or unchanged resolution leaves a running preview and Record alone)
+    PoseEditSession::suspendActiveFor(sceneId, {entity});
+    lattice = sceneProject->scene->findComponent<LatticeComponent>(entity);
+    if (!lattice){
+        return fail(error, entityLabel(sceneProject->scene, entity) + " is not a lattice (it has no Lattice component)");
     }
 
     // the runtime's resampling (Lattice:setResolution in Lua gives the same offsets and poses);
@@ -1059,7 +1105,7 @@ bool LatticeEditorOps::applyPose(Project* project, uint32_t sceneId, Entity enti
     for (Vector3& offset : result){
         offset = offset * weight;
     }
-    return pushOffsets(project, sceneId, entity, *lattice, result, false, error);
+    return pushOffsets(project, sceneId, entity, *lattice, result, false, false, error);
 }
 
 bool LatticeEditorOps::renamePose(Project* project, uint32_t sceneId, Entity entity, const std::string& name, const std::string& newName, std::string* error){

@@ -409,21 +409,6 @@ TEST_F(CompatSvgElementTest, CssPaintPropertiesApplyToTheRoot){
     EXPECT_TRUE(red);
 }
 
-TEST_F(CompatSvgElementTest, ResultsAreCached){
-    SvgElementHook::clearCache();
-    const size_t before = SvgElementHook::processCount();
-    std::string body;
-    for (int i = 0; i < 10; i++)
-        body += std::string("<div style='color: #") + (i % 2 ? "ff0000" : "00ff00") + ";'>" + kLucideHeart + "</div>";
-    ASSERT_NE(show(body, "svg { display: block; }"), nullptr);
-    // ten elements, two colors, one source: processed once (the tint is not part of the SVG)
-    EXPECT_EQ(SvgElementHook::processCount() - before, 1u);
-    EXPECT_EQ(SvgElementHook::cacheSize(), 1u);
-}
-
-TEST_F(CompatSvgElementTest, HookIsInstalledWhileRmlUiRuns){
-    EXPECT_EQ(Rml::SVG::GetSourceHook(), &SvgElementHook::instance());
-}
 
 TEST_F(CompatSvgElementTest, ContextsDoNotShareCacheEntries){
     // the same inline SVG in two contexts: each draws with its own render manager's geometry

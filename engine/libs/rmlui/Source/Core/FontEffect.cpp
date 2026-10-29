@@ -21,6 +21,11 @@ void FontEffect::GenerateGlyphTexture(byte* /*destination_data*/, Vector2i /*des
 	const FontGlyph& /*glyph*/) const
 {}
 
+bool FontEffect::GetDistanceEffect(DistanceEffect& /*effect*/) const
+{
+	return false;
+}
+
 void FontEffect::SetColour(const Colourb _colour)
 {
 	colour = _colour;

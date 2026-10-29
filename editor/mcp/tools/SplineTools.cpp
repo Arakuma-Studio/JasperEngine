@@ -19,6 +19,8 @@
 #include "Project.h"
 #include "Stream.h"
 #include "StreamSchema.h"
+#include "reflect/Enums.h"
+#include "reflect/Reflect.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
 #include "command/type/AddComponentCmd.h"
@@ -38,6 +40,15 @@
 #include <vector>
 
 namespace jasperengine::editor::mcp {
+
+namespace {
+
+    // a component's YAML as its reflection table writes it (defaults left out)
+    YAML::Node componentYaml(ComponentType type, const void* component) {
+        return reflect::encode(*reflect::find(type), component, reflect::EncodeContext{});
+    }
+
+}
 
 namespace {
 
@@ -487,12 +498,12 @@ void buildSplineTool(const CallPtr& call) {
         const SplinePresetSetup setup = SplinePresets::make(project, preset, sp->sceneType == SceneType::SCENE_2D);
         // the spline's own knots stay; its terrain settings, up axis and an empty spline's shape are the preset's
         const SplineComponent& current = scene->getComponent<SplineComponent>(entity);
-        YAML::Node splineNode = Stream::encodeSplineComponent(setup.spline);
+        YAML::Node splineNode = componentYaml(ComponentType::SplineComponent, &setup.spline);
         if (current.spline.knotCount() > 0) {
-            const YAML::Node own = Stream::encodeSplineComponent(current);
+            const YAML::Node own = componentYaml(ComponentType::SplineComponent, &current);
             splineNode["knots"] = own["knots"];
             splineNode["closed"] = current.spline.closed();
-            splineNode["type"] = own["type"] ? own["type"] : YAML::Node(StreamSchema::splineType().toString(current.spline.type()));
+            splineNode["type"] = own["type"] ? own["type"] : YAML::Node(reflect::enumToken(reflect::enums::kSplineType, static_cast<int>(current.spline.type())));
         }
         Json splineValues = McpValues::yamlToJson(splineNode);
         if (!setComponentValues(project, sp, entity, ComponentType::SplineComponent, splineValues, step, error)) { failCall(error); return; }
@@ -514,7 +525,7 @@ void buildSplineTool(const CallPtr& call) {
             clip->value = Stream::encodeMeshComponent(mesh, false, true, false);
             step.add(new ComponentValuesCmd(project, sp->id, {entity}, ComponentType::MeshComponent, clip));
             if (!setComponentValues(project, sp, entity, ComponentType::SplineExtrudeComponent,
-                                    McpValues::yamlToJson(Stream::encodeSplineExtrudeComponent(setup.extrude)), step, error)) {
+                                    McpValues::yamlToJson(componentYaml(ComponentType::SplineExtrudeComponent, &setup.extrude)), step, error)) {
                 failCall(error);
                 return;
             }
@@ -522,7 +533,7 @@ void buildSplineTool(const CallPtr& call) {
         if (setup.hasInstantiate) {
             if (!ensureComponent(project, sp, entity, ComponentType::SplineInstantiateComponent, step) ||
                 !setComponentValues(project, sp, entity, ComponentType::SplineInstantiateComponent,
-                                    McpValues::yamlToJson(Stream::encodeSplineInstantiateComponent(setup.instantiate)), step, error)) {
+                                    McpValues::yamlToJson(componentYaml(ComponentType::SplineInstantiateComponent, &setup.instantiate)), step, error)) {
                 failCall(error.empty() ? "Could not add the Spline Instantiate." : error);
                 return;
             }
@@ -547,7 +558,7 @@ void buildSplineTool(const CallPtr& call) {
     }
     if (has(args, "terrain")) {
         if (!args["terrain"].is_object()) { failCall("terrain is {field: value} (the Spline's terrain settings)"); return; }
-        Json values = McpValues::yamlToJson(Stream::encodeSplineComponent(scene->getComponent<SplineComponent>(entity)));
+        Json values = McpValues::yamlToJson(componentYaml(ComponentType::SplineComponent, &scene->getComponent<SplineComponent>(entity)));
         Json terrain = values.contains("terrain") && values["terrain"].is_object() ? values["terrain"] : Json::object();
         for (auto it = args["terrain"].begin(); it != args["terrain"].end(); ++it) terrain[it.key()] = it.value();
         if (!setComponentValues(project, sp, entity, ComponentType::SplineComponent, Json{{"terrain", terrain}}, step, error)) {

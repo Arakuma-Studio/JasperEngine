@@ -1,3 +1,0 @@
-compat/css/list-style.css:2:8: info: 'list-style-position: inside' draws the marker outside and shifts the content [HTMLUI-CSS-0005]
-compat/css/list-style.css:7:6: info: list-style-type 'armenian' is drawn as decimal [HTMLUI-CSS-0005]
-compat/css/list-style.css:12:6: info: list-style-type 'custom-style' is drawn as disc [HTMLUI-CSS-0005]

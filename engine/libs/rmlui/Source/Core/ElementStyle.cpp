@@ -1917,6 +1917,9 @@ void ElementStyle::ComputeValue(Style::ComputedValues& values, float dp_ratio, V
 		values.font_kerning((FontKerning)p->Get<int>());
 		dirty_font_face_handle = true;
 		break;
+	case PropertyId::TextRendering:
+		values.text_rendering((TextRendering)p->Get<int>());
+		break;
 	case PropertyId::LetterSpacing:
 		values.has_letter_spacing(p->unit != Unit::KEYWORD);
 		values.letter_spacing(ComputeTextSpacing(p, font_size, document_font_size, dp_ratio, vp_dimensions));

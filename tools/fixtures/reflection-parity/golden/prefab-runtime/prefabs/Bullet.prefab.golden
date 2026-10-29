@@ -1,0 +1,45 @@
+type: Prefab
+version: 5
+guid: b0b0b0b0b0b0b0b0b0b0b0b0b0b00003
+nextEntity: 1010
+root: 1001
+members:
+  - type: Entity
+    entity: 1001
+    name: Bullet
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [0.5, 0.5, 0.5]
+        worldPosition: [0, 0, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [1, 1, 1]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      script:
+        scripts:
+          - type: lua
+            path: Bullet.lua
+            pathGuid: bfb0c2c1206b0029d3842b39ea6bf079
+            className: Bullet
+            enabled: true
+          - type: cpp
+            path: cpp/CppBullet.cpp
+            pathGuid: 996a97e43283166b09ada1e799b2a9c3
+            headerPath: cpp/CppBullet.h
+            headerPathGuid: f3ce9ebe62423096e4f4e423fed2b241
+            className: CppBullet
+            enabled: true
+            properties:
+              - name: damage
+                displayName: Damage
+                type: Int
+                value: 7
+                defaultValue: 1

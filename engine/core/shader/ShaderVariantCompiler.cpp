@@ -600,6 +600,9 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
         args.vert_file = "htmlui.vert";
         args.frag_file = "htmlui_gradient.frag";
         args.defines.push_back({"HAS_TEXTURE", "1"});
+    }else if (shaderType == ShaderType::HTMLUI_PRIM){
+        args.vert_file = "htmlui_prim.vert";
+        args.frag_file = "htmlui_prim.frag";
     }else if (shaderType == ShaderType::HTMLUI_POST){
         args.vert_file = "htmlui_post.vert";
         args.frag_file = "htmlui_post.frag";

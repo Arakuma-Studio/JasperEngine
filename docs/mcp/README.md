@@ -178,9 +178,9 @@ The repository root has a `.mcp.json` that runs the editor from your build outpu
   "args": ["mcp", "--project", "${JASPER_PROJECT:-/path/to/your/test/project}", "--headless"]}}}
 ```
 
-Set `JASPER_PROJECT` to a throwaway project before you start Claude Code in the repository,
-for example a copy of `build/fixture-unity`, or a folder made with `--create`. The agent edits
-and saves that project, so never point it at the fixture itself. The path is resolved from
+Set `JASPER_PROJECT` to a throwaway project created with `--create` before you start
+Claude Code in the repository. The agent edits and saves that project, so use a copy
+when starting from a shared fixture. The path is resolved from
 the directory where you start the client, so start it at the repository root (or set
 `JASPER_EDITOR` to an absolute path).
 
@@ -354,7 +354,9 @@ tools/mcp/run-tests.sh --suite ci -j 2 # the CI suite (below)
 
 The harness API and conventions are described in the docstrings of `tools/mcp/harness.py`
 and `tools/mcp/run_tests.py`. Every tool needs a test. The harness's Python packages are pinned
-in `tools/mcp/requirements.txt`.
+in `tools/mcp/requirements.txt`. The files that drive the editor with real X input (`xvfb:
+"harness"`: the Animation window and Record tests, Physics Placement's Scene view gesture) need
+`xdotool` (`apt install xdotool`); without it the Animation window and Record tests fail.
 
 Tests that drive the editor with real input (xdotool, `EDITOR = {"xvfb": "harness", ...}`) use
 `tools/mcp/ui_input.py`: its `Ui` waits for editor frames after every step instead of sleeping,

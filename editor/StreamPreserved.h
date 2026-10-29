@@ -168,6 +168,10 @@ namespace jasperengine::editor {
         // A value a lenient decoder replaced by its default ("expected": "3 numbers"): kept as a
         // stand-in at a component's top level, reported dropped below it
         void invalidValue(const YAML::Node& value, const std::string& expected);
+        // A value a reflection codec could not read as its field's type, null included (the decoders
+        // before it threw there, S03 then kept the authored text): kept as a stand-in at a
+        // component's top level, reported dropped below it ("invalid value (reason)")
+        void unreadableValue(const YAML::Node& value, const std::string& reason);
         // The keys of a nested structure inside a component: an unknown one is reported dropped
         void checkNestedKeys(const YAML::Node& node, NestedKind kind);
         // An entity node of a type this editor does not decode (dropped)

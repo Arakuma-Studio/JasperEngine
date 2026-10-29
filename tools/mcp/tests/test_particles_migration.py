@@ -2,7 +2,7 @@
 fixture project (tools/fixtures/particles-legacy: a format 2 scene whose Particle System actions draw
 into Points): loading converts each system into an inline effect on its target without writing the
 file, get_particle_migration_report lists them, the action stays the controller, the empty Points go;
-a save writes the current format (4 since S18), and reopening the saved scene gives the same effects back (no diffs).
+a save writes the current format (5 since S18), and reopening the saved scene gives the same effects back (no diffs).
 
 The trajectories themselves are AC13's ParticleMigration.* unit tests (recorded CSVs).
 """
@@ -65,7 +65,7 @@ async def test_migrate_save_reload(ed: Editor):
 
     await ed.call("save_scene", scene=sid)
     saved = (ed.project / SCENE).read_text()
-    ed.check("formatVersion: 4" in saved, "saved in the current format (4)")
+    ed.check("formatVersion: 5" in saved, "saved in the current format (5)")
     ed.check("inlineEffect" in saved, "the inline effects are saved")
     # another scene stays open: the last open one cannot close
     await ed.call("create_scene", name="Holder", type="3D", path="Holder")

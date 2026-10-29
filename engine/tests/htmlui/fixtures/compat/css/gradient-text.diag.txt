@@ -1,5 +1,0 @@
-compat/css/gradient-text.css:2:73: warning: gradient text is drawn in a solid color (#feca57ff) (fix: use a solid text color) [HTMLUI-CSS-0006]
-compat/css/gradient-text.css:3:67: warning: gradient text is drawn in a solid color (#0000ffff) (fix: use a solid text color) [HTMLUI-CSS-0006]
-compat/css/gradient-text.css:4:59: info: 'background-clip: text' without a transparent text color is dropped [HTMLUI-CSS-0005]
-compat/css/gradient-text.css:6:15: warning: gradient text is drawn in a solid color (#ffa500ff) (fix: use a solid text color) [HTMLUI-CSS-0006]
-compat/css/gradient-text.css:6:15: info: background longhands are merged with the layers of the base rule at compat/css/gradient-text.css:5 [HTMLUI-CSS-0017]

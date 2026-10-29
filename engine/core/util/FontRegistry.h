@@ -45,7 +45,9 @@ namespace jasperengine {
         // hot reload (HTML UI): parses the file of every cached face of `path` again and puts the
         // new faces where the old ones were registered. Holders of the old faces keep them.
         // Returns the number of faces replaced; on a parse error the old faces stay (`error` set).
-        static int reloadFile(const std::string& path, std::string* error = nullptr);
+        // (replacedFaces, when given, receives the faces that were replaced)
+        static int reloadFile(const std::string& path, std::string* error = nullptr,
+                              std::vector<std::shared_ptr<FontFace>>* replacedFaces = nullptr);
         static void clear();   // tests; Engine::clearPools does not touch it
     };
 

@@ -861,6 +861,8 @@ endforeach()
 add_subdirectory(libs/harfbuzz)
 add_subdirectory(libs/sheenbidi)
 add_subdirectory(libs/meshoptimizer)
+# the HTML UI's MTSDF glyphs (S16)
+add_subdirectory(libs/msdfgen)
 # Cooked textures (S14, docs/textures.md): Zstandard (zstd_decompress in every game, zstd for the
 # cook), the Basis Universal transcoder of web textures (the web runtime, the editor's previews
 # and the tests; native games never load Basis files) and, in the editor tree only
@@ -957,7 +959,7 @@ endif()
 
 foreach(lib IN ITEMS
     sokol lua stb soloud tinyobjloader tinygltf tinyxml2
-    harfbuzz sheenbidi meshoptimizer lunasvg thorvg rmlui lexbor
+    harfbuzz sheenbidi meshoptimizer msdfgen lunasvg thorvg rmlui lexbor
     dav1d dav1d_bitdepth_8 dav1d_bitdepth_16 opus webm ${JASPERENGINE_PHYSICS_LIBS} ${JASPERENGINE_TEXTURE_LIBS})
     target_compile_options(${lib} PRIVATE ${EXTERNAL_WARNING_FLAG})
 endforeach()
@@ -966,7 +968,7 @@ endforeach()
 # at two standards across a library boundary (tinygltf and RmlUi pass std containers into
 # engine code) broke Wasm signatures. Most of these set a standard of their own, or none.
 jasperengine_apply_cxx_standard(
-    sokol soloud tinyobjloader tinygltf tinyxml2 harfbuzz meshoptimizer
+    sokol soloud tinyobjloader tinygltf tinyxml2 harfbuzz meshoptimizer msdfgen
     lunasvg thorvg rmlui webm ${JASPERENGINE_PHYSICS_LIBS} basisu_transcoder)
 if(JASPERENGINE_TEXTURE_ENCODERS)
     jasperengine_apply_cxx_standard(basisu_encoder bc7enc_rdo astcenc)
@@ -1041,6 +1043,30 @@ set(JASPERENGINE_SRCS
     core/action/keyframe/RotateTracks.cpp
     core/action/keyframe/ScaleTracks.cpp
     core/action/keyframe/TranslateTracks.cpp
+    core/animation/AnimationClip.cpp
+    core/animation/AnimationClipIO.cpp
+    core/animation/AnimationEvent.cpp
+    core/animation/AnimationPlayerRuntime.cpp
+    core/animation/ClipBinding.cpp
+    core/animation/KeyframeSampling.cpp
+    core/animation/ModelSubClips.cpp
+    core/pose/HumanBones.cpp
+    core/pose/HumanoidMap.cpp
+    core/pose/HumanoidMapIO.cpp
+    core/pose/ModelRig.cpp
+    core/pose/PoseAnimationIO.cpp
+    core/pose/PoseAnimatorRuntime.cpp
+    core/pose/PoseDofs.cpp
+    core/pose/PoseFile.cpp
+    core/pose/PoseIK.cpp
+    core/pose/PoseMetrics.cpp
+    core/pose/PoseRealisation.cpp
+    core/pose/PoseRanges.cpp
+    core/pose/PoseRig.cpp
+    core/pose/PoseSampler.cpp
+    core/pose/PoseSecondary.cpp
+    core/pose/PoseSkin.cpp
+    core/pose/PoseTween.cpp
     core/buffer/Attribute.cpp
     core/buffer/Buffer.cpp
     core/buffer/ExternalBuffer.cpp
@@ -1068,7 +1094,9 @@ set(JASPERENGINE_SRCS
     core/htmlui/RmlFile.cpp
     core/htmlui/RmlFontEffects.cpp
     core/htmlui/RmlFontEngine.cpp
+    core/htmlui/RmlFontMsdf.cpp
     core/htmlui/RmlRenderer.cpp
+    core/htmlui/RmlRendererBatch.cpp
     core/htmlui/RmlSystem.cpp
     core/htmlui/HtmlUIContextInput.cpp
     core/htmlui/RmlKeyMap.cpp
@@ -1167,6 +1195,8 @@ set(JASPERENGINE_SRCS
     core/object/FluidSimulation.cpp
     core/object/Lattice.cpp
     core/object/Model.cpp
+    core/object/PoseAnimator.cpp
+    core/object/AnimationPlayer.cpp
     core/object/GameObject.cpp
     core/object/ShadowCaster2D.cpp
     core/object/Points.cpp
@@ -1211,6 +1241,7 @@ set(JASPERENGINE_SRCS
     core/pool/TexturePool.cpp
     core/pool/ModelPool.cpp
     core/pool/MeshLodPool.cpp
+    core/pool/AnimationClipPool.cpp
     core/registry/EntityCloner.cpp
     core/registry/EntityRegistry.cpp
     core/registry/TagManager.cpp
@@ -1269,6 +1300,8 @@ set(JASPERENGINE_SRCS
     core/shader/ShaderVariantCollection.cpp
     core/shader/ShaderVariantCompiler.cpp
     core/subsystem/ActionSystem.cpp
+    core/subsystem/ActionSystemPlayers.cpp
+    core/subsystem/PoseAnimatorSystem.cpp
     core/subsystem/FluidSystem.cpp
     core/fluid/FluidSimulator.cpp
     core/fluid/FluidPresets.cpp
@@ -1426,6 +1459,13 @@ if(JASPERENGINE_CONVEX_DECOMPOSITION)
     )
 endif()
 
+# The clip pool's test seams (pool/AnimationClipPoolTesting.h) exist only in builds with the unit
+# tests (JASPERENGINE_TESTS): the define stays on the two sources, so a shipped engine has none of it
+if(JASPERENGINE_TESTS)
+    set_property(SOURCE core/pool/AnimationClipPool.cpp core/animation/ModelSubClips.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS JASPERENGINE_ANIM_TEST_HOOKS)
+endif()
+
 jasperengine_htmlui_compat_embed(jasperengine)
 jasperengine_htmlui_lucide_embed(jasperengine)
 jasperengine_target_warnings(jasperengine)
@@ -1497,7 +1537,7 @@ target_link_libraries(
 
     PUBLIC
 
-    sokol lua stb tinyobjloader tinygltf tinyxml2 soloud harfbuzz sheenbidi meshoptimizer lunasvg thorvg rmlui lexbor
+    sokol lua stb tinyobjloader tinygltf tinyxml2 soloud harfbuzz sheenbidi meshoptimizer msdfgen lunasvg thorvg rmlui lexbor
     dav1d opus webm zstd_decompress
     ${JASPERENGINE_PHYSICS_LIBS}
 )
@@ -1780,3 +1820,4 @@ endif()
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     jasperengine_check_cxx_standards()
 endif()
+

@@ -554,10 +554,16 @@ detail (each the best correct alternative found; the requirement it serves is na
 12. **R20's bake budgets are measured by the editor test `TerrainSplineBakeTests.BakeBudgets`**
    (the bake is editor code, `editor/util/TerrainSplineBake.cpp`), enforced with
    `JASPER_TEST_PERF_SLACK` on the benchmark server; R18, R19 and R21 by `je-bench-splines`.
-13. **Only the scene format is bumped (3 -> 4)**; prefab files keep version 5: an older editor
-   preserves a prefab's unknown spline components as unknown data (S03) either way.
+13. **Only the scene format is bumped (4 -> 5, after S29's 3 -> 4)**; prefab files keep their
+   version: an older editor preserves a prefab's unknown spline components as unknown data (S03)
+   either way.
 14. **R19's "7-point" Crown is OpenEngine's 5-point Crown with its two shoulder creases split**:
    a crease emits its vertex twice (split normals), so a ring has 7 vertices, which is what the
    build cost depends on; `je-bench-splines` gates `crown_ring_vertices` = 7.
 15. **AC15's cross-compiler hash** is pinned on GCC (`ROAD_FIXTURE_VERTEX_HASH`); Clang and MSVC CI
    jobs check the same constant (there is one Linux compiler on the build servers).
+17. **The four components are on S08's reflection tables** (R29 named `editor/Stream.cpp`):
+   `editor/reflect/components/SplinesReflect.cpp` describes them, and the scene codec, Catalog
+   properties, MCP schema, prefab overrides, undo and exported code all come from it. R29's file
+   format is kept: values at their defaults are omitted, and knots, profile points, pool entries
+   and span overrides are flow maps, one per line.

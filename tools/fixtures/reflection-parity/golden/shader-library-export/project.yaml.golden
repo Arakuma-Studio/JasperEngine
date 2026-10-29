@@ -1,0 +1,31 @@
+formatVersion: 1
+name: ShaderLibraryExport
+canvasWidth: 1280
+canvasHeight: 720
+scalingMode: fitwidth
+textureStrategy: none
+vsync: true
+htmlUiMsaaSamples: 4
+htmlUiGlyphAtlasMiB: 0
+htmlUiSdfPrimitives: true
+htmlUiTransformAwareText: true
+windowMode: windowed
+windowWidth: 1280
+windowHeight: 720
+windowResizable: true
+luaDir: .
+scenes:
+  - filepath: Lit.scene
+    filepathGuid: 89a155aeb4e0410d00800e38a0d80b96
+  - filepath: Blend.scene
+    filepathGuid: 68b4ca8069db2d713a77deedde615ebd
+  - filepath: 2D.scene
+    filepathGuid: 25e1614af9e2418a7e7919404bb13615
+  - filepath: UI.scene
+    filepathGuid: 6235c8cdbb813f6c2827f2290a3101f8
+  - filepath: Stencil.scene
+    filepathGuid: fa957052190b74172aca2dc49fa7bbdc
+  - filepath: Phase3A.scene
+    filepathGuid: c2ba539b03625bda4dcfb084de9d6862
+  - filepath: Phase3B.scene
+    filepathGuid: 7d091221b1ec0a1c8212346cd313e577

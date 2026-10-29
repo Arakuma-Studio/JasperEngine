@@ -7,6 +7,7 @@
 #include "System.h"
 
 #include <cstddef>
+#include <functional>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -46,6 +47,16 @@ namespace jasperengine { namespace test {
         void setAssetPath(const std::string& path);
         std::string getUserDataPath() override;   // <binary>/userdata, or the override
         void setUserDataPath(const std::string& path);  // empty: back to the default
+        // Live paths ahead of the overrides (editor tests on a headless Project: its assets,
+        // Lua and user data folders, read on every call as the editor's Platform reads them);
+        // an empty function: the overrides / defaults. clearPathProvider resets all three.
+        struct PathProvider {
+            std::function<std::string()> assets;
+            std::function<std::string()> lua;
+            std::function<std::string()> userData;
+        };
+        void setPathProvider(PathProvider provider);
+        void clearPathProvider();
         bool syncFileSystem() override;           // counts the calls
         int fileSystemSyncs = 0;
         std::string getCachePath() override;      // <binary>/userdata
@@ -86,6 +97,7 @@ namespace jasperengine { namespace test {
         int screenHeight = 360;
         std::string assetPathOverride;
         std::string userDataPathOverride;
+        PathProvider pathProvider;
 
         mutable std::mutex logMutex;
         std::vector<LogEntry> logs;

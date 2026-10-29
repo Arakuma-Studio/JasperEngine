@@ -4,6 +4,7 @@
 #include "EntityPath.h"
 
 #include "Project.h"
+#include "animation/ClipBinding.h"
 
 using namespace jasperengine;
 
@@ -107,4 +108,25 @@ std::vector<Entity> editor::EntityPath::resolve(EntityRegistry* registry, const 
 
 std::vector<Entity> editor::EntityPath::resolve(const SceneProject& sceneProject, const std::string& ref) {
     return resolve(sceneProject.scene, sceneProject.entities, ref);
+}
+
+bool editor::EntityPath::relative(EntityRegistry* registry, Entity root, Entity entity, std::string& out) {
+    return anim::relativePath(registry, root, entity, out);
+}
+
+Entity editor::EntityPath::findRelative(EntityRegistry* registry, Entity root, const std::string& path) {
+    return anim::resolvePath(registry, root, path);
+}
+
+bool editor::EntityPath::isAddressableName(const std::string& name) {
+    return anim::isAddressableName(name);
+}
+
+std::string editor::EntityPath::unaddressableReason(const std::string& name) {
+    if (anim::isAddressableName(name)) return std::string();
+    if (name.empty()) return "a GameObject without a name can't be addressed by an animation path: name it";
+    if (name.find('/') != std::string::npos) {
+        return "'" + name + "' contains '/', so an animation path can't address it: rename it";
+    }
+    return "'" + name + "' ends in '#' and digits, which a path reads as a sibling index: rename it";
 }

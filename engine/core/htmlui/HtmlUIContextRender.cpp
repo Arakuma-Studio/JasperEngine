@@ -12,12 +12,14 @@
 #include "RmlRenderer.h"
 
 #include "Log.h"
+#include "render/FramebufferRender.h"
 #include "render/SystemRender.h"
 
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Core.h>
 #include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/MeshUtilities.h>
+#include <RmlUi/Core/RenderManager.h>
 
 #include <algorithm>
 #include <cmath>
@@ -64,7 +66,8 @@ int HtmlUIContext::getSampleCount() const{
     const RenderFeatures& features = SystemRender::getFeatures();
     if (!features.msaaRGBA8 || !features.msaaDepthStencil)
         return 1;
-    return preferredSampleCount;
+    // the highest count up to it that the device renders (RmlRenderTarget::ensure)
+    return std::max(FramebufferRender::getMaxMsaaSamples(preferredSampleCount), 1);
 }
 
 void HtmlUIContext::markUpdated(){
@@ -101,11 +104,14 @@ bool HtmlUIContext::render(const Rect& viewRect){
         return false;
     }
 
-    // view pixels per document pixel; glyphs rasterize at it (quantized), so text stays
-    // crisp on a scaled canvas (a change regenerates the text)
+    // view pixels per document pixel; glyphs rasterize at it, so text stays crisp on a scaled
+    // canvas (a change regenerates the text): exactly with transform-aware text (S16 R14), else
+    // quantized to quarters within [1, 4] as before
     pixelRatio = std::min(std::max(viewRect.getWidth() / (float)contextDimensions.x, 0.25f), 8.0f);
-    const float rasterScale = std::min(std::max(std::round(pixelRatio * 4.0f) / 4.0f, 1.0f), 4.0f);
-    HtmlUI::getFontEngine().setRasterScale(context->GetRenderManager(), rasterScale);
+    RmlFontEngine& fontEngine = HtmlUI::getFontEngine();
+    const float rasterScale = RmlFontEngine::isTransformAwareText() ? pixelRatio
+                                                                    : std::min(std::max(std::round(pixelRatio * 4.0f) / 4.0f, 1.0f), 4.0f);
+    fontEngine.setRasterScale(context->GetRenderManager(), rasterScale);
 
     // recreated when the view size or the sample count changes; a second size (another view)
     // keeps its own target
@@ -145,12 +151,19 @@ bool HtmlUIContext::render(const Rect& viewRect){
         renderer->endFrame();
         return hasContent;
     }
+    Rml::RenderManager& renderManager = context->GetRenderManager();
+    fontEngine.beginContextFrame(renderManager);
     context->Render();
+    const RmlFontEngine::FrameCounters text = fontEngine.takeContextFrame(renderManager);
+    renderer->addTextStats(text.glyphsRasterized, text.textRegenerations, text.textEffectFallbacks, text.atlasEvictions);
     if (renderer->endFrame()){
         hasContent = true;
         renderedOnce = true;
-        updatedSinceRender = false;
+        // text settling at its on-screen scale (S16 R15) draws again next frame, without input
+        updatedSinceRender = renderManager.ConsumeRenderRequest();
         targetDimensions = contextDimensions;
+    }else{
+        renderManager.ConsumeRenderRequest();
     }
 
     return hasContent;

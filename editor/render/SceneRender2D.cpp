@@ -49,6 +49,9 @@ editor::SceneRender2D::SceneRender2D(Scene* scene, unsigned int width, unsigned 
 }
 
 editor::SceneRender2D::~SceneRender2D(){
+    // a gizmo the scene destroyed is not deleted through an id that may be another entity's now
+    dropGoneGizmos();
+
     for (auto& pair : containerLines) {
         delete pair.second;
     }
@@ -788,6 +791,23 @@ void editor::SceneRender2D::updateGridLines(){
         Vector4 color = (iy % majorEvery == 0) ? gridColorMajor : gridColor;
         gridLines->addLine(Vector3(left, y, 0), Vector3(right, y, 0), color);
     }
+}
+
+void editor::SceneRender2D::dropGoneGizmos(){
+    SceneRender::dropGoneGizmos();
+
+    const RenderSystem& render = *scene->getSystem<RenderSystem>();
+    dropGoneGizmos(containerLines, render);
+    dropGoneGizmos(bodyLines, render);
+    dropGoneGizmos(jointLines, render);
+    dropGoneGizmos(light2DLines, render);
+    dropGoneGizmos(shadowCaster2DLines, render);
+    dropGoneGizmos(linePointLines, render);
+    dropGoneGizmos(polygonPointLines, render);
+    dropGoneGizmos(trackLines, render);
+    dropGoneGizmos(cameraObjects, render, &CameraObjects::icon, &CameraObjects::lines);
+    dropGoneGizmos(soundObjects, render, &SoundObjects::icon);
+    dropGoneGizmos(light2DObjects, render, &Light2DObjects::icon);
 }
 
 void editor::SceneRender2D::hideAllGizmos(){

@@ -9,7 +9,9 @@
 #include <RmlUi/Core/RenderInterface.h>
 #include <RmlUi/Core/Matrix4.h>
 
+#include "HtmlUIPrimitive.h"
 #include "HtmlUIRenderStats.h"
+#include "HtmlUITexture.h"
 #include "math/Rect.h"
 #include "render/BufferRender.h"
 #include "render/CameraRender.h"
@@ -18,6 +20,7 @@
 #include "render/Render.h"
 #include "render/TextureRender.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -37,7 +40,6 @@ namespace jasperengine {
         class EffectRenderer;
     }
 
-    struct HtmlUITexture;
     struct RmlGeometry;
     struct RmlGeometryPage;
     struct RmlTransientBuffer;
@@ -166,6 +168,9 @@ namespace jasperengine {
         // Rml::RenderInterface, optional
         void EnableClipMask(bool enable) override;
         void RenderToClipMask(Rml::ClipMaskOperation operation, Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation) override;
+        // fork S16-F2: the mask's shape, for stencil elision and the analytic clip of the batched replay
+        void RenderToClipMaskShape(Rml::ClipMaskOperation operation, Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation,
+                                   const Rml::ClipShape& shape) override;
         void SetTransform(const Rml::Matrix4f* transform) override;
         Rml::LayerHandle PushLayer() override;
         void CompositeLayers(Rml::LayerHandle source, Rml::LayerHandle destination, Rml::BlendMode blend_mode,
@@ -184,6 +189,14 @@ namespace jasperengine {
         void RenderShader(Rml::CompiledShaderHandle shader, Rml::CompiledGeometryHandle geometry, Rml::Vector2f translation,
                           Rml::TextureHandle texture) override;
         void ReleaseShader(Rml::CompiledShaderHandle shader) override;
+        // fork S16-F1: solid backgrounds, borders, outlines and box shadows as HTMLUI_PRIM instances
+        // (setSdfPrimitivesForTesting, the project's htmlUiSdfPrimitives)
+        bool SupportsPrimitives() override;
+        // fork S16-F4: elements skip what is wholly outside the scissor (with the batched replay, D1)
+        bool CullsOffscreenPaint() override;
+        // fork S16-F5: linear and radial gradients of at most four stops are HTMLUI_PRIM instances
+        bool SupportsGradientPrimitive(Rml::CompiledShaderHandle shader) override;
+        void RenderPrimitives(Rml::Span<const Rml::BoxPrimitive> primitives, Rml::Vector2f translation) override;
 
         // engine side, called by HtmlUIContext (HtmlUIContextRender.cpp)
         // Every UI program exists once all its shader variants are compiled; false while they
@@ -236,6 +249,24 @@ namespace jasperengine {
         static bool isCommandRecording();
         // the commands the last frame recorded (0 when it drew immediately)
         size_t getLastFrameCommandCount() const;
+        // tests (S16 D1): false replays every recorded call as its own draw, with every clip mask
+        // drawn into the stencil; true (the default) merges geometry into runs, keeps a run cache,
+        // elides clip masks and clips rounded rects analytically (RmlRendererBatch.cpp). Read by
+        // beginFrame; immediate drawing is never batched
+        static void setBatchingForTesting(bool enabled);
+        static bool isBatching();
+        // S16 D1: false sends no primitives (RmlUi generates meshes and shadow textures) and draws no
+        // quad list as instances; read by RmlUi when it generates an element's geometry (a change
+        // applies to geometry generated after it). The project's htmlUiSdfPrimitives
+        static void setSdfPrimitivesForTesting(bool enabled);
+        static bool isSdfPrimitives();
+        // pure function, unit-tested (R10): whether a mesh is a list of RmlUi quads (GenerateQuad's
+        // index order, parallelograms within 1e-4 px, one colour per quad, uvs affine with the
+        // positions), and their HTMLUI_PRIM instances (QUAD, no translation)
+        static bool classifyQuadList(Rml::Span<const Rml::Vertex> vertices, Rml::Span<const int> indices,
+                                     std::vector<HtmlUIPrimitive>* instances);
+        // pure function, unit-tested: a box primitive as an HTMLUI_PRIM instance at the translation
+        static HtmlUIPrimitive toInstance(const Rml::BoxPrimitive& primitive, Rml::Vector2f translation);
 
         // For phase-5 effects (they draw with the same geometry layout and u_vs_htmluiParams):
         // projection x the SetTransform matrix (or projection alone)
@@ -266,6 +297,44 @@ namespace jasperengine {
         bool takeTexturesWithoutView();
         // the GPU texture of a handle (nullptr when unknown or dead)
         TextureRender* getTextureRender(Rml::TextureHandle texture) const;
+
+        // S16: glyph atlas pages (RmlFontEngine): an R8 coverage page with a white block at
+        // (whiteX, whiteY) (4x4 texels of full coverage, < 0: none), or an RGBA8 MTSDF page of
+        // distanceRange texels per side, or RGBA8 premultiplied; drawFrame receives the frame of
+        // its last draw. A variant draws a distance page's image with a text effect (effect,
+        // dilation, sigma: HtmlUITexture::textEffect) and owns nothing; released like any texture
+        struct AtlasTexture {
+            HtmlUITexture::Sample sample = HtmlUITexture::Sample::RGBA;
+            int whiteX = -1, whiteY = -1;
+            float distanceRange = 0.0f;
+            std::shared_ptr<uint64_t> drawFrame;
+            // the page's texels and their generation: uploaded again (in place) when it changes
+            std::shared_ptr<const GlyphAtlas> atlas;
+            std::shared_ptr<const uint64_t> generation;
+        };
+        Rml::TextureHandle createAtlasTexture(int width, int height, const AtlasTexture& desc);
+        Rml::TextureHandle createTextureVariant(Rml::TextureHandle base, const float textEffect[3], std::shared_ptr<uint64_t> drawFrame);
+        // the glyph atlas textures this renderer made (tests)
+        std::vector<const HtmlUITexture*> getAtlasTextures() const;
+        // the batched replay's gather (S16 R22, R23): CPU time of the last frame's gathering and
+        // upload, the bytes its chunks hold, the capacity of the gather pages (the stream and the
+        // run cache's ranges)
+        double getLastGatherMs() const;
+        // tests: the next frame gathers every run again (the pages stay)
+        void clearRunCacheForTesting();
+        size_t getGatherLiveBytes() const;
+        size_t getGatherCapacityBytes() const;
+        // why the last plan started each run (benchmarks): after a command that ends runs (layers,
+        // composites, shaders, stencil masks, large geometry) or first, another kind (vertices or
+        // instances), another clip or layer, transform, texture, or a scissor it cannot share
+        enum class RunBreak : uint8_t { NONE, COMMAND, KIND, CLIP, TRANSFORM, TEXTURE, SCISSOR, COUNT };
+        const std::array<uint32_t, (size_t)RunBreak::COUNT>& getLastRunBreaks() const { return runBreaks; }
+        // the last batched frame's gradient and effect shader draws, layer composites and filter
+        // passes asked for (benchmarks: what the draws that are not runs are)
+        struct EffectCounts { uint32_t shaders = 0, composites = 0, filters = 0, clipMasks = 0; };
+        EffectCounts getLastEffectCounts() const { return effectCounts; }
+        // the font engine's per-frame text counters, added to this frame's statistics
+        void addTextStats(uint32_t glyphsRasterized, uint32_t textRegenerations, uint32_t textEffectFallbacks, uint32_t atlasEvictions);
         // sokol ids of every buffer and image the renderer owns right now
         void getGpuHandles(std::vector<uint32_t>& buffers, std::vector<uint32_t>& images) const;
 
@@ -275,6 +344,8 @@ namespace jasperengine {
         static RmlRenderer* forContext(const Rml::Context* context);
         static void bindContext(const Rml::Context* context, RmlRenderer* renderer);
         static void unbindContext(const Rml::Context* context);
+        // the renderer of a bound context's render manager (the font engine's atlas textures)
+        static RmlRenderer* forRenderManager(const Rml::RenderManager* renderManager);
 
         // <video> (phase 6): a frame's Y, U and V planes (target->planes, uploaded) are converted
         // into target, a 1-sample RGBA8 RENDER_TARGET texture, by one HTMLUI_POST Yuv pass;
@@ -411,12 +482,20 @@ namespace jasperengine {
         // textures
         HtmlUITexture* createStaticTexture(const uint8_t* rgba, int width, int height, const char* label,
                                            TextureFilter filter = TextureFilter::LINEAR,
-                                           TextureWrap wrapU = TextureWrap::CLAMP_TO_EDGE, TextureWrap wrapV = TextureWrap::CLAMP_TO_EDGE);
+                                           TextureWrap wrapU = TextureWrap::CLAMP_TO_EDGE, TextureWrap wrapV = TextureWrap::CLAMP_TO_EDGE,
+                                           ColorFormat format = ColorFormat::RGBA);
+        // a texture drawn in this frame (its drawFrame)
+        void noteDrawn(HtmlUITexture* texture);
+        // the atlas pages whose texels changed, uploaded (before the frame's passes)
+        void updateAtlasTextures();
+        void uploadAtlasTexture(HtmlUITexture& texture);
+        std::vector<HtmlUITexture*> atlasTextures;
         HtmlUITexture* toTexture(Rml::TextureHandle handle);
         void destroyTexture(HtmlUITexture* texture);
         void flushPendingReleases();
 
         bool loadPrograms();
+        bool loadPrimObject();
         void destroyPipelineObjects();
         void abortFrame();
 
@@ -445,7 +524,8 @@ namespace jasperengine {
         // or span goes into the side pools. Everything is cleared, its capacity kept, every frame
         enum class CommandType : uint8_t {
             GEOMETRY, CLIP_MASK, SCISSOR_ENABLE, SCISSOR_REGION, CLIP_ENABLE, TRANSFORM,
-            PUSH_LAYER, POP_LAYER, COMPOSITE, SAVE_TEXTURE, SAVE_MASK, SHADER
+            PUSH_LAYER, POP_LAYER, COMPOSITE, SAVE_TEXTURE, SAVE_MASK, SHADER,
+            PRIMITIVES      // S16: i[0], i[1]: first and count in commandPrimitives; i[2], i[3]: their content hash
         };
         struct Command {
             CommandType type;
@@ -467,9 +547,160 @@ namespace jasperengine {
         };
         Command& recordCommand(CommandType type);
         void replayCommands();
+        // one recorded call drawn as it is (the unbatched replay, and the batched one's commands outside runs)
+        void replayCommand(const Command& command);
         // the releases deferred while recording (after the replay, before persistGeometry), and the
         // kept meshes; also drops the list (a frame aborted)
         void finishRecording();
+
+        // S16: the batched replay (RmlRendererBatch.cpp). The frame is planned first (clip scopes,
+        // then runs of geometry merged by state, gathered into pages or found in the run cache), the
+        // new gathered data uploaded once, then the plan is drawn
+        struct ClipShapeRecord {
+            Rml::Rectanglef rect;            // relative to the mask's translation
+            Rml::Vector2f radii[4];          // top-left, top-right, bottom-right, bottom-left
+        };
+        // u_fs_htmluiClip (includes/htmlui_sdf.glsl)
+        struct ClipParams {
+            float rect[2][4] = {};           // x, y, width, height (document px, before the element transform)
+            float radiiX[2][4] = {};
+            float radiiY[2][4] = {};
+            float params[4] = {};            // x: shapes, y: texture kind (0 RGBA, 1 R8 coverage, 2 MTSDF)
+            float text[4] = {};              // MTSDF: effect, dilation, blur sigma (document px), distance range (texels)
+        };
+        enum class ScopeMode : uint8_t { STENCIL, ELIDED, ANALYTIC };
+        // the commands under one clip mask list: from its CLIP_ENABLE to the next one
+        struct ClipScope {
+            ScopeMode mode = ScopeMode::STENCIL;
+            uint32_t masks = 0;              // the mask draws of its list
+            Rml::Rectanglei scissor;         // ELIDED: target px
+            ClipParams clip;                 // ANALYTIC
+        };
+        enum class RunKind : uint8_t { VERTICES, INSTANCES };
+        // a run cut into chunks of bounded size, each found in the run cache or gathered on its own
+        struct BatchChunk {
+            uint32_t run = 0;
+            uint32_t first = 0, members = 0;     // in batchMembers
+            uint32_t vertices = 0, indices = 0;  // gathered sizes (VERTICES: vertices and indices; INSTANCES: instances)
+            uint32_t bytes = 0;
+            uint64_t hash = 0;
+            bool hit = false;                    // found in the run cache
+            uint32_t page = 0;
+            uint32_t dataFirst = 0, dataCount = 0;   // vertices or instances in the page
+            uint32_t firstIndex = 0, count = 0;      // VERTICES: indices in the page (relative to its first vertex)
+        };
+        struct BatchRun {
+            RunKind kind = RunKind::VERTICES;
+            int layer = 0;
+            bool stencil = false;
+            uint8_t stencilRef = 0;
+            int scope = -1;                  // its ANALYTIC clip scope, -1: none
+            uint32_t transformId = 0;
+            Rml::Matrix4f transform;         // projection x the element transform
+            HtmlUITexture* texture = nullptr;   // VERTICES
+            bool allUntextured = true;
+            // INSTANCES: the textures of its textured members, a slot each (HTMLUI_PRIM binds four)
+            std::array<HtmlUITexture*, 4> slots{};
+            uint8_t slotCount = 0;
+            bool scissorSet = false;         // a member's scissor clips it: the run draws with it
+            Rml::Rectanglei scissor;
+            Rml::Rectanglef freeBounds;      // target px: the members drawn without their scissor
+            bool freeBoundsValid = false;
+            uint32_t firstChunk = 0, chunkCount = 0;
+            uint32_t members = 0;
+            uint32_t firstMember = 0;        // in batchMembers
+        };
+        // a geometry (its vertices, or its quad list's instances), or a PRIMITIVES command's instances
+        struct BatchMember {
+            RmlGeometry* geometry = nullptr;     // nullptr: primitives
+            uint64_t generation = 0;             // the geometry's, or the primitives' content hash
+            uint32_t first = 0, count = 0;       // primitives: in commandPrimitives (first is not compared); instances
+            Rml::Vector2f translation;
+            HtmlUITexture* texture = nullptr;
+            bool operator==(const BatchMember& other) const{
+                return geometry == other.geometry && generation == other.generation && count == other.count &&
+                       translation == other.translation && texture == other.texture;
+            }
+        };
+        struct CachedChunk {
+            RunKind kind = RunKind::VERTICES;
+            HtmlUITexture* runTexture = nullptr;
+            std::array<HtmlUITexture*, 4> runSlots{};   // INSTANCES: the slots its instances name
+            uint32_t page = 0, first = 0, count = 0, vertexFirst = 0, vertexCount = 0;
+            std::vector<BatchMember> members;
+        };
+        // gathered data: vertices (20-byte Rml::Vertex, translation baked) with 32-bit indices
+        // relative to the page's start, or instances; uploaded whole, at most once a frame, when it
+        // gets new chunks (a page holding chunks found in the cache is not written)
+        struct GatherPage {
+            RunKind kind = RunKind::VERTICES;
+            BufferRender data;               // vertices or instances
+            BufferRender indices;            // VERTICES
+            size_t dataCapacity = 0, indexCapacity = 0;
+            std::vector<uint8_t> dataShadow, indexShadow;
+            size_t dataTop = 0, indexTop = 0;
+            size_t liveBytes = 0;            // of chunks drawn this frame
+            uint64_t updateFrame = UINT64_MAX;
+            bool writable = false;           // no chunk of it found in the cache this frame: it starts over
+            bool written = false;            // got new chunks this frame
+        };
+        struct ReplayOp {
+            enum class Kind : uint8_t { COMMAND, RUN } kind;
+            uint32_t index;                  // command or run
+            int32_t scope;                   // CLIP_ENABLE: the scope it starts (-1: disabled)
+        };
+        void replayBatched();
+        // the unbatched replay with clip scopes (analytic clips, no elision)
+        void replayScoped();
+        // a CLIP_ENABLE of the replay: the scope it starts (-1: disabled) with its stencil, scissor or analytic clip
+        void applyClipEnable(const Command& command, int32_t scope);
+        // the clip scopes of the frame: elided (batched replay) or analytic (SDF primitives) where they can be
+        void planClipScopes();
+        void planRuns();
+        void uploadGathered();
+        void executePlan();
+        void drawRun(const BatchRun& run);
+        void destroyGatherPages();
+        Rml::Rectanglef geometryBounds(RmlGeometry& geometry);
+        // a quad list's instances, classified on first use (sdf primitives on)
+        bool isQuadList(RmlGeometry& geometry);
+        // what count PRIMITIVES instances from first in commandPrimitives can touch (document px, no translation)
+        Rml::Rectanglef primitiveBounds(uint32_t first, uint32_t count) const;
+        Rml::Rectanglei effectiveScissorTarget() const;
+        // the clip of the current scope and the texture's kind (nullptr: untextured)
+        const ClipParams& currentClipParams(const HtmlUITexture* texture);
+        // HTMLUI_PRIM instances (translation baked) drawn at once from a transient buffer: the
+        // primitives of the unbatched replay and of immediate drawing
+        void drawPrimitivesNow(const HtmlUIPrimitive* primitives, size_t count, Rml::Vector2f translation);
+        // draws count instances from buffer at byteOffset with the current state
+        // (slots: the run's textures, nullptr where unused)
+        bool drawInstances(BufferRender& buffer, size_t byteOffset, uint32_t count, const std::array<HtmlUITexture*, 4>& slots,
+                           const Rml::Matrix4f& transform, const ClipParams& clipParams, const PipelineState& state, Rml::Rectanglei scissor);
+
+        std::vector<ClipShapeRecord> commandClipShapes;   // RenderToClipMaskShape's (CLIP_MASK i[0] - 1)
+        std::vector<HtmlUIPrimitive> commandPrimitives;   // RenderPrimitives' (PRIMITIVES), without their translation
+        std::vector<HtmlUIPrimitive> primitiveScratch;    // drawPrimitivesNow's translated copy
+        std::vector<ClipScope> clipScopes;
+        std::vector<int32_t> scopeOfCommand;              // CLIP_ENABLE true: its scope; else -1
+        std::vector<BatchRun> batchRuns;
+        std::vector<BatchChunk> batchChunks;
+        std::vector<BatchMember> batchMembers;
+        std::vector<ReplayOp> replayOps;
+        std::vector<uint32_t> pendingChunks;              // chunks to gather after planning
+        std::unordered_map<uint64_t, CachedChunk> runCache, nextRunCache;
+        std::vector<std::unique_ptr<GatherPage>> gatherPages;
+        std::array<uint32_t, (size_t)RunBreak::COUNT> runBreaks{};   // the last plan's new runs, by why
+        EffectCounts effectCounts;
+        int activeClipScope = -1;            // the replay's current non-stencil scope (-1: none)
+        ClipParams noClip;
+        ClipParams clipScratch;
+        bool batching = false;               // this frame replays batched
+        double lastGatherMs = 0.0;
+        bool primitivesFrame = false;        // this frame draws SDF primitives and analytic clips (isSdfPrimitives)
+        bool transformSet = false;           // RmlUi's current transform is not the identity (SetTransform)
+        // a glyph atlas draw's translation on whole target pixels: the font engine places glyphs on
+        // whole target pixels of the string's origin (S16 R14, a fractional pixel ratio)
+        Rml::Vector2f snapTextTranslation(Rml::Vector2f translation, const HtmlUITexture* texture) const;
 
         bool recording = false;
         int recordLayers = 0;              // the layer depth at record time (PushLayer's handle)
@@ -540,10 +771,21 @@ namespace jasperengine {
         // GPU objects
         std::shared_ptr<ShaderRender> geometryShader;     // HTMLUI Tex (untextured draws bind white)
         std::shared_ptr<ShaderRender> gradientShader;     // HTMLUI_GRADIENT
+        std::shared_ptr<ShaderRender> primShader;         // HTMLUI_PRIM
         bool pipelinesLoaded = false;
         ObjectRender geometryObject;
         ObjectRender gradientObject;
+        // HTMLUI_PRIM: the unit quad and its indices, the layout template of the instance buffers
+        ObjectRender primObject;
+        BufferRender primQuadBuffer;
+        BufferRender primQuadIndexBuffer;
+        BufferRender primInstanceTemplate;
+        int primParamsSlot = -1;
+        int primClipSlot = -1;
+        int primSlotsSlot = -1;                           // u_fs_htmluiSlots
+        std::array<std::pair<int, int>, 4> primTextureSlots{{{-1, -1}, {-1, -1}, {-1, -1}, {-1, -1}}};
         int geometryParamsSlot = -1;
+        int geometryClipSlot = -1;
         std::pair<int, int> geometryTextureSlot{-1, -1};
         int gradientParamsSlot = -1;
         int gradientFsSlot = -1;

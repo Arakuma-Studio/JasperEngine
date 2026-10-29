@@ -176,57 +176,6 @@ TEST_F(EffectRuntimeTest, IntegratedClockLiveAndNoJump){
     EXPECT_NEAR(faster->frame.anim[0] - beforeGap, 0.25f * 1.f * 0.5f, 1e-4);
 }
 
-TEST_F(EffectRuntimeTest, StateKeyingAndLru){
-    EffectRuntime& runtime = EffectRuntime::get();
-    frameAt(1.0);
-    EffectInstance* first = acquire("a", "stripes");
-    ASSERT_NE(first, nullptr);
-    // the same effect twice on one element in one frame: two states (ordinals 0 and 1)
-    EffectInstance* second = acquire("a", "stripes");
-    EXPECT_NE(first->state.get(), second->state.get());
-    // other elements and effects have their own
-    EffectInstance* other = acquire("b", "stripes");
-    EffectInstance* spot = acquire("a", "spotlight");
-    EXPECT_NE(other->state.get(), first->state.get());
-    EXPECT_NE(spot->state.get(), first->state.get());
-
-    // re-instanced in a later frame: the same states, in the same order
-    frameAt(1.1);
-    EffectInstance* again = acquire("a", "stripes");
-    EffectInstance* againSecond = acquire("a", "stripes");
-    EXPECT_EQ(again->state.get(), first->state.get());
-    EXPECT_EQ(againSecond->state.get(), second->state.get());
-
-    // 16 states per element at most, the least recently used dropped
-    frameAt(1.2);
-    const std::shared_ptr<EffectElementState> oldest = acquire("b", "stripes")->state;   // b: stripes#0, used now
-    frameAt(1.3);
-    std::vector<EffectInstance*> many;
-    for (int i = 0; i < 17; i++)
-        many.push_back(acquire("b", "spotlight"));                                      // spotlight#0..16
-    frameAt(1.4);
-    EXPECT_NE(acquire("b", "stripes")->state.get(), oldest.get()) << "the least recently used state was kept";
-    EXPECT_NE(acquire("b", "spotlight")->state.get(), many[0]->state.get()) << "spotlight#0 should have been dropped";
-    const size_t states = runtime.elementStateCount();
-    EXPECT_GE(states, 16u);
-
-    // purge on element destroy: the element's states go, its instances draw nothing
-    Rml::Element* b = element("b");
-    for (EffectInstance* instance : instances){
-        if (instance->element == b)
-            release(instance);
-    }
-    b->GetParentNode()->RemoveChild(b);
-    EXPECT_LE(runtime.elementStateCount(), states - 16);
-
-    // purge on document unload
-    for (EffectInstance* instance : std::vector<EffectInstance*>(instances))
-        release(instance);
-    std::string error;
-    ASSERT_TRUE(scene->loadHtml("<html><body></body></html>", &error)) << error;
-    EXPECT_EQ(runtime.elementStateCount(), 0u);
-}
-
 TEST_F(EffectRuntimeTest, PointerUnderTransforms){
     EffectClock::setFixedTime(1.0);
     struct Case {

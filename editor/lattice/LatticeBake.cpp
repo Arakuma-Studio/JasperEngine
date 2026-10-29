@@ -32,6 +32,7 @@
 #include "io/FileData.h"
 #include "lattice/LatticeSolver.h"
 #include "lattice/LatticeTypes.h"
+#include "pose/PoseEditSession.h"
 #include "subsystem/MeshSystem.h"
 #include "window/ProjectWindow.h"
 
@@ -1015,6 +1016,28 @@ bool LatticeEditorOps::canBake(Scene* scene, Entity target, std::string* reason)
     return true;
 }
 
+void LatticeEditorOps::restoreForBake(uint32_t sceneId, Scene* scene, Entity target){
+    if (!scene || target == NULL_ENTITY || !scene->isEntityCreated(target)) return;
+    // the entities a bake reads, from a first plan: the target, its meshes and models, the
+    // modifiers and the bound lattices (their cages' world matrices too: a preview of a root above
+    // them restores as well)
+    BakePlan probe(scene);
+    buildPlan(scene, target, probe);
+    std::vector<Entity> involved = {target};
+    for (const ResolvedBinding& entry : probe.resolver.bindings){
+        involved.push_back(entry.modifier);
+        involved.push_back(entry.binding.lattice);
+    }
+    for (const BakeMesh& mesh : probe.meshes){
+        involved.push_back(mesh.entity);
+        involved.push_back(mesh.model);
+    }
+    involved.erase(std::remove_if(involved.begin(), involved.end(), [scene](Entity entity){
+        return entity == NULL_ENTITY || !scene->isEntityCreated(entity);
+    }), involved.end());
+    PoseEditSession::suspendActiveFor(sceneId, involved);
+}
+
 bool LatticeEditorOps::bake(Project* project, uint32_t sceneId, Entity target, std::string* path, std::string* note, std::string* error){
     auto fail = [error](const std::string& message){
         if (error) *error = message;
@@ -1028,6 +1051,9 @@ bool LatticeEditorOps::bake(Project* project, uint32_t sceneId, Entity target, s
         return fail("stop the scene first: baking writes a model file and edits the scene");
     }
     Scene* scene = sceneProject->scene;
+
+    // what is baked is the rest, not a preview (final review M2)
+    restoreForBake(sceneId, scene, target);
 
     BakePlan plan(scene);
     if (!buildPlan(scene, target, plan)){

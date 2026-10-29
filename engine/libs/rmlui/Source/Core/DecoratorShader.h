@@ -3,6 +3,7 @@
 #include "../../Include/RmlUi/Core/Decorator.h"
 #include "../../Include/RmlUi/Core/Geometry.h"
 #include "../../Include/RmlUi/Core/ID.h"
+#include "../../Include/RmlUi/Core/RenderInterface.h"
 #include "../../Include/RmlUi/Core/Spritesheet.h"
 #include "Pool.h"
 
@@ -43,6 +44,9 @@ struct ShaderElementData {
 	ShaderElementData(Geometry&& geometry, CompiledShader&& shader) : geometry(std::move(geometry)), shader(std::move(shader)) {}
 	Geometry geometry;
 	CompiledShader shader;
+	// Fork (S16-F5): the gradient as one primitive over the fill area (RenderInterface::SupportsGradientPrimitive); the
+	// geometry is then empty
+	Vector<BoxPrimitive> primitives;
 };
 Pool<ShaderElementData>& GetShaderElementDataPool();
 

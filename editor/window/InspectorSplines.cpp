@@ -16,6 +16,7 @@
 #include "command/type/PropertyCmd.h"
 #include "external/IconsFontAwesome6.h"
 #include "imgui_internal.h"
+#include "reflect/Enums.h"
 #include "spline/SplineEditor.h"
 #include "spline/SplineEvaluator.h"
 #include "subsystem/SplineSystem.h"
@@ -27,114 +28,6 @@
 #include <string>
 
 using namespace jasperengine;
-
-static std::vector<editor::EnumEntry> entriesSplineType = {
-    { (int)spline::SplineType::Linear, "Linear" },
-    { (int)spline::SplineType::CatmullRom, "Catmull Rom" },
-    { (int)spline::SplineType::CubicBezier, "Cubic Bezier" }
-};
-
-static std::vector<editor::EnumEntry> entriesSplineTangentMode = {
-    { (int)spline::TangentMode::Mirrored, "Mirrored" },
-    { (int)spline::TangentMode::Aligned, "Aligned" },
-    { (int)spline::TangentMode::Broken, "Broken" }
-};
-
-static std::vector<editor::EnumEntry> entriesSplineTerrainRegion = {
-    { (int)SplineTerrainRegion::Path, "Path" },
-    { (int)SplineTerrainRegion::Area, "Area" }
-};
-
-static std::vector<editor::EnumEntry> entriesSplineFlattenMode = {
-    { (int)SplineFlattenMode::Flatten, "Flatten" },
-    { (int)SplineFlattenMode::CutOnly, "Cut Only" },
-    { (int)SplineFlattenMode::FillOnly, "Fill Only" }
-};
-
-static std::vector<editor::EnumEntry> entriesSplineExtrudeShape = {
-    { (int)SplineExtrudeShape::Flat, "Flat" },
-    { (int)SplineExtrudeShape::Bevel, "Bevel" },
-    { (int)SplineExtrudeShape::Crown, "Crown" },
-    { (int)SplineExtrudeShape::Rectangle, "Rectangle" },
-    { (int)SplineExtrudeShape::Tube, "Tube" },
-    { (int)SplineExtrudeShape::Custom, "Custom" },
-    { (int)SplineExtrudeShape::Fill, "Fill" },
-    { (int)SplineExtrudeShape::WaterBanks, "Water Banks" }
-};
-
-static std::vector<editor::EnumEntry> entriesSplineWidthSource = {
-    { (int)SplineWidthSource::Radius, "Radius" },
-    { (int)SplineWidthSource::Constant, "Constant" }
-};
-
-static std::vector<editor::EnumEntry> entriesSplineCornerStyle = {
-    { (int)SplineCornerStyle::None, "None" },
-    { (int)SplineCornerStyle::Mitre, "Mitre" },
-    { (int)SplineCornerStyle::Round, "Round" }
-};
-
-static std::vector<editor::EnumEntry> entriesSplineGrade = {
-    { (int)SplineGrade::Racked, "Racked" },
-    { (int)SplineGrade::Stepped, "Stepped" }
-};
-
-static std::vector<editor::EnumEntry> entriesSplineConform = {
-    { (int)SplineConform::None, "None" },
-    { (int)SplineConform::TerrainHeight, "Terrain Height" },
-    { (int)SplineConform::TerrainHeightAndSlope, "Terrain Height And Slope" }
-};
-
-static std::vector<editor::EnumEntry> entriesSplineCollision = {
-    { (int)SplineCollision::None, "None" },
-    { (int)SplineCollision::Mesh, "Mesh" },
-    { (int)SplineCollision::Chain2D, "Chain 2D" }
-};
-
-static std::vector<editor::EnumEntry> entriesSplineInstantiateMode = {
-    { (int)SplineInstantiateMode::Spacing, "Spacing" },
-    { (int)SplineInstantiateMode::Tile, "Tile" },
-    { (int)SplineInstantiateMode::Fence, "Fence" }
-};
-
-static std::vector<editor::EnumEntry> entriesSplineSpacingFit = {
-    { (int)SplineSpacingFit::FitToLength, "Fit To Length" },
-    { (int)SplineSpacingFit::FixedPitch, "Fixed Pitch" }
-};
-
-static std::vector<editor::EnumEntry> entriesSplinePlantMode = {
-    { (int)SplinePlantMode::BoundsMin, "Bounds Min" },
-    { (int)SplinePlantMode::Pivot, "Pivot" }
-};
-
-static std::vector<editor::EnumEntry> entriesSplineSpanOverrideKind = {
-    { (int)SplineSpanOverrideKind::Gate, "Gate" },
-    { (int)SplineSpanOverrideKind::Piece, "Piece" }
-};
-
-static std::vector<editor::EnumEntry> entriesSplineAnimateMethod = {
-    { (int)SplineAnimateMethod::Duration, "Duration" },
-    { (int)SplineAnimateMethod::Speed, "Speed" }
-};
-
-static std::vector<editor::EnumEntry> entriesSplineLoop = {
-    { (int)SplineLoop::Once, "Once" },
-    { (int)SplineLoop::Loop, "Loop" },
-    { (int)SplineLoop::PingPong, "Ping Pong" }
-};
-
-static std::vector<editor::EnumEntry> entriesSplineEasing = {
-    { (int)SplineEasing::None, "None" },
-    { (int)SplineEasing::EaseIn, "Ease In" },
-    { (int)SplineEasing::EaseOut, "Ease Out" },
-    { (int)SplineEasing::EaseInOut, "Ease In Out" }
-};
-
-static std::vector<editor::EnumEntry> entriesSplineAlignment = {
-    { (int)SplineAlignment::None, "None" },
-    { (int)SplineAlignment::SplineTangent, "Spline Tangent" },
-    { (int)SplineAlignment::SplineTangentAndUp, "Spline Tangent And Up" },
-    { (int)SplineAlignment::World, "World" }
-};
 
 namespace {
 
@@ -174,7 +67,7 @@ void editor::InspectorWindow::drawSplineComponent(ComponentType cpType, ScenePro
     RowSettings settings;
     settings.secondColSize = 7 * ImGui::GetFontSize();
     RowSettings settingsType;
-    settingsType.enumEntries = &entriesSplineType;
+    settingsType.enumEntries = InspectorWindow::enumEntries(reflect::enums::kSplineType);
     settingsType.help = "Linear: straight segments; Catmull-Rom: smooth through every knot; Bezier: shaped by each knot's handles";
     RowSettings settingsClosed;
     settingsClosed.help = "The last knot joins the first (three knots or more)";
@@ -353,10 +246,10 @@ void editor::InspectorWindow::drawSplineComponent(ComponentType cpType, ScenePro
     // Terrain: the destructive bake (S18 R11, R12)
     if (ImGui::CollapsingHeader("Terrain")){
         RowSettings settingsRegion;
-        settingsRegion.enumEntries = &entriesSplineTerrainRegion;
+        settingsRegion.enumEntries = InspectorWindow::enumEntries(reflect::enums::kSplineTerrainRegion);
         settingsRegion.help = "Path: a band along the curve; Area: the inside of a closed spline";
         RowSettings settingsMode;
-        settingsMode.enumEntries = &entriesSplineFlattenMode;
+        settingsMode.enumEntries = InspectorWindow::enumEntries(reflect::enums::kSplineFlattenMode);
         settingsMode.help = "Flatten raises and lowers; Cut Only only lowers; Fill Only only raises";
         RowSettings settingsUnits = settings;
         RowSettings settings01;
@@ -442,23 +335,23 @@ void editor::InspectorWindow::drawSplineExtrudeComponent(ComponentType cpType, S
     RowSettings settings;
     settings.secondColSize = 7 * ImGui::GetFontSize();
     RowSettings settingsShape;
-    settingsShape.enumEntries = &entriesSplineExtrudeShape;
+    settingsShape.enumEntries = InspectorWindow::enumEntries(reflect::enums::kSplineExtrudeShape);
     settingsShape.help = "Flat: a ribbon (2D: an edge); Bevel: a path; Crown: a road; Rectangle: a wall; Tube: a pipe; Custom: your profile; "
                          "Fill: a closed spline's flat area; Water Banks: a river or lake filled to its banks over the terrain";
     RowSettings settingsWidth;
-    settingsWidth.enumEntries = &entriesSplineWidthSource;
+    settingsWidth.enumEntries = InspectorWindow::enumEntries(reflect::enums::kSplineWidthSource);
     settingsWidth.help = "Radius: each knot's radius (half the width); Constant: the Width below";
     RowSettings settingsGrade;
-    settingsGrade.enumEntries = &entriesSplineGrade;
+    settingsGrade.enumEntries = InspectorWindow::enumEntries(reflect::enums::kSplineGrade);
     settingsGrade.help = "Racked: tilts with the ground; Stepped: level runs that step at the knots";
     RowSettings settingsCorners;
-    settingsCorners.enumEntries = &entriesSplineCornerStyle;
+    settingsCorners.enumEntries = InspectorWindow::enumEntries(reflect::enums::kSplineCornerStyle);
     settingsCorners.help = "At the knots of a Linear spline: sharp (past 120 degrees built Round) or round";
     RowSettings settingsConform;
-    settingsConform.enumEntries = &entriesSplineConform;
+    settingsConform.enumEntries = InspectorWindow::enumEntries(reflect::enums::kSplineConform);
     settingsConform.help = "Follow the terrain under the spline: its height, or its height and slope";
     RowSettings settingsCollision;
-    settingsCollision.enumEntries = &entriesSplineCollision;
+    settingsCollision.enumEntries = InspectorWindow::enumEntries(reflect::enums::kSplineCollision);
     settingsCollision.help = "Mesh: static colliders of the generated mesh (3D); Chain 2D: a Box2D chain of the centreline";
     RowSettings settings01;
     settings01.floatMin = 0.0f;
@@ -588,19 +481,19 @@ void editor::InspectorWindow::drawSplineInstantiateComponent(ComponentType cpTyp
     RowSettings settings;
     settings.secondColSize = 7 * ImGui::GetFontSize();
     RowSettings settingsMode;
-    settingsMode.enumEntries = &entriesSplineInstantiateMode;
+    settingsMode.enumEntries = InspectorWindow::enumEntries(reflect::enums::kSplineInstantiateMode);
     settingsMode.help = "Spacing: a piece every Spacing; Tile: pieces end to end by their bounds; Fence: posts and spans";
     RowSettings settingsFit;
-    settingsFit.enumEntries = &entriesSplineSpacingFit;
+    settingsFit.enumEntries = InspectorWindow::enumEntries(reflect::enums::kSplineSpacingFit);
     settingsFit.help = "Fit To Length: stretched to land on both ends; Fixed Pitch: exactly the spacing";
     RowSettings settingsGrade;
-    settingsGrade.enumEntries = &entriesSplineGrade;
+    settingsGrade.enumEntries = InspectorWindow::enumEntries(reflect::enums::kSplineGrade);
     settingsGrade.help = "Racked: spans tilt with the ground; Stepped: spans stay level and step at the posts";
     RowSettings settingsPlant;
-    settingsPlant.enumEntries = &entriesSplinePlantMode;
+    settingsPlant.enumEntries = InspectorWindow::enumEntries(reflect::enums::kSplinePlantMode);
     settingsPlant.help = "Bounds Min: the piece's bottom on the curve; Pivot: its pivot on the curve";
     RowSettings settingsConform;
-    settingsConform.enumEntries = &entriesSplineConform;
+    settingsConform.enumEntries = InspectorWindow::enumEntries(reflect::enums::kSplineConform);
     RowSettings settings01;
     settings01.floatMin = 0.0f;
     settings01.floatMax = 1.0f;
@@ -686,7 +579,7 @@ void editor::InspectorWindow::drawSplineInstantiateComponent(ComponentType cpTyp
 
         ImGui::SeparatorText("Span Overrides (at most 16)");
         RowSettings settingsKind;
-        settingsKind.enumEntries = &entriesSplineSpanOverrideKind;
+        settingsKind.enumEntries = InspectorWindow::enumEntries(reflect::enums::kSplineSpanOverrideKind);
         settingsKind.help = "Gate: a piece of the gates pool; Piece: this piece of the spans pool";
         beginTable(cpType, getLabelSize("Piece"), "overrides");
         for (size_t i = 0; i < instantiate.spanOverrides.size(); i++){
@@ -745,15 +638,15 @@ void editor::InspectorWindow::drawSplineAnimateComponent(ComponentType cpType, S
     RowSettings settings;
     settings.secondColSize = 7 * ImGui::GetFontSize();
     RowSettings settingsMethod;
-    settingsMethod.enumEntries = &entriesSplineAnimateMethod;
+    settingsMethod.enumEntries = InspectorWindow::enumEntries(reflect::enums::kSplineAnimateMethod);
     settingsMethod.help = "Duration: the whole spline in Duration seconds; Speed: Speed world units per second";
     RowSettings settingsLoop;
-    settingsLoop.enumEntries = &entriesSplineLoop;
+    settingsLoop.enumEntries = InspectorWindow::enumEntries(reflect::enums::kSplineLoop);
     RowSettings settingsEasing;
-    settingsEasing.enumEntries = &entriesSplineEasing;
+    settingsEasing.enumEntries = InspectorWindow::enumEntries(reflect::enums::kSplineEasing);
     settingsEasing.help = "Once only";
     RowSettings settingsAlignment;
-    settingsAlignment.enumEntries = &entriesSplineAlignment;
+    settingsAlignment.enumEntries = InspectorWindow::enumEntries(reflect::enums::kSplineAlignment);
     settingsAlignment.help = "None: keeps its rotation; Spline Tangent: faces along the curve, world up; Spline Tangent And Up: "
                              "also rolls with it; World: the world's axes";
     RowSettings settings01;

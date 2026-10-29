@@ -335,7 +335,9 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
             continue;
         }
         if (change.origin == ChangeOrigin::Editor) {
-            if (kind == "material" || kind == "texture") editorWritten[kind].push_back(change.path);
+            // (an agent's write_file of a clip or a pose animation: their documents reload too,
+            // and its load problems are the call's)
+            if (kind == "material" || kind == "texture" || kind == "animation") editorWritten[kind].push_back(change.path);
             if (reload::isHtmlUiFile(watch::pathToUtf8(change.path))) editorWritten["ui"].push_back(change.path);
             continue;
         }
@@ -397,6 +399,7 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
     reload::reloadAudio(ctx, files(external, "audio"));
     reload::reloadParticleEffects(ctx, files(external, "particles"));
     reload::reloadFonts(ctx, files(external, "font"));
+    reload::reloadAnimations(ctx, both("animation"), files(external, "model"), options.full);
     // another program's changes not reloaded yet (the dedupe above): the documents' own stamps
     // cannot tell a save in the same timestamp tick from the one they read
     reload::reloadHtmlUi(ctx, both("ui"), files(external, "ui"));

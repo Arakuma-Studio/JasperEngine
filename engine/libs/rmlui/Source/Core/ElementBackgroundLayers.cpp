@@ -22,6 +22,10 @@ namespace Rml {
 
 static ImageSourceHandler* image_source_handler = nullptr;
 
+static bool MakeGradientTiles(RenderManager& render_manager, Element* element, BoxArea clip_area, int box_index, int num_boxes,
+	const Rectanglef* canvas, const LayerTiles& tiles, const Rectanglef& clip_rect, const CompiledShader& shader, byte alpha,
+	Vector<BoxPrimitive>& out);
+
 ImageSourceHandler::~ImageSourceHandler() {}
 
 void SetImageSourceHandler(ImageSourceHandler* handler)
@@ -575,6 +579,15 @@ void ElementBackgroundLayers::Generate(Element* element, const Rectanglef* canva
 				if (!draw.shader)
 					continue;
 				const byte alpha = byte(opacity * 255.f);
+				// Fork (S16-F5): as gradient primitives when the render interface draws them: each tile within the clip
+				// box, or, under a rounded clip box, the clip box's fill area with its radii when one tile covers it (no
+				// mask layer then); otherwise the geometry below.
+				if (MakeGradientTiles(*render_manager, element, clip_area, box_index, num_boxes, canvas, tiles, clip_rect, draw.shader, alpha,
+						draw.primitives))
+				{
+					draws.push_back(std::move(draw));
+					continue;
+				}
 				// A generated image is not stretched into a snapped destination (Chromium draws it at the tile's size).
 				for (const LayerTile& tile : tiles.tiles)
 					AddQuad(mesh, tile.rect.TopLeft(), tile.rect.BottomRight(), tile.uv0 * tiles.tile_size,
@@ -635,6 +648,91 @@ void ElementBackgroundLayers::Generate(Element* element, const Rectanglef* canva
 	generated_canvas = canvas ? canvas->Size() : Vector2f(0.f);
 }
 
+// Fork (S16-F5): the gradient tiles of a background image as primitives (ElementBackgroundLayers::Draw::primitives), false
+// when the render interface does not draw the shader so or the tiles do not fit a primitive. Tiles that cover the clip box
+// as one grid (one tile, or 'repeat' of a tile size) are one primitive over its fill area, the clip box's radii its own
+// (no mask layer); other tiles of a square clip box are a primitive each.
+static bool MakeGradientTiles(RenderManager& render_manager, Element* element, BoxArea clip_area, int box_index, int num_boxes,
+	const Rectanglef* canvas, const LayerTiles& tiles, const Rectanglef& clip_rect, const CompiledShader& shader, byte alpha,
+	Vector<BoxPrimitive>& out)
+{
+	out.clear();
+	CompiledShaderHandle handle = {};
+	if (canvas || num_boxes != 1 || tiles.tiles.empty() || !render_manager.SupportsGradientPrimitive(shader, handle))
+		return false;
+	const Vector2f tile_size = tiles.tile_size;
+	// a tile's texture coordinates start at uv0 * tile_size (the geometry's) at its top-left: where the shader's (0, 0) is
+	auto origin_of = [&](const LayerTile& tile) { return tile.rect.TopLeft() - tile.uv0 * tile_size; };
+	auto add = [&](Rectanglef rect, const CornerSizes2& radii, Vector2f origin, Vector2f repeat) {
+		BoxPrimitive primitive;
+		primitive.kind = BoxPrimitive::Kind::Gradient;
+		primitive.border_box = rect;
+		for (int corner = 0; corner < 4; corner++)
+			primitive.radii[corner] = (radii[corner].x > 0.f && radii[corner].y > 0.f) ? radii[corner] : Vector2f(0.f);
+		primitive.fill = ColourbPremultiplied(alpha, alpha);
+		primitive.shader = handle;
+		primitive.gradient_origin = origin - rect.TopLeft();
+		primitive.gradient_repeat = repeat;
+		out.push_back(primitive);
+	};
+
+	// one grid: the tiles' origins a whole number of tile sizes apart, and together the whole clip rectangle
+	constexpr float epsilon = 0.01f;
+	const Vector2f origin = origin_of(tiles.tiles[0]);
+	bool grid = true;
+	float covered = 0.f;
+	for (const LayerTile& tile : tiles.tiles)
+	{
+		const Vector2f d = origin_of(tile) - origin;
+		for (int axis = 0; axis < 2; axis++)
+		{
+			const float size = (axis == 0 ? tile_size.x : tile_size.y);
+			const float offset = (axis == 0 ? d.x : d.y);
+			if (size > 0.f ? Math::Absolute(offset - size * Math::Round(offset / size)) > epsilon : Math::Absolute(offset) > epsilon)
+				grid = false;
+		}
+		const Rectanglef part = tile.rect.Intersect(clip_rect);
+		if (part.Width() > 0.f && part.Height() > 0.f)
+			covered += part.Width() * part.Height();
+	}
+	const float clip_area_size = clip_rect.Width() * clip_rect.Height();
+	grid = grid && covered >= clip_area_size - epsilon * (clip_rect.Width() + clip_rect.Height() + 1.f);
+	const Vector2f repeat = (tiles.tiles.size() > 1 ? tile_size : Vector2f(0.f));
+
+	const RenderBox clip_box = element->GetRenderBox(clip_area, box_index, false);
+	if (clip_box.HasBorderRadius())
+	{
+		// the shape the mask layer would cut: the clip box's fill area and its inner radii. Not under a border of gaps
+		// (dashed, dotted, ...): there the curve's edge shows, and the mask's coverage is the browsers' (BrowserParity
+		// paint/clip-padding-radius)
+		const ComputedValues& computed = element->GetComputedValues();
+		const Style::BorderStyle styles[] = {computed.border_top_style(), computed.border_right_style(), computed.border_bottom_style(),
+			computed.border_left_style()};
+		for (Style::BorderStyle style : styles)
+			if (style != Style::BorderStyle::None && style != Style::BorderStyle::Hidden && style != Style::BorderStyle::Solid)
+				return false;
+		if (!grid)
+			return false;
+		const BorderMetrics metrics = GeometryBackgroundBorder::ComputeBorderMetrics(clip_box.GetBorderOffset(), clip_box.GetBorderWidths(),
+			clip_box.GetFillSize(), clip_box.GetBorderRadius());
+		add(Rectanglef::FromCorners(metrics.positions_inner[0], metrics.positions_inner[2]), metrics.inner_radii, origin, repeat);
+		return true;
+	}
+	const CornerSizes2 square = {};
+	if (grid)
+	{
+		add(clip_rect, square, origin, repeat);
+		return true;
+	}
+	for (const LayerTile& tile : tiles.tiles)
+	{
+		const Rectanglef rect = tile.rect.Intersect(clip_rect);
+		if (rect.Width() > 0.f && rect.Height() > 0.f)
+			add(rect, square, origin_of(tile), Vector2f(0.f));
+	}
+	return !out.empty();
+}
+
 void ElementBackgroundLayers::Render(Element* element, const Rectanglef* canvas, Element* area_element)
 {
 	if (!dirty && depends_on_offset)
@@ -659,6 +757,11 @@ void ElementBackgroundLayers::Render(Element* element, const Rectanglef* canvas,
 
 	for (Draw& draw : draws)
 	{
+		if (!draw.primitives.empty())
+		{
+			render_manager->RenderPrimitives(draw.primitives, offset);
+			continue;
+		}
 		const bool masked = bool(draw.clip_mask);
 		const bool fade = !draw.fade.empty();
 		if (masked || fade)

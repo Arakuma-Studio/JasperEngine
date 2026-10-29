@@ -9,6 +9,7 @@
 #include "mcp/McpJson.h"
 
 #include "command/Command.h"
+#include "command/type/WriteFilesCmd.h"
 #include "util/ProjectChecks.h"
 
 #include <filesystem>
@@ -43,57 +44,8 @@ namespace jasperengine::editor::mcp {
         // Files only editor tools may write: project.yaml, scenes, prefabs, generated build files
         bool isEditorOwnedFile(Project* project, const fs::path& absolute, std::string& why);
 
-        // Writes (creates or replaces) files as one step of the project command history; undo
-        // puts back the previous contents (or deletes files that did not exist, and the
-        // directories it created). After execute and undo it runs `afterChange` with the paths.
-        // All or nothing: when a file can't be written (a path component that is a file, a
-        // read-only directory, a full disk), the files written before it get their previous
-        // content back and what it created is removed, so a failed execute changes nothing
-        // (CommandHistory::addCommand then drops it without an undo step); reportFailureTo()
-        // receives which file failed and why.
-        class WriteFilesCmd : public Command {
-        public:
-            struct Item {
-                fs::path path;          // absolute
-                std::string content;
-            };
-            WriteFilesCmd(std::vector<Item> items, std::function<void(const std::vector<fs::path>&)> afterChange);
-            bool execute() override;
-            void undo() override;
-            bool affectsStructure() const override { return false; }
-            // Where execute() writes its failure ("can't write <path>: <reason>; ..."): the
-            // command is deleted by the history when it fails, the sink outlives it
-            void reportFailureTo(std::shared_ptr<std::string> sink) { failureSink = std::move(sink); }
-
-            // "Write File player.lua", "Create File player.lua", "Write 3 Files"
-            std::string describe() const override;
-            const char* typeName() const override { return "WriteFilesCmd"; }
-            // Every file already held that content
-            bool isNoOp() const override;
-            size_t memoryBytes() const override;
-            // Off-thread release: the destructor only frees file contents, paths and the
-            // afterChange callback (it captures a context pointer); no editor/engine/GPU state (S24 R8).
-            bool releaseOffThread() const override { return true; }
-
-        private:
-            struct Previous {
-                bool existed = false;
-                bool metaExisted = false;   // its S04 sidecar: one the asset database adds to a file it created goes on undo
-                std::string content;
-            };
-            std::vector<Item> items;
-            std::vector<Previous> previous;
-            std::vector<fs::path> createdDirs;   // every directory execute() created
-            bool captured = false;
-            std::function<void(const std::vector<fs::path>&)> afterChange;
-            std::shared_ptr<std::string> failureSink;
-            std::vector<fs::path> paths() const;
-            // items[i] back to what it was before execute (false when that failed)
-            bool restore(size_t i);
-            // the created directories that are empty, deepest first
-            void removeCreatedDirs();
-            void fail(const std::string& message);
-        };
+        // Writes files as one step of the project command history (editor/command/type)
+        using WriteFilesCmd = ::jasperengine::editor::WriteFilesCmd;
 
         // Runs a WriteFilesCmd on the project history (one undo step). False + error on failure.
         // alsoSync: files written before it (an import's downloads) that the same reload takes,

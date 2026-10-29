@@ -6,10 +6,12 @@
 #include "Scene.h"
 #include "Engine.h"
 #include "System.h"
+#include "animation/ModelSubClips.h"
 #include "buffer/InterleavedBuffer.h"
 #include "io/FileData.h"
 #include "io/Data.h"
 #include "io/ResourcePack.h"
+#include "pool/AnimationClipPool.h"
 #include "pool/ModelPool.h"
 #include "pool/TexturePool.h"
 #include "pool/TextureDataPool.h"
@@ -31,7 +33,9 @@
 #include <filesystem>
 #include <functional>
 #include <limits>
+#include <map>
 #include <mutex>
+#include <set>
 #include <sstream>
 #include <thread>
 #include <utility>
@@ -44,6 +48,38 @@ using namespace jasperengine;
 
 namespace {
     thread_local int g_imageDecodeMaxDimension = 0;
+
+    // loadGLTF's node walk (getLegacyRootTransform repeats it on a loaded model): each node's
+    // parent (the last node listing it as a child, -1 for none) and the nodes that own a mesh, in
+    // index order
+    void collectGLTFNodes(const tinygltf::Model& gltf, std::map<int, int>& nodesParent, std::vector<int>& meshNodes){
+        for (size_t i = 0; i < gltf.nodes.size(); i++){
+            nodesParent[static_cast<int>(i)] = -1;
+        }
+        for (size_t i = 0; i < gltf.nodes.size(); i++){
+            if (gltf.nodes[i].mesh >= 0){
+                meshNodes.push_back(static_cast<int>(i));
+            }
+            for (int child : gltf.nodes[i].children){
+                nodesParent[child] = static_cast<int>(i);
+            }
+        }
+    }
+
+    // the node whose global matrix places the model entity: the default scene's first root, else
+    // the first mesh node (-1 without one)
+    int gltfRootTransformNode(const tinygltf::Model& gltf, const std::vector<int>& meshNodes){
+        if (!gltf.scenes.empty()){
+            const int sceneIdx = gltf.defaultScene >= 0 ? gltf.defaultScene : 0;
+            if (sceneIdx < (int)gltf.scenes.size() && !gltf.scenes[sceneIdx].nodes.empty()){
+                const int node = gltf.scenes[sceneIdx].nodes[0];
+                if (node >= 0 && node < (int)gltf.nodes.size()){
+                    return node;
+                }
+            }
+        }
+        return meshNodes.empty() ? -1 : meshNodes[0];
+    }
 
     // the largest sprite grid a lattice can ask for (LatticeModifierComponent::subdivisions)
     constexpr int SPRITE_MAX_GRID = 64;
@@ -281,9 +317,9 @@ std::string MeshSystem::getImportedModelPath(const std::string& filename){
     return (std::filesystem::path(importPath) / source.lexically_relative(assets)).generic_string() + ".glb";
 }
 
-static std::recursive_mutex& getPooledGLTFMutex(){
-    static std::recursive_mutex mutex;
-    return mutex;
+std::recursive_mutex& MeshSystem::getPooledGLTFMutex(){
+    static std::recursive_mutex* mutex = new std::recursive_mutex();
+    return *mutex;
 }
 
 // Name of a converted or baked copy of an accessor's data appended to a (pooled) glTF model:
@@ -1201,6 +1237,32 @@ bool MeshSystem::loadGLTFFile(tinygltf::TinyGLTF& loader, tinygltf::Model* model
     return loader.LoadASCIIFromFile(model, err, warn, filename);
 }
 
+bool MeshSystem::parseGLTFFile(const std::string& filename, tinygltf::Model& model, std::string* err){
+    tinygltf::TinyGLTF loader;
+    // External images are never read: the caller wants nodes and animations. A missing image is
+    // only a warning to tinygltf (the image keeps its uri), buffers load as usual.
+    auto noImages = [](const std::string& path, void* userData) -> bool {
+        std::string ext = FileData::getFilePathExtension(path);
+        std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+        static const char* const imageExtensions[] = {"png", "jpg", "jpeg", "webp", "ktx", "ktx2", "basis", "dds", "tga", "bmp", "gif", "hdr", "exr"};
+        for (const char* image : imageExtensions){
+            if (ext == image) return false;
+        }
+        return fileExists(path, userData);
+    };
+    loader.SetFsCallbacks({noImages, &tinygltf::ExpandFilePath, &readWholeFile, &tinygltf::WriteWholeFile, &getFileSizeInBytes, nullptr});
+    loader.SetImagesAsIs(true); // never decoded either
+
+    std::string error;
+    std::string warn;
+    const bool loaded = loadGLTFFile(loader, &model, &error, &warn, filename);
+    if (!loaded || !error.empty()){
+        if (err) *err = error.empty() ? "cannot load model " + filename : error;
+        return false;
+    }
+    return true;
+}
+
 bool MeshSystem::readWholeFile(std::vector<unsigned char> *out, std::string *err, const std::string &filepath, void *) {
     Data filedata;
 
@@ -1810,23 +1872,68 @@ void MeshSystem::cancelPreloadModel(const std::string& filename){
     cancelAsyncModelLoadByKey(getAsyncModelLoadKey(nullptr, filename));
 }
 
+// The texture ids of parses invalidateModelParse dropped, by pool key: the images stay (entities
+// show them), invalidateModelFile still finds them without the parse
+static std::mutex& getDroppedParseTexturesMutex(){
+    static std::mutex* mutex = new std::mutex();
+    return *mutex;
+}
+
+static std::map<std::string, std::set<std::string>>& getDroppedParseTextures(){
+    static std::map<std::string, std::set<std::string>>* textures = new std::map<std::string, std::set<std::string>>();
+    return *textures;
+}
+
 void MeshSystem::invalidateModelFile(const std::string& filename){
     const std::string poolKey = getModelFilenameKey(filename);
+    // the pooled images are keyed by the model's texture key (asset-relative), as loads key them
+    const std::string textureKey = getModelTextureKey(filename);
+    std::set<std::string> textureIds;
+    {
+        std::lock_guard<std::mutex> lock(getDroppedParseTexturesMutex());
+        auto dropped = getDroppedParseTextures().find(poolKey);
+        if (dropped != getDroppedParseTextures().end()){
+            textureIds = std::move(dropped->second);
+            getDroppedParseTextures().erase(dropped);
+        }
+    }
     std::shared_ptr<tinygltf::Model> model = ModelPool::getGLTF(poolKey);
     if (model){
         for (size_t i = 0; i < model->textures.size(); i++){
             if (model->textures[i].source >= 0){
-                const std::string id = gltfTextureDedupKey(poolKey, *model, static_cast<int>(i));
-                TextureDataPool::invalidate(id);
-                TexturePool::invalidate(id);
+                textureIds.insert(gltfTextureDedupKey(textureKey, *model, static_cast<int>(i)));
+            }
+        }
+    }
+    for (const std::string& id : textureIds){
+        TextureDataPool::invalidate(id);
+        TexturePool::invalidate(id);
+    }
+    ModelPool::invalidate(poolKey);
+    // the sub-clips built from the old parse (spec 9.R13)
+    AnimationClipPool::invalidateModel(filename);
+}
+
+void MeshSystem::invalidateModelParse(const std::string& filename){
+    const std::string poolKey = getModelFilenameKey(filename);
+    // the pooled images are keyed by the model's texture key (asset-relative), as loads key them
+    const std::string textureKey = getModelTextureKey(filename);
+    if (std::shared_ptr<tinygltf::Model> model = ModelPool::getGLTF(poolKey)){
+        std::lock_guard<std::mutex> lock(getDroppedParseTexturesMutex());
+        for (size_t i = 0; i < model->textures.size(); i++){
+            if (model->textures[i].source >= 0){
+                getDroppedParseTextures()[poolKey].insert(gltfTextureDedupKey(textureKey, *model, static_cast<int>(i)));
             }
         }
     }
     ModelPool::invalidate(poolKey);
+    AnimationClipPool::invalidateModel(filename);
 }
 
 void MeshSystem::releasePreloadedModel(const std::string& filename){
     const std::string poolKey = getModelFilenameKey(filename);
+    // the pooled images are keyed by the model's texture key (asset-relative), as loads key them
+    const std::string textureKey = getModelTextureKey(filename);
     if (FileData::getFilePathExtension(filename) == "obj"){
         ModelPool::removeObj(poolKey);
         return;
@@ -1840,7 +1947,7 @@ void MeshSystem::releasePreloadedModel(const std::string& filename){
     std::vector<std::string> textureIds;
     for (size_t i = 0; i < model->textures.size(); i++){
         if (model->textures[i].source >= 0){
-            textureIds.push_back(gltfTextureDedupKey(poolKey, *model, static_cast<int>(i)));
+            textureIds.push_back(gltfTextureDedupKey(textureKey, *model, static_cast<int>(i)));
         }
     }
 
@@ -4848,6 +4955,10 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
 
     scene->getSystem<RenderSystem>()->prepareMeshForDataReload(entity, mesh);
 
+    // another model file than the one loaded: its meshes take its default blend shape weights
+    const bool otherModelFile = !model.loadedFilename.empty() && model.loadedFilename != poolKey;
+    std::set<Entity> morphDefaultsApplied;
+
     destroyModel(model);
 
     model.filename = filename;
@@ -4864,6 +4975,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     mesh.normAdjustWeight = 1.0f;
     mesh.bonesMatrix = HybridArray<Matrix4, MAX_BONES>();
     mesh.needUpdateBones = false;
+    mesh.morphTargetNames.clear();
 
     bool res = false;
 
@@ -4936,29 +5048,22 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         pooledModelLock = std::unique_lock<std::recursive_mutex>(getPooledGLTFMutex());
     }
 
-    // Build parent map and collect all nodes that own a mesh primitive.
-    int meshNode    = -1; // first skinned mesh node — used for skeleton lookup
-    int transformNode = -1; // scene root — used for initial entity transform
-    std::vector<int> meshNodes;
-    std::map<int, int> nodesParent;
-
-    for (size_t i = 0; i < model.gltfModel->nodes.size(); i++) {
-        nodesParent[static_cast<int>(i)] = -1;
+    // the animations' sub-clip names, read here under the lock once: Model::findAnimation looks
+    // names up from these, without the lock (loads never change the animations array)
+    {
+        std::vector<std::string> animationNames;
+        animationNames.reserve(model.gltfModel->animations.size());
+        for (const tinygltf::Animation& animation : model.gltfModel->animations) animationNames.push_back(animation.name);
+        model.animationClipNames = anim::subClipNames(animationNames);
     }
 
-    for (size_t i = 0; i < model.gltfModel->nodes.size(); i++) {
-        const tinygltf::Node& node = model.gltfModel->nodes[i];
-
-        if (node.mesh >= 0) {
-            meshNodes.push_back(static_cast<int>(i));
-            if (meshNode < 0 && node.skin >= 0) {
-                meshNode = static_cast<int>(i);
-            }
-        }
-
-        for (int child : node.children) {
-            nodesParent[child] = static_cast<int>(i);
-        }
+    // Build parent map and collect all nodes that own a mesh primitive.
+    int meshNode    = -1; // first skinned mesh node — used for skeleton lookup
+    std::vector<int> meshNodes;
+    std::map<int, int> nodesParent;
+    collectGLTFNodes(*model.gltfModel, nodesParent, meshNodes);
+    for (int nodeIdx : meshNodes) {
+        if (model.gltfModel->nodes[nodeIdx].skin >= 0) { meshNode = nodeIdx; break; }
     }
 
     // the extensions it uses that are not read: once per model
@@ -4991,9 +5096,12 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     }
     // Building child entities mutates the ECS, so off-thread previews keep the flat path.
     const bool canUseChildEntities = !mergeMeshNodes && !Engine::isAsyncThread();
+    // Under an Animation Player the sub-clip paths address one entity per glTF node (spec 9.R3).
+    // A reload that keeps its entities keeps their layout: the editor reloads to switch it.
+    const bool forceNodeHierarchy = canUseChildEntities && !skipEntities && isNodeHierarchyForced(entity);
     const bool useNodeHierarchy = canUseChildEntities &&
         (!model.nodesIdMapping.empty() || (!skipEntities &&
-            (!model.gltfModel->animations.empty() || model.gltfModel->skins.size() > 1)));
+            (!model.gltfModel->animations.empty() || model.gltfModel->skins.size() > 1 || forceNodeHierarchy)));
     const bool useChildEntities = canUseChildEntities &&
         (meshNodes.size() > 1 || useNodeHierarchy);
 
@@ -5010,15 +5118,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     }
 
     // Prefer the GLTF scene root for the entity transform; fall back to the first mesh node.
-    if (!model.gltfModel->scenes.empty()) {
-        int sceneIdx = model.gltfModel->defaultScene >= 0 ? model.gltfModel->defaultScene : 0;
-        if (isValidGLTFIndex(sceneIdx, model.gltfModel->scenes) && !model.gltfModel->scenes[sceneIdx].nodes.empty()) {
-            transformNode = model.gltfModel->scenes[sceneIdx].nodes[0];
-        }
-    }
-    if (transformNode < 0) {
-        transformNode = meshNodes[0];
-    }
+    const int transformNode = gltfRootTransformNode(*model.gltfModel, meshNodes);
 
     Matrix4 matrix = getGLTFMeshGlobalMatrix(transformNode, model, nodesParent);
 
@@ -5250,6 +5350,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             mesh.normAdjustWeight = 1.0f;
             mesh.bonesMatrix = HybridArray<Matrix4, MAX_BONES>();
             mesh.needUpdateBones = false;
+            mesh.morphTargetNames.clear();
 
             mesh.numSubmeshes = static_cast<unsigned int>(gltfmesh.primitives.size());
             if (mesh.numSubmeshes > 0 && !mesh.submeshes.validIndex(static_cast<int>(mesh.numSubmeshes) - 1)) {
@@ -5705,12 +5806,38 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             }
 
             if (morphTargets) {
-                for (int w = 0; w < static_cast<int>(gltfmesh.weights.size()) && w < MAX_MORPHTARGETS; w++) {
-                    mesh.morphWeights[w] = gltfmesh.weights[w];
+                // the file's default weights only on a freshly loaded model, or when another model
+                // file is loaded: weights a scene or prefab saved (the editor's Blend Shapes rows, a
+                // prefab instance override, all zeros too) or an earlier load of this model left
+                // survive the (re)load (MeshComponent::morphWeightsSet). Every primitive of a mesh
+                // passes here: the defaults apply to all of them in this load.
+                // Kept weights cover the targets the mesh had at its last load
+                // (MeshComponent::morphTargetCount): targets the file gained since get its defaults.
+                const int targetCount = std::min(static_cast<int>(primitive.targets.size()), MAX_MORPHTARGETS);
+                auto fileDefault = [&gltfmesh](int w) {
+                    return w < static_cast<int>(gltfmesh.weights.size()) ? static_cast<float>(gltfmesh.weights[w]) : 0.0f;
+                };
+                if (!mesh.morphWeightsSet || otherModelFile || morphDefaultsApplied.count(meshEntity)) {
+                    for (int w = 0; w < MAX_MORPHTARGETS; w++) {
+                        mesh.morphWeights[w] = fileDefault(w);
+                    }
+                    mesh.morphWeightsSet = true;
+                    // (the count of this load's primitives from here on)
+                    if (morphDefaultsApplied.insert(meshEntity).second) mesh.morphTargetCount = 0;
+                } else if (targetCount > mesh.morphTargetCount) {
+                    for (int w = std::max(mesh.morphTargetCount, 0); w < targetCount; w++) {
+                        mesh.morphWeights[w] = fileDefault(w);
+                    }
                 }
+                mesh.morphTargetCount = std::max(mesh.morphTargetCount, targetCount);
                 if (gltfmesh.extras.Has("targetNames") && gltfmesh.extras.Get("targetNames").IsArray()) {
-                    for (int t = 0; t < gltfmesh.extras.Get("targetNames").Size(); t++) {
-                        model.morphNameMapping[gltfmesh.extras.Get("targetNames").Get(t).Get<std::string>()] = t;
+                    // the model's table (Model:getMorphWeight by name) and this mesh's own
+                    const tinygltf::Value& targetNames = gltfmesh.extras.Get("targetNames");
+                    mesh.morphTargetNames.assign(static_cast<size_t>(targetNames.Size()), std::string());
+                    for (int t = 0; t < targetNames.Size(); t++) {
+                        const std::string name = targetNames.Get(t).IsString() ? targetNames.Get(t).Get<std::string>() : std::string();
+                        model.morphNameMapping[name] = t;
+                        mesh.morphTargetNames[static_cast<size_t>(t)] = name;
                     }
                 }
             }
@@ -5783,11 +5910,14 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 }
             }
 
+            // The bones and mesh nodes added Transforms since `transform` was taken: the array may
+            // have grown (moved), so the root's is read again
+            Transform& rootTransform = scene->getComponent<Transform>(entity);
             if (Engine::isAsyncThread()) {
                 // Off-thread skinned previews are baked into static geometry above (skinning attributes
                 // dropped), so there is no skeleton to pose and bonesMatrix stays at the identity it was
                 // reset to at load start. Just refresh the transform so the preview gets framed.
-                transform.needUpdate = true;
+                rootTransform.needUpdate = true;
             } else if (model.skeleton != NULL_ENTITY) {
                 // Repopulate bonesMatrix before the first render frame. loadGLTF reset every bonesMatrix
                 // to identity above, so RenderSystem must recompute the skinning matrices: flag the
@@ -5795,7 +5925,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 // for update. This also covers reopening a saved project (skipEntities), where the
                 // skeleton already exists from the deserialized scene; without it the skinning is left
                 // stale and the mesh renders invisible until it is moved or the game is played and stopped.
-                transform.needUpdate = true;
+                rootTransform.needUpdate = true;
                 for (const auto& boneEntry : model.bonesIdMapping) {
                     Transform* boneTransform = scene->findComponent<Transform>(boneEntry.second);
                     if (boneTransform) {
@@ -5811,10 +5941,12 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
 
     // Animation tracks are also model-generated entities, so the off-thread thumbnail worker skips
     // building them for the same reason as the skeleton above (a static preview never plays them).
+    // Not either when an Animation Player plays the file's animations as sub-clips (spec 9.R15).
     if (!skipEntities && !Engine::isAsyncThread()) {
         model.animations.clear();
 
-        for (size_t i = 0; i < model.gltfModel->animations.size(); i++) {
+        const size_t animationCount = model.animationEntities ? model.gltfModel->animations.size() : 0;
+        for (size_t i = 0; i < animationCount; i++) {
             const tinygltf::Animation &animation = model.gltfModel->animations[i];
 
             Entity anim;
@@ -6454,6 +6586,78 @@ bool MeshSystem::hasInstancedMesh(Entity entity) const{
     return signature.test(scene->getComponentId<InstancedMeshComponent>());
 }
 
+bool MeshSystem::isNodeHierarchyForced(Entity entity) const{
+    // the entity and its Transform ancestors (bounded: a broken parent loop ends the walk)
+    Entity current = entity;
+    for (int depth = 0; current != NULL_ENTITY && depth < 65536; depth++){
+        if (!scene->isEntityCreated(current)){
+            break;
+        }
+        if (scene->findComponent<AnimationPlayerComponent>(current)){
+            return true;
+        }
+        const Transform* transform = scene->findComponent<Transform>(current);
+        if (!transform){
+            break;
+        }
+        current = transform->parent;
+    }
+    return false;
+}
+
+bool MeshSystem::isLegacyLayout(const ModelComponent& model){
+    // not loaded yet: its first load builds the forced layout itself
+    if (model.filename.empty() || model.loadedFilename.empty() || !model.nodesIdMapping.empty()){
+        return false;
+    }
+    // OBJ files have no nodes
+    std::string ext = FileData::getFilePathExtension(model.filename);
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+    if (ext == "obj"){
+        return false;
+    }
+    // a merged static model (more than one mesh node, as loadGLTF merges) animates only at the root
+    if (model.mergeStaticMeshes){
+        size_t meshNodes = 0;
+        if (model.gltfModel){
+            for (const tinygltf::Node& node : model.gltfModel->nodes){
+                if (node.mesh >= 0) meshNodes++;
+            }
+        }
+        if (!model.gltfModel || meshNodes > 1){
+            return false;
+        }
+    }
+    return true;
+}
+
+bool MeshSystem::needsNodeHierarchyReload(Entity entity) const{
+    const ModelComponent* model = scene->findComponent<ModelComponent>(entity);
+    return model && isLegacyLayout(*model) && isNodeHierarchyForced(entity);
+}
+
+bool MeshSystem::getLegacyRootTransform(Entity entity, Matrix4& sceneRoot){
+    ModelComponent* model = scene->findComponent<ModelComponent>(entity);
+    if (!model || !model->gltfModel || !model->nodesIdMapping.empty() || model->gltfModel->nodes.empty()){
+        return false;
+    }
+    const tinygltf::Model& gltf = *model->gltfModel;
+    std::map<int, int> nodesParent;
+    std::vector<int> meshNodes;
+    collectGLTFNodes(gltf, nodesParent, meshNodes);
+    bool anyNodeSkinned = false;
+    for (int nodeIdx : meshNodes){
+        anyNodeSkinned = anyNodeSkinned || gltf.nodes[nodeIdx].skin >= 0;
+    }
+    // loadGLTF's condition for the root transform on the entity in the legacy layout (`!useChildEntities
+    // || anyNodeSkinned`: child meshes of a static multi-mesh model carry their whole global matrix)
+    if (meshNodes.empty() || (meshNodes.size() > 1 && !anyNodeSkinned)){
+        return false;
+    }
+    sceneRoot = getGLTFMeshGlobalMatrix(gltfRootTransformNode(gltf, meshNodes), *model, nodesParent);
+    return true;
+}
+
 void MeshSystem::clearBoneMapping(ModelComponent& model){
     if (model.nodesIdMapping.empty()) {
         for (auto const& bone : model.bonesIdMapping){
@@ -6500,6 +6704,7 @@ void MeshSystem::destroyModel(ModelComponent& model){
     if (model.gltfModel){
         model.gltfModel.reset();
     }
+    model.animationClipNames.clear();
 
     if (model.objModel){
         model.objModel.reset();
@@ -6690,6 +6895,9 @@ bool MeshSystem::createOrUpdateModel(Entity entity, ModelComponent& model, MeshC
             }
 
             std::string ext = FileData::getFilePathExtension(model.filename);
+            // Entities that exist (a decoded scene) are kept, with their layout. Animation entities
+            // count only when the model makes them (animationEntities): one that does not keeps its
+            // bones and mesh nodes, so it still skips, and a merged one rebuilds without them.
             bool skipEntities = !model.filename.empty() && (!model.bonesIdMapping.empty() || !model.animations.empty() || !model.meshNodesMapping.empty());
             bool asyncLoading = Engine::isAsyncLoading();
             bool ret = false;
