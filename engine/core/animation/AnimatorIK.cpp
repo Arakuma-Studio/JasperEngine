@@ -101,8 +101,9 @@ Quaternion anim::shortestArc(const Vector3& from, const Vector3& to){
 }
 
 void anim::refreshRigSpace(IKContext& context, int bone){
-    if (bone < 0) bone = 0;
-    poseToRigSpaceFrom(*context.local, context.parents, (size_t)bone, context.space);
+    // the bone and its descendants: the others did not move
+    if (bone <= 0) poseToRigSpaceFrom(*context.local, context.parents, 0, context.space);
+    else poseToRigSpaceSubtree(*context.local, context.parents, (size_t)bone, context.space);
 }
 
 void anim::rotateBoneInRigSpace(IKContext& context, int bone, const Quaternion& rotation){

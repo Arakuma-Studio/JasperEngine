@@ -137,6 +137,9 @@ namespace jasperengine::anim{
     JASPERENGINE_API void poseToRigSpace(const Pose& local, const int* parents, RigSpace out);
     // the same for bones [from, count) only (the earlier ones are valid already)
     JASPERENGINE_API void poseToRigSpaceFrom(const Pose& local, const int* parents, size_t from, RigSpace out);
+    // the same for `bone` and its descendants only: the bones in parents-first depth-first order
+    // (a rig's), so a subtree is the bones from `bone` up to the first whose parent precedes it
+    JASPERENGINE_API void poseToRigSpaceSubtree(const Pose& local, const int* parents, size_t bone, RigSpace out);
 
 }
 

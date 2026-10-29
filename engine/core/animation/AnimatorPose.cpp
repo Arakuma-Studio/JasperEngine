@@ -474,6 +474,33 @@ void anim::poseToRigSpaceFrom(const Pose& local, const int* parents, size_t from
     }
 }
 
+void anim::poseToRigSpaceSubtree(const Pose& local, const int* parents, size_t bone, RigSpace out){
+    const size_t n = local.boneCount();
+    size_t end = bone + 1;
+    while (end < n && parents[end] >= (int)bone) end++;
+    const float* tx = local.array(Pose::TX); const float* ty = local.array(Pose::TY); const float* tz = local.array(Pose::TZ);
+    const float* qx = local.array(Pose::QX); const float* qy = local.array(Pose::QY);
+    const float* qz = local.array(Pose::QZ); const float* qw = local.array(Pose::QW);
+    const float* sx = local.array(Pose::SX); const float* sy = local.array(Pose::SY); const float* sz = local.array(Pose::SZ);
+    for (size_t i = bone; i < end && i < n; i++){
+        const Vector3 t(tx[i], ty[i], tz[i]);
+        const Quaternion q(qw[i], qx[i], qy[i], qz[i]);
+        const Vector3 s(sx[i], sy[i], sz[i]);
+        const Affine localAffine = Affine::compose(t, q, s);
+        const int p = parents[i];
+        if (p >= 0){
+            out.world[i] = out.world[p] * localAffine;
+            out.rotation[i] = out.rotation[p] * q;
+            out.scale[i] = out.scale[p] * s;
+        }else{
+            out.world[i] = localAffine;
+            out.rotation[i] = q;
+            out.scale[i] = s;
+        }
+        out.position[i] = out.world[i].translation();
+    }
+}
+
 void anim::poseToRigSpace(const Pose& local, const int* parents, RigSpace out){
     poseToRigSpaceFrom(local, parents, 0, out);
 }

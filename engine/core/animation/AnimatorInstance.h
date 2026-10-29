@@ -237,6 +237,7 @@ namespace jasperengine::anim{
         std::string bindError;
         // names a call used that the controller lacks (warned once each)
         std::vector<std::string> warnedNames;
+        std::vector<uint64_t> warnedKeys;   // warnOnce(key): the per-event warnings, no string built
 
         AnimatorOutput output;
         float clock = 0.0f;                 // seconds the Animator ran (retry throttles)
@@ -322,6 +323,8 @@ namespace jasperengine::anim{
 
         // true the first time a message is given (the caller logs it): one warning per name
         bool warnOnce(const std::string& message);
+        // the same by a key (a hash the caller makes without allocating)
+        bool warnOnce(uint64_t key);
 
         // The bytes of the Animator's runtime state (R20's 8 KB): the instance itself, its
         // parameters, layer, montage and IK runs and the outputs' buffers; not the rig, the poses,

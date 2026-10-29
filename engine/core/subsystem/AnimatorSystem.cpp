@@ -582,7 +582,13 @@ void AnimatorSystem::finalize(Job& job, float dt){
         component = scene->isEntityCreated(entity) ? scene->findComponent<AnimatorComponent>(entity) : nullptr;
         if (!component) return;
         const bool scripted = component->sendEventsToScripts && LuaBinding::callLuaScriptMethod(scene, entity, event.functionName, event.args);
-        if (!subscribed && !scripted && instance->warnOnce("event:" + *source + "|" + event.functionName)){
+        // the warning's key hashed in place: a handled event (every frame of a game) builds no string
+        uint64_t key = 1469598103934665603ull;
+        for (const std::string* part : {source, &event.functionName}){
+            for (char c : *part) key = (key ^ (uint8_t)c) * 1099511628211ull;
+            key = (key ^ 0xffu) * 1099511628211ull;
+        }
+        if (!subscribed && !scripted && instance->warnOnce(key)){
             Log::warn("Animator '%s': event '%s' of '%s' has no handler (no onEvent subscriber, no script method)",
                       scene->getEntityName(entity).c_str(), event.functionName.c_str(), source->c_str());
         }

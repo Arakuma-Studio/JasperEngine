@@ -707,6 +707,12 @@ bool anim::AnimatorInstance::montageSetNextSection(const std::string& from, cons
     return false;
 }
 
+bool anim::AnimatorInstance::warnOnce(uint64_t key){
+    if (std::find(warnedKeys.begin(), warnedKeys.end(), key) != warnedKeys.end()) return false;
+    warnedKeys.push_back(key);
+    return true;
+}
+
 bool anim::AnimatorInstance::warnOnce(const std::string& message){
     if (std::find(warnedNames.begin(), warnedNames.end(), message) != warnedNames.end()) return false;
     warnedNames.push_back(message);

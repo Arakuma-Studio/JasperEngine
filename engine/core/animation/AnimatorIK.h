@@ -38,7 +38,7 @@ namespace jasperengine::anim{
     JASPERENGINE_API void aimBoneInRigSpace(IKContext& context, int bone, const Vector3& point, const Vector3& target);
     // moves `bone` by `delta` (rig space) and updates the cache
     JASPERENGINE_API void translateBoneInRigSpace(IKContext& context, int bone, const Vector3& delta);
-    // brings the cache up to date for bones from `bone` on
+    // brings the cache up to date for `bone` and its descendants (all bones for bone <= 0)
     JASPERENGINE_API void refreshRigSpace(IKContext& context, int bone);
 
     // upper -> mid -> end (an ancestor chain, other bones between allowed): the end reaches
