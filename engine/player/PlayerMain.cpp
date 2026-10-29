@@ -40,6 +40,9 @@
 #elif defined(__linux__) && !defined(__ANDROID__)
 #include <unistd.h>
 #endif
+#if defined(__ANDROID__)
+#include <android/log.h>
+#endif
 
 using namespace jasperengine;
 using namespace jasperengine::player;
@@ -132,8 +135,16 @@ namespace {
         }
     };
 
+    // what a player tells before it gives up: stderr, and logcat on Android (no stderr there)
+    void report(const std::string& message) {
+        std::fprintf(stderr, "%s\n", message.c_str());
+#if defined(__ANDROID__)
+        __android_log_print(ANDROID_LOG_ERROR, "JasperEngine", "%s", message.c_str());
+#endif
+    }
+
     int failContent(const std::string& message) {
-        std::fprintf(stderr, "Content check failed: %s\n", message.c_str());
+        report("Content check failed: " + message);
         return EXIT_CONTENT_MISMATCH;
     }
 
@@ -167,7 +178,7 @@ namespace {
         std::vector<std::string> problems;
         const ContentAccess access{&contentExists, &contentSha256};
         if (!checkContent(manifest, runtimePlayerId(), access, options.verifyContent, problems)) {
-            for (const std::string& problem : problems) std::fprintf(stderr, "Content check failed: %s\n", problem.c_str());
+            for (const std::string& problem : problems) report("Content check failed: " + problem);
             return EXIT_CONTENT_MISMATCH;
         }
 
