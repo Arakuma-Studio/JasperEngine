@@ -482,8 +482,9 @@ Unit tests in `engine/tests/core/animation/` (`Animator*.cpp`), editor tests in
 10. **`edit_animator_controller` ops** are free-form objects in the tool's schema (the per-op
     fields would not fit the 1,500-character tool budget); the tool checks each op's fields
     itself (an unknown field or a wrong kind is refused by name) and the guide page lists them.
-11. **Component order**: `AnimatorComponent` registers after the navigation components (67-72);
-    when S18's splines (73-76) land, it moves after them. No scene or prefab format bump.
+11. **Component order**: `AnimatorComponent` registers after the navigation components (67-72)
+    and S18's splines (73-76): component 77; its Catalog reload flag is bit 45 (S18 took 44). No
+    scene or prefab format bump.
 
 ## 11. Progress
 
