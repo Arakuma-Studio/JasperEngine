@@ -10,8 +10,9 @@ this editor and fails, naming the tool, when a tool outgrows its limit.
 - budget.json: every group of the group table may have an entry, no entry names a group the
   table lacks (checked by the gate run), and every exception has a reason;
 - the agent guide (initialize.instructions): the gate run also checks it against budget.json's
-  "guide" entry (16,384 bytes in all, 1,500 per "## " section); check_guide() on made-up guides
-  fails on each limit, naming the section.
+  "guide" entry (16,384 bytes in all, at least 1,500 of them left as headroom, 1,500 per "## "
+  section); check_guide() on made-up guides fails on each limit, naming the section, and on a
+  guide that eats into the headroom.
 """
 
 from __future__ import annotations
@@ -109,6 +110,12 @@ async def test_guide_rules():
     assert any("'Long'" in p for p in tool_budget.check_guide(over_own, budget))
     over_total = ok + "## More\n" + "w" * 90 + "\n"
     assert any("agent guide:" in p for p in tool_budget.check_guide(over_total, budget))
+    # headroom: the whole guide must stay headroom_bytes under its limit (ok is 258 of 300 bytes)
+    roomy = {"guide": dict(budget["guide"], headroom_bytes=42)}
+    assert tool_budget.check_guide(ok, roomy) == [], tool_budget.check_guide(ok, roomy)
+    tight = {"guide": dict(budget["guide"], headroom_bytes=43)}
+    problems = tool_budget.check_guide(ok, tight)
+    assert len(problems) == 1 and "headroom" in problems[0] and "docs/mcp/guide/<area>.md" in problems[0], problems
     stale = {"guide": dict(budget["guide"], sections={"Gone": {"limit": 9, "reason": ""}})}
     problems = tool_budget.check_guide(ok, stale)
     assert any("'Gone'" in p and "no such section" in p for p in problems) and any("no reason" in p for p in problems), problems
@@ -119,6 +126,7 @@ async def test_guide_rules():
 async def test_budget_file_shape():
     budget = tool_budget.load_budget()
     assert budget["guide"]["bytes"] == 16384 and budget["guide"]["section_bytes"] == 1500, budget["guide"]
+    assert budget["guide"]["headroom_bytes"] == 1500, budget["guide"]
     for key in ("default_listing", "group_default", "tool_default", "groups", "exceptions", "core_trades"):
         assert key in budget, f"budget.json lacks {key}"
     assert budget["default_listing"] == {"chars": 100000, "tools": 150}, budget["default_listing"]

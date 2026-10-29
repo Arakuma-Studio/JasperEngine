@@ -7,7 +7,7 @@ batch; tool_groups {enable: ["selftest"]} sends notifications/tools/list_changed
 once, over HTTP inside the call's SSE response; without text/event-stream the result says to
 re-list), after which that session's tools/list holds it. `mcp --tool-groups` and the settings
 key mcp.tool_groups choose the groups sessions start with; an unknown name exits 2. The agent
-guide names tool_groups and stays within 16,384 bytes.
+guide names tool_groups and stays within 16,384 bytes (the headroom is tool_budget.py --check's).
 
 This is the pattern every spec's group follows: one assertion that its tools are hidden by
 default and listed once tool_groups enables the group (docs/mcp/conventions.md).
