@@ -183,6 +183,7 @@ bool AppSettings::htmlUiVerboseDiagnostics = false;
 bool AppSettings::htmlUiPatchReload = true;
 LoggingSettings AppSettings::loggingSettings;
 DiagnosticsSettings AppSettings::diagnosticsSettings;
+VersionControlSettings AppSettings::versionControlSettings;
 
 bool AppSettings::initialize(bool preferUserDirectory) {
     // Settings live in the working directory, where a run from a build tree
@@ -599,6 +600,22 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             if (diagnosticsNode["show_crash_notice"]) loaded.showCrashNotice = diagnosticsNode["show_crash_notice"].as<bool>();
         }
         setDiagnosticsSettings(loaded);
+        VersionControlSettings vcs;
+        if (const YAML::Node vcsNode = settingsData["version_control"]; vcsNode && vcsNode.IsMap()) {
+            if (vcsNode["git_path"]) vcs.gitPath = vcsNode["git_path"].as<std::string>();
+            if (vcsNode["svn_path"]) vcs.svnPath = vcsNode["svn_path"].as<std::string>();
+            if (vcsNode["lock_on_edit"]) {
+                const std::string mode = vcsNode["lock_on_edit"].as<std::string>();
+                vcs.lockOnEdit = mode == "off" ? LockOnEdit::Off : mode == "auto" ? LockOnEdit::Auto : LockOnEdit::Ask;
+            }
+            if (vcsNode["poll_seconds"]) vcs.pollSeconds = vcsNode["poll_seconds"].as<int>();
+            if (vcsNode["lock_poll_seconds"]) vcs.lockPollSeconds = vcsNode["lock_poll_seconds"].as<int>();
+            if (vcsNode["auto_fetch_minutes"]) vcs.autoFetchMinutes = vcsNode["auto_fetch_minutes"].as<int>();
+            if (vcsNode["commit_and_push"]) vcs.commitAndPush = vcsNode["commit_and_push"].as<bool>();
+            if (vcsNode["show_changes"]) vcs.showChanges = vcsNode["show_changes"].as<bool>();
+        }
+        versionControlSettings = vcs;
+        versionControlSettings = getVersionControlSettings();
 
         return true;
     } catch (const std::exception& e) {
@@ -821,6 +838,21 @@ bool AppSettings::saveSettings() {
             diagnosticsNode["break_lua_after_s"] = diagnosticsSettings.breakLuaAfterSeconds;
             diagnosticsNode["show_crash_notice"] = diagnosticsSettings.showCrashNotice;
             settingsData["diagnostics"] = diagnosticsNode;
+        }
+        if (versionControlSettings == VersionControlSettings()) {
+            if (settingsData["version_control"]) settingsData.remove("version_control");
+        } else {
+            const VersionControlSettings& vcs = versionControlSettings;
+            YAML::Node vcsNode;
+            vcsNode["git_path"] = vcs.gitPath;
+            vcsNode["svn_path"] = vcs.svnPath;
+            vcsNode["lock_on_edit"] = vcs.lockOnEdit == LockOnEdit::Off ? "off" : vcs.lockOnEdit == LockOnEdit::Auto ? "auto" : "ask";
+            vcsNode["poll_seconds"] = vcs.pollSeconds;
+            vcsNode["lock_poll_seconds"] = vcs.lockPollSeconds;
+            vcsNode["auto_fetch_minutes"] = vcs.autoFetchMinutes;
+            vcsNode["commit_and_push"] = vcs.commitAndPush;
+            vcsNode["show_changes"] = vcs.showChanges;
+            settingsData["version_control"] = vcsNode;
         }
         if (settingsData["ai_assistant"]) settingsData.remove("ai_assistant");
 
@@ -1263,6 +1295,20 @@ void AppSettings::setDiagnosticsSettings(const DiagnosticsSettings& settings) {
     diagnosticsSettings.breakLuaAfterSeconds = std::clamp(settings.breakLuaAfterSeconds, 0,
         DiagnosticsSettings::maxBreakLuaAfterSeconds);
     EditorDiagnostics::applySettings(diagnosticsSettings);
+}
+
+VersionControlSettings AppSettings::getVersionControlSettings() {
+    VersionControlSettings vcs = versionControlSettings;
+    vcs.pollSeconds = std::clamp(vcs.pollSeconds, 2, 120);
+    if (vcs.lockPollSeconds != 0) vcs.lockPollSeconds = std::clamp(vcs.lockPollSeconds, 30, 600);
+    vcs.autoFetchMinutes = std::clamp(vcs.autoFetchMinutes, 0, 24 * 60);
+    return vcs;
+}
+
+void AppSettings::setVersionControlSettings(const VersionControlSettings& settings) {
+    versionControlSettings = settings;
+    versionControlSettings = getVersionControlSettings();
+    saveSettings();
 }
 
 bool AppSettings::getEditorVSyncEnabled() {

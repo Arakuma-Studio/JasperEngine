@@ -30,12 +30,17 @@ TEST(Migrations, SceneV0ToV1) {
     EXPECT_EQ(saved.begin()->first.Scalar(), "formatVersion");
     EXPECT_EQ(saved["formatVersion"].as<int>(), StreamMigrations::currentVersion(DocumentKind::Scene));
     // and nothing else changes but what the later migrations change (scene 1 -> 2: the old
-    // default shadow quality Low is Auto, a light's shadow bias is in texels)
+    // default shadow quality Low is Auto, a light's shadow bias is in texels; 3 -> 4: the
+    // transforms' derived values are not written)
     YAML::Node expected = YAML::Load(readText(fixture("migrations/scene-v0.scene")));
     expected["scene"]["shadowQuality"] = "auto";
     for (YAML::Node entity : expected["entities"]) {
         if (entity["components"] && entity["components"]["light"] && entity["components"]["light"]["shadowBias"])
             entity["components"]["light"]["shadowBias"] = 1.0f;
+        if (entity["components"] && entity["components"]["transform"]) {
+            YAML::Node transform = entity["components"]["transform"];
+            for (const char* key : {"worldPosition", "worldRotation", "worldScale", "localMatrix", "modelMatrix", "normalMatrix"}) transform.remove(key);
+        }
     }
     std::string why;
     EXPECT_TRUE(structurallyEqual(withoutKey(saved, "formatVersion"), expected, &why)) << why;
@@ -45,7 +50,7 @@ TEST(Migrations, NewerFormatGated) {
     DecodedScene decoded = decodeSceneFile(fixture("migrations/scene-v99.scene"));
     ASSERT_EQ(decoded.report.dropped(), 1u);
     EXPECT_TRUE(decoded.report.newerFormat());
-    EXPECT_EQ(decoded.report.issues[0].message, "Written by a newer JasperEngine (scene format 99; this editor writes 3).");
+    EXPECT_EQ(decoded.report.issues[0].message, "Written by a newer JasperEngine (scene format 99; this editor writes 4).");
     // loaded best-effort
     EXPECT_EQ(decoded.scene->name, "FromTheFuture");
     EXPECT_EQ(decoded.scene->entities.size(), 1u);
@@ -54,11 +59,11 @@ TEST(Migrations, NewerFormatGated) {
     LoadReport prefabReport;
     {
         ScopedLoadReport scope(prefabReport);
-        DocumentFile prefab = DocumentFiles::read(fixture("migrations/prefab-v6.prefab"), DocumentKind::Prefab);
-        EXPECT_EQ(prefab.migration.versionRead, 6);
-        EXPECT_EQ(prefab.root["version"].as<int>(), 6);
+        DocumentFile prefab = DocumentFiles::read(fixture("migrations/prefab-v7.prefab"), DocumentKind::Prefab);
+        EXPECT_EQ(prefab.migration.versionRead, 7);
+        EXPECT_EQ(prefab.root["version"].as<int>(), 7);
     }
     ASSERT_EQ(prefabReport.dropped(), 1u);
-    EXPECT_EQ(prefabReport.issues[0].message, "Written by a newer JasperEngine (prefab format 6; this editor writes 5).");
+    EXPECT_EQ(prefabReport.issues[0].message, "Written by a newer JasperEngine (prefab format 7; this editor writes 6).");
     EXPECT_EQ(StreamMigrations::currentVersion(DocumentKind::Prefab), Prefab::FILE_VERSION);
 }
