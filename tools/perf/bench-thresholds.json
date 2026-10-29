@@ -1,5 +1,5 @@
 {
-  "_comment": "Budgets of je-bench-jobs and je-bench-memory (docs/specs/S06-jobs-memory.md R23-R26), je-bench-diag (S28 R26), je-bench-particles (docs/specs/S20-particles.md R20-R26, AC10-AC12) and je-bench-nav (docs/specs/S19-navigation.md R25-R30: the desktop budgets + 10 % for the timing server, gated on the median of runs), measured with min(8, hardware threads - 2) workers on the build server's Linux x64 Release build. check_bench.py fails on a miss. je-bench-picking: docs/specs/S26-scene-view.md R28-R31, measured on the benchmark server E.",
+  "_comment": "Budgets of je-bench-jobs and je-bench-memory (docs/specs/S06-jobs-memory.md R23-R26), je-bench-diag (S28 R26), je-bench-particles (docs/specs/S20-particles.md R20-R26, AC10-AC12) and je-bench-nav (docs/specs/S19-navigation.md R25-R30: the desktop budgets + 10 % for the timing server, gated on the median of runs), measured with min(8, hardware threads - 2) workers on the build server's Linux x64 Release build. check_bench.py fails on a miss. je-bench-picking: docs/specs/S26-scene-view.md R28-R31, measured on the benchmark server E. async-shaders: docs/specs/S32-async-shaders.md R21-R22 (tools/perf/async_shaders_bench.py on E, median of 5 runs).",
   "je-bench-jobs": {
     "submit_throughput_jobs_per_s": {"min": 3000000, "spec": "R23 empty-job submit+execute from one producer"},
     "parallel_for_dispatch_ns": {"max": 150, "spec": "R23 parallelFor of 1 unit, 0 helpers"},
@@ -77,5 +77,9 @@
     "grid_bytes_per_cell": {"max": 5.2, "spec": "R29 1 B/cell + the reachability index (4 B/cell, spec Deviations)"},
     "empty_tick_us": {"max": 1.1, "spec": "R25 empty scene fixedUpdate < 1 us"},
     "empty_tick_allocations": {"max": 0, "spec": "R25 no allocation"}
+  },
+  "async-shaders": {
+    "max_main_ms": {"max": 4.0, "spec": "S32 R21: the render thread's creation work (GPU create scopes) in the worst frame of the lobe toggles"},
+    "worst_frame_ratio": {"max": 2.0, "spec": "S32 R22: the worst frame of the toggles over the idle median frame"}
   }
 }
