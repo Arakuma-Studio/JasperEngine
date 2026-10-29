@@ -41,21 +41,7 @@
 #endif
 
 namespace {
-    bool sgjAsyncReady = false;
     sgj_async_caps sgjCaps = {};
-
-    uint64_t sgjFnv(uint64_t h, const void* data, size_t size){
-        const uint8_t* bytes = static_cast<const uint8_t*>(data);
-        for (size_t i = 0; i < size; i++){
-            h ^= bytes[i];
-            h *= 1099511628211ull;
-        }
-        return h;
-    }
-    template<typename T>
-    uint64_t sgjMix(uint64_t h, T value){
-        return sgjFnv(h, &value, sizeof(value));
-    }
 }
 
 extern "C" void sgj_async_setup(void){
@@ -85,7 +71,6 @@ extern "C" void sgj_async_setup(void){
     sgjCaps.metal = true;
     sgjCaps.pipeline_compiles = true;
 #endif
-    sgjAsyncReady = true;
 }
 
 extern "C" sgj_async_caps sgj_async_query_caps(void){
@@ -93,7 +78,7 @@ extern "C" sgj_async_caps sgj_async_query_caps(void){
 }
 
 extern "C" void sgj_async_shutdown(void){
-    sgjAsyncReady = false;
+    sgjCaps = {};
 }
 
 // ------------------------------------------------------------------ prepare / create / publish
@@ -172,6 +157,19 @@ extern "C" void sgj_pipeline_publish(void* slot, sg_pipeline pip_id, const sg_pi
 #if defined(_SOKOL_ANY_GL)
 
 namespace {
+    uint64_t sgjFnv(uint64_t h, const void* data, size_t size){
+        const uint8_t* bytes = static_cast<const uint8_t*>(data);
+        for (size_t i = 0; i < size; i++){
+            h ^= bytes[i];
+            h *= 1099511628211ull;
+        }
+        return h;
+    }
+    template<typename T>
+    uint64_t sgjMix(uint64_t h, T value){
+        return sgjFnv(h, &value, sizeof(value));
+    }
+
     // a shader object's log, as _sg_gl_compile_shader reports it
     void sgjLogShader(GLuint shader){
         GLint status = 0;
