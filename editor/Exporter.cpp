@@ -4465,7 +4465,7 @@ bool editor::Exporter::writeEffectLicense() {
         return false;
     }
     // every game links the spline module (core/spline), adapted from OpenEngine (NOTICE.md)
-    if (!writeNotice(true, config.targetDir, openEngineLicensePath(), config.targetDir / "core" / "spline" / "LICENSE.OpenEngine.txt", error)) {
+    if (!writeNotice(true, config.targetDir, openEngineLicensePath(), engineSourceDir() / "core" / "spline" / "LICENSE.OpenEngine.txt", error)) {
         setError("The OpenEngine notice: " + error);
         return false;
     }

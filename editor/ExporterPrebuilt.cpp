@@ -331,6 +331,13 @@ fs::path editor::Exporter::shaderlibSourceDir() const {
     return FileUtils::getEngineDir() / "shaderlib";
 }
 
+fs::path editor::Exporter::engineSourceDir() const {
+    // a Compile export copied the engine next to it; a prebuilt build has none: the editor's own
+    std::error_code ec;
+    if (fs::is_directory(config.targetDir / "core", ec)) return config.targetDir;
+    return FileUtils::getEngineDir();
+}
+
 void editor::Exporter::discardStaging() {
     if (stagingDir.empty() || stagingDir == config.destinationDir) return;
     std::error_code ec;

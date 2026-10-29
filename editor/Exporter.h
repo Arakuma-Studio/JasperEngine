@@ -216,6 +216,8 @@ namespace jasperengine::editor {
         void warn(const std::string& code, const std::string& message);
         // where the content steps' shaderlib notices come from (copyEngine's copy, else the editor's)
         fs::path shaderlibSourceDir() const;
+        // the engine sources a build's notices come from (the export's engine copy, or the editor's)
+        fs::path engineSourceDir() const;
         // returns once the export started by startExport has ended
         void waitForExport();
 
