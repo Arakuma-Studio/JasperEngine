@@ -119,3 +119,17 @@ dependencies {
         implementation "com.google.android.gms:play-services-ads:22.6.0"
     }
 }
+
+if (jasperPlayer) {
+    // what the link of the player's resources reads: the libraries' precompiled resources live in
+    // Gradle's transform cache, and the editor's link of a game needs them all
+    // (tools/players/android_player.sh collects them into res-flat.zip)
+    tasks.matching { it.name ==~ /process(Debug|Release)Resources/ }.configureEach { task ->
+        def list = layout.buildDirectory.file("jasperengine-player/link-inputs.txt")
+        task.doLast {
+            def file = list.get().asFile
+            file.parentFile.mkdirs()
+            file.text = task.inputs.files.files.collect { it.absolutePath }.join("\n") + "\n"
+        }
+    }
+}

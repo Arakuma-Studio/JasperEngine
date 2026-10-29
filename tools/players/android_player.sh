@@ -30,11 +30,7 @@ APP="$ROOT/engine/workspaces/androidstudio/app"
 # no `clean`: its native step needs the CMake AGP installs only while building; the APK of an
 # earlier run goes, the merged resources are rewritten by the build
 rm -rf "$APP/build/outputs/apk"
-# android.precompileDependenciesResources=false: the libraries' resources (appcompat's layouts,
-# animations...) are compiled into merged_res with the app's, instead of into Gradle's transform
-# cache, so res-flat.zip below holds every resource the player links
-(cd "$ROOT/engine/workspaces/androidstudio" && ./gradlew --no-daemon -PjasperPlayer=true -PjasperBackend="$BACKEND" \
-    -Pandroid.precompileDependenciesResources=false "$TASK")
+(cd "$ROOT/engine/workspaces/androidstudio" && ./gradlew --no-daemon -PjasperPlayer=true -PjasperBackend="$BACKEND" "$TASK")
 
 rm -rf "$OUT"
 mkdir -p "$OUT"
@@ -72,13 +68,32 @@ with zipfile.ZipFile(apk) as zipped:
             target = out / name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(zipped.read(name))
-# the merged, compiled resources of the variant (AGP: merged_res/<variant>/merge<Variant>Resources)
-flats = sorted(p for p in intermediates.glob(f"merged_res/{variant}/**/*.flat"))
+# every compiled resource AGP's link of the player read: the merged ones of the variant
+# (merged_res: the app's files and everyone's values) and the libraries' precompiled files
+# (Gradle's transform cache), from the inputs build.gradle listed (jasperengine-player/link-inputs.txt)
+flats = sorted(intermediates.glob(f"merged_res/{variant}/**/*.flat"))
 if not flats:
     sys.exit(f"no merged_res/{variant} .flat files under {intermediates}")
+inputs = intermediates.parent / "jasperengine-player" / "link-inputs.txt"
+if not inputs.is_file():
+    sys.exit(f"no {inputs}: the player build lists the link's inputs (app/build.gradle, -PjasperPlayer=true)")
+for line in inputs.read_text().splitlines():
+    path = Path(line)
+    if "merged_res" in path.parts:
+        continue
+    if path.is_dir():
+        flats += sorted(path.rglob("*.flat"))
+    elif path.suffix == ".flat":
+        flats.append(path)
+names = set()
 with zipfile.ZipFile(out / "res-flat.zip", "w", zipfile.ZIP_STORED) as zipped:
     for flat in flats:
+        # one entry per compiled resource (libraries may compile the same file twice)
+        if flat.name in names:
+            continue
+        names.add(flat.name)
         zipped.write(flat, flat.name)
+flats = sorted(names)
 print(f"collected {len(flats)} resources, {sum(1 for _ in out.glob('classes*.dex'))} dex, "
       f"{sum(1 for _ in out.glob('lib/*/*.so'))} libraries into {out}")
 PY
