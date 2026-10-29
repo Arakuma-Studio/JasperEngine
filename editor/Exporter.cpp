@@ -3,6 +3,7 @@
 
 #include "Exporter.h"
 #include "util/EditorScripts.h"
+#include "navigation/NavigationEditor.h"
 #include "asset/AssetFileWrite.h"
 #include "asset/AssetMap.h"
 #include "asset/AssetTypes.h"
@@ -1866,6 +1867,10 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                     return scene->getComponentArray<Rigidbody2DComponent>()->size() > 0 || scene->getComponentArray<Joint2DComponent>()->size() > 0;
                 });
             }
+            // S19 R42: surfaces of the build that are not baked or out of date
+            for (const NavigationEditor::Finding& finding : NavigationEditor::checkSurfaces(project)) {
+                Out::warning("%s (scene %s). Window > AI > Navigation > Bake All bakes now.", finding.message.c_str(), finding.sceneName.c_str());
+            }
             if (!project->isPhysics3DEnabled()) {
                 warnDroppedPhysics("3D", [](Scene* scene) {
                     return scene->getComponentArray<RigidbodyComponent>()->size() > 0 || scene->getComponentArray<Joint3DComponent>()->size() > 0;
@@ -2952,6 +2957,7 @@ bool editor::Exporter::copyEngine() {
         projectSettings += indent + "set(JASPERENGINE_CXX_STANDARD " + std::to_string(project->getCxxStandard()) + ")";
         projectSettings += indent + std::string("set(JASPERENGINE_PHYSICS_2D ") + (project->isPhysics2DEnabled() ? "ON" : "OFF") + ")";
         projectSettings += indent + std::string("set(JASPERENGINE_PHYSICS_3D ") + (project->isPhysics3DEnabled() ? "ON" : "OFF") + ")";
+        projectSettings += indent + std::string("set(JASPERENGINE_NAVIGATION ") + (project->getNavigationSettings().includeInBuilds ? "ON" : "OFF") + ")";
         projectSettings += indent + std::string("set(JASPERENGINE_RUNTIME_SHADERS ") + (project->isRuntimeShadersEnabled() ? "ON" : "OFF") + ")";
         // Development Build: the profiler in a Release game (a source export builds it as one)
         if (config.developmentBuild) {
@@ -3679,6 +3685,20 @@ bool editor::Exporter::writeAppleProjectSettings() {
             const size_t lineStart = xcodeProject.rfind('\n', match) + 1;
             if (!removeProjectEntriesWithId(leadingObjectId(xcodeProject.substr(lineStart, match - lineStart)))) return false;
         }
+    }
+
+    // Navigation off (Project Settings > Navigation > Include in Builds): Recast/Detour and the
+    // engine's Detour glue stay out, and the engine compiles its navmesh stubs (S19 R42)
+    if (!project->getNavigationSettings().includeInBuilds) {
+        replaceAll(xcodeProject, "\t\t\t\t\tRMLUI_STATIC_LIB,\n", "\t\t\t\t\t\"JASPERENGINE_NAVIGATION=0\",\n\t\t\t\t\tRMLUI_STATIC_LIB,\n");
+        excludedPhysicsSources.insert(excludedPhysicsSources.end(), {
+            "NavDetourSupport.cpp",
+            "Recast.cpp", "RecastAlloc.cpp", "RecastArea.cpp", "RecastAssert.cpp", "RecastContour.cpp", "RecastFilter.cpp",
+            "RecastLayers.cpp", "RecastMesh.cpp", "RecastMeshDetail.cpp", "RecastRasterization.cpp", "RecastRegion.cpp",
+            "DetourAlloc.cpp", "DetourAssert.cpp", "DetourCommon.cpp", "DetourNavMesh.cpp", "DetourNavMeshBuilder.cpp",
+            "DetourNavMeshQuery.cpp", "DetourNode.cpp", "DetourCrowd.cpp", "DetourLocalBoundary.cpp", "DetourObstacleAvoidance.cpp",
+            "DetourPathCorridor.cpp", "DetourPathQueue.cpp", "DetourProximityGrid.cpp", "DetourTileCache.cpp", "DetourTileCacheBuilder.cpp"
+        });
     }
 
     std::string excludedSources;

@@ -17,6 +17,7 @@
 #include "command/CommandHistory.h"
 #include "command/type/HtmlUiRenderSettingsCmd.h"
 #include "command/type/ThreadingSettingsCmd.h"
+#include "navigation/NavigationSettingsCmd.h"
 
 #include <algorithm>
 #include <array>
@@ -155,6 +156,7 @@ enum class ProjectCategory {
     Scripting,
     TagsAndLayers,
     Editor,
+    Navigation,
     Count
 };
 
@@ -1014,6 +1016,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_loadingSettings = project->getLoadingSettings();
     m_threading = project->getThreadingSettings();
     m_htmlUiRender = project->getHtmlUiRenderSettings();
+    m_navigation = project->getNavigationSettings();
 
     m_packNativeResources = project->shouldPackNativeResources();
     m_versionControlMetadata = project->hasVersionControlMetadata();
@@ -1090,6 +1093,7 @@ void ProjectSettingsWindow::drawSettings() {
         case ProjectCategory::Scripting: drawScriptingSettings(); break;
         case ProjectCategory::TagsAndLayers: drawTagsAndLayersSettings(); break;
         case ProjectCategory::Editor: drawEditorSettings(); break;
+        case ProjectCategory::Navigation: drawNavigationSettings(); break;
         default: break;
     }
     settingsui::endPage();
@@ -1898,6 +1902,54 @@ void ProjectSettingsWindow::drawInputSettings() {
             ImGui::EndTable();
         }
         if (!m_inputStatus.empty()) drawSectionNote(m_inputStatus.c_str());
+    }
+    endSettingsPanel();
+}
+
+void ProjectSettingsWindow::drawNavigationSettings() {
+    const nav::NavigationSettings defaults;
+    nav::NavigationSettings& settings = m_navigation.settings;
+    if (beginSettingsPanel("##NavigationSettingsPanel")) {
+        if (beginSettingsTable("##SettingsTable")) {
+            if (settingsui::beginRow("navigation.include_in_builds")) {
+                if (projectBeginSettingsRow("Include in Builds", !m_navigation.includeInBuilds)) {
+                    m_navigation.includeInBuilds = true;
+                }
+                ImGui::Checkbox("##NavIncludeInBuilds", &m_navigation.includeInBuilds);
+                endSettingsRow("Recast/Detour in exported builds. Off strips the library: navmesh bakes, queries and agents "
+                    "on navmeshes fail (logged once); NavGrids keep working.");
+            }
+            if (settingsui::beginRow("navigation.crowd_max_agents")) {
+                if (projectBeginSettingsRow("Crowd Max Agents", settings.crowdMaxAgents != defaults.crowdMaxAgents)) {
+                    settings.crowdMaxAgents = defaults.crowdMaxAgents;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                if (ImGui::InputInt("##NavCrowdMaxAgents", &settings.crowdMaxAgents)) {
+                    settings.crowdMaxAgents = std::clamp(settings.crowdMaxAgents, 1, 4096);
+                }
+                endSettingsRow("Agents of one crowd (one surface and agent type). A crowd grows past it, with a warning.");
+            }
+            if (settingsui::beginRow("navigation.max_grid_solves_per_tick")) {
+                if (projectBeginSettingsRow("Grid Solves per Tick", settings.maxGridSolvesPerTick != defaults.maxGridSolvesPerTick)) {
+                    settings.maxGridSolvesPerTick = defaults.maxGridSolvesPerTick;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                if (ImGui::InputInt("##NavGridSolves", &settings.maxGridSolvesPerTick)) {
+                    settings.maxGridSolvesPerTick = std::clamp(settings.maxGridSolvesPerTick, 1, 4096);
+                }
+                endSettingsRow("NavGrid path requests solved per fixed tick (in parallel); the rest wait for the next tick.");
+            }
+            if (settingsui::beginRow("navigation.web_bake_budget_ms")) {
+                if (projectBeginSettingsRow("Web Bake Budget", settings.webBakeBudgetMs != defaults.webBakeBudgetMs)) {
+                    settings.webBakeBudgetMs = defaults.webBakeBudgetMs;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::SliderFloat("##NavWebBakeBudget", &settings.webBakeBudgetMs, 0.5f, 50.0f, "%.1f ms");
+                endSettingsRow("Without worker threads (single-threaded web), a runtime bake runs on the main thread this long per frame.");
+            }
+            ImGui::EndTable();
+        }
+        drawSectionNote("Agent types and areas: Window > AI > Navigation (Agents and Areas tabs).");
     }
     endSettingsPanel();
 }
@@ -2858,6 +2910,10 @@ bool ProjectSettingsWindow::applySettings() {
     // undoable: the editor's documents follow at once
     if (m_htmlUiRender != m_project->getHtmlUiRenderSettings()) {
         m_project->getProjectCommandHistory()->addCommand(new HtmlUiRenderSettingsCmd(m_project, m_htmlUiRender));
+    }
+    // undoable: every scene's crowds and grids read them at their next fixed tick
+    if (m_navigation != m_project->getNavigationSettings()) {
+        m_project->getProjectCommandHistory()->addCommand(new NavigationSettingsCmd(m_project, m_navigation));
     }
 
     m_project->setPackNativeResources(m_packNativeResources);

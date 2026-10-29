@@ -78,6 +78,7 @@ namespace jasperengine::editor::mcp {
     void installPoseSyncHook(McpContext& context);
 
     void registerOrganisationTools(McpRegistry& registry);
+    void registerNavigationTools(McpRegistry& registry);
 
     // list_assets search and saved searches (OrganisationTools.cpp): an R20 search over the asset
     // index, as {entries: [{path, type, guid?, labels?}], total, truncated, query}; *error for a bad re:
