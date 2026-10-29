@@ -24,6 +24,7 @@
 #include "util/CxxStandards.h"
 #include "util/FileUtils.h"
 #include "window/ConsoleWindow.h"
+#include "vcs/VcsService.h"
 
 #include <algorithm>
 #include <cctype>
@@ -1283,6 +1284,121 @@ std::vector<Setting> mcpSettingsTable() {
         }
         add(boolSetting("editor.version_control_files", "Write version-control metadata files (.gitignore etc.) with the project.",
                         [](Project& p) { return p.hasVersionControlMetadata(); }, [](Project& p, bool v) { p.setVersionControlMetadata(v); }));
+        // ---- version control (S29): the project's choice, project.yaml versionControl
+        {
+            Setting s;
+            s.key = "editor.vcs.provider";
+            s.type = "enum";
+            s.description = "Version control: auto finds the nearest .git or .svn above the project; none turns it off.";
+            s.values = {"auto", "git", "svn", "none"};
+            s.get = [](SettingsContext& ctx) { return Json(vcs::providerChoiceName(ctx.project()->getVcsProjectSettings().provider)); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                vcs::ProviderChoice choice;
+                if (!value.is_string() || !vcs::parseProviderChoice(value.get<std::string>(), choice)) {
+                    error = "must be one of: auto git svn none";
+                    return false;
+                }
+                if (apply) {
+                    VcsProjectSettings settings = ctx.project()->getVcsProjectSettings();
+                    settings.provider = choice;
+                    ctx.project()->setVcsProjectSettings(settings);
+                }
+                return true;
+            };
+            add(s);
+        }
+        add(boolSetting("editor.vcs.lfs", "Version control: the generated .gitattributes stores binaries in Git LFS and makes them lockable.",
+                        [](Project& p) { return p.getVcsProjectSettings().lfs; },
+                        [](Project& p, bool v) { VcsProjectSettings settings = p.getVcsProjectSettings(); settings.lfs = v; p.setVcsProjectSettings(settings); }));
+        add(boolSetting("editor.vcs.lock_scenes", "Version control: scenes and prefabs lockable too (a lock on a non-LFS file depends on the server).",
+                        [](Project& p) { return p.getVcsProjectSettings().lockScenes; },
+                        [](Project& p, bool v) { VcsProjectSettings settings = p.getVcsProjectSettings(); settings.lockScenes = v; p.setVcsProjectSettings(settings); }));
+        // ---- version control: this user's (settings.yaml version_control)
+        auto vcsPreference = [&add](Setting s, std::function<bool(VersionControlSettings&, const Json&, std::string&)> apply) {
+            s.preference = true;
+            s.set = [apply](SettingsContext& ctx, const Json& value, bool commit, std::string& error) {
+                VersionControlSettings settings = AppSettings::getVersionControlSettings();
+                if (!apply(settings, value, error)) return false;
+                if (commit) {
+                    AppSettings::setVersionControlSettings(settings);
+                    if (Project* project = ctx.project()) project->getVcs().applySettings(project->versionControlServiceSettings());
+                }
+                return true;
+            };
+            add(std::move(s));
+        };
+        auto vcsPath = [&vcsPreference](const char* key, const char* tool, std::string VersionControlSettings::*field) {
+            Setting s;
+            s.key = key;
+            s.type = "string";
+            s.description = std::string("Version control: the absolute path of ") + tool + " (\"\" finds it on PATH; the project folder is never searched).";
+            s.get = [field](SettingsContext&) { return Json(AppSettings::getVersionControlSettings().*field); };
+            vcsPreference(s, [field](VersionControlSettings& settings, const Json& value, std::string& error) {
+                std::string text;
+                if (!readString(value, text, error)) return false;
+                if (!text.empty() && !FileUtils::pathFromUtf8(text).is_absolute()) {
+                    error = "must be an absolute path, or \"\"";
+                    return false;
+                }
+                settings.*field = text;
+                return true;
+            });
+        };
+        vcsPath("editor.vcs.git_path", "git", &VersionControlSettings::gitPath);
+        vcsPath("editor.vcs.svn_path", "svn", &VersionControlSettings::svnPath);
+        {
+            Setting s;
+            s.key = "editor.vcs.lock_on_edit";
+            s.type = "enum";
+            s.description = "Version control: the first edit of a lockable file off, asks to lock it, or locks it (auto).";
+            s.values = {"off", "ask", "auto"};
+            s.get = [](SettingsContext&) {
+                const LockOnEdit mode = AppSettings::getVersionControlSettings().lockOnEdit;
+                return Json(mode == LockOnEdit::Off ? "off" : mode == LockOnEdit::Auto ? "auto" : "ask");
+            };
+            vcsPreference(s, [](VersionControlSettings& settings, const Json& value, std::string& error) {
+                const std::string text = value.is_string() ? value.get<std::string>() : std::string();
+                if (text != "off" && text != "ask" && text != "auto") {
+                    error = "must be one of: off ask auto";
+                    return false;
+                }
+                settings.lockOnEdit = text == "off" ? LockOnEdit::Off : text == "auto" ? LockOnEdit::Auto : LockOnEdit::Ask;
+                return true;
+            });
+        }
+        auto vcsInt = [&vcsPreference](const char* key, const char* description, long long minimum, long long maximum, bool zeroOff,
+                                       int VersionControlSettings::*field) {
+            Setting s;
+            s.key = key;
+            s.type = "int";
+            s.description = description;
+            s.get = [field](SettingsContext&) { return Json(AppSettings::getVersionControlSettings().*field); };
+            vcsPreference(s, [field, minimum, maximum, zeroOff](VersionControlSettings& settings, const Json& value, std::string& error) {
+                long long v = 0;
+                if (zeroOff && value.is_number_integer() && value.get<long long>() == 0) {
+                    settings.*field = 0;
+                    return true;
+                }
+                if (!readInt(value, minimum, maximum, v, error)) return false;
+                settings.*field = static_cast<int>(v);
+                return true;
+            });
+        };
+        vcsInt("editor.vcs.poll_seconds", "Version control: seconds between status polls (2-120).", 2, 120, false, &VersionControlSettings::pollSeconds);
+        vcsInt("editor.vcs.lock_poll_seconds", "Version control: seconds between lock and server reads (30-600, 0 off).", 30, 600, true,
+               &VersionControlSettings::lockPollSeconds);
+        vcsInt("editor.vcs.auto_fetch_minutes", "Version control: minutes between automatic fetches (0 off).", 1, 24 * 60, true,
+               &VersionControlSettings::autoFetchMinutes);
+        {
+            Setting s;
+            s.key = "editor.vcs.commit_and_push";
+            s.type = "bool";
+            s.description = "Version control: the Commit window's Commit and Push.";
+            s.get = [](SettingsContext&) { return Json(AppSettings::getVersionControlSettings().commitAndPush); };
+            vcsPreference(s, [](VersionControlSettings& settings, const Json& value, std::string& error) {
+                return readBool(value, settings.commitAndPush, error);
+            });
+        }
 
         // ---- tags and layers
         {
@@ -1722,7 +1838,17 @@ const Placement placements[] = {
     {"scripting.lua_dir", "Scripting", "", "Lua Directory", "lua"},
     {"scripting.script_dirs", "Scripting", "", "Script Directories", "c++ cpp"},
     {"scripting.cxx_standard", "Scripting", "", "C++ Standard", "cpp c++17 c++20 c++23"},
-    {"editor.version_control_files", "Editor", "", "Version Control Files", "git gitignore gitattributes vcs"},
+    {"editor.version_control_files", "Editor", "Version Control", "Version Control Files", "git gitignore gitattributes vcs"},
+    {"editor.vcs.provider", "Editor", "Version Control", "Provider", "git svn subversion vcs repository"},
+    {"editor.vcs.lfs", "Editor", "Version Control", "Git LFS", "lfs large files lockable binaries"},
+    {"editor.vcs.lock_scenes", "Editor", "Version Control", "Lockable Scenes", "lock scenes prefabs"},
+    {"editor.vcs.git_path", "Version Control", "Tools", "Git Path", "git executable"},
+    {"editor.vcs.svn_path", "Version Control", "Tools", "Subversion Path", "svn executable"},
+    {"editor.vcs.lock_on_edit", "Version Control", "Locking", "Lock on Edit", "lock ask auto"},
+    {"editor.vcs.poll_seconds", "Version Control", "Refresh", "Status Poll (s)", "refresh interval seconds"},
+    {"editor.vcs.lock_poll_seconds", "Version Control", "Refresh", "Lock Poll (s)", "locks server refresh seconds"},
+    {"editor.vcs.auto_fetch_minutes", "Version Control", "Refresh", "Auto Fetch (min)", "fetch remote minutes"},
+    {"editor.vcs.commit_and_push", "Version Control", "Commit", "Commit and Push", "push remote"},
     {"editor.assets_dir", "Editor", "", "Assets Directory", "assets root"},
     {"tags_and_layers.tags", "Tags and Layers", "Tags", "Tags", "tag"},
     {"tags_and_layers.layers", "Tags and Layers", "Layers", "Layers", "layer"},
@@ -1850,6 +1976,7 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         {"Logging", SettingsScope::Preference, 8, "log levels"},
         {"Diagnostics", SettingsScope::Preference, 9, "crash hang watchdog freeze not responding reports"},
         {"Shader Cache", SettingsScope::Preference, 10, "shaders cache clear"},
+        {"Version Control", SettingsScope::Preference, 11, "git svn subversion lfs lock commit merge"},
     };
     for (const SettingsPage& page : pages) {
         // two scopes may share a title (Scripting): names stay unique
@@ -2014,6 +2141,17 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         [](SettingsContext&) { return Json(diag::crash::reportsDirectory().generic_string()); }));
     addOrAbort(registry, uiRow("preferences.shader_cache", "Shader Cache", "", "Shader Cache", "clear shaders",
         [](SettingsContext&) { return Json(App::getUserShaderCacheDir().generic_string()); }));
+    // S29: what the project's version control runs with, and Set Up Smart Merge (R22)
+    addOrAbort(registry, uiRow("preferences.vcs.status", "Version Control", "", "Version Control", "status available provider version",
+        [](SettingsContext& ctx) {
+            const vcs::VcsService& service = ctx.project()->getVcs();
+            return Json{{"state", vcs::vcsStateName(service.state())}, {"message", service.stateMessage()}};
+        }, "The provider and its tool, or why version control is not available"));
+    addOrAbort(registry, uiRow("preferences.vcs.smart_merge", "Version Control", "Merge", "Smart Merge", "merge driver scenes prefabs conflicts",
+        [](SettingsContext& ctx) {
+            const vcs::SnapshotPtr& snapshot = ctx.project()->getVcs().snapshot();
+            return Json(snapshot && snapshot->mergeDriverMissing ? "not set up" : "");
+        }, "Set Up Smart Merge: git merges scenes and prefabs with the editor's scene merge (merge-scene) instead of its text merge"));
 }
 
 } // namespace jasperengine::editor

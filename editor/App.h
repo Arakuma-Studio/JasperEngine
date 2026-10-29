@@ -67,6 +67,10 @@ namespace jasperengine::editor::mcp {
     struct McpLaunchOptions;
 }
 
+namespace jasperengine::editor::vcs {
+    class VcsUi;
+}
+
 namespace jasperengine::editor{
 
     class JobsMemoryWindow;
@@ -251,6 +255,8 @@ namespace jasperengine::editor{
         GameWindow* gameWindow;
         MainToolbar* mainToolbar;
         StatusBar* statusBar;
+        // S29: version control (Commit, History, Scene Diff, Conflicts, the banners and menus)
+        vcs::VcsUi* vcsUi;
 
         LoadingWindow* loadingWindow;
 
@@ -575,6 +581,7 @@ namespace jasperengine::editor{
         ProfilerWindow* getProfilerWindow() const { return profilerWindow; }
         FrameDebuggerWindow* getFrameDebuggerWindow() const { return frameDebuggerWindow; }
         UndoHistoryWindow* getUndoHistoryWindow() const { return undoHistoryWindow; }
+        vcs::VcsUi* getVcsUi() const { return vcsUi; }
         PlayModeChangesWindow* getPlayModeChangesWindow() const { return playModeChangesWindow; }
         TextureSynthesisWindow* getTextureSynthesisWindow() const;
         VertexAnimationBakerWindow* getVertexAnimationBakerWindow() const;

@@ -40,6 +40,7 @@
 #include "profiler/Profiler.h"
 #include "window/PlayModeChangesWindow.h"
 #include "window/UndoHistoryWindow.h"
+#include "window/vcs/VcsUi.h"
 #include "window/InputActionsWindow.h"
 #include "navigation/NavigationWindow.h"
 #include "command/PlayChangeReview.h"
@@ -185,6 +186,8 @@ editor::App::App(){
     profilerWindow = new ProfilerWindow(this);
     frameDebuggerWindow = new FrameDebuggerWindow(this);
     undoHistoryWindow = new UndoHistoryWindow(&project);
+    vcsUi = new vcs::VcsUi(&project);
+    StatusBar::setVersionControlSegment([this]() { vcsUi->drawStatusBarSegment(); });
     inputActionsWindow = new InputActionsWindow(&project);
     navigationWindow = new NavigationWindow(&project);
     playModeChangesWindow = new PlayModeChangesWindow(&project);
@@ -328,6 +331,7 @@ editor::PlatformMenuItem catalogItem(const char* id, std::string label = {}, boo
     if (!def || !def->menuCommand) return item;
     item = menuCommand(static_cast<AppMenuCommand>(*def->menuCommand), label.empty() ? def->name : std::move(label),
                        !def->enabled || def->enabled());
+    if (!item.enabled && def->disabledReason) item.tooltip = def->disabledReason();
     item.command.payload = def->menuPayload;
     item.shortcut = catalog.menuShortcutText(id);
     item.checked = checked;
@@ -597,6 +601,17 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         catalogItem("assets.import"),
         catalogItem("assets.refresh"),
         catalogItem("assets.reimportTextures"),
+        menuSubmenu("Version Control", {
+            catalogItem("assets.vcs.commit"),
+            catalogItem("assets.vcs.revert"),
+            catalogItem("assets.vcs.lock"),
+            catalogItem("assets.vcs.unlock"),
+            menuSeparator(),
+            catalogItem("assets.vcs.history"),
+            catalogItem("assets.vcs.diff"),
+            menuSeparator(),
+            catalogItem("assets.vcs.refresh", "Refresh")
+        }),
         menuSubmenu("Asset Database", {
             catalogItem("window.missingAssets", "Missing Assets..."),
             catalogItem("assets.migrateReferences")
@@ -654,6 +669,12 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         catalogItem("window.physicsPlacement", windowMenuLabel(PhysicsPlacementWindow::WINDOW_NAME)),
         menuSubmenu("MCP", {
             catalogItem("window.mcpActivity", windowMenuLabel(mcp::McpActivityWindow::WINDOW_NAME))
+        }),
+        menuSubmenu("Version Control", {
+            catalogItem("window.vcs.commit", "Commit", vcsUi->isWindowOpen(vcs::VcsUi::COMMIT_WINDOW)),
+            catalogItem("window.vcs.history", "History", vcsUi->isWindowOpen(vcs::VcsUi::HISTORY_WINDOW)),
+            catalogItem("window.vcs.sceneDiff", "Scene Diff", vcsUi->isWindowOpen(vcs::VcsUi::SCENE_DIFF_WINDOW)),
+            catalogItem("window.vcs.conflicts", "Conflicts", vcsUi->isWindowOpen(vcs::VcsUi::CONFLICTS_WINDOW))
         }),
         menuSeparator(),
         menuSubmenu("Layouts", layoutMenuItems()),
@@ -1030,6 +1051,39 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::AssetsImport:
             projectWindow->assetsImport();
             break;
+        case AppMenuCommand::VcsCommit:
+            vcsUi->run(vcs::VcsAction::Commit, projectWindow->getSelectedFiles());
+            break;
+        case AppMenuCommand::VcsRevert:
+            vcsUi->run(vcs::VcsAction::Revert, projectWindow->getSelectedFiles());
+            break;
+        case AppMenuCommand::VcsLock:
+            vcsUi->run(vcs::VcsAction::Lock, projectWindow->getSelectedFiles());
+            break;
+        case AppMenuCommand::VcsUnlock:
+            vcsUi->run(vcs::VcsAction::Unlock, projectWindow->getSelectedFiles());
+            break;
+        case AppMenuCommand::VcsShowHistory:
+            vcsUi->run(vcs::VcsAction::ShowHistory, projectWindow->getSelectedFiles());
+            break;
+        case AppMenuCommand::VcsDiffAgainstBaseline:
+            vcsUi->run(vcs::VcsAction::DiffAgainstBaseline, projectWindow->getSelectedFiles());
+            break;
+        case AppMenuCommand::VcsRefresh:
+            vcsUi->run(vcs::VcsAction::Refresh, {});
+            break;
+        case AppMenuCommand::ToggleVcsCommit:
+            vcsUi->toggleWindow(vcs::VcsUi::COMMIT_WINDOW);
+            break;
+        case AppMenuCommand::ToggleVcsHistory:
+            vcsUi->toggleWindow(vcs::VcsUi::HISTORY_WINDOW);
+            break;
+        case AppMenuCommand::ToggleVcsSceneDiff:
+            vcsUi->toggleWindow(vcs::VcsUi::SCENE_DIFF_WINDOW);
+            break;
+        case AppMenuCommand::ToggleVcsConflicts:
+            vcsUi->toggleWindow(vcs::VcsUi::CONFLICTS_WINDOW);
+            break;
         case AppMenuCommand::AssetsRefresh:
             // what changed on disk (the journal with Auto Refresh off), then the open folder
             HotReloadService::get().refresh();
@@ -1130,11 +1184,13 @@ void editor::App::showImGuiMenuItems(const std::vector<PlatformMenuItem>& items)
                 showImGuiMenuItems(item.children);
                 ImGui::EndMenu();
             }
-        } else if (ImGui::MenuItem(
-                       item.label.c_str(),
-                       item.shortcut.empty() ? nullptr : item.shortcut.c_str(),
-                       item.checked, item.enabled)) {
-            executeMenuCommand(item.command);
+        } else {
+            if (ImGui::MenuItem(item.label.c_str(), item.shortcut.empty() ? nullptr : item.shortcut.c_str(), item.checked, item.enabled)) {
+                executeMenuCommand(item.command);
+            }
+            if (!item.enabled && !item.tooltip.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                ImGui::SetTooltip("%s", item.tooltip.c_str());
+            }
         }
     }
 }
@@ -2502,6 +2558,8 @@ void editor::App::show(){
 
     dockspace_id = ImGui::GetID("MyDockspace");
 
+    // the version control snapshot and the diffs before the windows read them (S29)
+    vcsUi->update();
     showMenu();
     EditorDiagnostics::pollNotices();
     showCrashNotice();
@@ -2568,6 +2626,7 @@ void editor::App::show(){
     profilerWindow->show();
     frameDebuggerWindow->show();
     undoHistoryWindow->show();
+    vcsUi->show();
     inputActionsWindow->show();
     navigationWindow->show();
     playModeChangesWindow->show();

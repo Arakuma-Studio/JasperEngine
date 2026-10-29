@@ -9,6 +9,7 @@
 #include "reload/HotReloadService.h"
 #include "util/EditorDiagnostics.h"
 #include "util/ShellEnv.h"
+#include "vcs/scene/SceneCli.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -50,6 +51,13 @@ int runEditor(int argc, char* argv[]) {
     }
     if (argc >= 2 && std::strcmp(argv[1], "scene-dump") == 0) {
         return editor::CommandLine::runSceneDumpCommand(argc - 1, argv + 1, argv[0]);
+    }
+    // version control: git's scene merge driver and the semantic diff (no engine, no window)
+    if (argc >= 2 && std::strcmp(argv[1], "merge-scene") == 0) {
+        return editor::vcs::scene::runMergeSceneCommand(argc - 1, argv + 1, argv[0]);
+    }
+    if (argc >= 2 && std::strcmp(argv[1], "scene-diff") == 0) {
+        return editor::vcs::scene::runSceneDiffCommand(argc - 1, argv + 1, argv[0]);
     }
     if (argc >= 2 && std::strcmp(argv[1], "assets") == 0) {
         return editor::CommandLine::runAssetsCommand(argc - 1, argv + 1, argv[0]);

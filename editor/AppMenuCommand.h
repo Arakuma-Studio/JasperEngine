@@ -101,7 +101,19 @@ namespace jasperengine::editor {
         TogglePoseAnimation,          // Window > Animation > Pose Animation
         ToggleVertexAnimationBaker,   // Window > Animation > Vertex Animation Baker
         AssetsCreatePoseAnimation,
-        AssetsCreateAnimationClip     // shown only once AnimationClipAppHooks::createClipAsset is set
+        AssetsCreateAnimationClip,    // shown only once AnimationClipAppHooks::createClipAsset is set
+        // S29: Assets > Version Control (the Project window's selection) and Window > Version Control
+        VcsCommit,
+        VcsRevert,
+        VcsLock,
+        VcsUnlock,
+        VcsShowHistory,
+        VcsDiffAgainstBaseline,
+        VcsRefresh,
+        ToggleVcsCommit,
+        ToggleVcsHistory,
+        ToggleVcsSceneDiff,
+        ToggleVcsConflicts
     };
 
 }

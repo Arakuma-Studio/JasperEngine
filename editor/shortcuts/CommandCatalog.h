@@ -65,6 +65,8 @@ namespace jasperengine::editor {
         std::function<void(const CommandArgs&)> run;
         // the menu item's enabled state too; a disabled command does not run
         std::function<bool()> enabled;
+        // why it is disabled now (the menu item's tooltip); null: no reason given
+        std::function<std::string()> disabledReason;
         // keyboard only: further conditions on firing (no drag in progress, a 3D scene...)
         std::function<bool()> keyGate;
         // the main menu item that runs it (AppMenuCommand and payload), when it has one

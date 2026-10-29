@@ -100,6 +100,23 @@ namespace {
         return out;
     }
 
+    // The input's lines without the transforms' derived values, which saves no longer write
+    // (scene format 4, docs/specs/S29-version-control.md R20)
+    std::string withoutDerivedTransform(const std::string& text) {
+        static const char* const keys[] = {"worldPosition:", "worldRotation:", "worldScale:", "localMatrix:", "modelMatrix:", "normalMatrix:"};
+        std::istringstream in(text);
+        std::string line, out;
+        while (std::getline(in, line)) {
+            const size_t start = line.find_first_not_of(' ');
+            bool derived = false;
+            for (const char* key : keys) {
+                if (start != std::string::npos && line.compare(start, std::char_traits<char>::length(key), key) == 0) derived = true;
+            }
+            if (!derived) out += line + "\n";
+        }
+        return out;
+    }
+
     // The input's lines without the format version line
     std::string withoutVersionLine(const std::string& text) {
         std::istringstream in(text);
@@ -141,11 +158,12 @@ TEST(Compat, CorpusRoundTrip) {
                                    // machine that saved it), which a bare decode cannot load
                                    original.find("|gltf-image|") == std::string::npos;
         if (editorWritten) {
-            const std::string difference = firstDifference(withoutShadowMigration(withoutShaderKeys(withoutVersionLine(first))),
-                                                           withoutShadowMigration(withoutShaderKeys(withoutVersionLine(original))));
+            const std::string difference =
+                firstDifference(withoutDerivedTransform(withoutShadowMigration(withoutShaderKeys(withoutVersionLine(first)))),
+                                withoutDerivedTransform(withoutShadowMigration(withoutShaderKeys(withoutVersionLine(original)))));
             EXPECT_TRUE(difference.empty()) << "the save changed more than the version line, at " << difference;
             EXPECT_EQ(shaderKeySet(first), shaderKeySet(original)) << "the shader keys";
-            EXPECT_EQ(first.rfind("formatVersion: 3\n", 0), 0u);
+            EXPECT_EQ(first.rfind("formatVersion: 4\n", 0), 0u);
         }
     }
 

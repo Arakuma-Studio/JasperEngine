@@ -209,6 +209,12 @@ namespace jasperengine::editor{
         void markPrefabRows(TreeNode& root);
         // The "+" badge on an added GameObject's icon, right after its row was drawn
         void drawPrefabRowOverlay(const TreeNode& node, const ImVec2& rowMin, const ImVec2& rowMax);
+        // S29 (HierarchyVcs.cpp): the version control state of a row, the toolbar's Show VCS
+        // Changes toggle and the scene row's Version Control menu
+        void drawVcsRowOverlay(const TreeNode& node, const ImVec2& rowMin, const ImVec2& rowMax);
+        void showVcsToolbarToggle();
+        void showVcsMenu(const SceneProject* sceneProject);
+        bool showsVcsChanges() const;
         // The ">" button at the right end of an instance root's row
         void showPrefabRowArrow(const TreeNode& node);
         // Missing Prefab rows: the Prefab submenu

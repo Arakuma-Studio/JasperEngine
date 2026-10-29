@@ -35,6 +35,7 @@
 #include "navigation/NavigationProjectSettings.h"
 #include "render/shadow/ShadowTiers.h"
 #include "texture/TextureImportSettings.h"
+#include "vcs/VcsTypes.h"
 
 #include "yaml-cpp/yaml.h"
 
@@ -55,6 +56,27 @@
 namespace jasperengine::editor{
     namespace prefabinternal { struct ScratchEntity; }
     struct BakedPrefab;
+    namespace vcs {
+        class VcsService;
+        class SceneDiffTracker;
+        struct VcsSettings;
+    }
+
+    // project.yaml versionControl (docs/specs/S29-version-control.md R7, R21, D2); MCP
+    // editor.vcs.provider, editor.vcs.lfs, editor.vcs.lock_scenes
+    struct VcsProjectSettings {
+        vcs::ProviderChoice provider = vcs::ProviderChoice::Auto;
+        // the generated .gitattributes stores the binaries in Git LFS, lockable
+        bool lfs = false;
+        // ... and scenes and prefabs lockable too (a lock on a file that is not an LFS object
+        // depends on the server)
+        bool lockScenes = false;
+
+        bool operator==(const VcsProjectSettings& other) const {
+            return provider == other.provider && lfs == other.lfs && lockScenes == other.lockScenes;
+        }
+        bool operator!=(const VcsProjectSettings& other) const { return !(*this == other); }
+    };
 
     struct LocalBuildSettings;
 
@@ -723,6 +745,9 @@ namespace jasperengine::editor{
         LayerCollisionRows layerCollisionMatrix2D = allLayersCollide();
         bool packNativeResources;
         bool versionControlMetadata;
+        VcsProjectSettings vcsProjectSettings;
+        std::unique_ptr<vcs::VcsService> vcsService;
+        std::unique_ptr<vcs::SceneDiffTracker> sceneDiffs;
         ShaderOverrides shaderOverrides;
         SourceCodeExportSettings sourceCodeExportSettings;
         DesktopExportSettings desktopExportSettings;
@@ -1453,6 +1478,35 @@ namespace jasperengine::editor{
         void setVersionControlMetadata(bool enabled);
 
         bool hasVersionControlMetadata() const;
+
+        // Version control (docs/specs/S29-version-control.md): the project's choice, saved in
+        // project.yaml (versionControl), and the service that runs it. A new project uses Git
+        // LFS for its binaries; one saved before without the key does not (R21).
+        const VcsProjectSettings& getVcsProjectSettings() const { return vcsProjectSettings; }
+        // apply: a new provider restarts the service, LFS and lockable scenes rewrite the
+        // generated .gitattributes (false while project.yaml is read)
+        void setVcsProjectSettings(const VcsProjectSettings& settings, bool apply = true);
+        vcs::VcsService& getVcs();
+        const vcs::VcsService& getVcs() const;
+        // The open documents' diffs against their baseline (Scene Diff, Hierarchy, Inspector)
+        vcs::SceneDiffTracker& getSceneDiffs();
+        // Starts the service with these settings and the user's (Preferences > Version Control);
+        // the editor does, at every project open (watchFiles); the CLI never
+        void startVersionControl();
+        // What the service runs with: the project's provider, the user's tools and cadences
+        vcs::VcsSettings versionControlServiceSettings() const;
+        // Undoable reverts keep the files they replaced here, per command (R11)
+        std::filesystem::path getVcsBackupDir() const;
+        // at project close: what the reverts in the history kept
+        void removeVcsBackups();
+        // S29 R19, R12: refuses to open a document (a scene or prefab in conflict) with why; and
+        // what a save refused as read only (an unlocked lockable file) offers instead. Set by
+        // the editor's version control UI; unset, nothing is refused and the save just fails.
+        static std::function<bool(const std::filesystem::path& file, std::string& why)> documentOpenGuard;
+        static std::function<void(const std::filesystem::path& file, std::function<void()> retrySave)> readOnlySaveHandler;
+        // What saving an open scene or prefab stage would write (its unsaved edits included): a
+        // scene's encodeSceneProject, a stage's prefab document; undefined for no such document
+        YAML::Node encodeDocument(uint32_t sceneId);
 
         ShaderOverrides& getShaderOverrides();
         const ShaderOverrides& getShaderOverrides() const;
