@@ -1133,7 +1133,7 @@ controller does not have warn once and do nothing.
 | `getDeltaPosition()`, `getDeltaRotation()` | the last update's root motion (world space) |
 | `isHumanoid()`, `isLoaded()` | |
 | `onEvent` | a function called with one `AnimationEvent` per clip or montage event (leader clip per layer, or all with `eventMode = all`); then the scripts' methods named like the event |
-| `onStateEnter`, `onStateExit` | functions called with `(layer, state)` names |
+| `onStateEnter`, `onStateExit` | functions called with `(layer, state)`: the layer's name and the state's full path (`"Base Layer.Combat.Attack"`) |
 | `onMontageEnded` | `(path, interrupted)` |
 | `onAnimatorMove` | `(deltaPosition, deltaRotation)`: set, it takes the root motion over (nothing moves the GameObject) |
 | `getAnimatorComponent()` | the ECS component |

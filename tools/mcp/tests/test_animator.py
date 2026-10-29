@@ -276,7 +276,7 @@ async def test_play_mode(ed: Editor):
         await ed.call("wait", game_seconds=2.0)
         ed.check("montage" not in (await live(ed)), "the montage ended")
         console = " ".join(str(e.get("message")) for e in await ed.console_since("last"))
-        ed.check("enter Base Layer Locomotion" in console, f"onStateEnter: {console[-1200:]}")
+        ed.check("enter Base Layer Base Layer.Locomotion" in console, f"onStateEnter (layer, state's full path): {console[-1200:]}")
         ed.check("waved hello 3" in console, f"the montage event called the script method: {console[-1200:]}")
         ed.check("montage ended" in console and "false" in console, f"onMontageEnded(not interrupted): {console[-1200:]}")
         ed.check("humanoid true" in console, f"isHumanoid and hasBone(slot): {console[-1200:]}")

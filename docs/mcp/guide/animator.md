@@ -78,7 +78,7 @@ normalizedTime])`, `crossFade(state, duration [, layer, offset])`, `crossFadeInF
 `montageJumpToSection`, `montageSetNextSection`, `setIKTarget(name, position)`, `setIKWeight`,
 `setLookAt`, `getBonePosition(slotOrPath)`, `getBoneRotation`, `hasBone`, `isHumanoid`,
 `applyRootMotion`, `getDeltaPosition` / `getDeltaRotation`, and the callbacks `onEvent(event)`,
-`onStateEnter(layer, state)`, `onStateExit(layer, state)`, `onMontageEnded(path, interrupted)`,
+`onStateEnter(layer, state)`, `onStateExit(layer, state)` (the state's full path), `onMontageEnded(path, interrupted)`,
 `onAnimatorMove(deltaPosition, deltaRotation)` (set it to take over root motion). Clip and montage
 events also call the scripts' methods of the same name (`sendEventsToScripts`).
 
