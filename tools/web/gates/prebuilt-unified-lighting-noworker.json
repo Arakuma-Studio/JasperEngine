@@ -1,8 +1,22 @@
 {
-  "description": "The same build served without COOP/COEP and with the service worker unavailable (init_script removes navigator.serviceWorker): the loader falls back to the single-thread player (S06 AC21, S30 R15).",
+  "description": "The same build served without COOP/COEP and with the service worker unavailable (init_script removes navigator.serviceWorker): the loader falls back to the single-thread player (S06 AC21, S30 R15). The player runs 3 frames after ready at a fixed 60 fps and quits (?quit-after=3&fixed-fps=60&after-ready), so the page is still while it is captured; software WebGL needs a long capture_timeout for this scene. The centre pixel is the grey floor between the middle cylinders.",
   "isolated": false,
   "init_script": "delete Navigator.prototype.serviceWorker;",
   "expect": [
-    "crossOriginIsolated=false threads=false"
-  ]
+    "crossOriginIsolated=false threads=false",
+    "JasperEngine exit code 0"
+  ],
+  "query": [
+    "quit-after=3",
+    "fixed-fps=60",
+    "after-ready"
+  ],
+  "seconds": 20,
+  "capture_timeout": 300,
+  "rgb": [
+    93,
+    97,
+    102
+  ],
+  "tolerance": 24
 }

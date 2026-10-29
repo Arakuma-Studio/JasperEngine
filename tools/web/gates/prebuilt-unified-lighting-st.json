@@ -1,7 +1,21 @@
 {
-  "description": "tools/fixtures/unified-lighting built with Web: Multithreaded off: no pthreads player and no service worker ship; served without COOP/COEP it runs single-thread.",
+  "description": "tools/fixtures/unified-lighting built with Web: Multithreaded off: no pthreads player and no service worker ship; served without COOP/COEP it runs single-thread. The player runs 3 frames after ready at a fixed 60 fps and quits (?quit-after=3&fixed-fps=60&after-ready), so the page is still while it is captured; software WebGL needs a long capture_timeout for this scene. The centre pixel is the grey floor between the middle cylinders.",
   "isolated": false,
   "expect": [
-    "crossOriginIsolated=false threads=false"
-  ]
+    "crossOriginIsolated=false threads=false",
+    "JasperEngine exit code 0"
+  ],
+  "query": [
+    "quit-after=3",
+    "fixed-fps=60",
+    "after-ready"
+  ],
+  "seconds": 20,
+  "capture_timeout": 300,
+  "rgb": [
+    93,
+    97,
+    102
+  ],
+  "tolerance": 24
 }
