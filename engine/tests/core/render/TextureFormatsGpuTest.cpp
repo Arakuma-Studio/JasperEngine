@@ -143,8 +143,26 @@ namespace {
             Engine::setScene(&scene);
         }
 
+        // the view as the test found it: put back after the mip levels resized it, so the GPU
+        // suites after this one render at their own size
+        bool viewSaved = false;
+        int screenWidth = 0, screenHeight = 0, canvasWidth = 0, canvasHeight = 0;
+        Scaling scaling = Scaling::FITWIDTH;
+
+        void saveView(){
+            screenWidth = (int)GpuEnvironment::target().getWidth();
+            screenHeight = (int)GpuEnvironment::target().getHeight();
+            canvasWidth = Engine::getPreferredCanvasWidth();
+            canvasHeight = Engine::getPreferredCanvasHeight();
+            scaling = Engine::getScalingMode();
+            viewSaved = true;
+        }
+
         void TearDown() override{
             Engine::removeScene(&scene);
+            if (viewSaved){
+                GpuEnvironment::setView(screenWidth, screenHeight, canvasWidth, canvasHeight, scaling);
+            }
         }
     };
 
@@ -152,6 +170,7 @@ namespace {
 
 TEST_F(TextureFormatsGpu, CookedFixturesSampleLikeTheirCpuDecode){
     JASPER_REQUIRE_GPU();
+    saveView();
     const fs::path dir = fs::path(testPaths().assetDir) / "texture_formats";
     std::vector<fs::path> fixtures;
     for (const auto& entry : fs::directory_iterator(dir))

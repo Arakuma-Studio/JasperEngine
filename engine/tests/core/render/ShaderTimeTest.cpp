@@ -3,7 +3,8 @@
 
 // The shader clock (docs/specs/S22-gameplay.md R29, AC13): latched once a frame at the top of
 // Engine::systemDraw (latchShaderTime), so every fixed step of a frame, its draw and the CPU's
-// waves agree; with a fixed frame delta it advances exactly that much a frame.
+// waves agree; with a fixed frame delta it advances exactly that much a frame. Pinned
+// (Engine::setPinnedShaderTime, the golden image tests) it stays put.
 
 #include "Engine.h"
 
@@ -20,6 +21,7 @@ namespace {
     class ShaderTimeTest : public ::testing::Test {
     protected:
         void TearDown() override{
+            Engine::setPinnedShaderTime(-1.0);
             Engine::setFixedDeltatime(0.0);
             Engine::latchShaderTime();
         }
@@ -68,10 +70,33 @@ TEST_F(ShaderTimeTest, FixedDeltaAdvancesExactly){
         first.push_back(Engine::getShaderTimeSeconds() - base);
     }
     ASSERT_EQ(first.size(), 4u);
-    for (size_t i = 0; i < first.size(); i++)
+    for (size_t i = 0; i < first.size(); i++){
         EXPECT_NEAR(first[i], 0.5 * (double)(i + 1), 1e-12);
+    }
 
     // back to the wall clock
+    Engine::setFixedDeltatime(0.0);
+    Engine::latchShaderTime();
+    EXPECT_NEAR(Engine::getShaderTime(), (float)Engine::getSystemTime(), 0.01f);
+}
+
+TEST_F(ShaderTimeTest, PinnedHoldsUntilUnpinned){
+    Engine::setFixedDeltatime(1.0 / 60.0);
+    Engine::setPinnedShaderTime(12.5);
+    EXPECT_EQ(Engine::getShaderTimeSeconds(), 12.5);
+    for (int frame = 0; frame < 10; frame++){
+        Engine::latchShaderTime();
+        EXPECT_EQ(Engine::getShaderTimeSeconds(), 12.5);
+    }
+
+    // unpinned, a fixed delta goes on from the pinned time
+    Engine::setPinnedShaderTime(-1.0);
+    Engine::latchShaderTime();
+    EXPECT_EQ(Engine::getShaderTimeSeconds(), 12.5);
+    Engine::latchShaderTime();
+    EXPECT_NEAR(Engine::getShaderTimeSeconds(), 12.5 + 1.0 / 60.0, 1e-12);
+
+    // and the wall clock without one
     Engine::setFixedDeltatime(0.0);
     Engine::latchShaderTime();
     EXPECT_NEAR(Engine::getShaderTime(), (float)Engine::getSystemTime(), 0.01f);

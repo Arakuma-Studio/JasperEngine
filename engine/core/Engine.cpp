@@ -130,6 +130,7 @@ double Engine::fixedDeltatime = 0.0;
 double Engine::gameTime = 0.0;
 double Engine::shaderTime = 0.0;
 bool Engine::shaderTimeFixed = false;
+double Engine::pinnedShaderTime = -1.0;
 uint64_t Engine::gameFrames = 0;
 std::atomic<bool> Engine::simulationHeld = false;
 bool Engine::clampNextDelta = false;
@@ -863,7 +864,10 @@ void Engine::latchShaderTime(){
     static double fixedBase = 0.0;
     static double fixedDelta = 0.0;
     static uint64_t fixedFrames = 0;
-    if (fixedDeltatime > 0.0){
+    if (pinnedShaderTime >= 0.0){
+        shaderTime = pinnedShaderTime;
+        shaderTimeFixed = false;
+    }else if (fixedDeltatime > 0.0){
         if (!shaderTimeFixed || fixedDelta != fixedDeltatime){
             fixedBase = shaderTime;
             fixedDelta = fixedDeltatime;
@@ -876,6 +880,18 @@ void Engine::latchShaderTime(){
     }else{
         shaderTimeFixed = false;
         shaderTime = getSystemTime();
+    }
+}
+
+void Engine::setPinnedShaderTime(double seconds){
+    if (std::isnan(seconds) || std::isinf(seconds)){
+        Log::warn("Engine::setPinnedShaderTime: non-finite value ignored");
+        return;
+    }
+    pinnedShaderTime = seconds < 0.0 ? -1.0 : seconds;
+    if (pinnedShaderTime >= 0.0){
+        shaderTime = pinnedShaderTime;
+        shaderTimeFixed = false;
     }
 }
 

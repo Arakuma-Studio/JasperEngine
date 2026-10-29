@@ -50,7 +50,7 @@ TEST(Migrations, NewerFormatGated) {
     DecodedScene decoded = decodeSceneFile(fixture("migrations/scene-v99.scene"));
     ASSERT_EQ(decoded.report.dropped(), 1u);
     EXPECT_TRUE(decoded.report.newerFormat());
-    EXPECT_EQ(decoded.report.issues[0].message, "Written by a newer JasperEngine (scene format 99; this editor writes 4).");
+    EXPECT_EQ(decoded.report.issues[0].message, "Written by a newer JasperEngine (scene format 99; this editor writes 5).");
     // loaded best-effort
     EXPECT_EQ(decoded.scene->name, "FromTheFuture");
     EXPECT_EQ(decoded.scene->entities.size(), 1u);

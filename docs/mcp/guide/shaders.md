@@ -424,6 +424,8 @@ either.
 | `ABSORPTION` | colour by the water's thickness, a soft shore; with `REFRACTION` the bed loses each colour at its own rate (Beer-Lambert from the shallow colour) | scene depth |
 | `REFRACTION` | the bed and what is under the surface bent by the ripples | scene colour and depth |
 | `CAUSTICS` | with `REFRACTION`: sunlight (the main directional light) focused on the bed, faded with depth and where its cells would be under a few pixels; procedural, no texture | a dozen ALU instructions |
+| `FLOW` | rivers: both ripple layers and the foam noise carried along the mesh's flow (vertex colour rg = 0.5 + 0.5 * direction over world XZ, b = share of `flowSpeed`), two-phase flow map over `flowCycle` seconds | twice the four texture fetches |
+| `MESH_DEPTH` | shore foam and shallow to deep colour from the mesh's depth (uv0 = (metres along, depth in metres), as spline water writes it), no scene depth: the mobile shore | a few instructions |
 
 Scene depth and colour cost what the previous section says (a depth pre-pass, a copy of the
 screen); the others are a few instructions. On low-end mobile keep to the base, `WAVES` and

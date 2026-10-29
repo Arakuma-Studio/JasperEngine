@@ -5518,6 +5518,12 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
     if (terrain && !terrain->heightMapLoaded)
         return false;
 
+    // a Spline Extrude's Mesh is the template of its chunks (SplineSystem): never drawn itself
+    if (scene->findComponent<SplineExtrudeComponent>(entity)){
+        mesh.loadCalled = true;
+        return false;
+    }
+
     if (terrain && instmesh){
         Log::warn("Terrain cannot be an InstancedMesh");
     }
@@ -11683,7 +11689,8 @@ void RenderSystem::getLoadCount(size_t& loaded, size_t& total) const{
     for (int i = 0; i < meshes->size(); i++) {
         const MeshComponent& mesh = meshes->getComponentFromIndex(i);
         // a mesh drawing its previous variant while the new one builds is still loading
-        count((mesh.loaded && !mesh.needVariantReload) || (!mesh.loadCalled && isMeshShaderUnavailable(mesh)));
+        count((mesh.loaded && !mesh.needVariantReload) || (!mesh.loadCalled && isMeshShaderUnavailable(mesh)) ||
+              scene->findComponent<SplineExtrudeComponent>(meshes->getEntity(i)) != nullptr);
     }
 
     // Check UIComponents

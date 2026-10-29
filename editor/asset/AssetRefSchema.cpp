@@ -25,6 +25,7 @@
 #include "particles/ParticleModules.h"
 #include "component/PoseAnimatorComponent.h"
 #include "component/AnimationPlayerComponent.h"
+#include "component/SplineInstantiateComponent.h"
 #include "animation/ModelSubClips.h"
 #include "pool/TexturePool.h"
 #include "registry/EntityRegistry.h"
@@ -42,6 +43,22 @@ namespace {
     // anything else the row's texture
     AssetType lutExpectedType(const std::string& path) {
         return Util::isColorLutFile(path) ? AssetType::ColorLut : AssetType::Unknown;
+    }
+
+    // a Spline Instantiate pool entry is a model (instanced) or a prefab (GameObjects)
+    constexpr const char* kSplinePools[] = {"items", "posts", "spans", "gates", "crests", "caps"};
+
+    AssetType splinePieceExpectedType(const std::string& path) {
+        const std::string suffix = ".prefab";
+        const bool prefab = path.size() >= suffix.size() && path.compare(path.size() - suffix.size(), suffix.size(), suffix) == 0;
+        return prefab ? AssetType::Prefab : AssetType::Model;
+    }
+
+    bool isSplinePoolRow(const std::string& path) {
+        for (const char* pool : kSplinePools) {
+            if (path == std::string(pool) + "[].asset") return true;
+        }
+        return false;
     }
 
     using Scope = AssetRefScope;
@@ -138,6 +155,10 @@ namespace {
         row(C::AnimationPlayerComponent, "clips[]", Shape::ClipEntry, AssetType::AnimationClip, Base::Assets);
         row(C::NavMeshSurfaceComponent, "navMeshData", Shape::Asset, AssetType::NavMesh, Base::Assets);
         row(C::NavGridComponent, "gridData", Shape::Asset, AssetType::NavGrid, Base::Assets);
+        // each pool entry: "posts[1].asset" (and "assetGuid"); a model or a prefab
+        for (const char* pool : kSplinePools) {
+            row(C::SplineInstantiateComponent, std::string(pool) + "[].asset", Shape::Asset, AssetType::Unknown, Base::Assets);
+        }
 
         row(C::ParticleSystemComponent, "effect", Shape::Asset, AssetType::ParticleEffect, Base::Assets);
         row(C::ParticleSystemComponent, "inlineEffect", Shape::ParticleEffect, AssetType::Unknown, Base::Assets);
@@ -625,6 +646,20 @@ namespace {
             if (moved) player.needsLoad = true;
         });
 
+        eachComponent<SplineInstantiateComponent>(registry, only, visit, C::SplineInstantiateComponent, [&](SplineInstantiateComponent& instantiate) {
+            // SplineSystem re-resolves a pool whose paths change (no flag to set)
+            std::vector<SplinePoolEntry>* pools[] = {&instantiate.items, &instantiate.posts, &instantiate.spans,
+                                                     &instantiate.gates, &instantiate.crests, &instantiate.caps};
+            for (size_t p = 0; p < std::size(pools); p++) {
+                const std::string name = kSplinePools[p];
+                for (size_t i = 0; i < pools[p]->size(); i++) {
+                    AssetRef& asset = (*pools[p])[i].asset;
+                    visit.asset(asset, componentRow(C::SplineInstantiateComponent, name + "[].asset"), name + "[" + std::to_string(i) + "].asset",
+                                AssetPathBase::Assets, false, splinePieceExpectedType(asset.path));
+                }
+            }
+        });
+
         eachComponent<ScriptComponent>(registry, only, visit, C::ScriptComponent, [&](ScriptComponent& scripts) {
             for (size_t i = 0; i < scripts.scripts.size(); i++) {
                 ScriptEntry& entry = scripts.scripts[i];
@@ -789,7 +824,8 @@ namespace {
                         if (row.path == "scripts[].path" && parent) {
                             lua = scalar(parent["type"]) == "lua";
                         }
-                        const AssetType expected = row.path == "postProcessing.lutTexture" ? lutExpectedType(scalar(value)) : AssetType::Unknown;
+                        const AssetType expected = row.path == "postProcessing.lutTexture" ? lutExpectedType(scalar(value))
+                                                 : isSplinePoolRow(row.path) ? splinePieceExpectedType(scalar(value)) : AssetType::Unknown;
                         found(row, AssetRef(scalar(value), guid), field, 0, lua ? AssetPathBase::Lua : AssetPathBase::Project, lua, expected);
                         break;
                     }

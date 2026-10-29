@@ -102,6 +102,8 @@ namespace jasperengine::editor {
         // the prefab instance roots strictly between root and exact, outermost first
         std::vector<Entity> intermediateRoots(uint32_t sceneId, Entity root, Entity exact) const;
         bool isInside(uint32_t sceneId, Entity entity, Entity ancestor) const;
+        // the GameObject a hit selects: a spline's generated geometry is its owner's
+        static Entity pickedEntity(Scene* scene, Entity hit);
 
         // the filter of a scene the view draws: its pickable GameObjects on the view's pickable
         // layers, without what the Scene view hides or locks

@@ -4446,6 +4446,10 @@ const char* editor::Exporter::postFxLicensePath() {
     return "licenses/post-fx-LICENSE.txt";
 }
 
+const char* editor::Exporter::openEngineLicensePath() {
+    return "licenses/OpenEngine-LICENSE.txt";
+}
+
 namespace {
 
     // the notice at `relative` (under the export's root) when `ship`, copied from `source`;
@@ -4504,11 +4508,16 @@ bool editor::Exporter::writeEffectLicense() {
         setError("The post FX notice: " + error);
         return false;
     }
+    // every game links the spline module (core/spline), adapted from OpenEngine (NOTICE.md)
+    if (!writeNotice(true, config.targetDir, openEngineLicensePath(), config.targetDir / "core" / "spline" / "LICENSE.OpenEngine.txt", error)) {
+        setError("The OpenEngine notice: " + error);
+        return false;
+    }
     return true;
 }
 
 bool editor::Exporter::copyLicenses() {
-    for (const char* relative : {effectLicensePath(), fluidLicensePath(), postFxLicensePath()}) {
+    for (const char* relative : {effectLicensePath(), fluidLicensePath(), postFxLicensePath(), openEngineLicensePath()}) {
         const fs::path source = config.targetDir / relative;
         const fs::path target = config.destinationDir / relative;
         std::error_code ec;

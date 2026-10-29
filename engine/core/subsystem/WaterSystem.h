@@ -60,6 +60,8 @@ namespace jasperengine{
             float waveHeight = 0.0f;
             float waveLength = 1.0f;
             float waveSpeed = 0.0f;
+            // the surface is the GameObject's spline river or lake (SplineSystem), not its box
+            bool spline = false;
         };
 
         Scene* scene;
@@ -72,7 +74,7 @@ namespace jasperengine{
         void gatherVolumes() const;
         // the volume whose surface over (x, z) is highest among those holding a point at y
         // (-inf: any depth); its surface, rise rate and slope
-        const Volume* findVolume(float x, float y, float z, float& height, float& rate, Vector2& slope) const;
+        const Volume* findVolume(float x, float y, float z, float& height, float& rate, Vector2& slope, Vector3& flow) const;
 
     public:
         WaterSystem(Scene* scene, PhysicsSystem* physics);
