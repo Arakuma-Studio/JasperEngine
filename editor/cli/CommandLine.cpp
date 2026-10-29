@@ -2880,7 +2880,8 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     if (!options.quiet) {
         std::string what;
         const std::map<std::string, std::string> units = {{"lua", "file"}, {"shaders", "fork"}, {"cpp", "script"}, {"ui", "file"},
-                                                          {"textures", "recipe"}, {"texture_imports", "texture"}, {"anims", "clip"}};
+                                                          {"textures", "recipe"}, {"texture_imports", "texture"}, {"anims", "clip"},
+                                                          {"navigation", "surface"}};
         for (const auto& [category, count] : run.checked) {
             what += (what.empty() ? "" : ", ") + category + " " + plural(count, units.at(category));
         }
