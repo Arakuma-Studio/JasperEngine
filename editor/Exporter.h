@@ -256,6 +256,17 @@ namespace jasperengine::editor {
         // The environment the SDK's tools run in: this process's, with the SDK folders first on
         // PATH and EMSDK / EM_CONFIG / EMSDK_NODE / EMSDK_PYTHON set (what emsdk_env sets)
         static CommandRunner::Environment emscriptenEnvironment(const EmsdkInfo& sdk);
+        // A Web build on Windows still runs emcc.bat (the SDK's compiler driver) through cmd.exe,
+        // via CMake / Ninja / make, and cmd.exe expands %VAR% even inside quotes: "" when none of
+        // `paths` (the project, the build tree, the output folder) holds '%' or '"', else the
+        // refusal naming the first that does. Platform-independent; applied on Windows only
+        // (webBuildRefusal).
+        static std::string webPathRefusal(const std::vector<fs::path>& paths);
+        // webPathRefusal on Windows, "" elsewhere
+        static std::string webBuildRefusal(const std::vector<fs::path>& paths);
+        // The build tree of `project`'s exports in `mode` (<internal>/export/desktop|web)
+        static fs::path buildCacheDirFor(Project* project, ExportMode mode);
+
         // The Desktop player the last export produced (destination folder / name fixed when the
         // export started); empty when none was.
         fs::path getProducedExecutable() const;

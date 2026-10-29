@@ -131,3 +131,22 @@ TEST(HttpClientProtocols, OnlyHttpAndHttpsAreFetched) {
     std::error_code ec;
     fs::remove(secret, ec);
 }
+
+TEST(EmscriptenSdk, WebBuildsRefuseFoldersCmdWouldExpand) {
+    // the check itself (platform-independent): '%' or '"' anywhere in the project, build tree or output path
+    EXPECT_EQ(Exporter::webPathRefusal({"/home/dev/My Game & Co (2)", "/home/dev/My Game & Co (2)/.jasperengine/export/web",
+                                        "/srv/out/web!build^x"}), "");
+    EXPECT_EQ(Exporter::webPathRefusal({fs::path(), "/plain"}), "");
+    const std::string refusal = Exporter::webPathRefusal({"/home/dev/game", "/home/dev/game/.jasperengine/export/web", "/srv/100%/web"});
+    EXPECT_NE(refusal.find("Web builds on Windows can't use a folder whose path contains %"), std::string::npos) << refusal;
+    EXPECT_NE(refusal.find("rename the folder"), std::string::npos);
+    EXPECT_NE(refusal.find("/srv/100%/web"), std::string::npos);
+    EXPECT_NE(Exporter::webPathRefusal({"/home/%USERNAME%/game"}).find("/home/%USERNAME%/game"), std::string::npos);
+    EXPECT_NE(Exporter::webPathRefusal({"/home/dev/\"quoted\""}), "");
+    // applied on Windows only (elsewhere no shell runs the compiler driver)
+#ifdef _WIN32
+    EXPECT_NE(Exporter::webBuildRefusal({"C:\\100%\\web"}), "");
+#else
+    EXPECT_EQ(Exporter::webBuildRefusal({"/srv/100%/web"}), "");
+#endif
+}

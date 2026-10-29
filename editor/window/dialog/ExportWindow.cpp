@@ -1017,6 +1017,13 @@ bool ExportWindow::drawPlatformSettings(bool& targetNotEmpty) {
             ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " Emscripten SDK not found. Set it in Preferences > External Tools.");
             canExport = false;
         }
+        // emcc.bat runs through cmd.exe on Windows: no '%' in the project, build tree or output path
+        const std::string pathRefusal = Exporter::webBuildRefusal(
+            {m_project->getProjectPath(), Exporter::buildCacheDirFor(m_project, ExportMode::Web), m_targetDir});
+        if (!pathRefusal.empty()) {
+            ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " %s.", pathRefusal.c_str());
+            canExport = false;
+        }
     }
     ImGui::PopTextWrapPos();
 

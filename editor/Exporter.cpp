@@ -771,6 +771,14 @@ void editor::Exporter::runExport() {
     // modes they occupy the first half, leaving the rest for configure/build/collect.
     progressScale = buildMode ? 0.5f : 1.0f;
 
+    if (buildMode && config.mode == ExportMode::Web) {
+        // emcc.bat runs through cmd.exe on Windows: no '%' in the folders it is given
+        const std::string refusal = webBuildRefusal({project->getProjectPath(), getBuildCacheDir(), config.destinationDir});
+        if (!refusal.empty()) {
+            setError(refusal + ".");
+            return;
+        }
+    }
     if (buildMode) {
         if (!prepareCacheTarget()) return;
     } else {
@@ -906,6 +914,30 @@ std::string editor::Exporter::getAppName() const {
 fs::path editor::Exporter::getProducedExecutable() const {
     std::lock_guard<std::mutex> lock(progressMutex);
     return producedExecutable;
+}
+
+std::string editor::Exporter::webPathRefusal(const std::vector<fs::path>& paths) {
+    for (const fs::path& path : paths) {
+        if (path.empty()) continue;
+        const std::string text = path.string();
+        if (text.find_first_of("%\"") != std::string::npos) {
+            return "Web builds on Windows can't use a folder whose path contains % (or \"): rename the folder (" + text + ")";
+        }
+    }
+    return std::string();
+}
+
+std::string editor::Exporter::webBuildRefusal(const std::vector<fs::path>& paths) {
+#ifdef _WIN32
+    return webPathRefusal(paths);
+#else
+    (void)paths;
+    return std::string();
+#endif
+}
+
+fs::path editor::Exporter::buildCacheDirFor(Project* project, ExportMode mode) {
+    return project->getProjectInternalPath() / "export" / (mode == ExportMode::Desktop ? "desktop" : "web");
 }
 
 fs::path editor::Exporter::getBuildCacheDir() const {

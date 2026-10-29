@@ -949,6 +949,12 @@ void buildProjectTool(const CallPtr& call) {
                        "EMSDK, or put emcc on PATH. Or export mode source.");
             return;
         }
+        if (const std::string refusal = Exporter::webBuildRefusal(
+                {project->getProjectPath(), Exporter::buildCacheDirFor(project, ExportMode::Web), outputDir});
+            !refusal.empty()) {
+            call->fail(refusal + ".");
+            return;
+        }
     }
 
     // ---- shaders (persisted like the Build Settings window does)
