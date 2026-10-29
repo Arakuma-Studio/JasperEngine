@@ -602,6 +602,7 @@ NativeEngine::NativeEngine(struct android_app *app) {
     mEglDisplay = EGL_NO_DISPLAY;
     mEglSurface = EGL_NO_SURFACE;
     mEglContext = EGL_NO_CONTEXT;
+    mEglReleaseSurface = EGL_NO_SURFACE;
     mEglConfig = 0;
     mSurfWidth = mSurfHeight = 0;
     mJniEnv = NULL;
@@ -644,6 +645,8 @@ NativeEngine::NativeEngine(struct android_app *app) {
 }
 
 NativeEngine::~NativeEngine() {
+    // the window is gone by now: what the shutdown releases needs the context current again
+    makeContextCurrent();
     jasperengine::Engine::systemShutdown();
 
     SwappyGL_destroy();
@@ -976,7 +979,42 @@ bool NativeEngine::initContext() {
     return true;
 }
 
+bool NativeEngine::makeContextCurrent() {
+    if (mEglDisplay == EGL_NO_DISPLAY || mEglContext == EGL_NO_CONTEXT) {
+        return false;
+    }
+    if (mEglSurface != EGL_NO_SURFACE) {
+        return eglMakeCurrent(mEglDisplay, mEglSurface, mEglSurface, mEglContext) == EGL_TRUE;
+    }
+    // no window: a 1x1 pbuffer of the context's config, else no surface at all
+    // (EGL_KHR_surfaceless_context)
+    if (mEglReleaseSurface == EGL_NO_SURFACE) {
+        EGLint surfaceType = 0;
+        eglGetConfigAttrib(mEglDisplay, mEglConfig, EGL_SURFACE_TYPE, &surfaceType);
+        if (surfaceType & EGL_PBUFFER_BIT) {
+            const EGLint attribs[] = {EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE};
+            mEglReleaseSurface = eglCreatePbufferSurface(mEglDisplay, mEglConfig, attribs);
+        }
+    }
+    if (mEglReleaseSurface != EGL_NO_SURFACE &&
+            eglMakeCurrent(mEglDisplay, mEglReleaseSurface, mEglReleaseSurface, mEglContext) == EGL_TRUE) {
+        return true;
+    }
+    const char* extensions = eglQueryString(mEglDisplay, EGL_EXTENSIONS);
+    if (extensions && strstr(extensions, "EGL_KHR_surfaceless_context") &&
+            eglMakeCurrent(mEglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, mEglContext) == EGL_TRUE) {
+        return true;
+    }
+    jasperengine::Log::warn("NativeEngine: no surface to make the context current without the window, EGL error %d", eglGetError());
+    return false;
+}
+
 void NativeEngine::killContext() {
+    // APP_CMD_TERM_WINDOW unbound the context with its surface: the engine's GL objects are
+    // deleted with it current again, not as calls with no context (libEGL logs those)
+    if (mHasGLObjects) {
+        makeContextCurrent();
+    }
     killGLObjects();
 
     eglMakeCurrent(mEglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
@@ -984,6 +1022,10 @@ void NativeEngine::killContext() {
     if (mEglContext != EGL_NO_CONTEXT) {
         eglDestroyContext(mEglDisplay, mEglContext);
         mEglContext = EGL_NO_CONTEXT;
+    }
+    if (mEglReleaseSurface != EGL_NO_SURFACE) {
+        eglDestroySurface(mEglDisplay, mEglReleaseSurface);
+        mEglReleaseSurface = EGL_NO_SURFACE;
     }
 }
 
@@ -1107,6 +1149,7 @@ void NativeEngine::doFrame() {
         handleEglError(error);
         return;
     }
+    jasperengine::Engine::systemFramePresented();
 
     // print out GL errors, if any
     GLenum e;
@@ -1405,8 +1448,8 @@ void NativeEngine::handleCommand(int32_t cmd) {
         case APP_CMD_LOW_MEMORY:
             // system told us we have low memory. So if we are not visible, let's
             // cooperate by deallocating all of our graphic resources.
-            // The context is no longer current once the window is gone, so GL deletes are
-            // no-ops; destroying the context is what frees the GPU memory.
+            // killContext makes the context current without a surface to delete the GL objects
+            // (EGL_KHR_surfaceless_context); destroying the context frees the GPU memory anyway.
             if (!mHasWindow) {
                 killContext();
             }
