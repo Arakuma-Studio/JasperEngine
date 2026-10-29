@@ -81,7 +81,8 @@ void create_scene_AllComponents_2026080800(Scene* scene){
     scene->recreateEntity(1071);
     scene->recreateEntity(1072);
     scene->recreateEntity(1073);
-    scene->setLastEntity(1073);
+    scene->recreateEntity(1074);
+    scene->setLastEntity(1074);
 
     {
         // Entity 1001 (Transform)
@@ -2338,6 +2339,52 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
         transform.parent = NULL_ENTITY;
         scene->addComponent<Transform>(1073, transform);
+    }
+
+    {
+        // Entity 1074 (AnimatorComponent)
+        scene->setEntityName(1074, "AnimatorComponent");
+
+        // Entity components initialization
+        AnimatorComponent animator;
+        animator.enabled = false;
+        animator.controller = "animations/parity.controller";
+        animator.speed = 7.400000f;
+        animator.applyRootMotion = true;
+        animator.rootMotionBone = "Reflection parity";
+        animator.updateMode = AnimatorUpdateMode::UnscaledTime;
+        animator.cullingMode = AnimatorCullingMode::CullCompletely;
+        animator.writeBones = AnimatorWriteBones::Exposed;
+        animator.exposedBones.push_back("Hips/Spine");
+        animator.exposedBones.push_back("left_hand");
+        animator.eventMode = AnimatorEventMode::All;
+        animator.sendEventsToScripts = false;
+        animator.retarget = AnimatorRetarget::Off;
+        animator.clipOverrides.push_back({"animations/parity.anim", "models/parity.gltf#Run"});
+        {
+            AnimatorIKConstraint animator_ik0;
+            animator_ik0.name = "LeftHand";
+            animator_ik0.type = AnimatorIKType::TwoBone;
+            animator_ik0.weight = 0.500000f;
+            animator_ik0.bones.push_back("left_upper_arm");
+            animator_ik0.bones.push_back("left_lower_arm");
+            animator_ik0.bones.push_back("left_hand");
+            animator.ik.push_back(animator_ik0);
+        }
+        animator.needsLoad = true;
+        scene->addComponent<AnimatorComponent>(1074, animator);
+
+        Transform transform;
+        transform.position = Vector3(73.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1074, transform);
     }
 
     // Default Camera 1

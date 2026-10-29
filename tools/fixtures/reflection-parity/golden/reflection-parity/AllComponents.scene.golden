@@ -1996,3 +1996,66 @@ entities:
         collidersBlock: true
         autoRebuild: false
         gridData: ""
+  - type: Entity
+    entity: 1074
+    name: AnimatorComponent
+    components:
+      transform:
+        position: [73, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      animator:
+        enabled: false
+        controller: animations/parity.controller
+        speed: 7.4
+        applyRootMotion: true
+        rootMotionBone: Reflection parity
+        updateMode: unscaled_time
+        cullingMode: cull_completely
+        writeBones: exposed
+        exposedBones:
+          - Hips/Spine
+          - left_hand
+        eventMode: all
+        sendEventsToScripts: false
+        retarget: off
+        clipOverrides:
+          - original: animations/parity.anim
+            replacement: models/parity.gltf#Run
+        ik:
+          - name: LeftHand
+            type: two_bone
+            enabled: true
+            weight: 0.5
+            weightParameter: ""
+            bones:
+              - left_upper_arm
+              - left_lower_arm
+              - left_hand
+            boneWeights:
+              []
+            target: 0
+            targetPosition: [0, 0, 0]
+            useTargetRotation: false
+            pole: 0
+            polePosition: [0, 0, 0]
+            usePole: false
+            iterations: 10
+            tolerance: 0.001
+            forwardAxis: [0, 0, 1]
+            clampAngle: 60
+            pelvis: ""
+            footHeight: 0.08
+            rayStart: 0.5
+            rayLength: 1
+            layerMask: 4294967295
+            maxFootAngle: 30
+            smoothing: 0.08
+            contactParameter: ""
+            speedThreshold: 0.05
+            releaseTime: 0.1
