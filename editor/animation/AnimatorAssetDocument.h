@@ -102,6 +102,7 @@ namespace jasperengine::editor{
         std::map<int, std::function<void()>> listeners;
         int nextListener = 1;
         uint64_t mergeEpoch = 0;
+        std::string writing;    // the text a commit of this document is writing (its reload keeps the epoch)
 
         bool load(const std::string& newText, std::string* error);
         bool write(const std::string& newText, const std::string& undoName, const std::string& mergeKey, std::string* error);

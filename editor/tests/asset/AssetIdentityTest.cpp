@@ -626,6 +626,8 @@ TEST(AssetRefSchema, CoversAllFields) {
         {C::PoseAnimatorComponent, "animation"},
         // upstream's Animation Player: each clip entry, an .anim by GUID or a model's sub-clip
         {C::AnimationPlayerComponent, "clips[]"},
+        // S21's Animator: its Animator Controller (the clips and masks are in the .controller)
+        {C::AnimatorComponent, "controller"},
     };
     std::set<std::pair<C, std::string>> rows;
     for (const AssetRefField& field : AssetRefSchema::fields()) {

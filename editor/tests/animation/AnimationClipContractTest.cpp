@@ -47,8 +47,10 @@ namespace {
 }
 
 TEST(AnimationClipContract, CatalogKnowsTheAnimationPlayer){
-    EXPECT_EQ(LastComponentType, ComponentType::AnimationPlayerComponent);
-    EXPECT_EQ(ComponentTypeCount, static_cast<int>(ComponentType::AnimationPlayerComponent) + 1);
+    // appended after it since: S21's Animator (the type ids of saved data never move)
+    EXPECT_EQ(static_cast<int>(ComponentType::AnimatorComponent), static_cast<int>(ComponentType::AnimationPlayerComponent) + 1);
+    EXPECT_EQ(LastComponentType, ComponentType::AnimatorComponent);
+    EXPECT_EQ(ComponentTypeCount, static_cast<int>(ComponentType::AnimatorComponent) + 1);
     EXPECT_EQ(Catalog::getComponentType("animationplayer"), ComponentType::AnimationPlayerComponent);
     EXPECT_EQ(Catalog::getComponentType("AnimationPlayerComponent"), ComponentType::AnimationPlayerComponent);
     EXPECT_EQ(Catalog::getComponentName(ComponentType::AnimationPlayerComponent, false), "AnimationPlayerComponent");

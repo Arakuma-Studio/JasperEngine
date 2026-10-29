@@ -254,9 +254,13 @@ void AnimatorAssetDocument::reload(){
         return;
     }
     if (newText == text && error.empty()) return;
+    // this document's own commit keeps the merge epoch (a drag's commits merge); anything else
+    // (an undo, a redo, an outside edit) starts a new one
+    const bool own = !writing.empty() && newText == writing;
+    writing.clear();
     std::string loadError;
     load(newText, &loadError);
-    mergeEpoch++;
+    if (!own) mergeEpoch++;
     notify();
 }
 
@@ -270,14 +274,17 @@ bool AnimatorAssetDocument::write(const std::string& newText, const std::string&
     auto* command = new WriteFilesCmd({{filePath, newText}}, [](const std::vector<fs::path>& changed){
         AnimatorAssetDocument::filesChanged(changed);
     });
+    writing = newText;
     command->setName(undoName.empty() ? std::string("Edit ") + kindName(assetKind) + " " + CommandNames::file(filePath) : undoName);
     if (mergeKey.empty()) command->setNoMerge();
     else command->setMergeKey(relativePath + "\n" + std::to_string(mergeEpoch) + "\n" + mergeKey);
     auto failure = std::make_shared<std::string>();
     command->reportFailureTo(failure);
     if (!project->getProjectCommandHistory()->addCommand(command)){
+        writing.clear();
         return fail(writeError, "writing '" + relativePath + "' failed" + (failure->empty() ? std::string() : " (" + *failure + ")"));
     }
+    writing.clear();
     return true;
 }
 
