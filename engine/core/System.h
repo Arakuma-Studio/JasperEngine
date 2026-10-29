@@ -59,10 +59,27 @@ namespace jasperengine {
         CONFINED  // visible, but cannot leave the window bounds
     };
 
+    class System;
+
+    // A System for code that runs before the platform made its own (a prebuilt player reads its
+    // content and game.json before the window exists): installed only while none is set, and
+    // removed again when the scope ends
+    class JASPERENGINE_API EarlySystemScope {
+    public:
+        explicit EarlySystemScope(System* system);
+        ~EarlySystemScope();
+        EarlySystemScope(const EarlySystemScope&) = delete;
+        EarlySystemScope& operator=(const EarlySystemScope&) = delete;
+
+    private:
+        System* installed = nullptr;
+    };
+
     class JASPERENGINE_API System {
     private:
 
         friend class Engine;
+        friend class EarlySystemScope;
 
         static System* systemInstance;
 

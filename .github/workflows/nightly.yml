@@ -137,9 +137,44 @@ jobs:
           path: build/test-results/**
           if-no-files-found: ignore
 
+  # S30 AC5: every Lua-only fixture looks the same built from source and with the prebuilt player
+  parity:
+    name: Prebuilt player parity (${{ matrix.ref }})
+    needs: refs
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        ref: ${{ fromJSON(needs.refs.outputs.refs) }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ matrix.ref }}
+          fetch-depth: 0
+      - uses: actions/cache@v4
+        with:
+          path: build/.cache/ccache
+          key: ccache-nightly-parity-${{ github.run_id }}
+          restore-keys: ccache-nightly-parity-
+      - name: Build the editor and the Linux player runtimes
+        run: |
+          SKIP_ENGINE=1 tools/build.sh linux
+          PLAYER_FLAVOURS=release PLAYER_BACKENDS="glcore vulkan" tools/build.sh players
+      - name: Compile and prebuilt frames of every Lua-only fixture
+        run: tools/ci/parity.sh
+      - name: The player CLI on Vulkan (lavapipe)
+        run: tools/build.sh exec runtime python3 tools/ci/test_player_cli.py --only linux --backends vulkan
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nightly-parity-${{ matrix.ref }}
+          path: build/parity/**
+          if-no-files-found: ignore
+
   report:
     name: Report failures
-    needs: [linux, web-threads]
+    needs: [linux, web-threads, parity]
     if: failure()
     runs-on: ubuntu-latest
     timeout-minutes: 5

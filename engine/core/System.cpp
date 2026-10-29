@@ -30,6 +30,18 @@ bool System::hasInstance(){
     return systemInstance != nullptr;
 }
 
+EarlySystemScope::EarlySystemScope(System* system){
+    if (!System::systemInstance) {
+        System::systemInstance = system;
+        installed = system;
+    }
+}
+
+EarlySystemScope::~EarlySystemScope(){
+    // the platform may have set its own meanwhile: only ours is taken back
+    if (installed && System::systemInstance == installed) System::systemInstance = nullptr;
+}
+
 void System::setSystemInstance(System* system){
     systemInstance = system;
 }

@@ -124,6 +124,8 @@ namespace {
     // content root, the same the platform's will report
     class ContentSystem : public System {
     public:
+        int getScreenWidth() override { return platformConfig().width; }
+        int getScreenHeight() override { return platformConfig().height; }
         std::string getContentPath() override { return platformConfig().contentRoot; }
         std::string getAssetPath() override {
             return platformConfig().contentRoot.empty() ? std::string() : platformConfig().contentRoot + "/assets";
@@ -141,17 +143,8 @@ namespace {
         if (platform.contentRoot.empty()) platform.contentRoot = defaultContentRoot();
 
         // the platform's System comes with its window; until then the content root's
-        std::unique_ptr<ContentSystem> early;
-        if (!System::hasInstance()) {
-            early = std::make_unique<ContentSystem>();
-            System::setSystemInstance(early.get());
-        }
-        struct Restore {
-            std::unique_ptr<ContentSystem>& early;
-            ~Restore() {
-                if (early) System::setSystemInstance(nullptr);
-            }
-        } restore{early};
+        ContentSystem early;
+        EarlySystemScope earlyScope(&early);
 
         // a packed build's content.jpak (the web mounted its fetched one already)
         if (!ResourcePack::contentPack()) {
