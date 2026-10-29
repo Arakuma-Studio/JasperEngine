@@ -67,6 +67,12 @@ namespace jasperengine::anim{
         Quaternion rootParentRotation;
         Vector3 rootStart = Vector3(0, 0, 0);   // the bone's rig-space position and heading at time 0
         float rootStartYaw = 0.0f;
+        // one lap of the root (P and the heading change at 0 and at the clip's length, baked
+        // components held): what every looping frame's delta adds, computed at bind
+        Vector3 lapStart = Vector3(0, 0, 0);
+        Vector3 lapEnd = Vector3(0, 0, 0);
+        float lapStartHeading = 0.0f;
+        float lapEndHeading = 0.0f;
         // additive reference pose (computed when an additive layer first plays it)
         bool hasReference = false;
         AdditiveReference referenceKind = AdditiveReference::FirstFrame;
@@ -366,6 +372,8 @@ namespace jasperengine::anim{
         void sampleSlot(size_t slot, float clipTime, Pose& out, bool additive, AdditiveReference reference, float referenceTime,
                         const AnimatorComponent& component);
         void removeRootMotion(const AnimatorClipSlot& slot, Pose& out) const;
+        // P(t) with the baked components held at the start, h(t) the heading change since time 0
+        void rootPoint(const AnimatorClipSlot& slot, float clipTime, Vector3& position, float& heading) const;
         bool rootSample(const AnimatorClipSlot& slot, float clipTime, Vector3& position, Quaternion& rotation) const;
         void rootDelta(const AnimatorClipSlot& slot, double from, double to, bool loops, bool pingPong, Vector3& delta, float& yaw) const;
         void applyMontages(size_t layer, Pose& out, const AnimatorComponent& component);

@@ -540,6 +540,19 @@ int main(int argc, char** argv){
         }
         const AnimatorInstance* instance = crowd->scene->getComponent<AnimatorComponent>(crowd->roots[0]).runtime.get();
         results.add("micro_instance_state_bytes", (double)instance->runtimeStateBytes(), "B");
+        // where the serial time goes (information): without the IK, then without the two upper
+        // layers too, then without the crossfades too
+        auto each = [&](auto&& change){
+            for (Entity root : crowd->roots) change(crowd->scene->getComponent<AnimatorComponent>(root));
+        };
+        each([](AnimatorComponent& c){ for (AnimatorIKConstraint& k : c.ik) k.enabled = false; });
+        results.add("crowd200_serial_no_ik_p50_ms", runCrowd(*crowd, false, 120, false).p50, "ms");
+        each([](AnimatorComponent& c){ c.runtime->setLayerWeight(1, 0.0f); c.runtime->setLayerWeight(2, 0.0f); });
+        results.add("crowd200_serial_base_layer_p50_ms", runCrowd(*crowd, false, 120, false).p50, "ms");
+        each([](AnimatorComponent& c){ c.runtime->setBool("Alt", false); c.runtime->play("Move", 0, 0.0f); });
+        results.add("crowd200_serial_one_tree_p50_ms", runCrowd(*crowd, false, 120, false).p50, "ms");
+        each([](AnimatorComponent& c){ c.writeBones = AnimatorWriteBones::Exposed; c.applyRootMotion = false; });
+        results.add("crowd200_serial_no_root_motion_p50_ms", runCrowd(*crowd, false, 120, false).p50, "ms");
     }
 
     // ---- AnimBench.Micro: a two-pose blend at 128 bones, Native and Scalar

@@ -469,6 +469,8 @@ void anim::AnimatorInstance::bindClip(size_t index, const AnimatorComponent& com
         Quaternion start;
         rootSample(slot, 0.0f, slot.rootStart, start);
         slot.rootStartYaw = yawOf(start);
+        rootPoint(slot, 0.0f, slot.lapStart, slot.lapStartHeading);
+        rootPoint(slot, slot.length(), slot.lapEnd, slot.lapEndHeading);
     }
     slot.bound = true;
 }
@@ -1129,24 +1131,25 @@ bool anim::AnimatorInstance::rootSample(const AnimatorClipSlot& slot, float clip
     return true;
 }
 
+void anim::AnimatorInstance::rootPoint(const AnimatorClipSlot& slot, float clipTime, Vector3& p, float& h) const{
+    const ClipRootMotion& rm = slot.rootMotion;
+    Quaternion q;
+    rootSample(slot, clipTime, p, q);
+    h = rm.bakeRotation ? 0.0f : wrapAngle(yawOf(q) - slot.rootStartYaw);
+    if (rm.bakePositionY) p.y = slot.rootStart.y;
+    if (rm.bakePositionXZ){
+        p.x = slot.rootStart.x;
+        p.z = slot.rootStart.z;
+    }
+}
+
 void anim::AnimatorInstance::rootDelta(const AnimatorClipSlot& slot, double from, double to, bool loops, bool pingPong,
                                        Vector3& delta, float& yaw) const{
     delta = Vector3(0, 0, 0);
     yaw = 0.0f;
     const float length = slot.length();
     if (!(length > 0.0f) || from == to) return;
-    const ClipRootMotion& rm = slot.rootMotion;
-    // P(t) with the baked components held at the start, h(t) the heading change since time 0
-    auto sampleAt = [&](float t, Vector3& p, float& h){
-        Quaternion q;
-        rootSample(slot, t, p, q);
-        h = rm.bakeRotation ? 0.0f : wrapAngle(yawOf(q) - slot.rootStartYaw);
-        if (rm.bakePositionY) p.y = slot.rootStart.y;
-        if (rm.bakePositionXZ){
-            p.x = slot.rootStart.x;
-            p.z = slot.rootStart.z;
-        }
-    };
+    auto sampleAt = [&](float t, Vector3& p, float& h){ rootPoint(slot, t, p, h); };
     Vector3 p0, p1;
     float h0 = 0.0f, h1 = 0.0f;
     if (!loops || pingPong){
@@ -1170,12 +1173,10 @@ void anim::AnimatorInstance::rootDelta(const AnimatorClipSlot& slot, double from
     const float t1 = (float)(to - k1 * length);
     double laps = std::min(std::max(k1 - k0, -kMaxLaps), kMaxLaps);
     const int n = (int)laps;
-    Vector3 start, end;
-    float hStart = 0.0f, hEnd = 0.0f;
-    sampleAt(0.0f, start, hStart);
-    sampleAt(length, end, hEnd);
-    const Vector3 lap = end - start;
-    const float turn = hEnd;
+    // the lap, sampled at bind
+    const Vector3 start = slot.lapStart;
+    const Vector3 lap = slot.lapEnd - slot.lapStart;
+    const float turn = slot.lapEndHeading;
     Vector3 sum(0, 0, 0);
     if (n > 0){
         for (int m = 0; m < n; m++) sum = sum + rotateYaw(lap, (float)m * turn);
