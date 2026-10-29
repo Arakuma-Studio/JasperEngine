@@ -624,6 +624,10 @@ namespace jasperengine {
         static void systemViewLoaded();
         static void systemViewChanged();
         static void systemDraw();
+        // the platform presented the frame systemDraw drew (Android: after its buffer swap).
+        // With the ready signal on, logs "Engine presented: N frames since ready" once N frames
+        // reached the screen after the ready line (tools/android-emulator-test.sh screenshots then)
+        static void systemFramePresented();
         // systemDraw() without drawing, for a view that can't be seen (a minimized window)
         static void systemUpdate();
         static void systemViewDestroyed();
