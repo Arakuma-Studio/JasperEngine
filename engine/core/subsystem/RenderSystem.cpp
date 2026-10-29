@@ -2401,6 +2401,9 @@ void RenderSystem::renderReflectionProbeCapture(){
 
     int face = runtime.nextFace;
     Vector3 capturePosition = runtime.capturePosition;
+    // a draw of the face waiting for its pipeline (being created or warmed, spec S32) leaves the
+    // face incomplete: it is captured again next frame
+    const uint32_t waitingBefore = ObjectRender::getWaitingDrawCount();
 
     Transform captureTransform;
     captureTransform.position = capturePosition;
@@ -2499,6 +2502,8 @@ void RenderSystem::renderReflectionProbeCapture(){
     delete captureCamera.framebuffer;
     captureCamera.framebuffer = nullptr;
 
+    if (ObjectRender::getWaitingDrawCount() != waitingBefore)
+        return;
     runtime.nextFace++;
     if (runtime.nextFace >= 6){
         runtime.nextFace = 0;
@@ -7284,7 +7289,9 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
     // the editor's "no face culling" view keeps the pass's culling: it is part of the technique
     // (an inverted hull drawn unculled covers its object)
     if (!render.beginDraw(pipType, false)){
-        mesh.needReload = true;
+        // (one still being created or warmed draws nothing and waits: spec S32)
+        if (!render.isDrawWaiting())
+            mesh.needReload = true;
         return;
     }
 
@@ -7923,6 +7930,10 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             }
 
             if (!render.beginDraw(pipType, passNoFaceCulling())){
+                // a submesh whose pipeline is still being created or warmed (spec S32) draws
+                // nothing this frame, the others draw
+                if (render.isDrawWaiting())
+                    continue;
                 mesh.needReload = true;
                 return false;
             }
@@ -8221,8 +8232,9 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
                 // a submesh without this depth program is left out of a pre-pass (its scene
                 // gives every mesh one when a pass needs them all: updateSceneInputPrograms);
                 // reloading would not give it one and would leave the mesh out of its colour
-                // pass this frame; a mesh waiting for its new variant gets it then
-                if (forSSAO || mesh.needVariantReload)
+                // pass this frame; a mesh waiting for its new variant gets it then, and one
+                // whose depth pipeline is still being created or warmed (spec S32) waits
+                if (forSSAO || mesh.needVariantReload || depthRender.isDrawWaiting())
                     continue;
                 mesh.needReload = true;
                 return false;
@@ -9035,6 +9047,9 @@ bool RenderSystem::drawMeshGBuffer(Entity entity, MeshComponent& mesh, Transform
         }
 
         if (!gbufferRender.beginDraw(PIP_GBUFFER, passNoFaceCulling())){
+            // (still being created or warmed: spec S32, this submesh waits)
+            if (gbufferRender.isDrawWaiting())
+                continue;
             mesh.needReload = true;
             return false;
         }
@@ -10196,7 +10211,9 @@ bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pi
         ObjectRender& render = ui.render;
 
         if (!render.beginDraw(pipType)){
-            ui.needReload = true;
+            // (one still being created or warmed draws nothing and waits: spec S32)
+            if (!render.isDrawWaiting())
+                ui.needReload = true;
             return false;
         }
         render.applyUniformBlock(ui.slotVSParams, sizeof(float) * 16, (void*)&objectMVP(transform));
@@ -10526,7 +10543,9 @@ bool RenderSystem::drawPoints(Entity entity, PointsComponent& points, Transform&
         ObjectRender& render = points.render;
 
         if (!render.beginDraw(pipType)){
-            points.needReload = true;
+            // (one still being created or warmed draws nothing and waits: spec S32)
+            if (!render.isDrawWaiting())
+                points.needReload = true;
             return false;
         }
         vs_points_params_t vsParams = {};
@@ -10603,7 +10622,9 @@ bool RenderSystem::drawLines(LineRendererComponent& lines, Transform& transform,
         }
 
         if (!render.beginDraw(pipType)){
-            lines.needReload = true;
+            // (one still being created or warmed draws nothing and waits: spec S32)
+            if (!render.isDrawWaiting())
+                lines.needReload = true;
             return false;
         }
         render.applyUniformBlock(lines.slotVSParams, sizeof(float) * 16, (void*)&objectMVP(transform));
@@ -10793,7 +10814,9 @@ bool RenderSystem::drawSky(SkyboxComponent& sky, PipelineType pipType, const Mat
         ObjectRender& render = sky.render;
 
         if (!render.beginDraw(pipType)){
-            sky.needReload = true;
+            // (one still being created or warmed draws nothing and waits: spec S32)
+            if (!render.isDrawWaiting())
+                sky.needReload = true;
             return false;
         }
         render.applyUniformBlock(sky.slotVSParams, sizeof(float) * 16, (void*)&viewProjection);
@@ -11552,37 +11575,54 @@ void RenderSystem::needReloadMeshVariants() {
 // falls back), asking for them as loadMesh does (ShaderPool::get starts their builds). The
 // variants as loadMesh resolves them, from the submeshes' attributes of their last load
 // (a variant-only reload keeps the buffers).
-bool RenderSystem::meshVariantShadersReady(Entity entity, const MeshComponent& mesh, const InstancedMeshComponent* instmesh, const TerrainComponent* terrain){
+bool RenderSystem::meshVariantShadersReady(Entity entity, MeshComponent& mesh, const InstancedMeshComponent* instmesh, const TerrainComponent* terrain){
     if (!Engine::isViewLoaded())
         return false;
-    auto ready = [](ShaderType type, uint64_t properties, uint16_t customId){
-        return ShaderPool::get(type, properties, customId)->isCreated() || ShaderPool::isShaderBuildFailed(type, properties, customId);
+    // the variants once built, with the object that will draw each (spec S32: warmed first)
+    std::vector<std::pair<ObjectRender*, std::shared_ptr<ShaderRender>>> targets;
+    auto ready = [&targets](ShaderType type, uint64_t properties, uint16_t customId, ObjectRender* render){
+        std::shared_ptr<ShaderRender> shader = ShaderPool::get(type, properties, customId);
+        if (shader->isCreated()){
+            targets.emplace_back(render, shader);
+            return true;
+        }
+        return ShaderPool::isShaderBuildFailed(type, properties, customId);
     };
     const MeshShaderEnvironment shaderEnvironment = getMeshShaderEnvironment();
     const bool hasMirror = (scene->findComponent<MirrorComponent>(entity) != NULL);
     const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
     bool allReady = true;
     for (unsigned int i = 0; i < mesh.numSubmeshes; i++){
-        const Submesh& submesh = mesh.submeshes[i];
+        Submesh& submesh = mesh.submeshes[i];
         SubmeshShaderInputs inputs = getSubmeshShaderInputs(mesh, submesh, terrain, instmesh, hasMirror, sceneMeshShader);
         if (i == 0 && frameFluids && frameFluids->getMaterialTexture(entity))
             inputs.baseColorTexture = true;
         const SubmeshShaderVariant variant = getSubmeshShaderVariant(shaderEnvironment, inputs);
         allReady = ready(ShaderType::MESH, variant.properties,
-                         ShaderPool::registerCustomShader(getSubmeshShaderReference(mesh, submesh, sceneMeshShader, variant.litDefines))) && allReady;
+                         ShaderPool::registerCustomShader(getSubmeshShaderReference(mesh, submesh, sceneMeshShader, variant.litDefines)), &submesh.render) && allReady;
         if (variant.depth){
             allReady = ready(ShaderType::DEPTH, variant.depthProperties,
-                             ShaderPool::registerCustomShader(getSubmeshDepthShaderReference(mesh, submesh, sceneMeshShader))) && allReady;
+                             ShaderPool::registerCustomShader(getSubmeshDepthShaderReference(mesh, submesh, sceneMeshShader)), &submesh.depthRender) && allReady;
         }
         if (variant.gbuffer){
-            allReady = ready(ShaderType::GBUFFER, variant.gbufferProperties, 0) && allReady;
+            allReady = ready(ShaderType::GBUFFER, variant.gbufferProperties, 0, &submesh.gbufferRender) && allReady;
         }
         if (hasExtraPass(submesh, terrain != nullptr)){
             const SubmeshShaderVariant passVariant = getSubmeshShaderVariant(shaderEnvironment, getExtraPassShaderInputs(inputs, submesh.material.extraPass));
-            allReady = ready(ShaderType::MESH, passVariant.properties, ShaderPool::registerCustomShader(getSubmeshExtraPassReference(submesh))) && allReady;
+            allReady = ready(ShaderType::MESH, passVariant.properties, ShaderPool::registerCustomShader(getSubmeshExtraPassReference(submesh)),
+                             submesh.extraPass ? &submesh.extraPass->render : nullptr) && allReady;
         }
     }
-    return allReady;
+    if (!allReady)
+        return false;
+    // the loaded objects keep drawing until their pipelines on the new variants are created and
+    // warmed (every one asked for in this update)
+    bool warm = true;
+    for (auto& [render, shader] : targets){
+        if (render)
+            warm = render->prewarmWith(shader.get()) && warm;
+    }
+    return warm;
 }
 
 void RenderSystem::needReloadUIs() {

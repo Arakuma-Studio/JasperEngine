@@ -31,6 +31,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -582,6 +583,63 @@ TEST_F(AsyncCreateGpu, AStandInDrawsWhileTheVariantIsPending){
     const std::vector<uint8_t> fogged = readTarget();
     EXPECT_GT(meanDifference(fogged, unfogged), 4.0) << "the exact (fogged) variants replaced the stand-ins";
     EXPECT_GOLDEN("async_standin_fogged");
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// A loaded mesh whose variant changes keeps drawing the one it has until the new variant's
+// pipelines are created and warmed, then draws the new one at once: no frame without it, and
+// no reload while it waits (a draw waiting for its pipeline is not a failed one, spec S32 R8)
+TEST_F(AsyncCreateGpu, AVariantSwitchLeavesNoFrameEmpty){
+    JASPER_REQUIRE_GPU();
+    scene.setLitQuality(LitQuality::STANDARD);
+    ASSERT_TRUE(render());
+    const std::vector<uint8_t> background = readTarget();
+    Primitive cube(&scene);
+    Light sun(&scene);
+    litCube(cube, sun);
+    ASSERT_TRUE(render());
+    const std::vector<uint8_t> unfogged = readTarget();
+    const auto covered = [&background](const std::vector<uint8_t>& frame){
+        size_t count = 0;
+        for (size_t i = 0; i + 3 < frame.size() && i + 3 < background.size(); i += 4){
+            int largest = 0;
+            for (int c = 0; c < 3; c++)
+                largest = std::max(largest, std::abs((int)frame[i + c] - (int)background[i + c]));
+            count += largest > 8 ? 1 : 0;
+        }
+        return count;
+    };
+    const size_t cubePixels = covered(unfogged);
+    ASSERT_GT(cubePixels, unfogged.size() / 4 / 50) << "the cube covers part of the view";
+
+    // every creation from now takes 600 ms off the render thread; fog makes a new variant
+    restartCreation(nullptr, "600");
+    if (SokolAsyncCreate::getMode() == GpuCreationMode::Sync)
+        GTEST_SKIP() << "asynchronous creation is off in this run";
+    const uint64_t createdBefore = SystemRender::getGpuCreationStats().createdPipelines;
+    Fog fog(&scene);
+    fog.setType(FogType::LINEAR);
+    fog.setColor(0.7f, 0.72f, 0.78f);
+    fog.setLinearStartEnd(1.0f, 9.0f);
+
+    RenderSystem* system = scene.getSystem<RenderSystem>().get();
+    int emptyFrames = 0;
+    int frames = 0;
+    const auto start = std::chrono::steady_clock::now();
+    while (std::chrono::steady_clock::now() - start < std::chrono::seconds(60)){
+        GpuEnvironment::drawFrames(1);
+        frames++;
+        if (covered(readTarget()) < cubePixels / 2)
+            emptyFrames++;
+        if (frames > 3 && system->isAllLoaded() && SystemRender::isGpuCreationIdle())
+            break;
+    }
+    ASSERT_TRUE(system->isAllLoaded() && SystemRender::isGpuCreationIdle()) << "the variant never came";
+    EXPECT_EQ(emptyFrames, 0) << "of " << frames << " frames, some drew no cube";
+    // a lit cube's pipelines and the frame's passes, once: none made again frame after frame
+    EXPECT_LT(SystemRender::getGpuCreationStats().createdPipelines - createdBefore, 64u);
+    ASSERT_TRUE(render());
+    EXPECT_GT(meanDifference(readTarget(), unfogged), 4.0) << "the fogged variant draws in the end";
     EXPECT_NO_ENGINE_ERRORS();
 }
 

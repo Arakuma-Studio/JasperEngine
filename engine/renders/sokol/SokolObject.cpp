@@ -40,6 +40,10 @@ namespace {
         return pipeline;
     }
 
+    // draws that waited for a pipeline being created or warmed (spec S32), ever: a pass whose
+    // result is kept (a cached shadow slot, a probe capture) draws again when it grew meanwhile
+    uint32_t waitingDraws = 0;
+
     void destroyPipeline(sg_pipeline pipeline){
         if (pipeline.id == SG_INVALID_ID)
             return;
@@ -504,6 +508,64 @@ bool SokolObject::isReady() const{
     return true;
 }
 
+// The pipelines this object will have on another variant of its shader (spec S32 R4, R8), made
+// ahead with its description and warmed with its bindings: it keeps drawing until they are ready,
+// and once it loads again on that variant its pipelines are these (interned), so it switches
+// without a frame left empty. Held until destroy()
+bool SokolObject::prewarmWith(ShaderRender* shader){
+    if (immediatePipelines || !shader)
+        return true;
+    const sg_shader target = shader->backend.get();
+    if (target.id == SG_INVALID_ID || target.id == pipeline_desc.shader.id || sg_query_shader_state(target) != SG_RESOURCESTATE_VALID)
+        return true;
+    // what was made for another variant goes (the shader asked for changed meanwhile)
+    for (size_t i = 0; i < prewarmed.size();){
+        if (prewarmed[i].shader != target.id){
+            destroyPipeline(prewarmed[i].pipeline);
+            prewarmed.erase(prewarmed.begin() + (std::ptrdiff_t)i);
+        }else{
+            i++;
+        }
+    }
+    const bool warmDraws = SokolAsyncCreate::warmDrawsActive();
+    bool ready = true;
+    for (int index = 0; index < PIPELINE_TYPES; index++){
+        if (pipelines[index].id == SG_INVALID_ID || sg_query_pipeline_state(pipelines[index]) != SG_RESOURCESTATE_VALID)
+            continue;
+        Prewarmed* entry = nullptr;
+        for (Prewarmed& made : prewarmed){
+            if (made.index == index)
+                entry = &made;
+        }
+        if (!entry){
+            sg_pipeline_desc desc = makePipelineDesc((PipelineType)(1 << index));
+            desc.shader = target;
+            const sg_pipeline pipeline = makePipeline(desc, false);
+            if (pipeline.id == SG_INVALID_ID)
+                continue;
+            prewarmed.push_back(Prewarmed{target.id, index, pipeline});
+            entry = &prewarmed.back();
+        }
+        const sg_resource_state state = sg_query_pipeline_state(entry->pipeline);
+        if (state == SG_RESOURCESTATE_ALLOC){
+            ready = false;
+        }else if (state == SG_RESOURCESTATE_VALID && warmDraws &&
+                !SokolAsyncCreate::isWarm(SokolAsyncCreate::requestWarmDraw(entry->pipeline, bind))){
+            ready = false;
+        }
+        // (a failed one is not waited for: the load shows it)
+    }
+    return ready;
+}
+
+bool SokolObject::isDrawWaiting() const{
+    return drawWaiting;
+}
+
+uint32_t SokolObject::getWaitingDrawCount(){
+    return waitingDraws;
+}
+
 uint32_t SokolObject::getPipelineId(PipelineType pipType) const{
     const int index = pipelineIndex(pipType);
     return index < PIPELINE_TYPES ? pipelines[index].id : (uint32_t)SG_INVALID_ID;
@@ -787,8 +849,12 @@ bool SokolObject::endLoadDynamic(PrimitiveType primitiveType, IndexType indexTyp
 
 bool SokolObject::beginDraw(const PipelineState& state){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
-    if (!dynamicLoaded || sg_query_shader_state(baseDesc.shader) != SG_RESOURCESTATE_VALID)
+    drawWaiting = false;
+    if (!dynamicLoaded || sg_query_shader_state(baseDesc.shader) != SG_RESOURCESTATE_VALID){
+        drawWaiting = dynamicLoaded && sg_query_shader_state(baseDesc.shader) == SG_RESOURCESTATE_ALLOC;
+        waitingDraws += drawWaiting ? 1 : 0;
         return false;
+    }
 
     sg_pipeline pipeline;
     const uint32_t generation = SokolPipelineCache::generation();
@@ -802,10 +868,16 @@ bool SokolObject::beginDraw(const PipelineState& state){
     }
     // a failed creation is never applied (see beginDraw(PipelineType)), nor one still being
     // created (spec S32) or warmed
-    if (pipeline.id == SG_INVALID_ID || sg_query_pipeline_state(pipeline) != SG_RESOURCESTATE_VALID)
+    if (pipeline.id == SG_INVALID_ID || sg_query_pipeline_state(pipeline) != SG_RESOURCESTATE_VALID){
+        drawWaiting = pipeline.id != SG_INVALID_ID && sg_query_pipeline_state(pipeline) == SG_RESOURCESTATE_ALLOC;
+        waitingDraws += drawWaiting ? 1 : 0;
         return false;
-    if (!isDynamicWarm(pipeline))
+    }
+    if (!isDynamicWarm(pipeline)){
+        drawWaiting = true;
+        waitingDraws++;
         return false;
+    }
 
     SokolPipelineCache::apply(pipeline);
     return true;
@@ -814,12 +886,16 @@ bool SokolObject::beginDraw(const PipelineState& state){
 bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     sg_pipeline selectedPipeline = pipelineOf(pipType);
+    drawWaiting = false;
 
     // Deferred resource creation can leave an allocated handle in FAILED state.
     // Never apply it: doing so would turn one creation error into a cascade of
-    // invalid pipeline, uniform, binding, and draw validation failures.
+    // invalid pipeline, uniform, binding, and draw validation failures. One still being
+    // created (spec S32: off the render thread, or a queued command) only waits.
     if (selectedPipeline.id == SG_INVALID_ID ||
         sg_query_pipeline_state(selectedPipeline) != SG_RESOURCESTATE_VALID){
+        drawWaiting = selectedPipeline.id != SG_INVALID_ID && sg_query_pipeline_state(selectedPipeline) == SG_RESOURCESTATE_ALLOC;
+        waitingDraws += drawWaiting ? 1 : 0;
         return false;
     }
     // A pipeline outlives the shader it was built on when the shader goes before the objects
@@ -859,8 +935,11 @@ bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling){
 
     {
         const int index = pipelineIndex(pipType);
-        if (index < PIPELINE_TYPES && !isWarm(selectedPipeline, warmedPipeline[index], warmKey[index]))
+        if (index < PIPELINE_TYPES && !isWarm(selectedPipeline, warmedPipeline[index], warmKey[index])){
+            drawWaiting = true;
+            waitingDraws++;
             return false;
+        }
     }
 
     sg_apply_pipeline(selectedPipeline);
@@ -892,7 +971,11 @@ void SokolObject::destroy(){
             destroyPipeline(variant);
         }
 #endif
+        for (Prewarmed& made : prewarmed){
+            destroyPipeline(made.pipeline);
+        }
     }
+    prewarmed.clear();
 
     for (sg_pipeline& pipeline : pipelines){
         pipeline.id = SG_INVALID_ID;

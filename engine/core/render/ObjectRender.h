@@ -80,6 +80,17 @@ namespace jasperengine {
 
         // every pipeline endLoad made is created (spec S32: none pending or failed)
         bool isReady() const;
+        // the last beginDraw was false because a pipeline (or its shader) is still being created
+        // or warmed (spec S32), not because it failed or is gone: draw nothing and wait, no reload
+        bool isDrawWaiting() const;
+        // the draws that waited so far (render thread): a pass whose result is kept for later
+        // frames (a cached shadow slot, a probe capture) is drawn again when it grew meanwhile
+        static uint32_t getWaitingDrawCount();
+        // spec S32: makes the pipelines it will have on another variant of its shader (its
+        // description, created where the backend creates them) and their GL warm draws with its
+        // bindings; true once they are ready (or none is needed). An object drawing a stand-in or
+        // an older variant loads again on the new one after that, its pipelines ready at once
+        bool prewarmWith(ShaderRender* shader);
         // the backend handle id of a pipeline type (0: none), for diagnostics and tests
         uint32_t getPipelineId(PipelineType pipType) const;
 

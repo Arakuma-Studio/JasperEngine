@@ -42,10 +42,14 @@ namespace jasperengine{
 
         // ---- interning (spec S32 R3): the pipelines of SokolObject::endLoad. Objects whose
         // descriptions are equal (every field but the label) share one pipeline, counted: a
-        // second object with the same state gets the first one's, ready if it is. release()
-        // destroys it with its last reference; releaseShader() destroys it with its shader.
+        // second object with the same state gets the first one's, ready if it is. Its last
+        // release() leaves it to the next collect() round but one (an object loaded again in
+        // the same frame keeps it); releaseShader() destroys it with its shader.
         static sg_pipeline acquire(const sg_pipeline_desc& desc, bool immediate = false);
         static void release(sg_pipeline pipeline);
+        // once a frame (SokolAsyncCreate::update): destroys what was released a round before and
+        // not acquired since
+        static void collect();
         // one more reference to an interned pipeline (the shader warm-up keeps what it made)
         static bool retain(sg_pipeline pipeline);
         static size_t internedSize();

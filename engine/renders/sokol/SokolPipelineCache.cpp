@@ -58,6 +58,20 @@ namespace {
         return map;
     }
 
+    // interned pipelines whose last reference went (key, pipeline id, the collect() round):
+    // destroyed by the next round unless acquired again meanwhile, so an object loaded again in
+    // the same frame (a variant swap, a reload) keeps its pipeline instead of creating it anew
+    struct Retiring {
+        uint64_t key;
+        uint32_t pipeline;
+        uint64_t round;
+    };
+    std::vector<Retiring>& retiring(){
+        static std::vector<Retiring> list;
+        return list;
+    }
+    uint64_t collectRound = 0;
+
     std::function<void(const sg_pipeline_desc&)>& recorder(){
         static std::function<void(const sg_pipeline_desc&)> function;
         return function;
@@ -385,6 +399,7 @@ sg_pipeline SokolPipelineCache::acquire(const sg_pipeline_desc& desc, bool immed
             break;
         InternEntry& entry = it->second;
         if (descEqual(entry.desc, desc) && sg_query_pipeline_state(entry.pipeline) != SG_RESOURCESTATE_INVALID){
+            // (one retiring comes back: collect() leaves it)
             entry.refs++;
             if (recorder())
                 record(entry.pipeline, entry.desc);
@@ -426,12 +441,40 @@ void SokolPipelineCache::release(sg_pipeline pipeline){
     }
     if (--it->second.refs > 0)
         return;
-    pipelineGeneration++;
-    if (pipeline.id == lastApplied)
-        lastApplied = SG_INVALID_ID;
-    destroyCachedPipeline(pipeline);
-    map.erase(it);
-    internedKeys().erase(keyIt);
+    // destroyed by the next collect() round unless acquired again before
+    retiring().push_back(Retiring{keyIt->second, pipeline.id, collectRound});
+}
+
+void SokolPipelineCache::collect(){
+    std::lock_guard<std::mutex> lock(cacheMutex());
+    const uint64_t round = collectRound++;
+    auto& list = retiring();
+    if (list.empty())
+        return;
+    auto& map = interned();
+    size_t kept = 0;
+    for (size_t i = 0; i < list.size(); i++){
+        const Retiring item = list[i];
+        auto it = map.find(item.key);
+        // gone with its shader, or another pipeline on the key now
+        if (it == map.end() || it->second.pipeline.id != item.pipeline)
+            continue;
+        // acquired again
+        if (it->second.refs > 0)
+            continue;
+        // released since the last round: one more frame
+        if (item.round >= round){
+            list[kept++] = item;
+            continue;
+        }
+        pipelineGeneration++;
+        if (item.pipeline == lastApplied)
+            lastApplied = SG_INVALID_ID;
+        destroyCachedPipeline(it->second.pipeline);
+        internedKeys().erase(item.pipeline);
+        map.erase(it);
+    }
+    list.resize(kept);
 }
 
 bool SokolPipelineCache::retain(sg_pipeline pipeline){
@@ -553,6 +596,7 @@ void SokolPipelineCache::clear(){
     }
     interned().clear();
     internedKeys().clear();
+    retiring().clear();
     lastApplied = SG_INVALID_ID;
 }
 

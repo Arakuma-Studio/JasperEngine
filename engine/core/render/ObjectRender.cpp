@@ -66,6 +66,18 @@ bool ObjectRender::isReady() const{
     return backend.isReady();
 }
 
+bool ObjectRender::isDrawWaiting() const{
+    return backend.isDrawWaiting();
+}
+
+uint32_t ObjectRender::getWaitingDrawCount(){
+    return SokolObject::getWaitingDrawCount();
+}
+
+bool ObjectRender::prewarmWith(ShaderRender* shader){
+    return backend.prewarmWith(shader);
+}
+
 uint32_t ObjectRender::getPipelineId(PipelineType pipType) const{
     return backend.getPipelineId(pipType);
 }

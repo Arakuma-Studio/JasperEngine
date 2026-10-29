@@ -83,11 +83,11 @@ async def test_settings_rows(ed: Editor):
     text = json.dumps(listed)
     for key, (default, other) in SETTINGS.items():
         ed.check(key in text, f"{key} is listed")
-        await ed.call("set_project_settings", settings={key: other})
+        await ed.call("set_project_settings", values={key: other})
         read = await ed.call("get_project_settings", keys=[key])
         ed.check(json.dumps(other) in json.dumps(read), f"{key} reads back {other!r}: {read!r}")
-        await ed.call("set_project_settings", settings={key: default})
-    await ed.check_error("set_project_settings", settings={"shader_creation.main_thread_budget_ms": 100}, contains="main_thread_budget_ms")
+        await ed.call("set_project_settings", values={key: default})
+    await ed.check_error("set_project_settings", values={"shader_creation.main_thread_budget_ms": 100}, contains="main_thread_budget_ms")
     ed.check("shader_creation.warmup_entries" in text, "the list's entry count is listed")
     yaml = (ed.project / "project.yaml").read_text()
     ed.check("shaderCreation" not in yaml, "defaults are not written to project.yaml")
@@ -127,7 +127,7 @@ async def test_lobe_toggle_never_empty(ed: Editor):
 
 async def test_record_and_export(ed: Editor):
     scene = await ball_scene(ed)
-    await ed.call("set_project_settings", settings={"shader_creation.record_during_play": True})
+    await ed.call("set_project_settings", values={"shader_creation.record_during_play": True})
     try:
         await ed.call("set_properties", scene=scene, entity="Ball",
                       values={"mesh": {"submeshes[0].material": {"pbr": {"sheen": {"enabled": True}}}}})
@@ -141,7 +141,7 @@ async def test_record_and_export(ed: Editor):
         finally:
             await ed.call("play", action="stop")
     finally:
-        await ed.call("set_project_settings", settings={"shader_creation.record_during_play": False})
+        await ed.call("set_project_settings", values={"shader_creation.record_during_play": False})
 
     path = ed.project / "ShaderWarmup.json"
     ed.check(path.exists(), "Stop wrote the list next to project.yaml")

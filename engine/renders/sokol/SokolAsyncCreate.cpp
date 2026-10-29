@@ -1086,6 +1086,8 @@ void SokolAsyncCreate::update(){
     s.frameSpentMs = 0.0;
     JE_PROFILE_COUNTER("Shaders pending", s.shaders.size());
     JE_PROFILE_COUNTER("Pipelines pending", s.pipelines.size());
+    // the interned pipelines released a frame ago and not taken again
+    SokolPipelineCache::collect();
     if (s.shaders.empty() && s.pipelines.empty() && s.warmPending.empty() && s.deferredShaderDestroys.empty() && s.completed.empty())
         return;
 
