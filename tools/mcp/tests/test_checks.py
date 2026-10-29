@@ -500,7 +500,8 @@ async def test_cli_shaders():
         # --files with the .frag only checks its fork; a lone .vert without its pair is ignored
         (project / frag).write_text(source)
         code, data = run_json(project, "--files", frag)
-        check_eq((code, data["checked"]), (0, ONE_FORK), "fixed")
+        # --files is not a whole-project check: no NavMesh Surface count
+        check_eq((code, data["checked"]), (0, {"shaders": 1}), "fixed")
         write(project, "shaders/Lonely.vert", "#version 450\nvoid main() { nope }\n")
         code, data = run_json(project, "--shaders")
         check_eq((code, data["checked"]), (0, ONE_FORK), "a .vert without a .frag is not a fork")
