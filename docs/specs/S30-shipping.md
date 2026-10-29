@@ -933,3 +933,22 @@ Kept current so the work can continue after an interruption.
 - **Next:** editor build green, the real `RuntimeFields.gen.inc`, unit tests (and ASan), the
   players and the end-to-end checks (linux, web with and without isolation, Android emulator),
   MCP suite, merge oe-port, TOOLS.md, the gate.
+
+### Integrator notes
+
+- `tools/web/browser_gate.py` now **fails** a run that asked for `--screenshot` when the page gave
+  none (`Page.captureScreenshot` timed out or returned nothing). Before, it skipped the image
+  silently, and a baseline without `rgb` passed without any frame being checked. Gates of other
+  streams may start failing honestly once this lands. A page that genuinely cannot be captured
+  opts out with `--allow-no-capture "<reason>"`; a heavy scene on software WebGL raises the wait
+  with `--capture-timeout` or a baseline's `capture_timeout` (default 30 s).
+- Why the prebuilt web frame was not captured: on the headless shell's SwiftShader WebGL the
+  unified-lighting scene draws at about 1.5 fps, and the capture waits for the GPU process to
+  produce a frame. The S30 baselines run the player to a fixed end (`?quit-after=3&fixed-fps=60&after-ready`,
+  expecting `JasperEngine exit code 0`) and allow 300 s for the capture; the frame is then
+  checked (centre pixel, and the player CLI test refuses a one-colour page).
+- The engine logs one `Graphics: <backend>; <API version>; <device>` line when its view loads
+  (e.g. `OpenGL ES 3 / WebGL2; OpenGL ES 3.2 Mesa 25.2.8; llvmpipe`).
+- `--after-ready` together with `--fixed-fps` holds the game's update events and clocks until the
+  ready frame (loading and drawing go on), so a run's frames repeat exactly.
+
