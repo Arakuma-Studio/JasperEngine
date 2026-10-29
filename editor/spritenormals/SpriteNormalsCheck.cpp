@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SpriteNormalsCheck.h"
+#include "util/FileUtils.h"
 
 #include "SpriteNormalsPaint.h"
 #include "SpriteNormalsRecipe.h"
@@ -66,13 +67,9 @@ namespace jasperengine::editor::spritenormals {
             const json j = {{"version", kCacheVersion}, {"pngs", cache.pngs}, {"sources", cache.sources}, {"index", cache.index}};
             fs::path temporary = cache.file;
             temporary += ".partial";
-            std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
-            if (!out) return;
-            out << texsynth::jsonTextLossy(j);
-            out.close();
-            std::error_code ec;
-            fs::rename(temporary, cache.file, ec);
-            if (ec) fs::remove(temporary, ec);
+            // (in a write scope: beneath its root; FileUtils writes aside and renames)
+            (void)temporary;
+            FileUtils::writeFileReplacing(cache.file, texsynth::jsonTextLossy(j));
         }
 
         // JSON keys must be UTF-8: other names are not cached (read again each run)

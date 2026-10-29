@@ -10,6 +10,7 @@
 #include "System.h"
 #include "component/Light2DComponent.h"
 #include "component/MeshComponent.h"
+#include "command/type/WriteFilesCmd.h"
 #include "component/SpriteComponent.h"
 #include "mcp/McpValues.h"
 #include "texsynth/SynthesisRecipe.h"
@@ -17,6 +18,7 @@
 #include "util/EntityPath.h"
 #include "util/ProjectChecks.h"
 #include "util/ProjectFileWrites.h"
+#include "util/SafeWrite.h"
 
 #include <algorithm>
 #include <cctype>
@@ -24,9 +26,9 @@
 #include <cmath>
 #include <condition_variable>
 #include <cstdio>
-#include <deque>
 #include <fstream>
 #include <iterator>
+#include <memory>
 #include <set>
 #include <system_error>
 #include <thread>
@@ -92,11 +94,8 @@ namespace jasperengine::editor::spritenormals {
             return p;
         }
 
-        // `path` is `dir` or below it
-        bool isAtOrBelow(const fs::path& path, const fs::path& dir) {
-            const fs::path rel = normalDir(path).lexically_relative(normalDir(dir));
-            return !rel.empty() && *rel.begin() != "..";
-        }
+        // `path` is `dir` or below it (lexically)
+        using safewrite::isAtOrBelow;
 
         // A stored texture path (relative to the project's assets directory, as Texture keeps
         // it) made absolute: the engine resolves it through the Platform's asset path
@@ -152,6 +151,8 @@ namespace jasperengine::editor::spritenormals {
                 return shownPath + " resolves outside the project's assets directory (" + projectRelative(projectDir, assets) +
                        "): a symbolic link on its way leads to " + texsynth::printableUtf8(real.generic_u8string()) + ".";
             }
+            // (the assets directory itself may be a link out of the project: it is a trusted root,
+            // resolved once; only links below it are checked)
             // a link into a hidden directory of the project (.jasperengine, .git ...)
             if (!projectDir.empty()) {
                 const fs::path back = real.lexically_relative(resolvedPath(projectDir));
@@ -332,69 +333,6 @@ namespace jasperengine::editor::spritenormals {
         const fs::path rel = absolute.lexically_normal().lexically_relative(projectDir.lexically_normal());
         if (rel.empty() || *rel.begin() == ".." || rel.is_absolute()) return absolute.lexically_normal().generic_u8string();
         return rel.generic_u8string();
-    }
-
-    fs::path resolvedPath(const fs::path& path) {
-        if (path.empty()) return path;
-        std::error_code ec;
-        fs::path absolute = path.is_absolute() ? path : fs::absolute(path, ec);
-        if (ec) absolute = path;
-        absolute = absolute.lexically_normal();
-        // component by component (weakly_canonical stops at the first one that doesn't exist, so
-        // a dangling link would stay unresolved): every link on the way is followed (a junction
-        // too), a dangling one too, up to kMaxLinks; below a component that doesn't exist the rest
-        // is lexical; weakly_canonical last
-        constexpr int kMaxLinks = 40;
-        std::deque<fs::path> rest;
-        for (const fs::path& part : absolute.relative_path()) rest.push_back(part);
-        fs::path out = absolute.root_path();
-        int links = 0;
-        bool lexical = false;
-        while (!rest.empty()) {
-            const fs::path part = rest.front();
-            rest.pop_front();
-            if (part.empty() || part == ".") continue;
-            if (part == "..") {
-                if (out.has_relative_path()) out = out.parent_path();
-                continue;
-            }
-            const fs::path next = out / part;
-            if (!lexical) {
-                std::error_code statusError;
-                const fs::file_status status = fs::symlink_status(next, statusError);
-                // MSVC reports a directory junction as file_type::junction, not as a symlink:
-                // followed the same way (read_symlink reads its target)
-#ifdef _MSC_VER
-                const bool link = fs::is_symlink(status) || status.type() == fs::file_type::junction;
-#else
-                const bool link = fs::is_symlink(status);
-#endif
-                if (!statusError && link) {
-                    std::error_code readError;
-                    const fs::path target = fs::read_symlink(next, readError);
-                    // a loop, or a link that can't be read: nothing it could be inside of
-                    if (++links > kMaxLinks || readError) return fs::path();
-                    // an absolute target starts again from its root, a relative one from the link's folder
-                    if (target.is_absolute()) out = target.root_path();
-                    const fs::path parts = target.is_absolute() ? target.relative_path() : target;
-                    const std::vector<fs::path> list(parts.begin(), parts.end());
-                    for (auto it = list.rbegin(); it != list.rend(); ++it) rest.push_front(*it);
-                    continue;
-                }
-                if (statusError || !fs::exists(status)) lexical = true;
-            }
-            out = next;
-        }
-        // and what the walk can't see (Windows: junctions it missed, 8.3 short names, case)
-        const fs::path walked = out.lexically_normal();
-        std::error_code canonicalError;
-        const fs::path canonical = fs::weakly_canonical(walked, canonicalError);
-        return canonicalError || canonical.empty() ? walked : canonical.lexically_normal();
-    }
-
-    bool isInsideResolved(const fs::path& path, const fs::path& dir) {
-        if (path.empty() || dir.empty()) return false;
-        return isAtOrBelow(resolvedPath(path), resolvedPath(dir));
     }
 
     std::vector<PlannedOutput> defaultOutputs(const std::string& sourcePath, SourceKind kind, bool height, bool framesJson) {
@@ -970,7 +908,7 @@ namespace jasperengine::editor::spritenormals {
         std::vector<WriteFilesCmd::Item> items;
         for (const OutputFile& file : files) items.push_back({file.absolute, file.bytes});
         // ... and before each redo and undo of the step (a link made in between: that step is not
-        // applied; a refused redo leaves the history where it is)
+        // applied; a refused redo or undo leaves the history where it is)
         std::vector<OutputFile> where;   // the paths only, not the bytes (the step keeps those)
         for (const OutputFile& file : files) where.push_back({file.role, file.path, file.absolute, std::string()});
         auto guard = [project, where](std::string& why) {
@@ -979,7 +917,9 @@ namespace jasperengine::editor::spritenormals {
             why = p.message;
             return false;
         };
-        if (!ProjectFileWrites::writeUndoable(project, std::move(items), error, nullptr, guard)) {
+        // ... and every write, removal and restore beneath the assets directory when it happens:
+        // a link planted on the way between the check and the write is never followed
+        if (!ProjectFileWrites::writeUndoable(project, std::move(items), error, nullptr, guard, outputsRoot(project))) {
             if (problem) *problem = {"write_failed", "output", error, "Check the path is writable, then try again."};
             return false;
         }
@@ -987,10 +927,32 @@ namespace jasperengine::editor::spritenormals {
         return true;
     }
 
-    bool writeOutputsDirect(const std::vector<OutputFile>& files, std::string& failedPath, std::string& error) {
-        std::vector<texsynth::StagedFile> staged;
-        for (const OutputFile& file : files) staged.push_back({file.absolute, std::vector<uint8_t>(file.bytes.begin(), file.bytes.end())});
-        return texsynth::writeFilesAllOrNothing(staged, failedPath, error);
+    fs::path outputsRoot(Project* project) {
+        if (!project || project->getProjectPath().empty()) return fs::path();
+        return assetsRootOf(project->getProjectPath(), project->getAssetsPath());
+    }
+
+    bool writeOutputsDirect(const std::vector<OutputFile>& files, std::string& failedPath, std::string& error, const fs::path& beneath) {
+        if (files.empty()) return true;
+        std::vector<WriteFilesCmd::Item> items;
+        for (const OutputFile& file : files) items.push_back({file.absolute, file.bytes});
+        // WriteFilesCmd without a history: all or nothing (a failure puts back what was written
+        // before it), every write and rollback beneath the root (util/SafeWrite.h)
+        WriteFilesCmd command(std::move(items), nullptr);
+        auto failure = std::make_shared<std::string>();
+        command.reportFailureTo(failure);
+        // beneath `beneath` (the watcher: the assets directory); the CLI (no containment): each
+        // file beneath its own folder once resolved, still never through a link planted since
+        if (!beneath.empty()) command.writeBeneath(beneath);
+        else command.writeBeneathOwnFolders();
+        if (command.execute()) return true;
+        failedPath = command.getFailedPath().empty() ? files.front().absolute.u8string() : command.getFailedPath().u8string();
+        error = failure->empty() ? std::string("the files could not be written") : *failure;
+        const std::string putBack = "; nothing was changed (the files written before it were put back)";
+        if (error.size() >= putBack.size() && error.compare(error.size() - putBack.size(), putBack.size(), putBack) == 0) {
+            error = error.substr(0, error.size() - putBack.size()) + "; nothing was written";
+        }
+        return false;
     }
 
     // ------------------------------------------------------------------ recipes and staleness

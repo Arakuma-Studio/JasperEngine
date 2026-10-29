@@ -3,6 +3,8 @@
 
 #include "RemoveFilesCmd.h"
 
+#include "util/FileUtils.h"
+
 #include <cstdio>
 #include <fstream>
 #include <iterator>
@@ -13,14 +15,11 @@ namespace fs = std::filesystem;
 
 namespace {
 
+// (in a write scope: beneath its root, its folders made the same way)
 bool writeWhole(const fs::path& path, const std::string& content) {
     std::error_code ec;
-    fs::create_directories(path.parent_path(), ec);
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    if (!out) return false;
-    out << content;
-    out.close();
-    return static_cast<bool>(out);
+    editor::FileUtils::createDirectories(path.parent_path(), ec);
+    return editor::FileUtils::writeFileReplacing(path, content);
 }
 
 }
@@ -43,7 +42,7 @@ bool editor::RemoveFilesCmd::execute() {
     }
     for (size_t i = 0; i < files.size(); i++) {
         std::error_code ec;
-        if (!fs::remove(files[i], ec) || ec) {
+        if (!editor::FileUtils::removePath(files[i], ec) || ec) {
             // all or nothing: the files already removed come back
             for (size_t j = 0; j < i; j++) writeWhole(files[j], contents[j]);
             if (afterChange && i > 0) afterChange(files);
@@ -57,11 +56,21 @@ bool editor::RemoveFilesCmd::execute() {
 void editor::RemoveFilesCmd::undo() {
     bool failed = false;
     for (size_t i = 0; i < files.size() && i < contents.size(); i++) {
-        if (!writeWhole(files[i], contents[i])) failed = true;
+        if (!writeWhole(files[i], contents[i])) {
+            failed = true;
+            undoProblem += (undoProblem.empty() ? "" : "; ") + std::string("could not put back ") + editor::FileUtils::pathToGenericUtf8(files[i]);
+        }
     }
     if (failed) {
         // Command::undo cannot fail; the history step stays (a redo removes what came back)
         printf("Error: restoring a removed file failed (permissions or a full disk)\n");
     }
     if (afterChange) afterChange(files);
+}
+
+std::vector<editor::Command::Touched> editor::RemoveFilesCmd::touchedPaths(bool undo) const {
+    std::vector<Touched> out;
+    // an undo writes them back, a redo removes the entries
+    for (const fs::path& file : files) out.push_back({file, !undo});
+    return out;
 }

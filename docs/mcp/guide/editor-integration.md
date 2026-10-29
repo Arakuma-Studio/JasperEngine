@@ -21,6 +21,26 @@ The editor writes these files when it creates or opens a project and again on ev
 `.clangd` hold only project-relative paths and may be committed. None of these files is
 exported with the game.
 
+## Paths and symbolic links
+
+Tools take project-relative paths. Reads follow symbolic links (and Windows junctions) wherever
+they lead, so an assets folder linked in from a shared library reads, lists and previews like any
+other. The project folder and its configured assets and Lua scripts folders are trusted even when
+they are links themselves (an assets folder on a shared drive): writes go there. A tool that writes, creates,
+deletes, moves or renames a file refuses a path that a link BELOW those folders leads out of them
+(an asset root can't be set to a folder outside the project either) (isError: the path, where the link leads, and the fix:
+use a path that is not behind a link to elsewhere, or replace the link with a real folder). Links
+that point inside the project work, and so does a project opened through a link. Deleting or
+moving a link moves the link itself, never what it points at. A folder that becomes a link to
+elsewhere after a write was made blocks its undo (`undo` fails with the file and "remove the link,
+then undo again"; the history keeps its place). No tool writes, moves, copies or imports a file named
+project.yaml (any folder, any letter case): settings go through `set_project_settings`, whose asset
+roots are plain project folders (no absolute path, no `..`). `open_project` refuses a project whose
+assets_dir or lua_dir points outside its folder (the user opens that one in the editor), and the
+machine-level preferences (tool paths, compilers, the default export folder) are read-only: the user
+changes them in Edit > Preferences. `run_build` runs only this project's built player (build it
+first), and `create_project` makes a project beside the current one, not inside it.
+
 ## Reading the API
 
 The stubs are plain Lua files meant to be read and grepped:

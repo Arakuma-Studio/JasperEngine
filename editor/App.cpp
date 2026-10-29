@@ -465,25 +465,32 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
     bool canRedo = false;
     bool paintUndo = false;
     bool paintRedo = false;
+    // the step Undo would take refused the last try (a generated file's folder became a link out
+    // of the project: the console says which and how to fix it): the menu says so
+    bool undoRefused = false;
     if (!textInput) {
         uint32_t routedScene = 0;
         if (lastFocusedWindow == LastFocusedWindow::SpriteNormals) {
             // the Sprite Normal Map window: its paint strokes, else its last assign's scene, else the project
             paintUndo = spriteNormalsWindow->canUndoPaint();
             paintRedo = spriteNormalsWindow->canRedoPaint();
-            canUndo = paintUndo || (spriteNormalsWindow->undoGoesToScene(routedScene) ? CommandHandle::get(routedScene)->canUndo()
-                                                                                      : project.getProjectCommandHistory()->canUndo());
+            CommandHistory* undoHistory = spriteNormalsWindow->undoGoesToScene(routedScene) ? CommandHandle::get(routedScene)
+                                                                                             : project.getProjectCommandHistory();
+            canUndo = paintUndo || undoHistory->canUndo();
+            if (!paintUndo) undoRefused = !undoHistory->undoRefusedLastTry().empty();
             canRedo = paintRedo || (spriteNormalsWindow->redoGoesToScene(routedScene) ? CommandHandle::get(routedScene)->canRedo()
                                                                                       : project.getProjectCommandHistory()->canRedo());
         } else if (undoGoesToProjectHistory()) {
             canUndo = project.getProjectCommandHistory()->canUndo();
             canRedo = project.getProjectCommandHistory()->canRedo();
+            undoRefused = !project.getProjectCommandHistory()->undoRefusedLastTry().empty();
         } else if (lastFocusedWindow == LastFocusedWindow::Code) {
             canUndo = codeEditor->canUndoLastFocused();
             canRedo = codeEditor->canRedoLastFocused();
         } else if (hasSelectedScene) {
             canUndo = CommandHandle::get(selectedSceneId)->canUndo();
             canRedo = CommandHandle::get(selectedSceneId)->canRedo();
+            undoRefused = !CommandHandle::get(selectedSceneId)->undoRefusedLastTry().empty();
         }
         // redo is routed on its own (animation clips R5b)
         if (lastFocusedWindow != LastFocusedWindow::SpriteNormals && redoGoesToProjectHistory() != undoGoesToProjectHistory()) {
@@ -552,7 +559,8 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
     }));
 
     menu.menus.push_back(menuSubmenu("Edit", {
-        menuShortcut(AppMenuCommand::Undo, paintUndo ? "Undo Paint Stroke" : "Undo", "Ctrl+Z", canUndo),
+        menuShortcut(AppMenuCommand::Undo, paintUndo ? "Undo Paint Stroke" : undoRefused ? "Undo (refused, see the Console)" : "Undo",
+                     "Ctrl+Z", canUndo),
 #if defined(__APPLE__)
         menuShortcut(AppMenuCommand::Redo, paintRedo ? "Redo Paint Stroke" : "Redo", "Ctrl+Shift+Z", canRedo),
 #else

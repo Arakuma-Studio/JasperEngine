@@ -60,11 +60,14 @@ namespace jasperengine::editor{
         CreateClipCmd& operator=(const CreateClipCmd&) = delete;
 
         bool execute() override;
+
+        std::vector<Touched> touchedPaths(bool undo) const override;
+        std::string failure() const override { return failureText; }
         void undo() override;
         bool affectsStructure() const override;
 
         // why the last execute failed ("can't write <path>: <reason>", a scene command's)
-        const std::string& getFailure() const { return failure; }
+        const std::string& getFailure() const { return failureText; }
         // where execute() also writes its failure (the history deletes a command that fails)
         void reportFailureTo(std::shared_ptr<std::string> sink) { failureSink = std::move(sink); }
 
@@ -92,7 +95,8 @@ namespace jasperengine::editor{
         std::vector<Written> written;
         std::vector<std::unique_ptr<Command>> sceneCommands;
         bool wasModified = false;
-        std::string failure;
+        std::string failureText;
+        unsigned long long failureMark = 0;   // safewrite::scopedFailureCount() when execute began
         std::shared_ptr<std::string> failureSink;
         Entity playerRoot = NULL_ENTITY;
         PlayerModelLayout::Reloads layoutReloads;

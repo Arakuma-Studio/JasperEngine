@@ -4,6 +4,7 @@
 #include "ProjectUtils.h"
 
 #include "Out.h"
+#include "util/FileUtils.h"
 #include "Catalog.h"
 #include "Stream.h"
 #include "shader/ShaderVariantCompiler.h"
@@ -207,7 +208,7 @@ void pruneForkDirectories(const std::filesystem::path& root) {
 
     // The iterator visits parents first, so deleting in reverse empties the leaves first.
     for (auto it = dirs.rbegin(); it != dirs.rend(); ++it) {
-        std::filesystem::remove(*it, ec);
+        editor::FileUtils::removePath(*it, ec);   // empty folders only (in a write scope: beneath its root)
     }
 }
 
@@ -326,6 +327,16 @@ bool editor::ProjectUtils::writeShaderFork(const ShaderForkPlan& plan) {
     std::vector<std::filesystem::path> written;
     auto writeFile = [&](const std::filesystem::path& path, const std::string& content) -> bool {
         std::error_code ec;
+        if (std::filesystem::exists(std::filesystem::symlink_status(path, ec)))
+            return false;
+        // in a write scope (fork_shader): beneath its root, no link on the way followed
+        if (const FileUtils::ScopedOps* ops = FileUtils::scopedOps()) {
+            const int r = ops->write(path, content, ec);
+            if (r >= 0) {
+                if (r == 1) written.push_back(path);
+                return r == 1;
+            }
+        }
         std::filesystem::create_directories(path.parent_path(), ec);
         if (ec)
             return false;
@@ -351,7 +362,7 @@ bool editor::ProjectUtils::writeShaderFork(const ShaderForkPlan& plan) {
     if (!success) {
         std::error_code ec;
         for (const auto& path : written)
-            std::filesystem::remove(path, ec);
+            FileUtils::removePath(path, ec);
         pruneForkDirectories(plan.forkDirPath);
         Out::error("Could not write forked shader files");
     }
@@ -360,10 +371,11 @@ bool editor::ProjectUtils::writeShaderFork(const ShaderForkPlan& plan) {
 
 void editor::ProjectUtils::removeShaderFork(const ShaderForkPlan& plan) {
     std::error_code ec;
-    std::filesystem::remove(plan.vertPath, ec);
-    std::filesystem::remove(plan.fragPath, ec);
+    // (in a write scope: beneath its root, the entries themselves)
+    FileUtils::removePath(plan.vertPath, ec);
+    FileUtils::removePath(plan.fragPath, ec);
     for (const auto& include : plan.includeFiles)
-        std::filesystem::remove(include.path, ec);
+        FileUtils::removePath(include.path, ec);
     pruneForkDirectories(plan.forkDirPath);
 }
 

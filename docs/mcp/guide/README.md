@@ -6,6 +6,14 @@ build time (`CMakeLists.txt` generates `mcp_docs.h`; `editor/mcp/tools/DocsTools
 them), so a new file here becomes `jasper://docs/<file name>` after a rebuild. This README is
 not served; `jasper://docs` lists the served documents. The guide refers to them by these URIs:
 
+Paths in every guide are project-relative. Reads follow symbolic links; writes, creates, deletes
+and moves refuse a path that a link leads out of the project's trusted roots (the project folder
+and its configured assets and Lua scripts folders, which may themselves be links) (editor-integration.md,
+"Paths and symbolic links"; docs/mcp/DESIGN.md, Addressing). Threat model (DESIGN.md, Addressing):
+the sandbox stops misdirected writes and link tricks, not a malicious agent, since project content
+(C++ scripts on Play, ProjectBuild.cmake, Lua) runs code by design; machine-level preferences
+(tool paths, the default export folder) are user-only over MCP.
+
 | File | Resource | Contents |
 |---|---|---|
 | [lua-api.md](lua-api.md) | `jasper://docs/lua-api` | Lua script structure, property types, events, every bound class used in gameplay, enums, pitfalls (checked against `engine/core/script/binding/*`) |

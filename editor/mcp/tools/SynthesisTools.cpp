@@ -95,7 +95,9 @@ bool pathArg(Project* project, const Json& value, const std::string& field, bool
         return false;
     }
     fs::path absolute;
-    if (!McpRefs::resolveProjectPath(project, value.get<std::string>(), absolute, error, mustExist)) {
+    // an output (!mustExist) is written: inside the project once links are resolved; inputs are read
+    if (mustExist ? !McpRefs::resolveProjectPath(project, value.get<std::string>(), absolute, error, true)
+                  : !McpRefs::resolveProjectWritePath(project, value.get<std::string>(), absolute, error, false)) {
         error = field + ": " + error;
         return false;
     }
@@ -697,6 +699,8 @@ void synthesizeTextureTool(const CallPtr& call) {
     };
     ts::SynthesisRun::Finished onFinished = [context, state, job](ts::SynthesisRun&) {
         getEditorHost().enqueueMainThreadTask([context, state, job]() {
+            // a continuation writes beneath the project, as the tool's run did
+            McpWriteScope writeScope;
             // the run may finish before start() returned to the handler
             if (!state->run) return;
             // whatever goes wrong, the job ends (the main-thread loop would swallow an exception

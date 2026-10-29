@@ -587,6 +587,11 @@ bool requestFromArgs(Project* project, const Json& args, VatRequest& request, st
                 return false;
             }
             const fs::path absolute = project->getProjectPath() / FileUtils::pathFromUtf8(relative);
+            // written by the tool: inside the project once links are resolved
+            if (const std::string escape = McpRefs::writeEscape(project, absolute); !escape.empty()) {
+                error = "output: " + escape;
+                return false;
+            }
             if (!Util::isVertexAnimationFile(relative) || !project->isInsideAssetsPath(absolute)) {
                 error = "output must be a .vat path inside the assets folder (e.g. \"assets/vat/hero.vat\"; the mesh goes to hero.vat.glb), or "
                         "true for the default name next to the source (got \"" + relative + "\").";
@@ -1030,6 +1035,8 @@ void tick(const VatCallPtr& state) {
 void scheduleTick(const VatCallPtr& state) {
     state->ctx->app().requestRedraw();
     getEditorHost().enqueueMainThreadTask([state]() {
+        // a continuation writes beneath the project, as the tool's run did
+        McpWriteScope writeScope;
         // whatever goes wrong, the job ends (the main-thread loop would swallow an exception)
         const std::string fix = "call bake_vertex_animation again; if it fails the same way, read_console for the cause";
         try {
@@ -1102,6 +1109,8 @@ void bakeVertexAnimationRun(const CallPtr& call, bool waited) {
         title = "Import Vertex Animation " + relativeOf(project, FileUtils::pathFromUtf8(request.importSpec.path));
     } else {
         state->session = std::make_unique<VatBakeSession>(project);
+        // its files stay beneath the project when written (a default output beside a linked-in source included)
+        state->session->writeBeneath(McpRefs::trustedRoots(project));
         if (request.rebake) {
             if (!state->session->loadRebake(request.rebakePath, error)) {
                 call->fail("Can't rebake " + request.rebakePath + ": " + error + ".");

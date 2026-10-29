@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "CommandHistory.h"
+#include "util/SafeWrite.h"
+#include <optional>
 #include <stdio.h>
 
 using namespace jasperengine;
@@ -12,6 +14,7 @@ namespace {
 class CommandGroup : public jasperengine::editor::Command {
 private:
     std::vector<jasperengine::editor::Command*> commands;
+    std::string failureText;
 
 public:
     explicit CommandGroup(std::vector<jasperengine::editor::Command*> commands): commands(std::move(commands)) {
@@ -22,13 +25,52 @@ public:
         for (jasperengine::editor::Command* cmd : commands) delete cmd;
     }
 
+    // every step done again. One failing with a reason (its failure(), or a write the write scope
+    // refused in it) takes back the ones done before it, in reverse, and the group fails (the
+    // history then doesn't take it); one that just finds nothing to do is passed over, as before
     bool execute() override {
-        for (jasperengine::editor::Command* cmd : commands) cmd->execute();
+        failureText.clear();
+        std::vector<jasperengine::editor::Command*> doneNow;
+        for (jasperengine::editor::Command* cmd : commands) {
+            const unsigned long long mark = jasperengine::editor::safewrite::scopedFailureCount();
+            if (cmd->execute()) {
+                doneNow.push_back(cmd);
+                continue;
+            }
+            std::string why = cmd->failure();
+            if (why.empty()) why = jasperengine::editor::safewrite::scopedFailureSince(mark);
+            if (why.empty()) continue;
+            failureText = why;
+            // the steps done before it taken back; a rollback that couldn't put everything back says so
+            for (auto it = doneNow.rbegin(); it != doneNow.rend(); ++it) {
+                const unsigned long long rollbackMark = jasperengine::editor::safewrite::scopedFailureCount();
+                (*it)->undo();
+                std::string problem = (*it)->takeUndoProblem();
+                if (problem.empty()) problem = jasperengine::editor::safewrite::scopedFailureSince(rollbackMark);
+                if (!problem.empty()) failureText += "; and its rollback could not put everything back: " + problem;
+            }
+            return false;
+        }
         return true;
     }
 
+    std::string failure() const override { return failureText; }
+
     void undo() override {
-        for (auto it = commands.rbegin(); it != commands.rend(); ++it) (*it)->undo();
+        for (auto it = commands.rbegin(); it != commands.rend(); ++it) {
+            (*it)->undo();
+            const std::string problem = (*it)->takeUndoProblem();
+            if (!problem.empty()) undoProblem += (undoProblem.empty() ? "" : "; ") + problem;
+        }
+    }
+
+    std::vector<Touched> touchedPaths(bool undo) const override {
+        std::vector<Touched> all;
+        for (const jasperengine::editor::Command* cmd : commands) {
+            std::vector<Touched> some = cmd->touchedPaths(undo);
+            all.insert(all.end(), some.begin(), some.end());
+        }
+        return all;
     }
 
     bool canUndo() const override {
@@ -45,12 +87,44 @@ public:
         return true;
     }
 
+    std::string undoRefusal() const override {
+        for (const jasperengine::editor::Command* cmd : commands) {
+            std::string why = cmd->undoRefusal();
+            if (!why.empty()) return why;
+        }
+        return std::string();
+    }
+
+    std::string redoRefusal() const override {
+        for (const jasperengine::editor::Command* cmd : commands) {
+            std::string why = cmd->redoRefusal();
+            if (!why.empty()) return why;
+        }
+        return std::string();
+    }
+
     bool affectsStructure() const override {
         for (const jasperengine::editor::Command* cmd : commands) {
             if (cmd->affectsStructure()) return true;
         }
         return false;
     }
+};
+
+}
+
+namespace {
+
+// A step's execute / undo runs in the write scope it was made in (Command::writeRoot): an MCP-made
+// step stays beneath the project also when the GUI undoes it
+class StepScope {
+public:
+    explicit StepScope(const jasperengine::editor::Command* cmd) {
+        if (cmd && !cmd->writeRoots().empty()) scope.emplace(cmd->writeRoots());
+    }
+
+private:
+    std::optional<jasperengine::editor::safewrite::Scope> scope;
 };
 
 }
@@ -76,7 +150,12 @@ bool editor::CommandHistory::addCommand(editor::Command* cmd){
     if (beforeChange){
         beforeChange(sceneId, Change::Add);
     }
-    if (cmd->execute()){
+    bool executed = false;
+    {
+        StepScope scope(cmd);
+        executed = cmd->execute();
+    }
+    if (executed){
         if (index < list.size()){
             for (auto it = list.begin() + index; it != list.end(); ++it) {
                 delete *it;
@@ -116,7 +195,12 @@ bool editor::CommandHistory::insertCommand(Command* cmd){
     if (beforeChange){
         beforeChange(sceneId, Change::Add);
     }
-    if (!cmd->execute()){
+    bool executed = false;
+    {
+        StepScope scope(cmd);
+        executed = cmd->execute();
+    }
+    if (!executed){
         delete cmd;
         return false;
     }
@@ -138,15 +222,39 @@ bool editor::CommandHistory::insertCommand(Command* cmd){
 }
 
 bool editor::CommandHistory::undo(){
+    refusal.clear();
+    undoProblemText.clear();
     if (beforeChange && !beforeChange(sceneId, Change::Undo)){
         return false;
     }
-    if (index > undoFloor() && list[index-1]->canUndo()){
+    // a step that refuses (Command::canUndo) keeps the history where it is
+    if (index > undoFloor()){
+        StepScope scope(list[index-1]);
+        if (!list[index-1]->canUndo()){
+            refusal = list[index-1]->undoRefusal();
+            refusedText = refusal;
+            refusedSerial = list[index-1]->serial();
+            refusedUndo = true;
+            safewrite::warn("Undo not applied: " + (refusal.empty() ? std::string("the step can't be undone now.") : refusal));
+            return false;
+        }
+    }
+    if (index > undoFloor()){
+        refusedSerial = 0;
         if (beforeStep){
             beforeStep(sceneId);
         }
         const bool structural = list[index-1]->affectsStructure();
-        list[index-1]->undo();
+        const unsigned long long failuresBefore = safewrite::scopedFailureCount();
+        {
+            StepScope scope(list[index-1]);
+            list[index-1]->undo();
+        }
+        // a file it could not put back after its check passed (a link planted since; a write the
+        // write scope refused inside it): said
+        undoProblemText = list[index-1]->takeUndoProblem();
+        if (undoProblemText.empty()) undoProblemText = safewrite::scopedFailureSince(failuresBefore);
+        if (!undoProblemText.empty()) safewrite::warn("Undo incomplete: " + undoProblemText);
         index--;
 
         if (onSceneModified){
@@ -162,15 +270,54 @@ bool editor::CommandHistory::undo(){
 }
 
 bool editor::CommandHistory::redo(){
+    refusal.clear();
+    undoProblemText.clear();
     if (beforeChange && !beforeChange(sceneId, Change::Redo)){
         return false;
     }
-    if (index < list.size() && list[index]->canRedo()){
+    if (index < list.size()){
+        StepScope scope(list[index]);
+        if (!list[index]->canRedo()){
+            refusal = list[index]->redoRefusal();
+            refusedText = refusal;
+            refusedSerial = list[index]->serial();
+            refusedUndo = false;
+            safewrite::warn("Redo not applied: " + (refusal.empty() ? std::string("the step can't be redone now.") : refusal));
+            return false;
+        }
+    }
+    if (index < list.size()){
+        refusedSerial = 0;
         if (beforeStep){
             beforeStep(sceneId);
         }
+        bool executed = false;
+        const unsigned long long failuresBefore = safewrite::scopedFailureCount();
+        {
+            StepScope scope(list[index]);
+            executed = list[index]->execute();
+        }
+        // a step that could not be done again and says why (its failure, or a write the write
+        // scope refused in it) is not taken; one that just found nothing to do (the GameObjects it
+        // changes are gone) is passed over as before
+        if (!executed){
+            std::string why = list[index]->failure();
+            if (why.empty()) why = safewrite::scopedFailureSince(failuresBefore);
+            if (!why.empty()){
+                refusal = why;
+                refusedText = refusal;
+                refusedSerial = list[index]->serial();
+                refusedUndo = false;
+                safewrite::warn("Redo not applied: " + refusal);
+                return false;
+            }
+        }
+        // done, but a write the write scope refused inside it: said
+        if (executed && safewrite::scopedFailureCount() != failuresBefore){
+            undoProblemText = safewrite::scopedFailureSince(failuresBefore);
+            safewrite::warn("Redo incomplete: " + undoProblemText);
+        }
         index++;
-        list[index-1]->execute();
 
         if (onSceneModified){
             onSceneModified(sceneId, list[index-1]->affectsStructure());
@@ -182,6 +329,16 @@ bool editor::CommandHistory::redo(){
         return true;
     }
     return false;
+}
+
+std::string editor::CommandHistory::undoRefusedLastTry() const{
+    if (!refusedUndo || refusedSerial == 0 || refusedSerial != undoSerial()) return std::string();
+    return refusedText.empty() ? std::string("the step can't be undone now") : refusedText;
+}
+
+std::string editor::CommandHistory::redoRefusedLastTry() const{
+    if (refusedUndo || refusedSerial == 0 || refusedSerial != redoSerial()) return std::string();
+    return refusedText.empty() ? std::string("the step can't be redone now") : refusedText;
 }
 
 bool editor::CommandHistory::canUndo() const{

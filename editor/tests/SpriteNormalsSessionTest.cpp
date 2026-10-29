@@ -27,6 +27,8 @@
 #include "spritenormals/SpriteNormalsWatcher.h"
 #include "texsynth/SynthesisRecipe.h"
 #include "texsynth/SynthesisSession.h"
+#include "util/ProjectFileWrites.h"
+#include "util/SafeWrite.h"
 #include "SymlinkSupport.h"
 
 #include "json.hpp"
@@ -362,6 +364,38 @@ TEST(SpriteNormalsSession, CheckSpecKinds) {
     EXPECT_EQ(kinds(problems), (std::vector<std::string>{"invalid_settings", "invalid_settings"}));
 }
 
+// The trusted roots are resolved on the main thread when a root setting changes and published
+// whole: workers read a snapshot (never a half-updated list, never resolving themselves)
+TEST(SpriteNormalsSession, TrustedRootsAreAPublishedSnapshot) {
+    namespace sw = jasperengine::editor::safewrite;
+    std::error_code ec;
+    fs::create_directories(project()->getProjectPath() / "assets", ec);
+    const fs::path projectReal = sw::resolvedPath(project()->getProjectPath());
+    const fs::path assetsReal = sw::resolvedPath(project()->getProjectPath() / "assets");
+    std::atomic<bool> stop{false};
+    std::atomic<int> bad{0};
+    std::vector<std::thread> readers;
+    for (int i = 0; i < 4; i++) {
+        readers.emplace_back([&]() {
+            while (!stop.load()) {
+                const std::vector<fs::path> roots = project()->getTrustedRoots();
+                // either configuration, whole: the project first, then (with "assets") the assets folder
+                const bool whole = (roots.size() == 1 && roots[0] == projectReal) ||
+                                   (roots.size() == 2 && roots[0] == projectReal && roots[1] == assetsReal);
+                if (!whole) bad++;
+            }
+        });
+    }
+    for (int i = 0; i < 200; i++) {
+        project()->setAssetsDir(i % 2 ? "." : "assets");
+    }
+    stop = true;
+    for (std::thread& t : readers) t.join();
+    project()->setAssetsDir(".");
+    EXPECT_EQ(bad.load(), 0) << "a reader saw a partial list";
+    EXPECT_EQ(project()->getTrustedRoots(), std::vector<fs::path>{projectReal});
+}
+
 TEST(SpriteNormalsSession, OutputsMustBeInsideTheAssetsDirectory) {
     const std::string dir = folder("assetsdir");
     writePng(dir + "/hero.png", balls(16, 16, 16, 6));
@@ -572,12 +606,67 @@ TEST(SpriteNormalsSession, RedoAndUndoNeverGoThroughALinkMadeInBetween) {
     ASSERT_TRUE(history->redo());
     EXPECT_EQ(history->position(), undone + 1);
     EXPECT_EQ(readAll(file.absolute), "first");
-    // a link again, a file of theirs behind it: the undo removes nothing through it
+    // a link again, a file of theirs behind it: the undo is refused (removes nothing through
+    // it) and the history keeps its place, saying why and how to fix it
     fs::remove_all(abs / "sub");
     fs::create_directory_symlink(outside, abs / "sub");
     std::ofstream(outside / "x_normal.png") << "theirs";
-    ASSERT_TRUE(history->undo());
+    const size_t done = history->position();
+    EXPECT_FALSE(history->undo()) << "a refused undo is not taken";
+    EXPECT_EQ(history->position(), done);
     EXPECT_EQ(readAll(outside / "x_normal.png"), "theirs") << "the undo was not applied";
+    EXPECT_NE(history->lastRefusal().find(dir + "/sub/x_normal.png"), std::string::npos) << history->lastRefusal();
+    EXPECT_NE(history->lastRefusal().find("Remove the link, then undo again."), std::string::npos) << history->lastRefusal();
+    EXPECT_EQ(history->undoRefusedLastTry(), history->lastRefusal()) << "the Edit menu's note";
+    // a loop undoing to a mark stops at the refused step instead of spinning
+    int tries = 0;
+    while (history->position() > 0 && history->canUndo() && history->undo()) tries++;
+    EXPECT_EQ(tries, 0);
+    EXPECT_EQ(history->position(), done);
+    // the link gone: the undo goes through
+    fs::remove(abs / "sub");
+    fs::create_directories(abs / "sub");
+    ASSERT_TRUE(history->undo());
+    EXPECT_EQ(history->position(), done - 1);
+    EXPECT_TRUE(history->lastRefusal().empty());
+    EXPECT_TRUE(history->undoRefusedLastTry().empty());
+    EXPECT_FALSE(fs::exists(file.absolute));
+    fs::remove_all(abs);
+    fs::remove_all(outside);
+}
+
+// The undoable write closes the gap between its check and its write: a folder on the way made a
+// link after the guard passed is never followed (WriteFilesCmd::writeBeneath, util/SafeWrite.h)
+TEST(SpriteNormalsSession, ALinkPlantedAfterTheCheckIsNotFollowed) {
+    SKIP_WITHOUT_SYMLINKS();
+    const std::string dir = folder("toctou");
+    const fs::path abs = root() / fs::u8path(dir);
+    fs::create_directories(abs / "sub");
+    const fs::path outside = root().parent_path() / "outside-toctou";
+    fs::remove_all(outside);
+    fs::create_directories(outside);
+    // the guard passes, then the folder becomes a link out of the project (as a racing process would)
+    bool planted = false;
+    auto plant = [&](std::string&) {
+        if (!planted) {
+            planted = true;
+            fs::remove_all(abs / "sub");
+            fs::create_directory_symlink(outside, abs / "sub");
+        }
+        return true;
+    };
+    std::string error;
+    const size_t before = project()->getProjectCommandHistory()->position();
+    EXPECT_FALSE(ProjectFileWrites::writeUndoable(project(), {{abs / "sub" / "x.png", "bytes"}}, error, nullptr, plant,
+                                                  sn::outputsRoot(project())));
+    EXPECT_NE(error.find("symbolic link"), std::string::npos) << error;
+    EXPECT_FALSE(fs::exists(outside / "x.png")) << "nothing written through the link";
+    EXPECT_EQ(project()->getProjectCommandHistory()->position(), before) << "no step";
+    // the direct writer (the CLI, the watcher) too
+    std::string failed;
+    sn::OutputFile out{"normal", dir + "/sub/y.png", abs / "sub" / "y.png", "bytes"};
+    EXPECT_FALSE(sn::writeOutputsDirect({out}, failed, error, sn::outputsRoot(project())));
+    EXPECT_FALSE(fs::exists(outside / "y.png"));
     fs::remove_all(abs);
     fs::remove_all(outside);
 }
@@ -593,7 +682,7 @@ TEST(SpriteNormalsSession, TheSheetReplacesALinkInsteadOfWritingThroughIt) {
     {
         mcp::SheetWrite sheet;
         std::string error;
-        ASSERT_TRUE(sheet.write(abs / "sheet.png", {1, 2, 3}, error)) << error;
+        ASSERT_TRUE(sheet.write(root(), abs / "sheet.png", {1, 2, 3}, error)) << error;
         sheet.commit();
     }
     EXPECT_FALSE(fs::exists(outside / "sheet.png")) << "not written through the dangling link";
@@ -603,7 +692,7 @@ TEST(SpriteNormalsSession, TheSheetReplacesALinkInsteadOfWritingThroughIt) {
     {
         mcp::SheetWrite sheet;
         std::string error;
-        ASSERT_TRUE(sheet.write(abs / "sheet.png", {9}, error)) << error;
+        ASSERT_TRUE(sheet.write(root(), abs / "sheet.png", {9}, error)) << error;
     }
     EXPECT_EQ(readAll(abs / "sheet.png"), std::string("\x01\x02\x03"));
     EXPECT_EQ(std::distance(fs::directory_iterator(abs), fs::directory_iterator()), 1);
@@ -663,6 +752,25 @@ TEST(SpriteNormalsSession, ALinkedAssetsDirectoryOrProjectKeepsWorking) {
     EXPECT_TRUE(fs::is_regular_file(real / "art" / "hero_normal.png"));
     ASSERT_TRUE(project()->getProjectCommandHistory()->undo());
     EXPECT_FALSE(fs::exists(real / "art" / "hero_normal.png"));
+    // the assets directory is a trusted root; a link BELOW it leading further out is refused
+    const fs::path further = root().parent_path() / "further-out";
+    fs::remove_all(further);
+    fs::create_directories(further);
+    fs::create_directory_symlink(further, real / "out");
+    sn::Spec escape = stillSpec("linked/art/hero.png");
+    escape.output.normal = "linked/out/hero_normal.png";
+    std::optional<sn::Problem> refused = findKind(sn::checkSpec(root(), escape), "output_invalid");
+    ASSERT_TRUE(refused) << "a link below the linked assets directory, out of it";
+    EXPECT_NE(refused->message.find("symbolic link"), std::string::npos) << refused->message;
+    sn::OutputFile late;
+    late.role = "normal";
+    late.path = "linked/out/late.png";
+    late.absolute = root() / "linked" / "out" / "late.png";
+    late.bytes = "bytes";
+    EXPECT_FALSE(sn::writeOutputsUndoable(project(), {late}, error));
+    EXPECT_FALSE(fs::exists(further / "late.png"));
+    fs::remove(real / "out");
+    fs::remove_all(further);
     project()->setAssetsDir(".");
     // the project reached through a link
     const fs::path via = root().parent_path() / "via-link";
@@ -1488,7 +1596,7 @@ TEST(SpriteNormalsSession, SheetWriteRollsBackAndReportsAFailedRestore) {
     {
         // replaced, then rolled back: the old bytes
         mcp::SheetWrite write;
-        ASSERT_TRUE(write.write(dir / "shots" / "sheet.png", sheet, error, &warning)) << error;
+        ASSERT_TRUE(write.write(dir, dir / "shots" / "sheet.png", sheet, error, &warning)) << error;
         EXPECT_EQ(readAll(dir / "shots" / "sheet.png"), sheet);
         EXPECT_TRUE(write.rollback(&warning));
         EXPECT_EQ(readAll(dir / "shots" / "sheet.png"), old);
@@ -1496,14 +1604,14 @@ TEST(SpriteNormalsSession, SheetWriteRollsBackAndReportsAFailedRestore) {
     {
         // a new file in new folders, rolled back by the destructor: none of them left
         mcp::SheetWrite write;
-        ASSERT_TRUE(write.write(dir / "new" / "deep" / "sheet.png", sheet, error)) << error;
+        ASSERT_TRUE(write.write(dir, dir / "new" / "deep" / "sheet.png", sheet, error)) << error;
         EXPECT_TRUE(fs::exists(dir / "new" / "deep" / "sheet.png"));
     }
     EXPECT_FALSE(fs::exists(dir / "new"));
     {
         // committed: kept
         mcp::SheetWrite write;
-        ASSERT_TRUE(write.write(dir / "kept.png", sheet, error)) << error;
+        ASSERT_TRUE(write.write(dir, dir / "kept.png", sheet, error)) << error;
         write.commit();
     }
     EXPECT_EQ(readAll(dir / "kept.png"), sheet);
@@ -1512,7 +1620,7 @@ TEST(SpriteNormalsSession, SheetWriteRollsBackAndReportsAFailedRestore) {
         fs::create_directories(dir / "folder.png");
         mcp::SheetWrite write;
         warning.clear();
-        EXPECT_FALSE(write.write(dir / "folder.png", sheet, error, &warning));
+        EXPECT_FALSE(write.write(dir, dir / "folder.png", sheet, error, &warning));
         EXPECT_FALSE(error.empty());
         EXPECT_TRUE(warning.empty()) << warning;
         EXPECT_TRUE(fs::is_directory(dir / "folder.png"));
@@ -1530,7 +1638,7 @@ TEST(SpriteNormalsSession, SheetWriteRollsBackAndReportsAFailedRestore) {
             mcp::SheetWrite write;
             error.clear();
             warning.clear();
-            const bool written = write.write(dir / "shots" / "sheet.png", sheet, error, &warning);
+            const bool written = write.write(dir, dir / "shots" / "sheet.png", sheet, error, &warning);
             EXPECT_FALSE(written);
             EXPECT_FALSE(error.empty());
             EXPECT_TRUE(warning.empty()) << warning;
@@ -1540,7 +1648,7 @@ TEST(SpriteNormalsSession, SheetWriteRollsBackAndReportsAFailedRestore) {
         // a small sheet goes through; its rollback can't write the 8 KiB back: reported
         mcp::SheetWrite write;
         const std::vector<uint8_t> tiny(100, 'C');
-        const bool written = write.write(dir / "shots" / "sheet.png", tiny, error, &warning);
+        const bool written = write.write(dir, dir / "shots" / "sheet.png", tiny, error, &warning);
         warning.clear();
         const bool restored = write.rollback(&warning);
         setrlimit(RLIMIT_FSIZE, &saved);

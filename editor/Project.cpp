@@ -14,6 +14,7 @@
 
 #include "EditorHost.h"
 #include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 #include "util/FbxImporter.h"
 #include "window/CodeEditor.h"
 #include "window/ImageViewerWindow.h"
@@ -1845,6 +1846,9 @@ static bool importFbx(const fs::path& fbxPath, const fs::path& glbPath, const fs
     }
 
     editor::Out::info("Importing %s", fbxName.c_str());
+    // the converted glTF goes to the editor's import cache (.jasperengine/imported), which an MCP
+    // call's deny-by-default guard refuses: the editor names the one file it writes (util/SafeWrite.h)
+    jasperengine::editor::safewrite::EditorInternal ownImport(glbPath);
     const editor::FbxImporter::Result result = editor::FbxImporter::import(fbxPath, glbPath, assetsRoot, force);
     for (const std::string& warning : result.warnings) {
         editor::Out::warning("%s: %s", fbxName.c_str(), warning.c_str());
@@ -2166,7 +2170,9 @@ void editor::Project::refreshFbxImports() {
 
     // Hashing and converting can take seconds, so the check runs off the main thread
     fbxImportScan = std::async(std::launch::async,
-        [this, files, assetsRoot = getAssetsPath(), known = failedFbxImports]() {
+        [this, files, assetsRoot = getAssetsPath(), known = failedFbxImports, writeRoot = safewrite::Scope::currentRoots(), writeStrict = safewrite::Scope::currentStrict()]() {
+            // the conversions write in the write scope of the thread that started the scan
+            safewrite::Scope scope(writeRoot, writeStrict);
             std::map<fs::path, FbxImportFailure> failures;
             for (const auto& [fbxPath, glbPath] : files) {
                 std::error_code ec;
@@ -2430,6 +2436,26 @@ editor::WindowSettings editor::Project::getWindowSettings() const{
 
 void editor::Project::setAssetsDir(const std::filesystem::path& assetsDir){
     this->assetsDir = assetsDir;
+    refreshTrustedRoots();   // resolved now, when the setting is applied
+}
+
+std::vector<std::filesystem::path> editor::Project::getTrustedRoots() const{
+    const std::shared_ptr<const std::vector<std::filesystem::path>> snapshot = std::atomic_load(&trustedRoots);
+    return snapshot ? *snapshot : std::vector<std::filesystem::path>();
+}
+
+void editor::Project::refreshTrustedRoots(){
+    auto resolvedRoots = std::make_shared<std::vector<std::filesystem::path>>();
+    if (!projectPath.empty()){
+        for (const std::filesystem::path& root : {projectPath, getAssetsPath(), getLuaPath()}){
+            const std::filesystem::path resolved = safewrite::resolvedPath(root);
+            if (resolved.empty()) continue;
+            if (std::find(resolvedRoots->begin(), resolvedRoots->end(), resolved) != resolvedRoots->end()) continue;
+            resolvedRoots->push_back(resolved);
+            safewrite::pinTrustedRoot(resolved);
+        }
+    }
+    std::atomic_store(&trustedRoots, std::shared_ptr<const std::vector<std::filesystem::path>>(std::move(resolvedRoots)));
 }
 
 std::filesystem::path editor::Project::getAssetsDir() const{
@@ -2438,6 +2464,7 @@ std::filesystem::path editor::Project::getAssetsDir() const{
 
 void editor::Project::setLuaDir(const std::filesystem::path& luaDir){
     this->luaDir = luaDir;
+    refreshTrustedRoots();   // resolved now, when the setting is applied
 }
 
 std::filesystem::path editor::Project::getLuaDir() const{
@@ -2760,6 +2787,7 @@ void editor::Project::changeAssetRoots(const std::filesystem::path& newAssetsDir
     if (projectPath.empty() || (oldAssetsRoot == newAssetsRoot && oldLuaRoot == newLuaRoot)){
         assetsDir = newAssetsDir;
         luaDir = newLuaDir;
+        refreshTrustedRoots();
         return;
     }
 
@@ -2770,8 +2798,8 @@ void editor::Project::changeAssetRoots(const std::filesystem::path& newAssetsDir
     const bool luaChanged = oldLuaRoot != newLuaRoot;
 
     std::error_code ec;
-    fs::create_directories(newAssetsRoot, ec);
-    fs::create_directories(newLuaRoot, ec);
+    FileUtils::createDirectories(newAssetsRoot, ec);
+    FileUtils::createDirectories(newLuaRoot, ec);
 
     // Scenes that are not open still hold references, so they are loaded and unloaded again
     std::vector<uint32_t> temporarilyLoaded;
@@ -2806,7 +2834,7 @@ void editor::Project::changeAssetRoots(const std::filesystem::path& newAssetsDir
         }
 
         if (fs::is_directory(source, moveEc)){
-            fs::create_directories(destination, moveEc);
+            FileUtils::createDirectories(destination, moveEc);
             bool moved = false;
             for (const auto& entry : fs::directory_iterator(source, moveEc)){
                 moved |= moveEntry(entry.path(), destination / entry.path().filename());
@@ -2816,7 +2844,7 @@ void editor::Project::changeAssetRoots(const std::filesystem::path& newAssetsDir
                 }
             }
             // Only removes the source when everything left it.
-            fs::remove(source, moveEc);
+            FileUtils::removePath(source, moveEc);
             return moved;
         }
 
@@ -2827,22 +2855,22 @@ void editor::Project::changeAssetRoots(const std::filesystem::path& newAssetsDir
             return false;
         }
 
-        fs::create_directories(destination.parent_path(), moveEc);
-        fs::rename(source, destination, moveEc);
+        FileUtils::createDirectories(destination.parent_path(), moveEc);
+        FileUtils::renamePath(source, destination, moveEc);
         if (moveEc){
             // A root on another volume rejects rename, so the file is copied and only then dropped.
             std::error_code copyEc;
-            fs::copy_file(source, destination, copyEc);
+            FileUtils::copyPath(source, destination, false, copyEc);
             if (copyEc){
                 // A partial copy would pass as an already relocated file on the next attempt.
                 std::error_code cleanupEc;
-                fs::remove(destination, cleanupEc);
+                FileUtils::removePath(destination, cleanupEc);
 
                 Out::error("Failed to copy %s: %s", source.string().c_str(), copyEc.message().c_str());
                 relocationFailed = true;
                 return false;
             }
-            if (!fs::remove(source, copyEc)){
+            if (!FileUtils::removePath(source, copyEc)){
                 Out::warning("Copied %s but could not remove the original", source.string().c_str());
             }
         }
@@ -2858,30 +2886,30 @@ void editor::Project::changeAssetRoots(const std::filesystem::path& newAssetsDir
             std::error_code undoEc;
 
             // A directory emptied by the move is gone by now.
-            fs::create_directories(source.parent_path(), undoEc);
+            FileUtils::createDirectories(source.parent_path(), undoEc);
 
             // The copy fallback may have left the original in place.
             if (fs::exists(source, undoEc)){
-                fs::remove(destination, undoEc);
+                FileUtils::removePath(destination, undoEc);
                 continue;
             }
 
-            fs::rename(destination, source, undoEc);
+            FileUtils::renamePath(destination, source, undoEc);
             if (!undoEc){
                 continue;
             }
 
-            fs::copy_file(destination, source, undoEc);
+            FileUtils::copyPath(destination, source, false, undoEc);
             if (undoEc){
                 // References still point here, so a partial copy would pass as the file itself.
                 std::error_code cleanupEc;
-                fs::remove(source, cleanupEc);
+                FileUtils::removePath(source, cleanupEc);
 
                 Out::error("Could not restore %s, the file is at %s: %s", source.string().c_str(),
                            destination.string().c_str(), undoEc.message().c_str());
                 continue;
             }
-            fs::remove(destination, undoEc);
+            FileUtils::removePath(destination, undoEc);
         }
     };
 
@@ -3054,6 +3082,7 @@ void editor::Project::changeAssetRoots(const std::filesystem::path& newAssetsDir
 
     assetsDir = newAssetsDir;
     luaDir = newLuaDir;
+    refreshTrustedRoots();
 
     visitReferences(assetTransform, luaTransform);
 
@@ -4970,7 +4999,8 @@ bool editor::Project::saveSceneNow(uint32_t sceneId, const fs::path& pathIfUntit
             return failWith(error, "Another scene of the project is saved at " + normalizeToProjectRelative(target).generic_string());
         }
         std::error_code ec;
-        fs::create_directories(target.parent_path(), ec);
+        // (in a write scope: beneath its root)
+        FileUtils::createDirectories(target.parent_path(), ec);
         if (ec) {
             return failWith(error, "Could not create " + target.parent_path().generic_string() + ": " + ec.message());
         }
@@ -5416,6 +5446,7 @@ void editor::Project::resetConfigs() {
     windowIcon.clear();
     assetsDir = defaultAssetsDir;
     luaDir = defaultLuaDir;
+    refreshTrustedRoots();
     scriptDirs.clear();
     cxxStandard = defaultCxxStandard;
     physics2DEnabled = defaultPhysics2DEnabled;
@@ -5524,6 +5555,9 @@ void editor::Project::stopVertexAnimatorPreviews() {
 }
 
 void editor::Project::copyEngineApiToProject() {
+    // the engine API snapshot and tooling live in the editor's internal folder (an MCP call's
+    // deny-by-default guard refuses it otherwise: util/SafeWrite.h, EditorInternal)
+    safewrite::EditorInternal ownInternal(getProjectInternalPath());
     // Lua API stubs and LSP configuration (lua-language-server, clangd) next to the snapshot.
     // Written even when the engine folder is missing or the copy fails: the stubs are built
     // into the editor.
@@ -5544,7 +5578,8 @@ void editor::Project::copyEngineApiToProject() {
 
         // Create internal path if it doesn't exist
         if (!std::filesystem::exists(getProjectInternalPath())) {
-            std::filesystem::create_directories(getProjectInternalPath());
+            std::error_code internalError;
+            FileUtils::createDirectories(getProjectInternalPath(), internalError);
         }
 
         int updatedFiles = 0;
@@ -5570,7 +5605,8 @@ void editor::Project::copyEngineApiToProject() {
 
                 if (ext == ".h" || ext == ".hpp" || ext == ".inl" || ext == ".glsl" || ext == ".frag" || ext == ".vert" || isPlatformSource) {
                     auto destPath = engineApiDest / relPath;
-                    std::filesystem::create_directories(destPath.parent_path());
+                    std::error_code folderError;
+                    FileUtils::createDirectories(destPath.parent_path(), folderError);
 
                     std::ifstream sourceFile(dirEntry.path(), std::ios::in | std::ios::binary);
                     if (!sourceFile) {
@@ -5984,6 +6020,7 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
         AppSettings::setLastProjectPath(std::filesystem::path());
 
         projectPath = path;
+        refreshTrustedRoots();
         fs::path projectFile = projectPath / "project.yaml";
 
         // Set the project name so libName (used for the generated CMake target
@@ -6000,6 +6037,7 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
                 std::filesystem::create_directories(projectPath);
             }
             Out::info("Created project directory: \"%s\"", projectPath.string().c_str());
+            refreshTrustedRoots();   // the folder exists now
 
             // Inherit the compiler chosen in a previous session so new temp projects
             // don't silently fall back to the Default toolchain every time. Drop a
@@ -6086,6 +6124,9 @@ bool editor::Project::saveProjectFile() {
 
         // Trailing newline: git reports a file without one as changed as soon as
         // anything is appended to it
+        // the editor writes the project's own project.yaml (an MCP call's deny-by-default guard
+        // refuses every other writer: util/SafeWrite.h, EditorInternal)
+        safewrite::EditorInternal ownProjectFile(projectFile);
         if (!FileUtils::writeFileReplacing(projectFile, YAML::Dump(Stream::encodeProject(this)) + "\n", FileUtils::LineEndings::KeepExisting)) {
             Out::error("Failed to write project file: %s", projectFile.string().c_str());
             return false;
@@ -6102,6 +6143,18 @@ bool editor::Project::saveWorkspaceFile() {
     if (projectPath.empty()) {
         return false;
     }
+    // the editor's own per-user workspace file, .jasperengine/user/workspace.yaml (a hidden folder the
+    // guard refuses to agents): the editor names that one file (util/SafeWrite.h); its folder is made
+    // first when missing, under a token for that folder alone
+    const fs::path userDir = Workspace::getUserDirectory(projectPath);
+    {
+        std::error_code ec;
+        if (!fs::is_directory(userDir, ec)) {
+            safewrite::EditorInternal makeUserDir(userDir);
+            FileUtils::createDirectories(userDir, ec);
+        }
+    }
+    safewrite::EditorInternal workspaceFile(userDir / "workspace.yaml");
     if (!Workspace::save(this)) {
         return false;
     }
@@ -6206,6 +6259,9 @@ bool editor::Project::writeVersionControlMetadata() {
         }
         fin.close();
 
+        // the editor's own .gitignore / .gitattributes at the project root (dot-files the guard
+        // refuses to agents): named so the editor's own refresh goes through
+        safewrite::EditorInternal ownMetadata(target);
         if (!FileUtils::writeIfChanged(target, content)) {
             Out::error("Failed to write %s", target.string().c_str());
             success = false;
@@ -6221,8 +6277,15 @@ void editor::Project::clearTrash() {
 
     std::filesystem::path trashPath = projectPath / ".trash";
     if (std::filesystem::exists(trashPath)) {
+        // never through a link: a trash folder resolving outside the project is left alone, and
+        // the removal goes beneath the project (util/SafeWrite.h)
+        if (!safewrite::isInsideResolved(trashPath, projectPath)) {
+            Out::warning("Not clearing %s: it resolves outside the project (a symbolic link); remove the link.", FileUtils::pathToGenericUtf8(trashPath).c_str());
+            return;
+        }
         try {
-            std::filesystem::remove_all(trashPath);
+            std::string error;
+            if (!safewrite::removeTreeResolvedBeneath(projectPath, trashPath, error)) throw std::runtime_error(error);
             Out::info("Cleared trash directory: %s", trashPath.string().c_str());
         } catch (const std::exception& e) {
             Out::error("Failed to clear trash directory: %s", e.what());
@@ -6247,6 +6310,7 @@ bool editor::Project::saveProjectToPath(const std::filesystem::path& path) {
     std::filesystem::path oldPath = projectPath;
 
     projectPath = path;
+    refreshTrustedRoots();
 
     // If we're moving from a temp path, handle the file transfers
     if (wasTemp && oldPath != path) {
@@ -6287,6 +6351,7 @@ bool editor::Project::saveProjectToPath(const std::filesystem::path& path) {
 
     // The asset files (and their GUIDs) are under the new root now
     if (oldPath != path) {
+        refreshTrustedRoots();   // the folders exist now
         assetDatabase.open(projectPath);
     }
 
@@ -6339,6 +6404,7 @@ bool editor::Project::loadProject(const std::filesystem::path requestedPath, boo
 
         resetConfigs();
         projectPath = path;
+        refreshTrustedRoots();
 
         // shader manifests of forks are read from this project's files
         // (the project root, else the assets directory: findShaderFile, read when asked, so
@@ -6826,7 +6892,11 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
     sceneProject->playState = ScenePlayState::SAVING;
     fs::path savePath = path;
 
-    std::thread([this, sceneId, savePath, callback = std::move(callback)]() mutable {
+    // the worker writes in the write scope of the thread that started it (an MCP call's project)
+    const std::vector<fs::path> writeRoot = safewrite::Scope::currentRoots();
+    const bool writeStrict = safewrite::Scope::currentStrict();
+    std::thread([this, sceneId, savePath, writeRoot, writeStrict, callback = std::move(callback)]() mutable {
+        safewrite::Scope scope(writeRoot, writeStrict);
         bool success = false;
         try {
             success = writeSceneToPath(sceneId, savePath, false);
@@ -7726,7 +7796,8 @@ fs::path editor::Project::getUserDataPath() const{
     // build has it, every playtest would leave a modified file in the working tree.
     const fs::path path = getProjectInternalPath() / "user" / "rundata";
     std::error_code ec;
-    fs::create_directories(path, ec);
+    safewrite::EditorInternal ownRunData(path);   // Play's data folder, under .jasperengine (util/SafeWrite.h)
+    FileUtils::createDirectories(path, ec);
     if (ec) {
         Out::error("Failed to create the Play mode data directory: %s", ec.message().c_str());
         return getAssetsPath();
@@ -8581,7 +8652,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                 return;
             }
 
-            if (!conector.connect(buildPath, libName)) {
+            if (!conector.connect(buildPath, libName, getProjectPath())) {
                 failPlayStartup(session, sceneId, "Failed to connect to library");
                 return;
             }
@@ -8992,7 +9063,11 @@ void editor::Project::start(uint32_t sceneId) {
     // Read on the UI thread: the startup thread must not race the settings dialog
     const LocalBuildSettings buildSettings = AppSettings::getBuildSettings(getProjectPath() / "project.yaml");
 
-    std::thread startupThread([this, session, sceneId, buildSettings]() {
+    // the startup writes generated sources in the write scope of the thread that started Play
+    const std::vector<fs::path> writeRoot = safewrite::Scope::currentRoots();
+    const bool writeStrict = safewrite::Scope::currentStrict();
+    std::thread startupThread([this, session, sceneId, buildSettings, writeRoot, writeStrict]() {
+        safewrite::Scope scope(writeRoot, writeStrict);
         runPlayStartup(session, sceneId, buildSettings);
     });
     startupThread.detach();
@@ -9122,7 +9197,10 @@ void editor::Project::stop(uint32_t sceneId) {
     // Request cancellation asynchronously (returns a future we can wait on later if needed)
     auto cancelFuture = generator.cancelBuild();
 
-    std::thread finalizeStopThread([this, session, sceneId, startupSucceededAtStop, cancelFuture = std::move(cancelFuture)]() mutable {
+    const std::vector<fs::path> stopWriteRoot = safewrite::Scope::currentRoots();
+    const bool stopWriteStrict = safewrite::Scope::currentStrict();
+    std::thread finalizeStopThread([this, session, sceneId, startupSucceededAtStop, stopWriteRoot, stopWriteStrict, cancelFuture = std::move(cancelFuture)]() mutable {
+        safewrite::Scope scope(stopWriteRoot, stopWriteStrict);
         if (cancelFuture.valid()) {
             cancelFuture.wait();
         }

@@ -3,6 +3,9 @@
 
 #include "CopyFileCmd.h"
 
+#include "util/FileUtils.h"
+#include "util/SafeWrite.h"
+
 #include "util/Util.h"
 #include "vat/VatAssetFiles.h"
 
@@ -61,7 +64,7 @@ editor::CopyFileCmd::CopyFileCmd(Project* project, std::vector<std::string> sour
 }
 
 void editor::CopyFileCmd::moveFile(const fs::path& source, const fs::path& destination, bool isDirectory){
-    fs::rename(source, destination);
+    safewrite::renameOrThrow(rootFor(source), source, destination);
     if (!project) {
         return;
     }
@@ -92,6 +95,18 @@ void editor::CopyFileCmd::moveFile(const fs::path& source, const fs::path& desti
     }
 }
 
+std::vector<editor::Command::Touched> editor::CopyFileCmd::touchedPaths(bool undo) const{
+    std::vector<Touched> out;
+    for (const auto& fdata : files) {
+        const fs::path source = fdata.sourceDirectory / fdata.filename;
+        const fs::path destination = fdata.targetDirectory / fdata.filename;
+        // a copy: its destination made (redo) or removed (undo); a move: both entries renamed
+        if (!copy) out.push_back({source, true});
+        out.push_back({destination, true});
+    }
+    return out;
+}
+
 bool editor::CopyFileCmd::execute(){
     bool touchedShaderSource = false;
     // moves: every file first, then the clips' hints (a clip moved in the same step is at its
@@ -112,9 +127,19 @@ bool editor::CopyFileCmd::execute(){
                 touchedShaderSource |= isDir || Util::isShaderFile(extension);
 
                 if (copy){
-                    const auto options = fs::copy_options::overwrite_existing |
-                        (isDir ? fs::copy_options::recursive : fs::copy_options::none);
-                    fs::copy(sourceFs, destFs, options);
+                    const fs::path root = rootFor(destFs);
+                    if (!root.empty()) {
+                        // beneath the root: the source read wherever its links lead, the copy made
+                        // with no link on the destination's way followed
+                        std::string error;
+                        if (!safewrite::copyResolvedBeneath(root, sourceFs, destFs, true, error)) {
+                            throw fs::filesystem_error(error, sourceFs, destFs, std::make_error_code(std::errc::operation_not_permitted));
+                        }
+                    } else {
+                        const auto options = fs::copy_options::overwrite_existing |
+                            (isDir ? fs::copy_options::recursive : fs::copy_options::none);
+                        fs::copy(sourceFs, destFs, options);
+                    }
                     went.emplace_back(sourceFs, destFs);
                     // copied prefabs and clips are new assets: new GUIDs, the same ones on a redo
                     if (project && (isDir || AssetDatabase::isTrackedFile(destFs))) {
@@ -172,11 +197,9 @@ void editor::CopyFileCmd::undo(){
                 touchedShaderSource |= isDir || Util::isShaderFile(extension);
 
                 if (copy) {
-                    if (isDir) {
-                        fs::remove_all(sourceFs);
-                    }else{
-                        fs::remove(sourceFs);
-                    }
+                    // the copy goes: one removal beneath the root when there is one, never
+                    // following a link (fs::remove_all without one)
+                    safewrite::removeTreeOrThrow(rootFor(sourceFs), sourceFs);
                     // instances of the copies made since become Missing Prefabs
                     if (project && (isDir || Util::isPrefabFile(extension))) {
                         project->cleanupPrefabFilePath(sourceFs);
@@ -193,7 +216,8 @@ void editor::CopyFileCmd::undo(){
                 }
             }
         } catch (const fs::filesystem_error& e) {
-            printf("Error: Undo moving/Copying %s: %s\n", sourceFs.string().c_str(), e.what());
+            printf("Error: Undo moving/Copying %s: %s\n", FileUtils::pathToGenericUtf8(sourceFs).c_str(), e.what());
+            undoProblem += (undoProblem.empty() ? "" : "; ") + std::string(e.what());
         }
     }
 

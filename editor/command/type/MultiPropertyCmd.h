@@ -42,6 +42,8 @@ namespace jasperengine::editor {
         void undo() override {
             for (auto it = commands.rbegin(); it != commands.rend(); ++it) {
                 (*it)->undo();
+                const std::string problem = (*it)->takeUndoProblem();
+                if (!problem.empty()) undoProblem += (undoProblem.empty() ? "" : "; ") + problem;
             }
         }
 
@@ -57,6 +59,31 @@ namespace jasperengine::editor {
                 if (!cmd->canRedo()) return false;
             }
             return true;
+        }
+
+        std::string undoRefusal() const override {
+            for (const auto& cmd : commands) {
+                std::string why = cmd->undoRefusal();
+                if (!why.empty()) return why;
+            }
+            return std::string();
+        }
+
+        std::string redoRefusal() const override {
+            for (const auto& cmd : commands) {
+                std::string why = cmd->redoRefusal();
+                if (!why.empty()) return why;
+            }
+            return std::string();
+        }
+
+        std::vector<Touched> touchedPaths(bool undo) const override {
+            std::vector<Touched> all;
+            for (const auto& cmd : commands) {
+                std::vector<Touched> some = cmd->touchedPaths(undo);
+                all.insert(all.end(), some.begin(), some.end());
+            }
+            return all;
         }
 
         // Structural if any child is: a batch may mix an AddComponentCmd with properties.

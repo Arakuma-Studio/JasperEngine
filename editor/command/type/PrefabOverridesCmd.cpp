@@ -197,3 +197,25 @@ editor::PrefabOverridesCmd* editor::PrefabOverridesCmd::applyAll(Project* projec
     }
     return new PrefabOverridesCmd(project, sceneId, std::move(steps));
 }
+
+std::vector<editor::Command::Touched> editor::RevertPrefabRemovalCmd::touchedPaths(bool) const{
+    return {};   // the instance in the scene only
+}
+
+std::vector<editor::Command::Touched> editor::ApplyPrefabRemovalCmd::touchedPaths(bool) const{
+    std::vector<Touched> out;
+    for (const std::filesystem::path& file : {path, target}){
+        if (file.empty()) continue;
+        out.push_back({file.is_absolute() ? file : project->getProjectPath() / file, false});
+    }
+    return out;
+}
+
+std::vector<editor::Command::Touched> editor::PrefabOverridesCmd::touchedPaths(bool undo) const{
+    std::vector<Touched> out;
+    for (const std::unique_ptr<Command>& step : steps){
+        std::vector<Touched> some = step->touchedPaths(undo);
+        out.insert(out.end(), some.begin(), some.end());
+    }
+    return out;
+}

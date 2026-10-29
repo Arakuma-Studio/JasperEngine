@@ -129,8 +129,9 @@ std::string wrapNames() {
 
 // `value`: a project-relative .anim path, or (allowSubClip) "<model>#<clip>". `relative` gets
 // the project-relative form (the document key), `absolute` the file (the model of a sub-clip).
+// `write`: the tool writes the .anim (edit_animation): inside the project once links are resolved
 bool resolveClipArg(Project* project, const Json& value, const std::string& what, bool allowSubClip,
-                    std::string& relative, fs::path& absolute, bool& subClip, std::string& error) {
+                    std::string& relative, fs::path& absolute, bool& subClip, std::string& error, bool write = false) {
     if (!value.is_string() || value.get<std::string>().empty()) {
         error = what + " must be a project-relative .anim path (e.g. assets/anim/bob.anim)" +
                 std::string(allowSubClip ? " or a model clip \"assets/models/hero.gltf#Walk\"" : "") + ".";
@@ -149,7 +150,8 @@ bool resolveClipArg(Project* project, const Json& value, const std::string& what
                 std::string(allowSubClip ? " (or name a model clip: \"assets/models/hero.gltf#Walk\")" : "") + ".";
         return false;
     }
-    if (!McpRefs::resolveProjectPath(project, file, absolute, error, subClip)) {
+    if ((write && !subClip) ? !McpRefs::resolveProjectWritePath(project, file, absolute, error, false)
+                            : !McpRefs::resolveProjectPath(project, file, absolute, error, subClip)) {
         error = what + ": " + error;
         return false;
     }
@@ -1334,7 +1336,7 @@ void editClip(const CallPtr& call) {
     std::string relative;
     fs::path absolute;
     bool subClip = false;
-    if (!resolveClipArg(project, args["clip"], "clip", true, relative, absolute, subClip, error)) {
+    if (!resolveClipArg(project, args["clip"], "clip", true, relative, absolute, subClip, error, true)) {
         call->fail(error);
         return;
     }
@@ -1482,13 +1484,16 @@ void editClip(const CallPtr& call) {
     struct MadeFolders {
         std::vector<fs::path> folders;      // deepest first
         bool keep = false;
-        ~MadeFolders() {
+        // before the call fails (its reply may reach the client before this function returns)
+        void removeNow() {
             if (keep) return;
             for (const fs::path& folder : folders) {
                 std::error_code ignored;
-                if (fs::is_directory(folder, ignored) && fs::is_empty(folder, ignored)) fs::remove(folder, ignored);
+                if (fs::is_directory(folder, ignored) && fs::is_empty(folder, ignored)) FileUtils::removePath(folder, ignored);
             }
+            folders.clear();
         }
+        ~MadeFolders() { removeNow(); }
     } madeFolders;
     if (makeFolder) {
         std::error_code folderError;
@@ -1496,8 +1501,9 @@ void editClip(const CallPtr& call) {
             madeFolders.folders.push_back(folder);
             if (folder == folder.parent_path()) break;
         }
-        fs::create_directories(absolute.parent_path(), folderError);
+        FileUtils::createDirectories(absolute.parent_path(), folderError);
         if (!fs::is_directory(absolute.parent_path(), folderError)) {
+            madeFolders.removeNow();
             call->fail("create: cannot make the folder " + projectRel(project, absolute.parent_path()) +
                        (folderError ? ": " + folderError.message() : std::string()));
             return;
@@ -1516,11 +1522,13 @@ void editClip(const CallPtr& call) {
         if (rootPlaysIt) {
             ClipActionResult result;
             if (!ClipSceneActions::extractSubClip(project, ctx.scene->id, ctx.root, extractedFrom, relative, true, result, error, &data)) {
+                madeFolders.removeNow();
                 call->fail("create.from: " + error);
                 return;
             }
             document = AnimationClipDocument::open(project, relative, &error);
             if (!document) {
+                madeFolders.removeNow();
                 call->fail("create.from: the clip was written but can't be read back: " + error);
                 return;
             }
@@ -1537,10 +1545,12 @@ void editClip(const CallPtr& call) {
     } else if (creating) {
         document = AnimationClipDocument::create(project, relative, data, from.is_null() ? "Create Animation Clip" : "Extract to .anim", &error);
         if (!document) {
+            madeFolders.removeNow();
             call->fail("create: " + error);
             return;
         }
     } else if (!document->commit(data, "Edit Animation Clip", "", &error)) {
+        madeFolders.removeNow();
         call->fail(error);
         return;
     }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Out.h"
+#include "util/SafeWrite.h"
 #include "EditorHost.h"
 #include "EditorVersion.h"
 #include <algorithm>
@@ -217,4 +218,13 @@ void Out::error(const std::string& message) {
 
 void Out::build(const std::string& message) {
     logMessage(LogType::Build, message, "[BUILD] ", std::cerr);
+}
+
+namespace {
+    // the safe writers' warnings (a restore an undo could not do, a scoped write refused) go to the console
+    struct SafeWriteWarnings {
+        SafeWriteWarnings() {
+            jasperengine::editor::safewrite::setWarningSink([](const std::string& message) { jasperengine::editor::Out::warning(message); });
+        }
+    } safeWriteWarnings;
 }

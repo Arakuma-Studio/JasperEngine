@@ -40,6 +40,7 @@
 #include "util/EntityClipboard.h"
 #include "util/FbxImporter.h"
 #include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 #include "util/Util.h"
 
 #include <algorithm>
@@ -3347,8 +3348,13 @@ void McpStepsCmd::refresh() {
 
 bool McpStepsCmd::execute() {
     if (built) {
+        redoFailure.clear();
+        const unsigned long long mark = safewrite::scopedFailureCount();
         for (size_t i = 0; i < done.size(); i++) {
             if (!done[i]->execute()) {
+                // the reason, before the rollback runs other steps
+                redoFailure = done[i]->failure();
+                if (redoFailure.empty()) redoFailure = safewrite::scopedFailureSince(mark);
                 while (i > 0) {
                     done[--i]->undo();
                     refresh();
@@ -3381,8 +3387,35 @@ bool McpStepsCmd::execute() {
 void McpStepsCmd::undo() {
     for (auto it = done.rbegin(); it != done.rend(); ++it) {
         (*it)->undo();
+        const std::string problem = (*it)->takeUndoProblem();
+        if (!problem.empty()) undoProblem += (undoProblem.empty() ? "" : "; ") + problem;
         refresh();
     }
+}
+
+std::vector<Command::Touched> McpStepsCmd::touchedPaths(bool undo) const {
+    std::vector<Touched> all;
+    for (const std::unique_ptr<Command>& step : done) {
+        std::vector<Touched> some = step->touchedPaths(undo);
+        all.insert(all.end(), some.begin(), some.end());
+    }
+    return all;
+}
+
+std::string McpStepsCmd::undoRefusal() const {
+    for (const std::unique_ptr<Command>& step : done) {
+        std::string why = step->undoRefusal();
+        if (!why.empty()) return why;
+    }
+    return std::string();
+}
+
+std::string McpStepsCmd::redoRefusal() const {
+    for (const std::unique_ptr<Command>& step : done) {
+        std::string why = step->redoRefusal();
+        if (!why.empty()) return why;
+    }
+    return std::string();
 }
 
 namespace {

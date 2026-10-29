@@ -3,6 +3,7 @@
 
 #include "SynthesisSession.h"
 
+#include "Project.h"
 #include "util/ProjectFileWrites.h"
 #include "util/Util.h"
 
@@ -565,10 +566,12 @@ namespace jasperengine::editor::texsynth {
         return true;
     }
 
-    bool writeOutputsUndoable(Project* project, const std::vector<OutputFile>& files, std::string& error) {
+    bool writeOutputsUndoable(Project* project, const std::vector<OutputFile>& files, std::string& error, const std::filesystem::path& beneath) {
         std::vector<WriteFilesCmd::Item> items;
         for (const OutputFile& file : files) items.push_back({file.absolute, file.bytes});
-        return ProjectFileWrites::writeUndoable(project, std::move(items), error);
+        // beneath `beneath` (the MCP tool: the project) when they are written; the window: each
+        // file beneath its own folder (no new refusal for a folder linked in from a library)
+        return ProjectFileWrites::writeUndoable(project, std::move(items), error, nullptr, nullptr, beneath, beneath.empty());
     }
 
     // ------------------------------------------------------------------ feedback

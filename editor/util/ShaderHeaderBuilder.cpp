@@ -125,7 +125,7 @@ std::string ShaderHeaderBuilder::buildShaderLibHeader(const std::map<std::string
 
 bool ShaderHeaderBuilder::writeShaderHeader(const std::filesystem::path& outputPath, const std::string& suffix, const std::vector<HeaderShader>& shaders, std::string& err) {
     std::error_code ec;
-    std::filesystem::create_directories(outputPath.parent_path(), ec);
+    FileUtils::createDirectories(outputPath.parent_path(), ec);   // (in a write scope: beneath its root)
     if (ec) {
         err = "Failed to create shader header directory: " + ec.message();
         return false;

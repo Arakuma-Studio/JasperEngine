@@ -334,7 +334,8 @@ void SpriteNormalsWatcher::tickRegeneration() {
             error = escape.message;
             ok = false;
         }
-        if (ok) ok = sn::writeOutputsDirect(files, failed, error);
+        // ... and written beneath the assets directory: a link planted on the way since is never followed
+        if (ok) ok = sn::writeOutputsDirect(files, failed, error, sn::outputsRoot(project));
         if (!ok) {
             lastLog = "Could not regenerate " + name + ": " + error;
             Out::warning("%s", lastLog.c_str());

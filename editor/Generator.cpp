@@ -9,6 +9,7 @@
 #include "AppSettings.h"
 #include "util/CxxStandards.h"
 #include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 #include "util/ShellEnv.h"
 #include "util/Util.h"
 #include "engine_lua_stubs.h"
@@ -84,10 +85,12 @@ editor::Generator::~Generator() {
 }
 
 bool editor::Generator::cleanBuildDirectory(const fs::path& buildPath) {
+    // the editor's build tree (.jasperengine/build), refused to agents by the deny-by-default guard
+    safewrite::EditorInternal ownBuild(buildPath);
     std::error_code ec;
 
     // Best-effort full wipe first.
-    fs::remove_all(buildPath, ec);
+    FileUtils::removeAll(buildPath, ec);
 
     // CMakeCache.txt and CMakeFiles/ are what actually pin the previous
     // generator/compiler. If the full wipe above was blocked partway by a
@@ -100,15 +103,15 @@ bool editor::Generator::cleanBuildDirectory(const fs::path& buildPath) {
         if (!fs::exists(cacheFile) && !fs::exists(cacheDir)) {
             break;
         }
-        fs::remove(cacheFile, ec);
-        fs::remove_all(cacheDir, ec);
+        FileUtils::removePath(cacheFile, ec);
+        FileUtils::removeAll(cacheDir, ec);
         if (!fs::exists(cacheFile) && !fs::exists(cacheDir)) {
             break;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    fs::create_directories(buildPath, ec);
+    FileUtils::createDirectories(buildPath, ec);
 
     if (fs::exists(cacheFile)) {
         Out::error("Could not remove the previous CMake cache at: %s", cacheFile.string().c_str());
@@ -119,6 +122,7 @@ bool editor::Generator::cleanBuildDirectory(const fs::path& buildPath) {
 }
 
 bool editor::Generator::clearStaleCMakeCache(const fs::path& projectPath, const fs::path& buildPath) {
+    safewrite::EditorInternal ownBuild(buildPath);   // the editor's build tree (util/SafeWrite.h)
     fs::path cacheFile = buildPath / "CMakeCache.txt";
     if (!fs::exists(cacheFile)) {
         return true;
@@ -217,6 +221,9 @@ bool editor::Generator::resolveDefaultKit(std::string& cCompiler, std::string& c
 }
 
 bool editor::Generator::configureCMake(const fs::path& projectPath, const fs::path& buildPath, const std::string& configType, const std::string& cCompiler, const std::string& cxxCompiler, const std::string& generator, unsigned int parallelJobs) {
+    // the build tree and its .jasperengine_kit marker (a refused marker would make the next compile
+    // clean the whole build directory): the editor's own (util/SafeWrite.h, EditorInternal)
+    safewrite::EditorInternal ownBuild(buildPath);
     if (!clearStaleCMakeCache(projectPath, buildPath)) {
         return false;
     }
@@ -349,41 +356,49 @@ bool editor::Generator::configureCMake(const fs::path& projectPath, const fs::pa
         return out;
     };
 
-    std::string cmakeCommand = cmakeExecutable() + " ";
-    if (!generator.empty()) {
-        cmakeCommand += "-G \"" + generator + "\" ";
+    // A CMake generator name an agent could have set must be one CMake actually knows: an arbitrary
+    // string is refused (never pasted into a command line). "" is CMake's platform default.
+    if (!generator.empty() && !isKnownGenerator(generator)) {
+        Out::error("Unknown CMake generator \"%s\"; set it in Preferences > External Tools to one CMake supports (e.g. Ninja, Unix Makefiles).", generator.c_str());
+        return false;
     }
-    if (!platform.empty()) {
-        cmakeCommand += "-A " + platform + " ";
-    }
-    if (!cCompiler.empty()) {
-        cmakeCommand += "-DCMAKE_C_COMPILER=\"" + toCMakePath(cCompiler) + "\" ";
-    }
-    if (!cxxCompiler.empty()) {
-        cmakeCommand += "-DCMAKE_CXX_COMPILER=\"" + toCMakePath(cxxCompiler) + "\" ";
-    }
-    cmakeCommand += "-DCMAKE_BUILD_TYPE=" + configType + " ";
+
+    // Launched as an argv array (CommandRunner::run), never through a shell: a project path or a
+    // setting that holds shell metacharacters ($(...), ;, ") is one literal argument, not a command.
+    std::vector<std::string> cmakeArgv = { cmakeProgram() };
+    if (!generator.empty()) { cmakeArgv.push_back("-G"); cmakeArgv.push_back(generator); }
+    if (!platform.empty()) { cmakeArgv.push_back("-A"); cmakeArgv.push_back(platform); }
+    if (!cCompiler.empty()) cmakeArgv.push_back("-DCMAKE_C_COMPILER=" + toCMakePath(cCompiler));
+    if (!cxxCompiler.empty()) cmakeArgv.push_back("-DCMAKE_CXX_COMPILER=" + toCMakePath(cxxCompiler));
+    cmakeArgv.push_back("-DCMAKE_BUILD_TYPE=" + configType);
     // When configuring from inside the editor, ensure the generated project builds
     // in "plugin" mode (no Factory main.cpp/scene sources added).
-    cmakeCommand += "-DJASPERENGINE_EDITOR_PLUGIN=ON ";
+    cmakeArgv.push_back("-DJASPERENGINE_EDITOR_PLUGIN=ON");
     // The generated CMakeLists.txt stays machine-independent; the effective
     // local limit is supplied through the build tree's cache on every configure.
-    cmakeCommand += "-DJASPERENGINE_PARALLEL_BUILD_JOBS=" + std::to_string(parallelJobs) + " ";
-    cmakeCommand += "\"" + toCMakePath(projectPath.string()) + "\" ";
-    cmakeCommand += "-B \"" + toCMakePath(buildPath.string()) + "\" ";
-    cmakeCommand += "-DJASPERENGINE_LIB_DIR=\"" + toCMakePath(exePath.string()) + "\"";
+    cmakeArgv.push_back("-DJASPERENGINE_PARALLEL_BUILD_JOBS=" + std::to_string(parallelJobs));
+    cmakeArgv.push_back(toCMakePath(projectPath.string()));
+    cmakeArgv.push_back("-B");
+    cmakeArgv.push_back(toCMakePath(buildPath.string()));
+    cmakeArgv.push_back("-DJASPERENGINE_LIB_DIR=" + toCMakePath(exePath.string()));
 
-    Out::info("Configuring CMake project with command: %s", cmakeCommand.c_str());
-    bool result = commandRunner.run(CommandRunner::msvcEnvPrefix(generator) + cmakeCommand, projectPath);
+    Out::info("Configuring CMake project (%s)...", cmakeProgram().c_str());
+    // Windows + Ninja: the MSVC environment vcvars sets (loaded once, cached), cmake launched
+    // directly with it: no shell sees the project path or a build setting
+    CommandRunner::Environment msvcEnv;
+    std::string msvcError;
+    if (!CommandRunner::msvcEnvironment(generator, msvcEnv, msvcError)) {
+        Out::error("%s", msvcError.c_str());
+        return false;
+    }
+    bool result = commandRunner.run(cmakeArgv, projectPath, {}, msvcEnv.empty() ? nullptr : &msvcEnv);
 
     // Record which kit was used so we can detect changes next time.
     if (result) {
         std::error_code ec;
-        fs::create_directories(buildPath, ec);
-        std::ofstream f(buildPath / ".jasperengine_kit");
-        if (f.is_open()) {
-            f << currentKit;
-        }
+        FileUtils::createDirectories(buildPath, ec);
+        // (in a write scope: beneath its root)
+        FileUtils::writeFileReplacing(buildPath / ".jasperengine_kit", currentKit);
     }
 
     return result;
@@ -406,12 +421,18 @@ unsigned int editor::Generator::getMaxParallelBuildJobs() {
 }
 
 bool editor::Generator::buildProject(const fs::path& buildPath, const std::string& configType, const std::string& generator, unsigned int parallelJobs) {
-    std::string buildCommand = cmakeExecutable() + " --build \"" + buildPath.string() + "\" --config " + configType;
-    buildCommand += " --parallel " + std::to_string(parallelJobs);
+    std::vector<std::string> buildArgv = { cmakeProgram(), "--build", buildPath.string(),
+                                           "--config", configType, "--parallel", std::to_string(parallelJobs) };
     Out::info("Building project with %u parallel jobs...", parallelJobs);
     // The build step invokes the compiler/linker again, so it needs the same
-    // MSVC environment as configure (see CommandRunner::msvcEnvPrefix).
-    return commandRunner.run(CommandRunner::msvcEnvPrefix(generator) + buildCommand, buildPath);
+    // MSVC environment as configure (see CommandRunner::msvcEnvironment). Launched as argv (no shell).
+    CommandRunner::Environment msvcEnv;
+    std::string msvcError;
+    if (!CommandRunner::msvcEnvironment(generator, msvcEnv, msvcError)) {
+        Out::error("%s", msvcError.c_str());
+        return false;
+    }
+    return commandRunner.run(buildArgv, buildPath, {}, msvcEnv.empty() ? nullptr : &msvcEnv);
 }
 
 // The Jolt configuration the editor's engine library was built with, as compile definitions.
@@ -905,6 +926,11 @@ std::string editor::Generator::getEditorPluginAbiCheck() {
 }
 
 void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::path& projectInternalPath, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::SceneBuildInfo>& scenes, const std::vector<editor::PrefabSceneInfo>& prefabs, bool vsyncEnabled, const WindowSettings& windowSettings, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard) {
+    // the editor regenerates its own files here (an MCP call's deny-by-default guard refuses them
+    // otherwise): the internal folder, the root CMakeLists.txt, .vscode (util/SafeWrite.h)
+    safewrite::EditorInternal ownInternal(projectInternalPath);
+    safewrite::EditorInternal ownCMake(projectPath / "CMakeLists.txt");
+    safewrite::EditorInternal ownVscode(projectPath / ".vscode");
     fs::path relativeInternalPath = fs::relative(projectInternalPath, projectPath);
     fs::path engineApiRelativePath = relativeInternalPath / "engine-api";
 
@@ -1251,7 +1277,7 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     // Generate .vscode/settings.json for VS Code if it doesn't exist
     fs::path vscodeDir = projectPath / ".vscode";
     if (!fs::exists(vscodeDir)) {
-        fs::create_directories(vscodeDir);
+        { std::error_code dirError; FileUtils::createDirectories(vscodeDir, dirError); }
     }
     fs::path settingsFile = vscodeDir / "settings.json";
     if (!fs::exists(settingsFile)) {
@@ -1357,8 +1383,16 @@ std::string luaScriptStub(const std::string& className, const std::string& relPa
 
 void editor::Generator::writeLuaScriptStubs(const fs::path& projectPath, const fs::path& projectInternalPath,
                                             const std::vector<fs::path>& changedFiles) {
+    // the Lua stubs live in the editor's internal folder (util/SafeWrite.h, EditorInternal)
+    safewrite::EditorInternal ownInternal(projectInternalPath);
     try {
         const fs::path stubsDir = projectInternalPath / "engine-api" / "lua" / "scripts";
+        // a stubs folder resolving outside the project (a link): nothing written or removed there
+        if (!safewrite::isInsideResolved(stubsDir, projectPath)) {
+            Out::warning("Not writing the Lua script classes: %s resolves outside the project (a symbolic link on its way); remove the link.",
+                         FileUtils::pathToGenericUtf8(stubsDir).c_str());
+            return;
+        }
         const fs::path luaRoot = ProjectChecks::luaRootFromProjectFile(projectPath);
 
         // engine names: a script named like an engine class or enum keeps its own declaration
@@ -1401,7 +1435,7 @@ void editor::Generator::writeLuaScriptStubs(const fs::path& projectPath, const f
 
         std::error_code ec;
         if (!todo.empty()) {
-            fs::create_directories(stubsDir, ec);
+            FileUtils::createDirectories(stubsDir, ec);
             const std::vector<std::string> engineGlobals = ProjectChecks::engineLuaGlobals();
             for (const auto& [name, file] : todo) {
                 std::string code;
@@ -1424,7 +1458,7 @@ void editor::Generator::writeLuaScriptStubs(const fs::path& projectPath, const f
             const std::string name = path.stem().string();
             const bool stale = changedFiles.empty() ? classes.count(name) == 0 : removed.count(name) > 0;
             std::error_code removeEc;
-            if (stale) fs::remove(path, removeEc);
+            if (stale) FileUtils::removePath(path, removeEc);
         }
     } catch (const std::exception& e) {
         Out::warning("Could not write the Lua script classes for lua-language-server: %s", e.what());
@@ -1439,7 +1473,9 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
     // project (agents and people edit them), so the editor never changes an existing file.
     const fs::path agentsFile = projectPath / "AGENTS.md";
     std::error_code ec;
-    if (fs::exists(agentsFile, ec) || ec) {
+    // any entry there, a link (even a dangling one) included: never written (through)
+    const fs::file_status agentsStatus = fs::symlink_status(agentsFile, ec);
+    if (fs::exists(agentsStatus) || (ec && agentsStatus.type() != fs::file_type::not_found)) {
         writeClaudeFile(projectPath);
         return;
     }
@@ -1553,7 +1589,8 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
 void editor::Generator::writeClaudeFile(const fs::path& projectPath) {
     const fs::path claudeFile = projectPath / "CLAUDE.md";
     std::error_code ec;
-    if (fs::exists(claudeFile, ec) || ec) return;
+    const fs::file_status claudeStatus = fs::symlink_status(claudeFile, ec);
+    if (fs::exists(claudeStatus) || (ec && claudeStatus.type() != fs::file_type::not_found)) return;
     FileUtils::writeIfChanged(claudeFile, "@AGENTS.md\n");
 }
 
@@ -1604,7 +1641,7 @@ void writeLuaApiStubs(const fs::path& stubsDir) {
         std::error_code fileEc;
         const fs::path path = it->path();
         if (path.extension() == ".lua" && it->is_regular_file(fileEc) && names.count(path.filename().string()) == 0) {
-            fs::remove(path, fileEc);
+            FileUtils::removePath(path, fileEc);
         }
     }
 }
@@ -1697,6 +1734,7 @@ bool mergeLuaRcIgnoreDir(nlohmann::json& root, const std::string& dir) {
 }
 
 void writeLuaRc(const fs::path& projectPath, const std::string& library, const std::string& plugin, const std::string& ignoreDir) {
+    jasperengine::editor::safewrite::EditorInternal ownLuarc(projectPath / ".luarc.json");   // the editor's own dot-file (util/SafeWrite.h)
     using Json = nlohmann::json;
     const fs::path file = projectPath / ".luarc.json";
     const std::string luaVersion = "Lua " LUA_VERSION_MAJOR "." LUA_VERSION_MINOR;
@@ -1882,6 +1920,10 @@ void writeClangdConfig(const fs::path& projectPath, const std::string& databaseD
 } // namespace jasperengine::editor
 
 void editor::Generator::writeEditorTooling(const fs::path& projectPath, const fs::path& projectInternalPath, int cxxStandard, const std::vector<fs::path>& scriptDirs) {
+    // the editor's clangd/lua tooling: the internal folder, .clangd and .vscode at the project root
+    safewrite::EditorInternal ownInternal(projectInternalPath);
+    safewrite::EditorInternal ownClangd(projectPath / ".clangd");
+    safewrite::EditorInternal ownVscode(projectPath / ".vscode");
     try {
         const fs::path relativeInternalPath = fs::relative(projectInternalPath, projectPath);
         const fs::path stubsRelative = relativeInternalPath / "engine-api" / "lua";
@@ -1903,6 +1945,8 @@ void editor::Generator::writeEditorTooling(const fs::path& projectPath, const fs
 
 std::vector<editor::PrefabInstanceInfo> editor::Generator::writePrefabSources(const std::map<fs::path, Prefab>& prefabAssets, uint32_t sceneId, const fs::path& projectPath, const fs::path& projectInternalPath,
         const std::function<std::string(const fs::path&)>& prefabGuid, const std::map<fs::path, std::shared_ptr<BakedPrefab>>& baked) {
+    // prefab_*.cpp/.h in the editor's generated folder (util/SafeWrite.h, EditorInternal)
+    safewrite::EditorInternal ownGenerated(getGeneratedPath(projectInternalPath));
     const fs::path generatedPath = getGeneratedPath(projectInternalPath);
 
     std::vector<PrefabInstanceInfo> prefabInstances;
@@ -2035,6 +2079,7 @@ std::vector<editor::PrefabInstanceInfo> editor::Generator::writePrefabSources(co
 }
 
 void editor::Generator::writeSceneSource(Scene* scene, uint32_t sceneId, const std::string& sceneName, const std::vector<Entity>& entities, const Entity camera, const fs::path& projectPath, const fs::path& projectInternalPath, std::vector<PrefabInstanceInfo>& prefabInstances, const SceneResources& resources){
+    safewrite::EditorInternal ownInternal(projectInternalPath);   // generated sources under .jasperengine
     const fs::path generatedPath = getGeneratedPath(projectInternalPath);
 
     std::string sceneContent = Factory::createScene(0, scene, sceneId, sceneName, entities, camera, projectPath, generatedPath, prefabInstances, resources);
@@ -2046,13 +2091,14 @@ void editor::Generator::writeSceneSource(Scene* scene, uint32_t sceneId, const s
 }
 
 void editor::Generator::clearSceneSource(uint32_t sceneId, const std::string& sceneName, const fs::path& projectInternalPath) {
+    safewrite::EditorInternal ownInternal(projectInternalPath);   // generated sources under .jasperengine
     const fs::path generatedPath = getGeneratedPath(projectInternalPath);
     std::string filename = Factory::sceneToFileName(sceneId, sceneName) + ".cpp";
     const fs::path sourceFile = generatedPath / filename;
 
     if (fs::exists(sourceFile)) {
         std::error_code ec;
-        fs::remove(sourceFile, ec);
+        FileUtils::removePath(sourceFile, ec);
         if (ec) {
             Out::error("Failed to remove scene source file '%s': %s", sourceFile.string().c_str(), ec.message().c_str());
         }
@@ -2067,6 +2113,9 @@ bool editor::Generator::hasSceneSource(uint32_t sceneId, const std::string& scen
 }
 
 void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples){
+    // the generated sources (main.cpp, scene and prefab factories) live in the editor's internal
+    // folder, which an MCP call's deny-by-default guard refuses otherwise (util/SafeWrite.h)
+    safewrite::EditorInternal ownInternal(projectInternalPath);
     const fs::path generatedPath = getGeneratedPath(projectInternalPath);
 
     // The editor used to emit a GLFW application host into every project. It is
@@ -2075,8 +2124,8 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     // root, so a leftover would be compiled against an engine that no longer
     // has GLFW in it.
     std::error_code removeError;
-    fs::remove(generatedPath / "PlatformEditor.h", removeError);
-    fs::remove(generatedPath / "PlatformEditor.cpp", removeError);
+    FileUtils::removePath(generatedPath / "PlatformEditor.h", removeError);
+    FileUtils::removePath(generatedPath / "PlatformEditor.cpp", removeError);
 
     // Build main.cpp content
     std::string mainContent;
@@ -2421,13 +2470,31 @@ std::string editor::Generator::cmakeExecutable() {
     return configured.empty() ? "cmake" : ("\"" + configured + "\"");
 }
 
+std::string editor::Generator::cmakeProgram() {
+    // The program path unquoted, for an argv array (CommandRunner::run quotes nothing: argv[0] is
+    // passed as-is / looked up on PATH).
+    const std::string configured = AppSettings::getCMakePath();
+    return configured.empty() ? "cmake" : configured;
+}
+
+bool editor::Generator::isKnownGenerator(const std::string& generator) {
+    // CMake's generator names (cmake --help "Generators"); the base name of a Visual Studio entry
+    // carries a version, so those are matched by prefix. A value outside this set is refused rather
+    // than handed to CMake.
+    static const char* const kExact[] = {
+        "Ninja", "Ninja Multi-Config", "Unix Makefiles", "MinGW Makefiles", "MSYS Makefiles",
+        "NMake Makefiles", "NMake Makefiles JOM", "Borland Makefiles", "Watcom WMake", "Xcode",
+        "Green Hills MULTI",
+    };
+    for (const char* name : kExact) {
+        if (generator == name) return true;
+    }
+    return generator.rfind("Visual Studio ", 0) == 0;
+}
+
 std::string editor::Generator::probeCMakeVersion(const std::string& path) {
-    const std::string command = "\"" + path + "\" --version";
-#ifdef _WIN32
-    const std::string output = CommandRunner::runCaptureNoWindow(command + " 2>nul");
-#else
-    const std::string output = ShellEnv::runCapture(command + " 2>/dev/null", 5000);
-#endif
+    // run directly (no shell), killed after 5 s: a GUI program chosen by mistake never answers
+    const std::string output = CommandRunner::capture({path, "--version"}, 5000);
 
     // "cmake version 3.31.6" on the first line.
     const std::string prefix = "cmake version ";
@@ -2483,29 +2550,18 @@ editor::CMakeInfo editor::Generator::detectCMake() {
 std::vector<editor::CMakeKit> editor::Generator::detectAvailableKits() {
     std::vector<CMakeKit> kits;
 
-    auto runCmd = [](const std::string& cmd) -> std::string {
-#ifdef _WIN32
-        return CommandRunner::runCaptureNoWindow(cmd + " 2>nul");
-#else
-        FILE* pipe = popen((cmd + " 2>/dev/null").c_str(), "r");
-        if (!pipe) return "";
-        std::string result;
-        char buffer[256];
-        while (fgets(buffer, sizeof(buffer), pipe)) {
-            result += buffer;
-        }
-        pclose(pipe);
-        while (!result.empty() && (result.back() == '\n' || result.back() == '\r' || result.back() == ' '))
-            result.pop_back();
-        return result;
-#endif
+    // Each probe runs its program DIRECTLY with an argument list (CommandRunner::capture: no shell,
+    // so a compiler / tool path holding spaces or metacharacters is one literal argument); its
+    // output when it exits 0, "" otherwise.
+    auto runCmd = [](const std::vector<std::string>& argv) -> std::string {
+        return CommandRunner::capture(argv);
     };
 
     auto findCompiler = [&runCmd](const std::string& compiler) -> std::string {
 #ifdef _WIN32
-        std::string result = runCmd("where " + compiler);
+        std::string result = runCmd({"where", compiler});
 #else
-        std::string result = runCmd("which " + compiler);
+        std::string result = runCmd({"which", compiler});
 #endif
         size_t nl = result.find('\n');
         if (nl != std::string::npos) result = result.substr(0, nl);
@@ -2546,8 +2602,8 @@ std::vector<editor::CMakeKit> editor::Generator::detectAvailableKits() {
         std::string cxxPath = findCompiler("g++");
         if (!cxxPath.empty()) {
             std::string ccPath = findCompiler("gcc");
-            std::string version = runCmd("\"" + cxxPath + "\" -dumpfullversion -dumpversion");
-            std::string machine = runCmd("\"" + cxxPath + "\" -dumpmachine");
+            std::string version = runCmd({cxxPath, "-dumpfullversion", "-dumpversion"});
+            std::string machine = runCmd({cxxPath, "-dumpmachine"});
 
             CMakeKit kit;
             kit.cxxCompiler = cxxPath;
@@ -2567,7 +2623,7 @@ std::vector<editor::CMakeKit> editor::Generator::detectAvailableKits() {
         std::string cxxPath = findCompiler("clang++");
         if (!cxxPath.empty()) {
             std::string ccPath = findCompiler("clang");
-            std::string versionOutput = runCmd("\"" + cxxPath + "\" --version");
+            std::string versionOutput = runCmd({cxxPath, "--version"});
             std::string version;
             size_t nl = versionOutput.find('\n');
             std::string firstLine = (nl != std::string::npos) ? versionOutput.substr(0, nl) : versionOutput;
@@ -2577,7 +2633,7 @@ std::vector<editor::CMakeKit> editor::Generator::detectAvailableKits() {
                 size_t vend = firstLine.find_first_of(" (", vpos);
                 version = (vend != std::string::npos) ? firstLine.substr(vpos, vend - vpos) : firstLine.substr(vpos);
             }
-            std::string machine = runCmd("\"" + cxxPath + "\" -dumpmachine");
+            std::string machine = runCmd({cxxPath, "-dumpmachine"});
 
             CMakeKit kit;
             kit.cxxCompiler = cxxPath;
@@ -2597,7 +2653,7 @@ std::vector<editor::CMakeKit> editor::Generator::detectAvailableKits() {
                 // Verify ninja actually executes: a broken binary (e.g. a pip
                 // wrapper copied out of its Scripts folder, or a blocked
                 // download) passes the PATH check but fails when CMake runs it.
-                if (!ninjaPath.empty() && !runCmd("\"" + ninjaPath + "\" --version").empty()) {
+                if (!ninjaPath.empty() && !runCmd({ninjaPath, "--version"}).empty()) {
                     kit.generator = "Ninja";
                 } else if (ninjaPath.empty()) {
                     kit.available = false;
@@ -2625,7 +2681,7 @@ std::vector<editor::CMakeKit> editor::Generator::detectAvailableKits() {
         std::string vswhere = CommandRunner::findVswherePath();
         std::string vsName;
         if (!vswhere.empty()) {
-            vsName = runCmd("\"" + vswhere + "\" -products * -latest -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property displayName");
+            vsName = runCmd({vswhere, "-products", "*", "-latest", "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "displayName"});
         }
         // cl.exe on PATH (e.g. a Developer Command Prompt) also signals MSVC is
         // available even if vswhere cannot be located.
@@ -2635,7 +2691,7 @@ std::vector<editor::CMakeKit> editor::Generator::detectAvailableKits() {
             kit.displayName = vsName.empty() ? "MSVC" : vsName;
             // Pin a generator both the selected CMake and an installed VS
             // support, newest first: MSYS2 CMake would default to Ninja/GCC.
-            const std::string cmakeHelp = runCmd(cmakeExecutable() + " --help");
+            const std::string cmakeHelp = runCmd({cmakeProgram(), "--help"});
             const std::regex vsGenerator("Visual Studio ([0-9]+) [0-9]{4}");
             std::map<int, std::string, std::greater<int>> generators;
             for (std::sregex_iterator it(cmakeHelp.begin(), cmakeHelp.end(), vsGenerator), end; it != end; ++it) {
@@ -2644,7 +2700,7 @@ std::vector<editor::CMakeKit> editor::Generator::detectAvailableKits() {
             for (const auto& entry : generators) {
                 if (!vswhere.empty()) {
                     const std::string versionRange = "[" + std::to_string(entry.first) + "," + std::to_string(entry.first + 1) + ")";
-                    const std::string name = runCmd("\"" + vswhere + "\" -products * -latest -version \"" + versionRange + "\" -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property displayName");
+                    const std::string name = runCmd({vswhere, "-products", "*", "-latest", "-version", versionRange, "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "displayName"});
                     if (name.empty()) continue;
                     kit.displayName = name;
                 } else {
@@ -2659,7 +2715,7 @@ std::vector<editor::CMakeKit> editor::Generator::detectAvailableKits() {
                 // Also supports CMake distributions without VS generators.
                 // vcvars supplies cl/SDK paths when cl is not already on PATH.
                 const std::string ninjaPath = findCompiler("ninja");
-                if (!ninjaPath.empty() && !runCmd("\"" + ninjaPath + "\" --version").empty() &&
+                if (!ninjaPath.empty() && !runCmd({ninjaPath, "--version"}).empty() &&
                     (clOnPath || !CommandRunner::findVcvarsall().empty())) {
                     kit.generator = "Ninja";
                     kit.cCompiler = "cl";
@@ -2681,18 +2737,15 @@ std::vector<editor::CMakeKit> editor::Generator::detectAvailableKits() {
 std::string editor::Generator::checkBuildTools(bool requireEditorCompatibility, CMakeKit* resolvedDefaultKit) {
     std::string missing;
 
+    // No shell: Windows runs `where <name>` directly (CommandRunner::capture, the argument quoted
+    // by its helper), elsewhere the PATH is searched in-process like `command -v` would.
+    auto commandExists = [](const char* cmd) -> bool {
 #ifdef _WIN32
-    auto commandExists = [](const char* cmd) -> bool {
-        // `where` prints the path when found, nothing when not. Use the no-window
-        // runner so this probe doesn't flash a cmd.exe window.
-        return !CommandRunner::runCaptureNoWindow(std::string("where ") + cmd + " 2>nul").empty();
-    };
+        return !CommandRunner::capture({"where", cmd}).empty();
 #else
-    auto commandExists = [](const char* cmd) -> bool {
-        std::string check = std::string("command -v ") + cmd + " >/dev/null 2>&1";
-        return system(check.c_str()) == 0;
-    };
+        return !ShellEnv::findExecutable(cmd).empty();
 #endif
+    };
 
     const CMakeInfo cmakeInfo = detectCMake();
     if (!cmakeInfo.error.empty()) {
@@ -2756,7 +2809,13 @@ void editor::Generator::build(const fs::path projectPath, const fs::path buildPa
     lastBuildSucceeded.store(false, std::memory_order_relaxed);
     commandRunner.resetCancel();
 
-    buildFuture = std::async(std::launch::async, [this, projectPath, buildPath, cCompiler, cxxCompiler, generator, parallelJobs]() {
+    const std::vector<fs::path> writeRoot = safewrite::Scope::currentRoots();
+    const bool writeStrict = safewrite::Scope::currentStrict();
+    buildFuture = std::async(std::launch::async, [this, projectPath, buildPath, cCompiler, cxxCompiler, generator, parallelJobs, writeRoot, writeStrict]() {
+        // in the write scope of the thread that started the build (an MCP call's project); the
+        // build tree is the editor's own, named explicitly on this worker (a token is per thread)
+        safewrite::Scope scope(writeRoot, writeStrict);
+        safewrite::EditorInternal ownBuild(buildPath);
         try {
             auto startTime = std::chrono::steady_clock::now();
 

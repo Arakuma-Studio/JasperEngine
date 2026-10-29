@@ -16,7 +16,11 @@
 #include "Factory.h"
 #include "SettingsCategoryList.h"
 
+#include "util/CommandRunner.h"
+
 #include <cstdlib>
+
+#include <vector>
 
 namespace jasperengine::editor {
 
@@ -631,22 +635,12 @@ void ExportWindow::launchBuiltPlayer() {
         return;
     }
 
-    // The player resolves assets and lua relative to its working directory.
-    #ifdef _WIN32
-    const std::string command = "start \"\" /D \"" + exePath.parent_path().string() + "\" \"" + exePath.string() + "\"";
-    #else
-    auto quote = [](const std::string& value) {
-        std::string quoted = "'";
-        for (char c : value) {
-            if (c == '\'') quoted += "'\\''";
-            else quoted += c;
-        }
-        return quoted + "'";
-    };
-    const std::string command = "cd " + quote(exePath.parent_path().string()) + " && " + quote(exePath.string()) + " >/dev/null 2>&1 &";
-    #endif
-    if (std::system(command.c_str()) != 0) {
-        Out::error("Build And Run: could not start %s", exePath.string().c_str());
+    // The player resolves assets and lua relative to its working directory. Launched detached
+    // WITHOUT a shell (the path is one argument), inheriting no descriptor, and never left as a
+    // zombie child of the editor; an exec failure is reported (CommandRunner::launchDetached)
+    std::string error;
+    if (!CommandRunner::launchDetached(exePath, exePath.parent_path(), error)) {
+        Out::error("Build And Run: could not start %s: %s", exePath.string().c_str(), error.c_str());
     } else {
         Out::info("Running %s", exePath.string().c_str());
     }
@@ -1021,6 +1015,13 @@ bool ExportWindow::drawPlatformSettings(bool& targetNotEmpty) {
     } else if (m_mode == ExportMode::Web) {
         if (!m_emsdkInfo.found) {
             ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " Emscripten SDK not found. Set it in Preferences > External Tools.");
+            canExport = false;
+        }
+        // emcc.bat runs through cmd.exe on Windows: no '%' in the project, build tree or output path
+        const std::string pathRefusal = Exporter::webBuildRefusal(
+            {m_project->getProjectPath(), Exporter::buildCacheDirFor(m_project, ExportMode::Web), m_targetDir});
+        if (!pathRefusal.empty()) {
+            ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " %s.", pathRefusal.c_str());
             canExport = false;
         }
     }

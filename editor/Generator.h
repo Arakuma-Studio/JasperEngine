@@ -175,6 +175,10 @@ namespace jasperengine::editor {
         // cmake for a command line: the configured path (quoted) or plain
         // "cmake" for PATH to resolve.
         static std::string cmakeExecutable();
+        // The CMake program path for an argv launch (unquoted; "cmake" when none is configured)
+        static std::string cmakeProgram();
+        // Whether `generator` is a CMake generator name the editor will pass to CMake (allow-list)
+        static bool isKnownGenerator(const std::string& generator);
         // A file dialog pick turned into a cmake executable, "" when it holds none.
         static std::string resolveCMakePath(const std::string& userPath);
         // Version a cmake executable reports, "" when it is not one.

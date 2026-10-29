@@ -123,6 +123,12 @@ McpServer& McpServer::get() {
 void McpServer::start(App& app) {
     if (started) return;
     started = true;
+    // the folders an MCP call's strict write scope lets writes reach outside the project
+    safewrite::allowOutsideScopes(AppSettings::getConfigDirectory());
+    {
+        std::error_code tempError;
+        safewrite::allowOutsideScopes(std::filesystem::temp_directory_path(tempError));
+    }
     appPtr = &app;
     ctx = std::make_unique<McpContext>(app, *this);
     McpAutoSync::get().serverStarted();
@@ -708,6 +714,8 @@ void McpServer::handleRequest(const SessionPtr& session, const Json& message, co
         // Resource not found: -32002 up to 2025-11-25, Invalid params since
         const int notFound = modern ? -32602 : -32002;
         runOnMainThread([this, id, uri, reply, notFound]() {
+            // a resource that writes (project-agents makes AGENTS.md / CLAUDE.md) stays beneath the project
+            McpWriteScope writeScope;
             ResourceResult result;
             try {
                 std::map<std::string, std::string> vars;
@@ -1120,6 +1128,10 @@ void McpServer::execute(const CallPtr& call, const ToolDef& def) {
         }
     });
 
+    // every file the tool writes stays beneath the project (util/SafeWrite.h): FileUtils' writes,
+    // and the commands it makes (their undo and redo too); outside the project nothing but the
+    // editor's own folders, except for a tool that switches projects (its paths are explicit)
+    McpWriteScope writeScope(McpWriteScope::projectRoots(), effectiveActivity(def) != ToolActivity::ProjectSwitch);
     try {
         def.handler(call);
     } catch (const Json::type_error& e) {
@@ -1190,6 +1202,8 @@ void McpServer::tick() {
             call->fail("Cancelled.");
             continue;
         }
+        // a continuation writes beneath the project as the tool's run did
+        McpWriteScope writeScope;
         try {
             if (item.frames >= 0) {
                 if (item.frames > 0) {

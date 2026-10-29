@@ -4,6 +4,7 @@
 #include "util/FbxImporter.h"
 
 #include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 #include "util/GlbBuilder.h"
 #include "util/Util.h"
 
@@ -225,6 +226,15 @@ bool writeFile(const fs::path& path, const std::vector<unsigned char>& bytes, st
     fs::path tempPath = path;
     tempPath += suffix;
     std::error_code ec;
+    // in a write scope (an MCP import or model assignment): beneath its root, no link on the way
+    // followed (util/SafeWrite.h); the conversion cache's folder must resolve inside it
+    if (const FileUtils::ScopedOps* ops = FileUtils::scopedOps()) {
+        const int r = ops->write(path, std::string(bytes.begin(), bytes.end()), ec);
+        if (r >= 0) {
+            if (r == 0) error = "Could not write " + FileUtils::pathToUtf8(path) + ": " + safewrite::lastScopedError();
+            return r == 1;
+        }
+    }
     fs::create_directories(path.parent_path(), ec);
     {
         std::ofstream out(tempPath, std::ios::binary | std::ios::trunc);

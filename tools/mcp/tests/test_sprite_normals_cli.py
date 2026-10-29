@@ -381,6 +381,13 @@ async def test_project_outputs_and_symbolic_links():
     code, out, err = run_json(linked, "--project", str(linked), "--source", "assets/art/ball.png")
     check(code == 0, f"a linked assets directory: {err} {json.dumps(out)}")
     check((real / "art" / "ball_normal.png").is_file(), "written into the linked assets directory")
+    # a link below the linked assets directory, leading further out: refused, nothing written there
+    further = work.parent / "further"
+    further.mkdir()
+    os.symlink(further, real / "out")
+    r = run(linked, "--project", str(linked), "--source", "assets/art/ball.png", "-o", "assets/out/ball_n.png")
+    check(r.returncode != 0 and "output_invalid" in r.stderr, f"a link below the assets directory: {r.returncode} {r.stderr[-600:]}")
+    check(not any(further.iterdir()), "nothing written further out")
 
 
 # ---------------------------------------------------------------------------- 12. --cells-json

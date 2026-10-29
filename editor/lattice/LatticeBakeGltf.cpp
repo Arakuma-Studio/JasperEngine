@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "LatticeBakeGltf.h"
+#include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 
 #include <algorithm>
 #include <cmath>
@@ -1001,9 +1003,18 @@ bool LatticeBakeGltf::saveBinary(const fs::path& file, std::string& error){
     out.insert(out.end(), bin.begin(), bin.end());
 
     std::error_code ec;
-    if (fs::exists(file, ec)){
+    if (fs::exists(fs::symlink_status(file, ec))){
         error = "'" + file.generic_string() + "' already exists";
         return false;
+    }
+    // in a write scope (an MCP edit_lattice bake): beneath its root, no link on the way followed
+    // (a model linked in from elsewhere: refused, nothing written there)
+    if (const editor::FileUtils::ScopedOps* ops = editor::FileUtils::scopedOps()){
+        const int r = ops->write(file, std::string(out.begin(), out.end()), ec);
+        if (r >= 0){
+            if (r == 0) error = "cannot write '" + file.generic_string() + "': " + editor::safewrite::lastScopedError();
+            return r == 1;
+        }
     }
     {
         std::ofstream stream(file, std::ios::binary | std::ios::trunc);

@@ -77,9 +77,19 @@ namespace jasperengine::editor {
         std::string errorMessage;
     };
 
+    // The Emscripten SDK a Web build uses. No emcmake wrapper (emcmake.bat would run through
+    // cmd.exe, which parses its arguments): CMake is run directly with what emcmake.py adds
+    // (Exporter::emscriptenCMakeArgs) and the SDK environment emsdk_env would set
+    // (Exporter::emscriptenEnvironment), both from the SDK's layout and its .emscripten config.
     struct EmsdkInfo {
         bool found = false;
-        std::string emcmake;                 // emcmake command or full path
+        std::string emscripten;              // the emscripten folder (emcc, cmake/Modules/Platform)
+        std::string toolchainFile;           // <emscripten>/cmake/Modules/Platform/Emscripten.cmake
+        std::string emsdkRoot;               // the emsdk holding it ("" when emscripten stands alone)
+        std::string configFile;              // the .emscripten emcc reads ("" none found: its default)
+        std::string node;                    // node.js (CMAKE_CROSSCOMPILING_EMULATOR, EMSDK_NODE), "" none
+        std::string python;                  // the SDK's own python (EMSDK_PYTHON), "" none
+        std::vector<std::string> pathDirs;   // SDK folders put first on PATH (as emsdk_env does)
         std::string description;             // where it was found, for the UI
     };
 
@@ -92,6 +102,10 @@ namespace jasperengine::editor {
         std::atomic<bool> cancelRequested{false};
 
         std::thread exportThread;
+        // the app (player) name, fixed when the export starts: a rename while it builds can't change
+        // which file is produced and recorded
+        std::string fixedAppName;
+        fs::path producedExecutable;             // guarded by progressMutex
 
         ShaderBuilder shaderBuilder;
         CommandRunner commandRunner;
@@ -235,6 +249,42 @@ namespace jasperengine::editor {
         static std::string getShaderDisplayName(ShaderType type, uint64_t properties, uint16_t customId = 0);
         static std::string getCMakeGraphicBackend(::jasperengine::ShaderBackend backend);
         static EmsdkInfo detectEmsdk(const std::string& overridePath);
+        // What emcmake.py adds to a CMake configure: the Emscripten toolchain file, node as the
+        // cross-compiling emulator, and on Windows a generator (emscriptenWindowsGeneratorArgs).
+        // `env` is the environment CMake runs in (emscriptenEnvironment). error set when it can't.
+        static std::vector<std::string> emscriptenCMakeArgs(const EmsdkInfo& sdk, bool generatorGiven,
+                                                            const CommandRunner::Environment& env, std::string& error);
+        // emcmake.py's Windows generator choice (platform-independent, for tests): nothing when a
+        // generator is given or CMAKE_GENERATOR is set in `env`; else -G "MinGW Makefiles" when
+        // mingw32-make is on env's PATH (';'-separated), else -G Ninja when ninja is; else error.
+        static std::vector<std::string> emscriptenWindowsGeneratorArgs(const CommandRunner::Environment& env, bool generatorGiven,
+                                                                       std::string& error);
+        // Windows Web builds: the first file or folder below `roots` (what the build copies or
+        // compiles: assets, Lua, C++ script folders) whose path holds '%' or '"' (emcc.bat runs
+        // through cmd.exe), as a refusal; "" when none. At most maxEntries are looked at: more is
+        // refused too (it can't be checked). Platform-independent; webTreeRefusal applies it on
+        // Windows only.
+        static std::string webTreePathRefusal(const std::vector<fs::path>& roots, size_t maxEntries = 200000);
+        static std::string webTreeRefusal(const std::vector<fs::path>& roots);
+        // The folders a Web build of `project` takes files from (assets, Lua, C++ script folders)
+        static std::vector<fs::path> webSourceRoots(Project* project);
+        // The environment the SDK's tools run in: this process's, with the SDK folders first on
+        // PATH and EMSDK / EM_CONFIG / EMSDK_NODE / EMSDK_PYTHON set (what emsdk_env sets)
+        static CommandRunner::Environment emscriptenEnvironment(const EmsdkInfo& sdk);
+        // A Web build on Windows still runs emcc.bat (the SDK's compiler driver) through cmd.exe,
+        // via CMake / Ninja / make, and cmd.exe expands %VAR% even inside quotes: "" when none of
+        // `paths` (the project, the build tree, the output folder) holds '%' or '"', else the
+        // refusal naming the first that does. Platform-independent; applied on Windows only
+        // (webBuildRefusal).
+        static std::string webPathRefusal(const std::vector<fs::path>& paths);
+        // webPathRefusal on Windows, "" elsewhere
+        static std::string webBuildRefusal(const std::vector<fs::path>& paths);
+        // The build tree of `project`'s exports in `mode` (<internal>/export/desktop|web)
+        static fs::path buildCacheDirFor(Project* project, ExportMode mode);
+
+        // The Desktop player the last export produced (destination folder / name fixed when the
+        // export started); empty when none was.
+        fs::path getProducedExecutable() const;
     };
 
 }

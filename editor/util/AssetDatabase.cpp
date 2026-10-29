@@ -5,6 +5,7 @@
 
 #include "Out.h"
 #include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 #include "util/SHA1.h"
 #include "util/Util.h"
 
@@ -405,7 +406,13 @@ void editor::AssetDatabase::saveCache() const {
     out << YAML::EndSeq << YAML::EndMap;
 
     std::error_code ec;
-    fs::create_directories(cacheFile().parent_path(), ec);
+    // the asset-database cache lives in the editor's internal folder (an MCP call's deny-by-default
+    // guard refuses it otherwise: util/SafeWrite.h, EditorInternal)
+    if (!fs::is_directory(cacheFile().parent_path(), ec)) {
+        safewrite::EditorInternal makeInternal(cacheFile().parent_path());   // only to make the missing folder
+        editor::FileUtils::createDirectories(cacheFile().parent_path(), ec);   // (in a write scope: beneath its root)
+    }
+    safewrite::EditorInternal ownCache(cacheFile());   // the one cache file (util/SafeWrite.h)
     writeText(cacheFile(), std::string(out.c_str()) + "\n");
 }
 

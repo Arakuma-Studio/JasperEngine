@@ -153,7 +153,7 @@ bool editor::HtmlUiExamples::has(const std::string& name){
 
 bool editor::HtmlUiExamples::writeTo(const fs::path& dir, std::string& error){
     std::error_code ec;
-    fs::create_directories(dir, ec);
+    FileUtils::createDirectories(dir, ec);
     if (ec){
         error = "cannot create " + FileUtils::pathToUtf8(dir) + ": " + ec.message();
         return false;
@@ -190,13 +190,13 @@ bool editor::HtmlUiExamples::writeTo(const fs::path& dir, std::string& error){
     }
     for (const fs::path& path : stale){
         std::error_code removeEc;
-        fs::remove(path, removeEc);
+        FileUtils::removePath(path, removeEc);
     }
     std::sort(folders.begin(), folders.end(), [](const fs::path& a, const fs::path& b){ return a.native().size() > b.native().size(); });
     for (const fs::path& folder : folders){
         std::error_code emptyEc;
         if (fs::is_empty(folder, emptyEc) && !emptyEc)
-            fs::remove(folder, emptyEc);
+            FileUtils::removePath(folder, emptyEc);
     }
 
     if (failed > 0){

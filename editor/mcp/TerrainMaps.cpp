@@ -4,8 +4,10 @@
 #include "TerrainMaps.h"
 
 #include "Project.h"
+#include "mcp/McpRefs.h"
 #include "pool/TextureDataPool.h"
 #include "texture/TextureData.h"
+#include "util/FileUtils.h"
 #include "util/PngWriter.h"
 #include "util/TerrainNoise.h"
 
@@ -76,7 +78,7 @@ std::vector<unsigned char> makeHeightPixels(const TerrainHeightmapRequest& reque
 std::string makeTerrainHeightmapPath(Project* project, uint32_t sceneId, Entity entity, uint32_t seed) {
     fs::path baseDir = project->getTerrainMapsDir();
     std::error_code ec;
-    fs::create_directories(baseDir, ec);
+    FileUtils::createDirectories(baseDir, ec);
 
     for (uint32_t i = 0; i < 10000; ++i) {
         fs::path candidate = baseDir / ("terrain_" + std::to_string(sceneId) + "_" +
@@ -106,9 +108,13 @@ bool setFileBackedHeightTexture(Project* project, Texture& texture, const std::s
 
     fs::path outputPath = project->resolveAssetPath(relativePath);
 
+    // encoded in memory, then written beneath the project (the tool's write scope: no link on the
+    // way followed out of it)
     std::error_code ec;
-    fs::create_directories(outputPath.parent_path(), ec);
-    if (ec || !writeGray16Png(outputPath, resolution, resolution, pixels.data(), pixels.size())) {
+    FileUtils::createDirectories(outputPath.parent_path(), ec);
+    std::vector<unsigned char> png;
+    if (ec || !encodePng16(resolution, resolution, 1, pixels.data(), pixels.size(), png) ||
+        !FileUtils::writeFileReplacing(outputPath, std::string(png.begin(), png.end()))) {
         return false;
     }
 
@@ -170,6 +176,11 @@ TerrainHeightmapResult TerrainMaps::createHeightmap(Project* project,
         result.error = "No project is available.";
         return result;
     }
+    // the generated maps' folder: inside the project once links are resolved
+    if (const std::string escape = mcp::McpRefs::writeEscape(project, project->getTerrainMapsDir()); !escape.empty()) {
+        result.error = escape;
+        return result;
+    }
 
     const int resolution = std::max(2, request.resolution);
     std::vector<unsigned char> pixels = makeHeightPixels(request);
@@ -193,6 +204,11 @@ TerrainBlendmapResult TerrainMaps::createBlendmap(Project* project,
         result.error = "No project is available.";
         return result;
     }
+    // the generated maps' folder: inside the project once links are resolved
+    if (const std::string escape = mcp::McpRefs::writeEscape(project, project->getTerrainMapsDir()); !escape.empty()) {
+        result.error = escape;
+        return result;
+    }
 
     const int resolution = std::max(2, request.resolution);
     const unsigned char r = blendChannel(request.red);
@@ -209,7 +225,7 @@ TerrainBlendmapResult TerrainMaps::createBlendmap(Project* project,
 
     fs::path outputDir = project->getTerrainMapsDir();
     std::error_code ec;
-    fs::create_directories(outputDir, ec);
+    FileUtils::createDirectories(outputDir, ec);
     if (ec) {
         result.error = "Failed to create terrain maps directory: " + ec.message();
         return result;
@@ -219,7 +235,13 @@ TerrainBlendmapResult TerrainMaps::createBlendmap(Project* project,
         outputDir,
         "terrain_" + std::to_string(sceneId) + "_" + std::to_string(entity) + "_blend",
         ".png");
-    if (!stbi_write_png(result.fullPath.string().c_str(), resolution, resolution, 4, pixels.data(), resolution * 4)) {
+    // encoded in memory, then written beneath the project (the tool's write scope)
+    std::string encoded;
+    auto append = [](void* context, void* data, int size) {
+        static_cast<std::string*>(context)->append(static_cast<const char*>(data), static_cast<size_t>(size));
+    };
+    if (!stbi_write_png_to_func(append, &encoded, resolution, resolution, 4, pixels.data(), resolution * 4) ||
+        !FileUtils::writeFileReplacing(result.fullPath, encoded)) {
         result.error = "Failed to write generated terrain blendmap.";
         return result;
     }

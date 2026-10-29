@@ -23,7 +23,7 @@ namespace jasperengine::editor{
         Conector();
         virtual ~Conector();
 
-        bool connect(const fs::path& buildPath, std::string libName);
+        bool connect(const fs::path& buildPath, std::string libName, const fs::path& projectRoot = {});
         void disconnect();
 
         void init(Scene* sceneProject);

@@ -31,6 +31,8 @@ namespace jasperengine::editor {
         const std::filesystem::path& getPath() const { return filepath; }
 
         bool execute() override;
+
+        std::vector<Touched> touchedPaths(bool undo) const override;
         void undo() override;
     };
 

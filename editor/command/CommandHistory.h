@@ -7,6 +7,7 @@
 #include <vector>
 #include <cstddef>
 #include <functional>
+#include <string>
 
 namespace jasperengine::editor{
 
@@ -22,6 +23,14 @@ namespace jasperengine::editor{
         bool inPlaySession = false;
         size_t playFloor = 0;               // first command of the play session
         std::vector<Command*> editRedo;     // edit-time redo tail, set aside while playing
+
+        // the last undo()/redo() a step refused: why ("" when the last call did not refuse, or
+        // the step gave no reason), and which step (kept after the next call, for the Edit menu)
+        std::string refusal;
+        std::string undoProblemText;
+        std::string refusedText;
+        unsigned long long refusedSerial = 0;
+        bool refusedUndo = false;
 
         size_t undoFloor() const { return inPlaySession ? playFloor : 0; }
         // a step's serial when it enters the list
@@ -56,9 +65,24 @@ namespace jasperengine::editor{
         // that a user edit would drop. In Play it goes below the play floor, so Stop keeps it.
         bool insertCommand(Command* cmd);
 
-        // False when the history did not move, also when the command refused (Command::canUndo)
+        // False when the history did not move, also when the command refused (Command::canUndo /
+        // canRedo: the position stays, lastRefusal() says why, the console too) or a redo's execute
+        // failed (Command::failure). Never moves on a refusal, so a loop
+        // "while (position() > mark && undo())" ends at a refused step. Each step runs in the write
+        // scope it was made in (Command::writeRoot).
         bool undo();
         bool redo();
+        // Why the last undo() / redo() was refused by its step (Command::undoRefusal / redoRefusal);
+        // "" when that call was not refused or the step gave no reason (a child scene cycle)
+        const std::string& lastRefusal() const { return refusal; }
+        // The last undo() / redo() was taken but a file it had to put back or write could not be
+        // (Command::takeUndoProblem, or a write the write scope refused in it; also said in the
+        // console): why ("" when it went through)
+        const std::string& lastUndoProblem() const { return undoProblemText; }
+        // The step undo() / redo() would take now refused the last time it was tried: why (a
+        // generic text when it gave none), "" else
+        std::string undoRefusedLastTry() const;
+        std::string redoRefusedLastTry() const;
 
         bool canUndo() const;
         bool canRedo() const;

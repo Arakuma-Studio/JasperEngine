@@ -10,6 +10,7 @@
 #include "animation/ClipEditorUtil.h"
 #include "command/type/ClipSceneActions.h"
 #include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -37,7 +38,10 @@ CreateClipCmd::~CreateClipCmd(){
 }
 
 bool CreateClipCmd::fail(const std::string& message){
-    failure = message;
+    // a write the write scope refused during this execute: its reason too (never an older one)
+    failureText = message;
+    const std::string scoped = safewrite::scopedFailureSince(failureMark);
+    if (!scoped.empty() && message.find(scoped) == std::string::npos) failureText += " (" + scoped + ")";
     if (failureSink) *failureSink = message;
     return false;
 }
@@ -76,10 +80,13 @@ void CreateClipCmd::restoreFiles(size_t count, bool checkBytes){
         }
         if (written[i].existed){
             if (!FileUtils::writeFileReplacing(file.path, written[i].previous)){
+                if (checkBytes) undoProblem += (undoProblem.empty() ? "" : "; ") + std::string("could not put back ") + FileUtils::pathToGenericUtf8(file.path);
                 editor::Out::warning("Could not put back the previous content of '%s'", FileUtils::pathToGenericUtf8(file.path).c_str());
             }
         }else if (fs::is_regular_file(file.path, ec) || fs::is_symlink(file.path, ec)){
-            fs::remove(file.path, ec);
+            if (!FileUtils::removePath(file.path, ec) && checkBytes){
+                undoProblem += (undoProblem.empty() ? "" : "; ") + std::string("could not remove ") + FileUtils::pathToGenericUtf8(file.path);
+            }
         }
     }
     // the directories the write created, deepest first, when empty again
@@ -87,13 +94,14 @@ void CreateClipCmd::restoreFiles(size_t count, bool checkBytes){
     std::sort(dirs.begin(), dirs.end(), [](const fs::path& a, const fs::path& b){ return a.native().size() > b.native().size(); });
     for (const fs::path& dir : dirs){
         std::error_code ec;
-        if (fs::is_directory(dir, ec) && fs::is_empty(dir, ec)) fs::remove(dir, ec);
+        if (fs::is_directory(dir, ec) && fs::is_empty(dir, ec)) FileUtils::removePath(dir, ec);
     }
     createdDirs.clear();
 }
 
 bool CreateClipCmd::execute(){
-    failure.clear();
+    failureText.clear();
+    failureMark = safewrite::scopedFailureCount();
     // the files the last undo kept because the user changed them: a redo keeps them too
     const std::vector<fs::path> keptByUndo = keptFiles;
     keptFiles.clear();
@@ -152,7 +160,7 @@ bool CreateClipCmd::execute(){
                 missing.push_back(dir);
                 if (dir.parent_path() == dir) break;
             }
-            fs::create_directories(parent, ec);
+            FileUtils::createDirectories(parent, ec);
             for (const fs::path& dir : missing){
                 std::error_code exists;
                 if (fs::is_directory(dir, exists)) createdDirs.push_back(dir);
@@ -237,4 +245,17 @@ bool CreateClipCmd::affectsStructure() const{
         if (command->affectsStructure()) return true;
     }
     return false;
+}
+
+std::vector<Command::Touched> CreateClipCmd::touchedPaths(bool undo) const{
+    std::vector<Touched> out;
+    for (size_t i = 0; i < files.size(); i++){
+        // an undo writes a previous file back or removes a new one (the entry); a redo writes
+        const bool existed = i < written.size() && written[i].existed;
+        out.push_back({files[i].path, undo && !existed});
+    }
+    if (undo){
+        for (const std::filesystem::path& dir : createdDirs) out.push_back({dir, true});
+    }
+    return out;
 }

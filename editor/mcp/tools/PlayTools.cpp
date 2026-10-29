@@ -404,13 +404,13 @@ void ensureMonitor(McpContext& ctx) {
         static void run(McpContext* c) {
             observeSession(*c);
             if (monitorNeeded(*c)) {
-                c->app().enqueueMainThreadTask([c]() { run(c); });
+                c->app().enqueueMainThreadTask([c]() { McpWriteScope writeScope; run(c); });
             } else {
                 state().monitorScheduled = false;
             }
         }
     };
-    ctx.app().enqueueMainThreadTask([context]() { Tick::run(context); });
+    ctx.app().enqueueMainThreadTask([context]() { McpWriteScope writeScope; Tick::run(context); });
 }
 
 std::string playStateName(Project* project) {
@@ -1700,6 +1700,14 @@ void playTool(const CallPtr& call) {
         return;
     }
 
+    if (action == "start" || action == "restart") {
+        // Play writes generated sources and build trees into the project's internal folder (in
+        // later frames too, outside this call's write scope): it must stay inside the project
+        if (const std::string escape = McpRefs::internalFoldersEscape(project); !escape.empty()) {
+            call->fail(escape);
+            return;
+        }
+    }
     if (action == "start") {
         playStart(call, sceneRef);
         return;

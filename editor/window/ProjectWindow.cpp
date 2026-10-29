@@ -3415,9 +3415,13 @@ void editor::ProjectWindow::cleanupThumbnails() {
         }
     }
 
-    // 2. Walk .jasperengine/thumbs/ and remove any orphaned thumbnails
+    // 2. Walk .jasperengine/thumbs/ and remove any orphaned thumbnails. Never through a link: a
+    // thumbnails folder resolving outside the project is not swept, and the removals go beneath
+    // the project (util/SafeWrite.h)
     fs::path thumbsDir = project->getThumbsDir();
     if (!fs::exists(thumbsDir)) return;
+    if (!safewrite::isInsideResolved(thumbsDir, project->getProjectPath())) return;
+    safewrite::Scope removalScope(project->getProjectPath());
 
     // Recursively iterate through the thumbnails directory to handle subdirectories
     for (auto& p : fs::recursive_directory_iterator(thumbsDir)) {
@@ -3427,7 +3431,7 @@ void editor::ProjectWindow::cleanupThumbnails() {
         if (validThumbPaths.find(thumbnailPath) == validThumbPaths.end()) {
             // This thumbnail file doesn't correspond to any existing image/material file
             std::error_code ec;
-            fs::remove(p, ec);
+            FileUtils::removePath(p, ec);
 
             // Also remove from the loaded thumbnails cache
             evictThumbnailTexture(thumbnailPath);
@@ -3438,7 +3442,7 @@ void editor::ProjectWindow::cleanupThumbnails() {
     for (auto& p : fs::recursive_directory_iterator(thumbsDir)) {
         if (fs::is_directory(p.status()) && fs::is_empty(p.path())) {
             std::error_code ec;
-            fs::remove(p, ec);
+            FileUtils::removePath(p, ec);
         }
     }
 }

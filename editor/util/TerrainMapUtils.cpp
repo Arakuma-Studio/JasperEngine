@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "TerrainMapUtils.h"
+#include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 
 #include "Out.h"
 #include "util/TerrainMapFileWriter.h"
@@ -67,7 +69,8 @@ bool editor::TerrainMapUtils::writeFile(Project* project, const std::string& rel
     fs::path outputPath = project->resolveAssetPath(relativePath);
 
     std::error_code ec;
-    fs::create_directories(outputPath.parent_path(), ec);
+    // (in a write scope, an MCP sculpt or its undo: beneath its root)
+    FileUtils::createDirectories(outputPath.parent_path(), ec);
     if (ec){
         Out::warning("Failed to create terrain texture directory: %s", outputPath.parent_path().string().c_str());
         return false;
@@ -75,8 +78,10 @@ bool editor::TerrainMapUtils::writeFile(Project* project, const std::string& rel
 
     // Encode + write on the background worker: full-map PNG writes (especially
     // 16-bit heightmaps) are slow enough to hitch the editor on every stroke end.
+    // The worker has no write scope of its own: the root of this thread's scope (an MCP call,
+    // an MCP-made step) goes with the job, and the worker writes beneath it.
     TerrainMapFileWriter::get().enqueue(outputPath, width, height, channels, bytesPerChannel,
-        std::vector<unsigned char>(pixels.begin(), pixels.begin() + expectedSize));
+        std::vector<unsigned char>(pixels.begin(), pixels.begin() + expectedSize), safewrite::scopeRootFor(outputPath));
     return true;
 }
 

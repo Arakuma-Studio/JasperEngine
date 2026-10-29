@@ -10,7 +10,9 @@
 #include "pose/PoseRigProvider.h"
 #include "pose/PoseSampler.h"
 #include "render/preview/PoseRender.h"
+#include "util/FileUtils.h"
 #include "util/ProjectChecks.h"
+#include "util/SafeWrite.h"
 
 #include <algorithm>
 #include <cmath>
@@ -394,9 +396,19 @@ void editor::PoseAssetThumbnailer::start(Job job){
         if (!*guard) return;
         bool written = false;
         if (ok && !image.isEmpty()){
-            std::error_code ec;
-            fs::create_directories(target.parent_path(), ec);
-            written = image.writePng(target.string());
+            // through FileUtils (scope-aware: beneath the project in a write scope, no link followed);
+            // the thumbnail cache is the editor's own .jasperengine/thumbs, so the writer names the
+            // one file it writes (and its folder only to make it when missing: util/SafeWrite.h)
+            std::vector<uint8_t> png;
+            if (image.encodePng(png)){
+                std::error_code ec;
+                if (!fs::is_directory(target.parent_path(), ec)){
+                    safewrite::EditorInternal makeThumbs(target.parent_path());
+                    FileUtils::createDirectories(target.parent_path(), ec);
+                }
+                safewrite::EditorInternal ownThumb(target);
+                written = FileUtils::writeFileReplacing(target, std::string(png.begin(), png.end()));
+            }
         }
         finish(written);
     });

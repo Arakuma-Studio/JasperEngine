@@ -29,6 +29,8 @@ namespace jasperengine::editor{
         RevertPrefabRemovalCmd(Project* project, uint32_t sceneId, const std::filesystem::path& path, Entity instanceRoot, Entity registryEntity);
 
         bool execute() override;
+
+        std::vector<Touched> touchedPaths(bool undo) const override;
         void undo() override;
     };
 
@@ -54,6 +56,8 @@ namespace jasperengine::editor{
             const std::filesystem::path& target = {});
 
         bool execute() override;
+
+        std::vector<Touched> touchedPaths(bool undo) const override;
         void undo() override;
     };
 
@@ -80,6 +84,8 @@ namespace jasperengine::editor{
         static PrefabOverridesCmd* applyAll(Project* project, uint32_t sceneId, Entity root);
 
         bool execute() override;
+
+        std::vector<Touched> touchedPaths(bool undo) const override;
         void undo() override;
     };
 

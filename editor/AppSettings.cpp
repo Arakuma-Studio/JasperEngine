@@ -3,6 +3,8 @@
 
 #include "AppSettings.h"
 #include "Out.h"
+#include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "htmlui/VideoImporter.h"
 #include <fstream>
@@ -910,21 +912,20 @@ YAML::Node loadLocalSettings(const std::filesystem::path& projectFile) {
 bool storeLocalSettings(const std::filesystem::path& projectFile, const YAML::Node& node) {
     const std::filesystem::path file = localSettingsFile(projectFile);
     std::error_code ec;
-    std::filesystem::create_directories(file.parent_path(), ec);
-    if (ec) {
-        Out::error("Failed to create local settings directory: %s", ec.message().c_str());
-        return false;
+    // .jasperengine/user/build.yaml: this machine's settings, which only the editor writes. Through
+    // FileUtils (beneath the project in a write scope, no link followed), with a token naming this one
+    // file so an MCP-set build_jobs saves while no tool can write the file itself (util/SafeWrite.h)
+    if (!std::filesystem::is_directory(file.parent_path(), ec)) {
+        safewrite::EditorInternal makeDir(file.parent_path());
+        FileUtils::createDirectories(file.parent_path(), ec);
+        if (ec) {
+            Out::error("Failed to create local settings directory: %s", ec.message().c_str());
+            return false;
+        }
     }
-
-    std::ofstream fout(file.string());
-    if (!fout) {
-        Out::error("Failed to open local build settings for writing: %s", file.string().c_str());
-        return false;
-    }
-    fout << "# Build configuration for this machine only. Version control ignores .jasperengine/.\n";
-    fout << YAML::Dump(node) << "\n";
-    fout.close();
-    if (!fout) {
+    safewrite::EditorInternal ownBuildSettings(file);
+    const std::string text = "# Build configuration for this machine only. Version control ignores .jasperengine/.\n" + YAML::Dump(node) + "\n";
+    if (!FileUtils::writeFileReplacing(file, text)) {
         Out::error("Failed to write local build settings: %s", file.string().c_str());
         return false;
     }

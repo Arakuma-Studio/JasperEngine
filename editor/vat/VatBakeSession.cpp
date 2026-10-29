@@ -16,6 +16,7 @@
 #include "pose/PoseEditSession.h"
 #include "util/AssetDatabase.h"
 #include "util/FileUtils.h"
+#include "util/SafeWrite.h"
 #include "vat/VatCrowd.h"
 
 #include "Scene.h"
@@ -155,8 +156,8 @@ void VatBakeSession::releasePreview(){
     // the heatmap's preview too (its .vat was loaded from its file)
     const fs::path heat = dir.parent_path() / FileUtils::pathFromUtf8(FileUtils::pathToUtf8(dir.filename()) + "-heatmap");
     VertexAnimationPool::invalidate(FileUtils::pathToUtf8(heat / FileUtils::pathFromUtf8(bakeResult.previewKey).filename()));
-    fs::remove_all(heat, ec);
-    fs::remove_all(dir, ec);
+    FileUtils::removeAll(heat, ec);
+    FileUtils::removeAll(dir, ec);
     bakeResult.previewKey.clear();
     bakeResult.preview.reset();
 }
@@ -838,7 +839,7 @@ bool VatBakeSession::writePreviewFiles(std::string& vatPath, std::string& meshPa
     const fs::path vatFile = FileUtils::pathFromUtf8(bakeResult.previewKey);
     const fs::path dir = vatFile.parent_path();
     std::error_code ec;
-    fs::create_directories(dir, ec);
+    FileUtils::createDirectories(dir, ec);
     VatMeshData mesh = bakeResult.mesh;
     mesh.images = bakeResult.embeddedImages;
     VatData data = bakeResult.data;
@@ -878,7 +879,7 @@ bool VatBakeSession::writeHeatmapPreviewFiles(std::string& vatPath, std::string&
     const fs::path dir = preview.parent_path().parent_path() / FileUtils::pathFromUtf8(FileUtils::pathToUtf8(preview.parent_path().filename()) + "-heatmap");
     const fs::path vatFile = dir / preview.filename();
     std::error_code ec;
-    fs::create_directories(dir, ec);
+    FileUtils::createDirectories(dir, ec);
     VatMeshData mesh = bakeResult.mesh;
     const size_t vertices = mesh.vertexCount();
     mesh.colors.assign(vertices * 4, 1.0f);
@@ -1070,6 +1071,18 @@ bool VatBakeSession::write(VatWriteResult& out, std::string& error, VatIssue* is
     out.guid = data.guid;
     out.undoName = "Bake Vertex Animation '" + relative + "'";
 
+    // beneath the root (the MCP tool): no file through a link leading out of the project
+    if (!beneathRoots.empty()){
+        for (const CreateVatCmd::File& file : files){
+            const std::string escape = safewrite::escapeOf(safewrite::trustedRootFor(beneathRoots, file.path), file.path, false,
+                FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(file.path)));
+            if (!escape.empty()){
+                return refuse("write_failed", escape, "write it to a folder of the project that is not a link to elsewhere (output), "
+                              "or replace the link with a real folder");
+            }
+        }
+    }
+
     if (bakeSpec.place == VatPlace::None){
         std::vector<WriteFilesCmd::Item> items;
         for (CreateVatCmd::File& file : files) items.push_back({file.path, std::move(file.content)});
@@ -1079,6 +1092,7 @@ bool VatBakeSession::write(VatWriteResult& out, std::string& error, VatIssue* is
             CreateVatCmd::notifyFiles(owner, paths);
         });
         command->reportFailureTo(failureText);
+        if (!beneathRoots.empty()) command->setWriteRoots(beneathRoots);
         if (!project->getProjectCommandHistory()->addCommand(command)){
             return refuse("write_failed", failureText->empty() ? std::string("the files could not be written") : *failureText,
                           "check the folder's permissions and free space");
