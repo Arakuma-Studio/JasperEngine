@@ -1013,6 +1013,7 @@ set(JASPERENGINE_SRCS
     core/PlatformConfig.cpp
     core/player/Launch.cpp
     core/player/LaunchOptions.cpp
+    core/player/PlayerConfig.cpp
     core/player/RunControl.cpp
     core/Input.cpp
     core/input/InputControlPath.cpp
@@ -1042,6 +1043,12 @@ set(JASPERENGINE_SRCS
     core/log/sinks/AppleLogSink.cpp
     core/Scene.cpp
     core/SceneSettings.cpp
+    core/serialization/CookCodecs.cpp
+    core/serialization/CookedScene.cpp
+    core/serialization/CookStream.cpp
+    core/serialization/codecs/ComponentHooks.cpp
+    core/serialization/RuntimeFields.cpp
+    core/serialization/SceneSettingsCodec.cpp
     core/System.cpp
     core/action/Action.cpp
     core/action/AlphaTween.cpp

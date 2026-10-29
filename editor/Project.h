@@ -56,6 +56,10 @@ namespace jasperengine::editor{
     namespace prefabinternal { struct ScratchEntity; }
     struct BakedPrefab;
 
+    namespace cook {
+        class SceneCooker;
+    }
+
     struct LocalBuildSettings;
 
     enum class SceneType{
@@ -889,6 +893,8 @@ namespace jasperengine::editor{
         // the Scene view's picking (editor/picking) reads the pickable GameObjects and their bounds
         friend class ScenePicker;
         friend class SceneViewController;
+        // the cooked scenes and prefabs of a prebuilt build read what the generated sources do (S30)
+        friend class cook::SceneCooker;
         std::shared_ptr<PlaySession> buildRuntimeSceneStack(uint32_t sceneId, std::vector<size_t>& stackIndices);
         Entity getSceneCamera(const SceneProject* sceneProject) const;
         void cleanupPlaySession(const std::shared_ptr<PlaySession>& session);

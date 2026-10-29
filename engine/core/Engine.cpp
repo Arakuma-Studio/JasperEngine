@@ -1458,7 +1458,8 @@ namespace {
         diag::crash::Config config;
         // the window title: the project's name (a prebuilt player's game.json, a Compile
         // build's macro, both through the platform configuration)
-        config.product = platformConfig().title.empty() ? "JasperEngine Game" : platformConfig().title;
+        // (the configuration lives for the whole run, so its text does)
+        config.product = platformConfig().title.empty() ? "JasperEngine Game" : platformConfig().title.c_str();
         config.root = system->getCrashReportPath();
         config.includeLogTail = JASPERENGINE_CRASH_LOG_TAIL != 0;
         config.dumpKind = JASPERENGINE_CRASH_DUMP_WITH_HEAP ? diag::crash::DumpKind::WithHeap : diag::crash::DumpKind::Small;
@@ -1476,7 +1477,7 @@ namespace {
         diag::WatchdogConfig watch;
         watch.thresholdMs = JASPERENGINE_CRASH_HANG_MS;
         if (!platformConfig().title.empty())
-            watch.product = platformConfig().title;
+            watch.product = platformConfig().title.c_str();
         diag::watchdog::start(watch);
         engineOwnsDiagnostics = true;
     #endif

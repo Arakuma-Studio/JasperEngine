@@ -630,6 +630,9 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/cli/SchemaArgs.cpp
     ${EDITOR_DIR}/cli/McpClient.cpp
     ${EDITOR_DIR}/cli/CallCommand.cpp
+    ${EDITOR_DIR}/cli/ShippingCommands.cpp
+    ${EDITOR_DIR}/cook/RuntimeFieldsEmitter.cpp
+    ${EDITOR_DIR}/cook/SceneCooker.cpp
     ${EDITOR_DIR}/App.cpp
     ${EDITOR_DIR}/AppCommands.cpp
     ${EDITOR_DIR}/AppSettings.cpp
