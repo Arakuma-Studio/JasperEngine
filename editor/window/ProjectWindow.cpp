@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ProjectWindow.h"
+#include "window/vcs/VcsUi.h"
 #include "texture/TextureCookQueue.h"
 #include "util/EditorScripts.h"
 #include "asset/AssetTypes.h"
@@ -1716,6 +1717,8 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                     }
                     drawTextureCookBadge(drawList, file, iconMin, ImVec2(iconMin.x + iconExtent, iconMin.y + iconExtent));
                     ImVec2 textMin(itemMin.x + Theme::dpi(8.0f) + iconExtent, itemMin.y + (rowH - lineHeight) * 0.5f);
+                    // version control: its state before the name (S29 R27)
+                    textMin.x += drawVcsOverlay(file, ImVec2(textMin.x, textMin.y), lineHeight, true);
                     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetColorU32(ImGuiCol_Text, alpha));
                     ImGui::RenderTextEllipsis(drawList, textMin, ImVec2(itemMax.x - Theme::dpi(4.0f), itemMax.y), itemMax.x - Theme::dpi(4.0f),
                                               file.displayName.c_str(), nullptr, nullptr);
@@ -1746,6 +1749,13 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                             ImVec2(iconBoxMin.x + Theme::dpi(3.0f) + badge, iconBoxMax.y - Theme::dpi(2.0f)), IM_COL32(140, 205, 255, (int)(255 * alpha)));
                     }
                     drawTextureCookBadge(drawList, file, iconBoxMin, iconBoxMax);
+                    // version control: its state at the thumbnail's bottom left, after a variant badge (S29 R27)
+                    {
+                        const float glyph = std::max(Theme::dpi(10.0f), uiIconSize * 0.28f);
+                        const bool variant = file.type == FileType::PREFAB && isVariantFile(currentPath / file.name);
+                        const float x = iconBoxMin.x + Theme::dpi(3.0f) + (variant ? std::max(Theme::dpi(10.0f), uiIconSize * 0.34f) + Theme::dpi(2.0f) : 0.0f);
+                        drawVcsOverlay(file, ImVec2(x, iconBoxMax.y - glyph - Theme::dpi(2.0f)), glyph, false);
+                    }
 
                     // One line, centred when it fits, cut with an ellipsis when not
                     const char* label = file.displayBaseName.c_str();
@@ -1975,6 +1985,13 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
 
                 if (ImGui::MenuItem(ICON_FA_ARROW_UP_RIGHT_FROM_SQUARE " Open in File Manager")){
                     openInFileManager(file.isDirectory ? currentPath / file.name : currentPath);
+                }
+
+                // S29: Commit..., Revert..., Lock, Unlock, Show History, Diff Against Baseline, Refresh
+                {
+                    std::vector<fs::path> selection = getSelectedFiles();
+                    if (selection.empty()) selection.push_back(currentPath / file.name);
+                    Backend::getApp().getVcsUi()->drawContextMenu(selection);
                 }
 
                 // the project's editor scripts: Assets/... items (S23)

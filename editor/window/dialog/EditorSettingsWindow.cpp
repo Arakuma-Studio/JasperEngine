@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "EditorSettingsWindow.h"
+#include "util/FileUtils.h"
+#include "vcs/VcsService.h"
 #include "diag/CrashHandler.h"
 #include "SceneBackup.h"
 #include "Out.h"
@@ -61,6 +63,7 @@ namespace {
         Logging,
         Diagnostics,
         ShaderCache,
+        VersionControl,
         Count
     };
 
@@ -238,6 +241,8 @@ void EditorSettingsWindow::open(Project* project) {
     m_undoReviewPlayChanges = AppSettings::getUndoReviewPlayChanges();
     m_logging = AppSettings::getLoggingSettings();
     m_diagnostics = AppSettings::getDiagnosticsSettings();
+    m_versionControl = AppSettings::getVersionControlSettings();
+    m_smartMergeStatus.clear();
     m_lattice = AppSettings::getLatticeViewSettings();
     m_sceneView = AppSettings::getSceneViewSettings();
     m_defaultExportDirectory = AppSettings::getDefaultExportDirectory();
@@ -359,6 +364,7 @@ void EditorSettingsWindow::drawSettings() {
         case PreferencesCategory::Logging: drawLoggingSettings(); break;
         case PreferencesCategory::Diagnostics: drawDiagnosticsSettings(); break;
         case PreferencesCategory::ShaderCache: drawAdvancedSettings(); break;
+        case PreferencesCategory::VersionControl: drawVersionControlSettings(); break;
         default: break;
     }
     settingsui::endPage();
@@ -1223,6 +1229,111 @@ void EditorSettingsWindow::drawDiagnosticsSettings() {
     });
 }
 
+// S29: version control (docs/editor/version-control.md)
+void EditorSettingsWindow::drawVersionControlSettings() {
+    prefsDrawSettingsPanel("##EditorVersionControlSettingsPanel", [this]() {
+        const VersionControlSettings defaults;
+        if (settingsui::beginRow("preferences.vcs.status")) {
+            prefsBeginSettingsRow("Version Control", "The project's provider and its tool");
+            const vcs::VcsService* service = m_project ? &m_project->getVcs() : nullptr;
+            if (!service || service->state() == vcs::VcsState::Off) {
+                ImGui::TextDisabled("Off");
+            } else if (service->active()) {
+                ImGui::TextWrapped("%s", service->stateMessage().c_str());
+            } else {
+                ImGui::TextWrapped("%s", service->state() == vcs::VcsState::NotAvailable ? service->stateMessage().c_str() :
+                                         service->state() == vcs::VcsState::Detecting ? "Looking for a repository..." : service->stateMessage().c_str());
+            }
+        }
+        sectionRow("Tools");
+        auto pathRow = [this](const char* key, const char* label, const char* tooltip, std::string& value, const char* id) {
+            if (!settingsui::beginRow(key)) return;
+            if (prefsBeginSettingsRow(label, tooltip, !value.empty())) value.clear();
+            char buffer[1024];
+            std::snprintf(buffer, sizeof(buffer), "%s", value.c_str());
+            ImGui::SetNextItemWidth(-FLT_MIN);
+            if (ImGui::InputTextWithHint(id, "Found on PATH", buffer, sizeof(buffer))) value = buffer;
+        };
+        pathRow("editor.vcs.git_path", "Git Path", "The git executable (absolute); empty finds it on PATH, never in the project folder.",
+                m_versionControl.gitPath, "##GitPath");
+        pathRow("editor.vcs.svn_path", "Subversion Path", "The svn executable (absolute); empty finds it on PATH, never in the project folder.",
+                m_versionControl.svnPath, "##SvnPath");
+        sectionRow("Locking");
+        if (settingsui::beginRow("editor.vcs.lock_on_edit")) {
+            if (prefsBeginSettingsRow("Lock on Edit", "The first edit of a lockable file (an LFS binary, svn:needs-lock): off, ask to lock it, or lock it",
+                                      m_versionControl.lockOnEdit != defaults.lockOnEdit)) {
+                m_versionControl.lockOnEdit = defaults.lockOnEdit;
+            }
+            int mode = static_cast<int>(m_versionControl.lockOnEdit);
+            const char* modes[] = {"Off", "Ask", "Auto"};
+            ImGui::SetNextItemWidth(Theme::dpi(140.0f));
+            if (ImGui::Combo("##LockOnEdit", &mode, modes, 3)) m_versionControl.lockOnEdit = static_cast<LockOnEdit>(mode);
+        }
+        sectionRow("Refresh");
+        if (settingsui::beginRow("editor.vcs.poll_seconds")) {
+            if (prefsBeginSettingsRow("Status Poll (s)", "Seconds between status reads (local: no network). Saves and focus refresh it at once.",
+                                      m_versionControl.pollSeconds != defaults.pollSeconds)) {
+                m_versionControl.pollSeconds = defaults.pollSeconds;
+            }
+            ImGui::SetNextItemWidth(Theme::dpi(120.0f));
+            ImGui::DragInt("##VcsPoll", &m_versionControl.pollSeconds, 0.2f, 2, 120, "%d", ImGuiSliderFlags_AlwaysClamp);
+        }
+        if (settingsui::beginRow("editor.vcs.lock_poll_seconds")) {
+            if (prefsBeginSettingsRow("Lock Poll (s)", "Seconds between reads of the locks and the server's changes (network). 0: only after your own locks and commits.",
+                                      m_versionControl.lockPollSeconds != defaults.lockPollSeconds)) {
+                m_versionControl.lockPollSeconds = defaults.lockPollSeconds;
+            }
+            ImGui::SetNextItemWidth(Theme::dpi(120.0f));
+            if (ImGui::DragInt("##VcsLockPoll", &m_versionControl.lockPollSeconds, 0.5f, 0, 600, "%d", ImGuiSliderFlags_AlwaysClamp) &&
+                m_versionControl.lockPollSeconds > 0 && m_versionControl.lockPollSeconds < 30) {
+                m_versionControl.lockPollSeconds = 30;
+            }
+        }
+        if (settingsui::beginRow("editor.vcs.auto_fetch_minutes")) {
+            if (prefsBeginSettingsRow("Auto Fetch (min)", "Minutes between automatic fetches (git), so behind shows; 0 off",
+                                      m_versionControl.autoFetchMinutes != defaults.autoFetchMinutes)) {
+                m_versionControl.autoFetchMinutes = defaults.autoFetchMinutes;
+            }
+            ImGui::SetNextItemWidth(Theme::dpi(120.0f));
+            ImGui::DragInt("##VcsAutoFetch", &m_versionControl.autoFetchMinutes, 0.2f, 0, 24 * 60, "%d", ImGuiSliderFlags_AlwaysClamp);
+        }
+        sectionRow("Commit");
+        if (settingsui::beginRow("editor.vcs.commit_and_push")) {
+            if (prefsBeginSettingsRow("Commit and Push", "The Commit window pushes after each commit (git)",
+                                      m_versionControl.commitAndPush != defaults.commitAndPush)) {
+                m_versionControl.commitAndPush = defaults.commitAndPush;
+            }
+            ImGui::Checkbox("##CommitAndPush", &m_versionControl.commitAndPush);
+        }
+        sectionRow("Merge");
+        if (settingsui::beginRow("preferences.vcs.smart_merge")) {
+            prefsBeginSettingsRow("Smart Merge", "git merges scenes and prefabs GameObject by GameObject with this editor (merge-scene), "
+                                                 "instead of its text merge. Writes merge.jasperengine-scene.driver to the repository's config.");
+            vcs::VcsService* service = m_project ? &m_project->getVcs() : nullptr;
+            const bool canSetUp = service && service->active() && service->caps().mergeDriver;
+            ImGui::BeginDisabled(!canSetUp);
+            if (ImGui::Button("Set Up Smart Merge")) {
+                const std::filesystem::path editor = FileUtils::getExecutablePath();
+                m_smartMergeStatus = "Setting up...";
+                service->run("Setting up Smart Merge...", [editor](vcs::IVcsProvider& provider, const jobs::CancelToken&) {
+                    return provider.setupMergeDriver(editor);
+                }, [this](const vcs::VcsResult& result) {
+                    m_smartMergeStatus = result.ok ? "Set up: git merges scenes and prefabs with this editor" : "Failed: " + result.message;
+                }, true);
+            }
+            ImGui::EndDisabled();
+            if (!canSetUp) ImGui::SetItemTooltip("Needs a Git repository");
+            if (!m_smartMergeStatus.empty()) {
+                ImGui::SameLine();
+                ImGui::TextDisabled("%s", m_smartMergeStatus.c_str());
+            } else if (service && service->snapshot() && service->snapshot()->mergeDriverMissing) {
+                ImGui::SameLine();
+                ImGui::TextDisabled("Smart merge: not set up");
+            }
+        }
+    });
+}
+
 void EditorSettingsWindow::drawAdvancedSettings() {
     prefsDrawSettingsPanel("##EditorAdvancedSettingsPanel", [this]() {
         if (settingsui::beginRow("preferences.shader_cache")) {
@@ -1284,6 +1395,10 @@ bool EditorSettingsWindow::applySettings() {
     AppSettings::setUndo(m_undoMaxSteps, m_undoMemoryLimitMB, m_undoRecordSelection, m_undoReviewPlayChanges);
     AppSettings::setLoggingSettings(m_logging);
     AppSettings::setDiagnosticsSettings(m_diagnostics);
+    if (m_versionControl != AppSettings::getVersionControlSettings()) {
+        AppSettings::setVersionControlSettings(m_versionControl);
+        if (m_project) m_project->getVcs().applySettings(m_project->versionControlServiceSettings());
+    }
     AppSettings::setDefaultExportDirectory(m_defaultExportDirectory);
     AppSettings::setCMakePath(m_cmakeOverride);
     LocalBuildSettings build;

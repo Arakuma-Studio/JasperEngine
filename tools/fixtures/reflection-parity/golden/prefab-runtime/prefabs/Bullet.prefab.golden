@@ -1,5 +1,5 @@
 type: Prefab
-version: 5
+version: 6
 guid: b0b0b0b0b0b0b0b0b0b0b0b0b0b00003
 nextEntity: 1010
 root: 1001
@@ -12,12 +12,6 @@ members:
         position: [0, 0, 0]
         rotation: [1, 0, 0, 0]
         scale: [0.5, 0.5, 0.5]
-        worldPosition: [0, 0, 0]
-        worldRotation: [1, 0, 0, 0]
-        worldScale: [1, 1, 1]
-        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
-        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
-        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
         visible: true
         billboardRotation: [1, 0, 0, 0]
         billboard: false

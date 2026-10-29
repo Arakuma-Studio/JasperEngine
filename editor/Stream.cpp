@@ -2024,6 +2024,14 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
     if (project->hasVersionControlMetadata() != Project::defaultVersionControlMetadata) {
         root["versionControlMetadata"] = project->hasVersionControlMetadata();
     }
+    // S29: only what differs from a project saved before it (auto, no LFS, no lockable scenes)
+    if (const VcsProjectSettings& vcsSettings = project->getVcsProjectSettings(); vcsSettings != VcsProjectSettings()) {
+        YAML::Node vcsNode(YAML::NodeType::Map);
+        if (vcsSettings.provider != vcs::ProviderChoice::Auto) vcsNode["provider"] = vcs::providerChoiceName(vcsSettings.provider);
+        if (vcsSettings.lfs) vcsNode["lfs"] = true;
+        if (vcsSettings.lockScenes) vcsNode["lockScenes"] = true;
+        root["versionControl"] = vcsNode;
+    }
 
     if (!project->getTags().empty()) {
         YAML::Node tagsNode;
@@ -2565,6 +2573,17 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     if (node["versionControlMetadata"].IsDefined()) {
         project->setVersionControlMetadata(YamlNumbers::as<bool>(node["versionControlMetadata"]));
     }
+    {
+        VcsProjectSettings vcsSettings;
+        if (const YAML::Node vcsNode = node["versionControl"]; vcsNode && vcsNode.IsMap()) {
+            if (vcsNode["provider"] && !vcs::parseProviderChoice(vcsNode["provider"].as<std::string>(), vcsSettings.provider)) {
+                Out::warning("project.yaml: versionControl.provider must be auto, git, svn or none; auto is used");
+            }
+            if (vcsNode["lfs"]) vcsSettings.lfs = YamlNumbers::as<bool>(vcsNode["lfs"]);
+            if (vcsNode["lockScenes"]) vcsSettings.lockScenes = YamlNumbers::as<bool>(vcsNode["lockScenes"]);
+        }
+        project->setVcsProjectSettings(vcsSettings, false);
+    }
 
     // S25: label colours, saved searches of scope project
     {
@@ -2952,6 +2971,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
 }
 
 YAML::Node editor::Stream::encodeSceneProject(const Project* project, const SceneProject* sceneProject) {
+    // a scene file: without the values loading computes (S29 R20)
+    reflect::DocumentEncodeScope document;
     YAML::Node root;
     root[StreamMigrations::versionKey(DocumentKind::Scene)] = StreamMigrations::currentVersion(DocumentKind::Scene);
     root["id"] = sceneProject->id;

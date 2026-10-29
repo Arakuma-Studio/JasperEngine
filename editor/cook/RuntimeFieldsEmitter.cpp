@@ -16,6 +16,13 @@ using namespace jasperengine::editor::reflect;
 
 namespace {
 
+    // what a cooked scene holds: a document's fields (S29's NotWritten ones, the transform's
+    // world values and matrices, are recomputed by the engine and left out, as in a .scene)
+    bool cooked(const reflect::FieldDesc& field) {
+        return reflect::isSaved(field) && !(field.flags & reflect::NotWritten);
+    }
+
+
     const char* kindToken(Kind kind) {
         switch (kind) {
             case Kind::Bool: return "Bool";
@@ -92,7 +99,7 @@ namespace {
             }
             if (!visiting.insert(type).second) return;
             for (const FieldDesc& field : desc.fields) {
-                if (!isSaved(field)) continue;
+                if (!cooked(field)) continue;
                 if (const StructDesc* nested = nestedStruct(field)) visit(*nested, guard);
             }
             visiting.erase(type);
@@ -118,7 +125,7 @@ namespace {
                             const std::string& tableName) {
             std::string lines;
             for (const FieldDesc& field : fields) {
-                if (!isSaved(field)) continue;
+                if (!cooked(field)) continue;
                 lines += fieldLine(ownerName, ownerType, field);
             }
             std::string out;
@@ -151,7 +158,7 @@ std::string editor::cook::emitRuntimeFields(std::vector<std::string>& errors) {
     for (const ComponentDesc* desc : reflect::all()) {
         const std::string guard = desc->codegenGuard ? desc->codegenGuard : "";
         for (const FieldDesc& field : desc->body.fields) {
-            if (!isSaved(field)) continue;
+            if (!cooked(field)) continue;
             if (const StructDesc* nested = emitter.nestedStruct(field)) emitter.visit(*nested, guard);
         }
     }

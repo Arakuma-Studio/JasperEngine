@@ -84,6 +84,7 @@ namespace jasperengine::editor {
         char m_iosTeamIdBuffer[32] = {0};
         int m_iosExportMethodIndex = 0;        // development, ad-hoc, app-store, enterprise
         bool m_versionControlMetadata = true;
+        VcsProjectSettings m_vcs;
         char m_webApplicationNameBuffer[256] = {0};
         fs::path m_webFavicon;
         fs::path m_webCustomHtmlShell;

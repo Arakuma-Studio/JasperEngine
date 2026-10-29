@@ -49,6 +49,9 @@ namespace cooked_scene_test {
     }
 
     std::string encodeOf(const reflect::ComponentDesc& desc, Scene* scene, Entity entity) {
+        // a document's encode, as a .scene holds it (S29: the transform's world values are the
+        // engine's to compute, in a cooked scene too)
+        reflect::DocumentEncodeScope document;
         void* comp = desc.find(scene, entity);
         if (!comp) return "<missing>";
         reflect::EncodeContext ctx;

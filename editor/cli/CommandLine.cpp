@@ -47,6 +47,8 @@
 #include "asset/AssetFileWrite.h"
 #include "json.hpp"
 #include "util/ProjectChecks.h"
+#include "subsystem/RenderSystem.h"
+#include "subsystem/TransformPropagation.h"
 #include "texture/TextureCli.h"
 #include "texture/TextureCookQueue.h"
 #include "util/EditorScripts.h"
@@ -272,6 +274,8 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << " shaders [options]        Generate shaders.\n"
         << "  " << commandName << " benchmark [options]      Measure scene FPS with vsync off.\n"
         << "  " << commandName << " scene-dump [options]     Dump every scene's GameObjects (developer check).\n"
+        << "  " << commandName << " merge-scene <base> <ours> <theirs> <path>  Git merge driver for scenes and prefabs.\n"
+        << "  " << commandName << " scene-diff <old> <new> [--json]  Semantic diff of two scenes or prefabs.\n"
         << "  " << commandName << " check [options]          Check Lua scripts, shader forks, C++ scripts and HTML/CSS UI (compiler-style).\n"
         << "  " << commandName << " assets check|migrate     Missing asset references (JSON); rewrite references with GUIDs.\n"
         << "  " << commandName << " import-ui [options]      Import the remote resources of HTML UI documents.\n"
@@ -831,7 +835,38 @@ static DegradedSavePolicy sceneDumpSavePolicy = DegradedSavePolicy::Refuse;
 // link. Two dumps of the same project (an older and a newer editor, or before and after a
 // save) compare GameObject by GameObject. --save saves every scene (and so the modified
 // prefabs) after the dump.
-static void writeSceneDump(Project& project, const fs::path& outPath) {
+// --world: every GameObject's world values after the transform pass the first frame runs
+// (RenderSystem's propagation), so dumps of two editors compare what loading gives, whatever
+// the files hold of the derived values (docs/specs/S29-version-control.md AC16)
+static YAML::Node worldValues(const Transform& transform) {
+    auto vector = [](std::initializer_list<float> values) {
+        YAML::Node node(YAML::NodeType::Sequence);
+        node.SetStyle(YAML::EmitterStyle::Flow);
+        for (float value : values) node.push_back(value);
+        return node;
+    };
+    YAML::Node node;
+    node["position"] = vector({transform.worldPosition.x, transform.worldPosition.y, transform.worldPosition.z});
+    node["rotation"] = vector({transform.worldRotation.w, transform.worldRotation.x, transform.worldRotation.y, transform.worldRotation.z});
+    node["scale"] = vector({transform.worldScale.x, transform.worldScale.y, transform.worldScale.z});
+    YAML::Node matrix(YAML::NodeType::Sequence);
+    matrix.SetStyle(YAML::EmitterStyle::Flow);
+    for (int column = 0; column < 4; column++) {
+        for (int row = 0; row < 4; row++) matrix.push_back(transform.modelMatrix[column][row]);
+    }
+    node["modelMatrix"] = matrix;
+    return node;
+}
+
+static void writeSceneDump(Project& project, const fs::path& outPath, bool world = false) {
+    if (world) {
+        for (SceneProject* sceneProjectPtr : project.getScenesAndPrefabStages()) {
+            Scene* scene = sceneProjectPtr->scene;
+            RenderSystem* render = scene ? scene->getSystem<RenderSystem>().get() : nullptr;
+            if (!render) continue;
+            propagateTransforms(*scene, [render](Transform& transform, Entity entity) { render->updateTransform(transform, entity); });
+        }
+    }
     YAML::Emitter out;
     out << YAML::BeginMap << YAML::Key << "scenes" << YAML::Value << YAML::BeginSeq;
     // the scenes, then the open prefab stages (Prefab Mode), named after their asset
@@ -853,6 +888,9 @@ static void writeSceneDump(Project& project, const fs::path& outPath) {
             if (Transform* transform = scene->findComponent<Transform>(entity)) parent = transform->parent;
             node["parent"] = parent != NULL_ENTITY ? EntityPath::of(scene, parent, &paths) : std::string();
             node["components"] = Stream::encodeComponents(entity, scene, scene->getSignature(entity));
+            if (world) {
+                if (const Transform* transform = scene->findComponent<Transform>(entity)) node["world"] = worldValues(*transform);
+            }
             for (ComponentType type : Catalog::findComponents(scene, entity)) {
                 for (auto& [name, property] : Catalog::findEntityProperties(scene, entity, type)) {
                     if (!property.ref) continue;
@@ -1652,9 +1690,11 @@ static int runSceneDump(int argc, char** argv, const std::string& commandName) {
     bool save = false;
     bool allowDataLoss = false;
     bool ignoreLock = false;
+    bool world = false;
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
         if ((arg == "--project" || arg == "-p") && i + 1 < argc) projectArg = CommandLine::projectArgPath(argv[++i]);
+        else if (arg == "--world") world = true;
         else if ((arg == "--out" || arg == "-o") && i + 1 < argc) outPath = CommandLine::absoluteArgPath(argv[++i]);
         else if (arg == "--ops" && i + 1 < argc) opsPath = CommandLine::absoluteArgPath(argv[++i]);
         else if (arg == "--save") save = true;
@@ -1662,7 +1702,8 @@ static int runSceneDump(int argc, char** argv, const std::string& commandName) {
         else if (arg == "--ignore-lock") ignoreLock = true;
         else {
             std::cerr << commandName << " scene-dump --project <dir|project.yaml> [--out <file>] [--ops <file>] [--save]\n"
-                      << "    [--allow-data-loss] [--ignore-lock]\n"
+                      << "    [--allow-data-loss] [--ignore-lock] [--world]\n"
+                      << "--world adds each GameObject's world position, rotation, scale and model matrix after the transform pass\n"
                       << "(paths absolute or relative to the current directory)\n"
                       << "--save refuses (exit 4) to write a scene that did not load completely unless --allow-data-loss;\n"
                       << "a project another editor has open fails (exit 3, project_locked) unless --ignore-lock.\n";
@@ -1718,7 +1759,7 @@ static int runSceneDump(int argc, char** argv, const std::string& commandName) {
         return 1;
     }
 
-    writeSceneDump(project, outPath);
+    writeSceneDump(project, outPath, world);
 
     if (save) {
         bool refused = false;

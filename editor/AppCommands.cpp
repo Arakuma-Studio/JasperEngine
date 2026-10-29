@@ -26,6 +26,7 @@
 #include "util/ScriptReloadService.h"
 #include "window/InputActionsWindow.h"
 #include "window/JobsMemoryWindow.h"
+#include "window/vcs/VcsUi.h"
 
 #include "imgui_internal.h"
 
@@ -79,6 +80,28 @@ void editor::App::registerCommands(){
     auto sceneKeysAnd = [sceneKeys](std::function<bool()> gate) {
         return [sceneKeys, gate]() { return sceneKeys() && (!gate || gate()); };
     };
+
+    // ---- Assets > Version Control (S29 R29): the Project window's selection; a disabled item
+    // says why (VcsUi::canRun, the menu's tooltip)
+    auto vcsCommand = [this, &catalog](const char* id, vcs::VcsAction action) {
+        const CommandDef* existing = catalog.find(id);
+        if (!existing) return;
+        CommandDef def = *existing;
+        def.enabled = [this, action]() { return vcsUi->canRun(action, projectWindow->getSelectedFiles(), nullptr); };
+        def.disabledReason = [this, action]() {
+            std::string why;
+            vcsUi->canRun(action, projectWindow->getSelectedFiles(), &why);
+            return why;
+        };
+        catalog.add(std::move(def));
+    };
+    vcsCommand("assets.vcs.commit", vcs::VcsAction::Commit);
+    vcsCommand("assets.vcs.revert", vcs::VcsAction::Revert);
+    vcsCommand("assets.vcs.lock", vcs::VcsAction::Lock);
+    vcsCommand("assets.vcs.unlock", vcs::VcsAction::Unlock);
+    vcsCommand("assets.vcs.history", vcs::VcsAction::ShowHistory);
+    vcsCommand("assets.vcs.diff", vcs::VcsAction::DiffAgainstBaseline);
+    vcsCommand("assets.vcs.refresh", vcs::VcsAction::Refresh);
 
     // ---- File
     enable("file.newScene3D", notBusy);

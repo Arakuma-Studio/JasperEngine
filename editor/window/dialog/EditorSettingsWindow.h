@@ -68,6 +68,8 @@ namespace jasperengine::editor {
         bool m_undoReviewPlayChanges = true;
         LoggingSettings m_logging;
         DiagnosticsSettings m_diagnostics;
+        VersionControlSettings m_versionControl;
+        std::string m_smartMergeStatus;
         LatticeViewSettings m_lattice;
         SceneViewSettings m_sceneView;
         // Unity-style category list; indexes PreferencesCategory in the .cpp.
@@ -98,6 +100,7 @@ namespace jasperengine::editor {
         void refreshPlayerRuntimes();
         void drawLoggingSettings();
         void drawDiagnosticsSettings();
+        void drawVersionControlSettings();
         void drawAdvancedSettings();
         bool applySettings();
 

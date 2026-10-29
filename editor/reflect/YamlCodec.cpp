@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // The generic YAML codec of the tables (docs/specs/S08-reflection.md R7): keys in table order,
-// OmitIfDefault / OmitIfNonFinite / NoSave honoured, the legacy (node, base) decode (absent keys
+// OmitIfDefault / OmitIfNonFinite / NoSave / NotWritten honoured, the legacy (node, base) decode (absent keys
 // keep the base value), aliases read, never throwing: a value that does not read keeps the base
 // and is reported to S03 (which keeps the authored text) and to the DecodeReport.
 
@@ -63,10 +63,27 @@ namespace {
 
 }
 
+namespace {
+    thread_local int documentEncodes = 0;
+}
+
+reflect::DocumentEncodeScope::DocumentEncodeScope() {
+    documentEncodes++;
+}
+
+reflect::DocumentEncodeScope::~DocumentEncodeScope() {
+    documentEncodes--;
+}
+
+bool reflect::DocumentEncodeScope::active() {
+    return documentEncodes > 0;
+}
+
 YAML::Node reflect::encode(const StructDesc& desc, const void* owner, const EncodeContext& ctx) {
     YAML::Node node;
+    const bool document = DocumentEncodeScope::active();
     for (const FieldDesc& field : desc.fields) {
-        if (!isSaved(field)) continue;
+        if (!isSaved(field) || (document && (field.flags & NotWritten))) continue;
         const void* value = field.ref(const_cast<void*>(owner));
         if (field.flags & OmitIfDefault) {
             const void* def = defaultValue(desc, field);
