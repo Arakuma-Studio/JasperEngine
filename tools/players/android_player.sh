@@ -27,7 +27,10 @@ case "$FLAVOUR" in
 esac
 APP="$ROOT/engine/workspaces/androidstudio/app"
 
-(cd "$ROOT/engine/workspaces/androidstudio" && ./gradlew --no-daemon -PjasperPlayer=true -PjasperBackend="$BACKEND" clean "$TASK")
+# no `clean`: its native step needs the CMake AGP installs only while building; the APK of an
+# earlier run goes, the merged resources are rewritten by the build
+rm -rf "$APP/build/outputs/apk"
+(cd "$ROOT/engine/workspaces/androidstudio" && ./gradlew --no-daemon -PjasperPlayer=true -PjasperBackend="$BACKEND" "$TASK")
 
 rm -rf "$OUT"
 mkdir -p "$OUT"
