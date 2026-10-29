@@ -1876,6 +1876,9 @@ YAML::Node editor::Stream::encodeSceneDisplaySettings(const SceneDisplaySettings
     sceneNode["snapTile"]             = ds.snapTile;
     sceneNode["snapRotation"]         = ds.snapRotation;
     encodePositiveFinite(sceneNode, "rotationSnapDegrees", ds.rotationSnapDegrees);
+    const YAML::Node navigationNode = encodeNavOverlaySettings(ds.navigation);
+    if (navigationNode.size() > 0)
+        sceneNode["navigation"] = navigationNode;
     return sceneNode;
 }
 
@@ -1897,6 +1900,7 @@ void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDis
     if (node["disableClouds"])        ds.disableClouds        = YamlNumbers::as<bool>(node["disableClouds"]);
     ds.showPostProcessing = node["showPostProcessing"] ? YamlNumbers::as<bool>(node["showPostProcessing"]) : false;
     ds.showAllLattices = node["showAllLattices"] ? YamlNumbers::as<bool>(node["showAllLattices"]) : false;
+    decodeNavOverlaySettings(node["navigation"], ds.navigation);
     if (node["showGrid2D"])           ds.showGrid2D           = YamlNumbers::as<bool>(node["showGrid2D"]);
     if (node["gridSpacing2D"])        ds.gridSpacing2D        = decodePositiveFinite(node["gridSpacing2D"], ds.gridSpacing2D);
     if (node["gridSpacing3D"])        ds.gridSpacing3D        = decodePositiveFinite(node["gridSpacing3D"], ds.gridSpacing3D);
@@ -2244,6 +2248,12 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (threading.webPumpBudgetMs != defaults.webPumpBudgetMs) threadingNode["webPumpBudgetMs"] = threading.webPumpBudgetMs;
         if (threading.webMultithreaded != defaults.webMultithreaded) threadingNode["webMultithreaded"] = threading.webMultithreaded;
         if (threadingNode.size()) root["threading"] = threadingNode;
+    }
+
+    {
+        // Project Settings > Navigation (S19): only what differs from the defaults
+        const YAML::Node navigationNode = encodeNavigationProjectSettings(project->getNavigationSettings());
+        if (navigationNode.size() > 0) root["navigation"] = navigationNode;
     }
 
     {
@@ -2780,6 +2790,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         }
         project->setThreadingSettings(threading);
     }
+
+    project->setNavigationSettings(decodeNavigationProjectSettings(node["navigation"]));
 
     {
         TextureProjectSettings textureSettings;

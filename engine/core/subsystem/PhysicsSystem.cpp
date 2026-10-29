@@ -17,6 +17,7 @@
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "subsystem/CharacterControllerSystem.h"
 #include "util/JoltPhysicsAux.h"
+#include "util/MeshTriangles.h"
 #endif
 
 #include <algorithm>
@@ -1452,7 +1453,7 @@ bool PhysicsSystem::isShapeSourceLoading(Entity entity, const Collider3D& shapeD
         return false;
     }
 
-    return JoltShapeBuilder::isGeometryLoading(scene, shapeData.sourceEntity == NULL_ENTITY ? entity : shapeData.sourceEntity);
+    return MeshTriangles::isGeometryLoading(scene, shapeData.sourceEntity == NULL_ENTITY ? entity : shapeData.sourceEntity);
 }
 
 bool PhysicsSystem::syncRigidbodyColliders(Entity entity, RigidbodyComponent& body){

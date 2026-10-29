@@ -58,7 +58,7 @@
 # (-DJASPERENGINE_WASM_SIMD=OFF), next to the default build (build/web*-scalar).
 # web-gate: GATE=sample-project (default, build/web), sample-project-threads (build/web-threads)
 # or a test project with a gate (tools/web/gates/<name>.json; build/web-<name>, WEB_PROJECT=<name>
-# tools/build.sh web first);
+# tools/build.sh web first; WEB_THREADS=1 gates its pthreads build, build/web-threads-<name>);
 # GATE_ARGS goes to browser_gate.py. Screenshot and transcript in build/test-results/web/.
 # From a git worktree, the main checkout's ccache and .git are shared.
 set -euo pipefail
@@ -74,7 +74,7 @@ EDITOR_MIN_TESTS=150
 HTMLUI_MAX_SKIPPED=75
 
 usage() {
-    sed -n '2,56p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,63p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 1
 }
 
@@ -338,7 +338,8 @@ web)
     if [[ -n "${WEB_PROJECT:-}" ]]; then
         [[ "$WEB_PROJECT" =~ ^[A-Za-z0-9_-]+$ && -d "$ROOT/tools/test-projects/$WEB_PROJECT" ]] \
             || { echo "WEB_PROJECT must name a directory of tools/test-projects (got $WEB_PROJECT)" >&2; exit 1; }
-        WEB_DIR="$OUT-$WEB_PROJECT"
+        # WEB_THREADS=1: build/web-threads-<name>
+        WEB_DIR="$WEB_DIR-$WEB_PROJECT"
         PROJECT_FLAGS="-DPROJECT_ROOT=/src/tools/test-projects/$WEB_PROJECT"
     fi
     [[ -n "$CXX_SUFFIX" ]] && WEB_DIR="$WEB_DIR/cxx$CXX_STANDARD"
@@ -472,7 +473,9 @@ web-gate)
         *)
             [[ "$NAME" =~ ^[A-Za-z0-9_-]+$ && -f "$ROOT/tools/web/gates/$NAME.json" ]] \
                 || { echo "GATE must be sample-project, sample-project-threads or a tools/web/gates/<name>.json" >&2; exit 1; }
-            WEB_DIR="$OUT-$NAME" ;;
+            WEB_DIR="$OUT-$NAME"
+            # a test project's pthreads build (WEB_THREADS=1 WEB_PROJECT=<name> tools/build.sh web)
+            [[ "${WEB_THREADS:-0}" == 1 ]] && WEB_DIR="$OUT-threads-$NAME" ;;
     esac
     SHOT_NAME="$NAME"
     if [[ "${WASM_SIMD:-1}" == 0 ]]; then

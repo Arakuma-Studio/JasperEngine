@@ -79,6 +79,8 @@ namespace reflected_value_cmd_test {
             PlayChangeReview::get().discardAll();
             if (project) {
                 for (SceneProject& candidate : project->getScenes()) CommandHandle::remove(candidate.id);
+                // a Project frees none of its scenes itself (LeakSanitizer: each test leaked its scenes and renders)
+                project->releaseScenes();
             }
             project.reset();
         }

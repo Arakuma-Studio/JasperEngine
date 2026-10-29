@@ -75,7 +75,13 @@ void create_scene_AllComponents_2026080800(Scene* scene){
     scene->recreateEntity(1065);
     scene->recreateEntity(1066);
     scene->recreateEntity(1067);
-    scene->setLastEntity(1067);
+    scene->recreateEntity(1068);
+    scene->recreateEntity(1069);
+    scene->recreateEntity(1070);
+    scene->recreateEntity(1071);
+    scene->recreateEntity(1072);
+    scene->recreateEntity(1073);
+    scene->setLastEntity(1073);
 
     {
         // Entity 1001 (Transform)
@@ -2126,6 +2132,212 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
         transform.parent = NULL_ENTITY;
         scene->addComponent<Transform>(1067, transform);
+    }
+
+    {
+        // Entity 1068 (NavMeshSurfaceComponent)
+        scene->setEntityName(1068, "NavMeshSurfaceComponent");
+
+        // Entity components initialization
+        NavMeshSurfaceComponent navSurface;
+        navSurface.agentType = 7;
+        navSurface.collectObjects = NavCollectObjects::CHILDREN;
+        navSurface.useGeometry = NavUseGeometry::BOTH;
+        navSurface.includeLayers = 2u;
+        navSurface.defaultArea = 4;
+        navSurface.volumeCenter = Vector3(3.100000f, 3.800000f, 7.900000f);
+        navSurface.volumeSize = Vector3(4.900000f, 5.000000f, 6.600000f);
+        navSurface.overrideCellSize = true;
+        navSurface.cellSize = 6.900000f;
+        navSurface.overrideTileSize = true;
+        navSurface.tileSize = 7;
+        navSurface.minRegionArea = 3.400000f;
+        navSurface.plane = nav::NavPlane::XY;
+        navSurface.runtimeCarving = true;
+        navSurface.navMeshData = "";
+        navSurface.enabled = false;
+        scene->addComponent<NavMeshSurfaceComponent>(1068, navSurface);
+
+        Transform transform;
+        transform.position = Vector3(67.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1068, transform);
+    }
+
+    {
+        // Entity 1069 (NavMeshAgentComponent)
+        scene->setEntityName(1069, "NavMeshAgentComponent");
+
+        // Entity components initialization
+        NavMeshAgentComponent navAgent;
+        navAgent.agentType = 5;
+        navAgent.baseOffset = 8.200000f;
+        navAgent.speed = 1.200000f;
+        navAgent.angularSpeed = 7.400000f;
+        navAgent.acceleration = 4.800000f;
+        navAgent.stoppingDistance = 1.300000f;
+        navAgent.autoBraking = false;
+        navAgent.radius = 8.300000f;
+        navAgent.height = 2.000000f;
+        navAgent.obstacleAvoidance = nav::AvoidanceQuality::High;
+        navAgent.avoidancePriority = 2;
+        navAgent.autoTraverseOffMeshLink = false;
+        navAgent.autoRepath = false;
+        navAgent.areaMask = 5;
+        navAgent.updatePosition = false;
+        navAgent.updateRotation = false;
+        navAgent.driver = NavAgentDriver::NONE;
+        navAgent.surface = NULL_ENTITY;
+        navAgent.enabled = false;
+        scene->addComponent<NavMeshAgentComponent>(1069, navAgent);
+
+        Transform transform;
+        transform.position = Vector3(68.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1069, transform);
+    }
+
+    {
+        // Entity 1070 (NavMeshObstacleComponent)
+        scene->setEntityName(1070, "NavMeshObstacleComponent");
+
+        // Entity components initialization
+        NavMeshObstacleComponent navObstacle;
+        navObstacle.shape = NavObstacleShape::BOX;
+        navObstacle.center = Vector3(4.900000f, 3.000000f, 0.500000f);
+        navObstacle.size = Vector3(4.200000f, 6.200000f, 4.200000f);
+        navObstacle.radius = 1.700000f;
+        navObstacle.height = 2.000000f;
+        navObstacle.carve = true;
+        navObstacle.moveThreshold = 5.200000f;
+        navObstacle.timeToStationary = 6.300000f;
+        navObstacle.carveOnlyStationary = false;
+        navObstacle.enabled = false;
+        scene->addComponent<NavMeshObstacleComponent>(1070, navObstacle);
+
+        Transform transform;
+        transform.position = Vector3(69.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1070, transform);
+    }
+
+    {
+        // Entity 1071 (NavMeshLinkComponent)
+        scene->setEntityName(1071, "NavMeshLinkComponent");
+
+        // Entity components initialization
+        NavMeshLinkComponent navLink;
+        navLink.agentType = 1;
+        navLink.startPoint = Vector3(5.600000f, 3.600000f, 7.300000f);
+        navLink.endPoint = Vector3(5.000000f, 3.700000f, 0.800000f);
+        navLink.width = 0.000000f;
+        navLink.costModifier = 4.900000f;
+        navLink.bidirectional = false;
+        navLink.autoUpdatePosition = true;
+        navLink.area = 4;
+        navLink.enabled = false;
+        scene->addComponent<NavMeshLinkComponent>(1071, navLink);
+
+        Transform transform;
+        transform.position = Vector3(70.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1071, transform);
+    }
+
+    {
+        // Entity 1072 (NavMeshModifierComponent)
+        scene->setEntityName(1072, "NavMeshModifierComponent");
+
+        // Entity components initialization
+        NavMeshModifierComponent navModifier;
+        navModifier.overrideInclusion = NavModifierInclusion::EXCLUDE;
+        navModifier.overrideArea = true;
+        navModifier.area = 5;
+        navModifier.applyToChildren = false;
+        navModifier.useVolume = true;
+        navModifier.volumeCenter = Vector3(4.300000f, 6.100000f, 6.900000f);
+        navModifier.volumeSize = Vector3(0.600000f, 4.800000f, 8.900000f);
+        navModifier.enabled = false;
+        scene->addComponent<NavMeshModifierComponent>(1072, navModifier);
+
+        Transform transform;
+        transform.position = Vector3(71.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1072, transform);
+    }
+
+    {
+        // Entity 1073 (NavGridComponent)
+        scene->setEntityName(1073, "NavGridComponent");
+
+        // Entity components initialization
+        NavGridComponent navGrid;
+        navGrid.layout = nav::GridLayout::Hex;
+        navGrid.neighbours = 8;
+        navGrid.cellSize = 3.200000f;
+        navGrid.width = 32;
+        navGrid.height = 32;
+        navGrid.plane = nav::NavPlane::XY;
+        navGrid.maxSlope = 7.800000f;
+        navGrid.maxStep = 2.100000f;
+        navGrid.movement = nav::GridMovement::CellCentres;
+        navGrid.reservationLookahead = 3.100000f;
+        navGrid.reservationPenalty = 6.500000f;
+        navGrid.source = NavGridSource::TERRAIN;
+        navGrid.sourceEntity = NULL_ENTITY;
+        navGrid.emptyCellArea = 3;
+        navGrid.collidersBlock = true;
+        navGrid.autoRebuild = false;
+        navGrid.gridData = "";
+        navGrid.enabled = false;
+        scene->addComponent<NavGridComponent>(1073, navGrid);
+
+        Transform transform;
+        transform.position = Vector3(72.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1073, transform);
     }
 
     // Default Camera 1
