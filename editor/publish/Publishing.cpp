@@ -233,7 +233,9 @@ bool PublishingConfig::parse(const std::string& text, PublishingConfig& out, std
         }
         out = PublishingConfig();
         out.releasesDir = in.value("releasesDir", out.releasesDir);
-        for (const auto& [name, t] : in.value("targets", ordered_json::object()).items()) {
+        // (a named value: items() of a temporary dangles in a range-for before C++23)
+        const ordered_json targetList = in.value("targets", ordered_json::object());
+        for (const auto& [name, t] : targetList.items()) {
             PublishTarget target;
             target.platform = t.value("platform", target.platform);
             target.arch = t.value("arch", target.arch);
@@ -410,7 +412,8 @@ bool ReleaseInfo::load(const fs::path& releaseDir, ReleaseInfo& out, std::string
             target.depotId = t.value("depotId", "");
             target.deviceProfile = t.value("deviceProfile", "");
             target.glibcFloor = t.value("glibcFloor", "");
-            for (const auto& [path, f] : t.value("files", ordered_json::object()).items()) {
+            const ordered_json fileList = t.value("files", ordered_json::object());
+            for (const auto& [path, f] : fileList.items()) {
                 TreeEntry entry;
                 if (f.contains("symlink")) entry.symlink = f["symlink"].get<std::string>();
                 else {

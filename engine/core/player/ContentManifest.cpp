@@ -55,7 +55,9 @@ bool ContentManifest::fromJson(const json& in, ContentManifest& out, std::string
         manifest.scenes = in.value("scenes", std::vector<std::string>{});
         manifest.prefabs = in.value("prefabs", std::vector<std::string>{});
         manifest.shaders = in.value("shaders", std::vector<std::string>{});
-        for (const auto& [path, file] : in.value("files", json::object()).items())
+        // (a named value: items() of a temporary dangles in a range-for before C++23)
+        const json fileMap = in.value("files", json::object());
+        for (const auto& [path, file] : fileMap.items())
             manifest.files[path] = {file.value("sha256", ""), file.value("size", uint64_t(0))};
         for (const json& pack : in.value("packs", json::array()))
             manifest.packs.push_back({pack.value("file", ""), pack.value("sha256", ""), pack.value("entries", uint64_t(0))});
