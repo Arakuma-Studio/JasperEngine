@@ -603,32 +603,65 @@ public:
 
 ## Deviations
 
-(none yet)
+1. **Passes create their pipelines at once** (§6.4 refined). The spec asked the sites that swap a
+   pass at runtime to build the new object next to the current one and swap once it is ready.
+   Instead, every pass object of the frame is marked `ObjectRender::setImmediatePipelines(true)`:
+   post-processing (uber, bloom, the effect chain), SSAO, SSR, the scene colour copy, the
+   composites and blits, the atmosphere, fluid, the shadow cache restore and atlas view, the 2D
+   shadow casters, the probe filter and the HTML UI composite. Such an object's pipelines are
+   created on the render thread (an interned one still being created is waited for) and drawn
+   without a warm draw.
+   - Why: a pass is consumed by the next one (the uber pass samples bloom, the composite samples
+     the scene). Skipping one for a frame leaves an undefined target, which Vulkan may show as
+     garbage, so readiness would have to be threaded through every consumer.
+   - Their shaders stay asynchronous, and the existing "keep the current variant until the new
+     one is built" logic (uber variants, post colour, the shadow tier) covers them.
+   - The cost is one pipeline compile on the render thread the first time a pass's state appears
+     on a device: on Vulkan and Metal only, since GL pipelines are state. The VkPipelineCache
+     saved per device and the warm-up list make it a cache hit afterwards.
+   - Content (meshes, particles, UI, HTML UI elements, points, lines, sky) stays fully
+     asynchronous, as R2 says.
+2. **HTML UI warms nothing at renderer load** (§6.4). Its pipelines depend on the layer target in
+   use when it draws, which the renderer does not know when it loads. The global readiness gate
+   (`Engine::areScenesLoaded` waits for `isGpuCreationIdle`) holds the READY signal and the
+   loading state until its first frame's pipelines and warm draws are done. The warm-up list
+   records HTML UI pipelines like any other.
+3. **The warm-up list lives at `<project>/ShaderWarmup.json`**, not `ProjectSettings/`. Projects
+   have no `ProjectSettings/` directory, and the list belongs next to `project.yaml` under version
+   control.
+4. **No checked-in benchmark fixture** (§6.7). `tools/perf/async_shaders_bench.py` builds its
+   scene over MCP in a new project (twelve spheres; each toggle turns on a lobe set no sphere had,
+   a never-built variant). It records each toggle with `capture_profile` and reads every frame's
+   creation scopes with `get_cpu_profile`. The MCP tests make their scenes the same way.
+5. **The editor does not replay the warm-up list** (R25's "Warming up shaders N/M"). The editor
+   records the list. Games replay it (`ShaderWarmup::beginShipped` at view load), so the progress
+   is the game's (`ShaderWarmup.getProgress()` in Lua). The status bar shows "Compiling shaders N".
 
 ## Progress (implementation notes, keep updated)
 
 - Spec written at oe-port 0c22d3b91 (branch `feat/s32-async-shaders`). The GL probe numbers in
   §3 come from a throwaway program run on A in the Docker image.
-- **Done (4ea7516a5, not yet build-verified):**
-  - `engine/libs/sokol/sokol_async.h` + `sokol_async_impl.h` (included by `sokol.cpp`); the
-    patches in `sokol_gfx.h` (GL adopt, Vulkan `_sgj_vk_pipeline_cache`, Metal hooks): 11
-    `JasperEngine: async creation` markers so far;
-  - `engine/renders/sokol/SokolAsyncCreate.{h,cpp}` (worker thread, modes, budget, deferred
-    destroys, the Vulkan cache file, warm-draw jobs);
-  - `engine/core/render/GpuCreation.h` (settings, stats) and `GpuWorkerContext.h` (factory,
-    defined in `SystemRender.cpp`);
-  - `SystemRender` facade; `SokolShader`/`ShaderRender::isPending`; `ShaderPool::get` early
-    return, `getPendingPipelineCount`, `isGpuCreationIdle`;
-  - SokolCmdQueue MAKE/DESTROY routed (no deferred dealloc for shaders and pipelines);
-  - interning `SokolPipelineCache::acquire/release/retain`; SokolObject warm gating;
-  - `Engine::runFrame` (own frame) and `EditorFrame` call `updateGpuCreation`, and the editor
-    keeps drawing while not idle; `areScenesLoaded` waits for idle.
-- **Next:**
-  - build GL and Vulkan; platform worker contexts (editor Linux/Win/Mac backends, game Linux,
-    Win, Mac GL, Android EGL, the test HeadlessContext; `XInitThreads` in the game's
-    WindowLinux);
-  - the Xcode pbxproj entry for `SokolAsyncCreate.cpp`; `PATCHES.md` and the marker test;
-  - stand-ins (RenderSystem `standIn`), the pass-swap audit, HTML UI warm-up at load;
-  - `ShaderWarmup` (record, export hook, replay); `ShaderCreationSettings` reflection, Project
-    Settings rows, the Generator emit; the status bar, `get_render_stats`, Lua, docs and the guide
-    line; tests, goldens, E bench, gates.
+- **Done** (commits up to 2e97e889b; the first build compiled the sokol extension, SokolAsyncCreate,
+  SokolObject and SokolPipelineCache clean under WERROR; later edits await the next build, since
+  every server's slots were busy):
+  - the sokol extension (`sokol_async.h`, `sokol_async_impl.h`) and 11 `JasperEngine: async
+    creation` markers; `PATCHES.md`;
+  - `SokolAsyncCreate` (modes, worker, budget, deferred destroys, Vulkan cache, warm draws, waits,
+    `makePipelineNow`), interning, recorder, immediate pipelines;
+  - worker contexts: `GlxWorkerContext.h` (editor Linux, player Linux, test HeadlessContext),
+    `WglWorkerContext.h` (editor and player Windows), MacViewGL, Android EGL; `XInitThreads` in
+    WindowLinux;
+  - stand-ins in `loadMesh` (main, depth, G-buffer); readiness (`areScenesLoaded`, editor redraws
+    while pending, `GpuEnvironment::runFrames`);
+  - `ShaderWarmup` (format, record, replay, Lua) and `SokolPipelineRecord`; export hooks in
+    `resolveShaderKeys` and `buildAndSaveShaders` (file or header entry "warmup");
+  - settings (`ShaderCreationProjectSettings`, reflected in `editor/reflect/ShaderCreationReflect.cpp`,
+    project.yaml `shaderCreation`, rows `shader_creation.*`, `ShaderCreationSettingsCmd`, Project
+    Settings drawing, generated main); command `assets.clearShaderWarmup`;
+  - status bar; `get_render_stats.shader_creation`; Lua; docs (`docs/rendering/async-shaders.md`,
+    guide section, one guide line; the guide is 5 bytes smaller than before);
+  - unit tests `engine/tests/core/render/AsyncCreateTest.cpp`, MCP `test_async_shaders.py`, bench
+    `tools/perf/async_shaders_bench.py` with thresholds.
+- **Next:** build GL + Vulkan WERROR, unit tests (write the golden `async_standin_fogged`), MCP
+  suite, web, android, ASan+UBSan, smoke, xcode checks, E benches (worker, Vulkan, the sync red
+  control), merge oe-port, TOOLS.md, re-gate.
