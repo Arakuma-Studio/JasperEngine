@@ -17,8 +17,8 @@ default), all (every registered tool), or a comma-separated list of groups.
 default listing (core) over its characters or tool count, a group over its limits, a tool over
 the per-tool limit (or its exceptions entry), an exceptions/groups entry naming a tool or group
 that does not exist. It also gates the agent guide (initialize.instructions) against the
-budget's "guide" entry: the whole text and each "## " section. docs/mcp/conventions.md explains
-the rules.
+budget's "guide" entry: the whole text, the headroom it must leave under its limit, and each
+"## " section. docs/mcp/conventions.md explains the rules.
 """
 
 from __future__ import annotations
@@ -148,9 +148,15 @@ def check_guide(text: str, budget: dict) -> list[str]:
     entry = budget["guide"]
     problems: list[str] = []
     size = len(text.encode())
-    if size > int(entry["bytes"]):
-        problems.append(f"agent guide: {size} bytes, over {entry['bytes']}: move area detail into "
+    limit, headroom = int(entry["bytes"]), int(entry.get("headroom_bytes", 0))
+    if size > limit:
+        problems.append(f"agent guide: {size} bytes, over {limit}: move area detail into "
                         f"docs/mcp/guide/<area>.md and keep a digest (docs/mcp/conventions.md)")
+    elif limit - size < headroom:
+        problems.append(f"agent guide: {size} bytes leaves {limit - size} of the {headroom} bytes of headroom "
+                        f"under {limit} that later specs need: move area detail into docs/mcp/guide/<area>.md "
+                        f"(jasper://docs/<area>) and keep a one-line pointer; never shrink the headroom or "
+                        f"raise the limit (docs/mcp/conventions.md)")
     own = entry.get("sections", {})
     present = set()
     for heading, nbytes in guide_sections(text):
@@ -169,7 +175,10 @@ def check_guide(text: str, budget: dict) -> list[str]:
 
 def print_guide(text: str, budget: dict) -> None:
     sections = sorted(guide_sections(text), key=lambda s: s[1], reverse=True)
-    print(f"guide: {len(text.encode())} of {budget['guide']['bytes']} bytes, {len(sections)} sections; largest: " +
+    entry = budget["guide"]
+    size, limit = len(text.encode()), int(entry["bytes"])
+    print(f"guide: {size} of {limit} bytes, {limit - size} left (headroom {entry.get('headroom_bytes', 0)} "
+          f"required), {len(sections)} sections; largest: " +
           ", ".join(f"{h} {n}" for h, n in sections[:5]))
 
 

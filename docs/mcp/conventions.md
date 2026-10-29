@@ -189,22 +189,27 @@ has a budget too: the `guide` entry of `tools/mcp/budget.json`.
 | Limit | Value |
 |---|---|
 | the whole guide, with its generated Tool groups section | ≤ 16,384 bytes (UTF-8) |
+| headroom: what the whole guide must leave free under that limit, for later specs' groups and lines | ≥ 1,500 bytes (`headroom_bytes`), so the guide itself stays ≤ 14,884 |
 | each `## ` section (the text before the first one counts as one) | ≤ 1,500 bytes (`section_bytes`), unless `sections` gives `{limit, reason}` |
 
-- The guide holds what every agent needs whatever it works on: Unity names, addressing, the
-  loop, undo, code, project layout, data safety, pitfalls, tool groups. Each area (scripting,
-  physics, prefabs, shaders, HTML UI, assets, ...) has at most one **digest** section there: the
-  rules an agent breaks without it, and the `jasper://docs/<area>` resource with the rest.
+- The guide holds what every agent needs before its first call, whatever it works on: Unity
+  names, addressing, the loop, undo, code, project layout, data safety, pitfalls, how to find
+  tools and groups and read the docs. Each area (scripting, physics, prefabs, shaders, HTML UI,
+  assets, ...) has at most one short **digest** section there: the few rules an agent breaks
+  without it (no tables of method names, defaults or field lists), and the
+  `jasper://docs/<area>` resource with the rest.
 - An area's detail lives in `docs/mcp/guide/<area>.md`. A file there is embedded at build time
   and served as `jasper://docs/<area>` (`docs/mcp/guide/README.md` lists them); long ones split
   into `### ` section resources.
 - A spec that adds guidance writes or extends its area's doc and, if agents need it up front,
   adds a line to its area's digest (or one new digest section). When the guide or a section
-  outgrows its limit, move detail from the digest into the doc; never raise a limit or trim
-  other areas' digests to make room. A tool or parameter name in the guide must exist
+  outgrows its limit, or the guide eats into the headroom, move detail from the digest into
+  the doc (every moved fact must already be there, or go there in the same change); never
+  raise a limit, shrink the headroom or trim other areas' digests to make room. A tool or parameter name in the guide must exist
   (`test_autosync.py`).
-- Gate: `tool_budget.py --check tools/mcp/budget.json` also measures the guide and names the
-  section over its limit (`test_tool_budget.py`, with rule tests on made-up guides).
+- Gate: `tool_budget.py --check tools/mcp/budget.json` also measures the guide, prints the bytes
+  left, and names the section over its limit or the headroom missing (`test_tool_budget.py`,
+  with rule tests on made-up guides).
 
 ## Docs and test coverage
 
