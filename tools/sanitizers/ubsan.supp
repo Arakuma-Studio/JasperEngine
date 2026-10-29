@@ -2,3 +2,8 @@
 # Only third-party code may be listed: Mesa (llvmpipe, lavapipe), X11, fontconfig and the vendored
 # libraries under libs/ and engine/libs/. Engine and editor code is never suppressed: fix it.
 # Every entry has a comment line above it giving the reason.
+
+# vendored miniz (basisu's copy, under the tinyexr that writeExr uses): built with
+# MINIZ_USE_UNALIGNED_LOADS_AND_STORES, its match finder reads 16-bit words at odd addresses on
+# purpose (x86 permits it); reached by upstream's FloatImage EXR writes (FloatImageTest)
+alignment:basisu_miniz.h
