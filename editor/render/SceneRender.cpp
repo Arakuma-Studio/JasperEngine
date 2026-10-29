@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneRender.h"
+#include "spline/SplineEditor.h"
 #include "profiler/Profile.h"
 
 #include "resources/icons/camera-icon_png.h"
@@ -133,6 +134,7 @@ editor::SceneRender::~SceneRender(){
 
     destroyLatticeCages();
     navigationOverlay.reset();
+    destroySplineOverlay();
     delete terrainBrushLines;
     delete physicsLines;
     delete camera;
@@ -567,6 +569,7 @@ void editor::SceneRender::hideAllGizmos(){
     uilayer.setCameraGaugeVisible(false);
     hideLatticeCages();
     if (navigationOverlay) navigationOverlay->hide();
+    hideSplineOverlay();
 }
 
 void editor::SceneRender::setPlayMode(bool isPlaying){
@@ -942,6 +945,9 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
     const uint32_t latticeScene = getLatticeSceneId();
     const bool latticePointsSelected = editedLattice != NULL_ENTITY && latticeScene != NULL_PROJECT_SCENE &&
         !LatticeEditorOps::getSelectedPoints(latticeScene, editedLattice).empty();
+    // the selected knots of the spline in Edit Spline, which the gizmo then acts on
+    const Entity editedSpline = getKnotEditSpline(toolEntities);
+    const bool splineKnotsSelected = editedSpline != NULL_ENTITY && !SplineEditor::get().getSelection().empty();
 
     bool showAnchorGizmo = false;
     Vector4 anchorData = Vector4::ZERO; // x: left, y: top, z: right, w: bottom
@@ -1128,6 +1134,16 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
             }
         }
 
+        // Override gizmo for the selected spline knots (W/E/R, or the 2D gizmo's move)
+        if (splineKnotsSelected){
+            Vector3 pivot;
+            Quaternion pivotRotation;
+            OBB knotsOBB;
+            if (getSplineKnotsPivot(editedSpline, SplineEditor::get().getSelection(), pivot, pivotRotation, knotsOBB)){
+                tools.updateGizmo(camera, pivot, pivotRotation, computeGizmoScale(pivot), knotsOBB, mouseRay, mouseClicked, anchorData, anchorArea);
+            }
+        }
+
         // Override gizmo for the selected lattice points (W/E/R, or the 2D gizmo's move)
         if (latticePointsSelected){
             Vector3 pivot;
@@ -1204,6 +1220,7 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
     syncObject2DGizmoMode();
 
     updateLatticeCages(selEntities, entities, editedLattice);
+    updateSplineOverlay(selEntities, editedSpline);
     updatePhysicsOverlay(physics, physicsSceneId);
     updateNavigationOverlay(selEntities);
 
@@ -1461,6 +1478,12 @@ void editor::SceneRender::mouseClickEvent(float x, float y, std::vector<Entity> 
             !LatticeEditorOps::getSelectedPoints(getLatticeSceneId(), latticeEntity).empty()){
             beginLatticeDrag(latticeEntity, gizmoPosition, gizmoRotation);
         }
+        // and on selected spline knots
+        splineDrag = SplineDrag();
+        const Entity splineEntity = getKnotEditSpline(selEntities);
+        if (splineEntity != NULL_ENTITY && handleGrabbed && !SplineEditor::get().getSelection().empty()){
+            beginSplineDrag(splineEntity, gizmoPosition, gizmoRotation);
+        }
     }
 
 }
@@ -1502,8 +1525,9 @@ void editor::SceneRender::mouseReleaseEvent(float x, float y){
     // a recorded drag: one key edit (one merge key) per drag
     endGizmoRecord();
 
-    // one drag of lattice points, one undo step
+    // one drag of lattice points (or spline knots), one undo step
     endLatticeDrag();
+    endSplineDrag();
     dragEdit.commit();
     dragEditStarted = false;
 }
@@ -1678,6 +1702,11 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
     // Lattice point drag: the gizmo's change goes to the points, not to the lattice entity
     if (latticeDrag.active){
         dragLatticeGizmo(project, commandSceneId, invertRotationSnap);
+        return;
+    }
+    // the same for spline knots
+    if (splineDrag.active){
+        dragSplineGizmo(project, commandSceneId, invertRotationSnap);
         return;
     }
 
@@ -2455,7 +2484,8 @@ bool editor::SceneRender::hasToolSubSelection(const std::vector<Entity>& selEnti
         || (selectedPolygonPointIndex >= 0 && entity == selectedPolygonPointEntity)
         || (selectedTrackPointIndex >= 0 && entity == selectedTrackPointEntity)
         || (getPointEditLattice(selEntities) == entity && getLatticeSceneId() != NULL_PROJECT_SCENE &&
-            !LatticeEditorOps::getSelectedPoints(getLatticeSceneId(), entity).empty());
+            !LatticeEditorOps::getSelectedPoints(getLatticeSceneId(), entity).empty())
+        || (getKnotEditSpline(selEntities) == entity && !SplineEditor::get().getSelection().empty());
 }
 
 void editor::SceneRender::physicsGizmoDrag(PhysicsPlacementWindow* physics, uint32_t sceneId, bool invertRotationSnap){

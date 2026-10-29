@@ -612,6 +612,10 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getBuoyancy", &GameObject::getBuoyancy)
 #endif
         .addFunction("getWaterVolume", &GameObject::getWaterVolume)
+        .addFunction("getSpline", &GameObject::getSpline)
+        .addFunction("getSplineExtrude", &GameObject::getSplineExtrude)
+        .addFunction("getSplineInstantiate", &GameObject::getSplineInstantiate)
+        .addFunction("getSplineAnimate", &GameObject::getSplineAnimate)
         .addFunction("getRay", &GameObject::getRay)
         // the Animation Player of the GameObject, nil when it has none (Unity's GetComponent)
         .addFunction("getAnimationPlayer", +[](GameObject* self) -> std::optional<AnimationPlayer> {

@@ -13,6 +13,7 @@
 #include "shader/ShaderUniforms.h"
 #include "texture/Material.h"
 #include "subsystem/PhysicsSystem.h"
+#include "subsystem/SplineSystem.h"
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "component/RigidbodyComponent.h"
 #endif
@@ -112,10 +113,14 @@ std::vector<WaterSurface> Water::getSurfaces(Scene* scene){
     if (!scene)
         return surfaces;
 
+    // spline rivers and lakes answer through SplineSystem::sampleWaterSurface, not their chunks' bounds
+    std::shared_ptr<SplineSystem> splines = scene->findSystem<SplineSystem>();
     auto meshes = scene->getComponentArray<MeshComponent>();
     for (int i = 0; i < (int)meshes->size(); i++){
         const MeshComponent& mesh = meshes->getComponentFromIndex(i);
         if (!mesh.enabled || mesh.aabb.isNull())
+            continue;
+        if (splines && splines->isGenerated(meshes->getEntity(i)))
             continue;
 
         WaterSurface surface;
@@ -162,7 +167,16 @@ const WaterSurface* Water::findSurface(const std::vector<WaterSurface>& surfaces
     return found;
 }
 
+// a spline river or lake over (x, z) (SplineSystem), before the library:water meshes
+static SplineWaterSample splineWater(Scene* scene, float x, float z){
+    std::shared_ptr<SplineSystem> splines = scene ? scene->findSystem<SplineSystem>() : nullptr;
+    return splines && splines->hasWaterSurfaces() ? splines->sampleWaterSurface(x, z) : SplineWaterSample();
+}
+
 std::optional<float> Water::getHeight(Scene* scene, float x, float z){
+    const SplineWaterSample water = splineWater(scene, x, z);
+    if (water.hit)
+        return water.height;
     const std::vector<WaterSurface> surfaces = getSurfaces(scene);
     const WaterSurface* surface = findSurface(surfaces, Vector3(x, std::numeric_limits<float>::infinity(), z));
     if (!surface)
@@ -171,6 +185,9 @@ std::optional<float> Water::getHeight(Scene* scene, float x, float z){
 }
 
 std::optional<Vector3> Water::getNormal(Scene* scene, float x, float z){
+    const SplineWaterSample water = splineWater(scene, x, z);
+    if (water.hit)
+        return water.normal;
     const std::vector<WaterSurface> surfaces = getSurfaces(scene);
     const WaterSurface* surface = findSurface(surfaces, Vector3(x, std::numeric_limits<float>::infinity(), z));
     if (!surface)
@@ -179,6 +196,9 @@ std::optional<Vector3> Water::getNormal(Scene* scene, float x, float z){
 }
 
 bool Water::isUnderwater(Scene* scene, const Vector3& point){
+    const SplineWaterSample water = splineWater(scene, point.x, point.z);
+    if (water.hit)
+        return point.y < water.height;
     const std::vector<WaterSurface> surfaces = getSurfaces(scene);
     const WaterSurface* surface = findSurface(surfaces, point);
     return surface && point.y < surface->getHeight(point.x, point.z, getTime());
