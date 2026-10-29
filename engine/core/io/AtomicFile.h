@@ -154,6 +154,13 @@ namespace jasperengine::io {
             std::filesystem::file_time_type mtime)>;
     JASPERENGINE_API void setPublishListener(PublishListener listener);
 
+    // Called before each publish replaces (or creates) the target, while its old bytes are
+    // still there. For the file watcher (S05) only, like the publish listener: an edit of
+    // another program it has not delivered yet is delivered before the editor's bytes replace
+    // it (they would look like the echo of the editor's write).
+    using PrePublishListener = std::function<void(const std::filesystem::path& target)>;
+    JASPERENGINE_API void setPrePublishListener(PrePublishListener listener);
+
 }
 
 #endif //ATOMICFILE_H
