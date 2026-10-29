@@ -71,7 +71,7 @@ local idle = ShaderPool.isGpuCreationIdle()
 
 | Setting | Default | |
 |---|---|---|
-| Asynchronous Shader Creation | on | Off creates everything on the render thread at once, as before S32. Applies at the next start. |
+| Asynchronous Shader Creation | on | Off creates everything on the render thread at once, as before S32. |
 | Main Thread Budget (ms) | 2 | 0.5-16 |
 | GL Warm Draws | on | GL with a worker context only |
 

@@ -175,6 +175,10 @@ namespace {
         int delayMs = 0;
 
         std::unordered_map<uint32_t, std::unique_ptr<ShaderJob>> shaders;
+        // the ids of `shaders`, for isPending from another thread (the async loading thread's
+        // ShaderRender::createShader): the map itself is the render thread's
+        std::mutex pendingMutex;
+        std::unordered_set<uint32_t> pendingShaderIds;
         std::unordered_map<uint32_t, std::unique_ptr<PipelineJob>> pipelines;
         std::unordered_map<uint32_t, std::vector<uint32_t>> waitingOnShader;
         std::unordered_map<uint32_t, int> shaderUsers;     // pipelines being created on a shader
@@ -215,6 +219,12 @@ namespace {
     void noteCreate(State& s, double ms){
         if (ms > s.stats.maxCreateMs)
             s.stats.maxCreateMs = ms;
+    }
+
+    void addPendingShader(State& s, uint32_t id, std::unique_ptr<ShaderJob> job){
+        s.shaders[id] = std::move(job);
+        std::lock_guard<std::mutex> lock(s.pendingMutex);
+        s.pendingShaderIds.insert(id);
     }
 
     void enqueue(State& s, const Task& task){
@@ -379,6 +389,10 @@ namespace {
             return;
         std::unique_ptr<ShaderJob> owned = std::move(it->second);
         s.shaders.erase(it);
+        {
+            std::lock_guard<std::mutex> lock(s.pendingMutex);
+            s.pendingShaderIds.erase(id);
+        }
         ShaderJob& job = *owned;
         if (!job.cancelled){
             if (job.path == Path::GlIssued){
@@ -731,8 +745,14 @@ void SokolAsyncCreate::setSettings(const ShaderCreationSettings& settings){
         next.mainThreadBudgetMs = 0.5f;
     if (next.mainThreadBudgetMs > 16.0f)
         next.mainThreadBudgetMs = 16.0f;
-    // the mode is chosen at setup: turning creation on or off applies from the next start
+    // the mode is chosen at setup: turning creation on or off sets it up again (what is pending
+    // is published first)
+    const bool restart = s.setUp && next.asyncCreation != s.settings.asyncCreation;
+    if (restart)
+        shutdown();
     s.settings = next;
+    if (restart)
+        setup();
 }
 
 const ShaderCreationSettings& SokolAsyncCreate::getSettings(){
@@ -785,7 +805,7 @@ void SokolAsyncCreate::initShader(sg_shader shader, const sg_shader_desc& desc){
         if (s.caps.gl || s.caps.shader_on_thread){
             job->path = Path::Worker;
             ShaderJob* raw = job.get();
-            s.shaders[shader.id] = std::move(job);
+            addPendingShader(s, shader.id, std::move(job));
             enqueue(s, Task{Task::Kind::Shader, shader.id, 0, raw});
             return;
         }
@@ -796,7 +816,7 @@ void SokolAsyncCreate::initShader(sg_shader shader, const sg_shader_desc& desc){
             job->path = Path::GlIssued;
             job->issuedFrame = s.frame;
             job->createMs = msSince(job->start);
-            s.shaders[shader.id] = std::move(job);
+            addPendingShader(s, shader.id, std::move(job));
             return;
         }
         break;
@@ -804,7 +824,7 @@ void SokolAsyncCreate::initShader(sg_shader shader, const sg_shader_desc& desc){
         job->metal = sgj_mtl_shader_begin(job->slot, &job->desc.desc);
         if (job->metal){
             job->path = Path::Metal;
-            s.shaders[shader.id] = std::move(job);
+            addPendingShader(s, shader.id, std::move(job));
             return;
         }
         break;
@@ -841,8 +861,11 @@ void SokolAsyncCreate::destroyShader(sg_shader shader){
 }
 
 bool SokolAsyncCreate::isPending(sg_shader shader){
-    const State& s = state();
-    return shader.id != SG_INVALID_ID && s.shaders.count(shader.id) > 0;
+    State& s = state();
+    if (shader.id == SG_INVALID_ID)
+        return false;
+    std::lock_guard<std::mutex> lock(s.pendingMutex);
+    return s.pendingShaderIds.count(shader.id) > 0;
 }
 
 sg_pipeline SokolAsyncCreate::makePipeline(const sg_pipeline_desc& desc){

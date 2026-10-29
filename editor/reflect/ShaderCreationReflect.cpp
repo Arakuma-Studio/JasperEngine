@@ -18,7 +18,7 @@ namespace {
 
     constexpr FieldDesc kShaderCreationFields[] = {
         JE_FIELD(ShaderCreationProjectSettings, asyncCreation, .flags = OmitIfDefault, .label = "Asynchronous Shader Creation",
-                 .tooltip = "Shaders and pipelines are created off the render thread; a variant that is not ready draws a stand-in or waits. Applies at the next start."),
+                 .tooltip = "Shaders and pipelines are created off the render thread; a variant that is not ready draws a stand-in or waits. Off: everything is created at once on the render thread."),
         JE_FIELD(ShaderCreationProjectSettings, mainThreadBudgetMs, .flags = OmitIfDefault | Clamped, .min = 0.5f, .max = 16.0f,
                  .step = 0.5f, .format = "%.1f ms", .label = "Main Thread Budget (ms)",
                  .tooltip = "The render thread's time per frame for finishing creations; one always finishes."),

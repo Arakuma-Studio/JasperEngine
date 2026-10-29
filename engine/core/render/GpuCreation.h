@@ -16,6 +16,7 @@ namespace jasperengine {
     // (Engine::setShaderCreationSettings) and applied when the render system is set up
     struct ShaderCreationSettings {
         // off: every shader and pipeline is created at once, on the render thread, as before S32
+        // (a change sets the creation up again)
         bool asyncCreation = true;
         // the render thread's share of finishing creations, per frame (one always finishes)
         float mainThreadBudgetMs = 2.0f;
