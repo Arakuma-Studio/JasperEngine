@@ -42,20 +42,20 @@ AAPT2="$(ls -d "$ANDROID_HOME"/build-tools/*/aapt2 2>/dev/null | sort -V | tail 
 [[ -x "$AAPT2" ]] || { echo "no aapt2 under $ANDROID_HOME/build-tools" >&2; exit 1; }
 "$AAPT2" dump resources "$APK" > "$OUT/resources.txt"
 
-python3 - "$APK" "$APP/build/intermediates" "$VARIANT" "$OUT" <<'PY'
+python3 - "$APK" "$APP/build/intermediates" "$VARIANT" "$OUT" "$ROOT/engine/platform/android/player/AndroidManifest.template.xml" <<'PY'
 import re, sys, zipfile
 from pathlib import Path
 
 apk, intermediates, variant, out = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3], Path(sys.argv[4])
-# aapt2's --stable-ids format, "<package>:<type>/<name> = 0x<id>", from `aapt2 dump resources`
-package, ids = None, []
+# aapt2's --stable-ids format, "<package>:<type>/<name> = 0x<id>", from `aapt2 dump resources`.
+# The ids are named with the package a game is linked under: the template manifest's (the
+# player's APK names its table after Gradle's applicationId, which aapt2 would not match)
+template = Path(sys.argv[5]).read_text()
+package = re.search(r'<manifest[^>]*\spackage="([^"]+)"', template).group(1)
+ids = []
 for line in (out / "resources.txt").read_text().splitlines():
-    found = re.match(r"\s*Package name=(\S+)", line)
-    if found:
-        package = found.group(1)
-        continue
     found = re.match(r"\s*resource (0x[0-9a-f]{8}) ([\w.]+/[\w.$-]+)", line)
-    if found and package:
+    if found:
         ids.append(f"{package}:{found.group(2)} = {found.group(1)}")
 if not ids:
     sys.exit("aapt2 dump resources listed no resource ids")
