@@ -1,6 +1,6 @@
 # Version control for agents
 
-Served as `jasper://docs/version-control`. The user documentation is
+Served as `jasper://docs/vcs`. The user documentation is
 `docs/editor/version-control.md`; the design is `docs/specs/S29-version-control.md`. The tools
 are the `vcs` group: `tool_groups` enable `["vcs"]` lists them.
 

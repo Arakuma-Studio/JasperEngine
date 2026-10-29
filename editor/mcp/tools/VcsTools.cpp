@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// S29: version control (group "vcs", docs/specs/S29-version-control.md R33, docs/mcp/guide/version-control.md)
+// S29: version control (group "vcs", docs/specs/S29-version-control.md R33, docs/mcp/guide/vcs.md)
 //
 //   get_vcs_status       provider, branch, ahead/behind, the changed files (refresh: a poll now, with the locks)
 //   diff_file            a unified text diff of a file against a revision
@@ -661,7 +661,7 @@ void registerVcsTools(McpRegistry& registry) {
         tool.description =
             "Version control state: provider (git/svn), branch, ahead/behind, last error, and the project's changed files "
             "{path, index, worktree, conflict?, lock?, lock_owner?, remote_changed?} (500 max). refresh polls now, with the "
-            "locks (network). jasper://vcs/status holds the summary; jasper://docs/version-control the workflow.";
+            "locks (network). jasper://vcs/status holds the summary; jasper://docs/vcs the workflow.";
         tool.inputSchema = object({
             {"paths", pathsSchema("Only these files or folders (project-relative).")},
             {"include_clean", withDefault(boolean("Lockable and locked files without changes too."), false)},

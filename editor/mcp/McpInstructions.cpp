@@ -88,7 +88,6 @@ editor_ux group: search_editor = the Ctrl+K palette (> / : @ + asset:); run_comm
 list_shortcuts id or a result key; set_shortcut rebinds; get_inspector_layout reads the Inspector's
 rows. list_assets search: t: l: ext: path: re: ref: missing:. Layouts, labels, saved searches,
 bookmarks: edit_* (jasper://docs/editor-integration).
-Git/SVN: vcs group.
 
 ## Code (Lua, C++, shaders, materials)
 The project is a normal folder (`editor_status`: project.path). Work in it and read, edit,

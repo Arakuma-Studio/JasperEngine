@@ -634,6 +634,9 @@ MCP tests are in `tools/mcp/tests/test_vcs.py`. Each test builds its repository 
   parameters are the spec's; the remote operations are jobs (`wait`, `timeout_seconds`). `get_vcs_status` with `refresh: true` also looks for a repository again
   when there was none (a `git init` after the project opened). AC17's "unsaved
   `set_component_value` edit" is a `set_transform` edit (the editor has no `set_component_value`).
+- **Agent guide**: no line of its own. With S19 merged the guide is within a few bytes of its
+  16,384 (the generated tool-groups line names `vcs`); the reference is `jasper://docs/vcs`
+  (docs/mcp/guide/vcs.md), listed by `jasper://docs` and named in `get_vcs_status`' description.
 - **Hierarchy glyphs** (R27) of GameObject rows are drawn after the name, not before it: before
   the name sit the prefab icon and the variant badge, which the glyph would overlap at narrow
   widths. The scene row and the Project window follow R27.

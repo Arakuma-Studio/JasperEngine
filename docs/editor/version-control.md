@@ -4,7 +4,7 @@ The editor works with the Git or Subversion checkout a project lives in: it show
 and who locked what in the Project window, the Hierarchy and the Inspector, commits, reverts
 (undoably), locks binary assets, diffs scenes GameObject by GameObject and merges them
 (docs/specs/S29-version-control.md). Agents use the same features through MCP:
-`jasper://docs/version-control` (docs/mcp/guide/version-control.md).
+`jasper://docs/vcs` (docs/mcp/guide/vcs.md).
 
 ## Setting up
 
