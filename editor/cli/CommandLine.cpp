@@ -2687,7 +2687,9 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         size_t surfaces = 0;
         for (const NavigationEditor::Finding& finding : NavigationEditor::checkSurfaces(&project, &surfaces))
             run.findings.push_back({"navigation", finding.scenePath, 0, 0, "warning", finding.message});
-        run.checked.push_back({"navigation", surfaces});
+        // (counted when the project has NavMesh Surfaces: a project without navigation reads as before)
+        if (surfaces > 0)
+            run.checked.push_back({"navigation", surfaces});
     }
 
     if (shadersWanted) {
