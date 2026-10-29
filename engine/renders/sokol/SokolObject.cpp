@@ -506,7 +506,7 @@ bool SokolObject::isReady() const{
 
 uint32_t SokolObject::getPipelineId(PipelineType pipType) const{
     const int index = pipelineIndex(pipType);
-    return index < PIPELINE_TYPES ? pipelines[index].id : SG_INVALID_ID;
+    return index < PIPELINE_TYPES ? pipelines[index].id : (uint32_t)SG_INVALID_ID;
 }
 
 void SokolObject::setImmediatePipelines(bool immediate){
