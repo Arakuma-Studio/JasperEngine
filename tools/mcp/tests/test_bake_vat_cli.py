@@ -107,6 +107,12 @@ def tree(root: Path) -> dict:
             if p.is_file() and ".jasperengine" not in p.relative_to(root).parts}
 
 
+def tree_changes(root: Path, before: dict) -> list:
+    """The files added, removed or rewritten since `before` (a tree())"""
+    now = tree(root)
+    return sorted(set(now) ^ set(before)) + sorted(k for k in now if k in before and now[k] != before[k])
+
+
 def read_vat(proj: Path, rel: str) -> dict:
     data = json.loads((proj / rel).read_text())
     check(data["format"] == "jasperengine.vat" and data["version"] == 1, f"{rel}: not a .vat: {list(data)[:4]}")
@@ -169,7 +175,7 @@ async def test_help_and_usage_errors():
         check("bake-vat: " + expected in r.stderr or expected in r.stderr, f"{args}: stderr lacks {expected!r}:\n{r.stderr[-1500:]}")
         check(r.stderr.startswith("bake-vat: ") and "(fix: " in r.stderr, f"{args}: 'bake-vat: <kind>: <message> (fix: ...)': {r.stderr}")
         check(r.stdout == "", f"{args}: a usage error printed on stdout: {r.stdout[-500:]}")
-    check(tree(proj) == before, "usage errors write nothing")
+    check(tree(proj) == before, f"usage errors write nothing: {tree_changes(proj, before)}")
 
     # .anim clips need what they play on
     (proj / "assets" / "anim").mkdir(parents=True, exist_ok=True)
@@ -189,7 +195,7 @@ async def test_dry_run_reports_and_writes_nothing():
     proj = project("dry")
     before = tree(proj)
     data = bake(proj, "--source", ARM, "--dry-run")
-    check(tree(proj) == before, "--dry-run wrote files")
+    check(tree(proj) == before, f"--dry-run wrote files: {tree_changes(proj, before)}")
     check(data["dry_run"] is True and "written" not in data and "errors" not in data, f"a dry run: {data}")
     check(data["source"] == {"kind": "model", "path": ARM}, f"source: {data['source']}")
     report = data["report"]

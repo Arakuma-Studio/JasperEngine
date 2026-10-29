@@ -576,7 +576,7 @@ async def test_import_openvat(ed: Editor):
     check("clips is for baked sources" in msg, f"an import takes its clips as they are: {msg}")
     r = await bake(ed, source="assets/exports/flag")
     v = r.structured
-    check(files_under(ed.project) == before, "an import preview writes nothing")
+    check(files_under(ed.project) == before, f"an import preview writes nothing: {sorted(files_under(ed.project) ^ before)}")
     check(v["kind"] == "openvat" and v["mode"] == "vertices" and v["written"] is False, f"report: {v}")
     check(sorted(c["name"] for c in v["clips"]) == ["Flap", "Wave"], f"clips from remap_info: {v['clips']}")
     check(v["default_output"] == "assets/exports/flag/Flag.vat", f"default output next to the export: {v.get('default_output')}")
@@ -715,8 +715,19 @@ def image_uri(project: Path, glb: str) -> str:
 
 
 def asset_db(project: Path) -> str:
-    db = project / ".jasperengine" / "assetdb.yaml"
+    # S04's cache of the asset database (written in the background after a change)
+    db = project / ".jasperengine" / "assetdb" / "index.json"
     return db.read_text() if db.exists() else ""
+
+
+async def asset_db_has(project: Path, guid: str, want: bool = True, timeout: float = 10.0) -> bool:
+    """Whether the asset database's cache lists `guid` as wanted, waiting for its background save"""
+    deadline = asyncio.get_running_loop().time() + timeout
+    while (guid in asset_db(project)) != want:
+        if asyncio.get_running_loop().time() > deadline:
+            return False
+        await asyncio.sleep(0.1)
+    return True
 
 
 async def test_move_and_copy_keep_the_textures(ed: Editor):
@@ -757,10 +768,10 @@ async def test_move_and_copy_keep_the_textures(ed: Editor):
     check(image_uri(ed.project, "assets/vat/deep/copy.vat.glb") == "../../textures/skin.png",
           f"the copy names the same texture: {image_uri(ed.project, 'assets/vat/deep/copy.vat.glb')}")
     check(glb.read_bytes() == original, "the original is untouched")
-    check(copy_guid in asset_db(ed.project), "the copied .vat is in the asset database")
+    check(await asset_db_has(ed.project, copy_guid), "the copied .vat is in the asset database")
     await ed.call("undo", scope="project")
     check(not (ed.project / "assets/vat/deep/copy.vat").exists() and not (ed.project / "assets/vat/deep/copy.vat.glb").exists(), "undo removes both")
-    check(copy_guid not in asset_db(ed.project), f"the copied .vat's GUID left the asset database: {asset_db(ed.project)}")
+    check(await asset_db_has(ed.project, copy_guid, want=False), f"the copied .vat's GUID left the asset database: {asset_db(ed.project)}")
     await ed.call("redo", scope="project")
     check(read_vat(ed.project, "assets/vat/deep/copy.vat")["guid"] == copy_guid, "redo gives the copy its GUID again")
     check(image_uri(ed.project, "assets/vat/deep/copy.vat.glb") == "../../textures/skin.png", "and the URI")
