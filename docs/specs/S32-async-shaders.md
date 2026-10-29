@@ -662,6 +662,13 @@ public:
     guide section, one guide line; the guide is 5 bytes smaller than before);
   - unit tests `engine/tests/core/render/AsyncCreateTest.cpp`, MCP `test_async_shaders.py`, bench
     `tools/perf/async_shaders_bench.py` with thresholds.
+- **Builds so far:**
+  - linux GL WERROR (D, at 348ada8f0): pass;
+  - web (B): pass;
+  - Vulkan WERROR (B) caught an unused GL-only helper, fixed in the next commit.
+- Merged oe-port 1608d1588 (S29) at 57648a5e4. Conflicts in StreamSchema (keys: both
+  `shaderCreation` and `versionControl`), DefaultCommands and StatusBar were resolved keeping
+  both sides.
 - **Next:** build GL + Vulkan WERROR, unit tests (write the golden `async_standin_fogged`), MCP
   suite, web, android, ASan+UBSan, smoke, xcode checks, E benches (worker, Vulkan, the sync red
   control), merge oe-port, TOOLS.md, re-gate.
