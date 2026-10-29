@@ -75,7 +75,8 @@ void create_scene_AllComponents_2026080800(Scene* scene){
     scene->recreateEntity(1065);
     scene->recreateEntity(1066);
     scene->recreateEntity(1067);
-    scene->setLastEntity(1067);
+    scene->recreateEntity(1068);
+    scene->setLastEntity(1068);
 
     {
         // Entity 1001 (Transform)
@@ -2128,6 +2129,35 @@ void create_scene_AllComponents_2026080800(Scene* scene){
         scene->addComponent<Transform>(1067, transform);
     }
 
+    {
+        // Entity 1068 (VertexAnimatorComponent)
+        scene->setEntityName(1068, "VertexAnimatorComponent");
+
+        // Entity components initialization
+        VertexAnimatorComponent vertexanimator;
+        vertexanimator.enabled = false;
+        vertexanimator.animation = "Reflection parity";
+        vertexanimator.defaultClip = "Reflection parity";
+        vertexanimator.playAutomatically = false;
+        vertexanimator.speed = 8.200000f;
+        vertexanimator.randomStart = false;
+        vertexanimator.defaultFadeTime = 5.600000f;
+        vertexanimator.instanceEvents = true;
+        scene->addComponent<VertexAnimatorComponent>(1068, vertexanimator);
+
+        Transform transform;
+        transform.position = Vector3(67.000000f, 0.000000f, 0.000000f);
+        transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
+        transform.visible = true;
+        transform.billboard = false;
+        transform.fakeBillboard = false;
+        transform.cylindricalBillboard = false;
+        transform.billboardRotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
+        transform.parent = NULL_ENTITY;
+        scene->addComponent<Transform>(1068, transform);
+    }
+
     // Default Camera 1
     Entity cameraEntity = scene->createSystemEntity();
 
@@ -2218,5 +2248,6 @@ SceneResources resources_scene_AllComponents_2026080800(){
     resources.models.push_back("models/parity.gltf");
     resources.clips.push_back("animations/parity.anim");
     resources.clips.push_back("models/parity.gltf#Run");
+    resources.vats.push_back("Reflection parity");
     return resources;
 }
