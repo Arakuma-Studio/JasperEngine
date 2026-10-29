@@ -2963,7 +2963,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         std::string what;
         const std::map<std::string, std::string> units = {{"lua", "file"}, {"shaders", "fork"}, {"cpp", "script"}, {"ui", "file"},
                                                           {"textures", "recipe"}, {"texture_imports", "texture"}, {"anims", "clip"},
-                                                          {"vat", "file"}};
+                                                          {"vat", "file"}, {"navigation", "surface"}};
         for (const auto& [category, count] : run.checked) {
             what += (what.empty() ? "" : ", ") + category + " " + plural(count, units.at(category));
         }
