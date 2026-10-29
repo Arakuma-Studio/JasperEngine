@@ -85,6 +85,25 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kNavGridLayout;
     extern const EnumDesc kNavGridMovement;
     extern const EnumDesc kNavGridSource;
+    // the spline components' (editor/reflect/components/SplinesReflect.cpp)
+    extern const EnumDesc kSplineType;
+    extern const EnumDesc kSplineTangentMode;
+    extern const EnumDesc kSplineTerrainRegion;
+    extern const EnumDesc kSplineFlattenMode;
+    extern const EnumDesc kSplineExtrudeShape;
+    extern const EnumDesc kSplineWidthSource;
+    extern const EnumDesc kSplineCornerStyle;
+    extern const EnumDesc kSplineGrade;
+    extern const EnumDesc kSplineConform;
+    extern const EnumDesc kSplineCollision;
+    extern const EnumDesc kSplineInstantiateMode;
+    extern const EnumDesc kSplineSpacingFit;
+    extern const EnumDesc kSplinePlantMode;
+    extern const EnumDesc kSplineSpanOverrideKind;
+    extern const EnumDesc kSplineAnimateMethod;
+    extern const EnumDesc kSplineLoop;
+    extern const EnumDesc kSplineEasing;
+    extern const EnumDesc kSplineAlignment;
 
     // the values the Inspector and MCP list, in their order (the YAML order unless a table says
     // otherwise), hidden ones left out

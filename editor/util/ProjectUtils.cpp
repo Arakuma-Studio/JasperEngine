@@ -58,6 +58,7 @@
 #include "component/PolygonComponent.h"
 #include "component/MeshPolygonComponent.h"
 #include "component/Rigidbody2DComponent.h"
+#include "subsystem/SplineSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/ParticleSubsystem.h"
@@ -512,6 +513,13 @@ Entity editor::ProjectUtils::getLockedEntityParent(Scene* scene, Entity entity){
     Entity foliageOwner = scene->getSystem<MeshSystem>()->getFoliageOwner(entity);
     if (foliageOwner != NULL_ENTITY) {
         return foliageOwner;
+    }
+    // so are a spline's generated chunks and pieces: clicking the road selects the Road
+    if (std::shared_ptr<SplineSystem> splines = scene->findSystem<SplineSystem>()) {
+        const Entity splineOwner = splines->getGeneratedOwner(entity);
+        if (splineOwner != NULL_ENTITY) {
+            return splineOwner;
+        }
     }
 
     auto models = scene->getComponentArray<ModelComponent>();

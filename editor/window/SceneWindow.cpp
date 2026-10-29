@@ -26,6 +26,8 @@
 #include "command/type/ImportPrefabCmd.h"
 #include "lattice/LatticeEditorOps.h"
 #include "lattice/LatticeSceneTools.h"
+#include "spline/SplineEditor.h"
+#include "spline/SplineSceneTools.h"
 #include "util/ProjectUtils.h"
 #include "render/SceneRender2D.h"
 #include "render/SceneRender3D.h"
@@ -1197,8 +1199,29 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             }
         }
 
-        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse && !handPanEnabled && !poseHandleClick){
+        // the spline tools take the press next: the Draw Spline tool, then the edited spline's
+        // knots and handles (SplineSceneTools); a captured press is theirs until its release
+        SplineSceneTools::Press splinePress = SplineSceneTools::Press::None;
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !altHeld && !suppressLeftMouse && !handPanEnabled && !poseHandleClick){
+            splinePress = SplineSceneTools::mousePress(project, sceneProject, x, y, gizmoSideActive);
+            if (splinePress == SplineSceneTools::Press::Captured){
+                subSelectionClickConsumesRelease[sceneId] = true;
+            }
+        }
+        if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && !altHeld && !suppressLeftMouse && !poseHandleClick){
+            SplineSceneTools::doubleClick(project, sceneProject, x, y);
+        }
+
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse && !handPanEnabled && !poseHandleClick &&
+                splinePress != SplineSceneTools::Press::Captured){
             subSelectionClickConsumesRelease[sceneId] = false;
+            if (splinePress == SplineSceneTools::Press::Selected){
+                // a knot picked: the release selects nothing, and the gizmo jumps to it so this
+                // press can drag it
+                subSelectionClickConsumesRelease[sceneId] = true;
+                project->updateSceneRender(sceneId);
+                sceneProject->sceneRender->mouseHoverEvent(x, y);
+            }
 
             // Lattice point picking within the selected lattice, with any tool: a click on a
             // point selects it (Shift/Ctrl toggle it); the gizmo then sits on it, so the same
@@ -1268,7 +1291,8 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             }
 
             // Selecting and dragging an unselected object at same time (just for 2D object mode)
-            if (!disableSelection && !latticePointHit && gizmoSelected == GizmoSelected::OBJECT2D) {
+            if (!disableSelection && !latticePointHit && splinePress == SplineSceneTools::Press::None &&
+                    gizmoSelected == GizmoSelected::OBJECT2D) {
                 uint32_t hitSceneId = sceneId;
                 Entity hitEntity = findSelectableObjectByRay(sceneId, x, y, &hitSceneId);
                 if (hitEntity != NULL_ENTITY) {
@@ -1560,6 +1584,11 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 mouseLeftDown = true;
             }
             mouseLeftDragPos = Vector2(logicalX, logicalY);
+            // a stroke, a pulled handle: the spline tools' drag, no threshold, no box
+            const bool splineCapture = SplineSceneTools::isCapturing((uint32_t)sceneId);
+            if (splineCapture){
+                SplineSceneTools::mouseDrag(project, sceneProject, x, y);
+            }
             // Terrain brush strokes skip the drag threshold: holding the button
             // keeps applying flow and tiny precise drags still paint.
             // So do Paint Dye strokes: a short drag is a small splat.
@@ -1567,7 +1596,9 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                     sceneProject->sceneRender->isPoseDragging()){
                 mouseLeftDraggedInside = true;
             }
-            if (mouseLeftDraggedInside && physicsSnapArmed[sceneId]){
+            if (splineCapture){
+                mouseLeftDraggedInside = false;
+            }else if (mouseLeftDraggedInside && physicsSnapArmed[sceneId]){
                 // Snap: the selection rides the surface under the cursor, every frame it is held
                 // refused (the HUD says why) or cancelled later: the rest of the drag does nothing
                 if (!physicsSnapBegun[sceneId]){
@@ -1612,9 +1643,17 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 Entity prevTrackPointEntity = sceneProject->sceneRender->getSelectedTrackPointEntity();
 
                 // a click on empty space while lattice points are selected clears the points
-                // and keeps the lattice (the next one deselects it as usual)
+                // and keeps the lattice (the next one deselects it as usual); the same for the
+                // edited spline's knots
                 Entity latticeEntity = LatticeEditorOps::getEditedLattice(project, sceneId);
                 bool clearedLatticePoints = false;
+                if (SplineEditor::get().isEditing() && SplineEditor::get().getSceneId() == sceneId &&
+                        !SplineEditor::get().getSelection().empty() && !io.KeyShift &&
+                        findSelectableObjectByRay(sceneId, x, y) == NULL_ENTITY) {
+                    SplineEditor::get().clearSelection();
+                    sceneProject->needUpdateRender = true;
+                    clearedLatticePoints = true;
+                }
                 if (latticeEntity != NULL_ENTITY && !LatticeEditorOps::getSelectedPoints(sceneId, latticeEntity).empty() && !io.KeyShift) {
                     if (findSelectableObjectByRay(sceneId, x, y) == NULL_ENTITY) {
                         LatticeEditorOps::clearSelectedPoints(sceneId);
@@ -1675,7 +1714,15 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         }else{
 
             Entity latticeEntity = LatticeEditorOps::getEditedLattice(project, sceneId);
-            if (mouseLeftDraggedInside && !disableSelection && latticeEntity != NULL_ENTITY && !sceneProject->sceneRender->hasEditLayer()){
+            const Vector2 marqueeStart = Vector2((2 * mouseLeftStartPos.x / width[sceneId]) - 1, -((2 * mouseLeftStartPos.y / height[sceneId]) - 1));
+            const Vector2 marqueeEnd = Vector2((2 * mouseLeftDragPos.x / width[sceneId]) - 1, -((2 * mouseLeftDragPos.y / height[sceneId]) - 1));
+            if (SplineSceneTools::isCapturing((uint32_t)sceneId)){
+                // the stroke or the pulled handle ends with the button
+                SplineSceneTools::mouseRelease(project, sceneProject, x, y);
+            }else if (mouseLeftDraggedInside && !disableSelection && !sceneProject->sceneRender->hasEditLayer() &&
+                    SplineSceneTools::marquee(project, sceneProject, marqueeStart, marqueeEnd, io.KeyShift)){
+                // the box selected the edited spline's knots (Shift adds), the spline stays selected
+            }else if (mouseLeftDraggedInside && !disableSelection && latticeEntity != NULL_ENTITY && !sceneProject->sceneRender->hasEditLayer()){
                 // the box selects the lattice's points (Shift adds), the lattice stays selected
                 Vector2 clickStartPos = Vector2((2 * mouseLeftStartPos.x / width[sceneId]) - 1, -((2 * mouseLeftStartPos.y / height[sceneId]) - 1));
                 Vector2 clickEndPos = Vector2((2 * mouseLeftDragPos.x / width[sceneId]) - 1, -((2 * mouseLeftDragPos.y / height[sceneId]) - 1));
@@ -2012,6 +2059,10 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
             LatticeSceneTools::handleShortcuts(project, sceneId);
         }
+        // Esc and Enter of the spline tools (cancel, clear, leave; finish a drawing)
+        if (sceneViewInput && !escapeTaken && !popupOpen) {
+            SplineSceneTools::handleKeys(project, sceneProject);
+        }
     }
 
 }
@@ -2051,6 +2102,14 @@ bool editor::SceneWindow::hasFrameableSelection(uint32_t sceneId) {
 }
 
 void editor::SceneWindow::frameSelection(uint32_t sceneId) {
+    // the selected knots of the edited spline (all of them without a selection)
+    if (SceneProject* sceneProject = project->getScene(sceneId)) {
+        AABB knots;
+        if (SplineSceneTools::frameBounds(project, sceneId, knots)) {
+            focusOnBounds(sceneProject, knots);
+            return;
+        }
+    }
     // the selected points of the edited lattice
     if (SceneProject* sceneProject = project->getScene(sceneId)) {
         Entity lattice = LatticeEditorOps::getEditedLattice(project, sceneId);

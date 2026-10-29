@@ -670,6 +670,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/components/MaterialReflect.cpp
     ${EDITOR_DIR}/reflect/components/GameplayReflect.cpp
     ${EDITOR_DIR}/reflect/components/ClipPlayersReflect.cpp
+    ${EDITOR_DIR}/reflect/components/SplinesReflect.cpp
     ${EDITOR_DIR}/reflect/components/ParticlesReflect.cpp
     ${EDITOR_DIR}/reflect/components/RenderReflect.cpp
     ${EDITOR_DIR}/reflect/components/TransformPhysicsReflect.cpp
@@ -759,6 +760,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/EcsTools.cpp
     ${EDITOR_DIR}/mcp/tools/SceneViewTools.cpp
     ${EDITOR_DIR}/mcp/tools/GameplayTools.cpp
+    ${EDITOR_DIR}/mcp/tools/SplineTools.cpp
     ${EDITOR_DIR}/mcp/tools/DiagnosticsTools.cpp
     ${EDITOR_DIR}/mcp/tools/OrganisationTools.cpp
     ${EDITOR_DIR}/mcp/tools/VatTools.cpp
@@ -808,6 +810,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/Prefab.cpp
     ${EDITOR_DIR}/util/ProjectUtils.cpp
     ${EDITOR_DIR}/util/WaterEditorUtils.cpp
+    ${EDITOR_DIR}/util/TerrainSplineBake.cpp
+    ${EDITOR_DIR}/util/SplineBakeObjects.cpp
     ${EDITOR_DIR}/util/ParticleEffectEdit.cpp
     ${EDITOR_DIR}/util/ParticleMigrationReport.cpp
     ${EDITOR_DIR}/util/LatticeTrackKeys.cpp
@@ -940,6 +944,7 @@ set(JASPERENGINE_EDITOR_SOURCES
 
     ${EDITOR_DIR}/window/InspectorWindow.cpp
     ${EDITOR_DIR}/window/InspectorWindowClips.cpp
+    ${EDITOR_DIR}/window/InspectorSplines.cpp
     ${EDITOR_DIR}/window/InputActionsWindow.cpp
     ${EDITOR_DIR}/window/InspectorWindowVat.cpp
     ${EDITOR_DIR}/window/InspectorShaderLibrary.cpp
@@ -997,6 +1002,10 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/lattice/LatticeBake.cpp
     ${EDITOR_DIR}/lattice/LatticeBakeGltf.cpp
     ${EDITOR_DIR}/lattice/LatticeSceneRender.cpp
+    ${EDITOR_DIR}/spline/SplineEditor.cpp
+    ${EDITOR_DIR}/spline/SplinePresets.cpp
+    ${EDITOR_DIR}/spline/SplineSceneRender.cpp
+    ${EDITOR_DIR}/spline/SplineSceneTools.cpp
     ${EDITOR_DIR}/lattice/LatticeSceneTools.cpp
     ${EDITOR_DIR}/vat/VatAssetWriter.cpp
     ${EDITOR_DIR}/vat/VatAssetFiles.cpp
@@ -1126,6 +1135,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/WriteFilesCmd.cpp
     ${EDITOR_DIR}/command/type/RemoveFilesCmd.cpp
     ${EDITOR_DIR}/command/type/LatticePointsCmd.cpp
+    ${EDITOR_DIR}/command/type/SplineEditCmd.cpp
     ${EDITOR_DIR}/command/type/LatticeBindingsCmd.cpp
     ${EDITOR_DIR}/command/type/LatticeBakeCmd.cpp
     ${EDITOR_DIR}/command/type/GraphEditCmd.cpp

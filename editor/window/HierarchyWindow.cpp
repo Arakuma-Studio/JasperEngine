@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "HierarchyWindow.h"
+#include "spline/SplineEditor.h"
 #include "util/EditorScripts.h"
 #include "shortcuts/CommandCatalog.h"
 #include "search/HierarchyFilter.h"
@@ -557,6 +558,20 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"Animation", "Morph Track", ICON_FA_SHAPES, T::MORPH_TRACKS, "Morph Track", CREATE_IN_ALL},
         {"Animation", "Lattice Track", ICON_FA_CUBES_STACKED, T::LATTICE_TRACKS, "Lattice Track", CREATE_IN_ALL},
 
+        {"Spline", "Empty", ICON_FA_BEZIER_CURVE, T::SPLINE_EMPTY, "Spline", CREATE_IN_WORLD},
+        {"Spline", "Draw Spline Tool", ICON_FA_PEN, T::SPLINE_DRAW, "Spline", CREATE_IN_WORLD},
+        {"Spline", "Road", ICON_FA_ROAD, T::SPLINE_ROAD, "Road", CREATE_IN_3D, true},
+        {"Spline", "Path", ICON_FA_SHOE_PRINTS, T::SPLINE_PATH, "Path", CREATE_IN_3D},
+        {"Spline", "Wall", ICON_FA_DUNGEON, T::SPLINE_WALL, "Wall", CREATE_IN_3D},
+        {"Spline", "Fence", ICON_FA_GRIP_LINES_VERTICAL, T::SPLINE_FENCE, "Fence", CREATE_IN_3D},
+        {"Spline", "River", ICON_FA_WATER, T::SPLINE_RIVER, "River", CREATE_IN_3D},
+        {"Spline", "Lake", ICON_FA_DROPLET, T::SPLINE_LAKE, "Lake", CREATE_IN_3D},
+        {"Spline", "Circle", ICON_FA_CIRCLE_NOTCH, T::SPLINE_CIRCLE, "Circle", CREATE_IN_3D, true},
+        {"Spline", "Square", ICON_FA_SQUARE, T::SPLINE_SQUARE, "Square", CREATE_IN_3D},
+        {"Spline", "Edge", ICON_FA_WAVE_SQUARE, T::SPLINE_EDGE_2D, "Edge", CREATE_IN_2D, true},
+        {"Spline", "Filled Shape", ICON_FA_DRAW_POLYGON, T::SPLINE_FILL_2D, "Filled Shape", CREATE_IN_2D},
+        {"Spline", "Circle", ICON_FA_CIRCLE_NOTCH, T::SPLINE_CIRCLE_2D, "Circle", CREATE_IN_2D},
+
         {nullptr, "Camera", ICON_FA_VIDEO, T::CAMERA, "Camera", CREATE_IN_ALL},
     };
     return entries;
@@ -589,9 +604,13 @@ void editor::HierarchyWindow::createGameObject(const CreateMenuEntry& entry, Ent
     if (entry.rootOnly) {
         parent = NULL_ENTITY;
     }
-    CommandHandle::get(sceneProject->id)->addCommandNoMerge(
-        new CreateEntityCmd(project, sceneProject->id, entry.entityName, entry.type, parent, addToPrefab));
+    CreateEntityCmd* createCmd = new CreateEntityCmd(project, sceneProject->id, entry.entityName, entry.type, parent, addToPrefab);
+    CommandHandle::get(sceneProject->id)->addCommandNoMerge(createCmd);
     openParent = parent;
+    if (entry.type == EntityCreationType::SPLINE_DRAW) {
+        // the new spline, drawn in the Scene view (Enter finishes, Esc cancels)
+        SplineEditor::get().beginDraw(sceneProject->id, createCmd->getEntity());
+    }
     // The new GameObject is selected: scroll it into view, as Unity does
     std::vector<Entity> selected = project->getSelectedEntities(sceneProject->id);
     if (selected.size() == 1) {

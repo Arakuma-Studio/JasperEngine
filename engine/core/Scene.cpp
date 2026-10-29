@@ -21,6 +21,7 @@
 #include "subsystem/NavigationSystem.h"
 #include "picking/SceneBvh.h"
 #include "subsystem/ParticleSubsystem.h"
+#include "subsystem/SplineSystem.h"
 #include "util/Color.h"
 
 #include <algorithm>
@@ -42,6 +43,9 @@ void Scene::init(){
     registerSystem<ActionSystem>();
     // after the clips' blend is flushed, before the world matrices and the skinning
     registerSystem<PoseAnimatorSystem>();
+    // after the scripts, before the meshes and transforms: generated chunks and followers are
+    // drawn in the frame they change (docs/specs/S18-splines.md D3)
+    registerSystem<SplineSystem>();
     registerSystem<MeshSystem>();
     registerSystem<LatticeSystem>();
     // after the lattices, before Render reads the GPU state it writes (vertex animation spec 3.4)
@@ -95,6 +99,10 @@ void Scene::removeSubscriptionsByTag(const std::string& substring) {
         action.onPause.removeByTagSubstring(tag);
         action.onStop.removeByTagSubstring(tag);
         action.onStep.removeByTagSubstring(tag);
+    });
+
+    removeComponentSubscriptionsByTag<SplineAnimateComponent>(this, substring, [](SplineAnimateComponent& animate, const std::string& tag) {
+        animate.onComplete.removeByTagSubstring(tag);
     });
 
     removeComponentSubscriptionsByTag<AudioSourceComponent>(this, substring, [](AudioSourceComponent& sound, const std::string& tag) {

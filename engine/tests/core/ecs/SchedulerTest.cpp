@@ -203,8 +203,8 @@ TEST(SchedulerTest, EveryNFramesAccumulatesDt){
     }
 }
 
-// (the thirteen SubSystems: upstream's PoseAnimatorSystem, LatticeSystem, VertexAnimatorSystem and FluidSystem, S20's
-// ParticleSubsystem and S19's NavigationSystem joined the seven)
+// (the fourteen SubSystems: upstream's PoseAnimatorSystem, LatticeSystem, VertexAnimatorSystem and FluidSystem, S20's
+// ParticleSubsystem, S19's NavigationSystem and S18's SplineSystem joined the seven)
 TEST(SchedulerTest, SubSystemsOneWaveEachInOrder){
     Scene scene;
     for (SystemPhase phase : {SystemPhase::FixedUpdate, SystemPhase::Update, SystemPhase::Draw}){

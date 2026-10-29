@@ -22997,6 +22997,11 @@
    ],
    "name": "AnimationComponent",
    "properties_of_default": {
+    "actionFrameCount": [
+     9,
+     0,
+     true
+    ],
     "defaultFadeTime": [
      2,
      0,
@@ -23019,6 +23024,11 @@
     ]
    },
    "properties_without_component": {
+    "actionFrameCount": [
+     9,
+     0,
+     true
+    ],
     "defaultFadeTime": [
      2,
      0,
@@ -32463,44 +32473,70 @@
    "type_of_name": 72
   },
   {
-   "display_name": "Vertex Animator",
-   "enum_options": {},
+   "display_name": "Spline",
+   "enum_options": {
+    "terrain.flattenMode": [
+     [
+      0,
+      "flatten",
+      "Flatten"
+     ],
+     [
+      1,
+      "cut_only",
+      "Cut Only"
+     ],
+     [
+      2,
+      "fill_only",
+      "Fill Only"
+     ]
+    ],
+    "terrain.region": [
+     [
+      0,
+      "path",
+      "Path"
+     ],
+     [
+      1,
+      "area",
+      "Area"
+     ]
+    ],
+    "type": [
+     [
+      0,
+      "linear",
+      "Linear"
+     ],
+     [
+      1,
+      "catmull_rom",
+      "Catmull Rom"
+     ],
+     [
+      2,
+      "bezier",
+      "Cubic Bezier"
+     ]
+    ]
+   },
    "has_enabled": true,
-   "icon": "ee94b3",
-   "key": "vertexanimator",
+   "icon": "ef959b",
+   "key": "spline",
    "known_keys": [
-    "animation",
-    "attachments",
-    "defaultClip",
-    "defaultFadeTime",
+    "closed",
     "enabled",
-    "guid",
-    "instanceClips",
-    "instanceEvents",
-    "instanceSpeeds",
-    "playAutomatically",
-    "randomStart",
-    "speed"
+    "knots",
+    "terrain",
+    "type",
+    "upAxis"
    ],
-   "name": "VertexAnimatorComponent",
+   "name": "SplineComponent",
    "properties_of_default": {
-    "animation": [
-     1,
-     17592186044416,
-     true
-    ],
-    "attachments": [
-     15,
+    "closed": [
      0,
-     true
-    ],
-    "defaultClip": [
-     1,
-     0,
-     true
-    ],
-    "defaultFadeTime": [
-     2,
      17592186044416,
      true
     ],
@@ -32509,70 +32545,95 @@
      0,
      true
     ],
-    "guid": [
-     1,
-     17592186044416,
-     true
-    ],
-    "instanceClips": [
+    "knots": [
      15,
      17592186044416,
      true
     ],
-    "instanceEvents": [
+    "terrain.clearFoliage": [
      0,
      0,
      true
     ],
-    "instanceSpeeds": [
-     15,
-     17592186044416,
-     true
-    ],
-    "playAutomatically": [
-     0,
-     0,
-     true
-    ],
-    "randomStart": [
-     0,
-     0,
-     true
-    ],
-    "speed": [
+    "terrain.extraWidth": [
      2,
      0,
      true
-    ]
-   },
-   "properties_without_component": {
-    "animation": [
-     1,
-     17592186044416,
-     true
     ],
-    "attachments": [
-     15,
+    "terrain.falloff": [
+     2,
      0,
      true
     ],
-    "attachments[].entity": [
+    "terrain.flatten": [
+     0,
+     0,
+     true
+    ],
+    "terrain.flattenMode": [
+     13,
+     0,
+     true
+    ],
+    "terrain.foliageMask": [
+     9,
+     0,
+     true
+    ],
+    "terrain.heightOffset": [
+     2,
+     0,
+     true
+    ],
+    "terrain.paint": [
+     0,
+     0,
+     true
+    ],
+    "terrain.paintFalloff": [
+     2,
+     0,
+     true
+    ],
+    "terrain.paintLayer": [
+     9,
+     0,
+     true
+    ],
+    "terrain.paintNoise": [
+     2,
+     0,
+     true
+    ],
+    "terrain.paintStrength": [
+     2,
+     0,
+     true
+    ],
+    "terrain.region": [
+     13,
+     0,
+     true
+    ],
+    "terrain.terrain": [
      16,
      0,
      true
     ],
-    "attachments[].socket": [
-     1,
-     0,
+    "type": [
+     13,
+     17592186044416,
      true
     ],
-    "defaultClip": [
-     1,
-     0,
+    "upAxis": [
+     5,
+     17592186044416,
      true
-    ],
-    "defaultFadeTime": [
-     2,
+    ]
+   },
+   "properties_without_component": {
+    "closed": [
+     0,
      17592186044416,
      true
     ],
@@ -32581,39 +32642,124 @@
      0,
      true
     ],
-    "guid": [
-     1,
-     17592186044416,
-     true
-    ],
-    "instanceClips": [
+    "knots": [
      15,
      17592186044416,
      true
     ],
-    "instanceEvents": [
-     0,
-     0,
-     true
-    ],
-    "instanceSpeeds": [
+    "knots[]": [
      15,
      17592186044416,
      true
     ],
-    "playAutomatically": [
+    "knots[].mode": [
+     13,
+     17592186044416,
+     true
+    ],
+    "knots[].position": [
+     5,
+     17592186044416,
+     true
+    ],
+    "knots[].radius": [
+     2,
+     17592186044416,
+     true
+    ],
+    "knots[].roll": [
+     2,
+     17592186044416,
+     true
+    ],
+    "knots[].tangentIn": [
+     5,
+     17592186044416,
+     true
+    ],
+    "knots[].tangentOut": [
+     5,
+     17592186044416,
+     true
+    ],
+    "terrain.clearFoliage": [
      0,
      0,
      true
     ],
-    "randomStart": [
-     0,
-     0,
-     true
-    ],
-    "speed": [
+    "terrain.extraWidth": [
      2,
      0,
+     true
+    ],
+    "terrain.falloff": [
+     2,
+     0,
+     true
+    ],
+    "terrain.flatten": [
+     0,
+     0,
+     true
+    ],
+    "terrain.flattenMode": [
+     13,
+     0,
+     true
+    ],
+    "terrain.foliageMask": [
+     9,
+     0,
+     true
+    ],
+    "terrain.heightOffset": [
+     2,
+     0,
+     true
+    ],
+    "terrain.paint": [
+     0,
+     0,
+     true
+    ],
+    "terrain.paintFalloff": [
+     2,
+     0,
+     true
+    ],
+    "terrain.paintLayer": [
+     9,
+     0,
+     true
+    ],
+    "terrain.paintNoise": [
+     2,
+     0,
+     true
+    ],
+    "terrain.paintStrength": [
+     2,
+     0,
+     true
+    ],
+    "terrain.region": [
+     13,
+     0,
+     true
+    ],
+    "terrain.terrain": [
+     16,
+     0,
+     true
+    ],
+    "type": [
+     13,
+     17592186044416,
+     true
+    ],
+    "upAxis": [
+     5,
+     17592186044416,
      true
     ]
    },
@@ -32621,6 +32767,1283 @@
    "type": 73,
    "type_of_key": 73,
    "type_of_name": 73
+  },
+  {
+   "display_name": "Spline Extrude",
+   "enum_options": {
+    "collision": [
+     [
+      0,
+      "none",
+      "None"
+     ],
+     [
+      1,
+      "mesh",
+      "Mesh"
+     ],
+     [
+      2,
+      "chain_2d",
+      "Chain 2D"
+     ]
+    ],
+    "conform": [
+     [
+      0,
+      "none",
+      "None"
+     ],
+     [
+      1,
+      "terrain_height",
+      "Terrain Height"
+     ],
+     [
+      2,
+      "terrain_height_and_slope",
+      "Terrain Height And Slope"
+     ]
+    ],
+    "corners": [
+     [
+      0,
+      "none",
+      "None"
+     ],
+     [
+      1,
+      "mitre",
+      "Mitre"
+     ],
+     [
+      2,
+      "round",
+      "Round"
+     ]
+    ],
+    "grade": [
+     [
+      0,
+      "racked",
+      "Racked"
+     ],
+     [
+      1,
+      "stepped",
+      "Stepped"
+     ]
+    ],
+    "shape": [
+     [
+      0,
+      "flat",
+      "Flat"
+     ],
+     [
+      1,
+      "bevel",
+      "Bevel"
+     ],
+     [
+      2,
+      "crown",
+      "Crown"
+     ],
+     [
+      3,
+      "rectangle",
+      "Rectangle"
+     ],
+     [
+      4,
+      "tube",
+      "Tube"
+     ],
+     [
+      5,
+      "custom",
+      "Custom"
+     ],
+     [
+      6,
+      "fill",
+      "Fill"
+     ],
+     [
+      7,
+      "water_banks",
+      "Water Banks"
+     ]
+    ],
+    "widthSource": [
+     [
+      0,
+      "radius",
+      "Radius"
+     ],
+     [
+      1,
+      "constant",
+      "Constant"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef8098",
+   "key": "splineextrude",
+   "known_keys": [
+    "collision",
+    "conform",
+    "corners",
+    "crownRise",
+    "customClosed",
+    "customProfile",
+    "edgeDrop",
+    "edgeInset",
+    "enabled",
+    "endCaps",
+    "endTaper",
+    "flow",
+    "flowSpeed",
+    "grade",
+    "height",
+    "lateralOffset",
+    "levelCourseV",
+    "maxHalfWidth",
+    "seaLevel",
+    "seaLevelFloor",
+    "shape",
+    "shoulderDrop",
+    "shoulderWidth",
+    "slopeBlend",
+    "stationSpacing",
+    "stepHeight",
+    "thickness",
+    "tilesPerMetreU",
+    "tilesPerMetreV",
+    "tubeSides",
+    "verticalOffset",
+    "waterEdgeDrop",
+    "width",
+    "widthSource"
+   ],
+   "name": "SplineExtrudeComponent",
+   "properties_of_default": {
+    "collision": [
+     13,
+     0,
+     true
+    ],
+    "conform": [
+     13,
+     0,
+     true
+    ],
+    "corners": [
+     13,
+     0,
+     true
+    ],
+    "crownRise": [
+     2,
+     0,
+     true
+    ],
+    "customClosed": [
+     0,
+     0,
+     true
+    ],
+    "customProfile": [
+     15,
+     0,
+     true
+    ],
+    "edgeDrop": [
+     2,
+     0,
+     true
+    ],
+    "edgeInset": [
+     2,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "endCaps": [
+     0,
+     0,
+     true
+    ],
+    "endTaper": [
+     2,
+     0,
+     true
+    ],
+    "flow": [
+     0,
+     0,
+     true
+    ],
+    "flowSpeed": [
+     2,
+     0,
+     true
+    ],
+    "grade": [
+     13,
+     0,
+     true
+    ],
+    "height": [
+     2,
+     0,
+     true
+    ],
+    "lateralOffset": [
+     2,
+     0,
+     true
+    ],
+    "levelCourseV": [
+     0,
+     0,
+     true
+    ],
+    "maxHalfWidth": [
+     2,
+     0,
+     true
+    ],
+    "seaLevel": [
+     2,
+     0,
+     true
+    ],
+    "seaLevelFloor": [
+     0,
+     0,
+     true
+    ],
+    "shape": [
+     13,
+     0,
+     true
+    ],
+    "shoulderDrop": [
+     2,
+     0,
+     true
+    ],
+    "shoulderWidth": [
+     2,
+     0,
+     true
+    ],
+    "slopeBlend": [
+     2,
+     0,
+     true
+    ],
+    "stationSpacing": [
+     2,
+     0,
+     true
+    ],
+    "stepHeight": [
+     2,
+     0,
+     true
+    ],
+    "thickness": [
+     2,
+     0,
+     true
+    ],
+    "tilesPerMetreU": [
+     2,
+     0,
+     true
+    ],
+    "tilesPerMetreV": [
+     2,
+     0,
+     true
+    ],
+    "tubeSides": [
+     9,
+     0,
+     true
+    ],
+    "verticalOffset": [
+     2,
+     0,
+     true
+    ],
+    "waterEdgeDrop": [
+     2,
+     0,
+     true
+    ],
+    "width": [
+     2,
+     0,
+     true
+    ],
+    "widthSource": [
+     13,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "collision": [
+     13,
+     0,
+     true
+    ],
+    "conform": [
+     13,
+     0,
+     true
+    ],
+    "corners": [
+     13,
+     0,
+     true
+    ],
+    "crownRise": [
+     2,
+     0,
+     true
+    ],
+    "customClosed": [
+     0,
+     0,
+     true
+    ],
+    "customProfile": [
+     15,
+     0,
+     true
+    ],
+    "customProfile[]": [
+     15,
+     0,
+     true
+    ],
+    "customProfile[].grounded": [
+     0,
+     0,
+     true
+    ],
+    "customProfile[].hard": [
+     0,
+     0,
+     true
+    ],
+    "customProfile[].position": [
+     4,
+     0,
+     true
+    ],
+    "edgeDrop": [
+     2,
+     0,
+     true
+    ],
+    "edgeInset": [
+     2,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "endCaps": [
+     0,
+     0,
+     true
+    ],
+    "endTaper": [
+     2,
+     0,
+     true
+    ],
+    "flow": [
+     0,
+     0,
+     true
+    ],
+    "flowSpeed": [
+     2,
+     0,
+     true
+    ],
+    "grade": [
+     13,
+     0,
+     true
+    ],
+    "height": [
+     2,
+     0,
+     true
+    ],
+    "lateralOffset": [
+     2,
+     0,
+     true
+    ],
+    "levelCourseV": [
+     0,
+     0,
+     true
+    ],
+    "maxHalfWidth": [
+     2,
+     0,
+     true
+    ],
+    "seaLevel": [
+     2,
+     0,
+     true
+    ],
+    "seaLevelFloor": [
+     0,
+     0,
+     true
+    ],
+    "shape": [
+     13,
+     0,
+     true
+    ],
+    "shoulderDrop": [
+     2,
+     0,
+     true
+    ],
+    "shoulderWidth": [
+     2,
+     0,
+     true
+    ],
+    "slopeBlend": [
+     2,
+     0,
+     true
+    ],
+    "stationSpacing": [
+     2,
+     0,
+     true
+    ],
+    "stepHeight": [
+     2,
+     0,
+     true
+    ],
+    "thickness": [
+     2,
+     0,
+     true
+    ],
+    "tilesPerMetreU": [
+     2,
+     0,
+     true
+    ],
+    "tilesPerMetreV": [
+     2,
+     0,
+     true
+    ],
+    "tubeSides": [
+     9,
+     0,
+     true
+    ],
+    "verticalOffset": [
+     2,
+     0,
+     true
+    ],
+    "waterEdgeDrop": [
+     2,
+     0,
+     true
+    ],
+    "width": [
+     2,
+     0,
+     true
+    ],
+    "widthSource": [
+     13,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 74,
+   "type_of_key": 74,
+   "type_of_name": 74
+  },
+  {
+   "display_name": "Spline Instantiate",
+   "enum_options": {
+    "conform": [
+     [
+      0,
+      "none",
+      "None"
+     ],
+     [
+      1,
+      "terrain_height",
+      "Terrain Height"
+     ],
+     [
+      2,
+      "terrain_height_and_slope",
+      "Terrain Height And Slope"
+     ]
+    ],
+    "fenceGrade": [
+     [
+      0,
+      "racked",
+      "Racked"
+     ],
+     [
+      1,
+      "stepped",
+      "Stepped"
+     ]
+    ],
+    "fit": [
+     [
+      0,
+      "fit_to_length",
+      "Fit To Length"
+     ],
+     [
+      1,
+      "fixed_pitch",
+      "Fixed Pitch"
+     ]
+    ],
+    "mode": [
+     [
+      0,
+      "spacing",
+      "Spacing"
+     ],
+     [
+      1,
+      "tile",
+      "Tile"
+     ],
+     [
+      2,
+      "fence",
+      "Fence"
+     ]
+    ],
+    "plantMode": [
+     [
+      0,
+      "bounds_min",
+      "Bounds Min"
+     ],
+     [
+      1,
+      "pivot",
+      "Pivot"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef86bb",
+   "key": "splineinstantiate",
+   "known_keys": [
+    "caps",
+    "conform",
+    "crestPitch",
+    "crests",
+    "dropout",
+    "enabled",
+    "endTrim",
+    "fenceGrade",
+    "fit",
+    "gates",
+    "items",
+    "lateralJitter",
+    "lateralOffset",
+    "maxTilt",
+    "mode",
+    "plantMode",
+    "postPitch",
+    "posts",
+    "scaleRange",
+    "seed",
+    "slopeBlend",
+    "spacing",
+    "spacingJitter",
+    "spanMaxStretch",
+    "spanOverrides",
+    "spans",
+    "stationSpacing",
+    "verticalOffset",
+    "yawJitter"
+   ],
+   "name": "SplineInstantiateComponent",
+   "properties_of_default": {
+    "caps": [
+     15,
+     0,
+     true
+    ],
+    "conform": [
+     13,
+     0,
+     true
+    ],
+    "crestPitch": [
+     2,
+     0,
+     true
+    ],
+    "crests": [
+     15,
+     0,
+     true
+    ],
+    "dropout": [
+     2,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "endTrim": [
+     2,
+     0,
+     true
+    ],
+    "fenceGrade": [
+     13,
+     0,
+     true
+    ],
+    "fit": [
+     13,
+     0,
+     true
+    ],
+    "gates": [
+     15,
+     0,
+     true
+    ],
+    "items": [
+     15,
+     0,
+     true
+    ],
+    "lateralJitter": [
+     2,
+     0,
+     true
+    ],
+    "lateralOffset": [
+     2,
+     0,
+     true
+    ],
+    "maxTilt": [
+     2,
+     0,
+     true
+    ],
+    "mode": [
+     13,
+     0,
+     true
+    ],
+    "plantMode": [
+     13,
+     0,
+     true
+    ],
+    "postPitch": [
+     2,
+     0,
+     true
+    ],
+    "posts": [
+     15,
+     0,
+     true
+    ],
+    "scaleRange": [
+     4,
+     0,
+     true
+    ],
+    "seed": [
+     9,
+     0,
+     true
+    ],
+    "slopeBlend": [
+     2,
+     0,
+     true
+    ],
+    "spacing": [
+     2,
+     0,
+     true
+    ],
+    "spacingJitter": [
+     2,
+     0,
+     true
+    ],
+    "spanMaxStretch": [
+     2,
+     0,
+     true
+    ],
+    "spanOverrides": [
+     15,
+     0,
+     true
+    ],
+    "spans": [
+     15,
+     0,
+     true
+    ],
+    "stationSpacing": [
+     2,
+     0,
+     true
+    ],
+    "verticalOffset": [
+     2,
+     0,
+     true
+    ],
+    "yawJitter": [
+     2,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "caps": [
+     15,
+     0,
+     true
+    ],
+    "caps[]": [
+     15,
+     0,
+     true
+    ],
+    "caps[].asset": [
+     18,
+     0,
+     true
+    ],
+    "caps[].weight": [
+     2,
+     0,
+     true
+    ],
+    "conform": [
+     13,
+     0,
+     true
+    ],
+    "crestPitch": [
+     2,
+     0,
+     true
+    ],
+    "crests": [
+     15,
+     0,
+     true
+    ],
+    "crests[]": [
+     15,
+     0,
+     true
+    ],
+    "crests[].asset": [
+     18,
+     0,
+     true
+    ],
+    "crests[].weight": [
+     2,
+     0,
+     true
+    ],
+    "dropout": [
+     2,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "endTrim": [
+     2,
+     0,
+     true
+    ],
+    "fenceGrade": [
+     13,
+     0,
+     true
+    ],
+    "fit": [
+     13,
+     0,
+     true
+    ],
+    "gates": [
+     15,
+     0,
+     true
+    ],
+    "gates[]": [
+     15,
+     0,
+     true
+    ],
+    "gates[].asset": [
+     18,
+     0,
+     true
+    ],
+    "gates[].weight": [
+     2,
+     0,
+     true
+    ],
+    "items": [
+     15,
+     0,
+     true
+    ],
+    "items[]": [
+     15,
+     0,
+     true
+    ],
+    "items[].asset": [
+     18,
+     0,
+     true
+    ],
+    "items[].weight": [
+     2,
+     0,
+     true
+    ],
+    "lateralJitter": [
+     2,
+     0,
+     true
+    ],
+    "lateralOffset": [
+     2,
+     0,
+     true
+    ],
+    "maxTilt": [
+     2,
+     0,
+     true
+    ],
+    "mode": [
+     13,
+     0,
+     true
+    ],
+    "plantMode": [
+     13,
+     0,
+     true
+    ],
+    "postPitch": [
+     2,
+     0,
+     true
+    ],
+    "posts": [
+     15,
+     0,
+     true
+    ],
+    "posts[]": [
+     15,
+     0,
+     true
+    ],
+    "posts[].asset": [
+     18,
+     0,
+     true
+    ],
+    "posts[].weight": [
+     2,
+     0,
+     true
+    ],
+    "scaleRange": [
+     4,
+     0,
+     true
+    ],
+    "seed": [
+     9,
+     0,
+     true
+    ],
+    "slopeBlend": [
+     2,
+     0,
+     true
+    ],
+    "spacing": [
+     2,
+     0,
+     true
+    ],
+    "spacingJitter": [
+     2,
+     0,
+     true
+    ],
+    "spanMaxStretch": [
+     2,
+     0,
+     true
+    ],
+    "spanOverrides": [
+     15,
+     0,
+     true
+    ],
+    "spanOverrides[]": [
+     15,
+     0,
+     true
+    ],
+    "spanOverrides[].kind": [
+     13,
+     0,
+     true
+    ],
+    "spanOverrides[].knot": [
+     9,
+     0,
+     true
+    ],
+    "spanOverrides[].piece": [
+     9,
+     0,
+     true
+    ],
+    "spanOverrides[].span": [
+     9,
+     0,
+     true
+    ],
+    "spans": [
+     15,
+     0,
+     true
+    ],
+    "spans[]": [
+     15,
+     0,
+     true
+    ],
+    "spans[].asset": [
+     18,
+     0,
+     true
+    ],
+    "spans[].weight": [
+     2,
+     0,
+     true
+    ],
+    "stationSpacing": [
+     2,
+     0,
+     true
+    ],
+    "verticalOffset": [
+     2,
+     0,
+     true
+    ],
+    "yawJitter": [
+     2,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 75,
+   "type_of_key": 75,
+   "type_of_name": 75
+  },
+  {
+   "display_name": "Spline Animate",
+   "enum_options": {
+    "alignment": [
+     [
+      0,
+      "none",
+      "None"
+     ],
+     [
+      1,
+      "spline_tangent",
+      "Spline Tangent"
+     ],
+     [
+      2,
+      "spline_tangent_and_up",
+      "Spline Tangent And Up"
+     ],
+     [
+      3,
+      "world",
+      "World"
+     ]
+    ],
+    "easing": [
+     [
+      0,
+      "none",
+      "None"
+     ],
+     [
+      1,
+      "ease_in",
+      "Ease In"
+     ],
+     [
+      2,
+      "ease_out",
+      "Ease Out"
+     ],
+     [
+      3,
+      "ease_in_out",
+      "Ease In Out"
+     ]
+    ],
+    "loop": [
+     [
+      0,
+      "once",
+      "Once"
+     ],
+     [
+      1,
+      "loop",
+      "Loop"
+     ],
+     [
+      2,
+      "ping_pong",
+      "Ping Pong"
+     ]
+    ],
+    "method": [
+     [
+      0,
+      "duration",
+      "Duration"
+     ],
+     [
+      1,
+      "speed",
+      "Speed"
+     ]
+    ]
+   },
+   "has_enabled": true,
+   "icon": "ef9397",
+   "key": "splineanimate",
+   "known_keys": [
+    "alignment",
+    "duration",
+    "easing",
+    "enabled",
+    "lateralOffset",
+    "loop",
+    "method",
+    "playOnAwake",
+    "speed",
+    "spline",
+    "startOffset",
+    "verticalOffset"
+   ],
+   "name": "SplineAnimateComponent",
+   "properties_of_default": {
+    "alignment": [
+     13,
+     0,
+     true
+    ],
+    "duration": [
+     2,
+     0,
+     true
+    ],
+    "easing": [
+     13,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "lateralOffset": [
+     2,
+     0,
+     true
+    ],
+    "loop": [
+     13,
+     0,
+     true
+    ],
+    "method": [
+     13,
+     0,
+     true
+    ],
+    "playOnAwake": [
+     0,
+     0,
+     true
+    ],
+    "speed": [
+     2,
+     0,
+     true
+    ],
+    "spline": [
+     16,
+     0,
+     true
+    ],
+    "startOffset": [
+     2,
+     0,
+     true
+    ],
+    "verticalOffset": [
+     2,
+     0,
+     true
+    ]
+   },
+   "properties_without_component": {
+    "alignment": [
+     13,
+     0,
+     true
+    ],
+    "duration": [
+     2,
+     0,
+     true
+    ],
+    "easing": [
+     13,
+     0,
+     true
+    ],
+    "enabled": [
+     0,
+     0,
+     true
+    ],
+    "lateralOffset": [
+     2,
+     0,
+     true
+    ],
+    "loop": [
+     13,
+     0,
+     true
+    ],
+    "method": [
+     13,
+     0,
+     true
+    ],
+    "playOnAwake": [
+     0,
+     0,
+     true
+    ],
+    "speed": [
+     2,
+     0,
+     true
+    ],
+    "spline": [
+     16,
+     0,
+     true
+    ],
+    "startOffset": [
+     2,
+     0,
+     true
+    ],
+    "verticalOffset": [
+     2,
+     0,
+     true
+    ]
+   },
+   "structural_update_flags": 0,
+   "type": 76,
+   "type_of_key": 76,
+   "type_of_name": 76
   }
  ],
  "ease_options": [
@@ -32821,6 +34244,11 @@
    ]
   },
   "AnimationComponent": {
+   "actionFrameCount": [
+    9,
+    0,
+    true
+   ],
    "defaultFadeTime": [
     2,
     0,
@@ -36973,6 +38401,564 @@
     true
    ]
   },
+  "SplineAnimateComponent": {
+   "alignment": [
+    13,
+    0,
+    true
+   ],
+   "duration": [
+    2,
+    0,
+    true
+   ],
+   "easing": [
+    13,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "lateralOffset": [
+    2,
+    0,
+    true
+   ],
+   "loop": [
+    13,
+    0,
+    true
+   ],
+   "method": [
+    13,
+    0,
+    true
+   ],
+   "playOnAwake": [
+    0,
+    0,
+    true
+   ],
+   "speed": [
+    2,
+    0,
+    true
+   ],
+   "spline": [
+    16,
+    0,
+    true
+   ],
+   "startOffset": [
+    2,
+    0,
+    true
+   ],
+   "verticalOffset": [
+    2,
+    0,
+    true
+   ]
+  },
+  "SplineComponent": {
+   "closed": [
+    0,
+    17592186044416,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "knots": [
+    15,
+    17592186044416,
+    true
+   ],
+   "knots[N]": [
+    15,
+    17592186044416,
+    true
+   ],
+   "knots[N].mode": [
+    13,
+    17592186044416,
+    true
+   ],
+   "knots[N].position": [
+    5,
+    17592186044416,
+    true
+   ],
+   "knots[N].radius": [
+    2,
+    17592186044416,
+    true
+   ],
+   "knots[N].roll": [
+    2,
+    17592186044416,
+    true
+   ],
+   "knots[N].tangentIn": [
+    5,
+    17592186044416,
+    true
+   ],
+   "knots[N].tangentOut": [
+    5,
+    17592186044416,
+    true
+   ],
+   "terrain.clearFoliage": [
+    0,
+    0,
+    true
+   ],
+   "terrain.extraWidth": [
+    2,
+    0,
+    true
+   ],
+   "terrain.falloff": [
+    2,
+    0,
+    true
+   ],
+   "terrain.flatten": [
+    0,
+    0,
+    true
+   ],
+   "terrain.flattenMode": [
+    13,
+    0,
+    true
+   ],
+   "terrain.foliageMask": [
+    9,
+    0,
+    true
+   ],
+   "terrain.heightOffset": [
+    2,
+    0,
+    true
+   ],
+   "terrain.paint": [
+    0,
+    0,
+    true
+   ],
+   "terrain.paintFalloff": [
+    2,
+    0,
+    true
+   ],
+   "terrain.paintLayer": [
+    9,
+    0,
+    true
+   ],
+   "terrain.paintNoise": [
+    2,
+    0,
+    true
+   ],
+   "terrain.paintStrength": [
+    2,
+    0,
+    true
+   ],
+   "terrain.region": [
+    13,
+    0,
+    true
+   ],
+   "terrain.terrain": [
+    16,
+    0,
+    true
+   ],
+   "type": [
+    13,
+    17592186044416,
+    true
+   ],
+   "upAxis": [
+    5,
+    17592186044416,
+    true
+   ]
+  },
+  "SplineExtrudeComponent": {
+   "collision": [
+    13,
+    0,
+    true
+   ],
+   "conform": [
+    13,
+    0,
+    true
+   ],
+   "corners": [
+    13,
+    0,
+    true
+   ],
+   "crownRise": [
+    2,
+    0,
+    true
+   ],
+   "customClosed": [
+    0,
+    0,
+    true
+   ],
+   "customProfile": [
+    15,
+    0,
+    true
+   ],
+   "customProfile[N]": [
+    15,
+    0,
+    true
+   ],
+   "customProfile[N].grounded": [
+    0,
+    0,
+    true
+   ],
+   "customProfile[N].hard": [
+    0,
+    0,
+    true
+   ],
+   "customProfile[N].position": [
+    4,
+    0,
+    true
+   ],
+   "edgeDrop": [
+    2,
+    0,
+    true
+   ],
+   "edgeInset": [
+    2,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "endCaps": [
+    0,
+    0,
+    true
+   ],
+   "endTaper": [
+    2,
+    0,
+    true
+   ],
+   "flow": [
+    0,
+    0,
+    true
+   ],
+   "flowSpeed": [
+    2,
+    0,
+    true
+   ],
+   "grade": [
+    13,
+    0,
+    true
+   ],
+   "height": [
+    2,
+    0,
+    true
+   ],
+   "lateralOffset": [
+    2,
+    0,
+    true
+   ],
+   "levelCourseV": [
+    0,
+    0,
+    true
+   ],
+   "maxHalfWidth": [
+    2,
+    0,
+    true
+   ],
+   "seaLevel": [
+    2,
+    0,
+    true
+   ],
+   "seaLevelFloor": [
+    0,
+    0,
+    true
+   ],
+   "shape": [
+    13,
+    0,
+    true
+   ],
+   "shoulderDrop": [
+    2,
+    0,
+    true
+   ],
+   "shoulderWidth": [
+    2,
+    0,
+    true
+   ],
+   "slopeBlend": [
+    2,
+    0,
+    true
+   ],
+   "stationSpacing": [
+    2,
+    0,
+    true
+   ],
+   "stepHeight": [
+    2,
+    0,
+    true
+   ],
+   "thickness": [
+    2,
+    0,
+    true
+   ],
+   "tilesPerMetreU": [
+    2,
+    0,
+    true
+   ],
+   "tilesPerMetreV": [
+    2,
+    0,
+    true
+   ],
+   "tubeSides": [
+    9,
+    0,
+    true
+   ],
+   "verticalOffset": [
+    2,
+    0,
+    true
+   ],
+   "waterEdgeDrop": [
+    2,
+    0,
+    true
+   ],
+   "width": [
+    2,
+    0,
+    true
+   ],
+   "widthSource": [
+    13,
+    0,
+    true
+   ]
+  },
+  "SplineInstantiateComponent": {
+   "caps": [
+    15,
+    0,
+    true
+   ],
+   "conform": [
+    13,
+    0,
+    true
+   ],
+   "crestPitch": [
+    2,
+    0,
+    true
+   ],
+   "crests": [
+    15,
+    0,
+    true
+   ],
+   "dropout": [
+    2,
+    0,
+    true
+   ],
+   "enabled": [
+    0,
+    0,
+    true
+   ],
+   "endTrim": [
+    2,
+    0,
+    true
+   ],
+   "fenceGrade": [
+    13,
+    0,
+    true
+   ],
+   "fit": [
+    13,
+    0,
+    true
+   ],
+   "gates": [
+    15,
+    0,
+    true
+   ],
+   "items": [
+    15,
+    0,
+    true
+   ],
+   "lateralJitter": [
+    2,
+    0,
+    true
+   ],
+   "lateralOffset": [
+    2,
+    0,
+    true
+   ],
+   "maxTilt": [
+    2,
+    0,
+    true
+   ],
+   "mode": [
+    13,
+    0,
+    true
+   ],
+   "plantMode": [
+    13,
+    0,
+    true
+   ],
+   "postPitch": [
+    2,
+    0,
+    true
+   ],
+   "posts": [
+    15,
+    0,
+    true
+   ],
+   "scaleRange": [
+    4,
+    0,
+    true
+   ],
+   "seed": [
+    9,
+    0,
+    true
+   ],
+   "slopeBlend": [
+    2,
+    0,
+    true
+   ],
+   "spacing": [
+    2,
+    0,
+    true
+   ],
+   "spacingJitter": [
+    2,
+    0,
+    true
+   ],
+   "spanMaxStretch": [
+    2,
+    0,
+    true
+   ],
+   "spanOverrides": [
+    15,
+    0,
+    true
+   ],
+   "spanOverrides[N]": [
+    15,
+    0,
+    true
+   ],
+   "spanOverrides[N].kind": [
+    13,
+    0,
+    true
+   ],
+   "spanOverrides[N].knot": [
+    9,
+    0,
+    true
+   ],
+   "spanOverrides[N].piece": [
+    9,
+    0,
+    true
+   ],
+   "spanOverrides[N].span": [
+    9,
+    0,
+    true
+   ],
+   "spans": [
+    15,
+    0,
+    true
+   ],
+   "stationSpacing": [
+    2,
+    0,
+    true
+   ],
+   "verticalOffset": [
+    2,
+    0,
+    true
+   ],
+   "yawJitter": [
+    2,
+    0,
+    true
+   ]
+  },
   "SpriteAnimationComponent": {
    "frameIndex": [
     8,
@@ -37550,68 +39536,6 @@
    "textureWidth": [
     8,
     274877906944,
-    true
-   ]
-  },
-  "VertexAnimatorComponent": {
-   "animation": [
-    1,
-    17592186044416,
-    true
-   ],
-   "attachments": [
-    15,
-    0,
-    true
-   ],
-   "defaultClip": [
-    1,
-    0,
-    true
-   ],
-   "defaultFadeTime": [
-    2,
-    17592186044416,
-    true
-   ],
-   "enabled": [
-    0,
-    0,
-    true
-   ],
-   "guid": [
-    1,
-    17592186044416,
-    true
-   ],
-   "instanceClips": [
-    15,
-    17592186044416,
-    true
-   ],
-   "instanceEvents": [
-    0,
-    0,
-    true
-   ],
-   "instanceSpeeds": [
-    15,
-    17592186044416,
-    true
-   ],
-   "playAutomatically": [
-    0,
-    0,
-    true
-   ],
-   "randomStart": [
-    0,
-    0,
-    true
-   ],
-   "speed": [
-    2,
-    0,
     true
    ]
   },

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
+#include "spline/SplineSceneTools.h"
+#include "spline/SplineEditor.h"
 #include "particles/ParticleEffectLibrary.h"
 #include "util/ParticleMigrationReport.h"
 #include "AppMenuCommand.h"
@@ -1127,7 +1129,8 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::DeleteSelection:
             if (inputActionsWindow->canDelete()) inputActionsWindow->requestDelete();
-            else deleteSelection();
+            // the Draw Spline tool's last knot, the edited spline's knots
+            else if (!SplineSceneTools::deleteRequested(&project)) deleteSelection();
             break;
         case AppMenuCommand::Documentation:
         case AppMenuCommand::ReportIssue: {
@@ -2505,6 +2508,9 @@ void editor::App::show(){
         loadingWindow->show();
         return;
     }
+
+    // the spline tools: Live Terrain's re-bake, a spline that went away (S18 R12)
+    SplineEditor::get().update(&project);
 
     EntityClipboard::update();
 

@@ -15,6 +15,10 @@
 #include "Buoyancy.h"
 #include "WaterVolume.h"
 #endif
+#include "object/spline/Spline.h"
+#include "object/spline/SplineExtrude.h"
+#include "object/spline/SplineInstantiate.h"
+#include "object/spline/SplineAnimate.h"
 #include "math/Ray.h"
 #include "manager/PrefabAsset.h"
 
@@ -129,6 +133,12 @@ namespace jasperengine{
 #endif
         // the GameObject's Water Volume, added with its defaults when it has none
         WaterVolume getWaterVolume();
+        // the GameObject's Spline, Spline Extrude (with a Mesh), Spline Instantiate and Spline
+        // Animate, each added with its defaults when it has none
+        Spline getSpline();
+        SplineExtrude getSplineExtrude();
+        SplineInstantiate getSplineInstantiate();
+        SplineAnimate getSplineAnimate();
 
         Ray getRay(Vector3 direction);
     };

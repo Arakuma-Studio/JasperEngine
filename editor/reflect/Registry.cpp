@@ -93,6 +93,10 @@ namespace {
         &kNavMeshLinkDesc,
         &kNavMeshModifierDesc,
         &kNavGridDesc,
+        &kSplineDesc,
+        &kSplineExtrudeDesc,
+        &kSplineInstantiateDesc,
+        &kSplineAnimateDesc,
         &kVertexAnimatorDesc,
     };
     static_assert(std::size(kAll) == static_cast<size_t>(LAST_COMPONENT_TYPE) + 1, "a ComponentType without a description");
@@ -131,6 +135,10 @@ namespace {
         &kLatticeTracksDesc,
         &kPoseAnimatorDesc,
         &kAnimationPlayerDesc,
+        &kSplineDesc,
+        &kSplineExtrudeDesc,
+        &kSplineInstantiateDesc,
+        &kSplineAnimateDesc,
         &kVertexAnimatorDesc,
         &kCameraDesc,
         &kAudioSourceDesc,
@@ -239,6 +247,10 @@ namespace {
         &kScriptDesc,
         &kScrollbarDesc,
         &kSkyboxDesc,
+        &kSplineDesc,
+        &kSplineAnimateDesc,
+        &kSplineExtrudeDesc,
+        &kSplineInstantiateDesc,
         &kSpriteAnimationDesc,
         &kSpriteDesc,
         &kTerrainDesc,
@@ -270,6 +282,10 @@ namespace {
         &enums::kUIEventState, &enums::kWindingOrder,
         &enums::kNavCollectObjects, &enums::kNavUseGeometry, &enums::kNavPlane, &enums::kNavAvoidanceQuality, &enums::kNavAgentDriver,
         &enums::kNavObstacleShape, &enums::kNavModifierInclusion, &enums::kNavGridLayout, &enums::kNavGridMovement, &enums::kNavGridSource,
+        &enums::kSplineType, &enums::kSplineTangentMode, &enums::kSplineTerrainRegion, &enums::kSplineFlattenMode,
+        &enums::kSplineExtrudeShape, &enums::kSplineWidthSource, &enums::kSplineCornerStyle, &enums::kSplineGrade, &enums::kSplineConform,
+        &enums::kSplineCollision, &enums::kSplineInstantiateMode, &enums::kSplineSpacingFit, &enums::kSplinePlantMode,
+        &enums::kSplineSpanOverrideKind, &enums::kSplineAnimateMethod, &enums::kSplineLoop, &enums::kSplineEasing, &enums::kSplineAlignment,
     };
 
     bool equalsIgnoreCase(std::string_view a, std::string_view b) {
