@@ -183,9 +183,16 @@ def set_web_threads(project: Path, on: bool) -> None:
 
 
 def gate(root: Path, baseline: str, shot: Path, *extra: str) -> None:
-    run([sys.executable, REPO / "tools/web/browser_gate.py", "--root", root, "--page", "index.html", "--until-ready",
-         "--baseline", REPO / "tools/web/gates" / f"{baseline}.json", "--screenshot", shot, "--transcript", shot.with_suffix(".log"), *extra],
-        timeout=600)
+    shot.unlink(missing_ok=True)
+    result = run([sys.executable, REPO / "tools/web/browser_gate.py", "--root", root, "--page", "index.html", "--until-ready",
+                  "--baseline", REPO / "tools/web/gates" / f"{baseline}.json", "--screenshot", shot, "--transcript",
+                  shot.with_suffix(".log"), *extra], timeout=600)
+    shot.with_suffix(".gate.txt").write_text(result.stdout + result.stderr)
+    # the page drew the game: a capture, and not one colour
+    if not shot.is_file():
+        raise Failure(f"{baseline}: the gate captured no screenshot\n{result.stdout[-3000:]}")
+    if pngdiff.flat(pngdiff.load(shot), tolerance=8):
+        raise Failure(f"{baseline}: the page shows one colour (nothing drawn): {shot}")
 
 
 def check_web(args, players: Path, out: Path) -> None:
