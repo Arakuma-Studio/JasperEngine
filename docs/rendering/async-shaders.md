@@ -25,11 +25,14 @@ The render thread finishes what the worker or the driver created within a per-fr
 
 - **Meshes, terrain and sprites** draw the nearest variant that is ready, the same one a build
   that lacks a variant would draw (`ShaderPool::getFallbackProperties`: SSAO, fog, shadows, mirror,
-  IBL, normal map and so on given up, the fewest first). They swap to theirs when it is ready. With
-  no ready variant at all, the object appears once its own is created.
+  IBL, normal map and so on given up, the fewest first). They swap to theirs when it is ready:
+  the object first makes its pipelines on the new variant and warms them while it keeps drawing
+  the old one, so the swap leaves no empty frame. With no ready variant at all, the object
+  appears once its own is created.
 - **Pipelines** of content (meshes, particles, UI, HTML UI) are shared between objects with the
   same state (interning), so a second object with the same state draws at once. A pipeline being
-  created is not drawn for the frames it takes.
+  created is not drawn for the frames it takes (the object waits, it is not reloaded). A cached
+  shadow map slot or a reflection probe face that had such a draw is drawn again.
 - **Passes of the frame** (post-processing, SSAO, SSR, composites, blits, atmosphere, fluid, shadow
   cache) create their pipelines at once. A skipped pass would leave the target the next pass reads
   undefined. Their shaders are still created asynchronously, and the current variant keeps drawing

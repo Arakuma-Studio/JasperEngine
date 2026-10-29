@@ -464,6 +464,18 @@ public:
   candidate of `getFallbackProperties(type, properties)` with `ShaderPool::isShaderReady` (the
   same customId first, then 0 for a `builtin:lit` reference). Then the S11 plain-Lit rule
   applies. `mesh.needVariantReload` makes the exact variant replace it once ready.
+- A loaded object switches variants without an empty frame: once the new variant's shaders are
+  built (`meshVariantShadersReady`), each of its objects (colour, depth, G-buffer, extra pass)
+  makes its pipelines on the new shader ahead (`ObjectRender::prewarmWith`: its own description,
+  created where the backend creates pipelines) and warms them with its bindings. The reload
+  waits for those, and its pipelines are then the same interned ones, ready at once. A stand-in
+  that dropped a vertex attribute (Nmp, Tan, Uv1, Uv2) has another layout, so its exact
+  variant's pipelines are new and that object can miss frames until they are made.
+- A draw whose pipeline (or shader) is still being created or warmed draws nothing and waits:
+  `ObjectRender::isDrawWaiting()` tells it from a failed or dead pipeline, and only the latter
+  reloads the object. Passes whose result is kept count the waiting draws
+  (`ObjectRender::getWaitingDrawCount`): a cached shadow slot is drawn again the next frame, a
+  reflection probe face is captured again.
 - `ObjectRender::isReady()` is true when every pipeline of the object is `VALID` and warm.
   - The sites that swap a pass at runtime (uber/post chain, bloom programs, SSAO,
     atmosphere/fog, HTML UI composite) build the new object next to the current one and swap
@@ -480,7 +492,9 @@ public:
 
 - `SokolPipelineCache::acquire(const sg_pipeline_desc&)` / `release(sg_pipeline)`. The hash
   and equality are computed field by field (never raw struct bytes: padding).
-- An entry is destroyed when its count reaches 0, unless the warm-up holds it.
+- An entry whose count reaches 0 is destroyed by the next `collect()` round but one (once a
+  frame, from `SokolAsyncCreate::update`), unless it is acquired again meanwhile or the warm-up
+  holds it: an object loaded again in the same frame keeps its pipeline.
 - `releaseShader` destroys every entry on that shader, as it does for the dynamic entries
   today. An object that keeps such a handle sees an invalid pipeline and does not draw until it
   reloads (today's rule, `SokolObject.cpp:625`).
