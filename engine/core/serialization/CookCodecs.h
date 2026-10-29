@@ -392,6 +392,22 @@ namespace jasperengine::cook {
         TextureVisit<std::remove_reference_t<decltype(member)>>::visit(member, f);
     }
 
+    // a value behind an accessor (an S08 field with a cppPath: spline.editableKnots()), the
+    // accessor a function of the generated table: Access(Owner&) -> the value's reference
+    template<typename Owner, auto Access>
+    void writePath(Writer& w, const void* owner) {
+        write(w, Access(*const_cast<Owner*>(static_cast<const Owner*>(owner))));
+    }
+    template<typename Owner, auto Access>
+    void readPath(Reader& r, void* owner) {
+        read(r, Access(*static_cast<Owner*>(owner)));
+    }
+    template<typename Owner, auto Access>
+    void visitPathTextures(void* owner, const TextureVisitor& f) {
+        auto& value = Access(*static_cast<Owner*>(owner));
+        TextureVisit<std::remove_reference_t<decltype(value)>>::visit(value, f);
+    }
+
     // an Entity member (an id, not a number: remapped through the stream's entity mapping)
     template<typename Owner, auto Member>
     void writeEntityMember(Writer& w, const void* owner) {

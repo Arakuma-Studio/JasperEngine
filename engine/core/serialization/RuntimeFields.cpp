@@ -47,6 +47,12 @@ namespace jasperengine::cook {
 
 #define JE_RF(T, member, id, kind) \
     {id, FieldKind::kind, #member, &writeMember<T, &T::member>, &readMember<T, &T::member>, &visitMemberTextures<T, &T::member>}
+// a field behind an accessor (JE_RF_ACCESSOR defines the accessor, JE_RF_PATH uses it)
+#define JE_RF_ACCESSOR(T, name, path) \
+    static auto& accessor_##T##_##name(T& v) { return v.path; }
+#define JE_RF_PATH(T, name, id, kind) \
+    {id, FieldKind::kind, #name, &writePath<T, &accessor_##T##_##name>, &readPath<T, &accessor_##T##_##name>, \
+     &visitPathTextures<T, &accessor_##T##_##name>}
 #define JE_RF_ENTITY(T, member, id, kind) \
     {id, FieldKind::kind, #member, &writeEntityMember<T, &T::member>, &readEntityMember<T, &T::member>, nullptr}
 #define JE_RF_ENTITIES(T, member, id, kind) \

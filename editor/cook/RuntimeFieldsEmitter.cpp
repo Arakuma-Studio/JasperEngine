@@ -84,6 +84,8 @@ namespace {
         std::map<std::string, std::string> guards;
         std::set<std::string> visiting;
         std::map<std::string, const StructDesc*> byType;
+        // accessor functions of the table being emitted (JE_RF_ACCESSOR), written ahead of it
+        std::string accessors;
 
         // the type a field's elements are when it holds structs
         const StructDesc* nestedStruct(const FieldDesc& field) {
@@ -120,11 +122,21 @@ namespace {
 
         std::string fieldLine(const std::string& ownerName, const std::string& ownerType, const FieldDesc& field) {
             const std::string member = field.cppPath ? field.cppPath : field.name;
-            if (member.find_first_of(".[(-") != std::string::npos) {
-                errors.push_back(ownerType + "." + field.name + ": member path \"" + member + "\" is not one member");
-                return "";
-            }
             const uint32_t id = cook::runtimeFieldId(ownerName, field.yamlKey ? field.yamlKey : field.name);
+            // a path through members and accessors (spline.editableKnots()): read and written through
+            // an accessor function of the table (accessors, emitted ahead of the tables)
+            if (member.find_first_of(".[(-") != std::string::npos) {
+                if (member.find_first_of("[-") != std::string::npos || field.kind == Kind::Entity) {
+                    errors.push_back(ownerType + "." + field.name + ": member path \"" + member + "\" has no runtime accessor form");
+                    return "";
+                }
+                if (identifierOf(ownerType) != ownerType) {
+                    errors.push_back(ownerType + "." + field.name + ": an accessor needs an owner named by one identifier");
+                    return "";
+                }
+                accessors += "JE_RF_ACCESSOR(" + ownerType + ", " + field.name + ", " + member + ")\n";
+                return "    JE_RF_PATH(" + ownerType + ", " + field.name + ", " + hex32(id) + ", " + kindToken(field.kind) + "),\n";
+            }
             std::string macro = "JE_RF";
             if (field.kind == Kind::Entity) macro = "JE_RF_ENTITY";
             else if (field.kind == Kind::Array && field.elementOps && field.elementOps->kind == Kind::Entity) macro = "JE_RF_ENTITIES";
@@ -138,7 +150,8 @@ namespace {
                 if (!cooked(field)) continue;
                 lines += fieldLine(ownerName, ownerType, field);
             }
-            std::string out;
+            std::string out = accessors;
+            accessors.clear();
             if (lines.empty()) {
                 out += "const StructTable " + tableName + "{\"" + ownerName + "\", nullptr, 0};\n";
             } else {
@@ -164,7 +177,7 @@ uint32_t editor::cook::runtimeFieldId(const std::string& owner, const std::strin
 }
 
 std::string editor::cook::emitRuntimeFields(std::vector<std::string>& errors) {
-    Emitter emitter{errors, {}, {}, {}, {}};
+    Emitter emitter{errors, {}, {}, {}, {}, {}};
     for (const ComponentDesc* desc : reflect::all()) {
         const std::string guard = desc->codegenGuard ? desc->codegenGuard : "";
         for (const FieldDesc& field : desc->body.fields) {

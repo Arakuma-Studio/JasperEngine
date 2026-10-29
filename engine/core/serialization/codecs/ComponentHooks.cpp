@@ -12,6 +12,9 @@
 
 #include "util/Fnv.h"
 
+#include <algorithm>
+#include <cmath>
+
 using namespace jasperengine;
 using namespace jasperengine::cook;
 
@@ -154,6 +157,27 @@ namespace {
         terrain.heightMapLoaded = false;
     }
 
+    // ---------------------------------------------------------------- Spline
+
+    // the curve's fields are read through SplineData's editable accessors, past its setters: keep
+    // their invariants and bump the version, as the scene load does (SplinesReflect's postDecode).
+    // The editor cooks a decoded curve, already unit: an up axis within float error of unit
+    // length stays as it was written, so the cooked value reads back unchanged.
+    void afterSpline(void* component, const LoadContext&) {
+        spline::SplineData& data = static_cast<SplineComponent*>(component)->spline;
+        for (spline::SplineKnot& knot : data.editableKnots()) {
+            knot.radius = std::isfinite(knot.radius) ? std::max(0.0f, knot.radius) : 0.0f;
+        }
+        Vector3& up = data.editableUpAxis();
+        const float length = up.length();
+        if (!std::isfinite(length) || length <= 0.0f) {
+            up = Vector3(0.0f, 1.0f, 0.0f);
+        } else if (std::fabs(length - 1.0f) > 1e-5f) {
+            up = up / length;
+        }
+        data.markDirty();
+    }
+
     // ---------------------------------------------------------------- Rigidbodies
 
     // the exported code carries the editor's body flags over
@@ -176,6 +200,7 @@ namespace {
         {fnv1a32("audiosource"), nullptr, nullptr, &afterAudioSource},
         {fnv1a32("action"), nullptr, nullptr, &afterAction},
         {fnv1a32("terrain"), nullptr, nullptr, &afterTerrain},
+        {fnv1a32("spline"), nullptr, nullptr, &afterSpline},
 #ifdef JASPERENGINE_PHYSICS_2D
         {fnv1a32("rigidbody2d"), &writeBodyFlags<Rigidbody2DComponent>, &readBodyFlags<Rigidbody2DComponent>, nullptr},
 #endif

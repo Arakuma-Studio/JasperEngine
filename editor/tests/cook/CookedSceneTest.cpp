@@ -14,6 +14,7 @@
 #include "Catalog.h"
 #include "component/ActionComponent.h"
 #include "component/AudioSourceComponent.h"
+#include "component/SplineComponent.h"
 #include "cook/RuntimeFieldsEmitter.h"
 #include "cook/SceneCooker.h"
 #include "reflect/Reflect.h"
@@ -128,6 +129,9 @@ TEST(CookedScene, RoundTripEveryComponent) {
             RandomValues random(9001u * static_cast<uint32_t>(desc->type) + static_cast<uint32_t>(sample), true);
             random.withoutReferences();
             random.fillStruct(desc->body, comp);
+            // what a scene load leaves (the component a cook sees): the invariants its decode keeps
+            // (a spline's unit up axis and non-negative radii)
+            if (desc->postDecode) desc->postDecode(comp, reflect::DecodeContext{.registry = scene, .entity = entity});
 
             DecodedScene loaded;
             std::string error;
@@ -161,6 +165,36 @@ TEST(CookedScene, RoundTripAllComponentsFixture) {
         }
     }
     EXPECT_EQ(covered.size(), static_cast<size_t>(LAST_COMPONENT_TYPE) + 1) << "the fixture misses a component type";
+}
+
+// a spline's curve is read through SplineData's editable accessors (S18 cppPath fields): the
+// knots and settings arrive, and the load bumps the version so the cache and consumers rebuild
+TEST(CookedScene, SplineCurveThroughAccessors) {
+    DecodedScene source = emptyScene();
+    Scene* scene = source.scene->scene;
+    const Entity entity = scene->createEntity();
+    ProjectUtils::addEntityComponent(scene, entity, ComponentType::SplineComponent, source.scene->entities, YAML::Node());
+    SplineComponent& spline = scene->getComponent<SplineComponent>(entity);
+    spline.spline.editableType() = spline::SplineType::CubicBezier;
+    spline.spline.editableClosed() = true;
+    spline.spline.editableUpAxis() = Vector3(0.0f, 0.0f, 1.0f);
+    spline.spline.editableKnots() = {{Vector3(0.0f, 0.0f, 0.0f)}, {Vector3(10.0f, 1.0f, 5.0f), Vector3(-2.0f, 0.0f, 0.0f), Vector3(2.0f, 0.0f, 0.0f), 4.5f, 12.0f},
+                                     {Vector3(3.0f, 0.0f, -4.0f)}};
+    spline.spline.markDirty();
+
+    DecodedScene loaded;
+    std::string error;
+    ASSERT_TRUE(roundTrip(scene, {entity}, loaded, error)) << error;
+    const SplineComponent& after = loaded.scene->scene->getComponent<SplineComponent>(entity);
+    EXPECT_EQ(after.spline.type(), spline::SplineType::CubicBezier);
+    EXPECT_TRUE(after.spline.closed());
+    ASSERT_EQ(after.spline.knots().size(), 3u);
+    EXPECT_EQ(after.spline.knots()[1].position, Vector3(10.0f, 1.0f, 5.0f));
+    EXPECT_EQ(after.spline.knots()[1].tangentOut, Vector3(2.0f, 0.0f, 0.0f));
+    EXPECT_FLOAT_EQ(after.spline.knots()[1].radius, 4.5f);
+    EXPECT_FLOAT_EQ(after.spline.knots()[1].rollDeg, 12.0f);
+    EXPECT_EQ(after.spline.upAxis(), Vector3(0.0f, 0.0f, 1.0f));
+    EXPECT_GT(after.spline.version(), SplineComponent().spline.version()) << "the load must mark the curve dirty";
 }
 
 TEST(RuntimeFields, Generated) {
