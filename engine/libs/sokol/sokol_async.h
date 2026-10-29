@@ -99,6 +99,15 @@ typedef struct sgj_gl_warm_attr {
     int32_t offset;
     uint32_t type;
 } sgj_gl_warm_attr;
+typedef struct sgj_gl_warm_sampler {
+    uint32_t min_filter;                    // GLenums
+    uint32_t mag_filter;
+    uint32_t wrap_s;
+    uint32_t wrap_t;
+    uint32_t wrap_r;
+    uint32_t compare;                       // 0: no comparison
+    uint32_t max_anisotropy;
+} sgj_gl_warm_sampler;
 typedef struct sgj_gl_warm_draw {
     uint32_t program;
     uint32_t primitive;                     // GLenum
@@ -114,10 +123,14 @@ typedef struct sgj_gl_warm_draw {
     sg_pixel_format color_formats[SG_MAX_COLOR_ATTACHMENTS];
     sg_pixel_format depth_format;
     int sample_count;
+    // per texture unit, what the driver's variant depends on: the worker binds its own 1x1
+    // texture of that target and format and its own sampler of that state, never the render
+    // thread's objects (which that thread may respecify or delete meanwhile)
     int unit_count;
-    uint32_t unit_target[SGJ_GL_WARM_MAX_UNITS];
-    uint32_t unit_texture[SGJ_GL_WARM_MAX_UNITS];
-    uint32_t unit_sampler[SGJ_GL_WARM_MAX_UNITS];
+    uint32_t unit_target[SGJ_GL_WARM_MAX_UNITS];        // GLenum, 0: unit unused
+    sg_pixel_format unit_format[SGJ_GL_WARM_MAX_UNITS];
+    int unit_samples[SGJ_GL_WARM_MAX_UNITS];
+    sgj_gl_warm_sampler unit_sampler[SGJ_GL_WARM_MAX_UNITS];
 } sgj_gl_warm_draw;
 // Render thread: false when the pipeline or a binding is not valid (nothing to warm). key: what
 // decides the driver's variant (program, pipeline description, texture formats and sampler states)

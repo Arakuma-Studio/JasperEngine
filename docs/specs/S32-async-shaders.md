@@ -437,19 +437,23 @@ public:
     - primitive type;
     - depth, stencil, blend, colour mask, cull and winding state;
     - colour/depth formats and sample count;
-    - the GL texture names and targets and sampler names per texture unit.
+    - per texture unit, the texture's target, pixel format and sample count and the sampler's
+      state. The worker binds its own 1x1 texture and sampler of those (cached), never the
+      render thread's objects, which that thread may respecify or delete meanwhile.
   - The worker binds them to its own VAO, a dummy vertex buffer and a cached 1x1 FBO per
     format set. It sets the state, draws 3 vertices (1 instance) and calls `glFinish`.
   - The key is (program, pipeline description hash, per-unit texture internal format and
     target, sampler state hash), and a done key is remembered.
-  - A texture deleted meanwhile only makes that warm draw useless: GL keeps a bound object
-    alive, and GL errors on the worker context are read and dropped.
+  - A program deleted meanwhile only makes that warm draw useless: GL errors on the worker
+    context are read and dropped.
   - The driver makes a program's variant for a state at the draw, into a list the contexts
-    share (Mesa does not lock it; overlapping makes crashed llvmpipe in
-    `AtmosphereGpu.ScreenCloudsHideFarTerrain`). So a warm draw of a program and the render
-    thread's first draw of it with another warmed state never overlap
-    (`SokolAsyncCreate::beginFirstDraw`): that first draw waits while the worker draws the
-    program, and a program first drawn in a frame is not warmed until the next `update()`.
+    share. So a warm draw of a program and the render thread's first draw of it with another
+    warmed state never overlap (`SokolAsyncCreate::beginFirstDraw`): that first draw waits
+    while the worker draws the program, and a program first drawn in a frame is not warmed
+    until the next `update()`.
+  - Found in testing: warm draws that bound the render thread's own textures crashed llvmpipe
+    on the render thread (`AtmosphereGpu.ScreenCloudsHideFarTerrain`, where the atmosphere
+    quality change respecifies textures every frame).
 - **parallel**: `sgj_gl_shader_issue` on the main context (the compile and link calls only,
   shader objects kept for the log). `update()` polls `GL_COMPLETION_STATUS_KHR`, which does not
   block. When it is true, `sgj_shader_create` adopts the program (patch 1) and checks the link

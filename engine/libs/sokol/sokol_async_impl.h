@@ -18,6 +18,7 @@
 
 #include <atomic>
 #include <cstring>
+#include <vector>
 
 #if defined(_SOKOL_ANY_GL)
     #if defined(__EMSCRIPTEN__)
@@ -270,14 +271,113 @@ namespace {
         bool complete = false;
     };
 
-    // the worker context's own objects (VAOs and FBOs are never shared between contexts)
+    struct SgjWarmTexture {
+        GLenum target = 0;
+        sg_pixel_format format = SG_PIXELFORMAT_NONE;
+        int samples = 1;
+        GLuint texture = 0;
+    };
+    struct SgjWarmSampler {
+        sgj_gl_warm_sampler state = {};
+        GLuint sampler = 0;
+    };
+
+    // the worker context's own objects (VAOs and FBOs are never shared between contexts; its
+    // textures and samplers stand for the render thread's, which it never touches)
     struct SgjWarmObjects {
         GLuint vao = 0;
         GLuint vertices = 0;
         SgjWarmTarget targets[32];
         int targetCount = 0;
+        std::vector<SgjWarmTexture> textures;
+        std::vector<SgjWarmSampler> samplers;
     };
     SgjWarmObjects sgjWarm;
+
+    // zeros for a 1x1 texel (a 4x4 block when compressed), every face or layer
+    const void* sgjZeros(){
+        static const std::vector<uint8_t> zeros(4096, 0);
+        return zeros.data();
+    }
+
+    // a complete 1x1 texture of that target, format and sample count; 0 when this GL cannot make
+    // one (the unit is left unbound: that variant is compiled at the render thread's first draw)
+    GLuint sgjWarmTexture(GLenum target, sg_pixel_format format, int samples){
+        for (const SgjWarmTexture& t : sgjWarm.textures){
+            if (t.target == target && t.format == format && t.samples == samples)
+                return t.texture;
+        }
+        SgjWarmTexture made;
+        made.target = target;
+        made.format = format;
+        made.samples = samples;
+        const bool compressed = _sg_is_compressed_pixel_format(format);
+        const GLsizei size = compressed ? 4 : 1;
+        const GLenum internal = _sg_gl_teximage_internal_format(format);
+        const GLsizei bytes = (GLsizei)_sg_surface_pitch(format, size, size, 1);
+        glGenTextures(1, &made.texture);
+        glBindTexture(target, made.texture);
+        if (samples > 1){
+            #if defined(SOKOL_GLCORE) && !defined(__APPLE__)
+                if (target == GL_TEXTURE_2D_MULTISAMPLE)
+                    glTexImage2DMultisample(target, samples, internal, 1, 1, GL_TRUE);
+            #endif
+        }else if (target == GL_TEXTURE_2D || target == GL_TEXTURE_CUBE_MAP){
+            const int faces = target == GL_TEXTURE_CUBE_MAP ? 6 : 1;
+            for (int face = 0; face < faces; face++){
+                const GLenum faceTarget = target == GL_TEXTURE_CUBE_MAP ? (GLenum)(GL_TEXTURE_CUBE_MAP_POSITIVE_X + face) : target;
+                if (compressed){
+                    glCompressedTexImage2D(faceTarget, 0, internal, size, size, 0, bytes, sgjZeros());
+                }else{
+                    glTexImage2D(faceTarget, 0, (GLint)internal, size, size, 0, _sg_gl_teximage_format(format), _sg_gl_teximage_type(format), sgjZeros());
+                }
+            }
+        }else if (target == GL_TEXTURE_3D || target == GL_TEXTURE_2D_ARRAY){
+            if (compressed){
+                glCompressedTexImage3D(target, 0, internal, size, size, 1, 0, bytes, sgjZeros());
+            }else{
+                glTexImage3D(target, 0, (GLint)internal, size, size, 1, 0, _sg_gl_teximage_format(format), _sg_gl_teximage_type(format), sgjZeros());
+            }
+        }
+        if (samples <= 1){
+            glTexParameteri(target, GL_TEXTURE_MAX_LEVEL, 0);
+        }
+        glBindTexture(target, 0);
+        if (glGetError() != GL_NO_ERROR){
+            glDeleteTextures(1, &made.texture);
+            made.texture = 0;
+            while (glGetError() != GL_NO_ERROR){
+            }
+        }
+        sgjWarm.textures.push_back(made);
+        return made.texture;
+    }
+
+    GLuint sgjWarmSampler(const sgj_gl_warm_sampler& state){
+        for (const SgjWarmSampler& s : sgjWarm.samplers){
+            if (std::memcmp(&s.state, &state, sizeof(state)) == 0)
+                return s.sampler;
+        }
+        SgjWarmSampler made;
+        made.state = state;
+        glGenSamplers(1, &made.sampler);
+        glSamplerParameteri(made.sampler, GL_TEXTURE_MIN_FILTER, (GLint)state.min_filter);
+        glSamplerParameteri(made.sampler, GL_TEXTURE_MAG_FILTER, (GLint)state.mag_filter);
+        glSamplerParameteri(made.sampler, GL_TEXTURE_WRAP_S, (GLint)state.wrap_s);
+        glSamplerParameteri(made.sampler, GL_TEXTURE_WRAP_T, (GLint)state.wrap_t);
+        glSamplerParameteri(made.sampler, GL_TEXTURE_WRAP_R, (GLint)state.wrap_r);
+        if (state.compare != 0){
+            glSamplerParameteri(made.sampler, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+            glSamplerParameteri(made.sampler, GL_TEXTURE_COMPARE_FUNC, (GLint)state.compare);
+        }else{
+            glSamplerParameteri(made.sampler, GL_TEXTURE_COMPARE_MODE, GL_NONE);
+        }
+        if (_sg.gl.ext_anisotropic && state.max_anisotropy > 1){
+            glSamplerParameteri(made.sampler, GL_TEXTURE_MAX_ANISOTROPY_EXT, (GLint)state.max_anisotropy);
+        }
+        sgjWarm.samplers.push_back(made);
+        return made.sampler;
+    }
 
     // vertex attributes read at most stride * 2 + offset + 16 bytes for three vertices
     constexpr GLsizeiptr SGJ_WARM_VERTEX_BYTES = 8192;
@@ -492,8 +592,16 @@ extern "C" bool sgj_gl_warm_describe(sg_pipeline pip_id, const sg_bindings* bind
             return false;
         const _sg_image_t* img = _sg_image_ref_ptr(&view->cmn.img.ref);
         out->unit_target[unit] = img->gl.target;
-        out->unit_texture[unit] = _sg.features.gl_texture_views ? view->gl.tex_view[img->cmn.active_slot] : img->gl.tex[img->cmn.active_slot];
-        out->unit_sampler[unit] = smp->gl.smp;
+        out->unit_format[unit] = img->cmn.pixel_format;
+        out->unit_samples[unit] = img->cmn.sample_count > 1 ? img->cmn.sample_count : 1;
+        sgj_gl_warm_sampler& warmSampler = out->unit_sampler[unit];
+        warmSampler.min_filter = _sg_gl_min_filter(smp->cmn.min_filter, smp->cmn.mipmap_filter);
+        warmSampler.mag_filter = _sg_gl_mag_filter(smp->cmn.mag_filter);
+        warmSampler.wrap_s = _sg_gl_wrap(smp->cmn.wrap_u);
+        warmSampler.wrap_t = _sg_gl_wrap(smp->cmn.wrap_v);
+        warmSampler.wrap_r = _sg_gl_wrap(smp->cmn.wrap_w);
+        warmSampler.compare = smp->cmn.compare != SG_COMPAREFUNC_NEVER ? _sg_gl_compare_func(smp->cmn.compare) : 0;
+        warmSampler.max_anisotropy = smp->cmn.max_anisotropy;
         if (unit + 1 > out->unit_count)
             out->unit_count = unit + 1;
         h = sgjMix(h, unit); h = sgjMix(h, img->gl.target); h = sgjMix(h, (int)img->cmn.pixel_format);
@@ -537,19 +645,21 @@ extern "C" void sgj_gl_warm_run(const sgj_gl_warm_draw* d){
             glEnableVertexAttribArray(i);
         }
         for (int u = 0; u < d->unit_count; u++){
-            if (!d->unit_texture[u])
+            if (!d->unit_target[u])
+                continue;
+            const GLuint texture = sgjWarmTexture(d->unit_target[u], d->unit_format[u], d->unit_samples[u]);
+            if (!texture)
                 continue;
             glActiveTexture((GLenum)(GL_TEXTURE0 + u));
-            glBindTexture(d->unit_target[u], d->unit_texture[u]);
-            glBindSampler((GLuint)u, d->unit_sampler[u]);
+            glBindTexture(d->unit_target[u], texture);
+            glBindSampler((GLuint)u, d->unit_samples[u] > 1 ? 0 : sgjWarmSampler(d->unit_sampler[u]));
         }
         sgjWarmState(d);
         glUseProgram(d->program);
         glDrawArraysInstanced(d->primitive, 0, 3, 1);
         glFinish();
-        // nothing of the render context's stays bound here, so its deletes free at once
         for (int u = 0; u < d->unit_count; u++){
-            if (!d->unit_texture[u])
+            if (!d->unit_target[u])
                 continue;
             glActiveTexture((GLenum)(GL_TEXTURE0 + u));
             glBindTexture(d->unit_target[u], 0);
@@ -557,7 +667,7 @@ extern "C" void sgj_gl_warm_run(const sgj_gl_warm_draw* d){
         }
         glUseProgram(0);
     }
-    // a texture or program the render thread deleted meanwhile only makes this draw useless
+    // a program the render thread deleted meanwhile only makes this draw useless
     while (glGetError() != GL_NO_ERROR){
     }
 }
@@ -571,6 +681,12 @@ extern "C" void sgj_gl_warm_release(void){
     for (int i = 0; i < sgjWarm.targetCount; i++){
         glDeleteFramebuffers(1, &sgjWarm.targets[i].fbo);
         glDeleteRenderbuffers(SG_MAX_COLOR_ATTACHMENTS + 1, sgjWarm.targets[i].buffers);
+    }
+    for (const SgjWarmTexture& t : sgjWarm.textures){
+        if (t.texture) glDeleteTextures(1, &t.texture);
+    }
+    for (const SgjWarmSampler& smp : sgjWarm.samplers){
+        glDeleteSamplers(1, &smp.sampler);
     }
     if (sgjWarm.vao) glDeleteVertexArrays(1, &sgjWarm.vao);
     if (sgjWarm.vertices) glDeleteBuffers(1, &sgjWarm.vertices);
