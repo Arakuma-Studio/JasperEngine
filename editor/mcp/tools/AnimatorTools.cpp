@@ -1356,7 +1356,13 @@ void editMontageTool(const CallPtr& call) {
             MontageSectionDef section;
             section.name = s.value("name", std::string());
             section.start = s.value("start", 0.0f);
-            section.next = s.contains("next") && !s["next"].is_null() ? s["next"].get<std::string>() : std::string();
+            // absent: the following section (normalize resolves it); null: the montage ends there
+            section.next = !s.contains("next") ? std::string("\x01") : (s["next"].is_null() ? std::string() : s["next"].get<std::string>());
+            if (section.name.empty() || montage.findSection(section.name) >= 0) {
+                call->fail(section.name.empty() ? std::string("sections: every section needs a name")
+                                                : "sections: \"" + section.name + "\" is listed twice");
+                return;
+            }
             montage.sections.push_back(section);
         }
     }

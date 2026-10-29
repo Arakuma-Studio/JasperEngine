@@ -78,9 +78,9 @@ async def test_tools_listed(ed: Editor):
     for name in TOOLS:
         tool = ed.tool(name)
         ed.check(tool.input_schema.get("type") == "object", f"{name} has an object schema")
-    words = json.dumps(ed.tool("edit_animator_controller").input_schema)
-    for op in ("add_parameter", "add_state", "add_transition", "set_blend_tree", "add_sub_state_machine", "set_default_state"):
-        ed.check(op in words, f"edit_animator_controller lists the {op} op")
+    words = ed.tool("edit_animator_controller").description + json.dumps(ed.tool("edit_animator_controller").input_schema)
+    for op in ("_parameter", "_state", "_transition", "set_blend_tree", "_sub_state_machine", "set_default_state", "jasper://docs/animator"):
+        ed.check(op in words, f"edit_animator_controller names {op}")
 
 
 async def test_build_controller(ed: Editor):
@@ -164,7 +164,7 @@ async def test_assign_and_inspect(ed: Editor):
     got = await ed.call("get_animator", entity="Hero")
     ed.check_eq(got["controller"], CONTROLLER, "the controller is assigned")
     ed.check(got.get("rig", {}).get("humanoid") is True, f"the hero is a humanoid: {json.dumps(got.get('rig'))[:500]}")
-    clips = got.get("clips", [])
+    clips = got.get("rig", {}).get("clips", [])
     ed.check(clips and all(c.get("loaded") for c in clips), f"every clip loads: {json.dumps(clips)[:800]}")
     ed.check(not got.get("bind_error") and not got.get("controller_error"), f"no error: {json.dumps(got)[:800]}")
     # the component in the generic tools: settings round trip

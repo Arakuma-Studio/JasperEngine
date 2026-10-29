@@ -775,7 +775,11 @@ bool AnimatorSystem::playMontage(Entity entity, const std::string& path, float r
     }
     const size_t slot = runtime->montageClipSlot(montage->clip);
     if (!runtime->playMontage(path, montage, slot, rate, section)){
-        if (error) *error = "no layer plays the montage slot \"" + montage->slot + "\" (set a layer's slot)";
+        if (error){
+            std::string slots;
+            for (const anim::CompiledLayer& layer : runtime->controller->layers) slots += (slots.empty() ? "" : ", ") + layer.name + ": \"" + layer.slot + "\"";
+            *error = "no layer plays the montage slot \"" + montage->slot + "\" (set a layer's slot; the layers' slots: " + slots + ")";
+        }
         return false;
     }
     // a clip the pool has: bound now, else the next update loads it
