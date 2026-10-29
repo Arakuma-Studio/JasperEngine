@@ -279,6 +279,8 @@ void main(){
             camera.setTarget(0.0f, 0.0f, 0.0f);
             camera.activate();
             Engine::setScene(&scene);
+            // what an earlier test left in flight is published before this one counts
+            ASSERT_TRUE(SystemRender::waitGpuCreationIdle(30000));
         }
 
         void TearDown() override{
