@@ -444,6 +444,12 @@ public:
     target, sampler state hash), and a done key is remembered.
   - A texture deleted meanwhile only makes that warm draw useless: GL keeps a bound object
     alive, and GL errors on the worker context are read and dropped.
+  - The driver makes a program's variant for a state at the draw, into a list the contexts
+    share (Mesa does not lock it; overlapping makes crashed llvmpipe in
+    `AtmosphereGpu.ScreenCloudsHideFarTerrain`). So a warm draw of a program and the render
+    thread's first draw of it with another warmed state never overlap
+    (`SokolAsyncCreate::beginFirstDraw`): that first draw waits while the worker draws the
+    program, and a program first drawn in a frame is not warmed until the next `update()`.
 - **parallel**: `sgj_gl_shader_issue` on the main context (the compile and link calls only,
   shader objects kept for the log). `update()` polls `GL_COMPLETION_STATUS_KHR`, which does not
   block. When it is true, `sgj_shader_create` adopts the program (patch 1) and checks the link

@@ -63,6 +63,10 @@ namespace jasperengine {
         // key; 0 when none is needed (another backend, nothing to warm, warm already)
         static uint64_t requestWarmDraw(sg_pipeline pipeline, const sg_bindings& bindings);
         static bool isWarm(uint64_t warmKey);
+        // the render thread's first draw of a shader's pipeline with a warmed state: false while the
+        // worker warms another state of its program (the driver's variants of a program are made
+        // at the draw, never on both contexts at once); true reserves the program for this frame
+        static bool beginFirstDraw(sg_shader shader);
         // warm draws can be asked for (GL worker mode with them on): false costs a draw nothing
         static bool warmDrawsActive();
 

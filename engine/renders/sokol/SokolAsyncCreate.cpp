@@ -185,6 +185,15 @@ namespace {
         std::vector<sg_shader> deferredShaderDestroys;
         std::deque<Completion> completed;
 
+        // A GL driver makes its variant of a program for a draw state at the draw, into the
+        // program's list shared by the contexts (Mesa: unlocked): the worker's warm draw of a
+        // program and the render thread's first draw of it with another state never overlap.
+        // Under `mutex`: the program the worker draws now, and the programs the render thread
+        // drew for the first time in this frame (the worker waits for the next update())
+        uint32_t warmingProgram = 0;
+        std::unordered_set<uint32_t> firstDrawn;
+        std::condition_variable firstDrawsDone;
+
         std::unordered_map<uint64_t, std::unique_ptr<WarmJob>> warmPending;
         std::unordered_set<uint64_t> warmDone;
         std::unordered_map<uint32_t, std::vector<uint64_t>> warmByProgram;
@@ -255,7 +264,17 @@ namespace {
             job->result = sgj_pipeline_create(job->slot, &job->desc);
             job->createMs = msSince(start);
         }else{
-            sgj_gl_warm_run(&static_cast<WarmJob*>(task.job)->draw);
+            const WarmJob* job = static_cast<WarmJob*>(task.job);
+            {
+                std::unique_lock<std::mutex> lock(s.mutex);
+                // (bounded: a render thread that stopped updating does not hold it forever)
+                s.firstDrawsDone.wait_for(lock, std::chrono::milliseconds(200),
+                    [&s, job]{ return s.stopping || !s.firstDrawn.count(job->program); });
+                s.warmingProgram = job->program;
+            }
+            sgj_gl_warm_run(&job->draw);
+            std::lock_guard<std::mutex> lock(s.mutex);
+            s.warmingProgram = 0;
         }
     }
 
@@ -673,8 +692,10 @@ void SokolAsyncCreate::shutdown(){
         }
         s.queue.clear();
         s.stopping = true;
+        s.firstDrawn.clear();
     }
     s.wake.notify_all();
+    s.firstDrawsDone.notify_all();
     if (s.worker.joinable())
         s.worker.join();
     s.workerContext.reset();
@@ -976,6 +997,20 @@ uint64_t SokolAsyncCreate::requestWarmDraw(sg_pipeline pipeline, const sg_bindin
     return key;
 }
 
+bool SokolAsyncCreate::beginFirstDraw(sg_shader shader){
+    State& s = state();
+    if (s.mode != GpuCreationMode::GlWorker || !s.settings.glWarmDraws)
+        return true;
+    const uint32_t program = sgj_gl_shader_program(shader);
+    if (program == 0)
+        return true;
+    std::lock_guard<std::mutex> lock(s.mutex);
+    if (s.warmingProgram == program)
+        return false;
+    s.firstDrawn.insert(program);
+    return true;
+}
+
 bool SokolAsyncCreate::warmDrawsActive(){
     const State& s = state();
     return s.mode == GpuCreationMode::GlWorker && s.settings.glWarmDraws;
@@ -1088,6 +1123,17 @@ void SokolAsyncCreate::update(){
     JE_PROFILE_COUNTER("Pipelines pending", s.pipelines.size());
     // the interned pipelines released a frame ago and not taken again
     SokolPipelineCache::collect();
+    // last frame's first draws are submitted: the worker may warm their programs again
+    if (s.caps.gl){
+        bool released = false;
+        {
+            std::lock_guard<std::mutex> lock(s.mutex);
+            released = !s.firstDrawn.empty();
+            s.firstDrawn.clear();
+        }
+        if (released)
+            s.firstDrawsDone.notify_all();
+    }
     if (s.shaders.empty() && s.pipelines.empty() && s.warmPending.empty() && s.deferredShaderDestroys.empty() && s.completed.empty())
         return;
 

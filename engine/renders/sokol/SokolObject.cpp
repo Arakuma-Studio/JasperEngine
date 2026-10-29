@@ -90,7 +90,7 @@ bool SokolObject::isWarm(sg_pipeline pipeline, uint32_t& warmed, uint64_t& key){
         return true;
     if (key == 0)
         key = SokolAsyncCreate::requestWarmDraw(pipeline, bind);
-    if (!SokolAsyncCreate::isWarm(key))
+    if (!SokolAsyncCreate::isWarm(key) || !SokolAsyncCreate::beginFirstDraw(pipeline_desc.shader))
         return false;
     warmed = pipeline.id;
     key = 0;
@@ -104,15 +104,19 @@ bool SokolObject::isDynamicWarm(sg_pipeline pipeline){
         if (entry.first == pipeline.id){
             if (entry.second == 0)
                 return true;
-            if (!SokolAsyncCreate::isWarm(entry.second))
+            if (!SokolAsyncCreate::isWarm(entry.second) || !SokolAsyncCreate::beginFirstDraw(baseDesc.shader))
                 return false;
             entry.second = 0;
             return true;
         }
     }
     const uint64_t key = SokolAsyncCreate::requestWarmDraw(pipeline, bind);
-    dynamicWarm.emplace_back(pipeline.id, SokolAsyncCreate::isWarm(key) ? 0 : key);
-    return SokolAsyncCreate::isWarm(key);
+    // (warm already: the first draw still waits while the worker warms the program)
+    dynamicWarm.emplace_back(pipeline.id, key);
+    if (!SokolAsyncCreate::isWarm(key) || !SokolAsyncCreate::beginFirstDraw(baseDesc.shader))
+        return false;
+    dynamicWarm.back().second = 0;
+    return true;
 }
 
 // Forgets the variants without destroying them: a copy of this object shares the
