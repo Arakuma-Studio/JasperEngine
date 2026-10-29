@@ -282,7 +282,7 @@ namespace {
         } else {
             uint16_t half[4];
             std::memcpy(half, payload.bytes.data() + index * 8, 8);
-            for (int i = 0; i < 4; i++) out[i] = halfToFloat(half[i]);
+            for (int i = 0; i < 4; i++) out[i] = editor::vat::halfToFloat(half[i]);
         }
     }
 
@@ -424,14 +424,14 @@ TEST(VatBakerTypes, ClipFramesFollowTheLoopSeamRule) {
 
 TEST(VatBakerTypes, HalfFloatsRoundToNearestEven) {
     for (float value : {0.0f, 1.0f, -2.5f, 0.000123f, 65504.0f, 1e-7f}) {
-        const float back = halfToFloat(floatToHalf(value));
+        const float back = editor::vat::halfToFloat(editor::vat::floatToHalf(value));
         EXPECT_NEAR(back, value, std::fabs(value) * 0.0005f + 6e-8f) << value;
     }
-    EXPECT_EQ(floatToHalf(1.0f), 0x3c00);
-    EXPECT_EQ(floatToHalf(-2.0f), 0xc000);
-    EXPECT_EQ(floatToHalf(1.0f + 1.0f / 2048.0f), 0x3c00) << "a tie rounds to even";
-    EXPECT_EQ(floatToHalf(1.0f + 3.0f / 2048.0f), 0x3c02);
-    EXPECT_TRUE(std::isinf(halfToFloat(floatToHalf(1e6f))));
+    EXPECT_EQ(editor::vat::floatToHalf(1.0f), 0x3c00);
+    EXPECT_EQ(editor::vat::floatToHalf(-2.0f), 0xc000);
+    EXPECT_EQ(editor::vat::floatToHalf(1.0f + 1.0f / 2048.0f), 0x3c00) << "a tie rounds to even";
+    EXPECT_EQ(editor::vat::floatToHalf(1.0f + 3.0f / 2048.0f), 0x3c02);
+    EXPECT_TRUE(std::isinf(editor::vat::halfToFloat(editor::vat::floatToHalf(1e6f))));
 }
 
 TEST(VatBakerTypes, BoneDecompositionRoundTripsAndKeepsMirrors) {
@@ -1819,6 +1819,8 @@ namespace {
         ~CountedCmd() override { (*deleted)[id]++; }
         bool execute() override { return ok; }
         void undo() override {}
+        std::string describe() const override { return "Counted " + std::to_string(id); }
+        const char* typeName() const override { return "CountedCmd"; }
     };
 
     // two open scenes (createNewScene closes the one before): the second selected

@@ -183,7 +183,9 @@ namespace {
         const uint32_t length = static_cast<uint32_t>(payload.size());
         for (int s = 24; s >= 0; s -= 8)
             chunk.push_back(static_cast<uint8_t>(length >> s));
-        chunk.insert(chunk.end(), type, type + 4);
+        // (byte by byte: GCC 11's -Wstringop-overread misreads a range insert from the decayed array)
+        for (int i = 0; i < 4; i++)
+            chunk.push_back(static_cast<uint8_t>(type[i]));
         chunk.insert(chunk.end(), payload.begin(), payload.end());
         const uint32_t crc = crc32(chunk.data() + 4, chunk.size() - 4);
         for (int s = 24; s >= 0; s -= 8)

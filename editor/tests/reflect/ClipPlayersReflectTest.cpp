@@ -9,6 +9,7 @@
 // entities are entity references, and a decode over an animator keeps its Preview toggle only.
 
 #include "reflect/Reflect.h"
+#include "reflect/TypeOps.h"
 
 #include "Stream.h"
 #include "component/AnimationPlayerComponent.h"

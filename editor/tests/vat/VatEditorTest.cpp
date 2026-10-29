@@ -592,8 +592,10 @@ TEST_F(VatEditor, ThePollWatchesTheAnimatorsFiles) {
 
 TEST_F(VatEditor, AssetDatabaseTracksVatGuidsInTheJson) {
     const std::string dir = folder("guids");
-    EXPECT_TRUE(AssetDatabase::isTrackedFile("a/hero.vat"));
-    EXPECT_FALSE(AssetDatabase::isTrackedFile("a/hero.vat.glb"));
+    // (S04: every asset type is tracked; a .vat keeps its GUID in its JSON, the .vat.glb in a meta)
+    EXPECT_TRUE(project()->getAssetDatabase().isTrackedFile(project()->getAssetsPath() / "a/hero.vat"));
+    EXPECT_EQ(project()->getAssetDatabase().typeOf(project()->getAssetsPath() / "a/hero.vat"), AssetType::VertexAnimation);
+    EXPECT_EQ(project()->getAssetDatabase().typeOf(project()->getAssetsPath() / "a/hero.vat.glb"), AssetType::Model);
     const Pair pair = writePair(dir, "hero");
     AssetDatabase& database = project()->getAssetDatabase();
     EXPECT_EQ(database.getGuid(pair.vat), pair.guid);

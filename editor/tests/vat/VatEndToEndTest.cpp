@@ -278,7 +278,7 @@ namespace {
         } else {
             uint16_t h[4];
             std::memcpy(h, payload.bytes.data() + index * 8, 8);
-            for (int i = 0; i < 4; i++) out[i] = halfToFloat(h[i]);
+            for (int i = 0; i < 4; i++) out[i] = editor::vat::halfToFloat(h[i]);
         }
         return out;
     }
