@@ -11,6 +11,7 @@
 #include <cstring>
 #include <cerrno>
 #include <thread>
+#include <condition_variable>
 
 #ifdef _WIN32
     #include <io.h>
@@ -29,65 +30,9 @@ using namespace jasperengine;
 namespace {
     constexpr std::chrono::milliseconds kReadSleepMs{10};
     constexpr std::chrono::milliseconds kKillGracePeriod{100};
-
-#ifdef _WIN32
-    // Without /S, a command line holding more than two quotes and starting with
-    // one loses its first and its last quote, so a quoted program path followed
-    // by quoted arguments ("C:\Program Files\CMake\bin\cmake.exe" -G "Ninja")
-    // decays into "C:\Program". /S "<command>" strips only the outer pair.
-    std::string cmdQuoting(const std::string& command) {
-        return "/s /c \"" + command + "\"";
-    }
-#endif
 }
 
 #ifdef _WIN32
-// Run the command through cmd.exe (see cmdQuoting) and capture its output
-// WITHOUT flashing a console window. The editor is a GUI app with no console
-// of its own, so _popen() and system() each briefly pop up a cmd.exe window;
-// CreateProcess with CREATE_NO_WINDOW avoids that flicker. Returns the captured
-// output (stdout, plus stderr unless the command redirects it) with trailing
-// whitespace trimmed.
-std::string editor::CommandRunner::runCaptureNoWindow(const std::string& command) {
-    SECURITY_ATTRIBUTES sa{ sizeof(sa), nullptr, TRUE };
-    HANDLE hRead = nullptr, hWrite = nullptr;
-    if (!CreatePipe(&hRead, &hWrite, &sa, 0)) return "";
-    SetHandleInformation(hRead, HANDLE_FLAG_INHERIT, 0);
-
-    STARTUPINFOA si{};
-    si.cb = sizeof(si);
-    si.dwFlags = STARTF_USESTDHANDLES;
-    si.hStdOutput = hWrite;
-    si.hStdError = hWrite;
-
-    PROCESS_INFORMATION pi{};
-    std::string cmdLine = "cmd.exe " + cmdQuoting(command);
-    if (!CreateProcessA(nullptr, cmdLine.data(), nullptr, nullptr, TRUE,
-                        CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
-        CloseHandle(hRead);
-        CloseHandle(hWrite);
-        return "";
-    }
-    CloseHandle(hWrite);
-
-    std::string result;
-    char buffer[4096];
-    DWORD bytesRead = 0;
-    // Read until the child closes its end of the pipe (i.e. exits); reading
-    // concurrently avoids a deadlock if output exceeds the pipe buffer.
-    while (ReadFile(hRead, buffer, sizeof(buffer), &bytesRead, nullptr) && bytesRead > 0) {
-        result.append(buffer, bytesRead);
-    }
-    CloseHandle(hRead);
-    WaitForSingleObject(pi.hProcess, INFINITE);
-    CloseHandle(pi.hThread);
-    CloseHandle(pi.hProcess);
-
-    while (!result.empty() && (result.back() == '\n' || result.back() == '\r' || result.back() == ' '))
-        result.pop_back();
-    return result;
-}
-
 std::string editor::CommandRunner::findVswherePath() {
     auto tryEnv = [](const char* envVar) -> std::string {
         const char* pf = std::getenv(envVar);
@@ -104,7 +49,9 @@ std::string editor::CommandRunner::findVswherePath() {
 std::string editor::CommandRunner::vsInstallationPath() {
     std::string vswhere = findVswherePath();
     if (vswhere.empty()) return "";
-    return runCaptureNoWindow("\"" + vswhere + "\" -products * -latest -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath 2>nul");
+    // vswhere.exe run directly with its arguments (capture: no cmd.exe, no window)
+    return capture({vswhere, "-products", "*", "-latest", "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+                    "-property", "installationPath"});
 }
 
 bool editor::CommandRunner::hasVSWithCppTools() {
@@ -240,15 +187,38 @@ std::string editor::CommandRunner::quoteArgv(const std::vector<std::string>& arg
 #endif
 }
 
-std::string editor::CommandRunner::capture(const std::vector<std::string>& argv) {
+std::string editor::CommandRunner::capture(const std::vector<std::string>& argv, int timeoutMs) {
     CommandRunner runner;
     runner.quiet = true;
     std::string output;
+
+    // timeoutMs > 0: a watchdog cancels the run (terminating the process) when it is still going
+    std::mutex doneMutex;
+    std::condition_variable doneSignal;
+    bool done = false;
+    std::thread watchdog;
+    if (timeoutMs > 0) {
+        watchdog = std::thread([&] {
+            std::unique_lock<std::mutex> lock(doneMutex);
+            if (!doneSignal.wait_for(lock, std::chrono::milliseconds(timeoutMs), [&] { return done; })) {
+                lock.unlock();
+                runner.cancel();
+            }
+        });
+    }
     const bool ok = runner.run(argv, fs::path(), [&output](const std::string& line) {
         output += line;
         output.push_back('\n');
     });
-    if (!ok) return "";
+    if (watchdog.joinable()) {
+        {
+            std::lock_guard<std::mutex> lock(doneMutex);
+            done = true;
+        }
+        doneSignal.notify_all();
+        watchdog.join();
+    }
+    if (!ok || runner.isCancelRequested()) return "";
     while (!output.empty() && (output.back() == '\n' || output.back() == '\r' || output.back() == ' '))
         output.pop_back();
     return output;

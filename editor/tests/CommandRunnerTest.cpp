@@ -12,6 +12,7 @@
 
 #include <unistd.h>
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -58,4 +59,31 @@ TEST(CommandRunner, KitDetectionFindsTheCompilersOnPath) {
     EXPECT_TRUE(found);
     EXPECT_EQ(Generator::checkBuildTools(false, nullptr).find("C++ compiler"), std::string::npos)
         << Generator::checkBuildTools(false, nullptr);
+}
+
+TEST(CommandRunner, CaptureTimesOutAndTheCMakeVersionProbeTakesAnArgv) {
+    const fs::path base = fs::temp_directory_path() / ("jasper-capture-cmake-" + std::to_string(::getpid()));
+    fs::remove_all(base);
+    const fs::path dir = base / "CMake $(touch pwned) & co";
+    fs::create_directories(dir);
+
+    // a "cmake" that answers --version (only when it is the one literal argument)
+    const fs::path cmake = dir / "cmake";
+    std::ofstream(cmake, std::ios::binary) << "#!/bin/sh\n[ \"$#\" = 1 ] && [ \"$1\" = --version ] || exit 2\n"
+                                              "echo 'cmake version 3.99.1'\necho\necho 'CMake suite maintained'\n";
+    fs::permissions(cmake, fs::perms::owner_all, fs::perm_options::replace);
+    EXPECT_EQ(Generator::probeCMakeVersion(cmake.string()), "3.99.1");
+    EXPECT_FALSE(fs::exists(base / "pwned"));
+    EXPECT_FALSE(fs::exists("pwned"));
+
+    // a program that never answers is stopped after the timeout, and yields ""
+    const fs::path hang = dir / "hang";
+    std::ofstream(hang, std::ios::binary) << "#!/bin/sh\necho 'cmake version 1.0'\nexec sleep 30\n";
+    fs::permissions(hang, fs::perms::owner_all, fs::perm_options::replace);
+    const auto t0 = std::chrono::steady_clock::now();
+    EXPECT_EQ(CommandRunner::capture({hang.string(), "--version"}, 300), "");
+    EXPECT_LT(std::chrono::steady_clock::now() - t0, std::chrono::seconds(10));
+
+    std::error_code ec;
+    fs::remove_all(base, ec);
 }

@@ -2485,12 +2485,8 @@ bool editor::Generator::isKnownGenerator(const std::string& generator) {
 }
 
 std::string editor::Generator::probeCMakeVersion(const std::string& path) {
-    const std::string command = "\"" + path + "\" --version";
-#ifdef _WIN32
-    const std::string output = CommandRunner::runCaptureNoWindow(command + " 2>nul");
-#else
-    const std::string output = ShellEnv::runCapture(command + " 2>/dev/null", 5000);
-#endif
+    // run directly (no shell), killed after 5 s: a GUI program chosen by mistake never answers
+    const std::string output = CommandRunner::capture({path, "--version"}, 5000);
 
     // "cmake version 3.31.6" on the first line.
     const std::string prefix = "cmake version ";

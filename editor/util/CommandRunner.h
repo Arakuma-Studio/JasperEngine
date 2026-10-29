@@ -37,9 +37,10 @@ namespace jasperengine::editor {
         // Runs `argv` DIRECTLY like run(), quietly (no exit-code or spawn-failure line in the
         // console), in the current folder, and returns its output (stdout and stderr) with trailing
         // whitespace trimmed when it exits 0, "" otherwise. For tool probes (`which g++`,
-        // `g++ -dumpmachine`, `ninja --version`): a tool path with spaces or shell metacharacters
-        // is one literal argument.
-        static std::string capture(const std::vector<std::string>& argv);
+        // `g++ -dumpmachine`, `cmake --version`, vswhere.exe): a tool path with spaces or shell
+        // metacharacters is one literal argument. timeoutMs > 0: the process is terminated after
+        // that long and "" returned (a GUI program asked for --version may never answer).
+        static std::string capture(const std::vector<std::string>& argv, int timeoutMs = 0);
 
         // Runs `command` through the platform shell (/bin/sh -c, cmd.exe /s /c) in
         // workingDir. ONLY for a step that genuinely needs the shell (sourcing an
@@ -63,7 +64,6 @@ namespace jasperengine::editor {
         static std::string quoteArgv(const std::vector<std::string>& argv);
 
 #ifdef _WIN32
-        static std::string runCaptureNoWindow(const std::string& command);
         static std::string findVswherePath();
         static std::string vsInstallationPath();
         static bool hasVSWithCppTools();

@@ -371,12 +371,6 @@ void editor::ShellEnv::bootstrapPath() {
 #endif
 }
 
-#ifndef _WIN32
-std::string editor::ShellEnv::runCapture(const std::string& command, int timeoutMs) {
-    bool aborted = false;
-    return runShellCapture("/bin/sh", { "-c", command }, timeoutMs, aborted);
-}
-#endif
 
 std::string editor::ShellEnv::findExecutable(const std::string& command) {
     if (command.empty()) return "";
