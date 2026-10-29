@@ -283,6 +283,11 @@ void editor::Exporter::runPlayerBuild() {
     if (!player) {
         std::string error;
         PlayerRuntimes::find(playerIdFor(config, config.developmentBuild), config.playersDir, config.allowPlayerMismatch, error);
+        // what would build it without the runtime
+        if (config.platform == BuildPlatform::Web && config.method == BuildMethod::Auto)
+            error += "; or install the Emscripten SDK (EMSDK, or Preferences > External Tools) to compile it";
+        else if (config.platform == hostBuildPlatform() && config.method == BuildMethod::Auto)
+            error += "; or install a C++ toolchain to compile it (" + Generator::checkBuildTools() + ")";
         setError(error);
         return;
     }

@@ -1742,7 +1742,15 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         ${PLATFORM_RESOURCES}
     )
 
-    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
+    if(JASPERENGINE_PLAYER AND CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        # the prebuilt iOS player is a static library, main() included, that the runtime's Xcode
+        # template links (tools/players/ios_player.sh makes JasperEnginePlayer.xcframework of it)
+        add_library(
+            ${APP_NAME}
+            STATIC
+            ${all_code_files}
+        )
+    elseif(NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
         add_executable(
             ${APP_NAME}
             ${PLATFORM_EXEC_FLAGS}

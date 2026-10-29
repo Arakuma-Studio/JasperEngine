@@ -85,8 +85,12 @@ namespace jasperengine::editor {
         // the release's archive of that id from the editor's GitHub release (R9); a development
         // editor cannot download (it trusts only local players)
         static std::string downloadUrl(const std::string& id);
+        // cancel stops the transfer itself; received (when given) follows the bytes that arrived
         static bool download(const std::string& id, const std::filesystem::path& override, const std::atomic<bool>* cancel,
-                             std::string& installedId, std::vector<std::string>& warnings, std::string& error);
+                             std::string& installedId, std::vector<std::string>& warnings, std::string& error,
+                             std::atomic<uint64_t>* received = nullptr);
+        // the release archive's size of that id (0 when this editor has no table entry)
+        static uint64_t archiveSize(const std::string& id);
 
         // this release's archive hashes
         static const std::vector<PlayerArchiveHash>& releaseHashes();

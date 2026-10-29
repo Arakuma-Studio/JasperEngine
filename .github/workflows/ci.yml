@@ -300,7 +300,8 @@ jobs:
   # commit, and its checks show on the pull request.
   linux:
     name: Linux (editor + engine)
-    if: github.event_name != 'pull_request'
+    if: always() && !cancelled() && github.event_name != 'pull_request'
+    needs: [player-hashes]
     runs-on: ubuntu-latest
     # The container pins the glibc floor to 22.04 instead of the runner
     # image's. Moving it also moves the distros AppRun's refusal names.
@@ -356,6 +357,12 @@ jobs:
           python3 tools/check-pollers.py
           cmake -P tools/tests/check_toolchain_floor.cmake
           cmake -P tools/tests/cxx-standard-check/run.cmake
+
+      # the release's player runtime hashes (an empty table outside releases): D5
+      - uses: actions/download-artifact@v4
+        with:
+          name: player-hashes
+          path: editor/players
 
       - name: Build editor
         run: |
@@ -589,9 +596,11 @@ jobs:
   # -------------------------------------------------------------- Windows ---
   windows:
     name: Windows MSVC (editor + engine GL/Vulkan)
+    needs: [player-hashes]
     if: >-
+      always() && !cancelled() && (
       github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' ||
-      github.event_name == 'release' || startsWith(github.ref, 'refs/tags/v')
+      github.event_name == 'release' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: windows-latest
     timeout-minutes: 120
     defaults:
@@ -625,6 +634,12 @@ jobs:
       # JASPERENGINE_TESTS adds jasperengine-editor-tests and jasperengine-core-tests, run below
       # without their GPU suites (those run on Linux). The editor tree has its warnings on; the
       # engine tree gets them here, and the summary counts them (docs/testing.md, "Warnings").
+      # the release's player runtime hashes (an empty table outside releases): D5
+      - uses: actions/download-artifact@v4
+        with:
+          name: player-hashes
+          path: editor/players
+
       - name: Build editor
         run: |
           set -o pipefail
@@ -691,9 +706,11 @@ jobs:
   # checkout and toolchain setup across them is worth the longer job.
   macos:
     name: macOS + iOS (editor, engine, Xcode)
+    needs: [player-hashes]
     if: >-
+      always() && !cancelled() && (
       github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' ||
-      github.event_name == 'release' || startsWith(github.ref, 'refs/tags/v')
+      github.event_name == 'release' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: macos-latest
     timeout-minutes: 150
     steps:
@@ -713,6 +730,12 @@ jobs:
         run: echo "JASPERENGINE_VERSION=$(git describe --tags --match 'v[0-9]*' --always --dirty)" >> "$GITHUB_ENV"
 
       # JASPERENGINE_TESTS adds jasperengine-editor-tests, run below without its GPU suites
+      # the release's player runtime hashes (an empty table outside releases): D5
+      - uses: actions/download-artifact@v4
+        with:
+          name: player-hashes
+          path: editor/players
+
       - name: Build editor
         run: |
           set -o pipefail
@@ -840,13 +863,312 @@ jobs:
           path: ./dist/*.dmg
           if-no-files-found: error
 
+  # -------------------------------------------------------------- Players ---
+  # The prebuilt player runtimes (docs/specs/S30-shipping.md R8, R11, D5). Every push builds the
+  # Linux and web ones (AC1/AC2 test them in the no-compiler image); the others build on demand,
+  # pull requests into main, v* tags and releases. On a v* tag every runtime is built in both
+  # flavours and player-hashes writes their SHA-256 table, which the editor packages compile in.
+  players-linux:
+    name: Player runtimes (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      JASPER_DOCKER_IMAGE: jasperengine/linux-build:ci
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the Linux image
+        uses: docker/build-push-action@v6
+        with:
+          context: docker
+          file: docker/linux.Dockerfile
+          tags: jasperengine/linux-build:ci
+          load: true
+          cache-from: type=gha,scope=linux-image
+          cache-to: type=gha,scope=linux-image,mode=max
+      - uses: actions/cache@v4
+        with:
+          path: build/.cache/ccache
+          key: ccache-players-linux-${{ github.sha }}
+          restore-keys: ccache-players-linux-
+      - name: Build the runtimes
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* || "$GITHUB_EVENT_NAME" == release ]]; then
+            PLAYER_FLAVOURS="release development" PLAYER_BACKENDS="glcore gles3 vulkan" PLAYER_ZIP=1 tools/build.sh players
+          else
+            PLAYER_FLAVOURS=release PLAYER_BACKENDS="glcore gles3 vulkan" PLAYER_ZIP=1 tools/build.sh players
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: players-linux
+          path: |
+            build/players/*/**
+            !build/players/archives/**
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: player-archives-linux
+          path: build/players/archives/*.zip
+          if-no-files-found: error
+
+  players-web:
+    name: Player runtimes (web)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      JASPER_DOCKER_IMAGE: jasperengine/web-build:ci
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the web image
+        uses: docker/build-push-action@v6
+        with:
+          context: docker
+          file: docker/web.Dockerfile
+          tags: jasperengine/web-build:ci
+          load: true
+          cache-from: type=gha,scope=web-image
+          cache-to: type=gha,scope=web-image,mode=max
+      - uses: actions/cache@v4
+        with:
+          path: build/.cache/ccache
+          key: ccache-players-web-${{ github.sha }}
+          restore-keys: ccache-players-web-
+      - name: Build the runtimes (single-thread and pthreads)
+        run: |
+          flavours=release
+          [[ "$GITHUB_REF" == refs/tags/v* || "$GITHUB_EVENT_NAME" == release ]] && flavours="release development"
+          PLAYER_PLATFORM=web PLAYER_FLAVOURS="$flavours" PLAYER_ZIP=1 tools/build.sh players
+      - uses: actions/upload-artifact@v4
+        with:
+          name: players-web
+          path: |
+            build/players/*/**
+            !build/players/archives/**
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: player-archives-web
+          path: build/players/archives/*.zip
+          if-no-files-found: error
+
+  players-android:
+    name: Player runtimes (Android)
+    if: >-
+      github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' ||
+      github.event_name == 'release' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Build the runtimes (gles3, vulkan)
+        run: |
+          flavours=release
+          [[ "$GITHUB_REF" == refs/tags/v* || "$GITHUB_EVENT_NAME" == release ]] && flavours="release development"
+          PLAYER_PLATFORM=android PLAYER_FLAVOURS="$flavours" PLAYER_ZIP=1 tools/build.sh players
+      - uses: actions/upload-artifact@v4
+        with:
+          name: player-archives-android
+          path: build/players/archives/*.zip
+          if-no-files-found: error
+
+  players-windows:
+    name: Player runtimes (Windows)
+    if: >-
+      github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' ||
+      github.event_name == 'release' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    timeout-minutes: 150
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: jakoch/install-vulkan-sdk-action@v1.0.0
+        with:
+          vulkan_version: 1.3.296.0
+          install_runtime: false
+          cache: true
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: players-windows
+          max-size: 2G
+          variant: ccache
+      - name: Build the runtimes (d3d11, glcore, vulkan; static CRT)
+        run: |
+          set -euo pipefail
+          flavours=release
+          [[ "$GITHUB_REF" == refs/tags/v* || "$GITHUB_EVENT_NAME" == release ]] && flavours="release development"
+          for flavour in $flavours; do
+            dev=OFF; [[ $flavour == development ]] && dev=ON
+            for backend in d3d11 glcore vulkan; do
+              tree=build/players-build/windows-$backend-$flavour
+              cmake -S engine -B $tree -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl \
+                -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DJASPERENGINE_PLAYER=ON -DGRAPHIC_BACKEND=$backend \
+                -DJASPERENGINE_DEVELOPMENT_BUILD=$dev $LAUNCHERS
+              cmake --build $tree --target jasperengine-player
+              python tools/players/package_player.py --platform windows --arch x64 --backend $backend --flavour $flavour \
+                --build $tree --out build/players --zip build/players/archives
+            done
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: player-archives-windows
+          path: build/players/archives/*.zip
+          if-no-files-found: error
+
+  players-apple:
+    name: Player runtimes (macOS, iOS)
+    if: >-
+      github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' ||
+      github.event_name == 'release' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: macos-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Install dependencies
+        run: brew install ninja
+      - uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: players-apple
+          max-size: 2G
+      - name: Build the macOS runtimes (metal, glcore; universal, ad-hoc signed)
+        run: |
+          set -euo pipefail
+          flavours=release
+          [[ "$GITHUB_REF" == refs/tags/v* || "$GITHUB_EVENT_NAME" == release ]] && flavours="release development"
+          for flavour in $flavours; do
+            dev=OFF; [[ $flavour == development ]] && dev=ON
+            for backend in metal glcore; do
+              tree=build/players-build/macos-$backend-$flavour
+              cmake -S engine -B $tree -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+                -DJASPERENGINE_PLAYER=ON -DGRAPHIC_BACKEND=$backend -DJASPERENGINE_DEVELOPMENT_BUILD=$dev $LAUNCHERS
+              cmake --build $tree --target jasperengine-player
+              codesign --force --deep --sign - $tree/jasperengine-player.app
+              python3 tools/players/package_player.py --platform macos --arch universal --backend $backend --flavour $flavour \
+                --build $tree --out build/players --zip build/players/archives
+            done
+          done
+      - name: Build the iOS runtime (xcframework and Xcode template)
+        run: |
+          set -euo pipefail
+          flavours=release
+          [[ "$GITHUB_REF" == refs/tags/v* || "$GITHUB_EVENT_NAME" == release ]] && flavours="release development"
+          for flavour in $flavours; do
+            tools/players/ios_player.sh $flavour build/players-build/ios-$flavour
+            python3 tools/players/package_player.py --platform ios --arch arm64 --backend metal --flavour $flavour \
+              --ios-dir build/players-build/ios-$flavour --out build/players --zip build/players/archives
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: player-archives-apple
+          path: build/players/archives/*.zip
+          if-no-files-found: error
+
+  # The release's archive hashes, compiled into its editors (D5); an empty table elsewhere
+  player-hashes:
+    name: Player runtime hashes
+    if: always() && !cancelled()
+    needs: [players-linux, players-web, players-android, players-windows, players-apple]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/v')
+        with:
+          pattern: player-archives-*
+          path: archives
+      - name: Write the table
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" == refs/tags/v* || "$GITHUB_EVENT_NAME" == release ]]; then
+            for job in "${{ needs.players-linux.result }}" "${{ needs.players-web.result }}" "${{ needs.players-android.result }}" \
+                       "${{ needs.players-windows.result }}" "${{ needs.players-apple.result }}"; do
+              [[ "$job" == success ]] || { echo "a player runtime job did not succeed ($job): no release without every runtime" >&2; exit 1; }
+            done
+            python3 tools/players/write_hashes.py archives
+          else
+            python3 tools/players/write_hashes.py /nonexistent
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: player-hashes
+          path: editor/players/PlayerRuntimeHashes.gen.h
+          if-no-files-found: error
+
+  # AC1-AC3 (and S06 AC20/AC21's no-COI fallback): the editor builds and runs games with the
+  # prebuilt players in the image without a compiler
+  prebuilt:
+    name: Prebuilt players end to end (no compiler)
+    needs: [players-linux, players-web]
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      JASPER_DOCKER_IMAGE: jasperengine/linux-build:ci
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the Linux image
+        uses: docker/build-push-action@v6
+        with:
+          context: docker
+          file: docker/linux.Dockerfile
+          tags: jasperengine/linux-build:ci
+          load: true
+          cache-from: type=gha,scope=linux-image
+          cache-to: type=gha,scope=linux-image,mode=max
+      - uses: actions/cache@v4
+        with:
+          path: build/.cache/ccache
+          key: ccache-prebuilt-${{ github.sha }}
+          restore-keys: ccache-prebuilt-
+      - name: Build the editor
+        run: SKIP_ENGINE=1 tools/build.sh linux
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: players-*
+          path: build/players
+          merge-multiple: true
+      - name: Restore the players' exec bits
+        run: find build/players -name jasperengine-player -exec chmod +x {} +
+      - name: Player CLI in the no-compiler image
+        run: JASPER_DOCKER_IMAGE= tools/build.sh exec runtime python3 tools/ci/test_player_cli.py
+      - name: Smoke test of the prebuilt player
+        run: JASPER_DOCKER_IMAGE= SMOKE_METHOD=prebuilt tools/smoke-test.sh tools/fixtures/unified-lighting
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-prebuilt
+          path: |
+            build/player-cli/**/*.png
+            build/player-cli/**/*.log
+            build/smoke/*.png
+            build/smoke/*.log
+          if-no-files-found: warn
+
   # -------------------------------------------------------------- Release ---
   # Artifacts are only ever served as zips, so a published release is what gives
   # a direct download.
   release:
     name: Attach binaries to the release
     if: github.event_name == 'release'
-    needs: [linux, windows, macos]
+    needs: [linux, windows, macos, player-hashes]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -889,6 +1211,8 @@ jobs:
           cp artifacts/jasperengine_linux_appimage/* release/
           cp artifacts/jasperengine_linux_zsync/* release/
           cp artifacts/jasperengine_macos_dmg/JasperEngine.dmg "release/JasperEngine-${VERSION}-macos-universal.dmg"
+          # the player runtimes the editors of this release download (their hashes are compiled in)
+          cp artifacts/player-archives-*/*.zip release/
           ls -la release
           # --clobber so re-running the workflow on a release replaces the assets.
           gh release upload "$VERSION" release/* --clobber --repo "$GITHUB_REPOSITORY"

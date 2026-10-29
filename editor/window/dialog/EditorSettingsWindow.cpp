@@ -207,6 +207,9 @@ void EditorSettingsWindow::open(Project* project) {
     m_emsdkOverride = AppSettings::getEmsdkPath();
     m_ffmpegOverride = AppSettings::getFfmpegPath();
     refreshFfmpegStatus();
+    m_toolPaths.clear();
+    for (const char* tool : {"androidSdk", "jdk", "steamcmd", "rcodesign"}) m_toolPaths[tool] = AppSettings::getExternalToolPath(tool);
+    refreshPlayerRuntimes();
     m_editorVSyncEnabled = AppSettings::getEditorVSyncEnabled();
     m_uiScalePercent = static_cast<int>(std::lround(AppSettings::getUiScale() * 100.0f));
     m_autosaveEnabled = AppSettings::isAutosaveEnabled();
@@ -772,7 +775,101 @@ void EditorSettingsWindow::drawExternalToolsSettings() {
         drawWebSettings();
         sectionRow("Video Import");
         drawVideoImportSettings();
+        sectionRow("Shipping");
+        drawShippingSettings();
     });
+}
+
+void EditorSettingsWindow::refreshPlayerRuntimes() {
+    m_playerRuntimes = PlayerRuntimes::list();
+}
+
+// S30 (docs/shipping.md): the tools prebuilt builds and releases run, and the player runtimes
+void EditorSettingsWindow::drawShippingSettings() {
+    struct ToolRow {
+        const char* key;
+        const char* tool;
+        const char* label;
+        const char* help;
+        bool directory;
+    };
+    static const ToolRow rows[] = {
+        {"preferences.android_sdk_path", "androidSdk", "Android SDK",
+         "The Android SDK of prebuilt Android builds: build-tools 35+ (aapt2, zipalign, apksigner) and the target platform. "
+         "Empty means ANDROID_HOME, then ANDROID_SDK_ROOT. No NDK or Gradle is needed.", true},
+        {"preferences.jdk_path", "jdk", "JDK", "The JDK whose keytool, jarsigner and java sign Android builds. Empty means JAVA_HOME, then PATH.", true},
+        {"preferences.steamcmd_path", "steamcmd", "SteamCMD", "steamcmd for publish steam-upload. Empty means STEAMCMD_HOME, then PATH.", false},
+        {"preferences.rcodesign_path", "rcodesign", "rcodesign", "rcodesign signs macOS builds on any computer (codesign does on a Mac). Empty means PATH.", false},
+    };
+    for (const ToolRow& row : rows) {
+        if (!settingsui::beginRow(row.key)) continue;
+        std::string& value = m_toolPaths[row.tool];
+        prefsBeginSettingsRow(row.label, row.help, !value.empty());
+        const fs::path display = value.empty() ? fs::path("<Auto-detect>") : fs::path(value);
+        drawPathPicker((std::string("##ShippingTool") + row.tool).c_str(), (std::string("Browse##") + row.tool).c_str(),
+                       (std::string("Auto##") + row.tool).c_str(), display, !value.empty(), row.directory,
+                       [&value](const std::string& selected) { value = selected; }, [&value]() { value.clear(); });
+    }
+
+    if (settingsui::beginRow("preferences.player_runtimes")) {
+        prefsBeginSettingsRow("Player Runtimes", "The prebuilt players builds use, per platform, graphics API and flavour. "
+            "Build Settings downloads them; an engine checkout builds its own (tools/build.sh players, JASPER_PLAYERS_DIR).", false);
+        if (m_playerRuntimes.empty()) {
+            ImGui::TextDisabled("None installed (%s)", PlayerRuntimes::installRoot().string().c_str());
+        } else if (ImGui::BeginTable("##PlayerRuntimes", 4, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp)) {
+            ImGui::TableSetupColumn("Runtime");
+            ImGui::TableSetupColumn("Editor");
+            ImGui::TableSetupColumn("Size");
+            ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed);
+            std::string removeId;
+            for (const PlayerInfo& info : m_playerRuntimes) {
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::TextUnformatted(info.id.c_str());
+                ImGui::SetItemTooltip("%s", info.dir.string().c_str());
+                ImGui::TableNextColumn();
+                const bool current = info.engineVersion == PlayerRuntimes::editorVersion();
+                if (current) ImGui::TextUnformatted(info.engineVersion.c_str());
+                else ImGui::TextDisabled("%s (another editor's)", info.engineVersion.c_str());
+                ImGui::TableNextColumn();
+                ImGui::Text("%.1f MB", double(info.sizeBytes) / (1024.0 * 1024.0));
+                ImGui::TableNextColumn();
+                const bool removable = info.dir.parent_path() == PlayerRuntimes::installRoot();
+                ImGui::BeginDisabled(!removable);
+                if (ImGui::SmallButton((std::string("Remove##") + info.id).c_str())) removeId = info.id;
+                ImGui::EndDisabled();
+                if (!removable) ImGui::SetItemTooltip("Installed with the editor or from JASPER_PLAYERS_DIR: remove it there.");
+            }
+            ImGui::EndTable();
+            if (!removeId.empty()) {
+                std::string error;
+                m_playerRuntimeStatus = PlayerRuntimes::remove(removeId, {}, error) ? "Removed " + removeId : error;
+                refreshPlayerRuntimes();
+            }
+        }
+        if (ImGui::Button("Install from file...")) {
+            const std::string archive = FileDialogs::openFileDialog("", FILE_DIALOG_ALL, false);
+            if (!archive.empty()) {
+                std::string installed, error;
+                std::vector<std::string> warnings;
+                if (PlayerRuntimes::install(archive, {}, installed, warnings, error)) {
+                    m_playerRuntimeStatus = "Installed " + installed;
+                    for (const std::string& warning : warnings) Out::warning("%s", warning.c_str());
+                } else {
+                    m_playerRuntimeStatus = error;
+                    Out::error("Player runtime: %s", error.c_str());
+                }
+                refreshPlayerRuntimes();
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Refresh##PlayerRuntimes")) refreshPlayerRuntimes();
+        if (!m_playerRuntimeStatus.empty()) {
+            ImGui::PushTextWrapPos(0.0f);
+            ImGui::TextDisabled("%s", m_playerRuntimeStatus.c_str());
+            ImGui::PopTextWrapPos();
+        }
+    }
 }
 
 void EditorSettingsWindow::drawCMakeSettings() {
@@ -1205,6 +1302,9 @@ bool EditorSettingsWindow::applySettings() {
     AppSettings::setLastCMakeKit(build.cCompiler, build.cxxCompiler, build.generator);
     AppSettings::setEmsdkPath(m_emsdkOverride);
     AppSettings::setFfmpegPath(m_ffmpegOverride);
+    for (const auto& [tool, path] : m_toolPaths) {
+        if (AppSettings::getExternalToolPath(tool) != path) AppSettings::setExternalToolPath(tool, path);
+    }
     return AppSettings::saveSettings();
 }
 

@@ -3,6 +3,11 @@
 
 #pragma once
 
+#include "players/PlayerRuntimes.h"
+
+#include <map>
+#include <vector>
+
 #include "AppSettings.h"
 #include "Exporter.h"
 #include "Generator.h"
@@ -33,6 +38,10 @@ namespace jasperengine::editor {
         EmsdkInfo m_emsdkInfo;
         // the video importer's ffmpeg (phase 6): the override and what the lookup finds with it
         std::string m_ffmpegOverride;
+        // S30: the shipping tools (AppSettings external tool paths) and the installed player runtimes
+        std::map<std::string, std::string> m_toolPaths;
+        std::vector<PlayerInfo> m_playerRuntimes;
+        std::string m_playerRuntimeStatus;
         std::string m_ffmpegStatus;
         bool m_ffmpegUsable = false;
         bool m_editorVSyncEnabled = true;
@@ -85,6 +94,8 @@ namespace jasperengine::editor {
         void drawCMakeSettings();
         void drawWebSettings();
         void drawVideoImportSettings();
+        void drawShippingSettings();
+        void refreshPlayerRuntimes();
         void drawLoggingSettings();
         void drawDiagnosticsSettings();
         void drawAdvancedSettings();

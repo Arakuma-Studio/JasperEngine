@@ -70,7 +70,9 @@ bool platform::buildIosProject(const IosProjectSettings& settings, CommandRunner
         return false;
     }
     const fs::path project = settings.projectDir / "JasperEnginePlayer.xcodeproj";
-    if (!rewrite(project / "project.pbxproj", settings, error) || !rewrite(settings.projectDir / "Info.plist", settings, error)) return false;
+    if (!rewrite(project / "project.pbxproj", settings, error) || !rewrite(settings.projectDir / "Info.plist", settings, error) ||
+        !rewrite(project / "xcshareddata" / "xcschemes" / "JasperEnginePlayer.xcscheme", settings, error))
+        return false;
 
     // the icon: one 1024 px image (Xcode makes the other sizes)
     if (!settings.iconPng.empty() && fs::is_regular_file(settings.iconPng, ec)) {

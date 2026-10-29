@@ -857,7 +857,9 @@ void buildProjectTool(const CallPtr& call) {
             backend = normalizeBackend(args["graphics_api"].get<std::string>());
             if (backend.empty() || std::find(backends.begin(), backends.end(), backend) == backends.end()) {
                 std::string valid;
-                for (const std::string& b : backends) valid += " " + b;
+                for (const std::string& b : backends)
+                    valid += " " + (b == "glcore" ? std::string("opengl") : b == "gles3" ? std::string("opengles") : b == "metal" &&
+                                    platform == BuildPlatform::MacOS ? std::string("metal-macos") : b);
                 call->fail("graphics_api for " + std::string(buildPlatformName(platform)) + " is one of:" + valid + ".");
                 return;
             }
@@ -1190,12 +1192,24 @@ void getBuildInfoTool(const CallPtr& call) {
             missingTools.push_back("a Mac with Xcode (the build is the Xcode project)");
 #endif
         }
-        platforms[buildPlatformName(target)] = {{"tools_missing", missingTools},
+        // what Build would do for its default graphics API (R5)
+        ExportConfig config;
+        config.mode = ExportMode::Player;
+        config.platform = target;
+        parseBuildMethod(project->getBuildMethod(), config.method);
+        std::string findError;
+        const std::optional<PlayerInfo> runtime =
+            PlayerRuntimes::find(Exporter::playerIdFor(config, project->isDevelopmentBuild()), {}, false, findError);
+        const BuildMethodChoice choice = Exporter::chooseBuildMethod(project, config, runtime ? &*runtime : nullptr);
+        platforms[buildPlatformName(target)] = {{"method", buildMethodName(choice.method)},
+                                                {"compile_reasons", choice.reasons},
+                                                {"tools_missing", missingTools},
                                                 {"output_dir", FileUtils::pathToGenericUtf8(defaultPlayerDir(project, target))}};
     }
     data["players"] = players;
     data["platforms"] = platforms;
     data["build_method"] = project->getBuildMethod();
+    data["editor_version"] = PlayerRuntimes::editorVersion();
 
     Json scenes = Json::array();
     const uint32_t startId = project->getStartSceneId();

@@ -15,6 +15,10 @@
 
 #include "json.hpp"
 
+#include <chrono>
+
+#include <thread>
+
 #include <cstdlib>
 #include <fstream>
 #include <regex>
@@ -291,8 +295,14 @@ std::string PlayerRuntimes::downloadUrl(const std::string& id) {
     return base + "jasperengine-player-" + id + "-" + version + ".zip";
 }
 
+uint64_t PlayerRuntimes::archiveSize(const std::string& id) {
+    for (const PlayerArchiveHash& hash : releaseHashes())
+        if (id == hash.id) return hash.size;
+    return 0;
+}
+
 bool PlayerRuntimes::download(const std::string& id, const fs::path& override, const std::atomic<bool>* cancel, std::string& installedId,
-                              std::vector<std::string>& warnings, std::string& error) {
+                              std::vector<std::string>& warnings, std::string& error, std::atomic<uint64_t>* received) {
     if (!isReleaseEditor() && !std::getenv("JASPER_PLAYERS_URL")) {
         error = "a development editor (" + editorVersion() + ") downloads no players: it trusts only local ones (tools/build.sh players, "
                 "--players-dir or JASPER_PLAYERS_DIR, or players install <zip>)";
@@ -305,7 +315,25 @@ bool PlayerRuntimes::download(const std::string& id, const fs::path& override, c
     htmlui::HttpClient client;
     client.setTimeoutSeconds(1800);
     client.setMaxFileSize(4ll * 1024 * 1024 * 1024);
+    // the transfer is watched from a thread of its own: its progress, and a cancel that stops curl
+    std::atomic<bool> done{false};
+    std::thread watcher([&]() {
+        while (!done.load()) {
+            if (received) received->store(client.receivedBytes());
+            if (cancel && cancel->load()) {
+                client.cancel();
+                return;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+    });
     const htmlui::HttpResponse response = client.get(downloadUrl(id));
+    done.store(true);
+    watcher.join();
+    if (cancel && cancel->load()) {
+        error = "cancelled";
+        return false;
+    }
     if (!response.ok()) {
         error = "download of " + downloadUrl(id) + " failed: " + response.error;
         return false;

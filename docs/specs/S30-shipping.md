@@ -875,23 +875,61 @@ S14/S14b, S15, S19-S28 and S31. What the tree has now, and what S30 does about i
 
 Kept current so the work can continue after an interruption.
 
-- **Done (committed, building next):** streaming SHA-256 (`engine/core/util/Sha256`), FNV
-  (`util/Fnv.h`), `.jpak` reader (`io/JPak`) mounted through `ResourcePack` (keys `assets/`,
-  `lua/`, `assets/shaders/`, content-relative), `content://` paths and `System::getContentPath`,
-  `PlatformConfig` (runtime window/vsync/title/appId/storage/icon/headless/silent/content root)
-  filled by `platform/common/PlatformDefaults.h` on every platform's main, `player::launch`
-  (LaunchOptions strict in a player, lenient in Compile builds and the web query, Android from
-  `debug.jasperengine.args`), `RunControl` (frame counting, after-ready, ready timeout,
-  screenshot via the composite framebuffer, quit, exit codes 0/2/3/4/5/6/7), `FrameReadback`
-  (glcore, gles3, Vulkan, D3D11; Metal through `platform/apple/MetalReadback.h`), headless on
-  Linux/Windows/macOS, Lua `Engine.isHeadless()`, `Engine.quit(code)`, `System.args`/`getArgs()`.
-  Core tests: `Sha256.*`, `JPak.*`, `LaunchOptions.*`, `RunControlFixture.*`.
-- **Written, not yet built:** cooked format (`serialization/CookStream`, `CookCodecs`,
-  `CookedScene`, `SceneSettingsCodec`, `codecs/CookTypes.h`, `codecs/ComponentHooks.cpp`),
-  `RuntimeFields.{h,cpp}` + bootstrap `RuntimeFields.gen.inc`, editor emitter
-  (`editor/cook/RuntimeFieldsEmitter`, `jasperengine-editor reflect --emit-runtime-fields`),
-  `editor/cook/SceneCooker`, `player/PlayerConfig` (game.json).
-- **Next:** build editor + emit the real `.gen.inc` on a server (fetch it back), AC4 round-trip
-  test, PlayerMain + `JASPERENGINE_PLAYER` CMake, ContentManifest, Exporter prebuilt method,
-  player runtimes (miniz, install/download), publish (validator, prepare/verify, Steam, Deck),
-  CLI, MCP `shipping` group, UI, CI/docker/smoke/web template, notices, docs.
+- **Done, built, tested (core):** streaming SHA-256 (`engine/core/util/Sha256`), FNV
+  (`util/Fnv.h`), `.jpak` reader (`io/JPak`) mounted through `ResourcePack`, `content://` and
+  `System::getContentPath`, `PlatformConfig` filled by `platform/common/PlatformDefaults.h`,
+  `player::launch` / `LaunchOptions` / `RunControl` (exit codes 0/2/3/4/5/6/7), `FrameReadback`,
+  headless on Linux/Windows/macOS, Lua `Engine.isHeadless()`, `Engine.quit(code)`,
+  `System.args`. Core tests `Sha256.*`, `JPak.*`, `LaunchOptions.*`, `RunControlFixture.*` pass
+  (B); `ReadyTimeoutExitsSix` was timing-dependent and now waits past its timeout.
+- **Written, building:**
+  - cooked format (`serialization/CookStream`, `CookCodecs`, `CookedScene`,
+    `SceneSettingsCodec`, `codecs/`), `RuntimeFields` + the emitter
+    (`jasperengine-editor reflect --emit-runtime-fields`), `editor/cook/SceneCooker`,
+    `editor/cook/JPakWriter`, `tools/jpak.py`;
+  - the player (`engine/player/PlayerMain.cpp`, `-DJASPERENGINE_PLAYER=ON`, ids
+    `<platform>-<arch>-<backend>-<flavour>`), `player/PlayerConfig` (game.json),
+    `player/ContentManifest` (R21 checks);
+  - Exporter `ExportMode::Player` (`editor/ExporterPrebuilt.cpp`): method choice (R5; Auto
+    compiles when the runtime is missing and this computer can), the R6 steps, staging swap
+    (R7), finalizers for Linux, Windows (resource patching), macOS (bundle, ICNS, codesign /
+    rcodesign), web (template, loader, `_headers`), Android (aapt2/zipalign/apksigner, AAB via
+    bundletool, no NDK/Gradle), iOS (Xcode template; xcodebuild on a Mac), the payload
+    validator before the swap;
+  - player runtimes (`editor/players/PlayerRuntimes`: list, find with the version lock,
+    install with the hash table, download with progress and cancel, remove), miniz 3.0.2
+    (`libs/miniz`, `editor/util/ZipArchive`);
+  - publish (`editor/publish/`: `BinaryInfo`, `TreeManifest`, `PayloadValidator`,
+    `Publishing`: publishing.json, prepare with symbol split, verify, SteamPipe scripts,
+    steam-upload, Deck deploy/rollback/smoke), notices (`engine/notices.json`,
+    `editor/publish/Notices`, `tools/ci/check-notices.py --player-notices/--third-party-notices`);
+  - CLI `build`, `players`, `publish`, `reflect`; MCP: `build_project` mode `player` (+
+    `platform`, `method`, `development`, `android_format`), `get_build_info` (`players[]`,
+    `platforms.<name>.{method, compile_reasons, tools_missing}`, `editor_version`), `run_build`
+    (`headless`, `quit_after`, `fixed_fps`, `after_ready`, `screenshot_frame`: the player's own
+    frame), the `shipping` group (`install_player_runtime`, `publish_prepare`,
+    `publish_verify`, `publish_steam_vdf`, `publish_deploy_deck`); guide line +
+    `docs/mcp/guide/shipping.md`;
+  - UI: Build Settings (every platform builds; Build Method row and override; Player Runtime
+    row with Download/progress/cancel; Android package/keystore/tool checklist and the password
+    prompt; iOS "Requires a Mac with Xcode"; Build And Run on the host), Publish tab (targets
+    table, Prepare, Verify, Steam VDF, Upload..., Deploy to Deck, Rollback as cancellable jobs
+    logging to the Console), Preferences > External Tools > Shipping (Android SDK, JDK,
+    SteamCMD, rcodesign, Player Runtimes list/Remove/Install from file), Project Settings rows
+    and SettingsRegistry keys (`player.build_method`, `player.pack_content`,
+    `android.package_format`, `android.keystore_{path,alias}`, `ios.team_id`,
+    `ios.export_method`, `preferences.{android_sdk,jdk,steamcmd,rcodesign}_path`);
+  - web: `engine/platform/emscripten/web/` (`player.html`, `player-loader.js` deciding once,
+    `coi-serviceworker.js`), shared with the Compile web build (S06 AC21 fix);
+  - Android player variant (`-PjasperPlayer=true [-PjasperBackend=vulkan]`,
+    `tools/players/android_player.sh`), iOS (`engine/platform/apple/ios/player-template`,
+    `tools/players/ios_player.sh`), `tools/players/package_player.py`, `write_hashes.py`,
+    `tools/build.sh players` (linux, web, android) and `exec runtime`, `docker/runtime.Dockerfile`,
+    `tools/smoke-test.sh` `SMOKE_METHOD`, `tools/ci/test_player_cli.py`, web gates
+    `prebuilt-unified-lighting*.json`, CI jobs (`players-*`, `player-hashes`, `prebuilt`);
+  - tests: editor `CookedScene.*`, `RuntimeFields.Generated`, `PayloadValidator.*`,
+    `Publishing.*`, `PublishSteam.*`, `PublishDeck.*`, `PlayerInstall.*`, `BuildMethod.*`; MCP
+    `test_build_method.py`, `test_publish.py`.
+- **Next:** editor build green, the real `RuntimeFields.gen.inc`, unit tests (and ASan), the
+  players and the end-to-end checks (linux, web with and without isolation, Android emulator),
+  MCP suite, merge oe-port, TOOLS.md, the gate.
