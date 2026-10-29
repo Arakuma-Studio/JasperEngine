@@ -71,7 +71,7 @@ namespace cooked_scene_test {
 
     // cooks `entities` of `from` and loads the bytes into a fresh scene
     bool roundTrip(Scene* from, const std::vector<Entity>& entities, DecodedScene& to, std::string& error) {
-        const std::vector<uint8_t> bytes = cook::SceneCooker::cookScene(from, 4242, entities, NULL_ENTITY, SceneResources{});
+        const std::vector<uint8_t> bytes = editor::cook::SceneCooker::cookScene(from, 4242, entities, NULL_ENTITY, SceneResources{});
         to = emptyScene();
         return CookedSceneLoader::loadScene(to.scene->scene, std::span<const uint8_t>(bytes.data(), bytes.size()), &error);
     }
@@ -139,8 +139,10 @@ TEST(CookedScene, RoundTripAllComponentsFixture) {
 
 TEST(RuntimeFields, Generated) {
     std::vector<std::string> errors;
-    const std::string emitted = cook::emitRuntimeFields(errors);
-    for (const std::string& error : errors) ADD_FAILURE() << error;
+    const std::string emitted = editor::cook::emitRuntimeFields(errors);
+    for (const std::string& error : errors) {
+        ADD_FAILURE() << error;
+    }
     const fs::path committed = fs::path(JASPER_TEST_REPO_DIR) / "engine" / "core" / "serialization" / "RuntimeFields.gen.inc";
     std::ifstream in(committed, std::ios::binary);
     ASSERT_TRUE(in) << committed;

@@ -50,7 +50,9 @@ namespace player_install_test {
         EXPECT_TRUE(zip.add("player-info.json", json.data(), json.size(), false, error)) << error;
         EXPECT_TRUE(zip.add("files/jasperengine-player", binary.data(), binary.size(), false, error)) << error;
         EXPECT_TRUE(zip.add("licenses/lua-LICENSE", "MIT", 3, false, error)) << error;
-        if (!extraName.empty()) EXPECT_TRUE(zip.add(extraName, extra.data(), extra.size(), false, error)) << error;
+        if (!extraName.empty()) {
+            EXPECT_TRUE(zip.add(extraName, extra.data(), extra.size(), false, error)) << error;
+        }
         EXPECT_TRUE(zip.finish(error)) << error;
         return path;
     }
@@ -114,7 +116,9 @@ TEST(PlayerInstall, RefusesAnotherArchiveADamagedOneAndEscapingEntries) {
     // nothing half-installed
     std::error_code ec;
     const fs::path root = PlayerRuntimes::installRoot(dir / "root");
-    for (const auto& entry : fs::directory_iterator(root, ec)) ADD_FAILURE() << "left behind: " << entry.path();
+    for (const auto& entry : fs::directory_iterator(root, ec)) {
+        ADD_FAILURE() << "left behind: " << entry.path();
+    }
 }
 
 TEST(PlayerInstall, AnotherEditorVersionIsNotUsed) {
