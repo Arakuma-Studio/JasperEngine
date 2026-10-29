@@ -633,7 +633,7 @@ void getAnimatorTool(const CallPtr& call) {
     AnimatorTarget target;
     if (!resolveAnimator(call, target)) return;
     const AnimatorComponent& c = *target.component;
-    Json out = {{"entity", McpRefs::entityJson(target.scene, target.entity)}, {"controller", c.controller.path}, {"enabled", c.enabled},
+    Json out = {{"entity", McpRefs::entityJson(target.scene, target.entity)}, {"controller", c.controller.path.empty() ? std::string() : target.project->assetHintToProjectPath(c.controller.path, AssetPathBase::Assets)}, {"enabled", c.enabled},
                 {"speed", c.speed}, {"apply_root_motion", c.applyRootMotion}, {"playing", target.playing}};
     AnimatorSystem* system = target.scene->scene->getSystem<AnimatorSystem>().get();
     const bool live = target.playing || previewing(target.scene->id, target.entity);
@@ -756,7 +756,57 @@ std::vector<TransitionDef>* transitionList(ControllerDef& def, const Json& op, s
     return &location.state->transitions;
 }
 
+std::vector<std::string> controllerOps() {
+    return {"add_parameter", "remove_parameter", "rename_parameter", "set_parameter", "add_layer", "set_layer", "remove_layer",
+            "add_state", "set_state", "remove_state", "add_sub_state_machine", "remove_sub_state_machine", "add_transition",
+            "set_transition", "remove_transition", "set_default_state", "set_blend_tree"};
+}
+
+// the fields an op may carry and their JSON kinds (the listing keeps ops free-form to stay small:
+// their fields are in docs/mcp/guide/animator.md, checked here)
+bool checkOpFields(const Json& op, std::string& error) {
+    if (!op.is_object()) {
+        error = "an op is an object {op, ...}";
+        return false;
+    }
+    enum K { Str, Num, Bool, Arr, Obj, Any };
+    static const std::vector<std::pair<const char*, K>> fields = {
+        {"op", Str}, {"name", Str}, {"new_name", Str}, {"type", Str}, {"default", Any}, {"layer", Any}, {"machine", Str},
+        {"state", Str}, {"weight", Num}, {"blending", Str}, {"mask", Any}, {"slot", Str}, {"clip", Str}, {"blend_tree", Obj},
+        {"position", Arr}, {"speed", Num}, {"speed_parameter", Str}, {"time_parameter", Str}, {"cycle_offset", Num},
+        {"loop", Str}, {"tag", Str}, {"additive_reference", Str}, {"additive_time", Num}, {"from", Str}, {"to", Str},
+        {"index", Num}, {"conditions", Arr}, {"has_exit_time", Bool}, {"exit_time", Num}, {"fixed_duration", Bool},
+        {"duration", Num}, {"offset", Num}, {"interruption_source", Str}, {"ordered_interruption", Bool},
+        {"can_transition_to_self", Bool}, {"mute", Bool}, {"motion", Obj}};
+    for (auto it = op.begin(); it != op.end(); ++it) {
+        auto found = std::find_if(fields.begin(), fields.end(), [&](const auto& f) { return it.key() == f.first; });
+        if (found == fields.end()) {
+            error = "unknown field \"" + it.key() + "\" (the ops' fields: jasper://docs/animator)";
+            return false;
+        }
+        const Json& v = it.value();
+        const bool ok = found->second == Any || (found->second == Str && v.is_string()) || (found->second == Num && v.is_number()) ||
+                        (found->second == Bool && v.is_boolean()) || (found->second == Arr && v.is_array()) ||
+                        (found->second == Obj && v.is_object());
+        if (!ok) {
+            static const char* const kinds[] = {"a string", "a number", "a boolean", "an array", "an object", ""};
+            error = "\"" + it.key() + "\" must be " + kinds[found->second];
+            return false;
+        }
+    }
+    if (op.contains("default") && !op["default"].is_number() && !op["default"].is_boolean()) {
+        error = "\"default\" must be a number or a boolean";
+        return false;
+    }
+    if (op.contains("position") && (op["position"].size() != 2 || !op["position"][0].is_number() || !op["position"][1].is_number())) {
+        error = "\"position\" must be [x, y]";
+        return false;
+    }
+    return true;
+}
+
 bool applyOp(Project* project, ControllerDef& def, const Json& op, std::vector<std::string>& changes, std::string& error) {
+    if (!checkOpFields(op, error)) return false;
     const std::string kind = op.value("op", std::string());
     const std::string name = op.value("name", std::string());
     if (kind == "add_parameter") {
@@ -956,14 +1006,10 @@ bool applyOp(Project* project, ControllerDef& def, const Json& op, std::vector<s
         changes.push_back(kind + " " + op.value("from", std::string()) + "[" + std::to_string(index) + "]");
         return true;
     }
-    error = "unknown op \"" + kind + "\"";
+    std::string known;
+    for (const std::string& name : controllerOps()) known += (known.empty() ? "" : ", ") + name;
+    error = "unknown op \"" + kind + "\" (" + known + ")";
     return false;
-}
-
-std::vector<std::string> controllerOps() {
-    return {"add_parameter", "remove_parameter", "rename_parameter", "set_parameter", "add_layer", "set_layer", "remove_layer",
-            "add_state", "set_state", "remove_state", "add_sub_state_machine", "remove_sub_state_machine", "add_transition",
-            "set_transition", "remove_transition", "set_default_state", "set_blend_tree"};
 }
 
 void editAnimatorControllerTool(const CallPtr& call) {
@@ -1440,12 +1486,6 @@ void sampleAnimationPoseTool(const CallPtr& call) {
 
 void registerAnimatorTools(McpRegistry& registry) {
     using namespace schema;
-    const Json condition = obj({{"parameter", string("")}, {"mode", stringEnum("", {"if", "if_not", "greater", "less", "equals", "not_equal"})},
-                                {"threshold", number("")}}, {"parameter"});
-    const Json child = obj({{"clip", string("")}, {"blend_tree", anyObject("Nested tree.")}, {"threshold", number("")}, {"position", vec2("")},
-                            {"time_scale", number("")}, {"direct_parameter", string("")}});
-    const Json tree = obj({{"type", stringEnum("", {"simple_1d", "simple_directional", "freeform_directional", "freeform_cartesian", "direct"})},
-                           {"parameter", string("")}, {"parameter_y", string("")}, {"children", array(child, "")}});
     {
         ToolDef tool;
         tool.name = "get_animator";
@@ -1467,29 +1507,16 @@ void registerAnimatorTools(McpRegistry& registry) {
         tool.name = "edit_animator_controller";
         tool.title = "Edit Animator Controller";
         tool.description =
-            "Edit a .controller: ops in order, all or nothing, one project undo step; create: true makes it (Base Layer). States: "
-            "\"Layer.Machine.State\" or a unique name; machine: \"Sub/Inner\". Transitions from a state, \"Any State\", \"Entry\" "
-            "or \"Exit:<machine>\" to a state, sub-machine, \"Exit\" or \"/State\" (layer root). Clips: .anim or "
-            "\"assets/models/hero.gltf#Walk\". from_player: a state per clip of an Animation Player. Guide: jasper://docs/animator.";
+            "Edit a .controller: ops in order, all or nothing, one project undo step; create: true makes it (Base Layer). Ops: "
+            "add_/set_/remove_/rename_parameter, add_/set_/remove_layer, add_/set_/remove_state, add_/remove_sub_state_machine, "
+            "add_/set_/remove_transition, set_default_state, set_blend_tree; their fields: jasper://docs/animator. Transitions "
+            "from a state, \"Any State\", \"Entry\" or \"Exit:<machine>\"; clips .anim or \"assets/models/hero.gltf#Walk\". "
+            "from_player: a state per Animation Player clip.";
         tool.inputSchema = object({
             {"path", assetPath("")},
             {"create", boolean("")},
             {"from_player", entityRef("A GameObject with an Animation Player.")},
-            {"ops", array(obj({
-                {"op", stringEnum("", controllerOps())},
-                {"name", string("")}, {"new_name", string("")}, {"type", stringEnum("", {"float", "int", "bool", "trigger"})},
-                {"default", any("A number or bool; add_state: true makes it the default.")},
-                {"layer", any("Name or index; default the first.")}, {"machine", string("")}, {"state", string("")},
-                {"weight", number("")}, {"blending", stringEnum("", {"override", "additive"})}, {"mask", any(".mask path or null.")},
-                {"slot", string("Montage slot.")}, {"clip", string("")}, {"blend_tree", tree}, {"position", vec2("")},
-                {"speed", number("")}, {"speed_parameter", string("")}, {"time_parameter", string("")}, {"cycle_offset", number("")},
-                {"loop", stringEnum("", {"inherit", "loop", "once"})}, {"tag", string("")},
-                {"additive_reference", stringEnum("", {"first_frame", "rest", "time"})}, {"additive_time", number("")},
-                {"from", string("")}, {"to", string("")}, {"index", integer("")}, {"conditions", array(condition, "")},
-                {"has_exit_time", boolean("")}, {"exit_time", number("")}, {"fixed_duration", boolean("")}, {"duration", number("")},
-                {"offset", number("")}, {"interruption_source", stringEnum("", {"none", "current", "next", "current_then_next", "next_then_current"})},
-                {"ordered_interruption", boolean("")}, {"can_transition_to_self", boolean("")}, {"mute", boolean("")}
-            }, {"op"}), "")},
+            {"ops", array(anyObject("{op, ...fields}"), "")},
             {"scene", sceneRef()}
         }, {"path"});
         tool.annotations.readOnly = false;
@@ -1505,9 +1532,8 @@ void registerAnimatorTools(McpRegistry& registry) {
         tool.title = "Control Animator";
         tool.description =
             "Drive an Animator: parameters {name: value}, triggers, play {state, duration > 0 crossfades}, montage {path, rate, "
-            "section}, stop_montage, montage_section {jump | from, next}, ik {constraint: {target: [x,y,z] world | null, weight}}, "
-            "layer_weights. In play mode it acts on the running game; in edit mode preview \"start\" evaluates it on the scene "
-            "(advance: seconds), \"stop\" restores the scene. Returns the live state.";
+            "section}, stop_montage, montage_section {jump | from, next}, ik {name: {target: [x,y,z] | null, weight}}, "
+            "layer_weights. Play mode: the game; edit mode: preview start (advance: s) / stop restores the scene.";
         tool.inputSchema = object({
             {"entity", entityRef()}, {"scene", sceneRef()},
             {"parameters", anyObject("")}, {"triggers", array(string(""), "")}, {"reset_triggers", array(string(""), "")},
@@ -1577,6 +1603,11 @@ void registerAnimatorTools(McpRegistry& registry) {
         tool.handler = sampleAnimationPoseTool;
         registry.addTool(std::move(tool));
     }
+}
+
+void stopAnimatorPreviews(Project* project) {
+    std::vector<PreviewState> list = previews();
+    for (const PreviewState& p : list) stopPreview(project, p.sceneId, p.entity);
 }
 
 }

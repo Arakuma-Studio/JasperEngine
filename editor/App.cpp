@@ -4330,6 +4330,7 @@ void editor::App::stopTransientPreviews() {
         physicsPlacementWindow->finaliseGestures();
     }
     mcp::stopPlacementPreviews(&project);
+    mcp::stopAnimatorPreviews(&project);
 }
 
 bool editor::App::dispatchClipDrop(uint32_t sceneId, Entity target, const std::vector<std::string>& paths) {

@@ -42,6 +42,8 @@ def file_json(ed: Editor, rel: str) -> dict:
 
 
 def approx(a, b, eps=1e-4) -> bool:
+    if isinstance(a, dict):
+        return isinstance(b, dict) and a.keys() == b.keys() and all(approx(a[k], b[k], eps) for k in a)
     if isinstance(a, (list, tuple)):
         return len(a) == len(b) and all(approx(x, y, eps) for x, y in zip(a, b))
     return abs(a - b) <= eps
@@ -127,7 +129,11 @@ async def test_build_controller(ed: Editor):
 async def test_all_or_nothing_and_undo(ed: Editor):
     # a failing op writes nothing, the earlier ops of the call included
     await refused(ed, "edit_animator_controller", {"path": CONTROLLER, "ops": [
-        {"op": "add_state", "name": "Extra"}, {"op": "add_transition", "from": "Extra", "to": "Nowhere"}]}, "ops[1]")
+        {"op": "add_state", "name": "Extra"}, {"op": "add_transition", "from": "Nowhere", "to": "Extra"}]}, "ops[1]")
+    # an op's fields are checked (the listing keeps them free-form)
+    await refused(ed, "edit_animator_controller", {"path": CONTROLLER, "ops": [{"op": "add_state", "name": "X", "speeed": 2}]}, "speeed")
+    await refused(ed, "edit_animator_controller", {"path": CONTROLLER, "ops": [{"op": "add_state", "name": "X", "speed": "fast"}]}, "number")
+    await refused(ed, "edit_animator_controller", {"path": CONTROLLER, "ops": [{"op": "add_stat", "name": "X"}]}, "add_state")
     ed.check_eq((ed.project / CONTROLLER).read_text(), S["text"], "nothing was written")
     await refused(ed, "edit_animator_controller", {"path": CONTROLLER, "ops": [{"op": "add_parameter", "name": "Speed", "type": "int"}]},
                   "Speed")
@@ -206,9 +212,9 @@ async def test_mask_and_montage(ed: Editor):
                         events=[{"time": 0.1, "function": "onWaved", "args": ["hello", 3]}])
     data = file_json(ed, MONTAGE)
     ed.check_eq((data["format"], data["slot"]), ("jasperengine.montage", "UpperBody"), "the montage's format and slot")
+    # A plays on into the following section (no "next" written), B, the last, ends it
     sections = {s["name"]: s for s in data["sections"]}
-    ed.check_eq(sections["A"].get("next"), "B", "A plays on into B")
-    ed.check("B" in sections and sections["B"].get("next") in (None, ""), f"B ends it: {data['sections']}")
+    ed.check(sections["A"].get("next") in (None, "B") and sections["B"].get("next") in (None, ""), f"A then B: {data['sections']}")
     await refused(ed, "edit_montage", {"path": MONTAGE, "sections": [{"name": "A", "start": 0}, {"name": "A", "start": 0.2}]}, "A")
 
 
@@ -295,7 +301,7 @@ async def test_from_player_and_cli(ed: Editor):
     env = {k: v for k, v in os.environ.items() if k not in ("JASPER_MCP_URL", "JASPER_MCP_TOKEN", "DISPLAY", "XDG_CONFIG_HOME",
                                                           "WAYLAND_DISPLAY")}
     env["HOME"] = str(root / "home")
-    args = harness.editor_command() + ["call", "get_animator", "--controller", CONTROLLER, "--json", "--port", str(PORT), "--token", TOKEN]
+    args = harness.editor_command() + ["call", "--port", str(PORT), "--token", TOKEN, "--json", "get_animator", "--controller", CONTROLLER]
     p = subprocess.run(args, cwd=str(root / "cwd"), env=env, capture_output=True, text=True, timeout=300)
     ed.check(p.returncode == 0, f"the CLI call exits 0: {p.returncode} {p.stderr[-800:]} {p.stdout[-800:]}")
     envelope = json.loads(p.stdout.strip().splitlines()[-1])
