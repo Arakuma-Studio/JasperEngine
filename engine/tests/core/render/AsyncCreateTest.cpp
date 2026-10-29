@@ -403,8 +403,9 @@ TEST_F(AsyncCreateGpu, APipelineWaitsForItsShaderAndIsShared){
     first.beginLoad(PrimitiveType::TRIANGLES);
     first.setShader(&shader);
     ASSERT_TRUE(first.endLoad((uint16_t)PipelineType::PIP_RTT, state));
-    if (shader.isPending())
+    if (shader.isPending()){
         EXPECT_FALSE(first.isReady()) << "a pipeline of a pending shader is pending too";
+    }
 
     ASSERT_TRUE(SystemRender::waitGpuCreationIdle(30000));
     EXPECT_TRUE(first.isReady());
@@ -447,7 +448,7 @@ TEST_F(AsyncCreateGpu, AnImmediatePassIsCreatedAtOnce){
 
     RenderState state;
     state.depthWrite = false;
-    state.blend = true;   // a state no other test made: a new pipeline
+    state.blend = BlendMode::ADDITIVE;   // a state no other test made: a new pipeline
     ObjectRender pass;
     pass.beginLoad(PrimitiveType::TRIANGLES);
     pass.setShader(&shader);
@@ -512,8 +513,9 @@ TEST_F(AsyncCreateGpu, EveryGlModeDrawsTheLitCube){
             EXPECT_GOLDEN("render_lit_cube");
             const GpuCreationStats after = SystemRender::getGpuCreationStats();
             EXPECT_GT(after.createdShaders, before.createdShaders) << "the programs were made in this mode";
-            if (std::string(mode) == "worker")
+            if (std::string(mode) == "worker"){
                 EXPECT_GT(after.warmDraws, before.warmDraws) << "the worker drew the new programs first";
+            }
         }
         // the cube's programs go, so the next mode makes its own
         GpuEnvironment::drawFrames(2);
