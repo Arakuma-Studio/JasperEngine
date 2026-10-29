@@ -86,7 +86,9 @@ namespace jasperengine::editor::reflect {
         ListEachElement  = 1u << 24,  // each element of an array of structs is listed itself besides its members ("colliders[1]")
         ListTemplate     = 1u << 25,  // listed without a component as one element with no index ("submeshes[].material")
         ComponentOnly    = 1u << 26,  // listed for a component only, not for its type (list_component_types)
-        Clamped          = 1u << 27   // a value outside the hard range is clamped into it (load and edit), not refused
+        Clamped          = 1u << 27,  // a value outside the hard range is clamped into it (load and edit), not refused
+        NotWritten       = 1u << 28   // left out of documents (DocumentEncodeScope), read when one has it: the
+                                      // engine recomputes it (the transform's world values, S29 R20)
     };
 
     constexpr uint32_t operator|(FieldFlags a, FieldFlags b) { return static_cast<uint32_t>(a) | static_cast<uint32_t>(b); }
@@ -393,6 +395,17 @@ namespace jasperengine::editor::reflect {
 
     // The component's YAML map, keys in table order (or its codec's encode)
     YAML::Node encode(const ComponentDesc& desc, const void* comp, const EncodeContext& ctx);
+    // While one lives on a thread, its encodes are of a document (a scene or prefab file): they
+    // leave out the NotWritten fields. Every other encode (undo snapshots, the clipboard) keeps
+    // them, as a restore may need them before the next transform pass (S29 R20).
+    class DocumentEncodeScope {
+    public:
+        DocumentEncodeScope();
+        ~DocumentEncodeScope();
+        DocumentEncodeScope(const DocumentEncodeScope&) = delete;
+        DocumentEncodeScope& operator=(const DocumentEncodeScope&) = delete;
+        static bool active();
+    };
     YAML::Node encode(const StructDesc& desc, const void* owner, const EncodeContext& ctx);
     // Decodes over the base value already in `comp`: absent keys keep it (OmitIfDefault ones take
     // the default), aliases are read, a value that does not read keeps the base and adds a skip

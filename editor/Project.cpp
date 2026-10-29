@@ -29,6 +29,9 @@
 
 #include "EditorHost.h"
 #include "util/FileUtils.h"
+#include "vcs/VcsService.h"
+#include "vcs/SceneDiffTracker.h"
+#include <cstdlib>
 #include "util/FbxImporter.h"
 #include "window/CodeEditor.h"
 #include "window/ImageViewerWindow.h"
@@ -270,12 +273,15 @@ static std::vector<editor::ScriptPropertyInfo> toScriptPropertyInfos(const std::
 
 bool editor::Project::recordSelectionInUndo = true;
 
-editor::Project::Project(){
+editor::Project::Project(): vcsService(std::make_unique<vcs::VcsService>()), sceneDiffs(std::make_unique<vcs::SceneDiffTracker>()){
     resetConfigs();
     installUndoHooks();
 }
 
 editor::Project::~Project(){
+    // the poller and the worker read nothing of the project, but its backups go with it
+    vcsService->close();
+    removeVcsBackups();
     // the jobs capture the project (the asset walk its database)
     fbxImportScan.wait();
     waitForAssetScan();
@@ -2355,6 +2361,68 @@ void editor::Project::setPackNativeResources(bool enabled){
     packNativeResources = enabled;
 }
 
+void editor::Project::setVcsProjectSettings(const VcsProjectSettings& settings, bool apply){
+    if (settings == vcsProjectSettings) return;
+    if (!apply) {
+        vcsProjectSettings = settings;
+        return;
+    }
+    const bool providerChanged = settings.provider != vcsProjectSettings.provider;
+    const bool attributesChanged = settings.lfs != vcsProjectSettings.lfs || settings.lockScenes != vcsProjectSettings.lockScenes;
+    vcsProjectSettings = settings;
+    if (attributesChanged && versionControlMetadata && !projectPath.empty()) writeVersionControlMetadata();
+    if (providerChanged && vcsService->state() != vcs::VcsState::Off) startVersionControl();
+}
+
+editor::vcs::VcsService& editor::Project::getVcs(){
+    return *vcsService;
+}
+
+editor::vcs::SceneDiffTracker& editor::Project::getSceneDiffs(){
+    return *sceneDiffs;
+}
+
+const editor::vcs::VcsService& editor::Project::getVcs() const{
+    return *vcsService;
+}
+
+editor::vcs::VcsSettings editor::Project::versionControlServiceSettings() const{
+    const VersionControlSettings user = AppSettings::getVersionControlSettings();
+    vcs::VcsSettings settings;
+    settings.provider = vcsProjectSettings.provider;
+    settings.gitPath = FileUtils::pathFromUtf8(user.gitPath);
+    settings.svnPath = FileUtils::pathFromUtf8(user.svnPath);
+    settings.pollSeconds = user.pollSeconds;
+    settings.lockPollSeconds = user.lockPollSeconds;
+    settings.autoFetchMinutes = user.autoFetchMinutes;
+    // the svn lock comment: who holds it, as the OS knows them
+    for (const char* variable : {"USER", "USERNAME", "LOGNAME"}) {
+        if (const char* value = std::getenv(variable); value && *value) {
+            settings.userName = value;
+            break;
+        }
+    }
+    return settings;
+}
+
+void editor::Project::startVersionControl(){
+    if (projectPath.empty()) {
+        vcsService->close();
+        return;
+    }
+    vcsService->open(projectPath, getProjectInternalPath() / "vcs", versionControlServiceSettings(), watchFiles);
+}
+
+std::filesystem::path editor::Project::getVcsBackupDir() const{
+    return getProjectInternalPath() / "vcs-backup";
+}
+
+void editor::Project::removeVcsBackups(){
+    if (projectPath.empty()) return;
+    std::error_code ec;
+    std::filesystem::remove_all(getVcsBackupDir(), ec);
+}
+
 void editor::Project::setVersionControlMetadata(bool enabled){
     versionControlMetadata = enabled;
 }
@@ -3847,10 +3915,22 @@ void editor::Project::discardHalfLoadedScene(SceneProject* sceneProject, bool ap
     }
 }
 
+std::function<bool(const std::filesystem::path&, std::string&)> editor::Project::documentOpenGuard;
+std::function<void(const std::filesystem::path&, std::function<void()>)> editor::Project::readOnlySaveHandler;
+
 void editor::Project::openScene(fs::path filepath, bool closePrevious){
     if (isAnyScenePlaying()){
         Out::warning("Cannot open a new scene while a scene is playing.");
         return;
+    }
+    if (documentOpenGuard) {
+        std::string why;
+        const fs::path absolute = filepath.is_relative() ? projectPath / filepath : filepath;
+        if (!documentOpenGuard(absolute, why)) {
+            Out::warning("%s", why.c_str());
+            editor::getEditorHost().registerAlert("Open Scene", why);
+            return;
+        }
     }
 
     uint32_t sceneToClose = NULL_PROJECT_SCENE;
@@ -4291,6 +4371,10 @@ uint32_t editor::Project::openSceneNow(const fs::path& path, bool closePrevious,
 
     const fs::path fullPath = resolveScenePath(path, false, message);
     if (fullPath.empty()) {
+        failWith(error, message);
+        return NULL_PROJECT_SCENE;
+    }
+    if (documentOpenGuard && !documentOpenGuard(fullPath, message)) {
         failWith(error, message);
         return NULL_PROJECT_SCENE;
     }
@@ -4950,6 +5034,13 @@ void editor::Project::resetConfigs() {
     setLayerCollisionMatrices(allLayersCollide(), allLayersCollide());
     packNativeResources = defaultPackNativeResources;
     versionControlMetadata = defaultVersionControlMetadata;
+    // the project's version control ends with it (R11: its revert backups too)
+    if (vcsService) {
+        vcsService->close();
+        removeVcsBackups();
+    }
+    if (sceneDiffs) sceneDiffs->clear();
+    vcsProjectSettings = VcsProjectSettings();
     shaderOverrides = {};
     sourceCodeExportSettings = {};
     desktopExportSettings = {};
@@ -5584,11 +5675,14 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
             });
 
             modelLoaded = true;
+            // a project this version creates keeps its binaries in Git LFS (R21)
+            vcsProjectSettings.lfs = true;
             openAssetDatabase();
             if (watchFiles) HotReloadService::get().startWatching(*this);
         // the project's editor menus (a text scan of its Editor folders: no project code runs)
         EditorScripts::get().scan(this);
             saveProject();
+            if (watchFiles) startVersionControl();
             createNewScene("New Scene", SceneType::SCENE_3D);
             copyEngineApiToProject();
         } else {
@@ -5733,38 +5827,49 @@ const char* versionControlIgnore =
     "\n"
     "*.log\n"
     ".DS_Store\n"
-    "Thumbs.db\n";
+    "Thumbs.db\n"
+    "\n"
+    "# What a conflicted merge leaves next to a file.\n"
+    "*.orig\n";
 
 // Scenes and project.yaml only diff and merge while every checkout agrees on the
-// line ending, so it is not left to core.autocrlf
-const char* versionControlAttributes =
-    "# Generated by JasperEngine Editor.\n"
-    "\n"
-    "* text=auto eol=lf\n"
-    "\n"
-    "*.scene   text eol=lf\n"
-    "*.prefab  text eol=lf\n"
-    "*.yaml    text eol=lf\n"
-    "*.lua     text eol=lf\n"
-    "*.cmake   text eol=lf\n"
-    "*.h       text eol=lf\n"
-    "*.cpp     text eol=lf\n"
-    "\n"
-    "*.png     binary\n"
-    "*.jpg     binary\n"
-    "*.jpeg    binary\n"
-    "*.tga     binary\n"
-    "*.ktx     binary\n"
-    "*.dds     binary\n"
-    "*.glb     binary\n"
-    "*.gltf    binary\n"
-    "*.fbx     binary\n"
-    "*.obj     binary\n"
-    "*.ogg     binary\n"
-    "*.wav     binary\n"
-    "*.mp3     binary\n"
-    "*.ttf     binary\n"
-    "*.otf     binary\n";
+// line ending, so it is not left to core.autocrlf. Scenes and prefabs merge with the editor's
+// scene merge driver once it is set up (git config, "Set Up Smart Merge"); without it git's text
+// merge runs. With LFS the binaries are LFS objects and lockable (git lfs lock); scenes, prefabs
+// and meta files never are LFS objects (docs/specs/S29-version-control.md R21).
+const char* const versionControlBinaryPatterns[] = {
+    "*.png", "*.jpg", "*.jpeg", "*.tga", "*.ktx", "*.dds", "*.glb", "*.gltf", "*.fbx", "*.obj",
+    "*.ogg", "*.wav", "*.mp3", "*.ttf", "*.otf"
+};
+// binaries LFS adds (art sources, HDR images, cooked textures, video)
+const char* const versionControlLfsOnlyPatterns[] = {
+    "*.psd", "*.exr", "*.hdr", "*.ktx2", "*.basis", "*.blend", "*.mp4", "*.webm"
+};
+
+std::string versionControlAttributes(bool lfs, bool lockScenes) {
+    auto line = [](const char* pattern, const std::string& attributes) {
+        std::string text = pattern;
+        text.append(text.size() < 10 ? 10 - text.size() : 1, ' ');
+        return text + attributes + "\n";
+    };
+    const std::string sceneLock = lockScenes ? " lockable" : "";
+    std::string text =
+        "# Generated by JasperEngine Editor.\n"
+        "\n"
+        "* text=auto eol=lf\n"
+        "\n";
+    text += line("*.scene", "text eol=lf merge=jasperengine-scene" + sceneLock);
+    text += line("*.prefab", "text eol=lf merge=jasperengine-scene" + sceneLock);
+    text += line("*.meta", "text eol=lf");
+    for (const char* pattern : {"*.yaml", "*.lua", "*.cmake", "*.h", "*.cpp"}) text += line(pattern, "text eol=lf");
+    text += "\n";
+    const std::string binary = lfs ? "filter=lfs diff=lfs merge=lfs -text lockable" : "binary";
+    for (const char* pattern : versionControlBinaryPatterns) text += line(pattern, binary);
+    if (lfs) {
+        for (const char* pattern : versionControlLfsOnlyPatterns) text += line(pattern, binary);
+    }
+    return text;
+}
 
 } // namespace
 
@@ -5773,9 +5878,10 @@ bool editor::Project::writeVersionControlMetadata() {
         return false;
     }
 
+    const std::string attributes = versionControlAttributes(vcsProjectSettings.lfs, vcsProjectSettings.lockScenes);
     const std::pair<const char*, const char*> files[] = {
         {".gitignore", versionControlIgnore},
-        {".gitattributes", versionControlAttributes},
+        {".gitattributes", attributes.c_str()},
     };
 
     bool success = true;
@@ -5877,6 +5983,7 @@ bool editor::Project::saveProjectToPath(const std::filesystem::path& path) {
     if (oldPath != path) {
         openAssetDatabase();
         if (watchFiles) HotReloadService::get().startWatching(*this);
+        if (watchFiles) startVersionControl();
         // the project's editor menus (a text scan of its Editor folders: no project code runs)
         EditorScripts::get().scan(this);
     }
@@ -6003,6 +6110,9 @@ bool editor::Project::loadProject(const std::filesystem::path requestedPath, boo
         if (scenes.empty()) {
             createNewScene("New Scene", SceneType::SCENE_3D);
         }
+
+        // the repository it is in, polled from now on (S29)
+        if (watchFiles) startVersionControl();
 
         for (auto& sceneProject : scenes) {
             if (sceneProject.opened) {
@@ -6342,6 +6452,15 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
         if (!written.ok()) {
             const std::string message = DocumentFiles::saveFailureMessage(relPath, written);
             Out::error(message);
+            // an unlocked lockable file is read only: version control offers to lock it (S29 R12)
+            if (written.error == io::WriteError::ReadOnlyTarget && readOnlySaveHandler) {
+                const uint32_t sceneId = sceneProject->id;
+                const fs::path file = fullPath;
+                editor::getEditorHost().enqueueMainThreadTask([this, sceneId, file]() {
+                    readOnlySaveHandler(file, [this, sceneId]() { saveScene(sceneId); });
+                });
+                return false;
+            }
             editor::getEditorHost().enqueueMainThreadTask([this, message]() {
                 alertUser("Error", message);
             });

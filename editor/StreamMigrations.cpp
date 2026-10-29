@@ -268,6 +268,48 @@ namespace {
         migrateParticleSystems(root["members"], log);
     }
 
+    // ---------------------------------------------------------------- derived transform values (S29 R20)
+
+    // the values the transform pass computes on load, written until scene 4 / prefab 6
+    const char* const kDerivedTransformKeys[] = {"worldPosition", "worldRotation", "worldScale", "localMatrix", "modelMatrix", "normalMatrix"};
+
+    // Every transform map below node: GameObjects (children, prefab members), prefab instance
+    // overrides and added GameObjects alike
+    int dropDerivedTransformKeys(YAML::Node node){
+        int dropped = 0;
+        if (node.IsMap()){
+            for (auto it = node.begin(); it != node.end(); ++it){
+                YAML::Node value = it->second;
+                if (it->first.IsScalar() && it->first.Scalar() == "transform" && value.IsMap()){
+                    for (const char* key : kDerivedTransformKeys){
+                        if (value[key]){
+                            value.remove(key);
+                            dropped++;
+                        }
+                    }
+                }else{
+                    dropped += dropDerivedTransformKeys(value);
+                }
+            }
+        }else if (node.IsSequence()){
+            for (YAML::Node child : node){
+                dropped += dropDerivedTransformKeys(child);
+            }
+        }
+        return dropped;
+    }
+
+    // Scene 3 -> 4: the transforms' derived values are no longer written (version control diffs
+    // and merges see only what was authored); loading computes them as it always did
+    void sceneV3ToV4(YAML::Node& root, MigrationLog&){
+        dropDerivedTransformKeys(root["entities"]);
+    }
+
+    // Prefab 5 -> 6: the same for its members (and the instances nested in them)
+    void prefabV5ToV6(YAML::Node& root, MigrationLog&){
+        dropDerivedTransformKeys(root["members"]);
+    }
+
 }
 
 const char* StreamMigrations::versionKey(DocumentKind kind){
@@ -276,11 +318,11 @@ const char* StreamMigrations::versionKey(DocumentKind kind){
 
 int StreamMigrations::currentVersion(DocumentKind kind){
     switch (kind){
-        case DocumentKind::Scene: return 3;
+        case DocumentKind::Scene: return 4;
         case DocumentKind::Project: return 1;
         case DocumentKind::Material: return 1;
         // Prefab::FILE_VERSION
-        case DocumentKind::Prefab: return 5;
+        case DocumentKind::Prefab: return 6;
     }
     return 0;
 }
@@ -316,6 +358,7 @@ const std::vector<Migration>& StreamMigrations::table(DocumentKind kind){
         {0, 1, "stamp the scene format version", sceneV0ToV1},
         {1, 2, "shadow bias in shadow texels, shadow quality Low to Auto", sceneV1ToV2},
         {2, 3, "particle systems to effects on their targets", sceneV2ToV3},
+        {3, 4, "derived transform values no longer written", sceneV3ToV4},
     };
     static const std::vector<Migration> project = {
         {0, 1, "stamp the project format version", projectV0ToV1},
@@ -327,6 +370,7 @@ const std::vector<Migration>& StreamMigrations::table(DocumentKind kind){
     static const std::vector<Migration> prefab = {
         {3, 4, "shadow bias in shadow texels", prefabV3ToV4},
         {4, 5, "particle systems to effects on their targets", prefabV4ToV5},
+        {5, 6, "derived transform values no longer written", prefabV5ToV6},
     };
 
     switch (kind){

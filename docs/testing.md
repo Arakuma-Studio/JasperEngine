@@ -271,7 +271,8 @@ shared `main()` (`TestMain.cpp`) that initialises the engine without a GPU:
   `ShadowBench`), `SchedulerTest.Process10kUnder2ms` and S12's `AtmosphereNoise` bake budgets check
   their budgets that way and print `[bench]` lines; the
   editor suite's `editor::test::perfSlack()` does the same for `CommandHistoryBench` (S24),
-  `AutosaveEncodeBench` (S03) and `ReflectCodecBench`/`ReflectResolveBench` (S08; its MCP R19 frame
+  `AutosaveEncodeBench` (S03), `VcsBench` (S29: status poll, snapshot swap, scene diff; the
+  main-thread encode is reported) and `ReflectCodecBench`/`ReflectResolveBench` (S08; its MCP R19 frame
   cost, `test_reflection.py::test_inspector_frame_cost`, reads the same variable) (ratios such as a report's overhead stay checked everywhere). The MCP
   texture storm's frame budget (`test_jobs_memory_ui.py`, S06 AC23) reads the same variable; it assumes
   a machine whose decode workers and software renderer do not share cores (8+ hardware threads):

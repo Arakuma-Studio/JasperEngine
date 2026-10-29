@@ -21,11 +21,15 @@ namespace jasperengine::editor {
         // replacing the one shown
         static void setTransientMessage(const std::string& text, double seconds);
         static std::string getTransientMessage();
+        // S29: the version control segment (branch, ahead/behind, provider, last error), drawn
+        // before the file watcher's label
+        static void setVersionControlSegment(std::function<void()> draw);
 
     private:
         std::function<void()> openAssetPipeline;
         static std::string transientText;
         static double transientUntil;
+        static std::function<void()> versionControlSegment;
     };
 
 }

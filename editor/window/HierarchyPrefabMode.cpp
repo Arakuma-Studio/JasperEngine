@@ -113,6 +113,7 @@ void editor::HierarchyWindow::showPrefabStageMenu(SceneProject* sceneProject) {
     if (ImGui::MenuItem(ICON_FA_MAGNIFYING_GLASS "  Select Prefab Asset")) {
         revealInProject(stage->assetPath);
     }
+    showVcsMenu(sceneProject);
 
     ImGui::Separator();
 

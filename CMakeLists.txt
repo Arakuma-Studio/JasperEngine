@@ -762,6 +762,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/GameplayTools.cpp
     ${EDITOR_DIR}/mcp/tools/DiagnosticsTools.cpp
     ${EDITOR_DIR}/mcp/tools/OrganisationTools.cpp
+    ${EDITOR_DIR}/mcp/tools/VcsTools.cpp
 
     ${EDITOR_DIR}/util/ShaderHeaderBuilder.cpp
     ${EDITOR_DIR}/util/BidiText.cpp
@@ -884,6 +885,21 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/settings/SettingsRows.cpp
     ${EDITOR_DIR}/settings/SettingsSearch.cpp
 
+    ${EDITOR_DIR}/vcs/ProcessExec.cpp
+    ${EDITOR_DIR}/vcs/VcsSnapshot.cpp
+    ${EDITOR_DIR}/vcs/VcsStatusPoller.cpp
+    ${EDITOR_DIR}/vcs/VcsService.cpp
+    ${EDITOR_DIR}/vcs/GitProvider.cpp
+    ${EDITOR_DIR}/vcs/SvnProvider.cpp
+    ${EDITOR_DIR}/vcs/SvnXml.cpp
+    ${EDITOR_DIR}/vcs/scene/SceneYamlModel.cpp
+    ${EDITOR_DIR}/vcs/scene/SceneDiff.cpp
+    ${EDITOR_DIR}/vcs/scene/SceneMerge.cpp
+    ${EDITOR_DIR}/vcs/scene/SceneDiffJson.cpp
+    ${EDITOR_DIR}/vcs/scene/SceneCli.cpp
+    ${EDITOR_DIR}/vcs/VcsEditorOps.cpp
+    ${EDITOR_DIR}/vcs/SceneDiffTracker.cpp
+
     ${EDITOR_DIR}/htmlui/ContentSniffer.cpp
     ${EDITOR_DIR}/htmlui/GoogleFontsImporter.cpp
     ${EDITOR_DIR}/htmlui/HtmlUiAutoImport.cpp
@@ -939,6 +955,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorLattice.cpp
     ${EDITOR_DIR}/window/InspectorAnimator.cpp
     ${EDITOR_DIR}/window/InspectorPrefabBar.cpp
+    ${EDITOR_DIR}/window/InspectorVcs.cpp
     ${EDITOR_DIR}/window/HierarchyPrefabRows.cpp
     ${EDITOR_DIR}/window/ConsoleWindow.cpp
     ${EDITOR_DIR}/window/ScriptStatusBadge.cpp
@@ -954,8 +971,16 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/PlayInput.cpp
     ${EDITOR_DIR}/window/HierarchyWindow.cpp
     ${EDITOR_DIR}/window/HierarchyPrefabMode.cpp
+    ${EDITOR_DIR}/window/HierarchyVcs.cpp
     ${EDITOR_DIR}/window/ProjectWindow.cpp
     ${EDITOR_DIR}/window/ProjectWindowSearch.cpp
+    ${EDITOR_DIR}/window/ProjectWindowVcs.cpp
+    ${EDITOR_DIR}/window/vcs/VcsOverlay.cpp
+    ${EDITOR_DIR}/window/vcs/VcsUi.cpp
+    ${EDITOR_DIR}/window/vcs/VcsCommitWindow.cpp
+    ${EDITOR_DIR}/window/vcs/VcsHistoryWindow.cpp
+    ${EDITOR_DIR}/window/vcs/SceneDiffWindow.cpp
+    ${EDITOR_DIR}/window/vcs/VcsConflictsWindow.cpp
     ${EDITOR_DIR}/window/AssetPanels.cpp
     ${EDITOR_DIR}/window/ImageViewerWindow.cpp
     ${EDITOR_DIR}/window/CodeEditor.cpp
@@ -1087,6 +1112,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/GraphEditCmd.cpp
     ${EDITOR_DIR}/command/type/InputActionsEditCmd.cpp
     ${EDITOR_DIR}/command/type/ParticleEffectAssetCmd.cpp
+    ${EDITOR_DIR}/command/type/RevertFilesCmd.cpp
+    ${EDITOR_DIR}/command/type/RevertToBaselineCmd.cpp
 
     ${IMGUI_SOURCES}
     ${TINYEXPR_SOURCES}
@@ -1114,9 +1141,9 @@ set_source_files_properties(${EDITOR_DIR}/util/EditorFingerprint.cpp PROPERTIES
 # Unity build: these sources keep generic file-local helpers (lower, trim, Target, sceneArg, ...) in
 # anonymous namespaces, one helper set per file, so they never share a unity unit
 set(JASPERENGINE_EDITOR_UNITY_SKIP ${JASPERENGINE_EDITOR_SOURCES})
-list(FILTER JASPERENGINE_EDITOR_UNITY_SKIP INCLUDE REGEX "(^|/)editor/(htmlui|mcp/tools|reflect)/")
+list(FILTER JASPERENGINE_EDITOR_UNITY_SKIP INCLUDE REGEX "(^|/)editor/(htmlui|mcp/tools|reflect|vcs)/")
 jasperengine_skip_unity_build(
-    REASON "the HTML UI importers, the MCP tools and the reflection tables: per-file helper sets with the same names"
+    REASON "the HTML UI importers, the MCP tools, the reflection tables and the version control providers: per-file helper sets with the same names"
     SOURCES ${JASPERENGINE_EDITOR_UNITY_SKIP})
 set(JASPERENGINE_EDITOR_SCENEVIEW_SOURCES ${JASPERENGINE_EDITOR_SOURCES})
 list(FILTER JASPERENGINE_EDITOR_SCENEVIEW_SOURCES INCLUDE REGEX "(^|/)editor/(picking|sceneview)/")

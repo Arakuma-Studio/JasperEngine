@@ -19,6 +19,7 @@
 #include "window/TextureImporterView.h"
 #include "window/dialog/ComponentAddDialog.h"
 #include "window/dialog/TextureSlicerToolDialog.h"
+#include "vcs/scene/SceneDiff.h"
 
 #include "imgui.h"
 #include "yaml-cpp/yaml.h"
@@ -445,6 +446,17 @@ namespace jasperengine::editor{
             const std::string& property, uint8_t stateBits, bool readOnly);
         // A property row's label: bold with the bar when overridden, right click for the menu
         void drawPrefabPropertyLabel(const std::string& label);
+        // S29 (InspectorVcs.cpp): the scene diff's markers on property rows and component menus,
+        // and the lock banner (true: read only, someone else holds the lock)
+        std::string vcsDiffPathOfRow(const vcs::scene::ComponentDiff& component, const std::string& rowId) const;
+        const vcs::scene::PropertyDiff* findVcsPropertyDiff(SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType type,
+                                                            const std::string& rowId, const vcs::scene::ObjectDiff** object,
+                                                            const vcs::scene::ComponentDiff** component) const;
+        void drawVcsBaselineItems(SceneProject* sceneProject, const vcs::scene::ObjectDiff& object, const vcs::scene::ComponentDiff* component,
+                                  const vcs::scene::PropertyDiff* property, bool readOnly);
+        bool drawVcsPropertyMarker(const std::string& rowId, const ImVec2& cellMin, const ImVec2& cellMax, bool openMenu);
+        void drawVcsComponentMenuItems(SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType type, bool readOnly);
+        bool drawVcsLockBanner(const std::vector<std::filesystem::path>& files);
         // Context menu of a GameObject header field (name, active, tag, layer) under the last item
         void prefabStateContext(SceneProject* sceneProject, const std::vector<Entity>& entities, uint8_t stateBit, bool readOnly,
             float barTop, float barBottom);
