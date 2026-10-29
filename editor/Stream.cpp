@@ -4354,7 +4354,9 @@ bool editor::Stream::isGeneratedMesh(const EntityRegistry* registry, Signature s
     return signature.test(registry->getComponentId<SpriteComponent>()) ||
            signature.test(registry->getComponentId<TilemapComponent>()) ||
            signature.test(registry->getComponentId<MeshPolygonComponent>()) ||
-           signature.test(registry->getComponentId<TerrainComponent>());
+           signature.test(registry->getComponentId<TerrainComponent>()) ||
+           // the Spline Extrude's Mesh is its chunks' template: material and flags, no geometry
+           signature.test(registry->getComponentId<SplineExtrudeComponent>());
 }
 
 bool editor::Stream::isGeneratedUI(const EntityRegistry* registry, Signature signature) {

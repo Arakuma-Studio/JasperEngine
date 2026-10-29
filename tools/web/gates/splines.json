@@ -1,0 +1,12 @@
+{
+  "description": "tools/test-projects/splines (WEB_PROJECT=splines tools/build.sh web): a 1.2 km Crown road generated on the CPU and drawn in WebGL2, a follower on it, and a knot moved from Lua 1.5 s in. Without pthreads the rebuild's chunks are Background jobs the engine pumps 4 ms a frame: every frame's spline work stays within 4 ms and the rebuild ends within 10 frames (S18 R17, AC17); an error line otherwise. The canvas centre is the road's grey.",
+  "rgb": [120, 120, 120],
+  "tolerance": 60,
+  "isolated": true,
+  "console": [
+    {"text": "[gate] splines", "level": "log"},
+    {"text": "[gate] knot moved from Lua", "level": "log"},
+    {"text": "[gate] spline rebuild within budget", "level": "log"}
+  ],
+  "ordered": true
+}

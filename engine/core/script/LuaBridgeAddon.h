@@ -10,6 +10,10 @@
 #include "component/CharacterCollision.h"
 #include "component/WaterVolumeComponent.h"
 #include "component/BuoyancyComponent.h"
+#include "component/SplineAnimateComponent.h"
+#include "component/SplineExtrudeComponent.h"
+#include "component/SplineInstantiateComponent.h"
+#include "spline/SplineTypes.h"
 #include "FileData.h"
 #include "thread/ResourceProgress.h"
 #include "jobs/JobTypes.h"
@@ -102,6 +106,21 @@ namespace luabridge
     template<> struct Stack<CharacterCollisionFlags> : EnumWrapper<CharacterCollisionFlags>{};
     template<> struct Stack<WaterVolumeWaves> : EnumWrapper<WaterVolumeWaves>{};
     template<> struct Stack<BuoyancyColumns> : EnumWrapper<BuoyancyColumns>{};
+    template<> struct Stack<spline::SplineType> : EnumWrapper<spline::SplineType>{};
+    template<> struct Stack<spline::TangentMode> : EnumWrapper<spline::TangentMode>{};
+    template<> struct Stack<SplineExtrudeShape> : EnumWrapper<SplineExtrudeShape>{};
+    template<> struct Stack<SplineWidthSource> : EnumWrapper<SplineWidthSource>{};
+    template<> struct Stack<SplineCornerStyle> : EnumWrapper<SplineCornerStyle>{};
+    template<> struct Stack<SplineGrade> : EnumWrapper<SplineGrade>{};
+    template<> struct Stack<SplineConform> : EnumWrapper<SplineConform>{};
+    template<> struct Stack<SplineCollision> : EnumWrapper<SplineCollision>{};
+    template<> struct Stack<SplineInstantiateMode> : EnumWrapper<SplineInstantiateMode>{};
+    template<> struct Stack<SplineSpacingFit> : EnumWrapper<SplineSpacingFit>{};
+    template<> struct Stack<SplinePlantMode> : EnumWrapper<SplinePlantMode>{};
+    template<> struct Stack<SplineAnimateMethod> : EnumWrapper<SplineAnimateMethod>{};
+    template<> struct Stack<SplineLoop> : EnumWrapper<SplineLoop>{};
+    template<> struct Stack<SplineEasing> : EnumWrapper<SplineEasing>{};
+    template<> struct Stack<SplineAlignment> : EnumWrapper<SplineAlignment>{};
     template<> struct Stack<ResourceLoadState> : EnumWrapper<ResourceLoadState>{};
     template<> struct Stack<LightState> : EnumWrapper<LightState>{};
     template<> struct Stack<UIEventState> : EnumWrapper<UIEventState>{};

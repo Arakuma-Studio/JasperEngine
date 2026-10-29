@@ -322,6 +322,10 @@ namespace jasperengine::editor{
         TerrainEditWindow(Project* project);
         ~TerrainEditWindow();
 
+        // An 8-bit heightmap rewritten as 16-bit with the same heights, one undo step (the
+        // spline bake's "Convert heightmap to 16-bit", S18 R24)
+        bool convertHeightMapTo16Bit(uint32_t sceneId, Entity terrain, std::string& error);
+
         void show();
         void open();
         void openForEntity(Entity entity, uint32_t sceneId);

@@ -449,6 +449,25 @@ void prepare<ActionComponent>(ActionComponent& action, Entity, CloneContext& ctx
 }
 
 template<>
+void prepare<SplineAnimateComponent>(SplineAnimateComponent& animate, Entity, CloneContext& ctx) {
+    animate.spline = ctx.remap(animate.spline);
+    // the copy starts on its own, the way a loaded scene starts it
+    const SplineAnimateComponent defaults;
+    animate.playing = defaults.playing;
+    animate.awoken = defaults.awoken;
+    animate.elapsed = defaults.elapsed;
+    animate.normalizedTime = defaults.normalizedTime;
+    animate.distance = defaults.distance;
+    animate.completed = defaults.completed;
+    animate.onComplete.clear();
+}
+
+template<>
+void prepare<SplineComponent>(SplineComponent& spline, Entity, CloneContext& ctx) {
+    spline.terrain.terrain = ctx.remap(spline.terrain.terrain);
+}
+
+template<>
 void prepare<AnimationComponent>(AnimationComponent& animation, Entity, CloneContext& ctx) {
     for (ActionFrame& frame : animation.actions) {
         frame.action = ctx.remap(frame.action);
@@ -798,6 +817,10 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<NavMeshLinkComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<NavMeshModifierComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<NavGridComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<SplineComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<SplineExtrudeComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<SplineInstantiateComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<SplineAnimateComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<InstancedMeshComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<PrefabComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ReflectionProbeComponent>(source, sourceEntity, signature, target, targetEntity, ctx);

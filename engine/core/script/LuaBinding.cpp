@@ -799,6 +799,7 @@ void LuaBinding::registerClasses(lua_State *L){
     registerProfilerClasses(L);
     registerGameplayClasses(L);
     registerNavigationClasses(L);
+    registerSplineClasses(L);
     registerCrashClasses(L);
     registerHtmlUIClasses(L);
     registerHtmlUIAnimeClasses(L);
@@ -959,6 +960,10 @@ bool LuaBinding::pushEntityHandleByType(lua_State* L, jasperengine::Scene* scene
     DISPATCH_TYPE(Terrain, "terrain");
     DISPATCH_TYPE(Tilemap, "tilemap");
     DISPATCH_TYPE(Model, "model");
+    DISPATCH_TYPE(Spline, "spline");
+    DISPATCH_TYPE(SplineExtrude, "splineextrude");
+    DISPATCH_TYPE(SplineInstantiate, "splineinstantiate");
+    DISPATCH_TYPE(SplineAnimate, "splineanimate");
     DISPATCH_TYPE(MeshPolygon, "meshpolygon");
     DISPATCH_TYPE(Points, "points");
     DISPATCH_TYPE(LineRenderer, "linerenderer");

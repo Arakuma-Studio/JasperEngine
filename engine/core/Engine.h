@@ -295,6 +295,8 @@ namespace jasperengine {
         // the shader clock of the frame (latchShaderTime), and whether it last advanced by fixedDeltatime
         static double shaderTime;
         static bool shaderTimeFixed;
+        // setPinnedShaderTime's time, negative when not pinned
+        static double pinnedShaderTime;
         static uint64_t gameFrames;
         static std::atomic<bool> simulationHeld;
         static bool clampNextDelta;
@@ -536,6 +538,10 @@ namespace jasperengine {
         static void latchShaderTime();
         static float getShaderTime();
         static double getShaderTimeSeconds();
+        // Pins the shader clock at `seconds` (golden image tests): from now on every latch keeps
+        // it there, whatever the wall clock or the fixed delta. A negative value unpins it: the
+        // next latch reads the clock again (a fixed delta then starts from the pinned time).
+        static void setPinnedShaderTime(double seconds);
 
         // A shipped game started with --headless (docs/specs/S30-shipping.md R17): no window shown,
         // no audio output, no input; frames still render

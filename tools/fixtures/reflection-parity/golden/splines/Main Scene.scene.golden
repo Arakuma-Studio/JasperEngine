@@ -1,0 +1,265 @@
+formatVersion: 5
+guid: 2385f1a5e2877b94bc16d5309fb19aca
+id: 1
+name: Main Scene
+scene:
+  backgroundColor: [0.42, 0.55, 0.72, 1]
+  shadowQuality: low
+  meshLodEnabled: false
+  meshLodThreshold: 1
+  depthPrepassEnabled: false
+  lightState: on
+  globalIlluminationIntensity: 0.15
+  globalIlluminationColor: [1, 1, 1]
+  ambientLight2DIntensity: 1
+  ambientLight2DColor: [1, 1, 1]
+  shadow2DQuality: low
+  ssaoEnabled: false
+  ssaoRadius: 0.5
+  ssaoIntensity: 1
+  ssaoBias: 0.025
+  ssrEnabled: false
+  ssrMaxDistance: 8
+  ssrThickness: 0.5
+  ssrMaxSteps: 48
+  ssrIntensity: 1
+  ssrBlur: 0
+  gravity2D: [0, -9.81]
+  gravity3D: [0, -9.81, 0]
+  fixedResolutionEnabled: false
+  fixedResolutionWidth: 640
+  fixedResolutionHeight: 360
+  fixedResolutionFilter: nearest
+  enableUIEvents: not_set
+sceneType: scene_3d
+mainCamera: 0
+maxValues:
+  maxSubmeshes: 1
+  maxTilemapTilesRect: 0
+  maxTilemapTiles: 0
+  maxExternalBuffers: 0
+  maxSpriteFrames: 0
+  maxBones: 128
+  maxColliders2D: 0
+  maxColliderPoints2D: 0
+  maxColliders3D: 0
+  maxColliderVertices3D: 0
+  maxColliderIndices3D: 0
+shaderKeys:
+  - type: mesh
+    properties: 1352
+  - type: depth
+  - type: blit
+entities:
+  - type: Entity
+    entity: 1001
+    name: Sun
+    components:
+      transform:
+        position: [0, 10, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      light:
+        enabled: true
+        type: directional
+        direction: [-0.4, -1, -0.6]
+        worldDirection: [-0.4, -1, -0.6]
+        color: [1, 1, 1]
+        range: 0
+        intensity: 2
+        innerConeCos: 0.76604444
+        outerConeCos: 0.64278764
+        spotMask: ~
+        cullingMask: 4294967295
+        shadows: false
+        automaticShadowCamera: true
+        shadowBias: 1
+        mapResolution: 0
+        shadowCameraNearFar: [0.1, 10]
+        numShadowCascades: 0
+  - type: Entity
+    entity: 1002
+    name: Road
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 0
+            faceCulling: true
+            textureShadow: false
+            hasTexCoord1: false
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: false
+            hasTextureRect: false
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        aabb:
+          min: [0, 0, 0]
+          max: [0, 0, 0]
+        verticesAABB:
+          min: [0, 0, 0]
+          max: [0, 0, 0]
+        worldAABB:
+          min: [0, 0, 0]
+          max: [0, 0, 0]
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      spline:
+        enabled: true
+        knots:
+          - {p: [-30, 0, 0], r: 3}
+          - {p: [-10, 0, -6], r: 3}
+          - {p: [10, 0, 4], r: 3}
+          - {p: [30, 0, -2], r: 3}
+      splineextrude:
+        enabled: true
+        shape: crown
+        tilesPerMetreU: 0.125
+  - type: Entity
+    entity: 1003
+    name: Wall
+    components:
+      transform:
+        position: [0, 0, -14]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 0
+            faceCulling: true
+            textureShadow: false
+            hasTexCoord1: false
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: false
+            hasTextureRect: false
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        aabb:
+          min: [0, 0, 0]
+          max: [0, 0, 0]
+        verticesAABB:
+          min: [0, 0, 0]
+          max: [0, 0, 0]
+        worldAABB:
+          min: [0, 0, -14]
+          max: [0, 0, -14]
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+      spline:
+        enabled: true
+        type: linear
+        knots:
+          - {p: [-24, 0, 0]}
+          - {p: [0, 0, -3]}
+          - {p: [24, 0, 0]}
+      splineextrude:
+        enabled: true
+        shape: rectangle
+        thickness: 0.8
+        height: 2
+  - type: Entity
+    entity: 1004
+    name: Game
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      script:
+        scripts:
+          - type: lua
+            path: SplinesSmoke.lua
+            pathGuid: a021791b937d7864c12ad92f4cfd10a7
+            className: SplinesSmoke
+            enabled: true

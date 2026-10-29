@@ -65,6 +65,7 @@
 #include "subsystem/MeshSystem.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "subsystem/LatticeSystem.h"
+#include "subsystem/SplineSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "subsystem/FluidSystem.h"
@@ -3025,6 +3026,24 @@ void editor::Project::calculateSceneMaxValues(const SceneProject* sceneProject, 
         return;
     }
 
+    // what the splines build is counted as built: a scene saved right after it loaded (before a
+    // frame ran SplineSystem) gets the same values as after
+    if (std::shared_ptr<SplineSystem> splines = sceneProject->scene->findSystem<SplineSystem>()) {
+        auto splineArray = sceneProject->scene->getComponentArray<SplineComponent>();
+        std::vector<Entity> owners;
+        for (size_t i = 0; i < splineArray->size(); ++i) {
+            const Entity owner = splineArray->getEntity(i);
+            if ((sceneProject->scene->findComponent<SplineExtrudeComponent>(owner) ||
+                 sceneProject->scene->findComponent<SplineInstantiateComponent>(owner)) &&
+                (splines->isRebuildPending(owner) || splines->getGeneratedEntities(owner).empty())) {
+                owners.push_back(owner);
+            }
+        }
+        for (Entity owner : owners) {
+            splines->rebuildNow(owner);
+        }
+    }
+
     auto meshes = sceneProject->scene->getComponentArray<MeshComponent>();
     for (size_t i = 0; i < meshes->size(); ++i) {
         const MeshComponent& mesh = meshes->getComponentFromIndex(i);
@@ -3054,6 +3073,18 @@ void editor::Project::calculateSceneMaxValues(const SceneProject* sceneProject, 
     for (size_t i = 0; i < models->size(); ++i) {
         const ModelComponent& model = models->getComponentFromIndex(i);
         addModelFile(model.filename, model.mergeStaticMeshes);
+    }
+
+    // Spline Instantiate model pools (their pieces are merged models), also where none loaded
+    auto instantiates = sceneProject->scene->getComponentArray<SplineInstantiateComponent>();
+    for (size_t i = 0; i < instantiates->size(); ++i) {
+        const SplineInstantiateComponent& instantiate = instantiates->getComponentFromIndex(i);
+        for (const std::vector<SplinePoolEntry>* pool : {&instantiate.items, &instantiate.posts, &instantiate.spans,
+                                                         &instantiate.gates, &instantiate.crests, &instantiate.caps}) {
+            for (const SplinePoolEntry& entry : *pool) {
+                addModelFile(entry.asset.path, true);
+            }
+        }
     }
 
     // foliage chunks are merged models
@@ -3176,6 +3207,14 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
     for (size_t i = 0; i < terrains->size(); ++i) {
         const std::vector<Entity> foliage = meshSystem->getFoliageEntities(terrains->getEntity(i));
         shaderEntities.insert(shaderEntities.end(), foliage.begin(), foliage.end());
+    }
+    // so are the chunks a spline generates (their materials are their GameObject's Mesh's)
+    if (std::shared_ptr<SplineSystem> splines = scene->findSystem<SplineSystem>()) {
+        auto splineArray = scene->getComponentArray<SplineComponent>();
+        for (size_t i = 0; i < splineArray->size(); ++i) {
+            const std::vector<Entity> chunks = splines->getGeneratedEntities(splineArray->getEntity(i));
+            shaderEntities.insert(shaderEntities.end(), chunks.begin(), chunks.end());
+        }
     }
 
     for (Entity entity : shaderEntities) {
@@ -5144,6 +5183,8 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     if (auto fluids = scene->findSystem<FluidSystem>()) fluids->setPaused(pause);
     // lattice tweens and jiggle (followers and offsets still show in edit mode)
     scene->getSystem<LatticeSystem>()->setPaused(pause);
+    // Spline Animate followers hold still; roads and pieces keep regenerating
+    if (auto splines = scene->findSystem<SplineSystem>()) splines->setPaused(pause);
 }
 
 void editor::Project::copyEngineApiToProject() {
@@ -5297,6 +5338,14 @@ static std::set<Entity> getPlayKeptEntities(const editor::SceneProject* scenePro
     for (size_t i = 0; i < terrains->size(); i++) {
         const std::vector<Entity> foliage = meshSystem->getFoliageEntities(terrains->getEntity(i));
         keep.insert(foliage.begin(), foliage.end());
+    }
+    // what splines generate is SplineSystem's: it creates and destroys it (also in Play)
+    if (std::shared_ptr<SplineSystem> splines = scene->findSystem<SplineSystem>()) {
+        auto splineArray = scene->getComponentArray<SplineComponent>();
+        for (size_t i = 0; i < splineArray->size(); i++) {
+            const std::vector<Entity> generated = splines->getGeneratedEntities(splineArray->getEntity(i));
+            keep.insert(generated.begin(), generated.end());
+        }
     }
 
     // The Scene view's own gizmos and icons (SceneRender::overlay) are made when first needed,
@@ -6757,6 +6806,22 @@ AABB editor::Project::getEntityWorldAABB(Scene* scene, Entity entity, Scene* mai
     AABB aabb;
     Signature signature = scene->getSignature(entity);
 
+    if (signature.test(scene->getComponentId<SplineComponent>())){
+        // what the spline generated (the road picks and frames as its GameObject), and its knots
+        if (std::shared_ptr<SplineSystem> splines = scene->findSystem<SplineSystem>()){
+            aabb = splines->getGeneratedBounds(entity);
+        }
+        const Transform* transform = scene->findComponent<Transform>(entity);
+        if (transform){
+            for (const spline::SplineKnot& knot : scene->getComponent<SplineComponent>(entity).spline.knots()){
+                aabb.merge(transform->modelMatrix * knot.position);
+            }
+        }
+        if (!aabb.isNull()){
+            return aabb;
+        }
+    }
+
     if (signature.test(scene->getComponentId<MeshComponent>())){
         aabb = scene->getComponent<MeshComponent>(entity).worldAABB;
     }else if (signature.test(scene->getComponentId<UIComponent>())){
@@ -6859,6 +6924,23 @@ AABB editor::Project::getEntityWorldAABB(Scene* scene, Entity entity, Scene* mai
 AABB editor::Project::getEntityLocalAABB(Scene* scene, Entity entity) const{
     AABB aabb;
     Signature signature = scene->getSignature(entity);
+
+    if (signature.test(scene->getComponentId<SplineComponent>())){
+        for (const spline::SplineKnot& knot : scene->getComponent<SplineComponent>(entity).spline.knots()){
+            aabb.merge(knot.position);
+        }
+        const Transform* transform = scene->findComponent<Transform>(entity);
+        std::shared_ptr<SplineSystem> splines = scene->findSystem<SplineSystem>();
+        if (transform && splines){
+            const AABB generated = splines->getGeneratedBounds(entity);
+            if (!generated.isNull()){
+                aabb.merge(transform->modelMatrix.inverse() * generated);
+            }
+        }
+        if (!aabb.isNull()){
+            return aabb;
+        }
+    }
 
     if (signature.test(scene->getComponentId<MeshComponent>())){
         aabb = SceneRender::getMeshLocalAABB(scene->getComponent<MeshComponent>(entity));

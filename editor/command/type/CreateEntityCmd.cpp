@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "CreateEntityCmd.h"
+#include "spline/SplinePresets.h"
 
 #include "editor/Out.h"
 #include "util/PrimitiveParameters.h"
@@ -679,6 +680,17 @@ bool editor::CreateEntityCmd::execute(){
         scene->addComponent<Transform>(entity, {});
         scene->addComponent<MeshComponent>(entity, {});
         scene->addComponent<TerrainComponent>(entity, {});
+
+    }else if (type >= EntityCreationType::SPLINE_EMPTY && type <= EntityCreationType::SPLINE_CIRCLE_2D){
+
+        // the preset's Spline and what it builds (one definition with build_spline's presets)
+        static const SplinePreset presets[] = {
+            SplinePreset::Empty, SplinePreset::Empty, SplinePreset::Road, SplinePreset::Path, SplinePreset::Wall,
+            SplinePreset::Fence, SplinePreset::River, SplinePreset::Lake, SplinePreset::Circle, SplinePreset::Square,
+            SplinePreset::Edge2D, SplinePreset::Fill2D, SplinePreset::Circle2D};
+        const SplinePreset preset = presets[static_cast<int>(type) - static_cast<int>(EntityCreationType::SPLINE_EMPTY)];
+        const SplinePresetSetup setup = SplinePresets::make(project, preset, sceneProject->sceneType == SceneType::SCENE_2D);
+        SplinePresets::addTo(scene, entity, setup);
 
     }else if (type == EntityCreationType::WATER){
 

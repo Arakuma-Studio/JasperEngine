@@ -308,6 +308,7 @@ namespace jasperengine::editor {
         bool shipsFluidComponent() const;
         bool shipsFluidEffect() const;
         static const char* postFxLicensePath();
+        static const char* openEngineLicensePath();
 
         // Aggregates SceneMaxValues across all project scenes into the capacities that
         // size the engine's fixed-capacity HybridArrays (MAX_SUBMESHES, MAX_SPRITE_FRAMES, ...).

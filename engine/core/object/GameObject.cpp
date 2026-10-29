@@ -378,3 +378,34 @@ WaterVolume GameObject::getWaterVolume(){
         scene->addComponent<WaterVolumeComponent>(entity, {});
     return WaterVolume(scene, entity);
 }
+
+Spline GameObject::getSpline(){
+    if (!scene->findComponent<SplineComponent>(entity))
+        scene->addComponent<SplineComponent>(entity, {});
+    return Spline(scene, entity);
+}
+
+SplineExtrude GameObject::getSplineExtrude(){
+    if (!scene->findComponent<SplineComponent>(entity))
+        scene->addComponent<SplineComponent>(entity, {});
+    // the chunks' material and shadows are the GameObject's Mesh
+    if (!scene->findComponent<MeshComponent>(entity))
+        scene->addComponent<MeshComponent>(entity, {});
+    if (!scene->findComponent<SplineExtrudeComponent>(entity))
+        scene->addComponent<SplineExtrudeComponent>(entity, {});
+    return SplineExtrude(scene, entity);
+}
+
+SplineInstantiate GameObject::getSplineInstantiate(){
+    if (!scene->findComponent<SplineComponent>(entity))
+        scene->addComponent<SplineComponent>(entity, {});
+    if (!scene->findComponent<SplineInstantiateComponent>(entity))
+        scene->addComponent<SplineInstantiateComponent>(entity, {});
+    return SplineInstantiate(scene, entity);
+}
+
+SplineAnimate GameObject::getSplineAnimate(){
+    if (!scene->findComponent<SplineAnimateComponent>(entity))
+        scene->addComponent<SplineAnimateComponent>(entity, {});
+    return SplineAnimate(scene, entity);
+}

@@ -163,7 +163,7 @@ TEST(Compat, CorpusRoundTrip) {
                                 withoutDerivedTransform(withoutShadowMigration(withoutShaderKeys(withoutVersionLine(original)))));
             EXPECT_TRUE(difference.empty()) << "the save changed more than the version line, at " << difference;
             EXPECT_EQ(shaderKeySet(first), shaderKeySet(original)) << "the shader keys";
-            EXPECT_EQ(first.rfind("formatVersion: 4\n", 0), 0u);
+            EXPECT_EQ(first.rfind("formatVersion: 5\n", 0), 0u);
         }
     }
 
