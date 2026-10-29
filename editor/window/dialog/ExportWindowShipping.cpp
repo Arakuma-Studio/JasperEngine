@@ -153,11 +153,11 @@ bool ExportWindow::playerBuildBlocked(std::string& why) const {
 }
 
 void ExportWindow::drawPlayerRows() {
-    const ShipPlatform platform = shipPlatform();
+    const ShipPlatform target = shipPlatform();
 
     // ---- graphics API
     beginRow("Graphics API");
-    const std::vector<std::string> backends = jasperengine::editor::platformBackends(platform);
+    const std::vector<std::string> backends = jasperengine::editor::platformBackends(target);
     const std::string current = playerBackend();
     if (backends.size() == 1) {
         ImGui::AlignTextToFramePadding();
@@ -214,7 +214,7 @@ void ExportWindow::drawPlayerRows() {
     }
 
     // ---- platform requirements
-    if (platform == ShipPlatform::Android) {
+    if (target == ShipPlatform::Android) {
         AndroidProjectSettings& android = m_project->getAndroidProjectSettings();
         beginRow("Package");
         int format = android.packageFormat == "aab" ? 1 : 0;
@@ -248,7 +248,7 @@ void ExportWindow::drawPlayerRows() {
                 ImGui::TextDisabled("Set paths in Preferences > External Tools (Android SDK, JDK).");
             }
         }
-    } else if (platform == ShipPlatform::IOS) {
+    } else if (target == ShipPlatform::IOS) {
         beginRow("Requires");
         ImGui::AlignTextToFramePadding();
 #ifdef __APPLE__
@@ -259,7 +259,7 @@ void ExportWindow::drawPlayerRows() {
 #else
         ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " Requires a Mac with Xcode: this makes the Xcode project");
 #endif
-    } else if (platform == ShipPlatform::MacOS) {
+    } else if (target == ShipPlatform::MacOS) {
         beginRow("Signing");
         ImGui::AlignTextToFramePadding();
         if (platform::ExternalTools::codesign().found() || platform::ExternalTools::rcodesign().found())
@@ -453,7 +453,7 @@ void ExportWindow::drawPublishTargets() {
             ImGui::SetNextItemWidth(-1);
             if (ImGui::Combo("##platform", &platform, platforms, 6)) {
                 target.platform = platforms[platform];
-                ShipPlatform parsed;
+                ShipPlatform parsed = ShipPlatform::Linux;
                 parseBuildPlatform(target.platform, parsed);
                 target.arch = platformArch(parsed);
                 target.backend = jasperengine::editor::platformBackends(parsed).front();

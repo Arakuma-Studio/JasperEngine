@@ -336,10 +336,11 @@ PublishingConfig publish::defaultPublishingConfig(const std::map<std::string, st
         config.targets[platformName] = target;
     }
     if (config.targets.empty()) {
-        PublishTarget linux;
-        linux.buildDir = "build/linux";
-        linux.backend = "glcore";
-        config.targets["linux"] = linux;
+        // (not named linux: GCC predefines that macro)
+        PublishTarget host;
+        host.buildDir = "build/linux";
+        host.backend = "glcore";
+        config.targets["linux"] = host;
     }
     config.steam.buildDescription = "";
     return config;
