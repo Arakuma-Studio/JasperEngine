@@ -1097,6 +1097,7 @@ TEST_F(VatBakerWindow_, ImportsAHoudiniExport) {
     EXPECT_NE(Access::previewNote(*window).find("Houdini"), std::string::npos);
 
     // Re-import from the .vat keeps the GUID (the same export)
+    const std::string importedBytes = readAll(root() / written.vat);
     VertexAnimationBakerWindow other(project());
     ASSERT_TRUE(other.openVat(written.vat, error)) << error;
     EXPECT_EQ(other.getMode(), VertexAnimationBakerWindow::Mode::Import);
@@ -1106,9 +1107,9 @@ TEST_F(VatBakerWindow_, ImportsAHoudiniExport) {
     ASSERT_FALSE(other.statusIsError()) << other.getStatus();
     EXPECT_EQ(other.lastWrite().guid, written.guid);
 
-    // one project undo step each: the re-import, then the import
-    ASSERT_TRUE(project()->getProjectCommandHistory()->undo());
-    EXPECT_TRUE(fs::exists(root() / written.vat));
+    // the re-import of the same export writes the same bytes: a step that changed nothing is
+    // not kept (S24, CommandHistory drops a no-op), so one project undo step takes back the import
+    EXPECT_EQ(readAll(root() / written.vat), importedBytes);
     ASSERT_TRUE(project()->getProjectCommandHistory()->undo());
     EXPECT_FALSE(fs::exists(root() / written.vat));
 

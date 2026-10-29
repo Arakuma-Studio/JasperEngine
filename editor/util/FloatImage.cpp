@@ -264,10 +264,13 @@ namespace jasperengine::editor {
             return true;
         }
 
-        // atomically (S03): a failed write leaves the old file whole
+        // atomically (S03): a failed write leaves the old file whole; into an existing folder
+        // only, as the plain write it replaced (a missing folder is an error, not created)
         bool writeBytes(const std::string& path, const unsigned char* bytes, size_t size, std::string* error) {
+            io::AtomicWriteOptions options;
+            options.createDirectories = false;
             const io::WriteResult result = io::writeFileAtomic(FileUtils::pathFromUtf8(path),
-                                                               std::string_view(reinterpret_cast<const char*>(bytes), size));
+                                                               std::string_view(reinterpret_cast<const char*>(bytes), size), options);
             if (!result.ok()) {
                 setError(error, path + ": can't be written (" + result.message + ")");
                 return false;

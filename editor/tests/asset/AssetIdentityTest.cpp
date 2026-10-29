@@ -626,6 +626,8 @@ TEST(AssetRefSchema, CoversAllFields) {
         {C::PoseAnimatorComponent, "animation"},
         // upstream's Animation Player: each clip entry, an .anim by GUID or a model's sub-clip
         {C::AnimationPlayerComponent, "clips[]"},
+        // upstream's Vertex Animator: its .vat, by GUID, with the mesh beside it
+        {C::VertexAnimatorComponent, "animation"},
     };
     std::set<std::pair<C, std::string>> rows;
     for (const AssetRefField& field : AssetRefSchema::fields()) {

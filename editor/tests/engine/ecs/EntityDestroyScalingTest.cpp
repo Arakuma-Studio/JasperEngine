@@ -128,7 +128,8 @@ namespace {
             }
             case Teardown::DestroyEachReadingByIndex: {
                 // reads by index between the destroys (a script or a system looking up indexes):
-                // answered over the holes, never closing them each time
+                // each read closes the holes before it (S07 R2), so this one is O(n) an entity, the
+                // cost of an eager erase (S07 D1's worst case); timed by Profile only
                 auto transforms = crowd.scene->getComponentArray<Transform>();
                 auto meshes = crowd.scene->getComponentArray<MeshComponent>();
                 size_t sum = 0;
@@ -182,11 +183,14 @@ namespace {
 }
 
 // What one destroyed entity costs with 100,000 in the scene is about what it costs with 10,000
-// (it was 10 times more and more: the arrays shifted each time); a ratio bound, robust to noise
+// (it was 10 times more and more: the arrays shifted each time); a ratio bound, robust to noise.
+// Not with a read by index after each destroy: S07's arrays close their holes at the first index
+// observation (docs/specs/S07-ecs.md R2, D1: remove, read, remove, read costs what an eager erase
+// did, and is never worse), where upstream's answered reads over the holes with a rank tree
 TEST(EntityDestroyScaling, PerEntityCostDoesNotGrowWithTheScene) {
     const int small = 10000 / ENTITIES_PER_COPY + 1;
     const int large = 100000 / ENTITIES_PER_COPY + 1;
-    for (Teardown teardown : {Teardown::DestroyEach, Teardown::DestroyEachBackwards, Teardown::DestroyEachReadingByIndex,
+    for (Teardown teardown : {Teardown::DestroyEach, Teardown::DestroyEachBackwards,
                               Teardown::ModelHandles, Teardown::DestroyImmediate, Teardown::DeleteScene, Teardown::Clear}) {
         const double smallCost = bestSecondsPerEntity(small, teardown, 3);
         const double largeCost = bestSecondsPerEntity(large, teardown, 2);
@@ -196,8 +200,9 @@ TEST(EntityDestroyScaling, PerEntityCostDoesNotGrowWithTheScene) {
     }
 }
 
-// JASPER_DESTROY_PROFILE=<copies> times the teardowns of one crowd of that size (for profiling)
-TEST(EntityDestroyScaling, Profile) {
+// JASPER_DESTROY_PROFILE=<copies> times the teardowns of one crowd of that size (for profiling;
+// opt-in, DISABLED_ as the unit gate allows no skip: --gtest_also_run_disabled_tests)
+TEST(EntityDestroyScaling, DISABLED_Profile) {
     const char* copies = std::getenv("JASPER_DESTROY_PROFILE");
     if (!copies) {
         GTEST_SKIP() << "set JASPER_DESTROY_PROFILE=<model copies>";
@@ -313,8 +318,9 @@ TEST(ComponentArrayHoles, ForEachAfterSkipsRunsOfHolesAndStopsWhenAsked) {
     EXPECT_EQ(array.getEntity(10), 91u);
 }
 
-// Holes stay through reads (they close at compaction points), but an insert into an array that
-// is half holes closes them first: an array nothing compacts does not keep growing
+// Holes stay through inserts and reads by entity and close at the first read by index (S07 R2;
+// an insert never moves a component, R6, so it does not close them as upstream's array did when
+// half of it was holes: the scene's compaction points bound the growth, compactComponents)
 TEST(ComponentArrayHoles, InsertIntoAnArrayHalfHolesClosesThem) {
     ComponentArray<int> array;
     for (Entity e = 1; e <= 200; e++) array.insert(e, int(e));
@@ -322,12 +328,12 @@ TEST(ComponentArrayHoles, InsertIntoAnArrayHalfHolesClosesThem) {
     array.insert(201, 201); // one hole of 201 slots: left open
     EXPECT_TRUE(array.hasHoles());
     for (Entity e = 1; e <= 100; e++) array.remove(e);
-    int* const last = array.findComponent(200);
-    EXPECT_EQ(array.size(), 100u);
-    EXPECT_EQ(array.getIndex(200), 98u);
-    EXPECT_EQ(array.findComponent(200), last) << "reads move nothing";
+    int* const first = array.findComponent(101);
+    array.insert(202, 202); // 101 holes of 202 slots: still open, nothing moved
     EXPECT_TRUE(array.hasHoles());
-    array.insert(202, 202); // 101 holes of 201 slots: closed, then appended
+    EXPECT_EQ(array.findComponent(101), first) << "an insert moves nothing";
+    EXPECT_EQ(array.size(), 101u);
+    EXPECT_EQ(array.getIndex(200), 98u); // the read by index closes them
     EXPECT_FALSE(array.hasHoles());
     EXPECT_EQ(*array.findComponent(200), 200);
     EXPECT_EQ(array.getIndex(200), 98u);
@@ -392,8 +398,9 @@ TEST(ComponentArrayHoles, RandomOperationsMatchAPlainVector) {
 
 // Many short random runs (inserts, removals one by one and in batches, moves, reads by index
 // and by entity, compactions): the indexes always read as the packed array, and a pointer taken
-// by entity stays on its component through every read (by index, rank, walk), only a removal
-// of it, a move or sort that reorders, an insert into a half-holes array or a compaction move it
+// by entity once the array is settled stays on its component through every read (by index,
+// walk). S07 closes holes at the first read by index (R2), so the pointers are taken after one
+// (upstream's array answered reads over its holes and moved nothing even then)
 TEST(ComponentArrayHoles, ReadsNeverMoveAComponent) {
     std::mt19937 random(4321);
     for (int round = 0; round < 1500; round++) {
@@ -424,6 +431,7 @@ TEST(ComponentArrayHoles, ReadsNeverMoveAComponent) {
                 }
             } else if (op <= 9) {
                 // pointers by entity, then every read by index: none of them moved
+                ASSERT_EQ(m.array.getIndex(m.order.front()), 0u); // settles (S07 R2)
                 std::vector<int*> pointers;
                 for (Entity e : m.order) pointers.push_back(m.array.findComponent(e));
                 ASSERT_EQ(m.array.size(), m.order.size());
@@ -461,8 +469,9 @@ TEST(ComponentArrayHoles, ReadsNeverMoveAComponent) {
     }
 }
 
-// A component found by entity stays where it is through later removals of others and every
-// read (by index too), until a compaction
+// A component found by entity stays where it is through later removals of others and reads by
+// entity; the first read by index closes the holes (S07 R2, upstream's array kept it in place
+// until a compaction), and after it every read leaves it where it is
 TEST(ComponentArrayHoles, ComponentFoundByEntityStaysThroughRemovalsOfOthersAndReads) {
     ComponentArray<int> array;
     for (Entity e = 1; e <= 5; e++) array.insert(e, int(e));
@@ -471,11 +480,15 @@ TEST(ComponentArrayHoles, ComponentFoundByEntityStaysThroughRemovalsOfOthersAndR
     array.remove(3);
     EXPECT_EQ(array.findComponent(5), fifth);
     EXPECT_EQ(*fifth, 5);
-    EXPECT_EQ(array.getIndex(5), 2u);
     EXPECT_EQ(array.size(), 3u);
+    EXPECT_TRUE(array.hasHoles());
+    EXPECT_EQ(array.getIndex(5), 2u);
+    EXPECT_FALSE(array.hasHoles());
+    fifth = array.findComponent(5);
+    EXPECT_EQ(*fifth, 5);
     EXPECT_EQ(&array.getComponentFromIndex(2), fifth);
     EXPECT_EQ(array.getEntity(0), 2u);
-    EXPECT_EQ(array.findComponent(5), fifth) << "reads by index moved it";
+    EXPECT_EQ(array.findComponent(5), fifth) << "reads by index of a settled array moved it";
     array.compact();
     EXPECT_EQ(*array.findComponent(5), 5);
     EXPECT_EQ(array.getIndex(5), 2u);

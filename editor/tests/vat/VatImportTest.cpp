@@ -109,6 +109,9 @@ namespace {
         EXPECT_LT(worst, tolerance) << what << ": a vertex leaves the export's bounds by " << worst;
     }
 
+// The SideFX exports are not in the repository (the VAT 3 tutorial project's files), so these
+// tests are opt-in: DISABLED_, as the unit gate allows no skip (docs/testing.md); run them with
+// JASPER_VAT_SIDEFX_EXAMPLES=... --gtest_also_run_disabled_tests --gtest_filter='VatImportSideFx.*'
 #define REQUIRE_SIDEFX()                                                                                                              \
     if (!haveSidefx()) GTEST_SKIP() << "the SideFX VAT 3 tutorial exports are not at " << sidefxExamples().string()                    \
                                     << " (set JASPER_VAT_SIDEFX_EXAMPLES to VAT3_Houdini/VAT_Example_Files of the tutorial project)"
@@ -1007,7 +1010,7 @@ TEST(VatImport, OpenVatNoAnimationsFbxPng) {
 
 // ===================================================================== the SideFX tutorial exports
 
-TEST(VatImportSideFx, SoftBodyCloth) {
+TEST(VatImportSideFx, DISABLED_SoftBodyCloth) {
     REQUIRE_SIDEFX();
     ev::VatImportSpec spec;
     spec.path = (sidefxExamples() / "Soft_body").string();
@@ -1048,7 +1051,7 @@ TEST(VatImportSideFx, SoftBodyCloth) {
     expectInsideExportBounds(r, V3(-8.1, -12.706, -5.4), V3(8.1, 0, 5.17), "cloth");
 }
 
-TEST(VatImportSideFx, RigidBodyDestruction) {
+TEST(VatImportSideFx, DISABLED_RigidBodyDestruction) {
     REQUIRE_SIDEFX();
     // Auto, default preset (mobile_web): one bone per piece, two texels per bone per sample
     ev::VatImportSpec spec;
@@ -1099,7 +1102,7 @@ TEST(VatImportSideFx, RigidBodyDestruction) {
     ASSERT_TRUE(ev::encodeVatImport(copy, out.string(), files, &error)) << error;
 }
 
-TEST(VatImportSideFx, RigidBodyDestructionAsVertices) {
+TEST(VatImportSideFx, DISABLED_RigidBodyDestructionAsVertices) {
     REQUIRE_SIDEFX();
     ev::VatImportSpec spec;
     spec.path = (sidefxExamples() / "RBD" / "geo" / "RBD_Simulation_mesh.fbx").string();
@@ -1122,7 +1125,7 @@ TEST(VatImportSideFx, RigidBodyDestructionAsVertices) {
     expectInsideExportBounds(r, V3(-3.3, -0.201, -6.1), V3(3.7, 2.3, 7.77), "destruction (vertices)", 0.1);
 }
 
-TEST(VatImportSideFx, FluidSplash) {
+TEST(VatImportSideFx, DISABLED_FluidSplash) {
     REQUIRE_SIDEFX();
     ev::VatImportSpec spec;
     spec.path = (sidefxExamples() / "Fluid" / "unity" / "Fluid_Simulation_mat.mat").string();
@@ -1141,7 +1144,7 @@ TEST(VatImportSideFx, FluidSplash) {
     expectInsideExportBounds(r, V3(-6.03, -6.928, -6.3), V3(6.1, 3.3, 5.57), "fluid");
 }
 
-TEST(VatImportSideFx, SpritesAreRefused) {
+TEST(VatImportSideFx, DISABLED_SpritesAreRefused) {
     REQUIRE_SIDEFX();
     ev::VatImportSpec spec;
     spec.path = (sidefxExamples() / "Sprites").string();
