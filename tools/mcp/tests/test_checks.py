@@ -467,13 +467,17 @@ async def test_cli_anims_guid_mismatch_and_unreadable_yaml():
 
 # ---------------------------------------------------------------------------- CLI: shaders
 
+# a whole-project --shaders check also counts the scenes' NavMesh Surfaces (S19 R42): none here
+ONE_FORK = {"navigation": 0, "shaders": 1}
+
+
 async def test_cli_shaders():
     with scratch_project() as project:
         vert, frag = shader_fork(project)
         r = run_check(project, "--shaders")
         check_eq(r.returncode, 0, f"a fresh fork (not used by any scene yet) compiles: {r.stdout}{r.stderr}")
         code, data = run_json(project, "--shaders")
-        check_eq(data["checked"], {"shaders": 1}, "one fork")
+        check_eq(data["checked"], ONE_FORK, "one fork")
 
         source = (project / frag).read_text()
         broken, line = break_main(source, "    undefined_symbol_cli = 1.0;")
@@ -496,10 +500,10 @@ async def test_cli_shaders():
         # --files with the .frag only checks its fork; a lone .vert without its pair is ignored
         (project / frag).write_text(source)
         code, data = run_json(project, "--files", frag)
-        check_eq((code, data["checked"]), (0, {"shaders": 1}), "fixed")
+        check_eq((code, data["checked"]), (0, ONE_FORK), "fixed")
         write(project, "shaders/Lonely.vert", "#version 450\nvoid main() { nope }\n")
         code, data = run_json(project, "--shaders")
-        check_eq((code, data["checked"]), (0, {"shaders": 1}), "a .vert without a .frag is not a fork")
+        check_eq((code, data["checked"]), (0, ONE_FORK), "a .vert without a .frag is not a fork")
 
 
 EFFECT_FRAG = """#version 450
