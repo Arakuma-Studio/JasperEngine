@@ -1566,6 +1566,10 @@ void Engine::systemInit(int argc, char* argv[], System* system){
 
 void Engine::systemViewLoaded(){
     SystemRender::setup();
+    // which graphics API and context the game really runs on (support, and the checks that a
+    // gles3 player runs on an OpenGL ES context)
+    Log::print("Graphics: %s; %s; %s", SystemRender::getBackendName(), SystemRender::getApiVersion().c_str(),
+              SystemRender::getDeviceName().c_str());
 
     if (mouseCursorType != CursorType::ARROW){
         System::instance().setMouseCursor(mouseCursorType);

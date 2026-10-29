@@ -27,6 +27,7 @@ first failure, with the log. Standard library only.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -108,6 +109,7 @@ def check_linux(args, players: Path, out: Path) -> None:
     backends = [b for b in args.backends.split(",") if f"linux-x64-{b}-release" in installed]
     if not backends:
         raise Failure(f"no Linux player runtime in {players} for {args.backends}: run tools/build.sh players")
+    executables: dict[str, Path] = {}
     with Xvfb():
         for backend in backends:
             target = out / f"linux-{backend}"
@@ -135,6 +137,24 @@ def check_linux(args, players: Path, out: Path) -> None:
                 run([sys.executable, REPO / "tools/mcp/pngdiff.py", shot, golden, "--tolerance", "24", "--max-fraction", "0.01",
                      "--diff", out / f"linux-{backend}-diff.png"])
             print(f"ok: linux {backend} ran and matches its golden")
+            # the context it really ran on (Engine's "Graphics:" line): a gles3 player on OpenGL ES
+            graphics = next((line for line in (game.stdout + game.stderr).splitlines() if line.startswith("Graphics: ")), "")
+            expected = {"glcore": "OpenGL 3.3 core", "gles3": "OpenGL ES", "vulkan": "Vulkan"}[backend]
+            if expected not in graphics or (backend == "gles3" and "OpenGL ES 3" not in graphics.split(";")[1]):
+                raise Failure(f"linux {backend}: the player ran on another context: {graphics!r}")
+            print(f"ok: linux {backend} context: {graphics}")
+            executables[backend] = exe
+
+        # the players are different binaries: their own hashes, and the GLES one links libGLESv2
+        hashes = {b: hashlib.sha256(p.read_bytes()).hexdigest() for b, p in executables.items()}
+        if len(set(hashes.values())) != len(hashes):
+            raise Failure(f"two Linux players are the same binary: {hashes}")
+        for b, p in executables.items():
+            needs_gles = b"libGLESv2.so.2" in p.read_bytes()
+            if needs_gles != (b == "gles3"):
+                raise Failure(f"linux {b}: {'needs' if needs_gles else 'does not need'} libGLESv2.so.2")
+        print("ok: the players are distinct binaries; only gles3 links libGLESv2.so.2: " +
+              ", ".join(f"{b} {h[:12]}" for b, h in sorted(hashes.items())))
 
         # R19: bad options exit 2, content of another player 5
         backend = backends[0]

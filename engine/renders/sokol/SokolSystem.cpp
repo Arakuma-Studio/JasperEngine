@@ -391,6 +391,10 @@ std::string SokolSystem::getDeviceName(){
     return sg_isvalid() ? std::string(sgj_device_name()) : std::string();
 }
 
+std::string SokolSystem::getApiVersion(){
+    return sg_isvalid() ? std::string(sgj_api_version()) : std::string();
+}
+
 void SokolSystem::setVulkanHostQueryReset(bool enabled){
     sgj_gpu_timer_set_vulkan_host_query_reset(enabled);
 }
