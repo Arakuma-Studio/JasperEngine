@@ -750,7 +750,9 @@ void SokolAsyncCreate::shutdown(){
     s.deferredShaderDestroys.clear();
 
     if (s.caps.pipeline_on_thread){
-        writeVkCache(s);
+        // what this run added since the last save (an unchanged file is left as it is)
+        if (s.vkCacheDirty)
+            writeVkCache(s);
         sgj_vk_pipeline_cache_destroy();
     }
     s.vkCachePath.clear();
