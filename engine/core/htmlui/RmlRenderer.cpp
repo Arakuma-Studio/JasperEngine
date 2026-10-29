@@ -2230,8 +2230,14 @@ void RmlRenderer::compositeLayersNow(Rml::LayerHandle sourceHandle, Rml::LayerHa
     }
     flushDeferredComposite();
 
-    // a layer nothing was drawn into is transparent: blending or adding it changes nothing
-    if (blendMode != Rml::BlendMode::Replace && source < (int)layerClearPending.size() && layerClearPending[source])
+    // a layer nothing was drawn into is transparent: blending or adding it changes nothing; but
+    // an effect filter makes content of its own (a stateful one steps and shows its history):
+    // its layer may be empty because S16 culled content wholly outside the clip root's window
+    // (P7-F1), which upstream drew for the GPU to clip
+    bool effectFilter = false;
+    for (Rml::CompiledFilterHandle handle : filters)
+        effectFilter = effectFilter || (handle && htmlui::EffectRenderer::isEffectHandle(handle));
+    if (blendMode != Rml::BlendMode::Replace && !effectFilter && source < (int)layerClearPending.size() && layerClearPending[source])
         return;
     ensureLayerCleared(source);
 
