@@ -947,8 +947,18 @@ Kept current so the work can continue after an interruption.
   (`writePath` / `readPath` in `CookCodecs.h`). A `spline` afterLoad hook keeps the decode's
   invariants (radii, the unit up axis) and bumps the curve's version. Covered by the
   `CookedScene.SplineCurveThroughAccessors` test.
+- **Merges:**
+  - oe-port 40bec8043 (BF8) is merged. The guide keeps one line for shipping
+    (`build_project: ...; ship: jasper://docs/shipping.`). That line replaces the old Export
+    sentence and is one byte shorter, so the headroom check still passes.
+  - `RuntimeFields.gen.inc` was regenerated after the S18 merge and now holds 77 components.
+- **Fixes found by the runs:**
+  - S18's OpenEngine notice for `core/spline` was copied from the export's engine copy, and a
+    prebuilt build has none. It now comes from `Exporter::engineSourceDir()`: the export's copy,
+    else the editor's engine. Caught by MCP `test_prebuilt_linux_build` and `test_release_flow`.
+  - `writeSteamScripts` kept a caller's earlier error message, which failed the next upload
+    (`PublishSteam.UploadRunsSteamcmdAfterVerify`).
 - **Next:**
-  - regenerate `RuntimeFields.gen.inc`;
   - run the unit tests (and ASan), the MCP suite, and smoke (compile and prebuilt);
   - measure the release Android size (`tools/ci/android_size.sh`);
   - merge oe-port, regenerate TOOLS.md, and run the gate.
