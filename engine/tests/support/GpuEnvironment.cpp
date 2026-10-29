@@ -118,8 +118,12 @@ Framebuffer& GpuEnvironment::target(){
 }
 
 bool GpuEnvironment::isReferenceRenderer(){
+#if defined(JASPER_TEST_HAS_GPU)
     const char* renderer = HeadlessContext::getRendererName();
     return !renderer || renderer[0] == '\0' || std::strstr(renderer, "llvmpipe") != nullptr;
+#else
+    return true;   // no device: nothing is compared
+#endif
 }
 
 void GpuEnvironment::shutdown(){

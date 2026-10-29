@@ -10,6 +10,8 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+
 #include "util/FloatImage.h"
 #include "util/PngWriter.h"
 
@@ -183,16 +185,17 @@ namespace {
         const uint32_t length = static_cast<uint32_t>(payload.size());
         for (int s = 24; s >= 0; s -= 8)
             chunk.push_back(static_cast<uint8_t>(length >> s));
-        // (byte by byte: GCC 11's -Wstringop-overread misreads a range insert from the decayed array)
         for (int i = 0; i < 4; i++)
             chunk.push_back(static_cast<uint8_t>(type[i]));
         chunk.insert(chunk.end(), payload.begin(), payload.end());
         const uint32_t crc = crc32(chunk.data() + 4, chunk.size() - 4);
         for (int s = 24; s >= 0; s -= 8)
             chunk.push_back(static_cast<uint8_t>(crc >> s));
-        std::vector<uint8_t> out(png.begin(), png.begin() + 33);
-        out.insert(out.end(), chunk.begin(), chunk.end());
-        out.insert(out.end(), png.begin() + 33, png.end());
+        // (copied into place: GCC 11's -Wstringop-overread misreads vector::insert's reallocation)
+        std::vector<uint8_t> out(png.size() + chunk.size());
+        std::copy(png.begin(), png.begin() + 33, out.begin());
+        std::copy(chunk.begin(), chunk.end(), out.begin() + 33);
+        std::copy(png.begin() + 33, png.end(), out.begin() + 33 + static_cast<std::ptrdiff_t>(chunk.size()));
         return out;
     }
 
