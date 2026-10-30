@@ -80,8 +80,12 @@ async def frames_of(ed: Editor, frames: int) -> list[dict]:
     out = []
     for index in range(first, first + int(capture.get("frames", frames))):
         frame = await ed.call("get_cpu_profile", capture_id=capture["capture_id"], frame=index, view="tree",
-                              thread="Main Thread", filter="GPU", max_rows=200)
-        out.append({"frame_ms": float(frame.get("frame_ms") or 0.0), "creation_ms": main_creation_ms(frame.get("rows", []))})
+                              thread="Main Thread", max_rows=400)
+        rows = frame.get("rows", [])
+        # the frame's heaviest scopes two levels down, for the report of the worst frame
+        top = sorted((r for r in rows if r.get("depth", 0) <= 2), key=lambda r: -float(r.get("total_ms", 0.0)))[:6]
+        out.append({"frame_ms": float(frame.get("frame_ms") or 0.0), "creation_ms": main_creation_ms(rows),
+                    "top": [(r.get("name"), round(float(r.get("total_ms", 0.0)), 1)) for r in top]})
     return out
 
 
@@ -138,8 +142,10 @@ async def one_run(args: argparse.Namespace, run: int) -> dict:
             "worst_frame_ms": max(f["frame_ms"] for f in toggled),
         }
         result["worst_frame_ratio"] = result["worst_frame_ms"] / idle_median if idle_median > 0 else 0.0
+        worst = max(toggled, key=lambda f: f["frame_ms"])
         print(f"run {run}: mode {mode}, idle median {idle_median:.1f} ms, max main creation {result['max_main_ms']:.2f} ms, "
-              f"worst frame {result['worst_frame_ms']:.1f} ms ({result['worst_frame_ratio']:.2f}x)", flush=True)
+              f"worst frame {result['worst_frame_ms']:.1f} ms ({result['worst_frame_ratio']:.2f}x), "
+              f"{len(toggled)} toggle frames; worst frame's scopes {worst['top']}", flush=True)
         return result
 
 
