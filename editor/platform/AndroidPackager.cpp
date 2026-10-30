@@ -68,15 +68,6 @@ namespace {
         }
     };
 
-    std::vector<std::string> selectedAbis(const AndroidProjectSettings& settings) {
-        std::vector<std::string> abis;
-        if (settings.abiArm64V8a) abis.push_back("arm64-v8a");
-        if (settings.abiArmeabiV7a) abis.push_back("armeabi-v7a");
-        if (settings.abiX86) abis.push_back("x86");
-        if (settings.abiX86_64) abis.push_back("x86_64");
-        return abis;
-    }
-
     bool copyTree(const fs::path& from, const fs::path& to, std::string& error) {
         std::error_code ec;
         fs::create_directories(to, ec);
@@ -124,6 +115,31 @@ bool platform::writeAndroidManifest(const AndroidPackage& package, const std::st
     return true;
 }
 
+std::vector<std::string> platform::selectedAndroidAbis(const AndroidProjectSettings& settings) {
+    std::vector<std::string> abis;
+    if (settings.abiArm64V8a) abis.push_back("arm64-v8a");
+    if (settings.abiArmeabiV7a) abis.push_back("armeabi-v7a");
+    if (settings.abiX86) abis.push_back("x86");
+    if (settings.abiX86_64) abis.push_back("x86_64");
+    return abis;
+}
+
+std::vector<std::pair<std::string, uint64_t>> platform::androidLibrarySizes(const fs::path& runtimeAndroidDir,
+                                                                            const std::vector<std::string>& abis) {
+    std::vector<std::pair<std::string, uint64_t>> sizes;
+    std::error_code ec;
+    for (const std::string& abi : abis) {
+        uint64_t bytes = 0;
+        for (const auto& entry : fs::directory_iterator(runtimeAndroidDir / "lib" / abi, ec)) {
+            if (entry.path().extension() != ".so") continue;
+            const uintmax_t size = entry.file_size(ec);
+            if (!ec) bytes += size;
+        }
+        sizes.emplace_back(abi, bytes);
+    }
+    return sizes;
+}
+
 bool platform::buildAndroidPackage(const AndroidPackage& package, CommandRunner& runner, const std::function<bool()>& cancelled,
                                    std::vector<BuildWarning>& warnings, std::string& error) {
     const bool bundle = package.format == AndroidFormat::Aab;
@@ -140,7 +156,7 @@ bool platform::buildAndroidPackage(const AndroidPackage& package, CommandRunner&
             return false;
         }
     }
-    const std::vector<std::string> abis = selectedAbis(package.settings);
+    const std::vector<std::string> abis = package.abis.empty() ? selectedAndroidAbis(package.settings) : package.abis;
     if (abis.empty()) {
         error = "no Android architecture is selected (Project Settings > Android > Architectures)";
         return false;

@@ -149,7 +149,8 @@ namespace {
             "  --method m               auto (default: the project's), prebuilt or compile\n"
             "  --development            the development flavour (the profiler, --profile)\n"
             "  --pack                   the content in content.jpak\n"
-            "  --android-format f       apk (default) or aab\n"
+            "  --android-format f       aab (Google Play: one ABI per device), apk-per-abi, or apk (one\n"
+            "                           universal APK of every ABI). Default: Project Settings > Android\n"
             "  --start-scene s          the scene the game starts with (id or name)\n"
             "  --players-dir D          where the player runtimes are (also JASPER_PLAYERS_DIR)\n"
             "  --allow-player-mismatch  a player of another engine version (engine development only)\n"
@@ -169,7 +170,7 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
     attachConsole();
     EditorHostOverrideGuard hostOverride(nullptr);
     fs::path projectPath, out, playersDir;
-    std::string platformName, backend, method = "auto", androidFormat = "apk", startScene;
+    std::string platformName, backend, method = "auto", androidFormat, startScene;
     bool development = false, pack = false, json = false, mismatch = false, simulator = false, allowMissing = false;
     for (int i = 1; i < argc; i++) {
         const std::string arg = argv[i];
@@ -227,10 +228,8 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
         std::fprintf(stderr, "build: --method is auto, prebuilt or compile (got %s)\n", method.c_str());
         return 2;
     }
-    if (androidFormat == "apk") config.androidFormat = AndroidFormat::Apk;
-    else if (androidFormat == "aab") config.androidFormat = AndroidFormat::Aab;
-    else {
-        std::fprintf(stderr, "build: --android-format is apk or aab (got %s)\n", androidFormat.c_str());
+    if (!androidFormat.empty() && !parseAndroidFormat(androidFormat, config.androidFormat)) {
+        std::fprintf(stderr, "build: --android-format is aab, apk-per-abi or apk (got %s)\n", androidFormat.c_str());
         return 2;
     }
     if (!backend.empty() && normalizeBackend(backend).empty()) {
@@ -272,6 +271,8 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
             config.assetsDir = project.getAssetsDir();
             config.luaDir = project.getLuaDir();
             config.startSceneId = sceneIdOf(project, startScene);
+            // no --android-format: the project's (Project Settings > Android > Package Format)
+            if (androidFormat.empty()) parseAndroidFormat(project.getAndroidProjectSettings().packageFormat, config.androidFormat);
             if (!startScene.empty() && config.startSceneId == 0) {
                 error = "--start-scene " + startScene + ": no scene of that id or name";
             } else {

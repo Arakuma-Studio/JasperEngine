@@ -14,9 +14,11 @@
 #include "ShippingTypes.h"
 #include "util/CommandRunner.h"
 
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace jasperengine::editor::platform {
@@ -33,7 +35,10 @@ namespace jasperengine::editor::platform {
         std::filesystem::path projectPath;     // the project's icons are relative to it
         std::filesystem::path workDir;
         std::filesystem::path output;
-        AndroidFormat format = AndroidFormat::Apk;
+        // Aab, or an APK (Apk and ApkPerAbi alike: the caller makes one package per ABI, with abis)
+        AndroidFormat format = AndroidFormat::Aab;
+        // the ABIs it holds; empty: the project's selection (settings)
+        std::vector<std::string> abis;
         bool debug = false;
         // empty: the debug keystore (made with keytool when missing)
         std::filesystem::path keystore;
@@ -47,5 +52,12 @@ namespace jasperengine::editor::platform {
 
     bool buildAndroidPackage(const AndroidPackage& package, CommandRunner& runner, const std::function<bool()>& cancelled,
                              std::vector<BuildWarning>& warnings, std::string& error);
+
+    // the project's selected ABIs (Project Settings > Android > Architectures), in package order
+    std::vector<std::string> selectedAndroidAbis(const AndroidProjectSettings& settings);
+    // the bytes of each ABI's native libraries in a player runtime's android/ (lib/<abi>/*.so):
+    // what an APK of that ABI carries, stored (Build Settings shows the package sizes from it)
+    std::vector<std::pair<std::string, uint64_t>> androidLibrarySizes(const std::filesystem::path& runtimeAndroidDir,
+                                                                      const std::vector<std::string>& abis);
 
 }

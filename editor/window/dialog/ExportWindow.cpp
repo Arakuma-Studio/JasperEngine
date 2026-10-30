@@ -1333,7 +1333,8 @@ void ExportWindow::startConfiguredExport(bool overwriteTarget) {
         exportConfig.destinationDir = m_targetDir;
         exportConfig.platform = shipPlatform();
         exportConfig.graphicBackend = playerBackend();
-        exportConfig.androidFormat = android.packageFormat == "aab" ? AndroidFormat::Aab : AndroidFormat::Apk;
+        exportConfig.androidFormat = AndroidFormat::Aab;
+        parseAndroidFormat(android.packageFormat, exportConfig.androidFormat);
         exportConfig.keystorePassword = m_keystorePassword;
         exportConfig.keyPassword = m_keyPassword;
         std::fill(std::begin(m_keystorePassword), std::end(m_keystorePassword), '\0');

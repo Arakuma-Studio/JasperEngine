@@ -66,6 +66,25 @@ bool editor::parseBuildMethod(const std::string& name, BuildMethod& out) {
     return false;
 }
 
+const char* editor::androidFormatName(AndroidFormat format) {
+    switch (format) {
+        case AndroidFormat::Aab: return "aab";
+        case AndroidFormat::ApkPerAbi: return "apk-per-abi";
+        case AndroidFormat::Apk: return "apk";
+    }
+    return "aab";
+}
+
+bool editor::parseAndroidFormat(const std::string& name, AndroidFormat& out) {
+    for (AndroidFormat format : {AndroidFormat::Aab, AndroidFormat::ApkPerAbi, AndroidFormat::Apk}) {
+        if (name == androidFormatName(format)) {
+            out = format;
+            return true;
+        }
+    }
+    return false;
+}
+
 std::vector<std::string> editor::platformBackends(BuildPlatform platform) {
     switch (platform) {
         case BuildPlatform::Windows: return {"d3d11", "glcore", "vulkan"};

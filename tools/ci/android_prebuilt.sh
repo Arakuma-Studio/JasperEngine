@@ -33,7 +33,7 @@ YAML
 DEV_FLAG=""
 [[ "$FLAVOUR" == development ]] && DEV_FLAG="--development"
 tools/build.sh exec android bash -c "dbus-run-session -- env JASPER_PLAYERS_DIR=/src/build/players \
-    build/linux/editor-install/bin/jasperengine-editor build --project $OUT/project --platform android $DEV_FLAG --out $OUT/game \
+    build/linux/editor-install/bin/jasperengine-editor build --project $OUT/project --platform android --android-format apk $DEV_FLAG --out $OUT/game \
     | tee $OUT/build.log"
 grep -q "^method: prebuilt" "$OUT/build.log" || { echo "FAIL: not built with the prebuilt player" >&2; exit 1; }
 APK="$(sed -n 's/^executable: //p' "$OUT/build.log" | head -1)"

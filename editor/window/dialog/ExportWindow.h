@@ -11,6 +11,7 @@
 #include "imgui.h"
 
 #include <atomic>
+#include <cstdint>
 #include <string>
 #include <filesystem>
 #include <functional>
@@ -20,6 +21,7 @@
 #include <optional>
 #include <set>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace jasperengine::editor {
@@ -134,6 +136,8 @@ namespace jasperengine::editor {
         std::string m_playerRuntimeId;
         std::string m_playerRuntimeError;
         std::vector<std::string> m_androidMissing;    // the SDK tools a prebuilt Android build lacks
+        // the installed Android runtime's native libraries per selected ABI (the package sizes shown)
+        std::vector<std::pair<std::string, uint64_t>> m_androidLibrarySizes;
         void refreshPlayerState();
         void drawPlayerRows();
         bool playerBuildBlocked(std::string& why) const;

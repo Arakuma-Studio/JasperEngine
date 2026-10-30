@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 """What takes the space in a native library (docs/specs/S30-shipping.md, shipped size): the
-symbols of an unstripped library (a player runtime's symbols/, the build's own output) grouped by
-the source directory their debug information names: engine/libs/<library>, engine/core/<area>,
-engine/renders/<backend>, engine/platform/<platform>, the C++ standard library's templates, and
-the rest. Code and data symbols count (nm types t/T, d/D, b/B, r/R, w/W, v/V, u).
+symbols of a library (a player runtime's symbols/, or the build's own output) grouped by what
+they belong to. Code and data symbols count (nm types t/T, d/D, b/B, r/R, w/W, v/V, u).
 
-    python3 tools/players/lib_size.py <library.so> [--nm NM] [--top 40] [--json out.json]
-    python3 tools/players/lib_size.py --from-nm <nm-output.txt> ...   (the output of
-        nm --print-size --size-sort --line-numbers --demangle <library>)
+By name (the default, fast): the third-party libraries of engine/libs by their prefixes and
+namespaces (glslang::, JPH::, Rml::, dav1d_...), the engine's areas by namespace and class name
+(engine: fluid, engine: navigation...), the C++ standard library, the Android glue.
+By line (--lines, slow on a large library): the source directory each symbol's debug information
+names (engine/libs/<library>, engine/core/<area>...).
+
+    python3 tools/players/lib_size.py <library.so> [--lines] [--nm NM] [--top 40] [--json out.json]
+    python3 tools/players/lib_size.py --from-nm <nm-output.txt> [--lines] ...   (the output of
+        nm --print-size --size-sort --demangle [--line-numbers] <library>)
 
 NM defaults to llvm-nm, then nm. Standard library only.
 """
@@ -52,7 +56,80 @@ def group(path: str | None) -> str:
     return "other: " + "/".join(p.split("/")[-3:-1])
 
 
-def parse(lines) -> dict[str, list[int]]:
+# (pattern on the demangled name, group): the first that matches names the symbol's group
+NAMES = [(re.compile(p), g) for p, g in [
+    (r"^(glslang::|TPpContext|spv::|QualifierFlags|ShInitialize|ShFinalize)", "lib: glslang (runtime shader compiler)"),
+    (r"^spirv_cross::|^spvc_", "lib: spirv-cross (runtime shader compiler)"),
+    (r"^JPH::", "lib: joltphysics (3D physics)"),
+    (r"^b2[A-Z_]", "lib: box2d (2D physics)"),
+    (r"^(dt|rc|du)[A-Z]", "lib: recastnavigation (navigation)"),
+    (r"^Rml::", "lib: rmlui (HTML UI)"),
+    (r"^tvg::|^tvg[A-Z_]", "lib: thorvg (HTML UI vector, Lottie)"),
+    (r"^lunasvg::|^plutovg_", "lib: lunasvg (HTML UI SVG)"),
+    (r"^(lxb_|lexbor_)", "lib: lexbor (HTML UI parser)"),
+    (r"^dav1d", "lib: dav1d (video AV1)"),
+    (r"^(opus|silk_|celt_|ec_|quant_|clt_|alg_|spreading_|tf_select)", "lib: opus (video audio)"),
+    (r"^(mkvparser|mkvmuxer)::", "lib: libwebm (video container)"),
+    (r"^(hb_|OT::|AAT::|CFF::|_hb_|graph::)", "lib: harfbuzz (text shaping)"),
+    (r"^SB[A-Z]", "lib: sheenbidi (bidi text)"),
+    (r"^(lua[A-Z_]|luaopen_|luai_)", "lib: lua"),
+    (r"^luabridge::", "lib: luabridge3 (Lua bindings, templates)"),
+    (r"^(ZSTD|HUF_|FSE_|ZSTDv)", "lib: zstd"),
+    (r"^(basist|basisu)::", "lib: basisu (texture transcoder)"),
+    (r"^msdfgen::|^msdf_", "lib: msdfgen (font atlases)"),
+    (r"^tinygltf::", "lib: tinygltf"),
+    (r"^tinyobj::", "lib: tinyobjloader"),
+    (r"^tinyxml2::", "lib: tinyxml2"),
+    (r"^(SoLoud::|soloud_|Soloud_|ma_|drwav_|drmp3_|drflac_|stb_vorbis)", "lib: soloud + miniaudio (audio)"),
+    (r"^(stbi|stbtt|stbir|stb_)", "lib: stb"),
+    (r"^meshopt_", "lib: meshoptimizer"),
+    (r"^nlohmann::", "lib: nlohmann json"),
+    (r"^(sg_|_sg_|_sg|sgj_|sapp_|_sapp|sgl_|sdtx_|smemtrack)", "lib: sokol (graphics backend)"),
+    (r"^bcdec_", "lib: bcdec"),
+    (r"^(GameActivity|Swappy|swappy::|gamesdk::|android_app|Java_com_google|_GameActivity|ndk_helper)", "android: GameActivity + Swappy"),
+    (r"^(std::|__cxx|__gnu|__cxa|__gxx|operator new|operator delete|__libcpp|__ndk1)", "C++ standard library"),
+]]
+ENGINE_AREAS = [(re.compile(p, re.I), g) for p, g in [
+    (r"htmlui|HtmlUI|UIDocument|Rml", "engine: HTML UI"),
+    (r"fluid", "engine: fluid simulation"),
+    (r"nav(igation|mesh|grid|agent)?|crowd", "engine: navigation"),
+    (r"spline", "engine: splines"),
+    (r"lattice", "engine: lattice deformer"),
+    (r"particle", "engine: particles"),
+    (r"terrain|foliage", "engine: terrain"),
+    (r"physics|body|joint|collider|character|buoyan|raycast", "engine: physics"),
+    (r"video|webm", "engine: video"),
+    (r"audio|sound", "engine: audio"),
+    (r"lua|script", "engine: Lua and scripts"),
+    (r"shader|sokol|render|texture|framebuffer|material|light|shadow|camera|sky|postprocess|uber|gpu|draw", "engine: rendering"),
+    (r"mesh|model|gltf|obj|skin|bone|morph|pose|anim|action|tween|keyframe|clip", "engine: meshes and animation"),
+    (r"font|text|glyph|label|ui|button|panel|image|container|scrollbar|progress|input", "engine: UI (sprites, text)"),
+    (r"scene|entity|registry|system|component|transform|engine|ecs", "engine: scene and ECS"),
+    (r"cook|jpak|serializ|pack|resource|file|content|player|launch", "engine: content and player"),
+]]
+
+
+def name_group(name: str) -> str:
+    """The group of a demangled symbol name."""
+    for pattern, g in NAMES:
+        if pattern.search(name):
+            return g
+    if name.startswith("jasperengine::"):
+        rest = name[len("jasperengine::"):]
+        head = re.split(r"::|\(|<| ", rest, maxsplit=1)[0]
+        for pattern, g in ENGINE_AREAS:
+            if pattern.search(head):
+                return g
+        return "engine: other"
+    if name.startswith(("vtable for jasperengine", "typeinfo for jasperengine", "typeinfo name for jasperengine",
+                        "guard variable for jasperengine")):
+        return "engine: vtables and RTTI"
+    if name.startswith(("vtable for", "typeinfo")):
+        return "vtables and RTTI (other)"
+    return "other"
+
+
+def parse(lines, by_lines: bool = False) -> dict[str, list[int]]:
     """{group: [bytes, symbols]}"""
     groups: dict[str, list[int]] = defaultdict(lambda: [0, 0])
     for line in lines:
@@ -60,17 +137,17 @@ def parse(lines) -> dict[str, list[int]]:
         if not m or m.group(3) not in KINDS:
             continue
         size = int(m.group(2), 16)
-        g = groups[group(m.group(5))]
+        g = groups[group(m.group(5)) if by_lines else name_group(m.group(4))]
         g[0] += size
         g[1] += 1
     return dict(groups)
 
 
-def run_nm(library: Path, nm: str | None) -> list[str]:
+def run_nm(library: Path, nm: str | None, by_lines: bool) -> list[str]:
     tool = nm or shutil.which("llvm-nm") or shutil.which("nm")
     if not tool:
         sys.exit("no nm: pass --nm")
-    out = subprocess.run([tool, "--print-size", "--size-sort", "--line-numbers", "--demangle", str(library)],
+    out = subprocess.run([tool, "--print-size", "--size-sort", "--demangle", *(["--line-numbers"] if by_lines else []), str(library)],
                          capture_output=True, text=True, errors="replace")
     if out.returncode != 0:
         sys.exit(f"{tool} failed: {out.stderr[-2000:]}")
@@ -82,16 +159,17 @@ def main() -> int:
     ap.add_argument("library", nargs="?", type=Path)
     ap.add_argument("--from-nm", type=Path, help="read nm's output instead of running it")
     ap.add_argument("--nm", help="the nm to run (default llvm-nm, then nm)")
+    ap.add_argument("--lines", action="store_true", help="group by the source directory of the debug information (slow)")
     ap.add_argument("--top", type=int, default=40)
     ap.add_argument("--json", type=Path)
     args = ap.parse_args()
     if args.from_nm:
         lines = args.from_nm.read_text(errors="replace").splitlines()
     elif args.library:
-        lines = run_nm(args.library, args.nm)
+        lines = run_nm(args.library, args.nm, args.lines)
     else:
         ap.error("a library or --from-nm")
-    groups = parse(lines)
+    groups = parse(lines, args.lines)
     total = sum(v[0] for v in groups.values()) or 1
     ranked = sorted(groups.items(), key=lambda kv: -kv[1][0])
     print(f"{'bytes':>12} {'share':>6} {'symbols':>8}  group")

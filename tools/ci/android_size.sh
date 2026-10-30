@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # What a shipped Android build of tools/fixtures/unified-lighting weighs (docs/specs/S30-shipping.md,
 # shipped size): the release android-universal-gles3 runtime (its stripped libraries and the
-# symbols split off them), release APKs built from it by the editor (every ABI, arm64-v8a only,
-# armeabi-v7a only) next to a compiled arm64-v8a build of the same project (its exported source
-# project built by Gradle), each broken down by
-# tools/players/apk_size.py; the release prebuilt APK then runs on the emulator.
+# symbols split off them); the editor's release packages of every ABI from it (the universal APK,
+# one APK per ABI, and the App Bundle with Google Play's download size per ABI) next to a compiled
+# arm64-v8a build of the same project (its exported source project built by Gradle), each broken
+# down by tools/players/apk_size.py; the x86_64 APK then runs on the emulator.
 #
 #   tools/build.sh linux                     # the editor install
 #   tools/ci/android_size.sh [--skip-players] [--skip-prebuilt] [--skip-compiled]
@@ -47,28 +47,51 @@ project() {  # name, the ABIs it ships (comma separated; empty: the project's de
         if [[ ",$2," == *",$abi,"* ]]; then echo "    $abi: true"; else echo "    $abi: false"; fi
     done >> "$OUT/$1/project.yaml"
 }
-build() {  # name, method
-    step "build $1 ($2)"
+build() {  # name, method, package format
+    step "build $1 ($2, $3)"
     tools/build.sh exec android bash -c "dbus-run-session -- env JASPER_PLAYERS_DIR=/src/build/players \
-        build/linux/editor-install/bin/jasperengine-editor build --project $OUT/$1 --platform android --method $2 --out $OUT/$1-out" \
-        > "$OUT/$1.log" 2>&1
+        build/linux/editor-install/bin/jasperengine-editor build --project $OUT/$1 --platform android --method $2 \
+        --android-format $3 --out $OUT/$1-out" > "$OUT/$1.log" 2>&1
     local code=$?
     tail -n 6 "$OUT/$1.log"
     [[ $code == 0 ]] || { echo "FAIL: $1 (exit $code)" >&2; return 1; }
     grep -q "^method: $2" "$OUT/$1.log" || { echo "FAIL: $1 was not built with method $2" >&2; return 1; }
-    [[ -f "$(apk "$1")" ]] || { echo "FAIL: $1 made no APK" >&2; return 1; }
+    [[ -f "$(apk "$1")" ]] || { echo "FAIL: $1 made no package" >&2; return 1; }
 }
 apk() { sed -n 's/^executable: //p' "$OUT/$1.log" | head -1 | sed 's|^/src/||'; }
+artifacts() { sed -n 's/^artifact: //p' "$OUT/$1.log" | sed 's|^/src/||'; }
 
 FAILED=0
 APKS=()
+EMULATOR_APK=""
 if [[ $PREBUILT == 1 ]]; then
-    project prebuilt-all ""
-    project prebuilt-arm64 arm64-v8a
-    project prebuilt-armv7 armeabi-v7a
-    for name in prebuilt-all prebuilt-arm64 prebuilt-armv7; do
-        if build "$name" prebuilt; then APKS+=("$(apk "$name")"); else FAILED=1; fi
-    done
+    # every ABI (the project's default), as the three packages: the universal APK (an explicit
+    # choice), one APK per ABI, and the App Bundle (the default) with Google Play's download size
+    # per ABI (bundletool get-size over the device APKs it serves)
+    project prebuilt-universal ""
+    project prebuilt-per-abi ""
+    project prebuilt-aab ""
+    if build prebuilt-universal prebuilt apk; then APKS+=("$(apk prebuilt-universal)"); else FAILED=1; fi
+    if build prebuilt-per-abi prebuilt apk-per-abi; then
+        while read -r artifact; do
+            APKS+=("$artifact")
+            [[ "$artifact" == *-x86_64.apk ]] && EMULATOR_APK="$artifact"
+        done < <(artifacts prebuilt-per-abi)
+    else
+        FAILED=1
+    fi
+    if build prebuilt-aab prebuilt aab; then
+        step "Google Play's download size per ABI (bundletool get-size total --dimensions=ABI)"
+        AAB="$(apk prebuilt-aab)"
+        tools/build.sh exec android bash -c "set -e; JAR=\$(find / -name 'bundletool*.jar' -not -path '/proc/*' 2>/dev/null | head -n 1); \
+            [ -n \"\$JAR\" ] || { echo 'no bundletool jar' >&2; exit 1; }; KS=\$HOME/.android/debug.keystore; \
+            java -jar \$JAR build-apks --bundle=/src/$AAB --output=/src/$OUT/game.apks --overwrite --ks=\$KS --ks-pass=pass:android \
+                --ks-key-alias=androiddebugkey --key-pass=pass:android; \
+            java -jar \$JAR get-size total --apks=/src/$OUT/game.apks --dimensions=ABI" | tee "$OUT/download-size.csv" || FAILED=1
+        echo "the bundle itself: $(stat -c %s "$AAB") bytes"
+    else
+        FAILED=1
+    fi
 fi
 
 step "the player's code: what the dex holds"
@@ -78,9 +101,14 @@ step "the player's code: what the dex holds"
     grep -A3 'Class descriptor.*/GameActivity;' /tmp/dex/dump.txt | head -4; \
     grep 'Class descriptor' /tmp/dex/dump.txt | sed -E 's/.*L([a-z0-9]+\\/[a-z0-9]+)\\/.*/\\1/' | sort | uniq -c | sort -rn | head -12"
 
-if [[ $PREBUILT == 1 && ${#APKS[@]} -gt 0 ]]; then
-    step "the release prebuilt APK on the emulator"
-    tools/android-emulator-test.sh "${APKS[0]}" --out "$OUT/emulator" --timeout 600 || FAILED=1
+if [[ $PREBUILT == 1 ]]; then
+    step "the release prebuilt x86_64 APK (one APK per ABI) on the emulator"
+    if [[ -f "$EMULATOR_APK" ]]; then
+        tools/android-emulator-test.sh "$EMULATOR_APK" --out "$OUT/emulator" --timeout 600 || FAILED=1
+    else
+        echo "FAIL: no x86_64 APK" >&2
+        FAILED=1
+    fi
 fi
 
 if [[ $COMPILED == 1 ]]; then

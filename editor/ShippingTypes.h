@@ -15,7 +15,10 @@ namespace jasperengine::editor {
 
     enum class BuildPlatform { Windows, Linux, MacOS, Android, IOS, Web };
     enum class BuildMethod { Auto, Prebuilt, Compile };
-    enum class AndroidFormat { Apk, Aab };
+    // an Android build's package: an App Bundle (Google Play serves each device its ABI's split;
+    // the default), one APK per selected ABI, or one universal APK of every selected ABI (an
+    // explicit choice: it carries every ABI's engine library)
+    enum class AndroidFormat { Apk, Aab, ApkPerAbi };
 
     // "windows" "linux" "macos" "android" "ios" "web"
     const char* buildPlatformName(BuildPlatform platform);
@@ -25,6 +28,10 @@ namespace jasperengine::editor {
 
     const char* buildMethodName(BuildMethod method);
     bool parseBuildMethod(const std::string& name, BuildMethod& out);
+
+    // "aab" "apk-per-abi" "apk" (the universal APK)
+    const char* androidFormatName(AndroidFormat format);
+    bool parseAndroidFormat(const std::string& name, AndroidFormat& out);
 
     // the backends a platform's players exist for (R11), the first its default; names are the
     // runtime ids' (glcore gles3 vulkan d3d11 metal)

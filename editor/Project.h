@@ -637,10 +637,11 @@ namespace jasperengine::editor{
         // Google Mobile Ads is compiled in only when enabled
         bool admobEnabled = false;
         std::string admobAppId;
-        // S30: a prebuilt player's package (apk or aab), and the release keystore (its passwords
+        // S30: a prebuilt player's package (androidFormatName: aab, the default; apk-per-abi; or
+        // apk, the universal APK of every selected ABI), and the release keystore (its passwords
         // are never saved: the build asks, or JASPER_ANDROID_KS_PASS / JASPER_ANDROID_KEY_PASS);
         // no keystore: the debug one (~/.android/debug.keystore)
-        std::string packageFormat = "apk";
+        std::string packageFormat = "aab";
         std::filesystem::path keystorePath;
         std::string keystoreAlias;
     };

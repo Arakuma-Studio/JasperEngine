@@ -32,6 +32,7 @@
 
 #include <algorithm>
 #include <fstream>
+#include <set>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -996,18 +997,39 @@ bool editor::Exporter::finalizeAndroid() {
     package.keystoreAlias = android.keystoreAlias;
     package.keystorePassword = config.keystorePassword;
     package.keyPassword = config.keyPassword;
-    package.workDir = config.targetDir / "android";
-    package.output = stagingDir / (getAppName() + (config.androidFormat == AndroidFormat::Aab ? ".aab" : ".apk"));
+    // an App Bundle (Google Play serves each device its ABI), one APK per selected ABI, or the
+    // universal APK of every selected ABI (Project Settings > Android > Package Format)
+    std::vector<std::vector<std::string>> packages;
+    if (config.androidFormat == AndroidFormat::ApkPerAbi) {
+        for (const std::string& abi : platform::selectedAndroidAbis(android)) packages.push_back({abi});
+        if (packages.empty()) {
+            setError("no Android architecture is selected (Project Settings > Android > Architectures)");
+            return false;
+        }
+    } else {
+        packages.push_back({});
+    }
+    std::vector<fs::path> outputs;
     std::string error;
     std::vector<BuildWarning> warnings;
-    if (!platform::buildAndroidPackage(package, commandRunner, [this]() { return isCancelled(); }, warnings, error)) {
-        setError(error);
-        return false;
+    for (const std::vector<std::string>& abis : packages) {
+        package.abis = abis;
+        const std::string suffix = abis.empty() ? "" : "-" + abis.front();
+        package.workDir = config.targetDir / ("android" + suffix);
+        package.output = stagingDir / (getAppName() + suffix + (config.androidFormat == AndroidFormat::Aab ? ".aab" : ".apk"));
+        if (!platform::buildAndroidPackage(package, commandRunner, [this]() { return isCancelled(); }, warnings, error)) {
+            setError(error);
+            return false;
+        }
+        outputs.push_back(package.output);
     }
-    for (const BuildWarning& warning : warnings) warn(warning.code, warning.message);
+    // one warning per kind, though each package of a per-ABI build gives its own
+    std::set<std::string> warned;
+    for (const BuildWarning& warning : warnings)
+        if (warned.insert(warning.code + "\n" + warning.message).second) warn(warning.code, warning.message);
     std::lock_guard<std::mutex> lock(progressMutex);
-    result.executable = package.output;
-    result.artifacts = {package.output};
+    result.executable = outputs.front();
+    result.artifacts = outputs;
     return true;
 }
 

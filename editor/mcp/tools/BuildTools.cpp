@@ -880,12 +880,12 @@ void buildProjectTool(const CallPtr& call) {
             return;
         }
         config.developmentBuild = args.value("development", false);
-        const std::string format = lowerText(args.value("android_format", "apk"));
-        if (format != "apk" && format != "aab") {
-            call->fail("android_format must be apk or aab.");
+        // the project's package format (Project Settings > Android), unless the call names one
+        const std::string format = lowerText(args.value("android_format", project->getAndroidProjectSettings().packageFormat));
+        if (!parseAndroidFormat(format, config.androidFormat)) {
+            call->fail("android_format must be aab (Google Play: one ABI per device), apk-per-abi or apk (one universal APK).");
             return;
         }
-        config.androidFormat = format == "aab" ? AndroidFormat::Aab : AndroidFormat::Apk;
     } else {
         ShaderBackend backend = ShaderBackend::GLES3;
         if (mode == ExportMode::Desktop) {
@@ -2123,26 +2123,25 @@ void registerBuildTools(McpRegistry& registry) {
         tool.activity = ToolActivity::Build;  // busy policy (McpServer::busyRefusal)
         tool.title = "Build Project";
         tool.description =
-            "File > Build Settings > Build, as a job. player: a game for platform (a prebuilt player, or compiled "
-            "when the project needs native code); desktop/web: this computer/the web; source: a C++/CMake project. "
-            "Saves all scenes first. Past timeout_seconds a {job_id} (get_job). Result: output_dir, artifacts, "
-            "executable, errors [{file, line, message}], warnings, log_file. Don't edit scenes or play meanwhile.";
+            "File > Build Settings > Build, as a job. player: a game per platform (prebuilt, or compiled if it needs "
+            "native code); desktop/web: this computer/web; source: a CMake project. Saves scenes first. Past "
+            "timeout_seconds: {job_id} (get_job). Result: output_dir, artifacts, executable, errors, warnings, log_file.";
         tool.inputSchema = object({
             {"mode", withDefault(stringEnum("", {"player", "desktop", "web", "source"}), "desktop")},
-            {"output_dir", string("Absolute, outside the project. Default: last for mode.")},
+            {"output_dir", string("Absolute, outside the project.")},
             {"overwrite", withDefault(boolean("source: allow a non-empty output_dir."), false)},
-            {"start_scene", sceneRef("Also set as the start scene. Default: project's.")},
-            {"allow_missing_assets", withDefault(boolean("Build despite missing assets (list_missing_assets)."), false)},
-            {"graphics_api", string("desktop: opengl/vulkan/d3d11/metal-macos (per OS); web: opengles. Remembered.")},
-            {"platform", stringEnum("player: target (default this computer); source: shader target.", {"windows", "macos", "linux", "android", "ios", "web"})},
-            {"method", withDefault(stringEnum("Default: the project's.", {"auto", "prebuilt", "compile"}), "auto")},
+            {"start_scene", sceneRef("Also becomes the start scene.")},
+            {"allow_missing_assets", withDefault(boolean(""), false)},
+            {"graphics_api", string("opengl/vulkan/d3d11/metal-macos/opengles. Remembered.")},
+            {"platform", stringEnum("player/source target.", {"windows", "macos", "linux", "android", "ios", "web"})},
+            {"method", withDefault(stringEnum("", {"auto", "prebuilt", "compile"}), "auto")},
             {"development", withDefault(boolean(""), false)},
-            {"android_format", withDefault(stringEnum("", {"apk", "aab"}), "apk")},
+            {"android_format", stringEnum("Default: project's.", {"aab", "apk-per-abi", "apk"})},
             {"backends", array(stringItem, "source: opengl/opengles/d3d11/metal-macos/metal-ios/vulkan/all. Remembered.")},
             {"build_type", withDefault(stringEnum("", {"Release", "Debug", "RelWithDebInfo", "MinSizeRel"}), "Release")},
-            {"build_jobs", integer("desktop: 0 = auto. Default: preferences.build_jobs.")},
+            {"build_jobs", integer("0 = auto.")},
             {"shaders", object({
-                {"add", array(stringItem, "Shader keys (get_build_info include_shaders).")},
+                {"add", array(stringItem, "Shader keys.")},
                 {"exclude", array(stringItem, "")},
                 {"reset", boolean("Clear manual add/exclude first.")}
             })},
@@ -2181,27 +2180,26 @@ void registerBuildTools(McpRegistry& registry) {
         tool.name = "run_build";
         tool.title = "Run Build";
         tool.description =
-            "Run a Desktop player for `seconds`, screenshot its window (Linux/X11), stop it. Returns the log "
-            "tail (full: log_file), errors (Lua too), exit code/signal, crashed, fatal_lines. input (Linux): "
-            "send_input events into its window: key, text, mouse (window px, or space normalized), wait "
-            "{ms|frames|seconds}, release_all, screenshot. screenshots_at: seconds since launch.";
+            "Run a desktop player for `seconds`, screenshot it (Linux/X11), stop it. Returns log tail (log_file), "
+            "errors, exit code/signal, crashed, fatal_lines. input (Linux): send_input events (key, text, mouse, "
+            "wait, release_all, screenshot). screenshots_at: seconds since launch.";
         tool.inputSchema = object({
-            {"path", string("Executable or build dir (absolute). Default: last desktop build.")},
-            {"seconds", number("Default: 5, or past the input.", 0.5, 300)},
+            {"path", string("Executable or build dir. Default: last build.")},
+            {"seconds", number("Default 5.", 0.5, 300)},
             {"input", Json{{"type", "array"}, {"maxItems", 500}, {"items", anyObject("")}}},
             {"input_delay_seconds", withDefault(number("", 0, 120), 1)},
             {"space", withDefault(stringEnum("", {"window", "normalized"}), "window")},
             {"gap_ms", withDefault(number("", 0, 10000), 50)},
             {"screenshots_at", array(number(""), "")},
-            {"screenshot", boolean("Default: true unless other screenshots.")},
-            {"screenshot_after_seconds", number("Default min(3, 0.8 * seconds).")},
+            {"screenshot", boolean("")},
+            {"screenshot_after_seconds", number("")},
             {"max_width", withDefault(integer("", 64, 4096), 1280)},
             {"args", array(stringItem, "Player arguments.")},
-            {"headless", boolean("No window.")},
-            {"quit_after", integer("Frames, then exit.", 1, 1000000)},
+            {"headless", boolean("")},
+            {"quit_after", integer("Frames.", 1, 1000000)},
             {"fixed_fps", number("", 1, 1000)},
-            {"after_ready", boolean("Count from Engine ready.")},
-            {"screenshot_frame", integer("The player's own capture.", 1, 1000000)},
+            {"after_ready", boolean("")},
+            {"screenshot_frame", integer("", 1, 1000000)},
             {"log_lines", withDefault(integer("", 0, 2000), 80)}
         });
         tool.annotations.openWorld = true;

@@ -659,8 +659,9 @@ static void drawScriptDirsSetting(Project* project, std::vector<fs::path>& direc
 // S30 (docs/shipping.md)
 static const char* const buildMethodNames[] = {"auto", "prebuilt", "compile"};
 static const char* const buildMethodLabels[] = {"Auto", "Prebuilt Player", "Compile From Source"};
-static const char* const androidPackageFormats[] = {"apk", "aab"};
-static const char* const androidPackageFormatLabels[] = {"APK", "App Bundle (AAB)"};
+// the default first (AndroidFormat: aab), the universal APK last (an explicit choice)
+static const char* const androidPackageFormats[] = {"aab", "apk-per-abi", "apk"};
+static const char* const androidPackageFormatLabels[] = {"App Bundle (AAB, Google Play)", "One APK per ABI", "Universal APK (every ABI)"};
 static const char* const iosExportMethods[] = {"development", "ad-hoc", "app-store", "enterprise"};
 
 template<size_t N>
@@ -2795,7 +2796,9 @@ void ProjectSettingsWindow::drawAndroidSettings() {
         if (projectBeginSettingsRow("Package Format", m_androidPackageFormatIndex != 0)) m_androidPackageFormatIndex = 0;
         ImGui::SetNextItemWidth(-helpMarkerWidth());
         ImGui::Combo("##AndroidPackageFormat", &m_androidPackageFormatIndex, androidPackageFormatLabels, IM_ARRAYSIZE(androidPackageFormatLabels));
-        endSettingsRow("What Build makes: an installable APK, or an Android App Bundle for Google Play (bundletool is downloaded once).");
+        endSettingsRow("What Build makes. App Bundle: for Google Play, which serves each device only its ABI's libraries "
+                       "(bundletool is downloaded once). One APK per ABI: installable files, each with one ABI's libraries. "
+                       "Universal APK: one installable file with every selected ABI's libraries (several times the download).");
     }
 
     if (settingsui::beginRow("android.keystore_path")) {
@@ -2989,7 +2992,7 @@ bool ProjectSettingsWindow::applySettings() {
     android.keepScreenOn = m_androidKeepScreenOn;
     android.admobEnabled = m_androidAdmobEnabled;
     applyTextBuffer(android.admobAppId, m_androidAdmobAppIdBuffer);
-    android.packageFormat = androidPackageFormats[std::clamp(m_androidPackageFormatIndex, 0, 1)];
+    android.packageFormat = androidPackageFormats[std::clamp(m_androidPackageFormatIndex, 0, static_cast<int>(IM_ARRAYSIZE(androidPackageFormats)) - 1)];
     android.keystorePath = m_androidKeystorePath;
     applyTextBuffer(android.keystoreAlias, m_androidKeystoreAliasBuffer);
 

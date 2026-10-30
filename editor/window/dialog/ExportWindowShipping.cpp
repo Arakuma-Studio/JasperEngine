@@ -16,11 +16,14 @@
 #include "Project.h"
 #include "Theme.h"
 #include "external/IconsFontAwesome6.h"
+#include "platform/AndroidPackager.h"
 #include "platform/AndroidTools.h"
 #include "platform/ExternalTools.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <cstdlib>
+#include <iterator>
 
 namespace jasperengine::editor {
 
@@ -98,6 +101,10 @@ void ExportWindow::refreshPlayerState() {
     m_playerRuntime = PlayerRuntimes::find(m_playerRuntimeId, {}, false, m_playerRuntimeError);
     m_methodChoice = Exporter::chooseBuildMethod(m_project, config, m_playerRuntime ? &*m_playerRuntime : nullptr);
     m_androidMissing.clear();
+    m_androidLibrarySizes.clear();
+    if (config.platform == ShipPlatform::Android && m_playerRuntime)
+        m_androidLibrarySizes = platform::androidLibrarySizes(m_playerRuntime->dir / "android",
+                                                              platform::selectedAndroidAbis(m_project->getAndroidProjectSettings()));
     if (config.platform == ShipPlatform::Android && m_methodChoice.method == BuildMethod::Prebuilt) {
         const bool bundle = m_project->getAndroidProjectSettings().packageFormat == "aab";
         m_androidMissing = platform::AndroidTools::discover(m_project->getAndroidProjectSettings().targetSdk, bundle, false).missing;
@@ -217,14 +224,46 @@ void ExportWindow::drawPlayerRows() {
     if (target == ShipPlatform::Android) {
         AndroidProjectSettings& android = m_project->getAndroidProjectSettings();
         beginRow("Package");
-        int format = android.packageFormat == "aab" ? 1 : 0;
-        static const char* const formats[] = {"APK", "App Bundle (AAB)"};
+        // the App Bundle first (the default: Google Play serves each device its ABI), the
+        // universal APK last and only when chosen
+        static const AndroidFormat formats[] = {AndroidFormat::Aab, AndroidFormat::ApkPerAbi, AndroidFormat::Apk};
+        static const char* const labels[] = {"App Bundle (AAB, Google Play)", "One APK per ABI", "Universal APK (every ABI)"};
+        AndroidFormat current = AndroidFormat::Aab;
+        parseAndroidFormat(android.packageFormat, current);
+        int format = static_cast<int>(std::find(std::begin(formats), std::end(formats), current) - std::begin(formats));
         ImGui::SetNextItemWidth(-1);
-        if (ImGui::Combo("##AndroidPackage", &format, formats, 2)) {
-            android.packageFormat = format == 1 ? "aab" : "apk";
+        if (ImGui::Combo("##AndroidPackage", &format, labels, IM_ARRAYSIZE(labels))) {
+            android.packageFormat = androidFormatName(formats[std::clamp(format, 0, 2)]);
+            current = formats[std::clamp(format, 0, 2)];
             m_projectSettingsDirty = true;
             saveCurrentSettingsToProject();
             refreshPlayerState();
+        }
+        // what a player download weighs: the engine's native libraries dominate it (content adds
+        // its own); known once the runtime is installed
+        if (!m_androidLibrarySizes.empty()) {
+            auto mb = [](uint64_t bytes) { return static_cast<double>(bytes) / (1024.0 * 1024.0); };
+            uint64_t largest = 0, total = 0;
+            std::string perAbi;
+            for (const auto& [abi, bytes] : m_androidLibrarySizes) {
+                largest = std::max(largest, bytes);
+                total += bytes;
+                char item[64];
+                std::snprintf(item, sizeof(item), "%s%s %.1f MB", perAbi.empty() ? "" : ", ", abi.c_str(), mb(bytes));
+                perAbi += item;
+            }
+            beginRow("Download Size");
+            ImGui::AlignTextToFramePadding();
+            if (current == AndroidFormat::Apk) {
+                ImGui::TextColored(m_androidLibrarySizes.size() > 1 ? warningColor : okColor,
+                                   "%.1f MB of engine libraries in one file (%s)", mb(total), perAbi.c_str());
+                ImGui::SetItemTooltip("Every device downloads every selected ABI's libraries. App Bundle or One APK per ABI "
+                                      "ship each device only its own (largest: %.1f MB).", mb(largest));
+            } else {
+                ImGui::TextColored(okColor, "up to %.1f MB of engine libraries per device (%s)", mb(largest), perAbi.c_str());
+                ImGui::SetItemTooltip(current == AndroidFormat::Aab ? "Google Play serves each device the split of its ABI."
+                                                                     : "One APK per ABI: give each device the one of its ABI.");
+            }
         }
         beginRow("Keystore");
         ImGui::AlignTextToFramePadding();

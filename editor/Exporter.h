@@ -84,7 +84,7 @@ namespace jasperengine::editor {
         // needs native code, chooseBuildMethod), the Android package, where players are found
         BuildPlatform platform = hostBuildPlatform();
         BuildMethod method = BuildMethod::Auto;
-        AndroidFormat androidFormat = AndroidFormat::Apk;
+        AndroidFormat androidFormat = AndroidFormat::Aab;
         fs::path playersDir;
         // CLI only (engine developers): a player of another engine version; recorded in the
         // content manifest, refused by publish verify

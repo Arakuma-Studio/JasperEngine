@@ -10,6 +10,7 @@
 #include "AppSettings.h"
 #include "EditorHost.h"
 #include "Out.h"
+#include "ShippingTypes.h"
 #include "Workspace.h"
 
 #include "util/Base64.h"
@@ -2796,7 +2797,12 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (androidNode["keepScreenOn"].IsDefined()) android.keepScreenOn = YamlNumbers::as<bool>(androidNode["keepScreenOn"]);
         if (androidNode["admobEnabled"].IsDefined()) android.admobEnabled = YamlNumbers::as<bool>(androidNode["admobEnabled"]);
         if (androidNode["admobAppId"]) android.admobAppId = androidNode["admobAppId"].as<std::string>();
-        if (androidNode["packageFormat"]) android.packageFormat = androidNode["packageFormat"].as<std::string>() == "aab" ? "aab" : "apk";
+        if (androidNode["packageFormat"]) {
+            // aab, apk-per-abi or apk (universal); an unknown word reads as the default
+            AndroidFormat format = AndroidFormat::Aab;
+            parseAndroidFormat(androidNode["packageFormat"].as<std::string>(), format);
+            android.packageFormat = androidFormatName(format);
+        }
         if (androidNode["keystore"] && androidNode["keystore"].IsMap()) {
             if (androidNode["keystore"]["path"]) android.keystorePath = androidNode["keystore"]["path"].as<std::string>();
             if (androidNode["keystore"]["alias"]) android.keystoreAlias = androidNode["keystore"]["alias"].as<std::string>();

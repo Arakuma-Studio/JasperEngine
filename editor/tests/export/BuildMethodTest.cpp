@@ -9,6 +9,7 @@
 #include "Exporter.h"
 #include "Generator.h"
 #include "Project.h"
+#include "platform/AndroidPackager.h"
 #include "players/PlayerRuntimes.h"
 
 #include <gtest/gtest.h>
@@ -127,4 +128,41 @@ TEST(BuildMethod, PlayerIds) {
     EXPECT_EQ(Exporter::playerIdFor(config, false), "macos-universal-metal-release");
     config.platform = BuildPlatform::Android;
     EXPECT_EQ(Exporter::playerIdFor(config, false), "android-universal-gles3-release");
+}
+
+// Android packages (docs/specs/S30-shipping.md R13): an App Bundle by default, so Google Play
+// serves each device one ABI; per-ABI APKs and the universal APK are explicit choices
+TEST(AndroidPackage, AppBundleByDefaultAndTheFormatNames) {
+    Project project;
+    EXPECT_EQ(project.getAndroidProjectSettings().packageFormat, "aab");
+    EXPECT_EQ(ExportConfig().androidFormat, AndroidFormat::Aab);
+    for (AndroidFormat format : {AndroidFormat::Aab, AndroidFormat::ApkPerAbi, AndroidFormat::Apk}) {
+        AndroidFormat parsed = AndroidFormat::Aab;
+        EXPECT_TRUE(parseAndroidFormat(androidFormatName(format), parsed)) << androidFormatName(format);
+        EXPECT_EQ(parsed, format);
+    }
+    EXPECT_STREQ(androidFormatName(AndroidFormat::Apk), "apk");
+    AndroidFormat parsed = AndroidFormat::ApkPerAbi;
+    EXPECT_FALSE(parseAndroidFormat("universal", parsed));
+    EXPECT_EQ(parsed, AndroidFormat::ApkPerAbi) << "an unknown word leaves the format as it was";
+}
+
+TEST(AndroidPackage, SelectedAbisAndTheirLibrarySizes) {
+    AndroidProjectSettings settings;
+    settings.abiArm64V8a = true;
+    settings.abiArmeabiV7a = true;
+    settings.abiX86 = false;
+    settings.abiX86_64 = true;
+    EXPECT_EQ(platform::selectedAndroidAbis(settings), (std::vector<std::string>{"arm64-v8a", "armeabi-v7a", "x86_64"}));
+
+    TestTempDir dir("android-sizes");
+    TestTempDir::write(dir / "lib/arm64-v8a/libjasperengine-android.so", std::string(100, 'a'));
+    TestTempDir::write(dir / "lib/arm64-v8a/libc++_shared.so", std::string(20, 'c'));
+    TestTempDir::write(dir / "lib/arm64-v8a/README.txt", "not a library");
+    TestTempDir::write(dir / "lib/armeabi-v7a/libjasperengine-android.so", std::string(70, 'a'));
+    const auto sizes = platform::androidLibrarySizes(dir.path(), {"arm64-v8a", "armeabi-v7a", "x86_64"});
+    ASSERT_EQ(sizes.size(), 3u);
+    EXPECT_EQ(sizes[0], (std::pair<std::string, uint64_t>{"arm64-v8a", 120}));
+    EXPECT_EQ(sizes[1], (std::pair<std::string, uint64_t>{"armeabi-v7a", 70}));
+    EXPECT_EQ(sizes[2], (std::pair<std::string, uint64_t>{"x86_64", 0})) << "an ABI the runtime lacks weighs nothing";
 }
