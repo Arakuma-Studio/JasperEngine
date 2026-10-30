@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "EditorFrame.h"
+#include "render/SystemRender.h"
+#include "shader/ShaderWarmup.h"
 #include "diag/HangWatchdog.h"
 
 #include "AppSettings.h"
@@ -149,7 +151,7 @@ bool EditorFrame::run(EditorFrameState& state){
     const bool renderRequested = state.forceRedraw || playSessionActive ||
                                  !idleFrame || state.redrawRequested ||
                                  app->hasPendingMainThreadTasks() || frameRequest ||
-                                 textFocused;
+                                 textFocused || !SystemRender::isGpuCreationIdle();
     const bool frameReady = !state.minimized && renderRequested && renderer->beginFrame();
 
     // a profiler frame is one rendered loop of the editor (S15 §6.5); idle loops are not frames
@@ -158,6 +160,11 @@ bool EditorFrame::run(EditorFrameState& state){
         JE_PROFILE_FRAME();
         // one shader clock for every view the frame draws (each draws through Engine::systemDraw)
         Engine::latchShaderTime();
+        // the shaders and pipelines created off the render thread that are ready (spec S32); the
+        // loop keeps drawing while any is pending (renderRequested), so they show up unprompted
+        SystemRender::updateGpuCreation();
+        // what Play recorded for the shader warm-up list
+        ShaderWarmup::update();
     }
 
     renderer->newFrame();

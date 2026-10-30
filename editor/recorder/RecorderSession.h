@@ -7,8 +7,9 @@
 // Recording -> Finalising -> Idle. While it records, the game runs at the fixed timestep
 // 1/fps (Engine::setFixedDeltatime, restored after), the Game view renders at exactly the output
 // size, VSync is off and every editor frame renders one game frame. Each game frame is read back
-// at the start of the next editor frame (what the frame drew, submitted on every backend) and
-// pushed into a queue of at most 8 frames: when it is full the main thread waits, so no frame is
+// at the start of the next editor frame (what the frame drew, submitted on every backend; a frame
+// drawn while shaders were still being created, S32, is drawn again with the game held until they
+// are, as screenshots wait for them) and pushed into a queue of at most 8 frames: when it is full the main thread waits, so no frame is
 // ever dropped. PNG sequences are encoded on background jobs (stbi_write_png, level 3) and
 // written atomically; movies stream raw RGBA frames to FFmpeg's stdin from a writer thread
 // (ProcessStream). Audio, when asked for, is mixed offline in step with the frames (SoLoud's
@@ -154,7 +155,14 @@ namespace jasperengine::editor::recorder {
         std::mutex mutex;
         std::function<void(const Result&)> onFinished;
 
+        // a frame drawn with shaders still being created (S32) is drawn again, the game held
+        enum class ShaderHold : uint8_t { None, Waiting, DrawnOnce };
+        ShaderHold shaderHold = ShaderHold::None;
+        bool heldBeforeShaders = false;
+        std::chrono::steady_clock::time_point shaderHoldStart;
+
         bool arm(const Settings& settings, bool fromPlayStart, std::string& error);
+        void recordFrame();
         void beginRecording();
         void finish();
         void restoreEngine();

@@ -1600,7 +1600,7 @@ void create_scene__2D_4155373791(Scene* scene){
         // Entity components initialization
         PointsComponent pointscomp;
         pointscomp.maxPoints = 100;
-        pointscomp.transparent = false;
+        pointscomp.transparent = true;
         pointscomp.autoTransparency = true;
         pointscomp.customShader = "library:particle";
         pointscomp.shaderUniforms = {{"erosionSoftness", Vector4(0.150000f, 0.000000f, 0.000000f, 0.000000f)}, {"erosionTiling", Vector4(1.500000f, 0.000000f, 0.000000f, 0.000000f)}};

@@ -45,6 +45,7 @@
 #include "pool/ShaderPool.h"
 #include "render/ObjectRender.h"
 #include "shader/ShaderVariantCollection.h"
+#include "shader/ShaderWarmup.h"
 #include "shader/ShaderManifest.h"
 #include "shader/ShaderUniforms.h"
 #include "object/EntityHandle.h"
@@ -1004,9 +1005,22 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         })
         .addStaticFunction("warmUpAllShaders", &ShaderPool::warmUpAllShaders)
         .addStaticFunction("getPendingShaderCount", &ShaderPool::getPendingShaderCount)
+        .addStaticFunction("getPendingPipelineCount", &ShaderPool::getPendingPipelineCount)
+        .addStaticFunction("isGpuCreationIdle", &ShaderPool::isGpuCreationIdle)
         .addStaticFunction("isRuntimeCompilationSupported", &ShaderPool::isRuntimeCompilationSupported)
         .addStaticProperty("runtimeCompilation", &ShaderPool::isRuntimeCompilationEnabled, &ShaderPool::setRuntimeCompilationEnabled)
         .addStaticProperty("asyncCompilation", &ShaderPool::isAsyncCompilation, &ShaderPool::setAsyncCompilation)
+        .endClass();
+
+    // the shader warm-up list a build ships (spec S32): progress of its replay at start
+    luabridge::getGlobalNamespace(L)
+        .beginClass<ShaderWarmup>("ShaderWarmup")
+        .addStaticFunction("isDone", &ShaderWarmup::isDone)
+        .addStaticFunction("isActive", &ShaderWarmup::isActive)
+        .addStaticFunction("getProgress", &ShaderWarmup::getProgress)
+        .addStaticFunction("getEntryCount", &ShaderWarmup::getEntryCount)
+        .addStaticFunction("getReadyCount", &ShaderWarmup::getReadyCount)
+        .addStaticFunction("warmUp", +[]() { ShaderWarmup::begin(); })
         .endClass();
 
     // diagnostics: the pipelines renderable objects made and did not destroy yet

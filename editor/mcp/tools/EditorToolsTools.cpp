@@ -31,6 +31,7 @@
 #include "math/CurveJson.h"
 #include "particles/ParticleEffectCodec.h"
 #include "recorder/RecorderSession.h"
+#include "render/SystemRender.h"
 #include "stream/CurveCodec.h"
 #include "util/FileUtils.h"
 #include "util/GraphicUtils.h"
@@ -130,7 +131,21 @@ void recordGameTool(const CallPtr& call) {
 
 // ---------------------------------------------------------------- sample_view_color
 
+void sampleViewColorNow(const CallPtr& call);
+
+// the pixel of a frame drawn with every shader and pipeline created (S32): it waits for pending
+// creations as screenshot does (up to 30 s), then reads what is there
 void sampleViewColorTool(const CallPtr& call) {
+    if (SystemRender::isGpuCreationIdle()) {
+        sampleViewColorNow(call);
+        return;
+    }
+    // idle, then one more frame drawn with them
+    call->waitUntil([]() { return SystemRender::isGpuCreationIdle(); }, 30000,
+                    [call](bool) { call->afterFrames(1, [call]() { sampleViewColorNow(call); }); });
+}
+
+void sampleViewColorNow(const CallPtr& call) {
     McpContext& ctx = call->ctx();
     const Json& args = call->args();
     const std::string view = args.value("view", std::string("game"));

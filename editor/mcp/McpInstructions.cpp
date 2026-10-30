@@ -186,6 +186,7 @@ update_material) with .shaderParams.<member> (colours linear, "#RRGGBB" sRGB); U
 and Sky take customShader. Outlines and stencil: apply_material_preset. fork_shader only when
 nothing fits; read the fork first. A failing shader draws as the built-in one. Rules, costs,
 uniforms: jasper://docs/shaders; Lit lobes, Lit Quality, light units: jasper://docs/materials.
+Screenshots wait for async shader creation; pending: get_render_stats shader_creation.
 
 Textures from examples: synthesize_texture (group assets_pipeline,
 jasper://docs/texture-synthesis). GPU fluid: create_entity type fluid_simulation

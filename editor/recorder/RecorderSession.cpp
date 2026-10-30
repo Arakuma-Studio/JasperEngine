@@ -13,6 +13,7 @@
 #include "htmlui/VideoImporter.h"
 #include "io/AtomicFile.h"
 #include "jobs/JobSystem.h"
+#include "render/SystemRender.h"
 #include "subsystem/AudioSystem.h"
 #include "texture/Framebuffer.h"
 #include "util/GraphicUtils.h"
@@ -475,6 +476,28 @@ void RecorderSession::captureFrame() {
         return;
     }
     if (currentState == State::Arming) beginRecording();
+    if (shaderHold != ShaderHold::None) {
+        // a frame drawn while shaders and pipelines were still being created (S32) shows their
+        // stand-ins: the game is held (it draws, it does not advance) until creation is idle and
+        // one whole frame has been drawn since, then that frame is the recorded one
+        const bool idle = SystemRender::isGpuCreationIdle();
+        const bool timedOut = Clock::now() - shaderHoldStart > std::chrono::seconds(30);
+        if (!idle && !timedOut) {
+            shaderHold = ShaderHold::Waiting;
+            return;
+        }
+        if (shaderHold == ShaderHold::Waiting && !timedOut) {
+            shaderHold = ShaderHold::DrawnOnce;   // the next frame's start reads what this one draws
+            return;
+        }
+        if (timedOut && !idle) {
+            working.warnings.push_back("frame " + std::to_string(frameIndex) + " was recorded with shaders still being created (30 s)");
+        }
+        shaderHold = ShaderHold::None;
+        Engine::setSimulationHeld(heldBeforeShaders);
+        recordFrame();
+        return;
+    }
     if (frames <= gameFramesSeen) return;
     if (frames - gameFramesSeen > 1) {
         working.warnings.push_back(std::to_string(frames - gameFramesSeen - 1) + " game frame(s) ran within one editor frame and were not recorded");
@@ -484,6 +507,18 @@ void RecorderSession::captureFrame() {
     const bool inRange = frameIndex >= first && (last < 0 || frameIndex <= last);
     sink->mixAudio(frameIndex, inRange);
     if (!inRange) return;
+    if (!SystemRender::isGpuCreationIdle()) {
+        heldBeforeShaders = Engine::isSimulationHeld();
+        Engine::setSimulationHeld(true);
+        shaderHold = ShaderHold::Waiting;
+        shaderHoldStart = Clock::now();
+        return;
+    }
+    recordFrame();
+}
+
+void RecorderSession::recordFrame() {
+    if (!sink) return;
     std::vector<uint8_t> rgba;
     Framebuffer* framebuffer = host.gameFramebuffer();
     if (!GraphicUtils::readFramebufferRGBA(framebuffer, rgba)) {
@@ -536,7 +571,8 @@ void RecorderSession::update() {
         return;
     }
     if (currentState != State::Recording) return;
-    const bool done = last >= 0 && frameIndex >= last;
+    // (a frame held for its shaders is not recorded yet)
+    const bool done = last >= 0 && frameIndex >= last && shaderHold == ShaderHold::None;
     if (done || !host.isPlaying()) {
         if (done && current.exitPlayMode && host.isPlaying() && host.stopPlay) host.stopPlay();
         finish();
@@ -551,6 +587,10 @@ void RecorderSession::stop() {
 }
 
 void RecorderSession::restoreEngine() {
+    if (shaderHold != ShaderHold::None) {
+        shaderHold = ShaderHold::None;
+        Engine::setSimulationHeld(heldBeforeShaders);
+    }
     Engine::setFixedDeltatime(previousFixedDelta);
     if (host.setGameRenderSize) host.setGameRenderSize(0, 0);
     if (audio) {

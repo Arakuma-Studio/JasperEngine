@@ -215,8 +215,6 @@ namespace jasperengine {
 		static void dealloc_buffer_cb(void* cleanup_data) { sg_dealloc_buffer({(uint32_t)(uintptr_t)cleanup_data}); }
 		static void dealloc_image_cb(void* cleanup_data) { sg_dealloc_image({(uint32_t)(uintptr_t)cleanup_data}); }
 		static void dealloc_sampler_cb(void* cleanup_data) { sg_dealloc_sampler({(uint32_t)(uintptr_t)cleanup_data}); }
-		static void dealloc_shader_cb(void* cleanup_data) { sg_dealloc_shader({(uint32_t)(uintptr_t)cleanup_data}); }
-		static void dealloc_pipeline_cb(void* cleanup_data) { sg_dealloc_pipeline({(uint32_t)(uintptr_t)cleanup_data}); }
 		static void dealloc_view_cb(void* cleanup_data) { sg_dealloc_view({(uint32_t)(uintptr_t)cleanup_data}); }
 
 		static std::vector<SokolRenderCommand> m_commands[2];

@@ -21,7 +21,8 @@ ShaderRender::~ShaderRender(){
 bool ShaderRender::createShader(ShaderData& shaderData){
     // Skip while a deferred create is in flight: re-assigning shaderData would
     // free the source the queued sg_shader_desc points into and corrupt the build.
-    if (Engine::isViewLoaded() && !isCreated() && !loading) {
+    // and while the GPU object is being created (spec S32): its handle is the one that becomes ready
+    if (Engine::isViewLoaded() && !isCreated() && !loading && !isPending()) {
         this->shaderData = shaderData;
 
         loading = true;
@@ -44,6 +45,10 @@ void ShaderRender::destroyShader(){
 
 bool ShaderRender::isCreated(){
     return backend.isCreated();
+}
+
+bool ShaderRender::isPending(){
+    return backend.isPending();
 }
 
 bool ShaderRender::isFailed(){

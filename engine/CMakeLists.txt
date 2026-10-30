@@ -1321,6 +1321,7 @@ set(JASPERENGINE_SRCS
     core/shader/ShaderManifest.cpp
     core/shader/ShaderUniforms.cpp
     core/shader/ShaderVariantCollection.cpp
+    core/shader/ShaderWarmup.cpp
     core/shader/ShaderVariantCompiler.cpp
     core/subsystem/ActionSystem.cpp
     core/subsystem/ActionSystemPlayers.cpp
@@ -1451,6 +1452,8 @@ set(RENDER_SOKOL_SRC
     renders/sokol/SokolCamera.cpp
     renders/sokol/SokolObject.cpp
     renders/sokol/SokolPipelineCache.cpp
+    renders/sokol/SokolAsyncCreate.cpp
+    renders/sokol/SokolPipelineRecord.cpp
     renders/sokol/SokolShader.cpp
     renders/sokol/SokolCmdQueue.cpp
     renders/sokol/SokolFramebuffer.cpp

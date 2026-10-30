@@ -15,6 +15,9 @@
 #include "SceneBackup.h"
 #include "diag/CrashHandler.h"
 #include "Project.h"
+#include "command/CommandHistory.h"
+#include "command/type/ShaderCreationSettingsCmd.h"
+#include "reflect/Reflect.h"
 #include "input/InputActions.h"
 #include "texture/TextureCookQueue.h"
 #include "texture/TextureImportSettings.h"
@@ -27,6 +30,7 @@
 #include "vcs/VcsService.h"
 
 #include <algorithm>
+#include <fstream>
 #include <cctype>
 #include <functional>
 #include <map>
@@ -375,6 +379,55 @@ Setting layerCollisionSetting(const std::string& key, bool is3D) {
         return true;
     };
     return s;
+}
+
+// "mainThreadBudgetMs" -> "main_thread_budget_ms"
+std::string snakeCase(const char* name) {
+    std::string out;
+    for (const char* c = name; *c; c++) {
+        if (std::isupper(static_cast<unsigned char>(*c))) {
+            if (!out.empty()) out += '_';
+            out += static_cast<char>(std::tolower(static_cast<unsigned char>(*c)));
+        } else {
+            out += *c;
+        }
+    }
+    return out;
+}
+
+// Project Settings > Graphics > Shader Creation (spec S32): one MCP row per field of the reflection
+// table (editor/reflect/ShaderCreationReflect.cpp), "shader_creation.<field>"; a change is an
+// undoable command
+void addShaderCreationSettings(const std::function<void(Setting)>& add) {
+    for (const reflect::FieldDesc& field : reflect::shaderCreationStruct().fields) {
+        Setting s;
+        s.key = std::string("shader_creation.") + snakeCase(field.name);
+        s.type = field.kind == reflect::Kind::Bool ? "bool" : "number";
+        s.description = field.tooltip ? field.tooltip : "";
+        const reflect::FieldDesc* desc = &field;
+        s.get = [desc](SettingsContext& ctx) {
+            ShaderCreationProjectSettings settings = ctx.project()->getShaderCreationSettings();
+            void* value = desc->ref(&settings);
+            return desc->kind == reflect::Kind::Bool ? Json(*static_cast<bool*>(value)) : Json(*static_cast<float*>(value));
+        };
+        s.set = [desc](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+            ShaderCreationProjectSettings settings = ctx.project()->getShaderCreationSettings();
+            void* target = desc->ref(&settings);
+            if (desc->kind == reflect::Kind::Bool) {
+                bool b;
+                if (!readBool(value, b, error)) return false;
+                *static_cast<bool*>(target) = b;
+            } else {
+                double v;
+                if (!readNumber(value, desc->min, desc->max, v, error)) return false;
+                *static_cast<float*>(target) = static_cast<float>(v);
+            }
+            if (apply && settings != ctx.project()->getShaderCreationSettings())
+                ctx.project()->getProjectCommandHistory()->addCommand(new ShaderCreationSettingsCmd(ctx.project(), settings));
+            return true;
+        };
+        add(s);
+    }
 }
 
 std::vector<Setting> mcpSettingsTable() {
@@ -1735,6 +1788,8 @@ std::vector<Setting> mcpSettingsTable() {
             };
             add(s);
         }
+        // ---- graphics: shader creation (spec S32), from its reflection table
+        addShaderCreationSettings(add);
         return t;
     }();
 }
@@ -1894,6 +1949,22 @@ const Placement placements[] = {
 std::string titleCase(const std::string& key);
 
 // Project Settings > Texture (S14 R24): texture.<setting>[.<family or platform group>]
+// Graphics > Shader Creation; the warm-up options under their own heading. The label is the
+// reflection table's
+void shaderCreationRowPlacement(const std::string& key, SettingRow& row) {
+    row.page = "Graphics";
+    const std::string name = key.substr(std::string("shader_creation.").size());
+    const bool warmup = name == "record_during_play" || name == "include_in_builds" || name == "hold_first_scene";
+    row.section = warmup ? "Shader Warm-up" : "Shader Creation";
+    row.keywords = warmup ? "shader warm-up warmup prewarm variants pipelines record export loading"
+                          : "shader compile compilation pipeline async asynchronous stall hitch budget warm";
+    row.label = titleCase(key);
+    for (const reflect::FieldDesc& field : reflect::shaderCreationStruct().fields) {
+        if (snakeCase(field.name) == name && field.label)
+            row.label = field.label;
+    }
+}
+
 void textureRowPlacement(const std::string& key, SettingRow& row) {
     static const std::map<std::string, std::pair<const char*, const char*>> settings = {
         {"android_etc2_fallback", {"Android", "ETC2 Fallback"}},
@@ -2027,6 +2098,8 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
             row.keywords = placement->keywords;
         } else if (setting.key.rfind("texture.", 0) == 0) {
             textureRowPlacement(setting.key, row);
+        } else if (setting.key.rfind("shader_creation.", 0) == 0) {
+            shaderCreationRowPlacement(setting.key, row);
         } else {
             row.page = setting.preference ? "General" : "Editor";
             row.label = titleCase(setting.key);
@@ -2036,6 +2109,24 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
     }
 
     // ---- Project Settings rows MCP does not set
+    addOrAbort(registry, uiRow("shader_creation.warmup_entries", "Graphics", "Shader Warm-up", "Warm-up List",
+        "shader warm-up warmup list entries clear recorded variants pipelines",
+        [](SettingsContext& ctx) {
+            // the file as saved (a recording in progress is merged into it when Play stops)
+            const std::filesystem::path path = ctx.project()->getShaderWarmupPath();
+            size_t shaders = 0, pipelines = 0;
+            std::ifstream file(path, std::ios::binary);
+            if (file) {
+                std::stringstream text;
+                text << file.rdbuf();
+                const Json list = Json::parse(text.str(), nullptr, false);
+                if (list.is_object()) {
+                    shaders = list.value("shaders", Json::array()).size();
+                    pipelines = list.value("pipelines", Json::array()).size();
+                }
+            }
+            return Json{{"shaders", shaders}, {"pipelines", pipelines}, {"path", path.filename().string()}};
+        }, "The shader variants and pipelines Play recorded (ShaderWarmup.json next to project.yaml); Clear empties it."));
     addOrAbort(registry, uiRow("player.start_scene", "Player", "Splash and Loading", "Start Scene", "first scene build",
         [](SettingsContext& ctx) {
             const SceneProject* scene = ctx.project()->getScene(ctx.project()->getStartSceneId());

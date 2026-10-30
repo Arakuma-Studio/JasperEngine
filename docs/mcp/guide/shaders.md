@@ -451,3 +451,28 @@ the material's `buoyancy` (on) and `buoyancyDepth` (0: no bottom) decide per wat
 whose bottom is highest wins where they overlap. Lua: `Water.getHeight(scene, x, z)`,
 `Water.getNormal(scene, x, z)` (nil where no water covers the point),
 `Water.isUnderwater(scene, point)`.
+
+## Asynchronous creation and the warm-up list
+
+Shaders and pipelines are created off the render thread (docs/rendering/async-shaders.md). While
+a variant is pending, a mesh draws the nearest ready variant (fewer optional features), and the
+exact one replaces it once it is ready. A pipeline being created is not drawn for those frames.
+
+- `get_render_stats.shader_creation`: `mode` (`worker`, `parallel`, `deferred`, `thread`, `metal`,
+  `sync`), `pending_shaders` / `pending_pipelines` / `pending_warm_draws`, `last_frame_main_ms`,
+  `max_main_ms` (the render thread's creation work), and `warmup` {recording, shaders, pipelines}.
+- `screenshot` (and tools that return one) waits up to 30 s for every `pending_*` to be 0, then
+  captures. Other readings (`get_render_stats`, picking) do not wait: poll `pending_*` first. A
+  stand-in frame is correct but not final.
+- Settings (`set_project_settings`): `shader_creation.async_creation`,
+  `shader_creation.main_thread_budget_ms`, `shader_creation.gl_warm_draws`, and for the warm-up
+  list `shader_creation.record_during_play`, `include_in_builds`, `hold_first_scene`.
+  `shader_creation.gl_warm_draws` is off by default and never runs on a software GL (llvmpipe),
+  which also has no worker context (`mode` is `parallel` or `deferred` there). The list's entry
+  count is a Project Settings row (`get_project_settings` `search` finds
+  `shader_creation.warmup_entries`; the file is `ShaderWarmup.json`).
+- The warm-up list (`ShaderWarmup.json` next to `project.yaml`): turn on Record During Play, play
+  the scenes, stop. Exports then build those variants and the game creates them before its first
+  scene. `run_command` `assets.clearShaderWarmup` empties it.
+- Lua: `ShaderPool.getPendingShaderCount()`, `ShaderPool.getPendingPipelineCount()`,
+  `ShaderPool.isGpuCreationIdle()`, `ShaderWarmup.isDone()`, `ShaderWarmup.getProgress()`.

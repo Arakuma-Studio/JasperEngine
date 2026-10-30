@@ -19,4 +19,13 @@
 
 @end
 
+#ifdef __cplusplus
+#include "render/GpuWorkerContext.h"
+#include <memory>
+
+// The shader creation's worker context (spec S32): an NSOpenGLContext of the view's pixel format
+// sharing the view's context, current on the creation thread; null when Cocoa refuses it
+std::unique_ptr<jasperengine::GpuWorkerContext> makeMacGLWorkerContext(MacViewGL* view);
+#endif
+
 #endif /* MacViewGL_h */

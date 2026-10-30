@@ -2257,6 +2257,9 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (threading.webPumpBudgetMs != defaults.webPumpBudgetMs) threadingNode["webPumpBudgetMs"] = threading.webPumpBudgetMs;
         if (threading.webMultithreaded != defaults.webMultithreaded) threadingNode["webMultithreaded"] = threading.webMultithreaded;
         if (threadingNode.size()) root["threading"] = threadingNode;
+        // Shader Creation (spec S32): the values away from their defaults, by its reflection table
+        const YAML::Node shaderCreationNode = reflect::encode(reflect::shaderCreationStruct(), &project->getShaderCreationSettings(), reflect::EncodeContext{});
+        if (shaderCreationNode.IsMap() && shaderCreationNode.size()) root["shaderCreation"] = shaderCreationNode;
     }
 
     {
@@ -2809,6 +2812,17 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             if (threadingNode["webMultithreaded"]) threading.webMultithreaded = YamlNumbers::as<bool>(threadingNode["webMultithreaded"]);
         }
         project->setThreadingSettings(threading);
+    }
+
+    {
+        ShaderCreationProjectSettings shaderCreation;
+        if (node["shaderCreation"] && node["shaderCreation"].IsMap()){
+            reflect::DecodeContext ctx;
+            ctx.component = "shaderCreation";
+            reflect::decode(reflect::shaderCreationStruct(), node["shaderCreation"], &shaderCreation, ctx);
+            shaderCreation.clamp();
+        }
+        project->setShaderCreationSettings(shaderCreation);
     }
 
     project->setNavigationSettings(decodeNavigationProjectSettings(node["navigation"]));
