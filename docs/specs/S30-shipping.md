@@ -1060,12 +1060,24 @@ Kept current so the work can continue after an interruption.
 - AndroidX (appcompat, core, activity) costs about 0.7 MiB of dex and resources. GameActivity
   extends AppCompatActivity, so it stays, and the theme is not its only use.
 
-**Linux** (glcore, before the release link; the Linux link has no LTO with GCC):
-- The prebuilt build is 44.2 MiB, of which the player is 43.9 MiB stripped with 744 MiB of
-  symbols split off.
-- The compiled build was 51.3 MiB, its executable unstripped (51.0 MiB). It is now stripped by
-  `JASPERENGINE_SPLIT_SYMBOLS`.
-- publish prepare copies the player's symbols into `symbols/linux/player`.
+**Linux** (glcore, MiB):
+- "After" has the release link (sections and `--gc-sections`, hidden visibility; GCC builds have
+  no LTO) and `JASPERENGINE_SPLIT_SYMBOLS`.
+- It also includes S21's Animator, which "before" did not.
+
+| build | before | after |
+|---|---|---|
+| prebuilt: the player | 43.88 stripped (744 symbols) | 40.77 stripped (767 symbols) |
+| prebuilt: the whole build | 44.15 | 41.04 |
+| compiled: the executable | 50.99 unstripped | 39.57 stripped (739 symbols) |
+| compiled: the whole build | 51.26 | 39.84 |
+
+- Prebuilt and compiled are now within 1.2 MiB of each other. The prebuilt player has every
+  feature in it.
+- Where the symbols go:
+  - publish prepare copies the player's into `symbols/linux/player`;
+  - a compiled build keeps its own under `.jasperengine/symbols/<sha256>/`, and its content
+    manifest names them, for `symbols/linux/game`.
 
 **What is left, by size.** These need per-project module stripping, which is the coordinator's
 follow-up stream, not S30.
