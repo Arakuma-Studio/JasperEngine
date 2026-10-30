@@ -13,7 +13,8 @@ image of docker/runtime.Dockerfile:
   golden/prebuilt-linux-<backend>.png (pngdiff --tolerance 24 --max-fraction 0.01). Content of
   another player exits 5, a bad option 2.
 - components: tools/fixtures/reflection-parity (every component type) built with the release
-  player and run headless: exit 0 and no cooked component unknown (the release link keeps them).
+  player and run headless for 120 frames: exit 0, and no cooked component unknown or unreadable
+  (the release link keeps every table and hook).
 - web (AC2, S06 AC20/AC21): `build --platform web` with EMSDK unset; the browser gate passes with
   COOP/COEP headers (pthreads player), without them (the service worker isolates the page after
   one reload: pthreads player), without them and with the service worker blocked (single-thread
@@ -179,7 +180,7 @@ def check_components(args, players: Path, out: Path) -> None:
     per type) cooked and run headless. The release link (sections, hidden visibility, LTO) must
     keep every component's table and hooks: no cooked component unknown or unreadable."""
     project = fresh_copy(FIXTURES / "reflection-parity", out / "components-project")
-    texture = project / "assets" / "textures" / "parity.png"
+    texture = project / "textures" / "parity.png"   # (its project has no assetsDir: the project root)
     texture.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy(FIXTURES / "unified-lighting" / "golden" / "prebuilt-linux-glcore.png", texture)
     installed = {p.name for p in players.iterdir()} if players.is_dir() else set()
@@ -192,7 +193,9 @@ def check_components(args, players: Path, out: Path) -> None:
         result = build(args.editor, players, project, out / "components", "linux", "--backend", backend, "--method", "prebuilt",
                        "--allow-missing-assets", "--start-scene", "AllComponents")
         exe = Path(lines(result, "executable")[0])
-        game = run([exe, "--headless", "--after-ready", "--quit-after", "10", "--fixed-fps", "60"], cwd=exe.parent, timeout=600, check=False)
+        # a fixed run, not --after-ready: the fixture's assets are not all there, so its scene never
+        # reports every resource loaded
+        game = run([exe, "--headless", "--quit-after", "120", "--fixed-fps", "60"], cwd=exe.parent, timeout=600, check=False)
     log = game.stdout + game.stderr
     problems = [line for line in log.splitlines() if "Cooked content" in line or "unknown component" in line]
     if game.returncode != 0 or problems:
