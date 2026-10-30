@@ -71,6 +71,22 @@ def split(png: bytes) -> list[tuple[bytes, bytes]]:
     return out
 
 
+def ball_png_wh(width: int, height: int, diameter: int) -> bytes:
+    """One shaded ball of `diameter` px centred in a width x height image"""
+    def pixel(x, y):
+        dx, dy = x + 0.5 - width / 2, y + 0.5 - height / 2
+        v = max(40, min(250, int(160 - (dx + dy) * 120 / diameter)))
+        return (v, v // 2, 60, 255 if dx * dx + dy * dy <= (diameter / 2) ** 2 else 0)
+    return png_rgba(width, height, pixel)
+
+
+def sheet_png(width: int, height: int, frame: int) -> bytes:
+    """A sheet of `frame`-px cells, a ball in each"""
+    def pixel(x, y):
+        dx, dy = x % frame + 0.5 - frame / 2, y % frame + 0.5 - frame / 2
+        return (180, 90, 60, 255 if dx * dx + dy * dy <= (frame / 2 - 2) ** 2 else 0)
+    return png_rgba(width, height, pixel)
+
 def ball_png(size: int) -> bytes:
     """A shaded ball on transparency (big enough for the green-convention rims: >= 32 pixels each)"""
     rows = []
@@ -322,6 +338,29 @@ async def test_normalized_frames_on_a_wide_sheet(ed: Editor):
 
 
 # ---------------------------------------------------------------------------- 3D meshes are not checked
+
+async def test_maps_made_before_high_resolution_support(ed: Editor):
+    """normals-before-hires: a version 1 map whose islands are over 128 px (from its alpha, over its frames), not the
+    image size: a 512x256 sheet of 32 px frames and a 192x256 sprite are pixel art; the 384 px painted potion is not"""
+    art = ed.project / ART / "v1"
+    art.mkdir(parents=True, exist_ok=True)
+    (art / "sheet.png").write_bytes(sheet_png(512, 256, 32))
+    shutil.copy(REPO / "editor" / "spritenormals" / "tests" / "fixtures" / "hires" / "potion.png", art / "potion.png")
+    (art / "small.png").write_bytes(ball_png_wh(192, 256, 110))
+    await ed.call("sync_files")
+    await gen(ed, source=f"{ART}/v1/sheet.png", frames={"tile_size": 32}, params={"version": 1}, output=True)
+    await gen(ed, source=f"{ART}/v1/small.png", params={"version": 1}, output=True)
+    await gen(ed, source=f"{ART}/v1/potion.png", params={"version": 1}, output=True)
+    await gen(ed, source=f"{ART}/v1/potion.png", output=f"{ART}/v1/potion_v2.png")
+    code, data = run_check(ed.project, "--normals")
+    before = {f["path"] for f in normals(data) if f["code"] == "normals-before-hires"}
+    check(before == {f"{ART}/v1/potion_normal.png"}, f"only the painted v1 map: {before} {normals(data)}")
+    f = next(f for f in normals(data) if f["code"] == "normals-before-hires")
+    check(f["severity"] == "warning" and "version 2" in f["suggestion"], f"{f}")
+    # the cached result is the same
+    code, again = run_check(ed.project, "--normals")
+    check({f["path"] for f in normals(again) if f["code"] == "normals-before-hires"} == before, "cached")
+
 
 async def test_lit_meshes_are_not_sprite_normal_maps():
     """A 3D project (tools/fixtures/stochastic-tiling: Lit boxes and planes with normal maps) whose normal map is 64x64

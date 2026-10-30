@@ -12,7 +12,7 @@ may differ by 1 per channel).
 
 ## When it shows
 
-Only 2D lights read sprite normal maps, and a Light 2D lights a normal map only when its `height` is above 0
+Lights need height > 0: only 2D lights read sprite normal maps, and a Light 2D lights a normal map only when its `height` is above 0
 (lights made by the editor get 64; older ones keep 0). Sprites without a normal map are lit the same at any
 height. Lower `ambient_light_2d_intensity` (0.2-0.4) to see the light at all. To give a light height:
 
@@ -86,17 +86,19 @@ The last three were tuned on high-resolution sprites (below); the first six are 
   blur of the fine shading (the broad blur is twice it). `volume` 0..8: silhouette rounding. `detail`,
   `smoothing` and `softness` are for a 128 px sprite and grow with larger ones (`resolution_scale`, below).
 - `radius` `"auto"` or 0.5..512 px (real pixels, never scaled): how far the rounding reaches. Auto: 30% of each
-  island's thickness (the radius of the widest circle inside it), at least 4 (one value for all frames of an
-  animation or sheet: the median of their largest islands'); the result reports `radius_resolved`.
+  island's thickness T (the radius of the widest circle inside it); with `dome` the smaller of T and 15% of the
+  island's shorter side (a flat face inside round rims; a ring's tube stays round); at least 4, at most 512 (one value
+  for all frames of an animation or sheet: from the medians of their largest islands); the result reports
+  `radius_resolved`.
 - `softness` 0..32 px: blur of the silhouette height. `alpha_threshold` 0..0.99 (0.03): alpha at or below is empty.
 - `profile`: `auto` (default: `rounded` for islands up to 128 px, `inflate` above), `rounded` (upstream: keeps
   rising toward the middle, a crease along it), `dome` (a circular cap, flat top beyond the radius: coins, buttons,
   crates), `bevel` (a straight ramp then flat: tiles), `inflate` (the shape blown up like a balloon: every part as
   round as it is wide, no crease; the result's `profile_resolved` lists what auto chose).
-- `resolution_scale`: `auto` (default) multiplies `smoothing`, `softness` and `detail` by k = max(1, S / 128),
-  S the island's shorter side (a cell's with `wrap` / `extend`; the median of the frames' largest islands for an
-  animation or sheet), so the same art at 4x the size gets the same light; `off` takes them as given, in pixels.
-  The result reports `scale_range` [min k, max k].
+- `resolution_scale`: `auto` (default) multiplies `smoothing`, `softness` and `detail` by k = max(1, 2T / 128),
+  T the island's thickness (2T: the width of its widest part; for an animation or sheet the median of the frames'
+  largest islands; an opaque `wrap` / `extend` tile has none: its shorter side), so the same art at 4x the size gets
+  the same light; `off` takes them as given, in pixels. The result reports `scale_range` [min k, max k].
 - `edges`: `transparent` (default: beyond the image is empty, borders bevel), `wrap` (seamless textures: the
   opposite edge continues), `extend` (tiles of a tileset: the border pixels continue, no bevel).
 - `ignore_outline`: finds the dark outline colour and keeps it out of the relief (a pixel-art outline otherwise
@@ -109,26 +111,34 @@ The last three were tuned on high-resolution sprites (below); the first six are 
 
 ## High-resolution sprites
 
-Above 128 px (an island's or frame's shorter side) the generator works differently, so painted 256-4096 px art
+Above 128 px (an island's shorter side: the gate) the generator works differently, so painted 256-4096 px art
 gets the light pixel art gets:
 
-- **Resolution scale.** `smoothing`, `softness` and `detail` grow with the sprite (x shorter side / 128): at
-  1024 px the default smooths over 8 px and lifts its relief 8 times. Without it the painted relief all but
-  vanished (a 2048 px stone tile came out flat) and the silhouette's creases stayed 1 px sharp.
+- **Resolution scale.** `smoothing`, `softness` and `detail` grow with the sprite's thickness (x 2T / 128): a
+  1024 px disc smooths over 8 px and lifts its relief 8 times, a 1024 px ring with a 64 px tube not at all. Without
+  it the painted relief all but vanished (a 2048 px stone tile came out flat) and the silhouette's creases stayed
+  1 px sharp.
 - **Inflate.** `profile: auto` inflates islands above 128 px: the height is the square root of the Poisson
   solution inside the shape, so a disc is a hemisphere, an arm or a bottle neck is as round as it is thin, and
   there is no crease down the middle (the `rounded` profile's ridge, an X across a square crate) nor fans from a
   wobbly outline. Measured on round shapes: 4.4° mean error against 12.5° before.
 - **Thickness radius.** Auto radius is 30% of each island's thickness, not 15% of its box: rings, limbs and
-  diagonal shapes get a radius that fits them.
+  diagonal shapes get a radius that fits them (`dome`: the thickness, at most 15% of the shorter side).
 - **Soft edges.** Pixels under alpha 0.5 that reach the transparent outside (a glow, a feathered rim) are outside
   the shape: they keep their alpha and their normal, but do not inflate the sprite. Semi-transparent pixels inside
-  it (glass, a translucent belly) stay part of the shape.
-- **Creases and streaks are measured.** `roughness_deg` and `crease_pct` (below) warn `creased` or `streaky`
-  with the fix (`profile: inflate` / `dome`, or `softness`).
+  it (glass, a translucent belly) stay part of the shape, also around a fully transparent hole in them (only the
+  transparency that reaches the image's or frame's border is outside).
+- **Creases are measured.** `crease_pct` (below) warns `creased` with the fix (`profile: inflate` / `dome`, or
+  `softness`); painting over a crease clears it. `roughness_deg` of the whole map warns `streaky` only past every
+  good result of the evaluation (the painted relief is rough by design).
+
+Long thin art is gated by its shorter side: a 1024x96 sword is pixel art to the generator (rounded, no scaling).
+To give it the high-resolution treatment pass `profile: "inflate"` (or the `painted` preset), and for more
+smoothing or softness `resolution_scale: "off"` with the pixel values you want (e.g. `smoothing: 4, softness: 4`).
 
 Pick by the art: `default` (auto: inflate) or `painted` for characters, creatures, potions and plants; `props`
-for flat-faced objects (crates, panels, signs, coins: the rounded box measured 1.4° against 25° with default);
+for flat-faced objects and rings (crates, panels, signs, coins, hoops: the rounded box measured 1.4° against 25°
+with default, a torus 1.8°);
 `tile` for seamless textures; `params: {profile: "rounded"}` for faceted gems or art that wants the ridge.
 Generation takes about 0.1 s at 1024 px and 0.4 s at 2048 px (8 threads; a large island runs on every thread).
 
@@ -139,10 +149,10 @@ Generation takes about 0.1 s at 1024 px and 0.4 s at 2048 px (8 threads; a large
 {"source": "assets/fx/orb.png", "params": {"profile": "inflate", "softness": 3}}
 ```
 
-The same pixels as before (the explicit pixel values of an older call):
-`{"params": {"resolution_scale": "off", "profile": "rounded"}}`. A map made before keeps its look when
-regenerated (`version` 1); `check --normals` names those above 128 px (`normals-before-hires`), and
-`{"params": {"version": 2}}` on its `regenerate` arguments updates it.
+The same pixels as before high-resolution support: `{"params": {"version": 1}}` (CLI `--settings-version 1`): the
+old rules exactly (bbox auto radius, no scaling, no outer band, `auto` as `rounded`). A map made before keeps its
+look when regenerated (its recipe is version 1); `check --normals` names those whose sprite is over 128 px
+(`normals-before-hires`), and `{"params": {"version": 2}}` on its `regenerate` arguments updates it.
 
 ## Toon steps (`quantize`)
 
@@ -206,13 +216,15 @@ then lit from the top-left, top-right, bottom-right, bottom-left (the engine's 2
 | `noise_pct` | pixels disagreeing with their neighbours | > 15 (`noisy`) |
 | `lean_deg` | the average normal's lean | > 8 (`leaning`) |
 | `soft_edge_pct` | semi-transparent opaque pixels | > 10 (`soft_edges`; not above 128 px, where soft rims are outside the shape) |
-| `crease_pct` | above 128 px: inner pixels on a crease (their silhouette normal over 8° from its blur) | > 2 (`creased`) |
-| `roughness_deg` | above 128 px: mean angle between the silhouette normal and its blur | > 1.5 (`streaky`, when not creased) |
+| `crease_pct` | above 128 px: inner pixels on a crease: the silhouette's normal (the painted relief left out; painted pixels as painted) over 8° from its blur | > 2 (`creased`) |
+| `roughness_deg` | above 128 px: mean angle between the map's normal (relief and paint included) and its blur | > 13 (`streaky`, when not creased) |
 
-The last two read the silhouette's share of the normals (the painted relief is wanted detail), over the pixels more
-than 8k px inside the alpha-0.5 silhouette, blurred over 4k px (k = the resolution scale of the largest island);
-they are 0 for sprites of 128 px or less (pixel art's 1-2 px creases are its look). The new defaults measure
-0.3-0.8° and 0%; the `rounded` profile above 128 px 1.3-9.5° and 4.6-68%.
+Both are measured over the inner pixels (deeper than min(8k, half the frame's largest depth) inside the alpha-0.5
+silhouette) against a blur over 4k px, k = max(1, 2T / 128) of the largest island; they are 0 for sprites of 128 px
+or less (pixel art's 1-2 px creases are its look). Creases: the new defaults 0%, the `rounded` profile above 128 px
+3.6-29%. Roughness is mostly the painted relief (the new defaults 0.2-8.9°, the `tile` preset on brushed cobbles
+12.1°), so `streaky` is kept for maps rougher than any good result: brushwork turned into bumps by strong,
+unsmoothed relief (`detail` 8 with `smoothing` 0.1-0.3 measured 14-21°).
 
 `assessment` says the same in words ("Shape: auto -> inflate (mean tilt 42°, 0% flat)", "Roughness: 0.4° (creases
 0.0%)"); `hint` is the fix of the first warning, or "Looks fine.". The result also has `scale_range` and
@@ -370,6 +382,8 @@ A seamless tile: `{"source": "textures/stone.png", "params": {"edges": "wrap"}, 
   Above 128 px the relief is scaled up with the sprite, so dark outlines read as grooves: `ignore_outline`.
 - Faceted gems and crystals inflate into pillows above 128 px: `params: {profile: "rounded"}` keeps the ridge.
 - `props` on a character (dome over thin limbs) creases: `creased` says so; use `default` or `painted`.
+- A 1024x96 sword or a long banner counts as pixel art (shorter side 96): see "High-resolution sprites" to force
+  inflate or more smoothing.
 - 1 px lines get no sideways slope; parts that overlap merge (no depth between an arm and the body).
 - Frames are processed independently: painted detail that moves flickers; raise `smoothing`.
 - Not for UI Images (UI does not take 2D lights).

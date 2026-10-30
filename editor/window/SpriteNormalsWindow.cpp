@@ -2968,14 +2968,14 @@ void SpriteNormalsWindow::drawAdvanced() {
     bool changed = false;
 
     // Radius: auto, or a value
-    rowLabel("Radius", "How far in from the edge the rounding reaches. Auto: 30% of each island's thickness (the widest circle inside it), at least 4 px");
+    rowLabel("Radius", "How far in from the edge the rounding reaches. Auto: 30% of each island's thickness (the widest circle inside it; Dome: the thickness, at most 15% of the shorter side), at least 4 px");
     bool autoRadius = !settings.radius.has_value();
     if (ImGui::Checkbox("Auto##radiusAuto", &autoRadius)) {
         if (autoRadius) settings.radius.reset();
         else settings.radius = 4.0f;
         changed = true;
     }
-    tooltip("How far in from the edge the rounding reaches. Auto: 30% of each island's thickness (the widest circle inside it), at least 4 px");
+    tooltip("How far in from the edge the rounding reaches. Auto: 30% of each island's thickness (the widest circle inside it; Dome: the thickness, at most 15% of the shorter side), at least 4 px");
     ImGui::SameLine();
     ImGui::BeginDisabled(autoRadius);
     float radius = settings.radius.value_or(4.0f);
@@ -3056,7 +3056,7 @@ void SpriteNormalsWindow::drawAdvanced() {
         }
     }
     static constexpr const char* kScaleTip =
-        "Smoothing, Softness and Detail are set for a 128 px sprite; on: they grow with the sprite (x its shorter side / 128, so "
+        "Smoothing, Softness and Detail are set for a 128 px sprite; on: they grow with the sprite (x its widest part / 128, so "
         "the same art at 4x the size looks the same), off: they are taken as pixels. Sprites of 128 px or less are the same either way";
     rowLabel("Resolution", kScaleTip);
     {

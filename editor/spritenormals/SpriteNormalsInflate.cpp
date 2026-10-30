@@ -159,9 +159,9 @@ namespace jasperengine::editor::spritenormals::detail {
                                     }
                                 }
                             }
-                            // three of four children (all of an edge's one or two): the coarse domain never
-                            // reaches past the fine one by more than a quarter (a larger one overshoots)
-                            const bool on = 4 * in >= 3 * children;
+                            // inside only when every child is: the coarse domain never reaches past the
+                            // fine one (a larger one overshoots; pinholes would vanish from it)
+                            const bool on = in == children;
                             C.inside[static_cast<size_t>(cy) * C.w + cx] = on;
                             count += on;
                         }
@@ -191,9 +191,9 @@ namespace jasperengine::editor::spritenormals::detail {
             // odd height (both start with the same colour): those two run first, in order, then
             // the others in parallel. Inside a row the order is left to right.
             void halfSweep(Level& L, int color) {
-                // the whole row computed into a scratch row (vectorizes: the other colour's values
-                // only are read), then this colour's inside pixels take it
-                auto row = [&](int y, std::vector<float>& next) {
+                // only this colour's inside pixels are computed: they read the other colour alone (no
+                // pixel another thread writes in this pass), left to right inside a row
+                auto row = [&](int y) {
                     const Rows<float> nb = rows(L, L.u.data(), zeros.data(), y);
                     const size_t base = static_cast<size_t>(y) * L.w;
                     float* u = L.u.data() + base;
@@ -201,30 +201,23 @@ namespace jasperengine::editor::spritenormals::detail {
                     const uint8_t* in = L.inside.data() + base;
                     const uint8_t* d = L.diag.data() + base;
                     const int w = L.w;
-                    float* t = next.data();
-                    // the diagonal inside the row: 4 less the Neumann sides above and below
-                    const float inv = kInverse[4 - (nb.up == zeros.data() && wrapIndex(y - 1, L.h, border) == y ? 1 : 0) -
-                                               (nb.down == zeros.data() && wrapIndex(y + 1, L.h, border) == y ? 1 : 0)];
                     const float h2 = L.h2;
-                    t[0] = (neighbourSum(L, u, nb, 0) + h2 * f[0]) * kInverse[d[0]];
-                    for (int x = 1; x + 1 < w; x++) t[x] = ((((u[x - 1] + u[x + 1]) + nb.up[x]) + nb.down[x]) + h2 * f[x]) * inv;
-                    if (w > 1) t[w - 1] = (neighbourSum(L, u, nb, w - 1) + L.h2 * f[w - 1]) * kInverse[d[w - 1]];
                     for (int x = (y + color) & 1; x < w; x += 2) {
-                        if (in[x]) u[x] = t[x];
+                        if (!in[x]) continue;
+                        const float around = x > 0 && x + 1 < w ? (((u[x - 1] + u[x + 1]) + nb.up[x]) + nb.down[x]) : neighbourSum(L, u, nb, x);
+                        u[x] = (around + h2 * f[x]) * kInverse[d[x]];
                     }
                 };
                 const bool seam = border == Border::Wrap && (L.h % 2) == 1 && L.h > 1;
                 int first = 0, last = L.h;
                 if (seam) {
-                    std::vector<float> next(static_cast<size_t>(L.w));
-                    row(0, next);
-                    row(L.h - 1, next);
+                    row(0);
+                    row(L.h - 1);
                     first = 1;
                     last = L.h - 1;
                 }
                 parallelFor(poolFor(L), last - first, [&](int b, int e) {
-                    std::vector<float> next(static_cast<size_t>(L.w));
-                    for (int y = first + b; y < first + e; y++) row(y, next);
+                    for (int y = first + b; y < first + e; y++) row(y);
                 }, 16);
             }
 
@@ -333,15 +326,15 @@ namespace jasperengine::editor::spritenormals::detail {
 
     }
 
-    bool poisson(const std::vector<uint8_t>& mask, int width, int height, Border border, std::vector<double>& u, Workers* workers,
-                 const std::atomic<bool>* cancel, int* iterations) {
+    PoissonStatus poisson(const std::vector<uint8_t>& mask, int width, int height, Border border, std::vector<double>& u, Workers* workers,
+                          const std::atomic<bool>* cancel, int* iterations) {
         const size_t n = static_cast<size_t>(std::max(width, 0)) * static_cast<size_t>(std::max(height, 0));
         u.assign(n, 0.0);
         if (iterations) *iterations = 0;
         size_t count = 0;
         for (uint8_t m : mask) count += m ? 1 : 0;
-        if (count == 0) return true;
-        if (border != Border::Zero && count == n) return false;
+        if (count == 0) return PoissonStatus::Solved;
+        if (border != Border::Zero && count == n) return PoissonStatus::Singular;
 
         Solver solver;
         solver.border = border;
@@ -391,17 +384,21 @@ namespace jasperengine::editor::spritenormals::detail {
         byRows([&](size_t b, size_t e) { std::copy(z.begin() + static_cast<std::ptrdiff_t>(b), z.begin() + static_cast<std::ptrdiff_t>(e), p.begin() + static_cast<std::ptrdiff_t>(b)); });
         double rz = solver.rowSum(L, rowDot);
         int it = 0;
+        bool converged = false;
         for (; it < kPoissonMaxIterations; it++) {
             if (cancel && cancel->load()) {
                 std::fill(u.begin(), u.end(), 0.0);
-                return false;
+                return PoissonStatus::Cancelled;
             }
             const double pq = solver.rowSum(L, [&](int y) {
                 double s = 0.0;
                 applyRow(y, [&](size_t i, double ap) { s += static_cast<double>(p[i]) * ap; });
                 return s;
             });
-            if (!(pq > 0.0)) break;
+            if (!(pq > 0.0)) {
+                converged = true;   // nothing left to reduce (an exact solution)
+                break;
+            }
             const double alpha = rz / pq;
             const double rr = solver.rowSum(L, [&](int y) {
                 double s = 0.0;
@@ -415,6 +412,7 @@ namespace jasperengine::editor::spritenormals::detail {
             });
             if (std::sqrt(rr) <= kTolerance * bNorm) {
                 it++;
+                converged = true;
                 break;
             }
             solver.vcycle(0);
@@ -431,7 +429,7 @@ namespace jasperengine::editor::spritenormals::detail {
                 if (!L.inside[i] || !(u[i] > 0.0)) u[i] = 0.0;
             }
         });
-        return true;
+        return converged ? PoissonStatus::Solved : PoissonStatus::NotConverged;
     }
 
 }

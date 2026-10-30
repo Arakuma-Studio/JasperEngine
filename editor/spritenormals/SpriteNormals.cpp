@@ -99,9 +99,10 @@ namespace jasperengine::editor::spritenormals {
             int cell = 0;                 // index into the (deduplicated) cells
             detail::Component island;     // Transparent: the island, cell-local pixel indices
             float radius = 4.0f;          // explicit, a sequence's, or (version 1) the bbox auto radius
-            bool thicknessRadius = false; // version 2 auto radius on a still: 0.3 x its own thickness
-            float side = 0.0f;            // S: the size measure (island / cell shorter side, a sequence's median)
-            float scale = 1.0f;           // k
+            bool thicknessRadius = false; // version 2 auto radius on a still: from its own thickness
+            float side = 0.0f;            // S: island / cell shorter side (a sequence's median): the gating
+            float thickness = -1.0f;      // a sequence's median thickness; -1: the item's own
+            bool scaled = false;          // version 2, resolution_scale auto: k from the thickness
             Profile profile = Profile::Rounded;   // auto resolved
             bool outerBand = false;       // rule 5: soft pixels reachable from outside are outside the shape
             int64_t fieldPixels = 0;      // the size of its field (large ones run alone, on every thread)
@@ -110,6 +111,9 @@ namespace jasperengine::editor::spritenormals {
         struct ItemResult {
             uint32_t matched = 0;
             float radius = 0.0f;
+            float scale = 1.0f;           // k used
+            bool cancelled = false;       // the inflate solve saw the cancel flag
+            bool notConverged = false;    // the inflate solve stopped at its iteration cap
         };
 
         struct Context {
@@ -133,8 +137,20 @@ namespace jasperengine::editor::spritenormals {
         // the presets' strength x volume of 1.725 is the best effective slope there.
         constexpr float kInflateHeight = 1.0f;
 
-        // The thickness auto radius (rule 3): 0.3 x the largest inscribed distance, 4..512 px
-        inline float thicknessRadius(float thickness) { return std::min(std::max(0.3f * thickness, 4.0f), 512.0f); }
+        // The version 2 auto radius from the thickness T (the largest inscribed distance) and the
+        // shorter side S: 0.3 T (rule 3); dome: min(T, 0.15 S) (a flat face, round rims; a ring's
+        // tube stays round), 4..512 px
+        inline float thicknessRadius(Profile profile, float thickness, float side) {
+            const float r = profile == Profile::Dome ? std::min(thickness, 0.15f * side) : 0.3f * thickness;
+            return std::min(std::max(r, 4.0f), 512.0f);
+        }
+
+        // k (rule 1): max(1, 2 T / 128), T the thickness; a field with no inside distance (an opaque
+        // wrap / extend tile): its shorter side, max(1, S / 128)
+        inline float thicknessScale(float thickness, float side) {
+            const float measure = thickness > 0.0f ? 2.0f * thickness : side;
+            return std::max(1.0f, measure / static_cast<float>(kHiresSide));
+        }
 
         // The field of an item: the island's box padded by 1 (Transparent) or the whole cell
         // (Wrap / Extend); the mask (alpha above the cutoff) and the shape mask: the mask less the
@@ -182,17 +198,23 @@ namespace jasperengine::editor::spritenormals {
             }
             f.shape = f.mask;
             if (item.outerBand) {
-                // soft pixels (alpha under 0.5) 8-connected to a pixel outside the mask, through
-                // soft pixels only: outside the shape (they keep their alpha and get a normal)
-                const Border border = s.edges == Edges::Wrap ? Border::Wrap : Border::Zero;
+                // soft pixels (alpha under 0.5) 8-connected to the outside through soft pixels: outside the
+                // shape (they keep their alpha and get a normal). The outside is the non-mask pixels
+                // connected (through non-mask pixels) to the field's border: the padding ring with
+                // edges transparent, the cell's border with wrap / extend; a hole enclosed by the sprite
+                // (a pinhole in glass) is not outside, so translucent pixels around it stay inside
+                const bool wrap = s.edges == Edges::Wrap;
                 auto soft = [&](size_t i) {
                     const int fx = static_cast<int>(i % f.width) + f.ox, fy = static_cast<int>(i / f.width) + f.oy;
                     return color.pixel(cell.x + fx, cell.y + fy)[3] < 128;
                 };
                 std::vector<uint8_t> seen(n, 0);
                 std::vector<int> queue;
-                for (size_t i = 0; i < n; i++) {
-                    if (!f.mask[i]) {
+                for (int y = 0; y < f.height; y++) {
+                    for (int x = 0; x < f.width; x++) {
+                        if (x != 0 && y != 0 && x != f.width - 1 && y != f.height - 1) continue;
+                        const size_t i = static_cast<size_t>(y) * f.width + x;
+                        if (f.mask[i] || seen[i]) continue;
                         seen[i] = 1;
                         queue.push_back(static_cast<int>(i));
                     }
@@ -204,16 +226,19 @@ namespace jasperengine::editor::spritenormals {
                         for (int dx = -1; dx <= 1; dx++) {
                             if (!dx && !dy) continue;
                             int nx = x + dx, ny = y + dy;
-                            if (border == Border::Wrap) {
+                            if (wrap) {
                                 nx = (nx % f.width + f.width) % f.width;
                                 ny = (ny % f.height + f.height) % f.height;
                             } else if (nx < 0 || ny < 0 || nx >= f.width || ny >= f.height) {
                                 continue;
                             }
                             const size_t j = static_cast<size_t>(ny) * f.width + nx;
-                            if (seen[j] || !soft(j)) continue;
+                            if (seen[j]) continue;
+                            if (f.mask[j]) {
+                                if (!soft(j)) continue;
+                                f.shape[j] = 0;   // a soft pixel reached from outside: the outer band
+                            }
                             seen[j] = 1;
-                            f.shape[j] = 0;
                             queue.push_back(static_cast<int>(j));
                         }
                     }
@@ -278,33 +303,96 @@ namespace jasperengine::editor::spritenormals {
             const int width = field.width, height = field.height, ox = field.ox, oy = field.oy;
             const std::vector<int>& fieldPixels = field.pixels;
             const size_t n = static_cast<size_t>(width) * static_cast<size_t>(height);
-            Field opacity = Field::zero(width, height);
-            Field lightness = Field::zero(width, height);
-            const bool anyRegion = !ctx.regions.empty();
-            std::vector<int> region;
-            if (anyRegion) region.assign(n, -1);
-            uint32_t matched = 0;
-            // the item's effective values: the 128 px reference ones times k (exact at k = 1)
-            const float softness = s.softness * item.scale;
-            const float smoothing = s.smoothing * item.scale;
-            const float detailGain = s.detail * item.scale;
-
             // per pixel of the mask, split over the pool for a large field (disjoint writes; the
             // min / max and the matched bits combine in any order to the same values)
+            const bool anyRegion = !ctx.regions.empty();
             const int count = static_cast<int>(fieldPixels.size());
             detail::Workers* pool = static_cast<int64_t>(n) >= detail::kParallelPixels ? workers : nullptr;
             auto overPixels = [&](const std::function<void(int, int)>& body) { detail::parallelFor(pool, count, body, 8192); };
+            ItemResult outcome;
+            Field shape = detail::edt(field.shape, width, height, border, workers);
+            // the thickness: the item's own largest inscribed distance, or its sequence's median
+            const float thickness = item.thickness >= 0.0f ? item.thickness : maxFinite(shape, fieldPixels);
+            float radius = item.radius;
+            if (item.thicknessRadius) radius = thickness > 0.0f ? thicknessRadius(item.profile, thickness, item.side) : autoRadius(item.side);
+            outcome.radius = radius;
+            // the item's effective values: the 128 px reference ones times k (exact at k = 1)
+            const float k = item.scaled ? thicknessScale(thickness, item.side) : 1.0f;
+            outcome.scale = k;
+            const float softness = s.softness * k;
+            const float smoothing = s.smoothing * k;
+            const float detailGain = s.detail * k;
+            // scaled items blur with the O(1) box cascade above sigma 8; unscaled ones (pixel art,
+            // version 1) keep the exact Gaussian up to 16 (their bytes never change)
+            const float exactUpTo = k > 1.0f ? 8.0f : detail::kExactGaussianSigma;
+            if (item.profile == Profile::Inflate) {
+                std::vector<double> u;
+                const detail::PoissonStatus status = detail::poisson(field.shape, width, height, border, u, workers, ctx.cancel);
+                if (status == detail::PoissonStatus::Cancelled) {
+                    outcome.cancelled = true;
+                    return outcome;
+                }
+                outcome.notConverged = status == detail::PoissonStatus::NotConverged;
+                const bool solved = status == detail::PoissonStatus::Solved || status == detail::PoissonStatus::NotConverged;
+                detail::parallelFor(pool, height, [&](int b, int e) {
+                    for (size_t i = static_cast<size_t>(b) * width; i < static_cast<size_t>(e) * width; i++) {
+                        shape.data[i] = solved ? kInflateHeight * s.volume * static_cast<float>(std::sqrt(u[i])) : 0.0f;
+                    }
+                }, 16);
+            } else {
+                detail::parallelFor(pool, height, [&](int b, int e) {
+                    for (size_t i = static_cast<size_t>(b) * width; i < static_cast<size_t>(e) * width; i++) {
+                        // the outer band and the outside: 0 (their distance is 0)
+                        shape.data[i] = profileHeight(item.profile, shape.data[i], s.volume, radius);
+                    }
+                }, 16);
+            }
+            Field combined = detail::gaussian(shape, softness, border, workers, exactUpTo);
+            shape = Field();
+            const bool upstreamSobel = item.profile == Profile::Rounded;
+            if (ctx.shape) {
+                // the silhouette's share alone (no relief, regions or quantization), before the relief is added
+                overPixels([&](int begin, int end) {
+                    for (int q = begin; q < end; q++) {
+                        const int i = fieldPixels[static_cast<size_t>(q)];
+                        const int fx = i % width, fy = i / width;
+                        float dx, dy;
+                        if (upstreamSobel) detail::sobel(combined, fx, fy, dx, dy, border);
+                        else balancedSobel(combined, fx, fy, dx, dy, border);
+                        detail::encodeNormal(dx, dy, s.strength, s.directx, ctx.shape->pixel(cell.x + fx + ox, cell.y + fy + oy));
+                    }
+                });
+            }
+
+            // the shape's masks are done with (less memory for what follows)
+            std::vector<uint8_t>().swap(field.mask);
+            std::vector<uint8_t>().swap(field.shape);
+
+            // the painted shading (after the shape: its fields don't sit beside the solver's)
+            Field opacity = Field::zero(width, height);
+            Field lightness = Field::zero(width, height);
+            std::vector<int> region;
+            if (anyRegion) region.assign(n, -1);
+            uint32_t matched = 0;
+
             float low = 1.0f, high = 0.0f;
             std::mutex reduce;
             overPixels([&](int begin, int end) {
                 float lo = 1.0f, hi = 0.0f;
                 uint32_t bits = 0;
-                for (int k = begin; k < end; k++) {
-                    const int i = fieldPixels[static_cast<size_t>(k)];
+                uint32_t lastRgb = 0xFFFFFFFFu;   // the previous pixel's colour and lightness (runs of one colour)
+                float lastL = 0.0f;
+                for (int q = begin; q < end; q++) {
+                    const int i = fieldPixels[static_cast<size_t>(q)];
                     const int lx = i % width + ox, ly = i / width + oy;
                     const uint8_t* px = color.pixel(cell.x + lx, cell.y + ly);
                     opacity.data[static_cast<size_t>(i)] = static_cast<float>(px[3]) / 255.0f;
-                    const float value = detail::oklabL(px[0], px[1], px[2]);
+                    const uint32_t rgb = (uint32_t(px[0]) << 16) | (uint32_t(px[1]) << 8) | px[2];
+                    if (rgb != lastRgb) {
+                        lastRgb = rgb;
+                        lastL = detail::oklabL(px[0], px[1], px[2]);
+                    }
+                    const float value = lastL;
                     lightness.data[static_cast<size_t>(i)] = value;
                     lo = std::min(lo, value);
                     hi = std::max(hi, value);
@@ -322,42 +410,14 @@ namespace jasperengine::editor::spritenormals {
             // A constant height offset has no normal; centering avoids cancellation noise on flat art
             const float centre = (low + high) * 0.5f;
             overPixels([&](int begin, int end) {
-                for (int k = begin; k < end; k++) lightness.data[static_cast<size_t>(fieldPixels[static_cast<size_t>(k)])] -= centre;
+                for (int q = begin; q < end; q++) lightness.data[static_cast<size_t>(fieldPixels[static_cast<size_t>(q)])] -= centre;
             });
 
-            ItemResult outcome;
-            Field shape = detail::edt(field.shape, width, height, border, workers);
-            float radius = item.radius;
-            if (item.thicknessRadius) {
-                const float thickness = maxFinite(shape, fieldPixels);
-                radius = thickness > 0.0f ? thicknessRadius(thickness) : autoRadius(item.side);
-            }
-            outcome.radius = radius;
-            if (item.profile == Profile::Inflate) {
-                std::vector<double> u;
-                const bool solved = detail::poisson(field.shape, width, height, border, u, workers, ctx.cancel);
-                detail::parallelFor(pool, height, [&](int b, int e) {
-                    for (size_t i = static_cast<size_t>(b) * width; i < static_cast<size_t>(e) * width; i++) {
-                        shape.data[i] = solved ? kInflateHeight * s.volume * static_cast<float>(std::sqrt(u[i])) : 0.0f;
-                    }
-                }, 16);
-            } else {
-                detail::parallelFor(pool, height, [&](int b, int e) {
-                    for (size_t i = static_cast<size_t>(b) * width; i < static_cast<size_t>(e) * width; i++) {
-                        // the outer band and the outside: 0 (their distance is 0)
-                        shape.data[i] = profileHeight(item.profile, shape.data[i], s.volume, radius);
-                    }
-                }, 16);
-            }
-            Field combined = detail::gaussian(shape, softness, border, workers);
-            shape = Field();
-            Field shapeOnly;
-            if (ctx.shape) shapeOnly = combined;
 
             if (s.detail != 0.0f) {
                 if (!ctx.gain) {
-                    const Field fine = detail::maskedGaussian(lightness, opacity, smoothing, border, workers);
-                    const Field broad = detail::maskedGaussian(lightness, opacity, smoothing * 2.0f, border, workers);
+                    const Field fine = detail::maskedGaussian(lightness, opacity, smoothing, border, workers, exactUpTo);
+                    const Field broad = detail::maskedGaussian(lightness, opacity, smoothing * 2.0f, border, workers, exactUpTo);
                     detail::parallelFor(pool, height, [&](int b, int e) {
                         for (size_t i = static_cast<size_t>(b) * width; i < static_cast<size_t>(e) * width; i++) {
                             combined.data[i] += detailGain * (0.7f * fine.data[i] + 0.3f * broad.data[i]);
@@ -374,9 +434,9 @@ namespace jasperengine::editor::spritenormals {
                         g.data[static_cast<size_t>(i)] = gi;
                         if (!(gi > 0.0f)) fed.data[static_cast<size_t>(i)] = 0.0f;
                     }
-                    const Field fine = detail::maskedGaussian(lightness, fed, smoothing, border, workers);
-                    const Field broad = detail::maskedGaussian(lightness, fed, smoothing * 2.0f, border, workers);
-                    const Field gain = detail::maskedGaussian(g, opacity, smoothing, border, workers);
+                    const Field fine = detail::maskedGaussian(lightness, fed, smoothing, border, workers, exactUpTo);
+                    const Field broad = detail::maskedGaussian(lightness, fed, smoothing * 2.0f, border, workers, exactUpTo);
+                    const Field gain = detail::maskedGaussian(g, opacity, smoothing, border, workers, exactUpTo);
                     for (size_t i = 0; i < n; i++) {
                         combined.data[i] += detailGain * gain.data[i] * (0.7f * fine.data[i] + 0.3f * broad.data[i]);
                     }
@@ -388,17 +448,16 @@ namespace jasperengine::editor::spritenormals {
                     const int r = region[static_cast<size_t>(i)];
                     if (r >= 0) lift.data[static_cast<size_t>(i)] = ctx.regions[static_cast<size_t>(r)].lift;
                 }
-                const Field blurred = detail::gaussian(lift, softness, border, workers);
+                const Field blurred = detail::gaussian(lift, softness, border, workers, exactUpTo);
                 detail::parallelFor(pool, height, [&](int b, int e) {
                     for (size_t i = static_cast<size_t>(b) * width; i < static_cast<size_t>(e) * width; i++) combined.data[i] += blurred.data[i];
                 }, 16);
             }
 
             Image& normal = *ctx.normal;
-            const bool upstreamSobel = item.profile == Profile::Rounded;
             overPixels([&](int begin, int end) {
-            for (int k = begin; k < end; k++) {
-                const int i = fieldPixels[static_cast<size_t>(k)];
+            for (int q = begin; q < end; q++) {
+                const int i = fieldPixels[static_cast<size_t>(q)];
                 const int fx = i % width, fy = i / width;
                 const int x = cell.x + fx + ox, y = cell.y + fy + oy;
                 uint8_t* out = normal.pixel(x, y);
@@ -425,12 +484,6 @@ namespace jasperengine::editor::spritenormals {
                         detail::encodeUnit(snapped, s.directx, out);
                     }
                 }
-                if (ctx.shape) {
-                    float dx, dy;
-                    if (upstreamSobel) detail::sobel(shapeOnly, fx, fy, dx, dy, border);
-                    else balancedSobel(shapeOnly, fx, fy, dx, dy, border);
-                    detail::encodeNormal(dx, dy, s.strength, s.directx, ctx.shape->pixel(x, y));
-                }
                 if (ctx.heights) {
                     const size_t p = static_cast<size_t>(y) * color.width + x;
                     (*ctx.heights)[p] = s.strength * combined.data[static_cast<size_t>(i)];
@@ -444,11 +497,14 @@ namespace jasperengine::editor::spritenormals {
 
         // The mask of a cell (alpha strictly above the cutoff), cell-local
         std::vector<uint8_t> cellMask(const Image& color, const Cell& cell, float threshold) {
+            // the comparison of every alpha byte, once (the same float test per pixel)
+            uint8_t above[256];
+            for (int a = 0; a < 256; a++) above[a] = static_cast<float>(a) / 255.0f > threshold;
             std::vector<uint8_t> mask(static_cast<size_t>(cell.width) * cell.height, 0);
             for (int y = 0; y < cell.height; y++) {
-                for (int x = 0; x < cell.width; x++) {
-                    mask[static_cast<size_t>(y) * cell.width + x] = static_cast<float>(color.pixel(cell.x + x, cell.y + y)[3]) / 255.0f > threshold;
-                }
+                const uint8_t* row = color.pixel(cell.x, cell.y + y);
+                uint8_t* out = mask.data() + static_cast<size_t>(y) * cell.width;
+                for (int x = 0; x < cell.width; x++) out[x] = above[row[x * 4 + 3]];
             }
             return mask;
         }
@@ -944,7 +1000,6 @@ namespace jasperengine::editor::spritenormals {
             ctx.cancel = control.cancel;
             const bool v1 = s.version < 2;
             const bool scaled = !v1 && s.resolutionScale == ResolutionScale::Auto;
-            auto scaleOf = [&](float side) { return scaled ? std::max(1.0f, side / static_cast<float>(kHiresSide)) : 1.0f; };
             // auto: rounded up to 128 px, inflate above; version 1 had no auto: rounded, its default
             auto profileOf = [&](float side) {
                 if (s.profile != Profile::Auto) return s.profile;
@@ -960,7 +1015,7 @@ namespace jasperengine::editor::spritenormals {
                 const Cell& cell = cells[c];
                 std::vector<detail::Component> islands;
                 if (transparent || sequenceSize) {
-                    islands = detail::components(cellMask(color, cell, s.alphaThreshold), cell.width, cell.height);
+                    islands = detail::componentsRowMajor(cellMask(color, cell, s.alphaThreshold), cell.width, cell.height);
                 }
                 if (sequenceSize && !islands.empty()) {
                     size_t largest = 0;
@@ -969,7 +1024,7 @@ namespace jasperengine::editor::spritenormals {
                     }
                     const detail::Component& big = islands[largest];
                     largestSides.push_back(static_cast<float>(std::min(big.maxX - big.minX + 1, big.maxY - big.minY + 1)));
-                    if (autoR && !v1) {
+                    if (!v1 && (autoR || scaled)) {
                         Item probe;
                         probe.cell = static_cast<int>(c);
                         if (transparent) probe.island = big;
@@ -1004,7 +1059,7 @@ namespace jasperengine::editor::spritenormals {
             }
             for (Item& item : items) {
                 if (sequenceSize) item.side = sequenceSide;
-                item.scale = scaleOf(item.side);
+                item.scaled = scaled;
                 item.profile = profileOf(item.side);
                 item.outerBand = !v1 && item.side > static_cast<float>(kHiresSide);
                 item.thicknessRadius = autoR && !v1 && !sequenceSize;
@@ -1024,36 +1079,36 @@ namespace jasperengine::editor::spritenormals {
             result.threads = threads;
             detail::Workers workers(threads);
 
-            if (autoR && sequenceSize) {
+            if (sequenceSize && (autoR || scaled)) {
+                // version 2: the median over the frames of their largest island's thickness (k, the
+                // auto radius); version 1: the bbox auto radius of the median side
+                float thickness = -1.0f;
+                if (!v1 && !largestItems.empty()) {
+                    std::vector<float> thick;
+                    for (Item& probe : largestItems) {
+                        probe.side = sequenceSide;
+                        probe.outerBand = sequenceSide > static_cast<float>(kHiresSide);
+                        const ItemField f = itemField(probe, ctx);
+                        const Field d = detail::edt(f.shape, f.width, f.height,
+                                                    s.edges == Edges::Wrap ? Border::Wrap : (s.edges == Edges::Extend ? Border::Clamp : Border::Zero), &workers);
+                        thick.push_back(maxFinite(d, f.pixels));
+                    }
+                    std::sort(thick.begin(), thick.end());
+                    const size_t m = thick.size();
+                    thickness = m % 2 ? thick[m / 2] : (thick[m / 2 - 1] + thick[m / 2]) * 0.5f;
+                }
+                const Profile profile = profileOf(sequenceSide);
                 float radius = 4.0f;
                 if (!largestSides.empty()) {
-                    if (v1) {
-                        radius = autoRadius(sequenceSide);
-                    } else {
-                        // the median over the frames of their largest island's thickness
-                        std::vector<float> thick;
-                        for (Item& probe : largestItems) {
-                            probe.side = sequenceSide;
-                            probe.outerBand = sequenceSide > static_cast<float>(kHiresSide);
-                            const ItemField f = itemField(probe, ctx);
-                            const Field d = detail::edt(f.shape, f.width, f.height,
-                                                        s.edges == Edges::Wrap ? Border::Wrap : (s.edges == Edges::Extend ? Border::Clamp : Border::Zero), &workers);
-                            thick.push_back(maxFinite(d, f.pixels));
-                        }
-                        std::sort(thick.begin(), thick.end());
-                        const size_t m = thick.size();
-                        const float median = m % 2 ? thick[m / 2] : (thick[m / 2 - 1] + thick[m / 2]) * 0.5f;
-                        radius = median > 0.0f ? thicknessRadius(median) : autoRadius(sequenceSide);
-                    }
+                    radius = v1 || !(thickness > 0.0f) ? autoRadius(sequenceSide) : thicknessRadius(profile, thickness, sequenceSide);
                 }
-                for (Item& item : items) item.radius = radius;
+                for (Item& item : items) {
+                    if (autoR) item.radius = radius;
+                    if (!v1) item.thickness = std::max(thickness, 0.0f);
+                }
             }
             result.islands = static_cast<int>(items.size());
-            for (size_t k = 0; k < items.size(); k++) {
-                result.scaleMin = k ? std::min(result.scaleMin, items[k].scale) : items[k].scale;
-                result.scaleMax = k ? std::max(result.scaleMax, items[k].scale) : items[k].scale;
-                result.profilesUsed |= 1u << static_cast<int>(items[k].profile);
-            }
+            for (size_t k = 0; k < items.size(); k++) result.profilesUsed |= 1u << static_cast<int>(items[k].profile);
 
             // ---- run the items (disjoint output pixels: any schedule writes the same bytes):
             // the large ones one after another on every thread, then the others side by side
@@ -1111,12 +1166,27 @@ namespace jasperengine::editor::spritenormals {
                 failure.seconds = secondsSince(start);
                 return failure;
             }
+            int notConverged = 0;
+            for (const ItemResult& o : outcomes) {
+                cancelled = cancelled || o.cancelled;
+                notConverged += o.notConverged ? 1 : 0;
+            }
             if (cancelled || (control.cancel && control.cancel->load() && done < total)) {
                 Result stopped;
                 stopped.status = Status::Cancelled;
                 stopped.errors.push_back({"cancelled", "", "The generation was cancelled.", ""});
                 stopped.seconds = secondsSince(start);
                 return stopped;
+            }
+            for (size_t k = 0; k < items.size(); k++) {
+                result.scaleMin = k ? std::min(result.scaleMin, outcomes[k].scale) : outcomes[k].scale;
+                result.scaleMax = k ? std::max(result.scaleMax, outcomes[k].scale) : outcomes[k].scale;
+            }
+            if (notConverged > 0) {
+                result.warnings.push_back({"inflate_not_converged", "profile",
+                                           "The inflate solve of " + std::to_string(notConverged) + (notConverged == 1 ? " island" : " islands") +
+                                               " stopped at its iteration limit before converging; its shading may be slightly uneven.",
+                                           "Use profile rounded or dome for that sprite, and report the image."});
             }
             if (autoR && !sequenceSize) {
                 result.radiusPerIsland = true;

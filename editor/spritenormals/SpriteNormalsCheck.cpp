@@ -5,6 +5,7 @@
 #include "util/FileUtils.h"
 
 #include "SpriteNormalsPaint.h"
+#include "SpriteNormalsPreview.h"
 #include "SpriteNormalsRecipe.h"
 
 #include "texsynth/SynthImage.h"
@@ -34,7 +35,7 @@ namespace jasperengine::editor::spritenormals {
 
         // ---- the cache (.jasperengine/normals-check-cache.json)
 
-        constexpr int kCacheVersion = 2;
+        constexpr int kCacheVersion = 3;   // 3: island_side (normals-before-hires)
 
         struct Cache {
             fs::path file;
@@ -113,6 +114,7 @@ namespace jasperengine::editor::spritenormals {
             std::string paintError;          // the paint chunk can't be read
             int paintWidth = 0;              // its size (a readable one)
             int paintHeight = 0;
+            double islandSide = -1.0;        // a version 1 recipe's map over 128 px: medianIslandSide of its pixels
         };
 
         struct Checker {
@@ -146,6 +148,22 @@ namespace jasperengine::editor::spritenormals {
                 texsynth::probeImage(png, w, h);
                 fresh["width"] = w;
                 fresh["height"] = h;
+                // made before high-resolution support and over 128 px: how large its islands (or
+                // frames' islands) are, from its alpha (a sheet of 32 px frames is pixel art)
+                if (fresh["recipe"].is_object() && fresh["recipe"].value("version", 1) < 2 && std::min(w, h) > kHiresSide) {
+                    texsynth::Image image;
+                    std::string why;
+                    if (texsynth::loadImage(png, image, why)) {
+                        const json& r = fresh["recipe"];
+                        std::vector<Cell> cells;
+                        if (r.contains("frames") && r["frames"].contains("cells")) {
+                            for (const json& c : r["frames"]["cells"]) cells.push_back({c[0].get<int>(), c[1].get<int>(), c[2].get<int>(), c[3].get<int>()});
+                        }
+                        float threshold = 0.03f;
+                        if (r.contains("settings") && r["settings"].contains("alpha_threshold")) threshold = r["settings"]["alpha_threshold"].get<float>();
+                        fresh["island_side"] = medianIslandSide(texsynth::toRgba8(image), cells, threshold);
+                    }
+                }
                 // the paint layer (Phase 5): its head first, then (only when there is one) the
                 // whole chunk decoded, so a damaged one is found
                 std::string paintError;
@@ -170,6 +188,7 @@ namespace jasperengine::editor::spritenormals {
                 info.width = entry->value("width", 0);
                 info.height = entry->value("height", 0);
                 if (entry->contains("paint_error") && (*entry)["paint_error"].is_string()) info.paintError = (*entry)["paint_error"].get<std::string>();
+                if (entry->contains("island_side") && (*entry)["island_side"].is_number()) info.islandSide = (*entry)["island_side"].get<double>();
                 if (entry->contains("paint") && (*entry)["paint"].is_object()) {
                     info.paintWidth = (*entry)["paint"].value("width", 0);
                     info.paintHeight = (*entry)["paint"].value("height", 0);
@@ -243,14 +262,15 @@ namespace jasperengine::editor::spritenormals {
                                                    std::to_string(info.width) + "x" + std::to_string(info.height) + ": regenerating refuses it (paint_size_mismatch)",
                                                "normals-paint-size", paintFix});
                 }
-                // made before high-resolution support (recipe version 1) and above 128 px: it keeps
-                // the old rules when regenerated (rounded creases, fans, unscaled relief)
-                const bool hires = std::min(info.width, info.height) > kHiresSide;
+                // made before high-resolution support (recipe version 1) with islands above 128 px
+                // (the median over its frames of the largest island's shorter side, the generator's
+                // gate): it keeps the old rules when regenerated (rounded creases, fans, unscaled relief)
+                const bool hires = info.islandSide > kHiresSide;
                 if (role == "normal" && hires && recipe.value("version", 1) < 2) {
                     result.findings.push_back({"normals", at, 0, 0, "warning",
-                                               "made before high-resolution support (recipe version 1) at " + std::to_string(info.width) + "x" +
-                                                   std::to_string(info.height) + ": regenerating keeps its old look (creases down rounded shapes, fans, "
-                                                   "little relief)",
+                                               "made before high-resolution support (recipe version 1), its sprite " +
+                                                   std::to_string(static_cast<int>(info.islandSide)) +
+                                                   " px across: regenerating keeps its old look (creases down rounded shapes, fans, little relief)",
                                                "normals-before-hires",
                                                "regenerate it with settings version 2: generate_sprite_normals with get_asset_info's `regenerate` "
                                                "arguments and params.version 2, `generate-sprite-normals --settings-version 2`, or the window's "

@@ -535,8 +535,8 @@ async def test_high_resolution_flags():
     # the default: inflate, scaled, smooth; the rounded profile: creased (exit 0, a warning)
     code, out, _ = run_json(work, "--source", "art/potion.png", "--dry-run")
     res = out["results"][0]
-    check(code == 0 and "inflate" in res["profile_resolved"] and res["scale_range"][1] > 1.5, f"{res['profile_resolved']} {res['scale_range']}")
-    check(res["metrics"]["crease_pct"] < 1 and res["metrics"]["roughness_deg"] < 1, f"{res['metrics']}")
+    check(code == 0 and "inflate" in res["profile_resolved"] and res["scale_range"][1] > 1.2, f"{res['profile_resolved']} {res['scale_range']}")
+    check(res["metrics"]["crease_pct"] < 1 and res["metrics"]["roughness_deg"] < 13, f"{res['metrics']}")
     code, out, _ = run_json(work, "--source", "art/potion.png", "--dry-run", "--profile", "rounded")
     res = out["results"][0]
     check(code == 0 and "creased" in [w["kind"] for w in res["warnings"]], f"rounded: {res['warnings']}")

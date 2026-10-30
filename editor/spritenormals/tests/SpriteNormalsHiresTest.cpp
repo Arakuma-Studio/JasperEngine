@@ -9,6 +9,7 @@
 #include "spritenormals/SpriteMedia.h"
 #include "spritenormals/SpriteNormals.h"
 #include "spritenormals/SpriteNormalsField.h"
+#include "spritenormals/SpriteNormalsPaint.h"
 #include "spritenormals/SpriteNormalsPreview.h"
 #include "spritenormals/SpriteNormalsRecipe.h"
 
@@ -19,6 +20,8 @@
 #include <cstring>
 #include <filesystem>
 #include <functional>
+#include <thread>
+#include <chrono>
 
 using namespace jasperengine::editor::spritenormals;
 namespace fs = std::filesystem;
@@ -273,17 +276,17 @@ TEST(SpriteNormalsHires, InflateIsAHemisphereOnADisc) {
     }
     std::vector<double> u;
     int iterations = 0;
-    ASSERT_TRUE(detail::poisson(mask, 201, 201, detail::Border::Zero, u, nullptr, nullptr, &iterations));
+    ASSERT_EQ(detail::poisson(mask, 201, 201, detail::Border::Zero, u, nullptr, nullptr, &iterations), detail::PoissonStatus::Solved);
     EXPECT_NEAR(u[100 * 201 + 100], 90.5 * 90.5 / 4.0, 0.01 * 90.5 * 90.5 / 4.0);
     EXPECT_LE(iterations, 20);
     // no pixel held at 0 (wrap / extend, opaque): no solution, flat
     std::vector<uint8_t> all(64 * 64, 1);
-    EXPECT_FALSE(detail::poisson(all, 64, 64, detail::Border::Wrap, u));
-    EXPECT_FALSE(detail::poisson(all, 64, 64, detail::Border::Clamp, u));
+    EXPECT_EQ(detail::poisson(all, 64, 64, detail::Border::Wrap, u), detail::PoissonStatus::Singular);
+    EXPECT_EQ(detail::poisson(all, 64, 64, detail::Border::Clamp, u), detail::PoissonStatus::Singular);
     // Neumann (extend): an opaque strip with a transparent left column rises toward the right
     std::vector<uint8_t> strip(64 * 8, 1);
     for (int y = 0; y < 8; y++) strip[static_cast<size_t>(y) * 64] = 0;
-    ASSERT_TRUE(detail::poisson(strip, 64, 8, detail::Border::Clamp, u));
+    ASSERT_EQ(detail::poisson(strip, 64, 8, detail::Border::Clamp, u), detail::PoissonStatus::Solved);
     EXPECT_GT(u[4 * 64 + 63], u[4 * 64 + 32]);
     EXPECT_NEAR(u[0 * 64 + 40], u[7 * 64 + 40], 1e-6 * u[7 * 64 + 40]);
 }
@@ -498,10 +501,10 @@ TEST(SpriteNormalsHires, RealSpritesHaveNoCreasesAndRoundedOnesWarn) {
             const Settings s = preset(p);
             const Result r = run(color, s, 4, {}, false, true);
             const Metrics m = measure(r.normal, {}, false, s.alphaThreshold, nullptr, &r.shape);
-            EXPECT_GT(m.scale, 1.0) << name;
+            EXPECT_TRUE(m.highResolution) << name;
             EXPECT_GT(m.innerPixels, 1000) << name;
             EXPECT_LT(m.creasePct, 1.0) << name << " " << toString(p);       // measured 0
-            EXPECT_LT(m.roughnessDeg, 1.0) << name << " " << toString(p);    // measured 0.36-0.39
+            EXPECT_LT(m.roughnessDeg, kStreakyDeg) << name;                    // the final map: 1.2-6.8 (the relief)
             const Assessment a = assess(s, m, 0, &r);
             EXPECT_FALSE(warns(a, "creased") || warns(a, "streaky")) << name;
         }
@@ -547,5 +550,145 @@ TEST(SpriteNormalsHires, CancelStopsALargeSolve) {
     std::vector<uint8_t> mask(300 * 300, 1);
     for (int i = 0; i < 300; i++) mask[static_cast<size_t>(i)] = 0;
     std::vector<double> u;
-    EXPECT_FALSE(detail::poisson(mask, 300, 300, detail::Border::Zero, u, nullptr, &cancel));
+    EXPECT_EQ(detail::poisson(mask, 300, 300, detail::Border::Zero, u, nullptr, &cancel), detail::PoissonStatus::Cancelled);
+}
+
+// ---------------------------------------------------------------- review round 1
+
+TEST(SpriteNormalsHires, PropsKeepRingsRoundAndBoxesFlat) {
+    // dome auto radius min(T, 0.15 S): a ring's tube stays round (measured 2.1 deg; 0.3 T gave 20), a box stays flat
+    const Image torus = load(kHires / "torus_256.png");
+    const Image box = load(kHires / "roundbox_256.png");
+    const Result t = run(torus, preset(Preset::Props), 2);
+    EXPECT_LT(meanError(t.normal, load(kHires / "torus_256_true.png")), 3.5);
+    // the radius is the tube's thickness (its half-width, 36 px less the anti-aliased rim), under 0.15 x 256
+    EXPECT_NEAR(t.radiusMax, 34.0f, 2.0f);
+    EXPECT_LT(t.radiusMax, 0.15f * 256.0f);
+    EXPECT_LT(meanError(run(box, preset(Preset::Props), 2).normal, load(kHires / "roundbox_256_true.png")), 2.5);
+    // 0.15 S bounds it on a disc (a flat top inside the rim)
+    Settings dome = preset(Preset::Props);
+    EXPECT_NEAR(run(disc(300, 300, 140.0f), dome).radiusMax, 0.15f * 280.0f, 1.0f);
+}
+
+TEST(SpriteNormalsHires, ScaleFollowsTheThickness) {
+    // k = max(1, 2 T / 128): a 512 px ring with a 40 px tube (T 20) is not scaled, a 300 px disc (T 140) is
+    const Image ring = fromFunction(520, 520, [](int x, int y) {
+        const float d = std::hypot(x + 0.5f - 260.0f, y + 0.5f - 260.0f);
+        return std::array<uint8_t, 4>{150, 150, 150, static_cast<uint8_t>(std::fabs(d - 230.0f) < 20.0f ? 255 : 0)};
+    });
+    Result r = run(ring, preset(Preset::Default));
+    EXPECT_FLOAT_EQ(r.scaleMax, 1.0f);
+    EXPECT_EQ(r.profilesUsed, 1u << static_cast<int>(Profile::Inflate)) << "the gate is still the shorter side (500 > 128)";
+    r = run(disc(300, 300, 140.0f), preset(Preset::Default));
+    EXPECT_NEAR(r.scaleMax, 2.0f * 140.0f / 128.0f, 0.03f);
+    // an opaque wrap tile has no inside distance: its shorter side (256 -> 2)
+    EXPECT_FLOAT_EQ(run(load(kHires / "cobbles_256.png"), preset(Preset::Tile)).scaleMax, 2.0f);
+}
+
+TEST(SpriteNormalsHires, AHoleInGlassIsNotOutside) {
+    // a disc with a translucent window (alpha 77) and one fully transparent pixel in it: the hole is
+    // enclosed, so the glass stays inside the shape exactly as opaque glass with the same hole does
+    auto sprite = [](uint8_t glass) {
+        return fromFunction(300, 300, [=](int x, int y) {
+            const float d = std::hypot(x + 0.5f - 150.0f, y + 0.5f - 150.0f);
+            if (x == 150 && y == 150) return std::array<uint8_t, 4>{0, 0, 0, 0};
+            if (d < 40.0f) return std::array<uint8_t, 4>{120, 160, 200, glass};
+            if (d < 100.0f) return std::array<uint8_t, 4>{180, 90, 60, 255};
+            return std::array<uint8_t, 4>{0, 0, 0, 0};
+        });
+    };
+    Settings s = preset(Preset::Default);
+    s.profile = Profile::Rounded;
+    s.radius = 20.0f;
+    s.detail = 0.0f;
+    s.resolutionScale = ResolutionScale::Off;
+    const Result glass = run(sprite(77), s), opaque = run(sprite(255), s);
+    for (int y = 60; y < 240; y++) {
+        for (int x = 60; x < 240; x++) {
+            if (std::hypot(x + 0.5f - 150.0f, y + 0.5f - 150.0f) >= 96.0f) continue;
+            ASSERT_EQ(std::memcmp(glass.normal.pixel(x, y), opaque.normal.pixel(x, y), 3), 0) << x << "," << y;
+        }
+    }
+}
+
+TEST(SpriteNormalsHires, CancelMidSolveIsCancelled) {
+    // one large island: the cancel flag set while it solves gives Cancelled, never Ok with a flat shape
+    std::atomic<bool> cancel{false};
+    Request request;
+    request.color = disc(2048, 2048, 1000.0f);
+    request.settings = preset(Preset::Painted);
+    Control control;
+    control.cancel = &cancel;
+    Result result;
+    std::thread worker([&] { result = generate(request, control); });
+    std::this_thread::sleep_for(std::chrono::milliseconds(60));
+    cancel = true;
+    worker.join();
+    EXPECT_EQ(result.status, Status::Cancelled);
+    EXPECT_TRUE(result.normal.empty());
+}
+
+TEST(SpriteNormalsHires, PinholeMasksConverge) {
+    // a 1024 disc with a transparent pixel every 4 px: solved (no iteration cap), the residual tiny
+    const int S = 1024;
+    std::vector<uint8_t> mask(static_cast<size_t>(S) * S, 0);
+    for (int y = 0; y < S; y++) {
+        for (int x = 0; x < S; x++) mask[static_cast<size_t>(y) * S + x] = std::hypot(x - 511.5, y - 511.5) < 480.0 && !(x % 4 == 0 && y % 4 == 0);
+    }
+    detail::Workers workers(4);
+    std::vector<double> u;
+    int iterations = 0;
+    ASSERT_EQ(detail::poisson(mask, S, S, detail::Border::Zero, u, &workers, nullptr, &iterations), detail::PoissonStatus::Solved);
+    EXPECT_LE(iterations, 20);
+    double sum = 0.0;
+    int64_t count = 0;
+    for (int y = 1; y < S - 1; y++) {
+        for (int x = 1; x < S - 1; x++) {
+            const size_t i = static_cast<size_t>(y) * S + x;
+            if (!mask[i]) continue;
+            auto v = [&](size_t j) { return mask[j] ? u[j] : 0.0; };
+            const double a = 4.0 * u[i] - v(i - 1) - v(i + 1) - v(i - S) - v(i + S);
+            sum += (a - 1.0) * (a - 1.0);
+            count++;
+        }
+    }
+    EXPECT_LT(std::sqrt(sum / count), 1e-3) << "within 0.1% of the right-hand side";
+}
+
+TEST(SpriteNormalsHires, ThinHighResolutionShapesAreMeasured) {
+    // a 600 px hoop with a 24 px tube: the inset is half its depth (6), not 8k: measured, rounded creases
+    const Image hoop = fromFunction(620, 620, [](int x, int y) {
+        const float d = std::hypot(x + 0.5f - 310.0f, y + 0.5f - 310.0f);
+        return std::array<uint8_t, 4>{150, 150, 150, static_cast<uint8_t>(std::fabs(d - 280.0f) < 12.0f ? 255 : 0)};
+    });
+    Settings rounded = preset(Preset::Default);
+    rounded.profile = Profile::Rounded;
+    const Result r = run(hoop, rounded, 2, {}, false, true);
+    const Metrics m = measure(r.normal, {}, false, rounded.alphaThreshold, nullptr, &r.shape);
+    EXPECT_TRUE(m.highResolution);
+    EXPECT_GT(m.innerPixels, 1000);
+    EXPECT_GT(m.creasePct, kCreasedPct);
+    const Result smooth = run(hoop, preset(Preset::Default), 2, {}, false, true);
+    EXPECT_LT(measure(smooth.normal, {}, false, 0.03f, nullptr, &smooth.shape).creasePct, 1.0);
+}
+
+TEST(SpriteNormalsHires, PaintingOverACreaseClearsIt) {
+    // creases are measured on the silhouette's share with the painted pixels from the map: a map
+    // whose every pixel is painted flat has no crease left, whatever the shape underneath
+    const Image potion = load(kHires / "potion.png");
+    Settings rounded = preset(Preset::Default);
+    rounded.profile = Profile::Rounded;
+    const Result r = run(potion, rounded, 4, {}, false, true);
+    EXPECT_GT(measure(r.normal, {}, false, 0.03f, nullptr, &r.shape).creasePct, kCreasedPct);
+    PaintOverlay paint = PaintOverlay::blank(potion.width, potion.height);
+    Image painted = r.normal;
+    for (size_t i = 0; i < potion.pixelCount(); i++) {
+        paint.rgba[i * 4 + 3] = 255;
+        painted.data[i * 4] = 128;
+        painted.data[i * 4 + 1] = 128;
+        painted.data[i * 4 + 2] = 255;
+    }
+    const Metrics m = measure(painted, {}, false, 0.03f, &paint, &r.shape);
+    EXPECT_LT(m.creasePct, 0.01);
+    EXPECT_LT(m.roughnessDeg, 0.01) << "the final map is flat";
 }

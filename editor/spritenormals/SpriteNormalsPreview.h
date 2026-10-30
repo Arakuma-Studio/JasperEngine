@@ -76,22 +76,28 @@ namespace jasperengine::editor::spritenormals {
         int opaquePixels = 0;
         int paintedPixels = 0;         // opaque pixels the paint layer covers (Phase 5; `paint` given)
         double paintedPct = 0.0;       // ... / opaque pixels
-        // High-resolution smoothness (hires design spec, rule 6), over the "inner" pixels: more
-        // than 8k px inside the alpha-0.5 silhouette of their cell, k = max(1, S / 128) with S the
-        // median over the cells of the largest island's shorter side (`scale`). Measured only
-        // when k > 1 (above 128 px); 0 and innerPixels 0 otherwise.
+        // High-resolution smoothness (hires design spec, rule 6), measured when the median over the
+        // cells of the largest island's shorter side is above 128 px (else 0, innerPixels 0), over
+        // the "inner" pixels: deeper than min(8k, half the cell's largest depth) inside the
+        // alpha-0.5 silhouette, against a sigma-4k blur; k = max(1, 2 T / 128), T the median over the
+        // cells of the silhouette's largest depth (the generator's k)
+        bool highResolution = false;   // that gate passed
         double scale = 1.0;
         int innerPixels = 0;
-        double roughnessDeg = 0.0;     // mean angle between each normal and its sigma = 4k px blur (of `shape` when given)
-        double creasePct = 0.0;        // inner pixels on a crease: over kCreaseDeg from that blur
+        double roughnessDeg = 0.0;     // the final map (the paint included): mean angle to the blur (streaky)
+        double creasePct = 0.0;        // the silhouette's share (`shape`, painted pixels from the map): inner
+                                       // pixels over kCreaseDeg from the blur (creased)
     };
     // The deviation from the blurred normal that marks a crease pixel (the medial-axis ridge of
     // the rounded profile above 128 px deviates 10-25 degrees along it; inflate stays under 3)
     inline constexpr double kCreaseDeg = 8.0;
+    // The median over the cells (the image without cells) of the largest island's shorter side
+    // (alpha above the cutoff): the size the generator gates its high-resolution rules on
+    double medianIslandSide(const Image& image, const std::vector<Cell>& cells, float alphaThreshold);
     // `paint` (optional, the normal's size): the painted visible pixels counted. The metrics are
     // of `normal` as given: the composited result when there is paint. `shape` (optional,
-    // Result::shape): the roughness and creases are measured on it (the silhouette's share: the
-    // painted relief is wanted detail, not a defect), else on `normal`.
+    // Result::shape): the creases are measured on it with the painted pixels taken from `normal`
+    // (the silhouette's share: the painted relief is wanted detail, not a crease), else on `normal`.
     Metrics measure(const Image& normal, const std::vector<Cell>& cells, bool directx, float alphaThreshold,
                     const PaintOverlay* paint = nullptr, const Image* shape = nullptr);
 
@@ -102,10 +108,12 @@ namespace jasperengine::editor::spritenormals {
     };
     // `result` (optional): the profile auto resolved to in the Shape line
     Assessment assess(const Settings& settings, const Metrics& metrics, int cellCount, const Result* result = nullptr);
-    // The warning thresholds of assess() (contract table; hires design spec for the last two)
-    // (calibrated on the hires evaluation set: the new defaults measure 0.3-0.8 degrees and 0%,
-    // the props preset on flat-faced art up to 1.3 degrees and 1.2%; the rounded profile above
-    // 128 px 1.3-9.5 degrees and 4.6-68%)
+    // The warning thresholds of assess() (contract table; hires design spec for the last two),
+    // calibrated on the hires evaluation set. Creases (the silhouette's share): the new defaults
+    // 0%, props on flat-faced art up to 0.9%; the rounded profile above 128 px 3.6-29%.
+    // Roughness of the final map: dominated by the wanted painted relief (the new defaults
+    // 0.2-8.9 degrees, the tile preset on brushed cobbles 12.1), so only maps rougher than every
+    // good result warn (unsmoothed, over-strong relief: detail 8 with smoothing 0.1-0.3, 14-21)
     inline constexpr double kCreasedPct = 2.0;      // crease_pct above: creased
-    inline constexpr double kStreakyDeg = 1.5;      // roughness_deg above (and not creased): streaky
+    inline constexpr double kStreakyDeg = 13.0;     // roughness_deg above (and not creased): streaky
 }

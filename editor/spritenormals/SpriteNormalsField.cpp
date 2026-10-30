@@ -338,6 +338,28 @@ namespace jasperengine::editor::spritenormals::detail {
             }
         }
 
+        // in place: every line is read into its own buffer before it is written back
+        void boxCascadeInPlace(Field& field, float sigma, Border border, Workers* workers) {
+            const std::vector<int> radii = boxRadii(sigma);
+            const int width = field.width, height = field.height;
+            Workers* pool = static_cast<int64_t>(width) * height >= kParallelPixels ? workers : nullptr;
+            parallelFor(pool, height, [&](int begin, int end) {
+                std::vector<double> a, b;
+                for (int y = begin; y < end; y++) {
+                    float* row = field.data.data() + static_cast<size_t>(y) * width;
+                    boxLines(row, 1, 1, width, border, radii, row, a, b);
+                }
+            }, 8);
+            constexpr int kLanes = 32;
+            parallelFor(pool, (width + kLanes - 1) / kLanes, [&](int begin, int end) {
+                std::vector<double> a, b;
+                for (int block = begin; block < end; block++) {
+                    const int x0 = block * kLanes;
+                    boxLines(field.data.data() + x0, static_cast<size_t>(width), std::min(kLanes, width - x0), height, border, radii, field.data.data() + x0, a, b);
+                }
+            }, 1);
+        }
+
         Field boxCascade(const Field& input, float sigma, Border border, Workers* workers) {
             const std::vector<int> radii = boxRadii(sigma);
             const int width = input.width, height = input.height;
@@ -366,9 +388,9 @@ namespace jasperengine::editor::spritenormals::detail {
 
     }
 
-    Field gaussian(const Field& input, float sigma, Border border, Workers* workers) {
+    Field gaussian(const Field& input, float sigma, Border border, Workers* workers, float exactUpTo) {
         if (sigma < 0.05f) return input;
-        if (sigma > kExactGaussianSigma) return boxCascade(input, sigma, border, workers);
+        if (sigma > exactUpTo) return boxCascade(input, sigma, border, workers);
         int radius = 0;
         const std::vector<float> kernel = gaussianKernel(sigma, radius);
         const int width = input.width, height = input.height;
@@ -409,15 +431,21 @@ namespace jasperengine::editor::spritenormals::detail {
         return result;
     }
 
-    Field maskedGaussian(const Field& input, const Field& weight, float sigma, Border border, Workers* workers) {
+    void gaussianInPlace(Field& field, float sigma, Border border, Workers* workers) {
+        if (sigma < 0.05f) return;
+        if (sigma > kExactGaussianSigma) boxCascadeInPlace(field, sigma, border, workers);
+        else field = gaussian(field, sigma, border, workers);
+    }
+
+    Field maskedGaussian(const Field& input, const Field& weight, float sigma, Border border, Workers* workers, float exactUpTo) {
         Workers* pool = static_cast<int64_t>(input.width) * input.height >= kParallelPixels ? workers : nullptr;
         const int rows = input.height, w = input.width;
         Field weighted = input;
         parallelFor(pool, rows, [&](int b, int e) {
             for (size_t i = static_cast<size_t>(b) * w; i < static_cast<size_t>(e) * w; i++) weighted.data[i] *= weight.data[i];
         }, 16);
-        Field result = gaussian(weighted, sigma, border, workers);
-        const Field denominator = gaussian(weight, sigma, border, workers);
+        Field result = gaussian(weighted, sigma, border, workers, exactUpTo);
+        const Field denominator = gaussian(weight, sigma, border, workers, exactUpTo);
         parallelFor(pool, rows, [&](int b, int e) {
             for (size_t i = static_cast<size_t>(b) * w; i < static_cast<size_t>(e) * w; i++) result.data[i] /= std::fmax(denominator.data[i], 1e-8f);
         }, 16);
@@ -476,6 +504,73 @@ namespace jasperengine::editor::spritenormals::detail {
                 }
             }
             result.push_back(std::move(part));
+        }
+        return result;
+    }
+
+    std::vector<Component> componentsRowMajor(const std::vector<uint8_t>& mask, int width, int height) {
+        std::vector<Component> result;
+        if (width <= 0 || height <= 0) return result;
+        const size_t n = static_cast<size_t>(width) * height;
+        // provisional labels row-major (8-connected: left, up-left, up, up-right), unions in a forest
+        std::vector<int> label(n, -1), parent;
+        auto find = [&](int a) {
+            while (parent[static_cast<size_t>(a)] != a) {
+                parent[static_cast<size_t>(a)] = parent[static_cast<size_t>(parent[static_cast<size_t>(a)])];
+                a = parent[static_cast<size_t>(a)];
+            }
+            return a;
+        };
+        auto unite = [&](int a, int b) {
+            a = find(a);
+            b = find(b);
+            if (a == b) return;
+            // the smaller label (the earlier first pixel) stays the root
+            if (a < b) parent[static_cast<size_t>(b)] = a;
+            else parent[static_cast<size_t>(a)] = b;
+        };
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                const size_t i = static_cast<size_t>(y) * width + x;
+                if (!mask[i]) continue;
+                int l = -1;
+                auto take = [&](int nx, int ny) {
+                    if (nx < 0 || ny < 0 || nx >= width) return;
+                    const int other = label[static_cast<size_t>(ny) * width + nx];
+                    if (other < 0) return;
+                    if (l < 0) l = other;
+                    else unite(l, other);
+                };
+                take(x - 1, y);
+                take(x - 1, y - 1);
+                take(x, y - 1);
+                take(x + 1, y - 1);
+                if (l < 0) {
+                    l = static_cast<int>(parent.size());
+                    parent.push_back(l);
+                }
+                label[i] = l;
+            }
+        }
+        // roots in label order = components in the order of their first pixel
+        std::vector<int> slot(parent.size(), -1);
+        for (size_t i = 0; i < n; i++) {
+            if (label[i] < 0) continue;
+            const int root = find(label[i]);
+            int& k = slot[static_cast<size_t>(root)];
+            const int x = static_cast<int>(i % width), y = static_cast<int>(i / width);
+            if (k < 0) {
+                k = static_cast<int>(result.size());
+                Component c;
+                c.minX = c.maxX = x;
+                c.minY = c.maxY = y;
+                result.push_back(std::move(c));
+            }
+            Component& c = result[static_cast<size_t>(k)];
+            c.pixels.push_back(static_cast<int>(i));
+            c.minX = std::min(c.minX, x);
+            c.maxX = std::max(c.maxX, x);
+            c.maxY = y;
         }
         return result;
     }

@@ -77,19 +77,25 @@ namespace jasperengine::editor::spritenormals::detail {
     // Separable Gaussian (upstream: sigma < 0.05 is the identity, radius ceil(3 sigma)) up to
     // kExactGaussianSigma; above, four box passes per axis of the same variance (a convolution
     // of the border-extended field, like the exact one; cost independent of sigma)
+    // (`exactUpTo` lowers that limit: the generator's scaled items use 8)
     inline constexpr float kExactGaussianSigma = 16.0f;
-    Field gaussian(const Field& input, float sigma, Border border = Border::Zero, Workers* workers = nullptr);
+    Field gaussian(const Field& input, float sigma, Border border = Border::Zero, Workers* workers = nullptr, float exactUpTo = kExactGaussianSigma);
+    // gaussian(field) into field; above kExactGaussianSigma without a second field (the metrics)
+    void gaussianInPlace(Field& field, float sigma, Border border = Border::Zero, Workers* workers = nullptr);
     // gaussian(input * weight) / max(gaussian(weight), 1e-8)
-    Field maskedGaussian(const Field& input, const Field& weight, float sigma, Border border = Border::Zero, Workers* workers = nullptr);
+    Field maskedGaussian(const Field& input, const Field& weight, float sigma, Border border = Border::Zero, Workers* workers = nullptr,
+                         float exactUpTo = kExactGaussianSigma);
 
     // The inflate profile's field: u solving -Laplacian(u) = 1 (5-point stencil, unit spacing) on
     // the mask pixels and u = 0 on the others; beyond the field Border::Zero holds u = 0, Wrap is
     // periodic, Clamp is a Neumann border (no flux). A conjugate gradient preconditioned by one
-    // multigrid V-cycle (the iterate in double), until the residual is 1e-4 of the right-hand side (at most
-    // kPoissonMaxIterations). False (u all 0) when no pixel holds u at 0 (Wrap or Clamp with the
-    // whole field in the mask: no solution) or when `cancel` was set meanwhile.
+    // multigrid V-cycle (the iterate in double; a coarse cell is inside when all its children are), until the residual is 1e-4 of the right-hand side (at most
+    // kPoissonMaxIterations: NotConverged, u the last iterate). Singular (u all 0) when no pixel
+    // holds u at 0 (Wrap or Clamp with the whole field in the mask: no solution), Cancelled (u all
+    // 0) when `cancel` was set meanwhile.
     inline constexpr int kPoissonMaxIterations = 80;
-    bool poisson(const std::vector<uint8_t>& mask, int width, int height, Border border, std::vector<double>& u, Workers* workers = nullptr,
+    enum class PoissonStatus { Solved, NotConverged, Singular, Cancelled };
+    PoissonStatus poisson(const std::vector<uint8_t>& mask, int width, int height, Border border, std::vector<double>& u, Workers* workers = nullptr,
                  const std::atomic<bool>* cancel = nullptr, int* iterations = nullptr);
     // Normalized Sobel correlation at (x, y): +x slopes up to the right, +y downward. Border::Zero
     // requires (x, y) at least one pixel inside the field.
@@ -101,6 +107,10 @@ namespace jasperengine::editor::spritenormals::detail {
         int minX = 0, minY = 0, maxX = 0, maxY = 0;
     };
     std::vector<Component> components(const std::vector<uint8_t>& mask, int width, int height);
+    // The same components, in the same order (by their first pixel, row-major), their pixels
+    // row-major (two-pass union-find: several times faster on large islands; the generator's
+    // results never depend on the order of an island's pixels)
+    std::vector<Component> componentsRowMajor(const std::vector<uint8_t>& mask, int width, int height);
 
     // (128,128,255)-encoding of slopes (upstream slopes_to_normal + byte rounding)
     void encodeNormal(float dx, float dy, float strength, bool directx, uint8_t out[3]);

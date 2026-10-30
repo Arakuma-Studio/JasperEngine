@@ -309,8 +309,8 @@ TEST(SpriteNormalsPreview, AssessWarningThresholds) {
         {"frames_touch_edges", [](sn::Metrics& m, bool above) { m.framesTouchingEdges = above ? 1 : 0; }},
         {"no_alpha", [](sn::Metrics& m, bool above) { m.hasTransparency = !above; }},
         // high resolution (hires design spec, rule 6): measured above 128 px only
-        {"creased", [](sn::Metrics& m, bool above) { m.scale = 4.0; m.innerPixels = 100; m.creasePct = above ? 2.1 : 2.0; }},
-        {"streaky", [](sn::Metrics& m, bool above) { m.scale = 4.0; m.innerPixels = 100; m.roughnessDeg = above ? 1.6 : 1.5; }},
+        {"creased", [](sn::Metrics& m, bool above) { m.highResolution = true; m.scale = 4.0; m.innerPixels = 100; m.creasePct = above ? 2.1 : 2.0; }},
+        {"streaky", [](sn::Metrics& m, bool above) { m.highResolution = true; m.scale = 4.0; m.innerPixels = 100; m.roughnessDeg = above ? 13.1 : 13.0; }},
     };
     for (const Case& c : cases) {
         sn::Metrics m = calm;
@@ -353,16 +353,17 @@ TEST(SpriteNormalsPreview, AssessWarningThresholds) {
 TEST(SpriteNormalsPreview, AssessHighResolution) {
     sn::Metrics m;
     m.hasTransparency = true;
+    m.highResolution = true;
     m.scale = 8.0;
     m.innerPixels = 5000;
-    m.roughnessDeg = 4.04;
+    m.roughnessDeg = 14.04;
     m.creasePct = 14.93;
     sn::Settings settings;   // auto profile
     sn::Result result;
     result.profilesUsed = (1u << static_cast<int>(sn::Profile::Rounded)) | (1u << static_cast<int>(sn::Profile::Inflate));
     sn::Assessment a = sn::assess(settings, m, 0, &result);
     EXPECT_EQ(a.lines[0], "Shape: auto -> rounded, inflate (mean tilt 0°, 0% flat)");
-    EXPECT_EQ(a.lines[4], "Roughness: 4.0° (creases 14.9%)");
+    EXPECT_EQ(a.lines[4], "Roughness: 14.0° (creases 14.9%)");
     // a crease outranks streaks (one warning, the crease's fix)
     ASSERT_EQ(a.warnings.size(), 1u);
     EXPECT_EQ(a.warnings[0].kind, "creased");
@@ -372,18 +373,21 @@ TEST(SpriteNormalsPreview, AssessHighResolution) {
     a = sn::assess(settings, m, 0, &result);
     ASSERT_EQ(a.warnings.size(), 1u);
     EXPECT_EQ(a.warnings[0].kind, "streaky");
-    EXPECT_EQ(a.hint, "Raise softness (outline fans) or smoothing (brushwork), or use profile inflate.");
+    EXPECT_EQ(a.warnings[0].message,
+              "The light is bumpy inside the sprite (roughness 14.0° on the map): streaks from a wobbly outline, or brushwork and paint turned into bumps.");
+    EXPECT_EQ(a.hint, "Raise smoothing (brushwork, painted detail) or lower detail; for streaks from the outline raise softness or use profile inflate.");
     // not measured (128 px or less): no line, no warning
     m.innerPixels = 0;
     m.roughnessDeg = 0.0;
     m.creasePct = 0.0;
     m.scale = 1.0;
+    m.highResolution = false;
     a = sn::assess(settings, m, 0);
     EXPECT_EQ(a.lines.size(), 5u);
     EXPECT_TRUE(a.warnings.empty());
     // soft edges above 128 px with version 2: the outer band handles them (no warning); version 1 still warns
     m.softEdgePct = 30.0;
-    m.scale = 2.0;
+    m.highResolution = true;   // (k may be 1 on thin art: the gate is the size)
     EXPECT_TRUE(sn::assess(settings, m, 0).warnings.empty());
     settings.version = 1;
     ASSERT_EQ(sn::assess(settings, m, 0).warnings.size(), 1u);

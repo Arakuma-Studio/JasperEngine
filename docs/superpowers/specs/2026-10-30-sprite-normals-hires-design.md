@@ -55,42 +55,64 @@ Commit this spec as docs/superpowers/specs/2026-10-30-sprite-normals-hires-desig
    sprites (downscaled if needed to keep fixtures small; attribution in a fixtures README) with error/roughness
    thresholds asserting the improvement; MCP/CLI e2e for the new settings/presets; window test for the new controls.
 
-## Final values (implemented and tuned on the evaluation set, 2026-10-30)
+## Review round 1 rulings (2026-10-30, binding; they amend the items above)
+
+- **R1 dome auto radius:** R = clamp(min(1.0 x thickness, 0.15 x the island's shorter bbox side), 4, 512) (other
+  profiles keep 0.3 x thickness). `props` suits crates, panels and rings.
+- **R2 resolution scale from the thickness:** k = max(1, 2 x the largest inscribed distance / 128) (sequences: the
+  median over the frames of the largest island's; an opaque wrap/extend cell with no inside distance: its shorter
+  side / 128). Profile auto and the outer band stay gated on the bbox shorter side > 128.
+- **R3 metrics:** `crease_pct` on the shape field with the paint overlay composited (painted pixels take the painted
+  normal), so painting over a crease clears it; `roughness_deg` (`streaky`) on the final map, its own threshold
+  calibrated so good art does not warn.
+- The outer band's "outside" is the non-mask pixels connected to the field's border (the padding ring with edges
+  transparent, the cell's border with wrap/extend): a hole enclosed by the sprite never turns glass into outside.
+- `normals-before-hires` is gated on the map's island size (the median over the recipe's cells of the largest
+  island's shorter side, from its alpha), not the image size.
+- A cancel during an inflate solve returns Cancelled; a solve that hits its iteration cap is reported
+  (`inflate_not_converged`); coarse multigrid cells are inside only when all their children are (pinhole masks
+  converge); the red-black sweep computes only its own colour (no read of a pixel another thread writes).
+- Metric inset: min(8k, half the frame's largest depth) (thin shapes are measured); measured when the shorter side
+  is above 128 px (k can be 1 on thin high-resolution art).
+
+## Final values (implemented and tuned on the evaluation set, 2026-10-30, after review round 1)
 
 Measured with the new CLI on `build/hires-eval` (scripts `v2_*.py`; report `build/hires-eval/IMPLEMENTATION.md`).
 
 - **Inflate height** `h = kInflateHeight * volume * sqrt(u)`, `kInflateHeight = 1.0`: the presets' strength x volume
-  of 1.725 is an effective slope of 0.86 (the report's 0.85). A volume sweep with profile inflate (strength 1.5) put
-  the optimum at 1.25 when weighted by the six sphere variants and at 1.05-1.15 with spheres, tori and capsules
-  weighted equally; 1.15 (the presets' value) is kept.
-- **Presets** (128 px reference units):
+  of 1.725 is an effective slope of 0.86 (the report's 0.85). A volume sweep with profile inflate (strength 1.5) on a
+  sphere, torus, capsule and hoop: 0.95 -> 3.79, 1.05 -> 3.91, 1.15 -> 4.39, 1.25 -> 5.05 mean, the sphere best at
+  1.25 and the tubes at 0.95; the presets' 1.15 is kept (the eval's sphere variants outnumber its tubes).
+- **Presets** (128 px reference units), unchanged by round 1 (re-run grids: props is the grid's best, 3.84; painted
+  within 0.02 deg of its best):
 
-| preset | profile | strength | detail | smoothing | volume | softness | edges | tuned on |
-|---|---|---|---|---|---|---|---|---|
-| `painted` | inflate | 1.5 | 3 | 1 | 1.15 | 1.15 | transparent | 18 combinations on 7 shape inputs + 3 cobble tiles: the default values were best (6.81° mean; smoothing 2: 7.22°, detail 4.5: 6.84°) |
-| `props` | dome | 1.5 | 3 | 0.5 | 0.7 | 1 | transparent | 162 combinations on the rounded boxes + cobbles_1024: box 1.2-1.4° (softness 0.5 gave the same 0.1° better; 1 kept for smoother rims) |
-| `tile` | auto | 2 | 3 | 1 | 1.15 | 1.15 | wrap | 27 combinations on 6 cobble tiles: detail x strength = 6 is the ridge (11.67°; 4.5 x 1.5 = 11.59°) |
+| preset | profile | strength | detail | smoothing | volume | softness | edges |
+|---|---|---|---|---|---|---|---|
+| `painted` | inflate | 1.5 | 3 | 1 | 1.15 | 1.15 | transparent |
+| `props` | dome | 1.5 | 3 | 0.5 | 0.7 | 1 | transparent |
+| `tile` | auto | 2 | 3 | 1 | 1.15 | 1.15 | wrap |
 
 - **Errors** (mean angular error, degrees; old = main before this change, default preset):
 
 | set | old default | new default | new painted | new props | new tile |
 |---|---|---|---|---|---|
-| round shapes and variants (11 inputs, 512-2048) | 12.5 | 4.4 | 4.4 | 23.9 | |
+| round shapes and variants (13: spheres, tori, capsules, hoops, 512-2048) | 14.5 | 4.1 | 4.1 | 14.9 | |
+| torus / hoop 1024 | 19.4 / 26.1 | 5.3 / 4.2 | | 1.8 / 3.0 | |
 | rounded boxes (2) | 24.8 | 25.2 | 25.2 | **1.4** | |
 | cobble tiles (6, wrap) | 14.4 | 12.2 | | | **11.7** |
 
-- **Roughness / creases** (rule 6) are measured on the silhouette's share of the normals (`Result::shape`: the
-  same field without the painted relief), not the final map: with k-scaled detail the intended painted relief alone
-  measured 1.4-8.2° on the good new defaults, so the full map could not separate creases from relief. Measured only
-  above 128 px (k > 1); at 32 px an 8 px inset leaves the rounded apex and every pixel-art fixture would "warn".
-  Crease pixel: deviation from the sigma-4k blur over 8°. Real art, 13 sprites over 128 px: old default
-  7.73° / 29.1% creases, new default 0.46° / 0.0%, rounded profile 4.21° / 21%.
-- **Warning thresholds:** `creased` when crease_pct > 2 (worst good result 1.24%, mildest crease 2.67%); `streaky`
-  when roughness_deg > 1.5 and not creased (good results up to 1.29°). `soft_edges` is not raised above 128 px with
-  version 2 (the outer band handles soft rims).
-- **Outer band:** applied with version 2 to islands above 128 px only (the pixel-art invariant: the golden fixtures
-  `alpha` and `gradient_alpha` have soft rims).
+- **Metrics:** `crease_pct` on the silhouette's share (`Result::shape`, painted pixels from the map), `roughness_deg`
+  on the final map; inner pixels deeper than min(8k, half the frame's largest depth), sigma 4k, k = max(1, 2T/128);
+  measured when the shorter side is above 128 px. Real art, 13 sprites over 128 px: creases old default 19.0 %, new
+  default 0.0 %, rounded 15.1 %; final-map roughness old 5.72, new default 3.00 (the relief).
+- **Warning thresholds:** `creased` when crease_pct > 2 (good results <= 0.9 %, creased maps >= 3.6 %); `streaky` when
+  roughness_deg > 13 and not creased (good results <= 12.1: the tile preset on brushed cobbles; unsmoothed strong
+  relief, detail 8 with smoothing 0.1-0.3, measures 14-21). `soft_edges` is not raised above 128 px with version 2.
+- **Outer band:** version 2, islands above 128 px only (the pixel-art invariant: the golden fixtures `alpha` and
+  `gradient_alpha` have soft rims); the outside is what reaches the field's border.
 - **Version 1 and profile auto:** a version 1 generation resolves `auto` to `rounded` (version 1's default), so a
   version 1 recipe, `params.version: 1` or `--settings-version 1` alone reproduce the old bytes.
-- **Timing** (generation, 8 threads, default preset): 512 px 0.03 s, 1024 px 0.11 s, 2048 px 0.41 s (all presets
-  <= 0.58 s at 2048). Gaussians above sigma 16 run as a four-box cascade of the same variance.
+- **Timing** (generation, 8 threads): default 512 px 0.03 s, 1024 px 0.12 s, 2048 px 0.42 s (transparent sphere);
+  2048 wrap tile 0.29 s; every preset <= 0.50 s at 2048; an opaque 2048 square with a transparent margin 0.50 s. Gaussians
+  above sigma 16 (8 for scaled items) run as a four-box cascade of the same variance.
+- **Memory** at 4096 (peak RSS, CLI dry run): +107 MB over main on a 4096 painted potion, +91 MB on a 4096 sphere.
