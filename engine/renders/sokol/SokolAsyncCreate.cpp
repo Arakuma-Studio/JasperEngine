@@ -812,6 +812,8 @@ const ShaderCreationSettings& SokolAsyncCreate::getSettings(){
 sg_shader SokolAsyncCreate::makeShader(const sg_shader_desc& desc){
     State& s = state();
     if (!asyncOn(s)){
+        // the render thread's creation, timed like the asynchronous paths' share of it
+        JE_PROFILE_SCOPE("GPU create submit");
         const Clock::time_point start = Clock::now();
         const sg_shader shader = sg_make_shader(&desc);
         const double ms = msSince(start);
@@ -829,6 +831,8 @@ sg_shader SokolAsyncCreate::makeShader(const sg_shader_desc& desc){
 void SokolAsyncCreate::initShader(sg_shader shader, const sg_shader_desc& desc){
     State& s = state();
     if (!asyncOn(s)){
+        // the render thread's creation, timed like the asynchronous paths' share of it
+        JE_PROFILE_SCOPE("GPU create submit");
         const Clock::time_point start = Clock::now();
         sg_init_shader(shader, &desc);
         const double ms = msSince(start);
@@ -921,6 +925,8 @@ bool SokolAsyncCreate::isPending(sg_shader shader){
 sg_pipeline SokolAsyncCreate::makePipeline(const sg_pipeline_desc& desc){
     State& s = state();
     if (!asyncOn(s)){
+        // the render thread's creation, timed like the asynchronous paths' share of it
+        JE_PROFILE_SCOPE("GPU pipeline create");
         const Clock::time_point start = Clock::now();
         const sg_pipeline pipeline = sg_make_pipeline(&desc);
         const double ms = msSince(start);
@@ -938,6 +944,8 @@ sg_pipeline SokolAsyncCreate::makePipeline(const sg_pipeline_desc& desc){
 void SokolAsyncCreate::initPipeline(sg_pipeline pipeline, const sg_pipeline_desc& desc){
     State& s = state();
     if (!asyncOn(s)){
+        // the render thread's creation, timed like the asynchronous paths' share of it
+        JE_PROFILE_SCOPE("GPU pipeline create");
         const Clock::time_point start = Clock::now();
         sg_init_pipeline(pipeline, &desc);
         const double ms = msSince(start);

@@ -19,7 +19,9 @@ results:
   max_main_ms           the most creation work the render thread did in one frame
   worst_frame_ratio     the worst frame of the toggles over the median frame without one
 
-and the reported value is the median of the runs. The budgets (tools/perf/bench-thresholds.json,
+and the reported value is the median of the runs. Mesa's shader disk cache is off for the editor
+(MESA_SHADER_CACHE_DISABLE), so every run compiles cold. The synchronous creation (--mode sync) is
+timed with the same scopes. The budgets (tools/perf/bench-thresholds.json,
 bench "async-shaders") are checked when --check is given. --mode sets JASPER_ASYNC_SHADERS for the
 editor (worker, parallel, deferred, sync; empty: the platform's choice). The bench name carries the
 mode, so the sync control is never checked against the async budgets.
@@ -98,7 +100,10 @@ async def build_scene(ed: Editor) -> int:
 
 
 async def one_run(args: argparse.Namespace, run: int) -> dict:
-    env = {"JASPER_ASYNC_SHADERS": args.mode} if args.mode else {}
+    # Mesa's shader disk cache off: every run compiles as a first start on a user's machine does
+    env = {"MESA_SHADER_CACHE_DISABLE": "true"}
+    if args.mode:
+        env["JASPER_ASYNC_SHADERS"] = args.mode
     command = [args.editor] if args.editor else None
     async with Editor(create=True, name=f"AsyncShaders{run}", env=env, command=command, label=f"async-shaders-{run}") as ed:
         scene = await build_scene(ed)
