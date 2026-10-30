@@ -1150,4 +1150,7 @@ follow-up stream, not S30.
     an older state is never called nor released. Covered by `LuaFunctionLifetime.*`.
   - The old subscriptions stay as inert entries. Releasing every script's subscriptions at shutdown
     would remove them too; that is a follow-up for the engine-lifecycle owner.
+  - The emulator check now forces such a relaunch: `--relaunch` changes the font scale. The run
+    needs a new view, the same process, and no crash. With the fix, the development prebuilt APK
+    passed it (relaunched in process 1914, still running).
 
