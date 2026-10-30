@@ -7,6 +7,9 @@
                                                    rebuilds and the compile seconds that costs
   build_stats.py headers <build-dir> [--top N]     what parsing the most included headers alone costs
                                                    (-fsyntax-only), times their inclusion count
+  build_stats.py parse <build-dir> --unit S h...    what parsing these headers costs with the flags of the unit
+                                                   whose source contains S: each alone, then all together
+                                                   (what a precompiled header of them saves per unit)
   build_stats.py time-report <build-dir> [--top N] GCC -ftime-report phases of the slowest units
   build_stats.py results <results.jsonl>...        the phases' wall times as a Markdown table
 
@@ -173,6 +176,10 @@ def cmd_fanout(args):
     print(f"### the {args.top} most included headers of any origin (precompiled-header candidates)")
     for header, objs in sorted(users.items(), key=lambda x: -len(x[1]))[: args.top]:
         print(row(header, objs))
+    if args.show:
+        print("### the headers asked for (--show)")
+        for header in args.show.split(","):
+            print(row(header, users.get(header, [])))
     if args.json:
         with open(args.json, "w", encoding="utf-8") as f:
             json.dump({h: len(o) for h, o in users.items()}, f, indent=0, sort_keys=True)
@@ -187,7 +194,7 @@ def load_compile_commands(build_dir):
         if argv and os.path.basename(argv[0]) == "ccache":
             argv = argv[1:]
         out = argv[argv.index("-o") + 1] if "-o" in argv else ""
-        by_output[os.path.normpath(os.path.join(entry["directory"], out))] = (entry["directory"], argv, entry["file"])
+        by_output[os.path.abspath(os.path.join(entry["directory"], out))] = (entry["directory"], argv, entry["file"])
     return by_output
 
 
@@ -233,11 +240,11 @@ def cmd_headers(args):
     rows = []
     for header, objs in sorted(users.items(), key=lambda x: -len(x[1]))[: args.top]:
         # parsed with the flags of a C++ unit that includes it
-        unit = next((o for o in objs if os.path.normpath(os.path.join(args.build_dir, o)) in commands
-                     and commands[os.path.normpath(os.path.join(args.build_dir, o))][2].endswith((".cpp", ".cc", ".cxx"))), None)
+        unit = next((o for o in objs if os.path.abspath(os.path.join(args.build_dir, o)) in commands
+                     and commands[os.path.abspath(os.path.join(args.build_dir, o))][2].endswith((".cpp", ".cc", ".cxx"))), None)
         if unit is None:
             continue
-        directory, argv, _ = commands[os.path.normpath(os.path.join(args.build_dir, unit))]
+        directory, argv, _ = commands[os.path.abspath(os.path.join(args.build_dir, unit))]
         path = header if header.startswith("/") else SOURCE_ROOT + header
         with tempfile.NamedTemporaryFile("w", suffix=".cpp", delete=False) as tmp:
             tmp.write(f'#include "{path}"\n')
@@ -255,6 +262,30 @@ def cmd_headers(args):
         print(f"  {seconds:6.2f} x {count:5d} = {cost:7.0f}   {header}")
 
 
+def cmd_parse(args):
+    commands = load_compile_commands(args.build_dir)
+    match = next(((d, a) for d, a, f in commands.values() if args.unit in f and f.endswith((".cpp", ".cc"))), None)
+    if match is None:
+        sys.exit(f"no C++ unit of {args.build_dir} matches {args.unit}")
+    directory, argv = match
+
+    def parse(headers):
+        with tempfile.NamedTemporaryFile("w", suffix=".cpp", delete=False) as tmp:
+            tmp.write("".join(f"#include {h if h.startswith('<') else chr(34) + h + chr(34)}\n" for h in headers))
+        try:
+            return run_timed(strip_output(argv) + ["-fsyntax-only", tmp.name], directory, repeat=3)
+        finally:
+            os.unlink(tmp.name)
+
+    empty, _ = parse([])
+    print(f"## parse cost with the flags of {args.unit} (best of 3, an empty unit {empty:.2f} s subtracted)")
+    for header in args.headers:
+        seconds, err = parse([header])
+        print(f"  {seconds - empty:6.2f} s  {header}" if seconds is not None else f"  failed  {header}: {err.strip()[:200]}")
+    seconds, err = parse(args.headers)
+    print(f"  {seconds - empty:6.2f} s  all {len(args.headers)} together" if seconds is not None else f"  failed together: {err.strip()[:300]}")
+
+
 PHASE_RE = re.compile(r"^\s*(phase [a-z .]+?|template instantiation|TOTAL)\s*:\s*(.*)$")
 
 
@@ -264,7 +295,7 @@ def cmd_time_report(args):
     units = sorted(((s, o) for o, s in seconds.items() if OBJECT_RE.search(o)), reverse=True)
     print(f"## {args.build_dir}: -ftime-report of the {args.top} slowest units (wall seconds)")
     for logged, output in units[: args.top]:
-        key = os.path.normpath(os.path.join(args.build_dir, output))
+        key = os.path.abspath(os.path.join(args.build_dir, output))
         if key not in commands:
             continue
         directory, argv, source = commands[key]
@@ -310,12 +341,18 @@ def main():
     p.add_argument("build_dir")
     p.add_argument("--top", type=int, default=20)
     p.add_argument("--json")
+    p.add_argument("--show", help="comma-separated headers whose fan-out to print as well")
     p.add_argument("--log", help="the .ninja_log whose compile times weigh the units (default: the tree's)")
     p.set_defaults(func=cmd_fanout)
     p = sub.add_parser("headers")
     p.add_argument("build_dir")
     p.add_argument("--top", type=int, default=40)
     p.set_defaults(func=cmd_headers)
+    p = sub.add_parser("parse")
+    p.add_argument("build_dir")
+    p.add_argument("--unit", required=True)
+    p.add_argument("headers", nargs="+")
+    p.set_defaults(func=cmd_parse)
     p = sub.add_parser("time-report")
     p.add_argument("build_dir")
     p.add_argument("--top", type=int, default=12)
