@@ -65,6 +65,7 @@ void LuaBinding::registerActionClasses(lua_State *L){
         .addVariable("BOUNCE_OUT", EaseType::BOUNCE_OUT)
         .addVariable("BOUNCE_IN_OUT", EaseType::BOUNCE_IN_OUT)
         .addVariable("CUSTOM", EaseType::CUSTOM)
+        .addVariable("CURVE", EaseType::CURVE)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -102,6 +103,7 @@ void LuaBinding::registerActionClasses(lua_State *L){
         .addFunction("getTweenComponent", &Tween::getComponent<TweenComponent>)
         .addFunction("getTime", &Tween::getTime)
         .addFunction("getValue", &Tween::getValue)
+        .addProperty("curve", &Tween::getCurve, &Tween::setCurve)
         .addProperty("duration", &Tween::getDuration, &Tween::setDuration)
         .addProperty("loop", &Tween::isLoop, &Tween::setLoop)
         .addProperty("pingPong", &Tween::isPingPong, &Tween::setPingPong)

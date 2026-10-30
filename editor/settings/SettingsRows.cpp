@@ -1647,7 +1647,28 @@ std::vector<Setting> mcpSettingsTable() {
                          [] { return AppSettings::getCMakePath(); }, [](const std::string& v) { AppSettings::setCMakePath(v); });
         stringPreference("preferences.emsdk_path", "External Tools: Emscripten SDK root for Web builds (\"\" = EMSDK / PATH).",
                          [] { return AppSettings::getEmsdkPath(); }, [](const std::string& v) { AppSettings::setEmsdkPath(v); });
-        stringPreference("preferences.ffmpeg_path", "External Tools: ffmpeg for video imports (\"\" = JASPER_FFMPEG / PATH).",
+        {
+            Setting s;
+            s.key = "preferences.project_hub_at_startup";
+            s.type = "enum";
+            s.values = {"when_no_project", "always"};
+            s.preference = true;
+            s.description = "General: when the Project Hub opens at start (when_no_project: the last project is missing or fails to load).";
+            s.get = [](SettingsContext&) { return Json(AppSettings::getProjectHubAlways() ? "always" : "when_no_project"); };
+            s.set = [](SettingsContext&, const Json& value, bool apply, std::string& error) {
+                if (!value.is_string() || (value.get<std::string>() != "always" && value.get<std::string>() != "when_no_project")) {
+                    error = "must be when_no_project or always";
+                    return false;
+                }
+                if (apply) {
+                    AppSettings::setProjectHubAlways(value.get<std::string>() == "always");
+                    AppSettings::saveSettings();
+                }
+                return true;
+            };
+            add(s);
+        }
+        stringPreference("preferences.ffmpeg_path", "External Tools: ffmpeg for video imports and Recorder movies (\"\" = JASPER_FFMPEG / PATH).",
                          [] { return AppSettings::getFfmpegPath(); }, [](const std::string& v) { AppSettings::setFfmpegPath(v); });
         stringPreference("preferences.default_export_dir", "Default output directory for builds of projects that have none yet.",
                          [] { return FileUtils::pathToGenericUtf8(AppSettings::getDefaultExportDirectory()); },
@@ -1856,6 +1877,7 @@ const Placement placements[] = {
     {"preferences.error_pause", "General", "Console", "Error Pause", "console"},
     {"preferences.simulate_touch", "General", "Game View", "Simulate Touch", "game view mouse finger"},
     {"preferences.default_export_dir", "General", "", "Default Build Directory", "output export"},
+    {"preferences.project_hub_at_startup", "General", "", "Show Project Hub at Startup", "project hub startup launcher templates"},
     {"preferences.cmake_path", "External Tools", "Desktop Build", "CMake", "cmake executable"},
     {"preferences.build_c_compiler", "External Tools", "Desktop Build", "Compiler", "compiler kit c"},
     {"preferences.build_cxx_compiler", "External Tools", "Desktop Build", "C++ Compiler", "compiler kit cpp"},

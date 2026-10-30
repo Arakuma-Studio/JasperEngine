@@ -24,6 +24,8 @@ namespace jasperengine::editor {
         char m_projectNameBuffer[256] = {0};
         // Editor > Asset Labels: the label being renamed, its new name
         std::string m_renamingLabel;
+        // a label's colour while the Color window edits it (written once, when the window closes)
+        std::unordered_map<std::string, Vector3> m_labelColorPreview;
         char m_labelNameBuffer[64] = {0};
         std::string m_projectNameOriginal;
         int m_canvasWidth = 0;

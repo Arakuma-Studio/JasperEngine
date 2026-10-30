@@ -47,6 +47,7 @@ float anim::applyEase(EaseType ease, float t){
         case EaseType::BOUNCE_IN_OUT: return Ease::easeInOutBounce(t);
         case EaseType::STEP: return Ease::stepped(t);
         case EaseType::CUSTOM: return t;
+        case EaseType::CURVE: return t;
     }
     return t;
 }

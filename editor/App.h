@@ -35,6 +35,11 @@
 #include "window/PlayInput.h"
 
 #include "window/LoadingWindow.h"
+#include "hub/ProjectHubWindow.h"
+#include "recorder/RecorderWindow.h"
+
+#include <array>
+#include <future>
 
 #include "window/dialog/ProjectSaveDialog.h"
 #include "window/dialog/SceneSaveDialog.h"
@@ -297,6 +302,38 @@ namespace jasperengine::editor{
         ProjectSettingsWindow projectSettingsWindow;
         PrefabsWindow prefabsWindow;
         AboutWindow aboutWindow;
+        // S27: the Project Hub, and whether it covers the editor's own temporary project (then no
+        // project is open: Esc has nothing to return to, MCP answers "no project open")
+        ProjectHubWindow projectHub;
+        RecorderWindow recorderWindow;
+        void setupRecorder();
+        bool hubOverTemp = false;
+        // a project being made from a template off the main thread (R18)
+        struct HubCreation {
+            std::future<std::string> copy;     // the error, empty on success
+            hub::ProjectTemplate info;
+            std::string name;
+            std::filesystem::path dir;
+        };
+        std::unique_ptr<HubCreation> hubCreation;
+        bool hubCreationOpening = false;
+        bool hubCreationPrompt = true;
+        std::string hubCreationError;
+        std::string hubMessage;
+        // File > Save Project as Template...
+        bool saveTemplatePopup = false;
+        std::array<char, 128> saveTemplateName{};
+        std::array<char, 512> saveTemplateDescription{};
+        std::string saveTemplateMessage;
+
+        void setupProjectHub();
+        bool startupShowsHub();
+        void hubOpenProject(const std::filesystem::path& dir, bool withoutLastScene);
+        void hubCreateProject(const hub::ProjectTemplate& info, const std::string& name, const std::filesystem::path& dir);
+        void updateHubCreation();
+        void drawSaveProjectAsTemplate();
+        // .jasperengine/user/hub-thumbnail.png from the Scene view (R21), as the project closes
+        void writeHubThumbnail();
         ScenesWindow scenesWindow;
 
         std::queue<SaveDialogQueueItem> saveDialogQueue;
@@ -470,6 +507,22 @@ namespace jasperengine::editor{
         int getExitCode() const { return startupExitCode != 0 ? startupExitCode : (benchmarkFailed ? 1 : 0); }
 
         bool isProjectLoading() const { return projectLoading; }
+        // S27: the Recorder (its window, F10, the toolbar's record button, MCP record_game)
+        bool isRecording() const;
+        void toggleRecording();
+        RecorderWindow& getRecorderWindow() { return recorderWindow; }
+        // S27: why MCP tools other than the project ones cannot run now ("" when they can)
+        std::string projectUnavailableReason() const;
+        // the Project Hub on a page (File > New Project..., Project Hub..., Open Project...)
+        void openProjectHub(ProjectHubWindow::Page page);
+        bool isProjectHubOpen() const { return projectHub.isOpen(); }
+        // a project from a template (the Hub's Create, MCP create_project template=...): false
+        // with `error` when it cannot start; the project opens once the copy is done
+        bool createProjectFromTemplate(const std::string& templateId, const std::string& name, const std::filesystem::path& dir,
+                                       std::string& error);
+        // the template creation's state for MCP: running, and the last one's error ("" ok)
+        bool isCreatingFromTemplate() const { return hubCreation != nullptr || hubCreationOpening; }
+        const std::string& templateCreationError() const { return hubCreationError; }
         const std::string& getLoadingStatus() const { return loadingStatus; }
         void setLoadingPump(std::function<void(bool render)> pump);
         void reportLoadingProgress(const std::string& status = {}) override;
@@ -482,6 +535,7 @@ namespace jasperengine::editor{
         void prepareForProjectSwitch() override;
         // Runs a project switch between frames, with the loading screen (EditorHost)
         void requestProjectChange(std::function<void()> change) override;
+        void playStarting(uint32_t sceneId) override;
 
         void handleExternalDrop(const std::vector<std::string>& paths);
         void handleExternalDragEnter();

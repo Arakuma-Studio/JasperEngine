@@ -64,6 +64,9 @@ void EditorHost::saveAllCodeEditors() {
 void EditorHost::requestScenePlayFocus(uint32_t) {
 }
 
+void EditorHost::playStarting(uint32_t) {
+}
+
 std::string EditorHost::backgroundWorkConflict(const std::string&) const {
     return {};
 }

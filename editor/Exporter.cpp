@@ -2300,7 +2300,7 @@ bool editor::Exporter::copyAssets() {
 
         // Skip hidden directories (starting with '.') and build directories
         std::string firstComponent = relPath.begin()->string();
-        if (!firstComponent.empty() && (firstComponent[0] == '.' || firstComponent == "build")) {
+        if (!firstComponent.empty() && Project::isNonAssetTopLevelDir(firstComponent)) {
             std::error_code entryEc;
             if (entry.is_directory(entryEc)) it.disable_recursion_pending();
             continue;
@@ -2450,7 +2450,7 @@ bool editor::Exporter::copyCustomShaderSources() {
 
         // Same skips as copyAssets: hidden directories (the project's own data) and builds
         const std::string firstComponent = relPath.begin()->string();
-        if (!firstComponent.empty() && (firstComponent[0] == '.' || firstComponent == "build")) continue;
+        if (!firstComponent.empty() && Project::isNonAssetTopLevelDir(firstComponent)) continue;
 
         std::string ext = entry.path().extension().string();
         std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return std::tolower(c); });
@@ -2517,7 +2517,7 @@ bool editor::Exporter::copyLua() {
 
         // Skip hidden directories (starting with '.') and build directories
         std::string firstComponent = relPath.begin()->string();
-        if (!firstComponent.empty() && (firstComponent[0] == '.' || firstComponent == "build")) { it.disable_recursion_pending(); continue; }
+        if (!firstComponent.empty() && Project::isNonAssetTopLevelDir(firstComponent)) { it.disable_recursion_pending(); continue; }
 
         // Skip project support files that should not ship in the Lua directory, and metas (S04)
         if (shouldSkipExportSupportFile(relPath) || AssetTypes::isMetaFile(relPath)) continue;
@@ -2620,7 +2620,7 @@ bool editor::Exporter::copyCppScripts() {
             const std::string firstComponent = relPath.begin()->string();
 
             if (entry.is_directory() && !firstComponent.empty()
-                && (firstComponent[0] == '.' || firstComponent == "build")) {
+                && Project::isNonAssetTopLevelDir(firstComponent)) {
                 it.disable_recursion_pending();
                 continue;
             }
@@ -2649,12 +2649,16 @@ bool editor::Exporter::copyCppScripts() {
 
         const fs::path rootPath = normalizedProjectRoot / relDir;
         if (!fs::is_directory(rootPath, ec)) continue;
+        // a script root that is the project's: its top-level non-asset folders are skipped (S27 R31)
+        std::error_code sameEc;
+        const bool atProjectRoot = fs::equivalent(rootPath, normalizedProjectRoot, sameEc);
 
         try {
             for (auto it = fs::recursive_directory_iterator(rootPath, fs::directory_options::skip_permission_denied);
                  it != fs::recursive_directory_iterator(); ++it) {
                 const std::string name = it->path().filename().string();
-                if (it->is_directory() && (name.empty() || name[0] == '.' || name == "build")) {
+                if (it->is_directory() && (name.empty() || name[0] == '.' || name == "build" ||
+                                           (atProjectRoot && it.depth() == 0 && Project::isNonAssetTopLevelDir(name)))) {
                     it.disable_recursion_pending();
                     continue;
                 }

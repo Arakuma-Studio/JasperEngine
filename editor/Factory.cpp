@@ -26,6 +26,7 @@
 #include <filesystem>
 
 #include "util/FileUtils.h"
+#include "stream/CurveCodec.h"
 
 #include "resources/sky/Daylight_Box_Back_png.h"
 #include "resources/sky/Daylight_Box_Bottom_png.h"
@@ -3115,10 +3116,7 @@ std::string editor::Factory::createForceFieldComponent(int indentSpaces, EntityR
     code << ind << "field.turbulence = " << formatFloat(f.turbulence) << ";\n";
     code << ind << "field.pulseFrequency = " << formatFloat(f.pulseFrequency) << ";\n";
     code << ind << "field.frequency = " << formatFloat(f.frequency) << ";\n";
-    code << ind << "field.falloff.keys.clear();\n";
-    auto tangent = [](float t){ return std::isfinite(t) ? formatFloat(t) : std::string(t > 0.0f ? "INFINITY" : "-INFINITY"); };
-    for (const CurveKey& k : f.falloff.keys)
-        code << ind << "field.falloff.keys.push_back({" << formatFloat(k.time) << ", " << formatFloat(k.value) << ", " << tangent(k.inTangent) << ", " << tangent(k.outTangent) << "});\n";
+    code << ind << "field.falloff = " << curvecodec::curveCppLiteral(f.falloff) << ";\n";
     code << ind << "field.layers = " << formatUInt(f.layers) << ";\n";
     if (!f.enabled) code << ind << "field.enabled = false;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "ForceFieldComponent", "field", assignExisting);

@@ -123,7 +123,7 @@ bool EditorFrame::run(EditorFrameState& state){
 
     // Unfocused always drops synchronization, so a blocked present can never
     // stall the event loop that serves clipboard requests.
-    const bool vsync = app->isBenchmarkMode() ? false : (playSessionActive
+    const bool vsync = (app->isBenchmarkMode() || app->isRecording()) ? false : (playSessionActive
         ? project->isVSyncEnabled()
         : AppSettings::getEditorVSyncEnabled());
     const bool frameSync = state.focused && vsync;

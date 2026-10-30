@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "EditorSettingsWindow.h"
+#include "widget/ColorField.h"
 #include "util/FileUtils.h"
 #include "vcs/VcsService.h"
 #include "diag/CrashHandler.h"
@@ -211,6 +212,7 @@ void EditorSettingsWindow::open(Project* project) {
     m_ffmpegOverride = AppSettings::getFfmpegPath();
     refreshFfmpegStatus();
     m_editorVSyncEnabled = AppSettings::getEditorVSyncEnabled();
+    m_projectHubAlways = AppSettings::getProjectHubAlways();
     m_uiScalePercent = static_cast<int>(std::lround(AppSettings::getUiScale() * 100.0f));
     m_autosaveEnabled = AppSettings::isAutosaveEnabled();
     m_autosaveInterval = AppSettings::getAutosaveIntervalSeconds();
@@ -437,6 +439,19 @@ void EditorSettingsWindow::drawGeneralSettings() {
             );
         }
 
+        if (settingsui::beginRow("preferences.project_hub_at_startup")) {
+            if (prefsBeginSettingsRow("Show Project Hub at Startup",
+                                 "When No Project: the hub opens when the last project is missing or fails to load. Always: every "
+                                 "start. Shift held at start, or --hub, opens it either way.",
+                                 m_projectHubAlways)) {
+                m_projectHubAlways = false;
+            }
+            static const char* const hubModes[] = {"When No Project", "Always"};
+            int mode = m_projectHubAlways ? 1 : 0;
+            ImGui::SetNextItemWidth(Theme::dpi(160.0f));
+            if (ImGui::Combo("##ProjectHubAtStartup", &mode, hubModes, 2)) m_projectHubAlways = mode == 1;
+        }
+
         if (settingsui::beginRow("preferences.editor_vsync")) {
             if (prefsBeginSettingsRow("Editor VSync",
                                  "VSync for the editor UI. Play mode and exported builds use the project VSync setting.",
@@ -550,15 +565,20 @@ void EditorSettingsWindow::drawCodeEditorSettings() {
 void EditorSettingsWindow::drawLatticeSettings() {
     prefsDrawSettingsPanel("##EditorLatticeSettingsPanel", [this]() {
         const LatticeViewSettings defaults;
-        const ImGuiColorEditFlags colorFlags = ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar;
-
         auto colorRow = [&](const char* key, const char* label, const char* tooltip, std::array<float, 4>& color,
                             const std::array<float, 4>& defaultColor) {
             if (!settingsui::beginRow(key)) return;
             if (prefsBeginSettingsRow(label, tooltip, color != defaultColor)) {
                 color = defaultColor;
             }
-            ImGui::ColorEdit4((std::string("##Lattice") + label).c_str(), color.data(), colorFlags);
+            // a preference: the value as shown, applied live, the window's Esc puts it back
+            ui::ColorFieldOptions colorOptions;
+            colorOptions.linearStorage = false;
+            colorOptions.label = label;
+            colorOptions.width = Theme::dpi(120.0f);
+            Vector4 value(color[0], color[1], color[2], color[3]);
+            const ui::EditPhase phase = ui::colorField((std::string("##Lattice") + label).c_str(), value, colorOptions);
+            if (phase == ui::EditPhase::Changing || phase == ui::EditPhase::Cancelled) color = {value.x, value.y, value.z, value.w};
         };
 
         if (sectionRow("Cage")) {
@@ -1263,6 +1283,7 @@ void EditorSettingsWindow::drawAdvancedSettings() {
 
 bool EditorSettingsWindow::applySettings() {
     AppSettings::setEditorVSyncEnabled(m_editorVSyncEnabled);
+    AppSettings::setProjectHubAlways(m_projectHubAlways);
     AppSettings::setAutosaveEnabled(m_autosaveEnabled);
     AppSettings::setAutosaveIntervalSeconds(m_autosaveInterval);
     AppSettings::setUiScale(m_uiScalePercent / 100.0f);

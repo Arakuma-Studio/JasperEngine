@@ -36,6 +36,7 @@ namespace jasperengine::editor {
         std::string m_ffmpegStatus;
         bool m_ffmpegUsable = false;
         bool m_editorVSyncEnabled = true;
+        bool m_projectHubAlways = false;
         int m_uiScalePercent = 100;
         bool m_autosaveEnabled = true;
         int m_autosaveInterval = 60;

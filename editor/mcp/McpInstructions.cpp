@@ -190,6 +190,7 @@ uniforms: jasper://docs/shaders; Lit lobes, Lit Quality, light units: jasper://d
 Textures from examples: synthesize_texture (group assets_pipeline,
 jasper://docs/texture-synthesis). GPU fluid: create_entity type fluid_simulation
 (jasper://docs/fluid). Bend/squash: edit_lattice (group animation, jasper://docs/lattice).
+Colours ("#hex", {srgb}), curves, templates, recording: jasper://docs/editor-tools.
 
 ## Post-processing
 Main camera only: apply_post_processing_preset (film, vhs, mobile_adaptive...), then

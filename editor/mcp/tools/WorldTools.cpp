@@ -230,7 +230,7 @@ bool parseEase(const Json& value, EaseType& out, std::string& error) {
     std::string name = value.get<std::string>();
     for (char& c : name) c = (c == '-' || c == ' ') ? '_' : static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
     const EaseType parsed = Stream::stringToEaseType(name);
-    if (Stream::easeTypeToString(parsed) != name || parsed == EaseType::CUSTOM) {
+    if (Stream::easeTypeToString(parsed) != name || parsed == EaseType::CUSTOM || parsed == EaseType::CURVE) {
         error = "Unknown ease \"" + value.get<std::string>() + "\". Use linear, step, or <quad|cubic|quart|quint|sine|expo|circ|elastic|back|bounce>_<in|out|in_out>.";
         return false;
     }

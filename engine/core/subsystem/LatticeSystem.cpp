@@ -104,8 +104,8 @@ namespace {
     }
 
     float easeValue(EaseType ease, float time){
-        // a custom ease is a function the component cannot hold: linear
-        if (ease == EaseType::CUSTOM){
+        // a custom ease is a function the component cannot hold, a curve ease a curve: linear
+        if (ease == EaseType::CUSTOM || ease == EaseType::CURVE){
             return time;
         }
         return Ease::getFunction(ease)(time);

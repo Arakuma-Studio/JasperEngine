@@ -95,6 +95,9 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
         "Save every scene, script and the project";
     b.menu("file.removeScene", "Remove Scene from Project", AppMenuCommand::RemoveScene);
     b.menu("file.newProject", "New Project...", AppMenuCommand::NewProject).agentSafe = false;
+    b.menu("file.projectHub", "Project Hub...", AppMenuCommand::ProjectHub).agentSafe = false;
+    b.menu("file.saveProjectAsTemplate", "Save Project as Template...", AppMenuCommand::SaveProjectAsTemplate).description =
+        "Save the project as a starter project of the Project Hub's New Project";
     b.menu("file.openProject", "Open Project...", AppMenuCommand::OpenProject, C::Global, "Ctrl+O").agentSafe = false;
     b.menu("file.clearRecentProjects", "Clear Recent Projects", AppMenuCommand::ClearRecentProjects).agentSafe = false;
     b.menu("file.saveProjectAs", "Save Project As...", AppMenuCommand::SaveProjectAs);
@@ -203,6 +206,12 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("window.bookmarks", "Bookmarks", AppMenuCommand::ToggleBookmarks);
     b.menu("window.undoHistory", "Undo History", AppMenuCommand::ToggleUndoHistory);
     b.menu("window.playModeChanges", "Play Mode Changes", AppMenuCommand::TogglePlayModeChanges);
+    b.menu("window.colorPicker", "Color Picker", AppMenuCommand::ToggleColorPicker).description =
+        "The Color window on its own: eyedropper, swatches, hexadecimal";
+    b.menu("window.recorder", "Recorder", AppMenuCommand::ToggleRecorder).description =
+        "Record the Game view to a PNG sequence or a movie";
+    b.menu("recorder.toggle", "Start Recording", AppMenuCommand::ToggleRecording, C::Global, "F10").description =
+        "Start or stop the Recorder (enters Play when needed)";
     b.menu("window.terrain", "Terrain", AppMenuCommand::ToggleTerrain);
     b.menu("window.inputActions", "Input Actions", AppMenuCommand::ToggleInputActions);
     b.menu("window.navigation", "Navigation", AppMenuCommand::ToggleNavigation);

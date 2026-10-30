@@ -105,6 +105,7 @@ namespace jasperengine::editor::prefabinternal {
             case PropertyType::String: return *static_cast<std::string*>(a.ref) == *static_cast<std::string*>(b.ref);
             case PropertyType::Asset: return *static_cast<AssetRef*>(a.ref) == *static_cast<AssetRef*>(b.ref);
             case PropertyType::Shader: return *static_cast<ShaderRef*>(a.ref) == *static_cast<ShaderRef*>(b.ref);
+            case PropertyType::Curve: return *static_cast<Curve*>(a.ref) == *static_cast<Curve*>(b.ref);
             case PropertyType::Float: return *static_cast<float*>(a.ref) == *static_cast<float*>(b.ref);
             case PropertyType::Double: return *static_cast<double*>(a.ref) == *static_cast<double*>(b.ref);
             case PropertyType::Vector2: return *static_cast<Vector2*>(a.ref) == *static_cast<Vector2*>(b.ref);

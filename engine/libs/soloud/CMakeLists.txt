@@ -36,6 +36,8 @@ add_library(
     src/audiosource/wav/soloud_wav.cpp
 
     src/backend/miniaudio/soloud_miniaudio.cpp
+    # the null driver: the editor's Recorder mixes offline in step with the game (S27 R29)
+    src/backend/null/soloud_null.cpp
 
     src/filter/soloud_bassboostfilter.cpp
     src/filter/soloud_biquadresonantfilter.cpp
@@ -64,6 +66,7 @@ endif()
 
 find_package(Threads REQUIRED)
 target_link_libraries(soloud PRIVATE Threads::Threads)
+target_compile_definitions(soloud PRIVATE WITH_NULL)
 
 if(EMSCRIPTEN AND EMSCRIPTEN_THREAD_SUPPORT)
 	target_compile_options(soloud PRIVATE -pthread)

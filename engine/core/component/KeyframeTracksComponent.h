@@ -46,7 +46,7 @@ namespace jasperengine{
             easings = values;
             // CUSTOM has no per-segment function storage; treat it as linear.
             for (EaseType& ease : easings){
-                if (ease == EaseType::CUSTOM) ease = EaseType::LINEAR;
+                if (ease == EaseType::CUSTOM || ease == EaseType::CURVE) ease = EaseType::LINEAR;
             }
         }
 
@@ -54,7 +54,7 @@ namespace jasperengine{
             if (easings.size() <= segment){
                 easings.resize(segment + 1, EaseType::LINEAR);
             }
-            easings[segment] = ease == EaseType::CUSTOM ? EaseType::LINEAR : ease;
+            easings[segment] = ease == EaseType::CUSTOM || ease == EaseType::CURVE ? EaseType::LINEAR : ease;
         }
     };
 

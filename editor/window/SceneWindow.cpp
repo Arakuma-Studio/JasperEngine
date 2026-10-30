@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneWindow.h"
+#include "widget/ColorField.h"
 #include "util/EditorScripts.h"
 #include "DocumentFile.h"
 #include "pose/PoseViewport.h"
@@ -2745,6 +2746,7 @@ void editor::SceneWindow::show() {
 
                     ImGui::SetCursorScreenPos(imageMin);
                     Widgets::image(previewTex, imageSize);
+                    ui::registerViewImage(ImGui::GetWindowViewport()->ID, imageMin, imageMax, sceneProject.sceneRender->getFramebuffer());
 
                     // Yellow frame as a "viewing through camera" cue (inset 1px so it's not clipped at the edge).
                     // Matches the previewed camera's highlight color in the Hierarchy tree.
@@ -2754,6 +2756,8 @@ void editor::SceneWindow::show() {
                     // Black until the first render creates the framebuffer.
                     const ImVec2 canvasMin = ImGui::GetCursorScreenPos();
                     Widgets::image(previewTex, canvasAvail, IM_COL32(0, 0, 0, 255));
+                    ui::registerViewImage(ImGui::GetWindowViewport()->ID, canvasMin,
+                                          ImVec2(canvasMin.x + canvasAvail.x, canvasMin.y + canvasAvail.y), sceneProject.sceneRender->getFramebuffer());
                     particleOverlay.draw(project, &sceneProject, canvasMin, canvasAvail);
                     // an item over the image again, after the panel's widgets: the drop targets
                     // below (BeginDragDropTarget) take the last item, and an empty one a line

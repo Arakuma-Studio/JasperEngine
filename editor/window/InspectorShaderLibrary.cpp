@@ -7,6 +7,7 @@
 // lines. Every edit is a property command on the Catalog paths MCP uses too.
 
 #include "InspectorWindow.h"
+#include "widget/ColorPickerWindow.h"
 
 #include "App.h"
 #include "Backend.h"
@@ -358,15 +359,17 @@ bool editor::InspectorWindow::drawShaderPropertyValue(const ShaderManifestProper
     switch (property.kind) {
         case ShaderPropertyKind::COLOR:
         case ShaderPropertyKind::HDRCOLOR: {
-            // edited as sRGB, stored linear (alpha as is)
-            const bool hdr = property.kind == ShaderPropertyKind::HDRCOLOR;
-            Vector4 srgb = Color::linearTosRGB(value);
-            float color[4] = {srgb.x, srgb.y, srgb.z, srgb.w};
-            ImGuiColorEditFlags flags = ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf;
-            if (hdr) flags |= ImGuiColorEditFlags_HDR | ImGuiColorEditFlags_Float;
-            if (ImGui::ColorEdit4(id.c_str(), color, flags)) {
-                const Vector4 linear = Color::sRGBToLinear(Vector4(color[0], color[1], color[2], color[3]));
-                edited = Vector4(linear.x, linear.y, linear.z, color[3]);
+            // edited as sRGB in the Color window, stored linear (alpha as is); its session is one
+            // undo step (S27 R3)
+            ui::ColorFieldOptions colorOptions;
+            colorOptions.hdr = property.kind == ShaderPropertyKind::HDRCOLOR;
+            colorOptions.label = property.label.empty() ? property.member.c_str() : property.label.c_str();
+            Vector4 color = value;
+            const ui::EditPhase phase = ui::colorField(id.c_str(), color, colorOptions);
+            if (phase == ui::EditPhase::Begin) {
+                ui::ColorPickerWindow::beginEdit(CommandHandle::get(project->getSelectedSceneId()), colorOptions.label);
+            } else if (phase == ui::EditPhase::Changing) {
+                edited = color;
                 changed = true;
             }
             break;

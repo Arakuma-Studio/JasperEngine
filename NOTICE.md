@@ -103,6 +103,12 @@ FBX import of the editor (editor-only: an exported game ships the converted `.gl
 |---|---|---|---|---|
 | [ufbx](https://github.com/ufbx/ufbx) | 0.23.1 (as vendored by Doriax `8e8dde5d6`) | `libs/ufbx/` (`LICENSE`) | MIT OR Unlicense (public domain), used under MIT | reading `.fbx` files, converted to `.glb` by `editor/util/FbxImporter` and `GlbBuilder` |
 
+Zip reading of the Project Hub's import (editor-only):
+
+| Library | Version | Location | License | Used for |
+|---|---|---|---|---|
+| [miniz](https://github.com/richgel999/miniz) | 3.0.2 (as vendored by OpenEngine, `Engine/Source/ThirdParty/miniz`) | `libs/miniz/` (`LICENSE`, `README.jasper.md`) | MIT | extracting `.zip` projects (Project Hub > Import, `import_project`) |
+
 Convex decomposition of Physics Placement (edit-time placement in the Scene view and for agents):
 
 | Library | Version | Location | License | Used for |
@@ -176,6 +182,11 @@ Code from [OpenEngine](https://github.com/Game-Crafters-Guild/OpenEngine) (MIT, 
 | `Engine/Modules/VCSIntegration`: `VCSCommandExecutor.cpp` (argument quoting on Windows, the concurrent pipe drain, kill on timeout), `VCSStatusPoller` (the cooldown and wake coalescing), `VCSPathKey.h` (lexical repository-relative keys), adapted; `Tests/VCSCommandExecutorTests.cpp`, `VCSStatusPollerTests.cpp` (cases ported) | `editor/vcs/ProcessExec.*`, `editor/vcs/VcsStatusPoller.*`, `editor/vcs/VcsPathKey.h`, `editor/tests/vcs/ProcessExecTest.cpp`, `editor/tests/vcs/VcsStatusPollerTest.cpp` | the version control process runner, status poller and path keys (S29) |
 | `Packages/git-vcs/Editor/GitIntegration.cpp`, `Packages/svn-vcs/Editor/SVNIntegration.cpp` (the command sets), followed and rewritten (argv only, porcelain v2, XML) | `editor/vcs/GitProvider.*`, `editor/vcs/SvnProvider.*` | the Git (with LFS locks) and Subversion providers (S29) |
 | `Apps/Editor/Source/VersionControl/`: `SceneDiff` (the result model), `SceneDiffVcs` (the baseline memo), `InspectorVcsController` (the baseline tooltip and revert items), `Ui/VcsCommitDialog`, `Ui/VcsLogViewer` (layouts), and `Apps/Editor/Include/UndoRedo/VcsRevertCommand.h`, followed and rewritten for our YAML, commands and ImGui; `Tests/Editor/SceneDiffTests.cpp` (cases ported to our YAML) | `editor/vcs/scene/SceneDiff.*`, `editor/vcs/SceneDiffTracker.*`, `editor/window/InspectorVcs.cpp`, `editor/command/type/RevertFilesCmd.*`, `editor/command/type/RevertToBaselineCmd.*`, `editor/window/vcs/VcsCommitWindow.*`, `editor/window/vcs/VcsHistoryWindow.*`, `editor/tests/vcs/SceneDiffTest.cpp` | the semantic scene diff, Revert to Baseline, the undoable revert and the Commit and History windows (S29) |
+| `Apps/Editor/Source/Projects/ProjectCatalog.cpp` (`IsValidCatalogId`, `IsSafeRelativePath`, copied with its notice) and the template manifest's fields (`Apps/Editor/ProjectTemplates/manifest.json`: id, name, description, category, order, accentColor, thumbnail, startScene) | `editor/hub/HubPaths.*`, `editor/hub/TemplateCatalog.*` | the Project Hub's ids, safe paths and project templates (S27) |
+| `Apps/Editor/Source/Projects/ProjectAcquisition.cpp` (the Git lookup, the argv-only shallow clone and its progress) and `ZipArchive` (the entry checks before extraction), adapted | `editor/hub/ProjectImporter.*` | importing a project from a zip or a Git URL (S27) |
+| `Apps/Editor/Source/Panels/ColorPicker.cpp` (the callback triad, the palette model: rows of 19, at most 4 rows, a spectrum row), `Apps/Editor/Source/UI/Controls/CurveField.cpp` (opening on click) and `CurvePresets.cpp` (presets fitted to the range, "My Preset N"), followed | `editor/widget/ColorPickerWindow.*`, `editor/widget/SwatchLibrary.*`, `editor/widget/CurveField.*`, `editor/widget/CurvePresets.*` | the Color window, swatches, curve fields and presets (S27) |
+| `Engine/Modules/Platform/Source/Window.cpp` (the screen reads of the colour sampler: `XGetImage`, `BitBlt` of the desktop DC, `CGWindowListCreateImage`), adapted to one 9x9 block per frame (`NSColorSampler` on macOS) | `editor/platform/ScreenColor*` | the eyedropper outside the editor's views (S27) |
+| `Apps/Editor/Source/MovieRecorderController.cpp` (resolution and bitrate presets), `GameViewMovieCapture.cpp` (the bounded frame queues) and `VideoWriterFFmpeg.cpp` (the H.264 encoder preference list, the raw-RGBA pipe), adapted | `editor/recorder/` | the Recorder (S27); FFmpeg itself is the user's program, never linked or shipped |
 
 The extended lobes' formulas (`engine/shaderlib/includes/pbr_ext.glsl`) follow the [Khronos glTF-Sample-Renderer](https://github.com/KhronosGroup/glTF-Sample-Renderer) shaders (Apache-2.0, Copyright The Khronos Group Inc.), as `includes/pbr.glsl`, `brdf.glsl` and `ibl.glsl` already do.
 

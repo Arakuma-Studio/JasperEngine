@@ -13,6 +13,7 @@ using namespace jasperengine;
 
 bool AudioSystem::inited = false;
 bool AudioSystem::outputUnavailable = false;
+bool AudioSystem::offlineCapture = false;
 
 float AudioSystem::globalVolume = 1.0;
 
@@ -57,6 +58,36 @@ bool AudioSystem::init(){
 
 bool AudioSystem::isOutputAvailable(){
     return !outputUnavailable;
+}
+
+bool AudioSystem::beginOfflineCapture(unsigned int sampleRate, unsigned int channels){
+    // whatever plays now stops: the capture starts with the scene
+    deInit();
+    SoLoud::result result = getSoloud().init(SoLoud::Soloud::CLIP_ROUNDOFF, SoLoud::Soloud::NULLDRIVER, sampleRate,
+                                             SoLoud::Soloud::AUTO, channels);
+    if (result != SoLoud::SOLOUD_ERRORS::SO_NO_ERROR) {
+        Log::warn("Offline audio capture unavailable (%s)", getSoloud().getErrorString(result));
+        return false;
+    }
+    getSoloud().setGlobalVolume(globalVolume);
+    inited = true;
+    offlineCapture = true;
+    return true;
+}
+
+void AudioSystem::endOfflineCapture(){
+    if (!offlineCapture) return;
+    deInit();
+    offlineCapture = false;
+}
+
+bool AudioSystem::isOfflineCapture(){
+    return offlineCapture;
+}
+
+void AudioSystem::mixOffline(float* out, unsigned int frames){
+    if (!offlineCapture || frames == 0) return;
+    getSoloud().mix(out, frames);
 }
 
 void AudioSystem::deInit(){

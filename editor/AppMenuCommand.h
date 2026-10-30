@@ -116,7 +116,14 @@ namespace jasperengine::editor {
         ToggleAnimator,               // Window > Animation > Animator
         AssetsCreateAnimatorController,
         AssetsCreateAvatarMask,
-        AssetsCreateAnimationMontage
+        AssetsCreateAnimationMontage,
+        // S27: File > Project Hub... and Save Project as Template..., Window > General > Color
+        // Picker and Recorder, and the recording itself (F10)
+        ProjectHub,
+        SaveProjectAsTemplate,
+        ToggleColorPicker,
+        ToggleRecorder,
+        ToggleRecording
     };
 
 }

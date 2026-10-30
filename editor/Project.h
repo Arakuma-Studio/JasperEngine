@@ -778,6 +778,7 @@ namespace jasperengine::editor{
 
         // True while project.yaml holds the only copy of this user's editor state
         bool workspaceMigrationPending = false;
+        bool skipWorkspaceTabs = false;
         // What project.yaml's load could not read: dropped issues gate its saves
         LoadReport projectLoadReport;
         // Scenes whose last saveScene the save gate refused (Save All goes on past them)
@@ -1589,6 +1590,10 @@ namespace jasperengine::editor{
         bool saveProjectFile(DegradedSavePolicy policy = DegradedSavePolicy::Refuse, SaveResult* outcome = nullptr);
         // Per-user editor state (.jasperengine/user/workspace.yaml), never project.yaml
         bool saveWorkspaceFile();
+        // The next load opens the project without the scenes its workspace had open (the
+        // Project Hub's Open Without Last Scene); takeSkipWorkspaceTabs reads and clears it
+        void setSkipWorkspaceTabs(bool skip) { skipWorkspaceTabs = skip; }
+        bool takeSkipWorkspaceTabs() { const bool skip = skipWorkspaceTabs; skipWorkspaceTabs = false; return skip; }
 
         bool loadProject(const std::filesystem::path path, bool updateLastOpened = true);
 
@@ -1859,6 +1864,13 @@ namespace jasperengine::editor{
         uint32_t getSelectedSceneForProperties() const;
 
         bool isTempProject() const;
+        // The top-level folders of a project that hold no assets (S27 R31): hidden ones ('.'),
+        // build, the Recorder's Recordings and EditorSettings (swatch and curve libraries). The
+        // exports, the asset scans and the generated .gitignore follow it.
+        static bool isNonAssetTopLevelDir(const std::string& name);
+        // a folder no scan enters: hidden or build anywhere, the top-level ones above at the
+        // project's top
+        bool isNonAssetDir(const std::filesystem::path& dir) const;
         bool isEditorTempProject() const;
         bool isTempUnsavedProject() const;
         std::filesystem::path getProjectPath() const;

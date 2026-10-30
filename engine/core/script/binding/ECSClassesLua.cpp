@@ -415,6 +415,7 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("loop", &TweenComponent::loop, &setTrackedMember<&TweenComponent::loop>)
         .addProperty("pingPong", &TweenComponent::pingPong, &setTrackedMember<&TweenComponent::pingPong>)
         .addProperty("function", [] (TweenComponent* self, lua_State* L) { return &self->function; }, [] (TweenComponent* self, lua_State* L) { self->function = L; })
+        .addProperty("curve", &TweenComponent::curve, &setTrackedMember<&TweenComponent::curve>)
         .endClass();
     
     luabridge::getGlobalNamespace(L)

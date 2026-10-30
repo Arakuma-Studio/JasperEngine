@@ -47,6 +47,15 @@
 #include "navigation/NavigationWindow.h"
 #include "command/PlayChangeReview.h"
 #include "pose/PoseEditSession.h"
+#include "widget/ColorPickerWindow.h"
+#include "util/GraphicUtils.h"
+#include "recorder/RecorderSession.h"
+#include "hub/HubPaths.h"
+#include "platform/LaunchKeys.h"
+#include "io/AtomicFile.h"
+#include "widget/CurveField.h"
+#include "widget/GradientField.h"
+#include "widget/FieldEdit.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpAutoSync.h"
 #include "mcp/tools/McpTools.h"
@@ -275,24 +284,8 @@ void editor::App::openProjectFunc(){
         return;
     }
 
-    auto openProject = [this]() {
-        #ifdef _WIN32
-        const char* homeDir = std::getenv("USERPROFILE");
-        #else
-        const char* homeDir = std::getenv("HOME");
-        #endif
-        const std::string selectedDir = FileDialogs::openFileDialog(
-            homeDir ? homeDir : "", FILE_DIALOG_ALL, true);
-        if (selectedDir.empty()) return;
-
-        const std::filesystem::path projectDir(selectedDir);
-        if (!std::filesystem::exists(projectDir / "project.yaml")) {
-            registerAlert("Error", "The selected directory is not a valid project. No project.yaml file found!");
-            return;
-        }
-
-        requestProjectChange([this, projectDir]() { project.loadProject(projectDir); });
-    };
+    // the Project Hub's Open page (S27 R17)
+    auto openProject = [this]() { openProjectHub(ProjectHubWindow::Page::Open); };
     if (project.hasScenesUnsavedChanges() || codeEditor->hasUnsavedChanges() || project.isTempUnsavedProject()) {
         registerConfirmAlert(
             "Unsaved Changes",
@@ -538,8 +531,10 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         menuSeparator(),
         catalogItem("file.newProject"),
         catalogItem("file.openProject"),
+        catalogItem("file.projectHub"),
         menuSubmenu("Recent Projects", std::move(recentItems), !isProjectBusy),
         catalogItem("file.saveProjectAs"),
+        catalogItem("file.saveProjectAsTemplate"),
         menuSeparator(),
         catalogItem("file.buildSettings"),
         menuSeparator(),
@@ -646,7 +641,9 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             catalogItem("window.console", windowMenuLabel(ConsoleWindow::WINDOW_NAME)),
             catalogItem("window.bookmarks", windowMenuLabel(BookmarksWindow::WINDOW_NAME)),
             catalogItem("window.undoHistory", windowMenuLabel(UndoHistoryWindow::WINDOW_NAME)),
-            catalogItem("window.playModeChanges", windowMenuLabel(PlayModeChangesWindow::WINDOW_NAME))
+            catalogItem("window.playModeChanges", windowMenuLabel(PlayModeChangesWindow::WINDOW_NAME)),
+            catalogItem("window.colorPicker"),
+            catalogItem("window.recorder", windowMenuLabel(RecorderWindow::WINDOW_NAME))
         }),
         menuSubmenu("Animation", {
             catalogItem("window.animation", windowMenuLabel(AnimationWindow::WINDOW_NAME)),
@@ -743,15 +740,16 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
     if (projectLoading || pendingProjectChange) return;
 
     const auto action = static_cast<AppMenuCommand>(command.id);
+    // the Project Hub covers the editor: only the project commands (a native menu still shows)
+    if (projectHub.isOpen() && action != AppMenuCommand::NewProject && action != AppMenuCommand::OpenProject &&
+        action != AppMenuCommand::ProjectHub && action != AppMenuCommand::Exit) {
+        return;
+    }
     switch (action) {
         case AppMenuCommand::NewProject: {
             if (project.isAnyScenePlaying()) return;
-            std::string projectName = "MyJasperEngineProject";
-            auto startFreshProject = [this, projectName]() {
-                requestProjectChange([this, projectName]() {
-                    project.createTempProject(projectName, true);
-                });
-            };
+            // the Project Hub's New Project page (S27 R17)
+            auto startFreshProject = [this]() { openProjectHub(ProjectHubWindow::Page::NewProject); };
             if (project.hasScenesUnsavedChanges() || codeEditor->hasUnsavedChanges() ||
                 project.isTempUnsavedProject()) {
                 registerConfirmAlert(
@@ -778,6 +776,36 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::OpenProject:
             openProjectFunc();
+            break;
+        case AppMenuCommand::ProjectHub: {
+            if (project.isAnyScenePlaying()) return;
+            auto openHub = [this]() { openProjectHub(ProjectHubWindow::Page::Projects); };
+            if (!hubOverTemp && (project.hasScenesUnsavedChanges() || codeEditor->hasUnsavedChanges())) {
+                registerConfirmAlert("Unsaved Changes", "There are unsaved changes. Do you want to save them before opening the Project Hub?",
+                                     [this, openHub]() { saveAllAndProject(openHub); }, openHub);
+            } else {
+                openHub();
+            }
+            break;
+        }
+        case AppMenuCommand::ToggleColorPicker:
+            ui::ColorPickerWindow::get().openStandalone();
+            break;
+        case AppMenuCommand::ToggleRecorder:
+            recorderWindow.setOpen(!recorderWindow.isOpen());
+            break;
+        case AppMenuCommand::ToggleRecording:
+            toggleRecording();
+            break;
+        case AppMenuCommand::SaveProjectAsTemplate:
+            if (project.isTempProject()) {
+                registerAlert("Save Project as Template", "Save the project first: a template is made from a saved project.");
+                return;
+            }
+            saveTemplatePopup = true;
+            std::snprintf(saveTemplateName.data(), saveTemplateName.size(), "%s", project.getName().c_str());
+            saveTemplateDescription.fill(0);
+            saveTemplateMessage.clear();
             break;
         case AppMenuCommand::OpenRecentProject: {
             if (command.payload.empty() || project.isAnyScenePlaying()) return;
@@ -2519,6 +2547,30 @@ void editor::App::show(){
         return;
     }
 
+    // S27: the Project Hub alone (as the loading window above): the editor's windows wait
+    updateHubCreation();
+    if (projectHub.isOpen()) {
+        if (isInitialized) {
+            ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_KeepAliveOnly);
+        }
+        projectHub.show();
+        if (hubCreation) {
+            ImGui::OpenPopup("Creating Project##hub");
+        }
+        if (ImGui::BeginPopupModal("Creating Project##hub", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove)) {
+            if (!hubCreation) ImGui::CloseCurrentPopup();
+            else ImGui::Text("Creating %s from %s...", hubCreation->name.c_str(), hubCreation->info.name.c_str());
+            ImGui::EndPopup();
+        }
+        if (!hubMessage.empty()) {
+            registerAlert("Project Hub", hubMessage);
+            hubMessage.clear();
+        }
+        showAlert();
+        mcp::McpServer::get().tick();
+        return;
+    }
+
     // the spline tools: Live Terrain's re-bake, a spline that went away (S18 R12)
     SplineEditor::get().update(&project);
 
@@ -2656,6 +2708,23 @@ void editor::App::show(){
     }
     sceneWindow->show();
     Backend::setGameCursorInSceneRect(gameWindow->isGameCursorInView());
+
+    drawSaveProjectAsTemplate();
+
+    // S27: the Recorder's session and window
+    recorder::RecorderSession::get().update();
+    recorderWindow.setProjectPath(project.getProjectPath());
+    recorderWindow.show();
+    if (isRecording()) requestRedraw();
+
+    // S27: the field windows after every window with a field (a field takes its window's
+    // changes on its next draw, before the window ends a session); the Gradient Editor's colour
+    // keys open the Color window, so it comes last
+    ui::CurveWindow::get().setProjectPath(project.getProjectPath());
+    ui::CurveWindow::get().show();
+    ui::GradientWindow::get().show();
+    ui::ColorPickerWindow::get().setProjectPath(project.getProjectPath());
+    ui::ColorPickerWindow::get().show();
 
     loadingWindow->show();
 
@@ -2891,6 +2960,10 @@ void editor::App::engineInit(int argc, char** argv) {
         if (active == 0 || (widgetEdit.isOpen() && widgetEditItem == active)) {
             return;
         }
+        // a Color / Curve / Gradient window's session is one step for all its widgets (S27 R3)
+        if (ui::FieldEditSession::isOpen()) {
+            return;
+        }
         widgetEdit.commit();
         widgetEdit = history.beginInteractive(std::string());
         widgetEditItem = active;
@@ -2991,20 +3064,296 @@ void editor::App::loadStartupProject() {
         return;
     }
 
-    std::filesystem::path lastProjectPath = AppSettings::getLastProjectPath();
-
-    if (!lastProjectPath.empty() && std::filesystem::exists(lastProjectPath)) {
-        if (project.loadProject(lastProjectPath)) {
-            Out::info("Loaded last opened project: \"%s\"", lastProjectPath.string().c_str());
-        } else {
+    setupProjectHub();
+    setupRecorder();
+    // --project <dir>: that project, never the hub (a failed load keeps the old fallback)
+    const hub::LaunchOptions& launch = hub::launchOptions();
+    if (!launch.project.empty()) {
+        if (!project.loadProject(launch.project)) {
             project.createTempProject("MyJasperEngineProject");
         }
-    } else {
+        projectLoading = false;
+        requestRedraw();
+        return;
+    }
+
+    // S27 R16: the Project Hub when Shift is held, --hub, the "Always" preference, or the last
+    // project is missing or does not load; otherwise the last project as before
+    bool showHub = startupShowsHub();
+    std::filesystem::path lastProjectPath = AppSettings::getLastProjectPath();
+    if (!showHub) {
+        if (!lastProjectPath.empty() && std::filesystem::exists(lastProjectPath) && project.loadProject(lastProjectPath)) {
+            Out::info("Loaded last opened project: \"%s\"", lastProjectPath.string().c_str());
+        } else {
+            if (!lastProjectPath.empty()) Out::warning("The last project \"%s\" is missing or did not load", lastProjectPath.string().c_str());
+            showHub = true;
+        }
+    }
+    if (showHub) {
+        // the editor's own temporary project stays behind the hub: never shown, never saved
         project.createTempProject("MyJasperEngineProject");
+        hubOverTemp = true;
+        projectHub.open(ProjectHubWindow::Page::Projects);
     }
 
     projectLoading = false;
     requestRedraw();
+}
+
+bool editor::App::startupShowsHub() {
+    return hub::launchOptions().forceHub || platform::shiftHeld() || AppSettings::getProjectHubAlways();
+}
+
+bool editor::App::isRecording() const {
+    return recorder::RecorderSession::get().recording();
+}
+
+void editor::App::toggleRecording() {
+    recorderWindow.toggleRecording();
+}
+
+void editor::App::playStarting(uint32_t) {
+    recorder::RecorderSession::get().onPlayStarting(recorderWindow.settings());
+}
+
+void editor::App::setupRecorder() {
+    recorder::Host host;
+    auto playScene = [this]() -> SceneProject* { return project.getScene(project.getPlaySessionSceneId()); };
+    host.isPlaying = [playScene]() {
+        const SceneProject* scene = playScene();
+        return scene && (scene->playState == ScenePlayState::PLAYING || scene->playState == ScenePlayState::PAUSED);
+    };
+    host.isPlayStarting = [playScene]() {
+        const SceneProject* scene = playScene();
+        return scene && scene->playState == ScenePlayState::LOADING;
+    };
+    host.startPlay = [this](std::string& error) {
+        if (!mainToolbar->canTogglePlay() || mainToolbar->isInPlayMode()) {
+            error = "Play cannot start now";
+            return false;
+        }
+        mainToolbar->togglePlay();
+        return project.getPlaySessionSceneId() != NULL_PROJECT_SCENE;
+    };
+    host.stopPlay = [this]() { mainToolbar->stopSession(); };
+    host.gameFramebuffer = [this]() { return gameWindow->getFramebuffer(); };
+    host.setGameRenderSize = [this](int w, int h) { gameWindow->setRenderSizeOverride(w, h); };
+    host.gameViewSize = [this](int& w, int& h) {
+        w = gameWindow->getWidth();
+        h = gameWindow->getHeight();
+    };
+    host.sceneName = [this, playScene]() {
+        const SceneProject* scene = playScene();
+        if (!scene) scene = project.getSelectedScene();
+        return scene ? scene->name : std::string("Scene");
+    };
+    host.projectPath = [this]() { return project.getProjectPath(); };
+    host.maxTextureSize = []() { return sg_query_limits().max_image_size_2d; };
+    recorder::RecorderSession::get().setHost(std::move(host));
+    recorderWindow.openPreferences = [this]() { editorSettingsWindow.open(&project, "External Tools"); };
+}
+
+void editor::App::setupProjectHub() {
+    ProjectHubWindow::Actions actions;
+    actions.openProject = [this](const std::filesystem::path& dir, bool withoutLastScene) { hubOpenProject(dir, withoutLastScene); };
+    actions.createProject = [this](const hub::ProjectTemplate& info, const std::string& name, const std::filesystem::path& location) {
+        hubCreateProject(info, name, location / hub::folderName(name));
+    };
+    actions.hasProject = [this]() { return !hubOverTemp; };
+    projectHub.setActions(std::move(actions));
+}
+
+std::string editor::App::projectUnavailableReason() const {
+    if (projectHub.isOpen() && hubOverTemp) {
+        return "No project is open (the Project Hub is showing): use create_project, open_project or import_project first.";
+    }
+    return std::string();
+}
+
+void editor::App::openProjectHub(ProjectHubWindow::Page page) {
+    projectHub.open(page);
+    requestRedraw();
+}
+
+void editor::App::hubOpenProject(const std::filesystem::path& dir, bool withoutLastScene) {
+    if (project.isAnyScenePlaying() || projectLoading || pendingProjectChange) return;
+    auto open = [this, dir, withoutLastScene]() {
+        requestProjectChange([this, dir, withoutLastScene]() {
+            project.setSkipWorkspaceTabs(withoutLastScene);
+            if (project.loadProject(dir)) {
+                projectHub.close();
+                hubOverTemp = false;
+            } else {
+                project.setSkipWorkspaceTabs(false);
+                // the hub stays, over the editor's temporary project again
+                project.createTempProject("MyJasperEngineProject");
+                hubOverTemp = true;
+                hubMessage = "Could not open " + dir.string() + ": see the Console.";
+            }
+        });
+    };
+    if (!hubOverTemp && (project.hasScenesUnsavedChanges() || codeEditor->hasUnsavedChanges())) {
+        registerConfirmAlert("Unsaved Changes", "There are unsaved changes. Do you want to save them before opening another project?",
+                             [this, open]() { saveAllAndProject(open); }, open);
+    } else {
+        open();
+    }
+}
+
+bool editor::App::createProjectFromTemplate(const std::string& templateId, const std::string& name, const std::filesystem::path& dir,
+                                            std::string& error) {
+    const std::vector<hub::ProjectTemplate> list = hub::templates::all(hub::templates::userDirectory(AppSettings::getConfigDirectory()));
+    const hub::ProjectTemplate* info = hub::templates::find(list, templateId);
+    if (!info) {
+        std::string known;
+        for (const hub::ProjectTemplate& t : list) known += (known.empty() ? "" : ", ") + t.id;
+        error = "no template \"" + templateId + "\" (templates: " + known + ")";
+        return false;
+    }
+    const std::string problem = hub::targetProblem(dir);
+    if (!problem.empty()) {
+        error = problem;
+        return false;
+    }
+    if (isCreatingFromTemplate() || projectLoading || pendingProjectChange) {
+        error = "a project is being created or opened";
+        return false;
+    }
+    hubCreateProject(*info, name.empty() ? dir.filename().string() : name, dir);
+    // the caller (MCP create_project) settled the unsaved changes already
+    hubCreationPrompt = false;
+    return true;
+}
+
+void editor::App::hubCreateProject(const hub::ProjectTemplate& info, const std::string& name, const std::filesystem::path& dir) {
+    if (hubCreation || projectLoading || pendingProjectChange) return;
+    hubCreationError.clear();
+    hubCreationPrompt = true;
+    auto creation = std::make_unique<HubCreation>();
+    creation->info = info;
+    creation->name = name;
+    creation->dir = dir;
+    const hub::ProjectTemplate copyOf = info;
+    const std::filesystem::path target = dir;
+    // the files are copied off the main thread; the project then loads on it
+    creation->copy = std::async(std::launch::async, [copyOf, target]() {
+        std::string error;
+        if (!hub::templates::materialize(copyOf, target, error)) return error.empty() ? std::string("the copy failed") : error;
+        return std::string();
+    });
+    hubCreation = std::move(creation);
+    requestRedraw();
+}
+
+void editor::App::updateHubCreation() {
+    if (!hubCreation || hubCreation->copy.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+        if (hubCreation) requestRedraw();
+        return;
+    }
+    const std::string error = hubCreation->copy.get();
+    struct Done {
+        hub::ProjectTemplate info;
+        std::string name;
+        std::filesystem::path dir;
+    };
+    const Done done{hubCreation->info, hubCreation->name, hubCreation->dir};
+    const bool prompt = hubCreationPrompt;
+    hubCreation.reset();
+    if (!error.empty()) {
+        hubCreationError = error;
+        hubMessage = "Could not create the project: " + error;
+        return;
+    }
+    hubCreationOpening = true;
+    auto open = [this, done]() {
+        requestProjectChange([this, done]() {
+            hubCreationOpening = false;
+            if (!project.loadProject(done.dir)) {
+                hubCreationError = "the new project did not load";
+                std::error_code ec;
+                std::filesystem::remove_all(done.dir, ec);
+                project.createTempProject("MyJasperEngineProject");
+                hubOverTemp = true;
+                hubMessage = "Could not open the new project: see the Console.";
+                return;
+            }
+            // the template's project, renamed, saved, with the VCS files (R18; loadProject copied
+            // the engine API in)
+            project.setName(done.name);
+            VcsProjectSettings vcs = project.getVcsProjectSettings();
+            vcs.lfs = true;   // S29 R21: a new project's binaries are LFS objects
+            project.setVcsProjectSettings(vcs, false);
+            project.saveProject();
+            project.writeVersionControlMetadata();
+            const std::filesystem::path start = done.dir / (done.info.startScene + ".scene");
+            std::error_code ec;
+            if (!done.info.startScene.empty() && std::filesystem::exists(start, ec)) project.openScene(start);
+            AppSettings::addToRecentProjects(done.dir, true, done.name);
+            projectHub.close();
+            hubOverTemp = false;
+        });
+    };
+    if (prompt && !hubOverTemp && (project.hasScenesUnsavedChanges() || codeEditor->hasUnsavedChanges())) {
+        registerConfirmAlert("Unsaved Changes", "There are unsaved changes. Do you want to save them before opening the new project?",
+                             [this, open]() { saveAllAndProject(open); }, open);
+    } else {
+        open();
+    }
+}
+
+void editor::App::writeHubThumbnail() {
+    if (project.getProjectPath().empty() || project.isTempProject()) return;
+    SceneProject* scene = project.getSelectedScene();
+    if (!scene || !scene->sceneRender) return;
+    std::vector<uint8_t> png;
+    if (!GraphicUtils::encodeFramebufferThumbnailPng(scene->sceneRender->getFramebuffer(), 320, 180, png) || png.empty()) return;
+    const std::filesystem::path file = project.getProjectInternalPath() / "user" / "hub-thumbnail.png";
+    const io::WriteResult written = io::writeFileAtomic(file, std::string_view(reinterpret_cast<const char*>(png.data()), png.size()));
+    if (!written.ok()) Out::warning("Project Hub thumbnail: %s", written.message.c_str());
+}
+
+void editor::App::drawSaveProjectAsTemplate() {
+    if (saveTemplatePopup) {
+        ImGui::OpenPopup("Save Project as Template##saveTemplate");
+        saveTemplatePopup = false;
+    }
+    if (!ImGui::BeginPopupModal("Save Project as Template##saveTemplate", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+    ImGui::TextUnformatted("Name");
+    ImGui::SetNextItemWidth(Theme::dpi(320.0f));
+    ImGui::InputText("##templateName", saveTemplateName.data(), saveTemplateName.size());
+    ImGui::TextUnformatted("Description");
+    ImGui::InputTextMultiline("##templateDescription", saveTemplateDescription.data(), saveTemplateDescription.size(),
+                              ImVec2(Theme::dpi(320.0f), Theme::dpi(70.0f)));
+    const std::string id = hub::slugify(saveTemplateName.data());
+    const std::filesystem::path userDir = hub::templates::userDirectory(AppSettings::getConfigDirectory());
+    std::error_code ec;
+    std::string problem = !hub::isValidCatalogId(id) ? "The name needs letters or digits." : std::string();
+    if (problem.empty() && std::filesystem::exists(userDir / id, ec)) problem = "A template \"" + id + "\" exists.";
+    if (!problem.empty()) ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.3f, 1.0f), "%s", problem.c_str());
+    else ImGui::TextDisabled("%s", (userDir / id).string().c_str());
+    if (!saveTemplateMessage.empty()) ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.3f, 1.0f), "%s", saveTemplateMessage.c_str());
+    ImGui::BeginDisabled(!problem.empty());
+    if (ImGui::Button("Save", ImVec2(Theme::dpi(100.0f), 0))) {
+        // the thumbnail is the Scene view (480 wide)
+        std::vector<uint8_t> png;
+        if (SceneProject* scene = project.getSelectedScene(); scene && scene->sceneRender) {
+            GraphicUtils::encodeFramebufferThumbnailPng(scene->sceneRender->getFramebuffer(), 480, 270, png);
+        }
+        std::string startScene;
+        if (SceneProject* scene = project.getSelectedScene(); scene && !scene->filepath.empty()) startScene = scene->filepath.stem().string();
+        std::string savedId, error;
+        if (hub::templates::saveProjectAsTemplate(project.getProjectPath(), userDir, saveTemplateName.data(), saveTemplateDescription.data(),
+                                                  startScene, png, savedId, error)) {
+            Out::info("Saved the project as the template \"%s\" (%s)", saveTemplateName.data(), (userDir / savedId).string().c_str());
+            ImGui::CloseCurrentPopup();
+        } else {
+            saveTemplateMessage = error;
+        }
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel", ImVec2(Theme::dpi(100.0f), 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) ImGui::CloseCurrentPopup();
+    ImGui::EndPopup();
 }
 
 bool editor::App::loadMcpStartupProject(const mcp::McpLaunchOptions& options) {
@@ -3222,6 +3571,9 @@ void editor::App::engineRender(){
         SystemRender::executeQueue();
         return;
     }
+
+    // S27: the game frame the last editor frame drew, read back before this one updates
+    recorder::RecorderSession::get().captureFrame();
 
     // a frame that began drawing (EditorFrame: frameReady): PoseRender::renderNow may draw
     // from here on, main-thread tasks included, until the end of this function
@@ -4146,6 +4498,9 @@ void editor::App::requestContinuousFrames(double seconds) {
 bool editor::App::wantsContinuousFrames() const {
     if (profiler::activeCapture() != 0)
         return true;
+    // every editor frame is one game frame of a recording (S27 R27)
+    if (recorder::RecorderSession::get().active())
+        return true;
     return std::chrono::steady_clock::now() < continuousFramesUntil;
 }
 
@@ -4169,6 +4524,8 @@ void editor::App::shutdownBackgroundWork() {
     EditorDiagnostics::beginShutdown();
     // the window layout as it is, for the next start
     layouts.saveWorkingLayoutNow();
+    // the Project Hub's picture of the project (S27 R21)
+    writeHubThumbnail();
     // a clean quit: this session's crash backups and the project lock go
     project.endProjectSession();
     loadingPump = nullptr;
@@ -4252,6 +4609,8 @@ void editor::App::clearSceneWindowState(uint32_t sceneId) {
 }
 
 void editor::App::prepareForProjectSwitch() {
+    // the Project Hub's picture of the project closing (S27 R21)
+    writeHubThumbnail();
     // the project's working layout, before another project's replaces it (S25 R19)
     layouts.saveWorkingLayoutNow();
     // the watcher stops before the project goes (S05 D2)

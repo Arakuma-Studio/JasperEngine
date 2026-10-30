@@ -187,6 +187,7 @@ namespace {
         {v(EaseType::BOUNCE_IN_OUT), "BOUNCE_IN_OUT", "Bounce In Out", "EaseType::BOUNCE_IN_OUT", "bounce_in_out"},
         {v(EaseType::STEP), "STEP", "Step", "EaseType::STEP", "step"},
         {v(EaseType::CUSTOM), "CUSTOM", "Custom", "EaseType::CUSTOM", "custom"},
+        {v(EaseType::CURVE), "CURVE", "Curve", "EaseType::CURVE", "curve"},
     };
     constexpr int kEaseTypeOrder[] = {v(EaseType::LINEAR), v(EaseType::STEP),
         v(EaseType::QUAD_IN), v(EaseType::QUAD_OUT), v(EaseType::QUAD_IN_OUT), v(EaseType::CUBIC_IN), v(EaseType::CUBIC_OUT),
@@ -195,7 +196,7 @@ namespace {
         v(EaseType::EXPO_IN), v(EaseType::EXPO_OUT), v(EaseType::EXPO_IN_OUT), v(EaseType::CIRC_IN), v(EaseType::CIRC_OUT),
         v(EaseType::CIRC_IN_OUT), v(EaseType::ELASTIC_IN), v(EaseType::ELASTIC_OUT), v(EaseType::ELASTIC_IN_OUT), v(EaseType::BACK_IN),
         v(EaseType::BACK_OUT), v(EaseType::BACK_IN_OUT), v(EaseType::BOUNCE_IN), v(EaseType::BOUNCE_OUT), v(EaseType::BOUNCE_IN_OUT),
-        v(EaseType::CUSTOM)};
+        v(EaseType::CURVE), v(EaseType::CUSTOM)};
 
     constexpr EnumItem kFogColorModeItems[] = {
         {v(FogColorMode::COLOR), "color", "Constant Color", "FogColorMode::COLOR"},

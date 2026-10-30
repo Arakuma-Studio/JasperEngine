@@ -5,6 +5,7 @@
 #include "Out.h"
 #include "cli/CallCommand.h"
 #include "cli/CommandLine.h"
+#include "hub/ProjectHubWindow.h"
 #include "mcp/McpLaunch.h"
 #include "reload/HotReloadService.h"
 #include "util/EditorDiagnostics.h"
@@ -203,12 +204,38 @@ void takeAllowDebugCrashFlag(std::vector<char*>& args) {
 
 }
 
+// The plain editor's --hub and --project <dir> (S27 R16), taken before any other parsing: the
+// Project Hub at start whatever the preference, or that project without the hub
+bool takeHubFlags(std::vector<char*>& args) {
+    for (size_t i = 1; i < args.size();) {
+        const std::string arg = args[i];
+        if (arg == "--hub") {
+            editor::hub::launchOptions().forceHub = true;
+            args.erase(args.begin() + static_cast<long>(i));
+            continue;
+        }
+        if (arg == "--project" && i == 1) {
+            if (i + 1 >= args.size()) {
+                std::fprintf(stderr, "--project needs a project folder\n");
+                return false;
+            }
+            editor::hub::launchOptions().project = editor::CommandLine::projectArgPath(args[i + 1]);
+            args.erase(args.begin() + static_cast<long>(i), args.begin() + static_cast<long>(i) + 2);
+            continue;
+        }
+        // a subcommand's own flags (export --project ...) are left to it
+        if (i == 1 && arg.rfind("--", 0) != 0) break;
+        i++;
+    }
+    return true;
+}
+
 int main(int argc, char* argv[]) {
     // before anything logs: the in-memory store and the terminal until a Console window exists
     editor::Out::startLogging();
     std::vector<char*> args(argv, argv + argc);
     takeAllowDebugCrashFlag(args);
-    if (!takeLogLevelFlag(args) || !takeFileWatcherFlag(args)) {
+    if (!takeLogLevelFlag(args) || !takeFileWatcherFlag(args) || !takeHubFlags(args)) {
         editor::Out::stopLogging();
         return 2;
     }

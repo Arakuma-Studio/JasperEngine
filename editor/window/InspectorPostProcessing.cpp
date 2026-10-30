@@ -9,6 +9,7 @@
 // SceneSettings.cpp shows up here without code.
 
 #include "InspectorWindow.h"
+#include "widget/ColorPickerWindow.h"
 #include "log/LogFormatCheck.h"
 
 #include "App.h"
@@ -432,7 +433,13 @@ void editor::InspectorWindow::drawPostProcessingFieldRow(SceneProject* sceneProj
             const bool colour = snake.find("color") != std::string::npos || snake.find("tint") != std::string::npos;
             bool changed;
             if (colour) {
-                changed = ImGui::ColorEdit3(id.c_str(), (float*)&value.x, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel);
+                ui::ColorFieldOptions colorOptions;
+                colorOptions.alpha = false;
+                colorOptions.linearStorage = false;
+                colorOptions.label = label;
+                const ui::EditPhase phase = ui::colorField(id.c_str(), value, colorOptions);
+                if (phase == ui::EditPhase::Begin) ui::ColorPickerWindow::beginEdit(CommandHandle::get(sceneId), label);
+                changed = phase == ui::EditPhase::Changing;
             } else {
                 changed = ImGui::DragFloat3(id.c_str(), (float*)&value.x, 0.005f, f.minValue, f.maxValue, "%.3f");
             }

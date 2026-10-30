@@ -2840,7 +2840,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     // Which scenes are open is a per-user choice, so the tab list decides it. With no
     // workspace yet, the first scene opens, as it does for a fresh clone.
     std::set<std::string> openedScenePaths;
-    const bool hasTabs = workspace.hasTabs();
+    // the Project Hub's Open Without Last Scene (S27 R15): as with no workspace, the first scene
+    const bool hasTabs = workspace.hasTabs() && !project->takeSkipWorkspaceTabs();
     if (hasTabs) {
         for (const TabEntry& tab : workspace.getTabs()) {
             if (tab.type == TabType::SCENE) {

@@ -30,6 +30,17 @@ void Tween::setFunctionType(EaseType functionType){
     tween.function.setType(functionType);
 }
 
+void Tween::setCurve(const Curve& curve){
+    TweenComponent& tween = getComponent<TweenComponent>();
+
+    tween.curve = curve;
+    tween.function.setType(EaseType::CURVE);
+}
+
+Curve Tween::getCurve() const{
+    return getComponent<TweenComponent>().curve;
+}
+
 float Tween::getValue() const{
     TweenComponent& tween = getComponent<TweenComponent>();
 

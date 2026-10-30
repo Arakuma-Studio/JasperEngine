@@ -6,6 +6,8 @@
 #include "reflect/Reflect.h"
 #include "reflect/Enums.h"
 #include "util/EditorScripts.h"
+#include "widget/ColorPickerWindow.h"
+#include "widget/CurveField.h"
 #include "util/NumericExpression.h"
 #include "profiler/Profile.h"
 #include "command/PlayChangeReview.h"
@@ -381,13 +383,16 @@ void editor::InspectorWindow::drawScenePropertyRow(SceneProject* sceneProject, c
             }
             break;
         case ScenePropertyInputType::ColorRGB:
-            if constexpr (std::is_same_v<T, Vector3>) {
-                changed = ImGui::ColorEdit3(("##" + propertyName).c_str(), (float*)&value.x, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel | ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf);
-            }
-            break;
         case ScenePropertyInputType::ColorRGBA:
-            if constexpr (std::is_same_v<T, Vector4>) {
-                changed = ImGui::ColorEdit4(("##" + propertyName).c_str(), (float*)&value.x, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel | ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf);
+            if constexpr (std::is_same_v<T, Vector3> || std::is_same_v<T, Vector4>) {
+                // a scene colour is stored as shown (S27 R1: the UI tints keep sRGB storage)
+                ui::ColorFieldOptions options;
+                options.alpha = std::is_same_v<T, Vector4>;
+                options.linearStorage = false;
+                options.label = label;
+                const ui::EditPhase phase = ui::colorField(("##" + propertyName).c_str(), value, options);
+                if (phase == ui::EditPhase::Begin) ui::ColorPickerWindow::beginEdit(CommandHandle::get(sceneProject->id), label);
+                changed = phase == ui::EditPhase::Changing;
             }
             break;
         case ScenePropertyInputType::Combo:
@@ -4024,9 +4029,8 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             value = &eValue[entity];
         }
 
-        Vector3 newValue = Color::linearTosRGB(*value);
+        Vector3 newValue = *value;
 
-        // using 'value' beacause it is linear too
         bool defChanged = false;
         if (defArr){
             defChanged = compareVectorFloat((float*)value, defArr, 3, compThreshold);
@@ -4039,16 +4043,61 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             }
         }
 
-        if (dif)
-            ImGui::PushStyleColor(ImGuiCol_FrameBg, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
-        if (ImGui::ColorEdit3((label+"##checkbox_"+id).c_str(), (float*)&newValue.x, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel | ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf)){
+        // the Color window (S27 R1-R3): one session is one undo step for every selected GameObject
+        ui::ColorFieldOptions colorOptions;
+        colorOptions.alpha = false;
+        colorOptions.hdr = settings.colorHdr;
+        colorOptions.linearStorage = !settings.colorSrgb;
+        colorOptions.label = label.c_str();
+        colorOptions.mixed = dif;
+        const ui::EditPhase colorPhase = ui::colorField((label+"##color_"+id).c_str(), newValue, colorOptions);
+        if (colorPhase == ui::EditPhase::Begin){
+            ui::ColorPickerWindow::beginEdit(CommandHandle::get(project->getSelectedSceneId()), label.c_str());
+        }else if (colorPhase == ui::EditPhase::Changing){
             for (Entity& entity : entities){
-                cmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, Color::sRGBToLinear(newValue), settings.onValueChanged);
+                cmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, newValue, settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
             }
         }
-        if (dif)
-            ImGui::PopStyleColor();
+
+    }else if (type == RowPropertyType::Curve){
+        // an animation curve (S27 R9): the Curve field, each window gesture one undo step
+        Curve* value = nullptr;
+        std::map<Entity, Curve> eValue;
+        bool dif = false;
+        const Curve* defValue = nullptr;
+        for (Entity& entity : entities){
+            PropertyData prop = Catalog::findProperty(sceneProject->scene, entity, cpType, id);
+            defValue = static_cast<const Curve*>(prop.def);
+            eValue[entity] = *static_cast<Curve*>(prop.ref);
+            if (value && *value != eValue[entity])
+                dif = true;
+            value = &eValue[entity];
+        }
+        const bool defChanged = defValue && value && *value != *defValue;
+        if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent) && defValue){
+            for (Entity& entity : entities){
+                cmd = new PropertyCmd<Curve>(project, sceneProject->id, entity, cpType, id, *defValue, settings.onValueChanged);
+                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                finishProperty = true;
+            }
+        }
+        ui::CurveFieldOptions curveOptions;
+        curveOptions.range = curveops::CurveRange{0.0f, settings.curveValueMin, 1.0f, settings.curveValueMax, false};
+        curveOptions.label = label.c_str();
+        curveOptions.mixed = dif;
+        curveOptions.resetValue = defValue;
+        Curve newValue = value ? *value : Curve();
+        const ui::EditPhase curvePhase = ui::curveField(("##curve_" + id).c_str(), newValue, curveOptions);
+        if (curvePhase == ui::EditPhase::Begin){
+            ui::beginFieldEdit(CommandHandle::get(project->getSelectedSceneId()), label.c_str());
+        }else if (curvePhase == ui::EditPhase::Changing || curvePhase == ui::EditPhase::Applied){
+            for (Entity& entity : entities){
+                cmd = new PropertyCmd<Curve>(project, sceneProject->id, entity, cpType, id, newValue, settings.onValueChanged);
+                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+            }
+            if (curvePhase == ui::EditPhase::Applied) finishProperty = true;
+        }
 
     }else if (type == RowPropertyType::Color4L){
         Vector4* value = nullptr;
@@ -4066,9 +4115,8 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             value = &eValue[entity];
         }
 
-        Vector4 newValue = Color::linearTosRGB(*value);
+        Vector4 newValue = *value;
 
-        // using 'value' beacause it is linear too
         bool defChanged = false;
         if (defArr){
             defChanged = compareVectorFloat((float*)value, defArr, 4, compThreshold);
@@ -4081,16 +4129,21 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             }
         }
 
-        if (dif)
-            ImGui::PushStyleColor(ImGuiCol_FrameBg, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
-        if (ImGui::ColorEdit4((label+"##checkbox_"+id).c_str(), (float*)&newValue.x, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel | ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf)){
+        ui::ColorFieldOptions colorOptions;
+        colorOptions.alpha = true;
+        colorOptions.hdr = settings.colorHdr;
+        colorOptions.linearStorage = !settings.colorSrgb;
+        colorOptions.label = label.c_str();
+        colorOptions.mixed = dif;
+        const ui::EditPhase colorPhase = ui::colorField((label+"##color_"+id).c_str(), newValue, colorOptions);
+        if (colorPhase == ui::EditPhase::Begin){
+            ui::ColorPickerWindow::beginEdit(CommandHandle::get(project->getSelectedSceneId()), label.c_str());
+        }else if (colorPhase == ui::EditPhase::Changing){
             for (Entity& entity : entities){
-                cmd = new PropertyCmd<Vector4>(project, sceneProject->id, entity, cpType, id, Color::sRGBToLinear(newValue), settings.onValueChanged);
+                cmd = new PropertyCmd<Vector4>(project, sceneProject->id, entity, cpType, id, newValue, settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
             }
         }
-        if (dif)
-            ImGui::PopStyleColor();
 
     }else if ((type == RowPropertyType::IntSlider || type == RowPropertyType::UIntSlider) && settings.sliderValues){
         int* value = nullptr;
@@ -9451,6 +9504,7 @@ const char* editor::InspectorWindow::rowPropertyTypeName(RowPropertyType type){
         case RowPropertyType::Font: return "Font";
         case RowPropertyType::Asset: return "Asset";
         case RowPropertyType::LayerMask: return "LayerMask";
+        case RowPropertyType::Curve: return "Curve";
     }
     return "Custom";
 }
@@ -9487,6 +9541,7 @@ namespace {
             case PropertyType::String: return *static_cast<std::string*>(a.ref) != *static_cast<std::string*>(b.ref);
             case PropertyType::Asset: return static_cast<AssetRef*>(a.ref)->path != static_cast<AssetRef*>(b.ref)->path;
             case PropertyType::Shader: return static_cast<ShaderRef*>(a.ref)->path != static_cast<ShaderRef*>(b.ref)->path;
+            case PropertyType::Curve: return *static_cast<Curve*>(a.ref) != *static_cast<Curve*>(b.ref);
             case PropertyType::Texture: return *static_cast<Texture*>(a.ref) != *static_cast<Texture*>(b.ref);
             case PropertyType::Font: return *static_cast<FontArray*>(a.ref) != *static_cast<FontArray*>(b.ref);
             case PropertyType::Ease: return *static_cast<Ease*>(a.ref) != *static_cast<Ease*>(b.ref);

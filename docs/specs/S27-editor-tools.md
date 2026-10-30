@@ -746,6 +746,20 @@ and `using AnimationCurve = Curve;`. `MinMaxCurve` must have
    it is not broken, else `in:<mode>,out:<mode>[,broken]`; Free/Free unbroken is omitted.
 6. **D6 The Animation window keeps its own curves view** (§0): R10's "so that the Animation
    window gains them" and R14's third bullet are out of scope.
+7. **D7 `fromEase` adds keys where 16 are not enough.** AC3 asks every named ease within 0.01;
+   with cubic Hermite segments Elastic In Out needs about 24 keys (its central oscillations), so
+   `fromEase(type, keys = 16)` starts from `keys` and adds keys, up to 64, while the curve is
+   further than 0.005 from the ease. `fromFunction(f, 16)` (S20's legacy sampler) keeps its
+   exact count. Each key is placed by a local search around the worst point, which puts keys on
+   the bounces' kinks (their parabolic arcs then are exact).
+8. **D8 `create_project` without `template` keeps today's project.** R42 makes `empty` the
+   default. MCP tests and agents rely on `create_project` giving one untitled 3D scene and no
+   files; a template is asked for by name (`template: "empty"`). The Project Hub always uses a
+   template.
+9. **D9 The 3D template keeps a new scene's post-processing.** There is no "Default"
+   post-processing preset (S13's presets are None, Mobile, Mobile Adaptive, Console, Stylised,
+   CRT Retro, Film and VHS Tape); the template's `Main` has the settings File > New Scene gives a
+   3D scene. The 2D template's orthographic camera is the 2D scene's own default camera.
 
 ## 11. Progress
 

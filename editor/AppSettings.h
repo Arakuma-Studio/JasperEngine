@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 #include "yaml-cpp/yaml.h"
+#include "hub/RecentProjects.h"
 
 namespace jasperengine::editor {
 
@@ -210,7 +211,7 @@ private:
     static bool writeMerged();
     
     // Recent projects list (max 10)
-    static std::vector<std::filesystem::path> recentProjects;
+    static std::vector<hub::RecentProject> recentProjects;
     static std::filesystem::path lastProjectPath;
 
     // Last compiler kit chosen in Editor Settings, so new projects inherit it
@@ -254,6 +255,9 @@ private:
     // Editor viewport settings
     static bool multiViewportEnabled;
     static bool editorVSyncEnabled;
+    // Preferences > General > Show Project Hub at Startup (S27 R16): "when_no_project" or "always"
+    static bool projectHubAlways;
+    static std::filesystem::path hubLastLocation;
     static float uiScale;
     static bool poseDockGrown;
     static PanelVisibilitySettings panelVisibility;
@@ -321,8 +325,13 @@ public:
     static std::filesystem::path getLastProjectPath();
     static void setLastProjectPath(const std::filesystem::path& path);
     
+    // File > Recent Projects: the first 10 recent projects that still exist
     static std::vector<std::filesystem::path> getRecentProjects();
-    static void addToRecentProjects(const std::filesystem::path& path, bool needSave = true);
+    // every record (S27 R21: the Project Hub's list, missing projects included)
+    static const std::vector<hub::RecentProject>& getRecentProjectRecords();
+    static void setRecentProjectRecords(const std::vector<hub::RecentProject>& records);
+    // `path` opened now (its name when known)
+    static void addToRecentProjects(const std::filesystem::path& path, bool needSave = true, const std::string& name = std::string());
     static void clearRecentProjects();
 
     // Last compiler kit (empty strings = Default toolchain)
@@ -388,6 +397,12 @@ public:
     // VSync for the editor's own frames; Play mode and builds use the project setting
     static bool getEditorVSyncEnabled();
     static void setEditorVSyncEnabled(bool enabled);
+    // Show Project Hub at Startup: Always (true) or When No Project (false, the default)
+    static bool getProjectHubAlways();
+    static void setProjectHubAlways(bool always);
+    // the Project Hub's last parent folder of a new or imported project ("" before any)
+    static std::filesystem::path getHubLastLocation();
+    static void setHubLastLocation(const std::filesystem::path& location);
 
     // Editor UI Scale (Preferences): multiplies the display scale the system reports
     static float getUiScale();
