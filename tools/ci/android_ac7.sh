@@ -61,7 +61,8 @@ tools/build.sh exec android bash -euo pipefail -c "
     check_apk $OUT/apk-per-abi/UnifiedLighting-arm64-v8a.apk 'arm64-v8a'
     check_apk $OUT/apk-per-abi/UnifiedLighting-x86_64.apk 'x86_64'
     [[ \$(ls $OUT/apk-per-abi/*.apk | wc -l) == 2 ]] || { echo 'FAIL: not one APK per selected ABI'; exit 1; }
-    JAR=\$(find / -name 'bundletool*.jar' -not -path '/proc/*' 2>/dev/null | head -n 1)
+    # (find exits non-zero on the directories it cannot read: not a failure here)
+    JAR=\$(find / -name 'bundletool*.jar' -not -path '/proc/*' 2>/dev/null | head -n 1 || true)
     [[ -n \"\$JAR\" ]] || { echo 'FAIL: no bundletool jar'; exit 1; }
     java -jar \"\$JAR\" validate --bundle=$OUT/aab/UnifiedLighting.aab > $OUT/aab-validate.txt || { cat $OUT/aab-validate.txt; echo 'FAIL: bundletool validate'; exit 1; }
     abis=\$(unzip -l $OUT/aab/UnifiedLighting.aab | sed -n 's|.* base/lib/\\([^/]*\\)/.*|\\1|p' | sort -u | paste -sd' ')

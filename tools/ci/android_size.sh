@@ -83,7 +83,7 @@ if [[ $PREBUILT == 1 ]]; then
     if build prebuilt-aab prebuilt aab; then
         step "Google Play's download size per ABI (bundletool get-size total --dimensions=ABI)"
         AAB="$(apk prebuilt-aab)"
-        tools/build.sh exec android bash -c "set -e; JAR=\$(find / -name 'bundletool*.jar' -not -path '/proc/*' 2>/dev/null | head -n 1); \
+        tools/build.sh exec android bash -c "set -e; JAR=\$(find / -name 'bundletool*.jar' -not -path '/proc/*' 2>/dev/null | head -n 1 || true); \
             [ -n \"\$JAR\" ] || { echo 'no bundletool jar' >&2; exit 1; }; KS=\$HOME/.android/debug.keystore; \
             java -jar \$JAR build-apks --bundle=/src/$AAB --output=/src/$OUT/game.apks --overwrite --ks=\$KS --ks-pass=pass:android \
                 --ks-key-alias=androiddebugkey --key-pass=pass:android; \
