@@ -40,6 +40,12 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kWaterVolumeWaves;
     extern const EnumDesc kBuoyancyColumns;
     extern const EnumDesc kClipWrapMode;
+    extern const EnumDesc kAnimatorUpdateMode;
+    extern const EnumDesc kAnimatorCullingMode;
+    extern const EnumDesc kAnimatorWriteBones;
+    extern const EnumDesc kAnimatorEventMode;
+    extern const EnumDesc kAnimatorRetarget;
+    extern const EnumDesc kAnimatorIKType;
     extern const EnumDesc kLatticeInterpolation;
     extern const EnumDesc kLatticeOutside;
     extern const EnumDesc kLatticeJiggleAnchor;

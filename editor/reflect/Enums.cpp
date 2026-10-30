@@ -7,6 +7,7 @@
 #include "component/FluidSimulationComponent.h"
 #include "component/BuoyancyComponent.h"
 #include "animation/ClipTypes.h"
+#include "animation/AnimatorTypes.h"
 #include "component/ForceFieldComponent.h"
 #include "component/LatticeComponent.h"
 #include "component/LatticeModifierComponent.h"
@@ -284,6 +285,37 @@ namespace {
         {v(ClipWrapMode::Loop), "loop", "Loop", "ClipWrapMode::Loop"},
         {v(ClipWrapMode::PingPong), "ping_pong", "Ping Pong", "ClipWrapMode::PingPong"},
         {v(ClipWrapMode::ClampForever), "clamp_forever", "Clamp Forever", "ClipWrapMode::ClampForever"},
+    };
+
+    // the Animator's (S21): YAML names snake_case like the controller files
+    constexpr EnumItem kAnimatorUpdateModeItems[] = {
+        {v(AnimatorUpdateMode::Normal), "normal", "Normal", "AnimatorUpdateMode::Normal"},
+        {v(AnimatorUpdateMode::AnimatePhysics), "animate_physics", "Animate Physics", "AnimatorUpdateMode::AnimatePhysics"},
+        {v(AnimatorUpdateMode::UnscaledTime), "unscaled_time", "Unscaled Time", "AnimatorUpdateMode::UnscaledTime"},
+    };
+    constexpr EnumItem kAnimatorCullingModeItems[] = {
+        {v(AnimatorCullingMode::AlwaysAnimate), "always_animate", "Always Animate", "AnimatorCullingMode::AlwaysAnimate"},
+        {v(AnimatorCullingMode::CullUpdateTransforms), "cull_update_transforms", "Cull Update Transforms", "AnimatorCullingMode::CullUpdateTransforms"},
+        {v(AnimatorCullingMode::CullCompletely), "cull_completely", "Cull Completely", "AnimatorCullingMode::CullCompletely"},
+    };
+    constexpr EnumItem kAnimatorWriteBonesItems[] = {
+        {v(AnimatorWriteBones::All), "all", "All", "AnimatorWriteBones::All"},
+        {v(AnimatorWriteBones::Exposed), "exposed", "Exposed", "AnimatorWriteBones::Exposed"},
+    };
+    constexpr EnumItem kAnimatorEventModeItems[] = {
+        {v(AnimatorEventMode::LeaderOnly), "leader_only", "Leader Only", "AnimatorEventMode::LeaderOnly"},
+        {v(AnimatorEventMode::All), "all", "All", "AnimatorEventMode::All"},
+    };
+    constexpr EnumItem kAnimatorRetargetItems[] = {
+        {v(AnimatorRetarget::Auto), "auto", "Auto", "AnimatorRetarget::Auto"},
+        {v(AnimatorRetarget::Off), "off", "Off", "AnimatorRetarget::Off"},
+    };
+    constexpr EnumItem kAnimatorIKTypeItems[] = {
+        {v(AnimatorIKType::TwoBone), "two_bone", "Two Bone", "AnimatorIKType::TwoBone"},
+        {v(AnimatorIKType::Fabrik), "fabrik", "FABRIK", "AnimatorIKType::Fabrik"},
+        {v(AnimatorIKType::LookAt), "look_at", "Look At", "AnimatorIKType::LookAt"},
+        {v(AnimatorIKType::FootIK), "foot_ik", "Foot IK", "AnimatorIKType::FootIK"},
+        {v(AnimatorIKType::FootLock), "foot_lock", "Foot Lock", "AnimatorIKType::FootLock"},
     };
 
     constexpr EnumItem kBuoyancyColumnsItems[] = {
@@ -576,6 +608,12 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kWaterVolumeWaves{"WaterVolumeWaves", kWaterVolumeWavesItems, v(WaterVolumeWaves::FROM_MATERIAL)};
     const EnumDesc kBuoyancyColumns{"BuoyancyColumns", kBuoyancyColumnsItems, v(BuoyancyColumns::AUTO_2x2)};
     const EnumDesc kClipWrapMode{"ClipWrapMode", kClipWrapModeItems, v(ClipWrapMode::Default)};
+    const EnumDesc kAnimatorUpdateMode{"AnimatorUpdateMode", kAnimatorUpdateModeItems, v(AnimatorUpdateMode::Normal)};
+    const EnumDesc kAnimatorCullingMode{"AnimatorCullingMode", kAnimatorCullingModeItems, v(AnimatorCullingMode::AlwaysAnimate)};
+    const EnumDesc kAnimatorWriteBones{"AnimatorWriteBones", kAnimatorWriteBonesItems, v(AnimatorWriteBones::All)};
+    const EnumDesc kAnimatorEventMode{"AnimatorEventMode", kAnimatorEventModeItems, v(AnimatorEventMode::LeaderOnly)};
+    const EnumDesc kAnimatorRetarget{"AnimatorRetarget", kAnimatorRetargetItems, v(AnimatorRetarget::Auto)};
+    const EnumDesc kAnimatorIKType{"AnimatorIKType", kAnimatorIKTypeItems, v(AnimatorIKType::TwoBone)};
     const EnumDesc kFluidOutput{"FluidOutput", kFluidOutputItems, v(FluidOutput::MATERIAL), nullptr, kFluidOutputOrder};
     const EnumDesc kLatticeInterpolation{"LatticeInterpolation", kLatticeInterpolationItems, v(LatticeInterpolation::CUBIC)};
     const EnumDesc kLatticeOutside{"LatticeOutside", kLatticeOutsideItems, v(LatticeOutside::FADE)};

@@ -1,6 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "animation/AnimatorAssetDocument.h"
+#include "animation/AnimatorEditorHooks.h"
 #include "ProjectWindow.h"
 #include "window/vcs/VcsUi.h"
 #include "texture/TextureCookQueue.h"
@@ -189,6 +191,55 @@ static void makeAnimationClipIcon(int size, std::vector<uint8_t>& rgba) {
         image.fillRect(px(x + 1), px(23), px(12), px(18), frame);
         image.fillCircle((x + 7) * s, (36 - i * 5.0f) * s, 6.4f * s, ball);
     }
+    rgba = image.getPixels();
+}
+
+// The Animator assets' icons: a controller is three states and their arrows, a mask a figure, a
+// montage a strip cut into sections
+static void makeAnimatorControllerIcon(int size, std::vector<uint8_t>& rgba) {
+    editor::PoseImage image(size, size);
+    const float s = static_cast<float>(size) / 64.0f;
+    auto px = [s](float v) { return static_cast<int>(v * s); };
+    const editor::PoseColor arrow = editor::PoseColor::hex(0xD9D9D9);
+    const editor::PoseColor entry = editor::PoseColor::hex(0x2E8B4A);
+    const editor::PoseColor state = editor::PoseColor::hex(0x5A5F69);
+    const editor::PoseColor defaultState = editor::PoseColor::hex(0xD07A26);
+    image.drawLine(20 * s, 16 * s, 44 * s, 16 * s, 2.5f * s, arrow);
+    image.drawLine(14 * s, 22 * s, 24 * s, 42 * s, 2.5f * s, arrow);
+    image.drawLine(48 * s, 22 * s, 40 * s, 42 * s, 2.5f * s, arrow);
+    image.fillRect(px(4), px(9), px(18), px(14), entry);
+    image.fillRect(px(42), px(9), px(18), px(14), state);
+    image.fillRect(px(20), px(40), px(24), px(15), defaultState);
+    rgba = image.getPixels();
+}
+
+static void makeAvatarMaskIcon(int size, std::vector<uint8_t>& rgba) {
+    editor::PoseImage image(size, size);
+    const float s = static_cast<float>(size) / 64.0f;
+    auto px = [s](float v) { return static_cast<int>(v * s); };
+    const editor::PoseColor on = editor::PoseColor::hex(0x46AA50);
+    const editor::PoseColor off = editor::PoseColor::hex(0xAA3C3C);
+    image.fillCircle(32 * s, 9 * s, 11 * s, on);
+    image.fillRect(px(25), px(16), px(14), px(22), on);
+    image.fillRect(px(17), px(17), px(6), px(18), off);
+    image.fillRect(px(41), px(17), px(6), px(18), on);
+    image.fillRect(px(25), px(39), px(6), px(22), on);
+    image.fillRect(px(33), px(39), px(6), px(22), off);
+    rgba = image.getPixels();
+}
+
+static void makeMontageIcon(int size, std::vector<uint8_t>& rgba) {
+    editor::PoseImage image(size, size);
+    const float s = static_cast<float>(size) / 64.0f;
+    auto px = [s](float v) { return static_cast<int>(v * s); };
+    const editor::PoseColor strip = editor::PoseColor::hex(0x2B2F36);
+    const editor::PoseColor colors[] = {editor::PoseColor::hex(0x466EAA), editor::PoseColor::hex(0x5A8C5A), editor::PoseColor::hex(0x966E3C)};
+    const editor::PoseColor marker = editor::PoseColor::hex(0xE6C850);
+    image.fillRect(px(4), px(18), px(56), px(28), strip);
+    image.fillRect(px(7), px(22), px(16), px(20), colors[0]);
+    image.fillRect(px(24), px(22), px(20), px(20), colors[1]);
+    image.fillRect(px(45), px(22), px(12), px(20), colors[2]);
+    image.drawLine(34 * s, 10 * s, 34 * s, 18 * s, 3.0f * s, marker);
     rgba = image.getPixels();
 }
 
@@ -874,6 +925,8 @@ ImU32 editor::ProjectWindow::fileSeparatorColor(const FileEntry& fe) const{
             return ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 1.0f));
         case FileType::ANIMATION_CLIP:
             return ImGui::GetColorU32(ImVec4(0.91f, 0.53f, 0.23f, 1.0f));
+        case FileType::ANIMATOR_ASSET:
+            return ImGui::GetColorU32(ImVec4(0.82f, 0.48f, 0.15f, 1.0f));
         case FileType::NONE:
         default:
             return ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 1.0f));
@@ -917,6 +970,18 @@ void editor::ProjectWindow::renderCreateMenuItems() {
     }
     if (ImGui::MenuItem(ICON_FA_FILM " Create Animation Clip")){
         assetsCreateAnimationClip();
+        ImGui::CloseCurrentPopup();
+    }
+    if (ImGui::MenuItem(ICON_FA_DIAGRAM_PROJECT " Create Animator Controller")){
+        assetsCreateAnimatorAsset((int)AnimatorAssetDocument::Kind::Controller);
+        ImGui::CloseCurrentPopup();
+    }
+    if (ImGui::MenuItem(ICON_FA_PERSON " Create Avatar Mask")){
+        assetsCreateAnimatorAsset((int)AnimatorAssetDocument::Kind::Mask);
+        ImGui::CloseCurrentPopup();
+    }
+    if (ImGui::MenuItem(ICON_FA_FILM " Create Animation Montage")){
+        assetsCreateAnimatorAsset((int)AnimatorAssetDocument::Kind::Montage);
         ImGui::CloseCurrentPopup();
     }
 
@@ -2423,6 +2488,10 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::path& path, con
             fileEntry.icon = animationClipIcon.getRender();
         }else if (fileEntry.extension == ".humanoid"){
             fileEntry.type = FileType::HUMANOID;
+        }else if (Util::isAnimatorAssetFile(fileEntry.extension)){
+            fileEntry.type = FileType::ANIMATOR_ASSET;
+            fileEntry.icon = Util::isAnimatorControllerFile(fileEntry.extension) ? animatorControllerIcon.getRender()
+                           : Util::isAvatarMaskFile(fileEntry.extension) ? avatarMaskIcon.getRender() : montageIcon.getRender();
         }
 
         if (fileEntry.type == FileType::IMAGE || fileEntry.type == FileType::MATERIAL || fileEntry.type == FileType::MODEL ||
@@ -3608,6 +3677,16 @@ void editor::ProjectWindow::show() {
                         animationClipIconPixels.data()));
         animationClipIcon.load();
 
+        auto proceduralIcon = [](Texture& icon, std::vector<uint8_t>& pixels, const char* id, void (*make)(int, std::vector<uint8_t>&)) {
+            const int iconSize = 64;
+            make(iconSize, pixels);
+            icon.setData(id, TextureData(iconSize, iconSize, static_cast<unsigned int>(pixels.size()), ColorFormat::RGBA, 4, pixels.data()));
+            icon.load();
+        };
+        proceduralIcon(animatorControllerIcon, animatorControllerIconPixels, "editor:resources:animator_controller_icon", makeAnimatorControllerIcon);
+        proceduralIcon(avatarMaskIcon, avatarMaskIconPixels, "editor:resources:avatar_mask_icon", makeAvatarMaskIcon);
+        proceduralIcon(montageIcon, montageIconPixels, "editor:resources:montage_icon", makeMontageIcon);
+
         scanDirectory(project->getProjectPath().string());
 
         firstOpen = false;
@@ -4092,6 +4171,32 @@ void editor::ProjectWindow::assetsCreateAnimationClip() {
     startRename(fileName);
 }
 
+void editor::ProjectWindow::assetsCreateAnimatorAsset(int kindValue) {
+    if (currentPath.empty()) {
+        return;
+    }
+    focusProjectPanel(this);
+    const auto kind = static_cast<AnimatorAssetDocument::Kind>(kindValue);
+    const char* name = kind == AnimatorAssetDocument::Kind::Controller ? "New Animator Controller"
+                     : kind == AnimatorAssetDocument::Kind::Mask ? "New Avatar Mask" : "New Animation Montage";
+    const char* extension = kind == AnimatorAssetDocument::Kind::Controller ? ".controller"
+                          : kind == AnimatorAssetDocument::Kind::Mask ? ".mask" : ".montage";
+    const std::string title = std::string("Create ") + AnimatorAssetDocument::kindName(kind);
+    const fs::path relative = uniqueRelativePath(currentPath, name, extension);
+    std::string error;
+    if (!AnimatorAssetDocument::create(project, relative.generic_string(), kind, title, &error)) {
+        Backend::getApp().registerAlert(title, error);
+        return;
+    }
+    scanDirectory(currentPath);
+    const std::string fileName = relative.filename().string();
+    selectedFiles.clear();
+    selectedFiles.insert(fileName);
+    lastSelectedFile = fileName;
+    updateInspectedAsset(fileName);
+    startRename(fileName);
+}
+
 void editor::ProjectWindow::processPoseThumbnails() {
     poseThumbnailer.process();
     if (poseThumbnailer.busy() || poseThumbnailQueue.empty() || !Engine::isViewLoaded()) {
@@ -4186,6 +4291,16 @@ void editor::ProjectWindow::openFile(const FileEntry& file, const fs::path& file
         project->openScene(filePath);
     } else if (file.type == FileType::POSE_ANIMATION) {
         Backend::getApp().getPoseAnimationWindow()->openFromAsset(filePath.string());
+    } else if (file.type == FileType::ANIMATOR_ASSET && Util::isAnimatorControllerFile(filePath.string()) &&
+               animatorEditorHooks().openController) {
+        // the Animator window on the controller alone (it binds to an Animator once one is selected)
+        const std::string controller = project->isInsideAssetsPath(filePath)
+            ? project->normalizeToAssetsRelative(filePath).generic_string()
+            : filePath.generic_string();
+        animatorEditorHooks().openController(project, 0, NULL_ENTITY, controller);
+    } else if (file.type == FileType::ANIMATOR_ASSET) {
+        // a mask or a montage: the Inspector edits it
+        updateInspectedAsset(file.name);
     } else if (file.type == FileType::ANIMATION_CLIP && animationClipInspectorHooks().openClip) {
         // the Animation window, target-less (the clip's preview model), as the component stores it
         const std::string clip = project->isInsideAssetsPath(filePath)

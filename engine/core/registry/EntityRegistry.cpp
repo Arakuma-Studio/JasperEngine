@@ -105,6 +105,7 @@ EntityRegistry::EntityRegistry() {
     registerComponent<SplineExtrudeComponent>(ComponentOrder::Insertion, "SplineExtrudeComponent");
     registerComponent<SplineInstantiateComponent>(ComponentOrder::Insertion, "SplineInstantiateComponent");
     registerComponent<SplineAnimateComponent>(ComponentOrder::Insertion, "SplineAnimateComponent");
+    registerComponent<AnimatorComponent>(ComponentOrder::Insertion, "AnimatorComponent");
 
     // complete: markChangedComponent may look into it
     std::lock_guard<std::mutex> lock(liveRegistriesMutex());

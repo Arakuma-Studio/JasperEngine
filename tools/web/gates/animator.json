@@ -1,0 +1,12 @@
+{
+  "description": "tools/test-projects/animator (WEB_PROJECT=animator tools/build.sh web, and with WASM_SIMD=0 the scalar pose kernels): the animated hero and the A-pose robot play one Animator Controller (the robot retargeted), reach the Move blend tree on a trigger and hold it at 25 %: both are humanoids, and the left feet are where the native build puts them (two decimals). The canvas centre is the background between the two figures.",
+  "isolated": true,
+  "rgb": [26, 28, 36],
+  "tolerance": 24,
+  "console": [
+    {"text": "[gate] animator pose kernels: ", "level": "log"},
+    {"text": "[gate] animator Move Move humanoid 1 1", "level": "log"},
+    {"text": "[gate] animator left_foot -0.71 0.10 -0.16 / 0.89 0.09 -0.14", "level": "log"}
+  ],
+  "ordered": true
+}

@@ -55,6 +55,8 @@ namespace jasperengine::editor::mcp {
     // PlacementTools.cpp: puts back the preview poses a place_with_physics screenshot shows for a
     // few frames (App::stopTransientPreviews: before a save or Play)
     void stopPlacementPreviews(Project* project);
+    // control_animator's edit-mode previews end (the scene goes back): before a save or Play
+    void stopAnimatorPreviews(Project* project);
 
     // SynthesisTools.cpp: the jasper.synthesis recipe of a PNG for get_asset_info / view_asset:
     // {role, mode, quality, seed, size, sources: [{role, path, state}], sources_changed,
@@ -72,6 +74,7 @@ namespace jasperengine::editor::mcp {
     void registerGameplayTools(McpRegistry& registry);
     void registerSplineTools(McpRegistry& registry);
     void registerParticleTools(McpRegistry& registry);
+    void registerAnimatorTools(McpRegistry& registry);
 
     void registerPoseTools(McpRegistry& registry);
 

@@ -1103,6 +1103,56 @@ end
 function Hero:onFootstep(side, strength) end    -- clip event {function: "onFootstep", args: ["left", 1]}
 ```
 
+### 4.8.3 Animator (EntityHandle)
+
+Unity's Animator: plays an Animator Controller (`.controller`: parameters, layers, state
+machines, blend trees, transitions) on the clips of the Animation Player's kinds (`.anim`, model
+clips), with Avatar Masks, montages (`.montage`), an IK stack and root motion. `Animator(scene,
+entity)` adds the component when missing; `GameObject:getAnimator()` returns `nil` without one;
+`GameObject:hasAnimator()`. It runs in play mode and in games. Calls before the controller loads
+are kept. User guide: `docs/animator.md`; agents: `jasper://docs/animator`. Names that the
+controller does not have warn once and do nothing.
+
+| Member | Notes |
+|---|---|
+| `controller` | rw, the `.controller` path (assets-relative); a change reloads it, parameters and states of the same names carry over |
+| `setFloat(name, v [, dampTime, deltaTime])`, `getFloat` | with damping: Unity's SmoothDamp towards `v` over `dampTime` s |
+| `setInteger`, `getInteger`, `setBool`, `getBool` | |
+| `setTrigger(name)`, `resetTrigger(name)` | a trigger stays set until a transition uses it |
+| `getParameterIndex(name)`, `getParameterCount()`, `getParameterName(i)` | 0-based; -1 / `""` when unknown |
+| `play(state [, layer, normalizedTime])` | at once; `state` a name or `"Layer.Machine.State"`; `normalizedTime` < 0 keeps the current time when it is the current state |
+| `crossFade(state, duration [, layer, offset])` | `duration` in the current state's lengths; `crossFadeInFixedTime` in seconds |
+| `getCurrentState(layer)`, `getNextState(layer)` | an `AnimatorStateInfo`: `valid`, `name`, `fullPath`, `tag`, `normalizedTime` (laps + fraction), `length` (s), `loop` |
+| `isInTransition(layer)` | |
+| `getLayerCount()`, `getLayerName(i)`, `getLayerIndex(name)`, `setLayerWeight(i, w)`, `getLayerWeight(i)` | the first layer always weighs 1 |
+| `playMontage(path [, rate, section])`, `stopMontage([blendOut])`, `isMontagePlaying()`, `getMontage()`, `getMontageSection()` | a montage plays on the layer whose slot it names, blending in and out |
+| `montageJumpToSection(name)`, `montageSetNextSection(from, to)` | |
+| `setIKTarget(constraint, position [, weight])`, `clearIKTarget(constraint)`, `setIKWeight(constraint, w)` | world space; a script target wins over the constraint's GameObject |
+| `setLookAt(position [, weight])` | the first look_at constraint |
+| `hasBone(slotOrPath)`, `getBonePosition(slotOrPath)`, `getBoneRotation(slotOrPath)` | world space, from the last evaluated pose; humanoid slots (`"left_hand"`) or paths |
+| `speed`, `applyRootMotion` | rw |
+| `getDeltaPosition()`, `getDeltaRotation()` | the last update's root motion (world space) |
+| `isHumanoid()`, `isLoaded()` | |
+| `onEvent` | a function called with one `AnimationEvent` per clip or montage event (leader clip per layer, or all with `eventMode = all`); then the scripts' methods named like the event |
+| `onStateEnter`, `onStateExit` | functions called with `(layer, state)`: the layer's name and the state's full path (`"Base Layer.Combat.Attack"`) |
+| `onMontageEnded` | `(path, interrupted)` |
+| `onAnimatorMove` | `(deltaPosition, deltaRotation)`: set, it takes the root motion over (nothing moves the GameObject) |
+| `getAnimatorComponent()` | the ECS component |
+
+```lua
+function Hero:init()
+    self.animator = GameObject(self.scene, self.entity):getAnimator()
+    self.animator.onStateEnter = function(layer, state) print("enter", layer, state) end
+    RegisterEngineEvent(self, "onUpdate")
+end
+
+function Hero:onUpdate()
+    local speed = Input.isKeyPressed(Input.KEY_W) and 1 or 0
+    self.animator:setFloat("Speed", speed, 0.1, Engine.deltatime)
+    if Input.isKeyPressed(Input.KEY_SPACE) then self.animator:setTrigger("Jump") end
+end
+```
+
 ### 4.9 Camera (GameObject) - partial
 
 rw: `type` (`CameraType.*`), `enabled`, `nearClip`, `farClip`, `leftClip`, `rightClip`,
