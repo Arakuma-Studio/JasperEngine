@@ -43,6 +43,7 @@ import fcntl
 import hashlib
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -163,12 +164,19 @@ def editor_version() -> str:
     if _editor_version is not None:
         return _editor_version
     sys.path.insert(0, str(HERE))
-    import harness
+    try:
+        import harness   # (the editor the tests start: JASPER_EDITOR, or this or the main checkout's)
+        command = harness.editor_command()
+    except ImportError:  # plain python3, without the harness's packages
+        command = shlex.split(os.environ["JASPER_EDITOR"]) if os.environ.get("JASPER_EDITOR") else \
+            [str(REPO / "build" / "linux" / "editor-install" / "bin" / "jasperengine-editor")]
     with tempfile.TemporaryDirectory(prefix="jasper-build-cache-home-") as home:
         env = dict(os.environ, HOME=home)
         env.pop("JASPER_PLAYERS_DIR", None)
-        r = subprocess.run(harness.editor_command() + ["players", "list", "--json"], capture_output=True, text=True,
-                           env=env, timeout=120)
+        try:
+            r = subprocess.run(command + ["players", "list", "--json"], capture_output=True, text=True, env=env, timeout=120)
+        except OSError as e:
+            raise BuildCacheError(f"the editor's version: cannot run {command}: {e}") from None
     try:
         _editor_version = json.loads(r.stdout)["editor_version"]
     except (ValueError, KeyError) as e:
