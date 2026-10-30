@@ -958,6 +958,15 @@ Kept current so the work can continue after an interruption.
     else the editor's engine. Caught by MCP `test_prebuilt_linux_build` and `test_release_flow`.
   - `writeSteamScripts` kept a caller's earlier error message, which failed the next upload
     (`PublishSteam.UploadRunsSteamcmdAfterVerify`).
+- **Shipped size (in progress, the coordinator's request):**
+  - Release games now link with `JASPERENGINE_RELEASE_LINK` (engine/CMakeLists.txt): sections and
+    `--gc-sections`, hidden visibility, the Android export list
+    (`platform/android/exports.map`), and ThinLTO plus `--icf=safe` with lld.
+  - The numbers: `tools/ci/android_size.sh` (APKs, prebuilt and compiled) and
+    `tools/players/lib_size.py` (the library by source directory).
+  - `test_player_cli.py` gained a `components` check: every component type goes through the
+    release player.
+  - The Android payload check now asks 16 KB pages of the 64-bit ABIs only.
 - **Next:**
   - run the unit tests (and ASan), the MCP suite, and smoke (compile and prebuilt);
   - measure the release Android size (`tools/ci/android_size.sh`);
