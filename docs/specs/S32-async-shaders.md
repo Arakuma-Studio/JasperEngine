@@ -684,7 +684,11 @@ public:
      - with warm draws off, the full core suite hung once in a render-thread draw
        (`EveryGlModeDrawsTheLitCube`, all llvmpipe threads idle, the main thread in a futex
        inside the driver), and a repeat run of the Async, Atmosphere and Render GPU suites hung
-       again in its first iteration (killed at 40 min).
+       again in its first iteration (killed at 40 min);
+     - the §3 probe program (compile, link and draw on worker contexts sharing with the
+       main one) never exited on B, C or D (found still running 25 h later and stopped);
+     - without the worker context (`parallel`), the same repeat ran 3 iterations with no hang or
+       crash, and the full core suite ran to the end (2344 tests).
    - Our synchronisation was checked for that hang: the worker calls `glFinish` after every
      program (stronger than a fence) and the render thread binds a program only after its
      creation is published; the worker binds no object of the render thread's (no textures,
@@ -705,6 +709,22 @@ public:
    them.
 
 ## Progress (implementation notes, keep updated)
+
+- **State at e0746f700+ (merged oe-port a57c7844d):** everything in §5 is implemented; the
+  deviations above record what changed. Evidence so far:
+  - builds: linux GL WERROR (D, B), Vulkan WERROR (B), web (B), android (A);
+  - unit tests, GL (D, llvmpipe, parallel mode): full core suite 2344 ran, 2 failed, both fixed
+    since (AStandIn: the test delay now holds parallel creations; WaterWavesGpu waited for no
+    creation); editor 1379/1379;
+  - unit tests, Vulkan (B, lavapipe): the S32 filter (Async, ObjectRenderShader, Render,
+    Atmosphere, Shadow, Probe suites) 65/65, editor 13/13; before the waiting-draw fix every
+    RenderGpu test failed with PIPELINE_POOL_EXHAUSTED (the red);
+  - red-before-green: AtmosphereGpu.LightShafts (cached shadow slots), RenderGpu.LitCube on
+    Vulkan (reload storm), AsyncCreateGpu.ThePipelineCacheIsSavedAndValidated (shutdown wrote
+    over the file it validated), WaterWavesGpu.MatchesTheCpuTwin, MCP lobe toggle (6 empty
+    frames);
+  - xcode_sync_*.py --check: all pass after the S21 merge.
+- **Older notes:**
 
 - Spec written at oe-port 0c22d3b91 (branch `feat/s32-async-shaders`). The GL probe numbers in
   §3 come from a throwaway program run on A in the Docker image.
