@@ -36,8 +36,11 @@ namespace {
     void writeZip(const fs::path& file, const std::vector<Entry>& entries) {
         mz_zip_archive zip{};
         ASSERT_TRUE(mz_zip_writer_init_file(&zip, file.string().c_str(), 0));
+        // miniz refuses to write an absolute name: such an entry is written as "_..." and renamed in
+        // the bytes below (local header and central directory)
+        auto written = [](const std::string& name) { return !name.empty() && name[0] == '/' ? "_" + name.substr(1) : name; };
         for (const Entry& e : entries) {
-            ASSERT_TRUE(mz_zip_writer_add_mem(&zip, e.name.c_str(), e.data.data(), e.data.size(), MZ_DEFAULT_COMPRESSION)) << e.name;
+            ASSERT_TRUE(mz_zip_writer_add_mem(&zip, written(e.name).c_str(), e.data.data(), e.data.size(), MZ_DEFAULT_COMPRESSION)) << e.name;
         }
         ASSERT_TRUE(mz_zip_writer_finalize_archive(&zip));
         ASSERT_TRUE(mz_zip_writer_end(&zip));
@@ -45,6 +48,13 @@ namespace {
         {
             std::ifstream in(file, std::ios::binary);
             bytes.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+        }
+        for (const Entry& e : entries) {
+            const std::string stored = written(e.name);
+            if (stored == e.name) continue;
+            for (size_t at = bytes.find(stored); at != std::string::npos; at = bytes.find(stored, at + stored.size())) {
+                bytes.replace(at, stored.size(), e.name);
+            }
         }
         for (size_t at = bytes.find("PK\x01\x02"); at != std::string::npos && at + 46 <= bytes.size(); at = bytes.find("PK\x01\x02", at + 4)) {
             const size_t nameLength = (uint8_t)bytes[at + 28] | ((size_t)(uint8_t)bytes[at + 29] << 8);

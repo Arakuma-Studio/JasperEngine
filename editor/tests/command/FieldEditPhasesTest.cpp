@@ -23,8 +23,8 @@ namespace {
 
 TEST(FieldEditPhases, OneSessionIsOneStep) {
     UndoStatics statics;
+    FakeState state;   // before the history: its commands write to it as they are freed
     CommandHistory history;
-    FakeState state;
     ui::FieldEditSession::begin(&history, "Change Color", &owner);
     EXPECT_TRUE(ui::FieldEditSession::isOpen());
     EXPECT_TRUE(ui::FieldEditSession::isOpenFor(&owner));
@@ -50,8 +50,8 @@ TEST(FieldEditPhases, OneSessionIsOneStep) {
 
 TEST(FieldEditPhases, CancelRestoresAndRecordsNothing) {
     UndoStatics statics;
+    FakeState state;   // before the history: its commands write to it as they are freed
     CommandHistory history;
-    FakeState state;
     history.addCommand(new UndoFake(state, "before", 5));
     const size_t steps = history.appliedCount();
     ui::FieldEditSession::begin(&history, "Change Color", &owner);
@@ -65,13 +65,15 @@ TEST(FieldEditPhases, CancelRestoresAndRecordsNothing) {
 
 TEST(FieldEditPhases, RetargetCommitsThePreviousSession) {
     UndoStatics statics;
+    FakeState state;   // before the history: its commands write to it as they are freed
     CommandHistory history;
-    FakeState state;
     ui::FieldEditSession::begin(&history, "Change Light Color", &owner);
     history.addCommand(new UndoFake(state, "light", 3));
+    history.addCommand(new UndoFake(state, "light again", 4));
     // the window opened on another field: its session starts, the first is one step
     ui::FieldEditSession::begin(&history, "Change Fog Color", &owner);
-    history.addCommand(new UndoFake(state, "fog", 4));
+    history.addCommand(new UndoFake(state, "fog", 5));
+    history.addCommand(new UndoFake(state, "fog again", 6));
     ui::FieldEditSession::commit(&owner);
     ASSERT_EQ(history.appliedCount(), 2u);
     EXPECT_EQ(history.top()->name(), "Change Fog Color");
