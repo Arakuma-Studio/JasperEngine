@@ -76,7 +76,7 @@ async def frames_of(ed: Editor, frames: int) -> list[dict]:
     out = []
     for index in range(first, first + int(capture.get("frames", frames))):
         frame = await ed.call("get_cpu_profile", capture_id=capture["capture_id"], frame=index, view="tree",
-                              thread="main", filter="GPU", max_rows=200)
+                              thread="Main Thread", filter="GPU", max_rows=200)
         out.append({"frame_ms": float(frame.get("frame_ms") or 0.0), "creation_ms": main_creation_ms(frame.get("rows", []))})
     return out
 
