@@ -1,13 +1,13 @@
 """S27 Recorder for agents (docs/specs/S27-editor-tools.md AC21-AC26; jasper://docs/editor-tools).
 
-A 2D scene of 640x360 points (canvas = output size) with a red square moved by a script at 200
+A 2D scene of 640x360 points (canvas = output size) with a red square moved by a script at 60
 points per game second. record_game:
 - png 90 frames at 30 fps: exactly 90 PNGs of 640x360, the sidecar says 90, and the square in
-  frame k sits k x 200/30 points from frame 0 (frame k is game time k/30);
+  frame k sits k x 60/30 points from frame 0 (frame k is game time k/30);
 - the same recording twice gives identical bytes (fixed timestep);
 - Frame Interval [30, 59]: 30 frames named frame_0030..frame_0059, and Exit Play Mode stops Play;
 - mp4 through FFmpeg (when the host has one with an H.264 encoder): ffprobe says h264, 90 frames,
-  30 fps, 640x360, BT.709; with audio an AAC stream of 3 s;
+  30 fps, 640x360, BT.709; mov is ProRes 422 HQ (yuv422p10le); with audio an AAC stream of 3 s;
 - without FFmpeg (JASPER_FFMPEG=/nonexistent) a movie fails pointing at Preferences, png works;
 - throughput: 1080p30 PNG keeps >= 10 recorded frames per wall second (perf_slack applies) and the
   queue never holds more than 8 frames;
@@ -27,16 +27,20 @@ CI = True
 EDITOR = {"create": True, "name": "Recorder"}
 TIMEOUT = 1800
 
+SPEED = 60
 MOVER = """---@class Mover : ScriptInstance
 local Mover = { properties = {} }
 
 function Mover:init()
     self.go = GameObject(self.scene, self.entity)
+    self.time = 0
     RegisterEngineEvent(self, "onUpdate")
 end
 
 function Mover:onUpdate()
-    self.go.position = Vector3(40 + Engine.gameTime * 200, 180, 0)
+    -- the game time since this Play started (fixed 1/fps steps while recording)
+    self.go.position = Vector3(SPEED_START + self.time * SPEED, 180, 0)
+    self.time = self.time + Engine.deltatime
 end
 
 return Mover
@@ -54,10 +58,10 @@ async def setup(ed: Editor) -> dict:
                                                    "graphics.scaling_mode": "letterbox"})
     made = await ed.call("create_scene", name="Rec", type="2D", path="scenes/Rec")
     S["scene"] = made["scene"]["id"]
-    square = (await ed.call("create_entity", scene=S["scene"], type="sprite", name="Square", position=[40, 180, 0],
+    square = (await ed.call("create_entity", scene=S["scene"], type="sprite", name="Square", position=[0, 180, 0],
                             values={"sprite": {"width": 32, "height": 32},
                                     "mesh": {"submeshes[0].material.baseColorFactor": [1, 0, 0, 1]}}))["entity_id"]
-    await ed.call("create_script", kind="lua", name="Mover", content=MOVER, scene=S["scene"], entity=square)
+    await ed.call("create_script", kind="lua", name="Mover", content=MOVER.replace("SPEED_START", "0").replace("SPEED", str(SPEED)), scene=S["scene"], entity=square)
     await ed.call("save_scene", scene=S["scene"])
     return S
 
@@ -113,7 +117,7 @@ async def test_png_sequence(ed: Editor):
         ed.check(c >= 0, f"frame {k} shows the square")
         centres[k] = c
     for k in (15, 45, 89):
-        expected = k * 200 / 30
+        expected = k * SPEED / 30
         ed.check(abs((centres[k] - centres[0]) - expected) <= 1.5,
                  f"frame {k} is game time {k}/30: the square moved {centres[k] - centres[0]:.2f}, expected {expected:.2f}")
     S["first"] = [f.read_bytes() for f in files]
@@ -175,6 +179,18 @@ async def test_mp4(ed: Editor):
     ed.check(Path(str(movie) + ".recording.json").is_file(), "the sidecar")
 
 
+async def test_mov(ed: Editor):
+    if not has_h264():
+        harness.skip("no ffmpeg/ffprobe with an H.264 encoder on this host")
+    await setup(ed)
+    movie = ed.scratch.root / "rec.mov"
+    r = await record(ed, frames=30, fps=30, format="mov", width=640, height=360, output=str(movie))
+    ed.check(movie.is_file(), f"{r}")
+    video = [s for s in ffprobe(movie)["streams"] if s["codec_type"] == "video"][0]
+    ed.check_eq((video["codec_name"], video["pix_fmt"], int(video["nb_read_frames"])), ("prores", "yuv422p10le", 30),
+                f"ProRes 422 HQ: {video}")
+
+
 async def test_mp4_audio(ed: Editor):
     if not has_h264():
         harness.skip("no ffmpeg/ffprobe with an H.264 encoder on this host")
@@ -207,4 +223,14 @@ async def test_throughput(ed: Editor):
     fps = r["frames"] / max(r["wallSeconds"], 1e-6)
     ed.check(r["maxQueued"] <= 8, f"queue <= 8: {r['maxQueued']}")
     print(f"[recorder] 1080p PNG: {fps:.1f} recorded frames per wall second (max queued {r['maxQueued']})")
-    ed.check(fps * harness.perf_slack() >= 10, f"1080p PNG >= 10 frames per wall second: {fps:.1f}")
+    # R37's budget is enforced on the benchmark run (harness.perf_slack), printed otherwise
+    if harness.perf_slack() > 0:
+        ed.check(fps * harness.perf_slack() >= 10, f"1080p PNG >= 10 frames per wall second: {fps:.1f}")
+    if has_h264():
+        movie = ed.scratch.root / "rec-1080.mp4"
+        r = await record(ed, frames=60, fps=30, format="mp4", width=1920, height=1080, output=str(movie))
+        fps = r["frames"] / max(r["wallSeconds"], 1e-6)
+        print(f"[recorder] 1080p H.264: {fps:.1f} recorded frames per wall second (max queued {r['maxQueued']})")
+        ed.check(r["frames"] == 60 and r["maxQueued"] <= 8, f"{r}")
+        if harness.perf_slack() > 0:
+            ed.check(fps * harness.perf_slack() >= 20, f"1080p H.264 >= 20 frames per wall second: {fps:.1f}")

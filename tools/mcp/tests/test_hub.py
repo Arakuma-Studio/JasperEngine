@@ -220,6 +220,8 @@ async def test_hub_conditions(ed: Editor):
     project = root / "Existing"
     await ed.call("create_project", path=str(project), name="Existing", template="empty", unsaved="discard")
     await ed.call("save_project")
+    # this editor lets go of it (the project lock): the GUI editors below open it
+    await ed.call("create_project", path=str(root / "Elsewhere"), name="Elsewhere", template="empty", unsaved="discard")
     last = {"last_project_path": str(project), "recent_projects": [{"path": str(project), "name": "Existing"}]}
 
     async with GuiEditor(root, ["--hub"], last) as gui:

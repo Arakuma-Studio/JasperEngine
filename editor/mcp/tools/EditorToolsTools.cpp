@@ -228,7 +228,7 @@ void editSwatchesTool(const CallPtr& call) {
     McpContext& ctx = call->ctx();
     const Json& args = call->args();
     ui::ColorPickerWindow& window = ui::ColorPickerWindow::get();
-    window.setProjectPath(ctx.project()->isTempProject() ? fs::path() : ctx.project()->getProjectPath());
+    window.setProjectPath(ctx.project()->isEditorTempProject() ? fs::path() : ctx.project()->getProjectPath());
     window.reloadLibraries();
     const std::string action = args.value("action", std::string("list"));
     const std::string scope = args.value("scope", std::string("user"));
@@ -307,7 +307,7 @@ void editSwatchesTool(const CallPtr& call) {
 void listCurvePresetsTool(const CallPtr& call) {
     McpContext& ctx = call->ctx();
     ui::CurveWindow& window = ui::CurveWindow::get();
-    window.setProjectPath(ctx.project()->isTempProject() ? fs::path() : ctx.project()->getProjectPath());
+    window.setProjectPath(ctx.project()->isEditorTempProject() ? fs::path() : ctx.project()->getProjectPath());
     window.reloadLibraries();
     Json libraries = Json::array();
     size_t count = 0;

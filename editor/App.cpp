@@ -3303,7 +3303,7 @@ void editor::App::updateHubCreation() {
 }
 
 void editor::App::writeHubThumbnail() {
-    if (project.getProjectPath().empty() || project.isTempProject()) return;
+    if (project.getProjectPath().empty() || project.isEditorTempProject()) return;
     SceneProject* scene = project.getSelectedScene();
     if (!scene || !scene->sceneRender) return;
     std::vector<uint8_t> png;

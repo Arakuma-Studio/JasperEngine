@@ -64,16 +64,11 @@ async def test_set_color_forms(ed: Editor):
                                             "values": {"light": {"color": {"hex": "#FF8000", "intensity": 1}}}},
                          contains="intensity")
     await ed.check_error("set_properties", {"scene": S["scene"], "entity": S["lamp"], "values": {"light": {"color": "#FF80"}}})
-    # an sRGB field (the base colour of a UI image is not linear) takes hex as is: alpha too
-    ui = (await ed.call("create_scene", name="ColorsUI", type="UI"))["scene"]["id"]
-    image = (await ed.call("create_entity", scene=ui, type="image", name="Swatch"))["entity_id"]
-    await ed.call("set_properties", scene=ui, entity=image, values={"ui": {"color": "#FF800080"}})
-    got = await ed.call("get_entity", scene=ui, entity=image, components=["ui"], properties=["color"])
-    color = harness.find_key(got["components"]["ui"], "color")
-    color = color.get("value", color) if isinstance(color, dict) else color
+    # a field stored as sRGB (the skybox's tint) takes hex as is, alpha too
+    sky = (await ed.call("create_entity", scene=S["scene"], type="skybox", name="Sky"))["entity_id"]
+    await ed.call("set_properties", scene=S["scene"], entity=sky, values={"skybox": {"color": "#FF800080"}})
+    color = await value_of(ed, sky, "skybox", "color")
     ed.check(near(color, [1.0, 128 / 255, 0.0, 128 / 255]), f"#FF800080 on an sRGB field: {color}")
-    await ed.call("close_scene", scene=ui, unsaved="discard")
-    await ed.call("select_scene", scene=S["scene"])
 
 
 async def test_sample_view_color(ed: Editor):
@@ -134,8 +129,8 @@ async def test_edit_swatches(ed: Editor):
     # the user scope is the settings folder
     await ed.call("edit_swatches", action="create_library", scope="user", library="Mine")
     await ed.call("edit_swatches", action="add", scope="user", library="Mine", name="White", color="#FFFFFF")
-    user_files = list(ed.scratch.home.rglob("swatches/*.colors"))
+    user_files = list(ed.scratch.root.rglob("swatches/*.colors"))
     ed.check(any(json.loads(f.read_text())["name"] == "Mine" for f in user_files), f"user library in the settings folder: {user_files}")
     await ed.call("edit_swatches", action="delete_library", scope="user", library="Mine")
-    user_files = list(ed.scratch.home.rglob("swatches/*.colors"))
+    user_files = list(ed.scratch.root.rglob("swatches/*.colors"))
     ed.check(not any(json.loads(f.read_text())["name"] == "Mine" for f in user_files), "deleted")
