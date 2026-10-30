@@ -109,6 +109,29 @@ async def test_lut_follows_rename_and_delete(ed: Editor):
     await ed.call("set_scene_settings", scene=sid, settings={"post_processing": None})
 
 
+async def test_lut_of_a_known_image_follows_its_rename(ed: Editor):
+    """The LUT image the asset database already knows when the reference is set (its background
+    refresh ran first): the reference takes the image's GUID at once, so a rename before the scene
+    is saved is followed. It used to get the GUID only at the next save or asset refresh, and the
+    rename's own refresh no longer found the old path."""
+    ed.require_tools("move_asset", "resolve_asset")
+    sid = STATE["sid"]
+    write_png(ed.project / "assets" / "luts" / "cool.png", 4, 2, (0, 128, 255, 255))
+    known = False
+    for _ in range(200):
+        r = await ed.call("resolve_asset", asset="assets/luts/cool.png")
+        if r.get("exists"):
+            known = True
+            break
+        await ed.call("wait", frames=5)
+    ed.check(known, "the asset refresh registered the new image")
+    await ed.call("set_scene_settings", scene=sid, settings={"post_processing": {
+        "color_grading_enabled": True, "lut_texture": "assets/luts/cool.png"}})
+    await ed.call("move_asset", path="assets/luts/cool.png", to="assets/luts/ice.png")
+    ed.check_eq(await pp(ed, sid, "post_processing.lut_texture"), "assets/luts/ice.png", "the LUT follows its image")
+    await ed.call("set_scene_settings", scene=sid, settings={"post_processing": None})
+
+
 async def test_pass_textures_round_trip(ed: Editor):
     ed.require_tools("fork_shader")
     sid = STATE["sid"]
