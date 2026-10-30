@@ -133,7 +133,8 @@ static bool readRenderPixels(FramebufferRender& render, unsigned int textureWidt
     if (width == 0 || height == 0 || x + width > textureWidth || y + height > textureHeight) {
         return false;
     }
-    const bool whole = x == 0 && y == 0 && width == textureWidth && height == textureHeight;
+    // (OpenGL and D3D11 read a whole texture another way; Vulkan and Metal copy the rect alike)
+    [[maybe_unused]] const bool whole = x == 0 && y == 0 && width == textureWidth && height == textureHeight;
 
     #if defined(SOKOL_GLCORE) || defined(SOKOL_GLES3)
         // OpenGL
