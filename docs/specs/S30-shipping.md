@@ -1032,12 +1032,12 @@ Kept current so the work can continue after an interruption.
 
 | ABI | before | after | final gate |
 |---|---|---|---|
-| arm64-v8a | 39.46 (497) | 27.06 (390) | 27.58 (401) |
-| armeabi-v7a | 28.99 (413) | 18.99 (338) | 19.33 (348) |
-| x86 | 41.86 (408) | 33.16 (378) | 33.84 (388) |
-| x86_64 | 42.04 (478) | 33.25 (422) | 33.90 (433) |
+| arm64-v8a | 39.46 (497) | 27.06 (390) | 27.71 (405) |
+| armeabi-v7a | 28.99 (413) | 18.99 (338) | 19.42 (351) |
+| x86 | 41.86 (408) | 33.16 (378) | 33.98 (392) |
+| x86_64 | 42.04 (478) | 33.25 (422) | 34.04 (437) |
 
-The final gate ran on ba3bd7f35, which adds S21's Animator and BF7.
+The final gate ran on bb4389942, which adds S21's Animator, BF7 and S32.
 
 - `libc++_shared.so` adds 0.81 to 1.20 per ABI.
 - Exported dynamic symbols: 44,529 before, 6 after. Those are `GameActivity_onCreate` and the
@@ -1047,28 +1047,28 @@ The final gate ran on ba3bd7f35, which adds S21's Animator and BF7.
 
 | package | before | after | final gate |
 |---|---|---|---|
-| prebuilt arm64-v8a APK | 41.61 | 12.45 | 12.67 |
-| prebuilt armeabi-v7a APK | 30.76 | 11.38 | 11.58 |
-| prebuilt x86 / x86_64 APK | — | 14.27 / 14.18 | 14.53 / 14.43 |
-| prebuilt universal APK (4 ABIs) | 157.61 | 49.45 | 50.38 |
-| compiled arm64-v8a APK (Gradle, the same project) | 15.13 | 12.31 | 12.52 |
+| prebuilt arm64-v8a APK | 41.61 | 12.45 | 12.74 |
+| prebuilt armeabi-v7a APK | 30.76 | 11.38 | 11.64 |
+| prebuilt x86 / x86_64 APK | — | 14.27 / 14.18 | 14.60 / 14.50 |
+| prebuilt universal APK (4 ABIs) | 157.61 | 49.45 | 50.64 |
+| compiled arm64-v8a APK (Gradle, the same project) | 15.13 | 12.31 | 12.59 |
 
 - **Google Play download per device** (after): the App Bundle, the default, measured with
-  `bundletool get-size total --dimensions=ABI` in the final gate. The `.aab` uploaded is 50.27 MiB.
+  `bundletool get-size total --dimensions=ABI` in the final gate. The `.aab` uploaded is 50.54 MiB.
 
   | ABI | download (MiB) | its per-ABI APK (MiB) |
   |---|---|---|
-  | arm64-v8a | 12.33 to 12.35 | 12.67 |
-  | armeabi-v7a | 11.22 to 11.24 | 11.58 |
-  | x86 | 14.18 to 14.20 | 14.53 |
-  | x86_64 | 14.08 to 14.10 | 14.43 |
+  | arm64-v8a | 12.40 to 12.42 | 12.74 |
+  | armeabi-v7a | 11.28 to 11.30 | 11.64 |
+  | x86 | 14.25 to 14.27 | 14.60 |
+  | x86_64 | 14.15 to 14.17 | 14.50 |
 
 - Inside an APK (after), each package holds:
   - its native libraries: 11.50 for arm64-v8a, compressed from 28.26;
   - dex 0.34 (0.76 unpacked) and resources 0.39;
   - content 0.10 and the signature 0.03.
-- Prebuilt and compiled now cost the same. In the final gate the compiled library is 28,764,400
-  bytes against the prebuilt's 28,920,512. The 0.14 MiB APK difference is the prebuilt's v1 signature and its content
+- Prebuilt and compiled now cost the same. In the final gate the compiled library is 28,904,736
+  bytes against the prebuilt's 29,059,056. The 0.14 MiB APK difference is the prebuilt's v1 signature and its content
   files.
 - Before, the gap came from packing: the prebuilt stored its libraries, while Gradle compressed
   them. The libraries themselves were the same size by both methods (40,597,584 bytes compiled,
