@@ -234,6 +234,20 @@ template<> struct Codec<SplineSpanOverride> {
 template<> struct TextureVisit<SplineSpanOverride> {
     static void visit(SplineSpanOverride& value, const TextureVisitor& f);
 };
+template<> struct Codec<AnimatorClipOverride> {
+    static void write(Writer& w, const AnimatorClipOverride& value);
+    static void read(Reader& r, AnimatorClipOverride& value);
+};
+template<> struct TextureVisit<AnimatorClipOverride> {
+    static void visit(AnimatorClipOverride& value, const TextureVisitor& f);
+};
+template<> struct Codec<AnimatorIKConstraint> {
+    static void write(Writer& w, const AnimatorIKConstraint& value);
+    static void read(Reader& r, AnimatorIKConstraint& value);
+};
+template<> struct TextureVisit<AnimatorIKConstraint> {
+    static void visit(AnimatorIKConstraint& value, const TextureVisitor& f);
+};
 
 }
 
@@ -720,6 +734,49 @@ const StructTable kStruct_SplineSpanOverride{"SplineSpanOverride", kStruct_Splin
 void Codec<SplineSpanOverride>::write(Writer& w, const SplineSpanOverride& value) { writeStruct(w, kStruct_SplineSpanOverride, &value); }
 void Codec<SplineSpanOverride>::read(Reader& r, SplineSpanOverride& value) { readStruct(r, kStruct_SplineSpanOverride, &value); }
 void TextureVisit<SplineSpanOverride>::visit(SplineSpanOverride& value, const TextureVisitor& f) { visitStructTextures(kStruct_SplineSpanOverride, &value, f); }
+
+const FieldEntry kStruct_AnimatorClipOverride_fields[] = {
+    JE_RF(AnimatorClipOverride, original, 0x2b7fd3dbu, String),
+    JE_RF(AnimatorClipOverride, replacement, 0x68af3f48u, String),
+};
+const StructTable kStruct_AnimatorClipOverride{"AnimatorClipOverride", kStruct_AnimatorClipOverride_fields, std::size(kStruct_AnimatorClipOverride_fields)};
+void Codec<AnimatorClipOverride>::write(Writer& w, const AnimatorClipOverride& value) { writeStruct(w, kStruct_AnimatorClipOverride, &value); }
+void Codec<AnimatorClipOverride>::read(Reader& r, AnimatorClipOverride& value) { readStruct(r, kStruct_AnimatorClipOverride, &value); }
+void TextureVisit<AnimatorClipOverride>::visit(AnimatorClipOverride& value, const TextureVisitor& f) { visitStructTextures(kStruct_AnimatorClipOverride, &value, f); }
+
+const FieldEntry kStruct_AnimatorIKConstraint_fields[] = {
+    JE_RF(AnimatorIKConstraint, name, 0xed45bcd4u, String),
+    JE_RF(AnimatorIKConstraint, type, 0xe1c7414fu, Enum),
+    JE_RF(AnimatorIKConstraint, enabled, 0xcc0bdd6cu, Bool),
+    JE_RF(AnimatorIKConstraint, weight, 0xfa7f8f13u, Float),
+    JE_RF(AnimatorIKConstraint, weightParameter, 0x4da5139au, String),
+    JE_RF(AnimatorIKConstraint, bones, 0x6bdbcd2au, Array),
+    JE_RF(AnimatorIKConstraint, boneWeights, 0x5ca97686u, Array),
+    JE_RF_ENTITY(AnimatorIKConstraint, target, 0x52b56ddau, Entity),
+    JE_RF(AnimatorIKConstraint, targetPosition, 0x9258c3e5u, Vector3),
+    JE_RF(AnimatorIKConstraint, useTargetRotation, 0x0f557ab1u, Bool),
+    JE_RF_ENTITY(AnimatorIKConstraint, pole, 0xcae83e49u, Entity),
+    JE_RF(AnimatorIKConstraint, polePosition, 0xea09b23eu, Vector3),
+    JE_RF(AnimatorIKConstraint, usePole, 0xa4714304u, Bool),
+    JE_RF(AnimatorIKConstraint, iterations, 0x52a370efu, Int),
+    JE_RF(AnimatorIKConstraint, tolerance, 0x5a7fbef6u, Float),
+    JE_RF(AnimatorIKConstraint, forwardAxis, 0x02abfcb5u, Vector3),
+    JE_RF(AnimatorIKConstraint, clampAngle, 0x82637075u, Float),
+    JE_RF(AnimatorIKConstraint, pelvis, 0xbae76adau, String),
+    JE_RF(AnimatorIKConstraint, footHeight, 0x6bafcc40u, Float),
+    JE_RF(AnimatorIKConstraint, rayStart, 0x3c1444fbu, Float),
+    JE_RF(AnimatorIKConstraint, rayLength, 0x65384c61u, Float),
+    JE_RF(AnimatorIKConstraint, layerMask, 0xf4e9fc90u, LayerMask),
+    JE_RF(AnimatorIKConstraint, maxFootAngle, 0xc2860c6eu, Float),
+    JE_RF(AnimatorIKConstraint, smoothing, 0x8e0aa8bbu, Float),
+    JE_RF(AnimatorIKConstraint, contactParameter, 0xfb6f51f4u, String),
+    JE_RF(AnimatorIKConstraint, speedThreshold, 0xf4e5e2edu, Float),
+    JE_RF(AnimatorIKConstraint, releaseTime, 0x14ae0d8du, Float),
+};
+const StructTable kStruct_AnimatorIKConstraint{"AnimatorIKConstraint", kStruct_AnimatorIKConstraint_fields, std::size(kStruct_AnimatorIKConstraint_fields)};
+void Codec<AnimatorIKConstraint>::write(Writer& w, const AnimatorIKConstraint& value) { writeStruct(w, kStruct_AnimatorIKConstraint, &value); }
+void Codec<AnimatorIKConstraint>::read(Reader& r, AnimatorIKConstraint& value) { readStruct(r, kStruct_AnimatorIKConstraint, &value); }
+void TextureVisit<AnimatorIKConstraint>::visit(AnimatorIKConstraint& value, const TextureVisitor& f) { visitStructTextures(kStruct_AnimatorIKConstraint, &value, f); }
 
 const FieldEntry kBody_Transform_fields[] = {
     JE_RF(Transform, position, 0x89d4084cu, Vector3),
@@ -1851,6 +1908,24 @@ const FieldEntry kBody_SplineAnimateComponent_fields[] = {
 };
 const StructTable kBody_SplineAnimateComponent{"splineanimate", kBody_SplineAnimateComponent_fields, std::size(kBody_SplineAnimateComponent_fields)};
 
+const FieldEntry kBody_AnimatorComponent_fields[] = {
+    JE_RF(AnimatorComponent, enabled, 0x1c48c06bu, Bool),
+    JE_RF(AnimatorComponent, controller, 0x84e5044eu, AssetPath),
+    JE_RF(AnimatorComponent, speed, 0xe0cb0d91u, Float),
+    JE_RF(AnimatorComponent, applyRootMotion, 0x48a13828u, Bool),
+    JE_RF(AnimatorComponent, rootMotionBone, 0x5625d33eu, String),
+    JE_RF(AnimatorComponent, updateMode, 0x6b93e230u, Enum),
+    JE_RF(AnimatorComponent, cullingMode, 0x3a1bad41u, Enum),
+    JE_RF(AnimatorComponent, writeBones, 0x6663c858u, Enum),
+    JE_RF(AnimatorComponent, exposedBones, 0x1eda9dbdu, Array),
+    JE_RF(AnimatorComponent, eventMode, 0x287a2b01u, Enum),
+    JE_RF(AnimatorComponent, sendEventsToScripts, 0x2912c93cu, Bool),
+    JE_RF(AnimatorComponent, retarget, 0x721f14c6u, Enum),
+    JE_RF(AnimatorComponent, clipOverrides, 0xdf85c4a1u, Array),
+    JE_RF(AnimatorComponent, ik, 0xce222a0au, Array),
+};
+const StructTable kBody_AnimatorComponent{"animator", kBody_AnimatorComponent_fields, std::size(kBody_AnimatorComponent_fields)};
+
 const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(Transform, "transform", 0xe1ad931bu),
     JE_RF_COMPONENT(ScriptComponent, "script", 0x203e6faau),
@@ -1941,6 +2016,7 @@ const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(SplineExtrudeComponent, "splineextrude", 0xb0174211u),
     JE_RF_COMPONENT(SplineInstantiateComponent, "splineinstantiate", 0x9d3ddbf4u),
     JE_RF_COMPONENT(SplineAnimateComponent, "splineanimate", 0x9d69db6bu),
+    JE_RF_COMPONENT(AnimatorComponent, "animator", 0x754dee14u),
     JE_RF_COMPONENTS_END
 };
 
