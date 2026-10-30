@@ -427,10 +427,13 @@ TEST(HtmlUIRenderPerf, B7VirtualListScroll){
 TEST(HtmlUIRenderPerf, GatherCost){
     JASPER_REQUIRE_GPU();
     S16Mode on(true);
-    double least = -1.0;
+    double least = -1.0, upload = -1.0;
     uint32_t vertices = 0;
     // warm frames of the list, each gathering everything anew (the run cache dropped before it);
-    // an instance counts as the 4 vertices it replaces (its 132 bytes against 4 x 20 + 6 x 4)
+    // an instance counts as the 4 vertices it replaces (its 132 bytes against 4 x 20 + 6 x 4).
+    // The budget is the CPU's gathering on every backend; the driver's buffer updates are reported
+    // apart: a software driver does GPU work in them (lavapipe: 0.12 ms per 10k gathering, 0.7 ms
+    // per 10k in the driver, far more on a loaded host), which the gathering budget never meant
     FixtureRunner runner(1280, 720, 4);
     ASSERT_TRUE(runner.valid());
     ASSERT_TRUE(load(runner, "fixtures/bench/list-500.html"));
@@ -446,11 +449,14 @@ TEST(HtmlUIRenderPerf, GatherCost){
         vertices = (stats.verticesGathered - stats.instancesDrawn) + 4u * stats.instancesDrawn;
         const double ms = runner.renderer()->getLastGatherMs();
         least = least < 0.0 ? ms : std::min(least, ms);
+        const double uploadMs = runner.renderer()->getLastUploadMs();
+        upload = upload < 0.0 ? uploadMs : std::min(upload, uploadMs);
     }
     ASSERT_GT(vertices, 0u);
     const double per10k = least * 10000.0 / (double)vertices;
-    std::printf("[ ui-bench ] gathering: %u vertices (instances x 4) in %.3f ms (%.3f ms per 10k)\n", vertices, least, per10k);
-    results()["gather"] = {{"items", vertices}, {"ms", least}, {"msPer10k", per10k}};
+    std::printf("[ ui-bench ] gathering: %u vertices (instances x 4) in %.3f ms (%.3f ms per 10k); the driver's buffer updates %.3f ms\n",
+                vertices, least, per10k, upload);
+    results()["gather"] = {{"items", vertices}, {"ms", least}, {"msPer10k", per10k}, {"uploadMs", upload}};
     EXPECT_LE(per10k, 0.2 * compat::perfSlack());
 }
 

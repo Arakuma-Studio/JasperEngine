@@ -8,6 +8,7 @@
 #include "util/AssetDatabase.h"
 
 #include "TempDir.h"
+#include "io/AtomicFile.h"
 
 #include <gtest/gtest.h>
 #include <yaml-cpp/yaml.h>
@@ -106,6 +107,26 @@ TEST(AssetDatabaseGuid, WriteGuidReplacesTheLine){
     dir.write("a.prefab", prefab(guidA));
     ASSERT_TRUE(AssetDatabase::writeGuid(dir.file("a.prefab"), guidB));
     EXPECT_EQ(dir.read("a.prefab"), prefab(guidB));
+}
+
+TEST(AssetDatabaseGuid, AnOutsideSaveDuringTheWriteIsNotOverwritten){
+    TempDir dir;
+    dir.write("a.prefab", prefab("", "Before"));
+    // another program saves the file after the GUID line was put into what was read, before
+    // the editor's write publishes it
+    bool saved = false;
+    io::setAtomicFileFaultInjector([&](std::string_view step, const std::filesystem::path&) -> std::error_code {
+        if (step == "write" && !saved){
+            saved = true;
+            dir.write("a.prefab", prefab("", "SavedOutside"));
+        }
+        return {};
+    });
+    const bool ok = AssetDatabase::writeGuid(dir.file("a.prefab"), guidA);
+    io::setAtomicFileFaultInjector(nullptr);
+    ASSERT_TRUE(saved);
+    ASSERT_TRUE(ok);
+    EXPECT_EQ(dir.read("a.prefab"), prefab(guidA, "SavedOutside")) << "the GUID goes into the outside save, read again";
 }
 
 TEST(AssetDatabaseGuid, WriteGuidInsertsAfterCommentsAndDocumentStart){

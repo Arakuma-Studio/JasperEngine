@@ -17,6 +17,7 @@ from harness import Editor, find_key
 from htmlui_pixels import decode_png
 
 EDITOR = {"create": True, "name": "WaterTest"}
+CI = True
 TIMEOUT = 900
 
 SCENE = "scenes/Water.scene"

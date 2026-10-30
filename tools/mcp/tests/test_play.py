@@ -4,6 +4,7 @@ from harness import Editor, skip
 from htmlui_pixels import decode_png
 
 EDITOR = {"create": True, "name": "Play Contracts"}
+CI = True
 
 
 async def test_console_cursor_and_filters(ed: Editor):

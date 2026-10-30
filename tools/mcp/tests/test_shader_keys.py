@@ -13,6 +13,7 @@ import struct
 from harness import Editor
 
 EDITOR = {"create": True, "name": "Shader Keys"}
+CI = True
 TIMEOUT = 900
 
 MESH, SKYBOX, DEPTH = 2, 3, 4   # ShaderType

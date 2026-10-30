@@ -181,6 +181,10 @@ namespace jasperengine::editor {
         // A kind that reports its own (shaders: {path, line, message}) adds them here.
         Json takeLateProblems();
         void addLateProblem(const Json& problem);
+        // The script property changes the watcher's own reloads of external edits found (one
+        // {scene, entity, script, added, removed} each): the next sync that picks the edit up
+        // reports them, as the call would have had it reloaded the script itself
+        Json takeLateScriptProperties();
         // What the watcher's own reloads of external changes reported (R29): the next MCP
         // call's pick-up carries it. Documents reloaded at or after `since` (the call's flush)
         // are the call's ui_reloaded, earlier ones its ui_current.
@@ -255,6 +259,7 @@ namespace jasperengine::editor {
             watch::PathStat stat;
         };
         std::deque<LateProblem> lateProblems;
+        std::deque<Json> lateScriptProperties;
         struct LateUi {
             std::chrono::steady_clock::time_point at;
             Json reloaded;

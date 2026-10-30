@@ -30,11 +30,13 @@ import pngdiff  # noqa: E402  (tools/mcp/pngdiff.py)
 
 TIMEOUT = 1200
 EDITOR = {"create": True}
+CI = True
 
 S: dict = {}
 
 HERE = Path(__file__).resolve().parent
 GOLDEN = HERE / "golden" / "lattice_show_all.png"
+SHOTS = HERE.parents[2] / "build" / "test-results" / "lattice"   # a failed golden's shot and diff
 SPHERE = REPO / "tools/fixtures/shader-library-export/assets/models/uv_sphere.gltf"
 CHECKER = REPO / "tools/fixtures/scene-inputs/assets/textures/checker.png"
 
@@ -699,7 +701,10 @@ async def test_show_all_lattices_screenshot(ed: Editor):
     await ed.call("edit_lattice", scene=sid, lattice=other["entity_id"],
                   ops=[{"op": "preset", "name": "twist", "amount": 40}])
     await ed.call("select_entities", scene=sid, entities=[])
+    # the golden's field of view (0.75 rad, the camera component's default the Scene view had
+    # before S26 made its own 60 degrees the default), set rather than taken from a default
     cam = {"scene": sid, "position": [0.0, 1.6, 7.0], "target": [-0.3, 1.1, 0],
+           "camera_settings": {"fov": math.degrees(0.75)},
            "display": {"show_grid_3d": False, "hide_light_icons": True, "show_all_lattices": True}}
     got = await ed.call("set_scene_camera", cam)
     ed.check(got["display"]["show_all_lattices"] is True, f"the flag reads back: {got.get('display')}")
@@ -716,8 +721,12 @@ async def test_show_all_lattices_screenshot(ed: Editor):
         print(f"     [golden] wrote {GOLDEN}")
     else:
         ed.check(GOLDEN.is_file(), f"missing committed golden image: {GOLDEN}")
-        ok, fraction, diff = pngdiff.compare(pngdiff.decode(GOLDEN.read_bytes()), img, max_fraction=0.01)
-        if not ok and ed.scratch:
-            (ed.scratch.root / "lattice_show_all_diff.png").write_bytes(diff)
+        # the Scene view's size follows the editor's layout: compared in the frame both show
+        golden, shown = pngdiff.same_frame(pngdiff.decode(GOLDEN.read_bytes()), img)
+        ok, fraction, diff = pngdiff.compare(golden, shown, max_fraction=0.01)
+        if not ok:
+            SHOTS.mkdir(parents=True, exist_ok=True)
+            (SHOTS / "lattice_show_all.actual.png").write_bytes(shot)
+            (SHOTS / "lattice_show_all.diff.png").write_bytes(diff)
         ed.check(ok, f"the screenshot differs from {GOLDEN.name} in {fraction:.4f} of the pixels")
     await ed.call("select_scene", scene=S["scene"])

@@ -12,6 +12,7 @@ from __future__ import annotations
 from harness import Editor
 
 EDITOR = {"create": True, "name": "PlayStopOverlays"}
+CI = True
 
 
 async def test_overlay_made_during_play_survives_stop(ed: Editor):

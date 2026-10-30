@@ -294,9 +294,11 @@ async def test_wait_job_build(ed: Editor):
         harness.skip("JASPER_SLOW_BUILD=1 builds the player (minutes)")
     cli: Cli = S["cli"]
     await ed.call("save_scene", path="scenes/CallCli")
-    p = await cli.arun("call", *ATTACH, "--json", "--timeout", "7200", "--wait-job", "build_project",
-                       '{"mode": "desktop", "build_type": "Release", "wait": false, "output_dir": "' + str(cli.root / "build") + '"}',
-                       timeout=7300)
+    # the build takes minutes (more on a loaded host): the CLI's own timeout bounds it, not the hang guard
+    with ed.busy():
+        p = await cli.arun("call", *ATTACH, "--json", "--timeout", "7200", "--wait-job", "build_project",
+                           '{"mode": "desktop", "build_type": "Release", "wait": false, "output_dir": "' + str(cli.root / "build") + '"}',
+                           timeout=7300)
     env = envelopes(p)
     ed.check(p.returncode == 0 and env[-1]["structured"]["status"] == "succeeded", f"build: {p.stdout[-800:]}")
 

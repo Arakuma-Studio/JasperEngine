@@ -15,6 +15,7 @@ import harness
 from harness import TestFailure
 
 TIMEOUT = 900
+CI = True
 
 # Deliberately selected independent shader contracts, rather than a Cartesian
 # product containing thousands of layouts that exceed the attribute budget.

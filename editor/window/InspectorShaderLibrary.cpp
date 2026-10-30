@@ -404,7 +404,10 @@ bool editor::InspectorWindow::drawShaderPropertyValue(const ShaderManifestProper
                                  : property.kind == ShaderPropertyKind::VECTOR3 ? 3
                                  : property.kind == ShaderPropertyKind::VECTOR4 ? 4 : 1;
             float fields[4] = {value.x, value.y, value.z, value.w};
-            if (ImGui::DragScalarN(id.c_str(), ImGuiDataType_Float, fields, components, 0.01f)) {
+            // one float is one drag (DragScalarN groups unlabelled parts: the row's id would name no item)
+            const bool dragged = components == 1 ? ImGui::DragScalar(id.c_str(), ImGuiDataType_Float, fields, 0.01f)
+                                                 : ImGui::DragScalarN(id.c_str(), ImGuiDataType_Float, fields, components, 0.01f);
+            if (dragged) {
                 edited = Vector4(fields[0], fields[1], fields[2], fields[3]);
                 changed = true;
             }

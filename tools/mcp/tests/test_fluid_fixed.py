@@ -21,6 +21,7 @@ import asyncio
 from harness import Editor
 
 EDITOR = {"create": True, "name": "Fluid Fixed"}
+CI = True
 TIMEOUT = 1200
 
 KEY = "fluidsimulation"

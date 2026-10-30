@@ -19,6 +19,7 @@ namespace jasperengine::editor::UiItemLocator {
         std::string window;  // the ImGui window it is drawn in
         float x = 0.0f, y = 0.0f, width = 0.0f, height = 0.0f;   // main viewport coordinates
         bool visible = false;   // inside its window's clip rect (an item scrolled away is not drawn)
+        bool enabled = true;    // not drawn disabled (BeginDisabled: greyed out, it takes no input)
         // the window it is drawn in, main viewport coordinates (to scroll it with the wheel)
         float windowX = 0.0f, windowY = 0.0f, windowWidth = 0.0f, windowHeight = 0.0f;
     };

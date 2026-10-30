@@ -22,6 +22,7 @@ sys.path.insert(0, str(HERE.parent))
 import pngdiff  # noqa: E402
 
 EDITOR = {"create": True}
+CI = True
 TIMEOUT = 900
 
 S: dict = {}

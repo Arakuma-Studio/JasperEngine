@@ -22,6 +22,7 @@
 #include "command/type/RemoveComponentCmd.h"
 #include "command/type/SetAssetMetaCmd.h"
 #include "Stream.h"
+#include "support/EditorTestSupport.h"
 
 #include "support/TestTempDir.h"
 
@@ -73,14 +74,8 @@ namespace {
         }
         void TearDown() override {
             PlayChangeReview::get().discardAll();
-            if (project) {
-                for (SceneProject& candidate : project->getScenes()) {
-                    CommandHandle::remove(candidate.id);
-                }
-                // closes the scenes as a project switch does: a Project lives as long as the
-                // editor and frees none at exit (ASan: each test leaked its scenes and renders)
-                project->releaseScenes();
-            }
+            // closes the scenes as a project switch does: a Project frees none itself
+            if (project) closeProject(*project);
             project.reset();
         }
 

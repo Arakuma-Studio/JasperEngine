@@ -18,6 +18,7 @@ from harness import Editor
 TIMEOUT = 1800
 
 EDITOR = {"project": str(Path(__file__).resolve().parents[2] / "fixtures" / "ecs-collision")}
+CI = True
 
 SANITIZER_REPORTS = ("ERROR: AddressSanitizer", "runtime error:", "ERROR: LeakSanitizer", "SUMMARY: UndefinedBehaviorSanitizer")
 

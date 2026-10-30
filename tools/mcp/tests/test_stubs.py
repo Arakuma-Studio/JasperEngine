@@ -21,6 +21,7 @@ from pathlib import Path
 from harness import Editor, skip
 
 EDITOR = {"create": True, "name": "CodeTools"}
+CI = True
 TIMEOUT = 900
 LUA_DIR = ".jasperengine/engine-api/lua"
 CLANGD_DB = ".jasperengine/clangd/compile_commands.json"

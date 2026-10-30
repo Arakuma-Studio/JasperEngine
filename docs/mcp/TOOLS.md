@@ -1496,11 +1496,11 @@ Read (no arguments) or change the Game view toolbar settings (editor preferences
 
 Group: `editor_ux` (listed once `tool_groups` enables it, callable either way). Hints: read-only, idempotent
 
-Where editor controls with this label are drawn now (window coords, as focus_window's rect), to click them with send_input or real input. Only drawn items: scroll or open their panel first.
+Where editor controls with this label are drawn now (window coords, as focus_window's rect; enabled false: greyed out), to click them with send_input or real input. Only drawn items: scroll or open their panel first.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `label` | string | yes | Text (a row's text after its icon too), or the whole label with its ## id. |
+| `label` | string | yes | Text (also after its icons), its ## id (these two only while in view), or the whole label. |
 | `window` | string |  | Only in windows whose name contains this. |
 
 

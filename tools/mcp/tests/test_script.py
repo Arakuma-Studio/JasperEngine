@@ -3,6 +3,7 @@
 from harness import Editor
 
 EDITOR = {"create": True, "name": "Script Tools"}
+CI = True
 
 MOVER = """local Mover = {
     properties = {

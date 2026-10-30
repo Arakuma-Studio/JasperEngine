@@ -15,11 +15,14 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
+import yaml
+
 import harness
 from harness import Editor, TestFailure, find_key, skip
 from project_fixture import write_project
 
 EDITOR = {"create": True, "name": "Project Checks"}
+CI = True
 
 TIMEOUT = 900
 
@@ -466,13 +469,17 @@ async def test_cli_anims_guid_mismatch_and_unreadable_yaml():
 
 # ---------------------------------------------------------------------------- CLI: shaders
 
+# a whole-project --shaders check also counts the scenes' NavMesh Surfaces (S19 R42): none here
+ONE_FORK = {"navigation": 0, "shaders": 1}
+
+
 async def test_cli_shaders():
     with scratch_project() as project:
         vert, frag = shader_fork(project)
         r = run_check(project, "--shaders")
         check_eq(r.returncode, 0, f"a fresh fork (not used by any scene yet) compiles: {r.stdout}{r.stderr}")
         code, data = run_json(project, "--shaders")
-        check_eq(data["checked"], {"shaders": 1}, "one fork")
+        check_eq(data["checked"], ONE_FORK, "one fork")
 
         source = (project / frag).read_text()
         broken, line = break_main(source, "    undefined_symbol_cli = 1.0;")
@@ -495,10 +502,31 @@ async def test_cli_shaders():
         # --files with the .frag only checks its fork; a lone .vert without its pair is ignored
         (project / frag).write_text(source)
         code, data = run_json(project, "--files", frag)
+        # --files is not a whole-project check: no NavMesh Surface count
         check_eq((code, data["checked"]), (0, {"shaders": 1}), "fixed")
         write(project, "shaders/Lonely.vert", "#version 450\nvoid main() { nope }\n")
         code, data = run_json(project, "--shaders")
-        check_eq((code, data["checked"]), (0, {"shaders": 1}), "a .vert without a .frag is not a fork")
+        check_eq((code, data["checked"]), (0, ONE_FORK), "a .vert without a .frag is not a fork")
+
+
+async def test_cli_shaders_summary_counts_navmesh_surfaces():
+    """A non-quiet whole-project --shaders check of a scene with a NavMesh Surface (S19 R42): the
+    summary line names the surfaces and the check exits 0 (warnings only). Its unit was missing
+    from the summary's map once: map::at aborted every such check after printing its results."""
+    with scratch_project() as project:
+        scene = {"id": 21, "name": "Nav", "sceneType": "scene_3d", "scene": {},
+                 "entities": [{"type": "Entity", "entity": 2001, "name": "Ground Surface",
+                               "components": {"transform": {"position": [0, 0, 0], "scale": [1, 1, 1],
+                                                             "rotation": [1, 0, 0, 0]},
+                                              "navmeshsurface": {"enabled": True}}}]}
+        write(project, "Nav.scene", yaml.safe_dump(scene, sort_keys=False))
+        config = yaml.safe_load((project / "project.yaml").read_text())
+        config["scenes"] = [{"filepath": "Nav.scene"}]
+        write(project, "project.yaml", yaml.safe_dump(config, sort_keys=False))
+        r = run_check(project, "--shaders")
+        check_eq(r.returncode, 0, f"an unbaked surface is a warning: exit 0 (a negative code is a crash): {r.stdout}{r.stderr}")
+        check("navigation 1 surface" in r.stderr, f"the summary counts the NavMesh Surface: {r.stderr[-1000:]}")
+        check("'Ground Surface' is not baked" in r.stdout, f"the unbaked surface is reported: {r.stdout[-1000:]}")
 
 
 EFFECT_FRAG = """#version 450

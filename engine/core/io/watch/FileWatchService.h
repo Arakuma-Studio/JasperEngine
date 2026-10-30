@@ -142,6 +142,13 @@ namespace jasperengine {
         // subscribers with deliverEditorWrites get the change with origin Editor now (R10).
         // ScopedExpectedWrite calls these.
         void reportEditorWrite(const std::filesystem::path& path, bool existedBefore);
+        // The editor is about to replace `path` (the atomic writer, before its rename): what
+        // another program wrote there and the watcher has not delivered yet goes out now, with
+        // origin External. Once the editor's bytes are there, its pending events would look
+        // like the echo of the editor's write (the ledger compares the bytes) and the edit
+        // would be lost: an agent's .anim edit that the asset database's GUID line rewrites
+        // before the coalescer settles it was never reloaded nor reported.
+        void reportEditorReplacing(const std::filesystem::path& path);
         void reportEditorRemoval(const std::filesystem::path& path);
         void reportEditorMove(const std::filesystem::path& from, const std::filesystem::path& to);
 

@@ -23,6 +23,7 @@ import yaml
 from harness import Editor, find_key
 
 EDITOR = {"create": True, "name": "FBX Test"}
+CI = True
 REPO = Path(__file__).resolve().parents[3]
 FIXTURE = REPO / "editor" / "tests" / "fixtures" / "rigged_cube.fbx"
 GLTF = REPO / "tools" / "fixtures" / "shader-library-export" / "assets" / "models" / "box.gltf"
@@ -202,15 +203,13 @@ async def test_source_export_ships_the_imports(ed: Editor):
         ed.check((shipped / name).read_bytes()[:4] == b"glTF", f"{name} is a binary glTF")
     ed.check(not (shipped / "rigged_cube.fbx").exists(), "the .fbx itself is not shipped")
     ed.check(not (shipped / "unused.fbx").exists(), "the .fbx itself is not shipped")
-    # its linked texture ships as an asset: the PNG, or (S14) its cooks, listed in each family's
-    # assets/je-cooked/<family>/index.json
-    cooked = []
-    for index_path in (assets / "je-cooked").glob("*/index.json"):
-        textures = json.loads(index_path.read_text()).get("textures", {})
-        if any(source.endswith("textures/checker.png") for source in textures):
-            cooked.append(index_path.parent.name)
-    ed.check((shipped / "textures" / "checker.png").is_file() or cooked,
-             f"its linked texture ships as an asset: the PNG or its cooks (families {cooked})")
+    # its linked texture ships cooked (S14 R9: a glTF's external image loads its cook; a Linux
+    # export ships the desktop family, the source stays out)
+    index = json.loads((assets / "je-cooked" / "desktop" / "index.json").read_text())["textures"]
+    ed.check("models/textures/checker.png" in index, f"its linked texture ships cooked: {sorted(index)}")
+    ed.check((assets / "je-cooked" / "desktop" / index["models/textures/checker.png"]["file"]).is_file(),
+             "its cooked file ships")
+    ed.check(not (shipped / "textures" / "checker.png").exists(), "the cooked source itself is not shipped")
     sources = [p for p in out.rglob("*.cpp") if "rigged_cube.fbx" in p.read_text(errors="ignore")]
     ed.check(sources, "the scene source loads the model by its .fbx path")
 
