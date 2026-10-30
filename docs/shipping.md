@@ -46,7 +46,7 @@ the installed ones, with Remove and Install from file.
 | Windows | d3d11, glcore, vulkan | x64 | `<Game>.exe` (its icon and version resource patched in), `content/` |
 | Linux | glcore, gles3, vulkan | x64 | `<Game>` (executable), `<Game>.desktop`, the content |
 | macOS | metal, glcore | universal | `<Game>.app` (Info.plist, icon, signed when `codesign` or `rcodesign` is set up; warning `W-MAC-UNSIGNED` otherwise) |
-| Android | gles3 | universal (arm64-v8a, armeabi-v7a, x86, x86_64) | `<Game>.apk` or `.aab`, signed |
+| Android | gles3 | universal (arm64-v8a, armeabi-v7a, x86, x86_64) | `<Game>.aab`, `<Game>-<abi>.apk` or `<Game>.apk`, signed |
 | iOS | metal | arm64 | the Xcode project; on a Mac with Xcode the `.ipa` (or a simulator `.app`) |
 | Web | gles3 (WebGL 2), single-thread and pthreads | wasm32 | `index.html`, the two players, `content.jpak`, `coi-serviceworker.js` |
 
@@ -73,6 +73,18 @@ it was built with.
   Project Settings > Android > Keystore; its passwords are asked when building (or
   `JASPER_ANDROID_KS_PASS` and `JASPER_ANDROID_KEY_PASS`) and never saved. Without a keystore the
   debug key signs the build (fine for testing, refused by stores).
+
+  Project Settings > Android > Package Format picks what Build makes:
+  - **App Bundle** (`aab`, the default) is what Google Play takes. Play gives each device only its
+    own ABI's libraries.
+  - **One APK per ABI** (`apk-per-abi`) makes `<Game>-arm64-v8a.apk` and so on, for stores and
+    sites outside Play. Give each device the APK of its ABI.
+  - **Universal APK** (`apk`) is one installable file with every selected ABI's libraries. Every
+    device downloads all of them, so choose it only on purpose.
+
+  Build Settings shows each choice's download size, from the installed runtime's libraries.
+  Unselect the ABIs a game does not need under Architectures (arm64-v8a covers nearly every
+  device sold since 2017).
 - **iOS** needs a Mac with Xcode. On other computers the build is the Xcode project ("Open on a
   Mac with Xcode"). Project Settings > iOS holds the team id and the export method
   (development, ad-hoc, app-store).

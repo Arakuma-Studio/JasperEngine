@@ -18,7 +18,9 @@ as a job. `mode: desktop` is this computer's platform and `mode: web` the web (t
 - **development**: the development flavour (profiler, `--profile`); else release.
 - **graphics_api**: `opengl`/`glcore`, `gles3`/`opengles`, `vulkan`, `d3d11`, `metal`. Each
   platform has its list (get_build_info `platforms`).
-- **android_format** `apk` (default) or `aab`. Signing: Project Settings > Android keystore with
+- **android_format**: `aab` (Google Play), `apk-per-abi` or `apk` (one universal APK of every ABI).
+  The default is the project's (Project Settings > Android > Package Format, `aab` unless set).
+  Signing: Project Settings > Android keystore with
   `JASPER_ANDROID_KS_PASS` / `JASPER_ANDROID_KEY_PASS` in the editor's environment; without a
   keystore the debug key signs it (warning `W-ANDROID-DEBUG-KEY`).
 - iOS needs a Mac with Xcode; elsewhere the result is the Xcode project and a note.
