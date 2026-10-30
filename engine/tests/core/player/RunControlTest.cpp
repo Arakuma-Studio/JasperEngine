@@ -127,6 +127,47 @@ TEST_F(RunControlFixture, ScreenshotDefaultsToTheLastFrame) {
     EXPECT_TRUE(dir.exists("last.png"));
 }
 
+namespace {
+    // shaders still being created for the first frames asked (spec S32)
+    int pendingProbes = 0;
+    bool creationIdleAfterProbes() { return pendingProbes-- <= 0; }
+}
+
+// the screenshot's frame comes with shaders still being created off the render thread (S32): the
+// game is held, the frames drawn meanwhile are not counted, and the capture (and the quit after
+// it) wait until the creation is over, as the editor's screenshots do: the image is the frame's
+TEST_F(RunControlFixture, ScreenshotWaitsForPendingGpuCreation) {
+    test::TempDir dir;
+    LaunchOptions options;
+    options.quitAfter = 3;
+    options.screenshot = dir.path() / "waited.png";
+    RunControl::configure(options);
+    pendingProbes = 3;
+    RunControl::setGpuCreationIdleProbe(&creationIdleAfterProbes);
+    const bool heldBefore = Engine::areGameEventsPaused();
+    int reads = 0;
+    for (int frame = 1; frame <= 3; frame++) {
+        const bool wanted = RunControl::wantsOffscreenFrame();
+        RunControl::frameDrawn(false, wanted ? fakeFrame(&reads) : FrameReader());
+    }
+    EXPECT_FALSE(dir.exists("waited.png")) << "captured while shaders were still being created";
+    EXPECT_FALSE(RunControl::quitRequested()) << "quit before the screenshot";
+    EXPECT_TRUE(Engine::areGameEventsPaused()) << "the game is held while the capture waits";
+    int drawn = 0;
+    while (!RunControl::quitRequested() && drawn < 10) {
+        ASSERT_TRUE(RunControl::wantsOffscreenFrame()) << "the waiting frames draw offscreen";
+        RunControl::frameDrawn(false, fakeFrame(&reads));
+        drawn++;
+    }
+    EXPECT_EQ(drawn, 3) << "two more frames pending, the third idle";
+    EXPECT_TRUE(dir.exists("waited.png"));
+    EXPECT_EQ(reads, 1);
+    EXPECT_EQ(RunControl::countedFrames(), 3u) << "the waiting frames are not counted";
+    EXPECT_EQ(Engine::areGameEventsPaused(), heldBefore) << "the game is released after the capture";
+    EXPECT_EQ(RunControl::finish(), EXIT_OK);
+    RunControl::setGpuCreationIdleProbe(nullptr);
+}
+
 TEST_F(RunControlFixture, FailedCaptureExitsFour) {
     test::TempDir dir;
     LaunchOptions options;
