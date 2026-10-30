@@ -1019,4 +1019,7 @@ Kept current so the work can continue after an interruption.
   On server D they fail the same way with S30's editor and with BF7's oe-port-based editor, run
   against the same test files. S30's run options (offscreen screenshot frames, `--after-ready`)
   take effect only in a player that `player::launch` configured, and the editor never calls it.
+  The coordinator traces them to the S18 merge, and `test_pose_runtime` to S29's R20; both
+  streams are fixing them on their branches. S30's final gate counts these files as known oe-port
+  failures while oe-port still fails them, and requires everything else green.
 
