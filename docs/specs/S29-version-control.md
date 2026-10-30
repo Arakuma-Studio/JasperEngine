@@ -669,7 +669,7 @@ MCP tests are in `tools/mcp/tests/test_vcs.py`. Each test builds its repository 
   `Project::encodePrefabNode`, `Project::encodePrefabStage`), read when present; the in-memory
   encodes (undo snapshots, the clipboard) keep them, since a restore may need them before the
   next transform pass (a model's layout switch undone under a reparent does). The Transform's
-  post-decode sets `needUpdate`, so the first transform pass computes them. A stream that bumps the scene version too (S18) renumbers on merge.
+  post-decode sets `needUpdate`, so the first transform pass computes them. That pass runs when a Scene view draws, so what reads world values in Edit mode before it (Lua `getWorldPosition`, MCP, picking, bounds, a navigation bake) saw zeros right after a load (BF7: `test_pose_runtime.py`): the world values are now computed where decoded transforms arrive (`editor/util/WorldTransforms.h`: a scene's load, a decode, a Prefab registry, an instantiated Prefab), with `updateWorldTransforms` (engine `TransformPropagation.h`, the math `RenderSystem::updateTransform` uses). A stream that bumps the scene version too (S18) renumbers on merge.
 - **Test hooks**: `ProviderConfig::svnGlobalArgs` (the SVN tests pass `--username` for two users
   of one `file://` repository) and `VcsSettings::usePathOverride` / `pathOverride` (AC20 runs the
   detection with an empty `PATH`), and `VcsSettings::pollMilliseconds` /

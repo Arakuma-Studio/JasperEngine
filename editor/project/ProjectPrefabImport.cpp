@@ -6,6 +6,7 @@
 
 #include "Project.h"
 #include "util/FileUtils.h"
+#include "util/WorldTransforms.h"
 #include "ProjectPrefabInternal.h"
 #include "Factory.h"
 #include "Out.h"
@@ -829,6 +830,8 @@ editor::PrefabInstanceData* editor::Project::nestedAssetLayer(Prefab& prefab, co
 std::vector<Entity> editor::Project::importPrefab(SceneProject* sceneProject, std::vector<Entity>* entities, const std::filesystem::path& requestedPath, Entity rootEntity,
         bool needSaveScene, const PrefabInstanceData* instanceData, std::unordered_map<Entity, Entity>* entityRemap, const PrefabMemberIds* preferredIds,
         const std::vector<PrefabInstanceData*>& assetLayers) {
+    // the instance's world values, computed when the outermost import (or the scene's load) ends
+    WorldTransformScope worldTransforms(sceneProject ? sceneProject->scene : nullptr);
     const bool deferred = nextImportDeferred;
     nextImportDeferred = false;
     // The base of a variant imported onto the variant's root (by the variant's import)
