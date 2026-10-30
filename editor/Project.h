@@ -958,7 +958,9 @@ namespace jasperengine::editor{
         std::map<std::filesystem::path, PrefabFileCache> prefabFileCache;
         // The parsed and migrated file (its migrations and a newer format go into the installed
         // load report each time); sha1, when given, receives the bytes' SHA-1
-        YAML::Node loadPrefabFile(const std::filesystem::path& fullPath, std::string* sha1 = nullptr);
+        // migrated: set when the file's version was older than this editor's (the returned node
+        // is already in the current format: the file is written again on its next save)
+        YAML::Node loadPrefabFile(const std::filesystem::path& fullPath, std::string* sha1 = nullptr, bool* migrated = nullptr);
         // getPrefabFileBase: the base each .prefab file names (empty: an original), by the
         // file's time and size, looked at again at most once a second
         struct PrefabBaseCache {

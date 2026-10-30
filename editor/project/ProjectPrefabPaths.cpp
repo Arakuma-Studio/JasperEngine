@@ -804,7 +804,7 @@ YAML::Node editor::Project::encodePrefabNode(const std::filesystem::path& filepa
     return prefabNode;
 }
 
-YAML::Node editor::Project::loadPrefabFile(const std::filesystem::path& fullPath, std::string* sha1) {
+YAML::Node editor::Project::loadPrefabFile(const std::filesystem::path& fullPath, std::string* sha1, bool* migrated) {
     // What reading the file gives, parsed again only when the file changed
     std::error_code timeError;
     std::error_code sizeError;
@@ -814,12 +814,14 @@ YAML::Node editor::Project::loadPrefabFile(const std::filesystem::path& fullPath
         prefabFileCache.erase(fullPath);
         DocumentFile document = DocumentFiles::read(fullPath, DocumentKind::Prefab); // throws as before for a missing file
         if (sha1) *sha1 = document.sha1;
+        if (migrated) *migrated = document.migration.migrated();
         return document.root;
     }
     auto cached = prefabFileCache.find(fullPath);
     if (cached != prefabFileCache.end() && cached->second.writeTime == writeTime && cached->second.size == size) {
         DocumentFiles::recordVersionIssues(DocumentKind::Prefab, cached->second.migration);
         if (sha1) *sha1 = cached->second.sha1;
+        if (migrated) *migrated = cached->second.migration.migrated();
         return cached->second.node;
     }
     DocumentFile document = DocumentFiles::read(fullPath, DocumentKind::Prefab);
@@ -830,6 +832,7 @@ YAML::Node editor::Project::loadPrefabFile(const std::filesystem::path& fullPath
     entry.sha1 = document.sha1;
     entry.migration = document.migration;
     if (sha1) *sha1 = document.sha1;
+    if (migrated) *migrated = document.migration.migrated();
     return document.root;
 }
 
