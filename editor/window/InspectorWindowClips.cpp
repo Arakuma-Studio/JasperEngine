@@ -1366,6 +1366,8 @@ bool editor::InspectorWindow::drawInspectedAsset(){
     const fs::path asset = project->getInspectedAsset();
     if (asset.empty()) return false;
     const std::string file = asset.string();
+    // an Animator Controller, Avatar Mask or Animation Montage (InspectorAnimator.cpp)
+    if (Util::isAnimatorAssetFile(file)) return fs::exists(asset) && drawAnimatorAsset(asset);
     const bool clip = Util::isAnimationClipFile(file);
     if (!clip && !Util::isModelFile(file)) return false;
     if (state.relativeOf != asset){

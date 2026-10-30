@@ -24,6 +24,7 @@
 #include "particles/ParticleEffectCodec.h"
 #include "particles/ParticleModules.h"
 #include "component/PoseAnimatorComponent.h"
+#include "component/AnimatorComponent.h"
 #include "component/AnimationPlayerComponent.h"
 #include "component/SplineInstantiateComponent.h"
 #include "animation/ModelSubClips.h"
@@ -159,6 +160,7 @@ namespace {
         for (const char* pool : kSplinePools) {
             row(C::SplineInstantiateComponent, std::string(pool) + "[].asset", Shape::Asset, AssetType::Unknown, Base::Assets);
         }
+        row(C::AnimatorComponent, "controller", Shape::Asset, AssetType::AnimatorController, Base::Assets);
 
         row(C::ParticleSystemComponent, "effect", Shape::Asset, AssetType::ParticleEffect, Base::Assets);
         row(C::ParticleSystemComponent, "inlineEffect", Shape::ParticleEffect, AssetType::Unknown, Base::Assets);
@@ -634,6 +636,10 @@ namespace {
 
         eachComponent<PoseAnimatorComponent>(registry, only, visit, C::PoseAnimatorComponent, [&](PoseAnimatorComponent& animator) {
             if (visit.asset(animator.animation, componentRow(C::PoseAnimatorComponent, "animation"), "animation")) animator.needsLoad = true;
+        });
+
+        eachComponent<AnimatorComponent>(registry, only, visit, C::AnimatorComponent, [&](AnimatorComponent& animator) {
+            if (visit.asset(animator.controller, componentRow(C::AnimatorComponent, "controller"), "controller")) animator.needsLoad = true;
         });
 
         eachComponent<AnimationPlayerComponent>(registry, only, visit, C::AnimationPlayerComponent, [&](AnimationPlayerComponent& player) {

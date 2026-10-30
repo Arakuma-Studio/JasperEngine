@@ -8,6 +8,9 @@
 #include "asset/AssetRefSchema.h"
 #include "asset/ModelSubAssets.h"
 #include "asset/TextReferences.h"
+#include "animation/AnimatorAssetIO.h"
+#include "animation/ModelSubClips.h"
+#include "util/Util.h"
 
 #include "json.hpp"
 #include "particles/ParticleEffectCodec.h"
@@ -159,6 +162,7 @@ bool AssetIndex::isReferrerType(AssetType type, const std::string& relativePath)
         case AssetType::Scene: case AssetType::Prefab: case AssetType::Material:
         case AssetType::UIDocument: case AssetType::Stylesheet: case AssetType::Shader: case AssetType::Model:
         case AssetType::ParticleEffect:
+        case AssetType::AnimatorController: case AssetType::AnimationMontage:
             return true;
         case AssetType::Script:
             return indexExtension(relativePath) == ".lua";
@@ -300,6 +304,40 @@ std::vector<DepEdge> AssetIndex::extractFile(const AssetDatabase& database, cons
                     }
                     if (isValidDepEdge(edge)) edges.push_back(std::move(edge));
                 });
+                break;
+            }
+            case AssetType::AnimatorController:
+            case AssetType::AnimationMontage: {
+                // the clips its states, trees and montage play and the masks of its layers
+                // (assets-relative {path, guid}; a "<model>#<clip>" names its model)
+                std::string text;
+                if (!assetio::readFile(full, text)) break;
+                std::vector<std::pair<anim::AnimatorAssetRef, std::string>> refs;
+                if (type == AssetType::AnimatorController){
+                    anim::ControllerParseResult parsed = anim::parseController(text);
+                    if (parsed.ok) anim::visitControllerRefs(parsed.data, [&](anim::AnimatorAssetRef& ref, const std::string& field){ refs.push_back({ref, field}); });
+                }else{
+                    anim::MontageParseResult parsed = anim::parseMontage(text);
+                    if (parsed.ok) refs.push_back({parsed.data.clip, "clip"});
+                }
+                for (const auto& [ref, field] : refs){
+                    if (ref.path.empty()) continue;
+                    anim::SubClipReference subClip;
+                    const bool isSubClip = anim::parseSubClipReference(ref.path, subClip);
+                    DepEdge edge;
+                    edge.referrer = referrer;
+                    edge.kind = DepEdgeKind::Other;
+                    edge.field = field;
+                    edge.expected = isSubClip ? AssetType::Model :
+                                    (Util::isAvatarMaskFile(ref.path) ? AssetType::AvatarMask : AssetType::AnimationClip);
+                    edge.target = isSubClip ? Guid() : Guid::parse(ref.guid);
+                    edge.targetPath = toProjectRelative(roots, AssetPathBase::Assets, isSubClip ? subClip.model : ref.path);
+                    if (edge.target.isNull()) {
+                        const AssetDatabase::Resolution resolution = database.resolve(Guid(), edge.targetPath, edge.expected, false);
+                        if (resolution.found()) edge.target = resolution.guid;
+                    }
+                    if (isValidDepEdge(edge)) edges.push_back(std::move(edge));
+                }
                 break;
             }
             case AssetType::Model: {

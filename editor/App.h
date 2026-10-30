@@ -23,6 +23,7 @@
 #include "window/CodeEditor.h"
 #include "window/AnimationWindow.h"
 #include "window/PoseAnimationWindow.h"
+#include "window/AnimatorWindow.h"
 #include "window/TerrainEditWindow.h"
 #include "window/TextureSynthesisWindow.h"
 #include "window/PhysicsPlacementWindow.h"
@@ -226,6 +227,7 @@ namespace jasperengine::editor{
         ImageViewerWindow* imageViewerWindow;
         AnimationWindow* animationWindow;
         PoseAnimationWindow* poseAnimationWindow;
+        AnimatorWindow* animatorWindow;
         TerrainEditWindow* terrainEditWindow;
         TextureSynthesisWindow* textureSynthesisWindow;
         PhysicsPlacementWindow* physicsPlacementWindow;
@@ -569,6 +571,7 @@ namespace jasperengine::editor{
         ProjectWindow* getProjectWindow() const override;
         AnimationWindow* getAnimationWindow() const;
         PoseAnimationWindow* getPoseAnimationWindow() const;
+        AnimatorWindow* getAnimatorWindow() const { return animatorWindow; }
         HierarchyWindow* getHierarchyWindow() const;
         TerrainEditWindow* getTerrainEditWindow() const;
         SystemsWindow* getSystemsWindow() const;

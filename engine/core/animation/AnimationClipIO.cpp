@@ -3,6 +3,8 @@
 
 #include "AnimationClipIO.h"
 
+#include "animation/AnimatorAssetIO.h"
+
 #include "Engine.h"
 #include "json.hpp"
 
@@ -231,6 +233,99 @@ bool anim::wrapFromName(const std::string& name, ClipWrapMode& out){
         }
     }
     return false;
+}
+
+namespace{
+    struct TangentModeName{ ClipTangentMode mode; const char* name; };
+    const TangentModeName tangentModeNames[] = {
+        {ClipTangentMode::ClampedAuto, "clamped_auto"}, {ClipTangentMode::Auto, "auto"}, {ClipTangentMode::Free, "free"},
+        {ClipTangentMode::Linear, "linear"}, {ClipTangentMode::Constant, "constant"}, {ClipTangentMode::Flat, "flat"},
+        {ClipTangentMode::Broken, "broken"}
+    };
+}
+
+const char* anim::tangentModeName(ClipTangentMode mode){
+    for (const TangentModeName& entry : tangentModeNames){
+        if (entry.mode == mode) return entry.name;
+    }
+    return "";
+}
+
+bool anim::tangentModeFromName(const std::string& name, ClipTangentMode& out){
+    for (const TangentModeName& entry : tangentModeNames){
+        if (name == entry.name){
+            out = entry.mode;
+            return true;
+        }
+    }
+    return false;
+}
+
+void anim::applyTangentModes(ClipTrackData& track){
+    if (track.channel == ClipChannel::Property || track.keys.empty()) return;
+    bool any = false;
+    for (const ClipKey& key : track.keys) any = any || key.tangentMode != ClipTangentMode::None;
+    if (!any) return;
+    const size_t n = track.keys.size();
+    const bool rotation = track.channel == ClipChannel::Rotation;
+    std::vector<float> previous, next;
+    for (size_t k = 0; k < n; k++){
+        ClipKey& key = track.keys[k];
+        ClipTangentMode mode = key.tangentMode;
+        if ((mode == ClipTangentMode::None || mode == ClipTangentMode::Free || mode == ClipTangentMode::Broken) && key.hasTangents()) continue;
+        if (mode == ClipTangentMode::None) mode = ClipTangentMode::Linear;
+        if (mode == ClipTangentMode::Free || mode == ClipTangentMode::Broken) mode = ClipTangentMode::ClampedAuto;
+        const size_t width = key.value.size();
+        // the neighbours' values (a rotation's on this key's hemisphere: the curve is componentwise)
+        auto neighbour = [&](size_t index, std::vector<float>& out){
+            out = track.keys[index].value;
+            out.resize(width, 0.0f);
+            if (rotation){
+                float dot = 0.0f;
+                for (size_t c = 0; c < width; c++) dot += out[c] * key.value[c];
+                if (dot < 0.0f) for (float& v : out) v = -v;
+            }
+        };
+        const bool hasPrevious = k > 0;
+        const bool hasNext = k + 1 < n;
+        if (hasPrevious) neighbour(k - 1, previous);
+        if (hasNext) neighbour(k + 1, next);
+        const float dtPrevious = hasPrevious ? key.time - track.keys[k - 1].time : 0.0f;
+        const float dtNext = hasNext ? track.keys[k + 1].time - key.time : 0.0f;
+        key.inTangent.assign(width, 0.0f);
+        key.outTangent.assign(width, 0.0f);
+        for (size_t c = 0; c < width; c++){
+            const float slopeIn = hasPrevious && dtPrevious > 0.0f ? (key.value[c] - previous[c]) / dtPrevious : 0.0f;
+            const float slopeOut = hasNext && dtNext > 0.0f ? (next[c] - key.value[c]) / dtNext : 0.0f;
+            float in = 0.0f, out = 0.0f;
+            switch (mode){
+                case ClipTangentMode::Linear:
+                    in = hasPrevious ? slopeIn : slopeOut;
+                    out = hasNext ? slopeOut : slopeIn;
+                    break;
+                case ClipTangentMode::Auto:
+                case ClipTangentMode::ClampedAuto:
+                    if (hasPrevious && hasNext && dtPrevious + dtNext > 0.0f){
+                        float m = (next[c] - previous[c]) / (dtPrevious + dtNext);
+                        if (mode == ClipTangentMode::ClampedAuto){
+                            if (slopeIn * slopeOut <= 0.0f){
+                                m = 0.0f;
+                            }else{
+                                const float limit = 3.0f * std::min(std::fabs(slopeIn), std::fabs(slopeOut));
+                                m = std::max(-limit, std::min(limit, m));
+                            }
+                        }
+                        in = out = m;
+                    }
+                    break;
+                default:    // Flat, Constant
+                    break;
+            }
+            key.inTangent[c] = in;
+            key.outTangent[c] = out;
+        }
+        if (key.tangentMode == ClipTangentMode::Constant) key.ease = EaseType::STEP;
+    }
 }
 
 const char* anim::easeName(EaseType ease){
@@ -512,7 +607,9 @@ namespace{
             if (key.ease == EaseType::CUSTOM){
                 key.ease = EaseType::LINEAR;
             }
-            if (key.hasTangents() && key.ease != EaseType::LINEAR){
+            // a Constant key's step stays: its segment holds the key's value (S21 R27)
+            if (key.tangentMode == ClipTangentMode::Constant) key.ease = EaseType::STEP;
+            if (key.hasTangents() && key.ease != EaseType::LINEAR && key.tangentMode != ClipTangentMode::Constant){
                 warn(warnings, member(keyPath, "ease"), "tangents win over the ease: ease ignored");
                 key.ease = EaseType::LINEAR;
             }
@@ -598,8 +695,8 @@ namespace{
             }
             key.inTangent = k > 0 ? before : after;
             key.outTangent = k + 1 < track.keys.size() ? after : before;
-            // tangents win over the ease
-            if (key.ease != EaseType::LINEAR){
+            // tangents win over the ease (a Constant key's step stays)
+            if (key.ease != EaseType::LINEAR && key.tangentMode != ClipTangentMode::Constant){
                 warn(warnings, member(origin.keys[k], "ease"), "ignored: the track uses tangents");
                 key.ease = EaseType::LINEAR;
             }
@@ -746,6 +843,8 @@ namespace{
                 enforceHemisphere(track);
             }
 
+            // the keys' tangent modes (the editor's): computed tangents follow the keys
+            anim::applyTangentModes(track);
             completeTangents(track, origin, warnings);
         }
         data.tracks = std::move(tracks);
@@ -893,6 +992,7 @@ namespace{
         ParsedValue in;
         ParsedValue out;
         bool tangents = false;
+        ClipTangentMode tangentMode = ClipTangentMode::None;
         size_t origin = 0;
     };
 
@@ -930,6 +1030,11 @@ namespace{
                 else if (name == "ease") ease = &*it;
                 else if (name == "in") in = &*it;
                 else if (name == "out") out = &*it;
+                else if (name == "tangent_mode"){
+                    if (!it->is_string() || !anim::tangentModeFromName(it->get<std::string>(), key.tangentMode)){
+                        warn(&warnings, member(path, "tangent_mode"), "expected clamped_auto, auto, free, linear, constant, flat or broken: ignored");
+                    }
+                }
                 else warn(&warnings, member(path, name.c_str()), "unknown key ignored");
             }
             if (!value){
@@ -1088,6 +1193,7 @@ namespace{
             ClipKey out;
             out.time = key.time;
             out.ease = key.ease;
+            out.tangentMode = key.tangentMode;
             out.value = std::move(key.value.values);
             if (key.tangents){
                 out.inTangent = std::move(key.in.values);
@@ -1270,7 +1376,9 @@ namespace{
         if (key.hasTangents()){
             std::string text = "{\"time\": " + timeNumber(key.time) + ", \"value\": " + valueText(track, key.value);
             if (key.ease != EaseType::LINEAR) text += std::string(", \"ease\": ") + quote(anim::easeName(key.ease));
-            return text + ", \"in\": " + valueText(track, key.inTangent) + ", \"out\": " + valueText(track, key.outTangent) + "}";
+            text += ", \"in\": " + valueText(track, key.inTangent) + ", \"out\": " + valueText(track, key.outTangent);
+            if (key.tangentMode != ClipTangentMode::None) text += std::string(", \"tangent_mode\": ") + quote(anim::tangentModeName(key.tangentMode));
+            return text + "}";
         }
         std::string text = "[" + timeNumber(key.time) + ", " + valueText(track, key.value);
         if (key.ease != EaseType::LINEAR) text += std::string(", ") + quote(anim::easeName(key.ease));
@@ -1489,7 +1597,8 @@ static anim::ClipParseResult parseClipText(const std::string& text){
             data.source = source;
         }else{
             data.unknownKeys.push_back({name, value.dump(-1, ' ', false, OJson::error_handler_t::replace)});
-            unknownNames += (unknownNames.empty() ? "" : ", ") + name;
+            // the Animator's members (root_motion, editor: S21) are kept without a warning
+            if (!isClipExtensionKey(name)) unknownNames += (unknownNames.empty() ? "" : ", ") + name;
         }
     }
     if (!unknownNames.empty()){

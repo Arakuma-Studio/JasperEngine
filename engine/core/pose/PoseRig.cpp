@@ -382,6 +382,17 @@ namespace jasperengine::pose {
         angles[2] = static_cast<float>(info.dofs[2].sign * wrapDegrees(radToDeg(t)));
     }
 
+    void PoseRig::slotFrame(HumanBone bone, Quaternion& left, Quaternion& neutral) const{
+        if (!has(bone)){
+            left = Quaternion();
+            neutral = Quaternion();
+            return;
+        }
+        const Slot& slot = slots[slotIndex(bone)];
+        left = slot.left.normalized().toQuaternion();
+        neutral = slot.neutral.normalized().toQuaternion();
+    }
+
     Quaternion PoseRig::localFromAngles(HumanBone bone, const float angles[DOFS_PER_BONE]) const{
         if (!has(bone)){
             return Quaternion();

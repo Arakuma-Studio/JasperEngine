@@ -21,6 +21,7 @@ namespace jasperengine::editor {
         UIDocument,
         PoseAnimator,
         AnimationPlayer,
+        Animator,
         Physics2D,
         Physics3D
     };
