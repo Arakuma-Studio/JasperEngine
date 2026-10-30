@@ -3012,6 +3012,8 @@ void editor::App::engineViewLoaded(){
 void editor::App::loadStartupProject() {
     lastLoadingFrame = {};
     reportLoadingProgress("Loading project...");
+    // the Recorder in every mode (MCP record_game, `call` included)
+    setupRecorder();
 
     // a failed benchmark still runs one frame: the main loop exits on benchmarkExit, and
     // closing before the first frame would leave the render queue waiting on shutdown
@@ -3065,7 +3067,6 @@ void editor::App::loadStartupProject() {
     }
 
     setupProjectHub();
-    setupRecorder();
     // --project <dir>: that project, never the hub (a failed load keeps the old fallback)
     const hub::LaunchOptions& launch = hub::launchOptions();
     if (!launch.project.empty()) {

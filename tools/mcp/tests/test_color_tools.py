@@ -27,6 +27,7 @@ async def setup(ed: Editor) -> dict:
     S["scene"] = made["scene"]["id"]
     S["lamp"] = (await ed.call("create_entity", scene=S["scene"], type="point_light", name="Lamp"))["entity_id"]
     S["cube"] = (await ed.call("create_entity", scene=S["scene"], type="cube", name="Cube"))["entity_id"]
+    await ed.call("save_project")   # the project's swatch libraries need its folder
     return S
 
 
@@ -42,13 +43,14 @@ def near(a, b, tol=1e-4) -> bool:
 
 async def test_set_color_forms(ed: Editor):
     await setup(ed)
-    # "#FF8000" is sRGB: the light's colour is linear, so it stores (1, 0.2159, 0)
+    # "#FF8000" is sRGB: the light's colour is linear, so it stores (1, 0.2195, 0) (the engine's
+    # sRGB transfer is the 2.2 power, util/Color.h: S27 D10)
     await ed.call("set_properties", scene=S["scene"], entity=S["lamp"], values={"light": {"color": "#FF8000"}})
     color = await value_of(ed, S["lamp"], "light", "color")
-    ed.check(near(color, [1.0, 0.21586, 0.0]), f"#FF8000 on a linear field: {color}")
+    ed.check(near(color, [1.0, (128 / 255) ** 2.2, 0.0]), f"#FF8000 on a linear field: {color}")
     # {srgb} says the same; {linear} is stored as given
     await ed.call("set_properties", scene=S["scene"], entity=S["lamp"], values={"light": {"color": {"srgb": [0.5, 0.5, 0.5]}}})
-    ed.check(near(await value_of(ed, S["lamp"], "light", "color"), [0.21404, 0.21404, 0.21404]), "srgb 0.5 is linear 0.214")
+    ed.check(near(await value_of(ed, S["lamp"], "light", "color"), [0.5 ** 2.2] * 3), "srgb 0.5 is linear 0.2176")
     await ed.call("set_properties", scene=S["scene"], entity=S["lamp"], values={"light": {"color": {"linear": [0.25, 0.5, 0.75]}}})
     ed.check(near(await value_of(ed, S["lamp"], "light", "color"), [0.25, 0.5, 0.75]), "linear stored unchanged")
     # a plain vector is the field's own space, unchanged
@@ -57,7 +59,7 @@ async def test_set_color_forms(ed: Editor):
     # intensity: HDR fields only (the material's emission), 2^stops
     emission = "submeshes[0].material.emissiveFactor"
     await ed.call("set_properties", scene=S["scene"], entity=S["cube"], values={"mesh": {emission: {"hex": "#FF8000", "intensity": 2}}})
-    ed.check(near(await value_of(ed, S["cube"], "mesh", emission), [4.0, 0.86344, 0.0], 1e-3), "emission x 2^2")
+    ed.check(near(await value_of(ed, S["cube"], "mesh", emission), [4.0, 4 * (128 / 255) ** 2.2, 0.0], 1e-3), "emission x 2^2")
     await ed.check_error("set_properties", {"scene": S["scene"], "entity": S["lamp"],
                                             "values": {"light": {"color": {"hex": "#FF8000", "intensity": 1}}}},
                          contains="intensity")
@@ -115,7 +117,7 @@ async def test_edit_swatches(ed: Editor):
     data = json.loads(files[0].read_text())
     ed.check_eq(data["name"], "Level Art")
     ed.check_eq([s["name"] for s in data["swatches"]], ["Sky", "Lava"])
-    ed.check(near(data["swatches"][0]["linear"], [0.05127, 0.21586, 1.0, 1.0], 1e-3), f"Sky stored linear: {data['swatches'][0]}")
+    ed.check(near(data["swatches"][0]["linear"], [(64 / 255) ** 2.2, (128 / 255) ** 2.2, 1.0, 1.0], 1e-3), f"Sky stored linear: {data['swatches'][0]}")
     ed.check(data["swatches"][1]["hdr"] is True, "an HDR swatch says so")
     await ed.call("edit_swatches", action="remove", scope="project", library="Level Art", index=0)
     data = json.loads(files[0].read_text())
