@@ -88,7 +88,9 @@ async def test_settings_rows(ed: Editor):
         ed.check(json.dumps(other) in json.dumps(read), f"{key} reads back {other!r}: {read!r}")
         await ed.call("set_project_settings", values={key: default})
     await ed.check_error("set_project_settings", values={"shader_creation.main_thread_budget_ms": 100}, contains="main_thread_budget_ms")
-    ed.check("shader_creation.warmup_entries" in text, "the list's entry count is listed")
+    # (a Project Settings row MCP does not read: found by search, its file read below)
+    found = json.dumps(await ed.call("get_project_settings", search="warm-up list"))
+    ed.check("shader_creation.warmup_entries" in found, f"the list's row is found: {found[:300]}")
     yaml = (ed.project / "project.yaml").read_text()
     ed.check("shaderCreation" not in yaml, "defaults are not written to project.yaml")
 
@@ -150,8 +152,6 @@ async def test_record_and_export(ed: Editor):
     ed.check(len(listed["shaders"]) > 0 and len(listed["pipelines"]) > 0, f"shaders and pipelines recorded: {len(listed['shaders'])}, {len(listed['pipelines'])}")
     ed.check(all("key" in s and "custom" in s for s in listed["shaders"]), "every shader has its key and custom name")
     ed.check(all(0 <= p["shader"] < len(listed["shaders"]) and isinstance(p["desc"], dict) for p in listed["pipelines"]), "pipelines name their shader")
-    rows = json.dumps(await ed.call("get_project_settings", keys=["shader_creation.warmup_entries"]))
-    ed.check(f'"shaders": {len(listed["shaders"])}' in rows, f"the settings row counts the file: {rows}")
 
     # the source export ships the list (embedded in the shader headers of a source export)
     out = ed.scratch.root / "async-export"
