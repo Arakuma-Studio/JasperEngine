@@ -745,10 +745,21 @@ public:
     draw time, which no creation API moves. Warm draws were meant for that on GL (deviation 6).
   - So R21 is met on Vulkan only and R22 nowhere on E. The GPU campaign measures both on GPU
     drivers (§8); the budgets in `tools/perf/bench-thresholds.json` stay as the spec sets them.
-- **Gate at the merged commit (oe-port b620283cd):** web build + browser gate PASS (G, A);
-  android build and the emulator render gate (lit3d, ui2d, htmlui with goldens) PASS (A);
-  ASan+UBSan on the S32 suites 67 + 15 tests clean (G); smoke, full units, Vulkan units and the
-  full MCP suite: see the final report.
+- **Gate at the merged commit (oe-port b620283cd, 0ece0d497 and test-only commits after):**
+  - builds: linux GL WERROR and Vulkan WERROR (G), web + browser gate PASS (A), android (A);
+  - units: GL full suite 2346 ran, 1 failed (AtomicFileBench.CacheWriteNearPlainWrite, an I/O
+    timing bench on the loaded G; passes re-run), editor 1381/1381; Vulkan S32 suites 66 ran,
+    1 failed (WaterWavesGpu: its one-off probe pass now creates its pipeline at once; 9/9 after);
+  - ASan+UBSan, S32 suites: 67 core + 15 editor tests, no report (G, before the BF7 merge);
+  - smoke GL, GLES3, Vulkan (G host): pass; Android emulator render gate (lit3d, ui2d, htmlui
+    with goldens): pass (A); xcode_sync_*.py --check: all pass;
+  - full MCP (MCP_SUITE=all, JASPER_SLOW_BUILD=1, G): 1041 passed, 9 failed, 2 skipped. 7 are
+    test_pose_runtime.py, which fails the same way without S32 (S30's runs); 2 are
+    test_reflection.py's resave/codegen of the 2D scene's soft particle points (now transparent
+    once loaded: goldens updated, the file re-run on its own). test_async_shaders.py: 5/5.
+- **For the GPU campaign (§8):** GL worker mode and warm draws on real drivers (Linux Mesa
+  radeonsi/iris, NVIDIA, Windows WGL, macOS, Android EGL); R21/R22 on GPU drivers; Metal and
+  D3D11 creation at runtime (they compile here only by reading: not built on the servers).
 - **Older notes:**
 
 - Spec written at oe-port 0c22d3b91 (branch `feat/s32-async-shaders`). The GL probe numbers in
