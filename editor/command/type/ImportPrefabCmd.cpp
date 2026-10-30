@@ -7,6 +7,7 @@
 #include "editor/Out.h"
 #include "Stream.h"
 #include "util/ProjectUtils.h"
+#include "util/WorldTransforms.h"
 
 using namespace jasperengine;
 
@@ -31,6 +32,8 @@ bool editor::ImportPrefabCmd::execute(){
     lastSelected = project->getSelectedEntities(sceneId);
 
     Scene* scene = sceneProject->scene;
+    // the instance's world values once it is in and placed (WorldTransforms.h)
+    WorldTransformScope worldTransforms(scene);
 
     // The prefab is the asset with this GUID: a redo after it was renamed finds it
     if (guid.empty()) {
