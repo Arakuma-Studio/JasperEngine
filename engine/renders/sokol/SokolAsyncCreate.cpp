@@ -1090,6 +1090,9 @@ namespace {
         for (auto& [id, job] : s.shaders){
             if (job->stage != Stage::Running)
                 continue;
+            // JASPER_ASYNC_SHADERS_DELAY_MS (tests) holds the driver's creations as the worker's
+            if (s.delayMs > 0 && !unlimited && msSince(job->start) < (double)s.delayMs)
+                continue;
             bool ready = false;
             if (job->path == Path::GlIssued){
                 if (s.mode == GpuCreationMode::GlParallel){
