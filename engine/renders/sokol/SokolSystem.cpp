@@ -3,6 +3,7 @@
 
 #include "render/RenderBackendTime.h"
 #include "SokolSystem.h"
+#include "SokolAsyncCreate.h"
 
 #include <algorithm>
 #include <atomic>
@@ -315,6 +316,9 @@ void SokolSystem::setup(){
 #endif
 
     SokolCmdQueue::start();
+
+    // shaders and pipelines created off the render thread from here on (spec S32)
+    SokolAsyncCreate::setup();
 }
 
 int SokolSystem::getResourcesInUse(int kind){
@@ -635,6 +639,9 @@ void SokolSystem::shutdown(){
     SokolCmdQueue::flush_commands();
     SokolCmdQueue::wait_for_flush();
     SokolCmdQueue::finish();
+    // creations end (or are cancelled) before the pipelines and shaders go
+    SokolAsyncCreate::shutdown();
+    SokolAsyncCreate::forgetWarmDraws();
     SokolPassPreview::destroy();
     SokolPipelineCache::clear();
     SokolTraceHub::uninstall();

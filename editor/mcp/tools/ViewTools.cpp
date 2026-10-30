@@ -24,6 +24,7 @@
 #include "mcp/McpActivityWindow.h"
 #include "render/SceneRender.h"
 #include "render/SceneRender2D.h"
+#include "render/SystemRender.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
@@ -672,10 +673,23 @@ void captureView(const CallPtr& call, const CaptureRequest& request, std::functi
         job->fail("No project is open.");
         return;
     }
-    if (request.view == "game") captureGame(job);
-    else if (request.view == "scene") captureScene(job);
-    else if (request.view == "editor") captureEditor(job);
-    else job->fail("view must be game, scene or editor.");
+    if (request.view != "game" && request.view != "scene" && request.view != "editor") {
+        job->fail("view must be game, scene or editor.");
+        return;
+    }
+    auto capture = [job]() {
+        if (job->req.view == "game") captureGame(job);
+        else if (job->req.view == "scene") captureScene(job);
+        else captureEditor(job);
+    };
+    // shaders and pipelines still being created off the render thread (spec S32) are not drawn
+    // yet: the image waits for them (up to 30 s), then shows what is there
+    if (SystemRender::isGpuCreationIdle()) {
+        capture();
+        return;
+    }
+    call->waitUntil([]() { return SystemRender::isGpuCreationIdle(); },
+                    std::min(job->remainingMs(), 30000), [capture](bool) { capture(); });
 }
 
 bool parseScreenshotOption(const Json& args, CaptureRequest& request, bool& wanted, std::string& error) {

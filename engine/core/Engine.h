@@ -154,6 +154,7 @@
 #endif
 
 #include "Export.h"
+#include "render/GpuCreation.h"
 #include "System.h"
 #include "util/FunctionSubscribe.h"
 #include "math/Rect.h"
@@ -676,6 +677,10 @@ namespace jasperengine {
         // of 2 in 2 - 32,768 keeps the default.
         static void setGpuResourceLimits(const GpuResourceLimits& limits);
         static const GpuResourceLimits& getGpuResourceLimits();
+        // How shaders and pipelines are created (spec S32); the generated game main calls it when
+        // the project's differ from the defaults. The mode applies when the view loads
+        static void setShaderCreationSettings(const ShaderCreationSettings& settings);
+        static const ShaderCreationSettings& getShaderCreationSettings();
 
         static void setFramebuffer(Framebuffer* framebuffer);
         static Framebuffer* getFramebuffer();

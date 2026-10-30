@@ -2552,9 +2552,10 @@ namespace jasperengine{
 		// shadows, scene depth programs): a loaded mesh keeps drawing its variant until the new
 		// one's shaders are built (meshVariantShadersReady), then reloads in that update, so a
 		// runtime compile shows no gap; with precompiled shaders it reloads in the same update
-		// as needReloadMeshes does
+		// as needReloadMeshes does. Once they are built, the loaded objects make their pipelines
+		// on the new variants and warm them (spec S32 R4, R8), and the reload waits for those too
 		void needReloadMeshVariants();
-		bool meshVariantShadersReady(Entity entity, const MeshComponent& mesh, const InstancedMeshComponent* instmesh, const TerrainComponent* terrain);
+		bool meshVariantShadersReady(Entity entity, MeshComponent& mesh, const InstancedMeshComponent* instmesh, const TerrainComponent* terrain);
 		void needReloadPostProcess();
 		void needUpdatePostProcessUniforms();
 		// the scene's PostProcessingSettings changed (Scene::setPostProcessing)

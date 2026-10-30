@@ -10,6 +10,7 @@
 #include "VulkanContext.h"
 #else
 #include <GL/glx.h>
+#include "GlxWorkerContext.h"
 #endif
 #include <X11/Xutil.h>
 
@@ -82,7 +83,7 @@ bool createGraphicsContext(){
         return false;
     }
 
-    const int attributes[] = {
+    static const int attributes[] = {
         GLX_CONTEXT_MAJOR_VERSION_ARB, 4,
         GLX_CONTEXT_MINOR_VERSION_ARB, 1,
         GLX_CONTEXT_PROFILE_MASK_ARB, GLX_CONTEXT_CORE_PROFILE_BIT_ARB,
@@ -110,10 +111,15 @@ bool createGraphicsContext(){
     }
     const GLubyte* renderer = glGetString(GL_RENDERER);
     rendererName = renderer ? reinterpret_cast<const char*>(renderer) : "";
+    // as the player: the shader creation thread's context (spec S32)
+    setGpuWorkerContextFactory([](){
+        return GlxWorkerContext::create(WindowLinux::display(), framebufferConfig, glContext, attributes);
+    });
     return true;
 }
 
 void destroyGraphicsContext(){
+    setGpuWorkerContextFactory(nullptr);
     Display* display = WindowLinux::display();
     if (glContext && display){
         glXMakeCurrent(display, None, nullptr);

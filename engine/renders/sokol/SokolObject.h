@@ -14,7 +14,8 @@
 #include "sokol_gfx.h"
 
 #include <map>
-#include <memory>
+#include <utility>
+#include <vector>
 
 
 namespace jasperengine{
@@ -45,10 +46,6 @@ namespace jasperengine{
         // the pipeline types (PipelineType), by bit index
         static constexpr int PIPELINE_TYPES = 16;
         sg_pipeline pipelines[PIPELINE_TYPES];
-        // Pipelines are shared by every object loaded with the same description (thousands of
-        // meshes of one model and material draw with one): held here, copies hold them too,
-        // destroyed with their last holder
-        std::shared_ptr<void> pipelineRefs[PIPELINE_TYPES];
 
         sg_pipeline_desc pipeline_desc;
 
@@ -63,6 +60,28 @@ namespace jasperengine{
         sg_pipeline lastDynamicPipeline;
         uint32_t lastDynamicGeneration;
 
+        // GL warm draws (spec S32): per pipeline type, the pipeline confirmed warm with this
+        // object's bindings and the warm draw requested for it; the dynamic path's the same per
+        // pipeline. A draw waits for its warm draw (beginDraw is false until then)
+        // created at once and never waiting for a warm draw (ObjectRender::setImmediatePipelines)
+        bool immediatePipelines = false;
+        // the last beginDraw drew nothing because its pipeline (or shader) is still being created
+        // or warmed, not because it failed: the object needs no reload (isDrawWaiting)
+        bool drawWaiting = false;
+        // the pipelines made ahead for another variant of the shader (prewarmWith), per type
+        struct Prewarmed {
+            uint32_t shader;
+            int index;
+            sg_pipeline pipeline;
+        };
+        std::vector<Prewarmed> prewarmed;
+        uint32_t warmedPipeline[PIPELINE_TYPES];
+        uint64_t warmKey[PIPELINE_TYPES];
+        std::vector<std::pair<uint32_t, uint64_t>> dynamicWarm;
+        bool isWarm(sg_pipeline pipeline, uint32_t& warmed, uint64_t& key);
+        bool isDynamicWarm(sg_pipeline pipeline);
+        void resetWarm();
+
         // the render state endLoad built the pipelines with, so a variant can be rebuilt from pipeline_desc
         RenderState loadState;
         // the sample count of the PIP_MSAA* pipelines (endLoad's)
@@ -72,7 +91,6 @@ namespace jasperengine{
         // Editor-only variants of the pipelines that cull no face, one per pipeline type,
         // created on the first draw that asks for one and destroyed with the others
         sg_pipeline noCullPipelines[PIPELINE_TYPES];
-        std::shared_ptr<void> noCullRefs[PIPELINE_TYPES];
         // types whose pipeline already culls nothing, by bit index
         uint16_t noCullSame;
 #endif
@@ -136,6 +154,12 @@ namespace jasperengine{
         void addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture);
         void addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture, TextureRender* samplerOf);
         void setBlendState(const BlendState& state);
+        void setImmediatePipelines(bool immediate);
+        bool isReady() const;
+        uint32_t getPipelineId(PipelineType pipType) const;
+        bool prewarmWith(ShaderRender* shader);
+        bool isDrawWaiting() const;
+        static uint32_t getWaitingDrawCount();
         bool endLoad(uint16_t pipelines, const RenderState& state, int msaaSamples = 1);
         // records shader, vertex layout and index type for beginDraw(PipelineState); creates no pipeline
         bool endLoadDynamic(PrimitiveType primitiveType, IndexType indexType);

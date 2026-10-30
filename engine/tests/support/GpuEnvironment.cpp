@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 #include "GpuEnvironment.h"
+#include "render/SystemRender.h"
 
 #include "HeadlessContext.h"
 #include "TestSystem.h"
 
 #include "pool/ShaderPool.h"
 
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 
@@ -97,9 +99,15 @@ void GpuEnvironment::setView(int screenWidth, int screenHeight, int canvasWidth,
 }
 
 bool GpuEnvironment::runFrames(std::function<bool()> ready, int maxFrames){
-    for (int i = 0; i < maxFrames; i++){
+    // frames of a small scene are short: variants compiled and created off the render thread
+    // (spec S32) get at least a minute whatever the frame count
+    const auto start = std::chrono::steady_clock::now();
+    const auto minimum = std::chrono::seconds(60);
+    for (int i = 0; i < maxFrames || std::chrono::steady_clock::now() - start < minimum; i++){
         Engine::systemDraw();
-        if (!ready || ready()){
+        // and nothing still being created off the render thread (spec S32): what is pending
+        // is not drawn yet
+        if ((!ready || ready()) && SystemRender::isGpuCreationIdle()){
             drawFrames(2);
             return true;
         }

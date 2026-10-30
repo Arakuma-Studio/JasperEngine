@@ -1,5 +1,5 @@
 {
-  "_comment": "Budgets of je-bench-jobs and je-bench-memory (docs/specs/S06-jobs-memory.md R23-R26), je-bench-diag (S28 R26), je-bench-particles (docs/specs/S20-particles.md R20-R26, AC10-AC12), je-bench-nav (docs/specs/S19-navigation.md R25-R30: the desktop budgets + 10 % for the timing server, gated on the median of runs) and je-bench-splines (docs/specs/S18-splines.md R18-R21, AC16), measured with min(8, hardware threads - 2) workers on the build server's Linux x64 Release build. check_bench.py fails on a miss. je-bench-picking: docs/specs/S26-scene-view.md R28-R31, measured on the benchmark server E. je-bench-anim: docs/specs/S21-animation.md R19-R20 (AC12), measured on the benchmark server E with --workers 3 --count-allocs (docs/perf/animator.md).",
+  "_comment": "Budgets of je-bench-jobs and je-bench-memory (docs/specs/S06-jobs-memory.md R23-R26), je-bench-diag (S28 R26), je-bench-particles (docs/specs/S20-particles.md R20-R26, AC10-AC12), je-bench-nav (docs/specs/S19-navigation.md R25-R30: the desktop budgets + 10 % for the timing server, gated on the median of runs) and je-bench-splines (docs/specs/S18-splines.md R18-R21, AC16), measured with min(8, hardware threads - 2) workers on the build server's Linux x64 Release build. check_bench.py fails on a miss. je-bench-picking: docs/specs/S26-scene-view.md R28-R31, measured on the benchmark server E. je-bench-anim: docs/specs/S21-animation.md R19-R20 (AC12), measured on the benchmark server E with --workers 3 --count-allocs (docs/perf/animator.md). async-shaders: docs/specs/S32-async-shaders.md R21-R22 (tools/perf/async_shaders_bench.py on E, median of 5 runs).",
   "je-bench-jobs": {
     "submit_throughput_jobs_per_s": {"min": 3000000, "spec": "R23 empty-job submit+execute from one producer"},
     "parallel_for_dispatch_ns": {"max": 150, "spec": "R23 parallelFor of 1 unit, 0 helpers"},
@@ -103,5 +103,9 @@
     "micro_sample65_us": {"max": 2.2, "spec": "R20 one 65-bone clip sample, median"},
     "micro_state_machine_update_us": {"max": 1.1, "spec": "R20 a state-machine update, 20 states and 60 transitions, median"},
     "micro_instance_state_bytes": {"max": 8192, "spec": "R20 an Animator's runtime state (AnimatorInstance::runtimeStateBytes)"}
+  },
+  "async-shaders": {
+    "max_main_ms": {"max": 4.0, "spec": "S32 R21: the render thread's creation work (GPU create scopes) in the worst frame of the lobe toggles"},
+    "worst_frame_ratio": {"max": 2.0, "spec": "S32 R22: the worst frame of the toggles over the idle median frame"}
   }
 }

@@ -157,6 +157,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("assets.scenesInBuild", "Scenes in Build...", AppMenuCommand::ProjectScenes);
     b.menu("assets.prefabs", "Prefabs...", AppMenuCommand::ProjectPrefabs);
     b.menu("assets.emptyTrash", "Empty Trash...", AppMenuCommand::ClearTrash).agentSafe = false;
+    b.add("assets.clearShaderWarmup", "Clear Shader Warm-up List", C::Editor).description =
+        "Empty the project's shader warm-up list (ShaderWarmup.json): Record During Play builds it again";
     // S29: the Project window's selected files; Commit... opens the Commit window either way
     b.menu("assets.vcs.commit", "Commit...", AppMenuCommand::VcsCommit).description = "Version control: commit changed files (the Commit window)";
     b.menu("assets.vcs.revert", "Revert...", AppMenuCommand::VcsRevert).description = "Version control: discard the selected files' changes (undoable)";

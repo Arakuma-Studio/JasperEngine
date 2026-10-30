@@ -10,6 +10,9 @@
 #include "SokolCmdQueue.h"
 #include "profiler/GpuMemory.h"
 #include "SokolSystem.h"
+#include "SokolPassPreview.h"
+#include "SokolAsyncCreate.h"
+#include "SokolPipelineCache.h"
 
 using namespace jasperengine;
 
@@ -87,10 +90,11 @@ void SokolCmdQueue::execute_commands()
 				sg_init_sampler(command.make_sampler.sampler, command.make_sampler.desc);
 				break;
 			case SokolRenderCommand::TYPE::MAKE_SHADER:
-				sg_init_shader(command.make_shader.shader, command.make_shader.desc);
+				// created off the render thread where the backend allows (spec S32)
+				SokolAsyncCreate::initShader(command.make_shader.shader, command.make_shader.desc);
 				break;
 			case SokolRenderCommand::TYPE::MAKE_PIPELINE:
-				sg_init_pipeline(command.make_pipeline.pipeline, command.make_pipeline.desc);
+				SokolAsyncCreate::initPipeline(command.make_pipeline.pipeline, command.make_pipeline.desc);
 				break;
 			case SokolRenderCommand::TYPE::MAKE_VIEW:
 				sg_init_view(command.make_view.view, command.make_view.desc);
@@ -105,10 +109,11 @@ void SokolCmdQueue::execute_commands()
 				sg_uninit_sampler(command.destroy_sampler.sampler);
 				break;
 			case SokolRenderCommand::TYPE::DESTROY_SHADER:
-				sg_uninit_shader(command.destroy_shader.shader);
+				// the whole destroy (a pending one's waits for its creation): no deferred dealloc
+				SokolAsyncCreate::destroyShader(command.destroy_shader.shader);
 				break;
 			case SokolRenderCommand::TYPE::DESTROY_PIPELINE:
-				sg_uninit_pipeline(command.destroy_pipeline.pipeline);
+				SokolAsyncCreate::destroyPipeline(command.destroy_pipeline.pipeline);
 				break;
 			case SokolRenderCommand::TYPE::DESTROY_VIEW:
 				sg_uninit_view(command.destroy_view.view);
@@ -169,10 +174,10 @@ void SokolCmdQueue::wait_for_flush()
 					sg_uninit_sampler(command.destroy_sampler.sampler);
 					break;
 				case SokolRenderCommand::TYPE::DESTROY_SHADER:
-					sg_uninit_shader(command.destroy_shader.shader);
+					SokolAsyncCreate::destroyShader(command.destroy_shader.shader);
 					break;
 				case SokolRenderCommand::TYPE::DESTROY_PIPELINE:
-					sg_uninit_pipeline(command.destroy_pipeline.pipeline);
+					SokolAsyncCreate::destroyPipeline(command.destroy_pipeline.pipeline);
 					break;
 				case SokolRenderCommand::TYPE::DESTROY_VIEW:
 					sg_uninit_view(command.destroy_view.view);
@@ -301,8 +306,6 @@ void SokolCmdQueue::add_command_destroy_shader(sg_shader shader)
 	SokolRenderCommand& command = m_commands[m_pending_commands_index].emplace_back(SokolRenderCommand::TYPE::DESTROY_SHADER);
 
 	command.destroy_shader.shader = shader;
-
-	schedule_cleanup(dealloc_shader_cb, (void*)(uintptr_t)command.destroy_shader.shader.id);
 }
 
 void SokolCmdQueue::add_command_destroy_pipeline(sg_pipeline pipeline)
@@ -310,8 +313,6 @@ void SokolCmdQueue::add_command_destroy_pipeline(sg_pipeline pipeline)
 	SokolRenderCommand& command = m_commands[m_pending_commands_index].emplace_back(SokolRenderCommand::TYPE::DESTROY_PIPELINE);
 
 	command.destroy_pipeline.pipeline = pipeline;
-
-	schedule_cleanup(dealloc_pipeline_cb, (void*)(uintptr_t)command.destroy_pipeline.pipeline.id);
 }
 
 void SokolCmdQueue::add_command_destroy_view(sg_view view)

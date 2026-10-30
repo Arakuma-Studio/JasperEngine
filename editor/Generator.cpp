@@ -2223,7 +2223,7 @@ bool editor::Generator::hasSceneSource(uint32_t sceneId, const std::string& scen
     return std::getline(file, header) && header == Factory::sceneSourceHeader;
 }
 
-void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples, const ThreadingProjectSettings& threading, const HtmlUiRenderSettings& htmlUiRender, PbrTier mobilePbrTier){
+void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples, const ThreadingProjectSettings& threading, const HtmlUiRenderSettings& htmlUiRender, PbrTier mobilePbrTier, const ShaderCreationProjectSettings& shaderCreation){
     const fs::path generatedPath = getGeneratedPath(projectInternalPath);
 
     // The editor used to emit a GLFW application host into every project. It is
@@ -2418,6 +2418,18 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
         mainContent += "        threading.ioThreads = " + std::to_string(threading.ioThreads) + ";\n";
         mainContent += "        threading.webPumpBudgetMs = " + Factory::formatFloat(threading.webPumpBudgetMs) + ";\n";
         mainContent += "        Engine::setThreadingSettings(threading);\n";
+        mainContent += "    }\n";
+    }
+    // Shader Creation (spec S32): applied when the view loads, which comes after main
+    const ShaderCreationSettings shaderCreationEngine = shaderCreation.engineSettings();
+    if (shaderCreationEngine != ShaderCreationSettings()) {
+        mainContent += "    {\n";
+        mainContent += "        ShaderCreationSettings shaderCreation;\n";
+        mainContent += std::string("        shaderCreation.asyncCreation = ") + (shaderCreationEngine.asyncCreation ? "true" : "false") + ";\n";
+        mainContent += "        shaderCreation.mainThreadBudgetMs = " + Factory::formatFloat(shaderCreationEngine.mainThreadBudgetMs) + ";\n";
+        mainContent += std::string("        shaderCreation.glWarmDraws = ") + (shaderCreationEngine.glWarmDraws ? "true" : "false") + ";\n";
+        mainContent += std::string("        shaderCreation.holdFirstSceneForWarmup = ") + (shaderCreationEngine.holdFirstSceneForWarmup ? "true" : "false") + ";\n";
+        mainContent += "        Engine::setShaderCreationSettings(shaderCreation);\n";
         mainContent += "    }\n";
     }
     mainContent += "    Engine::setCanvasSize(" + std::to_string(canvasWidth) + ", " + std::to_string(canvasHeight) + ");\n";

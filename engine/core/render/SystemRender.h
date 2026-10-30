@@ -5,10 +5,12 @@
 #define SystemRender_h
 
 #include "Export.h"
+#include "GpuCreation.h"
 #include "RenderStats.h"
 #include "texture/TextureFormat.h"
 #include <stddef.h>
 #include <stdint.h>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -16,6 +18,7 @@ namespace jasperengine{
 
     class TextureRender;
     class FramebufferRender;
+    class ShaderRender;
 
     // what the device supports, queried once the render system is set up
     struct RenderFeatures {
@@ -157,6 +160,38 @@ namespace jasperengine{
         static PassPreviewResult getPassPreview();
         static TextureRender* getPassPreviewTexture();
         static FramebufferRender* getPassPreviewTarget();
+
+        // ---- asynchronous shader and pipeline creation (spec S32, SokolAsyncCreate)
+
+        // once a frame before the views draw (Engine::runFrame for a game, the editor's loop):
+        // finishes and publishes what is ready, within the frame's budget
+        static void updateGpuCreation();
+        static GpuCreationStats getGpuCreationStats();
+        static bool isGpuCreationIdle();
+        // updates until idle or the timeout (tests, the benchmark): true when idle
+        static bool waitGpuCreationIdle(double timeoutMs);
+        static void resetGpuCreationMax();
+        // applied at setup (the mode); the budget and warm draws also at once
+        static void setShaderCreationSettings(const ShaderCreationSettings& settings);
+        static const ShaderCreationSettings& getShaderCreationSettings();
+
+        // ---- the shader warm-up's pipelines (spec S32 R10-R12, ShaderWarmup)
+
+        // every pipeline created from now is reported: its shader (the backend handle id) and its
+        // description as backend-neutral JSON (SokolPipelineRecord). Any thread; null stops it
+        static void setPipelineRecorder(std::function<void(uint32_t shaderId, const std::string& record)> recorder);
+        // the pipeline of a record on `shader` (created, or found, in the intern table) held until
+        // releaseWarmPipeline; false with *error for a record that does not parse. A record from the
+        // other backend family (GL against the rest) also warms the other winding of an offscreen
+        // target: GL flips it (SokolObject::makePipelineDesc)
+        // The handles held are appended to `held` (each released with releaseWarmPipeline)
+        static bool warmPipeline(ShaderRender* shader, const std::string& record, bool otherFamily, std::vector<uint32_t>& held,
+                                 std::string* error = nullptr);
+        // created (VALID) or failed: nothing more to wait for
+        static bool isPipelineSettled(uint32_t pipeline);
+        static void releaseWarmPipeline(uint32_t pipeline);
+        // the backend handle id of a shader (0 when it has none)
+        static uint32_t getShaderHandleId(ShaderRender* shader);
 
         static void scheduleCleanup(void (*cleanupFunc)(void* cleanupData), void* cleanupData, int32_t numFramesToDefer = 0);
         static void addQueueCommand(void (*custom_cb)(void* custom_data), void* custom_data);

@@ -7,6 +7,7 @@
 #include "EditorFrame.h"
 #include "GamepadDB.h"
 #include "WindowLinux.h"
+#include "GlxWorkerContext.h"
 #include "renderer/Renderer.h"
 
 #include "Engine.h"
@@ -2604,6 +2605,21 @@ editor::RendererPlatform rendererPlatform() {
             glContext = tryCreateContext(robustAttributes);
             glContextResetNotification = glContext != nullptr;
         }
+        // the attributes the worker context repeats (spec S32: GLX shares only between equal strategies)
+        static const int robustWorkerAttributes[] = {
+            GLX_CONTEXT_MAJOR_VERSION_ARB, 4,
+            GLX_CONTEXT_MINOR_VERSION_ARB, 1,
+            GLX_CONTEXT_PROFILE_MASK_ARB, GLX_CONTEXT_CORE_PROFILE_BIT_ARB,
+            GLX_CONTEXT_FLAGS_ARB, GLX_CONTEXT_ROBUST_ACCESS_BIT_ARB,
+            GLX_CONTEXT_RESET_NOTIFICATION_STRATEGY_ARB, GLX_LOSE_CONTEXT_ON_RESET_ARB,
+            None
+        };
+        static const int workerAttributes[] = {
+            GLX_CONTEXT_MAJOR_VERSION_ARB, 4,
+            GLX_CONTEXT_MINOR_VERSION_ARB, 1,
+            GLX_CONTEXT_PROFILE_MASK_ARB, GLX_CONTEXT_CORE_PROFILE_BIT_ARB,
+            None
+        };
         if (!glContext) {
             const int attributes[] = {
                 GLX_CONTEXT_MAJOR_VERSION_ARB, 4,
@@ -2626,9 +2642,15 @@ editor::RendererPlatform rendererPlatform() {
         }
         if (hasGlxExtension("GLX_EXT_swap_control"))
             swapIntervalEXT = glxProc<SwapIntervalProc>("glXSwapIntervalEXT");
+        // the engine's shader creation thread (spec S32), made when its render system starts
+        const int* shared = glContextResetNotification ? robustWorkerAttributes : workerAttributes;
+        jasperengine::setGpuWorkerContextFactory([shared]() {
+            return jasperengine::GlxWorkerContext::create(backend->display, framebufferConfig, glContext, shared);
+        });
         return true;
     };
     platform.destroyContext = []() {
+        jasperengine::setGpuWorkerContextFactory(nullptr);
         if (glContext) {
             glXMakeCurrent(backend->display, None, nullptr);
             glXDestroyContext(backend->display, glContext);

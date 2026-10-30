@@ -62,6 +62,30 @@ void ObjectRender::addTexture(std::pair<int, int> slot, ShaderStageType stage, T
     backend.addTexture(slot, stage, texture, samplerOf);
 }
 
+bool ObjectRender::isReady() const{
+    return backend.isReady();
+}
+
+bool ObjectRender::isDrawWaiting() const{
+    return backend.isDrawWaiting();
+}
+
+uint32_t ObjectRender::getWaitingDrawCount(){
+    return SokolObject::getWaitingDrawCount();
+}
+
+bool ObjectRender::prewarmWith(ShaderRender* shader){
+    return backend.prewarmWith(shader);
+}
+
+uint32_t ObjectRender::getPipelineId(PipelineType pipType) const{
+    return backend.getPipelineId(pipType);
+}
+
+void ObjectRender::setImmediatePipelines(bool immediate){
+    backend.setImmediatePipelines(immediate);
+}
+
 void ObjectRender::setBlendState(const BlendState& state){
     backend.setBlendState(state);
 }
