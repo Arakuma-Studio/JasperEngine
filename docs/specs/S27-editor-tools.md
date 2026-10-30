@@ -8,6 +8,31 @@ Wave 3. Owner area:
 - `editor/mcp/tools/EditorToolsTools.cpp` (new).
 - Lua bindings for the S21/S20 curve and gradient types.
 
+## 0. Re-check (oe-port `a57c7844d`, before implementing)
+
+This spec was written before S20, S21, S24, S25, S29, S31 and three upstream rounds landed. What
+the tree has now, and what S27 does with it. Where this section and §1–§9 disagree, this section
+wins; the rows are repeated in §10 Deviations where they change a requirement.
+
+| Spec assumption | What landed | S27 now |
+|---|---|---|
+| S21 D15 lands `engine/core/math/Curve.h` (weighted Bézier keys, per-side tangent modes, broken flag, five wraps) and `editor/widget/CurveEditor` (R6, R10) | S21 was re-scoped onto upstream's clips (S21 §0): **no D15, no `CurveEditor`**. "`math/Curve.h` (S20) stays the particle curve." S20's `Curve` is `std::vector<CurveKey{time, value, inTangent, outTangent}>`, cubic Hermite, held flat outside the keys, an infinite tangent is a step; helpers `constant(v)`, `linear(from,to)`, `polyline`, `easeInOut(t0,v0,t1,v1)`, `valueRange`, `derivative`. | S27 **extends S20's `Curve`** (no second type, no second evaluator): `CurveKey` gains a packed `mode` (in/out `TangentMode` Free/Auto/Linear/Constant/ClampedAuto + broken; 0 = Free/Free = tangents as stored, so every existing curve keeps its meaning), `Curve` gains `preWrapMode`/`postWrapMode` (`CurveWrapMode` Clamp/Loop/PingPong/Linear/LoopWithOffset; Clamp = today's held-flat) honoured by `evaluate`. Plus the R7 helpers and `using AnimationCurve = Curve`. **No weighted keys** (D1). S27 writes `editor/widget/CurveEditor` itself, for `Curve`. |
+| `Gradient` (S20 D5) stores linear keys | S20's `Gradient` stores **sRGB-encoded** colour keys and a `linear` flag (blend space); `evaluate` returns linear RGBA. ≤ 8 + 8 keys, Blend/Fixed. | Used as is; the gradient field and editor show and edit sRGB keys; R12's HDR Intensity per colour key is dropped (D2: the type holds 0–1 sRGB keys). |
+| `MinMaxCurve`/`MinMaxGradient` move into `Curve.h` (R6) | In `engine/core/particles/ParticleValues.h` (namespace `particles`), with particle driver/remap fields and `evaluate(input, random)` already. | Not moved (moving changes their namespace and they carry particle-only drivers, D3). Widgets and Lua use them where they are. |
+| S27 moves the curve encoding out of S21's AnimYaml into `editor/stream/CurveCodec` (R45) | No AnimYaml. The one curve/gradient encoding is S20's `ParticleEffectCodec` (anonymous `curveToJson`/`gradientToJson`): a curve is `[[t, v, in, out], …]` (`null` tangent = step), a gradient `{colorKeys:[[t,r,g,b]], alphaKeys:[[t,a]], mode?, linear?}` (sRGB). | That encoding is the one codec: S27 moves it into the engine as `engine/core/math/CurveJson.{h,cpp}` (the particle codec calls it), extends it backward-compatibly (a key gets an optional 5th element, the mode token; a curve with a non-Clamp wrap becomes `{keys, preWrapMode?, postWrapMode?}`), and `editor/stream/CurveCodec` maps it to YAML, MCP JSON and the Factory literal. `Constant` tangents stay `null` (∞), as `.particles` files already write (D4). |
+| Animation window gains R10's `CurveEditor` additions (R10, R14) | The Animation window's curves view is upstream's, over clip tracks (`AnimationWindowClipCurves`), with S21's `ClipTangentMode` (`tangent_mode` tokens `clampedAuto`, `auto`, `free`, `linear`, `constant`, `flat`, `broken`). | Out of S27: a different data model (clip tracks, quaternion tangents, per-segment eases). S27's tangent-mode tokens reuse S21's names (`tangentModeName`) for the shared modes (D5). |
+| Particle inspector interim previews (R14) | `editor/window/InspectorParticles.cpp`: previews + key tables, a five-preset menu, and `ImGui::ColorEdit` for gradient keys and colours; `ForceFieldComponent.falloff` is an `ops::Opaque<Curve>` S08 field. | Replaced by `MinMaxCurveField`/`MinMaxGradientField`/`CurveField`/`GradientField` (R14); `falloff` gets the real `curveOps`. |
+| Nine `ColorEdit` sites (R1, AC28) | **14 sites in 10 files**: `InspectorWindow.cpp` ×4 (rows + scene-property inputs), `InspectorParticles.cpp` ×2, `InspectorShaderLibrary.cpp`, `InspectorPostProcessing.cpp`, `InspectorFluid.cpp`, `TerrainEditWindow.cpp`, `NavigationWindow.cpp`, `dialog/ProjectSettingsWindow.cpp`, `dialog/EditorSettingsWindow.cpp` ×2. S08's `ColorLinear`/`ColorSRGB`/`Hdr` flags exist and drive `RowPropertyType::Color3L/Color4L`. | All 14 become `colorField`; AC28's grep covers every file. |
+| S24 `InteractiveEdit` (R3) | Landed: `CommandHistory::beginInteractive(name)` → `InteractiveEdit{commit, cancel}`; App's `beforeRecord` hook already merges one ImGui widget drag into one step (S24 R11), keyed on the active ImGui id. | The Color/Curve/Gradient windows hold one session-wide `InteractiveEdit`; the hook skips while one is open (otherwise each picker slider would split the step). |
+| S25 catalog/settings (R26, §8) | `shortcuts/DefaultCommands.cpp` + `AppMenuCommand`, `settings/SettingsRows.cpp` (SettingsRegistry), shortcut lint in `CommandCatalogTest`. F10 is free. | Commands `file.projectHub`, `file.saveProjectAsTemplate`, `window.recorder`, `window.colorPicker`, `recorder.toggle` (F10) and the settings `preferences.project_hub_at_startup`, swatch/curve library paths go there. |
+| S29 `ProcessExec` (R33) | Landed: `editor/vcs/ProcessExec.{h,cpp}` `runProcess` (argv only, absolute exe, process group / job object kill, cancel token, never on the main thread), `findExecutable`, and Preferences `vcs.gitPath`. | S27 adds `ProcessStream` (stdin writer, line callbacks, `wait`, `kill`) beside it on the same spawn code; Git import uses `findExecutable("git", {configured = gitPath})`. |
+| S31 tool groups and `call` (R42, R44) | Landed; the `editor_tools` group is already declared ("Colour picker, curve editor, project templates and movie recording"). BF8: the guide keeps ≥ 1,500 bytes free. | Tools go in `editor_tools` (core keeps `create_project`/`list_project_templates`/`import_project`); one guide line points to `jasper://docs/editor-tools`. |
+| FFmpeg via `VideoImporter::findFfmpeg` (R25) | Unchanged: `JASPER_FFMPEG`, Preferences > External Tools `ffmpeg_path`, PATH. | The recorder uses it and the user's FFmpeg executable over a pipe: no libav linked, no FFmpeg shipped, no GPL code in the engine or editor. |
+| Start-up, recent projects, zip (R15–R22) | Unchanged upstream: `App::loadStartupProject` still falls back to `createTempProject`; recents are a path list capped at 10. No hub, templates, recorder or zip reader exist (basisu's embedded miniz has no zip API). | Implemented as specified; miniz 3.0.2 (MIT) is vendored to `libs/miniz` from OpenEngine's `Engine/Source/ThirdParty/miniz` with its LICENSE and a `NOTICE.md` entry. |
+| Export/scan exclusions (R31) | Now 9 sites (`Exporter.cpp` ×5, `Project.cpp` ×3, `ProjectChecks.cpp`); S30 (in flight) also touches `Exporter.cpp`. | All go through `Project::isNonAssetTopLevelDir`. |
+| S28 crash handling | Editor crash recovery runs after a project loads. | Unaffected: the hub runs before any project load; recovery runs when the chosen project opens. |
+| S08 reflection | Every component is on tables; custom kinds use `TypeOps`. | `TweenComponent.curve` and `ForceFieldComponent.falloff` use `curveOps` (YAML, MCP JSON, schema, Factory literal) with round-trip tests. |
+
 ## 1. Goal
 
 This spec adds four editor tools that we lack today and that Unity users expect:
@@ -699,3 +724,29 @@ and `using AnimationCurve = Curve;`. `MinMaxCurve` must have
   invent a variant. *Default:* the integrator rejects a second curve or gradient type.
 - **Packed `mode` token grammar (R45).** S21 has not fixed a text form. *Default:* the grammar in
   R45. If S21's AnimYaml already chose another, that one wins and R45 follows it.
+
+## 10. Deviations
+
+1. **D1 No weighted keys.** S20's `Curve` (the shared type, §0) is unweighted Hermite, and no
+   `.particles` file or scene carries weights. Weighted Bézier keys would add a second evaluation
+   path to the particle LUT baker for a feature no consumer has. `inWeight`/`outWeight`, Lua
+   `weightedMode`/`WeightedMode` and the key menu's "Weighted" items are not implemented.
+2. **D2 Gradient keys are sRGB, LDR.** S20's `Gradient` stores sRGB-encoded 0–1 colour keys (its
+   `linear` flag picks the blend space). The gradient JSON stays S20's (sRGB), not R45's linear
+   form, and R12's per-key HDR Intensity is dropped: the type cannot hold it.
+3. **D3 `MinMaxCurve`/`MinMaxGradient` stay in `particles/ParticleValues.h`.** They carry the
+   particle drivers (`driver`, `driverMin/Max`, `wrap`) and live in namespace `particles`; moving
+   them would change their API. Their fields are S20's (`constant`, `constantMax`, `curve`,
+   `curveMax`, `multiplier`; `color`, `colorMax`, `gradient`, `gradientMax`), not §6.2's names.
+4. **D4 One codec is S20's JSON, extended.** Curves are `[[t, v, in, out(, mode)]]` with `null`
+   for an infinite (Constant / step) tangent, as `.particles` files already write; a curve with
+   a non-Clamp wrap is `{keys, preWrapMode, postWrapMode}`. The YAML form is the same structure.
+5. **D5 Tangent mode tokens** follow S21's `ClipTangentMode` names where they overlap: a key's
+   mode token is `clampedAuto`, `auto`, `free`, `linear` or `constant` when both sides agree and
+   it is not broken, else `in:<mode>,out:<mode>[,broken]`; Free/Free unbroken is omitted.
+6. **D6 The Animation window keeps its own curves view** (§0): R10's "so that the Animation
+   window gains them" and R14's third bullet are out of scope.
+
+## 11. Progress
+
+- [x] Re-check (§0) and deviations, committed before implementation.
