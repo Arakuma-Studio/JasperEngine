@@ -37,6 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import pngdiff  # noqa: E402  (tools/mcp/pngdiff.py)
 
 EDITOR = {"create": True, "name": "Lattice Bake"}
+CI = True
 TIMEOUT = 900
 
 S: dict = {}

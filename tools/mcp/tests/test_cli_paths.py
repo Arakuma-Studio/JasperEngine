@@ -24,6 +24,7 @@ from project_fixture import write_project
 
 
 TIMEOUT = 1800
+CI = True
 
 UNICODE_DIR = "games/My Game ü"
 SCENES = {"World.scene", "Overlay.scene"}

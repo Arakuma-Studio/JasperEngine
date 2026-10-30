@@ -9,6 +9,7 @@ from harness import Editor, find_key
 from shader_project import scene as project_scene, TEXTURE
 
 EDITOR = {"create": True}
+CI = True
 TIMEOUT = 900
 M = "submeshes[0].material."
 P = M + "extraPass."

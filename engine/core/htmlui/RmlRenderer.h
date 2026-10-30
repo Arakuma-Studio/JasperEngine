@@ -384,10 +384,13 @@ namespace jasperengine {
         Rml::TextureHandle createTextureVariant(Rml::TextureHandle base, const float textEffect[3], std::shared_ptr<uint64_t> drawFrame);
         // the glyph atlas textures this renderer made (tests)
         std::vector<const HtmlUITexture*> getAtlasTextures() const;
-        // the batched replay's gather (S16 R22, R23): CPU time of the last frame's gathering and
-        // upload, the bytes its chunks hold, the capacity of the gather pages (the stream and the
-        // run cache's ranges)
+        // the batched replay's gather (S16 R22, R23): CPU time of the last frame's gathering (the
+        // runs planned, their vertices packed into the gather pages), the driver's time for the
+        // pages' buffers (created, updated, released: a software driver waits there for the GPU
+        // work it does on the CPU), the bytes its chunks hold, the capacity of the gather pages
+        // (the stream and the run cache's ranges)
         double getLastGatherMs() const;
+        double getLastUploadMs() const;
         // tests: the next frame gathers every run again (the pages stay)
         void clearRunCacheForTesting();
         size_t getGatherLiveBytes() const;
@@ -819,6 +822,7 @@ namespace jasperengine {
         ClipParams clipScratch;
         bool batching = false;               // this frame replays batched
         double lastGatherMs = 0.0;
+        double lastUploadMs = 0.0;
         bool primitivesFrame = false;        // this frame draws SDF primitives and analytic clips (isSdfPrimitives)
         bool transformSet = false;           // RmlUi's current transform is not the identity (SetTransform)
         // a glyph atlas draw's translation on whole target pixels: the font engine places glyphs on

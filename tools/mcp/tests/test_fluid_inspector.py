@@ -37,6 +37,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from htmlui_pixels import decode_png  # noqa: E402
 
 EDITOR = {"xvfb": "harness", "create": True, "name": "Fluid Inspector", "ui_probe": True}
+CI_EXCLUDED = ("long-running (about 30 minutes: the Inspector's fluid preview drawn by the software renderer); "
+               "in the full suite (MCP_SUITE=all) on the build servers")
 TIMEOUT = 900
 
 KEY = "fluidsimulation"

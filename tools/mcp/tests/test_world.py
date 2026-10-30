@@ -4,6 +4,7 @@ from harness import Editor, ToolError
 import pngdiff
 
 EDITOR = {"create": True, "name": "World Contracts"}
+CI = True
 
 
 def image_file(ed: Editor, relative: str):

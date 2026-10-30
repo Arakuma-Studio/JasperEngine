@@ -932,8 +932,21 @@ bool postProcessingFieldFromJson(Project* project, const PostProcessingSettings:
                 return false;
             }
             if (field.type == FT::Asset) {
-                // a new path drops the GUID the old one had (it gets the file's on save)
-                *(AssetRef*)ref = stored;
+                // the file's GUID now, not at the next save: a rename or move of it before the
+                // scene is saved is followed. A file written a moment ago that no asset refresh
+                // has seen yet (the refresh is a Background walk) is imported first.
+                Guid guid;
+                AssetDatabase& database = project->getAssetDatabase();
+                if (!stored.empty() && database.isOpen()) {
+                    const fs::path full = project->resolveAssetPath(FileUtils::pathFromUtf8(stored));
+                    guid = database.getAssetGuid(full);
+                    std::error_code ec;
+                    if (guid.isNull() && fs::is_regular_file(full, ec)) {
+                        project->importPrefabFiles(full);
+                        guid = database.getAssetGuid(full);
+                    }
+                }
+                *(AssetRef*)ref = AssetRef(stored, guid);
             } else {
                 *(std::string*)ref = stored;
             }

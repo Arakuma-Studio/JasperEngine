@@ -19,6 +19,7 @@ from test_html_ui_checks import check, check_eq, fail, run_json, scratch_project
 from test_stubs import clangd_check, find_tool, lua_workspace, luals_check, wait_tooling  # noqa: E402
 
 EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
+CI = True
 
 TIMEOUT = 900
 

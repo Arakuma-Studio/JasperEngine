@@ -227,6 +227,9 @@ namespace jasperengine::editor {
         void setBackgroundHashing(bool enabled);
 
     private:
+        // One read, edit and write; *superseded: the file changed between the read and the write
+        static bool writeInFileIdentityOnce(const std::filesystem::path& fullPath, const Guid& guid, const std::vector<Guid>& formerGuids,
+                                            bool* superseded);
         struct Entry {
             std::string path;                 // project-relative, as on disk
             AssetType type = AssetType::Unknown;
@@ -316,6 +319,11 @@ namespace jasperengine::editor {
         bool readIdentity(const std::string& relative, AssetType type, Entry& entry, const Entry* cached) const;
         // Writes an entry's identity (in-file line or meta, keeping the meta's other sections)
         bool writeIdentity(const Entry& entry) const;
+        // The file's stamp after writeIdentity (`written`: it returned true). An in-file
+        // identity is read back: when the file no longer holds it (another program saved it
+        // right after the write), the stamp is left unknown so the next refresh reads it again
+        // instead of taking that save as identified.
+        void stampAfterIdentityWrite(Entry& entry, bool written) const;
         // Sub-assets of a model file matched against the ones it had (§6.4)
         bool refreshSubAssets(Entry& entry, const Entry* previous) const;
 

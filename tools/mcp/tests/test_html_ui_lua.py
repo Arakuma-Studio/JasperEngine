@@ -9,6 +9,7 @@ from pathlib import Path
 from harness import Editor, REPO
 
 EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
+CI = True
 
 TIMEOUT = 900
 

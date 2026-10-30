@@ -23,6 +23,7 @@ import harness
 from harness import Editor, REPO
 
 EDITOR = {"project": REPO / "tools" / "fixtures" / "pose-animation"}
+CI = True
 TIMEOUT = 1500
 
 BOB = "assets/anim/bob.anim"

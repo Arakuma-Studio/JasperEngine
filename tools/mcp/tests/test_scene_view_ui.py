@@ -24,6 +24,7 @@ from harness import Editor, skip
 # background mesh BVH builds stay pending 90 s (only meshes of 256+ triangles have one): what a
 # click and a drop do meanwhile is seen (R16, R33), also on a loaded host drawing a few frames a second
 EDITOR = {"xvfb": "harness", "create": True, "name": "Scene View UI", "env": {"JASPER_PICK_BUILD_DELAY_MS": "90000"}}
+CI = True
 TIMEOUT = 1200
 
 S: dict = {}

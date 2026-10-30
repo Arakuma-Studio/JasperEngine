@@ -288,7 +288,7 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
     // What to reload, by kind: external changes all; the editor's own writes only where
     // others read them (materials linked elsewhere, textures, HTML UI documents)
     std::map<std::string, std::vector<fs::path>> external, editorWritten;
-    std::vector<fs::path> openDocuments;
+    std::vector<fs::path> openDocuments, gone;
     for (const FileChange& change : changes) {
         const std::string relPath = relative(change.path);
         result.handled.push_back(change.path);
@@ -304,6 +304,8 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
             case FileChangeKind::Rescan: break;
         }
         if (change.directory) continue;
+        if (change.kind == FileChangeKind::Removed) gone.push_back(change.path);
+        if (change.kind == FileChangeKind::Moved) gone.push_back(change.oldPath);
         if (change.kind == FileChangeKind::Removed) {
             notify(change.path, reload::kindOf(change.path), Event::Dropped);
             // a removed HTML document is reported missing by its scene's documents
@@ -331,6 +333,12 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
             Record record;
             if (change.origin == ChangeOrigin::External && lastRecordOf(relPath, record)) {
                 result.reloaded.push_back({{"path", record.path}, {"kind", record.kind}, {"ms", std::round(record.ms)}});
+            }
+            // a clip's or pose animation's load problems as the file is now: the watcher's report
+            // of them goes stale when the asset scan writes the clip's GUID into it meanwhile (a
+            // Background job), and the reading is cheap
+            if (change.origin == ChangeOrigin::External && kind == "animation") {
+                reload::addAnimationFileProblems(*project, change.path, result.problems);
             }
             continue;
         }
@@ -388,6 +396,7 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
     }
     reload::reloadCodeEditorBuffers(ctx, code, options.full);
     reload::reloadScripts(ctx, scripts, options.full);
+    reload::removeScriptClasses(ctx, gone);
     reload::reloadMaterials(ctx, both("material"));
     reload::reloadShaders(ctx, files(external, "shader"));
     std::vector<fs::path> textures;
@@ -424,6 +433,11 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
     const bool anyExternal = std::any_of(changes.begin(), changes.end(), [](const FileChange& c) { return c.origin == ChangeOrigin::External; });
     if (options.fromWatcher && anyExternal) {
         for (const Json& problem : result.problems) addLateProblem(problem);
+        for (const Json& item : result.scriptProperties) {
+            // no MCP client takes them: the oldest go
+            if (lateScriptProperties.size() >= RELOAD_LATE_MAX) lateScriptProperties.pop_front();
+            lateScriptProperties.push_back(item);
+        }
         if (!result.uiReloaded.empty()) {
             lateUi.push_back({std::chrono::steady_clock::now(), result.uiReloaded});
             while (lateUi.size() > RELOAD_LATE_MAX) lateUi.pop_front();
@@ -659,6 +673,13 @@ Json HotReloadService::takeLateProblems() {
         if (exists == late.existed && (!exists || now.sameContent(late.stat))) out.push_back(late.problem);
     }
     lateProblems.clear();
+    return out;
+}
+
+Json HotReloadService::takeLateScriptProperties() {
+    Json out = Json::array();
+    for (const Json& item : lateScriptProperties) out.push_back(item);
+    lateScriptProperties.clear();
     return out;
 }
 

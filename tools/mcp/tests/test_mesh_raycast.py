@@ -6,8 +6,9 @@ units with origin/direction/maxDistance), and prepare() building ahead of the ra
 
 test_web_latency runs the WebAssembly build of tools/test-projects/mesh-raycast in headless
 Chrome (the S02 web gate, tools/web/gates/mesh-raycast.json): 10,000 rays against 1,000 meshes of
-about 1,000 triangles, p99 at most 4 ms. It needs that web build (WEB_PROJECT=mesh-raycast
-tools/build.sh web) and Chrome, and is skipped without them.
+about 1,000 triangles, p99 at most 4 ms. It needs that web build and Chrome: the full suite
+(tools/build.sh mcp-tests with MCP_SUITE=all) builds it first (WEB_PROJECT=mesh-raycast tools/build.sh
+web) and the linux image has chrome-headless-shell; elsewhere it is skipped without them.
 """
 
 from __future__ import annotations

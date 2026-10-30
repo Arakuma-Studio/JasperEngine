@@ -18,6 +18,7 @@ from harness import Editor, ToolError
 from htmlui_pixels import decode_png
 
 EDITOR = {"create": True, "name": "Coordinate Contracts"}
+CI = True
 SCENES = {}
 
 # (name, color, layout, expected top-down canvas rect [x, y, w, h]); canvas 1280 x 720

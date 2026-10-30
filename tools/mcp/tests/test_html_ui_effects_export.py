@@ -34,6 +34,7 @@ from harness import Editor, skip, REPO
 from htmlui_pixels import decode_png, near
 
 EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
+CI = True
 
 TIMEOUT = int(os.environ.get("JASPER_BUILD_TIMEOUT", "7200"))
 JOBS = 2
@@ -220,8 +221,9 @@ async def test_export_without_effects_has_no_notice(ed: Editor):
     project = copy_project(ed.project)
     out = project.parent / "export-plain"
     cli_export(ed, project, out, "--shader", "mesh", "--shader", "htmlui")
-    # (licenses/ itself holds S18's OpenEngine notice in every export)
-    ed.check(not (out / "licenses" / "shaders.com-LICENSE.txt").exists(), "no UI effect: no notice")
+    # every game ships S18's OpenEngine notice (the spline module): nothing else
+    shipped = sorted(p.name for p in (out / "licenses").iterdir()) if (out / "licenses").is_dir() else []
+    ed.check(shipped == ["OpenEngine-LICENSE.txt"], f"no UI effect: no notice of its own: {shipped}")
     out = project.parent / "export-one"
     cli_export(ed, project, out, "--shader", "uieffect/pixelate:Flt")
     ed.check((out / "licenses" / "shaders.com-LICENSE.txt").is_file(), "the notice with the effect")

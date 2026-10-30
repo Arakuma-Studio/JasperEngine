@@ -44,7 +44,9 @@ with the backend: on llvmpipe it is the software rasterizer's cost and no GPU me
 - B4 scale-popin: the 40 labels settle 28 frames after the start with exactly 40 regenerations
   (one per label), no frame over 2 ms of glyph rasterization or 256 glyphs.
 - Gathering (R22): 4,248 vertices (an instance counted as the 4 vertices it replaces) in 0.053 ms,
-  0.124 ms per 10k (target 0.2).
+  0.124 ms per 10k (target 0.2). The gathering is the CPU's (runs planned, vertices packed); the
+  driver's updates of the gather buffers are timed apart (`getLastUploadMs`, reported, not gated:
+  on lavapipe they are 0.7 ms per 10k, GPU work a software driver does on the CPU).
 - B3 atlas (R23): one 1 MiB R8 page where RGBA8 took 4 MiB.
 
 ## What the B1 draws are

@@ -42,6 +42,7 @@
 #include "texture/Material.h"
 #include "texture/Texture.h"
 #include "util/FileUtils.h"
+#include "io/watch/FileWatchService.h"
 #include "util/ProjectChecks.h"
 #include "vat/VatBakeSession.h"
 #include "animation/VertexAnimation.h"
@@ -201,6 +202,7 @@ std::mutex snapshotMutex;
 fs::path snapshotProject;
 std::map<std::string, FileStamp> snapshot;   // project-relative path -> stamp
 bool snapshotValid = false;
+uint64_t editorWritesCursor = 0;             // the file watcher's journal, read up to here
 
 std::map<std::string, FileStamp> scanProject(Project* project) {
     std::map<std::string, FileStamp> files;
@@ -258,6 +260,59 @@ void updateSnapshotEntries(Project* project, const std::vector<fs::path>& paths,
     }
 }
 
+// The editor's own writes since the last look (announced with ScopedExpectedWrite, S05 R10: the
+// watcher's journal has them with origin Editor; an inferred texture import setting written
+// into a meta after the project opened, say): the snapshot takes their stamps, so a full sync
+// does not list them as changed. Only while the file still has what the editor wrote (an edit
+// made after it stays a change), and only the files scanProject looks at.
+void absorbEditorWrites(Project* project) {
+    FileWatchService& watcher = FileWatchService::get();
+    if (!watcher.isAttached()) return;
+    uint64_t cursor = 0;
+    {
+        std::lock_guard<std::mutex> lock(snapshotMutex);
+        if (!snapshotValid || snapshotProject != project->getProjectPath()) return;
+        cursor = editorWritesCursor;
+    }
+    const std::vector<FileChange> journal = watcher.journalSince(cursor);
+    std::lock_guard<std::mutex> lock(snapshotMutex);
+    editorWritesCursor = cursor;
+    if (!snapshotValid || snapshotProject != project->getProjectPath()) return;
+    // the project-relative path of a file scanProject lists, else empty
+    auto scanned = [&](const fs::path& path) {
+        const std::string rel = projectRelative(project, path);
+        const fs::path relative = FileUtils::pathFromUtf8(rel);
+        const std::string name = relative.filename().string();
+        if (rel.empty() || relative.is_absolute() || *relative.begin() == ".." || ProjectChecks::isInSkippedDir(relative) ||
+            name.empty() || name[0] == '.') {
+            return std::string();
+        }
+        return rel;
+    };
+    for (const FileChange& change : journal) {
+        if (change.origin != ChangeOrigin::Editor || change.directory || change.kind == FileChangeKind::Rescan) continue;
+        watch::PathStat now;
+        const bool present = watch::statPath(change.path, now, false);
+        if (change.kind == FileChangeKind::Moved) {
+            const std::string from = scanned(change.oldPath);
+            watch::PathStat old;
+            if (!from.empty() && !watch::statPath(change.oldPath, old, false)) snapshot.erase(from);
+        }
+        const std::string rel = scanned(change.path);
+        if (rel.empty()) continue;
+        if (change.kind == FileChangeKind::Removed) {
+            if (!present) snapshot.erase(rel);
+            continue;
+        }
+        if (!present || now.directory || now.size != change.size || now.mtimeNs != change.mtimeNs) continue;
+        std::error_code ec;
+        FileStamp stamp;
+        stamp.time = fs::last_write_time(change.path, ec);
+        stamp.size = fs::file_size(change.path, ec);
+        if (!ec) snapshot[rel] = stamp;
+    }
+}
+
 } // namespace
 
 void takeSyncSnapshot(Project* project, const std::set<std::string>& changedAlready) {
@@ -273,6 +328,7 @@ void takeSyncSnapshot(Project* project, const std::set<std::string>& changedAlre
     snapshot = std::move(now);
     snapshotProject = project->getProjectPath();
     snapshotValid = true;
+    editorWritesCursor = FileWatchService::get().journalHead();
 }
 
 bool isHtmlUiFile(const std::string& path) {
@@ -296,6 +352,7 @@ Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool ful
 
     // What changed on disk since the last sync (full syncs scan the project)
     if (full) {
+        absorbEditorWrites(project);
         std::map<std::string, FileStamp> now = scanProject(project);
         std::lock_guard<std::mutex> lock(snapshotMutex);
         if (snapshotValid && snapshotProject == project->getProjectPath()) {
@@ -342,6 +399,10 @@ Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool ful
         if (it != sync.sequences.end()) change.sequence = it->second;
     }
     const ApplyResult applied = HotReloadService::get().apply(set, options);
+    // the schema changes the watcher found when it reloaded an edited script before this sync
+    // (a change it reloaded already is not reloaded again: its report comes from the watcher)
+    Json scriptProperties = applied.scriptProperties;
+    for (const Json& item : HotReloadService::get().takeLateScriptProperties()) scriptProperties.push_back(item);
 
     Json allNotes = notes;
     for (const Json& note : applied.notes) allNotes.push_back(note);
@@ -367,7 +428,7 @@ Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool ful
     Json result = {
         {"changed", {{"added", added}, {"modified", modified}, {"removed", removed}}},
         {"code_editor", applied.codeEditor},
-        {"script_properties", applied.scriptProperties},
+        {"script_properties", scriptProperties},
         {"problems", problems},
         {"notes", allNotes},
         {"reloaded", applied.reloaded},

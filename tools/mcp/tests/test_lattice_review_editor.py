@@ -16,6 +16,7 @@ from harness import Editor  # noqa: E402
 
 TIMEOUT = 900
 EDITOR = {"create": True, "xvfb": "harness"}
+CI = True
 
 async def test_2d_space_click_pans_without_picking(ed: Editor):
     ls.need_tools()
