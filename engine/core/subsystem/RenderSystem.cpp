@@ -10886,41 +10886,7 @@ Rect RenderSystem::getScissorRect(RectTransformComponent& layout, ImageComponent
 }
 
 void RenderSystem::updateTransform(Transform& transform, Entity entity){
-    // UI grows around its pivot, so its origin, the top-left corner, moves
-    Vector3 origin = transform.position;
-    RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(entity);
-    if (layout && layout->pivot != Vector2(0, 0)){
-        origin += getUIPivotShift(*layout, transform.rotation, transform.scale);
-    }
-
-    Matrix4 translateMatrix = Matrix4::translateMatrix(origin);
-    Matrix4 rotationMatrix = transform.rotation.getRotationMatrix();
-    Matrix4 scaleMatrix = Matrix4::scaleMatrix(transform.scale);
-
-    transform.localMatrix = translateMatrix * rotationMatrix * scaleMatrix;
-
-    Transform* transformParent = NULL;
-    if (transform.parent != NULL_ENTITY){
-        transformParent = scene->findComponent<Transform>(transform.parent);
-    }
-
-    if (transformParent){
-        transform.modelMatrix = transformParent->modelMatrix * transform.localMatrix;
-
-        transform.worldPosition = transformParent->modelMatrix * origin;
-        transform.worldScale = transformParent->worldScale * transform.scale;
-        transform.worldRotation = transformParent->worldRotation * transform.rotation;
-    }else{
-        transform.modelMatrix = transform.localMatrix;
-
-        transform.worldPosition = origin;
-        transform.worldScale = transform.scale;
-        transform.worldRotation = transform.rotation;
-    }
-
-    if (hasLights){
-        transform.normalMatrix = transform.modelMatrix.inverse().transpose();
-    }
+    computeWorldTransform(*scene, transform, entity, hasLights);
 
     // what it casts moved: the shadow cache's input (a rotation can keep the bounds)
     if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
