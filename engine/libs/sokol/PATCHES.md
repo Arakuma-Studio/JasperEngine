@@ -35,3 +35,31 @@ Cooked textures (`docs/textures.md`) need ASTC block sizes beyond 4x4 on mobile 
 
 Status: to be offered upstream (floooh/sokol) as one pull request with the diff of the lines marked
 `(PATCHES.md)`; until it merges, every sokol update re-applies it.
+
+## Asynchronous creation (spec S32)
+
+Shaders and pipelines whose driver work runs off the render thread. The backend code is not in
+`sokol_gfx.h`: `sokol_async.h` / `sokol_async_impl.h` (included by `sokol.cpp` after
+`sokol_gfx.h`) split creation where sokol's own `_sg_init_shader` / `_sg_init_pipeline` already
+split it (defaults and validation, `_sg_create_*`, the slot state). Every changed line in
+`sokol_gfx.h` carries `JasperEngine: async creation` (`SokolPatchMarkers.AsyncCreationHooks`
+counts them):
+
+- GL `_sg_gl_create_shader`: a program already in `shd->gl.prog` (compiled and linked by
+  sokol_async on the render context, with `KHR_parallel_shader_compile` or a deferred status read)
+  is adopted. Its compile and link are skipped, and the link status and the uniform resolution
+  run as before. Upstream asserts the field is 0.
+- Vulkan: `static VkPipelineCache _sgj_vk_pipeline_cache` (`VK_NULL_HANDLE` unless sokol_async made
+  one) is the cache of `vkCreateGraphicsPipelines` and `vkCreateComputePipelines`. Upstream passes
+  `VK_NULL_HANDLE`.
+- Metal: three forward-declared hooks (defined in `sokol_async_impl.h`):
+  - `_sg_mtl_create_shader_func` takes a library compiled by `newLibraryWithSource:...
+    completionHandler:` when there is one;
+  - `_sg_mtl_create_pipeline` hands its render pipeline descriptor to sokol_async and returns
+    `SG_RESOURCESTATE_ALLOC` in the capture phase, and takes the state the completion handler made
+    when it is called again to finish.
+
+  With sokol_async idle the hooks return nil/false and nothing changes.
+
+Status: JasperEngine-specific (upstream has no asynchronous creation API); every sokol update
+re-applies the marked lines.

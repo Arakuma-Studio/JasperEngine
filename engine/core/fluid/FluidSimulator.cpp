@@ -422,6 +422,8 @@ struct FluidSimulator::Impl {
             if (slot.first >= 0)
                 program.object.addTexture(slot, ShaderStageType::FRAGMENT, &placeholder);
         }
+        // a pass of the frame: created at once, never skipped (spec S32 §6.4)
+        program.object.setImmediatePipelines(true);
         if (program.blockSlot < 0 || !program.object.endLoadDynamic(PrimitiveType::TRIANGLES, IndexType::NONE)){
             program.object.destroy();
             error = "the fluid program " + ShaderPool::getShaderStr(ShaderType::FLUID, properties) + " could not be loaded";

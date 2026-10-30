@@ -10,6 +10,7 @@
 // per backend.
 
 #include "McpTools.h"
+#include "shader/ShaderWarmup.h"
 
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
@@ -139,6 +140,27 @@ const char* semanticsNote(const std::string& semantics){
 
 // ------------------------------------------------------------------ get_render_stats
 
+// shaders and pipelines created off the render thread (spec S32 R28) and the warm-up list
+Json shaderCreationJson(){
+    const GpuCreationStats creation = SystemRender::getGpuCreationStats();
+    return Json{
+        {"mode", gpuCreationModeName(creation.mode)},
+        {"pending_shaders", creation.pendingShaders},
+        {"pending_pipelines", creation.pendingPipelines},
+        {"pending_warm_draws", creation.pendingWarmDraws},
+        {"created_shaders", creation.createdShaders},
+        {"created_pipelines", creation.createdPipelines},
+        {"warm_draws", creation.warmDraws},
+        {"interned_pipelines", creation.internedPipelines},
+        {"last_frame_main_ms", round3(creation.lastFrameMainMs)},
+        {"max_main_ms", round3(creation.maxMainMs)},
+        {"max_create_ms", round3(creation.maxCreateMs)},
+        {"warmup", {{"recording", ShaderWarmup::isRecording()}, {"active", ShaderWarmup::isActive()},
+                    {"shaders", ShaderWarmup::getShaderCount()}, {"pipelines", ShaderWarmup::getPipelineCount()},
+                    {"progress", round3(ShaderWarmup::getProgress())}}},
+    };
+}
+
 Json renderStatsJson(uint32_t tag, const std::string& viewName){
     const RenderStats stats = SystemRender::getRenderStats(tag);
     const FrameTimeSample frame = FrameTimes::latest();
@@ -167,6 +189,7 @@ Json renderStatsJson(uint32_t tag, const std::string& viewName){
         {"frame_ms", round3(frame.frameMs)},
         {"fps", round3(frame.fps)},
         {"gpu", gpuJson},
+        {"shader_creation", shaderCreationJson()},
     };
 }
 
@@ -999,7 +1022,8 @@ void registerProfilerTools(McpRegistry& registry){
         tool.title = "Get Render Stats";
         tool.description =
             "A view's last drawn frame: draws, instances, triangles, passes, pipelines/bindings, uniform and upload bytes, alive "
-            "resources, pipeline cache, cpu_ms, fps, gpu{available,reason,frame_ms,semantics}, html_ui. One frame is one sample. "
+            "resources, pipeline cache, cpu_ms, fps, gpu{available,reason,frame_ms,semantics}, html_ui, shader_creation{mode,pending_*,"
+            "max_main_ms,warmup}. One frame is one sample. "
             "gpu.frame_ms is null until GPU timing ran (get_gpu_passes arms it). Also jasper://stats.";
         tool.inputSchema = object({{"view", viewSchema()}});
         tool.annotations.readOnly = true;

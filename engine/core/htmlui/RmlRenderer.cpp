@@ -2528,6 +2528,8 @@ bool RmlRenderer::loadPipelines(){
     compositeObject.addTexture(geometryTextureSlot, ShaderStageType::FRAGMENT, &placeholderWhite);
     compositeObject.setBlendState(BlendState::premultipliedAlpha());
     // no culling: the quad can be mirrored by the camera
+    // a pass of the frame: created at once, never skipped (spec S32 §6.4)
+    compositeObject.setImmediatePipelines(true);
     if (!compositeObject.endLoad(compositePipelines, false, false, CullingMode::BACK, WindingOrder::CCW)){
         Log::error("[HTML UI] could not create the HTML UI composite pipelines");
         destroyPipelineObjects();

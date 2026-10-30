@@ -686,6 +686,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/Remap.cpp
     ${EDITOR_DIR}/reflect/Properties.cpp
     ${EDITOR_DIR}/reflect/PostProcessingReflect.cpp
+    ${EDITOR_DIR}/reflect/ShaderCreationReflect.cpp
     ${EDITOR_DIR}/reflect/components/AnimationReflect.cpp
     ${EDITOR_DIR}/reflect/components/CameraAudioReflect.cpp
     ${EDITOR_DIR}/reflect/components/LightingReflect.cpp
@@ -1123,6 +1124,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/RenameFileCmd.cpp
     ${EDITOR_DIR}/command/type/CreateDirCmd.cpp
     ${EDITOR_DIR}/command/type/ThreadingSettingsCmd.cpp
+    ${EDITOR_DIR}/command/type/ShaderCreationSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/HtmlUiRenderSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/DeleteFileCmd.cpp
     ${EDITOR_DIR}/command/type/SetMainCameraCmd.cpp

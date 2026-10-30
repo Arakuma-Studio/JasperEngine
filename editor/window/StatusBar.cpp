@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "StatusBar.h"
+#include "render/SystemRender.h"
 
 #include "Theme.h"
 #include "io/watch/FileWatchService.h"
@@ -66,6 +67,22 @@ void StatusBar::show() {
             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ImGui::GetStyle().FramePadding.x, 0.0f));
             if (ImGui::SmallButton("Cancel##texture_cooks")) TextureCookQueue::get().cancelAll();
             ImGui::PopStyleVar();
+            ImGui::SameLine();
+        }
+        // shader and pipeline creation off the render thread (spec S32 R25): "Compiling shaders 3"
+        const GpuCreationStats creation = SystemRender::getGpuCreationStats();
+        const size_t compiling = creation.pendingShaders + creation.pendingPipelines + creation.pendingWarmDraws;
+        if (compiling > 0) {
+            ImGui::AlignTextToFramePadding();
+            ImGui::Text("Compiling shaders %zu", compiling);
+            if (ImGui::BeginItemTooltip()) {
+                ImGui::Text("Shader creation: %s", gpuCreationModeName(creation.mode));
+                ImGui::Text("%zu shaders, %zu pipelines, %zu warm draws pending", creation.pendingShaders,
+                            creation.pendingPipelines, creation.pendingWarmDraws);
+                ImGui::Text("Render thread last frame: %.2f ms", creation.lastFrameMainMs);
+                ImGui::TextDisabled("Objects draw a ready variant, or show up, once theirs is created.");
+                ImGui::EndTooltip();
+            }
             ImGui::SameLine();
         }
         if (versionControlSegment) versionControlSegment();

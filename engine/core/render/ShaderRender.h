@@ -29,6 +29,8 @@ namespace jasperengine{
         bool createShader(ShaderData& shaderData);
         void destroyShader();
         bool isCreated();
+        // its GPU object is being created off the render thread (spec S32): not created, not failed
+        bool isPending();
         bool isFailed();
     };
 }

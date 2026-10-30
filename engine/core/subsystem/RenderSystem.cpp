@@ -52,6 +52,26 @@ using namespace jasperengine;
 using namespace jasperengine::rendershared;
 
 namespace {
+
+    // The nearest variant that is ready while `properties` is still being built or created
+    // (spec S32 R8): the first of ShaderPool::getFallbackProperties (layout-compatible by
+    // construction) that is ready, with `customId` and then, for a built-in Lit reference, with
+    // the built-in id. None is requested: only what is already there stands in. Null: none ready.
+    std::shared_ptr<ShaderRender> readyStandIn(ShaderType type, uint64_t properties, uint16_t& customId, bool builtinToo){
+        for (uint64_t candidate : ShaderPool::getFallbackProperties(type, properties)){
+            if (ShaderPool::isShaderReady(type, candidate, customId))
+                return ShaderPool::get(type, candidate, customId);
+            if (builtinToo && customId != 0 && ShaderPool::isShaderReady(type, candidate, 0)){
+                customId = 0;
+                return ShaderPool::get(type, candidate, 0);
+            }
+        }
+        return nullptr;
+    }
+
+}
+
+namespace {
     constexpr int SPOT_MASK_TILE_SIZE = 256;
 
     static_assert(sizeof(Matrix4) == sizeof(float) * 16);
@@ -2381,6 +2401,9 @@ void RenderSystem::renderReflectionProbeCapture(){
 
     int face = runtime.nextFace;
     Vector3 capturePosition = runtime.capturePosition;
+    // a draw of the face waiting for its pipeline (being created or warmed, spec S32) leaves the
+    // face incomplete: it is captured again next frame
+    const uint32_t waitingBefore = ObjectRender::getWaitingDrawCount();
 
     Transform captureTransform;
     captureTransform.position = capturePosition;
@@ -2479,6 +2502,8 @@ void RenderSystem::renderReflectionProbeCapture(){
     delete captureCamera.framebuffer;
     captureCamera.framebuffer = nullptr;
 
+    if (ObjectRender::getWaitingDrawCount() != waitingBefore)
+        return;
     runtime.nextFace++;
     if (runtime.nextFace >= 6){
         runtime.nextFace = 0;
@@ -2507,6 +2532,8 @@ void RenderSystem::loadProbeFilter(){
     probeFilterRender.beginLoad(PrimitiveType::TRIANGLES);
     probeFilterRender.setShader(probeFilterShader.get());
     probeFilterSlotParams = probeFilterShader.get()->shaderData.getUniformBlockIndex(UniformBlockType::PROBE_FILTER_FS_PARAMS);
+    // a pass of the frame: created at once, never skipped (spec S32 §6.4)
+    probeFilterRender.setImmediatePipelines(true);
     if (!probeFilterRender.endLoad(PIP_RTT_COLORONLY, false, false, CullingMode::BACK, WindingOrder::CCW))
         return;
 
@@ -3996,6 +4023,8 @@ bool RenderSystem::loadUber(uint32_t features){
     uberSlotBlur = shaderData.getTextureIndexByName("u_blurTexture");
     uberSlotHalation = shaderData.getTextureIndexByName("u_halationTexture");
     uberSlotHalationWide = shaderData.getTextureIndexByName("u_halationWideTexture");
+    // a pass of the frame: created at once, never skipped (spec S32 §6.4)
+    uberRender.setImmediatePipelines(true);
     if (!uberRender.endLoad(PIP_RTT | PIP_DEFAULT, false, true, CullingMode::BACK, WindingOrder::CCW)){
         uberShader.reset();
         uberFeatures = 0;
@@ -4245,6 +4274,8 @@ bool RenderSystem::loadBloomProgram(BloomProgramKind kind){
     program.slotSource = shaderData.getTextureIndexByName("u_sourceTexture");
     program.slotLevel = shaderData.getTextureIndexByName("u_levelTexture");
     // SRGB8A8 targets without depth, written whole
+    // a pass of the frame: created at once, never skipped (spec S32 §6.4)
+    program.render.setImmediatePipelines(true);
     if (!program.render.endLoad(PIP_POST, false, false, CullingMode::BACK, WindingOrder::CCW)){
         program.render.destroy();
         program.shader.reset();
@@ -4768,6 +4799,8 @@ bool RenderSystem::loadShadowCaster2DPass(unsigned int vertexCapacity){
         render.addAttribute(shaderData.getAttrIndex(attr.first), shadowCaster2DBuffer.getRender(), attr.second.getElements(), attr.second.getDataType(), shadowCaster2DBuffer.getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
     }
 
+    // a pass of the frame: created at once, never skipped (spec S32 §6.4)
+    render.setImmediatePipelines(true);
     if (!render.endLoad(PIP_DEPTH, false, true, CullingMode::BACK, WindingOrder::CCW)){
         return false;
     }
@@ -5476,7 +5509,8 @@ void RenderSystem::setDisableFixedResolution(bool disableFixedResolution){
 }
 
 bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelines, InstancedMeshComponent* instmesh, TerrainComponent* terrain){
-    bool builtinStandIn = false;
+    // a ready variant draws for one still being built or created (spec S32 R8)
+    bool standIn = false;
 
     if (!Engine::isViewLoaded()) 
         return false;
@@ -5708,6 +5742,14 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                                depthShaderSrc.c_str(), scene->getEntityName(entity).c_str());
                     mesh.submeshes[i].customDepthShaderId = 0;
                     mesh.submeshes[i].depthShader = ShaderPool::get(ShaderType::DEPTH, mesh.submeshes[i].depthShaderProperties, 0);
+                }else if (!ShaderPool::isShaderBuildFailed(ShaderType::DEPTH, mesh.submeshes[i].depthShaderProperties, mesh.submeshes[i].customDepthShaderId)){
+                    // the nearest ready depth variant while this one builds (spec S32 R8)
+                    uint16_t standInId = mesh.submeshes[i].customDepthShaderId;
+                    std::shared_ptr<ShaderRender> nearest = readyStandIn(ShaderType::DEPTH, mesh.submeshes[i].depthShaderProperties, standInId, false);
+                    if (nearest){
+                        mesh.submeshes[i].depthShader = nearest;
+                        standIn = true;
+                    }
                 }
             }
             if (mesh.submeshes[i].depthShader->isCreated()){
@@ -5729,6 +5771,15 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         if (variant.gbuffer){
             mesh.submeshes[i].gbufferShaderProperties = variant.gbufferProperties;
             mesh.submeshes[i].gbufferShader = ShaderPool::get(ShaderType::GBUFFER, mesh.submeshes[i].gbufferShaderProperties);
+            if (!mesh.submeshes[i].gbufferShader->isCreated() &&
+                    !ShaderPool::isShaderBuildFailed(ShaderType::GBUFFER, mesh.submeshes[i].gbufferShaderProperties)){
+                uint16_t standInId = 0;
+                std::shared_ptr<ShaderRender> nearest = readyStandIn(ShaderType::GBUFFER, mesh.submeshes[i].gbufferShaderProperties, standInId, false);
+                if (nearest){
+                    mesh.submeshes[i].gbufferShader = nearest;
+                    standIn = true;
+                }
+            }
             if (!mesh.submeshes[i].gbufferShader->isCreated())
                 shadersReady = false;
         }
@@ -5750,7 +5801,19 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                 if (plain->isCreated()){
                     mesh.submeshes[i].customShaderId = 0;
                     mesh.submeshes[i].shader = plain;
-                    builtinStandIn = true;
+                    standIn = true;
+                }
+            }
+            if (!mesh.submeshes[i].shader->isCreated() &&
+                    !ShaderPool::isShaderBuildFailed(ShaderType::MESH, mesh.submeshes[i].shaderProperties, mesh.submeshes[i].customShaderId)){
+                // the nearest variant that is ready (the key's own properties stay: what the draw
+                // binds follows the stand-in's reflection, as for a variant a build lacks)
+                std::shared_ptr<ShaderRender> nearest = readyStandIn(ShaderType::MESH, mesh.submeshes[i].shaderProperties,
+                    mesh.submeshes[i].customShaderId, ShaderReference::isBuiltin(meshShaderSrc));
+                // (customShaderId is the stand-in's now: 0 when the built-in Lit's plain variant came)
+                if (nearest){
+                    mesh.submeshes[i].shader = nearest;
+                    standIn = true;
                 }
             }
             if (!mesh.submeshes[i].shader->isCreated())
@@ -6427,9 +6490,9 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
     }
 
     mesh.needReload = false;
-    // loaded with the current environment; a plain variant standing in for a built-in Lit one
-    // still building reloads once that one is ready
-    mesh.needVariantReload = builtinStandIn;
+    // loaded with the current environment; a variant standing in for one still building (or its
+    // GPU object being created) reloads once that one is ready
+    mesh.needVariantReload = standIn;
     mesh.needUpdateShaderUniforms = false;
     mesh.needUpdateAABB = true;
     mesh.loadCalled = true;
@@ -7232,7 +7295,9 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
     // the editor's "no face culling" view keeps the pass's culling: it is part of the technique
     // (an inverted hull drawn unculled covers its object)
     if (!render.beginDraw(pipType, false)){
-        mesh.needReload = true;
+        // (one still being created or warmed draws nothing and waits: spec S32)
+        if (!render.isDrawWaiting())
+            mesh.needReload = true;
         return;
     }
 
@@ -7871,6 +7936,10 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             }
 
             if (!render.beginDraw(pipType, passNoFaceCulling())){
+                // a submesh whose pipeline is still being created or warmed (spec S32) draws
+                // nothing this frame, the others draw
+                if (render.isDrawWaiting())
+                    continue;
                 mesh.needReload = true;
                 return false;
             }
@@ -8169,8 +8238,9 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
                 // a submesh without this depth program is left out of a pre-pass (its scene
                 // gives every mesh one when a pass needs them all: updateSceneInputPrograms);
                 // reloading would not give it one and would leave the mesh out of its colour
-                // pass this frame; a mesh waiting for its new variant gets it then
-                if (forSSAO || mesh.needVariantReload)
+                // pass this frame; a mesh waiting for its new variant gets it then, and one
+                // whose depth pipeline is still being created or warmed (spec S32) waits
+                if (forSSAO || mesh.needVariantReload || depthRender.isDrawWaiting())
                     continue;
                 mesh.needReload = true;
                 return false;
@@ -8290,6 +8360,8 @@ void RenderSystem::loadSSAO(){
     ssaoRender.beginLoad(PrimitiveType::TRIANGLES);
     ssaoRender.setShader(ssaoShader.get());
     ssaoSlotParams = ssaoShader.get()->shaderData.getUniformBlockIndex(UniformBlockType::SSAO_FS_PARAMS);
+    // a pass of the frame: created at once, never skipped (spec S32 §6.4)
+    ssaoRender.setImmediatePipelines(true);
     if (!ssaoRender.endLoad(PIP_EFFECT, false, true, CullingMode::BACK, WindingOrder::CCW))
         return;
 
@@ -8297,6 +8369,8 @@ void RenderSystem::loadSSAO(){
     ssaoBlurRender.beginLoad(PrimitiveType::TRIANGLES);
     ssaoBlurRender.setShader(ssaoBlurShader.get());
     ssaoBlurSlotParams = ssaoBlurShader.get()->shaderData.getUniformBlockIndex(UniformBlockType::SSAO_BLUR_FS_PARAMS);
+    // a pass of the frame: created at once, never skipped (spec S32 §6.4)
+    ssaoBlurRender.setImmediatePipelines(true);
     if (!ssaoBlurRender.endLoad(PIP_EFFECT, false, true, CullingMode::BACK, WindingOrder::CCW))
         return;
 
@@ -8824,6 +8898,8 @@ void RenderSystem::loadSceneColorCopy(){
     sceneColorCopyRender.beginLoad(PrimitiveType::TRIANGLES);
     sceneColorCopyRender.setShader(sceneColorCopyShader.get());
     sceneColorCopySlotParams = sceneColorCopyShader.get()->shaderData.getUniformBlockIndex(UniformBlockType::BLIT_FS_PARAMS);
+    // a pass of the frame: created at once, never skipped (spec S32 §6.4)
+    sceneColorCopyRender.setImmediatePipelines(true);
     if (!sceneColorCopyRender.endLoad(PIP_EFFECT, false, true, CullingMode::BACK, WindingOrder::CCW))
         return;
     sceneColorCopyLoaded = true;
@@ -8977,6 +9053,9 @@ bool RenderSystem::drawMeshGBuffer(Entity entity, MeshComponent& mesh, Transform
         }
 
         if (!gbufferRender.beginDraw(PIP_GBUFFER, passNoFaceCulling())){
+            // (still being created or warmed: spec S32, this submesh waits)
+            if (gbufferRender.isDrawWaiting())
+                continue;
             mesh.needReload = true;
             return false;
         }
@@ -9099,6 +9178,8 @@ void RenderSystem::loadSSR(){
     ssrRender.beginLoad(PrimitiveType::TRIANGLES);
     ssrRender.setShader(ssrShader.get());
     ssrSlotParams = ssrShader.get()->shaderData.getUniformBlockIndex(UniformBlockType::SSR_FS_PARAMS);
+    // a pass of the frame: created at once, never skipped (spec S32 §6.4)
+    ssrRender.setImmediatePipelines(true);
     if (!ssrRender.endLoad(PIP_EFFECT, false, true, CullingMode::BACK, WindingOrder::CCW))
         return;
 
@@ -9106,6 +9187,8 @@ void RenderSystem::loadSSR(){
     ssrBlurRender.beginLoad(PrimitiveType::TRIANGLES);
     ssrBlurRender.setShader(ssrBlurShader.get());
     ssrBlurSlotParams = ssrBlurShader.get()->shaderData.getUniformBlockIndex(UniformBlockType::SSR_BLUR_FS_PARAMS);
+    // a pass of the frame: created at once, never skipped (spec S32 §6.4)
+    ssrBlurRender.setImmediatePipelines(true);
     if (!ssrBlurRender.endLoad(PIP_EFFECT, false, true, CullingMode::BACK, WindingOrder::CCW))
         return;
 
@@ -9114,6 +9197,8 @@ void RenderSystem::loadSSR(){
     compositeRender.beginLoad(PrimitiveType::TRIANGLES);
     compositeRender.setShader(compositeShader.get());
     compositeSlotParams = compositeShader.get()->shaderData.getUniformBlockIndex(UniformBlockType::COMPOSITE_FS_PARAMS);
+    // a pass of the frame: created at once, never skipped (spec S32 §6.4)
+    compositeRender.setImmediatePipelines(true);
     if (!compositeRender.endLoad(PIP_RTT | PIP_DEFAULT, false, true, CullingMode::BACK, WindingOrder::CCW))
         return;
 
@@ -9329,6 +9414,8 @@ void RenderSystem::loadBlit(){
     blitRender.beginLoad(PrimitiveType::TRIANGLES);
     blitRender.setShader(blitShader.get());
     blitSlotParams = blitShader.get()->shaderData.getUniformBlockIndex(UniformBlockType::BLIT_FS_PARAMS);
+    // a pass of the frame: created at once, never skipped (spec S32 §6.4)
+    blitRender.setImmediatePipelines(true);
     if (!blitRender.endLoad(PIP_RTT | PIP_DEFAULT, false, true, CullingMode::BACK, WindingOrder::CCW))
         return;
 
@@ -9484,6 +9571,8 @@ void RenderSystem::loadPostProcess(){
         // the chain never targets the swapchain directly, renderPostProcess blits for that
         // PIP_RTT into buffer 0 and the destination (colour targets with depth-stencil),
         // PIP_EFFECT into the others (depth only)
+        // a pass of the frame: created at once, never skipped (spec S32 §6.4)
+        pass.render.setImmediatePipelines(true);
         if (!pass.render.endLoad(PIP_RTT | PIP_EFFECT, false, true, CullingMode::BACK, WindingOrder::CCW))
             return;
 
@@ -10128,7 +10217,9 @@ bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pi
         ObjectRender& render = ui.render;
 
         if (!render.beginDraw(pipType)){
-            ui.needReload = true;
+            // (one still being created or warmed draws nothing and waits: spec S32)
+            if (!render.isDrawWaiting())
+                ui.needReload = true;
             return false;
         }
         render.applyUniformBlock(ui.slotVSParams, sizeof(float) * 16, (void*)&objectMVP(transform));
@@ -10458,7 +10549,9 @@ bool RenderSystem::drawPoints(Entity entity, PointsComponent& points, Transform&
         ObjectRender& render = points.render;
 
         if (!render.beginDraw(pipType)){
-            points.needReload = true;
+            // (one still being created or warmed draws nothing and waits: spec S32)
+            if (!render.isDrawWaiting())
+                points.needReload = true;
             return false;
         }
         vs_points_params_t vsParams = {};
@@ -10535,7 +10628,9 @@ bool RenderSystem::drawLines(LineRendererComponent& lines, Transform& transform,
         }
 
         if (!render.beginDraw(pipType)){
-            lines.needReload = true;
+            // (one still being created or warmed draws nothing and waits: spec S32)
+            if (!render.isDrawWaiting())
+                lines.needReload = true;
             return false;
         }
         render.applyUniformBlock(lines.slotVSParams, sizeof(float) * 16, (void*)&objectMVP(transform));
@@ -10725,7 +10820,9 @@ bool RenderSystem::drawSky(SkyboxComponent& sky, PipelineType pipType, const Mat
         ObjectRender& render = sky.render;
 
         if (!render.beginDraw(pipType)){
-            sky.needReload = true;
+            // (one still being created or warmed draws nothing and waits: spec S32)
+            if (!render.isDrawWaiting())
+                sky.needReload = true;
             return false;
         }
         render.applyUniformBlock(sky.slotVSParams, sizeof(float) * 16, (void*)&viewProjection);
@@ -10886,41 +10983,7 @@ Rect RenderSystem::getScissorRect(RectTransformComponent& layout, ImageComponent
 }
 
 void RenderSystem::updateTransform(Transform& transform, Entity entity){
-    // UI grows around its pivot, so its origin, the top-left corner, moves
-    Vector3 origin = transform.position;
-    RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(entity);
-    if (layout && layout->pivot != Vector2(0, 0)){
-        origin += getUIPivotShift(*layout, transform.rotation, transform.scale);
-    }
-
-    Matrix4 translateMatrix = Matrix4::translateMatrix(origin);
-    Matrix4 rotationMatrix = transform.rotation.getRotationMatrix();
-    Matrix4 scaleMatrix = Matrix4::scaleMatrix(transform.scale);
-
-    transform.localMatrix = translateMatrix * rotationMatrix * scaleMatrix;
-
-    Transform* transformParent = NULL;
-    if (transform.parent != NULL_ENTITY){
-        transformParent = scene->findComponent<Transform>(transform.parent);
-    }
-
-    if (transformParent){
-        transform.modelMatrix = transformParent->modelMatrix * transform.localMatrix;
-
-        transform.worldPosition = transformParent->modelMatrix * origin;
-        transform.worldScale = transformParent->worldScale * transform.scale;
-        transform.worldRotation = transformParent->worldRotation * transform.rotation;
-    }else{
-        transform.modelMatrix = transform.localMatrix;
-
-        transform.worldPosition = origin;
-        transform.worldScale = transform.scale;
-        transform.worldRotation = transform.rotation;
-    }
-
-    if (hasLights){
-        transform.normalMatrix = transform.modelMatrix.inverse().transpose();
-    }
+    computeWorldTransform(*scene, transform, entity, hasLights);
 
     // what it casts moved: the shadow cache's input (a rotation can keep the bounds)
     if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
@@ -11484,37 +11547,54 @@ void RenderSystem::needReloadMeshVariants() {
 // falls back), asking for them as loadMesh does (ShaderPool::get starts their builds). The
 // variants as loadMesh resolves them, from the submeshes' attributes of their last load
 // (a variant-only reload keeps the buffers).
-bool RenderSystem::meshVariantShadersReady(Entity entity, const MeshComponent& mesh, const InstancedMeshComponent* instmesh, const TerrainComponent* terrain){
+bool RenderSystem::meshVariantShadersReady(Entity entity, MeshComponent& mesh, const InstancedMeshComponent* instmesh, const TerrainComponent* terrain){
     if (!Engine::isViewLoaded())
         return false;
-    auto ready = [](ShaderType type, uint64_t properties, uint16_t customId){
-        return ShaderPool::get(type, properties, customId)->isCreated() || ShaderPool::isShaderBuildFailed(type, properties, customId);
+    // the variants once built, with the object that will draw each (spec S32: warmed first)
+    std::vector<std::pair<ObjectRender*, std::shared_ptr<ShaderRender>>> targets;
+    auto ready = [&targets](ShaderType type, uint64_t properties, uint16_t customId, ObjectRender* render){
+        std::shared_ptr<ShaderRender> shader = ShaderPool::get(type, properties, customId);
+        if (shader->isCreated()){
+            targets.emplace_back(render, shader);
+            return true;
+        }
+        return ShaderPool::isShaderBuildFailed(type, properties, customId);
     };
     const MeshShaderEnvironment shaderEnvironment = getMeshShaderEnvironment();
     const bool hasMirror = (scene->findComponent<MirrorComponent>(entity) != NULL);
     const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
     bool allReady = true;
     for (unsigned int i = 0; i < mesh.numSubmeshes; i++){
-        const Submesh& submesh = mesh.submeshes[i];
+        Submesh& submesh = mesh.submeshes[i];
         SubmeshShaderInputs inputs = getSubmeshShaderInputs(mesh, submesh, terrain, instmesh, hasMirror, sceneMeshShader);
         if (i == 0 && frameFluids && frameFluids->getMaterialTexture(entity))
             inputs.baseColorTexture = true;
         const SubmeshShaderVariant variant = getSubmeshShaderVariant(shaderEnvironment, inputs);
         allReady = ready(ShaderType::MESH, variant.properties,
-                         ShaderPool::registerCustomShader(getSubmeshShaderReference(mesh, submesh, sceneMeshShader, variant.litDefines))) && allReady;
+                         ShaderPool::registerCustomShader(getSubmeshShaderReference(mesh, submesh, sceneMeshShader, variant.litDefines)), &submesh.render) && allReady;
         if (variant.depth){
             allReady = ready(ShaderType::DEPTH, variant.depthProperties,
-                             ShaderPool::registerCustomShader(getSubmeshDepthShaderReference(mesh, submesh, sceneMeshShader))) && allReady;
+                             ShaderPool::registerCustomShader(getSubmeshDepthShaderReference(mesh, submesh, sceneMeshShader)), &submesh.depthRender) && allReady;
         }
         if (variant.gbuffer){
-            allReady = ready(ShaderType::GBUFFER, variant.gbufferProperties, 0) && allReady;
+            allReady = ready(ShaderType::GBUFFER, variant.gbufferProperties, 0, &submesh.gbufferRender) && allReady;
         }
         if (hasExtraPass(submesh, terrain != nullptr)){
             const SubmeshShaderVariant passVariant = getSubmeshShaderVariant(shaderEnvironment, getExtraPassShaderInputs(inputs, submesh.material.extraPass));
-            allReady = ready(ShaderType::MESH, passVariant.properties, ShaderPool::registerCustomShader(getSubmeshExtraPassReference(submesh))) && allReady;
+            allReady = ready(ShaderType::MESH, passVariant.properties, ShaderPool::registerCustomShader(getSubmeshExtraPassReference(submesh)),
+                             submesh.extraPass ? &submesh.extraPass->render : nullptr) && allReady;
         }
     }
-    return allReady;
+    if (!allReady)
+        return false;
+    // the loaded objects keep drawing until their pipelines on the new variants are created and
+    // warmed (every one asked for in this update)
+    bool warm = true;
+    for (auto& [render, shader] : targets){
+        if (render)
+            warm = render->prewarmWith(shader.get()) && warm;
+    }
+    return warm;
 }
 
 void RenderSystem::needReloadUIs() {

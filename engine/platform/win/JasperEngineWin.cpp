@@ -7,6 +7,9 @@
 #include "SystemWin.h"
 #include "WinInputRouter.h"
 #include "WindowWin.h"
+#if defined(SOKOL_GLCORE)
+#include "WglWorkerContext.h"
+#endif
 
 #if defined(SOKOL_VULKAN)
 // After WindowWin.h: the Win32 surface entry points come from <windows.h>
@@ -60,6 +63,16 @@ constexpr int WGL_CONTEXT_CORE_PROFILE_BIT = 0x00000001;
 
 HDC deviceContext = nullptr;
 HGLRC glContext = nullptr;
+// a GL 4.1 core context; the shader creation's worker context (spec S32) repeats them
+const int contextAttributes[] = {
+    WGL_CONTEXT_MAJOR_VERSION, 4,
+    WGL_CONTEXT_MINOR_VERSION, 1,
+    WGL_CONTEXT_PROFILE_MASK, WGL_CONTEXT_CORE_PROFILE_BIT,
+    0
+};
+// and the pixel format of the window it shares with
+PIXELFORMATDESCRIPTOR chosenDescriptor{};
+int chosenPixelFormat = 0;
 #endif
 
 GamepadWin gamepads;
@@ -226,6 +239,8 @@ bool createContext() {
     descriptor.cStencilBits = 8;
 
     const int pixelFormat = ChoosePixelFormat(deviceContext, &descriptor);
+    chosenDescriptor = descriptor;
+    chosenPixelFormat = pixelFormat;
     if (!pixelFormat || !SetPixelFormat(deviceContext, pixelFormat, &descriptor)) {
         std::fprintf(stderr, "Error: No OpenGL pixel format available.\n");
         return false;
@@ -246,13 +261,7 @@ bool createContext() {
     auto createContextAttribs = wglProc<CreateContextAttribsProc>(
         "wglCreateContextAttribsARB");
     if (createContextAttribs) {
-        const int attributes[] = {
-            WGL_CONTEXT_MAJOR_VERSION, 4,
-            WGL_CONTEXT_MINOR_VERSION, 1,
-            WGL_CONTEXT_PROFILE_MASK, WGL_CONTEXT_CORE_PROFILE_BIT,
-            0
-        };
-        glContext = createContextAttribs(deviceContext, nullptr, attributes);
+        glContext = createContextAttribs(deviceContext, nullptr, contextAttributes);
     }
     wglMakeCurrent(nullptr, nullptr);
     wglDeleteContext(legacy);
@@ -268,10 +277,15 @@ bool createContext() {
 
     const auto swapIntervalEXT = wglProc<SwapIntervalProc>("wglSwapIntervalEXT");
     if (swapIntervalEXT) swapIntervalEXT(platformConfig().vsync ? 1 : 0);
+    // the shader creation thread's context (spec S32), with the same attributes
+    setGpuWorkerContextFactory([]() {
+        return WglWorkerContext::create(glContext, chosenPixelFormat, chosenDescriptor, contextAttributes);
+    });
     return true;
 }
 
 void destroyContext() {
+    setGpuWorkerContextFactory(nullptr);
     if (glContext) {
         wglMakeCurrent(nullptr, nullptr);
         wglDeleteContext(glContext);

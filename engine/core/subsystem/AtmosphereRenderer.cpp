@@ -515,6 +515,8 @@ bool AtmosphereRenderer::loadProgram(ProgramKind kind){
             render.addTexture(data.getTextureIndexByName(texture.name), ShaderStageType::FRAGMENT, placeholder);
         }
     }
+    // a pass of the frame: created at once, never skipped (spec S32 §6.4)
+    render.setImmediatePipelines(true);
     if (!render.endLoadDynamic(PrimitiveType::TRIANGLES, IndexType::NONE)){
         Log::error("Atmosphere: could not load the %s pass", ShaderPool::getShaderTypeName(types[kind], false).c_str());
         return false;

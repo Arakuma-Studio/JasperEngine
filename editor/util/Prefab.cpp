@@ -5,6 +5,7 @@
 #include "StreamPreserved.h"
 
 #include "Stream.h"
+#include "util/WorldTransforms.h"
 #include "util/YamlNumbers.h"
 
 #include <unordered_set>
@@ -179,6 +180,8 @@ Prefab::FileHeader Prefab::loadRegistry(const YAML::Node& node, const std::strin
     addedObjects.clear();
     root = NULL_ENTITY;
 
+    // the file holds no world values: computed once the registry is complete
+    WorldTransformScope worldTransforms(registry.get());
     Stream::decodeEntitySelection(node, registry.get(), &registryEntities);
     // the header keys this editor does not know go back into the file on save
     StreamLoad::preserveRootKeys(registry.get(), NULL_ENTITY, node, RootKind::PrefabHeader);

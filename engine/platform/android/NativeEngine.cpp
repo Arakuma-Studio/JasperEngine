@@ -14,6 +14,7 @@
 #include <swappy/swappyGL.h>
 #include <algorithm>
 #include <atomic>
+#include <memory>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -25,6 +26,7 @@
 #include "System.h"
 #include "Input.h"
 #include "Log.h"
+#include "render/GpuWorkerContext.h"
 #include "util/StringUtils.h"
 #include "../common/PlatformDefaults.h"
 #include "player/Launch.h"
@@ -992,6 +994,64 @@ bool NativeEngine::initSurface() {
     return true;
 }
 
+namespace {
+
+    // The shader creation's worker context (spec S32): a context sharing the render context, over
+    // a 1x1 pbuffer of its config or no surface (EGL_KHR_surfaceless_context), current on the
+    // creation thread
+    class EglWorkerContext : public jasperengine::GpuWorkerContext {
+    public:
+        static std::unique_ptr<jasperengine::GpuWorkerContext> create(EGLDisplay display, EGLConfig config, EGLContext share){
+            const EGLint attribList[] = {EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE};
+            EGLContext context = eglCreateContext(display, config, share, attribList);
+            if (context == EGL_NO_CONTEXT){
+                jasperengine::Log::warn("EGL: no worker context in the render context's share group, EGL error %d", eglGetError());
+                return nullptr;
+            }
+            EGLSurface surface = EGL_NO_SURFACE;
+            EGLint surfaceType = 0;
+            eglGetConfigAttrib(display, config, EGL_SURFACE_TYPE, &surfaceType);
+            if (surfaceType & EGL_PBUFFER_BIT){
+                const EGLint attribs[] = {EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE};
+                surface = eglCreatePbufferSurface(display, config, attribs);
+            }
+            if (surface == EGL_NO_SURFACE){
+                const char* extensions = eglQueryString(display, EGL_EXTENSIONS);
+                if (!extensions || !strstr(extensions, "EGL_KHR_surfaceless_context")){
+                    eglDestroyContext(display, context);
+                    jasperengine::Log::warn("EGL: no surface for the worker context");
+                    return nullptr;
+                }
+            }
+            return std::unique_ptr<jasperengine::GpuWorkerContext>(new EglWorkerContext(display, context, surface));
+        }
+
+        ~EglWorkerContext() override {
+            if (surface != EGL_NO_SURFACE)
+                eglDestroySurface(display, surface);
+            eglDestroyContext(display, context);
+        }
+
+        bool makeCurrent() override {
+            return eglMakeCurrent(display, surface, surface, context) == EGL_TRUE;
+        }
+
+        void release() override {
+            eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+            eglReleaseThread();
+        }
+
+    private:
+        EglWorkerContext(EGLDisplay display, EGLContext context, EGLSurface surface)
+            : display(display), context(context), surface(surface) {}
+
+        EGLDisplay display;
+        EGLContext context;
+        EGLSurface surface;
+    };
+
+}
+
 bool NativeEngine::initContext() {
     // need a display
     assert(mEglDisplay != EGL_NO_DISPLAY);
@@ -1008,6 +1068,13 @@ bool NativeEngine::initContext() {
         return false;
     }
 
+    // the engine's shader creation thread (spec S32), made when its render system starts
+    const EGLDisplay display = mEglDisplay;
+    const EGLConfig config = mEglConfig;
+    const EGLContext share = mEglContext;
+    jasperengine::setGpuWorkerContextFactory([display, config, share]() {
+        return EglWorkerContext::create(display, config, share);
+    });
     return true;
 }
 
@@ -1052,6 +1119,7 @@ void NativeEngine::killContext() {
     eglMakeCurrent(mEglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
 
     if (mEglContext != EGL_NO_CONTEXT) {
+        jasperengine::setGpuWorkerContextFactory(nullptr);
         eglDestroyContext(mEglDisplay, mEglContext);
         mEglContext = EGL_NO_CONTEXT;
     }
