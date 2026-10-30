@@ -977,6 +977,20 @@ Kept current so the work can continue after an interruption.
     (`build_project: ...; ship: jasper://docs/shipping.`). That line replaces the old Export
     sentence and is one byte shorter, so the headroom check still passes.
   - `RuntimeFields.gen.inc` was regenerated after the S18 merge and now holds 77 components.
+- **oe-port e3f0c274d (S32 async shaders) merged:**
+  - Conflicts were resolved keeping both sides. `Engine.cpp` gets S32's shader warm-up beside
+    S30's `Graphics:` line.
+  - The Mac and Windows platforms create S32's GPU worker context, with the vsync of S30's
+    platform configuration.
+  - The Xcode project is the union of both, and every `xcode_sync_*.py --check` passes.
+  - Prebuilt builds ship S32's warm-up list too: `buildAndSaveShaders` writes
+    `shaders/warmup.json`, and the staging copies it into the content.
+  - A player's `--screenshot` now waits for S32's pending GPU creations, as the editor's
+    screenshots do.
+    - The game is held, the frames drawn while it waits are not counted, and the quit follows
+      the capture.
+    - It waits at most 30 s, then captures what is drawn with a warning.
+    - Covered by `RunControlFixture.ScreenshotWaitsForPendingGpuCreation`.
 - **Fixes found by the runs:**
   - S18's OpenEngine notice for `core/spline` was copied from the export's engine copy, and a
     prebuilt build has none. It now comes from `Exporter::engineSourceDir()`: the export's copy,
