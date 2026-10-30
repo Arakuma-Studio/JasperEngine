@@ -507,7 +507,8 @@ Unit tests in `engine/tests/core/animation/` (`Animator*.cpp`), editor tests in
   incl. the GPU golden, 68 passed; ASan+UBSan animation suites, 146 passed; web gates (simd128
   and scalar) pass with the same pose; Android emulator (`tools/test-projects/animator`) passes;
   smoke passes; E bench: all budgets hold, Crowd200 p95 2.37 ms median of five
-  (`docs/perf/animator.md`); Xcode project synced. Full MCP suite (`MCP_SUITE=all`): every S21
+  (`docs/perf/animator.md`; about 0.1 ms under its 2.5 ms budget, so measure it on an idle E: a
+  batch beside another job on E read 3.0 and 3.7 ms); Xcode project synced. Full MCP suite (`MCP_SUITE=all`): every S21
   test and the guide, budget, docs, reflection and ECS tests pass; the failures left are not
   S21's: they fail on `sync/origin-main-3` too (`test_pose_runtime`, `test_lattice` screenshot,
   `test_post_fx_golden`, `test_shadows`, the CLI `check` `map::at` abort, `test_place_physics_cli`,
