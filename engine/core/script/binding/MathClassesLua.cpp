@@ -28,11 +28,6 @@
 #include <optional>
 
 using namespace jasperengine;
-// unqualified, as tools/lua_api resolves the bound members by class name
-using particles::MinMaxCurve;
-using particles::MinMaxGradient;
-using particles::CurveMode;
-using particles::GradientValueMode;
 
 namespace luabridge
 {
@@ -47,8 +42,8 @@ namespace luabridge
     template<> struct Stack<CurveWrapMode> : EnumWrapper<CurveWrapMode>{};
     template<> struct Stack<CurveTangentMode> : EnumWrapper<CurveTangentMode>{};
     template<> struct Stack<GradientMode> : EnumWrapper<GradientMode>{};
-    template<> struct Stack<CurveMode> : EnumWrapper<CurveMode>{};
-    template<> struct Stack<GradientValueMode> : EnumWrapper<GradientValueMode>{};
+    template<> struct Stack<particles::CurveMode> : EnumWrapper<particles::CurveMode>{};
+    template<> struct Stack<particles::GradientValueMode> : EnumWrapper<particles::GradientValueMode>{};
 }
 
 // constants are returned as copies: bound by pointer, LuaBridge hands out a writable reference to them
@@ -195,18 +190,18 @@ namespace {
 
         luabridge::getGlobalNamespace(L)
             .beginNamespace("MinMaxCurveMode")
-            .addVariable("Constant", CurveMode::Constant)
-            .addVariable("TwoConstants", CurveMode::TwoConstants)
-            .addVariable("Curve", CurveMode::Curve)
-            .addVariable("TwoCurves", CurveMode::TwoCurves)
+            .addVariable("Constant", particles::CurveMode::Constant)
+            .addVariable("TwoConstants", particles::CurveMode::TwoConstants)
+            .addVariable("Curve", particles::CurveMode::Curve)
+            .addVariable("TwoCurves", particles::CurveMode::TwoCurves)
             .endNamespace();
 
         luabridge::getGlobalNamespace(L)
             .beginNamespace("MinMaxGradientMode")
-            .addVariable("Color", GradientValueMode::Color)
-            .addVariable("Gradient", GradientValueMode::Gradient)
-            .addVariable("TwoColors", GradientValueMode::TwoColors)
-            .addVariable("TwoGradients", GradientValueMode::TwoGradients)
+            .addVariable("Color", particles::GradientValueMode::Color)
+            .addVariable("Gradient", particles::GradientValueMode::Gradient)
+            .addVariable("TwoColors", particles::GradientValueMode::TwoColors)
+            .addVariable("TwoGradients", particles::GradientValueMode::TwoGradients)
             .endNamespace();
 
         luabridge::getGlobalNamespace(L)
@@ -294,44 +289,44 @@ namespace {
             .endClass();
 
         luabridge::getGlobalNamespace(L)
-            .beginClass<MinMaxCurve>("MinMaxCurve")
+            .beginClass<particles::MinMaxCurve>("MinMaxCurve")
             .addConstructor(
-                [](void* ptr) { return new (ptr) MinMaxCurve(); },
-                [](void* ptr, float value) { return new (ptr) MinMaxCurve(value); })
-            .addStaticFunction("twoConstants", &MinMaxCurve::twoConstants)
-            .addStaticFunction("fromCurve", [](const Curve& curve, float multiplier) -> MinMaxCurve {
-                return MinMaxCurve::fromCurve(curve, multiplier); })
-            .addStaticFunction("twoCurves", [](const Curve& curveMin, const Curve& curveMax, float multiplier) -> MinMaxCurve {
-                MinMaxCurve value = MinMaxCurve::fromCurve(curveMin, multiplier);
-                value.mode = CurveMode::TwoCurves;
+                [](void* ptr) { return new (ptr) particles::MinMaxCurve(); },
+                [](void* ptr, float value) { return new (ptr) particles::MinMaxCurve(value); })
+            .addStaticFunction("twoConstants", &particles::MinMaxCurve::twoConstants)
+            .addStaticFunction("fromCurve", [](const Curve& curve, float multiplier) -> particles::MinMaxCurve {
+                return particles::MinMaxCurve::fromCurve(curve, multiplier); })
+            .addStaticFunction("twoCurves", [](const Curve& curveMin, const Curve& curveMax, float multiplier) -> particles::MinMaxCurve {
+                particles::MinMaxCurve value = particles::MinMaxCurve::fromCurve(curveMin, multiplier);
+                value.mode = particles::CurveMode::TwoCurves;
                 value.curveMax = curveMax;
                 return value; })
-            .addFunction("evaluate", [](const MinMaxCurve& value, float time, std::optional<float> random) -> float {
+            .addFunction("evaluate", [](const particles::MinMaxCurve& value, float time, std::optional<float> random) -> float {
                 return value.evaluate(time, random.value_or(0.0f)); })
-            .addProperty("mode", &MinMaxCurve::mode, &MinMaxCurve::mode)
-            .addProperty("constant", &MinMaxCurve::constant, &MinMaxCurve::constant)
-            .addProperty("constantMin", &MinMaxCurve::constant, &MinMaxCurve::constant)
-            .addProperty("constantMax", &MinMaxCurve::constantMax, &MinMaxCurve::constantMax)
-            .addProperty("curve", &MinMaxCurve::curve, &MinMaxCurve::curve)
-            .addProperty("curveMin", &MinMaxCurve::curve, &MinMaxCurve::curve)
-            .addProperty("curveMax", &MinMaxCurve::curveMax, &MinMaxCurve::curveMax)
-            .addProperty("multiplier", &MinMaxCurve::multiplier, &MinMaxCurve::multiplier)
+            .addProperty("mode", &particles::MinMaxCurve::mode, &particles::MinMaxCurve::mode)
+            .addProperty("constant", &particles::MinMaxCurve::constant, &particles::MinMaxCurve::constant)
+            .addProperty("constantMin", &particles::MinMaxCurve::constant, &particles::MinMaxCurve::constant)
+            .addProperty("constantMax", &particles::MinMaxCurve::constantMax, &particles::MinMaxCurve::constantMax)
+            .addProperty("curve", &particles::MinMaxCurve::curve, &particles::MinMaxCurve::curve)
+            .addProperty("curveMin", &particles::MinMaxCurve::curve, &particles::MinMaxCurve::curve)
+            .addProperty("curveMax", &particles::MinMaxCurve::curveMax, &particles::MinMaxCurve::curveMax)
+            .addProperty("multiplier", &particles::MinMaxCurve::multiplier, &particles::MinMaxCurve::multiplier)
             .endClass();
 
         luabridge::getGlobalNamespace(L)
-            .beginClass<MinMaxGradient>("MinMaxGradient")
+            .beginClass<particles::MinMaxGradient>("MinMaxGradient")
             .addConstructor(
-                [](void* ptr) { return new (ptr) MinMaxGradient(); },
-                [](void* ptr, Vector4 color) { return new (ptr) MinMaxGradient(color); })
-            .addFunction("evaluate", [](const MinMaxGradient& value, float time, std::optional<float> random) -> Vector4 {
+                [](void* ptr) { return new (ptr) particles::MinMaxGradient(); },
+                [](void* ptr, Vector4 color) { return new (ptr) particles::MinMaxGradient(color); })
+            .addFunction("evaluate", [](const particles::MinMaxGradient& value, float time, std::optional<float> random) -> Vector4 {
                 return value.evaluate(time, random.value_or(0.0f)); })
-            .addProperty("mode", &MinMaxGradient::mode, &MinMaxGradient::mode)
-            .addProperty("color", &MinMaxGradient::color, &MinMaxGradient::color)
-            .addProperty("colorMin", &MinMaxGradient::color, &MinMaxGradient::color)
-            .addProperty("colorMax", &MinMaxGradient::colorMax, &MinMaxGradient::colorMax)
-            .addProperty("gradient", &MinMaxGradient::gradient, &MinMaxGradient::gradient)
-            .addProperty("gradientMin", &MinMaxGradient::gradient, &MinMaxGradient::gradient)
-            .addProperty("gradientMax", &MinMaxGradient::gradientMax, &MinMaxGradient::gradientMax)
+            .addProperty("mode", &particles::MinMaxGradient::mode, &particles::MinMaxGradient::mode)
+            .addProperty("color", &particles::MinMaxGradient::color, &particles::MinMaxGradient::color)
+            .addProperty("colorMin", &particles::MinMaxGradient::color, &particles::MinMaxGradient::color)
+            .addProperty("colorMax", &particles::MinMaxGradient::colorMax, &particles::MinMaxGradient::colorMax)
+            .addProperty("gradient", &particles::MinMaxGradient::gradient, &particles::MinMaxGradient::gradient)
+            .addProperty("gradientMin", &particles::MinMaxGradient::gradient, &particles::MinMaxGradient::gradient)
+            .addProperty("gradientMax", &particles::MinMaxGradient::gradientMax, &particles::MinMaxGradient::gradientMax)
             .endClass();
     }
 

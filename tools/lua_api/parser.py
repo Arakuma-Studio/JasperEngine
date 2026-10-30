@@ -942,7 +942,8 @@ def eval_int(toks, known, model):
     return None
 
 
-_STD_STRIP = re.compile(r'\b(?:jasperengine|luabridge)::')
+# the engine's namespaces (jasperengine, its particles module) and LuaBridge's: bound C++ names are matched without them
+_STD_STRIP = re.compile(r'\b(?:jasperengine|particles|luabridge)::')
 
 
 def strip_ns(t):
