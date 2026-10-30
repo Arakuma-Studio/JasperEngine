@@ -284,6 +284,17 @@ Steam Deck.
 
   - **AAB:** `aapt2 link --proto-format`, then `java -jar bundletool.jar build-bundle`, then
     `jarsigner`.
+  - **Package format** (Project Settings > Android > Package Format, `android.package_format`,
+    `--android-format`, `build_project android_format`):
+    - `aab` is the default. Google Play builds each device's APK from the bundle, carrying only
+      that device's ABI.
+    - `apk-per-abi` makes one APK per selected ABI (`<App>-<abi>.apk`), for distribution outside
+      Play.
+    - `apk` is the universal APK of every selected ABI, and only when chosen. Build Settings shows
+      what it costs: the engine libraries of every ABI in one file, against at most the largest
+      ABI's per device for the other two.
+    - An APK is 16 KB aligned on its 64-bit ABIs (arm64-v8a, x86_64). armeabi-v7a and x86 keep
+      4 KB pages, as Android 15 requires for 64-bit only.
   - **Requirements on the user's machine:** a JDK 17+ (`JAVA_HOME` or `java` on PATH), Android SDK
     `build-tools;35.0.0`+ (`aapt2`, `zipalign`, `apksigner`) and `platforms;android-<targetSdk>`.
     `bundletool` 1.17.x is downloaded once with a pinned sha256 (Apache-2.0, noticed).
@@ -469,10 +480,10 @@ Steam Deck.
   - a missing `licenses/` entry from `notices[]`;
   - `allowPlayerMismatch`;
   - an unsigned macOS arm64 slice (no `LC_CODE_SIGNATURE`);
-  - for Android: `apksigner verify` failure, or a `.so` that is not 16 KB aligned.
+  - for Android: `apksigner verify` failure, or a 64-bit ABI's `.so` that is not 16 KB aligned.
 - **R31. CLI** (`editor/cli/CommandLine.cpp`). `export` (source project) is unchanged. New
   commands:
-  - `build --project P --platform <windows|linux|macos|android|ios|web> --out D [--backend b] [--method auto|prebuilt|compile] [--development] [--pack] [--android-format apk|aab] [--start-scene s] [--json]`
+  - `build --project P --platform <windows|linux|macos|android|ios|web> --out D [--backend b] [--method auto|prebuilt|compile] [--development] [--pack] [--android-format aab|apk-per-abi|apk] [--start-scene s] [--json]`
   - `players list|install <zip>|download <id>|remove <id> [--players-dir D]`
   - `publish init|prepare|verify|steam-vdf|steam-upload|deck-deploy|deck-rollback|deck-smoke …`
   - `reflect --emit-runtime-fields <file>`
@@ -678,10 +689,12 @@ std::expected<std::map<std::string, TreeEntry>, std::vector<std::string>> treeMa
     - `--screenshot` writes a 1280×720 PNG whose centre pixel matches the fixture baseline.
   - The same `quit-after`/screenshot check runs on Windows (d3d11) and macOS (metal) in the
     on-demand jobs.
-- **AC7. Android, no NDK.** The `android` CI job sets `ANDROID_NDK_HOME=` and removes `cmake` from
-  PATH. It then:
-  - builds `tools/fixtures/unified-lighting` with `--platform android --android-format apk` and
-    with `aab`;
+- **AC7. Android, no NDK.** The `prebuilt-android` CI job runs `tools/ci/android_ac7.sh`. It
+  points `ANDROID_NDK_HOME` nowhere and puts stand-ins first on PATH for `cmake` and `ndk-build`;
+  they fail and log if anything runs them. It then:
+  - builds `tools/fixtures/unified-lighting` with `--platform android` once for each
+    `--android-format`: `aab`, `apk-per-abi` and `apk`;
+  - checks that no stand-in ran;
   - `apksigner verify --verbose` passes (v2 signed);
   - `zipalign -c -P 16 4` passes;
   - `aapt2 dump badging` shows the project's applicationId, versionCode and label;
