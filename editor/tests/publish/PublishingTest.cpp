@@ -186,6 +186,41 @@ TEST(PayloadValidator, AndroidLibrariesAreStoredAnd16KAligned) {
     EXPECT_TRUE(hasFinding(findings, "is compressed")) << join(findings);
 }
 
+// 16 KB pages are a 64-bit requirement: a 32-bit library with 4 KB pages is accepted (the NDK's
+// flexible page sizes apply to arm64-v8a and x86_64 only)
+TEST(PayloadValidator, Android32BitLibrariesKeep4KPages) {
+    TestTempDir dir("payload-32");
+    std::string library(52 + 32, '\0');
+    const unsigned char ident[] = {0x7f, 'E', 'L', 'F', 1, 1, 1};   // ELFCLASS32, little endian
+    std::copy(ident, ident + sizeof(ident), library.begin());
+    library[16] = 3;            // ET_DYN
+    library[18] = 0x28;         // EM_ARM
+    library[28] = 52;           // e_phoff
+    library[40] = 52;           // e_ehsize
+    library[42] = 32;           // e_phentsize
+    library[44] = 1;            // e_phnum
+    library[52] = 1;            // PT_LOAD
+    library[52 + 29] = 0x10;    // p_align = 4096
+    ZipWriter zip;
+    std::string error;
+    ASSERT_TRUE(zip.open(dir / "game.apk", error)) << error;
+    ASSERT_TRUE(zip.add("lib/armeabi-v7a/libjasperengine-android.so", library.data(), library.size(), false, error)) << error;
+    ASSERT_TRUE(zip.add("AndroidManifest.xml", "x", 1, true, error)) << error;
+    ASSERT_TRUE(zip.finish(error)) << error;
+    ValidationTarget target;
+    target.platform = BuildPlatform::Android;
+    target.arch = "universal";
+    target.verifyApk = [](const fs::path&, std::string& output) {
+        output = "Verifies";
+        return true;
+    };
+    std::vector<std::string> findings;
+    validatePayload(dir.path(), target, findings);
+    EXPECT_FALSE(hasFinding(findings, "aligned to")) << join(findings);
+    EXPECT_FALSE(hasFinding(findings, "is arm")) << join(findings);
+    EXPECT_FALSE(hasFinding(findings, "not an ELF")) << join(findings);
+}
+
 TEST(Publishing, ConfigRoundTripAndChecks) {
     PublishingConfig config = linuxConfig("build/linux");
     config.deck.host = "steamdeck.local";

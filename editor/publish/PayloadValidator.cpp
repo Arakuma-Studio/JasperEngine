@@ -163,7 +163,8 @@ namespace {
                 findings.push_back(relative + "!" + entry.name + " is not an ELF library");
             } else if (want.empty() || std::find(info->arches.begin(), info->arches.end(), want) == info->arches.end()) {
                 findings.push_back(relative + "!" + entry.name + " is " + (info->arches.empty() ? "?" : info->arches.front()) + ", its directory is " + abi);
-            } else if (info->minLoadAlignment < 16384) {
+            } else if ((abi == "arm64-v8a" || abi == "x86_64") && info->minLoadAlignment < 16384) {
+                // 16 KB pages are 64-bit only (Android 15): armeabi-v7a and x86 keep 4 KB
                 findings.push_back(relative + "!" + entry.name + " is aligned to " + std::to_string(info->minLoadAlignment) +
                                    " bytes, 16 KB page devices need 16384 (-Wl,-z,max-page-size=16384)");
             }

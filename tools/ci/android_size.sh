@@ -2,7 +2,8 @@
 # What a shipped Android build of tools/fixtures/unified-lighting weighs (docs/specs/S30-shipping.md,
 # shipped size): the release android-universal-gles3 runtime (its stripped libraries and the
 # symbols split off them), release APKs built from it by the editor (every ABI, arm64-v8a only,
-# armeabi-v7a only) next to a compiled arm64-v8a build of the same project, each broken down by
+# armeabi-v7a only) next to a compiled arm64-v8a build of the same project (its exported source
+# project built by Gradle), each broken down by
 # tools/players/apk_size.py; the release prebuilt APK then runs on the emulator.
 #
 #   tools/build.sh linux                     # the editor install
@@ -51,7 +52,9 @@ build() {  # name, method
         > "$OUT/$1.log" 2>&1
     local code=$?
     tail -n 6 "$OUT/$1.log"
-    grep -q "^method: $2" "$OUT/$1.log" || { echo "FAIL: $1 was not built with method $2 (exit $code)" >&2; return 1; }
+    [[ $code == 0 ]] || { echo "FAIL: $1 (exit $code)" >&2; return 1; }
+    grep -q "^method: $2" "$OUT/$1.log" || { echo "FAIL: $1 was not built with method $2" >&2; return 1; }
+    [[ -f "$(apk "$1")" ]] || { echo "FAIL: $1 made no APK" >&2; return 1; }
 }
 apk() { sed -n 's/^executable: //p' "$OUT/$1.log" | head -1 | sed 's|^/src/||'; }
 
@@ -65,7 +68,7 @@ for name in prebuilt-all prebuilt-arm64 prebuilt-armv7; do
 done
 
 step "the player's code: what the dex holds"
-tools/build.sh exec android bash -c "set -e; DEXDUMP=\$(ls -d \$ANDROID_HOME/build-tools/*/dexdump | sort -V | tail -1); rm -rf /tmp/dex; mkdir /tmp/dex; \
+[[ ${#APKS[@]} -gt 0 ]] && tools/build.sh exec android bash -c "set -e; DEXDUMP=\$(ls -d \$ANDROID_HOME/build-tools/*/dexdump | sort -V | tail -1); rm -rf /tmp/dex; mkdir /tmp/dex; \
     unzip -q -o /src/${APKS[0]} 'classes*.dex' -d /tmp/dex; for f in /tmp/dex/classes*.dex; do \$DEXDUMP \$f; done > /tmp/dex/dump.txt; \
     ls -l /tmp/dex/classes*.dex; echo classes: \$(grep -c 'Class descriptor' /tmp/dex/dump.txt); \
     grep -A3 'Class descriptor.*/GameActivity;' /tmp/dex/dump.txt | head -4; \
@@ -77,10 +80,29 @@ if [[ ${#APKS[@]} -gt 0 ]]; then
 fi
 
 if [[ $COMPILED == 1 ]]; then
+    # a Compile build of Android is the exported source project built by Gradle (the editor's
+    # build command makes the prebuilt one): release, arm64-v8a, the gles3 shaders
+    step "compiled arm64-v8a: export, then Gradle assembleRelease"
     project compiled-arm64 arm64-v8a
-    if build compiled-arm64 compile; then APKS+=("$(apk compiled-arm64)"); else FAILED=1; fi
+    tools/build.sh exec android bash -c "dbus-run-session -- build/linux/editor-install/bin/jasperengine-editor export         --project $OUT/compiled-arm64 --out $OUT/compiled-arm64-export --backend opengles" > "$OUT/compiled-arm64.log" 2>&1
+    code=$?
+    tail -n 4 "$OUT/compiled-arm64.log"
+    if [[ $code == 0 ]]; then
+        tools/build.sh exec android bash -c "cd $OUT/compiled-arm64-export/workspaces/androidstudio &&             env JASPERENGINE_ANDROID_ABIS=arm64-v8a CMAKE_CXX_COMPILER_LAUNCHER=ccache ./gradlew --no-daemon -q assembleRelease"             >> "$OUT/compiled-arm64.log" 2>&1
+        code=$?
+    fi
+    COMPILED_APK="$(find "$OUT/compiled-arm64-export/workspaces/androidstudio/app/build/outputs/apk/release" -name '*.apk' 2>/dev/null | head -n 1)"
+    if [[ $code == 0 && -f "$COMPILED_APK" ]]; then
+        APKS+=("$COMPILED_APK")
+        COMPILED_LIB="$(find "$OUT/compiled-arm64-export/workspaces/androidstudio/app/build/intermediates" -path '*stripped_native_libs*arm64-v8a/libjasperengine-android.so' | head -n 1)"
+        [[ -n "$COMPILED_LIB" ]] && echo "compiled stripped library: $(stat -c %s "$COMPILED_LIB") $COMPILED_LIB"
+    else
+        echo "FAIL: the compiled build (exit $code)" >&2
+        tail -n 30 "$OUT/compiled-arm64.log"
+        FAILED=1
+    fi
 fi
 
 step "sizes"
-python3 tools/players/apk_size.py "${APKS[@]}" --json "$OUT/sizes.json" || FAILED=1
+[[ ${#APKS[@]} -gt 0 ]] && python3 tools/players/apk_size.py "${APKS[@]}" --json "$OUT/sizes.json" || FAILED=1
 exit $FAILED
