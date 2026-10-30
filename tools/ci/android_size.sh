@@ -7,17 +7,19 @@
 # tools/players/apk_size.py; the release prebuilt APK then runs on the emulator.
 #
 #   tools/build.sh linux                     # the editor install
-#   tools/ci/android_size.sh [--skip-players] [--skip-compiled]
+#   tools/ci/android_size.sh [--skip-players] [--skip-prebuilt] [--skip-compiled]
 #
 # Needs KVM for the emulator (servers A and C). Results in build/android-size/ (sizes.json).
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 PLAYERS=1
+PREBUILT=1
 COMPILED=1
 for arg in "$@"; do
     case "$arg" in
         --skip-players) PLAYERS=0 ;;
+        --skip-prebuilt) PREBUILT=0 ;;
         --skip-compiled) COMPILED=0 ;;
         *) echo "unknown argument $arg" >&2; exit 2 ;;
     esac
@@ -59,36 +61,39 @@ build() {  # name, method
 apk() { sed -n 's/^executable: //p' "$OUT/$1.log" | head -1 | sed 's|^/src/||'; }
 
 FAILED=0
-project prebuilt-all ""
-project prebuilt-arm64 arm64-v8a
-project prebuilt-armv7 armeabi-v7a
 APKS=()
-for name in prebuilt-all prebuilt-arm64 prebuilt-armv7; do
-    if build "$name" prebuilt; then APKS+=("$(apk "$name")"); else FAILED=1; fi
-done
+if [[ $PREBUILT == 1 ]]; then
+    project prebuilt-all ""
+    project prebuilt-arm64 arm64-v8a
+    project prebuilt-armv7 armeabi-v7a
+    for name in prebuilt-all prebuilt-arm64 prebuilt-armv7; do
+        if build "$name" prebuilt; then APKS+=("$(apk "$name")"); else FAILED=1; fi
+    done
+fi
 
 step "the player's code: what the dex holds"
-[[ ${#APKS[@]} -gt 0 ]] && tools/build.sh exec android bash -c "set -e; DEXDUMP=\$(ls -d \$ANDROID_HOME/build-tools/*/dexdump | sort -V | tail -1); rm -rf /tmp/dex; mkdir /tmp/dex; \
+[[ $PREBUILT == 1 && ${#APKS[@]} -gt 0 ]] && tools/build.sh exec android bash -c "set -e; DEXDUMP=\$(ls -d \$ANDROID_HOME/build-tools/*/dexdump | sort -V | tail -1); rm -rf /tmp/dex; mkdir /tmp/dex; \
     unzip -q -o /src/${APKS[0]} 'classes*.dex' -d /tmp/dex; for f in /tmp/dex/classes*.dex; do \$DEXDUMP \$f; done > /tmp/dex/dump.txt; \
     ls -l /tmp/dex/classes*.dex; echo classes: \$(grep -c 'Class descriptor' /tmp/dex/dump.txt); \
     grep -A3 'Class descriptor.*/GameActivity;' /tmp/dex/dump.txt | head -4; \
     grep 'Class descriptor' /tmp/dex/dump.txt | sed -E 's/.*L([a-z0-9]+\\/[a-z0-9]+)\\/.*/\\1/' | sort | uniq -c | sort -rn | head -12"
 
-if [[ ${#APKS[@]} -gt 0 ]]; then
+if [[ $PREBUILT == 1 && ${#APKS[@]} -gt 0 ]]; then
     step "the release prebuilt APK on the emulator"
     tools/android-emulator-test.sh "${APKS[0]}" --out "$OUT/emulator" --timeout 600 || FAILED=1
 fi
 
 if [[ $COMPILED == 1 ]]; then
     # a Compile build of Android is the exported source project built by Gradle (the editor's
-    # build command makes the prebuilt one): release, arm64-v8a, the gles3 shaders
+    # build command makes the prebuilt one): release, arm64-v8a, the gles3 shaders (the export
+    # does not keep gradlew's executable bit: run through bash)
     step "compiled arm64-v8a: export, then Gradle assembleRelease"
     project compiled-arm64 arm64-v8a
     tools/build.sh exec android bash -c "dbus-run-session -- build/linux/editor-install/bin/jasperengine-editor export         --project $OUT/compiled-arm64 --out $OUT/compiled-arm64-export --backend opengles" > "$OUT/compiled-arm64.log" 2>&1
     code=$?
     tail -n 4 "$OUT/compiled-arm64.log"
     if [[ $code == 0 ]]; then
-        tools/build.sh exec android bash -c "cd $OUT/compiled-arm64-export/workspaces/androidstudio &&             env JASPERENGINE_ANDROID_ABIS=arm64-v8a CMAKE_CXX_COMPILER_LAUNCHER=ccache ./gradlew --no-daemon -q assembleRelease"             >> "$OUT/compiled-arm64.log" 2>&1
+        tools/build.sh exec android bash -c "cd $OUT/compiled-arm64-export/workspaces/androidstudio &&             env JASPERENGINE_ANDROID_ABIS=arm64-v8a CMAKE_CXX_COMPILER_LAUNCHER=ccache bash ./gradlew --no-daemon -q assembleRelease"             >> "$OUT/compiled-arm64.log" 2>&1
         code=$?
     fi
     COMPILED_APK="$(find "$OUT/compiled-arm64-export/workspaces/androidstudio/app/build/outputs/apk/release" -name '*.apk' 2>/dev/null | head -n 1)"
