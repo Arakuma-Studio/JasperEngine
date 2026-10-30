@@ -22,7 +22,7 @@ namespace jasperengine {
         float mainThreadBudgetMs = 2.0f;
         // GL with a worker context: draw a new program and state once there before the frame uses
         // them, so the driver's first-draw compile happens on the worker
-        bool glWarmDraws = true;
+        bool glWarmDraws = false;
         // a game replaying its shader warm-up list (ShaderWarmup) reports its scenes loaded only
         // once the list is ready, so the loading screen covers it
         bool holdFirstSceneForWarmup = true;

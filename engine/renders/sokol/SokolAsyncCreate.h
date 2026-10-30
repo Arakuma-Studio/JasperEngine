@@ -77,6 +77,8 @@ namespace jasperengine {
         static bool waitIdle(double timeoutMs);
 
         static GpuCreationMode getMode();
+        // a software GL (llvmpipe, softpipe, SwiftShader): warm draws never run on it
+        static bool isSoftwareGl();
         static GpuCreationStats getStats();
         static void resetMaxMainMs();
 

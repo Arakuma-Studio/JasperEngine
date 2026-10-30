@@ -380,7 +380,7 @@ The patches in `sokol_gfx.h`:
 struct ShaderCreationSettings {        // S08-reflected (editor) and set by the exported main
     bool asyncCreation = true;
     float mainThreadBudgetMs = 2.0f;
-    bool glWarmDraws = true;
+    bool glWarmDraws = false;
 };
 struct AsyncCreateStats { const char* mode; size_t pendingShaders, pendingPipelines, pendingWarmDraws;
     uint64_t createdShaders, createdPipelines; size_t internedPipelines; double lastFrameMainMs, maxMainMs; };
@@ -451,9 +451,17 @@ public:
     warmed state never overlap (`SokolAsyncCreate::beginFirstDraw`): that first draw waits
     while the worker draws the program, and a program first drawn in a frame is not warmed
     until the next `update()`.
-  - Found in testing: warm draws that bound the render thread's own textures crashed llvmpipe
-    on the render thread (`AtmosphereGpu.ScreenCloudsHideFarTerrain`, where the atmosphere
-    quality change respecifies textures every frame).
+  - **Off by default, and never on a software GL** (`sgj_async_caps.gl_software`: llvmpipe,
+    softpipe, SwiftShader; `JASPER_GL_WARM_DRAWS=1` overrides for driver investigations). On
+    llvmpipe the render thread crashed in the driver drawing programs the worker had drawn
+    (`AtmosphereGpu.ScreenCloudsHideFarTerrain`, deterministic). Isolated on D: with the
+    worker's `glDrawArraysInstanced` skipped (all else the same) it passes; it still crashes
+    with the worker's own textures, with no overlap of the two contexts on a program, and with
+    only programs the render thread never drew warmed. So the render thread reuses what the
+    worker's draw made in the driver, which llvmpipe does not support. Without warm draws a
+    program's first draw with a new state compiles on the render thread where the driver
+    compiles at draw time (llvmpipe: measured in §7 AC13). Warm draws stay for the GPU campaign
+    (§8).
 - **parallel**: `sgj_gl_shader_issue` on the main context (the compile and link calls only,
   shader objects kept for the log). `update()` polls `GL_COMPLETION_STATUS_KHR`, which does not
   block. When it is true, `sgj_shader_create` adopts the program (patch 1) and checks the link

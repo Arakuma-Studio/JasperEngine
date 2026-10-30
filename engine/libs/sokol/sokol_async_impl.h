@@ -49,6 +49,11 @@ extern "C" void sgj_async_setup(void){
     sgjCaps = {};
 #if defined(_SOKOL_ANY_GL)
     sgjCaps.gl = true;
+    {
+        const char* renderer = (const char*)glGetString(GL_RENDERER);
+        sgjCaps.gl_software = renderer && (std::strstr(renderer, "llvmpipe") || std::strstr(renderer, "softpipe") ||
+                                           std::strstr(renderer, "SwiftShader") || std::strstr(renderer, "Software Rasterizer"));
+    }
     #if defined(__EMSCRIPTEN__)
         // WebGL extensions work once enabled; enableExtensionsByDefault does not cover this one everywhere
         sgjCaps.gl_parallel_compile = emscripten_webgl_enable_extension(emscripten_webgl_get_current_context(), "KHR_parallel_shader_compile") == EM_TRUE;

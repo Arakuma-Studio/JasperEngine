@@ -244,6 +244,20 @@ namespace {
         s.wake.notify_one();
     }
 
+    // GL warm draws (spec S32 R4): asked for, in worker mode, and never on a software GL. On
+    // llvmpipe the render thread crashed drawing with programs the worker had drawn
+    // (AtmosphereGpu.ScreenCloudsHideFarTerrain; not with the same draws skipped on the worker).
+    // JASPER_GL_WARM_DRAWS=1 allows them there anyway (driver investigations)
+    bool warmOn(const State& s){
+        if (s.mode != GpuCreationMode::GlWorker || !s.settings.glWarmDraws)
+            return false;
+        static const bool forced = [](){
+            const char* value = std::getenv("JASPER_GL_WARM_DRAWS");
+            return value && std::string(value) == "1";
+        }();
+        return !s.caps.gl_software || forced;
+    }
+
     // ---------------------------------------------------------------- the worker thread
 
     void runTask(State& s, const Task& task){
@@ -673,6 +687,8 @@ void SokolAsyncCreate::setup(){
     s.stats.mode = mode;
     s.setUp = true;
     Log::print("[gpu] shader creation: %s", gpuCreationModeName(mode));
+    if (mode == GpuCreationMode::GlWorker && s.settings.glWarmDraws && !warmOn(s))
+        Log::verbose("GL warm draws are off on a software GL (llvmpipe): a program's first draw compiles its state on the render thread");
 }
 
 void SokolAsyncCreate::shutdown(){
@@ -981,7 +997,7 @@ bool SokolAsyncCreate::isPending(sg_pipeline pipeline){
 
 uint64_t SokolAsyncCreate::requestWarmDraw(sg_pipeline pipeline, const sg_bindings& bindings){
     State& s = state();
-    if (s.mode != GpuCreationMode::GlWorker || !s.settings.glWarmDraws)
+    if (!warmOn(s))
         return 0;
     MainWork work(s);
     auto job = std::make_unique<WarmJob>();
@@ -1001,7 +1017,7 @@ uint64_t SokolAsyncCreate::requestWarmDraw(sg_pipeline pipeline, const sg_bindin
 
 bool SokolAsyncCreate::beginFirstDraw(sg_shader shader){
     State& s = state();
-    if (s.mode != GpuCreationMode::GlWorker || !s.settings.glWarmDraws)
+    if (!warmOn(s))
         return true;
     const uint32_t program = sgj_gl_shader_program(shader);
     if (program == 0)
@@ -1015,7 +1031,7 @@ bool SokolAsyncCreate::beginFirstDraw(sg_shader shader){
 
 bool SokolAsyncCreate::warmDrawsActive(){
     const State& s = state();
-    return s.mode == GpuCreationMode::GlWorker && s.settings.glWarmDraws;
+    return warmOn(s);
 }
 
 bool SokolAsyncCreate::isWarm(uint64_t warmKey){
@@ -1194,6 +1210,10 @@ bool SokolAsyncCreate::waitIdle(double timeoutMs){
             return false;
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
+}
+
+bool SokolAsyncCreate::isSoftwareGl(){
+    return state().caps.gl_software;
 }
 
 GpuCreationMode SokolAsyncCreate::getMode(){

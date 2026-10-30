@@ -8,7 +8,7 @@ ready yet draws a stand-in or waits.
 
 | Backend | Off the render thread | Mode (log line `[gpu] shader creation: <mode>`) |
 |---|---|---|
-| GL 3.3 core, GLES3 (desktop, Android) | compile, link, and a *warm draw* of each new program and state, on a GL context in the render context's share group | `worker` |
+| GL 3.3 core, GLES3 (desktop, Android) | compile and link (and, when turned on, a *warm draw* of each new program and state), on a GL context in the render context's share group | `worker` |
 | WebGL2 (and GL without a worker context) | the driver's compile threads with `KHR_parallel_shader_compile`, else the status is read two frames after compiling | `parallel`, `deferred` |
 | Vulkan | `vkCreateGraphicsPipelines`, through a pipeline cache saved per device in the user cache directory (`pipelinecache/`) | `thread` |
 | D3D11 | `D3DCompile` and the shader objects | `thread` |
@@ -16,7 +16,11 @@ ready yet draws a stand-in or waits.
 
 A *warm draw* draws the program once, with the state and texture formats of the object about to use
 it, into a 1x1 target on the worker. Some drivers (Mesa's llvmpipe among them) compile the program
-for that state at its first draw; the warm draw makes that compile happen on the worker.
+for that state at its first draw; the warm draw makes that compile happen on the worker. Warm draws
+are **off by default** and never run on a software GL (llvmpipe, softpipe, SwiftShader): on
+llvmpipe the render thread crashed drawing programs the worker had drawn. They are not verified
+on GPU drivers yet; without them a program's first draw with a new state compiles on the render
+thread where the driver compiles at draw time.
 
 The render thread finishes what the worker or the driver created within a per-frame budget
 (**Main Thread Budget**, 2 ms by default). At least one creation finishes every frame.
@@ -76,7 +80,7 @@ local idle = ShaderPool.isGpuCreationIdle()
 |---|---|---|
 | Asynchronous Shader Creation | on | Off creates everything on the render thread at once, as before S32. |
 | Main Thread Budget (ms) | 2 | 0.5-16 |
-| GL Warm Draws | on | GL with a worker context only |
+| GL Warm Draws | off | GL with a worker context, never on a software GL; not verified on GPU drivers |
 
 For tests, `JASPER_ASYNC_SHADERS=sync|worker|parallel|deferred` forces a mode, and
 `JASPER_ASYNC_SHADERS_DELAY_MS=<n>` holds every creation on the worker for n ms.

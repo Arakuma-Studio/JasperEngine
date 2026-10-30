@@ -525,14 +525,33 @@ TEST_F(AsyncCreateGpu, EveryGlModeDrawsTheLitCube){
             EXPECT_GOLDEN("render_lit_cube");
             const GpuCreationStats after = SystemRender::getGpuCreationStats();
             EXPECT_GT(after.createdShaders, before.createdShaders) << "the programs were made in this mode";
-            if (std::string(mode) == "worker"){
+            if (std::string(mode) == "worker" && SokolAsyncCreate::warmDrawsActive()){
                 EXPECT_GT(after.warmDraws, before.warmDraws) << "the worker drew the new programs first";
+            }else{
+                EXPECT_EQ(after.warmDraws, before.warmDraws) << "no warm draws: off, another mode or a software GL";
             }
         }
         // the cube's programs go, so the next mode makes its own
         GpuEnvironment::drawFrames(2);
         ShaderPool::clearUnused();
     }
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// GL Warm Draws asked for: they run in worker mode, never on a software GL, where the render
+// thread crashed drawing programs the worker had drawn (AtmosphereGpu.ScreenCloudsHideFarTerrain)
+TEST_F(AsyncCreateGpu, WarmDrawsNeverRunOnASoftwareGl){
+    JASPER_REQUIRE_GPU();
+    const ShaderCreationSettings kept = SokolAsyncCreate::getSettings();
+    ShaderCreationSettings settings = kept;
+    settings.glWarmDraws = true;
+    SokolAsyncCreate::setSettings(settings);
+    restartCreation("worker");
+    EXPECT_EQ(SokolAsyncCreate::warmDrawsActive(), !SokolAsyncCreate::isSoftwareGl());
+    settings.glWarmDraws = false;
+    SokolAsyncCreate::setSettings(settings);
+    EXPECT_FALSE(SokolAsyncCreate::warmDrawsActive()) << "off when not asked for";
+    SokolAsyncCreate::setSettings(kept);
     EXPECT_NO_ENGINE_ERRORS();
 }
 #endif

@@ -19,7 +19,7 @@ MODES = {"sync", "worker", "parallel", "deferred", "thread", "metal"}
 SETTINGS = {
     "shader_creation.async_creation": (True, False),
     "shader_creation.main_thread_budget_ms": (2.0, 6.5),
-    "shader_creation.gl_warm_draws": (True, False),
+    "shader_creation.gl_warm_draws": (False, True),
     "shader_creation.record_during_play": (False, True),
     "shader_creation.include_in_builds": (True, False),
     "shader_creation.hold_first_scene": (True, False),

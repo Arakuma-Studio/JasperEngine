@@ -44,6 +44,7 @@ typedef struct sgj_async_caps {
     bool pipeline_on_thread;    // sgj_pipeline_create may run on another thread (Vulkan)
     bool metal;                 // Metal: libraries and render pipeline states through completion handlers
     bool pipeline_compiles;     // pipeline creation compiles shader code (Vulkan, Metal)
+    bool gl_software;           // a software GL (llvmpipe, softpipe, SwiftShader): no warm draws
 } sgj_async_caps;
 
 // After sg_setup, on the render thread: preloads what a creation thread must not load (D3D11's
