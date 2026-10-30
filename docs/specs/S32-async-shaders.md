@@ -668,6 +668,18 @@ public:
 5. **The editor does not replay the warm-up list** (R25's "Warming up shaders N/M"). The editor
    records the list. Games replay it (`ShaderWarmup::beginShipped` at view load), so the progress
    is the game's (`ShaderWarmup.getProgress()` in Lua). The status bar shows "Compiling shaders N".
+6. **GL warm draws are off by default and never run on a software GL** (R4, §6.3). On llvmpipe
+   they crashed the render thread inside the driver (see §6.3 for how it was isolated). The
+   setting stays (`shader_creation.gl_warm_draws`, default off) for the GPU campaign. So on
+   llvmpipe a program's first draw with a new state still compiles on the render thread
+   (llvmpipe compiles at draw time). R22's worst-frame budget is measured on E (llvmpipe) with
+   that cost included; see Progress.
+7. **A variant switch makes the new pipelines first** (R8, §6.4, added): the loaded object makes
+   its pipelines on the new variant ahead (`ObjectRender::prewarmWith`) and loads again only
+   once they are created (Vulkan, Metal) and warmed (GL with warm draws). Without it Vulkan
+   showed an empty frame per switch (the stand-in rule covers shaders, not pipelines). Released
+   interned pipelines live one more frame (`SokolPipelineCache::collect`) so the reload finds
+   them.
 
 ## Progress (implementation notes, keep updated)
 
