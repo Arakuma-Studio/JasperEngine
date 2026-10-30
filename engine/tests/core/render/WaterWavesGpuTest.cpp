@@ -125,6 +125,8 @@ TEST(WaterWavesGpu, MatchesTheCpuTwin){
     ObjectRender object;
     object.beginLoad(PrimitiveType::TRIANGLES);
     object.setShader(&shader);
+    // a one-off pass: its pipeline is created at once (spec S32), not off the render thread
+    object.setImmediatePipelines(true);
     ASSERT_TRUE(object.endLoadDynamic(PrimitiveType::TRIANGLES, IndexType::NONE));
     PipelineState state;
     state.target.color = ColorFormat::RGBA32F;
