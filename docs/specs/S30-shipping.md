@@ -1011,3 +1011,12 @@ Kept current so the work can continue after an interruption.
   test, so the next oe-port merge takes it cleanly.
 - The OpenEngine notice of `core/spline` (S18) is copied from `Exporter::engineSourceDir()`. That
   is the export's engine copy, or the editor's own engine dir in a prebuilt build.
+- These 14 MCP tests fail on oe-port at 40bec8043 itself, not because of S30:
+  - `test_pose_runtime` ×7 and `test_post_fx_golden` (goldens, defaults_unchanged);
+  - `test_shadows` (cascade_blend_fade, shadow_goldens);
+  - `test_lattice` show_all, `test_lattice_anim` preview, `test_scene_inputs` manifest_rules.
+
+  On server D they fail the same way with S30's editor and with BF7's oe-port-based editor, run
+  against the same test files. S30's run options (offscreen screenshot frames, `--after-ready`)
+  take effect only in a player that `player::launch` configured, and the editor never calls it.
+
