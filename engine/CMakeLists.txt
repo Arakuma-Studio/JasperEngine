@@ -925,10 +925,13 @@ option(JASPERENGINE_RELEASE_LINK "A release game's size-optimised link (sections
 if(JASPERENGINE_RELEASE_LINK)
     if(MSVC)
         # function-level linking, then the unreferenced and identical COMDATs out (also with /DEBUG)
-        add_compile_options(/Gy /Gw)
+        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/Gy> $<$<COMPILE_LANGUAGE:C,CXX>:/Gw>)
         add_link_options(/OPT:REF /OPT:ICF)
+        set(jasperengineLto "/OPT:REF,ICF")
     else()
-        add_compile_options(-ffunction-sections -fdata-sections -fvisibility=hidden
+        # (C and C++ only: the assemblers of dav1d and others take none of these)
+        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:-ffunction-sections>
+            $<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:-fdata-sections> $<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:-fvisibility=hidden>
             $<$<COMPILE_LANGUAGE:CXX,OBJCXX>:-fvisibility-inlines-hidden>)
         if(APPLE)
             add_link_options(LINKER:-dead_strip)
@@ -940,19 +943,18 @@ if(JASPERENGINE_RELEASE_LINK)
             add_link_options("LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/platform/android/exports.map")
         endif()
         if(ANDROID AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-            # the NDK links with lld: ThinLTO, and safe identical code folding (Clang emits the
-            # address-significance tables it needs by default)
-            include(CheckIPOSupported)
-            check_ipo_supported(RESULT jasperengineIpo OUTPUT jasperengineIpoOutput LANGUAGES C CXX)
-            if(jasperengineIpo)
-                set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
-            else()
-                message(STATUS "Release link without LTO: ${jasperengineIpoOutput}")
-            endif()
-            add_link_options(LINKER:--icf=safe)
+            # the NDK links with lld: ThinLTO (its llvm-ar archives the bitcode objects), its cache
+            # for the relinks, and safe identical code folding (Clang emits the address-
+            # significance tables it needs by default). Set directly: CMake's check_ipo_supported
+            # probes with a project that falls back to ld.gold, which cannot load LLVM's plugin.
+            add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-flto=thin>)
+            add_link_options(-flto=thin "LINKER:--thinlto-cache-dir=${CMAKE_BINARY_DIR}/thinlto-cache" LINKER:--icf=safe)
+            set(jasperengineLto "ThinLTO, --icf=safe")
+        else()
+            set(jasperengineLto "no LTO")
         endif()
     endif()
-    message(STATUS "Release link: dead sections out, hidden visibility, LTO ${CMAKE_INTERPROCEDURAL_OPTIMIZATION}")
+    message(STATUS "Release link: dead sections out, hidden visibility, ${jasperengineLto}")
 endif()
 
 add_subdirectory(libs/sokol)

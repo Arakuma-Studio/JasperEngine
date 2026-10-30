@@ -2,14 +2,14 @@
    The dynamic symbols of libjasperengine-android.so in a release build (engine/CMakeLists.txt,
    JASPERENGINE_RELEASE_LINK): what the Java side calls (JNI: Java_*, JNI_OnLoad) and the
    entry point GameActivity finds with dlsym (android.app.func_name, GameActivity_onCreate). Every
-   other symbol stays inside the library. */
+   other symbol stays inside the library. Patterns, not names, for what a library may not define:
+   the NDK links with --no-undefined-version, which refuses a listed name nothing defines. */
 {
   global:
     Java_*;
-    JNI_OnLoad;
-    JNI_OnUnload;
+    JNI_On*;
     GameActivity_onCreate;
-    ANativeActivity_onCreate;
+    ANativeActivity_*;
   local:
     *;
 };
