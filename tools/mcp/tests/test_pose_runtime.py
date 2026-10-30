@@ -20,6 +20,7 @@ import time
 from harness import Editor, REPO
 
 EDITOR = {"project": REPO / "tools" / "fixtures" / "pose-animation"}
+CI = True
 TIMEOUT = 900
 
 S: dict = {}

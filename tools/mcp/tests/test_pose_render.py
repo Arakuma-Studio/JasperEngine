@@ -17,6 +17,7 @@ from harness import Editor
 from htmlui_pixels import decode_png
 
 EDITOR = {"project": harness.REPO / "tools" / "fixtures" / "pose-animation"}
+CI = True
 TIMEOUT = 600
 
 HERO = "assets/models/hero_tpose.gltf"

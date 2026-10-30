@@ -6,6 +6,7 @@ import time
 from harness import Editor
 
 EDITOR = {"create": True, "name": "Prefab contracts"}
+CI = True
 
 
 async def fixture(ed, name):

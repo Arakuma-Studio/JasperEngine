@@ -20,6 +20,7 @@ import pngdiff
 from harness import Editor, find_key
 
 EDITOR = {"create": True, "name": "Hot Reload"}
+CI = True
 TIMEOUT = 900
 
 TEX = "assets/hr/tex.png"

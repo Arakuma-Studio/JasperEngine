@@ -18,6 +18,7 @@ import harness
 from harness import Editor
 
 EDITOR = {"project": harness.REPO / "tools" / "fixtures" / "pose-animation"}
+CI = True
 TIMEOUT = 600
 
 # (variant, view in front): every variant with each view

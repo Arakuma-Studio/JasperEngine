@@ -28,6 +28,7 @@ from harness import Editor
 from htmlui_pixels import Shot
 
 EDITOR = {"create": True, "name": "Fluid Effect"}
+CI = True
 TIMEOUT = 900
 
 S: dict = {}

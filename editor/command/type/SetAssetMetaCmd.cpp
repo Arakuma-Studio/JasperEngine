@@ -9,6 +9,7 @@
 #include "asset/AssetMeta.h"
 #include "command/CommandNames.h"
 #include "io/AtomicFile.h"
+#include "io/watch/FileWatchService.h"
 #include "util/YamlFootprint.h"
 
 #include <fstream>
@@ -133,9 +134,13 @@ bool editor::SetAssetMetaCmd::writeFile(const YAML::Node& value, bool removeFile
     bool existed = false;
     YAML::Node root = loadMeta(path, existed);
     setKey(root, splitKey(key), value);
+    // the editor's own write (S05 R10): the watcher and sync_files do not take it for an
+    // external change (an inferred texture import setting is written down after the project opened)
+    ScopedExpectedWrite expected(path);
     if (removeFileIfEmpty && root.size() == 0){
         std::error_code ec;
         std::filesystem::remove(path, ec);
+        if (!ec) expected.reportedRemoved(path);
         return !ec;
     }
     // A sidecar S04 reads keeps every other section byte for byte (its GUID lines, the labels of
@@ -166,6 +171,7 @@ bool editor::SetAssetMetaCmd::writeFile(const YAML::Node& value, bool removeFile
         Out::error("Could not write %s: %s", path.generic_string().c_str(), result.message.c_str());
         return false;
     }
+    expected.reported();
     return true;
 }
 

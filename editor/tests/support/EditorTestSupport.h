@@ -44,6 +44,13 @@ namespace jasperengine::editor::test {
     // sanitizer: the budgets are only printed, since a shared builder's load alone can miss them.
     double perfSlack();
 
+    // Closes a test's loaded Project as a project switch does: its scenes' undo histories go,
+    // then the scenes and their renders (Project::releaseScenes). A Project frees none of them
+    // itself, the editor's lives as long as the process (and the CLI's have no renderer): a test
+    // that loads a project and drops it without this leaks every scene (LeakSanitizer reported
+    // tens of MB at the end of the editor tree). Call it before the Project is destroyed.
+    void closeProject(Project& project);
+
     // A scene file decoded the way Project::loadScene decodes it (report installed), into a
     // SceneProject of its own
     struct DecodedScene {

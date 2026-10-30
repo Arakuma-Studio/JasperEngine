@@ -19,6 +19,7 @@ from harness import REPO, Editor
 from htmlui_pixels import Shot, check_color
 
 EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
+CI = True
 
 TIMEOUT = 900
 

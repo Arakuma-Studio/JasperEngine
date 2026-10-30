@@ -167,6 +167,15 @@ TEST(TextureWebTranscode, TrimmedTranscoderMatchesUpstreamOnRandomUastcBlocks){
         uint8_t block[16];
         for (uint8_t& byte : block)
             byte = (uint8_t)random();
+        // a mode with alpha carries an ETC2 EAC hint whose multiplier is 1 to 15 in every block an
+        // encoder writes (both transcoders assert it: a Debug or sanitizer build stopped here);
+        // random bits with a 0 are no UASTC block
+        basist::unpacked_uastc_block hinted;
+        if (!basist::unpack_uastc(*reinterpret_cast<const basist::uastc_block*>(block), hinted, false, true))
+            continue;
+        if (basist::g_uastc_mode_has_alpha[hinted.m_mode] && hinted.m_mode != basist::UASTC_MODE_INDEX_SOLID_COLOR &&
+            (hinted.m_etc2_hints >> 4) == 0)
+            continue;
         bool valid = true;
         for (const Target& t : targets){
             uint8_t out[64];

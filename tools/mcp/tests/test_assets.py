@@ -4,6 +4,7 @@ from harness import Editor
 import pngdiff
 
 EDITOR = {"create": True, "name": "Asset Contracts"}
+CI = True
 
 
 def image_file(ed: Editor, relative: str, width: int = 32, height: int = 16):
@@ -97,3 +98,27 @@ async def test_texture_settings(ed: Editor):
     await ed.check_error("set_texture_settings", scene=scene, entity=tex, component="mesh", property="nope", contains="texture")
     await ed.check_error("set_texture_settings", scene=scene, entity=tex, component="mesh", property=prop,
                          mag_filter="linear_mipmap_linear", contains="nearest or linear")
+
+
+async def test_skybox_cube_faces(ed: Editor):
+    """A six-face cube map reads back in the order it is written (front, back, left, right, up,
+    down), and a write of what was read keeps it. The faces are square images of one size (a cube
+    map's faces must be: the engine refuses the load otherwise, and the Skybox's texture then reads
+    null), read back once the sky has loaded."""
+    faces = ["front", "back", "left", "right", "up", "down"]
+    paths = [f"assets/cubefaces/{face}.png" for face in faces]
+    for path in paths:
+        image_file(ed, path, 8, 8)
+    scene = (await ed.call("create_scene", name="CubeFaces", type="3D"))["scene"]["id"]
+    sky = (await ed.call("create_entity", scene=scene, type="skybox", name="FacesSky"))["entity_id"]
+    await ed.call("set_properties", scene=scene, entity=sky, values={"skybox": {"texture": {"cube": paths}}})
+    await ed.call("wait", frames=10)
+    texture = (await ed.call("get_entity", scene=scene, entity=sky, components=["skybox"]))["components"]["skybox"]["texture"]
+    ed.check(isinstance(texture, dict), f"a cube map value: {texture!r}")
+    ed.check_eq(texture.get("cube"), paths, "faces read back in the written order")
+
+    await ed.call("set_properties", scene=scene, entity=sky, values={"skybox": {"texture": texture}})
+    await ed.call("wait", frames=10)
+    again = (await ed.call("get_entity", scene=scene, entity=sky, components=["skybox"]))["components"]["skybox"]["texture"]
+    ed.check(isinstance(again, dict), f"the re-written cube map still loads: {again!r}")
+    ed.check_eq(again.get("cube"), paths, "the read value round-trips")

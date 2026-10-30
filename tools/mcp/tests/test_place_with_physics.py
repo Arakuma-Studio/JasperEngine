@@ -40,6 +40,7 @@ from htmlui_pixels import decode_png
 
 # a harness Xvfb: test_waits_for_a_scene_view_gesture drives the Scene view with xdotool
 EDITOR = {"create": True, "name": "PhysicsPlacement", "xvfb": "harness"}
+CI = True
 TIMEOUT = 900
 
 S: dict = {}

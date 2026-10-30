@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <atomic>
 #include <mutex>
+#include <thread>
 
 using namespace jasperengine;
 using namespace jasperengine::test;
@@ -219,6 +220,36 @@ TEST_P(FileWatchServiceTests, JournalCursorsAndPause) {
     writeText(dir.path / "after.txt", "x");
     ASSERT_TRUE(service.flush(timeLimit(ms(1000))));
     EXPECT_EQ(pathsOf(delivered), "after.txt ");
+}
+
+TEST_P(FileWatchServiceTests, AnUndeliveredEditIsNotLostToTheEditorsRewrite) {
+    startWatching();
+    const fs::path file = dir.path / "clip.anim";
+    writeText(file, "first");
+    ASSERT_TRUE(service.flush(timeLimit(ms(1000))));
+    uint64_t cursor = service.journalHead();
+    // another program's edit, which the editor rewrites (a GUID line) before the watcher
+    // delivered it: the editor's bytes would make its events look like the echo of that write
+    std::this_thread::sleep_for(ms(20));
+    writeText(file, "second, from another program");
+    service.reportEditorReplacing(file);
+    writeText(file, "second, from another program, with the editor's line");
+    service.reportEditorWrite(file, true);
+    ASSERT_TRUE(service.flush(timeLimit(ms(1000))));
+
+    std::vector<FileChange> journal = service.journalSince(cursor);
+    std::vector<ChangeOrigin> origins;
+    for (const FileChange& change : journal) {
+        if (change.path.filename() == "clip.anim") origins.push_back(change.origin);
+    }
+    ASSERT_EQ(origins.size(), 2u) << pathsOf(journal);
+    EXPECT_EQ(origins[0], ChangeOrigin::External) << "the edit goes out first";
+    EXPECT_EQ(origins[1], ChangeOrigin::Editor);
+
+    // what the watcher delivered already is not sent again
+    cursor = service.journalHead();
+    service.reportEditorReplacing(file);
+    EXPECT_TRUE(service.journalSince(cursor).empty());
 }
 
 TEST_P(FileWatchServiceTests, StoppedConsumersStartOver) {
