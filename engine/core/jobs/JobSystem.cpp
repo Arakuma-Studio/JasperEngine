@@ -2029,9 +2029,13 @@ JobSystem& jobs::initialize(const Config& config){
     std::lock_guard<std::mutex> lock(instanceMutex());
     JobSystem* instance = processInstance.load(std::memory_order_acquire);
     if (instance && instance->isShuttingDown()){
-        // a new engine run in the same process (a recreated Android activity)
+        // a new engine run in the same process (a recreated Android activity). The shut-down
+        // system is kept, never freed: process-lifetime strands made on it (the editor's
+        // BackgroundRelease queue) still point at it, and push to it as to any shut-down system
+        // (the work runs on the caller); a freed one was a use after free (ASan, editor tests)
+        static std::vector<JobSystem*>* retired = new std::vector<JobSystem*>();   // (reachable: not a leak)
+        retired->push_back(instance);
         processInstance.store(nullptr, std::memory_order_release);
-        delete instance;
         instance = nullptr;
     }
     if (instance){
