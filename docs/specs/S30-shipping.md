@@ -1020,15 +1020,25 @@ Kept current so the work can continue after an interruption.
   test, so the next oe-port merge takes it cleanly.
 - The OpenEngine notice of `core/spline` (S18) is copied from `Exporter::engineSourceDir()`. That
   is the export's engine copy, or the editor's own engine dir in a prebuilt build.
-- These 14 MCP tests fail on oe-port at 40bec8043 itself, not because of S30:
+- These MCP tests fail on oe-port at 40bec8043 itself, not because of S30:
   - `test_pose_runtime` ×7 and `test_post_fx_golden` (goldens, defaults_unchanged);
   - `test_shadows` (cascade_blend_fade, shadow_goldens);
   - `test_lattice` show_all, `test_lattice_anim` preview, `test_scene_inputs` manifest_rules.
 
-  On server D they fail the same way with S30's editor and with BF7's oe-port-based editor, run
-  against the same test files. S30's run options (offscreen screenshot frames, `--after-ready`)
+  On server D they fail the same way with S30's editor and with BF7's oe-port-based editor, both
+  run against S30's test files. S30's run options (offscreen screenshot frames, `--after-ready`)
   take effect only in a player that `player::launch` configured, and the editor never calls it.
-  The coordinator traces them to the S18 merge, and `test_pose_runtime` to S29's R20; both
-  streams are fixing them on their branches. S30's final gate counts these files as known oe-port
-  failures while oe-port still fails them, and requires everything else green.
+
+  Corrected attribution (the S18 fix agent: they also fail on the pre-S18 baseline):
+  - BF7's branch fixes all of them except `test_pose_runtime`, mostly in the tests themselves,
+    which is why BF7's editor still failed them against S30's test files:
+    - `test_post_fx_golden`: S14's mip chain;
+    - `test_shadows` and `test_lattice` goldens: S26's Scene camera field of view;
+    - `test_scene_inputs`: S20's message;
+    - `test_shader_library` and `test_synthesize_texture`: the check summary's `map::at`;
+    - `test_place_physics_cli`: S16's HTML UI settings in project.yaml.
+  - `test_pose_runtime` comes from S29's R20, which S29 is fixing.
+
+  S30's final gate counts these files as known oe-port failures while oe-port still fails them,
+  and requires everything else green.
 
