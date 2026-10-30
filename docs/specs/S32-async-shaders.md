@@ -724,6 +724,31 @@ public:
     over the file it validated), WaterWavesGpu.MatchesTheCpuTwin, MCP lobe toggle (6 empty
     frames);
   - xcode_sync_*.py --check: all pass after the S21 merge.
+- **E benches** (`tools/perf/async_shaders_bench.py --runs 5`, an idle E, Mesa's disk cache off,
+  each lobe toggle recorded from before the change until the sphere draws its new variant;
+  medians of 5 runs; idle frame 114 ms on GL, 55 ms on Vulkan):
+
+  | E (software drivers) | R21 max_main_ms (<= 4) | R22 worst_frame_ratio (<= 2) |
+  |---|---|---|
+  | GL llvmpipe, `parallel` (no worker, deviation 6) | 385.7 FAIL | 10.0 FAIL |
+  | GL llvmpipe, `sync` (red control) | 375.5 | 12.9 |
+  | Vulkan lavapipe, `thread` | **0.105 ok** | 16.0 FAIL |
+  | Vulkan lavapipe, `sync` (red control) | 298.4 | 21.3 |
+
+  - Vulkan: the pipeline compile leaves the render thread (0.1 ms against 298 ms).
+  - GL on llvmpipe: `KHR_parallel_shader_compile` is listed, but the link still runs at
+    `glLinkProgram` on the calling thread (the "GPU create submit" scope, 386 ms); the worker
+    that would move it is off there (deviation 6).
+  - R22 fails on both software drivers for the same reason: the worst frame (1.1 s GL, 0.83 s
+    Vulkan) is the first draw with the new variant ("Draw" on GL, "Editor Render", the
+    submission, on Vulkan): llvmpipe and lavapipe compile the shader for the draw state at
+    draw time, which no creation API moves. Warm draws were meant for that on GL (deviation 6).
+  - So R21 is met on Vulkan only and R22 nowhere on E. The GPU campaign measures both on GPU
+    drivers (§8); the budgets in `tools/perf/bench-thresholds.json` stay as the spec sets them.
+- **Gate at the merged commit (oe-port b620283cd):** web build + browser gate PASS (G, A);
+  android build and the emulator render gate (lit3d, ui2d, htmlui with goldens) PASS (A);
+  ASan+UBSan on the S32 suites 67 + 15 tests clean (G); smoke, full units, Vulkan units and the
+  full MCP suite: see the final report.
 - **Older notes:**
 
 - Spec written at oe-port 0c22d3b91 (branch `feat/s32-async-shaders`). The GL probe numbers in
