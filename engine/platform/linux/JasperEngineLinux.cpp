@@ -7,6 +7,9 @@
 #include "LinuxInputRouter.h"
 #include "SystemLinux.h"
 #include "WindowLinux.h"
+#if !defined(SOKOL_VULKAN)
+#include "GlxWorkerContext.h"
+#endif
 
 #include "Engine.h"
 
@@ -151,7 +154,7 @@ bool createContext() {
         std::fprintf(stderr, "Error: GLX_EXT_create_context_es2_profile is required.\n");
         return false;
     }
-    const int attributes[] = {
+    static const int attributes[] = {
         GLX_CONTEXT_MAJOR_VERSION_ARB, 3,
         GLX_CONTEXT_MINOR_VERSION_ARB, 2,
         GLX_CONTEXT_PROFILE_MASK_ARB, GLX_CONTEXT_ES2_PROFILE_BIT_EXT,
@@ -159,7 +162,7 @@ bool createContext() {
     };
     const char* contextName = "OpenGL ES 3.2";
 #else
-    const int attributes[] = {
+    static const int attributes[] = {
         GLX_CONTEXT_MAJOR_VERSION_ARB, 4,
         GLX_CONTEXT_MINOR_VERSION_ARB, 1,
         GLX_CONTEXT_PROFILE_MASK_ARB, GLX_CONTEXT_CORE_PROFILE_BIT_ARB,
@@ -197,10 +200,16 @@ bool createContext() {
             swapIntervalEXT(display, WindowLinux::handle(),
                             JASPERENGINE_VSYNC_ENABLED ? 1 : 0);
     }
+    // the shader creation thread's context (spec S32), with the same attributes
+    static const int* workerAttributes = attributes;
+    setGpuWorkerContextFactory([]() {
+        return GlxWorkerContext::create(WindowLinux::display(), framebufferConfig, glContext, workerAttributes);
+    });
     return true;
 }
 
 void destroyContext() {
+    setGpuWorkerContextFactory(nullptr);
     Display* display = WindowLinux::display();
     if (glContext && display) {
         glXMakeCurrent(display, None, nullptr);

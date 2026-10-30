@@ -3,7 +3,12 @@
 
 #include "SystemRender.h"
 
+#include "GpuWorkerContext.h"
+#include "sokol/SokolAsyncCreate.h"
 #include "sokol/SokolPassPreview.h"
+#include "sokol/SokolPipelineCache.h"
+#include "sokol/SokolPipelineRecord.h"
+#include "ShaderRender.h"
 #include "sokol/SokolSystem.h"
 #include "Engine.h"
 #include "Log.h"
@@ -14,8 +19,97 @@
 
 using namespace jasperengine;
 
+namespace {
+    GpuWorkerContextFactory& workerContextFactory(){
+        static GpuWorkerContextFactory factory;
+        return factory;
+    }
+}
+
+void jasperengine::setGpuWorkerContextFactory(GpuWorkerContextFactory factory){
+    workerContextFactory() = std::move(factory);
+}
+
+const GpuWorkerContextFactory& jasperengine::getGpuWorkerContextFactory(){
+    return workerContextFactory();
+}
+
 void SystemRender::setup(){
     SokolSystem::setup();
+}
+
+void SystemRender::updateGpuCreation(){
+    SokolAsyncCreate::update();
+}
+
+GpuCreationStats SystemRender::getGpuCreationStats(){
+    return SokolAsyncCreate::getStats();
+}
+
+bool SystemRender::isGpuCreationIdle(){
+    return SokolAsyncCreate::isIdle();
+}
+
+bool SystemRender::waitGpuCreationIdle(double timeoutMs){
+    return SokolAsyncCreate::waitIdle(timeoutMs);
+}
+
+void SystemRender::resetGpuCreationMax(){
+    SokolAsyncCreate::resetMaxMainMs();
+}
+
+void SystemRender::setShaderCreationSettings(const ShaderCreationSettings& settings){
+    SokolAsyncCreate::setSettings(settings);
+}
+
+const ShaderCreationSettings& SystemRender::getShaderCreationSettings(){
+    return SokolAsyncCreate::getSettings();
+}
+
+void SystemRender::setPipelineRecorder(std::function<void(uint32_t shaderId, const std::string& record)> recorder){
+    if (!recorder){
+        SokolPipelineCache::setRecorder(nullptr);
+        return;
+    }
+    SokolPipelineCache::setRecorder([recorder](const sg_pipeline_desc& desc){
+        recorder(desc.shader.id, SokolPipelineRecord::toJson(desc));
+    });
+}
+
+bool SystemRender::warmPipeline(ShaderRender* shader, const std::string& record, bool otherFamily, std::vector<uint32_t>& held,
+                                std::string* error){
+    if (!shader || !shader->isCreated()){
+        if (error) *error = "the shader is not ready";
+        return false;
+    }
+    sg_pipeline_desc desc = {};
+    if (!SokolPipelineRecord::fromJson(record, desc, error))
+        return false;
+    desc.shader = shader->backend.get();
+    const sg_pipeline pipeline = SokolPipelineCache::acquire(desc);
+    if (pipeline.id != SG_INVALID_ID)
+        held.push_back(pipeline.id);
+    // an offscreen target's pipeline is flipped on GL: the other family's record warms both
+    if (otherFamily && desc.colors[0].pixel_format != _SG_PIXELFORMAT_DEFAULT){
+        desc.face_winding = desc.face_winding == SG_FACEWINDING_CW ? SG_FACEWINDING_CCW : SG_FACEWINDING_CW;
+        const sg_pipeline flipped = SokolPipelineCache::acquire(desc);
+        if (flipped.id != SG_INVALID_ID)
+            held.push_back(flipped.id);
+    }
+    return true;
+}
+
+bool SystemRender::isPipelineSettled(uint32_t pipeline){
+    const sg_resource_state state = sg_query_pipeline_state({pipeline});
+    return state == SG_RESOURCESTATE_VALID || state == SG_RESOURCESTATE_FAILED || state == SG_RESOURCESTATE_INVALID;
+}
+
+void SystemRender::releaseWarmPipeline(uint32_t pipeline){
+    SokolPipelineCache::release({pipeline});
+}
+
+uint32_t SystemRender::getShaderHandleId(ShaderRender* shader){
+    return shader ? shader->backend.get().id : 0;
 }
 
 void SystemRender::commitQueue(){
