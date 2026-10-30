@@ -1180,6 +1180,9 @@ function Crowd:onUpdate()
         end
         self.vat:randomizeTimes(42)
     end
+end
+```
+
 ### 4.8.4 Animator (EntityHandle)
 
 Unity's Animator: plays an Animator Controller (`.controller`: parameters, layers, state
