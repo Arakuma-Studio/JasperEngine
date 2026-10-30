@@ -760,6 +760,9 @@ and `using AnimationCurve = Curve;`. `MinMaxCurve` must have
    post-processing preset (S13's presets are None, Mobile, Mobile Adaptive, Console, Stylised,
    CRT Retro, Film and VHS Tape); the template's `Main` has the settings File > New Scene gives a
    3D scene. The 2D template's orthographic camera is the 2D scene's own default camera.
+   The UI template is the HTML UI's `main_menu` example (`create_ui_document`): `ui/main_menu.html`
+   and `.css` with Play, Settings, Credits and Quit, wired in its `MainMenuUI.lua` (the project's Lua
+   folder), not a separate `scripts/MainMenu.lua`.
 10. **D10 sRGB conversions use the engine's transfer.** The colour forms (R41), the Color window
     and `sample_view_color` convert with `Color::sRGBToLinear` / `linearTosRGB` (the 2.2 power the
     renderer and the old colour edits use), so a value set by hex equals the same value picked in
