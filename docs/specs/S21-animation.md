@@ -502,13 +502,16 @@ Unit tests in `engine/tests/core/animation/` (`Animator*.cpp`), editor tests in
   Lua API and glossary.
 - [x] Tests: core (`Animator*`, `ClipTangentModes`), GPU golden (`AnimatorGpu`), editor
   (`AnimatorEditor`), MCP (`test_animator.py`); bench `je-bench-anim`.
-- [x] Gate on oe-port `1608d1588` (S29) merged: linux WERROR editor build; core suite 1,864
-  passed; Vulkan (lavapipe) `Animator*` / `ClipTangentModes*` incl. the GPU golden, 68 passed;
-  ASan+UBSan animation suites, 146 passed; web gates (simd128 and scalar) pass with the same pose;
-  Android emulator (`tools/test-projects/animator`) passes; smoke passes; E bench: Crowd200 p95
-  2.39 ms median of five (`docs/perf/animator.md`); Xcode project synced. Full MCP suite: S21's
-  failures fixed and re-run green (the Clips guide bullet, the reflection-parity resave / codegen
-  goldens); the remaining failures fail on `sync/origin-main-3` too, which has S29 and not
-  S21 (`test_pose_runtime`, `test_lattice` screenshot, `test_post_fx_golden`, the CLI
-  `check --shaders` `map::at` abort, `test_place_physics_cli`), or are oe-port's own
-  (`test_scene_inputs` expects an older shader message; `sync/origin-main-3` has the fix).
+- [x] Gate on oe-port `40bec8043` (S18 splines, BF8) merged: linux WERROR editor build; core
+  suite 2,329 passed; editor suite 1,375 (B); Vulkan (lavapipe) `Animator*` / `ClipTangentModes*`
+  incl. the GPU golden, 68 passed; ASan+UBSan animation suites, 146 passed; web gates (simd128
+  and scalar) pass with the same pose; Android emulator (`tools/test-projects/animator`) passes;
+  smoke passes; E bench: all budgets hold, Crowd200 p95 2.37 ms median of five
+  (`docs/perf/animator.md`); Xcode project synced. Full MCP suite (`MCP_SUITE=all`): every S21
+  test and the guide, budget, docs, reflection and ECS tests pass; the failures left are not
+  S21's: they fail on `sync/origin-main-3` too (`test_pose_runtime`, `test_lattice` screenshot,
+  `test_post_fx_golden`, `test_shadows`, the CLI `check` `map::at` abort, `test_place_physics_cli`,
+  `test_shader_library`, `test_synthesize_texture`), are oe-port's own (`test_scene_inputs`
+  expects an older shader message; the fluid / UI-effect "no notice" exports get S18's
+  unconditional `licenses/OpenEngine-LICENSE.txt`), or are flaky (`test_animation_assets`
+  autosync and `test_post_processing_review_fixes` LUT: pass and fail across three reruns).

@@ -56,7 +56,8 @@ core-tests build (RelWithDebInfo, GCC 11, SSE2 pose kernels), `--workers 3 --cou
 Re-measured after the S29 merge (2026-10-29, five runs on an idle E): Crowd200 p95 2.39 ms
 (2.38-2.50), p50 2.29 ms, main thread p95 0.30 ms; the micro numbers unchanged. The p95 has
 about 0.1 ms of headroom: an earlier batch while E was busy with another job measured 3.0 and
-3.7 ms, so gate it on an idle server.
+3.7 ms, so gate it on an idle server. After the S18 / BF8 merge (2026-10-30, five runs): p95 2.37 ms
+(2.33-2.45), serial p95 5.95 ms, 0 allocations; `check_bench.py`: all budgets hold.
 
 Where the serial time goes (p50, 4.90 ms in all): the IK about 1.1 ms (the 400 raycasts run on the
 main thread in prepare), the upper and additive layers 0.2 ms, the crossfading quarter 0.4 ms,
