@@ -11,7 +11,8 @@ R21, R22, AC13), measured with the S15 profiler.
 
 Each run opens a new project in a headless editor (MCP) with twelve lit spheres. It draws them until
 nothing is pending, then for each toggle turns on a set of the built-in Lit's lobes on one sphere
-that no sphere had before (a variant never built) and records 60 frames with capture_profile. For
+that no sphere had before (a variant never built) and records frames with capture_profile (60 at a
+time) until that sphere draws its new variant, and 10 more. For
 every frame get_cpu_profile gives the frame time and the main thread's "GPU create submit",
 "GPU create publish" and "GPU pipeline create" scopes (counted once where they nest). A run's
 results:
@@ -45,6 +46,7 @@ SCOPES = {"GPU create submit", "GPU create publish", "GPU pipeline create"}
 LOBES = ["clearcoat", "sheen", "anisotropy", "iridescence", "specular", "transmission"]
 SPHERES = 12
 FRAMES_PER_TOGGLE = 60
+TOGGLE_WINDOWS = 8
 BASELINE_FRAMES = 120
 
 
@@ -115,9 +117,17 @@ async def one_run(args: argparse.Namespace, run: int) -> dict:
             # lobe set toggle+1 (bits over LOBES) on sphere toggle % SPHERES: a variant no sphere had
             bits = toggle + 1
             pbr = {lobe: {"enabled": True} for i, lobe in enumerate(LOBES) if bits >> i & 1}
-            await ed.call("set_properties", scene=scene, entity=f"Ball{toggle % SPHERES}",
+            ball = f"Ball{toggle % SPHERES}"
+            await ed.call("set_properties", scene=scene, entity=ball,
                           values={"mesh": {"submeshes[0].material": {"pbr": pbr}}})
-            toggled.extend(await frames_of(ed, FRAMES_PER_TOGGLE))
+            # recorded until the sphere draws its new variant (its compile, creation and first
+            # draw all inside the recording, in either mode), at most TOGGLE_WINDOWS windows
+            for _ in range(TOGGLE_WINDOWS):
+                toggled.extend(await frames_of(ed, FRAMES_PER_TOGGLE))
+                variant = await ed.call("get_material_variant", scene=scene, entity=ball)
+                if variant.get("ready") or variant.get("failed"):
+                    toggled.extend(await frames_of(ed, 10))
+                    break
             await wait_idle(ed)
         mode = (await ed.call("get_render_stats"))["shader_creation"]["mode"]
         result = {
