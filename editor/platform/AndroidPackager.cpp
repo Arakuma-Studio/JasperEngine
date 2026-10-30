@@ -112,7 +112,19 @@ bool platform::writeAndroidManifest(const AndroidPackage& package, const std::st
     replaceAll(manifest, "{{FULLSCREEN}}", package.settings.fullscreen ? "true" : "false");
     replaceAll(manifest, "{{KEEP_SCREEN_ON}}", package.settings.keepScreenOn ? "true" : "false");
     replaceAll(manifest, "{{TEXTURE_SUPPORT}}", package.astc ? "    <supports-gl-texture android:name=\"GL_KHR_texture_compression_astc_ldr\" />\n" : "");
+    // compressed libraries are extracted at install (the template says false: stored, loaded from
+    // the APK)
+    if (compressesNativeLibraries(package))
+        replaceAll(manifest, "android:extractNativeLibs=\"false\"", "android:extractNativeLibs=\"true\"");
     return true;
+}
+
+bool platform::compressesNativeLibraries(const AndroidPackage& package) {
+    // as the Android Gradle plugin packages them: an APK for devices before Android 6 (API 23,
+    // which first loads libraries from the APK) compresses them, about a third of their size in
+    // the file; from minSdk 23, and in a bundle (bundletool makes each device's APK), they stay
+    // stored and are never extracted
+    return package.format != AndroidFormat::Aab && package.settings.minSdk < 23;
 }
 
 std::vector<std::string> platform::selectedAndroidAbis(const AndroidProjectSettings& settings) {
@@ -265,6 +277,7 @@ bool platform::buildAndroidPackage(const AndroidPackage& package, CommandRunner&
         if (!writer.addFile(bundle ? "dex/" + name : name, entry.path(), false, error)) return false;
     }
     size_t libraries = 0;
+    const bool compressLibraries = compressesNativeLibraries(package);
     for (const std::string& abi : abis) {
         const fs::path dir = package.runtimeDir / "lib" / abi;
         if (!fs::is_directory(dir, ec)) {
@@ -273,7 +286,7 @@ bool platform::buildAndroidPackage(const AndroidPackage& package, CommandRunner&
         }
         for (const auto& entry : fs::directory_iterator(dir, ec)) {
             if (entry.path().extension() != ".so") continue;
-            if (!writer.addFile("lib/" + abi + "/" + entry.path().filename().string(), entry.path(), true, error)) return false;
+            if (!writer.addFile("lib/" + abi + "/" + entry.path().filename().string(), entry.path(), !compressLibraries, error)) return false;
             libraries++;
         }
     }

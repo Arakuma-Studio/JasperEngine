@@ -3,7 +3,9 @@
      The manifest of a prebuilt Android player's game (docs/specs/S30-shipping.md R13): the editor
      fills the {{MARKERS}} from Project Settings > Android and links it with aapt2 against the
      player's compiled resources (stable ids); aapt2 renames the package to the game's id. Class
-     names are fully qualified: they are the player's code, whatever the game's package. -->
+     names are fully qualified: they are the player's code, whatever the game's package.
+     extractNativeLibs: false (stored libraries, loaded from the APK); an APK for minSdk < 23
+     compresses them and says true (AndroidPackager compressesNativeLibraries). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.jaspergameengine.jasperengine"
     android:versionCode="{{VERSION_CODE}}"

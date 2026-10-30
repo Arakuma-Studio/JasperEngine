@@ -158,7 +158,8 @@ TEST(PayloadValidator, WindowsNames) {
 
 TEST(PayloadValidator, AndroidLibrariesAreStoredAnd16KAligned) {
     TestTempDir dir("payload");
-    // a library with 4 KB pages, compressed: both refused; apksigner injected as accepting
+    // libraries with 4 KB pages, one compressed and one stored: both refused (a package stores
+    // them all, or compresses them all); apksigner injected as accepting
     std::string library = elf(0xB7);
     library.resize(64 + 56, '\0');
     library[32] = 64;           // e_phoff
@@ -171,6 +172,7 @@ TEST(PayloadValidator, AndroidLibrariesAreStoredAnd16KAligned) {
     std::string error;
     ASSERT_TRUE(zip.open(dir / "game.apk", error)) << error;
     ASSERT_TRUE(zip.add("lib/arm64-v8a/libjasperengine-android.so", library.data(), library.size(), false, error)) << error;
+    ASSERT_TRUE(zip.add("lib/arm64-v8a/libc++_shared.so", library.data(), library.size(), true, error)) << error;
     ASSERT_TRUE(zip.add("AndroidManifest.xml", "x", 1, true, error)) << error;
     ASSERT_TRUE(zip.finish(error)) << error;
     ValidationTarget target;
@@ -183,7 +185,7 @@ TEST(PayloadValidator, AndroidLibrariesAreStoredAnd16KAligned) {
     std::vector<std::string> findings;
     EXPECT_FALSE(validatePayload(dir.path(), target, findings));
     EXPECT_TRUE(hasFinding(findings, "aligned to 4096")) << join(findings);
-    EXPECT_TRUE(hasFinding(findings, "is compressed")) << join(findings);
+    EXPECT_TRUE(hasFinding(findings, "1 native library is compressed and 1 stored")) << join(findings);
 }
 
 // 16 KB pages are a 64-bit requirement: a 32-bit library with 4 KB pages is accepted (the NDK's

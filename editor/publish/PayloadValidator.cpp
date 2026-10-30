@@ -149,6 +149,7 @@ namespace {
         const std::string libs = bundle ? "base/lib/" : "lib/";
         std::set<std::string> names;
         for (const ZipEntryInfo& entry : zip.entries()) names.insert(entry.name);
+        size_t storedLibraries = 0, compressedLibraries = 0;
         for (const ZipEntryInfo& entry : zip.entries()) {
             if (entry.name.rfind(libs, 0) != 0 || fs::path(entry.name).extension() != ".so") continue;
             const std::string abi = entry.name.substr(libs.size(), entry.name.find('/', libs.size()) - libs.size());
@@ -168,8 +169,14 @@ namespace {
                 findings.push_back(relative + "!" + entry.name + " is aligned to " + std::to_string(info->minLoadAlignment) +
                                    " bytes, 16 KB page devices need 16384 (-Wl,-z,max-page-size=16384)");
             }
-            if (!bundle && !entry.stored) findings.push_back(relative + "!" + entry.name + " is compressed (native libraries are stored)");
+            (entry.stored ? storedLibraries : compressedLibraries)++;
         }
+        // stored (loaded from the APK: extractNativeLibs false) or compressed (extracted at install,
+        // minSdk < 23), never mixed; a bundle keeps them stored for bundletool
+        if ((bundle && compressedLibraries > 0) || (storedLibraries > 0 && compressedLibraries > 0))
+            findings.push_back(relative + ": " + std::to_string(compressedLibraries) + " native librar" +
+                               (compressedLibraries == 1 ? "y is" : "ies are") + " compressed and " + std::to_string(storedLibraries) +
+                               " stored (a package stores them all, or compresses them all for minSdk < 23)");
         Content content{
             [&](const std::string& path) { return names.count(assets + path) > 0; },
             [&](const std::string& path, std::string& out) {

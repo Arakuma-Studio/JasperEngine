@@ -6,7 +6,8 @@
 // An APK or Android App Bundle from a prebuilt player (docs/specs/S30-shipping.md R13), with the
 // SDK's tools and no NDK, CMake or Gradle: the manifest from the project's Android settings, its
 // icons compiled with aapt2, an aapt2 link of the player's compiled resources (stable ids) and
-// the game's content as assets/game, the player's dex and the selected ABIs' libraries (stored),
+// the game's content as assets/game, the player's dex and the selected ABIs' libraries (stored, or
+// compressed in an APK for minSdk < 23 as Gradle packages them),
 // zipalign -P 16, apksigner (or bundletool and jarsigner for a bundle). A missing tool fails the
 // build with what installs it; nothing falls back to Gradle.
 
@@ -46,6 +47,10 @@ namespace jasperengine::editor::platform {
         std::string keystorePassword;          // else JASPER_ANDROID_KS_PASS
         std::string keyPassword;               // else JASPER_ANDROID_KEY_PASS, else the keystore's
     };
+
+    // whether a package compresses its native libraries (an APK for minSdk < 23, as the Android
+    // Gradle plugin does; its manifest then says extractNativeLibs="true") or stores them
+    bool compressesNativeLibraries(const AndroidPackage& package);
 
     // the AndroidManifest.xml of a package (the runtime's template with the settings filled in)
     bool writeAndroidManifest(const AndroidPackage& package, const std::string& templateText, std::string& manifest, std::string& error);

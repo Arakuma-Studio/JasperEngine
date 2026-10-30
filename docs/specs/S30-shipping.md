@@ -276,8 +276,11 @@ Steam Deck.
   2. Compiles the launcher and adaptive icons with `aapt2 compile`.
   3. Links: `aapt2 link -I <sdk>/platforms/android-<targetSdk>/android.jar --manifest …
      --stable-ids stable-ids.txt --rename-manifest-package <applicationId> -A <staged assets> -o base.apk`.
-  4. Adds the dex files and only the ABIs selected in settings. `.so` files are stored
-     uncompressed.
+  4. Adds the dex files and only the ABIs selected in settings. `.so` files are packed as the
+     Android Gradle plugin packs them, so a prebuilt APK weighs what a compiled one does:
+     - an APK whose `minSdk` is below 23 compresses them and says `extractNativeLibs="true"`, so
+       they are extracted at install;
+     - from `minSdk` 23, and always in a bundle, they are stored and loaded from the APK.
   5. Aligns with `zipalign -P 16 -f 4`.
   6. Signs with `apksigner sign` (v1+v2+v3 when `minSdk < 24`), then checks with
      `apksigner verify`.

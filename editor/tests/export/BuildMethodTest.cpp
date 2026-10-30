@@ -15,6 +15,8 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <fstream>
+#include <iterator>
 
 namespace fs = std::filesystem;
 using namespace jasperengine;
@@ -165,4 +167,32 @@ TEST(AndroidPackage, SelectedAbisAndTheirLibrarySizes) {
     EXPECT_EQ(sizes[0], (std::pair<std::string, uint64_t>{"arm64-v8a", 120}));
     EXPECT_EQ(sizes[1], (std::pair<std::string, uint64_t>{"armeabi-v7a", 70}));
     EXPECT_EQ(sizes[2], (std::pair<std::string, uint64_t>{"x86_64", 0})) << "an ABI the runtime lacks weighs nothing";
+}
+
+// native libraries as the Android Gradle plugin packages them: compressed in an APK for devices
+// before Android 6 (extracted at install), stored from minSdk 23 and in a bundle
+TEST(AndroidPackage, NativeLibrariesCompressedBelowApi23) {
+    std::ifstream in(fs::path(JASPER_TEST_REPO_DIR) / "engine/platform/android/player/AndroidManifest.template.xml");
+    ASSERT_TRUE(in);
+    const std::string templateText((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    platform::AndroidPackage package;
+    package.label = "Game";
+    package.applicationId = "com.example.game";
+    auto manifestOf = [&](AndroidFormat format, unsigned int minSdk) {
+        package.format = format;
+        package.settings.minSdk = minSdk;
+        std::string manifest, error;
+        EXPECT_TRUE(platform::writeAndroidManifest(package, templateText, manifest, error)) << error;
+        return manifest;
+    };
+    EXPECT_NE(manifestOf(AndroidFormat::Apk, 21).find("android:extractNativeLibs=\"true\""), std::string::npos);
+    EXPECT_NE(manifestOf(AndroidFormat::ApkPerAbi, 22).find("android:extractNativeLibs=\"true\""), std::string::npos);
+    EXPECT_NE(manifestOf(AndroidFormat::Apk, 23).find("android:extractNativeLibs=\"false\""), std::string::npos);
+    EXPECT_NE(manifestOf(AndroidFormat::Aab, 21).find("android:extractNativeLibs=\"false\""), std::string::npos)
+        << "a bundle keeps them stored: bundletool makes each device's APK";
+    package.format = AndroidFormat::Apk;
+    package.settings.minSdk = 21;
+    EXPECT_TRUE(platform::compressesNativeLibraries(package));
+    package.settings.minSdk = 26;
+    EXPECT_FALSE(platform::compressesNativeLibraries(package));
 }
