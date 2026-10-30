@@ -18,6 +18,11 @@
 #   --two-finger-tap    TAP_AFTER seconds (--tap-after, default 10) after the launch, two fingers
 #                       touch the screen together and lift (tools/android-two-finger-tap.sh)
 #   --tap-after SECONDS when --two-finger-tap taps
+#   --relaunch          once the expected lines are in, change the font scale: Android relaunches
+#                       the activity in the same process (the manifest does not handle fontScale),
+#                       and the engine starts again in it. The run then needs a new view (the
+#                       engine's 'Graphics:' line), the process still running and no crash; the
+#                       font scale is restored after.
 #   --scene NAME        launch the app once per --scene (repeatable), with the property
 #                       debug.jasperengine.scene set to NAME (a test project picks what it shows
 #                       by it: tools/test-projects/render-gate); every run is checked on its own
@@ -96,6 +101,7 @@ TIMEOUT=120
 SECONDS_TO_RUN=20
 TWO_FINGER_TAP=0
 TAP_AFTER=10
+RELAUNCH=0
 OUT="build/android-emulator"
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -114,6 +120,7 @@ while [[ $# -gt 0 ]]; do
         --seconds) SECONDS_TO_RUN="$2"; shift 2 ;;
         --two-finger-tap) TWO_FINGER_TAP=1; shift ;;
         --tap-after) TAP_AFTER="$2"; shift 2 ;;
+        --relaunch) RELAUNCH=1; shift ;;
         --scene)
             [[ "$2" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "android-emulator-test: --scene takes a name of letters, digits, _ and - (got $2)" >&2; exit 2; }
             SCENES+=("$2"); shift 2 ;;
@@ -271,6 +278,37 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
                 (( SECONDS - start > WAIT )) && break
                 sleep 2
             done
+            # an activity relaunched in the same process: the engine starts again in it
+            relaunched=""
+            if [[ "$RELAUNCH" == 1 && -z "$crashes" ]]; then
+                views="$(grep -c "I/JasperEngine: Graphics:" "$DIR/logcat.txt" || true)"
+                pid="$(adb shell pidof "$PACKAGE" 2>/dev/null | tr -d "\r")"
+                log "relaunching the activity in the same process (font scale 1.15)"
+                adb shell settings put system font_scale 1.15
+                start=$SECONDS
+                while true; do
+                    sleep 2
+                    adb logcat -d -v tag > "$DIR/logcat.txt"
+                    adb logcat -d -v threadtime > "$DIR/logcat-full.txt"
+                    crashes="$(grep -E "FATAL EXCEPTION|Fatal signal|>>> $PACKAGE <<<" "$DIR/logcat-full.txt" | head -10 || true)"
+                    [[ -n "$crashes" ]] && break
+                    (( $(grep -c "I/JasperEngine: Graphics:" "$DIR/logcat.txt" || true) > views )) && break
+                    (( SECONDS - start > TIMEOUT )) && break
+                done
+                # frames of the new instance before the checks
+                [[ -z "$crashes" ]] && sleep 10
+                adb shell settings put system font_scale 1.0
+                after="$(adb shell pidof "$PACKAGE" 2>/dev/null | tr -d "\r")"
+                if (( $(grep -c "I/JasperEngine: Graphics:" "$DIR/logcat.txt" || true) <= views )); then
+                    relaunched="MISSING      a new view after the relaunch (I/JasperEngine: Graphics:)"
+                elif [[ -z "$after" ]]; then
+                    relaunched="NOT RUNNING  $PACKAGE after the relaunch"
+                elif [[ "$after" != "$pid" ]]; then
+                    relaunched="MISSING      a relaunch in the same process (pid $pid became $after)"
+                else
+                    relaunched="found        relaunched in process $pid: a new view, still running"
+                fi
+            fi
             # what the screen shows now: with --golden, at least 30 frames after the ready line
             adb exec-out screencap -p > "$DIR/$SHOT" 2>/dev/null || true
             adb logcat -d -v tag > "$DIR/logcat.txt"
@@ -309,6 +347,10 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
             # A native fault can be observed before our logcat lines have been collected.
             # Check the final snapshot after the report/tombstone wait, not the early one.
             check >> "$DIR/result.txt" || result=1
+            if [[ -n "$relaunched" ]]; then
+                echo "$relaunched" >> "$DIR/result.txt"
+                [[ "$relaunched" == found* ]] || result=1
+            fi
             # no expectation (--no-ready): the app must at least still be running after its seconds
             if [[ "$EXPECT_NATIVE_CRASH" != 1 ]] && ! grep -q . "$DIR/expect.txt" &&
                [[ -z "$(adb shell pidof "$PACKAGE" 2>/dev/null | tr -d "\r")" ]]; then

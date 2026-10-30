@@ -3,7 +3,8 @@
 # emulator check): tools/fixtures/unified-lighting built into an APK by the editor in the Android
 # image (the SDK's aapt2, zipalign and apksigner and a JDK: no NDK, CMake or Gradle) with the
 # android-universal-gles3-<flavour> runtime, then installed and run on the emulator
-# (tools/android-emulator-test.sh: the ready line, and a screen that is not one colour).
+# (tools/android-emulator-test.sh: the ready line, then the activity relaunched in the same
+# process, as a configuration change does, without a crash).
 #
 #   tools/build.sh linux                                   # the editor install
 #   PLAYER_PLATFORM=android PLAYER_ANDROID_ABIS=x86_64 PLAYER_FLAVOURS=development tools/build.sh players
@@ -40,4 +41,4 @@ APK="$(sed -n 's/^executable: //p' "$OUT/build.log" | head -1)"
 APK="${APK#/src/}"
 [[ -f "$APK" ]] || { echo "FAIL: no APK ($APK)" >&2; exit 1; }
 echo "APK: $APK ($(stat -c %s "$APK") bytes)"
-tools/android-emulator-test.sh "$APK" --out "$OUT/emulator" --timeout 600
+tools/android-emulator-test.sh "$APK" --out "$OUT/emulator" --timeout 600 --relaunch

@@ -104,7 +104,7 @@ step "the player's code: what the dex holds"
 if [[ $PREBUILT == 1 ]]; then
     step "the release prebuilt x86_64 APK (one APK per ABI) on the emulator"
     if [[ -f "$EMULATOR_APK" ]]; then
-        tools/android-emulator-test.sh "$EMULATOR_APK" --out "$OUT/emulator" --timeout 600 || FAILED=1
+        tools/android-emulator-test.sh "$EMULATOR_APK" --out "$OUT/emulator" --timeout 600 --relaunch || FAILED=1
     else
         echo "FAIL: no x86_64 APK" >&2
         FAILED=1
