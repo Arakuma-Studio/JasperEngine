@@ -457,6 +457,7 @@ bool AppSettings::applySettings(const YAML::Node& node) {
                 if (panelsNode["console"]) panelVisibility.console = panelsNode["console"].as<bool>();
                 if (panelsNode["animation"]) panelVisibility.animation = panelsNode["animation"].as<bool>();
                 if (panelsNode["poseAnimation"]) panelVisibility.poseAnimation = panelsNode["poseAnimation"].as<bool>();
+                if (panelsNode["animator"]) panelVisibility.animator = panelsNode["animator"].as<bool>();
                 if (panelsNode["terrain"]) panelVisibility.terrain = panelsNode["terrain"].as<bool>();
                 if (panelsNode["textureSynthesis"]) panelVisibility.textureSynthesis = panelsNode["textureSynthesis"].as<bool>();
                 if (panelsNode["vertexAnimationBaker"]) panelVisibility.vertexAnimationBaker = panelsNode["vertexAnimationBaker"].as<bool>();
@@ -478,6 +479,7 @@ bool AppSettings::applySettings(const YAML::Node& node) {
                 if (sceneNode["exact_pick"]) sceneViewSettings.exactPick = sceneNode["exact_pick"].as<bool>();
                 if (sceneNode["align_to_surface"]) sceneViewSettings.alignToSurface = sceneNode["align_to_surface"].as<bool>();
                 if (sceneNode["rulers"]) sceneViewSettings.rulers = sceneNode["rulers"].as<bool>();
+                if (sceneNode["preview_particles"]) sceneViewSettings.previewParticles = sceneNode["preview_particles"].as<bool>();
             }
             if (editorNode["profiler"]) {
                 auto profilerNode = editorNode["profiler"];
@@ -732,6 +734,7 @@ bool AppSettings::saveSettings() {
         panelsNode["console"] = panelVisibility.console;
         panelsNode["animation"] = panelVisibility.animation;
         panelsNode["poseAnimation"] = panelVisibility.poseAnimation;
+        panelsNode["animator"] = panelVisibility.animator;
         panelsNode["terrain"] = panelVisibility.terrain;
         panelsNode["textureSynthesis"] = panelVisibility.textureSynthesis;
         panelsNode["vertexAnimationBaker"] = panelVisibility.vertexAnimationBaker;
@@ -751,6 +754,7 @@ bool AppSettings::saveSettings() {
         sceneViewNode["exact_pick"] = sceneViewSettings.exactPick;
         sceneViewNode["align_to_surface"] = sceneViewSettings.alignToSurface;
         sceneViewNode["rulers"] = sceneViewSettings.rulers;
+        sceneViewNode["preview_particles"] = sceneViewSettings.previewParticles;
         editorNode["scene_view"] = sceneViewNode;
         YAML::Node profilerNode;
         profilerNode["budget_fps"] = profilerSettings.budgetFps;

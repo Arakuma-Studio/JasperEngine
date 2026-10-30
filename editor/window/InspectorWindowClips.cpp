@@ -1377,6 +1377,8 @@ bool editor::InspectorWindow::drawInspectedAsset(){
     const fs::path asset = project->getInspectedAsset();
     if (asset.empty()) return false;
     const std::string file = asset.string();
+    // an Animator Controller, Avatar Mask or Animation Montage (InspectorAnimator.cpp)
+    if (Util::isAnimatorAssetFile(file)) return fs::exists(asset) && drawAnimatorAsset(asset);
     // a .vat: its own view (InspectorWindowVat.cpp); gone: the scene selection again
     if (Util::isVertexAnimationFile(file)){
         std::error_code ec;

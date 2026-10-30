@@ -74,6 +74,7 @@ struct PanelVisibilitySettings {
     bool console = true;
     bool animation = true;
     bool poseAnimation = false;
+    bool animator = false;
     bool terrain = false;
     bool textureSynthesis = false;
     bool vertexAnimationBaker = false;
@@ -89,6 +90,7 @@ struct PanelVisibilitySettings {
             && console == other.console
             && animation == other.animation
             && poseAnimation == other.poseAnimation
+            && animator == other.animator
             && terrain == other.terrain
             && textureSynthesis == other.textureSynthesis
             && vertexAnimationBaker == other.vertexAnimationBaker
@@ -125,9 +127,11 @@ struct SceneViewSettings {
     bool exactPick = false;       // a click selects what is under it, never its prefab or model root
     bool alignToSurface = false;  // drops turn their up axis onto the surface normal
     bool rulers = false;          // top and left rulers in 2D, UI and orthographic axis views
+    bool previewParticles = true; // animation edit previews (Animator, Animation windows) seek the Particle Systems under them
 
     bool operator==(const SceneViewSettings& other) const {
-        return exactPick == other.exactPick && alignToSurface == other.alignToSurface && rulers == other.rulers;
+        return exactPick == other.exactPick && alignToSurface == other.alignToSurface && rulers == other.rulers &&
+               previewParticles == other.previewParticles;
     }
     bool operator!=(const SceneViewSettings& other) const { return !(*this == other); }
 };

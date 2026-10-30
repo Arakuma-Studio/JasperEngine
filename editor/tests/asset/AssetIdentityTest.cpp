@@ -634,6 +634,8 @@ TEST(AssetRefSchema, CoversAllFields) {
         {C::SplineInstantiateComponent, "items[].asset"}, {C::SplineInstantiateComponent, "posts[].asset"},
         {C::SplineInstantiateComponent, "spans[].asset"}, {C::SplineInstantiateComponent, "gates[].asset"},
         {C::SplineInstantiateComponent, "crests[].asset"}, {C::SplineInstantiateComponent, "caps[].asset"},
+        // S21's Animator: its Animator Controller (the clips and masks are in the .controller)
+        {C::AnimatorComponent, "controller"},
         // upstream's Vertex Animator: its .vat, by GUID, with the mesh beside it
         {C::VertexAnimatorComponent, "animation"},
     };

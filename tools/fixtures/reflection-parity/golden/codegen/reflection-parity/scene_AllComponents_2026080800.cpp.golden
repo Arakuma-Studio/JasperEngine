@@ -2516,20 +2516,37 @@ void create_scene_AllComponents_2026080800(Scene* scene){
     }
 
     {
-        // Entity 1078 (VertexAnimatorComponent)
-        scene->setEntityName(1078, "VertexAnimatorComponent");
+        // Entity 1078 (AnimatorComponent)
+        scene->setEntityName(1078, "AnimatorComponent");
 
         // Entity components initialization
-        VertexAnimatorComponent vertexanimator;
-        vertexanimator.enabled = false;
-        vertexanimator.animation = "text: [1, 2]";
-        vertexanimator.defaultClip = "Reflection parity";
-        vertexanimator.playAutomatically = false;
-        vertexanimator.speed = 1.500000f;
-        vertexanimator.randomStart = false;
-        vertexanimator.defaultFadeTime = 8.500000f;
-        vertexanimator.instanceEvents = true;
-        scene->addComponent<VertexAnimatorComponent>(1078, vertexanimator);
+        AnimatorComponent animator;
+        animator.enabled = false;
+        animator.controller = "animations/parity.controller";
+        animator.speed = 7.400000f;
+        animator.applyRootMotion = true;
+        animator.rootMotionBone = "Reflection parity";
+        animator.updateMode = AnimatorUpdateMode::UnscaledTime;
+        animator.cullingMode = AnimatorCullingMode::CullCompletely;
+        animator.writeBones = AnimatorWriteBones::Exposed;
+        animator.exposedBones.push_back("Hips/Spine");
+        animator.exposedBones.push_back("left_hand");
+        animator.eventMode = AnimatorEventMode::All;
+        animator.sendEventsToScripts = false;
+        animator.retarget = AnimatorRetarget::Off;
+        animator.clipOverrides.push_back({"animations/parity.anim", "models/parity.gltf#Run"});
+        {
+            AnimatorIKConstraint animator_ik0;
+            animator_ik0.name = "LeftHand";
+            animator_ik0.type = AnimatorIKType::TwoBone;
+            animator_ik0.weight = 0.500000f;
+            animator_ik0.bones.push_back("left_upper_arm");
+            animator_ik0.bones.push_back("left_lower_arm");
+            animator_ik0.bones.push_back("left_hand");
+            animator.ik.push_back(animator_ik0);
+        }
+        animator.needsLoad = true;
+        scene->addComponent<AnimatorComponent>(1078, animator);
 
         Transform transform;
         transform.position = Vector3(77.000000f, 0.000000f, 0.000000f);
@@ -2634,6 +2651,5 @@ SceneResources resources_scene_AllComponents_2026080800(){
     resources.models.push_back("models/parity.gltf");
     resources.clips.push_back("animations/parity.anim");
     resources.clips.push_back("models/parity.gltf#Run");
-    resources.vats.push_back("text: [1, 2]");
     return resources;
 }

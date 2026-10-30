@@ -33,7 +33,10 @@ namespace jasperengine {
         PoseAnimation = 17,     // a .poseanim pose animation (Pose Animator's animation)
         NavMesh = 18,         // a baked .navmesh (S19)
         NavGrid = 19,         // a .navgrid's cells (S19)
-        VertexAnimation = 20  // a .vat Vertex Animation (Vertex Animator's animation; its GUID in its JSON)
+        AnimatorController = 20,    // a .controller Animator Controller (S21; its GUID in its JSON)
+        AvatarMask = 21,            // a .mask avatar mask (S21)
+        AnimationMontage = 22,      // a .montage animation montage (S21)
+        VertexAnimation = 23        // a .vat Vertex Animation (Vertex Animator's animation; its GUID in its JSON)
     };
 
     // The lowercase names used by Lua (AssetRef.type), MCP and the editor ("texture", "model", ...)
@@ -58,6 +61,9 @@ namespace jasperengine {
             case AssetType::PoseAnimation: return "pose_animation";
             case AssetType::NavMesh: return "navmesh";
             case AssetType::NavGrid: return "navgrid";
+            case AssetType::AnimatorController: return "animator_controller";
+            case AssetType::AvatarMask: return "avatar_mask";
+            case AssetType::AnimationMontage: return "animation_montage";
             case AssetType::VertexAnimation: return "vertex_animation";
             case AssetType::Unknown: break;
         }

@@ -33,6 +33,7 @@
 #include "animation/ClipRecordHooks.h"
 #include "animation/ClipValidation.h"
 #include "animation/PreviewOwner.h"
+#include "animation/PreviewParticles.h"
 #include "ecs/Entity.h"
 #include "math/Quaternion.h"
 #include "math/Vector3.h"
@@ -152,6 +153,14 @@ namespace jasperengine::editor{
         static bool findKey(const ClipData& data, const std::string& path, ClipChannel channel, float time, KeyRef& out);
         bool deleteKeys(const std::vector<KeyRef>& keys, std::string* error);
         bool setEase(const std::vector<KeyRef>& keys, EaseType ease, std::string* error);
+        // the keys' tangent mode (the curves view's Tangents menu, S21 R27): the track becomes a
+        // Hermite one (its eases drop, Constant keys step); Free unifies a key's two sides
+        bool setTangentMode(const std::vector<KeyRef>& keys, ClipTangentMode mode, std::string* error);
+        // a dragged tangent handle: `slope` (value units per second) for component `component`
+        // on the key's out side (`outSide`) or in side; a Broken key moves that side only, any
+        // other mode both sides and turns Free (Unity). `mergeKey`: one undo step per drag
+        bool setKeyTangent(const KeyRef& key, size_t component, bool outSide, float slope, const std::string& mergeKey,
+                           std::string* error);
         bool removeTrack(size_t track, std::string* error);
         // rewrites a track's path (the row's Rebind / Retarget): changes the clip for every user
         bool retargetTrack(size_t track, const std::string& newPath, std::string* error);
@@ -271,6 +280,9 @@ namespace jasperengine::editor{
         // the derived state (world matrices, skinning) of the previewed hierarchy at start
         std::unique_ptr<Snapshot> snapshot;
         PreviewOwner::Token ownerToken = 0;
+        // the Particle Systems under the previewed root follow the playhead (S21 R28)
+        PreviewParticles particles;
+        float particleTime = -1.0f;
         int documentListener = 0;
         ClipRecordHooks::Id beforeWriteListener = 0;
         ClipRecordHooks::Id afterWriteListener = 0;
@@ -335,6 +347,8 @@ namespace jasperengine::editor{
         bool currentTrackValue(const ClipTrackData& track, std::vector<float>& out) const;
         bool editable(std::string* error) const;
         bool commitEdit(const ClipData& data, const std::string& undoName, const std::string& mergeKey, std::string* error);
+        bool setKeyTangentPrepared(ClipData& data, const KeyRef& ref, size_t component, bool outSide, float slope,
+                                   const std::string& mergeKey, std::string* error);
     };
 
 }

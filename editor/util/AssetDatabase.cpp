@@ -17,6 +17,7 @@
 #include "json.hpp"
 #include "animation/AnimationClipIO.h"
 #include "animation/VertexAnimation.h"
+#include "animation/AnimatorAssetIO.h"
 #include "yaml-cpp/yaml.h"
 
 #include <algorithm>
@@ -236,10 +237,51 @@ namespace {
         return out;
     }
 
-    // .anim clips and .vat Vertex Animations are JSON: their GUID is the top-level "guid" member
+    // .anim clips, .vat Vertex Animations and the Animator's .controller / .mask / .montage files are JSON: their GUID is the top-level "guid" member
     // (AnimationClipIO reads and replaces it in any JSON object that has a "version" member)
     bool isClipFile(const fs::path& path) {
-        return editor::Util::isAnimationClipFile(path.string()) || editor::Util::isVertexAnimationFile(path.string());
+        return editor::Util::isAnimationClipFile(path.string()) || editor::Util::isVertexAnimationFile(path.string()) ||
+               editor::Util::isAnimatorAssetFile(path.string());
+    }
+
+    // the Animator asset text parses (its writer is what the identity rewrite uses)
+    bool animatorAssetParses(const std::string& text) {
+        const std::string kind = anim::animatorAssetKind(text);
+        if (kind == "controller") return anim::parseController(text).ok;
+        if (kind == "mask") return anim::parseMask(text).ok;
+        if (kind == "montage") return anim::parseMontage(text).ok;
+        return false;
+    }
+
+    // the Animator asset with "formerGuids" set (an unknown key to its reader, written back) and
+    // that GUID: written canonically again; false for a text that is not one
+    template<class Result, class Write>
+    bool rewriteIdentity(Result parsed, Write write, std::string& text, const Guid& guid, const std::vector<Guid>& formerGuids) {
+        if (!parsed.ok) return false;
+        auto& unknown = parsed.data.unknownKeys;
+        unknown.erase(std::remove_if(unknown.begin(), unknown.end(), [](const auto& key) { return key.first == "formerGuids"; }), unknown.end());
+        if (!formerGuids.empty()) {
+            std::vector<Guid> sorted = formerGuids;
+            std::sort(sorted.begin(), sorted.end());
+            sorted.erase(std::unique(sorted.begin(), sorted.end()), sorted.end());
+            Json list = Json::array();
+            for (const Guid& former : sorted) list.push_back(former.str());
+            unknown.emplace_back("formerGuids", list.dump());
+        }
+        parsed.data.guid = guid.str();
+        text = write(parsed.data);
+        return true;
+    }
+
+    bool withAnimatorAssetIdentity(std::string& text, const Guid& guid, const std::vector<Guid>& formerGuids) {
+        if (!animatorAssetParses(text)) return false;
+        if (formerGuids.empty() && text.find("\"formerGuids\"") == std::string::npos) {
+            return anim::replaceClipGuid(text, guid.str());
+        }
+        const std::string kind = anim::animatorAssetKind(text);
+        if (kind == "controller") return rewriteIdentity(anim::parseController(text), &anim::writeController, text, guid, formerGuids);
+        if (kind == "mask") return rewriteIdentity(anim::parseMask(text), &anim::writeMask, text, guid, formerGuids);
+        return rewriteIdentity(anim::parseMontage(text), &anim::writeMontage, text, guid, formerGuids);
     }
 
     // the JSON asset parses as its own type; a broken or foreign file (a Unity YAML .anim, broken
@@ -247,6 +289,9 @@ namespace {
     bool parsesAsJsonAsset(const fs::path& path, const std::string& text) {
         if (editor::Util::isVertexAnimationFile(path.string())) {
             return vat::parseVat(text).ok();
+        }
+        if (editor::Util::isAnimatorAssetFile(path.string())) {
+            return animatorAssetParses(text);
         }
         return anim::parseClip(text).ok();
     }
@@ -293,6 +338,10 @@ namespace {
     // are no former GUIDs to write or drop; else the asset written again canonically. False for
     // a text that is not one (a Unity YAML .anim, broken JSON: its error must keep its line).
     bool withJsonAssetIdentity(const fs::path& path, std::string& text, const Guid& guid, const std::vector<Guid>& formerGuids) {
+        // the Animator's assets (S21): their own readers and writers
+        if (editor::Util::isAnimatorAssetFile(path.string()) || !anim::animatorAssetKind(text).empty()) {
+            return withAnimatorAssetIdentity(text, guid, formerGuids);
+        }
         if (editor::Util::isVertexAnimationFile(path.string())) {
             vat::VatParseResult parsed = vat::parseVat(text);
             if (!parsed.ok()) {

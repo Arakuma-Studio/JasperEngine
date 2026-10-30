@@ -2518,7 +2518,7 @@ entities:
         playOnAwake: false
   - type: Entity
     entity: 1078
-    name: VertexAnimatorComponent
+    name: AnimatorComponent
     components:
       transform:
         position: [77, 0, 0]
@@ -2529,14 +2529,29 @@ entities:
         billboard: false
         fakeBillboard: false
         cylindricalBillboard: false
-      vertexanimator:
+      animator:
         enabled: false
-        animation: "text: [1, 2]"
-        guid: Reflection parity
-        defaultClip: Reflection parity
-        playAutomatically: false
-        speed: 1.5
-        randomStart: false
-        defaultFadeTime: 8.5
-        instanceEvents: true
-        attachments: []
+        controller: animations/parity.controller
+        speed: 7.4
+        applyRootMotion: true
+        rootMotionBone: Reflection parity
+        updateMode: unscaled_time
+        cullingMode: cull_completely
+        writeBones: exposed
+        exposedBones:
+          - Hips/Spine
+          - left_hand
+        eventMode: all
+        sendEventsToScripts: false
+        retarget: off
+        clipOverrides:
+          - original: animations/parity.anim
+            replacement: "models/parity.gltf#Run"
+        ik:
+          - name: LeftHand
+            type: two_bone
+            weight: 0.5
+            bones:
+              - left_upper_arm
+              - left_lower_arm
+              - left_hand

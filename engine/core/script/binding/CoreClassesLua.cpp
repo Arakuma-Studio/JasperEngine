@@ -1504,6 +1504,28 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("add", (bool (FunctionSubscribe<void(int, const std::string&)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(int, const std::string&)>::add)
         .endClass();
 
+    // the Animator's callbacks (onStateEnter / onStateExit, onMontageEnded, onAnimatorMove)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<FunctionSubscribe<void(const std::string&, const std::string&)>>("FunctionSubscribe_V_SS")
+        .addFunction("__call", &FunctionSubscribe<void(const std::string&, const std::string&)>::call)
+        .addFunction("call", &FunctionSubscribe<void(const std::string&, const std::string&)>::call)
+        .addFunction("add", (bool (FunctionSubscribe<void(const std::string&, const std::string&)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(const std::string&, const std::string&)>::add)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<FunctionSubscribe<void(const std::string&, bool)>>("FunctionSubscribe_V_SB")
+        .addFunction("__call", &FunctionSubscribe<void(const std::string&, bool)>::call)
+        .addFunction("call", &FunctionSubscribe<void(const std::string&, bool)>::call)
+        .addFunction("add", (bool (FunctionSubscribe<void(const std::string&, bool)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(const std::string&, bool)>::add)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<FunctionSubscribe<void(Vector3, Quaternion)>>("FunctionSubscribe_V_V3Q")
+        .addFunction("__call", &FunctionSubscribe<void(Vector3, Quaternion)>::call)
+        .addFunction("call", &FunctionSubscribe<void(Vector3, Quaternion)>::call)
+        .addFunction("add", (bool (FunctionSubscribe<void(Vector3, Quaternion)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(Vector3, Quaternion)>::add)
+        .endClass();
+
     luabridge::getGlobalNamespace(L)
         .beginClass<FunctionSubscribe<float(float)>>("FunctionSubscribe_F_F")
         .addFunction("__call", &FunctionSubscribe<float(float)>::call)

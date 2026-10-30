@@ -13060,6 +13060,9 @@ void RenderSystem::update(double dt){
     for (int i = 0; i < models->size(); i++) {
         ModelComponent& model = models->getComponentFromIndex(i);
         for (const ModelSkinBinding& binding : model.skinBindings) {
+            // an Animator wrote this skin's matrices from its pose (AnimatorSystem)
+            if (binding.animatorDriven)
+                continue;
             MeshComponent* mesh = scene->findComponent<MeshComponent>(binding.mesh);
             Transform* meshTransform = scene->findComponent<Transform>(binding.mesh);
             if (!mesh || !meshTransform)

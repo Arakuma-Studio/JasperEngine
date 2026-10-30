@@ -263,3 +263,4 @@
 1066 poseanimator/animation pose_animation
 1068 navmeshsurface/navMeshData any
 1073 navgrid/gridData any
+1078 animator/controller animator_controller

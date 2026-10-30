@@ -77,8 +77,11 @@ namespace jasperengine::editor{
         UpdateFlags_AnimationPlayer_Reload = (uint64_t)1 << 43,
         // a Spline's knots, type, closed flag or up axis was written in place: bumps its version
         UpdateFlags_Spline              = (uint64_t)1 << 44,
+        // an Animator's controller or a setting it binds with changed: the next update loads and
+        // rebinds it, keeping its states (S21)
+        UpdateFlags_Animator_Reload = (uint64_t)1 << 45,
         // a Vertex Animator's animation changed: load it again (the fade is kept >= 0)
-        UpdateFlags_VertexAnimator_Reload = (uint64_t)1 << 45,
+        UpdateFlags_VertexAnimator_Reload = (uint64_t)1 << 46,
         // handlers that touch the whole scene, must be masked out when applying all flags
         UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Scene_Mesh_Variant | UpdateFlags_Reflection_Probe_Recapture_All
     };
@@ -166,6 +169,8 @@ namespace jasperengine::editor{
         SplineExtrudeComponent,
         SplineInstantiateComponent,
         SplineAnimateComponent,
+        // Unity's Animator (docs/specs/S21-animation.md)
+        AnimatorComponent,
         // baked vertex / bone animation played on the GPU (vertex animation spec 3.3)
         VertexAnimatorComponent
     };

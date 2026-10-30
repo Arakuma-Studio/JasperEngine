@@ -5,7 +5,7 @@
 // toggle's second view. Left, the curves of the open clip's bound channels by component (colour,
 // visibility toggle, label); right, the graph: a value axis with nice ticks, every visible curve
 // sampled with the runtime sampler (clipcurves, AnimationWindowClipCurves.h), key points,
-// read-only tangents of the keys that carry them, the playhead. Key points are selected like the
+// the tangents of the keys that carry them (draggable but for rotations: S21 R27), the playhead. Key points are selected like the
 // dopesheet's keys (the same selection), dragged in time (frame snapped) and value through the
 // controller's key drag API (one merge key per drag, keys passed over are never lost); the key
 // menu (ease presets) opens on a key or a curve segment; F frames the selected keys, A all.
@@ -257,6 +257,7 @@ namespace {
         for (const ClipKey& key : track.keys){
             mix(bits(key.time));
             mix((uint64_t)key.ease);
+            mix((uint64_t)key.tangentMode);
             for (float v : key.value) mix(bits(v));
             for (float v : key.inTangent) mix(bits(v));
             for (float v : key.outTangent) mix(bits(v));
@@ -718,6 +719,9 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
 
     // the curves and key points from the cache
     std::vector<CurvePoint> points;
+    // the draggable tangent handles of selected keys (position, scale, morph, lattice curves)
+    struct TangentHandle{ size_t track; size_t key; int component; bool outSide; ImVec2 tip; float x; float y; };
+    std::vector<TangentHandle> handles;
     const float keyRadius = 4.0f * m.s;
     const ImVec4 selectedColour = selectedKeyColor();
     std::vector<ImVec2> line;
@@ -762,8 +766,8 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
                     drawList->AddRectFilled(ImVec2(x - r, y - r), ImVec2(x + r, y + r), color(colour, readOnly ? 0.6f : 1.0f));
                 }
                 points.push_back({t, key, (int)k, track.keys[key].time, value});
-                // tangents (read-only) of selected keys that carry them: the stored tangents
-                // (value units per second); a rotation's from its sampled curve
+                // tangents of selected keys that carry them: the stored tangents (value units per
+                // second), dragged by their tips; a rotation's (read-only) from its sampled curve
                 if (!selected || !track.keys[key].hasTangents()) continue;
                 float inSlope = 0.0f, outSlope = 0.0f;
                 if (track.channel == ClipChannel::Rotation){
@@ -782,12 +786,19 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
                     outSlope = keyed.outTangent[k];
                 }
                 const float length = 28.0f * m.s;
+                const bool draggable = !readOnly && track.channel != ClipChannel::Rotation;
+                const bool broken = track.keys[key].tangentMode == ClipTangentMode::Broken;
                 auto handle = [&](float slope, float side){
                     const ImVec2 dir(side, -slope * pixelsPerValue / pixelsPerSecond * side);
                     const float norm = std::sqrt(dir.x * dir.x + dir.y * dir.y);
                     const ImVec2 tip(x + dir.x / norm * length, y + dir.y / norm * length);
-                    drawList->AddLine(ImVec2(x, y), tip, color(Theme::Colors::SubtleText, 0.9f), 1.0f * m.s);
-                    drawList->AddCircle(tip, 2.5f * m.s, color(Theme::Colors::SubtleText, 0.9f));
+                    const bool grabbed = drag == Drag::CurveTangent && tangentRef.track == t && tangentRef.key == key &&
+                                         tangentComponent == (int)k && (tangentOutSide == (side > 0.0f) || !broken);
+                    const ImVec4 tint = grabbed ? selectedColour : (broken ? Theme::Colors::WarningText : Theme::Colors::SubtleText);
+                    drawList->AddLine(ImVec2(x, y), tip, color(tint, 0.9f), 1.0f * m.s);
+                    if (draggable) drawList->AddCircleFilled(tip, 3.0f * m.s, color(tint, 0.9f));
+                    else drawList->AddCircle(tip, 2.5f * m.s, color(tint, 0.9f));
+                    if (draggable) handles.push_back({t, key, (int)k, side > 0.0f, tip, x, y});
                 };
                 if (key > 0) handle(inSlope, -1.0f);
                 if (key + 1 < track.keys.size()) handle(outSlope, 1.0f);
@@ -816,7 +827,27 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
         const ClipTrackData& track = data.tracks[point.track];
         return CurveKeyId{KeyId{track.path, track.channel, point.time}, point.component};
     };
-    if (ImGui::IsItemActivated() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)){
+    // a tangent handle under the mouse (the handles win over the key points)
+    int hoveredHandle = -1;
+    float bestHandle = m.keyHit * m.keyHit;
+    for (size_t i = 0; i < handles.size() && hovered; i++){
+        const float dx = handles[i].tip.x - io.MousePos.x;
+        const float dy = handles[i].tip.y - io.MousePos.y;
+        if (dx * dx + dy * dy <= bestHandle){
+            bestHandle = dx * dx + dy * dy;
+            hoveredHandle = (int)i;
+        }
+    }
+    if (ImGui::IsItemActivated() && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && hoveredHandle >= 0){
+        const TangentHandle& grabbed = handles[(size_t)hoveredHandle];
+        tangentRef = {grabbed.track, grabbed.key};
+        tangentComponent = grabbed.component;
+        tangentOutSide = grabbed.outSide;
+        tangentKeyTime = data.tracks[grabbed.track].keys[grabbed.key].time;
+        tangentMergeKey = "tangent-drag:" + std::to_string(++tangentDrags);
+        dragStart = io.MousePos;
+        drag = Drag::CurveTangent;
+    }else if (ImGui::IsItemActivated() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)){
         const bool additive = io.KeyShift || io.KeyCtrl;
         dragStart = io.MousePos;
         if (hoveredPoint >= 0){
@@ -864,7 +895,34 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
             drag = Drag::CurveBox;
         }
     }
-    if (active && ImGui::IsMouseDown(ImGuiMouseButton_Left)){
+    if (active && ImGui::IsMouseDown(ImGuiMouseButton_Left) && drag == Drag::CurveTangent){
+        // the slope from the key point to the mouse, on the handle's side (never vertical)
+        const ClipTrackData* track = tangentRef.track < data.tracks.size() ? &data.tracks[tangentRef.track] : nullptr;
+        AnimationClipController::KeyRef ref;
+        if (track && AnimationClipController::findKey(data, track->path, track->channel, tangentKeyTime, ref) &&
+                ref.track < curveCache.tracks.size()){
+            const CurveTrackCache& entry = curveCache.tracks[ref.track];
+            const size_t count = entry.components;
+            if ((size_t)tangentComponent < count && entry.keyValues.size() == track->keys.size() * count){
+                const float keyX = xAt(track->keys[ref.key].time);
+                const float keyY = yAt(entry.keyValues[ref.key * count + (size_t)tangentComponent]);
+                const float minimum = 2.0f * m.s;
+                float dx = io.MousePos.x - keyX;
+                dx = tangentOutSide ? std::max(dx, minimum) : std::min(dx, -minimum);
+                const float slope = -((io.MousePos.y - keyY) / pixelsPerValue) / (dx / pixelsPerSecond);
+                std::string error;
+                if (!controller().setKeyTangent(ref, (size_t)tangentComponent, tangentOutSide, slope, tangentMergeKey, &error)){
+                    setNotice(error, true);
+                    drag = Drag::None;
+                }
+            }
+        }
+        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeAll);
+    }
+    if (drag == Drag::CurveTangent && ImGui::IsMouseReleased(ImGuiMouseButton_Left)){
+        drag = Drag::None;
+    }
+    if (active && ImGui::IsMouseDown(ImGuiMouseButton_Left) && drag != Drag::CurveTangent){
         const ImVec2 moved(io.MousePos.x - dragStart.x, io.MousePos.y - dragStart.y);
         if (drag == Drag::PendingCurve && (std::fabs(moved.x) > 3.0f * m.s || std::fabs(moved.y) > 3.0f * m.s)){
             std::string error;
@@ -959,7 +1017,12 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
         ImGui::OpenPopup("##clip_key_menu");
     }
     drawKeyContextMenu();
-    if (hovered && hoveredPoint >= 0 && drag == Drag::None){
+    if (hovered && hoveredHandle >= 0 && drag == Drag::None){
+        const TangentHandle& over = handles[(size_t)hoveredHandle];
+        const ClipKey& key = data.tracks[over.track].keys[over.key];
+        ImGui::SetTooltip("%s tangent (%s)\nDrag to shape the curve%s", over.outSide ? "Out" : "In", clipui::tangentModeLabel(key.tangentMode),
+                          key.tangentMode == ClipTangentMode::Broken ? "" : " (both sides: Free Smooth)");
+    }else if (hovered && hoveredPoint >= 0 && drag == Drag::None){
         const CurvePoint& point = points[(size_t)hoveredPoint];
         const ClipTrackData& track = data.tracks[point.track];
         const std::vector<std::string> names = track.channel == ClipChannel::Morph ? componentLabels(point.track) : std::vector<std::string>();

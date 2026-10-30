@@ -47,6 +47,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerLatticeTools, "Lattices (free-form deformation)", "animation"},   // upstream (lattice deformer)
     {registerPoseTools, "Pose animation", "animation"},   // upstream (Pose Animation)
     {registerVatTools, "Vertex animation", "animation"},   // upstream (Vertex Animation Textures)
+    {registerAnimatorTools, "Animator: controllers, masks, montages, live control", "animation"},   // S21
     {registerPlacementTools, "Physics placement", "editor_ux"},   // upstream (Physics Placement)
     {registerHtmlUiTools, "HTML/CSS UI", ""},
     {registerUiEffectTools, "HTML/CSS UI", ""},

@@ -105,6 +105,7 @@ EntityRegistry::EntityRegistry() {
     registerComponent<SplineExtrudeComponent>(ComponentOrder::Insertion, "SplineExtrudeComponent");
     registerComponent<SplineInstantiateComponent>(ComponentOrder::Insertion, "SplineInstantiateComponent");
     registerComponent<SplineAnimateComponent>(ComponentOrder::Insertion, "SplineAnimateComponent");
+    registerComponent<AnimatorComponent>(ComponentOrder::Insertion, "AnimatorComponent");
     registerComponent<VertexAnimatorComponent>(ComponentOrder::Insertion, "VertexAnimatorComponent");
 
     // complete: markChangedComponent may look into it

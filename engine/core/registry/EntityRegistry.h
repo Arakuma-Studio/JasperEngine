@@ -36,6 +36,7 @@
 #include "component/UIDocumentComponent.h"
 #include "component/FluidSimulationComponent.h"
 #include "component/PoseAnimatorComponent.h"
+#include "component/AnimatorComponent.h"
 #include "component/AnimationPlayerComponent.h"
 #include "component/VertexAnimatorComponent.h"
 #include "component/ImageComponent.h"

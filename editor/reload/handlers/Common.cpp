@@ -30,9 +30,10 @@ std::string reload::kindOf(const fs::path& path) {
     if (Util::isFontFile(text)) return "font";
     if (Util::isScriptFile(text) || ext == ".c" || ext == ".inl") return "script";
     if (Util::isHtmlFile(text) || Util::isCssFile(text) || ext == ".json" || ext == ".lottie") return "ui";
-    // pose animations, the models' humanoid maps, animation clips and Vertex Animations: their
-    // documents and players
-    if (Util::isPoseAnimationFile(text) || Util::isAnimationClipFile(text) || Util::isVertexAnimationFile(text) || ext == ".humanoid") {
+    // pose animations, the models' humanoid maps, animation clips, the Animator's assets and
+    // Vertex Animations: their documents and players
+    if (Util::isPoseAnimationFile(text) || Util::isAnimationClipFile(text) || Util::isAnimatorAssetFile(text) || Util::isVertexAnimationFile(text) ||
+        ext == ".humanoid") {
         return "animation";
     }
     if (Util::isSceneFile(text)) return "scene";

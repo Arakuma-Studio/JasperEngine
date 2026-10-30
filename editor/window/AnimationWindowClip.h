@@ -158,7 +158,7 @@ namespace jasperengine::editor{
             uint64_t version = 0;
         };
 
-        enum class Drag{ None, PendingKeys, Keys, Box, Scrub, PendingEvent, Event, Splitter, PendingCurve, CurveKeys, CurveBox, CurvePan };
+        enum class Drag{ None, PendingKeys, Keys, Box, Scrub, PendingEvent, Event, Splitter, PendingCurve, CurveKeys, CurveBox, CurvePan, CurveTangent };
         enum class EntityModeRequest{ None, State, Create };
 
         Project* project = nullptr;
@@ -311,6 +311,13 @@ namespace jasperengine::editor{
         // per key the components the value moves and a rotation key's base Euler
         int curveGrabTrack = -1;
         int curveGrabComponent = -1;
+        // a tangent handle being dragged (S21 R27): its key, component and side; one undo step
+        AnimationClipController::KeyRef tangentRef;
+        int tangentComponent = -1;
+        bool tangentOutSide = true;
+        float tangentKeyTime = 0.0f;
+        std::string tangentMergeKey;
+        int tangentDrags = 0;
         float curveGrabValue = 0.0f;
         float curveDragTime = 0.0f;
         float curveDragValue = 0.0f;
@@ -406,6 +413,8 @@ namespace jasperengine::editor{
         bool paste(float time, std::string* error);
         bool duplicateSelected(std::string* error);
         bool setEase(EaseType ease, std::string* error);
+        // the selected keys' tangent mode (the key menu's Tangents)
+        bool setTangentMode(ClipTangentMode mode, std::string* error);
         bool addKeysAt(int track, float time, std::string* error);
         bool keyAt(bool modifiedOnly, std::string* error);
         bool snapKeysToFrames(std::string* error);

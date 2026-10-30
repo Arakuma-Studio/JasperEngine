@@ -34,6 +34,7 @@
 #include "component/PoseAnimatorComponent.h"
 #include "component/AnimationPlayerComponent.h"
 #include "component/VertexAnimatorComponent.h"
+#include "component/AnimatorComponent.h"
 #include "animation/AnimationEvent.h"
 #include "component/SpriteComponent.h"
 #include "component/FogComponent.h"
@@ -638,6 +639,27 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("onInstanceEvent", [] (VertexAnimatorComponent* self, lua_State*) { return &self->onInstanceEvent; }, [] (VertexAnimatorComponent* self, lua_State* L) { self->onInstanceEvent = L; })
         // a function called with (instance, clip name) when instanceEvents is on
         .addProperty("onInstanceFinish", [] (VertexAnimatorComponent* self, lua_State*) { return &self->onInstanceFinish; }, [] (VertexAnimatorComponent* self, lua_State* L) { self->onInstanceFinish = L; })
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<AnimatorComponent>("AnimatorComponent")
+        .addProperty("enabled", &AnimatorComponent::enabled, &setTrackedMember<&AnimatorComponent::enabled>)
+        .addProperty("controller", &AnimatorComponent::controller, &setTrackedMember<&AnimatorComponent::controller>)
+        .addProperty("speed", &AnimatorComponent::speed, &setTrackedMember<&AnimatorComponent::speed>)
+        .addProperty("applyRootMotion", &AnimatorComponent::applyRootMotion, &setTrackedMember<&AnimatorComponent::applyRootMotion>)
+        .addProperty("rootMotionBone", &AnimatorComponent::rootMotionBone, &setTrackedMember<&AnimatorComponent::rootMotionBone>)
+        .addProperty("updateMode", &AnimatorComponent::updateMode, &setTrackedMember<&AnimatorComponent::updateMode>)
+        .addProperty("cullingMode", &AnimatorComponent::cullingMode, &setTrackedMember<&AnimatorComponent::cullingMode>)
+        .addProperty("writeBones", &AnimatorComponent::writeBones, &setTrackedMember<&AnimatorComponent::writeBones>)
+        .addProperty("eventMode", &AnimatorComponent::eventMode, &setTrackedMember<&AnimatorComponent::eventMode>)
+        .addProperty("sendEventsToScripts", &AnimatorComponent::sendEventsToScripts, &setTrackedMember<&AnimatorComponent::sendEventsToScripts>)
+        .addProperty("retarget", &AnimatorComponent::retarget, &setTrackedMember<&AnimatorComponent::retarget>)
+        .addProperty("needsLoad", &AnimatorComponent::needsLoad, &AnimatorComponent::needsLoad)
+        .addProperty("onEvent", [] (AnimatorComponent* self, lua_State*) { return &self->onEvent; }, [] (AnimatorComponent* self, lua_State* L) { self->onEvent = L; })
+        .addProperty("onStateEnter", [] (AnimatorComponent* self, lua_State*) { return &self->onStateEnter; }, [] (AnimatorComponent* self, lua_State* L) { self->onStateEnter = L; })
+        .addProperty("onStateExit", [] (AnimatorComponent* self, lua_State*) { return &self->onStateExit; }, [] (AnimatorComponent* self, lua_State* L) { self->onStateExit = L; })
+        .addProperty("onMontageEnded", [] (AnimatorComponent* self, lua_State*) { return &self->onMontageEnded; }, [] (AnimatorComponent* self, lua_State* L) { self->onMontageEnded = L; })
+        .addProperty("onAnimatorMove", [] (AnimatorComponent* self, lua_State*) { return &self->onAnimatorMove; }, [] (AnimatorComponent* self, lua_State* L) { self->onAnimatorMove = L; })
         .endClass();
 
     luabridge::getGlobalNamespace(L)

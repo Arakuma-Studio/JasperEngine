@@ -97,6 +97,7 @@ namespace {
         &kSplineExtrudeDesc,
         &kSplineInstantiateDesc,
         &kSplineAnimateDesc,
+        &kAnimatorDesc,
         &kVertexAnimatorDesc,
     };
     static_assert(std::size(kAll) == static_cast<size_t>(LAST_COMPONENT_TYPE) + 1, "a ComponentType without a description");
@@ -139,6 +140,7 @@ namespace {
         &kSplineExtrudeDesc,
         &kSplineInstantiateDesc,
         &kSplineAnimateDesc,
+        &kAnimatorDesc,
         &kVertexAnimatorDesc,
         &kCameraDesc,
         &kAudioSourceDesc,
@@ -232,6 +234,7 @@ namespace {
         &kModelDesc,
         &kPoseAnimatorDesc,
         &kAnimationPlayerDesc,
+        &kAnimatorDesc,
         &kVertexAnimatorDesc,
         &kMorphTracksDesc,
         &kPanelDesc,
@@ -267,7 +270,8 @@ namespace {
 
     constexpr const EnumDesc* kEnums[] = {
         &enums::kActionState, &enums::kAnchorPreset, &enums::kAtmosphereQualityOverride, &enums::kAudioSourceAttenuation,
-        &enums::kAudioSourceState, &enums::kBodyType, &enums::kBuoyancyColumns, &enums::kCameraType, &enums::kClipWrapMode, &enums::kCascadeSplitMode, &enums::kCloudsPreset,
+        &enums::kAudioSourceState, &enums::kBodyType, &enums::kBuoyancyColumns, &enums::kCameraType, &enums::kClipWrapMode, &enums::kAnimatorUpdateMode, &enums::kAnimatorCullingMode, &enums::kAnimatorWriteBones,
+        &enums::kAnimatorEventMode, &enums::kAnimatorRetarget, &enums::kAnimatorIKType, &enums::kCascadeSplitMode, &enums::kCloudsPreset,
         &enums::kCloudsRendering, &enums::kCollider2DType, &enums::kCollider3DSource, &enums::kCollider3DType, &enums::kCullingMode,
         &enums::kEaseType, &enums::kFogColorMode, &enums::kFogType, &enums::kFogVolumeFalloff, &enums::kFogVolumeShape,
         &enums::kFluidOutput, &enums::kForceFieldKind, &enums::kForceFieldShape, &enums::kWaterVolumeWaves, &enums::kJoint2DType, &enums::kJoint3DType, &enums::kLatticeInterpolation, &enums::kLatticeJiggleAnchor,

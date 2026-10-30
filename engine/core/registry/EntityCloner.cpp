@@ -374,6 +374,18 @@ void prepare<PoseAnimatorComponent>(PoseAnimatorComponent& animator, Entity, Clo
 }
 
 template<>
+void prepare<AnimatorComponent>(AnimatorComponent& animator, Entity, CloneContext&) {
+    // the authored fields are copied; the copy binds its own hierarchy, with no callbacks
+    animator.needsLoad = true;
+    animator.runtime.reset();
+    animator.onEvent.clear();
+    animator.onStateEnter.clear();
+    animator.onStateExit.clear();
+    animator.onMontageEnded.clear();
+    animator.onAnimatorMove.clear();
+}
+
+template<>
 void prepare<AnimationPlayerComponent>(AnimationPlayerComponent& player, Entity, CloneContext&) {
     // the authored fields are copied; the copy binds its own hierarchy and starts as a loaded
     // scene starts it (playAutomatically on its first update), with no callbacks
@@ -868,6 +880,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<LatticeTracksComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<PoseAnimatorComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<AnimationPlayerComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<AnimatorComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<VertexAnimatorComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ScriptComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
 }
