@@ -794,6 +794,31 @@ false). `==` with a value of another class is `false`. There is no `v + number`.
 | `Matrix3`, `Matrix4` | `+ - == tostring`; `*` by a matrix, a number (either side) or a vector (`m * Vector3`, Matrix4 also `m * Vector4`; `Matrix4 * Vector3` applies the translation); `row column get set identity inverse transpose`; Matrix4 static `translateMatrix rotateMatrix rotateXMatrix rotateYMatrix rotateZMatrix scaleMatrix lookAtMatrix orthoMatrix perspectiveMatrix frustumMatrix` |
 | `Plane`, `AABB`, `OBB`, `Sphere` | geometry helpers (`intersects`, `contains`, `getCenter`, `getSize`, `merge`, ...) |
 
+### 3.4 Curves and gradients (AnimationCurve, Keyframe, Gradient, MinMaxCurve, MinMaxGradient)
+
+Unity's types over the engine's `Curve` (cubic Hermite keys; the curve fields of components and
+particle effects hold the same values). **Key indices are 1-based** (C++ and MCP: 0-based); an
+index out of range gives `nil`, `false` or `-1`, never an error.
+
+| Class | Members |
+|---|---|
+| `Keyframe(time, value[, inTangent, outTangent])` | rw `time value inTangent outTangent` (a step: `math.huge`), `inTangentMode outTangentMode` (`TangentMode.*`), `broken` |
+| `AnimationCurve()` | `evaluate(t)`; `addKey(t, v)` / `addKey(keyframe)` -> index; `removeKey(i)` -> bool; `moveKey(i, keyframe)` -> new index; `getKey(i)` -> Keyframe or nil; `smoothTangents(i, weight)`; ro `length` (keys); rw `preWrapMode postWrapMode` (`WrapMode.*`); static `AnimationCurve.linear(t0, v0, t1, v1)`, `AnimationCurve.constant(t0, t1, v)`, `AnimationCurve.easeInOut(t0, v0, t1, v1)` |
+| `GradientColorKey(colorVector3, time)`, `GradientAlphaKey(alpha, time)` | rw `color`/`alpha`, `time` |
+| `Gradient()` | `evaluate(t)` -> Vector4 (sRGB 0-1); `setKeys(colorKeys, alphaKeys)` (Lua lists, at most 8 each); ro `colorKeys alphaKeys` (lists); rw `mode` (`GradientMode.Blend`/`Fixed`), `linear` (blend in linear space) |
+| `MinMaxCurve([constant])` | `evaluate(t[, random])` (random 0-1 picks between the two); rw `mode` (`MinMaxCurveMode.*`), `constant`/`constantMin`, `constantMax`, `curve`/`curveMin`, `curveMax`, `multiplier`; static `MinMaxCurve.twoConstants(a, b)`, `fromCurve(curve, multiplier)`, `twoCurves(min, max, multiplier)` |
+| `MinMaxGradient([colorVector4])` | `evaluate(t[, random])` -> Vector4; rw `mode` (`MinMaxGradientMode.*`), `color`/`colorMin`, `colorMax`, `gradient`/`gradientMin`, `gradientMax` |
+
+```lua
+local curve = AnimationCurve.linear(0, 0, 1, 2)
+local i = curve:addKey(0.5, 1.5)              -- 2: the new key's 1-based index
+curve.postWrapMode = WrapMode.PingPong
+local y = curve:evaluate(1.25)                -- as at 0.75
+local fade = Gradient()
+fade:setKeys({ GradientColorKey(Vector3(1, 1, 1), 0) }, { GradientAlphaKey(1, 0), GradientAlphaKey(0, 1) })
+local half = fade:evaluate(0.5).w             -- 0.5
+```
+
 ---
 
 ## 4. Object wrappers
@@ -1339,7 +1364,8 @@ plays back to the start and holds there), `weight`; `setTarget(gameObjectOrEntit
 `stop()` also cancels a `start()` asked for earlier in the same frame.
 
 Tween (Action): rw `duration`, `loop`, `pingPong` (forward and then back, in twice the
-duration); `setFunctionType(EaseType.*)`, `getTime()`, `getValue()`, `getTweenComponent()`.
+duration), `curve` (an `AnimationCurve`: the ease when the function type is `EaseType.CURVE`, the value over the
+normalized time 0-1); `setFunctionType(EaseType.*)`, `getTime()`, `getValue()`, `getTweenComponent()` (its `curve` too).
 A non-looping tween stops on the update it reaches its end, after applying the end value.
 
 | Tween | `setAction(...)` (pass every argument; C++ defaults do not apply) |
@@ -1694,7 +1720,12 @@ a:setOnComplete(function() Log.print("arrived") end)   -- Once only
 | `CameraType` | `CAMERA_UI`, `CAMERA_ORTHO`, `CAMERA_PERSPECTIVE` |
 | `LightType` | `DIRECTIONAL`, `POINT`, `SPOT` |
 | `JobLane` | `High`, `Normal`, `Background` |
-| `EaseType` | `LINEAR`, `STEP`, `QUAD_IN/OUT/IN_OUT`, `CUBIC_*`, `QUART_*`, `QUINT_*`, `SINE_*`, `EXPO_*`, `CIRC_*`, `ELASTIC_*`, `BACK_*`, `BOUNCE_*` (each `_IN`, `_OUT`, `_IN_OUT`), `CUSTOM` |
+| `EaseType` | `LINEAR`, `STEP`, `QUAD_IN/OUT/IN_OUT`, `CUBIC_*`, `QUART_*`, `QUINT_*`, `SINE_*`, `EXPO_*`, `CIRC_*`, `ELASTIC_*`, `BACK_*`, `BOUNCE_*` (each `_IN`, `_OUT`, `_IN_OUT`), `CUSTOM`, `CURVE` (the Tween's `curve`) |
+| `WrapMode` | `Clamp` (also `ClampForever`, `Constant`), `Loop`, `PingPong`, `Linear`, `LoopWithOffset` (also `CycleWithOffset`) |
+| `TangentMode` | `Free`, `Auto`, `Linear`, `Constant`, `ClampedAuto` |
+| `GradientMode` | `Blend`, `Fixed` |
+| `MinMaxCurveMode` | `Constant`, `TwoConstants`, `Curve`, `TwoCurves` |
+| `MinMaxGradientMode` | `Color`, `Gradient`, `TwoColors`, `TwoGradients` |
 | `ActionState` | `Running`, `Paused`, `Stopped` |
 | `AudioSourceState` | `Playing`, `Paused`, `Stopped` |
 | `AudioSourceAttenuation` | `NO_ATTENUATION`, `INVERSE_DISTANCE`, `LINEAR_DISTANCE`, `EXPONENTIAL_DISTANCE` |

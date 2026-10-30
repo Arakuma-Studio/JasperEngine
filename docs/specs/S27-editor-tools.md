@@ -764,3 +764,17 @@ and `using AnimationCurve = Curve;`. `MinMaxCurve` must have
 ## 11. Progress
 
 - [x] Re-check (§0) and deviations, committed before implementation.
+- [x] Runtime types (R6-R8, R13): tangent and wrap modes, `fromEase`/`fromFunction`, helpers,
+      allocation-free `Gradient::evaluate`, `EaseType::CURVE` and `TweenComponent::curve`; the
+      one codec (`CurveJson`, `CurveCodec`); S08 TypeOps; Lua bindings (R43).
+- [x] Widgets (R1-R5, R9-R12): Color window (eyedropper on X11/Win32/macOS, swatches), Curve and
+      Gradient windows, the field edit phases and their undo sessions; the nine colour sites.
+- [x] Project Hub (R15-R23): pages, recents, templates (built-in embedded, user, save as
+      template), zip and Git import; start-up rules.
+- [x] Recorder (R24-R31): window, session, PNG and FFmpeg sinks, offline audio, sidecar,
+      `ProcessStream`; non-asset folders.
+- [x] MCP (R41, R42), commands (S25), docs (R40), NOTICE.
+- [ ] Editor builds green (WERROR GL, Vulkan), web and Android builds.
+- [ ] Built-in templates generated (`tools/templates/make_project_templates.py`) and the
+      tween-curve fixture (`tools/fixtures/make_tween_curve_fixture.py`).
+- [ ] Unit tests (plain and ASan+UBSan), the full MCP suite, smoke, goldens, TOOLS.md.

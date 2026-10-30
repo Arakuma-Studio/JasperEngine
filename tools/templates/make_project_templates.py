@@ -113,6 +113,7 @@ async def main_scene(ed: Editor, type_: str) -> int:
     for scene in scenes.get("scenes", []):
         if scene["id"] != sid:
             await ed.call("close_scene", scene=scene["id"], unsaved="discard")
+    await ed.call("edit_build_scenes", action="set_start", scene=sid)
     return sid
 
 
