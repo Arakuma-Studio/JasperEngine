@@ -6,8 +6,8 @@
 #   3. run the game under a virtual X server and screenshot it
 #   4. open the project in the editor GUI and screenshot it
 #   5. bake a navmesh and query a path through the editor's MCP tools (tools/mcp/nav_smoke.py)
-#   6. record 30 frames of the project's start scene to PNG from the shell
-#      (`jasperengine-editor call --project ... --wait-job record_game`, S27 AC26)
+#   (and after 3, record 30 frames of the project's start scene to PNG from the shell:
+#   `jasperengine-editor call --project ... --wait-job record_game`, S27 AC26)
 #
 #   tools/smoke-test.sh <editor-project-dir>
 #
@@ -231,6 +231,15 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
             check_log "game ($label)" "game-$label.log"
         done
 
+        # S27: the Recorder from a shell, through a one-shot headless editor (S31 call), before the
+        # editor GUI opens the project (its lock would outlive the stopped GUI here)
+        echo "== record"
+        dbus-run-session -- "$EDITOR" call --project project --wait-job --timeout 900 record_game --frames 30 --format png --width 320 --height 180 \
+            --output "$PWD/recording" > record.log 2>&1 || { echo "FAIL: record"; tail -30 record.log; exit 1; }
+        frames="$(find recording -name "frame_*.png" | wc -l)"
+        [[ "$frames" -eq 30 ]] || { echo "FAIL: record wrote $frames frames, not 30"; tail -30 record.log; exit 1; }
+        echo "ok: record wrote 30 frames ($OUT/recording)"
+
         # The export left this project as the most recent one in settings.yaml
         # here, so the editor reopens it. Its own log (editor.log) is written
         # next to settings.yaml, the console output goes to editor-console.log.
@@ -243,14 +252,6 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
         echo "== navigation"
         UV="$(command -v uv || echo "$HOME/.local/bin/uv")"
         (cd /src && JASPER_EDITOR="$EDITOR" dbus-run-session -- "$UV" run --quiet --no-project --with-requirements tools/mcp/requirements.txt python tools/mcp/nav_smoke.py) || { echo "FAIL: navigation"; exit 1; }
-
-        # S27: the Recorder from a shell, through a one-shot headless editor (S31 call)
-        echo "== record"
-        dbus-run-session -- "$EDITOR" call --project project --wait-job --timeout 900 record_game --frames 30 --format png --width 320 --height 180 \
-            --output "$PWD/recording" > record.log 2>&1 || { echo "FAIL: record"; tail -30 record.log; exit 1; }
-        frames="$(find recording -name "frame_*.png" | wc -l)"
-        [[ "$frames" -eq 30 ]] || { echo "FAIL: record wrote $frames frames, not 30"; tail -30 record.log; exit 1; }
-        echo "ok: record wrote 30 frames ($OUT/recording)"
 
         echo "PASS"
     '
