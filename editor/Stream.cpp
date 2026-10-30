@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Stream.h"
+#include "util/WorldTransforms.h"
 #include "reflect/Reflect.h"
 #include "log/Logger.h"
 #include "StreamSchema.h"
@@ -3284,6 +3285,8 @@ void editor::Stream::decodeSceneProjectEntities(Project* project, SceneProject* 
     sceneProject->scene->setLastEntity(lastEntity);
     sceneProject->reservedEntityIds = std::move(serialized);
 
+    // the file holds no world values: computed once every GameObject (and Prefab instance) is in
+    WorldTransformScope worldTransforms(sceneProject->scene);
     try {
         for (const auto& entityNode : entitiesNode){
             decodeEntity(entityNode, sceneProject->scene, &sceneProject->entities, project, sceneProject);
@@ -3618,6 +3621,8 @@ std::vector<Entity> editor::Stream::decodeEntitySelection(const YAML::Node& enti
     if (!entityNode || !entityNode.IsMap()) {
         return {};
     }
+    // their world values, once the selection is in (WorldTransforms.h)
+    WorldTransformScope worldTransforms(registry);
 
     if (entityNode["members"] && entityNode["members"].IsSequence()) {
         std::vector<Entity> allEntities;
@@ -3982,6 +3987,8 @@ ScriptProperty editor::Stream::decodeScriptProperty(const YAML::Node& node) {
 
 std::vector<Entity> editor::Stream::decodeEntity(const YAML::Node& entityNode, EntityRegistry* registry, std::vector<Entity>* entities, Project* project, SceneProject* sceneProject, Entity parent, bool createNewIfExists, bool removeMissingComponents, std::unordered_map<Entity, Entity>* entityRemap) {
     editor::getEditorHost().reportLoadingProgress();
+    // its world values (and its children's), once it is in (WorldTransforms.h)
+    WorldTransformScope worldTransforms(registry);
 
     std::vector<Entity> allEntities;
 

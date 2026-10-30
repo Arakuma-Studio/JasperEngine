@@ -5,6 +5,7 @@
 #define TRANSFORMPROPAGATION_H
 
 #include "EntityRegistry.h"
+#include "component/RectTransformComponent.h"
 #include "component/Transform.h"
 
 namespace jasperengine {
@@ -47,6 +48,52 @@ namespace jasperengine {
                 transforms->markChangedAt(i, tick);
             }
         }
+    }
+
+}
+
+namespace jasperengine {
+
+    // The matrices and world values of one Transform from its local values and its parent's
+    // (already up to date): what RenderSystem::updateTransform computes. The normal matrix only
+    // when asked (a scene without lights skips it).
+    inline void computeWorldTransform(EntityRegistry& registry, Transform& transform, Entity entity, bool normals = true){
+        // UI grows around its pivot, so its origin, the top-left corner, moves
+        Vector3 origin = transform.position;
+        const RectTransformComponent* layout = registry.findComponent<RectTransformComponent>(entity);
+        if (layout && layout->pivot != Vector2(0, 0)){
+            origin += getUIPivotShift(*layout, transform.rotation, transform.scale);
+        }
+
+        transform.localMatrix = Matrix4::translateMatrix(origin) * transform.rotation.getRotationMatrix() * Matrix4::scaleMatrix(transform.scale);
+
+        const Transform* transformParent = transform.parent != NULL_ENTITY ? registry.findComponent<Transform>(transform.parent) : nullptr;
+        if (transformParent){
+            transform.modelMatrix = transformParent->modelMatrix * transform.localMatrix;
+            transform.worldPosition = transformParent->modelMatrix * origin;
+            transform.worldScale = transformParent->worldScale * transform.scale;
+            transform.worldRotation = transformParent->worldRotation * transform.rotation;
+        }else{
+            transform.modelMatrix = transform.localMatrix;
+            transform.worldPosition = origin;
+            transform.worldScale = transform.scale;
+            transform.worldRotation = transform.rotation;
+        }
+
+        if (normals){
+            transform.normalMatrix = transform.modelMatrix.inverse().transpose();
+        }
+    }
+
+    // The world values of every Transform that needs an update, parents first, without the
+    // rest of the render pass: needUpdate stays set, so the next RenderSystem::update still
+    // does its whole work for them (bounds, cameras, lights). For what reads world values
+    // before a frame ran: a scene just loaded (files hold no world values), a Prefab's
+    // registry, a Prefab just instantiated.
+    inline void updateWorldTransforms(EntityRegistry& registry){
+        propagateTransforms(registry, [&registry](Transform& transform, Entity entity){
+            computeWorldTransform(registry, transform, entity);
+        });
     }
 
 }
