@@ -174,6 +174,7 @@ editor::App::App(){
     loadingWindow = new LoadingWindow();
     animationWindow = new AnimationWindow(&project);
     poseAnimationWindow = new PoseAnimationWindow(&project);
+    animatorWindow = new AnimatorWindow(&project, poseAnimationWindow);
     terrainEditWindow = new TerrainEditWindow(&project);
     textureSynthesisWindow = new TextureSynthesisWindow(&project);
     physicsPlacementWindow = new PhysicsPlacementWindow(&project);
@@ -587,6 +588,9 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
     if (animationClipAppHooks().createClipAsset) {
         assetsCreateItems.push_back(catalogItem("assets.createAnimationClip", "Animation Clip"));
     }
+    assetsCreateItems.push_back(catalogItem("assets.createAnimatorController", "Animator Controller"));
+    assetsCreateItems.push_back(catalogItem("assets.createAvatarMask", "Avatar Mask"));
+    assetsCreateItems.push_back(catalogItem("assets.createAnimationMontage", "Animation Montage"));
     assetsCreateItems.push_back(menuSeparator());
     assetsCreateItems.push_back(menuSubmenu("Scene", newSceneItems(), !isProjectBusy));
 
@@ -646,7 +650,8 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         }),
         menuSubmenu("Animation", {
             catalogItem("window.animation", windowMenuLabel(AnimationWindow::WINDOW_NAME)),
-            catalogItem("window.poseAnimation", windowMenuLabel(PoseAnimationWindow::WINDOW_NAME))
+            catalogItem("window.poseAnimation", windowMenuLabel(PoseAnimationWindow::WINDOW_NAME)),
+            catalogItem("window.animator", windowMenuLabel(AnimatorWindow::WINDOW_NAME))
         }),
         catalogItem("window.terrain", windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
         catalogItem("window.inputActions", windowMenuLabel(InputActionsWindow::WINDOW_NAME)),
@@ -858,6 +863,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::TogglePoseAnimation:
             showEditorWindow(poseAnimationWindow);
             break;
+        case AppMenuCommand::ToggleAnimator:
+            showEditorWindow(animatorWindow);
+            break;
         case AppMenuCommand::ToggleTerrain:
             showEditorWindow(terrainEditWindow);
             break;
@@ -1030,6 +1038,15 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
                 animationClipAppHooks().createClipAsset(&project);
                 projectWindow->refreshCurrentDirectory();
             }
+            break;
+        case AppMenuCommand::AssetsCreateAnimatorController:
+            projectWindow->assetsCreateAnimatorAsset((int)AnimatorAssetDocument::Kind::Controller);
+            break;
+        case AppMenuCommand::AssetsCreateAvatarMask:
+            projectWindow->assetsCreateAnimatorAsset((int)AnimatorAssetDocument::Kind::Mask);
+            break;
+        case AppMenuCommand::AssetsCreateAnimationMontage:
+            projectWindow->assetsCreateAnimatorAsset((int)AnimatorAssetDocument::Kind::Montage);
             break;
         case AppMenuCommand::AssetsShowInFileManager:
             projectWindow->assetsShowInFileManager();
@@ -1913,6 +1930,7 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow(SystemsWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(AnimationWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(PoseAnimationWindow::WINDOW_NAME, dock_id_middle_bottom);
+    ImGui::DockBuilderDockWindow(AnimatorWindow::WINDOW_NAME, dock_id_middle_bottom);
 
     // Hierarchy top-left; the Scene tabs and Game view fill the centre.
     ImGui::DockBuilderSplitNode(dock_id_left, ImGuiDir_Left, 0.0f, &dock_id_left_top, &dock_id_middle_top);
@@ -1944,6 +1962,7 @@ void editor::App::buildDefaultLayout(){
     stampPanelDockOrder(UndoHistoryWindow::WINDOW_NAME, 4);
     stampPanelDockOrder(PlayModeChangesWindow::WINDOW_NAME, 5);
     stampPanelDockOrder(SystemsWindow::WINDOW_NAME, 6);
+    stampPanelDockOrder(AnimatorWindow::WINDOW_NAME, 7);
     stampPanelDockOrder(BookmarksWindow::WINDOW_NAME, 7);
 
     // Mark the scene area as the central node. CentralNode is a saved flag, so it
@@ -2522,7 +2541,9 @@ void editor::App::show(){
         // A Physics Placement gesture of the selected scene keeps the keys on the scene while it
         // runs (the timeline's undo cancels it first: CommandHistory::beforeChange)
         const bool placementBusy = physicsPlacementWindow->isBusy(project.getSelectedSceneId());
-        if (projectWindow->isFocused() || jobsMemoryWindow->isFocused()) {
+        // the Animator window edits project assets (its selection in the Inspector too)
+        if (projectWindow->isFocused() || jobsMemoryWindow->isFocused() || animatorWindow->isFocused() ||
+                (focusedWindowName() == InspectorWindow::WINDOW_NAME && animatorWindow->inspectorShowsSelection())) {
             lastFocusedWindow = LastFocusedWindow::Resources;
         } else if (codeEditor->isFocused()) {
             lastFocusedWindow = LastFocusedWindow::Code;
@@ -2606,6 +2627,7 @@ void editor::App::show(){
     consoleWindow->show();
     animationWindow->show();
     poseAnimationWindow->show();
+    animatorWindow->show();
     // the Scene views posing its character: a selection elsewhere leaves posing, ghosts go
     PoseViewport::frame(&project);
     terrainEditWindow->show();
@@ -4220,6 +4242,10 @@ void editor::App::clearSceneWindowState(uint32_t sceneId) {
         poseAnimationWindow->clearSceneState(sceneId);
     }
 
+    if (animatorWindow) {
+        animatorWindow->clearSceneState(sceneId);
+    }
+
     if (lastActivatedScene == sceneId) {
         resetLastActivatedScene();
     }
@@ -4232,6 +4258,8 @@ void editor::App::prepareForProjectSwitch() {
     HotReloadService::get().stopWatching();
     // the posed bones go back while their scenes still exist
     poseAnimationWindow->prepareForProjectSwitch();
+    // the Animator window's preview goes back, its controller document is dropped
+    animatorWindow->prepareForProjectSwitch();
     // and the clip previews (documents and the shared clip controller are released)
     if (animationClipAppHooks().projectClosed) {
         animationClipAppHooks().projectClosed();
@@ -4353,6 +4381,10 @@ void editor::App::stopTransientPreviews() {
     if (poseAnimationWindow) {
         poseAnimationWindow->stopTransientPreviews();
     }
+    // the Animator window's edit-mode preview (the bones go back)
+    if (animatorWindow) {
+        animatorWindow->stopPreview();
+    }
     // and the Animation window's previewed targets to their snapshots (animation clips 9.R6):
     // the entity-sequence mode, then the clip mode
     if (animationWindow) {
@@ -4375,6 +4407,7 @@ void editor::App::stopTransientPreviews() {
         physicsPlacementWindow->finaliseGestures();
     }
     mcp::stopPlacementPreviews(&project);
+    mcp::stopAnimatorPreviews(&project);
 }
 
 bool editor::App::dispatchClipDrop(uint32_t sceneId, Entity target, const std::vector<std::string>& paths) {
@@ -4796,7 +4829,7 @@ namespace {
                       editor::ProfilerWindow* profiler, editor::FrameDebuggerWindow* frameDebugger, editor::UndoHistoryWindow* undo,
                       editor::PlayModeChangesWindow* playChanges, editor::GameWindow* game, editor::BookmarksWindow* bookmarks,
                       editor::TextureSynthesisWindow* textureSynthesis, editor::PhysicsPlacementWindow* physicsPlacement,
-                      editor::PoseAnimationWindow* poseAnimation) {
+                      editor::PoseAnimationWindow* poseAnimation, editor::AnimatorWindow* animator) {
         visit(editor::GameWindow::WINDOW_NAME, game);
         visit(editor::InspectorWindow::WINDOW_NAME, inspector);
         visit(editor::HierarchyWindow::WINDOW_NAME, hierarchy);
@@ -4817,6 +4850,7 @@ namespace {
         visit(editor::TextureSynthesisWindow::WINDOW_NAME, textureSynthesis);
         visit(editor::PhysicsPlacementWindow::WINDOW_NAME, physicsPlacement);
         visit(editor::PoseAnimationWindow::WINDOW_NAME, poseAnimation);
+        visit(editor::AnimatorWindow::WINDOW_NAME, animator);
     }
 
 }
@@ -4834,7 +4868,7 @@ std::map<std::string, bool> editor::App::panelStates() const{
                  hierarchyWindow, inspectorWindow, projectWindow, consoleWindow, animationWindow, terrainEditWindow,
                  mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, profilerWindow,
                  frameDebuggerWindow, undoHistoryWindow, playModeChangesWindow, gameWindow, bookmarksWindow,
-                 textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow);
+                 textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, animatorWindow);
     return panels;
 }
 
@@ -4846,7 +4880,7 @@ void editor::App::applyPanelStates(const std::map<std::string, bool>& panels){
     }, hierarchyWindow, inspectorWindow, projectWindow, consoleWindow, animationWindow, terrainEditWindow,
        mcpActivityWindow, systemsWindow, missingAssetsWindow, assetReferencesWindow, jobsMemoryWindow, profilerWindow,
        frameDebuggerWindow, undoHistoryWindow, playModeChangesWindow, gameWindow, bookmarksWindow,
-                 textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow);
+                 textureSynthesisWindow, physicsPlacementWindow, poseAnimationWindow, animatorWindow);
 }
 
 void editor::App::applyDefaultLayout(){
@@ -4856,6 +4890,7 @@ void editor::App::applyDefaultLayout(){
     consoleWindow->setOpen(true);
     animationWindow->setOpen(true);
     poseAnimationWindow->setOpen(false);
+    animatorWindow->setOpen(false);
     terrainEditWindow->setOpen(false);
     textureSynthesisWindow->setOpen(false);
     physicsPlacementWindow->setOpen(false);
@@ -5078,6 +5113,7 @@ void editor::App::applyPanelVisibilitySettings() {
     consoleWindow->setOpen(visibility.console);
     animationWindow->setOpen(visibility.animation);
     poseAnimationWindow->setOpen(visibility.poseAnimation);
+    animatorWindow->setOpen(visibility.animator);
     terrainEditWindow->setOpen(visibility.terrain);
     textureSynthesisWindow->setOpen(visibility.textureSynthesis);
     physicsPlacementWindow->setOpen(visibility.physicsPlacement);
@@ -5094,6 +5130,7 @@ void editor::App::persistPanelVisibilitySettings() {
     visibility.console = consoleWindow->isOpen();
     visibility.animation = animationWindow->isOpen();
     visibility.poseAnimation = poseAnimationWindow->isOpen();
+    visibility.animator = animatorWindow->isOpen();
     visibility.terrain = terrainEditWindow->isOpen();
     visibility.textureSynthesis = textureSynthesisWindow->isOpen();
     visibility.physicsPlacement = physicsPlacementWindow->isOpen();

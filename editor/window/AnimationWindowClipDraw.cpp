@@ -22,6 +22,9 @@
 #include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/AnimationPlayerComponent.h"
+#include "component/AnimatorComponent.h"
+#include "pool/AnimatorAssetPool.h"
+#include "animation/CompiledController.h"
 #include "component/LatticeComponent.h"
 #include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
@@ -305,9 +308,32 @@ void AnimationWindowClip::drawClipCombo(SceneProject* sceneProject){
             }
             ImGui::PopID();
         }
-        // the entity Animations targeting the root stay reachable (R31)
         SceneProject* bound = boundScene();
         const Entity root = c.getRoot();
+        // the clips of the root's Animator controller (S21 R27): opened on the same root
+        if (bound && root != NULL_ENTITY && bound->scene->isEntityCreated(root)){
+            if (const AnimatorComponent* animator = bound->scene->findComponent<AnimatorComponent>(root);
+                    animator && !animator->controller.path.empty()){
+                std::shared_ptr<const anim::CompiledController> compiled = AnimatorAssetPool::controller(animator->controller.path);
+                if (compiled && !compiled->clips.empty()){
+                    ImGui::Separator();
+                    ImGui::TextDisabled("Animator: %s", FileUtils::pathToUtf8(FileUtils::pathFromUtf8(animator->controller.path).filename()).c_str());
+                    for (size_t i = 0; i < compiled->clips.size(); i++){
+                        const std::string& clip = compiled->clips[i].path;
+                        anim::SubClipReference subClip;
+                        const std::string name = anim::parseSubClipReference(clip, subClip) ? subClip.clip
+                                               : FileUtils::pathToUtf8(FileUtils::pathFromUtf8(clip).stem());
+                        const bool currentClip = doc && c.getStateName().empty() && doc->path() == clip;
+                        if (ImGui::Selectable((name + "##animator_clip" + std::to_string(i)).c_str(), currentClip)){
+                            std::string error;
+                            if (!open(bound->id, root, clip, &error)) setNotice(error, true);
+                        }
+                        ImGui::SetItemTooltip("%s", clip.c_str());
+                    }
+                }
+            }
+        }
+        // the entity Animations targeting the root stay reachable (R31)
         if (bound && root != NULL_ENTITY && bound->scene->isEntityCreated(root)){
             Scene* scene = bound->scene;
             auto animations = scene->getComponentArray<AnimationComponent>();
@@ -1115,6 +1141,31 @@ void AnimationWindowClip::drawKeyContextMenu(){
         }
         ImGui::EndMenu();
     }
+    // Unity's key tangents (the curves; the track becomes a Hermite one, eases drop)
+    if (ImGui::BeginMenu("Tangents")){
+        ClipTangentMode common = ClipTangentMode::None;
+        bool uniform = true, first = true;
+        if (doc){
+            for (const AnimationClipController::KeyRef& ref : selectedRefs){
+                if (ref.track >= doc->data().tracks.size() || ref.key >= doc->data().tracks[ref.track].keys.size()) continue;
+                const ClipTangentMode mode = doc->data().tracks[ref.track].keys[ref.key].tangentMode;
+                if (first) common = mode;
+                else if (mode != common) uniform = false;
+                first = false;
+            }
+        }
+        const ClipTangentMode modes[] = {ClipTangentMode::ClampedAuto, ClipTangentMode::Auto, ClipTangentMode::Free,
+                                         ClipTangentMode::Flat, ClipTangentMode::Linear, ClipTangentMode::Constant,
+                                         ClipTangentMode::Broken};
+        for (ClipTangentMode mode : modes){
+            if (mode == ClipTangentMode::Linear) ImGui::Separator();
+            if (ImGui::MenuItem(clipui::tangentModeLabel(mode), nullptr, uniform && !first && common == mode)){
+                if (!setTangentMode(mode, &error)) setNotice(error, true);
+            }
+        }
+        ImGui::EndMenu();
+    }
+    UIProbe::item("clip.keyMenu.tangents");
     ImGui::EndDisabled();
     ImGui::EndDisabled();
     ImGui::Separator();

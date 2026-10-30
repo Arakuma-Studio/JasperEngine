@@ -127,6 +127,7 @@ const char* reflect::assetKindName(AssetKind kind) {
         case AssetKind::Any: return "any";
         case AssetKind::PoseAnimation: return "pose_animation";
         case AssetKind::AnimationClip: return "animation_clip";
+        case AssetKind::AnimatorController: return "animator_controller";
     }
     return "";
 }

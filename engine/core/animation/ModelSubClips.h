@@ -33,6 +33,8 @@
 #define MODEL_SUB_CLIPS_H
 
 #include "Export.h"
+#include "math/Quaternion.h"
+#include "math/Vector3.h"
 #include "animation/AnimationClip.h"
 
 #include <string>
@@ -72,6 +74,21 @@ namespace jasperengine::anim{
     JASPERENGINE_API std::vector<ModelClipInfo> listModelClips(const tinygltf::Model& model);
     // the animation index a reference's clip part names (a name, or a number), -1 when none
     JASPERENGINE_API int findModelClip(const tinygltf::Model& model, const std::string& clip);
+    // One glTF node as loadGLTF makes it a GameObject: its name, its parent node (-1: under the
+    // model root), its path relative to the model root and its local TRS
+    struct ModelNodeInfo{
+        std::string name;
+        int parent = -1;
+        std::string path;
+        bool addressable = true;
+        Vector3 position = Vector3(0, 0, 0);
+        Quaternion rotation;
+        Vector3 scale = Vector3(1, 1, 1);
+    };
+
+    // every node of a model file, index = glTF node index (the Animator's retargeting source)
+    JASPERENGINE_API bool readModelFileNodes(const std::string& modelPath, std::vector<ModelNodeInfo>& out, std::string* error);
+
     // each node's path relative to the model root, index = glTF node index
     JASPERENGINE_API std::vector<std::string> modelNodePaths(const tinygltf::Model& model);
     // one animation as clip data; false (with `error`) when the index is out of range or nothing

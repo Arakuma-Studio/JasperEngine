@@ -3,6 +3,8 @@
 
 #include "ModelSubClips.h"
 
+#include "math/Matrix4.h"
+
 #include "animation/AnimationClipIO.h"
 #include "animation/ClipBinding.h"
 #include "io/File.h"
@@ -685,6 +687,59 @@ size_t jasperengine::getModelFileParseCount(){
     return cache.parses;
 }
 #endif
+
+bool anim::readModelFileNodes(const std::string& modelPath, std::vector<ModelNodeInfo>& out, std::string* error){
+    out.clear();
+    return withModelFile(modelPath, error, [&](const tinygltf::Model& model){
+        const NodePaths paths = computeNodePaths(model);
+        const size_t count = model.nodes.size();
+        out.resize(count);
+        for (size_t i = 0; i < count; i++){
+            out[i].name = nodeName(model, i);
+            out[i].path = paths.paths[i];
+            out[i].addressable = paths.addressable[i];
+        }
+        // computeNodePaths' parent rule: the last node listing it, loops broken
+        for (size_t i = 0; i < count; i++){
+            for (int child : model.nodes[i].children){
+                if (child >= 0 && (size_t)child < count && (size_t)child != i) out[(size_t)child].parent = (int)i;
+            }
+        }
+        for (size_t i = 0; i < count; i++){
+            int current = out[i].parent;
+            for (size_t steps = 0; current >= 0 && steps <= count; steps++){
+                if ((size_t)current == i){
+                    out[i].parent = -1;
+                    break;
+                }
+                current = out[(size_t)current].parent;
+            }
+        }
+        for (size_t i = 0; i < count; i++){
+            const tinygltf::Node& node = model.nodes[i];
+            ModelNodeInfo& info = out[i];
+            if (node.matrix.size() == 16){
+                Matrix4 matrix;
+                for (int c = 0; c < 4; c++){
+                    for (int r = 0; r < 4; r++) matrix[c][r] = (float)node.matrix[(size_t)(c * 4 + r)];
+                }
+                matrix.decompose(info.position, info.scale, info.rotation);
+            }else{
+                if (node.translation.size() == 3){
+                    info.position = Vector3((float)node.translation[0], (float)node.translation[1], (float)node.translation[2]);
+                }
+                if (node.rotation.size() == 4){
+                    // glTF x y z w
+                    info.rotation = Quaternion((float)node.rotation[3], (float)node.rotation[0], (float)node.rotation[1], (float)node.rotation[2]);
+                }
+                if (node.scale.size() == 3){
+                    info.scale = Vector3((float)node.scale[0], (float)node.scale[1], (float)node.scale[2]);
+                }
+            }
+        }
+        return true;
+    });
+}
 
 bool anim::listModelFileClips(const std::string& modelPath, std::vector<ModelClipInfo>& out, std::string* error){
     out.clear();

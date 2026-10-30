@@ -58,6 +58,12 @@ namespace jasperengine{
     JASPERENGINE_API Quaternion quaternionFromXYZW(const float* xyzw);
     JASPERENGINE_API void quaternionToXYZW(const Quaternion& q, float* xyzw);
 
+    // Unity's key tangent modes (S21 R27), editor intent kept with the key: the computed ones
+    // (ClampedAuto, Auto, Linear, Flat, Constant) are recomputed from the neighbouring keys by
+    // every normalize, Free (in = out) and Broken (in, out apart) keep the stored tangents.
+    // None: no mode (an eased key, or tangents as imported).
+    enum class ClipTangentMode : uint8_t { None, ClampedAuto, Auto, Free, Linear, Constant, Flat, Broken };
+
     struct JASPERENGINE_API ClipKey{
         float time = 0.0f;
         // flattened value, width ClipData::valueWidth(channel, ...): see the invariants above
@@ -68,6 +74,9 @@ namespace jasperengine{
         // both the value's width
         std::vector<float> inTangent;
         std::vector<float> outTangent;
+        // the editor's tangent mode (written as "tangent_mode"; a key with one has tangents
+        // after normalize, Constant also the step ease)
+        ClipTangentMode tangentMode = ClipTangentMode::None;
 
         bool hasTangents() const { return !inTangent.empty() && inTangent.size() == outTangent.size(); }
     };

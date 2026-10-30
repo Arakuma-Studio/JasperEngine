@@ -37,6 +37,21 @@ namespace jasperengine::editor::clipui{
     }
 
     // What a track of the root ("" path) is called where no GameObject is bound
+    // Unity's names of the key tangent modes (the curves view's Tangents menu)
+    inline const char* tangentModeLabel(ClipTangentMode mode){
+        switch (mode){
+            case ClipTangentMode::ClampedAuto: return "Clamped Auto";
+            case ClipTangentMode::Auto: return "Auto";
+            case ClipTangentMode::Free: return "Free Smooth";
+            case ClipTangentMode::Linear: return "Linear";
+            case ClipTangentMode::Constant: return "Constant";
+            case ClipTangentMode::Flat: return "Flat";
+            case ClipTangentMode::Broken: return "Broken";
+            case ClipTangentMode::None: break;
+        }
+        return "None";
+    }
+
     inline const char* rootLabel(){
         return "(Root)";
     }

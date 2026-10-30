@@ -14,6 +14,10 @@
 #include "Project.h"
 #include "animation/AnimationClipDocument.h"
 #include "animation/AnimationClipIO.h"
+#include "animation/AnimatorAssetDocument.h"
+#include "animation/AnimatorAssetIO.h"
+#include "animation/AnimatorRetarget.h"
+#include "pool/AnimatorAssetPool.h"
 #include "pose/PoseAnimationDocument.h"
 #include "pose/PoseAnimationIO.h"
 #include "util/ProjectChecks.h"
@@ -50,14 +54,49 @@ namespace {
     void addAnimationFileProblems(Project& project, const fs::path& path, Json& problems) {
         const std::string pathText = path.string();
         const bool clip = Util::isAnimationClipFile(pathText);
-        if (!clip && !Util::isPoseAnimationFile(pathText)) return;
+        const bool animatorAsset = Util::isAnimatorAssetFile(pathText);
+        if (!clip && !animatorAsset && !Util::isPoseAnimationFile(pathText)) return;
         std::error_code ec;
         std::string text;
         if (!fs::is_regular_file(path, ec) || !ProjectChecks::readFile(path, text)) return;
         const std::string relative = reload::rel(project, path);
 
         std::vector<std::string> warnings;
-        if (clip) {
+        if (animatorAsset) {
+            // the Animator's assets: the reading AnimatorAssetPool does
+            std::vector<ClipWarning> loadWarnings;
+            anim::AnimatorParseError error;
+            bool ok = false;
+            if (Util::isAnimatorControllerFile(pathText)) {
+                anim::ControllerParseResult parsed = anim::parseController(text);
+                ok = parsed.ok;
+                error = parsed.error;
+                loadWarnings = parsed.warnings;
+            } else if (Util::isAvatarMaskFile(pathText)) {
+                anim::MaskParseResult parsed = anim::parseMask(text);
+                ok = parsed.ok;
+                error = parsed.error;
+                loadWarnings = parsed.warnings;
+            } else {
+                anim::MontageParseResult parsed = anim::parseMontage(text);
+                ok = parsed.ok;
+                error = parsed.error;
+                loadWarnings = parsed.warnings;
+            }
+            if (!ok) {
+                Json problem = {{"path", relative}, {"message", "Not a valid file: " + error.message +
+                                                                " (running Animators keep its last valid content)."}};
+                if (error.line > 0) {
+                    problem["line"] = error.line;
+                    problem["col"] = error.column;
+                }
+                problems.push_back(problem);
+                return;
+            }
+            for (const ClipWarning& warning : loadWarnings) {
+                warnings.push_back(warning.path.empty() ? warning.message : warning.path + ": " + warning.message);
+            }
+        } else if (clip) {
             const anim::ClipParseResult parsed = anim::parseClip(text);
             if (!parsed.ok()) {
                 Json problem = {{"path", relative}, {"message", "Not a valid animation clip: " + parsed.error.message +
@@ -104,6 +143,16 @@ void reload::reloadAnimations(Context& ctx, const std::vector<fs::path>& files, 
     if (!clipSources.empty()) {
         AnimationClipDocument::filesChanged(clipSources, project);
     }
+    // the Animator's assets: open documents reload, running Animators rebind (S21 R35); a changed
+    // model or .humanoid drops the cached retargeting sources
+    bool humanoidChanged = !models.empty();
+    for (const fs::path& path : files) {
+        const std::string text = path.string();
+        if (Util::isAnimatorAssetFile(text)) AnimatorAssetPool::invalidate(text);
+        if (path.extension() == ".humanoid") humanoidChanged = true;
+    }
+    if (!files.empty()) AnimatorAssetDocument::filesChanged(files);
+    if (humanoidChanged) anim::clearRetargetSources();
     if (all) {
         PoseAnimationDocument::checkDiskChanges();
         AnimationClipDocument::checkDiskChanges(project);
