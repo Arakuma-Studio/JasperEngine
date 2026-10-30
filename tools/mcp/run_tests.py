@@ -19,7 +19,8 @@ for that long (a slow but working editor, such as one waiting for game frames on
 never trips it; each call has its own timeout, harness.Editor.call_raw).
 Module variable PREBUILT_PLAYERS = ["glcore-release", ...] names the prebuilt player runtimes the
 file's tests build games with (tools/mcp/build_cache.py): with JASPER_SLOW_BUILD=1 and no -k, the
-run starts building them (once, for every worker) as it starts.
+run starts building them (once, for every worker) as it starts, and -j N starts such a file once
+its runtimes are built (the other files run meanwhile).
 With -j N the longest files start first, by each file's wall time in the last unfiltered run
 (build/test-results/mcp-file-seconds.json, JASPER_MCP_FILE_SECONDS; files it has no time for go
 first, in their order): a long file never starts last and alone.
