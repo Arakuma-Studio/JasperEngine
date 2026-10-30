@@ -341,10 +341,10 @@ async def test_check_reports_unreadable_and_mismatched_paint(ed: Editor):
     check(unreadable and "base64" in unreadable["message"] and "paint_mode: clear" in unreadable["suggestion"], f"unreadable: {found}")
     size = found.get((f"{SPR}/small_normal.png", "normals-paint-size"))
     check(size and "16x16" in size["message"] and "32x32" in size["message"], f"size: {found}")
-    # the cache is version 2; a version 1 cache (entries without the paint state) is read again
+    # the cache is version 3 (2: the paint state, 3: island_side); a version 1 cache (entries without the paint state) is read again
     cache_file = ed.project / ".jasperengine" / "normals-check-cache.json"
     cache = json.loads(cache_file.read_text())
-    check(cache["version"] == 2, f"cache version: {cache['version']}")
+    check(cache["version"] == 3, f"cache version: {cache['version']}")
     for entry in cache["pngs"].values():
         entry.pop("paint_error", None)
         entry.pop("paint", None)
@@ -352,7 +352,7 @@ async def test_check_reports_unreadable_and_mismatched_paint(ed: Editor):
     cache_file.write_text(json.dumps(cache))
     again = {(f["path"], f["code"]) for f in run_check(ed.project)}
     check((f"{SPR}/broken_normal.png", "normals-paint-unreadable") in again, f"a version 1 cache is not trusted: {again}")
-    check(json.loads(cache_file.read_text())["version"] == 2, "rewritten as version 2")
+    check(json.loads(cache_file.read_text())["version"] == 3, "rewritten as version 3")
     # the generator says it too, and the next write drops the unreadable chunk
     r = await gen(ed, source=f"{SPR}/broken.png", output=True, overwrite=True)
     check("paint_unreadable" in kinds(r.structured), f"paint_unreadable warning: {r.structured['warnings']}")

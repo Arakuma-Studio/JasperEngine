@@ -722,6 +722,7 @@ namespace jasperengine::editor::spritenormals {
         Request& request = out.request;
         request.color = out.source.color;
         request.settings = spec.settings;
+        request.shapeNormals = true;   // the assessment's roughness and creases
         const bool animated = out.source.kind == SourceKind::Gif || out.source.kind == SourceKind::Apng;
         if (animated) {
             // the atlas only exists with its frames, whatever frames says
@@ -1056,6 +1057,12 @@ namespace jasperengine::editor::spritenormals {
             // a GameObject is not a file: the map comes back from the Sprite's texture
             notes.push_back("It was made from the Sprite " + source["entity"].get<std::string>() + "; its texture " + out.source +
                             " is the source now (pick the GameObject again to use its current frames).");
+        }
+        // a recipe written before high-resolution support: its rules (and its profile default)
+        const int64_t version = recipe["version"].is_number_integer() ? recipe["version"].get<int64_t>() : 1;
+        if (version < 2) {
+            out.settings.version = 1;
+            out.settings.profile = Profile::Rounded;
         }
         if (recipe.contains("settings") && !settingsFromJson(recipe["settings"], out.settings, error)) {
             error = "the recipe's settings are garbled (" + error + ")";

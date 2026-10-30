@@ -47,15 +47,18 @@ Values outside the range are errors that name the setting, the range and the val
 
 | Setting | Type, range | Default | Meaning |
 |---|---|---|---|
-| `preset` | `soft` `default` `crisp` `detailed` `chunky` `toon` | `default` | Starting values for strength, detail, smoothing, volume, softness, radius and quantize; explicit values override the preset |
+| `preset` | `soft` `default` `crisp` `detailed` `chunky` `toon` `painted` `props` `tile` | `default` | Starting values for strength, detail, smoothing, volume, softness, radius, profile, edges (tile) and quantize; explicit values override the preset |
 | `strength` "Strength" | 0..8 | preset | Multiplies every slope (upstream `normal_strength`) |
-| `detail` "Detail" | 0..8 | preset | Relief from painted shading (upstream `detail_strength`) |
-| `smoothing` "Smoothing" | 0..8 px | preset | Sigma of the fine shading blur; the broad blur is 2x (upstream `detail_scale`) |
+| `detail` "Detail" | 0..8 (x k) | preset | Relief from painted shading (upstream `detail_strength`) |
+| `smoothing` "Smoothing" | 0..32 px (x k) | preset | Sigma of the fine shading blur; the broad blur is 2x (upstream `detail_scale`) |
 | `volume` "Volume" | 0..8 | preset | Silhouette rounding (upstream `shape_strength`) |
-| `radius` "Radius" | `"auto"` or 0.5..512 px | `auto` | Reach of the silhouette rounding (upstream `shape_radius`). Auto: section 4 |
-| `softness` "Softness" | 0..8 px | 1.15 | Blur of the silhouette height (upstream `shape_softness`) |
+| `radius` "Radius" | `"auto"` or 0.5..512 px | `auto` | Reach of the silhouette rounding (upstream `shape_radius`). Auto: section 4 (version 2: 0.3 x the island's largest inscribed distance T; dome: min(T, 0.15 x the shorter side); 4..512) |
+| `softness` "Softness" | 0..32 px (x k) | 1.15 | Blur of the silhouette height (upstream `shape_softness`) |
 | `alpha_threshold` "Alpha cutoff" | 0..0.99 | 0.03 | Pixels with alpha/255 <= this are empty |
-| `profile` "Profile" | `rounded` `dome` `bevel` | `rounded` | Height across the silhouette: `rounded` = upstream `S*R*log1p(inset/R)`; `dome` = circular cap reaching height `S*R` at inset `R`, flat beyond; `bevel` = linear ramp `S*inset` up to `R`, flat beyond |
+| `profile` "Profile" | `auto` `rounded` `dome` `bevel` `inflate` | `auto` | Height across the silhouette: `auto` = `rounded` for islands up to 128 px, `inflate` above (version 1: `rounded`); `rounded` = upstream `S*R*log1p(inset/R)`; `dome` = circular cap reaching height `S*R` at inset `R`, flat beyond; `bevel` = linear ramp `S*inset` up to `R`, flat beyond; `inflate` = `S*sqrt(u)`, u the solution of Laplacian(u) = -1 inside the shape, 0 outside (2026-10-30-sprite-normals-hires-design.md) |
+| `resolution_scale` "Resolution: Scale with size" | `auto` `off` | `auto` | `auto`: smoothing, softness and detail are for a 128 px sprite and multiplied by k = max(1, 2T/128), T the island's largest inscribed distance (a sequence's median; an opaque wrap/extend cell: its shorter side / 2); `off`: as given. The high-resolution gate (profile auto, outer band, metrics) stays the shorter side > 128 |
+| `soft_edge` "Soft edges" | `auto` `solid` | `auto` | `auto`: version 2 above 128 px, soft pixels (alpha < 0.5) reaching the outside (the border, or a hole deeper than max(2, 5% of the island's shorter side)) are outside the silhouette; `solid`: every pixel above the cutoff is silhouette (as version 1); nothing else changes |
+| `version` | 1, 2 | 2 | 1: the rules before high-resolution support (bbox auto radius, no scaling, no outer band); recorded only when 1. A version 1 recipe regenerates with 1 |
 | `edges` "Edges" | `transparent` `wrap` `extend` | `transparent` | What lies beyond the image (or each frame cell): `transparent` = upstream (border bevels); `wrap` = toroidal, for seamless tiles; `extend` = border pixels continue outward (tileset tiles, no border bevel) |
 | `ignore_outline` "Ignore outline" | bool | false | Auto-detect the outline colour (the darkest colour covering >= 50% of the silhouette rim, Oklab L at most 0.35) and give it zero weight in the detail term |
 | `regions` "Regions" | array, at most 16 of `{colors: ["#rrggbb", ...] (1..16), tolerance: 0..0.5 (Oklab distance, default 0.03), detail: 0..8 multiplier (default 1), lift: -16..16 px of height (default 0), flat: bool (default false)}` | `[]` | Per-colour overrides; a pixel takes the first matching region. `detail: 0` excludes painted highlights or outlines from relief; `lift` raises/sinks a material; `flat` forces the pixels' normals to +Z |
@@ -64,7 +67,7 @@ Values outside the range are errors that name the setting, the range and the val
 | `quantize` "Toon steps" | `{directions: 0 (off), 4, 6, 8, 12, 16; tilts: 1..4 (1); flat_deg: 0..45 (15); rotation_deg: 0..360, 360 is 0 (0)}`; CLI `--quantize N`, `--quantize-tilts N`, `--quantize-flat DEG`, `--quantize-rotation DEG`; UI "Toon steps", "Tilt rings", "Flat below", "Rotation" | off | Snaps every generated normal to `1 + directions x tilts` directions for stepped, cel-shaded light (design: `2026-10-28-sprite-normals-quantize-design.md`). Recorded in the recipe when on, or when the preset's is |
 | `frames` "Frames" | `"auto"`, `"none"`, `{tile_size: N or [w,h], columns, rows, count, offset: [x,y], padding: [x,y]}`, or `{cells: [[x,y,w,h],...]}` (exclusive with the grid keys) | `"auto"` | Cells processed independently. Auto = the Sprite's frames (when the source is a Sprite GameObject), the animation's frames (GIF/APNG), else the whole image. Object keys mirror `set_sprite_frames.slice` (`names`, `prefix`, `sheet_size` are not accepted) |
 
-Presets (the six main settings; `softness` 1.15 and `radius` auto in all; `quantize` off except in `toon`):
+Presets (the six main settings; `softness` 1.15 (props 1), `radius` auto, `profile` auto (painted inflate, props dome), `edges` transparent (tile wrap) in all; `quantize` off except in `toon`):
 
 | preset | strength | detail | smoothing | volume | intent |
 |---|---|---|---|---|---|
@@ -74,6 +77,9 @@ Presets (the six main settings; `softness` 1.15 and `radius` auto in all; `quant
 | `detailed` | 1.5 | 6 | 0.6 | 1.15 | the upstream defaults except radius (upstream: 4 px; pass radius 4 for an exact match) (most painted detail, highlights become bumps) |
 | `chunky` | 2.5 | 4 | 0.6 | 2.0 | stylised, strong volume |
 | `toon` | 2.0 | 0.5 | 2.0 | 1.3 | cel-shaded pixel art; the only preset with `quantize` on (`{directions: 8, tilts: 1, flat_deg: 15, rotation_deg: 0}`) |
+| `painted` | 1.5 | 3 | 1.0 | 1.15 | painted, vector, organic art at any size: `profile` `inflate` |
+| `props` | 1.5 | 3 | 0.5 | 0.7 | crates, panels, coins: `profile` `dome`, `softness` 1 |
+| `tile` | 2.0 | 3 | 1.0 | 1.15 | seamless textures: `edges` `wrap` |
 
 ## 4. Algorithm contract
 

@@ -76,16 +76,47 @@ namespace jasperengine::editor::spritenormals {
         int opaquePixels = 0;
         int paintedPixels = 0;         // opaque pixels the paint layer covers (Phase 5; `paint` given)
         double paintedPct = 0.0;       // ... / opaque pixels
+        // High-resolution smoothness (hires design spec, rule 6), measured when the median over the
+        // cells of the largest island's shorter side is above 128 px (else 0, innerPixels 0), over
+        // the "inner" pixels: deeper than min(8k, half the cell's largest depth) inside the
+        // alpha-0.5 silhouette, against a sigma-4k blur; k = max(1, 2 T / 128), T the median over the
+        // cells of the silhouette's largest depth (the generator's k)
+        bool highResolution = false;   // that gate passed
+        double scale = 1.0;
+        int innerPixels = 0;
+        double roughnessDeg = 0.0;     // the final map (the paint included): mean angle to the blur (streaky)
+        bool creaseMeasured = true;    // false: the paint left out over half the inner pixels (creasePct 0, no warning)
+        double creasePct = 0.0;        // the silhouette's share (`shape`; painted pixels and 3 sigma around them
+                                       // left out): inner pixels over kCreaseDeg from the blur (creased)
     };
+    // The deviation from the blurred normal that marks a crease pixel (the medial-axis ridge of
+    // the rounded profile above 128 px deviates 10-25 degrees along it; inflate stays under 3)
+    inline constexpr double kCreaseDeg = 8.0;
+    // The median over the cells (the image without cells) of the largest island's shorter side
+    // (alpha above the cutoff): the size the generator gates its high-resolution rules on
+    double medianIslandSide(const Image& image, const std::vector<Cell>& cells, float alphaThreshold);
     // `paint` (optional, the normal's size): the painted visible pixels counted. The metrics are
-    // of `normal` as given: the composited result when there is paint.
+    // of `normal` as given: the composited result when there is paint. `shape` (optional,
+    // Result::shape): the creases are measured on it (the silhouette's share: the painted relief is
+    // wanted detail, not a crease), else on `normal`; painted pixels and the blur's reach (3 sigma)
+    // around them are left out of the creases. `threads`: 0 = the hardware's (at most 16); the
+    // metrics never depend on it.
     Metrics measure(const Image& normal, const std::vector<Cell>& cells, bool directx, float alphaThreshold,
-                    const PaintOverlay* paint = nullptr);
+                    const PaintOverlay* paint = nullptr, const Image* shape = nullptr, int threads = 0);
 
     struct Assessment {
         std::vector<std::string> lines;   // "Shape: rounded (mean tilt 24°, 12% flat)", ..., "Painted: 214 px (8.1%)"
         std::string hint;                 // "Looks fine." when nothing applies
         std::vector<Problem> warnings;    // kinds of section 7.3
     };
-    Assessment assess(const Settings& settings, const Metrics& metrics, int cellCount);
+    // `result` (optional): the profile auto resolved to in the Shape line
+    Assessment assess(const Settings& settings, const Metrics& metrics, int cellCount, const Result* result = nullptr);
+    // The warning thresholds of assess() (contract table; hires design spec for the last two),
+    // calibrated on the hires evaluation set. Creases (the silhouette's share): the new defaults
+    // 0%, props on flat-faced art up to 0.9%; the rounded profile above 128 px 3.6-29%.
+    // Roughness of the final map: dominated by the wanted painted relief (the new defaults
+    // 0.2-8.9 degrees, the tile preset on brushed cobbles 12.1), so only maps rougher than every
+    // good result warn (unsmoothed, over-strong relief: detail 8 with smoothing 0.1-0.3, 14-21)
+    inline constexpr double kCreasedPct = 2.0;      // crease_pct above: creased
+    inline constexpr double kStreakyDeg = 13.0;     // roughness_deg above (and not creased): streaky
 }

@@ -618,10 +618,10 @@ TEST(SpriteNormalsSettings, ValidationNamesEverySettingAndRange) {
     Settings s;
     s.strength = 9.0f;
     s.detail = -1.0f;
-    s.smoothing = 8.5f;
+    s.smoothing = 32.5f;
     s.volume = std::numeric_limits<float>::quiet_NaN();
     s.radius = 0.25f;
-    s.softness = 10.0f;
+    s.softness = 40.0f;
     s.alphaThreshold = 1.0f;
     Region bad;
     bad.colors = {};
@@ -644,6 +644,8 @@ TEST(SpriteNormalsSettings, ValidationNamesEverySettingAndRange) {
     EXPECT_EQ(problems[3].message, "volume must be a number between 0 and 8 (got nan)");
     EXPECT_EQ(problems[4].message, "radius must be between 0.5 and 512 (got 0.25)");
     EXPECT_EQ(problems[6].message, "alpha_threshold must be between 0 and 0.99 (got 1)");
+    EXPECT_EQ(problems[2].message, "smoothing must be between 0 and 32 (got 32.5)");
+    EXPECT_EQ(problems[5].message, "softness must be between 0 and 32 (got 40)");
     Settings many;
     many.regions.assign(17, Region{{0x000000}});
     ASSERT_EQ(validateSettings(many).size(), 1u);
@@ -653,9 +655,17 @@ TEST(SpriteNormalsSettings, ValidationNamesEverySettingAndRange) {
     colours.regions[0].colors.assign(17, 0x102030);
     EXPECT_EQ(validateSettings(colours).at(0).field, "regions[0].colors");
     // the limits themselves are valid
+    Settings version;
+    version.version = 3;
+    ASSERT_EQ(validateSettings(version).size(), 1u);
+    EXPECT_EQ(validateSettings(version)[0].field, "version");
+    EXPECT_EQ(validateSettings(version)[0].message, "version must be 1 (as before high-resolution support) or 2 (got 3)");
     Settings edge;
     edge.strength = 8.0f;
-    edge.smoothing = 0.0f;
+    edge.smoothing = 32.0f;
+    edge.softness = 32.0f;
+    edge.detail = 8.0f;
+    edge.version = 1;
     edge.radius = 512.0f;
     edge.alphaThreshold = 0.99f;
     edge.regions.push_back(Region{{0x000000}, 0.5f, 8.0f, -16.0f, true});
@@ -924,12 +934,14 @@ TEST(SpriteNormalsOptions, OpaqueCellsWithWrapOrExtendGetNoShape) {
 }
 
 TEST(SpriteNormalsOptions, AutoRadius) {
-    // a ball filling 32x32: one island, 0.15 x 32 = 4.8
+    // version 1 (maps made before high-resolution support): 0.15 x the island's shorter side.
+    // A ball filling 32x32: one island, 0.15 x 32 = 4.8
     const Image ball = fromFunction(32, 32, [](int x, int y) {
         const bool in = std::hypot(x + 0.5f - 16.0f, y + 0.5f - 16.0f) <= 16.0f;
         return std::array<uint8_t, 4>{200, 80, 60, static_cast<uint8_t>(in ? 255 : 0)};
     });
     Settings s = presetSettings(Preset::Default);
+    s.version = 1;
     Result r = run(ball, s);
     EXPECT_TRUE(r.radiusPerIsland);
     EXPECT_FLOAT_EQ(r.radiusMin, 4.8f);

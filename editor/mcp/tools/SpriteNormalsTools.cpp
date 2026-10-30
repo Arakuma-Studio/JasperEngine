@@ -91,7 +91,7 @@ std::string relativeOf(Project* project, const fs::path& absolute) {
 // The settings' field names (validateSettings, settingsFromJson) as the tool's argument names
 const std::vector<std::string>& paramKeys() {
     static const std::vector<std::string> keys = {"strength", "detail", "smoothing", "volume", "radius", "softness", "alpha_threshold",
-                                                  "profile", "edges", "ignore_outline", "regions", "quantize"};
+                                                  "profile", "edges", "resolution_scale", "soft_edge", "ignore_outline", "regions", "quantize", "version"};
     return keys;
 }
 
@@ -193,8 +193,8 @@ bool settingsArg(const Json& args, sn::Settings& out, std::vector<sn::Problem>& 
     if (args.contains("preset") && !args["preset"].is_null()) {
         const Json& p = args["preset"];
         if (!p.is_string() || !sn::parsePreset(p.get<std::string>(), preset)) {
-            problems.push_back(problem("invalid_settings", "preset", "preset must be soft, default, crisp, detailed, chunky or toon (got " + p.dump() + ")",
-                                       "valid presets: soft, default, crisp, detailed, chunky, toon"));
+            problems.push_back(problem("invalid_settings", "preset", "preset must be one of " + sn::presetNames() + " (got " + p.dump() + ")",
+                                       "valid presets: " + sn::presetNames()));
             return false;
         }
     }
@@ -516,7 +516,8 @@ Json metricsJson(const sn::Metrics& m) {
     return {{"coverage_pct", rounded(m.coveragePct, 1)}, {"flat_pct", rounded(m.flatPct, 1)}, {"steep_pct", rounded(m.steepPct, 1)},
             {"mean_tilt_deg", rounded(m.meanTiltDeg, 1)}, {"noise_pct", rounded(m.noisePct, 1)}, {"lean_deg", rounded(m.leanDeg, 1)},
             {"soft_edge_pct", rounded(m.softEdgePct, 1)}, {"frames_touching_edges", m.framesTouchingEdges},
-            {"has_transparency", m.hasTransparency}, {"opaque_pixels", m.opaquePixels}, {"painted_pct", rounded(m.paintedPct, 1)}};
+            {"has_transparency", m.hasTransparency}, {"opaque_pixels", m.opaquePixels}, {"painted_pct", rounded(m.paintedPct, 1)},
+            {"roughness_deg", rounded(m.roughnessDeg, 2)}, {"crease_pct", m.creaseMeasured ? Json(rounded(m.creasePct, 2)) : Json(nullptr)}};
 }
 
 // The paint layer of a run (4.1): where it came from, what each op selected and changed
@@ -607,11 +608,17 @@ Report report(Project* project, const NormalsCall& state, const NormalsTarget& t
         data["radius_resolved"] = rounded(r.radiusMin, 2);
         radius = "radius " + number(r.radiusMin) + " px";
     }
+    data["scale_range"] = Json::array({rounded(r.scaleMin, 3), rounded(r.scaleMax, 3)});
+    Json profiles = Json::array();
+    for (sn::Profile pr : {sn::Profile::Rounded, sn::Profile::Dome, sn::Profile::Bevel, sn::Profile::Inflate}) {
+        if (r.profilesUsed & (1u << static_cast<int>(pr))) profiles.push_back(sn::toString(pr));
+    }
+    data["profile_resolved"] = profiles;
     if (r.outlineColor) data["outline"] = sn::colorText(*r.outlineColor);
 
     // the metrics of the composite (the paint included)
-    const sn::Metrics metrics = sn::measure(r.normal, cells, s.directx, s.alphaThreshold, &p.paint.overlay);
-    const sn::Assessment assessment = sn::assess(s, metrics, static_cast<int>(cells.size()));
+    const sn::Metrics metrics = sn::measure(r.normal, cells, s.directx, s.alphaThreshold, &p.paint.overlay, r.shape.empty() ? nullptr : &r.shape);
+    const sn::Assessment assessment = sn::assess(s, metrics, static_cast<int>(cells.size()), &r);
     data["metrics"] = metricsJson(metrics);
     data["paint"] = paintJson(p, metrics);
     data["assessment"] = assessment.lines;
@@ -1353,11 +1360,9 @@ void generateSpriteNormalsTool(const CallPtr& call) {
 
 // ---- get_asset_info / view_asset
 
-// The settings of a recipe that differ from its preset's (the `params` of `regenerate`)
-Json paramsDiff(const Json& settings) {
-    sn::Settings resolved;
-    std::string error;
-    if (!sn::settingsFromJson(settings, resolved, error)) return Json::object();
+// The settings of a recipe (as specFromRecipe resolves them: a version 1 recipe keeps version 1)
+// that differ from its preset's (the `params` of `regenerate`)
+Json paramsDiff(const sn::Settings& resolved) {
     const Json preset = sn::settingsToJson(sn::presetSettings(resolved.preset));
     const Json actual = sn::settingsToJson(resolved);
     Json params = Json::object();
@@ -1405,7 +1410,7 @@ bool regenerateArgs(Project* project, const Json& recipe, const fs::path& png, J
     }
     const Json settings = recipe.contains("settings") ? recipe["settings"] : Json::object();
     args["preset"] = settings.is_object() && settings.contains("preset") ? settings["preset"] : Json("default");
-    const Json params = paramsDiff(settings);
+    const Json params = paramsDiff(spec.settings);
     if (!params.empty()) args["params"] = params;
     // a grid (or Sprite frames that can't be read again from the GameObject): the cells themselves
     if (from == "given" || (from == "sprite" && !fromEntity)) {
@@ -1568,8 +1573,8 @@ void registerSpriteNormalsTools(McpRegistry& registry) {
     tool.name = "generate_sprite_normals";
     tool.title = "Generate Sprite Normals";
     tool.description =
-        "Pixel-art normal maps (sprites, sheets, GIF/APNG, tiles; lights need height > 0). No output: lit contact sheet + metrics; "
-        "+ output writes that (one undo); apply wires it on. "
+        "Sprite normal maps, pixel art to 4096 px (sheets, GIF/APNG, tiles). No output: lit sheet + metrics; "
+        "output writes it (one undo); apply wires it on. "
         "paint: fix spots (angle/flatten/smooth/erase by rect, pixels, colors or frame); kept on regenerate (paint_mode). "
         "Guide: jasper://docs/sprite-normals.";
     // nested objects are loose (the handler refuses unknown keys itself, saving tools/list bytes);
@@ -1585,7 +1590,7 @@ void registerSpriteNormalsTools(McpRegistry& registry) {
     tool.inputSchema = object({
         {"source", types({"string", "integer", "object"})},
         {"scene", sceneRef()},
-        {"preset", stringEnum("", {"soft", "default", "crisp", "detailed", "chunky", "toon"})},
+        {"preset", stringEnum("", {"soft", "default", "crisp", "detailed", "chunky", "toon", "painted", "props", "tile"})},
         {"params", anyObject("")},
         {"frames", frames},
         // the defaults (preset default; directx, height, overwrite false; wait true) are in the

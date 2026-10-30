@@ -361,7 +361,7 @@ async def test_write_matches_preview(ed: Editor):
             x, y, z = (c / 255 * 2 - 1 for c in n[:3])
             check(abs(math.sqrt(x * x + y * y + z * z) - 1) <= 0.02, f"unit vector: {n}")
     rec = recipe(out)
-    check(rec["format"] == "jasperengine.spritenormals" and rec["version"] == 1 and rec["role"] == "normal", f"recipe: {rec}")
+    check(rec["format"] == "jasperengine.spritenormals" and rec["version"] == 2 and rec["role"] == "normal", f"recipe: {rec}")
     check(rec["source"]["sha1"] == hashlib.sha1((ed.project / BALL).read_bytes()).hexdigest() and rec["source"]["path"] == BALL, f"{rec['source']}")
     check(rec["settings"] == v["settings"], f"recipe settings = result settings: {rec['settings']} vs {v['settings']}")
     # deterministic: another write gives the same pixels
@@ -780,6 +780,70 @@ async def test_outputs_through_symbolic_links(ed: Editor):
 
 
 # ---------------------------------------------------------------------------- 10.4 docs
+
+# ---------------------------------------------------------------------------- high resolution (hires design spec)
+
+def kinds_of(data: dict) -> list[str]:
+    return [w["kind"] for w in data.get("warnings", [])]
+
+
+async def test_high_resolution_settings_presets_and_metrics(ed: Editor):
+    hires = FIXTURES / "hires"
+    for name in ("potion.png", "crate.png", "cobbles_256.png"):
+        shutil.copy(hires / name, ed.project / SPR / name)
+    await ed.call("sync_files")
+    potion, crate, tile = f"{SPR}/potion.png", f"{SPR}/crate.png", f"{SPR}/cobbles_256.png"
+    # the default above 128 px: auto -> inflate, scaled, smooth (no creased / streaky)
+    data = (await gen(ed, source=potion)).structured
+    check("inflate" in data["profile_resolved"] and data["scale_range"][1] > 1.2, f"{data['profile_resolved']} {data['scale_range']}")
+    m = data["metrics"]
+    check(m["crease_pct"] < 1 and m["roughness_deg"] < 13, f"smooth: {m}")
+    check(not {"creased", "streaky"} & set(kinds_of(data)), f"{kinds_of(data)}")
+    check(data["settings"]["profile"] == "auto" and data["settings"]["resolution_scale"] == "auto", f"{data['settings']}")
+    # the rounded profile there: creased, with the fix
+    data = (await gen(ed, source=potion, params={"profile": "rounded"})).structured
+    check("creased" in kinds_of(data) and "inflate" in data["hint"], f"rounded: {kinds_of(data)} {data['hint']}")
+    # the presets
+    data = (await gen(ed, source=crate, preset="props")).structured
+    check(data["profile_resolved"] == ["dome"] and data["settings"]["volume"] == 0.7, f"props: {data['profile_resolved']} {data['settings']}")
+    data = (await gen(ed, source=tile, preset="tile")).structured
+    check(data["settings"]["edges"] == "wrap" and "no_alpha" not in kinds_of(data), f"tile: {data['settings']} {kinds_of(data)}")
+    data = (await gen(ed, source=BALL, preset="painted")).structured
+    check(data["profile_resolved"] == ["inflate"] and data["scale_range"] == [1, 1], f"painted on pixel art: {data['profile_resolved']}")
+    # resolution scale off, the new limits, the names
+    data = (await gen(ed, source=potion, params={"resolution_scale": "off", "smoothing": 32, "softness": 32})).structured
+    check(data["scale_range"] == [1, 1], f"off: {data['scale_range']}")
+    data = (await gen(ed, source=potion, params={"soft_edge": "solid"})).structured
+    check(data["settings"]["soft_edge"] == "solid", f"soft_edge: {data['settings']}")
+    # a few painted dots don't make "no crease": not measured (null), no creased warning
+    dots = [[x, y] for x in range(20, 360, 40) for y in range(20, 360, 40)]
+    data = (await gen(ed, source=potion, params={"profile": "rounded"}, paint=[{"op": "flatten", "where": {"pixels": dots}}])).structured
+    check(data["metrics"]["crease_pct"] is None and "creased" not in kinds_of(data), f"sparse paint: {data['metrics']} {kinds_of(data)}")
+    check("Creases not measured: paint covers most of the sprite" in data["assessment"], f"{data['assessment']}")
+    for params, field in [({"smoothing": 33}, "params.smoothing"), ({"softness": -1}, "params.softness"), ({"resolution_scale": "on"}, "params"),
+                          ({"soft_edge": "hard"}, "params"),
+                          ({"profile": "pillow"}, "params"), ({"version": 3}, "params.version")]:
+        err = await gen_error(ed, source=potion, params=params)
+        check(err["kinds"] == ["invalid_settings"] and (err["data"]["errors"][0].get("field") == field), f"{params}: {err['data']['errors']}")
+    err = await gen_error(ed, source=potion, preset="huge")
+    check("painted, props, tile" in err["data"]["errors"][0]["message"], err["data"]["errors"][0]["message"])
+    # a map made with version 1 rules keeps them when regenerated (recipe version 1, regenerate params.version 1)
+    out = f"{SPR}/n/potion_v1.png"
+    await gen(ed, source=potion, params={"version": 1}, output=out, overwrite=True)
+    rec = recipe(ed.project / out)
+    check(rec["version"] == 1 and rec["settings"]["version"] == 1, f"recipe: {rec['version']} {rec['settings']}")
+    info = await ed.call("get_asset_info", path=out)
+    regen = info["sprite_normals"]["regenerate"]
+    check(regen.get("params", {}).get("version") == 1, f"regenerate params: {regen}")
+    before = rgba((ed.project / out).read_bytes())[2]
+    await gen(ed, **regen)
+    check(rgba((ed.project / out).read_bytes())[2] == before, "a version 1 map regenerates its pixels")
+    # and a version 2 map's recipe records the new settings
+    out2 = f"{SPR}/n/potion_v2.png"
+    await gen(ed, source=potion, output=out2, overwrite=True)
+    rec = recipe(ed.project / out2)
+    check(rec["version"] == 2 and "version" not in rec["settings"] and rec["settings"]["resolution_scale"] == "auto", f"{rec}")
+
 
 async def test_description_and_guide_line(ed: Editor):
     tool = ed.tool("generate_sprite_normals")

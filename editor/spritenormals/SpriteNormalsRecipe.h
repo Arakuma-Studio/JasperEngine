@@ -24,7 +24,9 @@ namespace jasperengine::editor::spritenormals {
 
     inline constexpr const char* kRecipeKeyword = "jasper.spritenormals";
     inline constexpr const char* kRecipeFormat = "jasperengine.spritenormals";
-    inline constexpr int kRecipeVersion = 1;
+    // 2: high-resolution support (settings resolution_scale, profiles auto / inflate, the thickness
+    // auto radius, the outer band); a version 1 recipe regenerates with version 1 settings
+    inline constexpr int kRecipeVersion = 2;
 
     // Every setting of the contract (resolved: what generate() used), snake_case keys; floats
     // rounded to 6 decimals; radius "auto" or a number; colours "#rrggbb"

@@ -316,7 +316,7 @@ namespace jasperengine::editor::spritenormals {
                 } else if (arg == "--preset") {
                     if (!need()) return false;
                     if (!parsePreset(value, o.preset)) {
-                        error = "unknown preset '" + value + "' (soft, default, crisp, detailed, chunky, toon)";
+                        error = "unknown preset '" + value + "' (" + presetNames() + ")";
                         return false;
                     }
                 } else if (arg == "--strength") {
@@ -344,10 +344,33 @@ namespace jasperengine::editor::spritenormals {
                     if (!need()) return false;
                     Profile p;
                     if (!parseProfile(value, p)) {
-                        error = "unknown profile '" + value + "' (rounded, dome, bevel)";
+                        error = "unknown profile '" + value + "' (auto, rounded, dome, bevel, inflate)";
                         return false;
                     }
                     o.overrides["profile"] = value;
+                } else if (arg == "--resolution-scale") {
+                    if (!need()) return false;
+                    ResolutionScale r;
+                    if (!parseResolutionScale(value, r)) {
+                        error = "unknown resolution scale '" + value + "' (auto, off)";
+                        return false;
+                    }
+                    o.overrides["resolution_scale"] = value;
+                } else if (arg == "--soft-edge") {
+                    if (!need()) return false;
+                    SoftEdge e;
+                    if (!parseSoftEdge(value, e)) {
+                        error = "unknown soft edge '" + value + "' (auto, solid)";
+                        return false;
+                    }
+                    o.overrides["soft_edge"] = value;
+                } else if (arg == "--settings-version") {
+                    if (!need()) return false;
+                    if (value != "1" && value != "2") {
+                        error = "invalid --settings-version value '" + value + "' (1: as before high-resolution support, 2)";
+                        return false;
+                    }
+                    o.overrides["version"] = value == "1" ? 1 : 2;
                 } else if (arg == "--edges") {
                     if (!need()) return false;
                     Edges e;
@@ -789,13 +812,20 @@ namespace jasperengine::editor::spritenormals {
             } else {
                 j["radius_resolved"] = rounded(r.radiusMin, 2);
             }
+            j["scale_range"] = json::array({rounded(r.scaleMin, 3), rounded(r.scaleMax, 3)});
+            json profiles = json::array();
+            for (Profile pr : {Profile::Rounded, Profile::Dome, Profile::Bevel, Profile::Inflate}) {
+                if (r.profilesUsed & (1u << static_cast<int>(pr))) profiles.push_back(toString(pr));
+            }
+            j["profile_resolved"] = profiles;
             if (r.outlineColor) j["outline"] = colorText(*r.outlineColor);
-            const Metrics m = measure(r.normal, cells, s.directx, s.alphaThreshold, &p.paint.overlay);
-            const Assessment a = assess(s, m, static_cast<int>(cells.size()));
+            const Metrics m = measure(r.normal, cells, s.directx, s.alphaThreshold, &p.paint.overlay, r.shape.empty() ? nullptr : &r.shape, o.threads);
+            const Assessment a = assess(s, m, static_cast<int>(cells.size()), &r);
             j["metrics"] = {{"coverage_pct", rounded(m.coveragePct, 1)}, {"flat_pct", rounded(m.flatPct, 1)}, {"steep_pct", rounded(m.steepPct, 1)},
                             {"mean_tilt_deg", rounded(m.meanTiltDeg, 1)}, {"noise_pct", rounded(m.noisePct, 1)}, {"lean_deg", rounded(m.leanDeg, 1)},
                             {"soft_edge_pct", rounded(m.softEdgePct, 1)}, {"frames_touching_edges", m.framesTouchingEdges},
-                            {"has_transparency", m.hasTransparency}, {"opaque_pixels", m.opaquePixels}, {"painted_pct", rounded(m.paintedPct, 1)}};
+                            {"has_transparency", m.hasTransparency}, {"opaque_pixels", m.opaquePixels}, {"painted_pct", rounded(m.paintedPct, 1)},
+                            {"roughness_deg", rounded(m.roughnessDeg, 2)}, {"crease_pct", m.creaseMeasured ? json(rounded(m.creasePct, 2)) : json(nullptr)}};
             // the paint layer (Phase 5): where it came from, what each op selected and changed
             json ops = json::array();
             for (size_t i = 0; i < p.paint.ops.size(); i++) {
@@ -1115,9 +1145,10 @@ namespace jasperengine::editor::spritenormals {
         out << "Usage:\n"
             << "  " << commandName << " generate-sprite-normals --source <image> [--source <image>...] [options]\n"
             << "  " << commandName << " generate-sprite-normals --project <dir> --sprite <GameObject> [--scene <scene>] [options]\n\n"
-            << "Generates normal maps for pixel-art sprites, sprite sheets, GIF/APNG animations and tiles (a port of\n"
-            << "Sprite Fusion's sprite-normals, MIT). OpenGL convention (green up) unless --directx. Every PNG written\n"
-            << "embeds its recipe (settings, source and SHA-1) as an iTXt chunk named jasper.spritenormals.\n\n"
+            << "Generates normal maps for sprites (pixel art to 4096 px painted art), sprite sheets, GIF/APNG\n"
+            << "animations and tiles (a port of Sprite Fusion's sprite-normals, MIT). OpenGL convention (green up)\n"
+            << "unless --directx. Every PNG written embeds its recipe (settings, source and SHA-1) as an iTXt chunk\n"
+            << "named jasper.spritenormals.\n\n"
             << "Input:\n"
             << "  -s, --source <image>        PNG (APNG too), GIF, JPEG, TGA, BMP or PSD. Can repeat (a batch).\n"
             << "      --sprite <GameObject>   A Sprite, Polygon or Tilemap GameObject of the project (path or name): its\n"
@@ -1127,13 +1158,20 @@ namespace jasperengine::editor::spritenormals {
             << "                              outputs must be inside its assets directory (also once symbolic links\n"
             << "                              are resolved). Optional with --source.\n"
             << "Settings (defaults: the preset's):\n"
-            << "      --preset <name>         soft, default (default), crisp, detailed, chunky, toon (Toon steps 8).\n"
+            << "      --preset <name>         soft, default (default), crisp, detailed, chunky, toon (Toon steps 8);\n"
+            << "                              painted (painted / vector art), props (crates, panels), tile (wrap).\n"
             << "      --strength <x>          0..8.          --detail <x>      0..8.\n"
-            << "      --smoothing <px>        0..8.          --volume <x>      0..8.\n"
-            << "      --radius <auto|px>      auto (default) or 0.5..512.\n"
-            << "      --softness <px>         0..8 (1.15).   --alpha-threshold <x>  0..0.99 (0.03).\n"
-            << "      --profile <p>           rounded (default), dome, bevel.\n"
+            << "      --smoothing <px>        0..32.         --volume <x>      0..8.\n"
+            << "      --radius <auto|px>      auto (default: 0.3 x each island's thickness) or 0.5..512.\n"
+            << "      --softness <px>         0..32 (1.15).  --alpha-threshold <x>  0..0.99 (0.03).\n"
+            << "      --profile <p>           auto (default: rounded up to 128 px, inflate above), rounded, dome,\n"
+            << "                              bevel, inflate.\n"
             << "      --edges <e>             transparent (default), wrap (seamless), extend (tiles).\n"
+            << "      --resolution-scale <s>  auto (default): smoothing, softness and detail are for a 128 px sprite\n"
+            << "                              and grow with it (x shorter side / 128); off: as given, in pixels.\n"
+            << "      --soft-edge <s>         auto (default): above 128 px, soft pixels (alpha < 0.5) reaching the outside\n"
+            << "                              are outside the shape (glows); solid: they count as shape (translucent art).\n"
+            << "      --settings-version <n>  2 (default); 1 regenerates a map made before high-resolution support.\n"
             << "      --ignore-outline        Leave the detected outline colour out of the relief.\n"
             << "      --region <spec>         colors=#rrggbb[,#rrggbb...][;tolerance=x][;detail=x][;lift=px][;flat]. Can repeat (16).\n"
             << "      --quantize <n>          Toon steps: snap normals to n directions (0 off, 4, 6, 8, 12, 16) for\n"

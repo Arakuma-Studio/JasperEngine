@@ -482,6 +482,65 @@ TEST(SpriteNormalsWindowDeathTest, PresetsAndOverrides) {
     });
 }
 
+// High-resolution presets (2026-10-30-sprite-normals-hires-design.md): a preset sets its profile,
+// tile turns edges to wrap and leaving it turns them back, any preset starts with the current
+// generator (a map made before keeps version 1 until then); the result says what auto resolved to
+TEST(SpriteNormalsWindowDeathTest, HighResolutionPresetsProfileScaleAndVersion) {
+    IN_EDITOR("hires-presets", {
+        SpriteNormalsWindow window(w.p);
+        std::string error;
+        ASSERT_TRUE(window.openSources({w.file("assets/hero.png")}, error)) << error;
+        window.setPreset(sn::Preset::Painted);
+        EXPECT_EQ(window.getSettings().profile, sn::Profile::Inflate);
+        EXPECT_EQ(window.getSettings().edges, sn::Edges::Transparent);
+        window.setPreset(sn::Preset::Props);
+        EXPECT_EQ(window.getSettings().profile, sn::Profile::Dome);
+        EXPECT_FLOAT_EQ(window.getSettings().volume, 0.7f);
+        EXPECT_FLOAT_EQ(window.getSettings().softness, 1.0f);
+        window.setPreset(sn::Preset::Tile);
+        EXPECT_EQ(window.getSettings().edges, sn::Edges::Wrap);
+        EXPECT_EQ(window.getSettings().profile, sn::Profile::Auto);
+        window.setPreset(sn::Preset::Default);
+        EXPECT_EQ(window.getSettings().edges, sn::Edges::Transparent) << "leaving tile";
+        // edges set by hand survive a preset other than tile
+        sn::Settings s = window.getSettings();
+        s.edges = sn::Edges::Extend;
+        s.resolutionScale = sn::ResolutionScale::Off;
+        s.softEdge = sn::SoftEdge::Solid;
+        s.version = 1;
+        s.smoothing = 24.0f;   // within the new range
+        window.setSettings(s);
+        EXPECT_TRUE(sn::validateSettings(window.getSettings()).empty());
+        window.setPreset(sn::Preset::Crisp);
+        EXPECT_EQ(window.getSettings().edges, sn::Edges::Extend);
+        EXPECT_EQ(window.getSettings().resolutionScale, sn::ResolutionScale::Off) << "not a preset value";
+        EXPECT_EQ(window.getSettings().softEdge, sn::SoftEdge::Solid) << "not a preset value";
+        EXPECT_EQ(window.getSettings().version, sn::kSettingsVersion) << "a preset starts with the current generator";
+        // the stored settings keep the new values (project.yaml)
+        EXPECT_EQ(w.p->getSpriteNormalsSettings().settings.resolutionScale, sn::ResolutionScale::Off);
+        // the controls draw (Advanced open: profile, resolution scale, the version note; nine presets)
+        ImGuiContext* context = ImGui::CreateContext();
+        ImGui::SetCurrentContext(context);
+        ImGuiIO& io = ImGui::GetIO();
+        io.IniFilename = nullptr;
+        io.DisplaySize = ImVec2(1400, 900);
+        io.DeltaTime = 1.0f / 60.0f;
+        unsigned char* pixels;
+        int width, height;
+        io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+        window.open();
+        Access::setAdvancedOpen(window, true);
+        s = window.getSettings();
+        s.version = 1;
+        s.profile = sn::Profile::Inflate;
+        window.setSettings(s);
+        ASSERT_TRUE(settle(window));
+        Access::drawFrame(window);
+        EXPECT_EQ(window.getSettings().version, 1) << "drawing changes nothing";
+        ImGui::DestroyContext(context);
+    });
+}
+
 // Toon steps: the preset and the control's value change the live result (every opaque pixel one of
 // the palette's), another preset turns them off, and a saved map's recipe brings them back
 TEST(SpriteNormalsWindowDeathTest, ToonStepsChangeTheResultAndTheRecipeRestoresThem) {

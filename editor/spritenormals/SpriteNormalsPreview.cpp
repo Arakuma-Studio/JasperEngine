@@ -3,11 +3,13 @@
 
 #include "SpriteNormalsPreview.h"
 
+#include "SpriteNormalsField.h"
 #include "SpriteNormalsPaint.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <thread>
 
 namespace jasperengine::editor::spritenormals {
 
@@ -116,6 +118,194 @@ namespace jasperengine::editor::spritenormals {
         }
 
         std::string integer(double v) { return std::to_string(std::lround(v)); }
+
+        // ---- roughness and creases (hires design spec, rule 6)
+
+        // a frame clipped to the image (empty when outside it)
+        Cell clippedCell(const Cell& c, int width, int height) {
+            Cell out;
+            out.x = std::clamp(c.x, 0, width);
+            out.y = std::clamp(c.y, 0, height);
+            out.width = std::clamp(c.x + c.width, 0, width) - out.x;
+            out.height = std::clamp(c.y + c.height, 0, height) - out.y;
+            return out;
+        }
+
+        std::vector<Cell> framesOf(const Image& image, const std::vector<Cell>& cells) {
+            std::vector<Cell> frames;
+            if (cells.empty()) frames.push_back({0, 0, image.width, image.height});
+            for (const Cell& c : cells) {
+                const Cell clipped = clippedCell(c, image.width, image.height);
+                if (clipped.width > 0 && clipped.height > 0) frames.push_back(clipped);
+            }
+            return frames;
+        }
+
+        // the shorter side of the largest island (alpha above the cutoff) of a frame; 0 without one
+        double largestIslandSide(const Image& image, const Cell& cell, float alphaThreshold) {
+            std::vector<uint8_t> mask(static_cast<size_t>(cell.width) * cell.height, 0);
+            for (int y = 0; y < cell.height; y++) {
+                for (int x = 0; x < cell.width; x++) {
+                    mask[static_cast<size_t>(y) * cell.width + x] = image.pixel(cell.x + x, cell.y + y)[3] / 255.0f > alphaThreshold;
+                }
+            }
+            const std::vector<detail::Component> islands = detail::componentsRowMajor(mask, cell.width, cell.height);
+            if (islands.empty()) return 0.0;
+            size_t largest = 0;
+            for (size_t k = 1; k < islands.size(); k++) {
+                if (islands[k].pixels.size() > islands[largest].pixels.size()) largest = k;
+            }
+            const detail::Component& big = islands[largest];
+            return std::min(big.maxX - big.minX + 1, big.maxY - big.minY + 1);
+        }
+
+        double median(std::vector<double> values) {
+            if (values.empty()) return 0.0;
+            std::sort(values.begin(), values.end());
+            const size_t n = values.size();
+            return n % 2 ? values[n / 2] : (values[n / 2 - 1] + values[n / 2]) * 0.5;
+        }
+
+        // the mean deviation (degrees) of the inner pixels' normals from their sigma blur, and the
+        // share over kCreaseDeg; `source(i, n)` decodes pixel i's normal (the cell's border continues).
+        // `depth` is padded by 1. Rows in parallel; sums per row, added in row order.
+        template <typename Source>
+        void deviations(const Cell& cell, int imageWidth, const detail::Field& depth, float inset, float sigma, Source source,
+                        const detail::Field* excluded, float excludedWithin, detail::Workers& workers, double& sum, int64_t& count, int64_t& over,
+                        int64_t* excludedCount = nullptr) {
+            const int w = cell.width, h = cell.height;
+            const double creaseCos = std::cos(kCreaseDeg * kPi / 180.0);
+            detail::Field blurred[3] = {detail::Field::zero(w, h), detail::Field::zero(w, h), detail::Field::zero(w, h)};
+            workers.forRange(h, [&](int b, int e) {
+                for (int y = b; y < e; y++) {
+                    for (int x = 0; x < w; x++) {
+                        float n[3];
+                        source(static_cast<size_t>(cell.y + y) * imageWidth + (cell.x + x), n);
+                        for (int k = 0; k < 3; k++) blurred[k].data[static_cast<size_t>(y) * w + x] = n[k];
+                    }
+                }
+            }, 32);
+            for (int k = 0; k < 3; k++) detail::gaussianInPlace(blurred[k], sigma, detail::Border::Clamp, &workers);
+            std::vector<double> rowSum(static_cast<size_t>(h), 0.0);
+            std::vector<int64_t> rowCount(static_cast<size_t>(h), 0), rowOver(static_cast<size_t>(h), 0), rowExcluded(static_cast<size_t>(h), 0);
+            workers.forRange(h, [&](int b, int e) {
+                for (int y = b; y < e; y++) {
+                    for (int x = 0; x < w; x++) {
+                        const float d = depth.data[static_cast<size_t>(y + 1) * (w + 2) + x + 1];
+                        if (!(std::isfinite(d) && d > inset)) continue;
+                        const size_t j = static_cast<size_t>(y) * w + x;
+                        if (excluded && excluded->data[j] <= excludedWithin) {
+                            rowExcluded[static_cast<size_t>(y)]++;
+                            continue;
+                        }
+                        float n[3];
+                        source(static_cast<size_t>(cell.y + y) * imageWidth + (cell.x + x), n);
+                        const double bv[3] = {blurred[0].data[j], blurred[1].data[j], blurred[2].data[j]};
+                        const double length = std::sqrt(bv[0] * bv[0] + bv[1] * bv[1] + bv[2] * bv[2]);
+                        if (!(length > 1e-9)) continue;
+                        const double c = std::clamp((n[0] * bv[0] + n[1] * bv[1] + n[2] * bv[2]) / length, -1.0, 1.0);
+                        rowSum[static_cast<size_t>(y)] += degrees(std::acos(c));
+                        rowCount[static_cast<size_t>(y)]++;
+                        if (c < creaseCos) rowOver[static_cast<size_t>(y)]++;
+                    }
+                }
+            }, 32);
+            for (int y = 0; y < h; y++) {
+                sum += rowSum[static_cast<size_t>(y)];
+                count += rowCount[static_cast<size_t>(y)];
+                over += rowOver[static_cast<size_t>(y)];
+                if (excludedCount) *excludedCount += rowExcluded[static_cast<size_t>(y)];
+            }
+        }
+
+        void measureSmoothness(Metrics& m, const Image& normal, bool directx, const std::vector<Cell>& cells, float alphaThreshold,
+                               const PaintOverlay* paint, const Image* shape, detail::Workers& workers) {
+            // (creases: the silhouette's share; painted pixels and the blur's reach around them are
+            // left out: painting over a crease clears it, and a painted patch's edge is no crease)
+            const std::vector<Cell> frames = framesOf(normal, cells);
+            // per frame: the alpha-0.5 silhouette's depth (a field padded by 1: the frame's border is
+            // outside), its largest (the thickness T) and the largest island's shorter side S
+            std::vector<detail::Field> depths;
+            std::vector<double> sides, thicknesses;
+            for (const Cell& cell : frames) {
+                const int w = cell.width, h = cell.height, pw = w + 2, ph = h + 2;
+                std::vector<uint8_t> solid(static_cast<size_t>(pw) * ph, 0);
+                for (int y = 0; y < h; y++) {
+                    for (int x = 0; x < w; x++) solid[static_cast<size_t>(y + 1) * pw + x + 1] = normal.pixel(cell.x + x, cell.y + y)[3] >= 128;
+                }
+                // (kept padded: the frame's pixel (x, y) is (x + 1, y + 1))
+                detail::Field depth = detail::edt(solid, pw, ph, detail::Border::Zero, &workers);
+                float deepest = 0.0f;
+                for (float d : depth.data) {
+                    if (std::isfinite(d)) deepest = std::max(deepest, d);
+                }
+                const double side = largestIslandSide(normal, cell, alphaThreshold);
+                if (side > 0.0) {
+                    sides.push_back(side);
+                    thicknesses.push_back(deepest);
+                }
+                depths.push_back(std::move(depth));
+            }
+            // measured above 128 px (the generator's gate: pixel art's 1-2 px creases are its look);
+            // k from the thickness, as the generator's
+            const double side = median(sides);
+            if (!(side > kHiresSide)) return;
+            m.highResolution = true;
+            m.scale = std::max(1.0, 2.0 * median(thicknesses) / kHiresSide);
+            const float sigma = static_cast<float>(4.0 * m.scale);
+            const bool painted = paint && paint->sized(normal.width, normal.height) && !paint->empty();
+            const bool separate = (shape && isRgba8(*shape) && shape->width == normal.width && shape->height == normal.height);
+            auto finalNormal = [&](size_t i, float n[3]) {
+                const uint8_t* p = normal.data.data() + i * 4;
+                if (p[3] / 255.0f > alphaThreshold) decodeNormal(p, directx, n);
+                else n[0] = n[1] = 0.0f, n[2] = 1.0f;   // transparent: flat
+            };
+            auto creaseNormal = [&](size_t i, float n[3]) {
+                const uint8_t* p = normal.data.data() + i * 4;
+                if (!(p[3] / 255.0f > alphaThreshold)) {
+                    n[0] = n[1] = 0.0f;
+                    n[2] = 1.0f;
+                } else {
+                    decodeNormal((separate ? shape : &normal)->data.data() + i * 4, directx, n);
+                }
+            };
+            const float excludedWithin = 3.0f * sigma;
+            double roughSum = 0.0, creaseSum = 0.0;
+            int64_t roughCount = 0, roughOver = 0, creaseCount = 0, creaseOver = 0, creaseExcluded = 0;
+            for (size_t c = 0; c < frames.size(); c++) {
+                float deepest = 0.0f;
+                for (float d : depths[c].data) {
+                    if (std::isfinite(d)) deepest = std::max(deepest, d);
+                }
+                // 8k inside, but at most half the frame's depth: thin shapes are measured too
+                const float inset = std::min(static_cast<float>(8.0 * m.scale), 0.5f * deepest);
+                deviations(frames[c], normal.width, depths[c], inset, sigma, finalNormal, nullptr, 0.0f, workers, roughSum, roughCount, roughOver);
+                // the distance of every pixel to the frame's nearest painted one (none: no exclusion)
+                detail::Field near;
+                bool anyPainted = false;
+                if (painted) {
+                    const Cell& cell = frames[c];
+                    std::vector<uint8_t> unpainted(static_cast<size_t>(cell.width) * cell.height, 1);
+                    for (int y = 0; y < cell.height; y++) {
+                        for (int x = 0; x < cell.width; x++) {
+                            if (paint->rgba[(static_cast<size_t>(cell.y + y) * normal.width + cell.x + x) * 4 + 3] > 0) {
+                                unpainted[static_cast<size_t>(y) * cell.width + x] = 0;
+                                anyPainted = true;
+                            }
+                        }
+                    }
+                    if (anyPainted) near = detail::edt(unpainted, cell.width, cell.height, detail::Border::Zero, &workers);
+                }
+                deviations(frames[c], normal.width, depths[c], inset, sigma, creaseNormal, anyPainted ? &near : nullptr, excludedWithin, workers,
+                           creaseSum, creaseCount, creaseOver, &creaseExcluded);
+            }
+            // the paint left out more than half of the measurable pixels: not measured (a few
+            // painted dots must not read as "no crease")
+            if (creaseExcluded * 2 > creaseCount + creaseExcluded) m.creaseMeasured = false;
+            m.innerPixels = static_cast<int>(roughCount);
+            if (roughCount > 0) m.roughnessDeg = roughSum / static_cast<double>(roughCount);
+            if (creaseCount > 0 && m.creaseMeasured) m.creasePct = 100.0 * static_cast<double>(creaseOver) / static_cast<double>(creaseCount);
+        }
 
         std::string oneDecimal(double v) {
             char buffer[32];
@@ -276,75 +466,114 @@ namespace jasperengine::editor::spritenormals {
 
     // ------------------------------------------------------------------ quality
 
-    Metrics measure(const Image& normal, const std::vector<Cell>& cells, bool directx, float alphaThreshold, const PaintOverlay* paint) {
+    double medianIslandSide(const Image& image, const std::vector<Cell>& cells, float alphaThreshold) {
+        if (!isRgba8(image)) return 0.0;
+        std::vector<double> sides;
+        for (const Cell& cell : framesOf(image, cells)) {
+            const double side = largestIslandSide(image, cell, alphaThreshold);
+            if (side > 0.0) sides.push_back(side);
+        }
+        return median(sides);
+    }
+
+    Metrics measure(const Image& normal, const std::vector<Cell>& cells, bool directx, float alphaThreshold, const PaintOverlay* paint,
+                    const Image* shape, int threads) {
         Metrics m;
         if (!isRgba8(normal)) return m;
         const int width = normal.width, height = normal.height;
         // which cell each pixel belongs to (-1: none, not measured); the whole image without cells
-        std::vector<int> owner(normal.pixelCount(), cells.empty() ? 0 : -1);
-        for (size_t c = 0; c < cells.size(); c++) {
-            const Cell& cell = cells[c];
-            for (int y = std::max(0, cell.y); y < std::min(height, cell.y + cell.height); y++) {
-                for (int x = std::max(0, cell.x); x < std::min(width, cell.x + cell.width); x++) {
-                    int& o = owner[static_cast<size_t>(y) * width + x];
-                    if (o < 0) o = static_cast<int>(c);
+        std::vector<int> owners;
+        if (!cells.empty()) {
+            owners.assign(normal.pixelCount(), -1);
+            for (size_t c = 0; c < cells.size(); c++) {
+                const Cell& cell = cells[c];
+                for (int y = std::max(0, cell.y); y < std::min(height, cell.y + cell.height); y++) {
+                    for (int x = std::max(0, cell.x); x < std::min(width, cell.x + cell.width); x++) {
+                        int& o = owners[static_cast<size_t>(y) * width + x];
+                        if (o < 0) o = static_cast<int>(c);
+                    }
                 }
             }
         }
-        std::vector<float> normals(normal.pixelCount() * 3, 0.0f);
+        auto owner = [&](size_t i) { return owners.empty() ? 0 : owners[i]; };
         std::vector<uint8_t> opaque(normal.pixelCount(), 0);
         int64_t considered = 0;
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                const size_t i = static_cast<size_t>(y) * width + x;
-                if (owner[i] < 0) continue;
-                considered++;
-                const uint8_t* p = normal.pixel(x, y);
-                if (p[3] / 255.0f <= alphaThreshold) {
-                    m.hasTransparency = true;
-                    continue;
-                }
-                opaque[i] = 1;
-                decodeNormal(p, directx, &normals[i * 3]);
-            }
+        for (size_t i = 0; i < normal.pixelCount(); i++) {
+            if (owner(i) < 0) continue;
+            considered++;
+            if (normal.data[i * 4 + 3] / 255.0f <= alphaThreshold) m.hasTransparency = true;
+            else opaque[i] = 1;
         }
         const bool painted = paint && paint->sized(width, height);
         double sum[3] = {0.0, 0.0, 0.0};
         double tiltSum = 0.0;
         int64_t flat = 0, steep = 0, soft = 0, noisy = 0;
         const double noiseCos = std::cos(35.0 * kPi / 180.0);
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                const size_t i = static_cast<size_t>(y) * width + x;
-                if (!opaque[i]) continue;
-                m.opaquePixels++;
-                const float* n = &normals[i * 3];
-                const double tilt = degrees(std::acos(std::clamp(static_cast<double>(n[2]), -1.0, 1.0)));
-                tiltSum += tilt;
-                if (tilt < 2.0) flat++;
-                if (tilt > 60.0) steep++;
-                if (normal.pixel(x, y)[3] < 250) soft++;
-                if (painted && paint->rgba[i * 4 + 3] > 0) m.paintedPixels++;
-                for (int k = 0; k < 3; k++) sum[k] += n[k];
-                // the opaque 8-neighbours of the same cell
-                double mean[3] = {0.0, 0.0, 0.0};
-                int neighbours = 0;
-                for (int dy = -1; dy <= 1; dy++) {
-                    for (int dx = -1; dx <= 1; dx++) {
-                        if (!dx && !dy) continue;
-                        const int nx = x + dx, ny = y + dy;
-                        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
-                        const size_t j = static_cast<size_t>(ny) * width + nx;
-                        if (!opaque[j] || owner[j] != owner[i]) continue;
-                        for (int k = 0; k < 3; k++) mean[k] += normals[j * 3 + k];
-                        neighbours++;
-                    }
-                }
-                if (neighbours >= 3) {
-                    const double length = std::sqrt(mean[0] * mean[0] + mean[1] * mean[1] + mean[2] * mean[2]);
-                    if (length > 1e-9 && (n[0] * mean[0] + n[1] * mean[1] + n[2] * mean[2]) / length < noiseCos) noisy++;
+        // rows in chunks on the pool, each chunk decoding its rows and the one above and below;
+        // per-row partial sums added in row order (the same bits on any thread count)
+        // the request's thread count (0: the hardware's, at most 16, as generate())
+        const unsigned hw = std::thread::hardware_concurrency();
+        detail::Workers workers(threads > 0 ? threads : static_cast<int>(std::min(hw == 0 ? 1u : hw, 16u)));
+        struct RowStats {
+            double tilt = 0.0, sum[3] = {0.0, 0.0, 0.0};
+            int64_t opaque = 0, flat = 0, steep = 0, soft = 0, noisy = 0, painted = 0;
+        };
+        std::vector<RowStats> rowStats(static_cast<size_t>(height));
+        workers.forRange(height, [&](int b, int e) {
+            const int first = std::max(0, b - 1), last = std::min(height, e + 1);
+            std::vector<float> decoded(static_cast<size_t>(last - first) * width * 3, 0.0f);
+            for (int y = first; y < last; y++) {
+                for (int x = 0; x < width; x++) {
+                    const size_t i = static_cast<size_t>(y) * width + x;
+                    if (opaque[i]) decodeNormal(normal.data.data() + i * 4, directx, decoded.data() + (static_cast<size_t>(y - first) * width + x) * 3);
                 }
             }
+            auto at = [&](int x, int y) { return decoded.data() + (static_cast<size_t>(y - first) * width + x) * 3; };
+            for (int y = b; y < e; y++) {
+                RowStats& r = rowStats[static_cast<size_t>(y)];
+                for (int x = 0; x < width; x++) {
+                    const size_t i = static_cast<size_t>(y) * width + x;
+                    if (!opaque[i]) continue;
+                    r.opaque++;
+                    const float* n = at(x, y);
+                    const double tilt = degrees(std::acos(std::clamp(static_cast<double>(n[2]), -1.0, 1.0)));
+                    r.tilt += tilt;
+                    if (tilt < 2.0) r.flat++;
+                    if (tilt > 60.0) r.steep++;
+                    if (normal.data[i * 4 + 3] < 250) r.soft++;
+                    if (painted && paint->rgba[i * 4 + 3] > 0) r.painted++;
+                    for (int k = 0; k < 3; k++) r.sum[k] += n[k];
+                    // the opaque 8-neighbours of the same cell
+                    double mean[3] = {0.0, 0.0, 0.0};
+                    int neighbours = 0;
+                    for (int dy = -1; dy <= 1; dy++) {
+                        for (int dx = -1; dx <= 1; dx++) {
+                            if (!dx && !dy) continue;
+                            const int nx = x + dx, ny = y + dy;
+                            if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+                            const size_t j = static_cast<size_t>(ny) * width + nx;
+                            if (!opaque[j] || owner(j) != owner(i)) continue;
+                            const float* o = at(nx, ny);
+                            for (int k = 0; k < 3; k++) mean[k] += o[k];
+                            neighbours++;
+                        }
+                    }
+                    if (neighbours >= 3) {
+                        const double length = std::sqrt(mean[0] * mean[0] + mean[1] * mean[1] + mean[2] * mean[2]);
+                        if (length > 1e-9 && (n[0] * mean[0] + n[1] * mean[1] + n[2] * mean[2]) / length < noiseCos) r.noisy++;
+                    }
+                }
+            }
+        }, 64);
+        for (const RowStats& r : rowStats) {
+            m.opaquePixels += static_cast<int>(r.opaque);
+            tiltSum += r.tilt;
+            flat += r.flat;
+            steep += r.steep;
+            soft += r.soft;
+            noisy += r.noisy;
+            m.paintedPixels += static_cast<int>(r.painted);
+            for (int k = 0; k < 3; k++) sum[k] += r.sum[k];
         }
         if (considered > 0) m.coveragePct = 100.0 * m.opaquePixels / static_cast<double>(considered);
         if (m.opaquePixels > 0) {
@@ -358,6 +587,7 @@ namespace jasperengine::editor::spritenormals {
             const double length = std::sqrt(sum[0] * sum[0] + sum[1] * sum[1] + sum[2] * sum[2]);
             if (length > 1e-12) m.leanDeg = degrees(std::acos(std::clamp(sum[2] / length, -1.0, 1.0)));
         }
+        measureSmoothness(m, normal, directx, cells, alphaThreshold, paint, shape, workers);
         for (const Cell& cell : cells) {
             bool touches = false;
             for (int y = std::max(0, cell.y); y < std::min(height, cell.y + cell.height) && !touches; y++) {
@@ -374,13 +604,25 @@ namespace jasperengine::editor::spritenormals {
         return m;
     }
 
-    Assessment assess(const Settings& settings, const Metrics& m, int cellCount) {
+    Assessment assess(const Settings& settings, const Metrics& m, int cellCount, const Result* result) {
         Assessment a;
-        a.lines.push_back(std::string("Shape: ") + toString(settings.profile) + " (mean tilt " + integer(m.meanTiltDeg) + "°, " + integer(m.flatPct) +
-                          "% flat)");
+        std::string profile = toString(settings.profile);
+        if (settings.profile == Profile::Auto && result && result->profilesUsed) {
+            std::string used;
+            for (Profile p : {Profile::Rounded, Profile::Dome, Profile::Bevel, Profile::Inflate}) {
+                if (result->profilesUsed & (1u << static_cast<int>(p))) used += (used.empty() ? "" : ", ") + std::string(toString(p));
+            }
+            profile += " -> " + used;
+        }
+        a.lines.push_back("Shape: " + profile + " (mean tilt " + integer(m.meanTiltDeg) + "°, " + integer(m.flatPct) + "% flat)");
         a.lines.push_back("Steep pixels: " + integer(m.steepPct) + "%");
         a.lines.push_back("Noise: " + integer(m.noisePct) + "%");
         a.lines.push_back("Lean: " + integer(m.leanDeg) + "°");
+        if (m.innerPixels > 0) {
+            a.lines.push_back("Roughness: " + oneDecimal(m.roughnessDeg) + "° (creases " +
+                              (m.creaseMeasured ? oneDecimal(m.creasePct) + "%)" : std::string("not measured)")));
+            if (!m.creaseMeasured) a.lines.push_back("Creases not measured: paint covers most of the sprite");
+        }
         a.lines.push_back("Coverage: " + integer(m.coveragePct) + "%");
         if (cellCount > 0) {
             a.lines.push_back("Frames: " + std::to_string(cellCount) + " (" + std::to_string(m.framesTouchingEdges) + " touch their cell's edge)");
@@ -392,7 +634,16 @@ namespace jasperengine::editor::spritenormals {
             warn("no_alpha", "The image has no transparent pixels: volume only bevels its border.", "For tiles use edges wrap or extend.");
         }
         if (m.flatPct > 60.0) {
-            warn("mostly_flat", integer(m.flatPct) + "% of the sprite is flat.", "Raise strength or volume, or detail if it is painted with shading.");
+            // the outer band took most of an island (a translucent sprite with a small solid core):
+            // its soft pixels are why it is flat
+            if (settings.version >= 2 && settings.softEdge == SoftEdge::Auto && result && result->outerBandShare > 0.5f) {
+                warn("mostly_flat",
+                     integer(m.flatPct) + "% of the sprite is flat: " + integer(100.0 * result->outerBandShare) +
+                         "% of it is soft (alpha under 0.5) and reaches the outside, so it counts as outside the shape.",
+                     "Set soft_edge \"solid\" so the soft pixels count as shape (or raise strength or volume).");
+            } else {
+                warn("mostly_flat", integer(m.flatPct) + "% of the sprite is flat.", "Raise strength or volume, or detail if it is painted with shading.");
+            }
         }
         if (m.steepPct > 25.0) {
             warn("too_steep", integer(m.steepPct) + "% of the pixels are steeper than 60°.",
@@ -402,6 +653,14 @@ namespace jasperengine::editor::spritenormals {
             warn("noisy", integer(m.noisePct) + "% of the pixels disagree with their neighbours (dithering or hard shading bands).",
                  "Raise smoothing to 1.5-2 or lower detail.");
         }
+        if (m.creaseMeasured && m.creasePct > kCreasedPct) {
+            warn("creased", oneDecimal(m.creasePct) + "% of the inside lies on sharp creases (ridges down the middle of the shapes).",
+                 "Use profile inflate (round art) or dome (flat-faced props), or the painted or props preset, or raise softness.");
+        } else if (m.roughnessDeg > kStreakyDeg) {
+            warn("streaky", "The light is bumpy inside the sprite (roughness " + oneDecimal(m.roughnessDeg) +
+                                "° on the map): streaks from a wobbly outline, or brushwork and paint turned into bumps.",
+                 "Raise smoothing (brushwork, painted detail) or lower detail; for streaks from the outline raise softness or use profile inflate.");
+        }
         if (m.leanDeg > 8.0) {
             warn("leaning", "The map leans " + integer(m.leanDeg) + "° on average: the painted light direction became a slope.",
                  "Lower detail, or add a region with detail 0 for the highlight colours.");
@@ -410,7 +669,9 @@ namespace jasperengine::editor::spritenormals {
             warn("frames_touch_edges", std::to_string(m.framesTouchingEdges) + " frames touch their cell's edge, which gets a rim there.",
                  "Use edges extend if the sprite continues past the cell.");
         }
-        if (m.softEdgePct > 10.0) {
+        // (version 2 above 128 px: the soft pixels reachable from outside are already outside
+        // the shape, and enclosed ones are glass, rightly solid)
+        if (m.softEdgePct > 10.0 && !(settings.version >= 2 && m.highResolution)) {
             warn("soft_edges", integer(m.softEdgePct) + "% of the opaque pixels are semi-transparent; they count as solid.",
                  "Raise alpha_threshold to ignore glows and soft edges.");
         }
