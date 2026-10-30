@@ -190,7 +190,7 @@ def check_components(args, players: Path, out: Path) -> None:
         # (the fixture is the reflection tables' every value, not a playable game: the assets it
         # names are not all there, and the player logs those it cannot load)
         result = build(args.editor, players, project, out / "components", "linux", "--backend", backend, "--method", "prebuilt",
-                       "--allow-missing-assets")
+                       "--allow-missing-assets", "--start-scene", "AllComponents")
         exe = Path(lines(result, "executable")[0])
         game = run([exe, "--headless", "--after-ready", "--quit-after", "10", "--fixed-fps", "60"], cwd=exe.parent, timeout=600, check=False)
     log = game.stdout + game.stderr
