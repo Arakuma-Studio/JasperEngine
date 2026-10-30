@@ -154,6 +154,7 @@ Log::print, never printf or std::cout. Angles are DEGREES. Build settings go in 
 - Poses (.poseanim): get/edit/render_pose_animation (jasper://docs/pose-animation).
 - Clips (.anim, shared): edit_animation {clip, create, tracks [{path}]}, for an Animation
   Player (jasper://docs/animation).
+- Animator (.controller): edit_animator_controller, control_animator (jasper://docs/animator).
 
 ## Atmosphere
 A Fog of type "height" is physically based height fog (volumetric: true adds light shafts and

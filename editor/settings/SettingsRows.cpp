@@ -2042,7 +2042,7 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         {"Scripting", SettingsScope::Preference, 3, "hot reload during play external script editor"},
         {"Undo", SettingsScope::Preference, 4, "undo redo history"},
         {"Lattice", SettingsScope::Preference, 5, "lattice cage deformer"},
-        {"Scene View", SettingsScope::Preference, 6, "picking pick drop surface rulers"},
+        {"Scene View", SettingsScope::Preference, 6, "picking pick drop surface rulers animation preview particles"},
         {"External Tools", SettingsScope::Preference, 7, "cmake compiler emscripten ffmpeg"},
         {"Logging", SettingsScope::Preference, 8, "log levels"},
         {"Diagnostics", SettingsScope::Preference, 9, "crash hang watchdog freeze not responding reports"},
@@ -2214,6 +2214,9 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
     addOrAbort(registry, uiRow("preferences.scene_view.rulers", sceneView, "Views", "Rulers", "ruler scale 2d orthographic",
         [](SettingsContext&) { return Json(AppSettings::getSceneViewSettings().rulers); },
         "Top and left rulers in 2D, UI and orthographic axis views"));
+    addOrAbort(registry, uiRow("preferences.scene_view.preview_particles", sceneView, "Animation", "Preview Particle Systems", "animator animation preview particles vfx scrub",
+        [](SettingsContext&) { return Json(AppSettings::getSceneViewSettings().previewParticles); },
+        "Animation previews in edit mode (Animator, Animation windows) play and scrub the Particle Systems under the previewed GameObject"));
     addOrAbort(registry, uiRow("preferences.logging.reset", "Logging", "Category Levels", "Reset", "category levels info",
         [](SettingsContext&) { return Json(AppSettings::getLoggingSettings().categoryLevels.size()); }));
     const char* diagnostics = "Diagnostics";

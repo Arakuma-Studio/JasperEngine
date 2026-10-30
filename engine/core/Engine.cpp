@@ -33,6 +33,7 @@
 #include "component/AudioSourceComponent.h"
 #include "component/ActionComponent.h"
 #include "component/PoseAnimatorComponent.h"
+#include "component/AnimatorComponent.h"
 #include "component/AnimationPlayerComponent.h"
 #include "pool/TexturePool.h"
 #include "pool/SoundPool.h"
@@ -1277,6 +1278,16 @@ void Engine::clearComponentSubscriptions(Scene* scene) {
         AnimationPlayerComponent& player = players->getComponentFromIndex(i);
         player.onEvent.clear();
         player.onFinish.clear();
+    }
+
+    auto stateAnimators = scene->getComponentArray<AnimatorComponent>();
+    for (size_t i = 0; i < stateAnimators->size(); i++) {
+        AnimatorComponent& animator = stateAnimators->getComponentFromIndex(i);
+        animator.onEvent.clear();
+        animator.onStateEnter.clear();
+        animator.onStateExit.clear();
+        animator.onMontageEnded.clear();
+        animator.onAnimatorMove.clear();
     }
 }
 

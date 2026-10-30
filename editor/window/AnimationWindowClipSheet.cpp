@@ -993,6 +993,17 @@ bool AnimationWindowClip::setEase(EaseType ease, std::string* error){
     return true;
 }
 
+bool AnimationWindowClip::setTangentMode(ClipTangentMode mode, std::string* error){
+    refreshSelection();
+    if (selectedRefs.empty()){
+        if (error) *error = "no keys selected";
+        return false;
+    }
+    if (!controller().setTangentMode(selectedRefs, mode, error)) return false;
+    refreshSelection();
+    return true;
+}
+
 bool AnimationWindowClip::addKeysAt(int trackIndex, float time, std::string* error){
     std::shared_ptr<AnimationClipDocument> doc = document();
     if (!doc){

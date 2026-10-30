@@ -1059,7 +1059,15 @@ set(JASPERENGINE_SRCS
     core/animation/AnimationClipIO.cpp
     core/animation/AnimationEvent.cpp
     core/animation/AnimationPlayerRuntime.cpp
+    core/animation/AnimatorAssetIO.cpp
+    core/animation/AnimatorIK.cpp
+    core/animation/AnimatorInstance.cpp
+    core/animation/AnimatorPose.cpp
+    core/animation/AnimatorRetarget.cpp
+    core/animation/AnimatorRig.cpp
+    core/animation/BlendTree.cpp
     core/animation/ClipBinding.cpp
+    core/animation/CompiledController.cpp
     core/animation/KeyframeSampling.cpp
     core/animation/ModelSubClips.cpp
     core/pose/HumanBones.cpp
@@ -1209,6 +1217,7 @@ set(JASPERENGINE_SRCS
     core/object/Model.cpp
     core/object/PoseAnimator.cpp
     core/object/AnimationPlayer.cpp
+    core/object/Animator.cpp
     core/object/GameObject.cpp
     core/object/ShadowCaster2D.cpp
     core/object/Points.cpp
@@ -1254,6 +1263,7 @@ set(JASPERENGINE_SRCS
     core/pool/ModelPool.cpp
     core/pool/MeshLodPool.cpp
     core/pool/AnimationClipPool.cpp
+    core/pool/AnimatorAssetPool.cpp
     core/registry/EntityCloner.cpp
     core/registry/EntityRegistry.cpp
     core/registry/TagManager.cpp
@@ -1315,6 +1325,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/ActionSystem.cpp
     core/subsystem/ActionSystemPlayers.cpp
     core/subsystem/PoseAnimatorSystem.cpp
+    core/subsystem/AnimatorSystem.cpp
     core/subsystem/FluidSystem.cpp
     core/fluid/FluidSimulator.cpp
     core/fluid/FluidPresets.cpp
@@ -1570,6 +1581,28 @@ if(JASPERENGINE_BASIS_TRANSCODER)
     target_link_libraries(jasperengine PUBLIC basisu_transcoder)
     target_compile_definitions(jasperengine PUBLIC JASPERENGINE_BASIS_TRANSCODER)
 endif()
+# the Animator's pose kernels (docs/specs/S21-animation.md R17): SIMD and scalar give the same
+# bits only without floating-point contraction; WebAssembly builds the kernels (AnimatorPose.cpp
+# only: the others include Jolt, whose SSE detection simd128 would trip) with simd128 like the
+# particle kernels (JASPERENGINE_WASM_SIMD)
+set(JASPERENGINE_ANIMATOR_SRCS core/animation/AnimatorPose.cpp core/animation/AnimatorIK.cpp core/animation/AnimatorInstance.cpp)
+if(MSVC)
+    set(JASPERENGINE_ANIMATOR_FLAGS /fp:precise)
+else()
+    set(JASPERENGINE_ANIMATOR_FLAGS -ffp-contract=off)
+endif()
+set_source_files_properties(${JASPERENGINE_ANIMATOR_SRCS} PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_ANIMATOR_FLAGS}")
+if(EMSCRIPTEN)
+    if(JASPERENGINE_WASM_SIMD)
+        set_source_files_properties(core/animation/AnimatorPose.cpp PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_ANIMATOR_FLAGS};-msimd128")
+    else()
+        set_source_files_properties(core/animation/AnimatorPose.cpp PROPERTIES COMPILE_DEFINITIONS JASPERENGINE_SIMD_DISABLE)
+    endif()
+endif()
+jasperengine_skip_unity_build(
+    REASON "the Animator's pose kernels: no floating-point contraction, per unit"
+    SOURCES ${JASPERENGINE_ANIMATOR_SRCS})
+
 # the mip chain and the import processing: no fused multiply-adds, so the levels (and the cook
 # cache keys built on them) are the same bytes on every CPU, like stb_image_resize2's
 if(NOT MSVC)

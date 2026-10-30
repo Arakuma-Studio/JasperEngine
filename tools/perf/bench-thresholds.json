@@ -1,5 +1,5 @@
 {
-  "_comment": "Budgets of je-bench-jobs and je-bench-memory (docs/specs/S06-jobs-memory.md R23-R26), je-bench-diag (S28 R26), je-bench-particles (docs/specs/S20-particles.md R20-R26, AC10-AC12), je-bench-nav (docs/specs/S19-navigation.md R25-R30: the desktop budgets + 10 % for the timing server, gated on the median of runs) and je-bench-splines (docs/specs/S18-splines.md R18-R21, AC16), measured with min(8, hardware threads - 2) workers on the build server's Linux x64 Release build. check_bench.py fails on a miss. je-bench-picking: docs/specs/S26-scene-view.md R28-R31, measured on the benchmark server E. async-shaders: docs/specs/S32-async-shaders.md R21-R22 (tools/perf/async_shaders_bench.py on E, median of 5 runs).",
+  "_comment": "Budgets of je-bench-jobs and je-bench-memory (docs/specs/S06-jobs-memory.md R23-R26), je-bench-diag (S28 R26), je-bench-particles (docs/specs/S20-particles.md R20-R26, AC10-AC12), je-bench-nav (docs/specs/S19-navigation.md R25-R30: the desktop budgets + 10 % for the timing server, gated on the median of runs) and je-bench-splines (docs/specs/S18-splines.md R18-R21, AC16), measured with min(8, hardware threads - 2) workers on the build server's Linux x64 Release build. check_bench.py fails on a miss. je-bench-picking: docs/specs/S26-scene-view.md R28-R31, measured on the benchmark server E. je-bench-anim: docs/specs/S21-animation.md R19-R20 (AC12), measured on the benchmark server E with --workers 3 --count-allocs (docs/perf/animator.md). async-shaders: docs/specs/S32-async-shaders.md R21-R22 (tools/perf/async_shaders_bench.py on E, median of 5 runs).",
   "je-bench-jobs": {
     "submit_throughput_jobs_per_s": {"min": 3000000, "spec": "R23 empty-job submit+execute from one producer"},
     "parallel_for_dispatch_ns": {"max": 150, "spec": "R23 parallelFor of 1 unit, 0 helpers"},
@@ -91,6 +91,18 @@
     "empty_scene_frame_us": {"max": 1, "spec": "R21 SplineSystem in a scene without spline components, mean of 10k frames"},
     "empty_scene_allocations": {"max": 0, "spec": "R21 no allocations without spline components (--count-allocs)"},
     "spline_animate_follower_us": {"max": 0.5, "spec": "R21 Spline Animate per follower per frame"}
+  },
+  "je-bench-anim": {
+    "crowd200_sampled": {"min": 200, "spec": "R19 every character of AnimBench.Crowd200 evaluated each frame"},
+    "crowd200_parallel_p95_ms": {"max": 2.5, "spec": "R19 AnimatorSystem wall time, 200 x 65 bones, 3 workers + main, p95"},
+    "crowd200_main_thread_p95_ms": {"max": 0.4, "spec": "R19 the main thread's share (prepare + finalize), p95"},
+    "crowd200_serial_p95_ms": {"max": 8.8, "spec": "R19 serial (0 workers), p95"},
+    "crowd200_steady_state_allocations": {"max": 0, "spec": "R19 heap allocations per frame after warm-up (--count-allocs)"},
+    "micro_blend128_us": {"max": 1.1, "spec": "R20 a two-pose blend at 128 bones, median"},
+    "micro_blend128_simd_speedup": {"min": 2.0, "spec": "R20 SIMD against Scalar for the blend"},
+    "micro_sample65_us": {"max": 2.2, "spec": "R20 one 65-bone clip sample, median"},
+    "micro_state_machine_update_us": {"max": 1.1, "spec": "R20 a state-machine update, 20 states and 60 transitions, median"},
+    "micro_instance_state_bytes": {"max": 8192, "spec": "R20 an Animator's runtime state (AnimatorInstance::runtimeStateBytes)"}
   },
   "async-shaders": {
     "max_main_ms": {"max": 4.0, "spec": "S32 R21: the render thread's creation work (GPU create scopes) in the worst frame of the lobe toggles"},

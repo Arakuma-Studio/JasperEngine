@@ -112,7 +112,11 @@ namespace jasperengine::editor {
         ToggleVcsCommit,
         ToggleVcsHistory,
         ToggleVcsSceneDiff,
-        ToggleVcsConflicts
+        ToggleVcsConflicts,
+        ToggleAnimator,               // Window > Animation > Animator
+        AssetsCreateAnimatorController,
+        AssetsCreateAvatarMask,
+        AssetsCreateAnimationMontage
     };
 
 }

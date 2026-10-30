@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 #include "math/Vector3.h"
+#include "math/Quaternion.h"
 
 typedef struct lua_State lua_State;
 
@@ -65,6 +66,8 @@ namespace jasperengine{
         void push_value(lua_State *vm, wchar_t s);
         void push_value(lua_State *vm, Vector2 o);
         void push_value(lua_State *vm, Vector3 o);
+        // the Animator's onAnimatorMove (delta position, delta rotation)
+        void push_value(lua_State *vm, Quaternion o);
         // a particle system's batched events: an array of plain tables
         void push_value(lua_State *vm, const std::vector<ParticleCollisionInfo>& events);
         void push_value(lua_State *vm, const std::vector<ParticleDeathInfo>& events);

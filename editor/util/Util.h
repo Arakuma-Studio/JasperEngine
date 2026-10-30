@@ -185,11 +185,25 @@ namespace jasperengine::editor{
             return fileExtension(path) == ".anim";
         }
 
+        // The Animator's assets (S21): controllers, avatar masks, montages
+        inline static bool isAnimatorControllerFile(const std::string& path) {
+            return fileExtension(path) == ".controller";
+        }
+        inline static bool isAvatarMaskFile(const std::string& path) {
+            return fileExtension(path) == ".mask";
+        }
+        inline static bool isMontageFile(const std::string& path) {
+            return fileExtension(path) == ".montage";
+        }
+        inline static bool isAnimatorAssetFile(const std::string& path) {
+            return isAnimatorControllerFile(path) || isAvatarMaskFile(path) || isMontageFile(path);
+        }
+
         // Files referenced relative to the assets directory
         inline static bool isAssetFile(const std::string& path) {
             return isImageFile(path) || isModelFile(path) || isFontFile(path) || isAudioFile(path) ||
                    isHtmlFile(path) || isCssFile(path) || isColorLutFile(path) || isParticleEffectFile(path) || isPoseAnimationFile(path) ||
-                   isAnimationClipFile(path);
+                   isAnimationClipFile(path) || isAnimatorAssetFile(path);
         }
 
         inline static bool isScriptFile(const std::string& path) {
