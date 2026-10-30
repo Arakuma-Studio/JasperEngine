@@ -9,6 +9,7 @@
 #include "Project.h"
 #include "System.h"
 #include "TestSystem.h"
+#include "command/CommandHandle.h"
 
 #include <gtest/gtest.h>
 
@@ -73,6 +74,12 @@ void editor::test::useProjectPaths(Project* project) {
     provider.lua = [project]() { return project->getLuaPath().string(); };
     provider.userData = [project]() { return project->getUserDataPath().string(); };
     jasperengine::test::TestSystem::get().setPathProvider(std::move(provider));
+}
+
+void editor::test::closeProject(Project& project) {
+    for (SceneProject& scene : project.getScenes())
+        CommandHandle::remove(scene.id);
+    project.releaseScenes();
 }
 
 double editor::test::perfSlack() {

@@ -880,21 +880,24 @@ bool LatticeBakeGltf::saveBinary(const fs::path& file, std::string& error){
             continue;
         }
 
+        // the new accessors go at the end of the list: a reference into it would dangle after
+        // the first one (a second group of a shared accessor read freed memory)
+        const Json source = accessor;
         for (const auto& group : groups){
             const Data& data = *group.first;
             const Slot& slot = group.second[0]->slot;
             Json created = Json::object();
-            if (accessor.contains("name")){
-                created["name"] = accessor["name"];
+            if (source.contains("name")){
+                created["name"] = source["name"];
             }
 
             // a sparse morph target without a base keeps its sparsity: the displacement of a
             // vertex the target does not move stays exactly zero
             bool sparse = false;
-            if (slot.target >= 0 && accessor.contains("sparse") && !accessor.contains("bufferView")){
+            if (slot.target >= 0 && source.contains("sparse") && !source.contains("bufferView")){
                 std::vector<bool> listed(count, false);
                 std::vector<uint32_t> indices;
-                const Json& sparseJson = accessor["sparse"];
+                const Json& sparseJson = source["sparse"];
                 size_t sparseCount = 0, indexView = 0, indexType = 0, viewStart = 0, viewLength = 0;
                 if (getIndex(sparseJson, "count", sparseCount) && sparseJson.contains("indices") &&
                         getIndex(sparseJson["indices"], "bufferView", indexView) && getIndex(sparseJson["indices"], "componentType", indexType) &&

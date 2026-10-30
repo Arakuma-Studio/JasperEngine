@@ -9,6 +9,7 @@
 #include "organisation/LabelOperations.h"
 #include "organisation/OrganisationCommands.h"
 #include "organisation/OrganisationTestProject.h"
+#include "support/EditorTestSupport.h"
 
 #include <gtest/gtest.h>
 
@@ -102,8 +103,7 @@ TEST_F(AssetLabelsProjectTest, MetaAndInFile) {
         reopened.getAssetLabels().update();
         EXPECT_EQ(reopened.getAssetLabels().labelsOf(hero), (std::vector<std::string>{"Boss Fight", "Hero"}));
         EXPECT_EQ(reopened.getAssetLabels().labelsOf(enemy), std::vector<std::string>{"Hero"});
-        for (SceneProject& candidate : reopened.getScenes()) CommandHandle::remove(candidate.id);
-        reopened.releaseScenes();
+        closeProject(reopened);
     }
 
     // one undo puts both files back

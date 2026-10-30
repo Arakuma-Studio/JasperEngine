@@ -14,6 +14,7 @@ from __future__ import annotations
 from harness import Editor, find_key
 
 EDITOR = {"create": True, "name": "Play Startup Scenes"}
+CI = True
 TIMEOUT = 600
 
 S: dict = {}

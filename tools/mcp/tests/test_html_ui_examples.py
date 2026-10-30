@@ -27,6 +27,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import pngdiff  # noqa: E402  (tools/mcp/pngdiff.py)
 
 EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
+CI_EXCLUDED = ("long-running (about an hour: each example's play golden drawn by the software renderer); "
+               "in the full suite (MCP_SUITE=all) on the build servers")
 
 TIMEOUT = 900
 

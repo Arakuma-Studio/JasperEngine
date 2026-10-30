@@ -164,10 +164,20 @@ async def test_parallel():
         (tests / "test_ci_created.py").write_text('CI = True\nEDITOR = {"create": True}\n\nasync def test_ping(ed):\n    await ed.ping()\n')
         (tests / "test_ci_editorless.py").write_text("CI = True\n\nasync def test_nothing():\n    pass\n")
         (tests / "test_not_ci.py").write_text("async def test_ping(ed):\n    await ed.ping()\n")
+        (tests / "test_long.py").write_text('CI_EXCLUDED = "long-running"\n\nasync def test_nothing():\n    pass\n')
         suite = runner + ["--suite", "ci", "--tests-dir", str(tests)]
         r = subprocess.run(suite, capture_output=True, text=True)
-        ok(r.returncode == 0 and "2 passed, 0 failed, 0 skipped" in r.stdout and "test_not_ci" not in r.stdout,
-           "runner: --suite ci runs the CI = True files only")
+        ok(r.returncode == 0 and "2 passed, 0 failed, 0 skipped" in r.stdout and "PASS test_not_ci" not in r.stdout
+           and "PASS test_long" not in r.stdout, "runner: --suite ci runs the CI = True files only")
+        ok("--suite ci runs 2 test file(s) and leaves out 2:" in r.stdout and
+           "left out test_not_ci.py: needs the default fixture" in r.stdout and
+           "left out test_long.py: long-running" in r.stdout and "(2 test file(s) left out by --suite ci)" in r.stdout,
+           "runner: --suite ci says which files it leaves out, and why")
+        (tests / "test_unexplained.py").write_text("async def test_nothing():\n    pass\n")
+        r = subprocess.run(suite, capture_output=True, text=True)
+        ok(r.returncode == 2 and "test_unexplained.py: left out of CI for no reason" in r.stderr,
+           "runner: --suite ci exits 2 on a file left out for no reason")
+        (tests / "test_unexplained.py").unlink()
         (tests / "test_ci_default_fixture.py").write_text("CI = True\n\nasync def test_ping(ed):\n    await ed.ping()\n")
         r = subprocess.run(suite, capture_output=True, text=True)
         ok(r.returncode == 2 and "test_ci_default_fixture.py: CI = True" in r.stderr,

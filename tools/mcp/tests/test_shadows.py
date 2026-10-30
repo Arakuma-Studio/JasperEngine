@@ -69,8 +69,14 @@ async def light_set(ed: Editor, scene: int, light: int, **values):
     await ed.call("set_properties", scene=scene, entity=light, values={"light": values})
 
 
+# the goldens' and the measurements' field of view: 0.75 rad, the camera component's default the
+# Scene view had before S26 made its own 60 degrees the default (set, not taken from a default)
+SCENE_FOV = math.degrees(0.75)
+
+
 async def aim(ed: Editor, scene: int, position, target):
-    await ed.call("set_scene_camera", scene=scene, position=position, target=target, display=DISPLAY)
+    await ed.call("set_scene_camera", scene=scene, position=position, target=target, display=DISPLAY,
+                  camera_settings={"fov": SCENE_FOV})
 
 
 async def debug_view(ed: Editor, scene: int, view: str):
@@ -661,7 +667,9 @@ async def golden(ed: Editor, name: str, img):
         print(f"     [golden] wrote {path.relative_to(harness.REPO)}: look at it")
         return
     ed.check(path.is_file(), f"no golden {path} (JASPER_SHADOW_UPDATE_GOLDEN=1 writes it)")
-    ok, fraction, diff = pngdiff.compare(img, pngdiff.load(path), 24, 0.01)
+    # the Scene view's size follows the editor's layout: compared in the frame both show
+    shown, reference = pngdiff.same_frame(img, pngdiff.load(path))
+    ok, fraction, diff = pngdiff.compare(shown, reference, 24, 0.01)
     if not ok:
         keep_shot(f"{name}.actual", img)
         if diff:

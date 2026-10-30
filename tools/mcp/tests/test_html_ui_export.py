@@ -22,6 +22,7 @@ from harness import Editor, REPO, skip
 from htmlui_pixels import count_near
 
 EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
+CI = True
 
 TIMEOUT = int(os.environ.get("JASPER_BUILD_TIMEOUT", "7200"))
 JOBS = 2

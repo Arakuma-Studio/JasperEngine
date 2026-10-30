@@ -55,7 +55,8 @@
 # mcp-tests: MCP_SUITE=ci (default; the CI = True files) or all (needs the fixture project,
 # mounted read-only at /fixture: JASPER_FIXTURE, else build/fixture-unity of this or the main
 # checkout, else ~/je/fixture-unity, the build servers' copy); arguments after the target and MCP_TEST_ARGS go to
-# tools/mcp/run-tests.sh (e.g. -j 2, -k undo). Results: build/test-results/mcp.json.
+# tools/mcp/run-tests.sh (e.g. -j 2, -k undo). Results: build/test-results/mcp.json. MCP_SUITE=all first
+# builds the mesh-raycast web test project (build/web-mesh-raycast) its web latency gate loads.
 # web, android: WEB_PROJECT=<name> / ANDROID_PROJECT=<name> build the test project
 # tools/test-projects/<name>/ instead of engine/project, into build/web-<name> or
 # build/android-<name> (core-utilities: the logger and Lua Timer, S09).
@@ -137,12 +138,37 @@ JOBS_FLAG=""
 # KEEP_GOING=1: Ninja builds every target it can after a failure (all the errors of one run)
 [[ "${KEEP_GOING:-0}" == 1 ]] && JOBS_FLAG="$JOBS_FLAG -- -k 0"
 
-# Rebuilding an unchanged image is a no-op thanks to the layer cache. The containers run the
-# image by id: other worktrees (with another Dockerfile) may retag the shared name meanwhile.
+# mcp-tests, the full suite: the web build test_mesh_raycast.py's latency gate loads (the
+# mesh-raycast test project for Emscripten, in the web image), built once and kept up to date
+# (ninja, ccache). Before the Linux image is picked below: while it builds, another worktree's
+# image build may retag the shared name and its old image be pruned.
+if [[ "$TARGET" == mcp-tests && "${MCP_SUITE:-ci}" == all && $SHELL_MODE -eq 0 && $EXEC_MODE -eq 0 ]]; then
+    env -u WEB_THREADS -u WASM_SIMD -u CXX_STANDARD -u SANITIZE -u JASPER_DOCKER_IMAGE WEB_PROJECT=mesh-raycast "$ROOT/tools/build.sh" web \
+        || { echo "mcp-tests: the mesh-raycast web build (WEB_PROJECT=mesh-raycast tools/build.sh web) failed" >&2; exit 1; }
+fi
+# Rebuilding an unchanged image is a no-op thanks to the layer cache. The image is tagged with
+# a hash of its Dockerfile and of what that COPYs or ADDs from docker/ (jasperengine/<target>-build:
+# <12 hex>), and :latest names the newest build (for people): worktrees with different Dockerfiles
+# each keep theirs, instead of retagging one name back and forth and leaving the other image
+# untagged, for a prune to delete under a job that still runs it. The containers run it by id.
+image_hash() {
+    local file="$ROOT/docker/$1.Dockerfile"
+    {
+        cat "$file"
+        # the build-context sources of COPY and ADD (not a --from stage's)
+        awk 'toupper($1) == "COPY" || toupper($1) == "ADD" {
+                 from = 0; for (i = 2; i <= NF; i++) if ($i ~ /^--from/) from = 1
+                 if (!from) for (i = 2; i < NF; i++) if ($i !~ /^--/) print $i
+             }' "$file" | while read -r source; do
+            (cd "$ROOT/docker" && find "./$source" -type f -print0 2>/dev/null | sort -z | xargs -0 -r sha256sum)
+        done
+    } | sha256sum | cut -c1-12
+}
 if [[ -n "${JASPER_DOCKER_IMAGE:-}" ]]; then
     IMAGE_ID="$JASPER_DOCKER_IMAGE"
 else
-    IMAGE_ID="$(docker build -q -t "$IMAGE" -f "$ROOT/docker/$IMAGE_TARGET.Dockerfile" "$ROOT/docker")"
+    IMAGE_ID="$(docker build -q -t "$IMAGE:$(image_hash "$IMAGE_TARGET")" -t "$IMAGE:latest" \
+        -f "$ROOT/docker/$IMAGE_TARGET.Dockerfile" "$ROOT/docker")"
 fi
 
 HTMLUI_BACKEND="${HTMLUI_BACKEND:-glcore}"
@@ -213,11 +239,12 @@ for name in JASPER_HTMLUI_UPDATE_GOLDEN JASPER_HTMLUI_WRITE_ACTUAL JASPER_TEST_U
             JASPER_TEST_KEEP_TEMP JASPER_REFLECT_WRITE_FIXTURE JASPER_BENCH_ENTITIES JASPER_HTMLUI_PERF_SLACK JASPER_TEST_PERF_SLACK \
             HTMLUI_LIVE_NETWORK JASPER_CHROME JASPER_ZERO_COST_UPDATE JASPER_PICK_SIMD \
             JASPER_HTMLUI_S16_OFF JASPER_HTMLUI_BATCHING JASPER_HTMLUI_SDF_PRIMITIVES JASPERENGINE_GPU_TIMER JASPER_HTMLUI_PROFILE \
-            JASPER_TEST_UPDATE_FIXTURES; do
+            JASPER_TEST_UPDATE_FIXTURES JASPER_SLOW_BUILD JASPER_SLOW_TESTS JASPER_BUILD_TIMEOUT JASPER_MCP_PERF_SLACK; do
     # (JASPER_HTMLUI_PERF_SLACK: the HTML UI performance tests' tolerance on a loaded host, compat_perf_test.cpp;
     # JASPER_TEST_PERF_SLACK: the core tests' wall-clock budgets are enforced only when it is set;
     # JASPER_PICK_SIMD: the picking BVH's slab test path, scalar|avx2|neon, S26 AC2;
-    # JASPER_TEST_UPDATE_FIXTURES: the editor's TextureFormatFixtures writes the GPU format test's cooks, S14)
+    # JASPER_TEST_UPDATE_FIXTURES: the editor's TextureFormatFixtures writes the GPU format test's cooks, S14;
+    # JASPER_SLOW_BUILD, JASPER_SLOW_TESTS, JASPER_BUILD_TIMEOUT, JASPER_MCP_PERF_SLACK: the MCP suite's opt-ins)
     [[ -n "${!name:-}" ]] && ENV_FLAGS+=(-e "$name=${!name}")
 done
 # Sanitizer runtime options for every run (tools/sanitizers/*.supp: third-party code only)

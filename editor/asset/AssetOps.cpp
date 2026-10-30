@@ -143,6 +143,12 @@ Result AssetOps::move(Project& project, const fs::path& from, const fs::path& to
         result.error = to.string() + " already exists";
         return result;
     }
+    // a file no asset refresh has seen yet (written a moment ago: the refresh is a Background
+    // walk) gets its identity first, so the references bound to it below follow the move
+    AssetDatabase& database = project.getAssetDatabase();
+    if (database.isOpen() && (fs::is_directory(from, ec) || database.getAssetGuid(from).isNull())) {
+        project.onAssetFilesChanged(database.importAssets(from));
+    }
     // a path assigned in an open document since its last save follows the file too
     project.bindLoadedAssetRefs();
     result.textReferencesBroken = textReferencesInto(project, from);

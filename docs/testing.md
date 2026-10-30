@@ -23,6 +23,11 @@ The design and acceptance record is `docs/specs/S02-build-ci-tests.md`.
 
 The only host requirement is Docker. Builds go to `build/<target>/`, a ccache shared by every
 worktree of a checkout makes rebuilds cheap.
+Each image is tagged `jasperengine/<target>-build:<hash>`, the first 12 hex digits of a sha256 over
+its Dockerfile and what that COPYs or ADDs from `docker/`; `:latest` names the newest build.
+Worktrees with different Dockerfiles therefore keep one image each instead of retagging one name
+back and forth (a rebuild on every switch, and an untagged image that `docker image prune` deletes
+under a job still running it by id). The containers run the image by id.
 
 ### Unit tests: `tools/build.sh unit-tests`
 
@@ -72,7 +77,11 @@ waiting click and refused drop (`tools/mcp/tests/test_scene_view*.py`).
   not in git: `JASPER_FIXTURE`, else `build/fixture-unity` of the checkout or the main checkout,
   else `~/je/fixture-unity` (the build servers' copy), mounted at `/fixture`. The harness looks in
   the same places (`harness.default_fixture()`); without a fixture, the tests that need it skip
-  and say where they looked. See `docs/mcp/README.md` for writing MCP tests.
+  and say where they looked. `MCP_SUITE=all` first builds the mesh-raycast web test project
+  (`build/web-mesh-raycast`, the web image; up to date after the first time) for
+  `test_mesh_raycast.py`'s web latency gate. The Linux image carries the suite's test tools
+  (lua-language-server, clangd, FFmpeg with AV1, chrome-headless-shell), so none of their tests
+  skips there. See `docs/mcp/README.md` for writing MCP tests.
 - An MCP test asserts behaviour; a wall-clock budget (a CLI start in 300 ms, a reload frame under
   16 ms, ...) goes through `harness.over_budget(what, measures, budget)`, which prints a `[bench]`
   line and fails only when `JASPER_MCP_PERF_SLACK` is set: a shared build server's load alone
@@ -530,7 +539,11 @@ whenever Physics Placement's convex decomposition was cancelled while V-HACD han
 hulls over: its finalize loop stopped and cleared the map that owned the rest. The vendored
 header now frees them (`engine/libs/vhacd/README.jasper.md`);
 `ConvexDecomposition.CancelWhileFinalizingFreesTheHulls` cancels at that point and measures the
-heap. With it the editor tree under ASan + UBSan ran 871 tests with no leak report.
+heap. With it the editor tree under ASan + UBSan ran 871 tests with no leak report. A loaded
+`Project` frees none of its scenes itself (the editor's lives as long as the process, the CLI's
+have no renderer): an editor test that loads one closes it with `editor::test::closeProject`
+(`editor/tests/support/EditorTestSupport.h`) before dropping it, or every scene and its render
+leaks (S08's reflection tests leaked about 84 MB that way).
 
 ### Unity build (R25)
 

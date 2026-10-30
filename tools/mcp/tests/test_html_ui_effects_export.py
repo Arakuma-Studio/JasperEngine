@@ -34,6 +34,7 @@ from harness import Editor, skip, REPO
 from htmlui_pixels import decode_png, near
 
 EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
+CI = True
 
 TIMEOUT = int(os.environ.get("JASPER_BUILD_TIMEOUT", "7200"))
 JOBS = 2

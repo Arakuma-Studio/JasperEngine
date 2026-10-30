@@ -39,6 +39,7 @@ from harness import Editor, TestFailure, REPO
 from htmlui_pixels import Shot
 
 EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
+CI = True
 
 S: dict = {}
 

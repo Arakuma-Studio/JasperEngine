@@ -134,6 +134,27 @@ def crop(img, x: int, y: int, w: int, h: int):
     return cw, chh, out
 
 
+def same_frame(a, b):
+    """Two shots of one camera at different view sizes, cut to what both show at one size: the
+    same height (a perspective camera's vertical field of view, an orthographic camera's size, spans
+    the view's height), then the middle columns both have. The Scene view's size follows the
+    editor's layout (a toolbar line more is a few pixels less), its camera does not."""
+    height = min(a[1], b[1])
+
+    def to_height(img):
+        if img[1] == height:
+            return img
+        return downscale(img, max(1, round(img[0] * height / img[1])), height)
+
+    a, b = to_height(a), to_height(b)
+    width = min(a[0], b[0])
+
+    def middle(img):
+        return img if img[0] == width else crop(img, (img[0] - width) // 2, 0, width, height)
+
+    return middle(a), middle(b)
+
+
 def downscale(img, w: int, h: int):
     """A box-filtered w x h copy: every output pixel is the area-weighted mean of the source
     pixels it covers (exact for integer ratios, area weights otherwise)."""

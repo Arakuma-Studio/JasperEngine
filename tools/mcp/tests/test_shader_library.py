@@ -16,6 +16,8 @@ from harness import Editor, TestFailure, find_key
 from shader_project import scene as project_scene
 
 EDITOR = {"create": True}
+CI_EXCLUDED = ("long-running (about 15 minutes: the shader library's compile matrix on every graphics API); "
+               "in the full suite (MCP_SUITE=all) on the build servers")
 TIMEOUT = 900
 
 # a mesh fork with a manifest whose @property names no member and whose @texture is undeclared

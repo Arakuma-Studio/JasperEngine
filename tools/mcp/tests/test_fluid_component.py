@@ -17,6 +17,7 @@ import yaml
 from harness import Editor
 
 EDITOR = {"create": True, "name": "Fluid Component"}
+CI = True
 TIMEOUT = 900
 
 S: dict = {}

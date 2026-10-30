@@ -462,8 +462,24 @@ bool editor::AssetDatabase::readInFileIdentity(const fs::path& fullPath, Guid& g
 }
 
 bool editor::AssetDatabase::writeInFileIdentity(const fs::path& fullPath, const Guid& guid, const std::vector<Guid>& formerGuids) {
+    // The GUID goes into the bytes on disk: a save of another program that lands between the
+    // read and the write (an agent editing the clip while the asset refresh adds its GUID) is
+    // read again, not overwritten with what was read before it
+    constexpr int ATTEMPTS = 5;
+    for (int attempt = 0; attempt < ATTEMPTS; attempt++) {
+        bool superseded = false;
+        const bool ok = writeInFileIdentityOnce(fullPath, guid, formerGuids, &superseded);
+        if (!superseded) return ok;
+    }
+    Out::warning("Could not write the GUID of %s: it kept changing while it was written", fullPath.string().c_str());
+    return false;
+}
+
+bool editor::AssetDatabase::writeInFileIdentityOnce(const fs::path& fullPath, const Guid& guid, const std::vector<Guid>& formerGuids,
+                                                    bool* superseded) {
+    const assetio::ReadStamp read = assetio::stampOf(fullPath);
     std::string text;
-    if (!assetio::readFile(fullPath, text)) {
+    if (!read.exists || !assetio::readFile(fullPath, text)) {
         return false;
     }
     if (isClipFile(fullPath)) {
@@ -473,8 +489,8 @@ bool editor::AssetDatabase::writeInFileIdentity(const fs::path& fullPath, const 
             return false;
         }
         std::string error;
-        if (!assetio::writeFile(fullPath, text, assetio::Durability::Document, &error)) {
-            Out::warning("Could not write the GUID of %s: %s", fullPath.string().c_str(), error.c_str());
+        if (!assetio::rewriteFile(fullPath, text, assetio::Durability::Document, read, superseded, &error)) {
+            if (!*superseded) Out::warning("Could not write the GUID of %s: %s", fullPath.string().c_str(), error.c_str());
             return false;
         }
         return true;
@@ -580,8 +596,8 @@ bool editor::AssetDatabase::writeInFileIdentity(const fs::path& fullPath, const 
     }
 
     std::string error;
-    if (!assetio::writeFile(fullPath, updated, assetio::Durability::Document, &error)) {
-        Out::warning("Could not write the GUID of %s: %s", fullPath.string().c_str(), error.c_str());
+    if (!assetio::rewriteFile(fullPath, updated, assetio::Durability::Document, read, superseded, &error)) {
+        if (!*superseded) Out::warning("Could not write the GUID of %s: %s", fullPath.string().c_str(), error.c_str());
         return false;
     }
     return true;
@@ -803,6 +819,23 @@ bool editor::AssetDatabase::readIdentity(const std::string& relative, AssetType 
     return true;
 }
 
+void editor::AssetDatabase::stampAfterIdentityWrite(Entry& entry, bool written) const {
+    statFile(entry.path, entry.writeTime, entry.size);
+    if (!written || readOnly || AssetTypes::info(entry.type).identity != AssetIdentity::InFile) {
+        return;
+    }
+    Guid guid;
+    std::vector<Guid> formerGuids;
+    const bool found = readInFileIdentity(projectPath / entry.path, guid, formerGuids);
+    fs::file_time_type time;
+    uint64_t size = 0;
+    statFile(entry.path, time, size);
+    if (!found || guid != entry.guid || time != entry.writeTime || size != entry.size) {
+        entry.writeTime = fs::file_time_type{};
+        entry.size = 0;
+    }
+}
+
 bool editor::AssetDatabase::writeIdentity(const Entry& entry) const {
     // read-only: the identity lives in memory (a legacy file's GUID is the one an editor
     // upgrading it writes, R3)
@@ -942,7 +975,8 @@ editor::AssetDatabase::Entry editor::AssetDatabase::identify(const std::string& 
     // R3: the legacy GUID when nothing uses it, so two machines upgrading the same commit agree
     entry.guid = freshGuid(preferredGuid);
     refreshSubAssets(entry, nullptr);
-    if (!writeIdentity(entry)) {
+    const bool written = writeIdentity(entry);
+    if (!written) {
         // a clip that does not parse (a Unity YAML .anim, broken JSON) is reported by the clip
         // checks, not here
         std::string text;
@@ -951,7 +985,7 @@ editor::AssetDatabase::Entry editor::AssetDatabase::identify(const std::string& 
             Out::warning("The GUID of %s is kept in memory only", relative.c_str());
         }
     }
-    statFile(relative, entry.writeTime, entry.size);
+    stampAfterIdentityWrite(entry, written);
     if (AssetTypes::info(type).identity == AssetIdentity::Sidecar && !readOnly) {
         entry.hasMeta = true;
         statFile(AssetTypes::metaPathFor(relative).generic_string(), entry.metaWriteTime, entry.metaSize);
@@ -1622,8 +1656,7 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::refresh(const 
                 updated.hasContentHash = false;
                 refreshSubAssets(updated, &known);
             }
-            writeIdentity(updated);
-            statFile(relative, updated.writeTime, updated.size);
+            stampAfterIdentityWrite(updated, writeIdentity(updated));
             if (sidecar) {
                 updated.hasMeta = true;
                 statFile(AssetTypes::metaPathFor(relative).generic_string(), updated.metaWriteTime, updated.metaSize);
@@ -2150,8 +2183,7 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::importAssets(c
                 entry.subAssets.clear();
                 entry.subAssetIndices.clear();
                 refreshSubAssets(entry, nullptr);
-                writeIdentity(entry);
-                statFile(relative, entry.writeTime, entry.size);
+                stampAfterIdentityWrite(entry, writeIdentity(entry));
                 if (entry.hasMeta) statFile(AssetTypes::metaPathFor(relative).generic_string(), entry.metaWriteTime, entry.metaSize);
             } else {
                 // The file the database knew is gone: this is it, moved

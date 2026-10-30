@@ -22,6 +22,7 @@ from harness import Editor
 # posing selects, and these tests undo the edits made around it (test_undo covers selection steps).
 EDITOR = {"project": harness.REPO / "tools" / "fixtures" / "pose-animation", "xvfb": "harness",
           "settings": {"undo": {"record_selection": False}}}
+CI = True
 TIMEOUT = 900
 
 HERO = "assets/models/hero_tpose.gltf"
