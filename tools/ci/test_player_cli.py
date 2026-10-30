@@ -12,9 +12,10 @@ image of docker/runtime.Dockerfile:
   --fixed-fps 60 --screenshot --fail-on-error exits 0, and its frame matches
   golden/prebuilt-linux-<backend>.png (pngdiff --tolerance 24 --max-fraction 0.01). Content of
   another player exits 5, a bad option 2.
-- components: tools/fixtures/reflection-parity (every component type) built with the release
-  player and run headless for 120 frames: exit 0, and no cooked component unknown or unreadable
-  (the release link keeps every table and hook).
+- components: tools/fixtures/reflection-parity (every component type, assets missing) built with
+  the release player and run headless --after-ready: it gets ready (missing assets are logged, not
+  waited for) and exits 0, with no cooked component unknown or unreadable (the release link keeps
+  every table and hook).
 - web (AC2, S06 AC20/AC21): `build --platform web` with EMSDK unset; the browser gate passes with
   COOP/COEP headers (pthreads player), without them (the service worker isolates the page after
   one reload: pthreads player), without them and with the service worker blocked (single-thread
@@ -193,9 +194,10 @@ def check_components(args, players: Path, out: Path) -> None:
         result = build(args.editor, players, project, out / "components", "linux", "--backend", backend, "--method", "prebuilt",
                        "--allow-missing-assets", "--start-scene", "AllComponents")
         exe = Path(lines(result, "executable")[0])
-        # a fixed run, not --after-ready: the fixture's assets are not all there, so its scene never
-        # reports every resource loaded
-        game = run([exe, "--headless", "--quit-after", "120", "--fixed-fps", "60"], cwd=exe.parent, timeout=600, check=False)
+        # its assets are not all there (a texture, a pose animation, an empty mesh, a model file):
+        # the failures are logged, and the scene still finishes loading and gets ready
+        game = run([exe, "--headless", "--after-ready", "--quit-after", "10", "--fixed-fps", "60", "--ready-timeout", "120"],
+                   cwd=exe.parent, timeout=600, check=False)
     log = game.stdout + game.stderr
     problems = [line for line in log.splitlines() if "Cooked content" in line or "unknown component" in line]
     if game.returncode != 0 or problems:

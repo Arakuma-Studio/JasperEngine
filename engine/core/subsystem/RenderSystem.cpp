@@ -11586,9 +11586,16 @@ void RenderSystem::forEachLoad(const std::function<void(bool, Entity, const char
     auto meshes = scene->getComponentArray<MeshComponent>();
     for (int i = 0; i < meshes->size(); i++) {
         const MeshComponent& mesh = meshes->getComponentFromIndex(i);
+        const Entity entity = meshes->getEntity(i);
+        // nothing to load: no geometry, and no model (or its load is over: a missing or broken
+        // file leaves the mesh empty for good). Not pending, as an empty UI or Lines is not; a
+        // model still loading, or geometry that arrives later, is waited for (loadMesh runs then)
+        const ModelComponent* model = scene->findComponent<ModelComponent>(entity);
+        const bool nothingToLoad = !mesh.loaded && mesh.buffer.getSize() == 0 && mesh.indices.getSize() == 0 &&
+                                   mesh.numExternalBuffers == 0 && (!model || !model->needUpdateModel);
         // a mesh drawing its previous variant while the new one builds is still loading
-        visit((mesh.loaded && !mesh.needVariantReload) || (!mesh.loadCalled && isMeshShaderUnavailable(mesh)) ||
-              scene->findComponent<SplineExtrudeComponent>(meshes->getEntity(i)) != nullptr, meshes->getEntity(i), "mesh");
+        visit((mesh.loaded && !mesh.needVariantReload) || (!mesh.loadCalled && isMeshShaderUnavailable(mesh)) || nothingToLoad ||
+              scene->findComponent<SplineExtrudeComponent>(entity) != nullptr, entity, "mesh");
     }
 
     // Check UIComponents
