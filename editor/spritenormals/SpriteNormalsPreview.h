@@ -85,8 +85,8 @@ namespace jasperengine::editor::spritenormals {
         double scale = 1.0;
         int innerPixels = 0;
         double roughnessDeg = 0.0;     // the final map (the paint included): mean angle to the blur (streaky)
-        double creasePct = 0.0;        // the silhouette's share (`shape`, painted pixels from the map): inner
-                                       // pixels over kCreaseDeg from the blur (creased)
+        double creasePct = 0.0;        // the silhouette's share (`shape`; painted pixels and 3 sigma around them
+                                       // left out): inner pixels over kCreaseDeg from the blur (creased)
     };
     // The deviation from the blurred normal that marks a crease pixel (the medial-axis ridge of
     // the rounded profile above 128 px deviates 10-25 degrees along it; inflate stays under 3)
@@ -96,10 +96,12 @@ namespace jasperengine::editor::spritenormals {
     double medianIslandSide(const Image& image, const std::vector<Cell>& cells, float alphaThreshold);
     // `paint` (optional, the normal's size): the painted visible pixels counted. The metrics are
     // of `normal` as given: the composited result when there is paint. `shape` (optional,
-    // Result::shape): the creases are measured on it with the painted pixels taken from `normal`
-    // (the silhouette's share: the painted relief is wanted detail, not a crease), else on `normal`.
+    // Result::shape): the creases are measured on it (the silhouette's share: the painted relief is
+    // wanted detail, not a crease), else on `normal`; painted pixels and the blur's reach (3 sigma)
+    // around them are left out of the creases. `threads`: 0 = the hardware's (at most 16); the
+    // metrics never depend on it.
     Metrics measure(const Image& normal, const std::vector<Cell>& cells, bool directx, float alphaThreshold,
-                    const PaintOverlay* paint = nullptr, const Image* shape = nullptr);
+                    const PaintOverlay* paint = nullptr, const Image* shape = nullptr, int threads = 0);
 
     struct Assessment {
         std::vector<std::string> lines;   // "Shape: rounded (mean tilt 24°, 12% flat)", ..., "Painted: 214 px (8.1%)"

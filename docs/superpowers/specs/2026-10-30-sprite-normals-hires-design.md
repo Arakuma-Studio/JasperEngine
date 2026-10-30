@@ -75,6 +75,16 @@ Commit this spec as docs/superpowers/specs/2026-10-30-sprite-normals-hires-desig
 - Metric inset: min(8k, half the frame's largest depth) (thin shapes are measured); measured when the shorter side
   is above 128 px (k can be 1 on thin high-resolution art).
 
+## Review round 2 rulings (2026-10-30, binding)
+
+- **A** `crease_pct` is measured on the shape field; painted pixels and 3 sigma around them are excluded (not
+  composited: a painted patch's edge is no crease).
+- **B/C** The outer band's outside: every transparent region whose largest inscribed distance is at least max(2 px,
+  5% of the island's shorter side), plus (edges transparent / extend) those reaching the field's border; with wrap
+  the depth rule alone (independent of the cut: rolled tiles give rolled maps up to float summation order).
+- **D** The band is skipped for an island it would take over 90% of (ghosts, bubbles keep their shape).
+- **E** `measure()` takes the request's thread count; the metrics never depend on it.
+
 ## Final values (implemented and tuned on the evaluation set, 2026-10-30, after review round 1)
 
 Measured with the new CLI on `build/hires-eval` (scripts `v2_*.py`; report `build/hires-eval/IMPLEMENTATION.md`).

@@ -152,6 +152,12 @@ namespace jasperengine::editor::spritenormals {
             return std::max(1.0f, measure / static_cast<float>(kHiresSide));
         }
 
+        // An enclosed transparent region is outside for the outer band when its largest inscribed
+        // distance is at least max(2 px, 5% of the island's shorter side): a ring's middle or a gap
+        // between limbs, not a pinhole or a small hole in glass
+        constexpr float kOutsideHoleDistance = 2.0f;
+        constexpr float kOutsideHoleShare = 0.05f;
+
         // The field of an item: the island's box padded by 1 (Transparent) or the whole cell
         // (Wrap / Extend); the mask (alpha above the cutoff) and the shape mask: the mask less the
         // outer band of soft pixels when the item has one
@@ -162,7 +168,7 @@ namespace jasperengine::editor::spritenormals {
             std::vector<int> pixels;      // field indices of the mask pixels
         };
 
-        ItemField itemField(const Item& item, const Context& ctx) {
+        ItemField itemField(const Item& item, const Context& ctx, detail::Workers* workers = nullptr) {
             const Settings& s = *ctx.settings;
             const Cell& cell = (*ctx.cells)[static_cast<size_t>(item.cell)];
             const Image& color = *ctx.color;
@@ -198,49 +204,83 @@ namespace jasperengine::editor::spritenormals {
             }
             f.shape = f.mask;
             if (item.outerBand) {
-                // soft pixels (alpha under 0.5) 8-connected to the outside through soft pixels: outside the
-                // shape (they keep their alpha and get a normal). The outside is the non-mask pixels
-                // connected (through non-mask pixels) to the field's border: the padding ring with
-                // edges transparent, the cell's border with wrap / extend; a hole enclosed by the sprite
-                // (a pinhole in glass) is not outside, so translucent pixels around it stay inside
+                // soft pixels (alpha under 0.5) 8-connected to the outside through soft or transparent
+                // pixels: outside the shape (they keep their alpha and get a normal). The outside: every
+                // transparent region bigger than a pinhole (its largest inscribed distance at least
+                // max(kOutsideHoleDistance, kOutsideHoleShare x S): a ring's middle), and with edges transparent
+                // or extend also the ones reaching the field's border. With wrap the size alone decides
+                // (no border: the result never depends on where the tile is cut). A pinhole in glass is
+                // not outside, so translucent pixels around it stay inside.
                 const bool wrap = s.edges == Edges::Wrap;
+                const Border border = wrap ? Border::Wrap : Border::Zero;
                 auto soft = [&](size_t i) {
                     const int fx = static_cast<int>(i % f.width) + f.ox, fy = static_cast<int>(i / f.width) + f.oy;
                     return color.pixel(cell.x + fx, cell.y + fy)[3] < 128;
                 };
-                std::vector<uint8_t> seen(n, 0);
-                std::vector<int> queue;
-                for (int y = 0; y < f.height; y++) {
-                    for (int x = 0; x < f.width; x++) {
-                        if (x != 0 && y != 0 && x != f.width - 1 && y != f.height - 1) continue;
-                        const size_t i = static_cast<size_t>(y) * f.width + x;
-                        if (f.mask[i] || seen[i]) continue;
-                        seen[i] = 1;
-                        queue.push_back(static_cast<int>(i));
-                    }
-                }
-                for (size_t head = 0; head < queue.size(); head++) {
-                    const int i = queue[head];
-                    const int x = i % f.width, y = i / f.width;
-                    for (int dy = -1; dy <= 1; dy++) {
-                        for (int dx = -1; dx <= 1; dx++) {
-                            if (!dx && !dy) continue;
-                            int nx = x + dx, ny = y + dy;
-                            if (wrap) {
-                                nx = (nx % f.width + f.width) % f.width;
-                                ny = (ny % f.height + f.height) % f.height;
-                            } else if (nx < 0 || ny < 0 || nx >= f.width || ny >= f.height) {
-                                continue;
+                size_t softCount = 0;
+                for (int i : f.pixels) softCount += soft(static_cast<size_t>(i)) ? 1 : 0;
+                if (softCount > 0) {
+                    // the transparent regions (8-connected, periodic with wrap): their depth and whether they reach the border
+                    std::vector<uint8_t> clear(n, 0);
+                    for (size_t i = 0; i < n; i++) clear[i] = !f.mask[i];
+                    const Field depth = detail::edt(clear, f.width, f.height, border, workers);
+                    const float holeDepth = std::max(kOutsideHoleDistance, kOutsideHoleShare * item.side);
+                    std::vector<uint8_t> seen(n, 0);
+                    std::vector<int> queue, region;
+                    auto neighbours = [&](int i, auto&& visit) {
+                        const int x = i % f.width, y = i / f.width;
+                        for (int dy = -1; dy <= 1; dy++) {
+                            for (int dx = -1; dx <= 1; dx++) {
+                                if (!dx && !dy) continue;
+                                int nx = x + dx, ny = y + dy;
+                                if (wrap) {
+                                    nx = (nx % f.width + f.width) % f.width;
+                                    ny = (ny % f.height + f.height) % f.height;
+                                } else if (nx < 0 || ny < 0 || nx >= f.width || ny >= f.height) {
+                                    continue;
+                                }
+                                visit(static_cast<size_t>(ny) * f.width + nx);
                             }
-                            const size_t j = static_cast<size_t>(ny) * f.width + nx;
-                            if (seen[j]) continue;
-                            if (f.mask[j]) {
-                                if (!soft(j)) continue;
-                                f.shape[j] = 0;   // a soft pixel reached from outside: the outer band
-                            }
-                            seen[j] = 1;
-                            queue.push_back(static_cast<int>(j));
                         }
+                    };
+                    for (size_t start = 0; start < n; start++) {
+                        if (f.mask[start] || seen[start]) continue;
+                        region.clear();
+                        region.push_back(static_cast<int>(start));
+                        seen[start] = 1;
+                        bool outside = false;
+                        for (size_t head = 0; head < region.size(); head++) {
+                            const int i = region[head];
+                            const int x = i % f.width, y = i / f.width;
+                            const float d = depth.data[static_cast<size_t>(i)];
+                            if (!std::isfinite(d) || d >= holeDepth) outside = true;
+                            if (!wrap && (x == 0 || y == 0 || x == f.width - 1 || y == f.height - 1)) outside = true;
+                            neighbours(i, [&](size_t j) {
+                                if (f.mask[j] || seen[j]) return;
+                                seen[j] = 1;
+                                region.push_back(static_cast<int>(j));
+                            });
+                        }
+                        if (outside) queue.insert(queue.end(), region.begin(), region.end());
+                    }
+                    // from the outside, through soft and transparent pixels
+                    std::vector<uint8_t> reached(n, 0);
+                    for (int i : queue) reached[static_cast<size_t>(i)] = 1;
+                    std::vector<int> band;
+                    for (size_t head = 0; head < queue.size(); head++) {
+                        neighbours(queue[head], [&](size_t j) {
+                            if (reached[j]) return;
+                            if (f.mask[j]) {
+                                if (!soft(j)) return;
+                                band.push_back(static_cast<int>(j));
+                            }
+                            reached[j] = 1;
+                            queue.push_back(static_cast<int>(j));
+                        });
+                    }
+                    // only beside a solid core: an island (nearly) all translucent (a ghost, a bubble) keeps its shape
+                    if (band.size() * 10 < f.pixels.size() * 9) {
+                        for (int j : band) f.shape[static_cast<size_t>(j)] = 0;
                     }
                 }
             }
@@ -299,7 +339,7 @@ namespace jasperengine::editor::spritenormals {
             const Border border = s.edges == Edges::Wrap ? Border::Wrap : (s.edges == Edges::Extend ? Border::Clamp : Border::Zero);
 
             // field geometry: field (fx, fy) = cell-local (fx + ox, fy + oy)
-            ItemField field = itemField(item, ctx);
+            ItemField field = itemField(item, ctx, workers);
             const int width = field.width, height = field.height, ox = field.ox, oy = field.oy;
             const std::vector<int>& fieldPixels = field.pixels;
             const size_t n = static_cast<size_t>(width) * static_cast<size_t>(height);
@@ -1088,7 +1128,7 @@ namespace jasperengine::editor::spritenormals {
                     for (Item& probe : largestItems) {
                         probe.side = sequenceSide;
                         probe.outerBand = sequenceSide > static_cast<float>(kHiresSide);
-                        const ItemField f = itemField(probe, ctx);
+                        const ItemField f = itemField(probe, ctx, &workers);
                         const Field d = detail::edt(f.shape, f.width, f.height,
                                                     s.edges == Edges::Wrap ? Border::Wrap : (s.edges == Edges::Extend ? Border::Clamp : Border::Zero), &workers);
                         thick.push_back(maxFinite(d, f.pixels));

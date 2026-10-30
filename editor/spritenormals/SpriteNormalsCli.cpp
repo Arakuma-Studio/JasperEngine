@@ -811,7 +811,7 @@ namespace jasperengine::editor::spritenormals {
             }
             j["profile_resolved"] = profiles;
             if (r.outlineColor) j["outline"] = colorText(*r.outlineColor);
-            const Metrics m = measure(r.normal, cells, s.directx, s.alphaThreshold, &p.paint.overlay, r.shape.empty() ? nullptr : &r.shape);
+            const Metrics m = measure(r.normal, cells, s.directx, s.alphaThreshold, &p.paint.overlay, r.shape.empty() ? nullptr : &r.shape, o.threads);
             const Assessment a = assess(s, m, static_cast<int>(cells.size()), &r);
             j["metrics"] = {{"coverage_pct", rounded(m.coveragePct, 1)}, {"flat_pct", rounded(m.flatPct, 1)}, {"steep_pct", rounded(m.steepPct, 1)},
                             {"mean_tilt_deg", rounded(m.meanTiltDeg, 1)}, {"noise_pct", rounded(m.noisePct, 1)}, {"lean_deg", rounded(m.leanDeg, 1)},

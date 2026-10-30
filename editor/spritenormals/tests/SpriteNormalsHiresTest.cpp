@@ -692,3 +692,122 @@ TEST(SpriteNormalsHires, PaintingOverACreaseClearsIt) {
     EXPECT_LT(m.creasePct, 0.01);
     EXPECT_LT(m.roughnessDeg, 0.01) << "the final map is flat";
 }
+
+// ---------------------------------------------------------------- review round 2
+
+TEST(SpriteNormalsHires, PaintedPatchesAreNoCreases) {
+    // creases are measured on the silhouette's share with painted pixels (and 3 sigma around them)
+    // left out: a flat patch on an inflated sphere is no crease; paint over a rounded crease clears it
+    const Image sphere = disc(600, 600, 280.0f);
+    const Result r = run(sphere, preset(Preset::Default), 4, {}, false, true);
+    PaintOverlay paint = PaintOverlay::blank(600, 600);
+    Image painted = r.normal;
+    for (int y = 150; y < 450; y++) {
+        for (int x = 150; x < 450; x++) {
+            const size_t i = static_cast<size_t>(y) * 600 + x;
+            paint.rgba[i * 4] = 128;
+            paint.rgba[i * 4 + 1] = 128;
+            paint.rgba[i * 4 + 2] = 255;
+            paint.rgba[i * 4 + 3] = 255;
+            painted.data[i * 4] = 128;
+            painted.data[i * 4 + 1] = 128;
+            painted.data[i * 4 + 2] = 255;
+        }
+    }
+    const Metrics m = measure(painted, {}, false, 0.03f, &paint, &r.shape);
+    EXPECT_LT(m.creasePct, kCreasedPct);
+    EXPECT_FALSE(warns(assess(preset(Preset::Default), m, 0, &r), "creased"));
+    // a rounded square's X crease painted over along both diagonals: cleared
+    const Image square = fromFunction(600, 600, [](int x, int y) {
+        return std::array<uint8_t, 4>{170, 120, 80, static_cast<uint8_t>(x >= 20 && x < 580 && y >= 20 && y < 580 ? 255 : 0)};
+    });
+    Settings rounded = preset(Preset::Default);
+    rounded.profile = Profile::Rounded;
+    const Result q = run(square, rounded, 4, {}, false, true);
+    EXPECT_GT(measure(q.normal, {}, false, 0.03f, nullptr, &q.shape).creasePct, kCreasedPct);
+    PaintOverlay strokes = PaintOverlay::blank(600, 600);
+    for (int y = 0; y < 600; y++) {
+        for (int x = 0; x < 600; x++) {
+            if (std::abs(x - y) < 24 || std::abs(x + y - 599) < 24) strokes.rgba[(static_cast<size_t>(y) * 600 + x) * 4 + 3] = 255;
+        }
+    }
+    EXPECT_LT(measure(q.normal, {}, false, 0.03f, &strokes, &q.shape).creasePct, kCreasedPct);
+}
+
+TEST(SpriteNormalsHires, WrapTilesDoNotDependOnTheCut) {
+    // a 512 wrap tile with a soft-rimmed hole: rolling it so the hole straddles the seam rolls the
+    // map (up to float summation order: at most 1 per channel on a handful of pixels)
+    const int N = 512;
+    auto tile = [&](int shift) {
+        return fromFunction(N, N, [=](int x, int y) {
+            const int sx = ((x - shift) % N + N) % N;
+            const float dx = std::min(std::abs(sx - 256.0f), N - std::abs(sx - 256.0f)), dy = std::min(std::abs(y - 256.0f), N - std::abs(y - 256.0f));
+            const float r = std::hypot(dx, dy);
+            const uint8_t v = static_cast<uint8_t>(100 + (sx * 7 + y * 13) % 40);
+            return std::array<uint8_t, 4>{v, v, v, static_cast<uint8_t>(r < 30.0f ? 0 : (r < 45.0f ? 80 : 255))};
+        });
+    };
+    Settings s = preset(Preset::Default);
+    s.edges = Edges::Wrap;
+    const Result a = run(tile(0), s, 4), b = run(tile(256), s, 4);
+    int differing = 0, worst = 0;
+    for (int y = 0; y < N; y++) {
+        for (int x = 0; x < N; x++) {
+            const uint8_t* pa = a.normal.pixel(x, y);
+            const uint8_t* pb = b.normal.pixel((x + 256) % N, y);
+            int d = 0;
+            for (int k = 0; k < 3; k++) d = std::max(d, std::abs(int(pa[k]) - int(pb[k])));
+            worst = std::max(worst, d);
+            differing += d > 0 ? 1 : 0;
+        }
+    }
+    EXPECT_LE(worst, 1);
+    EXPECT_LT(differing, N * N / 1000);
+}
+
+TEST(SpriteNormalsHires, AGlowInsideARingIsLikeAGlowOutside) {
+    // a ring (core |r - 250| < 60) with a soft glow (alpha <= 100) on both sides: the glow inside the
+    // ring's hole is outside the shape exactly as the outer one (rule C: a hole bigger than a pinhole)
+    const Image ring = fromFunction(800, 800, [](int x, int y) {
+        const float d = std::fabs(std::hypot(x + 0.5f - 400.0f, y + 0.5f - 400.0f) - 250.0f) - 60.0f;
+        const uint8_t a = d < 0.0f ? 255 : (d < 40.0f ? static_cast<uint8_t>(100.0f * (1.0f - d / 40.0f)) : 0);
+        return std::array<uint8_t, 4>{200, 200, 200, a};
+    });
+    Settings s = preset(Preset::Default);
+    s.detail = 0.0f;
+    s.height = true;
+    const Result r = run(ring, s, 4);
+    // the heights 20 px into each glow (r = 170, r = 330), and at the core's edges: the glows are flat
+    auto heightAt = [&](int x) {
+        const uint16_t v = reinterpret_cast<const uint16_t*>(r.height.data.data())[static_cast<size_t>(400) * 800 + x];
+        return r.heightMin + (r.heightMax - r.heightMin) * v / 65535.0f;
+    };
+    EXPECT_NEAR(heightAt(400 + 170), heightAt(400 + 330), 0.05f);
+    EXPECT_LT(heightAt(400 + 170), 0.05f * r.heightMax);
+}
+
+TEST(SpriteNormalsHires, TranslucentSpritesKeepTheirShape) {
+    // a ghost: a 500 px disc at alpha 100, no solid core: the outer band would remove it all, so it
+    // keeps its shape (as with version 1), not a flat map
+    const Image ghost = disc(520, 520, 250.0f, 100);
+    const Result v2 = run(ghost, preset(Preset::Default), 4, {}, false, true);
+    Settings v1 = versionOne();
+    const Result old = run(ghost, v1, 4);
+    const Metrics m2 = measure(v2.normal, {}, false, 0.03f, nullptr, &v2.shape), m1 = measure(old.normal, {}, false, 0.03f);
+    EXPECT_GT(m2.meanTiltDeg, 30.0);
+    EXPECT_NEAR(m2.meanTiltDeg, m1.meanTiltDeg, 10.0);
+    EXPECT_FALSE(warns(assess(preset(Preset::Default), m2, 0, &v2), "mostly_flat"));
+}
+
+TEST(SpriteNormalsHires, MetricsDoNotDependOnTheirThreads) {
+    const Image potion = load(kHires / "potion.png");
+    Settings rounded = preset(Preset::Default);
+    rounded.profile = Profile::Rounded;
+    const Result r = run(potion, rounded, 4, {}, false, true);
+    const Metrics a = measure(r.normal, {}, false, 0.03f, nullptr, &r.shape, 1);
+    const Metrics b = measure(r.normal, {}, false, 0.03f, nullptr, &r.shape, 7);
+    EXPECT_EQ(a.roughnessDeg, b.roughnessDeg);
+    EXPECT_EQ(a.creasePct, b.creasePct);
+    EXPECT_EQ(a.noisePct, b.noisePct);
+    EXPECT_EQ(a.meanTiltDeg, b.meanTiltDeg);
+}

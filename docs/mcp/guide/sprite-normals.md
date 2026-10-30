@@ -126,10 +126,13 @@ gets the light pixel art gets:
   diagonal shapes get a radius that fits them (`dome`: the thickness, at most 15% of the shorter side).
 - **Soft edges.** Pixels under alpha 0.5 that reach the transparent outside (a glow, a feathered rim) are outside
   the shape: they keep their alpha and their normal, but do not inflate the sprite. Semi-transparent pixels inside
-  it (glass, a translucent belly) stay part of the shape, also around a fully transparent hole in them (only the
-  transparency that reaches the image's or frame's border is outside).
+  it (glass, a translucent belly) stay part of the shape. The outside is the transparency that reaches the image's or
+  frame's border, and any transparent hole deeper than max(2 px, 5% of the island's shorter side) (a ring's middle:
+  its inner glow behaves like the outer one; a pinhole or a small hole in glass does not count). With `wrap` only the
+  depth counts, so a tile gives the same map wherever it is cut. A sprite that is translucent all over (a ghost, a
+  bubble: the band would take over 90% of it) keeps its whole shape.
 - **Creases are measured.** `crease_pct` (below) warns `creased` with the fix (`profile: inflate` / `dome`, or
-  `softness`); painting over a crease clears it. `roughness_deg` of the whole map warns `streaky` only past every
+  `softness`); painted pixels are not counted, so painting over a crease clears it and a painted patch is no crease. `roughness_deg` of the whole map warns `streaky` only past every
   good result of the evaluation (the painted relief is rough by design).
 
 Long thin art is gated by its shorter side: a 1024x96 sword is pixel art to the generator (rounded, no scaling).
@@ -216,7 +219,7 @@ then lit from the top-left, top-right, bottom-right, bottom-left (the engine's 2
 | `noise_pct` | pixels disagreeing with their neighbours | > 15 (`noisy`) |
 | `lean_deg` | the average normal's lean | > 8 (`leaning`) |
 | `soft_edge_pct` | semi-transparent opaque pixels | > 10 (`soft_edges`; not above 128 px, where soft rims are outside the shape) |
-| `crease_pct` | above 128 px: inner pixels on a crease: the silhouette's normal (the painted relief left out; painted pixels as painted) over 8° from its blur | > 2 (`creased`) |
+| `crease_pct` | above 128 px: inner pixels on a crease: the silhouette's normal (the painted relief left out) over 8° from its blur; painted pixels and 3x the blur's sigma around them not counted | > 2 (`creased`) |
 | `roughness_deg` | above 128 px: mean angle between the map's normal (relief and paint included) and its blur | > 13 (`streaky`, when not creased) |
 
 Both are measured over the inner pixels (deeper than min(8k, half the frame's largest depth) inside the alpha-0.5
@@ -224,7 +227,9 @@ silhouette) against a blur over 4k px, k = max(1, 2T / 128) of the largest islan
 or less (pixel art's 1-2 px creases are its look). Creases: the new defaults 0%, the `rounded` profile above 128 px
 3.6-29%. Roughness is mostly the painted relief (the new defaults 0.2-8.9°, the `tile` preset on brushed cobbles
 12.1°), so `streaky` is kept for maps rougher than any good result: brushwork turned into bumps by strong,
-unsmoothed relief (`detail` 8 with `smoothing` 0.1-0.3 measured 14-21°).
+unsmoothed relief (`detail` 8 with `smoothing` 0.1-0.3 measured 14-21°). The `detailed` preset can warn on flat-shaded
+art above 128 px (a flat-coloured character and a drawn crate measured 14.4-14.6°: every outline becomes a ridge);
+`default` or `painted` suit such art.
 
 `assessment` says the same in words ("Shape: auto -> inflate (mean tilt 42°, 0% flat)", "Roughness: 0.4° (creases
 0.0%)"); `hint` is the fix of the first warning, or "Looks fine.". The result also has `scale_range` and

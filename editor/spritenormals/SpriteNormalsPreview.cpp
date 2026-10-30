@@ -171,7 +171,7 @@ namespace jasperengine::editor::spritenormals {
         // `depth` is padded by 1. Rows in parallel; sums per row, added in row order.
         template <typename Source>
         void deviations(const Cell& cell, int imageWidth, const detail::Field& depth, float inset, float sigma, Source source,
-                        detail::Workers& workers, double& sum, int64_t& count, int64_t& over) {
+                        const detail::Field* excluded, float excludedWithin, detail::Workers& workers, double& sum, int64_t& count, int64_t& over) {
             const int w = cell.width, h = cell.height;
             const double creaseCos = std::cos(kCreaseDeg * kPi / 180.0);
             detail::Field blurred[3] = {detail::Field::zero(w, h), detail::Field::zero(w, h), detail::Field::zero(w, h)};
@@ -193,6 +193,7 @@ namespace jasperengine::editor::spritenormals {
                         const float d = depth.data[static_cast<size_t>(y + 1) * (w + 2) + x + 1];
                         if (!(std::isfinite(d) && d > inset)) continue;
                         const size_t j = static_cast<size_t>(y) * w + x;
+                        if (excluded && excluded->data[j] <= excludedWithin) continue;
                         float n[3];
                         source(static_cast<size_t>(cell.y + y) * imageWidth + (cell.x + x), n);
                         const double bv[3] = {blurred[0].data[j], blurred[1].data[j], blurred[2].data[j]};
@@ -214,6 +215,8 @@ namespace jasperengine::editor::spritenormals {
 
         void measureSmoothness(Metrics& m, const Image& normal, bool directx, const std::vector<Cell>& cells, float alphaThreshold,
                                const PaintOverlay* paint, const Image* shape, detail::Workers& workers) {
+            // (creases: the silhouette's share; painted pixels and the blur's reach around them are
+            // left out: painting over a crease clears it, and a painted patch's edge is no crease)
             const std::vector<Cell> frames = framesOf(normal, cells);
             // per frame: the alpha-0.5 silhouette's depth (a field padded by 1: the frame's border is
             // outside), its largest (the thickness T) and the largest island's shorter side S
@@ -245,25 +248,23 @@ namespace jasperengine::editor::spritenormals {
             m.highResolution = true;
             m.scale = std::max(1.0, 2.0 * median(thicknesses) / kHiresSide);
             const float sigma = static_cast<float>(4.0 * m.scale);
-            const bool painted = paint && paint->sized(normal.width, normal.height);
+            const bool painted = paint && paint->sized(normal.width, normal.height) && !paint->empty();
             const bool separate = (shape && isRgba8(*shape) && shape->width == normal.width && shape->height == normal.height);
             auto finalNormal = [&](size_t i, float n[3]) {
                 const uint8_t* p = normal.data.data() + i * 4;
                 if (p[3] / 255.0f > alphaThreshold) decodeNormal(p, directx, n);
                 else n[0] = n[1] = 0.0f, n[2] = 1.0f;   // transparent: flat
             };
-            // creases: the silhouette's share with the paint over it (painting over a crease clears it)
             auto creaseNormal = [&](size_t i, float n[3]) {
                 const uint8_t* p = normal.data.data() + i * 4;
                 if (!(p[3] / 255.0f > alphaThreshold)) {
                     n[0] = n[1] = 0.0f;
                     n[2] = 1.0f;
-                } else if (painted && paint->rgba[i * 4 + 3] > 0) {
-                    decodeNormal(p, directx, n);
                 } else {
-                    decodeNormal(shape->data.data() + i * 4, directx, n);
+                    decodeNormal((separate ? shape : &normal)->data.data() + i * 4, directx, n);
                 }
             };
+            const float excludedWithin = 3.0f * sigma;
             double roughSum = 0.0, creaseSum = 0.0;
             int64_t roughCount = 0, roughOver = 0, creaseCount = 0, creaseOver = 0;
             for (size_t c = 0; c < frames.size(); c++) {
@@ -273,12 +274,25 @@ namespace jasperengine::editor::spritenormals {
                 }
                 // 8k inside, but at most half the frame's depth: thin shapes are measured too
                 const float inset = std::min(static_cast<float>(8.0 * m.scale), 0.5f * deepest);
-                deviations(frames[c], normal.width, depths[c], inset, sigma, finalNormal, workers, roughSum, roughCount, roughOver);
-                if (separate) deviations(frames[c], normal.width, depths[c], inset, sigma, creaseNormal, workers, creaseSum, creaseCount, creaseOver);
-            }
-            if (!separate) {
-                creaseCount = roughCount;
-                creaseOver = roughOver;
+                deviations(frames[c], normal.width, depths[c], inset, sigma, finalNormal, nullptr, 0.0f, workers, roughSum, roughCount, roughOver);
+                // the distance of every pixel to the frame's nearest painted one (none: no exclusion)
+                detail::Field near;
+                bool anyPainted = false;
+                if (painted) {
+                    const Cell& cell = frames[c];
+                    std::vector<uint8_t> unpainted(static_cast<size_t>(cell.width) * cell.height, 1);
+                    for (int y = 0; y < cell.height; y++) {
+                        for (int x = 0; x < cell.width; x++) {
+                            if (paint->rgba[(static_cast<size_t>(cell.y + y) * normal.width + cell.x + x) * 4 + 3] > 0) {
+                                unpainted[static_cast<size_t>(y) * cell.width + x] = 0;
+                                anyPainted = true;
+                            }
+                        }
+                    }
+                    if (anyPainted) near = detail::edt(unpainted, cell.width, cell.height, detail::Border::Zero, &workers);
+                }
+                deviations(frames[c], normal.width, depths[c], inset, sigma, creaseNormal, anyPainted ? &near : nullptr, excludedWithin, workers,
+                           creaseSum, creaseCount, creaseOver);
             }
             m.innerPixels = static_cast<int>(roughCount);
             if (roughCount > 0) m.roughnessDeg = roughSum / static_cast<double>(roughCount);
@@ -455,7 +469,7 @@ namespace jasperengine::editor::spritenormals {
     }
 
     Metrics measure(const Image& normal, const std::vector<Cell>& cells, bool directx, float alphaThreshold, const PaintOverlay* paint,
-                    const Image* shape) {
+                    const Image* shape, int threads) {
         Metrics m;
         if (!isRgba8(normal)) return m;
         const int width = normal.width, height = normal.height;
@@ -489,8 +503,9 @@ namespace jasperengine::editor::spritenormals {
         const double noiseCos = std::cos(35.0 * kPi / 180.0);
         // rows in chunks on the pool, each chunk decoding its rows and the one above and below;
         // per-row partial sums added in row order (the same bits on any thread count)
+        // the request's thread count (0: the hardware's, at most 16, as generate())
         const unsigned hw = std::thread::hardware_concurrency();
-        detail::Workers workers(static_cast<int>(std::min(hw == 0 ? 1u : hw, 16u)));
+        detail::Workers workers(threads > 0 ? threads : static_cast<int>(std::min(hw == 0 ? 1u : hw, 16u)));
         struct RowStats {
             double tilt = 0.0, sum[3] = {0.0, 0.0, 0.0};
             int64_t opaque = 0, flat = 0, steep = 0, soft = 0, noisy = 0, painted = 0;
