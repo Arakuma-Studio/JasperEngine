@@ -58,20 +58,21 @@ def group(path: str | None) -> str:
 
 # (pattern on the demangled name, group): the first that matches names the symbol's group
 NAMES = [(re.compile(p), g) for p, g in [
-    (r"^(glslang::|TPpContext|spv::|QualifierFlags|ShInitialize|ShFinalize)", "lib: glslang (runtime shader compiler)"),
+    (r"^(glslang::|TPpContext|spv::|QualifierFlags|ShInitialize|ShFinalize|yy[a-z]+\b|TGlslangToSpv)", "lib: glslang (runtime shader compiler)"),
+    (r"^shadercompiler", "lib: shadercompiler (wrapper)"),
     (r"^spirv_cross::|^spvc_", "lib: spirv-cross (runtime shader compiler)"),
     (r"^JPH::", "lib: joltphysics (3D physics)"),
     (r"^b2[A-Z_]", "lib: box2d (2D physics)"),
     (r"^(dt|rc|du)[A-Z]", "lib: recastnavigation (navigation)"),
     (r"^Rml::", "lib: rmlui (HTML UI)"),
-    (r"^tvg::|^tvg[A-Z_]", "lib: thorvg (HTML UI vector, Lottie)"),
+    (r"^tvg::|^tvg[A-Z_]|^Lottie|^fillRaster|^_rasterize", "lib: thorvg (HTML UI vector, Lottie)"),
     (r"^lunasvg::|^plutovg_", "lib: lunasvg (HTML UI SVG)"),
     (r"^(lxb_|lexbor_)", "lib: lexbor (HTML UI parser)"),
-    (r"^dav1d", "lib: dav1d (video AV1)"),
+    (r"^(dav1d|qm_tbl|default_.*_cdf|decode_b$|decode_coefs|dav1d_)", "lib: dav1d (video AV1)"),
     (r"^(opus|silk_|celt_|ec_|quant_|clt_|alg_|spreading_|tf_select)", "lib: opus (video audio)"),
     (r"^(mkvparser|mkvmuxer)::", "lib: libwebm (video container)"),
-    (r"^(hb_|OT::|AAT::|CFF::|_hb_|graph::)", "lib: harfbuzz (text shaping)"),
-    (r"^SB[A-Z]", "lib: sheenbidi (bidi text)"),
+    (r"^(hb_|OT::|AAT::|CFF::|_hb_|graph::|find_syllables)", "lib: harfbuzz (text shaping)"),
+    (r"^SB[A-Z]|^Primary\w+Data$", "lib: sheenbidi (bidi text)"),
     (r"^(lua[A-Z_]|luaopen_|luai_)", "lib: lua"),
     (r"^luabridge::", "lib: luabridge3 (Lua bindings, templates)"),
     (r"^(ZSTD|HUF_|FSE_|ZSTDv)", "lib: zstd"),
@@ -80,14 +81,21 @@ NAMES = [(re.compile(p), g) for p, g in [
     (r"^tinygltf::", "lib: tinygltf"),
     (r"^tinyobj::", "lib: tinyobjloader"),
     (r"^tinyxml2::", "lib: tinyxml2"),
-    (r"^(SoLoud::|soloud_|Soloud_|ma_|drwav_|drmp3_|drflac_|stb_vorbis)", "lib: soloud + miniaudio (audio)"),
+    (r"^(SoLoud::|soloud_|Soloud_|ma_|drwav_|drmp3|drflac_|stb_vorbis|fftimpl)", "lib: soloud + miniaudio (audio)"),
+    (r"^robin_hood::", "lib: robin_hood (hash maps)"),
+    (r"^jpeg_decoder|^jpgd::", "lib: jpgd (JPEG)"),
     (r"^(stbi|stbtt|stbir|stb_)", "lib: stb"),
     (r"^meshopt_", "lib: meshoptimizer"),
-    (r"^nlohmann::", "lib: nlohmann json"),
+    (r"^nlohmann::|^_ZN\w*8nlohmann", "lib: nlohmann json"),
     (r"^(sg_|_sg_|_sg|sgj_|sapp_|_sapp|sgl_|sdtx_|smemtrack)", "lib: sokol (graphics backend)"),
     (r"^bcdec_", "lib: bcdec"),
     (r"^(GameActivity|Swappy|swappy::|gamesdk::|android_app|Java_com_google|_GameActivity|ndk_helper)", "android: GameActivity + Swappy"),
-    (r"^(std::|__cxx|__gnu|__cxa|__gxx|operator new|operator delete|__libcpp|__ndk1)", "C++ standard library"),
+    (r"^(std::|__cxx|__gnu|__cxa|__gxx|operator new|operator delete|__libcpp|__ndk1|libunwind|_Unwind|_ZN\w*St6__ndk1|_ZNSt|_ZNKSt)",
+     "C++ standard library"),
+    (r"_font_ttf$|_ttf$|_otf$", "engine: embedded fonts"),
+    (r"^(je_crash|je_hang|je_logger|je_lua|je_)", "engine: diagnostics and logging"),
+    (r"^NativeEngine|^JasperEngineAndroid|^android_main", "engine: Android platform"),
+    (r"^_ZN\w*12jasperengine", "engine: other"),
 ]]
 ENGINE_AREAS = [(re.compile(p, re.I), g) for p, g in [
     (r"htmlui|HtmlUI|UIDocument|Rml", "engine: HTML UI"),
@@ -109,8 +117,32 @@ ENGINE_AREAS = [(re.compile(p, re.I), g) for p, g in [
 ]]
 
 
+def head_of(name: str) -> str:
+    """The symbol's qualified name without what demangling puts before it: a function template's
+    return type ("void jasperengine::f<int>(...)") and "(anonymous namespace)::"."""
+    n = name
+    if n.startswith(("vtable for", "typeinfo", "guard variable", "non-virtual thunk", "virtual thunk", "construction vtable")):
+        return n
+    end = n.find("(")
+    end = len(n) if end < 0 else end
+    depth, cut = 0, -1
+    for i, ch in enumerate(n[:end]):
+        if ch == "<":
+            depth += 1
+        elif ch == ">":
+            depth -= 1
+        elif ch == " " and depth == 0 and not n[:i].endswith("operator"):
+            cut = i
+    if cut >= 0:
+        n = n[cut + 1:]
+    while n.startswith("(anonymous namespace)::"):
+        n = n[len("(anonymous namespace)::"):]
+    return n.lstrip("*&")
+
+
 def name_group(name: str) -> str:
     """The group of a demangled symbol name."""
+    name = head_of(name)
     for pattern, g in NAMES:
         if pattern.search(name):
             return g
@@ -126,7 +158,7 @@ def name_group(name: str) -> str:
         return "engine: vtables and RTTI"
     if name.startswith(("vtable for", "typeinfo")):
         return "vtables and RTTI (other)"
-    return "other"
+    return "other (file-local helpers, unattributed)"
 
 
 def parse(lines, by_lines: bool = False) -> dict[str, list[int]]:
