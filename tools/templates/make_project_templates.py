@@ -21,12 +21,12 @@ import json
 import shutil
 import struct
 import sys
-import zlib
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "tools" / "mcp"))
 
+import pngdiff  # noqa: E402
 from harness import Editor  # noqa: E402
 
 THUMB_W, THUMB_H = 480, 270
@@ -159,63 +159,21 @@ def png_size(data: bytes) -> tuple[int, int]:
 
 
 def letterbox_png(data: bytes) -> bytes:
-    """`data` (an 8-bit RGB/RGBA PNG) scaled to fit 480x270 (nearest), centred on black."""
-    w, h = png_size(data)
-    color_type = data[25]
-    channels = {2: 3, 6: 4}[color_type]
-    raw = bytearray()
-    pos = 8
-    while pos < len(data):
-        length = struct.unpack(">I", data[pos:pos + 4])[0]
-        kind = data[pos + 4:pos + 8]
-        if kind == b"IDAT":
-            raw += data[pos + 8:pos + 8 + length]
-        pos += 12 + length
-    rows = zlib.decompress(bytes(raw))
-    stride = w * channels
-    pixels: list[bytearray] = []
-    prev = bytearray(stride)
-    i = 0
-    for _ in range(h):
-        ftype = rows[i]
-        line = bytearray(rows[i + 1:i + 1 + stride])
-        i += 1 + stride
-        for x in range(stride):
-            a = line[x - channels] if x >= channels else 0
-            b = prev[x]
-            c = prev[x - channels] if x >= channels else 0
-            if ftype == 1:
-                line[x] = (line[x] + a) & 255
-            elif ftype == 2:
-                line[x] = (line[x] + b) & 255
-            elif ftype == 3:
-                line[x] = (line[x] + ((a + b) >> 1)) & 255
-            elif ftype == 4:
-                p = a + b - c
-                pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
-                line[x] = (line[x] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 255
-        pixels.append(line)
-        prev = line
+    """`data` scaled to fit 480x270 (nearest), centred on black."""
+    w, h, rgba = pngdiff.decode(data)
     scale = min(THUMB_W / w, THUMB_H / h)
     sw, sh = max(1, round(w * scale)), max(1, round(h * scale))
     ox, oy = (THUMB_W - sw) // 2, (THUMB_H - sh) // 2
-    out = bytearray()
+    out = bytearray(THUMB_W * THUMB_H * 4)
     for y in range(THUMB_H):
-        out.append(0)
         for x in range(THUMB_W):
+            o = (y * THUMB_W + x) * 4
             sx, sy = x - ox, y - oy
             if 0 <= sx < sw and 0 <= sy < sh:
-                src = pixels[min(h - 1, int(sy / scale))]
-                k = min(w - 1, int(sx / scale)) * channels
-                out += src[k:k + 3]
-            else:
-                out += b"\0\0\0"
-
-    def chunk(kind: bytes, body: bytes) -> bytes:
-        return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body) & 0xFFFFFFFF)
-
-    header = struct.pack(">IIBBBBB", THUMB_W, THUMB_H, 8, 2, 0, 0, 0)
-    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(bytes(out), 9)) + chunk(b"IEND", b"")
+                i = (min(h - 1, int(sy / scale)) * w + min(w - 1, int(sx / scale))) * 4
+                out[o:o + 3] = rgba[i:i + 3]
+            out[o + 3] = 255
+    return pngdiff.encode(THUMB_W, THUMB_H, bytes(out))
 
 
 def copy_project(src: Path, dst: Path) -> None:
