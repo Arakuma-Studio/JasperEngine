@@ -3585,7 +3585,7 @@ The ordered sokol passes of a view's frame: targets, actions, draws, triangles, 
 
 Group: `profiling` (listed once `tool_groups` enables it, callable either way). Hints: read-only, idempotent
 
-A view's last drawn frame: draws, instances, triangles, passes, pipelines/bindings, uniform and upload bytes, alive resources, pipeline cache, cpu_ms, fps, gpu{available,reason,frame_ms,semantics}, html_ui. One frame is one sample. gpu.frame_ms is null until GPU timing ran (get_gpu_passes arms it). Also jasper://stats.
+A view's last drawn frame: draws, instances, triangles, passes, pipelines/bindings, uniform and upload bytes, alive resources, pipeline cache, cpu_ms, fps, gpu{available,reason,frame_ms,semantics}, html_ui, shader_creation{mode,pending_*,max_main_ms,warmup}. One frame is one sample. gpu.frame_ms is null until GPU timing ran (get_gpu_passes arms it). Also jasper://stats.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
