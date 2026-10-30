@@ -7,7 +7,7 @@ R21, R22, AC13), measured with the S15 profiler.
     uv run --no-project --with-requirements tools/mcp/requirements.txt \\
         python tools/perf/async_shaders_bench.py [--runs 5] [--toggles 10] [--json out.json]
     ... async_shaders_bench.py --mode sync            # the red control: creation on the render thread
-    ... async_shaders_bench.py --editor build/linux/editor-vulkan/editor-install/bin/jasperengine-editor
+    ... async_shaders_bench.py --editor build/linux/editor-vulkan-install/bin/jasperengine-editor
 
 Each run opens a new project in a headless editor (MCP) with twelve lit spheres. It draws them until
 nothing is pending, then for each toggle turns on a set of the built-in Lit's lobes on one sphere
