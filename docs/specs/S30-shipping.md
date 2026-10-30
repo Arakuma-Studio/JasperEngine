@@ -1139,4 +1139,15 @@ follow-up stream, not S30.
 - `SokolGlTextureLevels.OneLevelTexturesStateTheirMaxLevel` (BF3, 13e13a552) is GL-only. Under
   `GRAPHIC_BACKEND=vulkan` it called `GTEST_SKIP`, and the unit gate (`--max-skipped 0`) failed
   oe-port's Vulkan core run. S30 compiles it only for GL instead.
+- An engine restarted in the same process called Lua functions of the closed state. This happens
+  when Android relaunches an activity for a configuration change its manifest does not handle;
+  `0x80000000`, right after an install, is one an app cannot declare.
+  - `Engine::systemShutdown` closes Lua before anything releases the scripts' engine-event
+    subscriptions, so `Engine.onUpdate` kept the old `LuaFunction`s.
+  - The next instance called them, and crashed with SIGSEGV in `lua_rawgeti`. The S30 emulator
+    check of a release APK caught it.
+  - Each Lua state now has a generation (`LuaBinding::getLuaStateGeneration`). A `LuaFunction` of
+    an older state is never called nor released. Covered by `LuaFunctionLifetime.*`.
+  - The old subscriptions stay as inert entries. Releasing every script's subscriptions at shutdown
+    would remove them too; that is a follow-up for the engine-lifecycle owner.
 
