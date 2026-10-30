@@ -76,11 +76,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends git-lfs subvers
     && rm -rf /var/lib/apt/lists/* \
     && git lfs version && svn --version --quiet
 
-# The language-server checks of the MCP suite (tools/mcp/tests/test_stubs.py, test_html_ui_docs.py,
-# test_html_ui_examples.py) run lua-language-server --check and clangd --check for real; without
-# them those tests skip. The versions the HTML UI acceptance runs used, pinned by version and
-# sha256, bumped by hand (22.04's apt clangd is 14). Test tools only: nothing of them ships.
-# A layer of its own, after every other one, so cached images keep theirs.
+# Test tools of the MCP suite; without them their tests skip. Test tools only: nothing of them
+# ships (LuaLS MIT, clangd Apache-2.0 with LLVM exception, Ubuntu's FFmpeg GPL with libaom BSD-2).
+# - lua-language-server --check and clangd --check (test_stubs.py, test_html_ui_docs.py,
+#   test_html_ui_examples.py): the versions the HTML UI acceptance runs used, pinned by version and
+#   sha256 (22.04's apt clangd is 14);
+# - FFmpeg with an AV1 encoder (libaom-av1) and libopus, the video importer's conversion
+#   (test_html_ui_video.py): 22.04's package, pinned by version.
+# Bumped by hand. A layer of its own, after every other one, so cached images keep theirs.
+ARG FFMPEG_VERSION=7:4.4.2-0ubuntu0.22.04.1
 ARG LUALS_VERSION=3.19.1
 ARG LUALS_SHA256=e9235d2d72ef55bc41cf8c99cda2ed64777682024b4bb81f5dea425060c5cbb8
 ARG CLANGD_VERSION=18.1.3
@@ -102,4 +106,7 @@ RUN wget -q -O /tmp/luals.tar.gz \
     && chmod 0755 /opt/clangd_${CLANGD_VERSION}/bin/clangd \
     && ln -s /opt/clangd_${CLANGD_VERSION}/bin/clangd /usr/local/bin/clangd \
     && rm -f /tmp/luals.tar.gz /tmp/clangd.zip \
-    && lua-language-server --version && clangd --version
+    && lua-language-server --version && clangd --version \
+    && apt-get update && apt-get install -y --no-install-recommends "ffmpeg=${FFMPEG_VERSION}" \
+    && rm -rf /var/lib/apt/lists/* \
+    && ffmpeg -hide_banner -encoders | grep -E ' (libaom-av1|libopus) ' | wc -l | grep -qx 2
