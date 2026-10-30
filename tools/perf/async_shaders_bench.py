@@ -106,7 +106,8 @@ async def one_run(args: argparse.Namespace, run: int) -> dict:
     env = {"MESA_SHADER_CACHE_DISABLE": "true"}
     if args.mode:
         env["JASPER_ASYNC_SHADERS"] = args.mode
-    command = [args.editor] if args.editor else None
+    # (absolute: the editor runs in its scratch directory)
+    command = [str(Path(args.editor).resolve())] if args.editor else None
     async with Editor(create=True, name=f"AsyncShaders{run}", env=env, command=command, label=f"async-shaders-{run}") as ed:
         scene = await build_scene(ed)
         await wait_idle(ed)
