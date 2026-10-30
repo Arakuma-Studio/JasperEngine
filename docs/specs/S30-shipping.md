@@ -997,6 +997,91 @@ Kept current so the work can continue after an interruption.
   - measure the release Android size (`tools/ci/android_size.sh`);
   - merge oe-port, regenerate TOOLS.md, and run the gate.
 
+### Shipped size (measured)
+
+- **The build:** `tools/fixtures/unified-lighting`, release, gles3.
+- **How it was measured:**
+  - Android: `tools/ci/android_size.sh` on server A, on code at 1c94d68a0 with the
+    release-link fixes.
+  - The size breakdown: `tools/players/lib_size.py`.
+  - Linux: `.s30-linux-size.sh` on server B.
+- **Units:** MiB (`apk_size.py`).
+- **"Before"** is the same code without `JASPERENGINE_RELEASE_LINK`, with every APK's libraries
+  stored.
+- **"After"** has:
+  - the release link: sections and `--gc-sections`, hidden visibility with the Android export
+    list, ThinLTO and `--icf=safe`;
+  - libraries packed as the Android Gradle plugin packs them: compressed below minSdk 23, and the
+    fixture's minSdk is 21.
+
+**Android engine library**, stripped, uncompressed (MiB; its split symbols in brackets):
+
+| ABI | before | after |
+|---|---|---|
+| arm64-v8a | 39.46 (497) | 27.06 (390) |
+| armeabi-v7a | 28.99 (413) | 18.99 (338) |
+| x86 | 41.86 (408) | 33.16 (378) |
+| x86_64 | 42.04 (478) | 33.25 (422) |
+
+- `libc++_shared.so` adds 0.81 to 1.20 per ABI.
+- Exported dynamic symbols: 44,529 before, 6 after. Those are `GameActivity_onCreate` and the
+  five `Java_*` entry points.
+
+**Android APKs** (MiB):
+
+| package | before | after |
+|---|---|---|
+| prebuilt arm64-v8a APK | 41.61 | 12.45 |
+| prebuilt armeabi-v7a APK | 30.76 | 11.38 |
+| prebuilt x86 / x86_64 APK | — | 14.27 / 14.18 |
+| prebuilt universal APK (4 ABIs) | 157.61 | 49.45 |
+| compiled arm64-v8a APK (Gradle, the same project) | 15.13 | 12.31 |
+
+- Inside an APK (after), each package holds:
+  - its native libraries: 11.50 for arm64-v8a, compressed from 28.26;
+  - dex 0.34 (0.76 unpacked) and resources 0.39;
+  - content 0.10 and the signature 0.03.
+- Prebuilt and compiled now cost the same. The compiled library is 28,244,352 bytes against the
+  prebuilt's 28,379,240. The 0.14 MiB APK difference is the prebuilt's v1 signature and its content
+  files.
+- Before, the gap came from packing: the prebuilt stored its libraries, while Gradle compressed
+  them. The libraries themselves were the same size by both methods (40,597,584 bytes compiled,
+  41,374,936 prebuilt).
+- AndroidX (appcompat, core, activity) costs about 0.7 MiB of dex and resources. GameActivity
+  extends AppCompatActivity, so it stays, and the theme is not its only use.
+
+**Linux** (glcore, before the release link; the Linux link has no LTO with GCC):
+- The prebuilt build is 44.2 MiB, of which the player is 43.9 MiB stripped with 744 MiB of
+  symbols split off.
+- The compiled build was 51.3 MiB, its executable unstripped (51.0 MiB). It is now stripped by
+  `JASPERENGINE_SPLIT_SYMBOLS`.
+- publish prepare copies the player's symbols into `symbols/linux/player`.
+
+**What is left, by size.** These need per-project module stripping, which is the coordinator's
+follow-up stream, not S30.
+- The figures are symbol sizes of the arm64-v8a library after the release link, from
+  `lib_size.py` (24.8 MB of named code and data in total). Rodata and unwind tables add roughly
+  10% on top.
+- Savings would be per build that leaves a feature out.
+
+| module | named size (MB) |
+|---|---|
+| HTML UI: rmlui 1.74, engine 1.55, lexbor 0.70, thorvg 0.19, lunasvg 0.13 | 4.3 |
+| HTML UI video: dav1d 0.44, opus 0.09, libwebm 0.06, engine 0.08 | 0.67 |
+| runtime shader compiler: glslang 0.87, spirv-cross 0.55 | 1.42 |
+| 3D physics: Jolt 0.73, plus engine physics 0.22 shared with 2D | 0.95 |
+| 2D physics: box2d | 0.35 |
+| navigation: recast 0.15, engine 0.20 | 0.35 |
+| particles / splines / lattice / fluid / terrain | 0.28 / 0.24 / 0.05 / 0.05 / 0.01 |
+| Lua bindings (luabridge3 templates) | 1.68 |
+
+- The runtime shader compiler is only needed for variants the build did not precompile.
+- The Lua bindings could shrink with fewer instantiations or `-Oz` on the binding sources.
+- `-Oz` for the whole library would typically take another 15 to 25% of code. It needs a speed
+  check first.
+- A Vulkan backend is not in a gles3 player.
+- About 3.3 MB is file-local helpers that the name grouping cannot attribute.
+
 ### Integrator notes
 
 - `tools/web/browser_gate.py` now **fails** a run that asked for `--screenshot` when the page gave
