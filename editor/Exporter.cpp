@@ -863,7 +863,8 @@ void editor::Exporter::runExport() {
         setProgressRaw("Build complete", 1.0f);
         {
             std::lock_guard<std::mutex> lock(progressMutex);
-            progress.finished = true;
+            // (a Compile player build finishes in runPlayerBuild, once what it ships is staged)
+            if (!compileForPlayer) progress.finished = true;
         }
         Out::info("Build completed: %s", config.destinationDir.string().c_str());
         return;

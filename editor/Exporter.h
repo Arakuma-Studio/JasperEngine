@@ -140,6 +140,10 @@ namespace jasperengine::editor {
         ExportProgress progress;
         mutable std::mutex progressMutex;
         std::atomic<bool> cancelRequested{false};
+        // a Compile player build (runPlayerBuild): runExport's Desktop/Web build is one of its
+        // steps, so it is not finished when that build is (the notices, the symbols and the
+        // content manifest follow, then the executable it reports)
+        bool compileForPlayer = false;
 
         // the export run on the process channel (it waits on cmake, the compilers, packagers)
         jobs::Task<void> exportTask;
