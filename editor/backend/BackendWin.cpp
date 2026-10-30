@@ -7,6 +7,7 @@
 #include "EditorFrame.h"
 #include "GamepadWin.h"
 #include "WindowWin.h"
+#include "WglWorkerContext.h"
 #include "renderer/Renderer.h"
 
 #include "Engine.h"
@@ -609,6 +610,8 @@ constexpr int WGL_LOSE_CONTEXT_ON_RESET = 0x8252;
 
 HGLRC glContext = nullptr;
 bool glContextResetNotification = false;
+// the attributes glContext was made with, which its worker context repeats (spec S32)
+const int* workerAttributes = nullptr;
 int pixelFormat = 0;
 SwapIntervalProc swapIntervalEXT = nullptr;
 void (*imguiDestroyWindow)(ImGuiViewport*) = nullptr;
@@ -722,7 +725,7 @@ editor::RendererPlatform rendererPlatform() {
         if (createContext) {
             // A GPU reset goes unnoticed without a reset notification strategy:
             // the context keeps taking calls that never reach the screen.
-            const int robustAttributes[] = {
+            static const int robustAttributes[] = {
                 WGL_CONTEXT_MAJOR_VERSION, 4,
                 WGL_CONTEXT_MINOR_VERSION, 1,
                 WGL_CONTEXT_PROFILE_MASK, WGL_CONTEXT_CORE_PROFILE_BIT,
@@ -732,13 +735,15 @@ editor::RendererPlatform rendererPlatform() {
             };
             glContext = createContext(deviceContext, nullptr, robustAttributes);
             glContextResetNotification = glContext != nullptr;
+            workerAttributes = robustAttributes;
             if (!glContext) {
-                const int attributes[] = {
+                static const int attributes[] = {
                     WGL_CONTEXT_MAJOR_VERSION, 4,
                     WGL_CONTEXT_MINOR_VERSION, 1,
                     WGL_CONTEXT_PROFILE_MASK, WGL_CONTEXT_CORE_PROFILE_BIT,
                     0
                 };
+                workerAttributes = attributes;
                 glContext = createContext(deviceContext, nullptr, attributes);
             }
         }
@@ -754,9 +759,14 @@ editor::RendererPlatform rendererPlatform() {
             return false;
         }
         swapIntervalEXT = wglProc<SwapIntervalProc>("wglSwapIntervalEXT");
+        // the engine's shader creation thread (spec S32), with the same attributes
+        jasperengine::setGpuWorkerContextFactory([]() {
+            return jasperengine::WglWorkerContext::create(glContext, pixelFormat, pixelFormatDescriptor(), workerAttributes);
+        });
         return true;
     };
     platform.destroyContext = []() {
+        jasperengine::setGpuWorkerContextFactory(nullptr);
         if (glContext) {
             wglMakeCurrent(nullptr, nullptr);
             wglDeleteContext(glContext);

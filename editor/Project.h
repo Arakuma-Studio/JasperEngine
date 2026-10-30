@@ -769,6 +769,7 @@ namespace jasperengine::editor{
         uint32_t startSceneId;
         LoadingSettings loadingSettings;
         ThreadingProjectSettings threadingSettings;
+        ShaderCreationProjectSettings shaderCreationSettings;
         TerrainEditorSettings terrainEditorSettings;
         TextureProjectSettings textureSettings;
         std::vector<std::filesystem::path> inspectedAssets;
@@ -1551,6 +1552,16 @@ namespace jasperengine::editor{
         void setThreadingSettings(const ThreadingProjectSettings& settings);
         // the runtime form (Engine::setThreadingSettings)
         static ThreadingSettings toEngineThreading(const ThreadingProjectSettings& settings);
+        // Project Settings > Graphics > Shader Creation (spec S32): the budget and warm draws apply
+        // to the editor at once, asynchronous creation on its next start; exports bake them in
+        const ShaderCreationProjectSettings& getShaderCreationSettings() const;
+        void setShaderCreationSettings(const ShaderCreationProjectSettings& settings);
+        // the project's shader warm-up list (ShaderWarmup), next to project.yaml
+        std::filesystem::path getShaderWarmupPath() const;
+        // Stop of a Play that recorded: the run's entries merged into the list file
+        void finishShaderWarmupRecording();
+        // empties the list file (and a recording in progress)
+        bool clearShaderWarmup();
         const LoadingSettings& getLoadingSettings() const;
 
         TerrainEditorSettings& getTerrainEditorSettings();

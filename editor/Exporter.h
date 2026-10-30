@@ -145,6 +145,7 @@ namespace jasperengine::editor {
         bool isCancelled() const;
 
         void resolveShaderKeys();
+        bool loadShaderWarmup();
 
         fs::path getExportProjectRoot() const;
         // Canonical directory copyAssets() reads from

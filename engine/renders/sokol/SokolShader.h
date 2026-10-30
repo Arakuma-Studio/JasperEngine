@@ -35,6 +35,8 @@ namespace jasperengine{
         bool createShader(ShaderData& shaderData);
         void destroyShader();
         bool isCreated();
+        // created asynchronously and not ready yet (SokolAsyncCreate): neither created nor failed
+        bool isPending();
         bool isFailed();
 
         sg_shader get();
