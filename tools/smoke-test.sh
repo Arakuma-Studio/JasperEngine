@@ -246,7 +246,7 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
 
         # S27: the Recorder from a shell, through a one-shot headless editor (S31 call)
         echo "== record"
-        "$EDITOR" call --project project --wait-job --timeout 900 record_game --frames 30 --format png --width 320 --height 180 \
+        dbus-run-session -- "$EDITOR" call --project project --wait-job --timeout 900 record_game --frames 30 --format png --width 320 --height 180 \
             --output "$PWD/recording" > record.log 2>&1 || { echo "FAIL: record"; tail -30 record.log; exit 1; }
         frames="$(find recording -name "frame_*.png" | wc -l)"
         [[ "$frames" -eq 30 ]] || { echo "FAIL: record wrote $frames frames, not 30"; tail -30 record.log; exit 1; }
