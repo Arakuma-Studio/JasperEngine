@@ -683,7 +683,8 @@ public:
        only programs the render thread had never drawn warmed;
      - with warm draws off, the full core suite hung once in a render-thread draw
        (`EveryGlModeDrawsTheLitCube`, all llvmpipe threads idle, the main thread in a futex
-       inside the driver).
+       inside the driver), and a repeat run of the Async, Atmosphere and Render GPU suites hung
+       again in its first iteration (killed at 40 min).
    - Our synchronisation was checked for that hang: the worker calls `glFinish` after every
      program (stronger than a fence) and the render thread binds a program only after its
      creation is published; the worker binds no object of the render thread's (no textures,
