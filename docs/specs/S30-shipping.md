@@ -1126,4 +1126,7 @@ follow-up stream, not S30.
 
   S30's final gate counts these files as known oe-port failures while oe-port still fails them,
   and requires everything else green.
+- `SokolGlTextureLevels.OneLevelTexturesStateTheirMaxLevel` (BF3, 13e13a552) is GL-only. Under
+  `GRAPHIC_BACKEND=vulkan` it called `GTEST_SKIP`, and the unit gate (`--max-skipped 0`) failed
+  oe-port's Vulkan core run. S30 compiles it only for GL instead.
 
