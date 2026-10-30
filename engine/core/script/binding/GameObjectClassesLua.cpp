@@ -1476,6 +1476,11 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("start", &ParticleSystem::start)
         .addFunction("reset", &ParticleSystem::reset)
         .addProperty("running", &ParticleSystem::isRunning)
+        .addFunction("isRunning", &ParticleSystem::isRunning)
+        .addFunction("isStopped", &ParticleSystem::isStopped)
+        .addFunction("getTimeCount", &ParticleSystem::getTimeCount)
+        .addProperty("target", &ParticleSystem::getTarget, (void(ParticleSystem::*)(Entity))&ParticleSystem::setTarget)
+        .addProperty("speed", &ParticleSystem::getSpeed, &ParticleSystem::setSpeed)
         .addFunction("setTarget",
             luabridge::overload<GameObject*>(&ParticleSystem::setTarget),
             luabridge::overload<Entity>(&ParticleSystem::setTarget))

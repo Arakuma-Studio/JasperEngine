@@ -77,3 +77,29 @@ async def test_migrate_save_reload(ed: Editor):
     ed.check_eq(after, before, "the saved effects read back the same")
     again = await ed.call("get_particle_migration_report")
     ed.check_eq(again["count"], 2, "a saved scene converts nothing more")
+
+
+async def test_old_action_script(ed: Editor):
+    """An origin/main script drives a Particle System as the Action it was: wrapped from the action's
+    entity (a script property of type ParticleSystem keeps pointing there), started, its target
+    moved, its state read with the Action's methods (tools/ci/upgrade_from_main found these)."""
+    ed.require_tools("open_scene", "play", "eval_lua")
+    await ed.call("open_scene", scene=SCENE)
+    await ed.call("play", action="start", fixed_fps=60)
+    try:
+        r = await ed.call("eval_lua", code="""
+            local ps = ParticleSystem(scene, entity('Fire Particles'))
+            ps:stop(true)
+            local stopped = {ps:isStopped(), ps:isRunning()}
+            ps:start()
+            ps.speed = 2
+            return {stopped[1], stopped[2], ps:isRunning(), ps:isStopped(), ps.target == entity('Fire'), ps.speed,
+                    ps.playbackSpeed, type(ps:getTimeCount())}
+        """)
+        ed.check_eq(r["values"][0], [True, False, True, False, True, 2, 2, "number"],
+                    "isStopped / isRunning / target / speed / getTimeCount answer as the Action did")
+        log = await ed.call("read_console", contains="ParticleSystem.", limit=50)
+        said = " ".join(e["message"] for e in log["entries"])
+        ed.check("speed is deprecated: use playbackSpeed" in said, f"the old names warn: {said}")
+    finally:
+        await ed.call("play", action="stop", fixed_fps=0)

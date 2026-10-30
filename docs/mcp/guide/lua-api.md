@@ -1404,7 +1404,9 @@ end)
 
 Deprecated (the old Action API, kept for old scripts: they edit the inline effect and warn
 once): rw `maxParticles`, `rate`, `maxPerUpdate`, `emitter`, `loop`, `localSpace`,
-`emitterShape` (`ParticleEmitterShape.*`), `running`; `start()`, `reset()`, `setTarget(go)`,
+`emitterShape` (`ParticleEmitterShape.*`), `running`, `target` (the system's own GameObject: it
+lives on the old target now), `speed` (= `playbackSpeed`); `isRunning()`, `isStopped()`,
+`getTimeCount()` (= `time`); `start()`, `reset()`, `setTarget(go)`,
 `addBurst(time, count)` / `addBurst(time, minCount, maxCount)`, `setBursts(...)`,
 `clearBursts()`, `setLifeInitializer(min [, max])`, `setPositionInitializer(minV3 [, maxV3])`,
 `setSpherePositionInitializer(...)`, `setHemispherePositionInitializer(...)`,
@@ -1415,7 +1417,8 @@ once): rw `maxParticles`, `rate`, `maxPerUpdate`, `emitter`, `loop`, `localSpace
 `setRotationInitializer(...)`, `setScaleInitializer(...)` and
 `set*Modifier(fromTime, toTime, from, to [, EaseType])` for Position/Velocity/Acceleration/
 Color/Alpha/Size/Sprite/Rotation/Scale. Component: `getParticleSystemComponent()` (the old misspelt `getParticlesomponent()` still works,
-deprecated). More: jasper://docs/particles.
+deprecated). The old Action's `isPaused()` method is the property `isPaused` now: write
+`ps.isPaused` (calling it fails). More: jasper://docs/particles.
 
 ### 4.17 FluidSimulation (GameObject)
 
