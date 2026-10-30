@@ -1178,4 +1178,9 @@ follow-up stream, not S30.
     retrying").
   - The ready timeout's error names what it waited for (`Engine::describeNotLoaded`).
   - Covered by `LoadSettledGpu.*`, and the components check runs `--after-ready` again.
+- Red before green, on server D, for both fixes. With the fix taken out, each test fails:
+  - `LoadSettledGpu` still waits for entities 1002 and 1003 (mesh);
+  - `LuaFunctionLifetime` still counts the closed state's function as live.
+
+  With the fixes back, both pass.
 
