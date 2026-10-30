@@ -270,6 +270,10 @@ def ensure_player(backend: str = "glcore", flavour: str = "release") -> Path:
         jobs = _jobs()
         command = [str(BUILD_SCRIPT), "--jobs", str(jobs), "--engine-version", inputs["editor_version"],
                    backend, flavour, str(tree), str(entry / "players.new"), "--", *inputs["cmake_args"]]
+        # at a low priority: the run's test editors (frame timing, llvmpipe) go first, and the
+        # files that need the runtime wait for it anyway
+        if shutil.which("nice"):
+            command = ["nice", "-n", "15"] + command
         _log(f"{rid}: building (key {key[:16]}, {jobs} jobs; log {log_file})")
         t0 = time.monotonic()
         with open(log_file, "w") as log:
