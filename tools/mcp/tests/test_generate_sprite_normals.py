@@ -813,7 +813,15 @@ async def test_high_resolution_settings_presets_and_metrics(ed: Editor):
     # resolution scale off, the new limits, the names
     data = (await gen(ed, source=potion, params={"resolution_scale": "off", "smoothing": 32, "softness": 32})).structured
     check(data["scale_range"] == [1, 1], f"off: {data['scale_range']}")
+    data = (await gen(ed, source=potion, params={"soft_edge": "solid"})).structured
+    check(data["settings"]["soft_edge"] == "solid", f"soft_edge: {data['settings']}")
+    # a few painted dots don't make "no crease": not measured (null), no creased warning
+    dots = [[x, y] for x in range(20, 360, 40) for y in range(20, 360, 40)]
+    data = (await gen(ed, source=potion, params={"profile": "rounded"}, paint=[{"op": "flatten", "where": {"pixels": dots}}])).structured
+    check(data["metrics"]["crease_pct"] is None and "creased" not in kinds_of(data), f"sparse paint: {data['metrics']} {kinds_of(data)}")
+    check("Creases not measured: paint covers most of the sprite" in data["assessment"], f"{data['assessment']}")
     for params, field in [({"smoothing": 33}, "params.smoothing"), ({"softness": -1}, "params.softness"), ({"resolution_scale": "on"}, "params"),
+                          ({"soft_edge": "hard"}, "params"),
                           ({"profile": "pillow"}, "params"), ({"version": 3}, "params.version")]:
         err = await gen_error(ed, source=potion, params=params)
         check(err["kinds"] == ["invalid_settings"] and (err["data"]["errors"][0].get("field") == field), f"{params}: {err['data']['errors']}")

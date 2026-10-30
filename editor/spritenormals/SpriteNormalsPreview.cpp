@@ -171,7 +171,8 @@ namespace jasperengine::editor::spritenormals {
         // `depth` is padded by 1. Rows in parallel; sums per row, added in row order.
         template <typename Source>
         void deviations(const Cell& cell, int imageWidth, const detail::Field& depth, float inset, float sigma, Source source,
-                        const detail::Field* excluded, float excludedWithin, detail::Workers& workers, double& sum, int64_t& count, int64_t& over) {
+                        const detail::Field* excluded, float excludedWithin, detail::Workers& workers, double& sum, int64_t& count, int64_t& over,
+                        int64_t* excludedCount = nullptr) {
             const int w = cell.width, h = cell.height;
             const double creaseCos = std::cos(kCreaseDeg * kPi / 180.0);
             detail::Field blurred[3] = {detail::Field::zero(w, h), detail::Field::zero(w, h), detail::Field::zero(w, h)};
@@ -186,14 +187,17 @@ namespace jasperengine::editor::spritenormals {
             }, 32);
             for (int k = 0; k < 3; k++) detail::gaussianInPlace(blurred[k], sigma, detail::Border::Clamp, &workers);
             std::vector<double> rowSum(static_cast<size_t>(h), 0.0);
-            std::vector<int64_t> rowCount(static_cast<size_t>(h), 0), rowOver(static_cast<size_t>(h), 0);
+            std::vector<int64_t> rowCount(static_cast<size_t>(h), 0), rowOver(static_cast<size_t>(h), 0), rowExcluded(static_cast<size_t>(h), 0);
             workers.forRange(h, [&](int b, int e) {
                 for (int y = b; y < e; y++) {
                     for (int x = 0; x < w; x++) {
                         const float d = depth.data[static_cast<size_t>(y + 1) * (w + 2) + x + 1];
                         if (!(std::isfinite(d) && d > inset)) continue;
                         const size_t j = static_cast<size_t>(y) * w + x;
-                        if (excluded && excluded->data[j] <= excludedWithin) continue;
+                        if (excluded && excluded->data[j] <= excludedWithin) {
+                            rowExcluded[static_cast<size_t>(y)]++;
+                            continue;
+                        }
                         float n[3];
                         source(static_cast<size_t>(cell.y + y) * imageWidth + (cell.x + x), n);
                         const double bv[3] = {blurred[0].data[j], blurred[1].data[j], blurred[2].data[j]};
@@ -210,6 +214,7 @@ namespace jasperengine::editor::spritenormals {
                 sum += rowSum[static_cast<size_t>(y)];
                 count += rowCount[static_cast<size_t>(y)];
                 over += rowOver[static_cast<size_t>(y)];
+                if (excludedCount) *excludedCount += rowExcluded[static_cast<size_t>(y)];
             }
         }
 
@@ -266,7 +271,7 @@ namespace jasperengine::editor::spritenormals {
             };
             const float excludedWithin = 3.0f * sigma;
             double roughSum = 0.0, creaseSum = 0.0;
-            int64_t roughCount = 0, roughOver = 0, creaseCount = 0, creaseOver = 0;
+            int64_t roughCount = 0, roughOver = 0, creaseCount = 0, creaseOver = 0, creaseExcluded = 0;
             for (size_t c = 0; c < frames.size(); c++) {
                 float deepest = 0.0f;
                 for (float d : depths[c].data) {
@@ -292,11 +297,14 @@ namespace jasperengine::editor::spritenormals {
                     if (anyPainted) near = detail::edt(unpainted, cell.width, cell.height, detail::Border::Zero, &workers);
                 }
                 deviations(frames[c], normal.width, depths[c], inset, sigma, creaseNormal, anyPainted ? &near : nullptr, excludedWithin, workers,
-                           creaseSum, creaseCount, creaseOver);
+                           creaseSum, creaseCount, creaseOver, &creaseExcluded);
             }
+            // the paint left out more than half of the measurable pixels: not measured (a few
+            // painted dots must not read as "no crease")
+            if (creaseExcluded * 2 > creaseCount + creaseExcluded) m.creaseMeasured = false;
             m.innerPixels = static_cast<int>(roughCount);
             if (roughCount > 0) m.roughnessDeg = roughSum / static_cast<double>(roughCount);
-            if (creaseCount > 0) m.creasePct = 100.0 * static_cast<double>(creaseOver) / static_cast<double>(creaseCount);
+            if (creaseCount > 0 && m.creaseMeasured) m.creasePct = 100.0 * static_cast<double>(creaseOver) / static_cast<double>(creaseCount);
         }
 
         std::string oneDecimal(double v) {
@@ -610,7 +618,11 @@ namespace jasperengine::editor::spritenormals {
         a.lines.push_back("Steep pixels: " + integer(m.steepPct) + "%");
         a.lines.push_back("Noise: " + integer(m.noisePct) + "%");
         a.lines.push_back("Lean: " + integer(m.leanDeg) + "°");
-        if (m.innerPixels > 0) a.lines.push_back("Roughness: " + oneDecimal(m.roughnessDeg) + "° (creases " + oneDecimal(m.creasePct) + "%)");
+        if (m.innerPixels > 0) {
+            a.lines.push_back("Roughness: " + oneDecimal(m.roughnessDeg) + "° (creases " +
+                              (m.creaseMeasured ? oneDecimal(m.creasePct) + "%)" : std::string("not measured)")));
+            if (!m.creaseMeasured) a.lines.push_back("Creases not measured: paint covers most of the sprite");
+        }
         a.lines.push_back("Coverage: " + integer(m.coveragePct) + "%");
         if (cellCount > 0) {
             a.lines.push_back("Frames: " + std::to_string(cellCount) + " (" + std::to_string(m.framesTouchingEdges) + " touch their cell's edge)");
@@ -622,7 +634,16 @@ namespace jasperengine::editor::spritenormals {
             warn("no_alpha", "The image has no transparent pixels: volume only bevels its border.", "For tiles use edges wrap or extend.");
         }
         if (m.flatPct > 60.0) {
-            warn("mostly_flat", integer(m.flatPct) + "% of the sprite is flat.", "Raise strength or volume, or detail if it is painted with shading.");
+            // the outer band took most of an island (a translucent sprite with a small solid core):
+            // its soft pixels are why it is flat
+            if (settings.version >= 2 && settings.softEdge == SoftEdge::Auto && result && result->outerBandShare > 0.5f) {
+                warn("mostly_flat",
+                     integer(m.flatPct) + "% of the sprite is flat: " + integer(100.0 * result->outerBandShare) +
+                         "% of it is soft (alpha under 0.5) and reaches the outside, so it counts as outside the shape.",
+                     "Set soft_edge \"solid\" so the soft pixels count as shape (or raise strength or volume).");
+            } else {
+                warn("mostly_flat", integer(m.flatPct) + "% of the sprite is flat.", "Raise strength or volume, or detail if it is painted with shading.");
+            }
         }
         if (m.steepPct > 25.0) {
             warn("too_steep", integer(m.steepPct) + "% of the pixels are steeper than 60°.",
@@ -632,7 +653,7 @@ namespace jasperengine::editor::spritenormals {
             warn("noisy", integer(m.noisePct) + "% of the pixels disagree with their neighbours (dithering or hard shading bands).",
                  "Raise smoothing to 1.5-2 or lower detail.");
         }
-        if (m.creasePct > kCreasedPct) {
+        if (m.creaseMeasured && m.creasePct > kCreasedPct) {
             warn("creased", oneDecimal(m.creasePct) + "% of the inside lies on sharp creases (ridges down the middle of the shapes).",
                  "Use profile inflate (round art) or dome (flat-faced props), or the painted or props preset, or raise softness.");
         } else if (m.roughnessDeg > kStreakyDeg) {

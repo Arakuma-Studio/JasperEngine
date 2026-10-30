@@ -85,6 +85,7 @@ namespace jasperengine::editor::spritenormals {
         double scale = 1.0;
         int innerPixels = 0;
         double roughnessDeg = 0.0;     // the final map (the paint included): mean angle to the blur (streaky)
+        bool creaseMeasured = true;    // false: the paint left out over half the inner pixels (creasePct 0, no warning)
         double creasePct = 0.0;        // the silhouette's share (`shape`; painted pixels and 3 sigma around them
                                        // left out): inner pixels over kCreaseDeg from the blur (creased)
     };

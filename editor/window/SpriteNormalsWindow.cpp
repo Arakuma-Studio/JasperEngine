@@ -3077,6 +3077,20 @@ void SpriteNormalsWindow::drawAdvanced() {
             }
         }
     }
+    static constexpr const char* kSoftEdgeTip =
+        "Above 128 px: Outside (auto) = soft pixels (alpha under 0.5) that reach the transparent outside are not part of the "
+        "shape (glows, feathered rims don't inflate the sprite); Solid = every visible pixel is shape (translucent art: ghosts, "
+        "smoke, glass with a thin rim)";
+    rowLabel("Soft edges", kSoftEdgeTip);
+    {
+        const char* names[] = {"Outside (auto)", "Solid"};
+        int v = settings.softEdge == sn::SoftEdge::Solid ? 1 : 0;
+        if (segmentedButtons("##softEdge", v, names, nullptr, 2, "spriteNormals.softEdge")) {
+            settings.softEdge = v == 1 ? sn::SoftEdge::Solid : sn::SoftEdge::Auto;
+            changed = true;
+        }
+        tooltip(kSoftEdgeTip);
+    }
     if (settings.version < sn::kSettingsVersion) {
         ImGui::Indent(labelWidth());
         subtle("Made before high-resolution support: regenerating keeps its old look (no resolution scaling, the old auto radius).");
@@ -3943,7 +3957,7 @@ void SpriteNormalsWindow::drawMetrics() {
         // the metrics of what is shown (with the paint unless Show paint is off)
         const bool painted = showPaint && paint.sized(res.normal.width, res.normal.height);
         const sn::Metrics m = sn::measure(displayNormal(), cells, used.directx, used.alphaThreshold, painted ? &paint : nullptr,
-                                          res.shape.empty() ? nullptr : &res.shape);
+                                          res.shape.empty() ? nullptr : &res.shape, workerThreads());
         metricsAssessment = sn::assess(used, m, static_cast<int>(std::max<size_t>(1, cells.size())), &res);
         std::string radius = res.radiusPerIsland && res.radiusMax > res.radiusMin + 1e-3f
                                  ? "radius " + trimmed(res.radiusMin, 1) + "-" + trimmed(res.radiusMax, 1) + " px"

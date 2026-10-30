@@ -114,6 +114,7 @@ namespace jasperengine::editor::spritenormals {
             float scale = 1.0f;           // k used
             bool cancelled = false;       // the inflate solve saw the cancel flag
             bool notConverged = false;    // the inflate solve stopped at its iteration cap
+            float bandShare = 0.0f;       // the share of its mask the outer band took
         };
 
         struct Context {
@@ -166,7 +167,30 @@ namespace jasperengine::editor::spritenormals {
             std::vector<uint8_t> mask;
             std::vector<uint8_t> shape;   // == mask without an outer band
             std::vector<int> pixels;      // field indices of the mask pixels
+            float bandShare = 0.0f;       // the share of the mask the outer band took (0 without one)
         };
+
+        // The shorter extent of a set of occupied lines (columns or rows) of n: max - min + 1, or on a
+        // circle (wrap) n less the longest run of free lines (whatever the cut)
+        int extentOf(const std::vector<uint8_t>& used, bool wrap) {
+            const int n = static_cast<int>(used.size());
+            int first = -1, last = -1, count = 0;
+            for (int i = 0; i < n; i++) {
+                if (!used[static_cast<size_t>(i)]) continue;
+                if (first < 0) first = i;
+                last = i;
+                count++;
+            }
+            if (count == 0) return 0;
+            if (!wrap) return last - first + 1;
+            if (count == n) return n;
+            int longest = 0, run = 0;
+            for (int k = 0; k < 2 * n; k++) {
+                if (used[static_cast<size_t>(k % n)]) run = 0;
+                else longest = std::max(longest, ++run);
+            }
+            return n - std::min(longest, n);
+        }
 
         ItemField itemField(const Item& item, const Context& ctx, detail::Workers* workers = nullptr) {
             const Settings& s = *ctx.settings;
@@ -224,7 +248,6 @@ namespace jasperengine::editor::spritenormals {
                     std::vector<uint8_t> clear(n, 0);
                     for (size_t i = 0; i < n; i++) clear[i] = !f.mask[i];
                     const Field depth = detail::edt(clear, f.width, f.height, border, workers);
-                    const float holeDepth = std::max(kOutsideHoleDistance, kOutsideHoleShare * item.side);
                     std::vector<uint8_t> seen(n, 0);
                     std::vector<int> queue, region;
                     auto neighbours = [&](int i, auto&& visit) {
@@ -243,24 +266,59 @@ namespace jasperengine::editor::spritenormals {
                             }
                         }
                     };
+                    // the islands of the field (8-connected, periodic with wrap) and each one's shorter
+                    // side (its extent on the circle with wrap): a hole's threshold is that of the
+                    // island around it, in every edges mode
+                    std::vector<int> island(n, -1);
+                    std::vector<float> islandSide;
+                    {
+                        std::vector<uint8_t> cols(static_cast<size_t>(f.width)), rows(static_cast<size_t>(f.height));
+                        for (size_t start = 0; start < n; start++) {
+                            if (!f.mask[start] || island[start] >= 0) continue;
+                            const int id = static_cast<int>(islandSide.size());
+                            std::fill(cols.begin(), cols.end(), 0);
+                            std::fill(rows.begin(), rows.end(), 0);
+                            region.clear();
+                            region.push_back(static_cast<int>(start));
+                            island[start] = id;
+                            for (size_t head = 0; head < region.size(); head++) {
+                                const int i = region[head];
+                                cols[static_cast<size_t>(i % f.width)] = 1;
+                                rows[static_cast<size_t>(i / f.width)] = 1;
+                                neighbours(i, [&](size_t j) {
+                                    if (!f.mask[j] || island[j] >= 0) return;
+                                    island[j] = id;
+                                    region.push_back(static_cast<int>(j));
+                                });
+                            }
+                            islandSide.push_back(static_cast<float>(std::min(extentOf(cols, wrap), extentOf(rows, wrap))));
+                        }
+                    }
                     for (size_t start = 0; start < n; start++) {
                         if (f.mask[start] || seen[start]) continue;
                         region.clear();
                         region.push_back(static_cast<int>(start));
                         seen[start] = 1;
                         bool outside = false;
+                        float deepest = 0.0f, aroundSide = 0.0f;
                         for (size_t head = 0; head < region.size(); head++) {
                             const int i = region[head];
                             const int x = i % f.width, y = i / f.width;
                             const float d = depth.data[static_cast<size_t>(i)];
-                            if (!std::isfinite(d) || d >= holeDepth) outside = true;
+                            if (!std::isfinite(d)) outside = true;
+                            else deepest = std::max(deepest, d);
                             if (!wrap && (x == 0 || y == 0 || x == f.width - 1 || y == f.height - 1)) outside = true;
                             neighbours(i, [&](size_t j) {
-                                if (f.mask[j] || seen[j]) return;
+                                if (f.mask[j]) {
+                                    aroundSide = std::max(aroundSide, islandSide[static_cast<size_t>(island[j])]);
+                                    return;
+                                }
+                                if (seen[j]) return;
                                 seen[j] = 1;
                                 region.push_back(static_cast<int>(j));
                             });
                         }
+                        if (deepest >= std::max(kOutsideHoleDistance, kOutsideHoleShare * aroundSide)) outside = true;
                         if (outside) queue.insert(queue.end(), region.begin(), region.end());
                     }
                     // from the outside, through soft and transparent pixels
@@ -281,6 +339,7 @@ namespace jasperengine::editor::spritenormals {
                     // only beside a solid core: an island (nearly) all translucent (a ghost, a bubble) keeps its shape
                     if (band.size() * 10 < f.pixels.size() * 9) {
                         for (int j : band) f.shape[static_cast<size_t>(j)] = 0;
+                        f.bandShare = f.pixels.empty() ? 0.0f : static_cast<float>(band.size()) / static_cast<float>(f.pixels.size());
                     }
                 }
             }
@@ -350,6 +409,7 @@ namespace jasperengine::editor::spritenormals {
             detail::Workers* pool = static_cast<int64_t>(n) >= detail::kParallelPixels ? workers : nullptr;
             auto overPixels = [&](const std::function<void(int, int)>& body) { detail::parallelFor(pool, count, body, 8192); };
             ItemResult outcome;
+            outcome.bandShare = field.bandShare;
             Field shape = detail::edt(field.shape, width, height, border, workers);
             // the thickness: the item's own largest inscribed distance, or its sequence's median
             const float thickness = item.thickness >= 0.0f ? item.thickness : maxFinite(shape, fieldPixels);
@@ -673,6 +733,15 @@ namespace jasperengine::editor::spritenormals {
     }
 
     const char* toString(ResolutionScale scale) { return scale == ResolutionScale::Off ? "off" : "auto"; }
+    const char* toString(SoftEdge edge) { return edge == SoftEdge::Solid ? "solid" : "auto"; }
+
+    bool parseSoftEdge(const std::string& name, SoftEdge& out) {
+        const std::string n = lower(name);
+        if (n == "auto") out = SoftEdge::Auto;
+        else if (n == "solid") out = SoftEdge::Solid;
+        else return false;
+        return true;
+    }
 
     const char* toString(Edges edges) {
         switch (edges) {
@@ -1101,7 +1170,7 @@ namespace jasperengine::editor::spritenormals {
                 if (sequenceSize) item.side = sequenceSide;
                 item.scaled = scaled;
                 item.profile = profileOf(item.side);
-                item.outerBand = !v1 && item.side > static_cast<float>(kHiresSide);
+                item.outerBand = !v1 && s.softEdge == SoftEdge::Auto && item.side > static_cast<float>(kHiresSide);
                 item.thicknessRadius = autoR && !v1 && !sequenceSize;
             }
 
@@ -1127,7 +1196,7 @@ namespace jasperengine::editor::spritenormals {
                     std::vector<float> thick;
                     for (Item& probe : largestItems) {
                         probe.side = sequenceSide;
-                        probe.outerBand = sequenceSide > static_cast<float>(kHiresSide);
+                        probe.outerBand = s.softEdge == SoftEdge::Auto && sequenceSide > static_cast<float>(kHiresSide);
                         const ItemField f = itemField(probe, ctx, &workers);
                         const Field d = detail::edt(f.shape, f.width, f.height,
                                                     s.edges == Edges::Wrap ? Border::Wrap : (s.edges == Edges::Extend ? Border::Clamp : Border::Zero), &workers);
@@ -1219,6 +1288,7 @@ namespace jasperengine::editor::spritenormals {
                 return stopped;
             }
             for (size_t k = 0; k < items.size(); k++) {
+                result.outerBandShare = std::max(result.outerBandShare, outcomes[k].bandShare);
                 result.scaleMin = k ? std::min(result.scaleMin, outcomes[k].scale) : outcomes[k].scale;
                 result.scaleMax = k ? std::max(result.scaleMax, outcomes[k].scale) : outcomes[k].scale;
             }

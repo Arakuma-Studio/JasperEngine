@@ -199,6 +199,7 @@ namespace jasperengine::editor::spritenormals {
         j["profile"] = toString(s.profile);
         j["edges"] = toString(s.edges);
         j["resolution_scale"] = toString(s.resolutionScale);
+        j["soft_edge"] = toString(s.softEdge);
         // the settings version only when it is not the current one (a map made before
         // high-resolution support, regenerated with its rules)
         if (s.version != kSettingsVersion) j["version"] = s.version;
@@ -243,6 +244,7 @@ namespace jasperengine::editor::spritenormals {
         if (!readEnum<Profile>(j, "profile", s.profile, parseProfile, "auto, rounded, dome, bevel, inflate", error) ||
             !readEnum<Edges>(j, "edges", s.edges, parseEdges, "transparent, wrap, extend", error) ||
             !readEnum<ResolutionScale>(j, "resolution_scale", s.resolutionScale, parseResolutionScale, "auto, off", error) ||
+            !readEnum<SoftEdge>(j, "soft_edge", s.softEdge, parseSoftEdge, "auto, solid", error) ||
             !readInt(j, "version", "", s.version, error)) {
             return false;
         }

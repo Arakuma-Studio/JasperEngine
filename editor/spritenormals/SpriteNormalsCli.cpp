@@ -356,6 +356,14 @@ namespace jasperengine::editor::spritenormals {
                         return false;
                     }
                     o.overrides["resolution_scale"] = value;
+                } else if (arg == "--soft-edge") {
+                    if (!need()) return false;
+                    SoftEdge e;
+                    if (!parseSoftEdge(value, e)) {
+                        error = "unknown soft edge '" + value + "' (auto, solid)";
+                        return false;
+                    }
+                    o.overrides["soft_edge"] = value;
                 } else if (arg == "--settings-version") {
                     if (!need()) return false;
                     if (value != "1" && value != "2") {
@@ -817,7 +825,7 @@ namespace jasperengine::editor::spritenormals {
                             {"mean_tilt_deg", rounded(m.meanTiltDeg, 1)}, {"noise_pct", rounded(m.noisePct, 1)}, {"lean_deg", rounded(m.leanDeg, 1)},
                             {"soft_edge_pct", rounded(m.softEdgePct, 1)}, {"frames_touching_edges", m.framesTouchingEdges},
                             {"has_transparency", m.hasTransparency}, {"opaque_pixels", m.opaquePixels}, {"painted_pct", rounded(m.paintedPct, 1)},
-                            {"roughness_deg", rounded(m.roughnessDeg, 2)}, {"crease_pct", rounded(m.creasePct, 2)}};
+                            {"roughness_deg", rounded(m.roughnessDeg, 2)}, {"crease_pct", m.creaseMeasured ? json(rounded(m.creasePct, 2)) : json(nullptr)}};
             // the paint layer (Phase 5): where it came from, what each op selected and changed
             json ops = json::array();
             for (size_t i = 0; i < p.paint.ops.size(); i++) {
@@ -1161,6 +1169,8 @@ namespace jasperengine::editor::spritenormals {
             << "      --edges <e>             transparent (default), wrap (seamless), extend (tiles).\n"
             << "      --resolution-scale <s>  auto (default): smoothing, softness and detail are for a 128 px sprite\n"
             << "                              and grow with it (x shorter side / 128); off: as given, in pixels.\n"
+            << "      --soft-edge <s>         auto (default): above 128 px, soft pixels (alpha < 0.5) reaching the outside\n"
+            << "                              are outside the shape (glows); solid: they count as shape (translucent art).\n"
             << "      --settings-version <n>  2 (default); 1 regenerates a map made before high-resolution support.\n"
             << "      --ignore-outline        Leave the detected outline colour out of the relief.\n"
             << "      --region <spec>         colors=#rrggbb[,#rrggbb...][;tolerance=x][;detail=x][;lift=px][;flat]. Can repeat (16).\n"

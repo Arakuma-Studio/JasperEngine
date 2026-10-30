@@ -811,3 +811,106 @@ TEST(SpriteNormalsHires, MetricsDoNotDependOnTheirThreads) {
     EXPECT_EQ(a.noisePct, b.noisePct);
     EXPECT_EQ(a.meanTiltDeg, b.meanTiltDeg);
 }
+
+// ---------------------------------------------------------------- final polish
+
+TEST(SpriteNormalsHires, HoleThresholdIsTheIslandsInEveryEdgesMode) {
+    // a 330 px ring (core 45..150) with soft glows (alpha 70) inside and outside, on a 1024 canvas:
+    // the 40 px hole is deeper than 5% of the ring (16.5), not of the canvas (51): its glow is flat
+    // like the outer glow with transparent, extend and wrap edges
+    const Image ring = fromFunction(1024, 1024, [](int x, int y) {
+        const float r = std::hypot(x - 512.0f, y - 512.0f);
+        const uint8_t a = r >= 45.0f && r < 150.0f ? 255 : ((r >= 20.0f && r < 45.0f) || (r >= 150.0f && r < 165.0f) ? 70 : 0);
+        return std::array<uint8_t, 4>{200, 200, 200, a};
+    });
+    for (Edges e : {Edges::Transparent, Edges::Extend, Edges::Wrap}) {
+        Settings s = preset(Preset::Default);
+        s.detail = 0.0f;
+        s.height = true;
+        s.edges = e;
+        const Result r = run(ring, s, 4);
+        auto heightAt = [&](int x) {
+            const uint16_t v = reinterpret_cast<const uint16_t*>(r.height.data.data())[static_cast<size_t>(512) * 1024 + x];
+            return r.heightMin + (r.heightMax - r.heightMin) * v / 65535.0f;
+        };
+        EXPECT_LT(heightAt(512 + 32), 0.01f * r.heightMax) << toString(e) << " inner glow";
+        EXPECT_LT(heightAt(512 + 157), 0.01f * r.heightMax) << toString(e) << " outer glow";
+        EXPECT_GT(heightAt(512 + 97), 0.5f * r.heightMax) << toString(e) << " core";
+    }
+}
+
+TEST(SpriteNormalsHires, SparsePaintLeavesCreasesUnmeasured) {
+    // 81 painted dots on a rounded square: their exclusion bands cover most of it, so the creases are
+    // not measured (no warning, a line saying why), not reported as 0
+    const Image square = fromFunction(600, 600, [](int x, int y) {
+        return std::array<uint8_t, 4>{170, 120, 80, static_cast<uint8_t>(x >= 20 && x < 580 && y >= 20 && y < 580 ? 255 : 0)};
+    });
+    Settings rounded = preset(Preset::Default);
+    rounded.profile = Profile::Rounded;
+    const Result r = run(square, rounded, 4, {}, false, true);
+    PaintOverlay dots = PaintOverlay::blank(600, 600);
+    for (int j = 0; j < 9; j++) {
+        for (int i = 0; i < 9; i++) dots.rgba[(static_cast<size_t>(40 + 60 * j) * 600 + 40 + 60 * i) * 4 + 3] = 255;
+    }
+    const Metrics m = measure(r.normal, {}, false, 0.03f, &dots, &r.shape);
+    EXPECT_FALSE(m.creaseMeasured);
+    EXPECT_EQ(m.creasePct, 0.0);
+    const Assessment a = assess(rounded, m, 0, &r);
+    EXPECT_FALSE(warns(a, "creased"));
+    EXPECT_NE(std::find(a.lines.begin(), a.lines.end(), "Creases not measured: paint covers most of the sprite"), a.lines.end());
+    // one painted corner patch leaves most of it measured: still creased
+    PaintOverlay corner = PaintOverlay::blank(600, 600);
+    for (int y = 250; y < 350; y++) {
+        for (int x = 30; x < 60; x++) corner.rgba[(static_cast<size_t>(y) * 600 + x) * 4 + 3] = 255;
+    }
+    const Metrics c = measure(r.normal, {}, false, 0.03f, &corner, &r.shape);
+    EXPECT_TRUE(c.creaseMeasured);
+    EXPECT_GT(c.creasePct, kCreasedPct);
+}
+
+TEST(SpriteNormalsHires, SoftEdgeSolidAndTheMostlyFlatHint) {
+    // the cliff cases: a glass disc (alpha 80, a solid 20 px rim) with a 25 px clear hole (deep enough
+    // to be outside: the glass becomes outer band), and a translucent disc with a 10% solid core.
+    // Flat, and the hint names soft_edge "solid"; with it they are round again.
+    const Image glass = fromFunction(600, 600, [](int x, int y) {
+        const float r = std::hypot(x - 300.0f, y - 300.0f);
+        if (std::hypot(x - 300.0f, y - 200.0f) < 25.0f) return std::array<uint8_t, 4>{180, 180, 180, 0};
+        return std::array<uint8_t, 4>{180, 180, 180, static_cast<uint8_t>(r < 230.0f ? 80 : (r < 250.0f ? 255 : 0))};
+    });
+    const Image core = fromFunction(600, 600, [](int x, int y) {
+        const float r = std::hypot(x - 300.0f, y - 300.0f);
+        return std::array<uint8_t, 4>{180, 180, 180, static_cast<uint8_t>(r < 80.0f ? 255 : (r < 250.0f ? 100 : 0))};
+    });
+    for (const Image* image : {&glass, &core}) {
+        Settings s = preset(Preset::Default);
+        s.detail = 0.0f;
+        const Result r = run(*image, s, 4, {}, false, true);
+        EXPECT_GT(r.outerBandShare, 0.5f);
+        const Assessment a = assessOf(r, s);
+        ASSERT_TRUE(warns(a, "mostly_flat"));
+        EXPECT_NE(a.hint.find("soft_edge \"solid\""), std::string::npos) << a.hint;
+        s.softEdge = SoftEdge::Solid;
+        const Result solid = run(*image, s, 4, {}, false, true);
+        EXPECT_FLOAT_EQ(solid.outerBandShare, 0.0f);
+        const Metrics m = measure(solid.normal, {}, false, 0.03f, nullptr, &solid.shape);
+        EXPECT_GT(m.meanTiltDeg, 30.0);
+        EXPECT_FALSE(warns(assess(s, m, 0, &solid), "mostly_flat"));
+    }
+    // solid changes only the silhouette: an image without soft pixels is byte-identical
+    Settings a = preset(Preset::Default), b = a;
+    b.softEdge = SoftEdge::Solid;
+    const Image hard = disc(300, 300, 140.0f);
+    EXPECT_EQ(run(hard, a).normal.data, run(hard, b).normal.data);
+    // the names and the recipe
+    SoftEdge e;
+    ASSERT_TRUE(parseSoftEdge("Solid", e));
+    EXPECT_EQ(e, SoftEdge::Solid);
+    EXPECT_FALSE(parseSoftEdge("hard", e));
+    EXPECT_EQ(settingsToJson(b)["soft_edge"], "solid");
+    Settings back;
+    std::string error;
+    ASSERT_TRUE(settingsFromJson(settingsToJson(b), back, error)) << error;
+    EXPECT_EQ(back.softEdge, SoftEdge::Solid);
+    EXPECT_FALSE(settingsFromJson(nlohmann::json{{"soft_edge", "hard"}}, back, error));
+    EXPECT_EQ(error, "soft_edge \"hard\" is not one of auto, solid");
+}

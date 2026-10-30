@@ -506,6 +506,7 @@ TEST(SpriteNormalsWindowDeathTest, HighResolutionPresetsProfileScaleAndVersion) 
         sn::Settings s = window.getSettings();
         s.edges = sn::Edges::Extend;
         s.resolutionScale = sn::ResolutionScale::Off;
+        s.softEdge = sn::SoftEdge::Solid;
         s.version = 1;
         s.smoothing = 24.0f;   // within the new range
         window.setSettings(s);
@@ -513,6 +514,7 @@ TEST(SpriteNormalsWindowDeathTest, HighResolutionPresetsProfileScaleAndVersion) 
         window.setPreset(sn::Preset::Crisp);
         EXPECT_EQ(window.getSettings().edges, sn::Edges::Extend);
         EXPECT_EQ(window.getSettings().resolutionScale, sn::ResolutionScale::Off) << "not a preset value";
+        EXPECT_EQ(window.getSettings().softEdge, sn::SoftEdge::Solid) << "not a preset value";
         EXPECT_EQ(window.getSettings().version, sn::kSettingsVersion) << "a preset starts with the current generator";
         // the stored settings keep the new values (project.yaml)
         EXPECT_EQ(w.p->getSpriteNormalsSettings().settings.resolutionScale, sn::ResolutionScale::Off);

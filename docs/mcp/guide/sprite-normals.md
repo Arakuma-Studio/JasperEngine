@@ -41,7 +41,7 @@ The run is a job: past `timeout_seconds` (default 120) the call returns `{job_id
 | `source` (required) | | An image file (`.png` APNG included, `.gif`, `.jpg`, `.tga`, `.bmp`, `.psd`), or a GameObject (id, path, unique name, `{id\|name\|path}`) that is a Sprite, a Polygon or a Tilemap: its colour texture is the source, a Sprite's frames the cells |
 | `scene` | selected | the scene of a GameObject source and of `apply` |
 | `preset` | `default` | `soft`, `default`, `crisp`, `detailed`, `chunky`, `toon`, `painted`, `props`, `tile` (below) |
-| `params` | `{}` | overrides: `strength`, `detail`, `smoothing`, `volume`, `radius`, `softness`, `alpha_threshold`, `profile`, `edges`, `resolution_scale`, `ignore_outline`, `regions`, `quantize` (Toon steps, below), `version`; an unknown key or a value out of range is refused |
+| `params` | `{}` | overrides: `strength`, `detail`, `smoothing`, `volume`, `radius`, `softness`, `alpha_threshold`, `profile`, `edges`, `resolution_scale`, `soft_edge`, `ignore_outline`, `regions`, `quantize` (Toon steps, below), `version`; an unknown key or a value out of range is refused |
 | `frames` | `"auto"` | `"auto"`, `"none"`, a grid `{tile_size: N or [w, h], columns, rows, count, offset: [x, y], padding: [x, y]}` (as `set_sprite_frames.slice`) or `{cells: [[x, y, w, h], ...]}` |
 | `directx` | false | green down (Unreal); the engine reads OpenGL |
 | `height` | false | also a 16-bit grey height map |
@@ -106,6 +106,9 @@ The last three were tuned on high-resolution sprites (below); the first six are 
 - `regions` (at most 16): `{colors: ["#rrggbb", ...], tolerance: 0..0.5 (0.03), detail: 0..8 (1), lift: -16..16
   px (0), flat: false}`; a pixel takes the first matching region. Painted highlights that should not be bumps:
   `{"colors": ["#ffffff", "#fff3c4"], "detail": 0}`. Armour plates standing out: `{"colors": ["#8a8f99"], "lift": 3}`.
+- `soft_edge`: `auto` (default: above 128 px, soft pixels reaching the outside are outside the shape, below) or
+  `solid` (every visible pixel is shape, as before: translucent art such as ghosts, smoke or glass with a thin rim).
+  Only the silhouette changes; an image without soft pixels gives the same bytes.
 - `version`: 2 (default); 1 regenerates a map made before high-resolution support with its old rules (the
   `regenerate` arguments of such a map carry it).
 
@@ -127,12 +130,16 @@ gets the light pixel art gets:
 - **Soft edges.** Pixels under alpha 0.5 that reach the transparent outside (a glow, a feathered rim) are outside
   the shape: they keep their alpha and their normal, but do not inflate the sprite. Semi-transparent pixels inside
   it (glass, a translucent belly) stay part of the shape. The outside is the transparency that reaches the image's or
-  frame's border, and any transparent hole deeper than max(2 px, 5% of the island's shorter side) (a ring's middle:
+  frame's border, and any transparent hole deeper than max(2 px, 5% of the shorter side of the island around it,
+  whatever `edges`) (a ring's middle:
   its inner glow behaves like the outer one; a pinhole or a small hole in glass does not count). With `wrap` only the
   depth counts, so a tile gives the same map wherever it is cut. A sprite that is translucent all over (a ghost, a
-  bubble: the band would take over 90% of it) keeps its whole shape.
+  bubble: the band would take over 90% of it) keeps its whole shape. When the band takes most of a sprite and it
+  comes out `mostly_flat`, the hint says so: pass `soft_edge: "solid"`.
 - **Creases are measured.** `crease_pct` (below) warns `creased` with the fix (`profile: inflate` / `dome`, or
-  `softness`); painted pixels are not counted, so painting over a crease clears it and a painted patch is no crease. `roughness_deg` of the whole map warns `streaky` only past every
+  `softness`); painted pixels are not counted, so painting over a crease clears it and a painted patch is no crease.
+  When the paint (and the blur's reach around it) covers over half of what would be measured, `crease_pct` is `null`
+  ("Creases not measured: paint covers most of the sprite") rather than 0. `roughness_deg` of the whole map warns `streaky` only past every
   good result of the evaluation (the painted relief is rough by design).
 
 Long thin art is gated by its shorter side: a 1024x96 sword is pixel art to the generator (rounded, no scaling).
@@ -297,7 +304,8 @@ Errors (`isError`, `errors: [{kind, message, fix, field?}]`; nothing is written)
 | `write_failed` / `failed` | the disk or the generator failed | check the path; call again |
 
 Warnings (in `warnings`, `{kind, message, fix}`): from the image `no_alpha` (no transparent pixel with edges
-transparent: use `extend`/`wrap` for tiles), `mostly_flat`, `too_steep`, `noisy`, `creased`, `streaky`, `leaning`, `soft_edges`,
+transparent: use `extend`/`wrap` for tiles), `mostly_flat` (above 128 px with most of the sprite soft: try
+`soft_edge: "solid"`), `too_steep`, `noisy`, `creased`, `streaky`, `leaning`, `soft_edges`,
 `frames_touch_edges` (use `extend` when the art continues past the cell), `outline_not_found`, `region_unmatched`;
 from the paint `paint_empty_selection` (an op selected nothing), `paint_layout_changed` (other frames than when it was
 painted), `paint_hidden_pixels` (painted pixels now transparent), `paint_unreadable` (a damaged layer, dropped);
@@ -343,7 +351,8 @@ jasperengine-editor generate-sprite-normals --source art/crate_1024.png --preset
 jasperengine-editor generate-sprite-normals --source art/hero_2048.png --profile inflate --resolution-scale off --smoothing 16
 ```
 
-`--profile`, `--resolution-scale auto|off` and `--settings-version 1|2` are the `params` of the same names.
+`--profile`, `--resolution-scale auto|off`, `--soft-edge auto|solid` and `--settings-version 1|2` are the `params` of
+the same names.
 
 `--dry-run` generates and reports without writing; `--preview-out` writes the contact sheet; `--project <dir>
 --sprite <GameObject>` takes a Sprite's texture and frames; `--cells-json` takes a recipe's `frames.cells`. With

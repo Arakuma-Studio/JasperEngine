@@ -524,11 +524,12 @@ async def test_high_resolution_flags():
     for name in ("potion.png", "crate.png", "cobbles_256.png"):
         shutil.copy(hires / name, work / "art" / name)
     r = run(work, "--help")
-    for flag in ("--resolution-scale", "--settings-version", "painted", "inflate", "0..32"):
+    for flag in ("--resolution-scale", "--settings-version", "--soft-edge", "painted", "inflate", "0..32"):
         check(flag in r.stdout, f"--help names {flag}")
     before = listing(work)
     for args, needle in [(["--smoothing", "33"], "--smoothing"), (["--softness", "40"], "--softness"), (["--resolution-scale", "on"], "resolution scale"),
-                         (["--profile", "pillow"], "inflate"), (["--settings-version", "3"], "--settings-version"), (["--preset", "huge"], "tile")]:
+                         (["--profile", "pillow"], "inflate"), (["--settings-version", "3"], "--settings-version"), (["--preset", "huge"], "tile"),
+                         (["--soft-edge", "hard"], "soft edge")]:
         r = run(work, "--source", "art/potion.png", *args)
         check(r.returncode == 2 and needle in r.stderr, f"{args}: exit 2 naming {needle!r}: {r.returncode} {r.stderr[-400:]}")
     check(listing(work) == before, "usage errors write nothing")
@@ -544,6 +545,8 @@ async def test_high_resolution_flags():
     code, out, _ = run_json(work, "--source", "art/crate.png", "--preset", "props", "-o", "art/crate_n.png")
     rec = recipe(work / "art" / "crate_n.png")
     check(code == 0 and rec["version"] == 2 and rec["settings"]["profile"] == "dome" and rec["settings"]["preset"] == "props", f"{rec['settings']}")
+    code, out, _ = run_json(work, "--source", "art/potion.png", "--soft-edge", "solid", "--dry-run")
+    check(code == 0 and out["results"][0]["settings"]["soft_edge"] == "solid", f"{out['results'][0]['settings']}")
     code, out, _ = run_json(work, "--source", "art/cobbles_256.png", "--preset", "tile", "-o", "art/tile_n.png")
     check(code == 0 and recipe(work / "art" / "tile_n.png")["settings"]["edges"] == "wrap", "tile wraps")
     code, out, _ = run_json(work, "--source", "art/potion.png", "--resolution-scale", "off", "--smoothing", "32", "--softness", "32", "--dry-run")

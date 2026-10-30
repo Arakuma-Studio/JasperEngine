@@ -91,7 +91,7 @@ std::string relativeOf(Project* project, const fs::path& absolute) {
 // The settings' field names (validateSettings, settingsFromJson) as the tool's argument names
 const std::vector<std::string>& paramKeys() {
     static const std::vector<std::string> keys = {"strength", "detail", "smoothing", "volume", "radius", "softness", "alpha_threshold",
-                                                  "profile", "edges", "resolution_scale", "ignore_outline", "regions", "quantize", "version"};
+                                                  "profile", "edges", "resolution_scale", "soft_edge", "ignore_outline", "regions", "quantize", "version"};
     return keys;
 }
 
@@ -517,7 +517,7 @@ Json metricsJson(const sn::Metrics& m) {
             {"mean_tilt_deg", rounded(m.meanTiltDeg, 1)}, {"noise_pct", rounded(m.noisePct, 1)}, {"lean_deg", rounded(m.leanDeg, 1)},
             {"soft_edge_pct", rounded(m.softEdgePct, 1)}, {"frames_touching_edges", m.framesTouchingEdges},
             {"has_transparency", m.hasTransparency}, {"opaque_pixels", m.opaquePixels}, {"painted_pct", rounded(m.paintedPct, 1)},
-            {"roughness_deg", rounded(m.roughnessDeg, 2)}, {"crease_pct", rounded(m.creasePct, 2)}};
+            {"roughness_deg", rounded(m.roughnessDeg, 2)}, {"crease_pct", m.creaseMeasured ? Json(rounded(m.creasePct, 2)) : Json(nullptr)}};
 }
 
 // The paint layer of a run (4.1): where it came from, what each op selected and changed

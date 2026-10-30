@@ -85,6 +85,18 @@ Commit this spec as docs/superpowers/specs/2026-10-30-sprite-normals-hires-desig
 - **D** The band is skipped for an island it would take over 90% of (ghosts, bubbles keep their shape).
 - **E** `measure()` takes the request's thread count; the metrics never depend on it.
 
+## Final polish rulings (2026-10-30, binding)
+
+- The hole-depth threshold uses the shorter side of the island around the hole in every edges mode (its extent on
+  the circle with wrap: independent of the cut).
+- Creases are "not measured" (`crease_pct` null, no `creased`, the line "Creases not measured: paint covers most of
+  the sprite") when the paint exclusion leaves out more than half of the measurable inner pixels.
+- New setting `soft_edge`: `auto` (default, the outer-band rule) | `solid` (soft pixels count as shape, as version 1;
+  silhouette only) on every surface (core, recipe v2, window Advanced "Soft edges", MCP params, CLI `--soft-edge`,
+  guide, contract). `Result::outerBandShare` reports the largest share of an island the band took; above 50% a
+  `mostly_flat` warning says so and suggests `soft_edge: "solid"`.
+- The window passes its worker thread count to `measure()`.
+
 ## Final values (implemented and tuned on the evaluation set, 2026-10-30, after review round 1)
 
 Measured with the new CLI on `build/hires-eval` (scripts `v2_*.py`; report `build/hires-eval/IMPLEMENTATION.md`).

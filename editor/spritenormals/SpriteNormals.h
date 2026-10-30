@@ -54,6 +54,10 @@ namespace jasperengine::editor::spritenormals {
     enum class Profile { Rounded, Dome, Bevel, Inflate, Auto };
     // Auto: smoothing, softness and detail multiplied by k = max(1, S / kHiresSide); Off: as given
     enum class ResolutionScale { Auto, Off };
+    // Auto: soft pixels (alpha under 0.5) reached from the outside are outside the silhouette
+    // (version 2, above 128 px: glows and feathered rims don't inflate the sprite); Solid: every
+    // pixel above the cutoff counts as shape (as version 1). Nothing else changes.
+    enum class SoftEdge { Auto, Solid };
     enum class Edges { Transparent, Wrap, Extend };
 
     // A colour region: pixels whose Oklab colour is within `tolerance` of one of `colors`
@@ -98,6 +102,7 @@ namespace jasperengine::editor::spritenormals {
         Profile profile = Profile::Auto;
         Edges edges = Edges::Transparent;
         ResolutionScale resolutionScale = ResolutionScale::Auto;
+        SoftEdge softEdge = SoftEdge::Auto;
         int version = kSettingsVersion;       // 1 or 2 (above)
         bool ignoreOutline = false;
         std::vector<Region> regions;          // at most 16
@@ -119,10 +124,12 @@ namespace jasperengine::editor::spritenormals {
     const char* toString(Profile profile);    // "rounded", "dome", "bevel", "inflate", "auto"
     const char* toString(Edges edges);        // "transparent", "wrap", "extend"
     const char* toString(ResolutionScale scale);   // "auto", "off"
+    const char* toString(SoftEdge edge);           // "auto", "solid"
     bool parsePreset(const std::string& name, Preset& out);
     bool parseProfile(const std::string& name, Profile& out);
     bool parseEdges(const std::string& name, Edges& out);
     bool parseResolutionScale(const std::string& name, ResolutionScale& out);
+    bool parseSoftEdge(const std::string& name, SoftEdge& out);
     // Every preset, in the order of the window's buttons; the names joined ("soft, default, ...")
     const std::vector<Preset>& allPresets();
     std::string presetNames(const char* separator = ", ");
@@ -242,6 +249,8 @@ namespace jasperengine::editor::spritenormals {
         float scaleMax = 1.0f;
         // The profiles the islands used once auto is resolved (bits: 1 << int(Profile))
         uint32_t profilesUsed = 0;
+        // The largest share of an island's pixels the outer band took (soft_edge auto; 0 without)
+        float outerBandShare = 0.0f;
 
         std::optional<uint32_t> outlineColor;   // ignoreOutline: the colour detected (0xRRGGBB)
         int islands = 0;                     // processed (Transparent edges); cells otherwise
