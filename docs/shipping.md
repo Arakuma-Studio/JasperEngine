@@ -160,6 +160,10 @@ jasperengine-editor publish deck-rollback
   `<releasesDir>/<release>/content/<target>`, moves debug symbols to `symbols/<target>` (`.pdb`,
   `.dSYM`, and on Linux the DWARF split off with `objcopy`/`strip` when binutils is installed),
   checks again and writes `release.json`. A release name is used once.
+
+  Release builds of either method already ship stripped. A prebuilt player's symbols come from
+  its runtime (`symbols/<target>/player`). A compiled build's link splits its own off; the build
+  keeps them under `.jasperengine/symbols/` and prepare copies them to `symbols/<target>/game`.
 - **verify** repeats the checks and compares every file with `release.json`.
 - **steam-upload** verifies, writes the SteamPipe scripts and runs
   `steamcmd +login <user> +run_app_build <script> +quit`. SteamCMD keeps its own login session

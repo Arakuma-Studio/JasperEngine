@@ -395,8 +395,17 @@ Steam Deck.
       binutils exist;
     - macOS: `.dSYM` moved out *before* re-signing.
     - Prebuilt players ship pre-stripped, and their symbol archives
-      (`jasperengine-player-<id>-<version>-symbols.zip`) are fetched into `symbols/` when
-      available.
+      (`jasperengine-player-<id>-<version>-symbols.zip`) are fetched into `symbols/<target>/player`
+      when available.
+    - Compile builds ship pre-stripped the same way: `JASPERENGINE_SPLIT_SYMBOLS`.
+      - The link step splits the debug information into the build tree's `symbols/`: `<exe>.debug`
+        with a debug link, `<exe>.dSYM`, or the PDB.
+      - The build keeps a copy under `.jasperengine/symbols/<exe sha256>/`, keeping the five newest,
+        and its `content-manifest.json` names that copy (`symbols`).
+      - prepare copies it into `symbols/<target>/game`. A build without one gets
+        `W-BUILD-SYMBOLS`.
+      - Android's Gradle strips the libraries it packages itself. A release bundle carries their
+        symbols for Play (`debugSymbolLevel 'FULL'`).
   - Re-validates, writes `release.json` (D11), and renames the staging dir to `<releasesDir>/<name>`.
   - Refuses an existing release name, and release storage that overlaps a build dir.
 - **R24. `publish verify <release>`.** Re-runs R30 on `content/<target>` and compares
