@@ -220,7 +220,8 @@ async def test_export_without_effects_has_no_notice(ed: Editor):
     project = copy_project(ed.project)
     out = project.parent / "export-plain"
     cli_export(ed, project, out, "--shader", "mesh", "--shader", "htmlui")
-    ed.check(not (out / "licenses").exists(), "no UI effect: no notice")
+    # (licenses/ itself holds S18's OpenEngine notice in every export)
+    ed.check(not (out / "licenses" / "shaders.com-LICENSE.txt").exists(), "no UI effect: no notice")
     out = project.parent / "export-one"
     cli_export(ed, project, out, "--shader", "uieffect/pixelate:Flt")
     ed.check((out / "licenses" / "shaders.com-LICENSE.txt").is_file(), "the notice with the effect")

@@ -274,7 +274,8 @@ async def test_export_ships_the_notice(ed: Editor):
     plain = project.parent / "export-plain"
     try:
         cli_export(ed, project, plain, "--shader", "mesh")
-        ed.check(not (plain / "licenses").exists(), "no fluid variant: no notice")
+        # (licenses/ itself holds S18's OpenEngine notice in every export)
+        ed.check(not (plain / NOTICE).exists(), "no fluid variant: no notice")
         only = project.parent / "export-fluid-only"
         cli_export(ed, project, only, "--shader", "fluid")
         ed.check((only / NOTICE).is_file(), "the fluid's variants alone: the notice")
