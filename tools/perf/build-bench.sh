@@ -14,9 +14,10 @@
 #
 # phase (default: cold warm noop edit-cpp edit-header):
 #   cold         a new build directory, ccache recaching (CCACHE_RECACHE: every unit compiles,
-#                and is stored), i.e. a build no cache can help
-#   warm         another new build directory with ccache on: a new worktree or a CI job whose
-#                cache holds the same sources
+#                and is stored), i.e. a build no cache can help; the tree is deleted afterwards
+#   warm         the same new build directory again with ccache on: a new worktree (every
+#                worktree is /src in the image) or a CI job whose cache holds the same sources
+#                (WARM_DIR_SUFFIX=<s> builds it in <tree><s> instead: another build directory)
 #   noop         Ninja with nothing to do (ninja -d stats)
 #   edit-cpp     EDIT_CPP (one source) gets a new mtime and is rebuilt with ccache off: a real edit
 #   edit-header  each of EDIT_HEADERS the same way, one after the other
@@ -63,13 +64,15 @@ now() { date +%s.%N; }
 load() { cut -d' ' -f1 /proc/loadavg; }
 elapsed() { awk -v a="$1" -v b="$2" 'BEGIN { printf "%.1f", b - a }'; }
 
-# ccache's verdicts of one build, from its log (ccache 4.5 writes one "Result:" line per call)
+# ccache's verdicts of one build, from its log (ccache 4.5: "Result: direct_cache_hit",
+# "preprocessed_cache_hit", "cache_miss" or "recache" once per call, next to secondary lines)
 ccache_counts() {
-    local log="$1" hits misses
+    local log="$1" direct pre misses
     [[ -f "$log" ]] || { echo '"ccache_hits": null, "ccache_misses": null'; return; }
-    hits=$(grep -c 'Result: .*cache hit' "$log" || true)
-    misses=$(grep -c 'Result: cache miss\|Result: .*recache' "$log" || true)
-    echo "\"ccache_hits\": $hits, \"ccache_misses\": $misses"
+    direct=$(grep -cE 'Result: direct_cache_hit$' "$log" || true)
+    pre=$(grep -cE 'Result: preprocessed_cache_hit$' "$log" || true)
+    misses=$(grep -cE 'Result: (cache_miss|recache)$' "$log" || true)
+    echo "\"ccache_hits\": $((direct + pre)), \"ccache_direct_hits\": $direct, \"ccache_preprocessed_hits\": $pre, \"ccache_misses\": $misses"
 }
 
 record() {  # phase dir seconds load_before load_after steps ccache_json [extra_json]
@@ -97,7 +100,8 @@ build() {  # dir [ninja args...]
 }
 
 phase_tree() {  # cold|warm: a new tree, configured and built
-    local kind="$1" dir="$OUT/$SCENARIO-$1"
+    local kind="$1" dir="$OUT/$SCENARIO"
+    [[ "$kind" == warm ]] && dir="$dir${WARM_DIR_SUFFIX:-}"
     rm -rf "$dir" "$dir".*
     mkdir -p "$dir"
     local l0 t0 t1 t2 steps
@@ -106,15 +110,15 @@ phase_tree() {  # cold|warm: a new tree, configured and built
     t1=$(now)
     rm -f "$dir.ccache.log"
     if [[ "$kind" == cold ]]; then
-        steps=$(CCACHE_RECACHE=1 CCACHE_LOGFILE="$dir.ccache.log" build "$dir")
+        steps=$(CCACHE_RECACHE=1 CCACHE_LOGFILE="$PWD/$dir.ccache.log" build "$dir")
     else
-        steps=$(CCACHE_LOGFILE="$dir.ccache.log" build "$dir")
+        steps=$(CCACHE_LOGFILE="$PWD/$dir.ccache.log" build "$dir")
     fi
     t2=$(now)
     record "$kind" "$dir" "$(elapsed "$t0" "$t2")" "$l0" "$(load)" "${steps:-0}" "$(ccache_counts "$dir.ccache.log")" \
         "\"configure_seconds\": $(elapsed "$t0" "$t1")"
-    cp "$dir/.ninja_log" "$dir.ninja_log"
-    cp "$dir/compile_commands.json" "$dir.compile_commands.json" 2>/dev/null || true
+    cp "$dir/.ninja_log" "$OUT/$SCENARIO-$kind.ninja_log"
+    cp "$dir/compile_commands.json" "$OUT/$SCENARIO-$kind.compile_commands.json" 2>/dev/null || true
     rm -f "$dir.ccache.log"
     # the cold tree's objects are not needed after its log is kept (disk)
     [[ "$kind" == cold ]] && rm -rf "$dir"
@@ -123,7 +127,7 @@ phase_tree() {  # cold|warm: a new tree, configured and built
 
 phase_edit() {  # name file...
     local name="$1"; shift
-    local dir="$OUT/$SCENARIO-warm"
+    local dir="$OUT/$SCENARIO${WARM_DIR_SUFFIX:-}"
     [[ -f "$dir/build.ninja" ]] || { echo "$name needs the warm phase first" >&2; exit 1; }
     for file in "$@"; do
         [[ -f "$file" ]] || { echo "no such file $file" >&2; exit 1; }
@@ -134,12 +138,12 @@ phase_edit() {  # name file...
         t1=$(now)
         record "$name" "$dir" "$(elapsed "$t0" "$t1")" "$l0" "$(load)" "${steps:-0}" '"ccache_hits": null, "ccache_misses": null' \
             "\"file\": \"$file\""
-        cp "$dir/.ninja_log" "$dir.$name.$(basename "$file").ninja_log"
+        cp "$dir/.ninja_log" "$OUT/$SCENARIO-$name.$(basename "$file").ninja_log"
     done
 }
 
 phase_noop() {
-    local dir="$OUT/$SCENARIO-warm"
+    local dir="$OUT/$SCENARIO${WARM_DIR_SUFFIX:-}"
     [[ -f "$dir/build.ninja" ]] || { echo "noop needs the warm phase first" >&2; exit 1; }
     local l0 t0 t1
     l0=$(load); t0=$(now)
@@ -161,7 +165,11 @@ android_phase() {
         noop) ;;
         *) echo "android: phases cold warm noop edit-cpp" >&2; exit 2 ;;
     esac
-    [[ "$kind" == cold ]] && env_args+=(CCACHE_RECACHE=1)
+    if [[ "$kind" == cold ]]; then
+        env_args+=(CCACHE_RECACHE=1)
+        # Gradle's own downloads (plugins, dependencies) are not build time
+        (cd engine/workspaces/androidstudio && ./gradlew --no-daemon tasks >/dev/null 2>&1) || true
+    fi
     [[ "$kind" == edit-cpp ]] && env_args+=(CCACHE_DISABLE=1)
     rm -f "$OUT/android.ccache.log"
     l0=$(load); t0=$(now)

@@ -136,8 +136,9 @@ def own_header(path):
         and not path.startswith("engine/libs/") and path.endswith((".h", ".hpp", ".inl", ".inc"))
 
 
-def compile_seconds(build_dir):
-    log = os.path.join(build_dir, ".ninja_log")
+def compile_seconds(build_dir, log=None):
+    """{output: seconds} from the tree's .ninja_log, or from LOG (e.g. the cold build's of the same tree)."""
+    log = log or os.path.join(build_dir, ".ninja_log")
     seconds = {}
     if os.path.exists(log):
         for start, end, outputs in read_ninja_log(log):
@@ -148,7 +149,7 @@ def compile_seconds(build_dir):
 
 def cmd_fanout(args):
     deps = ninja_deps(args.build_dir)
-    seconds = compile_seconds(args.build_dir)
+    seconds = compile_seconds(args.build_dir, args.log)
     objects = [o for o in deps if OBJECT_RE.search(o)]
     total_cpu = sum(seconds.get(o, 0.0) for o in objects)
     users = collections.defaultdict(list)
@@ -259,7 +260,7 @@ PHASE_RE = re.compile(r"^\s*(phase [a-z .]+?|template instantiation|TOTAL)\s*:\s
 
 def cmd_time_report(args):
     commands = load_compile_commands(args.build_dir)
-    seconds = compile_seconds(args.build_dir)
+    seconds = compile_seconds(args.build_dir, args.log)
     units = sorted(((s, o) for o, s in seconds.items() if OBJECT_RE.search(o)), reverse=True)
     print(f"## {args.build_dir}: -ftime-report of the {args.top} slowest units (wall seconds)")
     for logged, output in units[: args.top]:
@@ -309,6 +310,7 @@ def main():
     p.add_argument("build_dir")
     p.add_argument("--top", type=int, default=20)
     p.add_argument("--json")
+    p.add_argument("--log", help="the .ninja_log whose compile times weigh the units (default: the tree's)")
     p.set_defaults(func=cmd_fanout)
     p = sub.add_parser("headers")
     p.add_argument("build_dir")
@@ -317,6 +319,7 @@ def main():
     p = sub.add_parser("time-report")
     p.add_argument("build_dir")
     p.add_argument("--top", type=int, default=12)
+    p.add_argument("--log", help="the .ninja_log that ranks the units (default: the tree's)")
     p.set_defaults(func=cmd_time_report)
     p = sub.add_parser("results")
     p.add_argument("results", nargs="+")
