@@ -110,10 +110,9 @@ async def test_lut_follows_rename_and_delete(ed: Editor):
 
 
 async def test_lut_of_a_known_image_follows_its_rename(ed: Editor):
-    """The LUT image the asset database already knows when the reference is set (its background
-    refresh ran first): the reference takes the image's GUID at once, so a rename before the scene
-    is saved is followed. It used to get the GUID only at the next save or asset refresh, and the
-    rename's own refresh no longer found the old path."""
+    """The other order of test_lut_follows_rename_and_delete: the asset database's background
+    refresh has registered the new image before the reference is set (there it may not have, and
+    the rename used to lose the reference when it had not: the image had no GUID to follow)."""
     ed.require_tools("move_asset", "resolve_asset")
     sid = STATE["sid"]
     write_png(ed.project / "assets" / "luts" / "cool.png", 4, 2, (0, 128, 255, 255))
