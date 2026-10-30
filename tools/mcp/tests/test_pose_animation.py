@@ -16,6 +16,7 @@ import harness
 from harness import Editor
 
 EDITOR = {"project": harness.REPO / "tools" / "fixtures" / "pose-animation"}
+CI = True
 TIMEOUT = 600
 
 HERO = "assets/models/hero_tpose.gltf"

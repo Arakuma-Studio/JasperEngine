@@ -65,7 +65,8 @@ function QuestLogUI:onDocumentLoad()
     local tree = byId(self.doc, "tree")
     tree:addEventListener("select", self.onSelect)
     tree:addEventListener("activate", self.onActivate)
-    local view = tree.itemsView
+    -- (itemsView is nil on an element that is no items view)
+    local view = assert(tree.itemsView, "#tree is a <tree-view>")
     view:expand("main")
     view:expand("side")
 end

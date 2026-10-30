@@ -28,6 +28,7 @@ from harness import Editor, TestFailure, find_key, skip
 import ui_input
 
 EDITOR = {"xvfb": "harness", "create": True, "name": "Jobs Memory UI"}
+CI = True
 TIMEOUT = 900
 
 PROJECT_SETTINGS = "Project Settings##ProjectSettingsModal"

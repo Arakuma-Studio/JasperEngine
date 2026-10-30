@@ -33,6 +33,7 @@ from harness import Editor, REPO
 from htmlui_pixels import Shot, near
 
 EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
+CI = True
 
 TIMEOUT = 900
 

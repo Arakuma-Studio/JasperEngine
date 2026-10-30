@@ -7,6 +7,7 @@ import yaml
 from harness import Editor
 
 EDITOR = {"create": True, "name": "Project Contracts"}
+CI = True
 
 
 def project_yaml(ed: Editor) -> dict:

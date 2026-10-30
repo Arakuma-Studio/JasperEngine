@@ -217,6 +217,7 @@ FileWatchService& FileWatchService::get() {
         io::setPublishListener([](const fs::path& target, uintmax_t, fs::file_time_type) {
             FileWatchService::get().reportEditorWrite(target, false);
         });
+        io::setPrePublishListener([](const fs::path& target) { FileWatchService::get().reportEditorReplacing(target); });
         return service;
     }();
     return *instance;
@@ -913,6 +914,36 @@ void FileWatchService::reportEditorWrite(const fs::path& pathIn, bool existedBef
         change.origin = ChangeOrigin::Editor;
         shared->index.set(path, now);
         if (now.directory && isKnown) return;   // a folder that was there: nothing to say
+        emitLocked(change);
+    }
+    wakeMain();
+}
+
+void FileWatchService::reportEditorReplacing(const fs::path& pathIn) {
+    if (!shared) return;
+    const fs::path path = normalized(pathIn);
+    {
+        std::lock_guard<std::mutex> lock(shared->stateMutex);
+        Shared& s = *shared;
+        // the index is what was delivered (or written by the editor): only a complete one says
+        // a file moved on since
+        if (!s.attached || !s.indexReady || watch::isExcludedPath(s.root, path)) return;
+        watch::PathStat now;
+        if (!watch::statPath(path, now) || now.directory) return;
+        watch::PathStat known;
+        const bool isKnown = s.index.find(path, known);
+        if (isKnown && known.sameContent(now)) return;
+        // the editor's own earlier write (announced, or reported) whose events are still on
+        // their way: not another program's
+        if (writeLedger.isEchoOfOurWrite(path)) return;
+        FileChange change;
+        change.kind = isKnown ? FileChangeKind::Modified : FileChangeKind::Added;
+        change.path = path;
+        change.size = now.size;
+        change.mtimeNs = now.mtimeNs;
+        change.identity = now.identity;
+        change.origin = ChangeOrigin::External;
+        s.index.set(path, now);
         emitLocked(change);
     }
     wakeMain();

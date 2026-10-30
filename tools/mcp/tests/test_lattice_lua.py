@@ -21,6 +21,7 @@ import json
 from harness import Editor
 
 EDITOR = {"create": True}
+CI = True
 TIMEOUT = 900
 
 PROBE = r"""---@class LatticeProbe : ScriptInstance

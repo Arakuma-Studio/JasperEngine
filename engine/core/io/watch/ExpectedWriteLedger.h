@@ -44,6 +44,8 @@ namespace jasperengine {
     //
     // An edit that lands between the report and the echo delivers twice rather than once:
     // never a lost change, which is the direction that matters.
+    // An edit that landed before the editor's write and was not delivered yet goes out before
+    // the write replaces it (FileWatchService::reportEditorReplacing, from the atomic writer).
     //
     // Threading: any thread may announce, report and query. The lock covers the two vectors
     // only; the stat behind the content check is taken outside it.

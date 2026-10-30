@@ -15,6 +15,7 @@ from harness import Editor
 
 TIMEOUT = 900
 EDITOR = {"create": True}
+CI = True
 
 S: dict = {}
 

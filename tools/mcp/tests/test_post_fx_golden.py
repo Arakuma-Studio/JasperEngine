@@ -13,7 +13,12 @@ saturated objects, the HUD layer), played at a fixed 60 fps with the uber pass's
                         most 1 % of the pixels); JASPER_POST_FX_UPDATE_GOLDEN=1 writes the references
   test_defaults_unchanged  every S13 field at its default: the same pixels (tolerance 0) as the
                         fixture's pre-S13 reference (golden/post_fx/defaults.png, captured on oe-port
-                        before S13), and the frame stats' pass list of the frame has no S13 pass
+                        before S13), and the frame stats' pass list of the frame has no S13 pass.
+                        S14's mip chain (R4: linear-light Mitchell mips for the raw-load path too)
+                        changed the mip-filtered texels of the checker floor and glow.png, so every
+                        reference here was captured again (BF7); the old and new images differ only
+                        on those textured surfaces (each golden's changed pixels lie inside the
+                        defaults' changed area, every untextured pixel the same)
   test_pass_counts      halation with bloom adds no pass to bloom's, halation alone adds 2 (its
                         prefilter and one level down), VHS, film damage and the grain types add none
                         to the uber pass alone (JASPERENGINE_FRAME_STATS=all)
@@ -110,8 +115,11 @@ def compare_golden(ed: Editor, name: str, image, tolerance: int = CHANNEL_TOLERA
     check(ed, path.is_file(), f"no golden {path} (JASPER_POST_FX_UPDATE_GOLDEN=1 writes it)")
     ok, fraction, diff = pngdiff.compare(image, pngdiff.load(path), tolerance, max_fraction)
     if not ok:
-        (ed.scratch.root / f"{name}.actual.png").write_bytes(pngdiff.encode(image))
-        (ed.scratch.root / f"{name}.diff.png").write_bytes(diff or b"")
+        # also under build/ (the scratch directory goes with the container that ran the test)
+        for folder in (ed.scratch.root, harness.REPO / "build" / "test-results" / "post_fx"):
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / f"{name}.actual.png").write_bytes(pngdiff.encode(image))
+            (folder / f"{name}.diff.png").write_bytes(diff or b"")
         ed.keep = True
     check(ed, ok, f"{name}: {fraction * 100:.3f}% of the pixels differ from the golden (at most {max_fraction * 100:.2f}%, "
                   f"tolerance {tolerance}): {ed.scratch.root / (name + '.actual.png')}")

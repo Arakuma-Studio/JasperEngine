@@ -9,6 +9,7 @@ from harness import Editor
 from pngdiff import encode as encode_png
 
 EDITOR = {"create": True, "name": "Automatic File Pickup"}
+CI = True
 
 MOVER = """local Mover = { properties = {
     { name = "speed", type = "float", default = 5.0 },

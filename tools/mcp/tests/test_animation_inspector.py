@@ -26,6 +26,7 @@ from pathlib import Path
 from harness import Editor, REPO
 
 EDITOR = {"project": REPO / "tools" / "fixtures" / "pose-animation", "xvfb": "harness", "ui_probe": True}
+CI = True
 TIMEOUT = 900
 
 GUID = "0a1b2c3d4e5f60718293a4b5c6d7e8f9"

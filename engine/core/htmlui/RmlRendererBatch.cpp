@@ -1189,6 +1189,15 @@ Rml::Rectanglef RmlRenderer::primitiveBounds(uint32_t first, uint32_t count) con
 
 void RmlRenderer::uploadGathered(){
     const uint64_t frame = SystemRender::getFrameCount();
+    // the driver's part (buffer creation, update, release), timed apart from the gathering: a
+    // software driver does there what a GPU would (lavapipe waits for the frame it still draws)
+    double backendMs = 0.0;
+    auto timed = [&backendMs](auto&& call){
+        const auto start = std::chrono::steady_clock::now();
+        const bool done = call();
+        backendMs += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+        return done;
+    };
     // pages without chunks drawn this frame start over (one not updated this frame yet: sokol
     // takes one update per buffer and frame)
     for (std::unique_ptr<GatherPage>& page : gatherPages){
@@ -1231,15 +1240,15 @@ void RmlRenderer::uploadGathered(){
         page->indexShadow.resize(page->indexCapacity);
         page->writable = true;
         gpuCreateCount++;
-        if (!page->data.createBuffer((unsigned int)page->dataCapacity, nullptr, BufferType::VERTEX_BUFFER, BufferUsage::STREAM)){
+        if (!timed([&]{ return page->data.createBuffer((unsigned int)page->dataCapacity, nullptr, BufferType::VERTEX_BUFFER, BufferUsage::STREAM); })){
             Log::error("[HTML UI] could not create a %u-byte gather buffer", (unsigned int)page->dataCapacity);
             return SIZE_MAX;
         }
         if (page->indexCapacity > 0){
             gpuCreateCount++;
-            if (!page->indices.createBuffer((unsigned int)page->indexCapacity, nullptr, BufferType::INDEX_BUFFER, BufferUsage::STREAM)){
+            if (!timed([&]{ return page->indices.createBuffer((unsigned int)page->indexCapacity, nullptr, BufferType::INDEX_BUFFER, BufferUsage::STREAM); })){
                 Log::error("[HTML UI] could not create a %u-byte gather buffer", (unsigned int)page->indexCapacity);
-                page->data.destroyBuffer();
+                timed([&]{ page->data.destroyBuffer(); return true; });
                 return SIZE_MAX;
             }
         }
@@ -1332,9 +1341,12 @@ void RmlRenderer::uploadGathered(){
     for (std::unique_ptr<GatherPage>& page : gatherPages){
         if (!page->written)
             continue;
-        page->data.updateBuffer((unsigned int)page->dataTop, page->dataShadow.data());
-        if (page->indexCapacity > 0)
-            page->indices.updateBuffer((unsigned int)page->indexTop, page->indexShadow.data());
+        timed([&]{
+            page->data.updateBuffer((unsigned int)page->dataTop, page->dataShadow.data());
+            if (page->indexCapacity > 0)
+                page->indices.updateBuffer((unsigned int)page->indexTop, page->indexShadow.data());
+            return true;
+        });
         page->updateFrame = frame;
     }
 
@@ -1352,8 +1364,7 @@ void RmlRenderer::uploadGathered(){
         if (page.liveBytes > 0 || page.updateFrame == frame)
             continue;
         capacity -= page.dataCapacity + page.indexCapacity;
-        page.data.destroyBuffer();
-        page.indices.destroyBuffer();
+        timed([&]{ page.data.destroyBuffer(); page.indices.destroyBuffer(); return true; });
         gatherPages.erase(gatherPages.begin() + (long)p);
         // cached chunks keep their page index: the ones after it move down
         for (auto& entry : runCache){
@@ -1365,6 +1376,7 @@ void RmlRenderer::uploadGathered(){
                 chunk.page--;
         }
     }
+    lastUploadMs = backendMs;
 }
 
 void RmlRenderer::destroyGatherPages(){
@@ -1502,6 +1514,10 @@ double RmlRenderer::getLastGatherMs() const{
     return lastGatherMs;
 }
 
+double RmlRenderer::getLastUploadMs() const{
+    return lastUploadMs;
+}
+
 void RmlRenderer::clearRunCacheForTesting(){
     runCache.clear();
 }
@@ -1525,7 +1541,8 @@ void RmlRenderer::replayBatched(){
     planClipScopes();
     planRuns();
     uploadGathered();
-    lastGatherMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+    // the gathering alone: the driver's buffer work is the upload's (getLastUploadMs)
+    lastGatherMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() - lastUploadMs;
     for (const BatchChunk& chunk : batchChunks){
         if (chunk.hit)
             stats.runCacheHits++;

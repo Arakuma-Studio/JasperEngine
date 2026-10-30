@@ -90,11 +90,12 @@ std::vector<TextReference> TextReferences::scanHtml(const std::string& text) {
         const size_t tagEnd = text.find('>', i);
         if (tagEnd == std::string::npos) break;
         const std::string tag = text.substr(i, tagEnd - i);
-        // a stylesheet link, else any src / href is an image or another document
+        // a stylesheet link, else any src / href is an image or another document, and a video's
+        // poster an image (the HTML UI reads it from its source file, so an export ships it)
         std::string lowerTag = tag;
         std::transform(lowerTag.begin(), lowerTag.end(), lowerTag.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         const bool stylesheet = lowerTag.compare(0, 5, "<link") == 0 && lowerTag.find("stylesheet") != std::string::npos;
-        for (const char* attribute : {"href", "src"}) {
+        for (const char* attribute : {"href", "src", "poster"}) {
             for (size_t at = lowerTag.find(attribute); at != std::string::npos; at = lowerTag.find(attribute, at + 1)) {
                 if (at > 0 && !std::isspace(static_cast<unsigned char>(lowerTag[at - 1]))) continue;
                 size_t eq = at + std::char_traits<char>::length(attribute);

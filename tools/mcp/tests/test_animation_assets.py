@@ -92,6 +92,10 @@ async def test_autosync_reports_clip_problems(ed: Editor):
     ext = external(await status(ed))
     ed.check(not problems_of(ext, "clips/broken.anim"), f"clean clip: {ext}")
     await ed.call("sync_files", paths=["clips/broken.anim"])
+    # the asset database's refresh walks the disk as a Background job: its GUID line comes after
+    deadline = time.monotonic() + 15
+    while '"guid"' not in path.read_text() and time.monotonic() < deadline:
+        time.sleep(0.05)
     ed.check('"guid"' in path.read_text(), f"no GUID after the refresh: {path.read_text()[:200]}")
 
 

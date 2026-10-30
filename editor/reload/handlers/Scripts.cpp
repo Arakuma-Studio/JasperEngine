@@ -76,6 +76,16 @@ void reload::reloadCodeEditorBuffers(Context& ctx, const std::vector<fs::path>& 
     }
 }
 
+void reload::removeScriptClasses(Context& ctx, const std::vector<fs::path>& gone) {
+    std::vector<fs::path> lua;
+    for (const fs::path& path : gone) {
+        if (Util::isLuaFile(path.string())) lua.push_back(path.lexically_normal());
+    }
+    if (lua.empty()) return;
+    // the class of a script of the same name elsewhere stays (it is written again for that one)
+    Generator::writeLuaScriptStubs(ctx.project.getProjectPath(), ctx.project.getProjectInternalPath(), lua);
+}
+
 void reload::reloadScripts(Context& ctx, const std::vector<fs::path>& filesIn, bool all) {
     Project* project = &ctx.project;
     std::set<fs::path> changed;
