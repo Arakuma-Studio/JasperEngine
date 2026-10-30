@@ -10,7 +10,6 @@
 
 #include "script/LuaBinding.h"
 #include "script/LuaFunction.h"
-#include "script/LuaWatchdog.h"
 #include "lua.hpp"
 
 #include <gtest/gtest.h>
@@ -45,9 +44,7 @@ TEST(LuaFunctionLifetime, AFunctionOfAClosedStateIsNeverCalledNorReleased) {
     const uint64_t generation = LuaBinding::getLuaStateGeneration();
 
     // what an engine restart does to the state (systemShutdown, then systemInit)
-    LuaBinding::cleanup();
-    LuaBinding::createLuaState();
-    LuaWatchdog::attach();
+    LuaBinding::recreateLuaState();
     lua_State* second = LuaBinding::getLuaState();
     ASSERT_NE(second, nullptr);
     EXPECT_GT(LuaBinding::getLuaStateGeneration(), generation);

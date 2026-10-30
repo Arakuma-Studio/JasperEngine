@@ -20,7 +20,11 @@
 
 #include <gtest/gtest.h>
 
+#include <memory>
+#include <string>
+
 using namespace jasperengine;
+using namespace jasperengine::test;
 
 namespace {
 
@@ -38,7 +42,7 @@ namespace {
             Engine::removeScene(&scene);
         }
 
-        RenderSystem* render(){ return scene.getSystem<RenderSystem>(); }
+        std::shared_ptr<RenderSystem> render(){ return scene.getSystem<RenderSystem>(); }
     };
 
 }
@@ -56,7 +60,7 @@ TEST_F(LoadSettledGpu, AMissingModelAndAnEmptyMeshDoNotKeepTheSceneLoading){
     Primitive plane(&scene);
     plane.createPlane(1.0f, 1.0f);
 
-    RenderSystem* system = render();
+    const std::shared_ptr<RenderSystem> system = render();
     ASSERT_TRUE(GpuEnvironment::runFrames([system](){ return system->isAllLoaded(); }, 120))
         << "still waiting for: " << [&](){
                std::string all;

@@ -909,6 +909,12 @@ void LuaBinding::cleanup(){
     }
 }
 
+void LuaBinding::recreateLuaState(){
+    cleanup();
+    createLuaState();
+    LuaWatchdog::attach();
+}
+
 void LuaBinding::removeScriptSubscriptions(int luaRef){
     if (!luastate) return;
     lua_rawgeti(luastate, LUA_REGISTRYINDEX, luaRef);

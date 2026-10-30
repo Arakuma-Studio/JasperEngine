@@ -130,6 +130,9 @@ namespace jasperengine {
         static void stackDump (lua_State *L);
 
         static void cleanup();
+        // A new state in place of the current one (closed first), as an engine restarted in the
+        // same process gets: what systemShutdown and systemInit do to Lua, without the rest
+        static void recreateLuaState();
 
         // Removes the event subscriptions and timers of a script instance (its table)
         static void removeScriptSubscriptions(int luaRef);
