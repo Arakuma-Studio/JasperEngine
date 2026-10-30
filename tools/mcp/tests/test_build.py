@@ -5,8 +5,12 @@ the C++ source project (its Xcode workspace compiles the project's generated sou
 targets: checked by parsing project.pbxproj, no Xcode needed), cancels a Desktop build, generates shaders and checks run_build's process
 handling with stand-in "players" (shell scripts), including the crash report a player names (S28).
 
-The full Desktop build (compiles the engine from source with cmake + g++, ~20-60 min at 3 jobs on
-this host) and running the real player are slow: set JASPER_SLOW_BUILD=1 to run them.
+The real players are slow: set JASPER_SLOW_BUILD=1 to run them. The full Desktop build
+(test_desktop_build_and_run: compiles the engine with the game from source, cmake + g++, ~20-60 min
+at 3 jobs) is this suite's check of the compile path (method compile, and its compile errors as
+file:line). The Development Build's crash report needs a real player, not a compiled one: it is
+built with the prebuilt Development runtime of the run's shared build cache (tools/mcp/build_cache.py,
+docs/testing.md "Compiled and prebuilt game builds").
 """
 
 import asyncio
@@ -16,6 +20,7 @@ import stat
 import time
 from pathlib import Path
 
+import build_cache
 import pbxproj
 from harness import Editor, skip
 
@@ -23,6 +28,8 @@ CI = True
 EDITOR = {"create": True, "name": "Build Test"}
 TIMEOUT = int(os.environ.get("JASPER_BUILD_TIMEOUT", "7200"))
 JOBS = 3   # the host is shared: never more
+# the runtime test_development_build_crash_report builds with (the runner starts building it)
+PREBUILT_PLAYERS = ["glcore-development"]
 
 
 async def wait_job(ed: Editor, job_id: str, timeout: float, poll: float = 3.0) -> dict:
@@ -249,7 +256,8 @@ async def test_admob_export(ed: Editor):
 
 async def test_cancel_desktop_build(ed: Editor):
     out = ed.scratch.root / "export-cancel"
-    r = await ed.call("build_project", mode="desktop", output_dir=str(out), wait=False, build_jobs=JOBS)
+    # a compile (a prebuilt build could end before the cancel)
+    r = await ed.call("build_project", mode="desktop", output_dir=str(out), wait=False, build_jobs=JOBS, method="compile")
     job_id = r["job_id"]
     ed.check_eq(r["status"], "running")
 
@@ -342,7 +350,9 @@ async def test_development_build_crash_report():
     crashes once its scene loaded and writes the report run_build names."""
     if os.environ.get("JASPER_SLOW_BUILD", "") in ("", "0"):
         skip("set JASPER_SLOW_BUILD=1 to build and crash a real Development Build player (compiles the engine)")
-    async with Editor(create=True, name="Crash Build Test", env={"JASPERENGINE_DEBUG_CRASH": "segv"}) as ed:
+    env = {"JASPERENGINE_DEBUG_CRASH": "segv", **build_cache.player_env("glcore", "development")}
+    async with Editor(create=True, name="Crash Build Test", env=env) as ed:
+        runtime = await build_cache.player_runtime(ed, "glcore", "development")
         await ed.call("create_entity", name="Box", type="box")
         s = await ed.call("save_project", untitled_scene_dir="scenes")
         await ed.call("edit_build_scenes", action="set_start", scene=s["scenes_in_build"][0]["id"])
@@ -352,9 +362,11 @@ async def test_development_build_crash_report():
             "player.development_build": True,
         })
         out = ed.scratch.root / "export-desktop-dev"
-        r = await ed.call("build_project", mode="desktop", output_dir=str(out), build_jobs=JOBS, timeout_seconds=30)
-        job = r if r["status"] != "running" else await wait_job(ed, r["job_id"], TIMEOUT - 300, poll=15.0)
+        r = await ed.call("build_project", mode="desktop", output_dir=str(out), method="prebuilt", timeout_seconds=600)
+        job = r if r["status"] != "running" else await wait_job(ed, r["job_id"], TIMEOUT - 300, poll=5.0)
         ed.check_eq(job["status"], "succeeded", f"{job}")
+        ed.check_eq(job["result"]["method_used"], "prebuilt", f"{job}")
+        ed.check_eq(job["result"]["player_id"], runtime.name, "the Development Build's runtime")
         raw = await ed.call_raw("run_build", {"seconds": 60, "screenshot": False})
         r = raw.value
         print("[test] run_build:", raw.text[:1500])
@@ -370,11 +382,13 @@ async def test_desktop_build_and_run(ed: Editor):
         skip("set JASPER_SLOW_BUILD=1 to build and run a real Desktop player (compiles the engine)")
     out = ed.scratch.root / "export-desktop"
     t0 = time.monotonic()
-    r = await ed.call("build_project", mode="desktop", output_dir=str(out), build_jobs=JOBS, timeout_seconds=30)
+    # the suite's compile path check (docs/testing.md): compiled from source, whatever runtimes exist
+    r = await ed.call("build_project", mode="desktop", output_dir=str(out), build_jobs=JOBS, timeout_seconds=30, method="compile")
     job_id = r["job_id"]
     job = r if r["status"] != "running" else await wait_job(ed, job_id, TIMEOUT - 300, poll=15.0)
     print(f"[test] desktop build: {job['status']} in {time.monotonic() - t0:.0f}s")
     ed.check_eq(job["status"], "succeeded", f"{job}")
+    ed.check_eq(job["result"]["method_used"], "compile", f"{job}")
     exe = Path(job["result"]["executable"])
     ed.check(exe.exists(), f"player at {exe}")
 
@@ -396,7 +410,7 @@ async def test_desktop_build_and_run(ed: Editor):
     (ed.project / "cpp" / "Broken.cpp").write_text("int broken() {\n    return undefined_symbol_xyz;\n}\n")
     await ed.call("set_project_settings", values={"scripting.script_dirs": ["cpp"]})
     raw = await ed.call_raw("build_project", {"mode": "desktop", "output_dir": str(out), "build_jobs": JOBS,
-                                              "timeout_seconds": 30})
+                                              "timeout_seconds": 30, "method": "compile"})
     r = raw.value
     ed.check(raw.is_error == (r["status"] == "failed"), "a failed build is a tool error")
     job = r if r["status"] != "running" else await wait_job(ed, r["job_id"], 3600, poll=10.0)

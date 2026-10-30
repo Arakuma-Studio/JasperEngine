@@ -412,23 +412,16 @@ players)
         for backend in $PLAYER_BACKENDS; do
             [[ "$backend" =~ ^(glcore|gles3|vulkan)$ ]] || { echo "PLAYER_BACKENDS lists glcore, gles3 and vulkan (got $backend)" >&2; exit 1; }
         done
+        # (one runtime's build and packaging: tools/players/build_linux_player.sh, which the MCP
+        # suite's shared build cache runs too)
+        BUILD_PLAYER_FLAGS=""
+        [[ -n "${JOBS:-}" ]] && BUILD_PLAYER_FLAGS="--jobs $JOBS"
+        [[ "${KEEP_GOING:-0}" == 1 ]] && BUILD_PLAYER_FLAGS="$BUILD_PLAYER_FLAGS --keep-going"
         run bash -euo pipefail -c "
             for flavour in $PLAYER_FLAVOURS; do
                 for backend in $PLAYER_BACKENDS; do
-                    id=linux-x64-\$backend-\$flavour
-                    dev=OFF; [[ \$flavour == development ]] && dev=ON
-                    # Release code with debug information, split off by the link (JASPERENGINE_SPLIT_SYMBOLS,
-                    # R23): the player ships stripped with a debug link, symbols/ is the runtime's own archive
-                    cmake --preset engine-linux-release -S engine -B build/players-build/\$id -DCMAKE_BUILD_TYPE=Release \
-                        -DJASPERENGINE_PLAYER=ON -DGRAPHIC_BACKEND=\$backend -DJASPERENGINE_DEVELOPMENT_BUILD=\$dev \
-                        $OPTION_FLAGS $ENGINE_WARNING_FLAGS $CCACHE_FLAGS
-                    cmake --build build/players-build/\$id --target jasperengine-player $JOBS_FLAG
-                    pkg=build/players-build/\$id/package
-                    rm -rf \$pkg && mkdir -p \$pkg/symbols
-                    cp build/players-build/\$id/jasperengine-player \$pkg/jasperengine-player
-                    cp build/players-build/\$id/symbols/jasperengine-player.debug \$pkg/symbols/
-                    python3 tools/players/package_player.py --platform linux --arch x64 --backend \$backend --flavour \$flavour \
-                        --build \$pkg --symbols \$pkg/symbols --out $PLAYERS_OUT $ZIP_FLAG
+                    tools/players/build_linux_player.sh $BUILD_PLAYER_FLAGS $ZIP_FLAG \$backend \$flavour \
+                        build/players-build/linux-x64-\$backend-\$flavour $PLAYERS_OUT -- $OPTION_FLAGS $ENGINE_WARNING_FLAGS $CCACHE_FLAGS
                 done
             done
         "

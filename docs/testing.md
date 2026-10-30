@@ -88,6 +88,7 @@ waiting click and refused drop (`tools/mcp/tests/test_scene_view*.py`).
   misses those budgets. The benchmark run enforces them on the benchmark-only server E:
   `rb.sh E --img 'JASPER_MCP_PERF_SLACK=1 dbus-run-session -- tools/mcp/run-tests.sh
   tools/mcp/tests/test_call_cli.py tools/mcp/tests/test_hot_reload.py tools/mcp/tests/test_checks.py'`.
+- Compiled and prebuilt game builds: see the next section.
 - `tools/smoke-test.sh <project>`: see its header. It also checks that the exported project
   configures as a user's game does: no presets file, no warnings as errors, no sanitizer.
 - `tools/build.sh web-gate` serves `build/web` with cross-origin isolation, opens
@@ -106,6 +107,63 @@ waiting click and refused drop (`tools/mcp/tests/test_scene_view*.py`).
 - The other test projects with a gate: `atmosphere` (S12), `post-fx` (S13) and `terrain`, a
   terrain displaced by a 16-bit heightmap, which WebGL2 and GLES3 cannot sample as R16 (the
   renderer uploads it as R32F or R16F there).
+
+### Compiled and prebuilt game builds (MCP, `JASPER_SLOW_BUILD=1`)
+
+Compiling a game (Build Method Compile: CMake, then the engine with the game) takes 20 to 60
+minutes on a build server. Building one with a prebuilt player runtime (S30, `docs/shipping.md`)
+takes about a second. So an MCP test compiles only when the compile path is what it checks:
+
+- **(a) Compiled** (`build_project ... method="compile"`, and it checks `method_used` is
+  `compile`). A deliberate, minimal set, at least one for each target and backend the suite
+  compiles (Linux desktop, glcore):
+
+  | Test | Why it compiles |
+  |---|---|
+  | `test_build.py::test_desktop_build_and_run` | the compile path end to end (CMake, the engine, the link, a player that runs), and a broken C++ source's errors parsed as `file:line` (only a compiler produces them) |
+  | `test_html_ui_effects_export.py::test_desktop_player_draws_the_effects` | `graphics.runtime_shaders: false`: only a compiled game ships without the runtime shader compiler (every prebuilt runtime has it), so only it shows the exported UI effect variants are all the game needs |
+  | `test_build.py::test_cancel_desktop_build`, `test_busy.py::test_export_job_refusals` | a compile runs long enough to cancel, and to refuse other tools while it runs (a prebuilt build ends first); both are cancelled within seconds |
+
+- **(b) Prebuilt** (`method="prebuilt"`, and it checks `method_used` and the `player_id` it
+  used). The test needs a real game that runs, not the compile:
+  `test_build.py::test_development_build_crash_report` (the Development runtime crashes on
+  purpose and writes its report), `test_html_ui_export.py::test_desktop_build_runs_the_document`,
+  `test_html_ui_video_export.py::test_desktop_build_plays_the_video` and
+  `test_call_cli.py::test_wait_job_build` (the CLI's `--wait-job` on a build job). The runtime is
+  the one `tools/build.sh players` and CI build, from the same engine sources as the editor under
+  test.
+
+- **(c) Shared** builds: a runtime is built once per suite run for each backend and flavour, and
+  every test and `-j` worker shares it (`tools/mcp/build_cache.py`). A file declares the runtimes
+  its tests use (`PREBUILT_PLAYERS = ["glcore-release"]`). With `JASPER_SLOW_BUILD=1` and no
+  `-k`, the runner starts building them as the run starts, so tests rarely wait. A test gets one
+  with `await build_cache.player_runtime(ed, "glcore", "release")` (it waits under `ed.busy()`
+  while another worker builds it) and points its editor at it with
+  `env=build_cache.player_env("glcore", "release")` (`JASPER_PLAYERS_DIR`; set it for the editors
+  that build with it only: a players directory changes what Build Method Auto picks).
+
+The cache cannot hide a bug:
+
+- Its key covers everything a runtime is built from. That is the content (not the commit or the
+  file times) of every file under `engine/`, `tools/players/` and `tools/performance/`, plus
+  `tools/ci/check-notices.py`, `NOTICE.md`, `LICENSE` and the cache's own source. It also covers
+  the exact CMake arguments, the compiler, linker, CMake and Ninja versions, the compiler
+  environment (`CC`, `CXX`, `CFLAGS`, ...), and the editor version the runtime is locked to.
+  `python3 tools/mcp/build_cache.py key glcore release` prints it.
+- It lives under the run's build directory, next to the editor under test:
+  `build/linux/mcp-build-cache/<runtime id>/` (`players/`, `key.json`, `build.log`).
+  `JASPER_MCP_BUILD_CACHE` moves it.
+- An entry whose key differs from the current one is deleted before anything is built. So a
+  runtime of other sources (another commit, an uncommitted edit) is never reused.
+- Each build starts from an empty CMake tree, through `tools/players/build_linux_player.sh`
+  (what `tools/build.sh players` runs). Below it, ccache (`CCACHE_DIR`, as for the editor itself)
+  keys each object on its preprocessed source, compiler and flags.
+- A failed build fails every test that needs it, with its log, for the rest of the run. The next
+  run tries again.
+
+A new test that needs a game that runs builds it prebuilt. One that needs what only a compiled
+game has (C++ scripts, `ProjectBuild.cmake`, capacities above the player's, AdMob, no runtime
+shader compiler, compiler output) compiles, and joins the table above with its reason.
 
 ### Test projects
 

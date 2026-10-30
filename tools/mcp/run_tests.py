@@ -17,6 +17,9 @@ Call harness.skip("why") or ed.require_tools(...) to skip. Module variable TIMEO
 per-test hang guard in seconds (default 600): a test fails when no tool call has been in flight
 for that long (a slow but working editor, such as one waiting for game frames on a loaded machine,
 never trips it; each call has its own timeout, harness.Editor.call_raw).
+Module variable PREBUILT_PLAYERS = ["glcore-release", ...] names the prebuilt player runtimes the
+file's tests build games with (tools/mcp/build_cache.py): with JASPER_SLOW_BUILD=1 and no -k, the
+run starts building them (once, for every worker) as it starts.
 
 A file joins the CI suite (--suite ci, the CI workflow's e2e job) by declaring CI = True at module
 level. A file that is not CI = True is left out for a reason the run prints: it needs the default
@@ -47,6 +50,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import traceback
 from pathlib import Path
@@ -250,6 +254,19 @@ def ci_excluded(path: Path) -> str | None:
     return None
 
 
+def prebuilt_players(files: list[Path]) -> list[str]:
+    """The prebuilt player runtimes the files declare (PREBUILT_PLAYERS = ["glcore-release", ...]:
+    their tests build games with them, tools/mcp/build_cache.py), in the order the run needs them."""
+    wanted: list[str] = []
+    for f in files:
+        value = _module_assignments(f).get("PREBUILT_PLAYERS")
+        if isinstance(value, (ast.List, ast.Tuple)):
+            for item in value.elts:
+                if isinstance(item, ast.Constant) and isinstance(item.value, str) and item.value not in wanted:
+                    wanted.append(item.value)
+    return wanted
+
+
 def ci_files(tests: Path = TESTS) -> tuple[list[Path], list[str], list[tuple[str, str]]]:
     """The CI = True files, the problems that stop a CI run, and the files the CI suite leaves out
     with the reason of each. No file is left out silently: one that is not CI = True either needs
@@ -328,6 +345,19 @@ def main() -> int:
                 print(f"{f.name}::{n}")
         return 0
 
+    # One build of each prebuilt player runtime per run (tools/mcp/build_cache.py), shared by every
+    # worker: started now, so the games the slow build tests make rarely wait for it
+    os.environ.setdefault("JASPER_MCP_SESSION", f"{os.getpid()}-{int(time.time())}")
+    prewarm = None
+    if not (args.fake or args.url or args.k) and os.environ.get("JASPER_SLOW_BUILD", "") not in ("", "0"):
+        wanted = prebuilt_players(files)
+        if wanted:
+            import build_cache
+            print(f"run_tests: building the prebuilt player runtime(s) {', '.join(wanted)} as the run starts "
+                  f"(tools/mcp/build_cache.py, {build_cache.cache_root()})", flush=True)
+            prewarm = threading.Thread(target=build_cache.prewarm, args=(wanted,), daemon=True)
+            prewarm.start()
+
     tmp = Path(tempfile.mkdtemp(prefix="jasper-mcp-results-"))
 
     def run(f: Path) -> tuple[Path, int, str, list]:
@@ -363,6 +393,8 @@ def main() -> int:
                 crashed.append(f"{f.name} (worker exit {rc})")
             all_results += results
 
+    if prewarm is not None:
+        prewarm.join()
     shutil.rmtree(tmp, ignore_errors=True)
     n = {s: sum(1 for r in all_results if r["status"] == s) for s in ("pass", "fail", "skip")}
     print("\n== summary")
