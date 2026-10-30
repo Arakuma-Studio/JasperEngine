@@ -77,6 +77,9 @@ namespace jasperengine::editor{
         UpdateFlags_AnimationPlayer_Reload = (uint64_t)1 << 43,
         // a Spline's knots, type, closed flag or up axis was written in place: bumps its version
         UpdateFlags_Spline              = (uint64_t)1 << 44,
+        // an Animator's controller or a setting it binds with changed: the next update loads and
+        // rebinds it, keeping its states (S21)
+        UpdateFlags_Animator_Reload = (uint64_t)1 << 45,
         // handlers that touch the whole scene, must be masked out when applying all flags
         UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Scene_Mesh_Variant | UpdateFlags_Reflection_Probe_Recapture_All
     };
@@ -163,12 +166,14 @@ namespace jasperengine::editor{
         SplineComponent,
         SplineExtrudeComponent,
         SplineInstantiateComponent,
-        SplineAnimateComponent
+        SplineAnimateComponent,
+        // Unity's Animator (docs/specs/S21-animation.md)
+        AnimatorComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::SplineAnimateComponent;
+    constexpr ComponentType LastComponentType = ComponentType::AnimatorComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
     // (S12's name for it)
     constexpr ComponentType LAST_COMPONENT_TYPE = LastComponentType;

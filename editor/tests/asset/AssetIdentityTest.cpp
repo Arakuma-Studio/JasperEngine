@@ -643,6 +643,8 @@ TEST(AssetRefSchema, CoversAllFields) {
         {C::SplineInstantiateComponent, "items[].asset"}, {C::SplineInstantiateComponent, "posts[].asset"},
         {C::SplineInstantiateComponent, "spans[].asset"}, {C::SplineInstantiateComponent, "gates[].asset"},
         {C::SplineInstantiateComponent, "crests[].asset"}, {C::SplineInstantiateComponent, "caps[].asset"},
+        // S21's Animator: its Animator Controller (the clips and masks are in the .controller)
+        {C::AnimatorComponent, "controller"},
     };
     std::set<std::pair<C, std::string>> rows;
     for (const AssetRefField& field : AssetRefSchema::fields()) {

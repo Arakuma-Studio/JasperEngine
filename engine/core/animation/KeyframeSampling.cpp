@@ -324,7 +324,9 @@ void anim::collectCrossedEvents(const AnimationClip& clip, ClipWrapMode wrap, fl
     if (fromTime == toTime && !includeStart) return;
     const bool cyclic = (wrap == ClipWrapMode::Loop || wrap == ClipWrapMode::PingPong) && length > 0.0;
 
-    std::vector<RankedEvent> crossed;
+    // per thread and kept: a crossing allocates nothing once warm (the Animator's wave, S21 R19)
+    thread_local std::vector<RankedEvent> crossed;
+    crossed.clear();
     if (!cyclic){
         // once / clamp_forever: the time line is the clip itself
         const double from = std::min(std::max((double)fromTime, 0.0), length);
@@ -373,10 +375,20 @@ void anim::collectCrossedEvents(const AnimationClip& clip, ClipWrapMode wrap, fl
         }
     }
 
-    std::stable_sort(crossed.begin(), crossed.end(), [forward](const RankedEvent& a, const RankedEvent& b){
+    // a stable insertion sort (few events per update; std::stable_sort would allocate its buffer)
+    auto before = [forward](const RankedEvent& a, const RankedEvent& b){
         if (a.position != b.position) return forward ? a.position < b.position : a.position > b.position;
         return a.rank < b.rank;
-    });
+    };
+    for (size_t i = 1; i < crossed.size(); i++){
+        const RankedEvent moving = crossed[i];
+        size_t j = i;
+        while (j > 0 && before(moving, crossed[j - 1])){
+            crossed[j] = crossed[j - 1];
+            j--;
+        }
+        crossed[j] = moving;
+    }
     for (const RankedEvent& event : crossed){
         CrossedEvent result;
         result.index = event.index;

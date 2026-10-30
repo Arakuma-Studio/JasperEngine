@@ -434,6 +434,7 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::SplineExtrudeComponent: return &InspectorWindow::drawSplineExtrudeComponent;
         case ComponentType::SplineInstantiateComponent: return &InspectorWindow::drawSplineInstantiateComponent;
         case ComponentType::SplineAnimateComponent: return &InspectorWindow::drawSplineAnimateComponent;
+        case ComponentType::AnimatorComponent: return &InspectorWindow::drawAnimatorComponent;
         default: return nullptr;
     }
 }

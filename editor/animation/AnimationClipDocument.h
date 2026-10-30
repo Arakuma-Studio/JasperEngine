@@ -67,7 +67,8 @@ namespace jasperengine::editor{
         std::string after;
     };
     // Rewrites (canonical text) every project .anim whose preview.model or source.path is
-    // `oldPath` or lies under it (both absolute, after the move happened); open documents reload
+    // `oldPath` or lies under it, and every .controller / .montage naming it (a clip, a model's
+    // clip, a mask; S21), both absolute, after the move happened; open documents reload
     std::vector<ClipHintEdit> remapClipHints(Project* project, const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
     // Puts the texts back where the file still holds what remapClipHints wrote
     void restoreClipHints(Project* project, const std::vector<ClipHintEdit>& edits);

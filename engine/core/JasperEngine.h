@@ -85,6 +85,7 @@
 #include "component/LatticeTracksComponent.h"
 #include "component/ReflectionProbeComponent.h"
 #include "component/PoseAnimatorComponent.h"
+#include "component/AnimatorComponent.h"
 #include "component/AnimationPlayerComponent.h"
 #include "component/ModelComponent.h"
 #include "component/MorphTracksComponent.h"
@@ -169,6 +170,7 @@
 #include "object/navigation/NavGrid.h"
 #include "object/navigation/NavMeshAgent.h"
 #include "object/navigation/NavMeshSurface.h"
+#include "object/Animator.h"
 #include "object/GameObject.h"
 #include "object/ShadowCaster2D.h"
 #include "object/Points.h"
@@ -236,6 +238,7 @@
 
 #include "subsystem/ActionSystem.h"
 #include "subsystem/PoseAnimatorSystem.h"
+#include "subsystem/AnimatorSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/FluidSystem.h"
 #include "subsystem/MeshSystem.h"

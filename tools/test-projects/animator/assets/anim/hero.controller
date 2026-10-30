@@ -1,0 +1,22 @@
+{
+  "format": "jasperengine.controller",
+  "version": 1,
+  "parameters": [
+    {"name": "Speed", "type": "float", "default": 0.5},
+    {"name": "Go", "type": "trigger"}
+  ],
+  "layers": [
+    {"name": "Base Layer", "weight": 1, "blending": "override",
+     "state_machine": {
+       "default_state": "Idle",
+       "states": [
+         {"name": "Idle", "motion": {"clip": {"path": "models/hero_animated.gltf#Idle"}},
+          "transitions": [{"to": "Move", "conditions": [{"parameter": "Go", "mode": "if"}], "has_exit_time": false, "duration": 0}]},
+         {"name": "Move", "motion": {"blend_tree": {"type": "simple_1d", "parameter": "Speed", "children": [
+            {"motion": {"clip": {"path": "models/hero_animated.gltf#Idle"}}, "threshold": 0},
+            {"motion": {"clip": {"path": "models/hero_animated.gltf#Walk"}}, "threshold": 1}]}},
+          "transitions": []}
+       ]
+     }}
+  ]
+}

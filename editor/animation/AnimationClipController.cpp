@@ -877,6 +877,8 @@ void AnimationClipController::endPreview(bool write){
         restoreSnapshot(sceneProject);
         sceneProject->needUpdateRender = true;
     }
+    particles.stop(sceneProject ? sceneProject->scene : nullptr);
+    particleTime = -1.0f;
     session.reset();
     snapshot.reset();
     previewing = false;
@@ -974,6 +976,7 @@ void AnimationClipController::update(double dt){
         endPreview(false);
         return;
     }
+    particles.pump(sceneProject->scene);
     // play mode, another scene shown, the previewed root deleted: the preview ends (restored)
     if ((sceneProject->playState != ScenePlayState::STOPPED && sceneProject->playState != ScenePlayState::SAVING) ||
         (project && project->getSelectedSceneId() != previewSceneId) || !sceneProject->scene->isEntityCreated(previewRoot)){
@@ -1035,6 +1038,10 @@ bool AnimationClipController::apply(){
         }
     }
     unresolved = result.unresolved;
+    // the effects under the root at the playhead: played on while the preview plays forward,
+    // simulated to it after a scrub or a loop
+    particles.sync(scene, previewRoot, time, playing && particleTime >= 0.0f && time >= particleTime);
+    particleTime = time;
     // the unkeyed values stay over the clip while the playhead stays
     if (!pending.empty()){
         if (pendingTime == time) writePending();
@@ -1757,13 +1764,87 @@ bool AnimationClipController::setEase(const std::vector<KeyRef>& keys, EaseType 
         tracks.insert(ref.track);
     }
     // tangents win over eases: a track given an ease drops its tangents (the curves become eased)
+    // and with them its keys' tangent modes
     for (size_t track : tracks){
         for (ClipKey& key : data.tracks[track].keys){
             key.inTangent.clear();
             key.outTangent.clear();
+            key.tangentMode = ClipTangentMode::None;
         }
     }
     return commitEdit(data, "Set Interpolation", "", error);
+}
+
+bool AnimationClipController::setTangentMode(const std::vector<KeyRef>& keys, ClipTangentMode mode, std::string* error){
+    if (!editable(error)) return false;
+    if (mode == ClipTangentMode::None) return fail(error, "no tangent mode given");
+    ClipData data = document->data();
+    std::set<size_t> tracks;
+    for (const KeyRef& ref : keys){
+        if (ref.track >= data.tracks.size() || ref.key >= data.tracks[ref.track].keys.size()) return fail(error, "no such key");
+        if (data.tracks[ref.track].channel == ClipChannel::Property) return fail(error, "a property track has no curve");
+        ClipKey& key = data.tracks[ref.track].keys[ref.key];
+        key.tangentMode = mode;
+        // Free: one smooth tangent (the two sides' mean); Broken keeps both
+        if (mode == ClipTangentMode::Free && key.hasTangents()){
+            for (size_t c = 0; c < key.inTangent.size(); c++){
+                const float mean = 0.5f * (key.inTangent[c] + key.outTangent[c]);
+                key.inTangent[c] = key.outTangent[c] = mean;
+            }
+        }
+        tracks.insert(ref.track);
+    }
+    // a Hermite track: the eases go (the step of Constant keys stays), the keys without tangents
+    // get them from their modes (applyTangentModes in normalize)
+    for (size_t track : tracks){
+        for (ClipKey& key : data.tracks[track].keys){
+            if (key.tangentMode != ClipTangentMode::Constant) key.ease = EaseType::LINEAR;
+        }
+    }
+    return commitEdit(data, std::string("Set Tangents: ") + clipui::tangentModeLabel(mode), "", error);
+}
+
+bool AnimationClipController::setKeyTangent(const KeyRef& ref, size_t component, bool outSide, float slope, const std::string& mergeKey,
+                                            std::string* error){
+    if (!editable(error)) return false;
+    if (!std::isfinite(slope)) return fail(error, "the tangent is not a finite number");
+    ClipData data = document->data();
+    if (ref.track >= data.tracks.size() || ref.key >= data.tracks[ref.track].keys.size()) return fail(error, "no such key");
+    ClipTrackData& track = data.tracks[ref.track];
+    if (track.channel == ClipChannel::Property || track.channel == ClipChannel::Rotation){
+        return fail(error, "rotation tangents are quaternion tangents: set a tangent mode instead");
+    }
+    // the track's keys get their tangents first (a mode on the edited key, normalize the rest)
+    ClipKey& key = track.keys[ref.key];
+    if (!key.hasTangents()){
+        ClipData prepared = data;
+        prepared.tracks[ref.track].keys[ref.key].tangentMode = ClipTangentMode::ClampedAuto;
+        for (ClipKey& other : prepared.tracks[ref.track].keys){
+            if (other.tangentMode != ClipTangentMode::Constant) other.ease = EaseType::LINEAR;
+        }
+        anim::normalize(prepared);
+        const int index = prepared.findTrack(track.path, track.channel);
+        KeyRef found;
+        if (index < 0 || !findKey(prepared, track.path, track.channel, key.time, found)) return fail(error, "no such key");
+        data = prepared;
+        return setKeyTangentPrepared(data, found, component, outSide, slope, mergeKey, error);
+    }
+    return setKeyTangentPrepared(data, ref, component, outSide, slope, mergeKey, error);
+}
+
+bool AnimationClipController::setKeyTangentPrepared(ClipData& data, const KeyRef& ref, size_t component, bool outSide, float slope,
+                                                    const std::string& mergeKey, std::string* error){
+    ClipKey& key = data.tracks[ref.track].keys[ref.key];
+    if (component >= key.inTangent.size()) return fail(error, "no component " + std::to_string(component));
+    if (key.tangentMode == ClipTangentMode::Broken){
+        (outSide ? key.outTangent : key.inTangent)[component] = slope;
+    }else{
+        key.tangentMode = ClipTangentMode::Free;
+        key.inTangent[component] = slope;
+        key.outTangent[component] = slope;
+    }
+    if (key.ease == EaseType::STEP) key.ease = EaseType::LINEAR;
+    return commitEdit(data, "Edit Tangent", mergeKey, error);
 }
 
 bool AnimationClipController::removeTrack(size_t track, std::string* error){

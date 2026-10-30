@@ -81,6 +81,10 @@ namespace jasperengine::pose {
         // one slot: its three DOF values (degrees) <-> its local rotation
         Quaternion localFromAngles(HumanBone bone, const float angles[DOFS_PER_BONE]) const;
         void anglesFromLocal(HumanBone bone, const Quaternion& local, float angles[DOFS_PER_BONE]) const;
+        // a slot's frame (local = left * E * neutral, E the joint-angle rotation): what the
+        // Animator's humanoid retargeting maps local rotations between rigs with (S21 D12);
+        // identity for an unmapped slot
+        void slotFrame(HumanBone bone, Quaternion& left, Quaternion& neutral) const;
 
         void setSkin(std::shared_ptr<PoseSkin> skin);
         const PoseSkin* skin() const;                       // optional exact lowest point

@@ -152,6 +152,7 @@ bool isPlayerWrapProperty(ComponentType component, const std::string& propertyNa
 // animation, an Animation Player's clip)
 bool isAssetPathProperty(ComponentType component, const std::string& propertyName) {
     return propertyName == "filename" || (component == ComponentType::PoseAnimatorComponent && propertyName == "animation") ||
+           (component == ComponentType::AnimatorComponent && propertyName == "controller") ||
            isPlayerClipProperty(component, propertyName);
 }
 
@@ -2043,6 +2044,24 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                 }
                 if (!stored.empty() && !Util::isPoseAnimationFile(stored)) {
                     error = "animation must be a .poseanim file (e.g. assets/anim/walk.poseanim).";
+                    return nullptr;
+                }
+                return stringCmd(propertyName, stored);
+            }
+            if (component == ComponentType::AnimatorComponent && propertyName == "controller") {
+                // the project-relative path ("assets/anim/hero.controller"), or the stored form
+                std::string stored;
+                const fs::path given = FileUtils::pathFromUtf8(text);
+                std::error_code ec;
+                if (!text.empty() && isSafeRelative(given) && !project->isInsideAssetsPath(project->getProjectPath() / given) &&
+                        fs::is_regular_file(project->resolveAssetPath(given), ec)) {
+                    stored = project->normalizeToAssetsRelative(project->resolveAssetPath(given)).generic_string();
+                } else if (!assetPathFromJson(project, text, stored, error)) {
+                    error = "controller: " + error + " Pass the .controller project-relative (e.g. assets/anim/hero.controller).";
+                    return nullptr;
+                }
+                if (!stored.empty() && !Util::isAnimatorControllerFile(stored)) {
+                    error = "controller must be a .controller file (e.g. assets/anim/hero.controller).";
                     return nullptr;
                 }
                 return stringCmd(propertyName, stored);
