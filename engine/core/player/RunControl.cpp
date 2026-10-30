@@ -165,7 +165,8 @@ void RunControl::frameDrawn(bool readySignalled, const FrameReader& reader) {
         } else {
             const double waited = std::chrono::duration<double>(std::chrono::steady_clock::now() - s.started).count();
             if (waited > s.options.readyTimeout) {
-                Log::error("Not ready after %.0f s (--ready-timeout): no frame logged \"Engine ready:\"", s.options.readyTimeout);
+                Log::error("Not ready after %.0f s (--ready-timeout): no frame logged \"Engine ready:\". Waiting for: %s",
+                           s.options.readyTimeout, Engine::describeNotLoaded().c_str());
                 requestQuit(EXIT_NOT_READY);
             }
             return;

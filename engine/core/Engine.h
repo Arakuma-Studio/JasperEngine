@@ -432,6 +432,9 @@ namespace jasperengine {
 
         // every scene drawn is loaded (its HTML UI documents too) and no shader build is pending
         static bool areScenesLoaded();
+        // what keeps areScenesLoaded() false, for a person: the shaders still building, each
+        // scene's objects not loaded yet (a few, then how many more), its HTML UI documents
+        static std::string describeNotLoaded();
         
         static void setCallMouseInTouchEvent(bool callMouseInTouchEvent);
         static bool isCallMouseInTouchEvent();

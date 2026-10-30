@@ -1697,6 +1697,25 @@ bool Engine::areScenesLoaded(){
     return ready;
 }
 
+std::string Engine::describeNotLoaded(){
+    std::string out;
+    auto add = [&out](const std::string& part){ out += (out.empty() ? "" : "; ") + part; };
+    if (scenes.empty()) add("no scene");
+    if (const size_t pending = ShaderPool::getPendingShaderCount()) add(std::to_string(pending) + " shader build(s) pending");
+    for (Scene* scene : scenes){
+        const std::vector<std::string> waiting = scene->getSystem<RenderSystem>()->describeNotLoaded();
+        if (!waiting.empty()){
+            std::string list;
+            for (size_t i = 0; i < waiting.size() && i < 8; i++) list += (i ? ", " : "") + waiting[i];
+            if (waiting.size() > 8) list += " and " + std::to_string(waiting.size() - 8) + " more";
+            add("not loaded: " + list);
+        }
+        const auto documents = scene->getSystem<UIDocumentSystem>();
+        if (documents && !documents->isAllLoaded()) add("HTML UI documents loading or not drawn yet");
+    }
+    return out.empty() ? std::string("nothing (the ready line is 10 loaded frames away)") : out;
+}
+
 void Engine::signalReadyOnce(){
     static const bool enabled = [](){
         const char* value = std::getenv("JASPERENGINE_READY_SIGNAL");
