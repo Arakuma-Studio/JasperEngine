@@ -121,6 +121,14 @@ MAIN="$(cd "$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)/
 JOBS_FLAG=""
 [[ -n "${JOBS:-}" ]] && JOBS_FLAG="-j $JOBS"
 
+# mcp-tests, the full suite: the web build test_mesh_raycast.py's latency gate loads (the
+# mesh-raycast test project for Emscripten, in the web image), built once and kept up to date
+# (ninja, ccache). Before the Linux image is picked below: while it builds, another worktree's
+# image build may retag the shared name and its old image be pruned.
+if [[ "$TARGET" == mcp-tests && "${MCP_SUITE:-ci}" == all && $SHELL_MODE -eq 0 && $EXEC_MODE -eq 0 ]]; then
+    env -u WEB_THREADS -u WASM_SIMD -u CXX_STANDARD -u SANITIZE -u JASPER_DOCKER_IMAGE WEB_PROJECT=mesh-raycast "$ROOT/tools/build.sh" web \
+        || { echo "mcp-tests: the mesh-raycast web build (WEB_PROJECT=mesh-raycast tools/build.sh web) failed" >&2; exit 1; }
+fi
 # Rebuilding an unchanged image is a no-op thanks to the layer cache. The containers run the
 # image by id: other worktrees (with another Dockerfile) may retag the shared name meanwhile.
 if [[ -n "${JASPER_DOCKER_IMAGE:-}" ]]; then
@@ -460,12 +468,6 @@ mcp-tests)
     [[ -x "$ROOT/build/linux/editor-install/bin/jasperengine-editor" ]] || { echo "No editor at build/linux/editor-install; run tools/build.sh linux" >&2; exit 1; }
     SUITE_FLAGS="--suite $SUITE"
     [[ "$SUITE" == all ]] && SUITE_FLAGS=""
-    # the full suite: the web build test_mesh_raycast.py's latency gate loads (the mesh-raycast test
-    # project for Emscripten, in the web image), built here once and kept up to date (ninja, ccache)
-    if [[ "$SUITE" == all ]]; then
-        env -u WEB_THREADS -u WASM_SIMD -u CXX_STANDARD -u SANITIZE WEB_PROJECT=mesh-raycast "$ROOT/tools/build.sh" web \
-            || { echo "mcp-tests: the mesh-raycast web build (WEB_PROJECT=mesh-raycast tools/build.sh web) failed" >&2; exit 1; }
-    fi
     # (each argument quoted once more: the command runs through bash -c)
     ARGS="$(printf '%q ' ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}) ${MCP_TEST_ARGS:-}"
     run bash -euo pipefail -c "
