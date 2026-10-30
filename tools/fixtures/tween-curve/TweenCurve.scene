@@ -1,0 +1,295 @@
+formatVersion: 5
+guid: 82542eaa9438c61a4644909803eb59fb
+id: 3575974884
+name: TweenCurve
+scene:
+  backgroundColor: [0.25, 0.45, 0.65, 1]
+  shadowQuality: auto
+  meshLodEnabled: false
+  meshLodThreshold: 1
+  depthPrepassEnabled: false
+  lightState: on
+  globalIlluminationIntensity: 0.2
+  globalIlluminationColor: [1, 1, 1]
+  litQuality: high
+  ambientLight2DIntensity: 1
+  ambientLight2DColor: [1, 1, 1]
+  shadow2DQuality: low
+  ssaoEnabled: false
+  ssaoRadius: 0.5
+  ssaoIntensity: 1
+  ssaoBias: 0.025
+  ssrEnabled: false
+  ssrMaxDistance: 8
+  ssrThickness: 0.5
+  ssrMaxSteps: 48
+  ssrIntensity: 1
+  ssrBlur: 0
+  gravity2D: [0, -9.81]
+  gravity3D: [0, -9.81, 0]
+  fixedResolutionEnabled: false
+  fixedResolutionWidth: 640
+  fixedResolutionHeight: 360
+  fixedResolutionFilter: nearest
+  enableUIEvents: not_set
+sceneType: scene_3d
+mainCamera: 0
+maxValues:
+  maxSubmeshes: 1
+  maxTilemapTilesRect: 0
+  maxTilemapTiles: 0
+  maxExternalBuffers: 0
+  maxSpriteFrames: 0
+  maxBones: 128
+  maxColliders2D: 0
+  maxColliderPoints2D: 0
+  maxColliders3D: 0
+  maxColliderVertices3D: 0
+  maxColliderIndices3D: 0
+shaderKeys:
+  - type: mesh
+    properties: 1112
+  - type: mesh
+    properties: 8589935704
+  - type: sky
+  - type: depth
+  - type: blit
+  - type: shadowcache
+  - type: mesh
+    properties: 1112
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 8589935704
+    customShader: builtin:lit#USE_LIT_QUALITY
+entities:
+  - type: Entity
+    entity: 1001
+    name: Directional Light
+    components:
+      transform:
+        position: [0, 10, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      light:
+        enabled: true
+        type: directional
+        direction: [-0.2, -0.5, 0.3]
+        worldDirection: [-0.2, -0.5, 0.3]
+        color: [1, 1, 1]
+        range: 100
+        intensity: 4
+        innerConeCos: 0.76604444
+        outerConeCos: 0.64278764
+        spotMask: ~
+        cullingMask: 4294967295
+        shadows: true
+        automaticShadowCamera: true
+        shadowBias: 1
+        mapResolution: 0
+        shadowCameraNearFar: [0.1, 10]
+        numShadowCascades: 0
+  - type: Entity
+    entity: 1002
+    name: Skybox
+    components:
+      skybox:
+        useDefaultTexture: true
+        texture:
+          textureType: CUBE
+          cubeMode: faces
+          source: paths
+          paths: ["", "", "", "", "", ""]
+          hasEmptyFaces: true
+          minFilter: linear
+          magFilter: linear
+          wrapU: repeat
+          wrapV: repeat
+          releaseDataAfterLoad: false
+        color: [1, 1, 1, 1]
+        rotation: 0
+        visible: true
+  - type: Entity
+    entity: 1003
+    name: Mover
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      mesh:
+        enabled: true
+        buffer:
+          type: vertex_buffer
+          usage: immutable
+          stride: 48
+          size: 1152
+          count: 24
+          renderAttributes: true
+          instanceBuffer: false
+          attributes:
+            - type: position
+              dataType: float
+              bufferName: ""
+              elements: 3
+              offset: 0
+              count: 24
+              normalized: true
+              perInstance: false
+            - type: texcoord1
+              dataType: float
+              bufferName: ""
+              elements: 2
+              offset: 12
+              count: 24
+              normalized: true
+              perInstance: false
+            - type: normal
+              dataType: float
+              bufferName: ""
+              elements: 3
+              offset: 20
+              count: 24
+              normalized: true
+              perInstance: false
+            - type: color
+              dataType: float
+              bufferName: ""
+              elements: 4
+              offset: 32
+              count: 24
+              normalized: true
+              perInstance: false
+          data: AAAAvwAAAL8AAAA/AAAAAAAAgD8AAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAA/AACAPwAAgD8AAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAA/AACAPwAAAAAAAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAA/AAAAAAAAAAAAAAAAAAAAAAAAgD8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAC/AAAAAAAAgD8AAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAC/AACAPwAAgD8AAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAC/AACAPwAAAAAAAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAC/AAAAAAAAAAAAAAAAAAAAAAAAgL8AAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAA/AAAAAAAAgD8AAIC/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAA/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAC/AACAPwAAAAAAAIC/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAC/AACAPwAAgD8AAIC/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAA/AAAAAAAAgD8AAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAC/AACAPwAAAAAAAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAC/AACAPwAAgD8AAIA/AAAAAAAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAA/AAAAAAAAgD8AAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAA/AACAPwAAgD8AAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAD8AAAC/AACAPwAAAAAAAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAD8AAAC/AAAAAAAAAAAAAAAAAACAPwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAA/AAAAAAAAAAAAAAAAAACAvwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAA/AACAPwAAAAAAAAAAAACAvwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAPwAAAL8AAAC/AACAPwAAgD8AAAAAAACAvwAAAAAAAIA/AACAPwAAgD8AAIA/AAAAvwAAAL8AAAC/AAAAAAAAgD8AAAAAAACAvwAAAAAAAIA/AACAPwAAgD8AAIA/
+          vertexSize: 48
+        indices:
+          type: index_buffer
+          usage: immutable
+          stride: 2
+          size: 72
+          count: 36
+          renderAttributes: true
+          instanceBuffer: false
+          attributes:
+            - type: index
+              dataType: unsigned_short
+              bufferName: ""
+              elements: 1
+              offset: 0
+              count: 36
+              normalized: true
+              perInstance: false
+          data: AAABAAIAAAACAAMABAAGAAUABAAHAAYACAAJAAoACAAKAAsADAAOAA0ADAAPAA4AEAARABIAEAASABMAFAAWABUAFAAXABYA
+        eBuffers: ~
+        submeshes:
+          - material:
+              baseColorFactor: [1, 1, 1, 1]
+              metallicFactor: 1
+              roughnessFactor: 1
+              alphaCutoff: 0.5
+              foliageTransmission: 0
+              alphaMode: AUTO
+              emissiveFactor: [0, 0, 0]
+              baseColorTexCoord: 0
+              metallicRoughnessTexCoord: 0
+              occlusionTexCoord: 0
+              emissiveTexCoord: 0
+              normalTexCoord: 0
+              name: ""
+            textureRect: [0, 0, 1, 1]
+            primitiveType: triangles
+            vertexCount: 36
+            faceCulling: true
+            textureShadow: false
+            hasTexCoord1: true
+            hasTexCoord2: false
+            hasNormalMap: false
+            hasTangent: false
+            hasVertexColor3: false
+            hasVertexColor4: true
+            hasTextureRect: false
+            hasSkinning: false
+            hasMorphTarget: false
+            hasMorphNormal: false
+            hasMorphTangent: false
+        bonesMatrix:
+          []
+        normAdjustJoint: 1
+        normAdjustWeight: 1
+        aabb:
+          min: [-0.5, -0.5, -0.5]
+          max: [0.5, 0.5, 0.5]
+        verticesAABB:
+          min: [-0.5, -0.5, -0.5]
+          max: [0.5, 0.5, 0.5]
+        worldAABB:
+          min: [-0.5, -0.5, -0.5]
+          max: [0.5, 0.5, 0.5]
+        receiveLights: true
+        receiveIBL: false
+        castShadows: true
+        receiveShadows: true
+        lodEnabled: true
+        lodBias: 1
+        renderInReflectionProbes: true
+        shadowsBillboard: true
+        transparent: false
+        autoTransparency: true
+        cullingMode: back
+        windingOrder: ccw
+  - type: Entity
+    entity: 1004
+    name: Animation
+    components:
+      action:
+        state: Running
+        speed: 1
+        target: 1003
+        ownedTarget: false
+      animation:
+        loop: false
+        duration: -1
+        ownedActions: false
+        defaultFadeTime: 0.15
+        actions:
+          - track: 0
+            startTime: 0
+            duration: 0
+            action: 1005
+  - type: Entity
+    entity: 1005
+    name: Position Tween
+    components:
+      script:
+        scripts:
+          - type: lua
+            path: TweenCurveCheck.lua
+            pathGuid: d0e5f55e16d16d1b60f5ae1296d2441e
+            className: TweenCurveCheck
+            enabled: true
+      action:
+        state: Stopped
+        speed: 1
+        target: 1003
+        ownedTarget: false
+      tween:
+        duration: 1
+        loop: false
+        pingPong: false
+        function: CURVE
+        curve:
+          - [0, 0, 0, 0, clampedAuto]
+          - [0.5, 1, 0, 0, clampedAuto]
+          - [1, 0, 0, 0, clampedAuto]
+      positiontween:
+        endPosition: [10, 0, 0]
+        startPosition: [0, 0, 0]

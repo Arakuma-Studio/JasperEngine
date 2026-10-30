@@ -92,7 +92,8 @@ async def main() -> int:
         await ed.call("save_project")
         if target.exists():
             shutil.rmtree(target)
-        shutil.copytree(ed.project, target, ignore=shutil.ignore_patterns(".jasperengine", "build"))
+        shutil.copytree(ed.project, target, ignore=shutil.ignore_patterns(".jasperengine", "build", ".clangd", ".vscode", ".luarc.json", "AGENTS.md",
+                                                                  "CLAUDE.md", "CMakeLists.txt", ".gitignore", ".gitattributes"))
     (target / "smoke-expect.txt").write_text(EXPECT)
     print(f"[fixture] wrote {target}: {sorted(str(p.relative_to(target)) for p in target.rglob('*') if p.is_file())}")
     return 0

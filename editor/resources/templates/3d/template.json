@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "3d",
+  "name": "3D",
+  "description": "A lit 3D scene: sun with shadows, sky, ground and a turning cube.",
+  "category": "Core",
+  "order": 1,
+  "accentColor": "#3F8F6B",
+  "thumbnail": "thumbnail.png",
+  "startScene": "Main"
+}

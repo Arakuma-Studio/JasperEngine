@@ -30,8 +30,12 @@ import pngdiff  # noqa: E402
 from harness import Editor  # noqa: E402
 
 THUMB_W, THUMB_H = 480, 270
-# a template takes the project, never the editor's per-user state or build output (TemplateCatalog.cpp)
-EXCLUDED = {".jasperengine", "build", "Recordings", ".trash", ".git"}
+# a template takes the project, never the editor's per-user state or build output (TemplateCatalog.cpp),
+# nor the files the editor generates into every project it opens or builds (Generator.cpp: the
+# editor-integration files, written when missing with this editor's version, and the root
+# CMakeLists.txt) and the .gitignore / .gitattributes writer's output (R18 runs it on creation)
+EXCLUDED = {".jasperengine", "build", "Recordings", ".trash", ".git", ".clangd", ".vscode", ".luarc.json", "AGENTS.md",
+            "CLAUDE.md", "CMakeLists.txt", ".gitignore", ".gitattributes"}
 
 ROTATOR = """---@class Rotator : ScriptInstance
 -- Turns its GameObject around the vertical axis.
