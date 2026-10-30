@@ -86,7 +86,7 @@ TEST(CurveFieldPerf, TwentyFieldsAFrame) {
     for (int f = 0; f < kFrames; f++) gui.frame(curves);
     const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() / kFrames;
     std::printf("[ CurveFieldPerf ] 20 curve fields: %.4f ms a frame (budget 0.2 ms)\n", ms);
-    if (test::perfSlack() > 0.0) {
+    if (jasperengine::editor::test::perfSlack() > 0.0) {
         EXPECT_LE(ms, 0.2 * jasperengine::editor::test::perfSlack());
     }
 }

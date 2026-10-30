@@ -324,7 +324,7 @@ void RecorderSession::refreshFfmpeg() {
     // runProcess never runs on the main thread (S29 R24): the probe is a job of its own
     ffmpegProbe = std::async(std::launch::async, []() {
         FfmpegInfo info;
-        info.path = VideoImporter::findFfmpeg(&info.why);
+        info.path = htmlui::VideoImporter::findFfmpeg(&info.why);
         if (!info.path.empty()) {
             vcs::ProcessSpec spec;
             spec.exe = info.path;

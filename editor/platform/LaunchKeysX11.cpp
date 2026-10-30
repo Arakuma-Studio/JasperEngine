@@ -6,6 +6,8 @@
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
 
+#include <initializer_list>
+
 bool jasperengine::editor::platform::shiftHeld() {
     Display* display = XOpenDisplay(nullptr);
     if (!display) return false;

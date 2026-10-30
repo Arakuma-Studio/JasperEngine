@@ -17,13 +17,6 @@ namespace {
         return std::find(selection.begin(), selection.end(), KeyRef{curve, key}) != selection.end();
     }
 
-    bool keyAtTime(const Curve& curve, float time, size_t except = (size_t)-1) {
-        for (size_t i = 0; i < curve.keys.size(); i++) {
-            if (i != except && curve.keys[i].time == time) return true;
-        }
-        return false;
-    }
-
     void clampKey(CurveKey& key, const CurveRange* range) {
         if (!range || !range->clamp) return;
         key.time = std::clamp(key.time, std::min(range->t0, range->t1), std::max(range->t0, range->t1));

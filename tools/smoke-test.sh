@@ -6,6 +6,8 @@
 #   3. run the game under a virtual X server and screenshot it
 #   4. open the project in the editor GUI and screenshot it
 #   5. bake a navmesh and query a path through the editor's MCP tools (tools/mcp/nav_smoke.py)
+#   6. record 30 frames of the project's start scene to PNG from the shell
+#      (`jasperengine-editor call --project ... --wait-job record_game`, S27 AC26)
 #
 #   tools/smoke-test.sh <editor-project-dir>
 #
@@ -14,6 +16,9 @@
 # the build fails, if the game or the editor exits before its screenshot, or if
 # either logs an error (missing shaders, Lua errors, failed assertions, crashes);
 # the audio device Docker lacks is not an error.
+#
+# A smoke-expect.txt in the project lists lines (one per line, '#' comments) the game's log must
+# hold after its run (tools/fixtures/tween-curve: the tween's curve checked in the exported game).
 #
 # SMOKE_GAME_ENV="NAME=value ..." is passed to the game's environment.
 # SMOKE_EXPORT_ARGS="..." is added to the export command (e.g. --development-build).
@@ -61,7 +66,7 @@ esac
 # The main checkout's compiler cache, even when running from a git worktree.
 MAIN="$(cd "$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)"
 
-[[ $# -eq 1 && -f "$1/project.yaml" ]] || { sed -n '2,44p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+[[ $# -eq 1 && -f "$1/project.yaml" ]] || { sed -n '2,50p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 PROJECT="$(cd "$1" && pwd)"
 [[ -x "$ROOT/$EDITOR" ]] || { echo "No editor at $EDITOR; run tools/build.sh linux" >&2; exit 1; }
 
@@ -205,6 +210,13 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
         # shellcheck disable=SC2086
         (cd "$(dirname "$GAME")" && run ../game ../game.log "$SMOKE_GAME_SECONDS" env JASPERENGINE_READY_SIGNAL=1 $SMOKE_GAME_ENV "./$(basename "$GAME")" $SMOKE_GAME_ARGS)
         check_log game game.log
+        if [[ -f project/smoke-expect.txt ]]; then
+            while IFS= read -r line; do
+                [[ -z "$line" || "$line" == "#"* ]] && continue
+                grep -aqF -- "$line" game.log || { echo "FAIL: the game did not log: $line"; tail -20 game.log; exit 1; }
+            done < project/smoke-expect.txt
+            echo "ok: the game logged project/smoke-expect.txt"
+        fi
 
         # the extra runs: "<name> NAME=value ..." entries separated by ";"
         IFS=";" read -ra runs <<< "$SMOKE_GAME_RUNS"
@@ -231,6 +243,14 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
         echo "== navigation"
         UV="$(command -v uv || echo "$HOME/.local/bin/uv")"
         (cd /src && JASPER_EDITOR="$EDITOR" dbus-run-session -- "$UV" run --quiet --no-project --with-requirements tools/mcp/requirements.txt python tools/mcp/nav_smoke.py) || { echo "FAIL: navigation"; exit 1; }
+
+        # S27: the Recorder from a shell, through a one-shot headless editor (S31 call)
+        echo "== record"
+        "$EDITOR" call --project project --wait-job --timeout 900 record_game --frames 30 --format png --width 320 --height 180 \
+            --output "$PWD/recording" > record.log 2>&1 || { echo "FAIL: record"; tail -30 record.log; exit 1; }
+        frames="$(find recording -name "frame_*.png" | wc -l)"
+        [[ "$frames" -eq 30 ]] || { echo "FAIL: record wrote $frames frames, not 30"; tail -30 record.log; exit 1; }
+        echo "ok: record wrote 30 frames ($OUT/recording)"
 
         echo "PASS"
     '
