@@ -176,7 +176,7 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
     -v "$ROOT:/src" -w /src \
     -e HOME=/src/build/.cache/home \
     -e APK="$APK_IN" -e OUT="/src/$OUT" -e ORDERED="$ORDERED" -e TIMEOUT="$TIMEOUT" -e SECONDS_TO_RUN="$SECONDS_TO_RUN" \
-    -e TWO_FINGER_TAP="$TWO_FINGER_TAP" -e TAP_AFTER="$TAP_AFTER" \
+    -e TWO_FINGER_TAP="$TWO_FINGER_TAP" -e TAP_AFTER="$TAP_AFTER" -e RELAUNCH="$RELAUNCH" \
     -e EXPECT_NATIVE_CRASH="$EXPECT_NATIVE_CRASH" \
     -e SCENES="${SCENES[*]+"${SCENES[*]}"}" -e SCREENSHOT_ON_PRESENT="$([[ -n "$GOLDEN" ]] && echo 1 || echo 0)" \
     -e GPU="${EMULATOR_GPU:-swangle_indirect}" \
