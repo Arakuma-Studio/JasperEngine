@@ -1165,4 +1165,17 @@ follow-up stream, not S30.
   - The emulator check now forces such a relaunch: `--relaunch` changes the font scale. The run
     needs a new view, the same process, and no crash. With the fix, the development prebuilt APK
     passed it (relaunched in process 1914, still running).
+- A scene with an asset it cannot load used to never get ready.
+  - `RenderSystem::isAllLoaded()` counted a mesh with no geometry as pending forever:
+    `loadMesh` returns early on empty buffers and never sets `loadCalled`.
+  - A model whose file is missing leaves exactly such a mesh. So does the reflection fixture's
+    empty `MeshComponent`, which is what kept `test_player_cli`'s components run from "Engine
+    ready".
+  - A game still played, and `SceneManager`'s loading screen moves on when progress stalls. But an
+    `--after-ready` run waited for its `--ready-timeout` and exited 6.
+  - Now a mesh with nothing to load counts as settled: no buffers, and no model or its load over.
+    A model still loading is still waited for. The failure stays logged ("Model load failed, not
+    retrying").
+  - The ready timeout's error names what it waited for (`Engine::describeNotLoaded`).
+  - Covered by `LoadSettledGpu.*`, and the components check runs `--after-ready` again.
 
