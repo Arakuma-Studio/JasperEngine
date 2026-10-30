@@ -6392,7 +6392,10 @@ void editor::Project::saveSceneListSequentially(std::vector<uint32_t> sceneIds, 
     auto index = std::make_shared<size_t>(0);
     auto anyRefused = std::make_shared<bool>(false);
     auto saveNext = std::make_shared<std::function<void(bool)>>();
-    *saveNext = [this, ids, index, anyRefused, callback, saveNext](bool previousSuccess) {
+    // (it holds itself weakly: the save in flight holds it, a capture of itself was a cycle
+    // that leaked every chain, LeakSanitizer)
+    std::weak_ptr<std::function<void(bool)>> weakNext = saveNext;
+    *saveNext = [this, ids, index, anyRefused, callback, weakNext](bool previousSuccess) {
         if (!previousSuccess) {
             // a document the save gate refused does not stop the others (Save All asks about
             // each degraded one, after saving the clean ones)
@@ -6407,7 +6410,9 @@ void editor::Project::saveSceneListSequentially(std::vector<uint32_t> sceneIds, 
         while (*index < ids->size()) {
             uint32_t id = (*ids)[(*index)++];
             if (hasSceneUnsavedChanges(id)) {
-                saveScene(id, *saveNext);
+                if (auto next = weakNext.lock()) {
+                    saveScene(id, [next](bool ok) { (*next)(ok); });
+                }
                 return;
             }
         }
