@@ -93,6 +93,8 @@ TEST(WaterWavesGpu, MatchesTheCpuTwin){
     ASSERT_TRUE(shader.createShader(data));
     SystemRender::commitQueue();
     SystemRender::executeQueue();
+    // created off the render thread (spec S32)
+    ASSERT_TRUE(SystemRender::waitGpuCreationIdle(30000));
     ASSERT_TRUE(shader.isCreated());
     const int slot = shader.shaderData.getUniformBlockIndexByName("u_fs_waterProbe");
     ASSERT_GE(slot, 0);
