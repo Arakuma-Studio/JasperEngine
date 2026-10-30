@@ -4,7 +4,7 @@ image of docker/runtime.Dockerfile:
 
     tools/build.sh linux                      # the editor install (build/linux/editor-install)
     tools/build.sh players                    # Linux runtimes; PLAYER_PLATFORM=web for the web ones
-    tools/build.sh exec runtime python3 tools/ci/test_player_cli.py [--only linux,web,fallback]
+    tools/build.sh exec runtime python3 tools/ci/test_player_cli.py [--only linux,components,web,fallback]
 
 - linux (AC1): `jasperengine-editor build --platform linux` of tools/fixtures/unified-lighting
   with each Linux backend whose runtime is installed (--backends), timed (R28: <= 20 s with a warm
@@ -12,6 +12,8 @@ image of docker/runtime.Dockerfile:
   --fixed-fps 60 --screenshot --fail-on-error exits 0, and its frame matches
   golden/prebuilt-linux-<backend>.png (pngdiff --tolerance 24 --max-fraction 0.01). Content of
   another player exits 5, a bad option 2.
+- components: tools/fixtures/reflection-parity (every component type) built with the release
+  player and run headless: exit 0 and no cooked component unknown (the release link keeps them).
 - web (AC2, S06 AC20/AC21): `build --platform web` with EMSDK unset; the browser gate passes with
   COOP/COEP headers (pthreads player), without them (the service worker isolates the page after
   one reload: pthreads player), without them and with the service worker blocked (single-thread
@@ -172,6 +174,29 @@ def check_linux(args, players: Path, out: Path) -> None:
         print("ok: exit codes 2 (bad option) and 5 (content of another player)")
 
 
+def check_components(args, players: Path, out: Path) -> None:
+    """Every component type through a release player: tools/fixtures/reflection-parity (one entity
+    per type) cooked and run headless. The release link (sections, hidden visibility, LTO) must
+    keep every component's table and hooks: no cooked component unknown or unreadable."""
+    project = fresh_copy(FIXTURES / "reflection-parity", out / "components-project")
+    texture = project / "assets" / "textures" / "parity.png"
+    texture.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy(FIXTURES / "unified-lighting" / "golden" / "prebuilt-linux-glcore.png", texture)
+    installed = {p.name for p in players.iterdir()} if players.is_dir() else set()
+    backend = next((b for b in args.backends.split(",") if f"linux-x64-{b}-release" in installed), None)
+    if not backend:
+        raise Failure(f"no Linux release player runtime in {players}: run tools/build.sh players")
+    with Xvfb():
+        result = build(args.editor, players, project, out / "components", "linux", "--backend", backend, "--method", "prebuilt")
+        exe = Path(lines(result, "executable")[0])
+        game = run([exe, "--headless", "--after-ready", "--quit-after", "10", "--fixed-fps", "60"], cwd=exe.parent, timeout=600, check=False)
+    log = game.stdout + game.stderr
+    problems = [line for line in log.splitlines() if "Cooked content" in line or "unknown component" in line]
+    if game.returncode != 0 or problems:
+        raise Failure(f"components: the player exited {game.returncode}; {problems}\n{log[-3000:]}")
+    print(f"ok: every component type of {project.name} loaded by the {backend} release player")
+
+
 def set_web_threads(project: Path, on: bool) -> None:
     text = (project / "project.yaml").read_text()
     text = re.sub(r"\n\s*webMultithreaded:.*", "", text)
@@ -244,14 +269,14 @@ def main() -> int:
     parser.add_argument("--players", type=Path, default=REPO / "build/players")
     parser.add_argument("--out", type=Path, default=REPO / "build/player-cli")
     parser.add_argument("--backends", default="glcore,gles3,vulkan")
-    parser.add_argument("--only", default="linux,web,fallback")
+    parser.add_argument("--only", default="linux,components,web,fallback")
     parser.add_argument("--write-goldens", action="store_true")
     args = parser.parse_args()
     if not args.editor.is_file():
         print(f"no editor at {args.editor}: run tools/build.sh linux", file=sys.stderr)
         return 1
     args.out.mkdir(parents=True, exist_ok=True)
-    checks = {"linux": check_linux, "web": check_web, "fallback": check_fallback}
+    checks = {"linux": check_linux, "components": check_components, "web": check_web, "fallback": check_fallback}
     try:
         for name in args.only.split(","):
             if name not in checks:

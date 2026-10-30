@@ -902,6 +902,59 @@ include_directories(SYSTEM libs/sheenbidi/Headers)
 include_directories(SYSTEM libs/meshoptimizer)
 include_directories(SYSTEM libs/bcdec)
 
+# A release game's link (a prebuilt player and a Compile build alike; docs/specs/S30-shipping.md,
+# shipped size), set before the libraries so they are built the same way:
+#   - every function and datum in its own section, and the linker drops what nothing reaches;
+#   - hidden visibility: no symbol leaves the binary but what the platform looks up (Android:
+#     platform/android/exports.map, the JNI and GameActivity entry points);
+#   - Clang with lld (Android): ThinLTO, and identical code folding of the functions whose
+#     address is not taken (--icf=safe).
+# Static registrations survive: an initializer is reached from .init_array, a GC and LTO root.
+# Not for the editor, the tests, sanitizer or Development builds (their backtraces name every
+# function), nor the web: wasm-ld already drops unreferenced code and exports only
+# EXPORTED_FUNCTIONS. A release build's own backtraces give module offsets, which its split
+# symbols resolve.
+set(JASPERENGINE_RELEASE_LINK_DEFAULT OFF)
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR AND NOT JASPERENGINE_TESTS AND NOT JASPERENGINE_SHARED
+   AND "${JASPERENGINE_SANITIZE}" STREQUAL "" AND NOT JASPERENGINE_DEVELOPMENT_BUILD AND NOT EMSCRIPTEN
+   AND CMAKE_BUILD_TYPE MATCHES "^(Release|RelWithDebInfo|MinSizeRel)$")
+    set(JASPERENGINE_RELEASE_LINK_DEFAULT ON)
+endif()
+option(JASPERENGINE_RELEASE_LINK "A release game's size-optimised link (sections, hidden visibility, ThinLTO and ICF with lld)"
+    ${JASPERENGINE_RELEASE_LINK_DEFAULT})
+if(JASPERENGINE_RELEASE_LINK)
+    if(MSVC)
+        # function-level linking, then the unreferenced and identical COMDATs out (also with /DEBUG)
+        add_compile_options(/Gy /Gw)
+        add_link_options(/OPT:REF /OPT:ICF)
+    else()
+        add_compile_options(-ffunction-sections -fdata-sections -fvisibility=hidden
+            $<$<COMPILE_LANGUAGE:CXX,OBJCXX>:-fvisibility-inlines-hidden>)
+        if(APPLE)
+            add_link_options(LINKER:-dead_strip)
+        else()
+            add_link_options(LINKER:--gc-sections)
+        endif()
+        if(ANDROID)
+            # what the Java side and GameActivity look up in libjasperengine-android.so
+            add_link_options("LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/platform/android/exports.map")
+        endif()
+        if(ANDROID AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+            # the NDK links with lld: ThinLTO, and safe identical code folding (Clang emits the
+            # address-significance tables it needs by default)
+            include(CheckIPOSupported)
+            check_ipo_supported(RESULT jasperengineIpo OUTPUT jasperengineIpoOutput LANGUAGES C CXX)
+            if(jasperengineIpo)
+                set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+            else()
+                message(STATUS "Release link without LTO: ${jasperengineIpoOutput}")
+            endif()
+            add_link_options(LINKER:--icf=safe)
+        endif()
+    endif()
+    message(STATUS "Release link: dead sections out, hidden visibility, LTO ${CMAKE_INTERPROCEDURAL_OPTIMIZATION}")
+endif()
+
 add_subdirectory(libs/sokol)
 add_subdirectory(libs/lua)
 add_subdirectory(libs/stb)
