@@ -1037,6 +1037,16 @@ Kept current so the work can continue after an interruption.
 | prebuilt universal APK (4 ABIs) | 157.61 | 49.45 |
 | compiled arm64-v8a APK (Gradle, the same project) | 15.13 | 12.31 |
 
+- **Google Play download per device** (after): the App Bundle, the default, measured with
+  `bundletool get-size total --dimensions=ABI`. The `.aab` uploaded is 50.25 MiB.
+
+  | ABI | download (MiB) | its per-ABI APK (MiB) |
+  |---|---|---|
+  | arm64-v8a | 12.33 to 12.35 | 12.45 |
+  | armeabi-v7a | 11.22 to 11.24 | 11.38 |
+  | x86 | 14.18 to 14.19 | 14.27 |
+  | x86_64 | 14.07 to 14.09 | 14.18 |
+
 - Inside an APK (after), each package holds:
   - its native libraries: 11.50 for arm64-v8a, compressed from 28.26;
   - dex 0.34 (0.76 unpacked) and resources 0.39;
