@@ -4033,6 +4033,7 @@
 		4A534E47B08F761D851139AA /* Animator.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47CAAFBC3B8A6B9358 /* Animator.h */; };
 		4A534E47A4AFF745E6C79336 /* AnimatorAssetPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475859F759CDED73BC /* AnimatorAssetPool.h */; };
 		4A534E4719ED4496CD61367E /* AnimatorSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C7892946585F9415 /* AnimatorSystem.h */; };
+		4A534E47285F526FD30A8918 /* CustomCodecs.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476ED3B894B5F99179 /* CustomCodecs.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -7997,6 +7998,7 @@
 		4A534E47CAAFBC3B8A6B9358 /* Animator.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Animator.h; sourceTree = "<group>"; };
 		4A534E475859F759CDED73BC /* AnimatorAssetPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimatorAssetPool.h; sourceTree = "<group>"; };
 		4A534E47C7892946585F9415 /* AnimatorSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimatorSystem.h; sourceTree = "<group>"; };
+		4A534E476ED3B894B5F99179 /* CustomCodecs.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CustomCodecs.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -9584,6 +9586,7 @@
 			children = (
 				4A534E479AFF1E896AB23D1D /* ComponentHooks.cpp */,
 				4A534E473433D981FDF2CFAB /* CookTypes.h */,
+				4A534E476ED3B894B5F99179 /* CustomCodecs.h */,
 			);
 			path = codecs;
 			sourceTree = "<group>";
@@ -14216,6 +14219,7 @@
 				4A534E47B08F761D851139AA /* Animator.h in Headers */,
 				4A534E47A4AFF745E6C79336 /* AnimatorAssetPool.h in Headers */,
 				4A534E4719ED4496CD61367E /* AnimatorSystem.h in Headers */,
+				4A534E47285F526FD30A8918 /* CustomCodecs.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
