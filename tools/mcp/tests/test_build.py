@@ -389,6 +389,7 @@ async def test_desktop_build_and_run(ed: Editor):
     print(f"[test] desktop build: {job['status']} in {time.monotonic() - t0:.0f}s")
     ed.check_eq(job["status"], "succeeded", f"{job}")
     ed.check_eq(job["result"]["method_used"], "compile", f"{job}")
+    ed.check("executable" in job["result"], f"the build names its executable: {job}")
     exe = Path(job["result"]["executable"])
     ed.check(exe.exists(), f"player at {exe}")
 

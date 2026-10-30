@@ -12,7 +12,8 @@ once from this checkout's engine sources with tools/players/build_linux_player.s
     r = await ed.call("build_project", mode="desktop", method="prebuilt", ...)
 
 A file whose tests need runtimes declares them (PREBUILT_PLAYERS = ["glcore-release"]); the runner
-starts building those as the run starts (JASPER_SLOW_BUILD=1, no -k filter), so a test rarely waits.
+starts building those as the run starts (JASPER_SLOW_BUILD=1, no -k filter), and starts such a file
+once its runtimes are built (the other files run meanwhile).
 The tests that check the compile path itself compile with method="compile" (docs/testing.md,
 "Compiled and prebuilt game builds").
 
@@ -296,15 +297,19 @@ async def player_runtime(ed, backend: str = "glcore", flavour: str = "release") 
             ed.fail(str(e))
 
 
-def prewarm(wanted: list[str]) -> None:
+def prewarm(wanted: list[str], ready: dict | None = None) -> None:
     """Builds the runtimes the run's files declare (PREBUILT_PLAYERS), one after another: the
-    runner calls it from a thread as the run starts. A failure is the tests' to report."""
+    runner calls it from a thread as the run starts, and starts the files that need a runtime
+    once its event in `ready` is set. A failure is the tests' to report (they fail with the log)."""
     for name in wanted:
         backend, _, flavour = name.partition("-")
         try:
             ensure_player(backend, flavour)
-        except Exception as e:  # noqa: BLE001  (the test that needs it fails with the log)
+        except Exception as e:  # noqa: BLE001
             _log(f"{name}: {str(e).splitlines()[0]}")
+        finally:
+            if ready and name in ready:
+                ready[name].set()
 
 
 def main(argv: list[str]) -> int:

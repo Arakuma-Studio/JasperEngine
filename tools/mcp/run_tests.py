@@ -20,6 +20,9 @@ never trips it; each call has its own timeout, harness.Editor.call_raw).
 Module variable PREBUILT_PLAYERS = ["glcore-release", ...] names the prebuilt player runtimes the
 file's tests build games with (tools/mcp/build_cache.py): with JASPER_SLOW_BUILD=1 and no -k, the
 run starts building them (once, for every worker) as it starts.
+With -j N the longest files start first, by each file's wall time in the last unfiltered run
+(build/test-results/mcp-file-seconds.json, JASPER_MCP_FILE_SECONDS; files it has no time for go
+first, in their order): a long file never starts last and alone.
 
 A file joins the CI suite (--suite ci, the CI workflow's e2e job) by declaring CI = True at module
 level. A file that is not CI = True is left out for a reason the run prints: it needs the default
@@ -57,6 +60,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 TESTS = HERE / "tests"
+# each file's wall time in the last unfiltered run: -j N starts the longest files first
+FILE_SECONDS = Path(os.environ.get("JASPER_MCP_FILE_SECONDS") or HERE.parent.parent / "build" / "test-results" / "mcp-file-seconds.json")
 sys.path.insert(0, str(HERE))
 
 
@@ -345,22 +350,39 @@ def main() -> int:
                 print(f"{f.name}::{n}")
         return 0
 
+    # -j N: the longest files first (by the last unfiltered run's times; files without one first,
+    # in their order), so no long file starts last and alone. Each file runs in a process and
+    # scratch directory of its own: the order changes nothing a test sees.
+    seconds: dict[str, float] = {}
+    record_seconds = not (args.fake or args.url or args.k)
+    with contextlib.suppress(OSError, ValueError, AttributeError):
+        seconds = {str(k): float(v) for k, v in json.loads(FILE_SECONDS.read_text()).items()}
+    if args.j > 1 and seconds:
+        files.sort(key=lambda f: -seconds.get(f.name, float("inf")))
+        print(f"run_tests: the longest files first, by the last run's times ({FILE_SECONDS})", flush=True)
+
     # One build of each prebuilt player runtime per run (tools/mcp/build_cache.py), shared by every
-    # worker: started now, so the games the slow build tests make rarely wait for it
+    # worker: started now, and a file that needs one starts once it is built (the others run
+    # meanwhile), so no worker waits for a build
     os.environ.setdefault("JASPER_MCP_SESSION", f"{os.getpid()}-{int(time.time())}")
     prewarm = None
+    ready: dict[str, threading.Event] = {}
     if not (args.fake or args.url or args.k) and os.environ.get("JASPER_SLOW_BUILD", "") not in ("", "0"):
         wanted = prebuilt_players(files)
         if wanted:
             import build_cache
             print(f"run_tests: building the prebuilt player runtime(s) {', '.join(wanted)} as the run starts "
                   f"(tools/mcp/build_cache.py, {build_cache.cache_root()})", flush=True)
-            prewarm = threading.Thread(target=build_cache.prewarm, args=(wanted,), daemon=True)
+            ready = {name: threading.Event() for name in wanted}
+            prewarm = threading.Thread(target=build_cache.prewarm, args=(wanted, ready), daemon=True)
             prewarm.start()
 
     tmp = Path(tempfile.mkdtemp(prefix="jasper-mcp-results-"))
 
+    file_seconds: dict[str, float] = {}
+
     def run(f: Path) -> tuple[Path, int, str, list]:
+        started = time.monotonic()
         res = tmp / (f.stem + ".json")
         cmd = [sys.executable, str(Path(__file__).resolve()), "--worker", str(f), "--results", str(res)]
         for k in args.k or []:
@@ -379,14 +401,50 @@ def main() -> int:
             p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             out = p.stdout
         results = json.loads(res.read_text()) if res.exists() else []
+        file_seconds[f.name] = round(time.monotonic() - started, 1)
         return f, p.returncode, out, results
+
+    # -j N: each worker takes the first file whose runtimes are built (or, when only files that
+    # wait for one are left, the first of those)
+    needs = {f: [n for n in prebuilt_players([f]) if n in ready] for f in files} if ready else {}
+    queue = list(files)
+    queue_lock = threading.Lock()
+
+    def next_file() -> Path | None:
+        with queue_lock:
+            for i, f in enumerate(queue):
+                if all(ready[n].is_set() for n in needs.get(f, ())):
+                    return queue.pop(i)
+            return queue.pop(0) if queue else None
+
+    def parallel():
+        done: list = []
+        cond = threading.Condition()
+
+        def worker():
+            while (f := next_file()) is not None:
+                try:
+                    item = run(f)
+                except Exception:  # noqa: BLE001  (a crashed worker, reported as one)
+                    item = (f, 1, traceback.format_exc(), [])
+                with cond:
+                    done.append(item)
+                    cond.notify()
+
+        threads = [threading.Thread(target=worker, daemon=True) for _ in range(max(1, args.j))]
+        for t in threads:
+            t.start()
+        for _ in range(len(files)):
+            with cond:
+                cond.wait_for(lambda: done)
+                item = done.pop(0)
+            yield item
 
     all_results = []
     crashed = []
     t0 = time.monotonic()
-    with concurrent.futures.ThreadPoolExecutor(max(1, args.j)) as pool:
-        for f, rc, out, results in pool.map(run, files) if args.j <= 1 else \
-                (fut.result() for fut in concurrent.futures.as_completed([pool.submit(run, f) for f in files])):
+    with concurrent.futures.ThreadPoolExecutor(1) as pool:
+        for f, rc, out, results in pool.map(run, files) if args.j <= 1 else parallel():
             if out:
                 print(f"== {f.name}\n{out.rstrip()}", flush=True)
             if rc != 0:
@@ -395,6 +453,10 @@ def main() -> int:
 
     if prewarm is not None:
         prewarm.join()
+    if record_seconds and file_seconds:
+        with contextlib.suppress(OSError):
+            FILE_SECONDS.parent.mkdir(parents=True, exist_ok=True)
+            FILE_SECONDS.write_text(json.dumps({**seconds, **file_seconds}, indent=1, sort_keys=True))
     shutil.rmtree(tmp, ignore_errors=True)
     n = {s: sum(1 for r in all_results if r["status"] == s) for s in ("pass", "fail", "skip")}
     print("\n== summary")

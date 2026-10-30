@@ -89,6 +89,10 @@ waiting click and refused drop (`tools/mcp/tests/test_scene_view*.py`).
   `rb.sh E --img 'JASPER_MCP_PERF_SLACK=1 dbus-run-session -- tools/mcp/run-tests.sh
   tools/mcp/tests/test_call_cli.py tools/mcp/tests/test_hot_reload.py tools/mcp/tests/test_checks.py'`.
 - Compiled and prebuilt game builds: see the next section.
+- With `-j N` the runner starts the longest files first. It orders them by each file's wall time
+  in the last unfiltered run (`build/test-results/mcp-file-seconds.json`); files with no time yet
+  go first. So no long file starts last and alone. Each file has its own process, editor and
+  scratch directory, so the order changes nothing a test sees.
 - `tools/smoke-test.sh <project>`: see its header. It also checks that the exported project
   configures as a user's game does: no presets file, no warnings as errors, no sanitizer.
 - `tools/build.sh web-gate` serves `build/web` with cross-origin isolation, opens
@@ -136,7 +140,8 @@ takes about a second. So an MCP test compiles only when the compile path is what
 - **(c) Shared** builds: a runtime is built once per suite run for each backend and flavour, and
   every test and `-j` worker shares it (`tools/mcp/build_cache.py`). A file declares the runtimes
   its tests use (`PREBUILT_PLAYERS = ["glcore-release"]`). With `JASPER_SLOW_BUILD=1` and no
-  `-k`, the runner starts building them as the run starts, so tests rarely wait. A test gets one
+  `-k`, the runner starts building them as the run starts. It starts a file that needs one only
+once that runtime is built, and runs the other files meanwhile, so no worker waits for a build. A test gets one
   with `await build_cache.player_runtime(ed, "glcore", "release")` (it waits under `ed.busy()`
   while another worker builds it) and points its editor at it with
   `env=build_cache.player_env("glcore", "release")` (`JASPER_PLAYERS_DIR`; set it for the editors
