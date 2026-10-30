@@ -73,8 +73,14 @@ async def wait_idle(ed: Editor, timeout_frames: int = 3000) -> None:
     raise RuntimeError("shader creation never went idle")
 
 
-async def frames_of(ed: Editor, frames: int) -> list[dict]:
-    capture = await ed.call("capture_profile", frames=frames, gpu=False)
+async def frames_of(ed: Editor, frames: int, during=None) -> list[dict]:
+    """`frames` frames recorded with capture_profile; `during` (a coroutine) runs once the
+    recording has started, so what it causes falls inside it"""
+    recording = asyncio.ensure_future(ed.call("capture_profile", frames=frames, gpu=False))
+    if during is not None:
+        await ed.call("wait", frames=2, timeout_seconds=900)
+        await during
+    capture = await recording
     # (frames are numbered as the editor counts them: the capture's first is first_frame)
     first = int(capture.get("first_frame", 0))
     out = []
@@ -123,12 +129,13 @@ async def one_run(args: argparse.Namespace, run: int) -> dict:
             bits = toggle + 1
             pbr = {lobe: {"enabled": True} for i, lobe in enumerate(LOBES) if bits >> i & 1}
             ball = f"Ball{toggle % SPHERES}"
-            await ed.call("set_properties", scene=scene, entity=ball,
-                          values={"mesh": {"submeshes[0].material": {"pbr": pbr}}})
-            # recorded until the sphere draws its new variant (its compile, creation and first
-            # draw all inside the recording, in either mode), at most TOGGLE_WINDOWS windows
-            for _ in range(TOGGLE_WINDOWS):
-                toggled.extend(await frames_of(ed, FRAMES_PER_TOGGLE))
+            change = ed.call("set_properties", scene=scene, entity=ball,
+                             values={"mesh": {"submeshes[0].material": {"pbr": pbr}}})
+            # recorded from before the change until the sphere draws its new variant (its compile,
+            # creation and first draw all inside the recording, in either mode), at most
+            # TOGGLE_WINDOWS windows
+            for window in range(TOGGLE_WINDOWS):
+                toggled.extend(await frames_of(ed, FRAMES_PER_TOGGLE, change if window == 0 else None))
                 variant = await ed.call("get_material_variant", scene=scene, entity=ball)
                 if variant.get("ready") or variant.get("failed"):
                     toggled.extend(await frames_of(ed, 10))
