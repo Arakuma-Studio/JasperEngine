@@ -23,6 +23,11 @@ The design and acceptance record is `docs/specs/S02-build-ci-tests.md`.
 
 The only host requirement is Docker. Builds go to `build/<target>/`, a ccache shared by every
 worktree of a checkout makes rebuilds cheap.
+Each image is tagged `jasperengine/<target>-build:<hash>`, the first 12 hex digits of a sha256 over
+its Dockerfile and what that COPYs or ADDs from `docker/`; `:latest` names the newest build.
+Worktrees with different Dockerfiles therefore keep one image each instead of retagging one name
+back and forth (a rebuild on every switch, and an untagged image that `docker image prune` deletes
+under a job still running it by id). The containers run the image by id.
 
 ### Unit tests: `tools/build.sh unit-tests`
 

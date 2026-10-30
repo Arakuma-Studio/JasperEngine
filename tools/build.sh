@@ -129,12 +129,29 @@ if [[ "$TARGET" == mcp-tests && "${MCP_SUITE:-ci}" == all && $SHELL_MODE -eq 0 &
     env -u WEB_THREADS -u WASM_SIMD -u CXX_STANDARD -u SANITIZE -u JASPER_DOCKER_IMAGE WEB_PROJECT=mesh-raycast "$ROOT/tools/build.sh" web \
         || { echo "mcp-tests: the mesh-raycast web build (WEB_PROJECT=mesh-raycast tools/build.sh web) failed" >&2; exit 1; }
 fi
-# Rebuilding an unchanged image is a no-op thanks to the layer cache. The containers run the
-# image by id: other worktrees (with another Dockerfile) may retag the shared name meanwhile.
+# Rebuilding an unchanged image is a no-op thanks to the layer cache. The image is tagged with
+# a hash of its Dockerfile and of what that COPYs or ADDs from docker/ (jasperengine/<target>-build:
+# <12 hex>), and :latest names the newest build (for people): worktrees with different Dockerfiles
+# each keep theirs, instead of retagging one name back and forth and leaving the other image
+# untagged, for a prune to delete under a job that still runs it. The containers run it by id.
+image_hash() {
+    local file="$ROOT/docker/$1.Dockerfile"
+    {
+        cat "$file"
+        # the build-context sources of COPY and ADD (not a --from stage's)
+        awk 'toupper($1) == "COPY" || toupper($1) == "ADD" {
+                 from = 0; for (i = 2; i <= NF; i++) if ($i ~ /^--from/) from = 1
+                 if (!from) for (i = 2; i < NF; i++) if ($i !~ /^--/) print $i
+             }' "$file" | while read -r source; do
+            (cd "$ROOT/docker" && find "./$source" -type f -print0 2>/dev/null | sort -z | xargs -0 -r sha256sum)
+        done
+    } | sha256sum | cut -c1-12
+}
 if [[ -n "${JASPER_DOCKER_IMAGE:-}" ]]; then
     IMAGE_ID="$JASPER_DOCKER_IMAGE"
 else
-    IMAGE_ID="$(docker build -q -t "$IMAGE" -f "$ROOT/docker/$IMAGE_TARGET.Dockerfile" "$ROOT/docker")"
+    IMAGE_ID="$(docker build -q -t "$IMAGE:$(image_hash "$IMAGE_TARGET")" -t "$IMAGE:latest" \
+        -f "$ROOT/docker/$IMAGE_TARGET.Dockerfile" "$ROOT/docker")"
 fi
 
 HTMLUI_BACKEND="${HTMLUI_BACKEND:-glcore}"
