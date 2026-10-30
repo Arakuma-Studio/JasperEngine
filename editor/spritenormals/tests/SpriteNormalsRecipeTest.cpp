@@ -164,9 +164,9 @@ TEST(SpriteNormalsRecipe, MakeRecipeIsCanonical) {
         JASPERENGINE_EDITOR_VERSION +
         R"(","outputs":{"atlas":"assets/hero_sheet.png","height":null,"normal":"assets/hero_sheet_normal.png"},)"
         R"("radius_resolved":4.8,"role":"normal","settings":{"alpha_threshold":0.03,"detail":3,"directx":false,)"
-        R"("edges":"transparent","height":false,"ignore_outline":false,"preset":"default","profile":"rounded",)"
-        R"("radius":"auto","regions":[],"smoothing":1,"softness":1.15,"strength":1.5,"volume":1.15},)"
-        R"("source":{"kind":"gif","path":"assets/hero.gif","sha1":"0123456789abcdef0123456789abcdef01234567"},"version":1})";
+        R"("edges":"transparent","height":false,"ignore_outline":false,"preset":"default","profile":"auto",)"
+        R"("radius":"auto","regions":[],"resolution_scale":"auto","smoothing":1,"softness":1.15,"strength":1.5,"volume":1.15},)"
+        R"("source":{"kind":"gif","path":"assets/hero.gif","sha1":"0123456789abcdef0123456789abcdef01234567"},"version":2})";
     EXPECT_EQ(text, expected);
     std::string invalid;
     EXPECT_TRUE(sn::validateRecipe(recipe, invalid)) << invalid;

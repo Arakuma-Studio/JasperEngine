@@ -3,6 +3,7 @@
 
 #include "SpriteNormalsPreview.h"
 
+#include "SpriteNormalsField.h"
 #include "SpriteNormalsPaint.h"
 
 #include <algorithm>
@@ -116,6 +117,117 @@ namespace jasperengine::editor::spritenormals {
         }
 
         std::string integer(double v) { return std::to_string(std::lround(v)); }
+
+        // ---- roughness and creases (hires design spec, rule 6)
+
+        // k of the metric: the median over the cells (the image without cells) of the largest
+        // island's shorter side, over 128
+        double metricScale(const Image& normal, const std::vector<Cell>& frames, float alphaThreshold) {
+            std::vector<double> sides;
+            for (const Cell& cell : frames) {
+                std::vector<uint8_t> mask(static_cast<size_t>(cell.width) * cell.height, 0);
+                for (int y = 0; y < cell.height; y++) {
+                    for (int x = 0; x < cell.width; x++) {
+                        mask[static_cast<size_t>(y) * cell.width + x] = normal.pixel(cell.x + x, cell.y + y)[3] / 255.0f > alphaThreshold;
+                    }
+                }
+                const std::vector<detail::Component> islands = detail::components(mask, cell.width, cell.height);
+                if (islands.empty()) continue;
+                size_t largest = 0;
+                for (size_t k = 1; k < islands.size(); k++) {
+                    if (islands[k].pixels.size() > islands[largest].pixels.size()) largest = k;
+                }
+                const detail::Component& big = islands[largest];
+                sides.push_back(std::min(big.maxX - big.minX + 1, big.maxY - big.minY + 1));
+            }
+            if (sides.empty()) return 1.0;
+            std::sort(sides.begin(), sides.end());
+            const size_t n = sides.size();
+            const double median = n % 2 ? sides[n / 2] : (sides[n / 2 - 1] + sides[n / 2]) * 0.5;
+            return std::max(1.0, median / kHiresSide);
+        }
+
+        void measureSmoothness(Metrics& m, const Image& normal, const std::vector<float>& normals, const std::vector<Cell>& cells,
+                               float alphaThreshold) {
+            std::vector<Cell> frames = cells;
+            if (frames.empty()) frames.push_back({0, 0, normal.width, normal.height});
+            for (Cell& c : frames) {
+                // clipped to the image
+                const int x0 = std::clamp(c.x, 0, normal.width), y0 = std::clamp(c.y, 0, normal.height);
+                c.width = std::clamp(c.x + c.width, 0, normal.width) - x0;
+                c.height = std::clamp(c.y + c.height, 0, normal.height) - y0;
+                c.x = x0;
+                c.y = y0;
+            }
+            frames.erase(std::remove_if(frames.begin(), frames.end(), [](const Cell& c) { return c.width <= 0 || c.height <= 0; }), frames.end());
+            m.scale = metricScale(normal, frames, alphaThreshold);
+            // pixel art (128 px or less): not measured (an 8 px inset leaves the apex of a 32 px
+            // sprite, and its 1-2 px creases are the pixel-art look)
+            if (m.scale <= 1.0) return;
+            const float sigma = static_cast<float>(4.0 * m.scale);
+            const float inset = static_cast<float>(8.0 * m.scale);
+            const double creaseCos = std::cos(kCreaseDeg * kPi / 180.0);
+            double sum = 0.0;
+            int64_t inner = 0, creased = 0;
+            for (const Cell& cell : frames) {
+                const int w = cell.width, h = cell.height;
+                // the alpha-0.5 silhouette in a field padded by 1 (the cell's border is outside)
+                const int pw = w + 2, ph = h + 2;
+                std::vector<uint8_t> solid(static_cast<size_t>(pw) * ph, 0);
+                bool any = false;
+                for (int y = 0; y < h; y++) {
+                    for (int x = 0; x < w; x++) {
+                        const bool on = normal.pixel(cell.x + x, cell.y + y)[3] >= 128;
+                        solid[static_cast<size_t>(y + 1) * pw + x + 1] = on;
+                        any = any || on;
+                    }
+                }
+                if (!any) continue;
+                const detail::Field padded = detail::edt(solid, pw, ph, detail::Border::Zero);
+                detail::Field depth = detail::Field::zero(w, h);
+                for (int y = 0; y < h; y++) {
+                    for (int x = 0; x < w; x++) depth.data[static_cast<size_t>(y) * w + x] = padded.data[static_cast<size_t>(y + 1) * pw + x + 1];
+                }
+                bool anyInner = false;
+                for (float d : depth.data) anyInner = anyInner || (std::isfinite(d) && d > inset);
+                if (!anyInner) continue;
+                // the cell's normals blurred (the border continues: outside the image they are
+                // the edge's), each channel alone
+                detail::Field channel[3];
+                for (int k = 0; k < 3; k++) {
+                    detail::Field f = detail::Field::zero(w, h);
+                    for (int y = 0; y < h; y++) {
+                        for (int x = 0; x < w; x++) {
+                            const size_t i = static_cast<size_t>(cell.y + y) * normal.width + (cell.x + x);
+                            const uint8_t* p = normal.data.data() + i * 4;
+                            // transparent pixels count as their encoded normal (flat)
+                            f.data[static_cast<size_t>(y) * w + x] = p[3] / 255.0f > alphaThreshold ? normals[i * 3 + k] : (k == 2 ? 1.0f : 0.0f);
+                        }
+                    }
+                    channel[k] = detail::gaussian(f, sigma, detail::Border::Clamp);
+                }
+                for (int y = 0; y < h; y++) {
+                    for (int x = 0; x < w; x++) {
+                        const size_t j = static_cast<size_t>(y) * w + x;
+                        const float d = depth.data[j];
+                        if (!(std::isfinite(d) && d > inset)) continue;
+                        const size_t i = static_cast<size_t>(cell.y + y) * normal.width + (cell.x + x);
+                        const double b[3] = {channel[0].data[j], channel[1].data[j], channel[2].data[j]};
+                        const double length = std::sqrt(b[0] * b[0] + b[1] * b[1] + b[2] * b[2]);
+                        if (!(length > 1e-9)) continue;
+                        const double c = std::clamp((normals[i * 3] * b[0] + normals[i * 3 + 1] * b[1] + normals[i * 3 + 2] * b[2]) / length, -1.0, 1.0);
+                        sum += degrees(std::acos(c));
+                        inner++;
+                        if (c < creaseCos) creased++;
+                    }
+                }
+            }
+            m.innerPixels = static_cast<int>(inner);
+            if (inner > 0) {
+                m.roughnessDeg = sum / static_cast<double>(inner);
+                m.creasePct = 100.0 * static_cast<double>(creased) / static_cast<double>(inner);
+            }
+        }
 
         std::string oneDecimal(double v) {
             char buffer[32];
@@ -276,7 +388,8 @@ namespace jasperengine::editor::spritenormals {
 
     // ------------------------------------------------------------------ quality
 
-    Metrics measure(const Image& normal, const std::vector<Cell>& cells, bool directx, float alphaThreshold, const PaintOverlay* paint) {
+    Metrics measure(const Image& normal, const std::vector<Cell>& cells, bool directx, float alphaThreshold, const PaintOverlay* paint,
+                    const Image* shape) {
         Metrics m;
         if (!isRgba8(normal)) return m;
         const int width = normal.width, height = normal.height;
@@ -358,6 +471,15 @@ namespace jasperengine::editor::spritenormals {
             const double length = std::sqrt(sum[0] * sum[0] + sum[1] * sum[1] + sum[2] * sum[2]);
             if (length > 1e-12) m.leanDeg = degrees(std::acos(std::clamp(sum[2] / length, -1.0, 1.0)));
         }
+        if (shape && isRgba8(*shape) && shape->width == width && shape->height == height) {
+            std::vector<float> shapeNormals(normal.pixelCount() * 3, 0.0f);
+            for (size_t i = 0; i < normal.pixelCount(); i++) {
+                if (opaque[i]) decodeNormal(shape->data.data() + i * 4, directx, &shapeNormals[i * 3]);
+            }
+            measureSmoothness(m, normal, shapeNormals, cells, alphaThreshold);
+        } else {
+            measureSmoothness(m, normal, normals, cells, alphaThreshold);
+        }
         for (const Cell& cell : cells) {
             bool touches = false;
             for (int y = std::max(0, cell.y); y < std::min(height, cell.y + cell.height) && !touches; y++) {
@@ -374,13 +496,21 @@ namespace jasperengine::editor::spritenormals {
         return m;
     }
 
-    Assessment assess(const Settings& settings, const Metrics& m, int cellCount) {
+    Assessment assess(const Settings& settings, const Metrics& m, int cellCount, const Result* result) {
         Assessment a;
-        a.lines.push_back(std::string("Shape: ") + toString(settings.profile) + " (mean tilt " + integer(m.meanTiltDeg) + "°, " + integer(m.flatPct) +
-                          "% flat)");
+        std::string profile = toString(settings.profile);
+        if (settings.profile == Profile::Auto && result && result->profilesUsed) {
+            std::string used;
+            for (Profile p : {Profile::Rounded, Profile::Dome, Profile::Bevel, Profile::Inflate}) {
+                if (result->profilesUsed & (1u << static_cast<int>(p))) used += (used.empty() ? "" : ", ") + std::string(toString(p));
+            }
+            profile += " -> " + used;
+        }
+        a.lines.push_back("Shape: " + profile + " (mean tilt " + integer(m.meanTiltDeg) + "°, " + integer(m.flatPct) + "% flat)");
         a.lines.push_back("Steep pixels: " + integer(m.steepPct) + "%");
         a.lines.push_back("Noise: " + integer(m.noisePct) + "%");
         a.lines.push_back("Lean: " + integer(m.leanDeg) + "°");
+        if (m.innerPixels > 0) a.lines.push_back("Roughness: " + oneDecimal(m.roughnessDeg) + "° (creases " + oneDecimal(m.creasePct) + "%)");
         a.lines.push_back("Coverage: " + integer(m.coveragePct) + "%");
         if (cellCount > 0) {
             a.lines.push_back("Frames: " + std::to_string(cellCount) + " (" + std::to_string(m.framesTouchingEdges) + " touch their cell's edge)");
@@ -402,6 +532,13 @@ namespace jasperengine::editor::spritenormals {
             warn("noisy", integer(m.noisePct) + "% of the pixels disagree with their neighbours (dithering or hard shading bands).",
                  "Raise smoothing to 1.5-2 or lower detail.");
         }
+        if (m.creasePct > kCreasedPct) {
+            warn("creased", oneDecimal(m.creasePct) + "% of the inside lies on sharp creases (ridges down the middle of the shapes).",
+                 "Use profile inflate (round art) or dome (flat-faced props), or the painted or props preset, or raise softness.");
+        } else if (m.roughnessDeg > kStreakyDeg) {
+            warn("streaky", "The light is streaky inside the sprite (roughness " + oneDecimal(m.roughnessDeg) + "°): fans from the outline or bumps from the brushwork.",
+                 "Raise softness (outline fans) or smoothing (brushwork), or use profile inflate.");
+        }
         if (m.leanDeg > 8.0) {
             warn("leaning", "The map leans " + integer(m.leanDeg) + "° on average: the painted light direction became a slope.",
                  "Lower detail, or add a region with detail 0 for the highlight colours.");
@@ -410,7 +547,9 @@ namespace jasperengine::editor::spritenormals {
             warn("frames_touch_edges", std::to_string(m.framesTouchingEdges) + " frames touch their cell's edge, which gets a rim there.",
                  "Use edges extend if the sprite continues past the cell.");
         }
-        if (m.softEdgePct > 10.0) {
+        // (version 2 above 128 px: the soft pixels reachable from outside are already outside
+        // the shape, and enclosed ones are glass, rightly solid)
+        if (m.softEdgePct > 10.0 && !(settings.version >= 2 && m.scale > 1.0)) {
             warn("soft_edges", integer(m.softEdgePct) + "% of the opaque pixels are semi-transparent; they count as solid.",
                  "Raise alpha_threshold to ignore glows and soft edges.");
         }

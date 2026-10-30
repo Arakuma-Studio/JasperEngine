@@ -90,12 +90,26 @@ namespace jasperengine::editor::spritenormals {
             return -1;
         }
 
+        // version 1's auto radius (and version 2's when a field has no inside distance)
+        inline float autoRadius(float side) { return std::min(std::max(0.15f * side, 4.0f), 512.0f); }
+
         // ---- work items
 
         struct Item {
             int cell = 0;                 // index into the (deduplicated) cells
             detail::Component island;     // Transparent: the island, cell-local pixel indices
-            float radius = 4.0f;
+            float radius = 4.0f;          // explicit, a sequence's, or (version 1) the bbox auto radius
+            bool thicknessRadius = false; // version 2 auto radius on a still: 0.3 x its own thickness
+            float side = 0.0f;            // S: the size measure (island / cell shorter side, a sequence's median)
+            float scale = 1.0f;           // k
+            Profile profile = Profile::Rounded;   // auto resolved
+            bool outerBand = false;       // rule 5: soft pixels reachable from outside are outside the shape
+            int64_t fieldPixels = 0;      // the size of its field (large ones run alone, on every thread)
+        };
+
+        struct ItemResult {
+            uint32_t matched = 0;
+            float radius = 0.0f;
         };
 
         struct Context {
@@ -107,9 +121,115 @@ namespace jasperengine::editor::spritenormals {
             bool lift = false;            // some region lifts
             bool flat = false;            // some region is flat
             Image* normal = nullptr;
+            Image* shape = nullptr;                  // request.shapeNormals
             std::vector<float>* heights = nullptr;   // settings.height: strength * combined per image pixel
             std::vector<uint8_t>* heightMask = nullptr;
+            const std::atomic<bool>* cancel = nullptr;
         };
+
+        // The inflate profile's height: kInflateHeight * volume * sqrt(u), u the Poisson solution
+        // (a disc of radius r gives u = (r^2 - rho^2) / 4: kInflateHeight 2 is the exact
+        // hemisphere at strength x volume 1). Chosen on the evaluation set (hires design spec) so
+        // the presets' strength x volume of 1.725 is the best effective slope there.
+        constexpr float kInflateHeight = 1.0f;
+
+        // The thickness auto radius (rule 3): 0.3 x the largest inscribed distance, 4..512 px
+        inline float thicknessRadius(float thickness) { return std::min(std::max(0.3f * thickness, 4.0f), 512.0f); }
+
+        // The field of an item: the island's box padded by 1 (Transparent) or the whole cell
+        // (Wrap / Extend); the mask (alpha above the cutoff) and the shape mask: the mask less the
+        // outer band of soft pixels when the item has one
+        struct ItemField {
+            int width = 0, height = 0, ox = 0, oy = 0;
+            std::vector<uint8_t> mask;
+            std::vector<uint8_t> shape;   // == mask without an outer band
+            std::vector<int> pixels;      // field indices of the mask pixels
+        };
+
+        ItemField itemField(const Item& item, const Context& ctx) {
+            const Settings& s = *ctx.settings;
+            const Cell& cell = (*ctx.cells)[static_cast<size_t>(item.cell)];
+            const Image& color = *ctx.color;
+            const bool transparent = s.edges == Edges::Transparent;
+            ItemField f;
+            if (transparent) {
+                f.width = item.island.maxX - item.island.minX + 3;
+                f.height = item.island.maxY - item.island.minY + 3;
+                f.ox = item.island.minX - 1;
+                f.oy = item.island.minY - 1;
+            } else {
+                f.width = cell.width;
+                f.height = cell.height;
+            }
+            const size_t n = static_cast<size_t>(f.width) * static_cast<size_t>(f.height);
+            f.mask.assign(n, 0);
+            auto addPixel = [&](int lx, int ly) {
+                const size_t i = static_cast<size_t>(ly - f.oy) * f.width + static_cast<size_t>(lx - f.ox);
+                f.mask[i] = 1;
+                f.pixels.push_back(static_cast<int>(i));
+            };
+            if (transparent) {
+                // (upstream walks the island image row-major: only min/max below depend on the
+                // pixels, so the BFS order gives the same values)
+                for (int p : item.island.pixels) addPixel(p % cell.width, p / cell.width);
+            } else {
+                for (int ly = 0; ly < cell.height; ly++) {
+                    for (int lx = 0; lx < cell.width; lx++) {
+                        const uint8_t a = color.pixel(cell.x + lx, cell.y + ly)[3];
+                        if (static_cast<float>(a) / 255.0f > s.alphaThreshold) addPixel(lx, ly);
+                    }
+                }
+            }
+            f.shape = f.mask;
+            if (item.outerBand) {
+                // soft pixels (alpha under 0.5) 8-connected to a pixel outside the mask, through
+                // soft pixels only: outside the shape (they keep their alpha and get a normal)
+                const Border border = s.edges == Edges::Wrap ? Border::Wrap : Border::Zero;
+                auto soft = [&](size_t i) {
+                    const int fx = static_cast<int>(i % f.width) + f.ox, fy = static_cast<int>(i / f.width) + f.oy;
+                    return color.pixel(cell.x + fx, cell.y + fy)[3] < 128;
+                };
+                std::vector<uint8_t> seen(n, 0);
+                std::vector<int> queue;
+                for (size_t i = 0; i < n; i++) {
+                    if (!f.mask[i]) {
+                        seen[i] = 1;
+                        queue.push_back(static_cast<int>(i));
+                    }
+                }
+                for (size_t head = 0; head < queue.size(); head++) {
+                    const int i = queue[head];
+                    const int x = i % f.width, y = i / f.width;
+                    for (int dy = -1; dy <= 1; dy++) {
+                        for (int dx = -1; dx <= 1; dx++) {
+                            if (!dx && !dy) continue;
+                            int nx = x + dx, ny = y + dy;
+                            if (border == Border::Wrap) {
+                                nx = (nx % f.width + f.width) % f.width;
+                                ny = (ny % f.height + f.height) % f.height;
+                            } else if (nx < 0 || ny < 0 || nx >= f.width || ny >= f.height) {
+                                continue;
+                            }
+                            const size_t j = static_cast<size_t>(ny) * f.width + nx;
+                            if (seen[j] || !soft(j)) continue;
+                            seen[j] = 1;
+                            f.shape[j] = 0;
+                            queue.push_back(static_cast<int>(j));
+                        }
+                    }
+                }
+            }
+            return f;
+        }
+
+        float maxFinite(const Field& d, const std::vector<int>& pixels) {
+            float m = 0.0f;
+            for (int i : pixels) {
+                const float v = d.data[static_cast<size_t>(i)];
+                if (std::isfinite(v)) m = std::max(m, v);
+            }
+            return m;
+        }
 
         // contract section 3 / Phase 2 spec 3.5: height of the silhouette at inset t (d = +INF:
         // no transparent pixel anywhere, a constant 0)
@@ -120,6 +240,8 @@ namespace jasperengine::editor::spritenormals {
                 case Profile::Rounded: return (S * R) * std::log1p(t / R);
                 case Profile::Dome: return t >= R ? S * R : S * std::sqrt(std::fmax(R * R - (R - t) * (R - t), 0.0f));
                 case Profile::Bevel: return S * std::fmin(t, R);
+                case Profile::Inflate:   // (the Poisson solve, not a distance profile)
+                case Profile::Auto: break;   // (resolved per item before)
             }
             return 0.0f;
         }
@@ -145,80 +267,102 @@ namespace jasperengine::editor::spritenormals {
         // Relief of one work item (upstream relief::generate, generalised): the field is the
         // island's box padded by 1 (Transparent) or the whole cell (Wrap / Extend). Returns the
         // bit set of the effective regions that matched a pixel.
-        uint32_t runItem(const Item& item, const Context& ctx) {
+        ItemResult runItem(const Item& item, const Context& ctx, detail::Workers* workers) {
             const Settings& s = *ctx.settings;
             const Cell& cell = (*ctx.cells)[static_cast<size_t>(item.cell)];
             const Image& color = *ctx.color;
-            const bool transparent = s.edges == Edges::Transparent;
             const Border border = s.edges == Edges::Wrap ? Border::Wrap : (s.edges == Edges::Extend ? Border::Clamp : Border::Zero);
 
             // field geometry: field (fx, fy) = cell-local (fx + ox, fy + oy)
-            int width, height, ox, oy;
-            if (transparent) {
-                width = item.island.maxX - item.island.minX + 3;
-                height = item.island.maxY - item.island.minY + 3;
-                ox = item.island.minX - 1;
-                oy = item.island.minY - 1;
-            } else {
-                width = cell.width;
-                height = cell.height;
-                ox = oy = 0;
-            }
+            ItemField field = itemField(item, ctx);
+            const int width = field.width, height = field.height, ox = field.ox, oy = field.oy;
+            const std::vector<int>& fieldPixels = field.pixels;
             const size_t n = static_cast<size_t>(width) * static_cast<size_t>(height);
-            std::vector<uint8_t> mask(n, 0);
-            std::vector<int> fieldPixels;   // field indices of the mask pixels
             Field opacity = Field::zero(width, height);
             Field lightness = Field::zero(width, height);
             const bool anyRegion = !ctx.regions.empty();
             std::vector<int> region;
             if (anyRegion) region.assign(n, -1);
             uint32_t matched = 0;
+            // the item's effective values: the 128 px reference ones times k (exact at k = 1)
+            const float softness = s.softness * item.scale;
+            const float smoothing = s.smoothing * item.scale;
+            const float detailGain = s.detail * item.scale;
 
-            auto addPixel = [&](int lx, int ly) {
-                const size_t i = static_cast<size_t>(ly - oy) * width + static_cast<size_t>(lx - ox);
-                mask[i] = 1;
-                fieldPixels.push_back(static_cast<int>(i));
-            };
-            if (transparent) {
-                // (upstream walks the island image row-major: only min/max below depend on the
-                // pixels, so the BFS order gives the same values)
-                for (int p : item.island.pixels) addPixel(p % cell.width, p / cell.width);
-            } else {
-                for (int ly = 0; ly < cell.height; ly++) {
-                    for (int lx = 0; lx < cell.width; lx++) {
-                        const uint8_t a = color.pixel(cell.x + lx, cell.y + ly)[3];
-                        if (static_cast<float>(a) / 255.0f > s.alphaThreshold) addPixel(lx, ly);
+            // per pixel of the mask, split over the pool for a large field (disjoint writes; the
+            // min / max and the matched bits combine in any order to the same values)
+            const int count = static_cast<int>(fieldPixels.size());
+            detail::Workers* pool = static_cast<int64_t>(n) >= detail::kParallelPixels ? workers : nullptr;
+            auto overPixels = [&](const std::function<void(int, int)>& body) { detail::parallelFor(pool, count, body, 8192); };
+            float low = 1.0f, high = 0.0f;
+            std::mutex reduce;
+            overPixels([&](int begin, int end) {
+                float lo = 1.0f, hi = 0.0f;
+                uint32_t bits = 0;
+                for (int k = begin; k < end; k++) {
+                    const int i = fieldPixels[static_cast<size_t>(k)];
+                    const int lx = i % width + ox, ly = i / width + oy;
+                    const uint8_t* px = color.pixel(cell.x + lx, cell.y + ly);
+                    opacity.data[static_cast<size_t>(i)] = static_cast<float>(px[3]) / 255.0f;
+                    const float value = detail::oklabL(px[0], px[1], px[2]);
+                    lightness.data[static_cast<size_t>(i)] = value;
+                    lo = std::min(lo, value);
+                    hi = std::max(hi, value);
+                    if (anyRegion) {
+                        const int r = matchRegion(ctx.regions, px);
+                        region[static_cast<size_t>(i)] = r;
+                        if (r >= 0) bits |= 1u << r;
                     }
                 }
-            }
-            float low = 1.0f, high = 0.0f;
-            for (int i : fieldPixels) {
-                const int lx = i % width + ox, ly = i / width + oy;
-                const uint8_t* px = color.pixel(cell.x + lx, cell.y + ly);
-                opacity.data[static_cast<size_t>(i)] = static_cast<float>(px[3]) / 255.0f;
-                const float value = detail::oklabL(px[0], px[1], px[2]);
-                lightness.data[static_cast<size_t>(i)] = value;
-                low = std::min(low, value);
-                high = std::max(high, value);
-                if (anyRegion) {
-                    const int r = matchRegion(ctx.regions, px);
-                    region[static_cast<size_t>(i)] = r;
-                    if (r >= 0) matched |= 1u << r;
-                }
-            }
+                std::lock_guard<std::mutex> lock(reduce);
+                low = std::min(low, lo);
+                high = std::max(high, hi);
+                matched |= bits;
+            });
             // A constant height offset has no normal; centering avoids cancellation noise on flat art
-            for (int i : fieldPixels) lightness.data[static_cast<size_t>(i)] -= (low + high) * 0.5f;
+            const float centre = (low + high) * 0.5f;
+            overPixels([&](int begin, int end) {
+                for (int k = begin; k < end; k++) lightness.data[static_cast<size_t>(fieldPixels[static_cast<size_t>(k)])] -= centre;
+            });
 
-            Field shape = detail::edt(mask, width, height, border);
-            for (float& value : shape.data) value = profileHeight(s.profile, value, s.volume, item.radius);
-            Field combined = detail::gaussian(shape, s.softness, border);
+            ItemResult outcome;
+            Field shape = detail::edt(field.shape, width, height, border, workers);
+            float radius = item.radius;
+            if (item.thicknessRadius) {
+                const float thickness = maxFinite(shape, fieldPixels);
+                radius = thickness > 0.0f ? thicknessRadius(thickness) : autoRadius(item.side);
+            }
+            outcome.radius = radius;
+            if (item.profile == Profile::Inflate) {
+                std::vector<double> u;
+                const bool solved = detail::poisson(field.shape, width, height, border, u, workers, ctx.cancel);
+                detail::parallelFor(pool, height, [&](int b, int e) {
+                    for (size_t i = static_cast<size_t>(b) * width; i < static_cast<size_t>(e) * width; i++) {
+                        shape.data[i] = solved ? kInflateHeight * s.volume * static_cast<float>(std::sqrt(u[i])) : 0.0f;
+                    }
+                }, 16);
+            } else {
+                detail::parallelFor(pool, height, [&](int b, int e) {
+                    for (size_t i = static_cast<size_t>(b) * width; i < static_cast<size_t>(e) * width; i++) {
+                        // the outer band and the outside: 0 (their distance is 0)
+                        shape.data[i] = profileHeight(item.profile, shape.data[i], s.volume, radius);
+                    }
+                }, 16);
+            }
+            Field combined = detail::gaussian(shape, softness, border, workers);
             shape = Field();
+            Field shapeOnly;
+            if (ctx.shape) shapeOnly = combined;
 
             if (s.detail != 0.0f) {
                 if (!ctx.gain) {
-                    const Field fine = detail::maskedGaussian(lightness, opacity, s.smoothing, border);
-                    const Field broad = detail::maskedGaussian(lightness, opacity, s.smoothing * 2.0f, border);
-                    for (size_t i = 0; i < n; i++) combined.data[i] += s.detail * (0.7f * fine.data[i] + 0.3f * broad.data[i]);
+                    const Field fine = detail::maskedGaussian(lightness, opacity, smoothing, border, workers);
+                    const Field broad = detail::maskedGaussian(lightness, opacity, smoothing * 2.0f, border, workers);
+                    detail::parallelFor(pool, height, [&](int b, int e) {
+                        for (size_t i = static_cast<size_t>(b) * width; i < static_cast<size_t>(e) * width; i++) {
+                            combined.data[i] += detailGain * (0.7f * fine.data[i] + 0.3f * broad.data[i]);
+                        }
+                    }, 16);
                 } else {
                     // excluded colours (detail 0) neither feed nor receive their own lightness: their
                     // height is interpolated from their neighbours; the gain blends the multipliers
@@ -230,11 +374,11 @@ namespace jasperengine::editor::spritenormals {
                         g.data[static_cast<size_t>(i)] = gi;
                         if (!(gi > 0.0f)) fed.data[static_cast<size_t>(i)] = 0.0f;
                     }
-                    const Field fine = detail::maskedGaussian(lightness, fed, s.smoothing, border);
-                    const Field broad = detail::maskedGaussian(lightness, fed, s.smoothing * 2.0f, border);
-                    const Field gain = detail::maskedGaussian(g, opacity, s.smoothing, border);
+                    const Field fine = detail::maskedGaussian(lightness, fed, smoothing, border, workers);
+                    const Field broad = detail::maskedGaussian(lightness, fed, smoothing * 2.0f, border, workers);
+                    const Field gain = detail::maskedGaussian(g, opacity, smoothing, border, workers);
                     for (size_t i = 0; i < n; i++) {
-                        combined.data[i] += s.detail * gain.data[i] * (0.7f * fine.data[i] + 0.3f * broad.data[i]);
+                        combined.data[i] += detailGain * gain.data[i] * (0.7f * fine.data[i] + 0.3f * broad.data[i]);
                     }
                 }
             }
@@ -244,12 +388,17 @@ namespace jasperengine::editor::spritenormals {
                     const int r = region[static_cast<size_t>(i)];
                     if (r >= 0) lift.data[static_cast<size_t>(i)] = ctx.regions[static_cast<size_t>(r)].lift;
                 }
-                const Field blurred = detail::gaussian(lift, s.softness, border);
-                for (size_t i = 0; i < n; i++) combined.data[i] += blurred.data[i];
+                const Field blurred = detail::gaussian(lift, softness, border, workers);
+                detail::parallelFor(pool, height, [&](int b, int e) {
+                    for (size_t i = static_cast<size_t>(b) * width; i < static_cast<size_t>(e) * width; i++) combined.data[i] += blurred.data[i];
+                }, 16);
             }
 
             Image& normal = *ctx.normal;
-            for (int i : fieldPixels) {
+            const bool upstreamSobel = item.profile == Profile::Rounded;
+            overPixels([&](int begin, int end) {
+            for (int k = begin; k < end; k++) {
+                const int i = fieldPixels[static_cast<size_t>(k)];
                 const int fx = i % width, fy = i / width;
                 const int x = cell.x + fx + ox, y = cell.y + fy + oy;
                 uint8_t* out = normal.pixel(x, y);
@@ -260,7 +409,7 @@ namespace jasperengine::editor::spritenormals {
                     out[2] = 255;
                 } else {
                     float dx, dy;
-                    if (s.profile == Profile::Rounded) {
+                    if (upstreamSobel) {
                         detail::sobel(combined, fx, fy, dx, dy, border);
                     } else {
                         balancedSobel(combined, fx, fy, dx, dy, border);
@@ -276,13 +425,21 @@ namespace jasperengine::editor::spritenormals {
                         detail::encodeUnit(snapped, s.directx, out);
                     }
                 }
+                if (ctx.shape) {
+                    float dx, dy;
+                    if (upstreamSobel) detail::sobel(shapeOnly, fx, fy, dx, dy, border);
+                    else balancedSobel(shapeOnly, fx, fy, dx, dy, border);
+                    detail::encodeNormal(dx, dy, s.strength, s.directx, ctx.shape->pixel(x, y));
+                }
                 if (ctx.heights) {
                     const size_t p = static_cast<size_t>(y) * color.width + x;
                     (*ctx.heights)[p] = s.strength * combined.data[static_cast<size_t>(i)];
                     (*ctx.heightMask)[p] = 1;
                 }
             }
-            return matched;
+            });
+            outcome.matched = matched;
+            return outcome;
         }
 
         // The mask of a cell (alpha strictly above the cutoff), cell-local
@@ -300,8 +457,6 @@ namespace jasperengine::editor::spritenormals {
         double quantizeRotation(const Quantize& q) { return q.rotationDeg == 360.0f ? 0.0 : static_cast<double>(q.rotationDeg); }
 
         bool isQuantizeDirections(int d) { return d == 0 || d == 4 || d == 6 || d == 8 || d == 12 || d == 16; }
-
-        inline float autoRadius(float side) { return std::min(std::max(0.15f * side, 4.0f), 512.0f); }
 
         // ignore_outline: the most frequent exact colour of the silhouette rim (mask pixels with a
         // 4-neighbour outside the mask or their cell) when it covers half of the rim and is dark
@@ -361,8 +516,38 @@ namespace jasperengine::editor::spritenormals {
                 s.strength = 2.0f; s.detail = 0.5f; s.smoothing = 2.0f; s.volume = 1.3f;
                 s.quantize.directions = 8; s.quantize.tilts = 1; s.quantize.flatDeg = 15.0f; s.quantize.rotationDeg = 0.0f;
                 break;
+            // high-resolution art, tuned on the evaluation set (2026-10-30-sprite-normals-hires-design.md;
+            // values in 128 px reference units, multiplied by k on larger sprites)
+            case Preset::Painted:
+                // organic, painted or vector art: the Poisson inflate (no medial-axis crease) at every
+                // size; the default's values measured best with it too
+                s.strength = 1.5f; s.detail = 3.0f; s.smoothing = 1.0f; s.volume = 1.15f; s.softness = 1.15f;
+                s.profile = Profile::Inflate;
+                break;
+            case Preset::Props:
+                // crates, panels, rings, pipes: a round rim and a flat face
+                s.strength = 1.5f; s.detail = 3.0f; s.smoothing = 0.5f; s.volume = 0.7f; s.softness = 1.0f;
+                s.profile = Profile::Dome;
+                break;
+            case Preset::Tile:
+                // seamless textures: no silhouette, the painted relief only
+                s.strength = 2.0f; s.detail = 3.0f; s.smoothing = 1.0f; s.volume = 1.15f;
+                s.edges = Edges::Wrap;
+                break;
         }
         return s;
+    }
+
+    const std::vector<Preset>& allPresets() {
+        static const std::vector<Preset> list = {Preset::Soft,  Preset::Default, Preset::Crisp, Preset::Detailed, Preset::Chunky,
+                                                 Preset::Toon,  Preset::Painted, Preset::Props, Preset::Tile};
+        return list;
+    }
+
+    std::string presetNames(const char* separator) {
+        std::string names;
+        for (Preset p : allPresets()) names += (names.empty() ? "" : separator) + std::string(toString(p));
+        return names;
     }
 
     const char* toString(Preset preset) {
@@ -373,6 +558,9 @@ namespace jasperengine::editor::spritenormals {
             case Preset::Detailed: return "detailed";
             case Preset::Chunky: return "chunky";
             case Preset::Toon: return "toon";
+            case Preset::Painted: return "painted";
+            case Preset::Props: return "props";
+            case Preset::Tile: return "tile";
         }
         return "default";
     }
@@ -382,9 +570,13 @@ namespace jasperengine::editor::spritenormals {
             case Profile::Rounded: return "rounded";
             case Profile::Dome: return "dome";
             case Profile::Bevel: return "bevel";
+            case Profile::Inflate: return "inflate";
+            case Profile::Auto: return "auto";
         }
         return "rounded";
     }
+
+    const char* toString(ResolutionScale scale) { return scale == ResolutionScale::Off ? "off" : "auto"; }
 
     const char* toString(Edges edges) {
         switch (edges) {
@@ -397,7 +589,7 @@ namespace jasperengine::editor::spritenormals {
 
     bool parsePreset(const std::string& name, Preset& out) {
         const std::string n = lower(name);
-        for (Preset p : {Preset::Soft, Preset::Default, Preset::Crisp, Preset::Detailed, Preset::Chunky, Preset::Toon}) {
+        for (Preset p : allPresets()) {
             if (n == toString(p)) {
                 out = p;
                 return true;
@@ -408,7 +600,7 @@ namespace jasperengine::editor::spritenormals {
 
     bool parseProfile(const std::string& name, Profile& out) {
         const std::string n = lower(name);
-        for (Profile p : {Profile::Rounded, Profile::Dome, Profile::Bevel}) {
+        for (Profile p : {Profile::Auto, Profile::Rounded, Profile::Dome, Profile::Bevel, Profile::Inflate}) {
             if (n == toString(p)) {
                 out = p;
                 return true;
@@ -426,6 +618,14 @@ namespace jasperengine::editor::spritenormals {
             }
         }
         return false;
+    }
+
+    bool parseResolutionScale(const std::string& name, ResolutionScale& out) {
+        const std::string n = lower(name);
+        if (n == "auto") out = ResolutionScale::Auto;
+        else if (n == "off") out = ResolutionScale::Off;
+        else return false;
+        return true;
     }
 
     bool parseColor(const std::string& text, uint32_t& out) {
@@ -455,10 +655,15 @@ namespace jasperengine::editor::spritenormals {
         std::vector<Problem> problems;
         checkRange(problems, "strength", settings.strength, 0.0f, 8.0f);
         checkRange(problems, "detail", settings.detail, 0.0f, 8.0f);
-        checkRange(problems, "smoothing", settings.smoothing, 0.0f, 8.0f);
+        checkRange(problems, "smoothing", settings.smoothing, 0.0f, 32.0f);
         checkRange(problems, "volume", settings.volume, 0.0f, 8.0f);
         if (settings.radius) checkRange(problems, "radius", *settings.radius, 0.5f, 512.0f);
-        checkRange(problems, "softness", settings.softness, 0.0f, 8.0f);
+        checkRange(problems, "softness", settings.softness, 0.0f, 32.0f);
+        if (settings.version != 1 && settings.version != 2) {
+            problems.push_back({"invalid_settings", "version",
+                                "version must be 1 (as before high-resolution support) or 2 (got " + std::to_string(settings.version) + ")",
+                                "Leave version out (2), or give 1 to regenerate a map made before."});
+        }
         checkRange(problems, "alpha_threshold", settings.alphaThreshold, 0.0f, 0.99f);
         if (settings.regions.size() > 16) {
             problems.push_back({"invalid_settings", "regions",
@@ -695,6 +900,10 @@ namespace jasperengine::editor::spritenormals {
             ctx.settings = &s;
             ctx.cells = &cells;
             ctx.normal = &result.normal;
+            if (request.shapeNormals) {
+                result.shape = result.normal;
+                ctx.shape = &result.shape;
+            }
             if (s.ignoreOutline) {
                 result.outlineColor = detectOutline(color, cells, s.alphaThreshold);
                 if (result.outlineColor) {
@@ -732,120 +941,167 @@ namespace jasperengine::editor::spritenormals {
             }
 
             // ---- work items, in deterministic order, and the radii
+            ctx.cancel = control.cancel;
+            const bool v1 = s.version < 2;
+            const bool scaled = !v1 && s.resolutionScale == ResolutionScale::Auto;
+            auto scaleOf = [&](float side) { return scaled ? std::max(1.0f, side / static_cast<float>(kHiresSide)) : 1.0f; };
+            // auto: rounded up to 128 px, inflate above; version 1 had no auto: rounded, its default
+            auto profileOf = [&](float side) {
+                if (s.profile != Profile::Auto) return s.profile;
+                return !v1 && side > static_cast<float>(kHiresSide) ? Profile::Inflate : Profile::Rounded;
+            };
             std::vector<Item> items;
             const bool transparent = s.edges == Edges::Transparent;
             const bool autoR = !s.radius.has_value();
+            const bool sequenceSize = request.sequence;   // one size (S, k, profile, auto radius) for every frame
             std::vector<float> largestSides;   // sequence: per cell with an island
+            std::vector<Item> largestItems;    // ... its largest island (version 2: its thickness)
             for (size_t c = 0; c < cells.size(); c++) {
                 const Cell& cell = cells[c];
                 std::vector<detail::Component> islands;
-                if (transparent || (autoR && request.sequence)) {
+                if (transparent || sequenceSize) {
                     islands = detail::components(cellMask(color, cell, s.alphaThreshold), cell.width, cell.height);
                 }
-                if (autoR && request.sequence && !islands.empty()) {
+                if (sequenceSize && !islands.empty()) {
                     size_t largest = 0;
                     for (size_t k = 1; k < islands.size(); k++) {
                         if (islands[k].pixels.size() > islands[largest].pixels.size()) largest = k;
                     }
                     const detail::Component& big = islands[largest];
                     largestSides.push_back(static_cast<float>(std::min(big.maxX - big.minX + 1, big.maxY - big.minY + 1)));
+                    if (autoR && !v1) {
+                        Item probe;
+                        probe.cell = static_cast<int>(c);
+                        if (transparent) probe.island = big;
+                        largestItems.push_back(std::move(probe));
+                    }
                 }
                 if (transparent) {
                     for (detail::Component& island : islands) {
                         Item item;
                         item.cell = static_cast<int>(c);
-                        item.radius = autoR ? autoRadius(static_cast<float>(std::min(island.maxX - island.minX + 1, island.maxY - island.minY + 1)))
-                                            : *s.radius;
+                        item.side = static_cast<float>(std::min(island.maxX - island.minX + 1, island.maxY - island.minY + 1));
+                        item.radius = autoR ? autoRadius(item.side) : *s.radius;
+                        item.fieldPixels = static_cast<int64_t>(island.maxX - island.minX + 3) * (island.maxY - island.minY + 3);
                         item.island = std::move(island);
                         items.push_back(std::move(item));
                     }
                 } else {
                     Item item;
                     item.cell = static_cast<int>(c);
-                    item.radius = autoR ? autoRadius(static_cast<float>(std::min(cell.width, cell.height))) : s.radius.value_or(4.0f);
+                    item.side = static_cast<float>(std::min(cell.width, cell.height));
+                    item.radius = autoR ? autoRadius(item.side) : s.radius.value_or(4.0f);
+                    item.fieldPixels = static_cast<int64_t>(cell.width) * cell.height;
                     items.push_back(std::move(item));
                 }
             }
-            if (autoR && request.sequence) {
-                float radius = 4.0f;
-                if (!largestSides.empty()) {
-                    std::sort(largestSides.begin(), largestSides.end());
-                    const size_t m = largestSides.size();
-                    const float median = m % 2 ? largestSides[m / 2] : (largestSides[m / 2 - 1] + largestSides[m / 2]) * 0.5f;
-                    radius = autoRadius(median);
-                }
-                for (Item& item : items) item.radius = radius;
-                result.radiusMin = result.radiusMax = radius;
-            } else if (autoR) {
-                result.radiusPerIsland = true;
-                result.radiusMin = result.radiusMax = 4.0f;
-                for (size_t k = 0; k < items.size(); k++) {
-                    result.radiusMin = k ? std::min(result.radiusMin, items[k].radius) : items[k].radius;
-                    result.radiusMax = k ? std::max(result.radiusMax, items[k].radius) : items[k].radius;
-                }
-            } else {
-                result.radiusMin = result.radiusMax = *s.radius;
+            float sequenceSide = 0.0f;
+            if (sequenceSize && !largestSides.empty()) {
+                std::vector<float> sides = largestSides;
+                std::sort(sides.begin(), sides.end());
+                const size_t m = sides.size();
+                sequenceSide = m % 2 ? sides[m / 2] : (sides[m / 2 - 1] + sides[m / 2]) * 0.5f;
             }
-            result.islands = static_cast<int>(items.size());
+            for (Item& item : items) {
+                if (sequenceSize) item.side = sequenceSide;
+                item.scale = scaleOf(item.side);
+                item.profile = profileOf(item.side);
+                item.outerBand = !v1 && item.side > static_cast<float>(kHiresSide);
+                item.thicknessRadius = autoR && !v1 && !sequenceSize;
+            }
 
-            // ---- run the items on the worker threads (disjoint output pixels: any schedule
-            // writes the same bytes)
+            // the thread pool: the work inside one large field (rows, columns, the solver) and
+            // the small items side by side
             int threads = request.threads;
             if (threads <= 0) {
                 const unsigned hw = std::thread::hardware_concurrency();
                 threads = static_cast<int>(std::min(hw == 0 ? 1u : hw, 16u));
             }
-            threads = std::max(1, std::min(threads, static_cast<int>(std::max<size_t>(items.size(), 1))));
+            threads = std::max(1, threads);
+            bool anyLarge = false;
+            for (const Item& item : items) anyLarge = anyLarge || item.fieldPixels >= detail::kParallelPixels;
+            if (!anyLarge) threads = std::min(threads, static_cast<int>(std::max<size_t>(items.size(), 1)));
             result.threads = threads;
+            detail::Workers workers(threads);
 
-            std::vector<uint32_t> matched(items.size(), 0);
-            std::atomic<size_t> next{0}, done{0};
-            std::atomic<bool> cancelled{false}, outOfMemory{false}, failed{false};
+            if (autoR && sequenceSize) {
+                float radius = 4.0f;
+                if (!largestSides.empty()) {
+                    if (v1) {
+                        radius = autoRadius(sequenceSide);
+                    } else {
+                        // the median over the frames of their largest island's thickness
+                        std::vector<float> thick;
+                        for (Item& probe : largestItems) {
+                            probe.side = sequenceSide;
+                            probe.outerBand = sequenceSide > static_cast<float>(kHiresSide);
+                            const ItemField f = itemField(probe, ctx);
+                            const Field d = detail::edt(f.shape, f.width, f.height,
+                                                        s.edges == Edges::Wrap ? Border::Wrap : (s.edges == Edges::Extend ? Border::Clamp : Border::Zero), &workers);
+                            thick.push_back(maxFinite(d, f.pixels));
+                        }
+                        std::sort(thick.begin(), thick.end());
+                        const size_t m = thick.size();
+                        const float median = m % 2 ? thick[m / 2] : (thick[m / 2 - 1] + thick[m / 2]) * 0.5f;
+                        radius = median > 0.0f ? thicknessRadius(median) : autoRadius(sequenceSide);
+                    }
+                }
+                for (Item& item : items) item.radius = radius;
+            }
+            result.islands = static_cast<int>(items.size());
+            for (size_t k = 0; k < items.size(); k++) {
+                result.scaleMin = k ? std::min(result.scaleMin, items[k].scale) : items[k].scale;
+                result.scaleMax = k ? std::max(result.scaleMax, items[k].scale) : items[k].scale;
+                result.profilesUsed |= 1u << static_cast<int>(items[k].profile);
+            }
+
+            // ---- run the items (disjoint output pixels: any schedule writes the same bytes):
+            // the large ones one after another on every thread, then the others side by side
+            std::vector<ItemResult> outcomes(items.size());
+            std::vector<size_t> large, small;
+            for (size_t k = 0; k < items.size(); k++) (items[k].fieldPixels >= detail::kParallelPixels ? large : small).push_back(k);
+            std::atomic<size_t> done{0};
+            std::atomic<bool> cancelled{false};
             std::mutex progressMutex;
             double lastReport = -std::numeric_limits<double>::infinity();
             const size_t total = items.size();
-            auto work = [&]() {
-                try {
-                    for (;;) {
-                        if (outOfMemory || failed || cancelled) return;
-                        if (control.cancel && control.cancel->load()) {
-                            cancelled = true;
-                            return;
-                        }
-                        const size_t k = next++;
-                        if (k >= total) return;
-                        matched[k] = runItem(items[k], ctx);
-                        const size_t finished = ++done;
-                        if (control.onProgress) {
-                            std::lock_guard<std::mutex> lock(progressMutex);
-                            const double now = secondsSince(start);
-                            if (finished == total || now - lastReport >= control.progressIntervalSeconds) {
-                                lastReport = now;
-                                Progress progress;
-                                progress.fraction = static_cast<double>(finished) / static_cast<double>(total);
-                                progress.elapsedSeconds = now;
-                                control.onProgress(progress);
-                            }
-                        }
+            auto finishedOne = [&]() {
+                const size_t finished = ++done;
+                if (control.onProgress) {
+                    std::lock_guard<std::mutex> lock(progressMutex);
+                    const double now = secondsSince(start);
+                    if (finished == total || now - lastReport >= control.progressIntervalSeconds) {
+                        lastReport = now;
+                        Progress progress;
+                        progress.fraction = static_cast<double>(finished) / static_cast<double>(total);
+                        progress.elapsedSeconds = now;
+                        control.onProgress(progress);
                     }
-                } catch (const std::bad_alloc&) {
-                    outOfMemory = true;
-                } catch (...) {
-                    failed = true;
                 }
             };
-            if (threads == 1) {
-                work();
-            } else {
-                std::vector<std::thread> pool;
-                pool.reserve(static_cast<size_t>(threads));
-                try {
-                    for (int t = 0; t < threads; t++) pool.emplace_back(work);
-                } catch (...) {
-                    // fewer threads than asked: the ones started (or this one) finish the items
-                    if (pool.empty()) work();
+            auto stopNow = [&]() {
+                if (control.cancel && control.cancel->load()) cancelled = true;
+                return cancelled.load();
+            };
+            bool outOfMemory = false, failed = false;
+            try {
+                for (size_t k : large) {
+                    if (stopNow()) break;
+                    outcomes[k] = runItem(items[k], ctx, &workers);
+                    finishedOne();
                 }
-                for (std::thread& thread : pool) thread.join();
+                workers.forRange(static_cast<int>(small.size()), [&](int begin, int end) {
+                    for (int j = begin; j < end; j++) {
+                        if (stopNow()) return;
+                        const size_t k = small[static_cast<size_t>(j)];
+                        outcomes[k] = runItem(items[k], ctx, nullptr);
+                        finishedOne();
+                    }
+                }, 1);
+            } catch (const std::bad_alloc&) {
+                outOfMemory = true;
+            } catch (...) {
+                failed = true;
             }
             if (outOfMemory || failed) {
                 Result failure;
@@ -862,10 +1118,22 @@ namespace jasperengine::editor::spritenormals {
                 stopped.seconds = secondsSince(start);
                 return stopped;
             }
+            if (autoR && !sequenceSize) {
+                result.radiusPerIsland = true;
+                for (size_t k = 0; k < items.size(); k++) {
+                    result.radiusMin = k ? std::min(result.radiusMin, outcomes[k].radius) : outcomes[k].radius;
+                    result.radiusMax = k ? std::max(result.radiusMax, outcomes[k].radius) : outcomes[k].radius;
+                }
+                if (items.empty()) result.radiusMin = result.radiusMax = 4.0f;
+            } else if (autoR) {
+                result.radiusMin = result.radiusMax = items.empty() ? 4.0f : items.front().radius;
+            } else {
+                result.radiusMin = result.radiusMax = *s.radius;
+            }
 
             // ---- warnings and the height map
             uint32_t any = 0;
-            for (uint32_t m : matched) any |= m;
+            for (const ItemResult& o : outcomes) any |= o.matched;
             for (size_t r = 0; r < ctx.regions.size(); r++) {
                 const EffectiveRegion& region = ctx.regions[r];
                 if (region.userIndex < 0 || (any & (1u << r))) continue;

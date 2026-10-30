@@ -570,6 +570,7 @@ set(JASPERENGINE_TEXSYNTH_SOURCES
 set(JASPERENGINE_SPRITENORMALS_SOURCES
     ${EDITOR_DIR}/spritenormals/SpriteNormals.cpp
     ${EDITOR_DIR}/spritenormals/SpriteNormalsField.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsInflate.cpp
     ${EDITOR_DIR}/spritenormals/SpriteMedia.cpp
     ${EDITOR_DIR}/spritenormals/SpriteNormalsRecipe.cpp
     ${EDITOR_DIR}/spritenormals/SpriteNormalsPreview.cpp
@@ -583,6 +584,7 @@ set(JASPERENGINE_SPRITENORMALS_SOURCES
 set(JASPERENGINE_SPRITENORMALS_NO_FMA_SOURCES
     ${EDITOR_DIR}/spritenormals/SpriteNormals.cpp
     ${EDITOR_DIR}/spritenormals/SpriteNormalsField.cpp
+    ${EDITOR_DIR}/spritenormals/SpriteNormalsInflate.cpp
     ${EDITOR_DIR}/spritenormals/SpriteMedia.cpp
     ${EDITOR_DIR}/spritenormals/SpriteNormalsPaint.cpp
 )

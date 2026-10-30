@@ -276,7 +276,7 @@ TEST(SpriteNormalsPreview, AssessLines) {
     m.hasTransparency = true;
     m.framesTouchingEdges = 0;
     sn::Assessment a = sn::assess(sn::Settings(), m, 0);
-    EXPECT_EQ(a.lines, (std::vector<std::string>{"Shape: rounded (mean tilt 24°, 12% flat)", "Steep pixels: 3%", "Noise: 1%", "Lean: 2°",
+    EXPECT_EQ(a.lines, (std::vector<std::string>{"Shape: auto (mean tilt 24°, 12% flat)", "Steep pixels: 3%", "Noise: 1%", "Lean: 2°",
                                                  "Coverage: 40%"}));
     EXPECT_TRUE(a.warnings.empty());
     EXPECT_EQ(a.hint, "Looks fine.");
@@ -308,6 +308,9 @@ TEST(SpriteNormalsPreview, AssessWarningThresholds) {
         {"soft_edges", [](sn::Metrics& m, bool above) { m.softEdgePct = above ? 10.2 : 10.0; }},
         {"frames_touch_edges", [](sn::Metrics& m, bool above) { m.framesTouchingEdges = above ? 1 : 0; }},
         {"no_alpha", [](sn::Metrics& m, bool above) { m.hasTransparency = !above; }},
+        // high resolution (hires design spec, rule 6): measured above 128 px only
+        {"creased", [](sn::Metrics& m, bool above) { m.scale = 4.0; m.innerPixels = 100; m.creasePct = above ? 2.1 : 2.0; }},
+        {"streaky", [](sn::Metrics& m, bool above) { m.scale = 4.0; m.innerPixels = 100; m.roughnessDeg = above ? 1.6 : 1.5; }},
     };
     for (const Case& c : cases) {
         sn::Metrics m = calm;
@@ -345,4 +348,44 @@ TEST(SpriteNormalsPreview, AssessWarningThresholds) {
     a = sn::assess(settings, m, 4);
     EXPECT_EQ(kinds(a), (std::vector<std::string>{"no_alpha", "mostly_flat", "frames_touch_edges"}));
     EXPECT_EQ(a.hint, "For tiles use edges wrap or extend.");
+}
+
+TEST(SpriteNormalsPreview, AssessHighResolution) {
+    sn::Metrics m;
+    m.hasTransparency = true;
+    m.scale = 8.0;
+    m.innerPixels = 5000;
+    m.roughnessDeg = 4.04;
+    m.creasePct = 14.93;
+    sn::Settings settings;   // auto profile
+    sn::Result result;
+    result.profilesUsed = (1u << static_cast<int>(sn::Profile::Rounded)) | (1u << static_cast<int>(sn::Profile::Inflate));
+    sn::Assessment a = sn::assess(settings, m, 0, &result);
+    EXPECT_EQ(a.lines[0], "Shape: auto -> rounded, inflate (mean tilt 0°, 0% flat)");
+    EXPECT_EQ(a.lines[4], "Roughness: 4.0° (creases 14.9%)");
+    // a crease outranks streaks (one warning, the crease's fix)
+    ASSERT_EQ(a.warnings.size(), 1u);
+    EXPECT_EQ(a.warnings[0].kind, "creased");
+    EXPECT_EQ(a.warnings[0].message, "14.9% of the inside lies on sharp creases (ridges down the middle of the shapes).");
+    EXPECT_EQ(a.hint, "Use profile inflate (round art) or dome (flat-faced props), or the painted or props preset, or raise softness.");
+    m.creasePct = 0.5;
+    a = sn::assess(settings, m, 0, &result);
+    ASSERT_EQ(a.warnings.size(), 1u);
+    EXPECT_EQ(a.warnings[0].kind, "streaky");
+    EXPECT_EQ(a.hint, "Raise softness (outline fans) or smoothing (brushwork), or use profile inflate.");
+    // not measured (128 px or less): no line, no warning
+    m.innerPixels = 0;
+    m.roughnessDeg = 0.0;
+    m.creasePct = 0.0;
+    m.scale = 1.0;
+    a = sn::assess(settings, m, 0);
+    EXPECT_EQ(a.lines.size(), 5u);
+    EXPECT_TRUE(a.warnings.empty());
+    // soft edges above 128 px with version 2: the outer band handles them (no warning); version 1 still warns
+    m.softEdgePct = 30.0;
+    m.scale = 2.0;
+    EXPECT_TRUE(sn::assess(settings, m, 0).warnings.empty());
+    settings.version = 1;
+    ASSERT_EQ(sn::assess(settings, m, 0).warnings.size(), 1u);
+    EXPECT_EQ(sn::assess(settings, m, 0).warnings[0].kind, "soft_edges");
 }

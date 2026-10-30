@@ -516,6 +516,46 @@ async def test_paint_json_modes_and_exit_codes():
     check(code == 0 and paint_chunk(out) is None, f"cleared: {err}")
 
 
+# ---------------------------------------------------------------------------- high resolution (hires design spec)
+
+async def test_high_resolution_flags():
+    work = scratch()
+    hires = FIXTURES.parent / "hires"
+    for name in ("potion.png", "crate.png", "cobbles_256.png"):
+        shutil.copy(hires / name, work / "art" / name)
+    r = run(work, "--help")
+    for flag in ("--resolution-scale", "--settings-version", "painted", "inflate", "0..32"):
+        check(flag in r.stdout, f"--help names {flag}")
+    before = listing(work)
+    for args, needle in [(["--smoothing", "33"], "--smoothing"), (["--softness", "40"], "--softness"), (["--resolution-scale", "on"], "resolution scale"),
+                         (["--profile", "pillow"], "inflate"), (["--settings-version", "3"], "--settings-version"), (["--preset", "huge"], "tile")]:
+        r = run(work, "--source", "art/potion.png", *args)
+        check(r.returncode == 2 and needle in r.stderr, f"{args}: exit 2 naming {needle!r}: {r.returncode} {r.stderr[-400:]}")
+    check(listing(work) == before, "usage errors write nothing")
+    # the default: inflate, scaled, smooth; the rounded profile: creased (exit 0, a warning)
+    code, out, _ = run_json(work, "--source", "art/potion.png", "--dry-run")
+    res = out["results"][0]
+    check(code == 0 and "inflate" in res["profile_resolved"] and res["scale_range"][1] > 1.5, f"{res['profile_resolved']} {res['scale_range']}")
+    check(res["metrics"]["crease_pct"] < 1 and res["metrics"]["roughness_deg"] < 1, f"{res['metrics']}")
+    code, out, _ = run_json(work, "--source", "art/potion.png", "--dry-run", "--profile", "rounded")
+    res = out["results"][0]
+    check(code == 0 and "creased" in [w["kind"] for w in res["warnings"]], f"rounded: {res['warnings']}")
+    # presets and flags land in the recipe
+    code, out, _ = run_json(work, "--source", "art/crate.png", "--preset", "props", "-o", "art/crate_n.png")
+    rec = recipe(work / "art" / "crate_n.png")
+    check(code == 0 and rec["version"] == 2 and rec["settings"]["profile"] == "dome" and rec["settings"]["preset"] == "props", f"{rec['settings']}")
+    code, out, _ = run_json(work, "--source", "art/cobbles_256.png", "--preset", "tile", "-o", "art/tile_n.png")
+    check(code == 0 and recipe(work / "art" / "tile_n.png")["settings"]["edges"] == "wrap", "tile wraps")
+    code, out, _ = run_json(work, "--source", "art/potion.png", "--resolution-scale", "off", "--smoothing", "32", "--softness", "32", "--dry-run")
+    check(code == 0 and out["results"][0]["scale_range"] == [1, 1], f"{out['results'][0]['scale_range']}")
+    # --settings-version 1: the rules before high-resolution support, a version 1 recipe, the same pixels again
+    code, out, _ = run_json(work, "--source", "art/potion.png", "--settings-version", "1", "-o", "art/potion_v1.png")
+    rec = recipe(work / "art" / "potion_v1.png")
+    check(code == 0 and rec["version"] == 1 and rec["settings"]["version"] == 1, f"{rec['version']} {rec['settings']}")
+    first = pixels(work / "art" / "potion_v1.png")
+    check(first == pixels(hires / "v1" / "potion_n.png"), "the bytes the editor before high-resolution support wrote")
+
+
 async def test_exported_games_ship_pngs_without_the_recipe():
     """`export` copies a generated (and painted) normal map without the editor's jasper.* chunks: the same pixels,
     no recipe or paint layer in the game (Exporter::copyPngWithoutEditorChunks); the project's file keeps them"""

@@ -283,6 +283,7 @@ Tool `normals`, `code` and `suggestion` set:
 | `normals-no-light-height` | warning | scene file | the scene has a normal-mapped submesh and Light 2Ds, none with `height` > 0 | set a Light 2D's height above 0 (64 is a good start) |
 | `normals-paint-unreadable` | warning | the generated PNG | its paint layer (`jasper.spritenormals.paint` chunk) can't be read (another format, a newer version, bad base64, an image that doesn't decode, sizes that disagree); the map still works, a regeneration drops the paint | regenerate with `paint_mode: clear`, or repaint |
 | `normals-paint-size` | warning | the generated PNG | its paint layer's size differs from the PNG's (a regeneration refuses it: `paint_size_mismatch`) | regenerate with `paint_mode: clear`, or repaint |
+| `normals-before-hires` | warning | the generated PNG | a normal map over 128 px (shorter side) whose recipe is version 1 (made before high-resolution support): regenerating keeps its old look (creases down rounded shapes, fans, little relief) | regenerate with settings version 2 (`params.version: 2` on the `regenerate` arguments, `--settings-version 2`, or the window's Use the current generator) |
 
 The cache is `.jasperengine/normals-check-cache.json` (written when `.jasperengine/` exists): per PNG its mtime,
 size, recipe, pixel size and (for a map in use without a recipe) the pixel analysis; per source its SHA-1; and a

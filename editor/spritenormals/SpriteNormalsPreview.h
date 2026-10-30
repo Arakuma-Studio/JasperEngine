@@ -76,16 +76,36 @@ namespace jasperengine::editor::spritenormals {
         int opaquePixels = 0;
         int paintedPixels = 0;         // opaque pixels the paint layer covers (Phase 5; `paint` given)
         double paintedPct = 0.0;       // ... / opaque pixels
+        // High-resolution smoothness (hires design spec, rule 6), over the "inner" pixels: more
+        // than 8k px inside the alpha-0.5 silhouette of their cell, k = max(1, S / 128) with S the
+        // median over the cells of the largest island's shorter side (`scale`). Measured only
+        // when k > 1 (above 128 px); 0 and innerPixels 0 otherwise.
+        double scale = 1.0;
+        int innerPixels = 0;
+        double roughnessDeg = 0.0;     // mean angle between each normal and its sigma = 4k px blur (of `shape` when given)
+        double creasePct = 0.0;        // inner pixels on a crease: over kCreaseDeg from that blur
     };
+    // The deviation from the blurred normal that marks a crease pixel (the medial-axis ridge of
+    // the rounded profile above 128 px deviates 10-25 degrees along it; inflate stays under 3)
+    inline constexpr double kCreaseDeg = 8.0;
     // `paint` (optional, the normal's size): the painted visible pixels counted. The metrics are
-    // of `normal` as given: the composited result when there is paint.
+    // of `normal` as given: the composited result when there is paint. `shape` (optional,
+    // Result::shape): the roughness and creases are measured on it (the silhouette's share: the
+    // painted relief is wanted detail, not a defect), else on `normal`.
     Metrics measure(const Image& normal, const std::vector<Cell>& cells, bool directx, float alphaThreshold,
-                    const PaintOverlay* paint = nullptr);
+                    const PaintOverlay* paint = nullptr, const Image* shape = nullptr);
 
     struct Assessment {
         std::vector<std::string> lines;   // "Shape: rounded (mean tilt 24°, 12% flat)", ..., "Painted: 214 px (8.1%)"
         std::string hint;                 // "Looks fine." when nothing applies
         std::vector<Problem> warnings;    // kinds of section 7.3
     };
-    Assessment assess(const Settings& settings, const Metrics& metrics, int cellCount);
+    // `result` (optional): the profile auto resolved to in the Shape line
+    Assessment assess(const Settings& settings, const Metrics& metrics, int cellCount, const Result* result = nullptr);
+    // The warning thresholds of assess() (contract table; hires design spec for the last two)
+    // (calibrated on the hires evaluation set: the new defaults measure 0.3-0.8 degrees and 0%,
+    // the props preset on flat-faced art up to 1.3 degrees and 1.2%; the rounded profile above
+    // 128 px 1.3-9.5 degrees and 4.6-68%)
+    inline constexpr double kCreasedPct = 2.0;      // crease_pct above: creased
+    inline constexpr double kStreakyDeg = 1.5;      // roughness_deg above (and not creased): streaky
 }

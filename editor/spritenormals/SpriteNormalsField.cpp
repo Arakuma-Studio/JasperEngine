@@ -150,72 +150,277 @@ namespace jasperengine::editor::spritenormals::detail {
         bb = 0.0259040371f * l + 0.7827717662f * m - 0.8086757660f * s;
     }
 
-    Field edt(const std::vector<uint8_t>& mask, int width, int height, Border border) {
+    // ------------------------------------------------------------------ workers
+
+    Workers::Workers(int threads) {
+        for (int t = 1; t < threads; t++) {
+            try {
+                helpers.emplace_back([this] { helperLoop(); });
+            } catch (...) {
+                break;   // fewer helpers: the caller runs more chunks itself
+            }
+        }
+    }
+
+    Workers::~Workers() {
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            stopping = true;
+        }
+        wake.notify_all();
+        for (std::thread& t : helpers) t.join();
+    }
+
+    void Workers::runChunks() {
+        // job, jobSize and jobGrain are stable here: forRange changes them only once every helper
+        // has checked in for the previous job and left it
+        const int chunks = (jobSize + jobGrain - 1) / jobGrain;
+        for (;;) {
+            const int c = nextChunk.fetch_add(1);
+            if (c >= chunks) return;
+            const int begin = c * jobGrain;
+            try {
+                (*job)(begin, std::min(jobSize, begin + jobGrain));
+            } catch (...) {
+                std::lock_guard<std::mutex> lock(mutex);
+                if (!failure) failure = std::current_exception();
+                nextChunk = chunks;   // the others stop taking chunks
+            }
+        }
+    }
+
+    void Workers::helperLoop() {
+        uint64_t seen = 0;
+        for (;;) {
+            {
+                std::unique_lock<std::mutex> lock(mutex);
+                wake.wait(lock, [&] { return stopping || serial != seen; });
+                if (stopping) return;
+                seen = serial;
+                checkedIn++;
+                active++;
+            }
+            runChunks();
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                active--;
+            }
+            finished.notify_all();
+        }
+    }
+
+    void Workers::forRange(int n, const std::function<void(int, int)>& body, int grain) {
+        if (n <= 0) return;
+        grain = std::max(1, grain);
+        if (helpers.empty() || n <= grain) {
+            body(0, n);
+            return;
+        }
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            job = &body;
+            jobSize = n;
+            jobGrain = grain;
+            nextChunk = 0;
+            failure = nullptr;
+            checkedIn = 0;
+            serial++;
+        }
+        wake.notify_all();
+        runChunks();
+        std::exception_ptr error;
+        {
+            std::unique_lock<std::mutex> lock(mutex);
+            // every helper has seen this job and left it (none can wake late into the next one)
+            finished.wait(lock, [&] { return checkedIn == static_cast<int>(helpers.size()) && active == 0; });
+            job = nullptr;
+            error = failure;
+            failure = nullptr;
+        }
+        if (error) std::rethrow_exception(error);
+    }
+
+    void parallelFor(Workers* workers, int n, const std::function<void(int, int)>& body, int grain) {
+        if (workers) workers->forRange(n, body, grain);
+        else if (n > 0) body(0, n);
+    }
+
+    // ------------------------------------------------------------------ distance, blur
+
+    Field edt(const std::vector<uint8_t>& mask, int width, int height, Border border, Workers* workers) {
         Field result = Field::zero(width, height);
         if (width <= 0 || height <= 0) return result;
-        const int longest = std::max(width, height);
-        std::vector<float> source(static_cast<size_t>(longest)), destination(static_cast<size_t>(longest)), scratch;
-        std::vector<int> sites;
-        std::vector<double> starts;
-        sites.reserve(static_cast<size_t>(longest) * 3);
-        starts.reserve(static_cast<size_t>(longest) * 3);
         const float inf = std::numeric_limits<float>::infinity();
-        for (int y = 0; y < height; y++) {
-            const size_t row = static_cast<size_t>(y) * width;
-            for (int x = 0; x < width; x++) source[static_cast<size_t>(x)] = mask[row + x] ? inf : 0.0f;
-            edtLine(source.data(), destination.data(), width, border, scratch, sites, starts);
-            std::copy(destination.begin(), destination.begin() + width, result.data.begin() + static_cast<std::ptrdiff_t>(row));
-        }
-        for (int x = 0; x < width; x++) {
-            for (int y = 0; y < height; y++) source[static_cast<size_t>(y)] = result.data[static_cast<size_t>(y) * width + x];
-            edtLine(source.data(), destination.data(), height, border, scratch, sites, starts);
-            for (int y = 0; y < height; y++) result.data[static_cast<size_t>(y) * width + x] = std::sqrt(destination[static_cast<size_t>(y)]);
-        }
+        // rows, then columns; each line has its own scratch (the same values on any thread)
+        auto lines = [&](bool rows, int begin, int end) {
+            const int n = rows ? width : height;
+            std::vector<float> source(static_cast<size_t>(n)), destination(static_cast<size_t>(n)), scratch;
+            std::vector<int> sites;
+            std::vector<double> starts;
+            sites.reserve(static_cast<size_t>(n) * 3);
+            starts.reserve(static_cast<size_t>(n) * 3);
+            for (int line = begin; line < end; line++) {
+                if (rows) {
+                    const size_t row = static_cast<size_t>(line) * width;
+                    for (int x = 0; x < width; x++) source[static_cast<size_t>(x)] = mask[row + x] ? inf : 0.0f;
+                    edtLine(source.data(), destination.data(), width, border, scratch, sites, starts);
+                    std::copy(destination.begin(), destination.begin() + width, result.data.begin() + static_cast<std::ptrdiff_t>(row));
+                } else {
+                    const int x = line;
+                    for (int y = 0; y < height; y++) source[static_cast<size_t>(y)] = result.data[static_cast<size_t>(y) * width + x];
+                    edtLine(source.data(), destination.data(), height, border, scratch, sites, starts);
+                    for (int y = 0; y < height; y++) result.data[static_cast<size_t>(y) * width + x] = std::sqrt(destination[static_cast<size_t>(y)]);
+                }
+            }
+        };
+        const int64_t pixels = static_cast<int64_t>(width) * height;
+        Workers* pool = pixels >= kParallelPixels ? workers : nullptr;
+        parallelFor(pool, height, [&](int b, int e) { lines(true, b, e); }, 16);
+        parallelFor(pool, width, [&](int b, int e) { lines(false, b, e); }, 16);
         return result;
     }
 
-    Field gaussian(const Field& input, float sigma, Border border) {
+    namespace {
+
+        // ---- the box cascade (sigma above kExactGaussianSigma)
+
+        // Four boxes whose variances add up to sigma^2 (Kovesi: m of width wl, the rest wl + 2)
+        std::vector<int> boxRadii(float sigma) {
+            const int n = 4;
+            const double s2 = static_cast<double>(sigma) * sigma;
+            int wl = static_cast<int>(std::floor(std::sqrt(12.0 * s2 / n + 1.0)));
+            if (wl % 2 == 0) wl--;
+            const int wu = wl + 2;
+            const int m = static_cast<int>(std::lround((12.0 * s2 - n * wl * wl - 4.0 * n * wl - 3.0 * n) / (-4.0 * wl - 4.0)));
+            std::vector<int> radii;
+            for (int i = 0; i < n; i++) radii.push_back(((i < m ? wl : wu) - 1) / 2);
+            return radii;
+        }
+
+        // `lanes` interleaved lines of `n` samples (line k at src[t * stride + k]) blurred by the
+        // cascade: the lines extended by the cascade's whole reach through `border`, the boxes run
+        // on the extension (exact: the middle never sees its ends), the middle n kept
+        void boxLines(const float* src, size_t stride, int lanes, int n, Border border, const std::vector<int>& radii, float* dst,
+                      std::vector<double>& a, std::vector<double>& b) {
+            int reach = 0;
+            for (int r : radii) reach += r;
+            const int length = n + 2 * reach;
+            a.assign(static_cast<size_t>(length) * lanes, 0.0);
+            b.assign(static_cast<size_t>(length + 1) * lanes, 0.0);
+            for (int t = 0; t < length; t++) {
+                const int i = borderIndex(t - reach, n, border);
+                if (i < 0) continue;
+                const float* line = src + static_cast<size_t>(i) * stride;
+                double* out = a.data() + static_cast<size_t>(t) * lanes;
+                for (int k = 0; k < lanes; k++) out[k] = line[k];
+            }
+            for (int r : radii) {
+                // prefix sums in b (row t + 1 = sum of rows 0..t), then the windows back into a
+                for (int k = 0; k < lanes; k++) b[static_cast<size_t>(k)] = 0.0;
+                for (int t = 0; t < length; t++) {
+                    const double* in = a.data() + static_cast<size_t>(t) * lanes;
+                    const double* prev = b.data() + static_cast<size_t>(t) * lanes;
+                    double* next = b.data() + static_cast<size_t>(t + 1) * lanes;
+                    for (int k = 0; k < lanes; k++) next[k] = prev[k] + in[k];
+                }
+                const double inv = 1.0 / (2.0 * r + 1.0);
+                for (int t = 0; t < length; t++) {
+                    const double* hi = b.data() + static_cast<size_t>(std::min(t + r + 1, length)) * lanes;
+                    const double* lo = b.data() + static_cast<size_t>(std::max(t - r, 0)) * lanes;
+                    double* out = a.data() + static_cast<size_t>(t) * lanes;
+                    for (int k = 0; k < lanes; k++) out[k] = (hi[k] - lo[k]) * inv;
+                }
+            }
+            for (int t = 0; t < n; t++) {
+                const double* in = a.data() + static_cast<size_t>(t + reach) * lanes;
+                float* out = dst + static_cast<size_t>(t) * stride;
+                for (int k = 0; k < lanes; k++) out[k] = static_cast<float>(in[k]);
+            }
+        }
+
+        Field boxCascade(const Field& input, float sigma, Border border, Workers* workers) {
+            const std::vector<int> radii = boxRadii(sigma);
+            const int width = input.width, height = input.height;
+            Field horizontal = Field::zero(width, height);
+            Field result = Field::zero(width, height);
+            Workers* pool = static_cast<int64_t>(width) * height >= kParallelPixels ? workers : nullptr;
+            parallelFor(pool, height, [&](int begin, int end) {
+                std::vector<double> a, b;
+                for (int y = begin; y < end; y++) {
+                    boxLines(input.data.data() + static_cast<size_t>(y) * width, 1, 1, width, border, radii,
+                             horizontal.data.data() + static_cast<size_t>(y) * width, a, b);
+                }
+            }, 8);
+            constexpr int kLanes = 32;
+            const int blocks = (width + kLanes - 1) / kLanes;
+            parallelFor(pool, blocks, [&](int begin, int end) {
+                std::vector<double> a, b;
+                for (int block = begin; block < end; block++) {
+                    const int x0 = block * kLanes;
+                    const int lanes = std::min(kLanes, width - x0);
+                    boxLines(horizontal.data.data() + x0, static_cast<size_t>(width), lanes, height, border, radii, result.data.data() + x0, a, b);
+                }
+            }, 1);
+            return result;
+        }
+
+    }
+
+    Field gaussian(const Field& input, float sigma, Border border, Workers* workers) {
         if (sigma < 0.05f) return input;
+        if (sigma > kExactGaussianSigma) return boxCascade(input, sigma, border, workers);
         int radius = 0;
         const std::vector<float> kernel = gaussianKernel(sigma, radius);
         const int width = input.width, height = input.height;
+        Workers* pool = static_cast<int64_t>(width) * height >= kParallelPixels ? workers : nullptr;
         Field horizontal = Field::zero(width, height);
         // Every output accumulates out += source * weight in tap order -r..r; taps outside the
         // field are skipped (Zero) or read through the border. The tap loop is outermost so the
-        // inner loop runs over contiguous samples, like upstream's add_scaled.
-        for (int y = 0; y < height; y++) {
-            const float* src = input.data.data() + static_cast<size_t>(y) * width;
-            float* out = horizontal.data.data() + static_cast<size_t>(y) * width;
-            for (int o = -radius; o <= radius; o++) {
-                const float weight = kernel[static_cast<size_t>(o + radius)];
-                if (border == Border::Zero) {
-                    const int begin = std::max(0, -o), end = std::min(width, width - o);
-                    for (int x = begin; x < end; x++) out[x] += src[x + o] * weight;
-                } else {
-                    for (int x = 0; x < width; x++) out[x] += src[borderIndex(x + o, width, border)] * weight;
+        // inner loop runs over contiguous samples, like upstream's add_scaled. Rows (then output
+        // rows) are independent: any split over threads gives the same bytes.
+        parallelFor(pool, height, [&](int rowBegin, int rowEnd) {
+            for (int y = rowBegin; y < rowEnd; y++) {
+                const float* src = input.data.data() + static_cast<size_t>(y) * width;
+                float* out = horizontal.data.data() + static_cast<size_t>(y) * width;
+                for (int o = -radius; o <= radius; o++) {
+                    const float weight = kernel[static_cast<size_t>(o + radius)];
+                    if (border == Border::Zero) {
+                        const int begin = std::max(0, -o), end = std::min(width, width - o);
+                        for (int x = begin; x < end; x++) out[x] += src[x + o] * weight;
+                    } else {
+                        for (int x = 0; x < width; x++) out[x] += src[borderIndex(x + o, width, border)] * weight;
+                    }
                 }
             }
-        }
+        }, 8);
         Field result = Field::zero(width, height);
-        for (int y = 0; y < height; y++) {
-            float* out = result.data.data() + static_cast<size_t>(y) * width;
-            for (int o = -radius; o <= radius; o++) {
-                const int row = borderIndex(y + o, height, border);
-                if (row < 0) continue;
-                const float weight = kernel[static_cast<size_t>(o + radius)];
-                const float* src = horizontal.data.data() + static_cast<size_t>(row) * width;
-                for (int x = 0; x < width; x++) out[x] += src[x] * weight;
+        parallelFor(pool, height, [&](int rowBegin, int rowEnd) {
+            for (int y = rowBegin; y < rowEnd; y++) {
+                float* out = result.data.data() + static_cast<size_t>(y) * width;
+                for (int o = -radius; o <= radius; o++) {
+                    const int row = borderIndex(y + o, height, border);
+                    if (row < 0) continue;
+                    const float weight = kernel[static_cast<size_t>(o + radius)];
+                    const float* src = horizontal.data.data() + static_cast<size_t>(row) * width;
+                    for (int x = 0; x < width; x++) out[x] += src[x] * weight;
+                }
             }
-        }
+        }, 8);
         return result;
     }
 
-    Field maskedGaussian(const Field& input, const Field& weight, float sigma, Border border) {
+    Field maskedGaussian(const Field& input, const Field& weight, float sigma, Border border, Workers* workers) {
+        Workers* pool = static_cast<int64_t>(input.width) * input.height >= kParallelPixels ? workers : nullptr;
+        const int rows = input.height, w = input.width;
         Field weighted = input;
-        for (size_t i = 0; i < weighted.data.size(); i++) weighted.data[i] *= weight.data[i];
-        Field result = gaussian(weighted, sigma, border);
-        const Field denominator = gaussian(weight, sigma, border);
-        for (size_t i = 0; i < result.data.size(); i++) result.data[i] /= std::fmax(denominator.data[i], 1e-8f);
+        parallelFor(pool, rows, [&](int b, int e) {
+            for (size_t i = static_cast<size_t>(b) * w; i < static_cast<size_t>(e) * w; i++) weighted.data[i] *= weight.data[i];
+        }, 16);
+        Field result = gaussian(weighted, sigma, border, workers);
+        const Field denominator = gaussian(weight, sigma, border, workers);
+        parallelFor(pool, rows, [&](int b, int e) {
+            for (size_t i = static_cast<size_t>(b) * w; i < static_cast<size_t>(e) * w; i++) result.data[i] /= std::fmax(denominator.data[i], 1e-8f);
+        }, 16);
         return result;
     }
 

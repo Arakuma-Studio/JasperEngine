@@ -1136,6 +1136,32 @@ TEST(SpriteNormalsSession, SpecFromRecipeRoundTrip) {
     EXPECT_NE(error.find("garbled"), std::string::npos) << error;
 }
 
+// A version 1 recipe (written before high-resolution support) regenerates with version 1 rules and
+// its own profile; a version 2 recipe records profile and resolution_scale
+TEST(SpriteNormalsSession, VersionOneRecipesKeepTheirRules) {
+    std::vector<std::string> notes;
+    std::string error;
+    sn::Spec back;
+    const fs::path map = root() / "assets" / "old_normal.png";
+    const json old = json::parse(R"({"format":"jasperengine.spritenormals","version":1,"source":{"path":"assets/old.png"},)"
+                                 R"("settings":{"preset":"default","strength":1.5,"detail":3,"smoothing":1,"volume":1.15,"radius":"auto",)"
+                                 R"("softness":1.15,"alpha_threshold":0.03,"edges":"transparent","ignore_outline":false,"regions":[],)"
+                                 R"("directx":false,"height":false}})");
+    ASSERT_TRUE(sn::specFromRecipe(old, map, root(), back, notes, error)) << error;
+    EXPECT_EQ(back.settings.version, 1);
+    EXPECT_EQ(back.settings.profile, sn::Profile::Rounded) << "a version 1 recipe without a profile is rounded";
+    EXPECT_EQ(sn::settingsToJson(back.settings)["version"], 1);
+    json v2 = old;
+    v2["version"] = 2;
+    v2["settings"]["profile"] = "auto";
+    v2["settings"]["resolution_scale"] = "off";
+    ASSERT_TRUE(sn::specFromRecipe(v2, map, root(), back, notes, error)) << error;
+    EXPECT_EQ(back.settings.version, 2);
+    EXPECT_EQ(back.settings.profile, sn::Profile::Auto);
+    EXPECT_EQ(back.settings.resolutionScale, sn::ResolutionScale::Off);
+    EXPECT_FALSE(sn::settingsToJson(back.settings).contains("version"));
+}
+
 TEST(SpriteNormalsSession, FingerprintFollowsWhatChangesTheResult) {
     sn::Spec a = stillSpec("assets/hero.png");
     sn::Spec b = a;

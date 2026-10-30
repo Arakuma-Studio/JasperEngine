@@ -243,6 +243,19 @@ namespace jasperengine::editor::spritenormals {
                                                    std::to_string(info.width) + "x" + std::to_string(info.height) + ": regenerating refuses it (paint_size_mismatch)",
                                                "normals-paint-size", paintFix});
                 }
+                // made before high-resolution support (recipe version 1) and above 128 px: it keeps
+                // the old rules when regenerated (rounded creases, fans, unscaled relief)
+                const bool hires = std::min(info.width, info.height) > kHiresSide;
+                if (role == "normal" && hires && recipe.value("version", 1) < 2) {
+                    result.findings.push_back({"normals", at, 0, 0, "warning",
+                                               "made before high-resolution support (recipe version 1) at " + std::to_string(info.width) + "x" +
+                                                   std::to_string(info.height) + ": regenerating keeps its old look (creases down rounded shapes, fans, "
+                                                   "little relief)",
+                                               "normals-before-hires",
+                                               "regenerate it with settings version 2: generate_sprite_normals with get_asset_info's `regenerate` "
+                                               "arguments and params.version 2, `generate-sprite-normals --settings-version 2`, or the window's "
+                                               "Use the current generator"});
+                }
                 const fs::path source = sourceOf(recipe, path);
                 const std::string sourceRel = rel(source);
                 const std::string hash = sha1(source);

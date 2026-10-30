@@ -896,6 +896,7 @@ void SpriteNormalsWindow::setSettings(const sn::Settings& s) {
 void SpriteNormalsWindow::setPreset(sn::Preset p) {
     loadStored();   // the project's stored values first, then this change over them
     const sn::Settings base = sn::presetSettings(p);
+    const sn::Preset previous = settings.preset;
     settings.preset = p;
     settings.strength = base.strength;
     settings.detail = base.detail;
@@ -904,6 +905,10 @@ void SpriteNormalsWindow::setPreset(sn::Preset p) {
     settings.softness = base.softness;
     settings.radius = base.radius;
     settings.quantize = base.quantize;   // Toon steps: the toon preset's, off for the others
+    settings.profile = base.profile;     // auto, or the painted / props preset's
+    // tile wraps; leaving it for another preset goes back to the preset's edges
+    if (p == sn::Preset::Tile || previous == sn::Preset::Tile) settings.edges = base.edges;
+    settings.version = sn::kSettingsVersion;   // a preset is a fresh start with the current generator
     markChanged();
     storeSettings();
 }
@@ -2409,6 +2414,10 @@ namespace {
 
     // the toon preset's tooltip (its values: presetSettings(Preset::Toon))
     constexpr const char* kToonPresetTip = "Cel-shaded pixel art: Toon steps 8 (one tilt ring, flat below 15 deg), light in flat bands (strength 2, detail 0.5, smoothing 2, volume 1.3)";
+    // the high-resolution presets' tooltips (their values: presetSettings)
+    constexpr const char* kPaintedPresetTip = "Painted, vector and organic art at any size: profile inflate (blown-up shapes, no crease down the middle; strength 1.5, detail 3, smoothing 1)";
+    constexpr const char* kPropsPresetTip = "Crates, panels, coins and buttons: profile dome, a round rim and a flat face (strength 1.5, volume 0.7, detail 3, smoothing 0.5, softness 1)";
+    constexpr const char* kTilePresetTip = "Seamless textures: edges wrap, more painted relief (strength 2, detail 3, smoothing 1)";
 
     // Physics Placement's segmented buttons (one selected, the others plain), equal widths; in a
     // dock too narrow for every label on one row they wrap to rows of equal columns (6: 3 + 3,
@@ -2769,15 +2778,18 @@ void SpriteNormalsWindow::drawFrames() {
 
 void SpriteNormalsWindow::drawPresetAndSliders() {
     ImGui::SeparatorText("Settings");
-    const char* labels[] = {"Soft", "Default", "Crisp", "Detailed", "Chunky", "Toon"};
+    const char* labels[] = {"Soft", "Default", "Crisp", "Detailed", "Chunky", "Toon", "Painted", "Props", "Tile"};
     const char* tips[] = {"Gentle relief for painterly art (strength 1, detail 2, smoothing 1)",
-                          "Best measured accuracy on 16-64 px sprites (strength 1.5, detail 3, smoothing 1)",
+                          "Best measured accuracy on 16-64 px sprites (strength 1.5, detail 3, smoothing 1); above 128 px it inflates the shape",
                           "Small characters: keeps 1 px features (smoothing 0.6)",
                           "The Sprite Fusion defaults (radius 4 for an exact match): the most painted detail; highlights become bumps",
                           "Stylised, strong volume (strength 2.5, detail 4, volume 2)",
-                          kToonPresetTip};
+                          kToonPresetTip,
+                          kPaintedPresetTip,
+                          kPropsPresetTip,
+                          kTilePresetTip};
     int preset = static_cast<int>(settings.preset);
-    if (segmentedButtons("##preset", preset, labels, tips, 6, "spriteNormals.presets")) setPreset(static_cast<sn::Preset>(preset));
+    if (segmentedButtons("##preset", preset, labels, tips, 9, "spriteNormals.presets")) setPreset(static_cast<sn::Preset>(preset));
     UIProbe::item("spriteNormals.preset");
     const sn::Settings base = sn::presetSettings(settings.preset);
     auto slider = [&](const char* label, const char* id, float& value, float presetValue, float lo, float hi, const char* format, const char* help) {
@@ -2803,9 +2815,11 @@ void SpriteNormalsWindow::drawPresetAndSliders() {
         ImGui::PopID();
     };
     slider("Strength", "##strength", settings.strength, base.strength, 0.0f, 8.0f, "%.2f", "How strongly every slope tilts the normals");
-    slider("Detail", "##detail", settings.detail, base.detail, 0.0f, 8.0f, "%.2f", "Relief from the painted shading: brighter reads as higher");
-    slider("Smoothing", "##smoothing", settings.smoothing, base.smoothing, 0.0f, 8.0f, "%.2f px",
-           "Blur of the shading before it becomes relief: higher removes banding steps, lower keeps 1 px detail");
+    slider("Detail", "##detail", settings.detail, base.detail, 0.0f, 8.0f, "%.2f",
+           "Relief from the painted shading: brighter reads as higher (for a 128 px sprite: larger sprites scale it, see Resolution scale)");
+    slider("Smoothing", "##smoothing", settings.smoothing, base.smoothing, 0.0f, 32.0f, "%.2f px",
+           "Blur of the shading before it becomes relief: higher removes banding steps and brush texture, lower keeps 1 px detail "
+           "(px of a 128 px sprite: larger sprites scale it, see Resolution scale)");
     slider("Volume", "##volume", settings.volume, base.volume, 0.0f, 8.0f, "%.2f", "Rounding from the silhouette: how domed the sprite is");
     drawToonSteps(base);
     for (const sn::Problem& p : current < items.size() ? items[current].problems : std::vector<sn::Problem>()) {
@@ -2954,14 +2968,14 @@ void SpriteNormalsWindow::drawAdvanced() {
     bool changed = false;
 
     // Radius: auto, or a value
-    rowLabel("Radius", "How far in from the edge the rounding reaches. Auto: 15% of the sprite's shorter side, at least 4 px");
+    rowLabel("Radius", "How far in from the edge the rounding reaches. Auto: 30% of each island's thickness (the widest circle inside it), at least 4 px");
     bool autoRadius = !settings.radius.has_value();
     if (ImGui::Checkbox("Auto##radiusAuto", &autoRadius)) {
         if (autoRadius) settings.radius.reset();
         else settings.radius = 4.0f;
         changed = true;
     }
-    tooltip("How far in from the edge the rounding reaches. Auto: 15% of the sprite's shorter side, at least 4 px");
+    tooltip("How far in from the edge the rounding reaches. Auto: 30% of each island's thickness (the widest circle inside it), at least 4 px");
     ImGui::SameLine();
     ImGui::BeginDisabled(autoRadius);
     float radius = settings.radius.value_or(4.0f);
@@ -3003,20 +3017,75 @@ void SpriteNormalsWindow::drawAdvanced() {
         tooltip(help);
         ImGui::PopID();
     };
-    slider("Softness", "##softness", settings.softness, base.softness, 0.0f, 8.0f, "%.2f px", "Blur of the silhouette rounding: removes the crease along the middle");
+    slider("Softness", "##softness", settings.softness, base.softness, 0.0f, 32.0f, "%.2f px",
+           "Blur of the silhouette rounding: removes the crease along the middle and fans from a wobbly outline (px of a 128 px sprite)");
     slider("Alpha cutoff", "##alpha", settings.alphaThreshold, base.alphaThreshold, 0.0f, 0.99f, "%.2f",
            "Pixels this transparent or more are empty (soft glows below it get no relief)");
 
-    rowLabel("Profile", "Rounded: keeps rising toward the middle (Sprite Fusion). Dome: round edge, flat top. Bevel: straight edge, flat top");
+    static constexpr const char* kProfileTip =
+        "Auto: Rounded up to 128 px, Inflate above. Rounded: keeps rising toward the middle (Sprite Fusion). Dome: round edge, flat top "
+        "(props, panels). Bevel: straight edge, flat top. Inflate: blown up like a balloon, follows every part's width with no crease "
+        "(painted and vector art)";
+    rowLabel("Profile", kProfileTip);
     {
-        const char* names[] = {"Rounded", "Dome", "Bevel"};
-        int v = static_cast<int>(settings.profile);
+        const char* names[] = {"Auto", "Rounded", "Dome", "Bevel", "Inflate"};
+        const sn::Profile values[] = {sn::Profile::Auto, sn::Profile::Rounded, sn::Profile::Dome, sn::Profile::Bevel, sn::Profile::Inflate};
+        int v = 0;
+        for (int i = 0; i < 5; i++) {
+            if (values[i] == settings.profile) v = i;
+        }
         ImGui::SetNextItemWidth(-FLT_MIN);
-        if (ImGui::Combo("##profile", &v, names, 3)) {
-            settings.profile = static_cast<sn::Profile>(v);
+        if (ImGui::Combo("##profile", &v, names, 5)) {
+            settings.profile = values[v];
             changed = true;
         }
-        tooltip("Rounded: keeps rising toward the middle (Sprite Fusion). Dome: round edge, flat top. Bevel: straight edge, flat top");
+        UIProbe::item("spriteNormals.profile");
+        tooltip(kProfileTip);
+        if (settings.profile == sn::Profile::Auto) {
+            if (const std::shared_ptr<sn::SpriteNormalsRun> r = shown()) {
+                std::string used;
+                for (sn::Profile p : {sn::Profile::Rounded, sn::Profile::Dome, sn::Profile::Bevel, sn::Profile::Inflate}) {
+                    if (r->result().profilesUsed & (1u << static_cast<int>(p))) used += (used.empty() ? "" : ", ") + std::string(sn::toString(p));
+                }
+                if (!used.empty()) {
+                    ImGui::Indent(labelWidth());
+                    subtle("Auto: " + used);
+                    ImGui::Unindent(labelWidth());
+                }
+            }
+        }
+    }
+    static constexpr const char* kScaleTip =
+        "Smoothing, Softness and Detail are set for a 128 px sprite; on: they grow with the sprite (x its shorter side / 128, so "
+        "the same art at 4x the size looks the same), off: they are taken as pixels. Sprites of 128 px or less are the same either way";
+    rowLabel("Resolution", kScaleTip);
+    {
+        bool scale = settings.resolutionScale == sn::ResolutionScale::Auto;
+        if (ImGui::Checkbox("Scale with size##resolutionScale", &scale)) {
+            settings.resolutionScale = scale ? sn::ResolutionScale::Auto : sn::ResolutionScale::Off;
+            changed = true;
+        }
+        UIProbe::item("spriteNormals.resolutionScale");
+        tooltip(kScaleTip);
+        if (const std::shared_ptr<sn::SpriteNormalsRun> r = shown()) {
+            const sn::Result& res = r->result();
+            if (res.scaleMax > 1.0f + 1e-4f) {
+                ImGui::SameLine();
+                ImGui::TextDisabled("%s", (res.scaleMax > res.scaleMin + 1e-3f ? "x" + trimmed(res.scaleMin, 2) + "-" + trimmed(res.scaleMax, 2)
+                                                                                : "x" + trimmed(res.scaleMax, 2))
+                                              .c_str());
+            }
+        }
+    }
+    if (settings.version < sn::kSettingsVersion) {
+        ImGui::Indent(labelWidth());
+        subtle("Made before high-resolution support: regenerating keeps its old look (no resolution scaling, the old auto radius).");
+        if (ImGui::SmallButton("Use the current generator##settingsVersion")) {
+            settings.version = sn::kSettingsVersion;
+            changed = true;
+        }
+        UIProbe::item("spriteNormals.upgradeVersion");
+        ImGui::Unindent(labelWidth());
     }
     rowLabel("Edges", nullptr);
     {
@@ -3873,8 +3942,9 @@ void SpriteNormalsWindow::drawMetrics() {
         const std::vector<sn::Cell>& cells = r->prepared().request.cells;
         // the metrics of what is shown (with the paint unless Show paint is off)
         const bool painted = showPaint && paint.sized(res.normal.width, res.normal.height);
-        const sn::Metrics m = sn::measure(displayNormal(), cells, used.directx, used.alphaThreshold, painted ? &paint : nullptr);
-        metricsAssessment = sn::assess(used, m, static_cast<int>(std::max<size_t>(1, cells.size())));
+        const sn::Metrics m = sn::measure(displayNormal(), cells, used.directx, used.alphaThreshold, painted ? &paint : nullptr,
+                                          res.shape.empty() ? nullptr : &res.shape);
+        metricsAssessment = sn::assess(used, m, static_cast<int>(std::max<size_t>(1, cells.size())), &res);
         std::string radius = res.radiusPerIsland && res.radiusMax > res.radiusMin + 1e-3f
                                  ? "radius " + trimmed(res.radiusMin, 1) + "-" + trimmed(res.radiusMax, 1) + " px"
                                  : "radius " + trimmed(std::max(res.radiusMin, res.radiusMax), 1) + " px";

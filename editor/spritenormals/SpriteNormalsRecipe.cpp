@@ -198,6 +198,10 @@ namespace jasperengine::editor::spritenormals {
         j["alpha_threshold"] = number(s.alphaThreshold);
         j["profile"] = toString(s.profile);
         j["edges"] = toString(s.edges);
+        j["resolution_scale"] = toString(s.resolutionScale);
+        // the settings version only when it is not the current one (a map made before
+        // high-resolution support, regenerated with its rules)
+        if (s.version != kSettingsVersion) j["version"] = s.version;
         j["ignore_outline"] = s.ignoreOutline;
         j["regions"] = regions;
         j["directx"] = s.directx;
@@ -219,7 +223,8 @@ namespace jasperengine::editor::spritenormals {
             return false;
         }
         Settings s = out;
-        if (!readEnum<Preset>(j, "preset", s.preset, parsePreset, "soft, default, crisp, detailed, chunky, toon", error)) return false;
+        const std::string presets = presetNames();
+        if (!readEnum<Preset>(j, "preset", s.preset, parsePreset, presets.c_str(), error)) return false;
         if (!readNumber(j, "strength", "", s.strength, error) || !readNumber(j, "detail", "", s.detail, error) ||
             !readNumber(j, "smoothing", "", s.smoothing, error) || !readNumber(j, "volume", "", s.volume, error) ||
             !readNumber(j, "softness", "", s.softness, error) || !readNumber(j, "alpha_threshold", "", s.alphaThreshold, error)) {
@@ -235,8 +240,10 @@ namespace jasperengine::editor::spritenormals {
                 return false;
             }
         }
-        if (!readEnum<Profile>(j, "profile", s.profile, parseProfile, "rounded, dome, bevel", error) ||
-            !readEnum<Edges>(j, "edges", s.edges, parseEdges, "transparent, wrap, extend", error)) {
+        if (!readEnum<Profile>(j, "profile", s.profile, parseProfile, "auto, rounded, dome, bevel, inflate", error) ||
+            !readEnum<Edges>(j, "edges", s.edges, parseEdges, "transparent, wrap, extend", error) ||
+            !readEnum<ResolutionScale>(j, "resolution_scale", s.resolutionScale, parseResolutionScale, "auto, off", error) ||
+            !readInt(j, "version", "", s.version, error)) {
             return false;
         }
         if (!readBool(j, "ignore_outline", "", s.ignoreOutline, error) || !readBool(j, "directx", "", s.directx, error) ||
@@ -289,7 +296,8 @@ namespace jasperengine::editor::spritenormals {
     json makeRecipe(const RecipeInput& in) {
         json recipe = json::object();
         recipe["format"] = kRecipeFormat;
-        recipe["version"] = kRecipeVersion;
+        // a generation with version 1 settings (an old map regenerated) writes a version 1 recipe
+        recipe["version"] = in.settings.version < kRecipeVersion ? in.settings.version : kRecipeVersion;
         recipe["generator"] = std::string("JasperEngine ") + JASPERENGINE_EDITOR_VERSION;
         recipe["role"] = in.role;
 
