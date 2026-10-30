@@ -751,8 +751,9 @@ public:
     timing bench on the loaded G; passes re-run), editor 1381/1381; Vulkan S32 suites 66 ran,
     1 failed (WaterWavesGpu: its one-off probe pass now creates its pipeline at once; 9/9 after);
   - ASan+UBSan, S32 suites: 67 core + 15 editor tests, no report (G, before the BF7 merge);
-  - smoke GL, GLES3, Vulkan (G host): pass; Android emulator render gate (lit3d, ui2d, htmlui
-    with goldens): pass (A); xcode_sync_*.py --check: all pass;
+  - smoke GL, GLES3, Vulkan (G host) and the Android emulator render gate (lit3d, ui2d,
+    htmlui with goldens, A): pass, at the commit before the BF7 merge (BF7 touched none of S32's
+    files); xcode_sync_*.py --check: all pass after it;
   - full MCP (MCP_SUITE=all, JASPER_SLOW_BUILD=1, G): 1041 passed, 9 failed, 2 skipped. 7 are
     test_pose_runtime.py, which fails the same way without S32 (S30's runs); 2 are
     test_reflection.py's resave/codegen of the 2D scene's soft particle points (now transparent
