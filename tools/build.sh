@@ -48,7 +48,8 @@
 # mcp-tests: MCP_SUITE=ci (default; the CI = True files) or all (needs the fixture project,
 # mounted read-only at /fixture: JASPER_FIXTURE, else build/fixture-unity of this or the main
 # checkout, else ~/je/fixture-unity, the build servers' copy); arguments after the target and MCP_TEST_ARGS go to
-# tools/mcp/run-tests.sh (e.g. -j 2, -k undo). Results: build/test-results/mcp.json.
+# tools/mcp/run-tests.sh (e.g. -j 2, -k undo). Results: build/test-results/mcp.json. MCP_SUITE=all first
+# builds the mesh-raycast web test project (build/web-mesh-raycast) its web latency gate loads.
 # web, android: WEB_PROJECT=<name> / ANDROID_PROJECT=<name> build the test project
 # tools/test-projects/<name>/ instead of engine/project, into build/web-<name> or
 # build/android-<name> (core-utilities: the logger and Lua Timer, S09).
@@ -196,11 +197,12 @@ for name in JASPER_HTMLUI_UPDATE_GOLDEN JASPER_HTMLUI_WRITE_ACTUAL JASPER_TEST_U
             JASPER_TEST_KEEP_TEMP JASPER_REFLECT_WRITE_FIXTURE JASPER_BENCH_ENTITIES JASPER_HTMLUI_PERF_SLACK JASPER_TEST_PERF_SLACK \
             HTMLUI_LIVE_NETWORK JASPER_CHROME JASPER_ZERO_COST_UPDATE JASPER_PICK_SIMD \
             JASPER_HTMLUI_S16_OFF JASPER_HTMLUI_BATCHING JASPER_HTMLUI_SDF_PRIMITIVES JASPERENGINE_GPU_TIMER JASPER_HTMLUI_PROFILE \
-            JASPER_TEST_UPDATE_FIXTURES; do
+            JASPER_TEST_UPDATE_FIXTURES JASPER_SLOW_BUILD JASPER_SLOW_TESTS JASPER_BUILD_TIMEOUT JASPER_MCP_PERF_SLACK; do
     # (JASPER_HTMLUI_PERF_SLACK: the HTML UI performance tests' tolerance on a loaded host, compat_perf_test.cpp;
     # JASPER_TEST_PERF_SLACK: the core tests' wall-clock budgets are enforced only when it is set;
     # JASPER_PICK_SIMD: the picking BVH's slab test path, scalar|avx2|neon, S26 AC2;
-    # JASPER_TEST_UPDATE_FIXTURES: the editor's TextureFormatFixtures writes the GPU format test's cooks, S14)
+    # JASPER_TEST_UPDATE_FIXTURES: the editor's TextureFormatFixtures writes the GPU format test's cooks, S14;
+    # JASPER_SLOW_BUILD, JASPER_SLOW_TESTS, JASPER_BUILD_TIMEOUT, JASPER_MCP_PERF_SLACK: the MCP suite's opt-ins)
     [[ -n "${!name:-}" ]] && ENV_FLAGS+=(-e "$name=${!name}")
 done
 # Sanitizer runtime options for every run (tools/sanitizers/*.supp: third-party code only)
@@ -458,6 +460,12 @@ mcp-tests)
     [[ -x "$ROOT/build/linux/editor-install/bin/jasperengine-editor" ]] || { echo "No editor at build/linux/editor-install; run tools/build.sh linux" >&2; exit 1; }
     SUITE_FLAGS="--suite $SUITE"
     [[ "$SUITE" == all ]] && SUITE_FLAGS=""
+    # the full suite: the web build test_mesh_raycast.py's latency gate loads (the mesh-raycast test
+    # project for Emscripten, in the web image), built here once and kept up to date (ninja, ccache)
+    if [[ "$SUITE" == all ]]; then
+        env -u WEB_THREADS -u WASM_SIMD -u CXX_STANDARD -u SANITIZE WEB_PROJECT=mesh-raycast "$ROOT/tools/build.sh" web \
+            || { echo "mcp-tests: the mesh-raycast web build (WEB_PROJECT=mesh-raycast tools/build.sh web) failed" >&2; exit 1; }
+    fi
     # (each argument quoted once more: the command runs through bash -c)
     ARGS="$(printf '%q ' ${PASSTHROUGH[@]+"${PASSTHROUGH[@]}"}) ${MCP_TEST_ARGS:-}"
     run bash -euo pipefail -c "

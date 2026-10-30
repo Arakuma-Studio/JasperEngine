@@ -72,7 +72,11 @@ waiting click and refused drop (`tools/mcp/tests/test_scene_view*.py`).
   not in git: `JASPER_FIXTURE`, else `build/fixture-unity` of the checkout or the main checkout,
   else `~/je/fixture-unity` (the build servers' copy), mounted at `/fixture`. The harness looks in
   the same places (`harness.default_fixture()`); without a fixture, the tests that need it skip
-  and say where they looked. See `docs/mcp/README.md` for writing MCP tests.
+  and say where they looked. `MCP_SUITE=all` first builds the mesh-raycast web test project
+  (`build/web-mesh-raycast`, the web image; up to date after the first time) for
+  `test_mesh_raycast.py`'s web latency gate. The Linux image carries the suite's test tools
+  (lua-language-server, clangd, FFmpeg with AV1, chrome-headless-shell), so none of their tests
+  skips there. See `docs/mcp/README.md` for writing MCP tests.
 - An MCP test asserts behaviour; a wall-clock budget (a CLI start in 300 ms, a reload frame under
   16 ms, ...) goes through `harness.over_budget(what, measures, budget)`, which prints a `[bench]`
   line and fails only when `JASPER_MCP_PERF_SLACK` is set: a shared build server's load alone
