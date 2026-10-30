@@ -244,18 +244,24 @@ namespace {
         s.wake.notify_one();
     }
 
-    // GL warm draws (spec S32 R4): asked for, in worker mode, and never on a software GL. On
-    // llvmpipe the render thread crashed drawing with programs the worker had drawn
-    // (AtmosphereGpu.ScreenCloudsHideFarTerrain; not with the same draws skipped on the worker).
-    // JASPER_GL_WARM_DRAWS=1 allows them there anyway (driver investigations)
+    // A software GL (llvmpipe, softpipe, SwiftShader) gets no worker context (spec S32 §6.3,
+    // deviation 6): on llvmpipe the render thread crashed drawing programs the worker had drawn
+    // (warm draws; AtmosphereGpu.ScreenCloudsHideFarTerrain) and once hung in a draw after the
+    // worker had linked its programs. JASPER_GL_SOFTWARE_WORKER=1 allows the worker (and its warm
+    // draws) there anyway, for driver investigations
+    bool softwareWorkerAllowed(){
+        static const bool allowed = [](){
+            const char* value = std::getenv("JASPER_GL_SOFTWARE_WORKER");
+            return value && std::string(value) == "1";
+        }();
+        return allowed;
+    }
+
+    // GL warm draws (spec S32 R4): asked for, in worker mode
     bool warmOn(const State& s){
         if (s.mode != GpuCreationMode::GlWorker || !s.settings.glWarmDraws)
             return false;
-        static const bool forced = [](){
-            const char* value = std::getenv("JASPER_GL_WARM_DRAWS");
-            return value && std::string(value) == "1";
-        }();
-        return !s.caps.gl_software || forced;
+        return !s.caps.gl_software || softwareWorkerAllowed();
     }
 
     // ---------------------------------------------------------------- the worker thread
@@ -620,7 +626,12 @@ namespace {
 
     // the GL mode of this device, with or without a worker context (see the header)
     GpuCreationMode chooseGlMode(State& s, const std::string& forced){
-        const bool wantWorker = forced.empty() || forced == "worker";
+        bool wantWorker = forced.empty() || forced == "worker";
+        if (wantWorker && s.caps.gl_software && !softwareWorkerAllowed()){
+            if (forced == "worker")
+                Log::warn("[gpu] JASPER_ASYNC_SHADERS=worker: no worker context on a software GL (JASPER_GL_SOFTWARE_WORKER=1 allows one)");
+            wantWorker = false;
+        }
         if (wantWorker){
             const GpuWorkerContextFactory& factory = getGpuWorkerContextFactory();
             if (factory)
@@ -687,8 +698,8 @@ void SokolAsyncCreate::setup(){
     s.stats.mode = mode;
     s.setUp = true;
     Log::print("[gpu] shader creation: %s", gpuCreationModeName(mode));
-    if (mode == GpuCreationMode::GlWorker && s.settings.glWarmDraws && !warmOn(s))
-        Log::verbose("GL warm draws are off on a software GL (llvmpipe): a program's first draw compiles its state on the render thread");
+    if (s.caps.gl && s.caps.gl_software && mode != GpuCreationMode::GlWorker && mode != GpuCreationMode::Sync)
+        Log::verbose("[gpu] a software GL: no worker context, the driver's compile threads or a deferred link status instead");
 }
 
 void SokolAsyncCreate::shutdown(){

@@ -468,8 +468,8 @@ public:
   status (no wait now). On failure the shader logs are read. There are no warm draws.
 - **deferred**: as parallel, but the program counts as "complete" 2 frames after the issue. At
   most one deferred program is finished per frame, so an unexpected wait does not pile up.
-- **Mode choice (`Auto`)**: `worker` when the factory gives a context, else `parallel` when the
-  extension is listed, else `deferred`. `worker` is first because it moves what
+- **Mode choice (`Auto`)**: `worker` when the factory gives a context (never on a software GL,
+  deviation 6), else `parallel` when the extension is listed, else `deferred`. `worker` is first because it moves what
   `KHR_parallel_shader_compile` moves *and* what it leaves on the calling thread (Mesa's GLSL
   linker; measured, §3), and only it can do warm draws. The worker also issues the queued
   programs together when the extension is present, so a driver with compile threads overlaps
@@ -668,12 +668,34 @@ public:
 5. **The editor does not replay the warm-up list** (R25's "Warming up shaders N/M"). The editor
    records the list. Games replay it (`ShaderWarmup::beginShipped` at view load), so the progress
    is the game's (`ShaderWarmup.getProgress()` in Lua). The status bar shows "Compiling shaders N".
-6. **GL warm draws are off by default and never run on a software GL** (R4, §6.3). On llvmpipe
-   they crashed the render thread inside the driver (see §6.3 for how it was isolated). The
-   setting stays (`shader_creation.gl_warm_draws`, default off) for the GPU campaign. So on
-   llvmpipe a program's first draw with a new state still compiles on the render thread
-   (llvmpipe compiles at draw time). R22's worst-frame budget is measured on E (llvmpipe) with
-   that cost included; see Progress.
+6. **No worker context on a software GL; GL warm draws off by default** (R4, R5, §6.3).
+   - Software GL (`sgj_async_caps.gl_software`: the renderer string names llvmpipe, softpipe,
+     SwiftShader or "Software Rasterizer"): the mode is `parallel` (llvmpipe lists
+     `KHR_parallel_shader_compile`) or `deferred`, never `worker`, even when
+     `JASPER_ASYNC_SHADERS=worker` asks (a warning). `JASPER_GL_SOFTWARE_WORKER=1` allows the
+     worker there for driver investigations.
+   - Evidence on llvmpipe (D, Mesa in the linux image):
+     - with warm draws on, the render thread crashed in `swrast_dri.so` (a read at 0x135) in a
+       mesh draw of `AtmosphereGpu.ScreenCloudsHideFarTerrain`, every run, under ASan too;
+     - with only the worker's `glDrawArraysInstanced` skipped, everything else equal, it passed
+       (twice); it still crashed with the worker binding its own 1x1 textures and samplers, with
+       no overlap of the two contexts on a program (`beginFirstDraw` gating every draw), and with
+       only programs the render thread had never drawn warmed;
+     - with warm draws off, the full core suite hung once in a render-thread draw
+       (`EveryGlModeDrawsTheLitCube`, all llvmpipe threads idle, the main thread in a futex
+       inside the driver).
+   - Our synchronisation was checked for that hang: the worker calls `glFinish` after every
+     program (stronger than a fence) and the render thread binds a program only after its
+     creation is published; the worker binds no object of the render thread's (no textures,
+     buffers or framebuffers; warm draws use its own) and deletes none; each context is current
+     on one thread only (the worker's from its creation thread until `release()`); the worker
+     never touches sokol's GL state cache (`_sg_gl_create_shader` reads the bound program with
+     `glGetIntegerv` and restores it).
+   - Warm draws need the worker, so they do not run on a software GL either; elsewhere the
+     setting `shader_creation.gl_warm_draws` defaults to off until the GPU campaign verifies
+     them. So on llvmpipe the GLSL link and a program's first-draw compile stay on the render
+     thread (spread by `parallel`'s completion polling); R21/R22 are measured on E with that
+     cost included (Progress).
 7. **A variant switch makes the new pipelines first** (R8, §6.4, added): the loaded object makes
    its pipelines on the new variant ahead (`ObjectRender::prewarmWith`) and loads again only
    once they are created (Vulkan, Metal) and warmed (GL with warm draws). Without it Vulkan

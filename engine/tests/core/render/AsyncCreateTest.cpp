@@ -515,7 +515,13 @@ TEST_F(AsyncCreateGpu, EveryGlModeDrawsTheLitCube){
     for (const char* mode : {"worker", "parallel", "deferred", "sync"}){
         SCOPED_TRACE(mode);
         restartCreation(mode);
-        EXPECT_STREQ(gpuCreationModeName(SokolAsyncCreate::getMode()), mode);
+        if (std::string(mode) == "worker" && SokolAsyncCreate::isSoftwareGl()){
+            // no worker context on a software GL: the driver's compile threads or a deferred status
+            EXPECT_NE(SokolAsyncCreate::getMode(), GpuCreationMode::GlWorker);
+            EXPECT_NE(SokolAsyncCreate::getMode(), GpuCreationMode::Sync);
+        }else{
+            EXPECT_STREQ(gpuCreationModeName(SokolAsyncCreate::getMode()), mode);
+        }
         const GpuCreationStats before = SystemRender::getGpuCreationStats();
         {
             Primitive cube(&scene);
@@ -538,8 +544,9 @@ TEST_F(AsyncCreateGpu, EveryGlModeDrawsTheLitCube){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
-// GL Warm Draws asked for: they run in worker mode, never on a software GL, where the render
-// thread crashed drawing programs the worker had drawn (AtmosphereGpu.ScreenCloudsHideFarTerrain)
+// GL Warm Draws asked for: they run in worker mode, never on a software GL, which has no worker
+// context (the render thread crashed drawing programs the worker had drawn on llvmpipe,
+// AtmosphereGpu.ScreenCloudsHideFarTerrain, and once hung in a draw)
 TEST_F(AsyncCreateGpu, WarmDrawsNeverRunOnASoftwareGl){
     JASPER_REQUIRE_GPU();
     const ShaderCreationSettings kept = SokolAsyncCreate::getSettings();
@@ -548,6 +555,11 @@ TEST_F(AsyncCreateGpu, WarmDrawsNeverRunOnASoftwareGl){
     SokolAsyncCreate::setSettings(settings);
     restartCreation("worker");
     EXPECT_EQ(SokolAsyncCreate::warmDrawsActive(), !SokolAsyncCreate::isSoftwareGl());
+    // nor a worker context there: the platform's choice is another mode
+    restartCreation(nullptr);
+    if (SokolAsyncCreate::isSoftwareGl()){
+        EXPECT_NE(SokolAsyncCreate::getMode(), GpuCreationMode::GlWorker);
+    }
     settings.glWarmDraws = false;
     SokolAsyncCreate::setSettings(settings);
     EXPECT_FALSE(SokolAsyncCreate::warmDrawsActive()) << "off when not asked for";

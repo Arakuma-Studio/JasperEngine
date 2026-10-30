@@ -14,11 +14,17 @@ ready yet draws a stand-in or waits.
 | D3D11 | `D3DCompile` and the shader objects | `thread` |
 | Metal | libraries and render pipeline states, through their completion handlers | `metal` |
 
+On a **software GL** (llvmpipe, softpipe, SwiftShader) there is no worker context: the mode is
+`parallel` where `KHR_parallel_shader_compile` exists, else `deferred`. On llvmpipe the render
+thread crashed in the driver drawing programs the worker had drawn, and once hung in a draw after
+the worker had linked them; our side's synchronisation was checked (see the spec, deviation 6).
+`JASPER_GL_SOFTWARE_WORKER=1` allows the worker there for driver investigations. GPU drivers keep
+the worker; they are verified in the GPU campaign.
+
 A *warm draw* draws the program once, with the state and texture formats of the object about to use
 it, into a 1x1 target on the worker. Some drivers (Mesa's llvmpipe among them) compile the program
 for that state at its first draw; the warm draw makes that compile happen on the worker. Warm draws
-are **off by default** and never run on a software GL (llvmpipe, softpipe, SwiftShader): on
-llvmpipe the render thread crashed drawing programs the worker had drawn. They are not verified
+are **off by default** (they need the worker, so never on a software GL). They are not verified
 on GPU drivers yet; without them a program's first draw with a new state compiles on the render
 thread where the driver compiles at draw time.
 
