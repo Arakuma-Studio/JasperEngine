@@ -630,9 +630,10 @@ void captureEditor(const CaptureJobPtr& job) {
         // a frame that was not rendered (idle, minimized) drops the callback: ask again
         if (++*attempts % 2 == 0) request();
         return false;
-    }, std::min(job->remainingMs(), 10000), [job, readback](bool timedOut) {
+    // up to the call's own timeout (timeout_seconds): a loaded host can take seconds per frame
+    }, job->remainingMs(), [job, readback](bool timedOut) {
         if (timedOut || !readback->done) {
-            job->fail("The editor window did not render a frame to read (minimized?).");
+            job->fail("The editor window did not render a frame to read within the call's timeout_seconds (minimized?).");
             return;
         }
         const int width = readback->width;
@@ -1175,7 +1176,7 @@ void locateUiItemTool(const CallPtr& call) {
     call->afterFrames(2, [call, label]() {
         Json items = Json::array();
         for (const UiItemLocator::Item& item : UiItemLocator::stop()) {
-            items.push_back({{"label", item.label}, {"window", item.window}, {"visible", item.visible},
+            items.push_back({{"label", item.label}, {"window", item.window}, {"visible", item.visible}, {"enabled", item.enabled},
                              {"rect", {{"x", std::round(item.x)}, {"y", std::round(item.y)},
                                        {"width", std::round(item.width)}, {"height", std::round(item.height)}}},
                              {"window_rect", {{"x", std::round(item.windowX)}, {"y", std::round(item.windowY)},
@@ -1699,10 +1700,10 @@ void registerViewTools(McpRegistry& registry) {
         tool.group = "editor_ux";  // S31 tool groups: listed once enabled, callable always
         tool.title = "Find UI Item";
         tool.description =
-            "Where editor controls with this label are drawn now (window coords, as focus_window's rect), to click "
-            "them with send_input or real input. Only drawn items: scroll or open their panel first.";
+            "Where editor controls with this label are drawn now (window coords, as focus_window's rect; enabled false: "
+            "greyed out), to click them with send_input or real input. Only drawn items: scroll or open their panel first.";
         tool.inputSchema = object({
-            {"label", string("Text (a row's text after its icon too), or the whole label with its ## id.")},
+            {"label", string("Text (also after its icons), its ## id (these two only while in view), or the whole label.")},
             {"window", string("Only in windows whose name contains this.")}
         }, {"label"});
         tool.annotations.readOnly = true;

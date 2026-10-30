@@ -38,6 +38,7 @@ import tool_budget  # noqa: E402
 from test_html_ui_checks import GOOD_CSS, GOOD_HTML, LLM_CSS, LLM_HTML, normalized, run_json, scratch_project  # noqa: E402
 
 EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
+CI = True
 
 TIMEOUT = 900
 

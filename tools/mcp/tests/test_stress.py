@@ -27,6 +27,7 @@ def _free_port() -> int:
 
 PORT = _free_port()
 EDITOR = {"create": True, "name": "Transport Contracts", "xvfb": "harness", "extra_args": ["--http-port", str(PORT)]}
+CI = True
 TIMEOUT = 900
 
 

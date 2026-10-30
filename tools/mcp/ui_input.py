@@ -121,6 +121,42 @@ class Ui:
         await self.click(self.centre(item.get("rect", item)))
         return item
 
+    async def reveal(self, label: str, window: str | None = None, *, index: int = 0, frames: int = 60,
+                     notches: int = 200) -> dict:
+        """The index-th find_ui_item match from the top (then the left), scrolled into view: while
+        it is drawn outside its window's visible area, the wheel turns over that window toward it,
+        a few notches a step (up to `notches` in all). Fails when it never shows."""
+        query = {"label": label, **({"window": window} if window else {})}
+        waited = turned = 0
+        while True:
+            items = sorted((await self.ed.call("find_ui_item", **query)).get("items", []),
+                           key=lambda i: (i["rect"]["y"], i["rect"]["x"]))
+            if len(items) > index:
+                item = items[index]
+                if item.get("visible"):
+                    return item
+                area, rect = item["window_rect"], item["rect"]
+                centre = rect["y"] + rect["height"] / 2
+                # down (> 0) when it is below the window's middle; a notch scrolls a few rows
+                distance = centre - (area["y"] + area["height"] / 2)
+                step = max(1, min(8, int(abs(distance) // 60)))
+                if turned >= notches:
+                    self.ed.fail(f"{label!r} is drawn but never scrolled into view ({turned} notches): {item}")
+                # (the base class's wheel and click: a test's subclass may take other arguments)
+                await Ui.wheel(self, Ui.centre(self, area), step if distance > 0 else -step)
+                turned += step
+            else:
+                if waited >= frames:
+                    self.ed.fail(f"no UI item {label!r} is drawn" + (f" in {window}" if window else ""))
+                await self.frames(2)
+                waited += 2
+
+    async def click_revealed(self, label: str, window: str | None = None, *, index: int = 0, **args) -> dict:
+        """reveal() then a click at the item's centre."""
+        item = await self.reveal(label, window, index=index)
+        await Ui.click(self, Ui.centre(self, item["rect"]), **args)
+        return item
+
     # -- pointer -------------------------------------------------------------------------------
 
     async def _pointer(self, point: tuple[int, int], frames: int = SETTLE_FRAMES) -> None:

@@ -42,6 +42,7 @@ from harness import TestFailure
 REPO = Path(__file__).resolve().parents[3]
 FIXTURE = REPO / "tools" / "fixtures" / "physics-placement"
 EDITOR = {"project": str(FIXTURE)}   # only the last test drives an editor (the MCP preview)
+CI = True
 TIMEOUT = 900
 
 CRATE_BOXES = ["Props/Box1", "Props/Box2", "Props/Box3"]
@@ -430,6 +431,10 @@ async def test_save_writes_the_scene():
         if not (name.endswith(".scene") or name == "project.yaml"):
             return False
         old, new = yaml.safe_load(others[name]), yaml.safe_load(after_save[name])
+        if name == "project.yaml" and isinstance(old, dict) and isinstance(new, dict):
+            # a project setting newer than the file (S16's htmlUi* render settings) is written
+            # with the project's value on the first save, as formatVersion is; no existing one moves
+            new = {k: v for k, v in new.items() if k in old or identity_key(k)}
         return isinstance(old, dict) and without_new_identity(old, new) == old
     changed = [k for k in changed if not (k in after_save and identity_only(k))]
     check(not changed, f"--save changed {changed}: " +

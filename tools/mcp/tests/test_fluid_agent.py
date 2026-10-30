@@ -32,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from htmlui_pixels import decode_png  # noqa: E402
 
 EDITOR = {"create": True, "name": "Fluid Agent"}
+CI = True
 TIMEOUT = 1200
 
 KEY = "fluidsimulation"
@@ -274,7 +275,9 @@ async def test_export_ships_the_notice(ed: Editor):
     plain = project.parent / "export-plain"
     try:
         cli_export(ed, project, plain, "--shader", "mesh")
-        ed.check(not (plain / "licenses").exists(), "no fluid variant: no notice")
+        # every game ships S18's OpenEngine notice (the spline module): nothing else
+        shipped = sorted(p.name for p in (plain / "licenses").iterdir()) if (plain / "licenses").is_dir() else []
+        ed.check(shipped == ["OpenEngine-LICENSE.txt"], f"no fluid variant: no notice of its own: {shipped}")
         only = project.parent / "export-fluid-only"
         cli_export(ed, project, only, "--shader", "fluid")
         ed.check((only / NOTICE).is_file(), "the fluid's variants alone: the notice")

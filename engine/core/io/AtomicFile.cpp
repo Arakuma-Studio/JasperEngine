@@ -53,8 +53,10 @@ namespace {
     std::mutex hooksMutex;
     std::shared_ptr<const AtomicFileFaultInjector> faultInjector;
     std::shared_ptr<const PublishListener> publishListener;
+    std::shared_ptr<const PrePublishListener> prePublishListener;
     std::atomic<bool> hasFaultInjector{false};
     std::atomic<bool> hasPublishListener{false};
+    std::atomic<bool> hasPrePublishListener{false};
 
     std::error_code injectedFault(std::string_view step, const fs::path& path){
         if (!hasFaultInjector.load(std::memory_order_acquire))
@@ -81,6 +83,18 @@ namespace {
         const uintmax_t size = fs::file_size(target, ec);
         const fs::file_time_type mtime = fs::last_write_time(target, ec);
         (*listener)(target, ec ? 0 : size, mtime);
+    }
+
+    void notifyPrePublish(const fs::path& target){
+        if (!hasPrePublishListener.load(std::memory_order_acquire))
+            return;
+        std::shared_ptr<const PrePublishListener> listener;
+        {
+            std::lock_guard<std::mutex> lock(hooksMutex);
+            listener = prePublishListener;
+        }
+        if (listener && *listener)
+            (*listener)(target);
     }
 
     std::error_code lastError(){
@@ -300,6 +314,7 @@ namespace {
             }
         }
 
+        notifyPrePublish(realTarget);
         std::error_code ec;
         int attempts = 0;
         bool cancelled = false;
@@ -699,6 +714,12 @@ void setPublishListener(PublishListener listener){
     std::lock_guard<std::mutex> lock(hooksMutex);
     publishListener = listener ? std::make_shared<const PublishListener>(std::move(listener)) : nullptr;
     hasPublishListener.store(publishListener != nullptr, std::memory_order_release);
+}
+
+void setPrePublishListener(PrePublishListener listener){
+    std::lock_guard<std::mutex> lock(hooksMutex);
+    prePublishListener = listener ? std::make_shared<const PrePublishListener>(std::move(listener)) : nullptr;
+    hasPrePublishListener.store(prePublishListener != nullptr, std::memory_order_release);
 }
 
 }

@@ -5,6 +5,7 @@ import math
 from harness import Editor
 
 EDITOR = {"create": True, "name": "Scene contracts"}
+CI = True
 
 
 async def scene(ed, name):
