@@ -511,6 +511,21 @@ namespace {
         return problems.empty();
     }
 
+    // a Compile build's own symbols (split off by its link, kept by the build: the content
+    // manifest names them)
+    void copyBuildSymbols(const std::string& dir, const fs::path& symbols, std::vector<std::string>& warnings) {
+        std::error_code ec;
+        const fs::path from = fs::u8path(dir);
+        if (dir.empty() || !fs::is_directory(from, ec)) {
+            warnings.push_back("W-BUILD-SYMBOLS: the build's symbols are not at " + (dir.empty() ? std::string("(none recorded)") : dir) +
+                               " (a Debug build keeps them in the binary; else build again): its crashes cannot be symbolicated");
+            return;
+        }
+        fs::create_directories(symbols / "game", ec);
+        fs::copy(from, symbols / "game", fs::copy_options::recursive | fs::copy_options::overwrite_existing, ec);
+        if (ec) warnings.push_back("W-BUILD-SYMBOLS: cannot copy the build's symbols from " + dir + ": " + ec.message());
+    }
+
     // a prebuilt player's own symbols (its runtime's symbols/, when the archive shipped them)
     void copyPlayerSymbols(const std::string& playerId, const fs::path& symbols, std::vector<std::string>& warnings) {
         if (playerId.empty()) return;
@@ -611,6 +626,7 @@ bool publish::prepareRelease(const PrepareRequest& request, const PublishTools& 
         player::ContentManifest manifest;
         const bool hasManifest = findContentManifest(content, manifest);
         if (hasManifest && manifest.method == "prebuilt") copyPlayerSymbols(manifest.playerId, symbols, result.warnings);
+        if (hasManifest && manifest.method == "compile") copyBuildSymbols(manifest.symbols, symbols, result.warnings);
 
         // the payload after the split is the one that ships
         std::vector<std::string> findings;

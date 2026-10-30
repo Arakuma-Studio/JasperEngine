@@ -241,6 +241,42 @@ TEST(Publishing, ConfigRoundTripAndChecks) {
     EXPECT_NE(error.find("schema 2"), std::string::npos) << error;
 }
 
+// a Compile build ships stripped like a prebuilt one: the symbols its link split off (the content
+// manifest names them) go into the release's symbols/<target>/game, and a missing one is a warning
+TEST(Publishing, PrepareCopiesACompileBuildsSymbols) {
+    TestTempDir dir("release-compile");
+    const fs::path project = dir / "Game";
+    writeLinuxBuild(project / "build/linux");
+    const fs::path kept = dir / "Game/.jasperengine/symbols/0123456789abcdef";
+    TestTempDir::write(kept / "game.debug", "DWARF");
+    auto describe = [&](const std::string& symbols) {
+        player::ContentManifest manifest;
+        std::string error;
+        ASSERT_TRUE(player::ContentManifest::parse(TestTempDir::read(project / "build/linux/content-manifest.json"), manifest, error)) << error;
+        manifest.method = "compile";
+        manifest.playerId.clear();
+        manifest.symbols = symbols;
+        TestTempDir::write(project / "build/linux/content-manifest.json", manifest.toJson().dump(2));
+    };
+    describe(kept.generic_string());
+    PrepareRequest request;
+    request.projectDir = project;
+    request.projectName = "Game";
+    request.config = linuxConfig("build/linux");
+    request.release = "1.0.0";
+    PrepareResult result;
+    std::vector<std::string> problems;
+    ASSERT_TRUE(prepareRelease(request, {}, result, problems)) << join(problems);
+    EXPECT_EQ(TestTempDir::read(result.releaseDir / "symbols/linux/game/game.debug"), "DWARF");
+    EXPECT_FALSE(hasFinding(result.warnings, "W-BUILD-SYMBOLS")) << join(result.warnings);
+
+    describe((dir / "gone").generic_string());
+    request.release = "1.0.1";
+    problems.clear();
+    ASSERT_TRUE(prepareRelease(request, {}, result, problems)) << join(problems);
+    EXPECT_TRUE(hasFinding(result.warnings, "W-BUILD-SYMBOLS")) << join(result.warnings);
+}
+
 TEST(Publishing, PrepareVerifyAndTamper) {
     TestTempDir dir("release");
     const fs::path project = dir / "Game";

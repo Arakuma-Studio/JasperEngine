@@ -29,6 +29,7 @@ json ContentManifest::toJson() const {
     for (const ManifestPack& pack : packs) out["packs"].push_back({{"file", pack.file}, {"sha256", pack.sha256}, {"entries", pack.entries}});
     out["notices"] = notices;
     out["allowPlayerMismatch"] = allowPlayerMismatch;
+    if (!symbols.empty()) out["symbols"] = symbols;
     return out;
 }
 
@@ -63,6 +64,7 @@ bool ContentManifest::fromJson(const json& in, ContentManifest& out, std::string
             manifest.packs.push_back({pack.value("file", ""), pack.value("sha256", ""), pack.value("entries", uint64_t(0))});
         manifest.notices = in.value("notices", std::vector<std::string>{});
         manifest.allowPlayerMismatch = in.value("allowPlayerMismatch", false);
+        manifest.symbols = in.value("symbols", std::string());
         out = std::move(manifest);
         return true;
     } catch (const json::exception& e) {

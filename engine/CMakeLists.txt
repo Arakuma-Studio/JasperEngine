@@ -914,14 +914,30 @@ include_directories(SYSTEM libs/bcdec)
 # function), nor the web: wasm-ld already drops unreferenced code and exports only
 # EXPORTED_FUNCTIONS. A release build's own backtraces give module offsets, which its split
 # symbols resolve.
-set(JASPERENGINE_RELEASE_LINK_DEFAULT OFF)
+set(jasperengineShippedGame OFF)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR AND NOT JASPERENGINE_TESTS AND NOT JASPERENGINE_SHARED
-   AND "${JASPERENGINE_SANITIZE}" STREQUAL "" AND NOT JASPERENGINE_DEVELOPMENT_BUILD AND NOT EMSCRIPTEN
-   AND CMAKE_BUILD_TYPE MATCHES "^(Release|RelWithDebInfo|MinSizeRel)$")
+   AND "${JASPERENGINE_SANITIZE}" STREQUAL "" AND NOT EMSCRIPTEN AND CMAKE_BUILD_TYPE MATCHES "^(Release|RelWithDebInfo|MinSizeRel)$")
+    set(jasperengineShippedGame ON)
+endif()
+set(JASPERENGINE_RELEASE_LINK_DEFAULT OFF)
+if(jasperengineShippedGame AND NOT JASPERENGINE_DEVELOPMENT_BUILD)
     set(JASPERENGINE_RELEASE_LINK_DEFAULT ON)
 endif()
 option(JASPERENGINE_RELEASE_LINK "A release game's size-optimised link (sections, hidden visibility, ThinLTO and ICF with lld)"
     ${JASPERENGINE_RELEASE_LINK_DEFAULT})
+# A shipped game (a prebuilt player or a Compile build, release or Development) ships stripped:
+# it is built with debug information, which the link's post-build step moves into the build
+# tree's symbols/ (desktop: <exe>.debug with a debug link, <exe>.dSYM, the PDB). Publish prepare
+# puts them in the release's symbols/. Android's Gradle strips the libraries it packages itself.
+option(JASPERENGINE_SPLIT_SYMBOLS "A shipped game's debug information, split off into the build tree's symbols/" ${jasperengineShippedGame})
+if(JASPERENGINE_SPLIT_SYMBOLS AND NOT ANDROID)
+    if(MSVC)
+        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/Zi>)
+        add_link_options(/DEBUG:FULL)
+    else()
+        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:-g>)
+    endif()
+endif()
 if(JASPERENGINE_RELEASE_LINK)
     if(MSVC)
         # function-level linking, then the unreferenced and identical COMDATs out (also with /DEBUG)
@@ -1853,6 +1869,33 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             SOURCES ${JASPERENGINE_ROOT}/platform/linux/JasperEngineLinux.cpp ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp
                     ${JASPERENGINE_ROOT}/platform/linux/LinuxInputRouter.cpp ${JASPERENGINE_ROOT}/platform/linux/SystemLinux.cpp)
     endif()
+    # the shipped binary stripped, its debug information in symbols/ (JASPERENGINE_SPLIT_SYMBOLS)
+    get_target_property(jasperengineAppType ${APP_NAME} TYPE)
+    if(JASPERENGINE_SPLIT_SYMBOLS AND NOT ANDROID AND jasperengineAppType STREQUAL "EXECUTABLE")
+        set(jasperengineSymbols "${CMAKE_BINARY_DIR}/symbols")
+        if(MSVC)
+            set_target_properties(${APP_NAME} PROPERTIES PDB_OUTPUT_DIRECTORY "${jasperengineSymbols}")
+        elseif(APPLE)
+            add_custom_command(TARGET ${APP_NAME} POST_BUILD
+                COMMAND "${CMAKE_COMMAND}" -E make_directory "${jasperengineSymbols}"
+                COMMAND dsymutil "$<TARGET_FILE:${APP_NAME}>" -o "${jasperengineSymbols}/$<TARGET_FILE_NAME:${APP_NAME}>.dSYM"
+                COMMAND strip -S -x "$<TARGET_FILE:${APP_NAME}>"
+                COMMENT "Splitting the symbols of ${APP_NAME} into symbols/"
+                VERBATIM)
+        elseif(CMAKE_OBJCOPY AND CMAKE_STRIP)
+            set(jasperengineDebug "${jasperengineSymbols}/$<TARGET_FILE_NAME:${APP_NAME}>.debug")
+            add_custom_command(TARGET ${APP_NAME} POST_BUILD
+                COMMAND "${CMAKE_COMMAND}" -E make_directory "${jasperengineSymbols}"
+                COMMAND "${CMAKE_OBJCOPY}" --only-keep-debug "$<TARGET_FILE:${APP_NAME}>" "${jasperengineDebug}"
+                COMMAND "${CMAKE_STRIP}" --strip-debug --strip-unneeded "$<TARGET_FILE:${APP_NAME}>"
+                COMMAND "${CMAKE_OBJCOPY}" "--add-gnu-debuglink=${jasperengineDebug}" "$<TARGET_FILE:${APP_NAME}>"
+                COMMENT "Splitting the symbols of ${APP_NAME} into symbols/"
+                VERBATIM)
+        else()
+            message(WARNING "JASPERENGINE_SPLIT_SYMBOLS: no objcopy and strip, ${APP_NAME} keeps its symbols")
+        endif()
+    endif()
+
     jasperengine_target_warnings(${APP_NAME})
     jasperengine_target_unity_build(${APP_NAME})
     jasperengine_stage_asan_runtime(${APP_NAME})

@@ -32,6 +32,7 @@ namespace content_manifest_test {
         m.files["licenses/lua-LICENSE"] = {std::string(64, 'c'), 1077};
         m.packs.push_back({"content.jpak", std::string(64, 'd'), 812});
         m.notices = {"lua", "sokol"};
+        m.symbols = "/home/me/Game/.jasperengine/symbols/linux";
         return m;
     }
 
@@ -57,6 +58,7 @@ TEST(ContentManifest, RoundTripsEveryField) {
     EXPECT_EQ(back.files["licenses/lua-LICENSE"].size, 1077u);
     ASSERT_EQ(back.packs.size(), 1u);
     EXPECT_EQ(back.packs[0].entries, 812u);
+    EXPECT_EQ(back.symbols, m.symbols);
 }
 
 TEST(ContentManifest, RefusesNewerSchemaAndBadJson) {

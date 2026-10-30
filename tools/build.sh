@@ -390,19 +390,16 @@ players)
                 for backend in $PLAYER_BACKENDS; do
                     id=linux-x64-\$backend-\$flavour
                     dev=OFF; [[ \$flavour == development ]] && dev=ON
-                    # Release code with debug information, split off below (R23)
+                    # Release code with debug information, split off by the link (JASPERENGINE_SPLIT_SYMBOLS,
+                    # R23): the player ships stripped with a debug link, symbols/ is the runtime's own archive
                     cmake --preset engine-linux-release -S engine -B build/players-build/\$id -DCMAKE_BUILD_TYPE=Release \
-                        -DCMAKE_C_FLAGS=-g -DCMAKE_CXX_FLAGS=-g \
                         -DJASPERENGINE_PLAYER=ON -DGRAPHIC_BACKEND=\$backend -DJASPERENGINE_DEVELOPMENT_BUILD=\$dev \
                         $OPTION_FLAGS $ENGINE_WARNING_FLAGS $CCACHE_FLAGS
                     cmake --build build/players-build/\$id --target jasperengine-player $JOBS_FLAG
-                    # shipped stripped (R23): the debug information goes to the runtime's symbols/
-                    # (its own archive), the player keeps a debug link to it
                     pkg=build/players-build/\$id/package
                     rm -rf \$pkg && mkdir -p \$pkg/symbols
-                    objcopy --only-keep-debug build/players-build/\$id/jasperengine-player \$pkg/symbols/jasperengine-player.debug
-                    strip --strip-debug --strip-unneeded -o \$pkg/jasperengine-player build/players-build/\$id/jasperengine-player
-                    (cd \$pkg/symbols && objcopy --add-gnu-debuglink=jasperengine-player.debug ../jasperengine-player)
+                    cp build/players-build/\$id/jasperengine-player \$pkg/jasperengine-player
+                    cp build/players-build/\$id/symbols/jasperengine-player.debug \$pkg/symbols/
                     python3 tools/players/package_player.py --platform linux --arch x64 --backend \$backend --flavour \$flavour \
                         --build \$pkg --symbols \$pkg/symbols --out $PLAYERS_OUT $ZIP_FLAG
                 done

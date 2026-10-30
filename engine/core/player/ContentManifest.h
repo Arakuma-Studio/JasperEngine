@@ -47,6 +47,10 @@ namespace jasperengine::player {
         // the libraries whose licenses/<name>-LICENSE the build carries (R27)
         std::vector<std::string> notices;
         bool allowPlayerMismatch = false;
+        // a Compile release build's split debug information (absolute; the build's machine): what
+        // publish prepare copies into the release's symbols/; empty for a prebuilt build, whose
+        // player runtime holds its own
+        std::string symbols;
 
         nlohmann::json toJson() const;
         static bool fromJson(const nlohmann::json& json, ContentManifest& out, std::string& error);

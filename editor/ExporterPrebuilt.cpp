@@ -296,10 +296,15 @@ void editor::Exporter::runPlayerBuild() {
         }
         contentDir = config.destinationDir;
         stagingDir = config.destinationDir;
+        // the executable shipped stripped; its symbols (the build tree's symbols/) kept per build
+        const fs::path executable = config.destinationDir / (getAppName() + (config.platform == BuildPlatform::Windows ? ".exe" : ""));
+        if (config.mode == ExportMode::Desktop && !keepBuildSymbols(executable)) return;
         if (!writeContentManifest(false)) return;
         std::lock_guard<std::mutex> lock(progressMutex);
         result.methodUsed = BuildMethod::Compile;
         result.contentManifest = config.destinationDir / "content-manifest.json";
+        std::error_code exists;
+        if (config.mode == ExportMode::Desktop && fs::is_regular_file(executable, exists)) result.executable = executable;
         return;
     }
 
@@ -664,6 +669,39 @@ bool editor::Exporter::packContent() {
     return true;
 }
 
+bool editor::Exporter::keepBuildSymbols(const fs::path& executable) {
+    // a release build's link split them off (JASPERENGINE_SPLIT_SYMBOLS); a Debug build keeps
+    // its own in the binary
+    buildSymbolsDir.clear();
+    const fs::path built = config.targetDir / "build" / "symbols";
+    std::error_code ec;
+    if (!fs::is_directory(built, ec) || !fs::is_regular_file(executable, ec)) return true;
+    // under the executable's hash: a later build cannot replace the symbols a release of this one
+    // needs; the five newest are kept
+    std::string hex, error;
+    if (!sha256File(executable, hex, &error)) {
+        setError("Symbols: " + error);
+        return false;
+    }
+    const fs::path root = project->getProjectInternalPath() / "symbols";
+    const fs::path dir = root / hex.substr(0, 16);
+    fs::remove_all(dir, ec);
+    fs::create_directories(dir, ec);
+    fs::copy(built, dir, fs::copy_options::recursive | fs::copy_options::overwrite_existing, ec);
+    if (ec) {
+        setError("Symbols: cannot copy " + built.string() + " to " + dir.string() + ": " + ec.message());
+        return false;
+    }
+    std::vector<std::pair<fs::file_time_type, fs::path>> kept;
+    for (const auto& entry : fs::directory_iterator(root, ec))
+        if (entry.is_directory(ec)) kept.emplace_back(fs::last_write_time(entry.path(), ec), entry.path());
+    std::sort(kept.begin(), kept.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+    for (size_t i = 5; i < kept.size(); i++)
+        if (kept[i].second != dir) fs::remove_all(kept[i].second, ec);
+    buildSymbolsDir = fs::absolute(dir, ec);
+    return true;
+}
+
 bool editor::Exporter::writeContentManifest(bool prebuilt) {
     setProgressRaw("Writing the content manifest...", 0.88f);
     player::ContentManifest manifest;
@@ -679,7 +717,10 @@ bool editor::Exporter::writeContentManifest(bool prebuilt) {
         auto exe = player->executables.find(player->executable);
         if (exe != player->executables.end()) manifest.playerSha256 = exe->second;
     }
-    if (!prebuilt) manifest.notices = compileNotices;
+    if (!prebuilt) {
+        manifest.notices = compileNotices;
+        manifest.symbols = buildSymbolsDir.empty() ? std::string() : buildSymbolsDir.generic_string();
+    }
     for (const cook::CookedFileBytes& file : cookedFiles) {
         if (file.relativePath.rfind("scenes/", 0) == 0) manifest.scenes.push_back(file.relativePath);
         else manifest.prefabs.push_back(file.relativePath);

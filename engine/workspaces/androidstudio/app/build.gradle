@@ -76,6 +76,11 @@ android {
     buildTypes {
         release {
             debuggable false
+            // the libraries ship stripped; their symbols go into the App Bundle for Google Play's
+            // symbolication (native-debug-symbols.zip), and stay in merged_native_libs for an APK
+            ndk {
+                debugSymbolLevel 'FULL'
+            }
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }

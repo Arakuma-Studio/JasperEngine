@@ -173,6 +173,9 @@ namespace jasperengine::editor {
         fs::path contentDir;
         // a Compile build's staged notices, by library
         std::vector<std::string> compileNotices;
+        // a Compile build's split debug information, kept for publish prepare (content manifest)
+        fs::path buildSymbolsDir;
+        bool keepBuildSymbols(const fs::path& executable);
 
         // Lua sources copyLua() shipped, so copyAssets() can skip them
         std::set<fs::path> luaCopiedSources;
