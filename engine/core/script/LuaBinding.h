@@ -6,6 +6,7 @@
 
 #include "log/LogCategory.h"
 #include "log/LogFormatCheck.h"
+#include <cstdint>
 #include <string_view>
 #include "Export.h"
 #include "ecs/Entity.h"
@@ -31,6 +32,7 @@ namespace jasperengine {
         
     private:
         static lua_State *luastate;
+        static uint64_t luastateGeneration;
         
         static void createLuaState();
         static void configureProjectLuaLoader();
@@ -94,6 +96,9 @@ namespace jasperengine {
         // The engine's one Lua state. It belongs to the thread that made it (Engine::systemInit,
         // the main thread): Lua states are not thread-safe, so only that thread may use it.
         static lua_State* getLuaState();
+        // Which Lua state this is: a new state (a restarted engine, an Android activity relaunched
+        // in the same process) has a new generation, even at the address of the one it replaces
+        static uint64_t getLuaStateGeneration();
 
 #ifdef JASPERENGINE_PHYSICS_3D
         // Calls `function(self, hit)` on each enabled Lua script of the entity that defines it

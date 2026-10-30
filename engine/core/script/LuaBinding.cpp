@@ -117,6 +117,7 @@ using namespace jasperengine;
 
 
 lua_State *LuaBinding::luastate = NULL;
+uint64_t LuaBinding::luastateGeneration = 0;
 
 // modules the engine itself loads, anything after this is project code
 static std::set<std::string> baselineLuaModules;
@@ -241,6 +242,7 @@ LuaBinding::~LuaBinding() {
 
 void LuaBinding::createLuaState(){
     LuaBinding::luastate = luaL_newstate();
+    LuaBinding::luastateGeneration++;
 
     // the thread making the state owns it; from here on its allocations check the thread
     luaThread.store(std::this_thread::get_id(), std::memory_order_relaxed);
@@ -322,6 +324,10 @@ Vector4 LuaBinding::getShaderParamValue(const std::string& shader, const std::st
 
 lua_State* LuaBinding::getLuaState(){
     return luastate;
+}
+
+uint64_t LuaBinding::getLuaStateGeneration(){
+    return luastateGeneration;
 }
 
 std::string LuaBinding::getLuaStackErrorString(lua_State* L, int index) {

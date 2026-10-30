@@ -34,36 +34,48 @@
 
 using namespace jasperengine;
 
-LuaFunctionBase::LuaFunctionBase(lua_State *vm, const std::string &func): m_vm(vm) {
+LuaFunctionBase::LuaFunctionBase(lua_State *vm, const std::string &func): m_vm(vm), m_generation(LuaBinding::getLuaStateGeneration()) {
     // get the function
     lua_getglobal(m_vm, func.c_str());
 
     store_function();
 }
 
-LuaFunctionBase::LuaFunctionBase(lua_State *vm): m_vm(vm) {
+LuaFunctionBase::LuaFunctionBase(lua_State *vm): m_vm(vm), m_generation(LuaBinding::getLuaStateGeneration()) {
     store_function();
 }
 
-LuaFunctionBase::LuaFunctionBase(const LuaFunctionBase &other): m_vm(other.m_vm), m_record(other.m_record) {
-    // copy the registry reference
-    lua_rawgeti(m_vm, LUA_REGISTRYINDEX, other.m_func);
-    m_func = luaL_ref(m_vm, LUA_REGISTRYINDEX);
+LuaFunctionBase::LuaFunctionBase(const LuaFunctionBase &other)
+    : m_vm(other.m_vm), m_func(LUA_NOREF), m_record(other.m_record), m_generation(other.m_generation) {
+    // copy the registry reference (a closed state's function stays a dead copy)
+    if (other.isLive() && other.m_func != LUA_NOREF) {
+        lua_rawgeti(m_vm, LUA_REGISTRYINDEX, other.m_func);
+        m_func = luaL_ref(m_vm, LUA_REGISTRYINDEX);
+    }
 }
 
 LuaFunctionBase::~LuaFunctionBase(){
-    // delete the reference from registry
-    if (LuaBinding::getLuaState() && m_func != LUA_NOREF){ //check if state is not closed
+    // delete the reference from the registry, of its own state only (a closed one freed it)
+    if (isLive() && m_func != LUA_NOREF){
         luaL_unref(m_vm, LUA_REGISTRYINDEX, m_func);
     }
 }
 
+bool LuaFunctionBase::isLive() const {
+    return m_vm && LuaBinding::getLuaState() && m_generation == LuaBinding::getLuaStateGeneration();
+}
+
 LuaFunctionBase& LuaFunctionBase::operator=(const LuaFunctionBase &other){
     if (this != &other) {
+        if (isLive() && m_func != LUA_NOREF) luaL_unref(m_vm, LUA_REGISTRYINDEX, m_func);
         m_vm = other.m_vm;
         m_record = other.m_record;
-        lua_rawgeti(m_vm, LUA_REGISTRYINDEX, other.m_func);
-        m_func = luaL_ref(m_vm, LUA_REGISTRYINDEX);
+        m_generation = other.m_generation;
+        m_func = LUA_NOREF;
+        if (other.isLive() && other.m_func != LUA_NOREF) {
+            lua_rawgeti(m_vm, LUA_REGISTRYINDEX, other.m_func);
+            m_func = luaL_ref(m_vm, LUA_REGISTRYINDEX);
+        }
     }
     return *this;
 }
