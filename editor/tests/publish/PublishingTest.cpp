@@ -188,6 +188,33 @@ TEST(PayloadValidator, AndroidLibrariesAreStoredAnd16KAligned) {
     EXPECT_TRUE(hasFinding(findings, "1 native library is compressed and 1 stored")) << join(findings);
 }
 
+// a bundle's libraries are bundletool's to pack: compressed in the .aab (it compresses every
+// entry) is no finding; their 16 KB alignment still is checked
+TEST(PayloadValidator, AndroidBundleLibrariesMayBeCompressed) {
+    TestTempDir dir("payload-aab");
+    std::string library = elf(0xB7);
+    library.resize(64 + 56, '\0');
+    library[32] = 64;           // e_phoff
+    library[54] = 56;           // e_phentsize
+    library[56] = 1;            // e_phnum
+    library[64] = 1;            // PT_LOAD
+    library[64 + 49] = 0x40;    // p_align = 16384
+    ZipWriter zip;
+    std::string error;
+    ASSERT_TRUE(zip.open(dir / "game.aab", error)) << error;
+    ASSERT_TRUE(zip.add("base/lib/arm64-v8a/libjasperengine-android.so", library.data(), library.size(), false, error)) << error;
+    ASSERT_TRUE(zip.add("base/lib/arm64-v8a/libc++_shared.so", library.data(), library.size(), false, error)) << error;
+    ASSERT_TRUE(zip.add("base/manifest/AndroidManifest.xml", "x", 1, false, error)) << error;
+    ASSERT_TRUE(zip.finish(error)) << error;
+    ValidationTarget target;
+    target.platform = BuildPlatform::Android;
+    target.arch = "universal";
+    std::vector<std::string> findings;
+    validatePayload(dir.path(), target, findings);
+    EXPECT_FALSE(hasFinding(findings, "compressed")) << join(findings);
+    EXPECT_FALSE(hasFinding(findings, "aligned to")) << join(findings);
+}
+
 // 16 KB pages are a 64-bit requirement: a 32-bit library with 4 KB pages is accepted (the NDK's
 // flexible page sizes apply to arm64-v8a and x86_64 only)
 TEST(PayloadValidator, Android32BitLibrariesKeep4KPages) {

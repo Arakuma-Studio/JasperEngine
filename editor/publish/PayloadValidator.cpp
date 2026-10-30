@@ -171,9 +171,10 @@ namespace {
             }
             (entry.stored ? storedLibraries : compressedLibraries)++;
         }
-        // stored (loaded from the APK: extractNativeLibs false) or compressed (extracted at install,
-        // minSdk < 23), never mixed; a bundle keeps them stored for bundletool
-        if ((bundle && compressedLibraries > 0) || (storedLibraries > 0 && compressedLibraries > 0))
+        // an APK's are stored (loaded from the APK: extractNativeLibs false) or compressed (extracted
+        // at install, minSdk < 23), never mixed; a bundle's are bundletool's (it compresses every
+        // entry of the .aab, and its config decides how each device's APK holds them)
+        if (!bundle && storedLibraries > 0 && compressedLibraries > 0)
             findings.push_back(relative + ": " + std::to_string(compressedLibraries) + " native librar" +
                                (compressedLibraries == 1 ? "y is" : "ies are") + " compressed and " + std::to_string(storedLibraries) +
                                " stored (a package stores them all, or compresses them all for minSdk < 23)");
