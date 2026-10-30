@@ -18,6 +18,7 @@
 #include "reflect/Reflect.h"
 #include "util/EntityClipboard.h"
 #include "util/ProjectUtils.h"
+#include "util/WorldTransforms.h"
 #include "util/YamlNumbers.h"
 
 #include <algorithm>
@@ -73,6 +74,8 @@ namespace {
             }
             SceneProject* sceneProject = project->getScene(sceneId);
             if (!sceneProject || !sceneProject->scene) return false;
+            // its world values once it is decoded and back in its place (the baseline holds none)
+            WorldTransformScope worldTransforms(sceneProject->scene);
             std::unordered_map<Entity, Entity> remap;
             const std::vector<Entity> created = Stream::decodeEntity(node, sceneProject->scene, &sceneProject->entities, project, sceneProject,
                                                                      NULL_ENTITY, true, false, &remap);
