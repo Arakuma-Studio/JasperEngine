@@ -55,6 +55,7 @@
 #include "fluid/FluidSimulator.h"
 #include "subsystem/PoseAnimatorSystem.h"
 #include "subsystem/VertexAnimatorSystem.h"
+#include "subsystem/TrailSystem.h"
 #include "pose/ModelRig.h"
 #include "pose/PoseAnimatorRuntime.h"
 #include "animation/ModelSubClips.h"
@@ -85,6 +86,7 @@
 #include "SceneManager.h"
 #include "PrefabManager.h"
 #include "ObjectManager.h"
+#include "script/ScriptRuntime.h"
 
 using namespace jasperengine;
 
@@ -560,6 +562,7 @@ bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const 
     visitComponents(registry->getComponentArray<UIComponent>(), [&](UIComponent& ui) { visitShaderTextures(ui.shaderTextures, ui.needReload); });
     visitComponents(registry->getComponentArray<PointsComponent>(), [&](PointsComponent& points) { visitShaderTextures(points.shaderTextures, points.needReload); });
     visitComponents(registry->getComponentArray<LineRendererComponent>(), [&](LineRendererComponent& lines) { visitShaderTextures(lines.shaderTextures, lines.needReload); });
+    visitComponents(registry->getComponentArray<TrailRendererComponent>(), [&](TrailRendererComponent& trail) { visitShaderTextures(trail.shaderTextures, trail.needReload); });
     visitComponents(registry->getComponentArray<SkyboxComponent>(), [&](SkyboxComponent& sky) { visitShaderTextures(sky.shaderTextures, sky.needReload); });
 
     visitComponents(registry->getComponentArray<UIComponent>(), [&](UIComponent& ui) {
@@ -809,6 +812,9 @@ SceneResources editor::Project::collectResourcesInRegistry(EntityRegistry* regis
     });
     visitComponents(registry->getComponentArray<LineRendererComponent>(), [&](LineRendererComponent& lines) {
         for (const auto& shaderTexture : lines.shaderTextures) addTexture(shaderTexture.second, false);
+    });
+    visitComponents(registry->getComponentArray<TrailRendererComponent>(), [&](TrailRendererComponent& trail) {
+        for (const auto& shaderTexture : trail.shaderTextures) addTexture(shaderTexture.second, false);
     });
     visitComponents(registry->getComponentArray<SkyboxComponent>(), [&](SkyboxComponent& sky) {
         for (const auto& shaderTexture : sky.shaderTextures) addTexture(shaderTexture.second, false);
@@ -1543,6 +1549,7 @@ void editor::Project::applyCustomShaderPathChange(const std::function<bool(std::
         applyToArray(registry->getComponentArray<UIComponent>(), &UIComponent::customShader);
         applyToArray(registry->getComponentArray<PointsComponent>(), &PointsComponent::customShader);
         applyToArray(registry->getComponentArray<LineRendererComponent>(), &LineRendererComponent::customShader);
+        applyToArray(registry->getComponentArray<TrailRendererComponent>(), &TrailRendererComponent::customShader);
         applyToArray(registry->getComponentArray<SkyboxComponent>(), &SkyboxComponent::customShader);
         // a submesh material's own shader and its extra pass's (mesh reload)
         auto meshes = registry->getComponentArray<MeshComponent>();
@@ -3541,6 +3548,20 @@ editor::SceneProject* editor::Project::createRuntimeCloneFromSource(const SceneP
         return nullptr;
     }
 
+    fs::path fullPath = source->filepath;
+    if (fullPath.is_relative()) {
+        fullPath = getProjectPath() / fullPath;
+    }
+
+    YAML::Node sceneNode = YAML::LoadFile(fullPath.string());
+    return createRuntimeCloneFromNode(source, sceneNode);
+}
+
+editor::SceneProject* editor::Project::createRuntimeCloneFromNode(const SceneProject* source, const YAML::Node& sceneNode) {
+    if (!source) {
+        return nullptr;
+    }
+
     std::unique_ptr<SceneProject> runtime(new SceneProject());
     runtime->opened = false;
     runtime->isModified = false;
@@ -3548,12 +3569,6 @@ editor::SceneProject* editor::Project::createRuntimeCloneFromSource(const SceneP
     runtime->needUpdateRender = false;
     runtime->filepath = source->filepath;
 
-    fs::path fullPath = runtime->filepath;
-    if (fullPath.is_relative()) {
-        fullPath = getProjectPath() / fullPath;
-    }
-
-    YAML::Node sceneNode = YAML::LoadFile(fullPath.string());
     Stream::decodeSceneProject(runtime.get(), sceneNode, true);
     // the file's id differs if loading replaced a duplicate
     runtime->id = source->id;
@@ -3580,9 +3595,8 @@ void editor::Project::updateSceneCppScripts(SceneProject* sceneProject) {
     for (int i = 0; i < scriptsArray->size(); i++) {
         const ScriptComponent& scriptComponent = scriptsArray->getComponentFromIndex(i);
 
+        // disabled scripts too: they exist at runtime and can be enabled (Unity)
         for (const auto& scriptEntry : scriptComponent.scripts) {
-            if (!scriptEntry.enabled)
-                continue;
             if (scriptEntry.type == ScriptType::LUA)
                 continue;
             if (scriptEntry.path.empty())
@@ -3822,15 +3836,6 @@ void editor::Project::calculateSceneMaxValues(const SceneProject* sceneProject, 
         maxValues.maxTilemapTiles = std::max(maxValues.maxTilemapTiles, tilemap.numTiles);
     }
 
-    auto bodies2d = sceneProject->scene->getComponentArray<Rigidbody2DComponent>();
-    for (size_t i = 0; i < bodies2d->size(); ++i) {
-        const Rigidbody2DComponent& body = bodies2d->getComponentFromIndex(i);
-        maxValues.maxColliders2D = std::max(maxValues.maxColliders2D, static_cast<unsigned int>(body.numColliders));
-        for (size_t s = 0; s < body.numColliders; ++s) {
-            maxValues.maxColliderPoints2D = std::max(maxValues.maxColliderPoints2D, static_cast<unsigned int>(body.colliders[s].numVertices));
-        }
-    }
-
     auto bodies3d = sceneProject->scene->getComponentArray<RigidbodyComponent>();
     for (size_t i = 0; i < bodies3d->size(); ++i) {
         const RigidbodyComponent& body = bodies3d->getComponentFromIndex(i);
@@ -3993,6 +3998,13 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
             const LineRendererComponent& ln = scene->getComponent<LineRendererComponent>(entity);
             if (ln.loaded) {
                 insertKeys(ShaderType::LINES, ln.shaderProperties, effectiveShaderId(ln.customShader, ShaderType::LINES, ln.shaderFeatures, ln.blendMode));
+            }
+        }
+
+        if (signature.test(scene->getComponentId<TrailRendererComponent>())) {
+            const TrailRendererComponent& trail = scene->getComponent<TrailRendererComponent>(entity);
+            if (trail.loaded) {
+                insertKeys(ShaderType::LINES, trail.shaderProperties, effectiveShaderId(trail.customShader, ShaderType::LINES, trail.shaderFeatures, trail.blendMode));
             }
         }
 
@@ -4330,6 +4342,8 @@ void editor::Project::cleanupPlaySession(const std::shared_ptr<PlaySession>& ses
     {
         std::scoped_lock lock(playSessionMutex);
         runtimeScenes.swap(session->runtimeScenes);
+        runtimeScenes.insert(runtimeScenes.end(), session->retiredRuntimeScenes.begin(), session->retiredRuntimeScenes.end());
+        session->retiredRuntimeScenes.clear();
     }
 
     for (const auto& entry : runtimeScenes) {
@@ -5627,6 +5641,11 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     scene->getSystem<LatticeSystem>()->setPaused(pause);
     // Vertex Animators hold still in edit mode unless their Preview is on
     scene->getSystem<VertexAnimatorSystem>()->setPaused(pause);
+    // trails keep no point in edit mode but a dragged GameObject's (TrailSystem's preview)
+    if (auto trails = scene->findSystem<TrailSystem>()){
+        trails->setPaused(pause);
+        if (!pause) trails->clearPreviews();
+    }
 }
 
 void editor::Project::stopVertexAnimatorPreviews() {
@@ -7128,10 +7147,13 @@ AABB editor::Project::getEntityWorldAABB(Scene* scene, Entity entity, Scene* mai
             }
 
             if (signature.test(scene->getComponentId<LineRendererComponent>())){
+                // either mode, world or local space points; a ribbon of world widths around them
                 const LineRendererComponent& lines = scene->getComponent<LineRendererComponent>(entity);
-                for (const LineData& line : lines.lines) {
-                    mergeWorldPoint(transform.modelMatrix * line.pointA);
-                    mergeWorldPoint(transform.modelMatrix * line.pointB);
+                const float half = (lines.loadedRibbon && lines.widthUnit == LineWidthUnit::World)
+                    ? lines.ribbon.maxHalfWidth * LineRibbonBuilder::boundsGrowth(lines.numCornerVertices) : 0.0f;
+                for (const Vector3& point : SceneRender::getLinePointWorldPositions(lines, transform)) {
+                    mergeWorldPoint(point);
+                    if (half > 0.0f) aabb.merge(AABB(point.x - half, point.y - half, point.z - half, point.x + half, point.y + half, point.z + half));
                 }
             }
         }
@@ -7182,12 +7204,8 @@ AABB editor::Project::getEntityLocalAABB(Scene* scene, Entity entity) const{
                 aabb.merge(pt.position);
             }
         }
-        if (signature.test(scene->getComponentId<LineRendererComponent>())){
-            const LineRendererComponent& lines = scene->getComponent<LineRendererComponent>(entity);
-            for (const LineData& line : lines.lines) {
-                aabb.merge(line.pointA);
-                aabb.merge(line.pointB);
-            }
+        if (signature.test(scene->getComponentId<LineRendererComponent>()) && signature.test(scene->getComponentId<Transform>())){
+            SceneRender::mergeLineLocalPoints(aabb, scene->getComponent<LineRendererComponent>(entity), scene->getComponent<Transform>(entity));
         }
     }
 
@@ -8817,6 +8835,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                     if (!runtimeSceneOf(entry)) continue;
 
                     entry.initializing = true;
+                    entry.scriptsRan = true;
 
                     Scene* scene = runtimeSceneOf(entry);
                     if (hasCppScripts) {
@@ -8864,7 +8883,12 @@ std::shared_ptr<editor::Project::PlaySession> editor::Project::buildRuntimeScene
                 if (sourceScene) {
                     PlayRuntimeScene newEntry;
                     newEntry.sourceSceneId = invSceneId;
-                    newEntry.copy = createRuntimeCloneFromSource(sourceScene);
+                    // the played scene loaded again (it was retired): from its state at Play
+                    // start, which an unsaved scene has no file for
+                    const bool played = invSceneId == session->mainSceneId && sourceScene->playStateSnapshot &&
+                                        !sourceScene->playStateSnapshot.IsNull();
+                    newEntry.copy = played ? createRuntimeCloneFromNode(sourceScene, sourceScene->playStateSnapshot)
+                                           : createRuntimeCloneFromSource(sourceScene);
                     newEntry.ownedRuntime = true;
 
                     if (newEntry.copy) {
@@ -8899,6 +8923,7 @@ std::shared_ptr<editor::Project::PlaySession> editor::Project::buildRuntimeScene
         // runtimeScenes. The flag stops it initializing this scene a second time, and the
         // entry is read again by index because the push invalidates references into it.
         entry.initializing = true;
+        entry.scriptsRan = true;
 
         Scene* scene = runtimeSceneOf(entry);
         if (conector.isLibraryConnected()) {
@@ -8914,6 +8939,62 @@ std::shared_ptr<editor::Project::PlaySession> editor::Project::buildRuntimeScene
     return session;
 }
 
+void editor::Project::retireReplacedRuntimeScenes() {
+    std::shared_ptr<PlaySession> session;
+    {
+        std::scoped_lock lock(playSessionMutex);
+        session = activePlaySession;
+    }
+    if (!session || session->cancelled.load(std::memory_order_acquire)) return;
+
+    const std::vector<Scene*>& unloading = SceneManager::getUnloadingScenes();
+    std::vector<PlayRuntimeScene> retired;
+    {
+        std::scoped_lock lock(playSessionMutex);
+        // a scene's scripts are starting (a load requested from inside them runs later, but
+        // never take the entries from under that loop)
+        for (const PlayRuntimeScene& entry : session->runtimeScenes) {
+            if (entry.initializing) return;
+        }
+        for (size_t i = 0; i < session->runtimeScenes.size();) {
+            const PlayRuntimeScene& entry = session->runtimeScenes[i];
+            Scene* scene = runtimeSceneOf(entry);
+            // unloaded by this load, or by an earlier one that left it out of its stack
+            const bool replaced = scene && entry.scriptsRan && !Engine::isSceneRunning(scene) &&
+                (std::find(unloading.begin(), unloading.end(), scene) != unloading.end() || !entry.initialized);
+            if (replaced) {
+                retired.push_back(entry);
+                session->runtimeScenes.erase(session->runtimeScenes.begin() + static_cast<std::ptrdiff_t>(i));
+            } else {
+                i++;
+            }
+        }
+    }
+
+    // outside the lock: a C++ script destructor can call back into the editor
+    for (PlayRuntimeScene& entry : retired) {
+        Scene* scene = runtimeSceneOf(entry);
+        if (scene) {
+            // as the exported load function deletes it: no pointer, no sounds, no scripts
+            if (SceneManager::getScenePtr(entry.sourceSceneId) == scene) {
+                SceneManager::removeScenePtr(entry.sourceSceneId);
+            }
+            scene->getSystem<AudioSystem>()->stopSceneSounds();
+            ObjectManager::forgetScene(scene);
+            // the unload ran their onDisable and onDestroy: this releases the instances
+            if (conector.isLibraryConnected()) {
+                conector.cleanup(scene);
+            } else {
+                LuaBinding::cleanupLuaScripts(scene);
+            }
+            Engine::clearComponentSubscriptions(scene);
+        }
+        entry.initialized = false;
+        std::scoped_lock lock(playSessionMutex);
+        session->retiredRuntimeScenes.push_back(entry);
+    }
+}
+
 void editor::Project::registerSceneManager() {
     SceneManager::clearAll();
     for (SceneProject& sceneProject : scenes) {
@@ -8921,6 +9002,9 @@ void editor::Project::registerSceneManager() {
         collectStartActiveScenes(sceneProject.id, stackSceneIds);
 
         SceneManager::registerScene(sceneProject.id, sceneProject.name, [this, sceneId = sceneProject.id]() {
+            // what this load replaced goes, so a scene loaded again starts anew (as exported)
+            retireReplacedRuntimeScenes();
+
             std::vector<size_t> currentStackIndices;
             std::shared_ptr<PlaySession> session = buildRuntimeSceneStack(sceneId, currentStackIndices);
             if (!session) return;
@@ -9280,6 +9364,8 @@ void editor::Project::stop(uint32_t sceneId) {
         // Notify scripts/engine before tearing the runtime down so that
         // shutdown handlers still see a valid engine state.
         Engine::onViewDestroyed.call();
+        // Play stop is the application quit (Unity): onApplicationQuit, onDisable, onDestroy
+        ScriptRuntime::quitAll();
         Engine::onShutdown.call();
         Engine::pauseGameEvents(true);
         Engine::clearAllSubscriptions(true);
@@ -9313,6 +9399,7 @@ void editor::Project::stop(uint32_t sceneId) {
 
             if (startupSucceeded && !startupSucceededAtStop) {
                 Engine::onViewDestroyed.call();
+                ScriptRuntime::quitAll();
                 Engine::onShutdown.call();
                 Engine::pauseGameEvents(true);
                 Engine::clearAllSubscriptions(true);
@@ -9322,6 +9409,8 @@ void editor::Project::stop(uint32_t sceneId) {
             {
                 std::scoped_lock lock(playSessionMutex);
                 runtimeScenes = session->runtimeScenes;
+                // the scenes a load replaced: copies deleted, the played scene restored
+                runtimeScenes.insert(runtimeScenes.end(), session->retiredRuntimeScenes.begin(), session->retiredRuntimeScenes.end());
             }
 
             // anime: every animation of the play, and its script callbacks, before the scripts go
@@ -9332,10 +9421,15 @@ void editor::Project::stop(uint32_t sceneId) {
                 for (const auto& entry : runtimeScenes) {
                     if (runtimeSceneOf(entry)) conector.cleanup(runtimeSceneOf(entry));
                 }
-            } else if (startupSucceeded) {
+            } else {
+                // a startup that failed half way may have started some scripts too
                 for (const auto& entry : runtimeScenes) {
                     if (runtimeSceneOf(entry)) LuaBinding::cleanupLuaScripts(runtimeSceneOf(entry));
                 }
+            }
+            // nothing of the session's lifecycle outlives it (the played scene is edited again)
+            for (const auto& entry : runtimeScenes) {
+                if (runtimeSceneOf(entry)) ScriptRuntime::forgetScene(runtimeSceneOf(entry));
             }
 
             // What the scripts registered and did not remove is dropped here, while the code
@@ -9498,6 +9592,19 @@ void editor::Project::waitForPlaySessionToFinish() {
     }
 }
 
+bool editor::Project::isPlayedSceneReplaced(uint32_t sceneId) {
+    std::scoped_lock lock(playSessionMutex);
+    if (!activePlaySession || activePlaySession->mainSceneId != sceneId) {
+        return false;
+    }
+    for (const PlayRuntimeScene& entry : activePlaySession->retiredRuntimeScenes) {
+        if (!entry.ownedRuntime && entry.sourceSceneId == sceneId) {
+            return true;
+        }
+    }
+    return false;
+}
+
 std::vector<Scene*> editor::Project::getRunningRuntimeLayers(uint32_t sceneId) {
     std::vector<Scene*> runningLayers;
     for (SceneProject* runtimeProject : getRunningRuntimeLayerScenes(sceneId)) {
@@ -9519,7 +9626,8 @@ std::vector<editor::SceneProject*> editor::Project::getRunningRuntimeLayerScenes
 
     for (const auto& entry : activePlaySession->runtimeScenes) {
         SceneProject* runtimeProject = runtimeOf(entry);
-        if (!runtimeProject || !runtimeProject->scene || entry.sourceSceneId == sceneId) {
+        // the played scene itself is the view's own; a copy of it (it was loaded again) is a layer
+        if (!runtimeProject || !runtimeProject->scene || (!entry.ownedRuntime && entry.sourceSceneId == sceneId)) {
             continue;
         }
         if (Engine::isSceneRunning(runtimeProject->scene)) {

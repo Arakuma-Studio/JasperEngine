@@ -21,6 +21,7 @@
 #include "animation/VertexAnimation.h"
 #include "pool/VertexAnimationPool.h"
 #include "thread/ResourceProgress.h"
+#include "script/ScriptRuntime.h"
 
 #include <algorithm>
 
@@ -31,6 +32,7 @@ uint32_t SceneManager::currentId = 0;
 std::optional<uint32_t> SceneManager::pendingId;
 std::map<uint32_t, Scene*> SceneManager::scenePtrs;
 bool SceneManager::factoryRunning = false;
+std::vector<Scene*> SceneManager::unloadingScenes;
 
 uint32_t SceneManager::loadingSceneId = 0;
 float SceneManager::loadingDelay = 0.0f;
@@ -126,6 +128,10 @@ void SceneManager::runFactory(uint32_t id) {
         loadingScenes = getRunningScenes(loadingSceneId);
     }
 
+    // every scene whose scripts run now: the factory tears them down (a stack loaded again
+    // too), except the loading scene's, still on screen
+    const std::vector<Scene*> previous = ScriptRuntime::getStartedScenes();
+
     Engine::removeAllScenes();
 
     // still running, so the factory does not delete them
@@ -133,15 +139,36 @@ void SceneManager::runFactory(uint32_t id) {
         Engine::addSceneLayer(scene);
     }
 
+    std::vector<Scene*> unloading;
+    for (Scene* scene : previous) {
+        if (std::find(loadingScenes.begin(), loadingScenes.end(), scene) == loadingScenes.end()) {
+            unloading.push_back(scene);
+        }
+    }
+
     currentId = id;
     const bool nested = factoryRunning;
     factoryRunning = true;
+    std::vector<Scene*> nestedUnloading = std::move(unloadingScenes);
+    unloadingScenes = unloading;
+    // Unity: the old scenes' onDisable and onDestroy, before the new scenes' init (a singleton
+    // clearing itself in onDestroy does not clobber the new one)
+    ScriptRuntime::unloadScenes(unloading);
     loadFactory();
+    unloadingScenes = std::move(nestedUnloading);
     factoryRunning = nested;
 
     if (loadingSceneShown) {
         raiseLoadingScene();
     }
+}
+
+bool SceneManager::isFactoryRunning() {
+    return factoryRunning;
+}
+
+const std::vector<Scene*>& SceneManager::getUnloadingScenes() {
+    return unloadingScenes;
 }
 
 bool SceneManager::loadScene(uint32_t id) {

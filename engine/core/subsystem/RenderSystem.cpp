@@ -30,6 +30,9 @@
 #include "texture/Texture.h"
 #include "object/environment/Water.h"
 #include "subsystem/FluidSystem.h"
+#include "subsystem/TrailSystem.h"
+#include "render/LineRibbonBuilder.h"
+#include <cstddef>
 #include <memory>
 #include <algorithm>
 #include <array>
@@ -877,6 +880,16 @@ void RenderSystem::destroy(){
         }else if (signature.test(scene->getComponentId<CameraComponent>())){
             CameraComponent& camera = scene->getComponent<CameraComponent>(entity);
             destroyCamera(camera, false);
+        }
+    }
+
+    // trails coexist with the GameObject's other renderer: their own loop
+    auto trails = scene->getComponentArray<TrailRendererComponent>();
+    for (size_t i = 0; i < trails->size(); i++){
+        TrailRendererComponent& trail = trails->getComponentFromIndex(i);
+        if (trail.loaded){
+            if (reloadView) trail.needReload = true;
+            destroyTrail(trails->getEntity(i), trail);
         }
     }
 
@@ -3392,8 +3405,12 @@ void RenderSystem::getShaderVariants(Entity entity, std::vector<ShaderKey>& keys
             shaderId(points->customShader, ShaderType::POINTS, points->shaderFeatures, points->blendMode));
     }
     if (LineRendererComponent* lines = scene->findComponent<LineRendererComponent>(entity)){
-        add(ShaderType::LINES, ShaderPool::getLinesProperties(false, true) | postColorProperty(ShaderType::LINES),
+        add(ShaderType::LINES, getLinesVariantProperties(scene, *lines) | postColorProperty(ShaderType::LINES),
             shaderId(lines->customShader, ShaderType::LINES, lines->shaderFeatures, lines->blendMode));
+    }
+    if (TrailRendererComponent* trail = scene->findComponent<TrailRendererComponent>(entity)){
+        add(ShaderType::LINES, getTrailVariantProperties(scene, *trail) | postColorProperty(ShaderType::LINES),
+            shaderId(trail->customShader, ShaderType::LINES, trail->shaderFeatures, trail->blendMode));
     }
     if (SkyboxComponent* sky = scene->findComponent<SkyboxComponent>(entity)){
         add(ShaderType::SKYBOX, postColorProperty(ShaderType::SKYBOX), shaderId(sky->customShader, ShaderType::SKYBOX, sky->shaderFeatures, MaterialBlendMode::AUTO));
@@ -4223,6 +4240,15 @@ bool RenderSystem::postColorVariantsReady(){
         const uint64_t bit = ShaderPool::getPostColorProperty(ShaderType::LINES);
         const uint64_t properties = (lines.shaderProperties & ~bit) | postColorProperty(ShaderType::LINES);
         allReady = ready(ShaderType::LINES, properties, lines.customShaderId) && allReady;
+    }
+    auto trailArray = scene->getComponentArray<TrailRendererComponent>();
+    for (size_t i = 0; i < trailArray->size(); i++){
+        const TrailRendererComponent& trail = trailArray->getComponentFromIndex(i);
+        if (!trail.loaded || trail.needReload)
+            continue;
+        const uint64_t bit = ShaderPool::getPostColorProperty(ShaderType::LINES);
+        const uint64_t properties = (trail.shaderProperties & ~bit) | postColorProperty(ShaderType::LINES);
+        allReady = ready(ShaderType::LINES, properties, trail.customShaderId) && allReady;
     }
     auto skyArray = scene->getComponentArray<SkyboxComponent>();
     for (size_t i = 0; i < skyArray->size(); i++){
@@ -10509,13 +10535,570 @@ bool RenderSystem::loadPoints(Entity entity, PointsComponent& points, uint16_t p
     return true;
 }
 
+// ---------------------------------------------------------------- thick lines and trails (ribbons)
+
+namespace {
+
+    // a ribbon's GPU buffers hold at least this many vertices / indices, then powers of two
+    const unsigned int RIBBON_MIN_VERTICES = 64;
+    const unsigned int RIBBON_MIN_INDICES = 192;
+    // a buffer under a quarter used for this long shrinks back (seconds)
+    const float RIBBON_SHRINK_DELAY = 5.0f;
+
+    unsigned int ribbonCapacity(size_t count, unsigned int minimum){
+        unsigned int capacity = minimum;
+        while (capacity < count && capacity < 0x80000000u)
+            capacity *= 2;
+        return capacity;
+    }
+
+    // a ribbon variant: what the built-in shader samples (a base texture), pixel widths
+    uint64_t ribbonVariantProperties(const Scene* scene, const std::string& customShader, LineWidthUnit unit,
+                                     const std::vector<std::pair<std::string, Texture>>& textures){
+        const std::string& base = customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : customShader;
+        // a library shader (or a fork with a manifest) declares and binds its own textures
+        const bool texture = RenderSystem::getLinesBaseTexture(textures) != nullptr && !findManifest(base);
+        return ShaderPool::getLinesProperties(false, true, true, texture, unit == LineWidthUnit::Pixels);
+    }
+
+    // the same, for the check every frame: the manifest lookup remembered in the ribbon
+    uint64_t ribbonVariantPropertiesCached(const Scene* scene, const std::string& customShader, LineWidthUnit unit,
+                                           const std::vector<std::pair<std::string, Texture>>& textures, LineRibbonData& ribbon){
+        bool texture = RenderSystem::getLinesBaseTexture(textures) != nullptr;
+        if (texture){
+            const std::string& base = customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : customShader;
+            if (!ribbon.manifestKnown || ribbon.manifestShader != base){
+                ribbon.manifestShader = base;
+                ribbon.hasManifest = findManifest(base) != nullptr;
+                ribbon.manifestKnown = true;
+            }
+            texture = !ribbon.hasManifest;
+        }
+        return ShaderPool::getLinesProperties(false, true, true, texture, unit == LineWidthUnit::Pixels);
+    }
+
+    // the shrink timer of a ribbon's buffers: true once they should be made smaller
+    bool ribbonShouldShrink(LineRibbonData& ribbon, float dt){
+        const bool lowUse = ribbon.maxVertices > RIBBON_MIN_VERTICES && ribbon.vertices.size() < ribbon.maxVertices / 4 &&
+                            ribbon.indices.size() < ribbon.maxIndices / 4;
+        if (!lowUse){
+            ribbon.lowUseTime = 0.0f;
+            return false;
+        }
+        ribbon.lowUseTime += dt;
+        if (ribbon.lowUseTime < RIBBON_SHRINK_DELAY)
+            return false;
+        ribbon.lowUseTime = 0.0f;
+        return true;
+    }
+
+    void finishRibbon(LineRibbonData& ribbon){
+        ribbon.indexCount = (unsigned int)ribbon.indices.size();
+    }
+
+}
+
+const Texture* RenderSystem::getLinesBaseTexture(const std::vector<std::pair<std::string, Texture>>& shaderTextures){
+    for (const auto& entry : shaderTextures){
+        if (entry.first == LINE_BASE_TEXTURE_UNIFORM && !entry.second.empty())
+            return &entry.second;
+    }
+    return nullptr;
+}
+
+uint64_t RenderSystem::getLinesVariantProperties(const Scene* scene, const LineRendererComponent& lines){
+    if (lines.widthMultiplier > 0.0f)
+        return ribbonVariantProperties(scene, lines.customShader, lines.widthUnit, lines.shaderTextures);
+    // the hairline, as it always was
+    return ShaderPool::getLinesProperties(false, true);
+}
+
+uint64_t RenderSystem::getTrailVariantProperties(const Scene* scene, const TrailRendererComponent& trail){
+    return ribbonVariantProperties(scene, trail.customShader, trail.widthUnit, trail.shaderTextures);
+}
+
+// the ribbon of a thick line, or the segments of a hairline polyline, from the component's data
+static void rebuildLinesGeometry(LineRendererComponent& lines){
+    LineRibbonData& ribbon = lines.ribbon;
+    ribbon.vertices.clear();
+    ribbon.indices.clear();
+    ribbon.bounds.setNull();
+    ribbon.length = 0.0f;
+    ribbon.maxHalfWidth = 0.0f;
+    lines.polylineSegments.clear();
+
+    size_t invalidPoints = 0;
+    if (lines.widthMultiplier > 0.0f){
+        LineRibbonSettings settings;
+        settings.widthMultiplier = lines.widthMultiplier;
+        settings.widthCurve = &lines.widthCurve;
+        settings.colorGradient = &lines.colorGradient;
+        settings.numCornerVertices = lines.numCornerVertices;
+        settings.numCapVertices = lines.numCapVertices;
+        settings.textureMode = lines.textureMode;
+        settings.textureScale = lines.textureScale;
+        auto add = [&](const LineRibbonResult& result){
+            if (!result.bounds.isNull())
+                ribbon.bounds.merge(result.bounds);
+            ribbon.length += result.length;
+            ribbon.maxHalfWidth = std::max(ribbon.maxHalfWidth, result.maxHalfWidth);
+            invalidPoints += result.invalidPoints;
+        };
+        if (lines.mode == LineRendererMode::Polyline){
+            settings.loop = lines.loop;
+            add(LineRibbonBuilder::build(lines.positions.data(), lines.positions.size(), settings, ribbon.vertices, ribbon.indices));
+        }else{
+            // every segment its own ribbon: the curve over each, its own colours, no joints
+            for (const LineData& line : lines.lines){
+                const Vector3 points[2] = {line.pointA, line.pointB};
+                const Vector4 colors[2] = {line.colorA, line.colorB};
+                add(LineRibbonBuilder::build(points, 2, settings, ribbon.vertices, ribbon.indices, nullptr, colors));
+            }
+        }
+    }else if (lines.mode == LineRendererMode::Polyline){
+        // a width-0 polyline still shows: connected hairline segments with the gradient's colours
+        thread_local std::vector<Vector3> points;
+        points.clear();
+        points.reserve(lines.positions.size());
+        for (const Vector3& point : lines.positions){
+            if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z)){
+                points.push_back(point);
+            }else{
+                invalidPoints++;
+            }
+        }
+        if (points.size() >= 2){
+            const size_t segments = lines.loop ? points.size() : points.size() - 1;
+            float total = 0.0f;
+            for (size_t i = 0; i < segments; i++)
+                total += points[i].distance(points[(i + 1) % points.size()]);
+            float length = 0.0f;
+            for (size_t i = 0; i < segments; i++){
+                const Vector3& a = points[i];
+                const Vector3& b = points[(i + 1) % points.size()];
+                const float next = length + a.distance(b);
+                LineData segment;
+                segment.pointA = a;
+                segment.pointB = b;
+                segment.colorA = lines.colorGradient.evaluate(total > 0.0f ? length / total : 0.0f);
+                segment.colorB = lines.colorGradient.evaluate(total > 0.0f ? next / total : 1.0f);
+                lines.polylineSegments.push_back(segment);
+                length = next;
+            }
+        }
+    }
+    finishRibbon(ribbon);
+
+    if (invalidPoints > 0 && !lines.warnedInvalidPoints){
+        lines.warnedInvalidPoints = true;
+        Log::warn("Line Renderer: %zu point(s) are not finite numbers (NaN or infinite) and are skipped", invalidPoints);
+    }
+}
+
+// the hairline segments a Line Renderer draws: its own (Segments) or its polyline's
+static const std::vector<LineData>& hairlineSegments(const LineRendererComponent& lines){
+    return (lines.mode == LineRendererMode::Polyline) ? lines.polylineSegments : lines.lines;
+}
+
+void RenderSystem::updateLinesGeometry(Entity entity, LineRendererComponent& lines, float dt){
+    (void)entity;
+    // another variant (width on or off, pixel widths, a base texture added or removed)
+    const uint64_t variant = (lines.widthMultiplier > 0.0f)
+        ? ribbonVariantPropertiesCached(scene, lines.customShader, lines.widthUnit, lines.shaderTextures, lines.ribbon)
+        : ShaderPool::getLinesProperties(false, true);
+    if (lines.loaded && !lines.needReload && variant != lines.loadedRibbonKey){
+        lines.needReload = true;
+    }
+
+    if (lines.needUpdateRibbon){
+        lines.needUpdateRibbon = false;
+        rebuildLinesGeometry(lines);
+        if (lines.loaded && lines.loadedRibbon){
+            if (lines.ribbon.vertices.size() > lines.ribbon.maxVertices || lines.ribbon.indices.size() > lines.ribbon.maxIndices){
+                lines.needReload = true;
+            }
+        }else if (lines.mode == LineRendererMode::Polyline && lines.polylineSegments.size() > lines.maxLines){
+            lines.maxLines = ribbonCapacity(lines.polylineSegments.size(), std::max(1u, lines.maxLines));
+            lines.needReload = true;
+        }
+        lines.needUpdateBuffer = true;
+    }
+
+    if (lines.loaded && lines.loadedRibbon && !lines.needReload && ribbonShouldShrink(lines.ribbon, dt)){
+        lines.needReload = true;
+    }
+}
+
+template<typename T>
+bool RenderSystem::loadRibbonRender(Entity entity, T& component, uint16_t pipelines, uint64_t ribbonVariant, BufferUsage usage){
+    (void)entity;
+    ObjectRender& render = component.render;
+
+    render.beginLoad(PrimitiveType::TRIANGLES);
+
+    component.shaderProperties = ribbonVariant | postColorProperty(ShaderType::LINES);
+    const std::string& shaderBase = component.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : component.customShader;
+    const std::string shaderSrc = getComponentShaderReference(shaderBase, component.shaderFeatures, component.blendMode);
+    component.customShaderId = ShaderPool::registerCustomShader(shaderSrc);
+    component.shader = ShaderPool::get(ShaderType::LINES, component.shaderProperties, component.customShaderId);
+    if (!component.shader->isCreated()){
+        // a custom shader that failed to compile falls back to the built-in shader
+        if (component.customShaderId != 0 && ShaderPool::isShaderBuildFailed(ShaderType::LINES, component.shaderProperties, component.customShaderId)){
+            Log::error("Custom shader '%s' failed to compile; using the built-in shader", shaderSrc.c_str());
+            component.customShaderId = 0;
+            component.shader = ShaderPool::get(ShaderType::LINES, component.shaderProperties, 0);
+        }
+        if (!component.shader->isCreated())
+            return false;
+    }
+    render.setShader(component.shader.get());
+    ShaderData& shaderData = component.shader.get()->shaderData;
+
+    component.slotVSParams = shaderData.getUniformBlockIndex(UniformBlockType::LINES_VS_PARAMS);
+    component.shaderManifest = (component.customShaderId != 0) ? findManifest(shaderBase) : nullptr;
+    component.customVSParams.resolve(shaderData, "u_vs_customParams");
+    component.customFSParams.resolve(shaderData, "u_fs_customParams");
+    component.customVSParams.writeValues(component.shaderUniforms, nullptr, component.shaderManifest.get());
+    component.customFSParams.writeValues(component.shaderUniforms, nullptr, component.shaderManifest.get());
+    component.needUpdateShaderUniforms = false;
+
+    // the buffers, sized to the data with room to grow (powers of two)
+    LineRibbonData& ribbon = component.ribbon;
+    ribbon.maxVertices = ribbonCapacity(ribbon.vertices.size(), RIBBON_MIN_VERTICES);
+    ribbon.maxIndices = ribbonCapacity(ribbon.indices.size(), RIBBON_MIN_INDICES);
+    ribbon.index32 = ribbon.maxVertices > 65536;
+    ribbon.lowUseTime = 0.0f;
+
+    component.buffer.clear();
+    component.buffer.addAttribute(AttributeType::POSITION, 3, offsetof(LineRibbonVertex, position));
+    component.buffer.addAttribute(AttributeType::COLOR, 4, offsetof(LineRibbonVertex, color));
+    component.buffer.addAttribute(AttributeType::TEXCOORD1, 2, offsetof(LineRibbonVertex, uv));
+    component.buffer.addAttribute(AttributeType::LINETANGENTIN, 3, offsetof(LineRibbonVertex, tangentIn));
+    component.buffer.addAttribute(AttributeType::LINETANGENTOUT, 3, offsetof(LineRibbonVertex, tangentOut));
+    component.buffer.addAttribute(AttributeType::LINEPARAMS, 4, offsetof(LineRibbonVertex, params));
+    component.buffer.setStride(sizeof(LineRibbonVertex));
+    component.buffer.setRenderAttributes(true);
+    component.buffer.setUsage(usage);
+    component.buffer.getRender()->createBuffer(ribbon.maxVertices * sizeof(LineRibbonVertex), nullptr, component.buffer.getType(), usage);
+    for (auto const& attr : component.buffer.getAttributes()){
+        render.addAttribute(shaderData.getAttrIndex(attr.first), component.buffer.getRender(), attr.second.getElements(), attr.second.getDataType(),
+                            component.buffer.getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
+    }
+
+    const AttributeDataType indexType = ribbon.index32 ? AttributeDataType::UNSIGNED_INT : AttributeDataType::UNSIGNED_SHORT;
+    const unsigned int indexSize = ribbon.index32 ? sizeof(uint32_t) : sizeof(uint16_t);
+    ribbon.indexBuffer.clear();
+    ribbon.indexBuffer.setType(BufferType::INDEX_BUFFER);
+    ribbon.indexBuffer.setUsage(usage);
+    ribbon.indexBuffer.setStride(indexSize);
+    ribbon.indexBuffer.getRender()->createBuffer(ribbon.maxIndices * indexSize, nullptr, BufferType::INDEX_BUFFER, usage);
+    render.setIndex(ribbon.indexBuffer.getRender(), indexType, 0);
+
+    component.needUpdateBuffer = true;
+
+    const std::vector<std::string> features = ShaderReference::getEnabledFeatures(component.customShader, component.shaderFeatures);
+    if (!loadShaderLibraryBindings(component.libraryBindings, shaderData, render, component.shaderTextures, component.shaderManifest.get(), features)){
+        return false;
+    }
+
+    RenderState state = resolveComponentRenderState(component.blendMode, component.depthWrite, component.stencil, component.colorWrite,
+                                                    component.shaderManifest.get(), component.shaderFeatures, false);
+    // both faces: which one a camera sees depends on its side of the ribbon
+    state.faceCulling = false;
+    // AUTO writes no depth when blended: blended ribbons writing it cut each other; an opaque
+    // ribbon writes it like any opaque object (an explicit choice, or the manifest's zwrite=,
+    // stays)
+    MaterialDepthWrite manifestDepthWrite = MaterialDepthWrite::AUTO;
+    if (component.shaderManifest)
+        manifestDepthWrite = component.shaderManifest->resolveState(component.shaderManifest->resolveFeatures(component.shaderFeatures)).depthWrite;
+    if (component.depthWrite == MaterialDepthWrite::AUTO && manifestDepthWrite == MaterialDepthWrite::AUTO && state.blend != BlendMode::NONE)
+        state.depthWrite = false;
+    component.transparent = state.blend != BlendMode::NONE;
+    // the transparent queue order is the component's, offset by the shader's @state priority=
+    component.queuePriority = 0;
+    if (component.shaderManifest)
+        component.queuePriority = component.shaderManifest->resolveState(component.shaderManifest->resolveFeatures(component.shaderFeatures)).priority;
+    component.libraryBindings.postColorBlend = postColorBlendOf(state, component.shaderManifest != nullptr);
+    if (!render.endLoad(pipelines, state, msaaPipelineSamples)){
+        return false;
+    }
+    return true;
+}
+
+template<typename T>
+void RenderSystem::destroyRibbonRender(Entity entity, T& component){
+    (void)entity;
+    if (!component.needReload){
+        if (component.shader){
+            component.shader.reset();
+            ShaderPool::remove(ShaderType::LINES, component.shaderProperties, component.customShaderId);
+        }
+        for (auto& shaderTexture : component.shaderTextures){
+            shaderTexture.second.destroy();
+        }
+    }
+    component.render.destroy();
+    if (!component.needReload){
+        component.buffer.clearAll();
+        component.ribbon.indexBuffer.clearAll();
+    }
+    component.buffer.getRender()->destroyBuffer();
+    component.ribbon.indexBuffer.getRender()->destroyBuffer();
+    component.ribbon.maxVertices = 0;
+    component.ribbon.maxIndices = 0;
+
+    component.slotVSParams = -1;
+    component.customVSParams.clear();
+    component.customFSParams.clear();
+    component.libraryBindings.clear();
+}
+
+template<typename T>
+bool RenderSystem::drawRibbon(T& component, const Matrix4& modelMatrix, const Vector3& alignAxis, bool transformZ,
+                              CameraComponent& camera, Transform& camTransform, PipelineType pipType){
+    LineRibbonData& ribbon = component.ribbon;
+    if (!component.loaded || ribbon.indexCount == 0)
+        return true;
+    // grown past the buffers: the reload this update asked for draws it
+    if (ribbon.vertices.size() > ribbon.maxVertices || ribbon.indices.size() > ribbon.maxIndices)
+        return true;
+
+    if (component.needUpdateBuffer){
+        // once a frame (the buffers are shared by every camera): setData here because the
+        // component may have moved in its array since the last frame
+        component.buffer.setData((unsigned char*)ribbon.vertices.data(), ribbon.vertices.size() * sizeof(LineRibbonVertex));
+        component.buffer.getRender()->updateBuffer(component.buffer.getSize(), component.buffer.getData());
+        if (ribbon.index32){
+            ribbon.indexBuffer.setData((unsigned char*)ribbon.indices.data(), ribbon.indices.size() * sizeof(uint32_t));
+        }else{
+            ribbon.indices16.assign(ribbon.indices.begin(), ribbon.indices.end());
+            ribbon.indexBuffer.setData((unsigned char*)ribbon.indices16.data(), ribbon.indices16.size() * sizeof(uint16_t));
+        }
+        ribbon.indexBuffer.getRender()->updateBuffer(ribbon.indexBuffer.getSize(), ribbon.indexBuffer.getData());
+        component.needUpdateBuffer = false;
+    }
+
+    ObjectRender& render = component.render;
+
+    if (!component.libraryBindings.textures.empty() && shaderTexturesOutdated(component.libraryBindings, component.shaderTextures)){
+        bindShaderTextures(component.libraryBindings, render, component.shaderTextures);
+    }
+
+    if (!render.beginDraw(pipType)){
+        component.needReload = true;
+        return false;
+    }
+
+    vs_lines_ribbon_params_t params = {};
+    params.viewProjection = camera.viewProjectionMatrix;
+    if (isRenderingFlipped(camera)){
+        static const Matrix4 flipYMatrix = Matrix4::scaleMatrix(Vector3(1, -1, 1));
+        params.viewProjection = flipYMatrix * params.viewProjection;
+    }
+    params.modelMatrix = modelMatrix;
+    params.mvpMatrix = params.viewProjection * modelMatrix;
+    // worldDirection is the view's backward axis: towards the camera
+    params.cameraPosition = (camera.type != CameraType::CAMERA_PERSPECTIVE)
+        ? Vector4(camera.worldDirection.x, camera.worldDirection.y, camera.worldDirection.z, 1.0f)
+        : Vector4(camTransform.worldPosition.x, camTransform.worldPosition.y, camTransform.worldPosition.z, 0.0f);
+    params.alignAxis = Vector4(alignAxis.x, alignAxis.y, alignAxis.z, transformZ ? 1.0f : 0.0f);
+    params.viewport = Vector4(passResolution.x, passResolution.y, 0.0f, 0.0f);
+    render.applyUniformBlock(component.slotVSParams, sizeof(vs_lines_ribbon_params_t), &params);
+    applyComponentUniforms(render, component.customVSParams, component.customFSParams, component.shaderUniforms, component.shaderManifest.get(),
+                           component.needUpdateShaderUniforms, frameTime, passResolution);
+    applyFrameBlock(render, component.libraryBindings);
+    render.draw(0, ribbon.indexCount, 1);
+
+    return true;
+}
+
+// the world normal of the transform's XY plane (TransformZ alignment): the cross product of
+// its X and Y axes (the normal matrix's Z: with a non-uniform scale and a rotation the model's
+// Z axis is not perpendicular to that plane), else its Z axis when X or Y is scaled to 0
+static Vector3 transformZAxis(const Matrix4& model){
+    const Vector3 origin = model * Vector3(0.0f, 0.0f, 0.0f);
+    const Vector3 x = (model * Vector3(1.0f, 0.0f, 0.0f)) - origin;
+    const Vector3 y = (model * Vector3(0.0f, 1.0f, 0.0f)) - origin;
+    Vector3 axis = x.crossProduct(y);
+    float length = axis.length();
+    if (!(length > 1e-12f)){
+        axis = (model * Vector3(0.0f, 0.0f, 1.0f)) - origin;
+        length = axis.length();
+    }
+    return (length > 1e-12f) ? axis / length : Vector3(0.0f, 0.0f, 1.0f);
+}
+
+AABB RenderSystem::linesWorldBounds(const LineRendererComponent& lines, const Transform& transform) const{
+    AABB bounds;
+    bounds.setNull();
+    if (!lines.loadedRibbon || lines.widthUnit == LineWidthUnit::Pixels || lines.ribbon.bounds.isNull())
+        return bounds;
+    bounds = lines.useWorldSpace ? lines.ribbon.bounds : (transform.modelMatrix * lines.ribbon.bounds);
+    if (bounds.isNull() || !bounds.isFinite()){
+        bounds.setNull();
+        return bounds;
+    }
+    const float grow = lines.ribbon.maxHalfWidth * LineRibbonBuilder::boundsGrowth(lines.numCornerVertices);
+    bounds.setExtents(bounds.getMinimum() - Vector3(grow, grow, grow), bounds.getMaximum() + Vector3(grow, grow, grow));
+    return bounds;
+}
+
+bool RenderSystem::isTrailRenderActive(Entity entity, const TrailRendererComponent& trail, uint32_t cullingMask) const{
+    if (!trail.enabled || !scene->isEntityActiveInHierarchy(entity) || !isLayerVisible(entity, cullingMask))
+        return false;
+#ifdef JASPERENGINE_EDITOR
+    if (!passDrawsOverlays && isEditorOverlay(entity))
+        return false;
+    if (entity == passExcludedEntity)
+        return false;
+#endif
+    return true;
+}
+
+void RenderSystem::changeTrailLoaded(void* data){
+    check_load_t* loadObj = (check_load_t*)data;
+    if (Engine::isViewLoaded()){
+        if (TrailRendererComponent* trail = loadObj->scene->findComponent<TrailRendererComponent>(loadObj->entity))
+            trail->loaded = true;
+    }
+    delete loadObj;
+}
+
+void RenderSystem::changeTrailDestroy(void* data){
+    check_load_t* loadObj = (check_load_t*)data;
+    if (TrailRendererComponent* trail = loadObj->scene->findComponent<TrailRendererComponent>(loadObj->entity)){
+        trail->loaded = false;
+        trail->loadCalled = false;
+    }
+    delete loadObj;
+}
+
+bool RenderSystem::loadTrail(Entity entity, TrailRendererComponent& trail, uint16_t pipelines){
+    if (!Engine::isViewLoaded())
+        return false;
+
+    // looked up again (a manifest added or removed reloads)
+    trail.ribbon.manifestKnown = false;
+    const uint64_t variant = getTrailVariantProperties(scene, trail);
+    if (!loadRibbonRender(entity, trail, pipelines, variant, BufferUsage::STREAM))
+        return false;
+    trail.loadedRibbonKey = variant;
+    trail.needReload = false;
+    trail.loadCalled = true;
+    SystemRender::addQueueCommand(&changeTrailLoaded, new check_load_t{scene, entity});
+    return true;
+}
+
+void RenderSystem::destroyTrail(Entity entity, TrailRendererComponent& trail){
+    if (!trail.loaded)
+        return;
+    destroyRibbonRender(entity, trail);
+    SystemRender::addQueueCommand(&changeTrailDestroy, new check_load_t{scene, entity});
+}
+
+void RenderSystem::updateTrail(Entity entity, TrailRendererComponent& trail, float dt){
+    if (trail.loaded && !trail.needReload &&
+            ribbonVariantPropertiesCached(scene, trail.customShader, trail.widthUnit, trail.shaderTextures, trail.ribbon) != trail.loadedRibbonKey){
+        trail.needReload = true;
+    }
+
+    if (trail.needUpdateRibbon){
+        trail.needUpdateRibbon = false;
+
+        LineRibbonData& ribbon = trail.ribbon;
+        ribbon.vertices.clear();
+        ribbon.indices.clear();
+        ribbon.bounds.setNull();
+        ribbon.length = 0.0f;
+        ribbon.maxHalfWidth = 0.0f;
+        trail.worldAABB.setNull();
+
+        if (std::shared_ptr<TrailSystem> trails = scene->getSystem<TrailSystem>()){
+            trails->getRibbonPoints(entity, trail, trailPoints, trailPointT);
+        }else{
+            trailPoints.clear();
+            trailPointT.clear();
+        }
+        if (trailPoints.size() >= 2){
+            LineRibbonSettings settings;
+            settings.widthMultiplier = trail.widthMultiplier;
+            settings.widthCurve = &trail.widthCurve;
+            settings.colorGradient = &trail.colorGradient;
+            settings.numCornerVertices = trail.numCornerVertices;
+            settings.numCapVertices = trail.numCapVertices;
+            settings.textureMode = trail.textureMode;
+            settings.textureScale = trail.textureScale;
+            const LineRibbonResult result = LineRibbonBuilder::build(trailPoints.data(), trailPoints.size(), settings,
+                                                                     ribbon.vertices, ribbon.indices, trailPointT.data());
+            ribbon.bounds = result.bounds;
+            ribbon.length = result.length;
+            ribbon.maxHalfWidth = result.maxHalfWidth;
+            if (trail.widthUnit == LineWidthUnit::World && !result.bounds.isNull() && result.bounds.isFinite()){
+                const float half = result.maxHalfWidth * LineRibbonBuilder::boundsGrowth(trail.numCornerVertices);
+                const Vector3 grow(half, half, half);
+                trail.worldAABB = AABB(result.bounds.getMinimum() - grow, result.bounds.getMaximum() + grow);
+            }
+        }
+        finishRibbon(ribbon);
+
+        if (trail.loaded && (ribbon.vertices.size() > ribbon.maxVertices || ribbon.indices.size() > ribbon.maxIndices)){
+            trail.needReload = true;
+        }
+        trail.needUpdateBuffer = true;
+    }
+
+    if (trail.loaded && !trail.needReload && ribbonShouldShrink(trail.ribbon, dt)){
+        trail.needReload = true;
+    }
+
+    if (trail.loaded && trail.needReload){
+        destroyTrail(entity, trail);
+    }
+    if (!trail.loadCalled){
+        loadTrail(entity, trail, getScenePipelines());
+    }
+}
+
+bool RenderSystem::drawTrail(Entity entity, TrailRendererComponent& trail, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType){
+    (void)entity;
+    if (!trail.worldAABB.isNull() && !isInsideCamera(camera, trail.worldAABB))
+        return true;
+    // trails live in world space
+    static const Matrix4 identity;
+    const bool transformZ = trail.alignment == LineAlignment::TransformZ;
+    return drawRibbon(trail, identity, transformZ ? transformZAxis(objectModel(transform)) : Vector3(0.0f, 0.0f, 1.0f), transformZ,
+                      camera, camTransform, pipType);
+}
+
 bool RenderSystem::loadLines(Entity entity, LineRendererComponent& lines, uint16_t pipelines){
 
     if (!Engine::isViewLoaded()) 
         return false;
 
-    if (lines.lines.size() == 0)
+    if (lines.needUpdateRibbon){
+        lines.needUpdateRibbon = false;
+        rebuildLinesGeometry(lines);
+    }
+
+    // a width: the ribbon (thick line), loaded even before it has points so its shader is ready
+    if (lines.widthMultiplier > 0.0f){
+        lines.ribbon.manifestKnown = false;
+        const uint64_t variant = getLinesVariantProperties(scene, lines);
+        if (!loadRibbonRender(entity, lines, pipelines, variant, BufferUsage::DYNAMIC))
+            return false;
+        lines.loadedRibbon = true;
+        lines.loadedRibbonKey = variant;
+        lines.needReload = false;
+        lines.loadCalled = true;
+        SystemRender::addQueueCommand(&changeLoaded, new check_load_t{scene, entity});
+        return true;
+    }
+
+    // the hairline: the 1-pixel LINES primitive, as it always was
+    if (hairlineSegments(lines).size() == 0)
         return false;
+    if (hairlineSegments(lines).size() > lines.maxLines)
+        lines.maxLines = (unsigned int)hairlineSegments(lines).size();
 
     ObjectRender& render = lines.render;
 
@@ -10582,6 +11165,8 @@ bool RenderSystem::loadLines(Entity entity, LineRendererComponent& lines, uint16
         return false;
     }
 
+    lines.loadedRibbon = false;
+    lines.loadedRibbonKey = ShaderPool::getLinesProperties(false, true);
     lines.needReload = false;
     lines.loadCalled = true;
     SystemRender::addQueueCommand(&changeLoaded, new check_load_t{scene, entity});
@@ -10723,12 +11308,26 @@ void RenderSystem::destroyPoints(Entity entity, PointsComponent& points){
     SystemRender::addQueueCommand(&changeDestroy, new check_load_t{scene, entity});
 }
 
-bool RenderSystem::drawLines(LineRendererComponent& lines, Transform& transform, Transform& camTransform, PipelineType pipType){
-    if (lines.loaded && lines.lines.size() > 0){
+bool RenderSystem::drawLines(Entity entity, LineRendererComponent& lines, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType){
+    (void)entity;
+    if (lines.loadedRibbon){
+        const AABB bounds = linesWorldBounds(lines, transform);
+        if (!bounds.isNull() && !isInsideCamera(camera, bounds))
+            return true;
+        static const Matrix4 identity;
+        const Matrix4& model = objectModel(transform);
+        const bool transformZ = lines.alignment == LineAlignment::TransformZ;
+        return drawRibbon(lines, lines.useWorldSpace ? identity : model, transformZ ? transformZAxis(model) : Vector3(0.0f, 0.0f, 1.0f),
+                          transformZ, camera, camTransform, pipType);
+    }
+
+    const std::vector<LineData>& segments = hairlineSegments(lines);
+    // past the buffer: the reload this update asked for draws them
+    if (lines.loaded && segments.size() > 0 && segments.size() <= lines.maxLines){
 
         if (lines.needUpdateBuffer){
             // setData here because component can change order and lose reference
-            lines.buffer.setData((unsigned char*)(&lines.lines[0]), sizeof(LineData)*lines.lines.size());
+            lines.buffer.setData((unsigned char*)(&segments[0]), sizeof(LineData)*segments.size());
             lines.buffer.getRender()->updateBuffer(lines.buffer.getSize(), lines.buffer.getData());
             lines.needUpdateBuffer = false;
         }
@@ -10743,10 +11342,20 @@ bool RenderSystem::drawLines(LineRendererComponent& lines, Transform& transform,
             lines.needReload = true;
             return false;
         }
-        render.applyUniformBlock(lines.slotVSParams, sizeof(float) * 16, (void*)&objectMVP(transform));
+        if (lines.useWorldSpace){
+            // world points: the camera's matrix alone
+            Matrix4 viewProjection = camera.viewProjectionMatrix;
+            if (isRenderingFlipped(camera)){
+                static const Matrix4 flipYMatrix = Matrix4::scaleMatrix(Vector3(1, -1, 1));
+                viewProjection = flipYMatrix * viewProjection;
+            }
+            render.applyUniformBlock(lines.slotVSParams, sizeof(float) * 16, (void*)&viewProjection);
+        }else{
+            render.applyUniformBlock(lines.slotVSParams, sizeof(float) * 16, (void*)&objectMVP(transform));
+        }
         applyComponentUniforms(render, lines.customVSParams, lines.customFSParams, lines.shaderUniforms, lines.shaderManifest.get(), lines.needUpdateShaderUniforms, frameTime, passResolution);
         applyFrameBlock(render, lines.libraryBindings);
-        render.draw(0, lines.lines.size() * 2, 1);
+        render.draw(0, segments.size() * 2, 1);
     }
 
     return true;
@@ -10755,6 +11364,13 @@ bool RenderSystem::drawLines(LineRendererComponent& lines, Transform& transform,
 void RenderSystem::destroyLines(Entity entity, LineRendererComponent& lines){
     if (!lines.loaded)
         return;
+
+    if (lines.loadedRibbon){
+        destroyRibbonRender(entity, lines);
+        lines.loadedRibbon = false;
+        SystemRender::addQueueCommand(&changeDestroy, new check_load_t{scene, entity});
+        return;
+    }
 
     if (!lines.needReload){
         //Destroy shader
@@ -11656,6 +12272,10 @@ void RenderSystem::needReloadLines() {
         LineRendererComponent& lines = linesArray->getComponentFromIndex(i);
         lines.needReload = true;
     }
+    auto trails = scene->getComponentArray<TrailRendererComponent>();
+    for (size_t i = 0; i < trails->size(); i++) {
+        trails->getComponentFromIndex(i).needReload = true;
+    }
 }
 
 void RenderSystem::needReloadMeshes() {
@@ -11799,9 +12419,19 @@ void RenderSystem::getLoadCount(size_t& loaded, size_t& total) const{
     auto linesArray = scene->getComponentArray<LineRendererComponent>();
     for (int i = 0; i < linesArray->size(); i++) {
         const LineRendererComponent& lines = linesArray->getComponentFromIndex(i);
-        // An empty Lines never loads: addLine() only sets needReload when maxLines grows.
-        if (!lines.lines.empty())
+        // An empty hairline never loads: addLine() only sets needReload when maxLines grows. A
+        // thick line loads without points (its shader made ready)
+        const bool hasData = lines.widthMultiplier > 0.0f ||
+                             (lines.mode == LineRendererMode::Polyline ? lines.positions.size() >= 2 : !lines.lines.empty());
+        if (hasData)
             count(lines.loaded || (!lines.loadCalled && isShaderUnavailable(lines.shader, ShaderType::LINES, lines.shaderProperties, lines.customShaderId)));
+    }
+
+    // Check TrailRendererComponents (loaded without points, so their shader is ready)
+    auto trailArray = scene->getComponentArray<TrailRendererComponent>();
+    for (size_t i = 0; i < trailArray->size(); i++) {
+        const TrailRendererComponent& trail = trailArray->getComponentFromIndex(i);
+        count(trail.loaded || (!trail.loadCalled && isShaderUnavailable(trail.shader, ShaderType::LINES, trail.shaderProperties, trail.customShaderId)));
     }
 
     // Check the SkyboxComponent: only the first is drawn (and loaded), so another one would
@@ -13742,6 +14372,8 @@ void RenderSystem::update(double dt){
             }
         }else if (signature.test(scene->getComponentId<LineRendererComponent>())){
             LineRendererComponent& lines = scene->getComponent<LineRendererComponent>(entity);
+            // the ribbon or the polyline's hairline segments, rebuilt when the data changed
+            updateLinesGeometry(entity, lines, (float)dt);
             if (lines.loaded && lines.needReload){
                 destroyLines(entity, lines);
             }
@@ -15456,6 +16088,26 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         screenFluids->drawScreen(targetFormatFor(colorPip, passMsaa), isRenderingFlipped(camera));
     };
 
+    // A Trail Renderer: drawn after its GameObject's own renderer (whatever that is), in the
+    // transparent queue when it blends and the pass sorts, else in place (a 2D pass: in the
+    // hierarchy order, like sprites)
+    auto drawOrQueueTrail = [&](Entity entity, Signature signature, Transform& transform){
+        if (!signature.test(scene->getComponentId<TrailRendererComponent>()))
+            return;
+        TrailRendererComponent& trail = scene->getComponent<TrailRendererComponent>(entity);
+        if (!transform.visible || !trail.loaded || trail.ribbon.indexCount == 0 || !isTrailRenderActive(entity, trail, cullingMask))
+            return;
+        if (trail.transparent && distanceSort){
+            if (!trail.worldAABB.isNull() && !isInsideCamera(camera, trail.worldAABB))
+                return;
+            const Vector3 centre = trail.worldAABB.isNull() ? transform.worldPosition : trail.worldAABB.getCenter();
+            transparentRenders.push_back({TransparentRenderType::TRAIL, entity, nullptr, nullptr, nullptr, nullptr, nullptr, &transform,
+                                          (centre - cameraTransform.worldPosition).length(), trail.sortPriority + trail.queuePriority, transparentOrder++, nullptr, &trail});
+        }else{
+            drawTrail(entity, trail, transform, camera, cameraTransform, colorPip);
+        }
+    };
+
     for (int i = 0; i < transforms->size(); i++){
         Transform& transform = transforms->getComponentFromIndex(i);
         Entity entity = transforms->getEntity(i);
@@ -15479,6 +16131,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }
 
         if (distanceSort && signature.test(scene->getComponentId<MeshComponent>())){
+            drawOrQueueTrail(entity, signature, transform);
             continue; // drawn above
         }
 
@@ -15600,10 +16253,25 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }else if (signature.test(scene->getComponentId<LineRendererComponent>())){
             LineRendererComponent& lines = scene->getComponent<LineRendererComponent>(entity);
 
-            if (transform.visible && renderActive)
-                drawLines(lines, transform, cameraTransform, colorPip);
+            if (transform.visible && renderActive){
+                // a blended thick line sorts with the transparent renderers; a hairline and an
+                // opaque ribbon draw in place, as lines always did
+                if (lines.loadedRibbon && lines.transparent && distanceSort){
+                    const AABB bounds = linesWorldBounds(lines, transform);
+                    if (bounds.isNull() || isInsideCamera(camera, bounds)){
+                        const float distance = (lines.useWorldSpace && !bounds.isNull())
+                            ? (bounds.getCenter() - cameraTransform.worldPosition).length() : objectDistance(transform);
+                        transparentRenders.push_back({TransparentRenderType::LINES, entity, nullptr, nullptr, nullptr, nullptr, nullptr, &transform,
+                                                      distance, lines.sortPriority + lines.queuePriority, transparentOrder++, &lines, nullptr});
+                    }
+                }else{
+                    drawLines(entity, lines, transform, camera, cameraTransform, colorPip);
+                }
+            }
 
         }
+
+        drawOrQueueTrail(entity, signature, transform);
 
         if (hasActiveScissor){
             // screen pixels would overflow an offscreen SSR / post-process attachment
@@ -15623,6 +16291,10 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             passSubmeshQueue = SubmeshQueue::ALL;
         }else if (renderData.type == TransparentRenderType::POINTS){
             drawPoints(renderData.entity, *renderData.points, *renderData.transform, camera, cameraTransform, colorPip);
+        }else if (renderData.type == TransparentRenderType::LINES){
+            drawLines(renderData.entity, *renderData.lines, *renderData.transform, camera, cameraTransform, colorPip);
+        }else if (renderData.type == TransparentRenderType::TRAIL){
+            drawTrail(renderData.entity, *renderData.trail, *renderData.transform, camera, cameraTransform, colorPip);
         }
     }
 
@@ -15751,6 +16423,9 @@ void RenderSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
     } else if (componentId == scene->getComponentId<LineRendererComponent>()) {
         LineRendererComponent& lines = scene->getComponent<LineRendererComponent>(entity);
         destroyLines(entity, lines);
+    } else if (componentId == scene->getComponentId<TrailRendererComponent>()) {
+        TrailRendererComponent& trail = scene->getComponent<TrailRendererComponent>(entity);
+        destroyTrail(entity, trail);
     } else if (componentId == scene->getComponentId<SkyboxComponent>()) {
         SkyboxComponent& sky = scene->getComponent<SkyboxComponent>(entity);
         destroySky(entity, sky);

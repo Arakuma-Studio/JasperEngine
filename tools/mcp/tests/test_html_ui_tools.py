@@ -99,13 +99,24 @@ LIMITS.update({"bake_vertex_animation": 2000})
 # script data (spec 2026-10-31-script-data 6.4): user_settings measured 515 (the PlayerPrefs
 # store: list/get/set/delete/clear); total 106611 with it (106096 before), the limit raised by it
 LIMITS.update({"user_settings": 550})
-TOTAL_LIMIT = 106620
-# anim layers (spec 10, 11.5; tool_budget.py): get_animation 670 -> 815 (mask, controller: +145) and
+# input (spec 2026-10-31-input 12): send_input's action/axis/axis_delta events and the input.actions setting,
+# measured on the merged tree: total 106687 (106611 before), the limit raised by them
+# physics-2d: edit_physics_material (396) and set_joint's motor / spring / limits / break /
+# enable_collision / anchor_space paid by moving set_joint's type lists and per-argument texts to
+# jasper://docs/physics (set_joint 1020 -> 756); merged with main (script-data, input): 150 tools
+# measured 106620, the limit lowered to it
+# script-lifecycle: check_script's lifecycle warnings and update_script_entry's enabled in Play, paid
+# by shorter texts of both; merged with main (script-data, input, physics-2d): 150 tools measured
+# 106621, the limit set to it
+# lines and trails: no new tool; create_entity's type "trail_renderer" paid by a shorter create_entity
+# description, set_shape_points' line text reworded; measured on the merged tree: total 106692 (106687 before)
+TOTAL_LIMIT = 106700  # re-measured on the merged tree by the lead's verification
+# anim layers (spec 10, 11.5): get_animation 670 -> 815 (mask, controller: +145) and
 # preview_animation 654 -> 721 (over: +67), phase 1 +212 (under its 600); edit_animator 2290 (under its
-# 3500; the op fields are in jasper://docs/animation): +2502 in all. The branch base measured 106687
-# (67 over the line above after the input feature), 109189 with these; the limits raised by them
+# 3500; the op fields are in jasper://docs/animation): +2502 in all, the limits raised by them
+# (re-measured on the merged tree below)
 LIMITS.update({"get_animation": 830, "preview_animation": 740, "edit_animator": 2400})
-TOTAL_LIMIT = 106687 + 2502
+TOTAL_LIMIT = 106700 + 2502
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

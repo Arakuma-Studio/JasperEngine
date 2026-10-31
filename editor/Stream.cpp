@@ -18,6 +18,7 @@
 #include "pool/SoundPool.h"
 #include "pool/ShaderPool.h"
 #include "util/CameraTextureLink.h"
+#include "util/Color.h"
 #include "util/FluidTextureLink.h"
 #include "util/ProjectUtils.h"
 #include "util/StringUtils.h"
@@ -33,6 +34,8 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdio>
+#include <limits>
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
@@ -588,6 +591,9 @@ std::string editor::Stream::attributeTypeToString(AttributeType type) {
         case AttributeType::VAT_INDEX: return "vatindex";
         case AttributeType::INSTANCEVAT0: return "instancevat0";
         case AttributeType::INSTANCEVAT1: return "instancevat1";
+        case AttributeType::LINETANGENTIN: return "linetangentin";
+        case AttributeType::LINETANGENTOUT: return "linetangentout";
+        case AttributeType::LINEPARAMS: return "lineparams";
         default: return "position"; // Default
     }
 }
@@ -633,6 +639,9 @@ AttributeType editor::Stream::stringToAttributeType(const std::string& str) {
     if (str == "vatindex") return AttributeType::VAT_INDEX;
     if (str == "instancevat0") return AttributeType::INSTANCEVAT0;
     if (str == "instancevat1") return AttributeType::INSTANCEVAT1;
+    if (str == "linetangentin") return AttributeType::LINETANGENTIN;
+    if (str == "linetangentout") return AttributeType::LINETANGENTOUT;
+    if (str == "lineparams") return AttributeType::LINEPARAMS;
     return AttributeType::POSITION; // Default
 }
 
@@ -1730,6 +1739,229 @@ Vector4 editor::Stream::decodeVector4(const YAML::Node& node) {
     }
 
     return Vector4(decodeFinite(node[0], 0.0f), decodeFinite(node[1], 0.0f), decodeFinite(node[2], 0.0f), decodeFinite(node[3], 0.0f));
+}
+
+std::string editor::Stream::curveWrapToString(CurveWrap wrap) {
+    switch (wrap) {
+        case CurveWrap::Clamp: return "clamp";
+        case CurveWrap::Loop: return "loop";
+        case CurveWrap::PingPong: return "ping_pong";
+    }
+    return "clamp";
+}
+
+CurveWrap editor::Stream::stringToCurveWrap(const std::string& str) {
+    if (str == "loop" || str == "repeat") return CurveWrap::Loop;
+    if (str == "ping_pong" || str == "pingpong" || str == "pingPong") return CurveWrap::PingPong;
+    return CurveWrap::Clamp;
+}
+
+YAML::Node editor::Stream::encodeCurve(const AnimationCurve& curve) {
+    YAML::Node node;
+    YAML::Node keys(YAML::NodeType::Sequence);
+    for (const CurveKey& key : curve.keys) {
+        YAML::Node keyNode;
+        keyNode.SetStyle(YAML::EmitterStyle::Flow);
+        keyNode.push_back(YamlNumbers::text(key.time));
+        keyNode.push_back(YamlNumbers::text(key.value));
+        if (key.inTangent != 0.0f || key.outTangent != 0.0f) {
+            keyNode.push_back(YamlNumbers::text(key.inTangent));
+            keyNode.push_back(YamlNumbers::text(key.outTangent));
+        }
+        keys.push_back(keyNode);
+    }
+    node["keys"] = keys;
+    if (curve.preWrap != CurveWrap::Clamp) node["pre"] = curveWrapToString(curve.preWrap);
+    if (curve.postWrap != CurveWrap::Clamp) node["post"] = curveWrapToString(curve.postWrap);
+    return node;
+}
+
+AnimationCurve editor::Stream::decodeCurve(const YAML::Node& node, const AnimationCurve& fallback) {
+    if (!node || node.IsNull()) return fallback;
+    // a number: a constant curve
+    if (node.IsScalar()) {
+        try {
+            return AnimationCurve::constant(node.as<float>());
+        } catch (const YAML::Exception&) {
+            return fallback;
+        }
+    }
+    AnimationCurve curve;
+    YAML::Node keys = node.IsSequence() ? node : node["keys"];
+    if (keys && keys.IsSequence()) {
+        for (const YAML::Node& keyNode : keys) {
+            CurveKey key;
+            try {
+                if (keyNode.IsSequence() && keyNode.size() >= 2) {
+                    key.time = keyNode[0].as<float>();
+                    key.value = keyNode[1].as<float>();
+                    if (keyNode.size() >= 4) {
+                        key.inTangent = keyNode[2].as<float>();
+                        key.outTangent = keyNode[3].as<float>();
+                    }
+                } else if (keyNode.IsMap()) {
+                    key.time = keyNode["time"] ? keyNode["time"].as<float>() : 0.0f;
+                    key.value = keyNode["value"] ? keyNode["value"].as<float>() : 0.0f;
+                    if (keyNode["inTangent"]) key.inTangent = keyNode["inTangent"].as<float>();
+                    if (keyNode["outTangent"]) key.outTangent = keyNode["outTangent"].as<float>();
+                } else {
+                    continue;
+                }
+            } catch (const YAML::Exception&) {
+                continue;
+            }
+            curve.keys.push_back(key);
+        }
+    }
+    if (node.IsMap()) {
+        // a wrap that is not a name: the default (clamp), with a warning
+        for (const char* side : {"pre", "post"}) {
+            const YAML::Node wrap = node[side];
+            if (!wrap) continue;
+            if (!wrap.IsScalar()) {
+                Out::warning("Curve: %s is not a wrap mode name (clamp, loop, ping_pong): clamp", side);
+                continue;
+            }
+            (std::string(side) == "pre" ? curve.preWrap : curve.postWrap) = stringToCurveWrap(wrap.Scalar());
+        }
+    }
+    curve.normalize();
+    return curve;
+}
+
+bool editor::Stream::parseHexColor(const std::string& text, Vector4& srgb, bool& hasAlpha) {
+    std::string hex = text;
+    if (!hex.empty() && hex[0] == '#') hex = hex.substr(1);
+    if (hex.size() != 6 && hex.size() != 8) return false;
+    for (char c : hex) {
+        if (!std::isxdigit(static_cast<unsigned char>(c))) return false;
+    }
+    float v[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+    for (size_t i = 0; i < hex.size() / 2; i++) {
+        v[i] = static_cast<float>(std::stoi(hex.substr(i * 2, 2), nullptr, 16)) / 255.0f;
+    }
+    srgb = Vector4(v[0], v[1], v[2], v[3]);
+    hasAlpha = hex.size() == 8;
+    return true;
+}
+
+bool editor::Stream::decodeColorValue(const YAML::Node& node, Vector4& linear, bool& hasAlpha) {
+    hasAlpha = false;
+    if (!node) return false;
+    if (node.IsScalar()) {
+        Vector4 srgb;
+        if (!parseHexColor(node.as<std::string>(), srgb, hasAlpha)) return false;
+        const Vector3 color = Color::sRGBToLinear(Vector3(srgb.x, srgb.y, srgb.z));
+        linear = Vector4(color.x, color.y, color.z, srgb.w);
+        return true;
+    }
+    if (node.IsSequence() && node.size() >= 3) {
+        linear = Vector4(decodeFinite(node[0], 0.0f), decodeFinite(node[1], 0.0f), decodeFinite(node[2], 0.0f),
+                         node.size() >= 4 ? decodeFinite(node[3], 1.0f) : 1.0f);
+        hasAlpha = node.size() >= 4;
+        return true;
+    }
+    return false;
+}
+
+namespace {
+
+    // a linear colour as "#RRGGBB" when that is exactly what it is (an 8-bit sRGB value read
+    // back gives it), else [r, g, b] in linear values
+    YAML::Node encodeGradientColor(const Vector3& linear) {
+        const Vector3 srgb = Color::linearTosRGB(Vector3(std::max(linear.x, 0.0f), std::max(linear.y, 0.0f), std::max(linear.z, 0.0f)));
+        const float channels[3] = {srgb.x, srgb.y, srgb.z};
+        const float linearChannels[3] = {linear.x, linear.y, linear.z};
+        int bytes[3];
+        bool exact = true;
+        for (int i = 0; i < 3 && exact; i++) {
+            if (!(channels[i] >= 0.0f && channels[i] <= 1.0f)) {
+                exact = false;
+                break;
+            }
+            bytes[i] = (int)std::lround(channels[i] * 255.0f);
+            const float back = Color::sRGBToLinear(Vector3((float)bytes[i] / 255.0f, 0.0f, 0.0f)).x;
+            exact = std::fabs(back - linearChannels[i]) <= 1e-6f;
+        }
+        if (exact) {
+            char text[8];
+            std::snprintf(text, sizeof(text), "#%02X%02X%02X", bytes[0], bytes[1], bytes[2]);
+            return YAML::Node(std::string(text));
+        }
+        YAML::Node node;
+        node.SetStyle(YAML::EmitterStyle::Flow);
+        node.push_back(editor::YamlNumbers::text(linear.x));
+        node.push_back(editor::YamlNumbers::text(linear.y));
+        node.push_back(editor::YamlNumbers::text(linear.z));
+        return node;
+    }
+
+}
+
+YAML::Node editor::Stream::encodeGradient(const Gradient& gradient) {
+    YAML::Node node;
+    node["mode"] = gradient.mode == GradientMode::Fixed ? "fixed" : "blend";
+    YAML::Node colors(YAML::NodeType::Sequence);
+    for (const GradientColorKey& key : gradient.colorKeys) {
+        YAML::Node keyNode;
+        keyNode.SetStyle(YAML::EmitterStyle::Flow);
+        keyNode.push_back(YamlNumbers::text(key.time));
+        keyNode.push_back(encodeGradientColor(key.color));
+        colors.push_back(keyNode);
+    }
+    node["colors"] = colors;
+    YAML::Node alphas(YAML::NodeType::Sequence);
+    for (const GradientAlphaKey& key : gradient.alphaKeys) {
+        YAML::Node keyNode;
+        keyNode.SetStyle(YAML::EmitterStyle::Flow);
+        keyNode.push_back(YamlNumbers::text(key.time));
+        keyNode.push_back(YamlNumbers::text(key.alpha));
+        alphas.push_back(keyNode);
+    }
+    node["alphas"] = alphas;
+    return node;
+}
+
+Gradient editor::Stream::decodeGradient(const YAML::Node& node, const Gradient& fallback) {
+    if (!node || node.IsNull()) return fallback;
+    // a single colour: a constant gradient
+    Vector4 single;
+    bool singleAlpha = false;
+    if ((node.IsScalar() || (node.IsSequence() && node.size() >= 3 && node[0].IsScalar())) && decodeColorValue(node, single, singleAlpha)) {
+        return Gradient::constant(single);
+    }
+    if (!node.IsMap()) return fallback;
+
+    Gradient gradient({}, {});
+    if (node["mode"]) {
+        if (node["mode"].IsScalar()) {
+            gradient.mode = (node["mode"].Scalar() == "fixed") ? GradientMode::Fixed : GradientMode::Blend;
+        } else {
+            Out::warning("Gradient: mode is not blend or fixed: blend");
+        }
+    }
+    if (node["colors"] && node["colors"].IsSequence()) {
+        for (const YAML::Node& keyNode : node["colors"]) {
+            if (!keyNode.IsSequence() || keyNode.size() < 2) continue;
+            Vector4 color;
+            bool hasAlpha = false;
+            if (!decodeColorValue(keyNode[1], color, hasAlpha)) continue;
+            gradient.colorKeys.push_back(GradientColorKey(decodeFinite(keyNode[0], 0.0f), Vector3(color.x, color.y, color.z)));
+        }
+    }
+    if (node["alphas"] && node["alphas"].IsSequence()) {
+        for (const YAML::Node& keyNode : node["alphas"]) {
+            if (!keyNode.IsSequence() || keyNode.size() < 2) continue;
+            gradient.alphaKeys.push_back(GradientAlphaKey(decodeFinite(keyNode[0], 0.0f), decodeFinite(keyNode[1], 1.0f)));
+        }
+    }
+    // more than Unity's 8 keys: the file still loads, with the first 7 and the last (normalize)
+    if (gradient.colorKeys.size() > Gradient::MAX_KEYS || gradient.alphaKeys.size() > Gradient::MAX_KEYS) {
+        Out::warning("Gradient: %zu colour and %zu alpha keys, at most %zu each: the first %zu and the last are kept",
+                     gradient.colorKeys.size(), gradient.alphaKeys.size(), Gradient::MAX_KEYS, Gradient::MAX_KEYS - 1);
+    }
+    gradient.normalize();
+    return gradient;
 }
 
 YAML::Node editor::Stream::encodeShaderUniforms(const ShaderUniformValues& uniforms) {
@@ -3511,8 +3743,6 @@ YAML::Node editor::Stream::encodeSceneProject(const Project* project, const Scen
     maxValuesNode["maxExternalBuffers"] = sceneProject->maxValues.maxExternalBuffers;
     maxValuesNode["maxSpriteFrames"] = sceneProject->maxValues.maxSpriteFrames;
     maxValuesNode["maxBones"] = sceneProject->maxValues.maxBones;
-    maxValuesNode["maxColliders2D"] = sceneProject->maxValues.maxColliders2D;
-    maxValuesNode["maxColliderPoints2D"] = sceneProject->maxValues.maxColliderPoints2D;
     maxValuesNode["maxColliders3D"] = sceneProject->maxValues.maxColliders3D;
     maxValuesNode["maxColliderVertices3D"] = sceneProject->maxValues.maxColliderVertices3D;
     maxValuesNode["maxColliderIndices3D"] = sceneProject->maxValues.maxColliderIndices3D;
@@ -3675,8 +3905,7 @@ void editor::Stream::decodeSceneProject(SceneProject* sceneProject, const YAML::
         if (maxValuesNode["maxExternalBuffers"]) sceneProject->maxValues.maxExternalBuffers = YamlNumbers::as<unsigned int>(maxValuesNode["maxExternalBuffers"]);
         if (maxValuesNode["maxSpriteFrames"]) sceneProject->maxValues.maxSpriteFrames = YamlNumbers::as<unsigned int>(maxValuesNode["maxSpriteFrames"]);
         if (maxValuesNode["maxBones"]) sceneProject->maxValues.maxBones = YamlNumbers::as<unsigned int>(maxValuesNode["maxBones"]);
-        if (maxValuesNode["maxColliders2D"]) sceneProject->maxValues.maxColliders2D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliders2D"]);
-        if (maxValuesNode["maxColliderPoints2D"]) sceneProject->maxValues.maxColliderPoints2D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliderPoints2D"]);
+        // maxColliders2D / maxColliderPoints2D of older editors: 2D colliders have no caps any more
         if (maxValuesNode["maxColliders3D"]) sceneProject->maxValues.maxColliders3D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliders3D"]);
         if (maxValuesNode["maxColliderVertices3D"]) sceneProject->maxValues.maxColliderVertices3D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliderVertices3D"]);
         if (maxValuesNode["maxColliderIndices3D"]) sceneProject->maxValues.maxColliderIndices3D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliderIndices3D"]);
@@ -3910,6 +4139,8 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
     sceneNode["gravity3D"] = encodeVector3(scene->getGravity3D());
     if (scene->isPhysicsInterpolation() != SceneSettings().physicsInterpolation)
         sceneNode["physicsInterpolation"] = scene->isPhysicsInterpolation();
+    if (scene->getPhysics2DSubSteps() != SceneSettings().physics2DSubSteps)
+        sceneNode["physics2DSubSteps"] = scene->getPhysics2DSubSteps();
     sceneNode["fixedResolutionEnabled"] = scene->isFixedResolutionEnabled();
     sceneNode["fixedResolutionWidth"] = scene->getFixedResolutionWidth();
     sceneNode["fixedResolutionHeight"] = scene->getFixedResolutionHeight();
@@ -4104,6 +4335,7 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     scene->setGravity2D(node["gravity2D"] ? decodeVector2(node["gravity2D"]) : Vector2(0.0f, -9.81f));
     scene->setGravity3D(node["gravity3D"] ? decodeVector3(node["gravity3D"]) : Vector3(0.0f, -9.81f, 0.0f));
     scene->setPhysicsInterpolation(node["physicsInterpolation"] ? YamlNumbers::as<bool>(node["physicsInterpolation"]) : SceneSettings().physicsInterpolation);
+    scene->setPhysics2DSubSteps(node["physics2DSubSteps"] ? YamlNumbers::as<int>(node["physics2DSubSteps"]) : SceneSettings().physics2DSubSteps);
 
     if (node["fixedResolutionEnabled"]) {
         scene->setFixedResolutionEnabled(YamlNumbers::as<bool>(node["fixedResolutionEnabled"]));
@@ -4934,6 +5166,11 @@ YAML::Node editor::Stream::encodeComponents(const Entity entity, const EntityReg
         compNode[Catalog::getComponentName(ComponentType::VertexAnimatorComponent, true)] = encodeVertexAnimatorComponent(animator);
     }
 
+    if (signature.test(registry->getComponentId<TrailRendererComponent>())) {
+        const TrailRendererComponent& trail = registry->getComponent<TrailRendererComponent>(entity);
+        compNode[Catalog::getComponentName(ComponentType::TrailRendererComponent, true)] = encodeTrailRendererComponent(trail);
+    }
+
     if (signature.test(registry->getComponentId<CameraComponent>())) {
         const CameraComponent& camera = registry->getComponent<CameraComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::CameraComponent, true)] = encodeCameraComponent(camera);
@@ -5486,6 +5723,17 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->addComponent<VertexAnimatorComponent>(entity, std::move(animator));
         }else{
             registry->getComponent<VertexAnimatorComponent>(entity) = std::move(animator);
+        }
+    }
+
+    compName = Catalog::getComponentName(ComponentType::TrailRendererComponent, true);
+    if (compNode[compName]) {
+        TrailRendererComponent* existing = registry->findComponent<TrailRendererComponent>(entity);
+        TrailRendererComponent trail = decodeTrailRendererComponent(compNode[compName], existing);
+        if (!signature.test(registry->getComponentId<TrailRendererComponent>())){
+            registry->addComponent<TrailRendererComponent>(entity, std::move(trail));
+        }else{
+            registry->getComponent<TrailRendererComponent>(entity) = std::move(trail);
         }
     }
 
@@ -8208,39 +8456,110 @@ Joint3DType editor::Stream::stringToJoint3DType(const std::string& str) {
 // Rigidbody2DComponent encode/decode
 // ==============================
 
+namespace {
+
+    std::string collisionDetection2DToString(CollisionDetectionMode2D mode){
+        return mode == CollisionDetectionMode2D::CONTINUOUS ? "continuous" : "discrete";
+    }
+
+    CollisionDetectionMode2D stringToCollisionDetection2D(const std::string& text){
+        return text == "continuous" ? CollisionDetectionMode2D::CONTINUOUS : CollisionDetectionMode2D::DISCRETE;
+    }
+
+    std::string sleepMode2DToString(RigidbodySleepMode2D mode){
+        switch (mode){
+            case RigidbodySleepMode2D::NEVER_SLEEP: return "never_sleep";
+            case RigidbodySleepMode2D::START_ASLEEP: return "start_asleep";
+            default: return "start_awake";
+        }
+    }
+
+    RigidbodySleepMode2D stringToSleepMode2D(const std::string& text){
+        if (text == "never_sleep") return RigidbodySleepMode2D::NEVER_SLEEP;
+        if (text == "start_asleep") return RigidbodySleepMode2D::START_ASLEEP;
+        return RigidbodySleepMode2D::START_AWAKE;
+    }
+
+}
+
+std::string editor::Stream::jointAnchorSpaceToString(JointAnchorSpace space) {
+    return space == JointAnchorSpace::LOCAL ? "local" : "world";
+}
+
+JointAnchorSpace editor::Stream::stringToJointAnchorSpace(const std::string& str) {
+    return str == "local" ? JointAnchorSpace::LOCAL : JointAnchorSpace::WORLD;
+}
+
+std::string editor::Stream::jointBreakActionToString(JointBreakAction action) {
+    switch (action) {
+        case JointBreakAction::IGNORE: return "ignore";
+        case JointBreakAction::CALLBACK_ONLY: return "callback_only";
+        case JointBreakAction::DISABLE: return "disable";
+        default: return "destroy";
+    }
+}
+
+JointBreakAction editor::Stream::stringToJointBreakAction(const std::string& str) {
+    if (str == "ignore") return JointBreakAction::IGNORE;
+    if (str == "callback_only") return JointBreakAction::CALLBACK_ONLY;
+    if (str == "disable") return JointBreakAction::DISABLE;
+    return JointBreakAction::DESTROY;
+}
+
 YAML::Node editor::Stream::encodeRigidbody2DComponent(const Rigidbody2DComponent& body) {
     YAML::Node node;
     node["enabled"] = body.enabled;
 
     node["type"] = bodyTypeToString(body.type);
-    node["numColliders"] = static_cast<unsigned int>(body.numColliders);
+    // still written for editors from before colliders had no count limit
+    node["numColliders"] = static_cast<unsigned int>(body.colliders.size());
+
+    node["gravityScale"] = body.gravityScale;
+    node["linearDamping"] = body.linearDamping;
+    node["angularDamping"] = body.angularDamping;
+    node["fixedRotation"] = body.fixedRotation;
+    node["collisionDetection"] = collisionDetection2DToString(body.collisionDetection);
+    node["sleepingMode"] = sleepMode2DToString(body.sleepingMode);
+    node["useAutoMass"] = body.useAutoMass;
+    node["mass"] = body.mass;
+    node["autoCenterOfMass"] = body.autoCenterOfMass;
+    node["centerOfMass"] = encodeVector2(body.centerOfMass);
+    node["autoInertia"] = body.autoInertia;
+    node["inertia"] = body.inertia;
+    node["material"] = body.material;
 
     YAML::Node shapesNode;
-    for (size_t i = 0; i < body.numColliders; i++) {
+    for (const Collider2D& collider : body.colliders) {
         YAML::Node shapeNode;
-        shapeNode["type"] = collider2DTypeToString(body.colliders[i].type);
-        shapeNode["pointA"] = encodeVector2(body.colliders[i].pointA);
-        shapeNode["pointB"] = encodeVector2(body.colliders[i].pointB);
-        shapeNode["radius"] = body.colliders[i].radius;
-        shapeNode["loop"] = body.colliders[i].loop;
+        shapeNode["type"] = collider2DTypeToString(collider.type);
+        shapeNode["pointA"] = encodeVector2(collider.pointA);
+        shapeNode["pointB"] = encodeVector2(collider.pointB);
+        shapeNode["radius"] = collider.radius;
+        shapeNode["loop"] = collider.loop;
 
-        shapeNode["density"] = body.colliders[i].density;
-        shapeNode["friction"] = body.colliders[i].friction;
-        shapeNode["restitution"] = body.colliders[i].restitution;
-        shapeNode["sensor"] = body.colliders[i].sensor;
-        shapeNode["enableHitEvents"] = body.colliders[i].enableHitEvents;
-        shapeNode["contactEvents"] = body.colliders[i].contactEvents;
-        shapeNode["preSolveEvents"] = body.colliders[i].preSolveEvents;
-        shapeNode["sensorEvents"] = body.colliders[i].sensorEvents;
-        shapeNode["categoryBits"] = body.colliders[i].categoryBits;
-        shapeNode["maskBits"] = body.colliders[i].maskBits;
-        shapeNode["groupIndex"] = body.colliders[i].groupIndex;
-
-        YAML::Node verticesNode;
-        for (size_t j = 0; j < body.colliders[i].numVertices; j++) {
-            verticesNode.push_back(encodeVector2(body.colliders[i].vertices[j]));
+        shapeNode["density"] = collider.density;
+        shapeNode["friction"] = collider.friction;
+        shapeNode["restitution"] = collider.restitution;
+        if (!collider.material.empty()) {
+            shapeNode["material"] = collider.material;
         }
-        shapeNode["vertices"] = verticesNode;
+        shapeNode["sensor"] = collider.sensor;
+        shapeNode["enableHitEvents"] = collider.enableHitEvents;
+        shapeNode["contactEvents"] = collider.contactEvents;
+        shapeNode["preSolveEvents"] = collider.preSolveEvents;
+        shapeNode["sensorEvents"] = collider.sensorEvents;
+        shapeNode["categoryBits"] = collider.categoryBits;
+        shapeNode["maskBits"] = collider.maskBits;
+        shapeNode["groupIndex"] = collider.groupIndex;
+        if (collider.receiver != NULL_ENTITY) {
+            shapeNode["receiver"] = collider.receiver;
+        }
+
+        YAML::Node pointsNode;
+        for (const Vector2& point : collider.points) {
+            pointsNode.push_back(encodeVector2(point));
+        }
+        shapeNode["points"] = pointsNode;
 
         shapesNode.push_back(shapeNode);
     }
@@ -8254,48 +8573,87 @@ Rigidbody2DComponent editor::Stream::decodeRigidbody2DComponent(const YAML::Node
 
     if (oldBody) {
         body = *oldBody;
+        // a script's material objects (runtime only) do not outlive what is decoded over them
+        body.materialInstance.reset();
+        body.appliedMaterialRevision = 0;
     }
 
     if (node["type"]) body.type = stringToBodyType(node["type"].as<std::string>());
-    if (node["numColliders"]) body.numColliders = YamlNumbers::as<unsigned int>(node["numColliders"]);
+
+    if (node["gravityScale"]) body.gravityScale = YamlNumbers::as<float>(node["gravityScale"]);
+    if (node["linearDamping"]) body.linearDamping = YamlNumbers::as<float>(node["linearDamping"]);
+    if (node["angularDamping"]) body.angularDamping = YamlNumbers::as<float>(node["angularDamping"]);
+    if (node["fixedRotation"]) body.fixedRotation = YamlNumbers::as<bool>(node["fixedRotation"]);
+    if (node["collisionDetection"]) body.collisionDetection = stringToCollisionDetection2D(node["collisionDetection"].as<std::string>());
+    if (node["sleepingMode"]) body.sleepingMode = stringToSleepMode2D(node["sleepingMode"].as<std::string>());
+    if (node["useAutoMass"]) body.useAutoMass = YamlNumbers::as<bool>(node["useAutoMass"]);
+    if (node["mass"]) body.mass = YamlNumbers::as<float>(node["mass"]);
+    if (node["autoCenterOfMass"]) body.autoCenterOfMass = YamlNumbers::as<bool>(node["autoCenterOfMass"]);
+    if (node["centerOfMass"]) body.centerOfMass = decodeVector2(node["centerOfMass"]);
+    if (node["autoInertia"]) body.autoInertia = YamlNumbers::as<bool>(node["autoInertia"]);
+    if (node["inertia"]) body.inertia = YamlNumbers::as<float>(node["inertia"]);
+    // keys written only when set: absent is the default, also over an existing component
+    body.material = node["material"] ? node["material"].as<std::string>() : std::string();
 
     if (node["colliders"]) {
-        size_t count = node["colliders"].size();
+        const YAML::Node collidersNode = node["colliders"];
+        size_t count = collidersNode.size();
+        // files of older editors also say how many colliders count
+        if (node["numColliders"]) {
+            count = std::min(count, (size_t)YamlNumbers::as<unsigned int>(node["numColliders"]));
+        }
+
+        const size_t previousCount = body.colliders.size();
+        body.colliders.resize(count);
         for (size_t i = 0; i < count; i++) {
-            if (node["colliders"][i]["type"]) {
-                body.colliders[i].type = stringToCollider2DType(node["colliders"][i]["type"].as<std::string>());
+            const YAML::Node shapeNode = collidersNode[i];
+            Collider2D& collider = body.colliders[i];
+            // a collider new to the component: keys missing from files of before default as
+            // they did then (contact events off)
+            if (i >= previousCount) {
+                collider.contactEvents = false;
             }
-            if (node["colliders"][i]["pointA"]) {
-                body.colliders[i].pointA = decodeVector2(node["colliders"][i]["pointA"]);
-            }
-            if (node["colliders"][i]["pointB"]) {
-                body.colliders[i].pointB = decodeVector2(node["colliders"][i]["pointB"]);
-            }
-            if (node["colliders"][i]["radius"]) body.colliders[i].radius = YamlNumbers::as<float>(node["colliders"][i]["radius"]);
-            if (node["colliders"][i]["loop"]) body.colliders[i].loop = YamlNumbers::as<bool>(node["colliders"][i]["loop"]);
 
-            if (node["colliders"][i]["density"]) body.colliders[i].density = YamlNumbers::as<float>(node["colliders"][i]["density"]);
-            if (node["colliders"][i]["friction"]) body.colliders[i].friction = YamlNumbers::as<float>(node["colliders"][i]["friction"]);
-            if (node["colliders"][i]["restitution"]) body.colliders[i].restitution = YamlNumbers::as<float>(node["colliders"][i]["restitution"]);
-            if (node["colliders"][i]["sensor"]) body.colliders[i].sensor = YamlNumbers::as<bool>(node["colliders"][i]["sensor"]);
-            if (node["colliders"][i]["enableHitEvents"]) body.colliders[i].enableHitEvents = YamlNumbers::as<bool>(node["colliders"][i]["enableHitEvents"]);
-            if (node["colliders"][i]["contactEvents"]) body.colliders[i].contactEvents = YamlNumbers::as<bool>(node["colliders"][i]["contactEvents"]);
-            if (node["colliders"][i]["preSolveEvents"]) body.colliders[i].preSolveEvents = YamlNumbers::as<bool>(node["colliders"][i]["preSolveEvents"]);
-            if (node["colliders"][i]["sensorEvents"]) body.colliders[i].sensorEvents = YamlNumbers::as<bool>(node["colliders"][i]["sensorEvents"]);
-            if (node["colliders"][i]["categoryBits"]) body.colliders[i].categoryBits = YamlNumbers::as<uint16_t>(node["colliders"][i]["categoryBits"]);
-            if (node["colliders"][i]["maskBits"]) body.colliders[i].maskBits = YamlNumbers::as<uint16_t>(node["colliders"][i]["maskBits"]);
-            if (node["colliders"][i]["groupIndex"]) body.colliders[i].groupIndex = YamlNumbers::as<int16_t>(node["colliders"][i]["groupIndex"]);
+            if (shapeNode["type"]) {
+                collider.type = stringToCollider2DType(shapeNode["type"].as<std::string>());
+            }
+            if (shapeNode["pointA"]) {
+                collider.pointA = decodeVector2(shapeNode["pointA"]);
+            }
+            if (shapeNode["pointB"]) {
+                collider.pointB = decodeVector2(shapeNode["pointB"]);
+            }
+            if (shapeNode["radius"]) collider.radius = YamlNumbers::as<float>(shapeNode["radius"]);
+            if (shapeNode["loop"]) collider.loop = YamlNumbers::as<bool>(shapeNode["loop"]);
 
-            if (node["colliders"][i]["vertices"]) {
-                size_t vcount = node["colliders"][i]["vertices"].size();
-                body.colliders[i].numVertices = (uint8_t)vcount;
-                for (size_t j = 0; j < vcount; j++) {
-                    body.colliders[i].vertices[j] = decodeVector2(node["colliders"][i]["vertices"][j]);
+            if (shapeNode["density"]) collider.density = YamlNumbers::as<float>(shapeNode["density"]);
+            if (shapeNode["friction"]) collider.friction = YamlNumbers::as<float>(shapeNode["friction"]);
+            if (shapeNode["restitution"]) collider.restitution = YamlNumbers::as<float>(shapeNode["restitution"]);
+            collider.material = shapeNode["material"] ? shapeNode["material"].as<std::string>() : std::string();
+            collider.materialInstance.reset();
+            collider.ownsMaterialInstance = false;
+            if (shapeNode["sensor"]) collider.sensor = YamlNumbers::as<bool>(shapeNode["sensor"]);
+            if (shapeNode["enableHitEvents"]) collider.enableHitEvents = YamlNumbers::as<bool>(shapeNode["enableHitEvents"]);
+            if (shapeNode["contactEvents"]) collider.contactEvents = YamlNumbers::as<bool>(shapeNode["contactEvents"]);
+            if (shapeNode["preSolveEvents"]) collider.preSolveEvents = YamlNumbers::as<bool>(shapeNode["preSolveEvents"]);
+            if (shapeNode["sensorEvents"]) collider.sensorEvents = YamlNumbers::as<bool>(shapeNode["sensorEvents"]);
+            if (shapeNode["categoryBits"]) collider.categoryBits = YamlNumbers::as<uint16_t>(shapeNode["categoryBits"]);
+            if (shapeNode["maskBits"]) collider.maskBits = YamlNumbers::as<uint16_t>(shapeNode["maskBits"]);
+            if (shapeNode["groupIndex"]) collider.groupIndex = YamlNumbers::as<int16_t>(shapeNode["groupIndex"]);
+            collider.receiver = shapeNode["receiver"] ? YamlNumbers::as<Entity>(shapeNode["receiver"]) : NULL_ENTITY;
+
+            // "vertices": files of before
+            const YAML::Node pointsNode = shapeNode["points"] ? shapeNode["points"] : shapeNode["vertices"];
+            if (pointsNode) {
+                collider.points.resize(pointsNode.size());
+                for (size_t j = 0; j < pointsNode.size(); j++) {
+                    collider.points[j] = decodeVector2(pointsNode[j]);
                 }
             }
 
-            body.colliders[i].shape = b2_nullShapeId;
-            body.colliders[i].chain = b2_nullChainId;
+            collider.shapes.clear();
+            collider.chain = b2_nullChainId;
+            collider.dirty = true;
         }
     }
 
@@ -8514,12 +8872,44 @@ YAML::Node editor::Stream::encodeJoint2DComponent(const Joint2DComponent& joint)
     node["type"] = joint2DTypeToString(joint.type);
     node["bodyA"] = joint.bodyA;
     node["bodyB"] = joint.bodyB;
+    node["anchorSpace"] = jointAnchorSpaceToString(joint.anchorSpace);
     node["anchorA"] = encodeVector2(joint.anchorA);
     node["anchorB"] = encodeVector2(joint.anchorB);
     node["axis"] = encodeVector2(joint.axis);
     node["target"] = encodeVector2(joint.target);
     node["autoAnchors"] = joint.autoAnchors;
     node["rope"] = joint.rope;
+    node["enableCollision"] = joint.enableCollision;
+    // infinite (never breaks) is the missing key
+    if (std::isfinite(joint.breakForce)) node["breakForce"] = joint.breakForce;
+    if (std::isfinite(joint.breakTorque)) node["breakTorque"] = joint.breakTorque;
+    node["breakAction"] = jointBreakActionToString(joint.breakAction);
+    node["useLimits"] = joint.useLimits;
+    node["lowerAngle"] = joint.lowerAngle;
+    node["upperAngle"] = joint.upperAngle;
+    node["lowerTranslation"] = joint.lowerTranslation;
+    node["upperTranslation"] = joint.upperTranslation;
+    node["useMotor"] = joint.useMotor;
+    node["motorSpeed"] = joint.motorSpeed;
+    node["maxMotorTorque"] = joint.maxMotorTorque;
+    node["maxMotorForce"] = joint.maxMotorForce;
+    node["enableSpring"] = joint.enableSpring;
+    node["frequency"] = joint.frequency;
+    node["dampingRatio"] = joint.dampingRatio;
+    node["length"] = joint.length;
+    node["autoLength"] = joint.autoLength;
+    node["minLength"] = joint.minLength;
+    node["maxLength"] = joint.maxLength;
+    node["linearFrequency"] = joint.linearFrequency;
+    node["angularFrequency"] = joint.angularFrequency;
+    node["linearDampingRatio"] = joint.linearDampingRatio;
+    node["angularDampingRatio"] = joint.angularDampingRatio;
+    node["linearOffset"] = encodeVector2(joint.linearOffset);
+    node["angularOffset"] = joint.angularOffset;
+    node["autoOffset"] = joint.autoOffset;
+    node["maxForce"] = joint.maxForce;
+    node["maxTorque"] = joint.maxTorque;
+    node["correctionFactor"] = joint.correctionFactor;
 
     return node;
 }
@@ -8529,21 +8919,62 @@ Joint2DComponent editor::Stream::decodeJoint2DComponent(const YAML::Node& node, 
 
     if (oldJoint) {
         joint = *oldJoint;
+        joint.loadFailed = false;
+        if (node["type"]) joint.type = stringToJoint2DType(node["type"].as<std::string>());
+    } else {
+        // a key missing from a scene saved before is what the joint had then (Box2D's defaults
+        // and world anchors), so old scenes simulate as they did
+        const Joint2DType type = node["type"] ? stringToJoint2DType(node["type"].as<std::string>()) : Joint2DType::DISTANCE;
+        joint = makeLegacyJoint2D(type);
     }
 
-    if (node["type"]) joint.type = stringToJoint2DType(node["type"].as<std::string>());
     if (node["bodyA"]) joint.bodyA = YamlNumbers::as<Entity>(node["bodyA"]);
     if (node["bodyB"]) joint.bodyB = YamlNumbers::as<Entity>(node["bodyB"]);
+    if (node["anchorSpace"]) joint.anchorSpace = stringToJointAnchorSpace(node["anchorSpace"].as<std::string>());
     if (node["anchorA"]) joint.anchorA = decodeVector2(node["anchorA"]);
     if (node["anchorB"]) joint.anchorB = decodeVector2(node["anchorB"]);
     if (node["axis"]) joint.axis = decodeVector2(node["axis"]);
     if (node["target"]) joint.target = decodeVector2(node["target"]);
     if (node["autoAnchors"]) joint.autoAnchors = YamlNumbers::as<bool>(node["autoAnchors"]);
     if (node["rope"]) joint.rope = YamlNumbers::as<bool>(node["rope"]);
+    if (node["enableCollision"]) joint.enableCollision = YamlNumbers::as<bool>(node["enableCollision"]);
+    // written only when finite: absent is "never", also over an existing component
+    joint.breakForce = node["breakForce"] ? YamlNumbers::as<float>(node["breakForce"]) : std::numeric_limits<float>::infinity();
+    joint.breakTorque = node["breakTorque"] ? YamlNumbers::as<float>(node["breakTorque"]) : std::numeric_limits<float>::infinity();
+    if (node["breakAction"]) joint.breakAction = stringToJointBreakAction(node["breakAction"].as<std::string>());
+    if (node["useLimits"]) joint.useLimits = YamlNumbers::as<bool>(node["useLimits"]);
+    if (node["lowerAngle"]) joint.lowerAngle = YamlNumbers::as<float>(node["lowerAngle"]);
+    if (node["upperAngle"]) joint.upperAngle = YamlNumbers::as<float>(node["upperAngle"]);
+    if (node["lowerTranslation"]) joint.lowerTranslation = YamlNumbers::as<float>(node["lowerTranslation"]);
+    if (node["upperTranslation"]) joint.upperTranslation = YamlNumbers::as<float>(node["upperTranslation"]);
+    if (node["useMotor"]) joint.useMotor = YamlNumbers::as<bool>(node["useMotor"]);
+    if (node["motorSpeed"]) joint.motorSpeed = YamlNumbers::as<float>(node["motorSpeed"]);
+    if (node["maxMotorTorque"]) joint.maxMotorTorque = YamlNumbers::as<float>(node["maxMotorTorque"]);
+    if (node["maxMotorForce"]) joint.maxMotorForce = YamlNumbers::as<float>(node["maxMotorForce"]);
+    if (node["enableSpring"]) joint.enableSpring = YamlNumbers::as<bool>(node["enableSpring"]);
+    if (node["frequency"]) joint.frequency = YamlNumbers::as<float>(node["frequency"]);
+    if (node["dampingRatio"]) joint.dampingRatio = YamlNumbers::as<float>(node["dampingRatio"]);
+    if (node["length"]) joint.length = YamlNumbers::as<float>(node["length"]);
+    if (node["autoLength"]) joint.autoLength = YamlNumbers::as<bool>(node["autoLength"]);
+    if (node["minLength"]) joint.minLength = YamlNumbers::as<float>(node["minLength"]);
+    if (node["maxLength"]) joint.maxLength = YamlNumbers::as<float>(node["maxLength"]);
+    if (node["linearFrequency"]) joint.linearFrequency = YamlNumbers::as<float>(node["linearFrequency"]);
+    if (node["angularFrequency"]) joint.angularFrequency = YamlNumbers::as<float>(node["angularFrequency"]);
+    if (node["linearDampingRatio"]) joint.linearDampingRatio = YamlNumbers::as<float>(node["linearDampingRatio"]);
+    if (node["angularDampingRatio"]) joint.angularDampingRatio = YamlNumbers::as<float>(node["angularDampingRatio"]);
+    if (node["linearOffset"]) joint.linearOffset = decodeVector2(node["linearOffset"]);
+    if (node["angularOffset"]) joint.angularOffset = YamlNumbers::as<float>(node["angularOffset"]);
+    if (node["autoOffset"]) joint.autoOffset = YamlNumbers::as<bool>(node["autoOffset"]);
+    if (node["maxForce"]) joint.maxForce = YamlNumbers::as<float>(node["maxForce"]);
+    if (node["maxTorque"]) joint.maxTorque = YamlNumbers::as<float>(node["maxTorque"]);
+    if (node["correctionFactor"]) joint.correctionFactor = YamlNumbers::as<float>(node["correctionFactor"]);
 
     if (oldJoint && b2Joint_IsValid(oldJoint->joint)) {
         joint.needUpdateJoint = true;
     }
+    joint.needApplyParameters = false;
+    joint.broken = false;
+    joint.breakArmed = true;
 
     if (node["enabled"]) joint.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
@@ -9962,6 +10393,176 @@ PointsComponent editor::Stream::decodePointsComponent(const YAML::Node& node, co
     return points;
 }
 
+std::string editor::Stream::lineRendererModeToString(LineRendererMode mode) {
+    return mode == LineRendererMode::Polyline ? "polyline" : "segments";
+}
+
+LineRendererMode editor::Stream::stringToLineRendererMode(const std::string& str) {
+    return (str == "polyline" || str == "Polyline") ? LineRendererMode::Polyline : LineRendererMode::Segments;
+}
+
+std::string editor::Stream::lineWidthUnitToString(LineWidthUnit unit) {
+    return unit == LineWidthUnit::Pixels ? "pixels" : "world";
+}
+
+LineWidthUnit editor::Stream::stringToLineWidthUnit(const std::string& str) {
+    return (str == "pixels" || str == "Pixels") ? LineWidthUnit::Pixels : LineWidthUnit::World;
+}
+
+std::string editor::Stream::lineAlignmentToString(LineAlignment alignment) {
+    return alignment == LineAlignment::TransformZ ? "transform_z" : "view";
+}
+
+LineAlignment editor::Stream::stringToLineAlignment(const std::string& str) {
+    return (str == "transform_z" || str == "TransformZ" || str == "transformZ") ? LineAlignment::TransformZ : LineAlignment::View;
+}
+
+std::string editor::Stream::lineTextureModeToString(LineTextureMode mode) {
+    switch (mode) {
+        case LineTextureMode::Stretch: return "stretch";
+        case LineTextureMode::Tile: return "tile";
+        case LineTextureMode::DistributePerSegment: return "distribute_per_segment";
+        case LineTextureMode::RepeatPerSegment: return "repeat_per_segment";
+    }
+    return "stretch";
+}
+
+LineTextureMode editor::Stream::stringToLineTextureMode(const std::string& str) {
+    if (str == "tile" || str == "Tile") return LineTextureMode::Tile;
+    if (str == "distribute_per_segment" || str == "DistributePerSegment") return LineTextureMode::DistributePerSegment;
+    if (str == "repeat_per_segment" || str == "RepeatPerSegment") return LineTextureMode::RepeatPerSegment;
+    return LineTextureMode::Stretch;
+}
+
+// The settings LineRendererComponent and TrailRendererComponent share (width, colour,
+// joints, caps, texture layout, sort order), each written away from its default only
+template<typename T>
+void editor::Stream::encodeRibbonFields(YAML::Node& node, const T& component, const T& defaults) {
+    if (component.widthMultiplier != defaults.widthMultiplier) node["widthMultiplier"] = YamlNumbers::text(component.widthMultiplier);
+    if (component.widthCurve != defaults.widthCurve) node["widthCurve"] = editor::Stream::encodeCurve(component.widthCurve);
+    if (component.widthUnit != defaults.widthUnit) node["widthUnit"] = editor::Stream::lineWidthUnitToString(component.widthUnit);
+    if (component.colorGradient != defaults.colorGradient) node["colorGradient"] = editor::Stream::encodeGradient(component.colorGradient);
+    if (component.numCornerVertices != defaults.numCornerVertices) node["numCornerVertices"] = component.numCornerVertices;
+    if (component.numCapVertices != defaults.numCapVertices) node["numCapVertices"] = component.numCapVertices;
+    if (component.alignment != defaults.alignment) node["alignment"] = editor::Stream::lineAlignmentToString(component.alignment);
+    if (component.textureMode != defaults.textureMode) node["textureMode"] = editor::Stream::lineTextureModeToString(component.textureMode);
+    if (component.textureScale != defaults.textureScale) node["textureScale"] = editor::Stream::encodeVector2(component.textureScale);
+    if (component.sortPriority != defaults.sortPriority) node["sortPriority"] = component.sortPriority;
+}
+
+template<typename T>
+void editor::Stream::decodeRibbonFields(const YAML::Node& node, T& component, const T& defaults) {
+    component.widthMultiplier = node["widthMultiplier"] ? std::max(0.0f, editor::Stream::decodeFinite(node["widthMultiplier"], defaults.widthMultiplier)) : defaults.widthMultiplier;
+    component.widthCurve = node["widthCurve"] ? editor::Stream::decodeCurve(node["widthCurve"], defaults.widthCurve) : defaults.widthCurve;
+    component.widthUnit = node["widthUnit"] ? editor::Stream::stringToLineWidthUnit(node["widthUnit"].as<std::string>()) : defaults.widthUnit;
+    component.colorGradient = node["colorGradient"] ? editor::Stream::decodeGradient(node["colorGradient"], defaults.colorGradient) : defaults.colorGradient;
+    component.numCornerVertices = node["numCornerVertices"]
+        ? std::min(YamlNumbers::as<unsigned int>(node["numCornerVertices"]), LINE_RIBBON_MAX_FAN_VERTICES) : defaults.numCornerVertices;
+    component.numCapVertices = node["numCapVertices"]
+        ? std::min(YamlNumbers::as<unsigned int>(node["numCapVertices"]), LINE_RIBBON_MAX_FAN_VERTICES) : defaults.numCapVertices;
+    component.alignment = node["alignment"] ? editor::Stream::stringToLineAlignment(node["alignment"].as<std::string>()) : defaults.alignment;
+    component.textureMode = node["textureMode"] ? editor::Stream::stringToLineTextureMode(node["textureMode"].as<std::string>()) : defaults.textureMode;
+    component.textureScale = node["textureScale"] ? editor::Stream::decodeVector2(node["textureScale"]) : defaults.textureScale;
+    component.sortPriority = node["sortPriority"] ? YamlNumbers::as<int>(node["sortPriority"]) : defaults.sortPriority;
+}
+
+void editor::Stream::encodeLineRibbonSettings(YAML::Node& node, const LineRendererComponent& lines) {
+    static const LineRendererComponent defaults;
+    if (lines.mode != defaults.mode) node["mode"] = lineRendererModeToString(lines.mode);
+    if (!lines.positions.empty()) {
+        YAML::Node positions(YAML::NodeType::Sequence);
+        for (const Vector3& position : lines.positions) positions.push_back(encodeVector3(position));
+        node["positions"] = positions;
+    }
+    if (lines.loop != defaults.loop) node["loop"] = lines.loop;
+    if (lines.useWorldSpace != defaults.useWorldSpace) node["useWorldSpace"] = lines.useWorldSpace;
+    encodeRibbonFields(node, lines, defaults);
+}
+
+void editor::Stream::decodeLineRibbonSettings(const YAML::Node& node, LineRendererComponent& lines) {
+    static const LineRendererComponent defaults;
+    lines.mode = node["mode"] ? stringToLineRendererMode(node["mode"].as<std::string>()) : defaults.mode;
+    lines.positions.clear();
+    if (node["positions"] && node["positions"].IsSequence()) {
+        for (const YAML::Node& position : node["positions"]) lines.positions.push_back(decodeVector3(position));
+    }
+    lines.loop = node["loop"] ? YamlNumbers::as<bool>(node["loop"]) : defaults.loop;
+    lines.useWorldSpace = node["useWorldSpace"] ? YamlNumbers::as<bool>(node["useWorldSpace"]) : defaults.useWorldSpace;
+    decodeRibbonFields(node, lines, defaults);
+}
+
+YAML::Node editor::Stream::encodeTrailRendererComponent(const TrailRendererComponent& trail) {
+    static const TrailRendererComponent defaults;
+    YAML::Node node;
+    node["enabled"] = trail.enabled;
+    node["time"] = YamlNumbers::text(trail.time);
+    node["minVertexDistance"] = YamlNumbers::text(trail.minVertexDistance);
+    // the Trail Renderer's own default width is 1 (Unity's): always written
+    node["widthMultiplier"] = YamlNumbers::text(trail.widthMultiplier);
+    if (trail.emitting != defaults.emitting) node["emitting"] = trail.emitting;
+    if (trail.autodestruct != defaults.autodestruct) node["autodestruct"] = trail.autodestruct;
+    encodeRibbonFields(node, trail, defaults);
+
+    if (!trail.customShader.empty())
+        node["customShader"] = trail.customShader;
+    if (!trail.shaderUniforms.empty())
+        node["shaderUniforms"] = encodeShaderUniforms(trail.shaderUniforms);
+    encodeComponentShaderLibrary(node, trail.shaderTextures, trail.shaderFeatures, &trail.blendMode, &trail.depthWrite, true);
+    encodeStencilAndColorWrite(node, trail.stencil, trail.colorWrite);
+    if (!trail.shaderGlobalBindings.empty()) {
+        YAML::Node bindings(YAML::NodeType::Map);
+        for (const auto& binding : trail.shaderGlobalBindings) bindings[binding.first] = binding.second;
+        node["shaderGlobalBindings"] = bindings;
+    }
+    return node;
+}
+
+TrailRendererComponent editor::Stream::decodeTrailRendererComponent(const YAML::Node& node, const TrailRendererComponent* oldTrail) {
+    static const TrailRendererComponent defaults;
+    TrailRendererComponent trail;
+    if (oldTrail) { trail = *oldTrail; }
+
+    trail.enabled = node["enabled"] ? YamlNumbers::as<bool>(node["enabled"]) : defaults.enabled;
+    trail.time = node["time"] ? std::max(0.0f, decodeFinite(node["time"], defaults.time)) : defaults.time;
+    trail.minVertexDistance = node["minVertexDistance"] ? std::max(0.0f, decodeFinite(node["minVertexDistance"], defaults.minVertexDistance)) : defaults.minVertexDistance;
+    trail.emitting = node["emitting"] ? YamlNumbers::as<bool>(node["emitting"]) : defaults.emitting;
+    trail.autodestruct = node["autodestruct"] ? YamlNumbers::as<bool>(node["autodestruct"]) : defaults.autodestruct;
+    decodeRibbonFields(node, trail, defaults);
+
+    trail.customShader = node["customShader"] ? node["customShader"].as<std::string>() : std::string();
+    trail.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
+    trail.needUpdateShaderUniforms = true;
+    decodeComponentShaderLibrary(node, trail.shaderTextures, trail.shaderFeatures, &trail.blendMode, &trail.depthWrite);
+    decodeStencilAndColorWrite(node, trail.stencil, trail.colorWrite);
+    trail.shaderGlobalBindings.clear();
+    if (node["shaderGlobalBindings"] && node["shaderGlobalBindings"].IsMap()) {
+        for (const auto& binding : node["shaderGlobalBindings"]) {
+            trail.shaderGlobalBindings.push_back({binding.first.as<std::string>(), binding.second.as<std::string>()});
+        }
+    }
+
+    // the runtime starts again: no points, nothing loaded
+    trail.points.reset();
+    trail.hasLastHeadPosition = false;
+    trail.idleTime = 0.0f;
+    trail.warnedCapacity = false;
+    trail.destroyRequested = false;
+    trail.needUpdateRibbon = true;
+    trail.needUpdateBuffer = false;
+    trail.worldAABB.setNull();
+    if (oldTrail && oldTrail->loaded) {
+        // decoded over a loaded trail: reloaded by the render system (its GPU objects freed)
+        trail.needReload = true;
+    } else {
+        trail.loaded = false;
+        trail.loadCalled = false;
+        trail.needReload = false;
+        trail.loadedRibbonKey = 0;
+        trail.ribbon = LineRibbonData();
+    }
+    return trail;
+}
+
 YAML::Node editor::Stream::encodeLineRendererComponent(const LineRendererComponent& lines) {
     YAML::Node node;
     node["enabled"] = lines.enabled;
@@ -9978,6 +10579,10 @@ YAML::Node editor::Stream::encodeLineRendererComponent(const LineRendererCompone
         linesNode.push_back(lineNode);
     }
     node["lines"] = linesNode;
+
+    // the polyline, width and ribbon settings (lines and trails spec 6.7): written only away
+    // from their defaults, so a scene without them is written as it always was
+    encodeLineRibbonSettings(node, lines);
 
     if (!lines.customShader.empty())
         node["customShader"] = lines.customShader;
@@ -10011,16 +10616,30 @@ LineRendererComponent editor::Stream::decodeLineRendererComponent(const YAML::No
         lines.maxLines = static_cast<unsigned int>(lines.lines.size());
     }
 
+    // not merged: an absent key is the default (encode leaves defaults out)
+    decodeLineRibbonSettings(node, lines);
+
     if (node["customShader"]) lines.customShader = node["customShader"].as<std::string>();
     lines.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
     lines.needUpdateShaderUniforms = true;
     decodeComponentShaderLibrary(node, lines.shaderTextures, lines.shaderFeatures, &lines.blendMode, &lines.depthWrite);
     decodeStencilAndColorWrite(node, lines.stencil, lines.colorWrite);
 
-    lines.loaded = false;
-    lines.loadCalled = false;
     lines.needUpdateBuffer = false;
-    lines.needReload = false;
+    lines.needUpdateRibbon = true;
+    lines.polylineSegments.clear();
+    if (oldLines && oldLines->loaded) {
+        // decoded over a loaded line: the render system destroys its GPU objects and loads it
+        // again (dropping them here would leak its buffers and pipelines)
+        lines.needReload = true;
+    } else {
+        lines.loaded = false;
+        lines.loadCalled = false;
+        lines.needReload = false;
+        lines.loadedRibbon = false;
+        lines.loadedRibbonKey = 0;
+        lines.ribbon = LineRibbonData();
+    }
 
     if (node["enabled"]) lines.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
