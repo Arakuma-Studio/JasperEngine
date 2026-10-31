@@ -101,6 +101,25 @@ solver of your own, or a package.
 | `Resources.Load<TextAsset>(path).text`, `StreamingAssets` files | `File.readText("asset://path")` (read-only, in the APK on Android too); `Json.readFile("asset://...")` |
 | ScriptableObject (data assets) | a JSON file (`Json.readFile("lua://data/items.json")`) or a Lua data module (`require("data.items")`): jasper://docs/lua-api 2.4.2 |
 
+## Networking
+
+Details: jasper://docs/networking.
+
+| Unity term | JasperEngine name |
+|---|---|
+| `UnityWebRequest.Get` / `Post` / `Put` / `Delete` / `Head` + `SendWebRequest()` | `Http.get` / `Http.post` / `Http.put` / `Http.delete` / `Http.head` (a callback on the main thread; also `Http.patch`, `Http.request{...}`); C++ `jasperengine::Http::send` |
+| `UnityWebRequest.SetRequestHeader`, `timeout`, `redirectLimit` | options `headers`, `timeout` (seconds), `redirects` |
+| `DownloadHandlerBuffer.text` / `.data` | `response.body` (`response:json()`, `responseType = "json"` -> `response.data`) |
+| `DownloadHandlerFile` | `Http.download(url, "data://...")` |
+| `DownloadHandlerTexture`, `UnityWebRequestTexture.GetTexture` (+ `Texture2D.LoadImage`, `Sprite.Create`) | `Http.getTexture(url, cb)` -> `response.textureData`, `image:setTexture(response.url, response.textureData)` |
+| `UnityWebRequest.downloadProgress` | `request.progress`, option `onProgress` |
+| `UnityWebRequest.Abort()` | `request:cancel()` (`Http.cancelAll()`) |
+| `UnityWebRequest.result` / `error` / `responseCode` | `response.ok` + `response.errorCode`, `response.error`, `response.status` |
+| `certificateHandler` accepting every certificate | option `verifyTls = false` (a test server only) |
+| `UnityWebRequest.EscapeURL` / `UnEscapeURL` | `Http.encodeUrl` / `Http.decodeUrl` |
+| Player Settings > Android > *Internet Access* (Auto / Require) | Project Settings > Android > Internet Access (`android.internet_access`: `auto` / `require`) |
+| Player Settings > *Allow downloads over HTTP* | Project Settings > Player > Other Settings > Allow Insecure HTTP (`player.allow_insecure_http`) |
+
 ## Layers and physics
 
 Each physics backend has its Layer Collision Matrix (Project Settings > Physics for
