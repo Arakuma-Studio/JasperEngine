@@ -124,8 +124,8 @@ LIMITS.update({"create_ragdoll": 900})
 # (then TOTAL_LIMIT = 107626)
 # video-mp4: no new tool; create_entity's types video_player / video_background, get_asset_info's video
 # probe and playable_on, the media "backend" of inspect_ui; merged with main (ui-canvas-group,
-# physics-3d, http): measured MEASURED, the limit set to it
-TOTAL_LIMIT = 107626
+# physics-3d, http): 151 tools measured 107660, the limit set to it
+TOTAL_LIMIT = 107660
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
