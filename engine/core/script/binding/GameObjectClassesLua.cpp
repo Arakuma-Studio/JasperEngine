@@ -2761,9 +2761,10 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("maxDistance", &Joint3D::getMaxDistance, &Joint3D::setMaxDistance)
         .addProperty("coneHalfAngle", &Joint3D::getConeHalfAngle, &Joint3D::setConeHalfAngle)
         .addProperty("normalHalfConeAngle", &Joint3D::getNormalHalfConeAngle, &Joint3D::setNormalHalfConeAngle)
-        .addProperty("swing2Limit", &Joint3D::getNormalHalfConeAngle, &Joint3D::setNormalHalfConeAngle)
+        // Unity swing1Limit turns about the swing axis (planeAxis): Jolt's normal half cone
+        .addProperty("swing1Limit", &Joint3D::getNormalHalfConeAngle, &Joint3D::setNormalHalfConeAngle)
         .addProperty("planeHalfConeAngle", &Joint3D::getPlaneHalfConeAngle, &Joint3D::setPlaneHalfConeAngle)
-        .addProperty("swing1Limit", &Joint3D::getPlaneHalfConeAngle, &Joint3D::setPlaneHalfConeAngle)
+        .addProperty("swing2Limit", &Joint3D::getPlaneHalfConeAngle, &Joint3D::setPlaneHalfConeAngle)
         .addProperty("twistMinAngle", &Joint3D::getTwistMinAngle, &Joint3D::setTwistMinAngle)
         .addProperty("lowTwistLimit", &Joint3D::getTwistMinAngle, &Joint3D::setTwistMinAngle)
         .addProperty("twistMaxAngle", &Joint3D::getTwistMaxAngle, &Joint3D::setTwistMaxAngle)

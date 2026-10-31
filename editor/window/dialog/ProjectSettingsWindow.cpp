@@ -1364,7 +1364,7 @@ void ProjectSettingsWindow::drawPhysicsSettings() {
             ImGui::EndTable();
         }
 
-        if (Theme::foldoutHeader("World Capacity", ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (Theme::foldoutHeader("3D World Capacity", ImGuiTreeNodeFlags_DefaultOpen)) {
             drawSectionNote("Limits of each scene's 3D physics world, reserved when the scene starts playing. "
                 "Past Max Bodies no more Rigidbodies are made (the console names the setting); "
                 "past the pairs or contact constraints some contacts are dropped for that step.");

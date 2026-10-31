@@ -1650,7 +1650,7 @@ void createRagdollTool(const CallPtr& call) {
         Json item = {{"bone", part.slot}, {"entity", entityJson(target, part.entity)}, {"collider", part.collider}, {"mass", part.mass}};
         item["joint"] = part.hasJoint ? Json{{"type", "swingtwist"}, {"connected", entityJson(target, part.joint.bodyB)},
                                              {"twist", {Angle::defaultToDeg(part.joint.twistMinAngle), Angle::defaultToDeg(part.joint.twistMaxAngle)}},
-                                             {"swing1", Angle::defaultToDeg(part.joint.planeHalfConeAngle)}}
+                                             {"swing1", Angle::defaultToDeg(part.joint.normalHalfConeAngle)}}
                                       : Json(nullptr);
         parts.push_back(item);
     }

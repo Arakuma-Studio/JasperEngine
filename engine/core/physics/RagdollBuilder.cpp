@@ -491,8 +491,9 @@ RagdollBuildResult RagdollBuilder::build(Scene* scene, Entity root, const Ragdol
             joint.planeAxis = directionAxis(inverseTransformDirection(frame, info.normalAxis));
             joint.twistMinAngle = Angle::degToDefault(info.minLimit);
             joint.twistMaxAngle = Angle::degToDefault(info.maxLimit);
-            joint.planeHalfConeAngle = Angle::degToDefault(info.swingLimit);
-            joint.normalHalfConeAngle = 0.0f;
+            // swing 1 turns about the swing axis: Jolt's normal half cone (measured, Physics3DJointsTest)
+            joint.normalHalfConeAngle = Angle::degToDefault(info.swingLimit);
+            joint.planeHalfConeAngle = 0.0f;
             part.hasJoint = true;
             part.joint = joint;
         }

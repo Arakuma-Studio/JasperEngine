@@ -17,6 +17,7 @@
 #include "lua.hpp"
 #include "LuaBridge.h"
 
+#include <optional>
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -83,6 +84,27 @@ namespace {
     // Unity spring / damper: Jolt's stiffness and damping spring
     JPH::SpringSettings stiffnessSpring(float stiffness, float damper){
         return JPH::SpringSettings(JPH::ESpringMode::StiffnessAndDamping, nonNegative(stiffness), nonNegative(damper));
+    }
+
+    // The point Jolt's fixed and slider constraints take with mAutoDetectPoint, as they took it
+    // before every body could switch type: a static body (now made with motion properties, so
+    // Jolt would weigh it in) anchors at the other body's centre of mass
+    JPH::RVec3 autoDetectedPoint(const JPH::Body& body1, const JPH::Body& body2){
+        if (body1.IsStatic()) return body2.GetCenterOfMassPosition();
+        if (body2.IsStatic()) return body1.GetCenterOfMassPosition();
+        const JPH::Real inverseMass1 = JPH::Real(body1.GetMotionPropertiesUnchecked()->GetInverseMassUnchecked());
+        const JPH::Real inverseMass2 = JPH::Real(body2.GetMotionPropertiesUnchecked()->GetInverseMassUnchecked());
+        const JPH::Real total = inverseMass1 + inverseMass2;
+        if (total == JPH::Real(0)) return body1.GetCenterOfMassPosition();
+        return (inverseMass1 * body1.GetCenterOfMassPosition() + inverseMass2 * body2.GetCenterOfMassPosition()) / total;
+    }
+
+    // LOCAL joints read as Unity's: the angle, slide, twist and six-DOF coordinates of bodyA (the
+    // joint's own body) relative to the connected body. Jolt measures body 2 (bodyB) relative to
+    // body 1 (bodyA), so LOCAL values are Jolt's negated (-1); WORLD joints keep Jolt's (+1) as
+    // the engine did before
+    float jointSign(const Joint3DComponent& joint){
+        return joint.anchorSpace == JointAnchorSpace::LOCAL ? -1.0f : 1.0f;
     }
 
     // soft limits: 0 Hz = hard
@@ -329,9 +351,12 @@ bool PhysicsSystem::buildJoint3D(Entity entity, Joint3DComponent& joint){
 
     const JPH::BodyLockInterface& bodyLockInterface = getBodyLockInterface3D();
     JPH::BodyID bodies[2] = {bodyAComp.body, bodyBComp ? bodyBComp->body : JPH::BodyID()};
-    JPH::BodyLockMultiWrite lock(bodyLockInterface, bodies, bodyBComp ? 2 : 1);
-    JPH::Body* lockBodyA = lock.GetBody(0);
-    JPH::Body* lockBodyB = bodyBComp ? lock.GetBody(1) : &JPH::Body::sFixedToWorld;
+    // held while the constraint is made; released before the parameters and the pair filter
+    // go through the (locking) body interface
+    std::optional<JPH::BodyLockMultiWrite> lock;
+    lock.emplace(bodyLockInterface, bodies, bodyBComp ? 2 : 1);
+    JPH::Body* lockBodyA = lock->GetBody(0);
+    JPH::Body* lockBodyB = bodyBComp ? lock->GetBody(1) : &JPH::Body::sFixedToWorld;
     if (!lockBodyA || !lockBodyB){
         return jointError("Cannot create 3D joint, bodyA or bodyB is invalid");
     }
@@ -380,7 +405,7 @@ bool PhysicsSystem::buildJoint3D(Entity entity, Joint3DComponent& joint){
             if (local){
                 settings.mPoint1 = settings.mPoint2 = toJolt(worldAnchorA);
             }else{
-                settings.mAutoDetectPoint = true;
+                settings.mPoint1 = settings.mPoint2 = autoDetectedPoint(A, B);
             }
             constraint = settings.Create(A, B);
             break;
@@ -438,7 +463,8 @@ bool PhysicsSystem::buildJoint3D(Entity entity, Joint3DComponent& joint){
             settings.mHingeAxis1 = settings.mHingeAxis2 = toJolt(axis);
             settings.mNormalAxis1 = settings.mNormalAxis2 = toJolt(normal);
             if (limits.center != 0.0f){
-                // turned by the centre: the start pose reads -c
+                // turned by the centre: Jolt reads +c at the start pose, the user's 0
+                // (user = c - Jolt, jointSign)
                 settings.mNormalAxis2 = JPH::Quat::sRotation(toJolt(axis), limits.center) * toJolt(normal);
             }
             if (limits.active){
@@ -467,19 +493,20 @@ bool PhysicsSystem::buildJoint3D(Entity entity, Joint3DComponent& joint){
             if (limits.degenerate){
                 Log::warn("Prismatic 3D joint with equal limits is unsupported by Jolt SliderConstraint. Using fixed joint instead.");
                 JPH::FixedConstraintSettings settings;
-                settings.mAutoDetectPoint = true;
+                settings.mPoint1 = settings.mPoint2 = local ? toJolt(worldAnchorA) : autoDetectedPoint(A, B);
                 constraint = settings.Create(A, B);
                 break;
             }
             JPH::SliderConstraintSettings settings;
             settings.SetSliderAxis(toJolt(axis));
             if (local){
-                // shifted by the limits' centre: the start position reads -c
+                // shifted by the limits' centre: Jolt reads +c at the start, the user's 0
+                // (user = c - Jolt, jointSign)
                 settings.mAutoDetectPoint = false;
-                settings.mPoint1 = toJolt(worldAnchorA + axis * limits.center);
+                settings.mPoint1 = toJolt(worldAnchorA - axis * limits.center);
                 settings.mPoint2 = toJolt(worldAnchorA);
             }else{
-                settings.mAutoDetectPoint = true;
+                settings.mPoint1 = settings.mPoint2 = autoDetectedPoint(A, B);
             }
             if (limits.active){
                 settings.mLimitsMin = limits.min;
@@ -509,6 +536,12 @@ bool PhysicsSystem::buildJoint3D(Entity entity, Joint3DComponent& joint){
             settings.mSwingType = joint.swingType == JointSwingType::PYRAMID ? JPH::ESwingType::Pyramid : JPH::ESwingType::Cone;
             settings.mNormalHalfConeAngle = Angle::defaultToRad(std::clamp(joint.normalHalfConeAngle, Angle::degToDefault(kMinConeAngle), Angle::degToDefault(kMaxConeAngle)));
             settings.mPlaneHalfConeAngle = Angle::defaultToRad(std::clamp(joint.planeHalfConeAngle, Angle::degToDefault(kMinConeAngle), Angle::degToDefault(kMaxConeAngle)));
+            if (local){
+                // Unity's low / high twist of bodyA: Jolt's twist of bodyB, negated
+                const float lowTwist = twistMin;
+                twistMin = -twistMax;
+                twistMax = -lowTwist;
+            }
             settings.mTwistMinAngle = std::max(-JPH::JPH_PI, Angle::defaultToRad(twistMin));
             settings.mTwistMaxAngle = std::min(JPH::JPH_PI, Angle::defaultToRad(twistMax));
             settings.mMaxFrictionTorque = nonNegative(joint.maxFriction);
@@ -536,6 +569,11 @@ bool PhysicsSystem::buildJoint3D(Entity entity, Joint3DComponent& joint){
                     float minValue = axis < 3 ? vectorAxis(joint.linearLimitMin, axis) : Angle::defaultToRad(vectorAxis(joint.angularLimitMin, axis - 3));
                     float maxValue = axis < 3 ? vectorAxis(joint.linearLimitMax, axis) : Angle::defaultToRad(vectorAxis(joint.angularLimitMax, axis - 3));
                     if (maxValue < minValue) std::swap(minValue, maxValue);
+                    if (local){
+                        const float lowValue = minValue;
+                        minValue = -maxValue;
+                        maxValue = -lowValue;
+                    }
                     if (axis >= 3){
                         // Jolt's swing limits are symmetric within [-pi, pi] (twist about X too)
                         minValue = std::max(-JPH::JPH_PI, minValue);
@@ -627,6 +665,7 @@ bool PhysicsSystem::buildJoint3D(Entity entity, Joint3DComponent& joint){
 
     joint.joint = constraint;
     world3D.AddConstraint(joint.joint);
+    lock.reset();
     joint.loadFailed = false;
     joint.broken = false;
     joint.breakArmed = true;
@@ -709,12 +748,12 @@ void PhysicsSystem::applyJoint3DParameters(Entity entity, Joint3DComponent& join
                 }
                 motor.SetTorqueLimit(forceLimit(joint.motorMaxForce));
                 hinge->SetMotorState(JPH::EMotorState::Velocity);
-                hinge->SetTargetAngularVelocity(Angle::defaultToRad(joint.motorTargetVelocity));
+                hinge->SetTargetAngularVelocity(jointSign(joint) * Angle::defaultToRad(joint.motorTargetVelocity));
             }else if (joint.useSpring){
                 motor.mSpringSettings = stiffnessSpring(joint.springStiffness, joint.springDamper);
                 motor.SetTorqueLimit(FLT_MAX);
                 hinge->SetMotorState(JPH::EMotorState::Position);
-                hinge->SetTargetAngle(Angle::defaultToRad(joint.springTargetPosition) - joint.limitsCenter);
+                hinge->SetTargetAngle(jointSign(joint) * (Angle::defaultToRad(joint.springTargetPosition) - joint.limitsCenter));
             }else{
                 hinge->SetMotorState(JPH::EMotorState::Off);
             }
@@ -740,12 +779,12 @@ void PhysicsSystem::applyJoint3DParameters(Entity entity, Joint3DComponent& join
                 }
                 motor.SetForceLimit(forceLimit(joint.motorMaxForce));
                 slider->SetMotorState(JPH::EMotorState::Velocity);
-                slider->SetTargetVelocity(joint.motorTargetVelocity);
+                slider->SetTargetVelocity(jointSign(joint) * joint.motorTargetVelocity);
             }else if (joint.useSpring){
                 motor.mSpringSettings = stiffnessSpring(joint.springStiffness, joint.springDamper);
                 motor.SetForceLimit(FLT_MAX);
                 slider->SetMotorState(JPH::EMotorState::Position);
-                slider->SetTargetPosition(joint.springTargetPosition - joint.limitsCenter);
+                slider->SetTargetPosition(jointSign(joint) * (joint.springTargetPosition - joint.limitsCenter));
             }else{
                 slider->SetMotorState(JPH::EMotorState::Off);
             }
@@ -770,6 +809,11 @@ void PhysicsSystem::applyJoint3DParameters(Entity entity, Joint3DComponent& join
             float twistMin = joint.twistMinAngle;
             float twistMax = joint.twistMaxAngle;
             if (twistMax < twistMin) std::swap(twistMin, twistMax);
+            if (local){
+                const float lowTwist = twistMin;
+                twistMin = -twistMax;
+                twistMax = -lowTwist;
+            }
             const float coneMax = JPH::DegreesToRadians(179.9f);
             swingTwist->SetNormalHalfConeAngle(std::clamp(Angle::defaultToRad(joint.normalHalfConeAngle), 0.0f, coneMax));
             swingTwist->SetPlaneHalfConeAngle(std::clamp(Angle::defaultToRad(joint.planeHalfConeAngle), 0.0f, coneMax));
@@ -783,8 +827,10 @@ void PhysicsSystem::applyJoint3DParameters(Entity entity, Joint3DComponent& join
                 swingTwist->GetTwistMotorSettings() = motor;
                 swingTwist->SetSwingMotorState(JPH::EMotorState::Position);
                 swingTwist->SetTwistMotorState(JPH::EMotorState::Position);
+                // bodyA's rotation relative to the connected body (LOCAL): Jolt's inverse
                 const Quaternion& q = joint.motorTargetRotation;
-                swingTwist->SetTargetOrientationCS(JPH::Quat(q.x, q.y, q.z, q.w).Normalized());
+                const JPH::Quat target = JPH::Quat(q.x, q.y, q.z, q.w).Normalized();
+                swingTwist->SetTargetOrientationCS(local ? target.Conjugated() : target);
             }else{
                 swingTwist->SetSwingMotorState(JPH::EMotorState::Off);
                 swingTwist->SetTwistMotorState(JPH::EMotorState::Off);
@@ -817,13 +863,16 @@ void PhysicsSystem::applyJoint3DParameters(Entity entity, Joint3DComponent& join
                 const bool position = linear ? joint.driveStiffness > 0.0f : joint.angularDriveStiffness > 0.0f;
                 sixDOF->SetMotorState(eaxis, position ? JPH::EMotorState::Position : JPH::EMotorState::Velocity);
             }
-            sixDOF->SetTargetPositionCS(toJolt(joint.targetPosition));
+            // LOCAL targets are bodyA's relative to the connected body: Jolt's negated (jointSign)
+            const float sign = jointSign(joint);
+            sixDOF->SetTargetPositionCS(toJolt(joint.targetPosition * sign));
             const Quaternion& q = joint.targetRotation;
-            sixDOF->SetTargetOrientationCS(JPH::Quat(q.x, q.y, q.z, q.w).Normalized());
-            sixDOF->SetTargetVelocityCS(toJolt(joint.targetVelocity));
+            const JPH::Quat target = JPH::Quat(q.x, q.y, q.z, q.w).Normalized();
+            sixDOF->SetTargetOrientationCS(local ? target.Conjugated() : target);
+            sixDOF->SetTargetVelocityCS(toJolt(joint.targetVelocity * sign));
             const Vector3 angularVelocity(Angle::defaultToRad(joint.targetAngularVelocity.x), Angle::defaultToRad(joint.targetAngularVelocity.y),
                                           Angle::defaultToRad(joint.targetAngularVelocity.z));
-            sixDOF->SetTargetAngularVelocityCS(toJolt(angularVelocity));
+            sixDOF->SetTargetAngularVelocityCS(toJolt(angularVelocity * sign));
             break;
         }
         default:
@@ -857,10 +906,10 @@ float PhysicsSystem::getJoint3DPosition(const Joint3DComponent& joint){
         return 0.0f;
     }
     if (joint.type == Joint3DType::HINGE && joint.joint->GetSubType() == JPH::EConstraintSubType::Hinge){
-        return static_cast<JPH::HingeConstraint*>(joint.joint)->GetCurrentAngle() + joint.limitsCenter;
+        return jointSign(joint) * static_cast<JPH::HingeConstraint*>(joint.joint)->GetCurrentAngle() + joint.limitsCenter;
     }
     if (joint.type == Joint3DType::PRISMATIC && joint.joint->GetSubType() == JPH::EConstraintSubType::Slider){
-        return static_cast<JPH::SliderConstraint*>(joint.joint)->GetCurrentPosition() + joint.limitsCenter;
+        return jointSign(joint) * static_cast<JPH::SliderConstraint*>(joint.joint)->GetCurrentPosition() + joint.limitsCenter;
     }
     return 0.0f;
 }
@@ -874,12 +923,12 @@ float PhysicsSystem::getJoint3DSpeed(const Joint3DComponent& joint){
     // the joint's primary axis (hinge axis, slide direction) in world space
     const JPH::Vec3 axis = (body1->GetRotation() * joint.joint->GetConstraintToBody1Matrix().GetAxisX()).Normalized();
     if (joint.type == Joint3DType::HINGE){
-        return (body2->GetAngularVelocity() - body1->GetAngularVelocity()).Dot(axis);
+        return jointSign(joint) * (body2->GetAngularVelocity() - body1->GetAngularVelocity()).Dot(axis);
     }
     if (joint.type == Joint3DType::PRISMATIC){
         const JPH::RVec3 point1 = body1->GetCenterOfMassTransform() * joint.joint->GetConstraintToBody1Matrix().GetTranslation();
         const JPH::RVec3 point2 = body2->GetCenterOfMassTransform() * joint.joint->GetConstraintToBody2Matrix().GetTranslation();
-        return (body2->GetPointVelocity(point2) - body1->GetPointVelocity(point1)).Dot(axis);
+        return jointSign(joint) * (body2->GetPointVelocity(point2) - body1->GetPointVelocity(point1)).Dot(axis);
     }
     return 0.0f;
 }

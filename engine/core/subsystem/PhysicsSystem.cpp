@@ -215,7 +215,7 @@ JPH::EMotionQuality PhysicsSystem::getRigidbodyMotionQualityToJolt(RigidbodyMoti
 namespace {
     struct WorldCapacity3D{
         unsigned int maxBodies = 8192;
-        unsigned int maxBodyPairs = 16384;
+        unsigned int maxBodyPairs = 8192;
         unsigned int maxContactConstraints = 8192;
     };
 
@@ -2459,7 +2459,9 @@ bool PhysicsSystem::setRigidbodyType(Entity entity, RigidbodyComponent& body, Bo
             lock.GetBody().SetCollideKinematicVsNonDynamic(collidesKinematicVsNonDynamic3D(body));
         }
     }
-    if (type == BodyType::STATIC){
+    // a dynamic body made kinematic stops where it is (Unity isKinematic = true): it moves
+    // again only by its Transform or a script
+    if (type == BodyType::STATIC || (type == BodyType::KINEMATIC && previous == BodyType::DYNAMIC)){
         bodyInterface.SetLinearAndAngularVelocity(body.body, JPH::Vec3::sZero(), JPH::Vec3::sZero());
     }
     // the pairs it is in are tested again with its new type

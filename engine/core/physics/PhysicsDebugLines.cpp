@@ -938,6 +938,12 @@ void PhysicsDebugLines::jointEdges(Scene* scene, const Joint3DComponent& joint, 
                 float minRad = Angle::defaultToRad(joint.limitsMin);
                 float maxRad = Angle::defaultToRad(joint.limitsMax);
                 if (maxRad < minRad) std::swap(minRad, maxRad);
+                if (joint.anchorSpace == JointAnchorSpace::WORLD){
+                    // a world joint's limits are Jolt's: bodyB's angle, bodyA turns the other way
+                    const float low = minRad;
+                    minRad = -maxRad;
+                    maxRad = -low;
+                }
                 arc(center, axis, normal, minRad, maxRad, 0.4f, LIMIT, 20);
                 Vector3 n = normal.length() > 0.0001f ? normal.normalized() : Vector3::ZERO;
                 if (n == Vector3::ZERO){

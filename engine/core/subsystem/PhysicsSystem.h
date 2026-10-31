@@ -104,7 +104,7 @@ namespace jasperengine{
 		JoltContactListener* contactListener3D;
 
         // Process-wide singletons shared by every scene; not owned here.
-        JPH::TempAllocatorImpl* temp_allocator;
+        JPH::TempAllocator* temp_allocator;
         JPH::JobSystemThreadPool* job_system;
 
 		JPH::PhysicsSystem world3D;
@@ -398,7 +398,7 @@ namespace jasperengine{
 		void recordDebugContact3D(const JPH::ContactManifold& manifold);
 
 		// The size of the 3D worlds made from now on (project setting physics3D): bodies, body
-		// pairs and contact constraints. Defaults 8192 / 16384 / 8192. A world past one of them
+		// pairs and contact constraints. Defaults 8192 / 8192 / 8192 (a world takes 3.6 MB with them, Physics3DBodyTest). A world past one of them
 		// reports it once with the setting to raise.
 		static void setWorldCapacity3D(unsigned int maxBodies, unsigned int maxBodyPairs, unsigned int maxContactConstraints);
 		static unsigned int getDefaultMaxBodies3D();

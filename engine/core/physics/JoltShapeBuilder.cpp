@@ -293,8 +293,8 @@ void JoltShapeBuilder::ensureJoltGlobalInit(){
 
 // Intentionally leaked: the editor keeps its App (and every Scene) in a static, so
 // ~PhysicsSystem runs during static destruction and must not find these already gone.
-JPH::TempAllocatorImpl& JoltShapeBuilder::sharedPhysicsTempAllocator(){
-    static JPH::TempAllocatorImpl* instance = new JPH::TempAllocatorImpl(10 * 1024 * 1024);
+JPH::TempAllocator& JoltShapeBuilder::sharedPhysicsTempAllocator(){
+    static JPH::TempAllocatorImplWithMallocFallback* instance = new JPH::TempAllocatorImplWithMallocFallback(10 * 1024 * 1024);
     return *instance;
 }
 

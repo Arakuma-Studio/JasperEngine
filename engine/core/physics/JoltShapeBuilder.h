@@ -103,7 +103,9 @@ namespace jasperengine {
         // One temp allocator + job pool shared by every 3D world (the scenes' and the placement
         // worlds'). Updates run sequentially on the main thread, so a single pool avoids a
         // per-world thread pool and 10 MiB buffer. Intentionally leaked, like Jolt's Factory.
-        static JPH::TempAllocatorImpl& sharedPhysicsTempAllocator();
+        // Past the 10 MiB (a world made with a large maxContactConstraints asks its step for
+        // maxContactConstraints x ~450 bytes) it falls back to malloc instead of aborting.
+        static JPH::TempAllocator& sharedPhysicsTempAllocator();
         static JPH::JobSystemThreadPool& sharedPhysicsJobSystem();
 
         // The builders return null and set *error (when there is something to say) on failure.

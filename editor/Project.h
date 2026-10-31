@@ -85,7 +85,7 @@ namespace jasperengine::editor{
     // the 3D world capacity (project.yaml physics3D); defaults = PhysicsSystem's
     struct Physics3DWorldSettings {
         unsigned int maxBodies = 8192;
-        unsigned int maxBodyPairs = 16384;
+        unsigned int maxBodyPairs = 8192;
         unsigned int maxContactConstraints = 8192;
 
         bool operator==(const Physics3DWorldSettings& other) const {

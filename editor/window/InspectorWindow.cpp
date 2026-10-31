@@ -12648,12 +12648,12 @@ void editor::InspectorWindow::drawJoint3DComponent(ComponentType cpType, ScenePr
         propertyRow(RowPropertyType::Vector3, cpType, "twistAxis", "Twist Axis", sceneProject, entities, settingsJointValue);
         propertyRow(RowPropertyType::Vector3, cpType, "planeAxis", "Swing Axis", sceneProject, entities, settingsJointValue);
         propertyRow(RowPropertyType::Enum, cpType, "swingType", "Swing Type", sceneProject, entities, settingsSwingType);
-        // Unity CharacterJoint's names: twist about the twist axis, swing 1 about the swing axis,
-        // swing 2 about their normal
+        // Unity CharacterJoint's names: twist about the twist axis, swing 1 about the swing axis
+        // (Jolt's normal half cone), swing 2 about their normal (Jolt's plane half cone)
         propertyRow(RowPropertyType::Float, cpType, "twistMinAngle", "Low Twist", sceneProject, entities, settingsParam);
         propertyRow(RowPropertyType::Float, cpType, "twistMaxAngle", "High Twist", sceneProject, entities, settingsParam);
-        propertyRow(RowPropertyType::Float, cpType, "planeHalfConeAngle", "Swing 1", sceneProject, entities, settingsParam);
-        propertyRow(RowPropertyType::Float, cpType, "normalHalfConeAngle", "Swing 2", sceneProject, entities, settingsParam);
+        propertyRow(RowPropertyType::Float, cpType, "normalHalfConeAngle", "Swing 1", sceneProject, entities, settingsParam);
+        propertyRow(RowPropertyType::Float, cpType, "planeHalfConeAngle", "Swing 2", sceneProject, entities, settingsParam);
     }else if (joint.type == Joint3DType::SIXDOF){
         if (!local){
             propertyRow(RowPropertyType::Vector3, cpType, "anchorA", "Anchor A", sceneProject, entities, settingsJointValue);

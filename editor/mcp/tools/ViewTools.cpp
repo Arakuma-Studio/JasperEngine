@@ -21,6 +21,7 @@
 #include "render/SceneRender.h"
 #include "render/SceneRender2D.h"
 #include "subsystem/MeshSystem.h"
+#include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
 #include "object/ui/UIDocument.h"
@@ -1247,6 +1248,13 @@ void configureGameViewTool(const CallPtr& call) {
     }
     if (!changed.empty()) gw->applySettings(settings);
 
+    // the lines the playing scenes drew last frame (0 until a frame is drawn after turning it on)
+    size_t physicsDebugLines = 0;
+    for (const SceneProject& sceneProject : project->getScenes()) {
+        if (sceneProject.playState == ScenePlayState::STOPPED || !sceneProject.scene) continue;
+        if (auto physics = sceneProject.scene->getSystem<PhysicsSystem>()) physicsDebugLines += physics->getDebugLineCount();
+    }
+
     Json data = {
         {"aspect", aspectNames()[std::clamp(settings.aspect, 0, (int)aspectNames().size() - 1)]},
         {"scale", settings.scale},
@@ -1255,6 +1263,7 @@ void configureGameViewTool(const CallPtr& call) {
         {"simulate_touch", project->isSimulateTouch()},
         {"physics_debug", Physics::isDebugDraw()},
         {"physics_debug_contacts", Physics::isDebugDrawContacts()},
+        {"physics_debug_lines", physicsDebugLines},
         {"open", gw->isOpen()},
         {"visible", gw->isVisible()},
         {"view_size", {gw->getWidth(), gw->getHeight()}},

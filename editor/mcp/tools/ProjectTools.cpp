@@ -1448,7 +1448,7 @@ const std::vector<Setting>& settingsTable() {
         struct CapacityKey { const char* key; const char* description; unsigned int Physics3DWorldSettings::* field; };
         static const CapacityKey capacityKeys[] = {
             {"physics.max_bodies", "Bodies a 3D world holds (default 8192); past it new bodies are refused with an error naming this setting.", &Physics3DWorldSettings::maxBodies},
-            {"physics.max_body_pairs", "Touching body pairs a 3D world tracks (default 16384); past it contacts are dropped and reported once.", &Physics3DWorldSettings::maxBodyPairs},
+            {"physics.max_body_pairs", "Touching body pairs a 3D world tracks (default 8192); past it contacts are dropped and reported once.", &Physics3DWorldSettings::maxBodyPairs},
             {"physics.max_contact_constraints", "Contact constraints of a 3D world (default 8192); past it contacts are dropped and reported once.", &Physics3DWorldSettings::maxContactConstraints}};
         for (const CapacityKey& capacity : capacityKeys) {
             Setting s;
