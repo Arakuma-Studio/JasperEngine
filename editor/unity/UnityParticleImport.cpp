@@ -503,19 +503,44 @@ namespace {
         return c;
     }
 
-    // Euler degrees applied X, then Y, then Z of a quaternion (q = qz * qy * qx)
+    // Euler degrees applied X, then Y, then Z of a quaternion (q = qz * qy * qx), from its
+    // rotation matrix (R = Rz Ry Rx), gimbal lock (Y at +-90) included
     Vector3 eulerXYZDegrees(const Quaternion& q){
-        const float sinY = 2.0f * (q.w * q.y - q.z * q.x);
+        const float r00 = 1.0f - 2.0f * (q.y * q.y + q.z * q.z);
+        const float r01 = 2.0f * (q.x * q.y - q.w * q.z);
+        const float r02 = 2.0f * (q.x * q.z + q.w * q.y);
+        const float r10 = 2.0f * (q.x * q.y + q.w * q.z);
+        const float r20 = 2.0f * (q.x * q.z - q.w * q.y);
+        const float r21 = 2.0f * (q.y * q.z + q.w * q.x);
+        const float r22 = 1.0f - 2.0f * (q.x * q.x + q.y * q.y);
         Vector3 e;
-        e.x = std::atan2(2.0f * (q.w * q.x + q.y * q.z), 1.0f - 2.0f * (q.x * q.x + q.y * q.y));
-        e.y = std::fabs(sinY) >= 1.0f ? std::copysign(PI * 0.5f, sinY) : std::asin(sinY);
-        e.z = std::atan2(2.0f * (q.w * q.z + q.x * q.y), 1.0f - 2.0f * (q.y * q.y + q.z * q.z));
+        if (std::fabs(r20) < 0.99999f){
+            e.x = std::atan2(r21, r22);
+            e.y = std::asin(-r20);
+            e.z = std::atan2(r10, r00);
+        }else if (r20 < 0.0f){
+            e.x = std::atan2(r01, r02);
+            e.y = PI * 0.5f;
+            e.z = 0.0f;
+        }else{
+            e.x = std::atan2(-r01, -r02);
+            e.y = -PI * 0.5f;
+            e.z = 0.0f;
+        }
         return e * (180.0f / PI);
     }
 
     Quaternion axisAngle(const Vector3& axis, float degrees){
         const float half = degrees * PI / 360.0f;
         return Quaternion(std::cos(half), axis.x * std::sin(half), axis.y * std::sin(half), axis.z * std::sin(half));
+    }
+
+    // a module of a ParticleSystem document; an empty map when the file has none (a missing
+    // key of a const node is invalid: looking into it would throw)
+    YAML::Node moduleOf(const YAML::Node& ps, const char* name){
+        const YAML::Node module = ps[name];
+        if (module && module.IsMap()) return module;
+        return YAML::Node(YAML::NodeType::Map);
     }
 
     // S = diag(-1, 1, 1) on a rotation: (w, x, y, z) -> (w, x, -y, -z)
@@ -765,7 +790,7 @@ namespace {
             case Blend::Alpha: break;
         }
 
-        const YAML::Node saved = doc->body["m_SavedProperties"];
+        const YAML::Node saved = moduleOf(doc->body, "m_SavedProperties");
         const YAML::Node mainTex = savedProperty(saved["m_TexEnvs"], "_MainTex");
         const Ref textureRef = readRef(mainTex, "m_Texture");
         if (const BuiltinAsset* texture = UnityProject::builtin(textureRef); texture && texture->kind == BuiltinAsset::Texture){
@@ -859,7 +884,7 @@ namespace {
         if (culling == 1 || culling == 2) note(ctx, "culling-mode", "the culling mode is not imported: the system always simulates");
         if (readInt(ps, "ringBufferMode") != 0) note(ctx, "ring-buffer", "ring buffer mode is not supported: the oldest particles are not recycled");
 
-        const YAML::Node init = ps["InitialModule"];
+        const YAML::Node init = moduleOf(ps, "InitialModule");
         m.startLifetime = readMinMaxCurve(init["startLifetime"], ctx, "startLifetime", 1.0f, 5.0f);
         m.startSpeed = readMinMaxCurve(init["startSpeed"], ctx, "startSpeed", 1.0f, 5.0f);
         m.startColor = readMinMaxGradient(init["startColor"]);
@@ -879,7 +904,7 @@ namespace {
         status("InitialModule", "imported");
 
         // emission
-        const YAML::Node emission = ps["EmissionModule"];
+        const YAML::Node emission = moduleOf(ps, "EmissionModule");
         c.emission.enabled = readBool(emission, "enabled", true);
         c.emission.rateOverTime = readMinMaxCurve(emission["rateOverTime"], ctx, "rateOverTime", 1.0f, 10.0f);
         c.emission.rateOverDistance = readMinMaxCurve(emission["rateOverDistance"], ctx, "rateOverDistance");
@@ -901,7 +926,7 @@ namespace {
         status("EmissionModule", c.emission.enabled ? "imported" : "disabled");
 
         // shape (spec 6.10.4: the shape frame converted; scale and box thickness (x, z, y))
-        const YAML::Node shape = ps["ShapeModule"];
+        const YAML::Node shape = moduleOf(ps, "ShapeModule");
         ParticleShapeModule& s = c.shape;
         s.enabled = readBool(shape, "enabled", true);
         const int type = readInt(shape, "type", 4);
@@ -982,7 +1007,7 @@ namespace {
         }
 
         // velocity over lifetime (vectors by S: x negated; angular speeds (x, -y, -z))
-        const YAML::Node vel = ps["VelocityModule"];
+        const YAML::Node vel = moduleOf(ps, "VelocityModule");
         c.velocityOverLifetime.enabled = readBool(vel, "enabled");
         c.velocityOverLifetime.x = negated(readMinMaxCurve(vel["x"], ctx, "velocity x"));
         c.velocityOverLifetime.y = readMinMaxCurve(vel["y"], ctx, "velocity y");
@@ -998,7 +1023,7 @@ namespace {
         c.velocityOverLifetime.space = readBool(vel, "inWorldSpace") ? ParticleSystemSimulationSpace::World : ParticleSystemSimulationSpace::Local;
         status("VelocityModule", c.velocityOverLifetime.enabled ? "imported" : "disabled");
 
-        const YAML::Node clamp = ps["ClampVelocityModule"];
+        const YAML::Node clamp = moduleOf(ps, "ClampVelocityModule");
         auto& lim = c.limitVelocityOverLifetime;
         lim.enabled = readBool(clamp, "enabled");
         lim.separateAxes = readBool(clamp, "separateAxis");
@@ -1013,13 +1038,13 @@ namespace {
         lim.multiplyDragByParticleVelocity = readBool(clamp, "multiplyDragByParticleVelocity", true);
         status("ClampVelocityModule", lim.enabled ? "imported" : "disabled");
 
-        const YAML::Node inherit = ps["InheritVelocityModule"];
+        const YAML::Node inherit = moduleOf(ps, "InheritVelocityModule");
         c.inheritVelocity.enabled = readBool(inherit, "enabled");
         c.inheritVelocity.mode = readInt(inherit, "m_Mode") == 1 ? ParticleSystemInheritVelocityMode::Current : ParticleSystemInheritVelocityMode::Initial;
         c.inheritVelocity.curve = readMinMaxCurve(inherit["m_Curve"], ctx, "inherit velocity");
         status("InheritVelocityModule", c.inheritVelocity.enabled ? "imported" : "disabled");
 
-        const YAML::Node force = ps["ForceModule"];
+        const YAML::Node force = moduleOf(ps, "ForceModule");
         c.forceOverLifetime.enabled = readBool(force, "enabled");
         c.forceOverLifetime.x = negated(readMinMaxCurve(force["x"], ctx, "force x"));
         c.forceOverLifetime.y = readMinMaxCurve(force["y"], ctx, "force y");
@@ -1028,24 +1053,24 @@ namespace {
         c.forceOverLifetime.randomized = readBool(force, "randomizePerFrame");
         status("ForceModule", c.forceOverLifetime.enabled ? "imported" : "disabled");
 
-        const YAML::Node color = ps["ColorModule"];
+        const YAML::Node color = moduleOf(ps, "ColorModule");
         c.colorOverLifetime.enabled = readBool(color, "enabled");
         c.colorOverLifetime.color = readMinMaxGradient(color["gradient"]);
         status("ColorModule", c.colorOverLifetime.enabled ? "imported" : "disabled");
-        const YAML::Node colorSpeed = ps["ColorBySpeedModule"];
+        const YAML::Node colorSpeed = moduleOf(ps, "ColorBySpeedModule");
         c.colorBySpeed.enabled = readBool(colorSpeed, "enabled");
         c.colorBySpeed.color = readMinMaxGradient(colorSpeed["gradient"]);
         { const Vector3 r = readVector3(colorSpeed, "range", Vector3(0, 1, 0)); c.colorBySpeed.range = Vector2(r.x, r.y); }
         status("ColorBySpeedModule", c.colorBySpeed.enabled ? "imported" : "disabled");
 
-        const YAML::Node size = ps["SizeModule"];
+        const YAML::Node size = moduleOf(ps, "SizeModule");
         c.sizeOverLifetime.enabled = readBool(size, "enabled");
         c.sizeOverLifetime.separateAxes = readBool(size, "separateAxes");
         c.sizeOverLifetime.size = readMinMaxCurve(size["curve"], ctx, "size", 1.0f, 1.0f);
         c.sizeOverLifetime.y = readMinMaxCurve(size["y"], ctx, "size y", 1.0f, 1.0f);
         c.sizeOverLifetime.z = readMinMaxCurve(size["z"], ctx, "size z", 1.0f, 1.0f);
         status("SizeModule", c.sizeOverLifetime.enabled ? "imported" : "disabled");
-        const YAML::Node sizeSpeed = ps["SizeBySpeedModule"];
+        const YAML::Node sizeSpeed = moduleOf(ps, "SizeBySpeedModule");
         c.sizeBySpeed.enabled = readBool(sizeSpeed, "enabled");
         c.sizeBySpeed.separateAxes = readBool(sizeSpeed, "separateAxes");
         c.sizeBySpeed.size = readMinMaxCurve(sizeSpeed["curve"], ctx, "size by speed", 1.0f, 1.0f);
@@ -1054,14 +1079,14 @@ namespace {
         { const Vector3 r = readVector3(sizeSpeed, "range", Vector3(0, 1, 0)); c.sizeBySpeed.range = Vector2(r.x, r.y); }
         status("SizeBySpeedModule", c.sizeBySpeed.enabled ? "imported" : "disabled");
 
-        const YAML::Node rot = ps["RotationModule"];
+        const YAML::Node rot = moduleOf(ps, "RotationModule");
         c.rotationOverLifetime.enabled = readBool(rot, "enabled");
         c.rotationOverLifetime.separateAxes = readBool(rot, "separateAxes");
         c.rotationOverLifetime.x = readMinMaxCurve(rot["x"], ctx, "rotation x");
         c.rotationOverLifetime.y = negated(readMinMaxCurve(rot["y"], ctx, "rotation y"));
         c.rotationOverLifetime.z = readMinMaxCurve(rot["curve"], ctx, "rotation", ROTATION_SIGN);
         status("RotationModule", c.rotationOverLifetime.enabled ? "imported" : "disabled");
-        const YAML::Node rotSpeed = ps["RotationBySpeedModule"];
+        const YAML::Node rotSpeed = moduleOf(ps, "RotationBySpeedModule");
         c.rotationBySpeed.enabled = readBool(rotSpeed, "enabled");
         c.rotationBySpeed.separateAxes = readBool(rotSpeed, "separateAxes");
         c.rotationBySpeed.x = readMinMaxCurve(rotSpeed["x"], ctx, "rotation by speed x");
@@ -1070,7 +1095,7 @@ namespace {
         { const Vector3 r = readVector3(rotSpeed, "range", Vector3(0, 1, 0)); c.rotationBySpeed.range = Vector2(r.x, r.y); }
         status("RotationBySpeedModule", c.rotationBySpeed.enabled ? "imported" : "disabled");
 
-        const YAML::Node noise = ps["NoiseModule"];
+        const YAML::Node noise = moduleOf(ps, "NoiseModule");
         auto& n = c.noise;
         n.enabled = readBool(noise, "enabled");
         n.separateAxes = readBool(noise, "separateAxes");
@@ -1094,7 +1119,7 @@ namespace {
             status("NoiseModule", "disabled");
         }
 
-        const YAML::Node uv = ps["UVModule"];
+        const YAML::Node uv = moduleOf(ps, "UVModule");
         auto& sheet = c.textureSheetAnimation;
         sheet.enabled = readBool(uv, "enabled");
         sheet.numTilesX = std::max(1, readInt(uv, "tilesX", 1));
