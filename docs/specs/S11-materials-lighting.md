@@ -718,6 +718,6 @@ with other streams:
   (-0.2 %), Clearcoat (+21.6 %), Anisotropy (+11.1 %), Iridescence (+27.0 %). Over: Sheen +16.5 %
   (≤ 15), Specular/IOR +8.8 % (≤ 3), HIGH quality +7.9 % (≤ 5), and the 4-layer hex terrain 5.16x
   the terrain pass (≤ 1.35x); Transmission's +206 % includes the scene-colour copy the budget
-  leaves out. The hex terrain's layers no longer also run the near/far path (no measurable change:
-  the compiler had dropped it); the remaining cost is the hex taps (three explicit-gradient taps per
-  map and layer). Open for a follow-up; 1080p was not usable (a 0.24 ms frame clocks the GPU down).
+  leaves out. A hex layer skipping the near/far path it overwrites made no measurable difference
+  (the compiler drops it) and was not kept; the cost is the hex taps (three explicit-gradient taps
+  per map and layer). Open for a follow-up; 1080p was not usable (a 0.24 ms frame clocks the GPU down).

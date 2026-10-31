@@ -186,11 +186,12 @@ The ratio is the whole view's, so it slightly understates a lobe's per-sphere co
 | Hex Terrain / Terrain Baseline | 6.056 / 1.173 | **5.16x** | ≤ 1.35x | |
 
 Software (E) could not see these (vertex-bound on llvmpipe: every lobe within 1 %). Open: Sheen,
-Specular/IOR and High quality are a few points over; the hex terrain is 4x over. The terrain's hex
-layers no longer also run the near/far path they threw away (`terrain_fs.glsl`), which made no
-measurable difference (the compiler had dropped it); what remains is the hex taps themselves
-(three explicit-gradient taps per map and layer, plus the side planes) and needs a design change
-(fewer maps on the hex path, or the hex weights shared across layers).
+Specular/IOR and High quality are a few points over; the hex terrain is 4x over. Making a hex
+layer skip the near/far path it overwrites (`terrain_fs.glsl`) made no measurable difference (the
+compiler already drops it) and was reverted (it changed the default variants' source,
+`ShaderZeroCost`); the cost is the hex taps themselves (three explicit-gradient taps per map and
+layer, plus the side planes) and needs a design change (fewer maps on the hex path, or the hex
+weights shared across layers).
 
 ### S20 particles (R23)
 
