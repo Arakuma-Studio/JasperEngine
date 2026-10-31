@@ -470,7 +470,7 @@ controller, or press **Open** next to the field, to edit it in **Window > Animat
   Blend Tree), right-click a state for **Make Transition** (then click the target), **Set as Layer
   Default State** (orange), Copy and Delete. Drop clips on the canvas to make states. Pan with the
   middle mouse or Alt+drag, zoom with the wheel, `F` frames the selection and `A` frames all.
-- Select a state, transition or blend tree to edit it on the right (and in the Inspector): a
+- Select a state, transition or blend tree to edit it in the window's right panel: a
   transition's exit time, duration, offset, interruption and conditions, with a timeline of the
   overlap; a blend tree's parameter, children and thresholds, with a scrubbable value that previews
   in the Scene view.

@@ -136,6 +136,13 @@ editor::App::App(){
     loadingWindow = new LoadingWindow();
     animationWindow = new AnimationWindow(&project);
     poseAnimationWindow = new PoseAnimationWindow(&project);
+    animatorWindow = new AnimatorWindow(&project);
+    // the Inspector's Controller field, the Project window's double-click and MCP open it
+    animationClipAppHooks().openAnimator = [this](Project*, const std::string& controller, uint32_t sceneId, Entity entity){
+        animatorWindow->setOpen(true);
+        animatorWindow->openController(controller, sceneId, entity, nullptr);
+        animatorWindow->requestFocus();
+    };
     terrainEditWindow = new TerrainEditWindow(&project);
     textureSynthesisWindow = new TextureSynthesisWindow(&project);
     vertexAnimationBakerWindow = new VertexAnimationBakerWindow(&project);
@@ -278,6 +285,7 @@ enum class AppMenuCommand : uint32_t {
     ToggleConsole,
     ToggleAnimation,
     TogglePoseAnimation,
+    ToggleAnimator,
     ToggleTerrain,
     ToggleTextureSynthesis,
     ToggleSpriteNormals,
@@ -651,6 +659,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         }),
         menuSubmenu("Animation", {
             menuShortcut(AppMenuCommand::ToggleAnimation, windowMenuLabel(AnimationWindow::WINDOW_NAME), "Ctrl+6"),
+            menuShortcut(AppMenuCommand::ToggleAnimator, windowMenuLabel(AnimatorWindow::WINDOW_NAME), "Ctrl+7"),
             menuCommand(AppMenuCommand::TogglePoseAnimation, windowMenuLabel(PoseAnimationWindow::WINDOW_NAME)),
             menuCommand(AppMenuCommand::ToggleVertexAnimationBaker, windowMenuLabel(VertexAnimationBakerWindow::WINDOW_NAME))
         }),
@@ -847,6 +856,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::TogglePoseAnimation:
             showEditorWindow(poseAnimationWindow);
             break;
+        case AppMenuCommand::ToggleAnimator:
+            showEditorWindow(animatorWindow);
+            break;
         case AppMenuCommand::ToggleTerrain:
             showEditorWindow(terrainEditWindow);
             break;
@@ -901,6 +913,7 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             consoleWindow->setOpen(true);
             animationWindow->setOpen(true);
             poseAnimationWindow->setOpen(false);
+            animatorWindow->setOpen(false);
             terrainEditWindow->setOpen(false);
             textureSynthesisWindow->setOpen(false);
             spriteNormalsWindow->setOpen(false);
@@ -1093,7 +1106,7 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
                 "Ctrl+Shift+P    Pause / Resume (F6 pauses)\n\n"
                 "WINDOWS\n"
                 "Ctrl+1 Scene   Ctrl+3 Inspector   Ctrl+4 Hierarchy\n"
-                "Ctrl+5 Project   Ctrl+6 Animation   Ctrl+Shift+C Console\n\n"
+                "Ctrl+5 Project   Ctrl+6 Animation   Ctrl+7 Animator   Ctrl+Shift+C Console\n\n"
                 "SPRITE NORMAL MAP\n1 / 2 / 3 / 4    Color / Normal / Lit / Split\nDrag    Move the light (Shift+wheel: height)\nSpace    Play frames   , / .    Previous / next frame\nO    Orbit the light   G    Frame grid   F / 0    Fit / 100%\nAlt+click    Pick a region colour\nCtrl+Enter    Save (and assign)\n\n"
                 "SPRITE NORMAL MAP: PAINT\nV    Navigate (no brush)   B / N / M / E    Angle / Flatten / Smooth / Erase\nDrag    Paint   Alt+click    Sample the direction\nShift+wheel / - / =    Brush size (Ctrl+Shift+wheel: 4 px)\nW    Brush / Wand   X    Mirror X   H    Highlight painted   P    Show paint\nCtrl+Z / Ctrl+Y    Undo / redo a paint stroke first, then the project's steps (undoing one of those drops the stroke redos)\n\n"
                 "SCENE VIEW\n"
@@ -1588,6 +1601,7 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow(ProjectWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(ConsoleWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(AnimationWindow::WINDOW_NAME, dock_id_middle_bottom);
+    ImGui::DockBuilderDockWindow(AnimatorWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(PoseAnimationWindow::WINDOW_NAME, dock_id_middle_bottom);
 
     // Hierarchy top-left; the Scene tabs and Game view fill the centre.
@@ -2185,6 +2199,9 @@ void editor::App::show(){
         const bool placementBusy = physicsPlacementWindow->isBusy(project.getSelectedSceneId());
         if (projectWindow->isFocused()) {
             lastFocusedWindow = LastFocusedWindow::Resources;
+        } else if (animatorWindow->isFocused()) {
+            // the Animator window's edits are project steps (its controller file)
+            lastFocusedWindow = LastFocusedWindow::Resources;
         } else if (codeEditor->isFocused()) {
             lastFocusedWindow = LastFocusedWindow::Code;
         } else if (spriteNormalsWindow->isFocused()) {
@@ -2261,6 +2278,7 @@ void editor::App::show(){
             if (chord(true, false, false, ImGuiKey_4)) run(AppMenuCommand::ToggleHierarchy);
             if (chord(true, false, false, ImGuiKey_5)) run(AppMenuCommand::ToggleProject);
             if (chord(true, false, false, ImGuiKey_6)) run(AppMenuCommand::ToggleAnimation);
+            if (chord(true, false, false, ImGuiKey_7)) run(AppMenuCommand::ToggleAnimator);
             if (chord(true, true, false, ImGuiKey_C)) run(AppMenuCommand::ToggleConsole);
         }
     }
@@ -2426,6 +2444,7 @@ void editor::App::show(){
     imageViewerWindow->show();
     consoleWindow->show();
     animationWindow->show();
+    animatorWindow->show();
     poseAnimationWindow->show();
     // the Scene views posing its character: a selection elsewhere leaves posing, ghosts go
     PoseViewport::frame(&project);
@@ -3750,6 +3769,10 @@ void editor::App::clearSceneWindowState(uint32_t sceneId) {
         poseAnimationWindow->clearSceneState(sceneId);
     }
 
+    if (animatorWindow) {
+        animatorWindow->clearSceneState(sceneId);
+    }
+
     if (lastActivatedScene == sceneId) {
         resetLastActivatedScene();
     }
@@ -3758,6 +3781,7 @@ void editor::App::clearSceneWindowState(uint32_t sceneId) {
 void editor::App::prepareForProjectSwitch() {
     // the posed bones go back while their scenes still exist
     poseAnimationWindow->prepareForProjectSwitch();
+    animatorWindow->projectClosed();
     // and the clip previews (documents and the shared clip controller are released)
     if (animationClipAppHooks().projectClosed) {
         animationClipAppHooks().projectClosed();
@@ -3879,6 +3903,9 @@ void editor::App::stopTransientPreviews() {
     // before a scene save or play: posed bones go back to their saved transforms
     if (poseAnimationWindow) {
         poseAnimationWindow->stopTransientPreviews();
+    }
+    if (animatorWindow) {
+        animatorWindow->stopTransientPreviews();
     }
     // and the Animation window's previewed targets to their snapshots (animation clips 9.R6):
     // the entity-sequence mode, then the clip mode
@@ -4231,6 +4258,10 @@ editor::PoseAnimationWindow* editor::App::getPoseAnimationWindow() const{
     return poseAnimationWindow;
 }
 
+editor::AnimatorWindow* editor::App::getAnimatorWindow() const{
+    return animatorWindow;
+}
+
 editor::TerrainEditWindow* editor::App::getTerrainEditWindow() const{
     return terrainEditWindow;
 }
@@ -4514,6 +4545,7 @@ void editor::App::applyPanelVisibilitySettings() {
     consoleWindow->setOpen(visibility.console);
     animationWindow->setOpen(visibility.animation);
     poseAnimationWindow->setOpen(visibility.poseAnimation);
+    animatorWindow->setOpen(visibility.animator);
     terrainEditWindow->setOpen(visibility.terrain);
     textureSynthesisWindow->setOpen(visibility.textureSynthesis);
     spriteNormalsWindow->setOpen(visibility.spriteNormals);
@@ -4531,6 +4563,7 @@ void editor::App::persistPanelVisibilitySettings() {
     visibility.console = consoleWindow->isOpen();
     visibility.animation = animationWindow->isOpen();
     visibility.poseAnimation = poseAnimationWindow->isOpen();
+    visibility.animator = animatorWindow->isOpen();
     visibility.terrain = terrainEditWindow->isOpen();
     visibility.textureSynthesis = textureSynthesisWindow->isOpen();
     visibility.spriteNormals = spriteNormalsWindow->isOpen();

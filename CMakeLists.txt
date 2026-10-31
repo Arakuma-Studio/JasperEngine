@@ -731,6 +731,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/animation/AnimationClipController.cpp
     ${EDITOR_DIR}/animation/AnimationClipDocument.cpp
     ${EDITOR_DIR}/animation/AnimAssetDocument.cpp
+    ${EDITOR_DIR}/animation/AnimatorEdits.cpp
     ${EDITOR_DIR}/animation/ClipConverters.cpp
     ${EDITOR_DIR}/animation/ClipRecordHooks.cpp
     ${EDITOR_DIR}/animation/ClipValidation.cpp
@@ -784,6 +785,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/ImageViewerWindow.cpp
     ${EDITOR_DIR}/window/CodeEditor.cpp
     ${EDITOR_DIR}/window/AnimationWindow.cpp
+    ${EDITOR_DIR}/window/AnimatorWindow.cpp
     ${EDITOR_DIR}/window/AnimationWindowClipSheet.cpp
     ${EDITOR_DIR}/window/AnimationWindowClipEvents.cpp
     ${EDITOR_DIR}/window/AnimationWindowClipCurves.cpp
