@@ -16,7 +16,8 @@ namespace jasperengine {
 
     public:
         ScriptBase(Scene* scene, Entity entity);
-        ~ScriptBase() = default;
+        // ends the async work owned by the script (AsyncOwners::fromScript(this))
+        ~ScriptBase();
 
         Scene* getScene() const;
         Entity getEntity() const;

@@ -40,6 +40,8 @@
 #include "pool/AnimationClipPool.h"
 #include "pool/VertexAnimationPool.h"
 #include "shader/RuntimeShaderCompiler.h"
+#include "net/Http.h"
+#include "thread/MainThreadQueue.h"
 #ifndef NO_THREAD_SUPPORT
     #include "thread/ThreadPoolManager.h"
 #endif
@@ -1169,6 +1171,8 @@ void Engine::systemInit(int argc, char* argv[], System* system, bool startProjec
     #endif
 
     System::setSystemInstance(system);
+    // the thread that delivers async results (MainThreadQueue)
+    MainThreadQueue::setMainThread();
 
     Engine::setCanvasSize(1000,480);
 
@@ -1431,6 +1435,11 @@ void Engine::runFrame(bool draw){
 
         // 2) Variable-timestep phase. Runs exactly once per frame with the real frame delta.
         //    Used for animation, input, UI, and any subsystem overriding update().
+        // What other threads finished (HTTP responses, native callbacks) reaches the game here,
+        // right before onUpdate, while game events run (not in the editor outside Play)
+        if (Engine::onUpdate.isEnabled()) {
+            MainThreadQueue::drain();
+        }
         Engine::onUpdate.call();
         for (int i = 0; i < scenes.size(); i++) {
             scenes[i]->update(frameDelta);
@@ -1584,6 +1593,10 @@ void Engine::systemShutdown(){
 
     // anime's Lua references go while the Lua state still exists
     AnimEngine::instance().reset();
+    // HTTP requests end without their callbacks (no transfer is waited for); what other
+    // threads posted for the game is dropped
+    Http::shutdown();
+    MainThreadQueue::clear();
     LuaBinding::cleanup();
 
     removeAllSceneLayers(true);

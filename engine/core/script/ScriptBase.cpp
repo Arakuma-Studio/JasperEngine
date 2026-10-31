@@ -3,6 +3,7 @@
 
 #include "ScriptBase.h"
 #include "component/ScriptComponent.h"
+#include "script/AsyncOwner.h"
 
 using namespace jasperengine;
 
@@ -31,6 +32,10 @@ bool ScriptBase::isActiveAndEnabled() const {
 
 ScriptBase::ScriptBase(Scene* scene, Entity entity)
     : scene(scene), entity(entity) {
+}
+
+ScriptBase::~ScriptBase() {
+    AsyncOwners::scriptInstanceReleased(this);
 }
 
 Scene* ScriptBase::getScene() const {
