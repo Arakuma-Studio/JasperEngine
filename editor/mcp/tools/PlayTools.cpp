@@ -27,6 +27,7 @@
 #include "App.h"
 #include "Catalog.h"
 #include "Engine.h"
+#include "net/Http.h"
 #include "Input.h"
 #include "input/InputActions.h"
 #include "input/InputControlNames.h"
@@ -619,6 +620,18 @@ SceneProject* defaultPlayScene(Project* project) {
     return start && start->scene && start->opened ? start : gameViewScene(project);
 }
 
+// The game's HTTP requests (Http): counts of this Play, the simulated network, the last failures
+static Json httpJson() {
+    const Http::Stats stats = Http::getStats();
+    Json failures = Json::array();
+    for (const HttpResponse& failure : stats.lastFailures) {
+        failures.push_back({{"method", failure.method}, {"url", failure.url}, {"status", failure.status},
+                            {"error_code", failure.errorCode}, {"error", failure.error}});
+    }
+    return {{"active", stats.active}, {"queued", stats.queued}, {"finished", stats.finished}, {"failed", stats.failed},
+            {"cancelled", stats.cancelled}, {"offline", Http::isOfflineSimulated()}, {"last_failures", failures}};
+}
+
 Json playStateJson(McpContext& ctx) {
     Project* project = ctx.project();
     PlayToolsState& s = state();
@@ -637,6 +650,7 @@ Json playStateJson(McpContext& ctx) {
         out["play_would_start"] = {{"id", sp->id}, {"name", sp->name}};
     }
     out["time"] = timeJson(playId != NULL_PROJECT_SCENE && s.current.active);
+    if (playId != NULL_PROJECT_SCENE) out["http"] = httpJson();
     if (s.last.serial != 0) out["last_session"] = sessionJson(s.last);
     if (!s.held.empty()) out["held_input"] = heldInputJson();
     if (playId != NULL_PROJECT_SCENE && s.current.active) out["input"] = playInputJson();
@@ -3540,7 +3554,8 @@ void registerPlayTools(McpRegistry& registry) {
         tool.description =
             "Play state: played and running scenes (child scenes run as copies with own ids), the session (time, "
             "frames, errors, crash), how the last one ended, held input, input (actions, touches, keys), "
-            "console_cursor, the clock (time_scale, fixed_fps, auto_pause, held); stopped: play_would_start.";
+            "console_cursor, the clock (time_scale, fixed_fps, auto_pause, held), http (request counts, last "
+            "failures); stopped: play_would_start.";
         tool.inputSchema = object({});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;

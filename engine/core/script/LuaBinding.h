@@ -75,6 +75,7 @@ namespace jasperengine {
         static void registerECSClasses(lua_State *L);
         static void registerIOClasses(lua_State *L);
         static void registerMathClasses(lua_State *L);
+        static void registerNetClasses(lua_State *L);
         static void registerGameObjectClasses(lua_State *L);
         static void registerUtilClasses(lua_State *L);
         static void registerThreadClasses(lua_State *L);

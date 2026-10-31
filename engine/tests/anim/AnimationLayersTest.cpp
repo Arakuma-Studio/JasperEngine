@@ -28,6 +28,8 @@
 #include "LuaBridge.h"
 
 #include <chrono>
+#include <cstdlib>
+#include <thread>
 #include <cmath>
 #include <cstring>
 
@@ -695,8 +697,15 @@ TEST_F(Layers, PerformanceBudget){
         ms = std::min(ms, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() / frames);
     }
     ASSERT_TRUE(players[0].isInTransition());
-    EXPECT_LT(ms, 0.6) << ms << " ms per frame";
     std::printf("[ perf ] 40 characters x 65 bones, controller, masked layer, crossfade: %.3f ms per frame\n", ms);
+    // the budget is the update's cost, not an overloaded host's scheduling (as CanvasGroupTest)
+#if defined(__unix__) || defined(__APPLE__)
+    double load[1] = {0.0};
+    if (getloadavg(load, 1) == 1 && load[0] > (double)std::thread::hardware_concurrency()){
+        GTEST_SKIP() << "load average " << load[0] << " above " << std::thread::hardware_concurrency() << " cores (measured " << ms << " ms)";
+    }
+#endif
+    EXPECT_LT(ms, 0.6) << ms << " ms per frame";
 #else
     GTEST_SKIP() << "timing needs a Release build";
 #endif

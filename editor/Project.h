@@ -509,6 +509,9 @@ namespace jasperengine::editor{
         std::string identifier = "com.yourcompany.project";
         std::string version = "1.0";
         unsigned int build = 1;  // Apple build number and Android version code
+        // Plain http:// to hosts other than localhost (Http, every platform and the editor's
+        // Play); exports set Android cleartext and iOS/macOS ATS to match
+        bool allowInsecureHttp = false;
     };
 
     // Name, identifier, version and build below are overrides: empty (or 0)
@@ -568,6 +571,13 @@ namespace jasperengine::editor{
         FullSensor
     };
 
+    // Android INTERNET permission: Auto adds it when the exported Lua or C++ uses Http (or the
+    // permission is ticked), Require always adds it (Unity's Internet Access)
+    enum class AndroidInternetAccess {
+        Auto,
+        Require
+    };
+
     struct AndroidProjectSettings {
         std::string applicationName;
         std::string packageName;
@@ -584,6 +594,7 @@ namespace jasperengine::editor{
         bool abiX86 = true;
         bool abiX86_64 = true;
         std::set<std::string> permissions;
+        AndroidInternetAccess internetAccess = AndroidInternetAccess::Auto;
         bool allowBackup = true;
         bool fullscreen = true;
         bool keepScreenOn = false;
