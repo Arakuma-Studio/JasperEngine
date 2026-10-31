@@ -47,7 +47,8 @@ namespace jasperengine {
         static ShaderBuildResult request(ShaderKey key);
         static std::string getError(ShaderKey key);
 
-        // variants requested and not compiled yet
+        // variants requested and not compiled yet, and those a compile settled this frame that
+        // no request has taken yet (the next frame's draws take them)
         static size_t getPendingCount();
 
         // Engine frame start: the main-thread compile of the frame, and the file system

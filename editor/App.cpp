@@ -2932,7 +2932,7 @@ void editor::App::engineInit(int argc, char** argv) {
     ShaderPool::setShaderBuilder([this](jasperengine::ShaderKey shaderKey) -> jasperengine::ShaderBuildResult {
         static jasperengine::editor::ShaderBuilder builder;  // Make static to reuse
         return builder.buildShader(shaderKey, &project);
-    });
+    }, &jasperengine::editor::ShaderBuilder::getRunningBuildCount);
     // a project UI effect's .frag changed (hot reload, phase 5): its compiled variants go from
     // the builder's cache too, so they compile from the new source (and what draws with a forked
     // shader the registry's reset reached re-binds, as after any shader edit)

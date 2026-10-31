@@ -810,3 +810,18 @@ In the macOS editor the creations were never published: BackendMac's own loop di
 `SystemRender::updateGpuCreation()` (EditorFrame::run does, on the other backends), so a shader
 created off the render thread stayed pending and the Scene view's Lines never loaded. The Mac loop
 now does EditorFrame::run's per-frame work (BF4, 0413db955).
+
+Screenshots wait for every creation, not only the GPU's (BF4, 2026-10-31). The editor's
+`captureView` and the player's `--screenshot` (`RunControl`) waited on
+`SystemRender::isGpuCreationIdle`, which a variant still compiling is not part of: a variant on
+the runtime compiler's worker (or queued for a later frame on the main thread), and one the
+editor's ShaderBuilder is building, left the wait idle and the captured frame showed its stand-in.
+They now wait on `ShaderPool::isCreationIdle`: no runtime compile pending
+(`RuntimeShaderCompiler::getPendingCount`, which also counts a variant a compile settled this
+frame that no draw has taken yet), no ShaderBuilder build running (the builder's count, given
+with `ShaderPool::setShaderBuilder`), and the GPU creation idle. Test:
+`AsyncCreateGpu.AScreenshotWaitsForAVariantCompilingAtRuntime` (red with the GPU-only wait: the
+frame without the variant was captured). `run_build`'s timed window grab
+(`screenshot_after_seconds`, `screenshots_at`) cannot see the player's creations and does not
+wait; `test_html_ui_effects_export.py::test_desktop_player_draws_the_effects` caught the effects'
+stand-ins that way with H at load 60 and now uses the player's own capture (`screenshot_frame`).

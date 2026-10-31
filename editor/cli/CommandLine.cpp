@@ -649,7 +649,7 @@ int CommandLine::runExportCommand(int argc, char** argv, const char* executableN
     ShaderPool::setShaderBuilder([projectPtr = &project](ShaderKey shaderKey) -> ShaderBuildResult {
         static ShaderBuilder builder;
         return builder.buildShader(shaderKey, projectPtr);
-    });
+    }, &ShaderBuilder::getRunningBuildCount);
 
     // exports and benchmarks run next to an open editor (CI, a terminal): they take no lock
     project.setSkipProjectLock(true);

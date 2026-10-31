@@ -264,7 +264,7 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
         ShaderPool::setShaderBuilder([projectPtr = &project](ShaderKey shaderKey) -> ShaderBuildResult {
             static ShaderBuilder builder;
             return builder.buildShader(shaderKey, projectPtr);
-        });
+        }, &ShaderBuilder::getRunningBuildCount);
         project.setSkipProjectLock(true);
         if (!project.loadProject(projectPath, false)) {
             error = "cannot load the project " + projectPath.string();

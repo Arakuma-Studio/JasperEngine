@@ -275,7 +275,11 @@ async def test_desktop_player_draws_the_effects(ed: Editor):
     ed.check_eq(job["status"], "succeeded", f"{job}")
     ed.check_eq(job["result"]["method_used"], "compile", f"{job}")
     ed.check((out / "licenses" / "shaders.com-LICENSE.txt").is_file(), "the player ships the notice")
-    raw = await ed.call_raw("run_build", {"seconds": 10, "screenshot_after_seconds": 8})
+    # the player's own capture (--screenshot-frame), not a window grab at a wall-clock time: it
+    # waits for the shaders still being made (S32), however long they take on a loaded machine
+    # (a grab at 8 s caught the effects' stand-ins with the build server at load 60). 480 fixed
+    # frames at 60 fps: the 8 s of game time the grab had
+    raw = await ed.call_raw("run_build", {"seconds": 240, "fixed_fps": 60, "screenshot_frame": 480, "quit_after": 480})
     ed.check(not raw.is_error, raw.text)
     ed.check(not raw.value["crashed"], f"the player crashed: {raw.value}")
     png = raw.images[0][0]
