@@ -258,13 +258,15 @@ def png_rgb(width: int, height: int, pixels) -> bytes:
 
 
 def lit_extent(data: bytes, threshold: int = 70):
-    """(x0, y0, x1, y1, count) of the pixels brighter than the dark background."""
+    """(x0, y0, x1, y1, count) of the pixels that differ from the background (the top-left
+    corner's colour) by more than `threshold` on a channel."""
     w, h, ch, rows = decode_png(data)
+    bg = tuple(rows[0][0:3])
     xs, ys = [], []
     for y in range(h):
         line = rows[y]
         for x in range(w):
-            if max(line[x * ch], line[x * ch + 1], line[x * ch + 2]) > threshold:
+            if max(abs(line[x * ch + k] - bg[k]) for k in range(3)) > threshold:
                 xs.append(x)
                 ys.append(y)
     if not xs:
@@ -279,8 +281,11 @@ def centre_rgb(data: bytes):
 
 
 async def pixel_scene(ed: Editor, camera: list, target: list = (0, 0, 0)):
-    """An empty scene, its camera at `camera` looking at `target`."""
-    await ed.call("create_scene", name="Pixels", path=PIXEL_SCENE)
+    """A new empty scene (PIXEL_SCENE is its path), its camera at `camera` looking at `target`."""
+    global PIXEL_SCENE
+    S["pixel_scenes"] = S.get("pixel_scenes", 0) + 1
+    PIXEL_SCENE = f"scenes/Pixels{S['pixel_scenes']}.scene"
+    await ed.call("create_scene", name=f"Pixels{S['pixel_scenes']}", path=PIXEL_SCENE)
     await clear_scene(ed)
     cam = find_key(await ed.call("create_entity", type="camera", name="View", position=list(camera)), "entity_id", "id")
     await ed.call("set_main_camera", entity=cam)

@@ -18,7 +18,7 @@ end
 
 local function makeSystem(scene, x)
     local ps = ParticleSystem(scene, true)
-    ps.position = Vector3(x, -1.5, 0)
+    GameObject(scene, ps.entity).position = Vector3(x, -1.5, 0)
     local main = ps.main
     main.maxParticles = 1000
     main.startLifetime = LIFETIME

@@ -3,6 +3,8 @@
 
 #include "Catalog.h"
 #include "particles/ParticleFields.h"
+#include "action/ParticleSystem.h"
+#include "subsystem/ActionSystem.h"
 #include "script/ScriptRuntime.h"
 
 #include "Stream.h"
@@ -2262,7 +2264,8 @@ namespace {
             case particles::FieldType::Bursts:
             case particles::FieldType::IntList: type = PropertyType::Custom; break;
         }
-        return {type, UpdateFlags_None, field.get(def), comp ? field.get(*comp) : nullptr};
+        const uint64_t flags = field.path() == "renderer.mesh" ? (uint64_t)UpdateFlags_Particle_Mesh : (uint64_t)UpdateFlags_None;
+        return {type, flags, field.get(def), comp ? field.get(*comp) : nullptr};
     }
 
     PropertyData getParticlesPropertyFast(ParticleSystemComponent* comp, const std::string& propertyName) {
@@ -5615,6 +5618,14 @@ uint64_t editor::Catalog::getMaterialUpdateFlags(const Material& from, const Mat
 }
 
 void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint64_t updateFlags){
+    if (updateFlags & UpdateFlags_Particle_Mesh){
+        // the Mesh render mode's primitive, drawn by the system's target
+        Scene* scene = dynamic_cast<Scene*>(registry);
+        const ParticleSystemComponent* ps = registry->findComponent<ParticleSystemComponent>(entity);
+        if (scene && ps && ps->version >= 2){
+            ParticleSystem::applyRendererMesh(scene, scene->getSystem<ActionSystem>()->particleTarget(entity), ps->renderer.mesh);
+        }
+    }
     if (updateFlags & UpdateFlags_CanvasGroup){
         // alpha in [0, 1] at once (a NaN keeps the value UISystem last saw)
         if (CanvasGroupComponent* group = registry->findComponent<CanvasGroupComponent>(entity)){
