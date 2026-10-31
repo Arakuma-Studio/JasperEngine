@@ -170,3 +170,10 @@ origin/main).
   ui-canvas-group; final suites of audio-mixer; implementations of anim-layers, debug-overlay, safe-area,
   video-mp4; the ui-multitouch review, which an API limit had stopped). Tailscale: this host had none before the
   lead installed it; it joins the owner's tailnet through a login link (no auth key) to build on the owner's Mac.
+- 2026-11-01: the owner's Mac (macOS 26.2, 14 cores, Xcode 26.6 with the iOS 26.5 SDK and simulator) is reachable
+  over Tailscale (`ssh mac`, user mapacho, a dedicated key; plain sshd via `tailscale nc`). Apple compile checks run
+  there in `~/engine-gaps-check` (`applecheck.sh <ref>`: the iOS Simulator and macOS app schemes, nice'd, 8 jobs,
+  DEVELOPER_DIR set per command, dav1d asm disabled locally per #26). The rented macOS box is no longer needed.
+  ui-multitouch review: 2 high (a press released outside the canvas never ends; HTML press-on-enter buttons stay
+  pressed under implicit capture), fixes in progress. video-mp4 implemented, in review. Box 2204 (Vultr) is slow
+  from CPU steal; agents moved off it.
