@@ -12403,11 +12403,6 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
 
         propertyRow(RowPropertyType::Quat, cpType, shapeKey + ".rotation", "Rotation", sceneProject, entities, settingsShapeValue);
 
-        // physics-contacts D9: the collider's onCollision* / onTrigger* also go to this GameObject
-        RowSettings settingsReceiver = settingsShapeValue;
-        settingsReceiver.help = "Its contact callbacks (onCollisionEnter, onTriggerEnter...) also go to this GameObject's scripts (Unity: a child collider's own scripts)";
-        propertyRow(RowPropertyType::LocalEntity, cpType, shapeKey + ".receiver", "Send Callbacks To", sceneProject, entities, settingsReceiver);
-
         if (shape.type == Collider3DType::BOX){
             propertyRow(RowPropertyType::Float, cpType, shapeKey + ".width", "Width", sceneProject, entities, settingsShapeValue);
             propertyRow(RowPropertyType::Float, cpType, shapeKey + ".height", "Height", sceneProject, entities, settingsShapeValue);
