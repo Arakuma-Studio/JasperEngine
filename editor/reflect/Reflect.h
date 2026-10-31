@@ -48,7 +48,7 @@ namespace jasperengine::editor::reflect {
 
     enum class AssetKind : uint8_t {
         None, Texture, Cubemap, Font, Material, Model, Audio, Script, Prefab, Shader, UIDocument, Scene, Any,
-        PoseAnimation, AnimationClip, AnimatorController
+        PoseAnimation, AnimationClip, AnimatorController, VertexAnimation
     };
 
     enum class Unit : uint8_t {
@@ -257,6 +257,8 @@ namespace jasperengine::editor::reflect {
         // a default-constructed instance (the defaults of OmitIfDefault and of reset)
         const void* (*defaults)();
         const TypeOps* ops;
+        // the C++ type ("PBR::Sheen"): the runtime field tables name it (S30 R4)
+        const char* cppType = nullptr;
     };
 
     // A semantic change of a component's YAML: applied to the component node of a file older than

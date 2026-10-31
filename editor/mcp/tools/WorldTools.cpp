@@ -4715,12 +4715,9 @@ void registerWorldTools(McpRegistry& registry) {
     // ---------------------------------------------------------------- physics
     add("edit_colliders", "Edit Colliders",
         "Add/update/remove a Rigidbody 2D / Rigidbody's colliders, creating the body if missing (no edits = "
-        "list). Order: clear, remove (old indices), update [{index, ...}], add. 2D: box (size, center), circle "
-        "(radius), capsule (radius, point_a, point_b), segment, polygon (3-16 points), chain (4-16, loop), px "
-        "before scale. 3D: box, sphere, capsule/cylinder (radius, half_height), tapered_capsule, "
-        "convex_hull/mesh, heightfield. New shapes fit what the GameObject draws unless fit: false. Also "
-        "density, friction, restitution (3D: per body), sensor, *_events, category_bits, mask_bits, center, "
-        "rotation.",
+        "list). Order: clear, remove (old indices), update, add. 2D: box, circle, capsule, segment, polygon, "
+        "chain; 3D: box, sphere, capsule, cylinder, tapered_capsule, convex_hull, mesh, heightfield. New shapes "
+        "fit the drawn GameObject unless fit: false. Fields per shape: jasper://docs/physics. Returns the colliders.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef()},

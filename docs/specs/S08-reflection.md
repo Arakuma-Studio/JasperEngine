@@ -517,6 +517,23 @@ Recorded by the implementation (branch `feat/s08-reflection`).
   entry is a table struct (`clips[2].wrap`; the one-byte `ClipWrapMode` a Custom property, an
   enum to the schema). The Mesh's `morphWeights[N]` and the Model's `animationEntities` are table
   fields; their codecs stay the hand ones. No format bump: the sequence stays S20's.
+- **Upstream vertex animation (sync round 3).** The Vertex Animator keeps upstream's codec (the
+  authored fields; a component decoded over keeps only its Preview toggle) in
+  `StreamComponents.cpp`, with its table in `ClipPlayersReflect.cpp` (attachments are a table
+  struct whose `entity` is an entity reference; `attachments`, `instanceClips` and
+  `instanceSpeeds` are whole lists); its drawer stays upstream's (`InspectorWindowVat.cpp`),
+  registered in the drawer lookup. Its `.vat` is an `AssetRefSchema` row (the `GuidSibling`
+  shape). No format bump. No tree has both it and the hand codecs of the others, so its goldens
+  were taken on the merged tree, where its codec and drawer are upstream's hand ones: the
+  AllComponents fixture keeps its entities and gains the Vertex Animator's as
+  `JASPER_REFLECT_WRITE_FIXTURE=1` generated it (a whole regeneration would re-randomize every
+  entity after the Mesh's morph weights and empty the Animation Player's clips); the catalog
+  snapshot, the locators and the MCP goldens were captured with their tooling from that fixture,
+  and differ from round 2's by the Vertex Animator only (and `actionFrameCount`, the accepted
+  deviation above, no longer recorded).
+  Upstream round 3 changes no scene or prefab format (it has no format versions; the Vertex
+  Animator's keys are additive), so S29's scene 3 -> 4 and prefab 5 -> 6 steps (derived transform
+  values dropped) stay the last ones; the goldens were taken on S29's formats.
 - **Legacy oracle kept.** `editor/tests/reflect/legacy/` (the deleted hand codecs, test-only)
   stays so the parity fuzzers can keep running. D5 deletes it once S08 completes. Deleting it is
   a follow-up for the integrator after merge, and the goldens do not depend on it.

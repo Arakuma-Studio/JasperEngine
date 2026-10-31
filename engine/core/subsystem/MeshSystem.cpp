@@ -7,6 +7,7 @@
 #include "Engine.h"
 #include "System.h"
 #include "animation/ModelSubClips.h"
+#include "animation/VertexAnimation.h"
 #include "buffer/InterleavedBuffer.h"
 #include "io/FileData.h"
 #include "io/Data.h"
@@ -2010,7 +2011,10 @@ bool MeshSystem::loadGLTFBuffer(int bufferViewIndex, MeshComponent& mesh, ModelC
             mesh.eBuffers[mesh.numExternalBuffers].setType(BufferType::INDEX_BUFFER);
         }
 
-        mesh.eBuffers[mesh.numExternalBuffers].setData(bufferData.data() + bufferView.byteOffset, bufferView.byteLength);
+        // the parse's bytes, never written after it (a load only appends converted copies): every
+        // mesh showing them, of every Model of the file, draws from one GPU buffer (MeshBufferPool)
+        mesh.eBuffers[mesh.numExternalBuffers].setData(bufferData.data() + bufferView.byteOffset, bufferView.byteLength,
+                                                       std::static_pointer_cast<const void>(model.gltfModel));
         mesh.eBuffers[mesh.numExternalBuffers].setStride(stride);
         mesh.eBuffers[mesh.numExternalBuffers].setName(name);
         mesh.eBuffers[mesh.numExternalBuffers].setRenderAttributes(false);
@@ -5057,6 +5061,13 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         model.animationClipNames = anim::subClipNames(animationNames);
     }
 
+    // A Vertex Animation mesh (.vat.glb, vertex animation spec 2.3): its _VAT_INDEX and, in
+    // Bones mode, its JOINTS_0 / WEIGHTS_0 without a skin are what the Vertex Animator plays
+    const bool vatGltf = std::find(model.gltfModel->extensionsUsed.begin(), model.gltfModel->extensionsUsed.end(),
+                             vat::VAT_GLTF_EXTENSION) != model.gltfModel->extensionsUsed.end() ||
+                         model.gltfModel->extensions.count(vat::VAT_GLTF_EXTENSION) != 0;
+    mesh.vatMesh = vatGltf;
+
     // Build parent map and collect all nodes that own a mesh primitive.
     int meshNode    = -1; // first skinned mesh node — used for skeleton lookup
     std::vector<int> meshNodes;
@@ -5351,6 +5362,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             mesh.bonesMatrix = HybridArray<Matrix4, MAX_BONES>();
             mesh.needUpdateBones = false;
             mesh.morphTargetNames.clear();
+            mesh.vatMesh = vatGltf;
 
             mesh.numSubmeshes = static_cast<unsigned int>(gltfmesh.primitives.size());
             if (mesh.numSubmeshes > 0 && !mesh.submeshes.validIndex(static_cast<int>(mesh.numSubmeshes) - 1)) {
@@ -5517,7 +5529,8 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                     if (value.IsNumber() && std::isfinite(value.GetNumberAsDouble()))
                         mesh.submeshes[i].material.foliageTransmission = std::clamp((float)value.GetNumberAsDouble(), 0.0f, 1.0f);
                 }
-                // KHR_materials_* (MeshSystemGltfPbr.cpp)
+                // KHR_materials_* (MeshSystemGltfPbr.cpp; KHR_materials_unlit: the library Unlit
+                // with the base colour, Lighting None)
                 if (!loadGLTFMaterialExtensions(*mat, model, mesh.submeshes[i].material, primitive.attributes.count("COLOR_0") > 0))
                     continue;
             }
@@ -5551,7 +5564,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 int attrBufferView = accessor.bufferView;
                 size_t attrByteOffset = accessor.byteOffset;
                 int byteStride = accessor.ByteStride(model.gltfModel->bufferViews[accessor.bufferView]);
-                if (bakingFlatten && (attrib.first == "JOINTS_0" || attrib.first == "WEIGHTS_0")) {
+                if (bakingFlatten && !vatGltf && (attrib.first == "JOINTS_0" || attrib.first == "WEIGHTS_0")) {
                     continue; // baked preview is static geometry; drop the skinning attributes
                 }
                 if ((bakingFlatten || bakeMeshOffset) && (attrib.first == "POSITION" || attrib.first == "NORMAL")) {
@@ -5687,6 +5700,17 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                     if (dataType == AttributeDataType::UNSIGNED_SHORT) {
                         mesh.normAdjustWeight = 65535.0;
                         mesh.submeshes[i].normAdjustWeight = 65535.0f;
+                    }
+                }
+
+                // the vertex's row in a Vertex Animation payload (float, exact below 2^24)
+                if (attrib.first == vat::VAT_INDEX_ATTRIBUTE) {
+                    if (dataType == AttributeDataType::FLOAT && elements == 1) {
+                        attType = AttributeType::VAT_INDEX;
+                        foundAttrs = true;
+                    } else {
+                        Log::warn("Model attribute %s must be a float scalar: %s", attrib.first.c_str(), filename.c_str());
+                        continue;
                     }
                 }
 
@@ -6222,6 +6246,10 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
 }
 
 // An OBJ index is -1 when the face omits that attribute, and a corrupt file can point past the array
+// the bytes of an OBJ parse loadOBJ builds (Buffer::setShareSource ids)
+static const uint64_t OBJ_SHARE_VERTICES = 1;
+static const uint64_t OBJ_SHARE_INDICES = 2;
+
 static bool objIndexInRange(int index, size_t elements, size_t arraySize){
     return index >= 0 && (elements * static_cast<size_t>(index) + elements) <= arraySize;
 }
@@ -6536,6 +6564,12 @@ bool MeshSystem::loadOBJ(Entity entity, const std::string filename, bool asyncLo
             mesh.indices.setRenderAttributes(false);
         }
     }
+
+    // built from the parse alone: every Model of the file draws the same bytes, from one GPU
+    // vertex and one index buffer (MeshBufferPool)
+    const std::shared_ptr<const void> objSource = std::static_pointer_cast<const void>(model.objModel);
+    mesh.buffer.setShareSource(objSource, OBJ_SHARE_VERTICES);
+    mesh.indices.setShareSource(objSource, OBJ_SHARE_INDICES);
 
     std::reverse(mesh.submeshes.data(), mesh.submeshes.data() + mesh.numSubmeshes);
 

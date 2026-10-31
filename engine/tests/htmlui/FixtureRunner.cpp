@@ -104,12 +104,20 @@ bool jasperengine::test::loadSidecar(const std::string& path, FixtureSidecar& si
         sidecar.noText = json.value("noText", false);
         sidecar.comment = json.value("comment", "");
         if (json.contains("tolerance")){
+            // "hardware": what a hardware GPU needs on top (its measurements); the goldens'
+            // renderer (llvmpipe, lavapipe) keeps the rest (GpuEnvironment::isReferenceRenderer)
+            auto apply = [&sidecar](const nlohmann::json& tolerance){
+                sidecar.gate.channelThreshold = tolerance.value("channel", sidecar.gate.channelThreshold);
+                sidecar.gate.maxBadPercent = tolerance.value("badPercent", sidecar.gate.maxBadPercent);
+                sidecar.gate.maxCluster = tolerance.value("cluster", sidecar.gate.maxCluster);
+                sidecar.boxTolerance = tolerance.value("box", sidecar.boxTolerance);
+            };
             const nlohmann::json& tolerance = json["tolerance"];
-            sidecar.toleranceOverridden = true;
-            sidecar.gate.channelThreshold = tolerance.value("channel", sidecar.gate.channelThreshold);
-            sidecar.gate.maxBadPercent = tolerance.value("badPercent", sidecar.gate.maxBadPercent);
-            sidecar.gate.maxCluster = tolerance.value("cluster", sidecar.gate.maxCluster);
-            sidecar.boxTolerance = tolerance.value("box", sidecar.boxTolerance);
+            const bool hardware = tolerance.contains("hardware") && !GpuEnvironment::isReferenceRenderer();
+            sidecar.toleranceOverridden = hardware || tolerance.size() > (tolerance.contains("hardware") ? 1u : 0u);
+            apply(tolerance);
+            if (hardware)
+                apply(tolerance["hardware"]);
         }
         if (json.contains("samples")){
             sidecar.sampleCount = json["samples"].get<int>();

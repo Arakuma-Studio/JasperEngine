@@ -5,23 +5,26 @@
 #include "SokolTexture.h"
 #include "Log.h"
 #include "SokolCmdQueue.h"
+#include "SokolSystem.h"
 #include "render/SystemRender.h"
 #include "Engine.h"
+#include "texture/TextureData.h"
 
 #include "memory/MemoryStats.h"
 
 #include <algorithm>
 #include <cstring>
 #include <cstdlib>
+#include <memory>
 #include <mutex>
 #include <unordered_map>
 
 #include "meshoptimizer.h"
 
-// Sokol never sets TRANSFER_SRC, needed to copy render targets out for editor
-// thumbnails (GraphicUtils). Wrapping the call keeps sokol itself unpatched
-// (re-check when sokol_gfx is updated)
-#if (defined(JASPERENGINE_EDITOR) || defined(JASPERENGINE_TEXTURE_READBACK)) && defined(SOKOL_VULKAN)
+// Sokol never sets TRANSFER_SRC, needed to copy render targets out: editor thumbnails
+// (GraphicUtils) and a game's --screenshot (FrameReadback, docs/specs/S30-shipping.md R20).
+// Wrapping the call keeps sokol itself unpatched (re-check when sokol_gfx is updated)
+#if defined(SOKOL_VULKAN)
 #include <vulkan/vulkan.h>
 
 namespace {
@@ -53,8 +56,64 @@ VkResult createSokolImage(VkDevice device, const VkImageCreateInfo* createInfo,
 
 using namespace jasperengine;
 
+namespace {
+    // The sampler of every float data texture (createDynamicTexture: bones, lattice records),
+    // which only texelFetch reads: one for all of them, not one each (a skinned mesh has a
+    // bones texture: 10,000 of them would each hold a sampler). Destroyed with its last holder.
+    struct SharedDataSampler {
+        sg_sampler sampler = {SG_INVALID_ID};
+        uint64_t context = 0;
+
+        ~SharedDataSampler(){
+            if (sampler.id == SG_INVALID_ID || context != SystemRender::getContextId() || !sg_isvalid())
+                return;
+            if (Engine::isAsyncThread()){
+                SokolCmdQueue::add_command_destroy_sampler(sampler);
+            }else{
+                sg_destroy_sampler(sampler);
+            }
+        }
+    };
+
+    std::mutex& getDataSamplerMutex(){
+        static std::mutex* mutex = new std::mutex();
+        return *mutex;
+    }
+
+    std::shared_ptr<SharedDataSampler> getDataSampler(){
+        std::lock_guard<std::mutex> lock(getDataSamplerMutex());
+        static std::weak_ptr<SharedDataSampler>* cached = new std::weak_ptr<SharedDataSampler>();
+        std::shared_ptr<SharedDataSampler> shared = cached->lock();
+        if (shared && shared->context == SystemRender::getContextId()){
+            const sg_resource_state state = sg_query_sampler_state(shared->sampler);
+            // one the loading thread made is drawn by the main thread once the queue has run
+            if (state == SG_RESOURCESTATE_VALID || (state == SG_RESOURCESTATE_ALLOC && Engine::isAsyncThread()))
+                return shared;
+        }
+
+        sg_sampler_desc samplerDesc = {};
+        samplerDesc.min_filter = SG_FILTER_NEAREST;
+        samplerDesc.mag_filter = SG_FILTER_NEAREST;
+        samplerDesc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
+        samplerDesc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
+        samplerDesc.label = "data-texture-sampler";
+
+        shared = std::make_shared<SharedDataSampler>();
+        shared->context = SystemRender::getContextId();
+        if (Engine::isAsyncThread()){
+            shared->sampler = SokolCmdQueue::add_command_make_sampler(samplerDesc);
+        }else{
+            shared->sampler = sg_make_sampler(samplerDesc);
+        }
+        if (shared->sampler.id == SG_INVALID_ID)
+            return nullptr;
+        *cached = shared;
+        return shared;
+    }
+}
+
 const void* SokolTexture::getVulkanView(sg_view view) {
-#if (defined(JASPERENGINE_EDITOR) || defined(JASPERENGINE_TEXTURE_READBACK)) && defined(SOKOL_VULKAN)
+#if defined(SOKOL_VULKAN)
     const _sg_view_t* resource = _sg_lookup_view(view.id);
     return resource ? reinterpret_cast<const void*>(resource->vk.img_view) : nullptr;
 #else
@@ -64,7 +123,7 @@ const void* SokolTexture::getVulkanView(sg_view view) {
 }
 
 const void* SokolTexture::getVulkanImage(sg_image image) {
-#if (defined(JASPERENGINE_EDITOR) || defined(JASPERENGINE_TEXTURE_READBACK)) && defined(SOKOL_VULKAN)
+#if defined(SOKOL_VULKAN)
     const _sg_image_t* resource = _sg_lookup_image(image.id);
     return resource ? reinterpret_cast<const void*>(resource->vk.img) : nullptr;
 #else
@@ -265,20 +324,77 @@ static void* unorm16ToFloat(sg_image_desc* desc, uint64_t* bytes = nullptr){
     return block;
 }
 
+bool SokolTexture::getDataPixelFormat(ColorFormat colorFormat, sg_pixel_format& pixelFormat, size_t& bytesPerTexel){
+    switch (colorFormat){
+        case ColorFormat::RGBA:    pixelFormat = SG_PIXELFORMAT_RGBA8;   bytesPerTexel = 4;  return true;
+        case ColorFormat::RED:     pixelFormat = SG_PIXELFORMAT_R8;      bytesPerTexel = 1;  return true;
+        case ColorFormat::RED16:   pixelFormat = SG_PIXELFORMAT_R16;     bytesPerTexel = 2;  return true;
+        case ColorFormat::RGBA16F: pixelFormat = SG_PIXELFORMAT_RGBA16F; bytesPerTexel = 8;  return true;
+        case ColorFormat::RGBA32F: pixelFormat = SG_PIXELFORMAT_RGBA32F; bytesPerTexel = 16; return true;
+        case ColorFormat::R32F:    pixelFormat = SG_PIXELFORMAT_R32F;    bytesPerTexel = 4;  return true;
+        case ColorFormat::RG16F:   pixelFormat = SG_PIXELFORMAT_RG16F;   bytesPerTexel = 4;  return true;
+        case ColorFormat::R16F:    pixelFormat = SG_PIXELFORMAT_R16F;    bytesPerTexel = 2;  return true;
+        default: break;
+    }
+    pixelFormat = _SG_PIXELFORMAT_DEFAULT;
+    bytesPerTexel = 0;
+    return false;
+}
+
+bool SokolTexture::isLinearFilterable(ColorFormat colorFormat, const RenderFeatures& features){
+    switch (colorFormat){
+        case ColorFormat::RGBA16F: return features.filterRGBA16F;
+        case ColorFormat::RGBA32F: return features.filterRGBA32F;
+        case ColorFormat::R32F:    return features.filterR32F;
+        case ColorFormat::RG16F:   return features.filterRG16F;
+        case ColorFormat::R16F:    return features.filterR16F;
+        default:                   return true;
+    }
+}
+
+static bool isFloatPixelFormat(sg_pixel_format pixelFormat){
+    return pixelFormat == SG_PIXELFORMAT_RGBA16F || pixelFormat == SG_PIXELFORMAT_RGBA32F ||
+           pixelFormat == SG_PIXELFORMAT_R32F || pixelFormat == SG_PIXELFORMAT_RG16F ||
+           pixelFormat == SG_PIXELFORMAT_R16F;
+}
+
 bool SokolTexture::createTexture(
             const std::string& label, int width, int height,
             ColorFormat colorFormat, TextureType type, int numFaces, void* data[], size_t size[], 
             TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV){
 
-    sg_pixel_format pixelFormat = _SG_PIXELFORMAT_DEFAULT;
-    if (colorFormat == ColorFormat::RGBA){
-        pixelFormat = SG_PIXELFORMAT_RGBA8;
-    }else if (colorFormat == ColorFormat::RED){
-        pixelFormat = SG_PIXELFORMAT_R8;
-    }else if (colorFormat == ColorFormat::RED16){
-        pixelFormat = SG_PIXELFORMAT_R16;
-    }else{
-        Log::error("Renders only support 8bpp, 16bpp and 32bpp textures");
+    sg_pixel_format pixelFormat;
+    size_t bytesPerTexel;
+    if (!getDataPixelFormat(colorFormat, pixelFormat, bytesPerTexel)){
+        Log::error("Texture '%s': a texture from data can't have colour format %s (RGBA, RED, RED16, RGBA16F, RGBA32F, R32F, RG16F or R16F)",
+                   label.c_str(), TextureData::getColorFormatName(colorFormat));
+        return false;
+    }
+
+    // float data: checked here (sokol only validates in debug builds, and reads
+    // width * height * bytesPerTexel bytes whatever the size says)
+    const bool floatFormat = isFloatPixelFormat(pixelFormat);
+    if (floatFormat){
+        const RenderFeatures& features = SystemRender::getFeatures();
+        if (sg_isvalid() && !sg_query_pixelformat(pixelFormat).sample){
+            Log::error("Texture '%s': this device can't sample colour format %s", label.c_str(), TextureData::getColorFormatName(colorFormat));
+            return false;
+        }
+        if (width <= 0 || height <= 0 ||
+            (features.maxTextureSize2D > 0 && (width > features.maxTextureSize2D || height > features.maxTextureSize2D))){
+            Log::error("Texture '%s': size %i x %i is not supported (the device's limit is %i)",
+                       label.c_str(), width, height, features.maxTextureSize2D);
+            return false;
+        }
+        const int faces = (numFaces > 1) ? numFaces : 1;
+        const size_t expected = (size_t)width * (size_t)height * bytesPerTexel;
+        for (int f = 0; f < faces; f++){
+            if (!data[f] || size[f] != expected){
+                Log::error("Texture '%s': face %i has %zu bytes of data, %i x %i %s takes %zu",
+                           label.c_str(), f, data[f] ? size[f] : (size_t)0, width, height, TextureData::getColorFormatName(colorFormat), expected);
+                return false;
+            }
+        }
     }
 
     sg_image_desc image_desc = {0};
@@ -295,6 +411,20 @@ bool SokolTexture::createTexture(
     sampler_desc.mipmap_filter = getFilterMipmap(minFilter);
     sampler_desc.wrap_u = getWrap(wrapU);
     sampler_desc.wrap_v = getWrap(wrapV);
+
+    if (floatFormat){
+        // one level (mipmap generation averages 8-bit texels only), so no mipmap filter
+        sampler_desc.mipmap_filter = _SG_FILTER_DEFAULT;
+        // a linear filter on a format the device can't filter is an invalid sampler (GLES3
+        // incomplete texture, Vulkan/Metal validation): nearest instead
+        if (!isLinearFilterable(colorFormat, SystemRender::getFeatures()) &&
+            (sampler_desc.min_filter == SG_FILTER_LINEAR || sampler_desc.mag_filter == SG_FILTER_LINEAR)){
+            Log::warn("Texture '%s': this device can't filter colour format %s linearly, sampled with NEAREST",
+                      label.c_str(), TextureData::getColorFormatName(colorFormat));
+            sampler_desc.min_filter = SG_FILTER_NEAREST;
+            sampler_desc.mag_filter = SG_FILTER_NEAREST;
+        }
+    }
 
     // all faces of a mip level must be in one contiguous memory block
     unsigned char* combined = NULL;
@@ -495,20 +625,16 @@ bool SokolTexture::createDynamicTexture(const std::string& label, int width, int
     imageDesc.pixel_format = SG_PIXELFORMAT_RGBA32F;
     imageDesc.label = label.c_str();
 
-    sg_sampler_desc samplerDesc = {};
-    samplerDesc.min_filter = SG_FILTER_NEAREST;
-    samplerDesc.mag_filter = SG_FILTER_NEAREST;
-    samplerDesc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
-    samplerDesc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
-
     if (Engine::isAsyncThread()){
         image = SokolCmdQueue::add_command_make_image(imageDesc);
-        sampler = SokolCmdQueue::add_command_make_sampler(samplerDesc);
     }else{
         image = sg_make_image(imageDesc);
-        sampler = sg_make_sampler(samplerDesc);
     }
     trackImage(image, imageDesc, false, false);
+    // nearest, clamped: the one of every data texture
+    std::shared_ptr<SharedDataSampler> shared = getDataSampler();
+    sharedSampler = shared;
+    sampler = shared ? shared->sampler : sg_sampler{SG_INVALID_ID};
     createTextureView(label.c_str());
     return image.id != SG_INVALID_ID && sampler.id != SG_INVALID_ID && view.id != SG_INVALID_ID;
 }
@@ -592,22 +718,24 @@ bool SokolTexture::createDynamicColorTexture(const std::string& label, int width
     return image.id != SG_INVALID_ID && sampler.id != SG_INVALID_ID && view.id != SG_INVALID_ID;
 }
 
-void SokolTexture::updateTexture(const void* data, size_t size){
+bool SokolTexture::updateTexture(const void* data, size_t size){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     if (image.id == SG_INVALID_ID || !data || size == 0)
-        return;
+        return false;
     // sokol reads width * height * bpp bytes whatever the size says
     if (streamBytes != 0 && size != streamBytes){
         Log::error("Dynamic texture update of %zu bytes ignored: the texture takes %zu", size, streamBytes);
-        return;
+        return false;
     }
 
     sg_image_data imageData = {};
     imageData.mip_levels[0] = {data, size};
-    if (Engine::isAsyncThread())
+    if (Engine::isAsyncThread()){
+        // budgeted when the render thread runs it (a refused one is counted and logged there)
         SokolCmdQueue::add_command_update_image(image, imageData);
-    else
-        sg_update_image(image, imageData);
+        return true;
+    }
+    return SokolSystem::updateImage(image, imageData);
 }
 
 bool SokolTexture::createTextureCubeWithMips(
@@ -843,7 +971,10 @@ void SokolTexture::destroyTexture(){
             sg_destroy_image(image);
         }
     }
-    if (sampler.id != SG_INVALID_ID && sg_isvalid()){
+    // the data textures' sampler is let go (destroyed with its last holder), another destroyed
+    const bool samplerShared = sharedSampler && static_cast<SharedDataSampler*>(sharedSampler.get())->sampler.id == sampler.id;
+    sharedSampler.reset();
+    if (!samplerShared && sampler.id != SG_INVALID_ID && sg_isvalid()){
         if (Engine::isAsyncThread()){
             SokolCmdQueue::add_command_destroy_sampler(sampler);
         }else{

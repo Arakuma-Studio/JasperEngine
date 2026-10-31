@@ -22,6 +22,7 @@ namespace jasperengine::editor {
         PoseAnimator,
         AnimationPlayer,
         Animator,
+        VertexAnimator,
         Physics2D,
         Physics3D
     };

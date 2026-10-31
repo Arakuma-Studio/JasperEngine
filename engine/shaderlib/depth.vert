@@ -70,9 +70,10 @@ out vec2 v_projZW;
     #include "includes/terrain_vs.glsl"
 #endif
 #include "includes/lattice.glsl"
+#include "includes/vat.glsl"
 
 vec4 getPosition(mat4 boneTransform){
-    vec3 pos = a_position;
+    vec3 pos = vatPosition(a_position);
 
     pos = getMorphPosition(pos);
     pos = getSkinPosition(pos, boneTransform);
@@ -84,12 +85,14 @@ vec4 getPosition(mat4 boneTransform){
 }
 
 void main() {
+    // the baked vertex animation first (HAS_VAT), as mesh.vert
+    vatEvaluate();
     mat4 boneTransform = getBoneTransform();
 
     #ifdef HAS_LATTICE
         // as mesh.vert, so both passes compute the same position (the normal and tangent
         // are not used here)
-        vec3 latticePosition = getMorphPosition(a_position);
+        vec3 latticePosition = getMorphPosition(vatPosition(a_position));
         vec3 latticeNormal = vec3(0.0, 1.0, 0.0);
         vec3 latticeTangent = vec3(1.0, 0.0, 0.0);
         float latticeStretchValue = 1.0;

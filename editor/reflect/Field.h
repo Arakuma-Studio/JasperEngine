@@ -172,4 +172,4 @@ namespace jasperengine::editor::reflect {
 // The StructDesc of a struct's table
 #define JE_STRUCT_DESC(T, name, fields) \
     ::jasperengine::editor::reflect::StructDesc{name, std::span<const ::jasperengine::editor::reflect::FieldDesc>(fields), \
-        &::jasperengine::editor::reflect::defaultInstance<T>, &::jasperengine::editor::reflect::ops::Value<T>}
+        &::jasperengine::editor::reflect::defaultInstance<T>, &::jasperengine::editor::reflect::ops::Value<T>, #T}

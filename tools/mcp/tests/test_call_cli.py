@@ -31,6 +31,7 @@ import tempfile
 import time
 from pathlib import Path
 
+import build_cache
 import harness
 from harness import Editor, HttpSession, free_port, wait_for_port
 
@@ -38,8 +39,11 @@ CI = True
 TIMEOUT = 1200
 PORT = free_port()
 TOKEN = "s31-call-token"
+# test_wait_job_build's game: built with the run's prebuilt glcore runtime (tools/mcp/build_cache.py)
+PREBUILT_PLAYERS = ["glcore-release"]
 EDITOR = {"create": True, "name": "CallCli", "extra_args": ["--http-port", str(PORT)],
-          "settings": {"mcp": {"http_token": TOKEN}}, "env": {"JASPER_MCP_TRACE": "1"}}
+          "settings": {"mcp": {"http_token": TOKEN}},
+          "env": {"JASPER_MCP_TRACE": "1", **build_cache.player_env("glcore", "release")}}
 ATTACH = ["--port", str(PORT), "--token", TOKEN]
 
 
@@ -291,16 +295,22 @@ async def test_wait_job(ed: Editor):
 
 async def test_wait_job_build(ed: Editor):
     if os.environ.get("JASPER_SLOW_BUILD") != "1":
-        harness.skip("JASPER_SLOW_BUILD=1 builds the player (minutes)")
+        harness.skip("JASPER_SLOW_BUILD=1 builds a real game (the run builds its prebuilt player runtime once)")
     cli: Cli = S["cli"]
     await ed.call("save_scene", path="scenes/CallCli")
-    # the build takes minutes (more on a loaded host): the CLI's own timeout bounds it, not the hang guard
+    # the game is built with the prebuilt player (what --wait-job waits for is the build job; the
+    # compile path is test_build.py's)
+    runtime = await build_cache.player_runtime(ed, "glcore", "release")
+    # a loaded host can make the build slow: the CLI's own timeout bounds it, not the hang guard
     with ed.busy():
         p = await cli.arun("call", *ATTACH, "--json", "--timeout", "7200", "--wait-job", "build_project",
-                           '{"mode": "desktop", "build_type": "Release", "wait": false, "output_dir": "' + str(cli.root / "build") + '"}',
+                           '{"mode": "desktop", "build_type": "Release", "method": "prebuilt", "wait": false, "output_dir": "' +
+                           str(cli.root / "build") + '"}',
                            timeout=7300)
     env = envelopes(p)
     ed.check(p.returncode == 0 and env[-1]["structured"]["status"] == "succeeded", f"build: {p.stdout[-800:]}")
+    result = env[-1]["structured"].get("result") or {}
+    ed.check_eq((result.get("method_used"), result.get("player_id")), ("prebuilt", runtime.name), f"build: {p.stdout[-800:]}")
 
 
 def batch_lines(*calls: tuple[str, dict]) -> str:

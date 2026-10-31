@@ -154,6 +154,8 @@ Log::print, never printf or std::cout. Angles are DEGREES. Build settings go in 
 - Poses (.poseanim): get/edit/render_pose_animation (jasper://docs/pose-animation).
 - Clips (.anim, shared): edit_animation {clip, create, tracks [{path}]}, for an Animation
   Player (jasper://docs/animation).
+- Crowds: bake_vertex_animation (preview, then output): a .vat a Vertex Animator plays on the
+  GPU (jasper://docs/vertex-animation).
 - Animator (.controller): edit_animator_controller, control_animator (jasper://docs/animator).
 
 ## Atmosphere
@@ -210,8 +212,8 @@ Calls time out: get_editor_health (answers mid-hang) tells hung from slow; get_c
 (jasper://docs/crash-diagnostics).
 
 ## Build and ship
-Scenes in Build order and the start scene live in project.yaml (project tools). Export
-(Build Settings, build_project) makes a CMake project or players per platform.
+Scenes in Build order and the start scene live in project.yaml (project tools).
+build_project: a game per platform or a CMake project; ship: jasper://docs/shipping.
 Before exporting: scenes saved, Console clean in play, the start scene right.
 )JE"
 R"JE(

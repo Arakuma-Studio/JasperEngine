@@ -35,6 +35,7 @@
 #include "component/PoseAnimatorComponent.h"
 #include "component/AnimatorComponent.h"
 #include "component/AnimationPlayerComponent.h"
+#include "component/VertexAnimatorComponent.h"
 #include "pool/TexturePool.h"
 #include "pool/SoundPool.h"
 #include "pool/TextureDataPool.h"
@@ -42,7 +43,9 @@
 #include "pool/FontPool.h"
 #include "pool/ModelPool.h"
 #include "pool/MeshLodPool.h"
+#include "pool/MeshBufferPool.h"
 #include "pool/AnimationClipPool.h"
+#include "pool/VertexAnimationPool.h"
 #include "shader/RuntimeShaderCompiler.h"
 #include "io/AssetIOService.h"
 #include "jobs/JobSystem.h"
@@ -55,6 +58,9 @@
 #endif
 
 #include "sokol_time.h"
+#include "PlatformConfig.h"
+#include "player/RunControl.h"
+#include "render/FrameReadback.h"
 #if defined(__APPLE__)
     #include <TargetConditionals.h>
 #endif
@@ -129,6 +135,7 @@ double Engine::updateTime = 1.0 / 60.0; //60Hz
 double Engine::timeScale = 1.0;
 double Engine::fixedDeltatime = 0.0;
 double Engine::gameTime = 0.0;
+bool Engine::captureFrame = false;
 double Engine::shaderTime = 0.0;
 bool Engine::shaderTimeFixed = false;
 double Engine::pinnedShaderTime = -1.0;
@@ -1039,6 +1046,72 @@ const ThreadingSettings& Engine::getThreadingSettings() {
     return threadingSettingsStorage();
 }
 
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+
+namespace{
+    // Android, iOS and the web: sokol's per-frame buffers are host-visible memory shared with
+    // the rest of a smaller device
+    bool smallGpuMemoryPlatform(){
+#if defined(JASPERENGINE_ANDROID) || defined(JASPERENGINE_WEB) || defined(__EMSCRIPTEN__)
+        return true;
+#elif defined(__APPLE__)
+    #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+        return true;
+    #else
+        return false;
+    #endif
+#else
+        return false;
+#endif
+    }
+}
+
+int Engine::defaultUniformBytes(){
+    return (smallGpuMemoryPlatform() ? 16 : 64) * 1024 * 1024;
+}
+
+int Engine::defaultStreamStagingBytes(){
+    return (smallGpuMemoryPlatform() ? 16 : 48) * 1024 * 1024;
+}
+
+int Engine::defaultDescriptorBytes(){
+    return (smallGpuMemoryPlatform() ? 16 : 64) * 1024 * 1024;
+}
+
+namespace{
+    Engine::GpuResourceLimits& gpuResourceLimits(){
+        static Engine::GpuResourceLimits limits;
+        return limits;
+    }
+}
+
+void Engine::setGpuResourceLimits(const GpuResourceLimits& limits){
+    const GpuResourceLimits defaults;
+    // sokol's pools take 1 to 65,535 slots
+    auto valid = [](int value, int fallback){ return (value > 0 && value < 65536) ? value : fallback; };
+    GpuResourceLimits& set = gpuResourceLimits();
+    set.buffers = valid(limits.buffers, defaults.buffers);
+    set.images = valid(limits.images, defaults.images);
+    set.samplers = valid(limits.samplers, defaults.samplers);
+    set.views = valid(limits.views, defaults.views);
+    set.pipelines = valid(limits.pipelines, defaults.pipelines);
+    set.shaders = valid(limits.shaders, defaults.shaders);
+    // sokol's per-frame buffers: 64 KB - 1 GB
+    auto validBytes = [](int value, int fallback){ return (value >= 65536 && value <= (1 << 30)) ? value : fallback; };
+    set.uniformBytes = validBytes(limits.uniformBytes, defaults.uniformBytes);
+    set.streamStagingBytes = validBytes(limits.streamStagingBytes, defaults.streamStagingBytes);
+    set.descriptorBytes = validBytes(limits.descriptorBytes, defaults.descriptorBytes);
+    // sokol's WebGPU bind group cache: a power of 2, 2 - 32,768 (its pools stay under 65,536)
+    const int cache = limits.bindGroupsCacheSize;
+    set.bindGroupsCacheSize = (cache >= 2 && cache <= 32768 && (cache & (cache - 1)) == 0) ? cache : defaults.bindGroupsCacheSize;
+}
+
+const Engine::GpuResourceLimits& Engine::getGpuResourceLimits(){
+    return gpuResourceLimits();
+}
+
 void Engine::setFramebuffer(Framebuffer* framebuffer){
     Engine::framebuffer = framebuffer;
 }
@@ -1073,15 +1146,42 @@ bool Engine::ensureCompositeFramebuffer(){
 void Engine::beginCompositeFramebuffer(){
 // each scene opens its own swapchain pass and the sokol Vulkan backend takes only one
 // per commit, so stacked scenes draw offscreen and are presented once. The other
-// backends draw them straight to the swapchain (re-check when sokol_gfx is updated)
+// backends draw them straight to the swapchain (re-check when sokol_gfx is updated).
+// A screenshot's capture frame draws offscreen on every backend, to be read after it.
 #if defined(SOKOL_VULKAN)
-    if (framebuffer || scenes.size() <= 1)
+    const bool stacked = scenes.size() > 1;
+#else
+    const bool stacked = false;
+#endif
+    // a run that writes a screenshot draws offscreen from its first frame, so the capture frame
+    // needs no pipeline the frames before did not (formats of the window and the composite can
+    // differ: a pipeline made on the capture frame would leave it empty)
+    const bool screenshotRun = player::RunControl::isActive() && player::RunControl::wantsScreenshot();
+    if (framebuffer || !(stacked || captureFrame || screenshotRun))
         return;
 
     if (ensureCompositeFramebuffer())
         framebuffer = &compositeFramebuffer;
-#endif
 }
+
+bool Engine::readCompositeFrame(std::vector<uint8_t>& rgba, int& width, int& height, std::string& error){
+    if (!compositeFramebuffer.isCreated()){
+        error = "the frame did not draw offscreen (no view yet)";
+        return false;
+    }
+    width = static_cast<int>(compositeFramebuffer.getWidth());
+    height = static_cast<int>(compositeFramebuffer.getHeight());
+    return FrameReadback::readFramebuffer(compositeFramebuffer, rgba, &error);
+}
+
+bool Engine::isHeadless(){
+    return player::RunControl::isHeadless();
+}
+
+void Engine::quit(int code){
+    player::RunControl::requestQuit(code);
+}
+
 
 void Engine::endCompositeFramebuffer(){
     if (framebuffer != &compositeFramebuffer)
@@ -1094,6 +1194,8 @@ void Engine::endCompositeFramebuffer(){
 }
 
 void Engine::clearPools(){
+    // first: its assets' payload textures go back to the texture pools cleared next
+    VertexAnimationPool::clear();
     TexturePool::clear();
     SoundPool::clear();
     TextureDataPool::clear();
@@ -1101,10 +1203,12 @@ void Engine::clearPools(){
     FontPool::clear();
     ModelPool::clear();
     MeshLodPool::clear();
+    MeshBufferPool::clear();
     AnimationClipPool::clear();
 }
 
 void Engine::clearUnusedPools(){
+    VertexAnimationPool::clearUnused();
     TexturePool::clearUnused();
     SoundPool::clearUnused();
     TextureDataPool::clearUnused();
@@ -1112,6 +1216,7 @@ void Engine::clearUnusedPools(){
     FontPool::clearUnused();
     ModelPool::clearUnused();
     MeshLodPool::clearUnused();
+    MeshBufferPool::clearUnused();
     AnimationClipPool::clearUnused();
 }
 
@@ -1280,6 +1385,14 @@ void Engine::clearComponentSubscriptions(Scene* scene) {
         player.onFinish.clear();
     }
 
+    auto vertexAnimators = scene->getComponentArray<VertexAnimatorComponent>();
+    for (size_t i = 0; i < vertexAnimators->size(); i++) {
+        VertexAnimatorComponent& animator = vertexAnimators->getComponentFromIndex(i);
+        animator.onEvent.clear();
+        animator.onFinish.clear();
+        animator.onInstanceEvent.clear();
+        animator.onInstanceFinish.clear();
+    }
     auto stateAnimators = scene->getComponentArray<AnimatorComponent>();
     for (size_t i = 0; i < stateAnimators->size(); i++) {
         AnimatorComponent& animator = stateAnimators->getComponentFromIndex(i);
@@ -1407,6 +1520,8 @@ namespace {
     #ifdef JASPERENGINE_LOG_BACKTRACE
         config.backtraceOnError = JASPERENGINE_LOG_BACKTRACE != 0;
     #endif
+        if (platformConfig().logBacktrace >= 0)
+            config.backtraceOnError = platformConfig().logBacktrace != 0;
     #ifndef NDEBUG
         // debug builds always do
         config.backtraceOnError = true;
@@ -1416,6 +1531,12 @@ namespace {
     #ifdef JASPERENGINE_LOG_LEVEL
         Logger::applyLevelSpec(JASPERENGINE_LOG_LEVEL);
     #endif
+        // a prebuilt player's Player > Logging level (game.json)
+        if (!platformConfig().logLevel.empty()) {
+            std::string error;
+            if (!Logger::applyLevelSpec(platformConfig().logLevel, &error))
+                fprintf(stderr, "game.json logging level: %s\n", error.c_str());
+        }
         if (const char* level = std::getenv("JASPER_LOG_LEVEL")) {
             std::string error;
             if (level[0] != '\0' && !Logger::applyLevelSpec(level, &error)) {
@@ -1455,18 +1576,25 @@ namespace {
     // A game's crash reports (<user data>/crash) and, in a development build, its main-thread
     // hang watchdog (docs/crash-diagnostics.md)
     [[maybe_unused]] void startGameDiagnostics(System* system){
+        // a prebuilt player's Player > Crash Handling (game.json) over the build's
+        const PlatformConfig& platform = platformConfig();
+        auto setting = [](int runtime, int built) { return runtime >= 0 ? runtime != 0 : built != 0; };
     #if JASPERENGINE_CRASH_HANDLER
+        if (!setting(platform.crashHandler, 1)) {
+            (void)system;
+            return;
+        }
         diag::crash::Config config;
-        #ifdef JASPERENGINE_WINDOW_TITLE
-        config.product = JASPERENGINE_WINDOW_TITLE;
-        #else
-        config.product = "JasperEngine Game";
-        #endif
+        // the window title: the project's name (a prebuilt player's game.json, a Compile
+        // build's macro, both through the platform configuration)
+        // (the configuration lives for the whole run, so its text does)
+        config.product = platformConfig().title.empty() ? "JasperEngine Game" : platformConfig().title.c_str();
         config.root = system->getCrashReportPath();
-        config.includeLogTail = JASPERENGINE_CRASH_LOG_TAIL != 0;
-        config.dumpKind = JASPERENGINE_CRASH_DUMP_WITH_HEAP ? diag::crash::DumpKind::WithHeap : diag::crash::DumpKind::Small;
+        config.includeLogTail = setting(platform.crashLogTail, JASPERENGINE_CRASH_LOG_TAIL);
+        config.dumpKind = setting(platform.crashDumpWithHeap, JASPERENGINE_CRASH_DUMP_WITH_HEAP) ? diag::crash::DumpKind::WithHeap
+                                                                                                  : diag::crash::DumpKind::Small;
         config.backend = graphicBackendName();
-        config.webOverlay = JASPERENGINE_CRASH_WEB_OVERLAY != 0;
+        config.webOverlay = setting(platform.crashWebOverlay, JASPERENGINE_CRASH_WEB_OVERLAY);
         #if !defined(__EMSCRIPTEN__)
         // no report root (the unit tests' System): no handler either
         if (config.root.empty()) return;
@@ -1476,14 +1604,19 @@ namespace {
     #endif
     #if JASPERENGINE_DEVELOPMENT_BUILD && JASPERENGINE_CRASH_HANG_WATCHDOG && !defined(__EMSCRIPTEN__)
         // the browser owns the web's main thread
+        if (!setting(platform.hangWatchdog, 1)) {
+            (void)system;
+            return;
+        }
         diag::WatchdogConfig watch;
-        watch.thresholdMs = JASPERENGINE_CRASH_HANG_MS;
-        #ifdef JASPERENGINE_WINDOW_TITLE
-        watch.product = JASPERENGINE_WINDOW_TITLE;
-        #endif
+        watch.thresholdMs = platform.hangMs > 0 ? platform.hangMs : JASPERENGINE_CRASH_HANG_MS;
+        if (!platformConfig().title.empty())
+            watch.product = platformConfig().title.c_str();
         diag::watchdog::start(watch);
         engineOwnsDiagnostics = true;
     #endif
+        (void)setting;
+        (void)platform;
         (void)system;
     }
 #endif
@@ -1498,6 +1631,8 @@ void Engine::systemInit(int argc, char* argv[], System* system){
         startGameLogger(system, std::vector<std::string>(argv, argv + argc));
     }
     Logger::setThreadName("main");
+    // the launch options' error watch and fixed frame time (player::launch parsed them)
+    player::RunControl::engineStarted();
 #ifndef JASPERENGINE_EDITOR
     startGameDiagnostics(system);
 #endif
@@ -1549,6 +1684,10 @@ const ShaderCreationSettings& Engine::getShaderCreationSettings(){
 
 void Engine::systemViewLoaded(){
     SystemRender::setup();
+    // which graphics API and context the game really runs on (support, and the checks that a
+    // gles3 player runs on an OpenGL ES context)
+    Log::print("Graphics: %s; %s; %s", SystemRender::getBackendName(), SystemRender::getApiVersion().c_str(),
+              SystemRender::getDeviceName().c_str());
 #ifndef JASPERENGINE_EDITOR
     // what the export recorded is created before the scenes need it (spec S32 R12)
     ShaderWarmup::beginShipped();
@@ -1657,6 +1796,25 @@ bool Engine::areScenesLoaded(){
     return ready;
 }
 
+std::string Engine::describeNotLoaded(){
+    std::string out;
+    auto add = [&out](const std::string& part){ out += (out.empty() ? "" : "; ") + part; };
+    if (scenes.empty()) add("no scene");
+    if (const size_t pending = ShaderPool::getPendingShaderCount()) add(std::to_string(pending) + " shader build(s) pending");
+    for (Scene* scene : scenes){
+        const std::vector<std::string> waiting = scene->getSystem<RenderSystem>()->describeNotLoaded();
+        if (!waiting.empty()){
+            std::string list;
+            for (size_t i = 0; i < waiting.size() && i < 8; i++) list += (i ? ", " : "") + waiting[i];
+            if (waiting.size() > 8) list += " and " + std::to_string(waiting.size() - 8) + " more";
+            add("not loaded: " + list);
+        }
+        const auto documents = scene->getSystem<UIDocumentSystem>();
+        if (documents && !documents->isAllLoaded()) add("HTML UI documents loading or not drawn yet");
+    }
+    return out.empty() ? std::string("nothing (the ready line is 10 loaded frames away)") : out;
+}
+
 void Engine::signalReadyOnce(){
     static const bool enabled = [](){
         const char* value = std::getenv("JASPERENGINE_READY_SIGNAL");
@@ -1680,7 +1838,8 @@ void Engine::signalReadyOnce(){
     static int readyFrames = 0;
     uint64_t& frames = frameStatsFrames;
     static uint64_t signalledFrame = 0;
-    if (!enabled)
+    // --after-ready counts frames from the ready line, whatever the environment says
+    if (!enabled && !player::RunControl::wantsReadySignal())
         return;
     if (signalled){
         if (frameStats){
@@ -1709,6 +1868,10 @@ void Engine::signalReadyOnce(){
 
 void Engine::systemDraw(){
     runFrame(true);
+}
+
+bool Engine::isReadySignalled(){
+    return readySignalled;
 }
 
 void Engine::systemFramePresented(){
@@ -1837,6 +2000,9 @@ void Engine::runFrame(bool draw){
     // a transition requested during the last frame; one requested by its factory waits again
     SceneManager::applyPendingLoad();
 
+    // a --screenshot run's capture frame draws offscreen (R20); a run without it never does
+    captureFrame = draw && player::RunControl::isActive() && player::RunControl::wantsOffscreenFrame();
+
     // before the update, which bakes the PIP_RTT pipelines from the target in use
     if (draw)
         beginCompositeFramebuffer();
@@ -1916,6 +2082,10 @@ void Engine::runFrame(bool draw){
 
         // GameObject::destroy: after the update, before the draw (Unity)
         ObjectManager::update(frameDelta);
+        // their holes in the component arrays closed now, not by whatever reads next
+        for (int i = 0; i < scenes.size(); i++) {
+            scenes[i]->compactComponents();
+        }
     }
 
     if (draw){
@@ -1973,6 +2143,13 @@ void Engine::runFrame(bool draw){
     // it counts drawn frames
     if (draw)
         signalReadyOnce();
+
+    // the launch options' frame count, screenshot and quit (docs/specs/S30-shipping.md R17)
+    if (draw && player::RunControl::isActive()){
+        const bool captured = captureFrame;
+        captureFrame = false;
+        player::RunControl::frameDrawn(readySignalled, captured ? player::FrameReader(&Engine::readCompositeFrame) : player::FrameReader());
+    }
 
 #if JASPERENGINE_PROFILER
     // the built-in monitors, and the command line's capture once the scenes are loaded

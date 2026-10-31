@@ -12,6 +12,8 @@
 #endif
 
 #include "Engine.h"
+#include "PlatformConfig.h"
+#include "player/RunControl.h"
 
 #if defined(SOKOL_VULKAN)
 // After WindowLinux.h: the Xlib surface entry points come from <X11/Xlib.h>
@@ -25,27 +27,6 @@
 
 #include <cstdio>
 #include <cstring>
-
-#ifndef JASPERENGINE_VSYNC_ENABLED
-#define JASPERENGINE_VSYNC_ENABLED 1
-#endif
-
-// 0 = windowed, 1 = maximized, 2 = fullscreen
-#ifndef JASPERENGINE_WINDOW_MODE
-#define JASPERENGINE_WINDOW_MODE 0
-#endif
-
-#ifndef JASPERENGINE_WINDOW_RESIZABLE
-#define JASPERENGINE_WINDOW_RESIZABLE 1
-#endif
-
-#ifndef JASPERENGINE_WINDOW_TITLE
-#define JASPERENGINE_WINDOW_TITLE "JasperEngine"
-#endif
-
-#ifndef JASPERENGINE_APP_ID
-#define JASPERENGINE_APP_ID "JasperEngine"
-#endif
 
 using namespace jasperengine;
 
@@ -198,7 +179,7 @@ bool createContext() {
         const auto swapIntervalEXT = glxProc<SwapIntervalProc>("glXSwapIntervalEXT");
         if (swapIntervalEXT)
             swapIntervalEXT(display, WindowLinux::handle(),
-                            JASPERENGINE_VSYNC_ENABLED ? 1 : 0);
+                            platformConfig().vsync ? 1 : 0);
     }
     // the shader creation thread's context (spec S32), with the same attributes
     static const int* workerAttributes = attributes;
@@ -240,7 +221,7 @@ bool createContext() {
     VulkanContextConfig config;
     config.surfaceExtension = VK_KHR_XLIB_SURFACE_EXTENSION_NAME;
     config.createSurface = createWindowSurface;
-    config.vsync = JASPERENGINE_VSYNC_ENABLED != 0;
+    config.vsync = platformConfig().vsync;
     return VulkanContext::create(config);
 }
 
@@ -307,17 +288,23 @@ void processEvents() {
 }
 
 int JasperEngineLinux::init(int argc, char **argv) {
+    const PlatformConfig& platform = platformConfig();
     Engine::systemInit(argc, argv, new SystemLinux(&inputRouter));
 
-    if (!WindowLinux::openDisplay())
-        return -1;
+    if (!WindowLinux::openDisplay()) {
+        // a CI machine or a container without a display server (R19)
+        std::fprintf(stderr, "No X display (DISPLAY is unset or cannot be reached): run the game under "
+                     "xvfb-run (xvfb-run ./game --headless ...) or set DISPLAY.\n");
+        Engine::systemShutdown();
+        return player::EXIT_NO_DISPLAY;
+    }
 
     WindowLinuxConfig config;
-    config.title = JASPERENGINE_WINDOW_TITLE;
-    config.appId = JASPERENGINE_APP_ID;
-    config.width = DEFAULT_WINDOW_WIDTH;
-    config.height = DEFAULT_WINDOW_HEIGHT;
-    config.resizable = JASPERENGINE_WINDOW_RESIZABLE;
+    config.title = platform.title;
+    config.appId = platform.appId;
+    config.width = platform.width;
+    config.height = platform.height;
+    config.resizable = platform.resizable;
 
 #if defined(SOKOL_VULKAN)
     // A Vulkan surface presents to any drawable, so the window keeps the
@@ -342,8 +329,11 @@ int JasperEngineLinux::init(int argc, char **argv) {
         WindowLinux::destroy();
         return -1;
     }
-    WindowLinux::show();
-    inputRouter.openInputMethod(WindowLinux::display(), WindowLinux::handle());
+    // --headless: never mapped; frames render offscreen all the same
+    if (!platform.headless) {
+        WindowLinux::show();
+        inputRouter.openInputMethod(WindowLinux::display(), WindowLinux::handle());
+    }
 
     if (!createContext()) {
         destroyContext();
@@ -364,9 +354,9 @@ int JasperEngineLinux::init(int argc, char **argv) {
     Engine::systemViewLoaded();
     Engine::systemViewChanged();
 
-    if (JASPERENGINE_WINDOW_MODE == 1)
+    if (platform.windowMode == 1)
         WindowLinux::maximize();
-    else if (JASPERENGINE_WINDOW_MODE == 2)
+    else if (platform.windowMode == 2)
         WindowLinux::requestFullscreen();
 
     while (!shouldClose) {
@@ -374,7 +364,9 @@ int JasperEngineLinux::init(int argc, char **argv) {
         if (shouldClose)
             break;
 
-        gamepads.poll(monotonicSeconds());
+        // a headless run takes no input
+        if (!platform.headless)
+            gamepads.poll(monotonicSeconds());
 
         beginFrame();
         Engine::systemDraw();
@@ -386,7 +378,8 @@ int JasperEngineLinux::init(int argc, char **argv) {
 
     gamepads.shutdown();
     destroyContext();
-    inputRouter.closeInputMethod();
+    if (!platform.headless)
+        inputRouter.closeInputMethod();
     WindowLinux::destroy();
-    return 0;
+    return player::RunControl::finish();
 }

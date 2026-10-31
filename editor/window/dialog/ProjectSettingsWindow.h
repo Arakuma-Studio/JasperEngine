@@ -76,6 +76,14 @@ namespace jasperengine::editor {
         bool m_runtimeShadersEnabled = true;
         int m_mobilePbrTierIndex = 1;
         bool m_packNativeResources = false;
+        // S30: Build Settings' method (auto, prebuilt, compile) and the content pack
+        int m_buildMethodIndex = 0;
+        bool m_packContent = false;
+        int m_androidPackageFormatIndex = 0;   // apk, aab
+        fs::path m_androidKeystorePath;
+        char m_androidKeystoreAliasBuffer[128] = {0};
+        char m_iosTeamIdBuffer[32] = {0};
+        int m_iosExportMethodIndex = 0;        // development, ad-hoc, app-store, enterprise
         bool m_versionControlMetadata = true;
         VcsProjectSettings m_vcs;
         char m_webApplicationNameBuffer[256] = {0};

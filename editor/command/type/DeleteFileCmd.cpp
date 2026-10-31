@@ -7,6 +7,7 @@
 #include "util/Util.h"
 #include "asset/AssetOps.h"
 #include "Out.h"
+#include "vat/VatAssetFiles.h"
 
 #include <filesystem>
 #include <string>
@@ -15,7 +16,8 @@ using namespace jasperengine;
 
 editor::DeleteFileCmd::DeleteFileCmd(Project* project, std::vector<fs::path> filePaths, fs::path rootPath){
     this->project = project;
-    for (fs::path& file : filePaths){
+    // a Vertex Animation goes as a pair: the .vat with its generated .vat.glb (spec 2.1)
+    for (const fs::path& file : vat::withPairs(filePaths)){
         this->files.push_back({file, fs::path()});
     }
     this->trash = rootPath / ".trash";

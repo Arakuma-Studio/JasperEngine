@@ -77,6 +77,7 @@ struct PanelVisibilitySettings {
     bool animator = false;
     bool terrain = false;
     bool textureSynthesis = false;
+    bool vertexAnimationBaker = false;
     bool physicsPlacement = false;
     bool mcp = false;
     bool game = true;
@@ -92,6 +93,7 @@ struct PanelVisibilitySettings {
             && animator == other.animator
             && terrain == other.terrain
             && textureSynthesis == other.textureSynthesis
+            && vertexAnimationBaker == other.vertexAnimationBaker
             && physicsPlacement == other.physicsPlacement
             && mcp == other.mcp
             && game == other.game
@@ -222,6 +224,8 @@ private:
     // Emscripten SDK root override for Web exports ("" = auto-detect).
     // Machine-specific, so stored editor-wide rather than per-project.
     static std::string emsdkPath;
+    // Preferences > External Tools (S30): androidSdk, jdk, steamcmd, rcodesign, playersDir
+    static std::map<std::string, std::string> externalToolPaths;
 
     // cmake executable override ("" = look it up on PATH). Machine-specific,
     // stored editor-wide like emsdkPath.
@@ -334,6 +338,8 @@ public:
     // Emscripten SDK root override for Web exports ("" = auto-detect)
     static std::string getEmsdkPath();
     static void setEmsdkPath(const std::string& path);
+    static std::string getExternalToolPath(const std::string& tool);
+    static void setExternalToolPath(const std::string& tool, const std::string& path);
 
     // cmake executable override ("" = look it up on PATH)
     static std::string getCMakePath();

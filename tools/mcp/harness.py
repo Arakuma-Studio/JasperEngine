@@ -379,6 +379,20 @@ class CallResult:
 # ---------------------------------------------------------------------------
 # Wall-clock budgets
 
+def build_jobs() -> int:
+    """The parallel jobs a game build of a test uses: JOBS when set, else the CPUs this process may
+    use, a container's CPU quota included (docker --cpus, which tools/build.sh sets from JOBS and
+    which is what shares a build server; nproc does not see the quota, cgroup cpu.max does)."""
+    if os.environ.get("JOBS", "").isdigit() and int(os.environ["JOBS"]) > 0:
+        return int(os.environ["JOBS"])
+    cpus = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 2)
+    with contextlib.suppress(OSError, ValueError):
+        quota, period = Path("/sys/fs/cgroup/cpu.max").read_text().split()
+        if quota != "max":
+            cpus = min(cpus, max(1, int(quota) // int(period)))
+    return max(1, cpus)
+
+
 def perf_slack() -> float:
     """The factor wall-clock budgets are enforced with: JASPER_MCP_PERF_SLACK, 0 (not enforced)
     unless set. A shared build server's load alone misses them, so a functional run asserts the
@@ -691,6 +705,16 @@ class Editor:
         path = self.scratch.root / "ui-probe.json"
         with contextlib.suppress(OSError, ValueError):
             return json.loads(path.read_text()).get("items", {})
+        return {}
+
+    def ui_probe_state(self) -> dict:
+        """The whole UI probe of the editor's last frame: {"frame", "items", "scroll": {name: [y, max_y]}}
+        ({} before the first frame or without ui_probe)."""
+        if not self.scratch:
+            return {}
+        path = self.scratch.root / "ui-probe.json"
+        with contextlib.suppress(OSError, ValueError):
+            return json.loads(path.read_text())
         return {}
 
     async def ui_rect(self, name: str, timeout: float = 10.0) -> list[float] | None:

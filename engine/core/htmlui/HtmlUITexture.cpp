@@ -43,7 +43,9 @@ bool HtmlUITexture::update(const void* data, size_t size){
     if (!canUpdate() || !data || size == 0)
         return false;
 
-    render->updateTexture(data, size);
+    // past the frame's stream staging buffer: not uploaded (false), may be tried again
+    if (!render->updateTexture(data, size))
+        return false;
     lastUpdateFrame = SystemRender::getFrameCount();
     return true;
 }

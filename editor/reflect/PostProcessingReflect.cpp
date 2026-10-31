@@ -122,7 +122,7 @@ namespace {
                 t->fields.push_back(field);
             }
             t->desc = StructDesc{"PostProcessingSettings", t->fields, &defaultInstance<PostProcessingSettings>,
-                                 &ops::Value<PostProcessingSettings>};
+                                 &ops::Value<PostProcessingSettings>, "PostProcessingSettings"};
             return t;
         }();
         return *built;

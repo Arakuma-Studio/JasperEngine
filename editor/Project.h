@@ -78,6 +78,10 @@ namespace jasperengine::editor{
         bool operator!=(const VcsProjectSettings& other) const { return !(*this == other); }
     };
 
+    namespace cook {
+        class SceneCooker;
+    }
+
     struct LocalBuildSettings;
 
     enum class SceneType{
@@ -597,6 +601,9 @@ namespace jasperengine::editor{
         // Google Mobile Ads is linked only when enabled
         bool admobEnabled = false;
         std::string admobAppId;
+        // S30: the team that signs a device build, and the archive's export method
+        std::string teamId;
+        std::string exportMethod = "development";   // development, ad-hoc, app-store
     };
 
     enum class AndroidOrientation {
@@ -630,6 +637,13 @@ namespace jasperengine::editor{
         // Google Mobile Ads is compiled in only when enabled
         bool admobEnabled = false;
         std::string admobAppId;
+        // S30: a prebuilt player's package (androidFormatName: aab, the default; apk-per-abi; or
+        // apk, the universal APK of every selected ABI), and the release keystore (its passwords
+        // are never saved: the build asks, or JASPER_ANDROID_KS_PASS / JASPER_ANDROID_KEY_PASS);
+        // no keystore: the debug one (~/.android/debug.keystore)
+        std::string packageFormat = "aab";
+        std::filesystem::path keystorePath;
+        std::string keystoreAlias;
     };
 
     // Google's sample AdMob apps, which only serve test ads. Exports never fall back to them.
@@ -754,6 +768,8 @@ namespace jasperengine::editor{
         // Build Settings > Development Build (S15 R39): a Release game with the profiler and its
         // --profile options (export: developmentBuild, default off)
         bool developmentBuild = false;
+        std::string buildMethod = "auto";
+        bool packContent = false;
         ApplicationSettings applicationSettings;
         WebProjectSettings webProjectSettings;
         LinuxProjectSettings linuxProjectSettings;
@@ -915,6 +931,8 @@ namespace jasperengine::editor{
         // the Scene view's picking (editor/picking) reads the pickable GameObjects and their bounds
         friend class ScenePicker;
         friend class SceneViewController;
+        // the cooked scenes and prefabs of a prebuilt build read what the generated sources do (S30)
+        friend class cook::SceneCooker;
         std::shared_ptr<PlaySession> buildRuntimeSceneStack(uint32_t sceneId, std::vector<size_t>& stackIndices);
         Entity getSceneCamera(const SceneProject* sceneProject) const;
         void cleanupPlaySession(const std::shared_ptr<PlaySession>& session);
@@ -1115,6 +1133,9 @@ namespace jasperengine::editor{
         void clearPlayPrefabTemplates();
 
         void pauseEngineScene(Scene* scene, bool pause) const;
+        // Edit mode: every Vertex Animator previewing in an open scene or prefab stage goes back
+        // to its start with Preview off (play, saves: vertex animation spec 3.6)
+        void stopVertexAnimatorPreviews();
 
         void copyEngineApiToProject();
 
@@ -1514,6 +1535,18 @@ namespace jasperengine::editor{
         const DesktopExportSettings& getDesktopExportSettings() const;
         bool isDevelopmentBuild() const { return developmentBuild; }
         void setDevelopmentBuild(bool enabled) { developmentBuild = enabled; }
+        // Build Settings > Build Method (S30 R29): auto, prebuilt or compile; Pack Content
+        const std::string& getBuildMethod() const { return buildMethod; }
+        void setBuildMethod(const std::string& method) { buildMethod = method; }
+        bool isPackContent() const { return packContent; }
+        void setPackContent(bool enabled) { packContent = enabled; }
+        // S30: what the generated main.cpp gives SceneManager::registerScene, for game.json
+        void collectInvolvedScenesForExport(uint32_t sceneId, std::vector<uint32_t>& involvedSceneIds) {
+            collectInvolvedScenes(sceneId, involvedSceneIds);
+        }
+        void collectStartActiveScenesForExport(uint32_t sceneId, std::vector<uint32_t>& activeSceneIds) {
+            collectStartActiveScenes(sceneId, activeSceneIds);
+        }
         ApplicationSettings& getApplicationSettings();
         const ApplicationSettings& getApplicationSettings() const;
 
@@ -1839,6 +1872,10 @@ namespace jasperengine::editor{
         // The scenes, then the prefab stages' scenes (Prefab Mode): for what applies to every
         // GameObject being edited (script refreshes, asset path changes, tools)
         std::vector<SceneProject*> getScenesAndPrefabStages();
+        // Closes the holes destroyed entities left in the component arrays of every open scene,
+        // prefab stage and loaded prefab (EntityRegistry::compactComponents): between editor
+        // steps (MCP calls) and before a thread reads them
+        void compactAllComponents();
 
         // Flushes compiled forked-shader caches and flags meshes that use a custom
         // shader for reload, so editing a shader source file updates the viewport.
@@ -2044,9 +2081,12 @@ namespace jasperengine::editor{
         // repaired (asset-relative) and a missing GUID filled in. Sub-clip entries
         // ("<model>#<clip>") are path-only. True when the entry changed.
         bool resolveClipReference(AnimationPlayerClip& entry, bool mayImport = true);
-        // Every Animation Player entry of a registry (a scene, a prefab asset, a play copy); true
-        // when one changed (the players reload). `mayImport` false reads the database only (the
-        // play startup worker)
+        // The same for any GUID-tracked asset reference held as (path hint, GUID): a Vertex
+        // Animator's .vat. True when the hint or the GUID changed
+        bool resolveAssetReference(std::string& path, std::string& guid, bool mayImport = true);
+        // Every Animation Player entry and Vertex Animator animation of a registry (a scene, a
+        // prefab asset, a play copy); true when one changed (they reload). `mayImport` false
+        // reads the database only (the play startup worker)
         bool resolveRegistryClipRefs(EntityRegistry* registry, bool mayImport = true);
         // A file or directory moved through AssetOps (renamed, moved, a move undone): the open
         // clip documents (a clip's, a model's sub-clips), AnimationClipPool and the players learn

@@ -34,9 +34,13 @@ namespace jasperengine {
 
         // Points the buffer at bytes owned elsewhere, releasing any of its own
         void setData(unsigned char* data, size_t size);
+        // ... bytes of `owner` that never change (a pooled model's file data, a pooled level
+        // set), which other buffers may show too: they share one GPU buffer (setShareSource)
+        void setData(unsigned char* data, size_t size, const std::shared_ptr<const void>& owner);
 
         bool ownsData() const;
-        // Keeps a copy of the bytes it points at as its own, for when their owner goes
+        // Keeps a copy of the bytes it points at as its own, for when their owner goes (the
+        // same bytes: a share source stays)
         void copyToOwnData();
 
         void setName(const std::string& name);

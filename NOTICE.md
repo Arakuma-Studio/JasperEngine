@@ -103,6 +103,27 @@ FBX import of the editor (editor-only: an exported game ships the converted `.gl
 |---|---|---|---|---|
 | [ufbx](https://github.com/ufbx/ufbx) | 0.23.1 (as vendored by Doriax `8e8dde5d6`) | `libs/ufbx/` (`LICENSE`) | MIT OR Unlicense (public domain), used under MIT | reading `.fbx` files, converted to `.glb` by `editor/util/FbxImporter` and `GlbBuilder` |
 
+EXR reading of the editor (editor-only: the Vertex Animation importers re-pack EXR textures into `.vat.glb` payloads, exported games never read EXR):
+
+| Library | Version | Location | License | Used for |
+|---|---|---|---|---|
+| [tinyexr](https://github.com/syoyo/tinyexr) (v1: `tinyexr.h` with the two headers it includes, `exr_reader.hh` and `streamreader.hh`; it contains OpenEXR-derived code under the same BSD-3-Clause terms, noted in its header) | v3.2.0 release (`6f470c9ab24b`), unmodified | `libs/tinyexr/` (`LICENSE`; configured in `CMakeLists.txt`: deflate through the engine's stb_image/stb_image_write zlib, so neither miniz nor zlib is vendored) | BSD-3-Clause | reading and writing `.exr` images (`editor/util/FloatImage`) |
+
+Vertex Animation (`.vat`, [docs/vertex-animation.md](docs/vertex-animation.md)): no third-party code is copied. The formats and formulas below were reimplemented from their sources and are credited here:
+
+| Source | License | What was taken | Where |
+|---|---|---|---|
+| [SideFX Labs](https://github.com/sideeffects/SideFXLabs): the Houdini Vertex Animation Textures ROP 3.0 and its Unity Shader Graphs (`VAT_SoftBodyDeformation`, `VAT_RigidBodyDynamics`, `VAT_DynamicRemeshing`) | BSD | the VAT 3 format and its decoding: the flags in the bounds' digits, texel addressing, LDR remaps, Two Position Textures, smallest-three rigid quaternions, the precomputed-angle slerp, smooth trajectories, compressed spheremap normals, the fluid lookup table; also the quaternion tangent frame | the Houdini importer (`editor/vat/import/HoudiniVat3.cpp`, decoded on the CPU at import) |
+| G4ND44/Godot_VAT3 (GitHub) | MIT | a second reference for the VAT 3 decoding | `editor/vat/import/HoudiniVat3.cpp` |
+| OpenVAT's engine decoders (OpenVAT-Engine_Tools) | MIT | the OpenVAT file layout (per-channel remap, packed normals, `remap_info.json` animations); the A/B crossfade computed on the GPU from one clock | `editor/vat/import/OpenVat.cpp`, `engine/shaderlib/includes/vat.glsl`. The OpenVAT Blender add-on (GPL) is not used |
+| keijiro/HdrpVatExample (GitHub) | Unlicense | integer-addressed `texelFetch` decoding; the shrinking of rigid pieces that lerped matrices cause, which Bones mode avoids (quaternion nlerp) | `engine/shaderlib/includes/vat.glsl` |
+| maxartz15/VertexAnimation (GitHub) | MIT | a per-vertex index attribute that survives reordering and is shared by LODs (`_VAT_INDEX`); mesh bounds over every frame | the baker (`editor/vat/`), `engine/core/animation/VertexAnimation` |
+| fuqunaga/VatBaker (GitHub) | MIT | frame timing: loop clips sampled without a duplicate end frame and interpolated from the last frame back to the first | the baker, `engine/core/animation/VertexAnimation` |
+| sandwichpuissant/Unity-VAT (GitHub) | Unlicense | positions stored as offsets from the rest pose | the baker, `engine/shaderlib/includes/vat.glsl` |
+| sugi-cho/Animation-Texture-Baker (GitHub) | MIT | a random start time per instance | `engine/core/subsystem/VertexAnimatorSystem` |
+
+Bonjour-Interactive-Lab/Unity3D-VATUtils was read as a VAT 3 decoding reference only (its repository licence is GPL-3.0 while its `package.json` says MIT): none of its code is copied, and the math it implements is SideFX Labs'. The SideFX "VAT in Unity" tutorial exports used by the importer tests are not in the repository: the tests read them from outside it when present and skip otherwise.
+
 Convex decomposition of Physics Placement (edit-time placement in the Scene view and for agents):
 
 | Library | Version | Location | License | Used for |
@@ -119,6 +140,13 @@ Texture compression (cooked KTX2 textures, spec S14, `docs/textures.md`). Games 
 | [astc-encoder](https://github.com/ARM-software/astc-encoder) | 5.7.0 | `engine/libs/astcenc/` (`LICENSE.txt`, `README.jasper.md`) | Apache-2.0 | ASTC 4x4-12x12 encoding and decoding of mobile textures (editor only) |
 | [bc7enc_rdo](https://github.com/richgel999/bc7enc_rdo) | `master` at `b9438627eef7` | `engine/libs/bc7enc_rdo/` (`LICENSE`, `README.jasper.md`) | MIT or Unlicense | BC1/BC3/BC4/BC5/BC7 encoding with rate-distortion optimisation of desktop textures (editor only) |
 
+Shipping of the editor (S30, `docs/shipping.md`; editor-only: never part of a game):
+
+| Library | Version | Location | License | Used for |
+|---|---|---|---|---|
+| [miniz](https://github.com/richgel999/miniz) | 3.0.2 | `libs/miniz/` (`LICENSE`, `README.jasper.md`) | MIT | zip reading and writing: player runtime archives, APK and AAB assembly |
+| [bundletool](https://github.com/google/bundletool) | 1.17.2 (`bundletool-all-1.17.2.jar`, SHA-256 `2d4ad908faea64047c1cc9cb747e6aa667c6ab192e09607bd16b67246a8cd6ae`) | not vendored: downloaded by the editor into its cache on the first Android App Bundle build (`editor/platform/AndroidTools.cpp`) and checked against that hash | Apache-2.0 | building `.aab` files from a prebuilt Android player |
+
 Code from [OpenEngine](https://github.com/Game-Crafters-Guild/OpenEngine) (MIT, Copyright (c) 2026 Gamecrafters Guild Limited and contributors), used by the OpenEngine port (`docs/specs/`). Each adapted file names its source in its header.
 
 | Code | Location | Used for |
@@ -128,6 +156,7 @@ Code from [OpenEngine](https://github.com/Game-Crafters-Guild/OpenEngine) (MIT, 
 | `Engine/Modules/NativeScripting/Include/NativeScripting/NativeScriptingABI.h` (the `GE_ToolchainFingerprint` fill, adapted and extended) | `engine/core/script/ToolchainFingerprint.h` | the toolchain fingerprint of C++ script libraries (S23) |
 | `Apps/Editor/Source/ScriptEditor/SourceLocation.cpp` (the path-start scan and the `:L:C` / `(L,C)` readers, adapted and extended) | `editor/util/SourceLocation.*` | the Console's source-location parser (S23) |
 | `Engine/Modules/FileWatcher` (FileWatcher, FileIdentity), `Engine/Include/Assets/ExpectedWriteLedger.h` (+ its tests), `Engine/Modules/AssetCore/.../SharedFileRead.*` (adapted, headers kept) | `engine/core/io/watch/`, `engine/tests/core/io/watch/ExpectedWriteLedgerTest.cpp` | the file watcher's rename pairing and delete hold, file identities, the self-write ledger, share-delete reads on Windows (S05) |
+| `Tools/Scripts/publish_game.py` (`validate_payload`, `binary_target`, `tree_manifest`, `vdf_string`, the SteamPipe scripts, `prepare`/`verify_release`, the Deck deploy's verify-then-swap; adapted, rewritten in C++) and `Tools/Web/export_web_player.py` (the player manifest idea) | `editor/publish/` (`Publishing`, `PayloadValidator`, `BinaryInfo`, `TreeManifest`) | releases, Steam and Steam Deck publishing (S30) |
 | `Engine/Modules/AssetCore/Source/GUID.cpp`: `GUID::Derive`, `FnvHash`, `SplitMix64` (adapted) | `engine/core/asset/Guid.cpp` (`Guid::derive`) | deterministic sub-asset GUIDs (asset identity, S04) |
 | `Modules/Memory` (`Arena`, `ScratchScope`, `ObjectPool`, `RangeAllocator`, `SerialUseCheck`, `AddressSanitizer`), adapted | `engine/core/memory/` | the allocators, adapted to our naming and stats registry (S06) |
 | `Modules/JobSystem` (`ParallelForCore`, `ParallelAlgorithms`, `JobCounter`, `JobChannel`, the `WorkStealingThreadPool` lane contracts), adapted | `engine/core/jobs/` | parallelFor, counters, blocking channels; the scheduler itself is our own (S06) |

@@ -232,7 +232,13 @@ namespace jasperengine{
         PARTICLEROTATIONFRAME,
         PARTICLEVELOCITY,
         PARTICLEROTATION,
-        PARTICLECUSTOM
+        PARTICLECUSTOM,
+        // Vertex Animation (includes/vat.glsl): the vertex's row in the payload (glTF
+        // _VAT_INDEX, a_vatIndex) and an instance's playback state (i_vat0, i_vat1: the
+        // vat::vatPackInstance vectors, in their own per-instance buffer)
+        VAT_INDEX,
+        INSTANCEVAT0,
+        INSTANCEVAT1
     };
 
     enum class AttributeDataType{
@@ -278,6 +284,10 @@ namespace jasperengine{
         VS_LATTICE,
         DEPTH_VS_LATTICE,
         GBUFFER_VS_LATTICE,
+        // u_vs_vat (includes/vat.glsl, Vertex Animation) of the colour, depth and G-buffer vertex stages
+        VS_VAT,
+        DEPTH_VS_VAT,
+        GBUFFER_VS_VAT,
         TERRAIN_VS_PARAMS,
         DEPTH_TERRAIN_VS_PARAMS,
         FS_TERRAIN_LAYERS,
@@ -334,7 +344,8 @@ namespace jasperengine{
         PARTICLES,           // the particle texture (sprite sheet)
         PARTICLESIXWAYA,     // six-way lighting: the two response maps
         PARTICLESIXWAYB,
-        PARTICLEEMISSION     // the emission map
+        PARTICLEEMISSION,    // the emission map
+        VAT                  // a Vertex Animation payload (RGBA16F/32F, includes/vat.glsl)
     };
 
     enum class TextureType {

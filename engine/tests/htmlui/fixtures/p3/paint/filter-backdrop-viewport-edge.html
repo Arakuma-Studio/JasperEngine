@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>paint: backdrop-filter at the viewport's edges</title>
+<style>
+  html, body { margin: 0; overflow: hidden; }
+  .stripes { position: absolute; left: 0px; top: 0px; width: 340px; height: 230px; background-image: repeating-linear-gradient(90deg, #e04020 0px, #e04020 10px, #2040e0 10px, #2040e0 20px); }
+  .rows { background-image: repeating-linear-gradient(0deg, #e04020 0px, #e04020 10px, #20a040 10px, #20a040 20px); }
+  .glass { position: absolute; width: 80px; height: 60px; backdrop-filter: blur(5px); }
+  #left { left: -40px; top: 20px; }
+  #right { left: 300px; top: 20px; }
+  #top { left: 130px; top: -30px; }
+  #bottom { left: 130px; top: 200px; }
+  #inside { left: 130px; top: 85px; }
+</style>
+</head>
+<body><div class="stripes"></div><div class="stripes rows" style="left: 110px; width: 120px;"></div><div id="left" class="glass"></div><div id="right" class="glass"></div><div id="top" class="glass"></div><div id="bottom" class="glass"></div><div id="inside" class="glass"></div></body>
+</html>

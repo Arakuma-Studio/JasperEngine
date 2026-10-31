@@ -75,6 +75,10 @@ std::shared_ptr<TextureRender> TexturePool::get(const std::string& id, TextureTy
 	auto* owned = new std::vector<std::vector<uint8_t>>();
 	TextureData& first = data->at(0);
 	std::string error;
+	// float data made in code (a Vertex Animation's offsets, data textures): level 0 as it is,
+	// in its own format, through createTexture (its float validation); never the importer's
+	// processing, which takes a decoded float file to HDR RGBA16F
+	bool rawFloat = false;
 	if (first.hasLevels() && first.getFaceCount() == numFaces){
 		levels = first.getLevels();
 		format = first.getGpuFormat();
@@ -94,11 +98,12 @@ std::shared_ptr<TextureRender> TexturePool::get(const std::string& id, TextureTy
 				return NULL;
 			}
 		}
+		rawFloat = !leveled && first.isCodeFloatData();
 		if (leveled){
 			format = first.getGpuFormat();
 			for (int f = 0; f < numFaces; f++)
 				faceLevels[f] = data->at(f).getLevels();
-		}else{
+		}else if (!rawFloat){
 			// mips only when the sampler reads them, as the box filter they replace did
 			const bool mipmapped = minFilter == TextureFilter::LINEAR_MIPMAP_LINEAR || minFilter == TextureFilter::LINEAR_MIPMAP_NEAREST ||
 			                       minFilter == TextureFilter::NEAREST_MIPMAP_LINEAR || minFilter == TextureFilter::NEAREST_MIPMAP_NEAREST;
@@ -141,8 +146,8 @@ std::shared_ptr<TextureRender> TexturePool::get(const std::string& id, TextureTy
 		}
 	}
 	// (R16 where unorm16 does not filter, GLES3 and WebGL2, goes up as float: SokolTexture)
-	width = levels.empty() ? 0 : levels[0].width;
-	height = levels.empty() ? 0 : levels[0].height;
+	width = rawFloat ? first.getWidth() : (levels.empty() ? 0 : levels[0].width);
+	height = rawFloat ? first.getHeight() : (levels.empty() ? 0 : levels[0].height);
 
 	if (!shared){
 		shared = std::make_shared<TextureRender>();
@@ -155,7 +160,18 @@ std::shared_ptr<TextureRender> TexturePool::get(const std::string& id, TextureTy
 	}
 
 	JE_GPU_ALLOC_SCOPE(Textures, id);
-	const bool created = shared->createTextureLevels(id, type, format, width, height, numFaces, levels, minFilter, magFilter, wrapU, wrapV);
+	bool created = false;
+	if (rawFloat){
+		void* faceData[6] = {};
+		size_t faceSizes[6] = {};
+		for (int f = 0; f < numFaces; f++){
+			faceData[f] = data->at(f).getData();
+			faceSizes[f] = (size_t)data->at(f).getSize();
+		}
+		created = shared->createTexture(id, width, height, first.getColorFormat(), type, numFaces, faceData, faceSizes, minFilter, magFilter, wrapU, wrapV);
+	}else{
+		created = shared->createTextureLevels(id, type, format, width, height, numFaces, levels, minFilter, magFilter, wrapU, wrapV);
+	}
 	// after the creation: the queued path reads the bytes when the queue runs
 	SystemRender::scheduleCleanup([](void* buffers){ delete static_cast<std::vector<std::vector<uint8_t>>*>(buffers); }, owned);
 	if (!created){

@@ -563,13 +563,14 @@ endif()
 add_subdirectory(libs/nfd)
 add_subdirectory(libs/yaml-cpp)
 add_subdirectory(libs/ufbx)
-jasperengine_apply_cxx_standard(nfd yaml-cpp)
+add_subdirectory(libs/tinyexr)
+jasperengine_apply_cxx_standard(nfd yaml-cpp tinyexr)
 # The standards the project setting offers (editor/util/CxxStandards.h) and the compiler floors
 # the Play plugin checks (Generator::getToolchainFloorCheck), from the engine's definitions
 get_directory_property(JASPERENGINE_CXX_STANDARDS DIRECTORY ${JASPERENGINE_ROOT} DEFINITION JASPERENGINE_CXX_STANDARDS)
 string(REPLACE ";" "," JASPERENGINE_CXX_STANDARD_LIST "${JASPERENGINE_CXX_STANDARDS}")
 
-foreach(lib IN ITEMS nfd yaml-cpp ufbx)
+foreach(lib IN ITEMS nfd yaml-cpp ufbx tinyexr)
     target_compile_options(${lib} PRIVATE ${EXTERNAL_WARNING_FLAG})
     # Reaches the headers they export to the editor, which ImGui gets below
     get_target_property(lib_includes ${lib} INTERFACE_INCLUDE_DIRECTORIES)
@@ -601,6 +602,12 @@ set(TINYEXPR_SOURCES libs/tinyexpr/tinyexpr.c)
 set_property(SOURCE ${TINYEXPR_SOURCES} APPEND PROPERTY COMPILE_OPTIONS ${EXTERNAL_WARNING_FLAG})
 set_property(SOURCE ${TINYEXPR_SOURCES} APPEND PROPERTY COMPILE_DEFINITIONS TE_POW_FROM_RIGHT TE_NAT_LOG)
 
+# miniz reads and writes the zip archives of the prebuilt players and of Android packages
+# (editor/players, editor/android; docs/specs/S30-shipping.md D8). Editor only: players never link it.
+set(MINIZ_SOURCES libs/miniz/miniz.c)
+set_property(SOURCE ${MINIZ_SOURCES} APPEND PROPERTY COMPILE_OPTIONS ${EXTERNAL_WARNING_FLAG})
+set_property(SOURCE ${MINIZ_SOURCES} APPEND PROPERTY COMPILE_DEFINITIONS MINIZ_NO_ZLIB_COMPATIBLE_NAMES)
+
 # ImGui has no target of its own; only one of these backends builds per platform
 set_property(
     SOURCE
@@ -630,6 +637,23 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/cli/SchemaArgs.cpp
     ${EDITOR_DIR}/cli/McpClient.cpp
     ${EDITOR_DIR}/cli/CallCommand.cpp
+    ${EDITOR_DIR}/cli/ShippingCommands.cpp
+    ${EDITOR_DIR}/cook/RuntimeFieldsEmitter.cpp
+    ${EDITOR_DIR}/cook/SceneCooker.cpp
+    ${EDITOR_DIR}/cook/JPakWriter.cpp
+    ${EDITOR_DIR}/util/ZipArchive.cpp
+    ${EDITOR_DIR}/players/PlayerRuntimes.cpp
+    ${EDITOR_DIR}/publish/Notices.cpp
+    ${EDITOR_DIR}/publish/BinaryInfo.cpp
+    ${EDITOR_DIR}/publish/TreeManifest.cpp
+    ${EDITOR_DIR}/publish/PayloadValidator.cpp
+    ${EDITOR_DIR}/publish/Publishing.cpp
+    ${EDITOR_DIR}/platform/ExternalTools.cpp
+    ${EDITOR_DIR}/platform/AndroidTools.cpp
+    ${EDITOR_DIR}/platform/AndroidPackager.cpp
+    ${EDITOR_DIR}/platform/WindowsResources.cpp
+    ${EDITOR_DIR}/platform/MacBundle.cpp
+    ${EDITOR_DIR}/platform/IosProject.cpp
     ${EDITOR_DIR}/App.cpp
     ${EDITOR_DIR}/AppCommands.cpp
     ${EDITOR_DIR}/AppSettings.cpp
@@ -702,6 +726,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/sceneview/SurfacePlacement.cpp
     ${EDITOR_DIR}/window/HierarchyVisibilityGutter.cpp
     ${EDITOR_DIR}/Exporter.cpp
+    ${EDITOR_DIR}/ExporterPrebuilt.cpp
+    ${EDITOR_DIR}/ShippingTypes.cpp
 
     ${EDITOR_DIR}/mcp/McpActivityWindow.cpp
     ${EDITOR_DIR}/window/JobsMemoryWindow.cpp
@@ -750,6 +776,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/AssetIdentityTools.cpp
     ${EDITOR_DIR}/mcp/tools/DocsTools.cpp
     ${EDITOR_DIR}/mcp/tools/BuildTools.cpp
+    ${EDITOR_DIR}/mcp/tools/PublishTools.cpp
     ${EDITOR_DIR}/mcp/tools/WorldTools.cpp
     ${EDITOR_DIR}/mcp/tools/AnimationClipTools.cpp
     ${EDITOR_DIR}/mcp/tools/AnimatorTools.cpp
@@ -765,6 +792,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/SplineTools.cpp
     ${EDITOR_DIR}/mcp/tools/DiagnosticsTools.cpp
     ${EDITOR_DIR}/mcp/tools/OrganisationTools.cpp
+    ${EDITOR_DIR}/mcp/tools/VatTools.cpp
     ${EDITOR_DIR}/mcp/tools/VcsTools.cpp
 
     ${EDITOR_DIR}/util/ShaderHeaderBuilder.cpp
@@ -831,6 +859,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/ScriptEvents.cpp
     ${EDITOR_DIR}/util/HtmlUITemplates.cpp
     ${EDITOR_DIR}/util/PngWriter.cpp
+    ${EDITOR_DIR}/util/FloatImage.cpp
     ${EDITOR_DIR}/util/FbxImporter.cpp
     ${EDITOR_DIR}/util/GlbBuilder.cpp
     ${JASPERENGINE_TEXSYNTH_SOURCES}
@@ -948,6 +977,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorWindowClips.cpp
     ${EDITOR_DIR}/window/InspectorSplines.cpp
     ${EDITOR_DIR}/window/InputActionsWindow.cpp
+    ${EDITOR_DIR}/window/InspectorWindowVat.cpp
     ${EDITOR_DIR}/window/InspectorShaderLibrary.cpp
     ${EDITOR_DIR}/window/InspectorMaterialPbr.cpp
     ${EDITOR_DIR}/window/InspectorParticles.cpp
@@ -1010,6 +1040,26 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/spline/SplineSceneRender.cpp
     ${EDITOR_DIR}/spline/SplineSceneTools.cpp
     ${EDITOR_DIR}/lattice/LatticeSceneTools.cpp
+    ${EDITOR_DIR}/vat/VatAssetWriter.cpp
+    ${EDITOR_DIR}/vat/VatAssetFiles.cpp
+    ${EDITOR_DIR}/vat/VatDocument.cpp
+    ${EDITOR_DIR}/vat/VatSceneActions.cpp
+    ${EDITOR_DIR}/vat/VatCrowd.cpp
+    ${EDITOR_DIR}/vat/VatReport.cpp
+    ${EDITOR_DIR}/vat/VatBakeTypes.cpp
+    ${EDITOR_DIR}/vat/VatBakeCompute.cpp
+    ${EDITOR_DIR}/vat/VatBakeSource.cpp
+    ${EDITOR_DIR}/vat/VatBakeSession.cpp
+    ${EDITOR_DIR}/vat/VatFrontEnd.cpp
+    ${EDITOR_DIR}/vat/VatCli.cpp
+    ${EDITOR_DIR}/vat/VatContactSheet.cpp
+    ${EDITOR_DIR}/vat/import/VatImport.cpp
+    ${EDITOR_DIR}/vat/import/VatImportCommon.cpp
+    ${EDITOR_DIR}/vat/import/VatSourceMesh.cpp
+    ${EDITOR_DIR}/vat/import/HoudiniVat3.cpp
+    ${EDITOR_DIR}/vat/import/OpenVat.cpp
+    ${EDITOR_DIR}/vat/VatImportWrite.cpp
+    ${EDITOR_DIR}/window/VertexAnimationBakerWindow.cpp
     ${EDITOR_DIR}/window/TextureSynthesisWindow.cpp
     ${EDITOR_DIR}/window/PhysicsPlacementWindow.cpp
     ${EDITOR_DIR}/window/SystemsWindow.cpp
@@ -1022,6 +1072,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/dialog/ShaderForkDialog.cpp
     ${EDITOR_DIR}/window/dialog/TextureSlicerToolDialog.cpp
     ${EDITOR_DIR}/window/dialog/ExportWindow.cpp
+    ${EDITOR_DIR}/window/dialog/ExportWindowShipping.cpp
     ${EDITOR_DIR}/window/dialog/EditorSettingsWindow.cpp
     ${EDITOR_DIR}/window/dialog/ProjectSettingsWindow.cpp
     ${EDITOR_DIR}/window/dialog/PrefabsWindow.cpp
@@ -1051,6 +1102,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/render/preview/ModelRender.cpp
     ${EDITOR_DIR}/render/preview/PrefabRender.cpp
     ${EDITOR_DIR}/render/preview/PoseRender.cpp
+    ${EDITOR_DIR}/render/preview/VatPreviewRender.cpp
 
     ${EDITOR_DIR}/pose/PoseImage.cpp
     ${EDITOR_DIR}/pose/PoseSheetRenderer.cpp
@@ -1106,6 +1158,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/LinkMaterialCmd.cpp
     ${EDITOR_DIR}/command/type/CreatePrefabCmd.cpp
     ${EDITOR_DIR}/command/type/CreateClipCmd.cpp
+    ${EDITOR_DIR}/command/type/CreateVatCmd.cpp
     ${EDITOR_DIR}/command/type/ClipSceneActions.cpp
     ${EDITOR_DIR}/command/type/CreatePrefabVariantAssetCmd.cpp
     ${EDITOR_DIR}/command/type/ComponentToPrefabSharedCmd.cpp
@@ -1129,6 +1182,7 @@ set(JASPERENGINE_EDITOR_SOURCES
 
     ${IMGUI_SOURCES}
     ${TINYEXPR_SOURCES}
+    ${MINIZ_SOURCES}
     ${BACKEND_SOURCES}
 )
 
@@ -1170,6 +1224,7 @@ function(configure_jasperengine_editor_target target_name)
         ${IMGUI_DIR}
         ${IMGUI_DIR}/backends
         libs/tinyexpr
+        libs/miniz
         ${OPENGL_INCLUDE_DIR}
     )
 
@@ -1201,6 +1256,7 @@ function(configure_jasperengine_editor_target target_name)
         astcenc
         basisu_encoder
         ufbx
+        tinyexr
     )
 
     if(WIN32)

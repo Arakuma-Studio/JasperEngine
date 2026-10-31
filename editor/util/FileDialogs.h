@@ -28,7 +28,8 @@ namespace jasperengine::editor{
         FILE_DIALOG_ANIMATION_CLIP = 1 << 11,
         FILE_DIALOG_ANIMATOR_CONTROLLER = 1 << 12,
         FILE_DIALOG_AVATAR_MASK = 1 << 13,
-        FILE_DIALOG_ANIMATION_MONTAGE = 1 << 14
+        FILE_DIALOG_ANIMATION_MONTAGE = 1 << 14,
+        FILE_DIALOG_VERTEX_ANIMATION = 1 << 15
     };
 
     class FileDialogs{
@@ -80,6 +81,9 @@ namespace jasperengine::editor{
             }
             if (filterFlags & FILE_DIALOG_ANIMATION_MONTAGE) {
                 filterItems.push_back({ "Animation montages", "montage" });
+            }
+            if (filterFlags & FILE_DIALOG_VERTEX_ANIMATION) {
+                filterItems.push_back({ "Vertex Animations", "vat" });
             }
             return filterItems;
         }

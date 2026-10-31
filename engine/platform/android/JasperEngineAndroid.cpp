@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "JasperEngineAndroid.h"
+#include "PlatformConfig.h"
 
 #include <errno.h>
 #include <android/log.h>
@@ -193,6 +194,18 @@ std::string JasperEngineAndroid::getClipboardText(){
 
 void JasperEngineAndroid::quit(){
     GameActivity_finish(NativeEngine::getInstance()->getActivity());
+}
+
+std::string JasperEngineAndroid::getAssetPath() {
+    if (!jasperengine::platformConfig().contentRoot.empty())
+        return jasperengine::platformConfig().contentRoot + "/assets";
+    return System::getAssetPath();
+}
+
+std::string JasperEngineAndroid::getLuaPath() {
+    if (!jasperengine::platformConfig().contentRoot.empty())
+        return jasperengine::platformConfig().contentRoot + "/lua";
+    return System::getLuaPath();
 }
 
 std::string JasperEngineAndroid::getUserDataPath() {

@@ -17,12 +17,19 @@ that name, any further licence or NOTICE file as <library>-<file name>. --instal
 install tree for exactly that, and that the repository-only engine/CMakePresets.json is absent.
 Libraries in TESTS_ONLY are never shipped, so they have no licences/ entry.
 
+engine/notices.json (S30 R27) says which shipped games link each engine/libs library (always, a player
+feature such as physics3d, or editor: never in a game); every engine/libs directory needs an entry.
+--player-notices FEATURE... prints the licence files a player with those features stages ('<file>|<name>'
+like --install-manifest), and --third-party-notices FEATURE... the THIRD-PARTY-NOTICES.txt of such a
+player (its libraries' NOTICE.md rows as text): tools/players/package_player.py writes both into a runtime.
+
 Exit 1 with one line per problem. S30 reuses this for exported games. Standard library only.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from pathlib import Path
@@ -86,6 +93,71 @@ def install_manifest(repo: Path) -> list[tuple[Path, str]]:
     return manifest
 
 
+GAME_CONDITIONS = {"always", "physics2d", "physics3d", "navigation", "runtimeshaders", "tracy", "editor"}
+
+
+def load_game_notices(repo: Path) -> dict:
+    """engine/notices.json's libraries: {name: {dir, when}}."""
+    return json.loads((repo / "engine/notices.json").read_text(encoding="utf-8"))["libraries"]
+
+
+def check_game_notices(repo: Path) -> list[str]:
+    problems = []
+    if not (repo / "engine/notices.json").is_file():
+        return ["engine/notices.json: missing (which shipped games link each engine/libs library)"]
+    try:
+        libraries = load_game_notices(repo)
+    except (ValueError, KeyError) as error:
+        return [f"engine/notices.json: {error}"]
+    listed = {}
+    for name, entry in libraries.items():
+        directory = entry.get("dir", "")
+        listed[directory] = name
+        if entry.get("when") not in GAME_CONDITIONS:
+            problems.append(f"engine/notices.json: {name}: when must be one of {', '.join(sorted(GAME_CONDITIONS))}")
+        if not (repo / directory).is_dir():
+            problems.append(f"engine/notices.json: {name}: {directory} does not exist")
+        elif directory.rsplit("/", 1)[-1] != name:
+            problems.append(f"engine/notices.json: {name}: the name must be its directory's ({directory})")
+    for library in vendored_libraries(repo):
+        if library.startswith("engine/libs/") and library not in listed:
+            problems.append(f"{library}: no engine/notices.json entry (when: always, a player feature or editor)")
+    return problems
+
+
+def player_libraries(repo: Path, features: list[str]) -> list[str]:
+    """The engine/notices.json libraries a player with these features ships, sorted."""
+    return sorted(name for name, entry in load_game_notices(repo).items()
+                  if entry["when"] == "always" or entry["when"] in features)
+
+
+def player_manifest(repo: Path, features: list[str]) -> list[tuple[Path, str]]:
+    """(licence file, name under licenses/) of the libraries a player with these features ships."""
+    libraries = load_game_notices(repo)
+    manifest = []
+    for name in player_libraries(repo, features):
+        for index, path in enumerate(licence_files(repo / libraries[name]["dir"])):
+            manifest.append((path, f"{name}-LICENSE" if index == 0 else f"{name}-{path.name}"))
+    return manifest
+
+
+def third_party_notices(repo: Path, features: list[str]) -> str:
+    """THIRD-PARTY-NOTICES.txt of a player: the NOTICE.md row of each library it ships, as text."""
+    libraries = load_game_notices(repo)
+    rows = [line for line in (repo / "NOTICE.md").read_text(encoding="utf-8").splitlines() if line.lstrip().startswith("|")]
+    out = ["Third-party software in this game", "",
+           "Each library below keeps its own licence; its text is in licenses/<library>-LICENSE.", ""]
+    for name in player_libraries(repo, features):
+        location = "`" + libraries[name]["dir"] + "/`"
+        row = next((r for r in rows if location in r), None)
+        if row is None:
+            continue
+        cells = [re.sub(r"\[([^]]*)\]\([^)]*\)", r"\1", cell.strip()).replace("`", "") for cell in row.strip().strip("|").split("|")]
+        library, version, _, licence, used = (cells + [""] * 5)[:5]
+        out.append(f"{name}: {library}, version {version}, {licence} (licenses/{name}-LICENSE). Used for: {used}")
+    return "\n".join(out) + "\n"
+
+
 def check_repository(repo: Path) -> list[str]:
     problems = []
     notice_path = repo / "NOTICE.md"
@@ -97,6 +169,7 @@ def check_repository(repo: Path) -> list[str]:
             problems.append(f"{library}: no NOTICE.md row names `{library}/`")
         if not any(LICENCE_FILE.match(f.name) for f in licence_files(repo / library)):
             problems.append(f"{library}: no licence file (LICENSE, LICENCE, COPYING or UNLICENSE)")
+    problems += check_game_notices(repo)
     return problems
 
 
@@ -123,8 +196,19 @@ def main() -> int:
     parser.add_argument("--repo", type=Path, default=REPO, help=argparse.SUPPRESS)
     parser.add_argument("--installed", type=Path, help="check this editor install directory (where the editor binary is)")
     parser.add_argument("--install-manifest", action="store_true", help="print '<licence file>|<installed name>' lines")
+    parser.add_argument("--player-notices", nargs="*", metavar="FEATURE",
+                        help="print '<licence file>|<name>' lines of a player with these features")
+    parser.add_argument("--third-party-notices", nargs="*", metavar="FEATURE",
+                        help="print the THIRD-PARTY-NOTICES.txt of a player with these features")
     args = parser.parse_args()
 
+    if args.player_notices is not None:
+        for path, name in player_manifest(args.repo, args.player_notices):
+            print(f"{path.as_posix()}|{name}")
+        return 0
+    if args.third_party_notices is not None:
+        sys.stdout.write(third_party_notices(args.repo, args.third_party_notices))
+        return 0
     if args.install_manifest:
         for path, name in install_manifest(args.repo):
             print(f"{path.as_posix()}|{name}")

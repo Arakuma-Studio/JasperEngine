@@ -9,6 +9,10 @@ editor/cli/CommandLine.cpp :: std::ofstream out(log, std::ios::app); :: hook log
 # not a document
 editor/AppSettings.cpp :: std::ofstream f(probe); :: write probe of the settings directory, removed at once
 editor/htmlui/HttpClient.cpp :: std::ofstream out(config, std::ios::binary); :: private temporary curl config, removed after the request
+editor/vcs/SvnProvider.cpp :: std::ofstream out(file, std::ios::binary | std::ios::trunc); :: private temporary --targets list for one svn call, removed after it
+editor/vcs/SvnProvider.cpp :: std::ofstream out(messageFile, std::ios::binary | std::ios::trunc); :: private temporary commit message file for svn commit -F, removed after it
+editor/vcs/GitProvider.cpp :: std::ofstream out(file, std::ios::binary | std::ios::trunc); :: private temporary --pathspec-from-file list for one git call, removed after it
+editor/vcs/VcsEditorOps.cpp :: if (!fs::copy_file(from, to, fs::copy_options::overwrite_existing, ec)) { :: the revert's backup copy of a file into the editor's internal folder, never a project document
 editor/Conector.cpp :: fs::copy_file(fullLibPath, candidate :: hot-reload copy of the script library under a unique name in a temp directory
 editor/util/EditorScripts.cpp :: fs::copy_file(built, copy, fs::copy_options::overwrite_existing, ec); :: S23 hot-reload copy of the C++ editor-script library under a unique generation name (build output, not a document)
 

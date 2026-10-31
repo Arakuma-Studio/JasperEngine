@@ -1,0 +1,60 @@
+{
+  "format": "jasperengine.vat",
+  "version": 1,
+  "guid": "5a7c0de0b1a5e5c0ffee00112233aabb",
+  "mode": "vertices",
+  "mesh": "quad.vat.glb",
+  "layout": {
+    "precision": "half",
+    "width": 8,
+    "height": 4,
+    "samples": 4,
+    "vertices": 4,
+    "bones": 0,
+    "normals": true,
+    "colors": false,
+    "layout_hash": "c9b9fb72356d50c9"
+  },
+  "bounds": {"min": [0, 0, 0], "max": [1, 1, 0]},
+  "clips": [
+    {
+      "name": "Walk",
+      "start": 0,
+      "frames": 2,
+      "fps": 2,
+      "wrap": "loop",
+      "speed": 1,
+      "interpolate": true,
+      "bounds": {"min": [0, 0, 0], "max": [1, 1, 0]},
+      "events": [
+        {"time": 0.25, "function": "onStep", "args": ["left"]}
+      ]
+    },
+    {
+      "name": "Idle",
+      "start": 2,
+      "frames": 2,
+      "fps": 2,
+      "wrap": "loop",
+      "speed": 1,
+      "interpolate": true,
+      "bounds": {"min": [0, 0, 0], "max": [1, 1, 0]}
+    }
+  ],
+  "sockets": [
+    {"name": "Tip", "path": "Quad/Tip"}
+  ],
+  "recipe": {
+    "sources": [
+      {"kind": "model", "path": "models/quad.gltf", "clips": ["Walk", "Idle"], "hashes": {}}
+    ],
+    "mode": "auto",
+    "fps": 30,
+    "preset": "mobile_web",
+    "normals": true,
+    "precision": "auto",
+    "tolerance_mm": 1,
+    "sockets": ["Quad/Tip"]
+  },
+  "stats": {"bytes": 256, "max_error_mm": 0.25, "mean_error_mm": 0.05}
+}

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SystemWin.h"
+#include "PlatformConfig.h"
 
 #include "WinInputRouter.h"
 #include "WindowWin.h"
@@ -181,6 +182,9 @@ void SystemWin::setTextInputArea(float x, float y, float width, float height) {
 // assets in the project directory instead, so the editor bakes absolute paths
 // in through these macros (see Generator::getPlatformCMakeConfig).
 std::string SystemWin::getAssetPath() {
+    // a prebuilt player's content root (next to its executable, or --content)
+    if (!platformConfig().contentRoot.empty())
+        return platformConfig().contentRoot + "/assets";
 #ifdef JASPERENGINE_ASSET_PATH
     return JASPERENGINE_ASSET_PATH;
 #else
@@ -193,6 +197,8 @@ std::string SystemWin::getUserDataPath() {
 }
 
 std::string SystemWin::getLuaPath() {
+    if (!platformConfig().contentRoot.empty())
+        return platformConfig().contentRoot + "/lua";
 #ifdef JASPERENGINE_LUA_PATH
     return JASPERENGINE_LUA_PATH;
 #else
@@ -201,6 +207,8 @@ std::string SystemWin::getLuaPath() {
 }
 
 std::string SystemWin::getShaderPath() {
+    if (!platformConfig().contentRoot.empty())
+        return System::getShaderPath();
 #ifdef JASPERENGINE_SHADER_PATH
     return JASPERENGINE_SHADER_PATH;
 #else
