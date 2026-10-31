@@ -305,6 +305,12 @@ namespace jasperengine::editor {
         // code "stochastic-no-effect" where a material asks Lit's Stochastic Tiling but it does
         // not apply (no texture, a texture rect, a terrain, a shader with a manifest)
         static std::vector<Finding> stochasticTilingFindings(Project* project);
+
+        // Line and Trail Renderers of the loaded scenes (lines and trails spec 6.8): code
+        // "line-texture-no-uv" where a hairline (no width) draws with a shader that samples a
+        // texture (a hairline has no texture coordinates), "trail-zero-time" where a trail's
+        // Time is 0 (it keeps no point: nothing is drawn)
+        static std::vector<Finding> lineTrailFindings(Project* project);
     };
 
 }

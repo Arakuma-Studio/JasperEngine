@@ -523,7 +523,8 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::GBUFFER: return 16;
         case ShaderType::UI:     return 5;
         case ShaderType::POINTS: return 5;
-        case ShaderType::LINES:  return 3;
+        // Vc3 Vc4 Pcl, and the ribbon of thick lines and trails: Rib, Tex (its base texture), Pxw
+        case ShaderType::LINES:  return 6;
         case ShaderType::SKYBOX: return 1;
         case ShaderType::SSAO:   return 0;
         case ShaderType::SSAO_BLUR: return 0;
@@ -686,6 +687,9 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 0: return shortName ? "Vc3" : "Vertex Color 3";
             case 1: return shortName ? "Vc4" : "Vertex Color 4";
             case 2: return shortName ? "Pcl" : "Post Color";
+            case 3: return shortName ? "Rib" : "Ribbon";
+            case 4: return shortName ? "Tex" : "Texture";
+            case 5: return shortName ? "Pxw" : "Pixel Width";
         }
     } else if (shaderType == ShaderType::SKYBOX) {
         switch (bit) {
@@ -1596,11 +1600,15 @@ uint64_t ShaderPool::getPointsProperties(bool texture, bool vertexColorVec3, boo
     return prop;
 }
 
-uint64_t ShaderPool::getLinesProperties(bool vertexColorVec3, bool vertexColorVec4){
+uint64_t ShaderPool::getLinesProperties(bool vertexColorVec3, bool vertexColorVec4, bool ribbon, bool texture, bool pixelWidth){
     uint64_t prop = 0;
 
     prop |= vertexColorVec3	 ? shaderPropertyBit(0) : 0;
     prop |= vertexColorVec4  ? shaderPropertyBit(1) : 0;
+    // a hairline has no texture coordinates nor widths
+    prop |= ribbon                  ? shaderPropertyBit(3) : 0;
+    prop |= (ribbon && texture)     ? shaderPropertyBit(4) : 0;
+    prop |= (ribbon && pixelWidth)  ? shaderPropertyBit(5) : 0;
 
     return prop;
 }

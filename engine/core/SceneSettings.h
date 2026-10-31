@@ -273,6 +273,8 @@ namespace jasperengine{
         Vector3 gravity3D = Vector3(0.0f, -9.81f, 0.0f);
         // bodies drawn between their last two fixed steps (owned by PhysicsSystem as gravity)
         bool physicsInterpolation = true;
+        // Box2D sub-steps of each fixed step, 1..16 (more: stiffer joint chains and stacks)
+        int physics2DSubSteps = 4;
 
         // fixed game resolution: when enabled and this scene is the Engine main scene, the main
         // camera renders into an offscreen framebuffer of this size, upscaled to the view rect

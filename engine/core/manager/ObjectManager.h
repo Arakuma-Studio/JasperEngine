@@ -24,9 +24,10 @@ namespace jasperengine {
     // Instantiate makes a GameObject from a prefab (PrefabManager) or copies one (with its
     // children, components and scripts with their property values; references among the
     // copied GameObjects go to the copies), names its root "<name>(Clone)", places it, and
-    // starts the scripts of every new GameObject (Lua init(), C++ constructors) before it
-    // returns. Destroy removes a GameObject and its children at the end of the frame or
-    // after a delay, stopping their scripts first (Lua onDestroy(), C++ destructors).
+    // starts the scripts of every new GameObject (instances, C++ constructors, init) before it
+    // returns (init and onEnable ran; start waits for the next frame). Destroy removes a
+    // GameObject and its children at the end of the frame or after a delay, stopping their
+    // scripts first (onDisable, onDestroy, then the instances: C++ destructors).
     class JASPERENGINE_API ObjectManager {
     public:
         // C++ scripts are compiled with the game: the game (generated main.cpp) or the
@@ -66,8 +67,12 @@ namespace jasperengine {
         static Scene* getActiveScene();
         static void pushActiveScene(Scene* scene);
         static void popActiveScene();
+        // The scenes pushed now, bottom first (scenes whose scripts are starting)
+        static std::vector<Scene*> getActiveSceneStack();
 
-        // Starts / stops the scripts of these GameObjects (Lua, then C++)
+        // Starts the scripts of these GameObjects: their Lua instances, then the C++ ones, then
+        // (ScriptRuntime::awakeEntities) init and onEnable of the active ones; stops them:
+        // onDisable and onDestroy (ScriptRuntime::destroyEntities), then the instances go
         static void initializeScripts(Scene* scene, const std::vector<Entity>& entities);
         static void cleanupScripts(Scene* scene, const std::vector<Entity>& entities);
 

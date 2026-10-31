@@ -37,6 +37,20 @@ bool editor::AddComponentCmd::execute() {
                 }
             }
 
+            // a Line or Trail Renderer added in the editor starts as a new one from the menu does
+            // (a 2-point polyline with a width, a fading trail); the struct defaults stay the
+            // loader's and the scripts'
+            if (componentType == ComponentType::LineRendererComponent){
+                if (LineRendererComponent* lines = scene->findComponent<LineRendererComponent>(entity)){
+                    ProjectUtils::setupNewLineRenderer(*lines, sceneProject->sceneType != SceneType::SCENE_3D);
+                }
+            }
+            if (componentType == ComponentType::TrailRendererComponent){
+                if (TrailRendererComponent* trail = scene->findComponent<TrailRendererComponent>(entity)){
+                    ProjectUtils::setupNewTrailRenderer(*trail, sceneProject->sceneType != SceneType::SCENE_3D);
+                }
+            }
+
             if (componentType == ComponentType::InstancedMeshComponent &&
                 ProjectUtils::hasModelMeshChildrenWithoutRootGeometry(scene, entity)){
                 Out::warning(

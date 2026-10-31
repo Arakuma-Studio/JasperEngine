@@ -1293,6 +1293,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void()>::call)
         .addFunction("call", &FunctionSubscribe<void()>::call)
         .addFunction("add", (bool (FunctionSubscribe<void()>::*)(const std::string&, lua_State*))&FunctionSubscribe<void()>::add)
+        .addFunction("remove", &FunctionSubscribe<void()>::remove)
+        .addFunction("has", &FunctionSubscribe<void()>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1307,6 +1309,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(float)>::call)
         .addFunction("call", &FunctionSubscribe<void(float)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(float)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(float)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(float)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(float)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1314,6 +1318,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(float,float)>::call)
         .addFunction("call", &FunctionSubscribe<void(float,float)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(float,float)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(float,float)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(float,float)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(float,float)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1321,6 +1327,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(float,float,int)>::call)
         .addFunction("call", &FunctionSubscribe<void(float,float,int)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(float,float,int)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(float,float,int)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(float,float,int)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(float,float,int)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1328,6 +1336,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(int)>::call)
         .addFunction("call", &FunctionSubscribe<void(int)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(int)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(int)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(int)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(int)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1335,6 +1345,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(int,int)>::call)
         .addFunction("call", &FunctionSubscribe<void(int,int)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(int,int)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(int,int)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(int,int)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(int,int)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1342,6 +1354,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(int,int,float)>::call)
         .addFunction("call", &FunctionSubscribe<void(int,int,float)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(int,int,float)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(int,int,float)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(int,int,float)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(int,int,float)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1349,6 +1363,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(int,float,float)>::call)
         .addFunction("call", &FunctionSubscribe<void(int,float,float)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(int,float,float)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(int,float,float)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(int,float,float)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(int,float,float)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1356,6 +1372,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(int,float,float,int)>::call)
         .addFunction("call", &FunctionSubscribe<void(int,float,float,int)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(int,float,float,int)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(int,float,float,int)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(int,float,float,int)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(int,float,float,int)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1363,6 +1381,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(int,bool,int)>::call)
         .addFunction("call", &FunctionSubscribe<void(int,bool,int)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(int,bool,int)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(int,bool,int)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(int,bool,int)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(int,bool,int)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1370,6 +1390,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(wchar_t)>::call)
         .addFunction("call", &FunctionSubscribe<void(wchar_t)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(wchar_t)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(wchar_t)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(wchar_t)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(wchar_t)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1377,6 +1399,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(const std::string&)>::call)
         .addFunction("call", &FunctionSubscribe<void(const std::string&)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(const std::string&)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(const std::string&)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(const std::string&)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(const std::string&)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1384,6 +1408,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(const AnimationEvent&)>::call)
         .addFunction("call", &FunctionSubscribe<void(const AnimationEvent&)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(const AnimationEvent&)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(const AnimationEvent&)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(const AnimationEvent&)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(const AnimationEvent&)>::has)
         .endClass();
 
     // Vertex Animator instance events: (instance, event) and (instance, clip)
@@ -1392,6 +1418,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(int, const AnimationEvent&)>::call)
         .addFunction("call", &FunctionSubscribe<void(int, const AnimationEvent&)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(int, const AnimationEvent&)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(int, const AnimationEvent&)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(int, const AnimationEvent&)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(int, const AnimationEvent&)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1399,6 +1427,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(int, const std::string&)>::call)
         .addFunction("call", &FunctionSubscribe<void(int, const std::string&)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(int, const std::string&)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(int, const std::string&)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(int, const std::string&)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(int, const std::string&)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1406,6 +1436,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<float(float)>::call)
         .addFunction("call", &FunctionSubscribe<float(float)>::call)
         .addFunction("add", (bool (FunctionSubscribe<float(float)>::*)(const std::string&, lua_State*))&FunctionSubscribe<float(float)>::add)
+        .addFunction("remove", &FunctionSubscribe<float(float)>::remove)
+        .addFunction("has", &FunctionSubscribe<float(float)>::has)
         .endClass();
 
 #ifdef JASPERENGINE_PHYSICS_2D
@@ -1414,6 +1446,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>::call)
         .addFunction("call", &FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1421,6 +1455,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Vector2, Vector2, float)>::call)
         .addFunction("call", &FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Vector2, Vector2, float)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Vector2, Vector2, float)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Vector2, Vector2, float)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Vector2, Vector2, float)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Vector2, Vector2, float)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1428,6 +1464,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>::call)
         .addFunction("call", &FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>::call)
         .addFunction("add", (bool (FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>::*)(const std::string&, lua_State*))&FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>::add)
+        .addFunction("remove", &FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>::remove)
+        .addFunction("has", &FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1435,6 +1473,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Manifold2D)>::call)
         .addFunction("call", &FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Manifold2D)>::call)
         .addFunction("add", (bool (FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Manifold2D)>::*)(const std::string&, lua_State*))&FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Manifold2D)>::add)
+        .addFunction("remove", &FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Manifold2D)>::remove)
+        .addFunction("has", &FunctionSubscribe<bool(Rigidbody2D, unsigned long, Rigidbody2D, unsigned long, Manifold2D)>::has)
         .endClass();
 #endif
 
@@ -1444,6 +1484,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(Rigidbody)>::call)
         .addFunction("call", &FunctionSubscribe<void(Rigidbody)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(Rigidbody)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(Rigidbody)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(Rigidbody)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(Rigidbody)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1451,6 +1493,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(Rigidbody, Rigidbody, Contact3D)>::call)
         .addFunction("call", &FunctionSubscribe<void(Rigidbody, Rigidbody, Contact3D)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(Rigidbody, Rigidbody, Contact3D)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(Rigidbody, Rigidbody, Contact3D)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(Rigidbody, Rigidbody, Contact3D)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(Rigidbody, Rigidbody, Contact3D)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1458,6 +1502,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void(Rigidbody, Rigidbody, unsigned long, unsigned long)>::call)
         .addFunction("call", &FunctionSubscribe<void(Rigidbody, Rigidbody, unsigned long, unsigned long)>::call)
         .addFunction("add", (bool (FunctionSubscribe<void(Rigidbody, Rigidbody, unsigned long, unsigned long)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(Rigidbody, Rigidbody, unsigned long, unsigned long)>::add)
+        .addFunction("remove", &FunctionSubscribe<void(Rigidbody, Rigidbody, unsigned long, unsigned long)>::remove)
+        .addFunction("has", &FunctionSubscribe<void(Rigidbody, Rigidbody, unsigned long, unsigned long)>::has)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1465,6 +1511,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<bool(Rigidbody, Rigidbody, Vector3, CollideShapeResult3D)>::call)
         .addFunction("call", &FunctionSubscribe<bool(Rigidbody, Rigidbody, Vector3, CollideShapeResult3D)>::call)
         .addFunction("add", (bool (FunctionSubscribe<bool(Rigidbody, Rigidbody, Vector3, CollideShapeResult3D)>::*)(const std::string&, lua_State*))&FunctionSubscribe<bool(Rigidbody, Rigidbody, Vector3, CollideShapeResult3D)>::add)
+        .addFunction("remove", &FunctionSubscribe<bool(Rigidbody, Rigidbody, Vector3, CollideShapeResult3D)>::remove)
+        .addFunction("has", &FunctionSubscribe<bool(Rigidbody, Rigidbody, Vector3, CollideShapeResult3D)>::has)
         .endClass();
 #endif
 
@@ -1833,6 +1881,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
             luabridge::overload<Vector3>(&Scene::setGravity3D),
             luabridge::overload<float, float, float>(&Scene::setGravity3D))
         .addProperty("physicsInterpolation", &Scene::isPhysicsInterpolation, &Scene::setPhysicsInterpolation)
+        .addProperty("physics2DSubSteps", &Scene::getPhysics2DSubSteps, &Scene::setPhysics2DSubSteps)
         .addProperty("ssaoEnabled", &Scene::isSSAOEnabled, &Scene::setSSAOEnabled)
         .addProperty("ssaoRadius", &Scene::getSSAORadius, &Scene::setSSAORadius)
         .addProperty("ssaoIntensity", &Scene::getSSAOIntensity, &Scene::setSSAOIntensity)

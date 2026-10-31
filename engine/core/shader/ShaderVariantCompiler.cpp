@@ -482,6 +482,9 @@ void addLinesPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, co
     if (prop & shaderPropertyBit(0))  defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"});    // 'Vc3'
     if (prop & shaderPropertyBit(1))  defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"});    // 'Vc4'
     if (prop & shaderPropertyBit(2))  defs.push_back({"USE_POST_COLOR", "1"});           // 'Pcl'
+    if (prop & shaderPropertyBit(3))  defs.push_back({"LINE_RIBBON", "1"});              // 'Rib'
+    if (prop & shaderPropertyBit(4))  defs.push_back({"HAS_TEXTURE", "1"});              // 'Tex'
+    if (prop & shaderPropertyBit(5))  defs.push_back({"LINE_PIXEL_WIDTH", "1"});         // 'Pxw'
 }
 
 // the uber pass's features (RenderSystem::UberFeature)

@@ -635,6 +635,7 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"physics_gravity_2d", SettingKind::Vector2, "2D gravity [x,y]"},
         {"physics_gravity_3d", SettingKind::Vector3, "3D gravity [x,y,z]"},
         {"physics_interpolation", SettingKind::Bool, "draw bodies between their last two fixed steps (smooth at any frame rate)"},
+        {"physics_2d_sub_steps", SettingKind::Int, "Box2D sub-steps per fixed step, 1-16 (default 4; more = stiffer joints)"},
         {"mesh_lod_enabled", SettingKind::Bool, "build and use mesh detail levels"},
         {"mesh_lod_threshold", SettingKind::Float, "pixels of error a detail level may show"},
         {"depth_prepass_enabled", SettingKind::Bool, "depth-only pass before opaque draws"},
@@ -974,6 +975,7 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
             if (!value.is_number_integer()) return expect("an integer");
             if (name.rfind("fixed_resolution_", 0) == 0 && value.get<int>() < 1) return expect("at least 1");
             if (name == "max_lights_per_object" && (value.get<int>() < 1 || value.get<int>() > 16)) return expect("1 to 16");
+            if (name == "physics_2d_sub_steps" && (value.get<int>() < 1 || value.get<int>() > 16)) return expect("1 to 16");
             return new ScenePropertyCmd<int>(project, id, name, value.get<int>());
         case SettingKind::Float:
             if (!value.is_number()) return expect("a number");

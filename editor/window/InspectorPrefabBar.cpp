@@ -567,6 +567,16 @@ std::string editor::InspectorWindow::formatPrefabValue(EntityRegistry* registry,
             }
             return registry && registry->isEntityCreated(entity) ? registry->getEntityName(entity) : "GameObject " + std::to_string(entity);
         }
+        case PropertyType::Curve: {
+            const AnimationCurve& curve = *static_cast<AnimationCurve*>(prop.ref);
+            if (curve.keys.size() == 1)
+                return "Curve (constant " + std::to_string(curve.keys[0].value) + ")";
+            return "Curve (" + std::to_string(curve.keys.size()) + " keys)";
+        }
+        case PropertyType::Gradient: {
+            const Gradient& gradient = *static_cast<Gradient*>(prop.ref);
+            return "Gradient (" + std::to_string(gradient.colorKeys.size()) + " colour, " + std::to_string(gradient.alphaKeys.size()) + " alpha keys)";
+        }
         case PropertyType::Custom:
             return "(value)";
         default:

@@ -7,6 +7,7 @@
 #include "imgui_internal.h"
 #include "Platform.h"
 #include "Backend.h"
+#include "manager/SceneManager.h"
 #include "Engine.h"
 #include "cli/CommandLine.h"
 #include "render/SystemRender.h"
@@ -1984,6 +1985,10 @@ void editor::App::deleteSelection() {
     bool tileDeleted = false;
     bool instanceDeleted = false;
     if (sp && sp->sceneRender) {
+        // a polyline point selected in the Scene view: that point goes, not the GameObject
+        if (sp->sceneRender->removeSelectedLinePoint(&project, targetSceneId)) {
+            return;
+        }
         int tileIdx = sp->sceneRender->getSelectedTileIndex();
         Entity tileEntity = sp->sceneRender->getSelectedTileEntity();
         if (tileIdx >= 0) {
@@ -3206,6 +3211,15 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
         std::vector<Scene*> runtimeLayers = project.getRunningRuntimeLayers(sceneProject.id);
         sceneRender->activateGame(gameTarget);
 
+        if (project.isPlayedSceneReplaced(sceneProject.id)) {
+            // a scene load replaced the played scene (or rebuilt it, Restart): the game is the
+            // stack that load made, its main scene first
+            Engine::removeScene(sceneProject.scene);
+            Scene* loadedMain = SceneManager::getScenePtr(SceneManager::getCurrentSceneId());
+            if (loadedMain && std::find(runtimeLayers.begin(), runtimeLayers.end(), loadedMain) != runtimeLayers.end()) {
+                Engine::setScene(loadedMain);
+            }
+        }
         for (Scene* runtimeLayer : runtimeLayers) {
             Engine::addSceneLayer(runtimeLayer);
         }
