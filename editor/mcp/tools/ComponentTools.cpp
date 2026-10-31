@@ -332,6 +332,34 @@ void getEntityTool(const CallPtr& call) {
             text += ". fluid_stats: " + fluid.dump();
         }
     }
+    // a thick line's ribbon and a trail's stored points as the renderer has them (read only;
+    // in Play the trail's points move every frame)
+    if (filter.empty() || std::find(filter.begin(), filter.end(), ComponentType::LineRendererComponent) != filter.end()) {
+        if (const LineRendererComponent* lines = registry->findComponent<LineRendererComponent>(entity)) {
+            Json ribbon = Json::object();
+            if (lines->widthMultiplier > 0.0f) {
+                ribbon["vertices"] = lines->ribbon.vertices.size();
+                ribbon["indices"] = lines->ribbon.indices.size();
+                ribbon["length"] = McpValues::number(lines->ribbon.length);
+                ribbon["loaded"] = lines->loaded && lines->loadedRibbon;
+            } else {
+                ribbon["hairline"] = true;
+                ribbon["segments"] = (lines->mode == LineRendererMode::Polyline) ? lines->polylineSegments.size() : lines->lines.size();
+            }
+            data["ribbon"] = ribbon;
+            text += ". ribbon: " + ribbon.dump();
+        }
+    }
+    if (filter.empty() || std::find(filter.begin(), filter.end(), ComponentType::TrailRendererComponent) != filter.end()) {
+        if (const TrailRendererComponent* trail = registry->findComponent<TrailRendererComponent>(entity)) {
+            Json stats = Json::object();
+            stats["points"] = trail->points.size();
+            stats["vertices"] = trail->ribbon.vertices.size();
+            stats["length"] = McpValues::number(trail->ribbon.length);
+            data["trail"] = stats;
+            text += ". trail: " + stats.dump();
+        }
+    }
     // the Canvas Groups over a UI element (inherited alpha, interactable, click-through)
     const Json groupState = McpValues::canvasGroupStateToJson(registry, entity);
     if (!groupState.is_null()) {

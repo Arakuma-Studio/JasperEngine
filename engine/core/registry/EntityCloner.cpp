@@ -247,6 +247,38 @@ void prepare<LineRendererComponent>(LineRendererComponent& lines, Entity, CloneC
     lines.customShaderId = 0;
     lines.needUpdateShaderUniforms = false;
     lines.needUpdateBuffer = false;
+    // the copy builds its own ribbon and GPU buffers
+    lines.loadedRibbon = false;
+    lines.loadedRibbonKey = 0;
+    lines.needUpdateRibbon = true;
+    lines.ribbon = LineRibbonData();
+    lines.polylineSegments.clear();
+    lines.warnedInvalidPoints = false;
+}
+
+template<>
+void prepare<TrailRendererComponent>(TrailRendererComponent& trail, Entity, CloneContext& ctx) {
+    remapFramebufferTextures(trail.shaderTextures, ctx);
+    // a copy starts without points (an instantiated prefab's trail starts where it is)
+    trail.points.reset();
+    trail.hasLastHeadPosition = false;
+    trail.idleTime = 0.0f;
+    trail.warnedCapacity = false;
+    trail.destroyRequested = false;
+    trail.needUpdateRibbon = true;
+    trail.loaded = false;
+    trail.loadCalled = false;
+    trail.needReload = false;
+    trail.needUpdateBuffer = false;
+    trail.loadedRibbonKey = 0;
+    detachExternalBuffer(trail.buffer);
+    trail.ribbon = LineRibbonData();
+    trail.render = ObjectRender();
+    trail.shader.reset();
+    trail.shaderProperties = 0;
+    trail.customShaderId = 0;
+    trail.needUpdateShaderUniforms = false;
+    trail.worldAABB.setNull();
 }
 
 template<>
@@ -751,6 +783,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<ParticleSystemComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<PointsComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<LineRendererComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<TrailRendererComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<TextComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<UIComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ImageComponent>(source, sourceEntity, signature, target, targetEntity, ctx);

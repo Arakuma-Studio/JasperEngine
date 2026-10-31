@@ -66,6 +66,7 @@ namespace jasperengine::editor{
         PARTICLE_SYSTEM,
         POINTS,
         LINE_RENDERER,
+        TRAIL_RENDERER,
         MESH_POLYGON,
         TERRAIN,
         REFLECTION_PROBE,

@@ -18,14 +18,14 @@ Document component) draw with their own shaders; their GPU effects are a library
 ## Lighting modes
 
 A mesh shader lists the lighting modes it supports; the first is its default (Auto). The
-built-in Lit lists all four, per pixel first. The material's **Lighting** row picks one of them:
+material's **Lighting** row picks one of them:
 
 | Mode | What it does | When |
 |---|---|---|
 | Per pixel (`pixel`) | Every light of the object is evaluated per pixel: diffuse, specular, shadows, spot masks. | Close-up, important objects; the most expensive. |
 | Per vertex (`vertex`) | Every light is evaluated per vertex and interpolated: diffuse only (no specular, shadows or spot mask; a spot's cone still applies). | Mobile, background and dense scenery, many lights; the cheapest lit mode. Coarse on large triangles near point lights. |
 | Mixed (`mixed`) | Each light follows its own **Shading** (Light inspector, Lua `light.shading`): Per pixel, Per vertex, or Both (per pixel here). | A main light per pixel with shadows and fill lights per vertex. |
-| None (`none`) | Unlit. The built-in Lit draws the base colour (factor, texture, vertex colour) only; a glTF material with `KHR_materials_unlit` loads with this mode. | Effects, stylised art, UI-like 3D. |
+| None (`none`) | Unlit. | Effects, stylised art, UI-like 3D. |
 
 A lit mode in a scene without lights (or with the mesh's Receive Lights off) draws the
 shader's unlit colour. Shadows come only from per-pixel lights that cast them.
@@ -106,6 +106,7 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
 | [Heat Haze](#libraryheat_haze) `library:heat_haze` | mesh | Effects | none | alpha |
 | [Hologram](#libraryhologram) `library:hologram` | mesh | Effects | none | additive |
 | [Lattice Stretch](#librarylattice_stretch) `library:lattice_stretch` | mesh | Effects | none | opaque |
+| [Line Flipbook](#libraryline_flipbook) `library:line_flipbook` | lines | Effects | none | additive |
 | [Matcap](#librarymatcap) `library:matcap` | mesh | Stylized | none | opaque |
 | [Outline](#libraryoutline) `library:outline` | mesh | Outline and stencil | none | opaque |
 | [Outline (stencil)](#libraryoutline_stencil) `library:outline_stencil` | mesh | Outline and stencil | none | opaque |
@@ -725,6 +726,30 @@ Heat map of how much the lattices bound to the mesh squash or stretch it: white 
 | Texture | Default | Description |
 |---|---|---|
 | `u_baseTexture` | white | Base map |
+
+<a id="libraryline_flipbook"></a>
+### Line Flipbook (`library:line_flipbook`)
+
+Animated sprite sheet along a Line or Trail Renderer: lightning, lasers, energy beams. Plays the frames of a columns x rows sheet at a frame rate (left to right, then top to bottom), each frame stretched over the line as its texture mode lays out u, optionally scrolling, times a tint and the line's colour gradient. Additive by default (set the component's blend mode to alpha for an opaque-looking beam); writes no depth. Needs a width: a hairline has no texture coordinates.
+
+- **Type**: lines (a Line Renderer's custom shader); category Effects.
+- **Default state**: blend additive, depth write off.
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `tint` | HDR colour | (1, 1, 1, 1) | Tint |
+| `columns` | float | 1 | Columns |
+| `rows` | float | 8 | Rows |
+| `fps` | float | 30 | Frames per second (negative: backwards) |
+| `scroll` | vector4 | (0, 0, 0, 0) | UV scroll per second (xy) |
+
+| Texture | Default | Description |
+|---|---|---|
+| `u_baseTexture` | white | Sprite sheet |
+
+| Feature | Default | Description |
+|---|---|---|
+| `VERTEX_COLOR` | on | Vertex colour (the line's colour gradient) |
 
 <a id="librarypanner"></a>
 ### Panner (`library:panner`)

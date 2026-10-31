@@ -241,9 +241,9 @@ namespace {
 
 TEST(VertexAnimatorComponent, RegistrationAndNames) {
     const ComponentType type = ComponentType::VertexAnimatorComponent;
-    // appended after every older type (prefab override masks use the ordinal); the Canvas Group
-    // came after it
-    EXPECT_EQ(static_cast<int>(type) + 1, static_cast<int>(ComponentType::CanvasGroupComponent));
+    // appended after every older type (prefab override masks use the ordinal); the Trail
+    // Renderer came after it
+    EXPECT_EQ(static_cast<int>(type) + 1, static_cast<int>(ComponentType::TrailRendererComponent));
     EXPECT_EQ(Catalog::getComponentName(type, true), "vertexanimator");
     EXPECT_EQ(Catalog::getComponentName(type), "VertexAnimatorComponent");
     EXPECT_EQ(Catalog::getComponentDisplayName(type), "Vertex Animator");
