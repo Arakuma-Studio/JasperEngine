@@ -8,6 +8,8 @@
 
 #if defined(SOKOL_VULKAN) && defined(JASPER_TEST_HAS_GPU)
 #include "VulkanContext.h"
+#elif defined(SOKOL_METAL) && defined(JASPER_TEST_HAS_GPU)
+#include "HeadlessContext.h"
 #endif
 
 #include <cstdarg>
@@ -48,6 +50,12 @@ sg_environment TestSystem::getSokolEnvironment(){
 
 sg_swapchain TestSystem::getSokolSwapchain(){
     return VulkanContext::swapchain();
+}
+#elif defined(SOKOL_METAL) && defined(JASPER_TEST_HAS_GPU)
+sg_environment TestSystem::getSokolEnvironment(){
+    sg_environment env = System::getSokolEnvironment();
+    env.metal.device = HeadlessContext::getMetalDevice();
+    return env;
 }
 #endif
 

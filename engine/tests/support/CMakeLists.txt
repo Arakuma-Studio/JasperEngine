@@ -4,8 +4,9 @@
 # headless device GPU suites ask for). TestMain.cpp is not in it: jasperengine_add_test_target
 # compiles it into each target, with that target's directories.
 #
-# The headless device (HeadlessContext: Xvfb + GLX or lavapipe, Readback) exists in the
-# standalone engine tree on Linux only; elsewhere GpuEnvironment::ensure() fails with a reason.
+# The headless device (HeadlessContext, Readback) exists in the standalone engine tree: on Linux
+# Xvfb + GLX or lavapipe, on macOS the default Metal device; elsewhere GpuEnvironment::ensure()
+# fails with a reason.
 
 set(JASPER_TEST_SUPPORT_SOURCES
     GpuEnvironment.cpp
@@ -27,6 +28,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT JASPERENGINE_SHARED)
     if(GRAPHIC_BACKEND STREQUAL "vulkan")
         list(APPEND JASPER_TEST_SUPPORT_SOURCES ${JASPERENGINE_ROOT}/platform/common/VulkanContext.cpp)
     endif()
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND GRAPHIC_BACKEND STREQUAL "metal" AND NOT JASPERENGINE_SHARED)
+    set(JASPER_TEST_SUPPORT_GPU ON)
+    list(APPEND JASPER_TEST_SUPPORT_SOURCES
+        HeadlessContextMetal.mm
+        ReadbackMetal.mm
+    )
 endif()
 
 add_library(jasperengine-test-support STATIC ${JASPER_TEST_SUPPORT_SOURCES})
@@ -36,7 +43,9 @@ target_include_directories(jasperengine-test-support PUBLIC ${CMAKE_CURRENT_SOUR
 target_link_libraries(jasperengine-test-support PRIVATE jasperengine gtest)
 target_compile_definitions(jasperengine-test-support PUBLIC $<$<BOOL:${JASPER_TEST_SUPPORT_GPU}>:JASPER_TEST_HAS_GPU>)
 
-if(JASPER_TEST_SUPPORT_GPU)
+if(JASPER_TEST_SUPPORT_GPU AND APPLE)
+    target_link_libraries(jasperengine-test-support PUBLIC "-framework Metal" "-framework Foundation")
+elseif(JASPER_TEST_SUPPORT_GPU)
     find_package(X11 REQUIRED)
     target_include_directories(jasperengine-test-support PRIVATE
         ${JASPERENGINE_ROOT}/platform/linux
