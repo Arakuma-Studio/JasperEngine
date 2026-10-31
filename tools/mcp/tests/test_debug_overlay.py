@@ -5,13 +5,17 @@ backquote key through send_input, DebugOverlay.getStats(), Log.getEntries with t
 commands, and Log.onMessageReceived in a script.
 """
 
+import asyncio
+import os
+import time
+
 import yaml
 
-from harness import Editor
+from harness import Editor, skip
 from htmlui_pixels import count_near, image_difference
 
 EDITOR = {"create": True, "name": "Debug Overlay"}
-TIMEOUT = 900
+TIMEOUT = int(os.environ.get("JASPER_BUILD_TIMEOUT", "7200"))
 
 PROBE = """---@class LogProbe : ScriptInstance
 local LogProbe = { properties = {} }
@@ -161,3 +165,62 @@ async def test_never_mode(ed: Editor):
     finally:
         await stop(ed)
         await ed.call("set_project_settings", values={"debug.overlay": "development"})
+
+
+EXPORT_PROBE = """local OverlayExport = { properties = {} }
+
+function OverlayExport:init()
+    self.frames = 0
+    print("overlay-export enabled=" .. tostring(DebugOverlay.enabled) .. " development=" .. tostring(Engine.isDevelopmentBuild)
+          .. " buffer=" .. Log.bufferSize)
+    RegisterEngineEvent(self, "onUpdate")
+end
+
+function OverlayExport:onUpdate()
+    self.frames = self.frames + 1
+    if self.frames == 5 then
+        DebugOverlay.showConsole()
+        Log.warn("overlay-export warning")
+    elseif self.frames == 30 then
+        local s = DebugOverlay.getStats()
+        local w = Log.getEntries(1, {LogLevel.WARN})[1]
+        print("overlay-export visible=" .. tostring(DebugOverlay.consoleVisible) .. " fps=" .. tostring(s.fps > 0)
+              .. " trace=" .. tostring(w ~= nil and w.stackTrace ~= ""))
+    end
+end
+
+return OverlayExport
+"""
+
+
+async def test_release_export(ed: Editor):
+    """A Release desktop export: not a development build; the overlay of mode "always" works there, the
+    project's log buffer size applies. Builds the engine from source: JASPER_SLOW_BUILD=1."""
+    if os.environ.get("JASPER_SLOW_BUILD", "") in ("", "0"):
+        skip("set JASPER_SLOW_BUILD=1 to build and run a real Desktop player (compiles the engine)")
+    await ed.call("create_entity", name="OverlayExport", type="empty")
+    await ed.call("create_script", kind="lua", name="OverlayExport", entity="OverlayExport", content=EXPORT_PROBE)
+    saved = await ed.call("save_project", untitled_scene_dir="scenes")
+    await ed.call("edit_build_scenes", action="set_start", scene=saved["scenes_in_build"][0]["id"])
+    await ed.call("set_project_settings", values={
+        "debug.overlay": "always", "debug.log_buffer_size": 321,
+        "graphics.runtime_shaders": False, "preferences.build_jobs": 3,
+        "player.window_width": 640, "player.window_height": 480,
+    })
+    out = ed.scratch.root / "export-desktop"
+    t0 = time.monotonic()
+    job = await ed.call("build_project", mode="desktop", output_dir=str(out), build_jobs=3, timeout_seconds=30)
+    first = job
+    while job["status"] == "running":
+        await asyncio.sleep(15)
+        job = await ed.call("get_job", job_id=first["job_id"], log_lines=10)
+        if time.monotonic() - t0 > TIMEOUT:
+            ed.fail(f"build still running: {job}")
+    ed.check_eq(job["status"], "succeeded", f"{job}")
+    raw = await ed.call_raw("run_build", {"seconds": 8, "screenshot": False})
+    ed.check(not raw.is_error, raw.text)
+    log = raw.value["log"]
+    lines = [line for line in (log if isinstance(log, list) else str(log).splitlines()) if "overlay-export" in line]
+    print("[test] exported player:", lines)
+    ed.check(any("overlay-export enabled=true development=false buffer=321" in line for line in lines), f"init: {lines}")
+    ed.check(any("overlay-export visible=true fps=true trace=true" in line for line in lines), f"console: {lines}")
