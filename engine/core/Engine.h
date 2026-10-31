@@ -619,6 +619,9 @@ namespace jasperengine {
 
         static void systemPause();
         static void systemResume();
+        // Between systemPause and systemResume (the app in the background, a native SDK's
+        // full-screen view: NativeBridge::pauseEngine)
+        static bool isPaused();
 
         static void systemTouchStart(int pointer, float x, float y);
         static void systemTouchEnd(int pointer, float x, float y);

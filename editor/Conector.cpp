@@ -7,6 +7,7 @@
 #include "editor/Out.h"
 #include "util/FileUtils.h"
 #include "util/SafeWrite.h"
+#include "native/NativeBridge.h"
 
 #include <iostream>
 #include <cstdlib>
@@ -214,6 +215,8 @@ void editor::Conector::disconnect(){
     ObjectManager::setCppScriptHooks(nullptr, nullptr);
 
     if (libHandle) {
+        // C++ native plugins (plugins/native/cpp) are the library's code
+        NativeBridge::clearCppPlugins();
         unloadSharedLibrary(libHandle);
         libHandle = nullptr;
 

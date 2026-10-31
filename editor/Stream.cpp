@@ -29,6 +29,10 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
+#include <iomanip>
+#include <locale>
+#include <sstream>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -2604,6 +2608,132 @@ void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDis
     if (node["rotationSnapDegrees"])  ds.rotationSnapDegrees  = decodePositiveFinite(node["rotationSnapDegrees"], ds.rotationSnapDegrees);
 }
 
+namespace {
+
+// ---- the native plugin settings of project.yaml (android/ios/macos/web nodes)
+
+using jasperengine::editor::NativePlistValue;
+
+void encodeStringList(YAML::Node& parent, const char* key, const std::vector<std::string>& values) {
+    if (values.empty()) return;
+    YAML::Node list(YAML::NodeType::Sequence);
+    for (const std::string& value : values) list.push_back(value);
+    parent[key] = list;
+}
+
+std::vector<std::string> decodeStringList(const YAML::Node& node) {
+    std::vector<std::string> values;
+    if (!node || !node.IsSequence()) return values;
+    for (const YAML::Node& item : node) {
+        if (item.IsScalar()) values.push_back(item.as<std::string>());
+    }
+    return values;
+}
+
+// A plain scalar read back as a plist value: true/false, an integer, a real, else a string
+NativePlistValue plainPlistValue(const std::string& text) {
+    NativePlistValue value;
+    if (text == "true" || text == "false") {
+        value.kind = NativePlistValue::Kind::Bool;
+        value.flag = text == "true";
+        return value;
+    }
+    if (!text.empty()) {
+        char* end = nullptr;
+        errno = 0;
+        const long long integer = std::strtoll(text.c_str(), &end, 10);
+        if (errno == 0 && end && *end == '\0' && text.find_first_of(" \t") == std::string::npos) {
+            value.kind = NativePlistValue::Kind::Integer;
+            value.integer = integer;
+            return value;
+        }
+        errno = 0;
+        const double real = std::strtod(text.c_str(), &end);
+        if (errno == 0 && end && *end == '\0' && std::isfinite(real) && text.find_first_of(" \tinfINFnNxX") == std::string::npos) {
+            value.kind = NativePlistValue::Kind::Real;
+            value.real = real;
+            return value;
+        }
+    }
+    value.kind = NativePlistValue::Kind::String;
+    value.text = text;
+    return value;
+}
+
+YAML::Node encodePlistValue(const NativePlistValue& value) {
+    switch (value.kind) {
+        case NativePlistValue::Kind::Bool: return YAML::Node(value.flag);
+        case NativePlistValue::Kind::Integer: return YAML::Node(value.integer);
+        case NativePlistValue::Kind::Real: {
+            // a real keeps a decimal point, so it reads back as a real
+            std::ostringstream out;
+            out.imbue(std::locale::classic());
+            out << std::setprecision(17) << value.real;
+            std::string text = out.str();
+            if (text.find_first_of(".eE") == std::string::npos) text += ".0";
+            return YAML::Node(text);
+        }
+        case NativePlistValue::Kind::StringArray: {
+            YAML::Node list(YAML::NodeType::Sequence);
+            for (const std::string& item : value.items) list.push_back(item);
+            return list;
+        }
+        case NativePlistValue::Kind::String:
+            break;
+    }
+    // a string that would read back as something else ("true", "12", "") is written {string: ...}
+    const NativePlistValue plain = plainPlistValue(value.text);
+    if (plain.kind != NativePlistValue::Kind::String || value.text.empty() || value.text == "null" || value.text == "~") {
+        YAML::Node wrapped;
+        wrapped["string"] = value.text;
+        return wrapped;
+    }
+    return YAML::Node(value.text);
+}
+
+bool decodePlistValue(const YAML::Node& node, NativePlistValue& out) {
+    if (node.IsSequence()) {
+        out = NativePlistValue();
+        out.kind = NativePlistValue::Kind::StringArray;
+        out.items = decodeStringList(node);
+        return true;
+    }
+    if (node.IsMap() && node["string"] && node["string"].IsScalar()) {
+        out = NativePlistValue();
+        out.kind = NativePlistValue::Kind::String;
+        out.text = node["string"].as<std::string>();
+        return true;
+    }
+    if (!node.IsScalar()) return false;
+    // a quoted scalar is a string whatever it says
+    if (node.Tag() == "!") {
+        out = NativePlistValue();
+        out.text = node.as<std::string>();
+        return true;
+    }
+    out = plainPlistValue(node.as<std::string>());
+    return true;
+}
+
+void encodePlistEntries(YAML::Node& parent, const std::map<std::string, NativePlistValue>& entries) {
+    if (entries.empty()) return;
+    YAML::Node map(YAML::NodeType::Map);
+    for (const auto& [key, value] : entries) map[key] = encodePlistValue(value);
+    parent["plistEntries"] = map;
+}
+
+std::map<std::string, NativePlistValue> decodePlistEntries(const YAML::Node& node) {
+    std::map<std::string, NativePlistValue> entries;
+    if (!node || !node.IsMap()) return entries;
+    for (const auto& item : node) {
+        NativePlistValue value;
+        if (item.first.IsScalar() && decodePlistValue(item.second, value)) entries[item.first.as<std::string>()] = value;
+    }
+    return entries;
+}
+
+} // namespace
+
 YAML::Node editor::Stream::encodeProject(Project* project) {
     YAML::Node root;
 
@@ -2757,6 +2887,7 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (!web.headInclude.empty()) webNode["headInclude"] = web.headInclude;
         if (web.resizeCanvasToWindow != defaultWeb.resizeCanvasToWindow) webNode["resizeCanvasToWindow"] = web.resizeCanvasToWindow;
         if (web.hideEmscriptenUI != defaultWeb.hideEmscriptenUI) webNode["hideEmscriptenUI"] = web.hideEmscriptenUI;
+        encodeStringList(webNode, "scriptUrls", web.scriptUrls);
         if (webNode.size() != 0) root["web"] = webNode;
     }
 
@@ -2790,6 +2921,8 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (!macOS.buildNumber.empty()) macOSNode["buildNumber"] = macOS.buildNumber;
         if (!macOS.icon.empty()) macOSNode["icon"] = macOS.icon.generic_string();
         if (macOS.highDpi != defaultMacOS.highDpi) macOSNode["highDpi"] = macOS.highDpi;
+        encodePlistEntries(macOSNode, macOS.plistEntries);
+        encodeStringList(macOSNode, "frameworks", macOS.frameworks);
         if (macOSNode.size() != 0) root["macos"] = macOSNode;
     }
 
@@ -2807,6 +2940,33 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (ios.supportsHighRefreshRate != defaultIOS.supportsHighRefreshRate) iosNode["supportsHighRefreshRate"] = ios.supportsHighRefreshRate;
         if (ios.admobEnabled != defaultIOS.admobEnabled) iosNode["admobEnabled"] = ios.admobEnabled;
         if (!ios.admobAppId.empty()) iosNode["admobAppId"] = ios.admobAppId;
+        encodePlistEntries(iosNode, ios.plistEntries);
+        if (!ios.plistXml.empty()) iosNode["plistXml"] = ios.plistXml;
+        encodeStringList(iosNode, "frameworks", ios.frameworks);
+        if (!ios.cocoapods.empty()) {
+            YAML::Node pods(YAML::NodeType::Sequence);
+            for (const NativeCocoaPod& pod : ios.cocoapods) {
+                YAML::Node podNode;
+                podNode["name"] = pod.name;
+                if (!pod.version.empty()) podNode["version"] = pod.version;
+                if (!pod.source.empty()) podNode["source"] = pod.source;
+                pods.push_back(podNode);
+            }
+            iosNode["cocoapods"] = pods;
+        }
+        if (!ios.swiftPackages.empty()) {
+            YAML::Node packages(YAML::NodeType::Sequence);
+            for (const NativeSwiftPackage& package : ios.swiftPackages) {
+                YAML::Node packageNode;
+                packageNode["url"] = package.url;
+                packageNode["version"] = package.version;
+                encodeStringList(packageNode, "products", package.products);
+                packages.push_back(packageNode);
+            }
+            iosNode["swiftPackages"] = packages;
+        }
+        if (!ios.entitlementsXml.empty()) iosNode["entitlementsXml"] = ios.entitlementsXml;
+        if (ios.deploymentTarget != defaultIOS.deploymentTarget) iosNode["deploymentTarget"] = ios.deploymentTarget;
         if (iosNode.size() != 0) root["ios"] = iosNode;
     }
 
@@ -2854,6 +3014,12 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (android.keepScreenOn != defaults.keepScreenOn) androidNode["keepScreenOn"] = android.keepScreenOn;
         if (android.admobEnabled != defaults.admobEnabled) androidNode["admobEnabled"] = android.admobEnabled;
         if (!android.admobAppId.empty()) androidNode["admobAppId"] = android.admobAppId;
+        encodeStringList(androidNode, "gradleDependencies", android.gradleDependencies);
+        encodeStringList(androidNode, "gradleRepositories", android.gradleRepositories);
+        encodeStringList(androidNode, "gradleProperties", android.gradleProperties);
+        encodeStringList(androidNode, "extraPermissions", android.extraPermissions);
+        if (!android.manifestXml.empty()) androidNode["manifestXml"] = android.manifestXml;
+        if (!android.manifestApplicationXml.empty()) androidNode["manifestApplicationXml"] = android.manifestApplicationXml;
         if (androidNode.size()) root["android"] = androidNode;
     }
 
@@ -3162,6 +3328,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (webNode["headInclude"]) web.headInclude = webNode["headInclude"].as<std::string>();
         if (webNode["resizeCanvasToWindow"].IsDefined()) web.resizeCanvasToWindow = YamlNumbers::as<bool>(webNode["resizeCanvasToWindow"]);
         if (webNode["hideEmscriptenUI"].IsDefined()) web.hideEmscriptenUI = YamlNumbers::as<bool>(webNode["hideEmscriptenUI"]);
+        web.scriptUrls = decodeStringList(webNode["scriptUrls"]);
     }
 
     if (node["linux"] && node["linux"].IsMap()) {
@@ -3190,6 +3357,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (macOSNode["buildNumber"]) macOS.buildNumber = macOSNode["buildNumber"].as<std::string>();
         if (macOSNode["icon"]) macOS.icon = macOSNode["icon"].as<std::string>();
         if (macOSNode["highDpi"].IsDefined()) macOS.highDpi = YamlNumbers::as<bool>(macOSNode["highDpi"]);
+        macOS.plistEntries = decodePlistEntries(macOSNode["plistEntries"]);
+        macOS.frameworks = decodeStringList(macOSNode["frameworks"]);
     }
 
     if (node["ios"] && node["ios"].IsMap()) {
@@ -3205,6 +3374,33 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (iosNode["supportsHighRefreshRate"].IsDefined()) ios.supportsHighRefreshRate = YamlNumbers::as<bool>(iosNode["supportsHighRefreshRate"]);
         if (iosNode["admobEnabled"].IsDefined()) ios.admobEnabled = YamlNumbers::as<bool>(iosNode["admobEnabled"]);
         if (iosNode["admobAppId"]) ios.admobAppId = iosNode["admobAppId"].as<std::string>();
+        ios.plistEntries = decodePlistEntries(iosNode["plistEntries"]);
+        if (iosNode["plistXml"]) ios.plistXml = iosNode["plistXml"].as<std::string>();
+        ios.frameworks = decodeStringList(iosNode["frameworks"]);
+        ios.cocoapods.clear();
+        if (iosNode["cocoapods"] && iosNode["cocoapods"].IsSequence()) {
+            for (const YAML::Node& podNode : iosNode["cocoapods"]) {
+                if (!podNode.IsMap() || !podNode["name"]) continue;
+                NativeCocoaPod pod;
+                pod.name = podNode["name"].as<std::string>();
+                if (podNode["version"]) pod.version = podNode["version"].as<std::string>();
+                if (podNode["source"]) pod.source = podNode["source"].as<std::string>();
+                ios.cocoapods.push_back(pod);
+            }
+        }
+        ios.swiftPackages.clear();
+        if (iosNode["swiftPackages"] && iosNode["swiftPackages"].IsSequence()) {
+            for (const YAML::Node& packageNode : iosNode["swiftPackages"]) {
+                if (!packageNode.IsMap() || !packageNode["url"]) continue;
+                NativeSwiftPackage package;
+                package.url = packageNode["url"].as<std::string>();
+                if (packageNode["version"]) package.version = packageNode["version"].as<std::string>();
+                package.products = decodeStringList(packageNode["products"]);
+                ios.swiftPackages.push_back(package);
+            }
+        }
+        if (iosNode["entitlementsXml"]) ios.entitlementsXml = iosNode["entitlementsXml"].as<std::string>();
+        if (iosNode["deploymentTarget"]) ios.deploymentTarget = iosNode["deploymentTarget"].as<std::string>();
     }
 
     if (node["android"] && node["android"].IsMap()) {
@@ -3246,6 +3442,12 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (androidNode["keepScreenOn"].IsDefined()) android.keepScreenOn = YamlNumbers::as<bool>(androidNode["keepScreenOn"]);
         if (androidNode["admobEnabled"].IsDefined()) android.admobEnabled = YamlNumbers::as<bool>(androidNode["admobEnabled"]);
         if (androidNode["admobAppId"]) android.admobAppId = androidNode["admobAppId"].as<std::string>();
+        android.gradleDependencies = decodeStringList(androidNode["gradleDependencies"]);
+        android.gradleRepositories = decodeStringList(androidNode["gradleRepositories"]);
+        android.gradleProperties = decodeStringList(androidNode["gradleProperties"]);
+        android.extraPermissions = decodeStringList(androidNode["extraPermissions"]);
+        if (androidNode["manifestXml"]) android.manifestXml = androidNode["manifestXml"].as<std::string>();
+        if (androidNode["manifestApplicationXml"]) android.manifestApplicationXml = androidNode["manifestApplicationXml"].as<std::string>();
     }
 
     if (node["startSceneId"]) {

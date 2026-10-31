@@ -427,7 +427,7 @@ editor::ProjectChecks::CppPrepare editor::ProjectChecks::prepareCppBuild(Project
         error = std::string("Generating the build files failed: ") + e.what();
         return CppPrepare::Failed;
     }
-    if (plan.scripts.empty() && project->getScriptDirs().empty()) {
+    if (plan.scripts.empty() && project->getBuildScriptDirs().empty()) {
         return CppPrepare::NothingToBuild;
     }
     const LocalBuildSettings settings = AppSettings::getBuildSettings(project->getProjectPath() / "project.yaml");

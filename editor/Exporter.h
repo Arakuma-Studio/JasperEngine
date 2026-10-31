@@ -180,6 +180,9 @@ namespace jasperengine::editor {
         bool copyCustomShaderSources();
         bool copyLua();
         bool copyCppScripts();
+        // plugins/native/{android,apple,ios,macos,web} -> <export>/project/plugins/native/...
+        // (mirrored: what the project no longer has goes); cpp/ ships as a script root
+        bool copyNativePlugins();
         bool copyEngine();
         bool writeExportSettingsScript(std::string& cmakeContent);
         bool writeAndroidProjectSettings();

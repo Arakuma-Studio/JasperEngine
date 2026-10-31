@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Generator.h"
+#include "util/NativePlugins.h"
 #include "Factory.h"
 #include "App.h"
 #include "EditorVersion.h"
@@ -2322,6 +2323,35 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     mainContent += "    UIDocumentSystem::setPreferredSampleCount(" + std::to_string(htmlUiMsaaSamples) + ");\n";
     // Project Settings > Player > Allow Insecure HTTP: the same policy as the editor's Play
     mainContent += std::string("    Http::setInsecureHttpAllowed(") + (allowInsecureHttp ? "true" : "false") + ");\n";
+    // The native plugins of plugins/native that the platform being built cannot run: a call to
+    // one fails with "unavailable" and says where it runs (the editor's Play does the same)
+    {
+        const std::vector<NativePlugins::PluginInfo> plugins = NativePlugins::listPlugins(NativePlugins::scan(projectPath));
+        auto platformOnlyCall = [&plugins](const std::string& running) {
+            const std::map<std::string, std::string> only = NativePlugins::platformOnlyPlugins(plugins, running);
+            std::string call = "    NativeBridge::setPlatformOnlyPlugins({";
+            bool first = true;
+            for (const auto& [name, message] : only) {
+                call += std::string(first ? "" : ", ") + "{\"" + name + "\", \"" + message + "\"}";
+                first = false;
+            }
+            return only.empty() ? std::string() : call + "});\n";
+        };
+        const std::string android = platformOnlyCall("android");
+        const std::string ios = platformOnlyCall("ios");
+        const std::string macos = platformOnlyCall("macos");
+        const std::string web = platformOnlyCall("web");
+        const std::string desktop = platformOnlyCall("desktop");
+        if (!android.empty() || !ios.empty() || !macos.empty() || !web.empty() || !desktop.empty()) {
+            mainContent += "#if defined(__ANDROID__)\n" + android;
+            mainContent += "#elif defined(__EMSCRIPTEN__)\n" + web;
+            mainContent += "#elif defined(__APPLE__)\n";
+            mainContent += "#include <TargetConditionals.h>\n";
+            mainContent += "#if TARGET_OS_IPHONE\n" + ios + "#else\n" + macos + "#endif\n";
+            mainContent += "#else\n" + desktop;
+            mainContent += "#endif\n";
+        }
+    }
 
     // Tags and Layers, before any scene or script can ask for them
     if (!tagsAndLayers.tags.empty()) {

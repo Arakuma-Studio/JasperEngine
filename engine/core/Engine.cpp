@@ -40,6 +40,7 @@
 #include "pool/AnimationClipPool.h"
 #include "pool/VertexAnimationPool.h"
 #include "shader/RuntimeShaderCompiler.h"
+#include "native/NativeBridge.h"
 #include "net/Http.h"
 #include "thread/MainThreadQueue.h"
 #ifndef NO_THREAD_SUPPORT
@@ -1375,6 +1376,9 @@ void Engine::runFrame(bool draw){
 
     drawSemaphore.acquire();
 
+    // native SDKs' engine pause requests and native call timeouts (paused frames too)
+    NativeBridge::update();
+
     // async uploads of the last frame, while the scenes that queued them still exist
     SystemRender::executeQueue();
 
@@ -1596,6 +1600,8 @@ void Engine::systemShutdown(){
     // HTTP requests end without their callbacks (no transfer is waited for); what other
     // threads posted for the game is dropped
     Http::shutdown();
+    // native calls end without their callbacks, the event handlers go
+    NativeBridge::shutdown();
     MainThreadQueue::clear();
     LuaBinding::cleanup();
 
@@ -1619,6 +1625,10 @@ void Engine::systemResume(){
     AudioSystem::resumeAll();
     Engine::onResume.call();
     paused = false;
+}
+
+bool Engine::isPaused(){
+    return paused;
 }
 
 // Scenes below a loading scene only get pointer-up, so nothing stays pressed

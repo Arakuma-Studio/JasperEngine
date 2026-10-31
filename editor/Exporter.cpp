@@ -4,6 +4,7 @@
 #include "util/SafeWrite.h"
 #include "Exporter.h"
 #include "util/ExportFeatureScan.h"
+#include "util/NativePlugins.h"
 #include "util/PngEditorChunks.h"
 #include "EditorHost.h"
 #include "Factory.h"
@@ -874,6 +875,8 @@ void editor::Exporter::runExport() {
     if (!copyCustomShaderSources()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!copyCppScripts()) return;
+    if (isCancelled()) { setError("Build cancelled"); return; }
+    if (!copyNativePlugins()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!copyEngine()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
@@ -2108,6 +2111,7 @@ bool editor::Exporter::copyAssets() {
 
     fs::path assetsDst = getExportProjectRoot() / "assets";
     fs::create_directories(assetsDst, ec);
+    const fs::path nativePluginsRoot = NativePlugins::root(project->getProjectPath()).lexically_normal();
 
     // References are relative to this directory, so its contents become the export root
     for (auto it = fs::recursive_directory_iterator(assetsSrc, fs::directory_options::skip_permission_denied, ec);
@@ -2134,6 +2138,14 @@ bool editor::Exporter::copyAssets() {
 
         // Skip project support files that should not ship as assets
         if (shouldSkipExportSupportFile(relPath)) continue;
+
+        // The native plugins' sources and SDKs go into the platform projects (copyNativePlugins)
+        if (!NativePlugins::platformOf(project->getProjectPath(), entry.path()).empty() ||
+                entry.path().lexically_normal() == nativePluginsRoot) {
+            std::error_code entryEc;
+            if (entry.is_directory(entryEc)) it.disable_recursion_pending();
+            continue;
+        }
 
         // Skip C++ source/header files; registered scripts ship via copyCppScripts
         if (!entry.is_regular_file() || isCppSourceFile(entry.path())) continue;
@@ -2435,7 +2447,7 @@ bool editor::Exporter::copyCppScripts() {
 
     // Sources under a script root are compiled without a script component
     // referencing them, so they ship even when nothing registered pulls them in.
-    for (const fs::path& scriptDir : project->getScriptDirs()) {
+    for (const fs::path& scriptDir : project->getBuildScriptDirs()) {
         const fs::path relDir = scriptDirRelativePath(scriptDir);
         if (relDir.empty()) {
             Out::warning("Script directory outside the project is not exported: %s", scriptDir.generic_string().c_str());
@@ -2481,6 +2493,29 @@ bool editor::Exporter::copyCppScripts() {
         }
     }
 
+    return true;
+}
+
+bool editor::Exporter::copyNativePlugins() {
+    const fs::path source = NativePlugins::root(project->getProjectPath());
+    const fs::path destination = getExportProjectRoot() / NativePlugins::relativeRoot();
+    std::error_code ec;
+    for (const std::string& platform : NativePlugins::platformNames()) {
+        // C++ plugins are a script root: copyCppScripts ships them under scripts/
+        if (platform == "cpp") continue;
+        const fs::path from = source / platform;
+        const fs::path to = destination / platform;
+        if (fs::is_directory(from, ec)) {
+            copyTreeIfChanged(from, to, ec);
+            if (ec) {
+                setError("Failed to copy the native plugins of " + platform + " (" + genericUtf8Path(from) + "): " + ec.message());
+                return false;
+            }
+        } else if (fs::exists(to, ec)) {
+            // an earlier export's: the project no longer has them
+            removeAllNoFollow(to, ec);
+        }
+    }
     return true;
 }
 
@@ -2915,7 +2950,7 @@ std::vector<std::string> editor::Exporter::getExportedScriptRoots() const {
     // copyCppScripts() mirrors the project-relative layout under scripts/, so a
     // root keeps its path there.
     std::vector<std::string> roots;
-    for (const fs::path& scriptDir : project->getScriptDirs()) {
+    for (const fs::path& scriptDir : project->getBuildScriptDirs()) {
         const fs::path relDir = scriptDirRelativePath(scriptDir);
         if (relDir.empty()) {
             continue;
@@ -4554,7 +4589,7 @@ std::string editor::Exporter::webTreeRefusal(const std::vector<fs::path>& roots)
 
 std::vector<fs::path> editor::Exporter::webSourceRoots(Project* project) {
     std::vector<fs::path> roots = {project->getAssetsPath(), project->getLuaPath()};
-    for (const fs::path& dir : project->getScriptDirs()) {
+    for (const fs::path& dir : project->getBuildScriptDirs()) {
         roots.push_back(dir.is_absolute() ? dir : (project->getProjectPath() / dir).lexically_normal());
     }
     return roots;

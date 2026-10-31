@@ -500,6 +500,46 @@ namespace jasperengine::editor{
     // Name, identifier, version and build below are overrides: empty (or 0)
     // means the ApplicationSettings value.
 
+    // An Info.plist value of the native plugin settings (ios.plist_entries, macos.plist_entries):
+    // a string, a boolean, a number or a list of strings
+    struct NativePlistValue {
+        enum class Kind { String, Bool, Integer, Real, StringArray };
+        Kind kind = Kind::String;
+        std::string text;                   // String
+        bool flag = false;                  // Bool
+        long long integer = 0;              // Integer
+        double real = 0.0;                  // Real
+        std::vector<std::string> items;     // StringArray
+        bool operator==(const NativePlistValue& other) const {
+            if (kind != other.kind) return false;
+            switch (kind) {
+                case Kind::String: return text == other.text;
+                case Kind::Bool: return flag == other.flag;
+                case Kind::Integer: return integer == other.integer;
+                case Kind::Real: return real == other.real;
+                case Kind::StringArray: return items == other.items;
+            }
+            return false;
+        }
+        bool operator!=(const NativePlistValue& other) const { return !(*this == other); }
+    };
+
+    // A CocoaPod of the iOS export's Podfile (ios.cocoapods)
+    struct NativeCocoaPod {
+        std::string name;       // "Google-Mobile-Ads-SDK"
+        std::string version;    // "~> 11.0"; "" = any
+        std::string source;     // a spec repository URL; "" = the CocoaPods trunk
+        bool operator==(const NativeCocoaPod& other) const { return name == other.name && version == other.version && source == other.source; }
+    };
+
+    // A Swift package of the iOS export (ios.swift_packages): up to the next major version
+    struct NativeSwiftPackage {
+        std::string url;                    // "https://github.com/RevenueCat/purchases-ios"
+        std::string version;                // minimum version, "4.0.0"
+        std::vector<std::string> products;  // linked into the iOS target, e.g. {"RevenueCat"}
+        bool operator==(const NativeSwiftPackage& other) const { return url == other.url && version == other.version && products == other.products; }
+    };
+
     struct WebProjectSettings {
         std::string applicationName;
         std::filesystem::path favicon;
@@ -507,6 +547,8 @@ namespace jasperengine::editor{
         std::string headInclude;
         bool resizeCanvasToWindow = true;
         bool hideEmscriptenUI = false;
+        // native plugins (web.script_urls): <script src> in <head>, before plugins/native/web/*.js
+        std::vector<std::string> scriptUrls;
     };
 
     struct LinuxProjectSettings {
@@ -529,6 +571,9 @@ namespace jasperengine::editor{
         std::string buildNumber;
         std::filesystem::path icon;
         bool highDpi = true;
+        // native plugins (macos.plist_entries, macos.frameworks): merged into Info.plist, linked
+        std::map<std::string, NativePlistValue> plistEntries;
+        std::vector<std::string> frameworks;   // "StoreKit"; "Name?" = weak
     };
 
     struct IOSProjectSettings {
@@ -543,6 +588,14 @@ namespace jasperengine::editor{
         // Google Mobile Ads is linked only when enabled
         bool admobEnabled = false;
         std::string admobAppId;
+        // native plugins (ios.*): what SDKs need from the Xcode project
+        std::map<std::string, NativePlistValue> plistEntries;   // merged into Info.plist (replacing keys)
+        std::string plistXml;              // raw <key>..</key><value> pairs appended to the top dict
+        std::vector<std::string> frameworks;   // system frameworks linked: "StoreKit"; "Name?" = weak
+        std::vector<NativeCocoaPod> cocoapods;  // workspaces/xcode/Podfile
+        std::vector<NativeSwiftPackage> swiftPackages;
+        std::string entitlementsXml;       // the <dict> body of ios/JasperEngine.entitlements
+        std::string deploymentTarget = "15.0";   // IPHONEOS_DEPLOYMENT_TARGET, at least 15.0
     };
 
     enum class AndroidOrientation {
@@ -584,6 +637,13 @@ namespace jasperengine::editor{
         // Google Mobile Ads is compiled in only when enabled
         bool admobEnabled = false;
         std::string admobAppId;
+        // native plugins (android.*): what SDKs need from the Gradle project
+        std::vector<std::string> gradleDependencies;   // "group:name:version" -> implementation; other text verbatim
+        std::vector<std::string> gradleRepositories;   // Maven repository URLs
+        std::vector<std::string> gradleProperties;     // "key=value" lines of gradle.properties
+        std::vector<std::string> extraPermissions;     // full names: "com.google.android.gms.permission.AD_ID"
+        std::string manifestXml;               // raw XML inside <manifest>, before <application>
+        std::string manifestApplicationXml;    // raw XML inside <application>
     };
 
     // Google's sample AdMob apps, which only serve test ads. Exports never fall back to them.
@@ -1171,6 +1231,11 @@ namespace jasperengine::editor{
         // sources under it compile without a script component referencing them.
         void setScriptDirs(std::vector<std::filesystem::path> scriptDirs);
         const std::vector<std::filesystem::path>& getScriptDirs() const;
+        // What the Play library and the exports compile: getScriptDirs() plus plugins/native/cpp
+        // (the C++ native plugins) when that folder exists
+        std::vector<std::filesystem::path> getBuildScriptDirs() const;
+        // plugins/native/cpp has C++ sources (the Play library is built for them)
+        bool hasNativeCppPlugins() const;
 
         void setCxxStandard(int standard);
         int getCxxStandard() const;
