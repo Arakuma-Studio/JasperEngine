@@ -255,6 +255,11 @@ ENV_FLAGS+=(
     -e "LSAN_OPTIONS=suppressions=$SUPP/lsan.supp"
     -e "TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1:suppressions=$SUPP/tsan.supp"
 )
+# ccache with precompiled headers (JASPERENGINE_PCH, docs/testing.md "Build speed"): it can only
+# cache a unit that uses one when told not to look for #defines and time macros it cannot see
+# through the header; no unit of a Linux build uses __DATE__ or __TIME__ (the web image's build
+# id does, and is not given this)
+[[ "$IMAGE_TARGET" == linux ]] && ENV_FLAGS+=(-e "CCACHE_SLOPPINESS=pch_defines,time_macros")
 MOUNT_FLAGS=()
 # mcp-tests: the fixture project the default-fixture tests copy (the places
 # tools/mcp/harness.py default_fixture() looks in), mounted where the harness finds it
@@ -319,6 +324,9 @@ if [[ -n "${CXX_STANDARD:-}" ]]; then
     CXX_SUFFIX="-cxx$CXX_STANDARD"
 fi
 OPTION_FLAGS="$OPTION_FLAGS $CXX_STANDARD_FLAGS"
+# the standalone engine tree's development and test builds (linux's sample project, unit-tests,
+# htmlui-tests) with precompiled headers; exports, web, Android and players keep it off
+DEV_ENGINE_FLAGS="-DJASPERENGINE_PCH=ON"
 VARIANT="$CXX_SUFFIX$VARIANT"
 
 case "$TARGET" in
@@ -365,7 +373,7 @@ linux)
         fi
         [[ '${SKIP_ENGINE:-0}' == 1 ]] && exit 0
         cmake --preset engine-linux-release -S engine -B $OUT/$ENGINE_DIR -DCMAKE_BUILD_TYPE=$BT $OPTION_FLAGS \
-            $ENGINE_WARNING_FLAGS $CCACHE_FLAGS
+            $ENGINE_WARNING_FLAGS $DEV_ENGINE_FLAGS $CCACHE_FLAGS
         cmake --build $OUT/$ENGINE_DIR --target $ENGINE_TARGET $JOBS_FLAG
         ccache --show-stats --verbose | grep -E 'Hits|Misses' || true
     "
@@ -497,7 +505,7 @@ unit-tests)
     run bash -euo pipefail -c "
         if [[ $CORE == 1 ]]; then
             cmake --preset $CORE_PRESET -S engine -B $CORE_DIR -DCMAKE_BUILD_TYPE=$BT -DGRAPHIC_BACKEND=$LINUX_BACKEND \
-                $OPTION_FLAGS -DJASPERENGINE_WARNINGS=ON -DJASPERENGINE_WERROR=$WERROR_VALUE $CCACHE_FLAGS
+                $OPTION_FLAGS -DJASPERENGINE_WARNINGS=ON -DJASPERENGINE_WERROR=$WERROR_VALUE $DEV_ENGINE_FLAGS $CCACHE_FLAGS
             cmake --build $CORE_DIR --target jasperengine-core-tests $JOBS_FLAG
         fi
         if [[ $EDITOR == 1 ]]; then
@@ -532,7 +540,7 @@ htmlui-tests)
     [[ "$HTMLUI_BACKEND" == vulkan ]] && VK_ENV="VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json"
     run bash -euo pipefail -c "
         cmake --preset engine-linux-release -S engine -B $TESTS_DIR -DCMAKE_BUILD_TYPE=$BT \
-            -DJASPERENGINE_HTMLUI_TESTS=ON -DGRAPHIC_BACKEND=$HTMLUI_BACKEND $OPTION_FLAGS $ENGINE_WARNING_FLAGS $CCACHE_FLAGS
+            -DJASPERENGINE_HTMLUI_TESTS=ON -DGRAPHIC_BACKEND=$HTMLUI_BACKEND $OPTION_FLAGS $ENGINE_WARNING_FLAGS $DEV_ENGINE_FLAGS $CCACHE_FLAGS
         cmake --build $TESTS_DIR --target jasperengine-htmlui-tests $JOBS_FLAG
         [[ '${RUN:-1}' == 0 ]] && exit 0
         set -f  # a --gtest_filter pattern is not a glob
