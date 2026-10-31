@@ -8,6 +8,11 @@ def jasperengineRootAbs = file(jasperengineRoot).toString()
 
 android {
     compileSdk 36
+    // videos stay uncompressed in the APK: the decoders open them by file descriptor
+    // (AAsset_openFileDescriptor64, docs/superpowers/specs/2026-10-31-video-mp4-design.md §6.8)
+    androidResources {
+        noCompress 'mp4', 'm4v', 'mov', 'webm'
+    }
     defaultConfig {
         applicationId "com.yourcompany.project"
         minSdkVersion 21

@@ -210,6 +210,7 @@ namespace jasperengine::editor {
 
         // Aggregates SceneMaxValues across all project scenes into the capacities that
         // size the engine's fixed-capacity HybridArrays (MAX_SUBMESHES, MAX_SPRITE_FRAMES, ...).
+        std::string videoUrlScene() const;
         std::vector<std::pair<std::string, unsigned int>> getSceneMaxValues() const;
         // add_definitions() block applying them to the export.
         std::string buildSceneMaxValuesDefinitions() const;

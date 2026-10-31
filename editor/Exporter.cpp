@@ -4,6 +4,8 @@
 #include "util/SafeWrite.h"
 #include "Exporter.h"
 #include "util/ExportFeatureScan.h"
+#include "util/Util.h"
+#include <regex>
 #include "util/PngEditorChunks.h"
 #include "EditorHost.h"
 #include "Factory.h"
@@ -2940,6 +2942,29 @@ std::string editor::Exporter::buildScriptDirIncludes() const {
     return "target_include_directories(${APP_NAME} PRIVATE" + dirs + "\n    )";
 }
 
+// The first scene or prefab file of the project with a Video Player whose url is an http(s) URL
+// (the scene files' text: unloaded scenes count too); "" when there is none
+std::string editor::Exporter::videoUrlScene() const {
+    static const std::regex videoUrl(R"(VideoPlayerComponent:[^\n]*\n(?:[ \t]+[^\n]*\n){0,40}?[ \t]+url:[ \t]*['"]?https?://)");
+    std::vector<fs::path> files;
+    for (const SceneProject& sceneProject : project->getScenes())
+        files.push_back(sceneProject.filepath);
+    std::error_code ec;
+    for (fs::recursive_directory_iterator it(project->getAssetsPath(), ec), end; !ec && it != end; it.increment(ec)) {
+        if (it->is_regular_file(ec) && Util::isPrefabFile(it->path().string()))
+            files.push_back(it->path());
+    }
+    for (const fs::path& file : files) {
+        std::ifstream in(file, std::ios::binary);
+        if (file.empty() || !in)
+            continue;
+        const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        if (text.find("VideoPlayerComponent") != std::string::npos && std::regex_search(text, videoUrl))
+            return file.filename().u8string();
+    }
+    return "";
+}
+
 std::vector<std::pair<std::string, unsigned int>> editor::Exporter::getSceneMaxValues() const {
     // Aggregate the per-scene maxima into a single project-wide capacity for each
     // HybridArray. SceneProject::maxValues is refreshed for every scene during
@@ -3136,6 +3161,10 @@ bool editor::Exporter::writeAndroidProjectSettings() {
             internet = true;
             Out::info("Android: added INTERNET (Http used in %s%s)", uses[0].file.c_str(),
                       uses[0].files > 1 ? (" and " + std::to_string(uses[0].files - 1) + " more").c_str() : "");
+        } else if (const std::string video = videoUrlScene(); !video.empty()) {
+            // a Video Player playing an http(s) URL (its media cache downloads it)
+            internet = true;
+            Out::info("Android: added INTERNET (a Video Player plays a URL in %s)", video.c_str());
         } else {
             // a native plugin's own networking is invisible to the scan
             std::error_code pluginError;

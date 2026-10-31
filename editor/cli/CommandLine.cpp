@@ -1,6 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "media/VideoFormats.h"
+#include "media/VideoSourceFactory.h"
 #include "CommandLine.h"
 
 #include "AppSettings.h"
@@ -1681,6 +1683,7 @@ struct CheckOptions {
     bool anims = false;
     bool vat = false;
     bool normals = false;
+    bool videos = false;
     bool all = false;
     bool filesGiven = false;
     std::vector<std::string> files;
@@ -1714,8 +1717,11 @@ void printCheckUsage(const std::string& commandName) {
         << "                           normal maps on sprites that don't match their colour texture (size, frames,\n"
         << "                           filter), look like DirectX or aren't normal maps, or no Light 2D can show\n"
         << "                           (height 0).\n"
-        << "      --all                Lua, shaders, C++, UI, textures, clips, vertex animations and normal maps.\n"
-        << "                           Default: --lua --shaders --ui --textures --anims --vat --normals.\n"
+        << "      --videos             Video Players' clips: codecs an export platform does not decode\n"
+        << "                           (video-codec-unsupported-on-target, a warning per platform) and URL MP4s\n"
+        << "                           whose moov box follows the media data (video-not-faststart-url, info).\n"
+        << "      --all                Lua, shaders, C++, UI, textures, clips, vertex animations, normal maps and videos.\n"
+        << "                           Default: --lua --shaders --ui --textures --anims --vat --normals --videos.\n"
         << "      --files <paths...>   Only these files (absolute, or relative to the current directory or\n"
         << "                           the project); files outside the project or of other kinds are ignored.\n"
         << "                           A .vat or .vat.glb checks the Vertex Animation; another file checks the\n"
@@ -1761,6 +1767,8 @@ bool parseCheckArgs(int argc, char** argv, CheckOptions& options, std::string& e
             options.vat = true;
         } else if (arg == "--normals") {
             options.normals = true;
+        } else if (arg == "--videos") {
+            options.videos = true;
         } else if (arg == "--all") {
             options.all = true;
         } else if (arg == "--files") {
@@ -2143,6 +2151,77 @@ bool readModelAnimationNames(const fs::path& root, const fs::path& assets, const
 // reference (the entries of their Animation Players, prefab-instance overrides included): a
 // missing .anim (an error; a warning when its GUID still finds the moved file), a missing model
 // of a sub-clip, and a sub-clip name the model has no animation for
+struct VideoCheck {
+    std::vector<ProjectChecks::Finding> findings;
+    size_t players = 0;
+};
+
+// Every VideoPlayerComponent node under a scene or prefab file's YAML
+void collectVideoPlayers(const YAML::Node& node, std::vector<YAML::Node>& out, int depth = 0) {
+    if (depth > 64 || !node) return;
+    if (node.IsMap()) {
+        for (auto it = node.begin(); it != node.end(); ++it) {
+            if (it->first.IsScalar() && it->first.Scalar() == "VideoPlayerComponent" && it->second.IsMap())
+                out.push_back(it->second);
+            else
+                collectVideoPlayers(it->second, out, depth + 1);
+        }
+    } else if (node.IsSequence()) {
+        for (const YAML::Node& child : node) collectVideoPlayers(child, out, depth + 1);
+    }
+}
+
+// video-codec-unsupported-on-target: a player's clip (or local url) in a codec an export platform
+// does not decode (Linux counts as FFmpeg's); video-not-faststart-url: an MP4 played as a URL
+// whose moov box follows the media data (it plays only once downloaded)
+VideoCheck checkVideoPlayers(const fs::path& root) {
+    VideoCheck check;
+    const fs::path assets = ProjectChecks::assetsRootFromProjectFile(root);
+    std::set<std::string> reported;
+    for (const fs::path& file : ProjectChecks::findProjectFiles(root, {".scene", ".prefab"})) {
+        const std::string rel = ProjectChecks::projectRelative(root, file);
+        std::vector<YAML::Node> players;
+        try {
+            collectVideoPlayers(YAML::LoadFile(file.string()), players);
+        } catch (const std::exception&) {
+            continue;
+        }
+        for (const YAML::Node& player : players) {
+            check.players++;
+            const bool url = player["source"] && player["source"].IsScalar() && player["source"].Scalar() == "url";
+            const std::string value = url ? (player["url"] ? player["url"].as<std::string>("") : "") : (player["clip"] ? player["clip"].as<std::string>("") : "");
+            if (value.empty() || value.rfind("http://", 0) == 0 || value.rfind("https://", 0) == 0 || value.rfind("data://", 0) == 0)
+                continue;
+            const fs::path video = fs::path(value).is_absolute() ? fs::u8path(value) : (assets / fs::u8path(value)).lexically_normal();
+            std::error_code ec;
+            if (!fs::is_regular_file(video, ec)) {
+                check.findings.push_back({"videos", rel, 0, 0, "warning", "a Video Player's " + std::string(url ? "url" : "clip") + " '" + value +
+                                          "' is not in the project", "video-missing"});
+                continue;
+            }
+            if (!reported.insert(rel + "|" + value).second) continue;
+            const jasperengine::VideoProbe probe = jasperengine::VideoFormats::probeStdio(std::fopen(video.string().c_str(), "rb"), value);
+            for (int p = 0; p < jasperengine::VideoSourceFactory::PLATFORM_COUNT; p++) {
+                const auto platform = (jasperengine::VideoSourceFactory::Platform)p;
+                const std::string cell = jasperengine::VideoSourceFactory::playableOn(platform, probe);
+                if (cell != "no") continue;
+                ProjectChecks::Finding finding{"videos", rel, 0, 0, "warning",
+                    "'" + value + "' (" + jasperengine::VideoFormats::codecName(probe.videoCodec) + " in " + (probe.container.empty() ? "an unknown container" : probe.container) +
+                    ") does not play on " + jasperengine::VideoSourceFactory::platformLabel(platform), "video-codec-unsupported-on-target",
+                    "convert it to WebM (AV1): the Project window's Convert to WebM (AV1)..., or an H.264 MP4"};
+                check.findings.push_back(finding);
+            }
+            const bool mp4 = probe.container == "mp4" || probe.container == "mov" || probe.container == "3gp";
+            if (url && mp4 && !probe.fastStart && !probe.fragmented) {
+                check.findings.push_back({"videos", rel, 0, 0, "info", "'" + value + "' has its moov box after the media data: served from a URL it plays only "
+                                          "once downloaded", "video-not-faststart-url",
+                                          "the video asset's Inspector: Optimize for streaming (or ffmpeg -movflags +faststart)"});
+            }
+        }
+    }
+    return check;
+}
+
 ClipCheck checkClipFiles(const fs::path& root, const std::vector<fs::path>& files) {
     ClipCheck check;
     const bool all = files.empty();
@@ -2368,9 +2447,10 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     bool anims = options.anims || options.all;
     bool vatAssets = options.vat || options.all;
     bool normals = options.normals || options.all;
+    bool videos = options.videos || options.all;
     if (!options.lua && !options.shaders && !options.cpp && !options.ui && !options.textures && !options.anims && !options.vat && !options.normals &&
-        !options.all) {
-        lua = shaders = ui = textures = anims = vatAssets = normals = true;
+        !options.videos && !options.all) {
+        lua = shaders = ui = textures = anims = vatAssets = normals = videos = true;
     }
 
     fs::path base = CommandLine::invocationDirectory();
@@ -2452,6 +2532,8 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     const bool texturesWanted = fileMode ? !textureFiles.empty() : textures;
     const bool animsWanted = fileMode ? !clipFiles.empty() : anims;
     const bool normalsWanted = fileMode ? !normalFiles.empty() : normals;
+    // scene files' Video Players (a whole-project check: not per file)
+    const bool videosWanted = !fileMode && videos;
     // the recipes are read without the engine: it starts only when a .vat is concerned
     const std::vector<fs::path> vatFiles = fileMode ? vat::vatAssetsForFiles(root, vatGiven) : std::vector<fs::path>();
     const bool vatWanted = fileMode ? !vatFiles.empty() : vatAssets;
@@ -2497,6 +2579,12 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         const spritenormals::NormalsCheck normalsCheck = spritenormals::checkSpriteNormals(root, fileMode ? normalFiles : std::vector<fs::path>());
         run.findings.insert(run.findings.end(), normalsCheck.findings.begin(), normalsCheck.findings.end());
         run.checked.push_back({"normals", normalsCheck.recipes + normalsCheck.maps});
+    }
+    if (videosWanted) {
+        // the scene and prefab YAML and the clips' header boxes: no engine
+        const VideoCheck videoCheck = checkVideoPlayers(root);
+        run.findings.insert(run.findings.end(), videoCheck.findings.begin(), videoCheck.findings.end());
+        run.checked.push_back({"videos", videoCheck.players});
     }
     ProjectChecks::sortFindings(run.findings);
     const size_t errors = ProjectChecks::countSeverity(run.findings, "error");
