@@ -26,21 +26,24 @@ namespace jasperengine {
     // messages: Lua calls `self:<methodName>(...)` when the script defines it, C++ calls the
     // ScriptBase virtual when the class overrides it. One mechanism for the lifecycle
     // (script-lifecycle), the physics contacts (physics-contacts) and the UI pointer events.
-    // The physics values keep their order; features append theirs before Count (< 32).
+    // The physics values keep their order; features append theirs before Count (< 64).
     enum class ScriptMessage : uint8_t {
         CollisionEnter, CollisionStay, CollisionExit, TriggerEnter, TriggerStay, TriggerExit,
         CollisionEnter2D, CollisionStay2D, CollisionExit2D, TriggerEnter2D, TriggerStay2D, TriggerExit2D,
         JointBreak, JointBreak2D,
         // script-lifecycle
         Init, Start, Enable, Disable, Destroy, ApplicationPause, ApplicationFocus, ApplicationQuit,
+        // ui-multitouch: the EventSystem callbacks of the component UI (a PointerEventData argument)
+        PointerDown, PointerUp, PointerClick, PointerEnter, PointerExit, InitializePotentialDrag,
+        BeginDrag, Drag, EndDrag, Drop, Scroll,
         Count
     };
-    static_assert(static_cast<int>(ScriptMessage::Count) <= 32, "ScriptMessageMask holds 32 messages");
+    static_assert(static_cast<int>(ScriptMessage::Count) <= 64, "ScriptMessageMask holds 64 messages");
 
-    using ScriptMessageMask = uint32_t;          // bit (1u << (int)message)
+    using ScriptMessageMask = uint64_t;          // bit (1 << (int)message)
 
     constexpr ScriptMessageMask scriptMessageBit(ScriptMessage m) {
-        return 1u << static_cast<unsigned>(m);
+        return static_cast<ScriptMessageMask>(1) << static_cast<unsigned>(m);
     }
 
     // What a delivery requires besides a live instance (send's `deliver` argument)
@@ -65,13 +68,41 @@ namespace jasperengine {
     JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onApplicationPause)
     JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onApplicationFocus)
     JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onApplicationQuit)
+    JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onPointerDown)
+    JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onPointerUp)
+    JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onPointerClick)
+    JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onPointerEnter)
+    JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onPointerExit)
+    JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onInitializePotentialDrag)
+    JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onBeginDrag)
+    JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onDrag)
+    JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onEndDrag)
+    JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onDrop)
+    JASPERENGINE_SCRIPT_OVERRIDE_TRAIT(onScroll)
 #undef JASPERENGINE_SCRIPT_OVERRIDE_TRAIT
 
     class JASPERENGINE_API ScriptMessages {
     public:
         // "onCollisionEnter", ..., "init", "start", "onEnable", "onDisable", "onDestroy",
-        // "onApplicationPause", "onApplicationFocus", "onApplicationQuit"
+        // "onApplicationPause", "onApplicationFocus", "onApplicationQuit", "onPointerDown", ...
         static const char* methodName(ScriptMessage m);
+        // the message of a method name; false for other names
+        static bool fromMethodName(const char* name, ScriptMessage& out);
+
+        // Whether a live, enabled entry of the GameObject defines the message (Lua: a function in
+        // the instance or its class, read now; C++: an override), skipping the Lua instances that
+        // subscribed a method of that name to a component event (isLegacySubscription). The
+        // EventSystem's handler search (ScriptRuntime::findHandler).
+        static bool defines(Scene* scene, Entity entity, ScriptMessage m);
+
+        // ui-multitouch D4's collision rule: a Lua instance that subscribed its method `name` to a
+        // UIComponent pointer event with RegisterEvent (the old `onPointerDown(x, y)` pattern) is
+        // not also called with a PointerEventData under that name. Keyed by the instance table.
+        static void noteLegacySubscription(const void* instanceTable, const std::string& method);
+        static void forgetLegacySubscription(const void* instanceTable, const std::string& method);
+        static bool isLegacySubscription(const void* instanceTable, const char* method);
+        // the instance is released: its notes go (the address can be reused)
+        static void forgetLegacySubscriptions(const void* instanceTable);
 
         // The messages some live script instance of the GameObject defines (Lua: a function in
         // the instance or its class; C++: an override, ScriptEntry::cppMessageMask), enabled or
@@ -124,6 +155,17 @@ namespace jasperengine {
                 if (ScriptOverrides_onApplicationPause<T>::value) mask |= scriptMessageBit(ScriptMessage::ApplicationPause);
                 if (ScriptOverrides_onApplicationFocus<T>::value) mask |= scriptMessageBit(ScriptMessage::ApplicationFocus);
                 if (ScriptOverrides_onApplicationQuit<T>::value) mask |= scriptMessageBit(ScriptMessage::ApplicationQuit);
+                if (ScriptOverrides_onPointerDown<T>::value) mask |= scriptMessageBit(ScriptMessage::PointerDown);
+                if (ScriptOverrides_onPointerUp<T>::value) mask |= scriptMessageBit(ScriptMessage::PointerUp);
+                if (ScriptOverrides_onPointerClick<T>::value) mask |= scriptMessageBit(ScriptMessage::PointerClick);
+                if (ScriptOverrides_onPointerEnter<T>::value) mask |= scriptMessageBit(ScriptMessage::PointerEnter);
+                if (ScriptOverrides_onPointerExit<T>::value) mask |= scriptMessageBit(ScriptMessage::PointerExit);
+                if (ScriptOverrides_onInitializePotentialDrag<T>::value) mask |= scriptMessageBit(ScriptMessage::InitializePotentialDrag);
+                if (ScriptOverrides_onBeginDrag<T>::value) mask |= scriptMessageBit(ScriptMessage::BeginDrag);
+                if (ScriptOverrides_onDrag<T>::value) mask |= scriptMessageBit(ScriptMessage::Drag);
+                if (ScriptOverrides_onEndDrag<T>::value) mask |= scriptMessageBit(ScriptMessage::EndDrag);
+                if (ScriptOverrides_onDrop<T>::value) mask |= scriptMessageBit(ScriptMessage::Drop);
+                if (ScriptOverrides_onScroll<T>::value) mask |= scriptMessageBit(ScriptMessage::Scroll);
                 return mask;
             } else {
                 return 0;

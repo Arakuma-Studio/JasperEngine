@@ -11,7 +11,10 @@
 #include "lua.hpp"
 
 #include <algorithm>
+#include <cstring>
 #include <exception>
+#include <set>
+#include <string>
 #include <unordered_map>
 
 using namespace jasperengine;
@@ -20,6 +23,8 @@ namespace {
     // receivers() per scene and GameObject, dropped by notifyReceiversChanged
     std::unordered_map<Scene*, std::unordered_map<Entity, ScriptMessageMask>> receiverCache;
     std::vector<ScriptMessages::ReceiversChanged> receiverListeners;
+    // D4's collision rule: Lua instance tables and the methods they subscribed to UIComponent events
+    std::unordered_map<const void*, std::set<std::string>> legacySubscriptions;
 
     int luaRefOf(const ScriptEntry& entry) {
         return static_cast<int>(reinterpret_cast<intptr_t>(entry.instance));
@@ -69,9 +74,92 @@ const char* ScriptMessages::methodName(ScriptMessage m) {
         case ScriptMessage::ApplicationPause: return "onApplicationPause";
         case ScriptMessage::ApplicationFocus: return "onApplicationFocus";
         case ScriptMessage::ApplicationQuit: return "onApplicationQuit";
+        case ScriptMessage::PointerDown: return "onPointerDown";
+        case ScriptMessage::PointerUp: return "onPointerUp";
+        case ScriptMessage::PointerClick: return "onPointerClick";
+        case ScriptMessage::PointerEnter: return "onPointerEnter";
+        case ScriptMessage::PointerExit: return "onPointerExit";
+        case ScriptMessage::InitializePotentialDrag: return "onInitializePotentialDrag";
+        case ScriptMessage::BeginDrag: return "onBeginDrag";
+        case ScriptMessage::Drag: return "onDrag";
+        case ScriptMessage::EndDrag: return "onEndDrag";
+        case ScriptMessage::Drop: return "onDrop";
+        case ScriptMessage::Scroll: return "onScroll";
         case ScriptMessage::Count: break;
     }
     return "";
+}
+
+bool ScriptMessages::fromMethodName(const char* name, ScriptMessage& out) {
+    if (!name) {
+        return false;
+    }
+    for (int m = 0; m < static_cast<int>(ScriptMessage::Count); m++) {
+        if (std::strcmp(methodName(static_cast<ScriptMessage>(m)), name) == 0) {
+            out = static_cast<ScriptMessage>(m);
+            return true;
+        }
+    }
+    return false;
+}
+
+bool ScriptMessages::defines(Scene* scene, Entity entity, ScriptMessage m) {
+    if (!scene || !scene->isEntityCreated(entity)) {
+        return false;
+    }
+    ScriptComponent* scripts = scene->findComponent<ScriptComponent>(entity);
+    if (!scripts) {
+        return false;
+    }
+    const char* method = methodName(m);
+    lua_State* L = LuaBinding::getLuaState();
+    for (const ScriptEntry& entry : scripts->scripts) {
+        if (!entry.instance || !entry.enabled || !live(entry)) {
+            continue;
+        }
+        if (entry.type == ScriptType::LUA) {
+            if (!L) {
+                continue;
+            }
+            const int top = lua_gettop(L);
+            lua_rawgeti(L, LUA_REGISTRYINDEX, luaRefOf(entry));
+            const void* table = lua_topointer(L, -1);
+            lua_getfield(L, -1, method);
+            const bool found = lua_isfunction(L, -1) && !isLegacySubscription(table, method);
+            lua_settop(L, top);
+            if (found) {
+                return true;
+            }
+        } else if (entry.cppScript && (entry.cppMessageMask & scriptMessageBit(m))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void ScriptMessages::noteLegacySubscription(const void* instanceTable, const std::string& method) {
+    if (instanceTable) {
+        legacySubscriptions[instanceTable].insert(method);
+    }
+}
+
+void ScriptMessages::forgetLegacySubscription(const void* instanceTable, const std::string& method) {
+    auto it = legacySubscriptions.find(instanceTable);
+    if (it != legacySubscriptions.end()) {
+        it->second.erase(method);
+        if (it->second.empty()) {
+            legacySubscriptions.erase(it);
+        }
+    }
+}
+
+bool ScriptMessages::isLegacySubscription(const void* instanceTable, const char* method) {
+    auto it = legacySubscriptions.find(instanceTable);
+    return it != legacySubscriptions.end() && method && it->second.count(method) > 0;
+}
+
+void ScriptMessages::forgetLegacySubscriptions(const void* instanceTable) {
+    legacySubscriptions.erase(instanceTable);
 }
 
 ScriptMessageMask ScriptMessages::receivers(Scene* scene, Entity entity) {
@@ -98,7 +186,7 @@ ScriptMessageMask ScriptMessages::receivers(Scene* scene, Entity entity) {
                 for (int m = 0; m < static_cast<int>(ScriptMessage::Count); m++) {
                     lua_getfield(L, -1, methodName(static_cast<ScriptMessage>(m)));
                     if (lua_isfunction(L, -1)) {
-                        mask |= 1u << m;
+                        mask |= scriptMessageBit(static_cast<ScriptMessage>(m));
                     }
                     lua_pop(L, 1);
                 }
@@ -134,7 +222,7 @@ bool ScriptMessages::invoke(Scene* scene, Entity entity, size_t scriptIndex, Scr
         const int top = lua_gettop(L);
         lua_rawgeti(L, LUA_REGISTRYINDEX, luaRefOf(entry));
         lua_getfield(L, -1, method);
-        if (!lua_isfunction(L, -1)) {
+        if (!lua_isfunction(L, -1) || isLegacySubscription(lua_topointer(L, -2), method)) {
             lua_settop(L, top);
             return false;
         }

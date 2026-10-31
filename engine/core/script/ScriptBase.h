@@ -7,6 +7,7 @@
 #include "Scene.h"
 #include "Entity.h"
 #include "component/ScriptComponent.h"
+#include "PointerEventData.h"
 
 namespace jasperengine {
 
@@ -66,6 +67,22 @@ namespace jasperengine {
         virtual void onApplicationPause(bool paused) { (void)paused; }
         virtual void onApplicationFocus(bool focused) { (void)focused; }
         virtual void onApplicationQuit() {}
+
+        // The component UI's EventSystem callbacks (ui-multitouch, Unity's IPointerDownHandler...):
+        // sent up the hierarchy from the element under the pointer to the first GameObject whose
+        // script overrides them. The event lives for the call (copy what you keep); use() and
+        // useDragThreshold write back.
+        virtual void onPointerDown(PointerEventData& e) { (void)e; }
+        virtual void onPointerUp(PointerEventData& e) { (void)e; }
+        virtual void onPointerClick(PointerEventData& e) { (void)e; }
+        virtual void onPointerEnter(PointerEventData& e) { (void)e; }
+        virtual void onPointerExit(PointerEventData& e) { (void)e; }
+        virtual void onInitializePotentialDrag(PointerEventData& e) { (void)e; }
+        virtual void onBeginDrag(PointerEventData& e) { (void)e; }
+        virtual void onDrag(PointerEventData& e) { (void)e; }
+        virtual void onEndDrag(PointerEventData& e) { (void)e; }
+        virtual void onDrop(PointerEventData& e) { (void)e; }
+        virtual void onScroll(PointerEventData& e) { (void)e; }
     };
 
 }
