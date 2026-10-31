@@ -458,8 +458,11 @@ std::vector<Entity> ObjectManager::moveToScene(Scene* from, Entity root, Scene* 
             // coroutines and timers follow their owner)
         }
     }
+    // every moved GameObject (old -> new): the generated code finds the scripts among them and
+    // rebinds the wrappers their properties own for any of them (a child without a script too)
     if (cppMoveHook && !movedOld.empty()) {
-        cppMoveHook(from, to, movedOld.data(), movedNew.data(), movedOld.size());
+        const size_t count = std::min(sources.size(), copies.size());
+        cppMoveHook(from, to, sources.data(), copies.data(), count);
     }
     ScriptRuntime::remap(from, to, map);
     for (size_t i = 0; i < movedOld.size(); i++) {
@@ -479,8 +482,12 @@ std::vector<Entity> ObjectManager::moveToScene(Scene* from, Entity root, Scene* 
         }
     }
 
-    // a scene whose camera moved away draws with its default camera again
+    // a scene whose camera moved away draws with its default camera again (cameras draw their
+    // own scene: a camera made persistent no longer shows the level)
     if (map.count(from->getCamera())) {
+        Log::warn("'%s' was the camera of the scene it left: that scene now draws with a default camera "
+                  "(keep a camera in each level and persist a manager that positions it)",
+                  from->getEntityName(from->getCamera()).c_str());
         from->useDefaultCamera();
     }
 

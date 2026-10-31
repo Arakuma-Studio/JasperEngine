@@ -1016,6 +1016,13 @@ bool SceneManager::dontDestroyOnLoad(Scene* scene, Entity root) {
         Log::warn("DontDestroyOnLoad only works for root GameObjects ('%s' has a parent)", scene->getEntityName(root).c_str());
         return false;
     }
+    if (persistentScene && scene == persistentScene) {
+        // a move out of it asked for this frame is called off: it stays
+        pendingMoves.erase(std::remove_if(pendingMoves.begin(), pendingMoves.end(), [scene, root](const PendingMove& move) {
+            return move.from == scene && move.root == root;
+        }), pendingMoves.end());
+        return true;
+    }
     if (isPersistent(scene, root)) {
         return true;
     }
@@ -1034,6 +1041,12 @@ bool SceneManager::isPersistent(Scene* scene, Entity entity) {
         return false;
     }
     if (persistentScene && scene == persistentScene) {
+        // ...unless its root is about to move out (moveGameObjectToScene)
+        for (const PendingMove& move : pendingMoves) {
+            if (move.from == scene && isInHierarchyOf(scene, entity, move.root)) {
+                return false;
+            }
+        }
         return true;
     }
     for (const PendingMove& move : pendingMoves) {

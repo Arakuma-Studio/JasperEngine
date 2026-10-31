@@ -116,7 +116,7 @@ ScriptBase* ScriptBase::findPersistentScript(bool (*matches)(ScriptBase*)) const
                 continue;
             }
             for (const ScriptEntry& entry : scripts->scripts) {
-                const ScriptState* state = ScriptRuntime::getState(entry.cppScript);
+                const ScriptState* state = ScriptRuntime::getState(entry.instance);
                 if (entry.cppScript && entry.cppScript != this && !(state && (state->destroyed || state->destroying)) &&
                         matches(entry.cppScript)) {
                     return entry.cppScript;

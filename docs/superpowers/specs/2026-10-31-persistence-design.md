@@ -366,7 +366,8 @@ Decisions taken while implementing (branch `gaps/persistence`, on `gaps/script-l
    velocities and awake state (`hasPendingVelocity` fields, applied once when the target's
    physics makes the body). Reloaded as for a clone: mesh/UI/points/lines/sky/terrain/text GPU
    state, cameras' and fluids' render targets (fluids restart), UIDocument, Vertex Animator
-   (its draw state is its mesh's), reflection probes, lights. Joint2D/Joint3D to a body outside
+   (its draw state is its mesh's), Trail Renderer (restarts, its points cleared), reflection
+   probes, lights. Joint2D/Joint3D to a body outside
    the moved set: not copied, warning "joint '<name>' to an object outside the moved hierarchy
    was removed". Plain data components are copied as they are.
 3. **Ids**: kept with `EntityRegistry::recreateEntity` when free in the target (user range), and
@@ -441,3 +442,16 @@ Decisions taken while implementing (branch `gaps/persistence`, on `gaps/script-l
     `main`); agent guide 16379 bytes. Web: the changed engine files compile with em++
     (`-fsyntax-only`, flags of a Web build). No platform code changed; Android, Apple and
     Windows builds not run.
+13. **Review fixes**: the generated C++ move hook gets every moved GameObject (not only the
+    scripted ones), so a wrapper a C++ property owns for a child without a script follows it;
+    a released script's subscriptions are removed from the persistent scene too for C++ as for
+    Lua (`ScriptRuntime::removeSubscriptionsByTag`, used by `LuaBinding` and the generated
+    cleanup); the persistent AudioSystem places the 3D listener at the main scene's camera every
+    frame one of its 3D sources plays; moving a scene's current camera away logs a warning (lead
+    decision: cameras keep drawing their own scene; documented in lua-api 2.8.1 with the
+    remedy); `Engine::getScene()` never returns the persistent scene (it was first while a load
+    built its scenes); `dontDestroyOnLoad` on a persistent root calls off its queued move out
+    (and `isPersistent` is false while one is queued); `persistSingleton<T>` reads lifecycle
+    states by the entry's instance. Regression tests for each, plus 3D Rigidbody velocity, the
+    Hierarchy row and selection following (`PlayStartupScenesTest.cpp`) and an MCP test of a
+    compiled C++ script in the persistent scene through a load and Play stop.

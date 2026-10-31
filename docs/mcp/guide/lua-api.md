@@ -778,6 +778,13 @@ function AdsManager:init()
 end
 ```
 
+> **Cameras draw their own scene.** Do not make a level's camera persistent: in the persistent
+> scene it draws only the persistent objects, and the level falls back to a default camera (a
+> warning says so). Keep a Camera in every level and persist a manager that finds and positions
+> it after each load (`GameObject.findObjectOfType("Camera")` in its `onSceneLoaded` engine event, or
+> the level's camera script asking the manager). A camera brought by a persistent GameObject
+> becomes the persistent scene's camera (for persistent world objects or UI).
+
 | Function | Semantics |
 |---|---|
 | `DontDestroyOnLoad(obj)` / `GameObject.dontDestroyOnLoad(obj)` | `obj`: a script instance (its GameObject) or any GameObject wrapper. Its **root** GameObject, with its children, components and running state, moves into the persistent scene and survives every `SceneManager.loadScene`. Returns true. A GameObject with a parent: warning "DontDestroyOnLoad only works for root GameObjects", nothing happens (false). `nil`: ignored. Already persistent: nothing. In the editor outside Play: nothing (false). |
@@ -793,8 +800,8 @@ Rules:
   tweens, particles, Animation Players keep going, subscriptions to its component events stay.
   No lifecycle method runs for it (Unity). Entity ids are kept when free; otherwise the
   GameObject gets a new id and `self.entity` changes with it. Reloaded as when copied: the GPU
-  state (one frame), UI documents (their DOM and data models start again), fluids and Vertex
-  Animators restart.
+  state (one frame), UI documents (their DOM and data models start again), fluids, Vertex
+  Animators and Trail Renderers restart (a trail's points are cleared).
 - **When it moves**: never inside a callback. Called in `init`/`onEnable` of a scene being
   loaded: at the end of that scene's start, before its HTML documents start (the usual case,
   nothing is lost). From `onUpdate`, coroutines, timers, an instantiated object's `init`: after
@@ -808,13 +815,16 @@ Rules:
 - **Drawing**: the persistent scene is a scene layer above the loaded scenes (and their layers
   and child scenes) and below the loading scene: persistent UI covers the game, the loading
   screen covers everything. It draws with a default UI camera, or the first Camera a persistent
-  GameObject brings. It clears its own depth: persistent world objects draw on top of the level
+  GameObject brings (see the camera note above). `Engine.scene` is always the loaded main scene,
+  never the persistent one (also in a new level's `init`). It clears its own depth: persistent world objects draw on top of the level
   (move them into the level with `moveGameObjectToScene` to depth-sort them with it).
 - **Physics**: the persistent scene has its own worlds (default gravity, set it with
   `SceneManager.persistentScene:setGravity2D(...)`): persistent bodies collide only with
   persistent bodies. A joint to a body that stays behind is removed (warning).
 - **Audio**: 2D sounds (music) are untouched; 3D sounds are heard by the loaded main scene's
-  camera.
+  camera (the persistent scene places the listener there every frame while one plays).
+- **Subscriptions**: what a level script subscribes to on a persistent GameObject (its Button's
+  `onPress`...) goes when that script is released (its scene unloads), Lua and C++ alike.
 - **Events**: subscriptions to the old scene's events (`self.scene:getPhysicsSystem()...`) stay
   on that scene until it unloads: register scene-wide events on `self.scene` after the move (or
   use the per-object callbacks). Engine events (`RegisterEngineEvent`) keep working and follow

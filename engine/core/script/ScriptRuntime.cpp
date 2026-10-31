@@ -466,3 +466,17 @@ void ScriptRuntime::remap(Scene* from, Scene* to, const std::unordered_map<Entit
         }
     }
 }
+
+void ScriptRuntime::removeSubscriptionsByTag(Scene* scene, const std::string& tag) {
+    if (tag.empty()) {
+        return;
+    }
+    Engine::removeSubscriptionsByTag(tag);
+    if (scene) {
+        scene->removeSubscriptionsByTag(tag);
+    }
+    Scene* persistent = SceneManager::getPersistentScene();
+    if (persistent && persistent != scene) {
+        persistent->removeSubscriptionsByTag(tag);
+    }
+}

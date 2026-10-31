@@ -87,6 +87,9 @@ namespace jasperengine::editor{
         Entity entity = NULL_ENTITY;
     };
 
+    // tests (PlayStartupScenesTest.cpp): the tree the panel draws
+    struct HierarchyTestAccess;
+
     class HierarchyWindow{
     private:
 
@@ -168,6 +171,7 @@ namespace jasperengine::editor{
         void drawRenameField();
         void commitRename();
         void revealInProject(const std::filesystem::path& path);
+        friend struct HierarchyTestAccess;
         void rebuildEntityTree(SceneProject* sceneProject, TreeNode& root, std::unordered_set<Entity>& sceneEntitiesSet);
         void showToolbar();
         void showTreeNode(TreeNode& node);

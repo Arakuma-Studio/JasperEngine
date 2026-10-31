@@ -11,6 +11,11 @@
 
 #include "Project.h"
 #include "command/type/DeleteFileCmd.h"
+#include "window/HierarchyWindow.h"
+#include "Engine.h"
+#include "manager/SceneManager.h"
+#include "manager/ObjectManager.h"
+#include "component/Transform.h"
 
 #include <unistd.h>
 
@@ -56,6 +61,34 @@ namespace jasperengine::editor {
 
         static SceneProject* sceneProjectOf(Project& project, Scene* scene) {
             return project.findSceneProjectByScene(scene);
+        }
+
+        // persistence: the session's DontDestroyOnLoad scene, the editor's side of a move
+        static void markStarted(Project& project) {
+            project.activePlaySession->startupSucceeded.store(true);
+        }
+        static Scene* createPersistent(Project& project) {
+            return project.createPersistentRuntimeScene();
+        }
+        static void objectsMoved(Project& project, Scene* from, Scene* to, const std::unordered_map<Entity, Entity>& moved) {
+            project.onPlayObjectsMoved(from, to, moved);
+        }
+        static void setInspectedScene(Project& project, uint32_t sceneId) {
+            project.selectedSceneForProperties = sceneId;
+        }
+        static uint32_t inspectedScene(Project& project) {
+            return project.selectedSceneForProperties;
+        }
+        static void cleanup(Project& project) {
+            project.cleanupPlaySession(project.activePlaySession);
+            project.activePlaySession.reset();
+        }
+    };
+
+    struct HierarchyTestAccess {
+        static void rebuild(HierarchyWindow& window, SceneProject* sceneProject, TreeNode& root) {
+            std::unordered_set<Entity> entities;
+            window.rebuildEntityTree(sceneProject, root, entities);
         }
     };
 
@@ -329,4 +362,75 @@ TEST(PlayedScene, NoSceneLeavesTheProjectWhilePlaying) {
     EXPECT_EQ(findScene(project, 803), nullptr) << "the closed scene left the project with its file";
 
     fs::remove_all(dir);
+}
+
+// ---- persistence: the DontDestroyOnLoad scene of a Play session ------------------------------
+
+TEST(PersistentPlayScene, HierarchyRowAndSelectionFollowTheMove) {
+    Project project;
+    Scene* played = new Scene();
+    SceneProject& menu = addScene(project, 910, "Menu");
+    menu.scene = played;
+    menu.sceneType = SceneType::SCENE_2D;
+    const Entity manager = played->createEntity();
+    played->addComponent<Transform>(manager, Transform());
+    played->setEntityName(manager, "Manager");
+    menu.entities = {manager};
+    menu.selectedEntities = {manager};
+    PlaySessionTestAccess::beginSession(project, 910);
+    PlaySessionTestAccess::markStarted(project);
+    findScene(project, 910)->playState = ScenePlayState::PLAYING;
+    PlaySessionTestAccess::setInspectedScene(project, 910);
+    const std::vector<Scene*> previousScenes = Engine::getSceneLayers();
+    Engine::removeAllScenes();
+    Engine::setScene(played);
+
+    Scene* persistent = PlaySessionTestAccess::createPersistent(project);
+    ASSERT_NE(persistent, nullptr);
+    Engine::addSceneLayer(persistent);
+    const uint32_t persistentId = project.getPersistentPlaySceneId();
+    ASSERT_NE(persistentId, NULL_PROJECT_SCENE);
+    EXPECT_TRUE(project.isPersistentPlayScene(persistentId));
+    SceneProject* persistentProject = project.getScene(persistentId);
+    ASSERT_NE(persistentProject, nullptr);
+    EXPECT_EQ(persistentProject->name, "DontDestroyOnLoad");
+    EXPECT_EQ(persistentProject->playState, ScenePlayState::PLAYING);
+
+    ObjectManager::setMoveListener([&project](Scene* from, Scene* to, const std::unordered_map<Entity, Entity>& moved) {
+        PlaySessionTestAccess::objectsMoved(project, from, to, moved);
+    });
+    const std::vector<Entity> moved = ObjectManager::moveToScene(played, manager, persistent);
+    ObjectManager::setMoveListener(nullptr);
+    ASSERT_EQ(moved.size(), 1u);
+    SceneProject* menuNow = findScene(project, 910);
+    EXPECT_TRUE(menuNow->entities.empty()) << "it left the Menu's list";
+    EXPECT_TRUE(menuNow->selectedEntities.empty());
+    EXPECT_EQ(persistentProject->entities, moved) << "listed (editable) in the persistent scene";
+    EXPECT_EQ(persistentProject->selectedEntities, moved) << "the selection follows";
+    EXPECT_EQ(PlaySessionTestAccess::inspectedScene(project), persistentId) << "and the Inspector";
+
+    const std::vector<SceneProject*> layers = project.getRunningRuntimeLayerScenes(910);
+    ASSERT_FALSE(layers.empty());
+    EXPECT_EQ(layers.back(), persistentProject);
+
+    HierarchyWindow window(&project, nullptr);
+    TreeNode root;
+    HierarchyTestAccess::rebuild(window, menuNow, root);
+    ASSERT_FALSE(root.children.empty());
+    const TreeNode& row = root.children.back();
+    EXPECT_TRUE(row.isPersistent) << "the last root row";
+    EXPECT_EQ(row.name, "DontDestroyOnLoad");
+    EXPECT_EQ(row.runtimeSceneId, persistentId);
+    ASSERT_EQ(row.children.size(), 1u);
+    EXPECT_EQ(row.children.front().name, "Manager");
+    EXPECT_EQ(row.children.front().id, moved[0]);
+
+    Engine::removeAllScenes();
+    PlaySessionTestAccess::cleanup(project);
+    findScene(project, 910)->scene = nullptr;
+    delete played;
+    for (size_t i = 0; i < previousScenes.size(); i++) {
+        if (i == 0) Engine::setScene(previousScenes[i]);
+        else Engine::addSceneLayer(previousScenes[i]);
+    }
 }

@@ -14,6 +14,12 @@
 #include "component/CameraComponent.h"
 #include "component/ActionComponent.h"
 #include "subsystem/AudioSystem.h"
+#include "object/GameObject.h"
+#include "component/ButtonComponent.h"
+#ifdef JASPERENGINE_PHYSICS_3D
+#include "object/physics/Rigidbody.h"
+#include "component/RigidbodyComponent.h"
+#endif
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "object/physics/Rigidbody2D.h"
 #include "component/Rigidbody2DComponent.h"
@@ -651,3 +657,324 @@ TEST_F(PersistenceTest, PersistentSceneAdoptsCamera) {
     EXPECT_NE(persistent->findComponent<CameraComponent>(persistent->getCamera()), nullptr);
     Engine::removeAllScenes();
 }
+
+// ---- review regressions -------------------------------------------------------------------
+
+namespace {
+
+    // a C++ script holding a GameObject wrapper its property owns (bindCppScriptProperties makes
+    // one for a GameObject without a script), as the generated code fills it in
+    class CppHolder : public ScriptBase {
+    public:
+        CppHolder(Scene* scene, Entity entity) : ScriptBase(scene, entity) {}
+        GameObject* kid = nullptr;
+    };
+
+    std::vector<Entity> hookOld;
+    std::vector<Entity> hookNew;
+
+    // what the generated moveEntityScripts does for CppHolder (Generator::buildInitSceneScriptsSource)
+    void moveCppScripts(Scene* from, Scene* to, const Entity* oldEntities, const Entity* newEntities, size_t count) {
+        hookOld.assign(oldEntities, oldEntities + count);
+        hookNew.assign(newEntities, newEntities + count);
+        for (size_t i = 0; i < count; i++) {
+            ScriptComponent* scriptComp = to->isEntityCreated(newEntities[i]) ? to->findComponent<ScriptComponent>(newEntities[i]) : nullptr;
+            if (!scriptComp) continue;
+            for (auto& scriptEntry : scriptComp->scripts) {
+                if (scriptEntry.type == ScriptType::LUA || !scriptEntry.instance) continue;
+                if (scriptEntry.className == "CppHolder") {
+                    rebindScriptObject(static_cast<CppHolder*>(scriptEntry.instance), to, newEntities[i]);
+                    for (auto& prop : scriptEntry.properties) {
+                        if (!prop.ownedInstance) continue;
+                        if (prop.name == "kid") rebindScriptReference(static_cast<GameObject*>(prop.ownedInstance), from, to, oldEntities, newEntities, count);
+                    }
+                }
+            }
+        }
+    }
+
+    class OtherBase {
+    public:
+        virtual ~OtherBase() = default;
+        int padding = 7;
+    };
+
+    // ScriptBase not the first base: the entry's instance and its ScriptBase are different addresses
+    class CppSecondBase : public OtherBase, public ScriptBase {
+    public:
+        CppSecondBase(Scene* scene, Entity entity) : ScriptBase(scene, entity) {}
+        bool duplicate = false;
+        void init() override { duplicate = persistSingleton<CppSecondBase>() != this; }
+    };
+
+    CppSecondBase* addSecondBase(Scene* scene, Entity e) {
+        CppSecondBase* script = new CppSecondBase(scene, e);
+        ScriptEntry entry;
+        entry.type = ScriptType::CPP;
+        entry.className = "CppSecondBase";
+        entry.enabled = true;
+        entry.instance = static_cast<void*>(script);
+        entry.cppScript = ScriptMessages::cppScript<CppSecondBase>(script);
+        entry.cppMessageMask = ScriptMessages::cppMask<CppSecondBase>();
+        ScriptComponent component;
+        component.scripts.push_back(entry);
+        scene->addComponent<ScriptComponent>(e, component);
+        return script;
+    }
+
+}
+
+// the generated C++ move hook gets every moved GameObject, so a wrapper pointing at a child
+// without a script follows it (else it names the destroyed original: use after free)
+TEST_F(PersistenceTest, CppMoveHookRebindsWrappersOfUnscriptedChildren) {
+    Scene* scene = newScene();
+    const Entity holder = entity(scene, "Holder");
+    const Entity kid = entity(scene, "PlainKid", holder);
+    CppHolder* script = new CppHolder(scene, holder);
+    GameObject* wrapper = new GameObject(scene, kid);
+    script->kid = wrapper;
+    ScriptEntry entry;
+    entry.type = ScriptType::CPP;
+    entry.className = "CppHolder";
+    entry.enabled = true;
+    entry.instance = script;
+    entry.cppScript = script;
+    entry.cppMessageMask = ScriptMessages::cppMask<CppHolder>();
+    ScriptProperty property;
+    property.name = "kid";
+    property.type = ScriptPropertyType::EntityReference;
+    property.value = EntityReference{kid, 0};
+    property.ownedInstance = wrapper;
+    entry.properties.push_back(property);
+    ScriptComponent component;
+    component.scripts.push_back(entry);
+    scene->addComponent<ScriptComponent>(holder, component);
+    Engine::setScene(scene);
+    ObjectManager::setCppScriptMoveHook(moveCppScripts);
+
+    ASSERT_TRUE(SceneManager::dontDestroyOnLoad(scene, holder));
+    SceneManager::flushPersistentMoves();
+    ObjectManager::setCppScriptMoveHook(nullptr);
+    Scene* persistent = SceneManager::getPersistentScene();
+    ASSERT_EQ(persistentNamed("PlainKid").size(), 1u);
+    EXPECT_EQ(hookOld, (std::vector<Entity>{holder, kid})) << "every moved GameObject, scripted or not";
+    EXPECT_EQ(hookNew.size(), 2u);
+    EXPECT_EQ(wrapper->getScene(), persistent);
+    EXPECT_EQ(wrapper->getEntity(), persistentNamed("PlainKid")[0]);
+    EXPECT_EQ(wrapper->getName(), "PlainKid");
+    EXPECT_EQ(script->getScene(), persistent);
+
+    ScriptEntry& moved = persistent->getComponent<ScriptComponent>(persistentNamed("Holder")[0]).scripts[0];
+    ScriptRuntime::forgetInstance(moved.instance);
+    delete static_cast<GameObject*>(moved.properties[0].ownedInstance);
+    delete static_cast<CppHolder*>(moved.instance);
+    moved.properties[0].ownedInstance = nullptr;
+    moved.instance = nullptr;
+    moved.cppScript = nullptr;
+    Engine::removeAllScenes();
+}
+
+// a released script's subscriptions on persistent GameObjects go with it (Lua and the
+// generated C++ cleanup share ScriptRuntime::removeSubscriptionsByTag)
+TEST_F(PersistenceTest, ReleasedScriptsLeavePersistentEvents) {
+    Scene* level = newScene();
+    const Entity hud = entity(level, "HudButton");
+    level->addComponent<ButtonComponent>(hud, ButtonComponent());
+    Engine::setScene(level);
+    ASSERT_TRUE(SceneManager::dontDestroyOnLoad(level, hud));
+    SceneManager::flushPersistentMoves();
+    Scene* persistent = SceneManager::getPersistentScene();
+    ButtonComponent& button = persistent->getComponent<ButtonComponent>(persistentNamed("HudButton")[0]);
+    int calls = 0;
+    // a C++ script's tag ("_<address>_"), and a Lua one's (class_address_method)
+    button.onPress.add("_4242_onPress", std::function<void()>([&calls]() { calls++; }));
+    button.onRelease.add("Level_4242_onRelease", std::function<void()>([&calls]() { calls++; }));
+    ScriptRuntime::removeSubscriptionsByTag(level, "_4242_");
+    button.onPress.call();
+    button.onRelease.call();
+    EXPECT_EQ(calls, 0) << "the level's script is gone: nothing of it is called";
+
+    // the Lua path: a level script listening to the persistent button, its scene unloaded
+    writeScript("Listener",
+        "local M = {}\n"
+        "function M:init() RegisterEvent(self, Button(SceneManager.persistentScene, hudEntity):getButtonComponent().onPress, 'pressed') end\n"
+        "function M:pressed() log[#log + 1] = 'pressed' end\n"
+        "return M\n");
+    lua("hudEntity = " + std::to_string(persistentNamed("HudButton")[0]));
+    Scene* listenerScene = nullptr;
+    SceneManager::registerScene(1, "L", [this, &listenerScene]() {
+        Scene* scene = newScene();
+        listenerScene = scene;
+        addScript(scene, entity(scene, "Listener"), "Listener");
+        LuaBinding::initializeLuaScripts(scene);
+        Engine::setScene(scene);
+    });
+    SceneManager::registerScene(2, "Empty", [this, &listenerScene]() {
+        // as the exported load_X: the replaced scene's scripts are released, then it goes
+        LuaBinding::cleanupLuaScripts(listenerScene);
+        Scene* scene = newScene();
+        LuaBinding::initializeLuaScripts(scene);
+        Engine::setScene(scene);
+    });
+    loadAndFrame("L");
+    persistent->getComponent<ButtonComponent>(persistentNamed("HudButton")[0]).onPress.call();
+    EXPECT_EQ(takeLog(), "pressed");
+    loadAndFrame("Empty");
+    persistent->getComponent<ButtonComponent>(persistentNamed("HudButton")[0]).onPress.call();
+    EXPECT_EQ(takeLog(), "") << "released with its scene";
+}
+
+// persistent 3D sounds are heard by the loaded main scene's camera: the persistent scene's
+// system places the listener every frame
+TEST_F(PersistenceTest, Persistent3DSoundsUseTheMainCameraAsListener) {
+    Scene* level = newScene();
+    const Entity cameraEntity = entity(level, "LevelCamera");
+    level->addComponent<CameraComponent>(cameraEntity, CameraComponent());
+    level->getComponent<Transform>(cameraEntity).position = Vector3(5, 6, 7);
+    level->getComponent<Transform>(cameraEntity).worldPosition = Vector3(5, 6, 7);
+    level->setCamera(cameraEntity);
+    const Entity source = entity(level, "Sound3D");
+    AudioSourceComponent audio;
+    audio.filename = "nothing.wav";
+    level->addComponent<AudioSourceComponent>(source, audio);
+    Engine::setScene(level);
+    ASSERT_TRUE(SceneManager::dontDestroyOnLoad(level, source));
+    SceneManager::flushPersistentMoves();
+    // asked to play (its file does not exist: no voice, here or without audio output)
+    AudioSourceComponent& moved = SceneManager::getPersistentScene()->getComponent<AudioSourceComponent>(persistentNamed("Sound3D")[0]);
+    moved.state = AudioSourceState::Playing;
+    AudioSystem::getSoloud().set3dListenerParameters(0, 0, 0, 0, 0, -1, 0, 1, 0);
+    frame();
+    const float* listener = AudioSystem::getSoloud().m3dPosition;
+    EXPECT_FLOAT_EQ(listener[0], 5.0f);
+    EXPECT_FLOAT_EQ(listener[1], 6.0f);
+    EXPECT_FLOAT_EQ(listener[2], 7.0f);
+    Engine::removeAllScenes();
+}
+
+// a scene's camera made persistent: that scene falls back to a default camera, with a warning
+TEST_F(PersistenceTest, PersistingTheLevelCameraWarns) {
+    Scene* level = newScene();
+    const Entity cameraEntity = entity(level, "MainCamera");
+    level->addComponent<CameraComponent>(cameraEntity, CameraComponent());
+    level->setCamera(cameraEntity);
+    Engine::setScene(level);
+    ASSERT_TRUE(SceneManager::dontDestroyOnLoad(level, cameraEntity));
+    SceneManager::flushPersistentMoves();
+    EXPECT_TRUE(logged("'MainCamera' was the camera of the scene it left"));
+    EXPECT_NE(level->getCamera(), NULL_ENTITY);
+    EXPECT_TRUE(level->isEntityCreated(level->getCamera()));
+    EXPECT_EQ(SceneManager::getPersistentScene()->getCamera(), persistentNamed("MainCamera")[0]);
+    Engine::removeAllScenes();
+}
+
+// a new level's init sees its own stack as Engine.scene, never the persistent scene
+TEST_F(PersistenceTest, EngineSceneDuringALoadIsNotThePersistentScene) {
+    writeManager();
+    writeLevel();
+    writeScript("Peek",
+        "local M = {}\n"
+        "function M:init() peekedScene = Engine.scene; peekedNil = Engine.scene == nil end\n"
+        "return M\n");
+    registerAB();
+    SceneManager::registerScene(3, "C", [this]() {
+        Scene* scene = newScene();
+        addScript(scene, entity(scene, "Peeker"), "Peek");
+        LuaBinding::initializeLuaScripts(scene);
+        Engine::setScene(scene);
+    });
+    ASSERT_TRUE(SceneManager::loadScene("A"));
+    ASSERT_NE(SceneManager::getPersistentScene(), nullptr);
+    loadAndFrame("C");
+    EXPECT_NE(luaScene("peekedScene"), SceneManager::getPersistentScene());
+    EXPECT_EQ(Engine::getScene(), Engine::getMainScene());
+}
+
+// moved out and made persistent again in the same frame: it stays persistent
+TEST_F(PersistenceTest, MoveOutCalledOffByDontDestroyOnLoad) {
+    Scene* level = newScene();
+    const Entity keeper = entity(level, "Keeper");
+    Engine::setScene(level);
+    ASSERT_TRUE(SceneManager::dontDestroyOnLoad(level, keeper));
+    frame();
+    Scene* persistent = SceneManager::getPersistentScene();
+    const Entity moved = persistentNamed("Keeper")[0];
+    ASSERT_TRUE(SceneManager::moveGameObjectToScene(persistent, moved, level));
+    EXPECT_FALSE(SceneManager::isPersistent(persistent, moved)) << "about to leave";
+    ASSERT_TRUE(SceneManager::dontDestroyOnLoad(persistent, moved));
+    EXPECT_TRUE(SceneManager::isPersistent(persistent, moved));
+    frame();
+    EXPECT_EQ(persistentNamed("Keeper").size(), 1u);
+    EXPECT_EQ(level->findEntity("Keeper"), NULL_ENTITY);
+    Engine::removeAllScenes();
+}
+
+// persistSingleton<T> reads the lifecycle state by the entry's instance (not its ScriptBase,
+// a different address when ScriptBase is not the first base): a manager being destroyed is no
+// longer the survivor
+TEST_F(PersistenceTest, CppSingletonIgnoresADestroyedManager) {
+    Scene* one = newScene();
+    const Entity first = entity(one, "FirstManager");
+    CppSecondBase* firstScript = addSecondBase(one, first);
+    ASSERT_NE(static_cast<void*>(firstScript), static_cast<void*>(static_cast<ScriptBase*>(firstScript)));
+    Engine::setScene(one);
+    ScriptRuntime::awakeScene(one);
+    frame();
+    ASSERT_EQ(persistentNamed("FirstManager").size(), 1u);
+    EXPECT_FALSE(firstScript->duplicate);
+    Scene* persistent = SceneManager::getPersistentScene();
+    // its onDestroy ran (destroyed), the GameObject is still there
+    ScriptRuntime::destroyEntities(persistent, {persistentNamed("FirstManager")[0]});
+
+    Scene* two = newScene();
+    CppSecondBase* secondScript = addSecondBase(two, entity(two, "SecondManager"));
+    Engine::addSceneLayer(two);
+    ScriptRuntime::awakeScene(two);
+    EXPECT_FALSE(secondScript->duplicate) << "the destroyed one does not count";
+    frame();
+    EXPECT_EQ(persistentNamed("SecondManager").size(), 1u);
+
+    for (Scene* scene : {persistent, one, two}) {
+        auto scripts = scene->getComponentArray<ScriptComponent>();
+        for (size_t i = 0; i < scripts->size(); i++) {
+            for (ScriptEntry& entry : scripts->getComponentFromIndex(i).scripts) {
+                if (entry.instance) {
+                    ScriptRuntime::forgetInstance(entry.instance);
+                    delete static_cast<CppSecondBase*>(entry.instance);
+                    entry.instance = nullptr;
+                    entry.cppScript = nullptr;
+                }
+            }
+        }
+    }
+    Engine::removeAllScenes();
+}
+
+#ifdef JASPERENGINE_PHYSICS_3D
+// a Rigidbody keeps its velocity (its Jolt body is made again in the persistent world)
+TEST_F(PersistenceTest, RigidbodyKeepsVelocity) {
+    Scene* scene = newScene();
+    scene->setGravity3D(0, 0, 0);
+    const Entity ball = entity(scene, "Ball3D");
+    scene->addComponent<RigidbodyComponent>(ball, RigidbodyComponent());
+    Rigidbody body(scene, ball);
+    body.setType(BodyType::DYNAMIC);
+    body.createSphereCollider(0.5f);
+    Engine::setScene(scene);
+    frame();
+    body.setLinearVelocity(Vector3(3, 0, -2));
+    frame();
+    ASSERT_NEAR(body.getLinearVelocity().x, 3.0f, 0.01f);
+
+    ASSERT_TRUE(SceneManager::dontDestroyOnLoad(scene, ball));
+    SceneManager::getPersistentScene()->setGravity3D(0, 0, 0);
+    frame();
+    frame();
+    ASSERT_EQ(persistentNamed("Ball3D").size(), 1u);
+    Rigidbody moved(SceneManager::getPersistentScene(), persistentNamed("Ball3D")[0]);
+    EXPECT_NEAR(moved.getLinearVelocity().x, 3.0f, 0.01f);
+    EXPECT_NEAR(moved.getLinearVelocity().y, 0.0f, 0.01f);
+    EXPECT_NEAR(moved.getLinearVelocity().z, -2.0f, 0.01f);
+    Engine::removeAllScenes();
+}
+#endif

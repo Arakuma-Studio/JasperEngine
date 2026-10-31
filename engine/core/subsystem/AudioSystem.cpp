@@ -272,6 +272,21 @@ void AudioSystem::update(double dt){
     bool hasListener = listenerScene && listenerScene->findComponent<CameraComponent>(listenerScene->getCamera()) &&
                        listenerScene->findComponent<Transform>(listenerScene->getCamera());
 
+    // The persistent scene's 3D sounds are heard by the loaded main scene's camera, every frame
+    // (the main scene's own system places it only when one of its sources updates), before
+    // they are placed against it
+    if (persistent && hasListener){
+        bool playing3D = false;
+        for (int i = 0; i < audios->size() && !playing3D; i++){
+            const AudioSourceComponent& audio = audios->getComponentFromIndex(i);
+            playing3D = audio.enabled && audio.state == AudioSourceState::Playing &&
+                        scene->getSignature(audios->getEntity(i)).test(scene->getComponentId<Transform>());
+        }
+        if (playing3D){
+            placeListener(*listenerScene);
+        }
+    }
+
     for (int i = 0; i < audios->size(); i++){
 		AudioSourceComponent& audio = audios->getComponentFromIndex(i);
 
@@ -433,6 +448,21 @@ void AudioSystem::update(double dt){
             }
         }
     }
+}
+
+void AudioSystem::placeListener(Scene& listenerScene){
+    const CameraComponent& camera = listenerScene.getComponent<CameraComponent>(listenerScene.getCamera());
+    const Transform& cameraTransform = listenerScene.getComponent<Transform>(listenerScene.getCamera());
+    const Vector3 position = cameraTransform.worldPosition;
+    const Vector3 view = camera.worldTarget - position;
+    const Vector3 up = camera.worldUp;
+    const Vector3 velocity = cameraLastPosition - position;
+    getSoloud().set3dListenerParameters(position.x, position.y, position.z, view.x, view.y, view.z,
+                                        up.x, up.y, up.z, velocity.x, velocity.y, velocity.z);
+    if (inited){
+        getSoloud().update3dAudio();
+    }
+    cameraLastPosition = position;
 }
 
 void AudioSystem::draw(){

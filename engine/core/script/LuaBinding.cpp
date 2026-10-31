@@ -809,16 +809,7 @@ void LuaBinding::removeScriptSubscriptions(Scene* scene, int luaRef){
     std::string addr = getScriptSubscriptionTag(luaRef);
     if (addr.empty()) return;
 
-    Engine::removeSubscriptionsByTag(addr);
-    if (scene) {
-        scene->removeSubscriptionsByTag(addr);
-    }
-    // what it subscribed to on a persistent GameObject (a level's script listening to the
-    // persistent HUD's button) outlives its scene: it goes with the script
-    Scene* persistent = SceneManager::getPersistentScene();
-    if (persistent && persistent != scene) {
-        persistent->removeSubscriptionsByTag(addr);
-    }
+    ScriptRuntime::removeSubscriptionsByTag(scene, addr);
 }
 
 void LuaBinding::releaseLuaRef(int luaRef){

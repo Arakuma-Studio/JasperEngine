@@ -201,8 +201,15 @@ void Engine::setScene(Scene* scene){
 
 Scene* Engine::getScene(){
     std::lock_guard<std::mutex> lock(sceneListMutex);
-    // none before the first scene is set (a scene's scripts start before it is)
-    return Engine::scenes.empty() ? nullptr : Engine::scenes[0];
+    // none before the first scene is set (a scene's scripts start before it is); never the
+    // persistent scene (DontDestroyOnLoad), first while a load builds its new scenes
+    Scene* persistent = SceneManager::getPersistentScene();
+    for (Scene* scene : Engine::scenes) {
+        if (scene != persistent) {
+            return scene;
+        }
+    }
+    return nullptr;
 }
 
 std::vector<Scene*> Engine::getScenesSnapshot(){
