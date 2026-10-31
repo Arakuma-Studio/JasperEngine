@@ -70,3 +70,4 @@ jasperengine_skip_unity_build(
     REASON "Xlib.h defines None, Bool, Status, Always... as macros, which break every later source of the batch"
     SOURCES ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp)
 jasperengine_target_unity_build(jasperengine-test-support)
+jasperengine_target_pch(jasperengine-test-support)

@@ -129,3 +129,11 @@ RUN wget -q -O /tmp/luals.tar.gz \
     && rm /tmp/chrome-headless-shell.zip \
     && ln -s /opt/chrome-headless-shell/chrome-headless-shell /usr/local/bin/chrome-headless-shell \
     && ! ldd /opt/chrome-headless-shell/chrome-headless-shell | grep 'not found'
+
+# lld (LLVM 14), the linker of Debug and RelWithDebInfo development and test builds
+# (JASPERENGINE_LINKER=AUTO, engine/cmake/JasperLinker.cmake; docs/specs/S33-build-speed.md R3):
+# GNU ld takes 20-53 s per link of the editor, its tests and the shared engine with debug
+# information. Release builds and shipped games keep GNU ld. A layer of its own, after every other.
+RUN apt-get update && apt-get install -y --no-install-recommends lld \
+    && rm -rf /var/lib/apt/lists/* \
+    && ld.lld --version

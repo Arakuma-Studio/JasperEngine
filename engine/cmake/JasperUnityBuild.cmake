@@ -46,3 +46,18 @@ function(jasperengine_skip_unity_build)
     endif()
     set_source_files_properties(${arg_SOURCES} PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
 endfunction()
+
+# jasperengine_vendored_unity_build(<target>...): unity-builds vendored libraries, 16 sources a
+# unit, in the trees that ship nothing (the editor tree, the tests, the development builds of
+# tools/build.sh): docs/specs/S33-build-speed.md R4 and M9 (Jolt 248 -> 68 CPU-s, the same global
+# symbols; RmlUi keeps too many same-named file-local helpers to merge). A shipped game
+# (JASPERENGINE_VENDORED_UNITY OFF there) compiles them source by source as always, so its code
+# generation does not change. Only libraries whose every source merges are listed.
+function(jasperengine_vendored_unity_build)
+    if(NOT JASPERENGINE_VENDORED_UNITY)
+        return()
+    endif()
+    foreach(target IN LISTS ARGN)
+        set_target_properties(${target} PROPERTIES UNITY_BUILD ON UNITY_BUILD_BATCH_SIZE 16)
+    endforeach()
+endfunction()

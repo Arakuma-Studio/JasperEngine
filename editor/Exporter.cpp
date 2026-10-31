@@ -14,6 +14,8 @@
 #include "Factory.h"
 #include "Generator.h"
 #include "Out.h"
+#include "App.h"
+#include "util/Sha256.h"
 #include "Stream.h"
 #include "util/Base64.h"
 #include "util/FbxImporter.h"
@@ -790,6 +792,12 @@ void editor::Exporter::runExport() {
     // modes they occupy the first half, leaving the rest for configure/build/collect.
     progressScale = buildMode ? 0.5f : 1.0f;
 
+    // the shared compile tree (prepareCacheTarget) is another build's once this one ends
+    struct SharedTreeRelease {
+        std::unique_ptr<io::ScopedFileLock>& lock;
+        ~SharedTreeRelease() { lock.reset(); }
+    } sharedTreeRelease{sharedBuildLock};
+
     if (buildMode) {
         if (!prepareCacheTarget()) return;
     } else {
@@ -966,6 +974,35 @@ fs::path editor::Exporter::getBuildCacheDir() const {
     return project->getProjectInternalPath() / "export" / (config.mode == ExportMode::Desktop ? "desktop" : "web");
 }
 
+fs::path editor::Exporter::getSharedBuildCacheDir() const {
+    // What decides how the engine and the vendored libraries compile: the kit (configureBuild's,
+    // without the tree's path) and the project settings that are definitions of the whole build
+    // (the C++ standard, the compiled-in features, the crash handler and the watchdog, the
+    // SceneMaxValues capacities). Everything else of a project (its title, window, logging,
+    // scenes, scripts, shaders) only recompiles its own units in a tree it shares. Another
+    // editor's engine sources are synced into the tree like an update's (copyEngine), and Ninja
+    // recompiles what changed.
+    std::string key = std::string(config.mode == ExportMode::Desktop ? "desktop" : "web")
+        + "\n" + getEffectiveGenerator() + "\n" + config.cmakeCCompiler + "\n" + config.cmakeCxxCompiler
+        + "\n" + config.emsdkPath + "\n" + config.buildType + "\n" + config.graphicBackend
+        + "\n" + (config.developmentBuild ? "development" : "release") + "\n" + extraCMakeArgs
+        + "\ncxx" + std::to_string(project->getCxxStandard())
+        + "\nphysics2d " + (project->isPhysics2DEnabled() ? "1" : "0")
+        + "\nphysics3d " + (project->isPhysics3DEnabled() ? "1" : "0")
+        + "\nnavigation " + (project->getNavigationSettings().includeInBuilds ? "1" : "0")
+        + "\nruntime shaders " + (project->isRuntimeShadersEnabled() ? "1" : "0")
+        + "\ncrash handler " + (project->getPlayerCrash().enabled ? "1" : "0")
+        + "\nhang watchdog " + (project->getPlayerCrash().hangWatchdog ? "1" : "0");
+    for (const auto& [name, value] : getSceneMaxValues()) {
+        key += "\n" + name + " " + std::to_string(value);
+    }
+    if (config.mode == ExportMode::Desktop) {
+        const std::string platform = Generator::getGeneratorPlatform(config.cmakeGenerator);
+        if (!platform.empty()) key += "\n" + platform;
+    }
+    return App::getUserCacheBaseDir() / "jasperengine" / "compile-builds" / sha256Hex(key).substr(0, 16);
+}
+
 std::string editor::Exporter::getEffectiveGenerator() const {
     if (!config.cmakeGenerator.empty()) {
         return config.cmakeGenerator;
@@ -1058,9 +1095,27 @@ bool editor::Exporter::prepareCacheTarget() {
         return false;
     }
 
-    config.targetDir = getBuildCacheDir();
-
+    // The kit's shared compile tree when no other build holds it (a C++-script game then compiles
+    // its own code, the engine's objects are already there), else the project's own as before
+    // (docs/specs/S33-build-speed.md R11). A project without a ProjectBuild.cmake only: that one
+    // can change how anything compiles.
     std::error_code ec;
+    sharedBuildLock.reset();
+    config.targetDir = getBuildCacheDir();
+    if (!fs::exists(project->getProjectPath() / "ProjectBuild.cmake", ec)) {
+        const fs::path shared = getSharedBuildCacheDir();
+        fs::create_directories(shared.parent_path(), ec);
+        auto lock = std::make_unique<io::ScopedFileLock>(shared.parent_path() / (shared.filename().string() + ".lock"),
+                                                     io::ScopedFileLock::Mode::Exclusive, false);
+        if (lock->isLocked()) {
+            sharedBuildLock = std::move(lock);
+            config.targetDir = shared;
+            Out::info("Building in the shared compile tree %s", shared.string().c_str());
+        } else if (lock->getStatus() == io::ScopedFileLock::Status::Busy) {
+            Out::info("Another build uses the shared compile tree; building in the project's own");
+        }
+    }
+    ec.clear();
     fs::create_directories(config.targetDir, ec);
     if (ec) {
         setError("Failed to create build cache directory: " + ec.message());
@@ -1299,7 +1354,7 @@ bool editor::Exporter::collectDesktopArtifacts() {
         } else if (fs::exists(buildDir / (getAppName() + ".app"), ec)
                    || fs::exists(buildDir / config.buildType / (getAppName() + ".app"), ec)) {
             // A stale Xcode-configured cache can slip past the generator guard.
-            setError("The build produced an app bundle, which Executable Player builds do not support. Delete the project's .jasperengine/export/desktop folder and build again with the default toolchain.");
+            setError("The build produced an app bundle, which Executable Player builds do not support. Delete the build folder " + config.targetDir.string() + " and build again with the default toolchain.");
             return false;
         } else {
             setError("Built executable not found at: " + exePath.string() + " or " + configExePath.string());
