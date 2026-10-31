@@ -414,13 +414,17 @@ it in the Inspector (project undo steps):
 - **Default**: the weight of every bone no rule below covers. A new mask (and an empty one) passes
   everything, as in Unity.
 - **Humanoid**: a figure with Unity's body parts (Root, Body, Head, the arms, legs and fingers).
-  Click a part to toggle it; green is 1, red is 0, a tint is a fraction (hover for its weight). It
+  Click a part to toggle it; green is 1, red is 0, a tint is a fraction (hover for its weight; the
+  slider under the figure sets a fraction for the part you clicked last). It
   works on any model with a humanoid rig (the same rig detection as Pose Animation: Mixamo, VRM and
   most naming schemes); "Not humanoid" shows when the preview model has none.
 - **Transforms**: the bones of the **Preview Model** (or of the selected GameObject: **Use
   Selection**) as a tree. Tick a bone, set its weight, and choose whether it also covers its
   children. Shift-click ticks a whole subtree.
-- **Users**: the players and layers that use the mask.
+- **Users**: the players and layers (also of Animator Controllers) that use the mask.
+
+Each tree row also shows, as a coloured dot, the weight the bone gets from the whole mask (hover it
+for the rule: its transform entry, a body part, or Default).
 
 Which rule wins for a bone: its own transform entry, else its nearest ancestor's entry that covers
 children; else, when the mask has humanoid parts and the character is humanoid, the bone's body
