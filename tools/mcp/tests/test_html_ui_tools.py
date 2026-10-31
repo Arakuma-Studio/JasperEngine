@@ -110,9 +110,7 @@ LIMITS.update({"user_settings": 550})
 # 106621, the limit set to it
 # lines and trails: no new tool; create_entity's type "trail_renderer" paid by a shorter create_entity
 # description, set_shape_points' line text reworded; measured on the merged tree: total 106692 (106687 before)
-# shader globals (spec 2026-10-31-shader-globals 6.7): no new tool; get_shader_uniforms names its globals
-# and global_bindings (+51), measured on the merged tree: total 106743
-TOTAL_LIMIT = 106750  # measured below on the merged tree
+TOTAL_LIMIT = 106700  # re-measured on the merged tree by the lead's verification
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

@@ -572,6 +572,14 @@ void editor::HierarchyWindow::createGameObject(const CreateMenuEntry& entry, Ent
     if (entry.rootOnly) {
         parent = NULL_ENTITY;
     }
+    // a Joint 2D goes under the selected Rigidbody 2D, which it is then on (Unity adds the
+    // joint to the body)
+    if (entry.type == EntityCreationType::JOINT2D && parent == NULL_ENTITY) {
+        std::vector<Entity> selected = project->getSelectedEntities(sceneProject->id);
+        if (selected.size() == 1 && sceneProject->scene->findComponent<Rigidbody2DComponent>(selected[0])) {
+            parent = selected[0];
+        }
+    }
     // Unity puts a trail on the moving object itself: the selected GameObject gets one when it
     // has none and is not locked (one undo step, its own Trail Renderer); else a child trail
     if (entry.type == EntityCreationType::TRAIL_RENDERER && parent != NULL_ENTITY &&
@@ -582,14 +590,6 @@ void editor::HierarchyWindow::createGameObject(const CreateMenuEntry& entry, Ent
             new AddComponentCmd(project, sceneProject->id, parent, ComponentType::TrailRendererComponent));
         project->setSelectedEntity(sceneProject->id, parent);
         return;
-    }
-    // a Joint 2D goes under the selected Rigidbody 2D, which it is then on (Unity adds the
-    // joint to the body)
-    if (entry.type == EntityCreationType::JOINT2D && parent == NULL_ENTITY) {
-        std::vector<Entity> selected = project->getSelectedEntities(sceneProject->id);
-        if (selected.size() == 1 && sceneProject->scene->findComponent<Rigidbody2DComponent>(selected[0])) {
-            parent = selected[0];
-        }
     }
     CommandHandle::get(sceneProject->id)->addCommandNoMerge(
         new CreateEntityCmd(project, sceneProject->id, entry.entityName, entry.type, parent, addToPrefab));
