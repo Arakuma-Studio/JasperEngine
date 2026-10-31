@@ -64,6 +64,17 @@ namespace {
         float getScreenDpi() override { return dpi; }
     };
 
+    // a scene's camera as a loaded UI scene has one (a bare Scene has none before load())
+    Entity addCamera(Scene& scene, CameraType type = CameraType::CAMERA_UI){
+        Entity camera = scene.createEntity();
+        scene.addComponent<Transform>(camera, Transform());
+        CameraComponent component;
+        component.type = type;
+        scene.addComponent<CameraComponent>(camera, component);
+        scene.setCamera(camera);
+        return camera;
+    }
+
     // Installs a ScreenSystem and puts the Engine's display settings back after the test
     class CanvasScalerViewTest : public ::testing::Test {
     protected:
@@ -229,6 +240,7 @@ TEST(CanvasScaler, NamesRoundTrip) {
 
 TEST_F(CanvasScalerViewTest, AUIScenesCameraAndLayoutSpanTheUISize) {
     Scene scene;   // its default camera is a UI camera
+    addCamera(scene);
     scene.setCanvasScaler(scaleWithScreenSize(1920, 1080, ScreenMatchMode::Expand));
     scene.setCanvasScalerUseProjectDefault(false);
 
@@ -271,6 +283,7 @@ TEST_F(CanvasScalerViewTest, AUIScenesCameraAndLayoutSpanTheUISize) {
 
 TEST_F(CanvasScalerViewTest, FollowGameCanvasChangesNothing) {
     Scene scene;
+    addCamera(scene);
     resize(2400, 1080);
     scene.updateCameraSize();
 
@@ -287,6 +300,7 @@ TEST_F(CanvasScalerViewTest, FollowGameCanvasChangesNothing) {
 
 TEST_F(CanvasScalerViewTest, TheProjectDefaultAppliesUnlessTheSceneOverrides) {
     Scene scene;
+    addCamera(scene);
     Engine::setDefaultCanvasScaler(scaleWithScreenSize(1920, 1080, ScreenMatchMode::Expand));
     resize(1440, 1080);
     scene.updateCameraSize();
@@ -307,6 +321,7 @@ TEST_F(CanvasScalerViewTest, TheProjectDefaultAppliesUnlessTheSceneOverrides) {
 
 TEST_F(CanvasScalerViewTest, ScriptsEditTheSceneFromTheDefault) {
     Scene scene;
+    addCamera(scene);
     Engine::setDefaultCanvasScaler(scaleWithScreenSize(1280, 720, ScreenMatchMode::Expand));
     resize(1440, 1080);
     scene.updateCameraSize();
@@ -322,13 +337,15 @@ TEST_F(CanvasScalerViewTest, ScriptsEditTheSceneFromTheDefault) {
     EXPECT_FLOAT_EQ(scene.getCanvasScaler().referenceResolution.x, 1280.0f);
     EXPECT_EQ(scene.getCanvasScaler().screenMatchMode, ScreenMatchMode::Shrink);
     scene.updateCameraSize();
-    EXPECT_NEAR(ref.getCanvasSize().x, 1280.0f, 1e-3f);
-    EXPECT_NEAR(ref.getCanvasSize().y, 960.0f, 1e-3f);
-    EXPECT_NEAR(ref.getAppliedScaleFactor(), 1.125f, 1e-4f);
+    // Shrink at 1440x1080 against 1280x720: max(1.125, 1.5)
+    EXPECT_NEAR(ref.getCanvasSize().x, 960.0f, 1e-3f);
+    EXPECT_NEAR(ref.getCanvasSize().y, 720.0f, 1e-3f);
+    EXPECT_NEAR(ref.getAppliedScaleFactor(), 1.5f, 1e-4f);
 }
 
 TEST_F(CanvasScalerViewTest, StretchAnchorsFillTheUISizeAndPointersArriveInUIUnits) {
     Scene scene;
+    addCamera(scene);
     scene.setCanvasScaler(scaleWithScreenSize(1920, 1080, ScreenMatchMode::Expand));
     scene.setCanvasScalerUseProjectDefault(false);
     resize(1440, 1080);
@@ -371,6 +388,7 @@ TEST_F(CanvasScalerViewTest, StretchAnchorsFillTheUISizeAndPointersArriveInUIUni
 
 TEST_F(CanvasScalerViewTest, ScreenDocumentsLayOutAtTheUISize) {
     Scene scene;
+    addCamera(scene);
     scene.setCanvasScaler(scaleWithScreenSize(1920, 1080, ScreenMatchMode::Expand));
     scene.setCanvasScalerUseProjectDefault(false);
     resize(1440, 1080);
@@ -379,8 +397,8 @@ TEST_F(CanvasScalerViewTest, ScreenDocumentsLayOutAtTheUISize) {
 
     // a 2D scene's documents scale too, still covering the game canvas
     Scene world;
+    addCamera(world, CameraType::CAMERA_ORTHO);
     CameraComponent& camera = world.getComponent<CameraComponent>(world.getCamera());
-    camera.type = CameraType::CAMERA_ORTHO;
     world.setCanvasScaler(scaleWithScreenSize(1920, 1080, ScreenMatchMode::Expand));
     world.setCanvasScalerUseProjectDefault(false);
     world.updateCameraSize();

@@ -110,6 +110,8 @@ bool UIParticleSource::material(Scene* scene, Entity emitter, std::string& textu
 
 // ---------------------------------------------------------------- the element
 
+RMLUI_RTTI_Define(UIParticleSystemElement)
+
 UIParticleSystemElement::UIParticleSystemElement(const Rml::String& tag): Rml::Element(tag){
 }
 

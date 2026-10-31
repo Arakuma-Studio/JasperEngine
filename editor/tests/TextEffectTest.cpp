@@ -14,6 +14,7 @@
 #include "component/UIComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/Transform.h"
+#include "component/CameraComponent.h"
 #include "subsystem/UISystem.h"
 #include "pool/ShaderPool.h"
 #include "util/STBText.h"
@@ -41,6 +42,14 @@ namespace {
         Entity entity;
 
         explicit TextScene(const std::string& text, bool effect = true, unsigned int fontSize = 20){
+            // a UI camera, as a loaded UI scene has
+            Entity camera = scene.createEntity();
+            scene.addComponent<Transform>(camera, Transform());
+            CameraComponent cameraComponent;
+            cameraComponent.type = CameraType::CAMERA_UI;
+            scene.addComponent<CameraComponent>(camera, cameraComponent);
+            scene.setCamera(camera);
+
             entity = scene.createEntity();
             scene.addComponent<Transform>(entity, Transform());
             scene.addComponent<RectTransformComponent>(entity, RectTransformComponent());
