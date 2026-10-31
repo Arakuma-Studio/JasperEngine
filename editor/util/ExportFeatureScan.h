@@ -32,9 +32,14 @@ namespace jasperengine::editor {
         // Http: Lua `Http.` / `Http:` / `Http[`, C++ jasperengine::Http, Http:: or "net/Http.h"
         static Feature http();
 
-        // Scans every file under `root` (an exported project folder; hidden folders and build
-        // folders skipped). One Use per feature found, in the order of `features`.
+        // Scans every file under `root` (hidden folders and build folders skipped). One Use per
+        // feature found, in the order of `features`.
         static std::vector<Use> scan(const std::filesystem::path& root, const std::vector<Feature>& features);
+        // Scans these files (relative to `root`; only .lua, HTML documents and C++ sources are read)
+        static std::vector<Use> scanFiles(const std::filesystem::path& root, std::vector<std::filesystem::path> files,
+                                          const std::vector<Feature>& features);
+        // The files under `dir` (relative to `root`) that scan() would read
+        static void collect(const std::filesystem::path& root, const std::filesystem::path& dir, std::vector<std::filesystem::path>& files);
 
         // The Lua of an HTML document's <script type="text/lua"> elements, one after the other
         static std::string luaOfHtml(const std::string& html);

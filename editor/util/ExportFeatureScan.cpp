@@ -53,27 +53,36 @@ std::string ExportFeatureScan::luaOfHtml(const std::string& html) {
     return lua;
 }
 
+void ExportFeatureScan::collect(const fs::path& root, const fs::path& dir, std::vector<fs::path>& files) {
+    std::error_code ec;
+    if (!fs::is_directory(dir, ec)) return;
+    for (auto it = fs::recursive_directory_iterator(dir, fs::directory_options::skip_permission_denied, ec);
+         !ec && it != fs::recursive_directory_iterator(); it.increment(ec)) {
+        const std::string name = it->path().filename().string();
+        if (it->is_directory(ec)) {
+            if (!name.empty() && (name[0] == '.' || name == "build")) it.disable_recursion_pending();
+            continue;
+        }
+        if (it->is_regular_file(ec)) files.push_back(it->path().lexically_relative(root));
+    }
+}
+
 std::vector<ExportFeatureScan::Use> ExportFeatureScan::scan(const fs::path& root, const std::vector<Feature>& features) {
+    std::vector<fs::path> files;
+    collect(root, root, files);
+    return scanFiles(root, std::move(files), features);
+}
+
+std::vector<ExportFeatureScan::Use> ExportFeatureScan::scanFiles(const fs::path& root, std::vector<fs::path> files,
+                                                                 const std::vector<Feature>& features) {
     std::vector<Use> uses(features.size());
     for (size_t i = 0; i < features.size(); i++) uses[i].feature = features[i].name;
-
-    std::vector<fs::path> files;
-    std::error_code ec;
-    if (fs::is_directory(root, ec)) {
-        for (auto it = fs::recursive_directory_iterator(root, fs::directory_options::skip_permission_denied, ec);
-             !ec && it != fs::recursive_directory_iterator(); it.increment(ec)) {
-            const std::string name = it->path().filename().string();
-            if (it->is_directory(ec)) {
-                if (!name.empty() && (name[0] == '.' || name == "build")) it.disable_recursion_pending();
-                continue;
-            }
-            if (it->is_regular_file(ec)) files.push_back(it->path());
-        }
-    }
     // the same "first file" on every machine
     std::sort(files.begin(), files.end());
+    files.erase(std::unique(files.begin(), files.end()), files.end());
 
-    for (const fs::path& file : files) {
+    for (const fs::path& relative : files) {
+        const fs::path file = root / relative;
         const std::string ext = lowerText(file.extension().string());
         const bool isLua = ext == ".lua";
         const bool isHtml = ext == ".html" || ext == ".htm" || ext == ".rml";
@@ -86,7 +95,7 @@ std::vector<ExportFeatureScan::Use> ExportFeatureScan::scan(const fs::path& root
         for (size_t i = 0; i < features.size(); i++) {
             const std::regex& pattern = isCpp ? features[i].cpp : features[i].lua;
             if (!std::regex_search(text, pattern)) continue;
-            if (uses[i].files == 0) uses[i].file = file.lexically_relative(root).generic_string();
+            if (uses[i].files == 0) uses[i].file = relative.generic_string();
             uses[i].files++;
         }
     }

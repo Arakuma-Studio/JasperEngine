@@ -3124,7 +3124,14 @@ bool editor::Exporter::writeAndroidProjectSettings() {
     const bool internetTicked = android.permissions.count("internet") > 0;
     bool internet = internetTicked || android.internetAccess == AndroidInternetAccess::Require;
     if (!internet) {
-        const std::vector<ExportFeatureScan::Use> uses = ExportFeatureScan::scan(getExportProjectRoot(), {ExportFeatureScan::http()});
+        // what this export ships: its Lua files, the HTML UI documents and the C++ scripts (not the
+        // generated sources, which call Http themselves, nor files an earlier export left)
+        const fs::path exportRoot = getExportProjectRoot();
+        std::vector<fs::path> shipped;
+        for (const fs::path& lua : luaExportedPaths) shipped.push_back(fs::path("lua") / lua);
+        ExportFeatureScan::collect(exportRoot, exportRoot / "assets", shipped);
+        ExportFeatureScan::collect(exportRoot, exportRoot / "scripts", shipped);
+        const std::vector<ExportFeatureScan::Use> uses = ExportFeatureScan::scanFiles(exportRoot, shipped, {ExportFeatureScan::http()});
         if (!uses.empty()) {
             internet = true;
             Out::info("Android: added INTERNET (Http used in %s%s)", uses[0].file.c_str(),

@@ -131,17 +131,16 @@ return Player
   events: RegisterEvent(self, Button(self.scene, self.entity):getButtonComponent().onPress,
   "onPress"). No manual unregister. onDestroy runs on GameObject.destroy.
 - Bound getters are often PROPERTIES, not methods: go.position, sprite.width, body.mass,
-  Engine.deltatime. A missing method fails with "attempt to call a nil value". Check
-  jasper://docs/lua-api (an index: read only what you need), the Lua stubs or search_engine_api before using a name you have not seen there.
+  Engine.deltatime (a missing method: "attempt to call a nil value"). Check
+  jasper://docs/lua-api (an index: read what you need), the Lua stubs or search_engine_api before using a name you have not seen there.
 - Input.isKeyPressed is the held state; detect a press by remembering last frame's value or
   with onKeyDown(key, isRepeat, mods). Log.print/warn/error take ONE string (use ..).
 - Time: Engine.timeScale and Engine.fixedDeltatime (read/write), Engine.gameTime and
   Engine.frameCount (scaled game time and frames since start).
-- C++ default arguments do not exist in Lua: pass every argument (e.g. the wake flag).
+- Lua has no default arguments: pass every argument (e.g. the wake flag).
 - Saves: PlayerPrefs, Json.encode/decode, File.writeText("data://x") (jasper://docs/lua-api
   2.4); user_settings reads/resets PlayerPrefs.
-- HTTP: Http.get/post/download/getTexture with a callback, results on the main thread (pass
-  owner = self); see jasper://docs/networking.
+- HTTP: Http.get/post, callbacks on the main thread: jasper://docs/networking.
 - Lua has no Dori.Script, on_start, getComponent, setProperty or timers. Never put editor
   property paths (submeshes[0]...) in scripts.
 
@@ -164,7 +163,7 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
   action "set"): time_scale, fixed_fps (each frame exactly 1/fixed_fps s: reproducible runs),
   auto_pause (frozen between your calls; runs only inside wait, send_input or step).
 - wait: run for seconds, game_seconds or frames, or until a Lua condition is truthy; input
-  sends send_input events while it waits (hold a key for 2 game seconds, then check).
+  sends send_input events while it waits (hold a key 2 game seconds, then check).
 - run_build runs an exported desktop player with input events and screenshots_at (seconds
   since launch); returns its errors (Lua too) and the log tail.
 
@@ -255,9 +254,8 @@ set_ui_effect_time).
 Edit mode runs no Lua. First read jasper://docs/html-ui.
 
 ## Pitfalls
-- Unsaved scenes are lost when the editor closes; save after each working step.
-- Edits made while playing are lost when play stops (as in Unity): stop before editing
-  the scene for real.
+- Save after each working step: unsaved scenes are lost on close.
+- Play-mode edits are lost when play stops (as in Unity): stop first.
 - Lua: static functions use a dot (GameObject.instantiate), methods a colon (go:setScale(2)).
 )JE";
 }
