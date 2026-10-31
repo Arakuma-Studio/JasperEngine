@@ -19,6 +19,9 @@
 #include <mutex>
 
 #include "jobs/JobSystem.h"
+#include "io/ScopedFileLock.h"
+
+#include <memory>
 
 namespace jasperengine::editor {
 
@@ -146,6 +149,8 @@ namespace jasperengine::editor {
 
         ShaderBuilder shaderBuilder;
         CommandRunner commandRunner;
+        // held while a build uses the shared compile tree (getSharedBuildCacheDir)
+        std::unique_ptr<io::ScopedFileLock> sharedBuildLock;
 
         // The UI Documents of the exported scenes, collected while loadAndSaveAllScenes() has
         // every scene loaded, for checkHtmlUIReferences()
@@ -244,6 +249,9 @@ namespace jasperengine::editor {
 
         std::string getAppName() const;
         fs::path getBuildCacheDir() const;
+        // The compile tree every project with this build's kit and engine settings shares (the
+        // engine and vendored objects built once), in the user cache; docs/specs/S33-build-speed.md R11
+        fs::path getSharedBuildCacheDir() const;
         // Generator cmake will actually use: the project kit's, or with no
         // explicit -G, the CMAKE_GENERATOR environment variable cmake honors.
         std::string getEffectiveGenerator() const;

@@ -82,6 +82,14 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     # Project-wide runtime settings are injected here by the editor Exporter.
     # Standalone engine builds keep the defaults declared by each platform.
     # @JASPERENGINE_PROJECT_SETTINGS@
+
+    # The settings below reach the game executable only (JASPERENGINE_APP_DEFINITIONS, its platform
+    # main and the project's sources), which hands them to the engine at start through
+    # PlatformConfig (platform/common/PlatformDefaults.h): the engine library and the vendored
+    # libraries compile the same for every project, so a settings change recompiles a few units,
+    # and a prebuilt engine package serves every project of one configuration
+    # (docs/specs/S33-build-speed.md R5)
+    set(JASPERENGINE_APP_DEFINITIONS "")
     if(NOT DEFINED JASPERENGINE_VSYNC_ENABLED)
         set(JASPERENGINE_VSYNC_ENABLED ON)
     endif()
@@ -90,30 +98,31 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     else()
         set(JASPERENGINE_VSYNC_ENABLED_VALUE 0)
     endif()
-    add_definitions("-DJASPERENGINE_VSYNC_ENABLED=${JASPERENGINE_VSYNC_ENABLED_VALUE}")
+    list(APPEND JASPERENGINE_APP_DEFINITIONS "JASPERENGINE_VSYNC_ENABLED=${JASPERENGINE_VSYNC_ENABLED_VALUE}")
 
     # Player > Logging (the Exporter sets them): the game's log level, player.log, backtraces
     if(DEFINED JASPERENGINE_LOG_LEVEL)
-        add_definitions("-DJASPERENGINE_LOG_LEVEL=\"${JASPERENGINE_LOG_LEVEL}\"")
+        list(APPEND JASPERENGINE_APP_DEFINITIONS "JASPERENGINE_LOG_LEVEL=\"${JASPERENGINE_LOG_LEVEL}\"")
     endif()
     if(DEFINED JASPERENGINE_LOG_FILE)
         if(JASPERENGINE_LOG_FILE)
-            add_definitions("-DJASPERENGINE_LOG_FILE=1")
+            list(APPEND JASPERENGINE_APP_DEFINITIONS "JASPERENGINE_LOG_FILE=1")
         else()
-            add_definitions("-DJASPERENGINE_LOG_FILE=0")
+            list(APPEND JASPERENGINE_APP_DEFINITIONS "JASPERENGINE_LOG_FILE=0")
         endif()
     endif()
     if(DEFINED JASPERENGINE_LOG_BACKTRACE)
         if(JASPERENGINE_LOG_BACKTRACE)
-            add_definitions("-DJASPERENGINE_LOG_BACKTRACE=1")
+            list(APPEND JASPERENGINE_APP_DEFINITIONS "JASPERENGINE_LOG_BACKTRACE=1")
         else()
-            add_definitions("-DJASPERENGINE_LOG_BACKTRACE=0")
+            list(APPEND JASPERENGINE_APP_DEFINITIONS "JASPERENGINE_LOG_BACKTRACE=0")
         endif()
     endif()
 
-    # Player > Crash Handling (the Exporter sets them; core/Engine.cpp has the defaults)
-    foreach(crashSetting JASPERENGINE_CRASH_HANDLER JASPERENGINE_CRASH_LOG_TAIL JASPERENGINE_CRASH_DUMP_WITH_HEAP
-            JASPERENGINE_CRASH_HANG_WATCHDOG JASPERENGINE_CRASH_WEB_OVERLAY)
+    # Player > Crash Handling (the Exporter sets them; PlatformConfig.h has the defaults). Whether
+    # the crash handler and the hang watchdog are compiled in at all stays a definition of the
+    # whole build (core/Engine.cpp leaves their code out when off).
+    foreach(crashSetting JASPERENGINE_CRASH_HANDLER JASPERENGINE_CRASH_HANG_WATCHDOG)
         if(DEFINED ${crashSetting})
             if(${crashSetting})
                 add_definitions("-D${crashSetting}=1")
@@ -122,8 +131,17 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             endif()
         endif()
     endforeach()
+    foreach(crashSetting JASPERENGINE_CRASH_LOG_TAIL JASPERENGINE_CRASH_DUMP_WITH_HEAP JASPERENGINE_CRASH_WEB_OVERLAY)
+        if(DEFINED ${crashSetting})
+            if(${crashSetting})
+                list(APPEND JASPERENGINE_APP_DEFINITIONS "${crashSetting}=1")
+            else()
+                list(APPEND JASPERENGINE_APP_DEFINITIONS "${crashSetting}=0")
+            endif()
+        endif()
+    endforeach()
     if(DEFINED JASPERENGINE_CRASH_HANG_MS)
-        add_definitions("-DJASPERENGINE_CRASH_HANG_MS=${JASPERENGINE_CRASH_HANG_MS}")
+        list(APPEND JASPERENGINE_APP_DEFINITIONS "JASPERENGINE_CRASH_HANG_MS=${JASPERENGINE_CRASH_HANG_MS}")
     endif()
 
     if(NOT DEFINED JASPERENGINE_WINDOW_WIDTH)
@@ -155,17 +173,17 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     else()
         set(JASPERENGINE_WINDOW_RESIZABLE_VALUE 0)
     endif()
-    add_definitions("-DDEFAULT_WINDOW_WIDTH=${JASPERENGINE_WINDOW_WIDTH}")
-    add_definitions("-DDEFAULT_WINDOW_HEIGHT=${JASPERENGINE_WINDOW_HEIGHT}")
-    add_definitions("-DJASPERENGINE_WINDOW_MODE=${JASPERENGINE_WINDOW_MODE}")
-    add_definitions("-DJASPERENGINE_WINDOW_RESIZABLE=${JASPERENGINE_WINDOW_RESIZABLE_VALUE}")
-    add_definitions("-DJASPERENGINE_WINDOW_TITLE=\"${JASPERENGINE_WINDOW_TITLE}\"")
-    add_definitions("-DJASPERENGINE_STORAGE_ID=\"${JASPERENGINE_STORAGE_ID}\"")
+    list(APPEND JASPERENGINE_APP_DEFINITIONS "DEFAULT_WINDOW_WIDTH=${JASPERENGINE_WINDOW_WIDTH}")
+    list(APPEND JASPERENGINE_APP_DEFINITIONS "DEFAULT_WINDOW_HEIGHT=${JASPERENGINE_WINDOW_HEIGHT}")
+    list(APPEND JASPERENGINE_APP_DEFINITIONS "JASPERENGINE_WINDOW_MODE=${JASPERENGINE_WINDOW_MODE}")
+    list(APPEND JASPERENGINE_APP_DEFINITIONS "JASPERENGINE_WINDOW_RESIZABLE=${JASPERENGINE_WINDOW_RESIZABLE_VALUE}")
+    list(APPEND JASPERENGINE_APP_DEFINITIONS "JASPERENGINE_WINDOW_TITLE=\"${JASPERENGINE_WINDOW_TITLE}\"")
+    list(APPEND JASPERENGINE_APP_DEFINITIONS "JASPERENGINE_STORAGE_ID=\"${JASPERENGINE_STORAGE_ID}\"")
     # X11 class / Wayland app_id (APP_NAME is a plain identifier, safe to quote).
     # Desktop environments match it against <APP_NAME>.desktop for the app icon.
-    add_definitions("-DJASPERENGINE_APP_ID=\"${APP_NAME}\"")
+    list(APPEND JASPERENGINE_APP_DEFINITIONS "JASPERENGINE_APP_ID=\"${APP_NAME}\"")
     if(JASPERENGINE_WINDOW_ICON AND EXISTS "${PROJECT_ROOT}/app_icon.h")
-        add_definitions("-DJASPERENGINE_WINDOW_ICON")
+        list(APPEND JASPERENGINE_APP_DEFINITIONS JASPERENGINE_WINDOW_ICON)
     endif()
 
     # Per-project HybridArray capacities (SceneMaxValues) are injected here by the
@@ -809,6 +827,10 @@ option(JASPERENGINE_SHARED "Build jasperengine as a shared library" OFF)
 # Warnings (off here by default, so exports stay quiet) and unity builds of our own targets
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/JasperWarnings.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/JasperUnityBuild.cmake)
+# precompiled headers (off here by default: exports build as before) and the linker of development
+# and test builds (docs/testing.md "Build speed"; selected below, once a shipped game is known)
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/JasperPch.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/JasperLinker.cmake)
 
 if(JASPERENGINE_SHARED)
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -973,6 +995,20 @@ if(JASPERENGINE_RELEASE_LINK)
     message(STATUS "Release link: dead sections out, hidden visibility, ${jasperengineLto}")
 endif()
 
+# Build speed of the trees that ship nothing (docs/specs/S33-build-speed.md R3, R4): lld for their
+# Debug and RelWithDebInfo links, and Jolt unity-built. A shipped game keeps the toolchain's linker
+# and compiles every vendored source on its own, as always. (The editor tree selects its linker in
+# the root CMakeLists.txt, before this directory.)
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    jasperengine_select_linker(${jasperengineShippedGame})
+endif()
+if(jasperengineShippedGame)
+    set(jasperengineVendoredUnityDefault OFF)
+else()
+    set(jasperengineVendoredUnityDefault ON)
+endif()
+option(JASPERENGINE_VENDORED_UNITY "Unity-build the vendored libraries that gain from it and merge cleanly (Jolt)" ${jasperengineVendoredUnityDefault})
+
 add_subdirectory(libs/sokol)
 add_subdirectory(libs/lua)
 add_subdirectory(libs/stb)
@@ -983,6 +1019,9 @@ add_subdirectory(libs/tinyxml2)
 foreach(lib IN LISTS JASPERENGINE_PHYSICS_LIBS)
     add_subdirectory(libs/${lib})
 endforeach()
+if(JASPERENGINE_PHYSICS_3D)
+    jasperengine_vendored_unity_build(joltphysics)
+endif()
 add_subdirectory(libs/harfbuzz)
 add_subdirectory(libs/sheenbidi)
 add_subdirectory(libs/meshoptimizer)
@@ -1671,7 +1710,33 @@ if(JASPERENGINE_SPLINE_SRCS)
         REASON "the spline sources build with their own floating-point flags"
         SOURCES ${JASPERENGINE_SPLINE_SRCS})
 endif()
+# Unity build: these sources keep file-local helpers or types (State, Category, TempDir, ...)
+# whose names another source of the engine defines too (docs/specs/S33-build-speed.md M8)
+jasperengine_skip_unity_build(
+    REASON "file-local helpers or types named as in another engine source"
+    SOURCES
+        core/Input.cpp
+        core/animation/AnimatorAssetIO.cpp
+        core/diag/CrashHandlerPosix.cpp
+        core/graph/GraphRegistry.cpp
+        core/lattice/LatticePresets.cpp
+        core/lattice/LatticeSolver.cpp
+        core/object/spline/SplineAnimate.cpp
+        core/object/spline/SplineInstantiate.cpp
+        core/pose/PoseAnimationIO.cpp
+        core/pose/PoseFile.cpp
+        core/profiler/GpuMemory.cpp
+        core/profiler/Profiler.cpp
+        core/script/binding/HtmlUIClassesLua.cpp
+        core/shader/ShaderWarmup.cpp
+        core/subsystem/PoseAnimatorSystem.cpp
+        core/subsystem/SplineSystem.cpp
+        core/util/PostColorLut.cpp
+        core/util/SubscriptionOwnerIndex.cpp
+        renders/sokol/SokolPassPreview.cpp
+        renders/sokol/SokolPassRecorder.cpp)
 jasperengine_target_unity_build(jasperengine)
+jasperengine_target_pch(jasperengine)
 
 target_compile_definitions(jasperengine
     PUBLIC
@@ -1942,6 +2007,9 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
     jasperengine_target_warnings(${APP_NAME})
     jasperengine_target_unity_build(${APP_NAME})
+    jasperengine_target_pch(${APP_NAME})
+    # the project's runtime settings (above), for its platform main and its own sources
+    target_compile_definitions(${APP_NAME} PRIVATE ${JASPERENGINE_APP_DEFINITIONS})
     jasperengine_stage_asan_runtime(${APP_NAME})
 
     # Project script roots are injected here by the editor Exporter. They are

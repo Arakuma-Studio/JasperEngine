@@ -8,6 +8,12 @@ option(JASPERENGINE_WARNINGS "Warnings on the engine, editor and test targets" O
 include(${CMAKE_CURRENT_SOURCE_DIR}/engine/cmake/JasperSanitizers.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/engine/cmake/JasperWarnings.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/engine/cmake/JasperUnityBuild.cmake)
+# precompiled headers and the linker of development and test builds (docs/testing.md "Build speed")
+include(${CMAKE_CURRENT_SOURCE_DIR}/engine/cmake/JasperPch.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/engine/cmake/JasperLinker.cmake)
+# (the editor tree ships no game: a Release editor keeps the default linker, AUTO picks lld for
+# Debug and RelWithDebInfo; set before any target, engine/ and the vendored libraries included)
+jasperengine_select_linker(OFF)
 
 # Same as CI (.github/workflows/ci.yml): git describe --tags --match 'v[0-9]*' --always --dirty.
 # Only version tags count, so the doriax-base fork-point tag never names a build.
@@ -1219,6 +1225,71 @@ jasperengine_skip_unity_build(
     REASON "the Scene view picking and tools (S26): per-file helpers (PI, now, project to view)"
     SOURCES ${JASPERENGINE_EDITOR_SCENEVIEW_SOURCES})
 
+# Unity build: these sources keep file-local helpers or types (Registry, fail, lower, TempDir, ...)
+# whose names another editor or editor test source defines too (docs/specs/S33-build-speed.md M8)
+jasperengine_skip_unity_build(
+    REASON "file-local helpers or types named as in another editor source"
+    SOURCES
+        ${EDITOR_DIR}/animation/AnimationClipController.cpp
+        ${EDITOR_DIR}/animation/AnimationClipDocument.cpp
+        ${EDITOR_DIR}/animation/AnimatorAssetDocument.cpp
+        ${EDITOR_DIR}/animation/ClipConverters.cpp
+        ${EDITOR_DIR}/animation/ClipRecordHooks.cpp
+        ${EDITOR_DIR}/animation/PreviewOwner.cpp
+        ${EDITOR_DIR}/asset/AssetIndex.cpp
+        ${EDITOR_DIR}/cook/RuntimeFieldsEmitter.cpp
+        ${EDITOR_DIR}/lattice/LatticeBake.cpp
+        ${EDITOR_DIR}/lattice/LatticeBakeGltf.cpp
+        ${EDITOR_DIR}/lattice/LatticeSceneTools.cpp
+        ${EDITOR_DIR}/layout/LayoutPresets.cpp
+        ${EDITOR_DIR}/mcp/McpRefs.cpp
+        ${EDITOR_DIR}/organisation/AssetLabels.cpp
+        ${EDITOR_DIR}/platform/AndroidPackager.cpp
+        ${EDITOR_DIR}/platform/IosProject.cpp
+        ${EDITOR_DIR}/publish/PayloadValidator.cpp
+        ${EDITOR_DIR}/publish/Publishing.cpp
+        ${EDITOR_DIR}/search/AssetQuery.cpp
+        ${EDITOR_DIR}/shortcuts/Chord.cpp
+        ${EDITOR_DIR}/spline/SplineEditor.cpp
+        ${EDITOR_DIR}/tests/PhysicsPlacementWorkspaceTest.cpp
+        ${EDITOR_DIR}/tests/ProjectSaveTest.cpp
+        ${EDITOR_DIR}/tests/animation/AnimationClipAssetsTest.cpp
+        ${EDITOR_DIR}/tests/animation/AnimationClipControllerTest.cpp
+        ${EDITOR_DIR}/tests/animation/AnimationPlayerProjectTest.cpp
+        ${EDITOR_DIR}/tests/animation/AnimationWindowClipTest.cpp
+        ${EDITOR_DIR}/tests/animation/AnimatorEditorTest.cpp
+        ${EDITOR_DIR}/tests/animation/ClipConvertersTest.cpp
+        ${EDITOR_DIR}/tests/animation/InspectorClipPrefabTest.cpp
+        ${EDITOR_DIR}/tests/animation/PlayerModelLayoutTest.cpp
+        ${EDITOR_DIR}/tests/command/CommandHistoryHookTest.cpp
+        ${EDITOR_DIR}/tests/engine/action/ActionTracksTest.cpp
+        ${EDITOR_DIR}/tests/engine/physics/ConvexDecompositionTest.cpp
+        ${EDITOR_DIR}/tests/engine/subsystem/PhysicsSyncTest.cpp
+        ${EDITOR_DIR}/tests/picking/BvhDiskCacheTest.cpp
+        ${EDITOR_DIR}/tests/reflect/ReflectMigrationTest.cpp
+        ${EDITOR_DIR}/tests/reflect/ReflectResolveBenchTest.cpp
+        ${EDITOR_DIR}/tests/sceneview/SceneViewStateTest.cpp
+        ${EDITOR_DIR}/tests/stream/StochasticTilingTest.cpp
+        ${EDITOR_DIR}/tests/stream/StreamValueTest.cpp
+        ${EDITOR_DIR}/tests/texsynth/TexSynthTest.cpp
+        ${EDITOR_DIR}/tests/util/FbxImportTest.cpp
+        ${EDITOR_DIR}/tests/util/NormalMapTiltTest.cpp
+        ${EDITOR_DIR}/tests/vcs/SceneDiffTest.cpp
+        ${EDITOR_DIR}/tests/vcs/SceneMergeTest.cpp
+        ${EDITOR_DIR}/tests/vcs/SvnProviderTest.cpp
+        ${EDITOR_DIR}/texsynth/SynthesisSession.cpp
+        ${EDITOR_DIR}/util/FluidTextureLink.cpp
+        ${EDITOR_DIR}/util/HtmlUiExamples.cpp
+        ${EDITOR_DIR}/util/NumericExpression.cpp
+        ${EDITOR_DIR}/util/ParticleEffectEdit.cpp
+        ${EDITOR_DIR}/util/ProjectChecks.cpp
+        ${EDITOR_DIR}/window/InspectorAnimator.cpp
+        ${EDITOR_DIR}/window/InspectorFluid.cpp
+        ${EDITOR_DIR}/window/PoseAnimationWindow.cpp
+        ${EDITOR_DIR}/window/PoseAnimationWindowTemplates.cpp
+        ${EDITOR_DIR}/window/vcs/VcsConflictsWindow.cpp
+        ${EDITOR_DIR}/window/widget/HtmlCssLexer.cpp)
+
 function(configure_jasperengine_editor_target target_name)
     add_dependencies(${target_name} generate_api_suggestions)
 
@@ -1289,7 +1360,10 @@ function(configure_jasperengine_editor_target target_name)
                 ${EDITOR_DIR}/backend/BackendLinux.cpp ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp)
     jasperengine_target_warnings(${target_name})
     jasperengine_target_unity_build(${target_name})
-    jasperengine_stage_asan_runtime(${target_name})
+    get_target_property(targetType ${target_name} TYPE)
+    if(NOT targetType STREQUAL "OBJECT_LIBRARY")
+        jasperengine_stage_asan_runtime(${target_name})
+    endif()
 
     set_target_properties(
         ${target_name}
@@ -1315,16 +1389,27 @@ function(configure_jasperengine_editor_target target_name)
     endif()
 endfunction()
 
+# The editor's sources but main.cpp, compiled once for every executable made of them: the editor,
+# its Windows command-line twin and the editor test targets (docs/specs/S33-build-speed.md R1).
+# The executables add main.cpp (the test targets their own main) and link these objects, in the
+# order the sources are listed here.
+set(JASPERENGINE_EDITOR_OBJECT_SOURCES ${JASPERENGINE_EDITOR_SOURCES})
+list(REMOVE_ITEM JASPERENGINE_EDITOR_OBJECT_SOURCES ${EDITOR_DIR}/main.cpp)
+add_library(jasperengine-editor-objects OBJECT ${JASPERENGINE_EDITOR_OBJECT_SOURCES})
+configure_jasperengine_editor_target(jasperengine-editor-objects)
+jasperengine_target_pch(jasperengine-editor-objects EDITOR)
+
 add_executable(
     jasperengine-editor
 
     ${PLATFORM_EXEC_FLAGS}
 
-    ${JASPERENGINE_EDITOR_SOURCES}
+    ${EDITOR_DIR}/main.cpp
     ${JASPERENGINE_EDITOR_ICON_OBJECTS}
 )
 
 configure_jasperengine_editor_target(jasperengine-editor)
+target_link_libraries(jasperengine-editor PRIVATE jasperengine-editor-objects)
 
 if(WIN32)
     jasperengine_add_windows_manifest(jasperengine-editor)
@@ -1461,11 +1546,12 @@ if(WIN32)
 
         EXCLUDE_FROM_ALL
 
-        ${JASPERENGINE_EDITOR_SOURCES}
+        ${EDITOR_DIR}/main.cpp
         ${JASPERENGINE_EDITOR_CMD_ICON_OBJECTS}
     )
 
     configure_jasperengine_editor_target(jasperengine-editor-cmd)
+    target_link_libraries(jasperengine-editor-cmd PRIVATE jasperengine-editor-objects)
     jasperengine_add_windows_manifest(jasperengine-editor-cmd)
     add_dependencies(jasperengine-editor-cmd copy_jasperengine_editor_engine)
     list(APPEND JASPERENGINE_EDITOR_INSTALL_TARGETS jasperengine-editor-cmd)
