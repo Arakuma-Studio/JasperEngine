@@ -179,7 +179,10 @@ namespace jasperengine::editor{
         EntityReference,
         // Unity AnimationCurve / Gradient (math/AnimationCurve.h, math/Gradient.h)
         Curve,
-        Gradient
+        Gradient,
+        // Unity's ParticleSystem.MinMaxCurve / MinMaxGradient (particles/MinMax.h)
+        MinMaxCurve,
+        MinMaxGradient
     };
 
     struct PropertyData{

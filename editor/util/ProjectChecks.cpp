@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "ProjectChecks.h"
+#include "component/ActionComponent.h"
+#include "component/PointsComponent.h"
+#include "component/ParticleSystemComponent.h"
+#include "particles/ParticleFields.h"
 #include "util/FileUtils.h"
 
 #include "AppSettings.h"
@@ -2025,6 +2029,44 @@ std::vector<editor::ProjectChecks::Finding> editor::ProjectChecks::lineTrailFind
                         name + ": its Trail Renderer's Time is 0, so it keeps no point and draws nothing", "trail-zero-time",
                         "set time to how long a point lives in seconds (Unity's default is 5; a bullet trail ~0.3)"});
                 }
+            }
+        }
+    }
+    return findings;
+}
+
+std::vector<editor::ProjectChecks::Finding> editor::ProjectChecks::particleFindings(Project* project) {
+    std::vector<Finding> findings;
+    const fs::path root = project->getProjectPath();
+
+    for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
+        if (!sceneProject->scene) continue;
+        Scene* scene = sceneProject->scene;
+        const std::string path = sceneProject->filepath.empty() ? std::string() : projectRelative(root, root / sceneProject->filepath);
+        for (Entity entity : sceneProject->entities) {
+            const ParticleSystemComponent* ps = scene->findComponent<ParticleSystemComponent>(entity);
+            if (!ps) continue;
+            const std::string name = "GameObject '" + scene->getEntityName(entity) + "'";
+            if (ps->version < 2) {
+                findings.push_back({"particles", path, 0, 0, "info",
+                    name + ": its Particle System uses the legacy model (version 1)", "particles-legacy",
+                    "upgrade it to Unity's modules: the Inspector's Upgrade to modules, create_particles {entity, upgrade: true} or Lua ps:upgrade()"});
+                continue;
+            }
+            const ActionComponent* action = scene->findComponent<ActionComponent>(entity);
+            const Entity target = (action && action->target != NULL_ENTITY && scene->isEntityCreated(action->target)) ? action->target : entity;
+            if (scene->findComponent<PointsComponent>(target) && ps->renderer.renderMode != ParticleSystemRenderMode::Billboard) {
+                findings.push_back({"particles", path, 0, 0, "warning",
+                    name + ": its Particle System draws as points, which are billboards only: its render mode " +
+                    particles::enumName(*particles::findField("renderer.renderMode"), (int)ps->renderer.renderMode) + " is drawn as Billboard",
+                    "particles-points-render-mode",
+                    "draw it with the quad renderer (create_particles renderer: quads, or GameObject > Effects > Particle System) or set renderer.renderMode Billboard"});
+            }
+            if (ps->main.maxParticles > 5000) {
+                findings.push_back({"particles", path, 0, 0, "warning",
+                    name + ": its Particle System allows " + std::to_string(ps->main.maxParticles) +
+                    " particles, past the mobile budget of 5000 (the simulation runs on the CPU)", "particles-max-exceeded-budget",
+                    "lower main.maxParticles (and the emission rate), or keep the system off mobile builds"});
             }
         }
     }

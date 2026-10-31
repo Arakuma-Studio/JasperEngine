@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Factory.h"
+#include "particles/ParticleFields.h"
 
 #include "Scene.h"
 #include "Catalog.h"
@@ -777,6 +778,39 @@ std::string editor::Factory::formatGradient(const Gradient& gradient) {
     }
     code << "}, " << (gradient.mode == GradientMode::Fixed ? "GradientMode::Fixed" : "GradientMode::Blend") << ")";
     return code.str();
+}
+
+std::string editor::Factory::formatMinMaxCurve(const MinMaxCurve& curve) {
+    switch (curve.mode) {
+        case ParticleSystemCurveMode::Constant:
+            return "MinMaxCurve(" + formatFloat(curve.constant) + ")";
+        case ParticleSystemCurveMode::TwoConstants:
+            return "MinMaxCurve::between(" + formatFloat(curve.constantMin) + ", " + formatFloat(curve.constant) + ")";
+        case ParticleSystemCurveMode::Curve:
+            return "MinMaxCurve::fromCurve(" + formatCurve(curve.curve) + ", " + formatFloat(curve.constant) + ")";
+        case ParticleSystemCurveMode::TwoCurves:
+            return "MinMaxCurve::between(" + formatCurve(curve.curveMin) + ", " + formatCurve(curve.curve) + ", " + formatFloat(curve.constant) + ")";
+    }
+    return "MinMaxCurve(" + formatFloat(curve.constant) + ")";
+}
+
+std::string editor::Factory::formatMinMaxGradient(const MinMaxGradient& gradient) {
+    switch (gradient.mode) {
+        case ParticleSystemGradientMode::Color:
+            return "MinMaxGradient::fromColor(" + formatVector4(gradient.color) + ")";
+        case ParticleSystemGradientMode::TwoColors:
+            return "MinMaxGradient::between(" + formatVector4(gradient.colorMin) + ", " + formatVector4(gradient.color) + ")";
+        case ParticleSystemGradientMode::Gradient:
+            return "MinMaxGradient::fromGradient(" + formatGradient(gradient.gradient) + ")";
+        case ParticleSystemGradientMode::TwoGradients:
+            return "MinMaxGradient::between(" + formatGradient(gradient.gradientMin) + ", " + formatGradient(gradient.gradient) + ")";
+        case ParticleSystemGradientMode::RandomColor: {
+            // a gradient read at a random point
+            return "[]{ MinMaxGradient g = MinMaxGradient::fromGradient(" + formatGradient(gradient.gradient) +
+                   "); g.mode = ParticleSystemGradientMode::RandomColor; return g; }()";
+        }
+    }
+    return "MinMaxGradient::fromColor(" + formatVector4(gradient.color) + ")";
 }
 
 std::string editor::Factory::formatPositiveFloat(float value) {
@@ -3912,6 +3946,47 @@ std::string editor::Factory::createParticleSystemComponent(int indentSpaces, Ent
     std::ostringstream code;
     const std::string ind = indentation(indentSpaces);
     code << ind << "ParticleSystemComponent particles;\n";
+    if (p.useUnscaledTime) code << ind << "particles.useUnscaledTime = true;\n";
+
+    // version 2: the modules' non-default fields (particles/ParticleFields)
+    if (p.version >= 2) {
+        code << ind << "particles.version = " << formatInt(p.version) << ";\n";
+        for (const particles::FieldInfo& field : particles::fields()) {
+            if (particles::isDefault(field, p)) continue;
+            const std::string target = "particles." + field.path();
+            const void* value = field.get(p);
+            switch (field.type) {
+                case particles::FieldType::Bool: code << ind << target << " = " << formatBool(*static_cast<const bool*>(value)) << ";\n"; break;
+                case particles::FieldType::Int: code << ind << target << " = " << formatInt(*static_cast<const int*>(value)) << ";\n"; break;
+                case particles::FieldType::UInt: code << ind << target << " = " << formatUInt(*static_cast<const unsigned int*>(value)) << ";\n"; break;
+                case particles::FieldType::Float: code << ind << target << " = " << formatFloat(*static_cast<const float*>(value)) << ";\n"; break;
+                case particles::FieldType::Vector2: code << ind << target << " = " << formatVector2(*static_cast<const Vector2*>(value)) << ";\n"; break;
+                case particles::FieldType::Vector3: code << ind << target << " = " << formatVector3(*static_cast<const Vector3*>(value)) << ";\n"; break;
+                case particles::FieldType::Curve: code << ind << target << " = " << formatMinMaxCurve(*static_cast<const MinMaxCurve*>(value)) << ";\n"; break;
+                case particles::FieldType::Gradient: code << ind << target << " = " << formatMinMaxGradient(*static_cast<const MinMaxGradient*>(value)) << ";\n"; break;
+                case particles::FieldType::Enum:
+                    code << ind << target << " = (" << field.enumType << ")" << formatInt(*static_cast<const int*>(value)) << ";\n";
+                    break;
+                case particles::FieldType::String: code << ind << target << " = " << formatString(*static_cast<const std::string*>(value)) << ";\n"; break;
+                case particles::FieldType::IntList:
+                    for (int frame : *static_cast<const std::vector<int>*>(value)) {
+                        code << ind << target << ".push_back(" << formatInt(frame) << ");\n";
+                    }
+                    break;
+                case particles::FieldType::Bursts:
+                    for (const ParticleEmissionBurst& burst : *static_cast<const std::vector<ParticleEmissionBurst>*>(value)) {
+                        code << ind << "{ ParticleEmissionBurst b; b.time = " << formatFloat(burst.time) << "; b.count = " << formatMinMaxCurve(burst.count)
+                             << "; b.cycles = " << formatInt(burst.cycles) << "; b.interval = " << formatFloat(burst.interval)
+                             << "; b.probability = " << formatFloat(burst.probability) << "; " << target << ".push_back(b); }\n";
+                    }
+                    break;
+            }
+        }
+        if (!p.enabled) code << ind << "particles.enabled = false;\n";
+        addComponentCode(code, ind, sceneName, entityName, entity, "ParticleSystemComponent", "particles", assignExisting);
+        return code.str();
+    }
+
     code << ind << "particles.maxParticles = " << formatUInt(p.maxParticles) << ";\n";
     code << ind << "particles.emitter = " << formatBool(p.emitter) << ";\n";
     code << ind << "particles.loop = " << formatBool(p.loop) << ";\n";

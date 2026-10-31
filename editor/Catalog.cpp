@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Catalog.h"
+#include "particles/ParticleFields.h"
 
 #include "Stream.h"
 #include "util/EntityClipboard.h"
@@ -2053,9 +2054,37 @@ namespace {
         return getRigidbodyPropertyFast(static_cast<RigidbodyComponent*>(comp), propertyName);
     }
 
+    // a version 2 module field (particles/ParticleFields) as a property
+    PropertyData particleFieldProperty(const particles::FieldInfo& field, ParticleSystemComponent* comp, ParticleSystemComponent& def) {
+        PropertyType type = PropertyType::Custom;
+        switch (field.type) {
+            case particles::FieldType::Bool: type = PropertyType::Bool; break;
+            case particles::FieldType::Int: type = PropertyType::Int; break;
+            case particles::FieldType::UInt: type = PropertyType::UInt; break;
+            case particles::FieldType::Float: type = PropertyType::Float; break;
+            case particles::FieldType::Vector2: type = PropertyType::Vector2; break;
+            case particles::FieldType::Vector3: type = PropertyType::Vector3; break;
+            case particles::FieldType::Curve: type = PropertyType::MinMaxCurve; break;
+            case particles::FieldType::Gradient: type = PropertyType::MinMaxGradient; break;
+            case particles::FieldType::Enum: type = PropertyType::Enum; break;
+            case particles::FieldType::String: type = PropertyType::String; break;
+            case particles::FieldType::Bursts:
+            case particles::FieldType::IntList: type = PropertyType::Custom; break;
+        }
+        return {type, UpdateFlags_None, field.get(def), comp ? field.get(*comp) : nullptr};
+    }
+
     PropertyData getParticlesPropertyFast(ParticleSystemComponent* comp, const std::string& propertyName) {
         ParticleSystemComponent& def = getDefaultComponent<ParticleSystemComponent>();
         if (!comp) return PropertyData();
+
+        // the model (1 legacy, 2 modules) and the time it runs on
+        if (propertyName == "version") return {PropertyType::Int, UpdateFlags_None, &def.version, &comp->version};
+        if (propertyName == "useUnscaledTime") return {PropertyType::Bool, UpdateFlags_None, &def.useUnscaledTime, &comp->useUnscaledTime};
+        // version 2: "module.field"
+        if (const particles::FieldInfo* field = particles::findField(propertyName)) {
+            return particleFieldProperty(*field, comp, def);
+        }
 
         // Top-level properties
         if (propertyName == "maxParticles") return {PropertyType::UInt, UpdateFlags_None, &def.maxParticles, &comp->maxParticles};
@@ -3354,6 +3383,16 @@ namespace {
     void enumerateParticlesProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
         ParticleSystemComponent* comp = static_cast<ParticleSystemComponent*>(compRef);
         ParticleSystemComponent& def = getDefaultComponent<ParticleSystemComponent>();
+
+        ps["version"] = {PropertyType::Int, UpdateFlags_None, &def.version, comp ? &comp->version : nullptr};
+        ps["useUnscaledTime"] = {PropertyType::Bool, UpdateFlags_None, &def.useUnscaledTime, comp ? &comp->useUnscaledTime : nullptr};
+        // a system lists the fields of its model: the modules (version 2) or the legacy ones
+        if (!comp || comp->version >= 2) {
+            for (const particles::FieldInfo& field : particles::fields()) {
+                ps[field.path()] = particleFieldProperty(field, comp, def);
+            }
+            if (comp) return;
+        }
 
         ps["maxParticles"] = {PropertyType::UInt, UpdateFlags_None, &def.maxParticles, comp ? &comp->maxParticles : nullptr};
         ps["emitter"] = {PropertyType::Bool, UpdateFlags_None, &def.emitter, comp ? &comp->emitter : nullptr};
@@ -4936,6 +4975,12 @@ uint64_t editor::Catalog::getChangedUpdateFlags(ComponentType compType, void* ol
             case PropertyType::Gradient:
                 changed = *static_cast<Gradient*>(oldProp.ref) != *static_cast<Gradient*>(newProp.ref);
                 break;
+            case PropertyType::MinMaxCurve:
+                changed = *static_cast<MinMaxCurve*>(oldProp.ref) != *static_cast<MinMaxCurve*>(newProp.ref);
+                break;
+            case PropertyType::MinMaxGradient:
+                changed = *static_cast<MinMaxGradient*>(oldProp.ref) != *static_cast<MinMaxGradient*>(newProp.ref);
+                break;
             case PropertyType::Custom:
                 // Conservative: assume changed for complex types
                 changed = true;
@@ -6161,8 +6206,28 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
             if (source && target) *target = *source;
             break;
         }
+        case PropertyType::MinMaxCurve: {
+            MinMaxCurve* source = Catalog::getPropertyRef<MinMaxCurve>(sourceRegistry, sourceEntity, compType, property);
+            MinMaxCurve* target = Catalog::getPropertyRef<MinMaxCurve>(targetRegistry, targetEntity, compType, property);
+            if (source && target) *target = *source;
+            break;
+        }
+        case PropertyType::MinMaxGradient: {
+            MinMaxGradient* source = Catalog::getPropertyRef<MinMaxGradient>(sourceRegistry, sourceEntity, compType, property);
+            MinMaxGradient* target = Catalog::getPropertyRef<MinMaxGradient>(targetRegistry, targetEntity, compType, property);
+            if (source && target) *target = *source;
+            break;
+        }
         case PropertyType::Custom:
-            if (compType == ComponentType::ScriptComponent) {
+            if (compType == ComponentType::ParticleSystemComponent && property == "emission.bursts") {
+                auto* source = Catalog::getPropertyRef<std::vector<ParticleEmissionBurst>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<ParticleEmissionBurst>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::ParticleSystemComponent && property == "textureSheetAnimation.sprites") {
+                auto* source = Catalog::getPropertyRef<std::vector<int>>(sourceRegistry, sourceEntity, compType, property);
+                auto* target = Catalog::getPropertyRef<std::vector<int>>(targetRegistry, targetEntity, compType, property);
+                if (source && target) *target = *source;
+            } else if (compType == ComponentType::ScriptComponent) {
                 copyComponent(sourceRegistry, sourceEntity, targetRegistry, targetEntity, compType);
             } else if (compType == ComponentType::TerrainComponent && property == "foliageLayers") {
                 auto* source = Catalog::getPropertyRef<std::vector<TerrainFoliageLayer>>(sourceRegistry, sourceEntity, compType, property);

@@ -1898,6 +1898,7 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
     std::set<Entity> currentJointObjects;
     std::set<Entity> currentBoneModels;
     std::set<Entity> currentLinePoints;
+    std::set<Entity> currentParticleShapes;
     std::set<Entity> currentPolygonPoints;
     std::set<Entity> currentTrackLines;
     std::set<Entity> currentReflectionProbes;
@@ -1968,6 +1969,10 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
             bool isVisible = displaySettings.showAllBodies || highlighted;
 
             createOrUpdateBodyLines(entity, transform, body, isVisible, highlighted);
+        }
+
+        if (signature.test(scene->getComponentId<ParticleSystemComponent>())){
+            updateParticleShapeLines(entity, selectedEntities.find(entity) != selectedEntities.end(), currentParticleShapes);
         }
 
         if (signature.test(scene->getComponentId<LineRendererComponent>()) && signature.test(scene->getComponentId<Transform>())) {
@@ -2113,6 +2118,8 @@ void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<
             ++itBone;
         }
     }
+
+    dropParticleShapeLines(currentParticleShapes);
 
     auto itLinePoints = linePointLines.begin();
     while (itLinePoints != linePointLines.end()) {

@@ -766,10 +766,12 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorPostProcessing.cpp
     ${EDITOR_DIR}/window/InspectorFluid.cpp
     ${EDITOR_DIR}/window/InspectorLinesTrails.cpp
+    ${EDITOR_DIR}/window/InspectorParticles.cpp
     ${EDITOR_DIR}/window/InspectorPrefabBar.cpp
     ${EDITOR_DIR}/window/HierarchyPrefabRows.cpp
     ${EDITOR_DIR}/window/ConsoleWindow.cpp
     ${EDITOR_DIR}/window/SceneWindow.cpp
+    ${EDITOR_DIR}/window/SceneParticleOverlay.cpp
     ${EDITOR_DIR}/window/PrefabStageBar.cpp
     ${EDITOR_DIR}/window/GameWindow.cpp
     ${EDITOR_DIR}/window/MainToolbar.cpp
@@ -813,6 +815,9 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/vat/import/HoudiniVat3.cpp
     ${EDITOR_DIR}/vat/import/OpenVat.cpp
     ${EDITOR_DIR}/vat/VatImportWrite.cpp
+    ${EDITOR_DIR}/unity/UnityYaml.cpp
+    ${EDITOR_DIR}/unity/UnityProject.cpp
+    ${EDITOR_DIR}/unity/UnityParticleImport.cpp
     ${EDITOR_DIR}/window/VertexAnimationBakerWindow.cpp
     ${EDITOR_DIR}/window/TextureSynthesisWindow.cpp
     ${EDITOR_DIR}/window/SpriteNormalsWindow.cpp
@@ -831,6 +836,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/dialog/AboutWindow.cpp
     ${EDITOR_DIR}/window/dialog/ScenesWindow.cpp
     ${EDITOR_DIR}/window/widget/CurveField.cpp
+    ${EDITOR_DIR}/window/widget/MinMaxFields.cpp
     ${EDITOR_DIR}/window/widget/CurveFieldLogic.cpp
     ${EDITOR_DIR}/window/widget/CustomTextEditor.cpp
     ${EDITOR_DIR}/window/widget/GradientField.cpp
@@ -851,6 +857,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/render/gizmo/Object2DGizmo.cpp
     ${EDITOR_DIR}/render/gizmo/AnchorGizmo.cpp
     ${EDITOR_DIR}/render/gizmo/ViewportGizmo.cpp
+    ${EDITOR_DIR}/render/gizmo/ParticleShapeGizmo.cpp
     ${EDITOR_DIR}/render/preview/MaterialRender.cpp
     ${EDITOR_DIR}/render/preview/MeshPreviewRender.cpp
     ${EDITOR_DIR}/render/preview/DirectionRender.cpp

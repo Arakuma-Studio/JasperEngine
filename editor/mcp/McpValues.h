@@ -187,6 +187,18 @@ namespace jasperengine::editor::mcp {
         static bool curveFromJson(const Json& value, AnimationCurve& out, std::string& error);
         static Json gradientToJson(const Gradient& gradient);
         static bool gradientFromJson(const Json& value, Gradient& out, std::string& error);
+        // Unity's MinMaxCurve / MinMaxGradient (docs/mcp/guide/particles.md): a curve is a number
+        // (constant), {"mode": "two_constants", "min", "max"}, {"mode": "curve", "multiplier",
+        // "curve"} or {"mode": "two_curves", "multiplier", "min", "max"} (curves as above); a
+        // gradient is one colour, {"mode": "gradient", "gradient"}, {"mode": "two_colors", "min",
+        // "max"}, {"mode": "two_gradients", "min", "max"} or {"mode": "random_color", "gradient"}
+        static Json minMaxCurveToJson(const MinMaxCurve& curve);
+        static bool minMaxCurveFromJson(const Json& value, MinMaxCurve& out, std::string& error);
+        static Json minMaxGradientToJson(const MinMaxGradient& gradient);
+        static bool minMaxGradientFromJson(const Json& value, MinMaxGradient& out, std::string& error);
+        // emission.bursts: [{"time", "count" (a curve value), "cycles", "interval", "probability"}]
+        static Json particleBurstsToJson(const std::vector<ParticleEmissionBurst>& bursts);
+        static bool particleBurstsFromJson(const Json& value, std::vector<ParticleEmissionBurst>& out, std::string& error);
 
         static Json textureToJson(Project* project, SceneProject* scene, const Texture& texture);
         // `camera` gets the camera entity of a {"camera": ...} value (NULL_ENTITY otherwise; a
