@@ -709,3 +709,9 @@ llvmpipe and Vulkan on lavapipe.
   remains) gives the bench no static layer and its 20 animated casters redraw the slots they
   cross in full. The memory rows or the default resolutions need revisiting with the device
   numbers.
+- **AC14 measured on a GPU (GPU campaign, RTX 3080 Ti, GL and Vulkan; `docs/rendering/shadow-budgets.md`).**
+  The desktop tiers missed the walking row (High 7.17 ms, Ultra 8.79 ms of shadow passes at 1440p)
+  for the reason above: no static layer fitted. As the risks allow after AC14, High and Ultra now
+  have the fit freeze on and memory rows of 192 / 576 MB (twice their D32 atlases): High 0.33 ms,
+  Ultra 0.53 ms. Every other cell is within budget on that card (receiver 0.06-0.23 ms, static
+  0.000 ms); the web and mobile reference devices are still to be measured.

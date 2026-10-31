@@ -767,6 +767,49 @@ public:
 - **For the GPU campaign (§8):** GL worker mode and warm draws on real drivers (Linux Mesa
   radeonsi/iris, NVIDIA, Windows WGL, macOS, Android EGL); R21/R22 on GPU drivers; Metal and
   D3D11 creation at runtime (they compile here only by reading: not built on the servers).
+- **GPU campaign (2026-10-31; RTX 3080 Ti, driver 595.99.02, GLX on a headless Xorg and Vulkan;
+  docs/perf/gpu-campaign.md).** `tools/perf/async_shaders_bench.py --runs 5` (10 toggles; the
+  drivers' disk caches off; the editor focused and its vsync off, so the idle frame is the real
+  1.1 ms and not a 16.7 ms pacing period), medians of 5:
+
+  | RTX 3080 Ti | R21 max_main_ms (<= 4) | R22 worst_frame_ratio (<= 2) | worst frame |
+  |---|---|---|---|
+  | GL `worker`, warm draws on (the new default) | **0.014 ok** | 16.4 FAIL | 11-18.7 ms |
+  | GL `worker`, warm draws off | 0.015 ok | 15.7 FAIL | 12-18.5 ms |
+  | GL `parallel` (after the compile-thread fix) | 8.83 FAIL | 10.6 FAIL | 11-25 ms |
+  | GL `sync` (red control) | 2192 | 1477 | 2.2 s |
+  | GL `worker`, the same edits between two built variants (no creation: control) | 0.011 | 8.7 | 9.8-10.7 ms |
+  | Vulkan `thread` | **0.227 ok** | 3.9 FAIL | 3.7 ms (one run 10.2) |
+  | Vulkan `sync` (red control) | 799 | 838 | 0.8 s |
+
+  - The worker context and warm draws work on NVIDIA: no crash or hang in any run; the mode is
+    `worker` (R5's Auto). A Lit lobe variant's cold compile and link is **2.1 s** on this driver
+    (llvmpipe: 0.39 s); on the worker the render thread pays 0.01 ms for it.
+  - **Fixed: `parallel` did nothing on NVIDIA.** The extension leaves the initial compiler thread
+    count to the driver and NVIDIA's is none, so `glLinkProgram` blocked for the 2.1 s and
+    `COMPLETION_STATUS` was always true (2187 ms in "GPU create submit"). The mode now calls
+    `glMaxShaderCompilerThreadsKHR(0xFFFFFFFF)`: 2187 -> 8.8 ms (the GLSL front end stays on the
+    calling thread, so R21 still fails in this fallback mode). Only in `parallel`: with a worker
+    context the setting reaches its share group, the worker's links return before the program is
+    built and the render thread's first draw waited the 2.1 s (measured, then excluded).
+  - R22 is not met. The worst frames come from the driver, not from our creation work: while the
+    worker's NVIDIA GLSL front end runs (about 8 ms per new variant) the render thread's GL calls in
+    `drawCameras` wait (isolated with temporary scopes: not in any mesh draw, pipeline apply or
+    load); a first draw with a new state compiles another ~8 ms on the render thread when it was not
+    warmed. Over 4-toggle probes warm draws took the worst frame from 18 to 10 ms; over the full
+    runs the max per run is 11-18.7 ms either way (a toggle's front-end wait and a frame's
+    first draw can fall in one frame). The control without any creation (the same edits between
+    built variants) already has 10 ms frames (8.7x): against a 1.1 ms GPU idle frame the 2x
+    bound is 2.2 ms, under what one edit costs the editor. At a 60 Hz pace every worst frame on
+    both backends fits in the 16.7 ms period (none is dropped); the uncapped ratio stays the
+    reported R22.
+  - Defaults chosen on real drivers: GL `Auto` = `worker` (unchanged); **warm draws on for desktop
+    GL** (`shader_creation.gl_warm_draws`, was off: safe on NVIDIA, and they remove the
+    render-thread first-draw compile when it does not coincide with the front-end wait), off on
+    GLES until an Adreno/Mali run (`JASPER_GL_WARM_DRAWS=1`), never on a software GL; `parallel`
+    with the driver's compile threads.
+  - Pending: Metal and D3D11 at runtime, AMD/Intel (Mesa radeonsi/iris), Android EGL (Adreno,
+    Mali) and the WebGL2 browsers (no such devices here).
 - **Older notes:**
 
 - Spec written at oe-port 0c22d3b91 (branch `feat/s32-async-shaders`). The GL probe numbers in
