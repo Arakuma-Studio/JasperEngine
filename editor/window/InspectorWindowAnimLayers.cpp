@@ -249,12 +249,14 @@ namespace{
             return nullptr;
         }
         std::string why;
-        entry.document = AvatarMaskDocument::open(project, path, &why);
+        std::shared_ptr<AvatarMaskDocument> document = AvatarMaskDocument::open(project, path, &why);
+        entry.document = document;
         entry.error = why;
         entry.retryAt = now + RETRY_SECONDS;
+        if (!document && error) *error = why;
+        // (`entry` is gone after this)
         if (state.masks.size() > 64) state.masks.clear();
-        if (!entry.document && error) *error = why;
-        return entry.document;
+        return document;
     }
 
     std::shared_ptr<AnimatorControllerDocument> controllerDocument(Project* project, InspectorLayerState& state, const std::string& path,
@@ -560,7 +562,6 @@ void editor::InspectorWindow::drawAnimationPlayerLayers(ComponentType cpType, Sc
                                     layer.mask.empty() ? "" : fs::path(layer.mask).filename().string().c_str());
             }
         }
-        if (ImGui::IsItemHovered() && ImGui::IsMouseReleased(ImGuiMouseButton_Right)) ImGui::OpenPopup("layer_menu");
         if (ImGui::IsMouseHoveringRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax()) && ImGui::IsMouseReleased(ImGuiMouseButton_Right)){
             ImGui::OpenPopup("layer_menu");
         }
