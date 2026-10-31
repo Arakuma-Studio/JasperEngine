@@ -417,9 +417,10 @@ TEST(VideoPlayerComponent, TextureLinksResolveAndFollowCopies){
     EXPECT_EQ(VideoTextureLink::videoName(&scene, texture), scene.getEntityName(player));
     EXPECT_TRUE(VideoTextureLink::isVideoUsed(&scene, player));
     // the scene file keeps the link
-    const YAML::Node encoded = Stream::encodeTexture(texture);
-    EXPECT_EQ(encoded["source"].as<std::string>(), "video");
-    EXPECT_EQ(Stream::decodeTexture(encoded).getId(), VideoTextureLink::makeId(player));
+    const YAML::Node encoded = Stream::encodeMeshComponent(scene.getComponent<MeshComponent>(image), false, false, false);
+    const std::string text = YAML::Dump(encoded);
+    EXPECT_NE(text.find("source: video"), std::string::npos) << text;
+    EXPECT_EQ(Stream::decodeMeshComponent(encoded).submeshes[0].material.baseColorTexture.getId(), VideoTextureLink::makeId(player));
 
     // a copy of both: the copy's texture shows the copy's player
     const std::vector<Entity> copies = EntityCloner::clone(&scene, {player, image}, &scene);
