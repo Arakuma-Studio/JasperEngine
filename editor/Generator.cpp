@@ -2396,14 +2396,15 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
         const std::string android = platformOnlyCall("android");
         const std::string ios = platformOnlyCall("ios");
         const std::string macos = platformOnlyCall("macos");
+        const std::string macosCMake = platformOnlyCall("macos-cmake");
         const std::string web = platformOnlyCall("web");
         const std::string desktop = platformOnlyCall("desktop");
-        if (!android.empty() || !ios.empty() || !macos.empty() || !web.empty() || !desktop.empty()) {
+        if (!android.empty() || !ios.empty() || !macos.empty() || !macosCMake.empty() || !web.empty() || !desktop.empty()) {
             mainContent += "#if defined(__ANDROID__)\n" + android;
             mainContent += "#elif defined(__EMSCRIPTEN__)\n" + web;
             mainContent += "#elif defined(__APPLE__)\n";
             mainContent += "#include <TargetConditionals.h>\n";
-            mainContent += "#if TARGET_OS_IPHONE\n" + ios + "#else\n" + macos + "#endif\n";
+            mainContent += "#if TARGET_OS_IPHONE\n" + ios + "#elif defined(JASPERENGINE_MACOS_CMAKE)\n" + macosCMake + "#else\n" + macos + "#endif\n";
             mainContent += "#else\n" + desktop;
             mainContent += "#endif\n";
         }

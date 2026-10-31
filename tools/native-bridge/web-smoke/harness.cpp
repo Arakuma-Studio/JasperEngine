@@ -107,15 +107,18 @@ int main(){
     registerPlugins();
     check(hasCanvas() == 1, "JasperNative.canvas exists");
     check(platform->has("Poki", "") && platform->has("Poki", "add") && !platform->has("Poki", "nope"), "has (registered before the engine started)");
-    check(platform->has("Tools.math", "twice") && platform->has("Math", "max") && !platform->has("Nope", ""), "has (global paths)");
-    check(!platform->has("name", ""), "a global that is not an object is no plugin");
+    check(platform->has("Tools.math", "twice") && platform->has("window.Math", "max") && !platform->has("Nope", ""), "has (global paths)");
+    check(!platform->has("window.name", ""), "a global that is not an object is no plugin");
+    check(!platform->has("Math", "") && !platform->has("Tools", "") && !platform->has("Notification", ""),
+          "a bare name is never a browser global (a mock answers instead)");
 
     NativeError err;
     check(sync("Poki", "add", NativeJson::array({2, 3}), err) == 5 && !err.isSet(), "sync call");
     NativeJson info = sync("Poki", "info", NativeJson::array(), err);
     check(!err.isSet() && info["list"][1] == 2.5 && info["list"][2].is_null() && info["nested"]["ok"] == true && !info.contains("skip"), "sync object result");
     check(sync("Tools.math", "twice", NativeJson::array({21}), err) == 42, "dotted global path");
-    check(sync("Math", "max", NativeJson::array({1, 9, 3}), err) == 9, "a browser global (Math.max)");
+    check(sync("window.Math", "max", NativeJson::array({1, 9, 3}), err) == 9, "a browser global (window.Math.max)");
+    check(sync("globalThis.Tools.math", "twice", NativeJson::array({2}), err) == 4, "the globalThis. prefix");
     check(sync("Poki", "self", NativeJson::array(), err) == true, "this is the plugin object");
     sync("Poki", "later", NativeJson::array(), err);
     check(err.code == "async_only", "a Promise to a sync call -> async_only");

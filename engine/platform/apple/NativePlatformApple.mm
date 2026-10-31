@@ -13,7 +13,6 @@
 
 #include "Log.h"
 #include "native/NativePlatform.h"
-#include "thread/MainThreadQueue.h"
 
 #import <objc/message.h>
 #import <objc/runtime.h>
@@ -133,11 +132,26 @@ namespace {
 
     // A class method's return value boxed for toJson: '@' as is, scalars as NSNumber, void nil
     // (the cast matches the method's real return type: an id read of a double is undefined)
-    bool invokeWith(Class cls, SEL selector, id arg, id call, int args, id __strong* result, std::string& why){
+    bool invokeWith(Class cls, SEL selector, id arg, id call, int args, id __strong* result, std::string& why, bool& badArgs){
+        badArgs = false;
         Method method = class_getClassMethod(cls, selector);
         if (!method){
             why = "no such selector";
             return false;
+        }
+        // the parameters must be objects (an int read from an NSArray pointer is garbage)
+        const unsigned int parameters = method_getNumberOfArguments(method);   // self, _cmd, ...
+        for (unsigned int i = 2; i < parameters; i++){
+            char argument[32] = {0};
+            method_getArgumentType(method, i, argument, sizeof(argument));
+            const char* a = argument;
+            while (*a && strchr("rnNoORV", *a)) a++;
+            if (*a != '@'){
+                why = std::string("must take objects: ") + (i == 2 ? "(NSArray*)args" : "(JasperNativeCall*)call") +
+                      ", not the type " + argument;
+                badArgs = true;
+                return false;
+            }
         }
         char type[32] = {0};
         method_getReturnType(method, type, sizeof(type));
@@ -204,9 +218,10 @@ namespace {
         id result = nil;
         std::string why;
         bool ok = false;
+        bool badArgs = false;
         @try {
-            if (s.withArgs) ok = invokeWith(cls, s.withArgs, args, nil, 1, &result, why);
-            else ok = invokeWith(cls, s.bare, nil, nil, 0, &result, why);
+            if (s.withArgs) ok = invokeWith(cls, s.withArgs, args, nil, 1, &result, why, badArgs);
+            else ok = invokeWith(cls, s.bare, nil, nil, 0, &result, why, badArgs);
         } @catch (NSException* exception) {
             err = NativeError("exception", toStd(exception.name) + ": " + toStd(exception.reason));
             Log::error("Native: %s.%s threw %s: %s\n%s", plugin.c_str(), method.c_str(), toStd(exception.name).c_str(),
@@ -214,7 +229,7 @@ namespace {
             return false;
         }
         if (!ok){
-            err = NativeError("unsupported_type", plugin + "." + method + " " + why);
+            err = NativeError(badArgs ? "bad_args" : "unsupported_type", plugin + "." + method + " " + why);
             return false;
         }
         if (!toJson(result, out, why)){
@@ -222,6 +237,13 @@ namespace {
             return false;
         }
         return true;
+    }
+
+    // NSClassFromString(plugin) when the class adopts JasperNativePlugin (any other class of the
+    // app or the system is no plugin: a mock or "not_found" answers for it)
+    Class pluginClass(const std::string& plugin){
+        Class cls = NSClassFromString(toNSString(plugin));
+        return (cls && jasperNativeIsPluginClass(cls)) ? cls : Nil;
     }
 
     class AppleNativePlatform : public NativePlatform {
@@ -236,7 +258,7 @@ namespace {
 
         bool has(const std::string& plugin, const std::string& method) override{
             @autoreleasepool {
-                Class cls = NSClassFromString(toNSString(plugin));
+                Class cls = pluginClass(plugin);
                 if (!cls) return false;
                 if (method.empty()) return true;
                 const Selectors s = selectorsOf(cls, method);
@@ -246,9 +268,9 @@ namespace {
 
         NativeJson call(const std::string& plugin, const std::string& method, const NativeJson& args, NativeError& err) override{
             @autoreleasepool {
-                Class cls = NSClassFromString(toNSString(plugin));
+                Class cls = pluginClass(plugin);
                 if (!cls){
-                    err = NativeError("not_found", "no Objective-C class for the native plugin \"" + plugin + "\"");
+                    err = NativeError("not_found", "no Objective-C class adopting JasperNativePlugin for the native plugin \"" + plugin + "\"");
                     return nullptr;
                 }
                 Selectors s = selectorsOf(cls, method);
@@ -285,7 +307,7 @@ namespace {
                     if (call.isCancelled) return;
                     const std::string p = toStd(pluginName);
                     const std::string m = toStd(methodName);
-                    Class cls = NSClassFromString(pluginName);
+                    Class cls = pluginClass(toStd(pluginName));
                     if (!cls){
                         [call failWithCode:@"not_found" message:[NSString stringWithFormat:@"no Objective-C class for the native plugin \"%@\"", pluginName]];
                         return;
@@ -295,9 +317,10 @@ namespace {
                     if (s.async){
                         id ignored = nil;
                         std::string why;
+                        bool badArgs = false;
                         @try {
-                            if (!invokeWith(cls, s.async, arguments, call, 2, &ignored, why)){
-                                [call failWithCode:@"unsupported_type" message:toNSString(p + "." + m + " " + why)];
+                            if (!invokeWith(cls, s.async, arguments, call, 2, &ignored, why, badArgs)){
+                                [call failWithCode:(badArgs ? @"bad_args" : @"unsupported_type") message:toNSString(p + "." + m + " " + why)];
                             }
                         } @catch (NSException* exception) {
                             Log::error("Native: %s.%s threw %s: %s", p.c_str(), m.c_str(), toStd(exception.name).c_str(), toStd(exception.reason).c_str());
@@ -334,6 +357,10 @@ namespace {
                 calls.erase(it);
             }
             [call markCancelled];
+        }
+
+        void initPlugins() override{
+            [JasperNative dispatchInit];
         }
 
         void shutdown() override{
@@ -389,7 +416,7 @@ extern "C" void jasperNativeBridgePause(BOOL pause){
 
 extern "C" void jasperNativeBridgePost(dispatch_block_t block){
     dispatch_block_t copied = [block copy];
-    MainThreadQueue::post([copied]() { copied(); });
+    NativeBridge::postToGameThread([copied]() { copied(); });
 }
 
 NativePlatform* jasperengine::createNativePlatform(){

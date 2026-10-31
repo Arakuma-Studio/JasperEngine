@@ -17305,6 +17305,7 @@
 					"OPUS_EXPORT=",
 				);
 				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
 					"$(SRCROOT)/../../core",
 					"$(SRCROOT)/../../renders",
 					"$(SRCROOT)/../../libs",
@@ -17324,6 +17325,7 @@
 					"$(SRCROOT)/../../libs/meshoptimizer",
 					"$(SRCROOT)/../../libs/shadercompiler/src",
 					"$(SRCROOT)/../../shaders",
+					"$(SRCROOT)/../../platform/apple",
 				);
 				INFOPLIST_FILE = ios/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
@@ -17332,7 +17334,10 @@
 					"@executable_path/Frameworks",
 				);
 				OTHER_CPLUSPLUSFLAGS = "$(OTHER_CFLAGS)";
-				OTHER_LDFLAGS = "-ObjC";
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.jaspergameengine.jasperengine;
 				PRODUCT_NAME = JasperEngine;
 				SDKROOT = iphoneos;
@@ -17363,6 +17368,7 @@
 					"OPUS_EXPORT=",
 				);
 				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
 					"$(SRCROOT)/../../core",
 					"$(SRCROOT)/../../renders",
 					"$(SRCROOT)/../../libs",
@@ -17382,6 +17388,7 @@
 					"$(SRCROOT)/../../libs/meshoptimizer",
 					"$(SRCROOT)/../../libs/shadercompiler/src",
 					"$(SRCROOT)/../../shaders",
+					"$(SRCROOT)/../../platform/apple",
 				);
 				INFOPLIST_FILE = ios/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
@@ -17390,7 +17397,10 @@
 					"@executable_path/Frameworks",
 				);
 				OTHER_CPLUSPLUSFLAGS = "$(OTHER_CFLAGS)";
-				OTHER_LDFLAGS = "-ObjC";
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.jaspergameengine.jasperengine;
 				PRODUCT_NAME = JasperEngine;
 				SDKROOT = iphoneos;
@@ -17427,6 +17437,7 @@
 					"OPUS_EXPORT=",
 				);
 				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
 					"$(SRCROOT)/../../core",
 					"$(SRCROOT)/../../renders",
 					"$(SRCROOT)/../../libs",
@@ -17447,6 +17458,7 @@
 					"$(SRCROOT)/../../libs/shadercompiler/src",
 					"$(SRCROOT)/../../shaders",
 					"$(SRCROOT)/../../platform/mac",
+					"$(SRCROOT)/../../platform/apple",
 				);
 				INFOPLIST_FILE = macos/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -17487,6 +17499,7 @@
 					"OPUS_EXPORT=",
 				);
 				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
 					"$(SRCROOT)/../../core",
 					"$(SRCROOT)/../../renders",
 					"$(SRCROOT)/../../libs",
@@ -17507,6 +17520,7 @@
 					"$(SRCROOT)/../../libs/shadercompiler/src",
 					"$(SRCROOT)/../../shaders",
 					"$(SRCROOT)/../../platform/mac",
+					"$(SRCROOT)/../../platform/apple",
 				);
 				INFOPLIST_FILE = macos/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (

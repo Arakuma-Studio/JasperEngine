@@ -8829,6 +8829,9 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                 // main sets the same per platform)
                 NativeBridge::setPlatformOnlyPlugins(NativePlugins::platformOnlyPlugins(
                     NativePlugins::listPlugins(NativePlugins::scan(getProjectPath())), NativePlugins::editorPlatform()));
+                // the init hooks of native plugin code the Play library brought (Objective-C on a Mac)
+                NativeBridge::initPlugins();
+                NativePlugins::warnStaleObjectiveC(getProjectPath());
 
                 // Apply project display settings before scripts read the canvas size.
                 Engine::setCanvasSize(canvasWidth, canvasHeight);

@@ -14,7 +14,6 @@
 
 #include "Log.h"
 #include "native/NativePlatform.h"
-#include "thread/MainThreadQueue.h"
 
 #include <cstdint>
 #include <string>
@@ -185,7 +184,8 @@ namespace {
     }
 
     void JNICALL nativePostToGameThread(JNIEnv*, jclass, jlong token){
-        MainThreadQueue::post([token]() {
+        // paused frames too (a resumeEngine from the task must run)
+        NativeBridge::postToGameThread([token]() {
             JNIEnv* env = currentEnv();
             if (!env || !bridgeClass || !runTaskMethod) return;
             env->CallStaticVoidMethod(bridgeClass, runTaskMethod, token);
@@ -283,9 +283,71 @@ namespace {
 
 }
 
+namespace {
+
+    // a static method id, or null with the exception cleared and logged
+    jmethodID staticMethod(JNIEnv* env, const char* name, const char* signature){
+        jmethodID id = env->GetStaticMethodID(bridgeClass, name, signature);
+        if (clearException(env) || !id){
+            Log::error("Native: JasperNative.%s%s is missing", name, signature);
+            return nullptr;
+        }
+        return id;
+    }
+
+    // keeps `found` (JasperNative) and registers its natives; true when everything is there
+    bool registerBridge(JNIEnv* env, jclass found){
+        if (bridgeClass) env->DeleteGlobalRef(bridgeClass);
+        bridgeClass = (jclass)env->NewGlobalRef(found);
+        static const JNINativeMethod natives[] = {
+            {"nativeComplete", "(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;)V", reinterpret_cast<void*>(&nativeComplete)},
+            {"nativeEmit", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V", reinterpret_cast<void*>(&nativeEmit)},
+            {"nativePauseEngine", "()V", reinterpret_cast<void*>(&nativePauseEngine)},
+            {"nativeResumeEngine", "()V", reinterpret_cast<void*>(&nativeResumeEngine)},
+            {"nativePostToGameThread", "(J)V", reinterpret_cast<void*>(&nativePostToGameThread)},
+        };
+        if (env->RegisterNatives(bridgeClass, natives, sizeof(natives) / sizeof(natives[0])) != JNI_OK){
+            clearException(env);
+            Log::error("Native: registering the JasperNative natives failed; Java native plugins will not be reached");
+            env->DeleteGlobalRef(bridgeClass);
+            bridgeClass = nullptr;
+            return false;
+        }
+        hasMethod = staticMethod(env, "has", "(Ljava/lang/String;Ljava/lang/String;)Z");
+        callMethod = staticMethod(env, "call", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)[Ljava/lang/String;");
+        callAsyncMethod = staticMethod(env, "callAsync", "(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)V");
+        cancelMethod = staticMethod(env, "cancel", "(J)V");
+        shutdownMethod = staticMethod(env, "shutdown", "()V");
+        runTaskMethod = staticMethod(env, "runGameThreadTask", "(J)V");
+        if (!hasMethod || !callMethod || !callAsyncMethod || !cancelMethod || !shutdownMethod || !runTaskMethod){
+            env->DeleteGlobalRef(bridgeClass);
+            bridgeClass = nullptr;
+            return false;
+        }
+        return true;
+    }
+
+}
+
+// System.loadLibrary (MainActivity's static initializer, on the UI thread, with the app's class
+// loader): the natives exist before MainActivity.onCreate runs the plugins' onJasperInit, which
+// may already emit or pause the engine
+extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*){
+    JNIEnv* env = nullptr;
+    if (vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK || !env) return JNI_VERSION_1_6;
+    javaVm = vm;
+    jclass found = env->FindClass("com/jaspergameengine/bridge/JasperNative");
+    if (clearException(env) || !found) return JNI_VERSION_1_6;   // NativeEngine::setupJNI tries again
+    registerBridge(env, found);
+    env->DeleteLocalRef(found);
+    return JNI_VERSION_1_6;
+}
+
 void jasperengine::nativeBridgeAndroidSetup(JNIEnv* env, jobject activity){
     if (!env || !activity) return;
     env->GetJavaVM(&javaVm);
+    // registered at load already
+    if (bridgeClass) return;
 
     jclass activityClass = env->GetObjectClass(activity);
     jmethodID getClassLoader = env->GetMethodID(activityClass, "getClassLoader", "()Ljava/lang/ClassLoader;");
@@ -303,37 +365,8 @@ void jasperengine::nativeBridgeAndroidSetup(JNIEnv* env, jobject activity){
         Log::error("Native: com.jaspergameengine.bridge.JasperNative not found; Java native plugins will not be reached");
         return;
     }
-
-    // an activity made again (setupJNI runs again): the new class reference replaces the old one
-    if (bridgeClass) env->DeleteGlobalRef(bridgeClass);
-    bridgeClass = (jclass)env->NewGlobalRef(found);
+    registerBridge(env, found);
     env->DeleteLocalRef(found);
-
-    static const JNINativeMethod natives[] = {
-        {"nativeComplete", "(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;)V", reinterpret_cast<void*>(&nativeComplete)},
-        {"nativeEmit", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V", reinterpret_cast<void*>(&nativeEmit)},
-        {"nativePauseEngine", "()V", reinterpret_cast<void*>(&nativePauseEngine)},
-        {"nativeResumeEngine", "()V", reinterpret_cast<void*>(&nativeResumeEngine)},
-        {"nativePostToGameThread", "(J)V", reinterpret_cast<void*>(&nativePostToGameThread)},
-    };
-    if (env->RegisterNatives(bridgeClass, natives, sizeof(natives) / sizeof(natives[0])) != JNI_OK){
-        clearException(env);
-        Log::error("Native: registering the JasperNative natives failed; Java native plugins will not be reached");
-        env->DeleteGlobalRef(bridgeClass);
-        bridgeClass = nullptr;
-        return;
-    }
-    hasMethod = env->GetStaticMethodID(bridgeClass, "has", "(Ljava/lang/String;Ljava/lang/String;)Z");
-    callMethod = env->GetStaticMethodID(bridgeClass, "call", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)[Ljava/lang/String;");
-    callAsyncMethod = env->GetStaticMethodID(bridgeClass, "callAsync", "(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)V");
-    cancelMethod = env->GetStaticMethodID(bridgeClass, "cancel", "(J)V");
-    shutdownMethod = env->GetStaticMethodID(bridgeClass, "shutdown", "()V");
-    runTaskMethod = env->GetStaticMethodID(bridgeClass, "runGameThreadTask", "(J)V");
-    if (clearException(env) || !hasMethod || !callMethod || !callAsyncMethod || !cancelMethod || !shutdownMethod || !runTaskMethod){
-        Log::error("Native: JasperNative's entry points are missing; Java native plugins will not be reached");
-        env->DeleteGlobalRef(bridgeClass);
-        bridgeClass = nullptr;
-    }
 }
 
 NativePlatform* jasperengine::createNativePlatform(){

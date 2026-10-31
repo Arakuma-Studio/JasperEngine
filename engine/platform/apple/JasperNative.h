@@ -3,8 +3,8 @@
 
 // The native bridge for plugin code on iOS and macOS (docs/mcp/guide/native-bridge.md).
 //
-// A plugin is an Objective-C class (Swift: `@objc(Name) class Name: NSObject`) whose class
-// methods Lua calls by name:
+// A plugin is an Objective-C class adopting JasperNativePlugin (Swift:
+// `@objc(Name) class Name: NSObject, JasperNativePlugin`) whose class methods Lua calls by name:
 //   Native.call("Device", "getCode", ...)       -> + (id)getCode:(NSArray*)args   (or + (id)getCode with no args)
 //   Native.callAsync("Device", "login", {...})  -> + (void)login:(NSArray*)args call:(JasperNativeCall*)call
 // Arguments and results are JSON values as Foundation objects: NSNull, NSNumber (booleans are
@@ -21,6 +21,14 @@
 #endif
 
 NS_ASSUME_NONNULL_BEGIN
+
+// The marker of a plugin class: Lua reaches only classes that adopt it (no other class of the
+// app or the system answers a Native.call)
+@protocol JasperNativePlugin <NSObject>
+@optional
+// once, on the main thread, before the engine starts (SDK initialization)
++ (void)jasperInit;
+@end
 
 // One Native.callAsync from Lua. Complete it once, from any thread, at any time: the first
 // resolve/reject wins, later ones are ignored with a warning. The result reaches the Lua
@@ -70,7 +78,8 @@ NS_ASSUME_NONNULL_BEGIN
 + (void)emit:(NSString*)plugin event:(NSString*)event payload:(nullable id)payload;
 // Now when called on the main thread, else dispatched there
 + (void)runOnMainThread:(dispatch_block_t)block;
-// At the start of the next frame's update, where Lua runs (the place to touch engine state)
+// On the engine thread at the start of the next frame, paused frames too (the place to touch
+// engine state; a resumeEngine from it works)
 + (void)runOnGameThread:(dispatch_block_t)block;
 // While a full-screen SDK view covers the game (an ad): the engine pauses at the next frame
 // (audio paused, Engine.onPause). Counted: as many resumeEngine as pauseEngine.
@@ -82,8 +91,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 // ---- the app (ViewController, SceneDelegate, AppDelegate)
 
-// ViewController.viewDidLoad, before the engine starts: every plugin class's +jasperInit
-// (once) and the lifecycle notifications
+// ViewController.viewDidLoad (and the engine's start): every plugin class's +jasperInit, once
+// per class (a later call runs the classes loaded since), and the lifecycle notifications
 + (void)dispatchInit;
 // YES when an observer handled it
 + (BOOL)dispatchOpenURL:(NSURL*)url options:(NSDictionary*)options;

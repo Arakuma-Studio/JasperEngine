@@ -172,6 +172,12 @@ std::vector<NativeExportAndroid::PluginClass> NativeExportAndroid::parseSource(c
             i++;
             continue;
         }
+        // a member that is not a type ends the modifiers before it (Kotlin has no ';': without
+        // this, `private lateinit var x` would make the next `object` private)
+        if (kotlin && (t.text == "val" || t.text == "var" || t.text == "fun" || t.text == "typealias")){
+            modifiers.clear();
+            continue;
+        }
         modifiers.insert(t.text);
     }
     return out;

@@ -28,6 +28,9 @@ void jasperNativeBridgePost(dispatch_block_t block);
 // the call left the engine's pending list (completed or cancelled)
 void jasperNativeBridgeForget(uint64_t callId);
 
+// JasperNative.m: the class adopts JasperNativePlugin (itself or a superclass); sends no message
+BOOL jasperNativeIsPluginClass(Class cls);
+
 #ifdef __cplusplus
 }
 #endif

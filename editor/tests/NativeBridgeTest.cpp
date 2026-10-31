@@ -786,7 +786,7 @@ TEST_F(NativeBridgeTest, ScaffoldWritesEveryPlatformAndRefusesToOverwrite) {
     EXPECT_TRUE(fs::exists(project / "plugins/native/android/kotlin/com/example/plugins/Store.kt"));
     EXPECT_TRUE(fs::exists(project / "plugins/native/apple/Store.swift"));
     const std::string swift = scriptdata::readFile(project / "plugins/native/apple/Store.swift");
-    EXPECT_NE(swift.find("@objc(Store) public class Store: NSObject"), std::string::npos);
+    EXPECT_NE(swift.find("@objc(Store) public class Store: NSObject, JasperNativePlugin"), std::string::npos);
     EXPECT_NE(swift.find("@objc public static func buy(_ args: [Any], call: JasperNativeCall)"), std::string::npos);
 
     // only platform plugins: unavailable on the desktop, fine on their platform
@@ -901,6 +901,12 @@ TEST_F(NativeBridgeTest, AndroidExportRegistryAndGradleText) {
     std::vector<std::string> names;
     for (const auto& cls : kotlin) names.push_back(cls.qualifiedName);
     EXPECT_EQ(names, (std::vector<std::string>{"com.me.k.Store", "com.me.k.Item", "com.me.k.Kind"}));
+    // modifiers of a member do not leak into the next top-level declaration (no ';' in Kotlin)
+    const auto members = NEA::parseSource("package p\nprivate lateinit var adapter: Any\nobject AdsBridge {\n}\n"
+                                          "internal val x = 1\nclass Visible\n", true, "Ads.kt");
+    names.clear();
+    for (const auto& cls : members) names.push_back(cls.qualifiedName);
+    EXPECT_EQ(names, (std::vector<std::string>{"p.AdsBridge", "p.Visible"}));
     const auto loose = NEA::parseSource("public class Top {}\n", false, "Top.java");
     ASSERT_EQ(loose.size(), 1u);
     EXPECT_EQ(loose[0].qualifiedName, "Top");
@@ -931,4 +937,87 @@ TEST_F(NativeBridgeTest, AndroidExportRegistryAndGradleText) {
     EXPECT_EQ(jasperengine::editor::NativePlugins::xmlFragmentError("<meta-data android:name=\"x\" tools:node=\"remove\"/>"), "");
     EXPECT_NE(jasperengine::editor::NativePlugins::xmlFragmentError("<a><b></a>"), "");
     EXPECT_NE(jasperengine::editor::NativePlugins::xmlFragmentError("<?xml version=\"1.0\"?><a/>"), "");
+}
+
+TEST_F(NativeBridgeTest, OsAndNativePausesAreSeparateHolds) {
+    int pauses = 0, resumes = 0;
+    Engine::onPause.add("NativeBridgeTest", [&pauses]() { pauses++; });
+    Engine::onResume.add("NativeBridgeTest", [&resumes]() { resumes++; });
+    Engine::pauseGameEvents(false);
+    // an ad covers the game, then the app goes to the background and back while it shows
+    NativeBridge::pauseEngine();
+    NativeBridge::update();
+    Engine::systemPause();
+    Engine::systemPause();   // idempotent
+    Engine::systemResume();
+    NativeBridge::update();
+    EXPECT_TRUE(Engine::isPaused()) << "the ad still holds the engine";
+    EXPECT_EQ(pauses, 1);
+    EXPECT_EQ(resumes, 0) << "no onResume while the ad shows";
+    NativeBridge::resumeEngine();
+    NativeBridge::update();
+    EXPECT_FALSE(Engine::isPaused());
+    EXPECT_EQ(resumes, 1);
+    // the other way round: the OS hold outlives the bridge's
+    Engine::systemPause();
+    NativeBridge::pauseEngine();
+    NativeBridge::update();
+    NativeBridge::resumeEngine();
+    NativeBridge::update();
+    EXPECT_TRUE(Engine::isPaused()) << "the OS still holds it";
+    Engine::systemResume();
+    EXPECT_FALSE(Engine::isPaused());
+    EXPECT_EQ(pauses, 2);
+    EXPECT_EQ(resumes, 2);
+    Engine::pauseGameEvents(true);
+    Engine::onPause.remove("NativeBridgeTest");
+    Engine::onResume.remove("NativeBridgeTest");
+}
+
+TEST_F(NativeBridgeTest, GameThreadTasksRunWhilePausedAndCanResume) {
+    NativeBridge::pauseEngine();
+    NativeBridge::update();
+    ASSERT_TRUE(Engine::isPaused());
+    int ran = 0;
+    std::thread([&ran]() {
+        NativeBridge::postToGameThread([&ran]() {
+            ran++;
+            NativeBridge::resumeEngine();
+        });
+    }).join();
+    NativeBridge::update();   // the task runs, then the pause count (0) applies
+    EXPECT_EQ(ran, 1);
+    EXPECT_FALSE(Engine::isPaused());
+    // Play stop drops the queued ones
+    NativeBridge::postToGameThread([&ran]() { ran++; });
+    NativeBridge::shutdown();
+    NativeBridge::update();
+    EXPECT_EQ(ran, 1);
+}
+
+TEST_F(NativeBridgeTest, EventsOfAStoppedGameAreDropped) {
+    int got = 0;
+    NativeBridge::emit("Late", "e", nullptr);
+    NativeBridge::shutdown();   // Play stop, before the delivery point
+    NativeBridge::on("Late", "e", [&got](const NativeJson&) { got++; });
+    MainThreadQueue::drain();
+    EXPECT_EQ(got, 0) << "an event emitted before the stop does not reach the next Play";
+    NativeBridge::emit("Late", "e", nullptr);
+    MainThreadQueue::drain();
+    EXPECT_EQ(got, 1);
+}
+
+TEST_F(NativeBridgeTest, CppValuesAreCheckedForUtf8AndHugeTimeoutsAreClamped) {
+    registerEcho();
+    NativeError err;
+    NativeBridge::call("Echo", "echo", NativeJson::array({std::string("\xff\xfe")}), err);
+    EXPECT_EQ(err.code, "invalid_utf8");
+    NativeBridge::registerPlugin("Bad").method("text", [](const NativeJson&) { return NativeJson(std::string("a\xc0\x80")); });
+    NativeBridge::call("Bad", "text", NativeJson::array(), err);
+    EXPECT_EQ(err.code, "invalid_utf8") << "an overlong form";
+    // a timeout too long for the clock: no overflow, the call still completes normally
+    auto d = std::make_shared<Delivery>();
+    NativeBridge::callAsync("Echo", "echo", NativeJson::array({1}), recorder(d), false, {}, 1e300);
+    ASSERT_TRUE(waitFor([&] { return d->calls == 1; }));
+    EXPECT_EQ(d->code, "");
 }

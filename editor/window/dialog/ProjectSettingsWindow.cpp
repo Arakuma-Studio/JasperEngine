@@ -1002,6 +1002,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_macosPlistEntries.assign(nativeMacOS.plistEntries.begin(), nativeMacOS.plistEntries.end());
     m_macosFrameworks = nativeMacOS.frameworks;
     m_webScriptUrls = project->getWebProjectSettings().scriptUrls;
+    m_nativeSummary.clear();
 
     m_inputActions = project->getInputActions();
     m_inputCommitted = m_inputActions;
@@ -2299,24 +2300,29 @@ namespace {
 
 }
 
+void ProjectSettingsWindow::refreshNativeSummary() {
+    // what plugins/native holds
+    const NativePlugins::Scan scan = NativePlugins::scan(m_project->getProjectPath());
+    std::string summary;
+    static const char* const labels[] = {"Android", "Apple", "iOS", "macOS", "Web", "C++"};
+    const auto& platforms = NativePlugins::platformNames();
+    for (size_t i = 0; i < platforms.size(); i++) {
+        const size_t count = scan.count(platforms[i]);
+        if (count) summary += (summary.empty() ? "" : ", ") + std::string(labels[i]) + " " + std::to_string(count);
+    }
+    const size_t plugins = NativePlugins::listPlugins(scan).size();
+    const size_t mocks = NativePlugins::listMocks(m_project->getLuaPath()).size();
+    m_nativeSummary = scan.exists
+        ? "plugins/native: " + std::to_string(plugins) + " plugin(s) (" + (summary.empty() ? std::string("no files") : summary + " files") +
+          "), " + std::to_string(mocks) + " Lua mock(s). Lua calls them with Native.call / callAsync."
+        : "No plugins/native folder yet. Create Plugin writes one plugin for the chosen platforms and its Lua mock; "
+          "Lua calls it with Native.call / callAsync (jasper://docs/native-bridge).";
+}
+
 void ProjectSettingsWindow::drawNativePluginsSettings() {
     if (beginSettingsPanel("##NativePluginsPanel")) {
-        // what plugins/native holds
-        const NativePlugins::Scan scan = NativePlugins::scan(m_project->getProjectPath());
-        std::string summary;
-        static const char* const labels[] = {"Android", "Apple", "iOS", "macOS", "Web", "C++"};
-        const auto& platforms = NativePlugins::platformNames();
-        for (size_t i = 0; i < platforms.size(); i++) {
-            const size_t count = scan.count(platforms[i]);
-            if (count) summary += (summary.empty() ? "" : ", ") + std::string(labels[i]) + " " + std::to_string(count);
-        }
-        const size_t plugins = NativePlugins::listPlugins(scan).size();
-        const size_t mocks = NativePlugins::listMocks(m_project->getLuaPath()).size();
-        drawSectionNote(scan.exists
-            ? ("plugins/native: " + std::to_string(plugins) + " plugin(s) (" + (summary.empty() ? std::string("no files") : summary + " files") +
-               "), " + std::to_string(mocks) + " Lua mock(s). Lua calls them with Native.call / callAsync.").c_str()
-            : "No plugins/native folder yet. Create Plugin writes one plugin for the chosen platforms and its Lua mock; "
-              "Lua calls it with Native.call / callAsync (jasper://docs/native-bridge).");
+        if (m_nativeSummary.empty()) refreshNativeSummary();
+        drawSectionNote(m_nativeSummary.c_str());
         if (ImGui::Button(ICON_FA_FOLDER_OPEN " Open Folder")) {
             const fs::path root = NativePlugins::root(m_project->getProjectPath());
             std::error_code ec;
@@ -2329,7 +2335,11 @@ void ProjectSettingsWindow::drawNativePluginsSettings() {
         }
         ImGui::SameLine();
         if (ImGui::Button(ICON_FA_PLUS " Create Plugin...")) m_nativePluginDialog.open(m_project);
+        ImGui::SameLine();
+        if (ImGui::Button(ICON_FA_ROTATE " Refresh")) refreshNativeSummary();
+        const bool wasOpen = m_nativePluginDialog.isOpen();
         m_nativePluginDialog.show();
+        if (wasOpen && !m_nativePluginDialog.isOpen()) refreshNativeSummary();
         ImGui::Spacing();
 
         if (Theme::foldoutHeader("Android", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##NativeAndroidTable")) {

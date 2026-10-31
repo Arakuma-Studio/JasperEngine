@@ -127,6 +127,9 @@ namespace jasperengine::editor {
         std::vector<std::string> m_macosFrameworks;
         std::vector<std::string> m_webScriptUrls;
         NativePluginDialog m_nativePluginDialog;
+        // plugins/native as last scanned (open, Refresh, after Create Plugin): not every frame
+        std::string m_nativeSummary;
+        void refreshNativeSummary();
 
         // Tags and Layers being edited: user tags, and user layer names indexed by layer
         // (MAX_LAYERS entries, built-in ones empty)

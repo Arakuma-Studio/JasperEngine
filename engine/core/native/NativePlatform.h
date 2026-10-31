@@ -44,6 +44,8 @@ namespace jasperengine {
         virtual void cancel(uint64_t id) = 0;
         // Play stop / engine shutdown (after every pending call was cancelled)
         virtual void shutdown() {}
+        // NativeBridge::initPlugins: init hooks of plugin code loaded since the last call
+        virtual void initPlugins() {}
     };
 
     // The platform's layer, or null where there is none (Linux, Windows). Made once, on the

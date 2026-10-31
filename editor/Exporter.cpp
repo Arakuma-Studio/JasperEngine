@@ -544,21 +544,40 @@ namespace {
 
     // Sets the top-level key to the plist value element `valueXml` (any type: the old value
     // goes, whatever it was)
+    // Removes the TOP-LEVEL key (a line "\t<key>K</key>": nested dictionaries indent deeper) and
+    // its value, whatever its type
+    void removePlistKey(std::string& plist, const std::string& key) {
+        const std::string keyLine = "\n\t<key>" + escapeXmlAttribute(key) + "</key>";
+        const size_t at = plist.find(keyLine);
+        if (at == std::string::npos) return;
+        const size_t keyPos = at + 1;
+        const size_t valueStart = plist.find_first_not_of(" \t\r\n", keyPos + keyLine.size() - 1);
+        const size_t valueEnd = plistValueEnd(plist, valueStart);
+        if (valueEnd == std::string::npos) return;
+        size_t eraseEnd = valueEnd;
+        if (eraseEnd < plist.size() && plist[eraseEnd] == '\n') eraseEnd++;
+        plist.erase(keyPos, eraseEnd - keyPos);
+    }
+
+    // Sets the top-level key to the plist value element `valueXml` (any type: the old value
+    // goes, whatever it was)
     void setPlistValue(std::string& plist, const std::string& key, const std::string& valueXml) {
-        const std::string keyTag = "\t<key>" + escapeXmlAttribute(key) + "</key>";
-        size_t keyPos = plist.find(keyTag);
-        if (keyPos != std::string::npos) {
-            const size_t valueStart = plist.find_first_not_of(" \t\r\n", keyPos + keyTag.size());
-            const size_t valueEnd = plistValueEnd(plist, valueStart);
-            if (valueEnd != std::string::npos) {
-                size_t eraseEnd = valueEnd;
-                if (eraseEnd < plist.size() && plist[eraseEnd] == '\n') eraseEnd++;
-                plist.erase(keyPos, eraseEnd - keyPos);
-            }
-        }
+        removePlistKey(plist, key);
         const size_t dictEnd = plist.rfind("</dict>");
         if (dictEnd == std::string::npos) return;
-        plist.insert(dictEnd, keyTag + "\n\t" + valueXml + "\n");
+        plist.insert(dictEnd, "\t<key>" + escapeXmlAttribute(key) + "</key>\n\t" + valueXml + "\n");
+    }
+
+    // The top-level <key> names of a raw "<key>..</key><value>" fragment
+    std::vector<std::string> plistFragmentKeys(const std::string& xml) {
+        std::vector<std::string> keys;
+        const std::string wrapped = "<dict>" + xml + "</dict>";
+        tinyxml2::XMLDocument doc;
+        if (doc.Parse(wrapped.c_str(), wrapped.size()) != tinyxml2::XML_SUCCESS) return keys;
+        for (const tinyxml2::XMLElement* e = doc.FirstChildElement("dict")->FirstChildElement("key"); e; e = e->NextSiblingElement("key")) {
+            if (e->GetText()) keys.push_back(e->GetText());
+        }
+        return keys;
     }
 
     std::string plistValueXml(const editor::NativePlistValue& value) {
@@ -586,6 +605,8 @@ namespace {
     void writeNativePlistEntries(std::string& plist, const std::map<std::string, editor::NativePlistValue>& entries, const std::string& rawXml) {
         for (const auto& [key, value] : entries) setPlistValue(plist, key, plistValueXml(value));
         if (rawXml.find_first_not_of(" \t\r\n") == std::string::npos) return;
+        // the fragment's keys replace the export's (one SKAdNetworkItems)
+        for (const std::string& key : plistFragmentKeys(rawXml)) removePlistKey(plist, key);
         const size_t dictEnd = plist.rfind("</dict>");
         if (dictEnd == std::string::npos) return;
         std::string text = rawXml;
@@ -2584,6 +2605,91 @@ bool editor::Exporter::copyCppScripts() {
     return true;
 }
 
+namespace {
+
+    bool sameFileContents(const fs::path& a, const fs::path& b) {
+        std::error_code ec;
+        if (fs::file_size(a, ec) != fs::file_size(b, ec) || ec) return false;
+        std::ifstream fa(a, std::ios::binary), fb(b, std::ios::binary);
+        if (!fa || !fb) return false;
+        std::vector<char> bufA(1 << 16), bufB(1 << 16);
+        while (true) {
+            fa.read(bufA.data(), (std::streamsize)bufA.size());
+            fb.read(bufB.data(), (std::streamsize)bufB.size());
+            if (fa.gcount() != fb.gcount()) return false;
+            if (fa.gcount() == 0) return true;
+            if (std::memcmp(bufA.data(), bufB.data(), (size_t)fa.gcount()) != 0) return false;
+        }
+    }
+
+    // Mirrors the folder `src` (below `root`) into `dst` without following links: a link that
+    // stays inside `root` (a framework's Versions/Current) is copied as that link (its target
+    // when links cannot be made), any other link is left out with a warning; unchanged files keep
+    // their time; what `src` no longer has goes
+    bool mirrorNoFollow(const fs::path& root, const fs::path& src, const fs::path& dst, std::string& error) {
+        std::error_code ec;
+        const fs::file_status dstStatus = fs::symlink_status(dst, ec);
+        if (fs::exists(dstStatus) && !fs::is_directory(dstStatus)) removeAllNoFollow(dst, ec);
+        fs::create_directories(dst, ec);
+        if (ec) {
+            error = "cannot create " + genericUtf8Path(dst) + ": " + ec.message();
+            return false;
+        }
+        std::set<fs::path> names;
+        for (fs::directory_iterator it(src, ec), end; !ec && it != end; it.increment(ec)) {
+            const fs::path from = it->path();
+            const fs::path to = dst / from.filename();
+            names.insert(from.filename());
+            const fs::file_status status = it->symlink_status(ec);
+            if (fs::is_symlink(status)) {
+                const fs::path target = fs::read_symlink(from, ec);
+                const fs::path resolved = (target.is_absolute() ? target : from.parent_path() / target).lexically_normal();
+                const fs::path inside = resolved.lexically_relative(root.lexically_normal());
+                if (ec || inside.empty() || *inside.begin() == ".." || !fs::exists(resolved, ec)) {
+                    editor::Out::warning("Native plugins: %s is a link out of plugins/native (or to nothing); it is not exported",
+                                         genericUtf8Path(from).c_str());
+                    names.erase(from.filename());
+                    continue;
+                }
+                std::error_code linkError;
+                const fs::file_status old = fs::symlink_status(to, linkError);
+                if (fs::is_symlink(old) && fs::read_symlink(to, linkError) == target) continue;
+                if (fs::exists(old)) removeAllNoFollow(to, linkError);
+                linkError.clear();
+                fs::create_symlink(target, to, linkError);
+                if (!linkError) continue;
+                // no links here (Windows without the privilege): the target's content
+                if (fs::is_directory(resolved, ec)) {
+                    if (!mirrorNoFollow(root, resolved, to, error)) return false;
+                } else {
+                    fs::copy_file(resolved, to, fs::copy_options::overwrite_existing, ec);
+                }
+                continue;
+            }
+            if (fs::is_directory(status)) {
+                if (!mirrorNoFollow(root, from, to, error)) return false;
+            } else if (fs::is_regular_file(status)) {
+                std::error_code copyError;
+                const fs::file_status old = fs::symlink_status(to, copyError);
+                if (fs::is_regular_file(old) && sameFileContents(from, to)) continue;
+                if (fs::exists(old)) removeAllNoFollow(to, copyError);
+                fs::copy_file(from, to, fs::copy_options::overwrite_existing, copyError);
+                if (copyError) {
+                    error = "cannot copy " + genericUtf8Path(from) + ": " + copyError.message();
+                    return false;
+                }
+            }
+        }
+        std::vector<fs::path> stale;
+        for (fs::directory_iterator it(dst, ec), end; !ec && it != end; it.increment(ec)) {
+            if (!names.count(it->path().filename())) stale.push_back(it->path());
+        }
+        for (const fs::path& path : stale) removeAllNoFollow(path, ec);
+        return true;
+    }
+
+}
+
 bool editor::Exporter::copyNativePlugins() {
     const fs::path source = NativePlugins::root(project->getProjectPath());
     const fs::path destination = getExportProjectRoot() / NativePlugins::relativeRoot();
@@ -2593,13 +2699,14 @@ bool editor::Exporter::copyNativePlugins() {
         if (platform == "cpp") continue;
         const fs::path from = source / platform;
         const fs::path to = destination / platform;
-        if (fs::is_directory(from, ec)) {
-            copyTreeIfChanged(from, to, ec);
-            if (ec) {
-                setError("Failed to copy the native plugins of " + platform + " (" + genericUtf8Path(from) + "): " + ec.message());
+        // a real folder only (a link to one is not followed)
+        if (fs::is_directory(fs::symlink_status(from, ec))) {
+            std::string error;
+            if (!mirrorNoFollow(source, from, to, error)) {
+                setError("Failed to copy the native plugins of " + platform + ": " + error);
                 return false;
             }
-        } else if (fs::exists(to, ec)) {
+        } else if (fs::exists(fs::symlink_status(to, ec))) {
             // an earlier export's: the project no longer has them
             removeAllNoFollow(to, ec);
         }
@@ -2963,10 +3070,7 @@ bool editor::Exporter::writeExportSettingsScript(std::string& cmakeContent) {
             }
             std::sort(nativeFiles.begin(), nativeFiles.end());
         }
-        if (!nativeFiles.empty() || !web.scriptUrls.empty()) {
-            nativeScripts += "<script>window.JasperNative = window.JasperNative || {_pending: [], _pendingEvents: [], "
-                             "register: function(n, o) { this._pending.push([n, o]); }, "
-                             "emit: function(p, e, d) { this._pendingEvents.push([p, e, d]); }};</script>\n";
+        {
             for (const std::string& url : web.scriptUrls) {
                 if (url.find_first_not_of(" \t") == std::string::npos) continue;
                 nativeScripts += "<script src=\"" + escapeXmlAttribute(url) + "\"></script>\n";
@@ -2977,6 +3081,11 @@ bool editor::Exporter::writeExportSettingsScript(std::string& cmakeContent) {
         }
     }
     value("native_scripts", nativeScripts);
+    // first in <head>, always: web.head_include snippets and plugin scripts may register before
+    // the engine starts (it adopts what they queued)
+    value("native_stub", "<script>window.JasperNative = window.JasperNative || {_pending: [], _pendingEvents: [], "
+                         "register: function(n, o) { this._pending.push([n, o]); }, "
+                         "emit: function(p, e, d) { this._pendingEvents.push([p, e, d]); }};</script>");
     {
         std::string files;
         for (const std::string& file : nativeFiles) files += (files.empty() ? "" : ";") + file;
@@ -3004,7 +3113,7 @@ if(WEB)
         string(SUBSTRING "${html}" ${last} -1 suffix)
         set(html "${prefix}${title}${suffix}")
     endif()
-    set(extra "${head}\n")
+    set(extra "${native_stub}\n${head}\n")
     if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/favicon.png")
         file(COPY "${CMAKE_CURRENT_LIST_DIR}/favicon.png" DESTINATION "${output}")
         string(APPEND extra "<link rel=\"icon\" href=\"favicon.png\">\n")
@@ -4142,7 +4251,8 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
     }
 
     const bool hasPackages = !ios.swiftPackages.empty();
-    if (!hasNativeFiles && ios.frameworks.empty() && macOS.frameworks.empty() && !hasPackages && ios.entitlementsXml.empty()) return true;
+    const bool hasEntitlements = ios.entitlementsXml.find_first_not_of(" \t\r\n") != std::string::npos;
+    if (!hasNativeFiles && ios.frameworks.empty() && macOS.frameworks.empty() && !hasPackages && !hasEntitlements) return true;
 
     struct AppTarget {
         std::string name;
@@ -4151,7 +4261,7 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
         std::vector<std::string> folders;         // its plugin folders
         const std::vector<std::string>* systemFrameworks = nullptr;
         std::vector<std::string> sources, frameworks, embedded;
-        std::set<std::string> frameworkDirs, libraryDirs;
+        std::set<std::string> frameworkDirs, libraryDirs, headerDirs;
         bool swift = false;
         std::string runpath;
         std::string bridgingHeader;
@@ -4218,13 +4328,23 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
             const std::string name = baseName(path);
             const std::string ext = lowerExtension(FileUtils::pathFromUtf8(name));
             std::string type;
-            bool source = true, header = false, linked = false;
+            bool source = true, linked = false;
             if (ext == ".m") type = "sourcecode.c.objc";
             else if (ext == ".mm") type = "sourcecode.cpp.objcpp";
             else if (ext == ".swift") type = "sourcecode.swift";
             else if (ext == ".c") type = "sourcecode.c.c";
             else if (ext == ".cpp" || ext == ".cc" || ext == ".cxx") type = "sourcecode.cpp.cpp";
-            else if (ext == ".h" || ext == ".hpp") { type = "sourcecode.c.h"; source = false; header = true; }
+            else if (ext == ".h" || ext == ".hpp") {
+                // no file reference: Xcode maps a project's headers by name for every target, so a
+                // plugin's Camera.h would shadow the engine's. Their folders are search paths, after
+                // the engine's.
+                for (AppTarget& target : targets) {
+                    if (std::find(target.folders.begin(), target.folders.end(), folder) != target.folders.end()) {
+                        target.headerDirs.insert(pbxPath("$(SRCROOT)/../../project/plugins/native/" + parentDir(path)));
+                    }
+                }
+                continue;
+            }
             else if (ext == ".framework") { type = "wrapper.framework"; source = false; linked = true; }
             else if (ext == ".xcframework") { type = "wrapper.xcframework"; source = false; linked = true; }
             else if (ext == ".a") { type = "archive.ar"; source = false; linked = true; }
@@ -4234,7 +4354,6 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
                     "lastKnownFileType = " + type + "; path = " + pbxString(name) + "; sourceTree = \"<group>\"; };\n";
             });
             addToTree(path, fileId + " /* " + name + " */");
-            if (header) continue;
             // a dynamic SDK is embedded too (a static one is only linked)
             bool embed = false;
             if (linked && ext != ".a") {
@@ -4301,7 +4420,15 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
         while (!repo.empty() && repo.back() == '/') repo.pop_back();
         std::string label = repo.substr(repo.rfind('/') + 1);
         if (label.size() > 4 && label.compare(label.size() - 4, 4, ".git") == 0) label.resize(label.size() - 4);
-        const std::string version = package.version.empty() ? "1.0.0" : package.version;
+        // Xcode wants x.y.z: "4" and "4.1" are padded
+        std::string version = package.version.empty() ? "1.0.0" : package.version;
+        {
+            const size_t suffix = version.find_first_of("-+");
+            std::string numbers = version.substr(0, suffix);
+            const std::string rest = suffix == std::string::npos ? std::string() : version.substr(suffix);
+            while (std::count(numbers.begin(), numbers.end(), '.') < 2) numbers += ".0";
+            version = numbers + rest;
+        }
         const std::string refComment = "XCRemoteSwiftPackageReference \"" + label + "\"";
         const std::string refId = addObject("package:" + package.url, packageObjects, [&](const std::string& id) {
             return "\t\t" + id + " /* " + refComment + " */ = {\n\t\t\tisa = XCRemoteSwiftPackageReference;\n\t\t\trepositoryURL = " +
@@ -4442,6 +4569,7 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
                 // plugin code imports "JasperNative.h"
                 addPbxBuildSettingList(xcodeProject, settings(), "HEADER_SEARCH_PATHS", {pbxPath("$(SRCROOT)/../../platform/apple")});
             }
+            addPbxBuildSettingList(xcodeProject, settings(), "HEADER_SEARCH_PATHS", {target.headerDirs.begin(), target.headerDirs.end()});
             addPbxBuildSettingList(xcodeProject, settings(), "FRAMEWORK_SEARCH_PATHS", {target.frameworkDirs.begin(), target.frameworkDirs.end()});
             addPbxBuildSettingList(xcodeProject, settings(), "LIBRARY_SEARCH_PATHS", {target.libraryDirs.begin(), target.libraryDirs.end()});
             if (target.swift) {
@@ -4453,7 +4581,7 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
             if (target.swift || !target.embedded.empty() || (&target == &targets[0] && !productDeps.empty())) {
                 addPbxBuildSettingList(xcodeProject, settings(), "LD_RUNPATH_SEARCH_PATHS", {target.runpath});
             }
-            if (&target == &targets[0] && !ios.entitlementsXml.empty()) {
+            if (&target == &targets[0] && ios.entitlementsXml.find_first_not_of(" \t\r\n") != std::string::npos) {
                 setPbxBuildSetting(xcodeProject, settings(), "CODE_SIGN_ENTITLEMENTS", "ios/JasperEngine.entitlements");
             }
         }

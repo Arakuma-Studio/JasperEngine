@@ -195,8 +195,8 @@ JSONArray, `JSONObject.NULL`, Map, Collection, arrays, an Enum (its name); anyth
 `unsupported_type`. Lookups are cached per (class, method, arity).
 
 **`JasperNative`** (`com.jaspergameengine.bridge`, the `jasperbridge` Gradle module):
-`getActivity()`, `runOnUiThread(Runnable)`, `runOnGameThread(Runnable)` (next frame, on the engine
-thread), `emit(plugin, event, payload)` (payload converted as a return value), `pauseEngine()` /
+`getActivity()`, `runOnUiThread(Runnable)`, `runOnGameThread(Runnable)` (the start of the next frame, on
+the engine thread, paused frames too), `emit(plugin, event, payload)` (payload converted as a return value), `pauseEngine()` /
 `resumeEngine()` (counted), `addLifecycleListener` / `removeLifecycleListener`,
 `registerPlugin(name, class)`. **`NativeCall`**: `getArgs()` (JSONArray), `resolve(value)`,
 `reject(code, message)`, `isCancelled()`, `getId()`. **`JasperLifecycleListener`** (default
@@ -216,11 +216,13 @@ kept: add rules only for your own reflection).
 ## 5. iOS and macOS (Objective-C, Swift)
 
 `plugins/native/apple/` goes into both apps, `ios/` into iOS only (also `.framework`,
-`.xcframework`, `.a` SDKs), `macos/` into macOS only. A plugin is a class (Swift:
-`@objc(Name)`) whose **class methods** Lua calls:
+`.xcframework`, `.a` SDKs), `macos/` into macOS only. A plugin is a class adopting the
+`JasperNativePlugin` protocol (Swift: `@objc(Name)` and `JasperNativePlugin`) whose **class
+methods** Lua calls; no other class answers a `Native.call` (so a mock still answers for a name
+like `NSString`):
 
 ```objc
-// plugins/native/ios/Device.m (+ Device.h declaring the interface)
+// plugins/native/ios/Device.m (+ Device.h: @interface Device : NSObject <JasperNativePlugin>)
 #import "Device.h"
 @implementation Device
 + (void)jasperInit { }                                   // optional: once, on the main thread, when the game view loads
@@ -236,7 +238,7 @@ kept: add rules only for your own reflection).
 
 ```swift
 // plugins/native/apple/Store.swift
-@objc(Store) public class Store: NSObject {
+@objc(Store) public class Store: NSObject, JasperNativePlugin {
     @objc public static func price(_ args: [Any]) -> Any? { return 0.99 }
     @objc public static func buy(_ args: [Any], call: JasperNativeCall) { call.resolve(["ok": true]) }
 }
@@ -257,9 +259,12 @@ screens on it), `.window`, `.view` (the game's view; macOS: NSViewController/NSW
 `args`, `resolve:`, `reject:message:`, `isCancelled`, `callId`. Swift sees all of it through the
 export's bridging header (with every plugin `.h`).
 
-`+jasperInit` runs for every class of the app's own images that implements it, before the engine
-starts. macOS: Objective-C plugins of `apple/` and `macos/` are compiled into CMake desktop builds
-and the macOS editor's Play library too (Swift only in the Xcode project).
+`+jasperInit` runs once for every plugin class of the app's own images that implements it,
+before the engine starts (found from the classes' method lists: no class is initialized for it).
+macOS: Objective-C plugins of `apple/` and `macos/` are compiled into CMake desktop builds and the
+macOS editor's Play library too (Swift only in the Xcode project); there `+jasperInit` runs at the
+engine's start and at each Play for classes not run yet. macOS never unloads Objective-C classes:
+after changing an Objective-C plugin, restart the editor (Play warns once).
 
 ## 6. Web (JavaScript)
 
@@ -279,8 +284,9 @@ JasperNative.register("Poki", {
 ```
 
 Lua: `Native.call("Poki", "gameplayStart")`, `Native.callAsync("Poki", "rewarded", nil, cb)`, or a
-global path: `Native.call("localStorage", "getItem", "k")`, `Native.callAsync("navigator.clipboard",
-"writeText", {"hi"})`. The function runs with `this` = the object. Sync: the return value as JSON
+global by a dotted path: `Native.call("window.localStorage", "getItem", "k")`,
+`Native.callAsync("navigator.clipboard", "writeText", {"hi"})`. A bare name is only a registered
+object (never a browser global like `Notification`, so a plugin's Lua mock still answers). The function runs with `this` = the object. Sync: the return value as JSON
 (a Promise is `async_only`). Async: the awaited value; a rejection with `{code, message}` keeps
 them, any other reason is `exception`. Functions, DOM nodes, Map/Set, cycles, NaN are
 `unsupported_type`. `JasperNative`: `register(name, object)`, `emit(plugin, event, payload)`,
@@ -372,7 +378,8 @@ A wrapper of an ads or purchases SDK is written on top of this bridge alone:
   the method shows the ad on the UI thread and completes the call when it closes.
 - **Events**: `JasperNative.emit("Ads", "paid", {value = ...})` -> `Native.on("Ads", "paid", fn, self)`.
 - **Pause while a full-screen ad shows**: `JasperNative.pauseEngine()` before, `resumeEngine()`
-  after (counted; audio pauses and `Engine.onPause` / `onResume` fire; Play stop resets it).
+  after (counted; audio pauses and `Engine.onPause` / `onResume` fire once; the OS's own pause is
+  a separate hold: the engine runs again only when both let go; Play stop resets it).
 - **Banners**: Android `JasperNative.getActivity().addContentView(view, params)` on the UI thread;
   Apple `[JasperNative.view addSubview:banner]`; then `Screen.setExtraInsets` (feature safe-area)
   so the game's UI keeps clear of it.

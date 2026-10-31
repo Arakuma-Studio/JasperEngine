@@ -1430,6 +1430,14 @@ endif()
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
     file(GLOB_RECURSE PROJECT_SOURCE ${PROJECT_ROOT}/*.cpp)
+    # the native plugins' platform folders belong to Gradle / Xcode (and the macOS block the
+    # export adds); plugins/native/cpp ships as a script root under scripts/
+    foreach(native_source IN LISTS PROJECT_SOURCE)
+        string(FIND "${native_source}" "${PROJECT_ROOT}/plugins/native/" native_at)
+        if(native_at EQUAL 0)
+            list(REMOVE_ITEM PROJECT_SOURCE "${native_source}")
+        endif()
+    endforeach()
 
     # Embed the exported icon into the Windows executable (Explorer, taskbar
     # and window icon). Other platforms set the window icon at runtime instead.

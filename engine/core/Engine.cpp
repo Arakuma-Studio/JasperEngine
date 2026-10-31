@@ -120,6 +120,8 @@ bool Engine::clampNextDelta = false;
 
 std::atomic<bool> Engine::viewLoaded = false;
 std::atomic<bool> Engine::paused = false;
+bool Engine::osPaused = false;
+bool Engine::nativePaused = false;
 bool Engine::focused = true;
 std::atomic<bool> Engine::asyncLoading = false;
 bool Engine::frameRunning = false;
@@ -1216,6 +1218,8 @@ void Engine::systemInit(int argc, char* argv[], System* system, bool startProjec
     updateTimeCount = 0;
     viewLoaded = false;
     paused = false;
+    osPaused = false;
+    nativePaused = false;
 
     drawSemaphore.release();
 
@@ -1233,6 +1237,8 @@ void Engine::systemInit(int argc, char* argv[], System* system, bool startProjec
 void Engine::systemStartProject(){
     #ifndef NO_LUA_INIT
     LuaBinding::init();
+    // native plugins' init hooks (Apple +jasperInit) before any script can call them
+    NativeBridge::initPlugins();
     #endif
     #ifndef NO_CPP_INIT
     getOnInit().call();
@@ -1670,6 +1676,31 @@ void Engine::systemShutdown(){
 }
 
 void Engine::systemPause(){
+    osPaused = true;
+    applyPause();
+}
+
+void Engine::systemResume(){
+    osPaused = false;
+    applyPause();
+}
+
+void Engine::setNativePause(bool held){
+    nativePaused = held;
+    applyPause();
+}
+
+void Engine::applyPause(){
+    const bool want = osPaused || nativePaused;
+    if (want == paused) return;
+    if (!want){
+        AudioSystem::resumeAll();
+        ScriptRuntime::broadcast(ScriptMessage::ApplicationPause, [](lua_State* L) { lua_pushboolean(L, 0); return 1; },
+            [](ScriptBase& script) { script.onApplicationPause(false); });
+        Engine::onResume.call();
+        paused = false;
+        return;
+    }
     AudioSystem::pauseAll();
     ScriptRuntime::broadcast(ScriptMessage::ApplicationPause, [](lua_State* L) { lua_pushboolean(L, 1); return 1; },
         [](ScriptBase& script) { script.onApplicationPause(true); });
@@ -1680,14 +1711,6 @@ void Engine::systemPause(){
 
     // a paused app may be killed without another call
     UserSettings::save();
-}
-
-void Engine::systemResume(){
-    AudioSystem::resumeAll();
-    ScriptRuntime::broadcast(ScriptMessage::ApplicationPause, [](lua_State* L) { lua_pushboolean(L, 0); return 1; },
-        [](ScriptBase& script) { script.onApplicationPause(false); });
-    Engine::onResume.call();
-    paused = false;
 }
 
 bool Engine::isPaused(){

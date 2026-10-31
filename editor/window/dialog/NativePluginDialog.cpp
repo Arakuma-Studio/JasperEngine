@@ -77,7 +77,7 @@ NativePlugins::CreateOptions NativePluginDialog::options() const {
 }
 
 void NativePluginDialog::create() {
-    if (!m_project) return;
+    if (!m_project || m_project->isAnyScenePlaying()) return;
     std::vector<NativePlugins::CreatedFile> written;
     std::string error;
     if (!NativePlugins::create(m_project->getProjectPath(), m_project->getLuaPath(), options(), written, error)) {
@@ -188,8 +188,11 @@ void NativePluginDialog::show() {
         ImGui::PopTextWrapPos();
     }
 
+    // like native_plugins: its C++ joins the Play library at the next Play
+    const bool playing = m_project && m_project->isAnyScenePlaying();
+    if (playing) ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Stop Play mode to create a native plugin.");
     const float buttonWidth = Theme::dpi(120.0f);
-    ImGui::BeginDisabled(!invalid.empty());
+    ImGui::BeginDisabled(!invalid.empty() || playing);
     if (ImGui::Button("Create", ImVec2(buttonWidth, 0.0f))) {
         create();
         if (!m_isOpen) ImGui::CloseCurrentPopup();

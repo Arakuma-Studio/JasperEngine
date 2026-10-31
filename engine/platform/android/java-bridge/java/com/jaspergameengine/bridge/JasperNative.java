@@ -80,8 +80,8 @@ public final class JasperNative {
         else mainHandler.post(r);
     }
 
-    // Runs `r` on the game (engine) thread at the start of the next frame's update, where Lua
-    // runs (the place to touch engine state from Java)
+    // Runs `r` on the game (engine) thread at the start of the next frame, paused frames too (a
+    // resumeEngine from it works): the place to touch engine state from Java
     public static void runOnGameThread(Runnable r) {
         if (r == null) return;
         long token = nextTask.getAndIncrement();

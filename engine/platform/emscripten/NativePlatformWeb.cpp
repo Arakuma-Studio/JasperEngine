@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // The native bridge's platform layer on the web (core/native/NativePlatform.h): JavaScript
-// objects registered with JasperNative.register(name, object), or any global by dotted path
-// ("localStorage", "navigator.clipboard"). The page's window.JasperNative is the helper plugin
+// objects registered with JasperNative.register(name, object), or a global by dotted path
+// ("window.localStorage", "navigator.clipboard"; a bare name is a registered object only). The page's window.JasperNative is the helper plugin
 // scripts use (register, emit, canvas, pauseEngine, resumeEngine); the export puts a small
 // stub of it before the plugin scripts, which queues what they do until the engine starts
 // (jasper_native_init adopts it). Everything is single-threaded: "background" is the same as
@@ -75,11 +75,15 @@ EM_JS(void, jasper_native_init, (), {
     };
     Module.jasperNativeToJson = toJson;
 
-    // the registered object, else a global by dotted path; null when there is none
+    // the registered object; else, for a dotted name ("navigator.clipboard", "window.localStorage"),
+    // the global at that path; null when there is none. A bare name is never a browser global
+    // (Notification, Audio, Image...): it would hide the plugin's Lua mock.
     Module.jasperNativeTarget = function(plugin) {
         if (Object.prototype.hasOwnProperty.call(jn._objects, plugin)) return jn._objects[plugin];
+        if (plugin.indexOf(".") < 0) return null;
         var target = root;
         var parts = plugin.split(".");
+        if (parts[0] === "window" || parts[0] === "globalThis") parts.shift();
         for (var i = 0; i < parts.length; i++) {
             if (target === null || target === undefined) return null;
             try { target = target[parts[i]]; } catch (e) { return null; }

@@ -356,6 +356,10 @@ namespace jasperengine {
 
         static std::atomic<bool> viewLoaded;
         static std::atomic<bool> paused;
+        // the two holds of `paused` (main thread)
+        static bool osPaused;
+        static bool nativePaused;
+        static void applyPause();
         static bool focused;
         static std::atomic<bool> asyncLoading;
         static bool frameRunning;
@@ -598,10 +602,15 @@ namespace jasperengine {
         static void systemViewDestroyed();
         static void systemShutdown();
 
+        // The OS paused / resumed the app. Idempotent. The engine is paused while the OS or a
+        // native SDK (setNativePause) holds it: one onPause when the first hold starts, one
+        // onResume when the last ends.
         static void systemPause();
         static void systemResume();
-        // Between systemPause and systemResume (the app in the background, a native SDK's
-        // full-screen view: NativeBridge::pauseEngine)
+        // A native SDK's full-screen view (NativeBridge::pauseEngine/resumeEngine, applied
+        // each frame by NativeBridge::update); false at Play stop. Idempotent.
+        static void setNativePause(bool held);
+        // Paused by either hold
         static bool isPaused();
         // The application gained or lost the focus (platforms that report it). Idempotent:
         // only a change fires onFocus and the scripts' onApplicationFocus.

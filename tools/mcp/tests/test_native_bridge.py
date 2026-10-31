@@ -125,11 +125,11 @@ async def test_native_settings_keys(ed: Editor):
         "android.manifest_xml": '<uses-permission android:name="android.permission.READ_PHONE_STATE" tools:node="remove" />',
         "android.manifest_application_xml": '<meta-data android:name="com.example.APP_ID" android:value="abc" />',
         "ios.plist_entries": {"NSUserTrackingUsageDescription": "Ads", "ITSAppUsesNonExemptEncryption": False, "Count": 3,
-                              "Ratio": 1.5, "UIBackgroundModes": ["fetch"], "Numeric": "15"},
+                              "Ratio": 1.5, "UIBackgroundModes": ["fetch"], "Numeric": "15", "SKAdNetworkItems": ["replaced"]},
         "ios.plist_xml": "<key>SKAdNetworkItems</key><array><dict><key>SKAdNetworkIdentifier</key><string>x.skadnetwork</string></dict></array>",
         "ios.frameworks": ["StoreKit", "AppTrackingTransparency?"],
         "ios.cocoapods": [{"name": "Alamofire", "version": "~> 5.9"}, {"name": "Custom", "source": "https://github.com/x/specs.git"}],
-        "ios.swift_packages": [{"url": "https://github.com/RevenueCat/purchases-ios", "version": "4.0.0", "products": ["RevenueCat"]}],
+        "ios.swift_packages": [{"url": "https://github.com/RevenueCat/purchases-ios", "version": "4", "products": ["RevenueCat"]}],
         "ios.entitlements_xml": "<key>aps-environment</key><string>development</string>",
         "ios.deployment_target": "16.0",
         "macos.plist_entries": {"LSApplicationCategoryType": "public.app-category.games"},
@@ -231,7 +231,7 @@ async def test_source_export(ed: Editor):
         '    <uses-permission android:name="android.permission.READ_PHONE_STATE" tools:node="remove" />\n</manifest>\n')
     (native / "android" / "proguard-rules.pro").write_text("-keep class com.sdk.** { *; }\n")
     (native / "apple").mkdir(parents=True, exist_ok=True)
-    (native / "apple" / "Device.h").write_text("#import <Foundation/Foundation.h>\n@interface Device : NSObject\n@end\n")
+    (native / "apple" / "Device.h").write_text("#import <Foundation/Foundation.h>\n@interface Device : NSObject <JasperNativePlugin>\n@end\n")
     (native / "apple" / "Device.m").write_text('#import "Device.h"\n@implementation Device\n+ (id)getCode:(NSArray*)args { return @7; }\n@end\n')
     (native / "ios").mkdir(parents=True, exist_ok=True)
     (native / "ios" / "Store.swift").write_text("import Foundation\n@objc(Store) public class Store: NSObject {\n"
@@ -240,6 +240,15 @@ async def test_source_export(ed: Editor):
     write_stub_xcframework(native / "ios" / "sdk", "DynamicSdk", static=False)
     (native / "macos").mkdir(parents=True, exist_ok=True)
     (native / "macos" / "MacOnly.m").write_text("#import <Foundation/Foundation.h>\n@interface MacOnly : NSObject\n@end\n@implementation MacOnly\n@end\n")
+    # a framework with its version links (kept as links), a link out of the project (left out), a
+    # C++ file of a platform folder (Xcode/Gradle's, never the CMake build's)
+    linked = native / "ios" / "sdk" / "Linked.framework"
+    (linked / "Versions" / "A").mkdir(parents=True, exist_ok=True)
+    (linked / "Versions" / "A" / "Linked").write_bytes(b"\xcf\xfa\xed\xfe" + b"\0" * 64)
+    os.symlink("A", linked / "Versions" / "Current")
+    os.symlink("Versions/Current/Linked", linked / "Linked")
+    os.symlink("/etc/hostname", native / "ios" / "outside.txt")
+    (native / "ios" / "helper.cpp").write_text("int nativeHelper() { return 1; }\n")
     (native / "web").mkdir(parents=True, exist_ok=True)
     (native / "web" / "b.js").write_text('JasperNative.register("B", {f: function () { return 1; }});\n')
     (native / "web" / "a.js").write_text('JasperNative.register("A", {f: function () { return 1; }});\n')
@@ -321,11 +330,17 @@ async def test_source_export(ed: Editor):
     embed = [objects[p] for p in ios_target["buildPhases"] if objects[p]["isa"] == "PBXCopyFilesBuildPhase"]
     ed.check_eq(len(embed), 1, "one Embed Frameworks phase")
     embedded = [objects[objects[b]["fileRef"]]["path"] for b in embed[0]["files"]]
-    ed.check_eq(embedded, ["DynamicSdk.xcframework"], "only the dynamic SDK is embedded")
+    ed.check_eq(sorted(embedded), ["DynamicSdk.xcframework", "Linked.framework"], "only the dynamic SDKs are embedded")
     ed.check_eq(embed[0]["dstSubfolderSpec"], "10")
     packages = [o for o in objects.values() if o.get("isa") == "XCRemoteSwiftPackageReference"]
     ed.check_eq([(p["repositoryURL"], p["requirement"]["kind"], p["requirement"]["minimumVersion"]) for p in packages],
-                [("https://github.com/RevenueCat/purchases-ios", "upToNextMajorVersion", "4.0.0")])
+                [("https://github.com/RevenueCat/purchases-ios", "upToNextMajorVersion", "4.0.0")])  # "4" padded
+    header_refs = [o.get("path") for o in objects.values() if o.get("isa") == "PBXFileReference" and o.get("path") == "Device.h"]
+    ed.check_eq(header_refs, [], "plugin headers are no file references (they would shadow engine headers)")
+    exported_link = out / "project" / "plugins" / "native" / "ios" / "sdk" / "Linked.framework"
+    ed.check((exported_link / "Versions" / "Current").is_symlink(), "a framework's Versions/Current stays a link")
+    ed.check(not (out / "project" / "plugins" / "native" / "ios" / "outside.txt").exists(), "a link out of the project is not exported")
+    ed.check_in("Linked.framework", embedded, "the dynamic framework behind its links is embedded")
     ed.check_eq(len(objects[root["rootObject"]]["packageReferences"]), 1)
     ed.check_eq(len(ios_target["packageProductDependencies"]), 1)
     for settings in pbxproj.target_settings(root, "JasperEngine iOS"):
@@ -335,6 +350,7 @@ async def test_source_export(ed: Editor):
         ed.check_eq(settings["CODE_SIGN_ENTITLEMENTS"], "ios/JasperEngine.entitlements")
         ed.check_in("$(SRCROOT)/../../project/plugins/native/ios/sdk", settings["FRAMEWORK_SEARCH_PATHS"])
         ed.check_in("$(SRCROOT)/../../platform/apple", settings["HEADER_SEARCH_PATHS"])
+        ed.check_in("$(SRCROOT)/../../project/plugins/native/apple", settings["HEADER_SEARCH_PATHS"], "plugin headers are a search path")
         ed.check_in("@executable_path/Frameworks", settings["LD_RUNPATH_SEARCH_PATHS"])
     for settings in pbxproj.target_settings(root, "JasperEngine macOS"):
         ed.check(settings.get("SWIFT_OBJC_BRIDGING_HEADER") is None, "macOS has no Swift plugin")
@@ -359,12 +375,14 @@ async def test_source_export(ed: Editor):
     ed.check_in("<key>Ratio</key>\n\t<real>1.5</real>", plist)
     ed.check_in("<key>UIBackgroundModes</key>\n\t<array>\n\t\t<string>fetch</string>\n\t</array>", plist)
     ed.check_in("<key>Numeric</key>\n\t<string>15</string>", plist)
-    ed.check_in("SKAdNetworkItems", plist)
+    ed.check_eq(plist.count("<key>SKAdNetworkItems</key>"), 1, "ios.plist_xml's keys replace the others")
+    ed.check("replaced" not in plist, "the raw XML wins over a plist entry of the same key")
     ed.check_in("<key>LSApplicationCategoryType</key>", (xcode / "macos" / "Info.plist").read_text())
     ed.check_in("<key>aps-environment</key>", (xcode / "ios" / "JasperEngine.entitlements").read_text())
 
     # web
     apply_cmake = (out / "project" / "export-settings" / "apply.cmake").read_text()
+    ed.check_in('set(extra "${native_stub}\n${head}\n")', apply_cmake, "the JasperNative stub comes first, before web.head_include")
     stub = apply_cmake.index("window.JasperNative = window.JasperNative ||")
     url = apply_cmake.index('<script src="https://sdk.example.com/sdk.js"></script>')
     a = apply_cmake.index("plugins/a.js")
@@ -372,7 +390,10 @@ async def test_source_export(ed: Editor):
     ed.check(stub < url < a < b, "stub, SDK URLs, plugin files in name order")
     ed.check_in('file(COPY "${CMAKE_CURRENT_LIST_DIR}/../plugins/native/web/${native_file}"', apply_cmake)
     ed.check((out / "project" / "plugins" / "native" / "web" / "a.js").is_file(), "web plugins copied")
-    ed.check_in("JASPERENGINE_NATIVE_PLUGIN_SOURCES", (out / "CMakeLists.txt").read_text(), "macOS CMake builds compile the ObjC plugins")
+    cmake_text = (out / "CMakeLists.txt").read_text()
+    ed.check_in("JASPERENGINE_NATIVE_PLUGIN_SOURCES", cmake_text, "macOS CMake builds compile the ObjC plugins")
+    ed.check_in('string(FIND "${native_source}" "${PROJECT_ROOT}/plugins/native/" native_at)', cmake_text,
+                "the platform folders' C++ (ios/helper.cpp) stays out of the CMake glob")
 
     # JASPER_NATIVE_EXPORT_KEEP=<dir>: a copy of this export (to build it with Gradle / Xcode by hand)
     keep = os.environ.get("JASPER_NATIVE_EXPORT_KEEP")
@@ -405,3 +426,11 @@ async def test_source_export(ed: Editor):
     ed.check(not (out / "project" / "plugins" / "native" / "android").exists(), "the copied plugins go too")
     root = pbxproj.parse((xcode / "JasperEngine.xcodeproj" / "project.pbxproj").read_text(encoding="utf-8"))
     ed.check("Device.m" not in pbxproj.target_sources(root, "JasperEngine iOS"), "no plugin source left")
+    # without plugins the app targets still find JasperNative.h (their own sources import it), and
+    # CocoaPods' xcconfig values are inherited
+    for name in ("JasperEngine iOS", "JasperEngine macOS"):
+        for settings in pbxproj.target_settings(root, name):
+            ed.check_in("$(SRCROOT)/../../platform/apple", settings["HEADER_SEARCH_PATHS"], f"{name}: JasperNative.h")
+            ed.check_eq(settings["HEADER_SEARCH_PATHS"][0], "$(inherited)", f"{name}: $(inherited) first")
+            if "OTHER_LDFLAGS" in settings:
+                ed.check_eq(settings["OTHER_LDFLAGS"][0], "$(inherited)", f"{name}: Pods' linker flags kept")

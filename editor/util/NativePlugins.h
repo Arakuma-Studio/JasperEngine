@@ -62,14 +62,20 @@ namespace jasperengine::editor::NativePlugins {
     std::vector<std::string> listMocks(const fs::path& luaDir);
 
     // Plugin name -> "Java/Kotlin plugins run only on Android" style message for the plugins
-    // that `running` cannot run ("android", "ios", "macos", "web", "desktop" = Linux/Windows):
+    // that `running` cannot run ("android", "ios", "macos" (Xcode), "macos-cmake" (no Swift), "web",
+    // "desktop" = Linux/Windows):
     // NativeBridge::setPlatformOnlyPlugins of editor Play and the exports (a call to one fails
     // with "unavailable" there). Plugins with a C++ implementation are not listed.
     std::map<std::string, std::string> platformOnlyPlugins(const std::vector<PluginInfo>& plugins, const std::string& running);
 
-    // The platform the editor's Play runs plugins of: "macos" on a Mac (its Objective-C plugins
-    // are in the Play library), else "desktop"
+    // The platform the editor's Play runs plugins of: "macos-cmake" on a Mac (its Objective-C
+    // plugins are in the Play library), else "desktop"
     std::string editorPlatform();
+
+    // macOS editor Play: Objective-C classes stay loaded for the editor's life (dyld never
+    // unloads an image with Objective-C), so plugin sources of apple/ or macos/ changed since the
+    // first Play of this editor run warn once that a restart runs the new code. No-op elsewhere.
+    void warnStaleObjectiveC(const fs::path& projectPath);
 
     // The path below plugins/native, as "android", "ios", ... ("" when `path` is not in it)
     std::string platformOf(const fs::path& projectPath, const fs::path& path);

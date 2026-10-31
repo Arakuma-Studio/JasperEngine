@@ -187,39 +187,62 @@ static BOOL isAppImage(const char* path) {
            strstr(path, "/Xcode.app/") == NULL && strstr(path, ".simruntime/") == NULL;
 }
 
+// The class (or a superclass) adopts JasperNativePlugin; nothing is sent to it
+BOOL jasperNativeIsPluginClass(Class cls) {
+    Protocol* marker = @protocol(JasperNativePlugin);
+    for (Class c = cls; c; c = class_getSuperclass(c)) {
+        if (class_conformsToProtocol(c, marker)) return YES;
+    }
+    return NO;
+}
+
+// The class itself (not a superclass) has the class method `selector`. Read from the metaclass's
+// method list: asking the class (class_getClassMethod, respondsToSelector:) could run its
+// +initialize.
+static BOOL hasOwnClassMethod(Class cls, SEL selector) {
+    unsigned int count = 0;
+    Method* methods = class_copyMethodList(object_getClass((id)cls), &count);
+    BOOL found = NO;
+    for (unsigned int i = 0; i < count && !found; i++) found = method_getName(methods[i]) == selector;
+    free(methods);
+    return found;
+}
+
 + (void)dispatchInit {
-    static BOOL done = NO;
-    if (done) return;
-    done = YES;
-
-    // the lifecycle, as the app's notifications (they come for scene-based apps too)
-    NSNotificationCenter* center = NSNotificationCenter.defaultCenter;
+    // the lifecycle, as the app's notifications (they come for scene-based apps too); once
+    static dispatch_once_t observing;
+    dispatch_once(&observing, ^{
+        NSNotificationCenter* center = NSNotificationCenter.defaultCenter;
 #if TARGET_OS_IPHONE
-    NSDictionary<NSNotificationName, NSString*>* names = @{
-        UIApplicationDidBecomeActiveNotification: @"applicationDidBecomeActive",
-        UIApplicationWillResignActiveNotification: @"applicationWillResignActive",
-        UIApplicationDidEnterBackgroundNotification: @"applicationDidEnterBackground",
-        UIApplicationWillEnterForegroundNotification: @"applicationWillEnterForeground",
-        UIApplicationWillTerminateNotification: @"applicationWillTerminate",
-    };
+        NSDictionary<NSNotificationName, NSString*>* names = @{
+            UIApplicationDidBecomeActiveNotification: @"applicationDidBecomeActive",
+            UIApplicationWillResignActiveNotification: @"applicationWillResignActive",
+            UIApplicationDidEnterBackgroundNotification: @"applicationDidEnterBackground",
+            UIApplicationWillEnterForegroundNotification: @"applicationWillEnterForeground",
+            UIApplicationWillTerminateNotification: @"applicationWillTerminate",
+        };
 #else
-    // a Mac app has no background state: hiding it is the closest
-    NSDictionary<NSNotificationName, NSString*>* names = @{
-        NSApplicationDidBecomeActiveNotification: @"applicationDidBecomeActive",
-        NSApplicationWillResignActiveNotification: @"applicationWillResignActive",
-        NSApplicationDidHideNotification: @"applicationDidEnterBackground",
-        NSApplicationWillUnhideNotification: @"applicationWillEnterForeground",
-        NSApplicationWillTerminateNotification: @"applicationWillTerminate",
-    };
+        // a Mac app has no background state: hiding it is the closest
+        NSDictionary<NSNotificationName, NSString*>* names = @{
+            NSApplicationDidBecomeActiveNotification: @"applicationDidBecomeActive",
+            NSApplicationWillResignActiveNotification: @"applicationWillResignActive",
+            NSApplicationDidHideNotification: @"applicationDidEnterBackground",
+            NSApplicationWillUnhideNotification: @"applicationWillEnterForeground",
+            NSApplicationWillTerminateNotification: @"applicationWillTerminate",
+        };
 #endif
-    [names enumerateKeysAndObjectsUsingBlock:^(NSNotificationName name, NSString* selectorName, BOOL* stop) {
-        SEL selector = NSSelectorFromString(selectorName);
-        [center addObserverForName:name object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification* note) {
-            notify(selector);
+        [names enumerateKeysAndObjectsUsingBlock:^(NSNotificationName name, NSString* selectorName, BOOL* stop) {
+            SEL selector = NSSelectorFromString(selectorName);
+            [center addObserverForName:name object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification* note) {
+                notify(selector);
+            }];
         }];
-    }];
+    });
 
-    // every class of the app's images with +jasperInit (Objective-C and @objc Swift classes)
+    // every plugin class of the app's images with its own +jasperInit, once per class: called
+    // again (engine start, the macOS editor's Play), it runs the classes loaded since
+    static NSMutableSet<NSString*>* initialized = nil;
+    if (!initialized) initialized = [NSMutableSet set];
     SEL init = @selector(jasperInit);
     unsigned int imageCount = 0;
     const char** images = objc_copyImageNames(&imageCount);
@@ -229,10 +252,10 @@ static BOOL isAppImage(const char* path) {
         const char** classNames = objc_copyClassNamesForImage(images[i], &classCount);
         for (unsigned int c = 0; c < classCount; c++) {
             Class cls = objc_getClass(classNames[c]);
-            if (!cls || cls == JasperNative.class) continue;
-            Method method = class_getClassMethod(cls, init);
-            // inherited from a superclass: that class runs it itself
-            if (!method || class_getClassMethod(class_getSuperclass(cls), init) == method) continue;
+            if (!cls || !jasperNativeIsPluginClass(cls) || !hasOwnClassMethod(cls, init)) continue;
+            NSString* name = [NSString stringWithUTF8String:classNames[c]];
+            if (!name || [initialized containsObject:name]) continue;
+            [initialized addObject:name];
             @try {
                 ((void (*)(id, SEL))objc_msgSend)(cls, init);
             } @catch (NSException* exception) {

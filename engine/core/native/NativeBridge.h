@@ -170,6 +170,15 @@ namespace jasperengine {
         static void resumeEngine();
         static int getPauseCount();
 
+        // Any thread: `task` runs on the engine thread at the start of the next frame (paused
+        // frames too: a resumeEngine from it works), before the delivery point. Play stop drops
+        // the queued ones.
+        static void postToGameThread(std::function<void()> task);
+
+        // The platform plugins' init hooks (Apple +jasperInit of classes not run yet): app start
+        // (Engine::systemInit) and editor Play start (code the Play library just loaded)
+        static void initPlugins();
+
         // ---- the platform layer (any thread)
 
         // A platform call started by callAsync ended (id = NativeCall::id()); an unknown or

@@ -82,7 +82,12 @@ namespace jasperengine {
 
         // ---- pause requests
         std::atomic<int> pauseCount{0};
-        bool bridgePaused = false;    // main thread: the bridge paused the engine
+        // game-thread tasks of native code (JasperNative.runOnGameThread): run by update(),
+        // paused frames too (resumeEngine from one must work)
+        std::mutex taskMutex;
+        std::vector<std::function<void()>> gameTasks;
+        // incremented by shutdown: an event emitted for a game that stopped is dropped
+        std::atomic<uint64_t> generation{0};
 
         // ---- the platform layer and the mocks (main thread)
         bool platformMade = false;
@@ -135,8 +140,35 @@ namespace jasperengine {
 
         // ---- JSON checks
 
-        // NaN and infinities have no JSON form; nesting is limited (spec: 64)
-        static bool checkJson(const NativeJson& value, int depth, std::string& why){
+        static bool validUtf8(const std::string& text){
+            const unsigned char* s = reinterpret_cast<const unsigned char*>(text.data());
+            const size_t n = text.size();
+            size_t i = 0;
+            while (i < n){
+                const unsigned char c = s[i];
+                size_t len = 0;
+                uint32_t cp = 0;
+                if (c < 0x80){ i++; continue; }
+                if ((c & 0xE0) == 0xC0){ len = 2; cp = c & 0x1F; }
+                else if ((c & 0xF0) == 0xE0){ len = 3; cp = c & 0x0F; }
+                else if ((c & 0xF8) == 0xF0){ len = 4; cp = c & 0x07; }
+                else return false;
+                if (i + len > n) return false;
+                for (size_t k = 1; k < len; k++){
+                    if ((s[i + k] & 0xC0) != 0x80) return false;
+                    cp = (cp << 6) | (s[i + k] & 0x3F);
+                }
+                // overlong forms, surrogates, past U+10FFFF
+                if ((len == 2 && cp < 0x80) || (len == 3 && cp < 0x800) || (len == 4 && cp < 0x10000) ||
+                    (cp >= 0xD800 && cp <= 0xDFFF) || cp > 0x10FFFF) return false;
+                i += len;
+            }
+            return true;
+        }
+
+        // NaN and infinities have no JSON form, strings are UTF-8 (C++ code can build any),
+        // nesting is limited (spec: 64). `code`: bad_args/unsupported_type or invalid_utf8.
+        static bool checkJson(const NativeJson& value, int depth, std::string& why, bool* utf8 = nullptr){
             if (depth > maxDepth){
                 why = "nested deeper than " + std::to_string(maxDepth) + " levels";
                 return false;
@@ -145,12 +177,34 @@ namespace jasperengine {
                 why = "NaN and infinities have no JSON form";
                 return false;
             }
-            if (value.is_array() || value.is_object()){
+            if (value.is_string() && !validUtf8(value.get_ref<const std::string&>())){
+                why = "a string is not valid UTF-8";
+                if (utf8) *utf8 = false;
+                return false;
+            }
+            if (value.is_object()){
+                for (auto it = value.begin(); it != value.end(); ++it){
+                    if (!validUtf8(it.key())){
+                        why = "a key is not valid UTF-8";
+                        if (utf8) *utf8 = false;
+                        return false;
+                    }
+                    if (!checkJson(it.value(), depth + 1, why, utf8)) return false;
+                }
+            } else if (value.is_array()){
                 for (const auto& item : value){
-                    if (!checkJson(item, depth + 1, why)) return false;
+                    if (!checkJson(item, depth + 1, why, utf8)) return false;
                 }
             }
             return true;
+        }
+
+        // the error of a value checkJson refused: invalid_utf8, else `code`
+        static NativeError jsonError(const std::string& code, const std::string& text, const NativeJson& value){
+            std::string why;
+            bool utf8 = true;
+            checkJson(value, 0, why, &utf8);
+            return NativeError(utf8 ? code : "invalid_utf8", text + why);
         }
 
         static constexpr int maxDepth = 64;
@@ -236,7 +290,7 @@ namespace jasperengine {
             }
             std::string why;
             if (!checkJson(result, 0, why)){
-                err = NativeError("unsupported_type", plugin + "." + method + " returned a value JSON cannot hold: " + why);
+                err = jsonError("unsupported_type", plugin + "." + method + " returned a value JSON cannot hold: ", result);
                 result = nullptr;
                 return false;
             }
@@ -261,7 +315,7 @@ namespace jasperengine {
             } else {
                 std::string why;
                 if (!checkJson(value, 0, why)){
-                    err = NativeError("unsupported_type", state->plugin + "." + state->method + " completed with a value JSON cannot hold: " + why);
+                    err = jsonError("unsupported_type", state->plugin + "." + state->method + " completed with a value JSON cannot hold: ", value);
                     value = nullptr;
                 }
             }
@@ -620,7 +674,7 @@ NativeJson NativeBridge::call(const std::string& plugin, const std::string& meth
         return nullptr;
     }
     if (!NativeBridgeCore::checkJson(args, 0, why)){
-        err = NativeError("bad_args", "the arguments of " + plugin + "." + method + " cannot be sent: " + why);
+        err = NativeBridgeCore::jsonError("bad_args", "the arguments of " + plugin + "." + method + " cannot be sent: ", args);
         return nullptr;
     }
 
@@ -632,7 +686,7 @@ NativeJson NativeBridge::call(const std::string& plugin, const std::string& meth
             NativeJson result = platform->call(plugin, method, args, err);
             if (err.isSet()) return nullptr;
             if (!NativeBridgeCore::checkJson(result, 0, why)){
-                err = NativeError("unsupported_type", plugin + "." + method + " returned a value JSON cannot hold: " + why);
+                err = NativeBridgeCore::jsonError("unsupported_type", plugin + "." + method + " returned a value JSON cannot hold: ", result);
                 return nullptr;
             }
             return result;
@@ -661,6 +715,8 @@ NativeCall NativeBridge::callAsync(const std::string& plugin, const std::string&
     state->done = std::move(done);
     state->owner = owner;
     if (timeout > 0.0 && std::isfinite(timeout)){
+        // a year at most: longer is "none" in practice, and the conversion cannot overflow
+        timeout = std::min(timeout, 365.0 * 24.0 * 3600.0);
         state->hasDeadline = true;
         state->deadline = std::chrono::steady_clock::now() +
             std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(timeout));
@@ -686,7 +742,7 @@ NativeCall NativeBridge::callAsync(const std::string& plugin, const std::string&
         return call;
     }
     if (!NativeBridgeCore::checkJson(args, 0, why)){
-        const NativeError err("bad_args", "the arguments of " + plugin + "." + method + " cannot be sent: " + why);
+        const NativeError err = NativeBridgeCore::jsonError("bad_args", "the arguments of " + plugin + "." + method + " cannot be sent: ", args);
         core.complete(state, nullptr, &err);
         return call;
     }
@@ -730,8 +786,11 @@ bool NativeBridge::has(const std::string& plugin, const std::string& method){
 
 void NativeBridge::emit(const std::string& plugin, const std::string& event, NativeJson payload){
     std::string key = plugin + "\n" + event;
-    MainThreadQueue::post([key = std::move(key), payload = std::move(payload)]() {
-        NativeBridgeCore::instance().dispatch(key, payload);
+    const uint64_t generation = NativeBridgeCore::instance().generation.load();
+    MainThreadQueue::post([key = std::move(key), payload = std::move(payload), generation]() {
+        NativeBridgeCore& core = NativeBridgeCore::instance();
+        if (core.generation.load() != generation) return;
+        core.dispatch(key, payload);
     });
 }
 
@@ -767,6 +826,18 @@ void NativeBridge::resumeEngine(){
     }
 }
 
+void NativeBridge::postToGameThread(std::function<void()> task){
+    if (!task) return;
+    NativeBridgeCore& core = NativeBridgeCore::instance();
+    std::lock_guard<std::mutex> lock(core.taskMutex);
+    core.gameTasks.push_back(std::move(task));
+}
+
+void NativeBridge::initPlugins(){
+    NativeBridgeCore& core = NativeBridgeCore::instance();
+    if (NativePlatform* platform = core.getPlatform()) platform->initPlugins();
+}
+
 int NativeBridge::getPauseCount(){
     return NativeBridgeCore::instance().pauseCount.load();
 }
@@ -796,18 +867,24 @@ void NativeBridge::update(){
     NativeBridgeCore& core = NativeBridgeCore::instance();
     core.syncCallsThisFrame = 0;
 
-    // full-screen native views (ads) hold the engine paused; an OS resume while one is shown
-    // pauses it again
-    const int pauses = core.pauseCount.load();
-    if (pauses > 0){
-        if (!Engine::isPaused()){
-            Engine::systemPause();
-        }
-        core.bridgePaused = true;
-    } else if (core.bridgePaused){
-        core.bridgePaused = false;
-        if (Engine::isPaused()) Engine::systemResume();
+    // native code's game-thread tasks (paused frames too)
+    std::vector<std::function<void()>> tasks;
+    {
+        std::lock_guard<std::mutex> lock(core.taskMutex);
+        tasks.swap(core.gameTasks);
     }
+    for (std::function<void()>& task : tasks){
+        try {
+            task();
+        } catch (const std::exception& e) {
+            Log::error("Native: a game-thread task failed: %s", e.what());
+        } catch (...) {
+            Log::error("Native: a game-thread task failed");
+        }
+    }
+
+    // full-screen native views (ads) hold the engine paused, next to the OS's own pause
+    Engine::setNativePause(core.pauseCount.load() > 0);
 
     // timeouts: delivered at the delivery point, like any result
     std::vector<std::shared_ptr<NativeCallState>> expired;
@@ -848,12 +925,14 @@ void NativeBridge::shutdown(){
     for (const auto& [id, handler] : core.handlers) handlerIds.push_back(id);
     for (uint64_t id : handlerIds) core.removeHandler(id);
 
-    // a pause the game's native code held ends with the game
+    // a pause the game's native code held ends with the game, its queued tasks and events too
     core.pauseCount.store(0);
-    if (core.bridgePaused){
-        core.bridgePaused = false;
-        if (Engine::isPaused()) Engine::systemResume();
+    Engine::setNativePause(false);
+    {
+        std::lock_guard<std::mutex> lock(core.taskMutex);
+        core.gameTasks.clear();
     }
+    core.generation.fetch_add(1);
 
     if (core.mocks) core.mocks->reset();
     core.warnedUnavailable.clear();

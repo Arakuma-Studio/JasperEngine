@@ -4,6 +4,7 @@
 #include "NativePlugins.h"
 
 #include "util/SafeWrite.h"
+#include "Out.h"
 
 #include "tinyxml2.h"
 
@@ -264,7 +265,17 @@ std::map<std::string, std::string> NativePlugins::platformOnlyPlugins(const std:
         const bool ios = plugin.files.count("ios") != 0;
         const bool macos = plugin.files.count("macos") != 0;
         const bool web = plugin.files.count("web") != 0;
+        // a CMake macOS build compiles no Swift: a Swift-only Apple plugin does not run there
+        auto compiledByCMake = [&plugin](const char* folder) {
+            auto it = plugin.files.find(folder);
+            if (it == plugin.files.end()) return false;
+            for (const std::string& file : it->second){
+                if (extensionOf(file) != ".swift") return true;
+            }
+            return false;
+        };
         const bool runsHere = (running == "android" && android) || (running == "web" && web) ||
+                              (running == "macos-cmake" && (compiledByCMake("apple") || compiledByCMake("macos"))) ||
                               (running == "ios" && (apple || ios)) || (running == "macos" && (apple || macos));
         if (runsHere) continue;
         std::vector<std::string> parts;
@@ -287,9 +298,34 @@ std::map<std::string, std::string> NativePlugins::platformOnlyPlugins(const std:
 
 std::string NativePlugins::editorPlatform(){
 #if defined(__APPLE__)
-    return "macos";
+    // the Play library is a CMake build
+    return "macos-cmake";
 #else
     return "desktop";
+#endif
+}
+
+void NativePlugins::warnStaleObjectiveC(const fs::path& projectPath){
+#if defined(__APPLE__)
+    static std::map<std::string, fs::file_time_type> loaded;   // file -> its time at the first Play
+    static bool warned = false;
+    const Scan s = scan(projectPath);
+    for (const char* folder : {"apple", "macos"}){
+        for (const std::string& file : s.filesWith(folder, {".m", ".mm"})){
+            const fs::path path = s.root / folder / file;
+            std::error_code ec;
+            const fs::file_time_type time = fs::last_write_time(path, ec);
+            if (ec) continue;
+            auto [it, first] = loaded.emplace(path.string(), time);
+            if (!first && it->second != time && !warned){
+                warned = true;
+                Out::warning("Native plugins: %s changed since the first Play of this editor session. macOS keeps the "
+                             "Objective-C classes it loaded first: restart the editor to run the new code.", path.filename().string().c_str());
+            }
+        }
+    }
+#else
+    (void)projectPath;
 #endif
 }
 
@@ -312,10 +348,17 @@ std::string NativePlugins::macosCMake(const Scan& scan, const std::string& targe
             sources.push_back(rootExpression + "/" + folder + "/" + file);
         }
     }
-    if (sources.empty()) return std::string();
+    const bool anyApple = scan.has("apple") || scan.has("macos");
+    if (!anyApple) return std::string();
     std::string s;
     s += "\n# Objective-C native plugins (plugins/native/apple and macos), macOS only\n";
     s += "if(APPLE AND NOT IOS)\n";
+    // main.cpp's "unavailable" list of a CMake build (no Swift here)
+    s += "    target_compile_definitions(" + target + " PRIVATE JASPERENGINE_MACOS_CMAKE)\n";
+    if (sources.empty()){
+        s += "endif()\n";
+        return s;
+    }
     s += "    enable_language(OBJC OBJCXX)\n";
     s += "    set(JASPERENGINE_NATIVE_PLUGIN_SOURCES\n";
     for (const std::string& source : sources) s += "        \"" + source + "\"\n";
@@ -465,7 +508,7 @@ namespace {
         s += "// The Apple side of the native plugin " + o.name + " (docs/mcp/guide/native-bridge.md)\n\n";
         s += "#import <Foundation/Foundation.h>\n";
         s += "#import \"JasperNative.h\"\n\n";
-        s += "@interface " + o.name + " : NSObject\n";
+        s += "@interface " + o.name + " : NSObject <JasperNativePlugin>\n";
         s += "+ (void)jasperInit;\n";
         for (const NativePlugins::MethodSpec& m : o.methods){
             if (m.async) s += "+ (void)" + m.name + ":(NSArray*)args call:(JasperNativeCall*)call;\n";
@@ -515,7 +558,7 @@ namespace {
         s += "// thread, with call.resolve(value) or call.reject(code, message: text). JasperNative (the bridging\n";
         s += "// header) gives viewController, emit and the lifecycle observers.\n\n";
         s += "import Foundation\n\n";
-        s += "@objc(" + o.name + ") public class " + o.name + ": NSObject {\n\n";
+        s += "@objc(" + o.name + ") public class " + o.name + ": NSObject, JasperNativePlugin {\n\n";
         s += "    // Once, on the main thread, when the game's view has loaded (SDK initialization)\n";
         s += "    @objc public static func jasperInit() {\n";
         s += "    }\n";
