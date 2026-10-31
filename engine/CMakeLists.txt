@@ -858,6 +858,7 @@ endif()
 
 set(JASPERENGINE_SRCS
     core/Engine.cpp
+    core/EngineTime.cpp
     core/Input.cpp
     core/input/InputActions.cpp
     core/input/InputControlNames.cpp
@@ -1065,6 +1066,7 @@ set(JASPERENGINE_SRCS
     core/script/LuaJson.cpp
     core/script/LuaScript.cpp
     core/script/ScriptBase.cpp
+    core/script/ScriptScheduler.cpp
     core/script/ScriptProperty.cpp
     core/script/binding/ActionClassesLua.cpp
     core/script/binding/CoreClassesLua.cpp
@@ -1078,6 +1080,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/UtilClassesLua.cpp
     core/script/binding/HtmlUIClassesLua.cpp
     core/script/binding/HtmlUIAnimeLua.cpp
+    core/script/binding/CoroutineClassesLua.cpp
     core/shader/RuntimeShaderCompiler.cpp
     core/shader/ShaderData.cpp
     core/shader/ShaderDataSerializer.cpp

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "EntityRegistry.h"
+#include "script/ScriptScheduler.h"
 
 #include <unordered_set>
 
@@ -342,7 +343,10 @@ Entity EntityRegistry::findEntity(const std::string& name, Entity parent) const 
 }
 
 void EntityRegistry::setEntityActive(Entity entity, bool active) {
+    const bool wasActive = entityManager.isActive(entity);
     entityManager.setActive(entity, active);
+    // the coroutines of scripts no longer active in hierarchy stop (Unity's SetActive(false))
+    if (wasActive && !active) ScriptScheduler::stopCoroutinesOfInactive(this);
 }
 
 bool EntityRegistry::isEntityActive(Entity entity) const {
@@ -637,6 +641,8 @@ void EntityRegistry::addEntityChild(Entity parent, Entity child, bool changeTran
                 }
             }
         }
+        // moved under an inactive parent: its scripts' coroutines stop
+        if (entityManager.hasInactive()) ScriptScheduler::stopCoroutinesOfInactive(this);
     }
 
 }

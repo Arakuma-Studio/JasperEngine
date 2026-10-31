@@ -215,6 +215,9 @@ namespace jasperengine {
         // Return the name of the scene at the given id, or "" if not found.
         static std::string getSceneName(uint32_t id);
 
+        // The name of a stored scene pointer's scene (setScenePtr), or "" (messages)
+        static std::string getSceneNameOf(const Scene* scene);
+
         // Return all registered scene names in registration order.
         static std::vector<std::string> getSceneNames();
 

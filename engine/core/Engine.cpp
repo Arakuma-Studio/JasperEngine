@@ -10,6 +10,7 @@
 #include "input/InputActions.h"
 #include "render/SystemRender.h"
 #include "script/LuaBinding.h"
+#include "script/ScriptScheduler.h"
 #include "manager/SceneManager.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/PhysicsSystem.h"
@@ -109,6 +110,15 @@ double Engine::timeScale = 1.0;
 double Engine::fixedDeltatime = 0.0;
 double Engine::gameTime = 0.0;
 uint64_t Engine::gameFrames = 0;
+// the clocks of Time (EngineTime.h): the unscaled frame delta and its sum, the fixed steps' sum,
+// the game time at the last scene load, the wall clock at start
+double Engine::unscaledDeltatime = 0.0;
+double Engine::unscaledTime = 0.0;
+double Engine::fixedTime = 0.0;
+double Engine::levelLoadGameTime = 0.0;
+uint64_t Engine::startupTime = 0;
+bool Engine::inFixedStep = false;
+float Engine::smoothDeltatime = 0.0f;
 std::atomic<bool> Engine::simulationHeld = false;
 bool Engine::clampNextDelta = false;
 
@@ -650,8 +660,43 @@ float Engine::getMaxDeltatime(){
 }
 
 void Engine::setMaxDeltatime(float seconds){
-    if (seconds > 0.0f)
-        maxDeltatime = seconds;
+    if (!(seconds > 0.0f) || std::isinf(seconds)){
+        Log::warn("Engine::setMaxDeltatime: non-positive or non-finite value (%f) ignored", seconds);
+        return;
+    }
+    maxDeltatime = seconds;
+}
+
+float Engine::getUnscaledDeltatime(){
+    return (float)unscaledDeltatime;
+}
+
+double Engine::getUnscaledTime(){
+    return unscaledTime;
+}
+
+double Engine::getFixedTime(){
+    return fixedTime;
+}
+
+double Engine::getRealtimeSinceStartup(){
+    return stm_sec(stm_since(startupTime));
+}
+
+double Engine::getTimeSinceLevelLoad(){
+    return gameTime - levelLoadGameTime;
+}
+
+void Engine::markLevelLoad(){
+    levelLoadGameTime = gameTime;
+}
+
+bool Engine::isInFixedStep(){
+    return inFixedStep;
+}
+
+float Engine::getSmoothDeltatime(){
+    return smoothDeltatime;
 }
 
 double Engine::getSystemTime(){
@@ -1199,6 +1244,7 @@ void Engine::systemInit(int argc, char* argv[], System* system, bool startProjec
     drawSemaphore.release();
 
     stm_setup();
+    startupTime = stm_now();
     
     std::vector<std::string> args(argv, argv + argc);
     System::instance().args = args;
@@ -1379,9 +1425,11 @@ void Engine::runFrame(bool draw){
         frameTime = fixedDeltatime;
     }
     deltatime = simulationHeld ? 0.0 : frameTime * timeScale;
-    // the UI clock runs on the unscaled delta (a pause menu animates at time scale 0) and
-    // stops with the updates: a held simulation or a paused app
-    HtmlUIClock::advance((paused || simulationHeld) ? 0.0 : frameTime);
+    // the unscaled delta (Time.unscaledDeltaTime, realtime waits, the UI clock): it runs at
+    // time scale 0 (a pause menu animates) and stops with the updates, a held simulation or a
+    // paused app
+    unscaledDeltatime = (paused || simulationHeld) ? 0.0 : frameTime;
+    HtmlUIClock::advance(unscaledDeltatime);
 
     // the input of this frame is over: no low surrogate will follow a pending high one
     flushCharInput();
@@ -1416,6 +1464,13 @@ void Engine::runFrame(bool draw){
         double frameDelta = deltatime;
         gameTime += frameDelta;
         gameFrames++;
+        unscaledTime += unscaledDeltatime;
+        smoothDeltatime = (gameFrames <= 1) ? (float)frameDelta : smoothDeltatime + 0.2f * ((float)frameDelta - smoothDeltatime);
+
+        // the script coroutines and timers advance with the game events: not at edit time nor
+        // while the editor's Play is paused (Engine::pauseGameEvents)
+        if (onUpdate.isEnabled())
+            ScriptScheduler::beginFrame(frameDelta, unscaledDeltatime);
 
         // 1) Fixed-timestep phase (deterministic). Runs zero or more times per frame.
         //    Used for physics, networking, and any subsystem overriding fixedUpdate().
@@ -1430,10 +1485,16 @@ void Engine::runFrame(bool draw){
                     fixedStepsLeft++;
                 }
 
+                inFixedStep = true;
+                ScriptScheduler::beginFixedStep();
                 Engine::onFixedUpdate.call();
                 for (int i = 0; i < scenes.size(); i++) {
                     scenes[i]->fixedUpdate(updateTime);
                 }
+                // after the physics step: Coroutine.waitForFixedUpdate
+                ScriptScheduler::fixedPhase();
+                fixedTime += updateTime;
+                inFixedStep = false;
                 updateTimeCount -= updateTime;
                 fixedLoops++;
             }
@@ -1456,6 +1517,9 @@ void Engine::runFrame(bool draw){
         // 2) Variable-timestep phase. Runs exactly once per frame with the real frame delta.
         //    Used for animation, input, UI, and any subsystem overriding update().
         Engine::onUpdate.call();
+        // timers, then the coroutines waiting seconds, frames, predicates or other work (Unity's
+        // yield null / WaitForSeconds point: after Update, before LateUpdate)
+        ScriptScheduler::updatePhase();
         for (int i = 0; i < scenes.size(); i++) {
             scenes[i]->update(frameDelta);
         }
@@ -1511,6 +1575,9 @@ void Engine::runFrame(bool draw){
             it = oneTimeScenes.erase(it);
         }
     }
+
+    // Coroutine.waitForEndOfFrame: after the draw (nothing when the update did not run)
+    ScriptScheduler::endOfFramePhase();
 
     // after the draw, so the new scenes are drawn loaded before the loading scene goes
     SceneManager::updateLoading();
@@ -1608,8 +1675,9 @@ void Engine::systemShutdown(){
     // what the game (and its onShutdown handlers) stored is on disk before it goes
     UserSettings::save();
 
-    // anime's Lua references go while the Lua state still exists
+    // anime's Lua references and the script coroutines and timers go while the Lua state still exists
     AnimEngine::instance().reset();
+    ScriptScheduler::clear();
     LuaBinding::cleanup();
 
     removeAllSceneLayers(true);

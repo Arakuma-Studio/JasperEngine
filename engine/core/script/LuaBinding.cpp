@@ -15,6 +15,7 @@
 #include "manager/ObjectManager.h"
 #include "component/ScriptComponent.h"
 #include "ScriptProperty.h"
+#include "ScriptScheduler.h"
 #include "object/EntityHandle.h"
 #include "object/GameObject.h"
 #include "object/Mesh.h"
@@ -294,6 +295,106 @@ Vector4 LuaBinding::getShaderParamValue(const std::string& shader, const std::st
 
 lua_State* LuaBinding::getLuaState(){
     return luastate;
+}
+
+lua_State* LuaBinding::mainThread(lua_State* L){
+    if (!L) return nullptr;
+    lua_rawgeti(L, LUA_REGISTRYINDEX, LUA_RIDX_MAINTHREAD);
+    lua_State* main = lua_tothread(L, -1);
+    lua_pop(L, 1);
+    return main ? main : L;
+}
+
+namespace {
+    const char* const SCRIPT_INSTANCE_BASE = "jasperengine.ScriptInstanceBase";
+
+    // __index of a script module whose metatable had an __index of its own (an inheritance
+    // chain the script built): that one first, then ScriptInstanceBase
+    int chainedModuleIndex(lua_State* L){
+        lua_pushvalue(L, lua_upvalueindex(1));
+        if (lua_isfunction(L, -1)){
+            lua_pushvalue(L, 1);
+            lua_pushvalue(L, 2);
+            lua_call(L, 2, 1);
+        }else{
+            lua_pushvalue(L, 2);
+            lua_gettable(L, -2);
+            lua_remove(L, -2);
+        }
+        if (!lua_isnil(L, -1)) return 1;
+        lua_pop(L, 1);
+        lua_pushvalue(L, 2);
+        lua_rawget(L, lua_upvalueindex(2));
+        return 1;
+    }
+
+    // Lookups through the table `original` (at `index`) reach the metatable `meta` again: chaining
+    // meta's __index to original would recurse forever (a module that is its own metatable)
+    bool lookupReaches(lua_State* L, int index, int meta){
+        const int top = lua_gettop(L);
+        lua_pushvalue(L, index);
+        bool reaches = false;
+        for (int depth = 0; depth < 64 && lua_istable(L, -1); depth++){
+            if (!lua_getmetatable(L, -1)) break;
+            if (lua_rawequal(L, -1, meta)){
+                reaches = true;
+                break;
+            }
+            lua_pushliteral(L, "__index");
+            lua_rawget(L, -2);
+        }
+        lua_settop(L, top);
+        return reaches;
+    }
+
+    // Makes the module table at `index` fall back on ScriptInstanceBase for what it lacks: its
+    // instances' lookups go instance -> module -> ScriptInstanceBase (user fields and methods
+    // are found first, as before)
+    void installScriptInstanceBase(lua_State* L, int index){
+        index = lua_absindex(L, index);
+        const int top = lua_gettop(L);
+        LuaBinding::pushScriptInstanceBase(L);
+        const int base = lua_gettop(L);
+        if (!lua_getmetatable(L, index)){
+            lua_newtable(L);
+            lua_pushvalue(L, base);
+            lua_setfield(L, -2, "__index");
+            lua_setmetatable(L, index);
+            lua_settop(L, top);
+            return;
+        }
+        const int meta = lua_gettop(L);
+        lua_pushliteral(L, "__index");
+        const int kind = lua_rawget(L, meta);
+        const int original = lua_gettop(L);
+        if (kind == LUA_TNIL){
+            lua_pushvalue(L, base);
+            lua_setfield(L, meta, "__index");
+        }else if (!lua_rawequal(L, original, base)){
+            // a shared metatable chained already (another instance of a script of the same class) stays
+            bool chained = false;
+            if (lua_tocfunction(L, original) == chainedModuleIndex && lua_getupvalue(L, original, 2)){
+                chained = lua_rawequal(L, -1, base) != 0;
+                lua_pop(L, 1);
+            }
+            if (!chained && (kind != LUA_TTABLE || !lookupReaches(L, original, meta))){
+                lua_pushvalue(L, original);
+                lua_pushvalue(L, base);
+                lua_pushcclosure(L, chainedModuleIndex, 2);
+                lua_setfield(L, meta, "__index");
+            }
+        }
+        lua_settop(L, top);
+    }
+}
+
+void LuaBinding::pushScriptInstanceBase(lua_State* L){
+    if (lua_getfield(L, LUA_REGISTRYINDEX, SCRIPT_INSTANCE_BASE) == LUA_TTABLE) return;
+    lua_pop(L, 1);
+    lua_newtable(L);
+    ScriptSchedulerLua::addInstanceMethods(L, -1);
+    lua_pushvalue(L, -1);
+    lua_setfield(L, LUA_REGISTRYINDEX, SCRIPT_INSTANCE_BASE);
 }
 
 std::string LuaBinding::getLuaStackErrorString(lua_State* L, int index) {
@@ -649,6 +750,7 @@ void LuaBinding::registerClasses(lua_State *L){
     registerHtmlUIAnimeClasses(L);
     registerHtmlUIVectorClasses(L);
     registerHtmlUIMediaClasses(L);
+    registerCoroutineClasses(L);
 
 #endif //DISABLE_LUA_BINDINGS
 }
@@ -701,6 +803,8 @@ namespace {
 }
 
 void LuaBinding::cleanup(){
+    // no coroutine thread or timer reference may outlive the state
+    ScriptScheduler::clear();
     clearScriptChunks(luastate);
     if (luastate) {
         lua_close(luastate);
@@ -885,6 +989,9 @@ bool LuaBinding::createLuaScriptInstance(lua_State* L, Scene* scene, Entity enti
         return false;
     }
 
+    // what the module lacks comes from ScriptInstanceBase (self:startCoroutine, self:invoke...)
+    installScriptInstanceBase(L, -1);
+
     // Create instance table with module as prototype
     lua_newtable(L);
     lua_newtable(L);
@@ -1055,6 +1162,9 @@ bool LuaBinding::callLuaScriptMethod(Scene* scene, Entity entity, const std::str
 
 void LuaBinding::releaseLuaScriptInstance(Scene* scene, ScriptEntry& scriptEntry) {
     int ref = static_cast<int>(reinterpret_cast<intptr_t>(scriptEntry.instance));
+    // its coroutines and timers end with it (destroy, scene unload, Play stop), while the
+    // instance still exists for their to-be-closed variables
+    ScriptScheduler::cancelOwner(scriptEntry.instance);
     removeScriptSubscriptions(scene, ref);
     releaseLuaRef(ref);
     scriptEntry.instance = nullptr;

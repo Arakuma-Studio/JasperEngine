@@ -53,6 +53,7 @@ namespace jasperengine {
         static void registerHtmlUIAnimeClasses(lua_State *L);
         static void registerHtmlUIVectorClasses(lua_State *L);
         static void registerHtmlUIMediaClasses(lua_State *L);
+        static void registerCoroutineClasses(lua_State *L);
 
         static void init();
 
@@ -84,6 +85,16 @@ namespace jasperengine {
         // The engine's one Lua state. It belongs to the thread that made it (Engine::systemInit,
         // the main thread): Lua states are not thread-safe, so only that thread may use it.
         static lua_State* getLuaState();
+
+        // The main thread of L's state (LUA_RIDX_MAINTHREAD). Audit rule for bindings: never
+        // store a lua_State* received from a binding, it may be a coroutine's thread, which ends
+        // (and is collected) long before a stored callback runs; store LuaBinding::mainThread(L).
+        static lua_State* mainThread(lua_State* L);
+
+        // Pushes ScriptInstanceBase: the table of the methods every Lua script instance has
+        // (self:startCoroutine, self:invoke ...), the __index fallback of each script module
+        // (createLuaScriptInstance). Made on first use.
+        static void pushScriptInstanceBase(lua_State* L);
 
         // The check of that rule: every allocation of the state (any Lua work that allocates,
         // and every collection step) compares the thread with the owner's. A use from another
