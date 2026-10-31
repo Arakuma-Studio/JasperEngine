@@ -642,3 +642,18 @@ alternative to what the text above asks.
   llvmpipe draws the recorded frames slowly, so the game needs the longer settle).
 - **`profiler_capture` is named `capture_profile`**: S31's convention (a new tool's name is
   verb_noun, `tools/mcp/tests/test_tool_conventions.py`) landed before S15.
+- **AC4 re-measured on the real-GPU machine (GPU campaign, RTX 3080 Ti, GL, docs/perf/gpu-campaign.md).**
+  `tools/perf/profiler_overhead.py --runs 30` on the post-processing fixture, the editor of the S15
+  merge (a4b621ebb) against its first parent (9f26ea019), both with the benchmark focus fix
+  (c3acfbd56), so S15 is the only difference; frames of 0.81 ms: idle **+0.72 %** [+0.04, +1.40]
+  (≤ 0.5 %: over, about 6 µs a frame), recording +1.16 % [+0.56, +1.77] (≤ 3 %), recording with GPU
+  timers **+4.19 %** [+3.59, +4.79] (≤ 3.5 %: over, about 34 µs a frame). A budget relative to the
+  frame is 100x tighter at a GPU's 0.8 ms than at llvmpipe's 100 ms; what the idle path still pays
+  per frame is listed above (scope loads and branches, sokol's counters, the pass recorder's
+  per-pass record). Open: these microseconds were not optimised in the campaign. Measured against
+  the pre-S15 commit f93897204 instead, today's editor is +25.9 %: everything merged since, not the
+  profiler.
+- **Vulkan pass timers in the editor (GPU campaign):** on light frames (under ~0.5 ms, 1,000+ fps
+  uncapped, three commits a frame) captures carry none of the Game view's passes while heavy frames
+  are timed every run; the benchmark CLI's frame time is unaffected. Likely the per-commit results
+  arrive after the ring drops them (`sgj_poll`, `SGJ_MAX_AGE`). Open.

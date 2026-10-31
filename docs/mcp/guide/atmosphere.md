@@ -142,8 +142,10 @@ class):
 
 The depth pre-pass the volumetric fog draws when nothing else made the depth is reported apart.
 `tools/performance/atmosphere_bench.py` measures them (300 frames of
-`tools/fixtures/atmosphere/bench.scene`, the median per `Atmosphere/*` pass once S15's GPU
-timings exist).
+`tools/fixtures/atmosphere/bench.scene`; `--gpu` times each `Atmosphere/*` pass with S15's GPU
+timers at exactly 1920x1080). Measured on an RTX 3080 Ti (GL, docs/perf/gpu-campaign.md): height
+fog 0.003 ms, Sky Composite 0.008, volumetric Low 0.094 / Medium 0.391 / High 0.761, clouds Low
+0.067 / Medium 0.184 / High 0.307: within every budget (the reference-class card is 4-5x slower).
 
 ### Measured on the benchmark server E (2026-10-25)
 

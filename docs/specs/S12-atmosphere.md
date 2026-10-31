@@ -574,6 +574,14 @@ The `gpuMs` value is present when S15 timings exist.
   and Low clouds within, every VRAM budget within; the volumetric fog (all tiers) and Medium/High
   clouds over (1.5-10x), which this method overstates for fragment-bound passes. The GPU budgets
   remain open for the reference-GPU run with S15's timings.
+- **AC10 on a GPU (GPU campaign, RTX 3080 Ti, driver 595.99, 1920x1080, S15 pass timers,
+  `atmosphere_bench.py --gpu --runs 5`, docs/perf/gpu-campaign.md).** Every desktop and mobile
+  budget holds on this card, GL (Vulkan where its timers caught the frame): height fog 0.003 ms
+  over linear (≤ 0.10), Sky Composite 0.008 (≤ 0.15), volumetric fog Low 0.094 (≤ 1.5 mobile),
+  Medium 0.391 / 0.349 (≤ 1.0), High 0.761 / 0.662 (≤ 1.8), clouds Low 0.067 (≤ 0.6 mobile), Medium
+  0.184 (≤ 0.8), High 0.307 / 0.319 (≤ 2.5); VRAM as before. The software method's misses do not
+  hold on a GPU. The card is 4-5x the GTX 1660 reference, so Volumetric High (about 3-3.8 ms
+  scaled) still needs the reference-class run; the mobile rows need a phone.
 - **Preset field.** The clouds' `preset` shows the last look applied; editing a field does not
   switch it to Custom.
 - **Determinism hash (AC9).** The bake's SHA-256 is pinned for x86-64 Linux builds; on other
