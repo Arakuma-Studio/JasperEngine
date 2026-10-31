@@ -1085,6 +1085,23 @@ const char* sgj_device_name(void) {
     return name;
 }
 
+// the API version the context reports: GL_VERSION ("OpenGL ES 3.2 Mesa ..." on a GLES context,
+// "4.5 (Core Profile) Mesa ..." on a desktop one), Vulkan's apiVersion; "" elsewhere
+const char* sgj_api_version(void) {
+    static char version[256];
+    version[0] = '\0';
+    if (!_sg.valid)
+        return version;
+    #if defined(_SOKOL_ANY_GL)
+        const char* text = (const char*)glGetString(GL_VERSION);
+        std::snprintf(version, sizeof(version), "%s", text ? text : "");
+    #elif defined(SOKOL_VULKAN)
+        const uint32_t v = _sg.vk.dev_props.properties.apiVersion;
+        std::snprintf(version, sizeof(version), "Vulkan %u.%u.%u", VK_API_VERSION_MAJOR(v), VK_API_VERSION_MINOR(v), VK_API_VERSION_PATCH(v));
+    #endif
+    return version;
+}
+
 const char* sgj_pixel_format_name(int format) {
     switch ((sg_pixel_format)format) {
         case SG_PIXELFORMAT_NONE: return "NONE";

@@ -67,6 +67,19 @@ void WindowMac::setupApplication() {
     [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
 }
 
+void WindowMac::setupHeadlessApplication() {
+    [NSApplication sharedApplication];
+    [NSApp setActivationPolicy:NSApplicationActivationPolicyProhibited];
+}
+
+void WindowMac::showHeadless() {
+    if (!gWindow) return;
+    [gWindow setAlphaValue:0.0];
+    [gWindow setIgnoresMouseEvents:YES];
+    [gWindow setHasShadow:NO];
+    [gWindow orderBack:nil];
+}
+
 void WindowMac::installMinimalMenuBar(const std::string& applicationName) {
     NSMenu* menuBar = [[NSMenu alloc] init];
     NSMenuItem* appMenuItem = [[NSMenuItem alloc] init];

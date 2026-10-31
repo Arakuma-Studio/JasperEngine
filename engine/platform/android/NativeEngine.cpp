@@ -23,10 +23,17 @@
 
 #include "JasperEngineAndroid.h"
 #include "Engine.h"
+#include "System.h"
 #include "Input.h"
 #include "Log.h"
 #include "render/GpuWorkerContext.h"
 #include "util/StringUtils.h"
+#include "../common/PlatformDefaults.h"
+#include "player/Launch.h"
+
+#include <sys/system_properties.h>
+#include <cstdlib>
+#include <sstream>
 
 #define MAX_GL_ERRORS 200
 
@@ -643,7 +650,32 @@ NativeEngine::NativeEngine(struct android_app *app) {
 
     setupJNI();
 
-    jasperengine::Engine::systemInit(0, nullptr, new JasperEngineAndroid());
+    // An app has no command line: the launch options come from a system property instead
+    // (adb shell setprop debug.jasperengine.args "--quit-after 600 --fixed-fps 60", as
+    // tools/android-emulator-test.sh does), then a player's game.json (S30 R17)
+    jasperengine::applyPlatformDefaults();
+    std::vector<std::string> launchArgs;
+    char property[PROP_VALUE_MAX] = {};
+    if (__system_property_get("debug.jasperengine.args", property) > 0) {
+        std::istringstream words(property);
+        for (std::string word; words >> word;) launchArgs.push_back(word);
+    }
+    // the platform's System is made first: a player reads its content (game.json, the content
+    // manifest) inside the APK's assets/game, which only the asset manager behind it can open
+    JasperEngineAndroid* system = new JasperEngineAndroid();
+    int launched = -1;
+    {
+        jasperengine::EarlySystemScope early(system);
+        launched = jasperengine::player::launch(launchArgs, jasperengine::player::ParseMode::Lenient);
+    }
+    if (launched >= 0) {
+        __android_log_print(ANDROID_LOG_ERROR, "JasperEngine", "exiting with code %d (launch options or content)", launched);
+        // frame pacing runs threads of its own: stopped first, it does not crash the exit
+        SwappyGL_destroy();
+        std::exit(launched);
+    }
+
+    jasperengine::Engine::systemInit(0, nullptr, system);
 }
 
 NativeEngine::~NativeEngine() {

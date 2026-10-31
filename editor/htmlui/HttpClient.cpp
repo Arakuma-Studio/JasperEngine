@@ -187,6 +187,10 @@ void HttpClient::setHostRewrite(std::map<std::string, std::string> rewrites){
     hostRewrite = std::move(rewrites);
 }
 
+void HttpClient::setMaxFileSize(long long bytes){
+    maxFileSize = bytes > 0 ? bytes : kMaxFileSize;
+}
+
 void HttpClient::setTimeoutSeconds(int seconds){
     timeoutSeconds = seconds > 0 ? seconds : kDefaultTimeoutSeconds;
 }
@@ -336,6 +340,19 @@ HttpResponse HttpClient::getFromMirror(const std::string& mirror, const std::str
     return response;
 }
 
+void HttpClient::cancel(){
+    cancelRequested.store(true);
+    runner->cancel();
+}
+
+unsigned long long HttpClient::receivedBytes() const{
+    std::lock_guard<std::mutex> lock(bodyMutex);
+    std::error_code ec;
+    if (currentBody.empty()) return 0;
+    const uintmax_t size = fs::file_size(currentBody, ec);
+    return ec ? 0 : static_cast<unsigned long long>(size);
+}
+
 HttpResponse HttpClient::get(const std::string& url){
     const std::string mirror = mirrorDirectory();
     if (!mirror.empty())
@@ -348,6 +365,10 @@ HttpResponse HttpClient::get(const std::string& url){
     const fs::path body = newTempFile(".body");
     const fs::path config = newTempFile(".curlrc");
     {
+        std::lock_guard<std::mutex> lock(bodyMutex);
+        currentBody = body;
+    }
+    {
         std::ofstream out(config, std::ios::binary);
         out << "url = " << configValue(requestUrl) << "\n"
             << "output = " << configValue(body.string()) << "\n"
@@ -355,7 +376,7 @@ HttpResponse HttpClient::get(const std::string& url){
             << "location\n"
             << "max-redirs = 5\n"
             << "max-time = " << timeoutSeconds << "\n"
-            << "max-filesize = " << kMaxFileSize << "\n"
+            << "max-filesize = " << maxFileSize << "\n"
             << "fail-with-body\n"
             << "write-out = \"%{http_code} %{content_type} %{url_effective}\\n\"\n"
             << "silent\n"
@@ -369,7 +390,7 @@ HttpResponse HttpClient::get(const std::string& url){
     std::vector<std::string> lines;
     {
         std::lock_guard<std::mutex> lock(active().mutex);
-        if (active().cancelled){
+        if (active().cancelled || cancelRequested.load()){
             response.error = "cancelled";
             return response;
         }
@@ -382,9 +403,13 @@ HttpResponse HttpClient::get(const std::string& url){
         std::lock_guard<std::mutex> lock(active().mutex);
         active().runners.erase(runner.get());
     }
+    {
+        std::lock_guard<std::mutex> lock(bodyMutex);
+        currentBody.clear();
+    }
     std::error_code ec;
     fs::remove(config, ec);
-    if (active().cancelled){
+    if (active().cancelled || cancelRequested.load()){
         response.error = "cancelled";
         return response;
     }

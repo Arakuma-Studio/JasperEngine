@@ -5,8 +5,13 @@
 
 #include "Engine.h"
 #include "JasperEngineApple.h"
+#include "../common/PlatformDefaults.h"
+#include "player/Launch.h"
+#include "MetalReadback.h"
 #import "JasperEngineGameController.h"
 
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -35,7 +40,17 @@ static CGSize _screenSize;
     for (std::string& arg : arguments)
         argv.push_back(arg.data());
     argv.push_back(nullptr);
+    // the build's settings, then the launch options (and a player's game.json) over them; a
+    // player whose content does not match cannot run (docs/specs/S30-shipping.md R21)
+    jasperengine::applyPlatformDefaults();
+    const int launched = jasperengine::player::launch((int)arguments.size(), argv.data());
+    if (launched >= 0) {
+        std::fprintf(stderr, "JasperEngine: exiting with code %d\n", launched);
+        std::exit(launched);
+    }
     jasperengine::Engine::systemInit((int)arguments.size(), argv.data(), new JasperEngineApple());
+    // --screenshot reads the composite on sokol's queue
+    jasperengine::installMetalReadback();
 
     [JasperEngineGameController start];
 
