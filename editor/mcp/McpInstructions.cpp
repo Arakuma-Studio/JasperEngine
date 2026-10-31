@@ -35,7 +35,7 @@ Legacy Animation = AnimationPlayerComponent (AnimationComponent: entity sequence
 - entity: numeric id ("12" ok), or a path of names from the scene root joined by "/" with "#N" for the
   Nth earlier sibling of the same name ("Player/Gun", "Enemy#2"), or a bare name unique in the
   scene; {"id"|"name"|"path"} objects (as results return them) work too. Ambiguous names fail
-  and list the matching paths. Results return both id and path; prefer ids within a session.
+  listing the matches. Results return id and path; prefer ids within a session.
   `entities` (array) instead of `entity` applies a tool to several GameObjects. parent
   omitted = scene root; max_width 0 = full size.
 - component: lowercase catalog names (transform, mesh, sprite, rigidbody2d, ...); unknown
@@ -59,8 +59,8 @@ Legacy Animation = AnimationPlayerComponent (AnimationComponent: entity sequence
 5. Look: screenshot the Game view (Scene view for layout). Drive the game with
    send_input / wait; query runtime state while playing (get_runtime_entity, eval_lua).
 6. Read the Console since your last cursor: compile, script and Lua errors, missing assets.
-7. Stop, fix, repeat until the Console is clean and the screenshot shows what you intended.
-   Never claim a script works without playing it and reading the Console.
+7. Stop, fix, repeat until the Console is clean and the screenshot is right. Never claim a
+   script works without playing it and reading the Console.
 Long operations (play with a C++ build, export, build players) take wait/timeout_seconds;
 past it you get a job id: poll get_job, cancel with cancel_job.
 A tool error says what was wrong and lists valid choices: fix the arguments, don't repeat.
@@ -129,13 +129,12 @@ return Player
   "onPress"). No manual unregister. onDestroy runs on GameObject.destroy.
 - Bound getters are often PROPERTIES, not methods: go.position, sprite.width, body.mass,
   Engine.deltatime. A missing method fails with "attempt to call a nil value". Check
-  jasper://docs/lua-api (an index: read only what you need), the Lua stubs or search_engine_api before using a name you have not seen there.
+  jasper://docs/lua-api (an index), the Lua stubs or search_engine_api before using an unseen name.
 - Input.getAxis/getButtonDown('Jump') read Project Settings > Input actions; getKeyDown(key)
   is an edge, isKeyPressed held. Test with send_input action/axis events (jasper://docs/input).
   Log.print/warn/error take ONE string (use ..).
-- Time: Engine.timeScale and Engine.fixedDeltatime (read/write), Engine.gameTime and
-  Engine.frameCount (scaled game time and frames since start).
-- C++ default arguments do not exist in Lua: pass every argument (e.g. the wake flag).
+- Time: Engine.timeScale, Engine.fixedDeltatime (read/write), Engine.gameTime, Engine.frameCount.
+- Lua has no C++ default arguments: pass every argument (e.g. the wake flag).
 - Saves: PlayerPrefs, Json.encode/decode, File.writeText("data://x") (jasper://docs/lua-api
   2.4); user_settings reads/resets PlayerPrefs.
 - Lua has no Dori.Script, on_start, getComponent, setProperty or timers. Never put editor
@@ -160,9 +159,9 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
   action "set"): time_scale, fixed_fps (each frame exactly 1/fixed_fps s: reproducible runs),
   auto_pause (frozen between your calls; runs only inside wait, send_input or step).
 - wait: run for seconds, game_seconds or frames, or until a Lua condition is truthy; input
-  sends send_input events while it waits (hold a key for 2 game seconds, then check).
+  sends send_input events while it waits.
 - run_build runs an exported desktop player with input events and screenshots_at (seconds
-  since launch); returns its errors (Lua too) and the log tail.
+  since launch); returns its errors and the log tail.
 
 ## 2D and 3D
 - 2D: sprites, tilemaps, UI; units are points (pixels of the canvas, project canvasWidth x
@@ -199,8 +198,7 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
 - Never move a body by writing its GameObject's transform from onFixedUpdate (silently
   overwritten). Teleport with body.position (and body.rotation / body.angle), velocity with
   body.linearVelocity. One-shot impulses fire once per press, not every held frame.
-- Layer Collision Matrix (project settings, per backend) gates contacts; raycasts take an
-  optional layer mask.
+- Layer Collision Matrix (project settings) gates contacts; raycasts take a layer mask.
 - Drop or settle objects: place_with_physics.
 
 ## Prefabs
@@ -225,10 +223,12 @@ when nothing fits: fork_shader copies the built-in shader and sets customShader.
 before editing: keep its declarations, includes, varyings and output, change the math near the
 end of main(), parameters in its u_fs_customParams block (set_shader_uniform); rules and depth
 forks: jasper://docs/shaders. A failing shader draws as the built-in one (error in the Console).
+Globals (Shader.SetGlobal*): Lua Shader.setGlobal*, defaults in graphics.shader_globals, read by
+u_vs_globals/u_fs_globals members (jasper://docs/shaders#global-values).
 Post-processing (main camera only): apply_post_processing_preset, then set_scene_settings
 post_processing.<field>. Mobile: in-shader colour, low render scale, few passes
 (jasper://docs/post-processing).
-Textures from examples (tileable, inpainted, PBR sets): synthesize_texture
+Textures from examples: synthesize_texture
 (jasper://docs/texture-synthesis). GPU fluid: create_entity type fluid_simulation
 (jasper://docs/fluid). Bend/squash: edit_lattice (jasper://docs/lattice). Thick lines, lasers,
 bullet trails: line_renderer / trail_renderer, curves and gradients (jasper://docs/lines-trails).
@@ -236,8 +236,7 @@ bullet trails: line_renderer / trail_renderer, curves and gradients (jasper://do
 ## Build and ship
 Scenes in Build order and the start scene live in project.yaml (project tools). Export
 (Build Settings) produces a standalone CMake project or builds players per platform (a long
-job, see The loop). The 2D/3D physics switches strip backends from the export
-(jasper://docs/cpp-scripting). Before exporting: every scene saved, Console clean in play, the
+job, see The loop). The physics switches strip backends from the export. Before exporting: every scene saved, Console clean in play, the
 start scene correct.
 )JE"
 R"JE(
@@ -253,8 +252,7 @@ Edit mode runs no Lua. First read jasper://docs/html-ui.
 
 ## Pitfalls
 - Unsaved scenes are lost when the editor closes; save after each working step.
-- Edits made while playing are lost when play stops (as in Unity): stop before editing
-  the scene for real.
+- Edits made while playing are lost when play stops (as in Unity).
 - Lua: static functions use a dot (GameObject.instantiate), methods a colon (go:setScale(2)).
 )JE";
 }

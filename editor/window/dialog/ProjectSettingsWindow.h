@@ -5,6 +5,7 @@
 
 #include "Project.h"
 #include "imgui.h"
+#include "util/ShaderGlobalsUsage.h"
 
 #include <string>
 #include <filesystem>
@@ -135,6 +136,24 @@ namespace jasperengine::editor {
         };
         InputListen m_inputListen;
 
+        // Shader Globals being edited (Project Settings > Graphics). Every valid edit is declared to
+        // the engine at once, so the Scene and Game views follow it; Cancel declares the project's
+        // again, OK makes the whole edit one project history step (a renamed global takes the
+        // material and component bindings of the open scenes along)
+        struct ShaderGlobalRow {
+            ShaderGlobalDecl decl;
+            std::string originalName;   // "" for a row added in this edit
+            char nameBuffer[65] = {0};
+            bool selected = false;      // in Copy GLSL
+        };
+        std::vector<ShaderGlobalRow> m_shaderGlobals;
+        bool m_shaderGlobalsPreviewed = false;
+        bool m_shaderGlobalsCommitted = false;
+        // "Used by", scanned when the page opens and on Refresh (not every frame)
+        std::vector<ShaderGlobalsUsage::Use> m_shaderGlobalUses;
+        bool m_shaderGlobalUsesScanned = false;
+        int m_shaderGlobalRemove = -1;   // the row whose removal asks first (bindings use it)
+
         // Unity-style category list; indexes ProjectCategory in the .cpp.
         int m_category = 0;
         char m_categorySearch[64] = {0};
@@ -142,6 +161,17 @@ namespace jasperengine::editor {
         void drawSettings();
         void drawPlayerSettings();
         void drawGraphicsSettings();
+        void drawShaderGlobals();
+        // the default (or, in Play, the live value) of a global: a field per type; matrices and
+        // arrays edit in a popup. True when `values` changed
+        bool drawShaderGlobalValue(const char* id, ShaderGlobalType type, unsigned int arraySize, std::vector<Vector4>& values);
+        bool drawShaderGlobalTexture(const char* id, ShaderGlobalType type, std::string& path);
+        std::vector<ShaderGlobalDecl> shaderGlobalDecls() const;
+        // First Shader Globals problem that blocks OK, "" when there is none
+        std::string shaderGlobalsError() const;
+        // the edited list declared to the engine (when valid)
+        void previewShaderGlobals();
+        void refreshShaderGlobalUses();
         void drawQualitySettings();
         void drawPhysicsSettings();
         void drawPhysics2DSettings();

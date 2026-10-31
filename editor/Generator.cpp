@@ -2112,7 +2112,7 @@ bool editor::Generator::hasSceneSource(uint32_t sceneId, const std::string& scen
     return std::getline(file, header) && header == Factory::sceneSourceHeader;
 }
 
-void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples, const std::string& inputActionsJson){
+void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples, const std::string& inputActionsJson, const std::vector<ShaderGlobalDecl>& shaderGlobals){
     // the generated sources (main.cpp, scene and prefab factories) live in the editor's internal
     // folder, which an MCP call's deny-by-default guard refuses otherwise (util/SafeWrite.h)
     safewrite::EditorInternal ownInternal(projectInternalPath);
@@ -2349,6 +2349,9 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     // Project Settings > Input (the engine starts with Unity's defaults), before any script reads it
     mainContent += inputActionsInitSource(inputActionsJson);
 
+    // Project Settings > Graphics > Shader Globals, declared with their defaults before any scene draws
+    mainContent += shaderGlobalsInitSource(shaderGlobals);
+
     mainContent += "\n";
 
     // Register all stacks with SceneManager
@@ -2416,6 +2419,16 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     FileUtils::writeIfChanged(mainFile, mainContent);
 
     writeSourceFiles(projectPath, projectInternalPath, libName, scriptFiles, scenes, prefabs, vsyncEnabled, windowSettings, assetsPath, luaPath, scriptDirs, cxxStandard);
+}
+
+std::string editor::Generator::shaderGlobalsInitSource(const std::vector<ShaderGlobalDecl>& shaderGlobals) {
+    if (shaderGlobals.empty()) return "";
+    std::string source = "    ShaderGlobals::declare({\n";
+    for (size_t i = 0; i < shaderGlobals.size(); i++) {
+        source += "        " + Factory::formatShaderGlobalDecl(shaderGlobals[i]) + (i + 1 < shaderGlobals.size() ? ",\n" : "\n");
+    }
+    source += "    });\n";
+    return source;
 }
 
 std::string editor::Generator::inputActionsInitSource(const std::string& inputActionsJson) {

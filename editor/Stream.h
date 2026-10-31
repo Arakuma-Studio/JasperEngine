@@ -212,6 +212,9 @@ namespace jasperengine::editor {
 
         static YAML::Node encodeShaderUniforms(const ShaderUniformValues& uniforms);
         static ShaderUniformValues decodeShaderUniforms(const YAML::Node& node);
+        // custom-block members that follow a global shader value: {member: global}
+        static YAML::Node encodeShaderGlobalBindings(const ShaderGlobalBindings& bindings);
+        static ShaderGlobalBindings decodeShaderGlobalBindings(const YAML::Node& node);
 
         static YAML::Node encodeRect(const Rect& rect);
         static Rect decodeRect(const YAML::Node& node);

@@ -687,6 +687,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/ProjectUtils.cpp
     ${EDITOR_DIR}/util/LatticeTrackKeys.cpp
     ${EDITOR_DIR}/util/ProjectChecks.cpp
+    ${EDITOR_DIR}/util/ShaderGlobalsJson.cpp
+    ${EDITOR_DIR}/util/ShaderGlobalsUsage.cpp
     ${EDITOR_DIR}/util/ProjectFileWrites.cpp
     ${EDITOR_DIR}/util/SafeWrite.cpp
     ${EDITOR_DIR}/util/BuiltPlayers.cpp
@@ -890,6 +892,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/ModelClearCmd.cpp
     ${EDITOR_DIR}/command/type/SceneNameCmd.cpp
     ${EDITOR_DIR}/command/type/InputActionsCmd.cpp
+    ${EDITOR_DIR}/command/type/ShaderGlobalsCmd.cpp
     ${EDITOR_DIR}/command/type/CopyFileCmd.cpp
     ${EDITOR_DIR}/command/type/RenameFileCmd.cpp
     ${EDITOR_DIR}/command/type/CreateDirCmd.cpp
