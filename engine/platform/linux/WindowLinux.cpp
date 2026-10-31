@@ -148,6 +148,9 @@ namespace {
 }
 
 bool WindowLinux::openDisplay() {
+    // before the first Xlib call: the GL worker context of the shader creation (spec S32) makes
+    // itself current on its own thread through this display
+    XInitThreads();
     gDisplay = XOpenDisplay(nullptr);
     if (!gDisplay) {
         std::fprintf(stderr, "Error: Could not open the X display. "

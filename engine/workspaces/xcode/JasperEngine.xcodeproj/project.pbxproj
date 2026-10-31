@@ -1059,6 +1059,10 @@
 		718FDDFA2837CA9A00AF314C /* hlsl5.h in Headers */ = {isa = PBXBuildFile; fileRef = 718FDDF42837CA9A00AF314C /* hlsl5.h */; };
 		71A41CB529AC3D7C006953D3 /* SokolCmdQueue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71A41CB329AC3D7C006953D3 /* SokolCmdQueue.cpp */; };
 		503152450000000000000002 /* SokolPipelineCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 503152450000000000000001 /* SokolPipelineCache.cpp */; };
+		4A534E47EB7156F768781A70 /* SokolPipelineRecord.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473EEFED3C38291919 /* SokolPipelineRecord.cpp */; };
+		4A534E4740DBFF022F639510 /* SokolPipelineRecord.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473EEFED3C38291919 /* SokolPipelineRecord.cpp */; };
+		4A534E4785AE12AB3B5E80F8 /* SokolAsyncCreate.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471E02C02FC21B68F3 /* SokolAsyncCreate.cpp */; };
+		4A534E476D17E19CDFE75BF5 /* SokolAsyncCreate.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471E02C02FC21B68F3 /* SokolAsyncCreate.cpp */; };
 		503152450000000000000003 /* SokolPipelineCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 503152450000000000000001 /* SokolPipelineCache.cpp */; };
 		71A41CB629AC3D7C006953D3 /* SokolCmdQueue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71A41CB329AC3D7C006953D3 /* SokolCmdQueue.cpp */; };
 		71A41CB729AC3D7C006953D3 /* SokolCmdQueue.h in Headers */ = {isa = PBXBuildFile; fileRef = 71A41CB429AC3D7C006953D3 /* SokolCmdQueue.h */; };
@@ -3951,6 +3955,11 @@
 		4A534E47F87D5FF11AC2A146 /* Ktx2Detail.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47979EFB31D7BE0582 /* Ktx2Detail.h */; };
 		4A534E47178DC2D457E6C7CF /* ThreadPoolManagerLua.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47BE01A205C9521034 /* ThreadPoolManagerLua.h */; };
 		4A534E474CAEE9AEB993E80D /* CubeLut.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476546F72D989CD289 /* CubeLut.h */; };
+		4A534E4733F9A38E177FAE2A /* GpuCreation.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4707C476B1E1AD0416 /* GpuCreation.h */; };
+		4A534E47162C56288CD7A108 /* GpuWorkerContext.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47DDBD4E62862F9EB6 /* GpuWorkerContext.h */; };
+		4A534E4789903334D2073161 /* ShaderWarmup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4731118727F9B440D3 /* ShaderWarmup.cpp */; };
+		4A534E478FC5BEC1E59E93D1 /* ShaderWarmup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4731118727F9B440D3 /* ShaderWarmup.cpp */; };
+		4A534E475B65CDC361A9B998 /* ShaderWarmup.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E479D6C988D06003720 /* ShaderWarmup.h */; };
 		4A534E47BCF812E39A4E32EC /* AnimatorAssetIO.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479C77AC47B5DE2060 /* AnimatorAssetIO.cpp */; };
 		4A534E4760FA85EA63BA6FA5 /* AnimatorAssetIO.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479C77AC47B5DE2060 /* AnimatorAssetIO.cpp */; };
 		4A534E474F614C06CD7CDAD3 /* AnimatorIK.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E472DCB2AA8B6A8E67E /* AnimatorIK.cpp */; };
@@ -5463,6 +5472,10 @@
 		718FDDF42837CA9A00AF314C /* hlsl5.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = hlsl5.h; sourceTree = "<group>"; };
 		71A41CB329AC3D7C006953D3 /* SokolCmdQueue.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SokolCmdQueue.cpp; sourceTree = "<group>"; };
 		503152450000000000000001 /* SokolPipelineCache.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SokolPipelineCache.cpp; sourceTree = "<group>"; };
+		4A534E473EEFED3C38291919 /* SokolPipelineRecord.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SokolPipelineRecord.cpp; sourceTree = "<group>"; };
+		4A534E47C67B1C8F0FEB31CA /* SokolPipelineRecord.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SokolPipelineRecord.h; sourceTree = "<group>"; };
+		4A534E471E02C02FC21B68F3 /* SokolAsyncCreate.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SokolAsyncCreate.cpp; sourceTree = "<group>"; };
+		4A534E476EBDA3542990B38F /* SokolAsyncCreate.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SokolAsyncCreate.h; sourceTree = "<group>"; };
 		503152450000000000000010 /* PipelineState.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PipelineState.h; sourceTree = "<group>"; };
 		503152450000000000000011 /* SokolPipelineCache.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SokolPipelineCache.h; sourceTree = "<group>"; };
 		503152450000000000000012 /* RmlFilterContext.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RmlFilterContext.h; sourceTree = "<group>"; };
@@ -7895,6 +7908,10 @@
 		4A534E47979EFB31D7BE0582 /* Ktx2Detail.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Ktx2Detail.h; sourceTree = "<group>"; };
 		4A534E47BE01A205C9521034 /* ThreadPoolManagerLua.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ThreadPoolManagerLua.h; sourceTree = "<group>"; };
 		4A534E476546F72D989CD289 /* CubeLut.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CubeLut.h; sourceTree = "<group>"; };
+		4A534E4707C476B1E1AD0416 /* GpuCreation.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = GpuCreation.h; sourceTree = "<group>"; };
+		4A534E47DDBD4E62862F9EB6 /* GpuWorkerContext.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = GpuWorkerContext.h; sourceTree = "<group>"; };
+		4A534E4731118727F9B440D3 /* ShaderWarmup.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ShaderWarmup.cpp; sourceTree = "<group>"; };
+		4A534E479D6C988D06003720 /* ShaderWarmup.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ShaderWarmup.h; sourceTree = "<group>"; };
 		4A534E479C77AC47B5DE2060 /* AnimatorAssetIO.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimatorAssetIO.cpp; sourceTree = "<group>"; };
 		4A534E472DCB2AA8B6A8E67E /* AnimatorIK.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimatorIK.cpp; sourceTree = "<group>"; };
 		4A534E47F086099D072A9F80 /* AnimatorInstance.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimatorInstance.cpp; sourceTree = "<group>"; };
@@ -9676,6 +9693,8 @@
 				4A534E478D473D85C71E9BDD /* AtmosphereQuality.h */,
 				4A534E47011D609AFF567019 /* BlueNoise64.h */,
 				4A534E4732CB524BA50A4FE6 /* DynamicResolutionController.h */,
+				4A534E4707C476B1E1AD0416 /* GpuCreation.h */,
+				4A534E47DDBD4E62862F9EB6 /* GpuWorkerContext.h */,
 			);
 			path = render;
 			sourceTree = "<group>";
@@ -10035,7 +10054,11 @@
 				7162FC8B25962A0E0075B97D /* SokolBuffer.cpp */,
 				7162FC8E25962A0E0075B97D /* SokolBuffer.h */,
 				71A41CB329AC3D7C006953D3 /* SokolCmdQueue.cpp */,
+				4A534E471E02C02FC21B68F3 /* SokolAsyncCreate.cpp */,
+				4A534E476EBDA3542990B38F /* SokolAsyncCreate.h */,
 				503152450000000000000001 /* SokolPipelineCache.cpp */,
+				4A534E473EEFED3C38291919 /* SokolPipelineRecord.cpp */,
+				4A534E47C67B1C8F0FEB31CA /* SokolPipelineRecord.h */,
 				503152450000000000000011 /* SokolPipelineCache.h */,
 				71A41CB429AC3D7C006953D3 /* SokolCmdQueue.h */,
 				71CC83A926B8D54800EEBB93 /* SokolFramebuffer.cpp */,
@@ -11256,6 +11279,8 @@
 				7DC000AC2E7A0100C91BA0C0 /* ShaderVariantCollection.cpp */,
 				7DC000AD2E7A0100C91BA0C0 /* ShaderVariantCompiler.h */,
 				7DC000AE2E7A0100C91BA0C0 /* ShaderVariantCompiler.cpp */,
+				4A534E4731118727F9B440D3 /* ShaderWarmup.cpp */,
+				4A534E479D6C988D06003720 /* ShaderWarmup.h */,
 			);
 			path = shader;
 			sourceTree = "<group>";
@@ -14054,6 +14079,9 @@
 				4A534E47F87D5FF11AC2A146 /* Ktx2Detail.h in Headers */,
 				4A534E47178DC2D457E6C7CF /* ThreadPoolManagerLua.h in Headers */,
 				4A534E474CAEE9AEB993E80D /* CubeLut.h in Headers */,
+				4A534E4733F9A38E177FAE2A /* GpuCreation.h in Headers */,
+				4A534E47162C56288CD7A108 /* GpuWorkerContext.h in Headers */,
+				4A534E475B65CDC361A9B998 /* ShaderWarmup.h in Headers */,
 				4A534E47EA3BD9DE28264D30 /* AnimatorAssetIO.h in Headers */,
 				4A534E47845327B5D4088536 /* AnimatorIK.h in Headers */,
 				4A534E47623A6E49E3B3510A /* AnimatorInstance.h in Headers */,
@@ -15926,6 +15954,8 @@
 				5330334691A83E230FB5ECB5 /* AtomicFile.cpp in Sources */,
 				71A41CB629AC3D7C006953D3 /* SokolCmdQueue.cpp in Sources */,
 				503152450000000000000003 /* SokolPipelineCache.cpp in Sources */,
+				4A534E47EB7156F768781A70 /* SokolPipelineRecord.cpp in Sources */,
+				4A534E4785AE12AB3B5E80F8 /* SokolAsyncCreate.cpp in Sources */,
 				7105A56B28B305B20092EA05 /* UtilClassesLua.cpp in Sources */,
 				414E494D4500000000000046 /* HtmlUIAnimeLua.cpp in Sources */,
 				71393EE628F8EF9F0074442E /* XMLUtils.cpp in Sources */,
@@ -16447,6 +16477,7 @@
 				4A534E4742B055E8016AAB01 /* ToolchainFingerprint.cpp in Sources */,
 				4A534E476744EC521C7A4AFD /* WaterSystem.cpp in Sources */,
 				4A534E47A2DF41E61E74E1FF /* Ktx2Write.cpp in Sources */,
+				4A534E4789903334D2073161 /* ShaderWarmup.cpp in Sources */,
 				4A534E47BCF812E39A4E32EC /* AnimatorAssetIO.cpp in Sources */,
 				4A534E474F614C06CD7CDAD3 /* AnimatorIK.cpp in Sources */,
 				4A534E47CBA078AD17238AB6 /* AnimatorInstance.cpp in Sources */,
@@ -16615,6 +16646,8 @@
 				5E5280000000000000000043 /* CrashClassesLua.cpp in Sources */,
 				71A41CB529AC3D7C006953D3 /* SokolCmdQueue.cpp in Sources */,
 				503152450000000000000002 /* SokolPipelineCache.cpp in Sources */,
+				4A534E4740DBFF022F639510 /* SokolPipelineRecord.cpp in Sources */,
+				4A534E476D17E19CDFE75BF5 /* SokolAsyncCreate.cpp in Sources */,
 				7105A56A28B305B20092EA05 /* UtilClassesLua.cpp in Sources */,
 				414E494D4500000000000045 /* HtmlUIAnimeLua.cpp in Sources */,
 				71393EE528F8EF9F0074442E /* XMLUtils.cpp in Sources */,
@@ -17123,6 +17156,7 @@
 				4A534E472A547FE67AA08421 /* ToolchainFingerprint.cpp in Sources */,
 				4A534E4732EBCE8A0413BA29 /* WaterSystem.cpp in Sources */,
 				4A534E47762E1E309584ABA2 /* Ktx2Write.cpp in Sources */,
+				4A534E478FC5BEC1E59E93D1 /* ShaderWarmup.cpp in Sources */,
 				4A534E4760FA85EA63BA6FA5 /* AnimatorAssetIO.cpp in Sources */,
 				4A534E471B8FD86F7F15C4DF /* AnimatorIK.cpp in Sources */,
 				4A534E478954610132FAB175 /* AnimatorInstance.cpp in Sources */,

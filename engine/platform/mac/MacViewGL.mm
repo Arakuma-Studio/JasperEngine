@@ -7,6 +7,33 @@
 #include "MacTextInputClient.h"
 #include "WindowMac.h"
 
+namespace {
+
+    class MacGLWorkerContext : public jasperengine::GpuWorkerContext {
+    public:
+        explicit MacGLWorkerContext(NSOpenGLContext* context) : context(context) {}
+        bool makeCurrent() override {
+            [context makeCurrentContext];
+            return [NSOpenGLContext currentContext] == context;
+        }
+        void release() override { [NSOpenGLContext clearCurrentContext]; }
+    private:
+        NSOpenGLContext* context;
+    };
+
+}
+
+std::unique_ptr<jasperengine::GpuWorkerContext> makeMacGLWorkerContext(MacViewGL* view) {
+    NSOpenGLContext* shared = [view openGLContext];
+    NSOpenGLPixelFormat* format = [view pixelFormat];
+    if (!shared || !format)
+        return nullptr;
+    NSOpenGLContext* context = [[NSOpenGLContext alloc] initWithFormat:format shareContext:shared];
+    if (!context)
+        return nullptr;
+    return std::make_unique<MacGLWorkerContext>(context);
+}
+
 // SystemMac reaches the text input client through the content view
 @interface MacViewGL () <MacTextInputView>
 @end

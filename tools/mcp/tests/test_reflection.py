@@ -208,6 +208,14 @@ def generated_sources(project: Path) -> dict[str, str]:
     return out
 
 
+async def gpu_creation_idle(ed: Editor, polls: int = 300) -> None:
+    for _ in range(polls):
+        stats = (await ed.call("get_render_stats"))["shader_creation"]
+        if stats["pending_shaders"] == 0 and stats["pending_pipelines"] == 0 and stats["pending_warm_draws"] == 0:
+            return
+        await ed.call("wait", frames=10, timeout_seconds=SETTLE_TIMEOUT)
+
+
 async def resave(ed: Editor, project: Path, name: str, mismatches: list[str], sources: dict[str, str]) -> None:
     """Opens and saves every scene and prefab of the editor's project, then the project; compares
     what it wrote (and the scene sources it generated) with the goldens of `name`"""
@@ -224,6 +232,9 @@ async def resave(ed: Editor, project: Path, name: str, mismatches: list[str], so
         for _ in range(SETTLE_SAVES):
             # (a loaded host may stall the editor for many seconds: the frames all run, slowly)
             await ed.call("wait", frames=SETTLE_FRAMES, timeout_seconds=SETTLE_TIMEOUT)
+            # and the shaders and pipelines created off the render thread (S32): an object loads
+            # (and computes what it saves) once they are
+            await gpu_creation_idle(ed)
             await ed.call("save_scene", scene=target, allow_data_loss=True)
             previous, text = text, (project / rel).read_text(encoding="utf-8")
             if text == previous:
