@@ -858,3 +858,12 @@ CTests 3/3 (`native-crash-reports` with every subprocess mode, `posix-crash-sign
   The archive was downloaded and its hash verified before destruction. Box
   `71771adcc08e` is confirmed destroyed; no Windows box ever existed and no
   rented machine remains running.
+
+### macOS rerun without a source filter (BF4, 2026-10-31)
+
+The two blockers above are gone: the engine, editor and test trees build with
+`JASPERENGINE_WERROR` on AppleClang 17 (macOS 26.2, Apple silicon; the virtual `SubSystem`
+destructor fixes the ActionSystem/AudioSystem warnings), and the full `jasperengine-core-tests`
+builds at the 12.0 deployment target (the chrono comparisons print clock ticks). Natively there:
+`native-crash-reports` passes all 16 modes and `crash.symbolicate` passes; the `diag` unit tests
+pass inside the full core run.
