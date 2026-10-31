@@ -52,6 +52,14 @@ int main(int argc, char** argv){
 
     // the engine's Lua state used off its thread aborts the run (LuaBinding::ThreadCheck)
     setDefaultEnv("JASPER_LUA_THREAD_CHECK", "abort");
+#if defined(JASPER_TEST_SYNC_GPU_CREATION)
+    // a suite that drives its renderer frame by frame (the HTML UI tests' RenderTestContext):
+    // shaders and pipelines are created at once, as before spec S32, so a frame's draws and the
+    // layout a render computes do not wait for creations off the render thread. Asynchronous
+    // creation is the core suite's (AsyncCreateGpu) and the MCP suite's. JASPER_ASYNC_SHADERS set
+    // by hand still wins
+    setDefaultEnv("JASPER_ASYNC_SHADERS", "sync");
+#endif
 
     jasperengine::test::GpuEnvironment::initEngine(argc, argv);
     ::testing::AddGlobalTestEnvironment(new jasperengine::test::GpuTestEnvironment());

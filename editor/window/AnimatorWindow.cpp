@@ -408,6 +408,10 @@ bool AnimatorWindow::setDefaultState(const std::string& name){
     return commit(def, "Set Default State " + name);
 }
 
+bool AnimatorWindow::canDelete() const{
+    return windowOpen && windowFocused && editable() && selection.kind != SelectionKind::None;
+}
+
 bool AnimatorWindow::removeSelection(){
     ControllerDef def = working();
     StateMachineDef* machine = machineOf(def);
@@ -1032,7 +1036,7 @@ void AnimatorWindow::drawGraph(){
         else if (result.contextLink) ImGui::OpenPopup("##animator_link_menu");
         else ImGui::OpenPopup("##animator_canvas_menu");
     }
-    if (ImGui::IsWindowFocused() && ImGui::IsKeyPressed(ImGuiKey_Delete) && editable() && !ImGui::GetIO().WantTextInput) removeSelection();
+    // (Delete is the command catalog's edit.delete: App runs removeSelection while canDelete)
 
     // clips dropped from the Project window become states (a model offers its clips)
     // (the canvas is not "hovered" while a payload drags: the target is the graph child's rect)
