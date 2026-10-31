@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 
 import pbxproj
@@ -364,6 +365,13 @@ async def test_source_export(ed: Editor):
     ed.check_in('file(COPY "${CMAKE_CURRENT_LIST_DIR}/../plugins/native/web/${native_file}"', apply_cmake)
     ed.check((out / "project" / "plugins" / "native" / "web" / "a.js").is_file(), "web plugins copied")
     ed.check_in("JASPERENGINE_NATIVE_PLUGIN_SOURCES", (out / "CMakeLists.txt").read_text(), "macOS CMake builds compile the ObjC plugins")
+
+    # JASPER_NATIVE_EXPORT_KEEP=<dir>: a copy of this export (to build it with Gradle / Xcode by hand)
+    keep = os.environ.get("JASPER_NATIVE_EXPORT_KEEP")
+    if keep:
+        import shutil
+        shutil.rmtree(keep, ignore_errors=True)
+        shutil.copytree(out, keep, symlinks=True)
 
     # re-export: the same bytes
     watched = [studio / "settings.gradle", studio / "build.gradle", studio / "gradle.properties", studio / "app" / "build.gradle",
