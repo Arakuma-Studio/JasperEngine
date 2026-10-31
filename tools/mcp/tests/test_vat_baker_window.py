@@ -31,6 +31,7 @@ import harness
 from harness import Editor
 
 EDITOR = {"project": harness.REPO / "tools" / "fixtures" / "pose-animation", "xvfb": "harness", "ui_probe": True}
+CI = True
 TIMEOUT = 900
 
 ARM = "assets/models/rigid_arm.gltf"

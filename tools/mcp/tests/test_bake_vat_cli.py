@@ -41,6 +41,7 @@ from harness import TestFailure  # noqa: E402
 from project_fixture import write_project  # noqa: E402
 from test_bake_vertex_animation import write_houdini_soft, write_openvat  # noqa: E402  (helpers only)
 
+CI = True
 TIMEOUT = 900
 
 REPO = Path(__file__).resolve().parents[3]

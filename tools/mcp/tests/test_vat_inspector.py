@@ -32,6 +32,7 @@ from pathlib import Path
 from harness import Editor, REPO
 
 EDITOR = {"create": True, "name": "VAT Inspector", "xvfb": "harness", "ui_probe": True}
+CI = True
 TIMEOUT = 900
 
 FIXTURE = REPO / "editor" / "tests" / "fixtures" / "vat"

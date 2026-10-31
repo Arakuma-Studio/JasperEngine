@@ -42,6 +42,7 @@ from harness import Editor, TestFailure
 from htmlui_pixels import decode_png
 
 EDITOR = {"create": True, "name": "VatBake"}
+CI = True
 TIMEOUT = 1500
 
 REPO = Path(__file__).resolve().parents[3]

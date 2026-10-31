@@ -16,6 +16,7 @@ from pathlib import Path
 import harness
 from harness import TestFailure
 
+CI = True
 TIMEOUT = 900
 
 VARIANTS = (
