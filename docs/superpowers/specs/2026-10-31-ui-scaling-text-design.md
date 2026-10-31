@@ -571,3 +571,13 @@ spec was silent, ambiguous or did not fit the code:
     `InstanceData.roll` into `UIParticleQuad::rotation` and, for its single-GameObject systems, take the
     emitter = the system's own entity (already the fallback when `ActionComponent.target` is empty) and the
     built-in particle texture of its quad material.
+14. **Merges (platform-services, main with physics-2d, script-lifecycle, lines-trails, persistence,
+    ui-canvas-group).** `TextEffectComponent` is appended after the Trail Renderer and the Canvas Group (the
+    last ordinal; update flag bit 49). A Text Effect's alpha-only uniform goes through `uiDrawColor`, so a Canvas
+    Group fades effect texts and, through the uniform alpha in the SDF shader, their outline and shadow (the
+    canvas-group spec's "per-glyph alpha multiplies with the group"). `docs/mcp/guide/ui.md` keeps the Canvas
+    Group section first, then this feature's sections. `ScriptLifecycleTest.PauseAndFocusMessages` was adapted
+    to platform-services' rule that a pause takes the focus first and a resume does not return it. The HTML
+    `text-effect` gradient colours parse with compat's CSS colour parser (no RmlUi needed: `jasperengine-editor
+    check --ui` validated the guide's snippet without RmlUi and crashed); stops are `<color> [<percentage>]`
+    words, so colours with inner spaces (`rgb(1 2 3)`) are not accepted there: use hex or names.
