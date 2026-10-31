@@ -4,6 +4,7 @@
 #include "ScriptBase.h"
 #include "ScriptRuntime.h"
 #include "component/ScriptComponent.h"
+#include "script/ScriptMessages.h"
 
 using namespace jasperengine;
 
@@ -85,3 +86,27 @@ Scene* ScriptBase::getScene() const {
 Entity ScriptBase::getEntity() const {
     return entity;
 }
+
+bool ScriptBase::baseMessageRan = false;
+
+namespace {
+    // a base message method ran: the script does not override it
+    void inherited(ScriptBase& script, ScriptMessage message) {
+        script.inheritedMessages |= scriptMessageBit(message);
+        ScriptBase::baseMessageRan = true;
+    }
+}
+
+void ScriptBase::onJointBreak2D(Joint2D& joint) {
+    (void)joint;
+    inherited(*this, ScriptMessage::JointBreak2D);
+}
+
+void ScriptBase::init() { inherited(*this, ScriptMessage::Init); }
+void ScriptBase::start() { inherited(*this, ScriptMessage::Start); }
+void ScriptBase::onEnable() { inherited(*this, ScriptMessage::Enable); }
+void ScriptBase::onDisable() { inherited(*this, ScriptMessage::Disable); }
+void ScriptBase::onDestroy() { inherited(*this, ScriptMessage::Destroy); }
+void ScriptBase::onApplicationPause(bool paused) { (void)paused; inherited(*this, ScriptMessage::ApplicationPause); }
+void ScriptBase::onApplicationFocus(bool focused) { (void)focused; inherited(*this, ScriptMessage::ApplicationFocus); }
+void ScriptBase::onApplicationQuit() { inherited(*this, ScriptMessage::ApplicationQuit); }

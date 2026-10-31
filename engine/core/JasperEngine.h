@@ -6,6 +6,8 @@
 
 #include "Engine.h"
 #include "Input.h"
+#include "input/InputActions.h"
+#include "input/InputControlNames.h"
 #include "Log.h"
 #include "Scene.h"
 #include "SceneManager.h"
@@ -53,6 +55,7 @@
 #include "component/ImageComponent.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/Joint2DComponent.h"
+#include "component/PhysicsCommon.h"
 #include "component/Joint3DComponent.h"
 #include "component/KeyframeTracksComponent.h"
 #include "component/LightComponent.h"
@@ -185,6 +188,7 @@
 #include "pool/TexturePool.h"
 #include "pool/ModelPool.h"
 #include "pool/AnimationClipPool.h"
+#include "pool/PhysicsMaterialPool.h"
 
 #include "registry/EntityRegistry.h"
 #include "registry/TagManager.h"
@@ -206,6 +210,8 @@
 #include "script/ScriptBase.h"
 #include "script/ScriptEvent.h"
 #include "script/ScriptMessages.h"
+#include "physics/PhysicsMaterial.h"
+#include "physics/PolygonDecomposition2D.h"
 #include "script/ScriptProperty.h"
 #include "script/ScriptRuntime.h"
 

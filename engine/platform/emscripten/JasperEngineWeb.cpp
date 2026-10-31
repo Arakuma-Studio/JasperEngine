@@ -32,6 +32,8 @@ std::string JasperEngineWeb::canvas;
 int JasperEngineWeb::syncWaitTime;
 bool JasperEngineWeb::enabledIDB;
 bool JasperEngineWeb::loadedIDB;
+bool JasperEngineWeb::projectStarted = false;
+double JasperEngineWeb::startTime = 0.0;
 
 int JasperEngineWeb::screenWidth;
 int JasperEngineWeb::screenHeight;
@@ -63,6 +65,10 @@ extern "C" {
 
     EMSCRIPTEN_KEEPALIVE 
     void syncfs_enable_callback(const char* err) {
+        // the game started after the 3 s wait: data:// writes were refused until now (FileUtils),
+        // so the restore replaced nothing the game wrote; what it read before is older
+        if (JasperEngineWeb::hasProjectStarted())
+            jasperengine::Log::warn("user data restored from IndexedDB after the game started; data:// files can be written from now on");
 	    if (!err || err[0]) {
 		    jasperengine::Log::error("Failed to enable IndexedDB: %s", err);
             JasperEngineWeb::setEnabledIDB(false);
@@ -362,7 +368,12 @@ int JasperEngineWeb::init(int argc, char **argv){
 		});
 	);
 
-    jasperengine::Engine::systemInit(argc, argv, new JasperEngineWeb());
+    // the project (main.lua, init(): the first scene) starts once the saved files are restored
+    // (renderLoop), so its init reads them
+    jasperengine::Engine::systemInit(argc, argv, new JasperEngineWeb(), false);
+    projectStarted = false;
+    startTime = emscripten_get_now();
+    emscripten_set_visibilitychange_callback(0, true, visibility_callback);
 
     jasper_ime_create();
 
@@ -384,10 +395,10 @@ int JasperEngineWeb::init(int argc, char **argv){
     
     emscripten_webgl_make_context_current(ctx);
 
+    // the view is loaded once the project has started (renderLoop): the order of the other
+    // platforms, init -> view loaded -> view changed, so Engine.onViewLoaded reaches the game
     JasperEngineWeb::screenWidth = sWidth;
     JasperEngineWeb::screenHeight = sHeight;
-    jasperengine::Engine::systemViewLoaded();
-    changeCanvasSize(sWidth, sHeight);
 
     emscripten_request_animation_frame_loop(renderLoop, 0);
 
@@ -417,7 +428,9 @@ void JasperEngineWeb::changeCanvasSize(int width, int height){
 
     JasperEngineWeb::screenWidth = width;
     JasperEngineWeb::screenHeight = height;
-    jasperengine::Engine::systemViewChanged();
+    // the page may resize before the project starts; the view is loaded with this size then
+    if (projectStarted)
+        jasperengine::Engine::systemViewChanged();
 }
 
 bool JasperEngineWeb::isFullscreen(){
@@ -519,6 +532,13 @@ bool JasperEngineWeb::syncFileSystem(){
     return true;
 }
 
+bool JasperEngineWeb::flushFileSystem(){
+    if (enabledIDB)
+        syncFileSystemNow();
+
+    return true;
+}
+
 void JasperEngineWeb::syncFileSystemNow(){
     syncWaitTime = 0;
 
@@ -607,7 +627,9 @@ EM_BOOL JasperEngineWeb::renderLoop(double time, void* userdata){
         // input events would reach destroyed scenes and a closed Lua state
         unregisterCallbacks();
 
-        jasperengine::Engine::systemViewDestroyed();
+        // a quit before the project started has no view to destroy
+        if (projectStarted)
+            jasperengine::Engine::systemViewDestroyed();
         jasperengine::Engine::systemShutdown();
 
         // shutdown also writes files and this loop will not run again
@@ -615,6 +637,20 @@ EM_BOOL JasperEngineWeb::renderLoop(double time, void* userdata){
             syncFileSystemNow();
 
         return EM_FALSE;
+    }
+
+    if (!projectStarted){
+        // IndexedDB answers in a few milliseconds; a browser that never does (storage
+        // blocked) must not keep the game from starting
+        const bool timedOut = emscripten_get_now() - startTime >= 3000.0;
+        if (!loadedIDB && !timedOut)
+            return EM_TRUE;
+        if (!loadedIDB)
+            jasperengine::Log::warn("user data not restored after 3 s; saves may be missing");
+        projectStarted = true;
+        jasperengine::Engine::systemStartProject();
+        jasperengine::Engine::systemViewLoaded();
+        changeCanvasSize(screenWidth, screenHeight);
     }
 
     pollGamepads();
@@ -644,13 +680,24 @@ EM_BOOL JasperEngineWeb::renderLoop(double time, void* userdata){
     return EM_TRUE;
 }
 
+// A hidden tab may be closed without another frame: files written in the last half second go
+// to IndexedDB now
+EM_BOOL JasperEngineWeb::visibility_callback(int eventType, const EmscriptenVisibilityChangeEvent* e, void* userData){
+    if (e && e->hidden && syncWaitTime > 0)
+        syncFileSystemNow();
+
+    return EM_FALSE;
+}
+
 EM_BOOL JasperEngineWeb::canvas_resize(int eventType, const void *reserved, void *userData){
     int w, h;
     emscripten_get_canvas_element_size(canvas.c_str(), &w, &h);
 
     JasperEngineWeb::screenWidth = w;
     JasperEngineWeb::screenHeight = h;
-    jasperengine::Engine::systemViewChanged();
+    // before the project starts the view is not loaded yet: it gets this size when it is
+    if (projectStarted)
+        jasperengine::Engine::systemViewChanged();
 
     return 0;
 }
@@ -1170,24 +1217,149 @@ int JasperEngineWeb::jasperengine_legacy_input(int code){
     return 0;
 }
 
-// Pages of one site share localStorage, so each game prefixes its keys. The bare keys
-// of older builds are still read, so their saves carry over.
-std::string JasperEngineWeb::getStringForKey(const char *key, const std::string& defaultValue){
-    char* value = (char*)EM_ASM_INT({
-        var key = UTF8ToString($0);
-        var val = localStorage.getItem(UTF8ToString($1) + '/' + key);
-        if (val === null) val = localStorage.getItem(key);
-        if (val) {
-            var len = lengthBytesUTF8(val)+1;
-            var buf = _malloc(len);
-            stringToUTF8(val, buf, len);
-            return buf;
-        }
-        return null;
-    }, key, JASPERENGINE_STORAGE_ID);
+// ---- UserSettings: localStorage. Pages of one site share it, so each game prefixes its keys:
+// "<storageId>/<key>". Bare "<key>" entries of older builds are still read, so their saves
+// carry over, until this game writes or deletes the key, or deletes all (then no bare key counts
+// any more: the "<storageId>/\u0001jasperengine:cleared" marker). A deleted key whose bare entry
+// exists is kept as the tombstone value "\u0001jasperengine:deleted" (a bare key may be another
+// game's, so it is never removed). Older builds wrote "" as their tombstone; those are turned
+// into the new one once ("<storageId>/\u0001jasperengine:v2"), so "" is a value like any other.
+// Typed values use System's text format (the getters and setters of the base class).
+// localStorage is synchronous: there is nothing to save. It can throw (storage disabled, quota):
+// a read then gives the default and a failed write is logged once.
 
+// the JS library functions the store uses (stringToNewUTF8 brings malloc in)
+EM_JS_DEPS(jasper_user_settings, "$UTF8ToString,$stringToNewUTF8,$lengthBytesUTF8");
+
+EM_JS(void, jasper_settings_install, (), {
+    if (Module.jasperSettings) return;
+    var SOH = String.fromCharCode(1);
+    var TOMBSTONE = SOH + "jasperengine:deleted";
+    var migrated = {};
+    function storage() { try { return window.localStorage; } catch (e) { return null; } }
+    function marker(id, name) { return id + "/" + SOH + "jasperengine:" + name; }
+    function migrate(ls, id) {
+        if (migrated[id]) return;
+        migrated[id] = true;
+        if (ls.getItem(marker(id, "v2")) !== null) return;
+        var prefix = id + "/";
+        var keys = [];
+        for (var i = 0; i < ls.length; i++) {
+            var k = ls.key(i);
+            if (k !== null && k.indexOf(prefix) === 0) keys.push(k);
+        }
+        keys.forEach(function(k) {
+            if (ls.getItem(k) === "" && ls.getItem(k.substring(prefix.length)) !== null) ls.setItem(k, TOMBSTONE);
+        });
+        ls.setItem(marker(id, "v2"), "1");
+    }
+    function open(id) {
+        var ls = storage();
+        if (!ls) return null;
+        try { migrate(ls, id); } catch (e) {}
+        return ls;
+    }
+    Module.jasperSettings = {
+        get: function(id, key) {
+            try {
+                var ls = open(id);
+                if (!ls) return null;
+                var own = ls.getItem(id + "/" + key);
+                if (own !== null) return own === TOMBSTONE ? null : own;
+                if (ls.getItem(marker(id, "cleared")) !== null) return null;
+                return ls.getItem(key);
+            } catch (e) { return null; }
+        },
+        set: function(id, key, value) {
+            try {
+                var ls = open(id);
+                if (!ls) return 0;
+                ls.setItem(id + "/" + key, value);
+                return 1;
+            } catch (e) { return 0; }
+        },
+        remove: function(id, key) {
+            try {
+                var ls = open(id);
+                if (!ls) return 0;
+                var own = id + "/" + key;
+                if (ls.getItem(marker(id, "cleared")) === null && ls.getItem(key) !== null) ls.setItem(own, TOMBSTONE);
+                else ls.removeItem(own);
+                return 1;
+            } catch (e) { return 0; }
+        },
+        clear: function(id) {
+            try {
+                var ls = open(id);
+                if (!ls) return 0;
+                var prefix = id + "/";
+                var keep = marker(id, "v2");
+                var keys = [];
+                for (var i = 0; i < ls.length; i++) {
+                    var k = ls.key(i);
+                    if (k !== null && k.indexOf(prefix) === 0 && k !== keep) keys.push(k);
+                }
+                keys.forEach(function(k) { ls.removeItem(k); });
+                ls.setItem(marker(id, "cleared"), "1");
+                return 1;
+            } catch (e) { return 0; }
+        }
+    };
+});
+
+// Values cross with their byte length (UTF8ToString / stringToUTF8 stop at a zero byte), so a
+// value with zeros survives as on the other platforms; keys never have one (UserSettings).
+EM_JS(char*, jasper_settings_get, (const char* id, const char* key, int* length), {
+    var value = Module.jasperSettings.get(UTF8ToString(id), UTF8ToString(key));
+    if (value === null) return 0;
+    // stringToNewUTF8 encodes U+0000 as a zero byte and does not stop there
+    HEAP32[length >> 2] = lengthBytesUTF8(value);
+    return stringToNewUTF8(value);
+});
+
+EM_JS(int, jasper_settings_has, (const char* id, const char* key), {
+    return Module.jasperSettings.get(UTF8ToString(id), UTF8ToString(key)) !== null ? 1 : 0;
+});
+
+EM_JS(int, jasper_settings_set, (const char* id, const char* key, const char* value, int length), {
+    var text = new TextDecoder().decode(HEAPU8.subarray(value, value + length));
+    return Module.jasperSettings.set(UTF8ToString(id), UTF8ToString(key), text);
+});
+
+EM_JS(int, jasper_settings_remove, (const char* id, const char* key), {
+    return Module.jasperSettings.remove(UTF8ToString(id), UTF8ToString(key));
+});
+
+EM_JS(int, jasper_settings_clear, (const char* id), {
+    return Module.jasperSettings.clear(UTF8ToString(id));
+});
+
+namespace {
+    // the JS store (Module.jasperSettings), made on first use
+    const char* settingsId(){
+        static bool installed = false;
+        if (!installed){
+            installed = true;
+            jasper_settings_install();
+        }
+        return JASPERENGINE_STORAGE_ID;
+    }
+
+    void settingsWriteFailed(){
+        static bool logged = false;
+        if (!logged){
+            logged = true;
+            jasperengine::Log::error("UserSettings: localStorage refused the write (storage disabled or full)");
+        }
+    }
+}
+
+std::string JasperEngineWeb::getStringForKey(const char *key, const std::string& defaultValue){
+    if (!key) return defaultValue;
+    int length = 0;
+    char* value = jasper_settings_get(settingsId(), key, &length);
     if (value){
-        std::string strValue = value;
+        std::string strValue(value, static_cast<size_t>(length));
         free(value); //Each call to _malloc() must be paired with free() or heap memory will leak
         return strValue;
     }
@@ -1196,21 +1368,30 @@ std::string JasperEngineWeb::getStringForKey(const char *key, const std::string&
 }
 
 void JasperEngineWeb::setStringForKey(const char* key, const std::string& value){
-    EM_ASM_ARGS({
-        var key = UTF8ToString($0);
-        var value = UTF8ToString($1);
-        localStorage.setItem(UTF8ToString($2) + '/' + key, value);
-    }, key, value.c_str(), JASPERENGINE_STORAGE_ID);
+    if (!key || !key[0]){
+        jasperengine::Log::error("UserSettings: a key must be a non-empty string");
+        return;
+    }
+    if (!jasper_settings_set(settingsId(), key, value.data(), static_cast<int>(value.size())))
+        settingsWriteFailed();
 }
 
 void JasperEngineWeb::removeKey(const char *key){
-    // A bare key may be another game's, so an empty value hides it instead
-    EM_ASM_ARGS({
-        var key = UTF8ToString($0);
-        var own = UTF8ToString($1) + '/' + key;
-        if (localStorage.getItem(key) === null) localStorage.removeItem(own);
-        else localStorage.setItem(own, "");
-    }, key, JASPERENGINE_STORAGE_ID);
+    if (key && !jasper_settings_remove(settingsId(), key))
+        settingsWriteFailed();
+}
+
+bool JasperEngineWeb::hasKey(const char *key){
+    return key && jasper_settings_has(settingsId(), key);
+}
+
+void JasperEngineWeb::removeAllKeys(){
+    if (!jasper_settings_clear(settingsId()))
+        settingsWriteFailed();
+}
+
+void JasperEngineWeb::saveUserSettings(){
+    // localStorage writes are synchronous
 }
 
 void JasperEngineWeb::initializeCrazyGamesSDK(){

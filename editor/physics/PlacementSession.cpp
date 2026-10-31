@@ -388,7 +388,7 @@ namespace {
             hasher.quat(transform->rotation);
             hasher.vec(transform->scale);
             hasher.value(transform->parent);
-            hasher.value(scene->getSignature(entity).to_ullong());
+            hasher.value(std::hash<Signature>{}(scene->getSignature(entity)));
             hasher.value(scene->getEntityLayer(entity));
             hasher.value(scene->isEntityActive(entity));
         }

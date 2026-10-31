@@ -142,6 +142,14 @@ B2_API void b2World_SetCustomFilterCallback( b2WorldId worldId, b2CustomFilterFc
 /// Register the pre-solve callback. This is optional.
 B2_API void b2World_SetPreSolveCallback( b2WorldId worldId, b2PreSolveFcn* fcn, void* context );
 
+// JASPER PATCH: surface callbacks (upstream 3.1 API)
+/// Set the friction callback. Passing NULL resets to the default (the world friction mixing rule).
+B2_API void b2World_SetFrictionCallback( b2WorldId worldId, b2FrictionCallback* callback );
+
+// JASPER PATCH: surface callbacks (upstream 3.1 API)
+/// Set the restitution callback. Passing NULL resets to the default (the world restitution mixing rule).
+B2_API void b2World_SetRestitutionCallback( b2WorldId worldId, b2RestitutionCallback* callback );
+
 /// Set the gravity vector for the entire world. Box2D has no concept of an up direction and this
 /// is left as a decision for the application. Usually in m/s^2.
 /// @see b2WorldDef
@@ -545,6 +553,15 @@ B2_API void b2Shape_SetRestitution( b2ShapeId shapeId, float restitution );
 /// Get the shape restitution
 B2_API float b2Shape_GetRestitution( b2ShapeId shapeId );
 
+// JASPER PATCH: surface callbacks (upstream 3.1 API)
+/// Set the user material identifier. Existing contacts keep the friction and restitution mixed at
+/// their creation: refilter the shape to rebuild them.
+B2_API void b2Shape_SetUserMaterial( b2ShapeId shapeId, int material );
+
+// JASPER PATCH: surface callbacks (upstream 3.1 API)
+/// Get the user material identifier
+B2_API int b2Shape_GetUserMaterial( b2ShapeId shapeId );
+
 /// Get the shape filter
 B2_API b2Filter b2Shape_GetFilter( b2ShapeId shapeId );
 
@@ -688,6 +705,10 @@ B2_API void b2Chain_SetRestitution( b2ChainId chainId, float restitution );
 
 /// Get the chain restitution
 B2_API float b2Chain_GetRestitution( b2ChainId chainId );
+
+// JASPER PATCH: surface callbacks (upstream 3.1 API)
+/// Set the user material identifier of the chain and its segments
+B2_API void b2Chain_SetUserMaterial( b2ChainId chainId, int material );
 
 /// Chain identifier validation. Provides validation for up to 64K allocations.
 B2_API bool b2Chain_IsValid( b2ChainId id );

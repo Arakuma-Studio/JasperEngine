@@ -50,6 +50,9 @@
 #include "Engine.h"
 #include "ObjectManager.h"
 #include "PrefabAsset.h"
+#include "physics/PhysicsMaterial.h"
+#include "component/PhysicsCommon.h"
+#include <optional>
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "Rigidbody2D.h"
 #include "Joint2D.h"
@@ -61,6 +64,7 @@
 #include "Joint3D.h"
 #include "Contact3D.h"
 #include "CollideShapeResult3D.h"
+#include <stdexcept>
 #endif
 
 using namespace jasperengine;
@@ -250,6 +254,86 @@ int luaDestroyImmediate(lua_State* L){
 
 }
 
+// ---- 2D physics: bodies given to joints, materials given to bodies and colliders ----
+
+namespace {
+
+    // a material argument: a .physicsmaterial path, a PhysicsMaterial or nil (none)
+    bool luaMaterialArg(const luabridge::LuaRef& value, PhysicsMaterial& material, std::string& path){
+        material = PhysicsMaterial();
+        path.clear();
+        if (value.isNil()){
+            return true;
+        }
+        if (value.isString()){
+            path = value.tostring();
+            return true;
+        }
+        if (value.isInstance<PhysicsMaterial>()){
+            material = value.cast<PhysicsMaterial>().value();
+            return true;
+        }
+        return false;
+    }
+
+    std::optional<PhysicsMaterial> luaMaterialResult(const PhysicsMaterial& material){
+        if (!material.valid()){
+            return std::nullopt;
+        }
+        return material;
+    }
+
+    PhysicsMaterialCombine luaCombineArg(const luabridge::LuaRef& value, PhysicsMaterialCombine fallback){
+        if (value.isNumber()){
+            const int mode = value.unsafe_cast<int>();
+            if (mode >= (int)PhysicsMaterialCombine::AVERAGE && mode <= (int)PhysicsMaterialCombine::MAXIMUM){
+                return (PhysicsMaterialCombine)mode;
+            }
+        }
+        if (value.isString()){
+            PhysicsMaterialCombine mode;
+            if (physicsmaterial::combineFromName(value.tostring(), mode)){
+                return mode;
+            }
+        }
+        return fallback;
+    }
+
+#ifdef JASPERENGINE_PHYSICS_2D
+    // a joint body argument: a GameObject (or any handle, a script) with a Rigidbody 2D, or nil
+    Entity luaJointBodyArg(Joint2D* self, const luabridge::LuaRef& value, lua_State* L, const char* property){
+        if (value.isNil()){
+            return NULL_ENTITY;
+        }
+        Scene* scene = nullptr;
+        Entity entity = NULL_ENTITY;
+        const int top = lua_gettop(L);
+        value.push(L);
+        const bool isObject = luaObjectArg(L, lua_gettop(L), scene, entity);
+        lua_settop(L, top);
+        if (!isObject){
+            // an exception (LuaBridge turns it into a Lua error): luaL_error would longjmp past
+            // the C++ objects alive here
+            throw std::runtime_error(std::string("Joint2D.") + property + ": a GameObject or Rigidbody2D with a Rigidbody 2D, or nil");
+        }
+        if (scene != self->getScene() || !scene->isEntityCreated(entity) || !scene->findComponent<Rigidbody2DComponent>(entity)){
+            throw std::runtime_error(std::string("Joint2D.") + property + ": \"" + (scene ? scene->getEntityName(entity) : std::string("?")) +
+                                     "\" has no Rigidbody 2D (in the joint's scene)");
+        }
+        return entity;
+    }
+
+    std::optional<GameObject> luaJointBody(const Joint2D* self, Entity body){
+        Scene* scene = self->getScene();
+        if (body == NULL_ENTITY || !scene || !scene->isEntityCreated(body)){
+            return std::nullopt;
+        }
+        return GameObject(scene, body);
+    }
+#endif
+
+}
+
 namespace {
     // the shader a component draws with: its customShader, else the scene's default
     template <class T>
@@ -361,7 +445,52 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addVariable("WELD", Joint2DType::WELD)
         .addVariable("MOTOR", Joint2DType::MOTOR)
         .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("JointLimitState2D")
+        .addVariable("INACTIVE", JointLimitState2D::INACTIVE)
+        .addVariable("LOWER", JointLimitState2D::LOWER)
+        .addVariable("UPPER", JointLimitState2D::UPPER)
+        .addVariable("EQUAL", JointLimitState2D::EQUAL)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("CollisionDetectionMode2D")
+        .addVariable("DISCRETE", CollisionDetectionMode2D::DISCRETE)
+        .addVariable("CONTINUOUS", CollisionDetectionMode2D::CONTINUOUS)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("RigidbodySleepMode2D")
+        .addVariable("NEVER_SLEEP", RigidbodySleepMode2D::NEVER_SLEEP)
+        .addVariable("START_AWAKE", RigidbodySleepMode2D::START_AWAKE)
+        .addVariable("START_ASLEEP", RigidbodySleepMode2D::START_ASLEEP)
+        .endNamespace();
 #endif
+
+    // shared by 2D and 3D joints and materials (component/PhysicsCommon.h)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("JointAnchorSpace")
+        .addVariable("WORLD", JointAnchorSpace::WORLD)
+        .addVariable("LOCAL", JointAnchorSpace::LOCAL)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("JointBreakAction")
+        .addVariable("IGNORE", JointBreakAction::IGNORE)
+        .addVariable("CALLBACK_ONLY", JointBreakAction::CALLBACK_ONLY)
+        .addVariable("DISABLE", JointBreakAction::DISABLE)
+        .addVariable("DESTROY", JointBreakAction::DESTROY)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("PhysicsMaterialCombine")
+        .addVariable("AVERAGE", PhysicsMaterialCombine::AVERAGE)
+        .addVariable("GEOMETRIC_MEAN", PhysicsMaterialCombine::GEOMETRIC_MEAN)
+        .addVariable("MINIMUM", PhysicsMaterialCombine::MINIMUM)
+        .addVariable("MULTIPLY", PhysicsMaterialCombine::MULTIPLY)
+        .addVariable("MAXIMUM", PhysicsMaterialCombine::MAXIMUM)
+        .endNamespace();
 
 #ifdef JASPERENGINE_PHYSICS_3D
     luabridge::getGlobalNamespace(L)
@@ -519,6 +648,15 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
 #ifdef JASPERENGINE_PHYSICS_2D
         .addFunction("getRigidbody2D", &GameObject::getRigidbody2D)
         .addFunction("removeRigidbody2D", &GameObject::removeRigidbody2D)
+        // the Joint 2D of the GameObject, nil when it has none
+        .addFunction("getJoint2D", +[](GameObject* self) -> std::optional<Joint2D> {
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity()) ||
+                !scene->findComponent<Joint2DComponent>(self->getEntity())){
+                return std::nullopt;
+            }
+            return Joint2D(scene, self->getEntity());
+        })
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
         .addFunction("getRigidbody", &GameObject::getRigidbody)
@@ -1997,6 +2135,35 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getAudioSourceComponent", &AudioSource::getComponent<AudioSourceComponent>)
         .endClass();
 
+    // a runtime physics material: PhysicsMaterial.load(path) is the asset's copy shared by every
+    // collider naming it, PhysicsMaterial.new{...} a material of the script's own
+    luabridge::getGlobalNamespace(L)
+        .beginClass<PhysicsMaterial>("PhysicsMaterial")
+        .addStaticFunction("load", +[](const std::string& path) -> std::optional<PhysicsMaterial> {
+            return luaMaterialResult(PhysicsMaterial::load(path));
+        })
+        .addStaticFunction("new", +[](luabridge::LuaRef params) -> PhysicsMaterial {
+            PhysicsMaterialData defaults;
+            float friction = defaults.friction;
+            float bounciness = defaults.bounciness;
+            PhysicsMaterialCombine frictionCombine = PhysicsMaterialCombine::AVERAGE;
+            PhysicsMaterialCombine bounceCombine = PhysicsMaterialCombine::AVERAGE;
+            if (params.isTable()){
+                if (params["friction"].isNumber()) friction = params["friction"].unsafe_cast<float>();
+                if (params["bounciness"].isNumber()) bounciness = params["bounciness"].unsafe_cast<float>();
+                frictionCombine = luaCombineArg(params["frictionCombine"], frictionCombine);
+                bounceCombine = luaCombineArg(params["bounceCombine"], bounceCombine);
+            }
+            return PhysicsMaterial::create(friction, bounciness, frictionCombine, bounceCombine);
+        })
+        .addProperty("path", &PhysicsMaterial::getPath)
+        .addProperty("friction", &PhysicsMaterial::getFriction, &PhysicsMaterial::setFriction)
+        .addProperty("bounciness", &PhysicsMaterial::getBounciness, &PhysicsMaterial::setBounciness)
+        .addProperty("frictionCombine", &PhysicsMaterial::getFrictionCombine, &PhysicsMaterial::setFrictionCombine)
+        .addProperty("bounceCombine", &PhysicsMaterial::getBounceCombine, &PhysicsMaterial::setBounceCombine)
+        .addFunction("__eq", +[](const PhysicsMaterial* self, const PhysicsMaterial* other) -> bool { return other && *self == *other; })
+        .endClass();
+
 #ifdef JASPERENGINE_PHYSICS_2D
     luabridge::getGlobalNamespace(L)
         .deriveClass<Rigidbody2D, EntityHandle>("Rigidbody2D")
@@ -2115,6 +2282,53 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getMass", &Rigidbody2D::getMass)
         .addFunction("getRotationalInertia", &Rigidbody2D::getRotationalInertia)
         .addFunction("applyMassFromColliders", &Rigidbody2D::applyMassFromColliders)
+        // Unity's mass fields: setting mass, centerOfMass or inertia turns its Auto off
+        .addProperty("mass", &Rigidbody2D::getMass, &Rigidbody2D::setMass)
+        .addProperty("useAutoMass", &Rigidbody2D::isUseAutoMass, &Rigidbody2D::setUseAutoMass)
+        .addProperty("centerOfMass", &Rigidbody2D::getCenterOfMass, &Rigidbody2D::setCenterOfMass)
+        .addProperty("autoCenterOfMass", &Rigidbody2D::isAutoCenterOfMass, &Rigidbody2D::setAutoCenterOfMass)
+        .addProperty("inertia", &Rigidbody2D::getInertia, &Rigidbody2D::setInertia)
+        .addProperty("autoInertia", &Rigidbody2D::isAutoInertia, &Rigidbody2D::setAutoInertia)
+        .addProperty("collisionDetection", &Rigidbody2D::getCollisionDetection, &Rigidbody2D::setCollisionDetection)
+        .addProperty("sleepingMode", &Rigidbody2D::getSleepingMode, &Rigidbody2D::setSleepingMode)
+        // the default material of the colliders without one: a path, a PhysicsMaterial or nil
+        .addProperty("material",
+            +[](const Rigidbody2D* self) -> std::optional<PhysicsMaterial> { return luaMaterialResult(self->getMaterial()); },
+            +[](Rigidbody2D* self, luabridge::LuaRef value) {
+                PhysicsMaterial material;
+                std::string path;
+                if (!luaMaterialArg(value, material, path)){
+                    throw std::runtime_error("Rigidbody2D.material: a .physicsmaterial path, a PhysicsMaterial or nil");
+                }
+                if (material.valid()) self->setMaterial(material);
+                else self->setMaterial(path);
+            })
+        // collider edits: that collider only is made again (index from 0; out of range: an error)
+        .addFunction("removeCollider", &Rigidbody2D::removeCollider)
+        .addFunction("setColliderPoints", &Rigidbody2D::setColliderPoints)
+        .addFunction("getColliderPoints", &Rigidbody2D::getColliderPoints)
+        .addFunction("setColliderLoop", &Rigidbody2D::setColliderLoop)
+        .addFunction("isColliderLoop", &Rigidbody2D::isColliderLoop)
+        .addFunction("setColliderRadius", &Rigidbody2D::setColliderRadius)
+        .addFunction("getColliderRadius", &Rigidbody2D::getColliderRadius)
+        .addFunction("setColliderCenter", &Rigidbody2D::setColliderCenter)
+        .addFunction("getColliderCenter", &Rigidbody2D::getColliderCenter)
+        .addFunction("setColliderSegment", &Rigidbody2D::setColliderSegment)
+        .addFunction("setColliderMaterial", +[](Rigidbody2D* self, size_t index, luabridge::LuaRef value) {
+            PhysicsMaterial material;
+            std::string path;
+            if (!luaMaterialArg(value, material, path)){
+                throw std::runtime_error("Rigidbody2D:setColliderMaterial: a .physicsmaterial path, a PhysicsMaterial or nil");
+            }
+            if (material.valid()) self->setColliderMaterial(index, material);
+            else self->setColliderMaterial(index, path);
+        })
+        .addFunction("getColliderMaterial", +[](const Rigidbody2D* self, size_t index) -> std::optional<PhysicsMaterial> {
+            return luaMaterialResult(self->getColliderMaterial(index));
+        })
+        .addFunction("setColliderTrigger", &Rigidbody2D::setColliderTrigger)
+        .addFunction("isColliderTrigger", &Rigidbody2D::isColliderTrigger)
+        .addFunction("getColliderPieceCount", &Rigidbody2D::getColliderPieceCount)
         .addFunction("applyForce", &Rigidbody2D::applyForce)
         .addFunction("applyForceToCenter", &Rigidbody2D::applyForceToCenter)
         .addFunction("applyTorque", &Rigidbody2D::applyTorque)
@@ -2124,8 +2338,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .beginClass<Joint2D>("Joint2D")
+        .deriveClass<Joint2D, EntityHandle>("Joint2D")
         .addConstructor <void (Scene*), void (Scene*, Entity)> ()
+        // as before local anchors: world points, the other fields as Box2D had them
         .addFunction("setDistanceJoint",
             luabridge::overload<Entity, Entity>(&Joint2D::setDistanceJoint),
             luabridge::overload<Entity, Entity, Vector2, Vector2, bool>(&Joint2D::setDistanceJoint))
@@ -2136,6 +2351,71 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setWeldJoint", &Joint2D::setWeldJoint)
         .addFunction("setMotorJoint", &Joint2D::setMotorJoint)
         .addFunction("getType", &Joint2D::getType)
+        .addProperty("type", &Joint2D::getType, &Joint2D::setType)
+        .addProperty("enabled", &Joint2D::isEnabled, &Joint2D::setEnabled)
+        // the body the joint is on (Unity: the joint's Rigidbody 2D) and the connected one;
+        // set with a GameObject, a Rigidbody2D or nil (the world)
+        .addProperty("bodyA",
+            +[](const Joint2D* self) { return luaJointBody(self, self->getBodyA()); },
+            +[](Joint2D* self, luabridge::LuaRef value) { self->setBodyA(luaJointBodyArg(self, value, value.state(), "bodyA")); })
+        .addProperty("bodyB",
+            +[](const Joint2D* self) { return luaJointBody(self, self->getBodyB()); },
+            +[](Joint2D* self, luabridge::LuaRef value) { self->setBodyB(luaJointBodyArg(self, value, value.state(), "bodyB")); })
+        .addProperty("connectedBody",
+            +[](const Joint2D* self) { return luaJointBody(self, self->getBodyB()); },
+            +[](Joint2D* self, luabridge::LuaRef value) { self->setBodyB(luaJointBodyArg(self, value, value.state(), "connectedBody")); })
+        .addProperty("anchorSpace", &Joint2D::getAnchorSpace, &Joint2D::setAnchorSpace)
+        .addProperty("anchorA", &Joint2D::getAnchorA, &Joint2D::setAnchorA)
+        .addProperty("anchorB", &Joint2D::getAnchorB, &Joint2D::setAnchorB)
+        .addProperty("anchor", &Joint2D::getAnchorA, &Joint2D::setAnchorA)
+        .addProperty("connectedAnchor", &Joint2D::getAnchorB, &Joint2D::setAnchorB)
+        .addProperty("autoAnchors", &Joint2D::isAutoAnchors, &Joint2D::setAutoAnchors)
+        .addProperty("axis", &Joint2D::getAxis, &Joint2D::setAxis)
+        .addProperty("enableCollision", &Joint2D::isEnableCollision, &Joint2D::setEnableCollision)
+        .addProperty("breakForce", &Joint2D::getBreakForce, &Joint2D::setBreakForce)
+        .addProperty("breakTorque", &Joint2D::getBreakTorque, &Joint2D::setBreakTorque)
+        .addProperty("breakAction", &Joint2D::getBreakAction, &Joint2D::setBreakAction)
+        .addProperty("useLimits", &Joint2D::isUseLimits, &Joint2D::setUseLimits)
+        .addProperty("lowerAngle", &Joint2D::getLowerAngle, &Joint2D::setLowerAngle)
+        .addProperty("upperAngle", &Joint2D::getUpperAngle, &Joint2D::setUpperAngle)
+        .addProperty("lowerTranslation", &Joint2D::getLowerTranslation, &Joint2D::setLowerTranslation)
+        .addProperty("upperTranslation", &Joint2D::getUpperTranslation, &Joint2D::setUpperTranslation)
+        .addProperty("useMotor", &Joint2D::isUseMotor, &Joint2D::setUseMotor)
+        .addProperty("motorSpeed", &Joint2D::getMotorSpeed, &Joint2D::setMotorSpeed)
+        .addProperty("maxMotorTorque", &Joint2D::getMaxMotorTorque, &Joint2D::setMaxMotorTorque)
+        .addProperty("maxMotorForce", &Joint2D::getMaxMotorForce, &Joint2D::setMaxMotorForce)
+        .addProperty("enableSpring", &Joint2D::isEnableSpring, &Joint2D::setEnableSpring)
+        .addProperty("frequency", &Joint2D::getFrequency, &Joint2D::setFrequency)
+        .addProperty("dampingRatio", &Joint2D::getDampingRatio, &Joint2D::setDampingRatio)
+        .addProperty("length", &Joint2D::getLength, &Joint2D::setLength)
+        .addProperty("autoLength", &Joint2D::isAutoLength, &Joint2D::setAutoLength)
+        .addProperty("minLength", &Joint2D::getMinLength, &Joint2D::setMinLength)
+        .addProperty("maxLength", &Joint2D::getMaxLength, &Joint2D::setMaxLength)
+        .addProperty("rope", &Joint2D::isRope, &Joint2D::setRope)
+        .addProperty("linearFrequency", &Joint2D::getLinearFrequency, &Joint2D::setLinearFrequency)
+        .addProperty("angularFrequency", &Joint2D::getAngularFrequency, &Joint2D::setAngularFrequency)
+        .addProperty("linearDampingRatio", &Joint2D::getLinearDampingRatio, &Joint2D::setLinearDampingRatio)
+        .addProperty("angularDampingRatio", &Joint2D::getAngularDampingRatio, &Joint2D::setAngularDampingRatio)
+        .addProperty("linearOffset", &Joint2D::getLinearOffset, &Joint2D::setLinearOffset)
+        .addProperty("angularOffset", &Joint2D::getAngularOffset, &Joint2D::setAngularOffset)
+        .addProperty("autoOffset", &Joint2D::isAutoOffset, &Joint2D::setAutoOffset)
+        .addProperty("maxForce", &Joint2D::getMaxForce, &Joint2D::setMaxForce)
+        .addProperty("maxTorque", &Joint2D::getMaxTorque, &Joint2D::setMaxTorque)
+        .addProperty("correctionFactor", &Joint2D::getCorrectionFactor, &Joint2D::setCorrectionFactor)
+        .addProperty("target", &Joint2D::getTarget, &Joint2D::setTarget)
+        // read-outs of the live joint (0 without one)
+        .addProperty("reactionForce", &Joint2D::getReactionForce)
+        .addProperty("reactionTorque", &Joint2D::getReactionTorque)
+        .addProperty("jointAngle", &Joint2D::getJointAngle)
+        .addProperty("jointSpeed", &Joint2D::getJointSpeed)
+        .addProperty("jointTranslation", &Joint2D::getJointTranslation)
+        .addProperty("jointLinearSpeed", &Joint2D::getJointLinearSpeed)
+        .addProperty("motorTorque", &Joint2D::getMotorTorque)
+        .addProperty("motorForce", &Joint2D::getMotorForce)
+        .addProperty("currentLength", &Joint2D::getCurrentLength)
+        .addProperty("limitState", &Joint2D::getLimitState)
+        .addProperty("referenceAngle", &Joint2D::getReferenceAngle)
+        .addProperty("broken", &Joint2D::isBroken)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

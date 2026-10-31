@@ -108,6 +108,8 @@ static b2Shape* b2CreateShapeInternal( b2World* world, b2Body* body, b2Transform
 	shape->density = def->density;
 	shape->friction = def->friction;
 	shape->restitution = def->restitution;
+	// JASPER PATCH: surface callbacks (upstream 3.1 API)
+	shape->userMaterialId = def->userMaterialId;
 	shape->filter = def->filter;
 	shape->userData = def->userData;
 	shape->customColor = def->customColor;
@@ -314,6 +316,8 @@ b2ChainId b2CreateChain( b2BodyId bodyId, const b2ChainDef* def )
 	chainShape->revision += 1;
 	chainShape->friction = def->friction;
 	chainShape->restitution = def->restitution;
+	// JASPER PATCH: surface callbacks (upstream 3.1 API)
+	chainShape->userMaterialId = def->userMaterialId;
 
 	body->headChainId = chainId;
 
@@ -321,6 +325,8 @@ b2ChainId b2CreateChain( b2BodyId bodyId, const b2ChainDef* def )
 	shapeDef.userData = def->userData;
 	shapeDef.restitution = def->restitution;
 	shapeDef.friction = def->friction;
+	// JASPER PATCH: surface callbacks (upstream 3.1 API)
+	shapeDef.userMaterialId = def->userMaterialId;
 	shapeDef.filter = def->filter;
 	shapeDef.customColor = def->customColor;
 	shapeDef.enableContactEvents = false;
@@ -988,6 +994,28 @@ float b2Shape_GetRestitution( b2ShapeId shapeId )
 	return shape->restitution;
 }
 
+// JASPER PATCH: surface callbacks (upstream 3.1 API)
+void b2Shape_SetUserMaterial( b2ShapeId shapeId, int material )
+{
+	b2World* world = b2GetWorld( shapeId.world0 );
+	B2_ASSERT( world->locked == false );
+	if ( world->locked )
+	{
+		return;
+	}
+
+	b2Shape* shape = b2GetShape( world, shapeId );
+	shape->userMaterialId = material;
+}
+
+// JASPER PATCH: surface callbacks (upstream 3.1 API)
+int b2Shape_GetUserMaterial( b2ShapeId shapeId )
+{
+	b2World* world = b2GetWorld( shapeId.world0 );
+	b2Shape* shape = b2GetShape( world, shapeId );
+	return shape->userMaterialId;
+}
+
 b2Filter b2Shape_GetFilter( b2ShapeId shapeId )
 {
 	b2World* world = b2GetWorld( shapeId.world0 );
@@ -1342,6 +1370,28 @@ float b2Chain_GetRestitution( b2ChainId chainId )
 	b2World* world = b2GetWorld( chainId.world0 );
 	b2ChainShape* chainShape = b2GetChainShape( world, chainId );
 	return chainShape->restitution;
+}
+
+// JASPER PATCH: surface callbacks (upstream 3.1 API)
+void b2Chain_SetUserMaterial( b2ChainId chainId, int material )
+{
+	b2World* world = b2GetWorldLocked( chainId.world0 );
+	if ( world == NULL )
+	{
+		return;
+	}
+
+	b2ChainShape* chainShape = b2GetChainShape( world, chainId );
+	chainShape->userMaterialId = material;
+
+	int count = chainShape->count;
+
+	for ( int i = 0; i < count; ++i )
+	{
+		int shapeId = chainShape->shapeIndices[i];
+		b2Shape* shape = b2ShapeArray_Get( &world->shapes, shapeId );
+		shape->userMaterialId = material;
+	}
 }
 
 int b2Shape_GetContactCapacity( b2ShapeId shapeId )

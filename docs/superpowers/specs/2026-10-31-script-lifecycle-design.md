@@ -613,16 +613,20 @@ or where a different design was safer:
    `ScriptBase` is polymorphic) instead of a `JASPERENGINE_SCRIPT_CLASS` trait: a trait emitted in
    the generated code is invisible to the user's own `.cpp` files. It also finds subclasses
    (Unity's `GetComponent<Base>()`).
-4. **`ScriptMessages`**: the physics-contacts contract is implemented in full (its enum values
-   first, `methodName`, cached `receivers`, `send`, `addReceiversChangedListener`, `cppMask<T>()`
-   via SFINAE-safe override traits: an overloaded name counts as overridden). Additions:
-   `sendTo`, `sendNamed`, `invoke` (one entry, no rules: the lifecycle's own path),
-   `notifyReceiversChanged`, `forgetScene`, `asScriptBase<T>()`, and a trailing `deliver`
-   argument of `send` (`DeliverRequireActive`, `DeliverRequireEnabled`) that
-   `ScriptRuntime::sendMessage` exposes for `ui-multitouch`. `send` calls entries in Script
-   component order (each entry is either Lua or C++). C++ exceptions thrown from a message are
-   logged like Lua errors. `ScriptBase` lifecycle virtuals are in place; physics-contacts adds its
-   own virtuals and trait lines.
+4. **`ScriptMessages`** (one mechanism, merged with physics-2d's `onJointBreak2D`): the
+   physics-contacts contract in full (its enum values first, `methodName`, cached `receivers`,
+   `send`, `add/removeReceiversChangedListener`, `cppMask<T>()`, `cppScript<T>()`). C++ overrides
+   are detected without naming the members (physics-2d's rule; an override may be private,
+   protected or overloaded): `cppMask<T>()` is every message for a `ScriptBase`, and a base
+   virtual that runs marks `ScriptBase::inheritedMessages` (that message is then not sent to the
+   script again, is not counted and leaves `receivers`). Additions: `sendTo`, `sendNamed`,
+   `invoke` (one entry, no rules: the lifecycle's own path), `notifyReceiversChanged`,
+   `forgetScene`, `asScriptBase<T>()`, and a trailing `deliver` argument of `send`
+   (`DeliverRequireActive`, `DeliverRequireEnabled`) that `ScriptRuntime::sendMessage` exposes for
+   `ui-multitouch`. `send` calls the Lua scripts, then the C++ ones, each in component order; the
+   lifecycle calls each entry in component order. An instance the runtime never saw (made by
+   hand, or before its scene's lifecycle starts) gets messages; one never initialized or
+   destroyed does not. C++ exceptions thrown from a message are logged like Lua errors.
 5. **Which scenes unload / quit**: `SceneManager::runFactory` unloads every scene whose scripts
    started (`ScriptRuntime::getStartedScenes`: running ones in Engine order, then the others)
    except the shown loading scene's, not only the running ones: a child scene removed with

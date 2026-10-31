@@ -26,11 +26,18 @@
 #include "Catalog.h"
 #include "Engine.h"
 #include "Input.h"
+#include "input/InputActions.h"
+#include "input/InputControlNames.h"
 #include "Project.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "component/ScriptComponent.h"
+#include "component/Joint2DComponent.h"
+#include "component/Rigidbody2DComponent.h"
+#include "object/physics/Joint2D.h"
+#include "object/physics/Rigidbody2D.h"
+#include "subsystem/PhysicsSystem.h"
 #include "script/LuaBinding.h"
 #include "script/ScriptRuntime.h"
 #include "manager/SceneManager.h"
@@ -136,8 +143,12 @@ struct HeldInput {
     std::set<int> gamepads;             // connected virtual gamepads
     std::map<int, std::set<int>> gamepadButtons;
     std::map<int, std::set<int>> gamepadAxes;
+    // input actions an agent holds (the virtual source "mcp"): buttons, and axes with their values
+    std::set<std::string> actions;
+    std::map<std::string, float> axes;
     bool empty() const {
         if (!keys.empty() || !mouseButtons.empty() || !touches.empty() || !gamepads.empty()) return false;
+        if (!actions.empty() || !axes.empty()) return false;
         for (const auto& [id, buttons] : gamepadButtons) if (!buttons.empty()) return false;
         return true;
     }
@@ -462,91 +473,16 @@ Json runningScenesJson(Project* project) {
 
 // ================================================================== input
 
+// The control names are the engine's (InputControlNames), shared with Project Settings > Input
 int parseKeyName(const Json& value) {
     if (value.is_number_integer()) return value.get<int>();
     if (!value.is_string()) return D_KEY_UNKNOWN;
-    std::string name = lowerCopy(value.get<std::string>());
-    if (name.size() == 1) {
-        const char c = name[0];
-        if (c >= 'a' && c <= 'z') return D_KEY_A + (c - 'a');
-        if (c >= '0' && c <= '9') return D_KEY_0 + (c - '0');
-        switch (c) {
-            case ' ': return D_KEY_SPACE;
-            case '\'': return D_KEY_APOSTROPHE;
-            case ',': return D_KEY_COMMA;
-            case '-': return D_KEY_MINUS;
-            case '.': return D_KEY_PERIOD;
-            case '/': return D_KEY_SLASH;
-            case ';': return D_KEY_SEMICOLON;
-            case '=': return D_KEY_EQUAL;
-            case '[': return D_KEY_LEFT_BRACKET;
-            case '\\': return D_KEY_BACKSLASH;
-            case ']': return D_KEY_RIGHT_BRACKET;
-            case '`': return D_KEY_GRAVE_ACCENT;
-            default: return D_KEY_UNKNOWN;
-        }
-    }
-    for (char& c : name) if (c == ' ' || c == '-') c = '_';
-    if (name.rfind("key_", 0) == 0) name = name.substr(4);
-    if (name.rfind("d_key_", 0) == 0) name = name.substr(6);
-    static const std::map<std::string, int> keys = {
-        {"space", D_KEY_SPACE}, {"spacebar", D_KEY_SPACE},
-        {"apostrophe", D_KEY_APOSTROPHE}, {"comma", D_KEY_COMMA}, {"minus", D_KEY_MINUS}, {"period", D_KEY_PERIOD},
-        {"slash", D_KEY_SLASH}, {"semicolon", D_KEY_SEMICOLON}, {"equal", D_KEY_EQUAL}, {"equals", D_KEY_EQUAL},
-        {"left_bracket", D_KEY_LEFT_BRACKET}, {"backslash", D_KEY_BACKSLASH}, {"right_bracket", D_KEY_RIGHT_BRACKET},
-        {"grave_accent", D_KEY_GRAVE_ACCENT}, {"backquote", D_KEY_GRAVE_ACCENT},
-        {"escape", D_KEY_ESCAPE}, {"esc", D_KEY_ESCAPE}, {"enter", D_KEY_ENTER}, {"return", D_KEY_ENTER},
-        {"tab", D_KEY_TAB}, {"backspace", D_KEY_BACKSPACE}, {"insert", D_KEY_INSERT}, {"delete", D_KEY_DELETE},
-        {"del", D_KEY_DELETE},
-        {"right", D_KEY_RIGHT}, {"left", D_KEY_LEFT}, {"down", D_KEY_DOWN}, {"up", D_KEY_UP},
-        {"right_arrow", D_KEY_RIGHT}, {"left_arrow", D_KEY_LEFT}, {"down_arrow", D_KEY_DOWN}, {"up_arrow", D_KEY_UP},
-        {"arrow_right", D_KEY_RIGHT}, {"arrow_left", D_KEY_LEFT}, {"arrow_down", D_KEY_DOWN}, {"arrow_up", D_KEY_UP},
-        {"page_up", D_KEY_PAGE_UP}, {"pageup", D_KEY_PAGE_UP}, {"page_down", D_KEY_PAGE_DOWN}, {"pagedown", D_KEY_PAGE_DOWN},
-        {"home", D_KEY_HOME}, {"end", D_KEY_END},
-        {"caps_lock", D_KEY_CAPS_LOCK}, {"scroll_lock", D_KEY_SCROLL_LOCK}, {"num_lock", D_KEY_NUM_LOCK},
-        {"print_screen", D_KEY_PRINT_SCREEN}, {"pause", D_KEY_PAUSE},
-        {"kp_decimal", D_KEY_KP_DECIMAL}, {"kp_divide", D_KEY_KP_DIVIDE}, {"kp_multiply", D_KEY_KP_MULTIPLY},
-        {"kp_subtract", D_KEY_KP_SUBTRACT}, {"kp_add", D_KEY_KP_ADD}, {"kp_enter", D_KEY_KP_ENTER}, {"kp_equal", D_KEY_KP_EQUAL},
-        {"left_shift", D_KEY_LEFT_SHIFT}, {"shift", D_KEY_LEFT_SHIFT}, {"left_control", D_KEY_LEFT_CONTROL},
-        {"left_ctrl", D_KEY_LEFT_CONTROL}, {"control", D_KEY_LEFT_CONTROL}, {"ctrl", D_KEY_LEFT_CONTROL},
-        {"left_alt", D_KEY_LEFT_ALT}, {"alt", D_KEY_LEFT_ALT}, {"left_super", D_KEY_LEFT_SUPER}, {"super", D_KEY_LEFT_SUPER},
-        {"right_shift", D_KEY_RIGHT_SHIFT}, {"right_control", D_KEY_RIGHT_CONTROL}, {"right_ctrl", D_KEY_RIGHT_CONTROL},
-        {"right_alt", D_KEY_RIGHT_ALT}, {"right_super", D_KEY_RIGHT_SUPER}, {"menu", D_KEY_MENU}
-    };
-    auto it = keys.find(name);
-    if (it != keys.end()) return it->second;
-    if (name.size() >= 2 && name[0] == 'f' && std::all_of(name.begin() + 1, name.end(), ::isdigit)) {
-        const int n = std::stoi(name.substr(1));
-        if (n >= 1 && n <= 25) return D_KEY_F1 + n - 1;
-    }
-    if (name.rfind("kp_", 0) == 0 && name.size() == 4 && std::isdigit(static_cast<unsigned char>(name[3]))) {
-        return D_KEY_KP_0 + (name[3] - '0');
-    }
-    if (name.rfind("numpad", 0) == 0 && name.size() == 7 && std::isdigit(static_cast<unsigned char>(name[6]))) {
-        return D_KEY_KP_0 + (name[6] - '0');
-    }
-    return D_KEY_UNKNOWN;
+    return InputControlNames::parseKey(value.get<std::string>());
 }
 
 std::string keyName(int key) {
-    if (key >= D_KEY_A && key <= D_KEY_Z) return std::string(1, static_cast<char>('a' + key - D_KEY_A));
-    if (key >= D_KEY_0 && key <= D_KEY_9) return std::string(1, static_cast<char>('0' + key - D_KEY_0));
-    if (key >= D_KEY_F1 && key <= D_KEY_F25) return "f" + std::to_string(key - D_KEY_F1 + 1);
-    switch (key) {
-        case D_KEY_SPACE: return "space";
-        case D_KEY_ENTER: return "enter";
-        case D_KEY_ESCAPE: return "escape";
-        case D_KEY_TAB: return "tab";
-        case D_KEY_BACKSPACE: return "backspace";
-        case D_KEY_LEFT: return "left";
-        case D_KEY_RIGHT: return "right";
-        case D_KEY_UP: return "up";
-        case D_KEY_DOWN: return "down";
-        case D_KEY_LEFT_SHIFT: return "left_shift";
-        case D_KEY_LEFT_CONTROL: return "left_control";
-        case D_KEY_LEFT_ALT: return "left_alt";
-        default: return std::to_string(key);
-    }
+    const std::string name = InputControlNames::keyName(key);
+    return name.empty() ? std::to_string(key) : name;
 }
 
 int parseMouseButton(const Json& value) {
@@ -562,31 +498,13 @@ int parseMouseButton(const Json& value) {
 int parseGamepadButton(const Json& value) {
     if (value.is_number_integer()) return std::clamp(value.get<int>(), 0, D_GAMEPAD_BUTTON_LAST);
     if (!value.is_string()) return -1;
-    static const std::map<std::string, int> buttons = {
-        {"a", D_GAMEPAD_BUTTON_A}, {"b", D_GAMEPAD_BUTTON_B}, {"x", D_GAMEPAD_BUTTON_X}, {"y", D_GAMEPAD_BUTTON_Y},
-        {"cross", D_GAMEPAD_BUTTON_CROSS}, {"circle", D_GAMEPAD_BUTTON_CIRCLE}, {"square", D_GAMEPAD_BUTTON_SQUARE},
-        {"triangle", D_GAMEPAD_BUTTON_TRIANGLE}, {"left_bumper", D_GAMEPAD_BUTTON_LEFT_BUMPER}, {"lb", D_GAMEPAD_BUTTON_LEFT_BUMPER},
-        {"right_bumper", D_GAMEPAD_BUTTON_RIGHT_BUMPER}, {"rb", D_GAMEPAD_BUTTON_RIGHT_BUMPER},
-        {"back", D_GAMEPAD_BUTTON_BACK}, {"select", D_GAMEPAD_BUTTON_BACK}, {"start", D_GAMEPAD_BUTTON_START},
-        {"guide", D_GAMEPAD_BUTTON_GUIDE}, {"left_thumb", D_GAMEPAD_BUTTON_LEFT_THUMB}, {"ls", D_GAMEPAD_BUTTON_LEFT_THUMB},
-        {"right_thumb", D_GAMEPAD_BUTTON_RIGHT_THUMB}, {"rs", D_GAMEPAD_BUTTON_RIGHT_THUMB},
-        {"dpad_up", D_GAMEPAD_BUTTON_DPAD_UP}, {"dpad_right", D_GAMEPAD_BUTTON_DPAD_RIGHT},
-        {"dpad_down", D_GAMEPAD_BUTTON_DPAD_DOWN}, {"dpad_left", D_GAMEPAD_BUTTON_DPAD_LEFT}
-    };
-    auto it = buttons.find(lowerCopy(value.get<std::string>()));
-    return it == buttons.end() ? -1 : it->second;
+    return InputControlNames::parseGamepadButton(value.get<std::string>());
 }
 
 int parseGamepadAxis(const Json& value) {
     if (value.is_number_integer()) return std::clamp(value.get<int>(), 0, D_GAMEPAD_AXIS_LAST);
     if (!value.is_string()) return -1;
-    static const std::map<std::string, int> axes = {
-        {"left_x", D_GAMEPAD_AXIS_LEFT_X}, {"left_y", D_GAMEPAD_AXIS_LEFT_Y}, {"right_x", D_GAMEPAD_AXIS_RIGHT_X},
-        {"right_y", D_GAMEPAD_AXIS_RIGHT_Y}, {"left_trigger", D_GAMEPAD_AXIS_LEFT_TRIGGER}, {"lt", D_GAMEPAD_AXIS_LEFT_TRIGGER},
-        {"right_trigger", D_GAMEPAD_AXIS_RIGHT_TRIGGER}, {"rt", D_GAMEPAD_AXIS_RIGHT_TRIGGER}
-    };
-    auto it = axes.find(lowerCopy(value.get<std::string>()));
-    return it == axes.end() ? -1 : it->second;
+    return InputControlNames::parseGamepadAxis(value.get<std::string>());
 }
 
 int parseMods(const Json& value) {
@@ -609,6 +527,11 @@ Vector2 clampToView(Vector2 point) {
                    std::clamp(point.y, view.getY(), view.getY() + std::max(0.0f, view.getHeight())));
 }
 
+// the owner of what send_input gives the input actions
+uintptr_t mcpInputSource() {
+    return InputActions::namedSource("mcp");
+}
+
 void releaseHeldInput(McpContext& ctx) {
     HeldInput& held = state().held;
     for (int key : held.keys) Engine::systemKeyUp(key, false, 0);
@@ -625,6 +548,8 @@ void releaseHeldInput(McpContext& ctx) {
         for (int axis : axes) Engine::systemGamepadAxisMove(pad, axis, 0.0f);
     }
     for (int pad : held.gamepads) Engine::systemGamepadDisconnect(pad);
+    // the input actions it held (send_input action / axis / axis_delta)
+    InputActions::clearSource(mcpInputSource());
     held = HeldInput();
     if (PlayInput* input = ctx.playInput()) input->setPointerInjected(false);
 }
@@ -644,7 +569,30 @@ Json heldInputJson() {
         if (it != held.gamepadButtons.end()) for (int b : it->second) item["buttons"].push_back(b);
         pads.push_back(item);
     }
-    return {{"keys", keys}, {"mouse_buttons", buttons}, {"touches", touches}, {"gamepads", pads}};
+    Json out = {{"keys", keys}, {"mouse_buttons", buttons}, {"touches", touches}, {"gamepads", pads}};
+    if (!held.actions.empty()) out["actions"] = held.actions;
+    if (!held.axes.empty()) out["axes"] = held.axes;
+    return out;
+}
+
+// What the game's input reads now (get_play_state while playing): the input actions that are
+// not at rest (a value, or "pressed" for a button action), the touch count, the keys held
+Json playInputJson() {
+    Json actions = Json::object();
+    for (const InputAction& action : InputActions::getActions()) {
+        InputActions::State st;
+        if (!InputActions::getState(action.name, st) || !st.enabled) continue;
+        if (action.type == InputActionType::Button) {
+            if (st.pressed) actions[action.name] = "pressed";
+        } else if (std::fabs(st.value) >= 0.0005f) {
+            actions[action.name] = std::round(st.value * 1000.0f) / 1000.0f;
+        }
+    }
+    Json keys = Json::array();
+    for (int key = 0; key <= D_KEY_LAST && keys.size() < 16; key++) {
+        if (Input::isKeyPressed(key)) keys.push_back(keyName(key));
+    }
+    return {{"actions", actions}, {"touches", Input::getTouchCount()}, {"keys_held", keys}};
 }
 
 } // namespace
@@ -687,6 +635,7 @@ Json playStateJson(McpContext& ctx) {
     out["time"] = timeJson(playId != NULL_PROJECT_SCENE && s.current.active);
     if (s.last.serial != 0) out["last_session"] = sessionJson(s.last);
     if (!s.held.empty()) out["held_input"] = heldInputJson();
+    if (playId != NULL_PROJECT_SCENE && s.current.active) out["input"] = playInputJson();
     return out;
 }
 
@@ -2092,6 +2041,41 @@ Json scriptStateJson(Project* project, SceneProject* sp, Entity entity, int maxD
     return scripts;
 }
 
+// the live state of a 2D joint (Unity's read-outs): forces N, torques N m, points, engine angle units
+Json joint2DReadoutsJson(Scene* scene, Entity entity) {
+    Joint2D joint(scene, entity);
+    static const char* limitStates[] = {"inactive", "lower", "upper", "equal"};
+    Json out = {{"live", joint.isLive()}, {"broken", joint.isBroken()}};
+    if (!joint.isLive()) return out;
+    const Vector2 force = joint.getReactionForce();
+    out["reaction_force"] = {force.x, force.y};
+    out["reaction_torque"] = joint.getReactionTorque();
+    out["joint_angle"] = joint.getJointAngle();
+    out["joint_speed"] = joint.getJointSpeed();
+    out["joint_translation"] = joint.getJointTranslation();
+    out["joint_linear_speed"] = joint.getJointLinearSpeed();
+    out["motor_torque"] = joint.getMotorTorque();
+    out["motor_force"] = joint.getMotorForce();
+    out["current_length"] = joint.getCurrentLength();
+    out["limit_state"] = limitStates[(int)joint.getLimitState()];
+    out["reference_angle"] = joint.getReferenceAngle();
+    return out;
+}
+
+// the live state of a Rigidbody 2D: mass, velocities, the Box2D shapes of each collider
+Json rigidbody2DReadoutsJson(Scene* scene, Entity entity) {
+    Rigidbody2DComponent& component = scene->getComponent<Rigidbody2DComponent>(entity);
+    if (!b2Body_IsValid(component.body)) return Json{{"live", false}};
+    Rigidbody2D body(scene, entity);
+    const Vector2 velocity = body.getLinearVelocity();
+    const Vector2 center = body.getCenterOfMass();
+    Json pieces = Json::array();
+    for (size_t i = 0; i < component.colliders.size(); i++) pieces.push_back(body.getBox2DShapes(i).size());
+    return Json{{"live", true}, {"mass", body.getMass()}, {"inertia", body.getRotationalInertia()},
+                {"center_of_mass", {center.x, center.y}}, {"linear_velocity", {velocity.x, velocity.y}},
+                {"angular_velocity", body.getAngularVelocity()}, {"awake", body.isAwake()}, {"collider_shapes", pieces}};
+}
+
 void getRuntimeEntityTool(const CallPtr& call) {
     const Json& args = call->args();
     McpContext& ctx = call->ctx();
@@ -2163,6 +2147,13 @@ void getRuntimeEntityTool(const CallPtr& call) {
         const Json fluid = McpValues::fluidStatsToJson(sp->scene, entity);
         if (!fluid.is_null()) data["fluid_stats"] = fluid;
     }
+    // physics read-outs (joint forces and angles, body mass and velocities)
+    if ((only.empty() || only.count(ComponentType::Joint2DComponent)) && sp->scene->findComponent<Joint2DComponent>(entity)) {
+        data["joint2d"] = joint2DReadoutsJson(sp->scene, entity);
+    }
+    if ((only.empty() || only.count(ComponentType::Rigidbody2DComponent)) && sp->scene->findComponent<Rigidbody2DComponent>(entity)) {
+        data["rigidbody2d"] = rigidbody2DReadoutsJson(sp->scene, entity);
+    }
     if (args.value("include_script_state", true)) {
         data["scripts"] = scriptStateJson(project, sp, entity, std::clamp(args.value("max_depth", 2), 1, 8));
     }
@@ -2170,6 +2161,8 @@ void getRuntimeEntityTool(const CallPtr& call) {
                        sp->name + "\": " + data["components"].dump();
     if (data.contains("scripts") && !data["scripts"].empty()) text += "\nscripts: " + data["scripts"].dump();
     if (data.contains("fluid_stats")) text += "\nfluid_stats: " + data["fluid_stats"].dump();
+    if (data.contains("joint2d")) text += "\njoint2d: " + data["joint2d"].dump();
+    if (data.contains("rigidbody2d")) text += "\nrigidbody2d: " + data["rigidbody2d"].dump();
     if (text.size() > 12000) text = text.substr(0, 12000) + " ... (see structuredContent)";
     call->ok(text, data);
 }
@@ -2851,12 +2844,78 @@ bool buildEventSteps(McpContext& ctx, const Json& event, const std::string& defa
         return true;
     }
 
+    if (type == "action" || type == "axis" || type == "axis_delta") {
+        // Project Settings > Input actions, through the virtual source "mcp" (as an on-screen control)
+        const Json nameValue = event.contains("name") ? event["name"] : (event.contains("action") ? event["action"] : Json());
+        const std::string name = nameValue.is_string() ? nameValue.get<std::string>() : std::string();
+        if (!InputActions::hasAction(name)) {
+            std::string list;
+            for (const std::string& known : InputActions::getActionNames()) list += (list.empty() ? "" : ", ") + known;
+            error = (name.empty() ? std::string("name must be an input action") : "no input action \"" + name + "\"") +
+                    " (Project Settings > Input: " + list + ")";
+            return false;
+        }
+        const uintptr_t source = mcpInputSource();
+        if (type == "action") {
+            const std::string phase = lowerCopy(event.value("phase", "press"));
+            auto down = [name, source]() {
+                InputActions::setSourceValue(source, name, 1.0f, InputSourceKind::Agent);
+                state().held.actions.insert(name);
+                return std::string();
+            };
+            auto up = [name, source]() {
+                InputActions::setSourceValue(source, name, 0.0f, InputSourceKind::Agent);
+                state().held.actions.erase(name);
+                return std::string();
+            };
+            if (phase == "down") add(down, gapFrames, 0, "action down " + name);
+            else if (phase == "up") add(up, gapFrames, 0, "action up " + name);
+            else if (phase == "press" || phase == "tap") {
+                add(down, holdFrames, holdMs, "action down " + name);
+                add(up, gapFrames, 0, "action up " + name);
+            } else {
+                error = "action phase must be press, down or up";
+                return false;
+            }
+            return true;
+        }
+        const char* key = type == "axis" ? "value" : "delta";
+        if (!event.contains(key) || !event[key].is_number()) {
+            error = std::string(type) + " needs a number " + key;
+            return false;
+        }
+        if (type == "axis_delta") {
+            const float delta = event[key].get<float>();
+            add([name, source, delta]() {
+                InputActions::addSourceDelta(source, name, delta, InputSourceKind::Agent);
+                return std::string();
+            }, gapFrames, 0, "axis delta " + name);
+            return true;
+        }
+        const float value = std::clamp(event[key].get<float>(), -1.0f, 1.0f);
+        auto set = [name, source](float v) {
+            InputActions::setSourceValue(source, name, v, InputSourceKind::Agent);
+            if (v != 0.0f) state().held.axes[name] = v;
+            else state().held.axes.erase(name);
+            return std::string();
+        };
+        // with hold_frames / hold_ms it goes back to 0 after them, else it stays (0 releases)
+        if (value != 0.0f && (event.contains("hold_frames") || event.contains("hold_ms"))) {
+            add([set, value]() { return set(value); }, holdFrames, holdMs, "axis " + name);
+            add([set]() { return set(0.0f); }, gapFrames, 0, "axis release " + name);
+        } else {
+            add([set, value]() { return set(value); }, gapFrames, 0, "axis " + name);
+        }
+        return true;
+    }
+
     if (type == "release_all") {
         add([c]() { releaseHeldInput(*c); return std::string(); }, gapFrames, 0, "release all");
         return true;
     }
 
-    error = "type must be key, text, ime, ime_commit, ime_cancel, mouse, mouse_leave, mouse_enter, touch, gamepad, wait or release_all";
+    error = "type must be key, text, ime, ime_commit, ime_cancel, mouse, mouse_leave, mouse_enter, touch, gamepad, action, "
+            "axis, axis_delta, wait or release_all";
     return false;
 }
 
@@ -2953,6 +3012,25 @@ bool cutInputShort(InputRun& run) {
             Engine::systemGamepadButtonUp(pad, b);
             padButtons.erase(b);
         }
+    }
+    // the input actions it pressed are released, the axes it moved go back to where they were
+    std::vector<std::string> actions;
+    for (const std::string& name : held.actions) if (!before.actions.count(name)) actions.push_back(name);
+    for (const std::string& name : actions) {
+        InputActions::setSourceValue(mcpInputSource(), name, 0.0f, InputSourceKind::Agent);
+        held.actions.erase(name);
+    }
+    std::vector<std::string> axes;
+    for (const auto& [name, value] : held.axes) {
+        auto it = before.axes.find(name);
+        if (it == before.axes.end() || it->second != value) axes.push_back(name);
+    }
+    for (const std::string& name : axes) {
+        auto it = before.axes.find(name);
+        const float value = it == before.axes.end() ? 0.0f : it->second;
+        InputActions::setSourceValue(mcpInputSource(), name, value, InputSourceKind::Agent);
+        if (value != 0.0f) held.axes[name] = value;
+        else held.axes.erase(name);
     }
     return true;
 }
@@ -3410,8 +3488,8 @@ void registerPlayTools(McpRegistry& registry) {
         tool.title = "Get Play State";
         tool.description =
             "Play state: played and running scenes (child scenes run as copies with own ids), the session (time, "
-            "frames, errors, crash), how the last one ended, held input, console_cursor, the clock (time_scale, "
-            "fixed_fps, auto_pause, held); stopped: play_would_start.";
+            "frames, errors, crash), how the last one ended, held input, input (actions, touches, keys), "
+            "console_cursor, the clock (time_scale, fixed_fps, auto_pause, held); stopped: play_would_start.";
         tool.inputSchema = object({});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -3545,14 +3623,13 @@ void registerPlayTools(McpRegistry& registry) {
             "Inject input into the running game across frames (no focus needed). events in order, each {type, "
             "...} (first action = default):\nkey: key (space, a, 0, left, f1, kp_0...), action press|down|up, "
             "hold_frames (2), hold_ms, mods [shift,ctrl,alt,super]\ntext: text (UTF-8); ime: text, cursor (code "
-            "points; -1 selects) = composition; ime_commit: text; ime_cancel\nmouse_leave, mouse_enter (the game "
-            "window)\nmouse: action click|double_click|down|up|move|drag|scroll, x, y (click/down/up default: the "
-            "pointer), button left|right|middle, to [x,y] + steps (drag), dx, dy\ntouch: action "
+            "points; -1 selects) = composition; ime_commit: text; ime_cancel\nmouse_leave, mouse_enter\nmouse: "
+            "action click|double_click|down|up|move|drag|scroll, x, y (default: the pointer), button left|right|middle, to [x,y] + steps (drag), dx, dy\ntouch: action "
             "tap|start|move|end|cancel|swipe, pointer, x, y, to\nmouse/touch: target / to_target = CSS selector "
             "of a UI Document element (its center; document: which)\ngamepad: gamepad (0), button (a, b, start, "
-            "dpad_up...) + action, or axis (left_x..right_trigger) + value -1..1\nwait: frames, ms. "
-            "release_all.\nspace: canvas px from top-left (Input.getMousePosition), normalized 0..1, view = Game "
-            "view px. down holds until up/release_all/stop. Returns frames, console lines, play state; "
+            "dpad_up...) + action, or axis (left_x..right_trigger) + value -1..1\naction (input actions): name, "
+            "phase press|down|up; axis: name, value; axis_delta: name, delta\nwait: frames, ms. release_all.\nspace: "
+            "canvas px from top-left, normalized 0..1, view = Game view px. down holds until up/release_all/stop. Returns frames, console lines, play state; "
             "auto_pause: only events + frames_after run.";
         tool.inputSchema = object({
             {"events", Json{{"type", "array"}, {"minItems", 1}, {"maxItems", 500}, {"items", eventItem}}},

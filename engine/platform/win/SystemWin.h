@@ -67,6 +67,8 @@ namespace jasperengine {
         std::string getLuaPath() override;
         std::string getShaderPath() override;
 
+        FILE* platformFopen(const char* fname, const char* mode) override;
+
     private:
         WinInputRouter* router;
     };
