@@ -974,6 +974,14 @@ if(JASPERENGINE_NAVIGATION)
     target_compile_options(recastnavigation PRIVATE ${EXTERNAL_WARNING_FLAG})
     target_compile_options(recastnavigation_debugdraw PRIVATE ${EXTERNAL_WARNING_FLAG})
     jasperengine_apply_cxx_standard(recastnavigation recastnavigation_debugdraw)
+    # No fused multiply-adds in the voxeliser: clang contracts a * b + c into one rounding on
+    # arm64 (Apple silicon, Android, iOS) and x86-64 GCC builds do not, and Recast clips
+    # triangles at cell boundaries, so a mesh edge on a boundary lost its last column of cells
+    # on arm64 (a plane walkable to 9.2 m instead of 9.5 m: NavQueryTest on macOS). Without
+    # contraction both bake the same edges; the cost is in the bake only.
+    if(NOT MSVC)
+        target_compile_options(recastnavigation PRIVATE -ffp-contract=off)
+    endif()
 endif()
 
 # One C++ standard for every object of the binary: libc++ template definitions instantiated

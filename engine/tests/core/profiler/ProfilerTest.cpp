@@ -103,8 +103,10 @@ TEST_F(Profiler, NestedScopesBuildTree){
         EXPECT_NEAR(root->selfMs, root->totalMs - child->totalMs, 0.001);
         EXPECT_NEAR(child->selfMs, child->totalMs - leaf->totalMs, 0.001);
         EXPECT_NEAR(leaf->selfMs, leaf->totalMs, 0.001);
-        EXPECT_GE(leaf->totalMs, 0.2);
-        EXPECT_GE(child->totalMs, 0.6);
+        // within a counter tick of the spins: Apple silicon's counter runs at 24 MHz (42 ns), and
+        // a scope may read one tick short of a spin timed by steady_clock
+        EXPECT_GE(leaf->totalMs, 0.2 - 0.001);
+        EXPECT_GE(child->totalMs, 0.6 - 0.001);
     }
 }
 
