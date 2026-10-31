@@ -17,6 +17,9 @@
 #include "component/ButtonComponent.h"
 #include "component/OnScreenControlComponents.h"
 #include "object/Camera.h"
+#include "Catalog.h"
+#include "Stream.h"
+#include "Factory.h"
 
 #include <cmath>
 #include <climits>
@@ -462,4 +465,65 @@ TEST_F(UIMultiPointerTest, IsPointerOverUIPerPointer) {
     up(1, 10, 10);
     up(0, 500, 500);
     EXPECT_FALSE(ui().isPointerOverUI(INT_MIN));
+}
+
+// the components in the editor: names, enabled checkbox, YAML round trip without runtime state,
+// export code (Factory) with every setting
+TEST(OnScreenControlsEditor, CatalogStreamAndExport) {
+    using editor::Catalog;
+    using editor::ComponentType;
+    EXPECT_EQ(editor::LastComponentType, ComponentType::TouchAreaComponent) << "appended at the end";
+    EXPECT_EQ(Catalog::getComponentName(ComponentType::OnScreenStickComponent, true), "onscreenstick");
+    EXPECT_EQ(Catalog::getComponentType("onscreenbutton"), ComponentType::OnScreenButtonComponent);
+    EXPECT_EQ(Catalog::getComponentType("toucharea"), ComponentType::TouchAreaComponent);
+    EXPECT_EQ(Catalog::getComponentDisplayName(ComponentType::OnScreenStickComponent), "On-Screen Stick");
+    EXPECT_TRUE(Catalog::hasEnabledProperty(ComponentType::TouchAreaComponent));
+
+    OnScreenStickComponent stick;
+    stick.mode = OnScreenStickMode::DYNAMIC;
+    stick.deadZone = 0.25f;
+    stick.axes = OnScreenStickAxes::HORIZONTAL;
+    stick.snapX = true;
+    stick.horizontalAction = "MoveX";
+    stick.visibility = OnScreenVisibility::TOUCH_DEVICES_ONLY;
+    stick.pressed = true;               // runtime: never written
+    stick.value = Vector2(0.5f, 0.5f);
+    const YAML::Node node = editor::Stream::encodeOnScreenStickComponent(stick);
+    EXPECT_FALSE(node["pressed"].IsDefined());
+    EXPECT_EQ(node["mode"].as<std::string>(), "dynamic");
+    const OnScreenStickComponent decoded = editor::Stream::decodeOnScreenStickComponent(node);
+    EXPECT_EQ(decoded.mode, OnScreenStickMode::DYNAMIC);
+    EXPECT_FLOAT_EQ(decoded.deadZone, 0.25f);
+    EXPECT_EQ(decoded.axes, OnScreenStickAxes::HORIZONTAL);
+    EXPECT_TRUE(decoded.snapX);
+    EXPECT_EQ(decoded.horizontalAction, "MoveX");
+    EXPECT_EQ(decoded.visibility, OnScreenVisibility::TOUCH_DEVICES_ONLY);
+    EXPECT_FALSE(decoded.pressed);
+
+    OnScreenButtonComponent button;
+    button.action = "Jump";
+    button.value = -1.0f;
+    button.pressWhenPointerEnters = true;
+    const OnScreenButtonComponent buttonBack = editor::Stream::decodeOnScreenButtonComponent(editor::Stream::encodeOnScreenButtonComponent(button));
+    EXPECT_EQ(buttonBack.action, "Jump");
+    EXPECT_FLOAT_EQ(buttonBack.value, -1.0f);
+    EXPECT_TRUE(buttonBack.pressWhenPointerEnters);
+
+    TouchAreaComponent area;
+    area.sensitivity = 0.5f;
+    area.invertY = true;
+    const TouchAreaComponent areaBack = editor::Stream::decodeTouchAreaComponent(editor::Stream::encodeTouchAreaComponent(area));
+    EXPECT_FLOAT_EQ(areaBack.sensitivity, 0.5f);
+    EXPECT_TRUE(areaBack.invertY);
+
+    // the exported scene's code sets every field
+    Scene scene;
+    const Entity entity = scene.createUserEntity();
+    scene.addComponent<Transform>(entity, {});
+    scene.addComponent<OnScreenStickComponent>(entity, stick);
+    const std::string code = editor::Factory::createComponent(0, &scene, entity, ComponentType::OnScreenStickComponent, std::filesystem::temp_directory_path());
+    EXPECT_NE(code.find("OnScreenStickMode::DYNAMIC"), std::string::npos) << code;
+    EXPECT_NE(code.find("OnScreenStickAxes::HORIZONTAL"), std::string::npos);
+    EXPECT_NE(code.find("\"MoveX\""), std::string::npos);
+    EXPECT_NE(code.find("OnScreenVisibility::TOUCH_DEVICES_ONLY"), std::string::npos);
 }
