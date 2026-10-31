@@ -3506,6 +3506,10 @@ bool addRectLayout(MultiPropertyCmd& multi, const Target& target, Entity entity,
         error = "layout must be an object {anchor, size, position, pivot, margins}.";
         return false;
     }
+    if (const std::string driven = McpValues::safeAreaDrivenError(scene, entity, ""); !driven.empty()) {
+        error = driven;
+        return false;
+    }
     const bool mirrored = uiMirrored(target);
     const ComponentType rt = ComponentType::RectTransformComponent;
     Vector2 size, position(0.0f, 0.0f), pivot;
@@ -3639,6 +3643,7 @@ const std::vector<std::pair<const char*, EntityCreationType>>& uiTypes() {
         {"button", EntityCreationType::BUTTON}, {"input_field", EntityCreationType::INPUT_FIELD},
         {"progress_bar", EntityCreationType::PROGRESSBAR}, {"scrollbar", EntityCreationType::SCROLLBAR},
         {"layout_group", EntityCreationType::LAYOUT_GROUP}, {"container", EntityCreationType::GAMEOBJECT},
+        {"safe_area", EntityCreationType::SAFE_AREA},
         {"polygon", EntityCreationType::POLYGON}};
     return table;
 }
@@ -3655,6 +3660,11 @@ bool buildUiNode(UiBuild& build, const Json& node, Entity parent, const std::str
     if (!pickName(uiTypes(), typeName, type, where + ".type", error)) return false;
     if (++build.count > 300) {
         error = "create_ui builds at most 300 elements per call.";
+        return false;
+    }
+    if (type == EntityCreationType::SAFE_AREA && has(node, "layout")) {
+        error = where + ": a safe_area is laid out by its Safe Area component (it fits the screen's safe area); "
+                "drop layout and lay its children out inside it.";
         return false;
     }
     std::string name = stringOr(node, "name", "");
@@ -4842,7 +4852,7 @@ void registerWorldTools(McpRegistry& registry) {
         "Build a UI tree from one root node {type, name, layout, text, font_size, font, text_color, color, "
         "colors, texture, value, placeholder, direction, multiline, properties, children}. Types: panel (text "
         "= title), image, text, button (text = label), input_field, progress_bar (value 0-1), scrollbar, "
-        "layout_group (direction), container, polygon. layout {anchor, size, position, pivot, margins} in px, "
+        "layout_group (direction), container, polygon, safe_area (fits Screen.safeArea, no layout). layout {anchor, size, position, pivot, margins} in px, "
         "y down: an anchor (top_left, center, top_wide, ..., stretch) pins to the parent (screen for roots), "
         "position then offsets; stretch + margins [l,t,r,b] fills it. Colors linear.",
         object({

@@ -222,6 +222,7 @@ const std::vector<EntityKind>& entityKinds() {
         {"panel", EntityCreationType::PANEL, "Panel"},
         {"polygon", EntityCreationType::POLYGON, "Polygon"},
         {"layout_group", EntityCreationType::LAYOUT_GROUP, "Layout Group"},
+        {"safe_area", EntityCreationType::SAFE_AREA, "Safe Area"},
         {"ui_document", EntityCreationType::UI_DOCUMENT, "UI Document"},
         {"animation", EntityCreationType::ANIMATION, "Animation"},
         {"sprite_animation", EntityCreationType::SPRITE_ANIMATION, "Sprite Animation"},

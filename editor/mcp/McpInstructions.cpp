@@ -46,8 +46,8 @@ Legacy Animation = AnimationPlayerComponent (AnimationComponent: entity sequence
   colors as vectors (0..1); enums by name; textures/fonts/materials by asset path;
   entity references by entity ref, or {"scene": <scene>, "id": <id>} for a GameObject of
   another scene (cross-scene references); Prefab script properties by .prefab path.
-- assets: project-relative paths only ("assets/sprites/ship.png", "scripts/Player.lua");
-  writes refuse links out of the project.
+- assets: project-relative paths ("assets/sprites/ship.png"); writes refuse links out of the
+  project.
 
 ## The loop
 1. Inspect: `editor_status`, the scene list, the hierarchy, then the GameObjects you will
@@ -138,7 +138,7 @@ return Player
   with onKeyDown(key, isRepeat, mods). Log.print/warn/error take ONE string (use ..).
 - Time: Engine.timeScale, Engine.fixedDeltatime (rw), Engine.gameTime, Engine.frameCount
   (scaled, since start).
-- C++ default arguments do not exist in Lua: pass every argument (e.g. the wake flag).
+- Lua has no default arguments: pass every argument (e.g. the wake flag).
 - Lua has no Dori.Script, on_start, getComponent, setProperty or timers. Never put editor
   property paths (submeshes[0]...) in scripts.
 
@@ -164,7 +164,8 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
   sends send_input events while it waits (hold a key for 2 game seconds, then check).
 - run_build runs an exported desktop player with input events and screenshots_at (seconds
   since launch); returns its errors (Lua too) and the log tail.
-- Simulated focus, pause, rotation, language, opened URLs: jasper://docs/platform-services.
+- Simulated phone (configure_game_view device: notch, Screen.safeArea, Safe Area component, CSS
+  env(): jasper://docs/safe-area), focus, pause, language, URLs: jasper://docs/platform-services.
 
 ## 2D and 3D
 - 2D: sprites, tilemaps, UI; units are points (pixels of the canvas, project canvasWidth x
@@ -253,9 +254,8 @@ set_ui_effect_time).
 Edit mode runs no Lua. First read jasper://docs/html-ui.
 
 ## Pitfalls
-- Unsaved scenes are lost when the editor closes; save after each working step.
-- Edits made while playing are lost when play stops (as in Unity): stop before editing
-  the scene for real.
+- Unsaved scenes are lost when the editor closes; save after each step.
+- Edits made while playing are lost when play stops (as in Unity).
 - Lua: static functions use a dot (GameObject.instantiate), methods a colon (go:setScale(2)).
 )JE";
 }

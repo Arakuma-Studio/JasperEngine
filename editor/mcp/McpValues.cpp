@@ -24,6 +24,7 @@
 #include "component/ModelComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/TextComponent.h"
+#include "component/SafeAreaComponent.h"
 #include "component/UIDocumentComponent.h"
 #include "component/LatticeComponent.h"
 #include "component/LatticeModifierComponent.h"
@@ -3098,6 +3099,18 @@ static bool isWholeValueProperty(Scene* scene, Entity entity, ComponentType comp
             endsWith(property, "shaderFeatures"));
 }
 
+std::string McpValues::safeAreaDrivenError(Scene* scene, Entity entity, const std::string& property) {
+    static const std::set<std::string> driven = {
+        "width", "height", "anchorPointLeft", "anchorPointTop", "anchorPointRight", "anchorPointBottom",
+        "anchorOffsetLeft", "anchorOffsetTop", "anchorOffsetRight", "anchorOffsetBottom", "positionOffset",
+        "anchorPreset", "usingAnchors"};
+    if (!scene || !scene->findComponent<SafeAreaComponent>(entity)) return std::string();
+    const std::string root = property.substr(0, property.find_first_of(".["));
+    if (!property.empty() && driven.count(root) == 0) return std::string();
+    return "RectTransform" + (property.empty() ? std::string() : "." + property) + " of \"" + scene->getEntityName(entity) +
+           "\" is driven by the Safe Area component (remove it or edit the Safe Area edges).";
+}
+
 bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, const std::vector<Entity>& entities,
                                      const std::vector<Change>& changes, MultiPropertyCmd& multi, std::string& error) {
     if (!scene || !scene->scene) {
@@ -3117,6 +3130,16 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                 error = label + " has no " + componentLabel + " component; add it first (add_component, or create_entity's "
                         "components).";
                 return false;
+            }
+            if (component == ComponentType::RectTransformComponent) {
+                for (const Change& change : changes) {
+                    if (change.component != component) continue;
+                    const std::string driven = safeAreaDrivenError(scene->scene, entity, change.property);
+                    if (!driven.empty()) {
+                        error = driven;
+                        return false;
+                    }
+                }
             }
             // A whole value set as one command (a material, an extra pass, a stencil, a shader
             // library collection) and a path inside it in the same call: each command is built from
