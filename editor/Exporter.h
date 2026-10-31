@@ -140,10 +140,6 @@ namespace jasperengine::editor {
         ExportProgress progress;
         mutable std::mutex progressMutex;
         std::atomic<bool> cancelRequested{false};
-        // a Compile player build (runPlayerBuild): runExport's Desktop/Web build is one of its
-        // steps, so it is not finished when that build is (the notices, the symbols and the
-        // content manifest follow, then the executable it reports)
-        bool compileForPlayer = false;
 
         // the export run on the process channel (it waits on cmake, the compilers, packagers)
         jobs::Task<void> exportTask;
@@ -179,6 +175,10 @@ namespace jasperengine::editor {
         std::vector<std::string> compileNotices;
         // a Compile build's split debug information, kept for publish prepare (content manifest)
         fs::path buildSymbolsDir;
+        // a player build's Compile fallback runs runExport() inside it: the inner export does not
+        // report the build finished, the fallback does once its own steps are done (the content
+        // manifest, the executable a caller reads at once)
+        bool holdFinish = false;
         bool keepBuildSymbols(const fs::path& executable);
 
         // Lua sources copyLua() shipped, so copyAssets() can skip them
