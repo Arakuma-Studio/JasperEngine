@@ -749,8 +749,9 @@ The full suite (`MCP_SUITE=all JASPER_SLOW_BUILD=1 JASPER_SLOW_TESTS=1 tools/bui
 | before (S30 0ece8c33f) | 9,427 s (2.62 h) | 5.16 h | 1045 passed, 9 failed: S29's 7 `test_pose_runtime`, `test_build.py::test_desktop_build_and_run` (S30: the compiled game's job had no `executable`), `test_data_safety.py::test_crash_recovery` (once) |
 | after, first (aa400ead2; both runtimes built cold, 3,627 s, host load 35 to 43) | 10,001 s (2.78 h) | 5.46 h | 1046 passed, 8 failed (the same, without `test_crash_recovery`) |
 | after (e910cc237; runtimes rebuilt with ccache, 557 and 913 s, at nice 15; longest files first) | 8,161 s (2.27 h) | 4.47 h | 1047 passed, 7 failed (S29's `test_pose_runtime` only) |
+| after the oe-port merge (dc6eb4f2d: S29's fix, S32, SYNC#3; tested at b95489ae6 with TOOLS.md regenerated) | 7,705 s (2.14 h) | 4.22 h | 1107 passed, 3 failed: `test_reflection.py::test_golden_resave` and `test_codegen_golden` (S32's goldens want the 2D scene's points transparent; `feat/s30-shipping` alone fails them the same way on B, without SYNC#3 or BF9), `test_vat_inspector.py::test_move_and_delete_keep_the_pair` (builds not done in 120 s on the loaded host; it passes on B) |
 
-The files that build games went from 8,891 s of test time to 4,667 s. Per file, before and after:
+The files that build games went from 8,891 s of test time to 4,667 s (4,394 s after the merge). Per file, before and after:
 
 | File | Before | After |
 |---|---|---|
@@ -770,3 +771,7 @@ What is left is not builds. Two compiles remain (about 1.3 h of test time, see t
 for why), and the software-rendered golden and shader tests make up the rest
 (`test_materials_pbr`, `test_html_ui_examples`, `test_shader_library`, `test_post_fx_*`,
 `test_reflection`, `test_shadows`).
+
+The compile path's missing executable is fixed: the Compile fallback holds its finish until the
+content manifest and the executable are set. S30 made the same fix (9d854d51e, `holdFinish`),
+which this branch now uses.
