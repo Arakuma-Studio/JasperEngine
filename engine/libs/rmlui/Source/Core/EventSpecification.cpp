@@ -49,6 +49,20 @@ struct EventSpecificationData {
 		{EventId::Transitionrun     , "transitionrun"     , false , true  , DefaultActionPhase::None},
 		{EventId::Transitionstart   , "transitionstart"   , false , true  , DefaultActionPhase::None},
 		{EventId::Transitioncancel  , "transitioncancel"  , false , true  , DefaultActionPhase::None},
+		// DOM Pointer Events (fork, engine-gaps G5-2): parameters 'pointer_id', 'pointer_type', 'is_primary', 'button',
+		// 'buttons', 'mouse_x', 'mouse_y', 'pressure', 'width', 'height' and the key modifiers. Enter and leave do not bubble.
+		{EventId::Pointerdown       , "pointerdown"       , true  , true  , DefaultActionPhase::None},
+		{EventId::Pointermove       , "pointermove"       , true  , true  , DefaultActionPhase::None},
+		{EventId::Pointerup         , "pointerup"         , true  , true  , DefaultActionPhase::None},
+		{EventId::Pointercancel     , "pointercancel"     , false , true  , DefaultActionPhase::None},
+		{EventId::Pointerover       , "pointerover"       , true  , true  , DefaultActionPhase::None},
+		{EventId::Pointerout        , "pointerout"        , true  , true  , DefaultActionPhase::None},
+		{EventId::Pointerenter      , "pointerenter"      , false , false , DefaultActionPhase::None},
+		{EventId::Pointerleave      , "pointerleave"      , false , false , DefaultActionPhase::None},
+		{EventId::Gotpointercapture , "gotpointercapture" , false , true  , DefaultActionPhase::None},
+		{EventId::Lostpointercapture, "lostpointercapture", false , true  , DefaultActionPhase::None},
+		{EventId::Mouseenter        , "mouseenter"        , false , false , DefaultActionPhase::None},
+		{EventId::Mouseleave        , "mouseleave"        , false , false , DefaultActionPhase::None},
 		// clang-format on
 	};
 
