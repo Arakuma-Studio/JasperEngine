@@ -316,6 +316,39 @@ void AsyncOwners::entityDestroyed(const EntityRegistry* scene, Entity entity){
     fireGone(gone);
 }
 
+void AsyncOwners::entitiesMoved(const EntityRegistry* from, const EntityRegistry* to, const std::unordered_map<Entity, Entity>& moved){
+    OwnerState& state = ownerState();
+    if (!from || !to || moved.empty() || state.count.load(std::memory_order_relaxed) == 0) return;
+    std::lock_guard<std::mutex> lock(state.mutex);
+    for (const auto& [oldEntity, newEntity] : moved){
+        // the GameObject's own owner
+        auto entity = state.byEntity.find({from, oldEntity});
+        if (entity != state.byEntity.end()){
+            const uint64_t token = entity->second;
+            state.byEntity.erase(entity);
+            state.byEntity[{to, newEntity}] = token;
+            auto record = state.records.find(token);
+            if (record != state.records.end()){
+                record->second.registry = to;
+                record->second.entity = newEntity;
+            }
+        }
+        // its scripts' owners: the instances move as they are, their link to the GameObject follows
+        auto range = state.scriptsByEntity.equal_range({from, oldEntity});
+        std::vector<uint64_t> scripts;
+        for (auto link = range.first; link != range.second; ++link) scripts.push_back(link->second);
+        state.scriptsByEntity.erase(range.first, range.second);
+        for (uint64_t token : scripts){
+            state.scriptsByEntity.emplace(std::make_pair(to, newEntity), token);
+            auto record = state.records.find(token);
+            if (record != state.records.end()){
+                record->second.registry = to;
+                record->second.entity = newEntity;
+            }
+        }
+    }
+}
+
 FunctionSubscribe<void(uint64_t)>& AsyncOwners::onOwnerGone(){
     return goneEvent();
 }
