@@ -731,3 +731,35 @@ since: the default listing 22 characters over its 100,000 with S26's and S08's t
 their rerun (`test_reflection`, `test_tool_budget`, `test_html_ui_tools`, `test_tool_conventions`,
 `test_docs`, `test_protocol`): 73 passed, 0 failed; `gen_tool_docs.py` 236 tools; smoke (glcore
 and Vulkan, on the host), web + web-gate pass (C).
+
+### BF9 (compiled and prebuilt game builds in the MCP suite)
+
+The full suite (`MCP_SUITE=all JASPER_SLOW_BUILD=1 JASPER_SLOW_TESTS=1 tools/build.sh mcp-tests
+-j 2`) on server D (16 cores, the container capped at 8 CPUs, the host shared with other runs).
+
+| Run | Runner wall | Test time | Result |
+|---|---|---|---|
+| before (S30 0ece8c33f) | 9,427 s (2.62 h) | 5.16 h | 1045 passed, 9 failed: S29's 7 `test_pose_runtime`, `test_build.py::test_desktop_build_and_run` (S30: the compiled game's job had no `executable`), `test_data_safety.py::test_crash_recovery` (once) |
+| after, first (aa400ead2; both runtimes built cold, 3,627 s, host load 35 to 43) | 10,001 s (2.78 h) | 5.46 h | 1046 passed, 8 failed (the same, without `test_crash_recovery`) |
+| after (e910cc237; runtimes rebuilt with ccache, 557 and 913 s, at nice 15; longest files first) | 8,161 s (2.27 h) | 4.47 h | 1047 passed, 7 failed (S29's `test_pose_runtime` only) |
+
+The files that build games went from 8,891 s of test time to 4,667 s. Per file, before and after:
+
+| File | Before | After |
+|---|---|---|
+| `test_build.py` | 4,971 s | 2,788 s |
+| `test_html_ui_video_export.py` | 1,272 s | 33 s |
+| `test_call_cli.py` | 950 s | 17 s |
+| `test_html_ui_export.py` | 813 s | 23 s |
+| `test_html_ui_effects_export.py` | 877 s | 1,799 s |
+
+Before, `test_build.py` stopped right after its compile, on the missing executable. After, it
+also runs the compiled player and compiles the broken source. `test_html_ui_effects_export.py`
+is still a compile; it took longer under that run's load. The files that build nothing ran 1.18
+times slower in the last run than before (the host's load). At the earlier run's load the
+suite's test time comes to about 3.8 h, about 1.9 h of wall time at `-j 2`.
+
+What is left is not builds. Two compiles remain (about 1.3 h of test time, see the table above
+for why), and the software-rendered golden and shader tests make up the rest
+(`test_materials_pbr`, `test_html_ui_examples`, `test_shader_library`, `test_post_fx_*`,
+`test_reflection`, `test_shadows`).
