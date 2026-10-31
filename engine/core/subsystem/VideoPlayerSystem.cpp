@@ -775,8 +775,8 @@ void VideoPlayerSystem::update(double dt){
                 case IVideoSource::FrameResult::STALE:
                     entry.shownSequence = frame.sequence;
                     if (source.rendersToTexture()){
-                        player.output->submitSource(&source, (int)(player.renderTextureWidth ? player.renderTextureWidth : (unsigned)info.displayWidth),
-                                                    (int)(player.renderTextureHeight ? player.renderTextureHeight : (unsigned)info.displayHeight));
+                        // the browser's element uploads at its own size (renderTextureWidth/Height do not apply)
+                        player.output->submitSource(&source, info.displayWidth, info.displayHeight);
                         entry.shownIndex = source.frameIndexFor(entry.clock.getPosition());
                         shown = true;
                     }else if (!frame.y.empty()){

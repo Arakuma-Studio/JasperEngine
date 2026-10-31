@@ -588,6 +588,11 @@ namespace jasperengine::editor{
         // preview bar (FluidSystem::setPreview), the Scene view's Paint Dye toggle and the stats
         // readOnly: the property rows disabled, the preview bar and the stats still work
         void drawFluidSimulationComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities, bool readOnly);
+        // InspectorVideo.cpp: the Video Player (Unity's order), its codec support per platform and
+        // its playback in Play; the asset view of a video file (probe, platform matrix, fast start,
+        // a preview)
+        void drawVideoPlayerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities, bool readOnly);
+        void drawVideoAsset(const std::filesystem::path& asset);
         // why the fluid draws nothing (device, simulator error, no surface for Material)
         void drawFluidStatus(SceneProject* sceneProject, const std::vector<Entity>& entities);
         void drawFluidPreviewBar(SceneProject* sceneProject, const std::vector<Entity>& entities);

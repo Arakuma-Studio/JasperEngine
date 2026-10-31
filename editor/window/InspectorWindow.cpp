@@ -16144,6 +16144,11 @@ void editor::InspectorWindow::show(){
                     drawAnimationPlayerComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::VertexAnimatorComponent){
                     drawVertexAnimatorComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::VideoPlayerComponent){
+                    // its playback bar (Play) is no edit: it works on a read-only player too
+                    if (compReadOnly) ImGui::EndDisabled();
+                    drawVideoPlayerComponent(cpType, sceneProject, entities, compReadOnly);
+                    if (compReadOnly) ImGui::BeginDisabled(true);
                 }else if (cpType == ComponentType::CameraComponent){
                     drawCameraComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::AudioSourceComponent){

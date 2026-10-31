@@ -24,7 +24,8 @@ namespace jasperengine::editor{
         FILE_DIALOG_HTML = 1 << 8,
         FILE_DIALOG_POSE_ANIMATION = 1 << 9,
         FILE_DIALOG_ANIMATION_CLIP = 1 << 10,
-        FILE_DIALOG_VERTEX_ANIMATION = 1 << 11
+        FILE_DIALOG_VERTEX_ANIMATION = 1 << 11,
+        FILE_DIALOG_VIDEO = 1 << 12
     };
 
     class FileDialogs{
@@ -43,6 +44,9 @@ namespace jasperengine::editor{
             }
             if (filterFlags & FILE_DIALOG_AUDIO) {
                 filterItems.push_back({ "Sound files", "wav,ogg,mp3,flac" });
+            }
+            if (filterFlags & FILE_DIALOG_VIDEO) {
+                filterItems.push_back({ "Video files", "mp4,m4v,mov,webm,mkv" });
             }
             if (filterFlags & FILE_DIALOG_SHADER) {
                 filterItems.push_back({ "Shader files", "vert,frag" });
