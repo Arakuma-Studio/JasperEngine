@@ -1433,8 +1433,8 @@ void registerViewTools(McpRegistry& registry) {
         tool.description =
             "Capture a view as PNG. game: the running game, or (stopped) the selected scene through its "
             "camera. scene: the Scene view with gizmos (aim: set_scene_camera / frame_entity). editor: the "
-            "whole window. canvas_rect_in_image maps image -> send_input coords (safe_area_in_image: a simulated "
-            "device's safe area); warns on a flat image.";
+            "whole window. canvas_rect_in_image maps image -> send_input coords; a simulated device: its "
+            "overlay, safe_area_in_image. Warns on a flat image.";
         tool.inputSchema = object({
             {"view", withDefault(stringEnum("", {"game", "scene", "editor"}), "game")},
             {"scene", sceneRef("scene view: whose tab; stopped game view: preview it (selects it).")},
@@ -1442,7 +1442,7 @@ void registerViewTools(McpRegistry& registry) {
             {"save_path", string("Also write the PNG to this project-relative path.")},
             {"focus", withDefault(boolean("Front the view's tab if needed."), true)},
             {"timeout_seconds", withDefault(number("", 1, 600), 30)},
-            {"device_overlay", withDefault(boolean("game, simulated device: draw its screen."), true)}
+            {"device_overlay", withDefault(boolean(""), true)}
         });
         tool.annotations.readOnly = true;
         tool.writesFiles = [](const Json& args) {
@@ -1523,8 +1523,7 @@ void registerViewTools(McpRegistry& registry) {
         tool.description =
             "Read (no arguments) or change the Game view toolbar settings (editor preferences, not undoable). aspect "
             "project = the canvas size (a project setting); the game renders at render_size. device, orientation, "
-            "language: a simulated phone (notch, safe area: safe_area is Screen.safeArea) and system language "
-            "(editor only).";
+            "language: a simulated phone and system language (editor only); safe_area is Screen.safeArea.";
         tool.inputSchema = object({
             {"aspect", stringEnum("", {"free", "project", "16:9", "16:10", "4:3", "9:16"})},
             {"scale", number("", 1, 5)},
@@ -1534,9 +1533,9 @@ void registerViewTools(McpRegistry& registry) {
             {"device", string("An id of devices, custom, or none.")},
             {"orientation", stringEnum("", {"portrait", "portrait_upside_down", "landscape_left", "landscape_right"})},
             {"language", string("es-MX..., or system.")},
-            {"device_overlay", boolean("Draw corners, cutout, home bar.")},
+            {"device_overlay", boolean("")},
             {"safe_area_outline", boolean("")},
-            {"custom_device", anyObject("{width, height, insets {top,right,bottom,left}, corner_radius} px.")}
+            {"custom_device", anyObject("{width, height, insets {top,right,bottom,left}, corner_radius} px")}
         });
         tool.annotations.idempotent = true;
         tool.handler = configureGameViewTool;

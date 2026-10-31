@@ -4852,7 +4852,7 @@ void registerWorldTools(McpRegistry& registry) {
         "Build a UI tree from one root node {type, name, layout, text, font_size, font, text_color, color, "
         "colors, texture, value, placeholder, direction, multiline, properties, children}. Types: panel (text "
         "= title), image, text, button (text = label), input_field, progress_bar (value 0-1), scrollbar, "
-        "layout_group (direction), container, polygon, safe_area (fits Screen.safeArea, no layout). layout {anchor, size, position, pivot, margins} in px, "
+        "layout_group (direction), container, polygon, safe_area (fits Screen.safeArea). layout {anchor, size, position, pivot, margins} in px, "
         "y down: an anchor (top_left, center, top_wide, ..., stretch) pins to the parent (screen for roots), "
         "position then offsets; stretch + margins [l,t,r,b] fills it. Colors linear.",
         object({
