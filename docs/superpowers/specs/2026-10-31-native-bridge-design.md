@@ -669,3 +669,33 @@ ambiguous or in conflict with the code:
 17. **Play library.** `Project::getBuildScriptDirs()` (user dirs + `plugins/native/cpp`) feeds the
     Generator and the Exporter; `getScriptDirs()` stays the setting. `libs/json` joined the engine
     API include directories (`NativeBridge.h` is in `JasperEngine.h`).
+18. **Agent guide.** The HTTP and native lines share one bullet, and a few Lua-section lines were
+    reworded shorter, to keep the merged guide under 16 KB (16353 bytes).
+
+### Verification (merged with gaps/http and main at 92cc07d2a)
+
+- Build box 2203 (`-j3`): editor and `jasperengine-editor-tests` build with 0 errors and 0 warnings.
+- Unit suite: 1238 passed, 8 skipped, 0 failed (the 19 `NativeBridgeTest` cases included). One earlier
+  full run had `HttpTest.LuaCallbackErrorsAreLoggedAndOthersStillRun` fail once (its log count);
+  it passes alone, with its suite and in the next full run: a flake of that test, not reproduced.
+- MCP e2e: `test_native_bridge.py` 4/4 (create/list, settings keys, editor Play with a C++ plugin and a
+  mock across two Plays, the source export incl. byte-identical re-export); with test_stubs,
+  test_docs, test_html_ui_tools (budget 107834), test_protocol (guide size), test_http, test_build,
+  test_autosync, test_play, test_lua_threads: 89 passed + the budget (re-run: passed).
+- Android, on the host: `./gradlew :jasperbridge:testDebugUnitTest` (the 7 NativeReflectionTest cases)
+  and `:app:compileDebugJavaWithJavac` with no javac warnings; NativePlatformAndroid.cpp compiles with
+  the NDK clang (arm64, -Wall -Wextra) clean; **the exported test project** (a Java and a Kotlin
+  plugin, libs/x.jar, a plugin manifest with tools:node="remove", Gradle dependencies, a
+  repository, manifest fragments) **built with `./gradlew assembleDebug`** (arm64 only): the APK has
+  com.t.Device, com.t.k.Store, the registry, JasperNative, AD_ID and the application meta-data, and
+  no READ_PHONE_STATE. A hand-made copy of the generated module layout also passed
+  `assembleRelease` (R8 kept the plugin classes; AGP 9 built-in Kotlin compiled the .kt).
+- Web: `tools/native-bridge/web-smoke/run.sh` (em++ 6.0.10 + node): 28 checks pass (registered and
+  global-path calls, value types, Promises, rejections with codes, exceptions, unsupported values,
+  cancellation, events and registrations queued before the engine, pause/resume). NativeBridge.cpp,
+  NativeClassesLua.cpp and NativePlatformWeb.cpp compile with em++ -Wall -Wextra clean. A full
+  Emscripten build of an exported project was not run.
+- Apple (iOS/macOS) and the macOS CMake path: not buildable here; written against the iOS 15 /
+  macOS 12 SDK APIs and reviewed (selectors, typed objc_msgSend casts per return type, ARC, NSNumber
+  booleans, @try/@catch, bridging header paths, pbxproj objects parsed by tools/mcp/pbxproj.py in
+  the export test). Windows: no platform code (C++ plugins and mocks only).
