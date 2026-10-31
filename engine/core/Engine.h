@@ -478,6 +478,10 @@ namespace jasperengine {
         static bool isIgnoreEventsHandledByUI();
 
         static bool isUIEventReceived();
+        // Input.isPointerOverUI (Unity's EventSystem.IsPointerOverGameObject, ui-multitouch D15):
+        // that pointer (-1 / -2 / -3 the mouse, >= 0 a finger; INT_MIN the mouse or any finger)
+        // is over a component UI element that takes events or HTML content, or either holds it
+        static bool isPointerOverUI(int pointerId);
         
         static void setUpdateTimeMS(unsigned int updateTimeMS);
         static void setUpdateTime(float updateTime);

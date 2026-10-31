@@ -945,6 +945,7 @@ set(JASPERENGINE_SRCS
     core/htmlui/vector/LottiePlayback.cpp
     core/htmlui/vector/UIElementLottie.cpp
     core/htmlui/vector/UILottieElement.cpp
+    core/htmlui/controls/OnScreenControls.cpp
     core/htmlui/media/Av1Decoder.cpp
     core/htmlui/media/UIElementVideo.cpp
     core/htmlui/media/OpusAudioDecoder.cpp
@@ -1019,6 +1020,7 @@ set(JASPERENGINE_SRCS
     core/object/environment/Skybox.cpp
     core/object/environment/Water.cpp
     core/object/ui/Button.cpp
+    core/object/ui/OnScreenControls.cpp
     core/object/ui/LayoutGroup.cpp
     core/object/ui/Image.cpp
     core/object/ui/Panel.cpp
@@ -1105,6 +1107,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/PhysicsSystem.cpp
     core/subsystem/RenderSystem.cpp
     core/subsystem/UISystem.cpp
+    core/subsystem/UISystemPointer.cpp
     core/subsystem/UIDocumentSystem.cpp
     core/subsystem/UIDocumentSystemRender.cpp
     core/subsystem/UIDocumentSystemInput.cpp

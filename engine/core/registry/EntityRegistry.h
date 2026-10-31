@@ -55,6 +55,7 @@
 #include "component/ScrollbarComponent.h"
 #include "component/ProgressbarComponent.h"
 #include "component/InputFieldComponent.h"
+#include "component/OnScreenControlComponents.h"
 #include "component/MeshPolygonComponent.h"
 #include "component/PolygonComponent.h"
 #include "component/AnimationComponent.h"

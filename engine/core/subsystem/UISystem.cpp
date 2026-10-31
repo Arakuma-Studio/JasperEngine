@@ -17,21 +17,11 @@
 
 using namespace jasperengine;
 
-static constexpr float UI_DRAG_START_DISTANCE = 4.0f;
-static constexpr double UI_DOUBLE_CLICK_TIME = 0.3;
 
 UISystem::UISystem(Scene* scene): SubSystem(scene){
     signature.set(scene->getComponentId<RectTransformComponent>());
 
-    lastUIFromPointer = NULL_ENTITY;
-    lastUIFromPointerHover = NULL_ENTITY;
     lastUIFromClick = NULL_ENTITY;
-    lastPanelFromPointer = NULL_ENTITY;
-    inputFieldSelecting = NULL_ENTITY;
-    lastPointerDownPos = Vector2(-1, -1);
-    lastPointerPos = Vector2(-1, -1);
-    pointerDragging = false;
-    pointerInternalGesture = false;
     lastClickTime = -1.0;
 
     anchorReferenceWidth = 0;
@@ -2603,6 +2593,9 @@ void UISystem::update(double dt){
         }
     }
 
+    // the on-screen controls (UISystemPointer.cpp): visibility, the Touch Areas' frame drags,
+    // presses of elements that went inactive cancelled
+    updateControls();
 }
 
 bool UISystem::hasPendingImages() const{
@@ -2622,22 +2615,6 @@ bool UISystem::isInputFieldFocused(){
         }
     }
     return false;
-}
-
-void UISystem::resetButtonStates() {
-    auto buttons = scene->getComponentArray<ButtonComponent>();
-    for (int i = 0; i < buttons->size(); i++) {
-        ButtonComponent& button = buttons->getComponentFromIndex(i);
-        if (!button.pressed) continue;
-
-        Entity entity = buttons->getEntity(i);
-        Signature signature = scene->getSignature(entity);
-        button.pressed = false;
-        if (signature.test(scene->getComponentId<UIComponent>())) {
-            UIComponent& ui = scene->getComponent<UIComponent>(entity);
-            applyButtonVisual(button, ui);
-        }
-    }
 }
 
 bool UISystem::eventOnCharInput(wchar_t codepoint){
@@ -2703,664 +2680,6 @@ bool UISystem::isLiveUIEntity(Entity entity, Signature signature) const {
         && signature.test(scene->getComponentId<UIComponent>());
 }
 
-// Entity must be a live UI entity. Every user callback here can create or destroy
-// entities, which invalidates the component references
-void UISystem::pointerDownOnUI(Entity entity, float x, float y){
-    Signature signature = scene->getSignature(entity);
-    UIComponent* ui = scene->findComponent<UIComponent>(entity);
-    ui->pointerMoved = false;
-
-    if (signature.test(scene->getComponentId<ButtonComponent>())){
-        ButtonComponent* button = scene->findComponent<ButtonComponent>(entity);
-        if (button && !button->disabled && !button->pressed){
-            button->pressed = true;
-            applyButtonVisual(*button, *ui);
-            button->onPress.call();
-
-            ui = scene->findComponent<UIComponent>(entity);
-            if (!ui)
-                return;
-            signature = scene->getSignature(entity);
-        }
-    }
-
-    Transform* transform = scene->findComponent<Transform>(entity);
-    RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(entity);
-    if (!transform || !layout)
-        return;
-
-    if (signature.test(scene->getComponentId<InputFieldComponent>())){
-        InputFieldComponent& inputfield = scene->getComponent<InputFieldComponent>(entity);
-        if (!inputfield.disabled){
-            TextComponent* text = scene->findComponent<TextComponent>(inputfield.text);
-            ImageComponent* img = scene->findComponent<ImageComponent>(entity);
-            if (text && img){
-                float localX = x - transform->worldPosition.x;
-                bool extendSelection = (Input::getModifiers() & D_MODIFIER_SHIFT) != 0;
-                if (text->text.empty()){
-                    inputfield.cursorIndex = 0;
-                    if (!extendSelection){
-                        inputfield.selectionAnchor = 0;
-                    }
-                    inputFieldResetBlink(inputfield);
-                    inputfield.needUpdateInputField = true;
-                }else{
-                    setInputFieldCursorFromLocalX(inputfield, *text, *img, localX, extendSelection);
-                }
-                inputFieldSelecting = entity;
-
-                bool hadInvalid = false;
-                std::wstring wideText = StringUtils::utf8ToWString(text->text, hadInvalid);
-                System::instance().showVirtualKeyboard(wideText);
-            }
-        }
-    }else{
-        System::instance().hideVirtualKeyboard();
-    }
-
-    if (signature.test(scene->getComponentId<ScrollbarComponent>())){
-        ScrollbarComponent& scrollbar = scene->getComponent<ScrollbarComponent>(entity);
-        if (scrollbar.bar != NULL_ENTITY &&
-            scene->findComponent<Transform>(scrollbar.bar) &&
-            scene->findComponent<RectTransformComponent>(scrollbar.bar)){
-            Transform& bartransform = scene->getComponent<Transform>(scrollbar.bar);
-            RectTransformComponent& barlayout = scene->getComponent<RectTransformComponent>(scrollbar.bar);
-
-            if (isCoordInside(x, y, bartransform, barlayout)){
-                scrollbar.barPointerDown = true;
-                pointerInternalGesture = true;
-                if (scrollbar.type == ScrollbarType::VERTICAL){
-                    scrollbar.barPointerPos = y - transform->worldPosition.y - (bartransform.position.y * bartransform.worldScale.y);
-                }else if (scrollbar.type == ScrollbarType::HORIZONTAL){
-                    scrollbar.barPointerPos = x - transform->worldPosition.x - (bartransform.position.x * bartransform.worldScale.x);
-                }
-            }else if (scrollbar.barSize < 1.0){
-                scrollbar.barPointerDown = true;
-                pointerInternalGesture = true;
-                if (scrollbar.type == ScrollbarType::VERTICAL){
-                    float innerHeight = std::max(0.0f, (float)layout->height - scrollbar.barMarginTop - scrollbar.barMarginBottom);
-                    scrollbar.barPointerPos = innerHeight * scrollbar.barSize / 2.0f;
-                }else if (scrollbar.type == ScrollbarType::HORIZONTAL){
-                    float innerWidth = std::max(0.0f, (float)layout->width - scrollbar.barMarginLeft - scrollbar.barMarginRight);
-                    scrollbar.barPointerPos = innerWidth * scrollbar.barSize / 2.0f;
-                }
-                applyScrollbarPointerPosition(entity, x, y);
-            }
-        }
-    }
-
-    if (!scene->isEntityCreated(entity))
-        return;
-    signature = scene->getSignature(entity);
-    if (!signature.test(scene->getComponentId<Transform>()) ||
-        !signature.test(scene->getComponentId<RectTransformComponent>()) ||
-        !signature.test(scene->getComponentId<UIComponent>()))
-        return;
-    transform = &scene->getComponent<Transform>(entity);
-    layout = &scene->getComponent<RectTransformComponent>(entity);
-    ui = &scene->getComponent<UIComponent>(entity);
-
-    if (signature.test(scene->getComponentId<PanelComponent>())){
-        PanelComponent& panel = scene->getComponent<PanelComponent>(entity);
-        RectTransformComponent defaultHeaderLayout;
-        const RectTransformComponent& headerlayout = panel.headercontainer != NULL_ENTITY && scene->findComponent<RectTransformComponent>(panel.headercontainer)
-            ? scene->getComponent<RectTransformComponent>(panel.headercontainer)
-            : defaultHeaderLayout;
-
-        Rect edgeRight;
-        Rect edgeRightBottom;
-        Rect edgeBottom;
-        Rect edgeLeftBottom;
-        Rect edgeLeft;
-        getPanelEdges(panel, *layout, *transform, headerlayout, edgeRight, edgeRightBottom, edgeBottom, edgeLeftBottom, edgeLeft);
-
-        if (panel.canResize){
-            panelSizeAcc = Vector2(0, 0);
-            if (edgeRight.contains(Vector2(x, y))){
-                panel.edgePointerDown = PanelEdge::RIGHT;
-            }else if (edgeRightBottom.contains(Vector2(x, y))){
-                panel.edgePointerDown = PanelEdge::RIGHT_BOTTOM;
-            }else if (edgeBottom.contains(Vector2(x, y))){
-                panel.edgePointerDown = PanelEdge::BOTTOM;
-            }else if (edgeLeftBottom.contains(Vector2(x, y))){
-                panel.edgePointerDown = PanelEdge::LEFT_BOTTOM;
-            }else if (edgeLeft.contains(Vector2(x, y))){
-                panel.edgePointerDown = PanelEdge::LEFT;
-            }else{
-                panel.edgePointerDown = PanelEdge::NONE;
-            }
-
-            if (panel.edgePointerDown != PanelEdge::NONE){
-                pointerInternalGesture = true;
-            }
-        }
-
-        if (panel.canMove && panel.headercontainer != NULL_ENTITY){
-            Transform* headertransform = scene->findComponent<Transform>(panel.headercontainer);
-            RectTransformComponent* headerlayoutPtr = scene->findComponent<RectTransformComponent>(panel.headercontainer);
-            if (headertransform && headerlayoutPtr && isCoordInside(x, y, *headertransform, *headerlayoutPtr)){
-                panel.headerPointerDown = true;
-                pointerInternalGesture = true;
-            }
-        }
-    }
-
-    ui->onPointerDown(x - transform->worldPosition.x, y - transform->worldPosition.y);
-
-    ui = scene->findComponent<UIComponent>(entity);
-    if (!ui)
-        return;
-
-    if (!ui->focused){
-        ui->focused = true;
-        ui->onGetFocus.call();
-        ui = scene->findComponent<UIComponent>(entity);
-        if (!ui)
-            return;
-    }
-
-    if (scene->findComponent<InputFieldComponent>(entity))
-        scene->getComponent<InputFieldComponent>(entity).needUpdateInputField = true;
-}
-
-bool UISystem::eventOnPointerDown(float x, float y){
-    lastUIFromPointer = NULL_ENTITY;
-    lastPanelFromPointer = NULL_ENTITY;
-    lastPointerDownPos = Vector2(x, y);
-    lastPointerPos = Vector2(x, y);
-    pointerDragging = false;
-    pointerInternalGesture = false;
-
-    auto layouts = scene->getComponentArray<RectTransformComponent>();
-
-    std::vector<Entity> layoutEntities;
-    layoutEntities.reserve(layouts->size());
-    for (int i = 0; i < layouts->size(); i++){
-        layoutEntities.push_back(layouts->getEntity(i));
-    }
-
-    for (Entity entity : layoutEntities){
-        RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(entity);
-        if (!layout){
-            continue;
-        }
-
-        Signature signature = scene->getSignature(entity);
-        if (signature.test(scene->getComponentId<Transform>())){
-            Transform& transform = scene->getComponent<Transform>(entity);
-
-            if (transform.visible && isUIActive(entity, signature)){
-                if (signature.test(scene->getComponentId<ImageComponent>())){
-                    Rect uirect(transform.worldPosition.x, transform.worldPosition.y, layout->width * transform.worldScale.x, layout->height * transform.worldScale.y);
-
-                    if (layout->panel != NULL_ENTITY){
-                        uirect = fitOnPanel(uirect, layout->panel);
-                    }
-
-                    if (uirect.contains(Vector2(x, y)) && !layout->ignoreEvents){ //TODO: inside to polygon
-                        lastUIFromPointer = entity;
-                        lastPanelFromPointer = layout->panel;
-                    }
-
-                    if (signature.test(scene->getComponentId<PanelComponent>())){
-                        if (uirect.contains(Vector2(x, y)) && !layout->ignoreEvents){
-                            lastPanelFromPointer = entity;
-                        }
-                    }
-                }
-
-                if (signature.test(scene->getComponentId<UIComponent>())){
-                    UIComponent& ui = scene->getComponent<UIComponent>(entity);
-                    if (ui.focused){
-                        ui.focused = false;
-                        ui.onLostFocus.call();
-                        if (scene->isEntityCreated(entity)){
-                            signature = scene->getSignature(entity);
-                            if (signature.test(scene->getComponentId<InputFieldComponent>())){
-                                InputFieldComponent& inputfield = scene->getComponent<InputFieldComponent>(entity);
-                                inputfield.needUpdateInputField = true;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    if (isLiveUIEntity(lastUIFromPointer)){
-        pointerDownOnUI(lastUIFromPointer, x, y);
-    }else{
-        lastUIFromPointer = NULL_ENTITY;
-        System::instance().hideVirtualKeyboard();
-    }
-
-    if (PanelComponent* panel = scene->findComponent<PanelComponent>(lastPanelFromPointer)){
-        if (panel->canBringToFront){
-            scene->moveChildToTop(lastPanelFromPointer);
-        }
-    }else{
-        lastPanelFromPointer = NULL_ENTITY;
-    }
-
-    if (!isLiveUIEntity(lastUIFromPointer)){
-        lastUIFromPointer = NULL_ENTITY;
-    }
-
-    if (lastUIFromPointer != NULL_ENTITY)
-        return true;
-
-    return false;
-}
-
-bool UISystem::eventOnPointerUp(float x, float y){
-    lastPointerPos = Vector2(-1, -1);
-
-    auto layouts = scene->getComponentArray<RectTransformComponent>();
-    Entity currentUIFromPointer = NULL_ENTITY;
-
-    std::vector<Entity> layoutEntities;
-    layoutEntities.reserve(layouts->size());
-    for (int i = 0; i < layouts->size(); i++){
-        layoutEntities.push_back(layouts->getEntity(i));
-    }
-
-    for (Entity entity : layoutEntities){
-        RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(entity);
-        if (!layout)
-            continue;
-        Signature signature = scene->getSignature(entity);
-        if (!isLiveUIEntity(entity, signature))
-            continue;
-
-        Transform* transform = scene->findComponent<Transform>(entity);
-        UIComponent* ui = scene->findComponent<UIComponent>(entity);
-
-        if (transform->visible && isUIActive(entity, signature) && signature.test(scene->getComponentId<ImageComponent>())){
-            Rect uirect(transform->worldPosition.x, transform->worldPosition.y, layout->width * transform->worldScale.x, layout->height * transform->worldScale.y);
-
-            if (layout->panel != NULL_ENTITY){
-                uirect = fitOnPanel(uirect, layout->panel);
-            }
-
-            if (uirect.contains(Vector2(x, y)) && !layout->ignoreEvents){
-                currentUIFromPointer = entity;
-            }
-        }
-
-        if (signature.test(scene->getComponentId<ButtonComponent>())){
-            ButtonComponent* button = scene->findComponent<ButtonComponent>(entity);
-            if (button && !button->disabled && button->pressed){
-                button->pressed = false;
-                applyButtonVisual(*button, *ui);
-                button->onRelease.call();
-
-                transform = scene->findComponent<Transform>(entity);
-                ui = scene->findComponent<UIComponent>(entity);
-                if (!transform || !ui)
-                    continue;
-                signature = scene->getSignature(entity);
-            }
-        }
-
-        if (signature.test(scene->getComponentId<ScrollbarComponent>())){
-            scene->getComponent<ScrollbarComponent>(entity).barPointerDown = false;
-        }
-
-        if (signature.test(scene->getComponentId<PanelComponent>())){
-            PanelComponent& panel = scene->getComponent<PanelComponent>(entity);
-
-            panel.headerPointerDown = false;
-            panel.edgePointerDown = PanelEdge::NONE;
-        }
-
-        ui->onPointerUp(x - transform->worldPosition.x, y - transform->worldPosition.y);
-    }
-
-    if (isLiveUIEntity(lastUIFromPointer)){
-        Signature signature = scene->getSignature(lastUIFromPointer);
-        Transform* transform = scene->findComponent<Transform>(lastUIFromPointer);
-        UIComponent* ui = scene->findComponent<UIComponent>(lastUIFromPointer);
-        if (transform && ui){
-            if (pointerDragging){
-                ui->onDragEnd.call(x - transform->worldPosition.x, y - transform->worldPosition.y);
-            }else if (!pointerInternalGesture && currentUIFromPointer == lastUIFromPointer){
-                bool canClick = true;
-                if (signature.test(scene->getComponentId<ButtonComponent>())){
-                    ButtonComponent* button = scene->findComponent<ButtonComponent>(lastUIFromPointer);
-                    canClick = button && !button->disabled;
-                }
-
-                if (canClick){
-                    float localX = x - transform->worldPosition.x;
-                    float localY = y - transform->worldPosition.y;
-                    ui->onClick.call(localX, localY);
-
-                    transform = scene->findComponent<Transform>(lastUIFromPointer);
-                    ui = scene->findComponent<UIComponent>(lastUIFromPointer);
-                    if (transform && ui){
-                        double clickTime = Engine::getSystemTime();
-                        if (lastUIFromClick == lastUIFromPointer && clickTime - lastClickTime <= UI_DOUBLE_CLICK_TIME){
-                            ui->onDoubleClick.call(x - transform->worldPosition.x, y - transform->worldPosition.y);
-                            lastUIFromClick = NULL_ENTITY;
-                            lastClickTime = -1.0;
-                        }else{
-                            lastUIFromClick = lastUIFromPointer;
-                            lastClickTime = clickTime;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    lastPanelFromPointer = NULL_ENTITY;
-    pointerDragging = false;
-    pointerInternalGesture = false;
-    inputFieldSelecting = NULL_ENTITY;
-
-    if (lastUIFromPointer != NULL_ENTITY){
-        lastUIFromPointer = NULL_ENTITY;
-
-        Engine::setMouseCursor(CursorType::ARROW);
-        return true;
-    }
-
-    return false;
-}
-
-void UISystem::applyScrollbarPointerPosition(Entity entity, float x, float y){
-    Transform* transform = scene->findComponent<Transform>(entity);
-    RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(entity);
-    ScrollbarComponent* scrollbar = scene->findComponent<ScrollbarComponent>(entity);
-    if (!transform || !layout || !scrollbar || !scrollbar->barPointerDown || scrollbar->barSize >= 1.0)
-        return;
-    if (!scene->findComponent<Transform>(scrollbar->bar) || !scene->findComponent<RectTransformComponent>(scrollbar->bar))
-        return;
-
-    Entity bar = scrollbar->bar;
-
-    float innerHeight = std::max(0.0f, (float)layout->height - scrollbar->barMarginTop - scrollbar->barMarginBottom);
-    float innerWidth = std::max(0.0f, (float)layout->width - scrollbar->barMarginLeft - scrollbar->barMarginRight);
-
-    float trackStartNorm = 0;
-    float trackEndNorm = 1;
-    float halfBarParent = 0;
-    float pos = 0;
-
-    if (scrollbar->type == ScrollbarType::VERTICAL){
-        float barSizePixel = innerHeight * scrollbar->barSize;
-        float barLocalY = (y - transform->worldPosition.y) / transform->worldScale.y;
-        float posAlongInner = innerHeight > 0 ? (barLocalY - scrollbar->barMarginTop + (barSizePixel / 2.0) - scrollbar->barPointerPos) / innerHeight : 0;
-        trackStartNorm = layout->height > 0 ? scrollbar->barMarginTop / (float)layout->height : 0;
-        trackEndNorm = layout->height > 0 ? 1.0f - scrollbar->barMarginBottom / (float)layout->height : 1;
-        halfBarParent = layout->height > 0 ? (barSizePixel / 2.0f) / layout->height : 0;
-        pos = trackStartNorm + posAlongInner * (trackEndNorm - trackStartNorm);
-    }else if (scrollbar->type == ScrollbarType::HORIZONTAL){
-        float barSizePixel = innerWidth * scrollbar->barSize;
-        float barLocalX = (x - transform->worldPosition.x) / transform->worldScale.x;
-        float posAlongInner = innerWidth > 0 ? (barLocalX - scrollbar->barMarginLeft + (barSizePixel / 2.0) - scrollbar->barPointerPos) / innerWidth : 0;
-        trackStartNorm = layout->width > 0 ? scrollbar->barMarginLeft / (float)layout->width : 0;
-        trackEndNorm = layout->width > 0 ? 1.0f - scrollbar->barMarginRight / (float)layout->width : 1;
-        halfBarParent = layout->width > 0 ? (barSizePixel / 2.0f) / layout->width : 0;
-        pos = trackStartNorm + posAlongInner * (trackEndNorm - trackStartNorm);
-    }
-
-    float movableStart = trackStartNorm + halfBarParent;
-    float movableEnd = trackEndNorm - halfBarParent;
-    if (pos < movableStart){
-        pos = movableStart;
-    }else if (pos > movableEnd){
-        pos = movableEnd;
-    }
-
-    float newStep = movableEnd > movableStart ? (pos - movableStart) / (movableEnd - movableStart) : 0;
-
-    if (newStep != scrollbar->step){
-        scrollbar->step = newStep;
-        scrollbar->onChange.call(newStep);
-        scrollbar = scene->findComponent<ScrollbarComponent>(entity);
-    }
-
-    RectTransformComponent* barlayout = scene->findComponent<RectTransformComponent>(bar);
-    if (scrollbar && barlayout){
-        if (scrollbar->type == ScrollbarType::VERTICAL){
-            barlayout->anchorPointTop = pos;
-            barlayout->anchorPointBottom = pos;
-        }else if (scrollbar->type == ScrollbarType::HORIZONTAL){
-            barlayout->anchorPointLeft = pos;
-            barlayout->anchorPointRight = pos;
-        }
-    }
-}
-
-// Every user callback here can create or destroy entities, which invalidates the
-// component references, so they are fetched again after each call
-void UISystem::pointerMoveOnUI(Entity entity, float x, float y, Vector2 pointerDiff, CursorType& cursor){
-    Transform* transform = scene->findComponent<Transform>(entity);
-    UIComponent* ui = scene->findComponent<UIComponent>(entity);
-    if (!transform || !ui)
-        return;
-
-    float localX = x - transform->worldPosition.x;
-    float localY = y - transform->worldPosition.y;
-
-    ui->onPointerMove.call(localX, localY);
-    ui = scene->findComponent<UIComponent>(entity);
-    if (!ui)
-        return;
-    ui->pointerMoved = true;
-
-    if (!pointerInternalGesture){
-        if (!pointerDragging && Vector2(x, y).squaredDistance(lastPointerDownPos) >= UI_DRAG_START_DISTANCE * UI_DRAG_START_DISTANCE){
-            pointerDragging = true;
-            ui->onDragStart.call(localX, localY);
-            ui = scene->findComponent<UIComponent>(entity);
-            if (!ui)
-                return;
-        }
-
-        if (pointerDragging){
-            ui->onDrag.call(localX, localY);
-            ui = scene->findComponent<UIComponent>(entity);
-            if (!ui)
-                return;
-        }
-
-        if (inputFieldSelecting == entity){
-            InputFieldComponent* inputfield = scene->findComponent<InputFieldComponent>(entity);
-            if (inputfield && !inputfield->disabled){
-                TextComponent* text = scene->findComponent<TextComponent>(inputfield->text);
-                ImageComponent* img = scene->findComponent<ImageComponent>(entity);
-                if (text && img){
-                    setInputFieldCursorFromLocalX(*inputfield, *text, *img, localX, true);
-                }
-            }
-        }
-    }
-
-    applyScrollbarPointerPosition(entity, x, y);
-
-    transform = scene->findComponent<Transform>(entity);
-    RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(entity);
-    PanelComponent* panel = scene->findComponent<PanelComponent>(entity);
-    if (!transform || !layout || !panel)
-        return;
-
-    if (panel->headerPointerDown){
-        transform->position += Vector3(pointerDiff.x / transform->worldScale.x, pointerDiff.y / transform->worldScale.y, 0);
-        transform->needUpdate = true;
-
-        panel->onMove.call();
-        transform = scene->findComponent<Transform>(entity);
-        layout = scene->findComponent<RectTransformComponent>(entity);
-        panel = scene->findComponent<PanelComponent>(entity);
-        if (!transform || !layout || !panel)
-            return;
-    }
-
-    if (panel->edgePointerDown != PanelEdge::NONE){
-        panelSizeAcc += Vector2(pointerDiff.x / transform->worldScale.x, pointerDiff.y / transform->worldScale.y);
-        if (panel->edgePointerDown == PanelEdge::RIGHT){
-            layout->width += (int)panelSizeAcc.x;
-            layout->needUpdateSizes = true;
-            cursor = CursorType::RESIZE_EW;
-        }else if (panel->edgePointerDown == PanelEdge::RIGHT_BOTTOM){
-            layout->width += (int)panelSizeAcc.x;
-            layout->height += (int)panelSizeAcc.y;
-            layout->needUpdateSizes = true;
-            cursor = CursorType::RESIZE_NWSE;
-        }else if (panel->edgePointerDown == PanelEdge::BOTTOM){
-            layout->height += (int)panelSizeAcc.y;
-            layout->needUpdateSizes = true;
-            cursor = CursorType::RESIZE_NS;
-        }else if (panel->edgePointerDown == PanelEdge::LEFT_BOTTOM){
-            transform->position += Vector3(pointerDiff.x / transform->worldScale.x, 0, 0);
-            transform->needUpdate = true;
-            layout->width -= (int)panelSizeAcc.x;
-            layout->height += (int)panelSizeAcc.y;
-            layout->needUpdateSizes = true;
-            cursor = CursorType::RESIZE_NESW;
-        }else if (panel->edgePointerDown == PanelEdge::LEFT){
-            transform->position += Vector3(pointerDiff.x / transform->worldScale.x, 0, 0);
-            transform->needUpdate = true;
-            layout->width -= (int)panelSizeAcc.x;
-            layout->needUpdateSizes = true;
-            cursor = CursorType::RESIZE_EW;
-        }
-        if (layout->width < panel->minWidth){
-            layout->width = panel->minWidth;
-        }
-        if (layout->height < panel->minHeight){
-            layout->height = panel->minHeight;
-        }
-        panelSizeAcc -= Vector2((int)panelSizeAcc.x, (int)panelSizeAcc.y);
-
-        panel->onResize.call(layout->width, layout->height);
-    }
-}
-
-bool UISystem::eventOnPointerMove(float x, float y){
-    auto layouts = scene->getComponentArray<RectTransformComponent>();
-
-    CursorType cursor = CursorType::ARROW;
-    Entity currentUIFromPointerHover = NULL_ENTITY;
-
-    for (int i = 0; i < layouts->size(); i++){
-        RectTransformComponent& layout = layouts->getComponentFromIndex(i);
-
-        Entity entity = layouts->getEntity(i);
-        Signature signature = scene->getSignature(entity);
-        if (signature.test(scene->getComponentId<Transform>())){
-            Transform& transform = scene->getComponent<Transform>(entity);
-
-            if (transform.visible && isUIActive(entity, signature)){
-                if (signature.test(scene->getComponentId<ImageComponent>())){
-                    Rect uirect(transform.worldPosition.x, transform.worldPosition.y, layout.width * transform.worldScale.x, layout.height * transform.worldScale.y);
-
-                    if (layout.panel != NULL_ENTITY){
-                        uirect = fitOnPanel(uirect, layout.panel);
-                    }
-
-                    if (uirect.contains(Vector2(x, y)) && !layout.ignoreEvents){
-                        currentUIFromPointerHover = entity;
-                        cursor = CursorType::ARROW;
-
-                        if (signature.test(scene->getComponentId<InputFieldComponent>())){
-                            cursor = CursorType::IBEAM;
-
-                        }else if (signature.test(scene->getComponentId<PanelComponent>())){
-                            PanelComponent& panel = scene->getComponent<PanelComponent>(entity);
-
-                            RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
-                            Transform& transform = scene->getComponent<Transform>(entity);
-                            RectTransformComponent defaultHeaderLayout;
-                            const RectTransformComponent& headerlayout = panel.headercontainer != NULL_ENTITY && scene->findComponent<RectTransformComponent>(panel.headercontainer)
-                                ? scene->getComponent<RectTransformComponent>(panel.headercontainer)
-                                : defaultHeaderLayout;
-
-                            Rect edgeRight;
-                            Rect edgeRightBottom;
-                            Rect edgeBottom;
-                            Rect edgeLeftBottom;
-                            Rect edgeLeft;
-                            getPanelEdges(panel, layout, transform, headerlayout, edgeRight, edgeRightBottom, edgeBottom, edgeLeftBottom, edgeLeft);
-
-                            if (panel.canResize){
-                                if (edgeRight.contains(Vector2(x, y))){
-                                    cursor = CursorType::RESIZE_EW;
-                                }else if (edgeRightBottom.contains(Vector2(x, y))){
-                                    cursor = CursorType::RESIZE_NWSE;
-                                }else if (edgeBottom.contains(Vector2(x, y))){
-                                    cursor = CursorType::RESIZE_NS;
-                                }else if (edgeLeftBottom.contains(Vector2(x, y))){
-                                    cursor = CursorType::RESIZE_NESW;
-                                }else if (edgeLeft.contains(Vector2(x, y))){
-                                    cursor = CursorType::RESIZE_EW;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    if (currentUIFromPointerHover != lastUIFromPointerHover){
-        if (isLiveUIEntity(lastUIFromPointerHover)){
-            Signature signature = scene->getSignature(lastUIFromPointerHover);
-            Transform* transform = scene->findComponent<Transform>(lastUIFromPointerHover);
-            UIComponent* ui = scene->findComponent<UIComponent>(lastUIFromPointerHover);
-            if (transform && ui){
-                if (signature.test(scene->getComponentId<ButtonComponent>())){
-                    ButtonComponent* button = scene->findComponent<ButtonComponent>(lastUIFromPointerHover);
-                    if (button){
-                        button->hovered = false;
-                        applyButtonVisual(*button, *ui);
-                    }
-                }
-
-                ui->onPointerLeave.call(x - transform->worldPosition.x, y - transform->worldPosition.y);
-            }
-        }
-
-        if (isLiveUIEntity(currentUIFromPointerHover)){
-            Signature signature = scene->getSignature(currentUIFromPointerHover);
-            Transform* transform = scene->findComponent<Transform>(currentUIFromPointerHover);
-            UIComponent* ui = scene->findComponent<UIComponent>(currentUIFromPointerHover);
-            if (transform && ui){
-                if (signature.test(scene->getComponentId<ButtonComponent>())){
-                    ButtonComponent* button = scene->findComponent<ButtonComponent>(currentUIFromPointerHover);
-                    if (button){
-                        button->hovered = true;
-                        applyButtonVisual(*button, *ui);
-                    }
-                }
-
-                ui->onPointerEnter.call(x - transform->worldPosition.x, y - transform->worldPosition.y);
-            }
-        }
-
-        lastUIFromPointerHover = currentUIFromPointerHover;
-    }
-
-    if (isLiveUIEntity(lastUIFromPointer)){
-        pointerMoveOnUI(lastUIFromPointer, x, y, Vector2(x, y) - lastPointerPos, cursor);
-    }
-
-    Engine::setMouseCursor(cursor);
-
-    lastPointerPos = Vector2(x, y);
-
-    if (lastUIFromPointer != NULL_ENTITY)
-        return true;
-
-    return false;
-}
-
-bool UISystem::isPointerOverUI() const{
-    return isLiveUIEntity(lastUIFromPointerHover) || isLiveUIEntity(lastUIFromPointer);
-}
-
 bool UISystem::isCoordInside(float x, float y, Transform& transform, RectTransformComponent& layout){
     Vector3 point = transform.worldRotation.getRotationMatrix() * Vector3(x, y, 0);
 
@@ -3378,18 +2697,43 @@ void UISystem::onComponentRemoved(Entity entity, ComponentId componentId) {
         componentId == scene->getComponentId<RectTransformComponent>() ||
         componentId == scene->getComponentId<ImageComponent>() ||
         componentId == scene->getComponentId<Transform>()) {
-        if (entity == lastUIFromPointer) {
-            lastUIFromPointer = NULL_ENTITY;
-            pointerDragging = false;
-            pointerInternalGesture = false;
+        // a destroyed element: the pointer states drop it without callbacks (D6)
+        for (auto& pair : pointers) {
+            UIPointerState& state = pair.second;
+            for (Entity* target : {&state.hit, &state.hover, &state.rawPress, &state.press, &state.drag, &state.widget,
+                                   &state.buttonPressed, &state.panelGesture, &state.scrollbar, &state.inputFieldSelecting}) {
+                if (*target == entity)
+                    *target = NULL_ENTITY;
+            }
+            if (state.drag == NULL_ENTITY)
+                state.dragging = false;
+            if (state.widget == NULL_ENTITY) {
+                state.legacyDragging = false;
+                state.internalGesture = false;
+            }
+            state.enterChain.erase(std::remove(state.enterChain.begin(), state.enterChain.end(), entity), state.enterChain.end());
         }
-        if (entity == lastUIFromPointerHover) {
-            lastUIFromPointerHover = NULL_ENTITY;
+        for (auto& pair : clickRecords) {
+            if (pair.second.element == entity)
+                pair.second.element = NULL_ENTITY;
         }
         if (entity == lastUIFromClick) {
             lastUIFromClick = NULL_ENTITY;
             lastClickTime = -1.0;
         }
+    }
+
+    // an on-screen control goes: what it holds and the input it wrote go with it
+    if (componentId == scene->getComponentId<OnScreenStickComponent>() ||
+        componentId == scene->getComponentId<OnScreenButtonComponent>() ||
+        componentId == scene->getComponentId<TouchAreaComponent>() ||
+        componentId == scene->getComponentId<Transform>()) {
+        for (auto& pair : pointers) {
+            if (pair.second.control == entity)
+                pair.second.control = NULL_ENTITY;
+        }
+        clearControlSources(entity);
+        controlOwners.erase(entity);
     }
 
     if (componentId == scene->getComponentId<ButtonComponent>()) {

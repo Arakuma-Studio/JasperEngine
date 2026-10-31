@@ -73,6 +73,9 @@ EntityRegistry::EntityRegistry() {
     registerComponent<PoseAnimatorComponent>();
     registerComponent<AnimationPlayerComponent>();
     registerComponent<VertexAnimatorComponent>();
+    registerComponent<OnScreenStickComponent>();
+    registerComponent<OnScreenButtonComponent>();
+    registerComponent<TouchAreaComponent>();
 }
 
 EntityRegistry::EntityRegistry(EntityPool defaultPool) : EntityRegistry() {
