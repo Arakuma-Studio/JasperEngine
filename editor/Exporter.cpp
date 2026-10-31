@@ -2855,6 +2855,43 @@ bool editor::Exporter::writeExportSettingsScript(std::string& cmakeContent) {
     value("name", stripDesktopEntryControlChars(project->getApplicationName(linuxSettings.applicationName)));
     value("comment", stripDesktopEntryControlChars(linuxSettings.comment));
     value("categories", stripDesktopEntryControlChars(linuxSettings.categories));
+    // native plugins (web): the JasperNative stub first (plugin scripts register before the
+    // engine starts), the SDK URLs of web.script_urls, then plugins/native/web/*.js in name order
+    std::string nativeScripts;
+    std::vector<std::string> nativeFiles;
+    {
+        const fs::path webPlugins = getExportProjectRoot() / NativePlugins::relativeRoot() / "web";
+        if (fs::is_directory(webPlugins, ec)) {
+            for (const auto& entry : fs::directory_iterator(webPlugins, ec)) {
+                std::string ext = entry.path().extension().string();
+                std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                const std::string name = entry.path().filename().string();
+                // a CMake list holds the names: no ';'
+                if (entry.is_regular_file(ec) && ext == ".js" && name[0] != '.' && name.find(';') == std::string::npos) {
+                    nativeFiles.push_back(genericUtf8Path(entry.path().filename()));
+                }
+            }
+            std::sort(nativeFiles.begin(), nativeFiles.end());
+        }
+        if (!nativeFiles.empty() || !web.scriptUrls.empty()) {
+            nativeScripts += "<script>window.JasperNative = window.JasperNative || {_pending: [], _pendingEvents: [], "
+                             "register: function(n, o) { this._pending.push([n, o]); }, "
+                             "emit: function(p, e, d) { this._pendingEvents.push([p, e, d]); }};</script>\n";
+            for (const std::string& url : web.scriptUrls) {
+                if (url.find_first_not_of(" \t") == std::string::npos) continue;
+                nativeScripts += "<script src=\"" + escapeXmlAttribute(url) + "\"></script>\n";
+            }
+            for (const std::string& file : nativeFiles) {
+                nativeScripts += "<script src=\"plugins/" + escapeXmlAttribute(file) + "\"></script>\n";
+            }
+        }
+    }
+    value("native_scripts", nativeScripts);
+    {
+        std::string files;
+        for (const std::string& file : nativeFiles) files += (files.empty() ? "" : ";") + file;
+        value("native_files", files);
+    }
     script += R"cmake(
 get_filename_component(output "${APP_FILE}" DIRECTORY)
 get_filename_component(app "${APP_FILE}" NAME_WE)
@@ -2890,6 +2927,16 @@ if(WEB)
     if(hide_ui)
         # Keep nodes alive: the SDK's status/print callbacks reference them.
         string(APPEND extra "<style>#emscripten_logo, .emscripten_logo, #status, #progress, #spinner, .spinner, #controls, #output, body > a[href='http://emscripten.org'], body > a[href='https://emscripten.org'] { display: none !important; } .emscripten_border { border: 0 !important; } body > hr { display: none; }</style>\n")
+    endif()
+    if(NOT native_scripts STREQUAL "")
+        string(APPEND extra "${native_scripts}")
+    endif()
+    # plugins/native/web, next to the page (an earlier build's copies are replaced)
+    if(NOT native_files STREQUAL "")
+        file(REMOVE_RECURSE "${output}/plugins")
+        foreach(native_file IN LISTS native_files)
+            file(COPY "${CMAKE_CURRENT_LIST_DIR}/../plugins/native/web/${native_file}" DESTINATION "${output}/plugins")
+        endforeach()
     endif()
     string(REPLACE "{{JASPERENGINE_TITLE}}" "${title}" html "${html}")
     string(FIND "${html}" "{{JASPERENGINE_HEAD_INCLUDE}}" marker)
