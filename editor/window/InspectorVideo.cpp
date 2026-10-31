@@ -17,6 +17,8 @@
 #include "Theme.h"
 #include "command/CommandHandle.h"
 #include "command/type/PropertyCmd.h"
+#include "command/type/MultiPropertyCmd.h"
+#include "util/VideoTextureLink.h"
 #include "component/CameraComponent.h"
 #include "component/MeshComponent.h"
 #include "component/UIComponent.h"
@@ -236,6 +238,22 @@ namespace {
         p.texture.updateTexture(rgba.data(), rgba.size());
     }
 
+}
+
+// ---------------------------------------------------------------- texture links
+
+void editor::InspectorWindow::applyVideoTexture(Entity videoEntity, ComponentType cpType, const std::string& id, SceneProject* sceneProject,
+                                                std::vector<Entity>& entities, std::function<void()> onValueChanged){
+    Scene* scene = sceneProject->scene;
+    if (!scene->findComponent<VideoPlayerComponent>(videoEntity))
+        return;
+    // the same path as a camera link: one undo step for the selection
+    Texture texture = VideoTextureLink::make(scene, videoEntity);
+    MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
+    for (Entity& entity : entities)
+        multiCmd->addPropertyCmd<Texture>(project, sceneProject->id, entity, cpType, id, texture, onValueChanged);
+    multiCmd->setNoMerge();
+    CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
 }
 
 // ---------------------------------------------------------------- the component

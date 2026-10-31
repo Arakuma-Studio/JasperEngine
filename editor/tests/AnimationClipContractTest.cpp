@@ -47,10 +47,11 @@ namespace {
 }
 
 TEST(AnimationClipContract, CatalogKnowsTheAnimationPlayer){
-    // appended after it (prefab override masks use the ordinal): the Vertex Animator is last
+    // appended after it (prefab override masks use the ordinal): the Vertex Animator next, later
+    // types (the Video Player, ...) after them
     EXPECT_EQ(static_cast<int>(ComponentType::VertexAnimatorComponent), static_cast<int>(ComponentType::AnimationPlayerComponent) + 1);
-    EXPECT_EQ(LastComponentType, ComponentType::VertexAnimatorComponent);
-    EXPECT_EQ(ComponentTypeCount, static_cast<int>(ComponentType::VertexAnimatorComponent) + 1);
+    EXPECT_GE(static_cast<int>(LastComponentType), static_cast<int>(ComponentType::VertexAnimatorComponent));
+    EXPECT_EQ(ComponentTypeCount, static_cast<int>(LastComponentType) + 1);
     EXPECT_EQ(Catalog::getComponentType("animationplayer"), ComponentType::AnimationPlayerComponent);
     EXPECT_EQ(Catalog::getComponentType("AnimationPlayerComponent"), ComponentType::AnimationPlayerComponent);
     EXPECT_EQ(Catalog::getComponentName(ComponentType::AnimationPlayerComponent, false), "AnimationPlayerComponent");

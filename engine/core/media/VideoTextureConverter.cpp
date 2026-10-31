@@ -395,6 +395,14 @@ bool VideoTextureConverter::drawPlane(const RenderTargetFormat& format, CameraRe
     return drawn;
 }
 
+void VideoTextureConverter::setPictureForTesting(int width, int height){
+    impl->picture = true;
+    impl->width = width;
+    impl->height = height;
+    impl->framePending = false;
+    impl->source = nullptr;
+}
+
 void VideoTextureConverter::release(){
     Impl& m = *impl;
     m.yuv.destroy();

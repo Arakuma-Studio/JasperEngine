@@ -70,6 +70,8 @@ namespace jasperengine {
 
         // targets made (tests)
         static int getLiveCount();
+        // tests without a GPU: as if a frame of that size had been converted (the frame waiting is dropped)
+        void setPictureForTesting(int width, int height);
 
     private:
         struct Impl;
