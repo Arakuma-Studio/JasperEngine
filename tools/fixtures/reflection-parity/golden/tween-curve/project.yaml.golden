@@ -1,0 +1,22 @@
+formatVersion: 1
+name: Tween Curve
+canvasWidth: 1280
+canvasHeight: 720
+scalingMode: fitwidth
+textureStrategy: none
+vsync: true
+htmlUiMsaaSamples: 4
+htmlUiGlyphAtlasMiB: 0
+htmlUiSdfPrimitives: true
+htmlUiTransformAwareText: true
+windowMode: windowed
+windowWidth: 1280
+windowHeight: 720
+windowResizable: true
+luaDir: .
+versionControl:
+  lfs: true
+startSceneId: 3575974884
+scenes:
+  - filepath: TweenCurve.scene
+    filepathGuid: 82542eaa9438c61a4644909803eb59fb
