@@ -462,8 +462,9 @@ App pause/resume messages are sent from `systemPause/systemResume` (between fram
 - `start` of an object instantiated during `init` of a loading scene runs in the same flush as the scene's.
 
 ### 9.3 Edge cases
-- `self.enabled = false` inside `onEnable`: `onDisable` follows immediately after `onEnable` returns
-  (latch); `start` is not run (not active-and-enabled at flush; queued again on the next enable).
+- `self.enabled = false` inside `onEnable`: `onDisable` runs at once, nested inside that assignment
+  (as Unity), so `onEnable` continues after it returns (latch: one `onDisable` per `onEnable`);
+  `start` is not run (not active-and-enabled at flush; queued again on the next enable).
 - `setActive(false)` on the object inside its own `init` during scene load: pass B skips it (no
   `onEnable`); `init` is not called again later.
 - Destroy during `onEnable`/`start`: deferred destroy (end of frame) as today; `destroyImmediate` runs
@@ -594,14 +595,20 @@ or where a different design was safer:
    calls `remap` (now updates the states' scene/entity). An extra `destroying` flag keeps a script
    being destroyed or unloaded from being re-enabled by a callback (`setActive(true)` in
    `onDisable`).
-2. **Instance plumbing (6.7)**: instead of changing the module table's metatable, every instance
-   gets its own metatable whose `__index` is a C closure over the module: the reserved members
-   (`enabled`, `isActiveAndEnabled`, `gameObject`) first, then `module[key]` (with whatever
-   inheritance the module built), then `ScriptInstanceBase` (registry table, extended by other
-   features through `LuaBinding::pushScriptInstanceBase`). A metatable `__index` on the module can
-   not see `self`, which the members need. Instance fields are set raw before the metatable.
-   `gameObject` wrappers are cached in a weak-keyed registry table (instance -> GameObject), so the
-   instance's state as MCP shows it carries no extra field.
+2. **Instance plumbing (6.7)**: the reserved members are plain values, not computed on read
+   (an `__index` on the module cannot see `self`, and a C `__index` on every instance cost ~2x
+   per method call and ~4x per missing-field read). The class table is per instance (the chunk
+   runs per instance), so a plain class (no metatable) holds its instance's `enabled`,
+   `isActiveAndEnabled`, `gameObject` and the `ScriptInstanceBase` methods it does not define
+   itself as raw fields; the instance's `__index` is the class, exactly as before (one table hop:
+   lookups cost what they did, `InstanceLookupsStayTableLookups`). `ScriptRuntime` keeps the
+   values current through `LuaBinding::syncScriptMembers` at every latch evaluation (enable,
+   disable, activation, awake, destroy, release), before the callback runs. A class with a
+   metatable of its own (inheritance, a strict `__index`) or shared by several instances keeps its
+   chain: its instance gets a members table of its own and a C closure `__index` (members, the
+   class's raw fields, `ScriptInstanceBase`, then the class's chain). Writes go through the
+   instance's `__newindex` (`enabled` -> `setScriptEnabled`, read-only members raise). A class
+   field named like a member stops the script, like a property of that name.
 3. **`ScriptBase::getScript<T>()`** uses `dynamic_cast` over the GameObject's C++ entries (now that
    `ScriptBase` is polymorphic) instead of a `JASPERENGINE_SCRIPT_CLASS` trait: a trait emitted in
    the generated code is invisible to the user's own `.cpp` files. It also finds subclasses
@@ -674,3 +681,25 @@ or where a different design was safer:
     through the same helper (`pushSubscriptionTag`). `check_script` warnings are returned in
     `warnings` and appended to the text; they do not make `ok` false.
 15. The agent guide stays within its 16 KB budget by tightening a few existing lines.
+16. **Review fixes**: every lookup the engine makes on a script from C (method lookups of
+    `ScriptMessages::invoke`, `receivers`, `sendNamed`, an `Event` listener's method) runs in a
+    protected call (`LuaBinding::protectedGetField`): a class whose `__index` raises for what it
+    lacks is treated as not defining the method instead of aborting the process.
+17. **Updates after start**: the engine-event guard (`isScriptActive`, Lua `RegisterEngineEvent`
+    and C++ `REGISTER_ENGINE_EVENT`) also skips a script that is enabled but has not started
+    yet, so `start` always precedes its first `onUpdate`/`onFixedUpdate` (Unity), also for a
+    script enabled during a frame. `ScriptBase::isActiveAndEnabled()` keeps Unity's meaning.
+18. **getScript until release**: `getScript*`, the finds and entity references return a script
+    until its instance is released, so `onDisable`/`onDestroy` still find their siblings and the
+    other scripts of an unloading scene (Unity); messages still skip destroyed scripts.
+19. **Event owners**: listeners owned by a script are dropped when it is released (an owner ->
+    Events weak registry table, `ScriptEvent::releaseOwner`), not lazily, so they never keep the
+    instance alive.
+20. **`update_script_entry` in Play** (lead decision): allowed for `enabled` only, on the running
+    GameObject (`scripts[i].enabled` command: onEnable/onDisable, reverted at Stop); other fields
+    are refused with a clear error while playing.
+21. **Inspector**: the Active and script enabled checkboxes run their command at the start of the
+    next Inspector frame (callbacks can instantiate or destroy and move the component arrays the
+    drawing code holds references into). UI test `test_lifecycle_inspector.py` clicks them in
+    Play with callbacks that instantiate 64 objects and destroy one.
+

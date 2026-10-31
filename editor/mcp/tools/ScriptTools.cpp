@@ -4,6 +4,7 @@
 // W4: Lua/C++ scripts, compile check, code editor sync
 #include "McpTools.h"
 #include "W4Shared.h"
+#include "PlayViewCommon.h"
 
 #include "mcp/McpAutoSync.h"
 #include "mcp/McpCall.h"
@@ -1186,7 +1187,61 @@ void detachScriptTool(const CallPtr& call) {
              Json{{"entity", McpRefs::entityJson(target.scene, target.entity)}, {"scripts", remaining}});
 }
 
+// While playing only `enabled` changes, on the running GameObject: onEnable / onDisable at once
+// (as the Inspector checkbox), undone with the other play-time edits at Stop
+void updateScriptEntryInPlay(const CallPtr& call) {
+    Project* project = call->ctx().project();
+    const Json& args = call->args();
+    for (auto it = args.begin(); it != args.end(); ++it) {
+        if (it.key() != "scene" && it.key() != "entity" && it.key() != "script" && it.key() != "enabled") {
+            call->fail("While playing, update_script_entry changes only enabled (it runs onEnable / onDisable); stop Play "
+                       "(play action \"stop\") to change " + it.key() + ".");
+            return;
+        }
+    }
+    if (!args.contains("enabled") || !args["enabled"].is_boolean()) {
+        call->fail("Nothing to change: pass enabled (true/false); while playing it is the only field.");
+        return;
+    }
+    std::string error;
+    SceneProject* sp = w3::resolveRuntimeScene(project, args.contains("scene") ? args["scene"] : Json(), error);
+    if (!sp) {
+        call->fail(error);
+        return;
+    }
+    const Entity entity = args.contains("entity") ? w3::resolveLiveEntity(project, sp, args["entity"], error) : NULL_ENTITY;
+    if (entity == NULL_ENTITY) {
+        call->fail(args.contains("entity") ? error : "entity is required: a GameObject id or path.");
+        return;
+    }
+    ScriptComponent* component = sp->scene->findComponent<ScriptComponent>(entity);
+    std::vector<ScriptEntry> scripts = component ? component->scripts : std::vector<ScriptEntry>();
+    size_t index = 0;
+    if (!resolveScriptIndex(project, scripts, args.contains("script") ? args["script"] : Json(), index, error)) {
+        call->fail(error);
+        return;
+    }
+    const std::string key = "scripts[" + std::to_string(index) + "].enabled";
+    if (!addSceneCommand(sp->id, new PropertyCmd<bool>(project, sp->id, entity, ComponentType::ScriptComponent, key,
+                                                      args["enabled"].get<bool>()))) {
+        call->fail("The editor refused the change.");
+        return;
+    }
+    ScriptComponent* updated = sp->scene->isEntityCreated(entity) ? sp->scene->findComponent<ScriptComponent>(entity) : nullptr;
+    Json list = Json::array();
+    for (size_t i = 0; updated && i < updated->scripts.size(); i++) {
+        list.push_back(scriptEntryJson(project, sp, entity, i, updated->scripts[i], i == index));
+    }
+    Json data = {{"entity", McpRefs::entityJson(sp, entity)}, {"scripts", list}};
+    call->ok("Set script " + std::to_string(index) + " enabled = " + (args["enabled"].get<bool>() ? "true" : "false") +
+             " on the live GameObject (onEnable / onDisable ran). Play-time change: reverted when play stops.", data);
+}
+
 void updateScriptEntryTool(const CallPtr& call) {
+    if (call->ctx().project()->isAnyScenePlaying()) {
+        updateScriptEntryInPlay(call);
+        return;
+    }
     Target target;
     if (!resolveTarget(call, target)) return;
     Project* project = call->ctx().project();
@@ -1826,8 +1881,9 @@ void registerScriptTools(McpRegistry& registry) {
         tool.name = "update_script_entry";
         tool.title = "Update Script Entry";
         tool.description =
-            "Change one attached script: enabled, move_to (reorder = run order), path (repoint to another file of "
-            "the same language, e.g. after a rename; same-name property values kept), class_name (C++ class renamed).";
+            "Change one attached script: enabled (also in Play: onEnable/onDisable), move_to (reorder = run order), "
+            "path (another file of the same language, e.g. after a rename; property values kept), class_name (C++ "
+            "class renamed).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -1837,7 +1893,8 @@ void registerScriptTools(McpRegistry& registry) {
             {"path", assetPath("")},
             {"class_name", string("")}
         }, {"entity"});
-        tool.allowedWhilePlaying = false;
+        // in Play: enabled only (the handler refuses the rest)
+        tool.allowedWhilePlaying = true;
         tool.handler = updateScriptEntryTool;
         registry.addTool(std::move(tool));
     }
