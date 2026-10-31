@@ -183,3 +183,19 @@ TEST(Stream, DerivedTransformWorldMatricesUnchanged) {
         EXPECT_TRUE(closeValues(YAML::LoadFile(golden.string()), world, why, name)) << why;
     }
 }
+
+// A RectTransform's scissor is the clip rectangle the last draw computed, in the pixels of the view
+// that drew it (RenderSystem sets it every frame): a save wrote whatever the editor's window last
+// laid out, so opening and saving a UI scene again rewrote it (float noise, a resized Game view),
+// a change in version control for no edit. Found by tools/ci/upgrade_from_main (an origin/main
+// HUD scene changed on its second save). It is read when a file has it and no longer written.
+TEST(Stream, DerivedUiScissorNotWritten) {
+    const std::string old = readText(fixture("scenes/shader-library-export-ui.scene"));
+    ASSERT_NE(old.find("scissor:"), std::string::npos);
+    const DecodedScene decoded = decodeSceneText(old, "shader-library-export-ui.scene");
+    const std::string saved = encodeSceneText(decoded);
+    EXPECT_EQ(saved.find("scissor:"), std::string::npos) << "a saved scene still writes the UI scissor";
+    // the layout an author sets is kept
+    EXPECT_NE(saved.find("anchorPreset:"), std::string::npos);
+    EXPECT_EQ(saved, encodeSceneText(decodeSceneText(saved, "resaved.scene"))) << "a second save is the same";
+}

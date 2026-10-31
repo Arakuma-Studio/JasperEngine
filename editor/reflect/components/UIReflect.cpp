@@ -64,7 +64,7 @@ namespace {
         // the layout's own bookkeeping: saved, not edited
         JE_FIELD(RectTransformComponent, panel, .ops = &ops::Entity, .flags = Derived | Hidden | NoCodegen),
         JE_FIELD(RectTransformComponent, containerBoxIndex, .flags = Derived | Hidden | NoCodegen),
-        JE_FIELD(RectTransformComponent, scissor, .flags = Derived | Hidden | NoCodegen),
+        JE_FIELD(RectTransformComponent, scissor, .flags = Derived | Hidden | NoCodegen | NotWritten),
         JE_FIELD(RectTransformComponent, ignoreScissor, .uiOrder = 14),
         JE_FIELD(RectTransformComponent, ignoreEvents, .uiOrder = 15),
     };
