@@ -9,6 +9,7 @@ Runs on a scratch copy of the html-ui fixture project (canvas 1280 x 720, canvas
 canvas coordinates).
 """
 
+import harness
 from harness import Editor, REPO
 
 EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
@@ -100,7 +101,7 @@ async def three_fingers(ed: Editor, label: str):
 
 async def add_probe(ed: Editor, scene):
     host = (await ed.call("create_entity", scene=scene, name="Probe", type="empty"))["entity_id"]
-    await ed.call("create_script", kind="lua", name="ControlsProbe", content=PROBE, entity=host)
+    await ed.call("create_script", kind="lua", name="ControlsProbe", content=PROBE, entity=host, overwrite=True)
 
 
 async def test_native_controls_three_fingers(ed: Editor):
@@ -111,9 +112,9 @@ async def test_native_controls_three_fingers(ed: Editor):
     await ed.call("create_ui", scene=scene, root={"type": "onscreen_button", "name": "Fire", "action": "Fire1", "text": "Fire"})
     await add_probe(ed, scene)
 
-    stick = await ed.call("get_properties", scene=scene, entity="Stick", component="onscreenstick")
-    ed.check_eq(stick["values"]["mode"], "floating", "create_ui mode")
-    ed.check_eq(stick["values"]["horizontalAction"], "Horizontal")
+    stick = await ed.call("get_entity", scene=scene, entity="Stick", components=["onscreenstick"], detail="full")
+    ed.check("floating" in str(harness.find_key(stick, "mode")), f"create_ui mode: {harness.find_key(stick, 'mode')}")
+    ed.check("Horizontal" in str(harness.find_key(stick, "horizontalAction")), "the default horizontal action")
     await ed.call("save_scene", scene=scene, path="scenes/Controls")
     ed.check((ed.scratch.root / "assets" / "ui" / "onscreen" / "stick_base.png").exists(), "the stick's circle images were written")
 

@@ -110,8 +110,8 @@ LIMITS.update({"user_settings": 550})
 # 106621, the limit set to it
 TOTAL_LIMIT = 106621
 # ui-multitouch (spec 2026-10-31-ui-multitouch 10): create_ui's onscreen_stick / onscreen_button / touch_area
-# types and their mode / action / actions fields; measured on the merged tree
-TOTAL_LIMIT = 106804
+# types and their mode / action / actions fields; measured on the merged tree: 106830 (106621 before)
+TOTAL_LIMIT = 106830
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
