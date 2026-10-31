@@ -520,7 +520,13 @@ header under `engine/core`, which moved to `engine/cmake` (16ef3ffc8).
 - 2026-11-01: S30 landed; oe-port b49bc1166 then d5a1b7f2e (BF9) merged; levers committed
   (8e87eccdc, 4461d59e2, 651562b19, 16ef3ffc8); M11 and the verification above. On the merged
   branch (d5a1b7f2e): `WERROR=1 tools/build.sh linux` passes on F, `xcode_sync_*.py --check` on C.
-  oe-port 47263e382 merged (916d7102b). Still running when this was written: the full MCP suite
-  (`MCP_SUITE=all JASPER_SLOW_BUILD=1`, F, `build/verify7.log`) on 47263e382, and unit tests, the
-  prefab-runtime smoke test, players and S30's player CLI test (C, `build/verify6.log`) on
-  d5a1b7f2e.
+  oe-port 47263e382 merged (916d7102b).
+- 2026-11-01: final gate on server H, 3e11eaab8: `WERROR=1 tools/build.sh linux` (GL) passes;
+  `WERROR=1 tools/build.sh unit-tests` core 2,433 ran and editor 1,645 ran, 0 failed (6 editor
+  tests disabled on oe-port); the prefab-runtime smoke test passes with `SMOKE_METHOD=compile` (S30's
+  smoke test needs player runtimes otherwise); `tools/build.sh players` (Linux and web) and S30's
+  `tools/ci/test_player_cli.py` pass; `MCP_SUITE=all JASPER_SLOW_BUILD=1 tools/build.sh mcp-tests -j 3`:
+  1,106 passed, 3 failed, 1 skipped in 8,054 s. The three (`test_crash.py::test_health_off_main`,
+  `test_html_ui_effects_export.py::test_desktop_player_draws_the_effects`, which took 1,759 s under
+  the suite's load against 573 s alone, `test_lattice_anim.py::test_lua_tracks_and_crossfade`) are
+  timing tests and pass when run alone on the same tree, so they are load flakes, not S33's.
