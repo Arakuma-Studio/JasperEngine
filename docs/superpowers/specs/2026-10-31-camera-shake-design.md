@@ -774,3 +774,11 @@ Decisions taken while implementing (branch `gaps/camera-shake`, both phases):
     - A target in any other scene is refused with a warning, and a move to a scene that is not
       persistent clears the target with a warning.
     - Scene files and the Inspector name targets of their own scene only; the flag is not saved.
+20. **Two inherited coroutine tests** (gaps/coroutines' merge with main, taken as it is).
+    - `CoroutineTest.CoroutinesAndTimersFollowAGameObjectMovedToAnotherScene` moved a GameObject
+      into a scene whose scripts never started. The lifecycle's `setEntityActive` ignores
+      activation changes in such a scene, so the coroutine was not stopped and the test failed.
+      The test now starts the destination scene first (`ScriptRuntime::awakeScene`), as a loaded
+      or persistent scene is. The engine code is unchanged.
+    - The lifecycle-start coroutine test added for the review waits 4 frames before it checks
+      that `start` has not resumed yet, and 10 more before it checks that it has.

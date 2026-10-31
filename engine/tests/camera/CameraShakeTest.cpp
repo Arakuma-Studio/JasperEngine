@@ -816,9 +816,11 @@ TEST_F(Shake, TransformModeLeavesRelativeScriptMovesExact){
 
 TEST_F(Shake, TwoDTransformModeUsesTheSceneCameraHeight){
     Entity cam = camera(Vector3(0, 0, 0), CameraType::CAMERA_ORTHO);
+    // setCamera sizes an auto-resized camera to the canvas: a fixed 20-unit view after it
+    scene.setCamera(cam);
+    cameraOf(cam).autoResize = false;
     cameraOf(cam).bottomClip = 0.0f;
     cameraOf(cam).topClip = 20.0f;
-    scene.setCamera(cam);
     Entity sprite = scene.createEntity();
     scene.addComponent<Transform>(sprite, {});
     CameraShakerComponent component;
