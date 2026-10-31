@@ -464,9 +464,10 @@ public:
     compiles at draw time (llvmpipe: measured in §7 AC13). Warm draws stay for the GPU campaign
     (§8).
 - **parallel**: `sgj_gl_shader_issue` on the main context (the compile and link calls only,
-  shader objects kept for the log). The mode first sets `glMaxShaderCompilerThreadsKHR(0xFFFFFFFF)`
-  (the extension leaves the initial count to the driver; NVIDIA's is none, so without it the link
-  blocks and the status is always complete; GPU campaign). `update()` polls `GL_COMPLETION_STATUS_KHR`, which does not
+  shader objects kept for the log). On a hardware GL the mode first sets
+  `glMaxShaderCompilerThreadsKHR(0xFFFFFFFF)` (the extension leaves the initial count to the driver;
+  NVIDIA's is none, so without it the link blocks and the status is always complete; GPU campaign).
+  Not on a software GL: llvmpipe keeps its at-once completion, the CI reference. `update()` polls `GL_COMPLETION_STATUS_KHR`, which does not
   block. When it is true, `sgj_shader_create` adopts the program (patch 1) and checks the link
   status (no wait now). On failure the shader logs are read. There are no warm draws.
 - **deferred**: as parallel, but the program counts as "complete" 2 frames after the issue. At
@@ -788,7 +789,7 @@ public:
   - **Fixed: `parallel` did nothing on NVIDIA.** The extension leaves the initial compiler thread
     count to the driver and NVIDIA's is none, so `glLinkProgram` blocked for the 2.1 s and
     `COMPLETION_STATUS` was always true (2187 ms in "GPU create submit"). The mode now calls
-    `glMaxShaderCompilerThreadsKHR(0xFFFFFFFF)`: 2187 -> 8.8 ms (the GLSL front end stays on the
+    `glMaxShaderCompilerThreadsKHR(0xFFFFFFFF)` on a hardware GL: 2187 -> 8.8 ms (the GLSL front end stays on the
     calling thread, so R21 still fails in this fallback mode). Only in `parallel`: with a worker
     context the setting reaches its share group, the worker's links return before the program is
     built and the render thread's first draw waited the 2.1 s (measured, then excluded).
