@@ -23,7 +23,8 @@ desktop's.
 3. **Owners.** Pass `owner = self` in a script of a scene: when the script goes (GameObject
    destroyed, scene unloaded, Play stopped) the request is cancelled and **no callback runs**
    (the callback would touch destroyed objects). `owner` can also be a GameObject (any
-   EntityHandle) or a Scene. Without an owner a request is global: it survives scene loads and
+   EntityHandle) or a Scene. An owner moved by `DontDestroyOnLoad` (or to another scene) keeps
+   its requests. Without an owner a request is global: it survives scene loads and
    ends with its response, `cancel()`, `Http.cancelAll()`, Play stop or the app quitting. In an
    HTML UI document's `<script type="text/lua">` there is no `self`: pass `owner = document`
    (its GameObject).
