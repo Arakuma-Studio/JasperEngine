@@ -153,6 +153,8 @@ async def test_source_export(ed: Editor):
     # web saves are prefixed per game: the default identifier is shared, so the project name
     # (bytes other than letters, digits, . and - escaped for the define)
     ed.check_in('set(JASPERENGINE_STORAGE_ID "Build_20Test")', (out / "CMakeLists.txt").read_text())
+    # desktop saves go to a per-user folder named the same (script-data, spec decision 10)
+    ed.check_in('set(JASPERENGINE_APP_IDENTIFIER "Build_20Test")', (out / "CMakeLists.txt").read_text())
 
     # a non-empty directory needs overwrite
     msg = await ed.call("build_project", mode="source", output_dir=str(out), expect_error=True)
