@@ -213,6 +213,11 @@ async def test_library_parameter_bound_to_a_global(ed: Editor):
                                             "local was = m:getShaderGlobalBinding('baseColor'); "
                                             "m:setShaderGlobalBinding('baseColor', nil); mesh:setMaterial(0, m); return was")
         ed.check_eq(r["values"][0], "FogTint", f"Lua reads the binding: {r}")
+        r = await ed.call("eval_lua", code="local m = object('Tinted', 'Mesh'):getMaterial(0); "
+                                            "local ok, err = pcall(function() m:setShaderGlobalBinding('baseColor', 5) end); "
+                                            "return {ok, tostring(err), m:getShaderGlobalBinding('baseColor')}")
+        ed.check(r["values"][0][0] is False and "setShaderGlobalBinding" in r["values"][0][1],
+                 f"a number is an error, not an unbind: {r}")
         await wait_centre(ed, (0, 255, 0), "lua-unbound", frames=30)
     finally:
         await ed.call("play", action="stop")
@@ -262,6 +267,133 @@ async def test_texture_global(ed: Editor):
     finally:
         await ed.call("play", action="stop")
     await ed.call("delete_entities", entities=[str(box)])
+
+
+async def test_missing_texture_and_destroyed_render_targets(ed: Editor):
+    box = await new_box(ed, "Checker2", {"mesh": {"customShader": "shaders/checker"}})
+    cursor = (await ed.call("read_console", limit=1)).get("next_cursor", 0)
+    # a default whose file is missing: the white fallback, warned once however many frames draw it
+    await ed.call("set_project_settings", values={"graphics.shader_globals._CheckerTex": {"default": "textures/missing.png"}})
+    await wait_centre(ed, (255, 255, 255), "missing-white", frames=30)
+    await ed.call("wait", frames=20)
+    logs = await ed.call("read_console", since=cursor, contains="could not be loaded", limit=50)
+    ed.check_eq(len(logs["entries"]), 1, f"the missing file is warned once: {logs['entries']}")
+
+    await ed.call("play", action="start", scene=SCENE)
+    try:
+        cursor = (await ed.call("read_console", limit=1)).get("next_cursor", 0)
+        # a Lua Framebuffer collected while the global holds it
+        await ed.call("eval_lua", code="local f = Framebuffer(); Shader.setGlobalTexture('_CheckerTex', f); f = nil; "
+                                       "collectgarbage(); collectgarbage()")
+        await ed.call("wait", frames=5)
+        logs = await ed.call("read_console", since=cursor, contains="render target was destroyed", limit=50)
+        ed.check(len(logs["entries"]) >= 1, f"the collected render target is let go: {logs}")
+        # a camera's render target, the camera destroyed while the global binds it
+        await ed.call("eval_lua", code="local c = Camera(scene); c.name = 'RTCam'; c.renderToTexture = true")
+        await ed.call("wait", until="object('RTCam', 'Camera'):getFramebuffer() ~= nil", timeout_seconds=20)
+        await ed.call("eval_lua", code="Shader.setGlobalTexture('_CheckerTex', object('RTCam', 'Camera'):getFramebuffer())")
+        await ed.call("wait", frames=3)
+        cursor = (await ed.call("read_console", limit=1)).get("next_cursor", 0)
+        await ed.call("eval_lua", code="GameObject.destroy(object('RTCam'))")
+        await ed.call("wait", frames=10)
+        logs = await ed.call("read_console", since=cursor, contains="render target was destroyed", limit=50)
+        ed.check(len(logs["entries"]) >= 1, f"the destroyed camera's target is let go: {logs}")
+        # it keeps drawing (the default: the missing file's white)
+        await wait_centre(ed, (255, 255, 255), "after-camera", frames=20)
+    finally:
+        await ed.call("play", action="stop")
+    await ed.call("set_project_settings", values={"graphics.shader_globals._CheckerTex": {"default": "textures/checker.png"}})
+    await ed.call("delete_entities", entities=[str(box)])
+
+
+async def test_rename_with_bindings_undo_redo_and_play(ed: Editor):
+    box = await new_box(ed, "Renamed", {"mesh": {"submeshes[0].material.shader": "library:unlit",
+                                                 "submeshes[0].material.shaderGlobalBindings.baseColor": "FogTint"}})
+    await ed.call("set_project_settings", values={"graphics.shader_globals.FogTint": {"name": "Fog2"}})
+    u = await ed.call("get_shader_uniforms", entity=box, submesh=0)
+    ed.check_eq(u["global_bindings"], {"baseColor": "Fog2"}, "the binding follows the rename")
+    await ed.call("undo", scope="project")
+    u = await ed.call("get_shader_uniforms", entity=box, submesh=0)
+    ed.check_eq(u["global_bindings"], {"baseColor": "FogTint"}, "undo renames it back")
+    await ed.call("redo", scope="project")
+    u = await ed.call("get_shader_uniforms", entity=box, submesh=0)
+    ed.check_eq(u["global_bindings"], {"baseColor": "Fog2"}, "redo")
+    await ed.call("play", action="start", scene=SCENE)
+    try:
+        r = await ed.call_raw("undo", {"scope": "project"})
+        ed.check(r.is_error or "Stop" in r.text, f"a rename is not undone while playing: {r.text[:300]}")
+        r = await ed.call_raw("set_project_settings", {"values": {"graphics.shader_globals.Fog2": {"name": "Fog3"}}})
+        ed.check(r.is_error, f"no settings change while playing: {r.text[:300]}")
+    finally:
+        await ed.call("play", action="stop")
+    u = await ed.call("get_shader_uniforms", entity=box, submesh=0)
+    ed.check_eq(u["global_bindings"], {"baseColor": "Fog2"}, "Stop changed nothing")
+    await ed.call("undo", scope="project")
+    names = [g["name"] for g in (await settings(ed, "graphics.shader_globals"))["settings"]["graphics.shader_globals"]]
+    ed.check("FogTint" in names, f"back to FogTint: {names}")
+    await ed.call("delete_entities", entities=[str(box)])
+
+
+async def test_prefab_overrides_of_bindings(ed: Editor):
+    box = await new_box(ed, "Crate", {"mesh": {"submeshes[0].material.shader": "library:unlit"}})
+    path = "prefabs/Crate.prefab"
+    await ed.call("create_prefab", entity=box, path=path)
+    made = await ed.call("instantiate_prefab", prefab=path, name="CrateCopy", position=[0, 0, 0])
+    copy = find_key(made, "entity_id", "id")
+    await ed.call("set_properties", entity=copy, values={"mesh": {"submeshes[0].material.shaderGlobalBindings.baseColor": "FogTint"}})
+    info = await ed.call("get_prefab_info", entity=copy, usage=False)
+    ed.check("submeshes[0].material.shaderGlobalBindings" in str(info["overrides"]), f"a material override: {info['overrides']}")
+    # a component's bindings are overrides too
+    pts = find_key(await ed.call("create_entity", type="points", name="Dots"), "entity_id", "id")
+    await ed.call("create_prefab", entity=pts, path="prefabs/Dots.prefab")
+    dots = find_key(await ed.call("instantiate_prefab", prefab="prefabs/Dots.prefab", name="DotsCopy"), "entity_id", "id")
+    await ed.call("set_properties", entity=dots, values={"points": {"shaderGlobalBindings.tint": "FogTint"}})
+    info = await ed.call("get_prefab_info", entity=dots, usage=False)
+    ed.check("shaderGlobalBindings" in str(info["overrides"]), f"a component override: {info['overrides']}")
+    # saved and reopened, then applied to the prefab file
+    await ed.call("save_scene", scene=SCENE)
+    await ed.call("close_scene", scene=SCENE, unsaved="discard")
+    await ed.call("open_scene", scene=SCENE)
+    u = await ed.call("get_shader_uniforms", entity="CrateCopy", submesh=0)
+    ed.check_eq(u["global_bindings"], {"baseColor": "FogTint"}, "the override survives the reload (override bit)")
+    await ed.call("prefab_overrides", entity="CrateCopy", action="apply", component="mesh",
+                  properties=["submeshes[0].material.shaderGlobalBindings"])
+    ed.check_in("shaderGlobalBindings", (ed.project / path).read_text(), "applied to the prefab file")
+    u = await ed.call("get_shader_uniforms", entity="Crate", submesh=0)
+    ed.check_eq(u["global_bindings"], {"baseColor": "FogTint"}, "the other instance follows")
+    for name in ("Crate", "CrateCopy", "Dots", "DotsCopy"):
+        await ed.call("delete_entities", entities=[name])
+
+
+async def test_values_persist_across_a_scene_load_and_post_process_bindings(ed: Editor):
+    await ed.call("save_scene", scene=SCENE)
+    await ed.call("create_scene", name="Other", path="scenes/Other.scene")
+    await ed.call("save_scene", scene="scenes/Other.scene")
+    await ed.call("select_scene", scene=SCENE)
+    # a gameboy pass whose four shades follow TestColor: the whole view takes it
+    await ed.call("set_scene_settings", scene=SCENE, settings={"post_process": [
+        {"shader": "library:gameboy", "shaderGlobalBindings": {s: "TestColor" for s in ("shade0", "shade1", "shade2", "shade3")}}]})
+    got = (await ed.call("get_scene_settings", scene=SCENE, names=["post_process"]))["settings"]["post_process"]
+    ed.check_eq(got[0]["shaderGlobalBindings"]["shade0"], "TestColor", f"{got}")
+    await ed.call("set_scene_camera", scene=SCENE, display={"show_post_processing": True})
+    await ed.call("play", action="start", scene=SCENE)
+    try:
+        await ed.call("eval_lua", code="Shader.setGlobalColor('TestColor', Vector4(1, 0, 1, 1))")
+        image = None
+        for _ in range(30):
+            image = await shot(ed, "post-bound")
+            if near(pixel(image, 0.1, 0.1), (255, 0, 255), 40):
+                break
+            await ed.call("wait", frames=10)
+        ed.check(near(pixel(image, 0.1, 0.1), (255, 0, 255), 40), f"the pass's shades follow the global: {pixel(image, 0.1, 0.1)}")
+        # a scene load keeps the values (like Unity)
+        await ed.call("eval_lua", code="SceneManager.loadScene('Other')")
+        await ed.call("wait", until="SceneManager.currentSceneName == 'Other'", timeout_seconds=30)
+        r = await ed.call("eval_lua", code="local c = Shader.getGlobalColor('TestColor'); return {c.x, c.y, c.z}")
+        ed.check_eq(r["values"][0], [1, 0, 1], f"the value outlives the scene load: {r}")
+    finally:
+        await ed.call("play", action="stop")
+    await ed.call("set_scene_settings", scene=SCENE, settings={"post_process": []})
 
 
 async def test_vertex_lights_follow_the_updater(ed: Editor):

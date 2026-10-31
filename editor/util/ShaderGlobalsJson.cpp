@@ -85,6 +85,8 @@ namespace {
             }
             srgb = Vector4(c[0], c[1], c[2], c[3]);
         }
+        // a negative component would be NaN through the gamma curve
+        srgb = Vector4(std::max(0.0f, srgb.x), std::max(0.0f, srgb.y), std::max(0.0f, srgb.z), srgb.w);
         linear = Color::sRGBToLinear(srgb);
         return true;
     }

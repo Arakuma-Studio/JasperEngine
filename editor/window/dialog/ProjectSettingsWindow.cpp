@@ -983,16 +983,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_inputSearch[0] = '\0';
     m_inputListen = InputListen();
 
-    m_shaderGlobals.clear();
-    for (const ShaderGlobalDecl& decl : project->getShaderGlobals()) {
-        ShaderGlobalRow row;
-        row.decl = decl;
-        row.originalName = decl.name;
-        snprintf(row.nameBuffer, sizeof(row.nameBuffer), "%s", decl.name.c_str());
-        m_shaderGlobals.push_back(row);
-    }
-    m_shaderGlobalsPreviewed = false;
-    m_shaderGlobalsCommitted = false;
+    m_globalsEdit.begin(project);
     m_shaderGlobalUsesScanned = false;
     m_shaderGlobalRemove = -1;
 }
@@ -1028,10 +1019,8 @@ void ProjectSettingsWindow::show() {
     }
 
     // closed without OK: the engine declares the project's shader globals again
-    if (!m_isOpen && m_shaderGlobalsPreviewed && !m_shaderGlobalsCommitted && m_project) {
-        m_project->applyShaderGlobals();
-        m_shaderGlobalsPreviewed = false;
-    }
+    if (!m_isOpen && m_globalsEdit.isPreviewed())
+        m_globalsEdit.cancel();
 }
 
 void ProjectSettingsWindow::drawSettings() {
@@ -1077,7 +1066,7 @@ void ProjectSettingsWindow::drawSettings() {
     const bool hasAbi = hasAndroidAbiSelection(m_androidAbiArmeabiV7a, m_androidAbiArm64V8a, m_androidAbiX86, m_androidAbiX86_64);
     const std::string tagsAndLayersProblem = tagsAndLayersError();
     const std::string inputProblem = inputError();
-    const std::string shaderGlobalsProblem = shaderGlobalsError();
+    const std::string shaderGlobalsProblem = m_globalsEdit.error();
     const bool canSave = hasAbi && tagsAndLayersProblem.empty() && inputProblem.empty() && shaderGlobalsProblem.empty();
 
     ImGui::BeginDisabled(!canSave);
@@ -2641,7 +2630,7 @@ bool ProjectSettingsWindow::applySettings() {
     if (!inputError().empty()) {
         return false;
     }
-    if (!shaderGlobalsError().empty()) {
+    if (!m_globalsEdit.error().empty()) {
         return false;
     }
     // The edit buffer truncates long names. Only write back when the value
@@ -2808,19 +2797,7 @@ bool ProjectSettingsWindow::applySettings() {
     }
 
     // Shader Globals: one undoable step too; a renamed global's bindings follow it
-    const std::vector<ShaderGlobalDecl> shaderGlobals = shaderGlobalDecls();
-    std::map<std::string, std::string> renames;
-    for (const ShaderGlobalRow& row : m_shaderGlobals) {
-        if (!row.originalName.empty() && row.originalName != row.decl.name) renames[row.originalName] = row.decl.name;
-    }
-    m_shaderGlobalsCommitted = true;
-    if (shaderGlobals != m_project->getShaderGlobals() || !renames.empty()) {
-        auto* command = new ShaderGlobalsCmd(m_project, m_project->getShaderGlobals(), shaderGlobals, renames);
-        command->setNoMerge();
-        m_project->getProjectCommandHistory()->addCommand(command);
-    } else if (m_shaderGlobalsPreviewed) {
-        m_project->applyShaderGlobals();
-    }
+    m_globalsEdit.commit();
 
     // the standalone build's main.cpp bakes these settings in
     m_project->markGeneratedSourcesDirty();
@@ -2830,22 +2807,6 @@ bool ProjectSettingsWindow::applySettings() {
 
 
 // ---------------------------------------------------------------------------- Shader Globals
-
-std::vector<ShaderGlobalDecl> ProjectSettingsWindow::shaderGlobalDecls() const {
-    std::vector<ShaderGlobalDecl> decls;
-    for (const ShaderGlobalRow& row : m_shaderGlobals) decls.push_back(row.decl);
-    return decls;
-}
-
-std::string ProjectSettingsWindow::shaderGlobalsError() const {
-    return ShaderGlobals::validate(shaderGlobalDecls());
-}
-
-void ProjectSettingsWindow::previewShaderGlobals() {
-    if (!shaderGlobalsError().empty()) return;
-    ShaderGlobals::declare(shaderGlobalDecls());
-    m_shaderGlobalsPreviewed = true;
-}
 
 void ProjectSettingsWindow::refreshShaderGlobalUses() {
     m_shaderGlobalUses = m_project ? ShaderGlobalsUsage::find(m_project) : std::vector<ShaderGlobalsUsage::Use>();
@@ -3007,24 +2968,18 @@ void ProjectSettingsWindow::drawShaderGlobals() {
                     "them with Shader.setGlobal*; Play starts and stops with these defaults.");
 
     bool edited = false;
+    std::vector<ShaderGlobalsEdit::Row>& shaderGlobalRows = m_globalsEdit.rows();
     if (ImGui::Button(ICON_FA_PLUS " Add")) {
-        std::string name = "NewGlobal";
-        for (int n = 1; std::any_of(m_shaderGlobals.begin(), m_shaderGlobals.end(), [&name](const ShaderGlobalRow& r) { return r.decl.name == name; }); n++)
-            name = "NewGlobal" + std::to_string(n);
-        ShaderGlobalRow row;
-        row.decl = ShaderGlobals::makeDecl(name, ShaderGlobalType::Color);
-        row.decl.defaultValue = {Vector4(1.0f, 1.0f, 1.0f, 1.0f)};
-        snprintf(row.nameBuffer, sizeof(row.nameBuffer), "%s", name.c_str());
-        m_shaderGlobals.push_back(row);
+        m_globalsEdit.add();
         edited = true;
     }
     ImGui::SameLine();
     // the declarations to paste into a shader: the selected rows, else all
     std::vector<std::string> selected;
-    for (const ShaderGlobalRow& row : m_shaderGlobals) {
+    for (const ShaderGlobalsEdit::Row& row : shaderGlobalRows) {
         if (row.selected) selected.push_back(row.decl.name);
     }
-    const std::vector<ShaderGlobalDecl> decls = shaderGlobalDecls();
+    const std::vector<ShaderGlobalDecl> decls = m_globalsEdit.decls();
     ImGui::BeginDisabled(decls.empty());
     if (ImGui::Button(ICON_FA_COPY " Copy GLSL: Vertex")) ImGui::SetClipboardText(ShaderGlobals::getGlslBlock(decls, ShaderStageType::VERTEX, selected).c_str());
     ImGui::SetItemTooltip("The u_vs_globals block of %s, for a .vert", selected.empty() ? "every global" : "the checked globals");
@@ -3038,7 +2993,7 @@ void ProjectSettingsWindow::drawShaderGlobals() {
     if (playing) {
         ImGui::SameLine();
         if (ImGui::Button("Copy Live Values to Defaults")) {
-            for (ShaderGlobalRow& row : m_shaderGlobals) {
+            for (ShaderGlobalsEdit::Row& row : shaderGlobalRows) {
                 ShaderGlobalValue live;
                 if (ShaderGlobals::isTexture(row.decl.type) || !ShaderGlobals::get(ShaderGlobals::findID(row.decl.name), live)) continue;
                 if (live.type == row.decl.type && live.values.size() == row.decl.defaultValue.size()) row.decl.defaultValue = live.values;
@@ -3051,7 +3006,7 @@ void ProjectSettingsWindow::drawShaderGlobals() {
     const int columns = playing ? 7 : 6;
     const ImGuiTableFlags flags = ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_BordersOuter | ImGuiTableFlags_RowBg |
                                   ImGuiTableFlags_SizingStretchProp;
-    if (!m_shaderGlobals.empty() && ImGui::BeginTable("##ShaderGlobalsTable", columns, flags)) {
+    if (!shaderGlobalRows.empty() && ImGui::BeginTable("##ShaderGlobalsTable", columns, flags)) {
         ImGui::TableSetupColumn("##select", ImGuiTableColumnFlags_WidthFixed, ImGui::GetFrameHeight());
         ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch, 1.3f);
         ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthStretch, 0.9f);
@@ -3062,8 +3017,8 @@ void ProjectSettingsWindow::drawShaderGlobals() {
         ImGui::TableHeadersRow();
 
         int removeRow = -1;
-        for (int i = 0; i < (int)m_shaderGlobals.size(); i++) {
-            ShaderGlobalRow& row = m_shaderGlobals[i];
+        for (int i = 0; i < (int)shaderGlobalRows.size(); i++) {
+            ShaderGlobalsEdit::Row& row = shaderGlobalRows[i];
             ImGui::PushID(i);
             ImGui::TableNextRow();
 
@@ -3075,8 +3030,8 @@ void ProjectSettingsWindow::drawShaderGlobals() {
             ImGui::TableNextColumn();
             std::string nameError;
             ShaderGlobals::isValidName(row.nameBuffer, &nameError);
-            for (int j = 0; j < (int)m_shaderGlobals.size() && nameError.empty(); j++) {
-                if (j != i && m_shaderGlobals[j].decl.name == row.nameBuffer) nameError = "another global is named '" + std::string(row.nameBuffer) + "'";
+            for (int j = 0; j < (int)shaderGlobalRows.size() && nameError.empty(); j++) {
+                if (j != i && shaderGlobalRows[j].decl.name == row.nameBuffer) nameError = "another global is named '" + std::string(row.nameBuffer) + "'";
             }
             if (!nameError.empty()) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.4f, 0.35f, 1.0f));
             ImGui::SetNextItemWidth(-1);
@@ -3192,28 +3147,28 @@ void ProjectSettingsWindow::drawShaderGlobals() {
             ImGui::PopID();
         }
         ImGui::EndTable();
-        if (removeRow >= 0 && removeRow < (int)m_shaderGlobals.size()) {
-            m_shaderGlobals.erase(m_shaderGlobals.begin() + removeRow);
+        if (removeRow >= 0 && removeRow < (int)shaderGlobalRows.size()) {
+            shaderGlobalRows.erase(shaderGlobalRows.begin() + removeRow);
             m_shaderGlobalRemove = -1;
             edited = true;
         }
-    } else if (m_shaderGlobals.empty()) {
+    } else if (shaderGlobalRows.empty()) {
         ImGui::TextDisabled("No shader globals. Add one, or let scripts make them (Shader.setGlobalColor(\"_Tint\", c)).");
     }
 
-    const std::string problem = shaderGlobalsError();
+    const std::string problem = m_globalsEdit.error();
     if (!problem.empty()) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.4f, 0.35f, 1.0f));
         ImGui::TextWrapped("%s", problem.c_str());
         ImGui::PopStyleColor();
     }
     bool renamed = false;
-    for (const ShaderGlobalRow& row : m_shaderGlobals) renamed |= !row.originalName.empty() && row.originalName != row.decl.name;
+    for (const ShaderGlobalsEdit::Row& row : shaderGlobalRows) renamed |= !row.originalName.empty() && row.originalName != row.decl.name;
     if (renamed) {
         drawSectionNote("Renamed globals take their Inspector bindings along on OK; shaders are not rewritten: rename the "
                         "u_vs_globals / u_fs_globals members (and texture uniforms) too.");
     }
-    if (edited) previewShaderGlobals();
+    if (edited) m_globalsEdit.preview();
 }
 
 } // namespace jasperengine::editor

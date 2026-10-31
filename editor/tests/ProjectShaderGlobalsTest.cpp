@@ -17,6 +17,7 @@
 #include "shader/ShaderGlobals.h"
 #include "util/Color.h"
 #include "util/ShaderGlobalsJson.h"
+#include "util/ShaderGlobalsEdit.h"
 #include "yaml-cpp/yaml.h"
 
 #include <string>
@@ -202,4 +203,45 @@ TEST_F(ProjectShaderGlobalsStreamTest, BindingsAreWrittenOnlyWhenSet) {
     EXPECT_EQ(decoded.shaderGlobalBindings, material.shaderGlobalBindings) << "in order";
     EXPECT_EQ(Factory::formatShaderGlobalBindings(material.shaderGlobalBindings), "{{\"tint\", \"FogTint\"}, {\"rimColor\", \"_Rim\"}}");
     EXPECT_EQ(Stream::decodeShaderGlobalBindings(YAML::Load("{a: B, c: ''}")), (ShaderGlobalBindings{{"a", "B"}}));
+}
+
+TEST_F(ProjectShaderGlobalsStreamTest, ProjectSettingsCancelRestoresTheDeclarations) {
+    Project project;
+    project.setShaderGlobals({ShaderGlobals::makeDecl("FogTint", ShaderGlobalType::Color)});
+    ShaderGlobalsEdit edit;
+    edit.begin(&project);
+    // an edit shows at once (the Scene and Game views follow it)
+    edit.rows()[0].decl.defaultValue = {Vector4(1, 0, 0, 1)};
+    edit.add();
+    edit.preview();
+    Vector4 value;
+    ASSERT_TRUE(ShaderGlobals::getVector(ShaderGlobals::findID("FogTint"), value));
+    EXPECT_EQ(value, Vector4(1, 0, 0, 1));
+    EXPECT_TRUE(ShaderGlobals::exists(ShaderGlobals::findID("NewGlobal")));
+    // Cancel: the project's list again, nothing changed in the project
+    edit.cancel();
+    ASSERT_TRUE(ShaderGlobals::getVector(ShaderGlobals::findID("FogTint"), value));
+    EXPECT_EQ(value, Vector4(0, 0, 0, 1));
+    EXPECT_FALSE(ShaderGlobals::exists(ShaderGlobals::findID("NewGlobal")));
+    EXPECT_EQ(project.getShaderGlobals().size(), 1u);
+
+    // OK: one project history step, a rename included
+    edit.begin(&project);
+    snprintf(edit.rows()[0].nameBuffer, sizeof(edit.rows()[0].nameBuffer), "Fog2");
+    edit.rows()[0].decl.name = "Fog2";
+    EXPECT_EQ(edit.renames(), (std::map<std::string, std::string>{{"FogTint", "Fog2"}}));
+    EXPECT_EQ(edit.error(), "");
+    EXPECT_TRUE(edit.commit());
+    ASSERT_EQ(project.getShaderGlobals().size(), 1u);
+    EXPECT_EQ(project.getShaderGlobals()[0].name, "Fog2");
+    edit.cancel();
+    EXPECT_EQ(project.getShaderGlobals()[0].name, "Fog2") << "Cancel after OK changes nothing";
+    project.getProjectCommandHistory()->undo();
+    EXPECT_EQ(project.getShaderGlobals()[0].name, "FogTint") << "the history undoes it";
+
+    // an invalid edit is refused
+    edit.begin(&project);
+    edit.rows()[0].decl.name = "u_bad";
+    EXPECT_NE(edit.error(), "");
+    EXPECT_FALSE(edit.commit());
 }

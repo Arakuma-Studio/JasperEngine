@@ -196,8 +196,14 @@ namespace jasperengine {
 
         // drops every value, declaration and texture (ids stay); tests
         static void clear();
-        // lets go of the textures the globals hold (engine shutdown, before the texture pools)
+        // lets go of the GPU textures and pixels the globals hold, keeping their paths and render
+        // targets (the view's loss and shutdown, before the texture pools are cleared)
         static void releaseTextures();
+        // a render target going away (Framebuffer's destructor): the globals holding it take
+        // their default texture again (warned)
+        static void forgetFramebuffer(const Framebuffer* framebuffer);
+        // a texture global whose file could not be loaded (it binds the fallback until it changes)
+        static bool hasTextureFailed(int id);
     };
 
 }

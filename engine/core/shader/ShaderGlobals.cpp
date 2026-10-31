@@ -5,6 +5,7 @@
 
 #include "Log.h"
 #include "render/TextureRender.h"
+#include "texture/Framebuffer.h"
 #include "util/Color.h"
 
 #include <algorithm>
@@ -24,10 +25,40 @@ namespace {
         unsigned int arraySize = 0;
         std::vector<Vector4> values;
         Texture texture;
+        // the GPU texture `texture` resolved to (file textures: once per value, cached), or a
+        // load that failed (the fallback binds until the value changes; warned once)
+        TextureRender* resolved = nullptr;
+        bool textureFailed = false;
         // logged once per global: a refused setter, a truncated array
         bool warnedKind = false;
         bool warnedTruncated = false;
     };
+
+    // a texture value, its resolution started again
+    void putTexture(Entry& entry, const Texture& texture) {
+        entry.texture = texture;
+        entry.resolved = nullptr;
+        entry.textureFailed = false;
+    }
+
+    // the same image source without the GPU texture and pixels it holds (a context loss)
+    Texture sourceOf(const Texture& texture) {
+        Texture fresh;
+        if (texture.isFramebuffer()) {
+            fresh.setFramebuffer(texture.getFramebuffer());
+        } else if (!texture.getPath(0).empty()) {
+            if (texture.isCubeMap() && texture.getPath(1).empty())
+                fresh.setCubeMap(texture.getPath(0));
+            else if (texture.isCubeMap())
+                fresh.setCubePaths(texture.getPath(4), texture.getPath(5), texture.getPath(1), texture.getPath(0),
+                                   texture.getPath(2), texture.getPath(3));
+            else
+                fresh.setPath(texture.getPath(0));
+        } else if (texture.hasData()) {
+            fresh.setData(texture.getId(), texture.getData(0));
+        }
+        return fresh;
+    }
 
     struct State {
         std::vector<std::string> names;              // by id - 1
@@ -40,9 +71,10 @@ namespace {
         std::unordered_map<std::string, std::weak_ptr<GlobalsBlockLayout>> layouts;
     };
 
+    // never destroyed: Framebuffers deleted during static destruction still reach it
     State& state() {
-        static State s;
-        return s;
+        static State* s = new State();
+        return *s;
     }
 
     // guards State::decls for getDeclarationsSnapshot (the rest is main thread only)
@@ -345,7 +377,7 @@ void ShaderGlobals::declare(const std::vector<ShaderGlobalDecl>& decls) {
             entry.type = decl.type;
             entry.arraySize = decl.arraySize;
             entry.values = decl.defaultValue;
-            entry.texture = defaultTextureOf(decl.type, decl.defaultTexture);
+            putTexture(entry, defaultTextureOf(decl.type, decl.defaultTexture));
         }
         entry.declared = true;
         s.created.erase(std::remove(s.created.begin(), s.created.end(), id), s.created.end());
@@ -381,7 +413,7 @@ void ShaderGlobals::resetToDefaults() {
         entry->type = decl.type;
         entry->arraySize = decl.arraySize;
         entry->values = decl.defaultValue;
-        entry->texture = defaultTextureOf(decl.type, decl.defaultTexture);
+        putTexture(*entry, defaultTextureOf(decl.type, decl.defaultTexture));
         entry->warnedKind = false;
         entry->warnedTruncated = false;
     }
@@ -403,9 +435,29 @@ void ShaderGlobals::clear() {
 }
 
 void ShaderGlobals::releaseTextures() {
-    for (Entry& entry : state().entries)
-        entry.texture = Texture();
+    // the GPU textures and pixels go (the pools are cleared next); the paths and render targets
+    // stay, so the textures load again with the next view (an Android context loss)
+    for (Entry& entry : state().entries) {
+        if (!entry.texture.empty())
+            putTexture(entry, sourceOf(entry.texture));
+    }
     changed();
+}
+
+void ShaderGlobals::forgetFramebuffer(const Framebuffer* framebuffer) {
+    if (!framebuffer)
+        return;
+    State& s = state();
+    for (size_t i = 0; i < s.entries.size(); i++) {
+        Entry& entry = s.entries[i];
+        if (!entry.texture.isFramebuffer() || entry.texture.getFramebuffer() != framebuffer)
+            continue;
+        const ShaderGlobalDecl* decl = entry.declared ? findDecl(s.names[i]) : nullptr;
+        Log::warn("Shader global '%s': its render target was destroyed; it binds its %s now", s.names[i].c_str(),
+                  decl && !decl->defaultTexture.empty() ? "default texture" : "fallback");
+        putTexture(entry, decl ? defaultTextureOf(decl->type, decl->defaultTexture) : Texture());
+        changed();
+    }
 }
 
 // ---------------------------------------------------------------------------- values
@@ -419,7 +471,9 @@ bool ShaderGlobals::setVector(int id, const Vector4& value) {
 }
 
 bool ShaderGlobals::setColor(int id, const Vector4& srgb) {
-    return setLeading(id, ShaderGlobalType::Color, Color::sRGBToLinear(srgb), "setGlobalColor");
+    // a negative component would be NaN through the gamma curve: 0
+    const Vector4 clamped(std::max(0.0f, srgb.x), std::max(0.0f, srgb.y), std::max(0.0f, srgb.z), srgb.w);
+    return setLeading(id, ShaderGlobalType::Color, Color::sRGBToLinear(clamped), "setGlobalColor");
 }
 
 bool ShaderGlobals::setMatrix(int id, const Matrix4& value) {
@@ -455,7 +509,7 @@ bool ShaderGlobals::setTexture(int id, const Texture& texture) {
     }
     if (entry->texture == texture)
         return true;
-    entry->texture = texture;
+    putTexture(*entry, texture);
     changed();
     return true;
 }
@@ -468,7 +522,7 @@ bool ShaderGlobals::clearTexture(int id) {
     const Texture fallback = decl ? defaultTextureOf(decl->type, decl->defaultTexture) : Texture();
     if (entry->texture == fallback)
         return true;
-    entry->texture = fallback;
+    putTexture(*entry, fallback);
     changed();
     return true;
 }
@@ -520,8 +574,35 @@ TextureRender* ShaderGlobals::getTextureRender(int id, bool cube, TextureRender*
     if (!entry || !entry->exists || !isTexture(entry->type) || entry->texture.empty() ||
             (entry->type == ShaderGlobalType::TextureCube) != cube)
         return fallback;
-    TextureRender* render = entry->texture.getRender(fallback);
-    return (render && render->isCreated()) ? render : fallback;
+    // a render target: its colour texture (made again on a resize), a pointer read
+    if (entry->texture.isFramebuffer()) {
+        TextureRender* render = entry->texture.getRender(fallback);
+        return (render && render->isCreated()) ? render : fallback;
+    }
+    if (entry->textureFailed)
+        return fallback;
+    if (entry->resolved)
+        return entry->resolved->isCreated() ? entry->resolved : fallback;
+    // resolved once per value: loading, then the pool's texture (or a failure, remembered)
+    const TextureLoadResult result = entry->texture.load();
+    if (result.state == ResourceLoadState::Loading)
+        return fallback;
+    if (result.state != ResourceLoadState::Finished) {
+        entry->textureFailed = true;
+        Log::warn("Shader global '%s': texture '%s' could not be loaded; it binds the %s fallback", nameOf(id).c_str(),
+                  entry->texture.getPath(0).c_str(), cube ? "black cube" : "white");
+        return fallback;
+    }
+    TextureRender* render = entry->texture.getRender(nullptr);
+    if (!render)
+        return fallback;
+    entry->resolved = render;
+    return render->isCreated() ? render : fallback;
+}
+
+bool ShaderGlobals::hasTextureFailed(int id) {
+    const Entry* entry = entryOf(id);
+    return entry && entry->textureFailed;
 }
 
 std::vector<std::string> ShaderGlobals::getNames() {

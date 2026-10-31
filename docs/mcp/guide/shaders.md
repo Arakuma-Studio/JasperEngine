@@ -352,7 +352,8 @@ are not declared. C++: `ShaderGlobals::propertyToID`, `setColor`, `setVector`...
 
 **Bind a library shader's parameter** (no fork): the link button at the end of a parameter row
 in the Inspector, `set_properties submeshes[0].material.shaderGlobalBindings.tint: "FogTint"`
-(a component: `shaderGlobalBindings.<member>`; `null` unbinds), or Lua
+(a component: `shaderGlobalBindings.<member>`; `null` unbinds; a post-process pass:
+`shaderGlobalBindings` in its `set_scene_settings post_process` entry), or Lua
 `m:setShaderGlobalBinding("tint", "FogTint"); mesh:setMaterial(m)` (also on Image, Text,
 Polygon, Points, LineRenderer, TrailRenderer, Skybox, and `scene:setPostProcessGlobalBinding`).
 The parameter then takes the global's current value over its own and the manifest default; a
@@ -377,6 +378,12 @@ Rules:
   per draw like the frame block, packed once per change of any value (shared by every program
   with the same block). A bound parameter rewrites its object's block once per frame in which
   a global changed.
+- Renaming a global, or removing one that bindings use, waits for Play to stop (Project
+  Settings refuses it while playing, and its undo too; `set_project_settings` is refused while
+  playing anyway).
+- A texture global holding a render target (a camera's, a `Framebuffer` from Lua) that is
+  destroyed takes its default texture again (a warning says so); a file that cannot be loaded
+  binds the fallback until the value changes (warned once).
 - Not here: global keywords (`Shader.EnableKeyword`; features are per-material variants), and
   integer globals.
 

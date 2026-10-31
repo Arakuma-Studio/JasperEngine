@@ -47,6 +47,11 @@ namespace jasperengine::editor{
         // the bindings the rename changed (after execute)
         size_t getRenamedBindingCount() const { return edits.size(); }
 
+        // a rename's undo / redo waits for Play to stop (the played scenes' bindings come back
+        // from before Play at Stop)
+        std::string undoRefusal() const override;
+        std::string redoRefusal() const override;
+
         std::vector<Touched> touchedPaths(bool undo) const override;
         bool affectsStructure() const override { return false; }
     };

@@ -15,6 +15,8 @@
 #include "shader/ShaderUniforms.h"
 #include "shader/ShaderVariantCompiler.h"
 #include "util/Color.h"
+#include "Engine.h"
+#include "texture/Framebuffer.h"
 
 #include <cmath>
 #include <cstring>
@@ -384,6 +386,67 @@ TEST_F(ShaderGlobalsTest, TheGlslBlockDeclaresEveryGlobalOfTheStage) {
     EXPECT_EQ(vs.find("_Noise"), std::string::npos) << "textures go in the fragment stage";
     const std::string fs = ShaderGlobals::getGlslBlock(decls, ShaderStageType::FRAGMENT, {"_Noise"});
     EXPECT_EQ(fs, "uniform texture2D _Noise;\nuniform sampler _Noise_smp;\n");
+}
+
+TEST_F(ShaderGlobalsTest, ADestroyedRenderTargetIsLetGo) {
+    ShaderGlobals::declare({decl("_Screen", ShaderGlobalType::Texture2D)});
+    ShaderGlobalDecl withDefault = decl("_Noise", ShaderGlobalType::Texture2D);
+    withDefault.defaultTexture = "textures/noise.png";
+    ShaderGlobals::declare({decl("_Screen", ShaderGlobalType::Texture2D), withDefault});
+    const int screen = ShaderGlobals::findID("_Screen");
+    const int noise = ShaderGlobals::findID("_Noise");
+    const int made = ShaderGlobals::propertyToID("_Made");
+    Framebuffer* target = new Framebuffer();
+    ASSERT_TRUE(ShaderGlobals::setTexture(screen, Texture(target)));
+    ASSERT_TRUE(ShaderGlobals::setTexture(noise, Texture(target)));
+    ASSERT_TRUE(ShaderGlobals::setTexture(made, Texture(target)));
+    const uint64_t version = ShaderGlobals::getVersion();
+    testing::internal::CaptureStdout();
+    testing::internal::CaptureStderr();
+    delete target; // a camera destroyed, a Lua Framebuffer collected
+    testing::internal::GetCapturedStdout();
+    testing::internal::GetCapturedStderr();
+    EXPECT_GT(ShaderGlobals::getVersion(), version);
+    ShaderGlobalValue value;
+    ASSERT_TRUE(ShaderGlobals::get(screen, value));
+    EXPECT_FALSE(value.texture.isFramebuffer());
+    EXPECT_TRUE(value.texture.empty()) << "no default: the fallback";
+    ASSERT_TRUE(ShaderGlobals::get(noise, value));
+    EXPECT_EQ(value.texture.getPath(0), "textures/noise.png") << "its default texture again";
+    ASSERT_TRUE(ShaderGlobals::get(made, value));
+    EXPECT_TRUE(value.texture.empty());
+    TextureRender fallback;
+    EXPECT_EQ(ShaderGlobals::getTextureRender(screen, false, &fallback), &fallback) << "nothing reads the freed target";
+}
+
+TEST_F(ShaderGlobalsTest, AViewLossKeepsTheTextureSources) {
+    ShaderGlobalDecl withDefault = decl("_Noise", ShaderGlobalType::Texture2D);
+    withDefault.defaultTexture = "textures/noise.png";
+    ShaderGlobalDecl cube = decl("_Sky", ShaderGlobalType::TextureCube);
+    cube.defaultTexture = "textures/sky.png";
+    ShaderGlobals::declare({withDefault, cube, decl("_Target", ShaderGlobalType::Texture2D)});
+    Framebuffer target;
+    ShaderGlobals::setTexture(ShaderGlobals::findID("_Target"), Texture(&target));
+    // what Engine::systemViewDestroyed does to the pools (clearPools), then the next view
+    Engine::clearPools();
+    ShaderGlobalValue value;
+    ASSERT_TRUE(ShaderGlobals::get(ShaderGlobals::findID("_Noise"), value));
+    EXPECT_EQ(value.texture.getPath(0), "textures/noise.png") << "the declared default stays";
+    ASSERT_TRUE(ShaderGlobals::get(ShaderGlobals::findID("_Sky"), value));
+    EXPECT_TRUE(value.texture.isCubeMap());
+    EXPECT_EQ(value.texture.getPath(0), "textures/sky.png");
+    ASSERT_TRUE(ShaderGlobals::get(ShaderGlobals::findID("_Target"), value));
+    EXPECT_EQ(value.texture.getFramebuffer(), &target) << "the render target stays (it is made again with the view)";
+    EXPECT_FALSE(ShaderGlobals::hasTextureFailed(ShaderGlobals::findID("_Noise")));
+}
+
+TEST_F(ShaderGlobalsTest, NegativeColoursAreClampedNotNaN) {
+    const int id = ShaderGlobals::propertyToID("Tint");
+    EXPECT_TRUE(ShaderGlobals::setColor(id, Vector4(-1.0f, 0.5f, -0.25f, 1.0f)));
+    const Vector4 stored = leading("Tint");
+    EXPECT_EQ(stored.x, 0.0f);
+    EXPECT_EQ(stored.z, 0.0f);
+    EXPECT_FALSE(std::isnan(stored.x) || std::isnan(stored.y) || std::isnan(stored.z));
 }
 
 // ---------------------------------------------------------------------------- GlobalsBlockPackTest

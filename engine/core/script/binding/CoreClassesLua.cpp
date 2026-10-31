@@ -20,6 +20,7 @@
 #include "json.hpp"
 
 #include <set>
+#include <stdexcept>
 #include "System.h"
 #include "registry/PhysicsLayers.h"
 #include "math/Ray.h"
@@ -262,6 +263,15 @@ namespace{
 // by a string or by the integer Shader.propertyToID gave; setters return false (and log once)
 // when the global is of another kind (a matrix, an array, a texture)
 namespace{
+
+    // a binding's global argument: a name, or nil to unbind (anything else is an error)
+    std::string luaBindingGlobal(const luabridge::LuaRef& global, const char* function){
+        if (global.isNil())
+            return std::string();
+        if (global.isString())
+            return global.unsafe_cast<std::string>();
+        throw std::runtime_error(std::string(function) + ": the global is a name (a string), or nil to unbind");
+    }
 
     // the global argument 1 names: a string (made on first use by a setter), or an id
     int luaGlobalArg(lua_State* L, const char* function, bool create){
@@ -1869,7 +1879,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         // a @property member that follows a global shader value (Shader.setGlobal*) instead of
         // its own value; nil unbinds (then mesh:setMaterial(m))
         .addFunction("setShaderGlobalBinding", +[](Material* self, const std::string& member, luabridge::LuaRef global) -> bool {
-            return ShaderGlobals::setBinding(self->shaderGlobalBindings, member, global.isString() ? global.unsafe_cast<std::string>() : std::string());
+            return ShaderGlobals::setBinding(self->shaderGlobalBindings, member, luaBindingGlobal(global, "Material.setShaderGlobalBinding"));
         })
         .addFunction("getShaderGlobalBinding", +[](const Material* self, const std::string& member, lua_State* L) -> luabridge::LuaRef {
             const std::string global = ShaderGlobals::getBinding(self->shaderGlobalBindings, member);
@@ -2058,7 +2068,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("removePostProcessUniform", &Scene::removePostProcessUniform)
         // a pass's u_fs_postParams member that follows a global shader value; nil unbinds
         .addFunction("setPostProcessGlobalBinding", +[](Scene* self, unsigned int index, const std::string& member, luabridge::LuaRef global) -> bool {
-            return self->setPostProcessGlobalBinding(index, member, global.isString() ? global.unsafe_cast<std::string>() : std::string());
+            return self->setPostProcessGlobalBinding(index, member, luaBindingGlobal(global, "Scene.setPostProcessGlobalBinding"));
         })
         .addFunction("getPostProcessGlobalBinding", +[](const Scene* self, unsigned int index, const std::string& member, lua_State* L) -> luabridge::LuaRef {
             const std::string global = self->getPostProcessGlobalBinding(index, member);

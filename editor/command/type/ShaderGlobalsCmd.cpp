@@ -52,3 +52,15 @@ std::vector<editor::Command::Touched> editor::ShaderGlobalsCmd::touchedPaths(boo
         return {};
     return {{project->getProjectPath() / "project.yaml", false}};
 }
+
+std::string editor::ShaderGlobalsCmd::undoRefusal() const{
+    if (!renames.empty() && project->isAnyScenePlaying())
+        return "Renaming shader globals is undone with Play stopped (it renames the scenes' bindings). Stop, then undo.";
+    return Command::undoRefusal();
+}
+
+std::string editor::ShaderGlobalsCmd::redoRefusal() const{
+    if (!renames.empty() && project->isAnyScenePlaying())
+        return "Renaming shader globals is redone with Play stopped (it renames the scenes' bindings). Stop, then redo.";
+    return Command::redoRefusal();
+}

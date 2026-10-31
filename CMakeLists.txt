@@ -689,6 +689,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/ProjectChecks.cpp
     ${EDITOR_DIR}/util/ShaderGlobalsJson.cpp
     ${EDITOR_DIR}/util/ShaderGlobalsUsage.cpp
+    ${EDITOR_DIR}/util/ShaderGlobalsEdit.cpp
     ${EDITOR_DIR}/util/ProjectFileWrites.cpp
     ${EDITOR_DIR}/util/PhysicsMaterialAssets.cpp
     ${EDITOR_DIR}/util/SafeWrite.cpp
