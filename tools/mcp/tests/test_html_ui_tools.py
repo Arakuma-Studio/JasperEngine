@@ -115,9 +115,9 @@ LIMITS.update({"user_settings": 550})
 # create_entity's canvas_group type; merged with main (lines-trails): 150 tools measured 106771
 # (then TOTAL_LIMIT = 106771)
 # video-mp4: no new tool; create_entity's types video_player / video_background, get_asset_info's video
-# probe and playable_on, the media "backend" of inspect_ui; merged with main (lines-trails) and gaps/http:
-# 150 tools measured 106846, the limit set to it
-TOTAL_LIMIT = 106846
+# probe and playable_on, the media "backend" of inspect_ui; merged with main (lines-trails,
+# ui-canvas-group) and gaps/http: 150 tools measured 106991, the limit set to it
+TOTAL_LIMIT = 106991
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
