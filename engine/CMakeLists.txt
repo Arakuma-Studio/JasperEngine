@@ -859,6 +859,8 @@ endif()
 set(JASPERENGINE_SRCS
     core/Engine.cpp
     core/Input.cpp
+    core/input/InputActions.cpp
+    core/input/InputControlNames.cpp
     core/Log.cpp
     core/Scene.cpp
     core/SceneSettings.cpp
