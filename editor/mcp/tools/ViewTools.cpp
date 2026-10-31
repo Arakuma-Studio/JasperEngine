@@ -17,6 +17,7 @@
 #include "AppSettings.h"
 #include "Engine.h"
 #include "Project.h"
+#include "net/Http.h"
 #include "mcp/McpActivityWindow.h"
 #include "render/SceneRender.h"
 #include "render/SceneRender2D.h"
@@ -1246,6 +1247,16 @@ void configureGameViewTool(const CallPtr& call) {
         Physics::setDebugDrawContacts(args.value("physics_debug_contacts", false));
         changed.push_back("physics_debug_contacts");
     }
+    if (args.contains("network")) {
+        const std::string network = args.value("network", "");
+        if (network != "online" && network != "offline") {
+            call->fail("network must be online or offline (simulated: Http requests to hosts other than localhost fail with "
+                       "errorCode \"offline\").");
+            return;
+        }
+        Http::setOfflineSimulated(network == "offline");
+        changed.push_back("network");
+    }
     if (!changed.empty()) gw->applySettings(settings);
 
     // the lines the playing scenes drew last frame (0 until a frame is drawn after turning it on)
@@ -1264,6 +1275,7 @@ void configureGameViewTool(const CallPtr& call) {
         {"physics_debug", Physics::isDebugDraw()},
         {"physics_debug_contacts", Physics::isDebugDrawContacts()},
         {"physics_debug_lines", physicsDebugLines},
+        {"network", Http::isOfflineSimulated() ? "offline" : "online"},
         {"open", gw->isOpen()},
         {"visible", gw->isVisible()},
         {"view_size", {gw->getWidth(), gw->getHeight()}},
@@ -1385,7 +1397,8 @@ void registerViewTools(McpRegistry& registry) {
             {"show_stats", boolean("")},
             {"simulate_touch", boolean("Mouse = one finger. Not while playing.")},
             {"physics_debug", boolean("Collider/joint wireframes in Play.")},
-            {"physics_debug_contacts", boolean("")}
+            {"physics_debug_contacts", boolean("")},
+            {"network", stringEnum("offline: Http to non-localhost fails with \"offline\". Works while playing.", {"online", "offline"})}
         });
         tool.annotations.idempotent = true;
         tool.handler = configureGameViewTool;

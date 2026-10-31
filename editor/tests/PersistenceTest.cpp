@@ -28,6 +28,14 @@
 
 #include "soloud.h"
 
+#ifndef _WIN32
+#include "net/Http.h"
+#include "thread/MainThreadQueue.h"
+#include "util/TestHttpServer.h"
+#include <chrono>
+#include <thread>
+#endif
+
 #include <cmath>
 #include <cstdint>
 #include <fstream>
@@ -997,3 +1005,76 @@ TEST_F(PersistenceTest, DuplicateDestroyedInInitGetsNoStart) {
     EXPECT_EQ(takeLog(), "first dup startOne destroyTwo");
     Engine::removeAllScenes();
 }
+
+#ifndef _WIN32
+// HTTP requests (feature http) owned by a GameObject that DontDestroyOnLoad moves, or by its
+// script `self`, survive the move and the next scene load and call back; the requests owned by
+// the level's objects end with them, the ones owned by the old scene when it is deleted
+TEST_F(PersistenceTest, HttpRequestsFollowPersistentObjects) {
+    jaspertest::TestHttpServer server;
+    ASSERT_TRUE(server.started());
+    Http::shutdown();
+    lua("got = {}; SLOW = '" + server.url("/slow/400") + "'; LONG = '" + server.url("/slow/3000") + "'");
+    writeScript("Fetcher",
+        "local M = {}\n"
+        "local function note(tag) return function(r) got[#got + 1] = tag .. ':' .. r.errorCode .. r.body end end\n"
+        "function M:init()\n"
+        "  DontDestroyOnLoad(self)\n"
+        "  Http.get(SLOW, {owner = self.gameObject}, note('object'))\n"
+        "  Http.get(SLOW, {owner = self}, note('self'))\n"
+        "  Http.get(LONG, {owner = self.scene}, note('scene'))\n"
+        "end\n"
+        "return M\n");
+    writeScript("LevelFetcher",
+        "local M = {}\n"
+        "function M:init() Http.get(LONG, {owner = self}, function(r) got[#got + 1] = 'level' end) end\n"
+        "return M\n");
+    Scene* levelA = nullptr;
+    SceneManager::registerScene(1, "A", [this, &levelA]() {
+        levelA = newScene();
+        addScript(levelA, entity(levelA, "Fetcher"), "Fetcher");
+        addScript(levelA, entity(levelA, "LevelFetcher"), "LevelFetcher");
+        LuaBinding::initializeLuaScripts(levelA);
+        Engine::setScene(levelA);
+    });
+    SceneManager::registerScene(2, "B", [this]() {
+        Scene* scene = newScene();
+        entity(scene, "Floor");
+        LuaBinding::initializeLuaScripts(scene);
+        Engine::setScene(scene);
+    });
+
+    ASSERT_TRUE(SceneManager::loadScene("A"));
+    ASSERT_EQ(persistentNamed("Fetcher").size(), 1u);
+    loadAndFrame("B");
+    EXPECT_EQ(Engine::getMainScene()->findEntity("LevelFetcher"), NULL_ENTITY);
+
+    // the old scene is deleted (what the exported game's loads do): its own request ends
+    ASSERT_NE(levelA, nullptr);
+    for (auto it = scenes.begin(); it != scenes.end(); ++it) {
+        if (it->get() == levelA) {
+            LuaBinding::cleanupLuaScripts(levelA);
+            ObjectManager::forgetScene(levelA);
+            scenes.erase(it);
+            break;
+        }
+    }
+
+    const auto end = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (std::chrono::steady_clock::now() < end && lua("return #got") != "2") {
+        frame();
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    EXPECT_EQ(lua("table.sort(got); return table.concat(got, ' ')"), "object:slow self:slow")
+        << "the moved object's and its script's requests call back, through the frame";
+    EXPECT_EQ(Http::getStats().active, 0u) << "the level's and the deleted scene's requests ended";
+    for (int i = 0; i < 20; i++) {
+        frame();
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    EXPECT_EQ(lua("return #got"), "2") << "no callback for the cancelled ones";
+    Http::shutdown();
+    MainThreadQueue::clear();
+    Engine::removeAllScenes();
+}
+#endif

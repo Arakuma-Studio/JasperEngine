@@ -2200,6 +2200,68 @@ OVERRIDES.update({
         'overloads': [([('key', 'string'), ('value', 'string')], '')]},
 })
 
+# http (NetClassesLua.cpp): the request functions are lua_CFunctions (positional options and
+# callback, either may be left out); HttpOptions / HttpRequestOptions are in
+# engine/core/script/binding/stubs/Http.lua
+_HTTP_CB = 'fun(response: HttpResponse)'
+_HTTP_OPTS = 'HttpOptions'
+def _http_overloads(head):
+    return [
+        (head, 'HttpRequest'),
+        (head + [('callback', _HTTP_CB)], 'HttpRequest'),
+        (head + [('options', _HTTP_OPTS), ('callback?', _HTTP_CB)], 'HttpRequest'),
+    ]
+OVERRIDES.update({
+    ('Http', 'get'): {
+        'doc': ['GET `url` (UnityWebRequest.Get). The callback runs once on the main thread, before onUpdate, with',
+                'the response: `if res.ok then ... else print(res.errorCode, res.error) end`. Pass `owner = self` in',
+                'per-scene scripts: the request then ends (no callback) when the script goes.'],
+        'overloads': _http_overloads([('url', 'string')])},
+    ('Http', 'head'): {
+        'doc': ['HEAD `url`: the status and headers, no body (a connectivity check).'],
+        'overloads': _http_overloads([('url', 'string')])},
+    ('Http', 'delete'): {
+        'doc': ['DELETE `url`.'],
+        'overloads': _http_overloads([('url', 'string')])},
+    ('Http', 'post'): {
+        'doc': ['POST `body` to `url`: a string is sent as is (Content-Type: application/octet-stream unless options.headers',
+                'set one), a table as JSON (Content-Type: application/json), nil sends an empty body.'],
+        'overloads': _http_overloads([('url', 'string'), ('body', 'string|table|nil')])},
+    ('Http', 'put'): {
+        'doc': ['PUT `body` to `url` (body rules of Http.post).'],
+        'overloads': _http_overloads([('url', 'string'), ('body', 'string|table|nil')])},
+    ('Http', 'patch'): {
+        'doc': ['PATCH `body` to `url` (body rules of Http.post).'],
+        'overloads': _http_overloads([('url', 'string'), ('body', 'string|table|nil')])},
+    ('Http', 'request'): {
+        'doc': ['The full form: options.url (required), options.method (default "GET"), options.onComplete and every',
+                'other option.'],
+        'overloads': [([('options', 'HttpRequestOptions')], 'HttpRequest')]},
+    ('Http', 'download'): {
+        'doc': ['GET `url` into the file `path` (data://ads/x.mp4, or an absolute path inside System.getUserDataPath();',
+                'folders are made). Streamed to <path>.part and renamed on success: a failed or cancelled download',
+                'leaves an existing file as it was. response.file is the path.'],
+        'overloads': _http_overloads([('url', 'string'), ('path', 'string')])},
+    ('Http', 'getTexture'): {
+        'doc': ['GET an image (PNG, JPEG, BMP, TGA, GIF) and decode it off the main thread: response.textureData,',
+                'for image:setTexture(response.url, response.textureData). Not an image: errorCode "decode".'],
+        'overloads': _http_overloads([('url', 'string')])},
+    ('Http', 'encodeUrl'): {
+        'doc': ['Percent-encodes `text` (RFC 3986: letters, digits and -._~ stay): "a b&c" -> "a%20b%26c".'],
+        'overloads': [([('text', 'string')], 'string')]},
+    ('Http', 'decodeUrl'): {
+        'doc': ['Decodes %XX escapes, and "+" as a space.'],
+        'overloads': [([('text', 'string')], 'string')]},
+    ('HttpResponse', 'json'): {
+        'doc': ['Json.decode of the body: the value, or nil and the message.'],
+        'overloads': [([], 'JsonValue?, string?')]},
+    ('HttpResponse', 'header'): {
+        'doc': ['The header `name` (any case), or nil.'],
+        'overloads': [([('name', 'string')], 'string?')]},
+})
+
+# Properties whose getter returns a LuaRef: (Lua type, a copy)
+
 # Properties whose getter returns a LuaRef, or whose lambda's return type is not inferred:
 # (Lua type, a copy)
 PROPERTY_OVERRIDES = {
@@ -2214,6 +2276,12 @@ PROPERTY_OVERRIDES = {
         'rotationOverLifetime', 'rotationBySpeed', 'noise', 'textureSheetAnimation', 'renderer')},
     # AnimationEvent.args builds a 1-based table of the event's arguments
     ('AnimationEvent', 'args'): ('(number|string|boolean)[]', True),
+    ('HttpRequest', 'response'): ('HttpResponse|nil', False),
+    ('HttpResponse', 'headers'): ('table<string, string>', True),
+    ('HttpResponse', 'body'): ('string', False),
+    ('HttpResponse', 'data'): ('JsonValue', False),
+    ('HttpResponse', 'textureData'): ('TextureData|nil', True),
+
     # the joint's bodies (std::optional<GameObject> lambdas): nil = the world
     ('Joint2D', 'bodyA'): ('GameObject|nil', False),
     ('Joint2D', 'bodyB'): ('GameObject|nil', False),
