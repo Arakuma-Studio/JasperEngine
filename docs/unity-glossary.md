@@ -108,6 +108,19 @@ solver of your own, or a package.
 | `Resources.Load<TextAsset>(path).text`, `StreamingAssets` files | `File.readText("asset://path")` (read-only, in the APK on Android too); `Json.readFile("asset://...")` |
 | ScriptableObject (data assets) | a JSON file (`Json.readFile("lua://data/items.json")`) or a Lua data module (`require("data.items")`): jasper://docs/lua-api 2.4.2 |
 
+## UI (Canvas Group)
+
+| Unity term | JasperEngine name |
+|---|---|
+| `CanvasGroup` (`alpha`, `interactable`, `blocksRaycasts`, `ignoreParentGroups`) | Canvas Group component (`canvasgroup`); Lua `CanvasGroup(scene, entity)` with the same fields plus `renderMode` (`PER_ELEMENT` = Unity, `FLATTEN` = CSS opacity), `object:getCanvasGroup()`; see [mcp/guide/ui.md](mcp/guide/ui.md) |
+| `LeanTween.alphaCanvas(cg, to, time)`, DOTween `cg.DOFade(to, time)` | `group:fadeTo(to, time [, {ease, unscaled, deactivate, onComplete}])`, `fadeIn`, `fadeOut` |
+| `CanvasRenderer.GetInheritedAlpha()` | `RectTransform:getInheritedAlpha()` |
+| `Selectable.IsInteractable()` | `RectTransform:isInteractable()` |
+| `Graphic.raycastTarget` | `RectTransform.ignoreEvents` (inverted: `ignoreEvents = true` is `raycastTarget = false`) |
+| `ColorBlock.disabledColor` | `Button.colorDisabled` (default Unity's (200, 200, 200, 128)) |
+| An Animation Clip's `m_Alpha` curve on a CanvasGroup | the property track `canvasgroup.alpha` (and `interactable`, `blocksRaycasts`, `ignoreParentGroups`) |
+| Unity's quirk: a parent group at alpha 0 also hides an `ignoreParentGroups` child | not copied: the child shows at its own alpha |
+
 ## Input
 
 Project Settings > Input is Unity's Input Manager and the Input System's action list in one:

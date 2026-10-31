@@ -38,6 +38,7 @@ JasperEngine is based on [Doriax](https://github.com/doriaxengine/doriax) by Edu
 - Particle systems and heightmap terrain with clipmap LOD and sculpting tools
 - A GPU fluid simulation component (a port of Pavel Dobryakov's WebGL-Fluid-Simulation: vorticity, bloom, sunrays) shown over the screen, on a sprite, image or mesh, or as a texture any material can use, with presets, seeded deterministic runs and a Lua API: see [docs/mcp/guide/fluid.md](docs/mcp/guide/fluid.md)
 - UI toolkit with Rect Transforms, layout groups, text, images, buttons, input fields, scrollbars, and other widgets
+- Canvas Groups (Unity's CanvasGroup): fade a UI subtree, grey it out or make it click-through, with fade helpers, animatable alpha and an opt-in flattened (CSS opacity) render mode
 - Unity-style input: key, mouse and gamepad edges (`Input.getKeyDown`), touches with phases, and input actions (Project Settings > Input, Unity's Input Manager axes and buttons with gravity, sensitivity and dead zones) that sum keyboard, gamepad and on-screen controls, with runtime rebinding: see [docs/mcp/guide/input.md](docs/mcp/guide/input.md)
 - Box2D and Jolt Physics for 2D/3D rigidbodies, colliders, and joints, drawn interpolated between fixed steps
 - Spatial 3D audio and multithreaded asynchronous resource loading

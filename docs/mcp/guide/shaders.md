@@ -25,6 +25,9 @@ documents have their own effects library instead, `effect(<name>, ...)` in CSS (
   linked submeshes follow it.
 - **UI, Points, Lines and Sky shaders** go in the component's `customShader`; their
   parameters are its `shaderUniforms`.
+  A UI shader gets the element's colour with its Canvas Group alpha already applied in
+  `uiParams.color` (jasper://docs/ui): one that ignores that uniform does not fade with its
+  group, but the element is still not drawn at group alpha 0.
 - Values (paths of the submesh's material, `submeshes[N].material.<key>`):
   - `shaderParams`: `{member: value}`, or one entry `shaderParams.<member>`. Numbers or
     `[x,y,z,w]` as stored: colours are **linear**; a `"#RRGGBB[AA]"` string is sRGB and is

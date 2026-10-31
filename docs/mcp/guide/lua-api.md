@@ -1212,6 +1212,10 @@ RectTransform (GameObject) rw: `width`, `height`, `anchorPreset` (`AnchorPreset.
 `positionXOffset`, `positionYOffset`, `positionOffset` (Vector2), `pivot` (Vector2),
 `usingAnchors`, `ignoreScissor`, `enabled`; methods `setSize(w, h)`,
 `setAnchorPoints(l, t, r, b)`, `setAnchorOffsets(l, t, r, b)`, `setPivot(x, y)`.
+Canvas Groups over the element (4.11.1), walked on demand: `getInheritedAlpha()` (Unity
+`CanvasRenderer.GetInheritedAlpha`), `getGroupsAllowInteraction()`, `getGroupsBlockRaycasts()`,
+`isInteractable()` (the groups and the Button / InputField's own `disabled`; Unity
+`Selectable.IsInteractable`).
 UI position: use `positionXOffset`/`positionYOffset` (as in the bundled example), or
 `position`.
 
@@ -1229,6 +1233,36 @@ Component structs returned by `get*Component()` expose the event objects of sect
 some raw fields (`ButtonComponent.pressed`, `hovered` ro; `disabled` rw;
 `ProgressbarComponent.value` rw; `InputFieldComponent.text` ro). Prefer the wrapper
 properties for changes; raw component writes need the matching `needUpdate*` flag.
+A Button's `colorDisabled` defaults to Unity's disabledColor (sRGB 200, 200, 200, 128): it also
+shows under a non-interactable Canvas Group.
+
+#### 4.11.1 CanvasGroup (EntityHandle)
+
+Unity's CanvasGroup: fades, disables or makes click-through a UI subtree. Rules, the Hide
+pattern, drag and drop, render modes: `jasper://docs/ui`.
+
+- `CanvasGroup(scene, entity)` wraps the GameObject's group and ADDS one when it has none (Unity
+  `GetComponent ?? AddComponent`); `CanvasGroup(scene)` makes a new GameObject: a RectTransform
+  stretched to its parent with a group.
+- rw `enabled`, `alpha` (clamped to 0..1; NaN rejected with a warning), `interactable`,
+  `blocksRaycasts`, `ignoreParentGroups`, `renderMode` (`CanvasGroupRenderMode.PER_ELEMENT` |
+  `FLATTEN`).
+- `fadeTo(alpha, duration [, opts])`, `fadeIn(duration [, opts])`, `fadeOut(duration [, opts])`
+  return the running `AlphaTween`; `opts` = `{ease = EaseType.*, unscaled = false, deactivate =
+  false, onComplete = function}`. A new fade stops the previous one; on completion the final
+  alpha is written, then `onComplete` runs, then `deactivate` calls `setActive(false)`.
+- `stopFade([jumpToEnd = false])` (jumpToEnd writes the end alpha and completes the fade),
+  `isFading()`, `getGameObject()`, `getCanvasGroupComponent()`.
+- GameObject: `getCanvasGroup()` (nil without one), `hasCanvasGroup()`, `addCanvasGroup()`,
+  `removeCanvasGroup()`.
+
+```lua
+function DelayedUI:onEnable()
+    local group = CanvasGroup(self.scene, self.entity)
+    group.alpha = 0; group.interactable = false; group.blocksRaycasts = false   -- hidden, click-through
+    group:fadeTo(1, 0.3, {onComplete = function() group.interactable = true; group.blocksRaycasts = true end})
+end
+```
 
 ### 4.12 AudioSource (EntityHandle)
 
@@ -1315,7 +1349,8 @@ plays back to the start and holds there), `weight`; `setTarget(gameObjectOrEntit
 `stop()` also cancels a `start()` asked for earlier in the same frame.
 
 Tween (Action): rw `duration`, `loop`, `pingPong` (forward and then back, in twice the
-duration); `setFunctionType(EaseType.*)`, `getTime()`, `getValue()`, `getTweenComponent()`.
+duration), `useUnscaledTime` (advances at time scale 0, default false: scaled like Unity);
+`setFunctionType(EaseType.*)`, `getTime()`, `getValue()`, `getTweenComponent()`.
 A non-looping tween stops on the update it reaches its end, after applying the end value.
 
 | Tween | `setAction(...)` (pass every argument; C++ defaults do not apply) |
@@ -1324,7 +1359,7 @@ A non-looping tween stops on the update it reaches its end, after applying the e
 | `RotationTween` | `(startQuat, endQuat, duration, loop)`; `setSpinAction(startQuat, axisV3, angle, duration, loop)` turns by `angle` (any size, so full turns) around `axis` |
 | `ScaleTween` | `(startV3, endV3, duration, loop)` |
 | `ColorTween` | `(startV3, endV3, duration, loop)` or `(startV4, endV4, duration, loop)` |
-| `AlphaTween` | `(startAlpha, endAlpha, duration, loop)` |
+| `AlphaTween` | `(startAlpha, endAlpha, duration, loop)`; rw `alphaTarget`: `AlphaTweenTarget.AUTO` (default: the target's enabled Canvas Group when it has one, else its colour alpha), `COLOR`, `CANVAS_GROUP` |
 
 ```lua
 local tw = PositionTween(self.scene)                    -- new action entity
@@ -1564,6 +1599,8 @@ use the methods. Physics colliders keep the rest shape.
 | `AnchorPreset` | `NONE`, `TOP_LEFT`, `TOP_RIGHT`, `BOTTOM_LEFT`, `BOTTOM_RIGHT`, `CENTER_LEFT`, `CENTER_TOP`, `CENTER_RIGHT`, `CENTER_BOTTOM`, `CENTER`, `LEFT_WIDE`, `TOP_WIDE`, `RIGHT_WIDE`, `BOTTOM_WIDE`, `VERTICAL_CENTER_WIDE`, `HORIZONTAL_CENTER_WIDE`, `FULL_LAYOUT` |
 | `PivotPreset` | `CENTER`, `TOP_CENTER`, `BOTTOM_CENTER`, `LEFT_CENTER`, `RIGHT_CENTER`, `TOP_LEFT`, `BOTTOM_LEFT`, `TOP_RIGHT`, `BOTTOM_RIGHT` |
 | `LayoutGroupType` | `VERTICAL`, `HORIZONTAL`, `VERTICAL_WRAP`, `HORIZONTAL_WRAP` |
+| `CanvasGroupRenderMode` | `PER_ELEMENT`, `FLATTEN` |
+| `AlphaTweenTarget` | `AUTO`, `COLOR`, `CANVAS_GROUP` |
 | `ScrollbarType`, `ProgressbarType` | `VERTICAL`, `HORIZONTAL` |
 | `ParticleEmitterShape` | `Box`, `Sphere`, `Hemisphere`, `Circle`, `Cone` |
 | `FogType` | `LINEAR`, `EXPONENTIAL`, `EXPONENTIALSQUARED` |
