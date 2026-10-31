@@ -762,6 +762,12 @@ its file.
   (what the build packs and compiles), never the generated sources.
 - **HTML UI documents** have no `self`: their scripts pass `owner = document` (the document's
   GameObject).
+- **Persistence**: `ObjectManager::moveToScene` (DontDestroyOnLoad, moving a GameObject to
+  another scene) copies the GameObjects and destroys the originals; before that it calls
+  `AsyncOwners::entitiesMoved(from, to, map)`, which re-keys the entity owners (from, old) ->
+  (to, new) and moves the script owners' GameObject link the same way (the script instances
+  themselves move as they are), so the requests of a persisted object and of its `self` keep
+  running and call back; the ones owned by the old scene still end when it is deleted.
 
 ### Verification
 
@@ -778,5 +784,9 @@ its file.
 - Web: the full emsdk build of the engine and its sample project linked (first pass); the web
   backend with the client core runs in Node 24 against a local server after the fixes (GET,
   binary POST, 404, timeout, redirect followed / not followed, cancel, file download).
+- After the merge of main with persistence and `AsyncOwners::entitiesMoved`, on box 2203: unit
+  suite 1362 tests, 1353 passed, 9 skipped, 0 failed (HttpTest.OwnersFollowGameObjectsMovedToAnotherScene
+  and PersistenceTest.HttpRequestsFollowPersistentObjects fail without the call); test_http.py,
+  test_persistence.py, test_play.py: 13 passed, 1 skipped (the slow C++ build); 0 warnings.
 - Windows (WinHTTP async) and Apple (NSURLSession) code could not be compiled on this host; they
   were written against the current SDK APIs and re-read.
