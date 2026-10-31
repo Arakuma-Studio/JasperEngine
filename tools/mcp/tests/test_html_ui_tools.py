@@ -101,7 +101,9 @@ LIMITS.update({"bake_vertex_animation": 2000})
 LIMITS.update({"user_settings": 550})
 # input (spec 2026-10-31-input 12): send_input's action/axis/axis_delta events and the input.actions setting,
 # measured on the merged tree: total 106687 (106611 before), the limit raised by them
-TOTAL_LIMIT = 106700
+# coroutines (spec 2026-10-31-coroutines 7): get_play_state names its coroutines/timers counts and
+# get_runtime_entity the scripts' coroutines and timers: total 106770 (106687 before), the limit raised by them (+83)
+TOTAL_LIMIT = 106783
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
