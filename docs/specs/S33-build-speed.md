@@ -109,7 +109,8 @@ server F, 8 jobs.
 - **R2. Precompiled headers.** `engine/cmake/JasperPch.cmake` adds `JASPERENGINE_PCH` (a cache
   BOOL) and `jasperengine_target_pch(<target> [EDITOR])`:
   - the header is `engine/core/JasperPch.h`: the standard headers our units include most (M4: the
-    set of 25 costs 1.25 s per unit); `EDITOR` targets add `json.hpp` (1.8 s, 281 units). Nothing
+    set of 25 costs 1.25 s per unit); `EDITOR` targets use `editor/EditorPch.h`, which adds
+    `json.hpp` (1.8 s, 281 units) and yaml-cpp (1.1 s, every unit of `Project.h`). Nothing
     of ours: a precompiled header of `Scene.h`, `Engine.h` or `Project.h` would make every unit
     depend on them (M5) and turn a component edit into a full rebuild;
   - applied to C++ sources of our own targets only: vendored sources compiled inside our targets
@@ -118,7 +119,8 @@ server F, 8 jobs.
     `_USE_MATH_DEFINES` before `<cmath>`, which a precompiled `<cmath>` would defeat) or the Xcode
     generator; the option is then ignored with a status message;
   - default ON in the editor tree, OFF in `engine/` (every export, Android and web build and every
-    S30 player configure exactly as today); `tools/build.sh` turns it on for its Linux development
+    S30 player configure exactly as today; a source with options of its own, such as `-mavx2`,
+    compiles without it); `tools/build.sh` turns it on for its Linux development
     and test trees (`linux`'s engine sample, `unit-tests`, `htmlui-tests`, `htmlui-editor-tests`).
 - **R3. Linker.** `JASPERENGINE_LINKER` (cache STRING: `AUTO`, `DEFAULT`, `LLD`, `MOLD`, `GOLD`)
   in both trees, applied through `CMAKE_LINKER_TYPE`:
@@ -135,8 +137,9 @@ server F, 8 jobs.
   player id) move to the targets that read them, so the objects of a library are the same command
   line in the editor, engine, test, player and export trees of one configuration and ccache keeps
   one copy (the content key: sources, headers, flags, compiler). The libraries the measurement
-  justifies (M9) are unity-built (`UNITY_BUILD`) in every tree, except where a source cannot share
-  a unit (listed with its reason).
+  justifies and that merge cleanly (M9, M10: Jolt) are unity-built (`UNITY_BUILD`) in the trees
+  that ship nothing (`JASPERENGINE_VENDORED_UNITY`, OFF for a shipped game, whose code generation
+  stays as it was).
 - **R5. Project settings reach the engine at run time.** The per-project definitions an export
   injects (window, vsync, title, app id, storage id, icon, log, crash and hang settings, the Lua/C++
   init switches) are compiled only into the game's own executable (`platform/` sources and the
@@ -425,6 +428,28 @@ The editor tree's own unity build (`ninja -k 0`) fails in 20 units: anonymous-na
 `Registry`, `fail`, `isInside`, `lower`, `isDescendantOf`, `useProject` and differently-aliased
 `Json` types in the animation documents, the lattice bake, the layout presets, the organisation
 labels and the pose window, besides those of M8.
+
+### M10. First lever measurements (`lev1`, e3f0c274d plus the uncommitted R1-R3 wiring, server F)
+
+| Tree | Baseline (M1/M2) | With PCH, editor objects once, lld (Debug/RelWithDebInfo) |
+|---|---|---|
+| editor clean | 1,296 s, 10,140 CPU-s | 1,115 s, 8,686 CPU-s (own code 8,317 -> 6,930: jasperengine 2,411 -> 1,781, editor 5,938 -> 5,169) |
+| editor warm, same path | — | 38 s (2,167 direct hits of 2,171: PCH units cache with the sloppiness) |
+| editor, edit InspectorWindow.cpp | 73 s | 66 s |
+| editor, touch Scene.h | 775 s, 523 steps | 653 s, 525 steps |
+| core tests clean | 840 s, 6,361 CPU-s, link 24.9 s | 728 s, 5,364 CPU-s, link 2.1 s |
+| core tests warm, same path | — | 58 s |
+| core tests, edit MeshSystem.cpp | 60 s | 36 s |
+| core tests, touch Scene.h | 288 s | 226 s |
+| editor tests clean | 3,271 s, 24,998 CPU-s, links 114.8 s | 1,609 s, 12,621 CPU-s, links 9.2 s (editor tests 52.8 -> 3.5 s, editor 41.1 -> 2.7, libjasperengine.so 19.9 -> 2.7) |
+
+Jolt unity (R4): 248 -> 68 CPU-s in the engine tree, and `nm --defined-only -g` of
+libjoltphysics.a lists the same 1,739 strong symbols either way (only weak template instances
+differ, as inlining does). RmlUi unity was dropped: besides M9's collisions, StyleSheetSelector.cpp,
+TemplateCache.cpp and StyleSheetSpecification.cpp each define a file-scope `instance` or a helper
+another file has, and ~15 more `static` helper names repeat across its sources; a skip list that
+long would have to be re-derived on every RmlUi update. PCH parse costs: `JasperPch.h` 1.22 s,
+`EditorPch.h` (with json.hpp and yaml-cpp) 1.88 s + 1.12 s for yaml-cpp.
 
 ## Progress
 
