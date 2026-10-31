@@ -73,7 +73,7 @@ defines them (no registration):
 |---|---|---|
 | `init(self)` | once, the first time the GameObject is active in hierarchy, **whether or not the script is enabled**; after every instance and reference of the scene exists | `Awake` |
 | `onEnable(self)` | the script becomes active and enabled: after `init` at load / instantiate / activation, and every time it is re-enabled or its GameObject re-activated | `OnEnable` |
-| `start(self)` | once, at the start of the frame after its first `onEnable`, before that frame's `onFixedUpdate`/`onUpdate`; not run while disabled or inactive (it waits). A script's registered updates begin only after its `start`: one enabled during a frame gets its first `onUpdate` in the next frame, after `start` | `Start` |
+| `start(self)` | once, at the start of the frame after its first `onEnable`, before that frame's `onFixedUpdate`/`onUpdate`; not run while disabled or inactive (it waits), nor for a GameObject `GameObject.destroy` is about to remove (destroyed in `init`, a singleton's duplicate). A script's registered updates begin only after its `start`: one enabled during a frame gets its first `onUpdate` in the next frame, after `start` | `Start` |
 | `onDisable(self)` | the script stops being active and enabled: `self.enabled = false`, its GameObject or a parent deactivated, destroy, scene unload, Play stop; always before `onDestroy` | `OnDisable` |
 | `onDestroy(self)` | once: `GameObject.destroy` (end of frame) / `destroyImmediate`, scene unload (a `SceneManager.loadScene`), Play stop / application quit; only if `init` ran | `OnDestroy` |
 | `onApplicationPause(self, paused)` | the app goes to the background (`true`) and returns (`false`); scripts of active GameObjects, enabled or not | `OnApplicationPause` |
@@ -761,7 +761,81 @@ A `"Prefab"` script property left at None is `nil`: check before instantiating.
 `getSceneId(name)`, `getSceneName(id)`, `getSceneNames()`, `getScenePtr(id)`,
 `clearAll()`. Properties (ro unless noted): `sceneCount`, `currentSceneId`,
 `currentSceneName`, `loadPending`, `loadingSceneId`, `loading`, `loadingProgress`,
-`loadingDelay` (rw), `loadingTimeout` (rw).
+`loadingDelay` (rw), `loadingTimeout` (rw), `persistentScene` (the DontDestroyOnLoad scene, nil
+until the first `DontDestroyOnLoad`). `moveGameObjectToScene(obj, scene)` (2.8.1).
+
+### 2.8.1 Persistent objects (DontDestroyOnLoad)
+
+```lua
+function AudioManager:init()
+    DontDestroyOnLoad(self)          -- or GameObject.dontDestroyOnLoad(self) / (self.gameObject)
+end
+
+-- a manager placed in every scene (Unity's `if (instance == null) ... else Destroy(gameObject)`)
+function AdsManager:init()
+    if GameObject.persistSingleton(self) ~= self then return end
+    -- the one manager from here on
+end
+```
+
+> **Cameras draw their own scene.** Do not make a level's camera persistent: in the persistent
+> scene it draws only the persistent objects, and the level falls back to a default camera (a
+> warning says so). Keep a Camera in every level and persist a manager that finds and positions
+> it after each load (`GameObject.findObjectOfType("Camera")` in its `onSceneLoaded` engine event, or
+> the level's camera script asking the manager). A camera brought by a persistent GameObject
+> becomes the persistent scene's camera (for persistent world objects or UI).
+
+| Function | Semantics |
+|---|---|
+| `DontDestroyOnLoad(obj)` / `GameObject.dontDestroyOnLoad(obj)` | `obj`: a script instance (its GameObject) or any GameObject wrapper. Its **root** GameObject, with its children, components and running state, moves into the persistent scene and survives every `SceneManager.loadScene`. Returns true. A GameObject with a parent: warning "DontDestroyOnLoad only works for root GameObjects", nothing happens (false). `nil`: ignored. Already persistent: nothing. In the editor outside Play: nothing (false). |
+| `GameObject.isPersistent(obj)` | in the persistent scene, or marked to move there (true from the call on) |
+| `GameObject.persistSingleton(self)` | the instance of `self`'s class that survives: another one already on a persistent GameObject (or marked earlier, also in the same start pass) is returned and `self`'s GameObject is destroyed (at the end of the frame); else `self` is made persistent and returned |
+| `SceneManager.persistentScene` | the persistent `Scene` (named "DontDestroyOnLoad"), or nil before the first `DontDestroyOnLoad`; `GameObject.instantiate(prefab, SceneManager.persistentScene)` instantiates straight into it (check for nil) |
+| `SceneManager.moveGameObjectToScene(obj, scene)` | moves a root GameObject to a running scene (`Engine.scene`, a layer) or to the persistent scene; out of the persistent scene it stops persisting (the next load destroys it). Error logged, false: not a root, "the target scene is not loaded" |
+
+Rules:
+- **The move is a real move**: the same script instance tables (fields, other scripts' references
+  to them), the same Lua state, sounds play on (the voice is kept), Rigidbody / Rigidbody2D keep
+  their velocities (the body is made again in the persistent scene's world), running actions,
+  tweens, particles, Animation Players keep going, subscriptions to its component events stay.
+  No lifecycle method runs for it (Unity). Entity ids are kept when free; otherwise the
+  GameObject gets a new id and `self.entity` changes with it. Reloaded as when copied: the GPU
+  state (one frame), UI documents (their DOM and data models start again), fluids, Vertex
+  Animators and Trail Renderers restart (a trail's points are cleared).
+- **When it moves**: never inside a callback. Called in `init`/`onEnable` of a scene being
+  loaded: at the end of that scene's start, before its HTML documents start (the usual case,
+  nothing is lost). From `onUpdate`, coroutines, timers, an instantiated object's `init`: after
+  this frame's update. Between frames (input callbacks, tools): at the start of the next frame.
+  Always before a scene load tears the scenes down. `self.scene` and `self.entity` change when
+  it moves; `self.gameObject` follows.
+- **Wrappers** a script made before the move for its own GameObjects (in its fields:
+  `self.body = Rigidbody2D(self.scene, self.entity)`) follow the move; wrappers kept elsewhere
+  (locals, other tables, other scripts) still name the old scene: use `self.gameObject` or wrap
+  again.
+- **Drawing**: the persistent scene is a scene layer above the loaded scenes (and their layers
+  and child scenes) and below the loading scene: persistent UI covers the game, the loading
+  screen covers everything. It draws with a default UI camera, or the first Camera a persistent
+  GameObject brings (see the camera note above). `Engine.scene` is always the loaded main scene,
+  never the persistent one (also in a new level's `init`). It clears its own depth: persistent world objects draw on top of the level
+  (move them into the level with `moveGameObjectToScene` to depth-sort them with it).
+- **Physics**: the persistent scene has its own worlds (default gravity, set it with
+  `SceneManager.persistentScene:setGravity2D(...)`): persistent bodies collide only with
+  persistent bodies. A joint to a body that stays behind is removed (warning).
+- **Audio**: 2D sounds (music) are untouched; 3D sounds are heard by the loaded main scene's
+  camera (the persistent scene places the listener there every frame while one plays).
+- **Subscriptions**: what a level script subscribes to on a persistent GameObject (its Button's
+  `onPress`...) goes when that script is released (its scene unloads), Lua and C++ alike.
+- **Events**: subscriptions to the old scene's events (`self.scene:getPhysicsSystem()...`) stay
+  on that scene until it unloads: register scene-wide events on `self.scene` after the move (or
+  use the per-object callbacks). Engine events (`RegisterEngineEvent`) keep working and follow
+  the GameObject's active state.
+- **Play stop / quit** destroys the persistent objects after the quit pass (`onApplicationQuit`,
+  `onDisable`, `onDestroy`); nothing persists into edit mode. The persistent scene stays (empty)
+  until then once made. `Engine.removeAllScenes()` (low level) takes it off the screen until
+  the next load adds it again.
+- **Finds** (`GameObject.find*`, `findObjectOfType`) see persistent objects; the editor's
+  Hierarchy lists them under a "DontDestroyOnLoad" row in Play, MCP as the running scene
+  "DontDestroyOnLoad" (`persistent: true`).
 
 ### 2.9 Scene (`self.scene`) - methods from EntityRegistry and Scene
 
@@ -1918,3 +1992,8 @@ Rigidbody wrappers by index.
 28. **Unity method names are not called**: `Awake` -> `init`, `Start` -> `start`, `OnEnable` ->
     `onEnable`, `Update` -> `onUpdate` registered with `RegisterEngineEvent(self, "onUpdate")`
     (`FixedUpdate` -> `onFixedUpdate`, `LateUpdate` -> `onPostUpdate`). `check_script` warns.
+29. **Singletons: module tables are per instance.** A Unity `static Instance` has no direct
+    equivalent (each attached script runs its file again): use `GameObject.persistSingleton(self)`
+    for a persistent manager, or keep shared state in a `require`d module table.
+30. **After `DontDestroyOnLoad`**, wrappers of the object kept outside the script's own fields
+    name the old scene once it moved: use `self.gameObject` or wrap again (2.8.1).

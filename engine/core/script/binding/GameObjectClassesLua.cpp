@@ -672,6 +672,10 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addStaticFunction("findGameObjectsWithTag", &LuaBinding::luaFindGameObjectsWithTag)
         .addStaticFunction("findObjectOfType", &LuaBinding::luaFindObjectOfType)
         .addStaticFunction("findObjectsOfType", &LuaBinding::luaFindObjectsOfType)
+        // persistent objects (Unity's DontDestroyOnLoad, also a global function)
+        .addStaticFunction("dontDestroyOnLoad", &LuaBinding::luaDontDestroyOnLoad)
+        .addStaticFunction("isPersistent", &LuaBinding::luaIsPersistent)
+        .addStaticFunction("persistSingleton", &LuaBinding::luaPersistSingleton)
         .addFunction("addChild", 
             luabridge::overload<GameObject*>(&GameObject::addChild),
             luabridge::overload<Entity>(&GameObject::addChild))

@@ -1634,7 +1634,10 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
             }
         }
         const std::string pathText = childScenePath.empty() ? "Unsaved scene" : childScenePath.generic_string();
-        if (node.runtimeSceneId != 0) {
+        if (node.isPersistent) {
+            ImGui::SetItemTooltip("DontDestroyOnLoad\nThe GameObjects that survive scene loads (DontDestroyOnLoad)\n"
+                "Running: they go on Stop");
+        } else if (node.runtimeSceneId != 0) {
             ImGui::SetItemTooltip("%s\nPath: %s\nRunning: changes made while playing revert on Stop",
                 node.isRuntimeLayer ? "Scene run by the game" : "Child Scene", pathText.c_str());
         } else if (node.isNotRunning) {
@@ -2016,7 +2019,14 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
     }
 
     if (!node.isScene && ImGui::BeginPopup("ContextMenu")) {
-        if (node.isChildScene) {
+        if (node.isPersistent) {
+            // made by the game, no scene file: nothing to open, show or remove
+            ImGui::TextDisabled("%s", node.name.c_str());
+            ImGui::Separator();
+            ImGui::TextDisabled("Persistent GameObjects (DontDestroyOnLoad)");
+            ImGui::TextDisabled("Running: they go on Stop");
+            ImGui::EndPopup();
+        } else if (node.isChildScene) {
             ImGui::TextDisabled("%s", node.name.c_str());
             ImGui::Separator();
             SceneProject* childScene = project->getScene(node.childSceneId);
@@ -2694,8 +2704,14 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
     }
 
     // scenes the game runs that are no child scene of this one: nested deeper, or added by scripts
+    // (the DontDestroyOnLoad scene goes last, below the played scene's GameObjects)
+    SceneProject* persistentLayer = nullptr;
     for (SceneProject* runtime : runningLayers) {
         if (listedLayers.count(runtime->id) || !runtime->scene) {
+            continue;
+        }
+        if (project->isPersistentPlayScene(runtime->id)) {
+            persistentLayer = runtime;
             continue;
         }
         TreeNode layerNode;
@@ -2904,6 +2920,26 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
             splicedNew = true;
         }
     } while (splicedNew);
+
+    // Unity's DontDestroyOnLoad scene in Play: the persistent GameObjects, live
+    if (persistentLayer) {
+        TreeNode persistentNode;
+        persistentNode.icon = ICON_FA_THUMBTACK;
+        persistentNode.name = persistentLayer->name;
+        persistentNode.isChildScene = true;
+        persistentNode.isRuntimeLayer = true;
+        persistentNode.isPersistent = true;
+        persistentNode.id = project->getPlaySourceSceneId(persistentLayer->id);
+        persistentNode.childSceneId = persistentNode.id;
+        persistentNode.ownerSceneId = sceneProject->id;
+        persistentNode.runtimeSceneId = persistentLayer->id;
+        persistentNode.order = order++;
+        addSceneContents(persistentNode, persistentLayer, persistentLayer->id);
+        if (!root.children.empty()) {
+            root.children.back().separator = true;
+        }
+        root.children.push_back(persistentNode);
+    }
 
     markPrefabScripts(root);
     markPrefabRows(root);

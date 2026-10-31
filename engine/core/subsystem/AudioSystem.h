@@ -26,6 +26,8 @@ namespace jasperengine{
 		static float globalVolume;
 
 		Vector3 cameraLastPosition;
+		// the 3D listener at that scene's camera (the persistent scene's system, every frame)
+		void placeListener(Scene& listenerScene);
 		bool outputRequested = false;
 
         bool loadSoundSample(AudioSourceComponent& audio);

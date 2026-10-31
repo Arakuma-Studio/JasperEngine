@@ -2000,6 +2000,24 @@ OVERRIDES.update({
     ('Event', '__tostring'): {
         'doc': [],
         'overloads': [([], 'string')]},
+    # persistence (DontDestroyOnLoad)
+    ('GameObject', 'dontDestroyOnLoad'): {
+        'doc': ["Unity's DontDestroyOnLoad (also the global `DontDestroyOnLoad`): the root GameObject of `obj` (a",
+                "script instance or a GameObject), with its children and running state, moves to the persistent",
+                "scene and survives every SceneManager.loadScene. False (warning) for a GameObject with a parent."],
+        'overloads': [([('obj', 'EntityHandle|ScriptInstance')], 'boolean')]},
+    ('GameObject', 'isPersistent'): {
+        'doc': ["In the persistent scene, or marked to move there (DontDestroyOnLoad)."],
+        'overloads': [([('obj', 'EntityHandle|ScriptInstance')], 'boolean')]},
+    ('GameObject', 'persistSingleton'): {
+        'doc': ["The surviving instance of `self`'s class: another one already persistent is returned (and `self`'s",
+                "GameObject destroyed at the end of the frame), else `self` is made persistent and returned.",
+                "In init: `if GameObject.persistSingleton(self) ~= self then return end`."],
+        'overloads': [([('self', 'ScriptInstance')], 'any')]},
+    ('SceneManager', 'moveGameObjectToScene'): {
+        'doc': ["Unity's MoveGameObjectToScene: a root GameObject goes to a running scene or the persistent scene",
+                "(at the next safe point, with its running state). False (logged) when the scene is not loaded."],
+        'overloads': [([('obj', 'EntityHandle|ScriptInstance'), ('scene', 'Scene')], 'boolean')]},
 })
 
 # Line and Trail Renderers (lines and trails spec 6.6): the points by 0-based index (Unity's
@@ -3164,6 +3182,13 @@ class Emitter:
             '---@param methodName string',
             '---@param tag? string',
             'function RegisterEvent(self, event, methodName, tag) end',
+            '',
+            '---Unity\'s DontDestroyOnLoad (same as GameObject.dontDestroyOnLoad): the root GameObject of `obj`, with',
+            '---its children, scripts\' state, sounds and bodies, survives every SceneManager.loadScene in the',
+            '---persistent scene ("DontDestroyOnLoad"). Root GameObjects only (else a warning and false); nil is ignored.',
+            '---@param obj EntityHandle|ScriptInstance|nil # a script instance (`self`) or a GameObject',
+            '---@return boolean',
+            'function DontDestroyOnLoad(obj) end',
             '',
             '---Removes what `RegisterEngineEvent(self, methodName [, tag])` subscribed (same tag); true if it was',
             '---subscribed. Unity\'s `-=` for an engine event, typically in onDisable.',
