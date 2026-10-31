@@ -629,6 +629,10 @@ std::shared_ptr<GlobalsBlockLayout> ShaderGlobals::acquireLayout(ShaderData& sha
 }
 
 std::string ShaderGlobals::getGlslMember(ShaderGlobalType type, unsigned int arraySize, const std::string& name) {
+    // a float array is a vec4 array read in .x: the GL targets flatten a block and take only vec4
+    // (and mat4) arrays in it, and std140 gives a float array the same 16-byte stride
+    if (type == ShaderGlobalType::FloatArray)
+        return "vec4 " + name + "[" + std::to_string(std::max(1u, arraySize)) + "]";
     std::string member = std::string(glslScalarType(type)) + " " + name;
     if (isArray(type))
         member += "[" + std::to_string(std::max(1u, arraySize)) + "]";
@@ -706,6 +710,12 @@ std::vector<ShaderGlobalDiagnostic> ShaderGlobals::checkShader(const ShaderData&
                     case ShaderUniformType::MAT4: components = 16; break;
                     default: break;
                 }
+                if (count > 1 && components > 0 && components < 4 && components != 16) {
+                    add("global-type-mismatch", false, where + " is an array of " + std::to_string(components) +
+                        "-component elements: the OpenGL and WebGL targets take only vec4 and mat4 arrays in a block "
+                        "(declare vec4 " + member + "[" + std::to_string(count) + "], a float array in .x)");
+                    continue;
+                }
                 auto mismatch = [&](const std::string& reads) {
                     add("global-type-mismatch", false, where + " does not match the global's type " + declared + ": " + reads);
                 };
@@ -717,10 +727,11 @@ std::vector<ShaderGlobalDiagnostic> ShaderGlobals::checkShader(const ShaderData&
                     if (decl->type != ShaderGlobalType::Matrix4 || components != 16 || count > 1)
                         mismatch("a mat4 member reads a matrix4 global and nothing else, it reads 0");
                 } else if (isArray(decl->type)) {
-                    const int expected = decl->type == ShaderGlobalType::FloatArray ? 1 : 4;
+                    // a float array reads as float x[N] or as vec4 x[N] (in .x; GL's only kind)
+                    const bool fits = components == 4 || (decl->type == ShaderGlobalType::FloatArray && components == 1);
                     if (count == 1)
                         mismatch("it reads element 0 of the array");
-                    else if (components != expected)
+                    else if (!fits)
                         mismatch("each element reads the leading components of the global's");
                     else if (count != decl->arraySize)
                         mismatch(count > decl->arraySize ? "the elements past the global's " + std::to_string(decl->arraySize) + " read 0"

@@ -378,7 +378,7 @@ TEST_F(ShaderGlobalsTest, TheGlslBlockDeclaresEveryGlobalOfTheStage) {
     const std::string vs = ShaderGlobals::getGlslBlock(decls, ShaderStageType::VERTEX);
     EXPECT_NE(vs.find("uniform u_vs_globals {"), std::string::npos) << vs;
     EXPECT_NE(vs.find("    vec4 FogTint;\n"), std::string::npos) << vs;
-    EXPECT_NE(vs.find("    float W[8];\n"), std::string::npos) << vs;
+    EXPECT_NE(vs.find("    vec4 W[8];\n"), std::string::npos) << "a float array is a vec4 array (GL): " << vs;
     EXPECT_NE(vs.find("    mat4 M;\n"), std::string::npos) << vs;
     EXPECT_EQ(vs.find("_Noise"), std::string::npos) << "textures go in the fragment stage";
     const std::string fs = ShaderGlobals::getGlslBlock(decls, ShaderStageType::FRAGMENT, {"_Noise"});
@@ -459,13 +459,13 @@ uniform u_vs_globals {
     vec3 v3;
     vec4 v4;
     mat4 m;
-    float fa[4];
+    vec4 fa[4];
     vec4 va[4];
 } globals;
 out vec4 v_globalsValue;
 void surfaceVertex(vec3 worldPosition, vec3 worldNormal, vec4 color, vec2 uv) {
     v_globalsValue = vec4(globals.f) + vec4(globals.v2, 0.0, 0.0) + vec4(globals.v3, 0.0) + globals.v4 +
-                     globals.m * vec4(worldPosition, 1.0) + vec4(globals.fa[0] + globals.fa[3]) + globals.va[0] + globals.va[3];
+                     globals.m * vec4(worldPosition, 1.0) + vec4(globals.fa[0].x + globals.fa[3].x) + globals.va[0] + globals.va[3];
 }
 )";
     setEveryKind();
@@ -512,9 +512,11 @@ out vec4 v_globalsValue;
 void surfaceVertex(vec3 worldPosition, vec3 worldNormal, vec4 color, vec2 uv) {
     vec3 light = vec3(0.0);
     vec4 colors[4] = vec4[4](globals._VertexLightColor0, globals._VertexLightColor1, globals._VertexLightColor2, globals._VertexLightColor3);
+    // copies: the GL targets cannot index a block's vector by a variable
+    vec4 px = globals._LightPositionX, py = globals._LightPositionY, pz = globals._LightPositionZ, radius = globals._LightRadius;
     for (int i = 0; i < 4; i++) {
-        vec3 toLight = vec3(globals._LightPositionX[i], globals._LightPositionY[i], globals._LightPositionZ[i]) - worldPosition;
-        float fade = clamp(1.0 - length(toLight) / max(globals._LightRadius[i], 0.0001), 0.0, 1.0);
+        vec3 toLight = vec3(px[i], py[i], pz[i]) - worldPosition;
+        float fade = clamp(1.0 - length(toLight) / max(radius[i], 0.0001), 0.0, 1.0);
         light += colors[i].rgb * fade * max(dot(worldNormal, normalize(toLight)), 0.0);
     }
     v_globalsValue = vec4(light, 1.0);
@@ -584,14 +586,15 @@ TEST_F(GlobalsBlockPackTest, CheckShaderReportsUndeclaredAndMismatchedMembers) {
                                                  decl("m", ShaderGlobalType::Matrix4), decl("fa", ShaderGlobalType::FloatArray, {}, 4),
                                                  decl("va", ShaderGlobalType::Vector4Array, {}, 2)};
     std::vector<ShaderGlobalDiagnostic> found = ShaderGlobals::checkShader(data, decls);
-    // v2 (a vec2 of a vector4) and va (4 elements of 2) mismatch; the rest match
-    ASSERT_EQ(found.size(), 2u);
+    // v2 (a vec2 of a vector4), fa (a float array GL refuses: vec4 there) and va (4 elements of 2)
+    ASSERT_EQ(found.size(), 3u);
     for (const ShaderGlobalDiagnostic& d : found) {
         EXPECT_EQ(d.code, "global-type-mismatch");
         EXPECT_FALSE(d.error);
     }
     EXPECT_NE(found[0].message.find("'v2'"), std::string::npos) << found[0].message;
-    EXPECT_NE(found[1].message.find("'va'"), std::string::npos) << found[1].message;
+    EXPECT_NE(found[1].message.find("'fa'"), std::string::npos) << found[1].message;
+    EXPECT_NE(found[2].message.find("'va'"), std::string::npos) << found[2].message;
     found = ShaderGlobals::checkShader(data, {});
     ASSERT_EQ(found.size(), 7u);
     EXPECT_EQ(found[0].code, "global-undeclared");

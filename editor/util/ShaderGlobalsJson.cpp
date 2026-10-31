@@ -18,9 +18,13 @@ using Json = nlohmann::json;
 namespace {
 
     // a float as JSON, without the noise of its double widening (0.1f -> 0.1, not 0.100000001...)
+    // the shortest text that reads back as the same float
     Json number(float value) {
         char text[32];
-        snprintf(text, sizeof(text), "%.9g", value);
+        for (int digits = 6; digits <= 9; digits++) {
+            snprintf(text, sizeof(text), "%.*g", digits, value);
+            if (std::strtof(text, nullptr) == value) break;
+        }
         return std::strtod(text, nullptr);
     }
 
@@ -157,7 +161,8 @@ bool ShaderGlobalsJson::valueFromJson(ShaderGlobalType type, unsigned int arrayS
         case ShaderGlobalType::Vector4: {
             const int count = componentsOf(type);
             float c[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-            if (!readNumbers(json, count == 1 ? 1 : count, count, c, error, std::string("a ") + ShaderGlobals::getTypeName(type)))
+            // missing components are 0
+            if (!readNumbers(json, 1, count, c, error, std::string("a ") + ShaderGlobals::getTypeName(type)))
                 return false;
             values.push_back(Vector4(c[0], c[1], c[2], c[3]));
             return true;

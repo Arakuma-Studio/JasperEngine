@@ -435,3 +435,9 @@ Decisions taken while implementing (branch `gaps/shader-globals`, on `gaps/lines
     every backend's compile and reflection offsets are checked by the unit test
     `GlobalsBlockPackTest.CompiledBlocksMatchThePackerOnEveryBackend` (and the four vertex lights
     test) instead.
+14. **GL targets**: the OpenGL / GLES3 / WebGL2 targets flatten uniform blocks (SPIRV-Cross),
+    which takes only `vec4` and `mat4` arrays and no indexing of a block's vector by a variable.
+    So a `float_array` global is declared (and generated: Copy GLSL, `glsl_vs` / `glsl_fs`) as
+    `vec4 x[N]` read in `.x` (std140 gives `float x[N]` the same 16-byte stride, so the packer
+    fills either), and `check_shader` warns about float/vec2/vec3 arrays in a globals block. The
+    vertex-lights shaders copy the block's vectors to locals before indexing them per light.

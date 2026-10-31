@@ -2714,7 +2714,12 @@ nlohmann::json yamlToJson(const YAML::Node& node) {
 YAML::Node shaderGlobalsJsonToYaml(const nlohmann::json& j) {
     if (j.is_number_float()) {
         char text[32];
-        snprintf(text, sizeof(text), "%.9g", j.get<double>());
+        snprintf(text, sizeof(text), "%.17g", j.get<double>());
+        // the shortest that reads back the same (the values are float-exact doubles)
+        for (int digits = 6; digits <= 17; digits++) {
+            snprintf(text, sizeof(text), "%.*g", digits, j.get<double>());
+            if (std::strtod(text, nullptr) == j.get<double>()) break;
+        }
         return YAML::Node(std::string(text));
     }
     if (j.is_object()) {

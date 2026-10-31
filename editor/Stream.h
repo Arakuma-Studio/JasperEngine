@@ -212,9 +212,6 @@ namespace jasperengine::editor {
 
         static YAML::Node encodeShaderUniforms(const ShaderUniformValues& uniforms);
         static ShaderUniformValues decodeShaderUniforms(const YAML::Node& node);
-        // custom-block members that follow a global shader value: {member: global}
-        static YAML::Node encodeShaderGlobalBindings(const ShaderGlobalBindings& bindings);
-        static ShaderGlobalBindings decodeShaderGlobalBindings(const YAML::Node& node);
 
         static YAML::Node encodeRect(const Rect& rect);
         static Rect decodeRect(const YAML::Node& node);
@@ -283,6 +280,9 @@ namespace jasperengine::editor {
         static void decodeRibbonFields(const YAML::Node& node, T& component, const T& defaults);
 
     public:
+        // custom-block members that follow a global shader value: {member: global}
+        static YAML::Node encodeShaderGlobalBindings(const ShaderGlobalBindings& bindings);
+        static ShaderGlobalBindings decodeShaderGlobalBindings(const YAML::Node& node);
         // Unity AnimationCurve and Gradient (lines and trails spec 6.1). A curve:
         // {keys: [[time, value], [time, value, inTangent, outTangent]...], pre: clamp|loop|
         // ping_pong, post: ...} (wraps written when not clamp, tangents when not flat, .inf

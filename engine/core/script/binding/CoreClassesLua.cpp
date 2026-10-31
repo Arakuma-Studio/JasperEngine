@@ -296,10 +296,10 @@ namespace{
             if (value){ out = *value; return true; }
         }else if (luabridge::isInstance<Vector3>(L, index)){
             auto value = luabridge::get<Vector3>(L, index);
-            if (value){ out = Vector4(value->x, value->y, value->z, wFill); return true; }
+            if (value){ const Vector3 v = *value; out = Vector4(v.x, v.y, v.z, wFill); return true; }
         }else if (allowVector2 && luabridge::isInstance<Vector2>(L, index)){
             auto value = luabridge::get<Vector2>(L, index);
-            if (value){ out = Vector4(value->x, value->y, 0.0f, 0.0f); return true; }
+            if (value){ const Vector2 v = *value; out = Vector4(v.x, v.y, 0.0f, 0.0f); return true; }
         }
         return false;
     }

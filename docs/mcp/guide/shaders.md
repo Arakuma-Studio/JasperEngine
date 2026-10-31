@@ -310,7 +310,7 @@ them; exported builds declare them before the first scene loads. Names are GLSL 
 | `vector2` / `vector3` / `vector4` | `vec2` / `vec3` / `vec4` | `[x, y, ...]` |
 | `color` | `vec4` (linear) | `"#RRGGBB[AA]"` or `[r, g, b, a]`, sRGB |
 | `matrix4` | `mat4` | 16 numbers, column-major |
-| `float_array` / `vector4_array` | `float x[N]` / `vec4 x[N]` (`array_size` N, 1..64) | N values |
+| `float_array` / `vector4_array` | `vec4 x[N]` (a float array in `.x`) / `vec4 x[N]` (`array_size` N, 1..64) | N values |
 | `texture2d` / `texturecube` | `uniform texture2D x;` + `uniform sampler x_smp;` | an asset path (`""`: white / black) |
 
 **Read** them in a fork through one block per stage: `u_vs_globals` in the .vert,
@@ -323,7 +323,7 @@ its name in either stage (its sampler is the one the shader pairs with it).
 ```glsl
 uniform u_fs_globals {
     vec4 FogTint;
-    float _Wind[4];
+    vec4 _Wind[4];    // a float_array: x[i].x
 } globals;
 uniform texture2D _NoiseTex;
 uniform sampler _NoiseTex_smp;
@@ -362,7 +362,9 @@ Rules:
   global's leading components (a `vec3` of a `vector4`: xyz; a `float` of a vector: x; a
   `vec4` of a float: (x, 0, 0, 0)); a `mat4` reads only a `matrix4`. An array longer than the
   global's reads 0 past it, a shorter one its first elements. Only float members (no `int`,
-  `mat3`, `bool`). `check_shader` reports `global-undeclared` and `global-type-mismatch`
+  `mat3`, `bool`). The OpenGL and WebGL targets flatten blocks: arrays only of `vec4` (a float
+  array in `.x`: std140 strides it 16 bytes either way) or `mat4`, and no indexing of a block's
+  vector by a variable (copy it to a local first, as below). `check_shader` reports `global-undeclared` and `global-type-mismatch`
   (warnings), `globals-block-too-large` (error: a block over 1024 bytes, 64 vec4, fails like
   any compile error and the object draws with the built-in shader) and `uniform-block-limit`
   (error: more than 8 blocks in a stage; a globals block counts).
@@ -395,10 +397,12 @@ out vec3 v_light;
 void surfaceVertex(vec3 worldPosition, vec3 worldNormal, vec4 color, vec2 uv) {
     vec4 colors[4] = vec4[4](globals._VertexLightColor0, globals._VertexLightColor1,
                              globals._VertexLightColor2, globals._VertexLightColor3);
+    // copies: the GL targets cannot index a block's vector by a variable
+    vec4 px = globals._LightPositionX, py = globals._LightPositionY, pz = globals._LightPositionZ, radius = globals._LightRadius;
     v_light = vec3(0.0);
     for (int i = 0; i < 4; i++) {
-        vec3 toLight = vec3(globals._LightPositionX[i], globals._LightPositionY[i], globals._LightPositionZ[i]) - worldPosition;
-        float fade = clamp(1.0 - length(toLight) / max(globals._LightRadius[i], 0.0001), 0.0, 1.0);
+        vec3 toLight = vec3(px[i], py[i], pz[i]) - worldPosition;
+        float fade = clamp(1.0 - length(toLight) / max(radius[i], 0.0001), 0.0, 1.0);
         v_light += colors[i].rgb * fade * max(dot(worldNormal, normalize(toLight)), 0.0);
     }
 }

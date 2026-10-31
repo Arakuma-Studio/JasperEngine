@@ -82,7 +82,7 @@ TEST_F(ProjectShaderGlobalsStreamTest, TheListRoundTripsForEveryType) {
     const std::string yaml = YAML::Dump(node);
     EXPECT_NE(yaml.find("\"#8040FFFF\""), std::string::npos) << "an 8-bit colour as sRGB hex:\n" << yaml;
     EXPECT_NE(yaml.find("arraySize: 3"), std::string::npos) << yaml;
-    EXPECT_NE(yaml.find("default: [0.1]"), std::string::npos) << "a float in its shortest text:\n" << yaml;
+    EXPECT_NE(yaml.find("default: 0.1\n"), std::string::npos) << "a float in its shortest text:\n" << yaml;
 
     ShaderGlobals::clear();
     Project loaded;
