@@ -983,6 +983,13 @@ set(JASPERENGINE_SRCS
     core/math/Vector2.cpp
     core/math/Vector3.cpp
     core/math/Vector4.cpp
+    core/particles/MinMax.cpp
+    core/particles/ParticleFields.cpp
+    core/particles/ParticleModules.cpp
+    core/particles/ParticleNoise.cpp
+    core/particles/ParticleShapes.cpp
+    core/particles/ParticleSimulation.cpp
+    core/particles/ParticleUpgrade.cpp
     core/object/Bone.cpp
     core/object/Camera.cpp
     core/object/EntityHandle.cpp
@@ -1064,6 +1071,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/ECSClassesLua.cpp
     core/script/binding/IOClassesLua.cpp
     core/script/binding/MathClassesLua.cpp
+    core/script/binding/ParticleClassesLua.cpp
     core/script/binding/GameObjectClassesLua.cpp
     core/script/binding/ThreadClassesLua.cpp
     core/script/binding/HtmlUIVectorLua.cpp
@@ -1079,6 +1087,7 @@ set(JASPERENGINE_SRCS
     core/shader/ShaderVariantCollection.cpp
     core/shader/ShaderVariantCompiler.cpp
     core/subsystem/ActionSystem.cpp
+    core/subsystem/ActionSystemParticles.cpp
     core/subsystem/ActionSystemPlayers.cpp
     core/subsystem/PoseAnimatorSystem.cpp
     core/subsystem/VertexAnimatorSystem.cpp

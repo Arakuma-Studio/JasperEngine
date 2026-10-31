@@ -3309,6 +3309,33 @@
 		4A534E471ECC1F0F8A111EDB /* TrailRenderer.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D1A59D898AF8B4BB /* TrailRenderer.h */; };
 		4A534E478F589171F02F0B63 /* LineRibbonBuilder.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47197C345843945889 /* LineRibbonBuilder.h */; };
 		4A534E47212823E1E8889FB7 /* TrailSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D89F43391B4A415F /* TrailSystem.h */; };
+		4A534E47DCB3649B76DF662D /* MinMax.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47AEEF734FC9A1DE06 /* MinMax.cpp */; };
+		4A534E473B31CA976C874AE9 /* MinMax.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47AEEF734FC9A1DE06 /* MinMax.cpp */; };
+		4A534E470BB68EBC69A7983C /* ParticleFields.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47DB3BE228C037C932 /* ParticleFields.cpp */; };
+		4A534E47FF513E8087E55C99 /* ParticleFields.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47DB3BE228C037C932 /* ParticleFields.cpp */; };
+		4A534E47BF2A3508605C2AA6 /* ParticleModules.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47851D966449DCE973 /* ParticleModules.cpp */; };
+		4A534E47882646202CB563DB /* ParticleModules.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47851D966449DCE973 /* ParticleModules.cpp */; };
+		4A534E47BEFC2B7543B83919 /* ParticleNoise.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4771A1933E13DF24F7 /* ParticleNoise.cpp */; };
+		4A534E47676AFE1161B8D47F /* ParticleNoise.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4771A1933E13DF24F7 /* ParticleNoise.cpp */; };
+		4A534E47BB623145D4A66BBD /* ParticleShapes.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478E98CE2FBA02618E /* ParticleShapes.cpp */; };
+		4A534E47A342B7B089A7F257 /* ParticleShapes.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478E98CE2FBA02618E /* ParticleShapes.cpp */; };
+		4A534E47160DFF77DA91001C /* ParticleSimulation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E03698B4E85B5BAA /* ParticleSimulation.cpp */; };
+		4A534E4748581C624395D4BB /* ParticleSimulation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E03698B4E85B5BAA /* ParticleSimulation.cpp */; };
+		4A534E473F24882C1A62997B /* ParticleUpgrade.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D6C732341EF9921D /* ParticleUpgrade.cpp */; };
+		4A534E4715A1589DC34790B4 /* ParticleUpgrade.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D6C732341EF9921D /* ParticleUpgrade.cpp */; };
+		4A534E476DACC88BC9C47409 /* ParticleClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D19A753B7302BC7B /* ParticleClassesLua.cpp */; };
+		4A534E4738981FC54EBE9280 /* ParticleClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D19A753B7302BC7B /* ParticleClassesLua.cpp */; };
+		4A534E47BAC7D2CEF29CFFE6 /* ActionSystemParticles.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471CF047A32835BE30 /* ActionSystemParticles.cpp */; };
+		4A534E4734884D6ECAFA0459 /* ActionSystemParticles.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471CF047A32835BE30 /* ActionSystemParticles.cpp */; };
+		4A534E4757FF1BC3B82F464F /* ParticleSystemModule.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4725212AA03130A5CA /* ParticleSystemModule.h */; };
+		4A534E4791220744CF917054 /* MinMax.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475C7CE6EBA1324928 /* MinMax.h */; };
+		4A534E471D0E2F3B1D9AD1CA /* ParticleFields.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474699FAACECE71F31 /* ParticleFields.h */; };
+		4A534E473D0B6F9ADA26A270 /* ParticleModules.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D160C40D539EF9BF /* ParticleModules.h */; };
+		4A534E475F7D54762B94FFF7 /* ParticleNoise.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4796D6D84AD719B630 /* ParticleNoise.h */; };
+		4A534E47F6EA5152103D82BF /* ParticleRandom.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4710DB6BC9F6220645 /* ParticleRandom.h */; };
+		4A534E47F3B27EF73B48BF8A /* ParticleShapes.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47030B69308A26E830 /* ParticleShapes.h */; };
+		4A534E47F8F6648CDEE6113A /* ParticleSimulation.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47336D59CB877901B4 /* ParticleSimulation.h */; };
+		4A534E4771B3412C33904150 /* ParticleUpgrade.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E478AFD9A93AB71B6C7 /* ParticleUpgrade.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -6683,6 +6710,24 @@
 		4A534E47D1A59D898AF8B4BB /* TrailRenderer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TrailRenderer.h; sourceTree = "<group>"; };
 		4A534E47197C345843945889 /* LineRibbonBuilder.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LineRibbonBuilder.h; sourceTree = "<group>"; };
 		4A534E47D89F43391B4A415F /* TrailSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TrailSystem.h; sourceTree = "<group>"; };
+		4A534E47AEEF734FC9A1DE06 /* MinMax.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MinMax.cpp; sourceTree = "<group>"; };
+		4A534E47DB3BE228C037C932 /* ParticleFields.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ParticleFields.cpp; sourceTree = "<group>"; };
+		4A534E47851D966449DCE973 /* ParticleModules.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ParticleModules.cpp; sourceTree = "<group>"; };
+		4A534E4771A1933E13DF24F7 /* ParticleNoise.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ParticleNoise.cpp; sourceTree = "<group>"; };
+		4A534E478E98CE2FBA02618E /* ParticleShapes.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ParticleShapes.cpp; sourceTree = "<group>"; };
+		4A534E47E03698B4E85B5BAA /* ParticleSimulation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ParticleSimulation.cpp; sourceTree = "<group>"; };
+		4A534E47D6C732341EF9921D /* ParticleUpgrade.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ParticleUpgrade.cpp; sourceTree = "<group>"; };
+		4A534E47D19A753B7302BC7B /* ParticleClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ParticleClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E471CF047A32835BE30 /* ActionSystemParticles.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ActionSystemParticles.cpp; sourceTree = "<group>"; };
+		4A534E4725212AA03130A5CA /* ParticleSystemModule.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleSystemModule.h; sourceTree = "<group>"; };
+		4A534E475C7CE6EBA1324928 /* MinMax.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MinMax.h; sourceTree = "<group>"; };
+		4A534E474699FAACECE71F31 /* ParticleFields.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleFields.h; sourceTree = "<group>"; };
+		4A534E47D160C40D539EF9BF /* ParticleModules.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleModules.h; sourceTree = "<group>"; };
+		4A534E4796D6D84AD719B630 /* ParticleNoise.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleNoise.h; sourceTree = "<group>"; };
+		4A534E4710DB6BC9F6220645 /* ParticleRandom.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleRandom.h; sourceTree = "<group>"; };
+		4A534E47030B69308A26E830 /* ParticleShapes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleShapes.h; sourceTree = "<group>"; };
+		4A534E47336D59CB877901B4 /* ParticleSimulation.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleSimulation.h; sourceTree = "<group>"; };
+		4A534E478AFD9A93AB71B6C7 /* ParticleUpgrade.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleUpgrade.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -7097,6 +7142,7 @@
 				564944450D63D10E11014513 /* HtmlUIMediaLua.cpp */,
 				414E494D4500000000000044 /* HtmlUIAnimeLua.cpp */,
 				505645430000000000000178 /* HtmlUIVectorLua.cpp */,
+				4A534E47D19A753B7302BC7B /* ParticleClassesLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -7801,6 +7847,7 @@
 				71451BCD270CA17F00712643 /* SpriteAnimation.h */,
 				71451BC4270CA17F00712643 /* Tween.cpp */,
 				71451BD0270CA17F00712643 /* Tween.h */,
+				4A534E4725212AA03130A5CA /* ParticleSystemModule.h */,
 			);
 			path = action;
 			sourceTree = "<group>";
@@ -7964,6 +8011,28 @@
 			path = animation;
 			sourceTree = "<group>";
 		};
+		4A534E477B5E3DD34ED6FF19 /* particles */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E47AEEF734FC9A1DE06 /* MinMax.cpp */,
+				4A534E47DB3BE228C037C932 /* ParticleFields.cpp */,
+				4A534E47851D966449DCE973 /* ParticleModules.cpp */,
+				4A534E4771A1933E13DF24F7 /* ParticleNoise.cpp */,
+				4A534E478E98CE2FBA02618E /* ParticleShapes.cpp */,
+				4A534E47E03698B4E85B5BAA /* ParticleSimulation.cpp */,
+				4A534E47D6C732341EF9921D /* ParticleUpgrade.cpp */,
+				4A534E475C7CE6EBA1324928 /* MinMax.h */,
+				4A534E474699FAACECE71F31 /* ParticleFields.h */,
+				4A534E47D160C40D539EF9BF /* ParticleModules.h */,
+				4A534E4796D6D84AD719B630 /* ParticleNoise.h */,
+				4A534E4710DB6BC9F6220645 /* ParticleRandom.h */,
+				4A534E47030B69308A26E830 /* ParticleShapes.h */,
+				4A534E47336D59CB877901B4 /* ParticleSimulation.h */,
+				4A534E478AFD9A93AB71B6C7 /* ParticleUpgrade.h */,
+			);
+			path = particles;
+			sourceTree = "<group>";
+		};
 		7162FC2A25962A0E0075B97D /* core */ = {
 			isa = PBXGroup;
 			children = (
@@ -8004,6 +8073,7 @@
 				4A534E476D14045E1B1B86B5 /* pose */,
 				4A534E472AD0C1A658CC6825 /* physics */,
 				4A534E477E49C8CF16ED0963 /* animation */,
+				4A534E477B5E3DD34ED6FF19 /* particles */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -8323,6 +8393,7 @@
 				4A534E474C490B38DD8DB742 /* VertexAnimatorSystem.h */,
 				4A534E47B38E42BA45359570 /* TrailSystem.cpp */,
 				4A534E47D89F43391B4A415F /* TrailSystem.h */,
+				4A534E471CF047A32835BE30 /* ActionSystemParticles.cpp */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -11934,6 +12005,15 @@
 				4A534E471ECC1F0F8A111EDB /* TrailRenderer.h in Headers */,
 				4A534E478F589171F02F0B63 /* LineRibbonBuilder.h in Headers */,
 				4A534E47212823E1E8889FB7 /* TrailSystem.h in Headers */,
+				4A534E4757FF1BC3B82F464F /* ParticleSystemModule.h in Headers */,
+				4A534E4791220744CF917054 /* MinMax.h in Headers */,
+				4A534E471D0E2F3B1D9AD1CA /* ParticleFields.h in Headers */,
+				4A534E473D0B6F9ADA26A270 /* ParticleModules.h in Headers */,
+				4A534E475F7D54762B94FFF7 /* ParticleNoise.h in Headers */,
+				4A534E47F6EA5152103D82BF /* ParticleRandom.h in Headers */,
+				4A534E47F3B27EF73B48BF8A /* ParticleShapes.h in Headers */,
+				4A534E47F8F6648CDEE6113A /* ParticleSimulation.h in Headers */,
+				4A534E4771B3412C33904150 /* ParticleUpgrade.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -13982,6 +14062,15 @@
 				4A534E47CB7C331EE90C2019 /* TrailRenderer.cpp in Sources */,
 				4A534E474FD048B43C95AA02 /* LineRibbonBuilder.cpp in Sources */,
 				4A534E47C826FA60D57B648C /* TrailSystem.cpp in Sources */,
+				4A534E47DCB3649B76DF662D /* MinMax.cpp in Sources */,
+				4A534E470BB68EBC69A7983C /* ParticleFields.cpp in Sources */,
+				4A534E47BF2A3508605C2AA6 /* ParticleModules.cpp in Sources */,
+				4A534E47BEFC2B7543B83919 /* ParticleNoise.cpp in Sources */,
+				4A534E47BB623145D4A66BBD /* ParticleShapes.cpp in Sources */,
+				4A534E47160DFF77DA91001C /* ParticleSimulation.cpp in Sources */,
+				4A534E473F24882C1A62997B /* ParticleUpgrade.cpp in Sources */,
+				4A534E476DACC88BC9C47409 /* ParticleClassesLua.cpp in Sources */,
+				4A534E47BAC7D2CEF29CFFE6 /* ActionSystemParticles.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14409,6 +14498,15 @@
 				4A534E47666B66B24871AAA0 /* TrailRenderer.cpp in Sources */,
 				4A534E47F807A7F7B7DC0936 /* LineRibbonBuilder.cpp in Sources */,
 				4A534E479399C2E0EAF5A3C3 /* TrailSystem.cpp in Sources */,
+				4A534E473B31CA976C874AE9 /* MinMax.cpp in Sources */,
+				4A534E47FF513E8087E55C99 /* ParticleFields.cpp in Sources */,
+				4A534E47882646202CB563DB /* ParticleModules.cpp in Sources */,
+				4A534E47676AFE1161B8D47F /* ParticleNoise.cpp in Sources */,
+				4A534E47A342B7B089A7F257 /* ParticleShapes.cpp in Sources */,
+				4A534E4748581C624395D4BB /* ParticleSimulation.cpp in Sources */,
+				4A534E4715A1589DC34790B4 /* ParticleUpgrade.cpp in Sources */,
+				4A534E4738981FC54EBE9280 /* ParticleClassesLua.cpp in Sources */,
+				4A534E4734884D6ECAFA0459 /* ActionSystemParticles.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

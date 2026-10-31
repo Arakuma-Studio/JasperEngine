@@ -107,6 +107,7 @@ double Engine::timeScale = 1.0;
 double Engine::fixedDeltatime = 0.0;
 double Engine::gameTime = 0.0;
 uint64_t Engine::gameFrames = 0;
+double Engine::unscaledDeltatime = 0.0;
 std::atomic<bool> Engine::simulationHeld = false;
 bool Engine::clampNextDelta = false;
 
@@ -646,6 +647,10 @@ float Engine::getMaxDeltatime(){
 void Engine::setMaxDeltatime(float seconds){
     if (seconds > 0.0f)
         maxDeltatime = seconds;
+}
+
+float Engine::getUnscaledDeltatime(){
+    return (float)unscaledDeltatime;
 }
 
 double Engine::getSystemTime(){
@@ -1354,6 +1359,7 @@ void Engine::runFrame(bool draw){
         frameTime = fixedDeltatime;
     }
     deltatime = simulationHeld ? 0.0 : frameTime * timeScale;
+    unscaledDeltatime = (paused || simulationHeld) ? 0.0 : frameTime;
     // the UI clock runs on the unscaled delta (a pause menu animates at time scale 0) and
     // stops with the updates: a held simulation or a paused app
     HtmlUIClock::advance((paused || simulationHeld) ? 0.0 : frameTime);

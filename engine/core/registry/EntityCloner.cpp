@@ -522,6 +522,8 @@ void prepare<ParticleSystemComponent>(ParticleSystemComponent& particles, Entity
     particles.newParticlesCount = 0;
     particles.lastUsedParticle = 0;
     particles.currentBurst = 0;
+    // version 2: a copy starts stopped and empty (playOnAwake plays it), as a loaded scene's
+    particles.state = ParticleSimState();
 }
 
 template<>

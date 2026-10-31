@@ -641,6 +641,7 @@ void LuaBinding::registerClasses(lua_State *L){
     registerCoreClasses(L);
     registerGameObjectClasses(L);
     registerActionClasses(L);
+    registerParticleClasses(L);
     registerECSClasses(L);
     registerIOClasses(L);
     registerMathClasses(L); 
