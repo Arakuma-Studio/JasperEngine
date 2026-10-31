@@ -1282,6 +1282,32 @@ std::string editor::Stream::layoutGroupTypeToString(LayoutGroupType type) {
     }
 }
 
+std::string editor::Stream::canvasGroupRenderModeToString(CanvasGroupRenderMode mode) {
+    return mode == CanvasGroupRenderMode::FLATTEN ? "FLATTEN" : "PER_ELEMENT";
+}
+
+CanvasGroupRenderMode editor::Stream::stringToCanvasGroupRenderMode(const std::string& str) {
+    std::string upper = str;
+    std::transform(upper.begin(), upper.end(), upper.begin(), [](unsigned char c){ return (char)std::toupper(c); });
+    return upper == "FLATTEN" ? CanvasGroupRenderMode::FLATTEN : CanvasGroupRenderMode::PER_ELEMENT;
+}
+
+std::string editor::Stream::alphaTweenTargetToString(AlphaTweenTarget target) {
+    switch (target) {
+        case AlphaTweenTarget::COLOR: return "COLOR";
+        case AlphaTweenTarget::CANVAS_GROUP: return "CANVAS_GROUP";
+        default: return "AUTO";
+    }
+}
+
+AlphaTweenTarget editor::Stream::stringToAlphaTweenTarget(const std::string& str) {
+    std::string upper = str;
+    std::transform(upper.begin(), upper.end(), upper.begin(), [](unsigned char c){ return (char)std::toupper(c); });
+    if (upper == "COLOR") return AlphaTweenTarget::COLOR;
+    if (upper == "CANVAS_GROUP") return AlphaTweenTarget::CANVAS_GROUP;
+    return AlphaTweenTarget::AUTO;
+}
+
 LayoutGroupType editor::Stream::stringToLayoutGroupType(const std::string& str) {
     if (str == "vertical") return LayoutGroupType::VERTICAL;
     if (str == "horizontal") return LayoutGroupType::HORIZONTAL;
@@ -5073,6 +5099,11 @@ YAML::Node editor::Stream::encodeComponents(const Entity entity, const EntityReg
         compNode[Catalog::getComponentName(ComponentType::LayoutGroupComponent, true)] = encodeLayoutGroupComponent(container);
     }
 
+    if (signature.test(registry->getComponentId<CanvasGroupComponent>())) {
+        const CanvasGroupComponent& group = registry->getComponent<CanvasGroupComponent>(entity);
+        compNode[Catalog::getComponentName(ComponentType::CanvasGroupComponent, true)] = encodeCanvasGroupComponent(group);
+    }
+
     if (signature.test(registry->getComponentId<TextComponent>())) {
         const TextComponent& text = registry->getComponent<TextComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::TextComponent, true)] = encodeTextComponent(text);
@@ -5479,6 +5510,19 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::LayoutGroupComponent, existing, &container);
             registry->getComponent<LayoutGroupComponent>(entity) = std::move(container);
+            Catalog::updateEntity(registry, entity, flags);
+        }
+    }
+
+    compName = Catalog::getComponentName(ComponentType::CanvasGroupComponent, true);
+    if (compNode[compName]) {
+        CanvasGroupComponent* existing = registry->findComponent<CanvasGroupComponent>(entity);
+        CanvasGroupComponent group = decodeCanvasGroupComponent(compNode[compName], existing);
+        if (!signature.test(registry->getComponentId<CanvasGroupComponent>())){
+            registry->addComponent<CanvasGroupComponent>(entity, std::move(group));
+        }else{
+            uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::CanvasGroupComponent, existing, &group);
+            registry->getComponent<CanvasGroupComponent>(entity) = std::move(group);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -6744,6 +6788,40 @@ LayoutGroupComponent editor::Stream::decodeLayoutGroupComponent(const YAML::Node
     if (node["wrapCellHeight"]) container.wrapCellHeight = YamlNumbers::as<unsigned int>(node["wrapCellHeight"]);
 
     return container;
+}
+
+// ── CanvasGroupComponent (ui canvas group spec 7.5) ──
+
+YAML::Node editor::Stream::encodeCanvasGroupComponent(const CanvasGroupComponent& group) {
+    YAML::Node node;
+    node["enabled"] = group.enabled;
+    node["alpha"] = group.alpha;
+    node["interactable"] = group.interactable;
+    node["blocksRaycasts"] = group.blocksRaycasts;
+    node["ignoreParentGroups"] = group.ignoreParentGroups;
+    node["renderMode"] = canvasGroupRenderModeToString(group.renderMode);
+    return node;
+}
+
+CanvasGroupComponent editor::Stream::decodeCanvasGroupComponent(const YAML::Node& node, const CanvasGroupComponent* oldGroup) {
+    CanvasGroupComponent group;
+
+    if (oldGroup) {
+        // the authored fields; the runtime block stays the scene's
+        group = *oldGroup;
+    }
+
+    if (node["enabled"]) group.enabled = YamlNumbers::as<bool>(node["enabled"]);
+    if (node["alpha"]) {
+        const float alpha = YamlNumbers::as<float>(node["alpha"]);
+        if (!std::isnan(alpha)) group.alpha = std::clamp(alpha, 0.0f, 1.0f);
+    }
+    if (node["interactable"]) group.interactable = YamlNumbers::as<bool>(node["interactable"]);
+    if (node["blocksRaycasts"]) group.blocksRaycasts = YamlNumbers::as<bool>(node["blocksRaycasts"]);
+    if (node["ignoreParentGroups"]) group.ignoreParentGroups = YamlNumbers::as<bool>(node["ignoreParentGroups"]);
+    if (node["renderMode"]) group.renderMode = stringToCanvasGroupRenderMode(node["renderMode"].as<std::string>());
+
+    return group;
 }
 
 YAML::Node editor::Stream::encodeTextComponent(const TextComponent& text) {
@@ -9226,6 +9304,8 @@ YAML::Node editor::Stream::encodeTweenComponent(const TweenComponent& timed) {
     node["loop"] = timed.loop;
     node["pingPong"] = timed.pingPong;
     node["function"] = encodeEase(timed.function);
+    // written when set: older files stay byte-identical
+    if (timed.useUnscaledTime) node["useUnscaledTime"] = true;
 
     return node;
 }
@@ -9244,6 +9324,7 @@ TweenComponent editor::Stream::decodeTweenComponent(const YAML::Node& node, cons
     if (node["loop"]) timed.loop = YamlNumbers::as<bool>(node["loop"]);
     if (node["pingPong"]) timed.pingPong = YamlNumbers::as<bool>(node["pingPong"]);
     if (node["function"]) timed.function = decodeEase(node["function"], oldTimed ? &oldTimed->function : nullptr);
+    if (node["useUnscaledTime"]) timed.useUnscaledTime = YamlNumbers::as<bool>(node["useUnscaledTime"]);
 
     return timed;
 }
@@ -9361,6 +9442,8 @@ YAML::Node editor::Stream::encodeAlphaTweenComponent(const AlphaTweenComponent& 
 
     node["endAlpha"] = alphaTween.endAlpha;
     node["startAlpha"] = alphaTween.startAlpha;
+    // written when not AUTO: older files stay byte-identical
+    if (alphaTween.alphaTarget != AlphaTweenTarget::AUTO) node["alphaTarget"] = alphaTweenTargetToString(alphaTween.alphaTarget);
 
     return node;
 }
@@ -9374,6 +9457,7 @@ AlphaTweenComponent editor::Stream::decodeAlphaTweenComponent(const YAML::Node& 
 
     if (node["endAlpha"]) alphaTween.endAlpha = YamlNumbers::as<float>(node["endAlpha"]);
     if (node["startAlpha"]) alphaTween.startAlpha = YamlNumbers::as<float>(node["startAlpha"]);
+    if (node["alphaTarget"]) alphaTween.alphaTarget = stringToAlphaTweenTarget(node["alphaTarget"].as<std::string>());
 
     return alphaTween;
 }

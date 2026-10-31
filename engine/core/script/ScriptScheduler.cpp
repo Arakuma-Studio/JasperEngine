@@ -43,9 +43,12 @@ namespace {
     // a due time within this of the clock is due (sums of 1/60 are not exact)
     constexpr double EPSILON = 1e-9;
 
+    int continueWait(lua_State* L, int status, lua_KContext ctx);
+
     int finish(lua_State* L, int results){
         if (results == RAISE) return lua_error(L);
-        if (results == YIELD) return lua_yield(L, 0);
+        // the continuation checks who resumes: only the engine may (ctx: the helper's own values)
+        if (results == YIELD) return lua_yieldk(L, 0, static_cast<lua_KContext>(lua_gettop(L)), continueWait);
         return results;
     }
 
@@ -72,6 +75,8 @@ namespace {
         bool stopRequested = false;  // stopped while running: ends at its next wait
         bool hasTimeout = false;
         bool owned = false;          // a script instance started it (owner is cleared when it is released)
+        bool started = false;        // its first segment ran (later resumes need a suspended thread)
+        bool indexed = false;        // in State::ownedIndex under (scene, entity)
         uint64_t resumeAt = 0;       // first update frame (or fixed step, end of frame) it may resume
         double due = 0.0;            // Seconds: when; Until/While with a timeout: the deadline
         double waitStart = 0.0;
@@ -118,7 +123,9 @@ namespace {
         std::weak_ptr<char> sceneLife;
         int fnRef = LUA_NOREF;       // a Lua function
         std::string method;          // or a method of the owner instance (self:invoke("spawn", 1))
-        std::function<void()> cpp;   // or C++
+        // or C++: shared, so a repeating callable keeps its state between calls (and lives through a
+        // call that cancels its timer)
+        std::shared_ptr<std::function<void()>> cpp;
         int handles = 0;             // live Timer userdata
         std::unique_ptr<TimerText> text;
     };
@@ -128,6 +135,8 @@ namespace {
         std::vector<TimerRecord> timers;    // creation order = id order
         std::unordered_map<lua_State*, TaskId> threads;   // engine coroutine threads alive
         std::vector<TaskId> runningStack;   // coroutines running now, innermost last
+        // the live coroutines of each script GameObject: a deactivation looks up only its subtree
+        std::unordered_map<const EntityRegistry*, std::unordered_map<Entity, std::vector<TaskId>>> ownedIndex;
         TaskId nextId = 1;
         uint64_t frame = 0;         // update frames begun
         uint64_t fixedStep = 0;     // fixed steps begun
@@ -160,6 +169,34 @@ namespace {
 
     CoRecord* findCo(TaskId id){ return id ? findRecord(S().coroutines, id) : nullptr; }
     TimerRecord* findTimer(TaskId id){ return id ? findRecord(S().timers, id) : nullptr; }
+
+    void indexAdd(CoRecord& rec){
+        if (rec.indexed || !rec.owned || !rec.scene || rec.entity == NULL_ENTITY) return;
+        S().ownedIndex[static_cast<const EntityRegistry*>(rec.scene)][rec.entity].push_back(rec.id);
+        rec.indexed = true;
+    }
+
+    void indexRemove(CoRecord& rec){
+        if (!rec.indexed) return;
+        rec.indexed = false;
+        auto& index = S().ownedIndex;
+        auto registry = index.find(static_cast<const EntityRegistry*>(rec.scene));
+        if (registry == index.end()) return;
+        auto entity = registry->second.find(rec.entity);
+        if (entity != registry->second.end()){
+            std::vector<TaskId>& ids = entity->second;
+            ids.erase(std::remove(ids.begin(), ids.end(), rec.id), ids.end());
+            if (ids.empty()) registry->second.erase(entity);
+        }
+        if (registry->second.empty()) index.erase(registry);
+    }
+
+    // The thread runs Lua now (running, or "normal": it resumed another), so it cannot be closed:
+    // the engine's own resume, or a coroutine.resume of user code on an engine coroutine
+    bool threadIsActive(lua_State* co){
+        lua_Debug ar;
+        return co && lua_status(co) == LUA_OK && lua_getstack(co, 0, &ar) != 0;
+    }
 
     // ------------------------------------------------------------------ registry refs
 
@@ -266,6 +303,24 @@ namespace {
             }
         }
         return mainState();
+    }
+
+    // A wait helper resumed: by the engine (the values it passed are the helper's results), or by
+    // a coroutine.resume of user code on an engine coroutine, which is refused (the wait would end
+    // early while the engine still counts it as waiting)
+    int continueWait(lua_State* L, int status, lua_KContext ctx){
+        (void)status;
+        const State& s = S();
+        auto it = s.threads.find(L);
+        if (it == s.threads.end() || s.runningStack.empty() || s.runningStack.back() != it->second){
+            // the engine ends it in its next phase (stopped, or failed when the error kills the thread)
+            if (it != s.threads.end()){
+                if (CoRecord* rec = findCo(it->second)) rec->stopRequested = true;
+            }
+            return luaL_error(L, "an engine coroutine waiting in a Coroutine wait was resumed by coroutine.resume; "
+                                 "the engine resumes its coroutines (wait for one with Coroutine.waitFor)");
+        }
+        return lua_gettop(L) - static_cast<int>(ctx);
     }
 
     // ------------------------------------------------------------------ handles
@@ -397,7 +452,13 @@ namespace {
         CoRecord* rec = findCo(id);
         if (!rec || rec->ended()) return;
         State& s = S();
+        if (threadIsActive(rec->thread)){
+            // running (resumed by coroutine.resume of user code): closed when control is back
+            rec->stopRequested = true;
+            return;
+        }
         releaseWaitRefs(*rec);
+        indexRemove(*rec);
         rec->status = status;
         rec->stopRequested = false;
         s.erasable = true;
@@ -560,6 +621,18 @@ namespace {
                     immediate = pushCoroutineResults(pushTo, other);
                     return true;
                 }
+                // A waits for B, which waits (through others) for A: none would ever end
+                int steps = 0;
+                for (const CoRecord* link = other; link && !link->ended() && link->wait == Wait::Target &&
+                        link->target == Target::Coroutine && steps < 100000; steps++){
+                    if (link->targetId == selfId){
+                        error = "Coroutine.waitFor: Coroutine " + std::to_string(targetId) + " waits" +
+                                (steps > 0 ? " (through " + std::to_string(steps) + " other coroutine" + (steps > 1 ? "s" : "") + ")" : std::string()) +
+                                " for this one: they would wait for each other forever";
+                        return false;
+                    }
+                    link = findCo(link->targetId);
+                }
                 target = Target::Coroutine;
                 break;
             }
@@ -620,9 +693,14 @@ namespace {
         return true;
     }
 
-    // Polls a Target wait: the results pushed on `co` (the count), -1 not done, -2 an error
-    // (message in `error`)
-    int pollTarget(CoRecord& rec, lua_State* co, std::string& error){
+    // Polls a Target wait: the results pushed on the coroutine's thread (the count), -1 not done,
+    // -2 an error (message in `error`), -3 the coroutine stopped or moved on meanwhile (isDone() is
+    // Lua: it may stop, start or deactivate anything)
+    int pollTarget(TaskId id, std::string& error){
+        CoRecord* found = findCo(id);
+        if (!found || found->status != CoStatus::Suspended || !found->thread || found->wait != Wait::Target) return -3;
+        CoRecord& rec = *found;
+        lua_State* co = rec.thread;
         switch (rec.target){
             case Target::Coroutine:
                 return pushCoroutineResults(co, findCo(rec.targetId));
@@ -666,21 +744,27 @@ namespace {
                 return 1;
             }
             case Target::IsDone: {
-                // isDone() is Lua: it may start coroutines, which moves `rec`
-                const int targetRef = rec.targetRef;
+                // isDone() is Lua: nothing read before it is used after it (`rec`, `co`, the ref)
                 lua_State* L = mainState();
                 lua_pushcfunction(L, luaCallIsDone);
-                lua_rawgeti(L, LUA_REGISTRYINDEX, targetRef);
+                lua_rawgeti(L, LUA_REGISTRYINDEX, rec.targetRef);
                 if (LuaBinding::pcallWithTraceback(L, 1, 1) != LUA_OK){
                     error = "isDone() of the awaited value failed: " + LuaBinding::getLuaStackErrorString(L, -1);
                     lua_pop(L, 1);
-                    return -2;
+                    const CoRecord* again = findCo(id);
+                    return (again && again->status == CoStatus::Suspended && again->thread && again->wait == Wait::Target) ? -2 : -3;
                 }
                 const bool done = lua_toboolean(L, -1) != 0;
                 lua_pop(L, 1);
+                CoRecord* again = findCo(id);
+                if (!again || again->status != CoStatus::Suspended || !again->thread || again->wait != Wait::Target ||
+                        again->target != Target::IsDone)
+                    return -3;
                 if (!done) return -1;
-                lua_pushboolean(co, 1);
-                lua_rawgeti(co, LUA_REGISTRYINDEX, targetRef);
+                // the results go on the main state first, then over to the (checked) thread
+                lua_pushboolean(L, 1);
+                lua_rawgeti(L, LUA_REGISTRYINDEX, again->targetRef);
+                lua_xmove(L, again->thread, 2);
                 return 2;
             }
             default:
@@ -754,6 +838,23 @@ namespace {
             CoRecord* rec = findCo(id);
             if (!rec || !rec->thread || rec->ended()) return;
             lua_State* co = rec->thread;
+            if (rec->started && rec->stopRequested && lua_status(co) == LUA_YIELD){
+                // stopped while user code had it running (coroutine.resume): ends instead of resuming
+                lua_pop(co, nargs);
+                endCoroutine(id, CoStatus::Stopped);
+                return;
+            }
+            if (rec->started && lua_status(co) != LUA_YIELD){
+                // run (or ended) by a coroutine.resume of user code meanwhile
+                if (threadIsActive(co)){
+                    rec->stopRequested = true;
+                    return;
+                }
+                failCoroutine(id, "the engine coroutine was resumed with coroutine.resume outside the engine "
+                                  "(engine coroutines are resumed only by the engine)", false);
+                return;
+            }
+            rec->started = true;
             rec->status = CoStatus::Running;
             rec->wait = Wait::None;
             rec->waitRecorded = false;
@@ -772,6 +873,7 @@ namespace {
                 s.threads.erase(co);
                 rec->thread = nullptr;
                 releaseWaitRefs(*rec);
+                indexRemove(*rec);
                 dropRef(rec->threadRef);
                 rec->status = CoStatus::Error;
                 if (rec->text) rec->text->error = "native crash";
@@ -796,6 +898,12 @@ namespace {
                 }
                 rec = findCo(id);
                 if (!rec) return;
+                if (rec->stopRequested){
+                    // stopped by Lua run while the yielded value was read
+                    if (immediate > 0) lua_pop(co, immediate);
+                    endCoroutine(id, CoStatus::Stopped);
+                    return;
+                }
                 if (immediate >= 0){
                     // waitFor a coroutine that already ended: no frame passes
                     nargs = immediate;
@@ -848,7 +956,7 @@ namespace {
     void stopCoroutineId(TaskId id){
         CoRecord* rec = findCo(id);
         if (!rec || rec->ended()) return;
-        if (rec->status == CoStatus::Running){
+        if (rec->status == CoStatus::Running || threadIsActive(rec->thread)){
             rec->stopRequested = true;
             return;
         }
@@ -922,13 +1030,14 @@ namespace {
         }
         lua_State* L = mainState();
         if (timer->cpp){
-            std::function<void()> fn = timer->cpp;
+            // the same callable every call (its state stays), alive through the call
+            const std::shared_ptr<std::function<void()>> fn = timer->cpp;
             if (last) endTimer(*timer, false);
             #ifdef JASPERENGINE_CRASH_GUARD
             auto& handler = FunctionSubscribeGlobal::getCrashHandler();
             if (handler){
                 CrashInfo info{};
-                if (!callWithCrashGuard([&](){ fn(); }, &info)){
+                if (!callWithCrashGuard([&](){ (*fn)(); }, &info)){
                     handler("timer:C++", std::string(info.name ? info.name : "UNKNOWN") + " (" +
                             (info.description ? info.description : "") + ")");
                     if (TimerRecord* again = findTimer(id)) endTimer(*again, true);
@@ -936,7 +1045,7 @@ namespace {
                 return;
             }
             #endif
-            fn();
+            (*fn)();
             return;
         }
         if (!L){
@@ -1026,6 +1135,12 @@ namespace {
         if (it == S().threads.end()){
             lua_pushfstring(L, "%s: not inside an engine coroutine (start one with self:startCoroutine or Coroutine.start; "
                                "event handlers like onUpdate cannot wait)", fn);
+            return 0;
+        }
+        const std::vector<TaskId>& running = S().runningStack;
+        if (running.empty() || running.back() != it->second){
+            lua_pushfstring(L, "%s: this engine coroutine was resumed by coroutine.resume; the engine resumes its "
+                               "coroutines (wait for one with Coroutine.waitFor, use coroutine.wrap for generators)", fn);
             return 0;
         }
         if (!lua_isyieldable(L)){
@@ -1129,6 +1244,15 @@ namespace {
             lua_pushlstring(L, error.data(), error.size());
             return RAISE;
         }
+        CoRecord* rec = findCo(id);
+        if (rec && rec->stopRequested){
+            // stopped (co:stop() before, or by Lua run to read x): no result, it ends at this wait
+            lua_settop(L, top);
+            rec->wait = Wait::Frames;
+            rec->resumeAt = S().frame + 1;
+            rec->waitRecorded = true;
+            return YIELD;
+        }
         if (immediate >= 0) return immediate;
         return YIELD;
     }
@@ -1182,6 +1306,7 @@ namespace {
         }
         const TaskId id = rec.id;
         s.coroutines.push_back(std::move(rec));
+        indexAdd(s.coroutines.back());
         s.threads[co] = id;
 
         // the first segment runs now, under the caller's hook (eval_lua's timeout); later
@@ -1569,6 +1694,12 @@ void ScriptScheduler::updatePhase(){
     const size_t count = s.coroutines.size();
     for (size_t i = 0; i < count; i++){
         CoRecord& rec = s.coroutines[i];
+        if (rec.status == CoStatus::Suspended && rec.stopRequested && rec.started){
+            // stopped while user code ran it (coroutine.resume): it ends now, whatever it waits for
+            const TaskId stopped = rec.id;
+            resumeCoroutine(stopped, mainState(), 0);
+            continue;
+        }
         if (rec.status != CoStatus::Suspended || rec.resumeAt > frame) continue;
         const TaskId id = rec.id;
         switch (rec.wait){
@@ -1587,11 +1718,12 @@ void ScriptScheduler::updatePhase(){
             }
             case Wait::Until:
             case Wait::While: {
+                const bool until = rec.wait == Wait::Until;
                 if (stopIfInactive(id)) break;
                 lua_State* L = mainState();
                 lua_rawgeti(L, LUA_REGISTRYINDEX, s.coroutines[i].predicateRef);
                 if (LuaBinding::pcallWithTraceback(L, 0, 1) != LUA_OK){
-                    const std::string message = "the " + std::string(s.coroutines[i].wait == Wait::Until ? "waitUntil" : "waitWhile") +
+                    const std::string message = "the " + std::string(until ? "waitUntil" : "waitWhile") +
                                                 " predicate failed: " + LuaBinding::getLuaStackErrorString(L, -1);
                     lua_pop(L, 1);
                     failCoroutine(id, message, false);
@@ -1600,7 +1732,9 @@ void ScriptScheduler::updatePhase(){
                 const bool value = lua_toboolean(L, -1) != 0;
                 lua_pop(L, 1);
                 CoRecord* again = findCo(id);
-                if (!again || again->status != CoStatus::Suspended) break;
+                // the predicate is Lua: the coroutine may have been stopped or moved on meanwhile
+                if (!again || again->status != CoStatus::Suspended || !again->thread ||
+                        (again->wait != Wait::Until && again->wait != Wait::While)) break;
                 const bool satisfied = again->wait == Wait::Until ? value : !value;
                 if (satisfied){
                     lua_pushboolean(again->thread, 1);
@@ -1613,9 +1747,8 @@ void ScriptScheduler::updatePhase(){
             }
             case Wait::Target: {
                 if (stopIfInactive(id)) break;
-                CoRecord* again = findCo(id);
                 std::string error;
-                const int results = pollTarget(*again, again->thread, error);
+                const int results = pollTarget(id, error);
                 if (results == -2){
                     failCoroutine(id, error, false);
                     break;
@@ -1676,6 +1809,7 @@ void ScriptScheduler::cancelOwner(const void* owner){
     // the owner (a registry ref) may be reused by the next instance: forgotten here
     for (CoRecord& rec : s.coroutines){
         if (rec.owner != owner) continue;
+        indexRemove(rec);
         rec.owner = nullptr;
         rec.scene = nullptr;
         rec.sceneLife.reset();
@@ -1683,17 +1817,46 @@ void ScriptScheduler::cancelOwner(const void* owner){
     compact();
 }
 
+namespace {
+    // the owners' coroutines among `ids` whose GameObject is gone or no longer active in hierarchy
+    void stopInactive(const std::vector<TaskId>& ids){
+        std::vector<TaskId> stop;
+        for (TaskId id : ids){
+            const CoRecord* rec = findCo(id);
+            if (!rec || rec->ended() || !rec->owner || !rec->scene) continue;
+            Scene* scene = liveScene(rec->scene, rec->sceneLife);
+            if (!scene || !scene->isEntityCreated(rec->entity) || !scene->isEntityActiveInHierarchy(rec->entity))
+                stop.push_back(id);
+        }
+        for (TaskId id : stop) stopCoroutineId(id);
+    }
+}
+
+bool ScriptScheduler::hasCoroutinesIn(const EntityRegistry* registry){
+    return registry && S().ownedIndex.count(registry) > 0;
+}
+
 void ScriptScheduler::stopCoroutinesOfInactive(const EntityRegistry* registry){
     State& s = S();
-    if (!registry || s.coroutines.empty()) return;
+    auto found = s.ownedIndex.find(registry);
+    if (found == s.ownedIndex.end()) return;
     std::vector<TaskId> ids;
-    for (const CoRecord& rec : s.coroutines){
-        if (rec.ended() || !rec.owner || !rec.scene) continue;
-        if (static_cast<const EntityRegistry*>(rec.scene) != registry) continue;
-        Scene* scene = liveScene(rec.scene, rec.sceneLife);
-        if (!scene || !scene->isEntityCreated(rec.entity) || !scene->isEntityActiveInHierarchy(rec.entity)) ids.push_back(rec.id);
+    for (const auto& [entity, list] : found->second) ids.insert(ids.end(), list.begin(), list.end());
+    stopInactive(ids);
+    compact();
+}
+
+void ScriptScheduler::stopCoroutinesOfInactive(const EntityRegistry* registry, const Entity* entities, size_t count){
+    State& s = S();
+    auto found = s.ownedIndex.find(registry);
+    if (found == s.ownedIndex.end() || !entities) return;
+    std::vector<TaskId> ids;
+    for (size_t i = 0; i < count; i++){
+        auto entity = found->second.find(entities[i]);
+        if (entity != found->second.end()) ids.insert(ids.end(), entity->second.begin(), entity->second.end());
     }
-    for (TaskId id : ids) stopCoroutineId(id);
+    if (ids.empty()) return;
+    stopInactive(ids);
     compact();
 }
 
@@ -1702,9 +1865,12 @@ void ScriptScheduler::rebind(const void* owner, Scene* scene, Entity entity){
     State& s = S();
     for (CoRecord& rec : s.coroutines){
         if (rec.owner != owner) continue;
+        const bool indexed = rec.indexed;
+        indexRemove(rec);
         rec.scene = scene;
         rec.entity = entity;
         rec.sceneLife = scene ? scene->getLifetime() : std::weak_ptr<char>();
+        if (indexed) indexAdd(rec);
     }
     for (TimerRecord& timer : s.timers){
         if (timer.owner != owner) continue;
@@ -1736,6 +1902,7 @@ void ScriptScheduler::clear(){
     s.timers.clear();
     s.threads.clear();
     s.runningStack.clear();
+    s.ownedIndex.clear();
 }
 
 // ====================================================================== Lua coroutines from C++
@@ -1763,7 +1930,7 @@ TaskId ScriptScheduler::after(double delay, std::function<void()> fn, TimeMode m
     timer.unscaled = mode == TimeMode::Unscaled;
     timer.due = clockOf(timer.unscaled) + (std::isfinite(delay) ? std::max(0.0, delay) : 0.0);
     timer.owner = owner;
-    timer.cpp = std::move(fn);
+    timer.cpp = std::make_shared<std::function<void()>>(std::move(fn));
     return addTimer(std::move(timer));
 }
 
@@ -1780,7 +1947,7 @@ TaskId ScriptScheduler::every(double delay, double interval, std::function<void(
     timer.interval = interval;
     timer.remaining = count < 0 ? -1 : count;
     timer.owner = owner;
-    timer.cpp = std::move(fn);
+    timer.cpp = std::make_shared<std::function<void()>>(std::move(fn));
     return addTimer(std::move(timer));
 }
 

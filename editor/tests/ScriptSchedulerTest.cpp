@@ -1165,30 +1165,208 @@ TEST_F(CoroutineTest, ScriptsWithTheirOwnMetatablesStillGetTheInstanceMethods) {
 }
 
 TEST_F(CoroutineTest, CppStartsALuaCoroutineForAnInstance) {
-    // not named start: the script lifecycle calls a method of that name itself
     const Entity entity = addScript("Starter", R"(
         local M = {}
         function M:init() end
-        function M:launch() Log("launch" .. F()) Coroutine.nextFrame() Log("resumed" .. F()) end
+        function M:run() Log("start" .. F()) Coroutine.nextFrame() Log("resumed" .. F()) end
         return M
     )");
     start();
     lua_rawgeti(L, LUA_REGISTRYINDEX, static_cast<lua_Integer>(reinterpret_cast<intptr_t>(instanceOf(entity))));
-    lua_getfield(L, -1, "launch");
+    lua_getfield(L, -1, "run");
     lua_pushvalue(L, -2);
-    const TaskId id = ScriptScheduler::startCoroutine(L, -3, -2, 1, "launch");
+    const TaskId id = ScriptScheduler::startCoroutine(L, -3, -2, 1, "run");
     lua_pop(L, 3);
     EXPECT_NE(id, 0u);
     const std::vector<ScriptCoroutineInfo> infos = ScriptScheduler::coroutinesOf(instanceOf(entity));
     ASSERT_EQ(infos.size(), 1u);
-    EXPECT_EQ(infos[0].method, "launch");
+    EXPECT_EQ(infos[0].method, "run");
     EXPECT_EQ(infos[0].origin, "Starter.lua:4");
     EXPECT_EQ(infos[0].waiting, "frames 1");
     frames(1);
-    EXPECT_EQ(log(), "launch0 resumed1");
+    EXPECT_EQ(log(), "start0 resumed1");
     // not a live instance: nothing starts
     lua_newtable(L);
     lua_pushcfunction(L, [](lua_State*) -> int { return 0; });
     EXPECT_EQ(ScriptScheduler::startCoroutine(L, -2, -1, 0), 0u);
     lua_pop(L, 2);
+}
+
+// ================================================================== review regressions
+
+TEST_F(CoroutineTest, AnIsDoneThatStopsTheWaitingCoroutineIsSafe) {
+    const Entity entity = addScript("SelfStopper", R"(
+        local M = {}
+        function M:init()
+            local me = self
+            local byHandle = { }
+            function byHandle:isDone() KeptA:stop() return true end
+            local byOwner = { }
+            function byOwner:isDone() me:stopAllCoroutines() return true end
+            KeptA = Coroutine.start(function() Coroutine.waitFor(byHandle) Log("a-never") end)
+            KeptB = self:startCoroutine(function() Coroutine.waitFor(byOwner) Log("b-never") end)
+        end
+        return M
+    )");
+    const Entity other = addScript("Deactivator", R"(
+        local M = {}
+        function M:init()
+            local go = GameObject(self.scene, self.entity)
+            local byDeactivation = { }
+            function byDeactivation:isDone() go:setActive(false) collectgarbage("collect") return true end
+            KeptC = self:startCoroutine(function() Coroutine.waitFor(byDeactivation) Log("c-never") end)
+        end
+        return M
+    )");
+    start();
+    frames(3);
+    EXPECT_EQ(log(), "");
+    EXPECT_EQ(eval("return KeptA.status .. ' ' .. KeptB.status .. ' ' .. KeptC.status"), "stopped stopped stopped");
+    EXPECT_FALSE(scene->isEntityActive(other));
+    EXPECT_EQ(ScriptScheduler::coroutineCountOf(instanceOf(entity)), 0u);
+    run("KeptA = nil KeptB = nil KeptC = nil");
+}
+
+TEST_F(CoroutineTest, ARepeatingCppTimerKeepsItsCallable) {
+    std::vector<int> calls;
+    ScriptScheduler::every(0.0, 0.0001, [&calls, n = 0]() mutable { calls.push_back(++n); }, TimeMode::Scaled, nullptr, 4);
+    frames(5);
+    EXPECT_EQ(calls, (std::vector<int>{1, 2, 3, 4}));
+}
+
+TEST_F(CoroutineTest, DeactivatingGameObjectsWithoutCoroutinesIsCheapWithManyCoroutines) {
+    addScript("Many", R"(
+        local M = {}
+        function M:init() for i = 1, 10000 do self:startCoroutine(function() Coroutine.wait(1000) end) end end
+        return M
+    )");
+    std::vector<Entity> pooled;
+    for (int i = 0; i < 100; i++) pooled.push_back(addObject());
+    start();
+    const auto begin = std::chrono::steady_clock::now();
+    for (int round = 0; round < 10; round++) {
+        for (Entity e : pooled) scene->setEntityActive(e, false);
+        for (Entity e : pooled) scene->setEntityActive(e, true);
+    }
+    const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count();
+    std::printf("[ScriptScheduler] 1000 deactivations with 10000 coroutines elsewhere: %.3f ms\n", ms);
+    EXPECT_LT(ms, 20.0);   // was O(all coroutines) each: ~250 ms
+    EXPECT_EQ(ScriptScheduler::coroutineCount(), 10000u);
+}
+
+TEST_F(CoroutineTest, TheUnscaledClockStopsWhileTheGameEventsArePaused) {
+    frames(2);
+    EXPECT_GT(Engine::getUnscaledDeltatime(), 0.0f);
+    const double before = Engine::getUnscaledTime();
+    Engine::pauseGameEvents(true);
+    frames(5);
+    EXPECT_EQ(Engine::getUnscaledDeltatime(), 0.0f);
+    EXPECT_EQ(Engine::getUnscaledTime(), before);
+    EXPECT_EQ(eval("return Time.unscaledDeltaTime"), "0.0");
+    Engine::pauseGameEvents(false);
+    frames(1);
+    EXPECT_NEAR(Engine::getUnscaledTime(), before + 1.0 / 60.0, 1e-9);
+}
+
+TEST_F(CoroutineTest, AStoppedCoroutineDoesNotGoOnThroughAnImmediateWaitFor) {
+    ASSERT_EQ(run(R"(
+        local ended = Coroutine.start(function() return 1 end)
+        Kept = Coroutine.start(function()
+            Coroutine.running():stop()
+            local ok = Coroutine.waitFor(ended)
+            Log("never" .. tostring(ok))
+        end)
+    )"), "");
+    EXPECT_EQ(log(), "");
+    EXPECT_EQ(eval("return Kept.status"), "stopped");
+}
+
+TEST_F(CoroutineTest, CoroutineResumeOnAnEngineCoroutineIsRefusedAndStopIsSafe) {
+    ASSERT_EQ(run(R"(
+        Kept = Coroutine.start(function() T = coroutine.running() Coroutine.wait(10) Log("woke") end)
+        local ok, err = coroutine.resume(T)
+        Log("resume" .. tostring(ok) .. tostring(err:find("resumed by coroutine.resume") ~= nil))
+    )"), "");
+    EXPECT_EQ(log(), "resumefalsetrue");
+    frames(1);
+    EXPECT_EQ(eval("return Kept.status"), "error");
+    EXPECT_NE(logged().find("resumed with coroutine.resume outside the engine"), std::string::npos) << logged();
+
+    // a stop while user code runs the thread is deferred (never a close of a running thread)
+    clearLog();
+    ASSERT_EQ(run(R"(
+        Kept2 = Coroutine.start(function()
+            T = coroutine.running()
+            coroutine.yield()
+            Kept2:stop()
+            Log("after-stop:" .. Kept2.status)
+            coroutine.yield()
+            Log("never")
+        end)
+        coroutine.resume(T)
+    )"), "");
+    frames(2);
+    EXPECT_EQ(log(), "after-stop:suspended");
+    EXPECT_EQ(eval("return Kept2.status"), "stopped");
+    run("T = nil Kept2 = nil");
+}
+
+TEST_F(CoroutineTest, MutualWaitsAreAnError) {
+    ASSERT_EQ(run(R"(
+        Kept = Coroutine.start(function()
+            local me = Coroutine.running()
+            local other = Coroutine.start(function() local ok = Coroutine.waitFor(me) Log("other" .. tostring(ok)) end)
+            local ok, err = pcall(Coroutine.waitFor, other)
+            Log("cycle" .. tostring(ok) .. tostring(err:find("wait for each other forever") ~= nil))
+            Coroutine.nextFrame()
+            return "a"
+        end)
+    )"), "");
+    frames(3);
+    EXPECT_EQ(log(), "cyclefalsetrue othertrue");
+}
+
+TEST_F(CoroutineTest, WaitForEndOfFrameResumesAfterTheDraw) {
+    Engine::onDraw.add("test", std::function<void()>([this](){ ASSERT_EQ(run("Log('draw' .. F())"), ""); }));
+    addScript("EofDraw", R"(
+        local M = {}
+        function M:init()
+            RegisterEngineEvent(self, "onPostUpdate")
+            self:startCoroutine(function() for i = 1, 2 do Coroutine.waitForEndOfFrame() Log("eof" .. F()) end end)
+        end
+        function M:onPostUpdate() Log("post" .. F()) end
+        return M
+    )");
+    start();
+    Engine::systemDraw();
+    Engine::systemDraw();
+    Engine::onDraw.remove("test");
+    EXPECT_EQ(log(), "post1 draw1 eof1 post2 draw2 eof2");
+}
+
+TEST_F(CoroutineTest, CoroutinesAndTimersFollowAGameObjectMovedToAnotherScene) {
+    const Entity entity = addScript("Mover2", R"(
+        local M = {}
+        function M:init()
+            Kept = self:startCoroutine(function() while true do Coroutine.nextFrame() Log("co") end end)
+            self:invokeRepeating(function() Log("timer") end, 0, 0.0001)
+        end
+        return M
+    )");
+    start();
+    frames(1);
+    EXPECT_EQ(log(), "timer co");
+    void* owner = instanceOf(entity);
+    Scene other;
+    const std::vector<Entity> moved = ObjectManager::moveToScene(scene.get(), entity, &other);
+    ASSERT_FALSE(moved.empty());
+    clearLog();
+    frames(1);
+    EXPECT_EQ(log(), "timer co");
+    EXPECT_EQ(ScriptScheduler::coroutineCountOf(owner), 1u);
+    // the owner index follows: deactivating it in the new scene stops the coroutine
+    other.setEntityActive(moved[0], false);
+    EXPECT_EQ(eval("return Kept.status"), "stopped");
+    LuaBinding::cleanupLuaScripts(&other);
+    EXPECT_EQ(ScriptScheduler::timerCountOf(owner), 0u);
 }

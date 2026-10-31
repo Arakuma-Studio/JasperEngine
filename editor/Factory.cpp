@@ -543,6 +543,18 @@ std::string editor::Factory::formatAnchorPreset(AnchorPreset preset) {
     }
 }
 
+std::string editor::Factory::formatCanvasGroupRenderMode(CanvasGroupRenderMode mode) {
+    return mode == CanvasGroupRenderMode::FLATTEN ? "CanvasGroupRenderMode::FLATTEN" : "CanvasGroupRenderMode::PER_ELEMENT";
+}
+
+std::string editor::Factory::formatAlphaTweenTarget(AlphaTweenTarget target) {
+    switch (target) {
+        case AlphaTweenTarget::COLOR: return "AlphaTweenTarget::COLOR";
+        case AlphaTweenTarget::CANVAS_GROUP: return "AlphaTweenTarget::CANVAS_GROUP";
+        default: return "AlphaTweenTarget::AUTO";
+    }
+}
+
 std::string editor::Factory::formatLayoutGroupType(LayoutGroupType type) {
     switch (type) {
         case LayoutGroupType::VERTICAL: return "LayoutGroupType::VERTICAL";
@@ -1681,6 +1693,22 @@ std::string editor::Factory::createLayoutGroupComponent(int indentSpaces, Entity
     return code.str();
 }
 
+std::string editor::Factory::createCanvasGroupComponent(int indentSpaces, EntityRegistry* scene, Entity entity, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
+    if (!scene->findComponent<CanvasGroupComponent>(entity)) return "";
+    CanvasGroupComponent& group = scene->getComponent<CanvasGroupComponent>(entity);
+    std::ostringstream code;
+    const std::string ind = indentation(indentSpaces);
+    code << ind << "CanvasGroupComponent canvasgroup;\n";
+    code << ind << "canvasgroup.enabled = " << formatBool(group.enabled) << ";\n";
+    code << ind << "canvasgroup.alpha = " << formatFloat(group.alpha) << ";\n";
+    code << ind << "canvasgroup.interactable = " << formatBool(group.interactable) << ";\n";
+    code << ind << "canvasgroup.blocksRaycasts = " << formatBool(group.blocksRaycasts) << ";\n";
+    code << ind << "canvasgroup.ignoreParentGroups = " << formatBool(group.ignoreParentGroups) << ";\n";
+    code << ind << "canvasgroup.renderMode = " << formatCanvasGroupRenderMode(group.renderMode) << ";\n";
+    addComponentCode(code, ind, sceneName, entityName, entity, "CanvasGroupComponent", "canvasgroup", assignExisting);
+    return code.str();
+}
+
 std::string editor::Factory::createTextComponent(int indentSpaces, EntityRegistry* scene, Entity entity, const fs::path& projectPath, std::string sceneName, std::string entityName, bool assignExisting, const std::unordered_map<Entity, std::string>* entityVarNames) {
     if (!scene->findComponent<TextComponent>(entity)) return "";
     TextComponent& text = scene->getComponent<TextComponent>(entity);
@@ -2713,6 +2741,8 @@ std::string editor::Factory::createTweenComponent(int indentSpaces, EntityRegist
     code << ind << "timedcomp.loop = " << formatBool(timed.loop) << ";\n";
     code << ind << "timedcomp.pingPong = " << formatBool(timed.pingPong) << ";\n";
     code << ind << "timedcomp.function = " << formatEase(timed.function) << ";\n";
+    if (timed.useUnscaledTime)
+        code << ind << "timedcomp.useUnscaledTime = true;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "TweenComponent", "timedcomp", assignExisting);
     return code.str();
 }
@@ -2778,6 +2808,8 @@ std::string editor::Factory::createAlphaTweenComponent(int indentSpaces, EntityR
     code << ind << "AlphaTweenComponent alphacomp;\n";
     code << ind << "alphacomp.endAlpha = " << formatFloat(alphaTween.endAlpha) << ";\n";
     code << ind << "alphacomp.startAlpha = " << formatFloat(alphaTween.startAlpha) << ";\n";
+    if (alphaTween.alphaTarget != AlphaTweenTarget::AUTO)
+        code << ind << "alphacomp.alphaTarget = " << formatAlphaTweenTarget(alphaTween.alphaTarget) << ";\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "AlphaTweenComponent", "alphacomp", assignExisting);
     return code.str();
 }
@@ -3207,6 +3239,7 @@ std::string editor::Factory::createComponent(int indentSpaces, EntityRegistry* s
         case ComponentType::MeshPolygonComponent: return createMeshPolygonComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::RectTransformComponent: return createRectTransformComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::LayoutGroupComponent: return createLayoutGroupComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
+        case ComponentType::CanvasGroupComponent: return createCanvasGroupComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::TextComponent: return createTextComponent(indentSpaces, scene, entity, projectPath, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::ImageComponent: return createImageComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);
         case ComponentType::SpriteComponent: return createSpriteComponent(indentSpaces, scene, entity, sceneName, entityName, assignExisting, entityVarNames);

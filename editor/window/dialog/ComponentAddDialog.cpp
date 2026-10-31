@@ -105,6 +105,7 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::ScrollbarComponent, "Scroll control"},
             {ComponentType::ProgressbarComponent, "Progress indicator"},
             {ComponentType::LayoutGroupComponent, "Arranges child elements in a row, column or grid"},
+            {ComponentType::CanvasGroupComponent, "Fades, disables or makes click-through a UI subtree"},
             {ComponentType::PolygonComponent, "Filled UI polygon"},
             {ComponentType::UIDocumentComponent, "HTML/CSS document rendered by the engine"},
         }},

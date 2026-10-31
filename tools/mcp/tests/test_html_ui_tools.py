@@ -101,8 +101,6 @@ LIMITS.update({"bake_vertex_animation": 2000})
 LIMITS.update({"user_settings": 550})
 # input (spec 2026-10-31-input 12): send_input's action/axis/axis_delta events and the input.actions setting,
 # measured on the merged tree: total 106687 (106611 before), the limit raised by them
-# coroutines (spec 2026-10-31-coroutines 7): get_play_state names its coroutines/timers counts and
-# get_runtime_entity the scripts' coroutines and timers: total 106770 (106687 before), the limit raised by them (+83)
 # physics-2d: edit_physics_material (396) and set_joint's motor / spring / limits / break /
 # enable_collision / anchor_space paid by moving set_joint's type lists and per-argument texts to
 # jasper://docs/physics (set_joint 1020 -> 756); merged with main (script-data, input): 150 tools
@@ -112,11 +110,13 @@ LIMITS.update({"user_settings": 550})
 # 106621, the limit set to it
 # lines and trails: no new tool; create_entity's type "trail_renderer" paid by a shorter create_entity
 # description, set_shape_points' line text reworded; measured on the merged tree: total 106692 (106687 before)
-# (106700 was re-measured on the merged tree by the lead's verification)
-# camera-shake (on coroutines; merged with main: physics-2d, script-lifecycle, lines-trails):
-# list_assets' type enum gains "shake", with coroutines' get_play_state / get_runtime_entity texts:
-# 150 tools measured 106717
-TOTAL_LIMIT = 106717
+TOTAL_LIMIT = 106700  # re-measured on the merged tree by the lead's verification
+# ui-canvas-group: create_ui's canvas_group node option (the rules in jasper://docs/ui) and
+# create_entity's canvas_group type; merged with main (lines-trails): 150 tools measured 106771
+TOTAL_LIMIT = 106771
+# coroutines (spec 2026-10-31-coroutines 7): get_play_state names its coroutines/timers counts and
+# get_runtime_entity the scripts' coroutines and timers (+83); merged with main (ui-canvas-group): 106771 + 83
+TOTAL_LIMIT = 106854
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

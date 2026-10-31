@@ -118,27 +118,28 @@ return Player
 ```
 - Property types: bool, int, float, string, vector2/3/4, color3/color4, prefab, entity, any
   wrapper class name (Sprite, Text, Image, Button, AudioSource, Rigidbody2D, ...), or another
-  Lua script's class name (you get that script's self), read as self.<name>.
+  Lua script's class name (that script's self), read as self.<name>.
 - Events: RegisterEngineEvent(self, "onUpdate" | "onFixedUpdate" | "onPostUpdate" |
   "onKeyDown" | "onMouseDown" | "onTouchStart" | ...); define the method first. Component
   events: RegisterEvent(self, Button(self.scene, self.entity):getButtonComponent().onPress,
   "onPress"); Unregister* undo them (else automatic).
-- Lifecycle: init (Awake: first activation, even disabled), onEnable, start, onDisable,
-  onDestroy; self.enabled; obj:getScript("Enemy") (jasper://docs/lua-api 1.1).
+- Lifecycle by name: init (Awake: first activation, even disabled), onEnable, start,
+  onDisable, onDestroy; self.enabled; obj:getScript("Enemy") (lua-api 1.1). Survive loads:
+  DontDestroyOnLoad(self); singleton: if GameObject.persistSingleton(self)~=self then return end
 - Bound getters are often PROPERTIES, not methods: go.position, sprite.width, body.mass,
-  Engine.deltatime ("attempt to call a nil value": no such method). Unseen names:
-  jasper://docs/lua-api (an index), the Lua stubs or search_engine_api.
+  Engine.deltatime ("attempt to call a nil value": no such method). Check
+  jasper://docs/lua-api (an index), the Lua stubs or search_engine_api for unseen names.
 - Input.getAxis/getButtonDown('Jump') read Project Settings > Input actions; getKeyDown(key)
   is an edge, isKeyPressed held. Test with send_input action/axis events (jasper://docs/input).
   Log.print/warn/error take ONE string (use ..).
 - Time: Time.deltaTime, unscaledDeltaTime, time, timeScale (Unity names; Time.fixedDeltaTime is
-  the fixed step, Engine.fixedDeltatime a fixed frame delta). Waits: self:startCoroutine(fn) +
-  Coroutine.wait/nextFrame/waitUntil/waitFor inside it (not in onUpdate); timers: self:invoke.
-- Lua has no C++ default arguments: pass every argument (the wake flag...).
-- Saves: PlayerPrefs, Json.encode/decode, File.writeText("data://x") (jasper://docs/lua-api
-  2.4); user_settings reads/resets PlayerPrefs.
-- No Dori.Script, on_start, getComponent or setProperty in Lua, nor editor property paths
-  (submeshes[0]...).
+  the fixed step). Waits: self:startCoroutine(fn) + Coroutine.wait/nextFrame/waitUntil/waitFor
+  inside it (not in onUpdate); timers: self:invoke.
+- Lua has no C++ default arguments: pass every argument.
+- Saves: PlayerPrefs, Json.encode/decode, File.writeText("data://x") (lua-api 2.4);
+  user_settings reads/resets PlayerPrefs.
+- Lua has no Dori.Script, getComponent or setProperty. Never put editor property
+  paths (submeshes[0]...) in scripts.
 
 ## C++ scripts
 Two kinds (create_script): a ScriptBase subclass, or a subclass of the GameObject's own class
@@ -184,7 +185,8 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
 - UI (text, image, button, panel, scrollbar, progressbar, input field, layout group; HTML/CSS
   UI: below): create_ui lays out in pixels with y DOWN from the parent's top-left, in 2D scenes
   and UI scenes alike, but in a 2D scene layout groups stack bottom-up and pointer input needs a
-  UI camera: put HUDs and menus in a UI scene attached as a child scene (set_child_scene).
+  UI camera: put HUDs and menus in a child UI scene (set_child_scene). Fade, disable or
+  click-through a UI subtree: Canvas Group (jasper://docs/ui).
 
 ## Physics
 - Add a body and its collider to the SAME GameObject in one step (edit_colliders with

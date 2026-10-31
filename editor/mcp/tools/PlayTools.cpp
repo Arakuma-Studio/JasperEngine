@@ -40,9 +40,9 @@
 #include "object/physics/Rigidbody2D.h"
 #include "subsystem/PhysicsSystem.h"
 #include "script/LuaBinding.h"
+#include "script/ScriptScheduler.h"
 #include "script/ScriptRuntime.h"
 #include "manager/SceneManager.h"
-#include "script/ScriptScheduler.h"
 #include "util/EntityPath.h"
 #include "window/PlayInput.h"
 
@@ -468,6 +468,8 @@ Json runningScenesJson(Project* project) {
         const uint32_t source = project->getPlaySourceSceneId(sp->id);
         if (source != sp->id) item["source_scene_id"] = source;
         item["main"] = sp->id == project->getPlaySessionSceneId();
+        // DontDestroyOnLoad's scene: survives scene loads
+        if (project->isPersistentPlayScene(sp->id)) item["persistent"] = true;
         list.push_back(item);
     }
     return list;
@@ -2080,7 +2082,7 @@ Json scriptStateJson(Project* project, SceneProject* sp, Entity entity, int maxD
             item["state"] = fields;
             lua_settop(L, top);
             item["coroutines"] = coroutinesJson(entry.instance);
-            item["timers"] = timersJson(entry.instance);
+            item["timers"] = timersJson(entry.cppScript ? static_cast<const void*>(entry.cppScript) : entry.instance);
         } else if (entry.type == ScriptType::CPP && entry.instance) {
             // C++ has no reflection: the DPROPERTY members (what the Inspector shows)
             Json fields = Json::object();
@@ -2234,12 +2236,17 @@ void getRuntimeEntityTool(const CallPtr& call) {
     data["path"] = EntityPath::of(sp->scene, entity);
     data["scene"] = McpRefs::sceneJson(project, *sp);
     data["created_at_runtime"] = std::find(created.begin(), created.end(), entity) != created.end();
+    // in the DontDestroyOnLoad scene, or marked to move there
+    if (project->isPersistentPlayScene(sp->id) || SceneManager::isPersistent(sp->scene, entity)) data["persistent"] = true;
     data["components"] = components;
     // a fluid's runtime state (read only; FluidStats, the matching preset)
     if (only.empty() || only.count(ComponentType::FluidSimulationComponent)) {
         const Json fluid = McpValues::fluidStatsToJson(sp->scene, entity);
         if (!fluid.is_null()) data["fluid_stats"] = fluid;
     }
+    // the Canvas Groups over a UI element (inherited alpha, interactable, click-through)
+    const Json groupState = McpValues::canvasGroupStateToJson(sp->scene, entity);
+    if (!groupState.is_null()) data["canvas_group_state"] = groupState;
     // physics read-outs (joint forces and angles, body mass and velocities)
     if ((only.empty() || only.count(ComponentType::Joint2DComponent)) && sp->scene->findComponent<Joint2DComponent>(entity)) {
         data["joint2d"] = joint2DReadoutsJson(sp->scene, entity);
@@ -2254,6 +2261,7 @@ void getRuntimeEntityTool(const CallPtr& call) {
                        sp->name + "\": " + data["components"].dump();
     if (data.contains("scripts") && !data["scripts"].empty()) text += "\nscripts: " + data["scripts"].dump();
     if (data.contains("fluid_stats")) text += "\nfluid_stats: " + data["fluid_stats"].dump();
+    if (data.contains("canvas_group_state")) text += "\ncanvas_group_state: " + data["canvas_group_state"].dump();
     if (data.contains("joint2d")) text += "\njoint2d: " + data["joint2d"].dump();
     if (data.contains("rigidbody2d")) text += "\nrigidbody2d: " + data["rigidbody2d"].dump();
     if (text.size() > 12000) text = text.substr(0, 12000) + " ... (see structuredContent)";

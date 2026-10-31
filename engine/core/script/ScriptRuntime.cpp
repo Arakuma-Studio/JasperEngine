@@ -4,10 +4,12 @@
 #include "ScriptRuntime.h"
 #include "ScriptMessages.h"
 #include "LuaBinding.h"
+#include "ScriptScheduler.h"
 #include "Engine.h"
 #include "Scene.h"
 #include "Log.h"
 #include "manager/ObjectManager.h"
+#include "manager/SceneManager.h"
 #include "component/ScriptComponent.h"
 
 #include "lua.hpp"
@@ -27,6 +29,9 @@ namespace {
 
     // awakened and not unloaded, in start order
     std::vector<Scene*> startedScenes;
+
+    // scenes awakening now (a script's init can start another scene)
+    int awakeningScenes = 0;
 
     bool isStarted(Scene* scene) {
         return scene && std::find(startedScenes.begin(), startedScenes.end(), scene) != startedScenes.end();
@@ -75,6 +80,47 @@ namespace {
                 return;
             }
             fn(*entry, i);
+        }
+    }
+
+    // Lua `start` runs as an engine coroutine (it may Coroutine.wait); false when the script
+    // has no Lua start (C++ scripts go through call)
+    bool startLuaCoroutine(Scene* scene, Entity entity, size_t index) {
+        ScriptComponent* scripts = scene->findComponent<ScriptComponent>(entity);
+        if (!scripts || index >= scripts->scripts.size()) {
+            return false;
+        }
+        const ScriptEntry& entry = scripts->scripts[index];
+        lua_State* L = LuaBinding::getLuaState();
+        if (entry.type != ScriptType::LUA || !entry.instance || !L) {
+            return false;
+        }
+        const int top = lua_gettop(L);
+        lua_rawgeti(L, LUA_REGISTRYINDEX, static_cast<int>(reinterpret_cast<intptr_t>(entry.instance)));
+        LuaBinding::protectedGetField(L, -1, "start");
+        if (lua_isfunction(L, -1)) {
+            lua_pushvalue(L, top + 1);   // self
+            // errors are logged as coroutine errors (with the coroutine's traceback)
+            ScriptScheduler::startCoroutine(L, top + 1, top + 2, 1, "start");
+        }
+        lua_settop(L, top);
+        return true;
+    }
+
+    // The coroutines and timers of the scripts of these GameObjects end (destroy, unload),
+    // after onDisable and before onDestroy, as Unity stops them
+    void cancelScheduled(Scene* scene, const std::vector<Entity>& entities) {
+        for (Entity entity : entities) {
+            ScriptComponent* scripts = scene->isEntityCreated(entity) ? scene->findComponent<ScriptComponent>(entity) : nullptr;
+            for (size_t i = 0; scripts && i < scripts->scripts.size(); i++) {
+                const ScriptEntry& entry = scripts->scripts[i];
+                const void* owner = entry.type == ScriptType::LUA ? entry.instance : static_cast<const void*>(entry.cppScript);
+                if (owner) {
+                    ScriptScheduler::cancelOwner(owner);
+                }
+                // a __close may have changed the component
+                scripts = scene->isEntityCreated(entity) ? scene->findComponent<ScriptComponent>(entity) : nullptr;
+            }
         }
     }
 
@@ -256,8 +302,15 @@ void ScriptRuntime::awakeScene(Scene* scene) {
     startedScenes.push_back(scene);
     // what the scripts instantiate goes to their scene, not yet the Engine's
     ObjectManager::pushActiveScene(scene);
+    awakeningScenes++;
     awake(scene, scriptedOrder(scene));
+    awakeningScenes--;
     ObjectManager::popActiveScene();
+    // the end of a scene's start in a scene load is a safe point for what its scripts asked to
+    // persist (DontDestroyOnLoad in init): it moves before the scene's documents start
+    if (awakeningScenes == 0 && scene != SceneManager::getPersistentScene() && SceneManager::isStartingScenes()) {
+        SceneManager::flushPersistentMoves();
+    }
 }
 
 void ScriptRuntime::awakeEntities(Scene* scene, const std::vector<Entity>& entities) {
@@ -276,7 +329,8 @@ void ScriptRuntime::onActiveInHierarchyChanged(Scene* scene, const std::vector<E
         awake(scene, changed);
     } else {
         disableAll(scene, changed);
-        // (coroutines: ScriptScheduler::stopCoroutinesOf for the instances of `changed`)
+        // their coroutines stop (not their timers): Unity's SetActive(false)
+        ScriptScheduler::stopCoroutinesOfInactive(scene, changed.data(), changed.size());
     }
 }
 
@@ -323,10 +377,16 @@ void ScriptRuntime::flushStarts() {
         if (!entry || !state.enabledLatch || !wantsEnabled(scene, entity, *entry, state)) {
             continue;
         }
+        // destroyed before its first frame (Unity: Destroy(gameObject) in Awake, a singleton's
+        // duplicate): it goes at the end of this frame without its start
+        if (ObjectManager::isDestroyPending(scene, entity)) {
+            continue;
+        }
         state.started = true;
-        // (coroutines: a Lua start runs as a coroutine through ScriptScheduler::startCoroutine,
-        // so it can wait; until then it is a plain call)
-        call(scene, entity, index, ScriptMessage::Start);
+        // a Lua start runs as a coroutine, so it can wait; C++ start is a plain call
+        if (!startLuaCoroutine(scene, entity, index)) {
+            call(scene, entity, index, ScriptMessage::Start);
+        }
     }
 }
 
@@ -336,7 +396,7 @@ void ScriptRuntime::destroyEntities(Scene* scene, const std::vector<Entity>& ent
     }
     markDestroying(scene, entities);
     disableAll(scene, entities);
-    // (coroutines: ScriptScheduler::cancelOwner for their instances)
+    cancelScheduled(scene, entities);
     destroyAll(scene, entities);
 }
 
@@ -356,6 +416,9 @@ void ScriptRuntime::unloadScenes(const std::vector<Scene*>& scenes) {
     }
     for (auto& [scene, entities] : unloading) {
         disableAll(scene, entities);
+    }
+    for (auto& [scene, entities] : unloading) {
+        cancelScheduled(scene, entities);
     }
     for (auto& [scene, entities] : unloading) {
         destroyAll(scene, entities);
@@ -440,5 +503,32 @@ void ScriptRuntime::remap(Scene* from, Scene* to, const std::unordered_map<Entit
             state.scene = to;
             state.entity = moved->second;
         }
+    }
+    // their members (self.gameObject, isActiveAndEnabled) name the new place
+    for (const auto& [oldEntity, newEntity] : entities) {
+        (void)oldEntity;
+        ScriptComponent* scripts = scriptsOf(to, newEntity);
+        if (!scripts) {
+            continue;
+        }
+        for (const ScriptEntry& entry : scripts->scripts) {
+            const ScriptState* state = getState(entry.instance);
+            LuaBinding::syncScriptMembers(to, newEntity, entry, entry.enabled && state && !state->destroyed &&
+                                          to->isEntityActiveInHierarchy(newEntity));
+        }
+    }
+}
+
+void ScriptRuntime::removeSubscriptionsByTag(Scene* scene, const std::string& tag) {
+    if (tag.empty()) {
+        return;
+    }
+    Engine::removeSubscriptionsByTag(tag);
+    if (scene) {
+        scene->removeSubscriptionsByTag(tag);
+    }
+    Scene* persistent = SceneManager::getPersistentScene();
+    if (persistent && persistent != scene) {
+        persistent->removeSubscriptionsByTag(tag);
     }
 }

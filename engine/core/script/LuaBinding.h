@@ -8,6 +8,7 @@
 #include "ecs/Entity.h"
 #include "animation/AnimationEvent.h"
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 typedef struct lua_State lua_State;
@@ -57,6 +58,11 @@ namespace jasperengine {
         static int luaFindGameObjectsWithTag(lua_State* L);
         static int luaFindObjectOfType(lua_State* L);
         static int luaFindObjectsOfType(lua_State* L);
+        // persistent objects (DontDestroyOnLoad, binding/ScriptClassesLua.cpp)
+        static int luaDontDestroyOnLoad(lua_State* L);
+        static int luaIsPersistent(lua_State* L);
+        static int luaPersistSingleton(lua_State* L);
+        static int luaMoveGameObjectToScene(lua_State* L);
 
         static int moduleLoader(lua_State *L);
         static int handleLuaError(lua_State* L);
@@ -76,8 +82,8 @@ namespace jasperengine {
         static void registerHtmlUIAnimeClasses(lua_State *L);
         static void registerHtmlUIVectorClasses(lua_State *L);
         static void registerHtmlUIMediaClasses(lua_State *L);
-        static void registerScriptClasses(lua_State *L);
         static void registerCoroutineClasses(lua_State *L);
+        static void registerScriptClasses(lua_State *L);
 
         static void init();
 
@@ -112,7 +118,6 @@ namespace jasperengine {
         // store a lua_State* received from a binding, it may be a coroutine's thread, which ends
         // (and is collected) long before a stored callback runs; store LuaBinding::mainThread(L).
         static lua_State* mainThread(lua_State* L);
-
 
         // The check of that rule: every allocation of the state (any Lua work that allocates,
         // and every collection step) compares the thread with the owner's. A use from another
@@ -162,9 +167,14 @@ namespace jasperengine {
         static void initializeLuaScripts(Scene* scene, const std::vector<Entity>& entities);
         static void cleanupLuaScripts(Scene* scene, const std::vector<Entity>& entities);
 
+        // GameObjects moved to another scene (persistence; old -> new entity, their Script
+        // components in `to` now): their Lua instances get `self.scene` and `self.entity` of the
+        // new place, and the GameObject wrappers held in their fields that point at a moved
+        // GameObject follow it
+        static void rebindLuaScripts(Scene* from, Scene* to, const std::unordered_map<Entity, Entity>& moved);
+
         // The table of the methods every Lua script instance has after its own class's
-        // (getScript..., self:startCoroutine, self:invoke...; ScriptInstanceBase): features add
-        // theirs to it. Made on first use
+        // (getScript...; ScriptInstanceBase): features add theirs to it
         static void pushScriptInstanceBase(lua_State* L);
         // t[key] of the value at `index` in a protected call (a class's __index may raise):
         // pushes the value, or nil and false on an error

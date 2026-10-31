@@ -10,9 +10,9 @@
 #include "input/InputActions.h"
 #include "render/SystemRender.h"
 #include "script/LuaBinding.h"
+#include "script/ScriptScheduler.h"
 #include "script/ScriptRuntime.h"
 #include "lua.hpp"
-#include "script/ScriptScheduler.h"
 #include "manager/SceneManager.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/PhysicsSystem.h"
@@ -212,8 +212,15 @@ void Engine::setScene(Scene* scene){
 
 Scene* Engine::getScene(){
     std::lock_guard<std::mutex> lock(sceneListMutex);
-    // none before the first scene is set (a scene's scripts start before it is)
-    return Engine::scenes.empty() ? nullptr : Engine::scenes[0];
+    // none before the first scene is set (a scene's scripts start before it is); never the
+    // persistent scene (DontDestroyOnLoad), first while a load builds its new scenes
+    Scene* persistent = SceneManager::getPersistentScene();
+    for (Scene* scene : Engine::scenes) {
+        if (scene != persistent) {
+            return scene;
+        }
+    }
+    return nullptr;
 }
 
 std::vector<Scene*> Engine::getScenesSnapshot(){
@@ -1436,11 +1443,14 @@ void Engine::runFrame(bool draw){
         frameTime = fixedDeltatime;
     }
     deltatime = simulationHeld ? 0.0 : frameTime * timeScale;
-    // the unscaled delta (Time.unscaledDeltaTime, realtime waits, the UI clock): it runs at
-    // time scale 0 (a pause menu animates) and stops with the updates, a held simulation or a
-    // paused app
-    unscaledDeltatime = (paused || simulationHeld) ? 0.0 : frameTime;
-    HtmlUIClock::advance(unscaledDeltatime);
+    // the unscaled delta (Time.unscaledDeltaTime, realtime waits): it runs at time scale 0 (a
+    // pause menu animates) and stops with the game: a held simulation, a paused app, or the game
+    // events paused (the editor's Play pause, edit time)
+    // (getUnscaledDeltatime(): also 0 while Engine::pauseGameEvents(true), the editor's Play pause)
+    unscaledDeltatime = (paused || simulationHeld || !onUpdate.isEnabled()) ? 0.0 : frameTime;
+    // the UI clock: the same, but it keeps running while only the game events are paused (HTML
+    // UI documents animate in edit mode and in a paused Play)
+    HtmlUIClock::advance((paused || simulationHeld) ? 0.0 : frameTime);
 
     // the input of this frame is over: no low surrogate will follow a pending high one
     flushCharInput();
@@ -1462,6 +1472,10 @@ void Engine::runFrame(bool draw){
     RuntimeShaderCompiler::beginFrame();
 
     frameRunning = true;
+
+    // what DontDestroyOnLoad / MoveGameObjectToScene asked for between frames (input
+    // callbacks, the editor's tools), at this frame's first safe point
+    SceneManager::flushPersistentMoves();
 
     // a transition requested during the last frame; one requested by its factory waits again
     SceneManager::applyPendingLoad();
@@ -1697,6 +1711,8 @@ void Engine::systemShutdown(){
     // anime's Lua references and the script coroutines and timers go while the Lua state still exists
     AnimEngine::instance().reset();
     ScriptScheduler::clear();
+    // the persistent scene's scripts (their onDestroy ran above) are released, and it goes
+    SceneManager::destroyPersistentScene();
     LuaBinding::cleanup();
 
     removeAllSceneLayers(true);

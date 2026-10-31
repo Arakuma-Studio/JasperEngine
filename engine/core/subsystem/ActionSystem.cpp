@@ -2106,12 +2106,26 @@ void ActionSystem::processRunningAction(double dt, Entity entity, ActionComponen
         if (signature.test(scene->getComponentId<AlphaTweenComponent>())){
             AlphaTweenComponent& alphatween = scene->getComponent<AlphaTweenComponent>(entity);
 
-            if (targetSignature.test(scene->getComponentId<MeshComponent>())){
+            // AUTO: the target's enabled Canvas Group when it has one, else its colour alpha
+            CanvasGroupComponent* group = targetSignature.test(scene->getComponentId<CanvasGroupComponent>())
+                ? &scene->getComponent<CanvasGroupComponent>(action.target) : nullptr;
+            const bool toGroup = alphatween.alphaTarget == AlphaTweenTarget::CANVAS_GROUP ||
+                                 (alphatween.alphaTarget == AlphaTweenTarget::AUTO && group && group->enabled);
+
+            if (toGroup){
+                if (group){
+                    const float alpha = alphatween.startAlpha + (alphatween.endAlpha - alphatween.startAlpha) * tween.value;
+                    // clamped (an overshooting ease stays in range), NaN rejected
+                    if (!std::isnan(alpha)){
+                        group->alpha = std::clamp(alpha, 0.0f, 1.0f);
+                    }
+                }
+            }else if (targetSignature.test(scene->getComponentId<MeshComponent>())){
                 MeshComponent& mesh = scene->getComponent<MeshComponent>(action.target);
 
                 alphaTweenUpdate(tween, alphatween, mesh.submeshes[0].material.baseColorFactor);
             }
-            if (targetSignature.test(scene->getComponentId<UIComponent>())){
+            if (!toGroup && targetSignature.test(scene->getComponentId<UIComponent>())){
                 UIComponent& ui = scene->getComponent<UIComponent>(action.target);
 
                 alphaTweenUpdate(tween, alphatween, ui.color);
@@ -2224,6 +2238,30 @@ void ActionSystem::updateActionPreview(double dt, Entity entity){
     }
 }
 
+// The unscaled frame delta of an update given the scaled one. While the time scale is above 0
+// it is dt / timeScale (the frame delta before the scale, exact for any dt a caller steps
+// with); at time scale 0 it is the frame delta the engine measured (the fixed frame delta
+// when set, else the last frame's, capped like Engine::deltatime): Engine::getUnscaledDeltatime(),
+// or, for an update stepped outside an engine frame, the same value worked out here.
+double ActionSystem::unscaledDeltatime(double dt){
+    const double timeScale = Engine::getTimeScale();
+    if (timeScale > 0.0){
+        return dt / timeScale;
+    }
+    const double frameUnscaled = Engine::getUnscaledDeltatime();
+    if (frameUnscaled > 0.0){
+        return frameUnscaled;
+    }
+    if (Engine::getFixedDeltatime() > 0.0){
+        return Engine::getFixedDeltatime();
+    }
+    const float framerate = Engine::getFramerate();
+    if (framerate <= 0.0f){
+        return 0.0;
+    }
+    return std::min(1.0 / (double)framerate, (double)Engine::getMaxDeltatime());
+}
+
 void ActionSystem::update(double dt){
     if (paused) {
         return;
@@ -2255,6 +2293,8 @@ void ActionSystem::update(double dt){
     }
 
     //All actions
+    // a tween with useUnscaledTime advances with the frame delta before the time scale
+    const double unscaledDt = unscaledDeltatime(dt);
     auto actions = scene->getComponentArray<ActionComponent>();
     for (int i = 0; i < actions->size(); i++){
 		Entity entity = actions->getEntity(i);
@@ -2267,7 +2307,8 @@ void ActionSystem::update(double dt){
 
         // Action update
         if (action && action->state == ActionState::Running){
-            processRunningAction(dt, entity, *action);
+            const TweenComponent* timed = scene->findComponent<TweenComponent>(entity);
+            processRunningAction((timed && timed->useUnscaledTime) ? unscaledDt : dt, entity, *action);
         }
 
 	}

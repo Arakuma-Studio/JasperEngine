@@ -41,6 +41,7 @@
 #include "component/TerrainComponent.h"
 #include "component/AudioSourceComponent.h"
 #include "component/LayoutGroupComponent.h"
+#include "component/CanvasGroupComponent.h"
 #include "component/UIComponent.h"
 #include "component/TextComponent.h"
 #include "component/InputFieldComponent.h"
@@ -1445,6 +1446,13 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<LayoutGroupComponent>(entity, Stream::decodeLayoutGroupComponent(componentNode));
             }
             break;
+        case ComponentType::CanvasGroupComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<CanvasGroupComponent>(entity, {});
+            }else{
+                registry->addComponent<CanvasGroupComponent>(entity, Stream::decodeCanvasGroupComponent(componentNode));
+            }
+            break;
         default:
             break;
     }
@@ -1936,6 +1944,12 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
             }
             registry->removeComponent<LayoutGroupComponent>(entity);
             break;
+        case ComponentType::CanvasGroupComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeCanvasGroupComponent(registry->getComponent<CanvasGroupComponent>(entity));
+            }
+            registry->removeComponent<CanvasGroupComponent>(entity);
+            break;
         default:
             break;
     }
@@ -2401,6 +2415,8 @@ editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(S
     if (signature.test(scene->getComponentId<LayoutGroupComponent>())) return objectClass("LayoutGroup");
     if (signature.test(scene->getComponentId<UIDocumentComponent>()))  return objectClass("UIDocument");
     if (signature.test(scene->getComponentId<UIComponent>()))          return objectClass("RectTransform");
+    // a container whose own component is its Canvas Group (CanvasGroup(scene, entity) there)
+    if (signature.test(scene->getComponentId<CanvasGroupComponent>())) return handleClass("CanvasGroup");
     // after the renderers: a fluid shown on a Sprite or a Mesh is that object first (its
     // FluidSimulation is FluidSimulation(scene, entity) there)
     if (signature.test(scene->getComponentId<FluidSimulationComponent>())) return objectClass("FluidSimulation");

@@ -1034,6 +1034,7 @@ set(JASPERENGINE_SRCS
     core/object/environment/Water.cpp
     core/object/ui/Button.cpp
     core/object/ui/LayoutGroup.cpp
+    core/object/ui/CanvasGroup.cpp
     core/object/ui/Image.cpp
     core/object/ui/Panel.cpp
     core/object/ui/Polygon.cpp
@@ -1084,6 +1085,7 @@ set(JASPERENGINE_SRCS
     core/script/LuaJson.cpp
     core/script/LuaScript.cpp
     core/script/ScriptBase.cpp
+    core/script/ScriptScheduler.cpp
     core/script/ScriptEvent.cpp
     core/script/ScriptScheduler.cpp
     core/script/ScriptMessages.cpp
@@ -1101,8 +1103,8 @@ set(JASPERENGINE_SRCS
     core/script/binding/UtilClassesLua.cpp
     core/script/binding/HtmlUIClassesLua.cpp
     core/script/binding/HtmlUIAnimeLua.cpp
-    core/script/binding/ScriptClassesLua.cpp
     core/script/binding/CoroutineClassesLua.cpp
+    core/script/binding/ScriptClassesLua.cpp
     core/shader/RuntimeShaderCompiler.cpp
     core/shader/ShaderData.cpp
     core/shader/ShaderDataSerializer.cpp

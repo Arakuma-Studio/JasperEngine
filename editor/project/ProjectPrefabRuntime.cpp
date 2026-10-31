@@ -323,6 +323,10 @@ void editor::Project::registerPrefabManager() {
         }
         sceneProject->needUpdateRender = true;
     });
+    // ...and one DontDestroyOnLoad / MoveGameObjectToScene moved goes along
+    ObjectManager::setMoveListener([this](Scene* from, Scene* to, const std::unordered_map<Entity, Entity>& moved) {
+        onPlayObjectsMoved(from, to, moved);
+    });
 
     // The export's list and order (Generator::configure gets the same collectAllPrefabs),
     // so a prefab id is the same in Play and in the exported game

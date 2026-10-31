@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 #include "EntityRegistry.h"
-#include "script/ScriptScheduler.h"
 
 #include <unordered_set>
 
@@ -75,6 +74,7 @@ EntityRegistry::EntityRegistry() {
     registerComponent<AnimationPlayerComponent>();
     registerComponent<VertexAnimatorComponent>();
     registerComponent<TrailRendererComponent>();
+    registerComponent<CanvasGroupComponent>();
     // camera shake spec 7.1
     registerComponent<CameraShakerComponent>();
     registerComponent<CameraFollowComponent>();
@@ -720,8 +720,6 @@ void EntityRegistry::setEntityChild(Entity parent, Entity child, bool changeTran
                 }
             }
         }
-        // moved under an inactive parent: its scripts' coroutines stop
-        if (entityManager.hasInactive()) ScriptScheduler::stopCoroutinesOfInactive(this);
     }
 
 }
