@@ -190,6 +190,12 @@ void prepare<UIComponent>(UIComponent& ui, Entity, CloneContext& ctx) {
     ui.needUpdateAABB = true;
     ui.focused = false;
     ui.pointerMoved = false;
+    // the target scene's groups set these (a scene without any group never runs the sync)
+    ui.groupAlpha = 1.0f;
+    ui.groupLayerAlpha = 1.0f;
+    ui.groupInteractable = true;
+    ui.groupBlocksRaycasts = true;
+    ui.groupEntity = NULL_ENTITY;
     remapFramebufferTexture(ui.texture, ctx);
     remapFramebufferTextures(ui.shaderTextures, ctx);
     ui.onGetFocus.clear();
@@ -224,6 +230,7 @@ void prepare<PointsComponent>(PointsComponent& points, Entity, CloneContext& ctx
     points.needUpdate = true;
     points.needUpdateBuffer = false;
     points.needUpdateTexture = false;
+    points.uiGroupAlpha = 1.0f;
 }
 
 template<>
@@ -549,6 +556,17 @@ void prepare<LayoutGroupComponent>(LayoutGroupComponent& layout, Entity, CloneCo
 }
 
 template<>
+void prepare<CanvasGroupComponent>(CanvasGroupComponent& group, Entity, CloneContext&) {
+    // the runtime block is the target scene's (UISystem::syncCanvasGroups fills it)
+    const CanvasGroupComponent defaults;
+    group.seen = defaults.seen;
+    group.layerAlpha = defaults.layerAlpha;
+    group.subtreeDraws = defaults.subtreeDraws;
+    group.layered = defaults.layered;
+    group.warnedInvalidAlpha = false;
+}
+
+template<>
 void prepare<RectTransformComponent>(RectTransformComponent& layout, Entity, CloneContext& ctx) {
     layout.panel = ctx.remap(layout.panel);
     layout.needUpdateSizes = true;
@@ -702,6 +720,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<FogComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<MirrorComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<LayoutGroupComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<CanvasGroupComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteAnimationComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<CameraComponent>(source, sourceEntity, signature, target, targetEntity, ctx);

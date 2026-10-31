@@ -93,6 +93,12 @@ namespace jasperengine{
 
         bool hasTextureRect = false;
 
+        // UI particles (Points under a RectTransform): the Canvas Group alpha over the chain,
+        // multiplied into each render point (UISystem::syncCanvasGroups), runtime
+        float uiGroupAlpha = 1.0f;
+        // the pipeline types it was loaded with (see UIComponent::loadedPipelines)
+        uint16_t loadedPipelines = 0;
+
         bool needUpdate = true;
         bool needUpdateBuffer = false;
         bool needUpdateTexture = false;

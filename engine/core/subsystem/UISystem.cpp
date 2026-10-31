@@ -41,6 +41,10 @@ UISystem::UISystem(Scene* scene): SubSystem(scene){
 }
 
 UISystem::~UISystem(){
+    // scene unload: the queued widgets and the helper fades go with it (their tweens are the
+    // scene's entities, destroyed with it)
+    interactabilityLost.clear();
+    canvasGroupFades.clear();
 }
 
 bool UISystem::createImagePatches(ImageComponent& img, UIComponent& ui, RectTransformComponent& layout){
@@ -614,7 +618,8 @@ void UISystem::applyButtonVisual(ButtonComponent& button, UIComponent& ui){
     Texture targetTexture;
     Vector4 targetColor;
 
-    if (button.disabled){
+    // the own flag or a non-interactable Canvas Group (Unity Selectable.IsInteractable)
+    if (button.disabled || !ui.groupInteractable){
         targetTexture = button.textureDisabled;
         targetColor = button.colorDisabled;
     }else if (button.pressed){
@@ -1816,6 +1821,7 @@ bool UISystem::isEntityChild(Entity child, Entity parent) const{
 }
 
 void UISystem::load(){
+    canvasGroupsStructuralDirty = true;
     update(0);
 }
 
@@ -1845,6 +1851,8 @@ void UISystem::destroy(){
 }
 
 void UISystem::draw(){
+    // before RenderSystem draws: a write after the update (onPostUpdate) shows this frame
+    syncCanvasGroups();
 }
 
 void UISystem::createOrUpdateUiComponent(RectTransformComponent& layout, Entity entity, Signature signature){
@@ -2019,9 +2027,15 @@ void UISystem::calculateUIAABB(UIComponent& ui){
 void UISystem::update(double dt){
     pendingImages = false;
 
+    syncCanvasGroups();
+
     if (paused) {
         return;
     }
+
+    // what a Canvas Group change or a finished fade calls back, outside any draw or raycast
+    processInteractabilityLost();
+    processCanvasGroupFades();
 
     // need to be ordered by Transform
     auto layouts = scene->getComponentArray<RectTransformComponent>();
@@ -2712,7 +2726,7 @@ void UISystem::pointerDownOnUI(Entity entity, float x, float y){
 
     if (signature.test(scene->getComponentId<ButtonComponent>())){
         ButtonComponent* button = scene->findComponent<ButtonComponent>(entity);
-        if (button && !button->disabled && !button->pressed){
+        if (button && isInteractable(entity) && !button->pressed){
             button->pressed = true;
             applyButtonVisual(*button, *ui);
             button->onPress.call();
@@ -2729,9 +2743,13 @@ void UISystem::pointerDownOnUI(Entity entity, float x, float y){
     if (!transform || !layout)
         return;
 
+    // a non-interactable field (own flag or Canvas Group) cannot focus
+    const bool interactable = isInteractable(entity);
+    const bool inputFieldBlocked = signature.test(scene->getComponentId<InputFieldComponent>()) && !interactable;
+
     if (signature.test(scene->getComponentId<InputFieldComponent>())){
         InputFieldComponent& inputfield = scene->getComponent<InputFieldComponent>(entity);
-        if (!inputfield.disabled){
+        if (interactable){
             TextComponent* text = scene->findComponent<TextComponent>(inputfield.text);
             ImageComponent* img = scene->findComponent<ImageComponent>(entity);
             if (text && img){
@@ -2758,7 +2776,7 @@ void UISystem::pointerDownOnUI(Entity entity, float x, float y){
         System::instance().hideVirtualKeyboard();
     }
 
-    if (signature.test(scene->getComponentId<ScrollbarComponent>())){
+    if (interactable && signature.test(scene->getComponentId<ScrollbarComponent>())){
         ScrollbarComponent& scrollbar = scene->getComponent<ScrollbarComponent>(entity);
         if (scrollbar.bar != NULL_ENTITY &&
             scene->findComponent<Transform>(scrollbar.bar) &&
@@ -2800,7 +2818,7 @@ void UISystem::pointerDownOnUI(Entity entity, float x, float y){
     layout = &scene->getComponent<RectTransformComponent>(entity);
     ui = &scene->getComponent<UIComponent>(entity);
 
-    if (signature.test(scene->getComponentId<PanelComponent>())){
+    if (interactable && signature.test(scene->getComponentId<PanelComponent>())){
         PanelComponent& panel = scene->getComponent<PanelComponent>(entity);
         RectTransformComponent defaultHeaderLayout;
         const RectTransformComponent& headerlayout = panel.headercontainer != NULL_ENTITY && scene->findComponent<RectTransformComponent>(panel.headercontainer)
@@ -2851,7 +2869,7 @@ void UISystem::pointerDownOnUI(Entity entity, float x, float y){
     if (!ui)
         return;
 
-    if (!ui->focused){
+    if (!ui->focused && !inputFieldBlocked){
         ui->focused = true;
         ui->onGetFocus.call();
         ui = scene->findComponent<UIComponent>(entity);
@@ -2870,6 +2888,17 @@ bool UISystem::eventOnPointerDown(float x, float y){
     lastPointerPos = Vector2(x, y);
     pointerDragging = false;
     pointerInternalGesture = false;
+
+    // a script may have changed a Canvas Group since the last frame (blocksRaycasts)
+    syncCanvasGroups();
+
+    // the hit: the topmost element under the pointer, and the panel it is (or is in)
+    lastUIFromPointer = raycastHit(x, y);
+    if (lastUIFromPointer != NULL_ENTITY){
+        lastPanelFromPointer = scene->findComponent<PanelComponent>(lastUIFromPointer)
+            ? lastUIFromPointer
+            : scene->getComponent<RectTransformComponent>(lastUIFromPointer).panel;
+    }
 
     auto layouts = scene->getComponentArray<RectTransformComponent>();
 
@@ -2890,25 +2919,6 @@ bool UISystem::eventOnPointerDown(float x, float y){
             Transform& transform = scene->getComponent<Transform>(entity);
 
             if (transform.visible && isUIActive(entity, signature)){
-                if (signature.test(scene->getComponentId<ImageComponent>())){
-                    Rect uirect(transform.worldPosition.x, transform.worldPosition.y, layout->width * transform.worldScale.x, layout->height * transform.worldScale.y);
-
-                    if (layout->panel != NULL_ENTITY){
-                        uirect = fitOnPanel(uirect, layout->panel);
-                    }
-
-                    if (uirect.contains(Vector2(x, y)) && !layout->ignoreEvents){ //TODO: inside to polygon
-                        lastUIFromPointer = entity;
-                        lastPanelFromPointer = layout->panel;
-                    }
-
-                    if (signature.test(scene->getComponentId<PanelComponent>())){
-                        if (uirect.contains(Vector2(x, y)) && !layout->ignoreEvents){
-                            lastPanelFromPointer = entity;
-                        }
-                    }
-                }
-
                 if (signature.test(scene->getComponentId<UIComponent>())){
                     UIComponent& ui = scene->getComponent<UIComponent>(entity);
                     if (ui.focused){
@@ -2935,7 +2945,8 @@ bool UISystem::eventOnPointerDown(float x, float y){
     }
 
     if (PanelComponent* panel = scene->findComponent<PanelComponent>(lastPanelFromPointer)){
-        if (panel->canBringToFront){
+        // a non-interactable panel is not brought to the front
+        if (panel->canBringToFront && isInteractable(lastPanelFromPointer)){
             scene->moveChildToTop(lastPanelFromPointer);
         }
     }else{
@@ -2955,8 +2966,12 @@ bool UISystem::eventOnPointerDown(float x, float y){
 bool UISystem::eventOnPointerUp(float x, float y){
     lastPointerPos = Vector2(-1, -1);
 
+    syncCanvasGroups();
+
     auto layouts = scene->getComponentArray<RectTransformComponent>();
-    Entity currentUIFromPointer = NULL_ENTITY;
+    // the element under the pointer now (a dragged element whose group stopped blocking is
+    // not it: the drop target is what is behind)
+    Entity currentUIFromPointer = raycastHit(x, y);
 
     std::vector<Entity> layoutEntities;
     layoutEntities.reserve(layouts->size());
@@ -2975,21 +2990,10 @@ bool UISystem::eventOnPointerUp(float x, float y){
         Transform* transform = scene->findComponent<Transform>(entity);
         UIComponent* ui = scene->findComponent<UIComponent>(entity);
 
-        if (transform->visible && isUIActive(entity, signature) && signature.test(scene->getComponentId<ImageComponent>())){
-            Rect uirect(transform->worldPosition.x, transform->worldPosition.y, layout->width * transform->worldScale.x, layout->height * transform->worldScale.y);
-
-            if (layout->panel != NULL_ENTITY){
-                uirect = fitOnPanel(uirect, layout->panel);
-            }
-
-            if (uirect.contains(Vector2(x, y)) && !layout->ignoreEvents){
-                currentUIFromPointer = entity;
-            }
-        }
-
         if (signature.test(scene->getComponentId<ButtonComponent>())){
             ButtonComponent* button = scene->findComponent<ButtonComponent>(entity);
-            if (button && !button->disabled && button->pressed){
+            // always released: a button pressed before it became non-interactable does not stay pressed
+            if (button && button->pressed){
                 button->pressed = false;
                 applyButtonVisual(*button, *ui);
                 button->onRelease.call();
@@ -3026,8 +3030,8 @@ bool UISystem::eventOnPointerUp(float x, float y){
             }else if (!pointerInternalGesture && currentUIFromPointer == lastUIFromPointer){
                 bool canClick = true;
                 if (signature.test(scene->getComponentId<ButtonComponent>())){
-                    ButtonComponent* button = scene->findComponent<ButtonComponent>(lastUIFromPointer);
-                    canClick = button && !button->disabled;
+                    // interactable when released (Unity Button.OnPointerClick)
+                    canClick = isInteractable(lastUIFromPointer);
                 }
 
                 if (canClick){
@@ -3168,7 +3172,7 @@ void UISystem::pointerMoveOnUI(Entity entity, float x, float y, Vector2 pointerD
 
         if (inputFieldSelecting == entity){
             InputFieldComponent* inputfield = scene->findComponent<InputFieldComponent>(entity);
-            if (inputfield && !inputfield->disabled){
+            if (inputfield && isInteractable(entity)){
                 TextComponent* text = scene->findComponent<TextComponent>(inputfield->text);
                 ImageComponent* img = scene->findComponent<ImageComponent>(entity);
                 if (text && img){
@@ -3177,6 +3181,11 @@ void UISystem::pointerMoveOnUI(Entity entity, float x, float y, Vector2 pointerD
             }
         }
     }
+
+    // scrollbar and panel gestures stop with the widget's interactability (the next update
+    // also clears them: processInteractabilityLost)
+    if (!isInteractable(entity))
+        return;
 
     applyScrollbarPointerPosition(entity, x, y);
 
@@ -3240,66 +3249,49 @@ void UISystem::pointerMoveOnUI(Entity entity, float x, float y, Vector2 pointerD
 }
 
 bool UISystem::eventOnPointerMove(float x, float y){
-    auto layouts = scene->getComponentArray<RectTransformComponent>();
+    syncCanvasGroups();
 
     CursorType cursor = CursorType::ARROW;
-    Entity currentUIFromPointerHover = NULL_ENTITY;
+    Entity currentUIFromPointerHover = raycastHit(x, y);
 
-    for (int i = 0; i < layouts->size(); i++){
-        RectTransformComponent& layout = layouts->getComponentFromIndex(i);
-
-        Entity entity = layouts->getEntity(i);
+    if (currentUIFromPointerHover != NULL_ENTITY){
+        const Entity entity = currentUIFromPointerHover;
         Signature signature = scene->getSignature(entity);
-        if (signature.test(scene->getComponentId<Transform>())){
+
+        // the cursor a non-interactable field or panel offers is the plain arrow
+        if (!isInteractable(entity)){
+            cursor = CursorType::ARROW;
+        }else if (signature.test(scene->getComponentId<InputFieldComponent>())){
+            cursor = CursorType::IBEAM;
+
+        }else if (signature.test(scene->getComponentId<PanelComponent>())){
+            PanelComponent& panel = scene->getComponent<PanelComponent>(entity);
+
+            RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
             Transform& transform = scene->getComponent<Transform>(entity);
+            RectTransformComponent defaultHeaderLayout;
+            const RectTransformComponent& headerlayout = panel.headercontainer != NULL_ENTITY && scene->findComponent<RectTransformComponent>(panel.headercontainer)
+                ? scene->getComponent<RectTransformComponent>(panel.headercontainer)
+                : defaultHeaderLayout;
 
-            if (transform.visible && isUIActive(entity, signature)){
-                if (signature.test(scene->getComponentId<ImageComponent>())){
-                    Rect uirect(transform.worldPosition.x, transform.worldPosition.y, layout.width * transform.worldScale.x, layout.height * transform.worldScale.y);
+            Rect edgeRight;
+            Rect edgeRightBottom;
+            Rect edgeBottom;
+            Rect edgeLeftBottom;
+            Rect edgeLeft;
+            getPanelEdges(panel, layout, transform, headerlayout, edgeRight, edgeRightBottom, edgeBottom, edgeLeftBottom, edgeLeft);
 
-                    if (layout.panel != NULL_ENTITY){
-                        uirect = fitOnPanel(uirect, layout.panel);
-                    }
-
-                    if (uirect.contains(Vector2(x, y)) && !layout.ignoreEvents){
-                        currentUIFromPointerHover = entity;
-                        cursor = CursorType::ARROW;
-
-                        if (signature.test(scene->getComponentId<InputFieldComponent>())){
-                            cursor = CursorType::IBEAM;
-
-                        }else if (signature.test(scene->getComponentId<PanelComponent>())){
-                            PanelComponent& panel = scene->getComponent<PanelComponent>(entity);
-
-                            RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
-                            Transform& transform = scene->getComponent<Transform>(entity);
-                            RectTransformComponent defaultHeaderLayout;
-                            const RectTransformComponent& headerlayout = panel.headercontainer != NULL_ENTITY && scene->findComponent<RectTransformComponent>(panel.headercontainer)
-                                ? scene->getComponent<RectTransformComponent>(panel.headercontainer)
-                                : defaultHeaderLayout;
-
-                            Rect edgeRight;
-                            Rect edgeRightBottom;
-                            Rect edgeBottom;
-                            Rect edgeLeftBottom;
-                            Rect edgeLeft;
-                            getPanelEdges(panel, layout, transform, headerlayout, edgeRight, edgeRightBottom, edgeBottom, edgeLeftBottom, edgeLeft);
-
-                            if (panel.canResize){
-                                if (edgeRight.contains(Vector2(x, y))){
-                                    cursor = CursorType::RESIZE_EW;
-                                }else if (edgeRightBottom.contains(Vector2(x, y))){
-                                    cursor = CursorType::RESIZE_NWSE;
-                                }else if (edgeBottom.contains(Vector2(x, y))){
-                                    cursor = CursorType::RESIZE_NS;
-                                }else if (edgeLeftBottom.contains(Vector2(x, y))){
-                                    cursor = CursorType::RESIZE_NESW;
-                                }else if (edgeLeft.contains(Vector2(x, y))){
-                                    cursor = CursorType::RESIZE_EW;
-                                }
-                            }
-                        }
-                    }
+            if (panel.canResize){
+                if (edgeRight.contains(Vector2(x, y))){
+                    cursor = CursorType::RESIZE_EW;
+                }else if (edgeRightBottom.contains(Vector2(x, y))){
+                    cursor = CursorType::RESIZE_NWSE;
+                }else if (edgeBottom.contains(Vector2(x, y))){
+                    cursor = CursorType::RESIZE_NS;
+                }else if (edgeLeftBottom.contains(Vector2(x, y))){
+                    cursor = CursorType::RESIZE_NESW;
+                }else if (edgeLeft.contains(Vector2(x, y))){
+                    cursor = CursorType::RESIZE_EW;
                 }
             }
         }
@@ -3374,6 +3366,33 @@ bool UISystem::isCoordInside(float x, float y, Transform& transform, RectTransfo
 }
 
 void UISystem::onComponentRemoved(Entity entity, ComponentId componentId) {
+    if (componentId == scene->getComponentId<CanvasGroupComponent>() ||
+        componentId == scene->getComponentId<UIComponent>() ||
+        componentId == scene->getComponentId<PointsComponent>() ||
+        componentId == scene->getComponentId<RectTransformComponent>() ||
+        componentId == scene->getComponentId<Transform>()) {
+        canvasGroupsStructuralDirty = true;
+    }
+    if (componentId == scene->getComponentId<CanvasGroupComponent>()) {
+        // the group's helper fade is cancelled with it (brief: cancelled with the owner)
+        for (size_t i = 0; i < canvasGroupFades.size(); i++) {
+            if (canvasGroupFades[i].group == entity) {
+                CanvasGroupFade fade = std::move(canvasGroupFades[i]);
+                canvasGroupFades.erase(canvasGroupFades.begin() + i);
+                finishCanvasGroupFade(std::move(fade), false);
+                break;
+            }
+        }
+    } else if (componentId == scene->getComponentId<ActionComponent>()) {
+        // a helper fade's tween destroyed by someone else: the fade is over, unfinished
+        for (size_t i = 0; i < canvasGroupFades.size(); i++) {
+            if (canvasGroupFades[i].tween == entity) {
+                canvasGroupFades.erase(canvasGroupFades.begin() + i);
+                break;
+            }
+        }
+    }
+
     if (componentId == scene->getComponentId<UIComponent>() ||
         componentId == scene->getComponentId<RectTransformComponent>() ||
         componentId == scene->getComponentId<ImageComponent>() ||
@@ -3460,5 +3479,572 @@ void UISystem::onComponentRemoved(Entity entity, ComponentId componentId) {
     } else if (componentId == scene->getComponentId<TextComponent>()) {
         TextComponent& text = scene->getComponent<TextComponent>(entity);
         destroyText(text);
+    }
+}
+
+// ---------------------------------------------------------------------------------------
+// Canvas Groups (ui canvas group spec 7.2, 7.4)
+// ---------------------------------------------------------------------------------------
+
+static constexpr uint8_t CANVAS_GROUP_MAX_LAYER_DEPTH = 4;
+
+static bool canvasGroupChanged(const CanvasGroupComponent& group){
+    const CanvasGroupComponent::Seen& seen = group.seen;
+    return !seen.valid || seen.enabled != group.enabled || seen.alpha != group.alpha ||
+           seen.interactable != group.interactable || seen.blocks != group.blocksRaycasts ||
+           seen.ignore != group.ignoreParentGroups || seen.renderMode != group.renderMode;
+}
+
+static void markCanvasGroupSeen(CanvasGroupComponent& group){
+    group.seen.valid = true;
+    group.seen.enabled = group.enabled;
+    group.seen.alpha = group.alpha;
+    group.seen.interactable = group.interactable;
+    group.seen.blocks = group.blocksRaycasts;
+    group.seen.ignore = group.ignoreParentGroups;
+    group.seen.renderMode = group.renderMode;
+}
+
+bool UISystem::sanitizeCanvasGroup(Entity entity, CanvasGroupComponent& group){
+    if (std::isnan(group.alpha)){
+        // rejected: the last value seen stays
+        group.alpha = group.seen.valid ? group.seen.alpha : 1.0f;
+        if (!group.warnedInvalidAlpha){
+            group.warnedInvalidAlpha = true;
+            Log::warn("Canvas Group of '%s': alpha NaN rejected, kept %g", scene->getEntityName(entity).c_str(), group.alpha);
+        }
+        return true;
+    }
+    if (group.alpha < 0.0f){
+        group.alpha = 0.0f;
+        return true;
+    }
+    if (group.alpha > 1.0f){
+        group.alpha = 1.0f;
+        return true;
+    }
+    return false;
+}
+
+UISystem::CanvasGroupEntry UISystem::combineCanvasGroup(const CanvasGroupEntry& parent, Entity entity, Signature signature, CanvasGroupComponent* group, bool warn){
+    CanvasGroupEntry entry = parent;
+    entry.underRect = parent.underRect || signature.test(scene->getComponentId<RectTransformComponent>());
+
+    if (!group || !group->enabled){
+        return entry;
+    }
+
+    const bool ignore = group->ignoreParentGroups;
+    entry.alpha = group->alpha * (ignore ? 1.0f : parent.alpha);
+    // the chain's alpha up to this group, relative to the enclosing layer
+    const float chainAlpha = group->alpha * (ignore ? 1.0f : parent.layerAlpha);
+    entry.layerAlpha = chainAlpha;
+    entry.interactable = group->interactable && (ignore || parent.interactable);
+    entry.blocks = group->blocksRaycasts && (ignore || parent.blocks);
+    entry.group = entity;
+
+    group->layerAlpha = chainAlpha;
+    bool layered = false;
+    if (group->renderMode == CanvasGroupRenderMode::FLATTEN && chainAlpha > 0.0f && chainAlpha < 1.0f && group->subtreeDraws >= 2){
+        if (parent.layerDepth < CANVAS_GROUP_MAX_LAYER_DEPTH){
+            layered = true;
+        }else if (warn){
+            Log::warn("Canvas Group '%s': more than %i nested Flatten layers, drawn Per Element",
+                      scene->getEntityName(entity).c_str(), (int)CANVAS_GROUP_MAX_LAYER_DEPTH);
+        }
+    }
+    group->layered = layered;
+    if (layered){
+        // the layer starts here: the group's own element and its subtree draw into it at
+        // their alpha relative to it, and the layer is composited at layerAlpha
+        entry.layerAlpha = 1.0f;
+        entry.layerDepth = parent.layerDepth + 1;
+    }
+
+    return entry;
+}
+
+void UISystem::applyCanvasGroupEntry(Entity entity, Signature signature, const CanvasGroupEntry& entry){
+    if (signature.test(scene->getComponentId<UIComponent>())){
+        UIComponent& ui = scene->getComponent<UIComponent>(entity);
+        ui.groupAlpha = entry.alpha;
+        ui.groupLayerAlpha = entry.layerAlpha;
+        ui.groupBlocksRaycasts = entry.blocks;
+        ui.groupEntity = entry.group;
+        if (ui.groupInteractable != entry.interactable){
+            ui.groupInteractable = entry.interactable;
+            // the visual changes now; the widgets drop what they hold in the next update
+            if (signature.test(scene->getComponentId<ButtonComponent>())){
+                applyButtonVisual(scene->getComponent<ButtonComponent>(entity), ui);
+            }
+            if (signature.test(scene->getComponentId<InputFieldComponent>())){
+                scene->getComponent<InputFieldComponent>(entity).needUpdateInputField = true;
+            }
+            if (!entry.interactable){
+                interactabilityLost.push_back(entity);
+            }
+        }
+    }
+    if (signature.test(scene->getComponentId<PointsComponent>())){
+        PointsComponent& points = scene->getComponent<PointsComponent>(entity);
+        const float alpha = entry.underRect ? entry.alpha : 1.0f;
+        if (points.uiGroupAlpha != alpha){
+            points.uiGroupAlpha = alpha;
+            points.needUpdate = true;
+        }
+    }
+}
+
+void UISystem::canvasGroupFullPass(){
+    auto transforms = scene->getComponentArray<Transform>();
+    const size_t count = transforms->size();
+    const ComponentId groupId = scene->getComponentId<CanvasGroupComponent>();
+    const ComponentId uiId = scene->getComponentId<UIComponent>();
+    const ComponentId rectId = scene->getComponentId<RectTransformComponent>();
+
+    canvasGroupStats.fullPasses++;
+    canvasGroupStats.visited += count;
+
+    // parents (by array index: a parent always comes before its children) and what is under
+    // a RectTransform
+    canvasGroupParents.assign(count, SIZE_MAX);
+    std::vector<uint8_t> underRect(count, 0);
+    for (size_t i = 0; i < count; i++){
+        const Transform& transform = transforms->getComponentFromIndex(i);
+        if (transform.parent != NULL_ENTITY && transforms->hasEntity(transform.parent)){
+            const size_t parentIndex = transforms->getIndex(transform.parent);
+            if (parentIndex < i){
+                canvasGroupParents[i] = parentIndex;
+                underRect[i] = underRect[parentIndex];
+            }
+        }
+        if (scene->getSignature(transforms->getEntity(i)).test(rectId)){
+            underRect[i] = 1;
+        }
+    }
+
+    // UI draws per branch, children first (the FLATTEN leaf rule; UI particles draw in the
+    // colour pass, not in a layer)
+    std::vector<uint32_t> draws(count, 0);
+    for (size_t i = count; i-- > 0;){
+        const Signature signature = scene->getSignature(transforms->getEntity(i));
+        if (signature.test(uiId)){
+            draws[i]++;
+        }
+        if (signature.test(groupId)){
+            scene->getComponent<CanvasGroupComponent>(transforms->getEntity(i)).subtreeDraws = draws[i];
+        }
+        if (canvasGroupParents[i] != SIZE_MAX){
+            draws[canvasGroupParents[i]] += draws[i];
+        }
+    }
+
+    canvasGroupScratch.assign(count, CanvasGroupEntry());
+    for (size_t i = 0; i < count; i++){
+        const Entity entity = transforms->getEntity(i);
+        const Signature signature = scene->getSignature(entity);
+        const CanvasGroupEntry parent = canvasGroupParents[i] != SIZE_MAX ? canvasGroupScratch[canvasGroupParents[i]] : CanvasGroupEntry();
+        CanvasGroupComponent* group = signature.test(groupId) ? &scene->getComponent<CanvasGroupComponent>(entity) : nullptr;
+        const bool warn = group && canvasGroupChanged(*group);
+        canvasGroupScratch[i] = combineCanvasGroup(parent, entity, signature, group, warn);
+        applyCanvasGroupEntry(entity, signature, canvasGroupScratch[i]);
+    }
+
+    auto groups = scene->getComponentArray<CanvasGroupComponent>();
+    for (size_t i = 0; i < groups->size(); i++){
+        markCanvasGroupSeen(groups->getComponentFromIndex(i));
+    }
+    canvasGroupsApplied = true;
+}
+
+void UISystem::canvasGroupSubtreePass(Entity groupEntity){
+    auto transforms = scene->getComponentArray<Transform>();
+    if (!transforms->hasEntity(groupEntity)){
+        return;
+    }
+    const ComponentId groupId = scene->getComponentId<CanvasGroupComponent>();
+
+    // the state the group inherits: its ancestors folded from the root down (O(depth))
+    std::vector<Entity> ancestors;
+    Entity parentEntity = transforms->getComponent(groupEntity).parent;
+    while (parentEntity != NULL_ENTITY && transforms->hasEntity(parentEntity) && ancestors.size() < 4096){
+        ancestors.push_back(parentEntity);
+        parentEntity = transforms->getComponent(parentEntity).parent;
+    }
+    CanvasGroupEntry inherited;
+    for (size_t a = ancestors.size(); a-- > 0;){
+        const Entity ancestor = ancestors[a];
+        const Signature signature = scene->getSignature(ancestor);
+        CanvasGroupComponent* group = signature.test(groupId) ? &scene->getComponent<CanvasGroupComponent>(ancestor) : nullptr;
+        inherited = combineCanvasGroup(inherited, ancestor, signature, group, false);
+    }
+
+    const size_t first = transforms->getIndex(groupEntity);
+    const size_t last = scene->findBranchLastIndex(groupEntity);
+
+    canvasGroupStats.subtreePasses++;
+    canvasGroupStats.visited += last - first + 1;
+
+    canvasGroupScratch.assign(last - first + 1, CanvasGroupEntry());
+    for (size_t i = first; i <= last; i++){
+        const Entity entity = transforms->getEntity(i);
+        const Signature signature = scene->getSignature(entity);
+        CanvasGroupEntry parent = inherited;
+        if (i > first){
+            const Entity parentOfEntity = transforms->getComponentFromIndex(i).parent;
+            const size_t parentIndex = transforms->getIndex(parentOfEntity);
+            if (parentIndex >= first && parentIndex < i){
+                parent = canvasGroupScratch[parentIndex - first];
+            }
+        }
+        CanvasGroupComponent* group = signature.test(groupId) ? &scene->getComponent<CanvasGroupComponent>(entity) : nullptr;
+        const bool warn = group && canvasGroupChanged(*group);
+        canvasGroupScratch[i - first] = combineCanvasGroup(parent, entity, signature, group, warn);
+        applyCanvasGroupEntry(entity, signature, canvasGroupScratch[i - first]);
+        if (group){
+            markCanvasGroupSeen(*group);
+        }
+    }
+    canvasGroupsApplied = true;
+}
+
+void UISystem::canvasGroupResetPass(){
+    canvasGroupStats.fullPasses++;
+    const CanvasGroupEntry none;
+    auto uis = scene->getComponentArray<UIComponent>();
+    for (size_t i = 0; i < uis->size(); i++){
+        const Entity entity = uis->getEntity(i);
+        applyCanvasGroupEntry(entity, scene->getSignature(entity), none);
+    }
+    auto points = scene->getComponentArray<PointsComponent>();
+    for (size_t i = 0; i < points->size(); i++){
+        const Entity entity = points->getEntity(i);
+        applyCanvasGroupEntry(entity, scene->getSignature(entity), none);
+    }
+    canvasGroupStats.visited += uis->size() + points->size();
+    canvasGroupsApplied = false;
+}
+
+void UISystem::syncCanvasGroups(){
+    if (scene->hierarchyRevision() != canvasGroupsRevision){
+        canvasGroupsRevision = scene->hierarchyRevision();
+        canvasGroupsStructuralDirty = true;
+    }
+
+    auto groups = scene->getComponentArray<CanvasGroupComponent>();
+    if (groups->size() == 0){
+        // with no group nothing runs; the last one removed resets the elements once
+        if (canvasGroupsApplied){
+            canvasGroupResetPass();
+        }
+        canvasGroupsStructuralDirty = false;
+        return;
+    }
+
+    canvasGroupDirty.clear();
+    for (size_t i = 0; i < groups->size(); i++){
+        CanvasGroupComponent& group = groups->getComponentFromIndex(i);
+        sanitizeCanvasGroup(groups->getEntity(i), group);
+        if (canvasGroupChanged(group)){
+            canvasGroupDirty.push_back(groups->getEntity(i));
+        }
+    }
+
+    if (canvasGroupsStructuralDirty){
+        canvasGroupsStructuralDirty = false;
+        canvasGroupFullPass();
+        return;
+    }
+
+    if (canvasGroupDirty.empty()){
+        return;
+    }
+
+    // outermost first: a dirty group inside a walked branch was covered by that walk
+    auto transforms = scene->getComponentArray<Transform>();
+    std::vector<std::pair<size_t, Entity>> ordered;
+    ordered.reserve(canvasGroupDirty.size());
+    for (Entity entity : canvasGroupDirty){
+        if (transforms->hasEntity(entity)){
+            ordered.push_back({transforms->getIndex(entity), entity});
+        }else{
+            // a group without a Transform is in no hierarchy
+            markCanvasGroupSeen(scene->getComponent<CanvasGroupComponent>(entity));
+        }
+    }
+    std::sort(ordered.begin(), ordered.end());
+    size_t coveredUntil = 0;
+    bool anyWalk = false;
+    for (const auto& item : ordered){
+        if (anyWalk && item.first <= coveredUntil){
+            continue;
+        }
+        CanvasGroupComponent* group = scene->findComponent<CanvasGroupComponent>(item.second);
+        if (!group || !canvasGroupChanged(*group)){
+            continue;
+        }
+        canvasGroupSubtreePass(item.second);
+        coveredUntil = scene->findBranchLastIndex(item.second);
+        anyWalk = true;
+    }
+}
+
+CanvasGroupState UISystem::getCanvasGroupState(Entity entity) const{
+    CanvasGroupState state;
+    if (entity == NULL_ENTITY || !scene->isEntityCreated(entity)){
+        return state;
+    }
+    Entity current = entity;
+    int guard = 0;
+    while (current != NULL_ENTITY && guard++ < 4096){
+        const CanvasGroupComponent* group = scene->findComponent<CanvasGroupComponent>(current);
+        if (group && group->enabled){
+            const float alpha = std::isnan(group->alpha) ? 1.0f : std::clamp(group->alpha, 0.0f, 1.0f);
+            state.alpha *= alpha;
+            state.interactable = state.interactable && group->interactable;
+            state.blocksRaycasts = state.blocksRaycasts && group->blocksRaycasts;
+            if (state.group == NULL_ENTITY){
+                state.group = current;
+            }
+            if (group->ignoreParentGroups){
+                break;
+            }
+        }
+        const Transform* transform = scene->findComponent<Transform>(current);
+        current = transform ? transform->parent : NULL_ENTITY;
+    }
+    return state;
+}
+
+bool UISystem::isInteractable(Entity entity) const{
+    if (entity == NULL_ENTITY || !scene->isEntityCreated(entity)){
+        return false;
+    }
+    if (const UIComponent* ui = scene->findComponent<UIComponent>(entity)){
+        if (!ui->groupInteractable){
+            return false;
+        }
+    }
+    if (const ButtonComponent* button = scene->findComponent<ButtonComponent>(entity)){
+        if (button->disabled){
+            return false;
+        }
+    }
+    if (const InputFieldComponent* inputfield = scene->findComponent<InputFieldComponent>(entity)){
+        if (inputfield->disabled){
+            return false;
+        }
+    }
+    return true;
+}
+
+const CanvasGroupStats& UISystem::getCanvasGroupStats() const{
+    return canvasGroupStats;
+}
+
+void UISystem::resetCanvasGroupStats(){
+    canvasGroupStats = CanvasGroupStats();
+}
+
+// Ui canvas group spec 7.2: interactability lost while a widget held a press, the focus or
+// a gesture (ui-multitouch D6 when it lands: a cancel for every pointer pressing the widget)
+void UISystem::processInteractabilityLost(){
+    if (interactabilityLost.empty()){
+        return;
+    }
+    std::vector<Entity> entities;
+    entities.swap(interactabilityLost);
+
+    for (Entity entity : entities){
+        if (!isLiveUIEntity(entity)){
+            continue;
+        }
+        UIComponent* ui = scene->findComponent<UIComponent>(entity);
+        if (!ui || ui->groupInteractable){
+            continue;
+        }
+
+        if (ButtonComponent* button = scene->findComponent<ButtonComponent>(entity)){
+            if (button->pressed){
+                button->pressed = false;
+                applyButtonVisual(*button, *ui);
+                button->onRelease.call();
+                if (!isLiveUIEntity(entity)){
+                    continue;
+                }
+                ui = scene->findComponent<UIComponent>(entity);
+            }
+        }
+
+        if (InputFieldComponent* inputfield = scene->findComponent<InputFieldComponent>(entity)){
+            if (inputFieldSelecting == entity){
+                inputFieldSelecting = NULL_ENTITY;
+            }
+            if (ui->focused){
+                ui->focused = false;
+                inputfield->needUpdateInputField = true;
+                System::instance().hideVirtualKeyboard();
+                ui->onLostFocus.call();
+                if (!isLiveUIEntity(entity)){
+                    continue;
+                }
+            }
+        }
+
+        if (ScrollbarComponent* scrollbar = scene->findComponent<ScrollbarComponent>(entity)){
+            scrollbar->barPointerDown = false;
+        }
+        if (PanelComponent* panel = scene->findComponent<PanelComponent>(entity)){
+            panel->headerPointerDown = false;
+            panel->edgePointerDown = PanelEdge::NONE;
+        }
+    }
+}
+
+void UISystem::startCanvasGroupFade(Entity group, Entity tween, float endAlpha, bool deactivate, std::function<void()> onComplete){
+    // the previous helper fade of the group stops (no fighting tweens)
+    for (size_t i = 0; i < canvasGroupFades.size(); i++){
+        if (canvasGroupFades[i].group == group){
+            CanvasGroupFade previous = std::move(canvasGroupFades[i]);
+            canvasGroupFades.erase(canvasGroupFades.begin() + i);
+            finishCanvasGroupFade(std::move(previous), false);
+            break;
+        }
+    }
+
+    CanvasGroupFade fade;
+    fade.group = group;
+    fade.tween = tween;
+    fade.endAlpha = endAlpha;
+    fade.deactivate = deactivate;
+    fade.onComplete = std::move(onComplete);
+    canvasGroupFades.push_back(std::move(fade));
+
+    if (ActionComponent* action = scene->findComponent<ActionComponent>(tween)){
+        Scene* fadeScene = scene;
+        action->onStop.add("canvasGroupFade", std::function<void()>([fadeScene, tween](){
+            const TweenComponent* timed = fadeScene->findComponent<TweenComponent>(tween);
+            // onStop runs before the tween is rewound: a finished tween is at its end
+            const bool atEnd = timed && timed->time >= 1.0f;
+            fadeScene->getSystem<UISystem>()->onCanvasGroupFadeStopped(tween, atEnd);
+        }));
+    }
+}
+
+void UISystem::onCanvasGroupFadeStopped(Entity tween, bool atEnd){
+    for (CanvasGroupFade& fade : canvasGroupFades){
+        if (fade.tween == tween && !fade.finished){
+            fade.finished = true;
+            fade.completed = atEnd;
+        }
+    }
+}
+
+void UISystem::finishCanvasGroupFade(CanvasGroupFade fade, bool runCompletion){
+    if (fade.tween != NULL_ENTITY && scene->isEntityCreated(fade.tween)){
+        if (ActionComponent* action = scene->findComponent<ActionComponent>(fade.tween)){
+            action->onStop.remove("canvasGroupFade");
+        }
+        scene->destroyEntity(fade.tween);
+    }
+    if (!runCompletion){
+        return;
+    }
+    // the final value was written by the tween (or stopCanvasGroupFade): then onComplete,
+    // then the deactivation
+    if (fade.onComplete){
+        fade.onComplete();
+    }
+    if (fade.deactivate && fade.group != NULL_ENTITY && scene->isEntityCreated(fade.group)){
+        scene->setEntityActive(fade.group, false);
+    }
+}
+
+void UISystem::stopCanvasGroupFade(Entity group, bool jumpToEnd){
+    for (size_t i = 0; i < canvasGroupFades.size(); i++){
+        if (canvasGroupFades[i].group == group){
+            CanvasGroupFade fade = std::move(canvasGroupFades[i]);
+            canvasGroupFades.erase(canvasGroupFades.begin() + i);
+            if (jumpToEnd){
+                if (CanvasGroupComponent* component = scene->findComponent<CanvasGroupComponent>(group)){
+                    component->alpha = fade.endAlpha;
+                }
+            }
+            finishCanvasGroupFade(std::move(fade), jumpToEnd);
+            return;
+        }
+    }
+}
+
+bool UISystem::isCanvasGroupFading(Entity group) const{
+    for (const CanvasGroupFade& fade : canvasGroupFades){
+        if (fade.group == group && !fade.finished){
+            return true;
+        }
+    }
+    return false;
+}
+
+void UISystem::processCanvasGroupFades(){
+    for (size_t i = 0; i < canvasGroupFades.size();){
+        if (!canvasGroupFades[i].finished){
+            i++;
+            continue;
+        }
+        CanvasGroupFade fade = std::move(canvasGroupFades[i]);
+        canvasGroupFades.erase(canvasGroupFades.begin() + i);
+        const bool completed = fade.completed;
+        // (a callback may start another fade: the list is re-read from the same index)
+        finishCanvasGroupFade(std::move(fade), completed);
+    }
+}
+
+Entity UISystem::raycastHit(float x, float y){
+    Entity hit = NULL_ENTITY;
+    auto layouts = scene->getComponentArray<RectTransformComponent>();
+    const ComponentId transformId = scene->getComponentId<Transform>();
+    const ComponentId imageId = scene->getComponentId<ImageComponent>();
+    const ComponentId uiId = scene->getComponentId<UIComponent>();
+
+    for (size_t i = 0; i < layouts->size(); i++){
+        RectTransformComponent& layout = layouts->getComponentFromIndex(i);
+        const Entity entity = layouts->getEntity(i);
+        const Signature signature = scene->getSignature(entity);
+        if (!signature.test(transformId) || !signature.test(imageId) || layout.ignoreEvents){
+            continue;
+        }
+        Transform& transform = scene->getComponent<Transform>(entity);
+        if (!transform.visible || !isUIActive(entity, signature)){
+            continue;
+        }
+        // a Canvas Group that does not block raycasts lets the pointer through
+        if (signature.test(uiId) && !scene->getComponent<UIComponent>(entity).groupBlocksRaycasts){
+            continue;
+        }
+
+        Rect uirect(transform.worldPosition.x, transform.worldPosition.y, layout.width * transform.worldScale.x, layout.height * transform.worldScale.y);
+        if (layout.panel != NULL_ENTITY){
+            uirect = fitOnPanel(uirect, layout.panel);
+        }
+        if (uirect.contains(Vector2(x, y))){ //TODO: inside to polygon
+            hit = entity;
+        }
+    }
+    return hit;
+}
+
+Entity UISystem::raycast(Vector2 point){
+    syncCanvasGroups();
+    return raycastHit(point.x, point.y);
+}
+
+void UISystem::onComponentAdded(Entity entity, ComponentId componentId){
+    (void)entity;
+    if (componentId == scene->getComponentId<CanvasGroupComponent>() ||
+        componentId == scene->getComponentId<UIComponent>() ||
+        componentId == scene->getComponentId<PointsComponent>() ||
+        componentId == scene->getComponentId<RectTransformComponent>() ||
+        componentId == scene->getComponentId<Transform>()){
+        canvasGroupsStructuralDirty = true;
     }
 }
