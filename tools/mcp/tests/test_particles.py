@@ -46,7 +46,7 @@ def walk(nodes):
 
 async def clear_scene(ed: Editor, keep: tuple = ()):
     tree = await ed.call("get_scene_tree", format="json")
-    nodes = find_key(tree, "entities", "roots", "children") or []
+    nodes = find_key(tree, "nodes", "entities", "roots", "children") or []
     for node in list(walk(nodes)):
         if node.get("name") not in keep:
             await ed.call("delete_entities", entities=[str(node["id"])])
@@ -104,7 +104,7 @@ async def test_legacy_scene_matches_main(ed: Editor):
     await ed.call("open_scene", scene=LEGACY_SCENE)
     # the systems stay version 1 (the Inspector offers the upgrade)
     tree = await ed.call("get_scene_tree", format="json")
-    names = {node.get("name"): node for node in walk(find_key(tree, "entities", "roots", "children") or [])}
+    names = {node.get("name"): node for node in walk(find_key(tree, "nodes", "entities", "roots", "children") or [])}
     ed.check("Particle System" in names or any("Particle" in n for n in names), f"legacy systems: {list(names)}")
     data = await play_legacy(ed)
     ok, fraction, diff = pngdiff.compare(pngdiff.decode(GOLDEN_LEGACY.read_bytes()), pngdiff.decode(data), max_fraction=0.005)
@@ -126,7 +126,7 @@ def bright_pixels(data: bytes, threshold: int = 60) -> list:
 
 
 async def lua(ed: Editor, code: str):
-    return (await ed.call("eval_lua", code=code, scene=SCENE))["values"]
+    return (await ed.call("eval_lua", code=code, scene=SCENE))["values"][0]
 
 
 def system_id(result) -> str:
@@ -148,18 +148,19 @@ async def test_create_particles_version2(ed: Editor):
     sparks_id = system_id(sparks)
 
     # module fields through set_properties / get_entity
-    await ed.call("set_properties", entity=sparks_id, component="ParticleSystem", values={"main.startLifetime": {"mode": "two_constants", "min": 0.5, "max": 1}})
-    got = await ed.call("get_entity", entity=sparks_id, components=["ParticleSystem"],
+    await ed.call("set_properties", entity=sparks_id, values={"particlesystem": {"main.startLifetime": {"mode": "two_constants", "min": 0.5, "max": 1}}})
+    got = await ed.call("get_entity", entity=sparks_id, components=["particlesystem"],
                         properties=["version", "main.startSpeed", "main.maxParticles", "emission.rateOverTime", "main.startLifetime"])
-    comp = got["components"]["ParticleSystem"]
+    comp = got["components"]["particlesystem"]
     ed.check(comp.get("version") == 2, f"version: {comp}")
     ed.check(comp.get("main.startSpeed") == 4, f"main.startSpeed (a constant reads as a number): {comp.get('main.startSpeed')}")
     ed.check(comp.get("main.maxParticles") == 300, f"main.maxParticles: {comp.get('main.maxParticles')}")
     life = comp.get("main.startLifetime")
     ed.check(isinstance(life, dict) and life.get("mode") == "two_constants", f"two constants read back: {life}")
     # one GameObject: the system draws its own quads
-    mesh = await ed.call("get_entity", entity=fire_id, components=["Mesh", "InstancedMesh", "Action"])
-    ed.check("Mesh" in mesh["components"] and "InstancedMesh" in mesh["components"], f"the system's own renderer: {list(mesh['components'])}")
+    mesh = await ed.call("get_entity", entity=fire_id, detail="summary")
+    names = str(mesh.get("components"))
+    ed.check("mesh" in names and "instancedmesh" in names, f"the system's own renderer: {mesh.get('components')}")
     await ed.call("save_scene", scene=SCENE)
 
     await ed.call("play", action="start", scene=SCENE, auto_pause=True, fixed_fps=60)
@@ -193,21 +194,18 @@ async def test_upgrade_legacy(ed: Editor):
     shutil.copyfile(LEGACY_FIXTURE, ed.project / LEGACY_SCENE)
     await ed.call("open_scene", scene=LEGACY_SCENE)
     tree = await ed.call("get_scene_tree", format="json")
-    systems = []
-    for node in walk(find_key(tree, "entities", "roots", "children") or []):
-        got = await ed.call("get_entity", entity=str(node["id"]), components=["ParticleSystem"], properties=["version"])
-        if "ParticleSystem" in got.get("components", {}):
-            systems.append(str(node["id"]))
+    systems = [str(node["id"]) for node in walk(find_key(tree, "nodes", "entities", "roots", "children") or [])
+               if "particlesystem" in (node.get("components") or [])]
     ed.check(bool(systems), "the legacy scene has Particle Systems")
     r = await ed.call_raw("create_particles", {"scene": LEGACY_SCENE, "entity": systems[0], "upgrade": True, "force": True})
     ed.check(not r.is_error, f"upgrade: {r.text[:400]}")
     report = find_key(r.value or {}, "report")
     ed.check(isinstance(report, list) and report, f"an upgrade report: {r.value}")
-    got = await ed.call("get_entity", entity=systems[0], components=["ParticleSystem"], properties=["version"])
-    ed.check(got["components"]["ParticleSystem"].get("version") == 2, f"upgraded: {got['components']}")
+    got = await ed.call("get_entity", entity=systems[0], components=["particlesystem"], properties=["version"])
+    ed.check(got["components"]["particlesystem"].get("version") == 2, f"upgraded: {got['components']}")
     await ed.call("undo", scene=LEGACY_SCENE)
-    got = await ed.call("get_entity", entity=systems[0], components=["ParticleSystem"], properties=["version"])
-    ed.check(got["components"]["ParticleSystem"].get("version", 1) == 1, f"undo restores version 1: {got['components']}")
+    got = await ed.call("get_entity", entity=systems[0], components=["particlesystem"], properties=["version"])
+    ed.check(got["components"]["particlesystem"].get("version", 1) == 1, f"undo restores version 1: {got['components']}")
 
 
 async def test_import_unity_particles(ed: Editor):
