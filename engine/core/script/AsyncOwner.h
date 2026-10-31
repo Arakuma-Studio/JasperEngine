@@ -10,6 +10,7 @@
 
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 
 typedef struct lua_State lua_State;
 
@@ -58,6 +59,10 @@ namespace jasperengine {
         static void scriptInstanceReleased(const void* instance);   // LuaBinding::releaseLuaScriptInstance, ~ScriptBase
         static void sceneDestroyed(const EntityRegistry* scene);    // Scene::~Scene (also ends its GameObjects' owners)
         static void entityDestroyed(const EntityRegistry* scene, Entity entity);   // EntityRegistry::destroyEntity(ies)
+        // ObjectManager::moveToScene (DontDestroyOnLoad, SceneManager.moveGameObjectToScene), before
+        // the originals are destroyed: the owners of the moved GameObjects (old -> new) and of their
+        // scripts now belong to the copies in `to`; nothing ends
+        static void entitiesMoved(const EntityRegistry* from, const EntityRegistry* to, const std::unordered_map<Entity, Entity>& moved);
 
         // Fired with the token of an owner that is gone, on the thread that ended it (the main
         // thread in practice); subscribers must not create or end owners from inside
