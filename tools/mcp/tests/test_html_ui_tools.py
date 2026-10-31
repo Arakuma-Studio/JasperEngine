@@ -117,10 +117,13 @@ LIMITS.update({"user_settings": 550})
 # physics_debug / physics_debug_contacts; measured on the tree merged with main (script-lifecycle,
 # lines-trails) and gaps/physics-2d: 151 tools, total 107295 (tool_budget.py), the limit set to it
 LIMITS.update({"create_ragdoll": 900})
-# merged by the lead (ui-canvas-group + physics-3d): provisional sum of both increments
+# merged by the lead (ui-canvas-group + physics-3d): provisional sum of both increments, re-measured below
+# http: configure_game_view's network and get_play_state's http block; merged with main (script-data,
+# input, physics-2d, script-lifecycle): 150 tools measured 106807, the limit set to it
+# merged by the lead (+ http): provisional, re-measured on the merged tree
 # physics-contacts: get_runtime_entity's physics contacts / callbacks paid by a shorter description
-# (edit_colliders' receiver is in the guide); merged with main (ui-canvas-group, physics-3d): 151 tools measured 107438
-TOTAL_LIMIT = 107438
+# (edit_colliders' receiver is in the guide); merged with main (+ http): MEASURED
+TOTAL_LIMIT = 107621
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

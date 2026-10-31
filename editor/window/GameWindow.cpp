@@ -11,6 +11,7 @@
 #include "registry/PhysicsLayers.h"
 #include "Widgets.h"
 #include "external/IconsFontAwesome6.h"
+#include "net/Http.h"
 #include "subsystem/UIDocumentSystem.h"
 
 #include <algorithm>
@@ -369,6 +370,7 @@ void editor::GameWindow::drawToolbar() {
     // Right side toggles, as icons when the view is too narrow for their names
     const char* debuggerLabel = "HTML UI Debugger##GameHtmlUiDebugger";
     const char* touchLabel = ICON_FA_MOBILE_SCREEN "##GameTouch";
+    const char* networkLabel = ICON_FA_WIFI "##GameNetwork";
     const char* maximizeLabel = "Maximize On Play##GameMaximize";
     const char* statsLabel = "Stats##GameStats";
     const char* physicsLabel = "Physics##GamePhysicsDebug";
@@ -377,8 +379,8 @@ void editor::GameWindow::drawToolbar() {
         return ImGui::CalcTextSize(label, nullptr, true).x + style.FramePadding.x * 2.0f;
     };
     auto groupWidth = [&]() {
-        return buttonWidth(debuggerLabel) + buttonWidth(touchLabel) + buttonWidth(maximizeLabel) + buttonWidth(statsLabel) +
-               buttonWidth(physicsLabel) + style.ItemSpacing.x * 4.0f;
+        return buttonWidth(debuggerLabel) + buttonWidth(networkLabel) + buttonWidth(touchLabel) + buttonWidth(maximizeLabel) +
+               buttonWidth(statsLabel) + buttonWidth(physicsLabel) + style.ItemSpacing.x * 5.0f;
     };
     ImGui::SameLine();
     const float contentRight = ImGui::GetWindowContentRegionMax().x;
@@ -401,6 +403,23 @@ void editor::GameWindow::drawToolbar() {
         }
     }
     ImGui::EndDisabled();
+
+    // Network: simulate no connection (HTTP requests to hosts other than localhost fail with
+    // "offline"); works while playing, editor-only, back to Online when the editor restarts
+    ImGui::SameLine();
+    const bool offline = Http::isOfflineSimulated();
+    if (toggleButton(networkLabel, offline, offline
+            ? "Network: Offline (simulated). Http requests to hosts other than localhost fail with errorCode \"offline\"."
+            : "Network: Online. Simulate a device without a connection (Http requests fail with \"offline\")")) {
+        ImGui::OpenPopup("##GameNetworkMenu");
+    }
+    if (ImGui::BeginPopup("##GameNetworkMenu")) {
+        if (ImGui::MenuItem("Online", nullptr, !offline)) Http::setOfflineSimulated(false);
+        if (ImGui::MenuItem("Offline (simulated)", nullptr, offline)) Http::setOfflineSimulated(true);
+        ImGui::Separator();
+        ImGui::TextDisabled("localhost is never affected; not saved into builds");
+        ImGui::EndPopup();
+    }
 
     ImGui::SameLine();
     const bool simulateTouch = project->isSimulateTouch();

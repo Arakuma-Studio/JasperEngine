@@ -48,6 +48,8 @@ static const char* cxxStandardNames[] = { "C++17", "C++20", "C++23" };
 static const int cxxStandardCount = sizeof(cxxStandardNames) / sizeof(cxxStandardNames[0]);
 static_assert(std::size(cxxStandardNames) == std::size(cxxStandards));
 
+static const char* androidInternetAccessNames[] = { "Auto", "Require" };
+static constexpr int androidInternetAccessCount = 2;
 static const char* androidOrientationNames[] = { "Unspecified", "Portrait", "Landscape", "Sensor Portrait", "Sensor Landscape", "Full Sensor" };
 static const AndroidOrientation androidOrientationValues[] = {
     AndroidOrientation::Unspecified,
@@ -141,7 +143,8 @@ static const settingsui::Category projectCategories[] = {
     {"Player", "", "project product name application identifier version build default icon resolution presentation "
                    "fullscreen mode screen width height resizable window title start scene splash loading async publishing "
                    "native resource pack windows macos linux ios android web company bundle identifier package favicon "
-                   "google admob ads app id"},
+                   "google admob ads app id other settings network allow insecure http downloads over http cleartext "
+                   "internet access permission"},
     {"Graphics", "", "canvas width height scaling mode texture strategy reference resolution runtime shader compilation variants "
                      "html ui msaa anti-aliasing antialiasing"},
     {"Quality", "", "vsync"},
@@ -879,6 +882,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     snprintf(m_applicationIdentifierBuffer, sizeof(m_applicationIdentifierBuffer), "%s", application.identifier.c_str());
     snprintf(m_applicationVersionBuffer, sizeof(m_applicationVersionBuffer), "%s", application.version.c_str());
     m_applicationBuild = static_cast<int>(application.build);
+    m_allowInsecureHttp = application.allowInsecureHttp;
 
     const WebProjectSettings& web = project->getWebProjectSettings();
     snprintf(m_webApplicationNameBuffer, sizeof(m_webApplicationNameBuffer), "%s", web.applicationName.c_str());
@@ -939,6 +943,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_androidAbiX86 = android.abiX86;
     m_androidAbiX86_64 = android.abiX86_64;
     m_androidPermissions = android.permissions;
+    m_androidInternetAccessIndex = android.internetAccess == AndroidInternetAccess::Require ? 1 : 0;
     m_androidAllowBackup = android.allowBackup;
     m_androidFullscreen = android.fullscreen;
     m_androidKeepScreenOn = android.keepScreenOn;
@@ -1294,6 +1299,18 @@ void ProjectSettingsWindow::drawPlayerSettings() {
             }
             ImGui::Checkbox("##AsyncLoading", &loading.asyncLoading);
             endSettingsRow("Exported games load resources on worker threads. The editor always does.");
+
+            ImGui::EndTable();
+        }
+
+        if (Theme::foldoutHeader("Other Settings") && beginSettingsTable("##PlayerOtherTable")) {
+            const bool defaultInsecureHttp = ApplicationSettings{}.allowInsecureHttp;
+            if (beginSettingsRow("Allow Insecure HTTP", m_allowInsecureHttp != defaultInsecureHttp)) {
+                m_allowInsecureHttp = defaultInsecureHttp;
+            }
+            ImGui::Checkbox("##AllowInsecureHttp", &m_allowInsecureHttp);
+            endSettingsRow("Plain http:// URLs other than localhost. Off: they fail with insecure_http on every platform; "
+                "exports set Android cleartext and iOS ATS to match.");
 
             ImGui::EndTable();
         }
@@ -1975,6 +1992,10 @@ void ProjectSettingsWindow::drawAndroidSettings() {
     if (!hasAndroidAbiSelection(m_androidAbiArmeabiV7a, m_androidAbiArm64V8a, m_androidAbiX86, m_androidAbiX86_64)) {
         ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Select at least one architecture.");
     }
+
+    drawComboSetting("Internet Access", "##AndroidInternetAccess", androidInternetAccessNames, androidInternetAccessCount,
+        m_androidInternetAccessIndex, defaults.internetAccess == AndroidInternetAccess::Require ? 1 : 0,
+        "Auto adds INTERNET when Lua or C++ code uses Http (checked at export). Require always adds it.");
 
     beginSettingsRow("Permissions");
     if (ImGui::SmallButton("None##AndroidPermissionsNone")) {
@@ -2661,6 +2682,7 @@ bool ProjectSettingsWindow::applySettings() {
         application.version = Project::toAppleVersion(application.version);  // trim, do not discard
     }
     application.build = static_cast<unsigned int>(std::max(1, m_applicationBuild));
+    application.allowInsecureHttp = m_allowInsecureHttp;
 
     // Moves the referenced files in and rewrites every reference to the new roots
     m_project->changeAssetRoots(m_assetsDir, m_luaDir);
@@ -2755,6 +2777,7 @@ bool ProjectSettingsWindow::applySettings() {
     android.abiX86 = m_androidAbiX86;
     android.abiX86_64 = m_androidAbiX86_64;
     android.permissions = m_androidPermissions;
+    android.internetAccess = m_androidInternetAccessIndex == 1 ? AndroidInternetAccess::Require : AndroidInternetAccess::Auto;
     android.allowBackup = m_androidAllowBackup;
     android.fullscreen = m_androidFullscreen;
     android.keepScreenOn = m_androidKeepScreenOn;
