@@ -3347,6 +3347,38 @@
 		4A534E4798EE0D734C9C55E0 /* AsyncOwner.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4740FD2A72CFB10C16 /* AsyncOwner.h */; };
 		4A534E47D07D96EA20FAA7F1 /* NetClassesLua.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C4CB6F074423D782 /* NetClassesLua.h */; };
 		4A534E470B01A240FA439C2A /* MainThreadQueue.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4743499EE7BE02622E /* MainThreadQueue.h */; };
+		4A534E47A43E38BFF8148009 /* GrowingFileReader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E5A2FD966F40542E /* GrowingFileReader.cpp */; };
+		4A534E47E778CBEE07991DE2 /* GrowingFileReader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E5A2FD966F40542E /* GrowingFileReader.cpp */; };
+		4A534E473BF24B705C04A185 /* MediaByteSource.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D6E18E1D97CCB989 /* MediaByteSource.cpp */; };
+		4A534E47634D2ACB1B0FAB2B /* MediaByteSource.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D6E18E1D97CCB989 /* MediaByteSource.cpp */; };
+		4A534E473887007490C37980 /* MediaCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4760A126BE8F390135 /* MediaCache.cpp */; };
+		4A534E47E6AB01F6026E99E6 /* MediaCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4760A126BE8F390135 /* MediaCache.cpp */; };
+		4A534E47E282B9AF8D9E90B5 /* Mp4Probe.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47AA7E6913ADE2BAD6 /* Mp4Probe.cpp */; };
+		4A534E47BBA86994ABAD3318 /* Mp4Probe.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47AA7E6913ADE2BAD6 /* Mp4Probe.cpp */; };
+		4A534E47D47D46A0B5C70E1F /* PlatformVideoSource.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470CFB15ECD8FE90ED /* PlatformVideoSource.cpp */; };
+		4A534E478309AFEDBE875987 /* PlatformVideoSource.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470CFB15ECD8FE90ED /* PlatformVideoSource.cpp */; };
+		4A534E47F23AF6677C487097 /* VideoSourceFactory.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B64D416BF3D3A6E1 /* VideoSourceFactory.cpp */; };
+		4A534E47BEC756565229E34F /* VideoSourceFactory.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B64D416BF3D3A6E1 /* VideoSourceFactory.cpp */; };
+		4A534E470A3331B55F6E8DE4 /* VideoTextureConverter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47025E2C1B8DBDFFB2 /* VideoTextureConverter.cpp */; };
+		4A534E47D25980CDD27C3521 /* VideoTextureConverter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47025E2C1B8DBDFFB2 /* VideoTextureConverter.cpp */; };
+		4A534E4720664EC386B0A5CE /* VideoPlayer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CE10E825FF34974A /* VideoPlayer.cpp */; };
+		4A534E47F36B81CE674FD681 /* VideoPlayer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CE10E825FF34974A /* VideoPlayer.cpp */; };
+		4A534E4792F11A258CA8A565 /* VideoPlayerSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47456C3BFEBD9D2182 /* VideoPlayerSystem.cpp */; };
+		4A534E47A10B7A3578EE235B /* VideoPlayerSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47456C3BFEBD9D2182 /* VideoPlayerSystem.cpp */; };
+		4A534E47AD81333694BBB14E /* AVFoundationBackend.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4784634C5A9D868C06 /* AVFoundationBackend.mm */; };
+		4A534E471D096D8A6704E583 /* AVFoundationBackend.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4784634C5A9D868C06 /* AVFoundationBackend.mm */; };
+		4A534E4705C16683AC529361 /* VideoPlayerComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C9EB4F5CD128ABB8 /* VideoPlayerComponent.h */; };
+		4A534E478EF7E7AAB5A6FAAB /* GrowingFileReader.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F895BD0D612B0F59 /* GrowingFileReader.h */; };
+		4A534E4741E5E7B5BE0371AB /* IVideoSource.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47DEC7F6784890151B /* IVideoSource.h */; };
+		4A534E479325A5E9DD221DC1 /* MediaByteSource.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C43E5B41238A6534 /* MediaByteSource.h */; };
+		4A534E476B36EB294236B646 /* MediaCache.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E478060D88650A1CA04 /* MediaCache.h */; };
+		4A534E47077E1CACE2689A5C /* Mp4Probe.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E472A944016230F7FFD /* Mp4Probe.h */; };
+		4A534E47FCC179BFA6F3BA04 /* PlatformVideoBackend.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475E62E3BCFE4029DC /* PlatformVideoBackend.h */; };
+		4A534E4788574962B6A919B8 /* PlatformVideoSource.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476AEAF719C4C59D7A /* PlatformVideoSource.h */; };
+		4A534E47F31FDA326918B2B8 /* VideoSourceFactory.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E471A241BB91A56407B /* VideoSourceFactory.h */; };
+		4A534E475FDEC90B55413D73 /* VideoTextureConverter.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4737F56A38B128F115 /* VideoTextureConverter.h */; };
+		4A534E4740C9C045E5EA20CA /* VideoPlayer.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477741740820D741F9 /* VideoPlayer.h */; };
+		4A534E47E561ADFD60E21F7A /* VideoPlayerSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D88DB63824966935 /* VideoPlayerSystem.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -6749,6 +6781,28 @@
 		4A534E4740FD2A72CFB10C16 /* AsyncOwner.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AsyncOwner.h; sourceTree = "<group>"; };
 		4A534E47C4CB6F074423D782 /* NetClassesLua.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NetClassesLua.h; sourceTree = "<group>"; };
 		4A534E4743499EE7BE02622E /* MainThreadQueue.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MainThreadQueue.h; sourceTree = "<group>"; };
+		4A534E47E5A2FD966F40542E /* GrowingFileReader.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GrowingFileReader.cpp; sourceTree = "<group>"; };
+		4A534E47D6E18E1D97CCB989 /* MediaByteSource.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MediaByteSource.cpp; sourceTree = "<group>"; };
+		4A534E4760A126BE8F390135 /* MediaCache.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MediaCache.cpp; sourceTree = "<group>"; };
+		4A534E47AA7E6913ADE2BAD6 /* Mp4Probe.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Mp4Probe.cpp; sourceTree = "<group>"; };
+		4A534E470CFB15ECD8FE90ED /* PlatformVideoSource.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PlatformVideoSource.cpp; sourceTree = "<group>"; };
+		4A534E47B64D416BF3D3A6E1 /* VideoSourceFactory.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VideoSourceFactory.cpp; sourceTree = "<group>"; };
+		4A534E47025E2C1B8DBDFFB2 /* VideoTextureConverter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VideoTextureConverter.cpp; sourceTree = "<group>"; };
+		4A534E47CE10E825FF34974A /* VideoPlayer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VideoPlayer.cpp; sourceTree = "<group>"; };
+		4A534E47456C3BFEBD9D2182 /* VideoPlayerSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VideoPlayerSystem.cpp; sourceTree = "<group>"; };
+		4A534E4784634C5A9D868C06 /* AVFoundationBackend.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = AVFoundationBackend.mm; sourceTree = "<group>"; };
+		4A534E47C9EB4F5CD128ABB8 /* VideoPlayerComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VideoPlayerComponent.h; sourceTree = "<group>"; };
+		4A534E47F895BD0D612B0F59 /* GrowingFileReader.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = GrowingFileReader.h; sourceTree = "<group>"; };
+		4A534E47DEC7F6784890151B /* IVideoSource.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = IVideoSource.h; sourceTree = "<group>"; };
+		4A534E47C43E5B41238A6534 /* MediaByteSource.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MediaByteSource.h; sourceTree = "<group>"; };
+		4A534E478060D88650A1CA04 /* MediaCache.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MediaCache.h; sourceTree = "<group>"; };
+		4A534E472A944016230F7FFD /* Mp4Probe.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Mp4Probe.h; sourceTree = "<group>"; };
+		4A534E475E62E3BCFE4029DC /* PlatformVideoBackend.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PlatformVideoBackend.h; sourceTree = "<group>"; };
+		4A534E476AEAF719C4C59D7A /* PlatformVideoSource.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PlatformVideoSource.h; sourceTree = "<group>"; };
+		4A534E471A241BB91A56407B /* VideoSourceFactory.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VideoSourceFactory.h; sourceTree = "<group>"; };
+		4A534E4737F56A38B128F115 /* VideoTextureConverter.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VideoTextureConverter.h; sourceTree = "<group>"; };
+		4A534E477741740820D741F9 /* VideoPlayer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VideoPlayer.h; sourceTree = "<group>"; };
+		4A534E47D88DB63824966935 /* VideoPlayerSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VideoPlayerSystem.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -8279,6 +8333,7 @@
 				4A534E47625F8F2E8CA675B3 /* AnimationPlayerComponent.h */,
 				4A534E47F4D574AFECE5C17E /* VertexAnimatorComponent.h */,
 				4A534E47C782824D41EC527F /* PhysicsCommon.h */,
+				4A534E47C9EB4F5CD128ABB8 /* VideoPlayerComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -8366,6 +8421,8 @@
 				4A534E474E482C208244479A /* AnimationPlayer.h */,
 				4A534E47DA7ED38894929ED6 /* VertexAnimator.cpp */,
 				4A534E47E1D001E6946218B1 /* VertexAnimator.h */,
+				4A534E47CE10E825FF34974A /* VideoPlayer.cpp */,
+				4A534E477741740820D741F9 /* VideoPlayer.h */,
 			);
 			path = object;
 			sourceTree = "<group>";
@@ -8419,6 +8476,8 @@
 				4A534E47452204C1B7C473FF /* ActionSystemPlayers.cpp */,
 				4A534E470570E826DC760188 /* VertexAnimatorSystem.cpp */,
 				4A534E474C490B38DD8DB742 /* VertexAnimatorSystem.h */,
+				4A534E47456C3BFEBD9D2182 /* VideoPlayerSystem.cpp */,
+				4A534E47D88DB63824966935 /* VideoPlayerSystem.h */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -8556,6 +8615,7 @@
 				7158F43D259C2C82006E55D3 /* Renderer.h */,
 				7158F43E259C2C82006E55D3 /* Renderer.mm */,
 				4A534E47C4D8BD8BC47E7C00 /* HttpBackendApple.mm */,
+				4A534E4784634C5A9D868C06 /* AVFoundationBackend.mm */,
 			);
 			path = apple;
 			sourceTree = "<group>";
@@ -10207,6 +10267,22 @@
 				564944453B3DFA12D6052B13 /* VideoStream.cpp */,
 				564944456115B9D95A2337FE /* VideoStream.h */,
 				564944458505D549C503B49E /* VideoTypes.h */,
+				4A534E47E5A2FD966F40542E /* GrowingFileReader.cpp */,
+				4A534E47D6E18E1D97CCB989 /* MediaByteSource.cpp */,
+				4A534E4760A126BE8F390135 /* MediaCache.cpp */,
+				4A534E47AA7E6913ADE2BAD6 /* Mp4Probe.cpp */,
+				4A534E470CFB15ECD8FE90ED /* PlatformVideoSource.cpp */,
+				4A534E47B64D416BF3D3A6E1 /* VideoSourceFactory.cpp */,
+				4A534E47025E2C1B8DBDFFB2 /* VideoTextureConverter.cpp */,
+				4A534E47F895BD0D612B0F59 /* GrowingFileReader.h */,
+				4A534E47DEC7F6784890151B /* IVideoSource.h */,
+				4A534E47C43E5B41238A6534 /* MediaByteSource.h */,
+				4A534E478060D88650A1CA04 /* MediaCache.h */,
+				4A534E472A944016230F7FFD /* Mp4Probe.h */,
+				4A534E475E62E3BCFE4029DC /* PlatformVideoBackend.h */,
+				4A534E476AEAF719C4C59D7A /* PlatformVideoSource.h */,
+				4A534E471A241BB91A56407B /* VideoSourceFactory.h */,
+				4A534E4737F56A38B128F115 /* VideoTextureConverter.h */,
 			);
 			path = media;
 			sourceTree = "<group>";
@@ -12062,6 +12138,18 @@
 				4A534E4798EE0D734C9C55E0 /* AsyncOwner.h in Headers */,
 				4A534E47D07D96EA20FAA7F1 /* NetClassesLua.h in Headers */,
 				4A534E470B01A240FA439C2A /* MainThreadQueue.h in Headers */,
+				4A534E4705C16683AC529361 /* VideoPlayerComponent.h in Headers */,
+				4A534E478EF7E7AAB5A6FAAB /* GrowingFileReader.h in Headers */,
+				4A534E4741E5E7B5BE0371AB /* IVideoSource.h in Headers */,
+				4A534E479325A5E9DD221DC1 /* MediaByteSource.h in Headers */,
+				4A534E476B36EB294236B646 /* MediaCache.h in Headers */,
+				4A534E47077E1CACE2689A5C /* Mp4Probe.h in Headers */,
+				4A534E47FCC179BFA6F3BA04 /* PlatformVideoBackend.h in Headers */,
+				4A534E4788574962B6A919B8 /* PlatformVideoSource.h in Headers */,
+				4A534E47F31FDA326918B2B8 /* VideoSourceFactory.h in Headers */,
+				4A534E475FDEC90B55413D73 /* VideoTextureConverter.h in Headers */,
+				4A534E4740C9C045E5EA20CA /* VideoPlayer.h in Headers */,
+				4A534E47E561ADFD60E21F7A /* VideoPlayerSystem.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14124,6 +14212,16 @@
 				4A534E4765A452A70993BC50 /* NetClassesLua.cpp in Sources */,
 				4A534E47D5FBC9D2B84C3EF4 /* MainThreadQueue.cpp in Sources */,
 				4A534E476582D52ED841837C /* HttpBackendApple.mm in Sources */,
+				4A534E47A43E38BFF8148009 /* GrowingFileReader.cpp in Sources */,
+				4A534E473BF24B705C04A185 /* MediaByteSource.cpp in Sources */,
+				4A534E473887007490C37980 /* MediaCache.cpp in Sources */,
+				4A534E47E282B9AF8D9E90B5 /* Mp4Probe.cpp in Sources */,
+				4A534E47D47D46A0B5C70E1F /* PlatformVideoSource.cpp in Sources */,
+				4A534E47F23AF6677C487097 /* VideoSourceFactory.cpp in Sources */,
+				4A534E470A3331B55F6E8DE4 /* VideoTextureConverter.cpp in Sources */,
+				4A534E4720664EC386B0A5CE /* VideoPlayer.cpp in Sources */,
+				4A534E4792F11A258CA8A565 /* VideoPlayerSystem.cpp in Sources */,
+				4A534E47AD81333694BBB14E /* AVFoundationBackend.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14565,6 +14663,16 @@
 				4A534E4704BBC250AA4EB0AC /* NetClassesLua.cpp in Sources */,
 				4A534E47265BB2DD7CEE9EEA /* MainThreadQueue.cpp in Sources */,
 				4A534E47D3ECA820EEE9216B /* HttpBackendApple.mm in Sources */,
+				4A534E47E778CBEE07991DE2 /* GrowingFileReader.cpp in Sources */,
+				4A534E47634D2ACB1B0FAB2B /* MediaByteSource.cpp in Sources */,
+				4A534E47E6AB01F6026E99E6 /* MediaCache.cpp in Sources */,
+				4A534E47BBA86994ABAD3318 /* Mp4Probe.cpp in Sources */,
+				4A534E478309AFEDBE875987 /* PlatformVideoSource.cpp in Sources */,
+				4A534E47BEC756565229E34F /* VideoSourceFactory.cpp in Sources */,
+				4A534E47D25980CDD27C3521 /* VideoTextureConverter.cpp in Sources */,
+				4A534E47F36B81CE674FD681 /* VideoPlayer.cpp in Sources */,
+				4A534E47A10B7A3578EE235B /* VideoPlayerSystem.cpp in Sources */,
+				4A534E471D096D8A6704E583 /* AVFoundationBackend.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

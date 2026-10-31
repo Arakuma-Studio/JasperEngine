@@ -36,7 +36,7 @@ HEADER_DIRECTORIES = ["core/component"]
 
 # platform sources outside JASPERENGINE_SRCS that both Apple engine targets compile (CMake picks
 # them per platform): the HTTP client's NSURLSession backend
-APPLE_ENGINE_SOURCES = ["platform/apple/HttpBackendApple.mm"]
+APPLE_ENGINE_SOURCES = ["platform/apple/HttpBackendApple.mm", "platform/apple/AVFoundationBackend.mm"]
 
 OBJECT_RE = re.compile(r"^\t\t([0-9A-F]{24})(?: /\* (.*?) \*/)? = \{(.*)$")
 
