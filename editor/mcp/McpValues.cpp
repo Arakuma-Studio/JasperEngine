@@ -151,7 +151,7 @@ bool isVertexAnimationProperty(ComponentType component, const std::string& prope
 // animation, an Animation Player's clip, a Vertex Animator's animation)
 // A Rigidbody 2D's or one of its colliders' physics material (a .physicsmaterial)
 bool isPhysicsMaterialProperty(ComponentType component, const std::string& propertyName) {
-    return component == ComponentType::Rigidbody2DComponent &&
+    return (component == ComponentType::Rigidbody2DComponent || component == ComponentType::RigidbodyComponent) &&
            (propertyName == "material" || (propertyName.compare(0, 10, "colliders[") == 0 && endsWith(propertyName, "].material")));
 }
 
@@ -509,6 +509,33 @@ const EnumOptions& jointAnchorSpaceOptions() {
     static const EnumOptions options = {
         {(int)JointAnchorSpace::WORLD, "world", "World"},
         {(int)JointAnchorSpace::LOCAL, "local", "Local"}
+    };
+    return options;
+}
+
+const EnumOptions& jointMotionOptions() {
+    static const EnumOptions options = {
+        {(int)JointMotion::LOCKED, "locked", "Locked"},
+        {(int)JointMotion::LIMITED, "limited", "Limited"},
+        {(int)JointMotion::FREE, "free", "Free"}
+    };
+    return options;
+}
+
+const EnumOptions& jointSwingTypeOptions() {
+    static const EnumOptions options = {
+        {(int)JointSwingType::CONE, "cone", "Cone"},
+        {(int)JointSwingType::PYRAMID, "pyramid", "Pyramid"}
+    };
+    return options;
+}
+
+const EnumOptions& rigidbodyInterpolationOptions() {
+    static const EnumOptions options = {
+        {(int)RigidbodyInterpolation::SCENE, "scene", "Scene"},
+        {(int)RigidbodyInterpolation::NONE, "none", "None"},
+        {(int)RigidbodyInterpolation::INTERPOLATE, "interpolate", "Interpolate"},
+        {(int)RigidbodyInterpolation::EXTRAPOLATE, "extrapolate", "Extrapolate"}
     };
     return options;
 }
@@ -1026,6 +1053,9 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
         {"body_type", &bodyTypeOptions()},
         {"collider2d_type", &collider2DTypeOptions()},
         {"collider3d_type", &collider3DTypeOptions()},
+        {"joint_motion", &jointMotionOptions()},
+        {"swing_type", &jointSwingTypeOptions()},
+        {"rigidbody_interpolation", &rigidbodyInterpolationOptions()},
         {"light_type", &lightTypeOptions()},
         {"camera_type", &cameraTypeOptions()},
         {"lattice_interpolation", &latticeInterpolationOptions()},
@@ -1111,6 +1141,11 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
             break;
         case ComponentType::Joint3DComponent:
             if (name == "type") return &joint3DTypeOptions();
+            if (name == "anchorSpace") return &jointAnchorSpaceOptions();
+            if (name == "breakAction") return &jointBreakActionOptions();
+            if (name == "swingType") return &jointSwingTypeOptions();
+            if (name == "xMotion" || name == "yMotion" || name == "zMotion" ||
+                name == "angularXMotion" || name == "angularYMotion" || name == "angularZMotion") return &jointMotionOptions();
             break;
         case ComponentType::LayoutGroupComponent:
             if (name == "type") return &layoutGroupTypeOptions();
@@ -1151,6 +1186,7 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
             if (name == "motionQuality") return &motionQualityOptions();
             if (name == "colliders[].type") return &collider3DTypeOptions();
             if (name == "colliders[].source") return &collider3DSourceOptions();
+            if (name == "interpolation") return &rigidbodyInterpolationOptions();
             break;
         case ComponentType::ParticleSystemComponent:
             if (name == "positionInitializer.shape") return &emitterShapeOptions();

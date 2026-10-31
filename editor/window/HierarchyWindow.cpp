@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "HierarchyWindow.h"
+#include "util/PhysicsMaterialAssets.h"
+#include "window/dialog/RagdollWizardDialog.h"
 #include "pose/PoseEditSession.h"
 
 #include "App.h"
@@ -482,6 +484,8 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"3D Object", "Terrain", ICON_FA_MOUNTAIN, T::TERRAIN, "Terrain", CREATE_IN_3D},
         {"3D Object", "Mirror", ICON_FA_CLONE, T::MIRROR, "Mirror", CREATE_IN_3D},
         {"3D Object", "Water", ICON_FA_WATER, T::WATER, "Water", CREATE_IN_3D},
+        // Unity's Ragdoll Wizard on the selected character (or the row's GameObject)
+        {"3D Object", "Ragdoll...", ICON_FA_PERSON_FALLING, T::RAGDOLL_WIZARD, "Ragdoll", CREATE_IN_3D, true},
         // around the selection (or its row's GameObject) when there is one, see createGameObject
         {"3D Object", "Lattice", ICON_FA_BORDER_NONE, T::LATTICE, "Lattice", CREATE_IN_3D, true},
 
@@ -555,6 +559,16 @@ bool editor::HierarchyWindow::isCreateEntryAvailable(const CreateMenuEntry& entr
 void editor::HierarchyWindow::createGameObject(const CreateMenuEntry& entry, Entity parent, bool addToPrefab){
     SceneProject* sceneProject = project->getSelectedScene();
     if (!sceneProject || !sceneProject->scene) {
+        return;
+    }
+    if (entry.type == EntityCreationType::RAGDOLL_WIZARD) {
+        std::vector<Entity> selected = project->getSelectedEntities(sceneProject->id);
+        const Entity character = parent != NULL_ENTITY ? parent : (selected.size() == 1 ? selected[0] : NULL_ENTITY);
+        if (character == NULL_ENTITY) {
+            Out::warning("Ragdoll: select the character's root GameObject first (the one holding its model)");
+            return;
+        }
+        RagdollWizardDialog::instance().open(project, sceneProject->id, character);
         return;
     }
     if (entry.type == EntityCreationType::LATTICE) {
@@ -1923,6 +1937,22 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
             }
             if (!clips.empty() && ImGui::AcceptDragDropPayload("resource_files")) {
                 Backend::getApp().dispatchClipDrop(getNodeSceneId(node), node.id, clips);
+                ImGui::SetWindowFocus(HierarchyWindow::WINDOW_NAME);
+            }
+        }
+
+        // a physics material onto a GameObject: the material of all its colliders, one step
+        if (!allowResourceDragDrop && !node.isScene && !node.isPlayCreated && !project->isAnyScenePlaying()) {
+            const ImGuiPayload* peek = ImGui::GetDragDropPayload();
+            std::vector<std::string> received;
+            if (peek && peek->IsDataType("resource_files")) received = Util::getStringsFromPayload(peek);
+            if (!received.empty() && PhysicsMaterialAssets::isPhysicsMaterialFile(received[0]) && project->isInsideAssetsPath(received[0]) &&
+                ImGui::AcceptDragDropPayload("resource_files")) {
+                std::string error;
+                const std::string assetPath = project->normalizeToAssetsRelative(received[0]).generic_string();
+                if (!PhysicsMaterialAssets::applyToObject(project, getNodeSceneId(node), node.id, assetPath, error)) {
+                    Out::warning("%s", error.c_str());
+                }
                 ImGui::SetWindowFocus(HierarchyWindow::WINDOW_NAME);
             }
         }

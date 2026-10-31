@@ -2354,6 +2354,12 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     emitLayerCollisionMatrix("Physics", tagsAndLayers.layerCollisionMatrix3D);
     emitLayerCollisionMatrix("Physics2D", tagsAndLayers.layerCollisionMatrix2D);
 
+    // 3D world capacity, before any scene (and its world) is made: the same as in the editor
+    mainContent += "#ifdef JASPERENGINE_PHYSICS_3D\n";
+    mainContent += "    PhysicsSystem::setWorldCapacity3D(" + std::to_string(tagsAndLayers.maxBodies3D) + ", " +
+                   std::to_string(tagsAndLayers.maxBodyPairs3D) + ", " + std::to_string(tagsAndLayers.maxContactConstraints3D) + ");\n";
+    mainContent += "#endif\n";
+
     // Project Settings > Input (the engine starts with Unity's defaults), before any script reads it
     mainContent += inputActionsInitSource(inputActionsJson);
 
