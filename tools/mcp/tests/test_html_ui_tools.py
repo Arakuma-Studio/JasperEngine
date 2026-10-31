@@ -113,8 +113,8 @@ LIMITS.update({"user_settings": 550})
 # ui-canvas-group: create_ui's canvas_group node option (the rules in jasper://docs/ui) and
 # create_entity's canvas_group type; merged with main (lines-trails): 150 tools measured 106771
 # physics-contacts: get_runtime_entity's physics contacts / callbacks paid by a shorter description
-# (edit_colliders' receiver is in the guide); merged with main (ui-canvas-group): MEASURED
-TOTAL_LIMIT = 106800
+# (edit_colliders' receiver is in the guide); merged with main (ui-canvas-group): 150 tools measured 106769
+TOTAL_LIMIT = 106769
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
