@@ -824,6 +824,9 @@ namespace jasperengine::editor{
         std::unordered_map<uint32_t, AutosaveScene> autosaveScenes;
         float autosaveClock = 0.0f;
         float autosaveNextCheck = 0.0f;
+        // when tickAutosave last ran (the editor renders on demand: isAutosaveDue adds the time
+        // since, which the next frame's delta brings in)
+        std::chrono::steady_clock::time_point autosaveLastTick = std::chrono::steady_clock::now();
         std::shared_ptr<std::atomic<int>> autosaveWritesInFlight = std::make_shared<std::atomic<int>>(0);
         std::optional<RecoveryChoice> nextRecoveryChoice;
         RecoveryOutcome lastRecovery;
@@ -1658,6 +1661,9 @@ namespace jasperengine::editor{
         // Scene Auto Save (R13-R15), from the editor loop every frame; userInteracting while an
         // ImGui item or a gizmo drag is active (the backup waits for the next frame)
         void tickAutosave(float deltaSeconds, bool userInteracting);
+        // A scene's Auto Save backup is due (or a changed scene's first interval starts): the
+        // editor renders a frame for it even when idle, as frames are what run tickAutosave
+        bool isAutosaveDue() const;
         // The autosave interval in effect for a scene (it doubles when encoding it is slow)
         float getAutosaveInterval(uint32_t sceneId) const;
 

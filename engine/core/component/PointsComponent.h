@@ -88,8 +88,14 @@ namespace jasperengine{
 
         Texture texture;
 
+        // authored (saved)
         bool transparent = false;
         bool autoTransparency = true;
+        // set at load with autoTransparency: the texture has alpha. Runtime only, never saved, so
+        // a scene saves the same whether or not it has loaded yet
+        bool derivedTransparent = false;
+        // drawn in the transparent queue
+        bool isTransparent() const { return transparent || (autoTransparency && derivedTransparent); }
 
         bool hasTextureRect = false;
 

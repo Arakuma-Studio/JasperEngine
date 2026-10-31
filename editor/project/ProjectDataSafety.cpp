@@ -241,6 +241,7 @@ bool editor::Project::isEditorTempProject() const {
 void editor::Project::tickAutosave(float deltaSeconds, bool userInteracting) {
     // with nothing to do this is the whole cost of a frame
     autosaveClock += deltaSeconds;
+    autosaveLastTick = std::chrono::steady_clock::now();
     if (autosaveClock < autosaveNextCheck) {
         return;
     }
@@ -268,6 +269,41 @@ void editor::Project::tickAutosave(float deltaSeconds, bool userInteracting) {
             }
         }
     }
+}
+
+bool editor::Project::isAutosaveDue() const {
+    if (!AppSettings::isAutosaveEnabled() || !modelLoaded || projectPath.empty() || isEditorTempProject() || isAnyScenePlaying()) {
+        return false;
+    }
+    // the clock as the next frame's tick will see it
+    const float now = autosaveClock + std::chrono::duration<float>(std::chrono::steady_clock::now() - autosaveLastTick).count();
+    if (now < autosaveNextCheck) {
+        return false;
+    }
+    auto due = [&](uint32_t sceneId) {
+        auto it = autosaveScenes.find(sceneId);
+        // a change not seen yet starts its interval
+        if (it == autosaveScenes.end() || it->second.interval <= 0.0f) return true;
+        if (now - it->second.lastWrite < it->second.interval) return false;
+        // (a backup of it still being written is the next tick's)
+        std::lock_guard<std::mutex> lock(it->second.written->mutex);
+        return !it->second.written->writing;
+    };
+    // the same scenes autosaveDocument backs up
+    for (const SceneProject& sceneProject : scenes) {
+        if (sceneProject.opened && sceneProject.scene && sceneProject.isModified &&
+                sceneProject.playState == ScenePlayState::STOPPED && sceneProject.loadReport.dropped() == 0 && due(sceneProject.id)) {
+            return true;
+        }
+    }
+    if (!prefabAutoSave) {
+        for (const auto& stage : prefabStages) {
+            if (hasUnsavedPrefabStage(stage->sceneProject.id) && !isPrefabStageDegraded(stage->sceneProject.id) && due(stage->sceneProject.id)) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 void editor::Project::autosaveDocument(SceneProject& sceneProject, BackupKind kind, const fs::path& source, float interval) {
