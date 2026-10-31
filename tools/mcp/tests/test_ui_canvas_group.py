@@ -159,7 +159,7 @@ async def test_play_click_through_and_interactable(ed: Editor):
         # fadeOut with deactivate (GamePowerups)
         await lua(ed, "CanvasGroup(scene, entity('Panel')):fadeOut(0.25, {deactivate = true}); return true")
         await ed.call("wait", game_seconds=0.4)
-        got = await lua(ed, "local g = CanvasGroup(scene, entity('Panel')); return {g.alpha, GameObject(scene, entity('Panel')).active}")
+        got = await lua(ed, "local g = CanvasGroup(scene, entity('Panel')); return {g.alpha, GameObject(scene, entity('Panel')):isActive()}")
         ed.check(abs(got[0][0]) < 1e-6 and got[0][1] is False, f"faded out and deactivated: {got!r}")
     finally:
         await ed.call("play", action="stop")

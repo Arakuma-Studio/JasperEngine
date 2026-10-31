@@ -54,6 +54,8 @@ namespace {
             // the engine (System, Lua) made once for the binary: InputField focus shows the
             // virtual keyboard through System::instance(), the Lua tests need the state
             L = scriptdata::engineLua();
+            // the default camera the UI update reads (no view: the systems are not loaded)
+            scene.load();
         }
 
         UISystem* ui() { return scene.getSystem<UISystem>().get(); }
@@ -772,7 +774,9 @@ TEST_F(CanvasGroupTest, LuaApi){
     ASSERT_EQ(lua("local g = CanvasGroup(scene, panelEntity); g.alpha = 1.5"), "");
     EXPECT_NE(scene.findComponent<CanvasGroupComponent>(panel), nullptr) << "the constructor adds the component";
     EXPECT_DOUBLE_EQ(luaNumber("CanvasGroup(scene, panelEntity).alpha"), 1.0) << "clamped";
-    ASSERT_EQ(lua("CanvasGroup(scene, panelEntity).alpha = 0/0"), "");
+    // a Lua NaN is refused by the binding itself; the setter rejects one from C++
+    EXPECT_NE(lua("CanvasGroup(scene, panelEntity).alpha = 0/0"), "");
+    CanvasGroup(&scene, panel).setAlpha(NAN);
     EXPECT_DOUBLE_EQ(luaNumber("CanvasGroup(scene, panelEntity).alpha"), 1.0) << "NaN rejected";
     ASSERT_EQ(lua("local g = GameObject(scene, panelEntity):getCanvasGroup(); g.alpha = 0.5; g.interactable = false; "
                   "g.renderMode = CanvasGroupRenderMode.FLATTEN"), "");
@@ -795,7 +799,7 @@ TEST_F(CanvasGroupTest, LuaApi){
     EXPECT_NE(lua("CanvasGroup(scene, panelEntity):fadeTo(1, 1, 5)"), "") << "options must be a table";
 
     // CanvasGroup(scene): a new stretched container with a group
-    ASSERT_EQ(lua("made = CanvasGroup(scene); made:setEntityOwned(false); madeEntity = made:getEntity()"), "");
+    ASSERT_EQ(lua("made = CanvasGroup(scene); made.entityOwned = false; madeEntity = made.entity"), "");
     const Entity made = (Entity)luaNumber("madeEntity");
     ASSERT_TRUE(scene.isEntityCreated(made));
     EXPECT_NE(scene.findComponent<CanvasGroupComponent>(made), nullptr);

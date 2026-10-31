@@ -3600,42 +3600,49 @@ void UISystem::canvasGroupFullPass(){
     const size_t count = transforms->size();
     const ComponentId groupId = scene->getComponentId<CanvasGroupComponent>();
     const ComponentId uiId = scene->getComponentId<UIComponent>();
-    const ComponentId rectId = scene->getComponentId<RectTransformComponent>();
 
     canvasGroupStats.fullPasses++;
     canvasGroupStats.visited += count;
 
-    // parents (by array index: a parent always comes before its children) and what is under
-    // a RectTransform
+    // parents by array index (a parent always comes before its children); siblings follow
+    // each other, so the last parent found answers most lookups
     canvasGroupParents.assign(count, SIZE_MAX);
-    std::vector<uint8_t> underRect(count, 0);
+    Entity lastParent = NULL_ENTITY;
+    size_t lastParentIndex = SIZE_MAX;
     for (size_t i = 0; i < count; i++){
-        const Transform& transform = transforms->getComponentFromIndex(i);
-        if (transform.parent != NULL_ENTITY && transforms->hasEntity(transform.parent)){
-            const size_t parentIndex = transforms->getIndex(transform.parent);
-            if (parentIndex < i){
-                canvasGroupParents[i] = parentIndex;
-                underRect[i] = underRect[parentIndex];
-            }
+        const Entity parent = transforms->getComponentFromIndex(i).parent;
+        if (parent == NULL_ENTITY)
+            continue;
+        if (parent != lastParent){
+            lastParent = parent;
+            lastParentIndex = transforms->hasEntity(parent) ? transforms->getIndex(parent) : SIZE_MAX;
         }
-        if (scene->getSignature(transforms->getEntity(i)).test(rectId)){
-            underRect[i] = 1;
+        if (lastParentIndex < i){
+            canvasGroupParents[i] = lastParentIndex;
         }
     }
 
-    // UI draws per branch, children first (the FLATTEN leaf rule; UI particles draw in the
-    // colour pass, not in a layer)
-    std::vector<uint32_t> draws(count, 0);
-    for (size_t i = count; i-- > 0;){
-        const Signature signature = scene->getSignature(transforms->getEntity(i));
-        if (signature.test(uiId)){
-            draws[i]++;
-        }
-        if (signature.test(groupId)){
-            scene->getComponent<CanvasGroupComponent>(transforms->getEntity(i)).subtreeDraws = draws[i];
-        }
-        if (canvasGroupParents[i] != SIZE_MAX){
-            draws[canvasGroupParents[i]] += draws[i];
+    // UI elements per branch, children first (the FLATTEN leaf rule; UI particles draw in the
+    // colour pass, not in a layer): only needed when a group can make a layer
+    bool anyFlatten = false;
+    auto groups = scene->getComponentArray<CanvasGroupComponent>();
+    for (size_t i = 0; i < groups->size() && !anyFlatten; i++){
+        anyFlatten = groups->getComponentFromIndex(i).renderMode == CanvasGroupRenderMode::FLATTEN;
+    }
+    if (anyFlatten){
+        std::vector<uint32_t> draws(count, 0);
+        for (size_t i = count; i-- > 0;){
+            const Entity entity = transforms->getEntity(i);
+            const Signature signature = scene->getSignature(entity);
+            if (signature.test(uiId)){
+                draws[i]++;
+            }
+            if (signature.test(groupId)){
+                scene->getComponent<CanvasGroupComponent>(entity).subtreeDraws = draws[i];
+            }
+            if (canvasGroupParents[i] != SIZE_MAX){
+                draws[canvasGroupParents[i]] += draws[i];
+            }
         }
     }
 
@@ -3650,7 +3657,6 @@ void UISystem::canvasGroupFullPass(){
         applyCanvasGroupEntry(entity, signature, canvasGroupScratch[i]);
     }
 
-    auto groups = scene->getComponentArray<CanvasGroupComponent>();
     for (size_t i = 0; i < groups->size(); i++){
         markCanvasGroupSeen(groups->getComponentFromIndex(i));
     }
