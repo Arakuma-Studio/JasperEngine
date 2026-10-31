@@ -45,6 +45,7 @@
 #include <fstream>
 #include <functional>
 #include <memory>
+#include <map>
 #include <set>
 #include <sstream>
 
@@ -693,10 +694,19 @@ const EnumMap<TextureStrategy> textureStrategies[] = {
     {"fit", TextureStrategy::FIT}, {"resize", TextureStrategy::RESIZE}, {"none", TextureStrategy::NONE}};
 const EnumMap<WindowMode> windowModes[] = {
     {"windowed", WindowMode::WINDOWED}, {"maximized", WindowMode::MAXIMIZED}, {"fullscreen", WindowMode::FULLSCREEN}};
-const EnumMap<AndroidOrientation> androidOrientations[] = {
-    {"unspecified", AndroidOrientation::Unspecified}, {"portrait", AndroidOrientation::Portrait},
-    {"landscape", AndroidOrientation::Landscape}, {"sensor_portrait", AndroidOrientation::SensorPortrait},
-    {"sensor_landscape", AndroidOrientation::SensorLandscape}, {"full_sensor", AndroidOrientation::FullSensor}};
+const EnumMap<ScreenOrientation> playerOrientations[] = {
+    {"portrait", ScreenOrientation::Portrait}, {"portrait_upside_down", ScreenOrientation::PortraitUpsideDown},
+    {"landscape_left", ScreenOrientation::LandscapeLeft}, {"landscape_right", ScreenOrientation::LandscapeRight},
+    {"auto_rotation", ScreenOrientation::AutoRotation}};
+
+// keys of earlier versions and what replaced them (set_project_settings / get_project_settings say so)
+const std::map<std::string, std::string>& renamedSettings() {
+    static const std::map<std::string, std::string> renamed = {
+        {"android.orientation", "player.default_orientation / player.allowed_orientations (shared by Android and iOS)"},
+        {"android.keep_screen_on", "player.keep_screen_on (every platform; true by default, as Android builds always did)"},
+    };
+    return renamed;
+}
 
 template <typename T, size_t N>
 std::vector<std::string> enumNames(const EnumMap<T> (&map)[N]) {
@@ -1035,6 +1045,73 @@ const std::vector<Setting>& settingsTable() {
                      [](Project& p) -> unsigned int& { return p.getApplicationSettings().build; }));
         {
             Setting s;
+            s.key = "player.default_orientation";
+            s.type = "enum";
+            s.values = enumNames(playerOrientations);
+            s.description = "Orientation phones and tablets start in (Android and iOS); auto_rotation turns within "
+                            "player.allowed_orientations. landscape_left = device turned counter-clockwise.";
+            s.get = [](McpContext& ctx) {
+                return Json(enumName(playerOrientations, ctx.project()->getPresentationSettings().defaultOrientation));
+            };
+            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+                ScreenOrientation o;
+                if (!parseEnum(playerOrientations, value, o, error)) return false;
+                if (apply) ctx.project()->getPresentationSettings().defaultOrientation = o;
+                return true;
+            };
+            add(s);
+        }
+        {
+            Setting s;
+            s.key = "player.allowed_orientations";
+            s.type = "list";
+            s.values = {"portrait", "portrait_upside_down", "landscape_left", "landscape_right"};
+            s.description = "Allowed Orientations for Auto Rotation: non-empty subset; a fixed default is always allowed too.";
+            s.get = [](McpContext& ctx) {
+                Json list = Json::array();
+                const uint8_t mask = ctx.project()->getPresentationSettings().allowedOrientations;
+                for (int i = 0; i < 4; i++) {
+                    if (mask & PlatformRules::orientationBit(playerOrientations[i].value)) list.push_back(playerOrientations[i].name);
+                }
+                return list;
+            };
+            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_array() || value.empty()) {
+                    error = "must be a non-empty list of portrait, portrait_upside_down, landscape_left, landscape_right";
+                    return false;
+                }
+                uint8_t mask = 0;
+                for (const Json& item : value) {
+                    ScreenOrientation o;
+                    if (!parseEnum(playerOrientations, item, o, error) || !PlatformRules::isFixedOrientation(o)) {
+                        error = "must be a non-empty list of portrait, portrait_upside_down, landscape_left, landscape_right";
+                        return false;
+                    }
+                    mask |= PlatformRules::orientationBit(o);
+                }
+                if (apply) ctx.project()->getPresentationSettings().allowedOrientations = mask;
+                return true;
+            };
+            add(s);
+        }
+        add(boolField("player.keep_screen_on", "Initial Screen.sleepTimeout: true = NeverSleep, false = the device setting.",
+                      [](Project& p) -> bool& { return p.getPresentationSettings().keepScreenOn; }));
+        {
+            Setting s;
+            s.key = "player.target_frame_rate";
+            s.type = "int";
+            s.description = "Initial Engine.targetFrameRate; -1 = platform default (60 mobile; desktops ignore it with vsync on).";
+            s.get = [](McpContext& ctx) { return Json(ctx.project()->getPresentationSettings().targetFrameRate); };
+            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+                long long v;
+                if (!readInt(value, -1, 1000, v, error)) return false;
+                if (apply) ctx.project()->getPresentationSettings().targetFrameRate = v <= 0 ? -1 : (int)v;
+                return true;
+            };
+            add(s);
+        }
+        {
+            Setting s;
             s.key = "player.window_mode";
             s.type = "enum";
             s.values = enumNames(windowModes);
@@ -1227,21 +1304,6 @@ const std::vector<Setting>& settingsTable() {
         add(intField("android.target_sdk", "Android target SDK level.", 1, 100, [](Project& p) -> unsigned int& { return p.getAndroidProjectSettings().targetSdk; }));
         {
             Setting s;
-            s.key = "android.orientation";
-            s.type = "enum";
-            s.values = enumNames(androidOrientations);
-            s.description = "Android screen orientation.";
-            s.get = [](McpContext& ctx) { return Json(enumName(androidOrientations, ctx.project()->getAndroidProjectSettings().orientation)); };
-            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
-                AndroidOrientation o;
-                if (!parseEnum(androidOrientations, value, o, error)) return false;
-                if (apply) ctx.project()->getAndroidProjectSettings().orientation = o;
-                return true;
-            };
-            add(s);
-        }
-        {
-            Setting s;
             s.key = "android.abis";
             s.type = "list";
             s.values = {"armeabi-v7a", "arm64-v8a", "x86", "x86_64"};
@@ -1313,7 +1375,6 @@ const std::vector<Setting>& settingsTable() {
         }
         add(boolField("android.allow_backup", "Android allowBackup.", [](Project& p) -> bool& { return p.getAndroidProjectSettings().allowBackup; }));
         add(boolField("android.fullscreen", "Android fullscreen theme.", [](Project& p) -> bool& { return p.getAndroidProjectSettings().fullscreen; }));
-        add(boolField("android.keep_screen_on", "Keep the Android screen on.", [](Project& p) -> bool& { return p.getAndroidProjectSettings().keepScreenOn; }));
         add(boolField("android.admob_enabled", "Compile Google Mobile Ads into the Android export (System.initializeAdMob and the interstitial calls); needs android.admob_app_id.",
                       [](Project& p) -> bool& { return p.getAndroidProjectSettings().admobEnabled; }));
         add(stringSetting("android.admob_app_id", "Android AdMob App ID (com.google.android.gms.ads.APPLICATION_ID) from the AdMob console; without it the export leaves AdMob out.",
@@ -1787,6 +1848,10 @@ const Setting* findSetting(const std::string& key) {
 }
 
 std::string unknownKeyMessage(const std::string& key) {
+    const auto renamed = renamedSettings().find(key);
+    if (renamed != renamedSettings().end()) {
+        return "\"" + key + "\" was renamed: use " + renamed->second + ".";
+    }
     std::string text = "Unknown setting \"" + key + "\".";
     const std::string category = categoryOf(key);
     std::string sameCategory;

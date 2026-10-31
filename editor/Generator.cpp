@@ -2112,7 +2112,7 @@ bool editor::Generator::hasSceneSource(uint32_t sceneId, const std::string& scen
     return std::getline(file, header) && header == Factory::sceneSourceHeader;
 }
 
-void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples){
+void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples, const PlayerSettings& playerSettings){
     // the generated sources (main.cpp, scene and prefab factories) live in the editor's internal
     // folder, which an MCP call's deny-by-default guard refuses otherwise (util/SafeWrite.h)
     safewrite::EditorInternal ownInternal(projectInternalPath);
@@ -2319,6 +2319,32 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
 
     // MSAA of the HTML UI targets (Project Settings > Graphics), before any document draws
     mainContent += "    UIDocumentSystem::setPreferredSampleCount(" + std::to_string(htmlUiMsaaSamples) + ");\n";
+
+    // Player > Resolution and Presentation (before any script, which may change them) and
+    // what System.getAppName / getAppVersion... return where there is no package to ask
+    {
+        static const char* orientationNames[] = {"", "Portrait", "PortraitUpsideDown", "LandscapeLeft", "LandscapeRight", "AutoRotation"};
+        const int orientation = std::clamp((int)playerSettings.defaultOrientation, 1, 5);
+        char mask[8];
+        snprintf(mask, sizeof(mask), "0x%02X", (unsigned int)playerSettings.allowedOrientations);
+        mainContent += "    Engine::setVSyncCount(" + std::string(vsyncEnabled ? "1" : "0") + ");\n";
+        mainContent += "    Engine::setTargetFrameRate(" + std::to_string(playerSettings.targetFrameRate) + ");\n";
+        mainContent += "    Screen::initialize(ScreenOrientation::" + std::string(orientationNames[orientation]) + ", " + mask + ", " +
+            (playerSettings.keepScreenOn ? "true" : "false") + ");\n";
+        auto appInfo = [](const ApplicationInfo& info) {
+            return "System::setApplicationInfo({" + Factory::formatString(info.name) + ", " + Factory::formatString(info.identifier) + ", " +
+                Factory::formatString(info.version) + ", " + std::to_string((long long)info.build) + "});\n";
+        };
+        mainContent += "#if defined(_WIN32)\n";
+        mainContent += "    " + appInfo(playerSettings.windowsApp);
+        mainContent += "#elif defined(__EMSCRIPTEN__)\n";
+        mainContent += "    " + appInfo(playerSettings.webApp);
+        mainContent += "#elif defined(__APPLE__)\n";
+        mainContent += "    " + appInfo(playerSettings.macosApp);
+        mainContent += "#else\n";
+        mainContent += "    " + appInfo(playerSettings.linuxApp);
+        mainContent += "#endif\n";
+    }
 
     // Tags and Layers, before any scene or script can ask for them
     if (!tagsAndLayers.tags.empty()) {

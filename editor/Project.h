@@ -19,6 +19,7 @@
 #include "util/HtmlUIWatcher.h"
 #include "util/Util.h"
 #include "physics/PlacementSettings.h"
+#include "util/PlatformRules.h"
 #include "window/SpriteNormalsWindowSettings.h"
 
 #include "yaml-cpp/yaml.h"
@@ -494,6 +495,28 @@ namespace jasperengine::editor{
         unsigned int build = 1;  // Apple build number and Android version code
     };
 
+    // Player > Resolution and Presentation, shared by every platform: Unity's Default
+    // Orientation and Allowed Orientations for Auto Rotation (Android's screenOrientation, the
+    // iOS Info.plist), the initial Screen.sleepTimeout and Engine.targetFrameRate. The project's
+    // VSync setting gives the initial Engine.vSyncCount.
+    struct PresentationSettings {
+        ScreenOrientation defaultOrientation = ScreenOrientation::AutoRotation;
+        // PlatformRules::orientationBit of each; a fixed default is always in it
+        uint8_t allowedOrientations = PlatformRules::DEFAULT_ALLOWED_ORIENTATIONS;
+        bool keepScreenOn = true;
+        // -1 = the platform's rate
+        int targetFrameRate = -1;
+
+        // the allowed set with a fixed default in it, never empty
+        uint8_t effectiveAllowedOrientations() const;
+
+        bool operator==(const PresentationSettings& other) const {
+            return defaultOrientation == other.defaultOrientation && allowedOrientations == other.allowedOrientations
+                && keepScreenOn == other.keepScreenOn && targetFrameRate == other.targetFrameRate;
+        }
+        bool operator!=(const PresentationSettings& other) const { return !(*this == other); }
+    };
+
     // Name, identifier, version and build below are overrides: empty (or 0)
     // means the ApplicationSettings value.
 
@@ -542,15 +565,6 @@ namespace jasperengine::editor{
         std::string admobAppId;
     };
 
-    enum class AndroidOrientation {
-        Unspecified,
-        Portrait,
-        Landscape,
-        SensorPortrait,
-        SensorLandscape,
-        FullSensor
-    };
-
     struct AndroidProjectSettings {
         std::string applicationName;
         std::string packageName;
@@ -561,7 +575,7 @@ namespace jasperengine::editor{
         std::filesystem::path adaptiveIconBackground;
         unsigned int minSdk = 21;
         unsigned int targetSdk = 36;
-        AndroidOrientation orientation = AndroidOrientation::Unspecified;
+        // the orientation comes from PresentationSettings (Player > Resolution and Presentation)
         bool abiArmeabiV7a = true;
         bool abiArm64V8a = true;
         bool abiX86 = true;
@@ -569,7 +583,6 @@ namespace jasperengine::editor{
         std::set<std::string> permissions;
         bool allowBackup = true;
         bool fullscreen = true;
-        bool keepScreenOn = false;
         // Google Mobile Ads is compiled in only when enabled
         bool admobEnabled = false;
         std::string admobAppId;
@@ -637,6 +650,7 @@ namespace jasperengine::editor{
         SourceCodeExportSettings sourceCodeExportSettings;
         DesktopExportSettings desktopExportSettings;
         ApplicationSettings applicationSettings;
+        PresentationSettings presentationSettings;
         WebProjectSettings webProjectSettings;
         LinuxProjectSettings linuxProjectSettings;
         WindowsProjectSettings windowsProjectSettings;
@@ -1252,6 +1266,13 @@ namespace jasperengine::editor{
         const DesktopExportSettings& getDesktopExportSettings() const;
         ApplicationSettings& getApplicationSettings();
         const ApplicationSettings& getApplicationSettings() const;
+        PresentationSettings& getPresentationSettings();
+        const PresentationSettings& getPresentationSettings() const;
+        // Play start: Engine.targetFrameRate / vSyncCount, Screen and the application info from
+        // these settings, before any script runs (the generated main of an export does the same)
+        void applyPresentationSettings();
+        // what the generated init() of a build sets (Generator::configure)
+        PlayerSettings getPlayerSettings() const;
 
         // The platform override when set, otherwise the shared block.
         std::string getApplicationName(const std::string& platformOverride = {}) const;
