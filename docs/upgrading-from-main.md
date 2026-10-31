@@ -72,6 +72,9 @@ The upgrade test found these, fixed in this editor (each with a test that failed
 - **A UI scene changed on every save.** A RectTransform's scissor (the clip rectangle of the last
   draw, in the pixels of the view that drew it) was saved, so opening and saving a UI scene again
   rewrote it. It is no longer written.
+- **A prebuilt Linux player drew no sky.** A Skybox that uses the editor's default sky names no
+  file (its faces are built into the editor), so the prebuilt cook shipped none and the game logged
+  "Texture is missing texture for face 0". The cook now ships the six default faces with the game.
 
 ## Known, as on origin/main
 
@@ -164,17 +167,19 @@ The fixture does not use them, so the check passes; re-run it after each sync (b
 - `check.sh` opens that game in this editor and checks the upgrade: no error or warning, nothing
   but migrations in the load reports, every scene and prefab in the current format after a save,
   a GUID for every asset, every reference resolving, a second open rewriting nothing, the same
-  transcripts in the editor, in the exported Linux player and on the web.
+  transcripts in the editor, in the Linux player (compiled and prebuilt) and on the web.
 - `tools/mcp/tests/test_upgrade_from_main.py` runs the editor part in the MCP suite.
 
-The Linux player is checked compiled from the export; the prebuilt player (S30's
-`build --method prebuilt`) joins `check.sh` as its own step once S30 is in this branch. The fixture
-does not use Vertex Animation Textures (in `oe-port` since SYNC#3).
+The Linux player is checked twice: compiled from the export, and built with the prebuilt player
+(S30's `jasperengine-editor build --method prebuilt`, in the no-compiler runtime image; run
+`tools/build.sh players` first). The fixture does not use Vertex Animation Textures (in `oe-port`
+since SYNC#3).
 
 Run it (Docker; the build servers through `rb.sh`):
 
 ```sh
 tools/build.sh linux                                  # this editor
+tools/build.sh players                                # the prebuilt player runtimes
 tools/ci/upgrade_from_main/check.sh                   # build/upgrade-from-main/check/report.md
 ```
 

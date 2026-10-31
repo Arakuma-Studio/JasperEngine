@@ -13,8 +13,16 @@ ufm_image() {
     fi
 }
 
+# ufm_runtime_image: the no-compiler image of a user's computer (docker/runtime.Dockerfile), where
+# the prebuilt players run (S30)
+ufm_runtime_image() {
+    UFM_RUNTIME_IMAGE="$(docker build -q -f "$ROOT/docker/runtime.Dockerfile" "$ROOT/docker")"
+}
+
 # ufm_run <command...>: runs a bash command line in the image, in /src (this checkout), as the
-# host user, with the checkout's compiler cache; HOME is build/upgrade-from-main/home
+# host user, with the checkout's compiler cache; HOME is build/upgrade-from-main/home.
+# UFM_RUN_IMAGE=<id> runs another image (the runtime one); the player runtimes of
+# build/players are found there (JASPER_PLAYERS_DIR)
 ufm_run() {
     local main
     main="$(cd "$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)"
@@ -32,7 +40,8 @@ ufm_run() {
         -v "$main/.git:$main/.git:ro" \
         -v "$main/build/.cache/ccache:/ccache" -e CCACHE_DIR=/ccache \
         -e HOME=/src/build/upgrade-from-main/home -e UV_CACHE_DIR=/src/build/.cache/uv \
-        "$UFM_IMAGE" bash -euo pipefail -c "$*"
+        -e JASPER_PLAYERS_DIR=/src/build/players \
+        "${UFM_RUN_IMAGE:-$UFM_IMAGE}" bash -euo pipefail -c "$*"
 }
 
 # Inside the image: the uv the image ships, else the host's
