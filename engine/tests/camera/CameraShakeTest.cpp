@@ -304,8 +304,12 @@ TEST(ShakeTrauma, ClampsDecaysAndUsesThePower){
 TEST_F(Shake, TraumaShakesTheCamera){
     Entity cam = camera();
     CameraShake::addTrauma(0.8f);
-    step();
-    EXPECT_TRUE(cameraOf(cam).hasViewOffset);
+    bool shaken = false;
+    for (int i = 0; i < 4; i++){
+        step();
+        shaken = shaken || cameraOf(cam).hasViewOffset;
+    }
+    EXPECT_TRUE(shaken);
     step(DT, 120);
     EXPECT_FLOAT_EQ(shaker(cam).runtime->trauma.trauma, 0.0f);
     step();
@@ -453,10 +457,14 @@ TEST_F(Shake, DestroyedShakerInvalidatesItsHandles){
 TEST_F(Shake, DisablingClearsTheOffsetAndEnablingReplaysTheStartPreset){
     Entity cam = camera();
     shaker(cam).startPreset = "electrocute";
-    step(DT, 5);
+    bool shaken = false;
+    for (int i = 0; i < 5; i++){
+        step();
+        shaken = shaken || cameraOf(cam).hasViewOffset;
+    }
     ASSERT_TRUE(shaker(cam).runtime);
     EXPECT_EQ(shaker(cam).runtime->instances.size(), 1u);
-    EXPECT_TRUE(cameraOf(cam).hasViewOffset);
+    EXPECT_TRUE(shaken);
     shaker(cam).enabled = false;
     step();
     EXPECT_FALSE(cameraOf(cam).hasViewOffset);
@@ -470,9 +478,13 @@ TEST_F(Shake, DisablingClearsTheOffsetAndEnablingReplaysTheStartPreset){
     step();
     EXPECT_FALSE(cameraOf(cam).hasViewOffset);
     scene.setEntityActive(cam, true);
-    step(DT, 2);
+    shaken = false;
+    for (int i = 0; i < 3; i++){
+        step();
+        shaken = shaken || cameraOf(cam).hasViewOffset;
+    }
     EXPECT_EQ(shaker(cam).runtime->instances.size(), 3u);
-    EXPECT_TRUE(cameraOf(cam).hasViewOffset);
+    EXPECT_TRUE(shaken);
 }
 
 TEST_F(Shake, GlobalCallsSkipNonGlobalAndDisabledShakers){
@@ -531,14 +543,22 @@ TEST_F(Shake, TransformModeShakesAnAnchoredImageAdditively){
     scene.addComponent<CameraShakerComponent>(image, {});
 
     CameraShaker shakerObject(&scene, image);
-    ShakeInstanceHandle handle = shakerObject.shake(ShakeSource(preset(ShakeType::Sustained, 1.0f, 15.0f, 0.0f, 0.2f,
-                                                                       Vector3(1, 1, 0), Vector3(0, 0, 40))));
-    step(DT, 4);
+    // a fixed seed and a clock off the lattice's half points (Perlin is exactly 0.5 on some of them)
+    ShakeOptions options;
+    options.hasSeed = true;
+    options.seed = 37;
+    ShakeInstanceHandle handle = shakerObject.shake(ShakeSource(preset(ShakeType::Sustained, 1.0f, 13.0f, 0.0f, 0.2f,
+                                                                       Vector3(1, 1, 0), Vector3(0, 0, 40))), options);
+    bool rolled = false;
+    for (int i = 0; i < 6; i++){
+        step();
+        rolled = rolled || scene.getComponent<Transform>(image).rotation != Quaternion();
+    }
     RectTransformComponent& live = scene.getComponent<RectTransformComponent>(image);
     EXPECT_NE(live.positionOffset, Vector2(10, 20));
     // the layout places it from the offset: the Transform position is the layout's to write
     EXPECT_EQ(scene.getComponent<Transform>(image).position, Vector3(100, 50, 0));
-    EXPECT_NE(scene.getComponent<Transform>(image).rotation, Quaternion());
+    EXPECT_TRUE(rolled) << "the roll reaches the Transform's rotation";
 
     // a script writes the offset during the shake: it is the new base
     live.positionOffset = Vector2(300, 400);
@@ -563,8 +583,12 @@ TEST_F(Shake, TransformModeRestoresAPlainTransformExactly){
     const Vector3 position = transform.position;
     const Quaternion rotation = scene.getComponent<Transform>(prop).rotation;
     ShakeInstanceHandle handle = CameraShaker(&scene, prop).shake(ShakeSource("bump"));
-    step(DT, 6);
-    EXPECT_NE(scene.getComponent<Transform>(prop).position, position);
+    bool moved = false;
+    for (int i = 0; i < 6; i++){
+        step();
+        moved = moved || scene.getComponent<Transform>(prop).position != position;
+    }
+    EXPECT_TRUE(moved);
     while (handle.isValid()) step();
     step();
     EXPECT_EQ(scene.getComponent<Transform>(prop).position, position);
