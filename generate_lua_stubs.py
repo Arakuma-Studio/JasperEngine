@@ -1948,6 +1948,7 @@ OVERRIDES[('Gradient', 'setKeys')] = {
             '`g:setKeys({{0, Vector3(1, 0.6, 0)}, {1, Vector3(1, 0.6, 0)}}, {{0, 1}, {1, 0}})`'],
     'overloads': [([('colorKeys', '({[1]: number, [2]: Vector3}|GradientColorKey)[]'),
                     ('alphaKeys?', '({[1]: number, [2]: number}|GradientAlphaKey)[]')], '')]}
+
 # Input (CoreClassesLua.cpp): the rebinding functions read and push tables, the simulated
 # sources take a name or a script instance
 _INPUT_SOURCE = 'string|ScriptInstance'

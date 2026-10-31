@@ -6,16 +6,18 @@
 //
 // LINE_RIBBON ('Rib', a width > 0): a triangle list built on the CPU from the centre line
 // (engine/core/render/LineRibbonBuilder.h) and turned to the camera here. Each vertex has
-// its centre point (a_position), the unit directions of the line in and out of it
-// (a_tangentIn, a_tangentOut) and a_lineParams: x its side (-1/+1; a cap vertex: -1 at the
-// start, +1 at the end), y its half width (world units, or pixels with LINE_PIXEL_WIDTH),
-// z its role (0 in, 1 corner fan, 2 cap fan, 3 out), w the fan parameter (0..1; on an in or out
-// vertex 1 when its joint is round). The ribbon faces the camera (View: the normal towards
+// its centre point (a_position), the vectors of the segments in and out of it (a_tangentIn
+// from the previous point, a_tangentOut to the next; zero on an end's open side) and
+// a_lineParams: x its side (-1/+1; a cap vertex: -1 at the start, +1 at the end), y its half
+// width (world units, or pixels with LINE_PIXEL_WIDTH), z its role (0 in, 1 corner fan, 2 cap
+// fan, 3 out, 4 a joint's wedge centre), w the fan parameter (0..1; on an in or out vertex 1
+// when its joint is round). The ribbon faces the camera (View: the normal towards
 // it) or lies across the transform's Z (TransformZ). At a turn the outer side spreads into a
 // miter (up to 4x the half width, else a bevel) or a round joint; every inner vertex goes to
 // the inner miter point, so its triangles have no area. Widths are applied in world space
 // after the model matrix: a scaled transform moves the points, not the width (Unity).
-// LINE_PIXEL_WIDTH ('Pxw'): the same, built in screen pixels of the render target.
+// LINE_PIXEL_WIDTH ('Pxw'): the same, built in screen pixels of the render target; a segment
+// crossing the near plane is cut there (perspective: no screen position behind the camera).
 //
 // Outputs, by the variant's defines (both stages see them):
 //   v_color   HAS_VERTEX_COLOR_VEC3 / VEC4: the vertex colour (linear)
@@ -137,22 +139,59 @@ void main() {
 
         vec3 center = (linesParams.modelMatrix * vec4(a_position, 1.0)).xyz;
         mat3 model3 = mat3(linesParams.modelMatrix);
-        vec3 tin = normalize(model3 * a_tangentIn);
-        vec3 tout = normalize(model3 * a_tangentOut);
+        // the segments in and out of the point (zero on an end's open side: the other one; a
+        // transform scaled to 0 leaves no direction: any one, never a NaN)
+        vec3 segmentIn = model3 * a_tangentIn;
+        vec3 segmentOut = model3 * a_tangentOut;
+        float inLength = length(segmentIn);
+        float outLength = length(segmentOut);
+        vec3 tout = outLength > 1e-12 ? segmentOut / outLength : (inLength > 1e-12 ? segmentIn / inLength : vec3(1.0, 0.0, 0.0));
+        vec3 tin = inLength > 1e-12 ? segmentIn / inLength : tout;
         float halfWidth = a_lineParams.y;
+        vec4 lineParams = a_lineParams;
+        // a joint's wedge centre (role 4) is placed as an in vertex
+        if (lineParams.z > 3.5){
+            lineParams.z = 0.0;
+        }
 
         #ifdef LINE_PIXEL_WIDTH
             // in screen pixels: the directions are the screen-space derivatives of the line
             vec4 clip = linesParams.viewProjection * vec4(center, 1.0);
-            vec4 clipIn = linesParams.viewProjection * vec4(tin, 0.0);
-            vec4 clipOut = linesParams.viewProjection * vec4(tout, 0.0);
-            float clipW = abs(clip.w) > 1e-6 ? clip.w : 1e-6;
-            vec2 screenIn = (clipIn.xy * clipW - clip.xy * clipIn.w) * linesParams.viewport.xy;
-            vec2 screenOut = (clipOut.xy * clipW - clip.xy * clipOut.w) * linesParams.viewport.xy;
-            screenIn = length(screenIn) > 1e-12 ? normalize(screenIn) : vec2(1.0, 0.0);
-            screenOut = length(screenOut) > 1e-12 ? normalize(screenOut) : screenIn;
-            vec3 offset = lineOffset(vec3(screenIn, 0.0), vec3(screenOut, 0.0), vec3(0.0, 0.0, 1.0), a_lineParams);
-            gl_Position = clip + vec4(offset.xy * halfWidth * 2.0 / linesParams.viewport.xy * clip.w, 0.0, 0.0);
+            // A point behind the near plane (z < -w) has no screen position: a body vertex moves
+            // along its segment to where the segment crosses the plane (the point at the other
+            // end in front), else it stays behind and its triangles are clipped away; the cap,
+            // corner and wedge vertices of a point behind it stay behind (the joint is not drawn)
+            bool behind = false;
+            float nearDistance = clip.z + clip.w;
+            if (nearDistance < 0.0){
+                float role = a_lineParams.z;
+                behind = true;
+                if (role < 0.5 || (role > 2.5 && role < 3.5)){
+                    bool alongOut = role > 2.5 || inLength <= 1e-12;
+                    vec3 other = alongOut ? center + segmentOut : center - segmentIn;
+                    vec4 otherClip = linesParams.viewProjection * vec4(other, 1.0);
+                    float otherDistance = otherClip.z + otherClip.w;
+                    if (otherDistance > 0.0){
+                        float t = nearDistance / (nearDistance - otherDistance);
+                        center = mix(center, other, t);
+                        clip = mix(clip, otherClip, t);
+                        behind = false;
+                    }
+                }
+            }
+            if (behind){
+                gl_Position = clip;
+            }else{
+                vec4 clipIn = linesParams.viewProjection * vec4(tin, 0.0);
+                vec4 clipOut = linesParams.viewProjection * vec4(tout, 0.0);
+                float clipW = max(clip.w, 1e-6);
+                vec2 screenIn = (clipIn.xy * clipW - clip.xy * clipIn.w) * linesParams.viewport.xy;
+                vec2 screenOut = (clipOut.xy * clipW - clip.xy * clipOut.w) * linesParams.viewport.xy;
+                screenIn = length(screenIn) > 1e-12 ? normalize(screenIn) : vec2(1.0, 0.0);
+                screenOut = length(screenOut) > 1e-12 ? normalize(screenOut) : screenIn;
+                vec3 offset = lineOffset(vec3(screenIn, 0.0), vec3(screenOut, 0.0), vec3(0.0, 0.0, 1.0), lineParams);
+                gl_Position = clip + vec4(offset.xy * halfWidth * 2.0 / linesParams.viewport.xy * clipW, 0.0, 0.0);
+            }
         #else
             vec3 n;
             if (linesParams.alignAxis.w > 0.5){
@@ -163,7 +202,7 @@ void main() {
                 vec3 toCamera = linesParams.cameraPosition.xyz - center;
                 n = length(toCamera) > 1e-6 ? normalize(toCamera) : vec3(0.0, 0.0, 1.0);
             }
-            vec3 offset = lineOffset(tin, tout, n, a_lineParams);
+            vec3 offset = lineOffset(tin, tout, n, lineParams);
             gl_Position = linesParams.viewProjection * vec4(center + offset * halfWidth, 1.0);
         #endif
     #else

@@ -26,8 +26,12 @@ namespace jasperengine{
         using GameObject::setPosition;
         using GameObject::getPosition;
 
+        // a new GameObject with a Trail Renderer
         TrailRenderer(Scene* scene);
+        // the Trail Renderer of an entity that has one (a handle: it adds nothing)
         TrailRenderer(Scene* scene, Entity entity);
+        // Unity's AddComponent<TrailRenderer>(): the entity's Trail Renderer, added when it has none
+        static TrailRenderer addTo(Scene* scene, Entity entity);
         virtual ~TrailRenderer();
 
         TrailRenderer(const TrailRenderer& rhs);

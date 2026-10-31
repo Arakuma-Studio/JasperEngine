@@ -1474,6 +1474,7 @@ end
   `addLine(aV3, bV3 [, colorV4 [, colorB]])`, `updateLine(i, ...)`, `removeLine(i)`,
   `clearLines()`, `getNumLines()`, rw `maxLines`, `enabled`; the shader methods as Points.
 - `TrailRenderer` (Unity's TrailRenderer; `TrailRenderer(scene)` makes a GameObject with one,
+  `object:addTrailRenderer()` adds one to a GameObject (AddComponent; its own when it has one),
   `object:getTrailRenderer()` is nil without one, `object:hasTrailRenderer()`): rw `time`,
   `minVertexDistance`, `emitting`, `autodestruct`, `enabled`, the width and colour properties
   of LineRenderer (`widthMultiplier`, `startWidth`, `endWidth`, `widthCurve`, `widthUnit`,

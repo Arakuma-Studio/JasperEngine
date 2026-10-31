@@ -3302,6 +3302,31 @@ bool isFluidPreset(const McpValues::Change& change) {
 
 // A Line or Trail Renderer's "texture": the built-in line shader's base map, stored as
 // shaderTextures.u_baseTexture (one storage, LineRenderer::setTexture)
+// A Line Renderer's data picks its mode: the whole `lines` list (the segment list, in the
+// GameObject's space as it always was) is Segments mode in local space, the whole `positions` list
+// Polyline mode; unless the same call sets mode (and, for lines, useWorldSpace) itself
+void inferLineMode(std::vector<McpValues::Change>& out) {
+    bool lines = false, positions = false, mode = false, worldSpace = false;
+    for (const McpValues::Change& change : out) {
+        if (change.component != ComponentType::LineRendererComponent) continue;
+        if (change.op == "set" && change.property == "lines") lines = true;
+        if (change.op == "set" && change.property == "positions") positions = true;
+        if (change.property == "mode") mode = true;
+        if (change.property == "useWorldSpace") worldSpace = true;
+    }
+    if (mode || lines == positions) return;
+    McpValues::Change change;
+    change.component = ComponentType::LineRendererComponent;
+    change.property = "mode";
+    change.value = lines ? "segments" : "polyline";
+    out.push_back(change);
+    if (lines && !worldSpace) {
+        change.property = "useWorldSpace";
+        change.value = false;
+        out.push_back(change);
+    }
+}
+
 void aliasLineTexture(McpValues::Change& change) {
     if ((change.component == ComponentType::LineRendererComponent || change.component == ComponentType::TrailRendererComponent) &&
             change.property == "texture") {
@@ -3335,6 +3360,7 @@ bool McpValues::parseChanges(const Json& changes, std::vector<Change>& out, std:
                 out.push_back(change);
             }
         }
+        inferLineMode(out);
         return true;
     }
     if (!changes.is_array()) {
@@ -3398,6 +3424,7 @@ bool McpValues::parseChanges(const Json& changes, std::vector<Change>& out, std:
         error = "changes is empty.";
         return false;
     }
+    inferLineMode(out);
     return true;
 }
 

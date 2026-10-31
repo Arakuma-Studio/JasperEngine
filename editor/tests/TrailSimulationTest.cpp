@@ -15,6 +15,7 @@
 #include "component/TrailRendererComponent.h"
 #include "manager/ObjectManager.h"
 #include "subsystem/TrailSystem.h"
+#include "object/TrailRenderer.h"
 
 #include <vector>
 
@@ -105,6 +106,20 @@ TEST(TrailSimulationTest, EmittingOffAndClear){
     mover.trail.emitting = false;
     for (int i = 0; i < 10; i++) mover.step(0.01f, 0.1f);
     EXPECT_EQ(mover.trail.points.size(), emitted) << "no new point, the stored ones keep fading";
+    // detached (Unity): the ribbon is the stored points only, not joined to where the object is
+    {
+        std::vector<Vector3> points;
+        std::vector<float> t;
+        TrailSimulation::ribbonPoints(mover.trail, Vector3(mover.x, 0, 0), mover.now, points, t);
+        ASSERT_EQ(points.size(), mover.trail.points.size());
+        EXPECT_FLOAT_EQ(points.front().x, mover.trail.points.newest().position.x);
+        EXPECT_GT(t.front(), 0.0f);
+        mover.trail.emitting = true;
+        TrailSimulation::ribbonPoints(mover.trail, Vector3(mover.x, 0, 0), mover.now, points, t);
+        ASSERT_EQ(points.size(), mover.trail.points.size() + 1);
+        EXPECT_FLOAT_EQ(points.front().x, mover.x);
+        mover.trail.emitting = false;
+    }
     for (int i = 0; i < 110; i++) mover.step(0.01f, 0.1f);
     EXPECT_TRUE(mover.trail.points.empty());
 
@@ -287,4 +302,72 @@ TEST(TrailSimulationTest, StillTrailKeepsFadingByAge){
     mover.step(1.0f / 60.0f, 0.1f);
     ASSERT_FALSE(mover.trail.points.empty());
     EXPECT_EQ(mover.step(0.0f, 0.0f) & TrailSimulation::Step_Changed, 0u);
+}
+
+TEST(TrailSimulationTest, DeactivatedAndReactivatedInOneFrameIsCleared){
+    // a pooled bullet: deactivated, moved and reactivated before the next update draws no
+    // streak from where it was (its own trail and a child's)
+    Scene scene;
+    const Entity parent = scene.createUserEntity();
+    scene.addComponent<Transform>(parent, {});
+    const Entity child = scene.createUserEntity();
+    scene.addComponent<Transform>(child, {});
+    scene.addEntityChild(parent, child, false);
+    TrailRendererComponent authored;
+    authored.time = 1.0f;
+    authored.minVertexDistance = 0.0f;
+    scene.addComponent<TrailRendererComponent>(parent, authored);
+    scene.addComponent<TrailRendererComponent>(child, authored);
+    std::shared_ptr<TrailSystem> system = scene.getSystem<TrailSystem>();
+    for (int i = 0; i <= 10; i++){
+        for (Entity e : {parent, child}){
+            scene.getComponent<Transform>(e).worldPosition = Vector3(0.1f * i, 0, 0);
+        }
+        system->update(0.016);
+    }
+    ASSERT_FALSE(scene.getComponent<TrailRendererComponent>(parent).points.empty());
+    ASSERT_FALSE(scene.getComponent<TrailRendererComponent>(child).points.empty());
+    scene.setEntityActive(parent, false);
+    scene.setEntityActive(parent, true);
+    EXPECT_TRUE(scene.getComponent<TrailRendererComponent>(parent).points.empty());
+    EXPECT_TRUE(scene.getComponent<TrailRendererComponent>(child).points.empty());
+    EXPECT_FALSE(scene.getComponent<TrailRendererComponent>(parent).hasLastHeadPosition);
+}
+
+TEST(TrailSimulationTest, PreviewNeverAutodestructs){
+    // edit mode: a previewed trail that idles past its time keeps its GameObject
+    Scene scene;
+    const Entity entity = scene.createUserEntity();
+    scene.addComponent<Transform>(entity, {});
+    TrailRendererComponent authored;
+    authored.time = 0.1f;
+    authored.autodestruct = true;
+    scene.addComponent<TrailRendererComponent>(entity, authored);
+    std::shared_ptr<TrailSystem> system = scene.getSystem<TrailSystem>();
+    system->setPaused(true);
+    system->setPreview(entity, true);
+    for (int i = 0; i < 30; i++){
+        system->update(0.016);
+        ObjectManager::update(0.016);
+    }
+    EXPECT_TRUE(scene.isEntityCreated(entity));
+    EXPECT_FALSE(scene.getComponent<TrailRendererComponent>(entity).destroyRequested);
+}
+
+TEST(TrailSimulationTest, HandleAddsNothingAddToAdds){
+    // TrailRenderer(scene, entity) is a handle (Lua's object("X", "TrailRenderer") uses it):
+    // it must not add a component; addTo is AddComponent
+    Scene scene;
+    const Entity entity = scene.createUserEntity();
+    scene.addComponent<Transform>(entity, {});
+    { TrailRenderer handle(&scene, entity); }
+    EXPECT_EQ(scene.findComponent<TrailRendererComponent>(entity), nullptr);
+    TrailRenderer added = TrailRenderer::addTo(&scene, entity);
+    ASSERT_NE(scene.findComponent<TrailRendererComponent>(entity), nullptr);
+    added.setTime(0.5f);
+    EXPECT_FLOAT_EQ(TrailRenderer::addTo(&scene, entity).getTime(), 0.5f);
+    // disabling clears at once
+    TrailSimulation::addPosition(scene.getComponent<TrailRendererComponent>(entity), Vector3(1, 0, 0), 0.0f);
+    added.setEnabled(false);
+    EXPECT_TRUE(scene.getComponent<TrailRendererComponent>(entity).points.empty());
 }

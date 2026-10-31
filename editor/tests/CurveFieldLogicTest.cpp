@@ -9,6 +9,7 @@
 // Pure.
 
 #include <gtest/gtest.h>
+#include "util/Color.h"
 
 #include "window/widget/CurveFieldLogic.h"
 #include "window/widget/GradientFieldLogic.h"
@@ -441,13 +442,15 @@ TEST(GradientFieldLogicTest, AddKeysTakeTheCurrentValueUpToEight){
     int index = addColorKey(gradient, 0.25f);
     ASSERT_EQ(index, 1);
     EXPECT_FLOAT_EQ(gradient.colorKeys[1].time, 0.25f);
-    EXPECT_FLOAT_EQ(gradient.colorKeys[1].color.x, 0.25f);
-    EXPECT_FLOAT_EQ(gradient.colorKeys[1].color.z, 0.25f);
+    // the colour there (blended in sRGB: a quarter of the way is sRGB 0.25)
+    const float quarter = Color::sRGBToLinear(Vector3(0.25f, 0.25f, 0.25f)).x;
+    EXPECT_NEAR(gradient.colorKeys[1].color.x, quarter, 1e-5f);
+    EXPECT_NEAR(gradient.colorKeys[1].color.z, quarter, 1e-5f);
     index = addAlphaKey(gradient, 0.75f);
     ASSERT_EQ(index, 1);
     EXPECT_FLOAT_EQ(gradient.alphaKeys[1].alpha, 0.25f);
     // the look is unchanged by a key added on it
-    EXPECT_FLOAT_EQ(gradient.evaluate(0.5f).x, 0.5f);
+    EXPECT_NEAR(gradient.evaluate(0.5f).x, Color::sRGBToLinear(Vector3(0.5f, 0.5f, 0.5f)).x, 1e-5f);
     EXPECT_FLOAT_EQ(gradient.evaluate(0.5f).w, 0.5f);
 
     // clamped times; after the keys at the same time
@@ -523,9 +526,9 @@ TEST(GradientFieldLogicTest, Presets){
     EXPECT_FLOAT_EQ(presetGradient(GradientPreset::FadeIn).evaluate(0.25f).w, 0.25f);
     EXPECT_EQ(presetGradient(GradientPreset::White), Gradient());
     const Gradient bw = presetGradient(GradientPreset::BlackToWhite);
-    EXPECT_FLOAT_EQ(bw.evaluate(0.5f).y, 0.5f);
+    EXPECT_NEAR(bw.evaluate(0.5f).y, Color::sRGBToLinear(Vector3(0.5f, 0.5f, 0.5f)).x, 1e-5f);
     EXPECT_FLOAT_EQ(bw.evaluate(0.5f).w, 1.0f);
-    EXPECT_FLOAT_EQ(presetGradient(GradientPreset::WhiteToBlack).evaluate(0.25f).y, 0.75f);
+    EXPECT_NEAR(presetGradient(GradientPreset::WhiteToBlack).evaluate(0.25f).y, Color::sRGBToLinear(Vector3(0.75f, 0.75f, 0.75f)).x, 1e-5f);
     const Gradient rainbow = presetGradient(GradientPreset::Rainbow);
     EXPECT_EQ(rainbow.colorKeys.size(), 6u);
     EXPECT_EQ(rainbow.evaluate(0.2f), Vector4(1, 1, 0, 1));

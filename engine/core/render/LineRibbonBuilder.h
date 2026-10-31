@@ -55,7 +55,8 @@ namespace jasperengine {
         Vector4 color;
         // u along the line by the texture mode, v 0 on the -1 side and 1 on the +1 side
         Vector2 uv;
-        // unit directions of the segments in and out of the point (= each other at an end)
+        // the vectors of the segments in and out of the point (from the previous point, to the
+        // next one; zero on an end's open side), in the points' space
         Vector3 tangentIn;
         Vector3 tangentOut;
         // x side (-1/+1; a cap: -1 at the start, +1 at the end), y half width (its unit),
@@ -74,11 +75,17 @@ namespace jasperengine {
         // cap fan vertex of a round cap
         LineRibbonRole_Cap = 2,
         // body vertex starting the segment out of the point
-        LineRibbonRole_Out = 3
+        LineRibbonRole_Out = 3,
+        // a joint's wedge centre: placed as an in vertex of the other side (the inner miter
+        // point), only in the joint's triangles
+        LineRibbonRole_JointCentre = 4
     };
 
     // Unity's limit of numCornerVertices and numCapVertices
     constexpr unsigned int LINE_RIBBON_MAX_FAN_VERTICES = 90;
+    // a miter joint reaches at most this many half widths from its point, past it a bevel
+    // (includes/lines_vs.glsl LINE_MITER_LIMIT)
+    constexpr float LINE_RIBBON_MITER_LIMIT = 4.0f;
 
     struct LineRibbonSettings {
         bool loop = false;
@@ -122,6 +129,12 @@ namespace jasperengine {
         // the vertex and index counts build() adds for `points` distinct points
         static void counts(size_t points, bool loop, unsigned int numCornerVertices, unsigned int numCapVertices,
                            size_t& vertexCount, size_t& indexCount);
+
+        // how far a ribbon reaches past its centre line, in half widths: a miter joint up to
+        // its limit (4), else (round joints, caps, straight parts) 1
+        static float boundsGrowth(unsigned int numCornerVertices){
+            return numCornerVertices == 0 ? LINE_RIBBON_MITER_LIMIT : 1.0f;
+        }
 
         // the half width (in the width unit) of t: multiplier x curve(t) / 2, never negative
         static float halfWidth(const LineRibbonSettings& settings, float t);

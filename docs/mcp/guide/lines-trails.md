@@ -24,7 +24,13 @@ none). A Trail Renderer coexists with the GameObject's Mesh, Sprite or other ren
 | `segments` | `lines`: independent A-B segments (`pointA`, `colorA`, `pointB`, `colorB`) | each segment's own | debug drawings, gizmo-like lines |
 
 The Unity API (`positionCount`, `setPosition`, `setPositions`) switches to `polyline`, the segment
-API (`addLine`, `updateLine`, `removeLine`, `clearLines`) to `segments`. With `segments` the width,
+API (`addLine`, `updateLine`, `removeLine`, `clearLines`) to `segments`. Over MCP, writing the
+whole `positions` list switches to `polyline`; writing the whole `lines` list switches to
+`segments` in local space (`useWorldSpace` false), as segment lists always were, unless the same
+call sets `mode` / `useWorldSpace`. `set_shape_points component=line_renderer` takes `points`
+(local to the GameObject like every shape; a world-space line gets them in world space, so the
+line sits where the points say relative to the object; `closed` loops it; `color` / `colors`
+make its gradient, up to 8 points) or `lines` (segments, local). With `segments` the width,
 curve (over each segment) and caps apply per segment; there are no joints and the gradient is
 not used. `useWorldSpace` (both modes): the points are world positions and the transform is
 ignored; off, they move, turn and scale with the GameObject (the width does not scale).
@@ -60,7 +66,7 @@ shapes it; Transform Z alignment does not apply). Negative curve values are widt
 `startColor` / `endColor` key the two ends. Blending: AUTO is alpha blending without depth
 writes (blended ribbons sort with the transparent renderers by distance, `sortPriority` first,
 lower first); set `blendMode` for additive, premultiplied, multiply or opaque (opaque ribbons draw
-in the opaque pass).
+in the opaque pass and write depth).
 
 The built-in line shader samples a **base texture** (`texture`; stored as
 `shaderTextures.u_baseTexture`, white without one) times the colour, at texture coordinates that
@@ -84,13 +90,18 @@ A ribbon behind a moving GameObject, in world space. Each frame (scaled game tim
 - points older than `time` seconds are removed;
 - while `emitting`, a point is added when the object moved more than `minVertexDistance` from the
   newest one (0: one per frame while it moves; at most 4096 points, the oldest dropped);
-- the live head (where the object is now) is always the ribbon's first point.
+- while emitting, the live head (where the object is now) is the ribbon's first point; with
+  `emitting` false the trail is detached: its stored points stay and fade out, not joined to the
+  object (a pooled bullet: set emitting false, move it, `clear()` or set emitting true again).
 
 `widthCurve` and `colorGradient` run by **age**: 0 is the head, 1 a point `time` old (Unity's
 fade). `autodestruct`: the GameObject is destroyed once the trail has had no points and the
 object has not moved for `time` seconds. A trail whose GameObject becomes inactive, or which is
-disabled, is **cleared** (a pooled bullet reactivated elsewhere draws no streak from where it
-was); after teleporting an active object call `clear()`. A new trail from the editor: width 0.2
+disabled, is **cleared** at once (a pooled bullet deactivated, moved and reactivated, even in the
+same frame, draws no streak from where it was); after teleporting an active object call
+`clear()`. In Lua `TrailRenderer(scene)` makes a GameObject with a trail, `object:addTrailRenderer()`
+adds one to an existing GameObject (Unity's AddComponent), `object:getTrailRenderer()` (nil
+without one) and `object(name, "TrailRenderer")` only look one up. A new trail from the editor: width 0.2
 (2D: 8, `minVertexDistance` 2), thinning 1 -> 0 and fading out to the tail. A trail with `time` 0
 draws nothing (`check` warns `trail-zero-time`).
 
@@ -112,7 +123,11 @@ shapes in scene files, `set_properties` and `get_entity`:
 - **Gradient**: `{"mode": "blend", "colors": [[time, "#FF9600"], ...], "alphas": [[time, alpha],
   ...]}`: up to 8 keys each, times 0..1. Colours are `"#RRGGBB"` (sRGB, as pickers show them;
   read back so when the value is exactly an 8-bit one) or `[r, g, b]` (linear); stored linear.
-  `mode` `fixed` steps to the first key at or after t. Writes also take one colour (`"#RRGGBBAA"`
+  Blending mixes two colour keys in sRGB like Unity (a red-to-blue gradient is (0.5, 0, 0.5) sRGB
+  halfway), so gradients copied from Unity look the same; alpha mixes linearly. `mode` `fixed`
+  steps to the first key at or after t. More than 8 keys: `set_properties` and Lua (`setKeys`,
+  `colorKeys`, `alphaKeys`) refuse with an error; a scene file with more loads the first 7 and
+  the last, with a warning. Writes also take one colour (`"#RRGGBBAA"`
   or `[r, g, b, a]` linear) for a constant gradient. No keys: white, opaque.
 
 In the Inspector both are fields with an inline preview that opens an editor: drag keys,

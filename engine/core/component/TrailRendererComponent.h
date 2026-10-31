@@ -106,6 +106,14 @@ namespace jasperengine{
         bool destroyRequested = false;
         bool needUpdateRibbon = true;
 
+        // forgets every point and where the head was (Unity Clear(); TrailSimulation::clear)
+        void clearPoints(){
+            points.clear();
+            hasLastHeadPosition = false;
+            idleTime = 0.0f;
+            needUpdateRibbon = true;
+        }
+
         bool loaded = false;
         bool loadCalled = false;
         bool needReload = false;

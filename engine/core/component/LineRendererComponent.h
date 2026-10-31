@@ -66,6 +66,11 @@ namespace jasperengine{
         float maxHalfWidth = 0.0f;
         // the frame the buffer shrank or was sized last (shrinks after 5 s below a quarter)
         float lowUseTime = 0.0f;
+        // whether the shader drawing it has a manifest (the per-frame variant check; looked up
+        // again when the shader changes and at each load)
+        std::string manifestShader;
+        bool hasManifest = false;
+        bool manifestKnown = false;
     };
 
     struct JASPERENGINE_API LineRendererComponent{
