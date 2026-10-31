@@ -492,6 +492,17 @@ implementing; everything else is as specified).
 
 ### Verification
 
+- Editor + `jasperengine-editor-tests` build with 0 warnings. Unit tests: 971 run, 963 passed,
+  8 skipped (the baseline skips), 0 failed; 27 of them are this feature's (`LuaJsonTest` 12,
+  `UserSettingsTest` 9, `FileUtilsTest` 6; the locale test makes a de_DE locale with
+  `localedef` into a temporary `LOCPATH` when none is installed).
+- MCP: `test_script_data.py` 2/2; `test_docs.py`, `test_protocol.py` (16 KB guide budget),
+  `test_autosync.py` (guide tool names), `test_html_ui_tools.py::test_budget` (106611 chars, limit
+  106620), `test_build.py` export tests (the `JASPERENGINE_APP_IDENTIFIER` line), and a sweep of
+  `test_play`, `test_lua_threads`, `test_script`, `test_project`, `test_project_save`,
+  `test_runtime_regressions`, `test_regressions`, `test_play_startup_scenes`, `test_playctl` pass;
+  `test_stubs.py` passes with its lua-language-server / clangd checks skipped (not installed
+  here; its known-good script now uses the Json, PlayerPrefs and File API for when they are).
 - Not verifiable on this host: the Apple code (`JasperEngineApple.mm`, `SystemMac.mm`) and the
   Windows code (`SystemWin.cpp`, the `_WIN32` parts of `FileUtils.cpp`) were written carefully
   but not compiled. Android (Java through Gradle, the JNI and core files with the NDK clang for
