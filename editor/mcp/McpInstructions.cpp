@@ -132,7 +132,8 @@ return Player
   jasper://docs/lua-api (an index: read only what you need), the Lua stubs or search_engine_api before using a name you have not seen there.
 - Input.getAxis/getButtonDown('Jump') read Project Settings > Input actions; getKeyDown(key)
   is an edge, isKeyPressed held. Test with send_input action/axis events (jasper://docs/input).
-  Log.print/warn/error take ONE string (use ..).
+  Log.print/warn/error join values like print. On-device console: DebugOverlay.showConsole();
+  stats: DebugOverlay.getStats(); errors: Log.getEntries(20, {LogLevel.ERROR}) (jasper://docs/debugging).
 - Time: Engine.timeScale and Engine.fixedDeltatime (read/write), Engine.gameTime and
   Engine.frameCount (scaled game time and frames since start).
 - C++ default arguments do not exist in Lua: pass every argument (e.g. the wake flag).

@@ -10,6 +10,8 @@
 //   list_runtime_entities / get_runtime_entity / set_runtime_property   live GameObjects
 //   send_input            keyboard / text / mouse / touch / gamepad sequences across frames
 #include "McpTools.h"
+
+#include "debug/DebugOverlay.h"
 #include "HtmlUiShared.h"
 #include "PlayViewCommon.h"
 
@@ -628,7 +630,13 @@ Json playStateJson(McpContext& ctx) {
     out["time"] = timeJson(playId != NULL_PROJECT_SCENE && s.current.active);
     if (s.last.serial != 0) out["last_session"] = sessionJson(s.last);
     if (!s.held.empty()) out["held_input"] = heldInputJson();
-    if (playId != NULL_PROJECT_SCENE && s.current.active) out["input"] = playInputJson();
+    if (playId != NULL_PROJECT_SCENE && s.current.active) {
+        out["input"] = playInputJson();
+        // the on-device console and stats overlay (Project Settings > Debug, DebugOverlay)
+        static const char* const statsModes[] = {"off", "fps", "full"};
+        out["debug_overlay"] = {{"enabled", DebugOverlay::isEnabled()}, {"console_visible", DebugOverlay::isConsoleVisible()},
+                                {"stats", statsModes[static_cast<int>(DebugOverlay::getStatsMode())]}};
+    }
     return out;
 }
 
@@ -3423,7 +3431,7 @@ void registerPlayTools(McpRegistry& registry) {
         tool.title = "Get Play State";
         tool.description =
             "Play state: played and running scenes (child scenes run as copies with own ids), the session (time, "
-            "frames, errors, crash), how the last one ended, held input, input (actions, touches, keys), "
+            "frames, errors, crash), how the last one ended, held input, input (actions, touches, keys), debug_overlay, "
             "console_cursor, the clock (time_scale, fixed_fps, auto_pause, held); stopped: play_would_start.";
         tool.inputSchema = object({});
         tool.annotations.readOnly = true;

@@ -655,6 +655,7 @@ namespace jasperengine::editor{
 
         uint32_t startSceneId;
         LoadingSettings loadingSettings;
+        DebugSettings debugSettings;
         TerrainEditorSettings terrainEditorSettings;
         PhysicsPlacementSettings physicsPlacementSettings;
         SpriteNormalsWindowSettings spriteNormalsSettings;
@@ -1308,6 +1309,14 @@ namespace jasperengine::editor{
 
         LoadingSettings& getLoadingSettings();
         const LoadingSettings& getLoadingSettings() const;
+
+        // Project Settings > Debug (project.yaml `debug:`); a running Play keeps what it started
+        // with. Changed through DebugSettingsCmd (undoable), read by Generator and Play start
+        const DebugSettings& getDebugSettings() const;
+        void setDebugSettings(const DebugSettings& settings);
+        // the engine as Play starts: the log buffer and stack traces, the development build
+        // flag, DebugOverlay::configure (development mode: on in the editor's Play)
+        void applyDebugSettingsForPlay() const;
 
         TerrainEditorSettings& getTerrainEditorSettings();
         const TerrainEditorSettings& getTerrainEditorSettings() const;

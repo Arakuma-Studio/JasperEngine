@@ -27,6 +27,7 @@
 #include "physics/PlacementSettingsLimits.h"
 #include "spritenormals/SpriteNormalsRecipe.h"
 #include "input/InputActions.h"
+#include "DebugSettings.h"
 #include "json.hpp"
 
 #include <algorithm>
@@ -2977,6 +2978,25 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (loadingNode.size()) root["loading"] = loadingNode;
     }
 
+    // Project Settings > Debug: what differs from the defaults
+    {
+        const DebugSettings& debug = project->getDebugSettings();
+        const DebugSettings defaults;
+        YAML::Node debugNode;
+        if (debug.overlay != defaults.overlay) debugNode["overlay"] = DebugSettingsNames::name(debug.overlay);
+        if (debug.toggleKey != defaults.toggleKey) debugNode["toggleKey"] = debug.toggleKey;
+        if (debug.statsKey != defaults.statsKey) debugNode["statsKey"] = debug.statsKey;
+        if (debug.gesture != defaults.gesture) debugNode["gesture"] = DebugSettingsNames::name(debug.gesture);
+        if (debug.popup != defaults.popup) debugNode["popup"] = DebugSettingsNames::name(debug.popup);
+        if (debug.openOnError != defaults.openOnError) debugNode["openOnError"] = debug.openOnError;
+        if (debug.stats != defaults.stats) debugNode["stats"] = DebugSettingsNames::name(debug.stats);
+        if (debug.statsCorner != defaults.statsCorner) debugNode["statsCorner"] = DebugSettingsNames::name(debug.statsCorner);
+        if (debug.allowLua != defaults.allowLua) debugNode["allowLua"] = DebugSettingsNames::name(debug.allowLua);
+        if (debug.logBufferSize != defaults.logBufferSize) debugNode["logBufferSize"] = debug.logBufferSize;
+        if (debug.logStackTraces != defaults.logStackTraces) debugNode["logStackTraces"] = DebugSettingsNames::name(debug.logStackTraces);
+        if (debugNode.size()) root["debug"] = debugNode;
+    }
+
     if (!project->getStandalonePrefabs().empty()) {
         YAML::Node prefabsNode;
         for (const fs::path& prefabPath : project->getStandalonePrefabs()) {
@@ -3376,6 +3396,42 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         loading.delay = std::max(0.0f, decodeFinite(loadingNode["delay"], loading.delay));
         loading.timeout = std::max(0.0f, decodeFinite(loadingNode["timeout"], loading.timeout));
         if (loadingNode["asyncLoading"]) loading.asyncLoading = YamlNumbers::as<bool>(loadingNode["asyncLoading"]);
+    }
+
+    // Project Settings > Debug; a value that does not read keeps its default (warned)
+    {
+        DebugSettings debug;
+        if (node["debug"] && node["debug"].IsMap()) {
+            const YAML::Node debugNode = node["debug"];
+            auto readEnum = [&debugNode](const char* key, auto& value) {
+                if (!debugNode[key]) return;
+                const std::string text = debugNode[key].IsScalar() ? debugNode[key].Scalar() : std::string();
+                if (!DebugSettingsNames::parse(text, value))
+                    Out::warning("Ignoring debug.%s \"%s\" in project settings", key, text.c_str());
+            };
+            auto readKey = [&debugNode](const char* key, std::string& value) {
+                if (!debugNode[key]) return;
+                const std::string text = debugNode[key].IsScalar() ? debugNode[key].Scalar() : std::string();
+                if (DebugSettingsNames::isKeyName(text)) value = text;
+                else Out::warning("Ignoring debug.%s \"%s\" in project settings: not a key name", key, text.c_str());
+            };
+            readEnum("overlay", debug.overlay);
+            readKey("toggleKey", debug.toggleKey);
+            readKey("statsKey", debug.statsKey);
+            readEnum("gesture", debug.gesture);
+            readEnum("popup", debug.popup);
+            if (debugNode["openOnError"]) debug.openOnError = YamlNumbers::as<bool>(debugNode["openOnError"]);
+            readEnum("stats", debug.stats);
+            readEnum("statsCorner", debug.statsCorner);
+            readEnum("allowLua", debug.allowLua);
+            if (debugNode["logBufferSize"]) {
+                const long long size = YamlNumbers::as<long long>(debugNode["logBufferSize"]);
+                debug.logBufferSize = static_cast<unsigned int>(std::clamp<long long>(size, 0, DebugSettings::maxLogBufferSize));
+            }
+            readEnum("logStackTraces", debug.logStackTraces);
+        }
+        // a project without the node (older ones) gets the defaults
+        project->setDebugSettings(debug);
     }
 
     if (node["standalonePrefabs"]) {

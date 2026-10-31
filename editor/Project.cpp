@@ -3361,6 +3361,22 @@ const editor::LoadingSettings& editor::Project::getLoadingSettings() const{
     return loadingSettings;
 }
 
+const editor::DebugSettings& editor::Project::getDebugSettings() const{
+    return debugSettings;
+}
+
+void editor::Project::setDebugSettings(const DebugSettings& settings){
+    debugSettings = settings;
+}
+
+void editor::Project::applyDebugSettingsForPlay() const{
+    // the editor's Play is a development build, as a Debug-type export
+    Engine::setDevelopmentBuild(true);
+    Log::setBufferSize(debugSettings.logBufferSize);
+    Log::setStackTraces(debugSettings.logStackTraces);
+    DebugOverlay::configure(debugSettings.toOverlaySettings(true));
+}
+
 editor::TerrainEditorSettings& editor::Project::getTerrainEditorSettings(){
     return terrainEditorSettings;
 }
@@ -5517,6 +5533,7 @@ void editor::Project::resetConfigs() {
     selectedSceneForProperties = NULL_PROJECT_SCENE;
     startSceneId = NULL_PROJECT_SCENE;
     loadingSettings = {};
+    debugSettings = {};
     terrainEditorSettings = {};
     physicsPlacementSettings = {};
     spriteNormalsSettings = {};
@@ -6884,7 +6901,7 @@ void editor::Project::configureGenerator() {
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, getInputActionsJsonForBuild());
+    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, getInputActionsJsonForBuild(), debugSettings);
 }
 
 std::vector<editor::SceneScriptSource> editor::Project::prepareScriptBuild() {
@@ -8586,7 +8603,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-    generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, getInputActionsJsonForBuild());
+    generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, getInputActionsJsonForBuild(), debugSettings);
     if (hasMissingSceneSources()) {
         generatedSourcesDirty.store(true);
     }
@@ -8766,6 +8783,8 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                 }
                 SceneManager::setLoadingDelay(loadingSettings.delay);
                 SceneManager::setLoadingTimeout(loadingSettings.timeout);
+                // Project Settings > Debug: the overlay of a development build, before the scripts start
+                applyDebugSettingsForPlay();
                 // so Engine::onSceneLoaded fires, as for the exported start scene
                 SceneManager::setCurrentScene(sceneId);
 
@@ -9287,6 +9306,8 @@ void editor::Project::stop(uint32_t sceneId) {
 
             // anime: every animation of the play, and its script callbacks, before the scripts go
             AnimEngine::instance().reset();
+            // the debug overlay and the console commands of the scripts, before the scripts go
+            DebugOverlay::shutdown();
 
             const bool libraryConnected = conector.isLibraryConnected();
             if (libraryConnected) {

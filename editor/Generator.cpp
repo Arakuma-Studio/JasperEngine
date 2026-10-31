@@ -2112,7 +2112,7 @@ bool editor::Generator::hasSceneSource(uint32_t sceneId, const std::string& scen
     return std::getline(file, header) && header == Factory::sceneSourceHeader;
 }
 
-void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples, const std::string& inputActionsJson){
+void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples, const std::string& inputActionsJson, const DebugSettings& debugSettings){
     // the generated sources (main.cpp, scene and prefab factories) live in the editor's internal
     // folder, which an MCP call's deny-by-default guard refuses otherwise (util/SafeWrite.h)
     safewrite::EditorInternal ownInternal(projectInternalPath);
@@ -2349,6 +2349,9 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     // Project Settings > Input (the engine starts with Unity's defaults), before any script reads it
     mainContent += inputActionsInitSource(inputActionsJson);
 
+    // Project Settings > Debug, before the first scene (its scripts may read DebugOverlay)
+    mainContent += debugInitSource(debugSettings);
+
     mainContent += "\n";
 
     // Register all stacks with SceneManager
@@ -2416,6 +2419,57 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     FileUtils::writeIfChanged(mainFile, mainContent);
 
     writeSourceFiles(projectPath, projectInternalPath, libName, scriptFiles, scenes, prefabs, vsyncEnabled, windowSettings, assetsPath, luaPath, scriptDirs, cxxStandard);
+}
+
+std::string editor::Generator::debugInitSource(const DebugSettings& debug) {
+    const DebugSettings defaults;
+    std::string out;
+    out += "#if defined(JASPERENGINE_DEVELOPMENT_BUILD) || defined(DEBUG)\n";
+    out += "    Engine::setDevelopmentBuild(true);\n";
+    out += "#endif\n";
+    if (debug.logBufferSize != defaults.logBufferSize)
+        out += "    Log::setBufferSize(" + std::to_string(debug.logBufferSize) + ");\n";
+    if (debug.logStackTraces != defaults.logStackTraces) {
+        static const char* const traces[] = {"None", "Errors", "Warnings", "All"};
+        out += std::string("    Log::setStackTraces(LogStackTraces::") + traces[static_cast<int>(debug.logStackTraces)] + ");\n";
+    }
+
+    // "development" follows the build type at run time
+    auto byMode = [](bool always, bool development) -> std::string {
+        if (always) return "true";
+        if (development) return "Engine::isDevelopmentBuild()";
+        return "false";
+    };
+    const DebugOverlaySettings overlayDefaults;
+    out += "    {\n";
+    out += "        DebugOverlaySettings debugOverlay;\n";
+    out += "        debugOverlay.enabled = " + byMode(debug.overlay == DebugSettings::Mode::Always, debug.overlay == DebugSettings::Mode::Development) + ";\n";
+    if (debug.toggleKey != overlayDefaults.toggleKey)
+        out += "        debugOverlay.toggleKey = " + Factory::formatString(debug.toggleKey) + ";\n";
+    if (debug.statsKey != overlayDefaults.statsKey)
+        out += "        debugOverlay.statsKey = " + Factory::formatString(debug.statsKey) + ";\n";
+    if (debug.gesture != overlayDefaults.gesture) {
+        static const char* const gestures[] = {"ThreeFingerHold", "FourFingerTap", "None"};
+        out += std::string("        debugOverlay.gesture = DebugOverlaySettings::Gesture::") + gestures[static_cast<int>(debug.gesture)] + ";\n";
+    }
+    if (debug.popup != overlayDefaults.popup) {
+        static const char* const popups[] = {"Never", "TouchDevices", "Always"};
+        out += std::string("        debugOverlay.popup = DebugOverlaySettings::Popup::") + popups[static_cast<int>(debug.popup)] + ";\n";
+    }
+    if (debug.openOnError != overlayDefaults.openOnError)
+        out += std::string("        debugOverlay.openOnError = ") + (debug.openOnError ? "true" : "false") + ";\n";
+    if (debug.stats != overlayDefaults.stats) {
+        static const char* const stats[] = {"Off", "Fps", "Full"};
+        out += std::string("        debugOverlay.stats = DebugOverlaySettings::Stats::") + stats[static_cast<int>(debug.stats)] + ";\n";
+    }
+    if (debug.statsCorner != overlayDefaults.statsCorner) {
+        static const char* const corners[] = {"TopLeft", "TopRight", "BottomLeft", "BottomRight"};
+        out += std::string("        debugOverlay.statsCorner = DebugOverlaySettings::Corner::") + corners[static_cast<int>(debug.statsCorner)] + ";\n";
+    }
+    out += "        debugOverlay.allowLua = " + byMode(debug.allowLua == DebugSettings::AllowLua::Always, debug.allowLua == DebugSettings::AllowLua::Development) + ";\n";
+    out += "        DebugOverlay::configure(debugOverlay);\n";
+    out += "    }\n";
+    return out;
 }
 
 std::string editor::Generator::inputActionsInitSource(const std::string& inputActionsJson) {
