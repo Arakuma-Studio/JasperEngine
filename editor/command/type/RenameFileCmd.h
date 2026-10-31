@@ -28,7 +28,19 @@ namespace jasperengine::editor{
         // 9.R26), put back by the undo
         std::vector<ClipHintEdit> clipHintEdits;
 
-        // AssetOps::move: the file and its meta, GUIDs kept, references refreshed in memory
+        // A Vertex Animation keeps its pair (vertex animation spec 2.1): renaming "<x>.vat" renames
+        // "<x>.vat.glb" too (and the other way round), and the new .vat's "mesh" field names the
+        // new mesh. Decided by the first execute; the field text is put back by the undo when the
+        // file still holds what this command wrote
+        bool pairDecided = false;
+        fs::path pairOldName;
+        fs::path pairNewName;
+        fs::path meshFieldFile;
+        std::string meshFieldBefore;
+        std::string meshFieldAfter;
+
+        // AssetOps::move: the file and its meta, GUIDs kept, references refreshed in memory;
+        // false (an error printed) when it did not move
         bool renameFile(const fs::path& source, const fs::path& destination);
 
     public:

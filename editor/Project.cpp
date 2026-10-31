@@ -16,6 +16,7 @@
 #include "util/Scheduler.h"
 #include "io/AtomicFile.h"
 #include "animation/AnimationClipDocument.h"
+#include "vat/VatDocument.h"
 #include "animation/ModelSubClips.h"
 #include "pose/PoseAnimationDocument.h"
 #include "pose/PoseRigProvider.h"
@@ -71,6 +72,7 @@
 #include "subsystem/FluidSystem.h"
 #include "fluid/FluidSimulator.h"
 #include "subsystem/PoseAnimatorSystem.h"
+#include "subsystem/VertexAnimatorSystem.h"
 #include "pose/ModelRig.h"
 #include "pose/PoseAnimatorRuntime.h"
 #include "animation/ModelSubClips.h"
@@ -469,7 +471,7 @@ bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const 
 // The Animation Player clips are paths relative to the assets directory too: the .anim path
 // (its GUID stays), or the model part of "<model>#<clip>" (R26). A reference the transform
 // empties (its file deleted) is kept: the Inspector shows it missing, and undoing the delete
-// relinks it (R8).
+// relinks it (R8). (The Vertex Animators' .vat is a GuidSibling row of AssetRefSchema.)
 bool editor::Project::visitClipPathsInRegistry(EntityRegistry* registry, const std::function<bool(std::string&)>& transform) {
     bool changed = false;
     auto players = registry->getComponentArray<AnimationPlayerComponent>();
@@ -500,6 +502,7 @@ bool editor::Project::visitClipPathsInRegistry(EntityRegistry* registry, const s
             changed = true;
         }
     }
+
     return changed;
 }
 
@@ -638,6 +641,11 @@ SceneResources editor::Project::collectResourcesInRegistry(EntityRegistry* regis
             }
             addFile(resources.clips, entry.clip);
         }
+    });
+
+    // Vertex Animations (VertexAnimationPool); the .vat.glb is the Model's, in `models`
+    visitComponents(registry->getComponentArray<VertexAnimatorComponent>(), [&](VertexAnimatorComponent& animator) {
+        addFile(resources.vats, animator.animation);
     });
 
     // UIDocumentComponent: nothing to preload. RmlUi reads a document and its stylesheets when
@@ -3318,12 +3326,16 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
                     // its lattice variant: its depth one too, with the vertex colour a lattice mask reads
                     bool depthStochastic = depthTexture && (meshProperties & shaderPropertyBit(5)) != 0;
                     bool lattice = mesh.lattice.variantActive && !isTerrain;
+                    // and its Vertex Animation variant (the skinning and morph flags of a mesh
+                    // loaded with one are off already)
+                    const VatVariant vat = isTerrain ? VatVariant::NONE : mesh.vat.variantActive;
                     uint64_t depthProperties = ShaderPool::getDepthMeshProperties(
                         depthTexture, mesh.submeshes[s].hasSkinning,
                         mesh.submeshes[s].hasMorphTarget, mesh.submeshes[s].hasMorphNormal,
                         mesh.submeshes[s].hasMorphTangent, isTerrain, isInstanced, depthAlphaMask,
                         instancedFade, false, lattice && mesh.submeshes[s].hasVertexColor3,
-                        lattice && mesh.submeshes[s].hasVertexColor4, false, false, depthStochastic, lattice);
+                        lattice && mesh.submeshes[s].hasVertexColor4, false, false, depthStochastic, lattice,
+                        vat != VatVariant::NONE, vat == VatVariant::BONES);
                     insertKeys(ShaderType::DEPTH, depthProperties, customDepthShaderId);
                     insertKeys(ShaderType::DEPTH, mesh.submeshes[s].depthShaderProperties, customDepthShaderId);
                     if (mesh.submeshes[s].gbufferShader) {
@@ -5070,6 +5082,7 @@ void editor::Project::resetConfigs() {
     // pose animation and clip documents and rigs belong to the project
     PoseAnimationDocument::closeAll();
     AnimationClipDocument::closeAll();
+    VatDocument::closeAll();
     // the Inspector's asset was a file of the old project
     inspectedAsset.clear();
     PoseRigProvider::clear();
@@ -5252,6 +5265,16 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     scene->getSystem<LatticeSystem>()->setPaused(pause);
     // Spline Animate followers hold still; roads and pieces keep regenerating
     if (auto splines = scene->findSystem<SplineSystem>()) splines->setPaused(pause);
+    // Vertex Animators hold still in edit mode unless their Preview is on
+    scene->getSystem<VertexAnimatorSystem>()->setPaused(pause);
+}
+
+void editor::Project::stopVertexAnimatorPreviews() {
+    for (SceneProject* sceneProject : getScenesAndPrefabStages()) {
+        if (sceneProject && sceneProject->scene && sceneProject->playState == ScenePlayState::STOPPED) {
+            sceneProject->scene->getSystem<VertexAnimatorSystem>()->stopPreviews();
+        }
+    }
 }
 
 void editor::Project::copyEngineApiToProject() {
@@ -5604,6 +5627,8 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         sceneProject->scene->getSystem<PoseAnimatorSystem>()->resetAnimators();
         // and the Animation Players (animation clips spec 3.3)
         sceneProject->scene->getSystem<ActionSystem>()->resetPlayers();
+        // and the Vertex Animators (vertex animation spec 3.4)
+        sceneProject->scene->getSystem<VertexAnimatorSystem>()->resetAnimators();
 
         // The copy goes with Stop, so its id does too: after the prefab instances the game
         // made in it went (their destroyer finds the copy by that id), before the copy is
@@ -6441,7 +6466,10 @@ void editor::Project::saveSceneListSequentially(std::vector<uint32_t> sceneIds, 
     auto index = std::make_shared<size_t>(0);
     auto anyRefused = std::make_shared<bool>(false);
     auto saveNext = std::make_shared<std::function<void(bool)>>();
-    *saveNext = [this, ids, index, anyRefused, callback, saveNext](bool previousSuccess) {
+    // (it holds itself weakly: the save in flight holds it, a capture of itself was a cycle
+    // that leaked every chain, LeakSanitizer)
+    std::weak_ptr<std::function<void(bool)>> weakNext = saveNext;
+    *saveNext = [this, ids, index, anyRefused, callback, weakNext](bool previousSuccess) {
         if (!previousSuccess) {
             // a document the save gate refused does not stop the others (Save All asks about
             // each degraded one, after saving the clean ones)
@@ -6456,7 +6484,9 @@ void editor::Project::saveSceneListSequentially(std::vector<uint32_t> sceneIds, 
         while (*index < ids->size()) {
             uint32_t id = (*ids)[(*index)++];
             if (hasSceneUnsavedChanges(id)) {
-                saveScene(id, *saveNext);
+                if (auto next = weakNext.lock()) {
+                    saveScene(id, [next](bool ok) { (*next)(ok); });
+                }
                 return;
             }
         }
@@ -6812,6 +6842,7 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
     }
 
     editor::getEditorHost().stopTransientPreviews();
+    stopVertexAnimatorPreviews();
     NavigationEditor::get().saveSceneAssets(this, *sceneProject);
     resolveSceneAssetRefs(*sceneProject, false);
     for (auto& [prefabPath, prefab] : prefabAssets) {
@@ -6822,6 +6853,9 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
 
     sceneProject->playState = ScenePlayState::SAVING;
     fs::path savePath = path;
+    // the save reads component arrays (this scene's, the other open scenes' scripts, the
+    // prefabs') while the frames go on: their holes are closed before it starts, by this thread
+    compactAllComponents();
 
     // a long disk write: the io-write channel (one write at a time, in order)
     jobs::SubmitOptions saveOptions;
@@ -6853,6 +6887,7 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
 void editor::Project::saveAllScenes(std::function<void(bool)> callback) {
     // first: a physics gesture that settles now commits, and its scene counts as changed below
     editor::getEditorHost().stopTransientPreviews();
+    stopVertexAnimatorPreviews();
 
     std::vector<uint32_t> sceneIds;
     // the prefab stages first: the scenes saved after them hold their assets' new state
@@ -9327,6 +9362,8 @@ void editor::Project::start(uint32_t sceneId) {
     }
 
     editor::getEditorHost().stopTransientPreviews();
+    // a previewing Vertex Animator plays from its start
+    stopVertexAnimatorPreviews();
 
     // the edges and deltas since the last Play (or of the editor's own use) are not the game's
     Input::resetFrameState();

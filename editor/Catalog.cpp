@@ -1121,6 +1121,14 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
             player->needsLoad = true;
         }
     }
+    if (updateFlags & UpdateFlags_VertexAnimator_Reload){
+        // a new .vat (or the same one again: a fixed file) loads at the next update; a new one
+        // starts over (VertexAnimatorSystem compares the path)
+        if (VertexAnimatorComponent* animator = registry->findComponent<VertexAnimatorComponent>(entity)){
+            animator->defaultFadeTime = std::isfinite(animator->defaultFadeTime) ? std::max(0.0f, animator->defaultFadeTime) : 0.0f;
+            animator->needsLoad = true;
+        }
+    }
 }
 
 void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourceEntity,

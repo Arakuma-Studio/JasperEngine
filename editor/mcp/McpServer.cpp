@@ -1330,6 +1330,11 @@ void McpServer::execute(const CallPtr& call, const ToolDef& def) {
         }
     });
 
+    // Each call (and each step of a batch) starts and ends with packed component arrays: the
+    // holes of entities destroyed before are closed between steps (ComponentArray)
+    const bool onMainThread = app.isMainThread();
+    if (onMainThread && app.getProject()) app.getProject()->compactAllComponents();
+
     try {
         std::optional<UndoOriginScope> attribution;
         if (call->attributed()) attribution.emplace(call->getUndoOrigin());
@@ -1343,6 +1348,8 @@ void McpServer::execute(const CallPtr& call, const ToolDef& def) {
     } catch (...) {
         call->fail(std::string("Tool ") + def.name + " failed with an unknown error.");
     }
+
+    if (onMainThread && appPtr && appPtr->getProject()) appPtr->getProject()->compactAllComponents();
 
     if (!call->completed() && !hasDeferred(call.get()) && !call->detached()) {
         call->fail("Internal error: tool " + def.name + " returned without a result.");

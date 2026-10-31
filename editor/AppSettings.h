@@ -78,6 +78,7 @@ struct PanelVisibilitySettings {
     bool animator = false;
     bool terrain = false;
     bool textureSynthesis = false;
+    bool vertexAnimationBaker = false;
     bool physicsPlacement = false;
     bool mcp = false;
     bool game = true;
@@ -93,6 +94,7 @@ struct PanelVisibilitySettings {
             && animator == other.animator
             && terrain == other.terrain
             && textureSynthesis == other.textureSynthesis
+            && vertexAnimationBaker == other.vertexAnimationBaker
             && physicsPlacement == other.physicsPlacement
             && mcp == other.mcp
             && game == other.game

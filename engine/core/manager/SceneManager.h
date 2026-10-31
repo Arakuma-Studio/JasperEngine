@@ -27,6 +27,9 @@ namespace jasperengine {
         // animation clips (.anim, asset-relative) and model sub-clips ("<model>#<name>"), loaded
         // into AnimationClipPool; a sub-clip waits for its model in `models`
         std::vector<std::string> clips;
+        // Vertex Animation assets (.vat, asset-relative), loaded into VertexAnimationPool; their
+        // .vat.glb meshes are Models, in `models`
+        std::vector<std::string> vats;
     };
 
     // SceneManager allows registering named scene stacks and switching between them at runtime.

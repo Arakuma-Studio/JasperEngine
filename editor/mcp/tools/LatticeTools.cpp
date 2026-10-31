@@ -1456,15 +1456,10 @@ void registerLatticeTools(McpRegistry& registry) {
     tool.title = "Edit Lattice";
     tool.description =
         "Lattice (FFD cage) edits as in the Scene view; one undo step, undone on any error. lattice: "
-        "default: selected/only one; create {targets, name, resolution, fit_padding} fits one "
-        "around targets, bound. Then resolution (resamples), interpolation, outside, fade_distance, "
-        "then ops in order (fields: jasper://docs/lattice): set {points}, move {select, offset, rotate, scale}, "
-        "reset, preset {name}, mirror, fit, bind {target}, unbind, follow, pose {save|apply|delete}, bake. "
-        "select (default all): all, exterior, interior, "
-        "selected, +x..-z, [points] or {face, i, j, k (n|[lo,hi]), points, box, sphere (world)} intersected. "
-        "Offsets: lattice-local (unit cube). Returns targets, moved_points, max_offset, warnings, "
-        "points (detail points), samples (sample: world points -> deformed, stretch). No edits: a read (play "
-        "too). jasper://docs/lattice.";
+        "default: selected/only one; create fits one around targets, bound. Then resolution (resamples), "
+        "interpolation, outside, fade_distance, then ops in order. Offsets: lattice-local (unit cube). "
+        "Returns targets, moved_points, max_offset, warnings; sample: world points -> deformed, stretch. No "
+        "edits: a read (play too). Op fields, select grammar, results: jasper://docs/lattice.";
     tool.inputSchema = object({
         {"scene", sceneRef()},
         {"lattice", entityRef()},

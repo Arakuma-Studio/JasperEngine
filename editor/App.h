@@ -26,6 +26,7 @@
 #include "window/AnimatorWindow.h"
 #include "window/TerrainEditWindow.h"
 #include "window/TextureSynthesisWindow.h"
+#include "window/VertexAnimationBakerWindow.h"
 #include "window/PhysicsPlacementWindow.h"
 #include "window/SystemsWindow.h"
 #include "window/AssetPanels.h"
@@ -185,6 +186,9 @@ namespace jasperengine::editor{
         int benchmarkMeshLod = -1;
         int benchmarkDepthPrepass = -1;
         int benchmarkLitQuality = -1;   // --lit-quality: 0 standard, 1 high
+        // --play: the scene is measured playing (scripts, animation, physics), not in edit mode
+        bool benchmarkPlay = false;
+        bool benchmarkPlayStarted = false;
         int benchmarkPhase = 0;
         int benchmarkPhaseFrames = 0;
         std::vector<float> benchmarkFps;
@@ -235,6 +239,7 @@ namespace jasperengine::editor{
         AnimatorWindow* animatorWindow;
         TerrainEditWindow* terrainEditWindow;
         TextureSynthesisWindow* textureSynthesisWindow;
+        VertexAnimationBakerWindow* vertexAnimationBakerWindow;
         PhysicsPlacementWindow* physicsPlacementWindow;
         mcp::McpActivityWindow* mcpActivityWindow;
         SystemsWindow* systemsWindow;
@@ -636,9 +641,11 @@ namespace jasperengine::editor{
         vcs::VcsUi* getVcsUi() const { return vcsUi; }
         PlayModeChangesWindow* getPlayModeChangesWindow() const { return playModeChangesWindow; }
         TextureSynthesisWindow* getTextureSynthesisWindow() const;
+        VertexAnimationBakerWindow* getVertexAnimationBakerWindow() const;
         PhysicsPlacementWindow* getPhysicsPlacementWindow() const;
         MainToolbar* getMainToolbar() const;
         void openTextureSynthesis(const std::filesystem::path& image, bool editRecipe) override;
+        void openVertexAnimationBaker(const std::filesystem::path& path, bool bakeNow) override;
         // Game view: setOpen()/isOpen() toggle it (Window menu), requestFocus() shows it
         GameWindow* getGameWindow() const;
         SceneWindow* getSceneWindow() const;

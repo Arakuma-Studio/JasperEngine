@@ -53,9 +53,10 @@ HTML = """<!DOCTYPE html>
 """
 
 FIELDS = ["passes", "drawCalls", "pipelineApplies", "pipelineCacheMisses", "textureBinds", "layersPushed", "filtersApplied",
-          "compositesFused", "geometryLive", "geometryBytes", "geometrySubmitted", "runsMerged", "runCacheHits", "instancesDrawn",
-          "verticesGathered", "stencilDraws", "stencilClipsElided", "analyticClips", "boxShadowTextures", "glyphsRasterized",
-          "msdfGlyphsPending", "textRegenerations", "textEffectFallbacks", "atlasBytes", "atlasEvictions"]
+          "compositesFused", "regionLayers", "regionTargetsCreated", "clipMasksRedrawn", "geometryLive", "geometryBytes",
+          "geometrySubmitted", "runsMerged", "runCacheHits", "instancesDrawn", "verticesGathered", "stencilDraws",
+          "stencilClipsElided", "analyticClips", "boxShadowTextures", "glyphsRasterized", "msdfGlyphsPending",
+          "textRegenerations", "textEffectFallbacks", "atlasBytes", "atlasEvictions"]
 
 
 async def render(ed: Editor, label: str):

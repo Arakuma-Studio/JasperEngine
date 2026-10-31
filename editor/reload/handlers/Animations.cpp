@@ -1,13 +1,16 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 //
-// Pose animations, humanoid maps and animation clips (S05 R11, with upstream's animation clips
-// spec 4.1 and pose animation phase 2): the open PoseAnimationDocuments of changed .poseanim /
-// .humanoid files and the open AnimationClipDocuments of changed .anim files reload (a file that
-// fails to load leaves the document at its last valid content), and AnimationClipPool drops the
-// clips so the Animation Players using them reload, in edit mode and during Play. A changed
-// model drops its sub-clips, their documents and the players using them the same way. The load
-// errors and warnings of .anim and .poseanim files become problems ({path, line, message}).
+// Pose animations, humanoid maps, animation clips and Vertex Animations (S05 R11, with upstream's
+// animation clips spec 4.1, pose animation phase 2 and vertex animation spec 2.1): the open
+// PoseAnimationDocuments of changed .poseanim / .humanoid files, the open AnimationClipDocuments
+// of changed .anim files and the VatDocuments of changed .vat files reload (a file that fails to
+// load leaves the document at its last valid content), AnimationClipPool drops the clips so the
+// Animation Players using them reload, and VertexAnimationPool the Vertex Animations so their
+// Vertex Animators reload, in edit mode and during Play. A changed model drops its sub-clips,
+// their documents and the players using them the same way; a changed .vat.glb its .vat. The load
+// errors and warnings of .anim, .poseanim and .vat files, and a .vat that no longer matches its
+// mesh, become problems ({path, line, message}).
 
 #include "ReloadHandlers.h"
 
@@ -22,6 +25,9 @@
 #include "pose/PoseAnimationIO.h"
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
+#include "animation/VertexAnimation.h"
+#include "vat/VatBakeSession.h"
+#include "vat/VatDocument.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -51,20 +57,40 @@ namespace {
 
 }
 
-// What fails to load in a changed .anim or .poseanim, then its warnings: the same reading
+// What fails to load in a changed .anim, .poseanim, Animator asset or .vat, then its warnings: the same reading
 // the documents and the players do
 void reload::addAnimationFileProblems(Project& project, const fs::path& path, Json& problems) {
     const std::string pathText = path.string();
     const bool clip = Util::isAnimationClipFile(pathText);
+    const bool vertexAnimation = Util::isVertexAnimationFile(pathText);
     const bool animatorAsset = Util::isAnimatorAssetFile(pathText);
-    if (!clip && !animatorAsset && !Util::isPoseAnimationFile(pathText)) return;
+    if (!clip && !vertexAnimation && !animatorAsset && !Util::isPoseAnimationFile(pathText)) return;
     std::error_code ec;
     std::string text;
     if (!fs::is_regular_file(path, ec) || !ProjectChecks::readFile(path, text)) return;
     const std::string relative = reload::rel(project, path);
 
     std::vector<std::string> warnings;
-    if (animatorAsset) {
+    if (vertexAnimation) {
+        // a .vat (vertex animation spec 2.1): the parser's error ("line:col: message" for JSON)
+        const jasperengine::vat::VatParseResult parsed = jasperengine::vat::parseVat(text);
+        if (!parsed.ok()) {
+            Json problem = {{"path", relative}, {"message", "Not a valid Vertex Animation: " + parsed.error +
+                                                            " (its Vertex Animators keep the last valid one)."}};
+            if (const int line = jsonErrorLine(text)) problem["line"] = line;
+            problems.push_back(problem);
+            return;
+        }
+        for (const ClipWarning& warning : parsed.warnings) {
+            warnings.push_back(warning.path.empty() ? warning.message : warning.path + ": " + warning.message);
+        }
+        // and one that doesn't match its .vat.glb does not load (vat-layout-mismatch, vat-mesh-mismatch)
+        for (const editor::vat::VatIssue& issue : editor::vat::checkVatStaleness(&project, relative)) {
+            if (issue.error) {
+                problems.push_back({{"path", relative}, {"message", issue.kind + ": " + issue.message + ". Fix: " + issue.fix + "."}});
+            }
+        }
+    } else if (animatorAsset) {
         // the Animator's assets: the reading AnimatorAssetPool does
         std::vector<ClipWarning> loadWarnings;
         anim::AnimatorParseError error;
@@ -142,6 +168,8 @@ void reload::reloadAnimations(Context& ctx, const std::vector<fs::path>& files, 
     clipSources.insert(clipSources.end(), models.begin(), models.end());
     if (!clipSources.empty()) {
         AnimationClipDocument::filesChanged(clipSources, project);
+        // a changed .vat.glb is a model: its .vat reloads with it
+        VatDocument::filesChanged(clipSources, project);
     }
     // the Animator's assets: open documents reload, running Animators rebind (S21 R35); a changed
     // model or .humanoid drops the cached retargeting sources
@@ -156,6 +184,7 @@ void reload::reloadAnimations(Context& ctx, const std::vector<fs::path>& files, 
     if (all) {
         PoseAnimationDocument::checkDiskChanges();
         AnimationClipDocument::checkDiskChanges(project);
+        VatDocument::checkDiskChanges(project);
     }
     for (const fs::path& path : files) {
         reload::addAnimationFileProblems(ctx.project, path, ctx.result.problems);

@@ -98,6 +98,7 @@ namespace {
         &kSplineInstantiateDesc,
         &kSplineAnimateDesc,
         &kAnimatorDesc,
+        &kVertexAnimatorDesc,
     };
     static_assert(std::size(kAll) == static_cast<size_t>(LAST_COMPONENT_TYPE) + 1, "a ComponentType without a description");
 
@@ -140,6 +141,7 @@ namespace {
         &kSplineInstantiateDesc,
         &kSplineAnimateDesc,
         &kAnimatorDesc,
+        &kVertexAnimatorDesc,
         &kCameraDesc,
         &kAudioSourceDesc,
         &kScriptDesc,
@@ -233,6 +235,7 @@ namespace {
         &kPoseAnimatorDesc,
         &kAnimationPlayerDesc,
         &kAnimatorDesc,
+        &kVertexAnimatorDesc,
         &kMorphTracksDesc,
         &kPanelDesc,
         &kParticleSystemDesc,

@@ -109,6 +109,19 @@ namespace {
                         i.vertexColor4 = true;
                 }});
             }
+            // played by a Vertex Animator (includes/vat.glsl, never on a terrain): Vertices and
+            // Bones mode alone, instanced (i_vat0/i_vat1) with the fade and shadows, with vertex
+            // colours, fog and a lattice after it, and with the post colour and 2D lights
+            for (VatVariant vat : {VatVariant::VERTICES, VatVariant::BONES}){
+                const std::string mode = (vat == VatVariant::BONES) ? "vat bones" : "vat vertices";
+                list.push_back({mode, [vat](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.vat = vat; }});
+                list.push_back({mode + ", instancing, shadows", [vat](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
+                    i.vat = vat; i.instanced = true; i.instanceFade = true; e.lights = true; e.shadows = true; }});
+                list.push_back({mode + ", vertex colour + uv2, fog, lattice", [vat](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
+                    i.vat = vat; i.vertexColor4 = true; i.texCoord2 = true; e.fog = true; i.lattice = true; }});
+                list.push_back({mode + ", post colour, 2d lights + shadows, instanced", [vat](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
+                    i.vat = vat; i.instanced = true; e.postColor = true; e.lights2D = true; e.shadows2D = true; }});
+            }
             return list;
         }();
         return cases;

@@ -117,6 +117,7 @@ namespace jasperengine::editor::reflect {
     extern const ComponentDesc kSplineInstantiateDesc;
     extern const ComponentDesc kSplineAnimateDesc;
     extern const ComponentDesc kAnimatorDesc;
+    extern const ComponentDesc kVertexAnimatorDesc;
 
 }
 

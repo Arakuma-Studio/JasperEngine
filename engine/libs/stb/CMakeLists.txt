@@ -32,3 +32,9 @@ endif()
 if(JASPERENGINE_SANITIZE_UNDEFINED AND NOT MSVC)
     set_source_files_properties(stb_image_resize2.c PROPERTIES COMPILE_OPTIONS -fno-sanitize=alignment)
 endif()
+# UBSan: stb_image_write v1.16's JPEG bit writer shifts its int bit buffer left past the sign
+# (stbiw__jpg_writeBits; upstream's FloatImageTest writes a JPEG): this file alone is built
+# without the shift check, as above
+if(JASPERENGINE_SANITIZE_UNDEFINED AND NOT MSVC)
+    set_source_files_properties(stb_image_write.c PROPERTIES COMPILE_OPTIONS -fno-sanitize=shift)
+endif()

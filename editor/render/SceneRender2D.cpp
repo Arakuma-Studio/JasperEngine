@@ -104,6 +104,9 @@ editor::SceneRender2D::~SceneRender2D(){
     delete gridLines;
     delete tileLines;
     delete documentLines;
+    // and the selection outline and the lines, as SceneRender3D's destructor does (leaked before)
+    delete lines;
+    delete selLines;
 }
 
 // square marker for an editable point (occluder polygon points, line endpoints)

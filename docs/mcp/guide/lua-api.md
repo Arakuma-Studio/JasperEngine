@@ -836,16 +836,16 @@ EntityHandle
  |   |- RectTransform
  |       |- Text, Polygon, LayoutGroup
  |       |- Image -> Button, Panel, Scrollbar, Progressbar, InputField
- |- AudioSource, PoseAnimator, AnimationPlayer, Rigidbody2D, Rigidbody, Fog, VolumetricClouds, Skybox
+ |- AudioSource, PoseAnimator, AnimationPlayer, VertexAnimator, Rigidbody2D, Rigidbody, Fog, VolumetricClouds, Skybox
  |- Action -> Tween (AlphaTween, ColorTween, PositionTween, RotationTween, ScaleTween),
              SpriteAnimation, Animation,
              KeyframeTracks (MorphTracks, LatticeTracks, RotateTracks, ScaleTracks, TranslateTracks)
-Joint2D, Joint3D, AnimationState, AnimationEvent (standalone classes)
+Joint2D, Joint3D, AnimationState, AnimationEvent, VertexAnimatorSocketPose (standalone classes)
 ```
 
 Constructors: every wrapper has `(Scene, Entity)` to wrap an existing entity. Most also have
 `(Scene)` which creates a new entity with that component. Exceptions: `Rigidbody2D`,
-`Rigidbody`, `Bone`, `PoseAnimator` and `AnimationPlayer` have only `(Scene, Entity)`; `AudioSource` also has `(Scene, is3D)`.
+`Rigidbody`, `Bone`, `PoseAnimator`, `AnimationPlayer` and `VertexAnimator` have only `(Scene, Entity)`; `AudioSource` also has `(Scene, is3D)`.
 
 A wrapper made with `(Scene)` owns its new entity (`entityOwned` is true): when the garbage
 collector takes it, the entity is destroyed. Keep it (e.g. in `self`) as long as the object
@@ -889,6 +889,8 @@ after its scene ended (play stop, scene change) does nothing: the scene destroye
 | `getRay(direction)` | method | Ray from world position |
 | `getAnimationPlayer()` | method | the GameObject's `AnimationPlayer` (4.8.2), `nil` when it has none (it never adds one) |
 | `hasAnimationPlayer()` | method | bool |
+| `getVertexAnimator()` | method | the GameObject's `VertexAnimator` (4.8.3), `nil` when it has none (it never adds one) |
+| `hasVertexAnimator()` | method | bool |
 | `GameObject.instantiate`, `GameObject.destroy`, `GameObject.destroyImmediate` | static | section 2.6 |
 
 There is no `getComponent`: wrap the same entity with the class you need
@@ -1128,7 +1130,85 @@ end
 function Hero:onFootstep(side, strength) end    -- clip event {function: "onFootstep", args: ["left", 1]}
 ```
 
-### 4.8.3 Animator (EntityHandle)
+### 4.8.3 VertexAnimator (EntityHandle)
+
+Plays a baked Vertex Animation (`.vat`, path relative to the assets folder) on the GPU: on the
+GameObject, and on every instance of its Instanced Mesh, each with its own clip, time, speed and
+crossfade. It lives on the GameObject whose Model is the `.vat`'s mesh (`<name>.vat.glb`).
+`VertexAnimator(scene, entity)` adds the component when missing. `GameObject:getVertexAnimator()`
+returns `nil` without one. It runs in play mode and in games. In the editor's edit mode it runs
+only with `preview` on. Calls made before the `.vat` loads are kept and applied on load. An
+unknown clip name or instance index logs one warning and does nothing. Instances count from 0,
+like `Mesh:getInstance`. User guide: `docs/vertex-animation.md`; agents:
+`jasper://docs/vertex-animation`.
+
+| Member | Notes |
+|---|---|
+| `play(name)` | starts `name` now (from its end when the speed is negative and it doesn't loop); clears the queue |
+| `play(name, fade)` | `fade` > 0: same as `crossFade(name, fade)` |
+| `crossFade(name [, fade])` | fades linearly from the current clip to `name`; no fade = `defaultFadeTime`; at its end `name` is the current clip; a crossfade during a crossfade continues from the dominant clip (weight >= 0.5) |
+| `blend(a, b, weight)` | holds clips `a` and `b` at a fixed weight of `b` (0..1), `b`'s phase following `a`'s (walk/run by speed); again with the same pair only moves the weight |
+| `queue(name)` | plays `name` when the current clip ends (once / clamp_forever) or ends its cycle (loop / ping_pong); nothing playing = play now |
+| `stop()` | holds the current pose (`isPlaying()` false) until the next play; clears the queue |
+| `isPlaying()`, `isPlaying(name)` | bool; false after `stop` and for a `once` clip that ended |
+| `time` | rw, seconds in the current clip |
+| `normalizedTime` | ro, 0..1 in the current clip |
+| `speed` | rw, multiplies every clip's speed (negative plays backwards); clips keep their phase when it changes |
+| `currentClip` | ro, the clip playing (the one faded to during a crossfade, `a` in a blend); `""` before the `.vat` loads |
+| `getClipNames()` | the `.vat`'s clip names (a table; empty until loaded) |
+| `getClipLength(name)` | seconds; 0 for an unknown clip |
+| `getSocketPose(name)`, `getSocketPose(name, i)` | a `VertexAnimatorSocketPose` now: `position` (Vector3), `rotation` (Quaternion), `valid` (false for an unknown socket or before load). Through crossfades. In the GameObject's space; with an instance index, that instance's clip and time, before the instance's own position, rotation and scale |
+| `playInstance(i, name [, fade])` | instance `i` plays `name`; `fade` > 0 crossfades |
+| `crossFadeInstance(i, name, fade)` | instance `i` fades to `name` over `fade` seconds |
+| `setInstanceSpeed(i, speed)`, `setInstanceTime(i, seconds)` | that instance's speed (times the animator's `speed`) and time in its clip |
+| `getInstanceClip(i)`, `getInstanceNormalizedTime(i)` | `""` / 0 for an unknown index |
+| `getInstanceCount()` | the Instanced Mesh's instances the animator plays |
+| `playAll(name [, fade])` | the GameObject and every instance |
+| `randomizeTimes(seed)` | every instance (and the GameObject) at a seeded time of its clip: the same seed gives the same times |
+| `animation` | rw, the `.vat` (asset-relative); setting it loads the file |
+| `defaultClip`, `playAutomatically`, `randomStart`, `defaultFadeTime`, `instanceEvents`, `enabled` | rw; `randomStart`: each instance (and the GameObject) starts at a random time of its first clip; `instanceEvents`: per-instance events and finishes (costs work per instance each frame) |
+| `preview` | rw, editor: animate in edit mode (the Inspector's Preview) |
+| `isLoaded()` | the `.vat` is loaded and plays on this mesh |
+| `getLoadError()` | why it doesn't play (a load error, or `"mesh_mismatch: ..."` when the Model isn't the `.vat`'s mesh); `""` when it plays |
+| `onEvent` | rw, a function called with ONE `AnimationEvent` (4.8.2; `state` is the clip name) per clip event; GameObjects without an Instanced Mesh only |
+| `onFinish` | rw, a function called with the clip name when a `once` clip ends, and once when a `clamp_forever` clip first reaches its end |
+| `onInstanceEvent` | rw, a function called with `(i, event)` per instance event when `instanceEvents` is on |
+| `onInstanceFinish` | rw, a function called with `(i, clip)` when `instanceEvents` is on |
+| `getVertexAnimatorComponent()` | the ECS component: `enabled`, `animation`, `defaultClip`, `playAutomatically`, `speed`, `randomStart`, `defaultFadeTime`, `instanceEvents`, `preview`, `needsLoad`, ro `loadError`, ro `gpuActive`, `onEvent`, `onFinish`, `onInstanceEvent`, `onInstanceFinish` |
+
+Events fire in play mode only, from the dominant clip: in a crossfade, the outgoing clip until
+the midpoint, then the incoming one; in a blend, the clip with weight >= 0.5. A GameObject without
+an Instanced Mesh calls every `onEvent` subscriber, then the method named `functionName` on each
+enabled Lua script of the GameObject, with the args spread as parameters (as the Animation
+Player). Instances call only `onInstanceEvent` / `onInstanceFinish`, and only with
+`instanceEvents` on. Events and finishes run after the frame's update, in time order; calls made
+inside them take effect next frame. Attachments (GameObjects following a socket) are set in the
+Inspector. To attach something to an instance, move it with `getSocketPose(name, i)`.
+
+```lua
+function Crowd:init()
+    self.vat = GameObject(self.scene, self.entity):getVertexAnimator()
+    self.vat.instanceEvents = true
+    self.vat.onInstanceFinish = function(i, clip)
+        if clip == "Wave" then self.vat:crossFadeInstance(i, "Idle", 0.3) end
+    end
+    RegisterEngineEvent(self, "onUpdate")
+end
+
+function Crowd:onUpdate()
+    if not self.started and self.vat:isLoaded() then      -- clip names are known once loaded
+        self.started = true
+        local clips = self.vat:getClipNames()
+        for i = 0, self.vat:getInstanceCount() - 1 do
+            self.vat:playInstance(i, clips[math.random(#clips)])
+            self.vat:setInstanceSpeed(i, 0.8 + 0.4 * math.random())
+        end
+        self.vat:randomizeTimes(42)
+    end
+end
+```
+
+### 4.8.4 Animator (EntityHandle)
 
 Unity's Animator: plays an Animator Controller (`.controller`: parameters, layers, state
 machines, blend trees, transitions) on the clips of the Animation Player's kinds (`.anim`, model

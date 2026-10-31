@@ -2157,20 +2157,15 @@ void installPoseSyncHook(McpContext& context) {
 void registerPoseTools(McpRegistry& registry) {
     using namespace schema;
 
-    const Json transition = obj({{"curve", stringEnum("", {"spring", "linear", "smooth"})}, {"duration", number("")},
-                                 {"overshoot", number("")}, {"anticipation", number("")}});
-    const Json angles = anyObject("");
-
     {
         ToolDef tool;
         tool.name = "get_pose_animation";
         tool.title = "Get Pose Animation";
         tool.description =
-            "A .poseanim pose animation: settings (loop, frame_rate, feel, humanize, preset), length, the rig (mapped "
-            "bones, missing slots) and its key poses (name, hold, grounded, lift, transition or null = the animation's, "
-            "start_time, offset {left, forward}, angles: degrees, 0 = neutral standing; see jasper://docs/pose-animation "
-            "for the DOF table) with metrics. model: a scene "
-            "model's rig instead of preview_model. templates: true (no path) lists the pose templates.";
+            "A .poseanim pose animation: settings, length, the rig (mapped bones, missing slots) and its key poses "
+            "(angles: degrees, 0 = neutral standing; fields and the DOF table: jasper://docs/pose-animation) with "
+            "metrics. model: a scene model's rig instead of preview_model. templates: true (no path) lists the pose "
+            "templates.";
         tool.inputSchema = object({
             {"path", assetPath("")},
             {"templates", boolean("")},
@@ -2191,48 +2186,16 @@ void registerPoseTools(McpRegistry& registry) {
         tool.name = "edit_pose_animation";
         tool.title = "Edit Pose Animation";
         tool.description =
-            "Edit a .poseanim: ops in order (index 0-based, after earlier ops), all or nothing, one project undo step. "
-            "add_pose copies from (default after; neutral if empty), blended toward blend_to; update_pose (metadata never "
-            "changes angles); delete_pose; move_pose; mirror_pose; set_settings (partial); apply_preset; auto_timing; "
-            "set_preview_model; set_humanoid (writes the model's .humanoid: slot -> bone, \"\" unmapped, null auto); "
-            "apply_template (mode replace: settings+poses, append: poses); save_template (project template). "
-            "angles: absolute degrees per DOF, add_angles: added. Clamped values are echoed in clamped. create makes the "
-            "file (template: from one); bake writes an Animation on a scene model (scene undo; without path: its Pose Animator's; clip: a shared .anim instead). Returns changes "
-            "and the touched poses with metrics.";
+            "Edit a .poseanim: ops in order (index 0-based, after earlier ops), all or nothing, one project undo step; "
+            "each op's fields: jasper://docs/pose-animation (Ops). angles: absolute degrees per DOF, add_angles: added; "
+            "clamped values are echoed in clamped. create makes the file (template: from one); bake writes an Animation "
+            "on a scene model (scene undo; without path: its Pose Animator's; clip: a shared .anim instead). Returns "
+            "changes and the touched poses with metrics.";
+        // each op's fields: docs/mcp/guide/pose-animation.md (applyOp checks every op's keys and values)
         tool.inputSchema = object({
             {"path", assetPath("")},
             {"create", obj({{"preview_model", assetPath("")}, {"preset", string("")}, {"template", string("")}})},
-            {"ops", array(obj({
-                {"op", stringEnum("", opNames())},
-                {"index", integer("")},
-                {"after", integer("-1 = first; default last.")},
-                {"to", integer("")},
-                {"name", string("")},
-                {"from", integer("")},
-                {"blend_to", integer("")},
-                {"blend", number("", 0, 1)},
-                {"hold", number("")},
-                {"grounded", boolean("")},
-                {"lift", number("")},
-                {"offset", obj({{"left", number("")}, {"forward", number("")}})},
-                {"angles", angles},
-                {"add_angles", angles},
-                {"transition", Json{{"anyOf", Json::array({transition, {{"type", "null"}}})}}},
-                {"as_new", boolean("")},
-                {"loop", boolean("")},
-                {"frame_rate", integer("")},
-                {"step_rate", number("")},
-                {"overlap", number("")},
-                {"looseness", number("")},
-                {"weights", obj({{"spine", number("")}, {"head", number("")}, {"arms", number("")}, {"legs", number("")}})},
-                {"humanize", anyObject("")},
-                {"model", assetPath("")},
-                {"bones", anyObject("")},
-                {"clear_custom", boolean("")},
-                {"mode", stringEnum("", {"replace", "append"})},
-                {"description", string("")},
-                {"category", string("")}
-            }, {"op"}), "")},
+            {"ops", array(obj({{"op", stringEnum("", opNames())}}, {"op"}), "")},
             {"bake", obj({{"model", entityRef()}, {"name", string("Default: the file name.")}, {"clip", any("true or an .anim path.")}}, {"model"})},
             {"scene", sceneRef()}
         });
