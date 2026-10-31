@@ -3,6 +3,8 @@
 
 #include "SystemWin.h"
 
+#include "HostServices.h"
+#include "JasperEngineWin.h"
 #include "WinInputRouter.h"
 #include "WindowWin.h"
 
@@ -205,5 +207,71 @@ std::string SystemWin::getShaderPath() {
     return JASPERENGINE_SHADER_PATH;
 #else
     return System::getShaderPath();
+#endif
+}
+
+bool SystemWin::platformOpenURL(const std::string& url) {
+    return HostServices::openURL(url);
+}
+
+std::vector<std::string> SystemWin::getPreferredLocales() {
+    std::vector<std::string> locales = HostServices::preferredLocales();
+    return locales.empty() ? System::getPreferredLocales() : locales;
+}
+
+std::string SystemWin::getRegionOverride() {
+    return HostServices::regionOverride();
+}
+
+std::string SystemWin::getOperatingSystem() {
+    static const std::string value = HostServices::operatingSystem();
+    return value;
+}
+
+std::string SystemWin::getOperatingSystemVersion() {
+    static const std::string value = HostServices::operatingSystemVersion();
+    return value;
+}
+
+std::string SystemWin::getDeviceModel() {
+    static const std::string value = HostServices::deviceModel();
+    return value;
+}
+
+DeviceType SystemWin::getDeviceType() {
+    return DeviceType::Desktop;
+}
+
+int SystemWin::getSystemMemorySize() {
+    static const int value = HostServices::systemMemoryMiB();
+    return value;
+}
+
+NetworkReachability SystemWin::getInternetReachability() {
+    return HostServices::internetReachability();
+}
+
+float SystemWin::getScreenDpi() {
+    return HostServices::screenDpi();
+}
+
+float SystemWin::getRefreshRate() {
+    return HostServices::refreshRate();
+}
+
+void SystemWin::setKeepScreenOn(bool keepOn) {
+    HostServices::setKeepScreenOn(keepOn);
+}
+
+void SystemWin::applyFramePacing(const FramePacing& pacing) {
+    JasperEngineWin::applySwapInterval(pacing.swapInterval);
+}
+
+int SystemWin::getMaxSwapInterval() {
+#if defined(SOKOL_VULKAN)
+    return 1;
+#else
+    // wglSwapIntervalEXT and IDXGISwapChain::Present take an interval up to 4
+    return 4;
 #endif
 }

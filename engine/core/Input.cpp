@@ -202,6 +202,10 @@ int Input::getModifiers(){
     return modifiers;
 }
 
+DeviceOrientation Input::getDeviceOrientation(){
+    return System::hasInstance() ? System::instance().getDeviceOrientation() : DeviceOrientation::Unknown;
+}
+
 size_t Input::findTouchIndex(int pointer){
     size_t index = -1;
     for(int i = 0; i < touches.size(); i++){

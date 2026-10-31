@@ -15,6 +15,10 @@
 #include "Input.h"
 #include "System.h"
 #include "Log.h"
+#include "util/FrameLimiter.h"
+#include "util/PlatformRules.h"
+
+#include <algorithm>
 
 // Prefix of the saved keys, set per project by the export
 #ifndef JASPERENGINE_STORAGE_ID
@@ -42,6 +46,26 @@ double JasperEngineWeb::mousePosY;
 int JasperEngineWeb::sampleCount = 0;
 
 bool JasperEngineWeb::quitRequested = false;
+
+bool JasperEngineWeb::pageHidden = false;
+bool JasperEngineWeb::adPlaying = false;
+bool JasperEngineWeb::contextLost = false;
+double JasperEngineWeb::lastFrameTime = 0.0;
+std::vector<double> JasperEngineWeb::frameIntervals;
+float JasperEngineWeb::measuredRefreshRate = 0.0f;
+
+namespace {
+    // Engine.targetFrameRate: animation frames that are not due draw nothing
+    jasperengine::FrameLimiter frameLimiter;
+
+    // a string a JavaScript snippet made with _malloc (null: none)
+    std::string takeJsString(char* value){
+        if (!value) return std::string();
+        std::string out = value;
+        free(value);
+        return out;
+    }
+}
 
 JasperEngineWeb::GamepadState JasperEngineWeb::gamepads[JASPERENGINE_WEB_MAX_GAMEPADS];
 
@@ -115,12 +139,12 @@ extern "C" {
 
     EMSCRIPTEN_KEEPALIVE 
     void crazygamesad_started_callback() {
-        jasperengine::Engine::systemPause();
+        JasperEngineWeb::setAdPlaying(true);
     }
 
     EMSCRIPTEN_KEEPALIVE 
     void crazygamesad_finished_callback() {
-        jasperengine::Engine::systemResume();
+        JasperEngineWeb::setAdPlaying(false);
     }
 
     EMSCRIPTEN_KEEPALIVE 
@@ -128,7 +152,13 @@ extern "C" {
 	    if (!err || err[0]) {
 		    jasperengine::Log::error("Failed to load CrazyGames ad: %s", err);
 	    }
-        jasperengine::Engine::systemResume();
+        JasperEngineWeb::setAdPlaying(false);
+    }
+
+    // screen.orientation's change event: a half turn changes no canvas size
+    EMSCRIPTEN_KEEPALIVE
+    void jasper_web_orientation_changed() {
+        jasperengine::Engine::systemOrientationChanged();
     }
 }
 
@@ -350,6 +380,23 @@ int JasperEngineWeb::init(int argc, char **argv){
     emscripten_set_touchcancel_callback(canvas.c_str(), 0, true, touch_callback);
     emscripten_set_webglcontextlost_callback(canvas.c_str(), 0, true, webgl_context_callback);
     emscripten_set_webglcontextrestored_callback(canvas.c_str(), 0, true, webgl_context_callback);
+    // Unity's OnApplicationFocus / OnApplicationPause: the window's focus and the page's visibility
+    emscripten_set_visibilitychange_callback(0, true, visibility_callback);
+    emscripten_set_focus_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, true, focus_callback);
+    emscripten_set_blur_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, true, focus_callback);
+    EM_ASM({
+        if (screen.orientation && screen.orientation.addEventListener) {
+            screen.orientation.addEventListener('change', function() { ccall('jasper_web_orientation_changed', null); });
+        }
+        // an orientation lock only holds in fullscreen: asked again on entering it
+        document.addEventListener('fullscreenchange', function() {
+            if (document.fullscreenElement && Module.jasperOrientationLock && screen.orientation && screen.orientation.lock) {
+                screen.orientation.lock(Module.jasperOrientationLock).catch(function(e) {
+                    console.debug('Screen.orientation: ' + e.message);
+                });
+            }
+        });
+    });
 
     syncWaitTime = 0;
     enabledIDB = false;
@@ -410,6 +457,40 @@ void JasperEngineWeb::unregisterCallbacks(){
     emscripten_set_touchcancel_callback(canvas.c_str(), 0, true, NULL);
     emscripten_set_webglcontextlost_callback(canvas.c_str(), 0, true, NULL);
     emscripten_set_webglcontextrestored_callback(canvas.c_str(), 0, true, NULL);
+    emscripten_set_visibilitychange_callback(0, true, NULL);
+    emscripten_set_focus_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, true, NULL);
+    emscripten_set_blur_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, 0, true, NULL);
+}
+
+// One pause, whatever the sources: the page hidden, an ad playing, the GPU context lost.
+// Resumes when none is left (Engine::systemPause / systemResume are idempotent)
+void JasperEngineWeb::updatePause(){
+    if (pageHidden || adPlaying || contextLost){
+        jasperengine::Engine::systemPause();
+    }else{
+        jasperengine::Engine::systemResume();
+    }
+}
+
+void JasperEngineWeb::setAdPlaying(bool playing){
+    adPlaying = playing;
+    updatePause();
+}
+
+void JasperEngineWeb::setContextLost(bool lost){
+    contextLost = lost;
+    updatePause();
+}
+
+EM_BOOL JasperEngineWeb::visibility_callback(int eventType, const EmscriptenVisibilityChangeEvent* e, void* userData){
+    pageHidden = e->hidden != 0;
+    updatePause();
+    return 0;
+}
+
+EM_BOOL JasperEngineWeb::focus_callback(int eventType, const EmscriptenFocusEvent* e, void* userData){
+    jasperengine::Engine::systemFocus(eventType == EMSCRIPTEN_EVENT_FOCUS);
+    return 0;
 }
 
 void JasperEngineWeb::changeCanvasSize(int width, int height){
@@ -615,6 +696,23 @@ EM_BOOL JasperEngineWeb::renderLoop(double time, void* userdata){
             syncFileSystemNow();
 
         return EM_FALSE;
+    }
+
+    // the display's rate: the median interval of the first animation frames
+    if (lastFrameTime > 0.0 && frameIntervals.size() < 30){
+        const double interval = time - lastFrameTime;
+        if (interval > 1.0 && interval < 200.0) frameIntervals.push_back(interval);
+        if (frameIntervals.size() == 30){
+            std::vector<double> sorted = frameIntervals;
+            std::sort(sorted.begin(), sorted.end());
+            measuredRefreshRate = (float)std::round(1000.0 / sorted[sorted.size() / 2]);
+        }
+    }
+    lastFrameTime = time;
+
+    // Engine.targetFrameRate: a frame that is not due yet draws nothing (2 ms early still counts)
+    if (!frameLimiter.isDue(jasperengine::Engine::getFramePacing().limiterFps, 0.002)){
+        return EM_TRUE;
     }
 
     pollGamepads();
@@ -911,8 +1009,8 @@ EM_BOOL JasperEngineWeb::touch_callback(int emsc_type, const EmscriptenTouchEven
 
 EM_BOOL JasperEngineWeb::webgl_context_callback(int emsc_type, const void* reserved, void* user_data) {
     switch (emsc_type) {
-        case EMSCRIPTEN_EVENT_WEBGLCONTEXTLOST:     jasperengine::Engine::systemPause(); break;
-        case EMSCRIPTEN_EVENT_WEBGLCONTEXTRESTORED: jasperengine::Engine::systemResume(); break;
+        case EMSCRIPTEN_EVENT_WEBGLCONTEXTLOST:     setContextLost(true); break;
+        case EMSCRIPTEN_EVENT_WEBGLCONTEXTRESTORED: setContextLost(false); break;
         default:                                    break;
     }
 
@@ -1273,4 +1371,182 @@ void JasperEngineWeb::loadingStopCrazyGames(){
     EM_ASM(
         window.CrazyGames.SDK.game.sdkGameLoadingStop();
     );
+}
+
+// ------------------------------------------------------------------ platform services
+
+bool JasperEngineWeb::platformOpenURL(const std::string& url){
+    // a popup the browser blocks (no click or key going on) opens on the next one instead
+    return EM_ASM_INT({
+        var url = UTF8ToString($0);
+        var opened = window.open(url, '_blank');
+        if (opened) {
+            try { opened.opener = null; } catch (e) {}
+            return 1;
+        }
+        Module.jasperPendingUrl = url;
+        if (!Module.jasperPendingUrlListener) {
+            Module.jasperPendingUrlListener = function() {
+                var pending = Module.jasperPendingUrl;
+                if (!pending) return;
+                Module.jasperPendingUrl = null;
+                var w = window.open(pending, '_blank');
+                if (w) { try { w.opener = null; } catch (e) {} }
+            };
+            (['pointerup', 'keyup', 'touchend']).forEach(function(type) {
+                document.addEventListener(type, Module.jasperPendingUrlListener, true);
+            });
+        }
+        console.log('System.openURL: the browser blocked the popup; ' + url + ' opens on the next click or key');
+        return 0;
+    }, url.c_str()) != 0;
+}
+
+std::vector<std::string> JasperEngineWeb::getPreferredLocales(){
+    const std::string list = takeJsString((char*)EM_ASM_INT({
+        var langs = (navigator.languages && navigator.languages.length) ? navigator.languages : [navigator.language || 'en-US'];
+        var text = langs.join('\n');
+        var len = lengthBytesUTF8(text) + 1;
+        var buf = _malloc(len);
+        stringToUTF8(text, buf, len);
+        return buf;
+    }));
+    std::vector<std::string> tags;
+    size_t start = 0;
+    while (start <= list.size()){
+        const size_t end = list.find('\n', start);
+        const std::string tag = jasperengine::LocaleRules::normalize(list.substr(start, end == std::string::npos ? std::string::npos : end - start));
+        if (!tag.empty() && std::find(tags.begin(), tags.end(), tag) == tags.end()) tags.push_back(tag);
+        if (end == std::string::npos) break;
+        start = end + 1;
+    }
+    return tags.empty() ? System::getPreferredLocales() : tags;
+}
+
+std::string JasperEngineWeb::getOperatingSystem(){
+    static const std::string value = "Web (" + takeJsString((char*)EM_ASM_INT({
+        var platform = (navigator.userAgentData && navigator.userAgentData.platform) ? navigator.userAgentData.platform
+                       : (navigator.platform || 'unknown');
+        var len = lengthBytesUTF8(platform) + 1;
+        var buf = _malloc(len);
+        stringToUTF8(platform, buf, len);
+        return buf;
+    })) + ")";
+    return value;
+}
+
+std::string JasperEngineWeb::getOperatingSystemVersion(){
+    return "";
+}
+
+std::string JasperEngineWeb::getDeviceModel(){
+    return "Browser";
+}
+
+jasperengine::DeviceType JasperEngineWeb::getDeviceType(){
+    return isTouchDevice() ? jasperengine::DeviceType::Handheld : jasperengine::DeviceType::Desktop;
+}
+
+int JasperEngineWeb::getSystemMemorySize(){
+    // navigator.deviceMemory: GiB, rounded and capped by the browser (Chromium only)
+    return EM_ASM_INT({
+        return navigator.deviceMemory ? Math.round(navigator.deviceMemory * 1024) : 0;
+    });
+}
+
+jasperengine::NetworkReachability JasperEngineWeb::getInternetReachability(){
+    const int online = EM_ASM_INT({ return navigator.onLine ? 1 : 0; });
+    return online ? jasperengine::NetworkReachability::ReachableViaLocalAreaNetwork : jasperengine::NetworkReachability::NotReachable;
+}
+
+bool JasperEngineWeb::vibrate(int milliseconds){
+    return EM_ASM_INT({
+        return (navigator.vibrate && navigator.vibrate(Math.max(1, $0))) ? 1 : 0;
+    }, milliseconds) != 0;
+}
+
+bool JasperEngineWeb::hapticFeedback(jasperengine::HapticFeedback type){
+    // the Vibration API's approximation of the iOS feedback kinds (the list in parentheses: a
+    // comma outside them would split the EM_ASM macro arguments)
+    return EM_ASM_INT({
+        var patterns = ([[10], [20], [40], [10], [20, 40, 20], [30, 60, 30], [40, 60, 40, 60, 40]]);
+        var pattern = patterns[$0] || [20];
+        return (navigator.vibrate && navigator.vibrate(pattern)) ? 1 : 0;
+    }, (int)type) != 0;
+}
+
+float JasperEngineWeb::getScreenDpi(){
+    return (float)EM_ASM_DOUBLE({ return (window.devicePixelRatio || 1) * 96; });
+}
+
+float JasperEngineWeb::getRefreshRate(){
+    return measuredRefreshRate > 0.0f ? measuredRefreshRate : 60.0f;
+}
+
+void JasperEngineWeb::setKeepScreenOn(bool keepOn){
+    // the Screen Wake Lock API; the browser drops the lock when the page is hidden, so it is
+    // asked again when the page shows
+    EM_ASM({
+        Module.jasperKeepScreenOn = $0 != 0;
+        function acquire() {
+            if (!Module.jasperKeepScreenOn || !navigator.wakeLock || document.visibilityState !== 'visible') return;
+            if (Module.jasperWakeLock) return;
+            navigator.wakeLock.request('screen').then(function(lock) {
+                Module.jasperWakeLock = lock;
+                lock.addEventListener('release', function() { if (Module.jasperWakeLock === lock) Module.jasperWakeLock = null; });
+                if (!Module.jasperKeepScreenOn) { lock.release(); }
+            }).catch(function(e) {
+                console.debug('Screen.sleepTimeout: ' + e.message);
+            });
+        }
+        if (!Module.jasperWakeLockListener) {
+            Module.jasperWakeLockListener = acquire;
+            document.addEventListener('visibilitychange', acquire);
+        }
+        if (Module.jasperKeepScreenOn) {
+            acquire();
+        } else if (Module.jasperWakeLock) {
+            var lock = Module.jasperWakeLock;
+            Module.jasperWakeLock = null;
+            lock.release();
+        }
+    }, keepOn ? 1 : 0);
+}
+
+void JasperEngineWeb::applyOrientationPolicy(jasperengine::ScreenOrientation requested, uint8_t allowedMask){
+    using jasperengine::PlatformRules::orientationBit;
+    using jasperengine::ScreenOrientation;
+    const uint8_t mask = jasperengine::PlatformRules::effectiveMask(requested, allowedMask);
+    const uint8_t portraits = orientationBit(ScreenOrientation::Portrait) | orientationBit(ScreenOrientation::PortraitUpsideDown);
+    const uint8_t landscapes = orientationBit(ScreenOrientation::LandscapeLeft) | orientationBit(ScreenOrientation::LandscapeRight);
+    const char* lock = "any";
+    if (mask == orientationBit(ScreenOrientation::Portrait)) lock = "portrait-primary";
+    else if (mask == orientationBit(ScreenOrientation::PortraitUpsideDown)) lock = "portrait-secondary";
+    else if (mask == orientationBit(ScreenOrientation::LandscapeLeft)) lock = "landscape-primary";
+    else if (mask == orientationBit(ScreenOrientation::LandscapeRight)) lock = "landscape-secondary";
+    else if ((mask & landscapes) == 0) lock = "portrait";
+    else if ((mask & portraits) == 0) lock = "landscape";
+    // browsers lock only in fullscreen: a refusal is expected and logged verbosely
+    EM_ASM({
+        var lock = UTF8ToString($0);
+        Module.jasperOrientationLock = lock;
+        if (!screen.orientation || !screen.orientation.lock) return;
+        screen.orientation.lock(lock).catch(function(e) {
+            console.debug('Screen.orientation: ' + e.message);
+        });
+    }, lock);
+}
+
+jasperengine::ScreenOrientation JasperEngineWeb::getScreenOrientation(){
+    // a desktop browser's screen is the monitor, not the canvas: the canvas size says it there
+    if (!isTouchDevice()) return System::getScreenOrientation();
+    const int type = EM_ASM_INT({
+        if (!screen.orientation || !screen.orientation.type) return 0;
+        var types = ({'portrait-primary': 1, 'portrait-secondary': 2, 'landscape-primary': 3, 'landscape-secondary': 4});
+        return types[screen.orientation.type] || 0;
+    });
+    if (jasperengine::PlatformRules::isOrientation(type) && type != (int)jasperengine::ScreenOrientation::AutoRotation){
+        return (jasperengine::ScreenOrientation)type;
+    }
+    return System::getScreenOrientation();
 }

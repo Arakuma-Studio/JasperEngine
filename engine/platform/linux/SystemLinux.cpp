@@ -3,6 +3,8 @@
 
 #include "SystemLinux.h"
 
+#include "HostServices.h"
+#include "JasperEngineLinux.h"
 #include "LinuxInputRouter.h"
 #include "WindowLinux.h"
 
@@ -134,5 +136,63 @@ std::string SystemLinux::getShaderPath() {
     return JASPERENGINE_SHADER_PATH;
 #else
     return System::getShaderPath();
+#endif
+}
+
+bool SystemLinux::platformOpenURL(const std::string& url) {
+    return HostServices::openURL(url);
+}
+
+std::vector<std::string> SystemLinux::getPreferredLocales() {
+    std::vector<std::string> locales = HostServices::preferredLocales();
+    return locales.empty() ? System::getPreferredLocales() : locales;
+}
+
+std::string SystemLinux::getOperatingSystem() {
+    static const std::string value = HostServices::operatingSystem();
+    return value;
+}
+
+std::string SystemLinux::getOperatingSystemVersion() {
+    static const std::string value = HostServices::operatingSystemVersion();
+    return value;
+}
+
+std::string SystemLinux::getDeviceModel() {
+    static const std::string value = HostServices::deviceModel();
+    return value;
+}
+
+DeviceType SystemLinux::getDeviceType() {
+    return DeviceType::Desktop;
+}
+
+int SystemLinux::getSystemMemorySize() {
+    static const int value = HostServices::systemMemoryMiB();
+    return value;
+}
+
+NetworkReachability SystemLinux::getInternetReachability() {
+    return HostServices::internetReachability();
+}
+
+float SystemLinux::getScreenDpi() {
+    return HostServices::screenDpi();
+}
+
+float SystemLinux::getRefreshRate() {
+    return HostServices::refreshRate();
+}
+
+void SystemLinux::applyFramePacing(const FramePacing& pacing) {
+    JasperEngineLinux::applySwapInterval(pacing.swapInterval);
+}
+
+int SystemLinux::getMaxSwapInterval() {
+#if defined(SOKOL_VULKAN)
+    return 1;
+#else
+    // GLX_EXT_swap_control presents every Nth vblank
+    return 4;
 #endif
 }

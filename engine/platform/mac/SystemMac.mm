@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "SystemMac.h"
+#include "HostServices.h"
+#include "JasperEngineMac.h"
 #include "WindowMac.h"
 #include "MacTextInputClient.h"
 
@@ -209,4 +211,74 @@ std::string SystemMac::getShaderPath() {
 #else
     return System::getShaderPath();
 #endif
+}
+
+bool SystemMac::platformOpenURL(const std::string& url) {
+    return HostServices::openURL(url);
+}
+
+std::vector<std::string> SystemMac::getPreferredLocales() {
+    std::vector<std::string> locales = HostServices::preferredLocales();
+    return locales.empty() ? System::getPreferredLocales() : locales;
+}
+
+std::string SystemMac::getRegionOverride() {
+    return HostServices::regionOverride();
+}
+
+std::string SystemMac::getOperatingSystem() {
+    static const std::string value = HostServices::operatingSystem();
+    return value;
+}
+
+std::string SystemMac::getOperatingSystemVersion() {
+    static const std::string value = HostServices::operatingSystemVersion();
+    return value;
+}
+
+std::string SystemMac::getDeviceModel() {
+    static const std::string value = HostServices::deviceModel();
+    return value;
+}
+
+DeviceType SystemMac::getDeviceType() {
+    return DeviceType::Desktop;
+}
+
+int SystemMac::getSystemMemorySize() {
+    static const int value = HostServices::systemMemoryMiB();
+    return value;
+}
+
+NetworkReachability SystemMac::getInternetReachability() {
+    return HostServices::internetReachability();
+}
+
+bool SystemMac::hapticFeedback(HapticFeedback type) {
+    // Force Touch trackpads only; a Mac without one ignores it
+    id<NSHapticFeedbackPerformer> performer = [NSHapticFeedbackManager defaultPerformer];
+    if (!performer) return false;
+    const NSHapticFeedbackPattern pattern = (type == HapticFeedback::Selection || type == HapticFeedback::Light)
+        ? NSHapticFeedbackPatternAlignment
+        : (type == HapticFeedback::NotificationSuccess || type == HapticFeedback::NotificationWarning || type == HapticFeedback::NotificationError)
+            ? NSHapticFeedbackPatternLevelChange
+            : NSHapticFeedbackPatternGeneric;
+    [performer performFeedbackPattern:pattern performanceTime:NSHapticFeedbackPerformanceTimeNow];
+    return true;
+}
+
+float SystemMac::getScreenDpi() {
+    return HostServices::screenDpi();
+}
+
+float SystemMac::getRefreshRate() {
+    return HostServices::refreshRate();
+}
+
+void SystemMac::setKeepScreenOn(bool keepOn) {
+    HostServices::setKeepScreenOn(keepOn);
+}
+
+void SystemMac::applyFramePacing(const FramePacing& pacing) {
+    JasperEngineMac::applySwapInterval(pacing.swapInterval);
 }

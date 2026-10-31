@@ -6,6 +6,7 @@
 #include "Log.h"
 #include "Scene.h"
 #include "Input.h"
+#include "Screen.h"
 #include "render/SystemRender.h"
 #include "script/LuaBinding.h"
 #include "manager/SceneManager.h"
@@ -18,6 +19,8 @@
 #include "htmlui/anim/AnimEngine.h"
 #include "util/StringUtils.h"
 #include "util/Utf16Combiner.h"
+#include "util/PlatformRules.h"
+#include "component/ScriptComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/UIComponent.h"
 #include "component/PanelComponent.h"
@@ -112,6 +115,16 @@ bool Engine::clampNextDelta = false;
 
 std::atomic<bool> Engine::viewLoaded = false;
 std::atomic<bool> Engine::paused = false;
+std::atomic<bool> Engine::focused = true;
+int Engine::targetFrameRate = -1;
+// the project's VSync setting in builds (the generated init() sets it too)
+#if defined(JASPERENGINE_VSYNC_ENABLED)
+int Engine::vSyncCount = JASPERENGINE_VSYNC_ENABLED ? 1 : 0;
+#else
+int Engine::vSyncCount = 1;
+#endif
+FramePacing Engine::framePacing;
+int Engine::lastOrientation = 0;
 std::atomic<bool> Engine::asyncLoading = false;
 bool Engine::frameRunning = false;
 
@@ -134,6 +147,9 @@ FunctionSubscribe<void()> Engine::onPostUpdate;
 FunctionSubscribe<void()> Engine::onPause;
 FunctionSubscribe<void()> Engine::onResume;
 FunctionSubscribe<void()> Engine::onShutdown;
+FunctionSubscribe<void(bool)> Engine::onFocus;
+FunctionSubscribe<void(int)> Engine::onOrientationChanged;
+FunctionSubscribe<void()> Engine::onLowMemory;
 FunctionSubscribe<void()> Engine::onSceneLoaded;
 FunctionSubscribe<void(int,float,float)> Engine::onTouchStart;
 FunctionSubscribe<void(int,float,float)> Engine::onTouchEnd;
@@ -946,6 +962,9 @@ void Engine::removeSubscriptionsByTag(const std::string& substring) {
     onPause.removeByTagSubstring(substring);
     onResume.removeByTagSubstring(substring);
     onShutdown.removeByTagSubstring(substring);
+    onFocus.removeByTagSubstring(substring);
+    onOrientationChanged.removeByTagSubstring(substring);
+    onLowMemory.removeByTagSubstring(substring);
     onSceneLoaded.removeByTagSubstring(substring);
 }
 
@@ -986,6 +1005,9 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
         onPause.clear();
         onResume.clear();
         onShutdown.clear();
+        onFocus.clear();
+        onOrientationChanged.clear();
+        onLowMemory.clear();
     }
 }
 
@@ -1175,6 +1197,8 @@ void Engine::systemInit(int argc, char* argv[], System* system){
     updateTimeCount = 0;
     viewLoaded = false;
     paused = false;
+    focused = true;
+    lastOrientation = 0;
 
     drawSemaphore.release();
 
@@ -1182,6 +1206,9 @@ void Engine::systemInit(int argc, char* argv[], System* system){
     
     std::vector<std::string> args(argv, argv + argc);
     System::instance().args = args;
+
+    // the platform's defaults until init() (the generated main, a script) changes them
+    applyFramePacing();
 
     LuaBinding::createLuaState();
 
@@ -1204,6 +1231,11 @@ void Engine::systemViewLoaded(){
     }
 
     getAsyncThreadDepthStorage() = 0;
+
+    // what init() asked for before the view existed: the swap interval needs the context,
+    // the orientation and screen sleep a window
+    applyFramePacing();
+    Screen::applyToPlatform();
 
     // systemViewDestroyed stopped async loads; a recreated view needs them again
     SoundPool::cancelShutdown();
@@ -1251,6 +1283,9 @@ void Engine::systemViewChanged(){
     }
 
     onViewChanged.call();
+
+    // a resize can be a rotation: onOrientationChanged comes after onCanvasChanged
+    systemOrientationChanged();
 }
 
 // With JASPERENGINE_READY_SIGNAL set (tools/smoke-test.sh sets it), logs once the frame
@@ -1577,16 +1612,120 @@ void Engine::systemShutdown(){
     removeAllSceneLayers(true);
 }
 
+// Unity's OnApplicationFocus / OnApplicationPause script messages: the method of that name on
+// every Lua script of the running scenes' active GameObjects (feature script-lifecycle routes
+// this through its ScriptRuntime broadcast, C++ scripts included)
+static void broadcastApplicationMessage(const std::vector<Scene*>& scenes, const char* method, bool value){
+    const std::vector<AnimationEventArg> args = {AnimationEvent::boolArg(value)};
+    for (Scene* scene : scenes){
+        if (!scene) continue;
+        std::vector<Entity> entities;
+        auto scripts = scene->getComponentArray<ScriptComponent>();
+        for (size_t i = 0; i < scripts->size(); i++){
+            entities.push_back(scripts->getEntity(i));
+        }
+        // a method can destroy GameObjects or make new ones
+        for (Entity entity : entities){
+            if (scene->isEntityCreated(entity) && scene->isEntityActiveInHierarchy(entity)){
+                LuaBinding::callLuaScriptMethod(scene, entity, method, args);
+            }
+        }
+    }
+}
+
 void Engine::systemPause(){
-    AudioSystem::pauseAll();
-    Engine::onPause.call();
+    if (paused) return;
+    // leaving: the focus goes first (Unity: OnApplicationFocus(false), then OnApplicationPause(true))
+    systemFocus(false);
     paused = true;
+    AudioSystem::pauseAll();
+    broadcastApplicationMessage(getScenesSnapshot(), "onApplicationPause", true);
+    Engine::onPause.call();
 }
 
 void Engine::systemResume(){
-    AudioSystem::resumeAll();
-    Engine::onResume.call();
+    if (!paused) return;
     paused = false;
+    AudioSystem::resumeAll();
+    broadcastApplicationMessage(getScenesSnapshot(), "onApplicationPause", false);
+    Engine::onResume.call();
+}
+
+void Engine::systemFocus(bool hasFocus){
+    if (hasFocus == focused) return;
+    // coming back: the resume goes first (OnApplicationPause(false), then OnApplicationFocus(true))
+    if (hasFocus && paused){
+        systemResume();
+    }
+    focused = hasFocus;
+    broadcastApplicationMessage(getScenesSnapshot(), "onApplicationFocus", hasFocus);
+    Engine::onFocus.call(hasFocus);
+}
+
+void Engine::systemOrientationChanged(){
+    if (!System::hasInstance()) return;
+    const int orientation = (int)Screen::getOrientation();
+    if (orientation == lastOrientation) return;
+    const bool first = lastOrientation == 0;
+    lastOrientation = orientation;
+    // the first one is where the view starts, not a change
+    if (!first){
+        Engine::onOrientationChanged.call(orientation);
+    }
+}
+
+void Engine::systemLowMemory(){
+    Engine::onLowMemory.call();
+}
+
+void Engine::resetApplicationState(){
+    if (paused){
+        paused = false;
+        AudioSystem::resumeAll();
+    }
+    focused = true;
+    lastOrientation = 0;
+    targetFrameRate = -1;
+    applyFramePacing();
+}
+
+bool Engine::isFocused(){
+    return focused;
+}
+
+bool Engine::isPaused(){
+    return paused;
+}
+
+void Engine::setTargetFrameRate(int fps){
+    targetFrameRate = fps <= 0 ? -1 : std::min(fps, 1000);
+    applyFramePacing();
+}
+
+int Engine::getTargetFrameRate(){
+    return targetFrameRate;
+}
+
+void Engine::setVSyncCount(int count){
+    vSyncCount = std::clamp(count, 0, 4);
+    applyFramePacing();
+}
+
+int Engine::getVSyncCount(){
+    return vSyncCount;
+}
+
+const FramePacing& Engine::getFramePacing(){
+    return framePacing;
+}
+
+void Engine::applyFramePacing(){
+    if (!System::hasInstance()) return;
+    System& system = System::instance();
+    framePacing = PlatformRules::computeFramePacing(getPlatform(), targetFrameRate, vSyncCount,
+                                                    system.getRefreshRate(), system.getMaxSwapInterval(),
+                                                    system.canDisableVSync());
+    system.applyFramePacing(framePacing);
 }
 
 // Scenes below a loading scene only get pointer-up, so nothing stays pressed

@@ -188,6 +188,7 @@
 #include <vector>
 #include <string>
 #include "math/Vector2.h"
+#include "System.h"
 
 namespace jasperengine {
 
@@ -271,6 +272,10 @@ namespace jasperengine {
 
         static size_t findTouchIndex(int pointer);
         static size_t findGamepadIndex(int id);
+
+        // Unity's Input.deviceOrientation: how the device is held (FaceUp/FaceDown on iOS),
+        // Unknown where nothing reports it (desktops, flat Android devices)
+        static DeviceOrientation getDeviceOrientation();
     };
 }
 

@@ -23,7 +23,8 @@ namespace luabridge
     {
         static auto push(lua_State* L, T value) -> std::enable_if_t<std::is_enum_v<T>, luabridge::Result>
         {
-            lua_pushinteger(L, static_cast<std::size_t>(value));
+            // signed: SleepTimeout's values are negative
+            lua_pushinteger(L, static_cast<lua_Integer>(value));
             return {};
         }
 
@@ -60,6 +61,14 @@ namespace luabridge
     template<> struct Stack<ResourceLoadState> : EnumWrapper<ResourceLoadState>{};
     template<> struct Stack<LightState> : EnumWrapper<LightState>{};
     template<> struct Stack<UIEventState> : EnumWrapper<UIEventState>{};
+    // platform services (System, Screen, Input.deviceOrientation)
+    template<> struct Stack<SystemLanguage> : EnumWrapper<SystemLanguage>{};
+    template<> struct Stack<ScreenOrientation> : EnumWrapper<ScreenOrientation>{};
+    template<> struct Stack<DeviceOrientation> : EnumWrapper<DeviceOrientation>{};
+    template<> struct Stack<DeviceType> : EnumWrapper<DeviceType>{};
+    template<> struct Stack<NetworkReachability> : EnumWrapper<NetworkReachability>{};
+    template<> struct Stack<HapticFeedback> : EnumWrapper<HapticFeedback>{};
+    template<> struct Stack<SleepTimeout> : EnumWrapper<SleepTimeout>{};
 
     template<> struct Stack<EntityPool> : EnumWrapper<EntityPool>{};
 

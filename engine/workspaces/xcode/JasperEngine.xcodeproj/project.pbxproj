@@ -3293,6 +3293,15 @@
 		4A534E473E6B9FE60C626734 /* MeshBufferPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D911C9CB4326E948 /* MeshBufferPool.cpp */; };
 		4A534E472437676B559FC859 /* MeshBufferPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D911C9CB4326E948 /* MeshBufferPool.cpp */; };
 		4A534E47693D678BC7B907E1 /* MeshBufferPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E2D854B4242EC2F5 /* MeshBufferPool.h */; };
+		4A534E478DC0E7CF8FAFBECF /* Screen.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4730D9EC2E29E781C3 /* Screen.cpp */; };
+		4A534E471D112E5B5C5C529F /* Screen.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4730D9EC2E29E781C3 /* Screen.cpp */; };
+		4A534E47A03D72D8121AA453 /* FrameLimiter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479C5DD9B218AA2CB9 /* FrameLimiter.cpp */; };
+		4A534E47B6B13162C6157931 /* FrameLimiter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479C5DD9B218AA2CB9 /* FrameLimiter.cpp */; };
+		4A534E471F031487F33960F3 /* PlatformRules.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471B6ECBEB0A00EABD /* PlatformRules.cpp */; };
+		4A534E474B3E5336B343B76E /* PlatformRules.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471B6ECBEB0A00EABD /* PlatformRules.cpp */; };
+		4A534E4792C92F90213540FE /* Screen.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E471F33544BB442A466 /* Screen.h */; };
+		4A534E471041FDE4DF7EF626 /* FrameLimiter.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47DB493E51DF771D1F /* FrameLimiter.h */; };
+		4A534E4777DAA850BCD6D5EA /* PlatformRules.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47778D99DE934432D4 /* PlatformRules.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -6656,6 +6665,12 @@
 		4A534E474C490B38DD8DB742 /* VertexAnimatorSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VertexAnimatorSystem.h; sourceTree = "<group>"; };
 		4A534E47D911C9CB4326E948 /* MeshBufferPool.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MeshBufferPool.cpp; sourceTree = "<group>"; };
 		4A534E47E2D854B4242EC2F5 /* MeshBufferPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MeshBufferPool.h; sourceTree = "<group>"; };
+		4A534E4730D9EC2E29E781C3 /* Screen.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Screen.cpp; sourceTree = "<group>"; };
+		4A534E479C5DD9B218AA2CB9 /* FrameLimiter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FrameLimiter.cpp; sourceTree = "<group>"; };
+		4A534E471B6ECBEB0A00EABD /* PlatformRules.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PlatformRules.cpp; sourceTree = "<group>"; };
+		4A534E471F33544BB442A466 /* Screen.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Screen.h; sourceTree = "<group>"; };
+		4A534E47DB493E51DF771D1F /* FrameLimiter.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FrameLimiter.h; sourceTree = "<group>"; };
+		4A534E47778D99DE934432D4 /* PlatformRules.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PlatformRules.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -7977,6 +7992,8 @@
 				4A534E476D14045E1B1B86B5 /* pose */,
 				4A534E472AD0C1A658CC6825 /* physics */,
 				4A534E477E49C8CF16ED0963 /* animation */,
+				4A534E4730D9EC2E29E781C3 /* Screen.cpp */,
+				4A534E471F33544BB442A466 /* Screen.h */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -8034,6 +8051,10 @@
 				505645430000000000000177 /* ThorVGRuntime.cpp */,
 				4A534E47951BAE2F6DCE875F /* PostColorLut.cpp */,
 				4A534E47BE2CA7B811737252 /* PostColorLut.h */,
+				4A534E479C5DD9B218AA2CB9 /* FrameLimiter.cpp */,
+				4A534E471B6ECBEB0A00EABD /* PlatformRules.cpp */,
+				4A534E47DB493E51DF771D1F /* FrameLimiter.h */,
+				4A534E47778D99DE934432D4 /* PlatformRules.h */,
 			);
 			path = util;
 			sourceTree = "<group>";
@@ -11890,6 +11911,9 @@
 				4A534E471E767D9BE2C4AF8A /* CpuSkin.h in Headers */,
 				4A534E47348D45F4BBD323C9 /* VertexAnimatorSystem.h in Headers */,
 				4A534E47693D678BC7B907E1 /* MeshBufferPool.h in Headers */,
+				4A534E4792C92F90213540FE /* Screen.h in Headers */,
+				4A534E471041FDE4DF7EF626 /* FrameLimiter.h in Headers */,
+				4A534E4777DAA850BCD6D5EA /* PlatformRules.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -13933,6 +13957,9 @@
 				4A534E4759966A2ED417BECD /* CpuSkin.cpp in Sources */,
 				4A534E474B1E43D590AD23B0 /* VertexAnimatorSystem.cpp in Sources */,
 				4A534E473E6B9FE60C626734 /* MeshBufferPool.cpp in Sources */,
+				4A534E478DC0E7CF8FAFBECF /* Screen.cpp in Sources */,
+				4A534E47A03D72D8121AA453 /* FrameLimiter.cpp in Sources */,
+				4A534E471F031487F33960F3 /* PlatformRules.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14355,6 +14382,9 @@
 				4A534E47641FBAF4D870EBAF /* CpuSkin.cpp in Sources */,
 				4A534E47A95FB7E661773FC4 /* VertexAnimatorSystem.cpp in Sources */,
 				4A534E472437676B559FC859 /* MeshBufferPool.cpp in Sources */,
+				4A534E471D112E5B5C5C529F /* Screen.cpp in Sources */,
+				4A534E47B6B13162C6157931 /* FrameLimiter.cpp in Sources */,
+				4A534E474B3E5336B343B76E /* PlatformRules.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

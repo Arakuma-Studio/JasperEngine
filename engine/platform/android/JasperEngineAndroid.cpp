@@ -10,7 +10,12 @@
 #include <vector>
 #include "NativeEngine.h"
 #include "Log.h"
+#include "util/PlatformRules.h"
 #include "util/StringUtils.h"
+
+#include <android/window.h>
+#include <game-activity/GameActivity.h>
+#include <swappy/swappyGL.h>
 
 static int android_read(void* cookie, char* buf, int size) {
     return AAsset_read((AAsset*)cookie, buf, size);
@@ -426,4 +431,220 @@ void JasperEngineAndroid::showInterstitialAd(){
     if (!hasAdMob(jniData)) return;
 
     env->CallVoidMethod(jniData.adMobWrapperObjRef, jniData.showInterstitialAd);
+}
+
+// ------------------------------------------------------------------ platform services
+
+namespace {
+
+// The calling thread's env for a JasperPlatform call: NULL when the class or method is missing
+JNIEnv* platformEnv(jmethodID method){
+    NativeEngine* nativeEngine = NativeEngine::getInstance();
+    if (!nativeEngine || !method || !nativeEngine->getJniData().platformClsRef) return NULL;
+    return nativeEngine->getJniEnv();
+}
+
+std::string callPlatformString(jmethodID method, bool withActivity){
+    JNIEnv* env = platformEnv(method);
+    if (!env) return "";
+    JniData& jniData = NativeEngine::getInstance()->getJniData();
+    jstring value = withActivity
+        ? (jstring)env->CallStaticObjectMethod(jniData.platformClsRef, method, jniData.gameActivityObjRef)
+        : (jstring)env->CallStaticObjectMethod(jniData.platformClsRef, method);
+    std::string out;
+    if (!clearJavaException(env, "JasperPlatform")){
+        out = javaStringToUtf8(env, value);
+    }
+    if (value) env->DeleteLocalRef(value);
+    return out;
+}
+
+int callPlatformInt(jmethodID method, bool withActivity, int fallback){
+    JNIEnv* env = platformEnv(method);
+    if (!env) return fallback;
+    JniData& jniData = NativeEngine::getInstance()->getJniData();
+    const jint value = withActivity
+        ? env->CallStaticIntMethod(jniData.platformClsRef, method, jniData.gameActivityObjRef)
+        : env->CallStaticIntMethod(jniData.platformClsRef, method);
+    return clearJavaException(env, "JasperPlatform") ? fallback : (int)value;
+}
+
+jasperengine::DeviceOrientation lastDeviceOrientation = jasperengine::DeviceOrientation::Unknown;
+
+} // namespace
+
+bool JasperEngineAndroid::platformOpenURL(const std::string& url){
+    JniData& jniData = NativeEngine::getInstance()->getJniData();
+    JNIEnv* env = platformEnv(jniData.platformOpenURL);
+    if (!env) return System::platformOpenURL(url);
+    jstring text = newJavaString(env, url);
+    const jboolean opened = env->CallStaticBooleanMethod(jniData.platformClsRef, jniData.platformOpenURL, jniData.gameActivityObjRef, text);
+    env->DeleteLocalRef(text);
+    return !clearJavaException(env, "openURL") && opened == JNI_TRUE;
+}
+
+std::vector<std::string> JasperEngineAndroid::getPreferredLocales(){
+    JniData& jniData = NativeEngine::getInstance()->getJniData();
+    JNIEnv* env = platformEnv(jniData.platformGetPreferredLocales);
+    if (!env) return System::getPreferredLocales();
+    jobjectArray array = (jobjectArray)env->CallStaticObjectMethod(jniData.platformClsRef, jniData.platformGetPreferredLocales);
+    std::vector<std::string> tags;
+    if (!clearJavaException(env, "getPreferredLocales") && array){
+        const jsize count = env->GetArrayLength(array);
+        for (jsize i = 0; i < count; i++){
+            jstring tag = (jstring)env->GetObjectArrayElement(array, i);
+            const std::string value = jasperengine::LocaleRules::normalize(javaStringToUtf8(env, tag));
+            if (!value.empty()) tags.push_back(value);
+            if (tag) env->DeleteLocalRef(tag);
+        }
+    }
+    if (array) env->DeleteLocalRef(array);
+    return tags.empty() ? System::getPreferredLocales() : tags;
+}
+
+std::string JasperEngineAndroid::getRegionOverride(){
+    return callPlatformString(NativeEngine::getInstance()->getJniData().platformGetRegion, false);
+}
+
+std::string JasperEngineAndroid::getAppVersion(){
+    static const std::string value = callPlatformString(NativeEngine::getInstance()->getJniData().platformGetAppVersion, true);
+    return value.empty() ? System::getAppVersion() : value;
+}
+
+int64_t JasperEngineAndroid::getAppBuild(){
+    static int64_t value = -1;
+    if (value < 0){
+        JniData& jniData = NativeEngine::getInstance()->getJniData();
+        JNIEnv* env = platformEnv(jniData.platformGetAppBuild);
+        value = 0;
+        if (env){
+            const jlong build = env->CallStaticLongMethod(jniData.platformClsRef, jniData.platformGetAppBuild, jniData.gameActivityObjRef);
+            if (!clearJavaException(env, "getAppBuild")) value = (int64_t)build;
+        }
+    }
+    return value > 0 ? value : System::getAppBuild();
+}
+
+std::string JasperEngineAndroid::getAppIdentifier(){
+    static const std::string value = callPlatformString(NativeEngine::getInstance()->getJniData().platformGetAppIdentifier, true);
+    return value.empty() ? System::getAppIdentifier() : value;
+}
+
+std::string JasperEngineAndroid::getAppName(){
+    static const std::string value = callPlatformString(NativeEngine::getInstance()->getJniData().platformGetAppName, true);
+    return value.empty() ? System::getAppName() : value;
+}
+
+std::string JasperEngineAndroid::getOperatingSystem(){
+    static const std::string value = [this](){
+        JniData& jniData = NativeEngine::getInstance()->getJniData();
+        return jasperengine::OsRules::androidOperatingSystem(
+            callPlatformString(jniData.platformGetOsRelease, false), getAndroidApiLevel(),
+            callPlatformString(jniData.platformGetBuildDisplay, false),
+            callPlatformString(jniData.platformGetBuildIncremental, false));
+    }();
+    return value;
+}
+
+std::string JasperEngineAndroid::getOperatingSystemVersion(){
+    static const std::string value = callPlatformString(NativeEngine::getInstance()->getJniData().platformGetOsRelease, false);
+    return value;
+}
+
+int JasperEngineAndroid::getAndroidApiLevel(){
+    static const int value = callPlatformInt(NativeEngine::getInstance()->getJniData().platformGetApiLevel, false, 0);
+    return value;
+}
+
+std::string JasperEngineAndroid::getDeviceModel(){
+    static const std::string value = callPlatformString(NativeEngine::getInstance()->getJniData().platformGetDeviceModel, false);
+    return value;
+}
+
+jasperengine::DeviceType JasperEngineAndroid::getDeviceType(){
+    return jasperengine::DeviceType::Handheld;
+}
+
+int JasperEngineAndroid::getSystemMemorySize(){
+    static const int value = callPlatformInt(NativeEngine::getInstance()->getJniData().platformGetSystemMemorySize, true, 0);
+    return value;
+}
+
+jasperengine::NetworkReachability JasperEngineAndroid::getInternetReachability(){
+    const int value = callPlatformInt(NativeEngine::getInstance()->getJniData().platformGetInternetReachability, true, 0);
+    if (value == 1) return jasperengine::NetworkReachability::ReachableViaCarrierDataNetwork;
+    if (value == 2) return jasperengine::NetworkReachability::ReachableViaLocalAreaNetwork;
+    return jasperengine::NetworkReachability::NotReachable;
+}
+
+bool JasperEngineAndroid::vibrate(int milliseconds){
+    JniData& jniData = NativeEngine::getInstance()->getJniData();
+    JNIEnv* env = platformEnv(jniData.platformVibrate);
+    if (!env) return false;
+    const jboolean done = env->CallStaticBooleanMethod(jniData.platformClsRef, jniData.platformVibrate, jniData.gameActivityObjRef, (jint)milliseconds);
+    return !clearJavaException(env, "vibrate") && done == JNI_TRUE;
+}
+
+bool JasperEngineAndroid::hapticFeedback(jasperengine::HapticFeedback type){
+    JniData& jniData = NativeEngine::getInstance()->getJniData();
+    JNIEnv* env = platformEnv(jniData.platformHapticFeedback);
+    if (!env) return false;
+    const jboolean done = env->CallStaticBooleanMethod(jniData.platformClsRef, jniData.platformHapticFeedback, jniData.gameActivityObjRef, (jint)type);
+    return !clearJavaException(env, "hapticFeedback") && done == JNI_TRUE;
+}
+
+float JasperEngineAndroid::getScreenDpi(){
+    return (float)callPlatformInt(NativeEngine::getInstance()->getJniData().platformGetScreenDpi, true, 0);
+}
+
+float JasperEngineAndroid::getRefreshRate(){
+    JniData& jniData = NativeEngine::getInstance()->getJniData();
+    JNIEnv* env = platformEnv(jniData.platformGetRefreshRate);
+    if (!env) return 60.0f;
+    const jfloat rate = env->CallStaticFloatMethod(jniData.platformClsRef, jniData.platformGetRefreshRate, jniData.gameActivityObjRef);
+    if (clearJavaException(env, "getRefreshRate") || rate <= 1.0f) return 60.0f;
+    return (float)rate;
+}
+
+void JasperEngineAndroid::setKeepScreenOn(bool keepOn){
+    GameActivity* activity = NativeEngine::getInstance()->getActivity();
+    if (keepOn){
+        GameActivity_setWindowFlags(activity, AWINDOW_FLAG_KEEP_SCREEN_ON, 0);
+    }else{
+        GameActivity_setWindowFlags(activity, 0, AWINDOW_FLAG_KEEP_SCREEN_ON);
+    }
+}
+
+void JasperEngineAndroid::applyOrientationPolicy(jasperengine::ScreenOrientation requested, uint8_t allowedMask){
+    bool unsupported = false;
+    const int orientation = jasperengine::PlatformRules::androidRequestedOrientation(requested, allowedMask, &unsupported);
+    static bool warned = false;
+    if (unsupported && !warned){
+        warned = true;
+        jasperengine::Log::warn("Android cannot restrict auto-rotation to this set of Screen.autorotateTo* orientations; all four are allowed");
+    }
+    JniData& jniData = NativeEngine::getInstance()->getJniData();
+    JNIEnv* env = platformEnv(jniData.platformSetOrientationPolicy);
+    if (!env) return;
+    env->CallStaticVoidMethod(jniData.platformClsRef, jniData.platformSetOrientationPolicy, jniData.gameActivityObjRef, (jint)orientation);
+    clearJavaException(env, "setOrientationPolicy");
+}
+
+jasperengine::ScreenOrientation JasperEngineAndroid::getScreenOrientation(){
+    NativeEngine* nativeEngine = NativeEngine::getInstance();
+    if (!nativeEngine->getJniData().platformDisplayRotation) return System::getScreenOrientation();
+    return jasperengine::PlatformRules::orientationFromRotation(nativeEngine->getDisplayRotation(), nativeEngine->isNaturalPortrait());
+}
+
+jasperengine::DeviceOrientation JasperEngineAndroid::getDeviceOrientation(){
+    NativeEngine* nativeEngine = NativeEngine::getInstance();
+    lastDeviceOrientation = jasperengine::PlatformRules::deviceOrientationFromDegrees(
+        nativeEngine->getDeviceDegrees(), nativeEngine->isNaturalPortrait(), lastDeviceOrientation);
+    return lastDeviceOrientation;
+}
+
+void JasperEngineAndroid::applyFramePacing(const jasperengine::FramePacing& pacing){
+    // Swappy picks the nearest multiple of the display period
+    const int fps = pacing.mobileFps > 0 ? pacing.mobileFps : 60;
+    SwappyGL_setSwapIntervalNS((uint64_t)(1000000000.0 / (double)fps));
 }

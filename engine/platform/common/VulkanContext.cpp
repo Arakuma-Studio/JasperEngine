@@ -621,6 +621,12 @@ void VulkanContext::endFrame() {
     gSyncSlot = (gSyncSlot + 1) % gImageCount;
 }
 
+void VulkanContext::setVSync(bool vsync) {
+    if (gConfig.vsync == vsync) return;
+    gConfig.vsync = vsync;
+    gSwapchainValid = false;
+}
+
 sg_environment VulkanContext::environment() {
     sg_environment environment{};
     environment.defaults.sample_count = 1;

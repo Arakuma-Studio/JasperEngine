@@ -16,6 +16,7 @@
 #include "PrefabAsset.h"
 #include "Input.h"
 #include "System.h"
+#include "Screen.h"
 #include "registry/PhysicsLayers.h"
 #include "math/Ray.h"
 #ifdef JASPERENGINE_PHYSICS_2D
@@ -258,6 +259,113 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("Android", Platform::Android)
         .addVariable("Linux", Platform::Linux)
         .addVariable("Windows", Platform::Windows)
+        .endNamespace();
+
+    // Unity's SystemLanguage (System.getSystemLanguage), same names and values
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("SystemLanguage")
+        .addVariable("Afrikaans", SystemLanguage::Afrikaans)
+        .addVariable("Arabic", SystemLanguage::Arabic)
+        .addVariable("Basque", SystemLanguage::Basque)
+        .addVariable("Belarusian", SystemLanguage::Belarusian)
+        .addVariable("Bulgarian", SystemLanguage::Bulgarian)
+        .addVariable("Catalan", SystemLanguage::Catalan)
+        .addVariable("Chinese", SystemLanguage::Chinese)
+        .addVariable("Czech", SystemLanguage::Czech)
+        .addVariable("Danish", SystemLanguage::Danish)
+        .addVariable("Dutch", SystemLanguage::Dutch)
+        .addVariable("English", SystemLanguage::English)
+        .addVariable("Estonian", SystemLanguage::Estonian)
+        .addVariable("Faroese", SystemLanguage::Faroese)
+        .addVariable("Finnish", SystemLanguage::Finnish)
+        .addVariable("French", SystemLanguage::French)
+        .addVariable("German", SystemLanguage::German)
+        .addVariable("Greek", SystemLanguage::Greek)
+        .addVariable("Hebrew", SystemLanguage::Hebrew)
+        .addVariable("Hungarian", SystemLanguage::Hungarian)
+        .addVariable("Icelandic", SystemLanguage::Icelandic)
+        .addVariable("Indonesian", SystemLanguage::Indonesian)
+        .addVariable("Italian", SystemLanguage::Italian)
+        .addVariable("Japanese", SystemLanguage::Japanese)
+        .addVariable("Korean", SystemLanguage::Korean)
+        .addVariable("Latvian", SystemLanguage::Latvian)
+        .addVariable("Lithuanian", SystemLanguage::Lithuanian)
+        .addVariable("Norwegian", SystemLanguage::Norwegian)
+        .addVariable("Polish", SystemLanguage::Polish)
+        .addVariable("Portuguese", SystemLanguage::Portuguese)
+        .addVariable("Romanian", SystemLanguage::Romanian)
+        .addVariable("Russian", SystemLanguage::Russian)
+        .addVariable("SerboCroatian", SystemLanguage::SerboCroatian)
+        .addVariable("Slovak", SystemLanguage::Slovak)
+        .addVariable("Slovenian", SystemLanguage::Slovenian)
+        .addVariable("Spanish", SystemLanguage::Spanish)
+        .addVariable("Swedish", SystemLanguage::Swedish)
+        .addVariable("Thai", SystemLanguage::Thai)
+        .addVariable("Turkish", SystemLanguage::Turkish)
+        .addVariable("Ukrainian", SystemLanguage::Ukrainian)
+        .addVariable("Vietnamese", SystemLanguage::Vietnamese)
+        .addVariable("ChineseSimplified", SystemLanguage::ChineseSimplified)
+        .addVariable("ChineseTraditional", SystemLanguage::ChineseTraditional)
+        .addVariable("Unknown", SystemLanguage::Unknown)
+        .addVariable("Hindi", SystemLanguage::Hindi)
+        .endNamespace();
+
+    // Unity's ScreenOrientation (Screen.orientation)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("ScreenOrientation")
+        .addVariable("Portrait", ScreenOrientation::Portrait)
+        .addVariable("PortraitUpsideDown", ScreenOrientation::PortraitUpsideDown)
+        .addVariable("LandscapeLeft", ScreenOrientation::LandscapeLeft)
+        .addVariable("LandscapeRight", ScreenOrientation::LandscapeRight)
+        .addVariable("AutoRotation", ScreenOrientation::AutoRotation)
+        .endNamespace();
+
+    // Unity's DeviceOrientation (Input.deviceOrientation)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("DeviceOrientation")
+        .addVariable("Unknown", DeviceOrientation::Unknown)
+        .addVariable("Portrait", DeviceOrientation::Portrait)
+        .addVariable("PortraitUpsideDown", DeviceOrientation::PortraitUpsideDown)
+        .addVariable("LandscapeLeft", DeviceOrientation::LandscapeLeft)
+        .addVariable("LandscapeRight", DeviceOrientation::LandscapeRight)
+        .addVariable("FaceUp", DeviceOrientation::FaceUp)
+        .addVariable("FaceDown", DeviceOrientation::FaceDown)
+        .endNamespace();
+
+    // Unity's DeviceType (System.getDeviceType)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("DeviceType")
+        .addVariable("Unknown", DeviceType::Unknown)
+        .addVariable("Handheld", DeviceType::Handheld)
+        .addVariable("Console", DeviceType::Console)
+        .addVariable("Desktop", DeviceType::Desktop)
+        .endNamespace();
+
+    // Unity's NetworkReachability (System.getInternetReachability)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("NetworkReachability")
+        .addVariable("NotReachable", NetworkReachability::NotReachable)
+        .addVariable("ReachableViaCarrierDataNetwork", NetworkReachability::ReachableViaCarrierDataNetwork)
+        .addVariable("ReachableViaLocalAreaNetwork", NetworkReachability::ReachableViaLocalAreaNetwork)
+        .endNamespace();
+
+    // System.hapticFeedback kinds
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("HapticFeedback")
+        .addVariable("Light", HapticFeedback::Light)
+        .addVariable("Medium", HapticFeedback::Medium)
+        .addVariable("Heavy", HapticFeedback::Heavy)
+        .addVariable("Selection", HapticFeedback::Selection)
+        .addVariable("Success", HapticFeedback::NotificationSuccess)
+        .addVariable("Warning", HapticFeedback::NotificationWarning)
+        .addVariable("Error", HapticFeedback::NotificationError)
+        .endNamespace();
+
+    // Unity's SleepTimeout (Screen.sleepTimeout)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("SleepTimeout")
+        .addVariable("NeverSleep", SleepTimeout::NeverSleep)
+        .addVariable("SystemSetting", SleepTimeout::SystemSetting)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -740,6 +848,9 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("fixedDeltatime", &Engine::getFixedDeltatime, &Engine::setFixedDeltatime)
         .addStaticProperty("gameTime", &Engine::getGameTime)
         .addStaticProperty("frameCount", &Engine::getGameFrames)
+        .addStaticProperty("targetFrameRate", &Engine::getTargetFrameRate, &Engine::setTargetFrameRate)
+        .addStaticProperty("vSyncCount", &Engine::getVSyncCount, &Engine::setVSyncCount)
+        .addStaticProperty("isFocused", &Engine::isFocused)
         .addStaticProperty("asyncLoading", &Engine::isAsyncLoading, &Engine::setAsyncLoading)
         .addStaticFunction("startAsyncThread", &Engine::startAsyncThread)
         .addStaticFunction("commitThreadQueue", &Engine::commitThreadQueue)
@@ -762,6 +873,9 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("onPause", [] () { return &Engine::onPause; }, [] (lua_State* L) { Engine::onPause = L; })
         .addStaticProperty("onResume", [] () { return &Engine::onResume; }, [] (lua_State* L) { Engine::onResume = L; })
         .addStaticProperty("onShutdown", [] () { return &Engine::onShutdown; }, [] (lua_State* L) { Engine::onShutdown = L; })
+        .addStaticProperty("onFocus", [] () { return &Engine::onFocus; }, [] (lua_State* L) { Engine::onFocus = L; })
+        .addStaticProperty("onOrientationChanged", [] () { return &Engine::onOrientationChanged; }, [] (lua_State* L) { Engine::onOrientationChanged = L; })
+        .addStaticProperty("onLowMemory", [] () { return &Engine::onLowMemory; }, [] (lua_State* L) { Engine::onLowMemory = L; })
         .addStaticProperty("onSceneLoaded", [] () { return &Engine::onSceneLoaded; }, [] (lua_State* L) { Engine::onSceneLoaded = L; })
         .addStaticProperty("onTouchStart", [] () { return &Engine::onTouchStart; }, [] (lua_State* L) { Engine::onTouchStart = L; })
         .addStaticProperty("onTouchEnd", [] () { return &Engine::onTouchEnd; }, [] (lua_State* L) { Engine::onTouchEnd = L; })
@@ -940,6 +1054,13 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__call", &FunctionSubscribe<void()>::call)
         .addFunction("call", &FunctionSubscribe<void()>::call)
         .addFunction("add", (bool (FunctionSubscribe<void()>::*)(const std::string&, lua_State*))&FunctionSubscribe<void()>::add)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<FunctionSubscribe<void(bool)>>("FunctionSubscribe_V_B")
+        .addFunction("__call", &FunctionSubscribe<void(bool)>::call)
+        .addFunction("call", &FunctionSubscribe<void(bool)>::call)
+        .addFunction("add", (bool (FunctionSubscribe<void(bool)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(bool)>::add)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1720,6 +1841,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("getGamepadId", &Input::getGamepadId)
         .addStaticFunction("getModifiers", &Input::getModifiers)
         .addStaticFunction("findTouchIndex", &Input::findTouchIndex)
+        .addStaticProperty("deviceOrientation", &Input::getDeviceOrientation)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1748,6 +1870,32 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("getLuaPath", [] () { return System::instance().getLuaPath(); })
         .addStaticFunction("getShaderPath", [] () { return System::instance().getShaderPath(); })
 
+        // platform services
+        .addStaticFunction("openURL", [] (const std::string& url) { return System::instance().openURL(url); })
+        .addStaticFunction("getSystemLanguage", [] () { return System::instance().getSystemLanguage(); })
+        .addStaticFunction("getLanguageCode", [] () { return System::instance().getLanguageCode(); })
+        .addStaticFunction("getRegionCode", [] () { return System::instance().getRegionCode(); })
+        .addStaticFunction("getLocale", [] () { return System::instance().getLocale(); })
+        .addStaticFunction("getPreferredLanguages", [] () { return System::instance().getPreferredLocales(); })
+        .addStaticFunction("getAppVersion", [] () { return System::instance().getAppVersion(); })
+        .addStaticFunction("getAppBuild", [] () { return System::instance().getAppBuild(); })
+        .addStaticFunction("getAppIdentifier", [] () { return System::instance().getAppIdentifier(); })
+        .addStaticFunction("getAppName", [] () { return System::instance().getAppName(); })
+        .addStaticFunction("getOperatingSystem", [] () { return System::instance().getOperatingSystem(); })
+        .addStaticFunction("getOperatingSystemVersion", [] () { return System::instance().getOperatingSystemVersion(); })
+        .addStaticFunction("getAndroidApiLevel", [] () { return System::instance().getAndroidApiLevel(); })
+        .addStaticFunction("getDeviceModel", [] () { return System::instance().getDeviceModel(); })
+        .addStaticFunction("getDeviceType", [] () { return System::instance().getDeviceType(); })
+        .addStaticFunction("getSystemMemorySize", [] () { return System::instance().getSystemMemorySize(); })
+        .addStaticFunction("getProcessorCount", [] () { return System::instance().getProcessorCount(); })
+        .addStaticFunction("isEditor", [] () { return System::instance().isEditor(); })
+        .addStaticFunction("getInternetReachability", [] () { return System::instance().getInternetReachability(); })
+        // Handheld.Vibrate: 400 ms by default (Unity's length); iOS ignores the length
+        .addStaticFunction("vibrate",
+            [] () { return System::instance().vibrate(400); },
+            [] (int milliseconds) { return System::instance().vibrate(milliseconds); })
+        .addStaticFunction("hapticFeedback", [] (HapticFeedback type) { return System::instance().hapticFeedback(type); })
+
         //UserSettings not need here
 
         .addStaticFunction("initializeAdMob", [] () { return System::instance().initializeAdMob(); })
@@ -1763,6 +1911,26 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("gameplayStopCrazyGames", [] () { return System::instance().gameplayStopCrazyGames(); })
         .addStaticFunction("loadingStartCrazyGames", [] () { return System::instance().loadingStartCrazyGames(); })
         .addStaticFunction("loadingStopCrazyGames", [] () { return System::instance().loadingStopCrazyGames(); })
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<Screen>("Screen")
+        .addStaticProperty("orientation", &Screen::getOrientation, &Screen::setOrientation)
+        .addStaticProperty("autorotateToPortrait",
+            [] () { return Screen::getAutorotate(ScreenOrientation::Portrait); },
+            [] (bool allowed) { Screen::setAutorotate(ScreenOrientation::Portrait, allowed); })
+        .addStaticProperty("autorotateToPortraitUpsideDown",
+            [] () { return Screen::getAutorotate(ScreenOrientation::PortraitUpsideDown); },
+            [] (bool allowed) { Screen::setAutorotate(ScreenOrientation::PortraitUpsideDown, allowed); })
+        .addStaticProperty("autorotateToLandscapeLeft",
+            [] () { return Screen::getAutorotate(ScreenOrientation::LandscapeLeft); },
+            [] (bool allowed) { Screen::setAutorotate(ScreenOrientation::LandscapeLeft, allowed); })
+        .addStaticProperty("autorotateToLandscapeRight",
+            [] () { return Screen::getAutorotate(ScreenOrientation::LandscapeRight); },
+            [] (bool allowed) { Screen::setAutorotate(ScreenOrientation::LandscapeRight, allowed); })
+        .addStaticProperty("sleepTimeout", &Screen::getSleepTimeout, &Screen::setSleepTimeout)
+        .addStaticProperty("dpi", &Screen::getDpi)
+        .addStaticProperty("refreshRate", &Screen::getRefreshRate)
         .endClass();
 
 #endif //DISABLE_LUA_BINDINGS

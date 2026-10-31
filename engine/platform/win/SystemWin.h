@@ -67,6 +67,24 @@ namespace jasperengine {
         std::string getLuaPath() override;
         std::string getShaderPath() override;
 
+        // platform services (HostServicesWin)
+        std::vector<std::string> getPreferredLocales() override;
+        std::string getRegionOverride() override;
+        std::string getOperatingSystem() override;
+        std::string getOperatingSystemVersion() override;
+        std::string getDeviceModel() override;
+        DeviceType getDeviceType() override;
+        int getSystemMemorySize() override;
+        NetworkReachability getInternetReachability() override;
+        float getScreenDpi() override;
+        float getRefreshRate() override;
+        void setKeepScreenOn(bool keepOn) override;
+        void applyFramePacing(const FramePacing& pacing) override;
+        int getMaxSwapInterval() override;
+
+    protected:
+        bool platformOpenURL(const std::string& url) override;
+
     private:
         WinInputRouter* router;
     };
