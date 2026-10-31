@@ -116,8 +116,9 @@ LIMITS.update({"user_settings": 550})
 # lines-trails): 150 tools measured 107094, the limit set to it
 # safe area (spec 6.7): configure_game_view's device_overlay, safe_area_outline, custom_device and
 # safe_area, screenshot's device_overlay / safe_area_in_image, create_ui / create_entity safe_area,
-# get_play_state's safe_area (+390 on its branch); measured on the merged tree below
-TOTAL_LIMIT = 107500
+# get_play_state's safe_area (+390); measured on the tree merged with platform-services (physics-2d,
+# script-lifecycle, lines-trails): 150 tools, total 107484
+TOTAL_LIMIT = 107490
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
