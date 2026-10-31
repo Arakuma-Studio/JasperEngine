@@ -7,6 +7,7 @@
 #include "imgui_internal.h"
 #include "Platform.h"
 #include "Backend.h"
+#include "manager/SceneManager.h"
 #include "Engine.h"
 #include "cli/CommandLine.h"
 #include "render/SystemRender.h"
@@ -3187,6 +3188,15 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
         std::vector<Scene*> runtimeLayers = project.getRunningRuntimeLayers(sceneProject.id);
         sceneRender->activateGame(gameTarget);
 
+        if (project.isPlayedSceneReplaced(sceneProject.id)) {
+            // a scene load replaced the played scene (or rebuilt it, Restart): the game is the
+            // stack that load made, its main scene first
+            Engine::removeScene(sceneProject.scene);
+            Scene* loadedMain = SceneManager::getScenePtr(SceneManager::getCurrentSceneId());
+            if (loadedMain && std::find(runtimeLayers.begin(), runtimeLayers.end(), loadedMain) != runtimeLayers.end()) {
+                Engine::setScene(loadedMain);
+            }
+        }
         for (Scene* runtimeLayer : runtimeLayers) {
             Engine::addSceneLayer(runtimeLayer);
         }
