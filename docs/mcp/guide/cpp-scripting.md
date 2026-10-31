@@ -13,9 +13,13 @@ Godot.
 | Script class | `jasperengine::ScriptBase` | general logic: game controllers, spawners, input |
 | GameObject subclass | the GameObject's own class: `Mesh`, `Primitive`, `Sprite`, `Model`, `Camera`, `GameObject`, ... | calling that class's methods on `this` (`setColor`, `setPosition`, `getPosition`) |
 
-`ScriptBase` has only `getScene()`, `getEntity()` and `isActiveAndEnabled()`; it does NOT
-have mesh or transform methods. Wrap other GameObjects explicitly
-(`GameObject(scene, entity)`, `Sprite(scene, entity)`).
+`ScriptBase` has `getScene()`, `getEntity()`, `isActiveAndEnabled()`, `isEnabled()` /
+`setEnabled(bool)` (Unity's `enabled`: calls `onEnable`/`onDisable`), `getScript<T>()` (the first
+C++ script of this GameObject that is a `T`, enabled or not, else `nullptr`; Unity's
+`GetComponent<T>()`) and the lifecycle virtuals below; it does NOT have mesh or transform
+methods. Wrap other GameObjects explicitly (`GameObject(scene, entity)`, `Sprite(scene, entity)`).
+Scene-wide finds are Lua-only (`GameObject.findObjectOfType`); in C++ walk
+`Engine::getSceneLayers()`.
 
 No reflection or declaration macro is needed (no `GENERATED_BODY`, `GDCLASS`, `Q_OBJECT`,
 `D_OBJECT`): inherit the base class and declare a `(jasperengine::Scene*, jasperengine::Entity)`
@@ -79,6 +83,38 @@ void Spinner::onUpdate() {
 }
 ```
 
+## Lifecycle
+
+A `ScriptBase` script overrides the methods it needs; the engine calls only the overridden
+ones, with the rules and order of Lua scripts (`jasper://docs/lua-api`, 1.1):
+
+| Override | When | Unity |
+|---|---|---|
+| `void init() override` | once, the first time the GameObject is active in hierarchy, enabled or not; **after the DPROPERTY members are bound** | `Awake` |
+| `void onEnable() override` | it becomes active and enabled (after `init`) | `OnEnable` |
+| `void start() override` | once, at the start of the frame after the first `onEnable` | `Start` |
+| `void onDisable() override` | it stops being active and enabled; before `onDestroy` | `OnDisable` |
+| `void onDestroy() override` | once: destroy, scene unload, Play stop / quit (only if `init` ran); the destructor runs after it | `OnDestroy` |
+| `void onApplicationPause(bool paused) override`, `onApplicationFocus(bool focused)`, `onApplicationQuit()` | app background / focus / quit | `OnApplication*` |
+| `void onJointBreak2D(jasperengine::Joint2D& joint) override` | a 2D joint of this GameObject (or whose bodyA is it) broke | `OnJointBreak2D` |
+
+Overrides may be public, protected or private; do not call the base method: it only notes the
+script does not override the message, which is then not sent to it again. The constructor runs
+first, before the properties are bound: read DPROPERTY members in
+`init()`, not in the constructor. Events registered with `REGISTER_ENGINE_EVENT` start after
+`start()` (a script enabled during a frame gets its first `onUpdate` in the next one).
+Migration: a method of an existing script named like one of these is now an override the engine
+calls (twice if the script calls it itself too); one with another signature (`bool init()`) no
+longer compiles: rename it. Every Script component entry gets its object, enabled or not
+(disabled C++ scripts are compiled too). Exceptions thrown from these methods are logged and
+the loop goes on. The GameObject-subclass kind (below) is an object wrapper, not a behaviour:
+it gets no lifecycle calls.
+
+```cpp
+void Spinner::init() { if (!target) Log::warn("Spinner: no target"); }
+void Spinner::onDisable() { Log::print("paused"); }
+```
+
 A GameObject subclass looks the same with `public jasperengine::Primitive` (or `Mesh`,
 `Sprite`...) as base, `#include "Primitive.h"`, and `Primitive(scene, entity)` in the
 initializer list; it can then call `setColor(...)`, `getPosition()`, `setPosition(...)` directly.
@@ -103,7 +139,7 @@ member types: `bool`, `int`, `float`, `std::string`, `Vector2`, `Vector3`, `Vect
 
 The method name must be the Engine event's name (`onUpdate`, `onFixedUpdate`,
 `onPostUpdate`, `onKeyDown`, ...). Events of a disabled script (inactive GameObject or
-disabled entry) are skipped.
+disabled entry) are skipped. Registering in the constructor or in `init()` both work.
 
 ## Saves and JSON
 
@@ -151,8 +187,8 @@ disabled entry) are skipped.
   `"Player/Thing.h"`. Shared helper classes belong there. A `.cpp` neither under a root nor
   included by an attached script is not compiled at all. Discovery skips hidden directories
   and directories named `build`.
-- The editor runs a C++ build only when an enabled C++ script is attached to some GameObject:
-  in a Lua-only project helper sources are first compiled by an export.
+- The editor runs a C++ build only when a C++ script (enabled or not) is attached to some
+  GameObject: in a Lua-only project helper sources are first compiled by an export.
 - **Never edit the generated `CMakeLists.txt`** (regenerated every build). Custom settings go
   in `ProjectBuild.cmake` at the project root, attached to `${JASPERENGINE_TARGET}` with paths
   from `${JASPERENGINE_SCRIPTS_DIR}`:
