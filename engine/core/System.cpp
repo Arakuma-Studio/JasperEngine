@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "System.h"
+#include "PlatformConfig.h"
 #include "util/XMLUtils.h"
 #include "util/Base64.h"
 #include "Log.h"
@@ -23,6 +24,22 @@ System& System::instance(){
     }
 
     return *systemInstance;
+}
+
+bool System::hasInstance(){
+    return systemInstance != nullptr;
+}
+
+EarlySystemScope::EarlySystemScope(System* system){
+    if (!System::systemInstance) {
+        System::systemInstance = system;
+        installed = system;
+    }
+}
+
+EarlySystemScope::~EarlySystemScope(){
+    // the platform may have set its own meanwhile: only ours is taken back
+    if (installed && System::systemInstance == installed) System::systemInstance = nullptr;
 }
 
 void System::setSystemInstance(System* system){
@@ -171,6 +188,17 @@ std::string System::getShaderPath(){
     return getAssetPath() + "/" + "shaders";
 }
 
+std::string System::getContentPath(){
+    const std::string& root = platformConfig().contentRoot;
+    if (!root.empty())
+        return root;
+    const std::string assets = getAssetPath();
+    const size_t slash = assets.find_last_of("/\\");
+    if (slash == std::string::npos)
+        return assets.empty() ? "" : ".";
+    return slash == 0 ? "/" : assets.substr(0, slash);
+}
+
 std::string System::getImportPath(){
     return "";
 }
@@ -212,6 +240,9 @@ void System::installLogSinks(){
 #ifdef JASPERENGINE_LOG_FILE
     options.fileLog = JASPERENGINE_LOG_FILE != 0;
 #endif
+    // a prebuilt player's Player > Logging (game.json)
+    if (platformConfig().logFile >= 0)
+        options.fileLog = platformConfig().logFile != 0;
     if (options.fileLog) {
         options.userDataPath = getUserDataPath();
     }

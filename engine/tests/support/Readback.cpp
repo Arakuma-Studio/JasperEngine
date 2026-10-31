@@ -4,9 +4,11 @@
 #include "Readback.h"
 
 #include "System.h"
+#include "render/FrameReadback.h"
 
 #include <cstdio>
 #include <cstring>
+#include <string>
 
 #if defined(SOKOL_VULKAN)
     #include <vulkan/vulkan.h>
@@ -162,14 +164,7 @@ static bool readVulkanImage(TextureRender& texture, int width, int height, int b
 #endif
 
 bool jasperengine::test::finishGpu(){
-#if defined(SOKOL_VULKAN)
-    sg_environment environment = System::instance().getSokolEnvironment();
-    VkQueue queue = reinterpret_cast<VkQueue>(const_cast<void*>(environment.vulkan.queue));
-    return queue != VK_NULL_HANDLE && vkQueueWaitIdle(queue) == VK_SUCCESS;
-#else
-    glFinish();
-    return true;
-#endif
+    return FrameReadback::finishGpu();
 }
 
 bool jasperengine::test::readTexture(TextureRender& texture, int width, int height, std::vector<uint8_t>& rgba){
@@ -218,37 +213,13 @@ bool jasperengine::test::readTextureRaw(TextureRender& texture, int width, int h
 #endif
 }
 
+// the engine's readback (the shipped game's --screenshot reads with it too)
 bool jasperengine::test::readTexturePixels(TextureRender& texture, int width, int height, int bytesPerPixel, std::vector<uint8_t>& pixels){
-    pixels.clear();
-    if (width <= 0 || height <= 0 || (bytesPerPixel != 4 && bytesPerPixel != 1))
-        return false;
-
-#if defined(SOKOL_VULKAN)
-    return readVulkanImage(texture, width, height, bytesPerPixel, pixels);
-#else
-    const GLuint handle = texture.getGLHandler();
-    if (handle == 0)
-        return false;
-
-    // errors of earlier GL calls are not this readback's
-    while (glGetError() != GL_NO_ERROR) {}
-
-    // Every command that renders into the texture finished first. GL makes glGetTexImage wait for
-    // them; Mesa's llvmpipe (23.2.1, the test image's) did not always: with its rasterizer threads
-    // a readback of a texture drawn and then sampled in the frame returned some 16x16 blocks of it
-    // not yet rasterized (1 in 70 renders of MsaaScissor.HtmlUIClipEdge; a second read was whole)
-    glFinish();
-    pixels.resize(static_cast<size_t>(width) * height * bytesPerPixel);
-    glPixelStorei(GL_PACK_ALIGNMENT, 1);
-    glBindTexture(GL_TEXTURE_2D, handle);
-    glGetTexImage(GL_TEXTURE_2D, 0, (bytesPerPixel == 4) ? GL_RGBA : GL_RED, GL_UNSIGNED_BYTE, pixels.data());
-    glBindTexture(GL_TEXTURE_2D, 0);
-    const bool ok = glGetError() == GL_NO_ERROR;
-    // sokol caches GL bindings and pixel store state; it must not trust them after this
-    glPixelStorei(GL_PACK_ALIGNMENT, 4);
-    sg_reset_state_cache();
-    return ok;
-#endif
+    std::string error;
+    if (FrameReadback::readTexture(texture, width, height, bytesPerPixel, pixels, &error))
+        return true;
+    std::fprintf(stderr, "readTexture: %s\n", error.c_str());
+    return false;
 }
 
 bool jasperengine::test::readTextureFloat(TextureRender& texture, int width, int height, std::vector<float>& rgba){

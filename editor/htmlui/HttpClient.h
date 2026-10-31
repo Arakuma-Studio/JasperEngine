@@ -3,7 +3,9 @@
 
 #pragma once
 
+#include <atomic>
 #include <filesystem>
+#include <mutex>
 #include <map>
 #include <memory>
 #include <string>
@@ -55,6 +57,13 @@ namespace jasperengine::editor::htmlui {
         void setHostRewrite(std::map<std::string, std::string> rewrites);
         const std::map<std::string, std::string>& getHostRewrite() const { return hostRewrite; }
         void setTimeoutSeconds(int seconds);
+        // the largest body this client accepts (kMaxFileSize by default; a player runtime is larger)
+        void setMaxFileSize(long long bytes);
+
+        // From another thread, while get() runs: stops this client's request (it fails with
+        // "cancelled"), and how many bytes of the body have arrived (a download's progress)
+        void cancel();
+        unsigned long long receivedBytes() const;
 
         // Process-wide defaults every client starts with (the fixture-server tests)
         static void setDefaultHostRewrite(std::map<std::string, std::string> rewrites);
@@ -77,6 +86,7 @@ namespace jasperengine::editor::htmlui {
         static bool readBody(const HttpResponse& response, std::string& body);
 
     private:
+        long long maxFileSize = kMaxFileSize;
         HttpResponse getFromMirror(const std::string& mirror, const std::string& url);
         std::string rewrite(const std::string& url) const;
         std::string unrewrite(const std::string& url) const;
@@ -87,6 +97,9 @@ namespace jasperengine::editor::htmlui {
         std::filesystem::path tempDir;
         unsigned counter = 0;
         std::unique_ptr<CommandRunner> runner;
+        mutable std::mutex bodyMutex;
+        std::filesystem::path currentBody;
+        std::atomic<bool> cancelRequested{false};
     };
 
 }

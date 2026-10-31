@@ -8,6 +8,7 @@
 #include <functional>
 #include <atomic>
 #include <mutex>
+#include <vector>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -28,6 +29,12 @@ namespace jasperengine::editor {
         // process exits. Returns true when the exit code is 0.
         bool run(const std::string& command, const fs::path& workingDir,
                  const std::function<void(const std::string&)>& onLine = {});
+        // Runs args[0] with the other arguments as they are, no shell parsing any of them (the
+        // platform tools of a build, docs/specs/S30-shipping.md D8); args[0] is looked up on PATH
+        // when it has no directory. exitCode gets the process's code (-1: it did not run or was
+        // cancelled). True when it is 0.
+        bool runArgs(const std::vector<std::string>& args, const fs::path& workingDir,
+                     const std::function<void(const std::string&)>& onLine = {}, int* exitCode = nullptr);
 
         // Request cancellation and terminate the running process (if any).
         void cancel();
@@ -48,6 +55,12 @@ namespace jasperengine::editor {
 #endif
 
     private:
+#ifdef _WIN32
+        bool spawn(const std::string& commandLine, const fs::path& workingDir, const std::function<void(const std::string&)>& onLine,
+                   int* exitCode);
+#else
+        bool spawn(const std::vector<std::string>& argv, const std::function<void(const std::string&)>& onLine, int* exitCode);
+#endif
         void terminateCurrentProcess();
 
         std::atomic<bool> cancelRequested{false};

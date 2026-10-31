@@ -46,6 +46,15 @@ option(JASPERENGINE_NAVIGATION "Compile Recast/Detour navigation meshes and crow
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     cmake_minimum_required(VERSION 3.20)
 
+    # The prebuilt player (docs/specs/S30-shipping.md R1): the engine with engine/player as its
+    # project, which runs any game's cooked content (game.json, scenes/*.jscn) instead of
+    # compiled-in scenes
+    option(JASPERENGINE_PLAYER "Build jasperengine-player, the prebuilt player of shipped games" OFF)
+    if(JASPERENGINE_PLAYER)
+        set(APP_NAME jasperengine-player)
+        set(PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/player)
+    endif()
+
     if(NOT DEFINED APP_NAME)
         set(APP_NAME jasperengine-project)
     endif()
@@ -178,6 +187,47 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         endif()
     endif()
     message(STATUS "Graphic backend is set to ${GRAPHIC_BACKEND}")
+
+    if(JASPERENGINE_PLAYER)
+        # <platform>-<arch>-<backend>-<flavour> (R8): content-manifest.json names the player it
+        # was built for, and the player refuses other content (exit 5)
+        if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+            set(JE_PLAYER_PLATFORM windows)
+        elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+            set(JE_PLAYER_PLATFORM macos)
+        elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+            set(JE_PLAYER_PLATFORM ios)
+        elseif(CMAKE_SYSTEM_NAME STREQUAL "Android")
+            set(JE_PLAYER_PLATFORM android)
+        elseif(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+            set(JE_PLAYER_PLATFORM web)
+        else()
+            set(JE_PLAYER_PLATFORM linux)
+        endif()
+        if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+            set(JE_PLAYER_ARCH wasm32)
+        elseif(CMAKE_SYSTEM_NAME STREQUAL "Android" OR CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+            # one runtime holds every ABI (Android) or slice (a universal macOS binary)
+            set(JE_PLAYER_ARCH universal)
+        elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+            set(JE_PLAYER_ARCH arm64)
+        elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
+            set(JE_PLAYER_ARCH arm64)
+        else()
+            set(JE_PLAYER_ARCH x64)
+        endif()
+        # (the web runtime holds a single-thread and a pthreads build of one id: the page picks one)
+        set(JE_PLAYER_BACKEND ${GRAPHIC_BACKEND})
+        if(JASPERENGINE_DEVELOPMENT_BUILD OR CMAKE_BUILD_TYPE STREQUAL "Debug")
+            set(JE_PLAYER_FLAVOUR development)
+        else()
+            set(JE_PLAYER_FLAVOUR release)
+        endif()
+        set(JASPERENGINE_PLAYER_ID "${JE_PLAYER_PLATFORM}-${JE_PLAYER_ARCH}-${JE_PLAYER_BACKEND}-${JE_PLAYER_FLAVOUR}" CACHE STRING
+            "The player's runtime id (set from the platform, backend and flavour)" FORCE)
+        add_definitions("-DJASPERENGINE_PLAYER" "-DJASPERENGINE_PLAYER_ID=\"${JASPERENGINE_PLAYER_ID}\"")
+        message(STATUS "Player runtime ${JASPERENGINE_PLAYER_ID}")
+    endif()
 
     if(NOT APP_BACKEND)
         if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -852,6 +902,77 @@ include_directories(SYSTEM libs/sheenbidi/Headers)
 include_directories(SYSTEM libs/meshoptimizer)
 include_directories(SYSTEM libs/bcdec)
 
+# A release game's link (a prebuilt player and a Compile build alike; docs/specs/S30-shipping.md,
+# shipped size), set before the libraries so they are built the same way:
+#   - every function and datum in its own section, and the linker drops what nothing reaches;
+#   - hidden visibility: no symbol leaves the binary but what the platform looks up (Android:
+#     platform/android/exports.map, the JNI and GameActivity entry points);
+#   - Clang with lld (Android): ThinLTO, and identical code folding of the functions whose
+#     address is not taken (--icf=safe).
+# Static registrations survive: an initializer is reached from .init_array, a GC and LTO root.
+# Not for the editor, the tests, sanitizer or Development builds (their backtraces name every
+# function), nor the web: wasm-ld already drops unreferenced code and exports only
+# EXPORTED_FUNCTIONS. A release build's own backtraces give module offsets, which its split
+# symbols resolve.
+set(jasperengineShippedGame OFF)
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR AND NOT JASPERENGINE_TESTS AND NOT JASPERENGINE_SHARED
+   AND "${JASPERENGINE_SANITIZE}" STREQUAL "" AND NOT EMSCRIPTEN AND CMAKE_BUILD_TYPE MATCHES "^(Release|RelWithDebInfo|MinSizeRel)$")
+    set(jasperengineShippedGame ON)
+endif()
+set(JASPERENGINE_RELEASE_LINK_DEFAULT OFF)
+if(jasperengineShippedGame AND NOT JASPERENGINE_DEVELOPMENT_BUILD)
+    set(JASPERENGINE_RELEASE_LINK_DEFAULT ON)
+endif()
+option(JASPERENGINE_RELEASE_LINK "A release game's size-optimised link (sections, hidden visibility, ThinLTO and ICF with lld)"
+    ${JASPERENGINE_RELEASE_LINK_DEFAULT})
+# A shipped game (a prebuilt player or a Compile build, release or Development) ships stripped:
+# it is built with debug information, which the link's post-build step moves into the build
+# tree's symbols/ (desktop: <exe>.debug with a debug link, <exe>.dSYM, the PDB). Publish prepare
+# puts them in the release's symbols/. Android's Gradle strips the libraries it packages itself.
+option(JASPERENGINE_SPLIT_SYMBOLS "A shipped game's debug information, split off into the build tree's symbols/" ${jasperengineShippedGame})
+if(JASPERENGINE_SPLIT_SYMBOLS AND NOT ANDROID)
+    if(MSVC)
+        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/Zi>)
+        add_link_options(/DEBUG:FULL)
+    else()
+        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:-g>)
+    endif()
+endif()
+if(JASPERENGINE_RELEASE_LINK)
+    if(MSVC)
+        # function-level linking, then the unreferenced and identical COMDATs out (also with /DEBUG)
+        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/Gy> $<$<COMPILE_LANGUAGE:C,CXX>:/Gw>)
+        add_link_options(/OPT:REF /OPT:ICF)
+        set(jasperengineLto "/OPT:REF,ICF")
+    else()
+        # (C and C++ only: the assemblers of dav1d and others take none of these)
+        add_compile_options($<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:-ffunction-sections>
+            $<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:-fdata-sections> $<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:-fvisibility=hidden>
+            $<$<COMPILE_LANGUAGE:CXX,OBJCXX>:-fvisibility-inlines-hidden>)
+        if(APPLE)
+            add_link_options(LINKER:-dead_strip)
+        else()
+            add_link_options(LINKER:--gc-sections)
+        endif()
+        if(ANDROID)
+            # what the Java side and GameActivity look up in libjasperengine-android.so
+            add_link_options("LINKER:--version-script=${CMAKE_CURRENT_SOURCE_DIR}/platform/android/exports.map")
+        endif()
+        if(ANDROID AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+            # the NDK links with lld: ThinLTO (its llvm-ar archives the bitcode objects), its cache
+            # for the relinks, and safe identical code folding (Clang emits the address-
+            # significance tables it needs by default). Set directly: CMake's check_ipo_supported
+            # probes with a project that falls back to ld.gold, which cannot load LLVM's plugin.
+            add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:-flto=thin>)
+            add_link_options(-flto=thin "LINKER:--thinlto-cache-dir=${CMAKE_BINARY_DIR}/thinlto-cache" LINKER:--icf=safe)
+            set(jasperengineLto "ThinLTO, --icf=safe")
+        else()
+            set(jasperengineLto "no LTO")
+        endif()
+    endif()
+    message(STATUS "Release link: dead sections out, hidden visibility, ${jasperengineLto}")
+endif()
+
 add_subdirectory(libs/sokol)
 add_subdirectory(libs/lua)
 add_subdirectory(libs/stb)
@@ -1011,6 +1132,12 @@ endif()
 
 set(JASPERENGINE_SRCS
     core/Engine.cpp
+    core/PlatformConfig.cpp
+    core/player/ContentManifest.cpp
+    core/player/Launch.cpp
+    core/player/LaunchOptions.cpp
+    core/player/PlayerConfig.cpp
+    core/player/RunControl.cpp
     core/Input.cpp
     core/input/InputControlPath.cpp
     core/input/InputActionAsset.cpp
@@ -1039,6 +1166,12 @@ set(JASPERENGINE_SRCS
     core/log/sinks/AppleLogSink.cpp
     core/Scene.cpp
     core/SceneSettings.cpp
+    core/serialization/CookCodecs.cpp
+    core/serialization/CookedScene.cpp
+    core/serialization/CookStream.cpp
+    core/serialization/codecs/ComponentHooks.cpp
+    core/serialization/RuntimeFields.cpp
+    core/serialization/SceneSettingsCodec.cpp
     core/System.cpp
     core/action/Action.cpp
     core/action/AlphaTween.cpp
@@ -1172,6 +1305,7 @@ set(JASPERENGINE_SRCS
     core/io/Data.cpp
     core/io/File.cpp
     core/io/FileData.cpp
+    core/io/JPak.cpp
     core/io/ResourcePack.cpp
     core/io/watch/ExpectedWriteLedger.cpp
     core/io/watch/FileChangeCoalescer.cpp
@@ -1277,6 +1411,7 @@ set(JASPERENGINE_SRCS
     core/physics/JoltShapeBuilder.cpp
     core/physics/PlacementWorld.cpp
     core/render/AtmosphereMath.cpp
+    core/render/FrameReadback.cpp
     core/render/AtmosphereNoise.cpp
     core/render/AtmospherePresets.cpp
     core/render/AtmosphereQuality.cpp
@@ -1403,6 +1538,7 @@ set(JASPERENGINE_SRCS
     core/util/LunaSVGRuntime.cpp
     core/util/PostColorLut.cpp
     core/util/Scheduler.cpp
+    core/util/Sha256.cpp
     core/util/STBText.cpp
     core/util/StringUtils.cpp
     core/util/SubscriptionOwnerIndex.cpp
@@ -1735,7 +1871,15 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         ${PLATFORM_RESOURCES}
     )
 
-    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
+    if(JASPERENGINE_PLAYER AND CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        # the prebuilt iOS player is a static library, main() included, that the runtime's Xcode
+        # template links (tools/players/ios_player.sh makes JasperEnginePlayer.xcframework of it)
+        add_library(
+            ${APP_NAME}
+            STATIC
+            ${all_code_files}
+        )
+    elseif(NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
         add_executable(
             ${APP_NAME}
             ${PLATFORM_EXEC_FLAGS}
@@ -1749,6 +1893,15 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         )
     endif()
 
+    if(JASPERENGINE_PLAYER AND EMSCRIPTEN)
+        # the web runtime ships both builds side by side (R15): their .js name their own .wasm
+        if(EMSCRIPTEN_THREAD_SUPPORT)
+            set_target_properties(${APP_NAME} PROPERTIES OUTPUT_NAME jasperengine-player-mt)
+        else()
+            set_target_properties(${APP_NAME} PROPERTIES OUTPUT_NAME jasperengine-player-st)
+        endif()
+    endif()
+
     if(WIN32)
         include(${JASPERENGINE_ROOT}/platform/win/WindowsManifest.cmake)
         jasperengine_add_windows_manifest(${APP_NAME})
@@ -1759,6 +1912,33 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             SOURCES ${JASPERENGINE_ROOT}/platform/linux/JasperEngineLinux.cpp ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp
                     ${JASPERENGINE_ROOT}/platform/linux/LinuxInputRouter.cpp ${JASPERENGINE_ROOT}/platform/linux/SystemLinux.cpp)
     endif()
+    # the shipped binary stripped, its debug information in symbols/ (JASPERENGINE_SPLIT_SYMBOLS)
+    get_target_property(jasperengineAppType ${APP_NAME} TYPE)
+    if(JASPERENGINE_SPLIT_SYMBOLS AND NOT ANDROID AND jasperengineAppType STREQUAL "EXECUTABLE")
+        set(jasperengineSymbols "${CMAKE_BINARY_DIR}/symbols")
+        if(MSVC)
+            set_target_properties(${APP_NAME} PROPERTIES PDB_OUTPUT_DIRECTORY "${jasperengineSymbols}")
+        elseif(APPLE)
+            add_custom_command(TARGET ${APP_NAME} POST_BUILD
+                COMMAND "${CMAKE_COMMAND}" -E make_directory "${jasperengineSymbols}"
+                COMMAND dsymutil "$<TARGET_FILE:${APP_NAME}>" -o "${jasperengineSymbols}/$<TARGET_FILE_NAME:${APP_NAME}>.dSYM"
+                COMMAND strip -S -x "$<TARGET_FILE:${APP_NAME}>"
+                COMMENT "Splitting the symbols of ${APP_NAME} into symbols/"
+                VERBATIM)
+        elseif(CMAKE_OBJCOPY AND CMAKE_STRIP)
+            set(jasperengineDebug "${jasperengineSymbols}/$<TARGET_FILE_NAME:${APP_NAME}>.debug")
+            add_custom_command(TARGET ${APP_NAME} POST_BUILD
+                COMMAND "${CMAKE_COMMAND}" -E make_directory "${jasperengineSymbols}"
+                COMMAND "${CMAKE_OBJCOPY}" --only-keep-debug "$<TARGET_FILE:${APP_NAME}>" "${jasperengineDebug}"
+                COMMAND "${CMAKE_STRIP}" --strip-debug --strip-unneeded "$<TARGET_FILE:${APP_NAME}>"
+                COMMAND "${CMAKE_OBJCOPY}" "--add-gnu-debuglink=${jasperengineDebug}" "$<TARGET_FILE:${APP_NAME}>"
+                COMMENT "Splitting the symbols of ${APP_NAME} into symbols/"
+                VERBATIM)
+        else()
+            message(WARNING "JASPERENGINE_SPLIT_SYMBOLS: no objcopy and strip, ${APP_NAME} keeps its symbols")
+        endif()
+    endif()
+
     jasperengine_target_warnings(${APP_NAME})
     jasperengine_target_unity_build(${APP_NAME})
     jasperengine_stage_asan_runtime(${APP_NAME})

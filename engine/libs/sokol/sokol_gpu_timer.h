@@ -140,6 +140,8 @@ typedef struct sgj_device_memory {
 bool sgj_query_device_memory(sgj_device_memory* out);
 // The GPU's name as the backend reports it ("" when it does not).
 const char* sgj_device_name(void);
+// the context's API version (GL_VERSION, the Vulkan apiVersion; "" elsewhere)
+const char* sgj_api_version(void);
 
 #if defined(__cplusplus)
 } // extern "C"

@@ -10,6 +10,7 @@
 #include <cstring>
 #include <cerrno>
 #include <thread>
+#include <vector>
 
 #ifdef _WIN32
     #include <io.h>
@@ -196,8 +197,71 @@ void editor::CommandRunner::terminateCurrentProcess() {
     #endif
 }
 
+namespace {
+
+#ifdef _WIN32
+    // One argument as CommandLineToArgvW reads it back: quoted when it holds spaces, tabs or
+    // quotes, with the backslashes before a quote doubled (no shell sees it: CreateProcess)
+    std::string quoteWindowsArgument(const std::string& arg) {
+        if (!arg.empty() && arg.find_first_of(" \t\n\v\"") == std::string::npos) return arg;
+        std::string out = "\"";
+        size_t backslashes = 0;
+        for (char c : arg) {
+            if (c == '\\') {
+                backslashes++;
+                continue;
+            }
+            if (c == '"') out.append(backslashes * 2 + 1, '\\');
+            else out.append(backslashes, '\\');
+            backslashes = 0;
+            out += c;
+        }
+        out.append(backslashes * 2, '\\');
+        out += '"';
+        return out;
+    }
+#endif
+
+}
+
 bool editor::CommandRunner::run(const std::string& command, const fs::path& workingDir, const std::function<void(const std::string&)>& onLine) {
+#ifdef _WIN32
+    return spawn("cmd.exe " + cmdQuoting(command), workingDir, onLine, nullptr);
+#else
+    std::string workDirStr = workingDir.string();
+    std::string cdPrefix;
+    if (!workDirStr.empty()) {
+        cdPrefix = "cd \"" + workDirStr + "\" && ";
+    }
+    return spawn({"/bin/sh", "-c", cdPrefix + command}, onLine, nullptr);
+#endif
+}
+
+bool editor::CommandRunner::runArgs(const std::vector<std::string>& args, const fs::path& workingDir,
+                                    const std::function<void(const std::string&)>& onLine, int* exitCode) {
+    if (args.empty()) return false;
+#ifdef _WIN32
+    std::string commandLine;
+    for (const std::string& arg : args) commandLine += (commandLine.empty() ? "" : " ") + quoteWindowsArgument(arg);
+    return spawn(commandLine, workingDir, onLine, exitCode);
+#else
+    // a fixed script: it changes directory and execs the arguments as they are ("$@"), so none
+    // of them is ever parsed by a shell
+    std::vector<std::string> argv = {"/bin/sh", "-c", "cd \"$0\" && exec \"$@\"", workingDir.empty() ? "." : workingDir.string()};
+    argv.insert(argv.end(), args.begin(), args.end());
+    return spawn(argv, onLine, exitCode);
+#endif
+}
+
+#ifdef _WIN32
+bool editor::CommandRunner::spawn(const std::string& commandLine, const fs::path& workingDir,
+                                  const std::function<void(const std::string&)>& onLine, int* exitCodeOut) {
+#else
+bool editor::CommandRunner::spawn(const std::vector<std::string>& spawnArgs, const std::function<void(const std::string&)>& onLine,
+                                  int* exitCodeOut) {
+#endif
     cancelRequested.store(false, std::memory_order_relaxed);
+    if (exitCodeOut) *exitCodeOut = -1;
 
     auto emit = [&onLine](const std::string& line) {
         if (onLine) {
@@ -225,7 +289,7 @@ bool editor::CommandRunner::run(const std::string& command, const fs::path& work
         si.hStdInput  = nullptr;
 
         PROCESS_INFORMATION pi{};
-        std::string cmdLine = "cmd.exe " + cmdQuoting(command);
+        std::string cmdLine = commandLine;
 
         // Track the whole child tree in a job object so cancellation can kill
         // cmake and the compilers it spawns, not only cmd.exe. KILL_ON_JOB_CLOSE
@@ -347,6 +411,7 @@ bool editor::CommandRunner::run(const std::string& command, const fs::path& work
         if (exitCode != 0) {
             Out::build("Process exited with code %lu", exitCode);
         }
+        if (exitCodeOut) *exitCodeOut = static_cast<int>(exitCode);
 
         CloseHandle(hReadPipe);
         CloseHandle(pi.hThread);
@@ -379,17 +444,9 @@ bool editor::CommandRunner::run(const std::string& command, const fs::path& work
         posix_spawn_file_actions_addclose(&actions, pipefd[1]);
 
         pid_t pid = 0;
-        std::string workDirStr = workingDir.string();
-        std::string cdPrefix;
-        if (!workDirStr.empty()) {
-            cdPrefix = "cd \"" + workDirStr + "\" && ";
-        }
-        std::string shellCommand = cdPrefix + command;
-
-        char *argv[] = { const_cast<char*>("/bin/sh"),
-                        const_cast<char*>("-c"),
-                        const_cast<char*>(shellCommand.c_str()),
-                        nullptr };
+        std::vector<char*> argv;
+        for (const std::string& arg : spawnArgs) argv.push_back(const_cast<char*>(arg.c_str()));
+        argv.push_back(nullptr);
 
         // Place the shell in its own process group so cancellation can signal
         // the whole tree: killing only the shell would orphan cmake and the
@@ -399,7 +456,7 @@ bool editor::CommandRunner::run(const std::string& command, const fs::path& work
         posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETPGROUP);
         posix_spawnattr_setpgroup(&attr, 0);
 
-        int spawnResult = posix_spawn(&pid, "/bin/sh", &actions, &attr, argv, environ);
+        int spawnResult = posix_spawn(&pid, "/bin/sh", &actions, &attr, argv.data(), environ);
         posix_spawnattr_destroy(&attr);
         posix_spawn_file_actions_destroy(&actions);
         close(pipefd[1]);
@@ -514,6 +571,7 @@ bool editor::CommandRunner::run(const std::string& command, const fs::path& work
 
         if (WIFEXITED(status)) {
             int code = WEXITSTATUS(status);
+            if (exitCodeOut) *exitCodeOut = code;
             if (code != 0) {
                 Out::build("Process exited with code %d", code);
             }
