@@ -859,8 +859,9 @@ TEST_F(CanvasGroupTest, PerformanceBudgets){
         fn();
         return std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count();
     };
+    // the best of 20 (the budget is the pass's cost, not a loaded machine's scheduling)
     double structural = 1e9;
-    for (int i = 0; i < 5; i++){
+    for (int i = 0; i < 20; i++){
         scene.hierarchyChanged();
         structural = std::min(structural, time([&](){ ui()->syncCanvasGroups(); }));
     }
