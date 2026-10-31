@@ -48,6 +48,15 @@ async def lua(ed: Editor, code: str):
     return (await ed.call("eval_lua", code=code))["values"]
 
 
+def component_values(entity: dict, component: str) -> dict:
+    components = entity.get("components", entity)
+    if isinstance(components, list):
+        for item in components:
+            if item.get("type") == component or item.get("name") == component:
+                return item.get("properties", item.get("values", item))
+    return components[component]
+
+
 def pixel(rows, channels, x, y):
     return tuple(rows[y][x * channels:x * channels + 3])
 
@@ -71,8 +80,8 @@ async def test_settings_round_trip_and_defaults(ed: Editor):
     await ed.call("set_project_settings", values={"graphics.ui_scale": {"mode": "follow_game_canvas", "scale_factor": 1}})
 
     # create_ui's outline and shadow reached the Text
-    props = await ed.call("get_properties", scene=s["scene"], entity="Title", component="TextComponent")
-    values = props.get("properties", props)
+    props = await ed.call("get_entity", scene=s["scene"], entity="Title", components=["TextComponent"])
+    values = component_values(props, "text")
     ed.check_eq(values["outlineWidth"], 3)
     ed.check_eq(values["shadowEnabled"], True)
     ed.check_eq(values["shadowSoftness"], 4)
@@ -111,10 +120,10 @@ async def test_expand_lays_the_ui_out_at_each_resolution(ed: Editor):
 async def test_text_effect_animates_the_title(ed: Editor):
     s = await setup(ed)
     await ed.call("add_component", scene=s["scene"], entity="Title", component="TextEffect")
-    await ed.call("set_properties", scene=s["scene"], entity="Title", component="TextEffectComponent",
-                  values={"layers[0].type": "wave", "layers[0].amplitude": 0.3, "layers[0].duration": 1.0})
-    props = await ed.call("get_properties", scene=s["scene"], entity="Title", component="TextEffectComponent")
-    ed.check("wave" in str(props), f"the layer: {props}")
+    await ed.call("set_properties", scene=s["scene"], entity="Title",
+                  values={"TextEffectComponent": {"layers[0].type": "wave", "layers[0].amplitude": 0.3, "layers[0].duration": 1.0}})
+    props = await ed.call("get_entity", scene=s["scene"], entity="Title", components=["TextEffectComponent"])
+    ed.check_eq(component_values(props, "texteffect")["layers[0].type"], "wave")
     await ed.call("configure_game_view", resolution="1920x1080")
     await ed.call("play", action="start", scene=s["scene"], fixed_fps=30, auto_pause=True)
     try:
@@ -150,7 +159,7 @@ async def test_ui_particles_play_while_paused(ed: Editor):
         ed.check_eq(unscaled, True, "UI particles run on unscaled time")
         await lua(ed, "Engine.timeScale = 0")
         await ed.call("wait", seconds=0.5)
-        count = (await lua(ed, "local ps = object('Particle System', 'ParticleSystem'); return #ps:getParticleSystemComponent().particles"))[0]
+        count = (await lua(ed, "local ps = object('Particle System', 'ParticleSystem'); return ps:getParticleSystemComponent().lastUsedParticle"))[0]
         ed.check(count and count > 0, f"particles spawned at time scale 0: {count}")
     finally:
         await lua(ed, "Engine.timeScale = 1")

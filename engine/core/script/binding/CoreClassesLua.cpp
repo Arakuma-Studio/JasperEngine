@@ -293,11 +293,11 @@ void LuaBinding::registerCoreClasses(lua_State *L){
 
     // the UI's statics: canvas pixels (Input, the game canvas) <-> a scene's UI units
     luabridge::getGlobalNamespace(L)
-        .beginNamespace("UI")
-        .addFunction("canvasToUI", [] (Scene* scene, Vector2 point) { return scene ? scene->canvasToUI(point) : point; })
-        .addFunction("uiToCanvas", [] (Scene* scene, Vector2 point) { return scene ? scene->uiToCanvas(point) : point; })
-        .addProperty("reducedMotion", &UISystem::isReducedMotion, &UISystem::setReducedMotion)
-        .endNamespace();
+        .beginClass<UIStatics>("UI")
+        .addStaticFunction("canvasToUI", &UIStatics::canvasToUI)
+        .addStaticFunction("uiToCanvas", &UIStatics::uiToCanvas)
+        .addStaticProperty("reducedMotion", &UISystem::isReducedMotion, &UISystem::setReducedMotion)
+        .endClass();
 
     luabridge::getGlobalNamespace(L)
         .beginNamespace("Platform")

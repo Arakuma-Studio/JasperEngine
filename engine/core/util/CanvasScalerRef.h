@@ -99,6 +99,13 @@ namespace jasperengine {
         }
     };
 
+    // Lua's UI statics: game canvas pixels (Input, touches) <-> a scene's UI units
+    class JASPERENGINE_API UIStatics {
+    public:
+        static Vector2 canvasToUI(Scene* scene, Vector2 point) { return scene ? scene->canvasToUI(point) : point; }
+        static Vector2 uiToCanvas(Scene* scene, Vector2 point) { return scene ? scene->uiToCanvas(point) : point; }
+    };
+
 }
 
 #endif // CANVASSCALERREF_H

@@ -5,6 +5,8 @@
 #define LuaBridgeAddon_h
 
 #include "Scene.h"
+#include "util/CanvasScaler.h"
+#include "util/TextEffects.h"
 #include "Input.h"
 #include "FileData.h"
 #include "thread/ResourceProgress.h"
@@ -96,6 +98,12 @@ namespace luabridge
 
     template<> struct Stack<AnchorPreset> : EnumWrapper<AnchorPreset>{};
     template<> struct Stack<LayoutGroupType> : EnumWrapper<LayoutGroupType>{};
+    // ui-scaling-text: the Canvas Scaler and Text Effect enums
+    template<> struct Stack<UIScaleMode> : EnumWrapper<UIScaleMode>{};
+    template<> struct Stack<ScreenMatchMode> : EnumWrapper<ScreenMatchMode>{};
+    template<> struct Stack<PhysicalUnit> : EnumWrapper<PhysicalUnit>{};
+    template<> struct Stack<TextEffectType> : EnumWrapper<TextEffectType>{};
+    template<> struct Stack<TextEffectMix> : EnumWrapper<TextEffectMix>{};
     template<> struct Stack<PivotPreset> : EnumWrapper<PivotPreset>{};
 
     template<> struct Stack<ScrollbarType> : EnumWrapper<ScrollbarType>{};
