@@ -39,9 +39,9 @@ origin/main).
 
 | # | Feature (branch `gaps/<name>`) | Covers | Status |
 |---|---|---|---|
-| 1 | `http` | HTTP client for Lua (GET/POST/HEAD, headers, timeouts, JSON/text/binary bodies, download to file, texture from URL), all platforms | specced |
+| 1 | `http` | HTTP client for Lua (GET/POST/HEAD, headers, timeouts, JSON/text/binary bodies, download to file, texture from URL), all platforms | impl |
 | 2 | `native-bridge` | Lua to Java (Android), Objective-C/Swift (iOS/macOS), JavaScript (Web) calls with async callbacks, plus export hooks for extra Gradle/CocoaPods/SPM dependencies and manifest/plist entries | specced |
-| 3 | `platform-services` | `openURL`, system language/locale, target frame rate / vsync, runtime orientation lock + iOS orientation setting + device orientation, app focus event | impl |
+| 3 | `platform-services` | `openURL`, system language/locale, target frame rate / vsync, runtime orientation lock + iOS orientation setting + device orientation, app focus event | review |
 | 4 | `safe-area` | safe-area insets on Android/iOS (and desktop simulation), Lua API + change event, native UI safe-area anchoring, HTML UI `env(safe-area-inset-*)`, editor Game view notch simulation | specced |
 | 5 | `ui-multitouch` | pointer ids through native UI and HTML UI events, per-pointer pressed state, on-screen stick/button controls | specced |
 | 6 | `audio-mixer` | mixer buses with volume/mute and filters (low-pass/high-pass, ...), streamed music, PlayOneShot, fades | specced |
@@ -56,8 +56,8 @@ origin/main).
 | 15 | `video-mp4` | MP4/H.264 playback (platform decoders) and streamed/URL video | specced |
 | 16 | `coroutines` | engine-driven coroutines (wait seconds/realtime/frames/until), Invoke-style scaled timers, unscaled delta time, callbacks always on the main Lua thread | specced |
 | 17 | `script-lifecycle` | onEnable/onDisable, enabling scripts, getScript/findObjectOfType, scene-wide find, event unregister | impl |
-| 18 | `script-data` | JSON encode/decode, UserSettings hasKey/deleteAll/save | review |
-| 19 | `input` | key/mouse/button down/up edge queries, virtual axes and buttons (Input Manager-style), bound Touch with phases and deltas | impl |
+| 18 | `script-data` | JSON encode/decode, UserSettings hasKey/deleteAll/save | merged |
+| 19 | `input` | key/mouse/button down/up edge queries, virtual axes and buttons (Input Manager-style), bound Touch with phases and deltas | review |
 | 20 | `persistence` | DontDestroyOnLoad (persistent objects and their sounds across scene loads) | specced |
 | 21 | `ui-scaling-text` | canvas match-width-or-height scaling, per-character text effects (waves etc.), particles inside UI | specced |
 | 22 | `particles` | start speed along the emitter shape, multi-key curves for every over-lifetime module, Unity ParticleSystem import | specced |
@@ -93,3 +93,8 @@ origin/main).
   machine out of memory). `script-lifecycle` implementation started.
 - 2026-10-31: `script-data` implemented (9 commits; unit 963 passed / 8 skipped; Android/Web compile checks;
   Apple/Windows code not compilable here). Independent review started.
+- 2026-10-31: **`script-data` merged** (review: 2 medium + 6 low defects, all fixed with regression tests; merged tree:
+  0 warnings, unit 966 passed / 8 skipped, MCP script_data/stubs/docs/play/lua_threads 20 passed). `http` started on
+  top of it. `input` and `platform-services` implemented; reviews found 5 and 7 defects, being fixed. Lead product
+  calls for platform-services: keep-screen-on default applies on mobile only (desktop/Web only when the game asks);
+  iPad `UIRequiresFullScreen` only when orientations are restricted.
