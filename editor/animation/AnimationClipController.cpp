@@ -3,6 +3,9 @@
 
 #include "AnimationClipController.h"
 
+#include "animation/AnimAssetDocument.h"
+#include "animation/AvatarMask.h"
+
 #include "Out.h"
 #include "Project.h"
 #include "Scene.h"
@@ -29,6 +32,7 @@
 #include "util/HybridArray.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <map>
 #include <set>
@@ -612,6 +616,7 @@ bool AnimationClipController::bindRoot(uint32_t sceneId, Entity entity, std::str
 
     // another root: the preview of the old one goes back first
     stopPreview();
+    previewOver.clear();
     const bool hadState = !stateName.empty();
     this->sceneId = sceneId;
     root = target;
@@ -759,6 +764,90 @@ const std::string& AnimationClipController::getClipPath() const{
 
 const std::string& AnimationClipController::getStateName() const{
     return stateName;
+}
+
+// ---- layers ----
+
+int AnimationClipController::getStateLayer() const{
+    if (!hasPlayer() || stateName.empty()) return 0;
+    const AnimationPlayerComponent& player = sceneProjectOf(sceneId)->scene->getComponent<AnimationPlayerComponent>(root);
+    const std::vector<std::string> names = anim::playerStateNames(player.clips);
+    const auto it = std::find(names.begin(), names.end(), stateName);
+    if (it == names.end()) return 0;
+    const int layer = player.clips[(size_t)(it - names.begin())].layer;
+    return layer >= 0 && (size_t)layer < anim::playerLayers(player).size() ? layer : 0;
+}
+
+std::string AnimationClipController::getLayerName(int layer) const{
+    if (!hasPlayer()) return layer == 0 ? std::string(anim::BASE_LAYER_NAME) : std::string();
+    const std::vector<AnimationPlayerLayer> layers = anim::playerLayers(sceneProjectOf(sceneId)->scene->getComponent<AnimationPlayerComponent>(root));
+    return layer >= 0 && (size_t)layer < layers.size() ? layers[(size_t)layer].name : std::string();
+}
+
+std::vector<std::pair<std::string, std::vector<std::string>>> AnimationClipController::getStatesByLayer() const{
+    std::vector<std::pair<std::string, std::vector<std::string>>> groups;
+    if (!hasPlayer()) return groups;
+    const AnimationPlayerComponent& player = sceneProjectOf(sceneId)->scene->getComponent<AnimationPlayerComponent>(root);
+    const std::vector<AnimationPlayerLayer> layers = anim::playerLayers(player);
+    const std::vector<std::string> names = anim::playerStateNames(player.clips);
+    for (const AnimationPlayerLayer& layer : layers) groups.push_back({layer.name, {}});
+    for (size_t i = 0; i < names.size(); i++){
+        const int layer = player.clips[i].layer;
+        groups[layer >= 0 && (size_t)layer < groups.size() ? (size_t)layer : 0].second.push_back(names[i]);
+    }
+    return groups;
+}
+
+void AnimationClipController::setPreviewOver(const std::string& baseState){
+    if (previewOver == baseState) return;
+    previewOver = baseState;
+    if (previewing) apply();
+}
+
+const std::string& AnimationClipController::getPreviewOver() const{
+    return previewOver;
+}
+
+std::vector<std::string> AnimationClipController::previewOverChoices() const{
+    const std::vector<std::pair<std::string, std::vector<std::string>>> groups = getStatesByLayer();
+    return groups.empty() ? std::vector<std::string>() : groups[0].second;
+}
+
+std::vector<std::string> AnimationClipController::maskedTracks() const{
+    std::vector<std::string> masked;
+    if (!document || !hasPlayer()) return masked;
+    const size_t trackCount = document->data().tracks.size();
+    const int layer = getStateLayer();
+    SceneProject* sceneProject = sceneProjectOf(sceneId);
+    Scene* scene = sceneProject->scene;
+    const AnimationPlayerComponent& player = scene->getComponent<AnimationPlayerComponent>(root);
+    const std::vector<AnimationPlayerLayer> layers = anim::playerLayers(player);
+    if (layer < 0 || (size_t)layer >= layers.size() || layers[(size_t)layer].mask.empty()) return masked;
+    std::string error;
+    std::shared_ptr<AvatarMaskDocument> maskDocument = AvatarMaskDocument::open(project, layers[(size_t)layer].mask, &error);
+    if (!maskDocument) return masked;
+    // computed again when the clip, the mask, the hierarchy or the state change (at most twice a second)
+    const std::string key = std::to_string(document->revision()) + ":" + std::to_string(maskDocument->revision()) + ":" +
+                            std::to_string(scene->hierarchyRevision()) + ":" + std::to_string(sceneId) + ":" + std::to_string(root) + ":" +
+                            stateName + ":" + layers[(size_t)layer].mask;
+    const double now = (double)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count() / 1000.0;
+    if (key == maskedKey && maskedCache.size() == trackCount && now - maskedAt < 0.5) return maskedCache;
+    maskedKey = key;
+    maskedAt = now;
+    std::shared_ptr<const anim::AvatarMask> mask = anim::AvatarMask::build(maskDocument->data());
+    anim::HumanoidSlots slots;
+    if (mask->hasHumanoid()) slots = anim::resolveHumanoidSlots(scene, root);
+    const std::vector<Entity> entries = mask->bindTransforms(scene, root);
+    const std::string reason = "masked out by " + fs::u8path(layers[(size_t)layer].mask).filename().string() + " on layer " + layers[(size_t)layer].name;
+    masked.assign(trackCount, std::string());
+    for (size_t t = 0; t < trackCount; t++){
+        const std::string& path = document->data().tracks[t].path;
+        const Entity target = path.empty() ? root : anim::resolvePath(scene, root, path);
+        if (target == NULL_ENTITY) continue;
+        if (mask->weightOf(scene, root, target, entries, slots.valid ? &slots : nullptr).weight <= 0.0f) masked[t] = reason;
+    }
+    maskedCache = masked;
+    return masked;
 }
 
 bool AnimationClipController::isReadOnly() const{
@@ -1021,11 +1110,31 @@ bool AnimationClipController::apply(){
                           session.written.end());
 
     ActionSystem::PlayerPreview preview;
+    // Preview over (anim layers spec 7.5, 9): the chosen base state at the playhead, the edited
+    // clip on its layer at weight 1 with that layer's mask
+    const int editedLayer = getStateLayer();
+    if (!previewOver.empty() && editedLayer > 0 && hasPlayer() && previewRoot == root){
+        const AnimationPlayerComponent& player = scene->getComponent<AnimationPlayerComponent>(root);
+        preview.layered = true;
+        for (const AnimationPlayerLayer& layer : anim::playerLayers(player)){
+            ActionSystem::PlayerPreviewLayer previewLayer;
+            previewLayer.weight = 1.0f;
+            previewLayer.blend = layer.blend;
+            previewLayer.mask = layer.mask;
+            preview.layers.push_back(previewLayer);
+        }
+        ActionSystem::PlayerPreviewState base;
+        base.state = previewOver;
+        base.time = time;
+        base.layer = 0;
+        preview.states.push_back(base);
+    }
     ActionSystem::PlayerPreviewState state;
     state.clip = document->clip();
     state.time = time;
     // the playhead is a clip time: past the end shows the end (playback loops in update)
     state.wrap = ClipWrapMode::ClampForever;
+    state.layer = preview.layered ? editedLayer : 0;
     preview.states.push_back(state);
     ActionSystem* actions = scene->getSystem<ActionSystem>().get();
     ActionSystem::PlayerPreviewResult result = actions->previewPlayer(previewRoot, preview, session);
