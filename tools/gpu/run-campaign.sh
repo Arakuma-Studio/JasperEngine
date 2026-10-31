@@ -47,7 +47,9 @@ for part in "${parts[@]}"; do
         ;;
       s11)
         [[ -f build/pbr-extended/project.yaml ]] || run s11-generate "${PY[@]}" tools/fixtures/pbr-extended/generate.py build/pbr-extended --benchmarks-only
-        run s11-gl "${PY[@]}" tools/perf/gpu_campaign.py pbr --runs "$RUNS" --json "$OUT/s11-gl.json"
+        # S11_SIZE: the render size (default 3840 2160: the lobes' fragment cost dominates and the GPU
+        # holds its clocks; at 1080p a 0.24 ms frame let it clock down mid-run)
+        run s11-gl "${PY[@]}" tools/perf/gpu_campaign.py pbr --runs "$RUNS" --size ${S11_SIZE:-3840 2160} --json "$OUT/s11-gl.json"
         ;;
       s13)
         run s13-gl "${PY[@]}" tools/perf/gpu_campaign.py post --runs "$RUNS" --json "$OUT/s13-gl.json"
@@ -72,6 +74,14 @@ for part in "${parts[@]}"; do
             cp build/linux/htmlui-render-bench.json "$OUT/s16-gl-$i.json" 2>/dev/null || true
         done
         grep -h "GPU" "$OUT"/s16-gl-*.log
+        ;;
+      s15pair)
+        # AC4 as defined: the S15 merge (a4b621ebb) against its first parent (9f26ea019), both with the
+        # benchmark focus fix, in build/s15-after-install and build/s15-before-install (built from
+        # git archive trees), on that parent's tools/fixtures/post-processing (build/s15pair-fixture)
+        run s15pair-gl dbus-run-session -- python3 tools/perf/profiler_overhead.py --editor build/s15-after-install/bin/jasperengine-editor \
+            --baseline build/s15-before-install/bin/jasperengine-editor --project build/s15pair-fixture \
+            --runs "${S15_ROUNDS:-30}" --no-check --json "$OUT/s15pair-gl.json"
         ;;
       vat)
         run vat-gl python3 tools/performance/vat_crowd.py --editor "$GL" --editor-tests build/linux/editor-tests/jasperengine-editor-tests \

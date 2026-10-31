@@ -134,6 +134,15 @@ namespace {
         if (gpuTimes)
             SystemRender::acquireGpuTiming();
         uint64_t gpuSeenFrame = 0;
+        // the document's shaders and pipelines first (S32 creates them asynchronously: until they
+        // are ready a draw is skipped, and the benchmark measured frames of no draws at all; found
+        // in the GPU campaign, failing alike on llvmpipe)
+        for (int i = 0; i < 600; i++){
+            clock += 1.0 / 60.0;
+            runner.frameAt(clock, true);
+            if (SystemRender::waitGpuCreationIdle(100.0) && SystemRender::isGpuCreationIdle() && i >= 2)
+                break;
+        }
         BenchRun run;
         std::vector<double> engines, frames, gathers, updates, records, replays, gpus;
         for (int i = 0; i < warm + measured; i++){
