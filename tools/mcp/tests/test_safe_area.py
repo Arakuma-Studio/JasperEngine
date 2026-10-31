@@ -81,6 +81,14 @@ def expected_safe(view: dict, insets: tuple, device: tuple) -> list:
     return [left * k, top * k, CANVAS[0] - (left + right) * k, ch - (top + bottom) * k]
 
 
+def edit_expected(insets: tuple, device: tuple) -> list:
+    """Screen.safeArea in edit mode: the project canvas, each edge the same fraction of it as on the
+    device (whatever size the Game view has now)."""
+    dw, dh = device
+    left, top, right, bottom = insets[0] / dw * CANVAS[0], insets[1] / dh * CANVAS[1], insets[2] / dw * CANVAS[0], insets[3] / dh * CANVAS[1]
+    return [left, top, CANVAS[0] - left - right, CANVAS[1] - top - bottom]
+
+
 def near(ed: Editor, got, want, what: str, tolerance: float = 1.0):
     ed.check(len(got) == len(want) and all(abs(a - b) <= tolerance for a, b in zip(got, want)),
              f"{what}: {got}, expected {want}")
@@ -96,12 +104,15 @@ async def test_device_safe_area_play_rotation_and_event(ed: Editor):
     s = await setup(ed)
     view = await ed.call("configure_game_view", device="iphone_13", orientation="portrait")
     ed.check_in("custom", view["devices"])
-    portrait = expected_safe(view, IPHONE_13["portrait"], (IPHONE_13["width"], IPHONE_13["height"]))
-    near(ed, view["safe_area"], portrait, "edit mode: the project canvas laid out as on the phone", 1.5)
+    near(ed, view["safe_area"], edit_expected(IPHONE_13["portrait"], (IPHONE_13["width"], IPHONE_13["height"])),
+         "edit mode: the project canvas laid out as on the phone", 1.5)
     near(ed, view["safe_area"], [0, 47, 390, 763], "about the iPhone 13's 47 / 34 points", 1.5)
     try:
         await ed.call("play", action="start", scene=s["scene"])
         await ed.call("wait", frames=5)
+        # the Game view shows the game now: its size is the device's aspect
+        view = await ed.call("configure_game_view")
+        portrait = expected_safe(view, IPHONE_13["portrait"], (IPHONE_13["width"], IPHONE_13["height"]))
         safe = await lua(ed, "local r = Screen.safeArea; return {r.x, r.y, r.width, r.height}")
         near(ed, safe[0], portrait, "Screen.safeArea in Play", 1.5)
         insets = await lua(ed, "local i = Screen.safeAreaInsets; return {i.left, i.top, i.right, i.bottom}")
@@ -152,7 +163,7 @@ async def test_safe_area_component_drives_the_panel(ed: Editor):
     try:
         await ed.call("play", action="start", scene=s["scene"])
         await ed.call("wait", frames=5)
-        box = await lua(ed, "local b = object('Safe/Pause'); local p = b:getWorldPosition(); "
+        box = await lua(ed, "local b = object('Safe/Pause', 'RectTransform'); local p = b:getWorldPosition(); "
                             "return {p.x, p.y, b.width, b.height}")
         x, y, w, h = box[0]
         safe = await lua(ed, "local r = Screen.safeArea; return {r.x, r.y, r.width, r.height}")
@@ -162,10 +173,10 @@ async def test_safe_area_component_drives_the_panel(ed: Editor):
         ed.check(abs(y - (sy + 8)) <= 1, f"8 below the notch: y {y}, safe top {sy}")
 
         # a banner at the bottom: the panel shrinks by it
-        before = await lua(ed, "return object('Safe').height")
+        before = await lua(ed, "return object('Safe', 'RectTransform').height")
         await lua(ed, "Screen.setExtraInsets(0, 0, 0, 50)")
         await ed.call("wait", frames=3)
-        after = await lua(ed, "return object('Safe').height")
+        after = await lua(ed, "return object('Safe', 'RectTransform').height")
         ed.check(abs((before[0] - after[0]) - 50) <= 1, f"the panel is 50 shorter: {before} -> {after}")
         state = (await ed.call("get_play_state"))["safe_area"]
         ed.check_eq(state["extra"], [0, 0, 0, 50])
@@ -238,7 +249,7 @@ async def test_custom_device_and_none(ed: Editor):
                                                               "insets": {"top": 200, "bottom": 100}, "corner_radius": 50})
     ed.check_eq(view["device"], "custom")
     ed.check_eq(view["custom_device"]["insets"]["top"], 200)
-    expected = expected_safe(view, (0, 200, 0, 100), (1000, 2000))
+    expected = edit_expected((0, 200, 0, 100), (1000, 2000))
     near(ed, view["safe_area"], expected, "the custom device's safe area", 1.5)
     bad = await ed.call_raw("configure_game_view", {"custom_device": {"width": "wide"}})
     ed.check(bad.is_error and "custom_device" in bad.text, bad.text)
