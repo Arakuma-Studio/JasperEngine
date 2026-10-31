@@ -333,9 +333,9 @@ async def test_source_export(ed: Editor):
         ed.check_in("JasperNative-Bridging-Header-iOS.h", settings["SWIFT_OBJC_BRIDGING_HEADER"])
         ed.check_eq(settings["IPHONEOS_DEPLOYMENT_TARGET"], "16.0")
         ed.check_eq(settings["CODE_SIGN_ENTITLEMENTS"], "ios/JasperEngine.entitlements")
-        ed.check_in('"$(SRCROOT)/../../project/plugins/native/ios/sdk"', settings["FRAMEWORK_SEARCH_PATHS"])
-        ed.check_in('"$(SRCROOT)/../../platform/apple"', settings["HEADER_SEARCH_PATHS"])
-        ed.check_in('"@executable_path/Frameworks"', settings["LD_RUNPATH_SEARCH_PATHS"])
+        ed.check_in("$(SRCROOT)/../../project/plugins/native/ios/sdk", settings["FRAMEWORK_SEARCH_PATHS"])
+        ed.check_in("$(SRCROOT)/../../platform/apple", settings["HEADER_SEARCH_PATHS"])
+        ed.check_in("@executable_path/Frameworks", settings["LD_RUNPATH_SEARCH_PATHS"])
     for settings in pbxproj.target_settings(root, "JasperEngine macOS"):
         ed.check(settings.get("SWIFT_OBJC_BRIDGING_HEADER") is None, "macOS has no Swift plugin")
         ed.check(settings.get("CODE_SIGN_ENTITLEMENTS", "") != "ios/JasperEngine.entitlements", "the iOS entitlements stay on iOS")

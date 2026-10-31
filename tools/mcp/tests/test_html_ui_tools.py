@@ -108,7 +108,9 @@ LIMITS.update({"user_settings": 550})
 # script-lifecycle: check_script's lifecycle warnings and update_script_entry's enabled in Play, paid
 # by shorter texts of both; merged with main (script-data, input, physics-2d): 150 tools measured
 # 106621, the limit set to it
-TOTAL_LIMIT = 106621
+# native-bridge: the native_plugins tool (list / create a plugin for every platform with its Lua mock)
+# measured 1022; merged with gaps/http and main: 151 tools measured 107829, the limit set to it
+TOTAL_LIMIT = 107829
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
