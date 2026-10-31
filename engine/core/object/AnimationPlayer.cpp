@@ -480,6 +480,7 @@ bool AnimationPlayer::isEnabled() const{
 bool AnimationPlayer::isLoaded() const{
     AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
     if (!player.runtime || player.needsLoad) return false;
+    if (!player.controller.empty() && (!player.runtime->controller || !player.runtime->controller->controller)) return false;
     for (const anim::PlayerStateRuntime& state : player.runtime->states){
         if (!state.bindings.clip || !state.bindings.resolved) return false;
     }
@@ -488,17 +489,27 @@ bool AnimationPlayer::isLoaded() const{
 
 // layers
 
+namespace {
+
+    // the runtime with its layers known (a controller's load when it has one)
+    anim::AnimationPlayerRuntime& layeredRuntime(AnimationPlayerComponent& player, const std::string& who){
+        if (!player.controller.empty()) anim::ensureController(player, who, 0.0f, false);
+        return anim::playerRuntime(player);
+    }
+
+}
+
 int AnimationPlayer::getLayerCount() const{
-    return (int)anim::playerRuntime(getComponent<AnimationPlayerComponent>()).layers.size();
+    return (int)layeredRuntime(getComponent<AnimationPlayerComponent>(), getName()).layers.size();
 }
 
 std::string AnimationPlayer::getLayerName(int index) const{
-    const anim::AnimationPlayerRuntime& runtime = anim::playerRuntime(getComponent<AnimationPlayerComponent>());
+    const anim::AnimationPlayerRuntime& runtime = layeredRuntime(getComponent<AnimationPlayerComponent>(), getName());
     return index >= 0 && (size_t)index < runtime.layers.size() ? runtime.layers[(size_t)index].name : std::string();
 }
 
 int AnimationPlayer::getLayerIndex(const std::string& name) const{
-    return anim::playerRuntime(getComponent<AnimationPlayerComponent>()).findLayer(name);
+    return layeredRuntime(getComponent<AnimationPlayerComponent>(), getName()).findLayer(name);
 }
 
 int AnimationPlayer::addLayer(const std::string& name){

@@ -166,6 +166,8 @@ bool anim::layerBlendFromName(const std::string& name, AnimationLayerBlend& out)
 }
 
 int anim::layerIndex(AnimationPlayerComponent& player, const std::string& name, const std::string& who){
+    // a controller's layers are known once it loads (a call from init, before the first update)
+    if (!player.controller.empty()) ensureController(player, who, 0.0f, false);
     AnimationPlayerRuntime& runtime = playerRuntime(player);
     const int index = runtime.findLayer(name);
     if (index < 0) warnOnce(runtime, "name:" + name, "Animation Player '%s': no layer named '%s'", who, name);
@@ -173,6 +175,7 @@ int anim::layerIndex(AnimationPlayerComponent& player, const std::string& name, 
 }
 
 int anim::layerIndex(AnimationPlayerComponent& player, int index, const std::string& who){
+    if (!player.controller.empty()) ensureController(player, who, 0.0f, false);
     AnimationPlayerRuntime& runtime = playerRuntime(player);
     if (index >= 0 && (size_t)index < runtime.layers.size()) return index;
     warnOnce(runtime, "index:" + std::to_string(index), "Animation Player '%s': no layer %s", who, std::to_string(index));
@@ -519,11 +522,9 @@ anim::AnimationPlayerRuntime& anim::playerRuntime(AnimationPlayerComponent& play
         if (player.controller.empty()){
             runtime.controller.reset();
         }else if (!runtime.controller || runtime.controller->path != player.controller){
-            std::shared_ptr<ControllerRuntime> previous = runtime.controller;
+            // another controller: its own parameters, from its defaults (loaded in the update)
             runtime.controller = std::make_shared<ControllerRuntime>();
             runtime.controller->path = player.controller;
-            // a script's parameters outlive a change of the file the controller is read from
-            if (previous) runtime.controller->params = previous->params;
         }
         rebuildLayers(runtime, effectivePlayerLayers(player));
         const int layerCount = (int)runtime.layers.size();

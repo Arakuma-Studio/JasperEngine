@@ -581,9 +581,15 @@ bool ActionSystem::preparePlayer(Entity entity, AnimationPlayerComponent& player
     anim::AnimationPlayerRuntime& runtime = anim::playerRuntime(player);
     const uint64_t revision = scene->hierarchyRevision();
 
-    // an Animator Controller owns the states: loaded (or reloaded after an edit) first
+    // an Animator Controller owns the states: loaded (or reloaded after an edit) first; one
+    // cleared without a reload request gives the clip list back
+    if (player.controller.empty() && runtime.controller){
+        player.needsLoad = true;
+        anim::playerRuntime(player);
+    }
     if (!player.controller.empty() &&
-        (!runtime.controller || !runtime.controller->controller || playerControllerPoolChanged || (!runtime.controller->clipsWarned && !player.clips.empty()))){
+        (!runtime.controller || !runtime.controller->controller || runtime.controller->path != player.controller || playerControllerPoolChanged ||
+         (!runtime.controller->clipsWarned && !player.clips.empty()))){
         anim::ensureController(player, scene->getEntityName(entity), dt, playerControllerPoolChanged);
     }
 

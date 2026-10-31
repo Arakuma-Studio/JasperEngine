@@ -158,15 +158,21 @@ void anim::resetControllerLayers(AnimationPlayerRuntime& runtime){
             group.previous = entry.time;
         }
     }
+    // the driver gives the active groups their weights on its next step; anything else (a
+    // transition's sources before the reload) stops now
     for (PlayerStateRuntime& state : runtime.states){
-        if (state.driven && state.weight <= 0.0f) stopState(state);
+        if (state.driven) stopState(state);
     }
 }
 
 bool anim::ensureController(AnimationPlayerComponent& player, const std::string& who, float dt, bool poolChanged){
     if (player.controller.empty()) return false;
     AnimationPlayerRuntime& runtime = playerRuntime(player);
-    if (!runtime.controller) return false;
+    if (!runtime.controller || runtime.controller->path != player.controller){
+        // the field changed without a reload request (the ECS component from Lua)
+        player.needsLoad = true;
+        playerRuntime(player);
+    }
     ControllerRuntime& controller = *runtime.controller;
     bool fetch = !controller.controller;
     if (!fetch && poolChanged && AnimatorControllerPool::getGeneration(controller.path) != controller.generation) fetch = true;
