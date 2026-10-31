@@ -178,6 +178,7 @@ void McpServer::registerAllTools() {
     registerPlayTools(reg);
     registerViewTools(reg);
     registerConsoleTools(reg);
+    registerDataTools(reg);
     registerScriptTools(reg);
     registerAssetTools(reg);
     registerSynthesisTools(reg);

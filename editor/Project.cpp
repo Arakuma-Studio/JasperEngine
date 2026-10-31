@@ -73,6 +73,8 @@
 #include "texture/Texture.h"
 #include "component/UIDocumentComponent.h"
 #include "Engine.h"
+#include "io/UserSettings.h"
+#include "io/UserSettingsStore.h"
 #include "pool/ShaderPool.h"
 #include "shader/ShaderBuilder.h"
 #include "shader/ShaderVariantCollector.h"
@@ -6021,6 +6023,8 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
 
         projectPath = path;
         refreshTrustedRoots();
+        // PlayerPrefs are the project's (.jasperengine/user/rundata): read from the new one
+        UserSettingsStore::instance().unload();
         fs::path projectFile = projectPath / "project.yaml";
 
         // Set the project name so libName (used for the generated CMake target
@@ -6311,6 +6315,8 @@ bool editor::Project::saveProjectToPath(const std::filesystem::path& path) {
 
     projectPath = path;
     refreshTrustedRoots();
+    // PlayerPrefs are the project's (.jasperengine/user/rundata): read from the new one
+    UserSettingsStore::instance().unload();
 
     // If we're moving from a temp path, handle the file transfers
     if (wasTemp && oldPath != path) {
@@ -6405,6 +6411,8 @@ bool editor::Project::loadProject(const std::filesystem::path requestedPath, boo
         resetConfigs();
         projectPath = path;
         refreshTrustedRoots();
+        // PlayerPrefs are the project's (.jasperengine/user/rundata): read from the new one
+        UserSettingsStore::instance().unload();
 
         // shader manifests of forks are read from this project's files
         // (the project root, else the assets directory: findShaderFile, read when asked, so
@@ -9274,6 +9282,9 @@ void editor::Project::stop(uint32_t sceneId) {
 
             // matrix changes made by scripts last only for the Play, never reaching project.yaml
             applyLayerCollisionMatrices();
+
+            // what the game stored in UserSettings / PlayerPrefs is on disk when Play has stopped
+            UserSettings::save();
 
             {
                 std::scoped_lock lock(playSessionMutex);

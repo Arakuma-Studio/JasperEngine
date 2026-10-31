@@ -28,6 +28,8 @@ namespace jasperengine::editor::mcp {
     void registerPlayTools(McpRegistry& registry);
     void registerViewTools(McpRegistry& registry);
     void registerConsoleTools(McpRegistry& registry);
+    // DataTools.cpp: user_settings (the UserSettings / PlayerPrefs store)
+    void registerDataTools(McpRegistry& registry);
     void registerScriptTools(McpRegistry& registry);
     void registerAssetTools(McpRegistry& registry);
     void registerDocsTools(McpRegistry& registry);

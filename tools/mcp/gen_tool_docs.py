@@ -35,6 +35,7 @@ MODULES: list[tuple[str, str]] = [
     ("PlayTools", "Play mode and input"),
     ("ViewTools", "Views and screenshots"),
     ("ConsoleTools", "Console"),
+    ("DataTools", "Saved data (PlayerPrefs)"),
     ("ScriptTools", "Scripts"),
     ("AssetTools", "Assets, materials and shaders"),
     ("SynthesisTools", "Texture synthesis"),

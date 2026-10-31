@@ -654,6 +654,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/PlayTools.cpp
     ${EDITOR_DIR}/mcp/tools/ViewTools.cpp
     ${EDITOR_DIR}/mcp/tools/ConsoleTools.cpp
+    ${EDITOR_DIR}/mcp/tools/DataTools.cpp
     ${EDITOR_DIR}/mcp/tools/ScriptTools.cpp
     ${EDITOR_DIR}/mcp/tools/AssetTools.cpp
     ${EDITOR_DIR}/mcp/tools/DocsTools.cpp

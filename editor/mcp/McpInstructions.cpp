@@ -13,8 +13,7 @@ const char* mcpServerInstructions() {
 R"JE(# JasperEngine editor (MCP)
 
 You are driving a running JasperEngine editor: a C++ game engine with a Unity-style editor
-(Hierarchy, Inspector, Project window, Console, Scene and Game views) and Lua or C++ gameplay
-scripts. Every tool edit is an undoable editor command, shown live to a human.
+and Lua or C++ gameplay scripts. Every tool edit is an undoable editor command, shown live to a human.
 Build scenes with tools, write code with your own file tools, verify by playing, screenshots
 and the Console. tools/list is authoritative for tool names and arguments; read a
 tool's description before first use. Deeper reference: resources jasper://docs/... (Lua API,
@@ -56,7 +55,7 @@ Legacy Animation = AnimationPlayerComponent (AnimationComponent: entity sequence
    project.yaml (the editor would overwrite you). Group many edits in one `batch` call
    (undo_group: one undo step). Edit code with your own tools (see Code).
 3. Save the scenes you changed.
-4. Play the start scene; a C++ project builds first (seconds to minutes).
+4. Play the start scene; a C++ project builds first.
 5. Look: screenshot the Game view (Scene view for layout). Drive the game with
    send_input / wait; query runtime state while playing (get_runtime_entity, eval_lua).
 6. Read the Console since your last cursor: compile, script and Lua errors, missing assets.
@@ -91,8 +90,8 @@ A Lua script returns a module table; attach it to a GameObject through its Scrip
 self.scene is the Scene, self.entity the GameObject's numeric id (NOT an object: never call
 self.entity:...). Wrap it: GameObject(self.scene, self.entity), Sprite(...), Text(...),
 Rigidbody2D(...), AudioSource(...); a constructor given only self.scene CREATES a new
-GameObject. Declare `---@class Name : ScriptInstance` (Name = the file name): lua-language-server
-then types self and catches typos.
+GameObject. Declare `---@class Name : ScriptInstance` (Name = the file name): LuaLS then
+types self.
 
 ```lua
 ---@class Player : ScriptInstance
@@ -139,6 +138,8 @@ return Player
 - Time: Engine.timeScale and Engine.fixedDeltatime (read/write), Engine.gameTime and
   Engine.frameCount (scaled game time and frames since start).
 - C++ default arguments do not exist in Lua: pass every argument (e.g. the wake flag).
+- Saves: PlayerPrefs, Json.encode/decode, File.writeText("data://x") (jasper://docs/lua-api
+  2.4); user_settings reads/resets PlayerPrefs.
 - Lua has no Dori.Script, on_start, getComponent, setProperty or timers. Never put editor
   property paths (submeshes[0]...) in scripts.
 
