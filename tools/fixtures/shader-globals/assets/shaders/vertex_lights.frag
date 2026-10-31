@@ -3,7 +3,6 @@
 // @shader mesh
 // @name "Vertex lights"
 // @description "Shader globals fixture: lit per vertex by four point lights given as global shader values (vertex_lights.vert)."
-// @require normals
 
 in vec3 v_light;
 
