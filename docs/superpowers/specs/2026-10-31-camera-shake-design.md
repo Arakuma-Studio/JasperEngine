@@ -726,3 +726,17 @@ Decisions taken while implementing (branch `gaps/camera-shake`, both phases):
 16. **Camera Follow in edit mode** does nothing: the system is paused. **Snap Now** computes the
     placement (`computeFollow` with snap) and writes the position, the rotation and the camera
     target as one MultiPropertyCmd.
+17. **Merging main** (physics-2d, script-lifecycle and lines-trails on top of the coroutines base).
+    - **Ordinals.** `TrailRendererComponent` keeps its ordinal, and the Camera Shaker and Camera
+      Follow come after it (`LastComponentType` = `CameraFollowComponent`).
+    - **ScriptInstanceBase.** Coroutines and script-lifecycle each had one, under the same
+      registry key. The merge keeps lifecycle's (its members, its plain/shared class handling).
+      `ScriptSchedulerLua::addInstanceMethods` adds the coroutine and timer methods to it.
+      Coroutines' own module `__index` chaining is removed.
+    - **Deactivation.** It still stops the GameObject's coroutines (`setEntityActive`), next to
+      lifecycle's observed activation.
+    - **A test rename.** A coroutine test whose Lua method was named `start` was renamed, because
+      the lifecycle now calls `start` itself.
+    - **The agent guide** was at 16812 bytes after the merge, over its 16 KB budget (main alone
+      was at 16488). Wording was condensed in the intro, Code, Lua, physics, shaders and build
+      sections, keeping every rule and pointer, to 16369 bytes.
