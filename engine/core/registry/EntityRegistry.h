@@ -48,6 +48,7 @@
 #include "component/ParticleSystemComponent.h"
 #include "component/PointsComponent.h"
 #include "component/LineRendererComponent.h"
+#include "component/TrailRendererComponent.h"
 #include "component/TextComponent.h"
 #include "component/UIComponent.h"
 #include "component/ButtonComponent.h"

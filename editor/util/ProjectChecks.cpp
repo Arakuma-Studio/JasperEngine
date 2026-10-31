@@ -1079,6 +1079,7 @@ bool editor::ProjectChecks::shaderTypeForComponent(ComponentType component, Shad
         case ComponentType::UIComponent: out = ShaderType::UI; return true;
         case ComponentType::PointsComponent: out = ShaderType::POINTS; return true;
         case ComponentType::LineRendererComponent: out = ShaderType::LINES; return true;
+        case ComponentType::TrailRendererComponent: out = ShaderType::LINES; return true;
         case ComponentType::SkyboxComponent: out = ShaderType::SKYBOX; return true;
         default: return false;
     }
@@ -1142,6 +1143,7 @@ std::vector<editor::ProjectChecks::ShaderUse> editor::ProjectChecks::shaderForks
             if (UIComponent* ui = scene->findComponent<UIComponent>(entity)) addComponent(ui->customShader, ui->shaderFeatures, ShaderType::UI, ui->blendMode);
             if (PointsComponent* points = scene->findComponent<PointsComponent>(entity)) addComponent(points->customShader, points->shaderFeatures, ShaderType::POINTS, points->blendMode);
             if (LineRendererComponent* lines = scene->findComponent<LineRendererComponent>(entity)) addComponent(lines->customShader, lines->shaderFeatures, ShaderType::LINES, lines->blendMode);
+            if (TrailRendererComponent* trail = scene->findComponent<TrailRendererComponent>(entity)) addComponent(trail->customShader, trail->shaderFeatures, ShaderType::LINES, trail->blendMode);
             if (SkyboxComponent* sky = scene->findComponent<SkyboxComponent>(entity)) addComponent(sky->customShader, sky->shaderFeatures, ShaderType::SKYBOX, MaterialBlendMode::AUTO);
         }
         const std::pair<const char*, ShaderType> defaults[] = {
@@ -1982,6 +1984,46 @@ std::vector<editor::ProjectChecks::Finding> editor::ProjectChecks::stochasticTil
                 if (material.stochasticRotation > 0.0f && tiltedNormalMap(project, material.normalTexture, file, degrees)) {
                     warn(where + ": " + NormalMapTilt::describe(file, degrees) + ", and Stochastic Tiling turns its cells (Rotation " +
                          formatValue(material.stochasticRotation) + "): the rotated cells look tilted", tiltCode, tiltFix);
+                }
+            }
+        }
+    }
+    return findings;
+}
+
+std::vector<editor::ProjectChecks::Finding> editor::ProjectChecks::lineTrailFindings(Project* project) {
+    std::vector<Finding> findings;
+    const fs::path root = project->getProjectPath();
+
+    for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {
+        if (!sceneProject->scene) continue;
+        Scene* scene = sceneProject->scene;
+        const std::string path = sceneProject->filepath.empty() ? std::string() : projectRelative(root, root / sceneProject->filepath);
+        for (Entity entity : sceneProject->entities) {
+            const std::string name = "GameObject '" + scene->getEntityName(entity) + "'";
+
+            if (const LineRendererComponent* lines = scene->findComponent<LineRendererComponent>(entity)) {
+                if (lines->widthMultiplier <= 0.0f) {
+                    const std::string& shader = lines->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : lines->customShader;
+                    const std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(shader);
+                    bool samples = RenderSystem::getLinesBaseTexture(lines->shaderTextures) != nullptr;
+                    if (manifest && manifest->present) {
+                        samples = samples || !manifest->textures.empty() || (manifest->getPossibleRequire() & ShaderRequire_UV1);
+                    }
+                    if (samples) {
+                        findings.push_back({"lines", path, 0, 0, "warning",
+                            name + ": its Line Renderer has no width (a 1-pixel hairline, without texture coordinates) but its shader " +
+                            (shader.empty() ? std::string("samples a base texture") : "'" + shader + "' samples a texture") +
+                            ": the texture reads one texel", "line-texture-no-uv",
+                            "give it a width (widthMultiplier > 0, e.g. 0.1) so it draws a textured ribbon, or remove the texture"});
+                    }
+                }
+            }
+            if (const TrailRendererComponent* trail = scene->findComponent<TrailRendererComponent>(entity)) {
+                if (!(trail->time > 0.0f)) {
+                    findings.push_back({"lines", path, 0, 0, "warning",
+                        name + ": its Trail Renderer's Time is 0, so it keeps no point and draws nothing", "trail-zero-time",
+                        "set time to how long a point lives in seconds (Unity's default is 5; a bullet trail ~0.3)"});
                 }
             }
         }

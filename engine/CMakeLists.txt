@@ -1003,6 +1003,8 @@ set(JASPERENGINE_SRCS
     core/io/UserSettings.cpp
     core/io/UserSettingsStore.cpp
     core/math/AABB.cpp
+    core/math/AnimationCurve.cpp
+    core/math/Gradient.cpp
     core/math/Matrix3.cpp
     core/math/Matrix4.cpp
     core/math/OBB.cpp
@@ -1020,6 +1022,7 @@ set(JASPERENGINE_SRCS
     core/object/Light.cpp
     core/object/Light2D.cpp
     core/object/LineRenderer.cpp
+    core/object/TrailRenderer.cpp
     core/object/Mesh.cpp
     core/object/MeshPolygon.cpp
     core/object/Mirror.cpp
@@ -1082,6 +1085,7 @@ set(JASPERENGINE_SRCS
     core/render/CameraRender.cpp
     core/render/CpuSkin.cpp
     core/render/FramebufferRender.cpp
+    core/render/LineRibbonBuilder.cpp
     core/render/ObjectRender.cpp
     core/render/ShaderRender.cpp
     core/render/SystemRender.cpp
@@ -1122,6 +1126,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/ActionSystemPlayers.cpp
     core/subsystem/PoseAnimatorSystem.cpp
     core/subsystem/VertexAnimatorSystem.cpp
+    core/subsystem/TrailSystem.cpp
     core/subsystem/FluidSystem.cpp
     core/fluid/FluidSimulator.cpp
     core/fluid/FluidPresets.cpp

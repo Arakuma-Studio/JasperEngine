@@ -64,3 +64,12 @@ set_target_properties(jasperengine-placement-fresh-process PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
 )
 add_dependencies(jasperengine-editor-tests jasperengine-placement-fresh-process)
+
+# The engine's include directories and definitions, for tests that compile the C++ the editor
+# generates for exports (LineRendererStreamTest: Factory's component code against the engine
+# headers, with the compiler that builds the tests)
+file(GENERATE OUTPUT ${CMAKE_BINARY_DIR}/editor-tests-engine-flags.txt CONTENT
+"$<JOIN:$<TARGET_PROPERTY:jasperengine,INCLUDE_DIRECTORIES>,\n>\n#defines\n$<JOIN:$<TARGET_PROPERTY:jasperengine,COMPILE_DEFINITIONS>,\n>\n")
+target_compile_definitions(jasperengine-editor-tests-objects PRIVATE
+    JASPER_EDITOR_TEST_ENGINE_FLAGS="${CMAKE_BINARY_DIR}/editor-tests-engine-flags.txt"
+    JASPER_EDITOR_TEST_CXX="${CMAKE_CXX_COMPILER}")

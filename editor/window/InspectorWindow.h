@@ -73,7 +73,10 @@ namespace jasperengine::editor{
         LocalEntity,
         ExternalEntity,
         Font,
-        LayerMask  // unsigned int culling mask: Unity's Nothing / Everything / per-layer dropdown
+        LayerMask,  // unsigned int culling mask: Unity's Nothing / Everything / per-layer dropdown
+        // Unity AnimationCurve / Gradient (widget/CurveField.h, widget/GradientField.h)
+        Curve,
+        Gradient
     };
 
     struct EnumEntry {
@@ -657,6 +660,12 @@ namespace jasperengine::editor{
         void drawSkyboxComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawParticleSystemComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawLineRendererComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // Line and Trail Renderers (InspectorLinesTrails.cpp)
+        void drawLineSegmentsList(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawLinePositionsList(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawLineRibbonRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities, bool hairline, bool gradient);
+        void drawLineTextureRow(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
+        void drawTrailRendererComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawPolygonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawMeshPolygonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawPointsComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

@@ -233,7 +233,10 @@ namespace jasperengine{
         // lists): HTMLUI untextured and textured, HTMLUI_GRADIENT, the seven HTMLUI_POST
         static std::vector<std::pair<ShaderType, uint64_t>> getHtmlUIVariants();
         static uint64_t getPointsProperties(bool texture, bool vertexColorVec3, bool vertexColorVec4, bool textureRect);
-        static uint64_t getLinesProperties(bool vertexColorVec3, bool vertexColorVec4);
+        // ribbon: a thick Line Renderer or a Trail Renderer ('Rib', LINE_RIBBON); texture: the
+        // built-in shader samples its u_baseTexture ('Tex'); pixelWidth: widths in screen pixels
+        // ('Pxw', LINE_PIXEL_WIDTH). The hairline is (false, true) as before
+        static uint64_t getLinesProperties(bool vertexColorVec3, bool vertexColorVec4, bool ribbon = false, bool texture = false, bool pixelWidth = false);
 
 		// necessary for engine shutdown
 		static void clear();

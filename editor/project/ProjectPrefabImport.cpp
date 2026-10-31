@@ -117,6 +117,8 @@ namespace jasperengine::editor::prefabinternal {
                 const EntityReference* rb = static_cast<EntityReference*>(b.ref);
                 return ra->entity == rb->entity && ra->sceneId == rb->sceneId;
             }
+            case PropertyType::Curve: return *static_cast<AnimationCurve*>(a.ref) == *static_cast<AnimationCurve*>(b.ref);
+            case PropertyType::Gradient: return *static_cast<Gradient*>(a.ref) == *static_cast<Gradient*>(b.ref);
             default: return false;
         }
     }
