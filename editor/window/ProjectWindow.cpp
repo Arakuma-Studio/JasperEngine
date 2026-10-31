@@ -39,6 +39,7 @@
 #include "vat/VatAssetFiles.h"
 #include "vat/VatDocument.h"
 #include "util/UIProbe.h"
+#include "util/PhysicsMaterialAssets.h"
 #include "pose/PoseAnimationDocument.h"
 #include "pose/PoseEditSession.h"
 #include "pose/PoseImage.h"
@@ -187,6 +188,27 @@ static void makeAnimationClipIcon(int size, std::vector<uint8_t>& rgba) {
         image.fillRect(px(x + 1), px(23), px(12), px(18), frame);
         image.fillCircle((x + 7) * s, (36 - i * 5.0f) * s, 6.4f * s, ball);
     }
+    rgba = image.getPixels();
+}
+
+// The .physicsmaterial icon: a ball resting on a slope
+static void makePhysicsMaterialIcon(int size, std::vector<uint8_t>& rgba) {
+    editor::PoseImage image(size, size);
+    const float s = static_cast<float>(size) / 64.0f;
+    auto px = [s](float v) { return static_cast<int>(v * s); };
+    const editor::PoseColor panel = editor::PoseColor::hex(0x263238);
+    const editor::PoseColor slope = editor::PoseColor::hex(0x8D6E63);
+    const editor::PoseColor ball = editor::PoseColor::hex(0x4FC3F7);
+    const editor::PoseColor shine = editor::PoseColor::hex(0xE1F5FE);
+    image.fillRect(px(4), px(6), px(56), px(52), panel);
+    // a stepped ramp, low on the left
+    for (int i = 0; i < 12; i++) {
+        const float x = 6 + i * 4.5f;
+        const float h = 6 + i * 2.2f;
+        image.fillRect(px(x), px(56 - h), px(4.6f), px(h), slope);
+    }
+    image.fillCircle(30 * s, 28 * s, 20 * s, ball);
+    image.fillCircle(26 * s, 24 * s, 6 * s, shine);
     rgba = image.getPixels();
 }
 
@@ -887,6 +909,8 @@ ImU32 editor::ProjectWindow::fileSeparatorColor(const FileEntry& fe) const{
             return ImGui::GetColorU32(ImVec4(0.91f, 0.53f, 0.23f, 1.0f));
         case FileType::VERTEX_ANIMATION:
             return ImGui::GetColorU32(ImVec4(0.25f, 0.65f, 0.63f, 1.0f));
+        case FileType::PHYSICS_MATERIAL:
+            return ImGui::GetColorU32(ImVec4(0.31f, 0.76f, 0.97f, 1.0f));
         case FileType::NONE:
         default:
             return ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 1.0f));
@@ -934,6 +958,14 @@ void editor::ProjectWindow::renderCreateMenuItems() {
     }
     if (ImGui::MenuItem(ICON_FA_SLIDERS " Create Audio Mixer")){
         assetsCreateAudioMixer();
+        ImGui::CloseCurrentPopup();
+    }
+    if (ImGui::MenuItem(ICON_FA_CIRCLE_HALF_STROKE " Create Physics Material")){
+        assetsCreatePhysicsMaterial(false);
+        ImGui::CloseCurrentPopup();
+    }
+    if (ImGui::MenuItem(ICON_FA_CIRCLE_HALF_STROKE " Create Physics Material 2D")){
+        assetsCreatePhysicsMaterial(true);
         ImGui::CloseCurrentPopup();
     }
 
@@ -2331,6 +2363,9 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::directory_entry
         }else if (Util::isVertexAnimationFile(fileEntry.extension)){
             fileEntry.type = FileType::VERTEX_ANIMATION;
             fileEntry.icon = vertexAnimationIcon.getRender();
+        }else if (PhysicsMaterialAssets::isPhysicsMaterialFile(fileEntry.extension)){
+            fileEntry.type = FileType::PHYSICS_MATERIAL;
+            fileEntry.icon = physicsMaterialIcon.getRender();
         }else if (Util::isLuaFile(fileEntry.extension)){
             fileEntry.type = FileType::LUA;
             fileEntry.icon = luaIcon.getRender();
@@ -3617,6 +3652,12 @@ void editor::ProjectWindow::show() {
                         vertexAnimationIconPixels.data()));
         vertexAnimationIcon.load();
 
+        makePhysicsMaterialIcon(clipIconSize, physicsMaterialIconPixels);
+        physicsMaterialIcon.setData("editor:resources:physics_material_icon",
+            TextureData(clipIconSize, clipIconSize, static_cast<unsigned int>(physicsMaterialIconPixels.size()), ColorFormat::RGBA, 4,
+                        physicsMaterialIconPixels.data()));
+        physicsMaterialIcon.load();
+
         scanDirectory(project->getProjectPath().string());
 
         firstOpen = false;
@@ -4112,6 +4153,27 @@ void editor::ProjectWindow::assetsCreateAnimationClip() {
     AnimationClipController::markClipCommit(clock);
     scanDirectory(currentPath);
     const std::string fileName = relative.filename().string();
+    selectedFiles.clear();
+    selectedFiles.insert(fileName);
+    lastSelectedFile = fileName;
+    updateInspectedAsset(fileName);
+    startRename(fileName);
+}
+
+void editor::ProjectWindow::assetsCreatePhysicsMaterial(bool preset2D) {
+    if (currentPath.empty()) {
+        return;
+    }
+    focusProjectPanel(this);
+    std::string error;
+    const fs::path created = PhysicsMaterialAssets::create(project, currentPath, preset2D ? "New Physics Material 2D" : "New Physics Material",
+                                                           preset2D ? PhysicsMaterialData::preset2D() : PhysicsMaterialData::preset3D(), error);
+    if (created.empty()) {
+        Backend::getApp().registerAlert(preset2D ? "Create Physics Material 2D" : "Create Physics Material", error);
+        return;
+    }
+    scanDirectory(currentPath);
+    const std::string fileName = created.filename().string();
     selectedFiles.clear();
     selectedFiles.insert(fileName);
     lastSelectedFile = fileName;

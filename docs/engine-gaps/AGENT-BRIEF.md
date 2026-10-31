@@ -69,8 +69,8 @@ xvfb, xdotool, dbus-x11, uv, FFmpeg: the same toolchain as the host). From insid
   `jbox run 'cmake --install build/editor --prefix build/linux/editor-install >/dev/null && JASPER_EDITOR=$PWD/build/linux/editor-install/bin/jasperengine-editor tools/mcp/run-tests.sh -j4 tools/mcp/tests/test_x.py'`
 - `jbox get <path> [<dest>]` copies a file back (e.g. a regenerated `docs/mcp/TOOLS.md`, screenshots).
 - Your box is given in your task (`JBOX_PORT`); export it in every command (`JBOX_PORT=2202 jbox run ...`) or rely
-  on `/etc/jbox/assign`. Boxes are shared by several agents: 16-core boxes (ports 2201, 2202) use `-j8`, 8-core
-  boxes (2203, 2204) `-j4`.
+  on `/etc/jbox/assign`. Boxes are shared by several agents: 16-core boxes (ports 2201, 2202) use `-j5`, 8-core
+  boxes (2203, 2204) `-j3` (more parallel jobs ran a box out of memory). MCP tests: `-j2`.
 - The box copy is NOT a git repository of your branch (git state there is stale): commit locally, never on the box.
   Long commands: keep them under the tool timeout or run them in the background locally (`jbox run ... > log &`).
 - Android (Gradle/NDK) and Web (emsdk) compile checks still run on the host (toolchains only here): keep them few.

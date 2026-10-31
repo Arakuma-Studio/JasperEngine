@@ -410,7 +410,14 @@ bool editor::CreateEntityCmd::execute(){
 
     }else if (type == EntityCreationType::JOINT2D){
 
-        scene->addComponent<Joint2DComponent>(entity, {});
+        // a Transform so it can live under its body (it follows it, a prefab carries it); made
+        // under a Rigidbody 2D, the joint is on that body (local anchors, Unity's default)
+        scene->addComponent<Transform>(entity, {});
+        Joint2DComponent joint;
+        if (parent != NULL_ENTITY && scene->findComponent<Rigidbody2DComponent>(parent)){
+            joint.bodyA = parent;
+        }
+        scene->addComponent<Joint2DComponent>(entity, joint);
 
     }else if (type == EntityCreationType::JOINT3D){
 

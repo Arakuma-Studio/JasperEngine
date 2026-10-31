@@ -35,7 +35,14 @@
 #include "command/CommandHistory.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "component/ScriptComponent.h"
+#include "component/Joint2DComponent.h"
+#include "component/Rigidbody2DComponent.h"
+#include "object/physics/Joint2D.h"
+#include "object/physics/Rigidbody2D.h"
+#include "subsystem/PhysicsSystem.h"
 #include "script/LuaBinding.h"
+#include "script/ScriptRuntime.h"
+#include "manager/SceneManager.h"
 #include "util/EntityPath.h"
 #include "window/PlayInput.h"
 
@@ -664,9 +671,18 @@ SceneProject* resolveRuntimeScene(Project* project, const Json& ref, std::string
         error = "Play mode is " + McpRefs::playStateName(main->playState) + "; wait until it is playing (play start waits).";
         return nullptr;
     }
-    if (ref.is_null()) return main;
-
     std::vector<SceneProject*> running = runningScenes(project);
+    // after a scene load replaced the played scene (another scene, or the same one loaded
+    // again: a fresh copy), the default is the main scene the game shows now
+    SceneProject* shown = main;
+    if (project->isPlayedSceneReplaced(main->id)) {
+        Scene* loadedMain = SceneManager::getScenePtr(SceneManager::getCurrentSceneId());
+        for (SceneProject* sp : running) {
+            if (sp != main && sp->scene == loadedMain) shown = sp;
+        }
+    }
+    if (ref.is_null()) return shown;
+
     std::string text = ref.is_string() ? ref.get<std::string>() : ref.dump();
     // a Play copy id or a running scene's name
     for (SceneProject* sp : running) {
@@ -675,7 +691,7 @@ SceneProject* resolveRuntimeScene(Project* project, const Json& ref, std::string
     std::string refError;
     SceneProject* source = McpRefs::resolveScene(project, ref, refError);
     if (source) {
-        if (source == main) return main;
+        if (source == main) return shown;
         const uint32_t runtimeId = project->getPlayRuntimeSceneId(source->id);
         if (runtimeId != NULL_PROJECT_SCENE) {
             if (SceneProject* runtime = project->getScene(runtimeId)) return runtime;
@@ -2012,15 +2028,20 @@ Json scriptStateJson(Project* project, SceneProject* sp, Entity entity, int maxD
     if (!component) return scripts;
     lua_State* L = LuaBinding::getLuaState();
     for (ScriptEntry& entry : component->scripts) {
+        // the lifecycle (script-lifecycle 6.1): init ran, start ran, onEnable ran and no onDisable since
+        const ScriptState* state = ScriptRuntime::getState(entry.instance);
         Json item = {{"class", entry.className}, {"type", entry.type == ScriptType::LUA ? "lua" : "cpp"},
-                     {"enabled", entry.enabled}};
+                     {"enabled", entry.enabled}, {"initialized", state && state->initialized}, {"started", state && state->started},
+                     {"active_and_enabled", entry.instance && entry.enabled && !(state && state->destroyed) &&
+                                            sp->scene->isEntityActiveInHierarchy(entity)}};
+        if (!entry.instance) item["running"] = false;
         if (entry.type == ScriptType::LUA && entry.instance && L) {
             const int top = lua_gettop(L);
             lua_rawgeti(L, LUA_REGISTRYINDEX, static_cast<lua_Integer>(reinterpret_cast<intptr_t>(entry.instance)));
             LuaSerializer serializer{L, project, maxDepth, 100};
             Json fields = serializer.toJson(-1, 0);
             if (fields.is_object()) {
-                for (const char* hidden : {"__name", "__scriptRef", "scene"}) fields.erase(hidden);
+                for (const char* hidden : {"__name", "__scriptRef", "__released", "scene"}) fields.erase(hidden);
             }
             item["state"] = fields;
             lua_settop(L, top);
@@ -2035,6 +2056,41 @@ Json scriptStateJson(Project* project, SceneProject* sp, Entity entity, int maxD
         scripts.push_back(item);
     }
     return scripts;
+}
+
+// the live state of a 2D joint (Unity's read-outs): forces N, torques N m, points, engine angle units
+Json joint2DReadoutsJson(Scene* scene, Entity entity) {
+    Joint2D joint(scene, entity);
+    static const char* limitStates[] = {"inactive", "lower", "upper", "equal"};
+    Json out = {{"live", joint.isLive()}, {"broken", joint.isBroken()}};
+    if (!joint.isLive()) return out;
+    const Vector2 force = joint.getReactionForce();
+    out["reaction_force"] = {force.x, force.y};
+    out["reaction_torque"] = joint.getReactionTorque();
+    out["joint_angle"] = joint.getJointAngle();
+    out["joint_speed"] = joint.getJointSpeed();
+    out["joint_translation"] = joint.getJointTranslation();
+    out["joint_linear_speed"] = joint.getJointLinearSpeed();
+    out["motor_torque"] = joint.getMotorTorque();
+    out["motor_force"] = joint.getMotorForce();
+    out["current_length"] = joint.getCurrentLength();
+    out["limit_state"] = limitStates[(int)joint.getLimitState()];
+    out["reference_angle"] = joint.getReferenceAngle();
+    return out;
+}
+
+// the live state of a Rigidbody 2D: mass, velocities, the Box2D shapes of each collider
+Json rigidbody2DReadoutsJson(Scene* scene, Entity entity) {
+    Rigidbody2DComponent& component = scene->getComponent<Rigidbody2DComponent>(entity);
+    if (!b2Body_IsValid(component.body)) return Json{{"live", false}};
+    Rigidbody2D body(scene, entity);
+    const Vector2 velocity = body.getLinearVelocity();
+    const Vector2 center = body.getCenterOfMass();
+    Json pieces = Json::array();
+    for (size_t i = 0; i < component.colliders.size(); i++) pieces.push_back(body.getBox2DShapes(i).size());
+    return Json{{"live", true}, {"mass", body.getMass()}, {"inertia", body.getRotationalInertia()},
+                {"center_of_mass", {center.x, center.y}}, {"linear_velocity", {velocity.x, velocity.y}},
+                {"angular_velocity", body.getAngularVelocity()}, {"awake", body.isAwake()}, {"collider_shapes", pieces}};
 }
 
 void getRuntimeEntityTool(const CallPtr& call) {
@@ -2108,6 +2164,13 @@ void getRuntimeEntityTool(const CallPtr& call) {
         const Json fluid = McpValues::fluidStatsToJson(sp->scene, entity);
         if (!fluid.is_null()) data["fluid_stats"] = fluid;
     }
+    // physics read-outs (joint forces and angles, body mass and velocities)
+    if ((only.empty() || only.count(ComponentType::Joint2DComponent)) && sp->scene->findComponent<Joint2DComponent>(entity)) {
+        data["joint2d"] = joint2DReadoutsJson(sp->scene, entity);
+    }
+    if ((only.empty() || only.count(ComponentType::Rigidbody2DComponent)) && sp->scene->findComponent<Rigidbody2DComponent>(entity)) {
+        data["rigidbody2d"] = rigidbody2DReadoutsJson(sp->scene, entity);
+    }
     if (args.value("include_script_state", true)) {
         data["scripts"] = scriptStateJson(project, sp, entity, std::clamp(args.value("max_depth", 2), 1, 8));
     }
@@ -2115,6 +2178,8 @@ void getRuntimeEntityTool(const CallPtr& call) {
                        sp->name + "\": " + data["components"].dump();
     if (data.contains("scripts") && !data["scripts"].empty()) text += "\nscripts: " + data["scripts"].dump();
     if (data.contains("fluid_stats")) text += "\nfluid_stats: " + data["fluid_stats"].dump();
+    if (data.contains("joint2d")) text += "\njoint2d: " + data["joint2d"].dump();
+    if (data.contains("rigidbody2d")) text += "\nrigidbody2d: " + data["rigidbody2d"].dump();
     if (text.size() > 12000) text = text.substr(0, 12000) + " ... (see structuredContent)";
     call->ok(text, data);
 }
