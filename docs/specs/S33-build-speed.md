@@ -518,6 +518,9 @@ header under `engine/core`, which moved to `engine/cmake` (16ef3ffc8).
 - 2026-10-31: oe-port e3f0c274d merged (S29 fix, S32); web, Android, unity, ccache and header
   measurements on it; spec written from M1-M8; M9, M10 from uncommitted wiring.
 - 2026-11-01: S30 landed; oe-port b49bc1166 then d5a1b7f2e (BF9) merged; levers committed
-  (8e87eccdc, 4461d59e2, 651562b19, 16ef3ffc8); M11 and the verification above. Pending at the
-  time of writing: the full MCP suite on F and the smoke test, players and S30's player CLI test on
-  C, on the merged branch.
+  (8e87eccdc, 4461d59e2, 651562b19, 16ef3ffc8); M11 and the verification above. On the merged
+  branch (d5a1b7f2e): `WERROR=1 tools/build.sh linux` passes on F, `xcode_sync_*.py --check` on C.
+  oe-port 47263e382 merged (916d7102b). Still running when this was written: the full MCP suite
+  (`MCP_SUITE=all JASPER_SLOW_BUILD=1`, F, `build/verify7.log`) on 47263e382, and unit tests, the
+  prefab-runtime smoke test, players and S30's player CLI test (C, `build/verify6.log`) on
+  d5a1b7f2e.
