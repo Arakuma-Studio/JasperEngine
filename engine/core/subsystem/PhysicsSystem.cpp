@@ -1244,6 +1244,123 @@ void PhysicsSystem::resolveCollider2DSurface(const Rigidbody2DComponent& body, c
     }
 }
 
+bool PhysicsSystem::computeCollider2DPieces(Collider2D& collider, const Vector2& entityScale, bool log, size_t index, const std::string& entityName){
+    if (collider.type != Collider2DType::POLYGON || collider.points.size() < 3){
+        collider.pieces.clear();
+        collider.droppedPieces = 0;
+        collider.selfIntersecting = false;
+        collider.decompositionError = collider.type == Collider2DType::POLYGON ? "a polygon needs at least 3 points" : "";
+        collider.decompositionKey = 0;
+        return false;
+    }
+    float keyValues[4] = {entityScale.x, entityScale.y, pointsToMeterScale2D, (float)collider.points.size()};
+    uint64_t key = hashFloats(1469598103934665603ull, keyValues, 4);
+    key = hashFloats(key, reinterpret_cast<const float*>(collider.points.data()), collider.points.size() * 2);
+    if (key == collider.decompositionKey){
+        return false;
+    }
+
+    std::vector<Vector2> points(collider.points.size());
+    for (size_t j = 0; j < collider.points.size(); j++){
+        const Vector2 scaled = collider.points[j] * entityScale;
+        points[j] = Vector2(scaled.x / pointsToMeterScale2D, scaled.y / pointsToMeterScale2D);
+    }
+    Decomposition2D decomposition = decomposePolygon2D(points, linearSlop2D, B2_MAX_POLYGON_VERTICES);
+    collider.pieces.clear();
+    collider.droppedPieces = decomposition.droppedPieces;
+    collider.selfIntersecting = decomposition.selfIntersecting;
+    collider.decompositionError = decomposition.error;
+    collider.decompositionKey = key;
+
+    // only the pieces Box2D makes a polygon of
+    int failedHulls = 0;
+    for (std::vector<Vector2>& piece : decomposition.pieces){
+        b2Vec2 vertices[B2_MAX_POLYGON_VERTICES];
+        const int count = std::min((int)piece.size(), (int)B2_MAX_POLYGON_VERTICES);
+        for (int j = 0; j < count; j++){
+            vertices[j] = {piece[j].x, piece[j].y};
+        }
+        b2Hull hull = b2ComputeHull(vertices, count);
+        if (!b2ValidateHull(&hull)){
+            failedHulls++;
+            continue;
+        }
+        collider.pieces.push_back(std::move(piece));
+    }
+    collider.droppedPieces += failedHulls;
+    if (collider.pieces.empty() && collider.decompositionError.empty()){
+        collider.decompositionError = "no piece wide enough for Box2D";
+    }
+
+    if (log){
+        if (!collider.decompositionError.empty()){
+            Log::error("Polygon collider %zu of '%s': %s", index, entityName.c_str(), collider.decompositionError.c_str());
+        }else if (collider.selfIntersecting){
+            Log::error("Polygon collider %zu of '%s' crosses itself: its convex hull is used instead. Reorder its points into one outline, or use several colliders.", index, entityName.c_str());
+        }else if (failedHulls > 0){
+            Log::warn("Polygon collider %zu of '%s': %d sliver piece(s) too thin for Box2D were left out", index, entityName.c_str(), failedHulls);
+        }
+    }
+    return true;
+}
+
+bool PhysicsSystem::reshapeCollider2DPolygon(Entity entity, Rigidbody2DComponent& body, size_t index){
+    if (steppingWorld2D || index >= body.colliders.size() || !b2Body_IsValid(body.body) || body.needReloadBody){
+        return false;
+    }
+    Collider2D& collider = body.colliders[index];
+    if (collider.type != Collider2DType::POLYGON || collider.dirty || collider.shapes.size() != 1 ||
+            !b2Shape_IsValid(collider.shapes[0]) || b2Shape_GetType(collider.shapes[0]) != b2_polygonShape){
+        return false;
+    }
+    const Vector2 entityScale = entityWorldScale2D(scene, entity);
+    if (entityScale != body.loadedScale){
+        return false;
+    }
+    computeCollider2DPieces(collider, entityScale, true, index, scene->getEntityName(entity));
+    if (collider.pieces.size() != 1){
+        return false;
+    }
+    const std::vector<Vector2>& piece = collider.pieces[0];
+    b2Vec2 vertices[B2_MAX_POLYGON_VERTICES];
+    const int count = std::min((int)piece.size(), (int)B2_MAX_POLYGON_VERTICES);
+    for (int j = 0; j < count; j++){
+        vertices[j] = {piece[j].x, piece[j].y};
+    }
+    b2Hull hull = b2ComputeHull(vertices, count);
+    if (!b2ValidateHull(&hull)){
+        return false;
+    }
+    const float radiusScale = maxScaleXY(absScale2D(entityScale));
+    const b2Polygon polygon = b2MakePolygon(&hull, std::max(0.0f, collider.radius * radiusScale / pointsToMeterScale2D));
+    b2Shape_SetPolygon(collider.shapes[0], &polygon);
+    applyRigidbody2DMass(entity, body);
+    return true;
+}
+
+void PhysicsSystem::updateCollider2DPieces(Entity entity, Collider2D& collider){
+    computeCollider2DPieces(collider, entityWorldScale2D(scene, entity), false, 0, std::string());
+}
+
+std::vector<std::vector<Vector2>> PhysicsSystem::getCollider2DPiecesLocal(Entity entity, Collider2D& collider){
+    const Vector2 scale = entityWorldScale2D(scene, entity);
+    computeCollider2DPieces(collider, scale, false, 0, std::string());
+    std::vector<std::vector<Vector2>> local;
+    if (scale.x == 0.0f || scale.y == 0.0f){
+        return local;
+    }
+    local.reserve(collider.pieces.size());
+    for (const std::vector<Vector2>& piece : collider.pieces){
+        std::vector<Vector2> points;
+        points.reserve(piece.size());
+        for (const Vector2& point : piece){
+            points.push_back(Vector2(point.x * pointsToMeterScale2D / scale.x, point.y * pointsToMeterScale2D / scale.y));
+        }
+        local.push_back(std::move(points));
+    }
+    return local;
+}
+
 void PhysicsSystem::createCollider2DShapes(Entity entity, Rigidbody2DComponent& body, size_t i, const Vector2& entityScale, int layer){
     Collider2D& shapeData = body.colliders[i];
 
@@ -1319,31 +1436,7 @@ void PhysicsSystem::createCollider2DShapes(Entity entity, Rigidbody2DComponent& 
 
         if (shapeData.points.size() >= 3){
             // convex pieces of the polygon (one for a convex one of up to 8 points), cached
-            float keyValues[4] = {entityScale.x, entityScale.y, pointsToMeterScale2D, (float)shapeData.points.size()};
-            uint64_t key = hashFloats(1469598103934665603ull, keyValues, 4);
-            key = hashFloats(key, reinterpret_cast<const float*>(shapeData.points.data()), shapeData.points.size() * 2);
-
-            const bool decomposed = (key != shapeData.decompositionKey);
-            if (decomposed){
-                std::vector<Vector2> points(shapeData.points.size());
-                for (size_t j = 0; j < shapeData.points.size(); j++){
-                    const b2Vec2 point = toBox2DPoint(scaledPoint(shapeData.points[j]));
-                    points[j] = Vector2(point.x, point.y);
-                }
-                Decomposition2D decomposition = decomposePolygon2D(points, linearSlop2D, B2_MAX_POLYGON_VERTICES);
-                shapeData.pieces = std::move(decomposition.pieces);
-                shapeData.droppedPieces = decomposition.droppedPieces;
-                shapeData.selfIntersecting = decomposition.selfIntersecting;
-                shapeData.decompositionKey = key;
-
-                if (!decomposition.error.empty()){
-                    Log::error("Polygon collider %zu of '%s': %s", i, entityName.c_str(), decomposition.error.c_str());
-                }else if (decomposition.selfIntersecting){
-                    Log::error("Polygon collider %zu of '%s' crosses itself: its convex hull is used instead. Reorder its points into one outline, or use several colliders.", i, entityName.c_str());
-                }
-            }
-
-            int failedHulls = 0;
+            computeCollider2DPieces(shapeData, entityScale, true, i, entityName);
             for (const std::vector<Vector2>& piece : shapeData.pieces){
                 b2Vec2 vertices[B2_MAX_POLYGON_VERTICES];
                 const int count = std::min((int)piece.size(), (int)B2_MAX_POLYGON_VERTICES);
@@ -1352,18 +1445,10 @@ void PhysicsSystem::createCollider2DShapes(Entity entity, Rigidbody2DComponent& 
                 }
                 b2Hull hull = b2ComputeHull(vertices, count);
                 if (!b2ValidateHull(&hull)){
-                    failedHulls++;
                     continue;
                 }
                 b2Polygon polygon = b2MakePolygon(&hull, radius);
                 addShape(b2CreatePolygonShape(body.body, &shapeDef, &polygon));
-            }
-            // counted (and reported) once per decomposition, not at every rebuild from the cache
-            if (decomposed && failedHulls > 0){
-                if (shapeData.droppedPieces == 0){
-                    Log::warn("Polygon collider %zu of '%s': %d sliver piece(s) too thin for Box2D were left out", i, entityName.c_str(), failedHulls);
-                }
-                shapeData.droppedPieces += failedHulls;
             }
             if (!shapeData.shapes.empty()){
                 return;
@@ -1621,10 +1706,10 @@ void PhysicsSystem::refreshRigidbody2DMaterials(Entity entity, Rigidbody2DCompon
         changed = true;
     }
 
-    // Box2D mixes a contact's friction and restitution when it is made: the touching pairs
-    // are made again on the next step
-    if (changed){
-        refilterShapes2D(body.body, true, -1);
+    // the contacts mix the shapes' values again at their next update (Box2D patch): resting
+    // contacts stay (no end / begin events); a sleeping body wakes to use them
+    if (changed && b2Body_GetType(body.body) != b2_staticBody){
+        b2Body_SetAwake(body.body, true);
     }
 }
 
@@ -2226,26 +2311,34 @@ static b2Vec2 motorLinearOffset2D(const Joint2DComponent& joint, b2BodyId bodyA,
 }
 
 bool PhysicsSystem::buildJoint2D(Entity entity, Joint2DComponent& joint){
+    // tried again every step while it cannot be made (a body missing): reported once
+    auto jointError = [&joint](const char* message){
+        if (!joint.loadFailed){
+            Log::error("%s", message);
+        }
+        joint.loadFailed = true;
+    };
+
     const Entity bodyAEntity = joint.bodyA;
     const Entity bodyBEntity = joint.bodyB;
 
     if (!scene->isEntityCreated(bodyAEntity) || !scene->findComponent<Rigidbody2DComponent>(bodyAEntity) ||
             (bodyBEntity != NULL_ENTITY && (!scene->isEntityCreated(bodyBEntity) || !scene->findComponent<Rigidbody2DComponent>(bodyBEntity)))){
-        Log::error("Cannot create joint, error in bodyA or bodyB");
+        jointError("Cannot create joint, error in bodyA or bodyB");
         return false;
     }
 
     if (joint.type == Joint2DType::MOUSE){
         if (!loadRigidbody2D(bodyAEntity) || (bodyBEntity != NULL_ENTITY && !loadRigidbody2D(bodyBEntity))){
-            Log::error("Cannot create mouse 2D joint, bodyA or bodyB could not be loaded");
+            jointError("Cannot create mouse 2D joint, bodyA or bodyB could not be loaded");
             return false;
         }
         if (scene->getComponent<Rigidbody2DComponent>(bodyAEntity).type != BodyType::DYNAMIC){
-            Log::error("Cannot create mouse 2D joint, bodyA must be dynamic");
+            jointError("Cannot create mouse 2D joint, bodyA must be dynamic");
             return false;
         }
         if (bodyAEntity == bodyBEntity){
-            Log::error("Cannot create mouse 2D joint with the same bodyA and bodyB");
+            jointError("Cannot create mouse 2D joint with the same bodyA and bodyB");
             return false;
         }
     }else{
@@ -2275,7 +2368,7 @@ bool PhysicsSystem::buildJoint2D(Entity entity, Joint2DComponent& joint){
     const b2BodyId bodyA = scene->getComponent<Rigidbody2DComponent>(bodyAEntity).body;
     const b2BodyId bodyB = (bodyBEntity != NULL_ENTITY) ? scene->getComponent<Rigidbody2DComponent>(bodyBEntity).body : getGroundBody2D();
     if (!b2Body_IsValid(bodyA) || !b2Body_IsValid(bodyB)){
-        Log::error("Cannot create 2D joint, bodyA or bodyB has no valid physics body");
+        jointError("Cannot create 2D joint, bodyA or bodyB has no valid physics body");
         return false;
     }
 
@@ -2318,7 +2411,7 @@ bool PhysicsSystem::buildJoint2D(Entity entity, Joint2DComponent& joint){
             worldPivotA = b2Body_GetPosition(bodyA);
             worldPivotB = b2Body_GetPosition(bodyB);
         }else if (joint.anchorA == Vector2::ZERO && joint.anchorB == Vector2::ZERO){
-            Log::error("Cannot create distance 2D joint: Auto Anchors is disabled and both anchors are zero");
+            jointError("Cannot create distance 2D joint: Auto Anchors is disabled and both anchors are zero");
             return false;
         }
         localAnchorA = b2Body_GetLocalPoint(bodyA, worldPivotA);
@@ -2520,11 +2613,12 @@ bool PhysicsSystem::buildJoint2D(Entity entity, Joint2DComponent& joint){
     }
 
     if (!b2Joint_IsValid(created)){
-        Log::error("Cannot create 2D joint");
+        jointError("Cannot create 2D joint");
         return false;
     }
 
     joint.joint = created;
+    joint.loadFailed = false;
     joint.needApplyParameters = false;
     joint.broken = false;
     joint.breakArmed = true;
@@ -2727,6 +2821,11 @@ void PhysicsSystem::checkJointBreaks2D(){
     auto joints2d = scene->getComponentArray<Joint2DComponent>();
     for (size_t i = 0; i < joints2d->size(); i++){
         Joint2DComponent& joint = joints2d->getComponentFromIndex(i);
+        // broken with DISABLE, then enabled again some other way (Inspector, Catalog): it can break again
+        if (joint.broken && joint.enabled && joint.breakAction != JointBreakAction::DESTROY){
+            joint.broken = false;
+            joint.breakArmed = true;
+        }
         if (joint.broken || !b2Joint_IsValid(joint.joint)){
             continue;
         }

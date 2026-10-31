@@ -85,8 +85,9 @@ const char* physicsmaterial::combineName(PhysicsMaterialCombine mode){
 
 bool physicsmaterial::combineFromName(const std::string& name, PhysicsMaterialCombine& mode){
     const std::string key = lowerNoSeparators(name);
-    if (key == "average" || key == "mean"){ mode = PhysicsMaterialCombine::AVERAGE; return true; }
-    if (key == "geometricmean"){ mode = PhysicsMaterialCombine::GEOMETRIC_MEAN; return true; }
+    if (key == "average"){ mode = PhysicsMaterialCombine::AVERAGE; return true; }
+    // Unity 2D's PhysicsMaterialCombine2D.Mean is the geometric mean (sqrt(a * b))
+    if (key == "geometricmean" || key == "mean"){ mode = PhysicsMaterialCombine::GEOMETRIC_MEAN; return true; }
     if (key == "minimum" || key == "min"){ mode = PhysicsMaterialCombine::MINIMUM; return true; }
     if (key == "multiply"){ mode = PhysicsMaterialCombine::MULTIPLY; return true; }
     if (key == "maximum" || key == "max"){ mode = PhysicsMaterialCombine::MAXIMUM; return true; }

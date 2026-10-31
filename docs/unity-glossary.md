@@ -124,7 +124,7 @@ origin, a direction and a distance it is in world units (scene units in 2D).
 | `reactionForce`, `reactionTorque`, `jointAngle`, `jointSpeed`, `jointTranslation`, `GetMotorTorque` | `reactionForce`, `reactionTorque`, `jointAngle`, `jointSpeed`, `jointTranslation`, `motorTorque` |
 | `PolygonCollider2D` | a `POLYGON` collider (any number of points, concave split in convex pieces; one path per collider) |
 | `EdgeCollider2D` | a `CHAIN` collider (2+ points) |
-| `PhysicsMaterial2D` (`friction`, `bounciness`) | `PhysicsMaterial` (`.physicsmaterial`, Create > Physics Material 2D), shared with 3D, with `frictionCombine` / `bounceCombine` |
+| `PhysicsMaterial2D` (`friction`, `bounciness`) | `PhysicsMaterial` (`.physicsmaterial`, Create > Physics Material 2D), shared with 3D, with `frictionCombine` / `bounceCombine` (Unity 2D's `Mean` is `geometric_mean`; the name `mean` is read as it) |
 | `Rigidbody2D.sharedMaterial`, `Collider2D.sharedMaterial` | the body's `material`, the collider's `material` |
 | `useAutoMass`, `mass`, `centerOfMass`, `inertia` | `useAutoMass`, `mass`, `centerOfMass` (+ `autoCenterOfMass`), `inertia` (+ `autoInertia`) |
 | `drag`, `angularDrag`, `gravityScale`, `freezeRotation` | `linearDamping`, `angularDamping`, `gravityScale`, `fixedRotation` |

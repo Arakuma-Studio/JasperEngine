@@ -59,29 +59,53 @@ namespace {
         ring.swap(scratch);
     }
 
-    // Removes points where the outline goes straight on (or folds back on itself).
+    // Removes points where the outline goes straight on (or folds back on itself): a point goes
+    // when it, and every point removed next to it, is closer than `tolerance` (a distance, like
+    // b2ComputeHull's linear slop) to the line between the kept points around them. Local and
+    // absolute, so a long outline keeps its small detail (hills on a 3 km terrain, comb teeth).
     void removeCollinear(const std::vector<Point>& p, std::vector<int>& ring, double tolerance, std::vector<int>& scratch) {
-        auto collinear = [&](int a, int b, int c) {
-            return std::fabs(orient(p[a], p[b], p[c])) < tolerance;
-        };
-        scratch.clear();
-        for (int index : ring) {
-            while (scratch.size() >= 2 && collinear(scratch[scratch.size() - 2], scratch.back(), index)) {
-                scratch.pop_back();
-            }
-            scratch.push_back(index);
+        const size_t n = ring.size();
+        if (n < 3) {
+            return;
         }
-        bool changed = true;
-        while (changed && scratch.size() >= 3) {
-            changed = false;
-            const size_t n = scratch.size();
-            if (collinear(scratch[n - 2], scratch[n - 1], scratch[0])) {
-                scratch.pop_back();
-                changed = true;
-            } else if (collinear(scratch[n - 1], scratch[0], scratch[1])) {
-                scratch.erase(scratch.begin());
-                changed = true;
+        // start at the lowest point (then leftmost): a hull vertex, kept
+        size_t first = 0;
+        for (size_t i = 1; i < n; i++) {
+            const Point& a = p[ring[i]];
+            const Point& b = p[ring[first]];
+            if (a.y < b.y || (a.y == b.y && a.x < b.x)) {
+                first = i;
             }
+        }
+        auto at = [&](size_t position) {
+            return ring[(first + position) % n];
+        };
+        // the points between positions a and c (exclusive) all lie within tolerance of a-c
+        auto straight = [&](size_t a, size_t c) {
+            const Point& pa = p[at(a)];
+            const Point& pc = p[at(c)];
+            const double length = std::sqrt(distance2(pa, pc));
+            for (size_t b = a + 1; b < c; b++) {
+                if (std::fabs(orient(pa, p[at(b)], pc)) > tolerance * length) {
+                    return false;
+                }
+            }
+            return true;
+        };
+        // positions kept, the closing copy of the first one at n
+        std::vector<size_t> kept;
+        kept.reserve(n + 1);
+        kept.push_back(0);
+        for (size_t position = 1; position <= n; position++) {
+            kept.push_back(position);
+            while (kept.size() >= 3 && straight(kept[kept.size() - 3], kept.back())) {
+                kept.erase(kept.end() - 2);
+            }
+        }
+        kept.pop_back();
+        scratch.clear();
+        for (size_t position : kept) {
+            scratch.push_back(at(position));
         }
         ring.swap(scratch);
     }
@@ -476,8 +500,11 @@ Decomposition2D jasperengine::decomposePolygon2D(const std::vector<Vector2>& poi
         }
     }
     const double scale = std::max(maxX - minX, maxY - minY);
-    const double collinearTolerance = 1e-6 * scale * scale;
     const double weld = (weldDistance > 0.0f && std::isfinite(weldDistance)) ? (double)weldDistance : 0.0;
+    // straight on: closer than the weld distance to the line (a tiny fraction of the size
+    // without one); no area: rounding noise only (thin pieces are dropped by step 6)
+    const double collinearTolerance = weld > 0.0 ? weld : 1e-9 * scale;
+    const double zeroArea = 1e-12 * scale * scale;
 
     // 1. weld and remove collinear points until nothing changes (a removed spike can bring two
     // close points together)
@@ -535,13 +562,13 @@ Decomposition2D jasperengine::decomposePolygon2D(const std::vector<Vector2>& poi
         for (size_t i = 0; i < hull.size(); i++) {
             hullPoints[i] = p[hull[i]];
         }
-        if (hull.size() < 3 || std::fabs(area2(hullPoints, hullRing)) < collinearTolerance) {
+        if (hull.size() < 3 || std::fabs(area2(hullPoints, hullRing)) <= zeroArea) {
             result.error = "polygon has zero area";
             return result;
         }
         pieces = splitFan(hull, maxVertices);
     } else {
-        if (std::fabs(signedArea2) < collinearTolerance) {
+        if (std::fabs(signedArea2) <= zeroArea) {
             result.error = "polygon has zero area";
             return result;
         }
@@ -580,7 +607,7 @@ Decomposition2D jasperengine::decomposePolygon2D(const std::vector<Vector2>& poi
                 area += orient(p[piece[0]], a, b);
             }
         }
-        if (count < 3 || area <= 1e-12 * scale * scale || area < weld * std::sqrt(longest2)) {
+        if (count < 3 || area <= zeroArea || area < weld * std::sqrt(longest2)) {
             result.droppedPieces++;
             continue;
         }

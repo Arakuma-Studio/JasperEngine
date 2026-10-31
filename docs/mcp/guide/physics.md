@@ -199,10 +199,13 @@ points): set `maxMotorForce` / `maxMotorTorque` to what the motion needs.
 
 **Breaking.** After each fixed step a joint whose reaction force passes `breakForce` (N) or torque
 passes `breakTorque` (N m) breaks: `ignore` nothing; `callback_only` calls `onJointBreak2D(joint)`
-once (again after the load drops below); `disable` the callback, then `enabled = false` (a script
-enables it again); `destroy` (default) the callback, then the Joint 2D component is removed. The
-callback goes to the scripts of the joint's GameObject and of bodyA's, after the step's contact
-events; C++ scripts override `onJointBreak2D(Joint2D&)`.
+once (again after the load drops below); `disable` sets `enabled = false` at once (the callback
+already sees it; the joint leaves the world before the next step) and setting `enabled = true`
+again, in the callback or later, makes a fresh joint that can break again; `destroy` (default)
+the callback, then the Joint 2D component is removed after every callback of the step. The order
+of a fixed step: Box2D steps, the joints are checked (`disable` and `destroy` mark theirs), the
+step's contact and trigger events run, then the `onJointBreak2D` callbacks, to the scripts of the
+joint's GameObject and of bodyA's; C++ scripts override `onJointBreak2D(Joint2D&)`.
 
 `set_joint` creates (`body_a`, `body_b`, `type`, `name`) or edits (`joint`) one: `anchor_a`,
 `anchor_b`, `axis` ([x, y]), `anchor_space` (`local` | `world`), `auto_anchors`,

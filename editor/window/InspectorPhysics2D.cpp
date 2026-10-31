@@ -142,7 +142,10 @@ namespace {
     std::string formatPoints(const std::vector<Vector2>& points){
         std::ostringstream out;
         for (const Vector2& point : points){
-            out << point.x << "," << point.y << "\n";
+            // round-trip precision (paste gives the same floats back)
+            char line[64];
+            std::snprintf(line, sizeof(line), "%.9g,%.9g\n", point.x, point.y);
+            out << line;
         }
         return out.str();
     }
@@ -483,7 +486,10 @@ void editor::InspectorWindow::drawRigidbody2DComponent(ComponentType cpType, Sce
         const Collider2D shape = bodyRef.colliders[s];
 
         ImGui::SeparatorText(("Collider " + std::to_string(s + 1)).c_str());
+        // every widget of the collider under its own ID (Reverse, Add Point, copy / paste, the
+        // point list... of collider 2 are not collider 1's), popped however the iteration ends
         ImGui::PushID((int)s);
+        struct PopIdAtEnd{ ~PopIdAtEnd(){ ImGui::PopID(); } } popColliderId;
         if (ImGui::Button("Remove Collider")){
             MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
 
@@ -499,10 +505,8 @@ void editor::InspectorWindow::drawRigidbody2DComponent(ComponentType cpType, Sce
             }
 
             addCommand(multiCmd);
-            ImGui::PopID();
             break;
         }
-        ImGui::PopID();
 
         std::string shapeKey = "colliders[" + std::to_string(s) + "]";
 
@@ -545,18 +549,20 @@ void editor::InspectorWindow::drawRigidbody2DComponent(ComponentType cpType, Sce
             }
 
             // the pieces Box2D gets: a convex polygon of up to 8 points is one, others are split
+            // (the body's own, cached on the collider: not decomposed again every frame)
             if (!chain && shape.points.size() >= 3){
-                const Decomposition2D pieces = decomposePolygon2D(shape.points, 0.005f * pointsToMeter, 8);
+                Collider2D& cached = bodyRef.colliders[s];
+                sceneProject->scene->getSystem<PhysicsSystem>()->updateCollider2DPieces(entities[0], cached);
                 propertyHeader("Shape");
-                if (!pieces.error.empty()){
-                    ImGui::TextColored(Theme::Colors::WarningText, "%s", pieces.error.c_str());
-                }else if (pieces.selfIntersecting){
+                if (!cached.decompositionError.empty()){
+                    ImGui::TextColored(Theme::Colors::WarningText, "%s", cached.decompositionError.c_str());
+                }else if (cached.selfIntersecting){
                     ImGui::TextColored(Theme::Colors::WarningText, "Crosses itself: its convex hull is used");
                     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Reorder the points into one outline, or use several colliders");
-                }else if (pieces.pieces.size() == 1){
+                }else if (cached.pieces.size() == 1){
                     ImGui::TextDisabled("Convex: 1 piece");
                 }else{
-                    ImGui::TextDisabled("%s: %zu pieces", pieces.convexInput ? "Convex" : "Concave", pieces.pieces.size());
+                    ImGui::TextDisabled("%zu convex pieces%s", cached.pieces.size(), cached.droppedPieces > 0 ? " (slivers left out)" : "");
                     if (ImGui::IsItemHovered()){
                         ImGui::SetTooltip("Box2D polygons are convex with up to 8 points: this one is split into convex pieces "
                                           "(one collider for contacts and rays). For ground that wheels roll over, a Chain has no inner seams.");
@@ -576,7 +582,9 @@ void editor::InspectorWindow::drawRigidbody2DComponent(ComponentType cpType, Sce
             propertyHeader("Points");
             ImGui::Text("%zu", shape.points.size());
             ImGui::SameLine();
-            if (ImGui::Button("Add Point")){
+            const bool addPoint = ImGui::Button("Add Point");
+            UIProbe::item("physics2d.collider." + std::to_string(s) + ".add_point");
+            if (addPoint){
                 editCollider([](Collider2D& value, Entity){
                     const size_t count = value.points.size();
                     if (count >= 2){
@@ -908,15 +916,24 @@ void editor::InspectorWindow::drawJoint2DComponent(ComponentType cpType, ScenePr
         RowSettings settingsAxis;
         settingsAxis.help = local ? "The line of motion in Rigidbody A's frame ((0, 1) = up, Unity's angle 90)" : "The line of motion, world";
         propertyRow(RowPropertyType::Vector2, cpType, "axis", "Axis", sceneProject, entities, settingsAxis);
-        // Unity's suspension / slider angle, in degrees from +x
+        // Unity's suspension / slider angle from +x, in the project's angle unit
         propertyHeader("Angle");
-        float angle = std::atan2(joint.axis.y, joint.axis.x) * 180.0f / (float)M_PI;
+        const bool degrees = Engine::isUseDegrees();
+        float angle = Angle::radToDefault(std::atan2(joint.axis.y, joint.axis.x));
         ImGui::SetNextItemWidth(6 * ImGui::GetFontSize());
-        if (ImGui::DragFloat("##joint2d_axis_angle", &angle, 0.5f, -360.0f, 360.0f, "%.1f\xC2\xB0")){
-            const float radians = angle * (float)M_PI / 180.0f;
+        if (ImGui::DragFloat("##joint2d_axis_angle", &angle, Angle::degToDefault(0.5f), Angle::degToDefault(-360.0f), Angle::degToDefault(360.0f),
+                             degrees ? "%.1f\xC2\xB0" : "%.4f rad")){
+            const float radians = Angle::defaultToRad(angle);
             MultiPropertyCmd* multi = new MultiPropertyCmd();
             setJointField<Vector2>(project, sceneProject, entities, cpType, "axis", Vector2(std::cos(radians), std::sin(radians)), multi);
             CommandHandle::get(project->getSelectedSceneId())->addCommand(multi);
+            cmd = multi;
+        }
+        UIProbe::item("physics2d.joint.axis_angle");
+        // one undo step per drag
+        if (ImGui::IsItemDeactivatedAfterEdit() && cmd){
+            cmd->setNoMerge();
+            cmd = nullptr;
         }
         if (ImGui::IsItemHovered()){
             ImGui::SetTooltip("The axis as an angle from +x (Unity's suspension angle: 90 = up)");
@@ -1103,7 +1120,8 @@ void editor::InspectorWindow::drawJoint2DComponent(ComponentType cpType, ScenePr
     thresholdRow("breakTorque", "Break Torque", "N m");
     RowSettings settingsAction;
     settingsAction.enumEntries = &entriesBreakAction;
-    settingsAction.help = "Ignore: nothing. Callback Only: onJointBreak2D(joint). Disable: the callback, then the joint is disabled.\n"
+    settingsAction.help = "Ignore: nothing. Callback Only: onJointBreak2D(joint). Disable: the joint is disabled, then the callback\n"
+                          "(enable it again for a fresh joint).\n"
                           "Destroy: the callback, then the Joint 2D component is removed";
     propertyRow(RowPropertyType::Enum, cpType, "breakAction", "Break Action", sceneProject, entities, settingsAction);
     endTable();
@@ -1149,10 +1167,14 @@ void editor::InspectorWindow::drawPhysicsMaterialAsset(const fs::path& asset){
         return;
     }
 
-    const std::string mergeKey = "physicsmaterial:" + asset.generic_string();
-    auto save = [&](const PhysicsMaterialData& changed, bool merge){
+    // one undo step per drag of one property: the key names the file, the property and the drag
+    // (a new one after each release), so Friction and Bounciness, or two drags, are separate steps
+    static unsigned int dragSerial = 0;
+    auto save = [&](const PhysicsMaterialData& changed, const char* property){
         std::string writeError;
-        if (!PhysicsMaterialAssets::write(project, asset, changed, writeError, merge ? mergeKey : std::string())){
+        const std::string mergeKey = property ? "physicsmaterial:" + asset.generic_string() + ":" + property + "#" + std::to_string(dragSerial)
+                                              : std::string();
+        if (!PhysicsMaterialAssets::write(project, asset, changed, writeError, mergeKey)){
             Out::error("Physics material: " + writeError);
         }
     };
@@ -1178,11 +1200,14 @@ void editor::InspectorWindow::drawPhysicsMaterialAsset(const fs::path& asset){
         ImGui::TableNextColumn();
         float friction = data.friction;
         ImGui::SetNextItemWidth(-1);
-        if (ImGui::DragFloat("##friction", &friction, 0.01f, 0.0f, 100.0f, "%.3f")){
+        const bool frictionChanged = ImGui::DragFloat("##friction", &friction, 0.01f, 0.0f, 100.0f, "%.3f");
+        UIProbe::item("physics2d.material.friction");
+        if (frictionChanged){
             PhysicsMaterialData changed = data;
             changed.friction = std::max(0.0f, friction);
-            save(changed, true);
+            save(changed, "friction");
         }
+        if (ImGui::IsItemDeactivated()) dragSerial++;
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Coulomb friction, 0 (ice) and up (above 1 is allowed, a tyre is about 2)");
 
         ImGui::TableNextRow();
@@ -1191,11 +1216,14 @@ void editor::InspectorWindow::drawPhysicsMaterialAsset(const fs::path& asset){
         ImGui::TableNextColumn();
         float bounciness = data.bounciness;
         ImGui::SetNextItemWidth(-1);
-        if (ImGui::SliderFloat("##bounciness", &bounciness, 0.0f, 1.0f, "%.3f")){
+        const bool bouncinessChanged = ImGui::SliderFloat("##bounciness", &bounciness, 0.0f, 1.0f, "%.3f");
+        UIProbe::item("physics2d.material.bounciness");
+        if (bouncinessChanged){
             PhysicsMaterialData changed = data;
             changed.bounciness = std::min(1.0f, std::max(0.0f, bounciness));
-            save(changed, true);
+            save(changed, "bounciness");
         }
+        if (ImGui::IsItemDeactivated()) dragSerial++;
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("0: no bounce, 1: bounces back to its height");
 
         ImGui::TableNextRow();
@@ -1206,7 +1234,7 @@ void editor::InspectorWindow::drawPhysicsMaterialAsset(const fs::path& asset){
         if (combineCombo("##friction_combine", data.frictionCombine, mode)){
             PhysicsMaterialData changed = data;
             changed.frictionCombine = mode;
-            save(changed, false);
+            save(changed, nullptr);
         }
 
         ImGui::TableNextRow();
@@ -1217,7 +1245,7 @@ void editor::InspectorWindow::drawPhysicsMaterialAsset(const fs::path& asset){
         if (combineCombo("##bounce_combine", data.bounceCombine, mode)){
             PhysicsMaterialData changed = data;
             changed.bounceCombine = mode;
-            save(changed, false);
+            save(changed, nullptr);
         }
         ImGui::EndTable();
     }

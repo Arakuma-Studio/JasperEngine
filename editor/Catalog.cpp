@@ -5976,14 +5976,20 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
                                        EntityRegistry* targetRegistry, Entity targetEntity, 
                                        ComponentType compType, const std::string& property) {
 
-    // Get the property data to determine the type
+    // Get the property data to determine the type: the enumerated names, else the lookup (names
+    // it resolves but does not list, such as a 2D collider's "colliders[i].points[j]")
     auto sourceProperties = Catalog::findEntityProperties(sourceRegistry, sourceEntity, compType);
     auto propIt = sourceProperties.find(property);
-    if (propIt == sourceProperties.end()) {
-        return; // Property not found
+    PropertyType propType;
+    if (propIt != sourceProperties.end()) {
+        propType = propIt->second.type;
+    } else {
+        const PropertyData found = Catalog::findProperty(sourceRegistry, sourceEntity, compType, property);
+        if (!found.ref || !Catalog::findProperty(targetRegistry, targetEntity, compType, property).ref) {
+            return; // Property not found
+        }
+        propType = found.type;
     }
-
-    PropertyType propType = propIt->second.type;
 
     // Copy based on property type
     switch (propType) {

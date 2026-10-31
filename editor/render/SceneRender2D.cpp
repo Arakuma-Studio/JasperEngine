@@ -304,7 +304,7 @@ void editor::SceneRender2D::createOrUpdatePolygonPointLines(Entity entity, const
     }
 }
 
-void editor::SceneRender2D::createOrUpdateBodyLines(Entity entity, const Transform& transform, const Rigidbody2DComponent& body, bool visible, bool highlighted){
+void editor::SceneRender2D::createOrUpdateBodyLines(Entity entity, const Transform& transform, Rigidbody2DComponent& body, bool visible, bool highlighted){
     LineRenderer* bodyLinesObj = bodyLines[entity];
 
     bodyLinesObj->clearLines();
@@ -424,10 +424,11 @@ void editor::SceneRender2D::createOrUpdateBodyLines(Entity entity, const Transfo
             }
             // a selected concave polygon shows the convex pieces Box2D gets, faintly
             if (highlighted && count > 3){
-                const Decomposition2D pieces = decomposePolygon2D(shape.points, 0.005f * scene->getSystem<PhysicsSystem>()->getPointsToMeterScale2D(), 8);
-                if (pieces.pieces.size() > 1){
+                // the body's own pieces (cached on the collider by points and scale)
+                const std::vector<std::vector<Vector2>> pieces = scene->getSystem<PhysicsSystem>()->getCollider2DPiecesLocal(entity, body.colliders[i]);
+                if (pieces.size() > 1){
                     const Vector4 seamColor(bodyColor.x, bodyColor.y, bodyColor.z, bodyColor.w * 0.3f);
-                    for (const std::vector<Vector2>& piece : pieces.pieces){
+                    for (const std::vector<Vector2>& piece : pieces){
                         for (size_t k = 0; k < piece.size(); k++){
                             bodyLinesObj->addLine(toWorld(scaledPoint(piece[k])), toWorld(scaledPoint(piece[(k + 1) % piece.size()])), seamColor);
                         }

@@ -414,3 +414,82 @@ TEST(PolygonDecomposition2D, MaxVerticesIsRespected) {
     EXPECT_EQ(triangles.pieces.size(), 4u);
     expectValidDecomposition(lShape(), triangles, 3);
 }
+
+// ---- fidelity on large outlines (review): straight-on removal is local and absolute ----------
+
+namespace {
+
+    // distance from v to the convex counter-clockwise piece (0 inside or on it)
+    double distanceToPiece(const Vector2& v, const Polygon& piece) {
+        bool inside = true;
+        double best = 1e300;
+        for (size_t i = 0; i < piece.size(); i++) {
+            const Vector2& a = piece[i];
+            const Vector2& b = piece[(i + 1) % piece.size()];
+            const double ex = (double)b.x - a.x, ey = (double)b.y - a.y;
+            const double px = (double)v.x - a.x, py = (double)v.y - a.y;
+            if (ex * py - ey * px < -1e-9 * std::sqrt(ex * ex + ey * ey)) inside = false;
+            const double len2 = ex * ex + ey * ey;
+            const double t = len2 > 0.0 ? std::min(1.0, std::max(0.0, (px * ex + py * ey) / len2)) : 0.0;
+            const double dx = px - t * ex, dy = py - t * ey;
+            best = std::min(best, std::sqrt(dx * dx + dy * dy));
+        }
+        return inside ? 0.0 : best;
+    }
+
+    // every input point lies on the union of the pieces (within `tolerance`) and the union has
+    // the input's area: the pieces are the outline, not a simplification of it
+    void expectFaithful(const Polygon& input, const Decomposition2D& result, double tolerance, const char* what) {
+        ASSERT_TRUE(result.error.empty()) << what << ": " << result.error;
+        double maxDeviation = 0.0;
+        for (const Vector2& v : input) {
+            double d = 1e300;
+            for (const Polygon& piece : result.pieces) d = std::min(d, distanceToPiece(v, piece));
+            maxDeviation = std::max(maxDeviation, d);
+        }
+        EXPECT_LE(maxDeviation, tolerance) << what;
+        // straight-on points within the tolerance may go: at most a band of it along the outline
+        double perimeter = 0.0;
+        for (size_t i = 0; i < input.size(); i++) perimeter += (input[(i + 1) % input.size()] - input[i]).length();
+        double area = 0.0;
+        for (const Polygon& piece : result.pieces) area += signedArea(piece);
+        EXPECT_NEAR(area, std::fabs(signedArea(input)), perimeter * tolerance) << what;
+    }
+
+}
+
+TEST(PolygonDecomposition2D, LargeOutlinesKeepTheirDetail) {
+    // a 3000 m terrain with 1 m hills every 20 m (points each metre), in metres as the body has them
+    Polygon terrain;
+    for (int i = 0; i <= 3000; i++) terrain.push_back(Vector2((float)i, (float)(10.0 + std::sin(i * 2.0 * M_PI / 20.0))));
+    terrain.push_back(Vector2(3000.0f, -5.0f));
+    terrain.push_back(Vector2(0.0f, -5.0f));
+    const Decomposition2D hills = decomposePolygon2D(terrain, 0.005f, 8);
+    EXPECT_GT(hills.pieces.size(), 100u);
+    expectFaithful(terrain, hills, 0.006, "terrain");
+
+    // a comb of 2000 teeth
+    Polygon comb;
+    for (int i = 0; i < 2000; i++) {
+        const float x = i * 2.0f;
+        comb.push_back(Vector2(x, 0));
+        comb.push_back(Vector2(x + 1, 0));
+        comb.push_back(Vector2(x + 1, -10));
+        comb.push_back(Vector2(x + 2, -10));
+    }
+    comb.push_back(Vector2(4000.0f, 0));
+    comb.push_back(Vector2(4000.0f, 5));
+    comb.push_back(Vector2(0, 5));
+    const Decomposition2D teeth = decomposePolygon2D(comb, 0.005f, 8);
+    EXPECT_GE(teeth.pieces.size(), 2000u);
+    expectFaithful(comb, teeth, 0.006, "comb");
+
+    // points on a gentle arc: removing them one after another must not drift off it
+    Polygon arc;
+    for (int i = 0; i <= 2000; i++) {
+        const double a = M_PI * i / 2000.0;
+        arc.push_back(Vector2((float)(500.0 * std::cos(a)), (float)(500.0 * std::sin(a))));
+    }
+    const Decomposition2D half = decomposePolygon2D(arc, 0.005f, 8);
+    expectFaithful(arc, half, 0.006, "arc");
+}

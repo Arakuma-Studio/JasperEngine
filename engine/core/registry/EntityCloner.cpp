@@ -637,6 +637,7 @@ void prepare<Joint2DComponent>(Joint2DComponent& joint, Entity, CloneContext& ct
     joint.needApplyParameters = false;
     joint.broken = false;
     joint.breakArmed = true;
+    joint.loadFailed = false;
 }
 #endif
 

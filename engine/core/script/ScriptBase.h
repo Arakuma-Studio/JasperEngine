@@ -28,10 +28,18 @@ namespace jasperengine {
         // REGISTER_ENGINE_EVENT are skipped while it is false.
         bool isActiveAndEnabled() const;
 
-        // Script messages (ScriptMessages), called when overridden, like the Lua methods of the
-        // same name. A 2D joint of this GameObject (or whose bodyA is it) broke (Unity
+        // Script messages (ScriptMessages), like the Lua methods of the same name: override them
+        // (public, protected or private) and do not call the base, which only notes the message
+        // is not overridden. A 2D joint of this GameObject (or whose bodyA is it) broke (Unity
         // OnJointBreak2D); the joint still exists during the call.
-        virtual void onJointBreak2D(Joint2D& joint) { (void)joint; }
+        virtual void onJointBreak2D(Joint2D& joint);
+
+        // the messages (ScriptMessage bits) whose base method ran: not overridden, so not sent
+        // again and not among ScriptMessages::receivers
+        uint32_t inheritedMessages = 0;
+        // set by a base message method (ScriptMessages reads it after a call without touching a
+        // script the call may have destroyed)
+        static bool baseMessageRan;
     };
 
 }

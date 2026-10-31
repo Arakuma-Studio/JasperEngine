@@ -8,6 +8,7 @@
 #include "ecs/Entity.h"
 #include "math/Vector2.h"
 #include "component/PhysicsCommon.h"
+#include "util/Angle.h"
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "box2d/box2d.h"
 #endif
@@ -80,8 +81,9 @@ namespace jasperengine{
 
         // REVOLUTE: angles; PRISMATIC, WHEEL: translations; DISTANCE: min/max length
         bool useLimits = false;
-        float lowerAngle = -90.0f;
-        float upperAngle = 90.0f;
+        // Unity's -90 / 90 degrees, in the project's angle unit
+        float lowerAngle = Angle::degToDefault(-90.0f);
+        float upperAngle = Angle::degToDefault(90.0f);
         float lowerTranslation = 0.0f;
         float upperTranslation = 0.0f;
 
@@ -122,6 +124,9 @@ namespace jasperengine{
 
         // Runtime, not saved
         bool needUpdateJoint = true;
+        // the last try to make it failed (logged once, until it is made: a missing body is not
+        // reported every step)
+        bool loadFailed = false;
         // the parameters changed: applied to the live joint before the next step
         bool needApplyParameters = false;
         // bodyB angle minus bodyA angle when the joint was made (radians)

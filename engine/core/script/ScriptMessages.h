@@ -47,7 +47,8 @@ namespace jasperengine {
         static const char* methodName(ScriptMessage m);
 
         // The messages some script instance of the GameObject defines (Lua: a function in the
-        // instance table or its class; C++: an override, ScriptEntry::cppMessageMask)
+        // instance table or its class; C++: cppMessageMask less the messages the script was seen
+        // not to override, so a C++ script counts until a message reached its base method)
         static ScriptMessageMask receivers(Scene* scene, Entity entity);
 
         // Calls the method on every script instance of the GameObject that defines it (see the
@@ -64,16 +65,15 @@ namespace jasperengine {
         // the scripts of the GameObject changed (an instance made, released, enabled, disabled)
         static void notifyReceiversChanged(Scene* scene, Entity entity);
 
-        // The C++ messages T overrides (generated script factories store it in
-        // ScriptEntry::cppMessageMask)
+        // The messages a C++ script T may receive (generated script factories store it in
+        // ScriptEntry::cppMessageMask): all of them for a ScriptBase, none otherwise. Whether T
+        // overrides one is learned when it is first sent (the base method marks
+        // ScriptBase::inheritedMessages), without naming T's members here (an override may be
+        // protected, private or overloaded)
         template<typename T>
         static constexpr ScriptMessageMask cppMask(){
             if constexpr (std::is_base_of_v<ScriptBase, T>) {
-                ScriptMessageMask mask = 0;
-                if constexpr (!std::is_same_v<decltype(&T::onJointBreak2D), decltype(&ScriptBase::onJointBreak2D)>) {
-                    mask |= scriptMessageBit(ScriptMessage::JointBreak2D);
-                }
-                return mask;
+                return (ScriptMessageMask)((1ull << (uint32_t)ScriptMessage::Count) - 1);
             } else {
                 return 0;
             }

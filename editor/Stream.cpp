@@ -8483,6 +8483,7 @@ Joint2DComponent editor::Stream::decodeJoint2DComponent(const YAML::Node& node, 
 
     if (oldJoint) {
         joint = *oldJoint;
+        joint.loadFailed = false;
         if (node["type"]) joint.type = stringToJoint2DType(node["type"].as<std::string>());
     } else {
         // a key missing from a scene saved before is what the joint had then (Box2D's defaults

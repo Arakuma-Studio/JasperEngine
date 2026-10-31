@@ -144,6 +144,8 @@ namespace jasperengine{
 		// changed scale), then its mass once
 		bool syncRigidbody2DColliders(Entity entity, Rigidbody2DComponent& body, bool all);
 		void createCollider2DShapes(Entity entity, Rigidbody2DComponent& body, size_t index, const Vector2& entityScale, int layer);
+		// true when the pieces were made again (not from the cache); logs the problems when `log`
+		bool computeCollider2DPieces(Collider2D& collider, const Vector2& entityScale, bool log, size_t index, const std::string& entityName);
 		void resolveCollider2DSurface(const Rigidbody2DComponent& body, const Collider2D& collider, float& friction, float& restitution, int& userMaterial) const;
 		// Re-applies the materials of bodies using one that changed (PhysicsMaterialRuntime::revision)
 		void syncMaterials2D();
@@ -218,6 +220,17 @@ namespace jasperengine{
 
 #ifdef JASPERENGINE_PHYSICS_2D
 		float getPointsToMeterScale2D() const;
+		// The convex pieces Box2D gets for a POLYGON collider of the entity, as the body makes
+		// them (after the GameObject's scale; pieces Box2D cannot hull left out and counted in
+		// droppedPieces), cached on the collider by its points, the scale and the units: the
+		// Inspector, the Scene view and MCP show exactly what the simulation uses. In metres
+		// (Collider2D::pieces) or, for the editor, in the collider's own units.
+		void updateCollider2DPieces(Entity entity, Collider2D& collider);
+		// New points of a POLYGON collider that is one Box2D polygon and stays one convex piece:
+		// the shape is changed in place (b2Shape_SetPolygon: the same shape id, the body's other
+		// contacts untouched) and the mass applied again. False when it must be made again.
+		bool reshapeCollider2DPolygon(Entity entity, Rigidbody2DComponent& body, size_t index);
+		std::vector<std::vector<Vector2>> getCollider2DPiecesLocal(Entity entity, Collider2D& collider);
 		void setPointsToMeterScale2D(float pointsToMeterScale2D);
 
 		bool isSteppingWorld2D() const;

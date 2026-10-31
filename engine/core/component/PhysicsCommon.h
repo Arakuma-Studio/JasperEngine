@@ -38,7 +38,7 @@ namespace jasperengine{
     enum class JointBreakAction{
         IGNORE,         // nothing
         CALLBACK_ONLY,  // onJointBreak2D / onJointBreak, the joint stays
-        DISABLE,        // callback, then the joint is disabled (enabled = false)
+        DISABLE,        // enabled = false at once, then the callback (enabled again: a fresh joint)
         DESTROY         // callback, then the joint component is removed
     };
 

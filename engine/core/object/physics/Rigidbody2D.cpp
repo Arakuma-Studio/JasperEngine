@@ -330,6 +330,12 @@ void Rigidbody2D::setColliderPoints(size_t index, std::vector<Vector2> points){
         return;
     }
     collider.points = std::move(points);
+    // a polygon that stays one convex piece keeps its Box2D shape (b2Shape_SetPolygon)
+    Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
+    if (collider.type == Collider2DType::POLYGON &&
+            scene->getSystem<PhysicsSystem>()->reshapeCollider2DPolygon(entity, body, index)){
+        return;
+    }
     colliderChanged(index);
 }
 

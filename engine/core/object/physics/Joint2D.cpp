@@ -250,9 +250,28 @@ void Joint2D::setBreakAction(JointBreakAction action){
     joint().breakAction = action;
 }
 
+namespace{
+    b2JointType box2DJointType(Joint2DType type){
+        switch (type){
+            case Joint2DType::DISTANCE: return b2_distanceJoint;
+            case Joint2DType::REVOLUTE: return b2_revoluteJoint;
+            case Joint2DType::PRISMATIC: return b2_prismaticJoint;
+            case Joint2DType::MOUSE: return b2_mouseJoint;
+            case Joint2DType::WHEEL: return b2_wheelJoint;
+            case Joint2DType::WELD: return b2_weldJoint;
+            case Joint2DType::MOTOR: return b2_motorJoint;
+        }
+        return b2_distanceJoint;
+    }
+}
+
 bool Joint2D::isLive() const{
     const Joint2DComponent& component = joint();
-    return b2Joint_IsValid(component.joint) && !scene->getSystem<PhysicsSystem>()->isSteppingWorld2D();
+    // a type (or body, anchor...) change waits for the rebuild: until then the Box2D joint is
+    // the old one, whose type-specific getters must not run for the new type
+    return b2Joint_IsValid(component.joint) && !component.needUpdateJoint &&
+           b2Joint_GetType(component.joint) == box2DJointType(component.type) &&
+           !scene->getSystem<PhysicsSystem>()->isSteppingWorld2D();
 }
 
 Vector2 Joint2D::getReactionForce() const{
@@ -383,7 +402,14 @@ bool Joint2D::isBroken() const{
 }
 
 void Joint2D::setEnabled(bool enabled){
-    getComponent<Joint2DComponent>().enabled = enabled;
+    Joint2DComponent& component = getComponent<Joint2DComponent>();
+    // a joint broken with DISABLE and enabled again is a fresh joint that can break again
+    if (enabled && !component.enabled && component.broken){
+        component.broken = false;
+        component.breakArmed = true;
+        component.needUpdateJoint = true;
+    }
+    component.enabled = enabled;
 }
 
 bool Joint2D::isEnabled() const{

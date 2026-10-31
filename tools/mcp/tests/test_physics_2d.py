@@ -10,6 +10,8 @@ import os
 import re
 import time
 
+import yaml
+
 from harness import Editor, skip
 
 EDITOR = {"create": True, "name": "Physics 2D"}
@@ -176,6 +178,74 @@ async def test_hill_climb_car_joints(ed: Editor):
     finally:
         await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)
 
+
+
+def rename_overrides(node, renames: dict) -> int:
+    """Rewrites the Rigidbody 2D override names of every prefab instance entry of a scene file
+    to the names of editors before the 2D caps went (numColliders, vertices[j])."""
+    count = 0
+    if isinstance(node, dict):
+        props = node.get("properties")
+        if "registryEntity" in node and isinstance(props, dict):
+            for component, names in props.items():
+                if "rigidbody2d" in str(component).lower().replace(" ", "") and isinstance(names, list):
+                    for i, name in enumerate(names):
+                        if name in renames:
+                            names[i] = renames[name]
+                            count += 1
+        for value in node.values():
+            count += rename_overrides(value, renames)
+    elif isinstance(node, list):
+        for value in node:
+            count += rename_overrides(value, renames)
+    return count
+
+
+async def collider_list(ed: Editor, sid, entity) -> list:
+    return (await ed.call("edit_colliders", scene=sid, entity=entity))["colliders"]
+
+
+async def test_old_prefab_overrides_of_colliders(ed: Editor):
+    """Overrides recorded before the caps went (numColliders, colliders[i].vertices[j]): an added
+    collider, a removed one and a point edit survive a reload, and the point applies to the prefab."""
+    sid = (await ed.call("create_scene", name="OldOverrides", type="2D", path="scenes/OldOverrides"))["scene"]["id"]
+    crate = (await ed.call("create_entity", scene=sid, name="Crate", type="rigidbody2d"))["entity_id"]
+    box = [[-10, -10], [10, -10], [10, 10], [-10, 10]]
+    await ed.call("edit_colliders", scene=sid, entity=crate, body_type="dynamic",
+                  add=[{"shape": "polygon", "points": box}, {"shape": "polygon", "points": [[x + 30, y] for x, y in box]}])
+    path = "prefabs/Crate.prefab"
+    await ed.call("create_prefab", scene=sid, entity=crate, path=path)
+    for name, x in (("Added", 100), ("Removed", 200), ("Points", 300)):
+        await ed.call("instantiate_prefab", scene=sid, prefab=path, name=name, position=[x, 0, 0])
+    await ed.call("edit_colliders", scene=sid, entity="Added", add=[{"shape": "circle", "radius": 5, "fit": False}])
+    await ed.call("edit_colliders", scene=sid, entity="Removed", remove=[1])
+    await ed.call("set_properties", scene=sid, entity="Points", values={"rigidbody2d": {"colliders[0].points[1]": [60, 5]}})
+    await ed.call("save_scene", scene=sid)
+
+    file = ed.project / "scenes" / "OldOverrides.scene"
+    data = yaml.safe_load(file.read_text())
+    renamed = rename_overrides(data, {"colliders": "numColliders", "colliders[0].points[1]": "colliders[0].vertices[1]"})
+    ed.check(renamed >= 3, f"the scene has the three overrides to make old: {renamed}")
+    file.write_text(yaml.safe_dump(data, sort_keys=False))
+
+    await ed.call("close_scene", scene=sid, unsaved="discard")
+    sid = (await ed.call("open_scene", scene="scenes/OldOverrides.scene"))["scene"]["id"]
+    added = await collider_list(ed, sid, "Added")
+    ed.check_eq(len(added), 3, f"the added collider of an old override: {added}")
+    ed.check_eq(added[2]["shape"], "circle", f"{added}")
+    removed = await collider_list(ed, sid, "Removed")
+    ed.check_eq(len(removed), 1, f"the removed collider stays removed: {removed}")
+    edited = await collider_list(ed, sid, "Points")
+    ed.check_eq(edited[0]["points"][1], [60, 5], f"the old point override: {edited}")
+    overrides = (await ed.call("get_prefab_info", scene=sid, entity="Points", usage=False))["overrides"]
+    ed.check("colliders[0].points[1]" in str(overrides), f"listed by its current name: {overrides}")
+
+    await ed.call("prefab_overrides", scene=sid, entity="Points", action="apply", component="rigidbody2d",
+                  properties=["colliders[0].points[1]"])
+    source = await collider_list(ed, sid, "Crate")
+    ed.check_eq(source[0]["points"][1], [60, 5], f"Apply to Prefab reaches the other instances: {source}")
+    prefab_text = (ed.project / path).read_text()
+    ed.check("60" in prefab_text, "the prefab file has the applied point")
 
 def car_probe_line(lines) -> dict:
     for line in lines:

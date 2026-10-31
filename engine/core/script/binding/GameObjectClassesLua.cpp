@@ -64,6 +64,7 @@
 #include "Joint3D.h"
 #include "Contact3D.h"
 #include "CollideShapeResult3D.h"
+#include <stdexcept>
 #endif
 
 using namespace jasperengine;
@@ -311,12 +312,13 @@ namespace {
         const bool isObject = luaObjectArg(L, lua_gettop(L), scene, entity);
         lua_settop(L, top);
         if (!isObject){
-            luaL_error(L, "Joint2D.%s: a GameObject or Rigidbody2D with a Rigidbody 2D, or nil", property);
-            return NULL_ENTITY;
+            // an exception (LuaBridge turns it into a Lua error): luaL_error would longjmp past
+            // the C++ objects alive here
+            throw std::runtime_error(std::string("Joint2D.") + property + ": a GameObject or Rigidbody2D with a Rigidbody 2D, or nil");
         }
         if (scene != self->getScene() || !scene->isEntityCreated(entity) || !scene->findComponent<Rigidbody2DComponent>(entity)){
-            luaL_error(L, "Joint2D.%s: \"%s\" has no Rigidbody 2D (in the joint's scene)", property, scene ? scene->getEntityName(entity).c_str() : "?");
-            return NULL_ENTITY;
+            throw std::runtime_error(std::string("Joint2D.") + property + ": \"" + (scene ? scene->getEntityName(entity) : std::string("?")) +
+                                     "\" has no Rigidbody 2D (in the joint's scene)");
         }
         return entity;
     }
@@ -2284,8 +2286,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
                 PhysicsMaterial material;
                 std::string path;
                 if (!luaMaterialArg(value, material, path)){
-                    luaL_error(value.state(), "Rigidbody2D.material: a .physicsmaterial path, a PhysicsMaterial or nil");
-                    return;
+                    throw std::runtime_error("Rigidbody2D.material: a .physicsmaterial path, a PhysicsMaterial or nil");
                 }
                 if (material.valid()) self->setMaterial(material);
                 else self->setMaterial(path);
@@ -2301,12 +2302,11 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setColliderCenter", &Rigidbody2D::setColliderCenter)
         .addFunction("getColliderCenter", &Rigidbody2D::getColliderCenter)
         .addFunction("setColliderSegment", &Rigidbody2D::setColliderSegment)
-        .addFunction("setColliderMaterial", +[](Rigidbody2D* self, size_t index, luabridge::LuaRef value, lua_State* L) {
+        .addFunction("setColliderMaterial", +[](Rigidbody2D* self, size_t index, luabridge::LuaRef value) {
             PhysicsMaterial material;
             std::string path;
             if (!luaMaterialArg(value, material, path)){
-                luaL_error(L, "Rigidbody2D:setColliderMaterial: a .physicsmaterial path, a PhysicsMaterial or nil");
-                return;
+                throw std::runtime_error("Rigidbody2D:setColliderMaterial: a .physicsmaterial path, a PhysicsMaterial or nil");
             }
             if (material.valid()) self->setColliderMaterial(index, material);
             else self->setColliderMaterial(index, path);

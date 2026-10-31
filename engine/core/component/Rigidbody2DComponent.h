@@ -101,6 +101,8 @@ namespace jasperengine{
         std::vector<std::vector<Vector2>> pieces;
         int droppedPieces = 0;
         bool selfIntersecting = false;
+        // why it has no piece (empty when it has some)
+        std::string decompositionError;
         // the surface last applied to the shapes (friction, restitution, combine modes)
         float appliedFriction = -1.0f;
         float appliedRestitution = -1.0f;

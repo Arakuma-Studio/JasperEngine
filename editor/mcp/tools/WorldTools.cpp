@@ -88,6 +88,7 @@
 #include "window/AnimationWindow.h"
 #include "window/ProjectWindow.h"
 #include "window/TerrainEditWindow.h"
+#include "util/Angle.h"
 
 #include "stb_image.h"
 
@@ -1099,7 +1100,7 @@ bool applyCollider2D(Project* project, Scene* scene, Entity entity, const Json& 
     return true;
 }
 
-Json collider2DJson(Project* project, Scene* scene, const Collider2D& shape) {
+Json collider2DJson(Project* project, Scene* scene, Entity entity, const Collider2D& shape) {
     Json out = {{"shape", nameOf(collider2DTypes(), shape.type)}, {"density", shape.density}, {"friction", shape.friction},
                 {"restitution", shape.restitution}, {"sensor", shape.sensor},
                 {"category_bits", shape.categoryBits}, {"mask_bits", shape.maskBits}, {"group_index", shape.groupIndex}};
@@ -1111,12 +1112,13 @@ Json collider2DJson(Project* project, Scene* scene, const Collider2D& shape) {
         out["points"] = points;
         if (shape.type == Collider2DType::CHAIN) out["loop"] = shape.loop;
         if (shape.type == Collider2DType::POLYGON && shape.points.size() >= 3) {
-            // the convex Box2D pieces the polygon is split into (as the body builds it)
-            const float weld = 0.005f * scene->getSystem<PhysicsSystem>()->getPointsToMeterScale2D();
-            const Decomposition2D pieces = decomposePolygon2D(shape.points, weld, 8);
+            // the convex Box2D pieces the polygon is split into: the body's own (after the
+            // GameObject's scale, slivers Box2D cannot hull left out)
+            Collider2D pieces = shape;
+            scene->getSystem<PhysicsSystem>()->updateCollider2DPieces(entity, pieces);
             out["pieces"] = pieces.pieces.size();
             if (pieces.selfIntersecting) out["self_intersecting"] = true;
-            if (!pieces.error.empty()) out["error"] = pieces.error;
+            if (!pieces.decompositionError.empty()) out["error"] = pieces.decompositionError;
         }
     } else if (shape.type == Collider2DType::CIRCLE) {
         out["center"] = McpValues::toJson(shape.pointA);
@@ -1366,7 +1368,7 @@ void editCollidersTool(const CallPtr& call) {
         if (editing && (has(args, "add") || has(args, "update") || has(args, "remove") || boolOr(args, "clear", false))) {
             addProp<std::vector<Collider2D>>(*multi, target, target.entity, bodyType, "colliders", shapes);
         }
-        for (const Collider2D& shape : shapes) colliders.push_back(collider2DJson(target.project, scene, shape));
+        for (const Collider2D& shape : shapes) colliders.push_back(collider2DJson(target.project, scene, target.entity, shape));
     } else {
         std::vector<Collider3D> shapes;
         if (RigidbodyComponent* body = scene->findComponent<RigidbodyComponent>(target.entity)) {
@@ -1455,7 +1457,7 @@ void editCollidersTool(const CallPtr& call) {
     colliders = Json::array();
     if (is2D) {
         Rigidbody2DComponent& body = scene->getComponent<Rigidbody2DComponent>(target.entity);
-        for (const Collider2D& shape : body.colliders) colliders.push_back(collider2DJson(target.project, scene, shape));
+        for (const Collider2D& shape : body.colliders) colliders.push_back(collider2DJson(target.project, scene, target.entity, shape));
     } else {
         RigidbodyComponent& body = scene->getComponent<RigidbodyComponent>(target.entity);
         for (size_t i = 0; i < body.numColliders; i++) colliders.push_back(collider3DJson(target, body.colliders[i]));
@@ -1725,8 +1727,10 @@ void setJointTool(const CallPtr& call) {
                 if (!readVec2(args, "limits", limits, error)) { delete multi; step.fail(call, "limits must be [min, max] (or false): " + error); return; }
                 const float lower = std::min(limits.x, limits.y), upper = std::max(limits.x, limits.y);
                 if (type2D == Joint2DType::REVOLUTE) {
-                    addProp<float>(*multi, target, joint, jointType, "lowerAngle", std::max(-180.0f, lower));
-                    addProp<float>(*multi, target, joint, jointType, "upperAngle", std::min(180.0f, upper));
+                    // a revolute limit stays within a half turn each way (Box2D), in the project's unit
+                    const float halfTurn = Angle::degToDefault(180.0f);
+                    addProp<float>(*multi, target, joint, jointType, "lowerAngle", std::max(-halfTurn, lower));
+                    addProp<float>(*multi, target, joint, jointType, "upperAngle", std::min(halfTurn, upper));
                 } else if (type2D == Joint2DType::PRISMATIC || type2D == Joint2DType::WHEEL) {
                     addProp<float>(*multi, target, joint, jointType, "lowerTranslation", lower);
                     addProp<float>(*multi, target, joint, jointType, "upperTranslation", upper);

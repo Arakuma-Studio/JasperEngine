@@ -82,7 +82,7 @@ ScriptMessageMask ScriptMessages::receivers(Scene* scene, Entity entity){
                 }
             }
         }else{
-            mask |= entry.cppMessageMask;
+            mask |= entry.cppMessageMask & ~(entry.cppScript ? entry.cppScript->inheritedMessages : 0u);
         }
     }
     return mask;
@@ -130,10 +130,15 @@ int ScriptMessages::send(Scene* scene, Entity entity, ScriptMessage m,
                 }
                 lua_pop(L, 1);
             }else if (pass == 1 && entry.type != ScriptType::LUA && entry.cppScript &&
-                      (entry.cppMessageMask & scriptMessageBit(m)) && callCpp){
-                called++;
+                      (entry.cppMessageMask & scriptMessageBit(m)) && !(entry.cppScript->inheritedMessages & scriptMessageBit(m)) && callCpp){
+                ScriptBase* script = entry.cppScript;
                 try{
-                    callCpp(*entry.cppScript);
+                    ScriptBase::baseMessageRan = false;
+                    callCpp(*script);
+                    // the base method ran: not an override (not counted, not sent again)
+                    if (!ScriptBase::baseMessageRan){
+                        called++;
+                    }
                 }catch (const std::exception& e){
                     Log::error("C++ %s() failed for '%s': %s", method, entry.className.c_str(), e.what());
                 }catch (...){
