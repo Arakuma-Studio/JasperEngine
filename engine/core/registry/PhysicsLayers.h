@@ -87,6 +87,15 @@ namespace jasperengine{
         // every pair collides again
         static void resetLayerCollisionMatrix();
 
+        // The runtime collider and joint wireframes of every scene, 3D and 2D (Game view
+        // "Physics" toggle, Lua Physics.debugDraw, MCP configure_game_view physics_debug), in Play
+        // and exported builds; debugDrawContacts adds the contact points and normals. Off: nothing
+        // is drawn or computed.
+        static void setDebugDraw(bool debugDraw);
+        static bool isDebugDraw();
+        static void setDebugDrawContacts(bool debugDrawContacts);
+        static bool isDebugDrawContacts();
+
 #ifdef JASPERENGINE_PHYSICS_3D
         // Closest hit of the 3D bodies on a layer in layerMask. With a Ray, distance is
         // the fraction of ray.direction (as Ray::intersects); with origin, direction and

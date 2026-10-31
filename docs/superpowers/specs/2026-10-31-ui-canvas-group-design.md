@@ -528,3 +528,99 @@ entry points):
   - The first branch that would pass 64 widens `Signature` to `std::bitset<128>` (`ecs/Signature.h:12`) and fixes
     `editor/physics/PlacementSession.cpp:391` (`to_ullong` throws for high bits) to hash the bitset.
   - The lead should schedule this once, before these branches merge.
+
+## Implementation notes (2026-10-31, branch `gaps/ui-canvas-group`)
+
+Decisions made while implementing, where the spec was silent, ambiguous or in conflict with the code:
+
+- **Two alphas per element instead of one.** `UIComponent::groupAlpha` is the chain's product (what a Per
+  Element draw uses, what the Inspector, `getInheritedAlpha` and MCP report) and the new `groupLayerAlpha`
+  is the same relative to the nearest enclosing layered FLATTEN group (what the element draws with inside
+  that layer). The spec had a single field "relative to the layer, else absolute"; with two, a frame where
+  a layer cannot be made (its shader still compiling, an element loaded before the scene had a group and
+  reloading with the layer's pipelines, more than 4 nesting levels) falls back to Per Element with the
+  right alphas instead of drawing the subtree too opaque. `CanvasGroupComponent` also got `layered` (the
+  layer decision of the last sync) and `warnedInvalidAlpha` (the one warning per entity for a NaN).
+- **Flatten layers are drawn before the colour pass, not by ending and resuming it.** Each layered group's
+  subtree is drawn into its pooled target (cleared transparent; the size of the colour pass target, so
+  viewport and scissors are the pass's), innermost groups first so a nested layer is composited into its
+  parent's; the colour pass then composites each layer at its group's place in Hierarchy order with one
+  premultiplied quad (`g, g, g, g`) scissored to the subtree's projected bounds within the parent's
+  scissor, and skips the UI it holds. The pixels are the spec's (the layer's content does not depend on
+  what is behind it), but the colour pass is never broken, which also works for swapchain passes (sokol
+  cannot resume an MSAA swapchain pass) and costs tilers less: one extra pass per layer and the fill of
+  its bounds. The composite uses the HTML UI's passthrough program (`HTMLUI_POST` PASSTHROUGH: a
+  premultiplied image times an opacity), so no new shader type; exports always include that variant in every
+  build (it is a few KB, and a script can add a group or switch one to FLATTEN in any scene). Layer
+  draws use `PIP_RTT`/`PIP_RTT_NODEPTH`: UI elements and UI particles load them as soon as the scene has a
+  Canvas Group. The cost is therefore one offscreen pass per layered group per camera pass (plus its
+  clear) and one quad, not "two pass breaks" (7.10 and 9 above are superseded by this). Targets are
+  pooled by size (the Scene and Game views each keep theirs), groups no camera element draws make no
+  layer (culling mask, hidden), and sibling layers whose bounds do not overlap share one target. When
+  an outer layer cannot be made, the layers inside it are dropped too, so that branch draws Per
+  Element with the right alphas.
+- **What a layer holds.** UI elements (UIComponents) of the subtree. UI particles (Points under a
+  RectTransform) and non-UI renderers in the subtree draw in the colour pass after the layer, faded per
+  element (`uiGroupAlpha`), so `subtreeDraws` counts UIComponents only. A stencil mask above a flattened
+  group does not clip inside its layer (the layer has its own stencil): put the mask inside the group or
+  use the scissor (in the trade-offs of `ui.md`).
+- **Draw skip.** An element is skipped at group alpha 0 in every blend mode (a custom shader that ignores
+  the uniform still hides), and an alpha-blended one (AUTO, ALPHA, ADDITIVE) whose faded alpha is 0; never
+  an element outside any group (`groupAlpha` 1), so old scenes, including elements at colour alpha 0 with
+  depth or custom shaders, draw exactly as before. Stencil writers always draw.
+- **Fades complete in the UISystem update.** The AlphaTween's `onStop` marks the fade finished at its end
+  (or stopped early: no completion); the next `UISystem::update` (same frame, it runs after ActionSystem)
+  destroys the tween, runs `onComplete`, then deactivates. `stopFade(true)` writes the end alpha and
+  completes the fade at once (DOTween's `Complete()`; LeanTween's cancel(callOnComplete)).
+- **Unscaled tweens before coroutines.** `ActionSystem::unscaledDeltatime(dt)` is `dt / timeScale` while
+  the time scale is above 0 (exact for any step a caller makes) and, at time scale 0, the fixed frame delta
+  when set, else the last measured frame time (`1 / framerate`, capped by `maxDeltatime`). **When coroutines
+  merges**: replace the time scale 0 branch (or the whole function) with `Engine::getUnscaledDeltatime()`
+  (marked `TODO(coroutines)` in ActionSystem.cpp).
+- **Old tween files stay byte-identical**: `useUnscaledTime` and `alphaTarget` are written to scenes and
+  generated code only when not the default. The Canvas Group itself writes every field.
+- **Interactability loss** is processed in the next `UISystem::update` (`processInteractabilityLost`):
+  a pressed Button gets `onRelease` (no click), a focused InputField `onLostFocus` (keyboard hidden),
+  scrollbar and panel gestures end. Scrollbar and panel drags also stop at once in `pointerMoveOnUI`. The
+  release of a pressed button no longer requires it to be interactable, and its click requires it at
+  release (Unity's `OnPointerClick`). A non-interactable InputField does not take the focus on a press; a
+  non-interactable Panel is not brought to the front. The cursor over a non-interactable field or panel is
+  the arrow.
+- **Hit test extracted** into `UISystem::raycast(Vector2)` (public, syncs first) / `raycastHit`, used by
+  the down, up and move entry points; the down handler now clears the other elements' focus after the hit
+  is known (before, in the same loop as the hit test).
+- **Object class.** A container whose only distinctive component is its group gets the script class
+  `CanvasGroup` (a handle, like AudioSource): `getGameObject()` reaches the GameObject.
+- **create_ui** takes `canvas_group` on any node (unknown keys are errors); `create_entity` has a
+  `canvas_group` type (the menu's container). `get_entity` (edit time) also returns `canvas_group_state`.
+- **Catalog writes clamp at once** (`UpdateFlags_CanvasGroup`); UISystem's sync clamps any other raw write
+  and rejects NaN (keeping the value it saw last).
+- **Pixel test 14** has no GL infrastructure in the editor unit tests: the Flatten and Per Element overlap
+  pixels are checked in the MCP e2e test (`test_flatten_overlap_pixels`, Game view under xvfb).
+- A render mode change is structural (one full pass): it is what counts the UI elements of the
+  subtrees (the leaf rule), which the full pass does only while some group is FLATTEN.
+- Typing (char and key events) also requires the field to be interactable (it is dropped before the
+  next update takes the focus away). UI particles whose group alpha changes after the update (in
+  `onPostUpdate`) are rebuilt by `RenderSystem::draw`, so they fade the same frame.
+- Intended behaviour changes in scenes without groups are listed in `ui.md` ("Behaviour changes").
+- `docs/animation-clips.md` has no CanvasGroup recipe on main (anim-properties is not merged): nothing to
+  replace yet.
+
+What other features plug in (contracts implemented on this side):
+
+- **anim-properties (#12)**: `engine/core/animation/CanvasGroupTracks.h` has the read/write functions of the
+  `canvasgroup` rows in the registry's `bool (*)(Scene*, Entity, float*)` shape and a table
+  (`canvasGroupTracks`: property, kind, Unity name). anim-properties adds the rows to `PropertyBindings.cpp`
+  (`canvasgroup.alpha` Float continuous, `interactable`/`blocksRaycasts`/`ignoreParentGroups`/`enabled` Bool
+  discrete), drops its CanvasGroup non-goal and recipe, uses the rows for the GameOverMenu/go ports, wires
+  the Inspector's Record hook into the Canvas Group rows (`drawCanvasGroupComponent` uses `propertyRow`),
+  and enables the MCP check of an `edit_animation` track on `canvasgroup.alpha` (spec 10, MCP).
+  `CanvasGroupTest.TrackRowsMatchTheCatalogAndClamp` checks the rows against the Catalog.
+- **ui-multitouch (#5)**: `UISystem::raycast(Vector2)` already applies the group filter (D15's
+  `isPointerOverUI` follows); multitouch moves its per-pointer hit test onto it, calls
+  `UISystem::isInteractable(entity)` in its per-pointer widget code and on-screen controls' down, and turns
+  `processInteractabilityLost` into a D6 cancel of every pointer pressing the widget (it handles the single
+  legacy pointer today).
+- **coroutines (#16)**: the unscaled delta above.
+- **ui-scaling-text (#21)**: owns `docs/mcp/guide/ui.md` (created here with the Canvas Group section);
+  merge its sections around this one.

@@ -829,6 +829,41 @@ std::string editor::Generator::buildInitSceneScriptsSource(const std::vector<Sce
     }
     sourceContent += "}\n\n";
 
+    // GameObjects moved to another scene (persistence: DontDestroyOnLoad, MoveGameObjectToScene):
+    // the engine rebinds ScriptBase scripts; the GameObject wrapper kind and the wrappers the
+    // properties own follow here (their classes are known only to this code)
+    sourceContent += "extern \"C\" void PROJECT_API moveEntityScripts(jasperengine::Scene* from, jasperengine::Scene* to, const jasperengine::Entity* oldEntities, const jasperengine::Entity* newEntities, size_t count) {\n";
+    if (!scriptFiles.empty()) {
+        sourceContent += "    for (size_t i = 0; i < count; i++) {\n";
+        sourceContent += "        jasperengine::ScriptComponent* scriptComp = to->isEntityCreated(newEntities[i]) ? to->findComponent<jasperengine::ScriptComponent>(newEntities[i]) : nullptr;\n";
+        sourceContent += "        if (!scriptComp) continue;\n";
+        sourceContent += "        for (auto& scriptEntry : scriptComp->scripts) {\n";
+        sourceContent += "            if (scriptEntry.type == ScriptType::LUA || !scriptEntry.instance) continue;\n";
+        for (const auto& s : scriptFiles) {
+            sourceContent += "            if (scriptEntry.className == \"" + s.className + "\") {\n";
+            sourceContent += "                jasperengine::rebindScriptObject(static_cast<" + s.className + "*>(scriptEntry.instance), to, newEntities[i]);\n";
+            std::string references;
+            for (const auto& prop : s.properties) {
+                if (!prop.isPtr || prop.ptrTypeName.empty()) {
+                    continue;
+                }
+                references += "                    if (prop.name == \"" + prop.name + "\") jasperengine::rebindScriptReference(static_cast<" + prop.ptrTypeName + "*>(prop.ownedInstance), from, to, oldEntities, newEntities, count);\n";
+            }
+            if (!references.empty()) {
+                sourceContent += "                for (auto& prop : scriptEntry.properties) {\n";
+                sourceContent += "                    if (!prop.ownedInstance) continue;\n";
+                sourceContent += references;
+                sourceContent += "                }\n";
+            }
+            sourceContent += "            }\n";
+        }
+        sourceContent += "        }\n";
+        sourceContent += "    }\n";
+    } else {
+        sourceContent += "    (void)from; (void)to; (void)oldEntities; (void)newEntities; (void)count;\n";
+    }
+    sourceContent += "}\n\n";
+
     return sourceContent;
 }
 
@@ -845,8 +880,7 @@ std::string editor::Generator::buildCleanupSceneScriptsSource(const std::vector<
         for (const auto& s : scriptFiles) {
             sourceContent += "                if (scriptEntry.className == \"" + s.className + "\") {\n";
             sourceContent += "                    std::string addr = \"_\" + std::to_string(reinterpret_cast<std::uintptr_t>(scriptEntry.instance)) + \"_\";\n";
-            sourceContent += "                    Engine::removeSubscriptionsByTag(addr);\n";
-            sourceContent += "                    scene->removeSubscriptionsByTag(addr);\n";
+            sourceContent += "                    jasperengine::ScriptRuntime::removeSubscriptionsByTag(scene, addr);\n";
             sourceContent += "                    jasperengine::ScriptRuntime::forgetInstance(scriptEntry.instance);\n";
             sourceContent += "                    delete static_cast<" + s.className + "*>(scriptEntry.instance);\n";
             sourceContent += "                }\n";
@@ -877,8 +911,7 @@ std::string editor::Generator::buildCleanupSceneScriptsSource(const std::vector<
             sourceContent += "                    if (!prop.ownedInstance) continue;\n";
             sourceContent += "\n";
             sourceContent += "                    std::string addr = \"_\" + std::to_string(reinterpret_cast<std::uintptr_t>(prop.ownedInstance)) + \"_\";\n";
-            sourceContent += "                    Engine::removeSubscriptionsByTag(addr);\n";
-            sourceContent += "                    scene->removeSubscriptionsByTag(addr);\n";
+            sourceContent += "                    jasperengine::ScriptRuntime::removeSubscriptionsByTag(scene, addr);\n";
             sourceContent += "\n";
             sourceContent += deleteContent;
             sourceContent += "\n";
@@ -2183,6 +2216,7 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     mainContent += "extern \"C\" void cleanupScripts(jasperengine::Scene* scene);\n";
     mainContent += "extern \"C\" void initEntityScripts(jasperengine::Scene* scene, const jasperengine::Entity* entities, size_t count);\n";
     mainContent += "extern \"C\" void cleanupEntityScripts(jasperengine::Scene* scene, const jasperengine::Entity* entities, size_t count);\n";
+    mainContent += "extern \"C\" void moveEntityScripts(jasperengine::Scene* from, jasperengine::Scene* to, const jasperengine::Entity* oldEntities, const jasperengine::Entity* newEntities, size_t count);\n";
     mainContent += "\n";
 
     std::map<uint32_t, std::string> sceneIdToName;
@@ -2401,6 +2435,12 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     emitLayerCollisionMatrix("Physics", tagsAndLayers.layerCollisionMatrix3D);
     emitLayerCollisionMatrix("Physics2D", tagsAndLayers.layerCollisionMatrix2D);
 
+    // 3D world capacity, before any scene (and its world) is made: the same as in the editor
+    mainContent += "#ifdef JASPERENGINE_PHYSICS_3D\n";
+    mainContent += "    PhysicsSystem::setWorldCapacity3D(" + std::to_string(tagsAndLayers.maxBodies3D) + ", " +
+                   std::to_string(tagsAndLayers.maxBodyPairs3D) + ", " + std::to_string(tagsAndLayers.maxContactConstraints3D) + ");\n";
+    mainContent += "#endif\n";
+
     // Project Settings > Input (the engine starts with Unity's defaults), before any script reads it
     mainContent += inputActionsInitSource(inputActionsJson);
 
@@ -2432,7 +2472,9 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     }
 
     // C++ scripts of the GameObjects scripts instantiate and destroy (scene_scripts.cpp)
-    mainContent += "    ObjectManager::setCppScriptHooks(initEntityScripts, cleanupEntityScripts);\n\n";
+    mainContent += "    ObjectManager::setCppScriptHooks(initEntityScripts, cleanupEntityScripts);\n";
+    // ...and of those DontDestroyOnLoad / MoveGameObjectToScene move to another scene
+    mainContent += "    ObjectManager::setCppScriptMoveHook(moveEntityScripts);\n\n";
 
     // Loading screen, after the scene it names is registered
     const LoadingSettings defaults;

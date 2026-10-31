@@ -3125,9 +3125,6 @@ std::vector<std::pair<std::string, unsigned int>> editor::Exporter::getSceneMaxV
         agg.maxExternalBuffers  = std::max(agg.maxExternalBuffers, sceneProject.maxValues.maxExternalBuffers);
         agg.maxSpriteFrames     = std::max(agg.maxSpriteFrames, sceneProject.maxValues.maxSpriteFrames);
         agg.maxBones            = std::max(agg.maxBones, sceneProject.maxValues.maxBones);
-        agg.maxColliders3D         = std::max(agg.maxColliders3D, sceneProject.maxValues.maxColliders3D);
-        agg.maxColliderVertices3D  = std::max(agg.maxColliderVertices3D, sceneProject.maxValues.maxColliderVertices3D);
-        agg.maxColliderIndices3D   = std::max(agg.maxColliderIndices3D, sceneProject.maxValues.maxColliderIndices3D);
     }
 
     // Floor each capacity at the engine default declared in core/Engine.h: growing past the
@@ -3145,9 +3142,6 @@ std::vector<std::pair<std::string, unsigned int>> editor::Exporter::getSceneMaxV
         {"MAX_SPRITE_FRAMES", capacity(agg.maxSpriteFrames, MAX_SPRITE_FRAMES)},
         {"MAX_EXTERNAL_BUFFERS", capacity(agg.maxExternalBuffers, MAX_EXTERNAL_BUFFERS)},
         {"MAX_BONES", capacity(agg.maxBones, MAX_BONES)},
-        {"MAX_COLLIDERS_3D", capacity(agg.maxColliders3D, MAX_COLLIDERS_3D)},
-        {"MAX_COLLIDER_VERTICES_3D", capacity(agg.maxColliderVertices3D, MAX_COLLIDER_VERTICES_3D)},
-        {"MAX_COLLIDER_INDICES_3D", capacity(agg.maxColliderIndices3D, MAX_COLLIDER_INDICES_3D)},
     };
 }
 

@@ -206,6 +206,16 @@ bool editor::Conector::connect(const fs::path& buildPath, std::string libName, c
     }
     ObjectManager::setCppScriptHooks(initEntityScriptsFn, cleanupEntityScriptsFn);
 
+    // C++ scripts of GameObjects DontDestroyOnLoad / MoveGameObjectToScene move (the
+    // ScriptBase ones follow without it)
+    #ifdef _WIN32
+        ObjectManager::ScriptMoveHook moveEntityScriptsFn = reinterpret_cast<ObjectManager::ScriptMoveHook>(GetProcAddress(static_cast<HMODULE>(libHandle), "moveEntityScripts"));
+    #else
+        ObjectManager::ScriptMoveHook moveEntityScriptsFn = reinterpret_cast<ObjectManager::ScriptMoveHook>(dlsym(libHandle, "moveEntityScripts"));
+        dlerror();
+    #endif
+    ObjectManager::setCppScriptMoveHook(moveEntityScriptsFn);
+
     Out::info("Successfully connected to library");
     return true;
 }
@@ -213,6 +223,7 @@ bool editor::Conector::connect(const fs::path& buildPath, std::string libName, c
 void editor::Conector::disconnect(){
     // the code behind them goes with the library
     ObjectManager::setCppScriptHooks(nullptr, nullptr);
+    ObjectManager::setCppScriptMoveHook(nullptr);
 
     if (libHandle) {
         // C++ native plugins (plugins/native/cpp) are the library's code
