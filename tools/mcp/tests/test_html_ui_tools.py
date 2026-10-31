@@ -123,7 +123,9 @@ LIMITS.update({"create_ragdoll": 900})
 # merged by the lead (ui-canvas-group, physics-3d, http): 151 tools measured 107626 on the merged tree
 # particles: the new import_unity_particles (Unity ParticleSystem prefabs and scenes) and create_particles'
 # version 2 arguments (renderer, modules, upgrade, force, duration, speed)
-TOTAL_LIMIT = 108397  # re-measured below on the tree merged with main
+# particles merged with main (ui-canvas-group, physics-3d, http): 152 tools, total 108583 (tool_budget.py on
+# the merged tree)
+TOTAL_LIMIT = 108583
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
