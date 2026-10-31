@@ -199,7 +199,7 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
 - Continuous forces and torques go in onFixedUpdate, never onUpdate, NOT multiplied by deltatime.
   3D and 2D APIs differ (2D calls take a wake flag), concave 2D polygons: jasper://docs/physics.
 - Never write a body's transform in onFixedUpdate (overwritten): teleport with body.position
-  (rotation / angle), set body.linearVelocity. One-shot impulses: once per press, not per frame.
+  (rotation / angle), set body.linearVelocity. One-shot impulses: once per press.
 - Collisions: define onCollisionEnter / onTriggerEnter(2D) on the script; Layer Collision
   Matrix, Physics.ignoreCollision filter; raycasts take a layer mask. Settle: place_with_physics.
 
