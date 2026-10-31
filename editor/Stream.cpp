@@ -27,6 +27,8 @@
 #include "window/TerrainEditWindow.h"
 #include "physics/PlacementSettingsLimits.h"
 #include "spritenormals/SpriteNormalsRecipe.h"
+#include "input/InputActions.h"
+#include "json.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -2819,6 +2821,103 @@ void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDis
     if (node["rotationSnapDegrees"])  ds.rotationSnapDegrees  = decodePositiveFinite(node["rotationSnapDegrees"], ds.rotationSnapDegrees);
 }
 
+namespace {
+
+// ---- Project Settings > Input in project.yaml: `input: {version: 1, actions: [...]}`, the
+// shape InputActions reads as JSON (InputActions::parseActionsJson), each binding a flow map
+
+std::string inputNumber(float value) {
+    char text[32];
+    snprintf(text, sizeof(text), "%.6g", static_cast<double>(value));
+    return text;
+}
+
+YAML::Node encodeInputControls(const std::vector<InputControl>& controls) {
+    YAML::Node list(YAML::NodeType::Sequence);
+    for (const InputControl& control : controls) list.push_back(InputControlNames::name(control));
+    list.SetStyle(YAML::EmitterStyle::Flow);
+    return list;
+}
+
+YAML::Node encodeInputActions(const std::vector<InputAction>& actions) {
+    YAML::Node input;
+    input["version"] = 1;
+    YAML::Node list(YAML::NodeType::Sequence);
+    for (const InputAction& action : actions) {
+        YAML::Node node;
+        node["name"] = action.name;
+        node["type"] = InputActions::typeName(action.type);
+        if (!action.description.empty()) node["description"] = action.description;
+        if (action.pressPoint != 0.5f) node["press_point"] = inputNumber(action.pressPoint);
+        YAML::Node bindings(YAML::NodeType::Sequence);
+        for (const InputBinding& binding : action.bindings) {
+            YAML::Node b;
+            b["kind"] = InputActions::kindName(binding.kind);
+            switch (binding.kind) {
+                case InputBindingKind::Buttons:
+                    if (!binding.negative.empty()) b["negative"] = encodeInputControls(binding.negative);
+                    b["positive"] = encodeInputControls(binding.positive);
+                    if (binding.gamepad >= 0) b["gamepad"] = binding.gamepad;
+                    b["gravity"] = inputNumber(binding.gravity);
+                    b["sensitivity"] = inputNumber(binding.sensitivity);
+                    b["dead"] = inputNumber(binding.dead);
+                    if (binding.snap) b["snap"] = true;
+                    break;
+                case InputBindingKind::GamepadAxis:
+                    b["axis"] = InputControlNames::gamepadAxisName(binding.axis);
+                    if (binding.gamepad >= 0) b["gamepad"] = binding.gamepad;
+                    else b["gamepad"] = "any";
+                    b["sensitivity"] = inputNumber(binding.sensitivity);
+                    b["dead"] = inputNumber(binding.dead);
+                    break;
+                case InputBindingKind::MouseDelta:
+                    b["axis"] = InputActions::mouseAxisName(binding.mouseAxis);
+                    b["sensitivity"] = inputNumber(binding.sensitivity);
+                    break;
+            }
+            if (binding.invert) b["invert"] = true;
+            b.SetStyle(YAML::EmitterStyle::Flow);
+            bindings.push_back(b);
+        }
+        node["bindings"] = bindings;
+        list.push_back(node);
+    }
+    input["actions"] = list;
+    return input;
+}
+
+// YAML -> the JSON InputActions reads: names, kinds, axes and control names stay text ("0" is
+// the key 0, an action may be named "1"), the rest reads as numbers and booleans
+nlohmann::json inputYamlToJson(const YAML::Node& node, const std::string& key = "") {
+    static const std::set<std::string> textKeys = {"name", "description", "type", "kind", "axis", "positive", "negative"};
+    if (node.IsMap()) {
+        nlohmann::json j = nlohmann::json::object();
+        for (const auto& entry : node) {
+            const std::string child = entry.first.as<std::string>();
+            j[child] = inputYamlToJson(entry.second, child);
+        }
+        return j;
+    }
+    if (node.IsSequence()) {
+        nlohmann::json j = nlohmann::json::array();
+        for (const auto& entry : node) j.push_back(inputYamlToJson(entry, key));
+        return j;
+    }
+    if (!node.IsScalar()) return nlohmann::json();
+    const std::string text = node.Scalar();
+    if (textKeys.count(key) || node.Tag() == "!") return text;
+    if (text == "true") return true;
+    if (text == "false") return false;
+    char* end = nullptr;
+    const long long integer = std::strtoll(text.c_str(), &end, 10);
+    if (!text.empty() && end && *end == '\0') return integer;
+    const double number = std::strtod(text.c_str(), &end);
+    if (!text.empty() && end && *end == '\0') return number;
+    return text;
+}
+
+}
+
 YAML::Node editor::Stream::encodeProject(Project* project) {
     YAML::Node root;
 
@@ -2919,6 +3018,16 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (pairs2D.size() != 0) ignoredNode["physics2D"] = pairs2D;
         if (ignoredNode.size() != 0) {
             root["ignoredLayerCollisions"] = ignoredNode;
+        }
+    }
+
+    // Project Settings > Input: only once edited (an old project reads Unity's defaults)
+    if (project->hasCustomInputActions()) {
+        root["input"] = encodeInputActions(project->getInputActions());
+    } else if (!project->getUnreadableInputNode().empty()) {
+        try {
+            root["input"] = YAML::Load(project->getUnreadableInputNode());
+        } catch (const YAML::Exception&) {
         }
     }
 
@@ -3320,6 +3429,23 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         project->setLayerCollisionMatrices(
             decodeIgnoredPairs(isMap ? ignoredNode["physics"] : YAML::Node(), "physics"),
             decodeIgnoredPairs(isMap ? ignoredNode["physics2D"] : YAML::Node(), "physics2D"));
+    }
+
+    {
+        // Project Settings > Input; no node: Unity's Input Manager defaults
+        const YAML::Node inputNode = node["input"];
+        std::vector<InputAction> actions = InputActions::defaults();
+        std::string error;
+        if (inputNode && !inputNode.IsNull()) {
+            if (!InputActions::parseActionsJson(inputYamlToJson(inputNode).dump(), actions, &error)) {
+                Out::error("Project Settings > Input could not be read from project.yaml (%s): the default "
+                           "actions are used, and the input node is kept as it is until the actions are edited",
+                           error.c_str());
+                actions = InputActions::defaults();
+            }
+        }
+        project->setInputActions(actions);
+        if (!error.empty()) project->setUnreadableInputNode(YAML::Dump(inputNode));
     }
 
     if (node["export"] && node["export"].IsMap()) {
