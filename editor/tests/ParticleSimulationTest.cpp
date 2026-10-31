@@ -210,8 +210,9 @@ TEST(ParticleSimulation, BySpeedModules) {
     // speed 5 of 0..10: half way on each curve
     EXPECT_NEAR(ps.state.size[0].x, 0.5f, 0.02f);
     EXPECT_NEAR(ps.state.rotation[0].z, 1.0f * 0.5f, 0.03f) << "1 rad/s for 0.5 s";
-    EXPECT_NEAR(ps.state.color[0].x, 0.5f, 0.02f);
-    EXPECT_NEAR(ps.state.color[0].z, 0.5f, 0.02f);
+    // gradients blend their keys in sRGB (as Unity): half way is sRGB 0.5, linear 0.214
+    EXPECT_NEAR(ps.state.color[0].x, 0.214f, 0.02f);
+    EXPECT_NEAR(ps.state.color[0].z, 0.214f, 0.02f);
 }
 
 TEST(ParticleSimulation, TextureSheetTimeModes) {

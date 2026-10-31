@@ -249,7 +249,8 @@ namespace {
                 object.body["m_Father"] = father;
             }
             object.id = instanceObjectId(item.first, doc.fileId);
-            graph[object.id] = object;
+            graph.erase(object.id);
+            graph.emplace(object.id, object);
         }
     }
 
@@ -787,7 +788,7 @@ namespace {
         // _TintColor (x 2 in Unity's legacy particle shaders) or _Color: the base colour
         YAML::Node tint = savedProperty(saved["m_Colors"], "_TintColor");
         const bool hasTint = tint && tint.IsMap();
-        if (!hasTint) tint = savedProperty(saved["m_Colors"], "_Color");
+        if (!hasTint) tint.reset(savedProperty(saved["m_Colors"], "_Color"));
         if (tint && tint.IsMap()){
             Vector4 c(readFloat(tint, "r", 1), readFloat(tint, "g", 1), readFloat(tint, "b", 1), readFloat(tint, "a", 1));
             if (hasTint && legacyTint) c = c * 2.0f;

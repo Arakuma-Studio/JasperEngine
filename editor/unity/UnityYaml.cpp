@@ -45,32 +45,40 @@ bool YamlFile::parse(const std::string& text, std::string& error){
     index.clear();
     std::istringstream in(text);
     std::string line;
-    Document current;
+    // the header of the document being read (its body is built at flush: a YAML::Node is never
+    // assigned over, which would change the node it shares with a document already stored)
+    Document header;
     bool open = false;
     std::string body;
     auto flush = [&]() -> bool {
         if (!open) return true;
+        Document doc;
+        doc.classId = header.classId;
+        doc.fileId = header.fileId;
+        doc.stripped = header.stripped;
         try {
             const YAML::Node root = YAML::Load(body);
             if (root && root.IsMap() && root.size() > 0){
-                current.typeName = root.begin()->first.as<std::string>();
-                current.body = root.begin()->second;
+                doc.typeName = root.begin()->first.as<std::string>();
+                doc.body.reset(root.begin()->second);
             }
         } catch (const YAML::Exception& e){
-            error = "YAML error in the document &" + std::to_string(current.fileId) + ": " + e.what();
+            error = "YAML error in the document &" + std::to_string(doc.fileId) + ": " + e.what();
             return false;
         }
-        index[current.fileId] = documents.size();
-        documents.push_back(current);
+        index[doc.fileId] = documents.size();
+        documents.push_back(doc);
         return true;
     };
     while (std::getline(in, line)){
         if (!line.empty() && line.back() == '\r') line.pop_back();
         if (line.compare(0, 4, "--- ") == 0){
             if (!flush()) return false;
-            current = Document();
+            header.classId = 0;
+            header.fileId = 0;
+            header.stripped = false;
             body.clear();
-            open = parseHeader(line, current);
+            open = parseHeader(line, header);
             if (!open){
                 error = "unexpected document header: " + line;
                 return false;
