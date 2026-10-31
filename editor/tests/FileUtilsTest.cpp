@@ -124,6 +124,35 @@ TEST_F(FileUtilsTest, ListsDataFolders) {
     EXPECT_NE(error.find("only data:// folders can be listed"), std::string::npos);
 }
 
+TEST_F(FileUtilsTest, DesktopUserDataFolderMigratesTheOldSettingsOnce) {
+    // an older desktop build saved UserSettings.xml in the working directory
+    const fs::path workingDir = root / "install";
+    scriptdata::writeFile(workingDir / "UserSettings.xml", "<userSettings><coins>5</coins></userSettings>");
+    const fs::path previous = fs::current_path();
+    fs::current_path(workingDir);
+    const fs::path perUser = root / "home" / ".local" / "share" / "com.example.game";
+    const bool made = jasperengine::FileUtils::prepareUserDataFolder(perUser.string());
+    const std::string copied = scriptdata::readFile(perUser / "UserSettings.xml");
+    // a second run: the copy is not redone (the per-user file has the newer saves)
+    scriptdata::writeFile(perUser / "UserSettings.xml", "<userSettings><coins>9</coins></userSettings>");
+    const bool again = jasperengine::FileUtils::prepareUserDataFolder(perUser.string());
+    // a fresh folder without an old file next to the game: just made
+    fs::remove(workingDir / "UserSettings.xml");
+    const fs::path other = root / "home" / "other";
+    const bool fresh = jasperengine::FileUtils::prepareUserDataFolder(other.string());
+    fs::current_path(previous);
+    EXPECT_TRUE(made);
+    EXPECT_EQ(copied, "<userSettings><coins>5</coins></userSettings>") << "copied from the working directory";
+    EXPECT_TRUE(again);
+    EXPECT_TRUE(fresh);
+    EXPECT_EQ(scriptdata::readFile(perUser / "UserSettings.xml"), "<userSettings><coins>9</coins></userSettings>");
+    EXPECT_TRUE(fs::is_directory(other));
+    EXPECT_FALSE(fs::exists(other / "UserSettings.xml"));
+    // a folder that cannot be made (a file is in the way): false, the caller keeps "."
+    scriptdata::writeFile(root / "blocker", "x");
+    EXPECT_FALSE(jasperengine::FileUtils::prepareUserDataFolder((root / "blocker" / "sub").string()));
+}
+
 TEST_F(FileUtilsTest, LuaFileFunctions) {
     EXPECT_EQ(eval("return tostring(File.writeText('data://save.txt', 'hello'))"), "true");
     EXPECT_EQ(eval("return File.readText('data://save.txt')"), "hello");
