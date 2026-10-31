@@ -146,6 +146,10 @@ typedef struct b2World
 	b2CustomFilterFcn* customFilterFcn;
 	void* customFilterContext;
 
+	// JASPER PATCH: surface callbacks (upstream 3.1 API)
+	b2FrictionCallback* frictionCallback;
+	b2RestitutionCallback* restitutionCallback;
+
 	int workerCount;
 	b2EnqueueTaskCallback* enqueueTaskFcn;
 	b2FinishTaskCallback* finishTaskFcn;

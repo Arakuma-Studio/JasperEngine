@@ -98,12 +98,22 @@ namespace jasperengine {
         bool changeTransformChildren(Entity entity);
         // the entity has a Transform with a parent or with children
         bool isInHierarchy(Entity entity);
+        // `root` and its descendants whose activeInHierarchy is the same as root's (each one's
+        // own flag and every parent's up to root are active), in pre-order
+        std::vector<Entity> collectActivationBranch(Entity root);
+        // addEntityChild without the activation check
+        void setEntityChild(Entity parent, Entity child, bool changeTransform);
 
     protected:
         virtual void onComponentAdded(Entity entity, ComponentId componentId) { (void)entity; (void)componentId; }
         virtual void onComponentRemoved(Entity entity, ComponentId componentId) { (void)entity; (void)componentId; }
         virtual void onEntityDestroyed(Entity entity, Signature signature) { (void)entity; (void)signature; }
         virtual void onEntityLayerChanged(Entity entity) { (void)entity; }
+        // setEntityActive / addEntityChild: `changed` are the entities whose activeInHierarchy
+        // flipped (the moved or (de)activated one and the descendants that follow it), parents
+        // before children, all now `nowActive`. Only asked for when isActivationObserved().
+        virtual bool isActivationObserved() const { return false; }
+        virtual void onActiveInHierarchyChanged(const std::vector<Entity>& changed, bool nowActive) { (void)changed; (void)nowActive; }
 
     public:
         EntityRegistry();
@@ -193,6 +203,10 @@ namespace jasperengine {
         // A scene sets it past the ids it recreates, so what it creates next stays clear of them.
         void setLastEntity(Entity entity); // for internal editor use only
         std::vector<Entity> getEntityList() const;
+        // Every entity in hierarchy pre-order: the Transform hierarchy as the Hierarchy panel
+        // shows it (parents before children, siblings in order, roots in order), then the
+        // entities without a Transform by ascending id
+        std::vector<Entity> getHierarchyOrder() const;
 
         void setDefaultEntityPool(EntityPool pool);
         EntityPool getDefaultEntityPool() const;

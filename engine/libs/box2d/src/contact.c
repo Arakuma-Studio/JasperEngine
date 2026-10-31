@@ -334,8 +334,13 @@ void b2CreateContact( b2World* world, b2Shape* shapeA, b2Shape* shapeB )
 	contactSim->shapeIdB = shapeIdB;
 	contactSim->cache = b2_emptySimplexCache;
 	contactSim->manifold = ( b2Manifold ){ 0 };
-	contactSim->friction = b2MixFloats( shapeA->friction, shapeB->friction, world->frictionMixingRule );
-	contactSim->restitution = b2MixFloats( shapeA->restitution, shapeB->restitution, world->restitutionMixingRule );
+	// JASPER PATCH: surface callbacks (upstream 3.1 API)
+	contactSim->friction = world->frictionCallback != NULL
+		? world->frictionCallback( shapeA->friction, shapeA->userMaterialId, shapeB->friction, shapeB->userMaterialId )
+		: b2MixFloats( shapeA->friction, shapeB->friction, world->frictionMixingRule );
+	contactSim->restitution = world->restitutionCallback != NULL
+		? world->restitutionCallback( shapeA->restitution, shapeA->userMaterialId, shapeB->restitution, shapeB->userMaterialId )
+		: b2MixFloats( shapeA->restitution, shapeB->restitution, world->restitutionMixingRule );
 	contactSim->tangentSpeed = 0.0f;
 	contactSim->simFlags = 0;
 
@@ -552,6 +557,17 @@ bool b2UpdateContact( b2World* world, b2ContactSim* contactSim, b2Shape* shapeA,
 	{
 		// Save old manifold
 		b2Manifold oldManifold = contactSim->manifold;
+
+		// JASPER PATCH: surface callbacks (upstream 3.1 API)
+		// the shapes' surface may have changed since the contact was made (a runtime material
+		// edit, b2Shape_SetFriction...): mixed again so a resting contact follows without being
+		// destroyed and made again (no end / begin events)
+		contactSim->friction = world->frictionCallback != NULL
+			? world->frictionCallback( shapeA->friction, shapeA->userMaterialId, shapeB->friction, shapeB->userMaterialId )
+			: b2MixFloats( shapeA->friction, shapeB->friction, world->frictionMixingRule );
+		contactSim->restitution = world->restitutionCallback != NULL
+			? world->restitutionCallback( shapeA->restitution, shapeA->userMaterialId, shapeB->restitution, shapeB->userMaterialId )
+			: b2MixFloats( shapeA->restitution, shapeB->restitution, world->restitutionMixingRule );
 
 		// Compute new manifold
 		b2ManifoldFcn* fcn = s_registers[shapeA->type][shapeB->type].fcn;

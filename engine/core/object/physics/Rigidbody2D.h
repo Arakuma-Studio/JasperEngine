@@ -11,6 +11,7 @@
 #include "EntityHandle.h"
 #include "math/Vector2.h"
 #include "component/Rigidbody2DComponent.h"
+#include "physics/PhysicsMaterial.h"
 
 
 namespace jasperengine{
@@ -21,6 +22,12 @@ namespace jasperengine{
     class JASPERENGINE_API Rigidbody2D: public EntityHandle{
     protected:
         void checkBody(const Rigidbody2DComponent& body) const;
+        // the collider at index; out of range: an error (a Lua error)
+        Collider2D& colliderAt(size_t index) const;
+        // a collider's data changed: its shapes are made again at the next step
+        void colliderChanged(size_t index);
+        // the explicit mass fields changed
+        void massChanged();
 
     public:
         Rigidbody2D(Scene* scene, Entity entity);
@@ -32,7 +39,9 @@ namespace jasperengine{
         Rigidbody2D& operator=(Rigidbody2D&& rhs) noexcept;
 
         b2BodyId getBox2DBody() const;
+        // the first Box2D shape of the collider (a polygon split in convex pieces has several)
         b2ShapeId getBox2DShape(size_t index) const;
+        std::vector<b2ShapeId> getBox2DShapes(size_t index) const;
         b2ChainId getBox2DChain(size_t index) const;
 
         GameObject getAttachedObject();
@@ -45,14 +54,42 @@ namespace jasperengine{
         int createCenteredBoxCollider(float width, float height);
         int createCenteredBoxCollider(float width, float height, Vector2 center, float angle);
         int createRoundedBoxCollider(float width, float height, float radius);
+        // any simple polygon of 3+ points, concave too (split in convex pieces)
         int createPolygonCollider(std::vector<Vector2> vertices);
         int createCircleCollider(Vector2 center, float radius);
         int createCapsuleCollider(Vector2 center1, Vector2 center2, float radius);
         int createSegmentCollider(Vector2 point1, Vector2 point2);
-        // one-sided: counter-clockwise collides outside, clockwise inside
+        // one-sided: counter-clockwise collides outside, clockwise inside. 2 or 3 points (not a
+        // loop of 4+) make two-sided segments (Unity EdgeCollider2D)
         int createChainCollider(std::vector<Vector2> vertices, bool loop);
 
         void removeAllColliders();
+        // the later colliders shift down an index; false when out of range
+        bool removeCollider(size_t index);
+
+        // collider edits: only that collider is made again, the body keeps its velocity,
+        // joints and the contacts of its other colliders
+        void setColliderPoints(size_t index, std::vector<Vector2> points);
+        std::vector<Vector2> getColliderPoints(size_t index) const;
+        void setColliderLoop(size_t index, bool loop);
+        bool isColliderLoop(size_t index) const;
+        void setColliderRadius(size_t index, float radius);
+        float getColliderRadius(size_t index) const;
+        void setColliderCenter(size_t index, Vector2 center);
+        Vector2 getColliderCenter(size_t index) const;
+        void setColliderSegment(size_t index, Vector2 pointA, Vector2 pointB);
+        // a .physicsmaterial path ("" = none) or a script's material, over the body's
+        void setColliderMaterial(size_t index, const std::string& path);
+        void setColliderMaterial(size_t index, const PhysicsMaterial& material);
+        void clearColliderMaterial(size_t index);
+        // the material the collider uses (its own, else the body's); invalid when none
+        PhysicsMaterial getColliderMaterial(size_t index) const;
+        std::string getColliderMaterialPath(size_t index) const;
+        // Unity isTrigger: the sensor flag
+        void setColliderTrigger(size_t index, bool trigger);
+        bool isColliderTrigger(size_t index) const;
+        // the Box2D shapes of the collider (convex pieces of a polygon, segments of a chain)
+        size_t getColliderPieceCount(size_t index) const;
 
         std::vector<Contact2D> getBodyContacts();
         std::vector<Contact2D> getColliderContacts(size_t index);
@@ -155,6 +192,35 @@ namespace jasperengine{
         float getMass() const;
         float getRotationalInertia() const;
 
+        // Unity Rigidbody2D mass fields: setting mass, centerOfMass or inertia turns its
+        // automatic computation off (useAutoMass, autoCenterOfMass, autoInertia)
+        void setMass(float mass);
+        bool isUseAutoMass() const;
+        void setUseAutoMass(bool useAutoMass);
+        // body-local, in collider units (points)
+        Vector2 getCenterOfMass() const;
+        void setCenterOfMass(Vector2 center);
+        bool isAutoCenterOfMass() const;
+        void setAutoCenterOfMass(bool autoCenterOfMass);
+        // kg m^2 about the centre of mass
+        float getInertia() const;
+        void setInertia(float inertia);
+        bool isAutoInertia() const;
+        void setAutoInertia(bool autoInertia);
+
+        CollisionDetectionMode2D getCollisionDetection() const;
+        void setCollisionDetection(CollisionDetectionMode2D mode);
+        RigidbodySleepMode2D getSleepingMode() const;
+        void setSleepingMode(RigidbodySleepMode2D mode);
+
+        // default material of the colliders without one
+        void setMaterial(const std::string& path);
+        void setMaterial(const PhysicsMaterial& material);
+        void clearMaterial();
+        PhysicsMaterial getMaterial() const;
+        std::string getMaterialPath() const;
+
+        // the mass from the colliders again (then the explicit mass fields, if any)
         void applyMassFromColliders();
 
         // Cleared by each fixed step: apply from onFixedUpdate, unscaled by dt.

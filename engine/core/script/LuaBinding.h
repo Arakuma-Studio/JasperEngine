@@ -33,7 +33,30 @@ namespace jasperengine {
         static int luaRegisterEvent(lua_State* L);
         static int luaRegisterEngineEvent(lua_State* L);
         static int luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex, const char* methodName, const char* tag, bool guardActive);
+        static int luaUnregisterEvent(lua_State* L);
+        static int luaUnregisterEngineEvent(lua_State* L);
+        // Pushes the tag RegisterEvent / RegisterEngineEvent give a subscription
+        static void pushSubscriptionTag(lua_State* L, int selfIndex, const char* methodName, const char* tag);
+        // Pushes Engine.<methodName> (an Engine event object), or raises the registration's error
+        static int pushEngineEvent(lua_State* L, const char* caller, const char* methodName);
         static std::string getScriptSubscriptionTag(int luaRef);
+
+        // script instances (script-lifecycle 6.7, 7.1): the metatable of every instance, the
+        // members every instance has (enabled, isActiveAndEnabled, gameObject, getScript...)
+        static int luaInstanceIndex(lua_State* L);
+        static int luaInstanceNewIndex(lua_State* L);
+
+        // GameObject / EntityHandle script lookups (binding/ScriptClassesLua.cpp)
+        static int luaGetScript(lua_State* L);
+        static int luaGetScripts(lua_State* L);
+        static int luaGetScriptInChildren(lua_State* L);
+        static int luaGetScriptsInChildren(lua_State* L);
+        static int luaGetScriptInParent(lua_State* L);
+        static int luaFind(lua_State* L);
+        static int luaFindWithTag(lua_State* L);
+        static int luaFindGameObjectsWithTag(lua_State* L);
+        static int luaFindObjectOfType(lua_State* L);
+        static int luaFindObjectsOfType(lua_State* L);
 
         static int moduleLoader(lua_State *L);
         static int handleLuaError(lua_State* L);
@@ -53,6 +76,7 @@ namespace jasperengine {
         static void registerHtmlUIAnimeClasses(lua_State *L);
         static void registerHtmlUIVectorClasses(lua_State *L);
         static void registerHtmlUIMediaClasses(lua_State *L);
+        static void registerScriptClasses(lua_State *L);
 
         static void init();
 
@@ -70,11 +94,9 @@ namespace jasperengine {
         static std::string normalizePtrTypeName(std::string value);
         template <typename T>
         static bool pushEntityHandleTyped(lua_State* L, Scene* scene, Entity entity);
-        static bool pushEntityHandleByType(lua_State* L, Scene* scene, Entity entity, const std::string& ptrTypeName);
 
         static bool createLuaScriptInstance(lua_State* L, Scene* scene, Entity entity, ScriptEntry& scriptEntry);
         static void resolveLuaScriptReferences(lua_State* L, Scene* scene, ScriptEntry& scriptEntry);
-        static void callLuaScriptFunction(lua_State* L, ScriptEntry& scriptEntry, const char* function);
         static void releaseLuaScriptInstance(Scene* scene, ScriptEntry& scriptEntry);
 
     public:
@@ -113,21 +135,47 @@ namespace jasperengine {
         static void removeScriptSubscriptions(Scene* scene, int luaRef);
         static void releaseLuaRef(int luaRef);
 
-        // For editor scripts use
+        // A scene's Lua scripts without C++ ones (the editor without a script library):
+        // createLuaScripts, ScriptRuntime::awakeScene (init, onEnable), then the scene's HTML
+        // documents' scripts. The generated initScripts does the same with the C++ scripts
+        // made and bound between the first two.
         static void initializeLuaScripts(Scene* scene);
+        // ScriptRuntime::unloadScenes (onDisable, onDestroy of every script still alive, Lua and
+        // C++), then the Lua instances are released
         static void cleanupLuaScripts(Scene* scene);
 
-        // The scripts of some GameObjects only: ones a script instantiated, ones destroyed
-        // (their onDestroy() is called first)
+        // The Lua instances of every script entry (enabled or not) of the scene, and their
+        // entity references; nothing is called yet
+        static void createLuaScripts(Scene* scene);
+        // ...of some GameObjects only (instantiated ones)
+        static void createLuaScripts(Scene* scene, const std::vector<Entity>& entities);
+
+        // The scripts of some GameObjects only: createLuaScripts then ScriptRuntime::awakeEntities;
+        // ScriptRuntime::destroyEntities (onDisable, onDestroy) then the instances are released
         static void initializeLuaScripts(Scene* scene, const std::vector<Entity>& entities);
         static void cleanupLuaScripts(Scene* scene, const std::vector<Entity>& entities);
 
+        // The table of the methods every Lua script instance has after its own class's
+        // (getScript...; ScriptInstanceBase): features add theirs to it
+        static void pushScriptInstanceBase(lua_State* L);
+        // t[key] of the value at `index` in a protected call (a class's __index may raise):
+        // pushes the value, or nil and false on an error
+        static bool protectedGetField(lua_State* L, int index, const char* key);
+        // The engine members of a Lua script instance (enabled, isActiveAndEnabled, gameObject),
+        // plain fields of a table the instance reads through: ScriptRuntime keeps them current
+        static void syncScriptMembers(Scene* scene, Entity entity, const ScriptEntry& entry, bool activeAndEnabled);
+        // Pushes the Lua instance of a script entry; false (nothing pushed) without one
+        static bool pushScriptInstance(lua_State* L, const ScriptEntry& entry);
+
+        // Pushes the wrapper of that type name (case-insensitive, "Sprite", "camera"...) for the
+        // GameObject; an unknown name gives an EntityHandle (with a warning)
+        static bool pushEntityHandleByType(lua_State* L, Scene* scene, Entity entity, const std::string& ptrTypeName);
         // Pushes what a script sees for a GameObject: its Lua script instance of class
         // `className` (its first one when empty), else a handle typed after className
         static bool pushScriptObject(lua_State* L, Scene* scene, Entity entity, const std::string& className);
-        // Calls `method` on every Lua script instance of the GameObject that defines it, with
-        // `args` spread as its parameters (an Animation Player's clip event, animation clips spec
-        // 3.5). True when at least one script defines it.
+        // Calls `method` on every enabled Lua script instance of the GameObject that defines it,
+        // with `args` spread as its parameters (an Animation Player's clip event, animation clips
+        // spec 3.5). True when at least one script defines it. ScriptMessages::sendNamed.
         static bool callLuaScriptMethod(Scene* scene, Entity entity, const std::string& method, const std::vector<AnimationEventArg>& args);
         static void clearLoadedProjectModules();
 

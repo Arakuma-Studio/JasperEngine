@@ -151,9 +151,16 @@ bool isVertexAnimationProperty(ComponentType component, const std::string& prope
 // String properties holding an asset reference instead of plain text: stored relative to the
 // assets folder, project-relative over MCP (a model's or document's filename, a Pose Animator's
 // animation, an Animation Player's clip, a Vertex Animator's animation)
+// A Rigidbody 2D's or one of its colliders' physics material (a .physicsmaterial)
+bool isPhysicsMaterialProperty(ComponentType component, const std::string& propertyName) {
+    return component == ComponentType::Rigidbody2DComponent &&
+           (propertyName == "material" || (propertyName.compare(0, 10, "colliders[") == 0 && endsWith(propertyName, "].material")));
+}
+
 bool isAssetPathProperty(ComponentType component, const std::string& propertyName) {
     return propertyName == "filename" || (component == ComponentType::PoseAnimatorComponent && propertyName == "animation") ||
-           isPlayerClipProperty(component, propertyName) || isVertexAnimationProperty(component, propertyName);
+           isPlayerClipProperty(component, propertyName) || isVertexAnimationProperty(component, propertyName) ||
+           isPhysicsMaterialProperty(component, propertyName);
 }
 
 // Stochastic Tiling's values of a material, in the Inspector's ranges: false (and error) out of
@@ -496,6 +503,41 @@ const EnumOptions& audioAttenuationOptions() {
         {(int)AudioSourceAttenuation::INVERSE_DISTANCE, "inverse_distance", "Inverse Distance"},
         {(int)AudioSourceAttenuation::LINEAR_DISTANCE, "linear_distance", "Linear Distance"},
         {(int)AudioSourceAttenuation::EXPONENTIAL_DISTANCE, "exponential_distance", "Exponential Distance"}
+    };
+    return options;
+}
+
+const EnumOptions& jointAnchorSpaceOptions() {
+    static const EnumOptions options = {
+        {(int)JointAnchorSpace::WORLD, "world", "World"},
+        {(int)JointAnchorSpace::LOCAL, "local", "Local"}
+    };
+    return options;
+}
+
+const EnumOptions& jointBreakActionOptions() {
+    static const EnumOptions options = {
+        {(int)JointBreakAction::IGNORE, "ignore", "Ignore"},
+        {(int)JointBreakAction::CALLBACK_ONLY, "callback_only", "Callback Only"},
+        {(int)JointBreakAction::DISABLE, "disable", "Disable"},
+        {(int)JointBreakAction::DESTROY, "destroy", "Destroy"}
+    };
+    return options;
+}
+
+const EnumOptions& collisionDetection2DOptions() {
+    static const EnumOptions options = {
+        {(int)CollisionDetectionMode2D::DISCRETE, "discrete", "Discrete"},
+        {(int)CollisionDetectionMode2D::CONTINUOUS, "continuous", "Continuous"}
+    };
+    return options;
+}
+
+const EnumOptions& sleepMode2DOptions() {
+    static const EnumOptions options = {
+        {(int)RigidbodySleepMode2D::NEVER_SLEEP, "never_sleep", "Never Sleep"},
+        {(int)RigidbodySleepMode2D::START_AWAKE, "start_awake", "Start Awake"},
+        {(int)RigidbodySleepMode2D::START_ASLEEP, "start_asleep", "Start Asleep"}
     };
     return options;
 }
@@ -1083,6 +1125,8 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
             break;
         case ComponentType::Joint2DComponent:
             if (name == "type") return &joint2DTypeOptions();
+            if (name == "anchorSpace") return &jointAnchorSpaceOptions();
+            if (name == "breakAction") return &jointBreakActionOptions();
             break;
         case ComponentType::Joint3DComponent:
             if (name == "type") return &joint3DTypeOptions();
@@ -1124,6 +1168,8 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
         case ComponentType::Rigidbody2DComponent:
             if (name == "type") return &bodyTypeOptions();
             if (name == "colliders[].type") return &collider2DTypeOptions();
+            if (name == "collisionDetection") return &collisionDetection2DOptions();
+            if (name == "sleepingMode") return &sleepMode2DOptions();
             break;
         case ComponentType::RigidbodyComponent:
             if (name == "type") return &bodyTypeOptions();
@@ -2966,7 +3012,24 @@ bool isFluidPreset(const McpValues::Change& change) {
 
 }
 
+namespace {
+
+// names from before a component's field was renamed: a 2D collider's "vertices" are its "points"
+void normalizeChangeName(McpValues::Change& change) {
+    if (change.component != ComponentType::Rigidbody2DComponent || change.property.compare(0, 10, "colliders[") != 0) return;
+    const size_t at = change.property.find("].vertices");
+    if (at != std::string::npos) change.property.replace(at, 10, "].points");
+}
+
+}
+
 bool McpValues::parseChanges(const Json& changes, std::vector<Change>& out, std::string& error) {
+    if (!parseChangesAsGiven(changes, out, error)) return false;
+    for (Change& change : out) normalizeChangeName(change);
+    return true;
+}
+
+bool McpValues::parseChangesAsGiven(const Json& changes, std::vector<Change>& out, std::string& error) {
     out.clear();
     if (changes.is_object()) {
         // {component: {property: value}}

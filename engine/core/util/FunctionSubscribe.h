@@ -289,6 +289,18 @@ namespace jasperengine {
             return false;
         }
 
+        // A live subscription with this tag (RegisterEvent / add)
+        bool has(const std::string& tag) const{
+            if (subscribers) {
+                for (const auto& subscriber : *subscribers) {
+                    if (!subscriber->removed && subscriber->tag == tag) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
         size_t removeByTagSubstring(const std::string& substring){
             size_t removed = 0;
             for (size_t i = 0; subscribers && i < subscribers->size(); ) {
@@ -407,7 +419,8 @@ namespace jasperengine {
     class Scene;
 
     // True when a script instance may receive engine events: its GameObject is active
-    // in hierarchy and its script entry is enabled (defined in ScriptBase.cpp).
+    // in hierarchy, its script entry is enabled, and it is not enabled-but-not-started yet
+    // (start runs before its first update; defined in ScriptBase.cpp).
     JASPERENGINE_API bool isScriptActive(Scene* scene, unsigned int entity, const void* instance);
 
     namespace detail {
