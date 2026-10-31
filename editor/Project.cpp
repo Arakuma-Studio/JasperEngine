@@ -75,6 +75,8 @@
 #include "texture/Texture.h"
 #include "component/UIDocumentComponent.h"
 #include "Engine.h"
+#include "io/UserSettings.h"
+#include "io/UserSettingsStore.h"
 #include "pool/ShaderPool.h"
 #include "shader/ShaderBuilder.h"
 #include "shader/ShaderVariantCollector.h"
@@ -2565,6 +2567,47 @@ const editor::LayerCollisionRows& editor::Project::getLayerCollisionMatrix2D() c
 void editor::Project::applyLayerCollisionMatrices() const{
     Physics::getLayerCollisionMatrix().setRows(layerCollisionMatrix3D.data());
     Physics2D::getLayerCollisionMatrix().setRows(layerCollisionMatrix2D.data());
+}
+
+void editor::Project::setInputActions(const std::vector<InputAction>& actions){
+    inputActions = actions;
+    inputActionsCustomized = InputActions::actionsToJson(actions) != InputActions::actionsToJson(InputActions::defaults());
+    unreadableInputNode.clear();
+    applyInputActions();
+}
+
+const std::vector<InputAction>& editor::Project::getInputActions() const{
+    return inputActions;
+}
+
+bool editor::Project::hasCustomInputActions() const{
+    return inputActionsCustomized;
+}
+
+void editor::Project::resetInputActions(){
+    setInputActions(InputActions::defaults());
+}
+
+void editor::Project::applyInputActions() const{
+    InputActions::setActions(inputActions);
+}
+
+std::string editor::Project::getInputActionsJsonForBuild() const{
+    return inputActionsCustomized ? InputActions::actionsToJson(inputActions) : std::string();
+}
+
+void editor::Project::setUnreadableInputNode(const std::string& yaml){
+    unreadableInputNode = yaml;
+}
+
+const std::string& editor::Project::getUnreadableInputNode() const{
+    return unreadableInputNode;
+}
+
+void editor::Project::resetPlayInput() const{
+    Input::reset();
+    InputActions::resetRuntimeState();
+    applyInputActions();
 }
 
 static bool isInsideRoot(const std::filesystem::path& path, const std::filesystem::path& root){
@@ -5515,6 +5558,7 @@ void editor::Project::resetConfigs() {
     runtimeShadersEnabled = defaultRuntimeShadersEnabled;
     setTagsAndLayers({}, {});
     setLayerCollisionMatrices(allLayersCollide(), allLayersCollide());
+    resetInputActions();
     packNativeResources = defaultPackNativeResources;
     versionControlMetadata = defaultVersionControlMetadata;
     shaderOverrides = {};
@@ -6083,6 +6127,8 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
 
         projectPath = path;
         refreshTrustedRoots();
+        // PlayerPrefs are the project's (.jasperengine/user/rundata): read from the new one
+        UserSettingsStore::instance().unload();
         fs::path projectFile = projectPath / "project.yaml";
 
         // Set the project name so libName (used for the generated CMake target
@@ -6373,6 +6419,8 @@ bool editor::Project::saveProjectToPath(const std::filesystem::path& path) {
 
     projectPath = path;
     refreshTrustedRoots();
+    // PlayerPrefs are the project's (.jasperengine/user/rundata): read from the new one
+    UserSettingsStore::instance().unload();
 
     // If we're moving from a temp path, handle the file transfers
     if (wasTemp && oldPath != path) {
@@ -6467,6 +6515,8 @@ bool editor::Project::loadProject(const std::filesystem::path requestedPath, boo
         resetConfigs();
         projectPath = path;
         refreshTrustedRoots();
+        // PlayerPrefs are the project's (.jasperengine/user/rundata): read from the new one
+        UserSettingsStore::instance().unload();
 
         // shader manifests of forks are read from this project's files
         // (the project root, else the assets directory: findShaderFile, read when asked, so
@@ -6896,7 +6946,7 @@ void editor::Project::configureGenerator() {
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, getPlayerSettings());
+    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, getInputActionsJsonForBuild(), getPlayerSettings());
 }
 
 std::vector<editor::SceneScriptSource> editor::Project::prepareScriptBuild() {
@@ -8598,7 +8648,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-    generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, getPlayerSettings());
+    generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, getInputActionsJsonForBuild(), getPlayerSettings());
     if (hasMissingSceneSources()) {
         generatedSourcesDirty.store(true);
     }
@@ -9125,6 +9175,8 @@ void editor::Project::start(uint32_t sceneId) {
     // Play starts from the project's layer collision matrices, whatever an earlier Play's
     // scripts did to them
     applyLayerCollisionMatrices();
+    // and from clean input (Project Settings > Input, no runtime rebinding)
+    resetPlayInput();
     CommandHandle::get(sceneId)->beginPlaySession();
     editor::getEditorHost().saveAllCodeEditors();
     editor::getEditorHost().requestScenePlayFocus(sceneId);
@@ -9340,6 +9392,11 @@ void editor::Project::stop(uint32_t sceneId) {
 
             // matrix changes made by scripts last only for the Play, never reaching project.yaml
             applyLayerCollisionMatrices();
+            // so do held input, rebinding overrides and simulated input sources
+            resetPlayInput();
+
+            // what the game stored in UserSettings / PlayerPrefs is on disk when Play has stopped
+            UserSettings::save();
 
             // simulated focus, pause and rotation end with the Play, as the frame rate a script set
             Engine::resetApplicationState();

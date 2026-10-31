@@ -6,6 +6,8 @@
 
 #include "Engine.h"
 #include "Input.h"
+#include "input/InputActions.h"
+#include "input/InputControlNames.h"
 #include "Log.h"
 #include "Scene.h"
 #include "SceneManager.h"

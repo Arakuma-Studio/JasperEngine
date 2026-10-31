@@ -959,6 +959,9 @@ void NativeEngine::setupJNI(){
     mJniData.setStringForKeyRef = env->GetMethodID(mJniData.userSettingsClsRef, "setStringForKey", "(Ljava/lang/String;Ljava/lang/String;)V");
 
     mJniData.removeKeyRef = env->GetMethodID(mJniData.userSettingsClsRef, "removeKey", "(Ljava/lang/String;)V");
+    mJniData.hasKeyRef = env->GetMethodID(mJniData.userSettingsClsRef, "hasKey", "(Ljava/lang/String;)Z");
+    mJniData.removeAllKeysRef = env->GetMethodID(mJniData.userSettingsClsRef, "removeAllKeys", "()V");
+    mJniData.saveUserSettingsRef = env->GetMethodID(mJniData.userSettingsClsRef, "save", "()Z");
 
     if (mJniData.adMobWrapperClsRef) {
         mJniData.initializeAdMob = env->GetMethodID(mJniData.adMobWrapperClsRef, "initialize","(ZZ)V");

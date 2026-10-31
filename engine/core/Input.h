@@ -184,52 +184,96 @@
 #define D_GAMEPAD_AXIS_RIGHT_TRIGGER    5
 #define D_GAMEPAD_AXIS_LAST              D_GAMEPAD_AXIS_RIGHT_TRIGGER
 
-#include <map>
-#include <vector>
+#include <cstdint>
 #include <string>
+#include <vector>
+#include "Export.h"
 #include "math/Vector2.h"
 #include "System.h"
 
 namespace jasperengine {
 
-    typedef struct Touch{
-        int pointer;
-        Vector2 position;
-    } Touch;
+    // Unity's TouchPhase
+    enum class TouchPhase {
+        Began,
+        Moved,
+        Stationary,
+        Ended,
+        Canceled
+    };
 
-    typedef struct Gamepad{
-        int id;
+    // A finger (Unity's Touch). Input.touches lists them with Unity's semantics (a touch that
+    // ended or was cancelled is listed in the frame it ends); numTouches/getTouches list the
+    // fingers down now. Positions are canvas px, y down.
+    struct Touch {
+        // the platform's finger id: an opaque small integer, stable while the finger is down
+        // (Android pointer ids from 0, iOS slots from 1, browser identifiers)
+        int fingerId = 0;
+        TouchPhase phase = TouchPhase::Began;
+        Vector2 position;
+        Vector2 startPosition;
+        // position change in this frame
+        Vector2 deltaPosition;
+        // unscaled seconds since the touch's last position change
+        float deltaTime = 0.0f;
+        // 1, then 2, 3... for quick taps at the same place (Input::multiTapTime/Distance)
+        int tapCount = 1;
+
+        // the old Touch's name of fingerId
+        int pointer() const { return fingerId; }
+    };
+
+    // A button's state: held now, and the input frames of its last press and release (the
+    // frame that sees them, Input::getInputFrame)
+    struct ControlState {
+        bool held = false;
+        uint64_t downFrame = 0;
+        uint64_t upFrame = 0;
+    };
+
+    struct Gamepad {
+        int id = 0;
         std::string name;
-        std::map<int,bool> buttonPressed;
-        std::map<int,float> axisValue;
-    } Gamepad;
+        ControlState buttons[D_GAMEPAD_BUTTON_LAST + 1];
+        float axes[D_GAMEPAD_AXIS_LAST + 1] = {0.0f, 0.0f, 0.0f, 0.0f, -1.0f, -1.0f};
+    };
+
+    // P7 of the input spec: while typing or using a menu, the controls a document takes do not
+    // drive input actions (Input::beginFrame passes it to InputActions::update)
+    struct InputSuppression {
+        bool keyboard = false;            // a text field has keyboard focus
+        bool gamepadNavigation = false;   // a document has gamepad focus (d-pad, left stick, A)
+    };
 
     class JASPERENGINE_API Input {
 
         friend class Engine;
 
-    private:
-
-        static std::map<int,bool> keyPressed;
-        static std::map<int,bool> mousePressed;
-        static Vector2 mousePosition;
-        static Vector2 mouseScroll;
-        static std::vector<Touch> touches;
-        static std::vector<Gamepad> gamepads;
-        static bool mousedEntered;
-        static int modifiers;
-
-        static void addKeyPressed(int key);
+    public:
+        // ---- device state writers: the Engine's system* entry points call them (scripts send
+        // input through Engine::system*). Presses and releases are stamped with the input frame
+        // that will see them.
+        static void addKeyPressed(int key, bool repeat = false);
         static void releaseKeyPressed(int key);
 
         static void addMousePressed(int button);
         static void releaseMousePressed(int button);
         static void setMousePosition(float x, float y);
         static void setMouseScroll(float xoffset, float yoffset);
+        // the pointer moved to (x, y), canvas px of the raw platform position (outside the canvas
+        // too, so a captured mouse looks around): adds to this frame's mouse delta
+        static void addMouseMovement(float x, float y);
+        // a movement that is not the mouse's own (a finger simulating it): adds dx, dy as is
+        static void addMouseDelta(float dx, float dy);
+        // forgets the last pointer position: the next movement starts the delta from there
+        static void resetMouseMovement();
 
         static void addTouch(int pointer, float x, float y);
         static void setTouchPosition(int pointer, float x, float y);
+        // the finger lifted (Ended)
         static void removeTouch(int pointer);
+        // the finger was interrupted (Canceled)
+        static void cancelTouch(int pointer);
         static void clearTouches();
 
         static void addGamepad(int id, const std::string& name);
@@ -243,19 +287,80 @@ namespace jasperengine {
 
         static void setModifiers(int mods);
 
-    public:
+        // text typed (code points), for inputString
+        static void addInputCharacter(uint32_t codepoint);
 
+        // ---- the input frame (Engine::runFrame, only on frames that run the update):
+        // beginFrame publishes this frame's deltas, touches and text, updates the input actions
+        // (InputActions::update) and fires Engine::onButtonDown/onButtonUp; endFrame drops what
+        // was for this frame only and moves to the next input frame
+        static void beginFrame(double unscaledDeltaTime);
+        static void beginFrame(double unscaledDeltaTime, const InputSuppression& suppression);
+        static void endFrame();
+        static uint64_t getInputFrame();
+        static bool isInFrame();
+        // input clock: unscaled seconds the input frames ran (touch times)
+        static double getInputTime();
+
+        // Releases every held key, mouse button and gamepad button (their up edges are seen by
+        // the next frame) and reports the touches Canceled in Input.touches: app pause, focus
+        // loss, editor Play stop. The fingers down now (numTouches) are left to the platform's
+        // touch cancel (Engine::systemTouchCancel), which the UI and onTouchCancel hear
+        static void releaseAll();
+        // releaseAll and a clean slate (frames, deltas, text, touches, taps): editor Play start
+        static void reset();
+
+        // ---- held state (the device, whatever the UI consumed)
         static bool isKeyPressed(int key);
         static bool isMousePressed(int button);
         static bool isTouch();
         static bool isMouseEntered();
 
+        // ---- edges: pressed / released in this frame (Unity's GetKeyDown / GetKeyUp)
+        static bool getKeyDown(int key);
+        static bool getKeyUp(int key);
+        static bool getMouseButtonDown(int button);
+        static bool getMouseButtonUp(int button);
+        // id -1: any gamepad
+        static bool getGamepadButtonDown(int id, int button);
+        static bool getGamepadButtonUp(int id, int button);
+        // any key, mouse button or gamepad button held / pressed in this frame
+        static bool isAnyKeyPressed();
+        static bool isAnyKeyDown();
+        // the first control pressed in this frame, by its control name (keys, mouse buttons,
+        // gamepad buttons, gamepad axes past 0.5 as "left_x+" / "left_x-", triggers as
+        // "left_trigger"), "" when none: "press a key" screens
+        static std::string getPressedControl();
+        // UTF-8 text typed in this frame (Unity's inputString: backspace is "\b", return "\n")
+        static std::string getInputString();
+        // mouse movement in this frame, canvas px, y down
+        static Vector2 getMouseDelta();
+        // wheel steps in this frame (y positive up, x positive right)
+        static Vector2 getMouseScrollDelta();
+
         static Vector2 getMousePosition();
+        // the last wheel event's offsets
         static Vector2 getMouseScroll();
         static Vector2 getTouchPosition(int pointer);
 
+        // the fingers down now (legacy list)
         static std::vector<Touch> getTouches();
         static size_t numTouches();
+
+        // ---- touches with Unity's semantics (published by beginFrame)
+        static int getTouchCount();
+        // 0-based; a Touch with fingerId -1 when out of range
+        static Touch getTouch(int index);
+        static const std::vector<Touch>& getFrameTouches();
+        static bool findTouchById(int fingerId, Touch& out);
+        // false: only the first finger is in the touches above (the legacy list and the UI still get them all)
+        static void setMultiTouchEnabled(bool enabled);
+        static bool isMultiTouchEnabled();
+        // a finger the touches above report (multiTouchEnabled)
+        static bool isTouchVisible(int fingerId);
+        // a touch that begins within multiTapTime of the last one's end, near its start, adds a tap
+        static double multiTapTime;
+        static float multiTapDistance;
 
         static bool isGamepadConnected(int id);
         static std::string getGamepadName(int id);
@@ -276,6 +381,21 @@ namespace jasperengine {
         // Unity's Input.deviceOrientation: how the device is held (FaceUp/FaceDown on iOS),
         // Unknown where nothing reports it (desktops, flat Android devices)
         static DeviceOrientation getDeviceOrientation();
+
+    private:
+
+        static ControlState keyState[D_KEY_LAST + 1];
+        static ControlState mouseState[D_MOUSE_BUTTON_LAST + 1];
+        static Vector2 mousePosition;
+        static Vector2 mouseScroll;
+        static std::vector<Touch> touches;
+        static std::vector<Gamepad> gamepads;
+        static bool mousedEntered;
+        static int modifiers;
+
+        static uint64_t stampFrame();
+        static void notePressedControl(const std::string& name);
+        static void endTouch(int pointer, TouchPhase phase);
     };
 }
 

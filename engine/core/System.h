@@ -221,7 +221,8 @@ namespace jasperengine {
         // instance set. For code that also runs without the engine (editor CLI tools).
         static bool hasInstance() { return systemInstance != nullptr; }
 
-        virtual ~System() {}
+        // What the UserSettings store of this System has unsaved is written
+        virtual ~System();
 
         // *******
         // Used for user and Lua
@@ -376,7 +377,11 @@ namespace jasperengine {
         virtual void setMousePosition(float x, float y);
 
         virtual FILE* platformFopen(const char* fname, const char* mode);
+        // The user data files reach persistent storage soon (the web build: IndexedDB, half a
+        // second after the last write); elsewhere they are there already
         virtual bool syncFileSystem();
+        // ... now (Lua System.syncFileSystem)
+        virtual bool flushFileSystem();
         // The user data directory holds what earlier runs saved there. The web build
         // restores it from IndexedDB after it starts; what is written before that is lost.
         virtual bool isUserDataLoaded();
@@ -400,6 +405,13 @@ namespace jasperengine {
         virtual void setStringForKey(const char* key, const std::string& value);
 
         virtual void removeKey(const char *key);
+
+        // UserSettings (PlayerPrefs): the key is stored (an empty value too)
+        virtual bool hasKey(const char *key);
+        // UserSettings: every key of this game goes
+        virtual void removeAllKeys();
+        // UserSettings: what is unsaved is written to disk now (the platform's synchronous write)
+        virtual void saveUserSettings();
 
         // Google AdMob SDK
         virtual void initializeAdMob(bool tagForChildDirectedTreatment = false, bool tagForUnderAgeOfConsent = false);

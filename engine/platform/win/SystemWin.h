@@ -82,6 +82,8 @@ namespace jasperengine {
         void applyFramePacing(const FramePacing& pacing) override;
         int getMaxSwapInterval() override;
 
+        FILE* platformFopen(const char* fname, const char* mode) override;
+
     protected:
         bool platformOpenURL(const std::string& url) override;
 

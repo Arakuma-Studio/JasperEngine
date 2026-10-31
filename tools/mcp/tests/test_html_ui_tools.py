@@ -96,12 +96,18 @@ LIMITS.update({"get_pose_animation": 700, "edit_pose_animation": 1220})
 # fix FC: clips entries may be {name, wrap, interpolate, fps} objects (the detail in the guide), paid by
 # a shorter description: bake_vertex_animation 1977, total 106049
 LIMITS.update({"bake_vertex_animation": 2000})
-# platform services (spec 6.9): send_input's `app` events (+88), configure_game_view's device,
-# orientation and language (+330), get_play_state's platform (+46), measured total 106564 (148 tools)
+# script data (spec 2026-10-31-script-data 6.4): user_settings measured 515 (the PlayerPrefs
+# store: list/get/set/delete/clear); total 106611 with it (106096 before), the limit raised by it
+LIMITS.update({"user_settings": 550})
+# input (spec 2026-10-31-input 12): send_input's action/axis/axis_delta events and the input.actions setting,
+# measured on the merged tree: total 106687 (106611 before), the limit raised by them
+# platform services (spec 6.9): send_input's `app` events, configure_game_view's device,
+# orientation and language, get_play_state's platform (+468 on its branch); measured on the tree
+# merged with script-data and input: total 107155, the limit raised by it
 # safe area (spec 6.7): configure_game_view's device_overlay, safe_area_outline, custom_device and
 # safe_area, screenshot's device_overlay / safe_area_in_image, create_ui / create_entity safe_area,
-# get_play_state's safe_area (+390), measured total 106954 (148 tools)
-TOTAL_LIMIT = 106960
+# get_play_state's safe_area (+390 on its branch); re-measured on the merged tree at handoff
+TOTAL_LIMIT = 107600
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

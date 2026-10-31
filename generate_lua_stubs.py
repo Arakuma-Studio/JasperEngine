@@ -1802,8 +1802,6 @@ class TypeMapper:
             return 'string'
         if base == 'Signature':
             return 'string'
-        if base == 'Touch':
-            return 'Touch'
         m = _OPT.match(base)
         if m:
             inner = self.lua(m.group(1), ctx_class, depth + 1)
@@ -1939,6 +1937,36 @@ OVERRIDES[('Screen', 'setExtraInsets')] = {
                     ('unit?', '"canvas"|"pixels"')], '')],
 }
 
+# Input (CoreClassesLua.cpp): the rebinding functions read and push tables, the simulated
+# sources take a name or a script instance
+_INPUT_SOURCE = 'string|ScriptInstance'
+OVERRIDES.update({
+    ('Input', 'getBindings'): {
+        'doc': ['The bindings the action uses now (a runtime override, else Project Settings > Input).'],
+        'overloads': [([('name', 'string')], 'InputBinding[]')]},
+    ('Input', 'setBindings'): {
+        'doc': ['Replaces the action\'s bindings at run time (a settings screen); `false, error` when invalid.',
+                'Input.resetBindings undoes it, Input.exportBindings saves it.'],
+        'overloads': [([('name', 'string'), ('bindings', 'InputBinding[]')], 'boolean, string?')]},
+    ('Input', 'importBindings'): {
+        'doc': ['Replaces the runtime bindings with what Input.exportBindings returned; `false, error` when invalid.'],
+        'overloads': [([('json', 'string')], 'boolean, string?')]},
+    ('Input', 'simulateButton'): {
+        'doc': ['Holds (or releases) the action\'s button like an on-screen button: a source keyed by `source`',
+                '(default "script"; `self` = gone with the script instance). Seen by getButton* next frame.'],
+        'overloads': [([('name', 'string'), ('pressed', 'boolean'), ('source?', _INPUT_SOURCE)], '')]},
+    ('Input', 'simulateAxis'): {
+        'doc': ['Adds `value` (-1..1) to the action like an on-screen stick, until set again; 0 removes it.',
+                '`source` as in simulateButton.'],
+        'overloads': [([('name', 'string'), ('value', 'number'), ('source?', _INPUT_SOURCE)], '')]},
+    ('Input', 'addAxisDelta'): {
+        'doc': ['Adds `delta` to the action for this frame only, unclamped (like mouse movement).'],
+        'overloads': [([('name', 'string'), ('delta', 'number'), ('source?', _INPUT_SOURCE)], '')]},
+    ('Input', 'clearSimulated'): {
+        'doc': ['Removes the simulated values of `source` (without one: of every script).'],
+        'overloads': [([('source?', _INPUT_SOURCE)], '')]},
+})
+
 # Mesh:getMaterial and Mesh.material push the Material copy themselves (a LuaRef: the copy
 # remembers the shader its submesh draws with, LuaBinding::setMaterialDrawnShader)
 OVERRIDES[('Mesh', 'getMaterial')] = {
@@ -1946,8 +1974,99 @@ OVERRIDES[('Mesh', 'getMaterial')] = {
     'overloads': [([], 'Material'), ([('submesh', 'integer')], 'Material')],
 }
 
+# script-data (IOClassesLua.cpp): Json, File helpers and PlayerPrefs are lua_CFunctions (option
+# tables, `nil, err` results); JsonEncodeOptions / JsonDecodeOptions / JsonNull / JsonValue are
+# in engine/core/script/binding/stubs/Json.lua
+_JSON_VALUE = 'JsonValue'
+OVERRIDES.update({
+    ('Json', 'encode'): {
+        'doc': ['JSON text of `value` (tables, strings, numbers, booleans, Json.null, Vector2/3/4, Quaternion,',
+                'a `__tojson` metamethod). Keys sorted; a table with keys 1..n is an array, an empty one `[]`',
+                '(Json.object({}) or emptyTable = "object" for `{}`); integers stay integers, floats keep `.0`.',
+                'Raises with the place: "Json.encode: cannot encode a function at $.player.onHit".'],
+        'overloads': [([('value', 'any'), ('opts?', 'JsonEncodeOptions')], 'string')]},
+    ('Json', 'decode'): {
+        'doc': ['The Lua value of JSON `text`: objects and arrays become tables (empty ones marked, so they',
+                'encode back the same), null becomes Json.null (or nil with `null = "nil"`), integers integers.',
+                'Raises "Json.decode: syntax error at line 3, column 14: ...".'],
+        'overloads': [([('text', 'string'), ('opts?', 'JsonDecodeOptions')], _JSON_VALUE)]},
+    ('Json', 'tryEncode'): {
+        'doc': ['Json.encode without raising: the text, or nil and the message (options are still checked).'],
+        'overloads': [([('value', 'any'), ('opts?', 'JsonEncodeOptions')], 'string?, string?')]},
+    ('Json', 'tryDecode'): {
+        'doc': ['Json.decode without raising: the value, or nil and the message. A JSON `null` gives Json.null,',
+                'so nil always means failure.'],
+        'overloads': [([('text', 'string'), ('opts?', 'JsonDecodeOptions')], _JSON_VALUE + '?, string?')]},
+    ('Json', 'isNull'): {
+        'doc': ['`v` is Json.null.'],
+        'overloads': [([('v', 'any')], 'boolean')]},
+    ('Json', 'array'): {
+        'doc': ['Marks `t` (or a new table) to encode as a JSON array (`[]` when empty; holes are an error); returns it.'],
+        'overloads': [([('t?', 'table')], 'table')]},
+    ('Json', 'object'): {
+        'doc': ['Marks `t` (or a new table) to encode as a JSON object (`{}` when empty); returns it.'],
+        'overloads': [([('t?', 'table')], 'table')]},
+    ('Json', 'readFile'): {
+        'doc': ['File.readText + Json.decode: the value, or nil and "not found: data://save.json" /',
+                '"data://save.json: syntax error at line 2, column 5: ...". Paths as File.readText.'],
+        'overloads': [([('path', 'string'), ('opts?', 'JsonDecodeOptions')], _JSON_VALUE + '?, string?')]},
+    ('Json', 'writeFile'): {
+        'doc': ['Json.encode + File.writeText (atomic): true, or nil and the message. Paths as File.writeText.'],
+        'overloads': [([('path', 'string'), ('value', 'any'), ('opts?', 'JsonEncodeOptions')], 'true?, string?')]},
+    ('File', 'readText'): {
+        'doc': ['The whole file as a string, or nil and the message ("not found: data://save.json"). Paths:',
+                '"data://x" (user data, writable), "asset://x" and "lua://x" (read-only), a bare relative path',
+                'means data://; ".." is refused; absolute paths are read on desktop and in the editor only.'],
+        'overloads': [([('path', 'string')], 'string?, string?')]},
+    ('File', 'writeText'): {
+        'doc': ['Replaces the data:// file with `text` atomically (missing folders made): true, or nil and',
+                'the message. On the web it reaches IndexedDB within half a second (System.syncFileSystem: now).'],
+        'overloads': [([('path', 'string'), ('text', 'string')], 'true?, string?')]},
+    ('File', 'appendText'): {
+        'doc': ['Adds `text` to the end of the data:// file (made when missing; not atomic): true, or nil and the message.'],
+        'overloads': [([('path', 'string'), ('text', 'string')], 'true?, string?')]},
+    ('File', 'exists'): {
+        'doc': ['A file or folder is at `path` (paths as File.readText).'],
+        'overloads': [([('path', 'string')], 'boolean')]},
+    ('File', 'remove'): {
+        'doc': ['Removes the data:// file (never a folder): true (also when nothing was there), or nil and the message.'],
+        'overloads': [([('path', 'string')], 'true?, string?')]},
+    ('File', 'makeDirs'): {
+        'doc': ['Makes the data:// folder and the missing ones above it: true, or nil and the message.'],
+        'overloads': [([('path', 'string')], 'true?, string?')]},
+    ('File', 'list'): {
+        'doc': ['Names of the files and folders in a data:// folder, sorted, or nil and the message.'],
+        'overloads': [([('dir', 'string')], 'string[]?, string?')]},
+    ('PlayerPrefs', 'getInt'): {
+        'doc': ["Unity's PlayerPrefs.GetInt: the stored integer, or `default` (0) when the key is not there."],
+        'overloads': [([('key', 'string'), ('default?', 'integer')], 'integer')]},
+    ('PlayerPrefs', 'setInt'): {
+        'doc': ['Stores a 32-bit integer (3.5 raises "integer expected").'],
+        'overloads': [([('key', 'string'), ('value', 'integer')], '')]},
+    ('PlayerPrefs', 'getFloat'): {
+        'doc': ['The stored float, or `default` (0.0) when the key is not there.'],
+        'overloads': [([('key', 'string'), ('default?', 'number')], 'number')]},
+    ('PlayerPrefs', 'setFloat'): {
+        'doc': ['Stores a float (32-bit, as Unity).'],
+        'overloads': [([('key', 'string'), ('value', 'number')], '')]},
+    ('PlayerPrefs', 'getString'): {
+        'doc': ['The stored string (an empty one too), or `default` ("") when the key is not there.'],
+        'overloads': [([('key', 'string'), ('default?', 'string')], 'string')]},
+    ('PlayerPrefs', 'hasKey'): {
+        'doc': ['The key is stored (an empty value too).'],
+        'overloads': [([('key', 'string')], 'boolean')]},
+    ('PlayerPrefs', 'deleteKey'): {
+        'doc': ['Removes the key; nothing happens when it is not there.'],
+        'overloads': [([('key', 'string')], '')]},
+    ('PlayerPrefs', 'setString'): {
+        'doc': ['Stores a string (Json.encode a table to store it).'],
+        'overloads': [([('key', 'string'), ('value', 'string')], '')]},
+})
+
 # Properties whose getter returns a LuaRef: (Lua type, a copy)
 PROPERTY_OVERRIDES = {
+    # the null sentinel (stubs/Json.lua: JsonNull)
+    ('Json', 'null'): ('JsonNull', False),
     ('Mesh', 'material'): ('Material', True),
     # AnimationEvent.args builds a 1-based table of the event's arguments
     ('AnimationEvent', 'args'): ('(number|string|boolean)[]', True),
@@ -2254,6 +2373,7 @@ ENGINE_EVENT_ARGS = {
     'onGamepadConnect': ['gamepad'], 'onGamepadDisconnect': ['gamepad'],
     'onGamepadButtonDown': ['gamepad', 'button'], 'onGamepadButtonUp': ['gamepad', 'button'],
     'onGamepadAxisMove': ['gamepad', 'axis', 'value'],
+    'onButtonDown': ['action'], 'onButtonUp': ['action'],
 }
 
 _LUA_KEYWORDS = {'and', 'break', 'do', 'else', 'elseif', 'end', 'false', 'for', 'function', 'goto', 'if',
@@ -2948,10 +3068,21 @@ class Emitter:
             '---function with `event:add(tag, fn)`.',
             '---@class FunctionSubscribe',
             '',
-            '---What Input.getTouches() returns for each touch (a plain table, not a class).',
-            '---@class Touch',
-            '---@field pointer integer',
-            '---@field position Vector2',
+            '---One binding of an input action (Input.getBindings / setBindings; Project Settings > Input).',
+            '---kind buttons: positive / negative control names, gravity, sensitivity, dead, snap;',
+            '---gamepad_axis: axis (left_x..right_trigger), gamepad ("any" or 0-15), dead, sensitivity;',
+            '---mouse_delta: axis ("x", "y", "wheel"), sensitivity. invert on every kind.',
+            '---@class InputBinding',
+            '---@field kind "buttons"|"gamepad_axis"|"mouse_delta"',
+            '---@field positive? string[] # buttons: "space", "mouse_left", "gamepad_a"...',
+            '---@field negative? string[]',
+            '---@field axis? string # gamepad_axis: "left_x"...; mouse_delta: "x"|"y"|"wheel"',
+            '---@field gamepad? "any"|integer',
+            '---@field gravity? number',
+            '---@field sensitivity? number',
+            '---@field dead? number',
+            '---@field snap? boolean',
+            '---@field invert? boolean',
             '',
         ]
         self.files['Globals.lua'] = '\n'.join(L).rstrip() + '\n'
