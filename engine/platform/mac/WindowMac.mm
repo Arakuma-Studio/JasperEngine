@@ -234,7 +234,12 @@ void WindowMac::setTitle(const std::string& title) {
 }
 
 void WindowMac::quit() {
-    [NSApp terminate:nil];
+    // On the next turn of the main queue, never inside the frame that asked: a quit comes from
+    // Engine::runFrame (a script's Engine.quit, the player's --quit-after), and terminate: runs
+    // applicationWillTerminate:, whose Engine::systemViewDestroyed waits for that frame to end
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [NSApp terminate:nil];
+    });
 }
 
 void WindowMac::setMouseCursor(CursorType type) {
