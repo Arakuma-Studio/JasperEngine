@@ -620,3 +620,16 @@ What the implementation does differently from the text above, and why.
   written against the documented APIs and re-read, not compiled.
 - No Android device or emulator run (the Android backend is compiled by the Gradle build only); no mobile
   performance measurement (§8's budget is unmeasured).
+
+**Verification (on the tree merged with main: lines-trails, ui-canvas-group, physics-3d, http)**
+- Built on the host (shared ccache; build box 2204 was cold and ran at about one object a minute):
+  editor, unit tests, HTML UI editor tests, 0 warnings. Unit suite 1401 tests: 1392 passed, 9 skipped.
+  `jasperengine-htmlui-tests` (glcore, the WebM path): 3114 tests, 3106 passed, 8 skipped.
+  `jasperengine-htmlui-editor-tests`: 65 of 68 passed; `VideoImporterTest.ConvertsWithFfmpeg` and
+  `EncoderPreference` fail on main's unchanged code too (they expect an unquoted command line).
+- MCP suite (-j2): 867 passed, 11 failed, 18 skipped: the known baseline (test_animation_assets x5,
+  test_lattice_scene x5) and `test_stochastic_tiling::test_old_scene_resaves_byte_identical`, which
+  main's ui-canvas-group causes (its HTMLUI_POST passthrough key is added to every scene).
+  `test_video_player.py`: 5/5.
+- Android `assembleDebug` (arm64-v8a, MediaCodec backend) and the Web engine build (emsdk): built,
+  0 warnings. Apple and Windows backends: not compiled (no toolchain here).
