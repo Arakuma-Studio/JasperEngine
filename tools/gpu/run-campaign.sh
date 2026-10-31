@@ -66,14 +66,15 @@ for part in "${parts[@]}"; do
             --project build/s15-fixture --runs "${S15_ROUNDS:-30}" --no-check --json "$OUT/s15-gl.json"
         ;;
       s16)
-        # HtmlUIRenderPerf with the frame's GPU time (R24: B2 at 1280x720, S16 against its baseline);
+        # HtmlUIRenderPerf on the GPU (R22-R24's B2/B3/B6, S16 against its baseline; the harness has
+        # no GPU pass timers, so the frame is the wall time with the GPU idle at its start);
         # results also in build/linux/htmlui-render-bench.json
         for i in $(seq 1 "$RUNS"); do
-            JASPER_HTMLUI_GPU_TIMES=1 run "s16-gl-$i" build/linux/htmlui-tests-glcore/tests/htmlui/jasperengine-htmlui-tests \
+            run "s16-gl-$i" build/linux/htmlui-tests-glcore/tests/htmlui/jasperengine-htmlui-tests \
                 --gtest_filter='HtmlUIRenderPerf.B2*:HtmlUIRenderPerf.B6*:HtmlUIRenderPerf.B3*'
             cp build/linux/htmlui-render-bench.json "$OUT/s16-gl-$i.json" 2>/dev/null || true
         done
-        grep -h "GPU" "$OUT"/s16-gl-*.log
+        grep -h "ui-bench \] B" "$OUT"/s16-gl-*.log
         ;;
       s15pair)
         # AC4 as defined: the S15 merge (a4b621ebb) against its first parent (9f26ea019), both with the
