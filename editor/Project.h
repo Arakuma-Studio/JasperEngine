@@ -83,6 +83,18 @@ namespace jasperengine::editor{
         std::string filepath;
     };
 
+    // the 3D world capacity (project.yaml physics3D); defaults = PhysicsSystem's
+    struct Physics3DWorldSettings {
+        unsigned int maxBodies = 8192;
+        unsigned int maxBodyPairs = 8192;
+        unsigned int maxContactConstraints = 8192;
+
+        bool operator==(const Physics3DWorldSettings& other) const {
+            return maxBodies == other.maxBodies && maxBodyPairs == other.maxBodyPairs && maxContactConstraints == other.maxContactConstraints;
+        }
+        bool operator!=(const Physics3DWorldSettings& other) const { return !(*this == other); }
+    };
+
     struct SceneMaxValues {
         unsigned int maxSubmeshes = 0;
         unsigned int maxTilemapTilesRect = 0;
@@ -90,13 +102,14 @@ namespace jasperengine::editor{
         unsigned int maxExternalBuffers = 0;
         unsigned int maxSpriteFrames = 0;
         unsigned int maxBones = 0;
-        unsigned int maxColliders3D = 0;
-        unsigned int maxColliderVertices3D = 0;
-        unsigned int maxColliderIndices3D = 0;
-        // maxColliders2D / maxColliderPoints2D of scenes saved before 2D colliders had no caps:
+        // the collider caps of scenes saved before colliders had none (maxColliders2D,
+        // maxColliderPoints2D, maxColliders3D, maxColliderVertices3D, maxColliderIndices3D):
         // nothing reads them, kept as they were so re-saving an old scene changes no line
         std::optional<unsigned int> legacyMaxColliders2D;
         std::optional<unsigned int> legacyMaxColliderPoints2D;
+        std::optional<unsigned int> legacyMaxColliders3D;
+        std::optional<unsigned int> legacyMaxColliderVertices3D;
+        std::optional<unsigned int> legacyMaxColliderIndices3D;
     };
 
     struct ChildSceneRef {
@@ -496,6 +509,9 @@ namespace jasperengine::editor{
         std::string identifier = "com.yourcompany.project";
         std::string version = "1.0";
         unsigned int build = 1;  // Apple build number and Android version code
+        // Plain http:// to hosts other than localhost (Http, every platform and the editor's
+        // Play); exports set Android cleartext and iOS/macOS ATS to match
+        bool allowInsecureHttp = false;
     };
 
     // Name, identifier, version and build below are overrides: empty (or 0)
@@ -555,6 +571,13 @@ namespace jasperengine::editor{
         FullSensor
     };
 
+    // Android INTERNET permission: Auto adds it when the exported Lua or C++ uses Http (or the
+    // permission is ticked), Require always adds it (Unity's Internet Access)
+    enum class AndroidInternetAccess {
+        Auto,
+        Require
+    };
+
     struct AndroidProjectSettings {
         std::string applicationName;
         std::string packageName;
@@ -571,6 +594,7 @@ namespace jasperengine::editor{
         bool abiX86 = true;
         bool abiX86_64 = true;
         std::set<std::string> permissions;
+        AndroidInternetAccess internetAccess = AndroidInternetAccess::Auto;
         bool allowBackup = true;
         bool fullscreen = true;
         bool keepScreenOn = false;
@@ -635,6 +659,7 @@ namespace jasperengine::editor{
         // Layer Collision Matrices of Physics (3D) and Physics 2D, all layers collide by default
         LayerCollisionRows layerCollisionMatrix3D = allLayersCollide();
         LayerCollisionRows layerCollisionMatrix2D = allLayersCollide();
+        Physics3DWorldSettings physics3DWorld;
         // Project Settings > Input; Unity's Input Manager defaults (and nothing in project.yaml)
         // until edited
         bool inputActionsCustomized = false;
@@ -709,6 +734,9 @@ namespace jasperengine::editor{
             bool initialized = false;        // true when scripts and library are initialized
             bool initializing = false;       // true while its scripts run, to stop re-entrant init
             bool scriptsRan = false;         // its scripts were started once (a load replacing it retires it)
+            // the DontDestroyOnLoad scene (SceneManager's persistent scene): no load replaces it,
+            // Stop deletes it with the session
+            bool persistent = false;
         };
 
         // The scene a runtime entry plays (the Engine's while playing): its copy, or the played
@@ -742,6 +770,12 @@ namespace jasperengine::editor{
         // A load factory's first step: the session's scenes that load replaced (their scripts
         // unloaded) leave the game, so the stack is built anew as an exported build does
         void retireReplacedRuntimeScenes();
+        // SceneManager's persistent scene factory while the session plays: a runtime scene of
+        // the session named "DontDestroyOnLoad" (null when nothing plays)
+        Scene* createPersistentRuntimeScene();
+        // What DontDestroyOnLoad / MoveGameObjectToScene moved: the lists the editor shows
+        // (authored GameObjects, the selection) follow
+        void onPlayObjectsMoved(Scene* from, Scene* to, const std::unordered_map<Entity, Entity>& moved);
 
         // Play copies (the child scenes of the played scene run as copies, see PlaySession)
         // answer to ids of their own while the session lasts, so getScene(), selection,
@@ -1216,6 +1250,12 @@ namespace jasperengine::editor{
         // with Physics.ignoreLayerCollision during a Play
         void applyLayerCollisionMatrices() const;
 
+        // Project Settings > Physics > 3D World Capacity: the size of every 3D world made from
+        // now on (Play scenes and exported builds alike, PhysicsSystem::setWorldCapacity3D).
+        // Values are clamped to 16.. (and Jolt's body id range); a running Play keeps its world.
+        void setPhysics3DWorldSettings(const Physics3DWorldSettings& settings);
+        const Physics3DWorldSettings& getPhysics3DWorldSettings() const;
+
         // Project Settings > Input: the input actions (virtual axes and buttons). Setting them
         // validates nothing (callers do: InputActions::validate) and applies them to the
         // engine's InputActions, which Play reads; actions equal to Unity's defaults are
@@ -1539,8 +1579,15 @@ namespace jasperengine::editor{
         // The scene a Play copy id is a copy of; any other id is returned as is
         uint32_t getPlaySourceSceneId(uint32_t sceneId) const;
         bool isPlayRuntimeScene(uint32_t sceneId) const;
-        // The Play copies of sceneId's running game layers, as the Scene view draws them
+        // The Play copies of sceneId's running game layers, as the Scene view draws them (in the
+        // Engine's layer order: the persistent scene above the game's, the loading scene last)
         std::vector<SceneProject*> getRunningRuntimeLayerScenes(uint32_t sceneId);
+        // The DontDestroyOnLoad scene of the session (Play id), NULL_PROJECT_SCENE without one
+        uint32_t getPersistentPlaySceneId() const;
+        bool isPersistentPlayScene(uint32_t sceneId) const;
+        // SceneManager's persistent scene factory outside Play: refuses (DontDestroyOnLoad moves
+        // nothing in edit mode); Play installs the session's (createPersistentRuntimeScene)
+        static void refusePersistentScenes();
         // Once a frame: a Play copy no longer running, or its GameObjects destroyed, are
         // no longer selected
         void syncPlayRuntimeSelections();

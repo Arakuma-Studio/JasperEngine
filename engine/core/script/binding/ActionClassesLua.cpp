@@ -69,6 +69,13 @@ void LuaBinding::registerActionClasses(lua_State *L){
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
+        .beginNamespace("AlphaTweenTarget")
+        .addVariable("AUTO", AlphaTweenTarget::AUTO)
+        .addVariable("COLOR", AlphaTweenTarget::COLOR)
+        .addVariable("CANVAS_GROUP", AlphaTweenTarget::CANVAS_GROUP)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
         .beginNamespace("ActionState")
         .addVariable("Running", ActionState::Running)
         .addVariable("Paused", ActionState::Paused)
@@ -106,12 +113,14 @@ void LuaBinding::registerActionClasses(lua_State *L){
         .addProperty("duration", &Tween::getDuration, &Tween::setDuration)
         .addProperty("loop", &Tween::isLoop, &Tween::setLoop)
         .addProperty("pingPong", &Tween::isPingPong, &Tween::setPingPong)
+        .addProperty("useUnscaledTime", &Tween::isUseUnscaledTime, &Tween::setUseUnscaledTime)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<AlphaTween, Tween>("AlphaTween")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
         .addFunction("setAction", &AlphaTween::setAction)
+        .addProperty("alphaTarget", &AlphaTween::getAlphaTarget, &AlphaTween::setAlphaTarget)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

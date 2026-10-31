@@ -125,18 +125,6 @@
 #define MAX_BROADPHASELAYER_3D 6
 #endif
 
-#ifndef MAX_COLLIDERS_3D
-#define MAX_COLLIDERS_3D 10
-#endif
-
-#ifndef MAX_COLLIDER_VERTICES_3D
-#define MAX_COLLIDER_VERTICES_3D 256
-#endif
-
-#ifndef MAX_COLLIDER_INDICES_3D
-#define MAX_COLLIDER_INDICES_3D 768
-#endif
-
 #include "Export.h"
 #include "System.h"
 #include "util/FunctionSubscribe.h"

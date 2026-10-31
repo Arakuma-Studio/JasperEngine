@@ -14,8 +14,8 @@
 # Headers phase that has ActionSystem.h. Object ids are "4A534E47" + 16 hex of the sha1 of the
 # kind and path: deterministic, and two branches adding different files do not collide.
 #
-# Only core/ is compared: the libraries (libs/) and the HTML UI compat layer have their own sync
-# scripts (tools/htmlui/xcode_sync_*.py) and their own source lists.
+# Only core/ is compared (and APPLE_ENGINE_SOURCES): the libraries (libs/) and the HTML UI compat
+# layer have their own sync scripts (tools/htmlui/xcode_sync_*.py) and their own source lists.
 
 import hashlib
 import os
@@ -33,6 +33,10 @@ ANCHOR_HEADER = "core/subsystem/ActionSystem.h"
 
 # header-only directories (no .cpp of theirs in the CMake list)
 HEADER_DIRECTORIES = ["core/component"]
+
+# platform sources outside JASPERENGINE_SRCS that both Apple engine targets compile (CMake picks
+# them per platform): the HTTP client's NSURLSession backend
+APPLE_ENGINE_SOURCES = ["platform/apple/HttpBackendApple.mm"]
 
 OBJECT_RE = re.compile(r"^\t\t([0-9A-F]{24})(?: /\* (.*?) \*/)? = \{(.*)$")
 
@@ -160,7 +164,7 @@ def analyse():
     header_phases = phase_containing(objects, by_path[ANCHOR_HEADER][0], "PBXHeadersBuildPhase")
 
     missing = []   # (rel path, what is missing)
-    for source in cmake_sources():
+    for source in cmake_sources() + APPLE_ENGINE_SOURCES:
         refs = by_path.get(source, [])
         if not refs:
             missing.append((source, "file"))
@@ -253,7 +257,7 @@ def main():
         if what == "file":
             gid = group_for_directory(lines, objects, group_dirs, os.path.dirname(path))
             ref = object_id("ref", path)
-            file_type = "sourcecode.c.h" if is_header else "sourcecode.cpp.cpp"
+            file_type = "sourcecode.c.h" if is_header else ("sourcecode.cpp.objcpp" if path.endswith(".mm") else "sourcecode.cpp.cpp")
             insert_object(lines, objects, "PBXFileReference",
                           "\t\t%s /* %s */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = %s; path = %s; sourceTree = \"<group>\"; };"
                           % (ref, name, file_type, name))

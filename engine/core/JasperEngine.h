@@ -102,6 +102,7 @@
 #include "component/TranslateTracksComponent.h"
 #include "component/UIComponent.h"
 #include "component/LayoutGroupComponent.h"
+#include "component/CanvasGroupComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/UIDocumentComponent.h"
 
@@ -177,6 +178,7 @@
 #include "object/Tilemap.h"
 #include "object/ui/Button.h"
 #include "object/ui/LayoutGroup.h"
+#include "object/ui/CanvasGroup.h"
 #include "object/ui/Image.h"
 #include "object/ui/Panel.h"
 #include "object/ui/Polygon.h"
@@ -264,7 +266,11 @@
 #include "util/ThreadUtils.h"
 #include "util/UniqueToken.h"
 
+#include "thread/MainThreadQueue.h"
 #include "thread/ResourceProgress.h"
 #include "thread/ThreadPoolManager.h"
+
+#include "net/Http.h"
+#include "script/AsyncOwner.h"
 
 #endif /* jasperengine_h */

@@ -9,6 +9,8 @@
 //   eval_lua              run Lua in the game's Lua state, results as JSON
 //   list_runtime_entities / get_runtime_entity / set_runtime_property   live GameObjects
 //   send_input            keyboard / text / mouse / touch / gamepad sequences across frames
+#include "object/physics/Joint3D.h"
+#include "object/physics/Rigidbody.h"
 #include "McpTools.h"
 
 #include "debug/DebugOverlay.h"
@@ -27,6 +29,7 @@
 #include "App.h"
 #include "Catalog.h"
 #include "Engine.h"
+#include "net/Http.h"
 #include "Input.h"
 #include "input/InputActions.h"
 #include "input/InputControlNames.h"
@@ -468,6 +471,8 @@ Json runningScenesJson(Project* project) {
         const uint32_t source = project->getPlaySourceSceneId(sp->id);
         if (source != sp->id) item["source_scene_id"] = source;
         item["main"] = sp->id == project->getPlaySessionSceneId();
+        // DontDestroyOnLoad's scene: survives scene loads
+        if (project->isPersistentPlayScene(sp->id)) item["persistent"] = true;
         list.push_back(item);
     }
     return list;
@@ -617,6 +622,18 @@ SceneProject* defaultPlayScene(Project* project) {
     return start && start->scene && start->opened ? start : gameViewScene(project);
 }
 
+// The game's HTTP requests (Http): counts of this Play, the simulated network, the last failures
+static Json httpJson() {
+    const Http::Stats stats = Http::getStats();
+    Json failures = Json::array();
+    for (const HttpResponse& failure : stats.lastFailures) {
+        failures.push_back({{"method", failure.method}, {"url", failure.url}, {"status", failure.status},
+                            {"error_code", failure.errorCode}, {"error", failure.error}});
+    }
+    return {{"active", stats.active}, {"queued", stats.queued}, {"finished", stats.finished}, {"failed", stats.failed},
+            {"cancelled", stats.cancelled}, {"offline", Http::isOfflineSimulated()}, {"last_failures", failures}};
+}
+
 Json playStateJson(McpContext& ctx) {
     Project* project = ctx.project();
     PlayToolsState& s = state();
@@ -635,6 +652,7 @@ Json playStateJson(McpContext& ctx) {
         out["play_would_start"] = {{"id", sp->id}, {"name", sp->name}};
     }
     out["time"] = timeJson(playId != NULL_PROJECT_SCENE && s.current.active);
+    if (playId != NULL_PROJECT_SCENE) out["http"] = httpJson();
     if (s.last.serial != 0) out["last_session"] = sessionJson(s.last);
     if (!s.held.empty()) out["held_input"] = heldInputJson();
     if (playId != NULL_PROJECT_SCENE && s.current.active) {
@@ -2084,6 +2102,39 @@ Json rigidbody2DReadoutsJson(Scene* scene, Entity entity) {
                 {"angular_velocity", body.getAngularVelocity()}, {"awake", body.isAwake()}, {"collider_shapes", pieces}};
 }
 
+Json vec3Json(const Vector3& v) {
+    return Json::array({v.x, v.y, v.z});
+}
+
+Json rigidbody3DReadoutsJson(Scene* scene, Entity entity) {
+    RigidbodyComponent& component = scene->getComponent<RigidbodyComponent>(entity);
+    if (component.body.IsInvalid()) return Json{{"live", false}};
+    Rigidbody body(scene, entity);
+    return Json{{"live", true}, {"type", component.type == BodyType::DYNAMIC ? "dynamic" : (component.type == BodyType::KINEMATIC ? "kinematic" : "static")},
+                {"mass", body.getMass()}, {"center_of_mass_world", vec3Json(body.getCenterOfMassPosition())},
+                {"linear_velocity", vec3Json(body.getLinearVelocity())}, {"angular_velocity", vec3Json(body.getAngularVelocity())},
+                {"sleeping", body.isSleeping()}, {"colliders", component.colliders.size()}};
+}
+
+Json joint3DReadoutsJson(Scene* scene, Entity entity) {
+    Joint3D joint(scene, entity);
+    const Joint3DComponent& component = scene->getComponent<Joint3DComponent>(entity);
+    Json out = {{"live", joint.isLive()}, {"broken", joint.isBroken()}};
+    if (!joint.isLive()) return out;
+    out["current_force"] = vec3Json(joint.getCurrentForce());
+    out["current_torque"] = vec3Json(joint.getCurrentTorque());
+    if (component.type == Joint3DType::HINGE) {
+        out["angle"] = joint.getAngle();
+        out["velocity"] = joint.getVelocity();
+    } else if (component.type == Joint3DType::PRISMATIC) {
+        out["position"] = joint.getPosition();
+        out["speed"] = joint.getSpeed();
+    } else if (component.type == Joint3DType::DISTANCE) {
+        out["current_length"] = joint.getCurrentLength();
+    }
+    return out;
+}
+
 void getRuntimeEntityTool(const CallPtr& call) {
     const Json& args = call->args();
     McpContext& ctx = call->ctx();
@@ -2149,18 +2200,29 @@ void getRuntimeEntityTool(const CallPtr& call) {
     data["path"] = EntityPath::of(sp->scene, entity);
     data["scene"] = McpRefs::sceneJson(project, *sp);
     data["created_at_runtime"] = std::find(created.begin(), created.end(), entity) != created.end();
+    // in the DontDestroyOnLoad scene, or marked to move there
+    if (project->isPersistentPlayScene(sp->id) || SceneManager::isPersistent(sp->scene, entity)) data["persistent"] = true;
     data["components"] = components;
     // a fluid's runtime state (read only; FluidStats, the matching preset)
     if (only.empty() || only.count(ComponentType::FluidSimulationComponent)) {
         const Json fluid = McpValues::fluidStatsToJson(sp->scene, entity);
         if (!fluid.is_null()) data["fluid_stats"] = fluid;
     }
+    // the Canvas Groups over a UI element (inherited alpha, interactable, click-through)
+    const Json groupState = McpValues::canvasGroupStateToJson(sp->scene, entity);
+    if (!groupState.is_null()) data["canvas_group_state"] = groupState;
     // physics read-outs (joint forces and angles, body mass and velocities)
     if ((only.empty() || only.count(ComponentType::Joint2DComponent)) && sp->scene->findComponent<Joint2DComponent>(entity)) {
         data["joint2d"] = joint2DReadoutsJson(sp->scene, entity);
     }
     if ((only.empty() || only.count(ComponentType::Rigidbody2DComponent)) && sp->scene->findComponent<Rigidbody2DComponent>(entity)) {
         data["rigidbody2d"] = rigidbody2DReadoutsJson(sp->scene, entity);
+    }
+    if ((only.empty() || only.count(ComponentType::Joint3DComponent)) && sp->scene->findComponent<Joint3DComponent>(entity)) {
+        data["joint3d"] = joint3DReadoutsJson(sp->scene, entity);
+    }
+    if ((only.empty() || only.count(ComponentType::RigidbodyComponent)) && sp->scene->findComponent<RigidbodyComponent>(entity)) {
+        data["rigidbody"] = rigidbody3DReadoutsJson(sp->scene, entity);
     }
     if (args.value("include_script_state", true)) {
         data["scripts"] = scriptStateJson(project, sp, entity, std::clamp(args.value("max_depth", 2), 1, 8));
@@ -2169,8 +2231,11 @@ void getRuntimeEntityTool(const CallPtr& call) {
                        sp->name + "\": " + data["components"].dump();
     if (data.contains("scripts") && !data["scripts"].empty()) text += "\nscripts: " + data["scripts"].dump();
     if (data.contains("fluid_stats")) text += "\nfluid_stats: " + data["fluid_stats"].dump();
+    if (data.contains("canvas_group_state")) text += "\ncanvas_group_state: " + data["canvas_group_state"].dump();
     if (data.contains("joint2d")) text += "\njoint2d: " + data["joint2d"].dump();
     if (data.contains("rigidbody2d")) text += "\nrigidbody2d: " + data["rigidbody2d"].dump();
+    if (data.contains("joint3d")) text += "\njoint3d: " + data["joint3d"].dump();
+    if (data.contains("rigidbody")) text += "\nrigidbody: " + data["rigidbody"].dump();
     if (text.size() > 12000) text = text.substr(0, 12000) + " ... (see structuredContent)";
     call->ok(text, data);
 }
@@ -3497,7 +3562,8 @@ void registerPlayTools(McpRegistry& registry) {
         tool.description =
             "Play state: played and running scenes (child scenes run as copies with own ids), the session (time, "
             "frames, errors, crash), how the last one ended, held input, input (actions, touches, keys), debug_overlay, "
-            "console_cursor, the clock (time_scale, fixed_fps, auto_pause, held); stopped: play_would_start.";
+            "console_cursor, the clock (time_scale, fixed_fps, auto_pause, held), http (request counts, last "
+            "failures); stopped: play_would_start.";
         tool.inputSchema = object({});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;

@@ -73,7 +73,7 @@ defines them (no registration):
 |---|---|---|
 | `init(self)` | once, the first time the GameObject is active in hierarchy, **whether or not the script is enabled**; after every instance and reference of the scene exists | `Awake` |
 | `onEnable(self)` | the script becomes active and enabled: after `init` at load / instantiate / activation, and every time it is re-enabled or its GameObject re-activated | `OnEnable` |
-| `start(self)` | once, at the start of the frame after its first `onEnable`, before that frame's `onFixedUpdate`/`onUpdate`; not run while disabled or inactive (it waits). A script's registered updates begin only after its `start`: one enabled during a frame gets its first `onUpdate` in the next frame, after `start` | `Start` |
+| `start(self)` | once, at the start of the frame after its first `onEnable`, before that frame's `onFixedUpdate`/`onUpdate`; not run while disabled or inactive (it waits), nor for a GameObject `GameObject.destroy` is about to remove (destroyed in `init`, a singleton's duplicate). A script's registered updates begin only after its `start`: one enabled during a frame gets its first `onUpdate` in the next frame, after `start` | `Start` |
 | `onDisable(self)` | the script stops being active and enabled: `self.enabled = false`, its GameObject or a parent deactivated, destroy, scene unload, Play stop; always before `onDestroy` | `OnDisable` |
 | `onDestroy(self)` | once: `GameObject.destroy` (end of frame) / `destroyImmediate`, scene unload (a `SceneManager.loadScene`), Play stop / application quit; only if `init` ran | `OnDestroy` |
 | `onApplicationPause(self, paused)` | the app goes to the background (`true`) and returns (`false`); scripts of active GameObjects, enabled or not | `OnApplicationPause` |
@@ -784,7 +784,81 @@ A `"Prefab"` script property left at None is `nil`: check before instantiating.
 `getSceneId(name)`, `getSceneName(id)`, `getSceneNames()`, `getScenePtr(id)`,
 `clearAll()`. Properties (ro unless noted): `sceneCount`, `currentSceneId`,
 `currentSceneName`, `loadPending`, `loadingSceneId`, `loading`, `loadingProgress`,
-`loadingDelay` (rw), `loadingTimeout` (rw).
+`loadingDelay` (rw), `loadingTimeout` (rw), `persistentScene` (the DontDestroyOnLoad scene, nil
+until the first `DontDestroyOnLoad`). `moveGameObjectToScene(obj, scene)` (2.8.1).
+
+### 2.8.1 Persistent objects (DontDestroyOnLoad)
+
+```lua
+function AudioManager:init()
+    DontDestroyOnLoad(self)          -- or GameObject.dontDestroyOnLoad(self) / (self.gameObject)
+end
+
+-- a manager placed in every scene (Unity's `if (instance == null) ... else Destroy(gameObject)`)
+function AdsManager:init()
+    if GameObject.persistSingleton(self) ~= self then return end
+    -- the one manager from here on
+end
+```
+
+> **Cameras draw their own scene.** Do not make a level's camera persistent: in the persistent
+> scene it draws only the persistent objects, and the level falls back to a default camera (a
+> warning says so). Keep a Camera in every level and persist a manager that finds and positions
+> it after each load (`GameObject.findObjectOfType("Camera")` in its `onSceneLoaded` engine event, or
+> the level's camera script asking the manager). A camera brought by a persistent GameObject
+> becomes the persistent scene's camera (for persistent world objects or UI).
+
+| Function | Semantics |
+|---|---|
+| `DontDestroyOnLoad(obj)` / `GameObject.dontDestroyOnLoad(obj)` | `obj`: a script instance (its GameObject) or any GameObject wrapper. Its **root** GameObject, with its children, components and running state, moves into the persistent scene and survives every `SceneManager.loadScene`. Returns true. A GameObject with a parent: warning "DontDestroyOnLoad only works for root GameObjects", nothing happens (false). `nil`: ignored. Already persistent: nothing. In the editor outside Play: nothing (false). |
+| `GameObject.isPersistent(obj)` | in the persistent scene, or marked to move there (true from the call on) |
+| `GameObject.persistSingleton(self)` | the instance of `self`'s class that survives: another one already on a persistent GameObject (or marked earlier, also in the same start pass) is returned and `self`'s GameObject is destroyed (at the end of the frame); else `self` is made persistent and returned |
+| `SceneManager.persistentScene` | the persistent `Scene` (named "DontDestroyOnLoad"), or nil before the first `DontDestroyOnLoad`; `GameObject.instantiate(prefab, SceneManager.persistentScene)` instantiates straight into it (check for nil) |
+| `SceneManager.moveGameObjectToScene(obj, scene)` | moves a root GameObject to a running scene (`Engine.scene`, a layer) or to the persistent scene; out of the persistent scene it stops persisting (the next load destroys it). Error logged, false: not a root, "the target scene is not loaded" |
+
+Rules:
+- **The move is a real move**: the same script instance tables (fields, other scripts' references
+  to them), the same Lua state, sounds play on (the voice is kept), Rigidbody / Rigidbody2D keep
+  their velocities (the body is made again in the persistent scene's world), running actions,
+  tweens, particles, Animation Players keep going, subscriptions to its component events stay.
+  No lifecycle method runs for it (Unity). Entity ids are kept when free; otherwise the
+  GameObject gets a new id and `self.entity` changes with it. Reloaded as when copied: the GPU
+  state (one frame), UI documents (their DOM and data models start again), fluids, Vertex
+  Animators and Trail Renderers restart (a trail's points are cleared).
+- **When it moves**: never inside a callback. Called in `init`/`onEnable` of a scene being
+  loaded: at the end of that scene's start, before its HTML documents start (the usual case,
+  nothing is lost). From `onUpdate`, coroutines, timers, an instantiated object's `init`: after
+  this frame's update. Between frames (input callbacks, tools): at the start of the next frame.
+  Always before a scene load tears the scenes down. `self.scene` and `self.entity` change when
+  it moves; `self.gameObject` follows.
+- **Wrappers** a script made before the move for its own GameObjects (in its fields:
+  `self.body = Rigidbody2D(self.scene, self.entity)`) follow the move; wrappers kept elsewhere
+  (locals, other tables, other scripts) still name the old scene: use `self.gameObject` or wrap
+  again.
+- **Drawing**: the persistent scene is a scene layer above the loaded scenes (and their layers
+  and child scenes) and below the loading scene: persistent UI covers the game, the loading
+  screen covers everything. It draws with a default UI camera, or the first Camera a persistent
+  GameObject brings (see the camera note above). `Engine.scene` is always the loaded main scene,
+  never the persistent one (also in a new level's `init`). It clears its own depth: persistent world objects draw on top of the level
+  (move them into the level with `moveGameObjectToScene` to depth-sort them with it).
+- **Physics**: the persistent scene has its own worlds (default gravity, set it with
+  `SceneManager.persistentScene:setGravity2D(...)`): persistent bodies collide only with
+  persistent bodies. A joint to a body that stays behind is removed (warning).
+- **Audio**: 2D sounds (music) are untouched; 3D sounds are heard by the loaded main scene's
+  camera (the persistent scene places the listener there every frame while one plays).
+- **Subscriptions**: what a level script subscribes to on a persistent GameObject (its Button's
+  `onPress`...) goes when that script is released (its scene unloads), Lua and C++ alike.
+- **Events**: subscriptions to the old scene's events (`self.scene:getPhysicsSystem()...`) stay
+  on that scene until it unloads: register scene-wide events on `self.scene` after the move (or
+  use the per-object callbacks). Engine events (`RegisterEngineEvent`) keep working and follow
+  the GameObject's active state.
+- **Play stop / quit** destroys the persistent objects after the quit pass (`onApplicationQuit`,
+  `onDisable`, `onDestroy`); nothing persists into edit mode. The persistent scene stays (empty)
+  until then once made. `Engine.removeAllScenes()` (low level) takes it off the screen until
+  the next load adds it again.
+- **Finds** (`GameObject.find*`, `findObjectOfType`) see persistent objects; the editor's
+  Hierarchy lists them under a "DontDestroyOnLoad" row in Play, MCP as the running scene
+  "DontDestroyOnLoad" (`persistent: true`).
 
 ### 2.9 Scene (`self.scene`) - methods from EntityRegistry and Scene
 
@@ -833,6 +907,7 @@ Entities are plain integers (`0` = none).
 | `Physics.raycast(scene, origin, direction, maxDistance [, mask])`, `Physics.raycastAll(...)` | 3D, Vector3 origin/dir |
 | `ignoreLayerCollision(l1, l2 [, ignore=true])`, `getIgnoreLayerCollision(l1, l2)`, `getLayerCollisionMask(l)`, `setLayerCollisionMask(l, mask)`, `resetLayerCollisionMatrix()` | on both `Physics` and `Physics2D` |
 | `ALL_LAYERS`, `DEFAULT_RAYCAST_LAYERS`, `IGNORE_RAYCAST_LAYER` | static props on both |
+| `Physics.debugDraw`, `Physics.debugDrawContacts` | rw static bools: draw the colliders and joints (and contact points) of every playing scene, 3D and 2D (the Game view's Physics toggle) |
 
 `RayReturn` (ro): `hit` (bool), `distance`, `point` (Vector3), `normal` (Vector3), `body`
 (Entity), `colliderIndex`.
@@ -882,6 +957,38 @@ or `(r,g,b,a)`.
 
 No timer API is bound: accumulate `Engine.deltatime` in `self`, or use
 `GameObject.destroy(obj, delay)` for delayed destruction, or Tweens/Actions.
+
+### 2.13 Http (static, HTTP(S) requests)
+
+Full reference, options, error codes, platform notes and examples: `jasper://docs/networking`.
+The callback runs once, on the main thread, right before `onUpdate` of a later frame; errors are
+values (`res.ok`, `res.errorCode`, `res.error`); pass `owner = self` so the request ends with
+the script (no callback). Plain `http://` works only to localhost unless
+`player.allow_insecure_http`.
+
+| Call | Meaning |
+|---|---|
+| `Http.get(url [, options] [, callback])` | GET; `head`, `delete` likewise |
+| `Http.post(url, body [, options] [, callback])` | POST: string body as is, table as JSON; `put`, `patch` likewise |
+| `Http.request{url = ..., method = ..., onComplete = ...}` | any method, every option |
+| `Http.download(url, "data://x" [, options] [, callback])` | into a file (`<path>.part`, renamed on success) |
+| `Http.getTexture(url [, options] [, callback])` | `res.textureData` for `image:setTexture(res.url, res.textureData)` |
+| `Http.cancelAll()`, `Http.isAvailable()`, `Http.encodeUrl(s)`, `Http.decodeUrl(s)` | |
+| `Http.maxConcurrentRequests`, `Http.userAgent`, `Http.timeout`, `Http.logFailures` (rw) | 8, `JasperEngine/<version> (<platform>)`, 30 s, false |
+
+Options: `headers`, `query`, `body`, `json`, `form`, `timeout`, `connectTimeout`, `redirects`,
+`verifyTls`, `responseType` (`"text"`, `"binary"`, `"json"`: `res.data`), `maxBodySize`,
+`onProgress = function(req, received, total)`, `owner`, `file`, `resume`, `keepPartial`.
+`HttpRequest` (returned): `id`, `url`, `method`, `state` (`HttpState.Queued/Running/Done/Cancelled`),
+`progress`, `bytesReceived`, `bytesTotal`, `response`, `req:isDone()`, `req:cancel()`.
+`HttpResponse`: `ok`, `status`, `errorCode`, `error`, `headers`, `body`, `data`, `textureData`,
+`file`, `url`, `redirected`, `method`, `elapsed`, `bytesReceived`, `res:json()`, `res:header(name)`.
+
+```lua
+Http.get("https://backend.example.com/Now", {responseType = "json", timeout = 10, owner = self}, function(res)
+    if res.ok then self.serverTime = res.data.time else Log.warn(res.error) end
+end)
+```
 
 ---
 
@@ -1012,6 +1119,7 @@ non-string `className` errors. Annotate the result for LuaLS: `local enemy = go:
 | `removeRigidbody2D()` | method | |
 | `getJoint2D()` | method | the GameObject's `Joint2D`, `nil` when it has none |
 | `getRigidbody()` / `removeRigidbody()` | method | 3D, same semantics |
+| `getJoint3D()`, `getRagdoll()` | method | the GameObject's `Joint3D` / `Ragdoll`, `nil` when it has none |
 | `getRay(direction)` | method | Ray from world position |
 | `getAnimationPlayer()` | method | the GameObject's `AnimationPlayer` (4.8.2), `nil` when it has none (it never adds one) |
 | `hasAnimationPlayer()` | method | bool |
@@ -1364,6 +1472,10 @@ RectTransform (GameObject) rw: `width`, `height`, `anchorPreset` (`AnchorPreset.
 `positionXOffset`, `positionYOffset`, `positionOffset` (Vector2), `pivot` (Vector2),
 `usingAnchors`, `ignoreScissor`, `enabled`; methods `setSize(w, h)`,
 `setAnchorPoints(l, t, r, b)`, `setAnchorOffsets(l, t, r, b)`, `setPivot(x, y)`.
+Canvas Groups over the element (4.11.1), walked on demand: `getInheritedAlpha()` (Unity
+`CanvasRenderer.GetInheritedAlpha`), `getGroupsAllowInteraction()`, `getGroupsBlockRaycasts()`,
+`isInteractable()` (the groups and the Button / InputField's own `disabled`; Unity
+`Selectable.IsInteractable`).
 UI position: use `positionXOffset`/`positionYOffset` (as in the bundled example), or
 `position`.
 
@@ -1381,6 +1493,36 @@ Component structs returned by `get*Component()` expose the event objects of sect
 some raw fields (`ButtonComponent.pressed`, `hovered` ro; `disabled` rw;
 `ProgressbarComponent.value` rw; `InputFieldComponent.text` ro). Prefer the wrapper
 properties for changes; raw component writes need the matching `needUpdate*` flag.
+A Button's `colorDisabled` defaults to Unity's disabledColor (sRGB 200, 200, 200, 128): it also
+shows under a non-interactable Canvas Group.
+
+#### 4.11.1 CanvasGroup (EntityHandle)
+
+Unity's CanvasGroup: fades, disables or makes click-through a UI subtree. Rules, the Hide
+pattern, drag and drop, render modes: `jasper://docs/ui`.
+
+- `CanvasGroup(scene, entity)` wraps the GameObject's group and ADDS one when it has none (Unity
+  `GetComponent ?? AddComponent`); `CanvasGroup(scene)` makes a new GameObject: a RectTransform
+  stretched to its parent with a group.
+- rw `enabled`, `alpha` (clamped to 0..1; NaN rejected with a warning), `interactable`,
+  `blocksRaycasts`, `ignoreParentGroups`, `renderMode` (`CanvasGroupRenderMode.PER_ELEMENT` |
+  `FLATTEN`).
+- `fadeTo(alpha, duration [, opts])`, `fadeIn(duration [, opts])`, `fadeOut(duration [, opts])`
+  return the running `AlphaTween`; `opts` = `{ease = EaseType.*, unscaled = false, deactivate =
+  false, onComplete = function}`. A new fade stops the previous one; on completion the final
+  alpha is written, then `onComplete` runs, then `deactivate` calls `setActive(false)`.
+- `stopFade([jumpToEnd = false])` (jumpToEnd writes the end alpha and completes the fade),
+  `isFading()`, `getGameObject()`, `getCanvasGroupComponent()`.
+- GameObject: `getCanvasGroup()` (nil without one), `hasCanvasGroup()`, `addCanvasGroup()`,
+  `removeCanvasGroup()`.
+
+```lua
+function DelayedUI:onEnable()
+    local group = CanvasGroup(self.scene, self.entity)
+    group.alpha = 0; group.interactable = false; group.blocksRaycasts = false   -- hidden, click-through
+    group:fadeTo(1, 0.3, {onComplete = function() group.interactable = true; group.blocksRaycasts = true end})
+end
+```
 
 ### 4.12 AudioSource (EntityHandle)
 
@@ -1488,25 +1630,72 @@ function Car:onJointBreak2D(joint) Log.print("snap") end
 | `position` | rw `Vector3` | teleport |
 | `rotation` | rw `Quaternion` | |
 | `linearVelocity`, `angularVelocity` | rw `Vector3` | also `setLinearVelocityClamped(v)`, `setAngularVelocityClamped(v)` |
-| `mass` | rw property | (2D uses `getMass()` method) |
-| `type` | rw `BodyType.*` | |
+| `mass` | rw property | kg; setting it turns `automaticMass` off (2D uses `getMass()` method) |
+| `automaticMass`, `centerOfMass`, `automaticCenterOfMass`, `inertiaTensor`, `inertiaTensorRotation`, `automaticInertiaTensor` | rw | setting a value turns its automatic off; `resetCenterOfMass()`, `resetInertiaTensor()` |
+| `linearDamping`, `angularDamping` | rw numbers | Unity drag / angularDrag, 0.05 by default (Jolt's) |
+| `maxLinearVelocity`, `maxAngularVelocity` | rw numbers | m/s, rad/s |
+| `interpolation` | rw `RigidbodyInterpolation.*` | `SCENE` (default), `NONE`, `INTERPOLATE`, `EXTRAPOLATE` |
+| `type` | rw `BodyType.*` | switches live (same body, joints and contacts); `isKinematic` (rw) is Unity's; `setType(t)` returns false for a body with a mesh / heightfield collider |
+| `isSleeping()`, `sleep()`, `wakeUp()` | methods | |
+| `material` | rw `PhysicsMaterial` | default material of the colliders without one |
 | `motionQuality` | rw | `RigidbodyMotionQuality.DISCRETE` / `LINEAR_CAST` |
-| `friction`, `restitution`, `gravityFactor`, `sensor`, `allowSleeping`, `enabled`, `shapeDensity`, `collisionGroupID`, `categoryBitsFilter`, `maskBitsFilter`, `collideKinematicVsNonDynamic` | rw | |
+| `friction`, `restitution`, `gravityFactor`, `sensor`, `allowSleeping`, `enabled`, `shapeDensity`, `collisionGroupID`, `categoryBitsFilter`, `maskBitsFilter`, `collideKinematicVsNonDynamic` | rw | `friction` / `restitution`: the surface of colliders without a material |
 | `buoyancy`, `waterDrag`, `waterAngularDrag` | rw numbers | floating in a `library:water` (2.10.1): Jolt's buoyancy at the centre of mass each fixed step of a dynamic body, 1 neutral, more floats, less sinks, 0 (default) ignores water; drags default 0.5 and 0.01 |
 | `applyForce(f)`, `applyForce(f, point)` | method | f in Vector3; single-arg = at center (no `applyForceToCenter` in 3D) |
 | `applyImpulse(i)`, `applyImpulse(i, point)`, `applyTorque(t)`, `applyAngularImpulse(a)` | methods | |
 | `activate()`, `deactivate()` | methods | |
-| `createBoxCollider(w, h, d)`, `createSphereCollider(r)`, `createCapsuleCollider(halfH, r)`, `createCylinderCollider(halfH, r)`, `createTaperedCapsuleCollider(...)`, `createConvexHullCollider(...)`, `createMeshCollider(...)`, `createHeightFieldCollider(...)` | methods | each also with `(Vector3 pos, Quaternion rot, ...)` prefix overload |
-| `getNumColliders()`, `getColliderType(i)`, `load()`, `getAttachedObject()` | methods | |
+| `createBoxCollider(w, h, d)`, `createSphereCollider(r)`, `createCapsuleCollider(halfH, r)`, `createCylinderCollider(halfH, r)`, `createTaperedCapsuleCollider(...)`, `createConvexHullCollider(...)`, `createMeshCollider(...)`, `createHeightFieldCollider(...)` | methods | each also with `(Vector3 pos, Quaternion rot, ...)` prefix overload; any number of colliders, vertices and indices |
+| `getNumColliders()` / `getColliderCount()`, `getColliderType(i)`, `removeCollider(i)` (later indices shift), `removeAllColliders()`, `load()`, `getAttachedObject()` | methods | |
+| `setColliderPosition(i, v)`, `setColliderRotation(i, q)`, `setColliderBoxSize(i, v)`, `setColliderRadius(i, r)`, `setColliderHalfHeight(i, h)`, `setColliderTaperedRadii(i, top, bottom)`, `setColliderVertices(i, vertices [, indices])` and their getters | methods | swap the shape at the next step: the body keeps its id, joints and contacts |
+| `setColliderTrigger(i, on)`, `isColliderTrigger(i)` | methods | Unity Is Trigger per collider: passes through, sensor contacts, no mass |
+| `setColliderMaterial(i, m)` (a `PhysicsMaterial`, a path, or nil), `getColliderMaterial(i)`, `setColliderFriction(i, f)`, `setColliderBounciness(i, b)` and getters | methods | friction / bounciness give the collider its own copy of its material (Unity `collider.material`) |
 | `setAllowedDOFsAll()`, `setAllowedDOFs2DPlane()`, `setAllowedDOFs(...)`, `setOverrideMassAndInertia(...)` | methods | |
 | `getPointVelocity(p)`, `getAccumulatedForce()`, `getCenterOfMassPosition()` | methods | |
 
 `Contact3D`: `getWorldSpaceNormal()`, `getPenetrationDepth()`, `getBaseOffset()`,
 `getColliderIndex1()`, `getColliderIndex2()`, rw `combinedFriction`,
-`combinedRestitution`, `sensor`. `Joint3D(scene [, entity])`: `setFixedJoint`,
-`setDistanceJoint`, `setPointJoint`, `setHingeJoint`, `setConeJoint`, `setPrismaticJoint`,
-`setSwingTwistJoint`, `setSixDOFJoint`, `setPathJoint`, `setGearJoint`,
-`setRackAndPinionJoint`, `setPulleyJoint`, `getType()` (partial).
+`combinedRestitution`, `sensor`.
+
+**Joint3D** (EntityHandle; `go:getJoint3D()`, `Joint3D(scene, entity)`, `Joint3D(scene)` a new
+GameObject): rw `enabled`, `type` (`Joint3DType.*`), `bodyA`, `bodyB` (alias `connectedBody`;
+Entity or GameObject, nil = the world), `anchorSpace` (`JointAnchorSpace.LOCAL` for new joints),
+`anchor`, `anchorB` (alias `connectedAnchor`), `autoAnchors` (alias
+`autoConfigureConnectedAnchor`), `anchorA`, `axis`, `normal` (alias `secondaryAxis`), `twistAxis`,
+`planeAxis` (alias `swingAxis`), `axisX`, `axisY`, `enableCollision`, `breakForce`, `breakTorque`,
+`breakAction`, `useLimits`, `limitsMin`, `limitsMax`, `limitsSpringFrequency`,
+`limitsSpringDamping`, `useMotor`, `motorTargetVelocity`, `motorMaxForce`, `useSpring`,
+`springStiffness`, `springDamper`, `springTargetPosition`, `maxFriction`, `minDistance`,
+`maxDistance`, `coneHalfAngle`, `twistMinAngle` / `twistMaxAngle` (aliases `lowTwistLimit` /
+`highTwistLimit`), `normalHalfConeAngle` (alias `swing1Limit`: about the swing axis),
+`planeHalfConeAngle` (alias `swing2Limit`: about the normal of twist and swing axes), `swingType` (`SwingType.CONE` / `PYRAMID`), `motorTargetRotation`,
+`motorSpringFrequency`, `motorSpringDamping`, `xMotion` ... `angularZMotion` (`JointMotion.LOCKED` /
+`LIMITED` / `FREE`), `linearLimitMin/Max`, `angularLimitMin/Max`, `useDrive`, `driveStiffness`,
+`driveDamping`, `angularDriveStiffness`, `angularDriveDamping`, `driveMaxForce`, `driveMaxTorque`,
+`targetPosition`, `targetRotation`, `targetVelocity`, `targetAngularVelocity`. Read-only:
+`currentForce`, `currentTorque` (Vector3, N and N m), `angle`, `velocity` (hinge), `position`,
+`speed` (prismatic), `currentLength` (distance), `broken`, `live`. Angles in the engine's unit,
+bodyA's relative to the connected body from the pose the joint is made in. Breaking calls
+`onJointBreak(force, joint)` on the joint's GameObject and bodyA's scripts. The old helpers
+`setFixedJoint`, `setHingeJoint`, ... `setPulleyJoint` (world points) still work.
+
+```lua
+local hinge = Joint3D(self.scene)          -- a door on its frame
+hinge.type = Joint3DType.HINGE
+hinge.bodyA = self.door                    -- Unity's "this"
+hinge.connectedBody = self.frame
+hinge.anchor = Vector3(-0.5, 0, 0)         -- in the door's local space
+hinge.axis = Vector3(0, 1, 0)
+hinge.useLimits = true
+hinge.limitsMin, hinge.limitsMax = 0, 110
+```
+
+**Ragdoll** (EntityHandle; `go:getRagdoll()`): rw `enabled`, `simulated` (false: the parts are
+kinematic and follow the animation; true: dynamic, the Animation Player paused), `inheritVelocity`,
+`selfCollision`, `totalMass`, `root`, `animator`; ro `partCount`; `getParts()` (table of
+`Rigidbody`), `applyImpulse(impulse, point)` (the part nearest the point; after `simulated = true`
+in the same frame too), `applyForce(force)` (every part by its mass); event
+`onBeforeAnimatedRestore` (`RegisterEvent(self, ragdoll.onBeforeAnimatedRestore, "fn")`, fn(entity)
+before a ragdoll goes back to animated). Made by the Ragdoll wizard (`create_ragdoll`).
 
 ### 4.15 Actions and Tweens
 
@@ -1518,7 +1707,8 @@ plays back to the start and holds there), `weight`; `setTarget(gameObjectOrEntit
 `stop()` also cancels a `start()` asked for earlier in the same frame.
 
 Tween (Action): rw `duration`, `loop`, `pingPong` (forward and then back, in twice the
-duration); `setFunctionType(EaseType.*)`, `getTime()`, `getValue()`, `getTweenComponent()`.
+duration), `useUnscaledTime` (advances at time scale 0, default false: scaled like Unity);
+`setFunctionType(EaseType.*)`, `getTime()`, `getValue()`, `getTweenComponent()`.
 A non-looping tween stops on the update it reaches its end, after applying the end value.
 
 | Tween | `setAction(...)` (pass every argument; C++ defaults do not apply) |
@@ -1527,7 +1717,7 @@ A non-looping tween stops on the update it reaches its end, after applying the e
 | `RotationTween` | `(startQuat, endQuat, duration, loop)`; `setSpinAction(startQuat, axisV3, angle, duration, loop)` turns by `angle` (any size, so full turns) around `axis` |
 | `ScaleTween` | `(startV3, endV3, duration, loop)` |
 | `ColorTween` | `(startV3, endV3, duration, loop)` or `(startV4, endV4, duration, loop)` |
-| `AlphaTween` | `(startAlpha, endAlpha, duration, loop)` |
+| `AlphaTween` | `(startAlpha, endAlpha, duration, loop)`; rw `alphaTarget`: `AlphaTweenTarget.AUTO` (default: the target's enabled Canvas Group when it has one, else its colour alpha), `COLOR`, `CANVAS_GROUP` |
 
 ```lua
 local tw = PositionTween(self.scene)                    -- new action entity
@@ -1787,6 +1977,9 @@ use the methods. Physics colliders keep the rest shape.
 | `RigidbodySleepMode2D` | `NEVER_SLEEP`, `START_AWAKE`, `START_ASLEEP` |
 | `PhysicsMaterialCombine` | `AVERAGE`, `GEOMETRIC_MEAN`, `MINIMUM`, `MULTIPLY`, `MAXIMUM` |
 | `Joint3DType` | `FIXED`, `DISTANCE`, `POINT`, `HINGE`, `CONE`, `PRISMATIC`, `SWINGTWIST`, `SIXDOF`, `PATH`, `GEAR`, `RACKANDPINON`, `PULLEY` |
+| `JointMotion` | `LOCKED`, `LIMITED`, `FREE` |
+| `SwingType` | `CONE`, `PYRAMID` |
+| `RigidbodyInterpolation` | `SCENE`, `NONE`, `INTERPOLATE`, `EXTRAPOLATE` |
 | `CameraType` | `CAMERA_UI`, `CAMERA_ORTHO`, `CAMERA_PERSPECTIVE` |
 | `LightType` | `DIRECTIONAL`, `POINT`, `SPOT` |
 | `EaseType` | `LINEAR`, `STEP`, `QUAD_IN/OUT/IN_OUT`, `CUBIC_*`, `QUART_*`, `QUINT_*`, `SINE_*`, `EXPO_*`, `CIRC_*`, `ELASTIC_*`, `BACK_*`, `BOUNCE_*` (each `_IN`, `_OUT`, `_IN_OUT`), `CUSTOM` |
@@ -1796,6 +1989,8 @@ use the methods. Physics colliders keep the rest shape.
 | `AnchorPreset` | `NONE`, `TOP_LEFT`, `TOP_RIGHT`, `BOTTOM_LEFT`, `BOTTOM_RIGHT`, `CENTER_LEFT`, `CENTER_TOP`, `CENTER_RIGHT`, `CENTER_BOTTOM`, `CENTER`, `LEFT_WIDE`, `TOP_WIDE`, `RIGHT_WIDE`, `BOTTOM_WIDE`, `VERTICAL_CENTER_WIDE`, `HORIZONTAL_CENTER_WIDE`, `FULL_LAYOUT` |
 | `PivotPreset` | `CENTER`, `TOP_CENTER`, `BOTTOM_CENTER`, `LEFT_CENTER`, `RIGHT_CENTER`, `TOP_LEFT`, `BOTTOM_LEFT`, `TOP_RIGHT`, `BOTTOM_RIGHT` |
 | `LayoutGroupType` | `VERTICAL`, `HORIZONTAL`, `VERTICAL_WRAP`, `HORIZONTAL_WRAP` |
+| `CanvasGroupRenderMode` | `PER_ELEMENT`, `FLATTEN` |
+| `AlphaTweenTarget` | `AUTO`, `COLOR`, `CANVAS_GROUP` |
 | `ScrollbarType`, `ProgressbarType` | `VERTICAL`, `HORIZONTAL` |
 | `ParticleEmitterShape` | `Box`, `Sphere`, `Hemisphere`, `Circle`, `Cone` |
 | `FogType` | `LINEAR`, `EXPONENTIAL`, `EXPONENTIALSQUARED` |
@@ -1943,3 +2138,8 @@ Rigidbody wrappers by index.
 28. **Unity method names are not called**: `Awake` -> `init`, `Start` -> `start`, `OnEnable` ->
     `onEnable`, `Update` -> `onUpdate` registered with `RegisterEngineEvent(self, "onUpdate")`
     (`FixedUpdate` -> `onFixedUpdate`, `LateUpdate` -> `onPostUpdate`). `check_script` warns.
+29. **Singletons: module tables are per instance.** A Unity `static Instance` has no direct
+    equivalent (each attached script runs its file again): use `GameObject.persistSingleton(self)`
+    for a persistent manager, or keep shared state in a `require`d module table.
+30. **After `DontDestroyOnLoad`**, wrappers of the object kept outside the script's own fields
+    name the old scene once it moved: use `self.gameObject` or wrap again (2.8.1).
