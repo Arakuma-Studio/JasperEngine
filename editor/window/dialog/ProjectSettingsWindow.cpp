@@ -8,6 +8,11 @@
 #include "Theme.h"
 #include "external/IconsFontAwesome6.h"
 #include "SettingsCategoryList.h"
+#include "window/PlayInput.h"
+#include "imgui_internal.h"
+#include "command/type/InputActionsCmd.h"
+#include "input/InputActions.h"
+#include "input/InputControlNames.h"
 
 #include <algorithm>
 #include <cmath>
@@ -126,6 +131,7 @@ enum class ProjectCategory {
     Quality,
     Physics,
     Physics2D,
+    Input,
     Scripting,
     TagsAndLayers,
     Editor,
@@ -144,6 +150,8 @@ static const settingsui::Category projectCategories[] = {
     {"Quality", "", "vsync"},
     {"Physics", "", "3d physics jolt rigidbody"},
     {"Physics 2D", "", "2d physics box2d rigidbody 2d"},
+    {"Input", "", "input manager axes actions buttons keys keyboard mouse gamepad joystick bindings horizontal vertical "
+                  "jump fire submit cancel gravity sensitivity dead snap invert rebinding"},
     {"Scripting", "", "lua directory script directories c++ standard"},
     {"Tags and Layers", "", "tags layers"},
     {"Editor", "", "version control files assets directory"},
@@ -965,6 +973,15 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
 
     m_layerCollision3D = project->getLayerCollisionMatrix3D();
     m_layerCollision2D = project->getLayerCollisionMatrix2D();
+
+    m_inputActions = project->getInputActions();
+    m_inputCommitted = m_inputActions;
+    m_inputCommittedJson = InputActions::actionsToJson(m_inputActions);
+    m_inputUndo.clear();
+    m_inputRedo.clear();
+    m_inputSelected = std::clamp(m_inputSelected, 0, std::max(0, static_cast<int>(m_inputActions.size()) - 1));
+    m_inputSearch[0] = '\0';
+    m_inputListen = InputListen();
 }
 
 void ProjectSettingsWindow::show() {
@@ -999,6 +1016,8 @@ void ProjectSettingsWindow::show() {
 }
 
 void ProjectSettingsWindow::drawSettings() {
+    // the Input page's Listen takes Escape: it must not close the dialog in the frame it ends
+    const bool listening = m_inputListen.action >= 0;
     const ImGuiStyle& style = ImGui::GetStyle();
     const float footerY = ImGui::GetWindowHeight() - style.WindowPadding.y - ImGui::GetFrameHeight();
     float regionHeight = std::max(1.0f, footerY - style.ItemSpacing.y * 2.0f - ImGui::GetCursorPosY());
@@ -1018,6 +1037,7 @@ void ProjectSettingsWindow::drawSettings() {
         case ProjectCategory::Quality: drawQualitySettings(); break;
         case ProjectCategory::Physics: drawPhysicsSettings(); break;
         case ProjectCategory::Physics2D: drawPhysics2DSettings(); break;
+        case ProjectCategory::Input: drawInputSettings(); break;
         case ProjectCategory::Scripting: drawScriptingSettings(); break;
         case ProjectCategory::TagsAndLayers: drawTagsAndLayersSettings(); break;
         case ProjectCategory::Editor: drawEditorSettings(); break;
@@ -1037,7 +1057,8 @@ void ProjectSettingsWindow::drawSettings() {
 
     const bool hasAbi = hasAndroidAbiSelection(m_androidAbiArmeabiV7a, m_androidAbiArm64V8a, m_androidAbiX86, m_androidAbiX86_64);
     const std::string tagsAndLayersProblem = tagsAndLayersError();
-    const bool canSave = hasAbi && tagsAndLayersProblem.empty();
+    const std::string inputProblem = inputError();
+    const bool canSave = hasAbi && tagsAndLayersProblem.empty() && inputProblem.empty();
 
     ImGui::BeginDisabled(!canSave);
     if (ImGui::Button("OK", ImVec2(buttonWidth, 0))) {
@@ -1050,14 +1071,17 @@ void ProjectSettingsWindow::drawSettings() {
     if (!canSave && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
         if (!hasAbi) {
             ImGui::SetTooltip("Select at least one Android architecture (Player > Android).");
-        } else {
+        } else if (!tagsAndLayersProblem.empty()) {
             ImGui::SetTooltip("%s (Tags and Layers).", tagsAndLayersProblem.c_str());
+        } else {
+            ImGui::SetTooltip("%s (Input).", inputProblem.c_str());
         }
     }
 
     ImGui::SameLine();
+    // Escape cancels a Listen of the Input page first
     if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0)) ||
-        (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
+        (!listening && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
         m_isOpen = false;
         ImGui::CloseCurrentPopup();
     }
@@ -2018,11 +2042,587 @@ void ProjectSettingsWindow::drawAndroidSettings() {
     ImGui::EndDisabled();
 }
 
+// ---- Input (Project Settings > Input): the input actions
+
+namespace {
+
+    const char* inputKindLabels[] = { "Key or Mouse Button", "Gamepad Axis", "Mouse Movement" };
+    const char* mouseAxisLabels[] = { "X (right)", "Y (up)", "Wheel (up)" };
+
+    std::string inputUniqueName(const std::vector<InputAction>& actions, const std::string& base) {
+        auto taken = [&actions](const std::string& name) {
+            return std::any_of(actions.begin(), actions.end(), [&name](const InputAction& a) { return a.name == name; });
+        };
+        if (!taken(base)) return base;
+        for (int n = 1;; n++) {
+            const std::string name = base + " (" + std::to_string(n) + ")";
+            if (!taken(name)) return name;
+        }
+    }
+
+    std::string inputControlsText(const std::vector<InputControl>& controls) {
+        std::string text;
+        for (const InputControl& control : controls) text += (text.empty() ? "" : ", ") + InputControlNames::name(control);
+        return text.empty() ? std::string("none") : text;
+    }
+
+    // "Key or Mouse Button: right, d / left, a"
+    std::string inputBindingSummary(const InputAction& action, const InputBinding& binding) {
+        switch (binding.kind) {
+            case InputBindingKind::Buttons: {
+                std::string text = std::string(inputKindLabels[0]) + ": " + inputControlsText(binding.positive);
+                if (action.type == InputActionType::Axis && !binding.negative.empty())
+                    text += " / " + inputControlsText(binding.negative);
+                return text;
+            }
+            case InputBindingKind::GamepadAxis:
+                return std::string(inputKindLabels[1]) + ": " + InputControlNames::gamepadAxisName(binding.axis) +
+                       (binding.invert ? " (inverted)" : "");
+            case InputBindingKind::MouseDelta:
+                return std::string(inputKindLabels[2]) + ": " + InputActions::mouseAxisName(binding.mouseAxis);
+        }
+        return "";
+    }
+
+    bool inputPlaying(Project* project) {
+        return project && project->getPlaySessionSceneId() != NULL_PROJECT_SCENE;
+    }
+
+    // a non-negative number field with Unity's label
+    bool inputNumberRow(const char* label, const char* id, float& value, float defaultValue, float speed, float maximum,
+                        const char* tooltip) {
+        if (beginSettingsRow(label, value != defaultValue)) value = defaultValue;
+        ImGui::SetNextItemWidth(-helpMarkerWidth());
+        const bool changed = ImGui::DragFloat(id, &value, speed, 0.0f, maximum, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+        endSettingsRow(tooltip);
+        return changed;
+    }
+
+}
+
+std::string ProjectSettingsWindow::inputError() const {
+    // names are trimmed when their field is left (and on OK): no error while one is typed
+    std::vector<InputAction> actions = m_inputActions;
+    for (InputAction& action : actions) action.name = TagManager::trimName(action.name);
+    return InputActions::validate(actions);
+}
+
+void ProjectSettingsWindow::commitInputEdit() {
+    // a drag or a text edit is one step, taken when it ends
+    if (ImGui::IsAnyItemActive()) return;
+    const std::string json = InputActions::actionsToJson(m_inputActions);
+    if (json == m_inputCommittedJson) return;
+    m_inputUndo.push_back(m_inputCommitted);
+    if (m_inputUndo.size() > 200) m_inputUndo.erase(m_inputUndo.begin());
+    m_inputRedo.clear();
+    m_inputCommitted = m_inputActions;
+    m_inputCommittedJson = json;
+}
+
+void ProjectSettingsWindow::undoInputEdit() {
+    commitInputEdit();
+    if (m_inputUndo.empty()) return;
+    m_inputRedo.push_back(m_inputActions);
+    m_inputActions = m_inputUndo.back();
+    m_inputUndo.pop_back();
+    m_inputCommitted = m_inputActions;
+    m_inputCommittedJson = InputActions::actionsToJson(m_inputActions);
+    m_inputListen = InputListen();
+}
+
+void ProjectSettingsWindow::redoInputEdit() {
+    if (m_inputRedo.empty()) return;
+    m_inputUndo.push_back(m_inputActions);
+    m_inputActions = m_inputRedo.back();
+    m_inputRedo.pop_back();
+    m_inputCommitted = m_inputActions;
+    m_inputCommittedJson = InputActions::actionsToJson(m_inputActions);
+    m_inputListen = InputListen();
+}
+
+void ProjectSettingsWindow::pollInputListen() {
+    if (m_inputListen.action < 0) return;
+    if (m_inputListen.action >= static_cast<int>(m_inputActions.size()) ||
+        m_inputListen.binding >= static_cast<int>(m_inputActions[m_inputListen.action].bindings.size())) {
+        m_inputListen = InputListen();
+        return;
+    }
+    // the click that started it is not the control
+    if (++m_inputListen.frames < 3) return;
+
+    InputBinding& binding = m_inputActions[m_inputListen.action].bindings[m_inputListen.binding];
+    auto finish = [this]() { m_inputListen = InputListen(); };
+    auto addControl = [&binding, this, &finish](InputControl control) {
+        std::vector<InputControl>& list = m_inputListen.list == 1 ? binding.negative : binding.positive;
+        if (std::find(list.begin(), list.end(), control) == list.end()) list.push_back(control);
+        finish();
+    };
+
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+        finish();
+        return;
+    }
+
+    // a gamepad axis binding takes an axis: the stick or trigger moved past half way
+    if (m_inputListen.list == 2) {
+        struct AxisKey { ImGuiKey key; int axis; };
+        const AxisKey axisKeys[] = {
+            {ImGuiKey_GamepadLStickLeft, D_GAMEPAD_AXIS_LEFT_X}, {ImGuiKey_GamepadLStickRight, D_GAMEPAD_AXIS_LEFT_X},
+            {ImGuiKey_GamepadLStickUp, D_GAMEPAD_AXIS_LEFT_Y}, {ImGuiKey_GamepadLStickDown, D_GAMEPAD_AXIS_LEFT_Y},
+            {ImGuiKey_GamepadRStickLeft, D_GAMEPAD_AXIS_RIGHT_X}, {ImGuiKey_GamepadRStickRight, D_GAMEPAD_AXIS_RIGHT_X},
+            {ImGuiKey_GamepadRStickUp, D_GAMEPAD_AXIS_RIGHT_Y}, {ImGuiKey_GamepadRStickDown, D_GAMEPAD_AXIS_RIGHT_Y},
+            {ImGuiKey_GamepadL2, D_GAMEPAD_AXIS_LEFT_TRIGGER}, {ImGuiKey_GamepadR2, D_GAMEPAD_AXIS_RIGHT_TRIGGER},
+        };
+        for (const AxisKey& entry : axisKeys) {
+            if (ImGui::GetKeyData(entry.key)->AnalogValue >= 0.5f) {
+                binding.axis = entry.axis;
+                finish();
+                return;
+            }
+        }
+        // a pad the running game reads (Input.getPressedControl names axes "left_x+")
+        std::string pressed = Input::getPressedControl();
+        if (!pressed.empty() && (pressed.back() == '+' || pressed.back() == '-')) pressed.pop_back();
+        const int axis = InputControlNames::parseGamepadAxis(pressed);
+        if (axis >= 0) {
+            binding.axis = axis;
+            finish();
+        }
+        return;
+    }
+
+    for (int key = ImGuiKey_NamedKey_BEGIN; key < ImGuiKey_NamedKey_END; key++) {
+        if (!ImGui::IsKeyPressed(static_cast<ImGuiKey>(key), false)) continue;
+        const int engineKey = PlayInput::engineKey(static_cast<ImGuiKey>(key));
+        if (engineKey != D_KEY_UNKNOWN) {
+            addControl({InputDevice::Key, engineKey});
+            return;
+        }
+        const int button = PlayInput::engineGamepadButton(static_cast<ImGuiKey>(key));
+        if (button >= 0) {
+            addControl({InputDevice::GamepadButton, button});
+            return;
+        }
+    }
+    // a click on the dialog (Listen again, another field) is not a binding: click empty space
+    for (int button = 0; button < 5 && !ImGui::IsAnyItemHovered(); button++) {
+        if (ImGui::IsMouseClicked(button)) {
+            addControl({InputDevice::Mouse, button});
+            return;
+        }
+    }
+    // a pad the running game reads
+    InputControl control;
+    if (InputControlNames::parseButton(Input::getPressedControl(), control) && control.device == InputDevice::GamepadButton)
+        addControl(control);
+}
+
+void ProjectSettingsWindow::drawInputSettings() {
+    ImGuiIO& io = ImGui::GetIO();
+    if (m_inputListen.action < 0 && !io.WantTextInput && io.KeyCtrl) {
+        if (ImGui::IsKeyPressed(ImGuiKey_Y, false) || (io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z, false))) {
+            redoInputEdit();
+        } else if (!io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z, false)) {
+            undoInputEdit();
+        }
+    }
+
+    if (beginSettingsPanel("##InputSettingsPanel")) {
+        drawSectionNote("Input actions are Unity's virtual axes and buttons: scripts read Input.getAxis(\"Horizontal\") and "
+            "Input.getButtonDown(\"Jump\"), and the keyboard, gamepad and on-screen controls bound to an action add up. "
+            "Saved with the project; a game can rebind them at run time (Input.setBindings).");
+
+        ImGui::BeginDisabled(m_inputUndo.empty() && InputActions::actionsToJson(m_inputActions) == m_inputCommittedJson);
+        if (ImGui::Button(ICON_FA_ROTATE_LEFT " Undo")) undoInputEdit();
+        ImGui::EndDisabled();
+        ImGui::SetItemTooltip("Undo the last Input change (Ctrl+Z)");
+        ImGui::SameLine();
+        ImGui::BeginDisabled(m_inputRedo.empty());
+        if (ImGui::Button(ICON_FA_ROTATE_RIGHT " Redo")) redoInputEdit();
+        ImGui::EndDisabled();
+        ImGui::SetItemTooltip("Redo (Ctrl+Y)");
+        ImGui::SameLine();
+        if (ImGui::Button("Reset to Unity Defaults")) {
+            m_inputActions = InputActions::defaults();
+            m_inputSelected = 0;
+            m_inputListen = InputListen();
+        }
+        ImGui::SetItemTooltip("Horizontal, Vertical, Fire1-3, Jump, Mouse X/Y, Mouse ScrollWheel, Submit and Cancel "
+                              "as Unity's Input Manager has them");
+
+        const std::string problem = inputError();
+        if (!problem.empty()) {
+            ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s", problem.c_str());
+        }
+
+        const float listWidth = std::min(Theme::dpi(220.0f), ImGui::GetContentRegionAvail().x * 0.35f);
+        ImGui::BeginChild("##InputActionList", ImVec2(listWidth, 0), ImGuiChildFlags_Borders);
+        drawInputActionList();
+        ImGui::EndChild();
+        ImGui::SameLine();
+        ImGui::BeginChild("##InputActionDetails", ImVec2(0, 0), ImGuiChildFlags_None);
+        if (m_inputSelected >= 0 && m_inputSelected < static_cast<int>(m_inputActions.size())) {
+            drawInputActionDetails(m_inputActions[m_inputSelected], m_inputSelected);
+        } else {
+            ImGui::TextDisabled("No action selected. Add one with +.");
+        }
+        ImGui::EndChild();
+    }
+    endSettingsPanel();
+
+    pollInputListen();
+    commitInputEdit();
+}
+
+void ProjectSettingsWindow::drawInputActionList() {
+    const float buttonWidth = ImGui::GetFrameHeight();
+    if (ImGui::Button(ICON_FA_PLUS "##AddInputAction", ImVec2(buttonWidth, 0))) {
+        InputAction action;
+        action.name = inputUniqueName(m_inputActions, "New Action");
+        action.bindings.push_back(InputActions::makeBinding(InputBindingKind::Buttons));
+        const int at = std::clamp(m_inputSelected + 1, 0, static_cast<int>(m_inputActions.size()));
+        m_inputActions.insert(m_inputActions.begin() + at, action);
+        m_inputSelected = at;
+        m_inputSearch[0] = '\0';
+    }
+    ImGui::SetItemTooltip("Add an action");
+    ImGui::SameLine();
+    const bool hasSelection = m_inputSelected >= 0 && m_inputSelected < static_cast<int>(m_inputActions.size());
+    ImGui::BeginDisabled(!hasSelection);
+    if (ImGui::Button(ICON_FA_COPY "##DuplicateInputAction", ImVec2(buttonWidth, 0)) && hasSelection) {
+        InputAction copy = m_inputActions[m_inputSelected];
+        copy.name = inputUniqueName(m_inputActions, copy.name);
+        m_inputActions.insert(m_inputActions.begin() + m_inputSelected + 1, copy);
+        m_inputSelected++;
+    }
+    ImGui::SetItemTooltip("Duplicate the action");
+    ImGui::SameLine();
+    if (ImGui::Button(ICON_FA_TRASH "##DeleteInputAction", ImVec2(buttonWidth, 0)) && hasSelection) {
+        m_inputActions.erase(m_inputActions.begin() + m_inputSelected);
+        m_inputSelected = std::min(m_inputSelected, static_cast<int>(m_inputActions.size()) - 1);
+        m_inputListen = InputListen();
+    }
+    ImGui::SetItemTooltip("Delete the action (scripts reading it then log an error and read 0)");
+    ImGui::EndDisabled();
+
+    ImGui::SetNextItemWidth(-1);
+    ImGui::InputTextWithHint("##InputActionSearch", ICON_FA_MAGNIFYING_GLASS " Search", m_inputSearch, sizeof(m_inputSearch));
+    std::string search = m_inputSearch;
+    std::transform(search.begin(), search.end(), search.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+    const bool playing = inputPlaying(m_project);
+    int moveFrom = -1, moveTo = -1;
+    for (int i = 0; i < static_cast<int>(m_inputActions.size()); i++) {
+        const InputAction& action = m_inputActions[i];
+        std::string lower = action.name;
+        std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (!search.empty() && lower.find(search) == std::string::npos) continue;
+
+        ImGui::PushID(i);
+        // a live dot while the game plays: pressed (green) or moved off rest (dim)
+        std::string label = action.name.empty() ? std::string("(no name)") : action.name;
+        if (playing) {
+            InputActions::State state;
+            if (InputActions::getState(action.name, state)) {
+                ImVec4 color = state.pressed ? ImVec4(0.35f, 0.85f, 0.4f, 1.0f)
+                             : (std::fabs(state.value) > 0.0005f ? ImVec4(0.9f, 0.75f, 0.3f, 1.0f) : ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+                ImGui::TextColored(color, ICON_FA_CIRCLE);
+                ImGui::SameLine();
+            }
+        }
+        if (ImGui::Selectable(label.c_str(), i == m_inputSelected)) {
+            m_inputSelected = i;
+        }
+        // drag to reorder (the order is the one getActionNames lists)
+        if (search.empty() && ImGui::BeginDragDropSource()) {
+            ImGui::SetDragDropPayload("INPUT_ACTION_INDEX", &i, sizeof(int));
+            ImGui::TextUnformatted(label.c_str());
+            ImGui::EndDragDropSource();
+        }
+        if (search.empty() && ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("INPUT_ACTION_INDEX")) {
+                moveFrom = *static_cast<const int*>(payload->Data);
+                moveTo = i;
+            }
+            ImGui::EndDragDropTarget();
+        }
+        ImGui::PopID();
+    }
+    if (moveFrom >= 0 && moveTo >= 0 && moveFrom != moveTo) {
+        InputAction moved = m_inputActions[moveFrom];
+        m_inputActions.erase(m_inputActions.begin() + moveFrom);
+        m_inputActions.insert(m_inputActions.begin() + moveTo, moved);
+        m_inputSelected = moveTo;
+        m_inputListen = InputListen();
+    }
+}
+
+void ProjectSettingsWindow::drawInputActionDetails(InputAction& action, int actionIndex) {
+    ImGui::PushID(actionIndex);
+    if (beginSettingsTable("##InputActionTable")) {
+        beginSettingsRow("Name");
+        char name[128];
+        snprintf(name, sizeof(name), "%s", action.name.c_str());
+        ImGui::SetNextItemWidth(-helpMarkerWidth());
+        if (ImGui::InputText("##InputActionName", name, sizeof(name))) action.name = name;
+        if (ImGui::IsItemDeactivatedAfterEdit()) action.name = TagManager::trimName(action.name);
+        endSettingsRow("What scripts pass to Input.getAxis / getButton. Unique, case-sensitive.");
+
+        if (beginSettingsRow("Type", action.type != InputActionType::Axis)) action.type = InputActionType::Axis;
+        int type = action.type == InputActionType::Button ? 1 : 0;
+        const char* typeLabels[] = { "Axis", "Button" };
+        ImGui::SetNextItemWidth(-helpMarkerWidth());
+        if (ImGui::Combo("##InputActionType", &type, typeLabels, 2)) action.type = type == 1 ? InputActionType::Button : InputActionType::Axis;
+        endSettingsRow("Axis: -1..1 from a positive and a negative side. Button: 0..1, negative buttons are not read.");
+
+        beginSettingsRow("Description");
+        char description[256];
+        snprintf(description, sizeof(description), "%s", action.description.c_str());
+        ImGui::SetNextItemWidth(-helpMarkerWidth());
+        if (ImGui::InputText("##InputActionDescription", description, sizeof(description))) action.description = description;
+        endSettingsRow("For you and settings screens; the game does not read it.");
+
+        if (beginSettingsRow("Press Point", action.pressPoint != 0.5f)) action.pressPoint = 0.5f;
+        ImGui::SetNextItemWidth(-helpMarkerWidth());
+        ImGui::DragFloat("##InputActionPressPoint", &action.pressPoint, 0.01f, 0.01f, 1.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+        endSettingsRow("How far a gamepad axis or an on-screen stick goes before getButton is true.");
+
+        if (inputPlaying(m_project)) {
+            beginSettingsRow("Live");
+            InputActions::State state;
+            if (InputActions::getState(action.name, state)) {
+                const float low = action.type == InputActionType::Button ? 0.0f : -1.0f;
+                const float fraction = std::clamp((state.value - low) / (1.0f - low), 0.0f, 1.0f);
+                char overlay[32];
+                snprintf(overlay, sizeof(overlay), "%.3f", state.value);
+                ImGui::TextColored(state.pressed ? ImVec4(0.35f, 0.85f, 0.4f, 1.0f) : ImGui::GetStyle().Colors[ImGuiCol_TextDisabled], ICON_FA_CIRCLE);
+                ImGui::SetItemTooltip(state.pressed ? "Pressed (getButton)" : "Not pressed");
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::ProgressBar(fraction, ImVec2(-helpMarkerWidth(), 0), overlay);
+                endSettingsRow("Input.getAxis of the running game (its definition: what OK last applied).");
+            } else {
+                ImGui::TextDisabled("Not in the running game yet: OK applies it");
+            }
+        }
+        ImGui::EndTable();
+    }
+
+    ImGui::Spacing();
+    int removeBinding = -1, moveUp = -1, moveDown = -1;
+    for (int b = 0; b < static_cast<int>(action.bindings.size()); b++) {
+        ImGui::PushID(b);
+        const std::string header = "Binding " + std::to_string(b + 1) + ": " + inputBindingSummary(action, action.bindings[b]) +
+                                   "###InputBinding";
+        const bool open = Theme::foldoutHeader(header.c_str(), ImGuiTreeNodeFlags_DefaultOpen);
+        if (open) {
+            const float buttonWidth = ImGui::GetFrameHeight();
+            ImGui::BeginDisabled(b == 0);
+            if (ImGui::Button(ICON_FA_ARROW_UP, ImVec2(buttonWidth, 0))) moveUp = b;
+            ImGui::EndDisabled();
+            ImGui::SetItemTooltip("Move up");
+            ImGui::SameLine();
+            ImGui::BeginDisabled(b + 1 >= static_cast<int>(action.bindings.size()));
+            if (ImGui::Button(ICON_FA_ARROW_DOWN, ImVec2(buttonWidth, 0))) moveDown = b;
+            ImGui::EndDisabled();
+            ImGui::SetItemTooltip("Move down");
+            ImGui::SameLine();
+            if (ImGui::Button(ICON_FA_TRASH " Remove")) removeBinding = b;
+            drawInputBinding(action, actionIndex, b);
+        }
+        ImGui::PopID();
+    }
+    if (removeBinding >= 0) {
+        action.bindings.erase(action.bindings.begin() + removeBinding);
+        m_inputListen = InputListen();
+    } else if (moveUp > 0) {
+        std::swap(action.bindings[moveUp], action.bindings[moveUp - 1]);
+        m_inputListen = InputListen();
+    } else if (moveDown >= 0) {
+        std::swap(action.bindings[moveDown], action.bindings[moveDown + 1]);
+        m_inputListen = InputListen();
+    }
+
+    if (ImGui::Button(ICON_FA_PLUS " Add Binding")) ImGui::OpenPopup("##AddInputBinding");
+    if (ImGui::BeginPopup("##AddInputBinding")) {
+        for (int kind = 0; kind < 3; kind++) {
+            if (ImGui::MenuItem(inputKindLabels[kind])) {
+                action.bindings.push_back(InputActions::makeBinding(static_cast<InputBindingKind>(kind)));
+            }
+        }
+        ImGui::EndPopup();
+    }
+    ImGui::PopID();
+}
+
+void ProjectSettingsWindow::drawInputControls(const char* id, std::vector<InputControl>& controls, int actionIndex, int bindingIndex, int list) {
+    ImGui::PushID(id);
+    int remove = -1;
+    for (size_t c = 0; c < controls.size(); c++) {
+        ImGui::PushID(static_cast<int>(c));
+        const std::string label = InputControlNames::name(controls[c]) + " " ICON_FA_XMARK;
+        if (ImGui::SmallButton(label.c_str())) remove = static_cast<int>(c);
+        ImGui::SetItemTooltip("Remove");
+        ImGui::SameLine();
+        ImGui::PopID();
+    }
+    if (remove >= 0) controls.erase(controls.begin() + remove);
+
+    if (ImGui::SmallButton(ICON_FA_PLUS)) {
+        m_inputControlFilter[0] = '\0';
+        ImGui::OpenPopup("##PickControl");
+    }
+    ImGui::SetItemTooltip("Add a key, mouse button or gamepad button");
+    if (ImGui::BeginPopup("##PickControl")) {
+        if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+        ImGui::SetNextItemWidth(Theme::dpi(200.0f));
+        ImGui::InputTextWithHint("##ControlFilter", "Filter (space, mouse, gamepad...)", m_inputControlFilter, sizeof(m_inputControlFilter));
+        const std::string filter = m_inputControlFilter;
+        ImGui::BeginChild("##ControlNames", ImVec2(Theme::dpi(220.0f), Theme::dpi(260.0f)));
+        auto group = [&](const char* title, const std::vector<std::string>& names) {
+            bool shownTitle = false;
+            for (const std::string& name : names) {
+                if (!filter.empty() && name.find(filter) == std::string::npos) continue;
+                if (!shownTitle) {
+                    ImGui::TextDisabled("%s", title);
+                    shownTitle = true;
+                }
+                if (ImGui::Selectable(name.c_str())) {
+                    InputControl control;
+                    if (InputControlNames::parseButton(name, control) &&
+                            std::find(controls.begin(), controls.end(), control) == controls.end())
+                        controls.push_back(control);
+                    ImGui::CloseCurrentPopup();
+                }
+            }
+        };
+        group("Keys", InputControlNames::keyNames());
+        group("Mouse", InputControlNames::mouseButtonNames());
+        group("Gamepad", InputControlNames::gamepadButtonNames());
+        ImGui::EndChild();
+        ImGui::EndPopup();
+    }
+    ImGui::SameLine();
+    const bool listening = m_inputListen.action == actionIndex && m_inputListen.binding == bindingIndex && m_inputListen.list == list;
+    if (listening) ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyle().Colors[ImGuiCol_ButtonActive]);
+    if (ImGui::SmallButton(listening ? "Press a key or button... (Esc)" : ICON_FA_EAR_LISTEN " Listen")) {
+        if (listening) {
+            m_inputListen = InputListen();
+        } else {
+            m_inputListen = InputListen();
+            m_inputListen.action = actionIndex;
+            m_inputListen.binding = bindingIndex;
+            m_inputListen.list = list;
+        }
+    }
+    if (listening) ImGui::PopStyleColor();
+    ImGui::SetItemTooltip("Adds the next key or gamepad button you press, or a mouse button clicked on empty space "
+                          "(a pad the playing game reads too). Esc or Listen again cancels.");
+    ImGui::PopID();
+}
+
+void ProjectSettingsWindow::drawInputBinding(InputAction& action, int actionIndex, int bindingIndex) {
+    InputBinding& binding = action.bindings[bindingIndex];
+    if (!beginSettingsTable("##InputBindingTable")) return;
+
+    beginSettingsRow("Kind");
+    int kind = static_cast<int>(binding.kind);
+    ImGui::SetNextItemWidth(-helpMarkerWidth());
+    if (ImGui::Combo("##BindingKind", &kind, inputKindLabels, 3) && kind != static_cast<int>(binding.kind)) {
+        binding = InputActions::makeBinding(static_cast<InputBindingKind>(kind));
+        m_inputListen = InputListen();
+    }
+    endSettingsRow("Unity's Input Manager types: Key or Mouse Button, Joystick Axis, Mouse Movement.");
+
+    const InputBinding defaults = InputActions::makeBinding(binding.kind);
+    auto gamepadRow = [&binding]() {
+        if (beginSettingsRow("Gamepad", binding.gamepad != -1)) binding.gamepad = -1;
+        std::string preview = binding.gamepad < 0 ? std::string("Any") : "Gamepad " + std::to_string(binding.gamepad);
+        ImGui::SetNextItemWidth(-helpMarkerWidth());
+        if (ImGui::BeginCombo("##BindingGamepad", preview.c_str())) {
+            if (ImGui::Selectable("Any", binding.gamepad < 0)) binding.gamepad = -1;
+            for (int pad = 0; pad < 16; pad++) {
+                if (ImGui::Selectable(("Gamepad " + std::to_string(pad)).c_str(), binding.gamepad == pad)) binding.gamepad = pad;
+            }
+            ImGui::EndCombo();
+        }
+        endSettingsRow("The gamepad id (0-15) whose buttons and axes this binding reads; Any reads every connected pad.");
+    };
+
+    switch (binding.kind) {
+        case InputBindingKind::Buttons: {
+            beginSettingsRow(action.type == InputActionType::Axis ? "Positive Buttons" : "Buttons");
+            drawInputControls("##Positive", binding.positive, actionIndex, bindingIndex, 0);
+            if (action.type == InputActionType::Axis) {
+                beginSettingsRow("Negative Buttons");
+                drawInputControls("##Negative", binding.negative, actionIndex, bindingIndex, 1);
+            }
+            gamepadRow();
+            inputNumberRow("Gravity", "##Gravity", binding.gravity, defaults.gravity, 0.1f, 1000.0f,
+                "Speed in units per second that the value falls back to 0 when no button is pressed (0: at once).");
+            inputNumberRow("Dead", "##Dead", binding.dead, defaults.dead, 0.001f, 0.999f,
+                "Values smaller than this read 0.");
+            inputNumberRow("Sensitivity", "##Sensitivity", binding.sensitivity, defaults.sensitivity, 0.1f, 1000.0f,
+                "Speed in units per second that the value moves to the target (0: at once).");
+            if (beginSettingsRow("Snap", binding.snap)) binding.snap = false;
+            ImGui::Checkbox("##Snap", &binding.snap);
+            endSettingsRow("Pressing the opposite side jumps to 0 first instead of sliding through it.");
+            break;
+        }
+        case InputBindingKind::GamepadAxis: {
+            beginSettingsRow("Axis");
+            int axis = binding.axis;
+            const std::vector<std::string>& axes = InputControlNames::gamepadAxisNames();
+            ImGui::SetNextItemWidth(Theme::dpi(160.0f));
+            if (ImGui::BeginCombo("##BindingAxis", InputControlNames::gamepadAxisName(axis).c_str())) {
+                for (int a = 0; a < static_cast<int>(axes.size()); a++) {
+                    if (ImGui::Selectable(axes[a].c_str(), a == axis)) binding.axis = a;
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::SameLine();
+            const bool listening = m_inputListen.action == actionIndex && m_inputListen.binding == bindingIndex && m_inputListen.list == 2;
+            if (ImGui::SmallButton(listening ? "Move a stick or trigger... (Esc)" : ICON_FA_EAR_LISTEN " Listen##Axis")) {
+                m_inputListen = InputListen();
+                if (!listening) {
+                    m_inputListen.action = actionIndex;
+                    m_inputListen.binding = bindingIndex;
+                    m_inputListen.list = 2;
+                }
+            }
+            endSettingsRow("Sticks read -1..1 (up is -1 on the Y axes: Invert makes it positive), triggers 0..1.");
+            gamepadRow();
+            inputNumberRow("Dead", "##Dead", binding.dead, defaults.dead, 0.01f, 0.999f,
+                "The dead zone: below it the axis reads 0, above it the value is rescaled to start at 0.");
+            inputNumberRow("Sensitivity", "##Sensitivity", binding.sensitivity, defaults.sensitivity, 0.01f, 100.0f,
+                "Multiplies the value.");
+            break;
+        }
+        case InputBindingKind::MouseDelta: {
+            beginSettingsRow("Axis");
+            int axis = static_cast<int>(binding.mouseAxis);
+            ImGui::SetNextItemWidth(-helpMarkerWidth());
+            if (ImGui::Combo("##BindingMouseAxis", &axis, mouseAxisLabels, 3)) binding.mouseAxis = static_cast<MouseDeltaAxis>(axis);
+            endSettingsRow("Mouse movement this frame in canvas px (wheel: steps); not clamped to -1..1.");
+            inputNumberRow("Sensitivity", "##Sensitivity", binding.sensitivity, defaults.sensitivity, 0.01f, 100.0f,
+                "Multiplies the movement (Unity's default 0.1).");
+            break;
+        }
+    }
+    if (beginSettingsRow("Invert", binding.invert)) binding.invert = false;
+    ImGui::Checkbox("##Invert", &binding.invert);
+    endSettingsRow("Flips the sign.");
+    ImGui::EndTable();
+}
+
 bool ProjectSettingsWindow::applySettings() {
     if (!hasAndroidAbiSelection(m_androidAbiArmeabiV7a, m_androidAbiArm64V8a, m_androidAbiX86, m_androidAbiX86_64)) {
         return false;
     }
     if (!tagsAndLayersError().empty()) {
+        return false;
+    }
+    if (!inputError().empty()) {
         return false;
     }
     // The edit buffer truncates long names. Only write back when the value
@@ -2180,6 +2780,15 @@ bool ProjectSettingsWindow::applySettings() {
     // GameObjects keep a removed tag, as in Unity; scripts then see it as not defined
     m_project->setTagsAndLayers(tags, m_layerNames);
     m_project->setLayerCollisionMatrices(m_layerCollision3D, m_layerCollision2D);
+
+    // Input: one undoable step of the project history (Edit > Undo with the Project window
+    // focused, MCP undo scope project)
+    for (InputAction& action : m_inputActions) action.name = TagManager::trimName(action.name);
+    if (InputActions::actionsToJson(m_inputActions) != InputActions::actionsToJson(m_project->getInputActions())) {
+        auto* command = new InputActionsCmd(m_project, m_project->getInputActions(), m_inputActions);
+        command->setNoMerge();
+        m_project->getProjectCommandHistory()->addCommand(command);
+    }
 
     // the standalone build's main.cpp bakes these settings in
     m_project->markGeneratedSourcesDirty();

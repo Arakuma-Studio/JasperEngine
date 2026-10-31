@@ -7,6 +7,7 @@
 #include "Scene.h"
 #include "Input.h"
 #include "io/UserSettings.h"
+#include "input/InputActions.h"
 #include "render/SystemRender.h"
 #include "script/LuaBinding.h"
 #include "manager/SceneManager.h"
@@ -156,6 +157,8 @@ FunctionSubscribe<void(int)> Engine::onGamepadDisconnect;
 FunctionSubscribe<void(int,int)> Engine::onGamepadButtonDown;
 FunctionSubscribe<void(int,int)> Engine::onGamepadButtonUp;
 FunctionSubscribe<void(int,int,float)> Engine::onGamepadAxisMove;
+FunctionSubscribe<void(const std::string&)> Engine::onButtonDown;
+FunctionSubscribe<void(const std::string&)> Engine::onButtonUp;
 
 FunctionSubscribe<void()>& Engine::getOnInit() {
     // This static variable is guaranteed to be created the first time this function is called
@@ -393,6 +396,8 @@ void Engine::pauseGameEvents(bool pause) {
     onGamepadButtonDown.setEnabled(!pause);
     onGamepadButtonUp.setEnabled(!pause);
     onGamepadAxisMove.setEnabled(!pause);
+    onButtonDown.setEnabled(!pause);
+    onButtonUp.setEnabled(!pause);
 }
 
 void Engine::includeScene(Scene* scene){
@@ -941,6 +946,8 @@ void Engine::removeSubscriptionsByTag(const std::string& substring) {
     onGamepadButtonDown.removeByTagSubstring(substring);
     onGamepadButtonUp.removeByTagSubstring(substring);
     onGamepadAxisMove.removeByTagSubstring(substring);
+    onButtonDown.removeByTagSubstring(substring);
+    onButtonUp.removeByTagSubstring(substring);
 
     onViewLoaded.removeByTagSubstring(substring);
     onViewChanged.removeByTagSubstring(substring);
@@ -950,6 +957,16 @@ void Engine::removeSubscriptionsByTag(const std::string& substring) {
     onResume.removeByTagSubstring(substring);
     onShutdown.removeByTagSubstring(substring);
     onSceneLoaded.removeByTagSubstring(substring);
+
+    // a released script instance's tag is "_<address>_": the input sources it owned go too
+    // (Input.simulateAxis(name, value, self), InputActions::setSourceValue(this, ...))
+    if (substring.size() > 2 && substring.front() == '_' && substring.back() == '_' &&
+            std::all_of(substring.begin() + 1, substring.end() - 1, [](char c) { return c >= '0' && c <= '9'; })) {
+        try {
+            InputActions::clearSource(static_cast<uintptr_t>(std::stoull(substring.substr(1, substring.size() - 2))));
+        } catch (const std::exception&) {
+        }
+    }
 }
 
 void Engine::clearAllSubscriptions(bool includeLifecycle) {
@@ -980,6 +997,8 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
     onGamepadButtonDown.clear();
     onGamepadButtonUp.clear();
     onGamepadAxisMove.clear();
+    onButtonDown.clear();
+    onButtonUp.clear();
 
     if (includeLifecycle) {
         onViewLoaded.clear();
@@ -1370,6 +1389,11 @@ void Engine::runFrame(bool draw){
 
     // the input of this frame is over: no low surrogate will follow a pending high one
     flushCharInput();
+    // this frame's input: edges, deltas, touches, input actions and their onButtonDown/Up;
+    // frames that do not run the update keep it for the next one that does
+    const bool runsUpdate = !paused && !simulationHeld;
+    if (runsUpdate)
+        Input::beginFrame(frameTime);
     // held gamepad directions repeat on the UI clock
     updateGamepadNavigation();
 
@@ -1453,6 +1477,8 @@ void Engine::runFrame(bool draw){
             scenes[i]->compactComponents();
         }
     }
+    if (runsUpdate)
+        Input::endFrame();
 
     if (draw){
         Engine::onDraw.call();
@@ -1610,6 +1636,8 @@ void Engine::systemPause(){
     AudioSystem::pauseAll();
     Engine::onPause.call();
     paused = true;
+    // the key and button ups of a paused app never come: the first frame after resume sees them
+    Input::releaseAll();
 
     // a paused app may be killed without another call
     UserSettings::save();
@@ -1946,7 +1974,12 @@ void Engine::systemTouchStart(int pointer, float x, float y){
         if (!ignoreEventsHandledByUI || !uiEventReceived){
             Engine::onTouchStart.call(pointer, x, y);
             if (Engine::isCallMouseInTouchEvent()){
-                Input::addMousePressed(D_MOUSE_BUTTON_1);
+                // the simulated mouse is one device: a finger multiTouchEnabled hides does not press it
+                if (Input::isTouchVisible(pointer)){
+                    Input::addMousePressed(D_MOUSE_BUTTON_1);
+                    // it jumps to the finger: no movement
+                    Input::resetMouseMovement();
+                }
                 Input::setMousePosition(x, y);
                 Engine::onMouseDown.call(D_MOUSE_BUTTON_1, x, y, 0);
             }
@@ -1956,7 +1989,16 @@ void Engine::systemTouchStart(int pointer, float x, float y){
 }
 
 void Engine::systemTouchEnd(int pointer, float x, float y){
-    if (transformCoordPos(x, y)){
+    const bool visible = Input::isTouchVisible(pointer);
+    if (!transformCoordPos(x, y)){
+        // lifted outside the canvas: no event, but the finger is not down any more
+        Input::removeTouch(pointer);
+        if (Engine::isCallMouseInTouchEvent() && visible)
+            Input::releaseMousePressed(D_MOUSE_BUTTON_1);
+        return;
+    }
+    {
+        Input::setTouchPosition(pointer, x, y);
         Input::removeTouch(pointer);
 
         uiEventReceived = false;
@@ -1982,7 +2024,8 @@ void Engine::systemTouchEnd(int pointer, float x, float y){
         if (!ignoreEventsHandledByUI || !uiEventReceived){
             Engine::onTouchEnd.call(pointer, x, y);
             if (Engine::isCallMouseInTouchEvent()){
-                Input::releaseMousePressed(D_MOUSE_BUTTON_1);
+                if (visible)
+                    Input::releaseMousePressed(D_MOUSE_BUTTON_1);
                 Input::setMousePosition(x, y);
                 Engine::onMouseUp.call(D_MOUSE_BUTTON_1, x, y, 0);
             }
@@ -1993,6 +2036,8 @@ void Engine::systemTouchEnd(int pointer, float x, float y){
 
 void Engine::systemTouchMove(int pointer, float x, float y){
     if (transformCoordPos(x, y)){
+        const bool known = Input::findTouchIndex(pointer) != (size_t)-1;
+        const Vector2 previous = Input::getTouchPosition(pointer);
         Input::setTouchPosition(pointer, x, y);
 
         uiEventReceived = false;
@@ -2018,6 +2063,9 @@ void Engine::systemTouchMove(int pointer, float x, float y){
         if (!ignoreEventsHandledByUI || !uiEventReceived){
             Engine::onTouchMove.call(pointer, x, y);
             if (Engine::isCallMouseInTouchEvent()){
+                // the finger moving the simulated mouse moves it (Input.mouseDelta, Mouse X/Y)
+                if (known && Input::isTouchVisible(pointer))
+                    Input::addMouseDelta(x - previous.x, y - previous.y);
                 Input::setMousePosition(x, y);
                 Engine::onMouseMove.call(x, y, 0);
             }
@@ -2029,7 +2077,7 @@ void Engine::systemTouchMove(int pointer, float x, float y){
 void Engine::systemTouchCancel(){
     std::vector<Touch> cancelled = Input::getTouches();
     for (const Touch& touch : cancelled)
-        systemTouchCancel(touch.pointer);
+        systemTouchCancel(touch.fingerId);
 }
 
 void Engine::systemTouchCancel(int pointer){
@@ -2038,7 +2086,10 @@ void Engine::systemTouchCancel(int pointer){
     if (index == -1)
         return;
     Vector2 pos = Input::getTouchPosition(pointer);
-    Input::removeTouch(pointer);
+    // an interrupted finger that simulated the mouse lets go of it (no mouse up: not a release)
+    if (Engine::isCallMouseInTouchEvent() && Input::isTouchVisible(pointer))
+        Input::releaseMousePressed(D_MOUSE_BUTTON_1);
+    Input::cancelTouch(pointer);
 
     // the documents that tracked it let go of it without a click
     bool consumed = false;
@@ -2092,7 +2143,14 @@ void Engine::systemMouseDown(int button, float x, float y, int mods){
     }
 }
 void Engine::systemMouseUp(int button, float x, float y, int mods){
-    if (transformCoordPos(x, y)){
+    if (!transformCoordPos(x, y)){
+        // released outside the canvas: no event, but the button is not held any more
+        Input::releaseMousePressed(button);
+        if (Engine::isCallTouchInMouseEvent())
+            Input::removeTouch(0);
+        return;
+    }
+    {
         Input::releaseMousePressed(button);
         Input::setMousePosition(x, y);
         if (mods != 0)
@@ -2131,7 +2189,10 @@ void Engine::systemMouseUp(int button, float x, float y, int mods){
 }
 
 void Engine::systemMouseMove(float x, float y, int mods){
-    if (transformCoordPos(x, y)){
+    // the movement counts outside the canvas too (a captured mouse looks around)
+    const bool insideCanvas = transformCoordPos(x, y);
+    Input::addMouseMovement(x, y);
+    if (insideCanvas){
         Input::setMousePosition(x, y);
         if (mods != 0)
             Input::setModifiers(mods);
@@ -2209,6 +2270,8 @@ void Engine::systemMouseScroll(float xoffset, float yoffset, int mods){
 
 void Engine::systemMouseEnter(){
     Input::addMouseEntered();
+    // the pointer comes back elsewhere: no movement in between
+    Input::resetMouseMovement();
     // documents hover again with the next move
     Engine::onMouseEnter.call();
 }
@@ -2221,7 +2284,7 @@ void Engine::systemMouseLeave(){
 }
 
 void Engine::systemKeyDown(int key, bool repeat, int mods){
-    Input::addKeyPressed(key);
+    Input::addKeyPressed(key, repeat);
     if (mods != 0)
         Input::setModifiers(mods);
 
@@ -2263,6 +2326,9 @@ void Engine::systemCharInput(wchar_t codepoint){
 
     std::vector<uint32_t> codepoints;
     charInputCombiner.push((uint32_t)codepoint, codepoints);
+    // Input.inputString
+    for (uint32_t typed : codepoints)
+        Input::addInputCharacter(typed);
 
     bool consumed;
     if (!codepoints.empty()){
@@ -2305,6 +2371,12 @@ void Engine::systemTextInput(const std::string& utf8){
 
     const std::vector<Scene*> scenes = getScenesSnapshot();
 
+    bool hadInvalid = false;
+    const std::vector<uint32_t> codepoints = StringUtils::decodeUtf8ToCodepoints(utf8, hadInvalid);
+    // Input.inputString
+    for (uint32_t codepoint : codepoints)
+        Input::addInputCharacter(codepoint);
+
     const bool consumed = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
         return documents->eventOnTextInput(utf8);
     }) != nullptr;
@@ -2312,8 +2384,7 @@ void Engine::systemTextInput(const std::string& utf8){
     if (ignoreEventsHandledByUI && consumed)
         return;
 
-    bool hadInvalid = false;
-    for (uint32_t codepoint : StringUtils::decodeUtf8ToCodepoints(utf8, hadInvalid))
+    for (uint32_t codepoint : codepoints)
         sendCharacterToGame(codepoint, !consumed, true, scenes);
 }
 
@@ -2417,6 +2488,16 @@ void Engine::systemGamepadAxisMove(int gamepad, int axis, float value){
 
 bool Engine::wantsGamepadNavigation(){
     return documentsHaveGamepadFocus(getScenesSnapshot());
+}
+
+bool Engine::isTextInputFocused(){
+    for (Scene* scene : getScenesSnapshot()){
+        if (canSendUIEvents(scene) && scene->getSystem<UISystem>()->isInputFieldFocused())
+            return true;
+        if (canSendDocumentEvents(scene) && scene->getSystem<UIDocumentSystem>()->hasFocusedTextInput())
+            return true;
+    }
+    return false;
 }
 
 void Engine::updateGamepadNavigation(){

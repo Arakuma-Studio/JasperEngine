@@ -109,16 +109,13 @@ function Player:init()
 end
 
 function Player:onUpdate()
-    local dx = 0
-    if Input.isKeyPressed(Input.KEY_RIGHT) then dx = dx + 1 end
-    if Input.isKeyPressed(Input.KEY_LEFT) then dx = dx - 1 end
+    local dx = Input.getAxis("Horizontal")              -- keys, gamepad, on-screen stick
     local p = self.go.position                          -- a copy: assign it back
     self.go.position = Vector3(p.x + dx * self.speed * Engine.deltatime, p.y, p.z)
-    if Input.isKeyPressed(Input.KEY_SPACE) and not self.fired then
+    if Input.getButtonDown("Jump") then                 -- pressed this frame (space, pad Y)
         GameObject.instantiate(self.bullet, self.scene, self.go.position, Quaternion.IDENTITY)
         Log.print("fired at " .. tostring(p.x))
     end
-    self.fired = Input.isKeyPressed(Input.KEY_SPACE)
 end
 
 return Player
@@ -133,8 +130,9 @@ return Player
 - Bound getters are often PROPERTIES, not methods: go.position, sprite.width, body.mass,
   Engine.deltatime (a missing method: "attempt to call a nil value"). Check
   jasper://docs/lua-api (an index: read what you need), the Lua stubs or search_engine_api before using a name you have not seen there.
-- Input.isKeyPressed is the held state; detect a press by remembering last frame's value or
-  with onKeyDown(key, isRepeat, mods). Log.print/warn/error take ONE string (use ..).
+- Input.getAxis/getButtonDown('Jump') read Project Settings > Input actions; getKeyDown(key)
+  is an edge, isKeyPressed held. Test with send_input action/axis events (jasper://docs/input).
+  Log.print/warn/error take ONE string (use ..).
 - Time: Engine.timeScale and Engine.fixedDeltatime (read/write), Engine.gameTime and
   Engine.frameCount (scaled game time and frames since start).
 - Lua has no default arguments: pass every argument (e.g. the wake flag).
