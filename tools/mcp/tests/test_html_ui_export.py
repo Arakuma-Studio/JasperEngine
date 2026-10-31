@@ -6,8 +6,9 @@
 - A missing reference, a path outside the assets directory and a remote URL fail the export
   (Exporter::checkHtmlUIReferences; for .html documents the compat layer's checkDocument,
   phase-2 hook H14) with project-relative file:line:column in the message.
-- JASPER_SLOW_BUILD=1 also builds the Desktop player and runs it (run_build) with the document
-  on screen.
+- JASPER_SLOW_BUILD=1 also builds the Desktop game and runs it (run_build) with the document
+  on screen: built with the prebuilt glcore player runtime the run builds once (what runs is the
+  same player; compiling the engine for it is test_build.py's check).
 
 Runs on a scratch copy of the fixture project.
 """
@@ -18,14 +19,16 @@ import time
 import asyncio
 from pathlib import Path
 
+import build_cache
 from harness import Editor, REPO, skip
 from htmlui_pixels import count_near
 
-EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
+# the Desktop player test builds with the run's prebuilt glcore runtime (tools/mcp/build_cache.py)
+PREBUILT_PLAYERS = ["glcore-release"]
+EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui", "env": build_cache.player_env("glcore", "release")}
 CI = True
 
 TIMEOUT = int(os.environ.get("JASPER_BUILD_TIMEOUT", "7200"))
-JOBS = 2
 
 S: dict = {}
 
@@ -186,12 +189,15 @@ async def test_missing_document_fails_the_export(ed: Editor):
 
 async def test_desktop_build_runs_the_document(ed: Editor):
     if os.environ.get("JASPER_SLOW_BUILD", "") in ("", "0"):
-        skip("set JASPER_SLOW_BUILD=1 to build and run a real Desktop player (compiles the engine)")
+        skip("set JASPER_SLOW_BUILD=1 to build and run a real Desktop player (the run builds its prebuilt runtime once)")
     await _setup_document(ed)
+    # what runs is the game: the prebuilt player (the compile path is test_build.py's)
+    runtime = await build_cache.player_runtime(ed, "glcore", "release")
     out = ed.scratch.root / "export-html-ui-desktop"
-    r = await ed.call("build_project", mode="desktop", output_dir=str(out), build_jobs=JOBS, timeout_seconds=30)
-    job = r if r["status"] != "running" else await wait_job(ed, r["job_id"], TIMEOUT - 300, poll=15.0)
+    r = await ed.call("build_project", mode="desktop", output_dir=str(out), method="prebuilt", timeout_seconds=600)
+    job = r if r["status"] != "running" else await wait_job(ed, r["job_id"], TIMEOUT - 300, poll=5.0)
     ed.check_eq(job["status"], "succeeded", f"{job}")
+    ed.check_eq((job["result"]["method_used"], job["result"]["player_id"]), ("prebuilt", runtime.name), f"{job}")
     raw = await ed.call_raw("run_build", {"seconds": 8, "screenshot_after_seconds": 6})
     ed.check(not raw.is_error, raw.text)
     ed.check(not raw.value["crashed"], f"the player crashed: {raw.value}")
