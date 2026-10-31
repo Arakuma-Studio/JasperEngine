@@ -396,6 +396,12 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("tag", &EntityHandle::getTag, &EntityHandle::setTag)
         .addFunction("compareTag", &EntityHandle::compareTag)
         .addProperty("layer", &EntityHandle::getLayer, &EntityHandle::setLayer)
+        // Unity's GetComponent<Script>() family: the Lua script instances of this GameObject
+        .addFunction("getScript", &LuaBinding::luaGetScript)
+        .addFunction("getScripts", &LuaBinding::luaGetScripts)
+        .addFunction("getScriptInChildren", &LuaBinding::luaGetScriptInChildren)
+        .addFunction("getScriptsInChildren", &LuaBinding::luaGetScriptsInChildren)
+        .addFunction("getScriptInParent", &LuaBinding::luaGetScriptInParent)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -470,6 +476,12 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addStaticFunction("instantiate", &luaInstantiate)
         .addStaticFunction("destroy", &luaDestroy)
         .addStaticFunction("destroyImmediate", &luaDestroyImmediate)
+        // scene-wide lookups (Unity's GameObject.Find, FindWithTag, FindObjectOfType...)
+        .addStaticFunction("find", &LuaBinding::luaFind)
+        .addStaticFunction("findWithTag", &LuaBinding::luaFindWithTag)
+        .addStaticFunction("findGameObjectsWithTag", &LuaBinding::luaFindGameObjectsWithTag)
+        .addStaticFunction("findObjectOfType", &LuaBinding::luaFindObjectOfType)
+        .addStaticFunction("findObjectsOfType", &LuaBinding::luaFindObjectsOfType)
         .addFunction("addChild", 
             luabridge::overload<GameObject*>(&GameObject::addChild),
             luabridge::overload<Entity>(&GameObject::addChild))

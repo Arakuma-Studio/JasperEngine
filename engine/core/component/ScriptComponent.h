@@ -5,9 +5,12 @@
 #define SCRIPT_COMPONENT_H
 
 #include "ScriptProperty.h"
+#include <cstdint>
 #include <vector>
 
 namespace jasperengine{
+
+    class ScriptBase;
 
     enum class ScriptType {
         CPP,
@@ -23,6 +26,14 @@ namespace jasperengine{
         std::vector<ScriptProperty> properties;
 
         void* instance = nullptr; // C++ instance OR Lua handle
+
+        // Runtime only, never serialized; a copy (EntityCloner) starts over. Set by the generated
+        // factory for a C++ script deriving ScriptBase (null for the GameObject wrapper kind):
+        // the object the lifecycle and other script messages are called on, and the messages
+        // its class overrides (ScriptMessages::cppMask). The lifecycle state of the instance
+        // (init ran, enabled latch, started...) is ScriptRuntime's, keyed by `instance`.
+        ScriptBase* cppScript = nullptr;
+        uint32_t cppMessageMask = 0;
     };
 
     struct JASPERENGINE_API ScriptComponent {

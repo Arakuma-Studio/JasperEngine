@@ -1054,7 +1054,10 @@ set(JASPERENGINE_SRCS
     core/script/LuaFunctionBase.cpp
     core/script/LuaScript.cpp
     core/script/ScriptBase.cpp
+    core/script/ScriptEvent.cpp
+    core/script/ScriptMessages.cpp
     core/script/ScriptProperty.cpp
+    core/script/ScriptRuntime.cpp
     core/script/binding/ActionClassesLua.cpp
     core/script/binding/CoreClassesLua.cpp
     core/script/binding/ECSClassesLua.cpp
@@ -1067,6 +1070,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/UtilClassesLua.cpp
     core/script/binding/HtmlUIClassesLua.cpp
     core/script/binding/HtmlUIAnimeLua.cpp
+    core/script/binding/ScriptClassesLua.cpp
     core/shader/RuntimeShaderCompiler.cpp
     core/shader/ShaderData.cpp
     core/shader/ShaderDataSerializer.cpp

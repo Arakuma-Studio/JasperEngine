@@ -3293,6 +3293,17 @@
 		4A534E473E6B9FE60C626734 /* MeshBufferPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D911C9CB4326E948 /* MeshBufferPool.cpp */; };
 		4A534E472437676B559FC859 /* MeshBufferPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D911C9CB4326E948 /* MeshBufferPool.cpp */; };
 		4A534E47693D678BC7B907E1 /* MeshBufferPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E2D854B4242EC2F5 /* MeshBufferPool.h */; };
+		4A534E475F8922B71DF8823D /* ScriptEvent.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4708AE2F23673DC28C /* ScriptEvent.cpp */; };
+		4A534E476DADCD54579A8EF4 /* ScriptEvent.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4708AE2F23673DC28C /* ScriptEvent.cpp */; };
+		4A534E4704D5E059F83952E5 /* ScriptMessages.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47987B75C94CDCCD29 /* ScriptMessages.cpp */; };
+		4A534E47D0813BE461D92A94 /* ScriptMessages.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47987B75C94CDCCD29 /* ScriptMessages.cpp */; };
+		4A534E470CC4368392A0B2D2 /* ScriptRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47752AE757CAFC728C /* ScriptRuntime.cpp */; };
+		4A534E47EA32FE1232B1C371 /* ScriptRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47752AE757CAFC728C /* ScriptRuntime.cpp */; };
+		4A534E479BBB4CAB67E8BDD1 /* ScriptClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D748AD87F95BC4D0 /* ScriptClassesLua.cpp */; };
+		4A534E47981333F75668E2CF /* ScriptClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D748AD87F95BC4D0 /* ScriptClassesLua.cpp */; };
+		4A534E47A1EA29B71E34FD57 /* ScriptEvent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E473B9ADEBA91C10EBA /* ScriptEvent.h */; };
+		4A534E4708435C1C1D7160F0 /* ScriptMessages.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E471CD7791994CB883E /* ScriptMessages.h */; };
+		4A534E47A18FD96145634463 /* ScriptRuntime.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4700754C227C4F1876 /* ScriptRuntime.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -6656,6 +6667,13 @@
 		4A534E474C490B38DD8DB742 /* VertexAnimatorSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VertexAnimatorSystem.h; sourceTree = "<group>"; };
 		4A534E47D911C9CB4326E948 /* MeshBufferPool.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MeshBufferPool.cpp; sourceTree = "<group>"; };
 		4A534E47E2D854B4242EC2F5 /* MeshBufferPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MeshBufferPool.h; sourceTree = "<group>"; };
+		4A534E4708AE2F23673DC28C /* ScriptEvent.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ScriptEvent.cpp; sourceTree = "<group>"; };
+		4A534E47987B75C94CDCCD29 /* ScriptMessages.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ScriptMessages.cpp; sourceTree = "<group>"; };
+		4A534E47752AE757CAFC728C /* ScriptRuntime.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ScriptRuntime.cpp; sourceTree = "<group>"; };
+		4A534E47D748AD87F95BC4D0 /* ScriptClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ScriptClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E473B9ADEBA91C10EBA /* ScriptEvent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ScriptEvent.h; sourceTree = "<group>"; };
+		4A534E471CD7791994CB883E /* ScriptMessages.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ScriptMessages.h; sourceTree = "<group>"; };
+		4A534E4700754C227C4F1876 /* ScriptRuntime.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ScriptRuntime.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -7070,6 +7088,7 @@
 				564944450D63D10E11014513 /* HtmlUIMediaLua.cpp */,
 				414E494D4500000000000044 /* HtmlUIAnimeLua.cpp */,
 				505645430000000000000178 /* HtmlUIVectorLua.cpp */,
+				4A534E47D748AD87F95BC4D0 /* ScriptClassesLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -9416,6 +9435,12 @@
 				71AD5E6E2E9F2B86004951AB /* ScriptBase.cpp */,
 				71AD5E6F2E9F2B86004951AB /* ScriptProperty.h */,
 				71AD5E752E9F2B87004951AB /* ScriptProperty.cpp */,
+				4A534E4708AE2F23673DC28C /* ScriptEvent.cpp */,
+				4A534E47987B75C94CDCCD29 /* ScriptMessages.cpp */,
+				4A534E47752AE757CAFC728C /* ScriptRuntime.cpp */,
+				4A534E473B9ADEBA91C10EBA /* ScriptEvent.h */,
+				4A534E471CD7791994CB883E /* ScriptMessages.h */,
+				4A534E4700754C227C4F1876 /* ScriptRuntime.h */,
 			);
 			path = script;
 			sourceTree = "<group>";
@@ -11890,6 +11915,9 @@
 				4A534E471E767D9BE2C4AF8A /* CpuSkin.h in Headers */,
 				4A534E47348D45F4BBD323C9 /* VertexAnimatorSystem.h in Headers */,
 				4A534E47693D678BC7B907E1 /* MeshBufferPool.h in Headers */,
+				4A534E47A1EA29B71E34FD57 /* ScriptEvent.h in Headers */,
+				4A534E4708435C1C1D7160F0 /* ScriptMessages.h in Headers */,
+				4A534E47A18FD96145634463 /* ScriptRuntime.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -13933,6 +13961,10 @@
 				4A534E4759966A2ED417BECD /* CpuSkin.cpp in Sources */,
 				4A534E474B1E43D590AD23B0 /* VertexAnimatorSystem.cpp in Sources */,
 				4A534E473E6B9FE60C626734 /* MeshBufferPool.cpp in Sources */,
+				4A534E475F8922B71DF8823D /* ScriptEvent.cpp in Sources */,
+				4A534E4704D5E059F83952E5 /* ScriptMessages.cpp in Sources */,
+				4A534E470CC4368392A0B2D2 /* ScriptRuntime.cpp in Sources */,
+				4A534E479BBB4CAB67E8BDD1 /* ScriptClassesLua.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14355,6 +14387,10 @@
 				4A534E47641FBAF4D870EBAF /* CpuSkin.cpp in Sources */,
 				4A534E47A95FB7E661773FC4 /* VertexAnimatorSystem.cpp in Sources */,
 				4A534E472437676B559FC859 /* MeshBufferPool.cpp in Sources */,
+				4A534E476DADCD54579A8EF4 /* ScriptEvent.cpp in Sources */,
+				4A534E47D0813BE461D92A94 /* ScriptMessages.cpp in Sources */,
+				4A534E47EA32FE1232B1C371 /* ScriptRuntime.cpp in Sources */,
+				4A534E47981333F75668E2CF /* ScriptClassesLua.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

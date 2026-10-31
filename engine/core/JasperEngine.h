@@ -204,7 +204,10 @@
 #include "script/LuaFunction.h"
 #include "script/LuaScript.h"
 #include "script/ScriptBase.h"
+#include "script/ScriptEvent.h"
+#include "script/ScriptMessages.h"
 #include "script/ScriptProperty.h"
+#include "script/ScriptRuntime.h"
 
 #include "shader/ShaderData.h"
 #include "shader/ShaderDataSerializer.h"

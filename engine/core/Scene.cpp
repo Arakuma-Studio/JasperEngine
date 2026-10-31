@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "manager/ObjectManager.h"
+#include "script/ScriptRuntime.h"
 #include "Scene.h"
 
 #include "object/Camera.h"
@@ -63,6 +64,8 @@ Scene::~Scene(){
     lifetime.reset();
     // GameObject::destroy calls still pending for it
     ObjectManager::forgetScene(this);
+    // and the starts of its scripts still queued
+    ScriptRuntime::forgetScene(this);
     // sounds of a deleted scene would play on; not in destroy(), which also runs on view recreation
     getSystem<AudioSystem>()->stopSceneSounds();
     destroy();
@@ -75,6 +78,14 @@ static void removeComponentSubscriptionsByTag(Scene* scene, const std::string& s
     for (size_t i = 0; i < components->size(); i++) {
         callback(components->getComponentFromIndex(i), substring);
     }
+}
+
+bool Scene::isActivationObserved() const{
+    return ScriptRuntime::hasStarted(const_cast<Scene*>(this));
+}
+
+void Scene::onActiveInHierarchyChanged(const std::vector<Entity>& changed, bool nowActive){
+    ScriptRuntime::onActiveInHierarchyChanged(this, changed, nowActive);
 }
 
 std::weak_ptr<char> Scene::getLifetime() const{

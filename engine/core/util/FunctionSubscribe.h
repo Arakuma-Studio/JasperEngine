@@ -289,6 +289,18 @@ namespace jasperengine {
             return false;
         }
 
+        // A live subscription with this tag (RegisterEvent / add)
+        bool has(const std::string& tag) const{
+            if (subscribers) {
+                for (const auto& subscriber : *subscribers) {
+                    if (!subscriber->removed && subscriber->tag == tag) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
         size_t removeByTagSubstring(const std::string& substring){
             size_t removed = 0;
             for (size_t i = 0; subscribers && i < subscribers->size(); ) {
