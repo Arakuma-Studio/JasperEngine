@@ -729,6 +729,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/pose/PoseViewportLogic.cpp
     ${EDITOR_DIR}/animation/AnimationClipController.cpp
     ${EDITOR_DIR}/animation/AnimationClipDocument.cpp
+    ${EDITOR_DIR}/animation/AnimAssetDocument.cpp
     ${EDITOR_DIR}/animation/ClipConverters.cpp
     ${EDITOR_DIR}/animation/ClipRecordHooks.cpp
     ${EDITOR_DIR}/animation/ClipValidation.cpp

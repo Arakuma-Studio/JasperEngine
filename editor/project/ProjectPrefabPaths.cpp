@@ -166,13 +166,14 @@ void editor::Project::importPrefabFiles(const std::filesystem::path& path, bool 
 }
 
 void editor::Project::applyAssetChanges(const std::vector<AssetDatabase::Change>& allChanges) {
-    // .anim clips and .vat Vertex Animations: their references follow in applyClipAssetChanges,
+    // .anim clips, .vat Vertex Animations, .mask Avatar Masks and .controller Animator
+    // Controllers: their references follow in applyClipAssetChanges,
     // the rest is prefabs'
     std::vector<AssetDatabase::Change> changes;
     std::vector<AssetDatabase::Change> clipChanges;
     for (const AssetDatabase::Change& change : allChanges) {
         const std::string path = change.path.string();
-        (Util::isAnimationClipFile(path) || Util::isVertexAnimationFile(path) ? clipChanges : changes).push_back(change);
+        (Util::isGuidJsonAssetFile(path) ? clipChanges : changes).push_back(change);
     }
     if (!clipChanges.empty()) {
         applyClipAssetChanges(clipChanges);
@@ -497,6 +498,11 @@ bool editor::Project::resolveRegistryClipRefs(EntityRegistry* registry, bool may
         for (AnimationPlayerClip& entry : player.clips) {
             playerChanged |= resolveClipReference(entry, mayImport);
         }
+        // layer masks and the controller follow their GUIDs the same way (anim layers spec 6.3)
+        for (AnimationPlayerLayer& layer : player.layers) {
+            playerChanged |= resolveAssetReference(layer.mask, layer.maskGuid, mayImport);
+        }
+        playerChanged |= resolveAssetReference(player.controller, player.controllerGuid, mayImport);
         if (playerChanged) {
             player.needsLoad = true;
             changed = true;
@@ -548,6 +554,21 @@ void editor::Project::applyClipAssetChanges(const std::vector<AssetDatabase::Cha
                         changed = true;
                     }
                 }
+                // a layer's mask and the controller (anim layers spec 6.3, L6)
+                auto relinkPath = [&](std::string& path, const std::string& guid) {
+                    if (guid != change.guid) {
+                        return;
+                    }
+                    player.needsLoad = true;
+                    if (fs::path(path).lexically_normal().generic_string() != form) {
+                        path = form;
+                        changed = true;
+                    }
+                };
+                for (AnimationPlayerLayer& layer : player.layers) {
+                    relinkPath(layer.mask, layer.maskGuid);
+                }
+                relinkPath(player.controller, player.controllerGuid);
             }
             auto animators = registry->getComponentArray<VertexAnimatorComponent>();
             for (size_t i = 0; i < animators->size(); i++) {
@@ -591,8 +612,7 @@ void editor::Project::remapClipFilePath(const std::filesystem::path& oldPath, co
     VatDocument::filesMoved(oldPath.lexically_normal(), newPath.lexically_normal());
     std::error_code ec;
     // a directory's tracked files moved with remapPrefabFilePath; a model is not tracked
-    if (!fs::is_directory(newPath, ec) && (Util::isAnimationClipFile(oldPath.string()) || Util::isAnimationClipFile(newPath.string()) ||
-                                           Util::isVertexAnimationFile(oldPath.string()) || Util::isVertexAnimationFile(newPath.string()))) {
+    if (!fs::is_directory(newPath, ec) && (Util::isGuidJsonAssetFile(oldPath.string()) || Util::isGuidJsonAssetFile(newPath.string()))) {
         applyAssetChanges(assetDatabase.moveAssets(oldPath, newPath));
     }
     // open documents (clips, a model's sub-clips) go with their files

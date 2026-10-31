@@ -50,6 +50,8 @@
 #include "shader/ShaderVariantCompiler.h"
 #include "util/Util.h"
 #include "animation/AnimationClipIO.h"
+#include "animation/AnimatorController.h"
+#include "animation/AvatarMask.h"
 #include "animation/ModelSubClips.h"
 #include "json.hpp"
 #include "tiny_gltf.h"
@@ -1705,8 +1707,11 @@ void printCheckUsage(const std::string& commandName) {
         << "                           constructs, missing or remote files) with file:line:col, code and fix.\n"
         << "      --textures           Synthesized textures (PNGs with a jasper.synthesis recipe): warns when a\n"
         << "                           source changed or went missing since (regenerate them).\n"
-        << "      --anims              Animation clips (.anim): the format, with line:col for JSON errors and the\n"
-        << "                           JSON path of every dropped part, and the clips scenes and prefabs reference.\n"
+        << "      --anims              Animation clips (.anim), Avatar Masks (.mask) and Animator Controllers\n"
+        << "                           (.controller): the format, with line:col for JSON errors and the JSON path of\n"
+        << "                           every dropped part; controller validation (missing clips and parameters,\n"
+        << "                           dead ends, unreachable states, unused parameters); and the clips scenes and\n"
+        << "                           prefabs reference.\n"
         << "      --vat                Vertex Animations (.vat): the format, a source changed or missing since the\n"
         << "                           bake (warnings), a mesh or layout that no longer matches, a payload over its\n"
         << "                           preset's device limit (errors).\n"
@@ -1858,7 +1863,7 @@ bool isVatMeshFile(const std::string& rel) {
 bool isHookTrackedFile(const std::string& rel) {
     if (Util::isLuaFile(rel) || Util::isShaderFile(rel) || Util::isHeaderFile(rel) || Util::isSourceFile(rel)) return true;
     if (ProjectChecks::isUiFile(rel)) return true;
-    if (Util::isAnimationClipFile(rel) || Util::isVertexAnimationFile(rel) || isVatMeshFile(rel)) return true;
+    if (Util::isGuidJsonAssetFile(rel) || isVatMeshFile(rel)) return true;
     const std::string ext = fs::path(rel).extension().string();
     return ext == ".c" || ext == ".inl";
 }
@@ -1867,7 +1872,7 @@ std::map<std::string, HookStamp> scanHookFiles(const fs::path& root) {
     std::map<std::string, HookStamp> files;
     static const std::vector<std::string> extensions = {".lua", ".vert", ".frag", ".glsl", ".h", ".hh", ".hpp", ".hxx",
                                                         ".cpp", ".cc", ".cxx", ".c", ".inl", ".html", ".htm", ".css", ".anim",
-                                                        ".vat", ".glb"};
+                                                        ".vat", ".glb", ".mask", ".controller"};
     for (const fs::path& file : ProjectChecks::findProjectFiles(root, extensions)) {
         std::error_code ec;
         HookStamp stamp;
@@ -2143,10 +2148,100 @@ bool readModelAnimationNames(const fs::path& root, const fs::path& assets, const
 // reference (the entries of their Animation Players, prefab-instance overrides included): a
 // missing .anim (an error; a warning when its GUID still finds the moved file), a missing model
 // of a sub-clip, and a sub-clip name the model has no animation for
+// Avatar Masks (.mask: the format) and Animator Controllers (.controller: the format and
+// anim::validateController, with the clips it names read here: .anim files parsed, model
+// sub-clips looked up in the model)
+void checkAnimAssetFiles(const fs::path& root, const std::vector<fs::path>& masks, const std::vector<fs::path>& controllers, ClipCheck& check) {
+    const fs::path assets = ProjectChecks::assetsRootFromProjectFile(root);
+    for (const fs::path& file : masks) {
+        std::string text;
+        const std::string rel = ProjectChecks::projectRelative(root, file);
+        if (!ProjectChecks::readFile(file, text)) continue;
+        check.clips++;
+        const anim::AvatarMaskParseResult parsed = anim::parseAvatarMask(text);
+        if (!parsed.ok()) {
+            check.findings.push_back({"anim", rel, parsed.error.line, parsed.error.column, "error", parsed.error.message});
+            continue;
+        }
+        for (const ClipWarning& warning : parsed.warnings) {
+            check.findings.push_back({"anim", rel, 0, 0, "warning", (warning.path.empty() ? "" : warning.path + ": ") + warning.message});
+        }
+    }
+    std::map<std::string, anim::ControllerClipInfo> clipInfos;
+    auto resolve = [&](const std::string& clip) {
+        auto known = clipInfos.find(clip);
+        if (known != clipInfos.end()) return known->second;
+        anim::ControllerClipInfo info;
+        anim::SubClipReference reference;
+        const bool subClip = anim::parseSubClipReference(clip, reference);
+        const fs::path target = (assets / fs::u8path(subClip ? reference.model : clip)).lexically_normal();
+        std::error_code ec;
+        if (!fs::is_regular_file(target, ec)) {
+            info.error = subClip ? "the model " + reference.model + " does not exist" : "the file does not exist (paths are relative to the assets folder)";
+        } else if (subClip) {
+            std::vector<std::string> names;
+            if (!readModelAnimationNames(root, assets, target, names)) {
+                info.loads = true;      // not readable here (an FBX not imported yet): not reported
+            } else {
+                tinygltf::Model listed;
+                listed.animations.resize(names.size());
+                for (size_t i = 0; i < names.size(); i++) listed.animations[i].name = names[i];
+                info.loads = anim::findModelClip(listed, reference.clip) >= 0;
+                if (!info.loads) info.error = "the model has no animation '" + reference.clip + "'";
+            }
+            info.loops = false;         // a model's animations import as once
+        } else {
+            std::string text;
+            const anim::ClipParseResult parsed = ProjectChecks::readFile(target, text) ? anim::parseClip(text) : anim::ClipParseResult();
+            info.loads = parsed.ok();
+            if (!info.loads) info.error = parsed.error.empty() ? "cannot read it" : parsed.error.toString();
+            else info.loops = parsed.data->wrap == ClipWrapMode::Loop || parsed.data->wrap == ClipWrapMode::PingPong;
+        }
+        clipInfos[clip] = info;
+        return info;
+    };
+    for (const fs::path& file : controllers) {
+        std::string text;
+        const std::string rel = ProjectChecks::projectRelative(root, file);
+        if (!ProjectChecks::readFile(file, text)) continue;
+        check.clips++;
+        const anim::ControllerParseResult parsed = anim::parseController(text);
+        if (!parsed.ok()) {
+            check.findings.push_back({"anim", rel, parsed.error.line, parsed.error.column, "error", parsed.error.message});
+            continue;
+        }
+        for (const ClipWarning& warning : parsed.warnings) {
+            check.findings.push_back({"anim", rel, 0, 0, "warning", (warning.path.empty() ? "" : warning.path + ": ") + warning.message});
+        }
+        for (const ClipWarning& warning : anim::validateController(*parsed.data, resolve)) {
+            check.findings.push_back({"anim", rel, 0, 0, "warning", (warning.path.empty() ? "" : warning.path + ": ") + warning.message});
+        }
+        // the masks its layers name
+        for (size_t l = 0; l < parsed.data->layers.size(); l++) {
+            const std::string& mask = parsed.data->layers[l].mask;
+            std::error_code ec;
+            if (!mask.empty() && !fs::is_regular_file((assets / fs::u8path(mask)).lexically_normal(), ec)) {
+                check.findings.push_back({"anim", rel, 0, 0, "error", "layers[" + std::to_string(l) + "].mask: '" + mask +
+                                          "' does not exist (paths are relative to the assets folder)"});
+            }
+        }
+    }
+}
+
 ClipCheck checkClipFiles(const fs::path& root, const std::vector<fs::path>& files) {
     ClipCheck check;
     const bool all = files.empty();
-    const std::vector<fs::path> clips = all ? ProjectChecks::findProjectFiles(root, {".anim"}) : files;
+    std::vector<fs::path> given, masks, controllers;
+    for (const fs::path& file : files) {
+        const std::string name = file.string();
+        (Util::isAvatarMaskFile(name) ? masks : Util::isAnimatorControllerFile(name) ? controllers : given).push_back(file);
+    }
+    if (all) {
+        masks = ProjectChecks::findProjectFiles(root, {".mask"});
+        controllers = ProjectChecks::findProjectFiles(root, {".controller"});
+    }
+    checkAnimAssetFiles(root, masks, controllers, check);
+    const std::vector<fs::path> clips = all ? ProjectChecks::findProjectFiles(root, {".anim"}) : given;
     std::map<std::string, std::string> guids;   // guid -> project-relative path
     for (const fs::path& file : clips) {
         std::string text;
@@ -2434,7 +2529,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
                 cppFiles = true;
             } else if (ProjectChecks::isUiFile(name)) {
                 if (ui) uiFiles.push_back(path);
-            } else if (Util::isAnimationClipFile(name)) {
+            } else if (Util::isAnimationClipFile(name) || Util::isAvatarMaskFile(name) || Util::isAnimatorControllerFile(name)) {
                 if (anims) clipFiles.push_back(path);
             }
             // a synthesized PNG, or an image a synthesized texture was made from

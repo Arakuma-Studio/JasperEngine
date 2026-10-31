@@ -1324,7 +1324,7 @@ public:
         for (const fs::path& copied : {to, pairTo}) {
             if (copied.empty()) continue;
             project->cleanupPrefabFilePath(copied);
-            if (isDir || Util::isAnimationClipFile(copied.string()) || Util::isVertexAnimationFile(copied.string())) {
+            if (isDir || Util::isGuidJsonAssetFile(copied.string())) {
                 project->cleanupClipFilePath(copied);
             }
             project->cleanupInspectedAsset(copied);
