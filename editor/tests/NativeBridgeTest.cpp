@@ -17,6 +17,7 @@
 #include "native/NativePlatform.h"
 #include "script/AsyncOwner.h"
 #include "thread/MainThreadQueue.h"
+#include "util/NativeExportAndroid.h"
 #include "util/NativePlugins.h"
 
 #include <gtest/gtest.h>
@@ -881,4 +882,52 @@ TEST_F(NativeBridgeTest, ProjectSettingsRoundTripThroughProjectYaml) {
     EXPECT_FALSE(emptyNode["android"] && emptyNode["android"]["gradleDependencies"]);
     EXPECT_FALSE(emptyNode["ios"] && emptyNode["ios"]["deploymentTarget"]);
     EXPECT_FALSE(emptyNode["web"] && emptyNode["web"]["scriptUrls"]);
+}
+
+TEST_F(NativeBridgeTest, AndroidExportRegistryAndGradleText) {
+    namespace NEA = jasperengine::editor::NativeExportAndroid;
+    const auto java = NEA::parseSource(
+        "// class Fake {}\npackage com.me.plugins;\nimport java.util.List;\n/* public class Hidden {} */\n"
+        "@Deprecated\npublic final class Device {\n    public static class Inner {}\n    String s = \"class Nope\";\n}\n"
+        "class PackagePrivate {}\npublic interface Callback {}\n", false, "java/com/me/plugins/Device.java");
+    ASSERT_EQ(java.size(), 2u);
+    EXPECT_EQ(java[0].qualifiedName, "com.me.plugins.Device");
+    EXPECT_EQ(java[1].qualifiedName, "com.me.plugins.Callback");
+    const auto kotlin = NEA::parseSource(
+        "package com.me.k\n\nimport android.app.Activity\nimport com.x.Y as Z\n\nobject Store {\n    @JvmStatic fun buy() {}\n"
+        "    companion object Nested {}\n}\ninternal class Hidden\nprivate object Secret\ndata class Item(val id: String)\n"
+        "enum class Kind { A, B }\nval anon = object : Runnable { override fun run() {} }\n", true, "kotlin/Store.kt");
+    std::vector<std::string> names;
+    for (const auto& cls : kotlin) names.push_back(cls.qualifiedName);
+    EXPECT_EQ(names, (std::vector<std::string>{"com.me.k.Store", "com.me.k.Item", "com.me.k.Kind"}));
+    const auto loose = NEA::parseSource("public class Top {}\n", false, "Top.java");
+    ASSERT_EQ(loose.size(), 1u);
+    EXPECT_EQ(loose[0].qualifiedName, "Top");
+
+    // duplicates are an error naming both files
+    const fs::path android = root / "android";
+    scriptdata::writeFile(android / "a" / "Device.java", "package a;\npublic class Device {}\n");
+    scriptdata::writeFile(android / "b" / "Device.kt", "package b\nobject Device\n");
+    std::vector<NEA::PluginClass> classes;
+    std::string error;
+    EXPECT_FALSE(NEA::collectClasses(android, classes, error));
+    EXPECT_NE(error.find("a/Device.java"), std::string::npos);
+    EXPECT_NE(error.find("b/Device.kt"), std::string::npos);
+    fs::remove(android / "b" / "Device.kt");
+    ASSERT_TRUE(NEA::collectClasses(android, classes, error)) << error;
+    const std::string registry = NEA::registrySource(classes);
+    EXPECT_NE(registry.find("classes.put(\"Device\", \"a.Device\");"), std::string::npos);
+    const std::string rules = NEA::keepRules(classes, "-keep class x.** { *; }");
+    EXPECT_NE(rules.find("-keep class a.** { *; }"), std::string::npos);
+    EXPECT_NE(rules.find("-keep class x.** { *; }\n"), std::string::npos);
+
+    EXPECT_EQ(NEA::dependencyLine("com.wortise:android-sdk:1.7.1", "api"), "api \"com.wortise:android-sdk:1.7.1\"");
+    EXPECT_EQ(NEA::dependencyLine("implementation platform('a:b:1')", "api"), "implementation platform('a:b:1')");
+    EXPECT_EQ(NEA::withGradleProperties("a=1\n# b=2\nc=3\n", {"c=4", "d=5"}), "a=1\n# b=2\nc=4\nd=5\n");
+    EXPECT_EQ(NEA::withGradleProperties(NEA::withGradleProperties("a=1\n", {"a=2"}), {"a=2"}), "a=2\n") << "idempotent";
+
+    EXPECT_EQ(jasperengine::editor::NativePlugins::xmlFragmentError("<a/><b x=\"1\">t</b>"), "");
+    EXPECT_EQ(jasperengine::editor::NativePlugins::xmlFragmentError("<meta-data android:name=\"x\" tools:node=\"remove\"/>"), "");
+    EXPECT_NE(jasperengine::editor::NativePlugins::xmlFragmentError("<a><b></a>"), "");
+    EXPECT_NE(jasperengine::editor::NativePlugins::xmlFragmentError("<?xml version=\"1.0\"?><a/>"), "");
 }

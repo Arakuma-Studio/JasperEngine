@@ -593,3 +593,79 @@ plist helpers (`:392-465`), `createOptionalWrapper` pattern (`MainActivity.java:
 - **safe-area**: `Screen.setExtraInsets` lets a banner SDK wrapper reserve space.
 - **coroutines**: may make `NativeCall` awaitable (same pattern as `HttpRequest`).
 - **debug-overlay**: may show pending native calls (optional).
+
+## Implementation notes
+
+Decisions taken while implementing (branch `gaps/native-bridge`), where the spec was silent,
+ambiguous or in conflict with the code:
+
+1. **Mocks behind C++.** The resolution order is implemented in `NativeBridge` itself, with the Lua
+   layer installed as a `NativeMockProvider` (`core/native/NativePlatform.h`): C++ scripts calling
+   `NativeBridge::call` get the same order (and the mocks) as Lua.
+2. **A C++ plugin missing the method stops resolution** with `no_method` (it does not fall through
+   to the platform plugin of the same name): one name, one implementation. Because C++ answers
+   first everywhere, the scaffold wraps a C++ plugin created together with platform plugins in
+   `#if !(defined(__ANDROID__) || ...)` for the chosen platforms, so it is the desktop answer.
+3. **Async call to a sync method** (C++, Java, Objective-C, mock) runs the method on the requested
+   thread and resolves with its return value; a sync call to an async-only method is `async_only`
+   (the code the spec gave for JavaScript Promises).
+4. **Mock async timing.** An async mock function runs inside `callAsync` (its result is still
+   delivered next frame); a mock that returns `nil, message` without a code fails with `exception`.
+   The mock module is required only when `native_mocks/<Plugin>.lua` exists (checked with the
+   loader's paths), so a missing mock is never an error.
+5. **Pause.** `pauseEngine`/`resumeEngine` only count (any thread); `NativeBridge::update()`, called
+   at the start of every `Engine::runFrame` (paused frames included, since `MainThreadQueue` is not
+   drained while paused), applies the count with `Engine::systemPause/systemResume` and pauses
+   again after an OS resume while a native pause is held. `Engine::isPaused()` was added for it.
+   Play stop/shutdown resets the count and resumes an engine the bridge paused.
+6. **Timeouts** are checked in `NativeBridge::update()` (real time) and delivered at the delivery
+   point; the native side sees the call cancelled. A user `cancel()` after the timeout fired but
+   before its delivery still suppresses the callback.
+7. **`NativeCall.isDone()`** in Lua means "the callback ran or the call was cancelled" (so
+   `Coroutine.waitFor` resumes with `result`/`errorCode` final); C++ `NativeCall::isDone()` is the
+   native view (completed or cannot complete) and `isDelivered()` the caller's. A cancelled call's
+   `errorCode` reads `"cancelled"` (no callback runs). `NativeCall` also exposes `plugin`/`method`.
+8. **Unavailable plugins.** `NativeBridge::setPlatformOnlyPlugins` is filled from `plugins/native`
+   by the editor at Play start and by the generated `main.cpp` per platform (`#if` blocks), so editor
+   Play and every build say "Java/Kotlin plugins run only on Android" instead of `not_found`.
+9. **Android layout.** The bridge module's sources are in `java-bridge/java/com/...` and its JVM test
+   in `java-bridge/test/com/...` (not directly under `java-bridge/`): one directory cannot be both a
+   main and a test source root. The module has its own `AndroidManifest.xml` and consumer keep rules.
+   The `nativeplugins` module uses the whole `plugins/native/android` folder as its Java and Kotlin
+   source root (any layout works; listing `java/` and `kotlin/` too would compile files twice).
+   Java registry classes must be `public` (reflection cannot call a package-private class);
+   Kotlin `internal`/`private` ones are left out. `JasperLifecycleListener.onCreate` is called right
+   after the plugins' `onJasperInit`, so listeners added there get it. `JasperNative.call` parses the
+   arguments with its own JSON reader (integers as Long, others as Double: org.json's number rules
+   differ between Android and the JVM) and writes results with its own writer (`7.0` stays a float).
+10. **Apple `+jasperInit` discovery.** Instead of a generated registry, `[JasperNative dispatchInit]`
+    scans the classes of the app's own images (`objc_copyImageNames` / `objc_copyClassNamesForImage`,
+    system images skipped) for a class method `jasperInit` it does not inherit. This needs no export
+    step and works in CMake builds too. Lifecycle callbacks come from the app's notifications
+    (they are posted for scene-based apps as well); `openURL` (SceneDelegate, macOS AppDelegate) and
+    the remote-notification token (AppDelegate) are forwarded by the delegates. Values cross as
+    Foundation objects converted directly from/to JSON (no NSJSONSerialization text hop); scalar
+    return types (BOOL, integers, double) are read with matching `objc_msgSend` casts.
+11. **Swift bridging headers** are per target (`JasperNative-Bridging-Header-iOS.h` / `-macOS.h`), so an
+    iOS-only plugin header never reaches the macOS target; the app targets get
+    `$(SRCROOT)/../../platform/apple` in `HEADER_SEARCH_PATHS` whenever plugin sources exist.
+    macOS entitlements are not a setting (the spec lists iOS only).
+12. **CocoaPods.** When a pod has a custom `source`, the CocoaPods CDN is listed too (a `source` line
+    hides the trunk otherwise). Swift packages need a version and at least one product.
+13. **Web.** The page stub defines `register` and `emit` (queueing them), not only `_pending`, since
+    plugin scripts call them before the engine starts. Async JavaScript methods get exactly the Lua
+    arguments (there is no call object on the Web); top-level `undefined` is null, object members
+    that are `undefined` or functions are left out (as `JSON.stringify`), anything else non-JSON is
+    `unsupported_type`. Web plugin files are copied by the build's `apply.cmake` into
+    `<output>/plugins/`.
+14. **XML fragments** are checked by `NativePlugins::xmlFragmentError` (tinyxml2, the fragment wrapped
+    in one element, so `android:`/`tools:` prefixes need no declaration); the Android manifest gets
+    `xmlns:tools` when a fragment uses `tools:`.
+15. **Plist values in project.yaml** are plain YAML scalars/lists; a string that would read back as
+    another type (`"true"`, `"15"`, `""`) is written `{string: ...}`.
+16. **Project Settings > Native Plugins** follows the window's existing OK/Cancel model (edits apply
+    on OK, saved to project.yaml) like every other page: no command-history undo, as the rest of the
+    window.
+17. **Play library.** `Project::getBuildScriptDirs()` (user dirs + `plugins/native/cpp`) feeds the
+    Generator and the Exporter; `getScriptDirs()` stays the setting. `libs/json` joined the engine
+    API include directories (`NativeBridge.h` is in `JasperEngine.h`).
