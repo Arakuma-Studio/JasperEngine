@@ -179,17 +179,19 @@ void Context::SwapHoverChain(Element* old_hover, Element* new_hover, ElementSet&
 	old_chain.swap(chain);
 	chain = new_chain;
 
+	// the DOM's order: the pointer events, then the compatibility mouse events
+	// (pointerout, pointerleave, mouseout, mouseleave; pointerover, pointerenter, mouseover, mouseenter)
 	if (target_changed && old_obs)
 		old_obs->DispatchEvent(EventId::Pointerout, parameters);
-	if (compat_events)
-		SendEvents(old_chain, new_chain, EventId::Mouseout, parameters);
 	for (auto& element : leaving_obs)
+		if (element)
+			element->DispatchEvent(EventId::Pointerleave, parameters);
+	if (compat_events)
 	{
-		if (!element)
-			continue;
-		element->DispatchEvent(EventId::Pointerleave, parameters);
-		if (element && compat_events)
-			element->DispatchEvent(EventId::Mouseleave, parameters);
+		SendEvents(old_chain, new_chain, EventId::Mouseout, parameters);
+		for (auto& element : leaving_obs)
+			if (element)
+				element->DispatchEvent(EventId::Mouseleave, parameters);
 	}
 	for (auto& element : leaving_obs)
 		if (element)
@@ -203,15 +205,15 @@ void Context::SwapHoverChain(Element* old_hover, Element* new_hover, ElementSet&
 			AddHoverRef(element.get());
 	if (target_changed && new_obs)
 		new_obs->DispatchEvent(EventId::Pointerover, parameters);
-	if (compat_events)
-		SendEvents(new_chain, old_chain, EventId::Mouseover, parameters);
 	for (auto& element : entering_obs)
+		if (element)
+			element->DispatchEvent(EventId::Pointerenter, parameters);
+	if (compat_events)
 	{
-		if (!element)
-			continue;
-		element->DispatchEvent(EventId::Pointerenter, parameters);
-		if (element && compat_events)
-			element->DispatchEvent(EventId::Mouseenter, parameters);
+		SendEvents(new_chain, old_chain, EventId::Mouseover, parameters);
+		for (auto& element : entering_obs)
+			if (element)
+				element->DispatchEvent(EventId::Mouseenter, parameters);
 	}
 }
 

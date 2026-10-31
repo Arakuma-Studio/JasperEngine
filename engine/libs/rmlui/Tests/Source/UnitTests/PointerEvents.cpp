@@ -136,16 +136,18 @@ TEST_CASE("PointerEvents.event_order_and_compat_mouse_events")
 	f.context->ProcessPointerDown(TouchAt(4, 50, 50));
 	f.context->ProcessPointerUp(TouchAt(4, 50, 50));
 	CHECK(rec.Joined() ==
-		"pointerover:4 mouseover:4 pointerenter:4 mouseenter:4 pointerdown:4 mousedown:4 pointerup:4 mouseup:4 click:4 "
-		"pointerout:4 mouseout:4 pointerleave:4 mouseleave:4");
+		"pointerover:4 pointerenter:4 mouseover:4 mouseenter:4 pointerdown:4 mousedown:4 pointerup:4 mouseup:4 click:4 "
+		"pointerout:4 pointerleave:4 mouseout:4 mouseleave:4");
 
 	// the mouse: pointer 1
 	rec.events.clear();
 	f.context->ProcessMouseMove(50, 50, 0);
 	f.context->ProcessMouseButtonDown(0, 0);
 	f.context->ProcessMouseButtonUp(0, 0);
-	CHECK(rec.Joined() == "pointerover:1 mouseover:1 pointerenter:1 mouseenter:1 pointerdown:1 mousedown:1 pointerup:1 mouseup:1 click:1");
+	CHECK(rec.Joined() == "pointerover:1 pointerenter:1 mouseover:1 mouseenter:1 pointerdown:1 mousedown:1 pointerup:1 mouseup:1 click:1");
+	rec.events.clear();
 	f.context->ProcessMouseLeave();
+	CHECK(rec.Joined() == "pointerout:1 pointerleave:1 mouseout:1 mouseleave:1");
 }
 
 TEST_CASE("PointerEvents.prevent_default_on_pointerdown")
