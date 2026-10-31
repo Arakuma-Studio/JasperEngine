@@ -274,6 +274,9 @@ void VideoPlayerSystem::prepare(Entity entity){
         }
         return;
     }
+    // a clip or url set since it opened (`vp.url = x; vp:prepare()` in one go): that one goes
+    if (entry.source && (entry.openedPath != path || entry.openedAudio != (player->audioOutputMode != VideoAudioOutputMode::NONE)))
+        stop(entity);
     if (entry.source)
         return;
     VideoSourceFactory::Options options;
@@ -300,6 +303,9 @@ void VideoPlayerSystem::play(Entity entity){
         return;
     PlayerEntry& entry = state->entries[entity];
     entry.awoken = true;
+    if (entry.source && (entry.openedPath != sourcePathOf(*player) ||
+                         entry.openedAudio != (player->audioOutputMode != VideoAudioOutputMode::NONE)))
+        stop(entity);
     if (!entry.source)
         prepare(entity);
     if (!entry.source)

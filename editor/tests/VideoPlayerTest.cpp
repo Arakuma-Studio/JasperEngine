@@ -290,6 +290,12 @@ TEST_F(VideoPlayerSystemTest, AnotherClipStopsThePlayer){
     run(2, 0.05);
     EXPECT_FALSE(player.isPrepared());
     EXPECT_EQ(opened.size(), 1u) << "playOnAwake does not start it again";
+    // a new url and prepare() at once (the ad flow): the new one opens
+    player.setClip("ads/ad3.mp4");
+    player.prepare();
+    run(4, 0.05);
+    EXPECT_TRUE(player.isPrepared());
+    EXPECT_EQ(opened.back(), "ads/ad3.mp4");
 }
 
 TEST_F(VideoPlayerSystemTest, ErrorsReachTheHandler){
