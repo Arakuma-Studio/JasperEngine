@@ -512,6 +512,22 @@ bool Scene::isPhysicsInterpolation() const{
     return const_cast<Scene*>(this)->getSystem<PhysicsSystem>()->isInterpolation();
 }
 
+void Scene::setPhysics2DSubSteps(int subSteps){
+#ifdef JASPERENGINE_PHYSICS_2D
+    getSystem<PhysicsSystem>()->setSubSteps2D(subSteps);
+#else
+    (void)subSteps;
+#endif
+}
+
+int Scene::getPhysics2DSubSteps() const{
+#ifdef JASPERENGINE_PHYSICS_2D
+    return const_cast<Scene*>(this)->getSystem<PhysicsSystem>()->getSubSteps2D();
+#else
+    return SceneSettings().physics2DSubSteps;
+#endif
+}
+
 void Scene::setDefaultMeshShader(const std::string& path){
     if (settings.defaultMeshShader != path){
         settings.defaultMeshShader = path;

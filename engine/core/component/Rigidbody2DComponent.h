@@ -5,27 +5,50 @@
 #define RIGIDBODY2D_COMPONENT_H
 
 #include "Engine.h"
+#include "ecs/Entity.h"
 #include "math/Vector2.h"
 #include "math/Vector3.h"
 #include "math/Quaternion.h"
-#include "util/HybridArray.h"
+#include "component/PhysicsCommon.h"
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "box2d/box2d.h"
 #endif
 
+#include <memory>
+#include <string>
+#include <vector>
+
 namespace jasperengine{
 
+    class PhysicsMaterialRuntime;
+
     enum class Collider2DType{
-        POLYGON,
+        POLYGON,    // any simple polygon of 3+ points, concave too (split into convex pieces)
         CIRCLE,
         CAPSULE,
         SEGMENT,
-        CHAIN // chain is a different type in Box2D 3.x
+        CHAIN       // 2+ points; one-sided Box2D chain from 4 points, segments below (Unity EdgeCollider2D)
+    };
+
+    // Unity collisionDetectionMode: CONTINUOUS is a Box2D bullet (swept against dynamic and
+    // kinematic bodies too, not only static ones)
+    enum class CollisionDetectionMode2D{
+        DISCRETE,
+        CONTINUOUS
+    };
+
+    // Unity sleepMode
+    enum class RigidbodySleepMode2D{
+        NEVER_SLEEP,
+        START_AWAKE,
+        START_ASLEEP
     };
 
     struct JASPERENGINE_API Collider2D{
 #ifdef JASPERENGINE_PHYSICS_2D
-        b2ShapeId shape = b2_nullShapeId;
+        // runtime: the Box2D shapes of the collider, several for a polygon split in convex
+        // pieces (every one reports this collider's index); none for a chain
+        std::vector<b2ShapeId> shapes;
         b2ChainId chain = b2_nullChainId;
 #endif
 
@@ -35,30 +58,56 @@ namespace jasperengine{
         Vector2 pointB = Vector2::ZERO;
         float radius = 0.0f;
 
-        HybridArray<Vector2, MAX_COLLIDER_POINTS_2D> vertices;
-        uint8_t numVertices = 0;
+        // polygon and chain points, GameObject-local (scaled by the transform), any count
+        std::vector<Vector2> points;
         bool loop = false;
 
         // mass = area * density, in metres after pointsToMeterScale2D.
         // Collider3D::density is volume-based and defaults to 1000.
         float density = 1.0f;
+        // the surface without a material (collider's or body's): combined as before materials
+        // (geometric mean friction, maximum restitution)
         float friction = 0.6f;
         float restitution = 0.0f;
+        // a .physicsmaterial asset path ("" = none): overrides friction and restitution, and
+        // brings its combine modes. Takes precedence over the body's material.
+        std::string material;
 
         // overlap only: always fires the sensor contact events, never collides
         bool sensor = false;
 
         bool enableHitEvents = false;
-        bool contactEvents = false;
+        // on for colliders created from now on (Unity); scenes keep their stored value
+        bool contactEvents = true;
         bool preSolveEvents = false;
         bool sensorEvents = false;
 
         uint16_t categoryBits = 1;
         uint16_t maskBits = 0xFFFF;
         int16_t groupIndex = 0;
+
+        // also gets this collider's contact callbacks (physics-contacts), none by default
+        Entity receiver = NULL_ENTITY;
+
+        // runtime, not saved
+        // rebuild this collider's shapes at the next sync
+        bool dirty = true;
+        // a material set from a script (PhysicsMaterial object), over `material`
+        std::shared_ptr<PhysicsMaterialRuntime> materialInstance;
+        // materialInstance is this collider's own copy (setColliderFriction on a material)
+        bool ownsMaterialInstance = false;
+        // the convex pieces of a POLYGON (metres, Box2D's units) and the key of what they were made of
+        uint64_t decompositionKey = 0;
+        std::vector<std::vector<Vector2>> pieces;
+        int droppedPieces = 0;
+        bool selfIntersecting = false;
+        // the surface last applied to the shapes (friction, restitution, combine modes)
+        float appliedFriction = -1.0f;
+        float appliedRestitution = -1.0f;
+        int appliedUserMaterial = -1;
     };
 
-    struct Rigidbody2DComponent{
+    struct JASPERENGINE_API Rigidbody2DComponent{
         // component checkbox: its system skips a disabled component
         bool enabled = true;
 
@@ -66,17 +115,44 @@ namespace jasperengine{
         b2BodyId body = b2_nullBodyId;
 #endif
 
-        HybridArray<Collider2D, MAX_COLLIDERS_2D> colliders;
-        size_t numColliders = 0;
+        std::vector<Collider2D> colliders;
 
         bool needReloadBody = true;
         bool needUpdateColliders = true;
 
         BodyType type = BodyType::STATIC;
+
+        // Unity Rigidbody2D fields (defaults = what bodies had before they existed)
+        float gravityScale = 1.0f;
+        float linearDamping = 0.0f;
+        float angularDamping = 0.0f;
+        bool fixedRotation = false;
+        CollisionDetectionMode2D collisionDetection = CollisionDetectionMode2D::DISCRETE;
+        RigidbodySleepMode2D sleepingMode = RigidbodySleepMode2D::START_AWAKE;
+        // false: `mass` (kg) instead of the colliders' area x density
+        bool useAutoMass = true;
+        float mass = 1.0f;
+        // false: centerOfMass, body-local in collider units (points, scaled by the transform)
+        bool autoCenterOfMass = true;
+        Vector2 centerOfMass = Vector2::ZERO;
+        // false: inertia (kg m^2) about the centre of mass
+        bool autoInertia = true;
+        float inertia = 0.0f;
+        // default .physicsmaterial of the colliders without one ("" = none)
+        std::string material;
+
         bool newBody = true;
         Vector2 loadedScale = Vector2::UNIT_SCALE;
 
         // Runtime state of the body sync (PhysicsSystem), not saved
+        // a material set from a script for the whole body, over `material`
+        std::shared_ptr<PhysicsMaterialRuntime> materialInstance;
+        // the colliders' materials were resolved at this PhysicsMaterialRuntime::revision()
+        uint64_t appliedMaterialRevision = 0;
+        // the explicit mass data must be applied again (a Box2D call recomputed it)
+        bool needApplyMass = false;
+        // the body fields changed (gravity scale, damping...): applied before the next step
+        bool needApplyParameters = false;
         // kinematic, moving to its Transform with a velocity over the frame's fixed steps (each
         // part on its own: a part not followed keeps its own velocity)
         bool followingPosition = false;

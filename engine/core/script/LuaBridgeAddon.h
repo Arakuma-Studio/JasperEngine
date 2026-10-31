@@ -96,6 +96,12 @@ namespace luabridge
     template<> struct Stack<Collider3DType> : EnumWrapper<Collider3DType>{};
     template<> struct Stack<BodyType> : EnumWrapper<BodyType>{};
     template<> struct Stack<Joint2DType> : EnumWrapper<Joint2DType>{};
+    template<> struct Stack<JointLimitState2D> : EnumWrapper<JointLimitState2D>{};
+    template<> struct Stack<CollisionDetectionMode2D> : EnumWrapper<CollisionDetectionMode2D>{};
+    template<> struct Stack<RigidbodySleepMode2D> : EnumWrapper<RigidbodySleepMode2D>{};
+    template<> struct Stack<JointAnchorSpace> : EnumWrapper<JointAnchorSpace>{};
+    template<> struct Stack<JointBreakAction> : EnumWrapper<JointBreakAction>{};
+    template<> struct Stack<PhysicsMaterialCombine> : EnumWrapper<PhysicsMaterialCombine>{};
     template<> struct Stack<UIDocumentRenderMode> : EnumWrapper<UIDocumentRenderMode>{};
     template<> struct Stack<FluidOutput> : EnumWrapper<FluidOutput>{};
     // bound enums that had none: LuaBridge pushed them as unregistered userdata (an error

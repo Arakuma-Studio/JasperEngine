@@ -65,6 +65,24 @@ namespace jasperengine{
 		uint32_t appliedLayerVersion2D = 0;
 		std::vector<Entity> pendingLayerRefresh2D;
 		std::vector<b2ShapeId> shapeScratch2D;
+
+		// static body the joints without bodyB hold on to (Unity: connected to the world)
+		b2BodyId groundBody2D = b2_nullBodyId;
+		int subSteps2D = 4;
+
+		// joints that broke in the last step, told after its contact events (D6)
+		struct JointBreak2D{
+			Entity joint;
+			Entity bodyA;
+			bool destroy;
+		};
+		std::vector<JointBreak2D> pendingJointBreaks2D;
+		// joints made in this world (their auto values captured); a rebuild for a body keeps them
+		std::unordered_set<Entity> configuredJoints2D;
+
+		// Box2D create calls made, for the per-collider rebuild tests and diagnostics
+		uint64_t shapesCreated2D = 0;
+		uint64_t chainsCreated2D = 0;
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
 		bool lock3DBodies;
@@ -119,7 +137,19 @@ namespace jasperengine{
 		// them, after the last step of the frame
 		void finishFollowing2D(Entity entity, Rigidbody2DComponent& body);
 		bool loadJoint2D(Entity entity, Joint2DComponent& joint);
-		bool syncRigidbody2DColliders(Entity entity, Rigidbody2DComponent& body);
+		// Makes the Box2D joint from every field of the component (anchor space, limits,
+		// motors, springs...)
+		bool buildJoint2D(Entity entity, Joint2DComponent& joint);
+		// Rebuilds the dirty colliders of the body (all of them with `all`: a new body or a
+		// changed scale), then its mass once
+		bool syncRigidbody2DColliders(Entity entity, Rigidbody2DComponent& body, bool all);
+		void createCollider2DShapes(Entity entity, Rigidbody2DComponent& body, size_t index, const Vector2& entityScale, int layer);
+		void resolveCollider2DSurface(const Rigidbody2DComponent& body, const Collider2D& collider, float& friction, float& restitution, int& userMaterial) const;
+		// Re-applies the materials of bodies using one that changed (PhysicsMaterialRuntime::revision)
+		void syncMaterials2D();
+		// After a step: joints whose reaction passed breakForce / breakTorque; then told
+		void checkJointBreaks2D();
+		void dispatchJointBreaks2D();
 		static Vector2 absScale2D(const Vector2& scale);
 		static float maxScaleXY(const Vector2& scale);
 
@@ -194,6 +224,30 @@ namespace jasperengine{
 		// Re-applies the GameObject layer to the shapes of the entity's Rigidbody 2D;
 		// inside a step, right after it
 		void refreshRigidbody2DLayer(Entity entity);
+
+		// Box2D sub-steps of each fixed step (scene setting physics2DSubSteps, 1..16, default 4)
+		int getSubSteps2D() const;
+		void setSubSteps2D(int subSteps);
+
+		// the static body of joints without bodyB
+		b2BodyId getGroundBody2D();
+
+		// Applies the explicit mass, centre of mass and inertia of a body (useAutoMass false...)
+		// over what its colliders give; after any Box2D call that recomputes the mass
+		void applyRigidbody2DMass(Entity entity, Rigidbody2DComponent& body);
+		// Applies the live body fields (gravity scale, damping, fixed rotation, collision
+		// detection, sleeping, mass)
+		void applyRigidbody2DParameters(Entity entity, Rigidbody2DComponent& body);
+		// Removes one collider: its shapes go now, later colliders shift down an index
+		bool removeCollider2D(Entity entity, Rigidbody2DComponent& body, size_t index);
+		// Applies the motor, spring, limit... fields to the live joint (no rebuild)
+		void applyJoint2DParameters(Joint2DComponent& joint);
+		// Sets the shapes' friction, restitution and combine modes from the materials again,
+		// so touching pairs pick them up on the next step
+		void refreshRigidbody2DMaterials(Entity entity, Rigidbody2DComponent& body, bool force);
+
+		uint64_t getShapesCreated2D() const { return shapesCreated2D; }
+		uint64_t getChainsCreated2D() const { return chainsCreated2D; }
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
@@ -287,7 +341,7 @@ namespace jasperengine{
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_2D
-		int loadCollider2D(Rigidbody2DComponent& body, void* shape, Collider2DType type);
+		// destroys the shapes of one collider (the body's mass is not updated)
 		void destroyCollider2D(Rigidbody2DComponent& body, size_t index);
 #endif
 

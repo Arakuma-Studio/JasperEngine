@@ -11,6 +11,12 @@
 
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "util/Box2DAux.h"
+#include "object/physics/Joint2D.h"
+#include "physics/PolygonDecomposition2D.h"
+#include "pool/PhysicsMaterialPool.h"
+#include "script/ScriptMessages.h"
+#include "lua.hpp"
+#include "LuaBridge.h"
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "util/JoltPhysicsAux.h"
@@ -18,6 +24,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 
 using namespace jasperengine;
@@ -216,6 +223,9 @@ PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
     this->gravity3D = settingsDefaults.gravity3D;
     this->interpolation = settingsDefaults.physicsInterpolation;
 #ifdef JASPERENGINE_PHYSICS_2D
+    this->subSteps2D = settingsDefaults.physics2DSubSteps;
+#endif
+#ifdef JASPERENGINE_PHYSICS_2D
     this->pointsToMeterScale2D = 64.0;
 
     // The Box2D world is created lazily (see ensureWorld2D): Box2D's global b2_worlds[] pool is
@@ -273,6 +283,7 @@ void PhysicsSystem::ensureWorld2D(){
     b2WorldDef worldDef = b2DefaultWorldDef();
     worldDef.gravity = {this->gravity2D.x, this->gravity2D.y};
     world2D = b2CreateWorld(&worldDef);
+    configuredJoints2D.clear();
 
     if (!b2World_IsValid(world2D)){
         Log::error("Could not create Box2D world: the global world pool is exhausted");
@@ -285,6 +296,32 @@ void PhysicsSystem::ensureWorld2D(){
 
     b2World_SetPreSolveCallback(world2D, Box2DAux::PreSolve, scene);
     b2World_SetCustomFilterCallback(world2D, Box2DAux::CollisionFilter, scene);
+    // per-collider combine modes of the materials; two colliders without one combine as
+    // before (geometric mean friction, maximum restitution)
+    b2World_SetFrictionCallback(world2D, Box2DAux::CombineFriction);
+    b2World_SetRestitutionCallback(world2D, Box2DAux::CombineRestitution);
+}
+
+b2BodyId PhysicsSystem::getGroundBody2D(){
+    ensureWorld2D();
+    if (!b2World_IsValid(world2D)){
+        return b2_nullBodyId;
+    }
+    if (!b2Body_IsValid(groundBody2D)){
+        b2BodyDef bodyDef = b2DefaultBodyDef();
+        bodyDef.type = b2_staticBody;
+        bodyDef.userData = reinterpret_cast<void*>((uint64_t)NULL_ENTITY);
+        groundBody2D = b2CreateBody(world2D, &bodyDef);
+    }
+    return groundBody2D;
+}
+
+int PhysicsSystem::getSubSteps2D() const{
+    return subSteps2D;
+}
+
+void PhysicsSystem::setSubSteps2D(int subSteps){
+    subSteps2D = std::min(16, std::max(1, subSteps));
 }
 #endif
 
@@ -297,6 +334,7 @@ PhysicsSystem::~PhysicsSystem(){
         b2DestroyWorld(world2D);
     }
     world2D = b2_nullWorldId;
+    groundBody2D = b2_nullBodyId;
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
@@ -1013,49 +1051,6 @@ void PhysicsSystem::finishFollowing3D(Entity entity, RigidbodyComponent& body){
 }
 #endif
 
-#ifdef JASPERENGINE_PHYSICS_2D
-bool PhysicsSystem::loadJoint2D(Entity entity, Joint2DComponent& joint){
-    ensureWorld2D();
-    if (!b2World_IsValid(world2D)){
-        return false;
-    }
-
-    if (b2Joint_IsValid(joint.joint)){
-        destroyJoint2D(joint);
-    }
-
-    if (joint.bodyA == NULL_ENTITY){
-        return false;
-    }
-
-    switch (joint.type){
-        case Joint2DType::DISTANCE:
-            if (joint.bodyB == NULL_ENTITY) return false;
-            return loadDistanceJoint2D(entity, joint, joint.bodyA, joint.bodyB, joint.anchorA, joint.anchorB, joint.autoAnchors, joint.rope);
-        case Joint2DType::REVOLUTE:
-            if (joint.bodyB == NULL_ENTITY) return false;
-            return loadRevoluteJoint2D(entity, joint, joint.bodyA, joint.bodyB, joint.anchorA);
-        case Joint2DType::PRISMATIC:
-            if (joint.bodyB == NULL_ENTITY) return false;
-            return loadPrismaticJoint2D(entity, joint, joint.bodyA, joint.bodyB, joint.anchorA, joint.axis);
-        case Joint2DType::MOUSE:
-            if (joint.bodyB == NULL_ENTITY) return false;
-            return loadMouseJoint2D(entity, joint, joint.bodyA, joint.bodyB, joint.target);
-        case Joint2DType::WHEEL:
-            if (joint.bodyB == NULL_ENTITY) return false;
-            return loadWheelJoint2D(entity, joint, joint.bodyA, joint.bodyB, joint.anchorA, joint.axis);
-        case Joint2DType::WELD:
-            if (joint.bodyB == NULL_ENTITY) return false;
-            return loadWeldJoint2D(entity, joint, joint.bodyA, joint.bodyB, joint.anchorA);
-        case Joint2DType::MOTOR:
-            if (joint.bodyB == NULL_ENTITY) return false;
-            return loadMotorJoint2D(entity, joint, joint.bodyA, joint.bodyB);
-        default:
-            return false;
-    }
-}
-#endif
-
 #ifdef JASPERENGINE_PHYSICS_3D
 bool PhysicsSystem::loadJoint3D(Entity entity, Joint3DComponent& joint){
     // The step holds the constraint list; the update loop retries any joint without one.
@@ -1176,12 +1171,82 @@ bool PhysicsSystem::loadJoint3D(Entity entity, Joint3DComponent& joint){
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_2D
-bool PhysicsSystem::syncRigidbody2DColliders(Entity entity, Rigidbody2DComponent& body){
-    if (!b2Body_IsValid(body.body)){
+namespace {
+
+    // Box2D welds points closer than its linear slop (B2_LINEAR_SLOP, metres)
+    const float linearSlop2D = 0.005f;
+
+    // FNV-1a over the bits of what a polygon decomposition is made of: same input, same key
+    uint64_t hashFloats(uint64_t hash, const float* values, size_t count){
+        for (size_t i = 0; i < count; i++){
+            uint32_t bits;
+            std::memcpy(&bits, &values[i], sizeof(bits));
+            for (int b = 0; b < 4; b++){
+                hash ^= (bits >> (b * 8)) & 0xFFu;
+                hash *= 1099511628211ull;
+            }
+        }
+        return hash;
+    }
+
+    // a body whose colliders or itself name a material, or whose shapes still have one
+    bool usesMaterials(const Rigidbody2DComponent& body){
+        if (!body.material.empty() || body.materialInstance){
+            return true;
+        }
+        for (const Collider2D& collider : body.colliders){
+            if (!collider.material.empty() || collider.materialInstance || collider.appliedUserMaterial > 0){
+                return true;
+            }
+        }
         return false;
     }
 
-    const Vector2 entityScale = entityWorldScale2D(scene, entity);
+    // the shapes of a collider, the segments of a chain included
+    void colliderShapes(const Collider2D& collider, std::vector<b2ShapeId>& out){
+        out.clear();
+        for (const b2ShapeId& shape : collider.shapes){
+            if (b2Shape_IsValid(shape)) out.push_back(shape);
+        }
+        if (b2Chain_IsValid(collider.chain)){
+            const int count = b2Chain_GetSegmentCount(collider.chain);
+            if (count > 0){
+                const size_t start = out.size();
+                out.resize(start + (size_t)count);
+                const int returned = b2Chain_GetSegments(collider.chain, out.data() + start, count);
+                out.resize(start + (size_t)std::max(0, returned));
+            }
+        }
+    }
+
+}
+
+void PhysicsSystem::resolveCollider2DSurface(const Rigidbody2DComponent& body, const Collider2D& collider, float& friction, float& restitution, int& userMaterial) const{
+    std::shared_ptr<PhysicsMaterialRuntime> material = collider.materialInstance;
+    if (!material && !collider.material.empty()){
+        material = PhysicsMaterialPool::getOrLoad(collider.material);
+    }
+    if (!material){
+        material = body.materialInstance;
+    }
+    if (!material && !body.material.empty()){
+        material = PhysicsMaterialPool::getOrLoad(body.material);
+    }
+
+    if (material){
+        friction = material->getFriction();
+        restitution = material->getBounciness();
+        userMaterial = encodeSurfaceModes2D(material->getFrictionCombine(), material->getBounceCombine());
+    }else{
+        friction = collider.friction;
+        restitution = collider.restitution;
+        userMaterial = 0;
+    }
+}
+
+void PhysicsSystem::createCollider2DShapes(Entity entity, Rigidbody2DComponent& body, size_t i, const Vector2& entityScale, int layer){
+    Collider2D& shapeData = body.colliders[i];
+
     const float radiusScale = maxScaleXY(absScale2D(entityScale));
 
     auto scaledPoint = [&](const Vector2& point){
@@ -1196,154 +1261,419 @@ bool PhysicsSystem::syncRigidbody2DColliders(Entity entity, Rigidbody2DComponent
         return radius * radiusScale / pointsToMeterScale2D;
     };
 
-    for (size_t i = 0; i < body.numColliders; i++){
-        destroyCollider2D(body, i);
+    float friction = shapeData.friction;
+    float restitution = shapeData.restitution;
+    int userMaterial = 0;
+    resolveCollider2DSurface(body, shapeData, friction, restitution, userMaterial);
+
+    b2ShapeDef shapeDef = b2DefaultShapeDef();
+    shapeDef.userData = reinterpret_cast<void*>(i);
+    shapeDef.density = shapeData.density;
+    shapeDef.friction = friction;
+    shapeDef.restitution = restitution;
+    shapeDef.userMaterialId = userMaterial;
+    shapeDef.isSensor = shapeData.sensor;
+    shapeDef.enableHitEvents = shapeData.enableHitEvents;
+    shapeDef.enableContactEvents = shapeData.contactEvents;
+    shapeDef.enablePreSolveEvents = shapeData.preSolveEvents;
+    shapeDef.enableSensorEvents = shapeData.sensorEvents || shapeData.sensor;
+    shapeDef.filter = Box2DLayers::makeFilter(layer, shapeData.categoryBits, shapeData.maskBits, shapeData.groupIndex);
+    // the body's mass is computed once its dirty colliders are all made
+    shapeDef.updateBodyMass = false;
+
+    shapeData.shapes.clear();
+    shapeData.chain = b2_nullChainId;
+    shapeData.appliedFriction = friction;
+    shapeData.appliedRestitution = restitution;
+    shapeData.appliedUserMaterial = userMaterial;
+
+    auto addShape = [&](b2ShapeId shape){
+        if (b2Shape_IsValid(shape)){
+            shapeData.shapes.push_back(shape);
+            shapesCreated2D++;
+        }
+    };
+
+    // a box between pointA and pointB: polygons of fewer than 3 points, and of points that
+    // make no polygon (as before)
+    auto boxFallback = [&](std::vector<b2Vec2>& vertices){
+        const Vector2 pointA = scaledPoint(shapeData.pointA);
+        const Vector2 pointB = scaledPoint(shapeData.pointB);
+        const Vector2 minPt(std::min(pointA.x, pointB.x), std::min(pointA.y, pointB.y));
+        const Vector2 maxPt(std::max(pointA.x, pointB.x), std::max(pointA.y, pointB.y));
+        if (minPt == maxPt){
+            return false;
+        }
+        vertices.resize(4);
+        vertices[0] = toBox2DPoint(minPt);
+        vertices[1] = toBox2DPoint(Vector2(maxPt.x, minPt.y));
+        vertices[2] = toBox2DPoint(maxPt);
+        vertices[3] = toBox2DPoint(Vector2(minPt.x, maxPt.y));
+        return true;
+    };
+
+    const std::string entityName = scene->getEntityName(entity);
+
+    if (shapeData.type == Collider2DType::POLYGON){
+        const float radius = std::max(0.0f, toBox2DRadius(shapeData.radius));
+
+        if (shapeData.points.size() >= 3){
+            // convex pieces of the polygon (one for a convex one of up to 8 points), cached
+            float keyValues[4] = {entityScale.x, entityScale.y, pointsToMeterScale2D, (float)shapeData.points.size()};
+            uint64_t key = hashFloats(1469598103934665603ull, keyValues, 4);
+            key = hashFloats(key, reinterpret_cast<const float*>(shapeData.points.data()), shapeData.points.size() * 2);
+
+            const bool decomposed = (key != shapeData.decompositionKey);
+            if (decomposed){
+                std::vector<Vector2> points(shapeData.points.size());
+                for (size_t j = 0; j < shapeData.points.size(); j++){
+                    const b2Vec2 point = toBox2DPoint(scaledPoint(shapeData.points[j]));
+                    points[j] = Vector2(point.x, point.y);
+                }
+                Decomposition2D decomposition = decomposePolygon2D(points, linearSlop2D, B2_MAX_POLYGON_VERTICES);
+                shapeData.pieces = std::move(decomposition.pieces);
+                shapeData.droppedPieces = decomposition.droppedPieces;
+                shapeData.selfIntersecting = decomposition.selfIntersecting;
+                shapeData.decompositionKey = key;
+
+                if (!decomposition.error.empty()){
+                    Log::error("Polygon collider %zu of '%s': %s", i, entityName.c_str(), decomposition.error.c_str());
+                }else if (decomposition.selfIntersecting){
+                    Log::error("Polygon collider %zu of '%s' crosses itself: its convex hull is used instead. Reorder its points into one outline, or use several colliders.", i, entityName.c_str());
+                }
+            }
+
+            int failedHulls = 0;
+            for (const std::vector<Vector2>& piece : shapeData.pieces){
+                b2Vec2 vertices[B2_MAX_POLYGON_VERTICES];
+                const int count = std::min((int)piece.size(), (int)B2_MAX_POLYGON_VERTICES);
+                for (int j = 0; j < count; j++){
+                    vertices[j] = {piece[j].x, piece[j].y};
+                }
+                b2Hull hull = b2ComputeHull(vertices, count);
+                if (!b2ValidateHull(&hull)){
+                    failedHulls++;
+                    continue;
+                }
+                b2Polygon polygon = b2MakePolygon(&hull, radius);
+                addShape(b2CreatePolygonShape(body.body, &shapeDef, &polygon));
+            }
+            // counted (and reported) once per decomposition, not at every rebuild from the cache
+            if (decomposed && failedHulls > 0){
+                if (shapeData.droppedPieces == 0){
+                    Log::warn("Polygon collider %zu of '%s': %d sliver piece(s) too thin for Box2D were left out", i, entityName.c_str(), failedHulls);
+                }
+                shapeData.droppedPieces += failedHulls;
+            }
+            if (!shapeData.shapes.empty()){
+                return;
+            }
+        }
+
+        // no polygon from the points: the box between pointA and pointB, as before
+        std::vector<b2Vec2> vertices;
+        if (!boxFallback(vertices)){
+            Log::error("Cannot create polygon shape %zu: less than 3 vertices and invalid pointA/pointB fallback", i);
+            return;
+        }
+        b2Hull hull = b2ComputeHull(vertices.data(), (int)vertices.size());
+        if (!b2ValidateHull(&hull)){
+            Log::error("Cannot create polygon shape %zu: invalid hull", i);
+            return;
+        }
+        b2Polygon polygon = b2MakePolygon(&hull, radius);
+        addShape(b2CreatePolygonShape(body.body, &shapeDef, &polygon));
+    }else if (shapeData.type == Collider2DType::CIRCLE){
+        float radius = toBox2DRadius(shapeData.radius);
+        if (radius <= 0.0f){
+            Log::error("Cannot create circle shape %zu: radius must be > 0", i);
+            return;
+        }
+
+        b2Circle circle = {0};
+        circle.center = toBox2DPoint(scaledPoint(shapeData.pointA));
+        circle.radius = radius;
+        addShape(b2CreateCircleShape(body.body, &shapeDef, &circle));
+    }else if (shapeData.type == Collider2DType::CAPSULE){
+        float radius = toBox2DRadius(shapeData.radius);
+        if (radius <= 0.0f){
+            Log::error("Cannot create capsule shape %zu: radius must be > 0", i);
+            return;
+        }
+
+        Vector2 center1 = scaledPoint(shapeData.pointA);
+        Vector2 center2 = scaledPoint(shapeData.pointB);
+        if (center1 == center2){
+            Log::error("Cannot create capsule shape %zu: pointA and pointB are equal", i);
+            return;
+        }
+
+        b2Capsule capsule = {0};
+        capsule.center1 = toBox2DPoint(center1);
+        capsule.center2 = toBox2DPoint(center2);
+        capsule.radius = radius;
+        addShape(b2CreateCapsuleShape(body.body, &shapeDef, &capsule));
+    }else if (shapeData.type == Collider2DType::SEGMENT){
+        Vector2 point1 = scaledPoint(shapeData.pointA);
+        Vector2 point2 = scaledPoint(shapeData.pointB);
+        if (point1 == point2){
+            Log::error("Cannot create segment shape %zu: pointA and pointB are equal", i);
+            return;
+        }
+
+        b2Segment segment = {0};
+        segment.point1 = toBox2DPoint(point1);
+        segment.point2 = toBox2DPoint(point2);
+        addShape(b2CreateSegmentShape(body.body, &shapeDef, &segment));
+    }else if (shapeData.type == Collider2DType::CHAIN){
+        const size_t count = shapeData.points.size();
+        if (count < 2){
+            Log::error("Cannot create chain shape %zu: it needs at least 2 points", i);
+            return;
+        }
+
+        std::vector<b2Vec2> b2vertices(count);
+        for (size_t j = 0; j < count; j++){
+            b2vertices[j] = toBox2DPoint(scaledPoint(shapeData.points[j]));
+        }
+        // mirroring flips the winding, which would swap the colliding side
+        if (entityScale.x * entityScale.y < 0.0f){
+            std::reverse(b2vertices.begin(), b2vertices.end());
+        }
+
+        if (count < 4){
+            // too short for a Box2D chain (Unity EdgeCollider2D takes 2 points): two-sided
+            // segments, closed back to the first point for a loop of 3
+            const size_t segments = (shapeData.loop && count == 3) ? 3 : count - 1;
+            for (size_t j = 0; j < segments; j++){
+                b2Segment segment = {0};
+                segment.point1 = b2vertices[j];
+                segment.point2 = b2vertices[(j + 1) % count];
+                if (b2DistanceSquared(segment.point1, segment.point2) <= linearSlop2D * linearSlop2D){
+                    continue;
+                }
+                addShape(b2CreateSegmentShape(body.body, &shapeDef, &segment));
+            }
+            return;
+        }
+
+        b2ChainDef chainDef = b2DefaultChainDef();
+        chainDef.points = &b2vertices[0];
+        chainDef.count = (int)count;
+        chainDef.isLoop = shapeData.loop;
+        // the segments report the collider index, like the other shapes
+        chainDef.userData = reinterpret_cast<void*>(i);
+        chainDef.filter = Box2DLayers::makeFilter(layer, shapeData.categoryBits, shapeData.maskBits, shapeData.groupIndex);
+        chainDef.friction = friction;
+        chainDef.restitution = restitution;
+        chainDef.userMaterialId = userMaterial;
+
+        shapeData.chain = b2CreateChain(body.body, &chainDef);
+        if (b2Chain_IsValid(shapeData.chain)){
+            chainsCreated2D++;
+        }
+    }
+}
+
+bool PhysicsSystem::syncRigidbody2DColliders(Entity entity, Rigidbody2DComponent& body, bool all){
+    if (!b2Body_IsValid(body.body)){
+        return false;
+    }
+
+    const Vector2 entityScale = entityWorldScale2D(scene, entity);
+    // shapes are sized by the world scale
+    if (entityScale != body.loadedScale){
+        all = true;
     }
 
     const int layer = scene->getEntityLayer(entity);
 
-    for (size_t i = 0; i < body.numColliders; i++){
-        Collider2D& shapeData = body.colliders[i];
-
-        b2ShapeDef shapeDef = b2DefaultShapeDef();
-        shapeDef.userData = reinterpret_cast<void*>(i);
-        shapeDef.density = shapeData.density;
-        shapeDef.friction = shapeData.friction;
-        shapeDef.restitution = shapeData.restitution;
-        shapeDef.isSensor = shapeData.sensor;
-        shapeDef.enableHitEvents = shapeData.enableHitEvents;
-        shapeDef.enableContactEvents = shapeData.contactEvents;
-        shapeDef.enablePreSolveEvents = shapeData.preSolveEvents;
-        shapeDef.enableSensorEvents = shapeData.sensorEvents || shapeData.sensor;
-        shapeDef.filter = Box2DLayers::makeFilter(layer, shapeData.categoryBits, shapeData.maskBits, shapeData.groupIndex);
-
-        shapeData.shape = b2_nullShapeId;
-        shapeData.chain = b2_nullChainId;
-
-        if (shapeData.type == Collider2DType::POLYGON){
-            std::vector<b2Vec2> b2vertices;
-
-            if (shapeData.numVertices >= 3){
-                b2vertices.resize(shapeData.numVertices);
-                for (size_t j = 0; j < shapeData.numVertices; j++){
-                    b2vertices[j] = toBox2DPoint(scaledPoint(shapeData.vertices[j]));
-                }
-            }else{
-                const Vector2 pointA = scaledPoint(shapeData.pointA);
-                const Vector2 pointB = scaledPoint(shapeData.pointB);
-                const Vector2 minPt(std::min(pointA.x, pointB.x), std::min(pointA.y, pointB.y));
-                const Vector2 maxPt(std::max(pointA.x, pointB.x), std::max(pointA.y, pointB.y));
-
-                if (minPt == maxPt){
-                    Log::error("Cannot create polygon shape %zu: less than 3 vertices and invalid pointA/pointB fallback", i);
-                    continue;
-                }
-
-                b2vertices.resize(4);
-                b2vertices[0] = toBox2DPoint(minPt);
-                b2vertices[1] = toBox2DPoint(Vector2(maxPt.x, minPt.y));
-                b2vertices[2] = toBox2DPoint(maxPt);
-                b2vertices[3] = toBox2DPoint(Vector2(minPt.x, maxPt.y));
-            }
-
-            b2Hull hull = b2ComputeHull(&b2vertices[0], (int)b2vertices.size());
-            if (!b2ValidateHull(&hull)){
-                const Vector2 pointA = scaledPoint(shapeData.pointA);
-                const Vector2 pointB = scaledPoint(shapeData.pointB);
-                const Vector2 minPt(std::min(pointA.x, pointB.x), std::min(pointA.y, pointB.y));
-                const Vector2 maxPt(std::max(pointA.x, pointB.x), std::max(pointA.y, pointB.y));
-
-                if (minPt != maxPt){
-                    b2vertices.resize(4);
-                    b2vertices[0] = toBox2DPoint(minPt);
-                    b2vertices[1] = toBox2DPoint(Vector2(maxPt.x, minPt.y));
-                    b2vertices[2] = toBox2DPoint(maxPt);
-                    b2vertices[3] = toBox2DPoint(Vector2(minPt.x, maxPt.y));
-                    hull = b2ComputeHull(&b2vertices[0], (int)b2vertices.size());
-                }
-
-                if (!b2ValidateHull(&hull)){
-                    Log::error("Cannot create polygon shape %zu: invalid hull", i);
-                    continue;
-                }
-            }
-
-            b2Polygon polygon = b2MakePolygon(&hull, std::max(0.0f, toBox2DRadius(shapeData.radius)));
-            shapeData.shape = b2CreatePolygonShape(body.body, &shapeDef, &polygon);
-        }else if (shapeData.type == Collider2DType::CIRCLE){
-            float radius = toBox2DRadius(shapeData.radius);
-            if (radius <= 0.0f){
-                Log::error("Cannot create circle shape %zu: radius must be > 0", i);
-                continue;
-            }
-
-            b2Circle circle = {0};
-            circle.center = toBox2DPoint(scaledPoint(shapeData.pointA));
-            circle.radius = radius;
-            shapeData.shape = b2CreateCircleShape(body.body, &shapeDef, &circle);
-        }else if (shapeData.type == Collider2DType::CAPSULE){
-            float radius = toBox2DRadius(shapeData.radius);
-            if (radius <= 0.0f){
-                Log::error("Cannot create capsule shape %zu: radius must be > 0", i);
-                continue;
-            }
-
-            Vector2 center1 = scaledPoint(shapeData.pointA);
-            Vector2 center2 = scaledPoint(shapeData.pointB);
-            if (center1 == center2){
-                Log::error("Cannot create capsule shape %zu: pointA and pointB are equal", i);
-                continue;
-            }
-
-            b2Capsule capsule = {0};
-            capsule.center1 = toBox2DPoint(center1);
-            capsule.center2 = toBox2DPoint(center2);
-            capsule.radius = radius;
-            shapeData.shape = b2CreateCapsuleShape(body.body, &shapeDef, &capsule);
-        }else if (shapeData.type == Collider2DType::SEGMENT){
-            Vector2 point1 = scaledPoint(shapeData.pointA);
-            Vector2 point2 = scaledPoint(shapeData.pointB);
-            if (point1 == point2){
-                Log::error("Cannot create segment shape %zu: pointA and pointB are equal", i);
-                continue;
-            }
-
-            b2Segment segment = {0};
-            segment.point1 = toBox2DPoint(point1);
-            segment.point2 = toBox2DPoint(point2);
-            shapeData.shape = b2CreateSegmentShape(body.body, &shapeDef, &segment);
-        }else if (shapeData.type == Collider2DType::CHAIN){
-            if (shapeData.numVertices < 4){
-                Log::error("Cannot create chain shape %zu: Box2D requires at least 4 vertices", i);
-                continue;
-            }
-
-            std::vector<b2Vec2> b2vertices(shapeData.numVertices);
-            for (size_t j = 0; j < shapeData.numVertices; j++){
-                b2vertices[j] = toBox2DPoint(scaledPoint(shapeData.vertices[j]));
-            }
-            // mirroring flips the winding, which would swap the colliding side
-            if (entityScale.x * entityScale.y < 0.0f){
-                std::reverse(b2vertices.begin(), b2vertices.end());
-            }
-
-            b2ChainDef chainDef = b2DefaultChainDef();
-            chainDef.points = &b2vertices[0];
-            chainDef.count = (int)shapeData.numVertices;
-            chainDef.isLoop = shapeData.loop;
-            // the segments report the collider index, like the other shapes
-            chainDef.userData = reinterpret_cast<void*>(i);
-            chainDef.filter = Box2DLayers::makeFilter(layer, shapeData.categoryBits, shapeData.maskBits, shapeData.groupIndex);
-            chainDef.friction = shapeData.friction;
-            chainDef.restitution = shapeData.restitution;
-
-            shapeData.chain = b2CreateChain(body.body, &chainDef);
+    bool rebuilt = false;
+    for (size_t i = 0; i < body.colliders.size(); i++){
+        Collider2D& collider = body.colliders[i];
+        if (!all && !collider.dirty){
+            continue;
         }
+        destroyCollider2D(body, i);
+        createCollider2DShapes(entity, body, i, entityScale, layer);
+        collider.dirty = false;
+        rebuilt = true;
+    }
+
+    if (rebuilt || all){
+        applyRigidbody2DMass(entity, body);
     }
 
     body.needUpdateColliders = false;
     body.loadedScale = entityScale;
+    body.appliedMaterialRevision = PhysicsMaterialRuntime::revision();
 
+    return true;
+}
+
+void PhysicsSystem::applyRigidbody2DMass(Entity entity, Rigidbody2DComponent& body){
+    if (!b2Body_IsValid(body.body)){
+        return;
+    }
+    if (steppingWorld2D){
+        body.needApplyMass = true;
+        return;
+    }
+    body.needApplyMass = false;
+
+    b2Body_ApplyMassFromShapes(body.body);
+
+    // Box2D gives static and kinematic bodies no mass
+    if (body.type != BodyType::DYNAMIC || b2Body_GetType(body.body) != b2_dynamicBody){
+        return;
+    }
+    if (body.useAutoMass && body.autoCenterOfMass && body.autoInertia){
+        return;
+    }
+
+    b2MassData massData = b2Body_GetMassData(body.body);
+    const float shapesMass = massData.mass;
+    const b2Vec2 shapesCenter = massData.center;
+
+    if (!body.useAutoMass){
+        const float mass = std::isfinite(body.mass) ? std::max(body.mass, 1.0e-6f) : 1.0f;
+        // the colliders' inertia for the new mass (their density scaled), Unity
+        if (shapesMass > 0.0f){
+            massData.rotationalInertia *= mass / shapesMass;
+        }
+        massData.mass = mass;
+    }
+    if (!body.autoCenterOfMass){
+        const Vector2 scale = entityWorldScale2D(scene, entity);
+        const Vector2 center = body.centerOfMass * scale;
+        massData.center = {center.x / pointsToMeterScale2D, center.y / pointsToMeterScale2D};
+        // about the new centre (parallel axis)
+        massData.rotationalInertia += massData.mass * b2DistanceSquared(massData.center, shapesCenter);
+    }
+    if (!body.autoInertia){
+        massData.rotationalInertia = std::isfinite(body.inertia) ? std::max(body.inertia, 0.0f) : 0.0f;
+    }
+    if (body.fixedRotation){
+        massData.rotationalInertia = 0.0f;
+    }
+    b2Body_SetMassData(body.body, massData);
+}
+
+void PhysicsSystem::applyRigidbody2DParameters(Entity entity, Rigidbody2DComponent& body){
+    if (!b2Body_IsValid(body.body)){
+        return;
+    }
+    const float gravityScale = std::isfinite(body.gravityScale) ? body.gravityScale : 1.0f;
+    if (b2Body_GetGravityScale(body.body) != gravityScale){
+        b2Body_SetGravityScale(body.body, gravityScale);
+        // a sleeping body would keep its old load (and its joints their old forces) until touched
+        if (b2Body_GetType(body.body) == b2_dynamicBody){
+            b2Body_SetAwake(body.body, true);
+        }
+    }
+    b2Body_SetLinearDamping(body.body, std::max(0.0f, body.linearDamping));
+    b2Body_SetAngularDamping(body.body, std::max(0.0f, body.angularDamping));
+    b2Body_SetBullet(body.body, body.collisionDetection == CollisionDetectionMode2D::CONTINUOUS);
+    b2Body_EnableSleep(body.body, body.sleepingMode != RigidbodySleepMode2D::NEVER_SLEEP);
+    // recomputes the mass
+    b2Body_SetFixedRotation(body.body, body.fixedRotation);
+    applyRigidbody2DMass(entity, body);
+}
+
+void PhysicsSystem::refreshRigidbody2DMaterials(Entity entity, Rigidbody2DComponent& body, bool force){
+    (void)entity;
+    if (!b2Body_IsValid(body.body)){
+        return;
+    }
+    // Box2D is locked while it steps (a pre-solve callback): before the next step instead
+    if (steppingWorld2D){
+        body.appliedMaterialRevision = 0;
+        return;
+    }
+    body.appliedMaterialRevision = PhysicsMaterialRuntime::revision();
+    if (!force && !usesMaterials(body)){
+        return;
+    }
+
+    bool changed = false;
+    for (Collider2D& collider : body.colliders){
+        float friction = 0.0f;
+        float restitution = 0.0f;
+        int userMaterial = 0;
+        resolveCollider2DSurface(body, collider, friction, restitution, userMaterial);
+        if (friction == collider.appliedFriction && restitution == collider.appliedRestitution && userMaterial == collider.appliedUserMaterial){
+            continue;
+        }
+        collider.appliedFriction = friction;
+        collider.appliedRestitution = restitution;
+        collider.appliedUserMaterial = userMaterial;
+        for (const b2ShapeId& shape : collider.shapes){
+            if (!b2Shape_IsValid(shape)) continue;
+            b2Shape_SetFriction(shape, friction);
+            b2Shape_SetRestitution(shape, restitution);
+            b2Shape_SetUserMaterial(shape, userMaterial);
+        }
+        if (b2Chain_IsValid(collider.chain)){
+            b2Chain_SetFriction(collider.chain, friction);
+            b2Chain_SetRestitution(collider.chain, restitution);
+            b2Chain_SetUserMaterial(collider.chain, userMaterial);
+        }
+        changed = true;
+    }
+
+    // Box2D mixes a contact's friction and restitution when it is made: the touching pairs
+    // are made again on the next step
+    if (changed){
+        refilterShapes2D(body.body, true, -1);
+    }
+}
+
+void PhysicsSystem::syncMaterials2D(){
+    const uint64_t revision = PhysicsMaterialRuntime::revision();
+    auto bodies2d = scene->getComponentArray<Rigidbody2DComponent>();
+    for (size_t i = 0; i < bodies2d->size(); i++){
+        Rigidbody2DComponent& body = bodies2d->getComponentFromIndex(i);
+        if (body.appliedMaterialRevision != revision && b2Body_IsValid(body.body)){
+            refreshRigidbody2DMaterials(bodies2d->getEntity(i), body, false);
+        }
+    }
+}
+
+bool PhysicsSystem::removeCollider2D(Entity entity, Rigidbody2DComponent& body, size_t index){
+    if (index >= body.colliders.size()){
+        return false;
+    }
+
+    if (!b2Body_IsValid(body.body)){
+        body.colliders.erase(body.colliders.begin() + (std::ptrdiff_t)index);
+        body.needUpdateColliders = true;
+        return true;
+    }
+
+    // Box2D is locked while it steps (a contact callback): the body is made again after it
+    if (steppingWorld2D){
+        body.colliders.erase(body.colliders.begin() + (std::ptrdiff_t)index);
+        body.needReloadBody = true;
+        body.needUpdateColliders = true;
+        return true;
+    }
+
+    destroyCollider2D(body, index);
+    body.colliders.erase(body.colliders.begin() + (std::ptrdiff_t)index);
+
+    // the later colliders' shapes report their new index
+    std::vector<b2ShapeId> shapes;
+    for (size_t i = index; i < body.colliders.size(); i++){
+        colliderShapes(body.colliders[i], shapes);
+        for (const b2ShapeId& shape : shapes){
+            b2Shape_SetUserData(shape, reinterpret_cast<void*>(i));
+        }
+    }
+
+    applyRigidbody2DMass(entity, body);
+    if (b2Body_GetType(body.body) != b2_staticBody){
+        b2Body_SetAwake(body.body, true);
+    }
     return true;
 }
 #endif
@@ -1626,6 +1956,10 @@ bool PhysicsSystem::loadRigidbody2D(Entity entity){
             b2DestroyBody(body.body);
             body.body = b2_nullBodyId;
         }
+        for (Collider2D& collider : body.colliders){
+            collider.shapes.clear();
+            collider.chain = b2_nullChainId;
+        }
 
         b2BodyDef bodyDef = b2DefaultBodyDef();
 
@@ -1637,6 +1971,13 @@ bool PhysicsSystem::loadRigidbody2D(Entity entity){
             bodyDef.type = b2_dynamicBody;
         }
         bodyDef.userData = reinterpret_cast<void*>((uint64_t)entity);
+        // the Unity Rigidbody2D fields (their defaults are Box2D's)
+        bodyDef.gravityScale = std::isfinite(body.gravityScale) ? body.gravityScale : 1.0f;
+        bodyDef.linearDamping = std::max(0.0f, body.linearDamping);
+        bodyDef.angularDamping = std::max(0.0f, body.angularDamping);
+        bodyDef.fixedRotation = body.fixedRotation;
+        bodyDef.isBullet = (body.collisionDetection == CollisionDetectionMode2D::CONTINUOUS);
+        bodyDef.enableSleep = (body.sleepingMode != RigidbodySleepMode2D::NEVER_SLEEP);
         // made where its GameObject is, so a script reaching it before the first sync (Lua
         // init()) finds it there
         if (Transform* transform = scene->findComponent<Transform>(entity)){
@@ -1653,8 +1994,14 @@ bool PhysicsSystem::loadRigidbody2D(Entity entity){
         body.newBody = true;
         body.needReloadBody = false;
         body.needUpdateColliders = true;
+        body.needApplyMass = false;
 
-        return syncRigidbody2DColliders(entity, body);
+        const bool synced = syncRigidbody2DColliders(entity, body, true);
+        // made asleep (after its shapes, whose creation wakes it)
+        if (body.sleepingMode == RigidbodySleepMode2D::START_ASLEEP && body.type != BodyType::STATIC){
+            b2Body_SetAwake(body.body, false);
+        }
+        return synced;
     }
 
     Vector2 entityScale = entityWorldScale2D(scene, entity);
@@ -1663,7 +2010,10 @@ bool PhysicsSystem::loadRigidbody2D(Entity entity){
     }
 
     if (body.needUpdateColliders){
-        return syncRigidbody2DColliders(entity, body);
+        return syncRigidbody2DColliders(entity, body, false);
+    }
+    if (body.needApplyMass){
+        applyRigidbody2DMass(entity, body);
     }
 
     return true;
@@ -1693,14 +2043,15 @@ void PhysicsSystem::destroyRigidbody2D(Rigidbody2DComponent& body){
     // When a world leaves scope or is deleted by calling delete on a pointer
     // all the memory reserved for bodies, fixtures, and joints is freed
     if (b2Body_IsValid(body.body)){
-        for (int i = 0; i < body.numColliders; i++){
-            destroyCollider2D(body, i);
-        }
-        body.numColliders = 0;
-
+        // its shapes, chains and joints go with it
         b2DestroyBody(body.body);
 
         body.body = b2_nullBodyId;
+    }
+    for (Collider2D& collider : body.colliders){
+        collider.shapes.clear();
+        collider.chain = b2_nullChainId;
+        collider.dirty = true;
     }
 }
 #endif
@@ -1780,55 +2131,21 @@ void PhysicsSystem::destroyRigidbody(RigidbodyComponent& body){
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_2D
-int PhysicsSystem::loadCollider2D(Rigidbody2DComponent& body, void* shape, Collider2DType type){
-    if (!b2Shape_IsValid(body.colliders[body.numColliders].shape)){
-        b2ShapeDef shapeDef = b2DefaultShapeDef();
-        shapeDef.userData = reinterpret_cast<void*>(body.numColliders);
-
-        if (!b2Body_IsValid(body.body)){
-            Log::error("Cannot create 2D body shape without loaded body");
-            return -1;
-        }
-
-        const int layer = scene->getEntityLayer(static_cast<Entity>(reinterpret_cast<uintptr_t>(b2Body_GetUserData(body.body))));
-        shapeDef.filter = Box2DLayers::makeFilter(layer, (uint16_t)shapeDef.filter.categoryBits, (uint16_t)shapeDef.filter.maskBits, shapeDef.filter.groupIndex);
-
-        body.colliders[body.numColliders].shape = b2_nullShapeId;
-        body.colliders[body.numColliders].chain = b2_nullChainId;
-
-        if (type == Collider2DType::POLYGON){
-            body.colliders[body.numColliders].shape = b2CreatePolygonShape(body.body, &shapeDef, (b2Polygon*)shape);
-        }else if (type == Collider2DType::CIRCLE){
-            body.colliders[body.numColliders].shape = b2CreateCircleShape(body.body, &shapeDef, (b2Circle*)shape);
-        }else if (type == Collider2DType::CAPSULE){
-            body.colliders[body.numColliders].shape = b2CreateCapsuleShape(body.body, &shapeDef, (b2Capsule*)shape);
-        }else if (type == Collider2DType::SEGMENT){
-            body.colliders[body.numColliders].shape = b2CreateSegmentShape(body.body, &shapeDef, (b2Segment*)shape);
-        }else if (type == Collider2DType::CHAIN){
-            b2ChainDef chainDef = *(b2ChainDef*)shape;
-            chainDef.filter = Box2DLayers::makeFilter(layer, (uint16_t)chainDef.filter.categoryBits, (uint16_t)chainDef.filter.maskBits, chainDef.filter.groupIndex);
-            body.colliders[body.numColliders].chain = b2CreateChain(body.body, &chainDef);
-        }
-
-        body.numColliders++;
-
-        return (body.numColliders - 1);
-    }
-
-    return -1;
-}
-
 void PhysicsSystem::destroyCollider2D(Rigidbody2DComponent& body, size_t index){
-    if (b2Shape_IsValid(body.colliders[index].shape)){
-        b2DestroyShape(body.colliders[index].shape, true);
-
-        body.colliders[index].shape = b2_nullShapeId;
+    if (index >= body.colliders.size()){
+        return;
     }
-    if (b2Chain_IsValid(body.colliders[index].chain)){
-        b2DestroyChain(body.colliders[index].chain);
-
-        body.colliders[index].chain = b2_nullChainId;
+    Collider2D& collider = body.colliders[index];
+    for (const b2ShapeId& shape : collider.shapes){
+        if (b2Shape_IsValid(shape)){
+            b2DestroyShape(shape, false);
+        }
     }
+    collider.shapes.clear();
+    if (b2Chain_IsValid(collider.chain)){
+        b2DestroyChain(collider.chain);
+    }
+    collider.chain = b2_nullChainId;
 }
 #endif
 
@@ -1860,287 +2177,640 @@ void PhysicsSystem::destroyCollider3D(RigidbodyComponent& body, size_t index){
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_2D
-bool PhysicsSystem::loadDistanceJoint2D(Entity entity, Joint2DComponent& joint, Entity bodyA, Entity bodyB, Vector2 anchorA, Vector2 anchorB, bool autoAnchors, bool rope){
-    Signature signatureA = scene->getSignature(bodyA);
-    Signature signatureB = scene->getSignature(bodyB);
+namespace {
 
-    if (signatureA.test(scene->getComponentId<Rigidbody2DComponent>()) && signatureB.test(scene->getComponentId<Rigidbody2DComponent>())){
+    float nonNegative(float value){
+        return (std::isfinite(value) && value > 0.0f) ? value : 0.0f;
+    }
 
-        Rigidbody2DComponent myBodyA = scene->getComponent<Rigidbody2DComponent>(bodyA);
-        Rigidbody2DComponent myBodyB = scene->getComponent<Rigidbody2DComponent>(bodyB);
+    float clampAngleRad(float radians){
+        if (!std::isfinite(radians)) return 0.0f;
+        return std::min((float)M_PI, std::max(-(float)M_PI, radians));
+    }
 
-        updateRigidbody2DPosition(signatureA, bodyA, myBodyA);
-        updateRigidbody2DPosition(signatureB, bodyB, myBodyB);
+}
 
-        b2Vec2 worldPivotA = {anchorA.x / pointsToMeterScale2D, anchorA.y / pointsToMeterScale2D};
-        b2Vec2 worldPivotB = {anchorB.x / pointsToMeterScale2D, anchorB.y / pointsToMeterScale2D};
+bool PhysicsSystem::loadJoint2D(Entity entity, Joint2DComponent& joint){
+    ensureWorld2D();
+    if (!b2World_IsValid(world2D)){
+        return false;
+    }
 
-        const bool isZeroAnchorA = (anchorA == Vector2::ZERO);
-        const bool isZeroAnchorB = (anchorB == Vector2::ZERO);
-        if (autoAnchors){
-            worldPivotA = b2Body_GetPosition(myBodyA.body);
-            worldPivotB = b2Body_GetPosition(myBodyB.body);
-        }else if (isZeroAnchorA && isZeroAnchorB){
-            Log::error("Cannot create distance 2D joint: Auto Anchors is disabled and both anchors are zero");
-            return false;
-        }
+    if (b2Joint_IsValid(joint.joint)){
+        destroyJoint2D(joint);
+    }
 
-        b2DistanceJointDef jointDef = b2DefaultDistanceJointDef();
-        jointDef.bodyIdA = myBodyA.body;
-        jointDef.bodyIdB = myBodyB.body;
-        jointDef.localAnchorA = b2Body_GetLocalPoint(myBodyA.body, worldPivotA);
-        jointDef.localAnchorB = b2Body_GetLocalPoint(myBodyB.body, worldPivotB);
-        jointDef.length = b2Distance(worldPivotA, worldPivotB);
-        if (rope){
-            // a zero-hertz spring frees the length, the limit caps it
-            jointDef.enableSpring = true;
-            jointDef.enableLimit = true;
-            jointDef.minLength = 0;
-            jointDef.maxLength = jointDef.length;
-        }
-        jointDef.userData = reinterpret_cast<void*>((uint64_t)entity);
+    if (joint.bodyA == NULL_ENTITY){
+        return false;
+    }
+    // a joint of a scene saved before local anchors needed both bodies; a new one without
+    // bodyB holds bodyA to the world (Unity)
+    if (joint.bodyB == NULL_ENTITY && joint.anchorSpace == JointAnchorSpace::WORLD){
+        return false;
+    }
 
-        joint.joint = b2CreateDistanceJoint(world2D, &jointDef);
-        joint.type = Joint2DType::DISTANCE;
+    return buildJoint2D(entity, joint);
+}
 
-    }else{
+// The b2MotorJoint linear offset (Box2D 3.1 holds bodyB's centre minus bodyA's centre at it, in
+// world space). LOCAL (Unity RelativeJoint2D): the component's offset is bodyB's origin in bodyA's
+// frame, turned into Box2D's before every step as bodyA turns; WORLD: Box2D's own, as given.
+static b2Vec2 motorLinearOffset2D(const Joint2DComponent& joint, b2BodyId bodyA, b2BodyId bodyB, float ptm){
+    const b2Vec2 offset = {joint.linearOffset.x / ptm, joint.linearOffset.y / ptm};
+    if (joint.anchorSpace != JointAnchorSpace::LOCAL || !b2Body_IsValid(bodyA) || !b2Body_IsValid(bodyB)){
+        return offset;
+    }
+    const b2Rot rotationA = b2Body_GetRotation(bodyA);
+    return b2Add(b2RotateVector(rotationA, b2Sub(offset, b2Body_GetLocalCenterOfMass(bodyA))),
+                 b2RotateVector(b2Body_GetRotation(bodyB), b2Body_GetLocalCenterOfMass(bodyB)));
+}
+
+bool PhysicsSystem::buildJoint2D(Entity entity, Joint2DComponent& joint){
+    const Entity bodyAEntity = joint.bodyA;
+    const Entity bodyBEntity = joint.bodyB;
+
+    if (!scene->isEntityCreated(bodyAEntity) || !scene->findComponent<Rigidbody2DComponent>(bodyAEntity) ||
+            (bodyBEntity != NULL_ENTITY && (!scene->isEntityCreated(bodyBEntity) || !scene->findComponent<Rigidbody2DComponent>(bodyBEntity)))){
         Log::error("Cannot create joint, error in bodyA or bodyB");
         return false;
     }
 
-    return true;
-}
-
-bool PhysicsSystem::loadRevoluteJoint2D(Entity entity, Joint2DComponent& joint, Entity bodyA, Entity bodyB, Vector2 anchor){
-    Signature signatureA = scene->getSignature(bodyA);
-    Signature signatureB = scene->getSignature(bodyB);
-
-    if (signatureA.test(scene->getComponentId<Rigidbody2DComponent>()) && signatureB.test(scene->getComponentId<Rigidbody2DComponent>())){
-
-        Rigidbody2DComponent myBodyA = scene->getComponent<Rigidbody2DComponent>(bodyA);
-        Rigidbody2DComponent myBodyB = scene->getComponent<Rigidbody2DComponent>(bodyB);
-
-        updateRigidbody2DPosition(signatureA, bodyA, myBodyA);
-        updateRigidbody2DPosition(signatureB, bodyB, myBodyB);
-
-        b2Vec2 worldPivot = {anchor.x / pointsToMeterScale2D, anchor.y / pointsToMeterScale2D};
-
-        b2RevoluteJointDef jointDef = b2DefaultRevoluteJointDef();
-        jointDef.bodyIdA = myBodyA.body;
-        jointDef.bodyIdB = myBodyB.body;
-        jointDef.localAnchorA = b2Body_GetLocalPoint(myBodyA.body, worldPivot);
-        jointDef.localAnchorB = b2Body_GetLocalPoint(myBodyB.body, worldPivot);
-        jointDef.userData = reinterpret_cast<void*>((uint64_t)entity);
-
-        joint.joint = b2CreateRevoluteJoint(world2D, &jointDef);
-        joint.type = Joint2DType::REVOLUTE;
-
-    }else{
-        Log::error("Cannot create joint, error in bodyA or bodyB");
-        return false;
-    }
-
-    return true;
-}
-
-bool PhysicsSystem::loadPrismaticJoint2D(Entity entity, Joint2DComponent& joint, Entity bodyA, Entity bodyB, Vector2 anchor, Vector2 axis){
-    Signature signatureA = scene->getSignature(bodyA);
-    Signature signatureB = scene->getSignature(bodyB);
-
-    if (signatureA.test(scene->getComponentId<Rigidbody2DComponent>()) && signatureB.test(scene->getComponentId<Rigidbody2DComponent>())){
-
-        Rigidbody2DComponent myBodyA = scene->getComponent<Rigidbody2DComponent>(bodyA);
-        Rigidbody2DComponent myBodyB = scene->getComponent<Rigidbody2DComponent>(bodyB);
-
-        updateRigidbody2DPosition(signatureA, bodyA, myBodyA);
-        updateRigidbody2DPosition(signatureB, bodyB, myBodyB);
-
-        b2Vec2 worldPivot = {anchor.x / pointsToMeterScale2D, anchor.y / pointsToMeterScale2D};
-        float axisLengthSq = axis.x * axis.x + axis.y * axis.y;
-        if (axisLengthSq < 1.0e-6f){
-            Log::warn("Prismatic 2D joint axis is zero. Using default axis (1, 0).");
-            axis = Vector2(1.0f, 0.0f);
-        }
-        b2Vec2 worldAxis = {axis.x, axis.y};
-
-        b2PrismaticJointDef jointDef = b2DefaultPrismaticJointDef();
-        jointDef.bodyIdA = myBodyA.body;
-        jointDef.bodyIdB = myBodyB.body;
-        jointDef.localAnchorA = b2Body_GetLocalPoint(myBodyA.body, worldPivot);
-        jointDef.localAnchorB = b2Body_GetLocalPoint(myBodyB.body, worldPivot);
-        jointDef.localAxisA = b2Body_GetLocalVector(myBodyA.body, worldAxis);
-        jointDef.userData = reinterpret_cast<void*>((uint64_t)entity);
-
-        joint.joint = b2CreatePrismaticJoint(world2D, &jointDef);
-        joint.type = Joint2DType::PRISMATIC;
-
-    }else{
-        Log::error("Cannot create joint, error in bodyA or bodyB");
-        return false;
-    }
-
-    return true;
-}
-
-bool PhysicsSystem::loadMouseJoint2D(Entity entity, Joint2DComponent& joint, Entity bodyA, Entity bodyB, Vector2 target){
-    Signature signatureA = scene->getSignature(bodyA);
-    Signature signatureB = scene->getSignature(bodyB);
-
-    if (signatureA.test(scene->getComponentId<Rigidbody2DComponent>()) && signatureB.test(scene->getComponentId<Rigidbody2DComponent>())){
-
-        if (!loadRigidbody2D(bodyA) || !loadRigidbody2D(bodyB)){
+    if (joint.type == Joint2DType::MOUSE){
+        if (!loadRigidbody2D(bodyAEntity) || (bodyBEntity != NULL_ENTITY && !loadRigidbody2D(bodyBEntity))){
             Log::error("Cannot create mouse 2D joint, bodyA or bodyB could not be loaded");
             return false;
         }
-
-        Rigidbody2DComponent myBodyA = scene->getComponent<Rigidbody2DComponent>(bodyA);
-        Rigidbody2DComponent myBodyB = scene->getComponent<Rigidbody2DComponent>(bodyB);
-
-        if (myBodyA.type != BodyType::DYNAMIC){
+        if (scene->getComponent<Rigidbody2DComponent>(bodyAEntity).type != BodyType::DYNAMIC){
             Log::error("Cannot create mouse 2D joint, bodyA must be dynamic");
             return false;
         }
-
-        if (bodyA == bodyB){
+        if (bodyAEntity == bodyBEntity){
             Log::error("Cannot create mouse 2D joint with the same bodyA and bodyB");
             return false;
         }
-
-        updateRigidbody2DPosition(signatureA, bodyA, myBodyA);
-        updateRigidbody2DPosition(signatureB, bodyB, myBodyB);
-
-        if (!b2Body_IsValid(myBodyA.body) || !b2Body_IsValid(myBodyB.body)){
-            Log::error("Cannot create mouse 2D joint, bodyA or bodyB has no valid physics body");
-            return false;
-        }
-
-        b2Vec2 worldTarget = {target.x / pointsToMeterScale2D, target.y / pointsToMeterScale2D};
-
-        b2MouseJointDef jointDef = b2DefaultMouseJointDef();
-        jointDef.bodyIdA = myBodyB.body;
-        jointDef.bodyIdB = myBodyA.body;
-        jointDef.target = worldTarget;
-        jointDef.maxForce = std::max(10.0f, 1000.0f * b2Body_GetMass(myBodyA.body));
-        jointDef.userData = reinterpret_cast<void*>((uint64_t)entity);
-
-        joint.joint = b2CreateMouseJoint(world2D, &jointDef);
-        if (!b2Joint_IsValid(joint.joint)){
-            Log::error("Cannot create mouse 2D joint");
-            return false;
-        }
-        joint.type = Joint2DType::MOUSE;
-
     }else{
-        Log::error("Cannot create joint, error in bodyA or bodyB");
+        if (!b2Body_IsValid(scene->getComponent<Rigidbody2DComponent>(bodyAEntity).body)){
+            loadRigidbody2D(bodyAEntity);
+        }
+        if (bodyBEntity != NULL_ENTITY && !b2Body_IsValid(scene->getComponent<Rigidbody2DComponent>(bodyBEntity).body)){
+            loadRigidbody2D(bodyBEntity);
+        }
+    }
+
+    // the bodies at their Transforms, on copies of their components (the follow state of
+    // the step stays as it is)
+    auto syncPose = [&](Entity bodyEntity){
+        Rigidbody2DComponent& real = scene->getComponent<Rigidbody2DComponent>(bodyEntity);
+        std::vector<Collider2D> colliders;
+        colliders.swap(real.colliders);
+        Rigidbody2DComponent copy = real;
+        real.colliders.swap(colliders);
+        updateRigidbody2DPosition(scene->getSignature(bodyEntity), bodyEntity, copy);
+    };
+    syncPose(bodyAEntity);
+    if (bodyBEntity != NULL_ENTITY){
+        syncPose(bodyBEntity);
+    }
+
+    const b2BodyId bodyA = scene->getComponent<Rigidbody2DComponent>(bodyAEntity).body;
+    const b2BodyId bodyB = (bodyBEntity != NULL_ENTITY) ? scene->getComponent<Rigidbody2DComponent>(bodyBEntity).body : getGroundBody2D();
+    if (!b2Body_IsValid(bodyA) || !b2Body_IsValid(bodyB)){
+        Log::error("Cannot create 2D joint, bodyA or bodyB has no valid physics body");
         return false;
     }
 
+    const float ptm = pointsToMeterScale2D;
+    auto toBox2D = [ptm](const Vector2& value){
+        return b2Vec2{value.x / ptm, value.y / ptm};
+    };
+
+    const bool local = (joint.anchorSpace == JointAnchorSpace::LOCAL);
+    // made again only because a body was (a collider or body edit in Play): a LOCAL joint keeps
+    // what it captured when it was made (auto anchor B, length, offsets, reference angle) instead
+    // of capturing the poses of now; an edit of the joint itself (needUpdateJoint) captures again
+    const bool reuseConfigured = local && !joint.needUpdateJoint && configuredJoints2D.count(entity) > 0;
+    const Vector2 scaleA = entityWorldScale2D(scene, bodyAEntity);
+    const Vector2 scaleB = (bodyBEntity != NULL_ENTITY) ? entityWorldScale2D(scene, bodyBEntity) : Vector2(1.0f, 1.0f);
+
+    // the anchors in each body's frame. LOCAL: as given (GameObject units, scaled), anchorB
+    // where anchorA is now with autoAnchors (Unity autoConfigureConnectedAnchor, written back);
+    // WORLD: the world points of the scene's time, as joints always were made
+    b2Vec2 localAnchorA = b2Vec2_zero;
+    b2Vec2 localAnchorB = b2Vec2_zero;
+    b2Vec2 worldPivotA = b2Vec2_zero;
+    b2Vec2 worldPivotB = b2Vec2_zero;
+    if (local){
+        localAnchorA = toBox2D(joint.anchorA * scaleA);
+        if (joint.autoAnchors && joint.type != Joint2DType::DISTANCE && !reuseConfigured){
+            localAnchorB = b2Body_GetLocalPoint(bodyB, b2Body_GetWorldPoint(bodyA, localAnchorA));
+            if (scaleB.x != 0.0f && scaleB.y != 0.0f){
+                joint.anchorB = Vector2(localAnchorB.x * ptm / scaleB.x, localAnchorB.y * ptm / scaleB.y);
+            }
+        }else{
+            localAnchorB = toBox2D(joint.anchorB * scaleB);
+        }
+        worldPivotA = b2Body_GetWorldPoint(bodyA, localAnchorA);
+        worldPivotB = b2Body_GetWorldPoint(bodyB, localAnchorB);
+    }else if (joint.type == Joint2DType::DISTANCE){
+        worldPivotA = toBox2D(joint.anchorA);
+        worldPivotB = toBox2D(joint.anchorB);
+        if (joint.autoAnchors){
+            worldPivotA = b2Body_GetPosition(bodyA);
+            worldPivotB = b2Body_GetPosition(bodyB);
+        }else if (joint.anchorA == Vector2::ZERO && joint.anchorB == Vector2::ZERO){
+            Log::error("Cannot create distance 2D joint: Auto Anchors is disabled and both anchors are zero");
+            return false;
+        }
+        localAnchorA = b2Body_GetLocalPoint(bodyA, worldPivotA);
+        localAnchorB = b2Body_GetLocalPoint(bodyB, worldPivotB);
+    }else{
+        const b2Vec2 worldPivot = toBox2D(joint.anchorA);
+        worldPivotA = worldPivot;
+        worldPivotB = worldPivot;
+        localAnchorA = b2Body_GetLocalPoint(bodyA, worldPivot);
+        localAnchorB = b2Body_GetLocalPoint(bodyB, worldPivot);
+    }
+
+    // the line of motion in bodyA's frame
+    auto localAxis = [&](const char* typeName){
+        Vector2 axis = local ? joint.axis * scaleA : joint.axis;
+        if (axis.x * axis.x + axis.y * axis.y < 1.0e-6f){
+            Log::warn("%s 2D joint axis is zero. Using default axis (1, 0).", typeName);
+            axis = Vector2(1.0f, 0.0f);
+        }
+        if (local){
+            return b2Normalize(b2Vec2{axis.x, axis.y});
+        }
+        return b2Body_GetLocalVector(bodyA, b2Vec2{axis.x, axis.y});
+    };
+
+    // the relative angle the joint keeps; 0 for joints of scenes saved before (as they were)
+    const float referenceAngle = !local ? 0.0f
+        : (reuseConfigured ? joint.referenceAngle : b2RelativeAngle(b2Body_GetRotation(bodyB), b2Body_GetRotation(bodyA)));
+    joint.referenceAngle = referenceAngle;
+
+    void* userData = reinterpret_cast<void*>((uint64_t)entity);
+    b2JointId created = b2_nullJointId;
+
+    switch (joint.type){
+        case Joint2DType::DISTANCE: {
+            b2DistanceJointDef jointDef = b2DefaultDistanceJointDef();
+            jointDef.bodyIdA = bodyA;
+            jointDef.bodyIdB = bodyB;
+            jointDef.localAnchorA = localAnchorA;
+            jointDef.localAnchorB = localAnchorB;
+            jointDef.length = b2Distance(worldPivotA, worldPivotB);
+            if (!joint.autoLength || reuseConfigured){
+                jointDef.length = nonNegative(joint.length) / ptm;
+            }else{
+                joint.length = jointDef.length * ptm;
+            }
+            jointDef.enableSpring = joint.enableSpring;
+            jointDef.hertz = nonNegative(joint.frequency);
+            jointDef.dampingRatio = nonNegative(joint.dampingRatio);
+            if (joint.rope){
+                // a zero-hertz spring frees the length, the limit caps it
+                jointDef.enableSpring = true;
+                if (!joint.enableSpring){
+                    jointDef.hertz = 0.0f;
+                    jointDef.dampingRatio = 0.0f;
+                }
+                jointDef.enableLimit = true;
+                jointDef.minLength = joint.useLimits ? nonNegative(joint.minLength) / ptm : 0.0f;
+                jointDef.maxLength = jointDef.length;
+            }else if (joint.useLimits){
+                jointDef.enableLimit = true;
+                jointDef.minLength = nonNegative(joint.minLength) / ptm;
+                jointDef.maxLength = joint.maxLength > 0.0f ? nonNegative(joint.maxLength) / ptm : jointDef.length;
+            }
+            jointDef.enableMotor = joint.useMotor;
+            jointDef.maxMotorForce = nonNegative(joint.maxMotorForce);
+            jointDef.motorSpeed = std::isfinite(joint.motorSpeed) ? joint.motorSpeed / ptm : 0.0f;
+            jointDef.collideConnected = joint.enableCollision;
+            jointDef.userData = userData;
+            created = b2CreateDistanceJoint(world2D, &jointDef);
+            break;
+        }
+        case Joint2DType::REVOLUTE: {
+            b2RevoluteJointDef jointDef = b2DefaultRevoluteJointDef();
+            jointDef.bodyIdA = bodyA;
+            jointDef.bodyIdB = bodyB;
+            jointDef.localAnchorA = localAnchorA;
+            jointDef.localAnchorB = localAnchorB;
+            jointDef.referenceAngle = referenceAngle;
+            jointDef.enableSpring = joint.enableSpring;
+            jointDef.hertz = nonNegative(joint.frequency);
+            jointDef.dampingRatio = nonNegative(joint.dampingRatio);
+            jointDef.enableLimit = joint.useLimits;
+            const float lower = clampAngleRad(Angle::defaultToRad(joint.lowerAngle));
+            const float upper = clampAngleRad(Angle::defaultToRad(joint.upperAngle));
+            jointDef.lowerAngle = std::min(lower, upper);
+            jointDef.upperAngle = std::max(lower, upper);
+            jointDef.enableMotor = joint.useMotor;
+            jointDef.maxMotorTorque = nonNegative(joint.maxMotorTorque);
+            jointDef.motorSpeed = std::isfinite(joint.motorSpeed) ? Angle::defaultToRad(joint.motorSpeed) : 0.0f;
+            jointDef.collideConnected = joint.enableCollision;
+            jointDef.userData = userData;
+            created = b2CreateRevoluteJoint(world2D, &jointDef);
+            break;
+        }
+        case Joint2DType::PRISMATIC: {
+            b2PrismaticJointDef jointDef = b2DefaultPrismaticJointDef();
+            jointDef.bodyIdA = bodyA;
+            jointDef.bodyIdB = bodyB;
+            jointDef.localAnchorA = localAnchorA;
+            jointDef.localAnchorB = localAnchorB;
+            jointDef.localAxisA = localAxis("Prismatic");
+            joint.localAxisA = Vector2(b2Normalize(jointDef.localAxisA).x, b2Normalize(jointDef.localAxisA).y);
+            jointDef.referenceAngle = referenceAngle;
+            jointDef.enableSpring = joint.enableSpring;
+            jointDef.hertz = nonNegative(joint.frequency);
+            jointDef.dampingRatio = nonNegative(joint.dampingRatio);
+            jointDef.enableLimit = joint.useLimits;
+            const float lower = std::isfinite(joint.lowerTranslation) ? joint.lowerTranslation / ptm : 0.0f;
+            const float upper = std::isfinite(joint.upperTranslation) ? joint.upperTranslation / ptm : 0.0f;
+            jointDef.lowerTranslation = std::min(lower, upper);
+            jointDef.upperTranslation = std::max(lower, upper);
+            jointDef.enableMotor = joint.useMotor;
+            jointDef.maxMotorForce = nonNegative(joint.maxMotorForce);
+            jointDef.motorSpeed = std::isfinite(joint.motorSpeed) ? joint.motorSpeed / ptm : 0.0f;
+            jointDef.collideConnected = joint.enableCollision;
+            jointDef.userData = userData;
+            created = b2CreatePrismaticJoint(world2D, &jointDef);
+            break;
+        }
+        case Joint2DType::MOUSE: {
+            b2MouseJointDef jointDef = b2DefaultMouseJointDef();
+            // Box2D drags its bodyB: the joint's body
+            jointDef.bodyIdA = bodyB;
+            jointDef.bodyIdB = bodyA;
+            jointDef.target = toBox2D(joint.target);
+            jointDef.hertz = nonNegative(joint.frequency);
+            jointDef.dampingRatio = nonNegative(joint.dampingRatio);
+            jointDef.maxForce = joint.maxForce > 0.0f ? nonNegative(joint.maxForce) : std::max(10.0f, 1000.0f * b2Body_GetMass(bodyA));
+            jointDef.collideConnected = joint.enableCollision;
+            jointDef.userData = userData;
+            created = b2CreateMouseJoint(world2D, &jointDef);
+            break;
+        }
+        case Joint2DType::WHEEL: {
+            b2WheelJointDef jointDef = b2DefaultWheelJointDef();
+            jointDef.bodyIdA = bodyA;
+            jointDef.bodyIdB = bodyB;
+            jointDef.localAnchorA = localAnchorA;
+            jointDef.localAnchorB = localAnchorB;
+            jointDef.localAxisA = localAxis("Wheel");
+            joint.localAxisA = Vector2(b2Normalize(jointDef.localAxisA).x, b2Normalize(jointDef.localAxisA).y);
+            jointDef.enableSpring = joint.enableSpring;
+            jointDef.hertz = nonNegative(joint.frequency);
+            jointDef.dampingRatio = nonNegative(joint.dampingRatio);
+            jointDef.enableLimit = joint.useLimits;
+            const float lower = std::isfinite(joint.lowerTranslation) ? joint.lowerTranslation / ptm : 0.0f;
+            const float upper = std::isfinite(joint.upperTranslation) ? joint.upperTranslation / ptm : 0.0f;
+            jointDef.lowerTranslation = std::min(lower, upper);
+            jointDef.upperTranslation = std::max(lower, upper);
+            jointDef.enableMotor = joint.useMotor;
+            jointDef.maxMotorTorque = nonNegative(joint.maxMotorTorque);
+            jointDef.motorSpeed = std::isfinite(joint.motorSpeed) ? Angle::defaultToRad(joint.motorSpeed) : 0.0f;
+            jointDef.collideConnected = joint.enableCollision;
+            jointDef.userData = userData;
+            created = b2CreateWheelJoint(world2D, &jointDef);
+            break;
+        }
+        case Joint2DType::WELD: {
+            b2WeldJointDef jointDef = b2DefaultWeldJointDef();
+            jointDef.bodyIdA = bodyA;
+            jointDef.bodyIdB = bodyB;
+            jointDef.localAnchorA = localAnchorA;
+            jointDef.localAnchorB = localAnchorB;
+            jointDef.referenceAngle = referenceAngle;
+            jointDef.linearHertz = nonNegative(joint.linearFrequency);
+            jointDef.angularHertz = nonNegative(joint.angularFrequency);
+            jointDef.linearDampingRatio = nonNegative(joint.linearDampingRatio);
+            jointDef.angularDampingRatio = nonNegative(joint.angularDampingRatio);
+            jointDef.collideConnected = joint.enableCollision;
+            jointDef.userData = userData;
+            created = b2CreateWeldJoint(world2D, &jointDef);
+            break;
+        }
+        case Joint2DType::MOTOR: {
+            b2MotorJointDef jointDef = b2DefaultMotorJointDef();
+            jointDef.bodyIdA = bodyA;
+            jointDef.bodyIdB = bodyB;
+            if (joint.autoOffset && !reuseConfigured){
+                // holds the pose the bodies have now (Unity autoConfigureOffset, written back):
+                // LOCAL, bodyB's origin in bodyA's frame (Unity); WORLD, Box2D's own offset
+                const b2Vec2 offset = local ? b2Body_GetLocalPoint(bodyA, b2Body_GetPosition(bodyB))
+                                            : b2Sub(b2Body_GetWorldCenterOfMass(bodyB), b2Body_GetWorldCenterOfMass(bodyA));
+                joint.linearOffset = Vector2(offset.x * ptm, offset.y * ptm);
+                joint.angularOffset = Angle::radToDefault(b2RelativeAngle(b2Body_GetRotation(bodyB), b2Body_GetRotation(bodyA)));
+            }
+            jointDef.linearOffset = motorLinearOffset2D(joint, bodyA, bodyB, ptm);
+            jointDef.angularOffset = std::isfinite(joint.angularOffset) ? Angle::defaultToRad(joint.angularOffset) : 0.0f;
+            jointDef.maxForce = nonNegative(joint.maxForce);
+            jointDef.maxTorque = nonNegative(joint.maxTorque);
+            jointDef.correctionFactor = std::min(1.0f, nonNegative(joint.correctionFactor));
+            jointDef.collideConnected = joint.enableCollision;
+            jointDef.userData = userData;
+            created = b2CreateMotorJoint(world2D, &jointDef);
+            break;
+        }
+        default:
+            return false;
+    }
+
+    if (!b2Joint_IsValid(created)){
+        Log::error("Cannot create 2D joint");
+        return false;
+    }
+
+    joint.joint = created;
+    joint.needApplyParameters = false;
+    joint.broken = false;
+    joint.breakArmed = true;
+    configuredJoints2D.insert(entity);
     return true;
+}
+
+void PhysicsSystem::applyJoint2DParameters(Joint2DComponent& joint){
+    joint.needApplyParameters = false;
+    if (!b2Joint_IsValid(joint.joint) || steppingWorld2D){
+        joint.needApplyParameters = b2Joint_IsValid(joint.joint);
+        return;
+    }
+
+    const float ptm = pointsToMeterScale2D;
+    const b2JointId id = joint.joint;
+
+    switch (joint.type){
+        case Joint2DType::DISTANCE: {
+            // Box2D's length setters drop the joint's impulses (its warm start): only on a change
+            auto lengthOf = [](float metres){
+                return std::min(100000.0f, std::max(0.005f, metres));
+            };
+            auto differs = [](float a, float b){
+                return std::fabs(a - b) > 1.0e-6f * std::max(1.0f, std::fabs(b));
+            };
+            if (!joint.autoLength && differs(b2DistanceJoint_GetLength(id), lengthOf(nonNegative(joint.length) / ptm))){
+                b2DistanceJoint_SetLength(id, nonNegative(joint.length) / ptm);
+            }
+            const float length = b2DistanceJoint_GetLength(id);
+            auto setRange = [&](float minLength, float maxLength){
+                const float lower = std::min(lengthOf(minLength), lengthOf(maxLength));
+                const float upper = std::max(lengthOf(minLength), lengthOf(maxLength));
+                if (differs(b2DistanceJoint_GetMinLength(id), lower) || differs(b2DistanceJoint_GetMaxLength(id), upper)){
+                    b2DistanceJoint_SetLengthRange(id, minLength, maxLength);
+                }
+            };
+            b2DistanceJoint_EnableSpring(id, joint.enableSpring || joint.rope);
+            b2DistanceJoint_SetSpringHertz(id, (joint.rope && !joint.enableSpring) ? 0.0f : nonNegative(joint.frequency));
+            b2DistanceJoint_SetSpringDampingRatio(id, (joint.rope && !joint.enableSpring) ? 0.0f : nonNegative(joint.dampingRatio));
+            if (joint.rope){
+                b2DistanceJoint_EnableLimit(id, true);
+                setRange(joint.useLimits ? nonNegative(joint.minLength) / ptm : 0.0f, length);
+            }else{
+                b2DistanceJoint_EnableLimit(id, joint.useLimits);
+                if (joint.useLimits){
+                    setRange(nonNegative(joint.minLength) / ptm, joint.maxLength > 0.0f ? nonNegative(joint.maxLength) / ptm : length);
+                }
+            }
+            b2DistanceJoint_EnableMotor(id, joint.useMotor);
+            b2DistanceJoint_SetMaxMotorForce(id, nonNegative(joint.maxMotorForce));
+            b2DistanceJoint_SetMotorSpeed(id, std::isfinite(joint.motorSpeed) ? joint.motorSpeed / ptm : 0.0f);
+            break;
+        }
+        case Joint2DType::REVOLUTE: {
+            b2RevoluteJoint_EnableSpring(id, joint.enableSpring);
+            b2RevoluteJoint_SetSpringHertz(id, nonNegative(joint.frequency));
+            b2RevoluteJoint_SetSpringDampingRatio(id, nonNegative(joint.dampingRatio));
+            b2RevoluteJoint_EnableLimit(id, joint.useLimits);
+            b2RevoluteJoint_SetLimits(id, clampAngleRad(Angle::defaultToRad(joint.lowerAngle)), clampAngleRad(Angle::defaultToRad(joint.upperAngle)));
+            b2RevoluteJoint_EnableMotor(id, joint.useMotor);
+            b2RevoluteJoint_SetMaxMotorTorque(id, nonNegative(joint.maxMotorTorque));
+            b2RevoluteJoint_SetMotorSpeed(id, std::isfinite(joint.motorSpeed) ? Angle::defaultToRad(joint.motorSpeed) : 0.0f);
+            break;
+        }
+        case Joint2DType::PRISMATIC: {
+            b2PrismaticJoint_EnableSpring(id, joint.enableSpring);
+            b2PrismaticJoint_SetSpringHertz(id, nonNegative(joint.frequency));
+            b2PrismaticJoint_SetSpringDampingRatio(id, nonNegative(joint.dampingRatio));
+            b2PrismaticJoint_EnableLimit(id, joint.useLimits);
+            const float lower = std::isfinite(joint.lowerTranslation) ? joint.lowerTranslation / ptm : 0.0f;
+            const float upper = std::isfinite(joint.upperTranslation) ? joint.upperTranslation / ptm : 0.0f;
+            b2PrismaticJoint_SetLimits(id, std::min(lower, upper), std::max(lower, upper));
+            b2PrismaticJoint_EnableMotor(id, joint.useMotor);
+            b2PrismaticJoint_SetMaxMotorForce(id, nonNegative(joint.maxMotorForce));
+            b2PrismaticJoint_SetMotorSpeed(id, std::isfinite(joint.motorSpeed) ? joint.motorSpeed / ptm : 0.0f);
+            break;
+        }
+        case Joint2DType::MOUSE: {
+            b2MouseJoint_SetTarget(id, b2Vec2{joint.target.x / ptm, joint.target.y / ptm});
+            b2MouseJoint_SetSpringHertz(id, nonNegative(joint.frequency));
+            b2MouseJoint_SetSpringDampingRatio(id, nonNegative(joint.dampingRatio));
+            const b2BodyId dragged = b2Joint_GetBodyB(id);
+            b2MouseJoint_SetMaxForce(id, joint.maxForce > 0.0f ? nonNegative(joint.maxForce) : std::max(10.0f, 1000.0f * b2Body_GetMass(dragged)));
+            break;
+        }
+        case Joint2DType::WHEEL: {
+            b2WheelJoint_EnableSpring(id, joint.enableSpring);
+            b2WheelJoint_SetSpringHertz(id, nonNegative(joint.frequency));
+            b2WheelJoint_SetSpringDampingRatio(id, nonNegative(joint.dampingRatio));
+            b2WheelJoint_EnableLimit(id, joint.useLimits);
+            const float lower = std::isfinite(joint.lowerTranslation) ? joint.lowerTranslation / ptm : 0.0f;
+            const float upper = std::isfinite(joint.upperTranslation) ? joint.upperTranslation / ptm : 0.0f;
+            b2WheelJoint_SetLimits(id, std::min(lower, upper), std::max(lower, upper));
+            b2WheelJoint_EnableMotor(id, joint.useMotor);
+            b2WheelJoint_SetMaxMotorTorque(id, nonNegative(joint.maxMotorTorque));
+            b2WheelJoint_SetMotorSpeed(id, std::isfinite(joint.motorSpeed) ? Angle::defaultToRad(joint.motorSpeed) : 0.0f);
+            break;
+        }
+        case Joint2DType::WELD: {
+            b2WeldJoint_SetLinearHertz(id, nonNegative(joint.linearFrequency));
+            b2WeldJoint_SetAngularHertz(id, nonNegative(joint.angularFrequency));
+            b2WeldJoint_SetLinearDampingRatio(id, nonNegative(joint.linearDampingRatio));
+            b2WeldJoint_SetAngularDampingRatio(id, nonNegative(joint.angularDampingRatio));
+            break;
+        }
+        case Joint2DType::MOTOR: {
+            if (!joint.autoOffset){
+                b2MotorJoint_SetLinearOffset(id, motorLinearOffset2D(joint, b2Joint_GetBodyA(id), b2Joint_GetBodyB(id), ptm));
+                b2MotorJoint_SetAngularOffset(id, std::isfinite(joint.angularOffset) ? Angle::defaultToRad(joint.angularOffset) : 0.0f);
+            }
+            b2MotorJoint_SetMaxForce(id, nonNegative(joint.maxForce));
+            b2MotorJoint_SetMaxTorque(id, nonNegative(joint.maxTorque));
+            b2MotorJoint_SetCorrectionFactor(id, std::min(1.0f, nonNegative(joint.correctionFactor)));
+            break;
+        }
+        default:
+            break;
+    }
+
+    b2Joint_SetCollideConnected(id, joint.enableCollision);
+    b2Joint_WakeBodies(id);
+}
+
+bool PhysicsSystem::loadDistanceJoint2D(Entity entity, Joint2DComponent& joint, Entity bodyA, Entity bodyB, Vector2 anchorA, Vector2 anchorB, bool autoAnchors, bool rope){
+    joint.type = Joint2DType::DISTANCE;
+    joint.anchorSpace = JointAnchorSpace::WORLD;
+    joint.bodyA = bodyA;
+    joint.bodyB = bodyB;
+    joint.anchorA = anchorA;
+    joint.anchorB = anchorB;
+    joint.autoAnchors = autoAnchors;
+    joint.rope = rope;
+    return loadJoint2D(entity, joint);
+}
+
+bool PhysicsSystem::loadRevoluteJoint2D(Entity entity, Joint2DComponent& joint, Entity bodyA, Entity bodyB, Vector2 anchor){
+    joint.type = Joint2DType::REVOLUTE;
+    joint.anchorSpace = JointAnchorSpace::WORLD;
+    joint.bodyA = bodyA;
+    joint.bodyB = bodyB;
+    joint.anchorA = anchor;
+    return loadJoint2D(entity, joint);
+}
+
+bool PhysicsSystem::loadPrismaticJoint2D(Entity entity, Joint2DComponent& joint, Entity bodyA, Entity bodyB, Vector2 anchor, Vector2 axis){
+    joint.type = Joint2DType::PRISMATIC;
+    joint.anchorSpace = JointAnchorSpace::WORLD;
+    joint.bodyA = bodyA;
+    joint.bodyB = bodyB;
+    joint.anchorA = anchor;
+    joint.axis = axis;
+    return loadJoint2D(entity, joint);
+}
+
+bool PhysicsSystem::loadMouseJoint2D(Entity entity, Joint2DComponent& joint, Entity bodyA, Entity bodyB, Vector2 target){
+    joint.type = Joint2DType::MOUSE;
+    joint.anchorSpace = JointAnchorSpace::WORLD;
+    joint.bodyA = bodyA;
+    joint.bodyB = bodyB;
+    joint.target = target;
+    return loadJoint2D(entity, joint);
 }
 
 bool PhysicsSystem::loadWheelJoint2D(Entity entity, Joint2DComponent& joint, Entity bodyA, Entity bodyB, Vector2 anchor, Vector2 axis){
-    Signature signatureA = scene->getSignature(bodyA);
-    Signature signatureB = scene->getSignature(bodyB);
-
-    if (signatureA.test(scene->getComponentId<Rigidbody2DComponent>()) && signatureB.test(scene->getComponentId<Rigidbody2DComponent>())){
-
-        Rigidbody2DComponent myBodyA = scene->getComponent<Rigidbody2DComponent>(bodyA);
-        Rigidbody2DComponent myBodyB = scene->getComponent<Rigidbody2DComponent>(bodyB);
-
-        updateRigidbody2DPosition(signatureA, bodyA, myBodyA);
-        updateRigidbody2DPosition(signatureB, bodyB, myBodyB);
-
-        b2Vec2 worldPivot = {anchor.x / pointsToMeterScale2D, anchor.y / pointsToMeterScale2D};
-        float axisLengthSq = axis.x * axis.x + axis.y * axis.y;
-        if (axisLengthSq < 1.0e-6f){
-            Log::warn("Wheel 2D joint axis is zero. Using default axis (1, 0).");
-            axis = Vector2(1.0f, 0.0f);
-        }
-        b2Vec2 worldAxis = {axis.x, axis.y};
-
-        b2WheelJointDef jointDef = b2DefaultWheelJointDef();
-        jointDef.bodyIdA = myBodyA.body;
-        jointDef.bodyIdB = myBodyB.body;
-        jointDef.localAnchorA = b2Body_GetLocalPoint(myBodyA.body, worldPivot);
-        jointDef.localAnchorB = b2Body_GetLocalPoint(myBodyB.body, worldPivot);
-        jointDef.localAxisA = b2Body_GetLocalVector(myBodyA.body, worldAxis);
-        jointDef.userData = reinterpret_cast<void*>((uint64_t)entity);
-
-        joint.joint = b2CreateWheelJoint(world2D, &jointDef);
-        joint.type = Joint2DType::WHEEL;
-
-    }else{
-        Log::error("Cannot create joint, error in bodyA or bodyB");
-        return false;
-    }
-
-    return true;
+    joint.type = Joint2DType::WHEEL;
+    joint.anchorSpace = JointAnchorSpace::WORLD;
+    joint.bodyA = bodyA;
+    joint.bodyB = bodyB;
+    joint.anchorA = anchor;
+    joint.axis = axis;
+    return loadJoint2D(entity, joint);
 }
 
 bool PhysicsSystem::loadWeldJoint2D(Entity entity, Joint2DComponent& joint, Entity bodyA, Entity bodyB, Vector2 anchor){
-    Signature signatureA = scene->getSignature(bodyA);
-    Signature signatureB = scene->getSignature(bodyB);
-
-    if (signatureA.test(scene->getComponentId<Rigidbody2DComponent>()) && signatureB.test(scene->getComponentId<Rigidbody2DComponent>())){
-
-        Rigidbody2DComponent myBodyA = scene->getComponent<Rigidbody2DComponent>(bodyA);
-        Rigidbody2DComponent myBodyB = scene->getComponent<Rigidbody2DComponent>(bodyB);
-
-        updateRigidbody2DPosition(signatureA, bodyA, myBodyA);
-        updateRigidbody2DPosition(signatureB, bodyB, myBodyB);
-
-        b2Vec2 worldPivot = {anchor.x / pointsToMeterScale2D, anchor.y / pointsToMeterScale2D};
-
-        b2WeldJointDef jointDef = b2DefaultWeldJointDef();
-        jointDef.bodyIdA = myBodyA.body;
-        jointDef.bodyIdB = myBodyB.body;
-        jointDef.localAnchorA = b2Body_GetLocalPoint(myBodyA.body, worldPivot);
-        jointDef.localAnchorB = b2Body_GetLocalPoint(myBodyB.body, worldPivot);
-        jointDef.userData = reinterpret_cast<void*>((uint64_t)entity);
-
-        joint.joint = b2CreateWeldJoint(world2D, &jointDef);
-        joint.type = Joint2DType::WELD;
-
-    }else{
-        Log::error("Cannot create joint, error in bodyA or bodyB");
-        return false;
-    }
-
-    return true;
+    joint.type = Joint2DType::WELD;
+    joint.anchorSpace = JointAnchorSpace::WORLD;
+    joint.bodyA = bodyA;
+    joint.bodyB = bodyB;
+    joint.anchorA = anchor;
+    return loadJoint2D(entity, joint);
 }
 
 bool PhysicsSystem::loadMotorJoint2D(Entity entity, Joint2DComponent& joint, Entity bodyA, Entity bodyB){
-    Signature signatureA = scene->getSignature(bodyA);
-    Signature signatureB = scene->getSignature(bodyB);
-
-    if (signatureA.test(scene->getComponentId<Rigidbody2DComponent>()) && signatureB.test(scene->getComponentId<Rigidbody2DComponent>())){
-
-        Rigidbody2DComponent myBodyA = scene->getComponent<Rigidbody2DComponent>(bodyA);
-        Rigidbody2DComponent myBodyB = scene->getComponent<Rigidbody2DComponent>(bodyB);
-
-        updateRigidbody2DPosition(signatureA, bodyA, myBodyA);
-        updateRigidbody2DPosition(signatureB, bodyB, myBodyB);
-
-        b2MotorJointDef jointDef = b2DefaultMotorJointDef();
-        jointDef.bodyIdA = myBodyA.body;
-        jointDef.bodyIdB = myBodyB.body;
-        jointDef.userData = reinterpret_cast<void*>((uint64_t)entity);
-
-        joint.joint = b2CreateMotorJoint(world2D, &jointDef);
-        joint.type = Joint2DType::MOTOR;
-
-    }else{
-        Log::error("Cannot create joint, error in bodyA or bodyB");
-        return false;
-    }
-
-    return true;
+    joint.type = Joint2DType::MOTOR;
+    joint.anchorSpace = JointAnchorSpace::WORLD;
+    joint.bodyA = bodyA;
+    joint.bodyB = bodyB;
+    return loadJoint2D(entity, joint);
 }
 
 void PhysicsSystem::destroyJoint2D(Joint2DComponent& joint){
     if (b2Joint_IsValid(joint.joint)){
         b2DestroyJoint(joint.joint);
-        joint.joint = b2_nullJointId;
+    }
+    joint.joint = b2_nullJointId;
+}
+
+void PhysicsSystem::checkJointBreaks2D(){
+    auto joints2d = scene->getComponentArray<Joint2DComponent>();
+    for (size_t i = 0; i < joints2d->size(); i++){
+        Joint2DComponent& joint = joints2d->getComponentFromIndex(i);
+        if (joint.broken || !b2Joint_IsValid(joint.joint)){
+            continue;
+        }
+        const bool finiteForce = std::isfinite(joint.breakForce);
+        const bool finiteTorque = std::isfinite(joint.breakTorque);
+        if (!finiteForce && !finiteTorque){
+            continue;
+        }
+
+        const float force = b2Length(b2Joint_GetConstraintForce(joint.joint));
+        const float torque = std::fabs(b2Joint_GetConstraintTorque(joint.joint));
+        const bool over = (finiteForce && force > joint.breakForce) || (finiteTorque && torque > joint.breakTorque);
+        if (!over){
+            // a callback-only joint reports again once the load went back under the thresholds
+            joint.breakArmed = true;
+            continue;
+        }
+        if (!joint.breakArmed || joint.breakAction == JointBreakAction::IGNORE){
+            continue;
+        }
+
+        const Entity entity = joints2d->getEntity(i);
+        joint.breakArmed = false;
+        switch (joint.breakAction){
+            case JointBreakAction::CALLBACK_ONLY:
+                pendingJointBreaks2D.push_back({entity, joint.bodyA, false});
+                break;
+            case JointBreakAction::DISABLE:
+                // leaves the world before the next step, as any disabled joint
+                joint.enabled = false;
+                joint.broken = true;
+                pendingJointBreaks2D.push_back({entity, joint.bodyA, false});
+                break;
+            case JointBreakAction::DESTROY:
+                joint.broken = true;
+                pendingJointBreaks2D.push_back({entity, joint.bodyA, true});
+                break;
+            default:
+                break;
+        }
+    }
+}
+
+void PhysicsSystem::dispatchJointBreaks2D(){
+    if (pendingJointBreaks2D.empty()){
+        return;
+    }
+    std::vector<JointBreak2D> breaks;
+    breaks.swap(pendingJointBreaks2D);
+
+    // onJointBreak2D(joint) on the joint's GameObject, and on bodyA's when it is another one
+    // (Unity's joint lives on its Rigidbody 2D)
+    for (const JointBreak2D& jointBreak : breaks){
+        const Entity jointEntity = jointBreak.joint;
+        auto pushJoint = [this, jointEntity](lua_State* L){
+            if (!luabridge::push(L, Joint2D(scene, jointEntity))){
+                lua_pushnil(L);
+            }
+            return 1;
+        };
+        auto callCpp = [this, jointEntity](ScriptBase& script){
+            Joint2D joint(scene, jointEntity);
+            script.onJointBreak2D(joint);
+        };
+        // a contact callback of the step may have removed the joint already: no message then
+        if (!scene->isEntityCreated(jointEntity) || !scene->findComponent<Joint2DComponent>(jointEntity)){
+            continue;
+        }
+        ScriptMessages::send(scene, jointEntity, ScriptMessage::JointBreak2D, pushJoint, callCpp);
+        if (jointBreak.bodyA != NULL_ENTITY && jointBreak.bodyA != jointEntity && scene->isEntityCreated(jointBreak.bodyA) &&
+                scene->findComponent<Joint2DComponent>(jointEntity)){
+            ScriptMessages::send(scene, jointBreak.bodyA, ScriptMessage::JointBreak2D, pushJoint, callCpp);
+        }
+    }
+
+    // DESTROY: the component goes after every callback of the step
+    for (const JointBreak2D& jointBreak : breaks){
+        if (!jointBreak.destroy || !scene->isEntityCreated(jointBreak.joint)){
+            continue;
+        }
+        Joint2DComponent* joint = scene->findComponent<Joint2DComponent>(jointBreak.joint);
+        if (joint && joint->broken){
+            scene->removeComponent<Joint2DComponent>(jointBreak.joint);
+        }
     }
 }
 #endif
@@ -2981,8 +3651,12 @@ void PhysicsSystem::fixedUpdate(double dt){
 		Entity entity = bodies2d->getEntity(i);
 		Signature signature = scene->getSignature(entity);
 
-        if (!b2Body_IsValid(body.body) || body.needReloadBody || body.needUpdateColliders || entityWorldScale2D(scene, entity) != body.loadedScale){
+        if (!b2Body_IsValid(body.body) || body.needReloadBody || body.needUpdateColliders || body.needApplyMass || entityWorldScale2D(scene, entity) != body.loadedScale){
             loadRigidbody2D(entity);
+        }
+        if (body.needApplyParameters && b2Body_IsValid(body.body)){
+            body.needApplyParameters = false;
+            applyRigidbody2DParameters(entity, body);
         }
 
         if (b2Body_IsValid(body.body)){
@@ -3025,18 +3699,32 @@ void PhysicsSystem::fixedUpdate(double dt){
             if (loadJoint2D(entity, joint)){
                 joint.needUpdateJoint = false;
             }
+        }else if (joint.needApplyParameters){
+            applyJoint2DParameters(joint);
         }
     }
 
     // With no 2D bodies the world was never created (lazy): skip all Box2D stepping/events.
     if (b2World_IsValid(world2D)){
         syncLayerCollisionMatrix2D();
+        // a material asset or a script's PhysicsMaterial changed
+        syncMaterials2D();
 
         if (bodies2d->size() > 0){
-            int32_t subSteps = 4;
+            // LOCAL motor joints: their offset follows bodyA's angle
+            for (size_t i = 0; i < joints2d->size(); i++){
+                const Joint2DComponent& joint = joints2d->getComponentFromIndex(i);
+                if (joint.type == Joint2DType::MOTOR && joint.anchorSpace == JointAnchorSpace::LOCAL && b2Joint_IsValid(joint.joint)){
+                    b2MotorJoint_SetLinearOffset(joint.joint, motorLinearOffset2D(joint, b2Joint_GetBodyA(joint.joint),
+                                                                                  b2Joint_GetBodyB(joint.joint), pointsToMeterScale2D));
+                }
+            }
             steppingWorld2D = true;
-            b2World_Step(world2D, fixedStep, subSteps);
+            b2World_Step(world2D, fixedStep, subSteps2D);
             steppingWorld2D = false;
+
+            // reaction forces of this step against breakForce / breakTorque
+            checkJointBreaks2D();
         }
 
         // layers changed by callbacks inside the step
@@ -3064,6 +3752,8 @@ void PhysicsSystem::fixedUpdate(double dt){
         }
 
         Box2DAux::manageEvents(scene, world2D);
+        // after the contact events of the step (physics-contacts D10)
+        dispatchJointBreaks2D();
     }
 #endif
 
