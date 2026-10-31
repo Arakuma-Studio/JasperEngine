@@ -440,3 +440,92 @@ MCP end-to-end (`tools/mcp/tests/test_input.py`, new, fixture project):
 - **script-lifecycle**: script-owned virtual sources are cleared when the instance is released; `onDisable` of an
   on-screen control clears its source (ui-multitouch).
 - **debug-overlay** may show the input block of `get_play_state` (optional).
+
+## Implementation notes (2026-10-31, branch `gaps/input`)
+
+Implemented as specified, with these decisions where the spec was open, ambiguous or did not fit
+the code:
+
+1. **`getButton` on an axis action** is true while the positive *or* the negative side is held
+   (the spec said "Button pressed = pos"). Unity's `GetButton("Horizontal")` reacts to both
+   sides and the game's `GetButton("Vertical")` expects it. A Button action ignores negatives.
+2. **Touch internals stay private.** The public `Touch` has Unity's fields plus `startPosition`
+   and `pointer()` (the old name); the bookkeeping fields the spec listed in it (raw previous
+   position, change/begin times, pending end) live in a private record in `Input.cpp`. Touch
+   times (tapCount, deltaTime) run on the input frame clock (the unscaled deltas `beginFrame`
+   gets), so they have frame resolution and are deterministic under a fixed frame time.
+3. **Writers are public.** `Input::addKeyPressed` & co were private to `Engine`; they are public
+   (documented as the platform/engine entry points) so tests and tools can drive the state.
+4. **Releases outside the canvas.** A mouse button released or a finger lifted outside the canvas
+   (the events are dropped as before) now still clears the held state: before, `isMousePressed`
+   / `numTouches` stayed stuck, which would have stuck `Fire1` or an on-screen stick. A
+   cancelled finger that simulated the mouse (`callMouseInTouchEvent`) releases it too.
+5. **The simulated mouse moves.** With `callMouseInTouchEvent` a finger's movement is added to
+   `mouseDelta` (so `Mouse X/Y` look works on touch, Unity's `simulateMouseWithTouches`). A finger
+   hidden by `multiTouchEnabled = false` does not press the simulated mouse.
+6. **Virtual sources count at once, presses next frame.** `getAxis` adds the sources' values at
+   query time (a delta added during the frame, e.g. by a touch area in `UISystem::update`, is seen
+   in that frame); `getButton*` and the edges come from `update` in `beginFrame`.
+7. **Source owners.** `InputSourceKind` is the owner's kind: `Control` (on-screen controls, the
+   default), `Script`, `Agent` (MCP). Added: `clearSources(kind)`, `clearAllSources()`,
+   `namedSource(name)` (a stable owner for a name, never a real address) and a `kind` argument on
+   `addSourceDelta`. A script instance's sources are cleared when it is released through the
+   existing tag path: `Engine::removeSubscriptionsByTag("_<address>_")` clears the owner with that
+   address, which covers Lua `self` (`Input.simulateAxis(name, v, self)`) and C++ scripts' `this`.
+   Lua sources named by a string (default `"script"`) are global and survive scene loads.
+8. **Undo.** Project Settings is a modal dialog with OK / Cancel and the Layer Collision Matrix is
+   in fact not undoable, so: the Input page has its own undo (Ctrl+Z / Ctrl+Y, Undo / Redo
+   buttons) while the dialog is open, and OK records the whole Input edit as one step of the
+   project history (`InputActionsCmd`, also used by MCP `input.actions`; `undo {scope: project}`).
+9. **MCP.** `input.actions` is left out of the no-argument `get_project_settings` listing (it is
+   long; the note says so) and accepts the string `"defaults"`. `send_input` `action` / `axis`
+   events also take `action` as the name when `name` is absent. The tool definitions grew by 76
+   characters (descriptions trimmed elsewhere to pay for most of it); the agent guide shrank.
+10. **JSON shape.** Missing numbers take the defaults of the binding's kind (keys 3/3/0.001,
+    joystick dead 0.19 sensitivity 1, mouse 0.1), `type` defaults to axis, unknown fields are
+    errors, `gravity`/`snap` on a gamepad axis are accepted and ignored. `press_point` must be in
+    (0, 1]. Output keeps fields in reading order. Unity's "joystick N button M" (one joystick) is
+    rejected with a hint to use the binding's `gamepad`.
+11. **project.yaml.** Actions equal to the defaults are stored as "not customized" (no node). An
+    `input` node that cannot be read is reported in the Console, the defaults are used, and the
+    node is written back verbatim until the actions are edited (a hand-edit typo loses nothing).
+12. **Exports.** The generated line splits the JSON into adjacent raw literals of 8000 bytes
+    (MSVC's limit) and `JasperEngine.h` now includes `input/InputActions.h` and
+    `input/InputControlNames.h`, so the generated `main.cpp` (and C++ scripts) see them.
+13. **Play start resets too** (`Project::resetPlayInput`: `Input::reset` and
+    `InputActions::resetRuntimeState`), not only Play stop, so a session never inherits held
+    input, overrides, disabled actions or simulated sources.
+14. **Small choices.** `getPressedControl` names a trigger without a sign (`"left_trigger"`);
+    `inputString` keeps `\b` and `\n` (`\r` becomes `\n`) and drops other control characters;
+    the mouse-movement reference resets on mouse enter and when a finger moves the simulated
+    mouse; `Input.getTouch(i)` returns nil out of range (Unity throws); Listen in the editor takes
+    keys, gamepad buttons (ImGui's or the playing game's), sticks/triggers for a gamepad axis
+    binding, and mouse buttons clicked on empty space (a click on the dialog is not a binding).
+
+15. **Review fixes** (each with a regression test):
+    - A `wait` whose condition ends it early releases the actions and axes the cut input held
+      through the `"mcp"` source (axes held before the wait go back to their value).
+    - `Input::releaseAll` (app pause) reports the touches Canceled in `Input.touches` but leaves
+      the fingers-down list to the platform's `systemTouchCancel`, so `onTouchCancel` and the
+      documents' cancel still come after a pause exactly as before.
+    - A virtual-source press and release between two updates (an on-screen button tapped within a
+      frame, or its owner cleared before the frame) gives `getButtonDown` and `getButtonUp`; so does
+      a source released and pressed again (a second source tapped while one holds the action gives
+      no edges, like a second key).
+    - A control released and pressed again inside one frame while held (and down/up/down from
+      rest) gives both action edges, as `getKeyDown` / `getKeyUp` do (§7.2 step 5).
+    - The generated literal pieces end on UTF-8 character boundaries.
+
+Verification: editor + tests build with 0 warnings; `jasperengine-editor-tests` 985 passed,
+8 skipped (the known ones), 0 failed (49 new: InputEdgesTest, InputTouchTest, InputActionsTest,
+InputControlNamesTest, GeneratorInputTest, ProjectInputTest). MCP `test_input.py`,
+`test_input_ui.py` (acceptance 6: focused text field and gamepad navigation), `test_stubs.py`
+(with lua-language-server 3.13.9: zero diagnostics, and a script using every new name checks
+clean), `test_docs.py`, `test_protocol.py`, `test_play.py`, `test_project.py`, `test_build.py`
+(the exported `main.cpp` loads the actions; the real Desktop player run needs
+`JASPER_SLOW_BUILD=1` and was not run), `test_html_ui_input.py`, `test_html_ui_gamepad.py` pass.
+A generated-style `main.cpp` compiles against the engine headers. The changed engine sources
+compile with Emscripten and with the Android NDK (r30, arm64-v8a; configured with stand-ins for
+the game-activity / frame-pacing prefab packages Gradle provides). Not verified: Apple builds
+(the Xcode project lists the new files, `tools/xcode_sync_engine.py --check` passes); no
+platform code changed.

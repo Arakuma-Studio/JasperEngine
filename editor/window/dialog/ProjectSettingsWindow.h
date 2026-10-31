@@ -137,6 +137,26 @@ namespace jasperengine::editor {
         LayerCollisionRows m_layerCollision3D = allLayersCollide();
         LayerCollisionRows m_layerCollision2D = allLayersCollide();
 
+        // Input actions being edited (Project Settings > Input). The page has its own undo
+        // (Ctrl+Z / Ctrl+Y while it shows); OK makes the whole edit one project history step.
+        std::vector<InputAction> m_inputActions;
+        std::vector<InputAction> m_inputCommitted;      // the state of the last page undo step
+        std::string m_inputCommittedJson;
+        std::vector<std::vector<InputAction>> m_inputUndo;
+        std::vector<std::vector<InputAction>> m_inputRedo;
+        int m_inputSelected = 0;
+        char m_inputSearch[64] = {0};
+        char m_inputControlFilter[64] = {0};
+        // Listen: the next key, mouse button or gamepad control pressed goes to this binding
+        // (list 0: positive, 1: negative, 2: the gamepad axis)
+        struct InputListen {
+            int action = -1;
+            int binding = -1;
+            int list = 0;
+            int frames = 0;
+        };
+        InputListen m_inputListen;
+
         // Unity-style category list; indexes ProjectCategory in the .cpp.
         int m_category = 0;
         char m_categorySearch[64] = {0};
@@ -150,6 +170,18 @@ namespace jasperengine::editor {
         // Unity's triangular Layer Collision Matrix over the named layers (as typed in
         // Tags and Layers, not yet applied)
         void drawLayerCollisionMatrix(const char* id, LayerCollisionRows& rows);
+        void drawInputSettings();
+        void drawInputActionList();
+        void drawInputActionDetails(InputAction& action, int actionIndex);
+        void drawInputBinding(InputAction& action, int actionIndex, int bindingIndex);
+        // a binding's control list: names to remove, a picker to add, Listen
+        void drawInputControls(const char* id, std::vector<InputControl>& controls, int actionIndex, int bindingIndex, int list);
+        void pollInputListen();
+        void commitInputEdit();
+        void undoInputEdit();
+        void redoInputEdit();
+        // First Input problem that blocks OK, "" when there is none
+        std::string inputError() const;
         void drawScriptingSettings();
         void drawTagsAndLayersSettings();
         // Why the New Tag Name field cannot be added ("" when it can)

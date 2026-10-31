@@ -1802,8 +1802,6 @@ class TypeMapper:
             return 'string'
         if base == 'Signature':
             return 'string'
-        if base == 'Touch':
-            return 'Touch'
         m = _OPT.match(base)
         if m:
             inner = self.lua(m.group(1), ctx_class, depth + 1)
@@ -1931,6 +1929,36 @@ OVERRIDES = {
     },
 }
 
+# Input (CoreClassesLua.cpp): the rebinding functions read and push tables, the simulated
+# sources take a name or a script instance
+_INPUT_SOURCE = 'string|ScriptInstance'
+OVERRIDES.update({
+    ('Input', 'getBindings'): {
+        'doc': ['The bindings the action uses now (a runtime override, else Project Settings > Input).'],
+        'overloads': [([('name', 'string')], 'InputBinding[]')]},
+    ('Input', 'setBindings'): {
+        'doc': ['Replaces the action\'s bindings at run time (a settings screen); `false, error` when invalid.',
+                'Input.resetBindings undoes it, Input.exportBindings saves it.'],
+        'overloads': [([('name', 'string'), ('bindings', 'InputBinding[]')], 'boolean, string?')]},
+    ('Input', 'importBindings'): {
+        'doc': ['Replaces the runtime bindings with what Input.exportBindings returned; `false, error` when invalid.'],
+        'overloads': [([('json', 'string')], 'boolean, string?')]},
+    ('Input', 'simulateButton'): {
+        'doc': ['Holds (or releases) the action\'s button like an on-screen button: a source keyed by `source`',
+                '(default "script"; `self` = gone with the script instance). Seen by getButton* next frame.'],
+        'overloads': [([('name', 'string'), ('pressed', 'boolean'), ('source?', _INPUT_SOURCE)], '')]},
+    ('Input', 'simulateAxis'): {
+        'doc': ['Adds `value` (-1..1) to the action like an on-screen stick, until set again; 0 removes it.',
+                '`source` as in simulateButton.'],
+        'overloads': [([('name', 'string'), ('value', 'number'), ('source?', _INPUT_SOURCE)], '')]},
+    ('Input', 'addAxisDelta'): {
+        'doc': ['Adds `delta` to the action for this frame only, unclamped (like mouse movement).'],
+        'overloads': [([('name', 'string'), ('delta', 'number'), ('source?', _INPUT_SOURCE)], '')]},
+    ('Input', 'clearSimulated'): {
+        'doc': ['Removes the simulated values of `source` (without one: of every script).'],
+        'overloads': [([('source?', _INPUT_SOURCE)], '')]},
+})
+
 # Mesh:getMaterial and Mesh.material push the Material copy themselves (a LuaRef: the copy
 # remembers the shader its submesh draws with, LuaBinding::setMaterialDrawnShader)
 OVERRIDES[('Mesh', 'getMaterial')] = {
@@ -2051,8 +2079,8 @@ OVERRIDES.update({
         'doc': ['DELETE `url`.'],
         'overloads': _http_overloads([('url', 'string')])},
     ('Http', 'post'): {
-        'doc': ['POST `body` to `url`: a string is sent as is (set Content-Type in options.headers), a table as JSON',
-                '(Content-Type: application/json), nil sends an empty body.'],
+        'doc': ['POST `body` to `url`: a string is sent as is (Content-Type: application/octet-stream unless options.headers',
+                'set one), a table as JSON (Content-Type: application/json), nil sends an empty body.'],
         'overloads': _http_overloads([('url', 'string'), ('body', 'string|table|nil')])},
     ('Http', 'put'): {
         'doc': ['PUT `body` to `url` (body rules of Http.post).'],
@@ -2456,6 +2484,7 @@ ENGINE_EVENT_ARGS = {
     'onGamepadConnect': ['gamepad'], 'onGamepadDisconnect': ['gamepad'],
     'onGamepadButtonDown': ['gamepad', 'button'], 'onGamepadButtonUp': ['gamepad', 'button'],
     'onGamepadAxisMove': ['gamepad', 'axis', 'value'],
+    'onButtonDown': ['action'], 'onButtonUp': ['action'],
 }
 
 _LUA_KEYWORDS = {'and', 'break', 'do', 'else', 'elseif', 'end', 'false', 'for', 'function', 'goto', 'if',
@@ -3150,10 +3179,21 @@ class Emitter:
             '---function with `event:add(tag, fn)`.',
             '---@class FunctionSubscribe',
             '',
-            '---What Input.getTouches() returns for each touch (a plain table, not a class).',
-            '---@class Touch',
-            '---@field pointer integer',
-            '---@field position Vector2',
+            '---One binding of an input action (Input.getBindings / setBindings; Project Settings > Input).',
+            '---kind buttons: positive / negative control names, gravity, sensitivity, dead, snap;',
+            '---gamepad_axis: axis (left_x..right_trigger), gamepad ("any" or 0-15), dead, sensitivity;',
+            '---mouse_delta: axis ("x", "y", "wheel"), sensitivity. invert on every kind.',
+            '---@class InputBinding',
+            '---@field kind "buttons"|"gamepad_axis"|"mouse_delta"',
+            '---@field positive? string[] # buttons: "space", "mouse_left", "gamepad_a"...',
+            '---@field negative? string[]',
+            '---@field axis? string # gamepad_axis: "left_x"...; mouse_delta: "x"|"y"|"wheel"',
+            '---@field gamepad? "any"|integer',
+            '---@field gravity? number',
+            '---@field sensitivity? number',
+            '---@field dead? number',
+            '---@field snap? boolean',
+            '---@field invert? boolean',
             '',
         ]
         self.files['Globals.lua'] = '\n'.join(L).rstrip() + '\n'

@@ -2591,6 +2591,47 @@ void editor::Project::applyLayerCollisionMatrices() const{
     Physics2D::getLayerCollisionMatrix().setRows(layerCollisionMatrix2D.data());
 }
 
+void editor::Project::setInputActions(const std::vector<InputAction>& actions){
+    inputActions = actions;
+    inputActionsCustomized = InputActions::actionsToJson(actions) != InputActions::actionsToJson(InputActions::defaults());
+    unreadableInputNode.clear();
+    applyInputActions();
+}
+
+const std::vector<InputAction>& editor::Project::getInputActions() const{
+    return inputActions;
+}
+
+bool editor::Project::hasCustomInputActions() const{
+    return inputActionsCustomized;
+}
+
+void editor::Project::resetInputActions(){
+    setInputActions(InputActions::defaults());
+}
+
+void editor::Project::applyInputActions() const{
+    InputActions::setActions(inputActions);
+}
+
+std::string editor::Project::getInputActionsJsonForBuild() const{
+    return inputActionsCustomized ? InputActions::actionsToJson(inputActions) : std::string();
+}
+
+void editor::Project::setUnreadableInputNode(const std::string& yaml){
+    unreadableInputNode = yaml;
+}
+
+const std::string& editor::Project::getUnreadableInputNode() const{
+    return unreadableInputNode;
+}
+
+void editor::Project::resetPlayInput() const{
+    Input::reset();
+    InputActions::resetRuntimeState();
+    applyInputActions();
+}
+
 static bool isInsideRoot(const std::filesystem::path& path, const std::filesystem::path& root){
     std::error_code ec;
     std::filesystem::path relativePath = std::filesystem::relative(path, root, ec);
@@ -5480,6 +5521,7 @@ void editor::Project::resetConfigs() {
     runtimeShadersEnabled = defaultRuntimeShadersEnabled;
     setTagsAndLayers({}, {});
     setLayerCollisionMatrices(allLayersCollide(), allLayersCollide());
+    resetInputActions();
     packNativeResources = defaultPackNativeResources;
     versionControlMetadata = defaultVersionControlMetadata;
     shaderOverrides = {};
@@ -5710,13 +5752,6 @@ void editor::Project::finalizeStart(SceneProject* mainSceneProject, std::vector<
         runtime->needUpdateRender = true;
         selectedSceneForProperties = runtime->id;
     }
-
-    // the plain-HTTP policy of the exported game (Generator writes the same call)
-    Http::setInsecureHttpAllowed(applicationSettings.allowInsecureHttp);
-    // native plugins of other platforms fail with "unavailable" here (Generator writes the same
-    // per platform)
-    NativeBridge::setPlatformOnlyPlugins(NativePlugins::platformOnlyPlugins(
-        NativePlugins::listPlugins(NativePlugins::scan(getProjectPath())), NativePlugins::editorPlatform()));
 
     Engine::pauseGameEvents(false);
     Engine::onViewLoaded.call();
@@ -6874,7 +6909,7 @@ void editor::Project::configureGenerator() {
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
     generator.setMacOSFrameworks(macOSProjectSettings.frameworks);
-    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getBuildScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, applicationSettings.allowInsecureHttp);
+    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getBuildScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, getInputActionsJsonForBuild(), applicationSettings.allowInsecureHttp);
 }
 
 std::vector<editor::SceneScriptSource> editor::Project::prepareScriptBuild() {
@@ -8577,7 +8612,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
     generator.setMacOSFrameworks(macOSProjectSettings.frameworks);
-    generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getBuildScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, applicationSettings.allowInsecureHttp);
+    generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getBuildScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, getInputActionsJsonForBuild(), applicationSettings.allowInsecureHttp);
     if (hasMissingSceneSources()) {
         generatedSourcesDirty.store(true);
     }
@@ -8745,6 +8780,14 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                 }
                 // C++ projects run Lua scripts too, through the plugin's initScripts
                 LuaBinding::clearLoadedProjectModules();
+
+                // the plain-HTTP policy of the exported game (its generated main sets it before
+                // any scene), before the first script's init can send a request
+                Http::setInsecureHttpAllowed(applicationSettings.allowInsecureHttp);
+                // native plugins of other platforms fail with "unavailable" here (the generated
+                // main sets the same per platform)
+                NativeBridge::setPlatformOnlyPlugins(NativePlugins::platformOnlyPlugins(
+                    NativePlugins::listPlugins(NativePlugins::scan(getProjectPath())), NativePlugins::editorPlatform()));
 
                 // Apply project display settings before scripts read the canvas size.
                 Engine::setCanvasSize(canvasWidth, canvasHeight);
@@ -9101,6 +9144,8 @@ void editor::Project::start(uint32_t sceneId) {
     // Play starts from the project's layer collision matrices, whatever an earlier Play's
     // scripts did to them
     applyLayerCollisionMatrices();
+    // and from clean input (Project Settings > Input, no runtime rebinding)
+    resetPlayInput();
     CommandHandle::get(sceneId)->beginPlaySession();
     editor::getEditorHost().saveAllCodeEditors();
     editor::getEditorHost().requestScenePlayFocus(sceneId);
@@ -9323,6 +9368,8 @@ void editor::Project::stop(uint32_t sceneId) {
 
             // matrix changes made by scripts last only for the Play, never reaching project.yaml
             applyLayerCollisionMatrices();
+            // so do held input, rebinding overrides and simulated input sources
+            resetPlayInput();
 
             // what the game stored in UserSettings / PlayerPrefs is on disk when Play has stopped
             UserSettings::save();

@@ -12,7 +12,8 @@
 //   /redirect/{n}         302 to /redirect/{n-1}; /redirect/0 is 200 "redirected"
 //   /redirect-code/{code}?to=PATH   that redirect status to PATH (absolute URL or path)
 //   /slow/{ms}            waits, then 200 "slow"
-//   /bytes/{n}            n bytes (byte i = i % 251) with Content-Length; honours Range: bytes=N-
+//   /bytes/{n}[?etag=X]   n bytes (byte i = i % 251) with Content-Length and ETag "X" ("v1");
+//                         honours Range: bytes=N- (with If-Range: a 200 when it is not the ETag)
 //   /chunked/{n}          the same bytes, chunked
 //   /trickle/{n}/{ms}     n bytes in 16 KiB chunks, `ms` between chunks (Content-Length)
 //   /echo                 JSON {method, path, query, headers (lowercase), body_hex, body_size}
@@ -49,6 +50,8 @@ namespace jaspertest {
         int requests(const std::string& path) const;
         int totalRequests() const;
         int maxConcurrent() const { return maxActive.load(); }
+        // a header (lowercase name) of the last request to `path`, "" when absent
+        std::string lastHeader(const std::string& path, const std::string& name) const;
         void resetCounters();
 
         // the bytes /bytes/{n} sends
@@ -63,6 +66,7 @@ namespace jaspertest {
         std::vector<std::thread> connections;
         mutable std::mutex countMutex;
         std::map<std::string, int> counts;
+        std::map<std::string, std::vector<std::pair<std::string, std::string>>> lastHeaders;
         std::atomic<int> active{0};
         std::atomic<int> maxActive{0};
 

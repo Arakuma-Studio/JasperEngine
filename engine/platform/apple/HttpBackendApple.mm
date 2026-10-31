@@ -93,12 +93,12 @@ namespace {
         // the delegate's queue
         std::shared_ptr<AppleJob> jobOf(NSURLSessionTask* task){
             std::lock_guard<std::mutex> lock(mutex);
-            auto it = byTask.find(task.taskIdentifier);
+            auto it = byTask.find((__bridge const void*)task);
             return it == byTask.end() ? nullptr : it->second;
         }
         std::shared_ptr<AppleJob> takeJob(NSURLSessionTask* task){
             std::lock_guard<std::mutex> lock(mutex);
-            auto it = byTask.find(task.taskIdentifier);
+            auto it = byTask.find((__bridge const void*)task);
             if (it == byTask.end()) return nullptr;
             std::shared_ptr<AppleJob> job = std::move(it->second);
             byTask.erase(it);
@@ -121,7 +121,9 @@ namespace {
             // NSURLSession's only per-request timeout is the idle time between packets (it also
             // bounds connecting): the time left of the whole request, which a timer enforces
             // (start); connectTimeout has no separate effect here
-            request.timeoutInterval = t.totalTimeout() > 0.0 ? std::max(1.0, t.remainingTimeout()) : 1.0e6;
+            // (no total: connectTimeout as the idle timeout, as the other platforms bound connecting)
+            request.timeoutInterval = t.totalTimeout() > 0.0 ? std::max(1.0, t.remainingTimeout())
+                                                             : (t.connectTimeout > 0.0 ? t.connectTimeout : 60.0);
             NSMutableSet<NSString*>* named = [NSMutableSet set];
             for (const auto& [name, value] : t.headers){
                 NSString* key = nsString(name);
@@ -139,11 +141,12 @@ namespace {
             return request;
         }
 
-        NSURLSession* session = nil;
+        NSURLSession* session = nil;          // verifyTls (the default)
+        NSURLSession* insecureSession = nil;  // verifyTls = false, ephemeral: its connections never serve a verified request
         JasperHttpSessionDelegate* delegate = nil;
         NSOperationQueue* queue = nil;
         std::mutex mutex;
-        std::unordered_map<NSUInteger, std::shared_ptr<AppleJob>> byTask;
+        std::unordered_map<const void*, std::shared_ptr<AppleJob>> byTask;   // by the task object
         std::unordered_map<uint64_t, std::shared_ptr<AppleJob>> byId;
     };
 
@@ -168,6 +171,13 @@ namespace {
     switch (t.redirect((int)response.statusCode, location)){
         case HttpRedirect::Action::Follow: {
             NSMutableURLRequest* next = AppleBackend::makeRequest(t);
+            if (!next){
+                // a target NSURL cannot parse: the request fails, it does not become the 3xx
+                t.fail("invalid_url", "the redirect target is not a URL: " + t.url);
+                completionHandler(nil);
+                [task cancel];
+                return;
+            }
             completionHandler(next);
             return;
         }
@@ -267,8 +277,15 @@ AppleBackend::AppleBackend(){
     queue.maxConcurrentOperationCount = 1;
     queue.name = @"JasperEngine HTTP";
     delegate = [[JasperHttpSessionDelegate alloc] init];
-    // the session keeps its delegate until invalidateAndCancel (shutdown)
+    // the sessions keep their delegate until invalidateAndCancel (shutdown)
     session = [NSURLSession sessionWithConfiguration:configuration delegate:delegate delegateQueue:queue];
+    NSURLSessionConfiguration* insecure = [NSURLSessionConfiguration ephemeralSessionConfiguration];
+    insecure.URLCache = nil;
+    insecure.requestCachePolicy = NSURLRequestReloadIgnoringLocalCacheData;
+    insecure.HTTPCookieStorage = nil;
+    insecure.HTTPShouldSetCookies = NO;
+    insecure.HTTPCookieAcceptPolicy = NSHTTPCookieAcceptPolicyNever;
+    insecureSession = [NSURLSession sessionWithConfiguration:insecure delegate:delegate delegateQueue:queue];
     activeBackend = this;
 }
 
@@ -284,11 +301,16 @@ void AppleBackend::start(const std::shared_ptr<HttpTransfer>& transfer){
     }
     auto job = std::make_shared<AppleJob>();
     job->transfer = transfer;
-    NSURLSessionDataTask* task = [session dataTaskWithRequest:request];
+    NSURLSession* owner = transfer->verifyTls ? session : insecureSession;
+    NSURLSessionDataTask* task = [owner dataTaskWithRequest:request];
+    if (!task){
+        transfer->finish("network", "NSURLSession made no task");
+        return;
+    }
     job->task = task;
     {
         std::lock_guard<std::mutex> lock(mutex);
-        byTask[task.taskIdentifier] = job;
+        byTask[(__bridge const void*)task] = job;
         byId[transfer->id] = job;
     }
     if (transfer->totalTimeout() > 0.0){
@@ -322,7 +344,9 @@ void AppleBackend::cancel(uint64_t id){
 void AppleBackend::shutdown(){
     if (activeBackend == this) activeBackend = nullptr;
     [session invalidateAndCancel];
+    [insecureSession invalidateAndCancel];
     session = nil;
+    insecureSession = nil;
     std::unordered_map<uint64_t, std::shared_ptr<AppleJob>> left;
     {
         std::lock_guard<std::mutex> lock(mutex);

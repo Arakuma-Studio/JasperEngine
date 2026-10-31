@@ -3301,6 +3301,12 @@
 		4A534E473E6B9FE60C626734 /* MeshBufferPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D911C9CB4326E948 /* MeshBufferPool.cpp */; };
 		4A534E472437676B559FC859 /* MeshBufferPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D911C9CB4326E948 /* MeshBufferPool.cpp */; };
 		4A534E47693D678BC7B907E1 /* MeshBufferPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E2D854B4242EC2F5 /* MeshBufferPool.h */; };
+		4A534E47D17B678C8F81B040 /* InputActions.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4730DD301E6ACE24A9 /* InputActions.cpp */; };
+		4A534E47AC81945749605313 /* InputActions.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4730DD301E6ACE24A9 /* InputActions.cpp */; };
+		4A534E47A988705C5C005E19 /* InputControlNames.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473BE9FB7833EBA0DF /* InputControlNames.cpp */; };
+		4A534E479968450BA2CEF5BB /* InputControlNames.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473BE9FB7833EBA0DF /* InputControlNames.cpp */; };
+		4A534E4749E3318561E17181 /* InputActions.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47DA77C1DF72E1D462 /* InputActions.h */; };
+		4A534E47CC9B5D8BFDD75814 /* InputControlNames.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4763010A7AB6271A0C /* InputControlNames.h */; };
 		4A534E47AC37D409692AA7D7 /* Http.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4787C9BCF72092DFEE /* Http.cpp */; };
 		4A534E47947208F6A52C0D79 /* Http.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4787C9BCF72092DFEE /* Http.cpp */; };
 		4A534E4707D0FB4D966D8BE5 /* HttpUtil.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F788CC244AA03377 /* HttpUtil.cpp */; };
@@ -3311,6 +3317,8 @@
 		4A534E4704BBC250AA4EB0AC /* NetClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C7032EFC250E9A0E /* NetClassesLua.cpp */; };
 		4A534E47D5FBC9D2B84C3EF4 /* MainThreadQueue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C9ACB5FAD8A291B0 /* MainThreadQueue.cpp */; };
 		4A534E47265BB2DD7CEE9EEA /* MainThreadQueue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C9ACB5FAD8A291B0 /* MainThreadQueue.cpp */; };
+		4A534E476582D52ED841837C /* HttpBackendApple.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C4D8BD8BC47E7C00 /* HttpBackendApple.mm */; };
+		4A534E47D3ECA820EEE9216B /* HttpBackendApple.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C4D8BD8BC47E7C00 /* HttpBackendApple.mm */; };
 		4A534E47C85979F7504AB7AC /* CurlApi.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4746F0372B5BDC60B0 /* CurlApi.h */; };
 		4A534E472BD874B8DCF6E3EC /* Http.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4702C5166EB52DF781 /* Http.h */; };
 		4A534E475B9A526F84177777 /* HttpBackend.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4713FE339C7A9F7A0B /* HttpBackend.h */; };
@@ -3318,8 +3326,6 @@
 		4A534E4798EE0D734C9C55E0 /* AsyncOwner.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4740FD2A72CFB10C16 /* AsyncOwner.h */; };
 		4A534E47D07D96EA20FAA7F1 /* NetClassesLua.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C4CB6F074423D782 /* NetClassesLua.h */; };
 		4A534E470B01A240FA439C2A /* MainThreadQueue.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4743499EE7BE02622E /* MainThreadQueue.h */; };
-		4A534E476582D52ED841837C /* HttpBackendApple.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C4D8BD8BC47E7C00 /* HttpBackendApple.mm */; };
-		4A534E47D3ECA820EEE9216B /* HttpBackendApple.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C4D8BD8BC47E7C00 /* HttpBackendApple.mm */; };
 		4A534E473175AEC2C1AD2C44 /* NativeBridge.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477D212C25FAAED034 /* NativeBridge.cpp */; };
 		4A534E478AB0864975A3DCA6 /* NativeBridge.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477D212C25FAAED034 /* NativeBridge.cpp */; };
 		4A534E47896376AB2B980B5A /* NativeClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477E5EE04810DE8E23 /* NativeClassesLua.cpp */; };
@@ -6701,11 +6707,16 @@
 		4A534E474C490B38DD8DB742 /* VertexAnimatorSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VertexAnimatorSystem.h; sourceTree = "<group>"; };
 		4A534E47D911C9CB4326E948 /* MeshBufferPool.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MeshBufferPool.cpp; sourceTree = "<group>"; };
 		4A534E47E2D854B4242EC2F5 /* MeshBufferPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MeshBufferPool.h; sourceTree = "<group>"; };
+		4A534E4730DD301E6ACE24A9 /* InputActions.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputActions.cpp; sourceTree = "<group>"; };
+		4A534E473BE9FB7833EBA0DF /* InputControlNames.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputControlNames.cpp; sourceTree = "<group>"; };
+		4A534E47DA77C1DF72E1D462 /* InputActions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InputActions.h; sourceTree = "<group>"; };
+		4A534E4763010A7AB6271A0C /* InputControlNames.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InputControlNames.h; sourceTree = "<group>"; };
 		4A534E4787C9BCF72092DFEE /* Http.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Http.cpp; sourceTree = "<group>"; };
 		4A534E47F788CC244AA03377 /* HttpUtil.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HttpUtil.cpp; sourceTree = "<group>"; };
 		4A534E47C1EA7EEF9E302A12 /* AsyncOwner.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AsyncOwner.cpp; sourceTree = "<group>"; };
 		4A534E47C7032EFC250E9A0E /* NetClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = NetClassesLua.cpp; sourceTree = "<group>"; };
 		4A534E47C9ACB5FAD8A291B0 /* MainThreadQueue.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MainThreadQueue.cpp; sourceTree = "<group>"; };
+		4A534E47C4D8BD8BC47E7C00 /* HttpBackendApple.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = HttpBackendApple.mm; sourceTree = "<group>"; };
 		4A534E4746F0372B5BDC60B0 /* CurlApi.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CurlApi.h; sourceTree = "<group>"; };
 		4A534E4702C5166EB52DF781 /* Http.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Http.h; sourceTree = "<group>"; };
 		4A534E4713FE339C7A9F7A0B /* HttpBackend.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HttpBackend.h; sourceTree = "<group>"; };
@@ -6713,7 +6724,6 @@
 		4A534E4740FD2A72CFB10C16 /* AsyncOwner.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AsyncOwner.h; sourceTree = "<group>"; };
 		4A534E47C4CB6F074423D782 /* NetClassesLua.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NetClassesLua.h; sourceTree = "<group>"; };
 		4A534E4743499EE7BE02622E /* MainThreadQueue.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MainThreadQueue.h; sourceTree = "<group>"; };
-		4A534E47C4D8BD8BC47E7C00 /* HttpBackendApple.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = HttpBackendApple.mm; sourceTree = "<group>"; };
 		4A534E477D212C25FAAED034 /* NativeBridge.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = NativeBridge.cpp; sourceTree = "<group>"; };
 		4A534E477E5EE04810DE8E23 /* NativeClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = NativeClassesLua.cpp; sourceTree = "<group>"; };
 		4A534E47F3801C91FA764C9C /* NativePlatformApple.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = NativePlatformApple.mm; sourceTree = "<group>"; };
@@ -8004,6 +8014,17 @@
 			path = animation;
 			sourceTree = "<group>";
 		};
+		4A534E47BC50EC83811560AA /* input */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E4730DD301E6ACE24A9 /* InputActions.cpp */,
+				4A534E473BE9FB7833EBA0DF /* InputControlNames.cpp */,
+				4A534E47DA77C1DF72E1D462 /* InputActions.h */,
+				4A534E4763010A7AB6271A0C /* InputControlNames.h */,
+			);
+			path = input;
+			sourceTree = "<group>";
+		};
 		4A534E47325562508AC85529 /* net */ = {
 			isa = PBXGroup;
 			children = (
@@ -8067,6 +8088,7 @@
 				4A534E476D14045E1B1B86B5 /* pose */,
 				4A534E472AD0C1A658CC6825 /* physics */,
 				4A534E477E49C8CF16ED0963 /* animation */,
+				4A534E47BC50EC83811560AA /* input */,
 				4A534E47325562508AC85529 /* net */,
 				4A534E476646E8233CC78BAC /* native */,
 			);
@@ -11997,6 +12019,8 @@
 				4A534E471E767D9BE2C4AF8A /* CpuSkin.h in Headers */,
 				4A534E47348D45F4BBD323C9 /* VertexAnimatorSystem.h in Headers */,
 				4A534E47693D678BC7B907E1 /* MeshBufferPool.h in Headers */,
+				4A534E4749E3318561E17181 /* InputActions.h in Headers */,
+				4A534E47CC9B5D8BFDD75814 /* InputControlNames.h in Headers */,
 				4A534E47C85979F7504AB7AC /* CurlApi.h in Headers */,
 				4A534E472BD874B8DCF6E3EC /* Http.h in Headers */,
 				4A534E475B9A526F84177777 /* HttpBackend.h in Headers */,
@@ -14053,6 +14077,8 @@
 				4A534E4759966A2ED417BECD /* CpuSkin.cpp in Sources */,
 				4A534E474B1E43D590AD23B0 /* VertexAnimatorSystem.cpp in Sources */,
 				4A534E473E6B9FE60C626734 /* MeshBufferPool.cpp in Sources */,
+				4A534E47D17B678C8F81B040 /* InputActions.cpp in Sources */,
+				4A534E47A988705C5C005E19 /* InputControlNames.cpp in Sources */,
 				4A534E47AC37D409692AA7D7 /* Http.cpp in Sources */,
 				4A534E4707D0FB4D966D8BE5 /* HttpUtil.cpp in Sources */,
 				4A534E4768DDBB2353D5C83D /* AsyncOwner.cpp in Sources */,
@@ -14489,6 +14515,8 @@
 				4A534E47641FBAF4D870EBAF /* CpuSkin.cpp in Sources */,
 				4A534E47A95FB7E661773FC4 /* VertexAnimatorSystem.cpp in Sources */,
 				4A534E472437676B559FC859 /* MeshBufferPool.cpp in Sources */,
+				4A534E47AC81945749605313 /* InputActions.cpp in Sources */,
+				4A534E479968450BA2CEF5BB /* InputControlNames.cpp in Sources */,
 				4A534E47947208F6A52C0D79 /* Http.cpp in Sources */,
 				4A534E47271657C6F28FFA0A /* HttpUtil.cpp in Sources */,
 				4A534E47951C64628BDACD07 /* AsyncOwner.cpp in Sources */,

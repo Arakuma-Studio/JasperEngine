@@ -24,7 +24,9 @@ desktop's.
    destroyed, scene unloaded, Play stopped) the request is cancelled and **no callback runs**
    (the callback would touch destroyed objects). `owner` can also be a GameObject (any
    EntityHandle) or a Scene. Without an owner a request is global: it survives scene loads and
-   ends with its response, `cancel()`, `Http.cancelAll()`, Play stop or the app quitting.
+   ends with its response, `cancel()`, `Http.cancelAll()`, Play stop or the app quitting. In an
+   HTML UI document's `<script type="text/lua">` there is no `self`: pass `owner = document`
+   (its GameObject).
 4. **Plain HTTP is off.** `http://` to any host but `localhost`, `127.0.0.1` and `::1` fails
    with `insecure_http` everywhere, editor Play included, also for a redirect to such a URL.
    Turn it on with Project Settings > Player > Other Settings > **Allow Insecure HTTP**
@@ -40,10 +42,10 @@ desktop's.
 | `Http.get(url [, options] [, callback])` | GET. Either may be left out; a function in the options place is the callback. |
 | `Http.head(url [, options] [, callback])` | HEAD: status and headers, empty body. |
 | `Http.delete(url [, options] [, callback])` | DELETE. |
-| `Http.post(url, body [, options] [, callback])` | POST. `body`: a string is sent as is (no Content-Type: set one in `headers`), a table as JSON (`Content-Type: application/json`), `nil` sends nothing. |
+| `Http.post(url, body [, options] [, callback])` | POST. `body`: a string is sent as is (`Content-Type: application/octet-stream` unless `headers` set one, on every platform), a table as JSON (`Content-Type: application/json`), `nil` sends nothing. |
 | `Http.put(...)` / `Http.patch(...)` | the same for PUT / PATCH. |
-| `Http.request(options)` | the full form: `url` (required), `method` (default `"GET"`, uppercased), `onComplete` and every option. |
-| `Http.download(url, path [, options] [, callback])` | GET into a file: `path` is `data://...` (a bare relative path means `data://`) or an absolute path inside `System.getUserDataPath()`; missing folders are made. The bytes go to `<path>.part`, renamed to `path` on success: an existing file is replaced only by a complete download, a failed or cancelled one leaves no `.part`. Big files stream to disk (no memory limit). |
+| `Http.request(options)` | the full form: `url` (required), `method` (default `"GET"`, uppercased), `onComplete` and every option. A method HttpURLConnection does not know (not GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, TRACE) fails with `unsupported` over HTTPS on Android. |
+| `Http.download(url, path [, options] [, callback])` | GET into a file: `path` is `data://...` (a bare relative path means `data://`) or an absolute path inside `System.getUserDataPath()`; missing folders are made. The bytes go to `<path>.part`, renamed to `path` on success: an existing file is replaced only by a complete download, a failed or cancelled one leaves no `.part`. Big files stream to disk (no memory limit). One download per file at a time: a second one to a path being downloaded fails at once with `errorCode = "file"` ("... is being downloaded already (request N)"). |
 | `Http.getTexture(url [, options] [, callback])` | GET and decode an image (PNG, JPEG, BMP, TGA, GIF first frame) off the main thread: `res.textureData` (a `TextureData`). Not an image: `errorCode = "decode"`. |
 | `Http.cancelAll()` | cancels every request; their callbacks run with `"cancelled"`. |
 | `Http.isAvailable()` | false only when the platform's stack cannot work (Linux without libcurl). |
@@ -59,7 +61,7 @@ desktop's.
 |---|---|---|
 | `headers` | `{["Name"] = "value"}` or `{{"Name", "value"}, ...}` | request headers (names as given). `Host`, `Content-Length`, `Transfer-Encoding`, `Connection` and `Accept-Encoding` belong to the stack: ignored with a warning (gzip is accepted and decoded on every platform). |
 | `query` | `{name = value}` (strings, numbers, booleans) | appended to the URL (`?` or `&`), percent-encoded, sorted by name. |
-| `body` | string | the raw body (binary-safe), for `request` and the body-less calls' `method`. |
+| `body` | string | the raw body (binary-safe), for `request`; `Content-Type: application/octet-stream` unless set. |
 | `json` | any JSON value | encoded with `Json.encode` (an encode error raises: it is a bug), `Content-Type: application/json` unless set. |
 | `form` | `{name = value}` | `application/x-www-form-urlencoded`. |
 | `timeout` | number, `Http.timeout` | seconds for the whole request; `0` = none. |
@@ -70,8 +72,8 @@ desktop's.
 | `maxBodySize` | integer bytes, 64 MiB | in-memory bodies (not downloads); past it `too_large`. `0` = no limit. |
 | `onProgress` | `function(request, received, total)` | at most once a frame, always before the callback; `total` is -1 while unknown (a compressed or chunked body). |
 | `owner` | `self`, a GameObject / EntityHandle, a Scene | rule 3. |
-| `file` | string | write the body to this file (as `Http.download`). |
-| `resume` | boolean, false | a download continues an existing `<path>.part` (sends `Range: bytes=<size>-`; a 206 appends, a 200 starts over, a 416 removes the `.part` and fails). |
+| `file` | string | write the body to this file (as `Http.download`; not with `responseType`). |
+| `resume` | boolean, false | a download continues an existing `<path>.part`: it sends `Range: bytes=<size>-` with `If-Range` (the ETag or Last-Modified the part was written with, kept in `<path>.part.meta`) and `Accept-Encoding: identity`; a 206 appends, a 200 (the file changed) starts over, a 416 removes the `.part` and fails. A part without a validator starts over. The byte counts include the part. |
 | `keepPartial` | boolean, false | a failed or cancelled download keeps its `<path>.part` (to `resume` later). |
 
 ### `HttpRequest` (what every call returns; keeping it is optional)
@@ -121,7 +123,7 @@ With coroutines, `Coroutine.waitFor(req)` (any object with `isDone`) waits for i
 | `offline` | the Game view's Network is set to Offline, or the OS says there is no connection |
 | `insecure_http` | plain `http://` refused (rule 4), or blocked by iOS App Transport Security |
 | `too_many_redirects` | more hops than `redirects` allows |
-| `redirect_blocked` | web only: `redirects = false` and the server redirected (browsers hide the 3xx) |
+| `redirect_blocked` | a public host redirected to a loopback, private or link-local address (127.0.0.0/8, 10/8, 172.16/12, 192.168/16, 169.254/16, ::1, fc00::/7, fe80::/10, localhost: browsers' Private Network Access; a local host may redirect there), or, on the web, `redirects = false` and the server redirected (browsers hide the 3xx) |
 | `invalid_url` | not `http[s]://host[:port]/...` (spaces must be encoded: `Http.encodeUrl`) |
 | `file` | a download path outside `data://`, or the file could not be written |
 | `decode` | `getTexture` got no image, `responseType = "json"` got no JSON |
@@ -212,19 +214,22 @@ gives it the same owner rules.
   A download waits for the saved files to be restored (`System.isUserDataLoaded()`) and is
   stored in IndexedDB when it completes. The page is `https://` on most hosts: browsers block
   `http://` requests from it (mixed content) whatever the setting.
-- **Android**: the export adds the INTERNET permission when the exported Lua (also inside HTML
-  UI documents) or C++ uses `Http`; Project Settings > Android > **Internet Access** `Require`
+- **Android**: the export adds the INTERNET permission (with ACCESS_NETWORK_STATE, so a failure
+  without a network reads `offline`) when the exported Lua (any use of the name `Http`, also
+  inside HTML UI documents) or C++ uses `Http`; Project Settings > Android > **Internet Access** `Require`
   (`android.internet_access: "require"`) always adds it (needed when only a native plugin uses
   the network). Android 7.0 and older get the Let's Encrypt roots (ISRG Root X1/X2) added to
   their trust store. The cleartext policy follows Allow Insecure HTTP
   (`res/xml/network_security_config.xml`; localhost always allowed).
 - **iOS / macOS**: App Transport Security follows Allow Insecure HTTP (`NSAllowsArbitraryLoads`
-  when on, else `NSAllowsLocalNetworking` for localhost). iOS may suspend transfers in the
+  when on, else `NSAllowsLocalNetworking` for localhost; a macOS export built without Xcode gets
+  the same dictionary embedded in its executable). Requests with `verifyTls = false` use a
+  session of their own, so a connection that skipped the check never serves a verified request. iOS may suspend transfers in the
   background: they end with `network` or `timeout`, delivered after resume. Repeated
   `Set-Cookie` headers arrive joined with `", "`.
 - **Linux**: needs the system libcurl (`libcurl.so.4` or `libcurl-gnutls.so.4`; Debian/Ubuntu
   `libcurl4`). Certificates are the distribution's.
-- **Windows**: WinHTTP, the system proxy and certificate store.
+- **Windows**: WinHTTP (asynchronous), the system proxy and certificate store, TLS 1.2 and 1.3.
 
 Not provided: WebSockets, server-sent events, a cookie jar (read `res.headers["set-cookie"]`
 and send `Cookie` yourself), multipart uploads (build the body yourself and set

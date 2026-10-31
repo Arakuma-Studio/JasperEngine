@@ -36,6 +36,7 @@ namespace fs = std::filesystem;
 // HttpTransfer -> the client (defined below)
 void jasperengineHttpTransferFinished(uint64_t id, jasperengine::HttpResponse&& response);
 void jasperengineHttpNotifyProgress();
+void jasperengineHttpResetBackend();
 
 #ifndef JASPERENGINE_VERSION_STRING
 #define JASPERENGINE_VERSION_STRING ""
@@ -178,6 +179,35 @@ namespace {
         return true;
     }
 
+    // <part>.meta: the validator of the response a .part holds (for If-Range)
+    std::string metaPathOf(const std::string& partPath){
+        return partPath + ".meta";
+    }
+
+    bool readPartValidator(const std::string& partPath, std::string& validator){
+        FILE* file = openSystemFile(metaPathOf(partPath), "rb");
+        if (!file) return false;
+        char line[1024] = {0};
+        const bool got = std::fgets(line, sizeof(line), file) != nullptr;
+        std::fclose(file);
+        if (!got) return false;
+        validator = line;
+        while (!validator.empty() && (validator.back() == '\n' || validator.back() == '\r')) validator.pop_back();
+        return !validator.empty();
+    }
+
+    void writePartValidator(const std::string& partPath, const std::string& validator){
+        if (validator.empty()){
+            std::error_code ec;
+            fs::remove(pathOf(metaPathOf(partPath)), ec);
+            return;
+        }
+        FILE* file = openSystemFile(metaPathOf(partPath), "wb");
+        if (!file) return;
+        std::fputs((validator + "\n").c_str(), file);
+        std::fclose(file);
+    }
+
     const std::string* findHeader(const HttpHeaders& headers, const std::string& lowerName){
         for (const auto& [name, value] : headers){
             if (name == lowerName) return &value;
@@ -305,10 +335,17 @@ HttpTransfer::HttpTransfer(uint64_t id, HttpRequestDesc desc, const std::string&
     if (!hasUserAgent && !userAgent.empty()) headers.emplace_back("User-Agent", userAgent);
 
     if (m_type == HttpResponseType::File && m_resume){
+        // a part continues only what the same file on the server started: its validator
+        // (the ETag, else Last-Modified) goes in If-Range, so a changed file comes back whole
+        // (200) instead of as a range of something else. A part without one starts over.
         const int64_t size = fileSize(m_partPath);
-        if (size > 0){
+        std::string validator;
+        if (size > 0 && readPartValidator(m_partPath, validator)){
             m_resumeOffset = (uint64_t)size;
             headers.emplace_back("Range", "bytes=" + std::to_string(size) + "-");
+            headers.emplace_back("If-Range", validator);
+            // byte offsets of the file as stored, not of a compressed copy
+            headers.emplace_back("Accept-Encoding", "identity");
         }
     }
 }
@@ -340,6 +377,13 @@ HttpRedirect::Action HttpTransfer::redirect(int status, const std::string& locat
     if (!code.empty()){
         m_failCode = code;
         m_failDetail = "redirected to " + next + ": " + policyError;
+        return HttpRedirect::Action::Fail;
+    }
+    // Private Network Access, as browsers do: a public host does not send a request to
+    // loopback, private or link-local addresses (a router's admin page, local services)
+    if (!HttpUtil::isPrivateHost(hostOf(url)) && HttpUtil::isPrivateHost(hostOf(next))){
+        m_failCode = "redirect_blocked";
+        m_failDetail = "a public host redirected to a private network address (" + next + ")";
         return HttpRedirect::Action::Fail;
     }
     // browser rules: 303 turns everything but HEAD into GET; 301/302 turn POST into GET;
@@ -378,6 +422,22 @@ bool HttpTransfer::begin(int status, HttpHeaders responseHeaders, const std::str
     m_responseHeaders = std::move(responseHeaders);
     m_finalUrl = finalUrl.empty() ? url : HttpUtil::stripFragment(finalUrl);
     if (isCancelled()) return false;
+    // a stack that followed redirects itself (the browser) reached this URL without asking
+    // redirect(): the same rules apply to it
+    if (m_finalUrl != url){
+        std::string policyError;
+        const std::string code = HttpUtil::checkPolicy(m_finalUrl, allowInsecure, policyError);
+        if (!code.empty() && code != "invalid_url"){
+            m_failCode = code;
+            m_failDetail = "redirected to " + m_finalUrl + ": " + policyError;
+            return false;
+        }
+        if (!HttpUtil::isPrivateHost(hostOf(m_originalUrl)) && HttpUtil::isPrivateHost(hostOf(m_finalUrl))){
+            m_failCode = "redirect_blocked";
+            m_failDetail = "a public host redirected to a private network address (" + m_finalUrl + ")";
+            return false;
+        }
+    }
 
     // the length of the body as it arrives (a compressed body's Content-Length is not)
     const std::string* encoding = findHeader(m_responseHeaders, "content-encoding");
@@ -414,6 +474,15 @@ bool HttpTransfer::begin(int status, HttpHeaders responseHeaders, const std::str
         }
         m_toFile = true;
         m_received.store(offset, std::memory_order_release);
+        if (offset == 0){
+            // what a later resume sends in If-Range: a strong ETag, else Last-Modified
+            const std::string* etag = findHeader(m_responseHeaders, "etag");
+            const std::string* modified = findHeader(m_responseHeaders, "last-modified");
+            std::string validator;
+            if (etag && !etag->empty() && etag->compare(0, 2, "W/") != 0) validator = *etag;
+            else if (modified) validator = *modified;
+            writePartValidator(m_partPath, validator);
+        }
     } else if (isSuccess(status) && !head && m_maxBody > 0 && length >= 0 && (uint64_t)length > m_maxBody &&
                m_type != HttpResponseType::File){
         m_failCode = "too_large";
@@ -480,7 +549,17 @@ void HttpTransfer::closeFile(){
 
 void HttpTransfer::removePart(){
     closeFile();
-    if (!m_partPath.empty()) removeSystemFile(m_partPath);
+    if (!m_partPath.empty()){
+        removeSystemFile(m_partPath);
+        removeSystemFile(metaPathOf(m_partPath));
+    }
+}
+
+void HttpTransfer::fail(const std::string& code, const std::string& detail){
+    if (m_failCode.empty()){
+        m_failCode = code;
+        m_failDetail = detail;
+    }
 }
 
 bool HttpTransfer::requestCancel(const std::string& errorCode){
@@ -621,10 +700,12 @@ void HttpTransfer::finish(const std::string& errorCode, const std::string& detai
         }
     }
     if (m_type == HttpResponseType::File && !response.ok && m_toFile && !m_keepPartial){
-        removeSystemFile(m_partPath);
+        removePart();
     } else if (m_type == HttpResponseType::File && !response.ok && !m_keepPartial && m_resumeOffset > 0){
         // a resumed .part that this try did not open (a 416, another range)
-        removeSystemFile(m_partPath);
+        removePart();
+    } else if (m_type == HttpResponseType::File && response.ok){
+        removeSystemFile(metaPathOf(m_partPath));
     }
     response.errorCode = response.ok ? std::string() : code;
     if (response.ok) response.error.clear();
@@ -1066,6 +1147,15 @@ namespace jasperengine {
                 headers.push_back(std::move(header));
             }
             desc.headers = std::move(headers);
+            // one default on every platform for a body of unknown type (the stacks' own differ:
+            // a form, nothing); Lua tables, json and form set theirs
+            if (!desc.body.empty() && method != "GET" && method != "HEAD"){
+                bool typed = false;
+                for (const auto& header : desc.headers){
+                    if (HttpUtil::lower(header.first) == "content-type") typed = true;
+                }
+                if (!typed) desc.headers.emplace_back("Content-Type", "application/octet-stream");
+            }
             if (!desc.verifyTls && parsed.scheme == "https" && warnedTlsHosts.insert(HttpUtil::lower(parsed.host)).second){
 #if defined(__EMSCRIPTEN__)
                 Log::warn("Http: verifyTls = false is ignored on the web (browsers always verify certificates): %s", parsed.host.c_str());
@@ -1094,6 +1184,16 @@ namespace jasperengine {
                 } else {
                     entry->finalPath = systemPath;
                     entry->partPath = systemPath + ".part";
+                    // one download per file: two would write the same .part
+                    const std::string key = genericPath(systemPath);
+                    for (const auto& [otherId, other] : entries){
+                        if (other->isFile && !other->silent && !other->backendDone && genericPath(other->finalPath) == key){
+                            code = "file";
+                            error = desc.filePath + " is being downloaded already (request " + std::to_string(otherId) +
+                                    "): wait for it or cancel it: " + url;
+                            break;
+                        }
+                    }
                 }
             }
             if (code.empty() && !backendChecked){
@@ -1172,6 +1272,11 @@ namespace jasperengine {
                 completed.clear();
                 toCancel.clear();
                 finishedCount = failedCount = cancelledCount = 0;
+                // what scripts set lasts for their run (Play, the game): the defaults again
+                maxConcurrent = 8;
+                userAgent.clear();
+                defaultTimeout = 30.0;
+                logFailures = false;
                 lastFailures.clear();
                 pumpPosted = false;
             }
@@ -1254,6 +1359,12 @@ void Http::cancelAll(){
 
 void Http::shutdown(){
     HttpCore::instance().shutdown();
+}
+
+void Http::terminate(){
+    HttpCore::instance().shutdown();
+    // the platform stack's threads end here (joined); the next request starts them again
+    jasperengineHttpResetBackend();
 }
 
 int Http::getMaxConcurrentRequests(){

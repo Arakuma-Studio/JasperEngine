@@ -225,3 +225,46 @@ async def test_play_requests_offline_and_stop(ed: Editor):
     finally:
         server.shutdown()
         server.server_close()
+
+
+POLICY = """---@class PolicyProbe : ScriptInstance
+local PolicyProbe = { properties = {} }
+
+function PolicyProbe:init()
+    policyCode = nil
+    -- sent from init: the project's plain-HTTP policy is already the one of this Play
+    Http.get("http://example.invalid/", {timeout = 5, owner = self}, function(res) policyCode = res.errorCode end)
+end
+
+return PolicyProbe
+"""
+
+
+async def test_policy_applies_before_init(ed: Editor):
+    ed.require_tools("play", "wait", "eval_lua", "create_script", "set_project_settings")
+    made = await ed.call("create_scene", name="PolicyMain", type="2D", path="scenes/PolicyMain")
+    scene = made["scene"]["id"]
+    ent = await ed.call("create_entity", scene=scene, type="empty", name="Probe")
+    await ed.call("create_script", kind="lua", name="PolicyProbe", content=POLICY, scene=scene, entity=ent["entity_id"])
+    await ed.call("save_scene", scene=scene)
+
+    async def play_code() -> str:
+        await ed.call("play", action="start", scene=scene)
+        try:
+            await ed.call("wait", **{"until": "policyCode ~= nil", "timeout_seconds": 20})
+            return (await lua(ed, "return policyCode"))[0]
+        finally:
+            await ed.call("play", action="stop")
+
+    await ed.call("set_project_settings", values={"player.allow_insecure_http": True})
+    try:
+        # allowed: the request goes out (example.invalid does not resolve), it is not refused
+        code = await play_code()
+        ed.check(code not in ("insecure_http", ""), f"allowed on the first Play: {code}")
+        await ed.call("set_project_settings", values={"player.allow_insecure_http": False})
+        ed.check_eq(await play_code(), "insecure_http", "refused after turning it off")
+        await ed.call("set_project_settings", values={"player.allow_insecure_http": True})
+        code = await play_code()
+        ed.check(code not in ("insecure_http", ""), f"allowed again: {code}")
+    finally:
+        await ed.call("set_project_settings", values={"player.allow_insecure_http": False})

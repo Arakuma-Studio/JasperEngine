@@ -1,5 +1,8 @@
 package com.jaspergameengine.jasperengine;
 
+import android.content.Context;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.os.Build;
 
 import java.io.ByteArrayInputStream;
@@ -100,6 +103,29 @@ public final class JasperHttp {
 
     private static final Map<Long, Job> jobs = new ConcurrentHashMap<>();
 
+    private static volatile Context appContext;
+
+    /** NativeEngine::setupJNI: the context that tells whether the device has a network. */
+    public static void init(Context context) {
+        appContext = context != null ? context.getApplicationContext() : null;
+    }
+
+    // false only when the OS says there is no connection (unknown: true)
+    @SuppressWarnings("deprecation") // getActiveNetworkInfo: API 21+ has nothing simpler
+    private static boolean hasNetwork() {
+        Context context = appContext;
+        if (context == null) return true;
+        try {
+            ConnectivityManager manager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (manager == null) return true;
+            NetworkInfo info = manager.getActiveNetworkInfo();
+            return info != null && info.isConnected();
+        } catch (SecurityException e) {
+            // no ACCESS_NETWORK_STATE permission: it cannot tell
+            return true;
+        }
+    }
+
     /** The game thread: starts request `id` (headers are name, value pairs). */
     public static void start(final long id, final String method, final String url, final String[] headers, final byte[] body,
                              final int connectTimeoutMs, final int timeoutMs, final boolean verifyTls) {
@@ -185,7 +211,10 @@ public final class JasperHttp {
                     final String location = c.getHeaderField("Location");
                     if ((status == 301 || status == 302 || status == 303 || status == 307 || status == 308) && location != null) {
                         final String[] next = nativeRedirect(job.id, status, location);
-                        if (next != null && next.length > 0 && "fail".equals(next[0])) return new String[] {"", ""};
+                        if (next != null && next.length > 0 && "fail".equals(next[0])) {
+                            c.disconnect();
+                            return new String[] {"", ""};
+                        }
                         if (next != null && next.length >= 4 && "follow".equals(next[0])) {
                             drain(c);
                             c.disconnect();
@@ -225,9 +254,9 @@ public final class JasperHttp {
                 } catch (SocketTimeoutException e) {
                     return failure(job, "timeout", e);
                 } catch (UnknownHostException e) {
-                    return failure(job, "dns", e);
+                    return failure(job, hasNetwork() ? "dns" : "offline", e);
                 } catch (ConnectException | NoRouteToHostException e) {
-                    return failure(job, "connect", e);
+                    return failure(job, hasNetwork() ? "connect" : "offline", e);
                 } catch (SSLException e) {
                     return failure(job, "tls", e);
                 } catch (UnsupportedMethod e) {
@@ -256,11 +285,15 @@ public final class JasperHttp {
     }
 
     // HttpURLConnection knows GET POST HEAD OPTIONS PUT DELETE TRACE (and PATCH on Android's
-    // OkHttp-based one); another token goes into the field directly
+    // OkHttp-based one); another token goes into the field directly, which only the plain HTTP
+    // connection reads (an HTTPS one wraps a delegate and would send a GET)
     private static void setMethod(HttpURLConnection c, String method) throws IOException {
         try {
             c.setRequestMethod(method);
         } catch (ProtocolException e) {
+            if (c instanceof HttpsURLConnection) {
+                throw new UnsupportedMethod("the method " + method + " is not supported over HTTPS on Android");
+            }
             try {
                 Field field = HttpURLConnection.class.getDeclaredField("method");
                 field.setAccessible(true);
@@ -271,18 +304,18 @@ public final class JasperHttp {
         }
     }
 
+    // the response headers in the order they came (index 0 is the status line), without the
+    // ones Android's stack adds itself (X-Android-Sent-Millis, ...)
     private static String[] responseHeaders(HttpURLConnection c) {
         List<String> out = new ArrayList<>();
-        Map<String, List<String>> fields = c.getHeaderFields();
-        if (fields != null) {
-            for (Map.Entry<String, List<String>> field : fields.entrySet()) {
-                // the null key is the status line
-                if (field.getKey() == null || field.getValue() == null) continue;
-                for (String value : field.getValue()) {
-                    out.add(field.getKey());
-                    out.add(value == null ? "" : value);
-                }
-            }
+        for (int i = 1; ; i++) {
+            String value = c.getHeaderField(i);
+            String key = c.getHeaderFieldKey(i);
+            if (value == null && key == null) break;
+            if (key == null) continue;
+            if (key.regionMatches(true, 0, "X-Android-", 0, 10)) continue;
+            out.add(key);
+            out.add(value == null ? "" : value);
         }
         return out.toArray(new String[0]);
     }

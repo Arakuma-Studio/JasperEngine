@@ -15,6 +15,9 @@ option(JASPERENGINE_RUNTIME_SHADERS "Compile missing shader variants at runtime"
 # The editor export turns it off unless the project enables AdMob for iOS (Android's
 # Gradle build gets the same switch from the export)
 option(JASPERENGINE_ADMOB "Link Google Mobile Ads into iOS builds" ON)
+# Plain http:// to hosts other than localhost (the export sets it from player.allow_insecure_http):
+# App Transport Security of bare macOS executables; Http itself enforces the policy everywhere
+option(JASPERENGINE_ALLOW_INSECURE_HTTP "Allow plain http:// in Apple's App Transport Security" OFF)
 # googletest suite of the HTML/CSS UI (engine/tests/htmlui), standalone engine builds only:
 # the editor's shared engine hides the RmlUi symbols the tests need (tools/build.sh htmlui-tests)
 option(JASPERENGINE_HTMLUI_TESTS "Build jasperengine-htmlui-tests" OFF)
@@ -562,6 +565,23 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                 "-framework GameController"
             )
 
+            # A bare executable has no bundle Info.plist, so App Transport Security would block
+            # every http:// URL, localhost too: an embedded __info_plist section carries the
+            # same ATS dictionary the Xcode bundle gets
+            if(JASPERENGINE_ALLOW_INSECURE_HTTP)
+                set(JASPERENGINE_ATS_KEY NSAllowsArbitraryLoads)
+            else()
+                set(JASPERENGINE_ATS_KEY NSAllowsLocalNetworking)
+            endif()
+            set(JASPERENGINE_ATS_PLIST ${CMAKE_BINARY_DIR}/jasperengine-ats-Info.plist)
+            file(WRITE ${JASPERENGINE_ATS_PLIST}
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
+                "<plist version=\"1.0\">\n<dict>\n"
+                "\t<key>NSAppTransportSecurity</key>\n\t<dict>\n\t\t<key>${JASPERENGINE_ATS_KEY}</key>\n\t\t<true/>\n\t</dict>\n"
+                "</dict>\n</plist>\n")
+            list(APPEND PLATFORM_LIBS "-Wl,-sectcreate,__TEXT,__info_plist,${JASPERENGINE_ATS_PLIST}")
+
             # MTKView has no GL or Vulkan drawable, so those get views of their own
             if(GRAPHIC_BACKEND STREQUAL "glcore")
                 list(APPEND PLATFORM_SOURCE ${PLATFORM_ROOT}/MacViewGL.mm)
@@ -859,6 +879,8 @@ endif()
 set(JASPERENGINE_SRCS
     core/Engine.cpp
     core/Input.cpp
+    core/input/InputActions.cpp
+    core/input/InputControlNames.cpp
     core/Log.cpp
     core/Scene.cpp
     core/SceneSettings.cpp
@@ -1245,7 +1267,8 @@ target_link_libraries(jasperengine PRIVATE Threads::Threads)
 
 # The HTTP backends' system libraries
 if(WIN32)
-    target_link_libraries(jasperengine PRIVATE winhttp)
+    # iphlpapi: whether a network is up at all ("offline")
+    target_link_libraries(jasperengine PRIVATE winhttp iphlpapi)
 elseif(APPLE)
     target_link_libraries(jasperengine PRIVATE "-framework Foundation")
 elseif(NOT EMSCRIPTEN AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
