@@ -935,6 +935,38 @@ or `(r,g,b,a)`.
 No timer API is bound: accumulate `Engine.deltatime` in `self`, or use
 `GameObject.destroy(obj, delay)` for delayed destruction, or Tweens/Actions.
 
+### 2.13 Http (static, HTTP(S) requests)
+
+Full reference, options, error codes, platform notes and examples: `jasper://docs/networking`.
+The callback runs once, on the main thread, right before `onUpdate` of a later frame; errors are
+values (`res.ok`, `res.errorCode`, `res.error`); pass `owner = self` so the request ends with
+the script (no callback). Plain `http://` works only to localhost unless
+`player.allow_insecure_http`.
+
+| Call | Meaning |
+|---|---|
+| `Http.get(url [, options] [, callback])` | GET; `head`, `delete` likewise |
+| `Http.post(url, body [, options] [, callback])` | POST: string body as is, table as JSON; `put`, `patch` likewise |
+| `Http.request{url = ..., method = ..., onComplete = ...}` | any method, every option |
+| `Http.download(url, "data://x" [, options] [, callback])` | into a file (`<path>.part`, renamed on success) |
+| `Http.getTexture(url [, options] [, callback])` | `res.textureData` for `image:setTexture(res.url, res.textureData)` |
+| `Http.cancelAll()`, `Http.isAvailable()`, `Http.encodeUrl(s)`, `Http.decodeUrl(s)` | |
+| `Http.maxConcurrentRequests`, `Http.userAgent`, `Http.timeout`, `Http.logFailures` (rw) | 8, `JasperEngine/<version> (<platform>)`, 30 s, false |
+
+Options: `headers`, `query`, `body`, `json`, `form`, `timeout`, `connectTimeout`, `redirects`,
+`verifyTls`, `responseType` (`"text"`, `"binary"`, `"json"`: `res.data`), `maxBodySize`,
+`onProgress = function(req, received, total)`, `owner`, `file`, `resume`, `keepPartial`.
+`HttpRequest` (returned): `id`, `url`, `method`, `state` (`HttpState.Queued/Running/Done/Cancelled`),
+`progress`, `bytesReceived`, `bytesTotal`, `response`, `req:isDone()`, `req:cancel()`.
+`HttpResponse`: `ok`, `status`, `errorCode`, `error`, `headers`, `body`, `data`, `textureData`,
+`file`, `url`, `redirected`, `method`, `elapsed`, `bytesReceived`, `res:json()`, `res:header(name)`.
+
+```lua
+Http.get("https://backend.example.com/Now", {responseType = "json", timeout = 10, owner = self}, function(res)
+    if res.ok then self.serverTime = res.data.time else Log.warn(res.error) end
+end)
+```
+
 ---
 
 ## 3. Math

@@ -118,7 +118,10 @@ LIMITS.update({"user_settings": 550})
 # lines-trails) and gaps/physics-2d: 151 tools, total 107295 (tool_budget.py), the limit set to it
 LIMITS.update({"create_ragdoll": 900})
 # merged by the lead (ui-canvas-group + physics-3d): provisional sum of both increments, re-measured below
-TOTAL_LIMIT = 107440
+# http: configure_game_view's network and get_play_state's http block; merged with main (script-data,
+# input, physics-2d, script-lifecycle): 150 tools measured 106807, the limit set to it
+# merged by the lead (+ http): provisional, re-measured on the merged tree
+TOTAL_LIMIT = 107621
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

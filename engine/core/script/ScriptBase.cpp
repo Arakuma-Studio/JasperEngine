@@ -4,6 +4,7 @@
 #include "ScriptBase.h"
 #include "ScriptRuntime.h"
 #include "component/ScriptComponent.h"
+#include "script/AsyncOwner.h"
 #include "script/ScriptMessages.h"
 #include "manager/SceneManager.h"
 #include "manager/ObjectManager.h"
@@ -82,6 +83,10 @@ void ScriptBase::setEnabled(bool enabled) {
 
 ScriptBase::ScriptBase(Scene* scene, Entity entity)
     : scene(scene), entity(entity) {
+}
+
+ScriptBase::~ScriptBase() {
+    AsyncOwners::scriptInstanceReleased(this);
 }
 
 Scene* ScriptBase::getScene() const {
