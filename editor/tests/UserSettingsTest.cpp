@@ -258,6 +258,16 @@ TEST_F(UserSettingsTest, WritesASecondAfterAChangeOrOnSave) {
     EXPECT_NE(scriptdata::readFile(settingsFile()).find("<score>4</score>"), std::string::npos);
 }
 
+TEST_F(UserSettingsTest, AFileThatCannotBeReadIsNeverReplaced) {
+    fs::create_directories(settingsFile());   // something unreadable where the file goes
+    UserSettings::setIntegerForKey("k", 1);
+    EXPECT_EQ(UserSettings::getIntegerForKey("k"), 1) << "the value works in memory";
+    UserSettings::save();
+    EXPECT_TRUE(UserSettingsStore::instance().hasUnsavedChanges());
+    EXPECT_TRUE(fs::is_directory(settingsFile())) << "not replaced";
+    EXPECT_FALSE(fs::exists(root / "data" / "UserSettings.xml.tmp"));
+}
+
 TEST_F(UserSettingsTest, ADestroyedSystemWritesWhatIsUnsaved) {
     scriptdata::TestSystem other;
     other.root = (root / "other").string();

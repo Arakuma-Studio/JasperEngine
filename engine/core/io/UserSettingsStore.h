@@ -81,6 +81,7 @@ namespace jasperengine {
         std::atomic<bool> dirty{false};
         double dirtySince = 0.0;
         bool writeErrorLogged = false;
+        bool unreadable = false;
         std::function<double()> clock;
     };
 

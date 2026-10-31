@@ -412,7 +412,9 @@ implementing; everything else is as specified).
   characters, or nothing but whitespace, which XML parsers drop) get `encoding="base64"`. Keys
   are written sorted. Before, such keys produced a file that no longer parsed and every key was
   lost. Files of older builds read as before; a file that is not valid XML is moved aside to
-  `UserSettings.xml.corrupt` (logged) instead of being overwritten.
+  `UserSettings.xml.corrupt` (logged) instead of being overwritten; a file that is there but
+  cannot be read (permissions, a folder in its place) is never replaced: the values work in
+  memory for the session and an error says they are not saved.
 - Locale independence uses a small helper `engine/core/util/NumberText.{h,cpp}` (shortest
   round-trip text through `%.*g` with the locale's decimal point replaced, and the reverse for
   reading): `std::to_chars`/`from_chars` for floating point are unavailable on the Apple

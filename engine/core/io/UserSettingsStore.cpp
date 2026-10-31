@@ -80,6 +80,7 @@ void UserSettingsStore::ensureLoaded(){
 
 void UserSettingsStore::load(){
     loaded = true;
+    unreadable = false;
     values.clear();
     dirty.store(false, std::memory_order_release);
     writeErrorLogged = false;
@@ -91,8 +92,12 @@ void UserSettingsStore::load(){
 
     std::string text, error;
     if (!FileUtils::readText(FILE_PATH, text, error)){
-        if (error.rfind("not found", 0) != 0)
-            Log::error("UserSettings: cannot read %s (%s); starting empty", filePath.c_str(), error.c_str());
+        if (error.rfind("not found", 0) != 0){
+            // a file that is there but cannot be read is never replaced by an empty one
+            unreadable = true;
+            Log::error("UserSettings: cannot read %s (%s); the values set now are not saved",
+                       filePath.c_str(), error.c_str());
+        }
         return;
     }
     if (text.find_first_not_of(" \t\r\n") == std::string::npos)
@@ -126,7 +131,10 @@ void UserSettingsStore::load(){
 }
 
 bool UserSettingsStore::writeLocked(){
-    if (filePath.empty()) return false;
+    if (filePath.empty() || unreadable){
+        dirtySince = now();   // tick() asks again in a second, not every frame
+        return false;
+    }
 
     tinyxml2::XMLPrinter printer;
     // the declaration older builds wrote (tinyxml2's NewDeclaration default)
