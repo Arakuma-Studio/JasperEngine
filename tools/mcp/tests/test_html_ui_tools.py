@@ -110,9 +110,13 @@ LIMITS.update({"user_settings": 550})
 # 106621, the limit set to it
 # lines and trails: no new tool; create_entity's type "trail_renderer" paid by a shorter create_entity
 # description, set_shape_points' line text reworded; measured on the merged tree: total 106692 (106687 before)
+TOTAL_LIMIT = 106700  # re-measured on the merged tree by the lead's verification
+# ui-canvas-group: create_ui's canvas_group node option (the rules in jasper://docs/ui) and
+# create_entity's canvas_group type; merged with main (lines-trails): 150 tools measured 106771
+TOTAL_LIMIT = 106771
 # coroutines (spec 2026-10-31-coroutines 7): get_play_state names its coroutines/timers counts and
-# get_runtime_entity the scripts' coroutines and timers (+83); merged with main: TOTAL_LIMIT 106700 + 83
-TOTAL_LIMIT = 106783
+# get_runtime_entity the scripts' coroutines and timers (+83); merged with main (ui-canvas-group): 106771 + 83
+TOTAL_LIMIT = 106854
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

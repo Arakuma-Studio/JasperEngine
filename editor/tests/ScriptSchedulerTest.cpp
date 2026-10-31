@@ -1343,3 +1343,30 @@ TEST_F(CoroutineTest, WaitForEndOfFrameResumesAfterTheDraw) {
     Engine::onDraw.remove("test");
     EXPECT_EQ(log(), "post1 draw1 eof1 post2 draw2 eof2");
 }
+
+TEST_F(CoroutineTest, CoroutinesAndTimersFollowAGameObjectMovedToAnotherScene) {
+    const Entity entity = addScript("Mover2", R"(
+        local M = {}
+        function M:init()
+            Kept = self:startCoroutine(function() while true do Coroutine.nextFrame() Log("co") end end)
+            self:invokeRepeating(function() Log("timer") end, 0, 0.0001)
+        end
+        return M
+    )");
+    start();
+    frames(1);
+    EXPECT_EQ(log(), "timer co");
+    void* owner = instanceOf(entity);
+    Scene other;
+    const std::vector<Entity> moved = ObjectManager::moveToScene(scene.get(), entity, &other);
+    ASSERT_FALSE(moved.empty());
+    clearLog();
+    frames(1);
+    EXPECT_EQ(log(), "timer co");
+    EXPECT_EQ(ScriptScheduler::coroutineCountOf(owner), 1u);
+    // the owner index follows: deactivating it in the new scene stops the coroutine
+    other.setEntityActive(moved[0], false);
+    EXPECT_EQ(eval("return Kept.status"), "stopped");
+    LuaBinding::cleanupLuaScripts(&other);
+    EXPECT_EQ(ScriptScheduler::timerCountOf(owner), 0u);
+}

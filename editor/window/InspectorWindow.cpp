@@ -16,6 +16,7 @@
 #include "util/FileUtils.h"
 #include "window/CodeEditor.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "subsystem/UISystem.h"
 #include "htmlui/HtmlUiImportPanel.h"
 #include "util/EntityPayload.h"
 #include "util/CameraTextureLink.h"
@@ -7571,6 +7572,122 @@ void editor::InspectorWindow::drawUIComponent(ComponentType cpType, SceneProject
     endTable();
 
     drawCustomShaderRow(cpType, ShaderType::UI, sceneProject, entities);
+
+    // what the Canvas Groups above make of the element (ui canvas group spec 7.7)
+    if (entities.size() == 1){
+        drawCanvasGroupInheritedLine(sceneProject, entities[0]);
+    }
+}
+
+void editor::InspectorWindow::drawCanvasGroupInheritedLine(SceneProject* sceneProject, Entity entity){
+    Scene* scene = sceneProject->scene;
+    const CanvasGroupState state = scene->getSystem<UISystem>()->getCanvasGroupState(entity);
+    if (state.group == NULL_ENTITY){
+        return;
+    }
+
+    char alphaText[32];
+    snprintf(alphaText, sizeof(alphaText), "%.2f", state.alpha);
+    std::string line = std::string("Inherited alpha ") + alphaText;
+    if (!state.interactable){
+        line += " \xc2\xb7 not interactable";
+    }
+    if (!state.blocksRaycasts){
+        line += " \xc2\xb7 click-through";
+    }
+    std::string groupName = scene->getEntityName(state.group);
+    if (groupName.empty()){
+        groupName = "GameObject " + std::to_string(state.group);
+    }
+    line += " (Canvas Group: " + groupName + ")";
+
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+    ImGui::TextWrapped("%s", line.c_str());
+    ImGui::PopStyleColor();
+    if (state.group != entity){
+        ImGui::SameLine();
+        if (ImGui::SmallButton(ICON_FA_ARROW_POINTER " Select##canvas_group_select")){
+            project->setSelectedSceneForProperties(sceneProject->id);
+            project->setSelectedEntity(sceneProject->id, state.group);
+        }
+        if (ImGui::IsItemHovered()){
+            ImGui::SetTooltip("Select the nearest Canvas Group of this element");
+        }
+    }
+}
+
+void editor::InspectorWindow::drawCanvasGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    static std::vector<editor::EnumEntry> entriesRenderMode = {
+        { (int)CanvasGroupRenderMode::PER_ELEMENT, "Per Element" },
+        { (int)CanvasGroupRenderMode::FLATTEN, "Flatten" }
+    };
+
+    RowSettings settingsAlpha;
+    settingsAlpha.floatMin = 0.0f;
+    settingsAlpha.floatMax = 1.0f;
+    settingsAlpha.help = "Multiplied into the alpha of every UI element of this GameObject and its children (nested groups multiply). "
+                         "To hide a panel like Unity: alpha 0, Interactable and Blocks Raycasts off (alpha 0 alone still blocks clicks)";
+
+    RowSettings settingsInteractable;
+    settingsInteractable.help = "Off: Buttons, Input Fields, Scrollbars and Panels below stop reacting and show their disabled look. "
+                                "Pointer callbacks of plain images still fire";
+
+    RowSettings settingsBlocks;
+    settingsBlocks.help = "Off: clicks and touches go through the elements below to what is behind them "
+                          "(a dragged item keeps its drag; the drop finds the slot behind it)";
+
+    RowSettings settingsIgnore;
+    settingsIgnore.help = "The Canvas Groups above this one stop counting for this subtree (unlike Unity, it shows even under a parent at alpha 0)";
+
+    RowSettings settingsRenderMode;
+    settingsRenderMode.enumEntries = &entriesRenderMode;
+    settingsRenderMode.help = "How overlapping children fade.\n"
+                              "Per Element (Unity, no cost): each element is faded, overlaps show through:\n"
+                              "   [A][AB][B]   the overlap AB is darker than A and B\n"
+                              "Flatten (CSS opacity): the subtree is drawn as one layer, then faded:\n"
+                              "   [A][A ][B]   the overlap looks like the front element\n"
+                              "Flatten costs, while alpha is between 0 and 1, one offscreen pass per camera (a cleared screen-size\n"
+                              "target; flattened siblings share one) and a quad over the group's bounds";
+
+    beginTable(cpType, getLabelSize("Ignore Parent Groups"));
+    propertyRow(RowPropertyType::Float_0_1, cpType, "alpha", "Alpha", sceneProject, entities, settingsAlpha);
+    propertyRow(RowPropertyType::Bool, cpType, "interactable", "Interactable", sceneProject, entities, settingsInteractable);
+    propertyRow(RowPropertyType::Bool, cpType, "blocksRaycasts", "Blocks Raycasts", sceneProject, entities, settingsBlocks);
+    propertyRow(RowPropertyType::Bool, cpType, "ignoreParentGroups", "Ignore Parent Groups", sceneProject, entities, settingsIgnore);
+    propertyRow(RowPropertyType::Enum, cpType, "renderMode", "Render Mode", sceneProject, entities, settingsRenderMode);
+    endTable();
+
+    // HTML UI documents have their own opacity and pointer-events (CSS)
+    Scene* scene = sceneProject->scene;
+    bool holdsDocument = false;
+    auto transforms = scene->getComponentArray<Transform>();
+    for (Entity entity : entities){
+        if (!transforms->hasEntity(entity)){
+            continue;
+        }
+        const size_t first = transforms->getIndex(entity);
+        const size_t last = scene->findBranchLastIndex(entity);
+        for (size_t i = first; i <= last && !holdsDocument; i++){
+            holdsDocument = scene->findComponent<UIDocumentComponent>(transforms->getEntity(i)) != nullptr;
+        }
+    }
+    if (holdsDocument){
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+        ImGui::TextWrapped(ICON_FA_CIRCLE_INFO " HTML documents ignore Canvas Groups: use CSS opacity / pointer-events");
+        ImGui::PopStyleColor();
+    }
+
+    // the groups above this one
+    if (entities.size() == 1){
+        Entity parent = NULL_ENTITY;
+        if (Transform* transform = scene->findComponent<Transform>(entities[0])){
+            parent = transform->parent;
+        }
+        const CanvasGroupComponent& own = scene->getComponent<CanvasGroupComponent>(entities[0]);
+        if (parent != NULL_ENTITY && !own.ignoreParentGroups){
+            drawCanvasGroupInheritedLine(sceneProject, parent);
+        }
+    }
 }
 
 void editor::InspectorWindow::drawButtonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
@@ -13045,11 +13162,15 @@ void editor::InspectorWindow::drawTweenComponent(ComponentType cpType, SceneProj
     RowSettings settingsPingPong;
     settingsPingPong.help = "Plays forward and then back, in twice the duration";
 
-    beginTable(cpType, getLabelSize("Ping-pong"));
+    RowSettings settingsUnscaled;
+    settingsUnscaled.help = "Advances with the unscaled frame time: keeps running at time scale 0 (a pause menu)";
+
+    beginTable(cpType, getLabelSize("Unscaled Time"));
     propertyRow(RowPropertyType::FloatPositive, cpType, "duration", "Duration", sceneProject, entities);
     propertyRow(RowPropertyType::Bool, cpType, "loop", "Loop", sceneProject, entities);
     propertyRow(RowPropertyType::Bool, cpType, "pingPong", "Ping-pong", sceneProject, entities, settingsPingPong);
     propertyRow(RowPropertyType::Ease, cpType, "function", "Ease", sceneProject, entities);
+    propertyRow(RowPropertyType::Bool, cpType, "useUnscaledTime", "Unscaled Time", sceneProject, entities, settingsUnscaled);
     endTable();
 }
 
@@ -13363,7 +13484,7 @@ void editor::InspectorWindow::drawColorTweenComponent(ComponentType cpType, Scen
 void editor::InspectorWindow::drawAlphaTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     Scene* scene = sceneProject->scene;
 
-    beginTable(cpType, getLabelSize("Start alpha"));
+    beginTable(cpType, getLabelSize("Alpha Target"));
 
     float buttonSize = ImGui::GetFrameHeight();
     float reservedWidth = -(buttonSize + ImGui::GetStyle().ItemSpacing.x);
@@ -13380,8 +13501,16 @@ void editor::InspectorWindow::drawAlphaTweenComponent(ComponentType cpType, Scen
         float targetAlpha = 1.0f;
         bool hasAlpha = false;
         if (target != NULL_ENTITY) {
+            // what the tween writes: the Canvas Group (CANVAS_GROUP, or AUTO on a target with
+            // an enabled group), else the colour alpha
+            const AlphaTweenComponent* alphaTween = scene->findComponent<AlphaTweenComponent>(entity);
+            const AlphaTweenTarget mode = alphaTween ? alphaTween->alphaTarget : AlphaTweenTarget::AUTO;
+            const CanvasGroupComponent* group = scene->findComponent<CanvasGroupComponent>(target);
             UIComponent* ui = scene->findComponent<UIComponent>(target);
-            if (ui) { targetAlpha = ui->color.w; hasAlpha = true; }
+            if (mode == AlphaTweenTarget::CANVAS_GROUP || (mode == AlphaTweenTarget::AUTO && group && group->enabled)) {
+                if (group) { targetAlpha = group->alpha; hasAlpha = true; }
+            }
+            else if (ui) { targetAlpha = ui->color.w; hasAlpha = true; }
             else {
                 MeshComponent* mesh = scene->findComponent<MeshComponent>(target);
                 if (mesh) { targetAlpha = mesh->submeshes[0].material.baseColorFactor.w; hasAlpha = true; }
@@ -13415,8 +13544,16 @@ void editor::InspectorWindow::drawAlphaTweenComponent(ComponentType cpType, Scen
         float targetAlpha = 1.0f;
         bool hasAlpha = false;
         if (target != NULL_ENTITY) {
+            // what the tween writes: the Canvas Group (CANVAS_GROUP, or AUTO on a target with
+            // an enabled group), else the colour alpha
+            const AlphaTweenComponent* alphaTween = scene->findComponent<AlphaTweenComponent>(entity);
+            const AlphaTweenTarget mode = alphaTween ? alphaTween->alphaTarget : AlphaTweenTarget::AUTO;
+            const CanvasGroupComponent* group = scene->findComponent<CanvasGroupComponent>(target);
             UIComponent* ui = scene->findComponent<UIComponent>(target);
-            if (ui) { targetAlpha = ui->color.w; hasAlpha = true; }
+            if (mode == AlphaTweenTarget::CANVAS_GROUP || (mode == AlphaTweenTarget::AUTO && group && group->enabled)) {
+                if (group) { targetAlpha = group->alpha; hasAlpha = true; }
+            }
+            else if (ui) { targetAlpha = ui->color.w; hasAlpha = true; }
             else {
                 MeshComponent* mesh = scene->findComponent<MeshComponent>(target);
                 if (mesh) { targetAlpha = mesh->submeshes[0].material.baseColorFactor.w; hasAlpha = true; }
@@ -13439,6 +13576,16 @@ void editor::InspectorWindow::drawAlphaTweenComponent(ComponentType cpType, Scen
             ImGui::SetTooltip("Get current alpha from target");
         }
     }
+
+    static std::vector<editor::EnumEntry> entriesAlphaTarget = {
+        { (int)AlphaTweenTarget::AUTO, "Auto" },
+        { (int)AlphaTweenTarget::COLOR, "Color" },
+        { (int)AlphaTweenTarget::CANVAS_GROUP, "Canvas Group" }
+    };
+    RowSettings settingsAlphaTarget;
+    settingsAlphaTarget.enumEntries = &entriesAlphaTarget;
+    settingsAlphaTarget.help = "What the tween fades. Auto: the target's Canvas Group when it has an enabled one, else its colour alpha";
+    propertyRow(RowPropertyType::Enum, cpType, "alphaTarget", "Alpha Target", sceneProject, entities, settingsAlphaTarget);
 
     endTable();
 }
@@ -15684,6 +15831,8 @@ void editor::InspectorWindow::show(){
                     drawRectTransformComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::LayoutGroupComponent){
                     drawLayoutGroupComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::CanvasGroupComponent){
+                    drawCanvasGroupComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::ImageComponent){
                     drawImageComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::SpriteComponent){

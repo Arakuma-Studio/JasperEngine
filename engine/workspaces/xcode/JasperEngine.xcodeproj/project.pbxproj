@@ -3313,6 +3313,11 @@
 		4A534E479968450BA2CEF5BB /* InputControlNames.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473BE9FB7833EBA0DF /* InputControlNames.cpp */; };
 		4A534E4749E3318561E17181 /* InputActions.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47DA77C1DF72E1D462 /* InputActions.h */; };
 		4A534E47CC9B5D8BFDD75814 /* InputControlNames.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4763010A7AB6271A0C /* InputControlNames.h */; };
+		4A534E471E54C5C8414BD121 /* CanvasGroup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CC52175BD8DE955D /* CanvasGroup.cpp */; };
+		4A534E47907B8208CD18D0FD /* CanvasGroup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CC52175BD8DE955D /* CanvasGroup.cpp */; };
+		4A534E47B8D0F2F45B3FB96F /* CanvasGroup.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476F86DE7CFA66AEAB /* CanvasGroup.h */; };
+		4A534E47C347027DB28DA261 /* CanvasGroupComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4767131FC7FF95861B /* CanvasGroupComponent.h */; };
+		4A534E479AC9510B4A13D68A /* UIDrawColor.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4737234843A0260B98 /* UIDrawColor.h */; };
 		4A534E47FAB0AB03DCC4FB57 /* PhysicsMaterialPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4734D6776EE9983E2C /* PhysicsMaterialPool.cpp */; };
 		4A534E474B176E0554781362 /* PhysicsMaterialPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4734D6776EE9983E2C /* PhysicsMaterialPool.cpp */; };
 		4A534E471DFCCEA6BE1F6704 /* PhysicsMaterial.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4782DC42859764CCD0 /* PhysicsMaterial.cpp */; };
@@ -6731,6 +6736,10 @@
 		4A534E473BE9FB7833EBA0DF /* InputControlNames.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputControlNames.cpp; sourceTree = "<group>"; };
 		4A534E47DA77C1DF72E1D462 /* InputActions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InputActions.h; sourceTree = "<group>"; };
 		4A534E4763010A7AB6271A0C /* InputControlNames.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InputControlNames.h; sourceTree = "<group>"; };
+		4A534E47CC52175BD8DE955D /* CanvasGroup.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CanvasGroup.cpp; sourceTree = "<group>"; };
+		4A534E476F86DE7CFA66AEAB /* CanvasGroup.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CanvasGroup.h; sourceTree = "<group>"; };
+		4A534E4767131FC7FF95861B /* CanvasGroupComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CanvasGroupComponent.h; sourceTree = "<group>"; };
+		4A534E4737234843A0260B98 /* UIDrawColor.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDrawColor.h; sourceTree = "<group>"; };
 		4A534E4734D6776EE9983E2C /* PhysicsMaterialPool.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsMaterialPool.cpp; sourceTree = "<group>"; };
 		4A534E4782DC42859764CCD0 /* PhysicsMaterial.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsMaterial.cpp; sourceTree = "<group>"; };
 		4A534E479691DF604E10D72A /* PolygonDecomposition2D.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PolygonDecomposition2D.cpp; sourceTree = "<group>"; };
@@ -8205,6 +8214,7 @@
 				4A534E4754E256FE333DE6E7 /* CpuSkin.h */,
 				4A534E476309E3EF32DDB09B /* LineRibbonBuilder.cpp */,
 				4A534E47197C345843945889 /* LineRibbonBuilder.h */,
+				4A534E4737234843A0260B98 /* UIDrawColor.h */,
 			);
 			path = render;
 			sourceTree = "<group>";
@@ -8273,6 +8283,7 @@
 				4A534E47C6821B885199BD43 /* PoseAnimatorComponent.h */,
 				4A534E47625F8F2E8CA675B3 /* AnimationPlayerComponent.h */,
 				4A534E47F4D574AFECE5C17E /* VertexAnimatorComponent.h */,
+				4A534E4767131FC7FF95861B /* CanvasGroupComponent.h */,
 				4A534E47C782824D41EC527F /* PhysicsCommon.h */,
 				4A534E471E4D971B8C73A691 /* TrailRendererComponent.h */,
 			);
@@ -9414,6 +9425,8 @@
 				71ABBD4227A879D4001CE3AF /* Button.cpp */,
 				717AD98B29211976007D7DB5 /* LayoutGroup.h */,
 				717AD98C29211976007D7DB5 /* LayoutGroup.cpp */,
+				4A534E47CC52175BD8DE955D /* CanvasGroup.cpp */,
+				4A534E476F86DE7CFA66AEAB /* CanvasGroup.h */,
 				71ABBD322783C8BA001CE3AF /* Image.h */,
 				71ABBD332783C8BB001CE3AF /* Image.cpp */,
 				7181A0AF2BC8B6CB00AC230B /* Panel.h */,
@@ -12039,6 +12052,9 @@
 				4A534E47C43121F25A682263 /* VertexAnimator.h in Headers */,
 				4A534E4744BC97782E329223 /* VertexAnimationPool.h in Headers */,
 				4A534E471E767D9BE2C4AF8A /* CpuSkin.h in Headers */,
+				4A534E47B8D0F2F45B3FB96F /* CanvasGroup.h in Headers */,
+				4A534E47C347027DB28DA261 /* CanvasGroupComponent.h in Headers */,
+				4A534E479AC9510B4A13D68A /* UIDrawColor.h in Headers */,
 				4A534E47348D45F4BBD323C9 /* VertexAnimatorSystem.h in Headers */,
 				4A534E47693D678BC7B907E1 /* MeshBufferPool.h in Headers */,
 				4A534E4749E3318561E17181 /* InputActions.h in Headers */,
@@ -13776,6 +13792,7 @@
 				713D8297259D307F00567F9F /* FileData.cpp in Sources */,
 				71451BEC270CA2C900712643 /* Sprite.cpp in Sources */,
 				717AD98F29211976007D7DB5 /* LayoutGroup.cpp in Sources */,
+				4A534E47907B8208CD18D0FD /* CanvasGroup.cpp in Sources */,
 				713D8298259D307F00567F9F /* ShaderRender.cpp in Sources */,
 				713D8299259D307F00567F9F /* ObjectRender.cpp in Sources */,
 				71C33FB62A315877007A5822 /* Mesh.cpp in Sources */,
@@ -14216,6 +14233,7 @@
 				7162FD1325963AE00075B97D /* Scene.cpp in Sources */,
 				71451BEB270CA2C900712643 /* Sprite.cpp in Sources */,
 				717AD98E29211976007D7DB5 /* LayoutGroup.cpp in Sources */,
+				4A534E471E54C5C8414BD121 /* CanvasGroup.cpp in Sources */,
 				7162FD1625963AE00075B97D /* Data.cpp in Sources */,
 				7162FD172E76C0010075B97D /* ResourcePack.cpp in Sources */,
 				5C9F1E02FC1244659AE8FF2F /* UserSettingsStore.cpp in Sources */,
