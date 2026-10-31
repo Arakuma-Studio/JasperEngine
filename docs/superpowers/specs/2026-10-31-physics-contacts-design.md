@@ -762,3 +762,12 @@ contradicted the code:
     after the step 2.4 ms with 10 listeners (1.9%) and 0.08 ms with none (0.06%, asserted < 1%).
     The job-thread side for unlistened bodies is two subscriber checks and a 16-bit mask read
     per manifold (`main` had one subscriber check); it is not asserted separately.
+17. **Verification after the review and the physics-3d merge** (box 2202, `main` at `eb8f3a2f5`):
+    0 warnings; unit suite 1336 passed, 9 skipped, 0 failed (physics-3d's
+    `PairFilterChangedInsideAStepAfterIt` now asks for synchronous contact events, since global
+    handlers run after the step otherwise). FULL MCP suite: 858 passed, 19 skipped, 14 failed: the 10
+    baseline ones, 3 agent-guide size checks (the merged guide was over 16 KB: trimmed, those 3 and the
+    rest of the affected files then passed, 115 passed / 0 failed), and
+    `test_stochastic_tiling.py::test_old_scene_resaves_byte_identical` (a resaved scene gains an
+    `htmluipost` shader entry: shader / HTML UI code this branch does not touch, from `main`). Tool
+    budget 151 tools, 107438 characters (TOTAL_LIMIT set to it); TOOLS.md regenerated.
