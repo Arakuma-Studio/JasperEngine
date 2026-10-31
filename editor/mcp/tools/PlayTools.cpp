@@ -2151,6 +2151,9 @@ void getRuntimeEntityTool(const CallPtr& call) {
         const Json fluid = McpValues::fluidStatsToJson(sp->scene, entity);
         if (!fluid.is_null()) data["fluid_stats"] = fluid;
     }
+    // the Canvas Groups over a UI element (inherited alpha, interactable, click-through)
+    const Json groupState = McpValues::canvasGroupStateToJson(sp->scene, entity);
+    if (!groupState.is_null()) data["canvas_group_state"] = groupState;
     // physics read-outs (joint forces and angles, body mass and velocities)
     if ((only.empty() || only.count(ComponentType::Joint2DComponent)) && sp->scene->findComponent<Joint2DComponent>(entity)) {
         data["joint2d"] = joint2DReadoutsJson(sp->scene, entity);
@@ -2165,6 +2168,7 @@ void getRuntimeEntityTool(const CallPtr& call) {
                        sp->name + "\": " + data["components"].dump();
     if (data.contains("scripts") && !data["scripts"].empty()) text += "\nscripts: " + data["scripts"].dump();
     if (data.contains("fluid_stats")) text += "\nfluid_stats: " + data["fluid_stats"].dump();
+    if (data.contains("canvas_group_state")) text += "\ncanvas_group_state: " + data["canvas_group_state"].dump();
     if (data.contains("joint2d")) text += "\njoint2d: " + data["joint2d"].dump();
     if (data.contains("rigidbody2d")) text += "\nrigidbody2d: " + data["rigidbody2d"].dump();
     if (text.size() > 12000) text = text.substr(0, 12000) + " ... (see structuredContent)";

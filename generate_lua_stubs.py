@@ -2070,6 +2070,22 @@ OVERRIDES.update({
         'overloads': [([('source?', _INPUT_SOURCE)], '')]},
 })
 
+# Canvas Group fades (ui canvas group spec 7.6): AlphaTweens on the group from its current alpha
+OVERRIDES[('CanvasGroup', 'fadeTo')] = {
+    'doc': ['Fades the group from its current alpha to `alpha` in `duration` seconds (LeanTween.alphaCanvas,',
+            'DOTween DOFade); a new fade stops the previous one. Returns the running AlphaTween.',
+            '`group:fadeTo(0, 0.25, {deactivate = true, onComplete = function() ... end})`'],
+    'overloads': [([('alpha', 'number'), ('duration', 'number'), ('options?', 'CanvasGroupFadeOptions')], 'AlphaTween')]}
+OVERRIDES[('CanvasGroup', 'fadeIn')] = {
+    'doc': ['fadeTo(1, duration, options).'],
+    'overloads': [([('duration', 'number'), ('options?', 'CanvasGroupFadeOptions')], 'AlphaTween')]}
+OVERRIDES[('CanvasGroup', 'fadeOut')] = {
+    'doc': ['fadeTo(0, duration, options); with `deactivate = true` the GameObject is deactivated at the end.'],
+    'overloads': [([('duration', 'number'), ('options?', 'CanvasGroupFadeOptions')], 'AlphaTween')]}
+OVERRIDES[('CanvasGroup', 'stopFade')] = {
+    'doc': ['Stops the running fade; `jumpToEnd` writes its end alpha and completes it now (onComplete, deactivate).'],
+    'overloads': [([('jumpToEnd?', 'boolean')], '')]}
+
 # Mesh:getMaterial and Mesh.material push the Material copy themselves (a LuaRef: the copy
 # remembers the shader its submesh draws with, LuaBinding::setMaterialDrawnShader)
 OVERRIDES[('Mesh', 'getMaterial')] = {

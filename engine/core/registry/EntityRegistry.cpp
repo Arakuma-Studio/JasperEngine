@@ -74,6 +74,7 @@ EntityRegistry::EntityRegistry() {
     registerComponent<AnimationPlayerComponent>();
     registerComponent<VertexAnimatorComponent>();
     registerComponent<TrailRendererComponent>();
+    registerComponent<CanvasGroupComponent>();
 }
 
 EntityRegistry::EntityRegistry(EntityPool defaultPool) : EntityRegistry() {

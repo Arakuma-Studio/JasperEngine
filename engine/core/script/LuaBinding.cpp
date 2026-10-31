@@ -29,6 +29,7 @@
 #include "object/Points.h"
 #include "object/LineRenderer.h"
 #include "object/TrailRenderer.h"
+#include "object/ui/CanvasGroup.h"
 #include "object/Sprite.h"
 #include "object/Terrain.h"
 #include "object/Tilemap.h"
@@ -868,6 +869,7 @@ bool LuaBinding::pushEntityHandleByType(lua_State* L, jasperengine::Scene* scene
     DISPATCH_TYPE(AudioSource, "audiosource");
     DISPATCH_TYPE(RectTransform, "recttransform");
     DISPATCH_TYPE(LayoutGroup, "layoutgroup");
+    DISPATCH_TYPE(CanvasGroup, "canvasgroup");
     DISPATCH_TYPE(Polygon, "polygon");
     DISPATCH_TYPE(Text, "text");
     DISPATCH_TYPE(Image, "image");
