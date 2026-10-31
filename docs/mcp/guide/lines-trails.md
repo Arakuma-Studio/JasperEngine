@@ -189,8 +189,10 @@ draws the hairline only (copy the include into it, or fork again). jasper://docs
 ## Costs (mobile)
 
 - CPU: a line is rebuilt only when it changes (a 100-point polyline with 4 corner vertices is
-  about 1,300 vertices, well under 0.05 ms); a moving trail rebuilds every frame (50 trails of 64
-  points stay under 0.5 ms on a mid-range phone). Buffers grow by powers of two and shrink after
-  5 s at under a quarter.
-- GPU: one draw per line or trail; about 40 vertex-shader operations; fill is the ribbon's area.
-  Thick lines and trails are culled by their bounds (pixel widths are not).
+  about 1,200 vertices); a moving trail rebuilds every frame, at a cost that grows with its point
+  count (about Time / frame time with a Min Vertex Distance of 0): for many trails keep Time short
+  and Min Vertex Distance above 0, and corner and cap vertices low. 50 trails of 64 points took
+  about 0.6 ms of CPU per frame on a busy desktop build machine (not measured on a phone).
+  Buffers grow by powers of two and shrink after 5 s at under a quarter.
+- GPU: one draw per line or trail; the widths are expanded in the vertex shader; fill is the
+  ribbon's area. Thick lines and trails are culled by their bounds (pixel widths are not).

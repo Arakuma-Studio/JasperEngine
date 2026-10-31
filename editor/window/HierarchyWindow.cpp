@@ -572,9 +572,10 @@ void editor::HierarchyWindow::createGameObject(const CreateMenuEntry& entry, Ent
         parent = NULL_ENTITY;
     }
     // Unity puts a trail on the moving object itself: the selected GameObject gets one when it
-    // has none (one undo step, its own Trail Renderer); one that has a trail gets a child trail
+    // has none and is not locked (one undo step, its own Trail Renderer); else a child trail
     if (entry.type == EntityCreationType::TRAIL_RENDERER && parent != NULL_ENTITY &&
             sceneProject->scene->isEntityCreated(parent) && sceneProject->scene->findComponent<Transform>(parent) &&
+            !ProjectUtils::isEntityLocked(sceneProject->scene, parent) &&
             !sceneProject->scene->findComponent<TrailRendererComponent>(parent)) {
         CommandHandle::get(sceneProject->id)->addCommandNoMerge(
             new AddComponentCmd(project, sceneProject->id, parent, ComponentType::TrailRendererComponent));
