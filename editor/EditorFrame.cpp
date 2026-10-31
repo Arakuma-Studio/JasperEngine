@@ -151,7 +151,9 @@ bool EditorFrame::run(EditorFrameState& state){
     const bool renderRequested = state.forceRedraw || playSessionActive ||
                                  !idleFrame || state.redrawRequested ||
                                  app->hasPendingMainThreadTasks() || frameRequest ||
-                                 textFocused || !SystemRender::isGpuCreationIdle();
+                                 textFocused || !SystemRender::isGpuCreationIdle() ||
+                                 // Auto Save runs in a frame: an idle editor wakes when a backup is due
+                                 project->isAutosaveDue();
     const bool frameReady = !state.minimized && renderRequested && renderer->beginFrame();
 
     // a profiler frame is one rendered loop of the editor (S15 §6.5); idle loops are not frames

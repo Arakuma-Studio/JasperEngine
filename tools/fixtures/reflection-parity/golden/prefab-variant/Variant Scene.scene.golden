@@ -118,7 +118,7 @@ entities:
         lodBias: 1
         renderInReflectionProbes: true
         shadowsBillboard: true
-        transparent: false
+        transparent: true
         autoTransparency: true
         cullingMode: back
         windingOrder: ccw
@@ -196,7 +196,7 @@ entities:
             lodBias: 1
             renderInReflectionProbes: true
             shadowsBillboard: true
-            transparent: false
+            transparent: true
             autoTransparency: true
             cullingMode: back
             windingOrder: ccw
@@ -273,7 +273,7 @@ entities:
             lodBias: 1
             renderInReflectionProbes: true
             shadowsBillboard: true
-            transparent: false
+            transparent: true
             autoTransparency: true
             cullingMode: back
             windingOrder: ccw
@@ -351,7 +351,7 @@ entities:
                 lodBias: 1
                 renderInReflectionProbes: true
                 shadowsBillboard: true
-                transparent: false
+                transparent: true
                 autoTransparency: true
                 cullingMode: back
                 windingOrder: ccw
@@ -481,7 +481,7 @@ entities:
             lodBias: 1
             renderInReflectionProbes: true
             shadowsBillboard: true
-            transparent: false
+            transparent: true
             autoTransparency: true
             cullingMode: back
             windingOrder: ccw
@@ -559,7 +559,7 @@ entities:
                 lodBias: 1
                 renderInReflectionProbes: true
                 shadowsBillboard: true
-                transparent: false
+                transparent: true
                 autoTransparency: true
                 cullingMode: back
                 windingOrder: ccw
@@ -663,7 +663,7 @@ entities:
         lodBias: 1
         renderInReflectionProbes: true
         shadowsBillboard: true
-        transparent: false
+        transparent: true
         autoTransparency: true
         cullingMode: back
         windingOrder: ccw

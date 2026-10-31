@@ -37,7 +37,7 @@ void create_scene_Variant_Scene_1(Scene* scene){
         mesh.lodEnabled = true;
         mesh.lodBias = 1.000000f;
         mesh.renderInReflectionProbes = true;
-        mesh.transparent = false;
+        mesh.transparent = true;
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
@@ -147,7 +147,7 @@ void create_scene_Variant_Scene_1(Scene* scene){
         mesh.lodEnabled = true;
         mesh.lodBias = 1.000000f;
         mesh.renderInReflectionProbes = true;
-        mesh.transparent = false;
+        mesh.transparent = true;
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
@@ -257,7 +257,7 @@ void create_scene_Variant_Scene_1(Scene* scene){
         mesh.lodEnabled = true;
         mesh.lodBias = 1.000000f;
         mesh.renderInReflectionProbes = true;
-        mesh.transparent = false;
+        mesh.transparent = true;
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
@@ -367,7 +367,7 @@ void create_scene_Variant_Scene_1(Scene* scene){
         mesh.lodEnabled = true;
         mesh.lodBias = 1.000000f;
         mesh.renderInReflectionProbes = true;
-        mesh.transparent = false;
+        mesh.transparent = true;
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
@@ -543,7 +543,7 @@ void create_scene_Variant_Scene_1(Scene* scene){
         mesh.lodEnabled = true;
         mesh.lodBias = 1.000000f;
         mesh.renderInReflectionProbes = true;
-        mesh.transparent = false;
+        mesh.transparent = true;
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
@@ -653,7 +653,7 @@ void create_scene_Variant_Scene_1(Scene* scene){
         mesh.lodEnabled = true;
         mesh.lodBias = 1.000000f;
         mesh.renderInReflectionProbes = true;
-        mesh.transparent = false;
+        mesh.transparent = true;
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
@@ -796,7 +796,7 @@ void create_scene_Variant_Scene_1(Scene* scene){
         mesh.lodEnabled = true;
         mesh.lodBias = 1.000000f;
         mesh.renderInReflectionProbes = true;
-        mesh.transparent = false;
+        mesh.transparent = true;
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;

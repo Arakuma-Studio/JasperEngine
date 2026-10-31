@@ -197,7 +197,8 @@ async def test_project_copy_follows_the_editor(ed: Editor):
     root = Path(tempfile.mkdtemp(prefix="jasper-examples-copy-"))
     try:
         proj = root / "Projekt ☃ ünïcode"
-        shutil.copytree(ed.project, proj, ignore=shutil.ignore_patterns(".jasperengine"))
+        # (an atomic save's temporary sibling may come and go while the live project is copied)
+        shutil.copytree(ed.project, proj, ignore=shutil.ignore_patterns(".jasperengine", "*.je-tmp"))
         await ed.call("open_project", path=str(proj), unsaved="discard")
         copy = await wait_project_copy(ed, proj)
         check((copy / "hud" / "hud.css").read_bytes() == (LIBRARY / "hud" / "hud.css").read_bytes(), "unicode path: hud.css")
