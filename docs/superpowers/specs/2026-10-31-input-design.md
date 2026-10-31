@@ -502,11 +502,16 @@ the code:
     keys, gamepad buttons (ImGui's or the playing game's), sticks/triggers for a gamepad axis
     binding, and mouse buttons clicked on empty space (a click on the dialog is not a binding).
 
-Verification: editor + tests build with 0 warnings; `jasperengine-editor-tests` 981 passed,
-8 skipped (the known ones), 0 failed; MCP `test_input.py`, `test_input_ui.py` (acceptance 6:
-focused text field and gamepad navigation), `test_stubs.py`, `test_docs.py`, `test_protocol.py`,
-`test_play.py`, `test_project.py`, `test_html_ui_input.py`, `test_html_ui_gamepad.py` pass;
-`test_build.py` checks the exported `main.cpp` (the real Desktop player run needs
-`JASPER_SLOW_BUILD=1`). The changed engine sources compile with Emscripten. Not verified here:
-Apple builds (Xcode project updated with `tools/xcode_sync_engine.py`) and Android (no NDK on
-this host); no platform code changed.
+Verification: editor + tests build with 0 warnings; `jasperengine-editor-tests` 985 passed,
+8 skipped (the known ones), 0 failed (49 new: InputEdgesTest, InputTouchTest, InputActionsTest,
+InputControlNamesTest, GeneratorInputTest, ProjectInputTest). MCP `test_input.py`,
+`test_input_ui.py` (acceptance 6: focused text field and gamepad navigation), `test_stubs.py`
+(with lua-language-server 3.13.9: zero diagnostics, and a script using every new name checks
+clean), `test_docs.py`, `test_protocol.py`, `test_play.py`, `test_project.py`, `test_build.py`
+(the exported `main.cpp` loads the actions; the real Desktop player run needs
+`JASPER_SLOW_BUILD=1` and was not run), `test_html_ui_input.py`, `test_html_ui_gamepad.py` pass.
+A generated-style `main.cpp` compiles against the engine headers. The changed engine sources
+compile with Emscripten and with the Android NDK (r30, arm64-v8a; configured with stand-ins for
+the game-activity / frame-pacing prefab packages Gradle provides). Not verified: Apple builds
+(the Xcode project lists the new files, `tools/xcode_sync_engine.py --check` passes); no
+platform code changed.
