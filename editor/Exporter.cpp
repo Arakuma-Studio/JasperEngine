@@ -4,6 +4,7 @@
 #include "util/SafeWrite.h"
 #include "Exporter.h"
 #include "util/ExportFeatureScan.h"
+#include "util/NativeExportAndroid.h"
 #include "util/NativePlugins.h"
 #include "util/PngEditorChunks.h"
 #include "EditorHost.h"
@@ -3118,6 +3119,17 @@ bool editor::Exporter::writeAndroidProjectSettings() {
             return false;
         }
     }
+    // native plugins: the bridge and nativeplugins modules, repositories, gradle.properties,
+    // and the manifest additions below
+    NativeExportAndroid::Result nativeExport;
+    {
+        std::string nativeError;
+        if (!NativeExportAndroid::write(config.targetDir / "workspaces" / "androidstudio", getExportProjectRoot(), android, gradle,
+                                        nativeExport, nativeError)) {
+            setError(nativeError);
+            return false;
+        }
+    }
     FileUtils::writeIfChanged(buildGradlePath, gradle);
 
     const bool hasLauncherIcon = !android.launcherIcon.empty();
@@ -3184,7 +3196,9 @@ bool editor::Exporter::writeAndroidProjectSettings() {
 
     std::string manifest;
     manifest += "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
-    manifest += "<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">\n\n";
+    manifest += nativeExport.needsToolsNamespace
+        ? "<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\"\n    xmlns:tools=\"http://schemas.android.com/tools\">\n\n"
+        : "<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">\n\n";
     bool wrotePermission = false;
     if (internet) {
         manifest += "    <uses-permission android:name=\"android.permission.INTERNET\" />\n";
@@ -3200,7 +3214,13 @@ bool editor::Exporter::writeAndroidProjectSettings() {
         manifest += "\" />\n";
         wrotePermission = true;
     }
+    // Project Settings > Native Plugins > Android: permissions by full name, then raw XML
+    if (!nativeExport.permissionsXml.empty()) {
+        manifest += nativeExport.permissionsXml;
+        wrotePermission = true;
+    }
     if (wrotePermission) manifest += "\n";
+    if (!nativeExport.manifestXml.empty()) manifest += nativeExport.manifestXml + "\n";
     manifest += "    <application\n";
     manifest += std::string("        android:allowBackup=\"") + (android.allowBackup ? "true" : "false") + "\"\n";
     manifest += "        android:icon=\"" + iconReference + "\"\n";
@@ -3227,6 +3247,7 @@ bool editor::Exporter::writeAndroidProjectSettings() {
     manifest += "                <category android:name=\"android.intent.category.LAUNCHER\" />\n";
     manifest += "            </intent-filter>\n";
     manifest += "        </activity>\n";
+    if (!nativeExport.applicationXml.empty()) manifest += "\n" + nativeExport.applicationXml;
     manifest += "    </application>\n\n";
     manifest += "    <uses-feature android:glEsVersion=\"0x00030000\" android:required=\"true\" />\n\n";
     manifest += "</manifest>";
