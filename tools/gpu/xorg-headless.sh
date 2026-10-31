@@ -47,7 +47,11 @@ case "$ACTION" in
     exit 1 ;;
   stop)
     docker rm -f "$NAME" >/dev/null 2>&1 && echo "[xorg-headless] $NAME stopped" || echo "[xorg-headless] $NAME not running"
-    rm -f "$SOCKDIR/X$DISP" ;;
+    # the socket and the log belong to the container's root (and Xorg made the directory sticky)
+    if [[ -e "$SOCKDIR/X$DISP" || -e "$SOCKDIR/xorg-$DISP.log" ]]; then
+        IMG="jasperengine/gpu-xorg:$(sha256sum "$ROOT/docker/gpu-xorg.Dockerfile" | cut -c1-12)"
+        docker run --rm -v "$SOCKDIR:/x" "$IMG" rm -f "/x/X$DISP" "/x/xorg-$DISP.log" 2>/dev/null || rm -f "$SOCKDIR/X$DISP"
+    fi ;;
   status)
     if running; then echo "[xorg-headless] $NAME running (:$DISP)"; else echo "[xorg-headless] $NAME not running"; exit 1; fi ;;
   *) echo "usage: $0 start|stop|status [display]" >&2; exit 2 ;;
