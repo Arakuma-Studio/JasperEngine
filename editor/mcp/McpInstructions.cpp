@@ -49,8 +49,7 @@ Legacy Animation = AnimationPlayerComponent (AnimationComponent: entity sequence
   writes refuse links out of the project.
 
 ## The loop
-1. Inspect: `editor_status`, the scene list, the hierarchy, then the GameObjects you will
-   touch.
+1. Inspect: `editor_status`, the scene list, the hierarchy, the GameObjects you will touch.
 2. Edit scenes, prefabs and settings with tools, never by hand-editing .scene/.prefab/
    project.yaml (the editor would overwrite you). Group many edits in one `batch` call
    (undo_group: one undo step). Edit code with your own tools (see Code).
@@ -61,13 +60,13 @@ Legacy Animation = AnimationPlayerComponent (AnimationComponent: entity sequence
 6. Read the Console since your last cursor: compile, script and Lua errors, missing assets.
 7. Stop, fix, repeat until the Console is clean and the screenshot shows what you intended.
    Never claim a script works without playing it and reading the Console.
-Long operations (play with a C++ build, export, build players) take wait/timeout_seconds;
-past it you get a job id: poll get_job, cancel with cancel_job.
-A tool error says what was wrong and lists valid choices: fix the arguments, don't repeat.
+Long operations (play with a C++ build, exports, players) take wait/timeout_seconds; past it:
+a job id (poll get_job, cancel_job). A tool error says what was wrong and lists valid choices:
+fix the arguments, don't repeat.
 
 ## Code (Lua, C++, shaders, materials)
 The project is a normal folder: `editor_status` gives its absolute path (project.path). Work
-in it (cd there) and read, edit, grep and git its scripts, shaders and .material files with
+in it and read, edit, grep and git its scripts, shaders and .material files with
 your own tools. Engine API to grep: .jasperengine/engine-api/ (C++ headers) and its lua/
 folder (Lua API stubs). Your edits are picked up before your next tool call; that
 call's result then carries `external_changes` {changed, problems: [{path, line, message}]}:
@@ -189,20 +188,18 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
 - Add a body and its collider to the SAME GameObject in one step (edit_colliders with
   body_type + add). A Rigidbody without a Collider does not collide. Dynamic: actors;
   static: floors, level geometry; kinematic: scripted movers.
-- Collider sizes are mesh-local, scaled by the GameObject's scale: never pre-scale them.
-  Omit sizes to fit the mesh bounds (never guess).
+- Collider sizes are mesh-local, scaled by the GameObject's scale: never pre-scale them; omit
+  sizes to fit the mesh bounds (never guess).
 - Mass = collider volume/area x density (default 1000 in 3D, 1 in 2D); a 2D body may set it
   (useAutoMass false). Size forces as mass x acceleration; if huge, lower density.
-- 2D joints (set_joint): Unity's set as one Joint2D type, local anchors, motors, springs,
-  limits, breaking; 2D polygons take any points (concave ok): jasper://docs/physics.
-- Continuous forces and torques go in onFixedUpdate, never onUpdate, and are NOT multiplied by
-  deltatime. The 3D and 2D APIs differ (2D calls take a wake flag): table in jasper://docs/physics.
+- Continuous forces and torques go in onFixedUpdate, never onUpdate, NOT multiplied by deltatime.
+  3D and 2D APIs differ (2D calls take a wake flag). 2D joints (set_joint: motors, springs,
+  limits, breaking, local anchors) and concave polygons: jasper://docs/physics.
 - Never move a body by writing its GameObject's transform from onFixedUpdate (silently
   overwritten). Teleport with body.position (and body.rotation / body.angle), velocity with
   body.linearVelocity. One-shot impulses fire once per press, not every held frame.
 - Layer Collision Matrix (project settings, per backend) gates contacts; raycasts take an
-  optional layer mask.
-- Drop or settle objects: place_with_physics.
+  optional layer mask. Drop or settle objects: place_with_physics.
 
 ## Prefabs
 - An edit on a prefab instance is an override of that instance only. Push it to the asset
@@ -254,8 +251,7 @@ Edit mode runs no Lua. First read jasper://docs/html-ui.
 
 ## Pitfalls
 - Unsaved scenes are lost when the editor closes; save after each working step.
-- Edits made while playing are lost when play stops (as in Unity): stop before editing
-  the scene for real.
+- Edits made while playing are lost when play stops (as in Unity): stop, then edit.
 - Lua: static functions use a dot (GameObject.instantiate), methods a colon (go:setScale(2)).
 )JE";
 }
