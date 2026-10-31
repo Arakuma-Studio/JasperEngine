@@ -267,6 +267,11 @@ namespace jasperengine::anim{
         bool hasRef = false;
         bool touched = false;               // in the current layer's touched list
         bool hasResult = false;
+        // the highest Override layer that replaces this element entirely this frame (weight 1,
+        // states summing to 1 on it): the layers below it do not sample it (-1: none)
+        int occluder = -1;
+        int coverLayer = -1;                // the layer `coverage` sums (the occlusion pass)
+        float coverage = 0.0f;
     };
     // What the evaluator composes in one call (filled per frame into reused vectors)
     struct JASPERENGINE_API PoseLayerInput{
@@ -293,6 +298,7 @@ namespace jasperengine::anim{
         std::vector<PoseElement> elements;
         std::vector<uint32_t> elementSlot;  // element -> slot
         std::vector<uint32_t> touched;      // elements the current layer reached
+        std::vector<uint32_t> covered;      // elements the occlusion pass reached
         std::vector<uint32_t> written;      // elements with a result, in first-written order
         // per state: the bindings serial the state's trackSlots were built for (0: none)
         // (any change rebuilds the whole table: rest entries may have gone with a rebind)

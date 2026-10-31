@@ -233,6 +233,7 @@ void playerdetail::buildPoseSlots(Scene* scene, anim::PlayerPoseScratch& scratch
         for (uint32_t k = 0; k < scratch.slots[s].width; k++) scratch.elementSlot[scratch.slots[s].first + k] = s;
     }
     scratch.touched.reserve(elements);
+    scratch.covered.reserve(elements);
     scratch.written.reserve(elements);
     scratch.dirty = false;
 }
@@ -437,6 +438,34 @@ void ActionSystem::evaluateLayeredPlayer(Entity entity, AnimationPlayerComponent
 
 void ActionSystem::composePlayerLayers(anim::PlayerPoseScratch& scratch, std::vector<std::pair<Entity, ClipChannel>>* written){
     anim::TrackSample sample;
+
+    // 0. occlusion: an Override layer at weight 1 whose states' weights reach 1 on a single-element
+    // slot replaces it entirely (R = avg exactly), so no layer below needs to sample it (an upper
+    // arm layer over a walk: the walk's arm tracks are not sampled)
+    for (size_t l = scratch.layerInputs.size(); l-- > 1;){
+        const anim::PoseLayerInput& layer = scratch.layerInputs[l];
+        if (layer.skip || layer.blend != AnimationLayerBlend::Override || !(layer.weight >= 1.0f)) continue;
+        for (const anim::PoseStateInput& state : scratch.stateInputs){
+            if ((size_t)state.layer != l) continue;
+            const size_t count = std::min(state.clip->getTracks().size(), state.bindings->targets.size());
+            for (size_t i = 0; i < count; i++){
+                const uint32_t slotIndex = state.trackSlots[i];
+                if (slotIndex == NO_SLOT || scratch.slots[slotIndex].width != 1) continue;
+                const float w = state.weight * (state.trackMask ? state.trackMask[i] : 1.0f);
+                if (!(w > 0.0f)) continue;
+                const uint32_t index = scratch.slots[slotIndex].first;
+                anim::PoseElement& e = scratch.elements[index];
+                if (e.coverLayer < 0) scratch.covered.push_back(index);
+                if (e.coverLayer != (int)l){
+                    e.coverLayer = (int)l;
+                    e.coverage = 0.0f;
+                }
+                e.coverage += w;
+                if (e.coverage >= 1.0f && e.occluder < 0) e.occluder = (int)l;
+            }
+        }
+    }
+
     for (size_t l = 0; l < scratch.layerInputs.size(); l++){
         const anim::PoseLayerInput& layer = scratch.layerInputs[l];
         if (layer.skip) continue;
@@ -453,6 +482,7 @@ void ActionSystem::composePlayerLayers(anim::PlayerPoseScratch& scratch, std::ve
                 if (slotIndex == NO_SLOT) continue;
                 const AnimationClip::Track& track = tracks[i];
                 const anim::PoseSlot& slot = scratch.slots[slotIndex];
+                if (slot.width == 1 && scratch.elements[slot.first].occluder > (int)l) continue;
                 const Entity target = slot.target;
                 anim::ChannelRest& rest = *slot.rest;
                 const float mask = state.trackMask ? state.trackMask[i] : 1.0f;
@@ -597,6 +627,9 @@ void ActionSystem::composePlayerLayers(anim::PlayerPoseScratch& scratch, std::ve
                         }else{
                             setQuat(e.result, pose::slerpShortest(getQuat(base), getQuat(avg), alpha));
                         }
+                    }else if (alpha >= 1.0f){
+                        // a full override is the layer's value exactly (what the occlusion relies on)
+                        for (int k = 0; k < 4; k++) e.result[k] = e.sum[k] * inverse;
                     }else{
                         for (int k = 0; k < 4; k++) e.result[k] = base[k] + (e.sum[k] * inverse - base[k]) * alpha;
                     }
@@ -625,6 +658,12 @@ void ActionSystem::composePlayerLayers(anim::PlayerPoseScratch& scratch, std::ve
         }
         scratch.touched.clear();
     }
+
+    for (uint32_t index : scratch.covered){
+        scratch.elements[index].occluder = -1;
+        scratch.elements[index].coverLayer = -1;
+    }
+    scratch.covered.clear();
 
     // 3. every composed element into the shared pose blend with weight 1 (no rest flags: the
     // rest fill is applied already); flushPoseBlend writes it unchanged
