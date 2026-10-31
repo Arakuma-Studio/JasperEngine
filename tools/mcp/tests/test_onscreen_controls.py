@@ -116,7 +116,7 @@ async def test_native_controls_three_fingers(ed: Editor):
     ed.check("floating" in str(harness.find_key(stick, "mode")), f"create_ui mode: {harness.find_key(stick, 'mode')}")
     ed.check("Horizontal" in str(harness.find_key(stick, "horizontalAction")), "the default horizontal action")
     await ed.call("save_scene", scene=scene, path="scenes/Controls")
-    ed.check((ed.scratch.root / "assets" / "ui" / "onscreen" / "stick_base.png").exists(), "the stick's circle images were written")
+    ed.check((ed.project / "assets" / "ui" / "onscreen" / "stick_base.png").exists(), "the stick's circle images were written")
 
     await ed.call("play", action="start", scene=scene, auto_pause=True, fixed_fps=60)
     try:
