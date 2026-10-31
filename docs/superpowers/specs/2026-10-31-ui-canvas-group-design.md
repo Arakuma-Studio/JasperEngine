@@ -557,7 +557,7 @@ Decisions made while implementing, where the spec was silent, ambiguous or in co
   RectTransform) and non-UI renderers in the subtree draw in the colour pass after the layer, faded per
   element (`uiGroupAlpha`), so `subtreeDraws` counts UIComponents only. A stencil mask above a flattened
   group does not clip inside its layer (the layer has its own stencil): put the mask inside the group or
-  use the scissor (documented in `ui.md`... see the trade-offs list there).
+  use the scissor (in the trade-offs of `ui.md`).
 - **Draw skip.** An element is skipped at group alpha 0 in every blend mode (a custom shader that ignores
   the uniform still hides), and an alpha-blended one (AUTO, ALPHA, ADDITIVE) whose faded alpha is 0; never
   an element outside any group (`groupAlpha` 1), so old scenes, including elements at colour alpha 0 with

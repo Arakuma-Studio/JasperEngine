@@ -60,8 +60,10 @@ Godot CanvasGroup). It costs two render pass breaks and the fill of the group's 
 its alpha is strictly between 0 and 1 and the subtree has two or more draws; keep at most two
 flattened groups fading at once on mobile. Trade-offs: additive and multiply children blend
 against the layer, not the background; `ignoreParentGroups` children inside a flattened group are
-still composited at its alpha; at alpha 0 the whole subtree is skipped (masks included); more than
-4 nested layers fall back to Per Element.
+still composited at its alpha; UI particles and sprites in the subtree are faded per element and drawn
+over the layer; a stencil mask above a flattened group does not clip inside it (put the mask inside
+the group, or use a Panel's scissor); at alpha 0 the whole subtree is skipped (masks included); more
+than 4 nested layers fall back to Per Element.
 
 **What it does not affect.** HTML UI documents (use CSS `opacity` / `pointer-events`), sprites,
 meshes and line renderers (as in Unity, only UI elements). UI particles (Points under a
