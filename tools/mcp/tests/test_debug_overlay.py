@@ -138,7 +138,7 @@ async def test_stats_and_log_from_lua(ed: Editor):
         ed.check_eq(await lua(ed, "return Log.getEntries(1)[1].message"), ["42"], "lua command")
 
         # every line reaches the editor's Console too
-        console = await ed.call("read_console", max_entries=50)
+        console = await ed.call("read_console", contains="probe failure")
         ed.check("probe failure" in str(console), "the Console has the line")
     finally:
         await stop(ed)

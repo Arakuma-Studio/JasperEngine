@@ -17,6 +17,7 @@
 #include "debug/DebugStats.h"
 #include "harness/Readback.h"
 
+#include <RmlUi/Core/ComputedValues.h>
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/ElementDocument.h>
 #include <RmlUi/Core/Elements/ElementFormControl.h>
@@ -79,9 +80,10 @@ namespace {
             return doc ? doc->GetElementById(id) : nullptr;
         }
 
+        // laid out (not display: none), what the class alone does not tell
         bool shown(const char* id){
             Rml::Element* element = byId(id);
-            return element && !element->IsClassSet("hidden");
+            return element && element->GetComputedValues().display() != Rml::Style::Display::None;
         }
 
         int rows(){

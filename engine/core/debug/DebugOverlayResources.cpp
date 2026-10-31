@@ -55,7 +55,6 @@ body {
     position: absolute; left: 0px; top: 0px; right: 0px; bottom: 0px; margin: 0px;
     font-family: Roboto; font-size: 13px; line-height: 1.3; color: #e6e8ee;
 }
-.hidden { display: none; }
 
 /* ---- stats */
 #stats {
@@ -133,6 +132,9 @@ input:focus { background-color: #ffffff22; }
 scrollbarvertical { width: 6px; }
 scrollbarvertical sliderbar { background-color: #ffffff40; border-radius: 3px; min-height: 20px; }
 scrollbarhorizontal { height: 0px; }
+
+/* last, and as specific as the rules that set a display: hidden panels take no input */
+.hidden, #console.hidden, #stats.hidden, #popup.hidden, .count.hidden { display: none; }
 )rcss";
 
     struct Resource {
