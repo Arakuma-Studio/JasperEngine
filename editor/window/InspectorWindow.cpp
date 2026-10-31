@@ -9,6 +9,7 @@
 #include "util/Util.h"
 #include "util/UIUtils.h"
 #include "util/FileDialogs.h"
+#include "script/ScriptScheduler.h"
 #include "util/FileUtils.h"
 #include "window/CodeEditor.h"
 #include "subsystem/UIDocumentSystem.h"
@@ -10586,6 +10587,20 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
             ImGui::EndDisabled();
 
             ImGui::PopStyleVar();
+
+            // during Play: what the script started and is still running (coroutines, timers)
+            if (entities.size() == 1 && script.instance) {
+                const size_t coroutines = ScriptScheduler::coroutineCountOf(script.instance);
+                const size_t timers = ScriptScheduler::timerCountOf(script.instance);
+                if (coroutines > 0 || timers > 0) {
+                    propertyHeader("Running");
+                    ImGui::TextDisabled("Coroutines: %zu, Timers: %zu", coroutines, timers);
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::SetTooltip("Started by this script (self:startCoroutine, self:invoke): coroutines stop when the "
+                                          "GameObject is deactivated, timers when it is destroyed");
+                    }
+                }
+            }
 
             endTable();
 

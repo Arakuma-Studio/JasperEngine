@@ -133,12 +133,13 @@ return Player
 - Input.getAxis/getButtonDown('Jump') read Project Settings > Input actions; getKeyDown(key)
   is an edge, isKeyPressed held. Test with send_input action/axis events (jasper://docs/input).
   Log.print/warn/error take ONE string (use ..).
-- Time: Engine.timeScale and Engine.fixedDeltatime (read/write), Engine.gameTime and
-  Engine.frameCount (scaled game time and frames since start).
+- Time: Time.deltaTime, unscaledDeltaTime, time, timeScale (Unity names; Time.fixedDeltaTime is
+  the fixed step, Engine.fixedDeltatime a fixed frame delta). Waits: self:startCoroutine(fn) +
+  Coroutine.wait/nextFrame/waitUntil/waitFor inside it (not in onUpdate); timers: self:invoke.
 - C++ default arguments do not exist in Lua: pass every argument (e.g. the wake flag).
 - Saves: PlayerPrefs, Json.encode/decode, File.writeText("data://x") (jasper://docs/lua-api
   2.4); user_settings reads/resets PlayerPrefs.
-- Lua has no Dori.Script, on_start, getComponent, setProperty or timers. Never put editor
+- Lua has no Dori.Script, on_start, getComponent or setProperty. Never put editor
   property paths (submeshes[0]...) in scripts.
 
 ## C++ scripts

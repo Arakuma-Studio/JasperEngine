@@ -57,6 +57,7 @@
 #include "pose/PoseAnimatorRuntime.h"
 #include "animation/ModelSubClips.h"
 #include "htmlui/anim/AnimEngine.h"
+#include "script/ScriptScheduler.h"
 #include "command/CommandHandle.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/MoveEntityOrderCmd.h"
@@ -8444,6 +8445,8 @@ void editor::Project::failPlayStartup(const std::shared_ptr<PlaySession>& sessio
         }
 
         cleanupPlaySession(session);
+        // what the scripts that ran started (Coroutine.start, Timer.after)
+        ScriptScheduler::clear();
         SceneManager::clearAll();
         PrefabManager::clearAll();
         ObjectManager::clearAll();
@@ -9287,6 +9290,8 @@ void editor::Project::stop(uint32_t sceneId) {
 
             // anime: every animation of the play, and its script callbacks, before the scripts go
             AnimEngine::instance().reset();
+            // every coroutine and timer of the play (unowned ones too), before the scripts go
+            ScriptScheduler::clear();
 
             const bool libraryConnected = conector.isLibraryConnected();
             if (libraryConnected) {
