@@ -533,9 +533,9 @@ implementing; everything else is as specified).
 
 ### Verification
 
-- Editor + `jasperengine-editor-tests` build with 0 warnings. Unit tests: 971 run, 963 passed,
-  8 skipped (the baseline skips), 0 failed; 27 of them are this feature's (`LuaJsonTest` 12,
-  `UserSettingsTest` 9, `FileUtilsTest` 6; the locale test makes a de_DE locale with
+- Editor + `jasperengine-editor-tests` build with 0 warnings. Unit tests (after the review
+  fixes): 974 run, 966 passed, 8 skipped (the baseline skips), 0 failed; 30 of them are this
+  feature's (`LuaJsonTest` 12, `UserSettingsTest` 10, `FileUtilsTest` 8; the locale test makes a de_DE locale with
   `localedef` into a temporary `LOCPATH` when none is installed).
 - MCP: `test_script_data.py` 2/2; `test_docs.py`, `test_protocol.py` (16 KB guide budget),
   `test_autosync.py` (guide tool names), `test_html_ui_tools.py::test_budget` (106611 chars, limit
