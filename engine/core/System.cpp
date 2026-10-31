@@ -2,10 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 #include "System.h"
-#include "util/XMLUtils.h"
+#include "io/UserSettingsStore.h"
 #include "util/Base64.h"
+#include "util/NumberText.h"
 #include "Log.h"
 #include "util/PlatformRules.h"
+#include <limits>
+#include <mutex>
+#include <set>
 #include <stdlib.h>
 #include <algorithm>
 #include <thread>
@@ -14,9 +18,6 @@ using namespace jasperengine;
 
 System* System::systemInstance = nullptr;
 ApplicationInfo System::applicationInfo;
-
-#define USERSETTINGS_ROOT "userSettings"
-#define USERSETTINGS_XML_FILE "data://UserSettings.xml"
 
 System& System::instance(){
     if (!systemInstance) {
@@ -328,6 +329,10 @@ bool System::syncFileSystem(){
     return true;
 }
 
+bool System::flushFileSystem(){
+    return true;
+}
+
 bool System::isUserDataLoaded(){
     return true;
 }
@@ -352,44 +357,124 @@ void System::platformLog(const int type, const char *fmt, va_list args){
     printf("\n");
 }
 
+// ---- UserSettings: the base implementation is the XML store of desktop exports and the
+// editor (UserSettingsStore). Typed values are text in it, written the same in every locale
+// (NumberText); a value that does not read as the type asked for gives the default (warned
+// once per key), never an exception. The typed getters go through hasKey/getStringForKey, so a
+// platform overriding only those (the web) keeps these rules.
+
+namespace {
+
+    std::mutex warnedKeysMutex;
+    std::set<std::string> warnedKeys;
+
+    void warnBadValue(const char* key, const std::string& value, const char* type){
+        {
+            std::scoped_lock lock(warnedKeysMutex);
+            if (!warnedKeys.insert(key).second) return;
+        }
+        Log::warn("UserSettings: the value \"%s\" of key \"%s\" is not %s; the default is used "
+                  "(read a key with the type it was written with)", value.c_str(), key, type);
+    }
+
+    // Older builds wrote floats with the decimal point of the player's locale ("0,500000")
+    std::string dottedNumber(const std::string& text){
+        const size_t comma = text.find(',');
+        if (comma == std::string::npos || text.find(',', comma + 1) != std::string::npos ||
+                text.find('.') != std::string::npos)
+            return text;
+        std::string dotted = text;
+        dotted[comma] = '.';
+        return dotted;
+    }
+
+}
+
+System::~System(){
+    UserSettingsStore::instance().systemDestroyed(this);
+}
+
+bool System::hasKey(const char *key){
+    return key && UserSettingsStore::instance().has(key);
+}
+
+void System::removeAllKeys(){
+    UserSettingsStore::instance().clear();
+}
+
+void System::saveUserSettings(){
+    UserSettingsStore::instance().save();
+}
+
 bool System::getBoolForKey(const char *key, bool defaultValue){
-    return getStringForKey(key, defaultValue ? "true" : "false") == "true";
+    if (!hasKey(key)) return defaultValue;
+    const std::string value = getStringForKey(key, "");
+    if (value == "true" || value == "1") return true;
+    if (value == "false" || value == "0") return false;
+    warnBadValue(key, value, "a boolean");
+    return defaultValue;
 }
 
 int System::getIntegerForKey(const char *key, int defaultValue){
-    return std::stoi(getStringForKey(key, std::to_string(defaultValue).c_str()));
+    if (!hasKey(key)) return defaultValue;
+    const std::string value = getStringForKey(key, "");
+    long long number = 0;
+    if (NumberText::parseInteger(value, number) && number >= std::numeric_limits<int>::min() &&
+            number <= std::numeric_limits<int>::max())
+        return static_cast<int>(number);
+    warnBadValue(key, value, "a 32-bit integer");
+    return defaultValue;
 }
 
 long System::getLongForKey(const char *key, long defaultValue){
-    return std::stol(getStringForKey(key, std::to_string(defaultValue).c_str()));
+    if (!hasKey(key)) return defaultValue;
+    const std::string value = getStringForKey(key, "");
+    long long number = 0;
+    if (NumberText::parseInteger(value, number) && number >= std::numeric_limits<long>::min() &&
+            number <= std::numeric_limits<long>::max())
+        return static_cast<long>(number);
+    warnBadValue(key, value, "an integer");
+    return defaultValue;
 }
 
 float System::getFloatForKey(const char *key, float defaultValue){
-    return std::stof(getStringForKey(key, std::to_string(defaultValue).c_str()));
+    if (!hasKey(key)) return defaultValue;
+    const std::string value = getStringForKey(key, "");
+    float number = 0.0f;
+    if (NumberText::parseFloat(dottedNumber(value), number))
+        return number;
+    warnBadValue(key, value, "a float");
+    return defaultValue;
 }
 
 double System::getDoubleForKey(const char *key, double defaultValue){
-    return std::stod(getStringForKey(key, std::to_string(defaultValue).c_str()));
+    if (!hasKey(key)) return defaultValue;
+    const std::string value = getStringForKey(key, "");
+    double number = 0.0;
+    if (NumberText::parseDouble(dottedNumber(value), number))
+        return number;
+    warnBadValue(key, value, "a number");
+    return defaultValue;
 }
 
 Data System::getDataForKey(const char *key, const Data& defaultValue){
-    std::string ret = System::instance().getStringForKey(key, "");
-
+    if (!hasKey(key)) return defaultValue;
+    const std::string ret = getStringForKey(key, "");
     if (ret.empty())
         return defaultValue;
-    
+
     std::vector<unsigned char> decodedData = Base64::decode(ret);
+    if (decodedData.empty())
+        return defaultValue;
 
     return Data(&decodedData[0], (unsigned int)decodedData.size(), true, true);
 }
 
 std::string System::getStringForKey(const char *key, const std::string& defaultValue){
-    std::string value = XMLUtils::getValueForKey(USERSETTINGS_XML_FILE, USERSETTINGS_ROOT, key);
-
-    if (value.empty())
-        return defaultValue;
-
-    return value;
+    std::string value;
+    if (key && UserSettingsStore::instance().get(key, value))
+        return value;   // a stored empty string too
+    return defaultValue;
 }
 
 void System::setBoolForKey(const char *key, bool value){
@@ -397,35 +482,39 @@ void System::setBoolForKey(const char *key, bool value){
 }
 
 void System::setIntegerForKey(const char *key, int value){
-    setStringForKey(key, std::to_string(value).c_str());
+    setStringForKey(key, std::to_string(value));
 }
 
 void System::setLongForKey(const char *key, long value){
-    setStringForKey(key, std::to_string(value).c_str());
+    setStringForKey(key, std::to_string(value));
 }
 
 void System::setFloatForKey(const char *key, float value){
-    setStringForKey(key, std::to_string(value).c_str());
+    setStringForKey(key, NumberText::formatFloat(value));
 }
 
 void System::setDoubleForKey(const char *key, double value){
-    setStringForKey(key, std::to_string(value).c_str());
+    setStringForKey(key, NumberText::formatDouble(value));
 }
 
 void System::setDataForKey(const char *key, Data& value){
     if (value.getMemPtr()) {
-        System::instance().setStringForKey(key, Base64::encode(value.getMemPtr(), value.length()));
+        setStringForKey(key, Base64::encode(value.getMemPtr(), value.length()));
     }else{
-        Log::error("No data to add for key: %s", key);
+        Log::error("No data to add for key: %s", key ? key : "(null)");
     }
 }
 
 void System::setStringForKey(const char* key, const std::string& value){
-    XMLUtils::setValueForKey(USERSETTINGS_XML_FILE, USERSETTINGS_ROOT, key, value.c_str());
+    if (!key || !key[0]){
+        Log::error("UserSettings: a key must be a non-empty string");
+        return;
+    }
+    UserSettingsStore::instance().set(key, value);
 }
 
 void System::removeKey(const char *key){
-    XMLUtils::removeKey(USERSETTINGS_XML_FILE, USERSETTINGS_ROOT, key);
+    if (key) UserSettingsStore::instance().remove(key);
 }
 
 void System::initializeAdMob(bool tagForChildDirectedTreatment, bool tagForUnderAgeOfConsent){

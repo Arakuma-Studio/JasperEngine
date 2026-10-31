@@ -29,6 +29,9 @@ private:
     static int syncWaitTime;
     static bool enabledIDB;
     static bool loadedIDB;
+    // the project waits for the IndexedDB restore (at most 3 s from startTime, ms)
+    static bool projectStarted;
+    static double startTime;
 
     static int screenWidth;
     static int screenHeight;
@@ -45,6 +48,8 @@ private:
     static bool pageHidden;
     static bool adPlaying;
     static bool contextLost;
+    // the window's focus (applied once the project has started)
+    static bool windowFocused;
     // requestAnimationFrame intervals of the first frames (Screen.refreshRate)
     static double lastFrameTime;
     static std::vector<double> frameIntervals;
@@ -58,10 +63,10 @@ private:
     static EM_BOOL touch_callback(int emsc_type, const EmscriptenTouchEvent* emsc_event, void* user_data);
 
     static EM_BOOL canvas_resize(int eventType, const void *reserved, void *userData);
+    static EM_BOOL visibility_callback(int eventType, const EmscriptenVisibilityChangeEvent* e, void* userData);
     static EM_BOOL webgl_context_callback(int emsc_type, const void* reserved, void* user_data);
 
     static EM_BOOL renderLoop(double time, void* userdata);
-    static EM_BOOL visibility_callback(int eventType, const EmscriptenVisibilityChangeEvent* e, void* userData);
     static EM_BOOL focus_callback(int eventType, const EmscriptenFocusEvent* e, void* userData);
 
     static void unregisterCallbacks();
@@ -81,6 +86,7 @@ public:
     JasperEngineWeb();
 
     static void setEnabledIDB(bool enabledIDB);
+    static bool hasProjectStarted() { return projectStarted; }
 
     static int init(int argc, char **argv);
     static void changeCanvasSize(int width, int height);
@@ -122,11 +128,15 @@ public:
     virtual std::string getUserDataPath() override;
 
     virtual bool syncFileSystem() override;
+    virtual bool flushFileSystem() override;
     virtual bool isUserDataLoaded() override;
 
     virtual std::string getStringForKey(const char *key, const std::string& defaultValue) override;
     virtual void setStringForKey(const char* key, const std::string& value) override;
     virtual void removeKey(const char *key) override;
+    virtual bool hasKey(const char *key) override;
+    virtual void removeAllKeys() override;
+    virtual void saveUserSettings() override;
 
     // platform services (navigator, screen.orientation, the wake lock)
     virtual std::vector<std::string> getPreferredLocales() override;

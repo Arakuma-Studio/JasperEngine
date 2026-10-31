@@ -693,3 +693,10 @@ ambiguous or did not fit the code:
     when all four are allowed (unchanged from the first implementation, now documented).
 27. **Lead decision C:** the export changes for older projects are listed in the guide's "Upgrading"
     section (`docs/mcp/guide/platform-services.md`).
+28. **Merge with input and script-data:** `Engine::systemFocus(false)` calls `Input::releaseAll()`
+    (the input spec's hook for this feature); `systemPause` keeps both features' steps (audio,
+    `onApplicationPause`, `onPause`, then `Input::releaseAll()` and `UserSettings::save()`, after the
+    handlers so their settings are saved). Web: script-data starts the project after the IndexedDB
+    restore, so a visibility or focus change before that is remembered and applied at the start
+    (a pause would save `PlayerPrefs` over the ones not restored yet); the hidden-tab file sync of
+    script-data runs in the same visibility callback, after the pause.

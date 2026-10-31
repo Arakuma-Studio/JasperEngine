@@ -29,6 +29,8 @@
 #include "Generator.h"
 #include "Out.h"
 #include "Project.h"
+#include "command/type/InputActionsCmd.h"
+#include "input/InputActions.h"
 #include "registry/TagManager.h"
 #include "util/CxxStandards.h"
 #include "util/FileUtils.h"
@@ -1005,6 +1007,48 @@ Setting layerCollisionSetting(const std::string& key, bool is3D) {
     return s;
 }
 
+// Project Settings > Input: the input actions as one list, replaced whole (one undo step)
+Setting inputActionsSetting() {
+    Setting s;
+    s.key = "input.actions";
+    s.type = "list";
+    s.description =
+        "Project Settings > Input: the input actions (Unity's virtual axes and buttons) read by Input.getAxis / "
+        "getButton / getButtonDown. Each {name, type: axis|button, description?, press_point? (0.5), bindings: "
+        "[{kind: buttons, positive: [control names], negative: [...], gravity, sensitivity, dead, snap, invert, "
+        "gamepad: any|0-15} | {kind: gamepad_axis, axis: left_x..right_trigger, gamepad, dead, sensitivity, invert} "
+        "| {kind: mouse_delta, axis: x|y|wheel, sensitivity, invert}]}. Control names: a, space, left, left_shift, "
+        "kp_0, f1, mouse_left, gamepad_a, gamepad_dpad_up... (Unity spellings accepted). Setting it replaces the whole "
+        "list (get it first to add one); \"defaults\" restores Unity's 11 defaults. Undoable (undo scope project). "
+        "Details: jasper://docs/input.";
+    s.get = [](McpContext& ctx) {
+        return Json::parse(InputActions::actionsToJson(ctx.project()->getInputActions()))["actions"];
+    };
+    s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+        std::vector<InputAction> actions;
+        if (value.is_string() && value.get<std::string>() == "defaults") {
+            actions = InputActions::defaults();
+        } else if (!value.is_array()) {
+            error = "must be a list of actions [{name, type, bindings}, ...] or \"defaults\"";
+            return false;
+        } else if (!InputActions::parseActionsJson(value.dump(), actions, &error)) {
+            return false;
+        }
+        if (apply) {
+            Project* p = ctx.project();
+            if (InputActions::actionsToJson(actions) == InputActions::actionsToJson(p->getInputActions())) return true;
+            auto* command = new InputActionsCmd(p, p->getInputActions(), actions);
+            command->setNoMerge();
+            if (!p->getProjectCommandHistory()->addCommand(command)) {
+                error = "the input actions could not be applied";
+                return false;
+            }
+        }
+        return true;
+    };
+    return s;
+}
+
 const std::vector<Setting>& settingsTable() {
     static const std::vector<Setting> table = [] {
         std::vector<Setting> t;
@@ -1483,6 +1527,9 @@ const std::vector<Setting>& settingsTable() {
                         [](Project& p) { return p.isPhysics2DEnabled(); }, [](Project& p, bool v) { p.setPhysics2DEnabled(v); }));
         add(layerCollisionSetting("physics2d.layer_collision_matrix", false));
 
+        // ---- input
+        add(inputActionsSetting());
+
         // ---- scripting
         {
             Setting s;
@@ -1931,7 +1978,8 @@ void getProjectSettingsTool(const CallPtr& call) {
         for (const Setting& s : settingsTable()) {
             const std::string c = categoryOf(s.key);
             if (category.empty()) {
-                if (platformCategories().count(c)) continue;
+                // the platform overrides, and the input actions (long): asked for by name
+                if (platformCategories().count(c) || c == "input") continue;
             } else if (category != "all" && c != category) {
                 continue;
             }
@@ -1954,7 +2002,8 @@ void getProjectSettingsTool(const CallPtr& call) {
     Json data = {{"settings", values}};
     if (describe) data["describe"] = schema;
     if (!args.contains("keys") && args.value("category", "").empty()) {
-        data["note"] = "Platform overrides (web, linux, windows, macos, ios, android) are left out: pass category or keys.";
+        data["note"] = "Platform overrides (web, linux, windows, macos, ios, android) and input (input.actions) are left "
+                       "out: pass category or keys.";
     }
     call->ok(std::to_string(values.size()) + " setting(s).", data);
 }
@@ -2344,7 +2393,7 @@ void registerProjectTools(McpRegistry& registry) {
             "platform overrides. describe adds each key's type, allowed values, meaning.";
         tool.inputSchema = object({
             {"category", string("player, web, linux, windows, macos, ios, android, graphics, quality, physics, "
-                                "physics2d, scripting, editor, tags_and_layers, preferences or all.")},
+                                "physics2d, input, scripting, editor, tags_and_layers, preferences or all.")},
             {"keys", array(Json{{"type", "string"}}, "Keys or categories.")},
             {"describe", withDefault(boolean(""), false)}
         });

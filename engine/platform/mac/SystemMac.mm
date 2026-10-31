@@ -6,6 +6,7 @@
 #include "JasperEngineMac.h"
 #include "WindowMac.h"
 #include "MacTextInputClient.h"
+#include "io/FileUtils.h"
 
 #import <Foundation/Foundation.h>
 #import <AppKit/AppKit.h>
@@ -176,8 +177,22 @@ std::string SystemMac::getAssetPath() {
 #endif
 }
 
+// An export (the Exporter defines JASPERENGINE_APP_IDENTIFIER) saves per user, as an app may
+// not write inside its bundle: ~/Library/Application Support/<identifier>. Other builds (a
+// project run from outside the editor, engine tests) keep the working directory.
 std::string SystemMac::getUserDataPath() {
+#ifdef JASPERENGINE_APP_IDENTIFIER
+    static const std::string path = []() {
+        NSArray* paths = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES);
+        if ([paths count] == 0) return std::string(".");
+        NSString* dir = [[paths objectAtIndex:0] stringByAppendingPathComponent:[NSString stringWithUTF8String:JASPERENGINE_APP_IDENTIFIER]];
+        const std::string utf8 = [dir UTF8String];
+        return FileUtils::prepareUserDataFolder(utf8) ? utf8 : std::string(".");
+    }();
+    return path;
+#else
     return ".";
+#endif
 }
 
 std::string SystemMac::getCachePath() {

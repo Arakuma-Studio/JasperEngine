@@ -468,6 +468,8 @@
 		713D8299259D307F00567F9F /* ObjectRender.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC3E25962A0E0075B97D /* ObjectRender.cpp */; };
 		713D829A259D307F00567F9F /* TextureRender.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC4025962A0E0075B97D /* TextureRender.cpp */; };
 		713D829A2E76C00100567F9F /* ResourcePack.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC3A2E76C0010075B97D /* ResourcePack.cpp */; };
+		5CC9E205AA3764CEAD4ABCC2 /* UserSettingsStore.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5C54AE282489DD6AC04B6175 /* UserSettingsStore.cpp */; };
+		5C122ED62FB4CFAD67328432 /* FileUtils.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5C21F53CB3D46037B1261FCB /* FileUtils.cpp */; };
 		713D829B259D307F00567F9F /* BufferRender.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC4125962A0E0075B97D /* BufferRender.cpp */; };
 		713D829C259D307F00567F9F /* CameraRender.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC4225962A0E0075B97D /* CameraRender.cpp */; };
 		713D829D259D307F00567F9F /* Vector4.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC4925962A0E0075B97D /* Vector4.cpp */; };
@@ -570,6 +572,8 @@
 		7162FD1625963AE00075B97D /* Data.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC3225962A0E0075B97D /* Data.cpp */; };
 		7162FD1725963AE00075B97D /* UserSettings.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC3325962A0E0075B97D /* UserSettings.cpp */; };
 		7162FD172E76C0010075B97D /* ResourcePack.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC3A2E76C0010075B97D /* ResourcePack.cpp */; };
+		5C9F1E02FC1244659AE8FF2F /* UserSettingsStore.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5C54AE282489DD6AC04B6175 /* UserSettingsStore.cpp */; };
+		5C782C2BF7C44C085942DA42 /* FileUtils.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5C21F53CB3D46037B1261FCB /* FileUtils.cpp */; };
 		7162FD1925963AE00075B97D /* File.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC3525962A0E0075B97D /* File.cpp */; };
 		7162FD1A25963AE00075B97D /* FileData.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC3625962A0E0075B97D /* FileData.cpp */; };
 		7162FD1C25963AE00075B97D /* ShaderRender.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC3925962A0E0075B97D /* ShaderRender.cpp */; };
@@ -936,7 +940,9 @@
 		71ABBD362783C8BB001CE3AF /* Image.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71ABBD332783C8BB001CE3AF /* Image.cpp */; };
 		71ABBD382791167A001CE3AF /* UIComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 71ABBD372791167A001CE3AF /* UIComponent.h */; };
 		71ABBD3B279116E1001CE3AF /* UniqueToken.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71ABBD39279116E1001CE3AF /* UniqueToken.cpp */; };
+		5CBCD7CEA0A63F8787CE6391 /* NumberText.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5CCF882F793EA298742FA9B5 /* NumberText.cpp */; };
 		71ABBD3C279116E1001CE3AF /* UniqueToken.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71ABBD39279116E1001CE3AF /* UniqueToken.cpp */; };
+		5C4D00FB7B6647072A7B16CD /* NumberText.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5CCF882F793EA298742FA9B5 /* NumberText.cpp */; };
 		71ABBD3D279116E1001CE3AF /* UniqueToken.h in Headers */ = {isa = PBXBuildFile; fileRef = 71ABBD3A279116E1001CE3AF /* UniqueToken.h */; };
 		71ABBD4027A879B9001CE3AF /* MeshPolygonComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 71ABBD3E27A879B9001CE3AF /* MeshPolygonComponent.h */; };
 		71ABBD4127A879B9001CE3AF /* ButtonComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 71ABBD3F27A879B9001CE3AF /* ButtonComponent.h */; };
@@ -1180,7 +1186,9 @@
 		71F97B9B262D203E00CD6F2B /* libtinygltf-ios.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 71F97B85262D1FFE00CD6F2B /* libtinygltf-ios.a */; };
 		71FCE4BE28E0FA01003C5217 /* LuaFunction.h in Headers */ = {isa = PBXBuildFile; fileRef = 71FCE4BA28E0FA01003C5217 /* LuaFunction.h */; };
 		71FCE4BF28E0FA01003C5217 /* LuaFunctionBase.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71FCE4BB28E0FA01003C5217 /* LuaFunctionBase.cpp */; };
+		5C53A5D162D9C346844CB8CB /* LuaJson.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5C1D155A15509F2C1C2A0CA1 /* LuaJson.cpp */; };
 		71FCE4C028E0FA01003C5217 /* LuaFunctionBase.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71FCE4BB28E0FA01003C5217 /* LuaFunctionBase.cpp */; };
+		5C72896B6774821F58C7FFE8 /* LuaJson.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5C1D155A15509F2C1C2A0CA1 /* LuaJson.cpp */; };
 		71FCE4C128E0FA01003C5217 /* LuaFunctionBase.h in Headers */ = {isa = PBXBuildFile; fileRef = 71FCE4BC28E0FA01003C5217 /* LuaFunctionBase.h */; };
 		71FCE4C228E0FA01003C5217 /* LuaBridgeAddon.h in Headers */ = {isa = PBXBuildFile; fileRef = 71FCE4BD28E0FA01003C5217 /* LuaBridgeAddon.h */; };
 		71FCE4C528E0FA31003C5217 /* LuaBridge.h in Headers */ = {isa = PBXBuildFile; fileRef = 71FCE4C428E0FA31003C5217 /* LuaBridge.h */; };
@@ -3302,6 +3310,12 @@
 		4A534E473E6B9FE60C626734 /* MeshBufferPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D911C9CB4326E948 /* MeshBufferPool.cpp */; };
 		4A534E472437676B559FC859 /* MeshBufferPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D911C9CB4326E948 /* MeshBufferPool.cpp */; };
 		4A534E47693D678BC7B907E1 /* MeshBufferPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E2D854B4242EC2F5 /* MeshBufferPool.h */; };
+		4A534E47D17B678C8F81B040 /* InputActions.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4730DD301E6ACE24A9 /* InputActions.cpp */; };
+		4A534E47AC81945749605313 /* InputActions.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4730DD301E6ACE24A9 /* InputActions.cpp */; };
+		4A534E47A988705C5C005E19 /* InputControlNames.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473BE9FB7833EBA0DF /* InputControlNames.cpp */; };
+		4A534E479968450BA2CEF5BB /* InputControlNames.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E473BE9FB7833EBA0DF /* InputControlNames.cpp */; };
+		4A534E4749E3318561E17181 /* InputActions.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47DA77C1DF72E1D462 /* InputActions.h */; };
+		4A534E47CC9B5D8BFDD75814 /* InputControlNames.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4763010A7AB6271A0C /* InputControlNames.h */; };
 		4A534E478DC0E7CF8FAFBECF /* Screen.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4730D9EC2E29E781C3 /* Screen.cpp */; };
 		4A534E471D112E5B5C5C529F /* Screen.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4730D9EC2E29E781C3 /* Screen.cpp */; };
 		4A534E47A03D72D8121AA453 /* FrameLimiter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479C5DD9B218AA2CB9 /* FrameLimiter.cpp */; };
@@ -3313,6 +3327,7 @@
 		4A534E471F031487F33960F3 /* PlatformRules.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471B6ECBEB0A00EABD /* PlatformRules.cpp */; };
 		4A534E474B3E5336B343B76E /* PlatformRules.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471B6ECBEB0A00EABD /* PlatformRules.cpp */; };
 		4A534E4792C92F90213540FE /* Screen.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E471F33544BB442A466 /* Screen.h */; };
+		4A534E47D4879777C388C7A3 /* EdgeInsets.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477A428FAA7908B6A0 /* EdgeInsets.h */; };
 		4A534E471041FDE4DF7EF626 /* FrameLimiter.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47DB493E51DF771D1F /* FrameLimiter.h */; };
 		4A534E4745BC31F5DF7490B9 /* CanvasScalerRef.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E272DE30F6985277 /* CanvasScalerRef.h */; };
 		4A534E4748DA23385687367C /* TextEffects.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47ABFE3CB4E3CFD085 /* TextEffects.h */; };
@@ -4365,6 +4380,10 @@
 		7162FC392E76C0010075B97D /* ResourcePack.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ResourcePack.h; sourceTree = "<group>"; };
 		7162FC3A25962A0E0075B97D /* CameraRender.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CameraRender.h; sourceTree = "<group>"; };
 		7162FC3A2E76C0010075B97D /* ResourcePack.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ResourcePack.cpp; sourceTree = "<group>"; };
+		5C01EB43C4EED8CAA1894DD6 /* UserSettingsStore.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UserSettingsStore.h; sourceTree = "<group>"; };
+		5C54AE282489DD6AC04B6175 /* UserSettingsStore.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UserSettingsStore.cpp; sourceTree = "<group>"; };
+		5C64121142DAAC8CCA9FF7C5 /* FileUtils.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FileUtils.h; sourceTree = "<group>"; };
+		5C21F53CB3D46037B1261FCB /* FileUtils.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FileUtils.cpp; sourceTree = "<group>"; };
 		7162FC3B25962A0E0075B97D /* TextureRender.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TextureRender.h; sourceTree = "<group>"; };
 		7162FC3C25962A0E0075B97D /* ShaderRender.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ShaderRender.h; sourceTree = "<group>"; };
 		7162FC3D25962A0E0075B97D /* ObjectRender.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ObjectRender.h; sourceTree = "<group>"; };
@@ -5074,6 +5093,8 @@
 		71ABBD332783C8BB001CE3AF /* Image.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Image.cpp; sourceTree = "<group>"; };
 		71ABBD372791167A001CE3AF /* UIComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIComponent.h; sourceTree = "<group>"; };
 		71ABBD39279116E1001CE3AF /* UniqueToken.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UniqueToken.cpp; sourceTree = "<group>"; };
+		5C6FAE3BB4D17B2C210EC9EB /* NumberText.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NumberText.h; sourceTree = "<group>"; };
+		5CCF882F793EA298742FA9B5 /* NumberText.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = NumberText.cpp; sourceTree = "<group>"; };
 		71ABBD3A279116E1001CE3AF /* UniqueToken.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UniqueToken.h; sourceTree = "<group>"; };
 		71ABBD3E27A879B9001CE3AF /* MeshPolygonComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MeshPolygonComponent.h; sourceTree = "<group>"; };
 		71ABBD3F27A879B9001CE3AF /* ButtonComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ButtonComponent.h; sourceTree = "<group>"; };
@@ -5265,6 +5286,8 @@
 		71F97B85262D1FFE00CD6F2B /* libtinygltf-ios.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libtinygltf-ios.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		71FCE4BA28E0FA01003C5217 /* LuaFunction.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LuaFunction.h; sourceTree = "<group>"; };
 		71FCE4BB28E0FA01003C5217 /* LuaFunctionBase.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LuaFunctionBase.cpp; sourceTree = "<group>"; };
+		5CE4F17FDC667A00AD056E88 /* LuaJson.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LuaJson.h; sourceTree = "<group>"; };
+		5C1D155A15509F2C1C2A0CA1 /* LuaJson.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LuaJson.cpp; sourceTree = "<group>"; };
 		71FCE4BC28E0FA01003C5217 /* LuaFunctionBase.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LuaFunctionBase.h; sourceTree = "<group>"; };
 		71FCE4BD28E0FA01003C5217 /* LuaBridgeAddon.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LuaBridgeAddon.h; sourceTree = "<group>"; };
 		71FCE4C428E0FA31003C5217 /* LuaBridge.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LuaBridge.h; sourceTree = "<group>"; };
@@ -6688,12 +6711,17 @@
 		4A534E474C490B38DD8DB742 /* VertexAnimatorSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VertexAnimatorSystem.h; sourceTree = "<group>"; };
 		4A534E47D911C9CB4326E948 /* MeshBufferPool.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MeshBufferPool.cpp; sourceTree = "<group>"; };
 		4A534E47E2D854B4242EC2F5 /* MeshBufferPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MeshBufferPool.h; sourceTree = "<group>"; };
+		4A534E4730DD301E6ACE24A9 /* InputActions.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputActions.cpp; sourceTree = "<group>"; };
+		4A534E473BE9FB7833EBA0DF /* InputControlNames.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = InputControlNames.cpp; sourceTree = "<group>"; };
+		4A534E47DA77C1DF72E1D462 /* InputActions.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InputActions.h; sourceTree = "<group>"; };
+		4A534E4763010A7AB6271A0C /* InputControlNames.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InputControlNames.h; sourceTree = "<group>"; };
 		4A534E4730D9EC2E29E781C3 /* Screen.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Screen.cpp; sourceTree = "<group>"; };
 		4A534E479C5DD9B218AA2CB9 /* FrameLimiter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FrameLimiter.cpp; sourceTree = "<group>"; };
 		4A534E4781CB301F7B480963 /* TextEffects.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextEffects.cpp; sourceTree = "<group>"; };
 		4A534E47466B4A02C7A505EF /* CanvasScaler.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CanvasScaler.cpp; sourceTree = "<group>"; };
 		4A534E471B6ECBEB0A00EABD /* PlatformRules.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PlatformRules.cpp; sourceTree = "<group>"; };
 		4A534E471F33544BB442A466 /* Screen.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Screen.h; sourceTree = "<group>"; };
+		4A534E477A428FAA7908B6A0 /* EdgeInsets.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EdgeInsets.h; sourceTree = "<group>"; };
 		4A534E47DB493E51DF771D1F /* FrameLimiter.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FrameLimiter.h; sourceTree = "<group>"; };
 		4A534E47E272DE30F6985277 /* CanvasScalerRef.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CanvasScalerRef.h; sourceTree = "<group>"; };
 		4A534E47ABFE3CB4E3CFD085 /* TextEffects.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TextEffects.h; sourceTree = "<group>"; };
@@ -7980,6 +8008,17 @@
 			path = animation;
 			sourceTree = "<group>";
 		};
+		4A534E47BC50EC83811560AA /* input */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E4730DD301E6ACE24A9 /* InputActions.cpp */,
+				4A534E473BE9FB7833EBA0DF /* InputControlNames.cpp */,
+				4A534E47DA77C1DF72E1D462 /* InputActions.h */,
+				4A534E4763010A7AB6271A0C /* InputControlNames.h */,
+			);
+			path = input;
+			sourceTree = "<group>";
+		};
 		7162FC2A25962A0E0075B97D /* core */ = {
 			isa = PBXGroup;
 			children = (
@@ -8020,6 +8059,7 @@
 				4A534E476D14045E1B1B86B5 /* pose */,
 				4A534E472AD0C1A658CC6825 /* physics */,
 				4A534E477E49C8CF16ED0963 /* animation */,
+				4A534E47BC50EC83811560AA /* input */,
 				4A534E4730D9EC2E29E781C3 /* Screen.cpp */,
 				4A534E471F33544BB442A466 /* Screen.h */,
 			);
@@ -8064,6 +8104,8 @@
 				71FFE3FE2A369FE90089A6C9 /* ThreadUtils.h */,
 				71ABBD3A279116E1001CE3AF /* UniqueToken.h */,
 				71ABBD39279116E1001CE3AF /* UniqueToken.cpp */,
+				5C6FAE3BB4D17B2C210EC9EB /* NumberText.h */,
+				5CCF882F793EA298742FA9B5 /* NumberText.cpp */,
 				71393EE428F8EF9F0074442E /* XMLUtils.h */,
 				71393EE328F8EF9E0074442E /* XMLUtils.cpp */,
 				48544D4C0000000000000022 /* FontFace.h */,
@@ -8104,6 +8146,10 @@
 				7162FC3625962A0E0075B97D /* FileData.cpp */,
 				7162FC392E76C0010075B97D /* ResourcePack.h */,
 				7162FC3A2E76C0010075B97D /* ResourcePack.cpp */,
+				5C01EB43C4EED8CAA1894DD6 /* UserSettingsStore.h */,
+				5C54AE282489DD6AC04B6175 /* UserSettingsStore.cpp */,
+				5C64121142DAAC8CCA9FF7C5 /* FileUtils.h */,
+				5C21F53CB3D46037B1261FCB /* FileUtils.cpp */,
 				7162FC3425962A0E0075B97D /* UserSettings.h */,
 				7162FC3325962A0E0075B97D /* UserSettings.cpp */,
 			);
@@ -8233,6 +8279,7 @@
 				7162FC4A25962A0E0075B97D /* Vector3.cpp */,
 				7162FC5725962A0E0075B97D /* Vector4.h */,
 				7162FC4925962A0E0075B97D /* Vector4.cpp */,
+				4A534E477A428FAA7908B6A0 /* EdgeInsets.h */,
 			);
 			path = math;
 			sourceTree = "<group>";
@@ -9467,6 +9514,8 @@
 				71FCE4BA28E0FA01003C5217 /* LuaFunction.h */,
 				71FCE4BC28E0FA01003C5217 /* LuaFunctionBase.h */,
 				71FCE4BB28E0FA01003C5217 /* LuaFunctionBase.cpp */,
+				5CE4F17FDC667A00AD056E88 /* LuaJson.h */,
+				5C1D155A15509F2C1C2A0CA1 /* LuaJson.cpp */,
 				71BE623025B1DB9D006D6E02 /* LuaScript.h */,
 				71BE622F25B1DB9D006D6E02 /* LuaScript.cpp */,
 				71AD5E6D2E9F2B86004951AB /* ScriptBase.h */,
@@ -11956,7 +12005,10 @@
 				4A534E471E767D9BE2C4AF8A /* CpuSkin.h in Headers */,
 				4A534E47348D45F4BBD323C9 /* VertexAnimatorSystem.h in Headers */,
 				4A534E47693D678BC7B907E1 /* MeshBufferPool.h in Headers */,
+				4A534E4749E3318561E17181 /* InputActions.h in Headers */,
+				4A534E47CC9B5D8BFDD75814 /* InputControlNames.h in Headers */,
 				4A534E4792C92F90213540FE /* Screen.h in Headers */,
+				4A534E47D4879777C388C7A3 /* EdgeInsets.h in Headers */,
 				4A534E471041FDE4DF7EF626 /* FrameLimiter.h in Headers */,
 				4A534E4745BC31F5DF7490B9 /* CanvasScalerRef.h in Headers */,
 				4A534E4748DA23385687367C /* TextEffects.h in Headers */,
@@ -13654,10 +13706,13 @@
 				71651FF72AA804B4008D9BF5 /* Manifold2D.cpp in Sources */,
 				713D8294259D307F00567F9F /* Data.cpp in Sources */,
 				713D829A2E76C00100567F9F /* ResourcePack.cpp in Sources */,
+				5CC9E205AA3764CEAD4ABCC2 /* UserSettingsStore.cpp in Sources */,
+				5C122ED62FB4CFAD67328432 /* FileUtils.cpp in Sources */,
 				71E8248D2A9C23A600C8E6F2 /* Joint2D.cpp in Sources */,
 				71451BBF270CA16200712643 /* ActionSystem.cpp in Sources */,
 				71BE623D25B1DB9E006D6E02 /* LuaScript.cpp in Sources */,
 				71ABBD3C279116E1001CE3AF /* UniqueToken.cpp in Sources */,
+				5C4D00FB7B6647072A7B16CD /* NumberText.cpp in Sources */,
 				71CC83A726B8C54A00EEBB93 /* ShaderData.cpp in Sources */,
 				7181A0B12BC8B6CB00AC230B /* Panel.cpp in Sources */,
 				71CC839626B8C4D800EEBB93 /* Light.cpp in Sources */,
@@ -13689,6 +13744,7 @@
 				71451BD8270CA17F00712643 /* ColorTween.cpp in Sources */,
 				713D829C259D307F00567F9F /* CameraRender.cpp in Sources */,
 				71FCE4C028E0FA01003C5217 /* LuaFunctionBase.cpp in Sources */,
+				5C72896B6774821F58C7FFE8 /* LuaJson.cpp in Sources */,
 				71451BE5270CA17F00712643 /* Action.cpp in Sources */,
 				71165BC0282981BE00CF79C1 /* Base64.cpp in Sources */,
 				713D829D259D307F00567F9F /* Vector4.cpp in Sources */,
@@ -14007,6 +14063,8 @@
 				4A534E4759966A2ED417BECD /* CpuSkin.cpp in Sources */,
 				4A534E474B1E43D590AD23B0 /* VertexAnimatorSystem.cpp in Sources */,
 				4A534E473E6B9FE60C626734 /* MeshBufferPool.cpp in Sources */,
+				4A534E47D17B678C8F81B040 /* InputActions.cpp in Sources */,
+				4A534E47A988705C5C005E19 /* InputControlNames.cpp in Sources */,
 				4A534E478DC0E7CF8FAFBECF /* Screen.cpp in Sources */,
 				4A534E47A03D72D8121AA453 /* FrameLimiter.cpp in Sources */,
 				4A534E47C144534CF4FEA79E /* TextEffects.cpp in Sources */,
@@ -14086,6 +14144,7 @@
 				71451BBE270CA16200712643 /* ActionSystem.cpp in Sources */,
 				71BE623C25B1DB9E006D6E02 /* LuaScript.cpp in Sources */,
 				71ABBD3B279116E1001CE3AF /* UniqueToken.cpp in Sources */,
+				5CBCD7CEA0A63F8787CE6391 /* NumberText.cpp in Sources */,
 				71CC83A626B8C54A00EEBB93 /* ShaderData.cpp in Sources */,
 				7181A0B02BC8B6CB00AC230B /* Panel.cpp in Sources */,
 				71CC839526B8C4D800EEBB93 /* Light.cpp in Sources */,
@@ -14109,6 +14168,8 @@
 				717AD98E29211976007D7DB5 /* LayoutGroup.cpp in Sources */,
 				7162FD1625963AE00075B97D /* Data.cpp in Sources */,
 				7162FD172E76C0010075B97D /* ResourcePack.cpp in Sources */,
+				5C9F1E02FC1244659AE8FF2F /* UserSettingsStore.cpp in Sources */,
+				5C782C2BF7C44C085942DA42 /* FileUtils.cpp in Sources */,
 				7162FD1725963AE00075B97D /* UserSettings.cpp in Sources */,
 				71C33FB72A315878007A5822 /* Mesh.cpp in Sources */,
 				71CC839B26B8C4FD00EEBB93 /* FramebufferRender.cpp in Sources */,
@@ -14118,6 +14179,7 @@
 				71451BD7270CA17F00712643 /* ColorTween.cpp in Sources */,
 				7162FD2125963AE00075B97D /* ObjectRender.cpp in Sources */,
 				71FCE4BF28E0FA01003C5217 /* LuaFunctionBase.cpp in Sources */,
+				5C53A5D162D9C346844CB8CB /* LuaJson.cpp in Sources */,
 				71451BE4270CA17F00712643 /* Action.cpp in Sources */,
 				71165BBF282981BE00CF79C1 /* Base64.cpp in Sources */,
 				7162FD2325963AE00075B97D /* TextureRender.cpp in Sources */,
@@ -14436,6 +14498,8 @@
 				4A534E47641FBAF4D870EBAF /* CpuSkin.cpp in Sources */,
 				4A534E47A95FB7E661773FC4 /* VertexAnimatorSystem.cpp in Sources */,
 				4A534E472437676B559FC859 /* MeshBufferPool.cpp in Sources */,
+				4A534E47AC81945749605313 /* InputActions.cpp in Sources */,
+				4A534E479968450BA2CEF5BB /* InputControlNames.cpp in Sources */,
 				4A534E471D112E5B5C5C529F /* Screen.cpp in Sources */,
 				4A534E47B6B13162C6157931 /* FrameLimiter.cpp in Sources */,
 				4A534E4702A81B13C975CC0E /* TextEffects.cpp in Sources */,
