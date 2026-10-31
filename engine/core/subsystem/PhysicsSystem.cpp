@@ -3873,8 +3873,6 @@ void PhysicsSystem::fixedUpdate(double dt){
         syncLayerCollisionMatrix2D();
         // a material asset or a script's PhysicsMaterial changed
         syncMaterials2D();
-        // Physics2D.ignoreCollision pairs whose body was made again
-        syncIgnoredPairs2D();
 
         if (bodies2d->size() > 0){
             // LOCAL motor joints: their offset follows bodyA's angle
@@ -3898,6 +3896,14 @@ void PhysicsSystem::fixedUpdate(double dt){
             refreshRigidbody2DLayer(pendingLayerRefresh2D[i]);
         }
         pendingLayerRefresh2D.clear();
+        // Physics2D.ignoreCollision changed by callbacks inside the step
+        if (!pendingRefilter2D.empty()){
+            std::vector<Entity> refilter;
+            refilter.swap(pendingRefilter2D);
+            for (Entity entity : refilter){
+                repairBody2D(entity);
+            }
+        }
 
         b2BodyEvents events = b2World_GetBodyEvents(world2D);
         for (int i = 0; i < events.moveCount; ++i){

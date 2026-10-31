@@ -17,8 +17,10 @@
 #include "script/ScriptBase.h"
 #include "script/ScriptMessages.h"
 #include "subsystem/PhysicsSystem.h"
+#include "box2d/box2d.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <cmath>
 #include <functional>
 #include <map>
@@ -588,11 +590,16 @@ TEST_F(PhysicsContactsTest, CallbackOrderIsDeterministic) {
         buildManyBodies(this, scene, [&](const std::string& name, const Vector3& position, bool listens) {
             return body3D(name, position, BodyType::DYNAMIC, {sphere(0.5f)}, false, listens ? "Contacts" : nullptr);
         });
+        // activations come from every job thread: delivered in body order
+        lua("local ps = testScene:getPhysicsSystem()\n"
+            "ps.onBodyActivated3D = function(b) log[#log + 1] = 'ACT:' .. b.name .. ':x:0:0@' .. step end\n"
+            "ps.onBodyDeactivated3D = function(b) log[#log + 1] = 'DEACT:' .. b.name .. ':x:0:0@' .. step end\n");
         start();
-        run(90);
+        run(150);
         logs[run_] = log();
     }
     EXPECT_FALSE(logs[0].empty());
+    EXPECT_NE(logs[0].find("ACT:"), std::string::npos) << "activations were delivered";
     EXPECT_EQ(logs[0], logs[1]);
 }
 
@@ -829,6 +836,89 @@ TEST_F(PhysicsContactsTest, CallbacksFollowTheFixedSteps) {
     EXPECT_NEAR(count("Ball", "CS"), 20, 1) << "4 rounds a frame";
 }
 
+// review 1: Physics2D.ignoreCollision ends a touching pair (Exit, the body falls through),
+// un-ignoring re-pairs overlapping resting bodies, and no joint ties the bodies' islands
+TEST_F(PhysicsContactsTest, Ignore2DSeparatesTouchingAndRepairs) {
+    const Entity ground = body2D("Floor", Vector3(0, 0, 0), BodyType::STATIC);
+    box2D(ground, 1000, 64);
+    const Entity crate = body2D("Box", Vector3(0, 70, 0), BodyType::DYNAMIC, "Contacts");
+    box2D(crate, 64, 64);
+    const Entity rest = body2D("Rest", Vector3(300, 40, 0), BodyType::DYNAMIC, "Contacts");
+    box2D(rest, 64, 64);
+    scene->getComponent<Rigidbody2DComponent>(rest).gravityScale = 0.0f;
+    lua("Physics2D.ignoreCollision(" + go(rest) + ", " + go(ground) + ")");
+    start();
+    run(90);
+    EXPECT_EQ(sequence("Box"), "CE2");
+    EXPECT_EQ(sequence("Rest"), "") << "ignored before it started";
+
+    lua("Physics2D.ignoreCollision(" + go(crate) + ", " + go(ground) + ")");
+    EXPECT_EQ(lua("return tostring(Physics2D.getIgnoreCollision(" + go(ground) + ", " + go(crate) + "))"), "true");
+    run(60);
+    EXPECT_EQ(sequence("Box"), "CE2 CX2") << "the resting pair ends";
+    EXPECT_LT(scene->getComponent<Transform>(crate).worldPosition.y, -50.0f) << "it fell through the floor";
+    EXPECT_EQ(sequence("Floor"), "");
+    EXPECT_EQ(b2Body_GetJointCount(scene->getComponent<Rigidbody2DComponent>(crate).body), 0) << "a filter, not a joint";
+
+    // the resting overlapping body touches again when un-ignored, asleep or not
+    lua("Physics2D.ignoreCollision(" + go(rest) + ", " + go(ground) + ", false)");
+    run(5);
+    EXPECT_EQ(sequence("Rest"), "CE2");
+}
+
+// review 2: the departing GameObject destroyed again by the Exit its own destruction sends: no
+// second destroy (a bullet leaving its bounds trigger)
+TEST_F(PhysicsContactsTest, DestroyAgainInsideItsOwnExitIsANoOp) {
+    writeScript("Bounds", std::string(LOGGER_LUA) +
+        "local base = M.onTriggerExit\n"
+        "function M:onTriggerExit(o) base(self, o); GameObject.destroyImmediate(o.gameObject); GameObject.destroy(o.gameObject) end\n"
+        "return M\n");
+    body3D("Bounds", Vector3(0, 0, 0), BodyType::STATIC, {box(10, 10, 10)}, true, "Bounds");
+    const Entity bullet = body3D("Bullet", Vector3(0, 0, 0), BodyType::DYNAMIC, {sphere(0.2f)}, false, "Contacts");
+    const Entity child = entity(scene, "Spark", bullet);
+    scene->getComponent<RigidbodyComponent>(bullet).gravityFactor = 0.0f;
+    start();
+    run(5);
+    lua("GameObject.destroyImmediate(" + go(bullet) + ")");
+    run(5);
+    EXPECT_FALSE(scene->isEntityCreated(bullet));
+    EXPECT_FALSE(scene->isEntityCreated(child));
+    EXPECT_EQ(sequence("Bounds"), "TE TX");
+    EXPECT_EQ(of("Bounds", "TX")[0].other, "Bullet");
+}
+
+// review 3: a global handler destroying a body immediately: the per-object callbacks never see
+// the pair (no Enter, no orphan Exit)
+TEST_F(PhysicsContactsTest, GlobalHandlerDestroyLeavesNoOrphanExit) {
+    floor3D("Contacts");
+    body3D("Ball", Vector3(0, 1, 0), BodyType::DYNAMIC, {sphere(0.5f)}, false, "Contacts");
+    lua("testScene:getPhysicsSystem().onContactAdded3D = function(a, b)\n"
+        "  for _, body in ipairs({a, b}) do if body.name == 'Ball' then GameObject.destroyImmediate(GameObject(testScene, body.entity)) end end\n"
+        "end\n");
+    start();
+    run(90);
+    EXPECT_EQ(sequence("Floor"), "");
+    EXPECT_EQ(sequence("Ball"), "");
+    EXPECT_TRUE(physics()->getContactTracker3D().getPairs().empty());
+}
+
+// review 6: removeAllColliders on a touching 2D body: the queued Exit names an invalid collider
+TEST_F(PhysicsContactsTest, RemoveAllColliders2DExitsWithAnInvalidIndex) {
+    const Entity ground = body2D("Floor", Vector3(0, 0, 0), BodyType::STATIC);
+    box2D(ground, 1000, 64);
+    const Entity crate = body2D("Box", Vector3(0, 70, 0), BodyType::DYNAMIC, "Contacts");
+    box2D(crate, 64, 64);
+    start();
+    run(60);
+    Rigidbody2D(scene, crate).removeAllColliders();
+    Rigidbody2D(scene, crate).createCenteredBoxCollider(64, 64);
+    run(3);
+    const std::vector<Event> exits = of("Box", "CX2");
+    ASSERT_EQ(exits.size(), 1u) << sequence("Box");
+    EXPECT_EQ(exits[0].thisIndex, -1) << "the removed collider, not the new collider 0";
+    EXPECT_EQ(count("Box", "CE2"), 2) << "the new collider touches: an Enter of its own";
+}
+
 // spec 8: 500 boxes on a floor, 10 listening: the contact work after the step stays under 5%
 // of the step; with no listener it is nothing
 TEST_F(PhysicsContactsTest, ContactProcessingCostIsSmall) {
@@ -869,6 +959,9 @@ TEST_F(PhysicsContactsTest, ContactProcessingCostIsSmall) {
             }
         }
         ASSERT_GT(step, 0.0);
+        // the job-thread side is inside the step: the numbers of both runs for the notes
+        std::printf("[cost] %d listeners: step %.3f ms, after the step %.3f ms (60 steps, best of 3)\n",
+                    listeners, step * 1000.0, contacts * 1000.0);
         if (listeners) {
             EXPECT_LT(contacts, step * 0.05) << "step " << step << " s, contacts " << contacts << " s";
             EXPECT_GE(number("stays"), 10.0 * 180) << "10 listeners, a Stay each step";

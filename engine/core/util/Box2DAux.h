@@ -119,7 +119,13 @@ namespace jasperengine{
             Entity entityA = reinterpret_cast<uintptr_t>(b2Body_GetUserData(bodyIdA));
             Entity entityB = reinterpret_cast<uintptr_t>(b2Body_GetUserData(bodyIdB));
 
-            return scene->getSystem<PhysicsSystem>()->shouldCollide2D.callRet(Rigidbody2D(scene, entityA), shapeIndexA, Rigidbody2D(scene, entityB), shapeIndexB, true);
+            // Physics2D.ignoreCollision
+            std::shared_ptr<PhysicsSystem> physics = scene->getSystem<PhysicsSystem>();
+            if (physics->isIgnoredPair2D(entityA, entityB)){
+                return false;
+            }
+
+            return physics->shouldCollide2D.callRet(Rigidbody2D(scene, entityA), shapeIndexA, Rigidbody2D(scene, entityB), shapeIndexB, true);
         }
 
         static bool PreSolve(b2ShapeId shapeIdA, b2ShapeId shapeIdB, b2Manifold* manifold, void* context){

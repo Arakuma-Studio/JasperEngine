@@ -612,7 +612,9 @@ namespace jasperengine{
                 Rigidbody body1(scene, PhysicsCallbacks::bodyEntity(inBody1.GetUserData()));
                 Rigidbody body2(scene, PhysicsCallbacks::bodyEntity(inBody2.GetUserData()));
                 Contact3D live(scene, &inBody1, &inBody2, &inManifold, &ioSettings);
-                physicsSystem->onContactModify3D(body1, body2, live);
+                // concurrently on every job thread: no crash guard (its signal handlers are
+                // process-wide), no lock; the subscribers' contract (PhysicsSystem.h)
+                physicsSystem->onContactModify3D.callDirect(body1, body2, live);
             }
 
             FunctionSubscribe<void(Rigidbody, Rigidbody, Contact3D)>& event = (kind == RawContact3D::Added) ? physicsSystem->onContactAdded3D : physicsSystem->onContactPersisted3D;

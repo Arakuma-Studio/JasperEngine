@@ -545,7 +545,7 @@ void PhysicsSystem::contactBodyRemoved2D(Entity entity){
         }
     }
     for (auto it = ignoredPairs2D.begin(); it != ignoredPairs2D.end();){
-        it = (it->first.first == entity || it->first.second == entity) ? ignoredPairs2D.erase(it) : std::next(it);
+        it = (it->first == entity || it->second == entity) ? ignoredPairs2D.erase(it) : std::next(it);
     }
 
     const std::vector<ContactTracker::Pair> pairs = contactTracker2D.removeEntity(entity);
@@ -595,67 +595,30 @@ bool PhysicsSystem::setIgnoreCollision2D(Entity a, Entity b, bool ignore){
         return false;
     }
     const std::pair<Entity, Entity> key = (a < b) ? std::make_pair(a, b) : std::make_pair(b, a);
-    auto found = ignoredPairs2D.find(key);
-    if (ignore){
-        if (found == ignoredPairs2D.end()){
-            ignoredPairs2D[key] = b2_nullJointId;
-            if (!steppingWorld2D){
-                syncIgnoredPairs2D();
-            }
-        }
-    }else if (found != ignoredPairs2D.end()){
-        const b2JointId joint = found->second;
-        ignoredPairs2D.erase(found);
-        if (b2Joint_IsValid(joint)){
-            if (steppingWorld2D){
-                // Box2D is locked: the joint goes before the next step
-                pendingUnignoreJoints2D.push_back(joint);
-            }else{
-                destroyIgnoreJoint2D(joint);
-            }
-        }
+    const bool changed = ignore ? ignoredPairs2D.insert(key).second : ignoredPairs2D.erase(key) > 0;
+    if (changed){
+        // Box2D filters a pair when it is made: drop both bodies' contacts and pair them again
+        // (touching ones end, with their Exit; overlapping ones are found again when un-ignored)
+        repairBody2D(a);
+        repairBody2D(b);
     }
     return true;
 }
 
 bool PhysicsSystem::getIgnoreCollision2D(Entity a, Entity b) const{
-    const std::pair<Entity, Entity> key = (a < b) ? std::make_pair(a, b) : std::make_pair(b, a);
-    return ignoredPairs2D.count(key) > 0;
+    return isIgnoredPair2D(a, b);
 }
 
-void PhysicsSystem::destroyIgnoreJoint2D(b2JointId joint){
-    if (!b2Joint_IsValid(joint)){
+void PhysicsSystem::repairBody2D(Entity entity){
+    const Rigidbody2DComponent* body = scene->findComponent<Rigidbody2DComponent>(entity);
+    if (!body || !b2Body_IsValid(body->body)){
         return;
     }
-    const b2BodyId bodyA = b2Joint_GetBodyA(joint);
-    const b2BodyId bodyB = b2Joint_GetBodyB(joint);
-    b2DestroyJoint(joint);
-    // resting pairs look for each other again
-    if (b2Body_GetType(bodyA) != b2_staticBody) b2Body_SetAwake(bodyA, true);
-    if (b2Body_GetType(bodyB) != b2_staticBody) b2Body_SetAwake(bodyB, true);
-}
-
-// A null joint (no constraint, collideConnected false) keeps the bodies' shapes from pairing;
-// made again when a body is (a rebuild destroys its joints)
-void PhysicsSystem::syncIgnoredPairs2D(){
-    for (const b2JointId& joint : pendingUnignoreJoints2D){
-        destroyIgnoreJoint2D(joint);
+    if (steppingWorld2D){
+        pendingRefilter2D.push_back(entity);
+        return;
     }
-    pendingUnignoreJoints2D.clear();
-    for (auto& [key, joint] : ignoredPairs2D){
-        if (b2Joint_IsValid(joint)){
-            continue;
-        }
-        const Rigidbody2DComponent* bodyA = scene->findComponent<Rigidbody2DComponent>(key.first);
-        const Rigidbody2DComponent* bodyB = scene->findComponent<Rigidbody2DComponent>(key.second);
-        if (!bodyA || !bodyB || !b2Body_IsValid(bodyA->body) || !b2Body_IsValid(bodyB->body)){
-            continue;
-        }
-        b2NullJointDef def = b2DefaultNullJointDef();
-        def.bodyIdA = bodyA->body;
-        def.bodyIdB = bodyB->body;
-        joint = b2CreateNullJoint(world2D, &def);
-    }
+    refilterShapes2D(body->body, true, -1);
 }
 
 std::vector<ContactSummary> PhysicsSystem::getContactSummary2D(Entity entity){
@@ -965,6 +928,10 @@ void PhysicsSystem::processContacts3D(){
     // persisted, removed, each in body id order.
     std::vector<RawActivation3D> activations;
     contactRecorder3D->takeActivations(activations);
+    // the job threads pushed them in any order
+    std::stable_sort(activations.begin(), activations.end(), [](const RawActivation3D& x, const RawActivation3D& y){
+        return x.body < y.body;
+    });
     for (const RawActivation3D& activation : activations){
         if (rigidbodyOf(scene, activation.entity)){
             (activation.activated ? onBodyActivated3D : onBodyDeactivated3D)(Rigidbody(scene, activation.entity));
@@ -990,6 +957,12 @@ void PhysicsSystem::processContacts3D(){
     for (const RawContact3D& raw : raws){
         const uint16_t wanted = raw.sensor ? PhysicsCallbacks::TRIGGER_3D : PhysicsCallbacks::COLLISION_3D;
         if (raw.kind == RawContact3D::Removed || !((raw.mask1 | raw.mask2) & wanted)){
+            continue;
+        }
+        // a body a global handler above destroyed or made again (its exits were sent then)
+        const RigidbodyComponent* body1 = rigidbodyOf(scene, raw.entity1);
+        const RigidbodyComponent* body2 = rigidbodyOf(scene, raw.entity2);
+        if (!body1 || !body2 || body1->body != raw.body1 || body2->body != raw.body2){
             continue;
         }
         const ColliderKey key1{raw.entity1, raw.collider1};

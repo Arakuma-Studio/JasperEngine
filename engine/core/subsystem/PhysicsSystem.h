@@ -35,6 +35,7 @@
 #include "object/physics/Collision2D.h"
 
 #include <map>
+#include <set>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -111,10 +112,10 @@ namespace jasperengine{
 		// collider pairs of the per-object callbacks
 		std::shared_ptr<ContactState2D> contacts2D;
 		ContactTracker contactTracker2D;
-		// Physics2D.ignoreCollision: the body pairs and the null joint that keeps them apart
-		std::map<std::pair<Entity, Entity>, b2JointId> ignoredPairs2D;
-		// null joints of pairs no longer ignored, destroyed after the step that locked Box2D
-		std::vector<b2JointId> pendingUnignoreJoints2D;
+		// Physics2D.ignoreCollision: the body pairs Box2DAux::CollisionFilter refuses, and the
+		// bodies to re-pair after a step that locked Box2D (their contacts made again)
+		std::set<std::pair<Entity, Entity>> ignoredPairs2D;
+		std::vector<Entity> pendingRefilter2D;
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
 		bool lock3DBodies;
@@ -216,8 +217,8 @@ namespace jasperengine{
 		// The Box2D event flags of a collider's shapes: authored, or a listener asks for them
 		bool applyShapeEventFlags2D(const Collider2D& collider, uint16_t mask, b2ShapeId shape) const;
 		void refreshListenerMask2D(Entity entity, Rigidbody2DComponent& body);
-		void syncIgnoredPairs2D();
-		void destroyIgnoreJoint2D(b2JointId joint);
+		// drops the body's contacts and pairs its shapes again (an ignore change), or after the step
+		void repairBody2D(Entity entity);
 
 		// Re-pairs the shapes on layers whose matrix row changed since the last step
 		void syncLayerCollisionMatrix2D();
@@ -348,6 +349,10 @@ namespace jasperengine{
 		// made again when a body is); runtime only. False if either has no Rigidbody 2D.
 		bool setIgnoreCollision2D(Entity a, Entity b, bool ignore);
 		bool getIgnoreCollision2D(Entity a, Entity b) const;
+		// the custom filter's test (inside the step, from Box2D)
+		bool isIgnoredPair2D(Entity a, Entity b) const{
+			return !ignoredPairs2D.empty() && ignoredPairs2D.count(a < b ? std::make_pair(a, b) : std::make_pair(b, a)) > 0;
+		}
 		// A collider of the entity was removed: its pairs end at the next step, the indices of
 		// the later ones shift down (removeCollider2D)
 		void contactColliderRemoved2D(Entity entity, size_t index);
@@ -446,7 +451,10 @@ namespace jasperengine{
 
 		// C++ only (not in Lua): every added or persisted manifold, inside the step on Jolt's
 		// job threads, with a live Contact3D whose setters work (friction for conveyor belts,
-		// sensor overrides). Subscribers must be thread-safe and must not touch the scene.
+		// sensor overrides). Called on several threads at once, without a lock and without the
+		// crash guard: subscribers must be thread-safe, must not call the engine, the scene or
+		// Lua (read the two Rigidbody handles' entities and the contact only), must not throw,
+		// and must be added / removed outside the step.
 		FunctionSubscribe<void(Rigidbody, Rigidbody, Contact3D&)> onContactModify3D;
 #endif
 

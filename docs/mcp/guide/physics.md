@@ -327,8 +327,8 @@ At most 4 contact points per 3D manifold and 2 per Box2D shape pair, 8 per colli
 collider or a concave polygon merges its pieces'). 2D impulses are Box2D's of the step; 3D ones
 are estimates. A contact disabled by `preSolve2D` is not touching (Exit, then Enter when enabled).
 
-**Cost.** Only bodies whose scripts (or receivers) define a method are recorded; the rest cost
-nothing. Agents: `get_runtime_entity` lists `physics.contacts` (other, collider indices, trigger,
+**Cost.** Only bodies whose scripts (or receivers) define a method are recorded; the rest are
+never recorded (one mask test per contact on Jolt's job threads). Agents: `get_runtime_entity` lists `physics.contacts` (other, collider indices, trigger,
 `since_step`, asleep) and `physics.callbacks` (the methods found, with their scripts); the
 Inspector shows the same under each body in Play.
 

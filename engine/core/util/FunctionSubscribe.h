@@ -334,6 +334,24 @@ namespace jasperengine {
             return removed;
         }
 
+        // Every live subscriber, without the crash guard (process-wide signal handlers: not for
+        // callers on several threads at once, as Jolt's job threads are). Void events only.
+        void callDirect(Args... args){
+            static_assert(std::is_void<Ret>::value, "callDirect is for void events");
+            if (!enabled){
+                return;
+            }
+            const std::shared_ptr<const SubscriberList> list = subscribers;
+            if (!list){
+                return;
+            }
+            for (const auto& subscriber : *list){
+                if (!subscriber->removed){
+                    subscriber->function(args...);
+                }
+            }
+        }
+
         Ret call(Args... args){
             if (!enabled){
                 if constexpr (!std::is_void<Ret>::value) {
