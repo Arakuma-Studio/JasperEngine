@@ -22887,6 +22887,7 @@
    "icon": "ef8097",
    "key": "tween",
    "known_keys": [
+    "curve",
     "duration",
     "function",
     "loop",
@@ -22894,6 +22895,11 @@
    ],
    "name": "TweenComponent",
    "properties_of_default": {
+    "curve": [
+     20,
+     0,
+     true
+    ],
     "duration": [
      2,
      0,
@@ -22916,6 +22922,11 @@
     ]
    },
    "properties_without_component": {
+    "curve": [
+     20,
+     0,
+     true
+    ],
     "duration": [
      2,
      0,
@@ -30448,7 +30459,7 @@
      true
     ],
     "falloff": [
-     15,
+     20,
      0,
      false
     ],
@@ -30505,7 +30516,7 @@
      true
     ],
     "falloff": [
-     15,
+     20,
      0,
      false
     ],
@@ -34744,6 +34755,11 @@
    30,
    "bounce_in_out",
    "Bounce In Out"
+  ],
+  [
+   33,
+   "curve",
+   "Curve"
   ]
  ],
  "fixture_properties": {
@@ -34782,6 +34798,11 @@
    ]
   },
   "AnimationComponent": {
+   "actions[N].action": [
+    16,
+    0,
+    true
+   ],
    "defaultFadeTime": [
     2,
     0,
@@ -35844,7 +35865,7 @@
     true
    ],
    "falloff": [
-    15,
+    20,
     0,
     false
    ],
@@ -40129,6 +40150,11 @@
    ]
   },
   "TweenComponent": {
+   "curve": [
+    20,
+    0,
+    true
+   ],
    "duration": [
     2,
     0,
@@ -40658,7 +40684,8 @@
     "BOUNCE_OUT",
     "BOUNCE_IN_OUT",
     "STEP",
-    "CUSTOM"
+    "CUSTOM",
+    "CURVE"
    ]
   },
   "FogColorMode": {
