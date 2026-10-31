@@ -569,6 +569,8 @@ What the implementation does differently from the text above, and why.
   it, else the element's `volume`; no 3D panning there.
 - `audioOutputMode = AudioSource` takes the AudioSource's volume and 3D position/attenuation; there is no mixer
   bus yet (`audio-mixer` #6 has not landed on this branch's base; the bus follows when it does).
+- Importing (import_files, the Project window): an MP4/MOV some platform plays is copied as it is; a WebM of
+  another codec than AV1 (VP9) is still converted to AV1 + Opus as in phase 6, since Apple decodes no VP9.
 - A VP9 + Opus WebM on a platform without a VP9 decoder plays its sound only (as before this feature, through
   the software path), with the video error reported; the spec did not cover this mixed case.
 - `get_entity` / `get_runtime_entity` add `video` once the player opened something (prepared, preparing or
