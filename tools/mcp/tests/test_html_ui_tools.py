@@ -123,8 +123,9 @@ LIMITS.update({"create_ragdoll": 900})
 # merged by the lead (ui-canvas-group, physics-3d, http): 151 tools measured 107626 on the merged tree
 # camera-shake (camerashaker/camerafollow component types, get_runtime_entity's shake/follow state,
 # .shake assets) on the tree merged with gaps/coroutines and main (persistence, ui-canvas-group,
-# physics-3d, http): 151 tools, total MEASURED (tool_budget.py), the limit set to it
-TOTAL_LIMIT = 107626
+# physics-3d, http): 151 tools, total 107717 (tool_budget.py; get_play_state names both the coroutine
+# and timer counts and the http block), the limit set to it
+TOTAL_LIMIT = 107717
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
