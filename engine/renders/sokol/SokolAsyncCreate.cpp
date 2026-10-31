@@ -676,8 +676,11 @@ namespace {
         // NVIDIA's is none (its glLinkProgram then returns once linked, 2.1 s for a Lit lobe variant
         // on an RTX 3080 Ti, and COMPLETION_STATUS is always true). Only in this mode: with a worker
         // context the setting makes the worker's links return early and the render thread's first
-        // draw wait for them (docs/perf/gpu-campaign.md, S32)
-        sgj_gl_enable_compile_threads();
+        // draw wait for them (docs/perf/gpu-campaign.md, S32). Not on a software GL: llvmpipe's
+        // compile was complete at once without them (the CI reference), and with them a lazily
+        // made shader can finish after the frame a test or an export check reads
+        if (!s.caps.gl_software)
+            sgj_gl_enable_compile_threads();
         return GpuCreationMode::GlParallel;
     }
 
