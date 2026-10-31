@@ -54,14 +54,14 @@ origin/main).
 | 13 | `lines-trails` | line width (thick lines) and a Trail Renderer | impl |
 | 14 | `shader-globals` | user global shader uniforms (`Shader.setGlobal*`) | specced |
 | 15 | `video-mp4` | MP4/H.264 playback (platform decoders) and streamed/URL video | specced |
-| 16 | `coroutines` | engine-driven coroutines (wait seconds/realtime/frames/until), Invoke-style scaled timers, unscaled delta time, callbacks always on the main Lua thread | spec |
-| 17 | `script-lifecycle` | onEnable/onDisable, enabling scripts, getScript/findObjectOfType, scene-wide find, event unregister | spec |
-| 18 | `script-data` | JSON encode/decode, UserSettings hasKey/deleteAll/save | spec |
+| 16 | `coroutines` | engine-driven coroutines (wait seconds/realtime/frames/until), Invoke-style scaled timers, unscaled delta time, callbacks always on the main Lua thread | specced |
+| 17 | `script-lifecycle` | onEnable/onDisable, enabling scripts, getScript/findObjectOfType, scene-wide find, event unregister | specced |
+| 18 | `script-data` | JSON encode/decode, UserSettings hasKey/deleteAll/save | impl |
 | 19 | `input` | key/mouse/button down/up edge queries, virtual axes and buttons (Input Manager-style), bound Touch with phases and deltas | impl |
-| 20 | `persistence` | DontDestroyOnLoad (persistent objects and their sounds across scene loads) | spec |
+| 20 | `persistence` | DontDestroyOnLoad (persistent objects and their sounds across scene loads) | specced |
 | 21 | `ui-scaling-text` | canvas match-width-or-height scaling, per-character text effects (waves etc.), particles inside UI | specced |
 | 22 | `particles` | start speed along the emitter shape, multi-key curves for every over-lifetime module, Unity ParticleSystem import | specced |
-| 23 | `debug-overlay` | on-device log console and stats/FPS overlay | spec |
+| 23 | `debug-overlay` | on-device log console and stats/FPS overlay | specced |
 | 24 | `camera-shake` | camera shake component and presets (MilkShake-like), camera follow | specced |
 | 25 | `ui-canvas-group` | Canvas Group for the native UI: group alpha, interactable, blocks raycasts, ignore parent groups; animatable (found by the animation spec: legacy clips animate CanvasGroup alpha) | spec |
 
@@ -83,3 +83,5 @@ origin/main).
 - 2026-10-31: specs committed for http, native-bridge, platform-services, safe-area, anim-layers (with an Animator
   Controller phase), anim-retarget, anim-properties, camera-shake (with a Camera Follow phase). Added feature #25
   `ui-canvas-group`. `platform-services` implementation started.
+- 2026-10-31: specs committed for script-lifecycle (Unity lifecycle incl. start/onEnable/onDisable, init on first
+  activation like Awake), coroutines, script-data, persistence, debug-overlay. `script-data` implementation started.
