@@ -6,6 +6,7 @@
 #include "Engine.h"
 #include "Log.h"
 #include "System.h"
+#include "render/SystemRender.h"
 #include "log/LogSink.h"
 #include "log/Logger.h"
 
@@ -35,6 +36,12 @@ namespace {
         // start at the ready frame, so a run's frames are the same every time (how many frames
         // come before it depends on how long shaders take). Loading and drawing go on meanwhile.
         bool heldUntilReady = false;
+        // the screenshot's frame came with shaders or pipelines still being created off the
+        // render thread (spec S32): the game is held and the capture waits for them (as the
+        // editor's screenshots do), up to CAPTURE_WAIT_SECONDS
+        bool captureWaiting = false;
+        bool captureHeldGame = false;
+        std::chrono::steady_clock::time_point captureWaitStarted;
         std::atomic<bool> errorLogged{false};
         Logger::SinkId errorSink = 0;
     };
@@ -42,6 +49,14 @@ namespace {
     State& state() {
         static State* s = new State();
         return *s;
+    }
+
+    constexpr double CAPTURE_WAIT_SECONDS = 30.0;
+
+    bool (*gpuCreationIdleProbe)() = nullptr;
+
+    bool gpuCreationIdle() {
+        return gpuCreationIdleProbe ? gpuCreationIdleProbe() : SystemRender::isGpuCreationIdle();
     }
 
     // the frame a screenshot is taken at: --screenshot-frame, else --quit-after's last
@@ -94,8 +109,11 @@ void RunControl::reset() {
     s.quit = false;
     s.quitCode = EXIT_OK;
     s.screenshotWritten = false;
-    if (s.heldUntilReady) Engine::pauseGameEvents(false);
+    if (s.heldUntilReady || s.captureHeldGame) Engine::pauseGameEvents(false);
     s.heldUntilReady = false;
+    s.captureWaiting = false;
+    s.captureHeldGame = false;
+    gpuCreationIdleProbe = nullptr;
     s.errorLogged.store(false);
 }
 
@@ -144,6 +162,7 @@ bool RunControl::wantsScreenshot() {
 bool RunControl::wantsOffscreenFrame() {
     const State& s = state();
     if (!s.active || s.options.screenshot.empty() || s.screenshotWritten) return false;
+    if (s.captureWaiting) return true;
     const uint64_t target = screenshotTarget();
     if (target == 0) return true;   // the frame the game quits on, not known before it
     if (!s.counting) return target == 1;   // the ready frame could be the first counted one
@@ -172,23 +191,51 @@ void RunControl::frameDrawn(bool readySignalled, const FrameReader& reader) {
             return;
         }
     }
-    s.counted++;
+    // the capture: its frame's image, read from the offscreen frame just drawn
+    auto capture = [&s, &reader]() {
+        std::vector<uint8_t> rgba;
+        int width = 0, height = 0;
+        std::string error;
+        if (reader && reader(rgba, width, height, error) && writePng(s.options.screenshot, rgba, width, height, error)) {
+            s.screenshotWritten = true;
+            Log::print("Screenshot: %s (%dx%d, frame %llu)", s.options.screenshot.string().c_str(), width, height,
+                       (unsigned long long)s.counted);
+        } else {
+            Log::error("Screenshot %s failed: %s", s.options.screenshot.string().c_str(), reader ? error.c_str() : "the frame did not draw offscreen");
+            requestQuit(EXIT_SCREENSHOT_FAILED);
+        }
+    };
 
-    if (!s.options.screenshot.empty() && !s.screenshotWritten && reader) {
-        const uint64_t target = screenshotTarget();
-        const bool due = target != 0 ? s.counted == target : s.quit;
-        if (due) {
-            std::vector<uint8_t> rgba;
-            int width = 0, height = 0;
-            std::string error;
-            if (reader(rgba, width, height, error) && writePng(s.options.screenshot, rgba, width, height, error)) {
-                s.screenshotWritten = true;
-                Log::print("Screenshot: %s (%dx%d, frame %llu)", s.options.screenshot.string().c_str(), width, height,
-                           (unsigned long long)s.counted);
-            } else {
-                Log::error("Screenshot %s failed: %s", s.options.screenshot.string().c_str(), error.c_str());
-                requestQuit(EXIT_SCREENSHOT_FAILED);
+    if (s.captureWaiting) {
+        // frames drawn while the capture waits for GPU creation: the game held, none counted
+        const double waited = std::chrono::duration<double>(std::chrono::steady_clock::now() - s.captureWaitStarted).count();
+        const bool idle = gpuCreationIdle();
+        if (!idle && waited < CAPTURE_WAIT_SECONDS) return;
+        if (!idle)
+            Log::warn("Screenshot: shaders still being created after %.0f s; the image shows what is drawn", CAPTURE_WAIT_SECONDS);
+        s.captureWaiting = false;
+        capture();
+        if (s.captureHeldGame) {
+            Engine::pauseGameEvents(false);
+            s.captureHeldGame = false;
+        }
+    } else {
+        s.counted++;
+        if (!s.options.screenshot.empty() && !s.screenshotWritten) {
+            const uint64_t target = screenshotTarget();
+            const bool due = target != 0 ? s.counted == target : s.quit;
+            // (a game quitting by itself, with no frame named, is captured as it ends)
+            if (due && target != 0 && !gpuCreationIdle()) {
+                s.captureWaiting = true;
+                s.captureWaitStarted = std::chrono::steady_clock::now();
+                if (!Engine::areGameEventsPaused()) {
+                    Engine::pauseGameEvents(true);
+                    s.captureHeldGame = true;
+                }
+                Log::print("Screenshot: frame %llu waits for shaders being created", (unsigned long long)s.counted);
+                return;
             }
+            if (due) capture();
         }
     }
 
@@ -222,6 +269,10 @@ int RunControl::finish() {
         return EXIT_SCREENSHOT_FAILED;
     }
     return s.quitCode;
+}
+
+void RunControl::setGpuCreationIdleProbe(bool (*probe)()) {
+    gpuCreationIdleProbe = probe;
 }
 
 uint64_t RunControl::countedFrames() {

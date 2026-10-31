@@ -93,6 +93,8 @@ TEST(WaterWavesGpu, MatchesTheCpuTwin){
     ASSERT_TRUE(shader.createShader(data));
     SystemRender::commitQueue();
     SystemRender::executeQueue();
+    // created off the render thread (spec S32)
+    ASSERT_TRUE(SystemRender::waitGpuCreationIdle(30000));
     ASSERT_TRUE(shader.isCreated());
     const int slot = shader.shaderData.getUniformBlockIndexByName("u_fs_waterProbe");
     ASSERT_GE(slot, 0);
@@ -123,6 +125,8 @@ TEST(WaterWavesGpu, MatchesTheCpuTwin){
     ObjectRender object;
     object.beginLoad(PrimitiveType::TRIANGLES);
     object.setShader(&shader);
+    // a one-off pass: its pipeline is created at once (spec S32), not off the render thread
+    object.setImmediatePipelines(true);
     ASSERT_TRUE(object.endLoadDynamic(PrimitiveType::TRIANGLES, IndexType::NONE));
     PipelineState state;
     state.target.color = ColorFormat::RGBA32F;

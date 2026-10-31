@@ -59,6 +59,8 @@ TEST(ObjectRenderShaderGpu, APipelineOfADeadShaderIsNeverApplied){
     ASSERT_TRUE(shader.createShader(data));
     SystemRender::commitQueue();
     SystemRender::executeQueue();
+    // created off the render thread (spec S32)
+    ASSERT_TRUE(SystemRender::waitGpuCreationIdle(30000));
     ASSERT_TRUE(shader.isCreated());
 
     ObjectRender object;
@@ -69,6 +71,7 @@ TEST(ObjectRenderShaderGpu, APipelineOfADeadShaderIsNeverApplied){
     ASSERT_TRUE(object.endLoad((uint16_t)PipelineType::PIP_RTT, state));
     SystemRender::commitQueue();
     SystemRender::executeQueue();
+    ASSERT_TRUE(SystemRender::waitGpuCreationIdle(30000));
 
     // the shader goes, the object keeps its pipelines (it has not loaded again)
     shader.destroyShader();

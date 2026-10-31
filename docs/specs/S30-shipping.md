@@ -977,6 +977,20 @@ Kept current so the work can continue after an interruption.
     (`build_project: ...; ship: jasper://docs/shipping.`). That line replaces the old Export
     sentence and is one byte shorter, so the headroom check still passes.
   - `RuntimeFields.gen.inc` was regenerated after the S18 merge and now holds 77 components.
+- **oe-port e3f0c274d (S32 async shaders) merged:**
+  - Conflicts were resolved keeping both sides. `Engine.cpp` gets S32's shader warm-up beside
+    S30's `Graphics:` line.
+  - The Mac and Windows platforms create S32's GPU worker context, with the vsync of S30's
+    platform configuration.
+  - The Xcode project is the union of both, and every `xcode_sync_*.py --check` passes.
+  - Prebuilt builds ship S32's warm-up list too: `buildAndSaveShaders` writes
+    `shaders/warmup.json`, and the staging copies it into the content.
+  - A player's `--screenshot` now waits for S32's pending GPU creations, as the editor's
+    screenshots do.
+    - The game is held, the frames drawn while it waits are not counted, and the quit follows
+      the capture.
+    - It waits at most 30 s, then captures what is drawn with a warning.
+    - Covered by `RunControlFixture.ScreenshotWaitsForPendingGpuCreation`.
 - **Fixes found by the runs:**
   - S18's OpenEngine notice for `core/spline` was copied from the export's engine copy, and a
     prebuilt build has none. It now comes from `Exporter::engineSourceDir()`: the export's copy,
@@ -1016,12 +1030,14 @@ Kept current so the work can continue after an interruption.
 
 **Android engine library**, stripped, uncompressed (MiB; its split symbols in brackets):
 
-| ABI | before | after |
-|---|---|---|
-| arm64-v8a | 39.46 (497) | 27.06 (390) |
-| armeabi-v7a | 28.99 (413) | 18.99 (338) |
-| x86 | 41.86 (408) | 33.16 (378) |
-| x86_64 | 42.04 (478) | 33.25 (422) |
+| ABI | before | after | final gate |
+|---|---|---|---|
+| arm64-v8a | 39.46 (497) | 27.06 (390) | 27.71 (405) |
+| armeabi-v7a | 28.99 (413) | 18.99 (338) | 19.42 (351) |
+| x86 | 41.86 (408) | 33.16 (378) | 33.98 (392) |
+| x86_64 | 42.04 (478) | 33.25 (422) | 34.04 (437) |
+
+The final gate ran on bb4389942, which adds S21's Animator, BF7 and S32.
 
 - `libc++_shared.so` adds 0.81 to 1.20 per ABI.
 - Exported dynamic symbols: 44,529 before, 6 after. Those are `GameActivity_onCreate` and the
@@ -1029,30 +1045,30 @@ Kept current so the work can continue after an interruption.
 
 **Android APKs** (MiB):
 
-| package | before | after |
-|---|---|---|
-| prebuilt arm64-v8a APK | 41.61 | 12.45 |
-| prebuilt armeabi-v7a APK | 30.76 | 11.38 |
-| prebuilt x86 / x86_64 APK | — | 14.27 / 14.18 |
-| prebuilt universal APK (4 ABIs) | 157.61 | 49.45 |
-| compiled arm64-v8a APK (Gradle, the same project) | 15.13 | 12.31 |
+| package | before | after | final gate |
+|---|---|---|---|
+| prebuilt arm64-v8a APK | 41.61 | 12.45 | 12.74 |
+| prebuilt armeabi-v7a APK | 30.76 | 11.38 | 11.64 |
+| prebuilt x86 / x86_64 APK | — | 14.27 / 14.18 | 14.60 / 14.50 |
+| prebuilt universal APK (4 ABIs) | 157.61 | 49.45 | 50.64 |
+| compiled arm64-v8a APK (Gradle, the same project) | 15.13 | 12.31 | 12.59 |
 
 - **Google Play download per device** (after): the App Bundle, the default, measured with
-  `bundletool get-size total --dimensions=ABI`. The `.aab` uploaded is 50.25 MiB.
+  `bundletool get-size total --dimensions=ABI` in the final gate. The `.aab` uploaded is 50.54 MiB.
 
   | ABI | download (MiB) | its per-ABI APK (MiB) |
   |---|---|---|
-  | arm64-v8a | 12.33 to 12.35 | 12.45 |
-  | armeabi-v7a | 11.22 to 11.24 | 11.38 |
-  | x86 | 14.18 to 14.19 | 14.27 |
-  | x86_64 | 14.07 to 14.09 | 14.18 |
+  | arm64-v8a | 12.40 to 12.42 | 12.74 |
+  | armeabi-v7a | 11.28 to 11.30 | 11.64 |
+  | x86 | 14.25 to 14.27 | 14.60 |
+  | x86_64 | 14.15 to 14.17 | 14.50 |
 
 - Inside an APK (after), each package holds:
   - its native libraries: 11.50 for arm64-v8a, compressed from 28.26;
   - dex 0.34 (0.76 unpacked) and resources 0.39;
   - content 0.10 and the signature 0.03.
-- Prebuilt and compiled now cost the same. The compiled library is 28,244,352 bytes against the
-  prebuilt's 28,379,240. The 0.14 MiB APK difference is the prebuilt's v1 signature and its content
+- Prebuilt and compiled now cost the same. In the final gate the compiled library is 28,904,736
+  bytes against the prebuilt's 29,059,056. The 0.14 MiB APK difference is the prebuilt's v1 signature and its content
   files.
 - Before, the gap came from packing: the prebuilt stored its libraries, while Gradle compressed
   them. The libraries themselves were the same size by both methods (40,597,584 bytes compiled,

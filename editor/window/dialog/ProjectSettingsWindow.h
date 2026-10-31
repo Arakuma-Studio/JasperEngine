@@ -58,6 +58,7 @@ namespace jasperengine::editor {
         uint32_t m_startSceneId = NULL_PROJECT_SCENE;
         LoadingSettings m_loadingSettings;
         ThreadingProjectSettings m_threading;
+        ShaderCreationProjectSettings m_shaderCreation;
         HtmlUiRenderSettings m_htmlUiRender;
         NavigationProjectSettings m_navigation;
         fs::path m_assetsDir;
@@ -152,6 +153,7 @@ namespace jasperengine::editor {
         void drawSettings();
         void drawPlayerSettings();
         void drawGraphicsSettings();
+        void drawShaderCreationSettings();
         void drawQualitySettings();
         void drawTextureSettings();
         void drawPhysicsSettings();

@@ -128,6 +128,9 @@ namespace {
     WindowMac::setContentView((__bridge void*)gameView);
     [gameView makeContextCurrent];
     [gameView setSwapInterval:platform.vsync ? 1 : 0];
+    // the shader creation thread's context (spec S32)
+    MacViewGL* sharingView = gameView;
+    setGpuWorkerContextFactory([sharingView]() { return makeMacGLWorkerContext(sharingView); });
 #endif
 
     Engine::systemViewLoaded();

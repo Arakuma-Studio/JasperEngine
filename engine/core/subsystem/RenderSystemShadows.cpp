@@ -1493,6 +1493,8 @@ bool RenderSystem::loadShadowRestore(){
     ShaderData& data = shadowRestoreShader->shaderData;
     shadowRestoreSlotParams = data.getUniformBlockIndexByName("u_fs_shadowRestore");
     shadowRestoreSourceSlot = data.getTextureIndexByName("u_shadowSource");
+    // a pass of the frame: created at once, never skipped (spec S32 §6.4)
+    shadowRestoreRender.setImmediatePipelines(true);
     if (!shadowRestoreRender.endLoadDynamic(PrimitiveType::TRIANGLES, IndexType::NONE))
         return false;
     shadowRestoreLoaded = true;
@@ -1552,6 +1554,9 @@ void RenderSystem::renderShadowMaps(bool projective, bool point){
     auto lights = scene->getComponentArray<LightComponent>();
     auto meshes = scene->getComponentArray<MeshComponent>();
     const int shadowLightCount = (int)lights->size();
+    // the lights a caster of skipped, its pipeline still being created or warmed (spec S32):
+    // their cached slots are not complete, so the next frame draws them again
+    std::vector<int> waitedLights;
     // the caster changes an atlas has not evaluated yet; one that fell behind the log's first
     // entry missed some: its slots are redrawn
     const uint64_t changesEnd = casterChangeBase + casterChangeLog.size();
@@ -1736,7 +1741,10 @@ void RenderSystem::renderShadowMaps(bool projective, bool point){
                 shadowStaticPassRender.applyViewport(toRect(item.staticRect));
                 shadowStaticPassRender.applyScissor(toRect(item.staticRect));
                 passResolution = Vector2((float)item.staticRect.width, (float)item.staticRect.height);
+                const uint32_t waitingBefore = ObjectRender::getWaitingDrawCount();
                 drawShadowCasters(light, item.light, item.camera, pointAtlas ? -1 : 1 + item.slot, 1);
+                if (ObjectRender::getWaitingDrawCount() != waitingBefore)
+                    waitedLights.push_back(item.light);
             }
             shadowStaticPassRender.endRenderPass();
             if (frame)
@@ -1767,7 +1775,10 @@ void RenderSystem::renderShadowMaps(bool projective, bool point){
             pass.applyScissor(toRect(scissor));
             passResolution = Vector2((float)item.rect.width, (float)item.rect.height);
             const int casters = (decision.path == ShadowSlotPath::RESTORE_DYNAMIC || decision.path == ShadowSlotPath::RENDER_STATIC) ? 2 : 3;
+            const uint32_t waitingBefore = ObjectRender::getWaitingDrawCount();
             drawShadowCasters(light, item.light, item.camera, pointAtlas ? -1 : 1 + item.slot, casters);
+            if (ObjectRender::getWaitingDrawCount() != waitingBefore)
+                waitedLights.push_back(item.light);
             if (frame)
                 shadowStats.drawCalls[static_cast<int>(decision.path)] += Engine::getPendingDrawCalls() - slotDrawsBefore;
         }
@@ -1794,6 +1805,9 @@ void RenderSystem::renderShadowMaps(bool projective, bool point){
         }
         for (int l = 0; l < shadowLightCount; l++){
             lights->getComponentFromIndex(l).shadowUpdateRequested = false;
+        }
+        for (int l : waitedLights){
+            lights->getComponentFromIndex(l).shadowUpdateRequested = true;
         }
         fillShadowStats();
     }
@@ -1892,6 +1906,8 @@ void RenderSystem::renderShadowAtlasDebug(){
             return;
         shadowAtlasViewRender.beginLoad(PrimitiveType::TRIANGLES);
         shadowAtlasViewRender.setShader(shadowAtlasViewShader.get());
+        // a pass of the frame: created at once, never skipped (spec S32 §6.4)
+        shadowAtlasViewRender.setImmediatePipelines(true);
         if (!shadowAtlasViewRender.endLoadDynamic(PrimitiveType::TRIANGLES, IndexType::NONE))
             return;
         shadowAtlasViewLoaded = true;
