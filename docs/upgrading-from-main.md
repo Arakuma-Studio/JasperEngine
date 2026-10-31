@@ -157,6 +157,10 @@ The fixture does not use them, so the check passes; re-run it after each sync (b
   transcripts in the editor, in the exported Linux player and on the web.
 - `tools/mcp/tests/test_upgrade_from_main.py` runs the editor part in the MCP suite.
 
+The Linux player is checked compiled from the export; the prebuilt player (S30's
+`build --method prebuilt`) joins `check.sh` as its own step once S30 is in this branch. The fixture
+does not use Vertex Animation Textures (in `oe-port` since SYNC#3).
+
 Run it (Docker; the build servers through `rb.sh`):
 
 ```sh
