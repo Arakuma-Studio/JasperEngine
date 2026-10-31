@@ -106,8 +106,9 @@ LIMITS.update({"user_settings": 550})
 # merged with script-data and input: total 107155, the limit raised by it
 # safe area (spec 6.7): configure_game_view's device_overlay, safe_area_outline, custom_device and
 # safe_area, screenshot's device_overlay / safe_area_in_image, create_ui / create_entity safe_area,
-# get_play_state's safe_area (+390 on its branch); re-measured on the merged tree at handoff
-TOTAL_LIMIT = 107600
+# get_play_state's safe_area (+390); measured on the tree merged with platform-services (script-data,
+# input): total 107545 (149 tools)
+TOTAL_LIMIT = 107550
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
