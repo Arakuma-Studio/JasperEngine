@@ -186,7 +186,7 @@ namespace {
     // Colliders that take part in collisions (an enabled Rigidbody, not a sensor)
     RigidbodyComponent* authoredBody(Scene* scene, Entity entity) {
         RigidbodyComponent* body = scene->findComponent<RigidbodyComponent>(entity);
-        return (body && body->enabled && !body->sensor && body->numColliders > 0) ? body : nullptr;
+        return (body && body->enabled && !body->sensor && !body->colliders.empty()) ? body : nullptr;
     }
 
     bool layerIgnored(Scene* scene, Entity entity, uint32_t mask) {
@@ -243,7 +243,7 @@ namespace {
             float frobenius = 0.0f;
             for (int c = 0; c < 3; c++) for (int r = 0; r < 3; r++) frobenius += model.get(c, r) * model.get(c, r);
             const float maxScale = std::max(std::sqrt(frobenius), std::max(std::fabs(scale.x), std::max(std::fabs(scale.y), std::fabs(scale.z))));
-            for (size_t i = 0; i < body->numColliders; i++) {
+            for (size_t i = 0; i < body->colliders.size(); i++) {
                 const Collider3D& c = body->colliders[i];
                 if ((c.type == Collider3DType::CONVEX_HULL || c.type == Collider3DType::MESH) &&
                     c.source != Collider3DSource::RAW_VERTICES && c.source != Collider3DSource::RAW_MESH) {
@@ -266,7 +266,7 @@ namespace {
                 } else if (c.type == Collider3DType::TAPERED_CAPSULE) {
                     radius = c.halfHeight + std::max(c.topRadius, c.bottomRadius);
                 } else {
-                    for (size_t v = 0; v < c.numVertices; v++) radius = std::max(radius, (c.vertices[v] - c.position).length() + c.position.length());
+                    for (size_t v = 0; v < c.vertices.size(); v++) radius = std::max(radius, (c.vertices[v] - c.position).length() + c.position.length());
                 }
                 const Vector3 center = model * c.position;
                 const float r = radius * maxScale;
@@ -699,7 +699,7 @@ namespace {
     void authoredParts(Entity entity, RigidbodyComponent& body, bool dynamic, JPH::Vec3Arg partPosition, JPH::QuatArg partRotation,
                        std::vector<ShapePart>& parts) const {
         const Matrix4 linear = linearOf(entity);
-        for (size_t i = 0; i < body.numColliders; i++) {
+        for (size_t i = 0; i < body.colliders.size(); i++) {
             Collider3D collider = body.colliders[i];
             if (dynamic) {
                 if (collider.type == Collider3DType::HEIGHTFIELD) continue;
@@ -947,7 +947,7 @@ namespace {
         for (Entity e : entities) {
             RigidbodyComponent* body = authoredBody(scene, e);
             if (!body) continue;
-            for (size_t i = 0; i < body->numColliders; i++) {
+            for (size_t i = 0; i < body->colliders.size(); i++) {
                 const Collider3D& c = body->colliders[i];
                 if ((c.type == Collider3DType::CONVEX_HULL || c.type == Collider3DType::MESH) &&
                     c.source != Collider3DSource::RAW_VERTICES && c.source != Collider3DSource::RAW_MESH) {

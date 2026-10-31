@@ -8,6 +8,7 @@
 #include "ecs/Entity.h"
 #include "animation/AnimationEvent.h"
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 typedef struct lua_State lua_State;
@@ -57,6 +58,11 @@ namespace jasperengine {
         static int luaFindGameObjectsWithTag(lua_State* L);
         static int luaFindObjectOfType(lua_State* L);
         static int luaFindObjectsOfType(lua_State* L);
+        // persistent objects (DontDestroyOnLoad, binding/ScriptClassesLua.cpp)
+        static int luaDontDestroyOnLoad(lua_State* L);
+        static int luaIsPersistent(lua_State* L);
+        static int luaPersistSingleton(lua_State* L);
+        static int luaMoveGameObjectToScene(lua_State* L);
 
         static int moduleLoader(lua_State *L);
         static int handleLuaError(lua_State* L);
@@ -154,6 +160,12 @@ namespace jasperengine {
         // ScriptRuntime::destroyEntities (onDisable, onDestroy) then the instances are released
         static void initializeLuaScripts(Scene* scene, const std::vector<Entity>& entities);
         static void cleanupLuaScripts(Scene* scene, const std::vector<Entity>& entities);
+
+        // GameObjects moved to another scene (persistence; old -> new entity, their Script
+        // components in `to` now): their Lua instances get `self.scene` and `self.entity` of the
+        // new place, and the GameObject wrappers held in their fields that point at a moved
+        // GameObject follow it
+        static void rebindLuaScripts(Scene* from, Scene* to, const std::unordered_map<Entity, Entity>& moved);
 
         // The table of the methods every Lua script instance has after its own class's
         // (getScript...; ScriptInstanceBase): features add theirs to it

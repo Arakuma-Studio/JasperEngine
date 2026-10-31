@@ -365,6 +365,9 @@ namespace jasperengine{
 		void destroy() override;
 		void update(double dt) override;
 
+		// the unscaled delta of an update whose scaled delta is dt (Tween.useUnscaledTime)
+		static double unscaledDeltatime(double dt);
+
 		void onComponentAdded(Entity entity, ComponentId componentId) override;
 		void onComponentRemoved(Entity entity, ComponentId componentId) override;
 

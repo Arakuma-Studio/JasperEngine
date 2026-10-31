@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Project.h"
+#include "subsystem/PhysicsSystem.h"
 #include "animation/AnimationClipDocument.h"
 #include "animation/AnimatorController.h"
 #include "pool/AnimatorControllerPool.h"
@@ -2613,6 +2614,19 @@ void editor::Project::applyLayerCollisionMatrices() const{
     Physics2D::getLayerCollisionMatrix().setRows(layerCollisionMatrix2D.data());
 }
 
+void editor::Project::setPhysics3DWorldSettings(const Physics3DWorldSettings& settings){
+    physics3DWorld = settings;
+    PhysicsSystem::setWorldCapacity3D(settings.maxBodies, settings.maxBodyPairs, settings.maxContactConstraints);
+    // what the engine kept (clamped)
+    physics3DWorld.maxBodies = PhysicsSystem::getDefaultMaxBodies3D();
+    physics3DWorld.maxBodyPairs = PhysicsSystem::getDefaultMaxBodyPairs3D();
+    physics3DWorld.maxContactConstraints = PhysicsSystem::getDefaultMaxContactConstraints3D();
+}
+
+const editor::Physics3DWorldSettings& editor::Project::getPhysics3DWorldSettings() const{
+    return physics3DWorld;
+}
+
 void editor::Project::setInputActions(const std::vector<InputAction>& actions){
     inputActions = actions;
     inputActionsCustomized = InputActions::actionsToJson(actions) != InputActions::actionsToJson(InputActions::defaults());
@@ -3836,15 +3850,7 @@ void editor::Project::calculateSceneMaxValues(const SceneProject* sceneProject, 
         maxValues.maxTilemapTiles = std::max(maxValues.maxTilemapTiles, tilemap.numTiles);
     }
 
-    auto bodies3d = sceneProject->scene->getComponentArray<RigidbodyComponent>();
-    for (size_t i = 0; i < bodies3d->size(); ++i) {
-        const RigidbodyComponent& body = bodies3d->getComponentFromIndex(i);
-        maxValues.maxColliders3D = std::max(maxValues.maxColliders3D, static_cast<unsigned int>(body.numColliders));
-        for (size_t s = 0; s < body.numColliders; ++s) {
-            maxValues.maxColliderVertices3D = std::max(maxValues.maxColliderVertices3D, static_cast<unsigned int>(body.colliders[s].numVertices));
-            maxValues.maxColliderIndices3D = std::max(maxValues.maxColliderIndices3D, static_cast<unsigned int>(body.colliders[s].numIndices));
-        }
-    }
+    // colliders have no caps (any size, in the editor and on device alike)
 }
 
 void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, std::set<ShaderKey>& keys) const {
@@ -4044,6 +4050,10 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
     if (scene->isComponentRegistered<UIDocumentComponent>() && scene->getComponentArray<UIDocumentComponent>()->size() > 0) {
         for (const auto& variant : ShaderPool::getHtmlUIVariants())
             insertKeys(variant.first, variant.second, 0);
+    }
+    // Canvas Groups composite their FLATTEN layers with the HTML UI passthrough
+    if (scene->isComponentRegistered<CanvasGroupComponent>() && scene->getComponentArray<CanvasGroupComponent>()->size() > 0) {
+        insertKeys(ShaderType::HTMLUI_POST, ShaderPool::getHtmlUIPostProperties(HtmlUIPostVariant::PASSTHROUGH), 0);
     }
 
     // 2D lights with shadows render occluder segments through the shadow2d
@@ -4344,6 +4354,13 @@ void editor::Project::cleanupPlaySession(const std::shared_ptr<PlaySession>& ses
         runtimeScenes.swap(session->runtimeScenes);
         runtimeScenes.insert(runtimeScenes.end(), session->retiredRuntimeScenes.begin(), session->retiredRuntimeScenes.end());
         session->retiredRuntimeScenes.clear();
+    }
+
+    // the DontDestroyOnLoad scene is about to go: SceneManager lets it go first
+    for (const auto& entry : runtimeScenes) {
+        if (entry.persistent && runtimeSceneOf(entry) && SceneManager::getPersistentScene() == runtimeSceneOf(entry)) {
+            SceneManager::destroyPersistentScene();
+        }
     }
 
     for (const auto& entry : runtimeScenes) {
@@ -5550,6 +5567,7 @@ void editor::Project::resetConfigs() {
     runtimeShadersEnabled = defaultRuntimeShadersEnabled;
     setTagsAndLayers({}, {});
     setLayerCollisionMatrices(allLayersCollide(), allLayersCollide());
+    setPhysics3DWorldSettings(Physics3DWorldSettings());
     resetInputActions();
     packNativeResources = defaultPackNativeResources;
     versionControlMetadata = defaultVersionControlMetadata;
@@ -6787,6 +6805,9 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
     maxValues.maxBones = sceneProject->maxValues.maxBones;
     maxValues.legacyMaxColliders2D = sceneProject->maxValues.legacyMaxColliders2D;
     maxValues.legacyMaxColliderPoints2D = sceneProject->maxValues.legacyMaxColliderPoints2D;
+    maxValues.legacyMaxColliders3D = sceneProject->maxValues.legacyMaxColliders3D;
+    maxValues.legacyMaxColliderVertices3D = sceneProject->maxValues.legacyMaxColliderVertices3D;
+    maxValues.legacyMaxColliderIndices3D = sceneProject->maxValues.legacyMaxColliderIndices3D;
     calculateSceneMaxValues(sceneProject, maxValues);
     sceneProject->maxValues = maxValues;
 
@@ -6944,7 +6965,7 @@ void editor::Project::configureGenerator() {
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, getInputActionsJsonForBuild());
+    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, getInputActionsJsonForBuild());
 }
 
 std::vector<editor::SceneScriptSource> editor::Project::prepareScriptBuild() {
@@ -8645,7 +8666,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-    generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, getInputActionsJsonForBuild());
+    generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D, physics3DWorld.maxBodies, physics3DWorld.maxBodyPairs, physics3DWorld.maxContactConstraints}, htmlUiMsaaSamples, getInputActionsJsonForBuild());
     if (hasMissingSceneSources()) {
         generatedSourcesDirty.store(true);
     }
@@ -8831,6 +8852,9 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                 // By index, and guarded: a script here can call addChildScene(), which
                 // initializes another entry and appends to runtimeScenes. Initializing from
                 // the snapshot above would then run a scene's scripts a second time.
+                // Each scene's start ends at a safe point for DontDestroyOnLoad (before its
+                // documents start), as in the exported game's first load.
+                SceneManager::beginStartingScenes();
                 for (size_t i = 0; i < session->runtimeScenes.size(); i++) {
                     PlayRuntimeScene& entry = session->runtimeScenes[i];
                     if (entry.initialized || entry.initializing) continue;
@@ -8848,6 +8872,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
 
                     session->runtimeScenes[i].initializing = false;
                 }
+                SceneManager::endStartingScenes();
 
                 finalizeStart(sceneProject, session->runtimeScenes);
                 session->startupSucceeded.store(true, std::memory_order_release);
@@ -8961,8 +8986,9 @@ void editor::Project::retireReplacedRuntimeScenes() {
         for (size_t i = 0; i < session->runtimeScenes.size();) {
             const PlayRuntimeScene& entry = session->runtimeScenes[i];
             Scene* scene = runtimeSceneOf(entry);
-            // unloaded by this load, or by an earlier one that left it out of its stack
-            const bool replaced = scene && entry.scriptsRan && !Engine::isSceneRunning(scene) &&
+            // unloaded by this load, or by an earlier one that left it out of its stack (never
+            // the persistent scene)
+            const bool replaced = scene && !entry.persistent && entry.scriptsRan && !Engine::isSceneRunning(scene) &&
                 (std::find(unloading.begin(), unloading.end(), scene) != unloading.end() || !entry.initialized);
             if (replaced) {
                 retired.push_back(entry);
@@ -8999,6 +9025,9 @@ void editor::Project::retireReplacedRuntimeScenes() {
 
 void editor::Project::registerSceneManager() {
     SceneManager::clearAll();
+    // DontDestroyOnLoad: the persistent scene is a runtime scene of the session, which deletes
+    // it at Stop (SceneManager only lets it go)
+    SceneManager::setPersistentSceneFactory([this]() { return createPersistentRuntimeScene(); }, [](Scene*) {});
     for (SceneProject& sceneProject : scenes) {
         std::vector<uint32_t> stackSceneIds;
         collectStartActiveScenes(sceneProject.id, stackSceneIds);
@@ -9052,7 +9081,8 @@ void editor::Project::registerSceneManager() {
 
                 for (size_t i = 0; i < session->runtimeScenes.size(); i++) {
                     PlayRuntimeScene& entry = session->runtimeScenes[i];
-                    if (!entry.initialized || !runtimeSceneOf(entry)) continue;
+                    // the persistent scene outlives every load
+                    if (!entry.initialized || entry.persistent || !runtimeSceneOf(entry)) continue;
                     if (std::find(currentStackIndices.begin(), currentStackIndices.end(), i) != currentStackIndices.end()) continue;
 
                     // a script added this scene's stack while this one was loading, so it
@@ -9429,6 +9459,10 @@ void editor::Project::stop(uint32_t sceneId) {
                     if (runtimeSceneOf(entry)) LuaBinding::cleanupLuaScripts(runtimeSceneOf(entry));
                 }
             }
+            // the DontDestroyOnLoad scene (its scripts released above) leaves SceneManager; the
+            // session deletes it with its other copies. Nothing persists into edit mode.
+            SceneManager::destroyPersistentScene();
+            refusePersistentScenes();
             // nothing of the session's lifecycle outlives it (the played scene is edited again)
             for (const auto& entry : runtimeScenes) {
                 if (runtimeSceneOf(entry)) ScriptRuntime::forgetScene(runtimeSceneOf(entry));
@@ -9637,7 +9671,130 @@ std::vector<editor::SceneProject*> editor::Project::getRunningRuntimeLayerScenes
         }
     }
 
+    // as the game draws them (a scene added later can be below one added before: the
+    // persistent scene stays above the loaded stack, the loading scene above it)
+    const std::vector<Scene*> engineOrder = Engine::getSceneLayers();
+    auto layerIndex = [&engineOrder](const SceneProject* layer) {
+        return std::find(engineOrder.begin(), engineOrder.end(), layer->scene) - engineOrder.begin();
+    };
+    std::stable_sort(runningLayers.begin(), runningLayers.end(), [&layerIndex](const SceneProject* a, const SceneProject* b) {
+        return layerIndex(a) < layerIndex(b);
+    });
+
     return runningLayers;
+}
+
+uint32_t editor::Project::getPersistentPlaySceneId() const {
+    std::scoped_lock lock(playSessionMutex);
+    if (!activePlaySession) {
+        return NULL_PROJECT_SCENE;
+    }
+    for (const auto& entry : activePlaySession->runtimeScenes) {
+        if (entry.persistent && entry.copy) {
+            return entry.copy->id;
+        }
+    }
+    return NULL_PROJECT_SCENE;
+}
+
+bool editor::Project::isPersistentPlayScene(uint32_t sceneId) const {
+    return sceneId != NULL_PROJECT_SCENE && getPersistentPlaySceneId() == sceneId;
+}
+
+void editor::Project::refusePersistentScenes() {
+    // DontDestroyOnLoad outside Play: nothing to move to (the scene would vanish from the editor)
+    SceneManager::setPersistentSceneFactory([]() -> Scene* { return nullptr; }, [](Scene*) {});
+}
+
+Scene* editor::Project::createPersistentRuntimeScene() {
+    std::shared_ptr<PlaySession> session;
+    {
+        std::scoped_lock lock(playSessionMutex);
+        session = activePlaySession;
+    }
+    if (!session || session->cancelled.load(std::memory_order_acquire)) {
+        return nullptr;
+    }
+    SceneProject* mainSceneProject = getScene(session->mainSceneId);
+    if (!mainSceneProject) {
+        return nullptr;
+    }
+
+    // an empty UI scene of the session, like a Play copy: its Play id, the Hierarchy's row, MCP
+    std::unique_ptr<SceneProject> runtime(new SceneProject());
+    runtime->opened = false;
+    runtime->isModified = false;
+    runtime->isVisible = false;
+    runtime->needUpdateRender = false;
+    runtime->name = SceneManager::PERSISTENT_SCENE_NAME;
+    runtime->sceneType = SceneType::SCENE_UI;
+    runtime->id = SceneManager::PERSISTENT_SCENE_ID;
+    runtime->scene = new Scene();
+    runtime->defaultCamera = createDefaultCamera(runtime->sceneType, runtime->scene);
+
+    PlayRuntimeScene entry;
+    entry.sourceSceneId = SceneManager::PERSISTENT_SCENE_ID;
+    entry.copy = runtime.release();
+    entry.ownedRuntime = true;
+    entry.persistent = true;
+    entry.scriptsRan = true;
+    assignPlayRuntimeId(entry.copy);
+    // the camera, the game's flags (initialized, PLAYING), running systems
+    prepareRuntimeScene(entry);
+    if (mainSceneProject->playState == ScenePlayState::PAUSED) {
+        pauseEngineScene(entry.copy->scene, true);
+    }
+    {
+        std::scoped_lock lock(playSessionMutex);
+        session->runtimeScenes.push_back(entry);
+    }
+    mainSceneProject->structureVersion++;
+    return entry.copy->scene;
+}
+
+void editor::Project::onPlayObjectsMoved(Scene* from, Scene* to, const std::unordered_map<Entity, Entity>& moved) {
+    SceneProject* source = findSceneProjectByScene(from);
+    SceneProject* target = findSceneProjectByScene(to);
+
+    // authored GameObjects stay listed (editable in the Inspector), the selection follows
+    std::vector<Entity> listed;
+    std::vector<Entity> selected;
+    if (source) {
+        for (Entity entity : source->entities) {
+            auto it = moved.find(entity);
+            if (it != moved.end()) listed.push_back(it->second);
+        }
+        for (Entity entity : source->selectedEntities) {
+            auto it = moved.find(entity);
+            if (it != moved.end()) selected.push_back(it->second);
+        }
+        auto gone = [&moved](Entity entity) { return moved.count(entity) != 0; };
+        source->entities.erase(std::remove_if(source->entities.begin(), source->entities.end(), gone), source->entities.end());
+        source->selectedEntities.erase(std::remove_if(source->selectedEntities.begin(), source->selectedEntities.end(), gone),
+                                       source->selectedEntities.end());
+        source->structureVersion++;
+        markSelectionChanged(source);
+    }
+    if (target) {
+        for (Entity entity : listed) {
+            if (std::find(target->entities.begin(), target->entities.end(), entity) == target->entities.end()) {
+                target->entities.push_back(entity);
+            }
+        }
+        if (!selected.empty()) {
+            target->selectedEntities = selected;
+            if (source && selectedSceneForProperties == source->id) {
+                selectedSceneForProperties = target->id;
+            }
+        }
+        target->structureVersion++;
+        markSelectionChanged(target);
+    }
+    // the Hierarchy of the played scene lists its running layers
+    const uint32_t mainId = getPlaySessionSceneId();
+    if (SceneProject* mainSceneProject = getScene(mainId)) {
+        mainSceneProject->structureVersion++;
+    }
 }
 
 void editor::Project::setInspectedAsset(const std::filesystem::path& absolutePath){

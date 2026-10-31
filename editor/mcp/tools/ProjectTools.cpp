@@ -1444,6 +1444,31 @@ const std::vector<Setting>& settingsTable() {
         add(boolSetting("physics.enabled", "3D physics (Jolt). Off leaves Rigidbodies and joints out of builds.",
                         [](Project& p) { return p.isPhysics3DEnabled(); }, [](Project& p, bool v) { p.setPhysics3DEnabled(v); }));
         add(layerCollisionSetting("physics.layer_collision_matrix", true));
+        // the 3D world capacity (worlds made from now on: the next Play, exported builds)
+        struct CapacityKey { const char* key; const char* description; unsigned int Physics3DWorldSettings::* field; };
+        static const CapacityKey capacityKeys[] = {
+            {"physics.max_bodies", "Bodies a 3D world holds (default 8192); past it new bodies are refused with an error naming this setting.", &Physics3DWorldSettings::maxBodies},
+            {"physics.max_body_pairs", "Touching body pairs a 3D world tracks (default 8192); past it contacts are dropped and reported once.", &Physics3DWorldSettings::maxBodyPairs},
+            {"physics.max_contact_constraints", "Contact constraints of a 3D world (default 8192); past it contacts are dropped and reported once.", &Physics3DWorldSettings::maxContactConstraints}};
+        for (const CapacityKey& capacity : capacityKeys) {
+            Setting s;
+            s.key = capacity.key;
+            s.type = "int";
+            s.description = capacity.description;
+            unsigned int Physics3DWorldSettings::* field = capacity.field;
+            s.get = [field](McpContext& ctx) { return Json(ctx.project()->getPhysics3DWorldSettings().*field); };
+            s.set = [field](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+                long long v;
+                if (!readInt(value, 16, 8388607, v, error)) return false;
+                if (apply) {
+                    Physics3DWorldSettings world = ctx.project()->getPhysics3DWorldSettings();
+                    world.*field = static_cast<unsigned int>(v);
+                    ctx.project()->setPhysics3DWorldSettings(world);
+                }
+                return true;
+            };
+            add(s);
+        }
         add(boolSetting("physics2d.enabled", "2D physics (Box2D). Off leaves Rigidbody2Ds and joints out of builds.",
                         [](Project& p) { return p.isPhysics2DEnabled(); }, [](Project& p, bool v) { p.setPhysics2DEnabled(v); }));
         add(layerCollisionSetting("physics2d.layer_collision_matrix", false));

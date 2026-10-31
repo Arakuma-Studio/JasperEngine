@@ -60,6 +60,7 @@ EntityRegistry::EntityRegistry() {
 #ifdef JASPERENGINE_PHYSICS_3D
     registerComponent<RigidbodyComponent>();
     registerComponent<Joint3DComponent>();
+    registerComponent<RagdollComponent>();
 #endif
     registerComponent<InstancedMeshComponent>();
     registerComponent<PrefabComponent>();
@@ -74,6 +75,7 @@ EntityRegistry::EntityRegistry() {
     registerComponent<AnimationPlayerComponent>();
     registerComponent<VertexAnimatorComponent>();
     registerComponent<TrailRendererComponent>();
+    registerComponent<CanvasGroupComponent>();
 }
 
 EntityRegistry::EntityRegistry(EntityPool defaultPool) : EntityRegistry() {

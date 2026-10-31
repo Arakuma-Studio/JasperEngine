@@ -110,15 +110,21 @@ LIMITS.update({"user_settings": 550})
 # 106621, the limit set to it
 # lines and trails: no new tool; create_entity's type "trail_renderer" paid by a shorter create_entity
 # description, set_shape_points' line text reworded; measured on the merged tree: total 106692 (106687 before)
-TOTAL_LIMIT = 106700  # re-measured on the merged tree by the lead's verification
-# anim layers (spec 10, 11.5): get_animation 670 -> 815 (mask, controller: +145) and
+# ui-canvas-group: create_ui's canvas_group node option (the rules in jasper://docs/ui) and
+# create_entity's canvas_group type; merged with main (lines-trails): 150 tools measured 106771
+# physics-3d: create_ragdoll (506, capped at 900), set_joint's 3D arguments (cone_half_angle and the
+# no-body_b wording), edit_colliders' 3D vertices / indices / is_trigger / material, configure_game_view's
+# physics_debug / physics_debug_contacts; measured on the tree merged with main (script-lifecycle,
+# lines-trails) and gaps/physics-2d: 151 tools, total 107295 (tool_budget.py), the limit set to it
+LIMITS.update({"create_ragdoll": 900})
+# merged by the lead (ui-canvas-group + physics-3d): provisional sum of both increments, re-measured below
+TOTAL_LIMIT = 107440
+# anim layers (spec 10, 11.4, 11.5): get_animation 670 -> 815 (mask, controller: +145) and
 # preview_animation 654 -> 721 (over: +67), phase 1 +212 (under its 600); edit_animator 2290 (under its
-# 3500; the op fields are in jasper://docs/animation): +2502 in all, the limits raised by them
-# (re-measured on the merged tree below)
+# 3500; the op fields are in jasper://docs/animation); focus_window's "animator" (+11): +2513 in all, the
+# limits raised by them
 LIMITS.update({"get_animation": 830, "preview_animation": 740, "edit_animator": 2400})
-TOTAL_LIMIT = 106700 + 2502
-# the Animator window (anim layers spec 11.4): focus_window's window enum gains "animator" (+11)
-TOTAL_LIMIT += 11
+TOTAL_LIMIT = 107440 + 2513
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
