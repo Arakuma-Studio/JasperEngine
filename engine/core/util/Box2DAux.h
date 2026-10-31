@@ -8,6 +8,7 @@
 #include "box2d/box2d.h"
 #include "subsystem/PhysicsSystem.h"
 #include "registry/PhysicsLayers.h"
+#include "physics/PhysicsMaterial.h"
 
 namespace jasperengine{
 
@@ -85,6 +86,16 @@ namespace jasperengine{
 
     class Box2DAux{
     public:
+
+        // Box2D friction / restitution callbacks: the shapes' user material ids carry the
+        // combine modes of their PhysicsMaterial (0 = none, today's rule)
+        static float CombineFriction(float frictionA, int userMaterialIdA, float frictionB, int userMaterialIdB){
+            return combineSurface(frictionA, frictionModeOf2D(userMaterialIdA), frictionB, frictionModeOf2D(userMaterialIdB), PhysicsMaterialCombine::GEOMETRIC_MEAN);
+        }
+
+        static float CombineRestitution(float restitutionA, int userMaterialIdA, float restitutionB, int userMaterialIdB){
+            return combineSurface(restitutionA, bounceModeOf2D(userMaterialIdA), restitutionB, bounceModeOf2D(userMaterialIdB), PhysicsMaterialCombine::MAXIMUM);
+        }
 
         static bool CollisionFilter(b2ShapeId shapeIdA, b2ShapeId shapeIdB, void* context){
             Scene* scene = (Scene*)context;

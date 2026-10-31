@@ -90,8 +90,6 @@ namespace jasperengine::editor{
         unsigned int maxExternalBuffers = 0;
         unsigned int maxSpriteFrames = 0;
         unsigned int maxBones = 0;
-        unsigned int maxColliders2D = 0;
-        unsigned int maxColliderPoints2D = 0;
         unsigned int maxColliders3D = 0;
         unsigned int maxColliderVertices3D = 0;
         unsigned int maxColliderIndices3D = 0;
@@ -721,6 +719,7 @@ namespace jasperengine::editor{
             bool ownedRuntime = false;       // true when the scene used is a copy, deleted with the session
             bool initialized = false;        // true when scripts and library are initialized
             bool initializing = false;       // true while its scripts run, to stop re-entrant init
+            bool scriptsRan = false;         // its scripts were started once (a load replacing it retires it)
         };
 
         // The scene a runtime entry plays (the Engine's while playing): its copy, or the played
@@ -731,6 +730,9 @@ namespace jasperengine::editor{
         struct PlaySession {
             uint32_t mainSceneId = NULL_PROJECT_SCENE;
             std::vector<PlayRuntimeScene> runtimeScenes;
+            // scenes a scene load replaced (script-lifecycle 9.4): out of the game, their scripts
+            // released; a Play copy is deleted and the played scene restored at Stop
+            std::vector<PlayRuntimeScene> retiredRuntimeScenes;
             std::atomic<bool> cancelled{false};
             std::atomic<bool> startupThreadDone{false};  // Set when connect thread exits
             std::atomic<bool> startupSucceeded{false};   // True only if finalizeStart was called
@@ -746,6 +748,11 @@ namespace jasperengine::editor{
         float stepSavedMaxDeltatime = 0.0f;
 
         SceneProject* createRuntimeCloneFromSource(const SceneProject* source);
+        // ...from a scene node (the file's, or the played scene's Play-start snapshot)
+        SceneProject* createRuntimeCloneFromNode(const SceneProject* source, const YAML::Node& sceneNode);
+        // A load factory's first step: the session's scenes that load replaced (their scripts
+        // unloaded) leave the game, so the stack is built anew as an exported build does
+        void retireReplacedRuntimeScenes();
 
         // Play copies (the child scenes of the played scene run as copies, see PlaySession)
         // answer to ids of their own while the session lasts, so getScene(), selection,
@@ -2235,6 +2242,9 @@ namespace jasperengine::editor{
         void waitForPlaySessionToFinish();
 
         std::vector<Scene*> getRunningRuntimeLayers(uint32_t sceneId);
+        // A scene load replaced the played scene itself (another scene, or a fresh copy of it):
+        // the game shows the stack that load built, not the played scene
+        bool isPlayedSceneReplaced(uint32_t sceneId);
     };
 
 }

@@ -101,14 +101,23 @@ LIMITS.update({"bake_vertex_animation": 2000})
 LIMITS.update({"user_settings": 550})
 # input (spec 2026-10-31-input 12): send_input's action/axis/axis_delta events and the input.actions setting,
 # measured on the merged tree: total 106687 (106611 before), the limit raised by them
+# physics-2d: edit_physics_material (396) and set_joint's motor / spring / limits / break /
+# enable_collision / anchor_space paid by moving set_joint's type lists and per-argument texts to
+# jasper://docs/physics (set_joint 1020 -> 756); merged with main (script-data, input): 150 tools
+# measured 106620, the limit lowered to it
+# script-lifecycle: check_script's lifecycle warnings and update_script_entry's enabled in Play, paid
+# by shorter texts of both; merged with main (script-data, input, physics-2d): 150 tools measured
+# 106621, the limit set to it
+# lines and trails: no new tool; create_entity's type "trail_renderer" paid by a shorter create_entity
+# description, set_shape_points' line text reworded; measured on the merged tree: total 106692 (106687 before)
 # platform services (spec 6.9): send_input's `app` events, configure_game_view's device,
 # orientation and language, get_play_state's platform (+468 on its branch); measured on the tree
-# merged with script-data and input: total 107155, the limit raised by it
+# merged with script-data and input: total 107155; merged again (physics-2d, script-lifecycle,
+# lines-trails): 150 tools measured 107094, the limit set to it
 # safe area (spec 6.7): configure_game_view's device_overlay, safe_area_outline, custom_device and
 # safe_area, screenshot's device_overlay / safe_area_in_image, create_ui / create_entity safe_area,
-# get_play_state's safe_area (+390); measured on the tree merged with platform-services (script-data,
-# input): total 107545 (149 tools)
-TOTAL_LIMIT = 107550
+# get_play_state's safe_area (+390 on its branch); measured on the merged tree below
+TOTAL_LIMIT = 107500
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

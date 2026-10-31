@@ -11,6 +11,8 @@
 #include "input/InputActions.h"
 #include "render/SystemRender.h"
 #include "script/LuaBinding.h"
+#include "script/ScriptRuntime.h"
+#include "lua.hpp"
 #include "manager/SceneManager.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/PhysicsSystem.h"
@@ -42,6 +44,7 @@
 #include "pool/MeshLodPool.h"
 #include "pool/MeshBufferPool.h"
 #include "pool/AnimationClipPool.h"
+#include "pool/PhysicsMaterialPool.h"
 #include "pool/VertexAnimationPool.h"
 #include "shader/RuntimeShaderCompiler.h"
 #ifndef NO_THREAD_SUPPORT
@@ -921,6 +924,7 @@ void Engine::clearPools(){
     MeshLodPool::clear();
     MeshBufferPool::clear();
     AnimationClipPool::clear();
+    PhysicsMaterialPool::clear();
 }
 
 void Engine::clearUnusedPools(){
@@ -934,6 +938,7 @@ void Engine::clearUnusedPools(){
     MeshLodPool::clearUnused();
     MeshBufferPool::clearUnused();
     AnimationClipPool::clearUnused();
+    PhysicsMaterialPool::clearUnused();
 }
 
 void Engine::removeSubscriptionsByTag(const std::string& substring) {
@@ -1471,6 +1476,10 @@ void Engine::runFrame(bool draw){
         gameTime += frameDelta;
         gameFrames++;
 
+        // 0) start of the scripts enabled since the last frame, before their first fixed
+        //    update and update (Unity)
+        ScriptRuntime::flushStarts();
+
         // 1) Fixed-timestep phase (deterministic). Runs zero or more times per frame.
         //    Used for physics, networking, and any subsystem overriding fixedUpdate().
         if (updateTime > 0.0) {
@@ -1657,6 +1666,10 @@ void Engine::systemViewDestroyed(){
 }
 
 void Engine::systemShutdown(){
+    // Unity's quit: onApplicationQuit to every script, then onDisable and onDestroy (the OS
+    // may end a mobile app without this)
+    ScriptRuntime::quitAll();
+
     Engine::onShutdown.call();
 
     // what the game (and its onShutdown handlers) stored is on disk before it goes
@@ -1673,34 +1686,14 @@ void Engine::systemShutdown(){
     UserSettings::save();
 }
 
-// Unity's OnApplicationFocus / OnApplicationPause script messages: the method of that name on
-// every Lua script of the running scenes' active GameObjects (feature script-lifecycle routes
-// this through its ScriptRuntime broadcast, C++ scripts included)
-static void broadcastApplicationMessage(const std::vector<Scene*>& scenes, const char* method, bool value){
-    const std::vector<AnimationEventArg> args = {AnimationEvent::boolArg(value)};
-    for (Scene* scene : scenes){
-        if (!scene) continue;
-        std::vector<Entity> entities;
-        auto scripts = scene->getComponentArray<ScriptComponent>();
-        for (size_t i = 0; i < scripts->size(); i++){
-            entities.push_back(scripts->getEntity(i));
-        }
-        // a method can destroy GameObjects or make new ones
-        for (Entity entity : entities){
-            if (scene->isEntityCreated(entity) && scene->isEntityActiveInHierarchy(entity)){
-                LuaBinding::callLuaScriptMethod(scene, entity, method, args);
-            }
-        }
-    }
-}
-
 void Engine::systemPause(){
     if (paused) return;
     // leaving: the focus goes first (Unity: OnApplicationFocus(false), then OnApplicationPause(true))
     systemFocus(false);
     paused = true;
     AudioSystem::pauseAll();
-    broadcastApplicationMessage(getScenesSnapshot(), "onApplicationPause", true);
+    ScriptRuntime::broadcast(ScriptMessage::ApplicationPause, [](lua_State* L) { lua_pushboolean(L, 1); return 1; },
+        [](ScriptBase& script) { script.onApplicationPause(true); });
     Engine::onPause.call();
 
     // the key and button ups of a paused app never come: the first frame after resume sees them
@@ -1715,7 +1708,8 @@ void Engine::systemResume(){
     if (!paused) return;
     paused = false;
     AudioSystem::resumeAll();
-    broadcastApplicationMessage(getScenesSnapshot(), "onApplicationPause", false);
+    ScriptRuntime::broadcast(ScriptMessage::ApplicationPause, [](lua_State* L) { lua_pushboolean(L, 0); return 1; },
+        [](ScriptBase& script) { script.onApplicationPause(false); });
     Engine::onResume.call();
 }
 
@@ -1730,7 +1724,8 @@ void Engine::systemFocus(bool hasFocus){
     if (!hasFocus){
         Input::releaseAll();
     }
-    broadcastApplicationMessage(getScenesSnapshot(), "onApplicationFocus", hasFocus);
+    ScriptRuntime::broadcast(ScriptMessage::ApplicationFocus, [hasFocus](lua_State* L) { lua_pushboolean(L, hasFocus ? 1 : 0); return 1; },
+        [hasFocus](ScriptBase& script) { script.onApplicationFocus(hasFocus); });
     Engine::onFocus.call(hasFocus);
 }
 

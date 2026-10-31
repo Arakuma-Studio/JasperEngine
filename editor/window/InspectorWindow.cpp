@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "InspectorWindow.h"
+#include "window/widget/CurveField.h"
+#include "window/widget/GradientField.h"
 #include "SceneWindow.h"
+#include "script/ScriptRuntime.h"
 
 #include "imgui_internal.h"
 
@@ -301,14 +304,6 @@ static std::vector<editor::EnumEntry> entriesRigidbodyMotionQuality = {
     { (int)RigidbodyMotionQuality::LINEAR_CAST, "Linear Cast" }
 };
 
-static std::vector<editor::EnumEntry> entriesCollider2DType = {
-    { (int)Collider2DType::POLYGON, "Polygon" },
-    { (int)Collider2DType::CIRCLE, "Circle" },
-    { (int)Collider2DType::CAPSULE, "Capsule" },
-    { (int)Collider2DType::SEGMENT, "Segment" },
-    { (int)Collider2DType::CHAIN, "Chain" }
-};
-
 static std::vector<editor::EnumEntry> entriesCollider3DType = {
     { (int)Collider3DType::BOX, "Box" },
     { (int)Collider3DType::SPHERE, "Sphere" },
@@ -332,16 +327,6 @@ static std::vector<editor::EnumEntry> entriesCollider3DSourceMesh = {
 
 static std::vector<editor::EnumEntry> entriesCollider3DSourceHeightfield = {
     { (int)Collider3DSource::ENTITY_HEIGHTFIELD, "GameObject Heightfield" }
-};
-
-static std::vector<editor::EnumEntry> entriesJoint2DType = {
-    { (int)Joint2DType::DISTANCE, "Distance" },
-    { (int)Joint2DType::REVOLUTE, "Revolute" },
-    { (int)Joint2DType::PRISMATIC, "Prismatic" },
-    { (int)Joint2DType::MOUSE, "Mouse" },
-    { (int)Joint2DType::WHEEL, "Wheel" },
-    { (int)Joint2DType::WELD, "Weld" },
-    { (int)Joint2DType::MOTOR, "Motor" }
 };
 
 static std::vector<editor::EnumEntry> entriesJoint3DType = {
@@ -1893,9 +1878,18 @@ void editor::InspectorWindow::drawGameObjectHeader(SceneProject* sceneProject, c
     ImGui::BeginDisabled(readOnly);
     bool activeValue = active && !activeMixed;
     if (activeMixed) ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, true);
-    if (ImGui::Checkbox("##active", &activeValue)){
-        CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(
-            EntityStateCmd::active(project, sceneProject->id, entities, activeMixed ? true : activeValue));
+    const bool activeClicked = ImGui::Checkbox("##active", &activeValue);
+    UIProbe::item("inspector.active");
+    if (activeClicked){
+        // after this frame's drawing: in Play it runs onEnable / onDisable (deferredCommands)
+        const uint32_t commandSceneId = project->getSelectedSceneId();
+        const uint32_t stateSceneId = sceneProject->id;
+        const std::vector<Entity> targets = entities;
+        const bool value = activeMixed ? true : activeValue;
+        deferredCommands.push_back([this, commandSceneId, stateSceneId, targets, value]() {
+            if (!project->getScene(stateSceneId)) return;
+            CommandHandle::get(commandSceneId)->addCommandNoMerge(EntityStateCmd::active(project, stateSceneId, targets, value));
+        });
     }
     if (activeMixed) ImGui::PopItemFlag();
     ImGui::EndDisabled();
@@ -4175,6 +4169,53 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         }
         if (dif)
             ImGui::PopStyleColor();
+
+    }else if (type == RowPropertyType::Curve || type == RowPropertyType::Gradient){
+        // Unity AnimationCurve / Gradient: an inline preview that opens its editor popup;
+        // every frame of a drag is one merged command, the edit's end its own undo step
+        auto valueRow = [&](auto sample, auto drawField){
+            using T = decltype(sample);
+            std::map<Entity, T> eValue;
+            const T* defValue = nullptr;
+            bool dif = false;
+            for (Entity& entity : entities){
+                PropertyData prop = Catalog::findProperty(sceneProject->scene, entity, cpType, id);
+                defValue = static_cast<const T*>(prop.def);
+                eValue[entity] = *static_cast<T*>(prop.ref);
+                if (eValue[entity] != eValue[entities[0]])
+                    dif = true;
+            }
+            T newValue = eValue[entities[0]];
+            const bool defChanged = defValue && newValue != *defValue;
+            if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent) && defValue){
+                for (Entity& entity : entities){
+                    cmd = new PropertyCmd<T>(project, sceneProject->id, entity, cpType, id, *defValue, settings.onValueChanged);
+                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                }
+                finishProperty = true;
+            }
+            const auto edit = drawField(newValue, dif);
+            if (edit.changed){
+                for (Entity& entity : entities){
+                    cmd = new PropertyCmd<T>(project, sceneProject->id, entity, cpType, id, newValue, settings.onValueChanged);
+                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                }
+            }
+            if (edit.finished)
+                finishProperty = true;
+        };
+        // the field leaves room for the help marker after it
+        const float helpWidth = settings.help.empty() ? 0.0f : ImGui::CalcTextSize("(?)").x + ImGui::GetStyle().ItemSpacing.x;
+        auto fieldWidth = [&](){ return std::max(ImGui::GetFontSize() * 4.0f, ImGui::GetContentRegionAvail().x - helpWidth); };
+        if (type == RowPropertyType::Curve){
+            valueRow(AnimationCurve(), [&](AnimationCurve& value, bool mixed){ return curveField(("##curve_" + id).c_str(), value, mixed, fieldWidth()); });
+        }else{
+            valueRow(jasperengine::Gradient(), [&](jasperengine::Gradient& value, bool mixed){ return gradientField(("##gradient_" + id).c_str(), value, mixed, fieldWidth()); });
+        }
+        if (!settings.help.empty()){
+            ImGui::SameLine();
+            helpMarker(settings.help);
+        }
 
     }else if (type == RowPropertyType::Font){
         FontArray* value = nullptr;
@@ -10378,19 +10419,61 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
 
             if (mixed) ImGui::PushStyleColor(ImGuiCol_CheckMark, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
             ImGui::Checkbox(("##script_enabled_" + std::to_string(scriptIdx)).c_str(), &enabled);
+            UIProbe::item("inspector.scriptEnabled." + std::to_string(scriptIdx));
             if (mixed) ImGui::PopStyleColor();
 
             if (ImGui::IsItemDeactivatedAfterEdit()) {
-                std::string propName = "scripts[" + std::to_string(scriptIdx) + "].enabled";
-                for (const Entity& entity : entities) {
-                    cmd = new PropertyCmd<bool>(project, sceneProject->id, entity, ComponentType::ScriptComponent, propName, enabled);
-                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
-                }
-                if (cmd) cmd->setNoMerge();
+                // after this frame's drawing: in Play it runs onEnable / onDisable, which may move
+                // the components `script` and the loop below point into (deferredCommands)
+                const std::string propName = "scripts[" + std::to_string(scriptIdx) + "].enabled";
+                const uint32_t commandSceneId = project->getSelectedSceneId();
+                const uint32_t stateSceneId = sceneProject->id;
+                const std::vector<Entity> targets = entities;
+                deferredCommands.push_back([this, propName, commandSceneId, stateSceneId, targets, enabled]() {
+                    if (!project->getScene(stateSceneId)) return;
+                    Command* last = nullptr;
+                    for (const Entity& entity : targets) {
+                        last = new PropertyCmd<bool>(project, stateSceneId, entity, ComponentType::ScriptComponent, propName, enabled);
+                        CommandHandle::get(commandSceneId)->addCommand(last);
+                    }
+                    if (last) last->setNoMerge();
+                });
             }
 
             ImGui::SameLine();
             ImGui::TextUnformatted(script.className.c_str());
+
+            // in Play, where the script is in its lifecycle (as get_runtime_entity reports it)
+            if (entities.size() == 1 && ScriptRuntime::hasStarted(sceneProject->scene)) {
+                const ScriptEntry& live = sceneProject->scene->getComponent<ScriptComponent>(entities[0]).scripts[scriptIdx];
+                const ScriptState* state = ScriptRuntime::getState(live.instance);
+                const char* status = nullptr;
+                const char* help = nullptr;
+                if (!live.instance) {
+                    status = "not running";
+                    help = "No instance: the script failed to load (see the Console) or its C++ class is not built.";
+                } else if (state && state->destroyed) {
+                    status = "destroyed";
+                    help = "onDestroy ran.";
+                } else if (!state || !state->initialized) {
+                    status = "not initialized";
+                    help = "The GameObject has not been active yet: init runs when it is first activated.";
+                } else if (state->started) {
+                    status = state->enabledLatch ? "started" : "started, inactive";
+                    help = state->enabledLatch ? "init, onEnable and start ran." : "start ran; the script is disabled or its GameObject inactive now (onDisable ran).";
+                } else if (state->enabledLatch) {
+                    status = "waiting to start";
+                    help = "onEnable ran; start runs at the beginning of the next frame.";
+                } else {
+                    status = "initialized";
+                    help = "init ran; onEnable and start wait until the script is enabled and its GameObject active.";
+                }
+                ImGui::SameLine();
+                ImGui::TextDisabled("(%s)", status);
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("%s", help);
+                }
+            }
 
             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ImGui::GetStyle().FramePadding.x / 3.0, ImGui::GetStyle().FramePadding.y / 2.0));
 
@@ -11459,15 +11542,15 @@ void editor::InspectorWindow::drawPointsComponent(ComponentType cpType, ScenePro
     }
 }
 
-void editor::InspectorWindow::drawLineRendererComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+// A Line Renderer's Segments: independent A-B segments with their own colours (the engine's
+// debug lines), each edited as before (InspectorLinesTrails.cpp draws the rest)
+void editor::InspectorWindow::drawLineSegmentsList(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     RowSettings settingsInt;
     settingsInt.secondColSize = 6 * ImGui::GetFontSize();
 
     beginTable(cpType, getLabelSize("Max Lines"));
     propertyRow(RowPropertyType::UInt, cpType, "maxLines", "Max Lines", sceneProject, entities, settingsInt);
     endTable();
-
-    drawCustomShaderRow(cpType, ShaderType::LINES, sceneProject, entities);
 
     if (entities.size() != 1) {
         ImGui::SeparatorText("Lines");
@@ -11863,490 +11946,7 @@ void editor::InspectorWindow::drawMeshPolygonComponent(ComponentType cpType, Sce
     }
 }
 
-void editor::InspectorWindow::drawRigidbody2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
-    Rigidbody2DComponent& body = sceneProject->scene->getComponent<Rigidbody2DComponent>(entities[0]);
-
-    auto getSizeForShape = [sceneProject](Entity entity, float defaultSize = 100.0f) -> Vector2 {
-        float width = defaultSize;
-        float height = defaultSize;
-
-        if (SpriteComponent* spriteComp = sceneProject->scene->findComponent<SpriteComponent>(entity)){
-            if (spriteComp->width > 0){
-                width = (float)spriteComp->width;
-            }
-            if (spriteComp->height > 0){
-                height = (float)spriteComp->height;
-            }
-        }else if (RectTransformComponent* layoutComp = sceneProject->scene->findComponent<RectTransformComponent>(entity)){
-            if (layoutComp->width > 0){
-                width = (float)layoutComp->width;
-            }
-            if (layoutComp->height > 0){
-                height = (float)layoutComp->height;
-            }
-        }
-
-        return Vector2(width, height);
-    };
-
-    RowSettings settingsBodyType;
-    settingsBodyType.enumEntries = &entriesBodyType;
-
-    beginTable(cpType, getLabelSize("Update Colliders"));
-    propertyRow(RowPropertyType::Enum, cpType, "type", "Body Type", sceneProject, entities, settingsBodyType);
-    endTable();
-
-    ImGui::SeparatorText("Colliders");
-    ImGui::Text("Colliders: %zu", body.numColliders);
-
-    static int createCollider2DType = (int)Collider2DType::POLYGON;
-    const char* createCollider2DLabel = "Polygon";
-    for (const EnumEntry& entry : entriesCollider2DType){
-        if (entry.value == createCollider2DType){
-            createCollider2DLabel = entry.name;
-            break;
-        }
-    }
-
-    ImGui::SetNextItemWidth(9 * ImGui::GetFontSize());
-    if (ImGui::BeginCombo("##shape2d_create_type", createCollider2DLabel)){
-        for (const EnumEntry& entry : entriesCollider2DType){
-            bool selected = (createCollider2DType == entry.value);
-            if (ImGui::Selectable(entry.name, selected)){
-                createCollider2DType = entry.value;
-            }
-            if (selected){
-                ImGui::SetItemDefaultFocus();
-            }
-        }
-        ImGui::EndCombo();
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Add Collider##rigidbody2d")){
-        MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
-
-        for (Entity entity : entities){
-            if (Rigidbody2DComponent* bodyComp = sceneProject->scene->findComponent<Rigidbody2DComponent>(entity)){
-
-                Collider2D shape;
-                shape.type = (Collider2DType)createCollider2DType;
-
-                switch (shape.type){
-                case Collider2DType::POLYGON:
-                {
-                    Vector2 layoutSize = getSizeForShape(entity, 0.0f);
-
-                    shape.numVertices = 4;
-
-                    if (layoutSize != Vector2::ZERO){
-                        shape.pointA = Vector2(0.0f, 0.0f);
-                        shape.pointB = Vector2(layoutSize.x, layoutSize.y);
-                        shape.vertices[0] = Vector2(0.0f, 0.0f);
-                        shape.vertices[1] = Vector2(layoutSize.x, 0.0f);
-                        shape.vertices[2] = Vector2(layoutSize.x, layoutSize.y);
-                        shape.vertices[3] = Vector2(0.0f, layoutSize.y);
-                    }else{
-                        layoutSize = Vector2(100.0f, 100.0f);
-
-                        const float halfW = layoutSize.x * 0.5f;
-                        const float halfH = layoutSize.y * 0.5f;
-
-                        shape.pointA = Vector2(-halfW, -halfH);
-                        shape.pointB = Vector2(halfW, halfH);
-                        shape.vertices[0] = Vector2(-halfW, -halfH);
-                        shape.vertices[1] = Vector2(halfW, -halfH);
-                        shape.vertices[2] = Vector2(halfW, halfH);
-                        shape.vertices[3] = Vector2(-halfW, halfH);
-                    }
-
-                    break;
-                }
-                case Collider2DType::CIRCLE:
-                    shape.pointA = Vector2::ZERO;
-                    shape.radius = 0.5f;
-                    break;
-                case Collider2DType::CAPSULE:
-                    shape.pointA = Vector2(0.0f, -0.5f);
-                    shape.pointB = Vector2(0.0f, 0.5f);
-                    shape.radius = 0.5f;
-                    break;
-                case Collider2DType::SEGMENT:
-                    shape.pointA = Vector2(-1.0f, 0.0f);
-                    shape.pointB = Vector2(1.0f, 0.0f);
-                    break;
-                case Collider2DType::CHAIN:
-                    shape.numVertices = 4;
-                    shape.vertices[0] = Vector2(-0.5f, -0.5f);
-                    shape.vertices[1] = Vector2(0.5f, -0.5f);
-                    shape.vertices[2] = Vector2(0.5f, 0.5f);
-                    shape.vertices[3] = Vector2(-0.5f, 0.5f);
-                    break;
-                }
-
-                size_t shapeIdx = bodyComp->numColliders;
-                multiCmd->addPropertyCmd<Collider2D>(project, sceneProject->id, entity, cpType, "colliders[" + std::to_string(shapeIdx) + "]", shape);
-                multiCmd->addPropertyCmd<size_t>(project, sceneProject->id, entity, cpType, "numColliders", shapeIdx + 1);
-            }
-        }
-
-        multiCmd->setNoMerge();
-        CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
-    }
-
-    size_t numColliders = body.numColliders;
-    for (Entity entity : entities){
-        numColliders = std::min(numColliders, sceneProject->scene->getComponent<Rigidbody2DComponent>(entity).numColliders);
-    }
-
-    RowSettings settingsShapeType;
-    settingsShapeType.enumEntries = &entriesCollider2DType;
-
-    RowSettings settingsShapeValue;
-
-    for (size_t s = 0; s < numColliders; s++){
-        Rigidbody2DComponent& bodyRef = sceneProject->scene->getComponent<Rigidbody2DComponent>(entities[0]);
-        Collider2D& shape = bodyRef.colliders[s];
-
-        ImGui::SeparatorText(("Collider " + std::to_string(s + 1)).c_str());
-        ImGui::PushID((int)s);
-        if (ImGui::Button("Remove Collider")){
-            MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
-
-            for (Entity entity : entities){
-                if (Rigidbody2DComponent* bodyComp = sceneProject->scene->findComponent<Rigidbody2DComponent>(entity)){
-                    if (s >= bodyComp->numColliders){
-                        continue;
-                    }
-
-                    for (size_t i = s + 1; i < bodyComp->numColliders; i++){
-                        multiCmd->addPropertyCmd<Collider2D>(project, sceneProject->id, entity, cpType, "colliders[" + std::to_string(i - 1) + "]", bodyComp->colliders[i]);
-                    }
-
-                    multiCmd->addPropertyCmd<Collider2D>(project, sceneProject->id, entity, cpType, "colliders[" + std::to_string(bodyComp->numColliders - 1) + "]", Collider2D());
-                    multiCmd->addPropertyCmd<size_t>(project, sceneProject->id, entity, cpType, "numColliders", bodyComp->numColliders - 1);
-                }
-            }
-
-            multiCmd->setNoMerge();
-            CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
-            ImGui::PopID();
-            break;
-        }
-        ImGui::PopID();
-
-        std::string shapeKey = "colliders[" + std::to_string(s) + "]";
-
-        beginTable(cpType, getLabelSize("Enable Hit Events"), "rigidbody2d_collider");
-        propertyRow(RowPropertyType::Enum, cpType, shapeKey + ".type", "Type", sceneProject, entities, settingsShapeType);
-
-        RowSettings settingsFloat;
-        settingsFloat.secondColSize = 6 * ImGui::GetFontSize();
-
-        if (shape.type == Collider2DType::POLYGON){
-            propertyHeader("Vertices");
-            ImGui::Text("%d", shape.numVertices);
-            ImGui::SameLine();
-            if (ImGui::Button("Add Vertex")){
-                MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
-                for (Entity entity : entities){
-                    if (Rigidbody2DComponent* bodyComp = sceneProject->scene->findComponent<Rigidbody2DComponent>(entity)){
-                        if (s >= bodyComp->numColliders) continue;
-                        Collider2D shapeValue = bodyComp->colliders[s];
-
-                        const uint8_t oldCount = shapeValue.numVertices;
-                        if (oldCount >= 2){
-                            shapeValue.vertices[oldCount] = shapeValue.vertices[oldCount - 1] + (shapeValue.vertices[oldCount - 1] - shapeValue.vertices[oldCount - 2]);
-                        }else if (oldCount == 1){
-                            shapeValue.vertices[oldCount] = shapeValue.vertices[0] + Vector2(10.0f, 0.0f);
-                        }else{
-                            shapeValue.vertices[oldCount] = Vector2::ZERO;
-                        }
-                        shapeValue.numVertices = oldCount + 1;
-                        multiCmd->addPropertyCmd<Collider2D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
-                    }
-                }
-                multiCmd->setNoMerge();
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
-            }
-            bool removedVertex = false;
-            float clearButtonFramePadding = ImGui::GetStyle().FramePadding.x / 4.0f;
-            float clearButtonWidth = ImGui::CalcTextSize(ICON_FA_TRASH_CAN).x;
-            ImVec2 inputVerSize = ImVec2(ImGui::GetContentRegionAvail().x - clearButtonWidth - ImGui::GetStyle().ItemSpacing.x - clearButtonFramePadding * 2, 0);
-            if (inputVerSize.x < 100.0f){
-                inputVerSize.x = 100.0f;
-            }
-
-            RowSettings settingsVertex = settingsShapeValue;
-            settingsVertex.secondColSize = inputVerSize.x;
-
-            for (int v = 0; v < (int)shape.numVertices; v++){
-
-                propertyRow(RowPropertyType::Vector2, cpType, shapeKey + ".vertices[" + std::to_string(v) + "]", "Vertex " + std::to_string(v + 1), sceneProject, entities, settingsVertex);
-
-                ImGui::SameLine();
-
-                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
-                ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(clearButtonFramePadding, ImGui::GetStyle().FramePadding.y));
-                std::string removeVertexId = std::string(ICON_FA_TRASH_CAN) + "##remove_polygon_vertex_" + std::to_string(s) + "_" + std::to_string(v);
-                if (ImGui::Button(removeVertexId.c_str())){
-                    MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
-                    for (Entity entity : entities){
-                        if (Rigidbody2DComponent* bodyComp = sceneProject->scene->findComponent<Rigidbody2DComponent>(entity)){
-                            if (s >= bodyComp->numColliders) continue;
-
-                            Collider2D shapeValue = bodyComp->colliders[s];
-                            if (v >= shapeValue.numVertices) continue;
-
-                            for (size_t i = (size_t)v + 1; i < shapeValue.numVertices; i++){
-                                shapeValue.vertices[i - 1] = shapeValue.vertices[i];
-                            }
-                            shapeValue.numVertices -= 1;
-
-                            multiCmd->addPropertyCmd<Collider2D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
-                        }
-                    }
-
-                    multiCmd->setNoMerge();
-                    CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
-
-                    removedVertex = true;
-                    ImGui::PopStyleVar();
-                    ImGui::PopStyleColor(2);
-                    break;
-                }
-                ImGui::PopStyleVar();
-                ImGui::PopStyleColor(2);
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Remove vertex");
-                }
-            }
-
-            if (removedVertex){
-                endTable();
-                return;
-            }
-
-            propertyRow(RowPropertyType::Float, cpType, shapeKey + ".radius", "Radius", sceneProject, entities, settingsFloat);
-        }else if (shape.type == Collider2DType::CIRCLE){
-            propertyRow(RowPropertyType::Vector2, cpType, shapeKey + ".pointA", "Center", sceneProject, entities);
-            propertyRow(RowPropertyType::Float, cpType, shapeKey + ".radius", "Radius", sceneProject, entities, settingsFloat);
-        }else if (shape.type == Collider2DType::CAPSULE){
-            propertyRow(RowPropertyType::Vector2, cpType, shapeKey + ".pointA", "Center A", sceneProject, entities);
-            propertyRow(RowPropertyType::Vector2, cpType, shapeKey + ".pointB", "Center B", sceneProject, entities);
-            propertyRow(RowPropertyType::Float, cpType, shapeKey + ".radius", "Radius", sceneProject, entities, settingsFloat);
-        }else if (shape.type == Collider2DType::SEGMENT){
-            propertyRow(RowPropertyType::Vector2, cpType, shapeKey + ".pointA", "Point A", sceneProject, entities);
-            propertyRow(RowPropertyType::Vector2, cpType, shapeKey + ".pointB", "Point B", sceneProject, entities);
-        }else if (shape.type == Collider2DType::CHAIN){
-            RowSettings loopSettings;
-            loopSettings.help = "An open chain doesn't collide on its first and last edges";
-            propertyRow(RowPropertyType::Bool, cpType, shapeKey + ".loop", "Loop", sceneProject, entities, loopSettings);
-
-            propertyHeader("Collision Side");
-            if (ImGui::Button("Reverse")){
-                MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
-                for (Entity entity : entities){
-                    if (Rigidbody2DComponent* bodyComp = sceneProject->scene->findComponent<Rigidbody2DComponent>(entity)){
-                        if (s >= bodyComp->numColliders) continue;
-                        Collider2D shapeValue = bodyComp->colliders[s];
-
-                        std::reverse(shapeValue.vertices.data(), shapeValue.vertices.data() + shapeValue.numVertices);
-                        multiCmd->addPropertyCmd<Collider2D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
-                    }
-                }
-                multiCmd->setNoMerge();
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
-            }
-            if (ImGui::IsItemHovered()){
-                ImGui::SetTooltip("Flip the side that collides, shown by the ticks in the scene");
-            }
-
-            propertyHeader("Vertices");
-            ImGui::Text("%d", shape.numVertices);
-            ImGui::SameLine();
-            if (ImGui::Button("Add Vertex")){
-                MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
-                for (Entity entity : entities){
-                    if (Rigidbody2DComponent* bodyComp = sceneProject->scene->findComponent<Rigidbody2DComponent>(entity)){
-                        if (s >= bodyComp->numColliders) continue;
-                        Collider2D shapeValue = bodyComp->colliders[s];
-
-                        const uint8_t oldCount = shapeValue.numVertices;
-                        if (oldCount >= 2){
-                            shapeValue.vertices[oldCount] = shapeValue.vertices[oldCount - 1] + (shapeValue.vertices[oldCount - 1] - shapeValue.vertices[oldCount - 2]);
-                        }else if (oldCount == 1){
-                            shapeValue.vertices[oldCount] = shapeValue.vertices[0] + Vector2(10.0f, 0.0f);
-                        }else{
-                            shapeValue.vertices[oldCount] = Vector2::ZERO;
-                        }
-                        shapeValue.numVertices = oldCount + 1;
-                        multiCmd->addPropertyCmd<Collider2D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
-                    }
-                }
-                multiCmd->setNoMerge();
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
-            }
-
-            bool removedVertex = false;
-            float clearButtonFramePadding = ImGui::GetStyle().FramePadding.x / 4.0f;
-            float clearButtonWidth = ImGui::CalcTextSize(ICON_FA_TRASH_CAN).x;
-            ImVec2 inputVerSize = ImVec2(ImGui::GetContentRegionAvail().x - clearButtonWidth - ImGui::GetStyle().ItemSpacing.x - clearButtonFramePadding * 2, 0);
-            if (inputVerSize.x < 100.0f){
-                inputVerSize.x = 100.0f;
-            }
-
-            RowSettings settingsVertex = settingsShapeValue;
-            settingsVertex.secondColSize = inputVerSize.x;
-
-            for (int v = 0; v < (int)shape.numVertices; v++){
-                propertyRow(RowPropertyType::Vector2, cpType, shapeKey + ".vertices[" + std::to_string(v) + "]", "Vertex " + std::to_string(v + 1), sceneProject, entities, settingsVertex);
-
-                ImGui::SameLine();
-
-                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
-                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
-                ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(clearButtonFramePadding, ImGui::GetStyle().FramePadding.y));
-                std::string removeVertexId = std::string(ICON_FA_TRASH_CAN) + "##remove_chain_vertex_" + std::to_string(s) + "_" + std::to_string(v);
-                if (ImGui::Button(removeVertexId.c_str())){
-                    MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
-                    for (Entity entity : entities){
-                        if (Rigidbody2DComponent* bodyComp = sceneProject->scene->findComponent<Rigidbody2DComponent>(entity)){
-                            if (s >= bodyComp->numColliders) continue;
-
-                            Collider2D shapeValue = bodyComp->colliders[s];
-                            if (v >= shapeValue.numVertices) continue;
-
-                            for (size_t i = (size_t)v + 1; i < shapeValue.numVertices; i++){
-                                shapeValue.vertices[i - 1] = shapeValue.vertices[i];
-                            }
-                            shapeValue.numVertices -= 1;
-
-                            multiCmd->addPropertyCmd<Collider2D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
-                        }
-                    }
-
-                    multiCmd->setNoMerge();
-                    CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
-
-                    removedVertex = true;
-                    ImGui::PopStyleVar();
-                    ImGui::PopStyleColor(2);
-                    break;
-                }
-                ImGui::PopStyleVar();
-                ImGui::PopStyleColor(2);
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Remove vertex");
-                }
-            }
-
-            if (removedVertex){
-                endTable();
-                return;
-            }
-        }
-
-        if (shape.type != Collider2DType::SEGMENT && shape.type != Collider2DType::CHAIN){
-            propertyRow(RowPropertyType::Float, cpType, shapeKey + ".density", "Density", sceneProject, entities, settingsFloat);
-        }
-        propertyRow(RowPropertyType::Float, cpType, shapeKey + ".friction", "Friction", sceneProject, entities, settingsFloat);
-        propertyRow(RowPropertyType::Float, cpType, shapeKey + ".restitution", "Restitution", sceneProject, entities, settingsFloat);
-        if (shape.type != Collider2DType::CHAIN){
-            RowSettings sensorSettings;
-            sensorSettings.help = "Overlap only: never collides and always reports its sensor events";
-            propertyRow(RowPropertyType::Bool, cpType, shapeKey + ".sensor", "Sensor", sceneProject, entities, sensorSettings);
-            propertyRow(RowPropertyType::Bool, cpType, shapeKey + ".enableHitEvents", "Enable Hit Events", sceneProject, entities);
-            propertyRow(RowPropertyType::Bool, cpType, shapeKey + ".contactEvents", "Contact Events", sceneProject, entities);
-            propertyRow(RowPropertyType::Bool, cpType, shapeKey + ".preSolveEvents", "PreSolve Events", sceneProject, entities);
-            if (!shape.sensor){
-                propertyRow(RowPropertyType::Bool, cpType, shapeKey + ".sensorEvents", "Sensor Events", sceneProject, entities);
-            }
-        }
-        if (shape.type == Collider2DType::POLYGON){
-            ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::SubtleText);
-            propertyHeader("Reset Collider");
-            ImGui::PopStyleColor();
-            if (ImGui::SmallButton(("Box##shape_preset_box_" + std::to_string(s)).c_str())){
-                MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
-                for (Entity entity : entities){
-                    if (Rigidbody2DComponent* bodyComp = sceneProject->scene->findComponent<Rigidbody2DComponent>(entity)){
-                        if (s >= bodyComp->numColliders) continue;
-
-                        Collider2D shapeValue = bodyComp->colliders[s];
-                        Vector2 layoutSize = getSizeForShape(entity);
-
-                        shapeValue.numVertices = 4;
-                        shapeValue.radius = 0.0f;
-                        shapeValue.pointA = Vector2(0.0f, 0.0f);
-                        shapeValue.pointB = Vector2(layoutSize.x, layoutSize.y);
-                        shapeValue.vertices[0] = Vector2(0.0f, 0.0f);
-                        shapeValue.vertices[1] = Vector2(layoutSize.x, 0.0f);
-                        shapeValue.vertices[2] = Vector2(layoutSize.x, layoutSize.y);
-                        shapeValue.vertices[3] = Vector2(0.0f, layoutSize.y);
-
-                        multiCmd->addPropertyCmd<Collider2D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
-                    }
-                }
-                multiCmd->setNoMerge();
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
-            }
-            if (ImGui::SmallButton(("Centered Box##shape_preset_centered_box_" + std::to_string(s)).c_str())){
-                MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
-                for (Entity entity : entities){
-                    if (Rigidbody2DComponent* bodyComp = sceneProject->scene->findComponent<Rigidbody2DComponent>(entity)){
-                        if (s >= bodyComp->numColliders) continue;
-
-                        Collider2D shapeValue = bodyComp->colliders[s];
-                        Vector2 layoutSize = getSizeForShape(entity);
-                        const float halfW = layoutSize.x * 0.5f;
-                        const float halfH = layoutSize.y * 0.5f;
-
-                        shapeValue.numVertices = 4;
-                        shapeValue.radius = 0.0f;
-                        shapeValue.pointA = Vector2(-halfW, -halfH);
-                        shapeValue.pointB = Vector2(halfW, halfH);
-                        shapeValue.vertices[0] = Vector2(-halfW, -halfH);
-                        shapeValue.vertices[1] = Vector2(halfW, -halfH);
-                        shapeValue.vertices[2] = Vector2(halfW, halfH);
-                        shapeValue.vertices[3] = Vector2(-halfW, halfH);
-
-                        multiCmd->addPropertyCmd<Collider2D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
-                    }
-                }
-                multiCmd->setNoMerge();
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
-            }
-            if (ImGui::SmallButton(("Rounded Box##shape_preset_rounded_box_" + std::to_string(s)).c_str())){
-                MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
-                for (Entity entity : entities){
-                    if (Rigidbody2DComponent* bodyComp = sceneProject->scene->findComponent<Rigidbody2DComponent>(entity)){
-                        if (s >= bodyComp->numColliders) continue;
-
-                        Collider2D shapeValue = bodyComp->colliders[s];
-                        Vector2 layoutSize = getSizeForShape(entity);
-                        const float halfW = layoutSize.x * 0.5f;
-                        const float halfH = layoutSize.y * 0.5f;
-
-                        shapeValue.numVertices = 4;
-                        shapeValue.radius = std::max(1.0f, std::min(layoutSize.x, layoutSize.y) * 0.04f);
-                        shapeValue.pointA = Vector2(-halfW, -halfH);
-                        shapeValue.pointB = Vector2(halfW, halfH);
-                        shapeValue.vertices[0] = Vector2(-halfW, -halfH);
-                        shapeValue.vertices[1] = Vector2(halfW, -halfH);
-                        shapeValue.vertices[2] = Vector2(halfW, halfH);
-                        shapeValue.vertices[3] = Vector2(-halfW, halfH);
-
-                        multiCmd->addPropertyCmd<Collider2D>(project, sceneProject->id, entity, cpType, shapeKey, shapeValue);
-                    }
-                }
-                multiCmd->setNoMerge();
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
-            }
-        }
-        endTable();
-    }
-}
+// drawRigidbody2DComponent: InspectorPhysics2D.cpp
 
 void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     RigidbodyComponent& body = sceneProject->scene->getComponent<RigidbodyComponent>(entities[0]);
@@ -12896,66 +12496,7 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
     }
 }
 
-void editor::InspectorWindow::drawJoint2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
-    Joint2DComponent& joint = sceneProject->scene->getComponent<Joint2DComponent>(entities[0]);
-
-    auto markJoint2DDirty = [sceneProject, entities](){
-        for (Entity entity : entities){
-            if (Joint2DComponent* jointComp = sceneProject->scene->findComponent<Joint2DComponent>(entity)){
-                jointComp->needUpdateJoint = true;
-            }
-        }
-    };
-
-    RowSettings settingsJointType;
-    settingsJointType.enumEntries = &entriesJoint2DType;
-    settingsJointType.onValueChanged = markJoint2DDirty;
-
-    RowSettings settingsJointValue;
-    settingsJointValue.onValueChanged = markJoint2DDirty;
-    settingsJointValue.entityFilter.set(sceneProject->scene->getComponentId<Rigidbody2DComponent>());
-
-    beginTable(cpType, getLabelSize("Joint Type"));
-    propertyRow(RowPropertyType::Enum, cpType, "type", "Joint Type", sceneProject, entities, settingsJointType);
-    propertyRow(RowPropertyType::LocalEntity, cpType, "bodyA", "Rigidbody A", sceneProject, entities, settingsJointValue);
-    propertyRow(RowPropertyType::LocalEntity, cpType, "bodyB", "Rigidbody B", sceneProject, entities, settingsJointValue);
-
-    endTable();
-
-    bool hasTypeSettings = joint.type != Joint2DType::MOTOR;
-    if (!hasTypeSettings){
-        return;
-    }
-
-    const char* joint2DTableLabel = "Anchor";
-    if (joint.type == Joint2DType::DISTANCE){
-        joint2DTableLabel = "Anchor A";
-    }else if (joint.type == Joint2DType::MOUSE){
-        joint2DTableLabel = "Target";
-    }
-
-    ImGui::SeparatorText("Joint settings");
-    std::string joint2DTypeTableId = "joint2d_type_settings_" + std::to_string((int)joint.type);
-    beginTable(cpType, getLabelSize(joint2DTableLabel), joint2DTypeTableId);
-
-    if (joint.type == Joint2DType::DISTANCE){
-        propertyRow(RowPropertyType::Bool, cpType, "autoAnchors", "Auto Anchors", sceneProject, entities, settingsJointValue);
-        if (!joint.autoAnchors){
-            propertyRow(RowPropertyType::Vector2, cpType, "anchorA", "Anchor A", sceneProject, entities, settingsJointValue);
-            propertyRow(RowPropertyType::Vector2, cpType, "anchorB", "Anchor B", sceneProject, entities, settingsJointValue);
-        }
-        propertyRow(RowPropertyType::Bool, cpType, "rope", "Rope", sceneProject, entities, settingsJointValue);
-    }else if (joint.type == Joint2DType::REVOLUTE || joint.type == Joint2DType::WELD){
-        propertyRow(RowPropertyType::Vector2, cpType, "anchorA", "Anchor", sceneProject, entities, settingsJointValue);
-    }else if (joint.type == Joint2DType::PRISMATIC || joint.type == Joint2DType::WHEEL){
-        propertyRow(RowPropertyType::Vector2, cpType, "anchorA", "Anchor", sceneProject, entities, settingsJointValue);
-        propertyRow(RowPropertyType::Vector2, cpType, "axis", "Axis", sceneProject, entities, settingsJointValue);
-    }else if (joint.type == Joint2DType::MOUSE){
-        propertyRow(RowPropertyType::Vector2, cpType, "target", "Target", sceneProject, entities, settingsJointValue);
-    }
-
-    endTable();
-}
+// drawJoint2DComponent: InspectorPhysics2D.cpp
 
 void editor::InspectorWindow::drawJoint3DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     Joint3DComponent& joint = sceneProject->scene->getComponent<Joint3DComponent>(entities[0]);
@@ -16020,7 +15561,17 @@ void editor::InspectorWindow::revealAssetInProject(const std::filesystem::path& 
     }
 }
 
+void editor::InspectorWindow::runDeferredCommands(){
+    std::vector<std::function<void()>> commands;
+    commands.swap(deferredCommands);
+    for (const std::function<void()>& command : commands) {
+        command();
+    }
+}
+
 void editor::InspectorWindow::show(){
+    runDeferredCommands();
+
     // Flush any debounced material file writes
     flushDirtyMaterials(ImGui::GetIO().DeltaTime);
 
@@ -16280,6 +15831,8 @@ void editor::InspectorWindow::show(){
                     drawParticleSystemComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::LineRendererComponent){
                     drawLineRendererComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::TrailRendererComponent){
+                    drawTrailRendererComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::PointsComponent){
                     drawPointsComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::InstancedMeshComponent){
@@ -16569,6 +16122,10 @@ void editor::InspectorWindow::show(){
                     }
                     drawScenePropertyRow<bool>(sceneProject, "physics_interpolation", "Interpolate", ScenePropertyInputType::Checkbox, -1.0f, 0.0f, 1.0f,
                         "Draws bodies between their last two fixed steps, so they move smoothly at any frame rate (a frame behind the simulation by up to one step). Bodies moved by a script or an animation keep the pose they were given.");
+                    if (sceneProject->sceneType != SceneType::SCENE_3D) {
+                        drawScenePropertyRow<int>(sceneProject, "physics_2d_sub_steps", "Sub Steps", ScenePropertyInputType::DragInt, 6 * ImGui::GetFontSize(), 1.0f, 16.0f,
+                            "Box2D solver sub-steps of each fixed step (1-16, default 4). More sub-steps make joint chains, stacks and stiff springs steadier, at a cost.");
+                    }
 
                     ImGui::EndTable();
                 }

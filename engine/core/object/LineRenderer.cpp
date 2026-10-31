@@ -4,6 +4,10 @@
 #include "LineRenderer.h"
 #include "shader/ShaderManifest.h"
 #include "subsystem/RenderSystem.h"
+#include "render/LineRibbonBuilder.h"
+
+#include <algorithm>
+#include <cmath>
 
 using namespace jasperengine;
 
@@ -49,7 +53,9 @@ unsigned int LineRenderer::getMaxLines() const{
 void LineRenderer::addLine(LineData line){
     LineRendererComponent& linescomp = getComponent<LineRendererComponent>();
 
+    linescomp.mode = LineRendererMode::Segments;
     linescomp.lines.push_back(line);
+    linescomp.needUpdateRibbon = true;
 
     if (linescomp.maxLines < linescomp.lines.size()){
         linescomp.maxLines = linescomp.maxLines * 2;
@@ -110,10 +116,12 @@ LineData& LineRenderer::getLine(size_t index){
 void LineRenderer::updateLine(size_t index, LineData line){
     LineRendererComponent& linescomp = getComponent<LineRendererComponent>();
 
+    linescomp.mode = LineRendererMode::Segments;
     if (linescomp.lines.at(index) != line){
         linescomp.lines.at(index) = line;
 
         linescomp.needUpdateBuffer = true;
+        linescomp.needUpdateRibbon = true;
     }
 }
 
@@ -189,15 +197,18 @@ void LineRenderer::updateLine(size_t index, Vector4 colorA, Vector4 colorB){
 void LineRenderer::removeLine(size_t index){
     LineRendererComponent& linescomp = getComponent<LineRendererComponent>();
 
+    linescomp.mode = LineRendererMode::Segments;
     linescomp.lines.erase(linescomp.lines.begin() + index);
 
     linescomp.needUpdateBuffer = true;
+    linescomp.needUpdateRibbon = true;
 }
 
 void LineRenderer::updateLines(){
     LineRendererComponent& linescomp = getComponent<LineRendererComponent>();
 
     linescomp.needUpdateBuffer = true;
+    linescomp.needUpdateRibbon = true;
 }
 
 size_t LineRenderer::getNumLines(){
@@ -209,11 +220,272 @@ size_t LineRenderer::getNumLines(){
 void LineRenderer::clearLines(){
     LineRendererComponent& linescomp = getComponent<LineRendererComponent>();
 
+    linescomp.mode = LineRendererMode::Segments;
     if (linescomp.lines.size() > 0){
         linescomp.lines.clear();
 
         linescomp.needReload = true;
+        linescomp.needUpdateRibbon = true;
     }
+}
+
+// ---------------------------------------------------------------- Unity LineRenderer API
+
+namespace {
+
+    unsigned int clampFanVertices(int count){
+        return (unsigned int)std::min<int>(std::max(count, 0), (int)LINE_RIBBON_MAX_FAN_VERTICES);
+    }
+
+    float nonNegative(float value){
+        return (std::isfinite(value) && value > 0.0f) ? value : 0.0f;
+    }
+
+}
+
+void LineRenderer::setMode(LineRendererMode mode){
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+    if (lines.mode != mode){
+        lines.mode = mode;
+        lines.needUpdateRibbon = true;
+    }
+}
+
+LineRendererMode LineRenderer::getMode() const{
+    return getComponent<LineRendererComponent>().mode;
+}
+
+void LineRenderer::setPositionCount(int count){
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+    lines.mode = LineRendererMode::Polyline;
+    const size_t size = (size_t)std::max(count, 0);
+    if (size != lines.positions.size()){
+        const Vector3 fill = lines.positions.empty() ? Vector3(0.0f, 0.0f, 0.0f) : lines.positions.back();
+        lines.positions.resize(size, fill);
+    }
+    lines.needUpdateRibbon = true;
+}
+
+int LineRenderer::getPositionCount() const{
+    return (int)getComponent<LineRendererComponent>().positions.size();
+}
+
+bool LineRenderer::setPosition(int index, Vector3 position){
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+    // out of range: refused, nothing changes (the mode neither)
+    if (index < 0 || (size_t)index >= lines.positions.size())
+        return false;
+    lines.mode = LineRendererMode::Polyline;
+    lines.positions[index] = position;
+    lines.needUpdateRibbon = true;
+    return true;
+}
+
+Vector3 LineRenderer::getPosition(int index) const{
+    const LineRendererComponent& lines = getComponent<LineRendererComponent>();
+    if (index < 0 || (size_t)index >= lines.positions.size())
+        return Vector3(0.0f, 0.0f, 0.0f);
+    return lines.positions[index];
+}
+
+void LineRenderer::setPositions(const std::vector<Vector3>& positions){
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+    lines.mode = LineRendererMode::Polyline;
+    lines.positions = positions;
+    lines.needUpdateRibbon = true;
+}
+
+std::vector<Vector3> LineRenderer::getPositions() const{
+    return getComponent<LineRendererComponent>().positions;
+}
+
+void LineRenderer::setLoop(bool loop){
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+    if (lines.loop != loop){
+        lines.loop = loop;
+        lines.needUpdateRibbon = true;
+    }
+}
+
+bool LineRenderer::getLoop() const{
+    return getComponent<LineRendererComponent>().loop;
+}
+
+void LineRenderer::setUseWorldSpace(bool useWorldSpace){
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+    if (lines.useWorldSpace != useWorldSpace){
+        lines.useWorldSpace = useWorldSpace;
+        lines.needUpdateRibbon = true;
+    }
+}
+
+bool LineRenderer::getUseWorldSpace() const{
+    return getComponent<LineRendererComponent>().useWorldSpace;
+}
+
+void LineRenderer::setWidthMultiplier(float widthMultiplier){
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+    widthMultiplier = nonNegative(widthMultiplier);
+    if (lines.widthMultiplier != widthMultiplier){
+        // between 0 and a width the variant changes: the render system reloads it
+        lines.widthMultiplier = widthMultiplier;
+        lines.needUpdateRibbon = true;
+    }
+}
+
+float LineRenderer::getWidthMultiplier() const{
+    return getComponent<LineRendererComponent>().widthMultiplier;
+}
+
+void LineRenderer::setStartWidth(float width){
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+    LineRibbonBuilder::setEndWidths(lines.widthMultiplier, lines.widthCurve, width, getEndWidth());
+    lines.needUpdateRibbon = true;
+}
+
+float LineRenderer::getStartWidth() const{
+    const LineRendererComponent& lines = getComponent<LineRendererComponent>();
+    return LineRibbonBuilder::widthAt(lines.widthMultiplier, lines.widthCurve, 0.0f);
+}
+
+void LineRenderer::setEndWidth(float width){
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+    LineRibbonBuilder::setEndWidths(lines.widthMultiplier, lines.widthCurve, getStartWidth(), width);
+    lines.needUpdateRibbon = true;
+}
+
+float LineRenderer::getEndWidth() const{
+    const LineRendererComponent& lines = getComponent<LineRendererComponent>();
+    return LineRibbonBuilder::widthAt(lines.widthMultiplier, lines.widthCurve, 1.0f);
+}
+
+void LineRenderer::setWidthCurve(const AnimationCurve& curve){
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+    AnimationCurve normalized = curve;
+    normalized.normalize();
+    if (lines.widthCurve != normalized){
+        lines.widthCurve = normalized;
+        lines.needUpdateRibbon = true;
+    }
+}
+
+AnimationCurve LineRenderer::getWidthCurve() const{
+    return getComponent<LineRendererComponent>().widthCurve;
+}
+
+void LineRenderer::setWidthUnit(LineWidthUnit unit){
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+    if (lines.widthUnit != unit){
+        lines.widthUnit = unit;
+        lines.needUpdateRibbon = true;
+    }
+}
+
+LineWidthUnit LineRenderer::getWidthUnit() const{
+    return getComponent<LineRendererComponent>().widthUnit;
+}
+
+void LineRenderer::setColorGradient(const Gradient& gradient){
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+    Gradient normalized = gradient;
+    normalized.normalize();
+    if (lines.colorGradient != normalized){
+        lines.colorGradient = normalized;
+        lines.needUpdateRibbon = true;
+    }
+}
+
+Gradient LineRenderer::getColorGradient() const{
+    return getComponent<LineRendererComponent>().colorGradient;
+}
+
+void LineRenderer::setStartColor(Vector4 color){
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+    LineRibbonBuilder::setEndColor(lines.colorGradient, 0.0f, color);
+    lines.needUpdateRibbon = true;
+}
+
+Vector4 LineRenderer::getStartColor() const{
+    return LineRibbonBuilder::colorAt(getComponent<LineRendererComponent>().colorGradient, 0.0f);
+}
+
+void LineRenderer::setEndColor(Vector4 color){
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+    LineRibbonBuilder::setEndColor(lines.colorGradient, 1.0f, color);
+    lines.needUpdateRibbon = true;
+}
+
+Vector4 LineRenderer::getEndColor() const{
+    return LineRibbonBuilder::colorAt(getComponent<LineRendererComponent>().colorGradient, 1.0f);
+}
+
+void LineRenderer::setNumCornerVertices(int count){
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+    lines.numCornerVertices = clampFanVertices(count);
+    lines.needUpdateRibbon = true;
+}
+
+int LineRenderer::getNumCornerVertices() const{
+    return (int)getComponent<LineRendererComponent>().numCornerVertices;
+}
+
+void LineRenderer::setNumCapVertices(int count){
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+    lines.numCapVertices = clampFanVertices(count);
+    lines.needUpdateRibbon = true;
+}
+
+int LineRenderer::getNumCapVertices() const{
+    return (int)getComponent<LineRendererComponent>().numCapVertices;
+}
+
+void LineRenderer::setAlignment(LineAlignment alignment){
+    getComponent<LineRendererComponent>().alignment = alignment;
+}
+
+LineAlignment LineRenderer::getAlignment() const{
+    return getComponent<LineRendererComponent>().alignment;
+}
+
+void LineRenderer::setTextureMode(LineTextureMode mode){
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+    if (lines.textureMode != mode){
+        lines.textureMode = mode;
+        lines.needUpdateRibbon = true;
+    }
+}
+
+LineTextureMode LineRenderer::getTextureMode() const{
+    return getComponent<LineRendererComponent>().textureMode;
+}
+
+void LineRenderer::setTextureScale(Vector2 scale){
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+    if (lines.textureScale != scale){
+        lines.textureScale = scale;
+        lines.needUpdateRibbon = true;
+    }
+}
+
+Vector2 LineRenderer::getTextureScale() const{
+    return getComponent<LineRendererComponent>().textureScale;
+}
+
+void LineRenderer::setTexture(const std::string& path){
+    setShaderTexture(LINE_BASE_TEXTURE_UNIFORM, path);
+}
+
+std::string LineRenderer::getTexture() const{
+    return getShaderTexture(LINE_BASE_TEXTURE_UNIFORM);
+}
+
+void LineRenderer::setSortPriority(int priority){
+    LineRendererComponent& lines = getComponent<LineRendererComponent>();
+    lines.sortPriority = priority;
+}
+
+int LineRenderer::getSortPriority() const{
+    return getComponent<LineRendererComponent>().sortPriority;
 }
 
 void LineRenderer::setCustomShader(const std::string& path){

@@ -1937,6 +1937,99 @@ OVERRIDES[('Screen', 'setExtraInsets')] = {
                     ('unit?', '"canvas"|"pixels"')], '')],
 }
 
+# script-lifecycle: the getScript family on every GameObject handle (and script instance, Script.lua),
+# GameObject's scene-wide finds and the Event class (lua_CFunctions)
+_GET_SCRIPT_DOCS = {
+    'getScript': ["The Lua script instance of class `className` on this GameObject, enabled or not (Unity's",
+                  "GetComponent<Script>()), or nil. Type it with `---@type Enemy` (LuaLS cannot infer the class)."],
+    'getScripts': ["Every Lua script instance of this GameObject, or those of class `className`, in component order."],
+    'getScriptInChildren': ["The first script of class `className` on this GameObject or a descendant (pre-order); inactive",
+                            "GameObjects only with `includeInactive`. Scripts may be disabled (Unity's GetComponentInChildren)."],
+    'getScriptsInChildren': ["Every script of class `className` on this GameObject and its descendants (pre-order); inactive",
+                             "GameObjects only with `includeInactive`."],
+    'getScriptInParent': ["The first script of class `className` on this GameObject or an ancestor (upward); inactive",
+                          "GameObjects only with `includeInactive`."],
+}
+_GET_SCRIPT_SIGS = {
+    'getScript': [([('className', 'string')], 'any')],
+    'getScripts': [([('className?', 'string')], 'ScriptInstance[]')],
+    'getScriptInChildren': [([('className', 'string'), ('includeInactive?', 'boolean')], 'any')],
+    'getScriptsInChildren': [([('className', 'string'), ('includeInactive?', 'boolean')], 'ScriptInstance[]')],
+    'getScriptInParent': [([('className', 'string'), ('includeInactive?', 'boolean')], 'any')],
+}
+for _name, _doc in _GET_SCRIPT_DOCS.items():
+    OVERRIDES[('EntityHandle', _name)] = {'doc': _doc, 'overloads': _GET_SCRIPT_SIGS[_name]}
+OVERRIDES.update({
+    ('GameObject', 'find'): {
+        'doc': ["The first active GameObject named `name` in the running scenes (main scene first, then the layers;",
+                "ascending ids within a scene), else nil. `\"Arm/Hand\"` is a Hand below an Arm, `\"/Monster/Arm/Hand\"`",
+                "a path from a root. Unity's GameObject.Find: not for every frame (a linear scan)."],
+        'overloads': [([('name', 'string')], 'GameObject')]},
+    ('GameObject', 'findWithTag'): {
+        'doc': ["The first active GameObject with the tag in the running scenes, else nil. A tag the project",
+                "does not define logs \"Tag: X is not defined.\" and finds nothing."],
+        'overloads': [([('tag', 'string')], 'GameObject')]},
+    ('GameObject', 'findGameObjectsWithTag'): {
+        'doc': ["Every active GameObject with the tag in the running scenes (possibly empty)."],
+        'overloads': [([('tag', 'string')], 'GameObject[]')]},
+    ('GameObject', 'findObjectOfType'): {
+        'doc': ["The first script instance of Lua class `className` that is active and enabled (any, with",
+                "`includeInactive`) in the running scenes, else nil. A component wrapper name (\"Camera\",",
+                "\"AudioSource\", \"Rigidbody\", ...) gives that wrapper for a GameObject with the component.",
+                "Unity's FindObjectOfType: not for every frame (a linear scan)."],
+        'overloads': [([('className', 'string'), ('includeInactive?', 'boolean')], 'any')]},
+    ('GameObject', 'findObjectsOfType'): {
+        'doc': ["Every match of findObjectOfType, in scene order (possibly empty)."],
+        'overloads': [([('className', 'string'), ('includeInactive?', 'boolean')], 'any[]')]},
+    ('Event', 'addListener'): {
+        'doc': ["Adds a listener (Unity's AddListener / C# `+=`): a function, or a method of a script instance",
+                "(`ev:addListener(self, \"onScore\")`), which is dropped once that script is destroyed. Adding the",
+                "same one again does nothing."],
+        'overloads': [([('fn', 'function')], ''), ([('owner', 'table'), ('methodName', 'string')], '')]},
+    ('Event', 'removeListener'): {
+        'doc': ["Removes a listener added with the same arguments (C# `-=`); true if one was removed."],
+        'overloads': [([('fn', 'function')], 'boolean'), ([('owner', 'table'), ('methodName', 'string')], 'boolean')]},
+    ('Event', 'removeAllListeners'): {
+        'doc': ["Removes every listener."],
+        'overloads': [([], '')]},
+    ('Event', 'invoke'): {
+        'doc': ["Calls the listeners in the order they were added with these arguments. A listener's error is",
+                "logged with its traceback and the others still run; one added meanwhile runs from the next invoke."],
+        'overloads': [([('...', 'any')], '')]},
+    ('Event', 'add'): {
+        'doc': ["Subscribes `fn` under `tag` (the event object protocol RegisterEvent uses); replaces that tag's."],
+        'overloads': [([('tag', 'string'), ('fn', 'function')], 'boolean')]},
+    ('Event', 'remove'): {
+        'doc': ["Removes the subscription with `tag`; true if there was one."],
+        'overloads': [([('tag', 'string')], 'boolean')]},
+    ('Event', 'has'): {
+        'doc': ["Whether a subscription with `tag` exists."],
+        'overloads': [([('tag', 'string')], 'boolean')]},
+    ('Event', '__tostring'): {
+        'doc': [],
+        'overloads': [([], 'string')]},
+})
+
+# Line and Trail Renderers (lines and trails spec 6.6): the points by 0-based index (Unity's
+# SetPosition / GetPosition); an index out of range raises an error naming positionCount.
+# setPosition(x, y[, z]) is still the GameObject's own position
+for _renderer, _what in (('LineRenderer', 'polyline point'), ('TrailRenderer', 'stored trail point (0 = the oldest)')):
+    OVERRIDES[(_renderer, 'setPosition')] = {
+        'doc': [f'Sets the {_what} at `index` (0-based, as Unity\'s SetPosition); an index out of range is an',
+                'error naming positionCount. With numbers only, (x, y[, z]) moves the GameObject itself.'],
+        'overloads': [([('index', 'integer'), ('position', 'Vector3')], ''),
+                      ([('x', 'number'), ('y', 'number'), ('z?', 'number')], '')]}
+    OVERRIDES[(_renderer, 'getPosition')] = {
+        'doc': [f'The {_what} at `index` (0-based); an index out of range is an error naming positionCount.'],
+        'overloads': [([('index', 'integer')], 'Vector3')]}
+
+OVERRIDES[('Gradient', 'setKeys')] = {
+    'doc': ['Replaces the keys: colorKeys are {time, color} (Vector3 sRGB) or GradientColorKey, alphaKeys',
+            '{time, alpha} or GradientAlphaKey; sorted, at most 8 of each.',
+            '`g:setKeys({{0, Vector3(1, 0.6, 0)}, {1, Vector3(1, 0.6, 0)}}, {{0, 1}, {1, 0}})`'],
+    'overloads': [([('colorKeys', '({[1]: number, [2]: Vector3}|GradientColorKey)[]'),
+                    ('alphaKeys?', '({[1]: number, [2]: number}|GradientAlphaKey)[]')], '')]}
+
 # Input (CoreClassesLua.cpp): the rebinding functions read and push tables, the simulated
 # sources take a name or a script instance
 _INPUT_SOURCE = 'string|ScriptInstance'
@@ -2063,13 +2156,18 @@ OVERRIDES.update({
         'overloads': [([('key', 'string'), ('value', 'string')], '')]},
 })
 
-# Properties whose getter returns a LuaRef: (Lua type, a copy)
+# Properties whose getter returns a LuaRef, or whose lambda's return type is not inferred:
+# (Lua type, a copy)
 PROPERTY_OVERRIDES = {
     # the null sentinel (stubs/Json.lua: JsonNull)
     ('Json', 'null'): ('JsonNull', False),
     ('Mesh', 'material'): ('Material', True),
     # AnimationEvent.args builds a 1-based table of the event's arguments
     ('AnimationEvent', 'args'): ('(number|string|boolean)[]', True),
+    # the joint's bodies (std::optional<GameObject> lambdas): nil = the world
+    ('Joint2D', 'bodyA'): ('GameObject|nil', False),
+    ('Joint2D', 'bodyB'): ('GameObject|nil', False),
+    ('Joint2D', 'connectedBody'): ('GameObject|nil', False),
 }
 
 for _phys, _vec in (('Physics', 'Vector3'), ('Physics2D', 'Vector2')):
@@ -2294,6 +2392,9 @@ def html_ui_types_file():
 # `any`): (Lua class, member, parameter name) -> Lua type. A `luabridge::LuaRef` parameter of a
 # bound function that takes a callback or a parameter table belongs here.
 _PARAM_TYPE_OVERRIDES = {
+    # 2D physics materials: a .physicsmaterial path, a PhysicsMaterial or nil (none)
+    ('Rigidbody2D', 'setColliderMaterial', 'value'): 'string|PhysicsMaterial|nil',
+    ('PhysicsMaterial', 'new', 'params'): '{friction?: number, bounciness?: number, frictionCombine?: PhysicsMaterialCombine, bounceCombine?: PhysicsMaterialCombine}|nil',
 }
 # anime (engine/core/script/binding/HtmlUIAnimeLua.cpp, phase-1 p1-anim): the parameter tables
 # are the Anime*Params classes of engine/core/script/binding/stubs/anime.lua
@@ -2468,7 +2569,7 @@ class Builder:
             fs = re.match(r'^FunctionSubscribe<(.*?)\((.*)\)>$', c.cpp) or \
                 re.match(r'^FunctionSubscribe<(.*?)\((.*)\)>$', c.base_cpp or '')
             for m in c.members:
-                if fs and m.kind == 'Method' and m.name in ('call', '__call', 'add'):
+                if fs and m.kind == 'Method' and m.name in ('call', '__call', 'add', 'remove', 'has'):
                     self.subscribe_member(c, m, fs.group(1), fs.group(2))
                     continue
                 if m.kind in ('Method', 'StaticMethod'):
@@ -2597,6 +2698,14 @@ class Builder:
         if m.name in ('call', '__call'):
             m.lua_sigs = [LuaSig(handler_params, ret)]
             m.doc = ['Calls every subscribed function with these arguments.'] if m.name == 'call' else []
+        elif m.name == 'remove':
+            m.lua_sigs = [LuaSig([('tag', 'string', False)], 'boolean')]
+            m.doc = ['Removes the subscription with `tag` (UnregisterEvent computes it); true if there was one.']
+            return
+        elif m.name == 'has':
+            m.lua_sigs = [LuaSig([('tag', 'string', False)], 'boolean')]
+            m.doc = ['Whether a subscription with `tag` exists.']
+            return
         else:
             fn = 'fun(' + ', '.join(f'{n}: {t}' for n, t, _ in handler_params) + ')' + (f': {ret}' if ret else '')
             m.lua_sigs = [LuaSig([('tag', 'string', False), ('fn', fn, False)], 'boolean')]
@@ -2656,7 +2765,8 @@ class Builder:
             if visible:
                 self.unresolve(c, m, 'getter takes arguments')
         if cpp_type is None:
-            self.unresolve(c, m, 'getter return type not inferred')
+            if (c.name, m.name) not in PROPERTY_OVERRIDES:
+                self.unresolve(c, m, 'getter return type not inferred')
             m.lua_type = 'any'
         else:
             base, stars = bare_type(cpp_type)
@@ -3063,9 +3173,26 @@ class Emitter:
             '---@param tag? string',
             'function RegisterEvent(self, event, methodName, tag) end',
             '',
+            '---Removes what `RegisterEngineEvent(self, methodName [, tag])` subscribed (same tag); true if it was',
+            '---subscribed. Unity\'s `-=` for an engine event, typically in onDisable.',
+            '---@param self table # the script instance (`self`)',
+            '---@param methodName EngineEventName',
+            '---@param tag? string',
+            '---@return boolean',
+            'function UnregisterEngineEvent(self, methodName, tag) end',
+            '',
+            '---Removes what `RegisterEvent(self, event, methodName [, tag])` subscribed (same tag); true if it was',
+            '---subscribed.',
+            '---@param self table # the script instance (`self`)',
+            '---@param event FunctionSubscribe|Event',
+            '---@param methodName string',
+            '---@param tag? string',
+            '---@return boolean',
+            'function UnregisterEvent(self, event, methodName, tag) end',
+            '',
             '---An event object (the `FunctionSubscribe_*` classes): functions subscribed to it are called when',
             '---the event fires. Subscribe a script method with RegisterEvent / RegisterEngineEvent, or any',
-            '---function with `event:add(tag, fn)`.',
+            '---function with `event:add(tag, fn)`; `event:remove(tag)` and `event:has(tag)` by tag.',
             '---@class FunctionSubscribe',
             '',
             '---One binding of an input action (Input.getBindings / setBindings; Project Settings > Input).',
@@ -3095,8 +3222,9 @@ class Emitter:
         L = [FILE_HEADER]
         L += [
             '-- The script module contract. A Lua script returns a module table; for every Script component',
-            '-- entry using it the engine makes an instance (the module is its __index), sets `self.__name`,',
-            '-- `self.scene`, `self.entity` and every property, then calls `init(self)`. Annotate a script\'s',
+            '-- entry using it (enabled or not) the engine makes an instance whose methods come from the module,',
+            '-- sets `self.__name`, `self.scene`, `self.entity` and every property, then calls `init(self)` when',
+            '-- the GameObject is first active (ScriptInstance below lists the lifecycle). Annotate a script\'s',
             '-- module as a subclass to get completion and checks on `self`:',
             '--',
             '--   ---@class Player : ScriptInstance',
@@ -3125,16 +3253,37 @@ class Emitter:
             '---@field type? ScriptPropertyType # default "float"',
             '---@field default? any # default value: number, boolean, string, or an array table for vectors/colors ({x, y, z})',
             '',
-            '---A Lua script instance (`self` in a script\'s methods). `init(self)` is called once after every',
-            '---instance of the scene exists; `onDestroy(self)` when its GameObject is destroyed at runtime.',
-            '---Other methods run only when registered (RegisterEngineEvent / RegisterEvent).',
+            '---A Lua script instance (`self` in a script\'s methods), Unity\'s MonoBehaviour. Every Script component',
+            '---entry has one, enabled or not. The engine calls these methods by name when the script defines',
+            '---them (lua-api.md 1.1):',
+            '---  init(self)              once, when the GameObject is first active in hierarchy, enabled or not (Awake)',
+            '---  onEnable(self)          it becomes active and enabled (after init)',
+            '---  start(self)             once, at the start of the frame after the first onEnable (Start)',
+            '---  onDisable(self)         it stops being active and enabled; before onDestroy',
+            '---  onDestroy(self)         once: destroy, scene unload, Play stop / quit (only if init ran)',
+            '---  onApplicationPause(self, paused) / onApplicationFocus(self, focused) / onApplicationQuit(self)',
+            '---Update methods (onUpdate, onFixedUpdate, onPostUpdate) run only once registered with',
+            '---RegisterEngineEvent; they are skipped while the script is not active and enabled.',
             '---@class ScriptInstance',
             '---@field scene Scene # the scene of the GameObject the script is attached to',
             '---@field entity integer # the GameObject\'s entity; wrap it: `Sprite(self.scene, self.entity)`',
             '---@field __name string # the script class name (the file name)',
             '---@field properties? ScriptPropertyDef[] # the properties the Inspector shows',
+            '---@field enabled boolean # Unity\'s enabled: assigning calls onEnable / onDisable (and start on the next frame)',
+            '---@field isActiveAndEnabled boolean # (read-only) the GameObject is active in hierarchy and the script enabled',
+            '---@field gameObject GameObject # (read-only) the script\'s GameObject',
+            'local ScriptInstance = {}',
             '',
         ]
+        for name, doc in _GET_SCRIPT_DOCS.items():
+            for line in doc:
+                L.append('---' + line)
+            params, ret = _GET_SCRIPT_SIGS[name][0]
+            for pname, ptype in params:
+                L.append(f'---@param {pname} {ptype}')
+            L.append(f'---@return {ret}')
+            L.append(f'function ScriptInstance:{name}(' + ', '.join(p.rstrip("?") for p, _ in params) + ') end')
+            L.append('')
         self.files['Script.lua'] = '\n'.join(L).rstrip() + '\n'
 
     def derives(self, c, base):

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneWindow.h"
+#include "component/Joint2DComponent.h"
 #include "pose/PoseViewport.h"
 #include "util/BidiText.h"
 #include "imgui_internal.h"
@@ -1311,6 +1312,10 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                     }
                     if (!blockPointHit) {
                         int pointHit = sceneProject->sceneRender->hitTestLinePoint(selEntity, x, y);
+                        // Inspector > Line Renderer > Edit Points: Ctrl+click on the polyline inserts a point
+                        if (pointHit < 0 && io.KeyCtrl && sceneProject->sceneRender->isLinePointEditing()) {
+                            pointHit = sceneProject->sceneRender->insertLinePointAt(project, sceneId, selEntity, x, y);
+                        }
                         if (pointHit >= 0) {
                             sceneProject->sceneRender->selectLinePoint(selEntity, pointHit);
                             subSelectionClickConsumesRelease[sceneId] = true;
@@ -1365,6 +1370,35 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                                     sceneProject->sceneRender->mouseHoverEvent(x, y);
                                 }
                             }
+                        }
+                    }
+                }
+            }
+
+            // Joint 2D anchor handles of a selected joint (2D gizmo or 3D translate; same side
+            // guards as the polygon block above)
+            if (gizmoSelected == GizmoSelected::OBJECT2D || gizmoSelected == GizmoSelected::TRANSLATE) {
+                std::vector<Entity> selEntities = project->getSelectedEntities(sceneId);
+                if (selEntities.size() == 1 && !io.KeyShift && sceneProject->scene->findComponent<Joint2DComponent>(selEntities[0])) {
+                    Entity selEntity = selEntities[0];
+                    Gizmo2DSideSelected gizmo2DSide = sceneProject->sceneRender->getActiveToolsLayer()->getGizmo2DSideSelected();
+                    bool blockPointHit;
+                    if (gizmoSelected == GizmoSelected::OBJECT2D) {
+                        blockPointHit = !(gizmo2DSide == Gizmo2DSideSelected::NONE || gizmo2DSide == Gizmo2DSideSelected::CENTER);
+                    } else {
+                        blockPointHit = sceneProject->sceneRender->isAnyGizmoSideSelected();
+                    }
+                    if (!blockPointHit) {
+                        int anchorHit = sceneProject->sceneRender->hitTestJointAnchor(selEntity, x, y);
+                        if (anchorHit >= 0) {
+                            sceneProject->sceneRender->selectJointAnchor(selEntity, anchorHit);
+                            subSelectionClickConsumesRelease[sceneId] = true;
+                            project->updateSceneRender(sceneId);
+                            sceneProject->sceneRender->mouseHoverEvent(x, y);
+                        } else if (sceneProject->sceneRender->getSelectedJointAnchorIndex() >= 0 && !sceneProject->sceneRender->isAnyGizmoSideSelected()) {
+                            sceneProject->sceneRender->clearJointAnchorSelection();
+                            project->updateSceneRender(sceneId);
+                            sceneProject->sceneRender->mouseHoverEvent(x, y);
                         }
                     }
                 }
@@ -1580,6 +1614,8 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 Entity prevPolygonPointEntity = sceneProject->sceneRender->getSelectedPolygonPointEntity();
                 int prevTrackPointIndex = sceneProject->sceneRender->getSelectedTrackPointIndex();
                 Entity prevTrackPointEntity = sceneProject->sceneRender->getSelectedTrackPointEntity();
+                int prevJointAnchorIndex = sceneProject->sceneRender->getSelectedJointAnchorIndex();
+                Entity prevJointAnchorEntity = sceneProject->sceneRender->getSelectedJointAnchorEntity();
 
                 // a click on empty space while lattice points are selected clears the points
                 // and keeps the lattice (the next one deselects it as usual)
@@ -1619,6 +1655,9 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 }
                 if (prevTrackPointIndex >= 0 && !(soleHost && selAfter[0] == prevTrackPointEntity)){
                     sceneProject->sceneRender->clearTrackPointSelection();
+                }
+                if (prevJointAnchorIndex >= 0 && !(soleHost && selAfter[0] == prevJointAnchorEntity)){
+                    sceneProject->sceneRender->clearJointAnchorSelection();
                 }
             }
             subSelectionClickConsumesRelease[sceneId] = false;
@@ -1665,6 +1704,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 sceneProject->sceneRender->clearLinePointSelection();
                 sceneProject->sceneRender->clearPolygonPointSelection();
                 sceneProject->sceneRender->clearTrackPointSelection();
+                sceneProject->sceneRender->clearJointAnchorSelection();
                 project->selectObjectsByRect(sceneId, clickStartPos, clickEndPos);
                 project->clearInspectedAsset();
                 project->syncSceneRenderEditLayer(sceneId);
