@@ -34,6 +34,8 @@
 
 #include "registry/TagManager.h"
 
+#include <atomic>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -99,6 +101,33 @@ namespace jasperengine{
         JPH::JobSystem* job_system;
 
 		JPH::PhysicsSystem world3D;
+
+		// The contact and activation events of a step (Jolt reports them from its job threads,
+		// under callbackMutex3D), delivered to the subscribers on the main thread after it
+		struct PendingContact3D {
+			uint8_t kind = 0;   // 0 added, 1 persisted, 2 removed
+			Entity body1 = NULL_ENTITY;
+			Entity body2 = NULL_ENTITY;
+			unsigned long collider1 = 0;
+			unsigned long collider2 = 0;
+			Contact3D contact;
+		};
+		std::vector<PendingContact3D> pendingContacts3D;
+		std::vector<std::pair<Entity, bool>> pendingActivations3D;
+		void deliverEvents3D();
+
+		// The settings scripts changed on delivered contacts, applied to those contacts in the
+		// steps after it until they end (under callbackMutex3D)
+		struct ContactOverride3D {
+			bool hasFriction = false;
+			float friction = 0.0f;
+			bool hasRestitution = false;
+			float restitution = 0.0f;
+			bool hasSensor = false;
+			bool sensor = false;
+		};
+		std::map<ContactPairKey3D, ContactOverride3D> contactOverrides3D;
+		std::atomic<bool> hasContactOverrides3D{false};
 
 		// Handles a teardown could not release while stepping. After world3D so they are
 		// destroyed first, releasing while the world they belong to is still alive.
@@ -251,6 +280,18 @@ namespace jasperengine{
         // cannot be created then (refused, retried next update) and teardown is queued.
         bool isSteppingWorld3D() const;
         std::recursive_mutex& getCallbackMutex3D();
+
+        // For the contact and activation listeners (JoltPhysicsAux.h), from Jolt's job threads
+        // during a step: the events are queued and delivered after it (deliverEvents3D)
+        void queueContact3D(uint8_t kind, Entity body1, Entity body2, unsigned long collider1, unsigned long collider2, const Contact3D& contact);
+        void queueActivation3D(Entity body, bool activated);
+        // The settings a script changed on this contact (Contact3D's setters), if any
+        void applyContactOverride3D(const ContactPairKey3D& key, JPH::ContactSettings& settings);
+        void forgetContact3D(const ContactPairKey3D& key);
+        // Contact3D's setters: from the next step, while the contact lasts
+        void setContactFriction3D(const ContactPairKey3D& key, float friction);
+        void setContactRestitution3D(const ContactPairKey3D& key, float restitution);
+        void setContactSensor3D(const ContactPairKey3D& key, bool sensor);
 
         const JoltObjectLayerTable& getObjectLayerTable3D() const;
         // Re-applies the GameObject layer and the category/mask bits of the entity's

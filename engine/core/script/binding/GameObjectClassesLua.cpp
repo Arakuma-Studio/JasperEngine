@@ -2844,6 +2844,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("getPenetrationDepth", &Contact3D::getPenetrationDepth)
         .addFunction("getColliderIndex1", &Contact3D::getColliderIndex1)
         .addFunction("getColliderIndex2", &Contact3D::getColliderIndex2)
+        .addFunction("getContactPointCount", &Contact3D::getContactPointCount)
         .addFunction("getRelativeContactPointsOnA", &Contact3D::getRelativeContactPointsOnA)
         .addFunction("getRelativeContactPointsOnB", &Contact3D::getRelativeContactPointsOnB)
         .addProperty("combinedFriction", &Contact3D::getCombinedFriction, &Contact3D::setCombinedFriction)

@@ -194,6 +194,11 @@ Physics events are scene-wide: they fire for ANY pair of bodies. Filter in the h
 2D contact events need "Contact Events" (sensor events: sensor + "Sensor Events", hit: "Hit
 Events") enabled on the Collider 2D (Inspector, or `body.shapeContactEvents = true`,
 `body.shapeSensorEvents = true`, `body.shapeEnableHitEvents = true`).
+Contact and activation events (2D and 3D) are delivered on the main thread right after the
+physics step that found them, inside that fixed step, in the same order on every run: a handler
+may move, create or destroy bodies. The filters (`preSolve2D`, `shouldCollide2D`,
+`shouldCollide3D`) answer inside the step; with a `shouldCollide3D` handler the 3D step runs on the
+main thread only (slower for big worlds).
 
 ### 1.4 Getting wrappers for your own GameObject
 
@@ -1383,9 +1388,11 @@ or `CharacterController2D(scene, entity)`. Points and points per second, as Rigi
 | `setAllowedDOFsAll()`, `setAllowedDOFs2DPlane()`, `setAllowedDOFs(...)`, `setOverrideMassAndInertia(...)` | methods | |
 | `getPointVelocity(p)`, `getAccumulatedForce()`, `getCenterOfMassPosition()` | methods | |
 
-`Contact3D`: `getWorldSpaceNormal()`, `getPenetrationDepth()`, `getBaseOffset()`,
-`getColliderIndex1()`, `getColliderIndex2()`, rw `combinedFriction`,
-`combinedRestitution`, `sensor`. `Joint3D(scene [, entity])`: `setFixedJoint`,
+`Contact3D` (a copy of the contact as the step found it): `getWorldSpaceNormal()`,
+`getPenetrationDepth()`, `getBaseOffset()`, `getColliderIndex1()`, `getColliderIndex2()`,
+`getContactPointCount()`, `getRelativeContactPointsOnA(i)` / `OnB(i)` (0-based), rw
+`combinedFriction`, `combinedRestitution`, `sensor` (a change applies to that contact from the
+next step, for as long as the bodies keep touching there). `Joint3D(scene [, entity])`: `setFixedJoint`,
 `setDistanceJoint`, `setPointJoint`, `setHingeJoint`, `setConeJoint`, `setPrismaticJoint`,
 `setSwingTwistJoint`, `setSixDOFJoint`, `setPathJoint`, `setGearJoint`,
 `setRackAndPinionJoint`, `setPulleyJoint`, `getType()` (partial).
