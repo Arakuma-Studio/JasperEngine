@@ -47,8 +47,9 @@ async def settle(ed: Editor, frames: int = 60) -> None:
     await ed.call("wait", frames=frames, timeout_seconds=900)
 
 
-async def play_and_time(ed: Editor, scene: str, size: tuple[int, int], frames: int, warmup: int = 120) -> dict:
-    """{label: GPU ms} of the Game view playing `scene` at `size`, plus _frame, _frames, _size"""
+async def play_and_time(ed: Editor, scene: str, size: tuple[int, int], frames: int, warmup: int = 120, probe=None) -> dict:
+    """{label: GPU ms} of the Game view playing `scene` at `size`, plus _frame, _frames, _size; `probe`
+    (a coroutine function of the editor) runs while playing, its result as _probe"""
     sid = (await ed.call("open_scene", scene=scene))["scene"]["id"]
     await ed.call("play", action="start", scene=sid)
     try:
@@ -57,6 +58,8 @@ async def play_and_time(ed: Editor, scene: str, size: tuple[int, int], frames: i
         await ed.call("wait", frames=30)
         out = await gpu_view.gpu_passes(ed, frames)
         out["_size"] = list(got)
+        if probe is not None:
+            out["_probe"] = await probe(ed)
     finally:
         await ed.call("play", action="stop")
     return out
@@ -82,10 +85,17 @@ def merge(runs: list[dict]) -> dict:
     """the median over runs of every case's every label"""
     out = {}
     for case in runs[0]:
-        labels = {label for r in runs for label in r[case] if not label.startswith("_") or label == "_frame"}
-        out[case] = {label: statistics.median(r[case].get(label, 0.0) for r in runs) for label in sorted(labels)}
+        # a run whose capture timed none of the view's passes is left out (Vulkan in the editor
+        # loses them at times: S15, docs/perf/gpu-campaign.md); _valid_runs counts the rest
+        valid = [r for r in runs if r[case].get("_frame", 0.0) > 0.0] or runs
+        labels = {label for r in valid for label in r[case] if not label.startswith("_") or label == "_frame"}
+        out[case] = {label: statistics.median(r[case].get(label, 0.0) for r in valid) for label in sorted(labels)}
         out[case]["_size"] = runs[0][case].get("_size")
         out[case]["_runs_frame"] = [r[case].get("_frame", 0.0) for r in runs]
+        out[case]["_valid_runs"] = sum(1 for r in runs if r[case].get("_frame", 0.0) > 0.0)
+        out[case]["_clock_mhz"] = statistics.median(r[case].get("_clock_mhz", 0.0) for r in valid)
+        if any("_live" in r[case] for r in valid):
+            out[case]["_live"] = statistics.median(r[case].get("_live", 0) for r in valid)
     return out
 
 
@@ -157,7 +167,7 @@ async def pbr_run(args: argparse.Namespace, run: int) -> tuple[dict, dict]:
             for scene in ["Lit Baseline", *LOBE_BUDGETS, "Lobe Hex", "Terrain Baseline", "Hex Terrain"]:
                 sid = (await ed.call("open_scene", scene=f"{scene}.scene"))["scene"]["id"]
                 await ed.call("set_scene_settings", scene=sid, settings={"lit_quality": quality})
-                got = await play_and_time(ed, f"{scene}.scene", (1920, 1080), args.frames)
+                got = await play_and_time(ed, f"{scene}.scene", tuple(args.size), args.frames)
                 out[f"{quality}/{scene}"] = got
                 print(f"run {run} {quality}/{scene}: frame {got['_frame']:.3f} ms at {got['_size']}", flush=True)
     return out, dev
@@ -226,8 +236,11 @@ async def particles_run(args: argparse.Namespace, run: int) -> tuple[dict, dict]
             if cameras:
                 await ed.call("set_transform", scene=sid, entity=cameras[0]["id"], position=[0.0, 3.0, 14.0])
             await ed.call("save_scene", scene=sid)
-            got = await play_and_time(ed, "particles.scene", (1920, 1080), args.frames, warmup=240)
-            got["_live"] = (await ed.call("get_render_stats", view="game")).get("instances", 0)
+            async def live(e):
+                world = (await e.call("get_particle_stats", scene=sid)).get("world", {})
+                return {"particle_count": world.get("particle_count"), "budget": world.get("budget")}
+            got = await play_and_time(ed, "particles.scene", (1920, 1080), args.frames, warmup=240, probe=live)
+            got["_live"] = (got.get("_probe") or {}).get("particle_count") or 0
             out[name] = got
             print(f"run {run} particles {name}: frame {got['_frame']:.3f} ms at {got['_size']}", flush=True)
     return out, dev
@@ -247,8 +260,9 @@ PARTICLE_PATCH = json.dumps({
 def particles_report(results: dict) -> list[str]:
     cost = sum(ms for label, ms in results["ref_100k"].items() if not label.startswith("_")) - \
         sum(ms for label, ms in results["empty"].items() if not label.startswith("_"))
+    live = results["ref_100k"].get("_live", 0)
     return ["| Case | GPU (ms) | Budget |", "|---|---|---|",
-            f"| 100 k reference particles at 1080p (passes over the empty scene) | {cost:.3f} | ≤ 1.5 |"]
+            f"| {live:.0f} live reference particles at 1080p (passes over the empty scene) | {cost:.3f} | ≤ 1.5 (100 k) |"]
 
 
 CASES = {"shadows": (shadows_run, shadows_report), "pbr": (pbr_run, pbr_report), "post": (post_run, post_report),
@@ -281,6 +295,8 @@ def main() -> int:
     parser.add_argument("--shadow-memory-mb", type=int, default=0,
                         help="shadows: JASPERENGINE_SHADOW_MEMORY_MB for the editor (the tier's memory row replaced)")
     parser.add_argument("--project", default=str(ROOT / "build" / "pbr-extended"), help="pbr: the generated project")
+    parser.add_argument("--size", type=int, nargs=2, default=[1920, 1080], metavar=("W", "H"),
+                        help="pbr: the Game view's render size (a bigger one keeps the GPU at its clocks)")
     parser.add_argument("--editor", default="", help="editor binary (default: the harness's)")
     parser.add_argument("--json", default="")
     return asyncio.run(main_async(parser.parse_args()))

@@ -230,9 +230,13 @@ def median_of_runs(runs: list[dict]) -> dict:
         merged[name]["vram_mb"] = max(r[name]["vram_mb"] for r in runs)
         merged[name]["vram_screen_mb"] = max(r[name].get("vram_screen_mb", 0.0) for r in runs)
         if all("gpu" in r[name] for r in runs):
-            labels = {label for r in runs for label in r[name]["gpu"]}
-            merged[name]["gpu"] = {label: statistics.median(r[name]["gpu"].get(label, 0.0) for r in runs) for label in labels}
+            # a run whose capture timed none of the view's passes is left out (Vulkan in the editor
+            # loses them at times; docs/perf/gpu-campaign.md)
+            valid = [r for r in runs if r[name]["gpu"].get("_frame", 0.0) > 0.0] or runs
+            labels = {label for r in valid for label in r[name]["gpu"]}
+            merged[name]["gpu"] = {label: statistics.median(r[name]["gpu"].get(label, 0.0) for r in valid) for label in labels}
             merged[name]["gpu_runs_atmosphere_ms"] = [atmosphere_ms(r[name]["gpu"]) for r in runs]
+            merged[name]["gpu_valid_runs"] = sum(1 for r in runs if r[name]["gpu"].get("_frame", 0.0) > 0.0)
     return merged
 
 
