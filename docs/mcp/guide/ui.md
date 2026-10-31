@@ -56,9 +56,11 @@ at time scale 0 (pause menus). The tween goes with the group and with the scene.
 **Render modes.** `PER_ELEMENT` multiplies each element's alpha at no extra draw cost: overlapping
 children show through each other (darker overlaps). `FLATTEN` draws the subtree into a layer and
 composites it once at the group's alpha, so overlaps look like the front element (CSS `opacity`,
-Godot CanvasGroup). It costs two render pass breaks and the fill of the group's rect, only while
-its alpha is strictly between 0 and 1 and the subtree has two or more draws; keep at most two
-flattened groups fading at once on mobile. Trade-offs: additive and multiply children blend
+Godot CanvasGroup). Its cost, only while its alpha is strictly between 0 and 1 and the subtree has
+two or more UI elements: per camera that draws it, one offscreen pass before the camera's own (a
+target the size of the screen, cleared; flattened siblings elsewhere on screen share one) and one
+textured quad over the subtree's bounds; the colour pass is not broken. Keep at most two flattened
+groups fading at once on mobile. Trade-offs: additive and multiply children blend
 against the layer, not the background; `ignoreParentGroups` children inside a flattened group are
 still composited at its alpha; UI particles and sprites in the subtree are faded per element and drawn
 over the layer; a stencil mask above a flattened group does not clip inside it (put the mask inside
@@ -75,3 +77,10 @@ ignore_parent_groups, render_mode}`; `add_component canvasgroup` + `set_properti
 `set_runtime_property canvasgroup.alpha`; `get_entity` and `get_runtime_entity` of an element
 under a group return `canvas_group_state {inherited_alpha, interactable, blocks_raycasts,
 group}`. Check the look with `screenshot` pixels and clicks with `send_input` + `eval_lua`.
+
+**Behaviour changes in scenes without Canvas Groups** (intended, Unity-like): an InputField whose own
+`disabled` is set no longer takes the focus on a press (and typing does not reach it); a Button that
+is pressed when it becomes disabled is released (`onRelease`, no click) instead of staying pressed;
+new Buttons' `colorDisabled` defaults to Unity's grey (sRGB 200, 200, 200, 128): saved scenes keep
+the colour they stored, buttons made from Lua or MCP get the grey (set `colorDisabled` for another
+look).

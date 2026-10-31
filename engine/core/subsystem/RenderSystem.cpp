@@ -15476,6 +15476,9 @@ void RenderSystem::render2DShadows(){
 void RenderSystem::draw(){
     // the FLATTEN Canvas Group layers of the last frame: stats, unused targets released
     trimCanvasLayers();
+    // UI particles whose Canvas Group alpha changed after this frame's update (the UI draw
+    // synced it): their render points again, so this frame shows it
+    refreshGroupFadedPoints();
     drawFramePasses();
     drawCameras(true);
 
@@ -16489,6 +16492,27 @@ namespace {
     constexpr size_t CANVAS_LAYER_MAX_UNUSED_FRAMES = 120;
 }
 
+void RenderSystem::refreshGroupFadedPoints(){
+    auto pointsArray = scene->getComponentArray<PointsComponent>();
+    if (pointsArray->size() == 0)
+        return;
+    const Entity cameraEntity = scene->getCamera();
+    CameraComponent* camera = scene->findComponent<CameraComponent>(cameraEntity);
+    Transform* cameraTransform = scene->findComponent<Transform>(cameraEntity);
+    for (size_t i = 0; i < pointsArray->size(); i++){
+        PointsComponent& points = pointsArray->getComponentFromIndex(i);
+        if (!points.needUpdateGroupAlpha)
+            continue;
+        points.needUpdateGroupAlpha = false;
+        Transform* transform = scene->findComponent<Transform>(pointsArray->getEntity(i));
+        if (!points.loaded || !transform || !camera || !cameraTransform)
+            continue;
+        updatePoints(points, *transform, *camera, *cameraTransform);
+        if (points.transparent)
+            sortPoints(points, *transform, *camera, *cameraTransform);
+    }
+}
+
 bool RenderSystem::isUIParticle(Entity entity) const{
     Entity current = entity;
     int guard = 0;
@@ -16557,6 +16581,7 @@ void RenderSystem::trimCanvasLayers(){
         i++;
     }
     canvasGroupRenderStats.pooled = (uint32_t)canvasLayers.size();
+    canvasGroupRenderStats.targetsCreated = canvasLayerTargetsCreated;
     lastCanvasGroupRenderStats = canvasGroupRenderStats;
     canvasGroupRenderStats = CanvasGroupRenderStats();
 }
@@ -16570,6 +16595,7 @@ void RenderSystem::renderCanvasGroupLayers(CameraComponent& camera, Transform& c
     // the last pass composited its layers: their targets are free again
     for (auto& layer : canvasLayers){
         layer->inUse = false;
+        layer->usedRects.clear();
     }
 
     auto transforms = scene->getComponentArray<Transform>();
@@ -16599,9 +16625,54 @@ void RenderSystem::renderCanvasGroupLayers(CameraComponent& camera, Transform& c
     const ComponentId uiId = scene->getComponentId<UIComponent>();
     const ComponentId rectId = scene->getComponentId<RectTransformComponent>();
     const ComponentId groupId = scene->getComponentId<CanvasGroupComponent>();
-    // the indices of groups whose layer failed: their ancestors' layers fail too (an inner
-    // subtree drawn Per Element cannot sit in a layer)
+    const ComponentId cameraId = scene->getComponentId<CameraComponent>();
+    // what an element of a layer draws: visible, active, in the camera's layers, not faded out
+    auto drawsInLayer = [&](Entity entity, Signature signature, Transform& transform) -> UIComponent* {
+        if (!signature.test(uiId) || signature.test(cameraId) || !transform.visible)
+            return nullptr;
+        UIComponent& ui = scene->getComponent<UIComponent>(entity);
+        if (!isRenderActive(entity, signature) || !isLayerVisible(entity, cullingMask) || samplesCameraTarget(camera, ui.texture) ||
+                uiDrawSkipped(ui.color, ui.groupLayerAlpha, ui.drawBlendMode, ui.writesStencil))
+            return nullptr;
+        return &ui;
+    };
+    auto unite = [](Rect& into, bool& has, const Rect& rect){
+        if (rect.getWidth() <= 0.0f || rect.getHeight() <= 0.0f)
+            return;
+        if (!has){
+            into = rect;
+            has = true;
+            return;
+        }
+        const float x0 = std::min(into.getX(), rect.getX());
+        const float y0 = std::min(into.getY(), rect.getY());
+        const float x1 = std::max(into.getX() + into.getWidth(), rect.getX() + rect.getWidth());
+        const float y1 = std::max(into.getY() + into.getHeight(), rect.getY() + rect.getHeight());
+        into = Rect(x0, y0, x1 - x0, y1 - y0);
+    };
+    auto overlaps = [](const Rect& a, const Rect& b){
+        // a pixel apart counts (the bounds are rounded out when composited)
+        return a.getX() <= b.getX() + b.getWidth() + 1.0f && b.getX() <= a.getX() + a.getWidth() + 1.0f &&
+               a.getY() <= b.getY() + b.getHeight() + 1.0f && b.getY() <= a.getY() + a.getHeight() + 1.0f;
+    };
+
+    // the groups whose layer failed: their ancestors' layers fail too (an inner subtree drawn
+    // Per Element cannot sit in a layer), and so do the layers inside them (composited at an
+    // alpha relative to the missing layer, they would be too opaque)
     std::vector<size_t> failed;
+    auto fail = [&](size_t first, size_t last){
+        failed.push_back(first);
+        canvasGroupRenderStats.fallbacks++;
+        for (auto it = passCanvasLayers.begin(); it != passCanvasLayers.end();){
+            const size_t index = transforms->getIndex(it->first);
+            if (index > first && index <= last){
+                it = passCanvasLayers.erase(it);
+                canvasGroupRenderStats.layers--;
+            }else{
+                ++it;
+            }
+        }
+    };
 
     for (const auto& item : layered){
         const size_t first = item.first;
@@ -16610,44 +16681,73 @@ void RenderSystem::renderCanvasGroupLayers(CameraComponent& camera, Transform& c
 
         bool ready = true;
         for (size_t f : failed){
-            if (f > first && f <= last){
+            if (f > first && f <= last)
                 ready = false;
-            }
         }
         // every element must have the layer's pipelines (one loaded before the scene had a
-        // Canvas Group reloads with them: Per Element this frame)
+        // Canvas Group reloads with them: Per Element this frame); the subtree's bounds, in
+        // the pass target's pixels: what the layer covers (nothing this camera draws: no layer)
+        Rect bounds;
+        bool hasBounds = false;
         for (size_t i = first; i <= last && ready; i++){
+            Transform& transform = transforms->getComponentFromIndex(i);
             const Entity entity = transforms->getEntity(i);
-            if (!scene->getSignature(entity).test(uiId))
+            const Signature signature = scene->getSignature(entity);
+            if (perCameraMVP)
+                updateMVP(i, transform, camera, cameraTransform);
+            UIComponent* ui = drawsInLayer(entity, signature, transform);
+            if (!ui)
                 continue;
-            UIComponent& ui = scene->getComponent<UIComponent>(entity);
-            if (ui.loaded && !(ui.loadedPipelines & layerPip)){
-                ui.needReload = true;
+            if (ui->loaded && !(ui->loadedPipelines & layerPip)){
+                ui->needReload = true;
                 ready = false;
-            }
-        }
-        if (!ready){
-            failed.push_back(first);
-            canvasGroupRenderStats.fallbacks++;
-            continue;
-        }
-
-        // a pooled target the size of the pass target (so scissors and viewport are the pass's)
-        CanvasLayer* layer = nullptr;
-        size_t layerIndex = 0;
-        for (size_t l = 0; l < canvasLayers.size(); l++){
-            if (!canvasLayers[l]->inUse){
-                layer = canvasLayers[l].get();
-                layerIndex = l;
                 break;
             }
+            const Vector3 minimum = ui->aabb.getMinimum();
+            const Vector3 maximum = ui->aabb.getMaximum();
+            unite(bounds, hasBounds, projectLocalRect(objectMVP(transform), minimum.x, minimum.y, maximum.x, maximum.y, colorPassViewport));
         }
-        if (!layer){
+        if (!ready){
+            fail(first, last);
+            continue;
+        }
+        if (!hasBounds)
+            continue;
+
+        // a target the size of the pass target (so scissors and viewport are the pass's): one
+        // this pass already uses when the layers it holds are elsewhere on screen (siblings
+        // share it), else a free one of that size, else a free one resized, else a new one
+        size_t layerIndex = canvasLayers.size();
+        bool shared = false;
+        for (size_t l = 0; l < canvasLayers.size() && layerIndex == canvasLayers.size(); l++){
+            CanvasLayer& candidate = *canvasLayers[l];
+            if (!candidate.inUse || candidate.framebuffer.getWidth() != targetWidth || candidate.framebuffer.getHeight() != targetHeight)
+                continue;
+            bool clear = true;
+            for (const Rect& used : candidate.usedRects){
+                clear = clear && !overlaps(used, bounds);
+            }
+            if (clear){
+                layerIndex = l;
+                shared = true;
+            }
+        }
+        for (int pass = 0; pass < 2 && layerIndex == canvasLayers.size(); pass++){
+            for (size_t l = 0; l < canvasLayers.size(); l++){
+                CanvasLayer& candidate = *canvasLayers[l];
+                const bool sized = candidate.framebuffer.isCreated() && candidate.framebuffer.getWidth() == targetWidth &&
+                                   candidate.framebuffer.getHeight() == targetHeight;
+                if (!candidate.inUse && (pass == 1 || sized)){
+                    layerIndex = l;
+                    break;
+                }
+            }
+        }
+        if (layerIndex == canvasLayers.size()){
             canvasLayers.push_back(std::make_unique<CanvasLayer>());
-            layerIndex = canvasLayers.size() - 1;
-            layer = canvasLayers.back().get();
         }
-        Framebuffer& framebuffer = layer->framebuffer;
+        CanvasLayer& layer = *canvasLayers[layerIndex];
+        Framebuffer& framebuffer = layer.framebuffer;
         if (!framebuffer.isCreated() || framebuffer.getWidth() != targetWidth || framebuffer.getHeight() != targetHeight){
             framebuffer.destroy();
             framebuffer.setWidth(targetWidth);
@@ -16657,14 +16757,15 @@ void RenderSystem::renderCanvasGroupLayers(CameraComponent& camera, Transform& c
             framebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
             framebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
             framebuffer.create();
+            canvasLayerTargetsCreated++;
         }
         if (!framebuffer.isCreated()){
-            failed.push_back(first);
-            canvasGroupRenderStats.fallbacks++;
+            fail(first, last);
             continue;
         }
-        layer->inUse = true;
-        layer->lastUsedFrame = canvasLayerFrame;
+        layer.inUse = true;
+        layer.lastUsedFrame = canvasLayerFrame;
+        layer.usedRects.push_back(bounds);
 
         // the scissors of the group's ancestors, root first (this pass has not drawn them yet)
         std::vector<size_t> ancestors;
@@ -16674,7 +16775,11 @@ void RenderSystem::renderCanvasGroupLayers(CameraComponent& camera, Transform& c
             parent = scene->getComponent<Transform>(parent).parent;
         }
 
-        canvasLayerPass.setClearColor(Vector4(0.0f, 0.0f, 0.0f, 0.0f));
+        // the first layer of a target clears it (transparent); a sibling sharing it keeps the
+        // others' pixels: its own part was cleared then and never drawn
+        const LoadAction load = shared ? LoadAction::LOAD : LoadAction::CLEAR;
+        canvasLayerPass.setColorActions(load, StoreAction::STORE, Vector4(0.0f, 0.0f, 0.0f, 0.0f));
+        canvasLayerPass.setDepthStencilActions(load, StoreAction::STORE);
         canvasLayerPass.setLabel("canvas group layer");
         canvasLayerPass.startRenderPass(&framebuffer.getRender());
         canvasLayerPass.applyViewport(colorPassViewport);
@@ -16693,20 +16798,8 @@ void RenderSystem::renderCanvasGroupLayers(CameraComponent& camera, Transform& c
 
         PassCanvasLayer passLayer;
         passLayer.layer = layerIndex;
-        auto addBounds = [&](const Rect& rect){
-            if (rect.getWidth() <= 0.0f || rect.getHeight() <= 0.0f)
-                return;
-            if (!passLayer.hasBounds){
-                passLayer.bounds = rect;
-                passLayer.hasBounds = true;
-                return;
-            }
-            const float x0 = std::min(passLayer.bounds.getX(), rect.getX());
-            const float y0 = std::min(passLayer.bounds.getY(), rect.getY());
-            const float x1 = std::max(passLayer.bounds.getX() + passLayer.bounds.getWidth(), rect.getX() + rect.getWidth());
-            const float y1 = std::max(passLayer.bounds.getY() + passLayer.bounds.getHeight(), rect.getY() + rect.getHeight());
-            passLayer.bounds = Rect(x0, y0, x1 - x0, y1 - y0);
-        };
+        passLayer.bounds = bounds;
+        passLayer.hasBounds = true;
 
         size_t skipLast = 0;
         bool skipping = false;
@@ -16716,8 +16809,6 @@ void RenderSystem::renderCanvasGroupLayers(CameraComponent& camera, Transform& c
             const Signature signature = scene->getSignature(entity);
             if (skipping && i > skipLast)
                 skipping = false;
-            if (perCameraMVP)
-                updateMVP(i, transform, camera, cameraTransform);
 
             // a nested layer (drawn before, innermost first) goes where its group is
             if (!skipping && i > first && signature.test(groupId)){
@@ -16725,8 +16816,6 @@ void RenderSystem::renderCanvasGroupLayers(CameraComponent& camera, Transform& c
                 const CanvasGroupComponent& group = scene->getComponent<CanvasGroupComponent>(entity);
                 if (nested != passCanvasLayers.end()){
                     drawCanvasLayer(entity, nested->second, group.layerAlpha, layerPip, 1, colorPassViewport, targetWidth, targetHeight, canvasLayerPass);
-                    if (nested->second.hasBounds)
-                        addBounds(nested->second.bounds);
                     skipping = true;
                     skipLast = scene->findBranchLastIndex(entity);
                 }else if (group.enabled && group.renderMode == CanvasGroupRenderMode::FLATTEN && group.layerAlpha <= 0.0f){
@@ -16739,17 +16828,10 @@ void RenderSystem::renderCanvasGroupLayers(CameraComponent& camera, Transform& c
             if (signature.test(rectId))
                 clippedAway = applyPassScissor(entity, signature, transform, canvasLayerPass, colorPassViewport, hasActiveScissor);
 
-            if (!clippedAway && !skipping && signature.test(uiId) && !signature.test(scene->getComponentId<CameraComponent>())){
-                UIComponent& ui = scene->getComponent<UIComponent>(entity);
-                const bool renderActive = isRenderActive(entity, signature) && isLayerVisible(entity, cullingMask);
-                if (transform.visible && renderActive && !samplesCameraTarget(camera, ui.texture) &&
-                        !uiDrawSkipped(ui.color, ui.groupLayerAlpha, ui.drawBlendMode, ui.writesStencil)){
-                    drawUI(ui, transform, layerPip,
+            if (!clippedAway && !skipping){
+                if (UIComponent* ui = drawsInLayer(entity, signature, transform)){
+                    drawUI(*ui, transform, layerPip,
                            (frameFluids && frameFluids->hasMaterialFluids()) ? frameFluids->getMaterialTexture(entity) : nullptr, true);
-                    // what it covers (its geometry's local box), for the composite's scissor
-                    const Vector3 minimum = ui.aabb.getMinimum();
-                    const Vector3 maximum = ui.aabb.getMaximum();
-                    addBounds(projectLocalRect(objectMVP(transform), minimum.x, minimum.y, maximum.x, maximum.y, colorPassViewport));
                 }
             }
 
@@ -16762,6 +16844,8 @@ void RenderSystem::renderCanvasGroupLayers(CameraComponent& camera, Transform& c
 
         passCanvasLayers[groupEntity] = passLayer;
         canvasGroupRenderStats.layers++;
+        if (shared)
+            canvasGroupRenderStats.sharedTargets++;
     }
 }
 

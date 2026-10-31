@@ -2663,7 +2663,9 @@ bool UISystem::eventOnCharInput(wchar_t codepoint){
             InputFieldComponent& inputfield = scene->getComponent<InputFieldComponent>(entity);
             UIComponent& ui = scene->getComponent<UIComponent>(entity);
 
-            if (ui.focused && isUIActive(entity, signature)){
+            // a field that became non-interactable (own flag or Canvas Group) takes no typing,
+            // also before the next update drops its focus
+            if (ui.focused && isUIActive(entity, signature) && isInteractable(entity)){
                 TextComponent* text = scene->findComponent<TextComponent>(inputfield.text);
                 if (text && handleInputFieldCharInput(inputfield, *text, ui, codepoint)){
                     return true;
@@ -2684,7 +2686,9 @@ bool UISystem::eventOnKeyDown(int key, bool repeat, int mods){
             InputFieldComponent& inputfield = scene->getComponent<InputFieldComponent>(entity);
             UIComponent& ui = scene->getComponent<UIComponent>(entity);
 
-            if (ui.focused && isUIActive(entity, signature)){
+            // a field that became non-interactable (own flag or Canvas Group) takes no typing,
+            // also before the next update drops its focus
+            if (ui.focused && isUIActive(entity, signature) && isInteractable(entity)){
                 TextComponent* text = scene->findComponent<TextComponent>(inputfield.text);
                 if (text && handleInputFieldKeyDown(inputfield, *text, ui, key, repeat, mods)){
                     return true;
@@ -3591,6 +3595,7 @@ void UISystem::applyCanvasGroupEntry(Entity entity, Signature signature, const C
         if (points.uiGroupAlpha != alpha){
             points.uiGroupAlpha = alpha;
             points.needUpdate = true;
+            points.needUpdateGroupAlpha = true;
         }
     }
 }
@@ -3753,6 +3758,11 @@ void UISystem::syncCanvasGroups(){
         sanitizeCanvasGroup(groups->getEntity(i), group);
         if (canvasGroupChanged(group)){
             canvasGroupDirty.push_back(groups->getEntity(i));
+            // a render mode change counts the subtree's UI elements again (the FLATTEN leaf
+            // rule; the full pass counts them only while some group is FLATTEN)
+            if (group.seen.valid && group.seen.renderMode != group.renderMode){
+                canvasGroupsStructuralDirty = true;
+            }
         }
     }
 

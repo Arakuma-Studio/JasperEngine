@@ -550,9 +550,15 @@ Decisions made while implementing, where the spec was silent, ambiguous or in co
   what is behind it), but the colour pass is never broken, which also works for swapchain passes (sokol
   cannot resume an MSAA swapchain pass) and costs tilers less: one extra pass per layer and the fill of
   its bounds. The composite uses the HTML UI's passthrough program (`HTMLUI_POST` PASSTHROUGH: a
-  premultiplied image times an opacity), so no new shader type; exports include that variant whenever a
-  scene has a Canvas Group (a script can switch one to FLATTEN). Layer draws use `PIP_RTT`/`PIP_RTT_NODEPTH`:
-  UI elements and UI particles load them as soon as the scene has a Canvas Group.
+  premultiplied image times an opacity), so no new shader type; exports always include that variant in every
+  build (it is a few KB, and a script can add a group or switch one to FLATTEN in any scene). Layer
+  draws use `PIP_RTT`/`PIP_RTT_NODEPTH`: UI elements and UI particles load them as soon as the scene has a
+  Canvas Group. The cost is therefore one offscreen pass per layered group per camera pass (plus its
+  clear) and one quad, not "two pass breaks" (7.10 and 9 above are superseded by this). Targets are
+  pooled by size (the Scene and Game views each keep theirs), groups no camera element draws make no
+  layer (culling mask, hidden), and sibling layers whose bounds do not overlap share one target. When
+  an outer layer cannot be made, the layers inside it are dropped too, so that branch draws Per
+  Element with the right alphas.
 - **What a layer holds.** UI elements (UIComponents) of the subtree. UI particles (Points under a
   RectTransform) and non-UI renderers in the subtree draw in the colour pass after the layer, faded per
   element (`uiGroupAlpha`), so `subtreeDraws` counts UIComponents only. A stencil mask above a flattened
@@ -591,6 +597,12 @@ Decisions made while implementing, where the spec was silent, ambiguous or in co
   and rejects NaN (keeping the value it saw last).
 - **Pixel test 14** has no GL infrastructure in the editor unit tests: the Flatten and Per Element overlap
   pixels are checked in the MCP e2e test (`test_flatten_overlap_pixels`, Game view under xvfb).
+- A render mode change is structural (one full pass): it is what counts the UI elements of the
+  subtrees (the leaf rule), which the full pass does only while some group is FLATTEN.
+- Typing (char and key events) also requires the field to be interactable (it is dropped before the
+  next update takes the focus away). UI particles whose group alpha changes after the update (in
+  `onPostUpdate`) are rebuilt by `RenderSystem::draw`, so they fade the same frame.
+- Intended behaviour changes in scenes without groups are listed in `ui.md` ("Behaviour changes").
 - `docs/animation-clips.md` has no CanvasGroup recipe on main (anim-properties is not merged): nothing to
   replace yet.
 

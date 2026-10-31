@@ -454,10 +454,6 @@ namespace {
                     for (const auto& variant : ShaderPool::getHtmlUIVariants())
                         insertKeys(variant.first, variant.second, 0);
                 }
-                // a Canvas Group's FLATTEN layer composite (any group: a script can switch it)
-                if (registry->isComponentRegistered<CanvasGroupComponent>() && registry->findComponent<CanvasGroupComponent>(entity)){
-                    insertKeys(ShaderType::HTMLUI_POST, ShaderPool::getHtmlUIPostProperties(HtmlUIPostVariant::PASSTHROUGH), 0);
-                }
                 const PointsComponent* points = registry->findComponent<PointsComponent>(entity);
                 if (points || registry->findComponent<ParticleSystemComponent>(entity)){
                     collectPoints(points);
@@ -1069,6 +1065,9 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
     }
     // fixed resolution upscales with it and a scene stack is presented with it
     keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, 0));
+    // a FLATTEN Canvas Group composites its layer with the HTML UI passthrough: always (a few
+    // KB), since a script can add a group or switch one to FLATTEN in any scene
+    keys.insert(ShaderPool::getShaderKey(ShaderType::HTMLUI_POST, ShaderPool::getHtmlUIPostProperties(HtmlUIPostVariant::PASSTHROUGH)));
     // the uber pass of the scene's post-processing (phase 4: a BLIT variant of its features),
     // and the ones its scripts plausibly switch to; the bloom and blur chain's programs with them
     bool bloom = false;

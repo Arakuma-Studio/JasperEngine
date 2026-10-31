@@ -3479,8 +3479,18 @@ Json McpValues::canvasGroupStateToJson(Scene* scene, Entity entity) {
     if (!scene || !scene->isEntityCreated(entity) || !scene->findComponent<RectTransformComponent>(entity)) return nullptr;
     const CanvasGroupState state = scene->getSystem<UISystem>()->getCanvasGroupState(entity);
     if (state.group == NULL_ENTITY) return nullptr;
-    return {{"inherited_alpha", state.alpha}, {"interactable", state.interactable},
-            {"blocks_raycasts", state.blocksRaycasts}, {"group", EntityPath::of(scene, state.group)}};
+    Json out = {{"inherited_alpha", state.alpha}, {"interactable", state.interactable},
+                {"blocks_raycasts", state.blocksRaycasts}, {"group", EntityPath::of(scene, state.group)}};
+    // a group itself: whether its Flatten layer is drawn, and what the layers cost last frame
+    if (const CanvasGroupComponent* group = scene->findComponent<CanvasGroupComponent>(entity)) {
+        if (group->renderMode == CanvasGroupRenderMode::FLATTEN) {
+            const RenderSystem::CanvasGroupRenderStats& stats = scene->getSystem<RenderSystem>()->getCanvasGroupRenderStats();
+            out["flatten"] = {{"layered", group->layered}, {"layer_alpha", group->layerAlpha},
+                              {"scene_layers_last_frame", stats.layers}, {"scene_layer_targets", stats.pooled},
+                              {"scene_layer_targets_created", stats.targetsCreated}};
+        }
+    }
+    return out;
 }
 
 Json McpValues::fluidStatsToJson(Scene* scene, Entity entity) {

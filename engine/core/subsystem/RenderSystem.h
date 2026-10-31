@@ -1478,7 +1478,10 @@ namespace jasperengine{
 		struct CanvasLayer{
 			Framebuffer framebuffer;
 			uint64_t lastUsedFrame = 0;
+			// used by the camera pass being drawn, for the layers at these bounds (siblings
+			// elsewhere on screen share a target)
 			bool inUse = false;
+			std::vector<Rect> usedRects;
 		};
 		struct PassCanvasLayer{
 			size_t layer = 0;           // index in canvasLayers
@@ -1495,6 +1498,7 @@ namespace jasperengine{
 		std::pair<int, int> canvasCompositeTextureSlot = {-1, -1};
 		bool canvasCompositeLoaded = false;
 		uint64_t canvasLayerFrame = 0;
+		uint64_t canvasLayerTargetsCreated = 0;
 		bool loadCanvasComposite();
 		void destroyCanvasLayers();
 		// the layers of one camera pass (passCanvasLayers), drawn outside any pass
@@ -1505,6 +1509,8 @@ namespace jasperengine{
 		                     const Rect& colorPassViewport, unsigned int targetWidth, unsigned int targetHeight, CameraRender& render);
 		// releases the layers unused for 120 frames
 		void trimCanvasLayers();
+		// the render points of Points whose uiGroupAlpha changed since the update
+		void refreshGroupFadedPoints();
 		// a Points GameObject in the UI hierarchy (a RectTransform on it or above): a UI
 		// particle, which Canvas Groups fade and FLATTEN layers hold
 		bool isUIParticle(Entity entity) const;
@@ -2039,6 +2045,8 @@ namespace jasperengine{
 			uint32_t skippedBranches = 0;   // FLATTEN groups at alpha 0: their UI was skipped whole
 			uint32_t fallbacks = 0;         // layered groups drawn Per Element (an element not ready for the layer)
 			uint32_t pooled = 0;            // layer targets in the pool
+			uint32_t sharedTargets = 0;     // layers drawn into a target another layer of the pass uses
+			uint64_t targetsCreated = 0;    // layer targets created or resized since the scene started
 		};
 		const CanvasGroupRenderStats& getCanvasGroupRenderStats() const { return lastCanvasGroupRenderStats; }
 

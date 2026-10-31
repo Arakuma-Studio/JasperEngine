@@ -15,8 +15,9 @@ namespace jasperengine{
         // through each other. No extra draw cost
         PER_ELEMENT,
         // CSS opacity / Godot CanvasGroup: the subtree is drawn into a layer that is
-        // composited at the group's alpha, so overlaps do not stack. Two pass breaks and the
-        // fill of its rect while the alpha is between 0 and 1
+        // composited at the group's alpha, so overlaps do not stack. While the alpha is between
+        // 0 and 1: one offscreen pass per camera pass (a cleared target the size of the pass's)
+        // and one quad over the subtree's bounds
         FLATTEN
     };
 

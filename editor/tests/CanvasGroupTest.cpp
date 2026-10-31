@@ -27,9 +27,14 @@
 #include "component/PanelComponent.h"
 #include "component/ScrollbarComponent.h"
 #include "component/PointsComponent.h"
+#include "component/TextComponent.h"
+#include "Input.h"
 #include "Stream.h"
 #include "Factory.h"
 #include "Catalog.h"
+#include "shader/ShaderVariantCollector.h"
+#include "pool/ShaderPool.h"
+#include <set>
 #include "animation/CanvasGroupTracks.h"
 
 #include "LuaBridge.h"
@@ -492,6 +497,72 @@ TEST_F(CanvasGroupTest, AlphaIsClampedAndNaNRejected){
     EXPECT_FLOAT_EQ(uic(element).groupAlpha, 1.0f);
 }
 
+TEST_F(CanvasGroupTest, RuntimeSwitchToFlattenMakesALayer){
+    Entity root = container(NULL_ENTITY);
+    addGroup(root, 0.5f);
+    Entity a = image(root, 0, 0, 10, 10);
+    Entity b = image(root, 5, 5, 10, 10);
+    ui()->syncCanvasGroups();
+    EXPECT_FALSE(group(root).layered);
+    // a script switches it: the subtree's elements are counted and the layer is decided
+    group(root).renderMode = CanvasGroupRenderMode::FLATTEN;
+    ui()->syncCanvasGroups();
+    EXPECT_EQ(group(root).subtreeDraws, 2u);
+    EXPECT_TRUE(group(root).layered);
+    EXPECT_FLOAT_EQ(uic(a).groupLayerAlpha, 1.0f) << "inside the layer";
+    EXPECT_FLOAT_EQ(uic(b).groupAlpha, 0.5f) << "the Per Element value stays (fallback)";
+    // at alpha 1 no layer (spec 14)
+    group(root).alpha = 1.0f;
+    ui()->syncCanvasGroups();
+    EXPECT_FALSE(group(root).layered);
+    // back to Per Element
+    group(root).alpha = 0.5f;
+    group(root).renderMode = CanvasGroupRenderMode::PER_ELEMENT;
+    ui()->syncCanvasGroups();
+    EXPECT_FALSE(group(root).layered);
+    EXPECT_FLOAT_EQ(uic(a).groupLayerAlpha, 0.5f);
+}
+
+TEST_F(CanvasGroupTest, WriteInPostUpdateIsSeenByTheSameFramesDraw){
+    // spec 10 (7): the frame's update ran, then a script (onPostUpdate) writes the alpha; the UI
+    // draw, which runs before the RenderSystem's, syncs it
+    Entity root = container(NULL_ENTITY);
+    addGroup(root, 1.0f);
+    Entity element = image(root, 0, 0, 10, 10);
+    Entity points = scene.createEntity();
+    scene.addComponent<Transform>(points, Transform());
+    scene.addComponent<PointsComponent>(points, PointsComponent());
+    scene.addEntityChild(root, points, false);
+    ui()->update(0);
+    lua_pushinteger(L, (lua_Integer)root);
+    lua_setglobal(L, "groupEntity");
+    ASSERT_EQ(lua("CanvasGroup(scene, groupEntity).alpha = 0.3"), "");
+    ui()->draw();
+    EXPECT_FLOAT_EQ(uic(element).groupAlpha, 0.3f);
+    EXPECT_FLOAT_EQ(scene.getComponent<PointsComponent>(points).uiGroupAlpha, 0.3f);
+    EXPECT_TRUE(scene.getComponent<PointsComponent>(points).needUpdateGroupAlpha) << "the render draw rebuilds its points this frame";
+}
+
+TEST_F(CanvasGroupTest, TypingStopsWhenTheFieldBecomesNonInteractable){
+    Entity root = container(NULL_ENTITY);
+    addGroup(root);
+    Entity field = image(root, 0, 0, 100, 30);
+    Entity text = node(field, 0, 0, 100, 30, true);
+    scene.addComponent<TextComponent>(text, TextComponent());
+    InputFieldComponent inputfield;
+    inputfield.text = text;
+    scene.addComponent<InputFieldComponent>(field, inputfield);
+    scene.getComponent<RectTransformComponent>(text).ignoreEvents = true;
+    click(10, 10);
+    ASSERT_TRUE(uic(field).focused);
+    EXPECT_TRUE(ui()->eventOnCharInput(L'a')) << "an interactable focused field takes typing";
+    group(root).interactable = false;
+    ui()->syncCanvasGroups();
+    // before the next update drops the focus, keys and characters do not reach it
+    EXPECT_FALSE(ui()->eventOnCharInput(L'a'));
+    EXPECT_FALSE(ui()->eventOnKeyDown(D_KEY_BACKSPACE, false, 0));
+}
+
 // ---- 8. blend modes and the draw skip
 
 TEST(CanvasGroupDrawColor, EveryBlendMode){
@@ -838,6 +909,19 @@ TEST_F(CanvasGroupTest, TrackRowsMatchTheCatalogAndClamp){
     EXPECT_FALSE(uic(element).groupBlocksRaycasts);
     float read = 0.0f;
     EXPECT_FALSE(anim::readCanvasGroupAlpha(&scene, element, &read)) << "no group on the element";
+}
+
+// ---- exports: the Flatten composite ships with every scene (a script can add a group)
+
+TEST_F(CanvasGroupTest, ExportsAlwaysCarryTheFlattenComposite){
+    Scene empty;
+    ShaderVariantContent content;
+    content.registry = &empty;
+    content.entities = empty.getEntityList();
+    std::set<ShaderKey> keys;
+    ShaderVariantCollector::collectScene(&empty, content, {}, keys);
+    const ShaderKey passthrough = ShaderPool::getShaderKey(ShaderType::HTMLUI_POST, ShaderPool::getHtmlUIPostProperties(HtmlUIPostVariant::PASSTHROUGH));
+    EXPECT_TRUE(keys.count(passthrough)) << "a scene without any Canvas Group still exports the passthrough composite";
 }
 
 // ---- 13. performance (Release only)

@@ -66,6 +66,13 @@ async def scene(ed: Editor) -> str:
     return sid
 
 
+async def flatten_state(ed: Editor, sid) -> dict:
+    got = await ed.call("get_entity", scene=sid, entity="Flat")
+    state = got.get("canvas_group_state") or {}
+    ed.check("flatten" in state, f"a FLATTEN group reports its layer: {state!r}")
+    return state["flatten"]
+
+
 async def lua(ed: Editor, code: str):
     return (await ed.call("eval_lua", code=code))["values"]
 
@@ -187,11 +194,26 @@ async def test_flatten_overlap_pixels(ed: Editor):
     ed.check(abs(grey(shot, P_FLAT_SINGLE) - 128) <= 4, f"Flatten single: {shot.px(*P_FLAT_SINGLE)}")
     # the panel elsewhere is unchanged
     ed.check(abs(grey(shot, P_WHITE) - 128) <= 6, f"the other group: {shot.px(*P_WHITE)}")
+    flat = await flatten_state(ed, sid)
+    ed.check(flat["layered"] and flat["scene_layers_last_frame"] >= 1, f"the runtime switch made a layer: {flat!r}")
 
-    # at alpha 1 nothing is layered and the squares are white
+    # the Scene view and the Game view both draw it: each keeps its pooled target, none is
+    # created again frame after frame
+    await ed.call_raw("screenshot", {"view": "scene", "max_width": 640})
+    await shoot(ed, "flatten-again")
+    before = (await flatten_state(ed, sid))["scene_layer_targets_created"]
+    for _ in range(3):
+        await ed.call_raw("screenshot", {"view": "scene", "max_width": 640})
+        await shoot(ed, "flatten-views")
+    after = await flatten_state(ed, sid)
+    ed.check(after["scene_layer_targets_created"] == before, f"layer targets recreated across frames: {before} -> {after!r}")
+
+    # at alpha 1 nothing is layered (spec 14) and the squares are white
     await ed.call("set_properties", scene=sid, entity="Flat", values={"canvasgroup": {"alpha": 1}})
     shot = await shoot(ed, "flatten-opaque")
     ed.check(grey(shot, P_FLAT_OVERLAP) >= 250, f"Flatten at alpha 1: {shot.px(*P_FLAT_OVERLAP)}")
+    flat = await flatten_state(ed, sid)
+    ed.check(not flat["layered"] and flat["scene_layers_last_frame"] == 0, f"no layer at alpha 1: {flat!r}")
     await ed.call("delete_entities", scene=sid, entity="Flat")
     await ed.call("save_scene", scene=sid, path="scenes/Groups")
 

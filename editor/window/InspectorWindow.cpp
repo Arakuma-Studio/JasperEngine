@@ -7645,7 +7645,8 @@ void editor::InspectorWindow::drawCanvasGroupComponent(ComponentType cpType, Sce
                               "   [A][AB][B]   the overlap AB is darker than A and B\n"
                               "Flatten (CSS opacity): the subtree is drawn as one layer, then faded:\n"
                               "   [A][A ][B]   the overlap looks like the front element\n"
-                              "Flatten costs two render pass breaks and the fill of the group's rect while alpha is between 0 and 1";
+                              "Flatten costs, while alpha is between 0 and 1, one offscreen pass per camera (a cleared screen-size\n"
+                              "target; flattened siblings share one) and a quad over the group's bounds";
 
     beginTable(cpType, getLabelSize("Ignore Parent Groups"));
     propertyRow(RowPropertyType::Float_0_1, cpType, "alpha", "Alpha", sceneProject, entities, settingsAlpha);

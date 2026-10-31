@@ -241,7 +241,7 @@ namespace jasperengine::editor::mcp {
         static Json fluidStatsToJson(Scene* scene, Entity entity);
         // A UI element's Canvas Group chain (ui canvas group spec 7.8): {inherited_alpha,
         // interactable, blocks_raycasts, group: "<path>"}; null outside any group or without a
-        // RectTransform
+        // RectTransform; a FLATTEN group adds flatten {layered, layer_alpha, the scene's layer stats}
         static Json canvasGroupStateToJson(Scene* scene, Entity entity);
 
         static Json shaderParamsToJson(const ShaderUniformValues& values);
