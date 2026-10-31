@@ -138,6 +138,10 @@ def libraries():
             "defines": ["DAV1D_API=", "DAV1D_ASM"], "asm": True,
             "includes": [inc("dav1d/config"), inc("dav1d"), inc("dav1d/include")],
             "public_include": inc("dav1d/include"), "public_define": "DAV1D_API=",
+            # no header map: the project's map names thorvg's config/config.h "config.h", which
+            # dav1d's #include "config.h" took instead of its own (no ARCH_AARCH64: the arm64 asm
+            # failed to assemble, refmvs.S on the iOS simulator)
+            "headermap": False,
         },
         {
             # PACKAGE_VERSION is left out (opus_get_version_string says "unknown"; quoting a
@@ -192,6 +196,24 @@ def clone_configuration(project, template_id, new_id, name, lib):
         i += 1
     out.append("\t\t};")
     return out
+
+
+def keep_headermap_off(project, lib):
+    """USE_HEADERMAP = NO in every configuration of the library's targets (lib["headermap"] False)"""
+    if lib.get("headermap", True):
+        return
+    for platform in PLATFORMS:
+        name = "%s-%s" % (lib["name"], platform)
+        configs = project.configurations('Build configuration list for PBXNativeTarget "%s"' % name)
+        for config_name, cid in sorted(configs.items()):
+            first, last = project.block(cid)
+            settings = project.lines[first:last]
+            if any(line.strip() == "USE_HEADERMAP = NO;" for line in settings):
+                continue
+            # the end of buildSettings: the last "};" before the configuration's name
+            end = max(i for i in range(first, last) if project.lines[i] == "\t\t\t};")
+            project.lines.insert(end, "\t\t\t\tUSE_HEADERMAP = NO;")
+            project.added.append("no header map in %s %s" % (name, config_name))
 
 
 def add_library_targets(project, lib, portal):
@@ -534,6 +556,7 @@ def main():
     libs = libraries()
     for lib in libs:
         add_library_targets(project, lib, portal)
+        keep_headermap_off(project, lib)
         add_library_files(project, lib)
         link_libraries(project, lib, portal)
     configs = add_public_interface(project, libs)

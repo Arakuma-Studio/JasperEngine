@@ -15,7 +15,10 @@
 # kind and path: deterministic, and two branches adding different files do not collide.
 #
 # Only core/ is compared: the libraries (libs/) and the HTML UI compat layer have their own sync
-# scripts (tools/htmlui/xcode_sync_*.py) and their own source lists.
+# scripts (tools/htmlui/xcode_sync_*.py) and their own source lists. The exception is the headers
+# of LIBRARY_HEADER_DIRECTORIES: the project finds headers through its header map, which knows the
+# files it references, so a header added there (sokol_gpu_timer.h, sokol_async.h) failed the Apple
+# builds at compile time. They get a reference in their group and no build phase, as sokol_gfx.h.
 
 import hashlib
 import os
@@ -33,6 +36,9 @@ ANCHOR_HEADER = "core/subsystem/ActionSystem.h"
 
 # header-only directories (no .cpp of theirs in the CMake list)
 HEADER_DIRECTORIES = ["core/component"]
+
+# library directories whose headers the engine includes by name (referenced, in no phase)
+LIBRARY_HEADER_DIRECTORIES = ["libs/sokol"]
 
 OBJECT_RE = re.compile(r"^\t\t([0-9A-F]{24})(?: /\* (.*?) \*/)? = \{(.*)$")
 
@@ -174,6 +180,11 @@ def analyse():
             header = directory + "/" + name
             if name.endswith(".h") and header not in by_path:
                 missing.append((header, "file"))
+    for directory in LIBRARY_HEADER_DIRECTORIES:
+        for name in sorted(os.listdir(os.path.join(ENGINE, directory))):
+            header = directory + "/" + name
+            if name.endswith(".h") and header not in by_path:
+                missing.append((header, "reference"))
     return lines, objects, by_path, group_dirs, source_phases, header_phases, missing
 
 
@@ -250,7 +261,7 @@ def main():
     for path, what in missing:
         name = os.path.basename(path)
         is_header = path.endswith(".h")
-        if what == "file":
+        if what in ("file", "reference"):
             gid = group_for_directory(lines, objects, group_dirs, os.path.dirname(path))
             ref = object_id("ref", path)
             file_type = "sourcecode.c.h" if is_header else "sourcecode.cpp.cpp"
@@ -259,7 +270,7 @@ def main():
                           % (ref, name, file_type, name))
             add_child(lines, objects, gid, ref, name)
             by_path.setdefault(path, []).append(ref)
-            phases = header_phases if is_header else source_phases
+            phases = [] if what == "reference" else header_phases if is_header else source_phases
         else:
             ref = by_path[path][0]
             phases = [what.split()[1]]
