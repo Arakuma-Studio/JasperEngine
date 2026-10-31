@@ -39,6 +39,7 @@ JasperEngine is based on [Doriax](https://github.com/doriaxengine/doriax) by Edu
 - A GPU fluid simulation component (a port of Pavel Dobryakov's WebGL-Fluid-Simulation: vorticity, bloom, sunrays) shown over the screen, on a sprite, image or mesh, or as a texture any material can use, with presets, seeded deterministic runs and a Lua API: see [docs/mcp/guide/fluid.md](docs/mcp/guide/fluid.md)
 - UI toolkit with Rect Transforms, layout groups, text, images, buttons, input fields, scrollbars, and other widgets
 - Box2D and Jolt Physics for 2D/3D rigidbodies, colliders, and joints, drawn interpolated between fixed steps
+- 2D physics with Unity's joint set (wheel suspension and motors, hinge limits, sliders, springs, fixed, relative and target joints, with local anchors that work in prefabs and break forces with `onJointBreak2D`), concave polygon colliders and colliders of any number of points (no limits on device), and physics materials with Unity's combine modes. Colliders created from now on report contact events by default (`contactEvents`), as in Unity
 - Spatial 3D audio and multithreaded asynchronous resource loading
 
 Names follow Unity; see [docs/unity-glossary.md](docs/unity-glossary.md) for the old names and how to migrate older projects.

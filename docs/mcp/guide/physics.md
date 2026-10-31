@@ -37,12 +37,13 @@ mesh bounds in 3D) unless `fit: false`; sizes you pass win.
 
 | | shapes and their fields | also |
 |---|---|---|
-| 2D | `box` (`size`, `center`), `circle` (`radius`), `capsule` (`radius`, `point_a`, `point_b`), `segment` (`point_a`, `point_b`), `polygon` (`points`, 3-16), `chain` (`points`, 4-16, `loop`); sizes in points before the GameObject's scale | `density`, `friction`, `restitution`, `sensor`, `hit_events`, `contact_events`, `pre_solve_events`, `sensor_events`, `category_bits`, `mask_bits`, `group_index`, `center`, `offset` |
+| 2D | `box` (`size`, `center`), `circle` (`radius`), `capsule` (`radius`, `point_a`, `point_b`), `segment` (`point_a`, `point_b`), `polygon` (`points`: any number, 3 or more, concave allowed), `chain` (`points`: 2 or more, `loop`); sizes in points before the GameObject's scale; any number of colliders per body | `density`, `friction`, `restitution`, `material` (a `.physicsmaterial` path or null), `sensor` (alias `is_trigger`), `hit_events`, `contact_events`, `pre_solve_events`, `sensor_events`, `category_bits`, `mask_bits`, `group_index`, `center`, `offset` |
 | 3D | `box` (`size`), `sphere` (`radius`), `capsule` / `cylinder` (`radius`, `half_height`), `tapered_capsule` (`top_radius`, `bottom_radius`, `half_height`), `convex_hull` / `mesh` (from the GameObject's mesh, or `source`), `heightfield` (a terrain's, `samples_size`) | `density`, `center`, `rotation`; `friction` and `restitution` are per body (they go to the Rigidbody, for all its colliders) |
 
 ## Mass
 
-Mass is never authored directly; it comes from the collider's size and density.
+By default mass comes from the collider's size and density (a 2D body can also take an
+explicit mass, below).
 
 | | 3D (Jolt) | 2D (Box2D) |
 |---|---|---|
@@ -51,7 +52,8 @@ Mass is never authored directly; it comes from the collider's size and density.
 | units | meters | collider sizes in points, scaled by `pointsToMeterScale2D` (64 points per meter by default) |
 | example | radius-1 sphere ~ 4189 kg, radius-0.5 ~ 524 kg | 100x100 point box ~ 2.4 kg |
 | read it (C++) | `getMass()` | `getMass()` |
-| read it (Lua) | `body.mass` (property) | `body:getMass()` (method) |
+| read it (Lua) | `body.mass` (property) | `body.mass` (property) or `body:getMass()` |
+| author it | density | density, or `useAutoMass: false` + `mass` (kg) |
 
 Size forces as `F = mass x desired acceleration` using the real mass: a few hundred newtons
 on a multi-tonne body looks like a broken script. If movement needs implausibly large forces
@@ -95,6 +97,134 @@ default arguments): a missing `wake` reads as false.
   moved with a velocity. Setting the body's position, rotation, velocity or type from a
   script takes that part over from the transform.
 - Never describe transform-only movement as physics.
+
+## 2D bodies, colliders and materials
+
+`Rigidbody2DComponent` fields (Unity's Rigidbody2D; Catalog names for `set_properties`, `edit_colliders`
+`body`, Lua properties of the same name; defaults are what bodies had before these fields):
+
+| field | default | |
+|---|---|---|
+| `gravityScale` | 1 | share of the scene's 2D gravity (0 floats, -1 falls up) |
+| `linearDamping`, `angularDamping` | 0, 0 | Unity Linear / Angular Drag |
+| `fixedRotation` | false | never turns (Unity Freeze Rotation) |
+| `collisionDetection` | `discrete` | `continuous`: a Box2D bullet, never tunnels through thin or fast bodies |
+| `sleepingMode` | `start_awake` | `never_sleep`, `start_asleep` |
+| `useAutoMass`, `mass` | true, 1 | false: `mass` kg instead of area x density (setting Lua `body.mass` turns it off) |
+| `autoCenterOfMass`, `centerOfMass` | true, (0,0) | body-local, in collider units (points) |
+| `autoInertia`, `inertia` | true, 0 | kg m^2 about the centre of mass (auto: from the colliders, scaled with an explicit mass) |
+| `material` | "" | default `.physicsmaterial` of the colliders that have none |
+
+Kinematic and static bodies ignore the mass fields. Live edits (Inspector, `set_runtime_property`,
+Lua) apply without rebuilding the body.
+
+**Polygons and chains.** A `polygon` takes any simple outline of 3 or more points, concave too: a
+convex one of up to 8 points is one Box2D shape, any other is split into convex pieces (ear
+clipping merged into pieces of up to 8 points; the same points always give the same pieces). The
+pieces act as one collider: contacts, rays and callbacks report its index. An outline that
+crosses itself is an error and its convex hull is used instead. `edit_colliders` reports
+`pieces` for each polygon. Pieces have inner seams a rolling wheel can catch on: for ground that
+wheels roll over (a hill-climb terrain) use a `chain` (one-sided, no seams; counter-clockwise
+collides outside). A `chain` of 4 or more points is a Box2D chain (an open chain does not collide
+on its first and last edges); of 2 or 3 points (not a loop of 4+) it is two-sided segments, Unity's
+EdgeCollider2D.
+
+**Editing from Lua at run time** rebuilds that collider only (the body keeps its velocity,
+joints and the contacts of its other colliders): `body:setColliderPoints(i, points)`,
+`setColliderRadius`, `setColliderCenter`, `setColliderSegment`, `setColliderLoop`,
+`setColliderMaterial`, `removeCollider(i)` (later indices shift down). A procedural terrain of
+500 points rebuilt every few seconds is fine.
+
+**Materials** (`.physicsmaterial`, shared with 3D): `friction` (0 and up; a tyre is about 2),
+`bounciness` (0-1), `frictionCombine` and `bounceCombine` (`average`, `geometric_mean`,
+`minimum`, `multiply`, `maximum`). Create one with the Project window's Create > Physics Material
+(2D preset: friction 0.4, geometric mean / maximum, Unity 6) or `edit_physics_material {path,
+create: "2d"}`; set it on a collider (`material`) or on the body (its colliders without one). A
+collider's own material wins over the body's, and either replaces the collider's inline
+`friction` / `restitution`. Two touching colliders combine with the highest mode of the two in
+the order Average < Geometric Mean < Minimum < Multiply < Maximum; a collider without a material
+has no mode, and two without one combine as before (geometric mean friction, maximum
+restitution). Editing a material while playing (the Inspector, Lua `PhysicsMaterial.load(path)`)
+changes every collider using it at the next step, resting contacts included. Lua:
+`PhysicsMaterial.load(path)`, `PhysicsMaterial.new{friction = 0, frictionCombine =
+PhysicsMaterialCombine.MINIMUM}`, `body:setColliderMaterial(0, m)`; `setColliderFriction` on a
+collider with a material gives it its own copy (Unity `collider.material`).
+
+`contactEvents` is on for colliders created from now on (Inspector, MCP, Lua `create*Collider`),
+as in Unity; scenes keep the value they saved. The Box2D sub-steps of each fixed step are a scene
+setting (`physics_2d_sub_steps`, 1-16, default 4; Lua `scene.physics2DSubSteps`): more make long
+joint chains and stiff springs steadier.
+
+## 2D joints
+
+One `Joint2DComponent` per joint, with a `type`; it lives on its own GameObject, under its body
+(`set_joint` and the Hierarchy's Joint 2D put it there). bodyA is Unity's "this" (the joint's
+Rigidbody 2D), bodyB the connected body; without bodyB the joint holds bodyA to the world.
+
+| Unity | `type` | main fields |
+|---|---|---|
+| WheelJoint2D | `wheel` | `axis` (suspension direction), `enableSpring` + `frequency` + `dampingRatio` (suspension), `useMotor` + `motorSpeed` + `maxMotorTorque`, `useLimits` + `lower/upperTranslation` |
+| HingeJoint2D | `revolute` | `useLimits` + `lowerAngle` / `upperAngle`, `useMotor` + `motorSpeed` + `maxMotorTorque`, `enableSpring` |
+| SliderJoint2D | `prismatic` | `axis`, `useLimits` + `lower/upperTranslation`, `useMotor` + `motorSpeed` + `maxMotorForce`, `enableSpring` |
+| DistanceJoint2D | `distance` | `length` + `autoLength`, `rope` (Unity maxDistanceOnly), `useLimits` + `minLength` / `maxLength`, motor (with a spring) |
+| SpringJoint2D | `distance` with `enableSpring` | `frequency`, `dampingRatio` |
+| FixedJoint2D | `weld` | `linearFrequency`, `angularFrequency` (0 = rigid), damping ratios |
+| RelativeJoint2D | `motor` | `linearOffset` (bodyB's position in bodyA's frame), `angularOffset` + `autoOffset`, `maxForce`, `maxTorque`, `correctionFactor` |
+| FrictionJoint2D | `motor` with `correctionFactor: 0` | `maxForce`, `maxTorque` |
+| TargetJoint2D | `mouse` | `target` (world point), `frequency`, `dampingRatio`, `maxForce` (0 = 1000 x mass) |
+
+All types: `enableCollision` (the connected bodies collide; default off), `breakForce`,
+`breakTorque` (infinite by default), `breakAction`. New joints get Unity's defaults (wheel: 2 Hz,
+0.7, axis (0, 1), max motor torque 10000; hinge limits -90..90 off); changing the type gives the
+fields still at the old type's defaults the new type's.
+
+**Units.** Anchors, lengths, translations, limits: points. Angles and limits: degrees (the
+engine's angle unit), angular speeds degrees/s (Unity: negative `motorSpeed` drives a wheel
+forward). Linear speeds points/s. Forces N, torques N m, frequencies Hz.
+
+**Anchors.** `anchorSpace: local` (new joints): `anchorA` in bodyA's local space, `anchorB` in
+bodyB's, `axis` in bodyA's frame, all in GameObject units like collider points; a joint inside a
+prefab works wherever the prefab is placed. `autoAnchors` (Unity Auto Configure Connected Anchor,
+on by default) puts anchorB where anchorA is when the joint is made, again when bodyB changes at
+run time. `world` (scenes saved before local anchors, and the Lua `set*Joint` helpers): the anchors
+are world points read when the joint is made, and the bodies' relative angle is not kept (the
+Inspector's Convert to Local changes a joint to local). A distance joint's anchors are each body's
+own point (`autoAnchors` does not apply).
+
+**Limits are stiff springs, not walls** (Box2D 3). A hinge limit acts on the body's own
+rotational inertia: a small heavy bob on a long arm swings a few degrees past it (give the arm
+its length, a box or capsule from the pivot). A motor far stronger than the body needs (Unity's
+default 10000 on a 1 kg slider) pushes a prismatic or wheel joint past its limit (about 18
+points): set `maxMotorForce` / `maxMotorTorque` to what the motion needs.
+
+**Breaking.** After each fixed step a joint whose reaction force passes `breakForce` (N) or torque
+passes `breakTorque` (N m) breaks: `ignore` nothing; `callback_only` calls `onJointBreak2D(joint)`
+once (again after the load drops below); `disable` the callback, then `enabled = false` (a script
+enables it again); `destroy` (default) the callback, then the Joint 2D component is removed. The
+callback goes to the scripts of the joint's GameObject and of bodyA's, after the step's contact
+events; C++ scripts override `onJointBreak2D(Joint2D&)`.
+
+`set_joint` creates (`body_a`, `body_b`, `type`, `name`) or edits (`joint`) one: `anchor_a`,
+`anchor_b`, `axis` ([x, y]), `anchor_space` (`local` | `world`), `auto_anchors`,
+`enable_collision`, `motor {enabled, speed, max}` (max: torque or force by type), `spring
+{enabled, frequency, damping}` (weld: its stiffness), `limits [min, max]` (angles for revolute,
+translation for prismatic and wheel, length for distance; `false` turns them off), `break {force,
+torque, action}` (null force = never), `rope` (distance), `target` (mouse), and any field (Catalog
+name) through `properties`; `dimension` when the bodies do not tell. 3D (`dimension: "3d"`):
+`fixed`, `distance`, `point`, `hinge`, `cone`, `prismatic`, `swing_twist`, `six_dof`, `path`,
+`gear`, `rack_and_pinion`, `pulley`, with `anchor` (world point), `normal` (axis) and `limits
+[min, max]`; both bodies need a Rigidbody. The result has every resolved field. In Play, `get_runtime_entity` adds
+`joint2d` read-outs: `reaction_force`, `reaction_torque`, `joint_angle`, `joint_speed`,
+`joint_translation`, `joint_linear_speed`, `motor_torque`, `motor_force`, `current_length`,
+`limit_state`; and `rigidbody2d`: mass, velocities, Box2D shapes per collider.
+
+**A hill-climb car** (body box, two wheels on suspension, Unity values):
+
+```json
+{"tool": "set_joint", "arguments": {"name": "FrontWheelJoint", "type": "wheel", "body_a": "Car", "body_b": "Car/FrontWheel",
+  "anchor_a": [73.8, 19.8], "axis": [0, 1], "spring": {"frequency": 3, "damping": 0.35}, "motor": {"enabled": false, "max": 10000}}}
+{"tool": "set_joint", "arguments": {"joint": "Car/FrontWheelJoint", "motor": {"enabled": true, "speed": -720}}}
+```
 
 ## Interpolation
 
@@ -142,7 +272,8 @@ it. Scripts read the surface with `Water.getHeight(scene, x, z)` / `Water.getNor
   default is every layer but Ignore Raycast. With a `Ray`, distance is a fraction of
   `ray.direction`; with origin/direction/distance it is in world units.
 - Contacts in Lua: `RegisterEvent(self, self.scene:getPhysicsSystem().beginContact2D, "onHit")`
-  fires for every contacting pair in the scene (filter by body).
+  fires for every contacting pair in the scene (filter by body) whose collider has
+  `contactEvents` on (the default for new colliders).
 
 ## Placing objects with physics (`place_with_physics`)
 

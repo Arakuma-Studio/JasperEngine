@@ -590,3 +590,121 @@ data assets (physics-3d §6.5).
   merges before both physics-contacts and script-lifecycle, implement the minimal `ScriptMessages` of
   physics-contacts §6.1.1 with the `JointBreak2D` message only).
 - **input** / **ui-multitouch**: none (the car's controls are game code).
+
+## Implementation notes
+
+Decisions taken while implementing (branch `gaps/physics-2d`, merged before physics-3d and
+physics-contacts), where the spec was silent, ambiguous or contradicted itself:
+
+1. **Shared pieces implemented here (physics-3d extends them).** `component/PhysicsCommon.h` has
+   all four enums of physics-3d §6.1.1 (`RigidbodyInterpolation` is declared, not used or bound
+   yet: per-body interpolation and the runtime debug draw stay physics-3d's) and
+   `combineSurface()`. `physics/PhysicsMaterial.{h,cpp}` (§6.1.4 parse/write contract, Unity
+   aliases, unknown keys kept, presets) and `pool/PhysicsMaterialPool.{h,cpp}` (normalised keys,
+   `Data` reads, invalidate, a global revision bumped by every runtime edit). The Jolt side
+   (`JoltSurfaceMaterial`, 3D combine callbacks) is physics-3d's. Because the hill-climb car must be
+   authorable in the editor and over MCP (acceptance 3), the asset's editor surfaces of physics-3d
+   §6.4/§6.5 were also done here: Project window type, icon, Create > Physics Material / Physics
+   Material 2D, the Inspector asset view (undoable file writes, drags merged), a material field on
+   the Rigidbody 2D and each collider (drop, pick, clear), and the MCP tool `edit_physics_material`
+   (the 3D spec's signature). `PhysicsMaterialCombine` is a plain `int` enum (LuaBridge pushes a
+   `uint8_t` enum as a character).
+2. **`JointBreakAction::IGNORE`**: `PhysicsCommon.h` `#undef`s Windows' `IGNORE` macro (WinBase.h)
+   so the spec's enumerator names compile on Windows.
+3. **WORLD anchor space is the complete legacy mode.** WORLD joints take their world points at
+   creation and keep Box2D's reference angle 0 (the old code never captured it: a weld or slider
+   between two bodies of different angles aligned them). LOCAL joints capture the bodies'
+   relative angle (Unity). The Inspector's Convert to Local says so in its tooltip.
+4. **LOCAL DISTANCE joints ignore `autoAnchors`**: putting anchorB where anchorA is would make the
+   length 0. Their anchors are each body's own point (Unity DistanceJoint2D leaves Auto Configure
+   Connected Anchor off by default); the Inspector hides the toggle for them.
+5. **Local axis** = `normalize(axis × bodyA scale)`, like the anchors (a mirrored body mirrors its
+   axis). **Write-back at creation** (Unity): an auto-configured `anchorB`, an `autoLength` length and
+   `autoOffset` offsets are written into the component of the running scene.
+6. **A joint without bodyB**: LOCAL joints hold bodyA to a static ground body of the world (Unity
+   `connectedBody = null`, and MOUSE's "bodyB unused"); WORLD (legacy) joints without bodyB are not
+   created, as before, so an old scene with an unfinished joint does not suddenly pin its body.
+7. **Lua `set*Joint` helpers** keep their old behaviour exactly: they set every parameter field to
+   the legacy value of the type (Box2D's defaults), WORLD space, then build. The 2-argument
+   `setDistanceJoint(a, b)` was broken (it turned `autoAnchors` off and failed on two zero anchors);
+   it now uses the body origins as documented.
+8. **Type changes** (Inspector combo, `set_joint type`, Lua `joint.type`) give the type-dependent
+   fields still at the old type's defaults the new type's (`changeJoint2DType`); a raw
+   `set_properties {type}` changes the type alone.
+9. **Live vs rebuild.** Two update flags: `UpdateFlags_Joint2D_Params` (motor, spring, limits,
+   break, target...: applied to the live joint) and `UpdateFlags_Rigidbody2D_Params` (body fields:
+   applied to the live body); the type, bodies, anchors, axis, anchor space, `autoLength`,
+   `autoOffset` rebuild the joint. Collider edits made through the Catalog (Inspector in Play,
+   `set_runtime_property`) still rebuild the whole body, as before (their values are whole
+   `Collider2D` copies); Lua collider edits rebuild only the collider (D10).
+10. **Catalog paths.** `numColliders` is gone; the list is the Custom property `colliders`
+    (`std::vector<Collider2D>`, one undo step for add/remove), `colliders[i]`, `colliders[i].points`
+    and `.points[j]`; the old `colliders[i].vertices[j]` resolves to the same point, and MCP maps
+    `vertices` to `points` in `set_properties` names. The YAML key is `points` (`vertices` read).
+    `categoryBits`/`maskBits` stay out of the Catalog (uint16 fields, as before). Material paths are
+    assets-relative in components, project-relative over MCP (`isAssetPathProperty`).
+11. **`receiver`** (physics-contacts D9): stored, serialized (omitted when none), emitted by the
+    Factory, remapped by the EntityCloner and reachable as the Catalog entity property
+    `colliders[i].receiver` (so editor prefab remaps work); its delivery and the Inspector row
+    "Send Callbacks To" are physics-contacts'.
+12. **Old polygons.** Old scenes are identical except polygons that were never what their points
+    said: a concave polygon of up to 8 points was built as its convex hull, one of 9-16 points
+    failed `b2ComputeHull` and fell back to the pointA/pointB box (or nothing). Both now get the
+    authored shape. Boxes and convex polygons of up to 8 points build the same Box2D polygon (T2
+    passes against the fixture recorded on `main`).
+13. **Decomposition** (subagent-written module, reviewed): self-intersection is tested before the
+    zero-area check (a symmetric bow-tie has zero signed area but must give its hull); touching
+    non-adjacent edges count as self-intersecting; slivers thinner than the weld distance are
+    dropped and counted; `b2ComputeHull` failures of pieces are added to the dropped count.
+    A chain loop of 3 points is 3 segments, of 2 points 1 segment.
+14. **ScriptMessages** (physics-contacts §6.1.1 API, all physics messages declared, only
+    `JointBreak2D` sent): `receivers()` is computed on demand (no cache yet: script-lifecycle adds
+    the cache and calls `notifyReceiversChanged`, which exists). C++: `ScriptBase` gained a virtual
+    destructor and `virtual onJointBreak2D(Joint2D&)`; `ScriptEntry` gained `cppScript` and
+    `cppMessageMask`, filled by the generated script factory (`Generator.cpp`) through
+    `ScriptMessages::cppScript<T>` / `cppMask<T>`.
+15. **Material instancing (physics-3d D8) also in 2D**: `setColliderFriction/Restitution` on a
+    collider whose friction comes from a material gives that collider its own copy (Unity
+    `collider.material`); the getters return the material's values. Runtime edits of a pooled
+    material last until the pool reloads it (invalidate, `clearPools`/`clearUnusedPools`).
+16. **Scene view.** Joint gizmos follow the anchor space (local anchors through each body's model
+    matrix). The Move tool drags anchor A, anchor B when it is independent (DISTANCE, or
+    `autoAnchors` off) and a mouse joint's target, one undo step per drag (the sub-selection
+    pattern of polygon points). New Joint 2D GameObjects have a Transform so they can live under
+    their body (Hierarchy and `set_joint` put them there, with bodyA set).
+17. **MCP.** `set_joint` (2D) accepts no `body_b` (the world); it cannot run in Play, so the joint
+    read-outs are in `get_runtime_entity` (`joint2d`, and `rigidbody2d` for bodies); its result
+    lists every resolved field. `limits: false` turns limits off; `break.force: null` = never.
+18. **Tests.** T15's "Factory-generated code compiled in the engine test target" is replaced by
+    checks of the generated code text (every non-default field, 64-point chunks): there is no test
+    target that compiles generated scene code. T8's "generated CMake has no MAX_COLLIDER*_2D"
+    holds by construction (the macros and their exporter entries are deleted; acceptance 2's grep).
+    T4 runs the motor on a static (lifted) car body. T3's car body box sits above the wheels'
+    bottoms (with a centred 200 x 40 box and anchors at y +0.31, the chassis reaches the ground
+    before the wheels) and starts 4 points above the ground; "compressed" is a positive joint
+    translation (static deflection g / (2 pi f)^2: 1.8 points at 3 Hz, 0.44 at 6 Hz).
+19. **Box2D 3 limits are soft** (60 Hz joint softness, solved after the motor). T5's "+slop 1°"
+    holds for a rod pendulum (box from the pivot): a point bob on a long arm overshoots by ~7°
+    (the angular limit sees only the bob's own inertia) and rests 2° past. T6's prismatic motor
+    uses 100 N on a 1 kg slider: Unity's default 10000 N pushes it ~18 points past the limit. The
+    engine keeps Box2D's solver (no patch: legacy scenes never had limits); the physics guide
+    tells agents to size motor forces and give arms their length.
+20. **Waking.** A `gravityScale` change through the Catalog / Inspector (body parameters applied
+    live) wakes a sleeping dynamic body, so its joints' forces (breaking) and motion follow; the
+    Lua `rb.gravityScale` setter keeps Box2D's behaviour (no wake), as before.
+21. **Motor joint offset frame.** Box2D 3.1's `b2MotorJoint` holds bodyB's centre minus bodyA's
+    centre at `linearOffset` in world space (its header says bodyA's frame). LOCAL motor joints
+    keep Unity's meaning (bodyB's origin in bodyA's frame, `autoOffset` writes that back) and the
+    engine turns it into Box2D's before every step, so a follower orbits a turning base; WORLD
+    (legacy) joints pass the value to Box2D as before.
+22. **Auto values are captured once per joint per world.** A joint made again only because one of
+    its bodies was (a body or collider edit in Play recreates the body, and Box2D destroys its
+    joints) keeps its captured anchor B, length, offsets and reference angle; an edit of the joint
+    itself (bodies, anchors, type, space...) or a disable / enable captures them again. WORLD
+    joints are rebuilt as before.
+23. **Restore over a live component.** Keys the encoder leaves out at their default (`breakForce`
+    / `breakTorque` infinite, collider `material` and `receiver`) decode to that default also over
+    an existing component (Play's Stop restore), and a script's runtime material objects are
+    dropped there; Live distance-joint edits only call Box2D's length setters when the length
+    changes (they clear the joint's warm start). Cloning gives a collider's own material copy a
+    copy of its own.
