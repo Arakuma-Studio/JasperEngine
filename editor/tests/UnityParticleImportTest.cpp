@@ -291,12 +291,15 @@ TEST(UnityParticleImportTest, MaterialsAndTextures) {
     EXPECT_EQ(fire.shader, "library:unlit");
     EXPECT_EQ(fire.blendMode, MaterialBlendMode::ADDITIVE);
     EXPECT_NE(std::find(fire.shaderFeatures.begin(), fire.shaderFeatures.end(), "SOFT"), fire.shaderFeatures.end());
-    ASSERT_EQ(fire.shaderTextures.count("u_baseTexture"), 1u);
-    EXPECT_EQ(fire.shaderTextures.at("u_baseTexture").getPath(), "assets/fx/textures/flame.png");
+    std::string baseTexture;
+    for (const auto& texture : fire.shaderTextures) {
+        if (texture.first == "u_baseTexture") baseTexture = texture.second.getPath();
+    }
+    EXPECT_EQ(baseTexture, "assets/fx/textures/flame.png");
 
     // the flame mesh links the material file
     const MeshComponent mesh = Stream::decodeMeshComponent(component(findMember(prefab["members"], "Flame"), ComponentType::MeshComponent));
-    ASSERT_FALSE(mesh.submeshes.empty());
+    ASSERT_GT(mesh.submeshes.size(), 0u);
     EXPECT_EQ(mesh.submeshes[0].material.name, "assets/fx/materials/FireAdd.material");
     EXPECT_FALSE(mesh.castShadows);
 
