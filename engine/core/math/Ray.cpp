@@ -448,7 +448,7 @@ RayReturn Ray::intersects(const Rigidbody& body, size_t shape) const{
         JPH::SubShapeIDCreator id_creator;
         JPH::RayCastResult hit;
 
-        if (shape < bodycomp.numColliders){
+        if (shape < bodycomp.colliders.size()){
             if (bodycomp.colliders[shape].shape->CastRay(ray, id_creator, hit)){
                 JPH::Vec3 normal = bodycomp.colliders[shape].shape->GetSurfaceNormal(hit.mSubShapeID2, ray.GetPointOnRay(hit.mFraction));
 

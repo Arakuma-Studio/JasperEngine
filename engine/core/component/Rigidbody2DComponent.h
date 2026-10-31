@@ -142,6 +142,8 @@ namespace jasperengine{
         float inertia = 0.0f;
         // default .physicsmaterial of the colliders without one ("" = none)
         std::string material;
+        // how it is drawn between fixed steps; SCENE: the scene's physics_interpolation
+        RigidbodyInterpolation interpolation = RigidbodyInterpolation::SCENE;
 
         bool newBody = true;
         Vector2 loadedScale = Vector2::UNIT_SCALE;

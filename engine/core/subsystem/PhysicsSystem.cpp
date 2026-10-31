@@ -20,6 +20,9 @@
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "util/JoltPhysicsAux.h"
+#include "component/RagdollComponent.h"
+#include "pool/PhysicsMaterialPool.h"
+#include "physics/PhysicsMaterial.h"
 #endif
 
 #include <algorithm>
@@ -208,6 +211,45 @@ JPH::EMotionQuality PhysicsSystem::getRigidbodyMotionQualityToJolt(RigidbodyMoti
 }
 #endif
 
+#ifdef JASPERENGINE_PHYSICS_3D
+namespace {
+    struct WorldCapacity3D{
+        unsigned int maxBodies = 8192;
+        unsigned int maxBodyPairs = 16384;
+        unsigned int maxContactConstraints = 8192;
+    };
+
+    WorldCapacity3D& worldCapacity3D(){
+        static WorldCapacity3D capacity;
+        return capacity;
+    }
+}
+
+void PhysicsSystem::setWorldCapacity3D(unsigned int maxBodies, unsigned int maxBodyPairs, unsigned int maxContactConstraints){
+    // Jolt needs room for a few bodies and pairs; its body ids hold 23 bits of index
+    WorldCapacity3D& capacity = worldCapacity3D();
+    capacity.maxBodies = std::min(std::max(maxBodies, 16u), (unsigned int)JPH::BodyID::cMaxBodyIndex);
+    capacity.maxBodyPairs = std::max(maxBodyPairs, 16u);
+    capacity.maxContactConstraints = std::max(maxContactConstraints, 16u);
+}
+
+unsigned int PhysicsSystem::getDefaultMaxBodies3D(){
+    return worldCapacity3D().maxBodies;
+}
+
+unsigned int PhysicsSystem::getDefaultMaxBodyPairs3D(){
+    return worldCapacity3D().maxBodyPairs;
+}
+
+unsigned int PhysicsSystem::getDefaultMaxContactConstraints3D(){
+    return worldCapacity3D().maxContactConstraints;
+}
+
+JoltPairFilter3D& PhysicsSystem::getPairFilter3D(){
+    return *pairFilter3D;
+}
+#endif
+
 PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
 #ifdef JASPERENGINE_PHYSICS_2D
 	signature.set(scene->getComponentId<Rigidbody2DComponent>());
@@ -242,10 +284,11 @@ PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
     // Jolt globals are initialized once per process (see helper).
     JoltShapeBuilder::ensureJoltGlobalInit();
 
-    const unsigned int cMaxBodies = 1024;
+    // the project setting physics3D at the time the scene is made (editor and exports alike)
+    maxBodies3D = worldCapacity3D().maxBodies;
+    maxBodyPairs3D = worldCapacity3D().maxBodyPairs;
+    maxContactConstraints3D = worldCapacity3D().maxContactConstraints;
     const unsigned int cNumBodyMutexes = 0;
-    const unsigned int cMaxBodyPairs = 1024;
-    const unsigned int cMaxContactConstraints = 1024;
 
     objectLayerTable3D = new JoltObjectLayerTable();
     broad_phase_layer_interface = new JoltBroadPhaseLayers(MAX_BROADPHASELAYER_3D, *objectLayerTable3D);
@@ -257,8 +300,16 @@ PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
     appliedLayerVersion3D = Physics::getLayerCollisionMatrix().getVersion();
 
     // Now we can create the actual physics system.
-    world3D.Init(cMaxBodies, cNumBodyMutexes, cMaxBodyPairs, cMaxContactConstraints, *broad_phase_layer_interface, *object_vs_broadphase_layer_filter, *object_vs_object_layer_filter);
+    world3D.Init(maxBodies3D, cNumBodyMutexes, maxBodyPairs3D, maxContactConstraints3D, *broad_phase_layer_interface, *object_vs_broadphase_layer_filter, *object_vs_object_layer_filter);
     world3D.SetGravity(JPH::Vec3(this->gravity3D.x, this->gravity3D.y, this->gravity3D.z));
+
+    // per-collider materials and their combine modes; colliders without one combine as Jolt
+    // always did (geometric mean friction, maximum restitution)
+    world3D.SetCombineFriction(&combineFriction3D);
+    world3D.SetCombineRestitution(&combineRestitution3D);
+
+    pairFilter3D = new JoltPairFilter3D();
+    pairFilter3D->AddRef();
 
     // Shared across all scenes (created once); physics updates are sequential on the main thread.
     temp_allocator = &JoltShapeBuilder::sharedPhysicsTempAllocator();
@@ -346,6 +397,12 @@ PhysicsSystem::~PhysicsSystem(){
     delete object_vs_broadphase_layer_filter;
     delete object_vs_object_layer_filter;
     delete objectLayerTable3D;
+
+    // bodies still in world3D (destroyed after this) hold their own references to it
+    if (pairFilter3D){
+        pairFilter3D->Release();
+        pairFilter3D = nullptr;
+    }
 
 #endif
 }
@@ -709,12 +766,18 @@ void PhysicsSystem::updateTransformFromRigidbody2D(Entity entity, Rigidbody2DCom
 
     // a body that never stepped has no pose before the step to draw from
     b2Transform bTransform = b2Body_GetTransform(body.body);
-    if (interpolation && alpha < 1.0f && !body.newBody){
+    const RigidbodyInterpolation mode = interpolationOf(body.interpolation);
+    if (mode == RigidbodyInterpolation::INTERPOLATE && alpha < 1.0f && !body.newBody){
         const b2Transform& previous = body.previousTransform;
         bTransform.p = previous.p + (bTransform.p - previous.p) * alpha;
         if (previous.q.c != bTransform.q.c || previous.q.s != bTransform.q.s){
             bTransform.q = b2NLerp(previous.q, bTransform.q, alpha);
         }
+    }else if (mode == RigidbodyInterpolation::EXTRAPOLATE && alpha < 1.0f && !body.newBody){
+        // ahead of the step by its velocity over the part of the next step the frame is at
+        const float ahead = alpha * lastFixedStep;
+        bTransform.p = bTransform.p + b2Body_GetLinearVelocity(body.body) * ahead;
+        bTransform.q = b2MakeRot(b2Rot_GetAngle(bTransform.q) + b2Body_GetAngularVelocity(body.body) * ahead);
     }
 
     // Box2D does not own Z, it is kept from the current world position
@@ -744,11 +807,30 @@ void PhysicsSystem::updateTransformFromRigidbody(Entity entity, RigidbodyCompone
     Vector3 position(jPosition.GetX(), jPosition.GetY(), jPosition.GetZ());
     Quaternion rotation(jRotation.GetW(), jRotation.GetX(), jRotation.GetY(), jRotation.GetZ());
     // a body that never stepped has no pose before the step to draw from
-    if (interpolation && alpha < 1.0f && !body.newBody){
+    const RigidbodyInterpolation mode = interpolationOf(body.interpolation);
+    if (mode == RigidbodyInterpolation::INTERPOLATE && alpha < 1.0f && !body.newBody){
         position = body.previousPosition.lerp(position, alpha);
         if (body.previousRotation != rotation){
             rotation = Quaternion::slerp(alpha, body.previousRotation, rotation);
         }
+    }else if (mode == RigidbodyInterpolation::EXTRAPOLATE && alpha < 1.0f && !body.newBody && body.type != BodyType::STATIC){
+        // ahead of the step by its velocities over the part of the next step the frame is at
+        // (the angular velocity turns it about its centre of mass)
+        const float ahead = alpha * lastFixedStep;
+        JPH::BodyInterface& body_interface = getBodyInterface3D();
+        JPH::Vec3 linearVelocity, angularVelocity;
+        body_interface.GetLinearAndAngularVelocity(body.body, linearVelocity, angularVelocity);
+        const JPH::RVec3 center = body_interface.GetCenterOfMassPosition(body.body);
+        JPH::Quat turn = JPH::Quat::sIdentity();
+        const float angularSpeed = angularVelocity.Length();
+        if (angularSpeed > 1.0e-9f){
+            turn = JPH::Quat::sRotation(angularVelocity / angularSpeed, angularSpeed * ahead);
+        }
+        const JPH::Vec3 centerToOrigin = jPosition - center;
+        const JPH::Vec3 newOrigin = center + linearVelocity * ahead + turn * centerToOrigin;
+        const JPH::Quat newRotation = (turn * jRotation).Normalized();
+        position = Vector3(newOrigin.GetX(), newOrigin.GetY(), newOrigin.GetZ());
+        rotation = Quaternion(newRotation.GetW(), newRotation.GetX(), newRotation.GetY(), newRotation.GetZ());
     }
 
     // the parts a following body is on its way to stay as the Transform has them
@@ -1051,124 +1133,6 @@ void PhysicsSystem::finishFollowing3D(Entity entity, RigidbodyComponent& body){
 }
 #endif
 
-#ifdef JASPERENGINE_PHYSICS_3D
-bool PhysicsSystem::loadJoint3D(Entity entity, Joint3DComponent& joint){
-    // The step holds the constraint list; the update loop retries any joint without one.
-    if (steppingWorld3D){
-        Log::error("Cannot load a 3D joint while the physics world is stepping, retrying next update");
-        return false;
-    }
-
-    if (joint.joint){
-        destroyJoint3D(joint);
-    }
-
-    if (joint.bodyA == NULL_ENTITY || joint.bodyB == NULL_ENTITY){
-        return false;
-    }
-
-    Signature signatureA = scene->getSignature(joint.bodyA);
-    Signature signatureB = scene->getSignature(joint.bodyB);
-
-    if (!signatureA.test(scene->getComponentId<RigidbodyComponent>()) || !signatureB.test(scene->getComponentId<RigidbodyComponent>())){
-        Log::error("Cannot create joint, error in bodyA or bodyB");
-        return false;
-    }
-
-    if (!loadRigidbody(joint.bodyA) || !loadRigidbody(joint.bodyB)){
-        Log::error("Cannot create 3D joint, bodyA or bodyB has no valid physics shape/body");
-        return false;
-    }
-
-    RigidbodyComponent& bodyAComp = scene->getComponent<RigidbodyComponent>(joint.bodyA);
-    RigidbodyComponent& bodyBComp = scene->getComponent<RigidbodyComponent>(joint.bodyB);
-
-    if (bodyAComp.body.IsInvalid() || bodyBComp.body.IsInvalid()){
-        Log::error("Cannot create 3D joint, bodyA or bodyB body id is invalid");
-        return false;
-    }
-
-    switch (joint.type){
-        case Joint3DType::FIXED:
-            return loadFixedJoint3D(joint, joint.bodyA, joint.bodyB);
-        case Joint3DType::DISTANCE:
-            return loadDistanceJoint3D(joint, joint.bodyA, joint.bodyB, joint.anchorA, joint.anchorB, joint.autoAnchors);
-        case Joint3DType::POINT:
-            return loadPointJoint3D(joint, joint.bodyA, joint.bodyB, joint.anchor);
-        case Joint3DType::HINGE:
-            return loadHingeJoint3D(joint, joint.bodyA, joint.bodyB, joint.anchor, joint.axis, joint.normal);
-        case Joint3DType::CONE:
-            return loadConeJoint3D(joint, joint.bodyA, joint.bodyB, joint.anchor, joint.twistAxis);
-        case Joint3DType::PRISMATIC:
-            return loadPrismaticJoint3D(joint, joint.bodyA, joint.bodyB, joint.axis, joint.limitsMin, joint.limitsMax);
-        case Joint3DType::SWINGTWIST:
-            return loadSwingTwistJoint3D(joint, joint.bodyA, joint.bodyB, joint.anchor, joint.twistAxis, joint.planeAxis, joint.normalHalfConeAngle, joint.planeHalfConeAngle, joint.twistMinAngle, joint.twistMaxAngle);
-        case Joint3DType::SIXDOF:
-            return loadSixDOFJoint3D(joint, joint.bodyA, joint.bodyB, joint.anchorA, joint.anchorB, joint.axisX, joint.axisY);
-        case Joint3DType::PATH: {
-            if (joint.pathPoints.size() < 2){
-                Log::error("Cannot create path 3D joint, need at least 2 path points");
-                return false;
-            }
-
-            std::vector<Vector3> tangents;
-            std::vector<Vector3> normals;
-            tangents.reserve(joint.pathPoints.size());
-            normals.reserve(joint.pathPoints.size());
-
-            for (size_t i = 0; i < joint.pathPoints.size(); i++){
-                size_t prev = (i == 0) ? (joint.isLooping ? joint.pathPoints.size() - 1 : 0) : i - 1;
-                size_t next = (i + 1 >= joint.pathPoints.size()) ? (joint.isLooping ? 0 : joint.pathPoints.size() - 1) : i + 1;
-
-                Vector3 tangent(
-                    joint.pathPoints[next].x - joint.pathPoints[prev].x,
-                    joint.pathPoints[next].y - joint.pathPoints[prev].y,
-                    joint.pathPoints[next].z - joint.pathPoints[prev].z
-                );
-
-                float tangentLengthSq = tangent.x * tangent.x + tangent.y * tangent.y + tangent.z * tangent.z;
-                if (tangentLengthSq < 1.0e-6f){
-                    tangent = Vector3(1.0f, 0.0f, 0.0f);
-                }else{
-                    float invTangentLength = 1.0f / std::sqrt(tangentLengthSq);
-                    tangent = Vector3(tangent.x * invTangentLength, tangent.y * invTangentLength, tangent.z * invTangentLength);
-                }
-
-                Vector3 normal = (std::fabs(tangent.y) < 0.999f) ? Vector3(0.0f, 1.0f, 0.0f) : Vector3(0.0f, 0.0f, 1.0f);
-                float tangentDotNormal = tangent.x * normal.x + tangent.y * normal.y + tangent.z * normal.z;
-                normal = Vector3(
-                    normal.x - tangent.x * tangentDotNormal,
-                    normal.y - tangent.y * tangentDotNormal,
-                    normal.z - tangent.z * tangentDotNormal
-                );
-
-                float normalLengthSq = normal.x * normal.x + normal.y * normal.y + normal.z * normal.z;
-                if (normalLengthSq < 1.0e-6f){
-                    normal = Vector3(0.0f, 0.0f, 1.0f);
-                }else{
-                    float invNormalLength = 1.0f / std::sqrt(normalLengthSq);
-                    normal = Vector3(normal.x * invNormalLength, normal.y * invNormalLength, normal.z * invNormalLength);
-                }
-
-                tangents.push_back(tangent);
-                normals.push_back(normal);
-            }
-
-            return loadPathJoint3D(joint, joint.bodyA, joint.bodyB, joint.pathPoints, tangents, normals, joint.pathPosition, joint.isLooping);
-        }
-        case Joint3DType::GEAR:
-            if (joint.hingeA == NULL_ENTITY || joint.hingeB == NULL_ENTITY) return false;
-            return loadGearJoint3D(joint, joint.bodyA, joint.bodyB, joint.hingeA, joint.hingeB, joint.numTeethGearA, joint.numTeethGearB);
-        case Joint3DType::RACKANDPINON:
-            if (joint.hinge == NULL_ENTITY || joint.slider == NULL_ENTITY) return false;
-            return loadRackAndPinionJoint3D(joint, joint.bodyA, joint.bodyB, joint.hinge, joint.slider, joint.numTeethRack, joint.numTeethGear, joint.rackLength);
-        case Joint3DType::PULLEY:
-            return loadPulleyJoint3D(joint, joint.bodyA, joint.bodyB, joint.anchorA, joint.anchorB, joint.fixedPointA, joint.fixedPointB);
-        default:
-            return false;
-    }
-}
-#endif
 
 #ifdef JASPERENGINE_PHYSICS_2D
 namespace {
@@ -1790,8 +1754,14 @@ bool PhysicsSystem::createCollider3DForIndex(Entity entity, RigidbodyComponent& 
         }
     }
 
+    // the collider's surface rides on its leaf, so contacts find it from their sub-shape ids
+    if (!shapeData.surface){
+        shapeData.surface = new JoltSurfaceMaterial();
+    }
+    shapeData.surface->colliderIndex = (uint32_t)index;
+
     std::string error;
-    shapeData.shape = JoltShapeBuilder::buildColliderShape(scene, entity, shapeData, &error);
+    shapeData.shape = JoltShapeBuilder::buildColliderShape(scene, entity, shapeData, &error, shapeData.surface.GetPtr());
     if (!error.empty()){
         Log::error("%s", error.c_str());
     }
@@ -1808,6 +1778,7 @@ bool PhysicsSystem::createCollider3DForIndex(Entity entity, RigidbodyComponent& 
         convexShape->SetDensity(shapeData.density);
     }
 
+    shapeData.dirty = false;
     return true;
 }
 
@@ -1826,32 +1797,272 @@ bool PhysicsSystem::isShapeSourceLoading(Entity entity, const Collider3D& shapeD
     return JoltShapeBuilder::isGeometryLoading(scene, shapeData.sourceEntity == NULL_ENTITY ? entity : shapeData.sourceEntity);
 }
 
-bool PhysicsSystem::syncRigidbodyColliders(Entity entity, RigidbodyComponent& body){
-    if (!body.body.IsInvalid()){
-        destroyRigidbody(body);
-        body.body = JPH::BodyID();
-    }
-
-    for (size_t i = 0; i < body.numColliders; i++){
+bool PhysicsSystem::buildColliderLeaves3D(Entity entity, RigidbodyComponent& body, bool all, bool& sourceLoading){
+    sourceLoading = false;
+    for (size_t i = 0; i < body.colliders.size(); i++){
+        Collider3D& collider = body.colliders[i];
+        if (!all && !collider.dirty && collider.shape){
+            continue;
+        }
         // a source still loading is not a failure: fixedUpdate retries the body every step
-        if (isShapeSourceLoading(entity, body.colliders[i])){
+        if (isShapeSourceLoading(entity, collider)){
+            sourceLoading = true;
             return false;
         }
-
         if (!createCollider3DForIndex(entity, body, i)){
-            Log::error("Cannot create runtime shape %i for 3D Body entity: %u", i, entity);
+            Log::error("Cannot create runtime shape %i for 3D Body entity: %u", (int)i, entity);
             return false;
         }
     }
+    return true;
+}
 
-    if (body.numColliders == 0){
+namespace {
+
+    // the material a collider uses: its own (a script's, else its asset), else the body's
+    std::shared_ptr<PhysicsMaterialRuntime> colliderMaterial3D(const RigidbodyComponent& body, const Collider3D& collider){
+        std::shared_ptr<PhysicsMaterialRuntime> material = collider.materialInstance;
+        if (!material && !collider.material.empty()){
+            material = PhysicsMaterialPool::getOrLoad(collider.material);
+        }
+        if (!material){
+            material = body.materialInstance;
+        }
+        if (!material && !body.material.empty()){
+            material = PhysicsMaterialPool::getOrLoad(body.material);
+        }
+        return material;
+    }
+
+    bool anyTrigger3D(const RigidbodyComponent& body){
+        for (const Collider3D& collider : body.colliders){
+            if (collider.isTrigger) return true;
+        }
         return false;
     }
 
-    if (body.numColliders > 1){
-        const Vector3 entityScale = entityWorldScale(scene, entity);
+    bool allTriggers3D(const RigidbodyComponent& body){
+        for (const Collider3D& collider : body.colliders){
+            if (!collider.isTrigger) return false;
+        }
+        return !body.colliders.empty();
+    }
+
+    // the collider that keeps a body static (Jolt cannot move a mesh or heightfield)
+    int staticOnlyCollider3D(const RigidbodyComponent& body){
+        for (size_t i = 0; i < body.colliders.size(); i++){
+            const Collider3D& collider = body.colliders[i];
+            if (collider.shape ? collider.shape->MustBeStatic()
+                               : (collider.type == Collider3DType::MESH || collider.type == Collider3DType::HEIGHTFIELD)){
+                return (int)i;
+            }
+        }
+        return -1;
+    }
+
+    const char* collider3DTypeName(Collider3DType type){
+        switch (type){
+            case Collider3DType::SPHERE: return "Sphere";
+            case Collider3DType::BOX: return "Box";
+            case Collider3DType::CAPSULE: return "Capsule";
+            case Collider3DType::TAPERED_CAPSULE: return "Tapered Capsule";
+            case Collider3DType::CYLINDER: return "Cylinder";
+            case Collider3DType::CONVEX_HULL: return "Convex Hull";
+            case Collider3DType::MESH: return "Mesh";
+            case Collider3DType::HEIGHTFIELD: return "Heightfield";
+        }
+        return "collider";
+    }
+
+    JPH::Vec3 toJolt(const Vector3& v){
+        return JPH::Vec3(v.x, v.y, v.z);
+    }
+
+    Vector3 fromJolt(JPH::Vec3Arg v){
+        return Vector3(v.GetX(), v.GetY(), v.GetZ());
+    }
+
+    // R diag(moments) R^T, the moments kept above 0 (Jolt inverts the tensor)
+    JPH::Mat44 principalInertia(JPH::Vec3Arg moments, JPH::QuatArg rotation){
+        const JPH::Mat44 r = JPH::Mat44::sRotation(rotation);
+        const JPH::Vec3 safe = JPH::Vec3::sMax(moments, JPH::Vec3::sReplicate(1.0e-9f));
+        JPH::Mat44 inertia = r * JPH::Mat44::sScale(safe) * r.Transposed3x3();
+        inertia.SetColumn4(3, JPH::Vec4(0, 0, 0, 1));
+        return inertia;
+    }
+
+    // m (|d|^2 I - d d^T): the inertia of a point mass m at offset d (parallel axis theorem)
+    JPH::Mat44 parallelAxis(float mass, JPH::Vec3Arg offset){
+        JPH::Mat44 inertia = JPH::Mat44::sScale(mass * offset.LengthSq()) - JPH::Mat44::sOuterProduct(offset, offset) * mass;
+        inertia.SetColumn4(3, JPH::Vec4(0, 0, 0, 1));
+        return inertia;
+    }
+
+}
+
+void PhysicsSystem::resolveColliderSurfaces3D(const RigidbodyComponent& body){
+    for (size_t i = 0; i < body.colliders.size(); i++){
+        const Collider3D& collider = body.colliders[i];
+        if (!collider.surface){
+            continue;
+        }
+        JoltSurfaceMaterial& surface = *collider.surface;
+        surface.colliderIndex = (uint32_t)i;
+        surface.isTrigger = collider.isTrigger;
+        if (std::shared_ptr<PhysicsMaterialRuntime> material = colliderMaterial3D(body, collider)){
+            surface.friction = material->getFriction();
+            surface.restitution = material->getBounciness();
+            surface.frictionCombine = material->getFrictionCombine();
+            surface.bounceCombine = material->getBounceCombine();
+            // a mode is what tells "a material" from "none"
+            if (surface.frictionCombine == PhysicsMaterialCombine::NONE) surface.frictionCombine = PhysicsMaterialCombine::AVERAGE;
+            if (surface.bounceCombine == PhysicsMaterialCombine::NONE) surface.bounceCombine = PhysicsMaterialCombine::AVERAGE;
+        }else{
+            surface.friction = body.friction;
+            surface.restitution = body.restitution;
+            surface.frictionCombine = PhysicsMaterialCombine::NONE;
+            surface.bounceCombine = PhysicsMaterialCombine::NONE;
+        }
+    }
+}
+
+// Jolt merges the manifolds of a body pair into one when it can; a body whose colliders differ
+// (a trigger, another surface) needs each collider's own contacts (physics-contacts 6.1.4)
+bool PhysicsSystem::usesManifoldReduction3D(const RigidbodyComponent& body) const{
+    if (body.colliders.size() <= 1){
+        return true;
+    }
+    const JoltSurfaceMaterial* first = body.colliders[0].surface.GetPtr();
+    for (const Collider3D& collider : body.colliders){
+        if (collider.isTrigger){
+            return false;
+        }
+        const JoltSurfaceMaterial* surface = collider.surface.GetPtr();
+        if (first && surface && (surface->friction != first->friction || surface->restitution != first->restitution ||
+                surface->frictionCombine != first->frictionCombine || surface->bounceCombine != first->bounceCombine)){
+            return false;
+        }
+    }
+    return true;
+}
+
+// Unity's trigger matrix: a kinematic body with a trigger sees static and kinematic bodies too
+bool PhysicsSystem::collidesKinematicVsNonDynamic3D(const RigidbodyComponent& body) const{
+    return body.collideKinematicVsNonDynamic || (body.type == BodyType::KINEMATIC && anyTrigger3D(body));
+}
+
+bool PhysicsSystem::computeMassProperties3D(Entity entity, const RigidbodyComponent& body, MassInfo3D& info){
+    JPH::Mat44 inertia;
+    return computeMass3D(entity, body, info, inertia);
+}
+
+bool PhysicsSystem::computeMass3D(Entity entity, const RigidbodyComponent& body, MassInfo3D& info, JPH::Mat44& inertiaOut){
+    info = MassInfo3D();
+    inertiaOut = JPH::Mat44::sIdentity();
+    if (body.colliders.empty()){
+        return false;
+    }
+
+    const Vector3 entityScale = entityWorldScale(scene, entity);
+    // triggers carry no mass, unless every collider is one
+    const bool triggersOnly = allTriggers3D(body);
+
+    struct Part{
+        float mass;
+        JPH::Vec3 center;
+        JPH::Mat44 inertia;
+    };
+    std::vector<Part> parts;
+    parts.reserve(body.colliders.size());
+    float totalMass = 0.0f;
+    JPH::Vec3 weightedCenter = JPH::Vec3::sZero();
+
+    for (size_t i = 0; i < body.colliders.size(); i++){
+        const Collider3D& collider = body.colliders[i];
+        if (collider.isTrigger && !triggersOnly){
+            continue;
+        }
+        // a body-less preview (the Inspector) builds the leaf it does not have
+        JPH::ShapeRefC leaf = collider.shape;
+        if (!leaf){
+            if (isShapeSourceLoading(entity, collider)){
+                continue;
+            }
+            leaf = JoltShapeBuilder::buildColliderShape(scene, entity, collider, nullptr);
+            if (leaf && leaf->GetType() == JPH::EShapeType::Convex){
+                const_cast<JPH::ConvexShape*>(static_cast<const JPH::ConvexShape*>(leaf.GetPtr()))->SetDensity(collider.density);
+            }
+        }
+        if (!leaf || leaf->MustBeStatic()){
+            continue;
+        }
+
+        JPH::MassProperties leafMass = leaf->GetMassProperties();
+        if (!(leafMass.mMass > 0.0f) || !std::isfinite(leafMass.mMass)){
+            continue;
+        }
+        const JPH::Quat rotation = toValidatedJoltRotation(collider.rotation, entity, (int)i);
+        leafMass.Rotate(JPH::Mat44::sRotation(rotation));
+        const JPH::Vec3 center = toJolt(collider.position * entityScale) + rotation * leaf->GetCenterOfMass();
+        parts.push_back({leafMass.mMass, center, leafMass.mInertia});
+        totalMass += leafMass.mMass;
+        weightedCenter += center * leafMass.mMass;
+    }
+
+    if (parts.empty() || !(totalMass > 0.0f)){
+        if (body.automaticMass){
+            return false;
+        }
+        // an explicit mass without any volume: a small solid sphere of it at the centre
+        info.mass = std::max(body.mass, 1.0e-6f);
+        info.centerOfMass = body.automaticCenterOfMass ? Vector3::ZERO : body.centerOfMass;
+        const float inertia = 0.1f * info.mass;
+        info.inertiaDiagonal = body.automaticInertiaTensor ? Vector3(inertia, inertia, inertia) : body.inertiaTensor;
+        inertiaOut = principalInertia(toJolt(info.inertiaDiagonal), body.automaticInertiaTensor ? JPH::Quat::sIdentity()
+                                      : toValidatedJoltRotation(body.inertiaTensorRotation, entity, -1));
+        return true;
+    }
+
+    const JPH::Vec3 automaticCenter = weightedCenter / totalMass;
+    const JPH::Vec3 center = body.automaticCenterOfMass ? automaticCenter : toJolt(body.centerOfMass);
+
+    JPH::Mat44 inertia = JPH::Mat44::sZero();
+    for (const Part& part : parts){
+        inertia = inertia + part.inertia + parallelAxis(part.mass, part.center - center);
+    }
+
+    float mass = totalMass;
+    if (!body.automaticMass && body.mass > 0.0f && std::isfinite(body.mass)){
+        const float factor = body.mass / totalMass;
+        inertia = inertia * factor;
+        mass = body.mass;
+    }
+
+    info.mass = mass;
+    info.centerOfMass = fromJolt(center);
+    if (!body.automaticInertiaTensor){
+        // Unity inertiaTensor + inertiaTensorRotation: R diag(I) R^T about the centre of mass
+        info.inertiaDiagonal = body.inertiaTensor;
+        inertiaOut = principalInertia(toJolt(body.inertiaTensor), toValidatedJoltRotation(body.inertiaTensorRotation, entity, -1));
+    }else{
+        info.inertiaDiagonal = Vector3(inertia(0, 0), inertia(1, 1), inertia(2, 2));
+        inertia.SetColumn4(3, JPH::Vec4(0, 0, 0, 1));
+        inertiaOut = inertia;
+    }
+    return true;
+}
+
+JPH::ShapeRefC PhysicsSystem::buildBodyShape3D(Entity entity, RigidbodyComponent& body, JPH::MassProperties& mass, bool& overrideMass){
+    overrideMass = false;
+    if (body.colliders.empty()){
+        return NULL;
+    }
+
+    JPH::ShapeRefC shape;
+    const Vector3 entityScale = entityWorldScale(scene, entity);
+    if (body.colliders.size() > 1){
         JPH::StaticCompoundShapeSettings compound_shape;
-        for (size_t i = 0; i < body.numColliders; i++){
+        for (size_t i = 0; i < body.colliders.size(); i++){
             Vector3 scaledPosition = body.colliders[i].position * entityScale;
             JPH::Vec3 jPosition(scaledPosition.x, scaledPosition.y, scaledPosition.z);
             JPH::Quat jQuat = toValidatedJoltRotation(body.colliders[i].rotation, entity, static_cast<int>(i));
@@ -1861,41 +2072,426 @@ bool PhysicsSystem::syncRigidbodyColliders(Entity entity, RigidbodyComponent& bo
         JPH::ShapeSettings::ShapeResult shape_result = compound_shape.Create();
         if (!shape_result.IsValid()){
             Log::error("Cannot create StaticCompoundShape for 3D Body entity: %u", entity);
-            return false;
+            return NULL;
         }
-
-        if (!createGenericJoltBody(entity, body, shape_result.Get())) return false;
+        shape = shape_result.Get();
     }else{
         Collider3D& shapeData = body.colliders[0];
         if (shapeData.position != Vector3::ZERO || shapeData.rotation != Quaternion::IDENTITY){
-            Vector3 scaledPosition = shapeData.position * entityWorldScale(scene, entity);
+            Vector3 scaledPosition = shapeData.position * entityScale;
             JPH::Vec3 jPosition(scaledPosition.x, scaledPosition.y, scaledPosition.z);
             JPH::Quat jQuat = toValidatedJoltRotation(shapeData.rotation, entity, 0);
             JPH::RotatedTranslatedShapeSettings rtShape(jPosition, jQuat, shapeData.shape);
             JPH::ShapeSettings::ShapeResult shape_result = rtShape.Create();
             if (!shape_result.IsValid()){
                 Log::error("Cannot create RotatedTranslatedShapeSettings for 3D Body entity: %u", entity);
-                return false;
+                return NULL;
             }
-
-            if (!createGenericJoltBody(entity, body, shape_result.Get())) return false;
+            shape = shape_result.Get();
         }else{
-            if (!createGenericJoltBody(entity, body, shapeData.shape)) return false;
+            shape = shapeData.shape;
         }
+    }
+
+    // Jolt's own mass properties unless a mass field or a trigger collider changes them; the
+    // legacy solid box override (setOverrideMassAndInertia) wins over both
+    const bool customMass = !body.automaticMass || !body.automaticCenterOfMass || !body.automaticInertiaTensor ||
+                            (anyTrigger3D(body) && !allTriggers3D(body));
+    if (!customMass || body.overrideMassProperties || shape->MustBeStatic()){
+        return shape;
+    }
+
+    MassInfo3D info;
+    JPH::Mat44 inertia;
+    if (!computeMass3D(entity, body, info, inertia)){
+        return shape;
+    }
+
+    // the body's centre of mass is its shape's: moved there by an offset shape
+    const JPH::Vec3 center = toJolt(info.centerOfMass);
+    const JPH::Vec3 offset = center - shape->GetCenterOfMass();
+    if (offset.LengthSq() > 1.0e-12f){
+        JPH::OffsetCenterOfMassShapeSettings offsetShape(offset, shape);
+        JPH::ShapeSettings::ShapeResult shape_result = offsetShape.Create();
+        if (shape_result.IsValid()){
+            shape = shape_result.Get();
+        }else{
+            Log::error("Cannot move the centre of mass of 3D Body entity %u: %s", entity, shape_result.GetError().c_str());
+        }
+    }
+
+    mass.mMass = info.mass;
+    mass.mInertia = inertia;
+    overrideMass = true;
+    return shape;
+}
+
+void PhysicsSystem::invalidateJoints3D(Entity bodyEntity){
+    auto joints3d = scene->getComponentArray<Joint3DComponent>();
+    for (size_t i = 0; i < joints3d->size(); i++){
+        Joint3DComponent& joint = joints3d->getComponentFromIndex(i);
+        if (joint.bodyA == bodyEntity || joint.bodyB == bodyEntity){
+            // its constraint holds the body: it goes first, made again once the body is back
+            if (joint.joint){
+                destroyJoint3D(joint);
+            }
+            joint.needUpdateJoint = true;
+        }
+    }
+}
+
+bool PhysicsSystem::syncRigidbodyColliders(Entity entity, RigidbodyComponent& body){
+    // a live body whose shape can be swapped keeps its id, velocities, joints and contacts
+    if (!body.body.IsInvalid() && !body.needReloadBody){
+        return reshapeRigidbody3D(entity, body);
+    }
+
+    if (!body.body.IsInvalid()){
+        invalidateJoints3D(entity);
+        destroyRigidbody(body);
+        body.body = JPH::BodyID();
+    }
+
+    if (body.colliders.empty()){
+        return false;
+    }
+
+    bool sourceLoading = false;
+    if (!buildColliderLeaves3D(entity, body, true, sourceLoading)){
+        return false;
+    }
+    resolveColliderSurfaces3D(body);
+
+    JPH::MassProperties mass;
+    bool overrideMass = false;
+    JPH::ShapeRefC shape = buildBodyShape3D(entity, body, mass, overrideMass);
+    if (!shape){
+        return false;
+    }
+    if (!createGenericJoltBody(entity, body, shape, overrideMass ? &mass : nullptr)){
+        return false;
     }
 
     body.needReloadBody = false;
     body.needUpdateColliders = false;
+    body.massDirty = false;
+    body.needApplyParameters = false;
     body.newBody = true;
     body.loadedScale = entityWorldScale(scene, entity);
+    body.appliedMaterialRevision = PhysicsMaterialRuntime::revision();
 
     return true;
+}
+
+bool PhysicsSystem::reshapeRigidbody3D(Entity entity, RigidbodyComponent& body){
+    if (body.body.IsInvalid()){
+        return syncRigidbodyColliders(entity, body);
+    }
+    if (steppingWorld3D){
+        // the step holds the bodies: the next sync does it
+        body.needUpdateColliders = true;
+        return false;
+    }
+
+    // no collider left: the body leaves the world until one is added (its joints with it)
+    if (body.colliders.empty()){
+        invalidateJoints3D(entity);
+        destroyRigidbody(body);
+        body.body = JPH::BodyID();
+        body.needUpdateColliders = false;
+        return false;
+    }
+
+    const Vector3 entityScale = entityWorldScale(scene, entity);
+    const bool scaleChanged = entityScale != body.loadedScale;
+    bool sourceLoading = false;
+    if (!buildColliderLeaves3D(entity, body, scaleChanged, sourceLoading)){
+        // a source still loading keeps the old shape until it is there
+        body.needUpdateColliders = true;
+        return false;
+    }
+    resolveColliderSurfaces3D(body);
+
+    JPH::MassProperties mass;
+    bool overrideMass = false;
+    JPH::ShapeRefC shape = buildBodyShape3D(entity, body, mass, overrideMass);
+    if (!shape){
+        return false;
+    }
+
+    JPH::BodyInterface& body_interface = getBodyInterface3D();
+    // a static-only shape on a body that may move, or a movable shape on a body made static-only:
+    // only a new body changes that
+    bool canMove = true;
+    {
+        JPH::BodyLockRead lock(getBodyLockInterface3D(), body.body);
+        if (lock.Succeeded()){
+            canMove = lock.GetBody().CanBeKinematicOrDynamic();
+        }
+    }
+    if (shape->MustBeStatic() == canMove){
+        body.needReloadBody = true;
+        return syncRigidbodyColliders(entity, body);
+    }
+
+    const bool active = body.type != BodyType::STATIC && body.enabled && body_interface.IsAdded(body.body);
+    const JPH::ShapeRefC previousShape = body_interface.GetShape(body.body);
+    const JPH::Vec3 previousCenter = previousShape ? previousShape->GetCenterOfMass() : JPH::Vec3::sZero();
+    body_interface.SetShape(body.body, shape, !overrideMass && !body.overrideMassProperties,
+                            active ? JPH::EActivation::Activate : JPH::EActivation::DontActivate);
+    // the joints hold points relative to the centre of mass: told where it went
+    const JPH::Vec3 deltaCenter = shape->GetCenterOfMass() - previousCenter;
+    if (deltaCenter.LengthSq() > 0.0f){
+        auto joints3d = scene->getComponentArray<Joint3DComponent>();
+        for (size_t i = 0; i < joints3d->size(); i++){
+            Joint3DComponent& joint = joints3d->getComponentFromIndex(i);
+            if (joint.joint && (joint.bodyA == entity || joint.bodyB == entity)){
+                joint.joint->NotifyShapeChanged(body.body, deltaCenter);
+            }
+        }
+    }
+    {
+        JPH::BodyLockWrite lock(getBodyLockInterface3D(), body.body);
+        if (lock.Succeeded()){
+            JPH::Body& jbody = lock.GetBody();
+            JPH::MotionProperties* motion = jbody.GetMotionPropertiesUnchecked();
+            if (motion){
+                if (body.overrideMassProperties){
+                    JPH::MassProperties box;
+                    box.SetMassAndInertiaOfSolidBox(toJolt(body.solidBoxSize), body.solidBoxDensity);
+                    motion->SetMassProperties(motion->GetAllowedDOFs(), box);
+                }else if (overrideMass){
+                    motion->SetMassProperties(motion->GetAllowedDOFs(), mass);
+                }
+            }
+            jbody.SetUseManifoldReduction(usesManifoldReduction3D(body));
+            jbody.SetCollideKinematicVsNonDynamic(collidesKinematicVsNonDynamic3D(body));
+        }
+    }
+
+    body.needUpdateColliders = false;
+    body.massDirty = false;
+    body.loadedScale = entityScale;
+    body.appliedMaterialRevision = PhysicsMaterialRuntime::revision();
+    return true;
+}
+
+bool PhysicsSystem::removeCollider3D(Entity entity, RigidbodyComponent& body, size_t index){
+    if (index >= body.colliders.size()){
+        return false;
+    }
+    body.colliders.erase(body.colliders.begin() + (std::ptrdiff_t)index);
+    // the later leaves report their new index
+    for (size_t i = index; i < body.colliders.size(); i++){
+        Collider3D& collider = body.colliders[i];
+        if (collider.shape){
+            const_cast<JPH::Shape*>(collider.shape.GetPtr())->SetUserData(i);
+        }
+        if (collider.surface){
+            collider.surface->colliderIndex = (uint32_t)i;
+        }
+    }
+    body.needUpdateColliders = true;
+    (void)entity;
+    return true;
+}
+
+void PhysicsSystem::refreshRigidbodyMaterials3D(Entity entity, RigidbodyComponent& body, bool force){
+    (void)entity;
+    if (!force && body.appliedMaterialRevision == PhysicsMaterialRuntime::revision()){
+        return;
+    }
+    body.appliedMaterialRevision = PhysicsMaterialRuntime::revision();
+    if (body.body.IsInvalid()){
+        return;
+    }
+
+    std::vector<float> before;
+    before.reserve(body.colliders.size() * 4);
+    for (const Collider3D& collider : body.colliders){
+        if (!collider.surface) continue;
+        before.push_back(collider.surface->friction);
+        before.push_back(collider.surface->restitution);
+        before.push_back((float)collider.surface->frictionCombine);
+        before.push_back((float)collider.surface->bounceCombine);
+    }
+    resolveColliderSurfaces3D(body);
+    size_t k = 0;
+    bool changed = false;
+    for (const Collider3D& collider : body.colliders){
+        if (!collider.surface) continue;
+        changed = changed || before[k] != collider.surface->friction || before[k + 1] != collider.surface->restitution ||
+                  before[k + 2] != (float)collider.surface->frictionCombine || before[k + 3] != (float)collider.surface->bounceCombine;
+        k += 4;
+    }
+    if (!changed){
+        return;
+    }
+
+    // Jolt combines the surfaces at every step, cached contacts too: sleeping pairs are woken
+    // to pick the new values up; manifold reduction follows the colliders' surfaces
+    {
+        JPH::BodyLockWrite lock(getBodyLockInterface3D(), body.body);
+        if (lock.Succeeded()){
+            lock.GetBody().SetUseManifoldReduction(usesManifoldReduction3D(body));
+        }
+    }
+    wakeAround3D(body.body);
+}
+
+void PhysicsSystem::syncMaterials3D(){
+    const uint64_t revision = PhysicsMaterialRuntime::revision();
+    auto bodies3d = scene->getComponentArray<RigidbodyComponent>();
+    for (size_t i = 0; i < bodies3d->size(); i++){
+        RigidbodyComponent& body = bodies3d->getComponentFromIndex(i);
+        if (body.appliedMaterialRevision != revision){
+            refreshRigidbodyMaterials3D(bodies3d->getEntity(i), body, false);
+        }
+    }
+}
+
+void PhysicsSystem::applyRigidbodyParameters(Entity entity, RigidbodyComponent& body){
+    (void)entity;
+    if (body.body.IsInvalid()){
+        return;
+    }
+    JPH::BodyInterface& body_interface = getBodyInterface3D();
+    {
+        JPH::BodyLockWrite lock(getBodyLockInterface3D(), body.body);
+        if (!lock.Succeeded()){
+            return;
+        }
+        JPH::Body& jbody = lock.GetBody();
+        JPH::MotionProperties* motion = jbody.GetMotionPropertiesUnchecked();
+        if (motion){
+            motion->SetLinearDamping(std::max(0.0f, body.linearDamping));
+            motion->SetAngularDamping(std::max(0.0f, body.angularDamping));
+            motion->SetMaxLinearVelocity(std::max(0.0f, body.maxLinearVelocity));
+            motion->SetMaxAngularVelocity(std::max(0.0f, body.maxAngularVelocity));
+            motion->SetGravityFactor(body.gravityFactor);
+            jbody.SetAllowSleeping(body.allowSleeping);
+        }
+        jbody.SetCollideKinematicVsNonDynamic(collidesKinematicVsNonDynamic3D(body));
+        jbody.SetFriction(body.friction);
+        jbody.SetRestitution(body.restitution);
+    }
+    if (body.type != BodyType::STATIC){
+        body_interface.SetMotionQuality(body.body, getRigidbodyMotionQualityToJolt(body.motionQuality));
+        if (body_interface.IsAdded(body.body)){
+            body_interface.ActivateBody(body.body);
+        }
+    }
+    // the colliders without a material take the body's surface
+    resolveColliderSurfaces3D(body);
+}
+
+bool PhysicsSystem::setRigidbodyType(Entity entity, RigidbodyComponent& body, BodyType type){
+    if (!body.body.IsInvalid() && type != BodyType::STATIC){
+        bool canMove = true;
+        {
+            JPH::BodyLockRead lock(getBodyLockInterface3D(), body.body);
+            if (lock.Succeeded()){
+                canMove = lock.GetBody().CanBeKinematicOrDynamic();
+            }
+        }
+        if (!canMove){
+            const int index = staticOnlyCollider3D(body);
+            Log::error("Rigidbody '%s' cannot be %s: its collider %d (%s) is static-only (Jolt moves no mesh or heightfield collider; use a convex hull or primitives)",
+                       scene->getEntityName(entity).c_str(), type == BodyType::DYNAMIC ? "dynamic" : "kinematic", index,
+                       index >= 0 ? collider3DTypeName(body.colliders[index].type) : "?");
+            return false;
+        }
+    }else if (body.body.IsInvalid() && type != BodyType::STATIC && staticOnlyCollider3D(body) >= 0){
+        const int index = staticOnlyCollider3D(body);
+        Log::error("Rigidbody '%s' cannot be %s: its collider %d (%s) is static-only",
+                   scene->getEntityName(entity).c_str(), type == BodyType::DYNAMIC ? "dynamic" : "kinematic", index,
+                   collider3DTypeName(body.colliders[index].type));
+        return false;
+    }
+
+    // a contact callback of the step: the bodies are Jolt's until it ends
+    if (steppingWorld3D){
+        body.hasPendingType = true;
+        body.pendingType = type;
+        pendingTypeChanges3D.push_back(entity);
+        return true;
+    }
+
+    // the script takes over a body that was following its Transform (a kinematic body switched
+    // to dynamic keeps the velocity the following gave it: a ragdoll inherits the motion)
+    const BodyType previous = body.type;
+    if (previous == BodyType::KINEMATIC && type == BodyType::DYNAMIC){
+        body.followingPosition = false;
+        body.followingRotation = false;
+    }else{
+        stopFollowing3D(body, true, true);
+    }
+    body.type = type;
+    body.hasPendingType = false;
+
+    if (body.body.IsInvalid()){
+        return true;
+    }
+
+    JPH::BodyInterface& bodyInterface = getBodyInterface3D();
+    const bool added = bodyInterface.IsAdded(body.body);
+    JPH::EMotionType joltType = JPH::EMotionType::Static;
+    if (type == BodyType::KINEMATIC) joltType = JPH::EMotionType::Kinematic;
+    else if (type == BodyType::DYNAMIC) joltType = JPH::EMotionType::Dynamic;
+    bodyInterface.SetMotionType(body.body, joltType, (type != BodyType::STATIC && added) ? JPH::EActivation::Activate : JPH::EActivation::DontActivate);
+    if (type != BodyType::STATIC){
+        bodyInterface.SetMotionQuality(body.body, getRigidbodyMotionQualityToJolt(body.motionQuality));
+    }
+    {
+        JPH::BodyLockWrite lock(getBodyLockInterface3D(), body.body);
+        if (lock.Succeeded()){
+            lock.GetBody().SetCollideKinematicVsNonDynamic(collidesKinematicVsNonDynamic3D(body));
+        }
+    }
+    if (type == BodyType::STATIC){
+        bodyInterface.SetLinearAndAngularVelocity(body.body, JPH::Vec3::sZero(), JPH::Vec3::sZero());
+    }
+    // the pairs it is in are tested again with its new type
+    if (added && previous != type){
+        wakeAround3D(body.body);
+    }
+    return true;
+}
+
+void PhysicsSystem::applyPendingTypeChanges3D(){
+    if (pendingTypeChanges3D.empty()){
+        return;
+    }
+    std::vector<Entity> pending;
+    pending.swap(pendingTypeChanges3D);
+    for (Entity entity : pending){
+        RigidbodyComponent* body = scene->findComponent<RigidbodyComponent>(entity);
+        if (body && body->hasPendingType){
+            setRigidbodyType(entity, *body, body->pendingType);
+        }
+    }
+}
+
+void PhysicsSystem::setBodyPairIgnored3D(Entity a, Entity b, uint32_t reason, bool ignore){
+    if (a == NULL_ENTITY || b == NULL_ENTITY || a == b){
+        return;
+    }
+    const bool before = pairFilter3D->isIgnored(a, b);
+    pairFilter3D->setReason(a, b, reason, ignore);
+    if (before != pairFilter3D->isIgnored(a, b) && !steppingWorld3D){
+        for (Entity entity : {a, b}){
+            RigidbodyComponent* body = scene->findComponent<RigidbodyComponent>(entity);
+            if (body && !body->body.IsInvalid()){
+                wakeAround3D(body->body);
+            }
+        }
+    }
 }
 
 static_assert((uint8_t)JPH::EAllowedDOFs::Plane2D == (RigidbodyAllowedDOF_TranslationX | RigidbodyAllowedDOF_TranslationY | RigidbodyAllowedDOF_RotationZ)
     && (uint8_t)JPH::EAllowedDOFs::All == RigidbodyAllowedDOF_All, "RigidbodyAllowedDOFFlags must keep Jolt's bits");
 
-bool PhysicsSystem::createGenericJoltBody(Entity entity, RigidbodyComponent& body, const JPH::ShapeRefC shape){
+bool PhysicsSystem::createGenericJoltBody(Entity entity, RigidbodyComponent& body, const JPH::ShapeRefC shape, const JPH::MassProperties* mass){
     JPH::EMotionType joltType = JPH::EMotionType::Static;
     JPH::EActivation activation = JPH::EActivation::DontActivate;
     if (body.type == BodyType::DYNAMIC){
@@ -1932,21 +2528,39 @@ bool PhysicsSystem::createGenericJoltBody(Entity entity, RigidbodyComponent& bod
     settings.mFriction = body.friction;
     settings.mRestitution = body.restitution;
     settings.mAllowedDOFs = static_cast<JPH::EAllowedDOFs>(body.allowedDOFs);
+    // the Rigidbody fields (their defaults are Jolt's)
+    settings.mLinearDamping = std::max(0.0f, body.linearDamping);
+    settings.mAngularDamping = std::max(0.0f, body.angularDamping);
+    settings.mMaxLinearVelocity = std::max(0.0f, body.maxLinearVelocity);
+    settings.mMaxAngularVelocity = std::max(0.0f, body.maxAngularVelocity);
+    settings.mAllowSleeping = body.allowSleeping;
+    // any body can switch between static, kinematic and dynamic, except one Jolt cannot move
+    settings.mAllowDynamicOrKinematic = !shape->MustBeStatic();
+    settings.mCollideKinematicVsNonDynamic = collidesKinematicVsNonDynamic3D(body);
+    settings.mUseManifoldReduction = usesManifoldReduction3D(body);
+    settings.mCollisionGroup = JPH::CollisionGroup(pairFilter3D, body.collisionGroupID, (JPH::CollisionGroup::SubGroupID)entity);
+    settings.mUserData = entity;
 
     JPH::BodyInterface &body_interface = getBodyInterface3D();
 
     if(body.overrideMassProperties){
         settings.mOverrideMassProperties = JPH::EOverrideMassProperties::MassAndInertiaProvided;
         settings.mMassPropertiesOverride.SetMassAndInertiaOfSolidBox(JPH::Vec3(body.solidBoxSize.x, body.solidBoxSize.y, body.solidBoxSize.z), body.solidBoxDensity);
+    }else if (mass){
+        settings.mOverrideMassProperties = JPH::EOverrideMassProperties::MassAndInertiaProvided;
+        settings.mMassPropertiesOverride = *mass;
     }
 
     JPH::Body* jbody = body_interface.CreateBody(settings);
     if (!jbody){
         objectLayerTable3D->release(layer);
-        Log::error("Cannot create 3D Body for entity %u: body limit reached", entity);
+        if (!reportedBodyLimit3D){
+            reportedBodyLimit3D = true;
+            Log::error("Cannot create the 3D body of '%s': the world holds %u bodies at most. Raise Project Settings > Physics > 3D World Capacity > Max Bodies (physics3D.maxBodies).",
+                       scene->getEntityName(entity).c_str(), maxBodies3D);
+        }
         return false;
     }
-    jbody->SetUserData(entity);
 
     body.body = jbody->GetID();
     // drawn from where it is made until it steps
@@ -1996,6 +2610,7 @@ void PhysicsSystem::removeRigidbody(Entity entity){
     Signature signature = scene->getSignature(entity);
 
     if (signature.test(scene->getComponentId<RigidbodyComponent>())){
+        invalidateJoints3D(entity);
         destroyRigidbody(scene->getComponent<RigidbodyComponent>(entity));
         scene->removeComponent<RigidbodyComponent>(entity);
     }
@@ -2207,7 +2822,7 @@ void PhysicsSystem::destroyRigidbody(RigidbodyComponent& body){
         body_interface.DestroyBody(body.body);
     }
 
-    for (int i = 0; i < body.numColliders; i++){
+    for (size_t i = 0; i < body.colliders.size(); i++){
         destroyCollider3D(body, i);
     }
 
@@ -2239,15 +2854,18 @@ int PhysicsSystem::loadCollider3D(RigidbodyComponent& body, const Vector3& posit
     JPH::ShapeSettings::ShapeResult shape_result = shapeSettings->Create();
     if (shape_result.IsValid()){
         JPH::Shape* shape = shape_result.Get();
-        shape->SetUserData(body.numColliders);
+        const size_t index = body.colliders.size();
+        shape->SetUserData(index);
 
-        body.colliders[body.numColliders].shape = shape;
-        body.colliders[body.numColliders].position = position;
-        body.colliders[body.numColliders].rotation = rotation;
+        Collider3D collider;
+        collider.shape = shape;
+        collider.position = position;
+        collider.rotation = rotation;
+        // a shape made by hand: kept as it is by the shape-only rebuilds
+        collider.dirty = false;
+        body.colliders.push_back(collider);
 
-        body.numColliders++;
-
-        return (body.numColliders - 1);
+        return (int)index;
     }else{
         Log::error("Cannot create shape for 3D Body");
     }
@@ -2256,8 +2874,12 @@ int PhysicsSystem::loadCollider3D(RigidbodyComponent& body, const Vector3& posit
 }
 
 void PhysicsSystem::destroyCollider3D(RigidbodyComponent& body, size_t index){
+    if (index >= body.colliders.size()){
+        return;
+    }
     // ShapeRefC::operator= releases the owned reference; do not call Shape::Release manually.
     body.colliders[index].shape = nullptr;
+    body.colliders[index].dirty = true;
 }
 #endif
 
@@ -2915,750 +3537,6 @@ void PhysicsSystem::dispatchJointBreaks2D(){
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
-bool PhysicsSystem::loadFixedJoint3D(Joint3DComponent& joint, Entity bodyA, Entity bodyB){
-    Signature signatureA = scene->getSignature(bodyA);
-    Signature signatureB = scene->getSignature(bodyB);
-
-    if (signatureA.test(scene->getComponentId<RigidbodyComponent>()) && signatureB.test(scene->getComponentId<RigidbodyComponent>())){
-
-        RigidbodyComponent myBodyA = scene->getComponent<RigidbodyComponent>(bodyA);
-        RigidbodyComponent myBodyB = scene->getComponent<RigidbodyComponent>(bodyB);
-
-        updateRigidbodyPosition(signatureA, bodyA, myBodyA);
-        updateRigidbodyPosition(signatureB, bodyB, myBodyB);
-
-        JPH::FixedConstraintSettings settings;
-        settings.mAutoDetectPoint = true;
-
-        const JPH::BodyLockInterface& bodyLockInterface = getBodyLockInterface3D();
-        JPH::BodyID bodies[2] = {myBodyA.body, myBodyB.body};
-        JPH::BodyLockMultiWrite lock(bodyLockInterface, bodies, 2);
-
-        JPH::Body* lockBodyA = lock.GetBody(0);
-        JPH::Body* lockBodyB = lock.GetBody(1);
-        if (!lockBodyA || !lockBodyB){
-            Log::error("Cannot create fixed 3D joint, bodyA or bodyB is invalid");
-            return false;
-        }
-
-        joint.joint = settings.Create(*lockBodyA, *lockBodyB);
-
-        world3D.AddConstraint(joint.joint);
-        joint.type = Joint3DType::FIXED;
-
-    }else{
-        Log::error("Cannot create joint, error in bodyA or bodyB");
-        return false;
-    }
-
-    return true;
-}
-
-bool PhysicsSystem::loadDistanceJoint3D(Joint3DComponent& joint, Entity bodyA, Entity bodyB, Vector3 anchorA, Vector3 anchorB, bool autoAnchors){
-    Signature signatureA = scene->getSignature(bodyA);
-    Signature signatureB = scene->getSignature(bodyB);
-
-    if (signatureA.test(scene->getComponentId<RigidbodyComponent>()) && signatureB.test(scene->getComponentId<RigidbodyComponent>())){
-
-        RigidbodyComponent myBodyA = scene->getComponent<RigidbodyComponent>(bodyA);
-        RigidbodyComponent myBodyB = scene->getComponent<RigidbodyComponent>(bodyB);
-
-        updateRigidbodyPosition(signatureA, bodyA, myBodyA);
-        updateRigidbodyPosition(signatureB, bodyB, myBodyB);
-
-        const JPH::BodyLockInterface& bodyLockInterface = getBodyLockInterface3D();
-        JPH::BodyID bodies[2] = {myBodyA.body, myBodyB.body};
-        JPH::BodyLockMultiWrite lock(bodyLockInterface, bodies, 2);
-
-        JPH::Body* lockBodyA = lock.GetBody(0);
-        JPH::Body* lockBodyB = lock.GetBody(1);
-        if (!lockBodyA || !lockBodyB){
-            Log::error("Cannot create distance 3D joint, bodyA or bodyB is invalid");
-            return false;
-        }
-
-        if (autoAnchors){
-            JPH::RVec3 bodyPositionA = lockBodyA->GetPosition();
-            anchorA = Vector3((float)bodyPositionA.GetX(), (float)bodyPositionA.GetY(), (float)bodyPositionA.GetZ());
-        }
-
-        if (autoAnchors){
-            JPH::RVec3 bodyPositionB = lockBodyB->GetPosition();
-            anchorB = Vector3((float)bodyPositionB.GetX(), (float)bodyPositionB.GetY(), (float)bodyPositionB.GetZ());
-        }
-
-        JPH::DistanceConstraintSettings settings;
-        settings.mPoint1 = JPH::RVec3(anchorA.x, anchorA.y, anchorA.z);
-        settings.mPoint2 = JPH::RVec3(anchorB.x, anchorB.y, anchorB.z);
-
-        joint.joint = settings.Create(*lockBodyA, *lockBodyB);
-
-        world3D.AddConstraint(joint.joint);
-        joint.type = Joint3DType::DISTANCE;
-
-    }else{
-        Log::error("Cannot create joint, error in bodyA or bodyB");
-        return false;
-    }
-
-    return true;
-}
-
-bool PhysicsSystem::loadPointJoint3D(Joint3DComponent& joint, Entity bodyA, Entity bodyB, Vector3 anchor){
-    Signature signatureA = scene->getSignature(bodyA);
-    Signature signatureB = scene->getSignature(bodyB);
-
-    if (signatureA.test(scene->getComponentId<RigidbodyComponent>()) && signatureB.test(scene->getComponentId<RigidbodyComponent>())){
-
-        RigidbodyComponent myBodyA = scene->getComponent<RigidbodyComponent>(bodyA);
-        RigidbodyComponent myBodyB = scene->getComponent<RigidbodyComponent>(bodyB);
-
-        updateRigidbodyPosition(signatureA, bodyA, myBodyA);
-        updateRigidbodyPosition(signatureB, bodyB, myBodyB);
-
-        JPH::PointConstraintSettings settings;
-        settings.mPoint1 = settings.mPoint2 = JPH::Vec3(anchor.x, anchor.y, anchor.z);
-
-        const JPH::BodyLockInterface& bodyLockInterface = getBodyLockInterface3D();
-        JPH::BodyID bodies[2] = {myBodyA.body, myBodyB.body};
-        JPH::BodyLockMultiWrite lock(bodyLockInterface, bodies, 2);
-
-        JPH::Body* lockBodyA = lock.GetBody(0);
-        JPH::Body* lockBodyB = lock.GetBody(1);
-        if (!lockBodyA || !lockBodyB){
-            Log::error("Cannot create point 3D joint, bodyA or bodyB is invalid");
-            return false;
-        }
-
-        joint.joint = settings.Create(*lockBodyA, *lockBodyB);
-
-        world3D.AddConstraint(joint.joint);
-        joint.type = Joint3DType::POINT;
-
-    }else{
-        Log::error("Cannot create joint, error in bodyA or bodyB");
-        return false;
-    }
-
-    return true;
-}
-
-bool PhysicsSystem::loadHingeJoint3D(Joint3DComponent& joint, Entity bodyA, Entity bodyB, Vector3 anchor, Vector3 axis, Vector3 normal){
-    Signature signatureA = scene->getSignature(bodyA);
-    Signature signatureB = scene->getSignature(bodyB);
-
-    if (signatureA.test(scene->getComponentId<RigidbodyComponent>()) && signatureB.test(scene->getComponentId<RigidbodyComponent>())){
-
-        RigidbodyComponent myBodyA = scene->getComponent<RigidbodyComponent>(bodyA);
-        RigidbodyComponent myBodyB = scene->getComponent<RigidbodyComponent>(bodyB);
-
-        updateRigidbodyPosition(signatureA, bodyA, myBodyA);
-        updateRigidbodyPosition(signatureB, bodyB, myBodyB);
-
-        float axisLengthSq = axis.x * axis.x + axis.y * axis.y + axis.z * axis.z;
-        if (axisLengthSq < 1.0e-6f){
-            Log::warn("Hinge 3D joint axis is zero. Using default axis (1, 0, 0).");
-            axis = Vector3(1.0f, 0.0f, 0.0f);
-        }else{
-            float invLength = 1.0f / std::sqrt(axisLengthSq);
-            axis = Vector3(axis.x * invLength, axis.y * invLength, axis.z * invLength);
-        }
-
-        float normalLengthSq = normal.x * normal.x + normal.y * normal.y + normal.z * normal.z;
-        if (normalLengthSq < 1.0e-6f){
-            Log::warn("Hinge 3D joint normal is zero. Using default normal.");
-            normal = (std::fabs(axis.y) < 0.999f) ? Vector3(0.0f, 1.0f, 0.0f) : Vector3(0.0f, 0.0f, 1.0f);
-        }
-
-        float axisDotNormal = axis.x * normal.x + axis.y * normal.y + axis.z * normal.z;
-        normal = Vector3(normal.x - axis.x * axisDotNormal, normal.y - axis.y * axisDotNormal, normal.z - axis.z * axisDotNormal);
-        normalLengthSq = normal.x * normal.x + normal.y * normal.y + normal.z * normal.z;
-
-        if (normalLengthSq < 1.0e-6f){
-            normal = Vector3(-axis.z, 0.0f, axis.x);
-            normalLengthSq = normal.x * normal.x + normal.y * normal.y + normal.z * normal.z;
-        }
-
-        if (normalLengthSq < 1.0e-6f){
-            normal = Vector3(0.0f, 0.0f, 1.0f);
-        }else{
-            float invNormalLength = 1.0f / std::sqrt(normalLengthSq);
-            normal = Vector3(normal.x * invNormalLength, normal.y * invNormalLength, normal.z * invNormalLength);
-        }
-
-        JPH::HingeConstraintSettings settings;
-        settings.mPoint1 = settings.mPoint2 = JPH::Vec3(anchor.x, anchor.y, anchor.z);
-        settings.mHingeAxis1 = settings.mHingeAxis2 = JPH::Vec3(axis.x, axis.y, axis.z);
-        settings.mNormalAxis1 = settings.mNormalAxis2 = JPH::Vec3(normal.x, normal.y, normal.z);
-
-        const JPH::BodyLockInterface& bodyLockInterface = getBodyLockInterface3D();
-        JPH::BodyID bodies[2] = {myBodyA.body, myBodyB.body};
-        JPH::BodyLockMultiWrite lock(bodyLockInterface, bodies, 2);
-
-        JPH::Body* lockBodyA = lock.GetBody(0);
-        JPH::Body* lockBodyB = lock.GetBody(1);
-        if (!lockBodyA || !lockBodyB){
-            Log::error("Cannot create hinge 3D joint, bodyA or bodyB is invalid");
-            return false;
-        }
-
-        joint.joint = settings.Create(*lockBodyA, *lockBodyB);
-
-        world3D.AddConstraint(joint.joint);
-        joint.type = Joint3DType::HINGE;
-
-    }else{
-        Log::error("Cannot create joint, error in bodyA or bodyB");
-        return false;
-    }
-
-    return true;
-}
-
-bool PhysicsSystem::loadConeJoint3D(Joint3DComponent& joint, Entity bodyA, Entity bodyB, Vector3 anchor, Vector3 twistAxis){
-    Signature signatureA = scene->getSignature(bodyA);
-    Signature signatureB = scene->getSignature(bodyB);
-
-    if (signatureA.test(scene->getComponentId<RigidbodyComponent>()) && signatureB.test(scene->getComponentId<RigidbodyComponent>())){
-
-        RigidbodyComponent myBodyA = scene->getComponent<RigidbodyComponent>(bodyA);
-        RigidbodyComponent myBodyB = scene->getComponent<RigidbodyComponent>(bodyB);
-
-        updateRigidbodyPosition(signatureA, bodyA, myBodyA);
-        updateRigidbodyPosition(signatureB, bodyB, myBodyB);
-
-        float axisLengthSq = twistAxis.x * twistAxis.x + twistAxis.y * twistAxis.y + twistAxis.z * twistAxis.z;
-        if (axisLengthSq < 1.0e-6f){
-            Log::warn("Cone 3D joint twist axis is zero. Using default axis (1, 0, 0).");
-            twistAxis = Vector3(1.0f, 0.0f, 0.0f);
-        }else{
-            float invLength = 1.0f / std::sqrt(axisLengthSq);
-            twistAxis = Vector3(twistAxis.x * invLength, twistAxis.y * invLength, twistAxis.z * invLength);
-        }
-
-        JPH::ConeConstraintSettings settings;
-        settings.mPoint1 = settings.mPoint2 = JPH::Vec3(anchor.x, anchor.y, anchor.z);
-        settings.mTwistAxis1 = settings.mTwistAxis2 = JPH::Vec3(twistAxis.x, twistAxis.y, twistAxis.z);
-
-        const JPH::BodyLockInterface& bodyLockInterface = getBodyLockInterface3D();
-        JPH::BodyID bodies[2] = {myBodyA.body, myBodyB.body};
-        JPH::BodyLockMultiWrite lock(bodyLockInterface, bodies, 2);
-
-        JPH::Body* lockBodyA = lock.GetBody(0);
-        JPH::Body* lockBodyB = lock.GetBody(1);
-        if (!lockBodyA || !lockBodyB){
-            Log::error("Cannot create cone 3D joint, bodyA or bodyB is invalid");
-            return false;
-        }
-
-        joint.joint = settings.Create(*lockBodyA, *lockBodyB);
-
-        world3D.AddConstraint(joint.joint);
-        joint.type = Joint3DType::CONE;
-
-    }else{
-        Log::error("Cannot create joint, error in bodyA or bodyB");
-        return false;
-    }
-
-    return true;
-}
-
-bool PhysicsSystem::loadPrismaticJoint3D(Joint3DComponent& joint, Entity bodyA, Entity bodyB, Vector3 sliderAxis, float limitsMin, float limitsMax){
-    Signature signatureA = scene->getSignature(bodyA);
-    Signature signatureB = scene->getSignature(bodyB);
-
-    if (signatureA.test(scene->getComponentId<RigidbodyComponent>()) && signatureB.test(scene->getComponentId<RigidbodyComponent>())){
-
-        RigidbodyComponent myBodyA = scene->getComponent<RigidbodyComponent>(bodyA);
-        RigidbodyComponent myBodyB = scene->getComponent<RigidbodyComponent>(bodyB);
-
-        updateRigidbodyPosition(signatureA, bodyA, myBodyA);
-        updateRigidbodyPosition(signatureB, bodyB, myBodyB);
-
-        if (limitsMax < limitsMin){
-            std::swap(limitsMin, limitsMax);
-        }
-
-        // Jolt's slider starts at position 0 and requires 0 to be inside [min, max].
-        // Older scenes may serialize absolute-only positive/negative ranges (e.g. [1.8, 27.4]),
-        // so normalize them to a valid interval while preserving range size.
-        if (limitsMin > 0.0f){
-            float offset = limitsMin;
-            limitsMin -= offset;
-            limitsMax -= offset;
-            Log::warn("Prismatic 3D joint limits did not include 0. Normalized range to [{0}, {1}]", limitsMin, limitsMax);
-        }else if (limitsMax < 0.0f){
-            float offset = limitsMax;
-            limitsMin -= offset;
-            limitsMax -= offset;
-            Log::warn("Prismatic 3D joint limits did not include 0. Normalized range to [{0}, {1}]", limitsMin, limitsMax);
-        }
-
-        if (std::fabs(limitsMax - limitsMin) < 1.0e-6f){
-            Log::warn("Prismatic 3D joint with equal limits is unsupported by Jolt SliderConstraint. Using fixed joint instead.");
-            return loadFixedJoint3D(joint, bodyA, bodyB);
-        }
-
-        float axisLengthSq = sliderAxis.x * sliderAxis.x + sliderAxis.y * sliderAxis.y + sliderAxis.z * sliderAxis.z;
-        if (axisLengthSq < 1.0e-6f){
-            Log::warn("Prismatic 3D joint axis is zero. Using default axis (1, 0, 0).");
-            sliderAxis = Vector3(1.0f, 0.0f, 0.0f);
-        }else{
-            float invLength = 1.0f / std::sqrt(axisLengthSq);
-            sliderAxis = Vector3(sliderAxis.x * invLength, sliderAxis.y * invLength, sliderAxis.z * invLength);
-        }
-
-        JPH::SliderConstraintSettings settings;
-        settings.mAutoDetectPoint = true;
-        settings.SetSliderAxis(JPH::Vec3(sliderAxis.x, sliderAxis.y, sliderAxis.z));
-		settings.mLimitsMin = limitsMin;
-		settings.mLimitsMax = limitsMax;
-
-        const JPH::BodyLockInterface& bodyLockInterface = getBodyLockInterface3D();
-        JPH::BodyID bodies[2] = {myBodyA.body, myBodyB.body};
-        JPH::BodyLockMultiWrite lock(bodyLockInterface, bodies, 2);
-
-        JPH::Body* lockBodyA = lock.GetBody(0);
-        JPH::Body* lockBodyB = lock.GetBody(1);
-        if (!lockBodyA || !lockBodyB){
-            Log::error("Cannot create prismatic 3D joint, bodyA or bodyB is invalid");
-            return false;
-        }
-
-        joint.joint = settings.Create(*lockBodyA, *lockBodyB);
-
-        world3D.AddConstraint(joint.joint);
-        joint.type = Joint3DType::PRISMATIC;
-
-    }else{
-        Log::error("Cannot create joint, error in bodyA or bodyB");
-        return false;
-    }
-
-    return true;
-}
-
-bool PhysicsSystem::loadSwingTwistJoint3D(Joint3DComponent& joint, Entity bodyA, Entity bodyB, Vector3 anchor, Vector3 twistAxis, Vector3 planeAxis, float normalHalfConeAngle, float planeHalfConeAngle, float twistMinAngle, float twistMaxAngle){
-    Signature signatureA = scene->getSignature(bodyA);
-    Signature signatureB = scene->getSignature(bodyB);
-
-    if (signatureA.test(scene->getComponentId<RigidbodyComponent>()) && signatureB.test(scene->getComponentId<RigidbodyComponent>())){
-
-        RigidbodyComponent myBodyA = scene->getComponent<RigidbodyComponent>(bodyA);
-        RigidbodyComponent myBodyB = scene->getComponent<RigidbodyComponent>(bodyB);
-
-        updateRigidbodyPosition(signatureA, bodyA, myBodyA);
-        updateRigidbodyPosition(signatureB, bodyB, myBodyB);
-
-        float twistAxisLengthSq = twistAxis.x * twistAxis.x + twistAxis.y * twistAxis.y + twistAxis.z * twistAxis.z;
-        if (twistAxisLengthSq < 1.0e-6f){
-            Log::warn("SwingTwist 3D joint twist axis is zero. Using default axis (1, 0, 0).");
-            twistAxis = Vector3(1.0f, 0.0f, 0.0f);
-        }else{
-            float invLength = 1.0f / std::sqrt(twistAxisLengthSq);
-            twistAxis = Vector3(twistAxis.x * invLength, twistAxis.y * invLength, twistAxis.z * invLength);
-        }
-
-        float planeAxisLengthSq = planeAxis.x * planeAxis.x + planeAxis.y * planeAxis.y + planeAxis.z * planeAxis.z;
-        if (planeAxisLengthSq < 1.0e-6f){
-            Log::warn("SwingTwist 3D joint plane axis is zero. Using default axis.");
-            planeAxis = (std::fabs(twistAxis.y) < 0.999f) ? Vector3(0.0f, 1.0f, 0.0f) : Vector3(0.0f, 0.0f, 1.0f);
-        }
-
-        float twistDotPlane = twistAxis.x * planeAxis.x + twistAxis.y * planeAxis.y + twistAxis.z * planeAxis.z;
-        planeAxis = Vector3(
-            planeAxis.x - twistAxis.x * twistDotPlane,
-            planeAxis.y - twistAxis.y * twistDotPlane,
-            planeAxis.z - twistAxis.z * twistDotPlane
-        );
-
-        planeAxisLengthSq = planeAxis.x * planeAxis.x + planeAxis.y * planeAxis.y + planeAxis.z * planeAxis.z;
-        if (planeAxisLengthSq < 1.0e-6f){
-            planeAxis = Vector3(-twistAxis.z, 0.0f, twistAxis.x);
-            planeAxisLengthSq = planeAxis.x * planeAxis.x + planeAxis.y * planeAxis.y + planeAxis.z * planeAxis.z;
-        }
-
-        if (planeAxisLengthSq < 1.0e-6f){
-            planeAxis = Vector3(0.0f, 0.0f, 1.0f);
-        }else{
-            float invPlaneLength = 1.0f / std::sqrt(planeAxisLengthSq);
-            planeAxis = Vector3(planeAxis.x * invPlaneLength, planeAxis.y * invPlaneLength, planeAxis.z * invPlaneLength);
-        }
-
-        if (twistMaxAngle < twistMinAngle){
-            std::swap(twistMinAngle, twistMaxAngle);
-        }
-
-        constexpr float kMinConeAngle = 0.0f;
-        constexpr float kMaxConeAngle = 179.9f;
-        normalHalfConeAngle = std::clamp(normalHalfConeAngle, kMinConeAngle, kMaxConeAngle);
-        planeHalfConeAngle = std::clamp(planeHalfConeAngle, kMinConeAngle, kMaxConeAngle);
-
-        JPH::SwingTwistConstraintSettings settings;
-        settings.mPosition1 = settings.mPosition2 = JPH::Vec3(anchor.x, anchor.y, anchor.z);
-        settings.mTwistAxis1 = settings.mTwistAxis2 = JPH::Vec3(twistAxis.x, twistAxis.y, twistAxis.z);
-        settings.mPlaneAxis1 = settings.mPlaneAxis2 = JPH::Vec3(planeAxis.x, planeAxis.y, planeAxis.z);
-        settings.mNormalHalfConeAngle = Angle::defaultToRad(normalHalfConeAngle);
-        settings.mPlaneHalfConeAngle = Angle::defaultToRad(planeHalfConeAngle);
-        settings.mTwistMinAngle = Angle::defaultToRad(twistMinAngle);
-        settings.mTwistMaxAngle = Angle::defaultToRad(twistMaxAngle);
-
-        const JPH::BodyLockInterface& bodyLockInterface = getBodyLockInterface3D();
-        JPH::BodyID bodies[2] = {myBodyA.body, myBodyB.body};
-        JPH::BodyLockMultiWrite lock(bodyLockInterface, bodies, 2);
-
-        JPH::Body* lockBodyA = lock.GetBody(0);
-        JPH::Body* lockBodyB = lock.GetBody(1);
-        if (!lockBodyA || !lockBodyB){
-            Log::error("Cannot create swing twist 3D joint, bodyA or bodyB is invalid");
-            return false;
-        }
-
-        joint.joint = settings.Create(*lockBodyA, *lockBodyB);
-
-        world3D.AddConstraint(joint.joint);
-        joint.type = Joint3DType::SWINGTWIST;
-
-    }else{
-        Log::error("Cannot create joint, error in bodyA or bodyB");
-        return false;
-    }
-
-    return true;
-}
-
-bool PhysicsSystem::loadSixDOFJoint3D(Joint3DComponent& joint, Entity bodyA, Entity bodyB, Vector3 anchorA, Vector3 anchorB, Vector3 axisX, Vector3 axisY){
-    Signature signatureA = scene->getSignature(bodyA);
-    Signature signatureB = scene->getSignature(bodyB);
-
-    if (signatureA.test(scene->getComponentId<RigidbodyComponent>()) && signatureB.test(scene->getComponentId<RigidbodyComponent>())){
-
-        RigidbodyComponent myBodyA = scene->getComponent<RigidbodyComponent>(bodyA);
-        RigidbodyComponent myBodyB = scene->getComponent<RigidbodyComponent>(bodyB);
-
-        updateRigidbodyPosition(signatureA, bodyA, myBodyA);
-        updateRigidbodyPosition(signatureB, bodyB, myBodyB);
-
-        float axisXLengthSq = axisX.x * axisX.x + axisX.y * axisX.y + axisX.z * axisX.z;
-        if (axisXLengthSq < 1.0e-6f){
-            Log::warn("SixDOF 3D joint axisX is zero. Using default axis (1, 0, 0).");
-            axisX = Vector3(1.0f, 0.0f, 0.0f);
-        }else{
-            float invLength = 1.0f / std::sqrt(axisXLengthSq);
-            axisX = Vector3(axisX.x * invLength, axisX.y * invLength, axisX.z * invLength);
-        }
-
-        float axisYLengthSq = axisY.x * axisY.x + axisY.y * axisY.y + axisY.z * axisY.z;
-        if (axisYLengthSq < 1.0e-6f){
-            Log::warn("SixDOF 3D joint axisY is zero. Using default axis.");
-            axisY = (std::fabs(axisX.y) < 0.999f) ? Vector3(0.0f, 1.0f, 0.0f) : Vector3(0.0f, 0.0f, 1.0f);
-        }
-
-        float axisDot = axisX.x * axisY.x + axisX.y * axisY.y + axisX.z * axisY.z;
-        axisY = Vector3(
-            axisY.x - axisX.x * axisDot,
-            axisY.y - axisX.y * axisDot,
-            axisY.z - axisX.z * axisDot
-        );
-
-        axisYLengthSq = axisY.x * axisY.x + axisY.y * axisY.y + axisY.z * axisY.z;
-        if (axisYLengthSq < 1.0e-6f){
-            axisY = Vector3(-axisX.z, 0.0f, axisX.x);
-            axisYLengthSq = axisY.x * axisY.x + axisY.y * axisY.y + axisY.z * axisY.z;
-        }
-
-        if (axisYLengthSq < 1.0e-6f){
-            axisY = Vector3(0.0f, 0.0f, 1.0f);
-        }else{
-            float invAxisYLength = 1.0f / std::sqrt(axisYLengthSq);
-            axisY = Vector3(axisY.x * invAxisYLength, axisY.y * invAxisYLength, axisY.z * invAxisYLength);
-        }
-
-        JPH::SixDOFConstraintSettings settings;
-        settings.mPosition1 = JPH::Vec3(anchorA.x, anchorA.y, anchorA.z);
-        settings.mPosition2 = JPH::Vec3(anchorB.x, anchorB.y, anchorB.z);
-        settings.mAxisX1 = settings.mAxisX2 = JPH::Vec3(axisX.x, axisX.y, axisX.z);
-        settings.mAxisY1 = settings.mAxisY2 = JPH::Vec3(axisY.x, axisY.y, axisY.z);
-
-        const JPH::BodyLockInterface& bodyLockInterface = getBodyLockInterface3D();
-        JPH::BodyID bodies[2] = {myBodyA.body, myBodyB.body};
-        JPH::BodyLockMultiWrite lock(bodyLockInterface, bodies, 2);
-
-        JPH::Body* lockBodyA = lock.GetBody(0);
-        JPH::Body* lockBodyB = lock.GetBody(1);
-        if (!lockBodyA || !lockBodyB){
-            Log::error("Cannot create six dof 3D joint, bodyA or bodyB is invalid");
-            return false;
-        }
-
-        joint.joint = settings.Create(*lockBodyA, *lockBodyB);
-
-        world3D.AddConstraint(joint.joint);
-        joint.type = Joint3DType::SIXDOF;
-
-    }else{
-        Log::error("Cannot create joint, error in bodyA or bodyB");
-        return false;
-    }
-
-    return true;
-}
-
-bool PhysicsSystem::loadPathJoint3D(Joint3DComponent& joint, Entity bodyA, Entity bodyB, std::vector<Vector3> positions, std::vector<Vector3> tangents, std::vector<Vector3> normals, Vector3 pathPosition, bool isLooping){
-    Signature signatureA = scene->getSignature(bodyA);
-    Signature signatureB = scene->getSignature(bodyB);
-
-    if (signatureA.test(scene->getComponentId<RigidbodyComponent>()) && signatureB.test(scene->getComponentId<RigidbodyComponent>())){
-
-        RigidbodyComponent myBodyA = scene->getComponent<RigidbodyComponent>(bodyA);
-        RigidbodyComponent myBodyB = scene->getComponent<RigidbodyComponent>(bodyB);
-
-        updateRigidbodyPosition(signatureA, bodyA, myBodyA);
-        updateRigidbodyPosition(signatureB, bodyB, myBodyB);
-
-        JPH::Ref<JPH::PathConstraintPathHermite> path = new JPH::PathConstraintPathHermite;
-
-        if (positions.size() != normals.size() || positions.size() != tangents.size()){
-            Log::error("Cannot create joint, positions size is different from normals and tangents");
-            return false;
-        }
-
-        for (int i = 0; i < positions.size(); i++){
-            path->AddPoint(JPH::Vec3(positions[i].x, positions[i].y, positions[i].z), JPH::Vec3(tangents[i].x, tangents[i].y, tangents[i].z), JPH::Vec3(normals[i].x, normals[i].y, normals[i].z));
-        }
-        path->SetIsLooping(isLooping);
-
-        JPH::PathConstraintSettings settings;
-        settings.mPath = path;
-        settings.mPathPosition = JPH::Vec3(pathPosition.x, pathPosition.y, pathPosition.z);
-
-        const JPH::BodyLockInterface& bodyLockInterface = getBodyLockInterface3D();
-        JPH::BodyID bodies[2] = {myBodyA.body, myBodyB.body};
-        JPH::BodyLockMultiWrite lock(bodyLockInterface, bodies, 2);
-
-        JPH::Body* lockBodyA = lock.GetBody(0);
-        JPH::Body* lockBodyB = lock.GetBody(1);
-        if (!lockBodyA || !lockBodyB){
-            Log::error("Cannot create path 3D joint, bodyA or bodyB is invalid");
-            return false;
-        }
-
-        joint.joint = settings.Create(*lockBodyA, *lockBodyB);
-
-        world3D.AddConstraint(joint.joint);
-        joint.type = Joint3DType::PATH;
-
-    }else{
-        Log::error("Cannot create joint, error in bodyA or bodyB");
-        return false;
-    }
-
-    return true;
-}
-
-bool PhysicsSystem::loadGearJoint3D(Joint3DComponent& joint, Entity bodyA, Entity bodyB, Entity hingeA, Entity hingeB, int numTeethGearA, int numTeethGearB){
-    Signature signatureA = scene->getSignature(bodyA);
-    Signature signatureB = scene->getSignature(bodyB);
-    Signature signatureHingeA = scene->getSignature(hingeA);
-    Signature signatureHingeB = scene->getSignature(hingeB);
-
-    if (signatureA.test(scene->getComponentId<RigidbodyComponent>()) && signatureB.test(scene->getComponentId<RigidbodyComponent>())){
-
-        RigidbodyComponent myBodyA = scene->getComponent<RigidbodyComponent>(bodyA);
-        RigidbodyComponent myBodyB = scene->getComponent<RigidbodyComponent>(bodyB);
-
-        updateRigidbodyPosition(signatureA, bodyA, myBodyA);
-        updateRigidbodyPosition(signatureB, bodyB, myBodyB);
-
-        if (signatureHingeA.test(scene->getComponentId<Joint3DComponent>()) && signatureHingeB.test(scene->getComponentId<Joint3DComponent>())){
-
-            Joint3DComponent myHingeA = scene->getComponent<Joint3DComponent>(hingeA);
-            Joint3DComponent myHingeB = scene->getComponent<Joint3DComponent>(hingeB);
-
-            if ((myHingeA.type != Joint3DType::HINGE) || (myHingeB.type != Joint3DType::HINGE)){
-                Log::error("Cannot create joint, hingeA or hingeB is not hinge type");
-                return false;
-            }
-
-            const JPH::BodyLockInterface& bodyLockInterface = getBodyLockInterface3D();
-            JPH::BodyID bodies[2] = {myBodyA.body, myBodyB.body};
-            JPH::BodyLockMultiWrite lock(bodyLockInterface, bodies, 2);
-
-            JPH::Body* lockBodyA = lock.GetBody(0);
-            JPH::Body* lockBodyB = lock.GetBody(1);
-            if (!lockBodyA || !lockBodyB){
-                Log::error("Cannot create gear 3D joint, bodyA or bodyB is invalid");
-                return false;
-            }
-
-            // Disable collision between gears
-            JPH::Ref<JPH::GroupFilterTable> group_filter = new JPH::GroupFilterTable(2);
-            group_filter->DisableCollision(0, 1);
-            lockBodyA->SetCollisionGroup(JPH::CollisionGroup(group_filter, 0, 0));
-            lockBodyB->SetCollisionGroup(JPH::CollisionGroup(group_filter, 0, 1));
-
-            JPH::HingeConstraintSettings* hingeSetA = (JPH::HingeConstraintSettings*)((JPH::HingeConstraint*)myHingeA.joint)->GetConstraintSettings().GetPtr();
-            JPH::HingeConstraintSettings* hingeSetB = (JPH::HingeConstraintSettings*)((JPH::HingeConstraint*)myHingeB.joint)->GetConstraintSettings().GetPtr();
-
-            if (numTeethGearA <= 0 || numTeethGearB <= 0){
-                Log::warn("Gear 3D joint received non-positive teeth count. Clamping to at least 1.");
-                numTeethGearA = std::max(1, numTeethGearA);
-                numTeethGearB = std::max(1, numTeethGearB);
-            }
-
-            JPH::GearConstraintSettings settings;
-            settings.mHingeAxis1 = hingeSetA->mHingeAxis1;
-            settings.mHingeAxis2 = hingeSetB->mHingeAxis1;
-            settings.SetRatio(numTeethGearA, numTeethGearB);
-
-            joint.joint = settings.Create(*lockBodyA, *lockBodyB);
-
-            ((JPH::GearConstraint *)joint.joint)->SetConstraints(myHingeA.joint, myHingeB.joint);
-            world3D.AddConstraint(joint.joint);
-            joint.type = Joint3DType::GEAR;
-        }else{
-            Log::error("Cannot create joint, error in hingeA or hingeB");
-            return false;
-        }
-
-    }else{
-        Log::error("Cannot create joint, error in bodyA or bodyB");
-        return false;
-    }
-
-    return true;
-}
-
-bool PhysicsSystem::loadRackAndPinionJoint3D(Joint3DComponent& joint, Entity bodyA, Entity bodyB, Entity hinge, Entity slider, int numTeethRack, int numTeethGear, int rackLength){
-    Signature signatureA = scene->getSignature(bodyA);
-    Signature signatureB = scene->getSignature(bodyB);
-    Signature signatureHinge = scene->getSignature(hinge);
-    Signature signatureSlider = scene->getSignature(slider);
-
-    if (signatureA.test(scene->getComponentId<RigidbodyComponent>()) && signatureB.test(scene->getComponentId<RigidbodyComponent>())){
-
-        RigidbodyComponent myBodyA = scene->getComponent<RigidbodyComponent>(bodyA);
-        RigidbodyComponent myBodyB = scene->getComponent<RigidbodyComponent>(bodyB);
-
-        updateRigidbodyPosition(signatureA, bodyA, myBodyA);
-        updateRigidbodyPosition(signatureB, bodyB, myBodyB);
-
-        if (signatureHinge.test(scene->getComponentId<Joint3DComponent>()) && signatureSlider.test(scene->getComponentId<Joint3DComponent>())){
-
-            Joint3DComponent myHinge = scene->getComponent<Joint3DComponent>(hinge);
-            Joint3DComponent mySlider = scene->getComponent<Joint3DComponent>(slider);
-
-            if ((myHinge.type != Joint3DType::HINGE) || (mySlider.type != Joint3DType::PRISMATIC)){
-                Log::error("Cannot create joint, hinge or slider is not hinge and prismatic (slider) types");
-                return false;
-            }
-
-            const JPH::BodyLockInterface& bodyLockInterface = getBodyLockInterface3D();
-            JPH::BodyID bodies[2] = {myBodyA.body, myBodyB.body};
-            JPH::BodyLockMultiWrite lock(bodyLockInterface, bodies, 2);
-
-            JPH::Body* lockBodyA = lock.GetBody(0);
-            JPH::Body* lockBodyB = lock.GetBody(1);
-            if (!lockBodyA || !lockBodyB){
-                Log::error("Cannot create rack and pinion 3D joint, bodyA or bodyB is invalid");
-                return false;
-            }
-
-            // Disable collision between gears
-            JPH::Ref<JPH::GroupFilterTable> group_filter = new JPH::GroupFilterTable(2);
-            group_filter->DisableCollision(0, 1);
-            lockBodyA->SetCollisionGroup(JPH::CollisionGroup(group_filter, 0, 0));
-            lockBodyB->SetCollisionGroup(JPH::CollisionGroup(group_filter, 0, 1));
-
-            JPH::HingeConstraintSettings* hingeSetA = (JPH::HingeConstraintSettings*)((JPH::HingeConstraint*)myHinge.joint)->GetConstraintSettings().GetPtr();
-            JPH::SliderConstraintSettings* sliderSetB = (JPH::SliderConstraintSettings*)((JPH::SliderConstraint*)mySlider.joint)->GetConstraintSettings().GetPtr();
-
-            if (numTeethRack <= 0 || numTeethGear <= 0 || rackLength <= 0){
-                Log::warn("RackAndPinion 3D joint received non-positive ratio inputs. Clamping to at least 1.");
-                numTeethRack = std::max(1, numTeethRack);
-                numTeethGear = std::max(1, numTeethGear);
-                rackLength = std::max(1, rackLength);
-            }
-
-            JPH::RackAndPinionConstraintSettings settings;
-            settings.mHingeAxis = hingeSetA->mHingeAxis1;
-            settings.mSliderAxis = sliderSetB->mSliderAxis2;
-            settings.SetRatio(numTeethRack, rackLength, numTeethGear);
-
-            joint.joint = settings.Create(*lockBodyA, *lockBodyB);
-
-            ((JPH::GearConstraint *)joint.joint)->SetConstraints(myHinge.joint, mySlider.joint);
-            world3D.AddConstraint(joint.joint);
-            joint.type = Joint3DType::RACKANDPINON;
-        }else{
-            Log::error("Cannot create joint, error in hinge or slider");
-            return false;
-        }
-
-    }else{
-        Log::error("Cannot create joint, error in bodyA or bodyB");
-        return false;
-    }
-
-    return true;
-}
-
-bool PhysicsSystem::loadPulleyJoint3D(Joint3DComponent& joint, Entity bodyA, Entity bodyB, Vector3 anchorA, Vector3 anchorB, Vector3 fixedPointA, Vector3 fixedPointB){
-    Signature signatureA = scene->getSignature(bodyA);
-    Signature signatureB = scene->getSignature(bodyB);
-
-    if (signatureA.test(scene->getComponentId<RigidbodyComponent>()) && signatureB.test(scene->getComponentId<RigidbodyComponent>())){
-
-        RigidbodyComponent myBodyA = scene->getComponent<RigidbodyComponent>(bodyA);
-        RigidbodyComponent myBodyB = scene->getComponent<RigidbodyComponent>(bodyB);
-
-        updateRigidbodyPosition(signatureA, bodyA, myBodyA);
-        updateRigidbodyPosition(signatureB, bodyB, myBodyB);
-
-        JPH::PulleyConstraintSettings settings;
-        settings.mBodyPoint1 = JPH::Vec3(anchorA.x, anchorA.y, anchorA.z);
-        settings.mBodyPoint2 = JPH::Vec3(anchorB.x, anchorB.y, anchorB.z);
-        settings.mFixedPoint1 = JPH::Vec3(fixedPointA.x, fixedPointA.y, fixedPointA.z);
-        settings.mFixedPoint2 = JPH::Vec3(fixedPointB.x, fixedPointB.y, fixedPointB.z);
-
-        const JPH::BodyLockInterface& bodyLockInterface = getBodyLockInterface3D();
-        JPH::BodyID bodies[2] = {myBodyA.body, myBodyB.body};
-        JPH::BodyLockMultiWrite lock(bodyLockInterface, bodies, 2);
-
-        JPH::Body* lockBodyA = lock.GetBody(0);
-        JPH::Body* lockBodyB = lock.GetBody(1);
-        if (!lockBodyA || !lockBodyB){
-            Log::error("Cannot create pulley 3D joint, bodyA or bodyB is invalid");
-            return false;
-        }
-
-        joint.joint = settings.Create(*lockBodyA, *lockBodyB);
-
-        world3D.AddConstraint(joint.joint);
-        joint.type = Joint3DType::PULLEY;
-
-    }else{
-        Log::error("Cannot create joint, error in bodyA or bodyB");
-        return false;
-    }
-
-    return true;
-}
-
-void PhysicsSystem::destroyJoint3D(Joint3DComponent& joint){
-    if (joint.joint){
-        // Parked like a body, the Ref keeping the constraint alive until the flush.
-        if (steppingWorld3D){
-            pendingJointDestroy3D.push_back(joint.joint);
-        }else{
-            world3D.RemoveConstraint(joint.joint);
-        }
-
-        joint.joint = NULL;
-    }
-}
-
 void PhysicsSystem::addBroadPhaseLayer3D(uint8_t index, uint32_t groupsToInclude){
     addBroadPhaseLayer3D(index, groupsToInclude, 0);
 }
@@ -3832,23 +3710,17 @@ void PhysicsSystem::fixedUpdate(double dt){
         }
         pendingLayerRefresh2D.clear();
 
+        // the moved bodies' Transforms, parents first (writeBackBodies2D)
         b2BodyEvents events = b2World_GetBodyEvents(world2D);
+        movedBodies2D.clear();
         for (int i = 0; i < events.moveCount; ++i){
             const b2BodyMoveEvent* event = events.moveEvents + i;
-
             Entity entity = reinterpret_cast<uintptr_t>(event->userData);
-            Rigidbody2DComponent* body = scene->findComponent<Rigidbody2DComponent>(entity);
-            if (!body){
-                continue;
+            if (scene->findComponent<Rigidbody2DComponent>(entity)){
+                movedBodies2D.push_back(entity);
             }
-
-            // a following body is on its way to its Transform, the last step of the frame puts it there
-            if (Engine::getFixedStepsLeft() == 1){
-                finishFollowing2D(entity, *body);
-            }
-
-            updateTransformFromRigidbody2D(entity, *body, 1.0f);
         }
+        writeBackBodies2D(1.0f, false);
 
         Box2DAux::manageEvents(scene, world2D);
         // after the contact events of the step (physics-contacts D10)
@@ -3857,6 +3729,13 @@ void PhysicsSystem::fixedUpdate(double dt){
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
+    lastFixedStep = fixedStep;
+
+    // a material asset or a script's PhysicsMaterial changed
+    syncMaterials3D();
+    // the ragdolls switch their parts before the bodies sync
+    updateRagdolls();
+
     auto bodies3d = scene->getComponentArray<RigidbodyComponent>();
 
 	for (int i = 0; i < bodies3d->size(); i++){
@@ -3864,8 +3743,17 @@ void PhysicsSystem::fixedUpdate(double dt){
 		Entity entity = bodies3d->getEntity(i);
 		Signature signature = scene->getSignature(entity);
 
-        if (body.body.IsInvalid() || body.needReloadBody || body.needUpdateColliders || entityWorldScale(scene, entity) != body.loadedScale){
-            loadRigidbody(entity);
+        if (body.body.IsInvalid() || body.needReloadBody || body.needUpdateColliders || body.massDirty || entityWorldScale(scene, entity) != body.loadedScale){
+            if (!body.body.IsInvalid() && !body.needReloadBody && (body.needUpdateColliders || body.massDirty) && entityWorldScale(scene, entity) == body.loadedScale){
+                // collider or mass edits: the shape is swapped, the body stays
+                reshapeRigidbody3D(entity, body);
+            }else{
+                loadRigidbody(entity);
+            }
+        }
+        if (body.needApplyParameters && !body.body.IsInvalid()){
+            body.needApplyParameters = false;
+            applyRigidbodyParameters(entity, body);
         }
 
         if (!body.body.IsInvalid()){
@@ -3907,6 +3795,8 @@ void PhysicsSystem::fixedUpdate(double dt){
             if (loadJoint3D(entity, joint)){
                 joint.needUpdateJoint = false;
             }
+        }else if (joint.needApplyParameters){
+            applyJoint3DParameters(entity, joint);
         }
     }
 
@@ -3926,8 +3816,19 @@ void PhysicsSystem::fixedUpdate(double dt){
 		// the bodies floating in a library:water (Water.h)
 		Water::applyBuoyancy(scene, fixedStep);
 
-		StepScope stepScope(this);
-		world3D.Update(fixedStep, cCollisionSteps, temp_allocator, job_system);
+		JPH::EPhysicsUpdateError errors = JPH::EPhysicsUpdateError::None;
+		{
+			std::lock_guard<std::mutex> lock(debugContactsMutex3D);
+			debugContacts3D.clear();
+		}
+		{
+			StepScope stepScope(this);
+			errors = world3D.Update(fixedStep, cCollisionSteps, temp_allocator, job_system);
+		}
+		reportUpdateErrors3D(errors);
+
+		// reaction forces of this step against breakForce / breakTorque, and the read-outs
+		checkJointBreaks3D(fixedStep);
 	}
 
     // layers and filter bits changed by callbacks inside the step
@@ -3935,64 +3836,198 @@ void PhysicsSystem::fixedUpdate(double dt){
         refreshRigidbodyFilter3D(pendingLayerRefresh3D[i]);
     }
     pendingLayerRefresh3D.clear();
+    // and body types
+    applyPendingTypeChanges3D();
 
-	for (int i = 0; i < bodies3d->size(); i++){
-		RigidbodyComponent& body = bodies3d->getComponentFromIndex(i);
-		Entity entity = bodies3d->getEntity(i);
+    // the bodies' Transforms, parents first, so nested bodies (a ragdoll) are exact
+    writeBackBodies3D(1.0f, false);
 
-        // out of the world (disabled, inactive) it did not step and leaves its Transform alone
-        if (body.body.IsInvalid() || !getBodyInterface3D().IsAdded(body.body)){
-            continue;
-        }
-
-        // a following body is on its way to its Transform, the last step of the frame puts it there
-        if (Engine::getFixedStepsLeft() == 1){
-            finishFollowing3D(entity, body);
-        }
-
-        updateTransformFromRigidbody(entity, body, 1.0f);
-    }
+    // after the step's callbacks (physics-contacts D10)
+    dispatchJointBreaks3D();
 #endif
 }
 
 void PhysicsSystem::interpolate(double alpha){
-    if (paused || !interpolation){
+    if (paused){
         return;
     }
 
     // only bodies whose Transform is still where physics left it: one a script, an animation
     // or the editor moved since keeps that pose, the next step puts the body there
 #ifdef JASPERENGINE_PHYSICS_2D
-    auto bodies2d = scene->getComponentArray<Rigidbody2DComponent>();
-    for (size_t i = 0; i < bodies2d->size(); i++){
-        Rigidbody2DComponent& body = bodies2d->getComponentFromIndex(i);
-        Entity entity = bodies2d->getEntity(i);
-        Transform* transform = scene->findComponent<Transform>(entity);
-
-        if (body.type != BodyType::STATIC && b2Body_IsValid(body.body) && b2Body_IsEnabled(body.body) &&
-                transform && isSynced(*transform, body)){
-            updateTransformFromRigidbody2D(entity, body, (float)alpha);
-        }
-    }
+    writeBackBodies2D((float)alpha, true);
 #endif
-
 #ifdef JASPERENGINE_PHYSICS_3D
-    auto bodies3d = scene->getComponentArray<RigidbodyComponent>();
-    for (size_t i = 0; i < bodies3d->size(); i++){
-        RigidbodyComponent& body = bodies3d->getComponentFromIndex(i);
-        Entity entity = bodies3d->getEntity(i);
-        Transform* transform = scene->findComponent<Transform>(entity);
-
-        if (body.type != BodyType::STATIC && !body.body.IsInvalid() && getBodyInterface3D().IsAdded(body.body) &&
-                transform && isSynced(*transform, body)){
-            updateTransformFromRigidbody(entity, body, (float)alpha);
-        }
-    }
+    writeBackBodies3D((float)alpha, true);
 #endif
 }
 
-void PhysicsSystem::draw(){
+// The order of the write-back: the Transform array keeps parents before their children, so a
+// body is placed from its parent's pose of this step. A Transform between two bodies (a bone
+// without a body) is brought up to date from the body above it first.
+void PhysicsSystem::orderByHierarchy(std::vector<Entity>& entities){
+    auto transforms = scene->getComponentArray<Transform>();
+    writeOrderScratch.clear();
+    writeOrderScratch.reserve(entities.size());
+    for (Entity entity : entities){
+        if (transforms->hasEntity(entity)){
+            writeOrderScratch.emplace_back(transforms->getIndex(entity), entity);
+        }
+    }
+    std::sort(writeOrderScratch.begin(), writeOrderScratch.end());
+    entities.clear();
+    for (const auto& item : writeOrderScratch){
+        entities.push_back(item.second);
+    }
+}
 
+void PhysicsSystem::refreshAncestors(Entity entity){
+    Transform* transform = scene->findComponent<Transform>(entity);
+    if (!transform || transform->parent == NULL_ENTITY || writtenThisPass.empty()){
+        return;
+    }
+    // the chain up to the highest ancestor written in this pass (or still waiting for an update)
+    ancestorScratch.clear();
+    Entity current = transform->parent;
+    size_t staleFrom = std::string::npos;
+    for (int depth = 0; current != NULL_ENTITY && depth < 256; depth++){
+        Transform* ancestor = scene->findComponent<Transform>(current);
+        if (!ancestor){
+            break;
+        }
+        ancestorScratch.push_back(current);
+        if (writtenThisPass.count(current) > 0){
+            staleFrom = ancestorScratch.size() - 1;
+        }
+        current = ancestor->parent;
+    }
+    if (staleFrom == std::string::npos){
+        return;
+    }
+    // the written one is up to date: its descendants down to the body's parent are not
+    std::shared_ptr<RenderSystem> render = scene->getSystem<RenderSystem>();
+    for (size_t i = staleFrom; i-- > 0;){
+        const Entity ancestorEntity = ancestorScratch[i];
+        render->updateTransform(scene->getComponent<Transform>(ancestorEntity), ancestorEntity);
+        writtenThisPass.insert(ancestorEntity);
+    }
+}
+
+void PhysicsSystem::markWritten(Entity entity){
+    Transform* transform = scene->findComponent<Transform>(entity);
+    if (!transform){
+        return;
+    }
+    // its world matrix now, so the bodies below it are placed from it
+    scene->getSystem<RenderSystem>()->updateTransform(*transform, entity);
+    writtenThisPass.insert(entity);
+}
+
+#ifdef JASPERENGINE_PHYSICS_2D
+void PhysicsSystem::writeBackBodies2D(float alpha, bool interpolating){
+    std::vector<Entity>& entities = writeBackScratch;
+    if (interpolating){
+        entities.clear();
+        auto bodies2d = scene->getComponentArray<Rigidbody2DComponent>();
+        for (size_t i = 0; i < bodies2d->size(); i++){
+            Rigidbody2DComponent& body = bodies2d->getComponentFromIndex(i);
+            Entity entity = bodies2d->getEntity(i);
+            Transform* transform = scene->findComponent<Transform>(entity);
+            if (body.type != BodyType::STATIC && b2Body_IsValid(body.body) && b2Body_IsEnabled(body.body) &&
+                    transform && isSynced(*transform, body) && interpolationOf(body.interpolation) != RigidbodyInterpolation::NONE){
+                entities.push_back(entity);
+            }
+        }
+    }else{
+        entities = movedBodies2D;
+    }
+    if (entities.empty()){
+        return;
+    }
+    orderByHierarchy(entities);
+    writtenThisPass.clear();
+    for (Entity entity : entities){
+        Rigidbody2DComponent* body = scene->findComponent<Rigidbody2DComponent>(entity);
+        if (!body){
+            continue;
+        }
+        refreshAncestors(entity);
+        // a following body is on its way to its Transform, the last step of the frame puts it there
+        if (!interpolating && Engine::getFixedStepsLeft() == 1){
+            finishFollowing2D(entity, *body);
+        }
+        updateTransformFromRigidbody2D(entity, *body, alpha);
+        markWritten(entity);
+    }
+    writtenThisPass.clear();
+}
+#endif
+
+#ifdef JASPERENGINE_PHYSICS_3D
+void PhysicsSystem::writeBackBodies3D(float alpha, bool interpolating){
+    std::vector<Entity>& entities = writeBackScratch;
+    entities.clear();
+    auto bodies3d = scene->getComponentArray<RigidbodyComponent>();
+    JPH::BodyInterface& bodyInterface = getBodyInterface3D();
+    for (size_t i = 0; i < bodies3d->size(); i++){
+        RigidbodyComponent& body = bodies3d->getComponentFromIndex(i);
+        // out of the world (disabled, inactive) it did not step and leaves its Transform alone
+        if (body.body.IsInvalid() || !bodyInterface.IsAdded(body.body)){
+            continue;
+        }
+        Entity entity = bodies3d->getEntity(i);
+        if (interpolating){
+            Transform* transform = scene->findComponent<Transform>(entity);
+            if (body.type == BodyType::STATIC || !transform || !isSynced(*transform, body) ||
+                    interpolationOf(body.interpolation) == RigidbodyInterpolation::NONE){
+                continue;
+            }
+        }
+        entities.push_back(entity);
+    }
+    if (entities.empty()){
+        return;
+    }
+    orderByHierarchy(entities);
+    writtenThisPass.clear();
+    for (Entity entity : entities){
+        RigidbodyComponent* body = scene->findComponent<RigidbodyComponent>(entity);
+        if (!body){
+            continue;
+        }
+        refreshAncestors(entity);
+        if (!interpolating && Engine::getFixedStepsLeft() == 1){
+            finishFollowing3D(entity, *body);
+        }
+        updateTransformFromRigidbody(entity, *body, alpha);
+        markWritten(entity);
+    }
+    writtenThisPass.clear();
+}
+
+void PhysicsSystem::reportUpdateErrors3D(JPH::EPhysicsUpdateError errors){
+    const uint32_t bits = (uint32_t)errors & ~reportedUpdateErrors3D;
+    if (bits == 0){
+        return;
+    }
+    reportedUpdateErrors3D |= bits;
+    if (bits & (uint32_t)JPH::EPhysicsUpdateError::ManifoldCacheFull){
+        Log::error("3D physics: too many contacts, some were dropped (the contact cache holds %u). Raise Project Settings > Physics > 3D World Capacity > Max Contact Constraints (physics3D.maxContactConstraints).",
+                   maxContactConstraints3D);
+    }
+    if (bits & (uint32_t)JPH::EPhysicsUpdateError::BodyPairCacheFull){
+        Log::error("3D physics: too many touching body pairs, some contacts were dropped (the world holds %u pairs). Raise Project Settings > Physics > 3D World Capacity > Max Body Pairs (physics3D.maxBodyPairs).",
+                   maxBodyPairs3D);
+    }
+    if (bits & (uint32_t)JPH::EPhysicsUpdateError::ContactConstraintsFull){
+        Log::error("3D physics: too many contact constraints, some contacts were dropped (the world holds %u). Raise Project Settings > Physics > 3D World Capacity > Max Contact Constraints (physics3D.maxContactConstraints).",
+                   maxContactConstraints3D);
+    }
+}
+#endif
+
+void PhysicsSystem::draw(){
+    updateDebugLines();
 }
 
 void PhysicsSystem::onComponentAdded(Entity entity, ComponentId componentId) {
@@ -4021,12 +4056,17 @@ void PhysicsSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
 #ifdef JASPERENGINE_PHYSICS_3D
 	if (componentId == scene->getComponentId<RigidbodyComponent>()) {
 		RigidbodyComponent& rigidbody = scene->getComponent<RigidbodyComponent>(entity);
+		// its joints hold the Jolt body: they go first (made again if a body comes back)
+		invalidateJoints3D(entity);
 		destroyRigidbody(rigidbody);
 		warnedNonNormalizedRotations.erase(entity);
 		reportedInvalidRotations.erase(entity);
+		pendingTypeChanges3D.erase(std::remove(pendingTypeChanges3D.begin(), pendingTypeChanges3D.end(), entity), pendingTypeChanges3D.end());
 	} else if (componentId == scene->getComponentId<Joint3DComponent>()) {
 		Joint3DComponent& joint3d = scene->getComponent<Joint3DComponent>(entity);
 		destroyJoint3D(joint3d);
+	} else if (componentId == scene->getComponentId<RagdollComponent>()) {
+		releaseRagdoll(scene->getComponent<RagdollComponent>(entity));
 	}
 #endif
 }

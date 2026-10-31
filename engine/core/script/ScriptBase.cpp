@@ -49,3 +49,10 @@ void ScriptBase::onJointBreak2D(Joint2D& joint) {
     inheritedMessages |= scriptMessageBit(ScriptMessage::JointBreak2D);
     baseMessageRan = true;
 }
+
+void ScriptBase::onJointBreak(float force, Joint3D& joint) {
+    (void)force;
+    (void)joint;
+    inheritedMessages |= scriptMessageBit(ScriptMessage::JointBreak);
+    baseMessageRan = true;
+}
