@@ -983,6 +983,12 @@ if(JASPERENGINE_NAVIGATION)
         target_compile_options(recastnavigation PRIVATE -ffp-contract=off)
     endif()
 endif()
+# The same for meshoptimizer's simplifier (placement contexts, LODs): with contraction an arm64
+# build collapsed other edges than x86-64, and its absolute 1 cm target strayed 1.5 cm
+# (PlacementWorldReview.SimplificationErrorIsAbsolute on macOS)
+if(NOT MSVC)
+    target_compile_options(meshoptimizer PRIVATE -ffp-contract=off)
+endif()
 
 # One C++ standard for every object of the binary: libc++ template definitions instantiated
 # at two standards across a library boundary (tinygltf and RmlUi pass std containers into

@@ -102,9 +102,13 @@ TEST(GeneratedScenes, SceneNamedMainLeavesMainCppAlone) {
     std::ofstream(generated / (first + ".cpp")) << Factory::sceneSourceHeader << "\n";
     EXPECT_TRUE(generator.hasSceneSource(11, "main", internal));
     EXPECT_FALSE(generator.hasSceneSource(22, "Main", internal));
-    // one written by an older editor (under the scene's name) does not count
-    std::ofstream(generated / "Main.cpp") << Factory::sceneSourceHeader << "\n";
-    EXPECT_FALSE(generator.hasSceneSource(22, "Main", internal));
+    // one written by an older editor (under the scene's name) does not count. On a
+    // case-insensitive filesystem (macOS, Windows) Main.cpp is main.cpp itself, the clash the
+    // id-named sources avoid: such a file cannot be written there without replacing main.cpp
+    if (!fs::exists(generated / "MAIN.CPP")) {
+        std::ofstream(generated / "Main.cpp") << Factory::sceneSourceHeader << "\n";
+        EXPECT_FALSE(generator.hasSceneSource(22, "Main", internal));
+    }
 
     generator.clearSceneSource(11, "main", internal);
     EXPECT_FALSE(fs::exists(generated / (first + ".cpp")));
