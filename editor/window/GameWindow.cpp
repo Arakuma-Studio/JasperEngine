@@ -8,6 +8,7 @@
 #include "Backend.h"
 #include "Theme.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "registry/PhysicsLayers.h"
 #include "Widgets.h"
 #include "external/IconsFontAwesome6.h"
 #include "subsystem/UIDocumentSystem.h"
@@ -370,13 +371,14 @@ void editor::GameWindow::drawToolbar() {
     const char* touchLabel = ICON_FA_MOBILE_SCREEN "##GameTouch";
     const char* maximizeLabel = "Maximize On Play##GameMaximize";
     const char* statsLabel = "Stats##GameStats";
+    const char* physicsLabel = "Physics##GamePhysicsDebug";
     const ImGuiStyle& style = ImGui::GetStyle();
     auto buttonWidth = [&](const char* label) {
         return ImGui::CalcTextSize(label, nullptr, true).x + style.FramePadding.x * 2.0f;
     };
     auto groupWidth = [&]() {
         return buttonWidth(debuggerLabel) + buttonWidth(touchLabel) + buttonWidth(maximizeLabel) + buttonWidth(statsLabel) +
-               style.ItemSpacing.x * 3.0f;
+               buttonWidth(physicsLabel) + style.ItemSpacing.x * 4.0f;
     };
     ImGui::SameLine();
     const float contentRight = ImGui::GetWindowContentRegionMax().x;
@@ -384,6 +386,7 @@ void editor::GameWindow::drawToolbar() {
         debuggerLabel = ICON_FA_BUG "##GameHtmlUiDebugger";
         maximizeLabel = ICON_FA_MAXIMIZE "##GameMaximize";
         statsLabel = ICON_FA_CHART_SIMPLE "##GameStats";
+        physicsLabel = ICON_FA_CUBES "##GamePhysicsDebug";
     }
     const float rightX = contentRight - groupWidth();
     if (rightX > ImGui::GetCursorPosX()) {
@@ -418,6 +421,13 @@ void editor::GameWindow::drawToolbar() {
     if (toggleButton(statsLabel, settings.showStats, "Stats: show rendering statistics")) {
         settings.showStats = !settings.showStats;
         saveSettings();
+    }
+
+    ImGui::SameLine();
+    // the runtime collider / joint / contact lines (Physics.debugDraw), for every playing scene
+    const bool physicsShown = Physics::isDebugDraw();
+    if (toggleButton(physicsLabel, physicsShown, "Physics: draw colliders, joints and contacts while playing")) {
+        Physics::setDebugDraw(!physicsShown);
     }
 
     ImGui::SetCursorPosY(toolbarRowY + ImGui::GetTextLineHeightWithSpacing());

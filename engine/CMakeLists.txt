@@ -1056,7 +1056,9 @@ set(JASPERENGINE_SRCS
     core/registry/PhysicsLayers.cpp
     core/physics/ConvexDecomposition.cpp
     core/physics/JoltShapeBuilder.cpp
+    core/physics/PhysicsDebugLines.cpp
     core/physics/PhysicsMaterial.cpp
+    core/physics/RagdollBuilder.cpp
     core/physics/PolygonDecomposition2D.cpp
     core/physics/PlacementWorld.cpp
     core/render/BufferRender.cpp
@@ -1112,6 +1114,9 @@ set(JASPERENGINE_SRCS
     core/lattice/LatticePresets.cpp
     core/lattice/LatticeRender.cpp
     core/subsystem/PhysicsSystem.cpp
+    core/subsystem/PhysicsSystemJoints3D.cpp
+    core/subsystem/PhysicsSystemRagdoll.cpp
+    core/subsystem/PhysicsSystemDebugDraw.cpp
     core/subsystem/RenderSystem.cpp
     core/subsystem/UISystem.cpp
     core/subsystem/UIDocumentSystem.cpp
@@ -1164,6 +1169,7 @@ if(JASPERENGINE_PHYSICS_3D)
         core/object/physics/CollideShapeResult3D.cpp
         core/object/physics/Contact3D.cpp
         core/object/physics/Joint3D.cpp
+        core/object/physics/Ragdoll.cpp
     )
 endif()
 

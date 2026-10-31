@@ -14,6 +14,7 @@
 namespace jasperengine {
 
     class Joint2D;
+    class Joint3D;
 
     // The base of a C++ behaviour script (Unity's MonoBehaviour). The engine calls the
     // lifecycle methods below when a subclass overrides them, with the rules of Lua scripts
@@ -104,6 +105,9 @@ namespace jasperengine {
         // A 2D joint of this GameObject (or whose bodyA is it) broke (Unity OnJointBreak2D); the
         // joint still exists during the call.
         virtual void onJointBreak2D(Joint2D& joint);
+        // A 3D joint of this GameObject (or whose bodyA is it) broke under `force` (N, Unity
+        // OnJointBreak(float)); the joint still exists during the call
+        virtual void onJointBreak(float force, Joint3D& joint);
 
         // the messages (ScriptMessage bits) whose base method ran: not overridden, so not sent
         // again and not among ScriptMessages::receivers

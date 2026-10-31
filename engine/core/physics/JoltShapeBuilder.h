@@ -21,6 +21,7 @@
 #include "Jolt/Core/TempAllocator.h"
 #include "Jolt/Physics/PhysicsSettings.h"
 #include "Jolt/Physics/Collision/Shape/Shape.h"
+#include "Jolt/Physics/Collision/PhysicsMaterial.h"
 #endif
 
 #include <cstdint>
@@ -102,7 +103,9 @@ namespace jasperengine {
         // One temp allocator + job pool shared by every 3D world (the scenes' and the placement
         // worlds'). Updates run sequentially on the main thread, so a single pool avoids a
         // per-world thread pool and 10 MiB buffer. Intentionally leaked, like Jolt's Factory.
-        static JPH::TempAllocatorImpl& sharedPhysicsTempAllocator();
+        // Past the 10 MiB (a world made with a large maxContactConstraints asks its step for
+        // maxContactConstraints x ~450 bytes) it falls back to malloc instead of aborting.
+        static JPH::TempAllocator& sharedPhysicsTempAllocator();
         static JPH::JobSystemThreadPool& sharedPhysicsJobSystem();
 
         // The builders return null and set *error (when there is something to say) on failure.
@@ -110,19 +113,26 @@ namespace jasperengine {
         // too coarse for a body a few millimetres thick)
         static JPH::ShapeRefC buildConvexHullShape(const std::vector<Vector3>& points, std::string* error,
                                                    float maxConvexRadius = JPH::cDefaultConvexRadius, float hullTolerance = 1.0e-3f);
+        // material: every triangle's (null: Jolt's default)
         static JPH::ShapeRefC buildMeshShape(const std::vector<Vector3>& vertices, const std::vector<uint32_t>& indices,
-                                             std::string* error);
+                                             std::string* error, const JPH::PhysicsMaterial* material = nullptr);
         // The rendered terrain surface (MeshSystem::sampleTerrainSurface) in terrain-local space,
         // scaled by scale (the entity's world scale, a negative x or z mirroring it):
         // samplesSize x samplesSize samples spanning the whole terrain, edge to edge.
         // samplesSize 0 is defaultHeightFieldSamples. A terrain without a heightmap is flat.
         static JPH::ShapeRefC buildHeightFieldShape(Scene* scene, TerrainComponent& terrain, const Vector3& scale,
-                                                    unsigned int samplesSize, std::string* error);
+                                                    unsigned int samplesSize, std::string* error, const JPH::PhysicsMaterial* material = nullptr);
 
         // One collider of entity's Rigidbody, sized by the entity's world scale, in the entity's
         // body space (its own position and rotation not applied). Source NONE reads the entity's
-        // own mesh or heightfield. The collider itself is not changed.
-        static JPH::ShapeRefC buildColliderShape(Scene* scene, Entity entity, const Collider3D& collider, std::string* error);
+        // own mesh or heightfield. The collider itself is not changed. material: the surface of
+        // the whole leaf (every triangle of a mesh or heightfield), null for Jolt's default.
+        static JPH::ShapeRefC buildColliderShape(Scene* scene, Entity entity, const Collider3D& collider, std::string* error,
+                                                 const JPH::PhysicsMaterial* material = nullptr);
+
+    private:
+        static JPH::ShapeRefC buildColliderLeaf(Scene* scene, Entity entity, const Collider3D& collider, std::string* error,
+                                                const JPH::PhysicsMaterial* material);
 #endif
     };
 
