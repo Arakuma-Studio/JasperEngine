@@ -55,7 +55,7 @@ origin/main).
 | 14 | `shader-globals` | user global shader uniforms (`Shader.setGlobal*`) | specced |
 | 15 | `video-mp4` | MP4/H.264 playback (platform decoders) and streamed/URL video | specced |
 | 16 | `coroutines` | engine-driven coroutines (wait seconds/realtime/frames/until), Invoke-style scaled timers, unscaled delta time, callbacks always on the main Lua thread | specced |
-| 17 | `script-lifecycle` | onEnable/onDisable, enabling scripts, getScript/findObjectOfType, scene-wide find, event unregister | specced |
+| 17 | `script-lifecycle` | onEnable/onDisable, enabling scripts, getScript/findObjectOfType, scene-wide find, event unregister | impl |
 | 18 | `script-data` | JSON encode/decode, UserSettings hasKey/deleteAll/save | impl |
 | 19 | `input` | key/mouse/button down/up edge queries, virtual axes and buttons (Input Manager-style), bound Touch with phases and deltas | impl |
 | 20 | `persistence` | DontDestroyOnLoad (persistent objects and their sounds across scene loads) | specced |
@@ -63,7 +63,7 @@ origin/main).
 | 22 | `particles` | start speed along the emitter shape, multi-key curves for every over-lifetime module, Unity ParticleSystem import | specced |
 | 23 | `debug-overlay` | on-device log console and stats/FPS overlay | specced |
 | 24 | `camera-shake` | camera shake component and presets (MilkShake-like), camera follow | specced |
-| 25 | `ui-canvas-group` | Canvas Group for the native UI: group alpha, interactable, blocks raycasts, ignore parent groups; animatable (found by the animation spec: legacy clips animate CanvasGroup alpha) | spec |
+| 25 | `ui-canvas-group` | Canvas Group for the native UI: group alpha, interactable, blocks raycasts, ignore parent groups; animatable (found by the animation spec: legacy clips animate CanvasGroup alpha) | specced |
 
 ## Log
 
@@ -87,3 +87,7 @@ origin/main).
   activation like Awake), coroutines, script-data, persistence, debug-overlay. `script-data` implementation started.
 - 2026-10-31: specs committed for physics-2d, physics-contacts, physics-3d (merge order 2d -> 3d -> contacts, contacts
   after script-lifecycle). `physics-2d` implementation started.
+- 2026-10-31: all 25 specs written and committed. The Canvas Group spec found the ECS signature was a 64-bit set
+  with 61 component types used; widened to 128 on `main` (`a23dfd2f7`, unit tests 936/936) before any new
+  component lands, and pushed `main` (specs, ledger, fix). Added a 16 GB swap file (builds of 6 agents ran the
+  machine out of memory). `script-lifecycle` implementation started.
