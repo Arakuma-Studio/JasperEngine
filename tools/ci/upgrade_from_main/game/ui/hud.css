@@ -1,0 +1,6 @@
+body { margin: 0; font-family: sans-serif; color: #ffffff; }
+.hud { position: absolute; top: 12px; right: 16px; display: flex; gap: 16px; padding: 8px 14px;
+       background-color: rgba(0, 0, 0, 0.55); border-radius: 8px; }
+.score { font-size: 26px; color: #ffd166; }
+.gems { font-size: 18px; }
+.gems.all { color: #8fe388; }
