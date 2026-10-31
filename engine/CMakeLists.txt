@@ -690,6 +690,18 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             list(APPEND PLATFORM_PROPERTIES
                 XCODE_ATTRIBUTE_CLANG_ENABLE_OBJC_ARC "YES"
             )
+
+            # The prebuilt player is a bundle, jasperengine-player.app: the macOS runtime is a
+            # template bundle that an export renames, fills (Contents/Resources) and re-signs with
+            # its own Info.plist (S30 R11, R12; tools/players/package_player.py). A bare
+            # executable left the players-apple job and the packaging without one.
+            if(JASPERENGINE_PLAYER)
+                set(PLATFORM_EXEC_FLAGS MACOSX_BUNDLE)
+                list(APPEND PLATFORM_PROPERTIES
+                    MACOSX_BUNDLE_BUNDLE_NAME "JasperEnginePlayer"
+                    MACOSX_BUNDLE_GUI_IDENTIFIER "com.jaspergameengine.player"
+                )
+            endif()
         endif()
     endif()
 
