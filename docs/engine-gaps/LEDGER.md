@@ -63,6 +63,7 @@ origin/main).
 | 22 | `particles` | start speed along the emitter shape, multi-key curves for every over-lifetime module, Unity ParticleSystem import | review |
 | 23 | `debug-overlay` | on-device log console and stats/FPS overlay | impl |
 | 24 | `camera-shake` | camera shake component and presets (MilkShake-like), camera follow | review |
+| 26 | `xcode26-dav1d` | iOS/macOS builds fail on Xcode 26.6 (pre-existing on the original main): dav1d's aarch64 assembly (src/arm/64/refmvs.S ...) does not assemble; fix and verify on a macOS box | todo |
 | 25 | `ui-canvas-group` | Canvas Group for the native UI: group alpha, interactable, blocks raycasts, ignore parent groups; animatable (found by the animation spec: legacy clips animate CanvasGroup alpha) | review |
 
 ## Log
@@ -156,3 +157,16 @@ origin/main).
   Lua `start` a plain call again), native-bridge (critical: JasperNative.h not findable by the Xcode app targets;
   CocoaPods not linked). Rented a macOS box (Blacksmith, arm64, Xcode 26.6, ~$4.80/h, 24 h) to build the iOS and
   macOS targets at merge time: Apple code had never been compiled before.
+- 2026-10-31: macOS box session (~$3.24): merged main (c7ea32946) and gaps/platform-services build the "JasperEngine
+  macOS" and "JasperEngine iOS" app schemes with 0 errors once dav1d's assembly is disabled locally. That dav1d
+  failure also happens on the original baseline commit: added as feature #26. The Mac was destroyed; it will be
+  rented again for one batch check (native-bridge, safe-area, video-mp4, #26). http follow-up merged
+  (AsyncOwners re-keyed when persistence moves objects). Lead trimmed the agent guide to 16351 bytes and set the
+  measured tool budget. Not pushed yet: waiting for ui-canvas-group's fix of an old-scene re-save regression.
+  platform-services is doing its final merge of main (16 files conflicted).
+- 2026-10-31 23:2x: the lead's session restarted, stopping every agent and remote job. All four Linux boxes
+  survived (idle). Resumed 15 agents from their transcripts (platform-services mid-merge; review fixes on
+  particles, shader-globals, physics-contacts, ui-scaling-text, native-bridge, camera-shake, coroutines,
+  ui-canvas-group; final suites of audio-mixer; implementations of anim-layers, debug-overlay, safe-area,
+  video-mp4; the ui-multitouch review, which an API limit had stopped). Tailscale: this host had none before the
+  lead installed it; it joins the owner's tailnet through a login link (no auth key) to build on the owner's Mac.
