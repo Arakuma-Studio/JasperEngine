@@ -765,19 +765,18 @@ its file.
 
 ### Verification
 
-- Unit tests (editor/tests/HttpTest.cpp, 42 cases: the 18 of section 9 plus TLS, redirect method
-  rules and credentials, resume / keepPartial / 416, body limits, owners by scene and script,
-  shutdown, stats and logFailures, URL helpers, the Lua API, coroutine callers, the export scan)
-  against editor/tests/util/TestHttpServer and a Python HTTPS server with an openssl self-signed
-  certificate: all pass; the whole suite 1014 tests, 1006 passed, 8 skipped (the known ones).
-- MCP: tools/mcp/tests/test_http.py (2), test_build.py `test_http_export` and the rest of
-  test_build.py, test_stubs.py with lua-language-server (the Http stubs check clean and a wrong
-  `Http.maxConcurrentRequests` assignment is reported), test_docs.py, test_protocol.py (the
-  agent guide stays under 16 KB) pass.
-- Android: `assembleDebug` of engine/workspaces/androidstudio for arm64-v8a (JasperHttp.java,
-  HttpBackendAndroid.cpp, NativeEngine.cpp) builds; the APK has the class and the natives.
-- Web: the full emsdk build of the engine and its sample project links (EM_JS, exports); the web
-  backend with the client core ran in Node 24 against a local server (GET, POST with a binary
-  body, 404, timeout, redirect followed / not followed, cancel, a file download).
-- Windows (WinHTTP) and Apple (NSURLSession) code could not be compiled on this host; they were
-  written against the current SDK APIs and re-read.
+- After the review fixes and the merge of main (input, script-data), on build box 2203: the
+  whole unit suite 1071 tests, 1063 passed, 8 skipped (the known ones), 0 failed, 44 of them
+  HTTP (editor/tests/HttpTest.cpp against editor/tests/util/TestHttpServer and a Python HTTPS
+  server with an openssl self-signed certificate; plus HttpClientProtocols); 0 compiler warnings.
+- MCP: test_http.py (3, with the Play policy before init), test_build.py (`test_http_export`:
+  Lua alias, HTML-only and C++-only use, permissions once, cleartext and ATS, pbxproj),
+  test_play.py, test_docs.py, test_protocol.py (the guide at 16,356 bytes) and test_stubs.py with
+  lua-language-server: 47 passed, 0 failed (the slow Desktop/C++ builds and clangd skipped).
+- Android: `assembleDebug` of engine/workspaces/androidstudio for arm64-v8a builds after the
+  fixes (JasperHttp.java, HttpBackendAndroid.cpp, NativeEngine.cpp); javac -Xlint:all clean.
+- Web: the full emsdk build of the engine and its sample project linked (first pass); the web
+  backend with the client core runs in Node 24 against a local server after the fixes (GET,
+  binary POST, 404, timeout, redirect followed / not followed, cancel, file download).
+- Windows (WinHTTP async) and Apple (NSURLSession) code could not be compiled on this host; they
+  were written against the current SDK APIs and re-read.
