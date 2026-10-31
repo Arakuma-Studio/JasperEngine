@@ -26,8 +26,7 @@ namespace testsupport {
         uint64_t count() const;
 
     private:
-        // unread where the binary cannot count (count() is 0 there)
-        [[maybe_unused]] uint64_t start;
+        uint64_t start;
     };
 
     // every allocation of the process so far
