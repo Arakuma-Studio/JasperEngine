@@ -96,7 +96,7 @@ AudioSource(...); a constructor given only self.scene CREATES a new GameObject. 
 local Player = {
     properties = {
         { name = "speed", displayName = "Speed", type = "float", default = 300.0 },
-        { name = "label", displayName = "Label", type = "Text" },      -- GameObject reference
+        { name = "label", displayName = "Label", type = "Text" },  -- GameObject reference
         { name = "bullet", displayName = "Bullet", type = "Prefab" },  -- PrefabAsset
     }
 }
@@ -107,10 +107,10 @@ function Player:init()
 end
 
 function Player:onUpdate()
-    local dx = Input.getAxis("Horizontal")              -- keys, gamepad, on-screen stick
-    local p = self.go.position                          -- a copy: assign it back
+    local dx = Input.getAxis("Horizontal")  -- keys, gamepad, on-screen stick
+    local p = self.go.position  -- a copy: assign it back
     self.go.position = Vector3(p.x + dx * self.speed * Engine.deltatime, p.y, p.z)
-    if Input.getButtonDown("Jump") then                 -- pressed this frame (space, pad Y)
+    if Input.getButtonDown("Jump") then  -- pressed this frame (space, pad Y)
         GameObject.instantiate(self.bullet, self.scene, self.go.position, Quaternion.IDENTITY)
     end
 end
@@ -133,10 +133,9 @@ return Player
 - Input.getAxis/getButtonDown('Jump') read Project Settings > Input actions; getKeyDown(key)
   is an edge, isKeyPressed held. Test with send_input action/axis events (jasper://docs/input).
   Log.print/warn/error take ONE string (use ..).
-- Time: Engine.timeScale, Engine.fixedDeltatime (rw), Engine.gameTime, Engine.frameCount.
-- Lua has no C++ default arguments: pass every argument.
-- Saves: PlayerPrefs, Json.encode/decode, File.writeText("data://x") (lua-api 2.4);
-  user_settings reads/resets PlayerPrefs.
+- Time: Engine.timeScale, fixedDeltatime (rw), gameTime, frameCount. No C++ default args.
+- Saves: PlayerPrefs, Json, File.writeText("data://x") (lua-api 2.4; tool user_settings).
+  HTTP: Http.get/post, main-thread callbacks (jasper://docs/networking).
 - Lua has no Dori.Script, getComponent, setProperty or timers. Never put editor property
   paths (submeshes[0]...) in scripts.
 
@@ -190,16 +189,17 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
   static: floors, level geometry; kinematic: scripted movers.
 - Collider sizes are mesh-local, scaled by the GameObject's scale: never pre-scale them; omit
   sizes to fit the mesh bounds (never guess).
-- Mass = collider volume/area x density (default 1000 in 3D, 1 in 2D); a 2D body may set it
-  (useAutoMass false). Size forces as mass x acceleration; if huge, lower density.
+- Mass = collider volume/area x density (default 1000 in 3D, 1 in 2D) unless set explicitly.
+  Size forces as mass x acceleration; if huge, lower density.
+- Joints (set_joint, 2D/3D): Unity's set, local anchors, motors, springs, limits, breaking;
+  ragdolls: create_ragdoll; collider wireframes in Play: configure_game_view physics_debug.
 - Continuous forces and torques go in onFixedUpdate, never onUpdate, NOT multiplied by deltatime.
-  3D and 2D APIs differ (2D calls take a wake flag). 2D joints (set_joint: motors, springs,
-  limits, breaking, local anchors) and concave polygons: jasper://docs/physics.
+  3D and 2D APIs differ (2D calls take a wake flag), concave 2D polygons: jasper://docs/physics.
 - Never move a body by writing its GameObject's transform from onFixedUpdate (silently
   overwritten). Teleport with body.position (and body.rotation / body.angle), velocity with
   body.linearVelocity. One-shot impulses fire once per press, not every held frame.
-- Layer Collision Matrix (project settings, per backend) gates contacts; raycasts take an
-  optional layer mask. Drop or settle objects: place_with_physics.
+- Layer Collision Matrix (project settings, per backend) gates contacts; raycasts take a
+  layer mask. Drop or settle objects: place_with_physics.
 
 ## Prefabs
 - An edit on a prefab instance is an override of that instance only. Push it to the asset
@@ -250,8 +250,8 @@ set_ui_effect_time).
 Edit mode runs no Lua. First read jasper://docs/html-ui.
 
 ## Pitfalls
-- Unsaved scenes are lost when the editor closes; save after each working step.
-- Edits made while playing are lost when play stops (as in Unity): stop, then edit.
+- Save after each working step: unsaved scenes are lost on close.
+- Play-mode edits are lost when play stops: stop first.
 - Lua: static functions use a dot (GameObject.instantiate), methods a colon (go:setScale(2)).
 )JE";
 }

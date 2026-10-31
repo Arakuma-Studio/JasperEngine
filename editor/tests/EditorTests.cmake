@@ -24,6 +24,12 @@ list(REMOVE_ITEM EDITOR_TEST_EDITOR_SOURCES ${EDITOR_DIR}/main.cpp)
 
 # The tests themselves see googletest; the editor sources keep the editor's command lines
 file(GLOB EDITOR_TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_LIST_DIR}/*Test.cpp)
+# HttpTest's HTTP server on 127.0.0.1 (POSIX sockets)
+if(NOT WIN32)
+    list(APPEND EDITOR_TEST_SOURCES ${CMAKE_CURRENT_LIST_DIR}/util/TestHttpServer.cpp)
+else()
+    list(REMOVE_ITEM EDITOR_TEST_SOURCES ${CMAKE_CURRENT_LIST_DIR}/HttpTest.cpp)
+endif()
 add_library(jasperengine-editor-tests-objects OBJECT ${EDITOR_TEST_SOURCES})
 # tinyexr: FloatImageTest writes EXRs with custom channel names through it
 target_link_libraries(jasperengine-editor-tests-objects PRIVATE gtest jasperengine yaml-cpp tinyexr)

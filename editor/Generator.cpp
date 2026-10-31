@@ -579,7 +579,8 @@ std::string editor::Generator::getPlatformCMakeConfig(bool vsyncEnabled, const W
     content += "            ${JASPERENGINE_PLATFORM_DIR}/win/WinInputRouter.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/win/GamepadWin.cpp\n";
     content += "        )\n";
-    content += "        list(APPEND PLATFORM_LIBS gdi32 user32 shell32 imm32)\n";
+    content += "        # winhttp, iphlpapi: the HTTP client's backend (platform/win/HttpBackendWin.cpp)\n";
+    content += "        list(APPEND PLATFORM_LIBS gdi32 user32 shell32 imm32 winhttp iphlpapi)\n";
     content += "        if(JASPERENGINE_GRAPHIC_BACKEND STREQUAL \"vulkan\")\n";
     content += "            add_definitions(\"-DSOKOL_VULKAN\")\n";
     content += "            add_definitions(\"-DVK_USE_PLATFORM_WIN32_KHR\")\n";
@@ -2162,7 +2163,7 @@ bool editor::Generator::hasSceneSource(uint32_t sceneId, const std::string& scen
     return std::getline(file, header) && header == Factory::sceneSourceHeader;
 }
 
-void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples, const std::string& inputActionsJson, const std::vector<ShaderGlobalDecl>& shaderGlobals){
+void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples, const std::string& inputActionsJson, bool allowInsecureHttp, const std::vector<ShaderGlobalDecl>& shaderGlobals){
     // the generated sources (main.cpp, scene and prefab factories) live in the editor's internal
     // folder, which an MCP call's deny-by-default guard refuses otherwise (util/SafeWrite.h)
     safewrite::EditorInternal ownInternal(projectInternalPath);
@@ -2370,6 +2371,8 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
 
     // MSAA of the HTML UI targets (Project Settings > Graphics), before any document draws
     mainContent += "    UIDocumentSystem::setPreferredSampleCount(" + std::to_string(htmlUiMsaaSamples) + ");\n";
+    // Project Settings > Player > Allow Insecure HTTP: the same policy as the editor's Play
+    mainContent += std::string("    Http::setInsecureHttpAllowed(") + (allowInsecureHttp ? "true" : "false") + ");\n";
 
     // Tags and Layers, before any scene or script can ask for them
     if (!tagsAndLayers.tags.empty()) {
@@ -2396,6 +2399,12 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     };
     emitLayerCollisionMatrix("Physics", tagsAndLayers.layerCollisionMatrix3D);
     emitLayerCollisionMatrix("Physics2D", tagsAndLayers.layerCollisionMatrix2D);
+
+    // 3D world capacity, before any scene (and its world) is made: the same as in the editor
+    mainContent += "#ifdef JASPERENGINE_PHYSICS_3D\n";
+    mainContent += "    PhysicsSystem::setWorldCapacity3D(" + std::to_string(tagsAndLayers.maxBodies3D) + ", " +
+                   std::to_string(tagsAndLayers.maxBodyPairs3D) + ", " + std::to_string(tagsAndLayers.maxContactConstraints3D) + ");\n";
+    mainContent += "#endif\n";
 
     // Project Settings > Input (the engine starts with Unity's defaults), before any script reads it
     mainContent += inputActionsInitSource(inputActionsJson);

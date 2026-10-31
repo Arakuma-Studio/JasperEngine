@@ -7,9 +7,11 @@
 #include "subsystem/PhysicsSystem.h"
 #include "component/RigidbodyComponent.h"
 #include "util/JoltPhysicsAux.h"
+#include "pool/PhysicsMaterialPool.h"
 
 #include <iostream>
 #include <algorithm>
+#include <stdexcept>
 
 using namespace jasperengine;
 
@@ -38,14 +40,9 @@ BodyType getJoltToBodyType(JPH::EMotionType type){
 }
 
 static int appendCollider3D(RigidbodyComponent& body){
-    if (!body.colliders.validIndex(body.numColliders)){
-        Log::error("Cannot add more shapes in this body");
-        return -1;
-    }
-
-    size_t index = body.numColliders;
-    body.colliders[index] = Collider3D();
-    body.numColliders++;
+    // any number of colliders (no export-only cap)
+    const size_t index = body.colliders.size();
+    body.colliders.push_back(Collider3D());
     body.needUpdateColliders = true;
 
     return static_cast<int>(index);
@@ -245,15 +242,7 @@ int Rigidbody::createConvexHullCollider(Vector3 position, Quaternion rotation, s
     shape.position = position;
     shape.rotation = rotation;
     shape.source = Collider3DSource::RAW_VERTICES;
-    shape.numVertices = vertices.size();
-    for (size_t i = 0; i < shape.numVertices; i++){
-        if (!shape.vertices.validIndex(i)){
-            Log::warn("Convex hull vertices truncated from %zu to %zu", shape.numVertices, i);
-            shape.numVertices = i;
-            break;
-        }
-        shape.vertices[i] = vertices[i];
-    }
+    shape.vertices = std::move(vertices);
 
     return index;
 }
@@ -271,11 +260,11 @@ int Rigidbody::createMeshCollider(){
     return index;
 }
 
-int Rigidbody::createMeshCollider(std::vector<Vector3> vertices, std::vector<uint16_t> indices){
-    return createMeshCollider(Vector3::ZERO, Quaternion::IDENTITY, vertices, indices);
+int Rigidbody::createMeshCollider(std::vector<Vector3> vertices, std::vector<uint32_t> indices){
+    return createMeshCollider(Vector3::ZERO, Quaternion::IDENTITY, std::move(vertices), std::move(indices));
 }
 
-int Rigidbody::createMeshCollider(Vector3 position, Quaternion rotation, std::vector<Vector3> vertices, std::vector<uint16_t> indices){
+int Rigidbody::createMeshCollider(Vector3 position, Quaternion rotation, std::vector<Vector3> vertices, std::vector<uint32_t> indices){
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
     int index = appendCollider3D(body);
     if (index < 0) return index;
@@ -285,26 +274,18 @@ int Rigidbody::createMeshCollider(Vector3 position, Quaternion rotation, std::ve
     shape.position = position;
     shape.rotation = rotation;
     shape.source = Collider3DSource::RAW_MESH;
-    shape.numVertices = vertices.size();
-    for (size_t i = 0; i < shape.numVertices; i++){
-        if (!shape.vertices.validIndex(i)){
-            Log::warn("Mesh shape vertices truncated from %zu to %zu", shape.numVertices, i);
-            shape.numVertices = i;
-            break;
-        }
-        shape.vertices[i] = vertices[i];
-    }
-    shape.numIndices = indices.size();
-    for (size_t i = 0; i < shape.numIndices; i++){
-        if (!shape.indices.validIndex(i)){
-            Log::warn("Mesh shape indices truncated from %zu to %zu", shape.numIndices, i);
-            shape.numIndices = i;
-            break;
-        }
-        shape.indices[i] = indices[i];
-    }
+    shape.vertices = std::move(vertices);
+    shape.indices = std::move(indices);
 
     return index;
+}
+
+int Rigidbody::createMeshCollider(std::vector<Vector3> vertices, std::vector<uint16_t> indices){
+    return createMeshCollider(Vector3::ZERO, Quaternion::IDENTITY, std::move(vertices), std::vector<uint32_t>(indices.begin(), indices.end()));
+}
+
+int Rigidbody::createMeshCollider(Vector3 position, Quaternion rotation, std::vector<Vector3> vertices, std::vector<uint16_t> indices){
+    return createMeshCollider(position, rotation, std::move(vertices), std::vector<uint32_t>(indices.begin(), indices.end()));
 }
 
 int Rigidbody::createHeightFieldCollider(){
@@ -326,20 +307,15 @@ int Rigidbody::createHeightFieldCollider(unsigned int samplesSize){
 }
 
 size_t Rigidbody::getNumColliders() const{
-    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    return getComponent<RigidbodyComponent>().colliders.size();
+}
 
-    return body.numColliders;
+size_t Rigidbody::getColliderCount() const{
+    return getNumColliders();
 }
 
 Collider3DType Rigidbody::getColliderType(size_t index) const{
-    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
-
-    if (index >= 0 && index < body.numColliders){
-        return body.colliders[index].type;
-    }else{
-        Log::error("Cannot find shape %i of body", index);
-        throw std::runtime_error("Cannot find shape");
-    }
+    return colliderAt(index).type;
 }
 
 void Rigidbody::setColliderDensity(float density){
@@ -349,13 +325,15 @@ void Rigidbody::setColliderDensity(float density){
 void Rigidbody::setColliderDensity(size_t index, float density){
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
-    if (index >= 0 && index < body.numColliders){
+    if (index < body.colliders.size()){
         body.colliders[index].density = density;
         if (body.colliders[index].shape && body.colliders[index].shape->GetType() == JPH::EShapeType::Convex){
             JPH::ConvexShape* convexShape = (JPH::ConvexShape*)body.colliders[index].shape.GetPtr();
             convexShape->SetDensity(density);
-        }else{
-            Log::warn("The shape %i does not have density", index);
+            // the body's mass follows (its shape is made again from the leaves)
+            collidersChanged();
+        }else if (body.colliders[index].shape){
+            Log::warn("The shape %zu does not have density", index);
         }
     }else{
         Log::error("Cannot find shape %i of body", index);
@@ -369,7 +347,7 @@ float Rigidbody::getColliderDensity() const{
 float Rigidbody::getColliderDensity(size_t index) const{
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
-    if (index >= 0 && index < body.numColliders){
+    if (index < body.colliders.size()){
         return body.colliders[index].density;
     }else{
         Log::error("Cannot find shape %i of body", index);
@@ -378,32 +356,26 @@ float Rigidbody::getColliderDensity(size_t index) const{
     return 0;
 }
 
-void Rigidbody::setType(BodyType type){
+bool Rigidbody::setType(BodyType type){
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    return scene->getSystem<PhysicsSystem>()->setRigidbodyType(entity, body, type);
+}
 
-    // the script takes over a body that was following its Transform
-    scene->getSystem<PhysicsSystem>()->stopFollowing3D(body, true, true);
+bool Rigidbody::isKinematic() const{
+    return getComponent<RigidbodyComponent>().type == BodyType::KINEMATIC;
+}
 
-    body.type = type;
-
-    if (!body.body.IsInvalid()){
-        JPH::EActivation activation = JPH::EActivation::DontActivate;
-
-        if (type != BodyType::STATIC){
-            activation = JPH::EActivation::Activate;
-        }
-
-        JPH::BodyInterface& bodyInterface = getBodyInterface();
-        bodyInterface.SetMotionType(body.body, getBodyTypeToJolt(type), activation);
-        if (type != BodyType::STATIC){
-            bodyInterface.SetMotionQuality(body.body, PhysicsSystem::getRigidbodyMotionQualityToJolt(body.motionQuality));
-        }
-    }
+void Rigidbody::setKinematic(bool kinematic){
+    setType(kinematic ? BodyType::KINEMATIC : BodyType::DYNAMIC);
 }
 
 BodyType Rigidbody::getType() const{
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
+    // a switch asked for inside a step reads back at once
+    if (body.hasPendingType){
+        return body.pendingType;
+    }
     checkBody(body);
     return getJoltToBodyType(getBodyInterface().GetMotionType(body.body));
 }
@@ -458,11 +430,12 @@ void Rigidbody::setIsSensor(bool sensor){
 }
 
 bool Rigidbody::isCollideKinematicVsNonDynamic() const{
-    return getJoltBody().GetCollideKinematicVsNonDynamic();
+    return getComponent<RigidbodyComponent>().collideKinematicVsNonDynamic;
 }
 
 void Rigidbody::setCollideKinematicVsNonDynamic(bool collideKinematicVsNonDynamic){
-    getJoltBodyWrite().SetCollideKinematicVsNonDynamic(collideKinematicVsNonDynamic);
+    getComponent<RigidbodyComponent>().collideKinematicVsNonDynamic = collideKinematicVsNonDynamic;
+    parametersChanged();
 }
 
 void Rigidbody::applyAllowedDOFs(JPH::EAllowedDOFs allowedDOFs){
@@ -481,6 +454,8 @@ void Rigidbody::applyAllowedDOFs(JPH::EAllowedDOFs allowedDOFs){
             motionProperties->SetMassProperties(allowedDOFs, jbody.GetShape()->GetMassProperties());
         }
     }
+    // the DOFs are set; the mass, centre of mass and inertia the fields ask for again
+    massChanged();
 }
 
 void Rigidbody::setAllowedDOFsAll(){
@@ -519,15 +494,203 @@ void Rigidbody::setAllowedDOFs(bool translationX, bool translationY, bool transl
 float Rigidbody::getMass() const{
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
+    if (body.overrideMassProperties){
+        JPH::MassProperties box;
+        box.SetMassAndInertiaOfSolidBox(JPH::Vec3(body.solidBoxSize.x, body.solidBoxSize.y, body.solidBoxSize.z), body.solidBoxDensity);
+        return box.mMass;
+    }
+    if (!body.automaticMass){
+        return body.mass;
+    }
+    PhysicsSystem::MassInfo3D info;
+    if (scene->getSystem<PhysicsSystem>()->computeMassProperties3D(entity, body, info)){
+        return info.mass;
+    }
+    // no collider with a volume: what Jolt has
     checkBody(body);
     return getBodyInterface().GetShape(body.body)->GetMassProperties().mMass;
 }
 
 void Rigidbody::setMass(float mass){
-    JPH::Body& jbody = getJoltBodyWrite();
-    JPH::MassProperties massProperties = jbody.GetShape()->GetMassProperties();
-    massProperties.mMass = mass;
-    jbody.GetMotionProperties()->SetMassProperties(jbody.GetMotionProperties()->GetAllowedDOFs(), massProperties);
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    if (!(mass > 0.0f) || !std::isfinite(mass)){
+        Log::error("Rigidbody mass must be above 0 (got %g)", mass);
+        return;
+    }
+    body.automaticMass = false;
+    body.mass = mass;
+    massChanged();
+}
+
+bool Rigidbody::isAutomaticMass() const{
+    return getComponent<RigidbodyComponent>().automaticMass;
+}
+
+void Rigidbody::setAutomaticMass(bool automaticMass){
+    getComponent<RigidbodyComponent>().automaticMass = automaticMass;
+    massChanged();
+}
+
+Vector3 Rigidbody::getCenterOfMass() const{
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    if (!body.automaticCenterOfMass){
+        return body.centerOfMass;
+    }
+    PhysicsSystem::MassInfo3D info;
+    if (scene->getSystem<PhysicsSystem>()->computeMassProperties3D(entity, body, info)){
+        return info.centerOfMass;
+    }
+    return Vector3::ZERO;
+}
+
+void Rigidbody::setCenterOfMass(Vector3 centerOfMass){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    body.automaticCenterOfMass = false;
+    body.centerOfMass = centerOfMass;
+    massChanged();
+}
+
+bool Rigidbody::isAutomaticCenterOfMass() const{
+    return getComponent<RigidbodyComponent>().automaticCenterOfMass;
+}
+
+void Rigidbody::setAutomaticCenterOfMass(bool automaticCenterOfMass){
+    getComponent<RigidbodyComponent>().automaticCenterOfMass = automaticCenterOfMass;
+    massChanged();
+}
+
+void Rigidbody::resetCenterOfMass(){
+    setAutomaticCenterOfMass(true);
+}
+
+Vector3 Rigidbody::getInertiaTensor() const{
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    if (!body.automaticInertiaTensor){
+        return body.inertiaTensor;
+    }
+    PhysicsSystem::MassInfo3D info;
+    if (scene->getSystem<PhysicsSystem>()->computeMassProperties3D(entity, body, info)){
+        return info.inertiaDiagonal;
+    }
+    return Vector3::ZERO;
+}
+
+void Rigidbody::setInertiaTensor(Vector3 inertiaTensor){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    body.automaticInertiaTensor = false;
+    body.inertiaTensor = inertiaTensor;
+    massChanged();
+}
+
+Quaternion Rigidbody::getInertiaTensorRotation() const{
+    return getComponent<RigidbodyComponent>().inertiaTensorRotation;
+}
+
+void Rigidbody::setInertiaTensorRotation(Quaternion rotation){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    body.automaticInertiaTensor = false;
+    body.inertiaTensorRotation = rotation;
+    massChanged();
+}
+
+bool Rigidbody::isAutomaticInertiaTensor() const{
+    return getComponent<RigidbodyComponent>().automaticInertiaTensor;
+}
+
+void Rigidbody::setAutomaticInertiaTensor(bool automaticInertiaTensor){
+    getComponent<RigidbodyComponent>().automaticInertiaTensor = automaticInertiaTensor;
+    massChanged();
+}
+
+void Rigidbody::resetInertiaTensor(){
+    setAutomaticInertiaTensor(true);
+}
+
+float Rigidbody::getLinearDamping() const{
+    return getComponent<RigidbodyComponent>().linearDamping;
+}
+
+void Rigidbody::setLinearDamping(float linearDamping){
+    getComponent<RigidbodyComponent>().linearDamping = linearDamping;
+    parametersChanged();
+}
+
+float Rigidbody::getAngularDamping() const{
+    return getComponent<RigidbodyComponent>().angularDamping;
+}
+
+void Rigidbody::setAngularDamping(float angularDamping){
+    getComponent<RigidbodyComponent>().angularDamping = angularDamping;
+    parametersChanged();
+}
+
+float Rigidbody::getMaxLinearVelocity() const{
+    return getComponent<RigidbodyComponent>().maxLinearVelocity;
+}
+
+void Rigidbody::setMaxLinearVelocity(float maxLinearVelocity){
+    getComponent<RigidbodyComponent>().maxLinearVelocity = maxLinearVelocity;
+    parametersChanged();
+}
+
+float Rigidbody::getMaxAngularVelocity() const{
+    return getComponent<RigidbodyComponent>().maxAngularVelocity;
+}
+
+void Rigidbody::setMaxAngularVelocity(float maxAngularVelocity){
+    getComponent<RigidbodyComponent>().maxAngularVelocity = maxAngularVelocity;
+    parametersChanged();
+}
+
+RigidbodyInterpolation Rigidbody::getInterpolation() const{
+    return getComponent<RigidbodyComponent>().interpolation;
+}
+
+void Rigidbody::setInterpolation(RigidbodyInterpolation interpolation){
+    getComponent<RigidbodyComponent>().interpolation = interpolation;
+}
+
+bool Rigidbody::isSleeping() const{
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    checkBody(body);
+    return !getBodyInterface().IsActive(body.body);
+}
+
+void Rigidbody::sleep(){
+    deactivate();
+}
+
+void Rigidbody::wakeUp(){
+    activate();
+}
+
+void Rigidbody::setMaterial(const std::string& path){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    body.material = path;
+    body.materialInstance.reset();
+    scene->getSystem<PhysicsSystem>()->refreshRigidbodyMaterials3D(entity, body, true);
+}
+
+void Rigidbody::setMaterial(const PhysicsMaterial& material){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    body.materialInstance = material.getRuntime();
+    body.material = material.valid() ? material.getPath() : std::string();
+    scene->getSystem<PhysicsSystem>()->refreshRigidbodyMaterials3D(entity, body, true);
+}
+
+void Rigidbody::clearMaterial(){
+    setMaterial(std::string());
+}
+
+PhysicsMaterial Rigidbody::getMaterial() const{
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    if (body.materialInstance) return PhysicsMaterial(body.materialInstance);
+    if (!body.material.empty()) return PhysicsMaterial::load(body.material);
+    return PhysicsMaterial();
+}
+
+std::string Rigidbody::getMaterialPath() const{
+    return getComponent<RigidbodyComponent>().material;
 }
 
 void Rigidbody::setOverrideMassAndInertia(Vector3 solidBoxSize, float solidBoxDensity){
@@ -549,6 +712,7 @@ float Rigidbody::getGravityFactor() const{
 void Rigidbody::setGravityFactor(float gravityFactor){
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
     body.gravityFactor = gravityFactor;
+    // as before: no wake
 
     if (!body.body.IsInvalid()){
         JPH::MotionProperties* motionProperties = getJoltBodyWrite().GetMotionPropertiesUnchecked();
@@ -590,23 +754,31 @@ void Rigidbody::setMaskBitsFilter(uint16_t mask){
     scene->getSystem<PhysicsSystem>()->refreshRigidbodyFilter3D(entity);
 }
 
+// Kept in the component (a reloaded body keeps it), read by the scene's pair filter: bodies
+// of the same group never collide
 uint32_t Rigidbody::getCollisionGroupID() const{
-    return getJoltBody().GetCollisionGroup().GetGroupID();
+    return getComponent<RigidbodyComponent>().collisionGroupID;
 }
 
 void Rigidbody::setCollisionGroupID(uint32_t group){
-    JPH::Ref<JPH::GroupFilterTable> group_filter = new JPH::GroupFilterTable(2);
-    group_filter->DisableCollision(0, 0);
-
-    getJoltBodyWrite().SetCollisionGroup(JPH::CollisionGroup(group_filter, group, 0));
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    body.collisionGroupID = group;
+    if (!body.body.IsInvalid()){
+        std::shared_ptr<PhysicsSystem> physics = scene->getSystem<PhysicsSystem>();
+        getJoltBodyWrite().SetCollisionGroup(JPH::CollisionGroup(&physics->getPairFilter3D(), group, (JPH::CollisionGroup::SubGroupID)entity));
+        if (!physics->isSteppingWorld3D()){
+            getBodyInterface().ActivateBody(body.body);
+        }
+    }
 }
 
 bool Rigidbody::isAllowSleeping() const{
-    return getJoltBody().GetAllowSleeping();
+    return getComponent<RigidbodyComponent>().allowSleeping;
 }
 
 void Rigidbody::setAllowSleeping(bool allowSleeping){
-    getJoltBodyWrite().SetAllowSleeping(allowSleeping);
+    getComponent<RigidbodyComponent>().allowSleeping = allowSleeping;
+    parametersChanged();
 }
 
 // Kept in the component too, so a body made again (a collider or scale change) keeps them
@@ -624,6 +796,8 @@ void Rigidbody::setFriction(float friction){
     body.friction = friction;
     if (!body.body.IsInvalid()){
         getBodyInterface().SetFriction(body.body, friction);
+        // the colliders without a material touch with it
+        scene->getSystem<PhysicsSystem>()->refreshRigidbodyMaterials3D(entity, body, true);
     }
 }
 
@@ -637,6 +811,7 @@ void Rigidbody::setRestitution(float restitution){
     body.restitution = restitution;
     if (!body.body.IsInvalid()){
         getBodyInterface().SetRestitution(body.body, restitution);
+        scene->getSystem<PhysicsSystem>()->refreshRigidbodyMaterials3D(entity, body, true);
     }
 }
 
@@ -860,4 +1035,242 @@ void Rigidbody::setEnabled(bool enabled){
 
 bool Rigidbody::isEnabled() const{
     return getComponent<RigidbodyComponent>().enabled;
+}
+
+// ---- collider edits (physics-3d 6.1.7) ----
+
+Collider3D& Rigidbody::colliderAt(size_t index) const{
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    if (index >= body.colliders.size()){
+        // an exception (LuaBridge turns it into a Lua error)
+        throw std::runtime_error("Rigidbody: no collider " + std::to_string(index) + " (it has " + std::to_string(body.colliders.size()) + ")");
+    }
+    return body.colliders[index];
+}
+
+void Rigidbody::colliderChanged(size_t index){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    if (index < body.colliders.size()){
+        body.colliders[index].dirty = true;
+    }
+    body.needUpdateColliders = true;
+}
+
+void Rigidbody::collidersChanged(){
+    getComponent<RigidbodyComponent>().needUpdateColliders = true;
+}
+
+void Rigidbody::massChanged(){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    body.massDirty = true;
+    std::shared_ptr<PhysicsSystem> physics = scene->getSystem<PhysicsSystem>();
+    // applied now, so velocities set right after see the new mass
+    if (!body.body.IsInvalid() && !physics->isSteppingWorld3D() && !body.needReloadBody){
+        physics->reshapeRigidbody3D(entity, body);
+    }
+}
+
+void Rigidbody::parametersChanged(){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    std::shared_ptr<PhysicsSystem> physics = scene->getSystem<PhysicsSystem>();
+    if (!body.body.IsInvalid() && !physics->isSteppingWorld3D()){
+        physics->applyRigidbodyParameters(entity, body);
+    }else{
+        body.needApplyParameters = true;
+    }
+}
+
+bool Rigidbody::removeCollider(size_t index){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    return scene->getSystem<PhysicsSystem>()->removeCollider3D(entity, body, index);
+}
+
+void Rigidbody::removeAllColliders(){
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    body.colliders.clear();
+    body.needUpdateColliders = true;
+}
+
+void Rigidbody::setColliderPosition(size_t index, Vector3 position){
+    // the leaf stays, the body's shape places it anew
+    colliderAt(index).position = position;
+    collidersChanged();
+}
+
+Vector3 Rigidbody::getColliderPosition(size_t index) const{
+    return colliderAt(index).position;
+}
+
+void Rigidbody::setColliderRotation(size_t index, Quaternion rotation){
+    colliderAt(index).rotation = rotation;
+    collidersChanged();
+}
+
+Quaternion Rigidbody::getColliderRotation(size_t index) const{
+    return colliderAt(index).rotation;
+}
+
+void Rigidbody::setColliderBoxSize(size_t index, Vector3 size){
+    Collider3D& collider = colliderAt(index);
+    collider.width = size.x;
+    collider.height = size.y;
+    collider.depth = size.z;
+    colliderChanged(index);
+}
+
+Vector3 Rigidbody::getColliderBoxSize(size_t index) const{
+    const Collider3D& collider = colliderAt(index);
+    return Vector3(collider.width, collider.height, collider.depth);
+}
+
+void Rigidbody::setColliderRadius(size_t index, float radius){
+    colliderAt(index).radius = radius;
+    colliderChanged(index);
+}
+
+float Rigidbody::getColliderRadius(size_t index) const{
+    return colliderAt(index).radius;
+}
+
+void Rigidbody::setColliderHalfHeight(size_t index, float halfHeight){
+    colliderAt(index).halfHeight = halfHeight;
+    colliderChanged(index);
+}
+
+float Rigidbody::getColliderHalfHeight(size_t index) const{
+    return colliderAt(index).halfHeight;
+}
+
+void Rigidbody::setColliderTaperedRadii(size_t index, float topRadius, float bottomRadius){
+    Collider3D& collider = colliderAt(index);
+    collider.topRadius = topRadius;
+    collider.bottomRadius = bottomRadius;
+    colliderChanged(index);
+}
+
+void Rigidbody::setColliderVertices(size_t index, std::vector<Vector3> vertices){
+    Collider3D& collider = colliderAt(index);
+    if (collider.type == Collider3DType::MESH){
+        // a mesh keeps its triangles when only the points move
+        collider.source = Collider3DSource::RAW_MESH;
+    }else{
+        collider.type = Collider3DType::CONVEX_HULL;
+        collider.source = Collider3DSource::RAW_VERTICES;
+    }
+    collider.vertices = std::move(vertices);
+    colliderChanged(index);
+}
+
+void Rigidbody::setColliderVertices(size_t index, std::vector<Vector3> vertices, std::vector<uint32_t> indices){
+    Collider3D& collider = colliderAt(index);
+    collider.type = Collider3DType::MESH;
+    collider.source = Collider3DSource::RAW_MESH;
+    collider.vertices = std::move(vertices);
+    collider.indices = std::move(indices);
+    colliderChanged(index);
+}
+
+std::vector<Vector3> Rigidbody::getColliderVertices(size_t index) const{
+    return colliderAt(index).vertices;
+}
+
+std::vector<uint32_t> Rigidbody::getColliderIndices(size_t index) const{
+    return colliderAt(index).indices;
+}
+
+void Rigidbody::setColliderTrigger(size_t index, bool trigger){
+    Collider3D& collider = colliderAt(index);
+    if (collider.isTrigger == trigger){
+        return;
+    }
+    collider.isTrigger = trigger;
+    // the surface says so at once; the mass, manifold reduction and kinematic contacts at the
+    // next step (the shape is swapped, no leaf made again)
+    if (collider.surface){
+        collider.surface->isTrigger = trigger;
+    }
+    collidersChanged();
+}
+
+bool Rigidbody::isColliderTrigger(size_t index) const{
+    return colliderAt(index).isTrigger;
+}
+
+void Rigidbody::setColliderMaterial(size_t index, const std::string& path){
+    Collider3D& collider = colliderAt(index);
+    collider.material = path;
+    collider.materialInstance.reset();
+    collider.ownsMaterialInstance = false;
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    scene->getSystem<PhysicsSystem>()->refreshRigidbodyMaterials3D(entity, body, true);
+}
+
+void Rigidbody::setColliderMaterial(size_t index, const PhysicsMaterial& material){
+    Collider3D& collider = colliderAt(index);
+    collider.materialInstance = material.getRuntime();
+    collider.ownsMaterialInstance = false;
+    collider.material = material.valid() ? material.getPath() : std::string();
+    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
+    scene->getSystem<PhysicsSystem>()->refreshRigidbodyMaterials3D(entity, body, true);
+}
+
+void Rigidbody::clearColliderMaterial(size_t index){
+    setColliderMaterial(index, std::string());
+}
+
+PhysicsMaterial Rigidbody::getColliderMaterial(size_t index) const{
+    const Collider3D& collider = colliderAt(index);
+    if (collider.materialInstance) return PhysicsMaterial(collider.materialInstance);
+    if (!collider.material.empty()) return PhysicsMaterial::load(collider.material);
+    return getMaterial();
+}
+
+std::string Rigidbody::getColliderMaterialPath(size_t index) const{
+    return colliderAt(index).material;
+}
+
+namespace {
+    // the collider's own material copy (Unity collider.material): of its asset, or of the body's
+    // surface with the legacy combine rule when it has none
+    std::shared_ptr<PhysicsMaterialRuntime> ownMaterial(Rigidbody& rigidbody, Collider3D& collider, size_t index){
+        if (collider.materialInstance && collider.ownsMaterialInstance){
+            return collider.materialInstance;
+        }
+        PhysicsMaterial material = rigidbody.getColliderMaterial(index);
+        PhysicsMaterialData data;
+        if (material.valid()){
+            data = material.getRuntime()->toData();
+        }else{
+            const RigidbodyComponent& body = rigidbody.getComponent<RigidbodyComponent>();
+            data.friction = body.friction;
+            data.bounciness = body.restitution;
+            data.frictionCombine = PhysicsMaterialCombine::GEOMETRIC_MEAN;
+            data.bounceCombine = PhysicsMaterialCombine::MAXIMUM;
+        }
+        collider.materialInstance = std::make_shared<PhysicsMaterialRuntime>(data, std::string());
+        collider.ownsMaterialInstance = true;
+        return collider.materialInstance;
+    }
+}
+
+void Rigidbody::setColliderFriction(size_t index, float friction){
+    Collider3D& collider = colliderAt(index);
+    ownMaterial(*this, collider, index)->setFriction(friction);
+    scene->getSystem<PhysicsSystem>()->refreshRigidbodyMaterials3D(entity, getComponent<RigidbodyComponent>(), true);
+}
+
+void Rigidbody::setColliderBounciness(size_t index, float bounciness){
+    Collider3D& collider = colliderAt(index);
+    ownMaterial(*this, collider, index)->setBounciness(bounciness);
+    scene->getSystem<PhysicsSystem>()->refreshRigidbodyMaterials3D(entity, getComponent<RigidbodyComponent>(), true);
+}
+
+float Rigidbody::getColliderFriction(size_t index) const{
+    PhysicsMaterial material = getColliderMaterial(index);
+    return material.valid() ? material.getFriction() : getComponent<RigidbodyComponent>().friction;
+}
+
+float Rigidbody::getColliderBounciness(size_t index) const{
+    PhysicsMaterial material = getColliderMaterial(index);
+    return material.valid() ? material.getBounciness() : getComponent<RigidbodyComponent>().restitution;
 }

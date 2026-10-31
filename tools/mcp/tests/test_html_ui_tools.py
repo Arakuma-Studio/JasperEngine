@@ -112,10 +112,19 @@ LIMITS.update({"user_settings": 550})
 # description, set_shape_points' line text reworded; measured on the merged tree: total 106692 (106687 before)
 # ui-canvas-group: create_ui's canvas_group node option (the rules in jasper://docs/ui) and
 # create_entity's canvas_group type; merged with main (lines-trails): 150 tools measured 106771
+# physics-3d: create_ragdoll (506, capped at 900), set_joint's 3D arguments (cone_half_angle and the
+# no-body_b wording), edit_colliders' 3D vertices / indices / is_trigger / material, configure_game_view's
+# physics_debug / physics_debug_contacts; measured on the tree merged with main (script-lifecycle,
+# lines-trails) and gaps/physics-2d: 151 tools, total 107295 (tool_budget.py), the limit set to it
+LIMITS.update({"create_ragdoll": 900})
+# merged by the lead (ui-canvas-group + physics-3d): provisional sum of both increments, re-measured below
+# http: configure_game_view's network and get_play_state's http block; merged with main (script-data,
+# input, physics-2d, script-lifecycle): 150 tools measured 106807, the limit set to it
+# merged by the lead (ui-canvas-group, physics-3d, http): 151 tools measured 107626 on the merged tree
 # shader globals (spec 2026-10-31-shader-globals 6.7): no new tool; get_shader_uniforms names the globals a
-# shader reads and its global_bindings (+51); merged with main (persistence, ui-canvas-group): 150 tools
-# measured 106825, the limit set to it
-TOTAL_LIMIT = 106825
+# shader reads and its global_bindings (+51); merged with main (persistence, ui-canvas-group, physics-3d,
+# http): measured below, the limit set to it
+TOTAL_LIMIT = 107626
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

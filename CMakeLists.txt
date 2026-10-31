@@ -681,6 +681,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/Clipboard.cpp
     ${EDITOR_DIR}/util/EntityClipboard.cpp
     ${EDITOR_DIR}/util/EntityPath.cpp
+    ${EDITOR_DIR}/util/ExportFeatureScan.cpp
     ${EDITOR_DIR}/util/BackgroundRelease.cpp
     ${EDITOR_DIR}/util/AssetDatabase.cpp
     ${EDITOR_DIR}/util/Prefab.cpp
@@ -692,6 +693,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/ShaderGlobalsEdit.cpp
     ${EDITOR_DIR}/util/ProjectFileWrites.cpp
     ${EDITOR_DIR}/util/PhysicsMaterialAssets.cpp
+    ${EDITOR_DIR}/util/RagdollWizard.cpp
+    ${EDITOR_DIR}/window/dialog/RagdollWizardDialog.cpp
     ${EDITOR_DIR}/util/SafeWrite.cpp
     ${EDITOR_DIR}/util/BuiltPlayers.cpp
     ${EDITOR_DIR}/util/NormalMapTilt.cpp

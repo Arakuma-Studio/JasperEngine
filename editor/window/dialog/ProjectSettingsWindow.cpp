@@ -52,6 +52,8 @@ static const char* cxxStandardNames[] = { "C++17", "C++20", "C++23" };
 static const int cxxStandardCount = sizeof(cxxStandardNames) / sizeof(cxxStandardNames[0]);
 static_assert(std::size(cxxStandardNames) == std::size(cxxStandards));
 
+static const char* androidInternetAccessNames[] = { "Auto", "Require" };
+static constexpr int androidInternetAccessCount = 2;
 static const char* androidOrientationNames[] = { "Unspecified", "Portrait", "Landscape", "Sensor Portrait", "Sensor Landscape", "Full Sensor" };
 static const AndroidOrientation androidOrientationValues[] = {
     AndroidOrientation::Unspecified,
@@ -145,7 +147,8 @@ static const settingsui::Category projectCategories[] = {
     {"Player", "", "project product name application identifier version build default icon resolution presentation "
                    "fullscreen mode screen width height resizable window title start scene splash loading async publishing "
                    "native resource pack windows macos linux ios android web company bundle identifier package favicon "
-                   "google admob ads app id"},
+                   "google admob ads app id other settings network allow insecure http downloads over http cleartext "
+                   "internet access permission"},
     {"Graphics", "", "canvas width height scaling mode texture strategy reference resolution runtime shader compilation variants "
                      "html ui msaa anti-aliasing antialiasing shader globals global uniforms setglobal property id u_vs_globals "
                      "u_fs_globals glsl block"},
@@ -876,6 +879,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_cxxStandardIndex = findCxxStandardIndex(project->getCxxStandard());
     m_physics2DEnabled = project->isPhysics2DEnabled();
     m_physics3DEnabled = project->isPhysics3DEnabled();
+    m_physics3DWorld = project->getPhysics3DWorldSettings();
     m_runtimeShadersEnabled = project->isRuntimeShadersEnabled();
 
     const ApplicationSettings& application = project->getApplicationSettings();
@@ -883,6 +887,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     snprintf(m_applicationIdentifierBuffer, sizeof(m_applicationIdentifierBuffer), "%s", application.identifier.c_str());
     snprintf(m_applicationVersionBuffer, sizeof(m_applicationVersionBuffer), "%s", application.version.c_str());
     m_applicationBuild = static_cast<int>(application.build);
+    m_allowInsecureHttp = application.allowInsecureHttp;
 
     const WebProjectSettings& web = project->getWebProjectSettings();
     snprintf(m_webApplicationNameBuffer, sizeof(m_webApplicationNameBuffer), "%s", web.applicationName.c_str());
@@ -943,6 +948,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_androidAbiX86 = android.abiX86;
     m_androidAbiX86_64 = android.abiX86_64;
     m_androidPermissions = android.permissions;
+    m_androidInternetAccessIndex = android.internetAccess == AndroidInternetAccess::Require ? 1 : 0;
     m_androidAllowBackup = android.allowBackup;
     m_androidFullscreen = android.fullscreen;
     m_androidKeepScreenOn = android.keepScreenOn;
@@ -1313,6 +1319,18 @@ void ProjectSettingsWindow::drawPlayerSettings() {
             ImGui::EndTable();
         }
 
+        if (Theme::foldoutHeader("Other Settings") && beginSettingsTable("##PlayerOtherTable")) {
+            const bool defaultInsecureHttp = ApplicationSettings{}.allowInsecureHttp;
+            if (beginSettingsRow("Allow Insecure HTTP", m_allowInsecureHttp != defaultInsecureHttp)) {
+                m_allowInsecureHttp = defaultInsecureHttp;
+            }
+            ImGui::Checkbox("##AllowInsecureHttp", &m_allowInsecureHttp);
+            endSettingsRow("Plain http:// URLs other than localhost. Off: they fail with insecure_http on every platform; "
+                "exports set Android cleartext and iOS ATS to match.");
+
+            ImGui::EndTable();
+        }
+
         if (Theme::foldoutHeader("Publishing Settings") && beginSettingsTable("##PlayerPublishingTable")) {
             if (beginSettingsRow("Native Resource Pack", m_packNativeResources != Project::defaultPackNativeResources)) {
                 m_packNativeResources = Project::defaultPackNativeResources;
@@ -1387,6 +1405,28 @@ void ProjectSettingsWindow::drawPhysicsSettings() {
             ImGui::Checkbox("##Physics3D", &m_physics3DEnabled);
             endSettingsRow("Jolt-based 3D physics. When off, Jolt is left out of exported builds, along with any Rigidbodies and joints the scenes still use. Play always runs with both backends available.");
             ImGui::EndTable();
+        }
+
+        if (Theme::foldoutHeader("3D World Capacity", ImGuiTreeNodeFlags_DefaultOpen)) {
+            drawSectionNote("Limits of each scene's 3D physics world, reserved when the scene starts playing. "
+                "Past Max Bodies no more Rigidbodies are made (the console names the setting); "
+                "past the pairs or contact constraints some contacts are dropped for that step.");
+            if (beginSettingsTable("##WorldCapacityTable")) {
+                const Physics3DWorldSettings defaults;
+                const int maxIndex = 8388607;
+                auto capacityRow = [&](const char* label, const char* id, unsigned int& field, unsigned int defaultValue, const char* tooltip) {
+                    int value = (int)std::min<unsigned int>(field, (unsigned int)maxIndex);
+                    drawIntSetting(label, id, value, (int)defaultValue, 16, tooltip);
+                    field = (unsigned int)std::min(value, maxIndex);
+                };
+                capacityRow("Max Bodies", "##Physics3DMaxBodies", m_physics3DWorld.maxBodies, defaults.maxBodies,
+                    "The most Rigidbodies a scene can have at once (Jolt's maxBodies).");
+                capacityRow("Max Body Pairs", "##Physics3DMaxBodyPairs", m_physics3DWorld.maxBodyPairs, defaults.maxBodyPairs,
+                    "The most pairs of bodies whose bounds overlap in one step (Jolt's maxBodyPairs).");
+                capacityRow("Max Contact Constraints", "##Physics3DMaxContacts", m_physics3DWorld.maxContactConstraints, defaults.maxContactConstraints,
+                    "The most touching body pairs solved in one step (Jolt's maxContactConstraints).");
+                ImGui::EndTable();
+            }
         }
 
         if (Theme::foldoutHeader("Layer Collision Matrix", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -1978,6 +2018,10 @@ void ProjectSettingsWindow::drawAndroidSettings() {
     if (!hasAndroidAbiSelection(m_androidAbiArmeabiV7a, m_androidAbiArm64V8a, m_androidAbiX86, m_androidAbiX86_64)) {
         ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Select at least one architecture.");
     }
+
+    drawComboSetting("Internet Access", "##AndroidInternetAccess", androidInternetAccessNames, androidInternetAccessCount,
+        m_androidInternetAccessIndex, defaults.internetAccess == AndroidInternetAccess::Require ? 1 : 0,
+        "Auto adds INTERNET when Lua or C++ code uses Http (checked at export). Require always adds it.");
 
     beginSettingsRow("Permissions");
     if (ImGui::SmallButton("None##AndroidPermissionsNone")) {
@@ -2667,6 +2711,7 @@ bool ProjectSettingsWindow::applySettings() {
         application.version = Project::toAppleVersion(application.version);  // trim, do not discard
     }
     application.build = static_cast<unsigned int>(std::max(1, m_applicationBuild));
+    application.allowInsecureHttp = m_allowInsecureHttp;
 
     // Moves the referenced files in and rewrites every reference to the new roots
     m_project->changeAssetRoots(m_assetsDir, m_luaDir);
@@ -2677,6 +2722,7 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setCxxStandard(cxxStandards[m_cxxStandardIndex]);
     m_project->setPhysics2DEnabled(m_physics2DEnabled);
     m_project->setPhysics3DEnabled(m_physics3DEnabled);
+    m_project->setPhysics3DWorldSettings(m_physics3DWorld);
     m_project->setRuntimeShadersEnabled(m_runtimeShadersEnabled);
 
     // The project already carries the values applied above
@@ -2760,6 +2806,7 @@ bool ProjectSettingsWindow::applySettings() {
     android.abiX86 = m_androidAbiX86;
     android.abiX86_64 = m_androidAbiX86_64;
     android.permissions = m_androidPermissions;
+    android.internetAccess = m_androidInternetAccessIndex == 1 ? AndroidInternetAccess::Require : AndroidInternetAccess::Auto;
     android.allowBackup = m_androidAllowBackup;
     android.fullscreen = m_androidFullscreen;
     android.keepScreenOn = m_androidKeepScreenOn;

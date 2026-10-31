@@ -770,12 +770,25 @@ void prepare<RigidbodyComponent>(RigidbodyComponent& body, Entity, CloneContext&
         body.hasPendingVelocity = true;
     }
     body.body = JPH::BodyID();
-    for (size_t i = 0; i < body.numColliders && i < body.colliders.size(); i++) {
-        body.colliders[i].shape = nullptr;
-        body.colliders[i].sourceEntity = ctx.remap(body.colliders[i].sourceEntity);
+    body.triggerBody = JPH::BodyID();
+    for (Collider3D& collider : body.colliders) {
+        collider.shape = nullptr;
+        collider.surface = nullptr;
+        collider.dirty = true;
+        collider.sourceEntity = ctx.remap(collider.sourceEntity);
+        collider.receiver = ctx.remap(collider.receiver);
+        // a collider's own material copy (setColliderFriction on a material): the clone gets
+        // its own copy of it, with the same values; a script's shared PhysicsMaterial stays shared
+        if (collider.ownsMaterialInstance && collider.materialInstance) {
+            collider.materialInstance = std::make_shared<PhysicsMaterialRuntime>(collider.materialInstance->toData(), std::string());
+        }
     }
     body.needReloadBody = true;
     body.needUpdateColliders = true;
+    body.massDirty = false;
+    body.needApplyParameters = false;
+    body.hasPendingType = false;
+    body.appliedMaterialRevision = 0;
     body.newBody = true;
 }
 
@@ -789,6 +802,30 @@ void prepare<Joint3DComponent>(Joint3DComponent& joint, Entity, CloneContext& ct
     joint.hinge = ctx.remap(joint.hinge);
     joint.slider = ctx.remap(joint.slider);
     joint.needUpdateJoint = true;
+    joint.needApplyParameters = false;
+    joint.loadFailed = false;
+    joint.ignoredA = NULL_ENTITY;
+    joint.ignoredB = NULL_ENTITY;
+    joint.currentForce = Vector3::ZERO;
+    joint.currentTorque = Vector3::ZERO;
+    joint.broken = false;
+    joint.breakArmed = true;
+    joint.dampedAxes = 0;
+}
+
+template<>
+void prepare<RagdollComponent>(RagdollComponent& ragdoll, Entity, CloneContext& ctx) {
+    ragdoll.root = ctx.remap(ragdoll.root);
+    ragdoll.animator = ctx.remap(ragdoll.animator);
+    ragdoll.parts.clear();
+    ragdoll.needCollectParts = true;
+    ragdoll.appliedState = -1;
+    ragdoll.appliedSelfCollision = true;
+    ragdoll.ignoredPairs.clear();
+    ragdoll.pausedAnimator = NULL_ENTITY;
+    ragdoll.animatorWasEnabled = true;
+    ragdoll.pausedDrivers.clear();
+    ragdoll.pendingPushes.clear();
 }
 #endif
 
@@ -936,6 +973,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
 #ifdef JASPERENGINE_PHYSICS_3D
     copyComponent<RigidbodyComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<Joint3DComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<RagdollComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
 #endif
     copyComponent<InstancedMeshComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<PrefabComponent>(source, sourceEntity, signature, target, targetEntity, ctx);

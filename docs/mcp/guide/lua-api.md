@@ -884,6 +884,7 @@ Entities are plain integers (`0` = none).
 | `Physics.raycast(scene, origin, direction, maxDistance [, mask])`, `Physics.raycastAll(...)` | 3D, Vector3 origin/dir |
 | `ignoreLayerCollision(l1, l2 [, ignore=true])`, `getIgnoreLayerCollision(l1, l2)`, `getLayerCollisionMask(l)`, `setLayerCollisionMask(l, mask)`, `resetLayerCollisionMatrix()` | on both `Physics` and `Physics2D` |
 | `ALL_LAYERS`, `DEFAULT_RAYCAST_LAYERS`, `IGNORE_RAYCAST_LAYER` | static props on both |
+| `Physics.debugDraw`, `Physics.debugDrawContacts` | rw static bools: draw the colliders and joints (and contact points) of every playing scene, 3D and 2D (the Game view's Physics toggle) |
 
 `RayReturn` (ro): `hit` (bool), `distance`, `point` (Vector3), `normal` (Vector3), `body`
 (Entity), `colliderIndex`.
@@ -965,6 +966,38 @@ or `(r,g,b,a)`.
 
 No timer API is bound: accumulate `Engine.deltatime` in `self`, or use
 `GameObject.destroy(obj, delay)` for delayed destruction, or Tweens/Actions.
+
+### 2.13 Http (static, HTTP(S) requests)
+
+Full reference, options, error codes, platform notes and examples: `jasper://docs/networking`.
+The callback runs once, on the main thread, right before `onUpdate` of a later frame; errors are
+values (`res.ok`, `res.errorCode`, `res.error`); pass `owner = self` so the request ends with
+the script (no callback). Plain `http://` works only to localhost unless
+`player.allow_insecure_http`.
+
+| Call | Meaning |
+|---|---|
+| `Http.get(url [, options] [, callback])` | GET; `head`, `delete` likewise |
+| `Http.post(url, body [, options] [, callback])` | POST: string body as is, table as JSON; `put`, `patch` likewise |
+| `Http.request{url = ..., method = ..., onComplete = ...}` | any method, every option |
+| `Http.download(url, "data://x" [, options] [, callback])` | into a file (`<path>.part`, renamed on success) |
+| `Http.getTexture(url [, options] [, callback])` | `res.textureData` for `image:setTexture(res.url, res.textureData)` |
+| `Http.cancelAll()`, `Http.isAvailable()`, `Http.encodeUrl(s)`, `Http.decodeUrl(s)` | |
+| `Http.maxConcurrentRequests`, `Http.userAgent`, `Http.timeout`, `Http.logFailures` (rw) | 8, `JasperEngine/<version> (<platform>)`, 30 s, false |
+
+Options: `headers`, `query`, `body`, `json`, `form`, `timeout`, `connectTimeout`, `redirects`,
+`verifyTls`, `responseType` (`"text"`, `"binary"`, `"json"`: `res.data`), `maxBodySize`,
+`onProgress = function(req, received, total)`, `owner`, `file`, `resume`, `keepPartial`.
+`HttpRequest` (returned): `id`, `url`, `method`, `state` (`HttpState.Queued/Running/Done/Cancelled`),
+`progress`, `bytesReceived`, `bytesTotal`, `response`, `req:isDone()`, `req:cancel()`.
+`HttpResponse`: `ok`, `status`, `errorCode`, `error`, `headers`, `body`, `data`, `textureData`,
+`file`, `url`, `redirected`, `method`, `elapsed`, `bytesReceived`, `res:json()`, `res:header(name)`.
+
+```lua
+Http.get("https://backend.example.com/Now", {responseType = "json", timeout = 10, owner = self}, function(res)
+    if res.ok then self.serverTime = res.data.time else Log.warn(res.error) end
+end)
+```
 
 ---
 
@@ -1095,6 +1128,7 @@ non-string `className` errors. Annotate the result for LuaLS: `local enemy = go:
 | `removeRigidbody2D()` | method | |
 | `getJoint2D()` | method | the GameObject's `Joint2D`, `nil` when it has none |
 | `getRigidbody()` / `removeRigidbody()` | method | 3D, same semantics |
+| `getJoint3D()`, `getRagdoll()` | method | the GameObject's `Joint3D` / `Ragdoll`, `nil` when it has none |
 | `getRay(direction)` | method | Ray from world position |
 | `getAnimationPlayer()` | method | the GameObject's `AnimationPlayer` (4.8.2), `nil` when it has none (it never adds one) |
 | `hasAnimationPlayer()` | method | bool |
@@ -1609,25 +1643,72 @@ function Car:onJointBreak2D(joint) Log.print("snap") end
 | `position` | rw `Vector3` | teleport |
 | `rotation` | rw `Quaternion` | |
 | `linearVelocity`, `angularVelocity` | rw `Vector3` | also `setLinearVelocityClamped(v)`, `setAngularVelocityClamped(v)` |
-| `mass` | rw property | (2D uses `getMass()` method) |
-| `type` | rw `BodyType.*` | |
+| `mass` | rw property | kg; setting it turns `automaticMass` off (2D uses `getMass()` method) |
+| `automaticMass`, `centerOfMass`, `automaticCenterOfMass`, `inertiaTensor`, `inertiaTensorRotation`, `automaticInertiaTensor` | rw | setting a value turns its automatic off; `resetCenterOfMass()`, `resetInertiaTensor()` |
+| `linearDamping`, `angularDamping` | rw numbers | Unity drag / angularDrag, 0.05 by default (Jolt's) |
+| `maxLinearVelocity`, `maxAngularVelocity` | rw numbers | m/s, rad/s |
+| `interpolation` | rw `RigidbodyInterpolation.*` | `SCENE` (default), `NONE`, `INTERPOLATE`, `EXTRAPOLATE` |
+| `type` | rw `BodyType.*` | switches live (same body, joints and contacts); `isKinematic` (rw) is Unity's; `setType(t)` returns false for a body with a mesh / heightfield collider |
+| `isSleeping()`, `sleep()`, `wakeUp()` | methods | |
+| `material` | rw `PhysicsMaterial` | default material of the colliders without one |
 | `motionQuality` | rw | `RigidbodyMotionQuality.DISCRETE` / `LINEAR_CAST` |
-| `friction`, `restitution`, `gravityFactor`, `sensor`, `allowSleeping`, `enabled`, `shapeDensity`, `collisionGroupID`, `categoryBitsFilter`, `maskBitsFilter`, `collideKinematicVsNonDynamic` | rw | |
+| `friction`, `restitution`, `gravityFactor`, `sensor`, `allowSleeping`, `enabled`, `shapeDensity`, `collisionGroupID`, `categoryBitsFilter`, `maskBitsFilter`, `collideKinematicVsNonDynamic` | rw | `friction` / `restitution`: the surface of colliders without a material |
 | `buoyancy`, `waterDrag`, `waterAngularDrag` | rw numbers | floating in a `library:water` (2.10.1): Jolt's buoyancy at the centre of mass each fixed step of a dynamic body, 1 neutral, more floats, less sinks, 0 (default) ignores water; drags default 0.5 and 0.01 |
 | `applyForce(f)`, `applyForce(f, point)` | method | f in Vector3; single-arg = at center (no `applyForceToCenter` in 3D) |
 | `applyImpulse(i)`, `applyImpulse(i, point)`, `applyTorque(t)`, `applyAngularImpulse(a)` | methods | |
 | `activate()`, `deactivate()` | methods | |
-| `createBoxCollider(w, h, d)`, `createSphereCollider(r)`, `createCapsuleCollider(halfH, r)`, `createCylinderCollider(halfH, r)`, `createTaperedCapsuleCollider(...)`, `createConvexHullCollider(...)`, `createMeshCollider(...)`, `createHeightFieldCollider(...)` | methods | each also with `(Vector3 pos, Quaternion rot, ...)` prefix overload |
-| `getNumColliders()`, `getColliderType(i)`, `load()`, `getAttachedObject()` | methods | |
+| `createBoxCollider(w, h, d)`, `createSphereCollider(r)`, `createCapsuleCollider(halfH, r)`, `createCylinderCollider(halfH, r)`, `createTaperedCapsuleCollider(...)`, `createConvexHullCollider(...)`, `createMeshCollider(...)`, `createHeightFieldCollider(...)` | methods | each also with `(Vector3 pos, Quaternion rot, ...)` prefix overload; any number of colliders, vertices and indices |
+| `getNumColliders()` / `getColliderCount()`, `getColliderType(i)`, `removeCollider(i)` (later indices shift), `removeAllColliders()`, `load()`, `getAttachedObject()` | methods | |
+| `setColliderPosition(i, v)`, `setColliderRotation(i, q)`, `setColliderBoxSize(i, v)`, `setColliderRadius(i, r)`, `setColliderHalfHeight(i, h)`, `setColliderTaperedRadii(i, top, bottom)`, `setColliderVertices(i, vertices [, indices])` and their getters | methods | swap the shape at the next step: the body keeps its id, joints and contacts |
+| `setColliderTrigger(i, on)`, `isColliderTrigger(i)` | methods | Unity Is Trigger per collider: passes through, sensor contacts, no mass |
+| `setColliderMaterial(i, m)` (a `PhysicsMaterial`, a path, or nil), `getColliderMaterial(i)`, `setColliderFriction(i, f)`, `setColliderBounciness(i, b)` and getters | methods | friction / bounciness give the collider its own copy of its material (Unity `collider.material`) |
 | `setAllowedDOFsAll()`, `setAllowedDOFs2DPlane()`, `setAllowedDOFs(...)`, `setOverrideMassAndInertia(...)` | methods | |
 | `getPointVelocity(p)`, `getAccumulatedForce()`, `getCenterOfMassPosition()` | methods | |
 
 `Contact3D`: `getWorldSpaceNormal()`, `getPenetrationDepth()`, `getBaseOffset()`,
 `getColliderIndex1()`, `getColliderIndex2()`, rw `combinedFriction`,
-`combinedRestitution`, `sensor`. `Joint3D(scene [, entity])`: `setFixedJoint`,
-`setDistanceJoint`, `setPointJoint`, `setHingeJoint`, `setConeJoint`, `setPrismaticJoint`,
-`setSwingTwistJoint`, `setSixDOFJoint`, `setPathJoint`, `setGearJoint`,
-`setRackAndPinionJoint`, `setPulleyJoint`, `getType()` (partial).
+`combinedRestitution`, `sensor`.
+
+**Joint3D** (EntityHandle; `go:getJoint3D()`, `Joint3D(scene, entity)`, `Joint3D(scene)` a new
+GameObject): rw `enabled`, `type` (`Joint3DType.*`), `bodyA`, `bodyB` (alias `connectedBody`;
+Entity or GameObject, nil = the world), `anchorSpace` (`JointAnchorSpace.LOCAL` for new joints),
+`anchor`, `anchorB` (alias `connectedAnchor`), `autoAnchors` (alias
+`autoConfigureConnectedAnchor`), `anchorA`, `axis`, `normal` (alias `secondaryAxis`), `twistAxis`,
+`planeAxis` (alias `swingAxis`), `axisX`, `axisY`, `enableCollision`, `breakForce`, `breakTorque`,
+`breakAction`, `useLimits`, `limitsMin`, `limitsMax`, `limitsSpringFrequency`,
+`limitsSpringDamping`, `useMotor`, `motorTargetVelocity`, `motorMaxForce`, `useSpring`,
+`springStiffness`, `springDamper`, `springTargetPosition`, `maxFriction`, `minDistance`,
+`maxDistance`, `coneHalfAngle`, `twistMinAngle` / `twistMaxAngle` (aliases `lowTwistLimit` /
+`highTwistLimit`), `normalHalfConeAngle` (alias `swing1Limit`: about the swing axis),
+`planeHalfConeAngle` (alias `swing2Limit`: about the normal of twist and swing axes), `swingType` (`SwingType.CONE` / `PYRAMID`), `motorTargetRotation`,
+`motorSpringFrequency`, `motorSpringDamping`, `xMotion` ... `angularZMotion` (`JointMotion.LOCKED` /
+`LIMITED` / `FREE`), `linearLimitMin/Max`, `angularLimitMin/Max`, `useDrive`, `driveStiffness`,
+`driveDamping`, `angularDriveStiffness`, `angularDriveDamping`, `driveMaxForce`, `driveMaxTorque`,
+`targetPosition`, `targetRotation`, `targetVelocity`, `targetAngularVelocity`. Read-only:
+`currentForce`, `currentTorque` (Vector3, N and N m), `angle`, `velocity` (hinge), `position`,
+`speed` (prismatic), `currentLength` (distance), `broken`, `live`. Angles in the engine's unit,
+bodyA's relative to the connected body from the pose the joint is made in. Breaking calls
+`onJointBreak(force, joint)` on the joint's GameObject and bodyA's scripts. The old helpers
+`setFixedJoint`, `setHingeJoint`, ... `setPulleyJoint` (world points) still work.
+
+```lua
+local hinge = Joint3D(self.scene)          -- a door on its frame
+hinge.type = Joint3DType.HINGE
+hinge.bodyA = self.door                    -- Unity's "this"
+hinge.connectedBody = self.frame
+hinge.anchor = Vector3(-0.5, 0, 0)         -- in the door's local space
+hinge.axis = Vector3(0, 1, 0)
+hinge.useLimits = true
+hinge.limitsMin, hinge.limitsMax = 0, 110
+```
+
+**Ragdoll** (EntityHandle; `go:getRagdoll()`): rw `enabled`, `simulated` (false: the parts are
+kinematic and follow the animation; true: dynamic, the Animation Player paused), `inheritVelocity`,
+`selfCollision`, `totalMass`, `root`, `animator`; ro `partCount`; `getParts()` (table of
+`Rigidbody`), `applyImpulse(impulse, point)` (the part nearest the point; after `simulated = true`
+in the same frame too), `applyForce(force)` (every part by its mass); event
+`onBeforeAnimatedRestore` (`RegisterEvent(self, ragdoll.onBeforeAnimatedRestore, "fn")`, fn(entity)
+before a ragdoll goes back to animated). Made by the Ragdoll wizard (`create_ragdoll`).
 
 ### 4.15 Actions and Tweens
 
@@ -1909,6 +1990,9 @@ use the methods. Physics colliders keep the rest shape.
 | `RigidbodySleepMode2D` | `NEVER_SLEEP`, `START_AWAKE`, `START_ASLEEP` |
 | `PhysicsMaterialCombine` | `AVERAGE`, `GEOMETRIC_MEAN`, `MINIMUM`, `MULTIPLY`, `MAXIMUM` |
 | `Joint3DType` | `FIXED`, `DISTANCE`, `POINT`, `HINGE`, `CONE`, `PRISMATIC`, `SWINGTWIST`, `SIXDOF`, `PATH`, `GEAR`, `RACKANDPINON`, `PULLEY` |
+| `JointMotion` | `LOCKED`, `LIMITED`, `FREE` |
+| `SwingType` | `CONE`, `PYRAMID` |
+| `RigidbodyInterpolation` | `SCENE`, `NONE`, `INTERPOLATE`, `EXTRAPOLATE` |
 | `CameraType` | `CAMERA_UI`, `CAMERA_ORTHO`, `CAMERA_PERSPECTIVE` |
 | `LightType` | `DIRECTIONAL`, `POINT`, `SPOT` |
 | `EaseType` | `LINEAR`, `STEP`, `QUAD_IN/OUT/IN_OUT`, `CUBIC_*`, `QUART_*`, `QUINT_*`, `SINE_*`, `EXPO_*`, `CIRC_*`, `ELASTIC_*`, `BACK_*`, `BOUNCE_*` (each `_IN`, `_OUT`, `_IN_OUT`), `CUSTOM` |
