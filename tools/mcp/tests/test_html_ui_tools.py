@@ -112,11 +112,11 @@ LIMITS.update({"user_settings": 550})
 # description, set_shape_points' line text reworded; measured on the merged tree: total 106692 (106687 before)
 # platform services (spec 6.9): send_input's `app` events, configure_game_view's device,
 # orientation and language, get_play_state's platform (+468 on its branch); measured on the tree
-# merged with script-data and input: total 107155; merged again (physics-2d, script-lifecycle,
-# lines-trails): total MEASURED, the limit raised by it
+# merged with script-data and input: total 107155, the limit raised by it
 # ui-scaling-text: configure_game_view's resolution (a preset, "WxH[@dpi]", {width, height, dpi, name}) and
-# create_ui's outline/shadow text props (+284 on its branch)
-TOTAL_LIMIT = 107500
+# create_ui's outline/shadow text props (+284 on its branch); measured on the tree merged with
+# platform-services and main (physics-2d, script-lifecycle, lines-trails): 150 tools, total 107378
+TOTAL_LIMIT = 107378
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
