@@ -40,8 +40,14 @@ JasperEngine is based on [Doriax](https://github.com/doriaxengine/doriax) by Edu
 - UI toolkit with Rect Transforms, layout groups, text, images, buttons, input fields, scrollbars, and other widgets
 - Box2D and Jolt Physics for 2D/3D rigidbodies, colliders, and joints, drawn interpolated between fixed steps
 - Spatial 3D audio and multithreaded asynchronous resource loading
+- Lua and C++ scripts with Unity's MonoBehaviour lifecycle (`init` as Awake, `onEnable`, `start`, `onDisable`, `onDestroy`, application pause/focus/quit), `self.enabled`, `getScript`, scene-wide `GameObject.find*` / `findObjectOfType`, and UnityEvent-style `Event()` listeners: see [docs/mcp/guide/lua-api.md](docs/mcp/guide/lua-api.md)
 
 Names follow Unity; see [docs/unity-glossary.md](docs/unity-glossary.md) for the old names and how to migrate older projects.
+
+**Scripts in older projects**: a disabled script's `init` now runs (Unity's Awake: check
+`self.enabled` there, or remove the script to keep it fully off); a script on a GameObject that
+starts inactive gets its `init` on the first activation; `onDestroy` also runs on scene unload
+and Play stop; disabled C++ scripts are compiled too.
 
 **2D normal maps in older projects**:
 

@@ -576,3 +576,101 @@ for `function M:Update()`; reload test: a script counting `init` calls in `UserS
   feature only adds the per-object `onApplicationFocus`/`onApplicationPause` broadcasts to those entry points.
 - Risk: decision 3 changes behaviour of existing projects (disabled scripts' `init`, inactive objects'
   late `init`); mitigated by the migration note and the check in tests.
+
+## Implementation notes
+
+Decisions taken while implementing (branch `gaps/script-lifecycle`), where the spec was ambiguous
+or where a different design was safer:
+
+1. **The lifecycle state lives in `ScriptRuntime`, keyed by the instance** (`ScriptState`:
+   scene, entity, `initialized`, `enabledLatch`, `started`, `startQueued`, `destroying`,
+   `destroyed`; `ScriptRuntime::getState(instance)`), not in `ScriptEntry` (6.1). The editor
+   writes whole `scripts` vectors (`update_script_entry`, reorder, undo of a Script component
+   edit): flags stored in the entries were copied back stale and broke the onEnable/onDisable
+   pairing. `ScriptEntry` keeps only `cppScript` and `cppMessageMask` (constant per instance).
+   The state is dropped when the instance is released (`releaseLuaScriptInstance`, the generated
+   `deleteCppScripts` calls `ScriptRuntime::forgetInstance`: refs and addresses are reused) and
+   with its scene (`~Scene` -> `forgetScene`). Persistence moves entries with their instance and
+   calls `remap` (now updates the states' scene/entity). An extra `destroying` flag keeps a script
+   being destroyed or unloaded from being re-enabled by a callback (`setActive(true)` in
+   `onDisable`).
+2. **Instance plumbing (6.7)**: instead of changing the module table's metatable, every instance
+   gets its own metatable whose `__index` is a C closure over the module: the reserved members
+   (`enabled`, `isActiveAndEnabled`, `gameObject`) first, then `module[key]` (with whatever
+   inheritance the module built), then `ScriptInstanceBase` (registry table, extended by other
+   features through `LuaBinding::pushScriptInstanceBase`). A metatable `__index` on the module can
+   not see `self`, which the members need. Instance fields are set raw before the metatable.
+   `gameObject` wrappers are cached in a weak-keyed registry table (instance -> GameObject), so the
+   instance's state as MCP shows it carries no extra field.
+3. **`ScriptBase::getScript<T>()`** uses `dynamic_cast` over the GameObject's C++ entries (now that
+   `ScriptBase` is polymorphic) instead of a `JASPERENGINE_SCRIPT_CLASS` trait: a trait emitted in
+   the generated code is invisible to the user's own `.cpp` files. It also finds subclasses
+   (Unity's `GetComponent<Base>()`).
+4. **`ScriptMessages`**: the physics-contacts contract is implemented in full (its enum values
+   first, `methodName`, cached `receivers`, `send`, `addReceiversChangedListener`, `cppMask<T>()`
+   via SFINAE-safe override traits: an overloaded name counts as overridden). Additions:
+   `sendTo`, `sendNamed`, `invoke` (one entry, no rules: the lifecycle's own path),
+   `notifyReceiversChanged`, `forgetScene`, `asScriptBase<T>()`, and a trailing `deliver`
+   argument of `send` (`DeliverRequireActive`, `DeliverRequireEnabled`) that
+   `ScriptRuntime::sendMessage` exposes for `ui-multitouch`. `send` calls entries in Script
+   component order (each entry is either Lua or C++). C++ exceptions thrown from a message are
+   logged like Lua errors. `ScriptBase` lifecycle virtuals are in place; physics-contacts adds its
+   own virtuals and trait lines.
+5. **Which scenes unload / quit**: `SceneManager::runFactory` unloads every scene whose scripts
+   started (`ScriptRuntime::getStartedScenes`: running ones in Engine order, then the others)
+   except the shown loading scene's, not only the running ones: a child scene removed with
+   `removeChildScene` is torn down by the factory as well (exports delete it), so it now gets its
+   `onDestroy` before the new scene's `init`. `quitAll` likewise covers every started scene.
+   `getUnloadingScenes()` is valid while the factory runs; `isFactoryRunning()` was added.
+6. **Hierarchy order** = the Transform array order (the editor's Hierarchy order: parents
+   first, siblings in order, roots in order), then entities without a Transform by id
+   (`EntityRegistry::getHierarchyOrder`). Activation changes are reported by two virtuals,
+   `isActivationObserved()` (cheap gate: the scene has started scripts) and
+   `onActiveInHierarchyChanged(changed, nowActive)`.
+7. **Finds**: running scenes in Engine order; while a scene starts (load factory running, or the
+   `ObjectManager` active-scene stack non-empty, `ObjectManager::getActiveSceneStack`) also the
+   scenes started meanwhile and the scene being built. Entities by ascending id.
+   `GameObject.find` follows Unity's path rule: `"A/B"` is a B below an A anywhere, `"/A/B"`
+   starts at a root. `findWithTag` with an undefined tag logs "Tag: X is not defined." and returns
+   nil / an empty list (like `findByTag`), it does not raise. Wrapper names map to the component
+   that defines them; `GameObject`, `EntityHandle` and `Primitive` (no own component) raise "not a
+   component type". A wrapper name wins over a Lua class of the same name.
+8. **Reserved property names** make instance creation fail with a logged error (the script does
+   not run), so the mistake cannot go unnoticed; `check_script` warns about it statically.
+9. **Inspector / MCP in Play**: rather than a Catalog setter, the `scripts[N].enabled` and
+   `scripts` properties carry a new `UpdateFlags_Script_Enabled`; `Catalog::updateEntity` then calls
+   `ScriptRuntime::refreshEntity`, so every write path (Inspector checkbox, `set_runtime_property`,
+   `update_script_entry`, `set_script_properties` with `enabled`, undo/redo) fires
+   `onEnable`/`onDisable` from the latch. The Inspector shows a dim status after the class name in
+   Play (`not initialized`, `initialized`, `waiting to start`, `started`, `started, inactive`,
+   `destroyed`, `not running`). `get_runtime_entity` adds `initialized`, `started`,
+   `active_and_enabled` (and `running: false` without an instance).
+10. **Editor reload (9.4)**: the load factory first retires every runtime entry whose scripts
+    were unloaded by this load *or* by an earlier load that left it out of its stack (they were
+    rebuilt from stale state before): scripts released, sounds stopped, pending destroys and
+    component subscriptions dropped, moved to `PlaySession::retiredRuntimeScenes`. The played
+    scene, loaded again, is a fresh owned copy built from `playStateSnapshot`
+    (`createRuntimeCloneFromNode`; an unsaved scene has no file). Stop tears retired entries down
+    with the others (copies deleted, the played scene restored). Follow-ups this needed: a copy of
+    the played scene counts as a running layer (`getRunningRuntimeLayerScenes`), the Game view
+    re-activation shows the loaded stack instead of the replaced played scene
+    (`Project::isPlayedSceneReplaced`), and MCP tools without `scene` (or naming the played scene)
+    resolve to the main scene the game shows now.
+11. **Focus and pause**: `Engine::systemFocus(bool)`, `Engine::isFocused()` and the C++ event
+    `Engine::onFocus` were added minimally as platform-services names them (idempotent, fires
+    `onFocus`, then the `onApplicationFocus` broadcast); only Android calls it here. Its Lua
+    binding (`FunctionSubscribe_V_B`, `Engine.onFocus`), the other platforms and the pause
+    idempotency stay platform-services'. Pause: `AudioSystem::pauseAll`, the
+    `onApplicationPause(true)` broadcast, `Engine.onPause`; resume: `resumeAll`, the `false`
+    broadcast, `Engine.onResume`. Broadcasts go to started scenes that are running.
+12. **Disabled C++ scripts are compiled** into Play and exports (`updateSceneCppScripts`, prefab
+    collection): every entry gets its object and can be enabled at runtime, as in Unity. Noted in
+    the migration text.
+13. `sendNamed` (animation events) keeps the old rule (enabled Lua entries with an instance),
+    skipping destroyed ones; it does not require `initialized`, so hand-made entries of the
+    animation tests keep working.
+14. `RegisterEvent(self, ev, "m")` on an `Event` registers the listener owned by `self` (dropped
+    once released); `UnregisterEvent`/`UnregisterEngineEvent` compute the registration's tag
+    through the same helper (`pushSubscriptionTag`). `check_script` warnings are returned in
+    `warnings` and appended to the text; they do not make `ok` false.
+15. The agent guide stays within its 16 KB budget by tightening a few existing lines.

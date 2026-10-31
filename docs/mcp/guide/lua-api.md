@@ -66,22 +66,64 @@ the project (see [editor-integration.md](editor-integration.md)).
 
 ### 1.1 Lifecycle
 
+Unity's MonoBehaviour lifecycle. The engine calls these methods **by name** when the script
+defines them (no registration):
+
+| Method | When | Unity |
+|---|---|---|
+| `init(self)` | once, the first time the GameObject is active in hierarchy, **whether or not the script is enabled**; after every instance and reference of the scene exists | `Awake` |
+| `onEnable(self)` | the script becomes active and enabled: after `init` at load / instantiate / activation, and every time it is re-enabled or its GameObject re-activated | `OnEnable` |
+| `start(self)` | once, at the start of the frame after its first `onEnable`, before that frame's `onFixedUpdate`/`onUpdate`; not run while disabled or inactive (it waits) | `Start` |
+| `onDisable(self)` | the script stops being active and enabled: `self.enabled = false`, its GameObject or a parent deactivated, destroy, scene unload, Play stop; always before `onDestroy` | `OnDisable` |
+| `onDestroy(self)` | once: `GameObject.destroy` (end of frame) / `destroyImmediate`, scene unload (a `SceneManager.loadScene`), Play stop / application quit; only if `init` ran | `OnDestroy` |
+| `onApplicationPause(self, paused)` | the app goes to the background (`true`) and returns (`false`); scripts of active GameObjects, enabled or not | `OnApplicationPause` |
+| `onApplicationFocus(self, focused)` | the app lost / gained the focus (platforms that report it) | `OnApplicationFocus` |
+| `onApplicationQuit(self)` | Play stop / app shutdown, before `onDisable`/`onDestroy` | `OnApplicationQuit` |
+
+Order, deterministic: a scene load runs all `init` (parents before children, siblings in order,
+scripts in component order), then all `onEnable`, then the scene's HTML documents start;
+`start` follows at the next frame. A scene load first unloads the old scenes (their
+`onDisable`, then `onDestroy`), then the new ones `init`: a singleton clearing
+`Manager.instance` in `onDestroy` does not clobber the new one. `GameObject.instantiate`
+returns after the copies' `init` and `onEnable` ran. `go:setActive(true)` runs `init` (first
+time) and `onEnable` before it returns; `setActive(false)` runs `onDisable`. Play stop (and
+an exported build's shutdown): `onApplicationQuit` to every script, then `onDisable`, then
+`onDestroy`. A mobile OS may end an app without the shutdown: save state in
+`onApplicationPause(true)`.
+
 | Step | What happens |
 |---|---|
-| Instance creation | The file's chunk is executed once **per instance** (compiled once, run per attached script). The returned module table becomes the `__index` prototype of a fresh instance table. So file-level `local` variables are per instance; `require`d modules are shared. |
+| Instance creation | Every Script component entry has an instance, enabled or not (Unity components exist when disabled), also on inactive GameObjects. The file's chunk is executed once **per instance** (compiled once, run per attached script); the instance gets its methods from the returned module table. So file-level `local` variables are per instance; `require`d modules are shared. |
 | Fields set | `self.__name` (class name), `self.scene` (Scene userdata), `self.entity` (integer Entity id), then every property `self.<name>` = Inspector value. |
 | References | After all instances of the scene exist, entity-reference properties are resolved (second pass). So in `init()` all references are valid, but the referenced script's own `init()` may not have run yet. |
-| `init(self)` | Called once (third pass) for every enabled Lua script. Register events here. |
+| Lifecycle | `init`, `onEnable`, `start`, ... as above. Register events in `init` (or `onEnable`, unregistering in `onDisable`). |
 | Events | Methods registered with `RegisterEngineEvent` / `RegisterEvent` are called by the engine. |
-| `onDestroy(self)` | Called (if defined) when the GameObject is destroyed at runtime (`GameObject.destroy` / `destroyImmediate`), before the instance is released. It is NOT called when the scene/play mode simply stops. Not a registered event, just define the method. |
-| Release | All subscriptions made through `RegisterEngineEvent`/`RegisterEvent` for this instance are removed automatically. |
+| Release | After `onDestroy` (or for a GameObject never active, without it): subscriptions made through `RegisterEngineEvent`/`RegisterEvent` and `Event` listeners the instance owns are removed. |
 
-`init` and `onDestroy` are the only methods the engine calls by name. Everything else
-(`onUpdate`, `onFixedUpdate`, ...) is called **only if registered**.
+Every instance also has (Unity's MonoBehaviour members):
 
-Engine events registered with `RegisterEngineEvent` are skipped while the script's
-GameObject is inactive or the script entry is disabled. `RegisterEvent` (component/physics
-events) is not guarded.
+| Member | Kind | Meaning |
+|---|---|---|
+| `self.enabled` | rw boolean | the Script entry's enabled flag (the Inspector checkbox); assigning calls `onEnable`/`onDisable` at once, and `start` at the next frame the first time. Only `true`/`false` (else error). |
+| `self.isActiveAndEnabled` | ro boolean | GameObject active in hierarchy and the script enabled |
+| `self.gameObject` | ro `GameObject` | the script's GameObject (cached) |
+| `self:getScript(className)` ... | methods | the scripts of the same GameObject, its children or parents (4.1) |
+
+`enabled`, `isActiveAndEnabled` and `gameObject` are reserved: a `properties` entry with one
+of these names is an error (the script does not run until it is renamed).
+
+Update methods (`onUpdate`, `onFixedUpdate`, `onPostUpdate`, input events) are called **only if
+registered** with `RegisterEngineEvent`, and are skipped while the script's GameObject is
+inactive or the script disabled. `RegisterEvent` (component/physics events) is not guarded.
+Disabling a script does not stop what it started (tweens, sounds); deactivating its GameObject
+pauses its updates. Unity names (`Awake`, `Start`, `Update`, `OnEnable`, ...) are never called:
+`check_script` warns about them.
+
+Migration (projects from before this lifecycle): a **disabled** script's `init` now runs
+(Unity's Awake): check `self.enabled` in `init` or remove the script to keep it fully off. A
+script on a GameObject that starts **inactive** gets its `init` when the GameObject is first
+activated (it used to run at load). `onDestroy` now also runs on scene unload and Play stop.
+Disabled C++ scripts are compiled into the build too (they can be enabled at runtime).
 
 The editor reads `properties` by executing the file in an isolated Lua state of its own
 (engine globals there are inert stand-ins, see [checks](../checks.md)), and the game runs it
@@ -106,7 +148,7 @@ label, defaults to `name`), `type` (string, case-insensitive; default `float` if
 | `"color3"` | `Vector3` | `{r, g, b}` |
 | `"color4"` | `Vector4` | `{r, g, b, a}` (a defaults 1) |
 | `"prefab"`, `"prefabasset"` | `PrefabAsset`, or `nil` when left None | no default (assigned in Inspector) |
-| `"entity"`, `"entitypointer"`, `"pointer"` | the first enabled Lua script instance on the referenced GameObject if it has one, otherwise an `EntityHandle`; `nil` if unassigned | none |
+| `"entity"`, `"entitypointer"`, `"pointer"` | the first Lua script instance (enabled or not) on the referenced GameObject if it has one, otherwise an `EntityHandle`; `nil` if unassigned | none |
 | any other string = a wrapper class name (see list below) | an instance of that wrapper class for the referenced entity; `nil` if unassigned | none |
 | any other string = a Lua script class name (e.g. `"Enemy"`) | that GameObject's `Enemy` script instance table (its `self`) | none |
 
@@ -129,10 +171,40 @@ a sound -> `"AudioSource"`).
 | Function | Meaning |
 |---|---|
 | `RegisterEngineEvent(self, "methodName" [, tag])` | Subscribes `self:methodName(...)` to `Engine.<methodName>`. The method name must equal the Engine event name and must already exist on `self` (error otherwise). |
-| `RegisterEvent(self, eventObject, "methodName" [, tag])` | Subscribes `self:methodName(...)` to any event object (component or physics event). |
+| `RegisterEvent(self, eventObject, "methodName" [, tag])` | Subscribes `self:methodName(...)` to any event object (component or physics event, or an `Event`). |
+| `UnregisterEngineEvent(self, "methodName" [, tag])` | Removes that `RegisterEngineEvent` subscription (same tag); `true` if it existed. Unity's `-=`. |
+| `UnregisterEvent(self, eventObject, "methodName" [, tag])` | Removes that `RegisterEvent` subscription; `true` if it existed. |
 
-Re-registering the same method (same tag) replaces the previous subscription. There is no
-Lua-side unregister; subscriptions end when the instance is released.
+Re-registering the same method (same tag) replaces the previous subscription. Subscriptions
+also end when the instance is released (destroy, scene unload, Play stop). The usual Unity
+pattern works: register in `onEnable`, unregister in `onDisable`. Every event object
+(`Engine.onUpdate`, `button.onPress`, ...) also has `ev:add(tag, fn)`, `ev:remove(tag) -> bool`
+and `ev:has(tag) -> bool`.
+
+**`Event()`** (Unity's UnityEvent / a C# `event`): an event a script owns and invokes.
+
+```lua
+function Health:init()
+    self.onDied = Event()                          -- other scripts listen to it
+end
+function Health:hit(n) if n >= self.hp then self.onDied:invoke(self) end end
+
+function Hud:onEnable()
+    self.health = GameObject.findObjectOfType("Health")
+    self.health.onDied:addListener(self, "showGameOver")   -- owned by self: dropped when self goes
+end
+function Hud:onDisable() self.health.onDied:removeListener(self, "showGameOver") end
+```
+
+| Member | Meaning |
+|---|---|
+| `Event()` | a new event |
+| `ev:addListener(fn)` / `ev:addListener(self, "method")` | adds a listener (the second form is owned by `self`: removed once that script is released); adding the same one twice is ignored |
+| `ev:removeListener(fn)` / `ev:removeListener(self, "method")` | `true` if it was there |
+| `ev:removeAllListeners()` | |
+| `ev:invoke(...)` | calls the listeners in add order with these arguments; a listener's error is logged (with its traceback) and the others still run; listeners added during `invoke` run from the next one, removed ones are skipped at once |
+| `ev.listenerCount` | ro |
+| `ev:add(tag, fn)`, `ev:remove(tag)`, `ev:has(tag)` | the event object protocol: `RegisterEvent(self, ev, "method")` / `UnregisterEvent` work on it |
 
 Engine events (names valid for `RegisterEngineEvent`; handler arguments in order):
 
@@ -195,10 +267,11 @@ Events") enabled on the Collider 2D (Inspector, or `body.shapeContactEvents = tr
 
 ### 1.4 Getting wrappers for your own GameObject
 
-`self.entity` is a plain integer. Wrap it with a bound constructor `(Scene, Entity)`:
+`self.gameObject` is the script's `GameObject`. `self.entity` is a plain integer: wrap it with a
+bound constructor `(Scene, Entity)` for the other wrappers:
 
 ```lua
-local go     = GameObject(self.scene, self.entity)
+local go     = self.gameObject                         -- same as GameObject(self.scene, self.entity)
 local sprite = Sprite(self.scene, self.entity)
 local text   = Text(self.scene, self.entity)
 local body2d = Rigidbody2D(self.scene, self.entity)   -- body must exist (or use go:getRigidbody2D())
@@ -451,6 +524,27 @@ local b = GameObject.instantiate(self.bullet, Vector3(x, y, 0), Quaternion.IDENT
 if b then GameObject.destroy(b, 2.0) end
 ```
 
+Finding objects (Unity's `GameObject.Find`, `FindWithTag`, `FindObjectOfType`): they search
+**every running scene** (the main scene, then its layers bottom to top; ascending entity ids
+within a scene; while a scene starts, its own objects too, so `init` finds them). They are
+linear scans: call them in `init`/`start` and keep the result, not every frame.
+
+```lua
+GameObject.find("Player")                     -- first ACTIVE GameObject named so, or nil
+GameObject.find("Canvas/Panel/Score")          -- a Score below Panel below Canvas
+GameObject.find("/Canvas/Panel/Score")         -- ... with Canvas a root
+GameObject.findWithTag("Player")               -- first active GameObject with the tag, or nil
+GameObject.findGameObjectsWithTag("Enemy")     -- list (possibly empty)
+GameObject.findObjectOfType("ScoreManager")    -- a script instance (active and enabled), or nil
+GameObject.findObjectsOfType("Enemy", true)    -- every Enemy script, also inactive / disabled
+GameObject.findObjectOfType("Camera")          -- a wrapper name: a Camera for a GameObject with a camera
+```
+
+`className` is a Lua script class (the file name) or a wrapper class name of 1.2 that has a
+component (`"Camera"`, `"AudioSource"`, `"Rigidbody"`, `"Sprite"`, ...; `"GameObject"` is an
+error). Without `includeInactive`, only active GameObjects (and, for scripts, enabled ones)
+count. A tag the project does not define logs "Tag: X is not defined." and finds nothing.
+
 ### 2.7 PrefabAsset / PrefabManager
 
 | Name | Kind |
@@ -662,6 +756,15 @@ after its scene ended (play stop, scene change) does nothing: the scene destroye
 | `activeSelf`, `activeInHierarchy` | ro |
 | `entityOwned` | rw |
 | `setActive(bool)`, `isActive()`, `isActiveInHierarchy()`, `compareTag(tag)` | methods |
+| `getScript(className)` | method: the Lua script instance of that class on this GameObject (enabled or not; Unity's `GetComponent<Enemy>()`), or nil |
+| `getScripts([className])` | method: a list of its script instances (all, or of that class), component order |
+| `getScriptInChildren(className [, includeInactive])` | method: this GameObject first, then its descendants (pre-order); inactive GameObjects only with `includeInactive` |
+| `getScriptsInChildren(className [, includeInactive])` | method: list |
+| `getScriptInParent(className [, includeInactive])` | method: this GameObject, then its parents upward |
+
+Script instances (`self`) have the same five methods for their own GameObject:
+`self:getScript("Weapon")`. Lua scripts only (C++ scripts are not reachable from Lua); a
+non-string `className` errors. Annotate the result for LuaLS: `local enemy = go:getScript("Enemy") ---@type Enemy`.
 
 ### 4.2 GameObject
 
@@ -1490,9 +1593,11 @@ Rigidbody wrappers by index.
     with `self.entity`. 2D contact events require the per-collider event flags.
 17. **Unassigned references are `nil`**: an entity-reference or Prefab property not set in
     the Inspector is `nil`; guard (`if self.target then ... end`).
-18. **No `getComponent`, no script lookup by entity**: to talk to another script, expose a
-    property typed with that script's class name (`type = "Enemy"`) and assign it in the
-    Inspector; `GameObject.instantiate(scriptSelf, ...)` also returns the copy's script.
+18. **Scripts by class name, not `getComponent`**: `go:getScript("Enemy")` (same GameObject:
+    `self:getScript(...)`), `getScriptInChildren/InParent`, or across scenes
+    `GameObject.findObjectOfType("Enemy")`. A property typed with the script's class name
+    (`type = "Enemy"`) assigned in the Inspector is the cheapest; `GameObject.instantiate(scriptSelf, ...)`
+    also returns the copy's script.
 19. **Canvas size in `init`**: `Engine.canvasWidth/Height` can be 0 in exported builds during
     `init`; use `Engine.preferredCanvasWidth/Height` there.
 20. **`Log.*` take a single string**; build messages with `..`/`tostring`/`string.format`.
@@ -1500,9 +1605,18 @@ Rigidbody wrappers by index.
     (`event.functionName`, `event.args[1]`), not `function(name, args)`; `onFinish` gets the
     state name. `GameObject:getAnimationPlayer()` is `nil` without the component (unlike
     `getRigidbody2D`, it never adds one).
-22. **`onDestroy` is only for runtime destruction**; to clean up when play stops nothing is
-    called. Event subscriptions are cleaned up automatically.
+22. **`onDestroy` runs on every end**: `GameObject.destroy`, a scene unload (`SceneManager.loadScene`,
+    also of the same scene) and Play stop / quit (after `onApplicationQuit` and `onDisable`), only
+    for scripts whose `init` ran. Do not create objects there. Event subscriptions are cleaned up
+    automatically.
 23. **Colors** on wrappers (`setColor`, `color`, Button colors) are sRGB 0..1 values;
     raw component fields (`UIComponent.color`, `ButtonComponent.colorNormal`) are linear.
 24. **Integers**: entity ids, indices and enum values are integers; do not pass fractional
     numbers to them (`math.floor` first).
+25. **`self.enabled` and the reserved names**: `self.enabled = false` disables the script
+    (`onDisable`, its registered updates stop) but not what it started; it takes only `true` /
+    `false`. `enabled`, `isActiveAndEnabled` and `gameObject` cannot be `properties` names, and
+    `isActiveAndEnabled` / `gameObject` cannot be assigned. A disabled script's `init` still runs.
+26. **Unity method names are not called**: `Awake` -> `init`, `Start` -> `start`, `OnEnable` ->
+    `onEnable`, `Update` -> `onUpdate` registered with `RegisterEngineEvent(self, "onUpdate")`
+    (`FixedUpdate` -> `onFixedUpdate`, `LateUpdate` -> `onPostUpdate`). `check_script` warns.
