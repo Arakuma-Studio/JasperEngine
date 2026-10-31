@@ -460,3 +460,125 @@ the console text; `play stop` leaves no records (`get_play_state` after restart 
 - **persistence**: persistent objects' coroutines survive loads (owner not unloaded).
 - **debug-overlay**: shows `coroutineCount()/timerCount()` in full stats.
 - Risk: decision 3 (realtime stops while paused) differs from Unity; documented in the glossary row.
+
+## Implementation notes
+
+Implemented on `gaps/coroutines` (based on `main` with `script-data` and `input`). Where the code differs from
+the text above, or the text left a choice, this is what was done and why.
+
+### Files and names
+- `Time` is `engine/core/EngineTime.{h,cpp}`, not `Time.{h,cpp}`: the engine's include paths are searched for
+  `<...>` includes too, so on case-insensitive file systems (macOS, Windows, iOS) a `Time.h` there would stand in
+  for the C library's `<time.h>`.
+- Lua bindings: `engine/core/script/binding/CoroutineClassesLua.cpp` (`Coroutine` = C++ `ScriptCoroutine`,
+  `Timer` = `ScriptTimer`, `Time`), registered by `LuaBinding::registerCoroutineClasses`. The lua_CFunctions are
+  `ScriptSchedulerLua::*` in `ScriptScheduler.cpp`. New sources are in `engine/CMakeLists.txt` and the Xcode
+  project (`engine/workspaces/xcode`).
+- The C++ `Timer` facade (spec goal 6, `Timer::after`) is `engine/core/script/Timer.h`, included explicitly
+  (`#include "Timer.h"`), not by `ScriptBase.h`: a script doing `using namespace jasperengine` with a `Timer`
+  class of its own would otherwise stop compiling.
+- C++ start of a Lua coroutine (for `script-lifecycle`'s `start`): `ScriptScheduler::startCoroutine(L,
+  instanceIndex, fnIndex, nargs, methodName)` instead of the `luaStart` signature of 6.3; its origin is the
+  function's definition line (there is no Lua caller).
+
+### Scheduler
+- Clocks and frames are the scheduler's own: `ScriptScheduler::beginFrame(scaled, unscaled)` runs in the update
+  block of `Engine::runFrame` only while the game events are enabled (`Engine::onUpdate.isEnabled()`). The
+  editor's Play pause is `Engine::pauseGameEvents(true)`, during which the update block still runs and
+  `Engine::gameTime` still advances; decisions 3 and 8 ("no clock advances while the editor's Play is paused")
+  need the gate. Waits therefore count scheduler frames, not `Engine::getGameFrames()`. Consequence (documented):
+  a game calling `Engine.pauseGameEvents(true)` also freezes coroutines and timers.
+- Records are kept in two vectors in creation (= id) order, found by binary search; there are no heaps: each phase
+  scans the hot fields of the records (cheap, deterministic order for free). Compaction runs only when something
+  ended or a handle went, so a frame where nothing changes allocates nothing. Measured (test
+  `ManyWaitingCoroutinesAndTimersCostLittlePerFrame`, Release, loaded shared host): 10,000 coroutines waiting
+  seconds + 1,000 timers cost about 0.055 ms for the whole frame (the spec's target: 0.3 ms).
+- A wait recorded during a fixed step (in `onFixedUpdate`) resumes after the next step's physics ("recorded
+  before this step began"); Unity would resume a coroutine started in FixedUpdate after the same step.
+- `waitFor` returns at once only for a `Coroutine` that already ended (as written); every other awaitable resumes
+  on a later frame even when already done. A counted `Timer.every` can be waited for (an endless one raises).
+  AudioSource: done = stopped with no play pending (a paused source is not done). A one-shot `self:invoke("m")`
+  whose method is missing ends cancelled (waitFor gives false).
+- A running coroutine that stopped itself and then reaches its end without another wait ends "finished".
+- Handles: one userdata per coroutine/timer while Lua holds it (a weak registry table), so
+  `co == Coroutine.running()`; a finished coroutine's results stay while a handle is alive.
+- The first segment runs under the caller's debug hook (eval_lua's timeout) and later segments under none:
+  `lua_newthread` copies the creating thread's hook, which would keep eval_lua's timeout on the coroutine for good.
+- Errors: when the crash guard handler is set (the editor during Play), coroutine and timer errors go to it with
+  the tag `coroutine:<origin>` / `timer:<origin>` (C++ timers `timer:C++`), exactly as `LuaFunctionBase` sends
+  event-callback errors, so in the editor a coroutine error stops Play like an `onUpdate` error does; without it
+  (exported builds) they are logged and the game goes on. Lua's own message part keeps Lua's chunk name
+  (`[string "Spawner.lua"]:3: boom`); the header prints the origin as `Spawner.lua:12`.
+- Re-entrancy: no reference to a record is held across a Lua call (allocations may run finalizers, which may start
+  coroutines and move the vectors); records are never erased while a phase, a resume or a close is on the C stack.
+
+### Ownership on today's `main` (before `script-lifecycle`)
+- Release: `LuaBinding::releaseLuaScriptInstance` calls `ScriptScheduler::cancelOwner(instance)` (destroy, scene
+  unload in the generated `cleanupScripts` and the editor, Play stop); `~ScriptBase` calls `cancelOwner(this)`
+  (the generated code deletes C++ scripts by their class). `cancelOwner` forgets the owner pointer of what it
+  stopped (a Lua registry ref is reused by the next instance).
+- Deactivation: `EntityRegistry::setEntityActive(e, false)` and `addEntityChild` (a move under an inactive parent)
+  call `ScriptScheduler::stopCoroutinesOfInactive(this)`: coroutines of owners of that registry no longer active
+  in hierarchy stop at once (to-be-closed variables close). The check before every resume (6.3) stays as the
+  catch-all.
+- `ScriptScheduler::clear()`: editor Play stop (next to `AnimEngine::reset`), failed Play startup,
+  `Engine::systemShutdown` and `LuaBinding::cleanup` (no thread may outlive the state).
+- `ScriptScheduler::rebind(owner, scene, entity)` exists for `persistence`.
+
+### Main-thread normalisation (6.8)
+- `LuaFunctionBase` stores the ref with the given state and keeps `LuaBinding::mainThread(L)`.
+- anime's `LuaRefHolder` keeps the main thread and gained `push(onto)`: `pushTarget` and `tableTarget` pushed on
+  the holder's thread but used the caller's stack (a stack mismatch when called from a coroutine).
+- `HtmlUILuaRef` keeps the main thread; `push(current)` accepts any thread of the state and pushes on it (so
+  `removeEventListener` from a coroutine finds its listener).
+
+### Editor, MCP, docs
+- Inspector: a "Running" row "Coroutines: n, Timers: m" (dim, with a tooltip) under a script during Play when
+  non-zero (Lua and C++ scripts, single selection).
+- MCP: `get_runtime_entity` Lua scripts gain `coroutines` [{id, status, waiting, origin, method}] and `timers`
+  [{id, remaining, interval, unscaled, callback}], C++ scripts `timers`; `get_play_state` gains `coroutines` and
+  `timers` (and a text line). The two tool descriptions name them (+83 characters; `TOTAL_LIMIT` raised by
+  that in `test_html_ui_tools.py`).
+- eval_lua: its helpers (`print`, `entity`, `script`, `object`, `getScene`) held a pointer to the call's stack
+  context; a coroutine or timer that eval_lua started and that ran later would use it after free. The context is
+  now boxed and emptied when the call returns: a late `print` goes to the game's print (the Console), the other
+  helpers raise a clear error.
+- Stubs: the lua_CFunction signatures are `OVERRIDES` in `generate_lua_stubs.py` (the generator needs one per
+  lua_CFunction anyway) with a new `'async': True` that emits `---@async`, instead of a hand-written
+  `stubs/Coroutine.lua`; `stubs/Timer.lua` holds `TimerOptions`; the `ScriptInstance` methods are in `Script.lua`.
+- `Engine::setMaxDeltatime` now warns when it ignores a value (Time.maximumDeltaTime's rule); added
+  `Engine::markLevelLoad` (called by `SceneManager::runFactory` and `setCurrentScene`, the editor's Play start),
+  `SceneManager::getSceneNameOf(Scene*)` (error messages), `LuaBinding::mainThread`, `pushScriptInstanceBase`,
+  `ScriptScheduler::timerOwner / cancelTimersOf / coroutinesOf / timersOf / luaRefCount`,
+  `ScriptBase::isInvoking(TaskId)`.
+
+### What `script-lifecycle` must wire when it merges
+1. One `ScriptInstanceBase`: keep this branch's registry table (`jasperengine.ScriptInstanceBase`,
+   `LuaBinding::pushScriptInstanceBase`, filled by `ScriptSchedulerLua::addInstanceMethods`) and its install on the
+   module table in `createLuaScriptInstance` (`installScriptInstanceBase`: plain metatable, added `__index`, or a
+   chained C closure, skipped when the chain would loop). Lifecycle adds `getScript`/`getScripts` to the same table
+   and its `__index` C function (`enabled`, `isActiveAndEnabled`, `gameObject`) as that table's metatable.
+2. `ScriptRuntime::flushStarts`: run Lua `start` with `ScriptScheduler::startCoroutine(L, instanceIndex,
+   startFnIndex, 1 /* self */, "start")` so `start` may wait (it returns 0 for a dead instance).
+3. Deactivation (lifecycle 6.3, `!nowActive`): after the `onDisable` calls, `ScriptScheduler::stopCoroutinesOf
+   (instance)` for each instance of the subtree, or keep the `stopCoroutinesOfInactive(this)` calls this branch put
+   in `EntityRegistry::setEntityActive` / `addEntityChild` (the lifecycle rewrite of those functions must keep one
+   of the two; both together are harmless).
+4. Destroy / unload pass 2: `ScriptScheduler::cancelOwner(instance)` (Lua: `ScriptEntry::instance`; C++: the
+   `ScriptBase*`) before `onDestroy` for Unity's order. `releaseLuaScriptInstance` keeps its call (after
+   `onDestroy`, idempotent).
+5. `self.enabled = false` must not stop coroutines or timers (nothing to call).
+
+### Other features
+- `http`: put `AsyncOwners::scriptInstanceReleased` next to `ScriptScheduler::cancelOwner` in
+  `releaseLuaScriptInstance`; request handles are awaitable through `isDone()`.
+- `persistence`: `ScriptScheduler::rebind(owner, scene, entity)`.
+- `camera-shake`, `ui-canvas-group`: `Engine::getUnscaledDeltatime()` (float, 0 while paused or held).
+- `debug-overlay`: `ScriptScheduler::coroutineCount()` / `timerCount()`.
+
+### Not verified here
+- An exported Linux build, the Web build in a browser and Android were not built or run; the new engine sources
+  pass an `em++ -fsyntax-only` check (Emscripten 6.0.10, libc++, no threads).
+- Test 10 under ASan in a debug build (the unit tests run in Release).
+- lua-language-server is not installed on this host: `test_stubs.py`'s LuaLS checks (now with coroutine, timer
+  and Time code in the known-good script) skip.
