@@ -475,6 +475,11 @@ sources). Decisions where the spec was silent, ambiguous or met the code:
 - **64 script message bits.** Lifecycle (8) + physics (14) + the 11 pointer messages exceed the 32 bits
   `ScriptMessageMask` had: it is `uint64_t` now (`ScriptEntry::cppMessageMask` too); physics-contacts' values keep
   their order.
+- **ExecuteHierarchy is exact for down, drop and scroll**: the message is sent from the element upward until a
+  GameObject handles it (an on-screen control, or a script whose method ran; a C++ script whose class does not
+  override it is passed: since the merged script-lifecycle, C++ overrides are known when the base method runs).
+  The click and drag handlers (Unity's `GetEventHandler`, found without calling) treat a C++ script as a handler
+  until its base method has run once.
 - **C++ callbacks take `PointerEventData&`** (not `const`): `use()` and `useDragThreshold` written by a C++ handler
   reach the EventSystem as from Lua. A C++ script that declares `onPointerDown(float, float)` for `REGISTER_UI_EVENT`
   hides the virtual (harmless; GCC may warn `-Woverloaded-virtual` in that script).
@@ -511,7 +516,7 @@ sources). Decisions where the spec was silent, ambiguous or met the code:
 - **Gizmos**: the handle-range, dead-zone and (Dynamic) move-threshold circles are drawn by the 2D scene renderer
   (where UI guides are drawn) for a selected stick.
 - **Agent guide**: the merged guide (script-lifecycle + main) was already 4 bytes over 16 KB; the touch-controls line
-  went into the UI bullet and a few redundant phrases were trimmed (16368 bytes).
+  went into the UI bullet and a few redundant phrases were trimmed (16370 bytes after merging main).
 - **RmlUi fork**: G5-1..G5-6 are one `rmlui:` commit (the per-pointer state of G5-1 is what the other rows are built
   of) plus one test commit; FORK.md lists the six rows on them. The mouse keeps the context's original members
   (pointer 1); touch and pen pointers are `PointerState`s (`Source/Core/ContextPointer.cpp`). A first mouse button
