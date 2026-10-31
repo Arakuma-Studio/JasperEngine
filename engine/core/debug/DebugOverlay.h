@@ -24,10 +24,10 @@ namespace jasperengine {
         bool enabled = false;
         std::string toggleKey = "backquote";    // a key name (InputControlNames::parseKey: "`", "f1"...); "" = none
         std::string statsKey = "f3";            // cycles the stats: off -> fps -> full
-        enum class Gesture { ThreeFingerHold, FourFingerTap, None };
+        enum class Gesture { ThreeFingerHold, FourFingerTap, Off };   // not None/Always: X11 macros
         Gesture gesture = Gesture::ThreeFingerHold;
         // the bubble with the warning and error counts that opens the console
-        enum class Popup { Never, TouchDevices, Always };
+        enum class Popup { Never, TouchDevices, AllDevices };
         Popup popup = Popup::TouchDevices;
         bool openOnError = false;               // the first error opens the console
         enum class Stats { Off, Fps, Full };

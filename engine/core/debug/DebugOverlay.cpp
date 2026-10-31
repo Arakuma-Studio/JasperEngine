@@ -333,7 +333,7 @@ namespace {
         if (!s.enabled || s.consoleVisible)
             return false;
         switch (s.settings.popup){
-            case DebugOverlaySettings::Popup::Always: return true;
+            case DebugOverlaySettings::Popup::AllDevices: return true;
             case DebugOverlaySettings::Popup::TouchDevices: return System::hasInstance() && System::instance().isTouchDevice();
             default: return false;
         }
@@ -1302,7 +1302,7 @@ void DebugOverlay::handleTouch(int pointer, float x, float y, int phase){
         return;
     using Gesture = DebugOverlaySettings::Gesture;
     const Gesture gesture = s.settings.gesture;
-    if (gesture == Gesture::None)
+    if (gesture == Gesture::Off)
         return;
 
     // a finger that slides is not a hold: about 4% of the shorter side of the screen

@@ -270,7 +270,7 @@ TEST_F(LogListenerTest, FailingLuaListenerStaysSubscribed) {
 
 // 6. Log.getEntries, Log.clear, Log.count, Log.bufferSize from Lua
 TEST_F(LogListenerTest, LuaBufferApi) {
-    Log::setStackTraces(LogStackTraces::None);
+    Log::setStackTraces(LogStackTraces::Off);
     std::vector<std::string> results;
     ASSERT_EQ(run(R"(
         Log.print("info line")

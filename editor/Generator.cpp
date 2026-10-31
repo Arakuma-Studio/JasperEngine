@@ -2492,7 +2492,7 @@ std::string editor::Generator::debugInitSource(const DebugSettings& debug) {
     if (debug.logBufferSize != defaults.logBufferSize)
         out += "    Log::setBufferSize(" + std::to_string(debug.logBufferSize) + ");\n";
     if (debug.logStackTraces != defaults.logStackTraces) {
-        static const char* const traces[] = {"None", "Errors", "Warnings", "All"};
+        static const char* const traces[] = {"Off", "Errors", "Warnings", "All"};
         out += std::string("    Log::setStackTraces(LogStackTraces::") + traces[static_cast<int>(debug.logStackTraces)] + ");\n";
     }
 
@@ -2505,17 +2505,17 @@ std::string editor::Generator::debugInitSource(const DebugSettings& debug) {
     const DebugOverlaySettings overlayDefaults;
     out += "    {\n";
     out += "        DebugOverlaySettings debugOverlay;\n";
-    out += "        debugOverlay.enabled = " + byMode(debug.overlay == DebugSettings::Mode::Always, debug.overlay == DebugSettings::Mode::Development) + ";\n";
+    out += "        debugOverlay.enabled = " + byMode(debug.overlay == DebugSettings::Mode::AllBuilds, debug.overlay == DebugSettings::Mode::Development) + ";\n";
     if (debug.toggleKey != overlayDefaults.toggleKey)
         out += "        debugOverlay.toggleKey = " + Factory::formatString(debug.toggleKey) + ";\n";
     if (debug.statsKey != overlayDefaults.statsKey)
         out += "        debugOverlay.statsKey = " + Factory::formatString(debug.statsKey) + ";\n";
     if (debug.gesture != overlayDefaults.gesture) {
-        static const char* const gestures[] = {"ThreeFingerHold", "FourFingerTap", "None"};
+        static const char* const gestures[] = {"ThreeFingerHold", "FourFingerTap", "Off"};
         out += std::string("        debugOverlay.gesture = DebugOverlaySettings::Gesture::") + gestures[static_cast<int>(debug.gesture)] + ";\n";
     }
     if (debug.popup != overlayDefaults.popup) {
-        static const char* const popups[] = {"Never", "TouchDevices", "Always"};
+        static const char* const popups[] = {"Never", "TouchDevices", "AllDevices"};
         out += std::string("        debugOverlay.popup = DebugOverlaySettings::Popup::") + popups[static_cast<int>(debug.popup)] + ";\n";
     }
     if (debug.openOnError != overlayDefaults.openOnError)
@@ -2528,7 +2528,7 @@ std::string editor::Generator::debugInitSource(const DebugSettings& debug) {
         static const char* const corners[] = {"TopLeft", "TopRight", "BottomLeft", "BottomRight"};
         out += std::string("        debugOverlay.statsCorner = DebugOverlaySettings::Corner::") + corners[static_cast<int>(debug.statsCorner)] + ";\n";
     }
-    out += "        debugOverlay.allowLua = " + byMode(debug.allowLua == DebugSettings::AllowLua::Always, debug.allowLua == DebugSettings::AllowLua::Development) + ";\n";
+    out += "        debugOverlay.allowLua = " + byMode(debug.allowLua == DebugSettings::AllowLua::AllBuilds, debug.allowLua == DebugSettings::AllowLua::Development) + ";\n";
     out += "        DebugOverlay::configure(debugOverlay);\n";
     out += "    }\n";
     return out;

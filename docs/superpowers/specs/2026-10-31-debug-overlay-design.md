@@ -464,3 +464,8 @@ the code:
     off-cost tests (spec 1-6, 12, 13, 9) in `editor/tests/LogListenerTest.cpp`; settings in
     `editor/tests/DebugSettingsTest.cpp`. The off-cost test measures the overlay's per-frame hooks
     (frame ring, update check, input hooks) rather than a whole `runFrame`.
+16. **No `None` / `Always` enumerators**: X11's headers `#define` both, and the Linux player's
+    platform code includes them before `Engine.h` (which includes `Log.h`): `LogStackTraces::Off`,
+    `DebugOverlaySettings::Gesture::Off`, `Popup::AllDevices`; the editor's `DebugSettings` uses
+    `AllBuilds`. The names in project.yaml, MCP and Lua stay `none`, `always`... (found by the
+    Release export test).

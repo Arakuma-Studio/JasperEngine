@@ -44,7 +44,8 @@ namespace jasperengine {
 
     // Which lines logged by Lua's Log.warn / Log.error carry a Lua traceback (Project Settings >
     // Debug > Log Stack Traces). Lua errors always carry theirs.
-    enum class LogStackTraces { None, Errors, Warnings, All };
+    // (no None / Always enumerators here: X11 headers #define them, and exports include both)
+    enum class LogStackTraces { Off, Errors, Warnings, All };
 
     // The engine's log. Every line goes to the platform log (the editor's Console, logcat, the
     // terminal), into a bounded ring buffer (the on-device console, Log.getEntries) and to the

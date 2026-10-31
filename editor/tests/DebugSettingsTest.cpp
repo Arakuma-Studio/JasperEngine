@@ -27,11 +27,11 @@ namespace {
 
     DebugSettings customSettings() {
         DebugSettings debug;
-        debug.overlay = DebugSettings::Mode::Always;
+        debug.overlay = DebugSettings::Mode::AllBuilds;
         debug.toggleKey = "f12";
         debug.statsKey = "";
         debug.gesture = DebugOverlaySettings::Gesture::FourFingerTap;
-        debug.popup = DebugOverlaySettings::Popup::Always;
+        debug.popup = DebugOverlaySettings::Popup::AllDevices;
         debug.openOnError = true;
         debug.stats = DebugOverlaySettings::Stats::Full;
         debug.statsCorner = DebugOverlaySettings::Corner::BottomRight;
@@ -94,8 +94,8 @@ TEST(DebugSettingsTest, ModesResolvePerBuildType) {
     EXPECT_FALSE(debug.toOverlaySettings(false).enabled);
     EXPECT_TRUE(debug.toOverlaySettings(true).allowLua);
     EXPECT_FALSE(debug.toOverlaySettings(false).allowLua);
-    debug.overlay = DebugSettings::Mode::Always;
-    debug.allowLua = DebugSettings::AllowLua::Always;
+    debug.overlay = DebugSettings::Mode::AllBuilds;
+    debug.allowLua = DebugSettings::AllowLua::AllBuilds;
     EXPECT_TRUE(debug.toOverlaySettings(false).enabled);
     EXPECT_TRUE(debug.toOverlaySettings(false).allowLua);
     debug.overlay = DebugSettings::Mode::Never;
@@ -137,7 +137,7 @@ TEST(DebugSettingsTest, GeneratedInit) {
     EXPECT_NE(custom.find("debugOverlay.toggleKey = \"f12\";"), std::string::npos);
     EXPECT_NE(custom.find("debugOverlay.statsKey = \"\";"), std::string::npos);
     EXPECT_NE(custom.find("debugOverlay.gesture = DebugOverlaySettings::Gesture::FourFingerTap;"), std::string::npos);
-    EXPECT_NE(custom.find("debugOverlay.popup = DebugOverlaySettings::Popup::Always;"), std::string::npos);
+    EXPECT_NE(custom.find("debugOverlay.popup = DebugOverlaySettings::Popup::AllDevices;"), std::string::npos);
     EXPECT_NE(custom.find("debugOverlay.openOnError = true;"), std::string::npos);
     EXPECT_NE(custom.find("debugOverlay.stats = DebugOverlaySettings::Stats::Full;"), std::string::npos);
     EXPECT_NE(custom.find("debugOverlay.statsCorner = DebugOverlaySettings::Corner::BottomRight;"), std::string::npos);

@@ -14,8 +14,8 @@ namespace jasperengine::editor {
     // Project Settings > Debug: the on-device debug overlay and the log (project.yaml `debug:`,
     // MCP keys debug.*, the generated init of exports, the editor's Play)
     struct DebugSettings {
-        enum class Mode { Never, Development, Always };
-        enum class AllowLua { Development, Always, Never };
+        enum class Mode { Never, Development, AllBuilds };
+        enum class AllowLua { Development, AllBuilds, Never };
 
         Mode overlay = Mode::Development;
         std::string toggleKey = "backquote";

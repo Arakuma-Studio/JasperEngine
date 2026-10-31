@@ -53,7 +53,7 @@ bool DebugSettings::operator==(const DebugSettings& other) const{
 
 DebugOverlaySettings DebugSettings::toOverlaySettings(bool developmentBuild) const{
     DebugOverlaySettings settings;
-    settings.enabled = overlay == Mode::Always || (overlay == Mode::Development && developmentBuild);
+    settings.enabled = overlay == Mode::AllBuilds || (overlay == Mode::Development && developmentBuild);
     settings.toggleKey = toggleKey;
     settings.statsKey = statsKey;
     settings.gesture = gesture;
@@ -61,7 +61,7 @@ DebugOverlaySettings DebugSettings::toOverlaySettings(bool developmentBuild) con
     settings.openOnError = openOnError;
     settings.stats = stats;
     settings.statsCorner = statsCorner;
-    settings.allowLua = allowLua == AllowLua::Always || (allowLua == AllowLua::Development && developmentBuild);
+    settings.allowLua = allowLua == AllowLua::AllBuilds || (allowLua == AllowLua::Development && developmentBuild);
     return settings;
 }
 
