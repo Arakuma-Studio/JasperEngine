@@ -749,9 +749,15 @@ bool editor::Project::readPrefabFile(const std::filesystem::path& filepath, Pref
         loadReport.documentPath = FileUtils::pathToUtf8(filepath);
         {
             ScopedLoadReport reportScope(loadReport);
-            const YAML::Node node = loadPrefabFile(getProjectPath() / filepath, &prefab.diskSha1);
+            bool migrated = false;
+            const YAML::Node node = loadPrefabFile(getProjectPath() / filepath, &prefab.diskSha1, &migrated);
             std::string rootName = filepath.stem().string();
             prefab.loadRegistry(node, rootName.empty() ? std::string("Prefab") : rootName);
+            // the migrations stamped the current version into the node, so its header no longer
+            // says the file is older: the file still is, and is written again with its next save
+            if (migrated) {
+                prefab.needsUpgrade = true;
+            }
         }
         prefab.loadReport = std::move(loadReport);
         logLoadReport(prefab.loadReport);

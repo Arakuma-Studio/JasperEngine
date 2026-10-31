@@ -1,0 +1,149 @@
+type: Prefab
+version: 3
+guid: 5f12c9623caac413ef5174f0e9c3f6b0
+nextEntity: 1003
+root: 1001
+members:
+  - type: Entity
+    entity: 1001
+    name: Sparkle
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+        worldPosition: [0, 0.8, 0]
+        worldRotation: [1, 0, 0, 0]
+        worldScale: [0.4, 0.4, 0.4]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        modelMatrix: [[0.4, 0, 0, 0], [0, 0.4, 0, 0], [0, 0, 0.4, 0], [0, 0.8, 0, 1]]
+        normalMatrix: [[2.5, 0, 0, 0], [0, 2.5, 0, -2], [0, 0, 2.5, 0], [0, 0, 0, 1]]
+        visible: true
+        billboardRotation: [1, 0, 0, 0]
+        billboard: false
+        fakeBillboard: false
+        cylindricalBillboard: false
+      points:
+        enabled: true
+        maxPoints: 100
+        transparent: false
+        autoTransparency: true
+        texture: ~
+        points: ~
+  - type: Entity
+    entity: 1002
+    name: Particle System
+    components:
+      action:
+        state: Running
+        speed: 1
+        target: 1001
+        ownedTarget: false
+      particlesystem:
+        enabled: true
+        maxParticles: 64
+        emitter: false
+        loop: true
+        localSpace: false
+        rate: 12
+        maxPerUpdate: 100
+        bursts: ~
+        lifeInitializer:
+          minLife: 1
+          maxLife: 2
+        positionInitializer:
+          shape: Sphere
+          minPosition: [0, 0, 0]
+          maxPosition: [0, 0, 0]
+          radius: 0.5
+          innerRadius: 0
+          coneAngle: 25
+          coneHeight: 1
+        positionModifier:
+          fromTime: 0
+          toTime: 0
+          fromPosition: [0, 0, 0]
+          toPosition: [0, 0, 0]
+          function: LINEAR
+        velocityInitializer:
+          minVelocity: [-0.3, 0.2, -0.3]
+          maxVelocity: [0.3, 0.8, 0.3]
+        velocityModifier:
+          fromTime: 0
+          toTime: 0
+          fromVelocity: [0, 0, 0]
+          toVelocity: [0, 0, 0]
+          function: LINEAR
+        accelerationInitializer:
+          minAcceleration: [0, 0, 0]
+          maxAcceleration: [0, 0, 0]
+        accelerationModifier:
+          fromTime: 0
+          toTime: 0
+          fromAcceleration: [0, 0, 0]
+          toAcceleration: [0, 0, 0]
+          function: LINEAR
+        colorInitializer:
+          minColor: [1, 1, 1]
+          maxColor: [1, 1, 1]
+          useSRGB: true
+        colorModifier:
+          fromTime: 0
+          toTime: 0
+          fromColor: [0, 0, 0]
+          toColor: [0, 0, 0]
+          function: LINEAR
+          useSRGB: true
+        colorGradient:
+          useSRGB: true
+          stops:
+            - time: 0
+              color: [0.4, 0.9, 1]
+            - time: 1
+              color: [0.7, 0.3, 1]
+        alphaInitializer:
+          minAlpha: 1
+          maxAlpha: 1
+        alphaModifier:
+          fromTime: 0
+          toTime: 2
+          fromAlpha: 1
+          toAlpha: 0
+          function: LINEAR
+        sizeInitializer:
+          minSize: 0.08
+          maxSize: 0.15
+        sizeModifier:
+          fromTime: 0
+          toTime: 2
+          fromSize: 0.12
+          toSize: 0
+          function: LINEAR
+        spriteInitializer:
+          frames: ~
+        spriteModifier:
+          fromTime: 0
+          toTime: 0
+          function: LINEAR
+          frames: ~
+        rotationInitializer:
+          minRotation: [1, 0, 0, 0]
+          maxRotation: [1, 0, 0, 0]
+          shortestPath: false
+        rotationModifier:
+          fromTime: 0
+          toTime: 0
+          fromRotation: [1, 0, 0, 0]
+          toRotation: [1, 0, 0, 0]
+          function: LINEAR
+          shortestPath: false
+        scaleInitializer:
+          minScale: [1, 1, 1]
+          maxScale: [1, 1, 1]
+          linearSort: true
+        scaleModifier:
+          fromTime: 0
+          toTime: 0
+          fromScale: [1, 1, 1]
+          toScale: [1, 1, 1]
+          function: LINEAR
