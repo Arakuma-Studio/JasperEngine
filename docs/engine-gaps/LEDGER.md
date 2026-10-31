@@ -39,18 +39,18 @@ origin/main).
 
 | # | Feature (branch `gaps/<name>`) | Covers | Status |
 |---|---|---|---|
-| 1 | `http` | HTTP client for Lua (GET/POST/HEAD, headers, timeouts, JSON/text/binary bodies, download to file, texture from URL), all platforms | spec |
-| 2 | `native-bridge` | Lua to Java (Android), Objective-C/Swift (iOS/macOS), JavaScript (Web) calls with async callbacks, plus export hooks for extra Gradle/CocoaPods/SPM dependencies and manifest/plist entries | spec |
-| 3 | `platform-services` | `openURL`, system language/locale, target frame rate / vsync, runtime orientation lock + iOS orientation setting + device orientation, app focus event | spec |
-| 4 | `safe-area` | safe-area insets on Android/iOS (and desktop simulation), Lua API + change event, native UI safe-area anchoring, HTML UI `env(safe-area-inset-*)`, editor Game view notch simulation | spec |
+| 1 | `http` | HTTP client for Lua (GET/POST/HEAD, headers, timeouts, JSON/text/binary bodies, download to file, texture from URL), all platforms | specced |
+| 2 | `native-bridge` | Lua to Java (Android), Objective-C/Swift (iOS/macOS), JavaScript (Web) calls with async callbacks, plus export hooks for extra Gradle/CocoaPods/SPM dependencies and manifest/plist entries | specced |
+| 3 | `platform-services` | `openURL`, system language/locale, target frame rate / vsync, runtime orientation lock + iOS orientation setting + device orientation, app focus event | impl |
+| 4 | `safe-area` | safe-area insets on Android/iOS (and desktop simulation), Lua API + change event, native UI safe-area anchoring, HTML UI `env(safe-area-inset-*)`, editor Game view notch simulation | specced |
 | 5 | `ui-multitouch` | pointer ids through native UI and HTML UI events, per-pointer pressed state, on-screen stick/button controls | specced |
 | 6 | `audio-mixer` | mixer buses with volume/mute and filters (low-pass/high-pass, ...), streamed music, PlayOneShot, fades | specced |
 | 7 | `physics-2d` | 2D joint parameters (wheel spring/motor, hinge limits/motor, ...), runtime-sized chain/polygon colliders (no export-only caps), 2D contact stay | spec |
 | 8 | `physics-contacts` | per-object collision/trigger callbacks (enter/stay/exit) for 3D and 2D, delivered on the main thread; 3D global handlers off the job threads | spec |
 | 9 | `physics-3d` | damping, centre of mass, safe body-type switching, per-collider sensor/material, collider removal, 3D joint limits/motors/springs, cone fix, ragdoll, runtime-sized collider data and world capacity | spec |
-| 10 | `anim-layers` | animation layers with bone masks and blending in the Animation Player | spec |
-| 11 | `anim-retarget` | humanoid retargeting of clips between different rigs | spec |
-| 12 | `anim-properties` | clip property channel: active state, colors, material and UI properties | spec |
+| 10 | `anim-layers` | animation layers with bone masks and blending in the Animation Player | specced |
+| 11 | `anim-retarget` | humanoid retargeting of clips between different rigs | specced |
+| 12 | `anim-properties` | clip property channel: active state, colors, material and UI properties | specced |
 | 13 | `lines-trails` | line width (thick lines) and a Trail Renderer | impl |
 | 14 | `shader-globals` | user global shader uniforms (`Shader.setGlobal*`) | specced |
 | 15 | `video-mp4` | MP4/H.264 playback (platform decoders) and streamed/URL video | specced |
@@ -62,7 +62,8 @@ origin/main).
 | 21 | `ui-scaling-text` | canvas match-width-or-height scaling, per-character text effects (waves etc.), particles inside UI | specced |
 | 22 | `particles` | start speed along the emitter shape, multi-key curves for every over-lifetime module, Unity ParticleSystem import | specced |
 | 23 | `debug-overlay` | on-device log console and stats/FPS overlay | spec |
-| 24 | `camera-shake` | camera shake component and presets (MilkShake-like) | spec |
+| 24 | `camera-shake` | camera shake component and presets (MilkShake-like), camera follow | specced |
+| 25 | `ui-canvas-group` | Canvas Group for the native UI: group alpha, interactable, blocks raycasts, ignore parent groups; animatable (found by the animation spec: legacy clips animate CanvasGroup alpha) | spec |
 
 ## Log
 
@@ -79,3 +80,6 @@ origin/main).
   dbus-x11 and xdotool (installed); the rest of the failures need the external `build/fixture-unity` project.
   FFmpeg installed for video-mp4. Implementation started early (free slots) for `input` and `lines-trails`
   (worktrees in `../engine-wt/<feature>`).
+- 2026-10-31: specs committed for http, native-bridge, platform-services, safe-area, anim-layers (with an Animator
+  Controller phase), anim-retarget, anim-properties, camera-shake (with a Camera Follow phase). Added feature #25
+  `ui-canvas-group`. `platform-services` implementation started.
