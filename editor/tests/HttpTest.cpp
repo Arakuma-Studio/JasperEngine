@@ -245,8 +245,9 @@ TEST_F(HttpTest, PostBodiesKeepTheirBytes) {
     nlohmann::json echo = json(run(desc));
     EXPECT_EQ(echo["method"], "POST");
     EXPECT_EQ(echo["body_hex"], "610062ff");
-    // no default Content-Type for a raw body (libcurl would add a form one)
-    EXPECT_FALSE(echo["headers"].contains("content-type"));
+    // one default type for a raw body on every platform (libcurl would send a form one,
+    // Android and Apple too)
+    EXPECT_EQ(echo["headers"]["content-type"], "application/octet-stream");
     EXPECT_FALSE(echo["headers"].contains("expect"));
 
     for (const char* method : {"PUT", "PATCH", "DELETE"}) {
@@ -538,7 +539,9 @@ TEST_F(HttpTest, CancelledDownloadLeavesNoFile) {
 
 TEST_F(HttpTest, DownloadResumesAndKeepsPartials) {
     const fs::path part = root / "data" / "r" / "z.bin.part";
+    const fs::path meta = root / "data" / "r" / "z.bin.part.meta";
     scriptdata::writeFile(part, TestHttpServer::pattern(1000));
+    scriptdata::writeFile(meta, "\"v1\"\n");
     HttpRequestDesc desc = get("/bytes/300000");
     desc.responseType = HttpResponseType::File;
     desc.filePath = "data://r/z.bin";
@@ -548,19 +551,42 @@ TEST_F(HttpTest, DownloadResumesAndKeepsPartials) {
     ASSERT_TRUE(waitFor([&] { return result->calls > 0; }));
     ASSERT_TRUE(result->response.ok) << result->response.error;
     EXPECT_EQ(result->response.status, 206);
+    EXPECT_EQ(server->lastHeader("/bytes/300000", "range"), "bytes=1000-");
+    EXPECT_EQ(server->lastHeader("/bytes/300000", "if-range"), "\"v1\"");
+    EXPECT_EQ(server->lastHeader("/bytes/300000", "accept-encoding"), "identity");
     EXPECT_EQ(result->response.bytesReceived, 300000u);
     EXPECT_EQ(handle->bytesTotal(), 300000);
     EXPECT_EQ(scriptdata::readFile(root / "data" / "r" / "z.bin"), TestHttpServer::pattern(300000));
     EXPECT_FALSE(fs::exists(part));
+    EXPECT_FALSE(fs::exists(meta));
+
+    // the file changed on the server (another ETag): a 200, written from the start
+    scriptdata::writeFile(part, std::string(1000, 'x'));
+    scriptdata::writeFile(meta, "\"old\"\n");
+    desc.url = server->url("/bytes/300000?etag=v2");
+    HttpResponse changed = run(desc);
+    ASSERT_TRUE(changed.ok) << changed.error;
+    EXPECT_EQ(changed.status, 200);
+    EXPECT_EQ(scriptdata::readFile(root / "data" / "r" / "z.bin"), TestHttpServer::pattern(300000));
+
+    // a part without a validator is not continued
+    scriptdata::writeFile(part, std::string(1000, 'x'));
+    desc.url = server->url("/bytes/300000");
+    changed = run(desc);
+    ASSERT_TRUE(changed.ok);
+    EXPECT_EQ(changed.status, 200);
+    EXPECT_EQ(server->lastHeader("/bytes/300000", "range"), "");
+    EXPECT_EQ(scriptdata::readFile(root / "data" / "r" / "z.bin"), TestHttpServer::pattern(300000));
 
     // a part longer than the file: 416, the part goes
     scriptdata::writeFile(part, TestHttpServer::pattern(500000));
-    desc.url = server->url("/bytes/300000");
+    scriptdata::writeFile(meta, "\"v1\"\n");
     const HttpResponse r416 = run(desc);
     EXPECT_EQ(r416.status, 416);
     EXPECT_FALSE(fs::exists(part));
+    EXPECT_FALSE(fs::exists(meta));
 
-    // keepPartial: a cancelled download leaves its part
+    // keepPartial: a cancelled download leaves its part, with the validator a resume sends
     desc = get("/trickle/2000000/20");
     desc.responseType = HttpResponseType::File;
     desc.filePath = "data://r/k.bin";
@@ -572,7 +598,87 @@ TEST_F(HttpTest, DownloadResumesAndKeepsPartials) {
     waitFor([] { return HttpTesting::runningTransfers() == 0; }, 3.0);
     EXPECT_TRUE(fs::exists(root / "data" / "r" / "k.bin.part"));
     EXPECT_GT(fs::file_size(root / "data" / "r" / "k.bin.part"), 0u);
+    EXPECT_EQ(scriptdata::readFile(root / "data" / "r" / "k.bin.part.meta"), "\"t1\"\n");
     EXPECT_FALSE(fs::exists(root / "data" / "r" / "k.bin"));
+}
+
+TEST_F(HttpTest, OneDownloadPerFile) {
+    HttpRequestDesc desc = get("/trickle/400000/10");
+    desc.responseType = HttpResponseType::File;
+    desc.filePath = "data://same/x.bin";
+    std::shared_ptr<HttpRequestHandle> first;
+    auto a = start(desc, &first);
+    desc.filePath = (root / "data" / "same" / "x.bin").string();   // the same file by another name
+    auto b = start(desc);
+    ASSERT_TRUE(waitFor([&] { return a->calls == 1 && b->calls == 1; }, 10.0));
+    EXPECT_TRUE(a->response.ok) << a->response.error;
+    EXPECT_EQ(b->response.errorCode, "file");
+    EXPECT_NE(b->response.error.find("is being downloaded already (request " + std::to_string(first->id()) + ")"), std::string::npos)
+        << b->response.error;
+    EXPECT_EQ(scriptdata::readFile(root / "data" / "same" / "x.bin"), TestHttpServer::pattern(400000));
+    // done: the path is free again
+    desc.filePath = "data://same/x.bin";
+    EXPECT_TRUE(run(desc).ok);
+}
+
+TEST_F(HttpTest, PrivateNetworkRedirectsAndHosts) {
+    for (const char* host : {"127.0.0.1", "10.1.2.3", "172.16.0.1", "172.31.255.255", "192.168.0.10", "169.254.1.1",
+                             "100.64.0.1", "0.0.0.0", "::1", "[::1]", "fd00::1", "fe80::1", "::ffff:192.168.1.1",
+                             "localhost", "printer.localhost"}) {
+        EXPECT_TRUE(HttpUtil::isPrivateHost(host)) << host;
+    }
+    for (const char* host : {"8.8.8.8", "172.32.0.1", "192.169.0.1", "example.com", "2001:db8::1", "::ffff:8.8.8.8",
+                             "100.128.0.1", "1.2.3.4.5", "10.0.0"}) {
+        EXPECT_FALSE(HttpUtil::isPrivateHost(host)) << host;
+    }
+
+    auto transfer = [](const std::string& url) {
+        HttpRequestDesc desc;
+        desc.url = url;
+        return std::make_unique<HttpTransfer>(999999, desc, "", true, "", "");
+    };
+    // a public host may not send the request into the local network
+    auto t = transfer("https://public.example.com/a");
+    EXPECT_EQ(t->redirect(302, "http://192.168.1.1/admin"), HttpRedirect::Action::Fail);
+    t = transfer("https://public.example.com/a");
+    EXPECT_EQ(t->redirect(302, "http://localhost:8080/"), HttpRedirect::Action::Fail);
+    t = transfer("https://public.example.com/a");
+    EXPECT_EQ(t->redirect(302, "https://cdn.example.com/b"), HttpRedirect::Action::Follow);
+    // a local host may
+    t = transfer("http://127.0.0.1:1234/a");
+    EXPECT_EQ(t->redirect(302, "http://10.0.0.2/b"), HttpRedirect::Action::Follow);
+    // a stack that followed the redirect itself (the browser) reports where it ended
+    t = transfer("https://public.example.com/a");
+    t->stackRedirected();
+    EXPECT_FALSE(t->begin(200, {}, "http://192.168.1.1/"));
+    t = transfer("https://public.example.com/a");
+    EXPECT_TRUE(t->begin(200, {}, "https://other.example.com/"));
+
+    // end to end: the redirect fails with redirect_blocked (from a public-looking URL the test
+    // cannot serve, so through the transfer above) and a local one is followed
+    EXPECT_TRUE(run(get("/redirect-code/302?to=" + Http::encodeUrl("http://localhost:" + std::to_string(server->port()) + "/text"))).ok);
+}
+
+TEST_F(HttpTest, ShutdownResetsWhatScriptsSet) {
+    Http::setMaxConcurrentRequests(3);
+    Http::setUserAgent("Game/1");
+    Http::setDefaultTimeout(5);
+    Http::setLogFailures(true);
+    Http::setOfflineSimulated(true);
+    Http::shutdown();
+    EXPECT_EQ(Http::getMaxConcurrentRequests(), 8);
+    EXPECT_EQ(Http::getUserAgent().rfind("JasperEngine", 0), 0u);
+    EXPECT_EQ(Http::getDefaultTimeout(), 30.0);
+    EXPECT_FALSE(Http::getLogFailures());
+    EXPECT_TRUE(Http::isOfflineSimulated()) << "the editor's toggle survives Play stop";
+    Http::setOfflineSimulated(false);
+}
+
+TEST_F(HttpTest, TerminateStopsTheWorkerAndTheNextRequestStartsIt) {
+    EXPECT_TRUE(run(get("/text")).ok);
+    Http::terminate();
+    EXPECT_EQ(HttpTesting::runningTransfers(), 0);
+    EXPECT_TRUE(run(get("/text")).ok);
 }
 
 // 10
@@ -1059,6 +1165,8 @@ TEST_F(HttpTest, LuaArgumentErrorsRaiseAndOptionTyposWarnOnce) {
     EXPECT_NE(lua("Http.get('http://127.0.0.1/', {owner = {}})").find("owner must be a script instance"), std::string::npos);
     EXPECT_NE(lua("Http.post('http://127.0.0.1/', {f = print})").find("cannot be sent as JSON"), std::string::npos);
     EXPECT_NE(lua("Http.post('http://127.0.0.1/', 'x', {json = {}})").find("given twice"), std::string::npos);
+    EXPECT_NE(lua("Http.get('http://127.0.0.1/', {file = 'data://x', responseType = 'json'})").find("not both"), std::string::npos);
+    EXPECT_NE(lua("Http.request{url = 'http://127.0.0.1/', responseType = 'text', file = 'data://x'}").find("not both"), std::string::npos);
 
     const std::string url = server->url("/text");
     ASSERT_EQ(lua("Http.get('" + url + "', {timout = 3})\nHttp.get('" + url + "', {timout = 3})"), "");
@@ -1158,6 +1266,16 @@ TEST(HttpExportScan, FindsHttpInLuaHtmlAndCpp) {
     EXPECT_EQ(uses[0].feature, "Http");
     EXPECT_EQ(uses[0].files, 3);
     EXPECT_EQ(uses[0].file, "assets/ui/shop.html");
+    // an alias is a use; other names that start with Http are not
+    const fs::path alias = root.parent_path() / ("jasper-http-scan-alias-" + std::to_string(::getpid()));
+    fs::remove_all(alias);
+    scriptdata::writeFile(alias / "lua" / "net.lua", "local H = Http\nreturn H");
+    scriptdata::writeFile(alias / "lua" / "other.lua", "local s = HttpState.Done; local r = MyHttpThing");
+    uses = ExportFeatureScan::scan(alias, {ExportFeatureScan::http()});
+    ASSERT_EQ(uses.size(), 1u);
+    EXPECT_EQ(uses[0].file, "lua/net.lua");
+    EXPECT_EQ(uses[0].files, 1);
+    fs::remove_all(alias);
     EXPECT_EQ(ExportFeatureScan::luaOfHtml("<SCRIPT type='text/lua'>a()</SCRIPT><script src=x.js></script>"), "a()\n");
     fs::remove_all(root);
 }

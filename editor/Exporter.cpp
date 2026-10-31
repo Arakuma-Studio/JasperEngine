@@ -2755,6 +2755,9 @@ bool editor::Exporter::copyEngine() {
         const IOSProjectSettings& ios = project->getIOSProjectSettings();
         const bool iosAdMob = isAdMobIncluded(ios.admobEnabled, ios.admobAppId, "iOS", iosSampleAdMobAppId, false);
         projectSettings += indent + std::string("set(JASPERENGINE_ADMOB ") + (iosAdMob ? "ON" : "OFF") + ")";
+        // App Transport Security of a bare macOS executable (Ninja/Makefile builds have no bundle)
+        projectSettings += indent + std::string("set(JASPERENGINE_ALLOW_INSECURE_HTTP ") +
+                           (project->getApplicationSettings().allowInsecureHttp ? "ON" : "OFF") + ")";
         cmakeContent.replace(projectSettingsPos, projectSettingsMarker.size(), projectSettings);
     } else {
         Out::warning("Exported CMakeLists.txt is missing the project settings marker; using platform defaults");
@@ -3124,11 +3127,12 @@ bool editor::Exporter::writeAndroidProjectSettings() {
     const bool internetTicked = android.permissions.count("internet") > 0;
     bool internet = internetTicked || android.internetAccess == AndroidInternetAccess::Require;
     if (!internet) {
-        // what this export ships: its Lua files, the HTML UI documents and the C++ scripts (not the
-        // generated sources, which call Http themselves, nor files an earlier export left)
+        // what the build packs and compiles: the Lua and asset trees (HTML UI documents) and the
+        // C++ scripts, as they are in the export folder (a file an earlier export left there
+        // ships too); not the generated sources, which call Http themselves
         const fs::path exportRoot = getExportProjectRoot();
         std::vector<fs::path> shipped;
-        for (const fs::path& lua : luaExportedPaths) shipped.push_back(fs::path("lua") / lua);
+        ExportFeatureScan::collect(exportRoot, exportRoot / "lua", shipped);
         ExportFeatureScan::collect(exportRoot, exportRoot / "assets", shipped);
         ExportFeatureScan::collect(exportRoot, exportRoot / "scripts", shipped);
         const std::vector<ExportFeatureScan::Use> uses = ExportFeatureScan::scanFiles(exportRoot, shipped, {ExportFeatureScan::http()});
@@ -3153,11 +3157,13 @@ bool editor::Exporter::writeAndroidProjectSettings() {
     bool wrotePermission = false;
     if (internet) {
         manifest += "    <uses-permission android:name=\"android.permission.INTERNET\" />\n";
+        // a normal permission (no prompt): lets Http tell "offline" from a DNS failure
+        manifest += "    <uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\" />\n";
         wrotePermission = true;
     }
     for (const std::string& permission : android.permissions) {
         // written above, once
-        if (permission == "internet") continue;
+        if (permission == "internet" || (internet && permission == "access_network_state")) continue;
         const char* manifestName = androidPermissionManifestName(permission);
         if (!manifestName) continue;
         manifest += "    <uses-permission android:name=\"android.permission.";
@@ -3209,6 +3215,7 @@ bool editor::Exporter::writeAndroidProjectSettings() {
         config += "    <domain-config cleartextTrafficPermitted=\"true\">\n";
         config += "        <domain includeSubdomains=\"false\">localhost</domain>\n";
         config += "        <domain includeSubdomains=\"false\">127.0.0.1</domain>\n";
+        config += "        <domain includeSubdomains=\"false\">::1</domain>\n";
         config += "    </domain-config>\n";
         config += "</network-security-config>\n";
         const fs::path xmlDir = androidAppDir / "src" / "main" / "res" / "xml";

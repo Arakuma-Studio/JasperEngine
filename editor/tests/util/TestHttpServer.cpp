@@ -264,6 +264,16 @@ int TestHttpServer::requests(const std::string& path) const{
     return it == counts.end() ? 0 : it->second;
 }
 
+std::string TestHttpServer::lastHeader(const std::string& path, const std::string& name) const{
+    std::lock_guard<std::mutex> lock(countMutex);
+    auto it = lastHeaders.find(path);
+    if (it == lastHeaders.end()) return "";
+    for (const auto& [n, v] : it->second){
+        if (n == name) return v;
+    }
+    return "";
+}
+
 int TestHttpServer::totalRequests() const{
     std::lock_guard<std::mutex> lock(countMutex);
     int total = 0;
@@ -305,6 +315,7 @@ void TestHttpServer::serve(int socket){
     {
         std::lock_guard<std::mutex> lock(countMutex);
         counts[request.path]++;
+        lastHeaders[request.path] = request.headers;
     }
     // waits in small steps so the server can stop
     auto wait = [this](int ms) {
@@ -334,17 +345,21 @@ void TestHttpServer::serve(int socket){
         if (!stopping) sendAll(socket, response(200, "slow"));
     } else if (startsWith(path, "/bytes/")){
         const size_t n = (size_t)std::strtoull(path.c_str() + 7, nullptr, 10);
+        std::string etag = queryValue(request.query, "etag");
+        etag = "\"" + (etag.empty() ? std::string("v1") : etag) + "\"";
         const std::string range = request.header("range");
-        if (startsWith(range, "bytes=")){
+        const std::string ifRange = request.header("if-range");
+        if (startsWith(range, "bytes=") && (ifRange.empty() || ifRange == etag)){
             const size_t from = (size_t)std::strtoull(range.c_str() + 6, nullptr, 10);
             if (from >= n){
                 sendAll(socket, response(416, "", "text/plain", {"Content-Range: bytes */" + std::to_string(n)}));
             } else {
                 sendAll(socket, response(206, pattern(n - from, from), "application/octet-stream",
-                                         {"Content-Range: bytes " + std::to_string(from) + "-" + std::to_string(n - 1) + "/" + std::to_string(n)}));
+                                         {"Content-Range: bytes " + std::to_string(from) + "-" + std::to_string(n - 1) + "/" + std::to_string(n),
+                                          "ETag: " + etag}));
             }
         } else {
-            sendAll(socket, response(200, pattern(n), "application/octet-stream", {"Accept-Ranges: bytes"}));
+            sendAll(socket, response(200, pattern(n), "application/octet-stream", {"Accept-Ranges: bytes", "ETag: " + etag}));
         }
     } else if (startsWith(path, "/chunked/")){
         const size_t n = (size_t)std::strtoull(path.c_str() + 9, nullptr, 10);
@@ -366,7 +381,7 @@ void TestHttpServer::serve(int socket){
         std::sscanf(path.c_str() + 9, "%zu/%d", &n, &ms);
         const std::string data = pattern(n);
         std::string head = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: " + std::to_string(n) +
-                           "\r\nConnection: close\r\n\r\n";
+                           "\r\nETag: \"t1\"\r\nConnection: close\r\n\r\n";
         bool ok = sendAll(socket, head);
         for (size_t pos = 0; ok && pos < data.size() && !stopping; pos += 16384){
             ok = sendAll(socket, data.substr(pos, 16384));

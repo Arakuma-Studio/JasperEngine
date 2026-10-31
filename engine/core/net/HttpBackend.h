@@ -70,6 +70,9 @@ namespace jasperengine {
         HttpRedirect::Action redirect(int status, const std::string& location);
         // the final response's head (names in any case, in order; `finalUrl` "" = url)
         bool begin(int status, HttpHeaders responseHeaders, const std::string& finalUrl = std::string());
+        // the transfer fails with this (begin/write/redirect refused for a reason of the
+        // backend's, e.g. an unusable redirect target); then abort and call finish()
+        void fail(const std::string& code, const std::string& detail);
         // a stack that follows redirects itself (the browser's fetch) says it did
         void stackRedirected(){ if (m_redirects == 0) m_redirects = 1; }
         bool write(const void* data, size_t size);
@@ -166,6 +169,10 @@ namespace jasperengine {
         // false for anything but http[s]://host[:port][/...] without spaces or control bytes
         JASPERENGINE_API bool parseUrl(const std::string& url, Url& out);
         JASPERENGINE_API bool isLocalHost(const std::string& host);
+        // loopback, private (10/8, 172.16/12, 192.168/16, fc00::/7), link-local (169.254/16,
+        // fe80::/10), CGNAT (100.64/10), unspecified addresses and localhost names: a public
+        // host's redirect may not lead there (Private Network Access). Names are not resolved.
+        JASPERENGINE_API bool isPrivateHost(const std::string& host);
         // "" when allowed, else "invalid_url" / "insecure_http" (with `error` the text)
         JASPERENGINE_API std::string checkPolicy(const std::string& url, bool allowInsecure, std::string& error);
         // RFC 3986 reference resolution of a Location against the URL it came from

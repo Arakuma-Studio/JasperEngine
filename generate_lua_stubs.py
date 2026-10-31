@@ -2051,8 +2051,8 @@ OVERRIDES.update({
         'doc': ['DELETE `url`.'],
         'overloads': _http_overloads([('url', 'string')])},
     ('Http', 'post'): {
-        'doc': ['POST `body` to `url`: a string is sent as is (set Content-Type in options.headers), a table as JSON',
-                '(Content-Type: application/json), nil sends an empty body.'],
+        'doc': ['POST `body` to `url`: a string is sent as is (Content-Type: application/octet-stream unless options.headers',
+                'set one), a table as JSON (Content-Type: application/json), nil sends an empty body.'],
         'overloads': _http_overloads([('url', 'string'), ('body', 'string|table|nil')])},
     ('Http', 'put'): {
         'doc': ['PUT `body` to `url` (body rules of Http.post).'],

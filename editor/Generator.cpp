@@ -579,8 +579,8 @@ std::string editor::Generator::getPlatformCMakeConfig(bool vsyncEnabled, const W
     content += "            ${JASPERENGINE_PLATFORM_DIR}/win/WinInputRouter.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/win/GamepadWin.cpp\n";
     content += "        )\n";
-    content += "        # winhttp: the HTTP client's backend (platform/win/HttpBackendWin.cpp)\n";
-    content += "        list(APPEND PLATFORM_LIBS gdi32 user32 shell32 imm32 winhttp)\n";
+    content += "        # winhttp, iphlpapi: the HTTP client's backend (platform/win/HttpBackendWin.cpp)\n";
+    content += "        list(APPEND PLATFORM_LIBS gdi32 user32 shell32 imm32 winhttp iphlpapi)\n";
     content += "        if(JASPERENGINE_GRAPHIC_BACKEND STREQUAL \"vulkan\")\n";
     content += "            add_definitions(\"-DSOKOL_VULKAN\")\n";
     content += "            add_definitions(\"-DVK_USE_PLATFORM_WIN32_KHR\")\n";

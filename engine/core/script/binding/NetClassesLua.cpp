@@ -324,6 +324,8 @@ namespace {
         int bodyKinds = 0;
         bool wantsProgress = false;
         bool wantsComplete = false;
+        bool sawFile = false;
+        bool sawResponseType = false;
         bool hasContentType = false;
         std::string defaultContentType;
 
@@ -415,6 +417,7 @@ namespace {
                 else desc.keepPartial = on;
             } else if (key == "responseType"){
                 if (call == Call::Download || call == Call::Texture) return fail("does not apply to " + fn);
+                sawResponseType = true;
                 const std::string kind = type == LUA_TSTRING ? luaString(L, value) : std::string();
                 if (kind == "text") desc.responseType = HttpResponseType::Text;
                 else if (kind == "binary") desc.responseType = HttpResponseType::Binary;
@@ -434,7 +437,7 @@ namespace {
                 if (call == Call::Download || call == Call::Texture) return fail("does not apply to " + fn + (call == Call::Download ? " (the path is its second argument)" : ""));
                 if (type != LUA_TSTRING) return fail("must be a path string (data://...)");
                 desc.filePath = luaString(L, value);
-                desc.responseType = HttpResponseType::File;
+                sawFile = true;
             } else if (call == Call::Request && key == "url"){
                 if (type != LUA_TSTRING) return fail("must be a string");
                 url = luaString(L, value);
@@ -455,6 +458,10 @@ namespace {
             }
             lua_pop(L, 1);
         }
+        if (sawFile && sawResponseType){
+            return pushRaise(L, fn + ": give options.file (the body goes to a file) or options.responseType, not both");
+        }
+        if (sawFile) desc.responseType = HttpResponseType::File;
         if (bodyKinds > 1){
             return pushRaise(L, fn + ": give one of options.body, options.json and options.form");
         }

@@ -377,3 +377,63 @@ HttpHeaders HttpUtil::parseHeaderBlock(const std::string& raw, int* status){
     }
     return headers;
 }
+
+namespace {
+
+    bool parseIpv4(const std::string& host, unsigned char out[4]){
+        int part = 0;
+        size_t i = 0;
+        while (part < 4){
+            if (i >= host.size() || !std::isdigit((unsigned char)host[i])) return false;
+            int value = 0;
+            size_t digits = 0;
+            while (i < host.size() && std::isdigit((unsigned char)host[i])){
+                value = value * 10 + (host[i] - '0');
+                if (++digits > 3 || value > 255) return false;
+                i++;
+            }
+            out[part++] = (unsigned char)value;
+            if (part < 4){
+                if (i >= host.size() || host[i] != '.') return false;
+                i++;
+            }
+        }
+        return i == host.size();
+    }
+
+    bool isPrivateIpv4(const unsigned char a[4]){
+        return a[0] == 127 || a[0] == 10 || a[0] == 0 ||
+               (a[0] == 172 && (a[1] & 0xF0) == 16) ||
+               (a[0] == 192 && a[1] == 168) ||
+               (a[0] == 169 && a[1] == 254) ||
+               (a[0] == 100 && (a[1] & 0xC0) == 64);
+    }
+
+}
+
+bool HttpUtil::isPrivateHost(const std::string& rawHost){
+    std::string host = lower(rawHost);
+    if (host.size() >= 2 && host.front() == '[' && host.back() == ']') host = host.substr(1, host.size() - 2);
+    while (!host.empty() && host.back() == '.') host.pop_back();
+    if (host.empty()) return false;
+    if (host == "localhost" || (host.size() > 10 && host.compare(host.size() - 10, 10, ".localhost") == 0)) return true;
+    unsigned char v4[4];
+    if (parseIpv4(host, v4)) return isPrivateIpv4(v4);
+    if (host.find(':') == std::string::npos) return false;
+    // IPv6 literal (a zone "%eth0" is link-local)
+    if (host.find('%') != std::string::npos) return true;
+    if (host == "::1" || host == "::") return true;
+    // ::ffff:a.b.c.d
+    const size_t lastColon = host.rfind(':');
+    if (host.compare(0, 7, "::ffff:") == 0 && parseIpv4(host.substr(lastColon + 1), v4)) return isPrivateIpv4(v4);
+    // the first 16-bit group
+    const size_t colon = host.find(':');
+    const std::string first = host.substr(0, colon);
+    if (first.empty() || first.size() > 4) return false;
+    unsigned value = 0;
+    for (char c : first){
+        if (!std::isxdigit((unsigned char)c)) return false;
+        value = value * 16 + (unsigned)(std::isdigit((unsigned char)c) ? c - '0' : (c | 0x20) - 'a' + 10);
+    }
+    return (value & 0xFE00) == 0xFC00 || (value & 0xFFC0) == 0xFE80;
+}

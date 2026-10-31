@@ -29,8 +29,9 @@ namespace {
 ExportFeatureScan::Feature ExportFeatureScan::http() {
     Feature feature;
     feature.name = "Http";
-    feature.lua = std::regex(R"(\bHttp\s*[.:\[])");
-    feature.cpp = std::regex(R"(\bjasperengine::Http\b|\bHttp::|"net/Http\.h")");
+    // any reference to the name in Lua: Http.get, Http:..., Http["get"], local H = Http
+    feature.lua = std::regex(R"(\bHttp\b)");
+    feature.cpp = std::regex(R"(\bjasperengine::Http\b|\bHttp\s*::|\bHttpRequestDesc\b|"net/Http\.h")");
     return feature;
 }
 

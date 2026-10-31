@@ -1593,9 +1593,9 @@ void Engine::systemShutdown(){
 
     // anime's Lua references go while the Lua state still exists
     AnimEngine::instance().reset();
-    // HTTP requests end without their callbacks (no transfer is waited for); what other
+    // HTTP requests end without their callbacks and the HTTP stack's threads stop; what other
     // threads posted for the game is dropped
-    Http::shutdown();
+    Http::terminate();
     MainThreadQueue::clear();
     LuaBinding::cleanup();
 

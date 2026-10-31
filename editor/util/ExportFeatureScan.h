@@ -29,7 +29,8 @@ namespace jasperengine::editor {
             int files = 0;      // how many files use it
         };
 
-        // Http: Lua `Http.` / `Http:` / `Http[`, C++ jasperengine::Http, Http:: or "net/Http.h"
+        // Http: any use of the name Http in Lua (also `local H = Http`), C++ jasperengine::Http,
+        // Http::, HttpRequestDesc or "net/Http.h"
         static Feature http();
 
         // Scans every file under `root` (hidden folders and build folders skipped). One Use per

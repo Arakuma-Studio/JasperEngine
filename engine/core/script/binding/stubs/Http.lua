@@ -7,7 +7,7 @@
 ---@class HttpOptions
 ---@field headers? table<string, string|number>|string[][] # request headers: {["Authorization"] = "Bearer x"} or {{"Name", "value"}, ...}
 ---@field query? table<string, string|number|boolean> # appended to the URL, percent-encoded, sorted by name
----@field body? string # the raw body (binary-safe; set Content-Type in headers)
+---@field body? string # the raw body (binary-safe; Content-Type application/octet-stream unless headers set one)
 ---@field json? any # sent as JSON (Json.encode), Content-Type: application/json unless set
 ---@field form? table<string, string|number|boolean> # sent as application/x-www-form-urlencoded
 ---@field timeout? number # seconds for the whole request (default Http.timeout = 30); 0: none. Wall clock (Engine.timeScale does not change it)
@@ -17,9 +17,9 @@
 ---@field responseType? "text"|"binary"|"json" # "json" also decodes the body into response.data (a parse failure: errorCode "decode")
 ---@field maxBodySize? integer # bytes an in-memory body may have (default 64 MiB; 0: no limit); more: errorCode "too_large"
 ---@field onProgress? fun(request: HttpRequest, received: integer, total: integer) # at most once a frame, before the callback; total -1 when unknown
----@field owner? ScriptInstance|EntityHandle|Scene # the request ends silently (no callback) when its owner goes: `owner = self` in per-scene scripts
----@field file? string # write the body to this file instead (as Http.download)
----@field resume? boolean # a download continues an existing <path>.part (Range request)
+---@field owner? ScriptInstance|EntityHandle|Scene # the request ends silently (no callback) when its owner goes: `owner = self` in per-scene scripts, `owner = document` in an HTML document's script
+---@field file? string # write the body to this file instead (as Http.download; not with responseType)
+---@field resume? boolean # a download continues an existing <path>.part (Range + If-Range with the part's ETag/Last-Modified)
 ---@field keepPartial? boolean # a failed or cancelled download keeps its <path>.part (to resume later)
 
 ---Http.request's options: the URL, the method and the callback, with every HttpOptions key.

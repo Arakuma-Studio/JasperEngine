@@ -5689,9 +5689,6 @@ void editor::Project::finalizeStart(SceneProject* mainSceneProject, std::vector<
         selectedSceneForProperties = runtime->id;
     }
 
-    // the plain-HTTP policy of the exported game (Generator writes the same call)
-    Http::setInsecureHttpAllowed(applicationSettings.allowInsecureHttp);
-
     Engine::pauseGameEvents(false);
     Engine::onViewLoaded.call();
     Engine::systemViewChanged();
@@ -8716,6 +8713,10 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                 }
                 // C++ projects run Lua scripts too, through the plugin's initScripts
                 LuaBinding::clearLoadedProjectModules();
+
+                // the plain-HTTP policy of the exported game (its generated main sets it before
+                // any scene), before the first script's init can send a request
+                Http::setInsecureHttpAllowed(applicationSettings.allowInsecureHttp);
 
                 // Apply project display settings before scripts read the canvas size.
                 Engine::setCanvasSize(canvasWidth, canvasHeight);
