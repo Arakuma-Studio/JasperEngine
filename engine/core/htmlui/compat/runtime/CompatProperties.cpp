@@ -51,7 +51,7 @@ namespace {
         // engine extensions: per-character text animation (ui-scaling-text spec 7.4)
         {"text-effect", "none", true, false, {{"string", ""}, {nullptr, nullptr}, {nullptr, nullptr}}},
         {"text-effect-iteration", "infinite", true, false, {{"string", ""}, {nullptr, nullptr}, {nullptr, nullptr}}},
-        {"text-effect-time", "ui", true, false, {{"keyword", "ui, game"}, {nullptr, nullptr}, {nullptr, nullptr}}},
+        {"text-effect-time", "ui", true, false, {{"string", ""}, {nullptr, nullptr}, {nullptr, nullptr}}},
     };
 
     struct State {

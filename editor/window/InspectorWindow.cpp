@@ -11117,6 +11117,27 @@ void editor::InspectorWindow::drawParticleSystemComponent(ComponentType cpType, 
                                 "UI particles usually want it.";
         propertyRow(RowPropertyType::Bool, cpType, "useUnscaledTime", "Unscaled Time", sceneProject, entities, settingsUnscaled);
     }
+    // particles in a UI: drawn in Hierarchy order, clipped by panels, in UI units
+    if (entities.size() == 1) {
+        Scene* uiScene = sceneProject->scene;
+        const ActionComponent* uiAction = uiScene->findComponent<ActionComponent>(entities[0]);
+        const ParticleSystemComponent* uiParticles = uiScene->findComponent<ParticleSystemComponent>(entities[0]);
+        bool inUI = false;
+        for (Entity e = uiAction ? uiAction->target : NULL_ENTITY; e != NULL_ENTITY && !inUI;) {
+            const Transform* tf = uiScene->findComponent<Transform>(e);
+            e = tf ? tf->parent : NULL_ENTITY;
+            inUI = e != NULL_ENTITY && uiScene->findComponent<RectTransformComponent>(e) != nullptr;
+        }
+        if (inUI && uiParticles) {
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(1);
+            ImGui::PushTextWrapPos(0.0f);
+            ImGui::TextDisabled(uiParticles->useUnscaledTime
+                ? "UI particles: drawn between their siblings, clipped by panels, sizes in UI units."
+                : "UI particles: turn on Unscaled Time so they play in a paused game (menus).");
+            ImGui::PopTextWrapPos();
+        }
+    }
     propertyRow(RowPropertyType::Int, cpType, "rate", "Rate", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::Int, cpType, "maxPerUpdate", "Max Per Update", sceneProject, entities, settingsInt);
     endTable();

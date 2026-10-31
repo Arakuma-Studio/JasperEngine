@@ -2342,6 +2342,8 @@ Scaling editor::Project::getScalingMode() const{
 
 void editor::Project::setUIScale(const CanvasScalerSettings& uiScale){
     this->uiScale = uiScale;
+    // the Engine's default is what edit-mode scenes on the project default resolve to as well
+    Engine::setDefaultCanvasScaler(uiScale);
     applyEditCanvasScaleToAll();
 }
 
@@ -5521,7 +5523,8 @@ void editor::Project::deleteSceneProject(SceneProject* sceneProject){
 
 void editor::Project::resetEngineConfigs(bool executeViewChanged) {
     Engine::setScalingMode(Scaling::NATIVE);
-    Engine::setDefaultCanvasScaler(CanvasScalerSettings());
+    // edit-mode scenes on the project default resolve it through the Engine
+    Engine::setDefaultCanvasScaler(uiScale);
     Engine::setTextureStrategy(textureStrategy);
     Engine::setMouseCursor(CursorType::ARROW);
     Engine::setMouseMode(MouseMode::NORMAL);
@@ -5583,6 +5586,7 @@ void editor::Project::resetConfigs() {
     canvasHeight = defaultCanvasHeight;
     scalingMode = defaultScalingMode;
     uiScale = CanvasScalerSettings();
+    Engine::setDefaultCanvasScaler(uiScale);
     textureStrategy = defaultTextureStrategy;
     vsyncEnabled = defaultVSyncEnabled;
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);

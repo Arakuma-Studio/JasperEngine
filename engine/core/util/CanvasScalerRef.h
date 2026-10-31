@@ -5,6 +5,7 @@
 #define CANVASSCALERREF_H
 
 #include "Scene.h"
+#include "Engine.h"
 #include "Log.h"
 
 #include <memory>
