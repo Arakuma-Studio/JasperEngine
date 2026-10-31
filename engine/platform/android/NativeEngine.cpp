@@ -1392,10 +1392,12 @@ void NativeEngine::handleCommand(int32_t cmd) {
         case APP_CMD_GAINED_FOCUS:
             mHasFocus = true;
             mState.mHasFocus = appState.mHasFocus = mHasFocus;
+            jasperengine::Engine::systemFocus(true);
             break;
         case APP_CMD_LOST_FOCUS:
             mHasFocus = false;
             mState.mHasFocus = appState.mHasFocus = mHasFocus;
+            jasperengine::Engine::systemFocus(false);
             break;
         case APP_CMD_PAUSE:
             jasperengine::Engine::systemPause();

@@ -40,14 +40,21 @@ JasperEngine is based on [Doriax](https://github.com/doriaxengine/doriax) by Edu
 - UI toolkit with Rect Transforms, layout groups, text, images, buttons, input fields, scrollbars, and other widgets
 - Unity-style input: key, mouse and gamepad edges (`Input.getKeyDown`), touches with phases, and input actions (Project Settings > Input, Unity's Input Manager axes and buttons with gravity, sensitivity and dead zones) that sum keyboard, gamepad and on-screen controls, with runtime rebinding: see [docs/mcp/guide/input.md](docs/mcp/guide/input.md)
 - Box2D and Jolt Physics for 2D/3D rigidbodies, colliders, and joints, drawn interpolated between fixed steps
+- 2D physics with Unity's joint set (wheel suspension and motors, hinge limits, sliders, springs, fixed, relative and target joints, with local anchors that work in prefabs and break forces with `onJointBreak2D`), concave polygon colliders and colliders of any number of points (no limits on device), and physics materials with Unity's combine modes. Colliders created from now on report contact events by default (`contactEvents`), as in Unity
 - Spatial 3D audio and multithreaded asynchronous resource loading
 - HTTP(S) client for Lua and C++ (`Http.get` / `post` / `put` / `patch` / `delete` / `head`, JSON, form and binary bodies, downloads to `data://` files with progress and resume, textures from a URL), on each platform's own stack (system libcurl, WinHTTP, NSURLSession, HttpURLConnection, browser `fetch`), with callbacks on the main thread, errors as values, requests owned by scripts so they end with them, a plain-HTTP policy and the Android INTERNET permission set by the export, and an offline simulation in the Game view (see [docs/mcp/guide/networking.md](docs/mcp/guide/networking.md))
 - Native code from Lua (`Native.call` / `callAsync` / `on`): Java/Kotlin on Android, Objective-C/Swift on iOS and macOS, JavaScript on the Web and C++ plugins everywhere, with JSON values, callbacks and events on the main thread, Lua mocks for editor Play, a `plugins/native` folder the exports pick up, project settings for Gradle dependencies, manifest entries, Info.plist keys, frameworks, CocoaPods and Swift packages, and an MCP tool that scaffolds a plugin for every platform (see [docs/mcp/guide/native-bridge.md](docs/mcp/guide/native-bridge.md))
+- Lua and C++ scripts with Unity's MonoBehaviour lifecycle (`init` as Awake, `onEnable`, `start`, `onDisable`, `onDestroy`, application pause/focus/quit), `self.enabled`, `getScript`, scene-wide `GameObject.find*` / `findObjectOfType`, and UnityEvent-style `Event()` listeners: see [docs/mcp/guide/lua-api.md](docs/mcp/guide/lua-api.md)
 - Saves and data for scripts: Unity-style `PlayerPrefs` (with `hasKey`, `deleteAll`, `save`) on every platform, a `Json` module (`Json.encode` / `Json.decode` with exact array, number and null rules and errors that name the place), and atomic save files under `data://` (`File.writeText`, `Json.writeFile`), stored per user on desktop and in IndexedDB on the web (see the Lua API guide, [docs/mcp/guide/lua-api.md](docs/mcp/guide/lua-api.md))
 
 **Saves of older desktop builds**: an exported desktop game now keeps its user data (`data://`, `UserSettings.xml`) in a per-user folder (`~/.local/share/<identifier>`, `%APPDATA%\<identifier>`, `~/Library/Application Support/<identifier>`, after Project Settings `application.identifier`) instead of the working directory. The first run copies an older build's `./UserSettings.xml` there; other files a game wrote next to itself are not moved.
 
 Names follow Unity; see [docs/unity-glossary.md](docs/unity-glossary.md) for the old names and how to migrate older projects.
+
+**Scripts in older projects**: a disabled script's `init` now runs (Unity's Awake: check
+`self.enabled` there, or remove the script to keep it fully off); a script on a GameObject that
+starts inactive gets its `init` on the first activation; `onDestroy` also runs on scene unload
+and Play stop; disabled C++ scripts are compiled too.
 
 **2D normal maps in older projects**:
 

@@ -672,14 +672,23 @@ std::string editor::Generator::buildInitSceneScriptsSource(const std::vector<Sce
         sourceContent += "\n";
         sourceContent += "        const std::string className = scriptEntry.className;\n";
         sourceContent += "        void* instance = nullptr;\n";
+        // a behaviour (ScriptBase) gets the lifecycle and other script messages it overrides
+        sourceContent += "        jasperengine::ScriptBase* cppScript = nullptr;\n";
+        sourceContent += "        jasperengine::ScriptMessageMask cppMessageMask = 0;\n";
         for (const auto& s : scriptFiles) {
             sourceContent += "        if (className == \"" + s.className + "\") {\n";
-            sourceContent += "            instance = static_cast<void*>(new " + s.className + "(scene, entity));\n";
+            sourceContent += "            " + s.className + "* typed = new " + s.className + "(scene, entity);\n";
+            sourceContent += "            instance = static_cast<void*>(typed);\n";
+            sourceContent += "            cppScript = jasperengine::ScriptMessages::cppScript<" + s.className + ">(typed);\n";
+            sourceContent += "            cppMessageMask = jasperengine::ScriptMessages::cppMask<" + s.className + ">();\n";
             sourceContent += "        }\n";
         }
         sourceContent += "        scriptComp = scene->isEntityCreated(entity) ? scene->findComponent<jasperengine::ScriptComponent>(entity) : nullptr;\n";
         sourceContent += "        if (scriptComp && s < scriptComp->scripts.size()) {\n";
         sourceContent += "            scriptComp->scripts[s].instance = instance;\n";
+        sourceContent += "            scriptComp->scripts[s].cppScript = cppScript;\n";
+        sourceContent += "            scriptComp->scripts[s].cppMessageMask = cppMessageMask;\n";
+        sourceContent += "            jasperengine::ScriptMessages::notifyReceiversChanged(scene, entity);\n";
         sourceContent += "        }\n";
         sourceContent += "    }\n";
         sourceContent += "}\n\n";
@@ -783,8 +792,10 @@ std::string editor::Generator::buildInitSceneScriptsSource(const std::vector<Sce
         sourceContent += "}\n\n";
     }
 
+    // A scene's scripts: every instance (Lua, then C++ made and bound), then their init and
+    // onEnable in one pass for both languages (ScriptRuntime), then the HTML documents' scripts
     sourceContent += "extern \"C\" void PROJECT_API initScripts(jasperengine::Scene* scene) {\n";
-    sourceContent += "    LuaBinding::initializeLuaScripts(scene);\n";
+    sourceContent += "    LuaBinding::createLuaScripts(scene);\n";
     if (!scriptFiles.empty()) {
         sourceContent += "\n";
         // what a constructor instantiates goes to this scene, not yet the Engine's
@@ -797,9 +808,10 @@ std::string editor::Generator::buildInitSceneScriptsSource(const std::vector<Sce
         sourceContent += "        bindCppScriptProperties(scene, scriptsArray->getEntity(i));\n";
         sourceContent += "    }\n";
         sourceContent += "    ObjectManager::popActiveScene();\n";
-    } else {
-        sourceContent += "    (void)scene; // Suppress unused parameter warning\n";
     }
+    sourceContent += "\n";
+    sourceContent += "    ScriptRuntime::awakeScene(scene);\n";
+    sourceContent += "    scene->getSystem<UIDocumentSystem>()->startDocumentScripts();\n";
     sourceContent += "}\n\n";
 
     // GameObjects instantiated while the game runs (ObjectManager): their Lua scripts are
@@ -835,10 +847,13 @@ std::string editor::Generator::buildCleanupSceneScriptsSource(const std::vector<
             sourceContent += "                    std::string addr = \"_\" + std::to_string(reinterpret_cast<std::uintptr_t>(scriptEntry.instance)) + \"_\";\n";
             sourceContent += "                    Engine::removeSubscriptionsByTag(addr);\n";
             sourceContent += "                    scene->removeSubscriptionsByTag(addr);\n";
+            sourceContent += "                    jasperengine::ScriptRuntime::forgetInstance(scriptEntry.instance);\n";
             sourceContent += "                    delete static_cast<" + s.className + "*>(scriptEntry.instance);\n";
             sourceContent += "                }\n";
         }
         sourceContent += "                scriptEntry.instance = nullptr;\n";
+        sourceContent += "                scriptEntry.cppScript = nullptr;\n";
+        sourceContent += "                scriptEntry.cppMessageMask = 0;\n";
         sourceContent += "            }\n";
 
         // delete the wrappers initScripts created for entity reference members
@@ -1559,6 +1574,8 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
     agentsContent += "A script class attached to a GameObject's Script component either inherits `jasperengine::ScriptBase` (`#include \"ScriptBase.h\"`, general logic) "
                      "or the GameObject's own class (`jasperengine::Mesh`, `jasperengine::Sprite`, ... to call its methods on `this`), and declares a "
                      "`(jasperengine::Scene* scene, jasperengine::Entity entity)` constructor; fields marked `DPROPERTY(\"Name\")` show in the Inspector. "
+                     "A `ScriptBase` script overrides the lifecycle it needs, as Lua scripts: `init()` (first activation, after its properties are bound), "
+                     "`onEnable()`, `start()`, `onDisable()`, `onDestroy()`. "
                      "Ordinary helper classes and source files need neither. "
                      "The editor discovers and registers scripts automatically; "
                      "they are added to `SCRIPT_SOURCES` in the generated `CMakeLists.txt` and compiled into the project.\n";
