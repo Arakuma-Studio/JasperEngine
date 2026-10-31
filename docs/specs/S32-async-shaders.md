@@ -806,3 +806,7 @@ of vertex inputs), and Metal failed them (`METAL_CREATE_RPS_FAILED`, "Vertex att
 is missing from the vertex descriptor", `SplineGpu.RoadOnTerrain` after `RenderGpu`); a variant
 with other vertex inputs is now left to its own load. R21/R22 timing on Apple GPUs is still
 unmeasured.
+In the macOS editor the creations were never published: BackendMac's own loop did not call
+`SystemRender::updateGpuCreation()` (EditorFrame::run does, on the other backends), so a shader
+created off the render thread stayed pending and the Scene view's Lines never loaded. The Mac loop
+now does EditorFrame::run's per-frame work (BF4, 0413db955).
