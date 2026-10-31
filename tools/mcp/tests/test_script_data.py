@@ -152,7 +152,7 @@ async def test_played_script_saves_and_play_stop_flushes(ed: Editor):
 
     xml = await file_contains(ed, settings_file(ed), ["<Runs>1</Runs>", "<Hello>changed</Hello>",
                                                       "<StopFlush>0.25</StopFlush>", "<Quote>a &lt;b&gt; &amp; c</Quote>"])
-    ed.check("UserSettings.xml.tmp" not in [p.name for p in settings_file(ed).parent.iterdir()], "no temporary file left")
+    ed.check(not [p.name for p in settings_file(ed).parent.iterdir() if p.name.endswith(".tmp")], "no temporary file left")
 
     # the next Play reads what the last one saved
     await ed.call("play", action="start", scene=scene, auto_pause=True, fixed_fps=60)

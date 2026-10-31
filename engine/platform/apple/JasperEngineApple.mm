@@ -331,15 +331,67 @@ std::string JasperEngineApple::getShaderPath(){
 
 namespace {
 
+    // standardUserDefaults is shared with the app's SDKs (AdMob / UMP consent, IABTCF_* strings):
+    // deleteAll must only remove the game's keys. The engine keeps their names in this list:
+    // every key it writes, and every key of an older build the game reads back. Other SDKs'
+    // keys are never adopted from a read, only when the game itself writes one.
+    NSString* const KEY_LIST = @"jasperengine.userSettings.keys";
+
+    bool isForeignKey(NSString* name){
+        static NSArray* prefixes = @[@"IABTCF_", @"IABGPP_", @"IABUSPrivacy", @"UMP", @"gad_", @"GAD", @"GoogleAds",
+                                     @"com.google.", @"com.apple.", @"Apple", @"NS", @"WebKit",
+                                     @"jasperengine.userSettings."];
+        for (NSString* prefix in prefixes){
+            if ([name hasPrefix:prefix]) return true;
+        }
+        return false;
+    }
+
+    NSMutableSet* gameKeys(){
+        static NSMutableSet* keys = nil;
+        if (!keys){
+            keys = [NSMutableSet set];
+            NSArray* stored = [[NSUserDefaults standardUserDefaults] arrayForKey:KEY_LIST];
+            for (id name in stored){
+                if ([name isKindOfClass:[NSString class]]) [keys addObject:name];
+            }
+        }
+        return keys;
+    }
+
+    void rememberKey(NSString* name){
+        @synchronized (KEY_LIST) {
+            NSMutableSet* keys = gameKeys();
+            if ([keys containsObject:name]) return;
+            [keys addObject:name];
+            [[NSUserDefaults standardUserDefaults] setObject:[keys allObjects] forKey:KEY_LIST];
+        }
+    }
+
+    void forgetKey(NSString* name){
+        @synchronized (KEY_LIST) {
+            NSMutableSet* keys = gameKeys();
+            if (![keys containsObject:name]) return;
+            [keys removeObject:name];
+            [[NSUserDefaults standardUserDefaults] setObject:[keys allObjects] forKey:KEY_LIST];
+        }
+    }
+
     NSString* userSettingsKey(const char* key){
         return key ? [NSString stringWithUTF8String:key] : nil;
     }
 
-    // The stored number: an NSNumber, or a numeric NSString (an older build's string)
-    NSNumber* userSettingsNumber(const char* key){
-        NSString* name = userSettingsKey(key);
+    // The stored object of a key the game reads: a key of an older build joins the list
+    id userSettingsObject(NSString* name){
         if (!name) return nil;
         id value = [[NSUserDefaults standardUserDefaults] objectForKey:name];
+        if (value && !isForeignKey(name)) rememberKey(name);
+        return value;
+    }
+
+    // The stored number: an NSNumber, or a numeric NSString (an older build's string)
+    NSNumber* userSettingsNumber(const char* key){
+        id value = userSettingsObject(userSettingsKey(key));
         if ([value isKindOfClass:[NSNumber class]]) return (NSNumber*)value;
         if ([value isKindOfClass:[NSString class]]){
             NSScanner* scanner = [NSScanner scannerWithString:(NSString*)value];
@@ -357,13 +409,13 @@ namespace {
             return;
         }
         [[NSUserDefaults standardUserDefaults] setObject:object forKey:name];
+        rememberKey(name);
     }
 
 }
 
 bool JasperEngineApple::getBoolForKey(const char *key, bool defaultValue){
-    NSString* name = userSettingsKey(key);
-    id value = name ? [[NSUserDefaults standardUserDefaults] objectForKey:name] : nil;
+    id value = userSettingsObject(userSettingsKey(key));
     // a number, or a string as NSString reads it ("YES", "true", "1")
     if ([value isKindOfClass:[NSNumber class]] || [value isKindOfClass:[NSString class]]) {
         return [value boolValue];
@@ -410,6 +462,7 @@ double JasperEngineApple::getDoubleForKey(const char *key, double defaultValue){
 
 jasperengine::Data JasperEngineApple::getDataForKey(const char* key, const jasperengine::Data& defaultValue){
     NSString* name = userSettingsKey(key);
+    userSettingsObject(name);
     NSData *data = name ? [[NSUserDefaults standardUserDefaults] dataForKey:name] : nil;
     if (data && data.length > 0){
         return jasperengine::Data((unsigned char*)data.bytes, (unsigned int)data.length, true, true);
@@ -420,6 +473,7 @@ jasperengine::Data JasperEngineApple::getDataForKey(const char* key, const jaspe
 
 std::string JasperEngineApple::getStringForKey(const char *key, const std::string& defaultValue){
     NSString* name = userSettingsKey(key);
+    userSettingsObject(name);
     // stringForKey: gives a stored number as text too (as before); data and others are nil
     NSString* str = name ? [[NSUserDefaults standardUserDefaults] stringForKey:name] : nil;
     NSData* utf8 = [str dataUsingEncoding:NSUTF8StringEncoding];
@@ -468,25 +522,24 @@ void JasperEngineApple::setStringForKey(const char* key, const std::string& valu
 
 void JasperEngineApple::removeKey(const char *key){
     NSString* name = userSettingsKey(key);
-    if (name)
+    if (name){
         [[NSUserDefaults standardUserDefaults] removeObjectForKey:name];
+        forgetKey(name);
+    }
 }
 
 bool JasperEngineApple::hasKey(const char *key){
-    NSString* name = userSettingsKey(key);
-    return name && [[NSUserDefaults standardUserDefaults] objectForKey:name] != nil;
+    return userSettingsObject(userSettingsKey(key)) != nil;
 }
 
 void JasperEngineApple::removeAllKeys(){
-    // the app's own domain: what the game stored, not the system's defaults
-    NSString* domain = [[NSBundle mainBundle] bundleIdentifier];
-    if (domain){
-        [[NSUserDefaults standardUserDefaults] removePersistentDomainForName:domain];
-    } else {
-        // a bare executable has no domain of its own: its keys, one by one
-        NSDictionary* all = [[NSUserDefaults standardUserDefaults] persistentDomainForName:[[NSProcessInfo processInfo] processName]];
-        for (NSString* name in all)
+    // the game's keys only (KEY_LIST), never the SDKs' (consent state lives here too)
+    @synchronized (KEY_LIST) {
+        NSMutableSet* keys = gameKeys();
+        for (NSString* name in keys)
             [[NSUserDefaults standardUserDefaults] removeObjectForKey:name];
+        [keys removeAllObjects];
+        [[NSUserDefaults standardUserDefaults] removeObjectForKey:KEY_LIST];
     }
 }
 

@@ -9,6 +9,7 @@
 #include "System.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
@@ -25,6 +26,7 @@
     #endif
     #include <windows.h>
     #include <io.h>
+    #include <process.h>
     #include <share.h>
 #else
     #include <unistd.h>
@@ -189,8 +191,18 @@ namespace {
             reason = "is a folder";
             return false;
         }
-        fs::path temporary = target;
-        temporary += ".tmp";
+        // hidden, and unique to this process and write: never a file of the game's own
+        // ("x.tmp"), never another thread's temporary file
+        static std::atomic<unsigned long> counter{0};
+#if defined(_WIN32)
+        const long pid = static_cast<long>(_getpid());
+#else
+        const long pid = static_cast<long>(getpid());
+#endif
+        fs::path name(".");
+        name += target.filename();
+        name += "." + std::to_string(pid) + "-" + std::to_string(counter.fetch_add(1)) + ".tmp";
+        const fs::path temporary = target.parent_path() / name;
         FILE* file = openFile(temporary, "wb");
         if (!file){
             reason = reasonOf(errno);
@@ -289,6 +301,12 @@ bool FileUtils::resolve(const std::string& path, bool forWrite, std::string& nor
             error = "read-only path: " + normalized;
             return false;
         }
+    }
+    // the web build restores data:// from IndexedDB after it starts: a file written before that
+    // would be replaced by the restore
+    if (forWrite && !System::instance().isUserDataLoaded()){
+        error = "the saved files are not restored yet (System.isUserDataLoaded() is false); write later: " + normalized;
+        return false;
     }
     systemPath = FileData::getSystemPath(normalized);
     return true;
@@ -488,7 +506,11 @@ bool FileUtils::prepareUserDataFolder(const std::string& systemDir){
         Log::error("Cannot create the user data folder %s; saving next to the game instead", systemDir.c_str());
         return false;
     }
-    // older builds saved in the working directory (the install folder)
+    // older builds saved in the working directory (the install folder): copied once, on the
+    // first run with this folder (a marker says it was tried), so a reset or a deleted file
+    // later never brings those old values back
+    const fs::path marker = dir / ".jasperengine-migrated";
+    if (fs::exists(marker, ec)) return true;
     const fs::path old = fs::path(".") / "UserSettings.xml";
     const fs::path current = dir / "UserSettings.xml";
     if (!fs::exists(current, ec) && fs::is_regular_file(old, ec) && !fs::equivalent(old, current, ec)){
@@ -497,6 +519,10 @@ bool FileUtils::prepareUserDataFolder(const std::string& systemDir){
             Log::error("Cannot copy ./UserSettings.xml to %s: %s", systemDir.c_str(), ec.message().c_str());
         else
             Log::print("UserSettings: copied ./UserSettings.xml of an older build to %s", systemDir.c_str());
+    }
+    if (FILE* file = openFile(marker, "wb")){
+        std::fputs("./UserSettings.xml of older builds was looked for once; see FileUtils::prepareUserDataFolder\n", file);
+        std::fclose(file);
     }
     return true;
 }

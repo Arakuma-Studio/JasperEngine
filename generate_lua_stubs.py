@@ -2016,6 +2016,12 @@ OVERRIDES.update({
     ('PlayerPrefs', 'getString'): {
         'doc': ['The stored string (an empty one too), or `default` ("") when the key is not there.'],
         'overloads': [([('key', 'string'), ('default?', 'string')], 'string')]},
+    ('PlayerPrefs', 'hasKey'): {
+        'doc': ['The key is stored (an empty value too).'],
+        'overloads': [([('key', 'string')], 'boolean')]},
+    ('PlayerPrefs', 'deleteKey'): {
+        'doc': ['Removes the key; nothing happens when it is not there.'],
+        'overloads': [([('key', 'string')], '')]},
     ('PlayerPrefs', 'setString'): {
         'doc': ['Stores a string (Json.encode a table to store it).'],
         'overloads': [([('key', 'string'), ('value', 'string')], '')]},

@@ -420,7 +420,10 @@ setters `setBoolForKey(k, v)`, `setIntegerForKey`, `setLongForKey`, `setFloatFor
 - `setInt` takes an integer within 32 bits (`6 / 2` is fine, `3.5` raises "integer expected";
   larger: `UserSettings.setLongForKey`); `setString` takes a string (`Json.encode` tables).
 - Numbers are written the same in every locale (`0.5`, never `0,5`).
-- `deleteKey` of a missing key does nothing; `deleteAll` removes every key of this game.
+- `deleteKey` of a missing key does nothing; `deleteAll` removes every key of this game (on
+  iOS/macOS the keys the game wrote or read back, never other SDKs' entries such as ad consent).
+- Keys are non-empty strings without zero bytes (`PlayerPrefs` raises, `UserSettings` logs and
+  ignores them); values may hold any bytes.
 
 When values reach the disk (call `save()` after an important write; a crash loses at most
 the last second on desktop):
@@ -509,7 +512,9 @@ not); Android the app's internal files; iOS Documents; Web `/datafs` (IndexedDB)
 Web: files persist in IndexedDB. `File.writeText`, `Json.writeFile` and `File.remove` store
 within half a second (and when the tab is hidden); `System.syncFileSystem()` stores now.
 The first scene starts once the saved files are restored (`System.isUserDataLoaded()`; at
-most 3 s), so `init` reads them. Plain Lua `io` works with `FileData.getSystemPath("data://x")`
+most 3 s), so `init` reads them; if the restore takes longer, `data://` writes return
+`nil, "the saved files are not restored yet ..."` until it is done (the restore would replace
+them). Plain Lua `io` works with `FileData.getSystemPath("data://x")`
 paths, but on Web call `System.syncFileSystem()` after writing.
 
 Data assets (Unity ScriptableObjects): a JSON file with the Lua scripts or the assets

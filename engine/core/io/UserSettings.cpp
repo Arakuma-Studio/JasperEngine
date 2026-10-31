@@ -4,8 +4,18 @@
 #include "UserSettings.h"
 #include "System.h"
 #include "UserSettingsStore.h"
+#include "Log.h"
 
 using namespace jasperengine;
+
+namespace {
+    // Every platform refuses the same keys: none or "" (no store can hold them)
+    bool storableKey(const char* key, const char* function){
+        if (key && key[0]) return true;
+        Log::error("UserSettings.%s: a key must be a non-empty string; nothing stored", function);
+        return false;
+    }
+}
 
 bool UserSettings::getBoolForKey(const char *key){
     return getBoolForKey(key, false);
@@ -64,30 +74,37 @@ Data UserSettings::getDataForKey(const char *key, const Data& defaultValue){
 }
 
 void UserSettings::setBoolForKey(const char *key, bool value){
+    if (!storableKey(key, "setBoolForKey")) return;
     System::instance().setBoolForKey(key, value);
 }
 
 void UserSettings::setIntegerForKey(const char *key, int value){
+    if (!storableKey(key, "setIntegerForKey")) return;
     System::instance().setIntegerForKey(key, value);
 }
 
 void UserSettings::setLongForKey(const char *key, long value){
+    if (!storableKey(key, "setLongForKey")) return;
     System::instance().setLongForKey(key, value);
 }
 
 void UserSettings::setFloatForKey(const char *key, float value){
+    if (!storableKey(key, "setFloatForKey")) return;
     System::instance().setFloatForKey(key, value);
 }
 
 void UserSettings::setDoubleForKey(const char *key, double value){
+    if (!storableKey(key, "setDoubleForKey")) return;
     System::instance().setDoubleForKey(key, value);
 }
 
 void UserSettings::setStringForKey(const char* key, const std::string& value){
+    if (!storableKey(key, "setStringForKey")) return;
     System::instance().setStringForKey(key, value);
 }
 
 void UserSettings::setDataForKey(const char *key, Data& value){
+    if (!storableKey(key, "setDataForKey")) return;
     System::instance().setDataForKey(key, value);
 }
 

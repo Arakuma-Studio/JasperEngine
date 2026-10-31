@@ -1587,6 +1587,10 @@ void Engine::systemShutdown(){
     LuaBinding::cleanup();
 
     removeAllSceneLayers(true);
+
+    // and what scripts stored while their scenes went (onDestroy): the last write. Desktop
+    // System objects live until the process ends, so ~System never gets to write it.
+    UserSettings::save();
 }
 
 void Engine::systemPause(){

@@ -13,6 +13,7 @@
 #include "io/FileData.h"
 #include "io/FileUtils.h"
 #include "io/UserSettings.h"
+#include "Log.h"
 #include "script/LuaJson.h"
 #include "util/NumberText.h"
 
@@ -308,12 +309,37 @@ namespace {
     int luaFileMakeDirs(lua_State* L){ return finish(L, filePathOpImpl(L, "File.makeDirs", &FileUtils::makeDirs)); }
     int luaFileList(lua_State* L){ return finish(L, fileListImpl(L)); }
 
+    // ---------------------------------------------------------------- UserSettings
+
+    // A key from Lua the C++ API can hold: no zero byte (const char* would cut it there)
+    bool luaKey(const std::string& key, const char* fn){
+        if (key.find('\0') == std::string::npos) return true;
+        Log::error("UserSettings.%s: a key must not contain a zero byte; ignored", fn);
+        return false;
+    }
+
     // ---------------------------------------------------------------- PlayerPrefs
 
     int prefsKeyImpl(lua_State* L, const char* fn, std::string& key){
         if (!stringArgument(L, 1, key) || key.empty())
             return pushRaise(L, std::string("PlayerPrefs.") + fn + ": key must be a non-empty string, got " +
                                 (lua_type(L, 1) == LUA_TSTRING ? "\"\"" : luaL_typename(L, 1)));
+        if (key.find('\0') != std::string::npos)
+            return pushRaise(L, std::string("PlayerPrefs.") + fn + ": key must not contain a zero byte");
+        return 0;
+    }
+
+    int prefsHasKeyImpl(lua_State* L){
+        std::string key;
+        if (prefsKeyImpl(L, "hasKey", key) == RAISE) return RAISE;
+        lua_pushboolean(L, UserSettings::hasKey(key.c_str()) ? 1 : 0);
+        return 1;
+    }
+
+    int prefsDeleteKeyImpl(lua_State* L){
+        std::string key;
+        if (prefsKeyImpl(L, "deleteKey", key) == RAISE) return RAISE;
+        UserSettings::deleteKey(key.c_str());
         return 0;
     }
 
@@ -392,6 +418,8 @@ namespace {
         return 0;
     }
 
+    int luaPrefsHasKey(lua_State* L){ return finish(L, prefsHasKeyImpl(L)); }
+    int luaPrefsDeleteKey(lua_State* L){ return finish(L, prefsDeleteKeyImpl(L)); }
     int luaPrefsGetInt(lua_State* L){ return finish(L, prefsGetIntImpl(L)); }
     int luaPrefsSetInt(lua_State* L){ return finish(L, prefsSetIntImpl(L)); }
     int luaPrefsGetFloat(lua_State* L){ return finish(L, prefsGetFloatImpl(L)); }
@@ -456,39 +484,67 @@ void LuaBinding::registerIOClasses(lua_State *L){
         .addFunction("open", (unsigned int(Data::*)(const char *))&Data::open)
         .endClass();
 
+    // Keys arrive as std::string (the whole Lua string): a key with a zero byte would be cut
+    // there by the C++ const char* API, so it is refused (logged) as PlayerPrefs refuses it
     luabridge::getGlobalNamespace(L)
         .beginClass<UserSettings>("UserSettings")
-        .addStaticFunction("getBoolForKey", 
-            luabridge::overload<const char*>(&UserSettings::getBoolForKey),
-            luabridge::overload<const char*, bool>(&UserSettings::getBoolForKey))
-        .addStaticFunction("getIntegerForKey", 
-            luabridge::overload<const char*>(&UserSettings::getIntegerForKey),
-            luabridge::overload<const char *, int>(&UserSettings::getIntegerForKey))
-        .addStaticFunction("getLongForKey", 
-            luabridge::overload<const char*>(&UserSettings::getLongForKey),
-            luabridge::overload<const char *, long>(&UserSettings::getLongForKey))
-        .addStaticFunction("getFloatForKey", 
-            luabridge::overload<const char*>(&UserSettings::getFloatForKey),
-            luabridge::overload<const char *, float>(&UserSettings::getFloatForKey))
-        .addStaticFunction("getDoubleForKey", 
-            luabridge::overload<const char*>(&UserSettings::getDoubleForKey),
-            luabridge::overload<const char *, double>(&UserSettings::getDoubleForKey))
-        .addStaticFunction("getStringForKey", 
-            luabridge::overload<const char*>(&UserSettings::getStringForKey),
-            luabridge::overload<const char *, const std::string&>(&UserSettings::getStringForKey))
-        .addStaticFunction("getDataForKey", 
-            luabridge::overload<const char*>(&UserSettings::getDataForKey),
-            luabridge::overload<const char *, const Data&>(&UserSettings::getDataForKey))
-        .addStaticFunction("setBoolForKey", &UserSettings::setBoolForKey)
-        .addStaticFunction("setIntegerForKey", &UserSettings::setIntegerForKey)
-        .addStaticFunction("setLongForKey", &UserSettings::setLongForKey)
-        .addStaticFunction("setFloatForKey", &UserSettings::setFloatForKey)
-        .addStaticFunction("setDoubleForKey", &UserSettings::setDoubleForKey)
-        .addStaticFunction("setStringForKey", &UserSettings::setStringForKey)
-        .addStaticFunction("setDataForKey", &UserSettings::setDataForKey)
-        .addStaticFunction("removeKey", &UserSettings::removeKey)
-        .addStaticFunction("hasKey", &UserSettings::hasKey)
-        .addStaticFunction("deleteKey", &UserSettings::deleteKey)
+        .addStaticFunction("getBoolForKey",
+            luabridge::overload<const std::string&>(+[](const std::string& key) -> bool {
+                return luaKey(key, "getBoolForKey") ? UserSettings::getBoolForKey(key.c_str()) : false; }),
+            luabridge::overload<const std::string&, bool>(+[](const std::string& key, bool defaultValue) -> bool {
+                return luaKey(key, "getBoolForKey") ? UserSettings::getBoolForKey(key.c_str(), defaultValue) : defaultValue; }))
+        .addStaticFunction("getIntegerForKey",
+            luabridge::overload<const std::string&>(+[](const std::string& key) -> int {
+                return luaKey(key, "getIntegerForKey") ? UserSettings::getIntegerForKey(key.c_str()) : 0; }),
+            luabridge::overload<const std::string&, int>(+[](const std::string& key, int defaultValue) -> int {
+                return luaKey(key, "getIntegerForKey") ? UserSettings::getIntegerForKey(key.c_str(), defaultValue) : defaultValue; }))
+        .addStaticFunction("getLongForKey",
+            luabridge::overload<const std::string&>(+[](const std::string& key) -> long {
+                return luaKey(key, "getLongForKey") ? UserSettings::getLongForKey(key.c_str()) : 0; }),
+            luabridge::overload<const std::string&, long>(+[](const std::string& key, long defaultValue) -> long {
+                return luaKey(key, "getLongForKey") ? UserSettings::getLongForKey(key.c_str(), defaultValue) : defaultValue; }))
+        .addStaticFunction("getFloatForKey",
+            luabridge::overload<const std::string&>(+[](const std::string& key) -> float {
+                return luaKey(key, "getFloatForKey") ? UserSettings::getFloatForKey(key.c_str()) : 0.0f; }),
+            luabridge::overload<const std::string&, float>(+[](const std::string& key, float defaultValue) -> float {
+                return luaKey(key, "getFloatForKey") ? UserSettings::getFloatForKey(key.c_str(), defaultValue) : defaultValue; }))
+        .addStaticFunction("getDoubleForKey",
+            luabridge::overload<const std::string&>(+[](const std::string& key) -> double {
+                return luaKey(key, "getDoubleForKey") ? UserSettings::getDoubleForKey(key.c_str()) : 0.0; }),
+            luabridge::overload<const std::string&, double>(+[](const std::string& key, double defaultValue) -> double {
+                return luaKey(key, "getDoubleForKey") ? UserSettings::getDoubleForKey(key.c_str(), defaultValue) : defaultValue; }))
+        .addStaticFunction("getStringForKey",
+            luabridge::overload<const std::string&>(+[](const std::string& key) -> std::string {
+                return luaKey(key, "getStringForKey") ? UserSettings::getStringForKey(key.c_str()) : std::string(); }),
+            luabridge::overload<const std::string&, const std::string&>(+[](const std::string& key, const std::string& defaultValue) -> std::string {
+                return luaKey(key, "getStringForKey") ? UserSettings::getStringForKey(key.c_str(), defaultValue) : defaultValue; }))
+        .addStaticFunction("getDataForKey",
+            luabridge::overload<const std::string&>(+[](const std::string& key) -> Data {
+                return luaKey(key, "getDataForKey") ? UserSettings::getDataForKey(key.c_str()) : Data(); }),
+            luabridge::overload<const std::string&, const Data&>(+[](const std::string& key, const Data& defaultValue) -> Data {
+                return luaKey(key, "getDataForKey") ? UserSettings::getDataForKey(key.c_str(), defaultValue) : defaultValue; }))
+        .addStaticFunction("setBoolForKey", +[](const std::string& key, bool value) {
+            if (luaKey(key, "setBoolForKey")) UserSettings::setBoolForKey(key.c_str(), value); })
+        .addStaticFunction("setIntegerForKey", +[](const std::string& key, int value) {
+            if (luaKey(key, "setIntegerForKey")) UserSettings::setIntegerForKey(key.c_str(), value); })
+        .addStaticFunction("setLongForKey", +[](const std::string& key, long value) {
+            if (luaKey(key, "setLongForKey")) UserSettings::setLongForKey(key.c_str(), value); })
+        .addStaticFunction("setFloatForKey", +[](const std::string& key, float value) {
+            if (luaKey(key, "setFloatForKey")) UserSettings::setFloatForKey(key.c_str(), value); })
+        .addStaticFunction("setDoubleForKey", +[](const std::string& key, double value) {
+            if (luaKey(key, "setDoubleForKey")) UserSettings::setDoubleForKey(key.c_str(), value); })
+        .addStaticFunction("setStringForKey", +[](const std::string& key, const std::string& value) {
+            if (luaKey(key, "setStringForKey")) UserSettings::setStringForKey(key.c_str(), value); })
+        .addStaticFunction("setDataForKey", +[](const std::string& key, Data& value) {
+            if (luaKey(key, "setDataForKey")) UserSettings::setDataForKey(key.c_str(), value); })
+        .addStaticFunction("removeKey", +[](const std::string& key) {
+            if (luaKey(key, "removeKey")) UserSettings::removeKey(key.c_str()); })
+        // The key is stored (an empty value too)
+        .addStaticFunction("hasKey", +[](const std::string& key) -> bool {
+            return luaKey(key, "hasKey") && UserSettings::hasKey(key.c_str()); })
+        // Same as removeKey (Unity's name); nothing happens when the key is not there
+        .addStaticFunction("deleteKey", +[](const std::string& key) {
+            if (luaKey(key, "deleteKey")) UserSettings::deleteKey(key.c_str()); })
         .addStaticFunction("deleteAll", &UserSettings::deleteAll)
         .addStaticFunction("save", &UserSettings::save)
         .endClass();
@@ -503,8 +559,8 @@ void LuaBinding::registerIOClasses(lua_State *L){
         .addStaticFunction("setFloat", &luaPrefsSetFloat)
         .addStaticFunction("getString", &luaPrefsGetString)
         .addStaticFunction("setString", &luaPrefsSetString)
-        .addStaticFunction("hasKey", &UserSettings::hasKey)
-        .addStaticFunction("deleteKey", &UserSettings::deleteKey)
+        .addStaticFunction("hasKey", &luaPrefsHasKey)
+        .addStaticFunction("deleteKey", &luaPrefsDeleteKey)
         .addStaticFunction("deleteAll", &UserSettings::deleteAll)
         .addStaticFunction("save", &UserSettings::save)
         .endClass();

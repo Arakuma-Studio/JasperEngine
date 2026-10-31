@@ -492,6 +492,45 @@ implementing; everything else is as specified).
 - The Xcode workspace (`engine/workspaces/xcode/JasperEngine.xcodeproj`) lists the four new
   engine sources.
 
+### Review fixes
+
+- Web start order is init -> view loaded -> view changed as on every other platform:
+  `Engine::systemViewLoaded()` and the first canvas size now run right after
+  `Engine::systemStartProject()` (so `Engine.onViewLoaded` subscribers of the project get it);
+  page resizes and a quit before the project starts do not touch the view.
+- iOS/macOS `deleteAll` no longer removes the app's persistent domain (that held other SDKs'
+  keys, e.g. the AdMob/UMP consent state and `IABTCF_*` strings). The engine keeps the names of
+  the game's keys in `jasperengine.userSettings.keys` (every key it writes, and every key of an
+  older build that the game reads back, except known SDK prefixes) and `deleteAll` removes only
+  those. Limitation: an older build's key that this build never read or wrote survives a
+  `deleteAll`. Android (its own preferences file), desktop (its own XML file) and Web (prefixed
+  keys) never touched foreign keys.
+- `Engine::systemShutdown` saves UserSettings again at its very end, after the Lua state and the
+  scenes are gone (values set in `onDestroy` then), since desktop System objects are never
+  deleted.
+- Web IndexedDB restore later than the 3 s wait: `FileUtils` refuses `data://` writes (and
+  removals, folder creation) while `System::isUserDataLoaded()` is false, so the late restore
+  (which replaces and removes MEMFS entries) can clobber nothing the game wrote; a warning is
+  logged when it finishes after the start. Lua `io` and the old `File` object API are not
+  covered (documented: use `File.writeText`).
+- Atomic writes use a hidden, unique temporary name in the same folder
+  (`.<name>.<pid>-<counter>.tmp`), never a game file such as `save.json.tmp`.
+- Keys with a zero byte are refused: `PlayerPrefs.*` raise, the `UserSettings` Lua functions now
+  take the whole Lua string and log and ignore such a key (before, `"a\0b"` was stored as `"a"`).
+  Values keep zero bytes on every platform: the web store now passes values with their byte
+  length across the JS boundary (`stringToNewUTF8` / `TextDecoder`). The web build exports
+  `_malloc` and `_free` (the store needs them; with this emsdk they were not exported, so even
+  the previous `_malloc` use of the old store code could not have worked).
+- Empty keys are refused centrally in `UserSettings::set*` (every platform alike; Android's
+  typed setters accepted them).
+- The desktop migration copies `./UserSettings.xml` only on the first run with the per-user
+  folder (marker `.jasperengine-migrated`), so a reset or a deleted file never brings stale
+  values back.
+- Not testable here: the web start order, the late-restore message and the Apple key list (no
+  browser run of the engine, no Apple toolchain; the web store itself was built with em++ and run
+  in node with a fake localStorage, zero bytes included), and the final shutdown save (the unit
+  tests share one engine whose shutdown would end the process's Lua state).
+
 ### Verification
 
 - Editor + `jasperengine-editor-tests` build with 0 warnings. Unit tests: 971 run, 963 passed,

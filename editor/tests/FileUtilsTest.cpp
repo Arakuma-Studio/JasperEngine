@@ -61,7 +61,7 @@ TEST_F(FileUtilsTest, AtomicWritesAppendsAndRemovals) {
     EXPECT_EQ(scriptdata::readFile(root / "data" / "saves" / "deep" / "slot.txt"), "first") << "missing folders made";
     ASSERT_TRUE(jasperengine::FileUtils::writeText("saves/deep/slot.txt", std::string("second\0bytes", 12), error));
     EXPECT_EQ(scriptdata::readFile(root / "data" / "saves" / "deep" / "slot.txt"), std::string("second\0bytes", 12));
-    EXPECT_FALSE(fs::exists(root / "data" / "saves" / "deep" / "slot.txt.tmp")) << "no temporary file left behind";
+    EXPECT_TRUE(scriptdata::temporaryFiles(root / "data" / "saves" / "deep").empty()) << "no temporary file left behind";
     ASSERT_TRUE(jasperengine::FileUtils::readText("data://saves/deep/slot.txt", text, error));
     EXPECT_EQ(text, std::string("second\0bytes", 12));
     ASSERT_TRUE(jasperengine::FileUtils::writeText("data://empty.txt", "", error));
@@ -136,6 +136,10 @@ TEST_F(FileUtilsTest, DesktopUserDataFolderMigratesTheOldSettingsOnce) {
     // a second run: the copy is not redone (the per-user file has the newer saves)
     scriptdata::writeFile(perUser / "UserSettings.xml", "<userSettings><coins>9</coins></userSettings>");
     const bool again = jasperengine::FileUtils::prepareUserDataFolder(perUser.string());
+    // the player reset the saves (or the file broke): the old file is not copied back
+    fs::remove(perUser / "UserSettings.xml");
+    const bool afterReset = jasperengine::FileUtils::prepareUserDataFolder(perUser.string());
+    const bool copiedBack = fs::exists(perUser / "UserSettings.xml");
     // a fresh folder without an old file next to the game: just made
     fs::remove(workingDir / "UserSettings.xml");
     const fs::path other = root / "home" / "other";
@@ -145,12 +149,45 @@ TEST_F(FileUtilsTest, DesktopUserDataFolderMigratesTheOldSettingsOnce) {
     EXPECT_EQ(copied, "<userSettings><coins>5</coins></userSettings>") << "copied from the working directory";
     EXPECT_TRUE(again);
     EXPECT_TRUE(fresh);
-    EXPECT_EQ(scriptdata::readFile(perUser / "UserSettings.xml"), "<userSettings><coins>9</coins></userSettings>");
+    EXPECT_TRUE(afterReset);
+    EXPECT_FALSE(copiedBack) << "copied once only: stale values never come back";
+    EXPECT_TRUE(fs::exists(perUser / ".jasperengine-migrated"));
     EXPECT_TRUE(fs::is_directory(other));
     EXPECT_FALSE(fs::exists(other / "UserSettings.xml"));
     // a folder that cannot be made (a file is in the way): false, the caller keeps "."
     scriptdata::writeFile(root / "blocker", "x");
     EXPECT_FALSE(jasperengine::FileUtils::prepareUserDataFolder((root / "blocker" / "sub").string()));
+}
+
+TEST_F(FileUtilsTest, TemporaryFilesNeverTakeAGameFile) {
+    // a game file named like the old temporary name survives a write of its neighbour
+    std::string error, text;
+    ASSERT_TRUE(jasperengine::FileUtils::writeText("data://save.json.tmp", "the game's own", error)) << error;
+    ASSERT_TRUE(jasperengine::FileUtils::writeText("data://save.json", "{}", error)) << error;
+    ASSERT_TRUE(jasperengine::FileUtils::writeText("data://save.json", "{\"v\":2}", error)) << error;
+    ASSERT_TRUE(jasperengine::FileUtils::readText("data://save.json.tmp", text, error));
+    EXPECT_EQ(text, "the game's own");
+    EXPECT_EQ(scriptdata::readFile(root / "data" / "save.json"), "{\"v\":2}");
+    const std::vector<std::string> left = scriptdata::temporaryFiles(root / "data");
+    EXPECT_EQ(left, std::vector<std::string>{"save.json.tmp"}) << "only the game's file, no temporary one";
+}
+
+TEST_F(FileUtilsTest, WritesWaitForTheRestoredUserData) {
+    // the web build restores data:// from IndexedDB after it starts: a write before that would be
+    // replaced (or deleted) by the restore, so it is refused
+    std::string error, text;
+    ASSERT_TRUE(jasperengine::FileUtils::writeText("data://kept.json", "1", error));
+    system.userDataLoaded = false;
+    EXPECT_FALSE(jasperengine::FileUtils::writeText("data://new.json", "2", error));
+    EXPECT_NE(error.find("not restored yet"), std::string::npos) << error;
+    EXPECT_FALSE(jasperengine::FileUtils::appendText("data://log.txt", "x", error));
+    EXPECT_FALSE(jasperengine::FileUtils::remove("data://kept.json", error));
+    EXPECT_FALSE(jasperengine::FileUtils::makeDirs("data://dir", error));
+    EXPECT_TRUE(jasperengine::FileUtils::readText("data://kept.json", text, error)) << "reads are fine";
+    EXPECT_NE(eval("local ok, e = Json.writeFile('data://s.json', {}) return e").find("not restored yet"), std::string::npos);
+    EXPECT_FALSE(fs::exists(root / "data" / "new.json"));
+    system.userDataLoaded = true;
+    EXPECT_TRUE(jasperengine::FileUtils::writeText("data://new.json", "2", error)) << error;
 }
 
 TEST_F(FileUtilsTest, LuaFileFunctions) {

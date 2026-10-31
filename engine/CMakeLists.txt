@@ -264,7 +264,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                 "${EM_DEBUG_INFO} \
                 -s INITIAL_MEMORY=256MB \
                 -s STACK_SIZE=4MB \
-                -s EXPORTED_FUNCTIONS=\"['_getScreenWidth','_getScreenHeight','_changeCanvasSize','_main']\" \
+                -s EXPORTED_FUNCTIONS=\"['_getScreenWidth','_getScreenHeight','_changeCanvasSize','_main','_malloc','_free']\" \
                 -s EXPORTED_RUNTIME_METHODS=\"['ccall', 'cwrap']\" \
                 ${EM_PRELOAD_FILES} \
                 ${EM_ADDITIONAL_LINK_FLAGS} \

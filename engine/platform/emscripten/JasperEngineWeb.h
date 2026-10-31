@@ -70,6 +70,7 @@ public:
     JasperEngineWeb();
 
     static void setEnabledIDB(bool enabledIDB);
+    static bool hasProjectStarted() { return projectStarted; }
 
     static int init(int argc, char **argv);
     static void changeCanvasSize(int width, int height);

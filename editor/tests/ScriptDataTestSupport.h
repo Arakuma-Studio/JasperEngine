@@ -46,7 +46,21 @@ namespace scriptdata {
         std::string getAssetPath() override { return root + "/assets"; }
         std::string getLuaPath() override { return root + "/lua"; }
         std::string getUserDataPath() override { return root + "/data"; }
+        // the web build's IndexedDB restore pending (false): data:// writes are refused
+        bool userDataLoaded = true;
+        bool isUserDataLoaded() override { return userDataLoaded; }
     };
+
+    // The names of the atomic writes' temporary files left in `dir` (".<name>.<pid>-<n>.tmp")
+    inline std::vector<std::string> temporaryFiles(const fs::path& dir) {
+        std::vector<std::string> names;
+        std::error_code ec;
+        for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
+            const std::string name = it->path().filename().string();
+            if (name.size() > 4 && name.compare(name.size() - 4, 4, ".tmp") == 0) names.push_back(name);
+        }
+        return names;
+    }
 
     inline std::string readFile(const fs::path& path) {
         std::ifstream in(path, std::ios::binary);

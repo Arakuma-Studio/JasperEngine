@@ -137,6 +137,26 @@ TEST_F(UserSettingsTest, ReadsFilesOfOlderBuilds) {
     EXPECT_EQ(UserSettings::getIntegerForKey("fresh"), 1);
 }
 
+TEST_F(UserSettingsTest, KeysAreNeverEmptyOrCutAtAZeroByte) {
+    // the same keys are refused on every platform (UserSettings checks them itself)
+    UserSettings::setIntegerForKey("", 1);
+    UserSettings::setStringForKey("", "x");
+    UserSettings::setBoolForKey(nullptr, true);
+    EXPECT_FALSE(UserSettings::hasKey(""));
+    EXPECT_TRUE(UserSettingsStore::instance().entries().empty());
+    // "a\0b" would be stored as "a" by the const char* API
+    EXPECT_EQ(eval("PlayerPrefs.setString('a\\0b', 'v')"), "ERROR: PlayerPrefs.setString: key must not contain a zero byte");
+    EXPECT_EQ(eval("PlayerPrefs.hasKey('a\\0b')"), "ERROR: PlayerPrefs.hasKey: key must not contain a zero byte");
+    EXPECT_EQ(eval("PlayerPrefs.deleteKey('a\\0b')"), "ERROR: PlayerPrefs.deleteKey: key must not contain a zero byte");
+    EXPECT_EQ(eval("UserSettings.setStringForKey('a\\0b', 'v') return tostring(UserSettings.hasKey('a'))"), "false");
+    EXPECT_EQ(eval("return tostring(UserSettings.hasKey('a\\0b')) .. UserSettings.getIntegerForKey('a\\0b', 7)"), "false7");
+    EXPECT_TRUE(UserSettingsStore::instance().entries().empty());
+    // values keep their zero bytes (the web store passes lengths too)
+    EXPECT_EQ(eval("PlayerPrefs.setString('k', 'x\\0y') UserSettings.save() return #PlayerPrefs.getString('k')"), "3");
+    reload();
+    EXPECT_EQ(eval("return #UserSettings.getStringForKey('k')"), "3");
+}
+
 // ---------------------------------------------------------------- 10. locale
 
 TEST_F(UserSettingsTest, NumbersAreWrittenTheSameInEveryLocale) {
@@ -230,7 +250,7 @@ TEST_F(UserSettingsTest, WritesASecondAfterAChangeOrOnSave) {
     ASSERT_TRUE(fs::exists(settingsFile())) << "written a second after the first change";
     EXPECT_NE(scriptdata::readFile(settingsFile()).find("<score>2</score>"), std::string::npos);
     EXPECT_FALSE(UserSettingsStore::instance().hasUnsavedChanges());
-    EXPECT_FALSE(fs::exists(root / "data" / "UserSettings.xml.tmp")) << "the temporary file is renamed over it";
+    EXPECT_TRUE(scriptdata::temporaryFiles(root / "data").empty()) << "the temporary file is renamed over it";
 
     // the same value again is no change
     UserSettings::setIntegerForKey("score", 2);
@@ -242,13 +262,16 @@ TEST_F(UserSettingsTest, WritesASecondAfterAChangeOrOnSave) {
     EXPECT_NE(scriptdata::readFile(settingsFile()).find("<score>3</score>"), std::string::npos);
 
     // a file that cannot be written: the values stay in memory, tried again a second later
-    fs::create_directories(root / "data" / "UserSettings.xml.tmp");  // the temporary name is taken
+    // (the data folder replaced by a file for a moment)
+    fs::rename(root / "data", root / "data-away");
+    scriptdata::writeFile(root / "data", "not a folder");
     UserSettings::setIntegerForKey("score", 4);
     UserSettings::save();
     EXPECT_TRUE(UserSettingsStore::instance().hasUnsavedChanges());
     EXPECT_EQ(UserSettings::getIntegerForKey("score"), 4);
+    fs::remove(root / "data");
+    fs::rename(root / "data-away", root / "data");
     EXPECT_NE(scriptdata::readFile(settingsFile()).find("<score>3</score>"), std::string::npos) << "the old file stays whole";
-    fs::remove_all(root / "data" / "UserSettings.xml.tmp");
     now += 0.5;
     UserSettings::tick();
     EXPECT_TRUE(UserSettingsStore::instance().hasUnsavedChanges()) << "not again before a second";
@@ -265,7 +288,7 @@ TEST_F(UserSettingsTest, AFileThatCannotBeReadIsNeverReplaced) {
     UserSettings::save();
     EXPECT_TRUE(UserSettingsStore::instance().hasUnsavedChanges());
     EXPECT_TRUE(fs::is_directory(settingsFile())) << "not replaced";
-    EXPECT_FALSE(fs::exists(root / "data" / "UserSettings.xml.tmp"));
+    EXPECT_TRUE(scriptdata::temporaryFiles(root / "data").empty());
 }
 
 TEST_F(UserSettingsTest, ADestroyedSystemWritesWhatIsUnsaved) {

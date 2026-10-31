@@ -65,6 +65,10 @@ extern "C" {
 
     EMSCRIPTEN_KEEPALIVE 
     void syncfs_enable_callback(const char* err) {
+        // the game started after the 3 s wait: data:// writes were refused until now (FileUtils),
+        // so the restore replaced nothing the game wrote; what it read before is older
+        if (JasperEngineWeb::hasProjectStarted())
+            jasperengine::Log::warn("user data restored from IndexedDB after the game started; data:// files can be written from now on");
 	    if (!err || err[0]) {
 		    jasperengine::Log::error("Failed to enable IndexedDB: %s", err);
             JasperEngineWeb::setEnabledIDB(false);
@@ -391,10 +395,10 @@ int JasperEngineWeb::init(int argc, char **argv){
     
     emscripten_webgl_make_context_current(ctx);
 
+    // the view is loaded once the project has started (renderLoop): the order of the other
+    // platforms, init -> view loaded -> view changed, so Engine.onViewLoaded reaches the game
     JasperEngineWeb::screenWidth = sWidth;
     JasperEngineWeb::screenHeight = sHeight;
-    jasperengine::Engine::systemViewLoaded();
-    changeCanvasSize(sWidth, sHeight);
 
     emscripten_request_animation_frame_loop(renderLoop, 0);
 
@@ -424,7 +428,9 @@ void JasperEngineWeb::changeCanvasSize(int width, int height){
 
     JasperEngineWeb::screenWidth = width;
     JasperEngineWeb::screenHeight = height;
-    jasperengine::Engine::systemViewChanged();
+    // the page may resize before the project starts; the view is loaded with this size then
+    if (projectStarted)
+        jasperengine::Engine::systemViewChanged();
 }
 
 bool JasperEngineWeb::isFullscreen(){
@@ -621,7 +627,9 @@ EM_BOOL JasperEngineWeb::renderLoop(double time, void* userdata){
         // input events would reach destroyed scenes and a closed Lua state
         unregisterCallbacks();
 
-        jasperengine::Engine::systemViewDestroyed();
+        // a quit before the project started has no view to destroy
+        if (projectStarted)
+            jasperengine::Engine::systemViewDestroyed();
         jasperengine::Engine::systemShutdown();
 
         // shutdown also writes files and this loop will not run again
@@ -641,8 +649,8 @@ EM_BOOL JasperEngineWeb::renderLoop(double time, void* userdata){
             jasperengine::Log::warn("user data not restored after 3 s; saves may be missing");
         projectStarted = true;
         jasperengine::Engine::systemStartProject();
-        // init() set the canvas size and scaling after the view was laid out: lay it out again
-        jasperengine::Engine::systemViewChanged();
+        jasperengine::Engine::systemViewLoaded();
+        changeCanvasSize(screenWidth, screenHeight);
     }
 
     pollGamepads();
@@ -687,7 +695,9 @@ EM_BOOL JasperEngineWeb::canvas_resize(int eventType, const void *reserved, void
 
     JasperEngineWeb::screenWidth = w;
     JasperEngineWeb::screenHeight = h;
-    jasperengine::Engine::systemViewChanged();
+    // before the project starts the view is not loaded yet: it gets this size when it is
+    if (projectStarted)
+        jasperengine::Engine::systemViewChanged();
 
     return 0;
 }
@@ -1218,6 +1228,9 @@ int JasperEngineWeb::jasperengine_legacy_input(int code){
 // localStorage is synchronous: there is nothing to save. It can throw (storage disabled, quota):
 // a read then gives the default and a failed write is logged once.
 
+// the JS library functions the store uses (stringToNewUTF8 brings malloc in)
+EM_JS_DEPS(jasper_user_settings, "$UTF8ToString,$stringToNewUTF8,$lengthBytesUTF8");
+
 EM_JS(void, jasper_settings_install, (), {
     if (Module.jasperSettings) return;
     var SOH = String.fromCharCode(1);
@@ -1294,21 +1307,23 @@ EM_JS(void, jasper_settings_install, (), {
     };
 });
 
-EM_JS(char*, jasper_settings_get, (const char* id, const char* key), {
+// Values cross with their byte length (UTF8ToString / stringToUTF8 stop at a zero byte), so a
+// value with zeros survives as on the other platforms; keys never have one (UserSettings).
+EM_JS(char*, jasper_settings_get, (const char* id, const char* key, int* length), {
     var value = Module.jasperSettings.get(UTF8ToString(id), UTF8ToString(key));
     if (value === null) return 0;
-    var size = lengthBytesUTF8(value) + 1;
-    var buffer = _malloc(size);
-    stringToUTF8(value, buffer, size);
-    return buffer;
+    // stringToNewUTF8 encodes U+0000 as a zero byte and does not stop there
+    HEAP32[length >> 2] = lengthBytesUTF8(value);
+    return stringToNewUTF8(value);
 });
 
 EM_JS(int, jasper_settings_has, (const char* id, const char* key), {
     return Module.jasperSettings.get(UTF8ToString(id), UTF8ToString(key)) !== null ? 1 : 0;
 });
 
-EM_JS(int, jasper_settings_set, (const char* id, const char* key, const char* value), {
-    return Module.jasperSettings.set(UTF8ToString(id), UTF8ToString(key), UTF8ToString(value));
+EM_JS(int, jasper_settings_set, (const char* id, const char* key, const char* value, int length), {
+    var text = new TextDecoder().decode(HEAPU8.subarray(value, value + length));
+    return Module.jasperSettings.set(UTF8ToString(id), UTF8ToString(key), text);
 });
 
 EM_JS(int, jasper_settings_remove, (const char* id, const char* key), {
@@ -1341,9 +1356,10 @@ namespace {
 
 std::string JasperEngineWeb::getStringForKey(const char *key, const std::string& defaultValue){
     if (!key) return defaultValue;
-    char* value = jasper_settings_get(settingsId(), key);
+    int length = 0;
+    char* value = jasper_settings_get(settingsId(), key, &length);
     if (value){
-        std::string strValue = value;
+        std::string strValue(value, static_cast<size_t>(length));
         free(value); //Each call to _malloc() must be paired with free() or heap memory will leak
         return strValue;
     }
@@ -1356,7 +1372,7 @@ void JasperEngineWeb::setStringForKey(const char* key, const std::string& value)
         jasperengine::Log::error("UserSettings: a key must be a non-empty string");
         return;
     }
-    if (!jasper_settings_set(settingsId(), key, value.c_str()))
+    if (!jasper_settings_set(settingsId(), key, value.data(), static_cast<int>(value.size())))
         settingsWriteFailed();
 }
 
