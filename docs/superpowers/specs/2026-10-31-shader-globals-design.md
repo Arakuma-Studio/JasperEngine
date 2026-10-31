@@ -451,3 +451,24 @@ Decisions taken while implementing (branch `gaps/shader-globals`, on `gaps/lines
     (it fails the same with the physics-2d branch's own editor: the old `maxColliders2D` keys are
     dropped on resave). Tool budget 106825 measured on the merged tree. Android and Web builds
     were not run: no platform code changed.
+16. **Review fixes**: a texture global holding a render target lets go of it when the
+    `Framebuffer` is destroyed (its destructor calls `ShaderGlobals::forgetFramebuffer`: a
+    camera destroyed, a Lua `Framebuffer` collected), taking its default texture again with a
+    warning; file textures are resolved once per value into a cached `TextureRender*` and a load
+    that fails is remembered (warned once) until the value changes; `releaseTextures` (a view
+    loss, shutdown) drops only GPU and pixel references, keeping paths and render targets so the
+    textures load again with the next view; Project Settings refuses renames and removals of bound
+    globals during Play, and a rename's undo/redo waits for Play to stop
+    (`ShaderGlobalsCmd::undoRefusal`; `set_project_settings` is refused while playing anyway);
+    `setShaderGlobalBinding(member, x)` raises unless x is a string or nil; negative colour
+    components are clamped to 0 (no NaN). Post-process bindings are authored over MCP in the
+    `set_scene_settings post_process` entries. The Project Settings edit (preview, Cancel, OK) is
+    `editor/util/ShaderGlobalsEdit`, unit-tested. The `SMOKE_BACKEND=gles3/vulkan` smoke runs
+    were not run: the fixture has no saved scene for `tools/smoke-test.sh` and each backend needs
+    a full export build; the every-backend compile and offset tests stand in for them.
+17. **Verification after the review fixes** (merged with main at b6989373c, built and tested on the
+    host, idle after the session restart): no compiler warnings; unit tests 1386 passed, 8
+    skipped, 0 failed; `test_shader_globals.py` 12 passed (the slow export case skipped this
+    time; it passed before the fixes); the full MCP suite (`-j2`) 874 passed, 11 failed: the 10
+    baseline failures and `test_stochastic_tiling::test_old_scene_resaves_byte_identical` (the
+    ui-canvas-group regression being fixed on its branch). Tool budget 107680 measured.
