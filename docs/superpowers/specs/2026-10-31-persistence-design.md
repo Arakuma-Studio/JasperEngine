@@ -334,3 +334,101 @@ Exported smoke test (manual or CI where a display exists): a Linux export of the
 - Risks: the move touches many components (one code path per component in `EntityCloner`); every component type needs
   a move-mode review (list them in the implementation checklist from `EntityCloner.cpp`). Rendering of persistent world
   objects above the level surprises users who expect depth sorting (documented, `moveGameObjectToScene` remedy).
+
+## Implementation notes
+
+Decisions taken while implementing (branch `gaps/persistence`, on `gaps/script-lifecycle`, with
+`main` merged after physics-2d):
+
+1. **When a move runs (decision 5, 9).** A move never runs inside a script callback or a
+   system's loop. The safe points are: the end of the outermost `ScriptRuntime::awakeScene` while
+   scenes start in a load (`SceneManager::isStartingScenes()`: a load factory runs, or the
+   editor's Play start, which brackets its scene inits with `beginStartingScenes` /
+   `endStartingScenes` so Play matches the exported first load), `ObjectManager::update` (before
+   the pending destroys), the start of every frame (`Engine::runFrame`, before
+   `applyPendingLoad`) and `SceneManager::runFactory`. A call between frames (input callbacks,
+   MCP `eval_lua`) therefore moves at the start of the next frame, not "immediately" as 9 says:
+   input callbacks run inside the UI system's loops, where destroying the originals is unsafe.
+   `isPersistent` is true from the call; `SceneManager.persistentScene` exists from the call
+   (it is created at the first `DontDestroyOnLoad`, not at the move), so
+   `GameObject.instantiate(prefab, SceneManager.persistentScene)` works right after it.
+2. **Who does what.** `EntityCloner::move` copies with the move mode and hands the runtime state
+   over (the originals keep none of it: instances, voices, subscriptions, running actions) but
+   does not destroy the originals; `ObjectManager::moveToScene` does the rest (scripts rebound,
+   lifecycle states remapped, pending destroys remapped, editor listener, then the originals
+   destroyed). Engine-held state per component (the move-mode review of every `copyComponents`
+   type): kept: Transform/RectTransform (remapped), script instances and bound properties,
+   AudioSource (voice, sample, state), Action/Tween components (state, time), ParticleSystem
+   (its live particles too: better than "restart" in 6.2), Lattice jiggle, every component event
+   subscription (Button, UI, Panel, Scrollbar, InputField, AudioSource, Action, players),
+   Animation Player and Pose Animator runtimes **when every entity id was kept** (their bindings
+   are by id; with a remapped id they restart, keeping their callbacks), Rigidbody/Rigidbody2D
+   velocities and awake state (`hasPendingVelocity` fields, applied once when the target's
+   physics makes the body). Reloaded as for a clone: mesh/UI/points/lines/sky/terrain/text GPU
+   state, cameras' and fluids' render targets (fluids restart), UIDocument, Vertex Animator
+   (its draw state is its mesh's), reflection probes, lights. Joint2D/Joint3D to a body outside
+   the moved set: not copied, warning "joint '<name>' to an object outside the moved hierarchy
+   was removed". Plain data components are copied as they are.
+3. **Ids**: kept with `EntityRegistry::recreateEntity` when free in the target (user range), and
+   the target's user counter is raised past them (a prefab instantiated there later finds its
+   GameObjects above the counter).
+4. **Lua instances**: `self.scene`/`self.entity` are set raw; `self.gameObject` follows (its
+   cache checks scene and entity). Beyond the spec, GameObject wrappers held in the moved
+   instances' own fields that point at a moved GameObject are rebound in place
+   (`EntityHandle::rebind`), so `self.body = Rigidbody2D(self.scene, self.entity)` keeps working;
+   wrappers held elsewhere still name the old scene (documented pitfall).
+   `LuaBinding::removeScriptSubscriptions` also removes a released script's subscriptions from
+   the persistent scene's components (a level script listening to the persistent HUD's button
+   would otherwise be called after its scene went). The RegisterEngineEvent guard reads
+   `self.scene`, `self.entity`, `__scriptRef` and `__released` raw at each call (6.2.6).
+5. **C++**: `ScriptBase::rebind` (engine-internal) is called by the engine for every moved
+   `ScriptBase`; the generated code gets `moveEntityScripts` (registered with
+   `ObjectManager::setCppScriptMoveHook` in the generated `init()` and by the editor's
+   `Conector`) for the GameObject-wrapper kind of script and the wrappers entity-reference
+   properties own (`rebindScriptObject` / `rebindScriptReference` in `ScriptBase.h`). So 8.3's
+   "no generated code changes" does not hold: the hook is the only place those classes are
+   known. Added for parity with Lua: `ScriptBase::isPersistent()` and
+   `persistSingleton<T>()`.
+6. **Cameras**: the persistent scene adopts the first Camera a moved GameObject brings while it
+   draws with its default (system entity) camera. Any scene whose camera GameObject is moved
+   away falls back to its own default UI camera (`Scene::useDefaultCamera`, new).
+7. **Editor**: the factory makes a runtime scene of the session (`PlayRuntimeScene::persistent`,
+   a `SceneProject` named "DontDestroyOnLoad", Play id, prepared like a Play copy, paused when
+   the game is); its destroy only lets go (`destroyPersistentScene` is called at Stop after the
+   scripts are released; the session deletes the copy). Outside Play the editor installs a
+   refusing factory (`Project::refusePersistentScenes`, also at App setup): `DontDestroyOnLoad`
+   in edit mode logs a warning and moves nothing. The load factory's stale and retire logic skip
+   the persistent entry. `getRunningRuntimeLayerScenes` is now sorted by the Engine's layer
+   order (the Game view re-activation re-adds layers in that order, so the persistent scene stays
+   above later layers). Moved authored GameObjects stay listed in the target's `entities`
+   (editable in the Inspector), the selection and the Inspector's scene follow
+   (`Project::onPlayObjectsMoved`, through `ObjectManager::setMoveListener`). The Hierarchy row
+   is the last root row with `ICON_FA_THUMBTACK` and the child-scene text color: the editor has
+   no italic font. Its context menu shows only information.
+8. **MCP**: `persistent: true` is present only when true (running scene entry, live entity).
+9. **ScriptMessages after merging physics-2d** (one mechanism): `cppMask<T>()` is every bit for a
+   `ScriptBase`; the base virtuals (lifecycle ones too, now out of line) mark
+   `ScriptBase::inheritedMessages` and `baseMessageRan`, so a non-overriding class stops being
+   called and counted after the first message (lifecycle test assertions updated). An instance
+   the lifecycle never saw (an entry made by hand, its scene not started) counts as live for
+   `send`. Order stays the Script component order (script-lifecycle note 4).
+10. **Tests**: `editor/tests/PersistenceTest.cpp` (16 tests) covers 11.1-11.11 except the
+    coroutine and `invokeRepeating` parts of 11.3 (the `coroutines` feature is on its own
+    branch; engine events across the load are tested instead). Where the box has no audio
+    output, 11.4 checks the hand-over on a made-up handle without running a frame with it.
+    `tools/mcp/tests/test_persistence.py` covers the MCP story. The exported Linux smoke test
+    is not automated.
+11. **What other branches wire when they merge** (the hook points are in the code):
+    - `coroutines`: `ScriptScheduler::rebind(entry.instance, to, newEntity)` for every moved
+      instance in `ObjectManager::moveToScene` (marked comment there); persistent owners are
+      never unloaded, so their coroutines survive loads with no other change.
+    - `http` (`AsyncOwners`): its `entityDestroyed` hook would end requests owned by a moved
+      GameObject when the originals are destroyed: add an `AsyncOwners::entitiesMoved(from, to,
+      map)` and call it in `ObjectManager::moveToScene` before `from->destroyEntities`. Owners
+      keyed by script instance need nothing.
+    - `audio-mixer`: voices are kept with the AudioSource (handle, sample; the original's
+      `destroySound` no longer stops anything); per-source bookkeeping it keeps by entity
+      (one-shots, fades) must be re-owned in `handOver`/`moveToScene` with the map.
+    - `physics-contacts`: receiver masks are recomputed through `notifyReceiversChanged` for
+      the old and new ids; contacts never cross worlds.
+    - `debug-overlay`: draw above the persistent and loading scenes; count the persistent scene.

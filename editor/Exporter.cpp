@@ -2691,6 +2691,8 @@ bool editor::Exporter::copyEngine() {
         const std::string identifier = project->getApplicationIdentifier();
         const std::string storageId = (identifier != ApplicationSettings{}.identifier) ? identifier : project->getName();
         projectSettings += indent + "set(JASPERENGINE_STORAGE_ID \"" + toStorageId(storageId) + "\")";
+        // Desktop saves (data://) go to a per-user folder named after it (System::getUserDataPath)
+        projectSettings += indent + "set(JASPERENGINE_APP_IDENTIFIER \"" + toStorageId(storageId) + "\")";
         if (iconGenerated) {
             projectSettings += indent + "set(JASPERENGINE_WINDOW_ICON ON)";
         }
@@ -2896,8 +2898,6 @@ std::vector<std::pair<std::string, unsigned int>> editor::Exporter::getSceneMaxV
         agg.maxExternalBuffers  = std::max(agg.maxExternalBuffers, sceneProject.maxValues.maxExternalBuffers);
         agg.maxSpriteFrames     = std::max(agg.maxSpriteFrames, sceneProject.maxValues.maxSpriteFrames);
         agg.maxBones            = std::max(agg.maxBones, sceneProject.maxValues.maxBones);
-        agg.maxColliders2D         = std::max(agg.maxColliders2D, sceneProject.maxValues.maxColliders2D);
-        agg.maxColliderPoints2D    = std::max(agg.maxColliderPoints2D, sceneProject.maxValues.maxColliderPoints2D);
         agg.maxColliders3D         = std::max(agg.maxColliders3D, sceneProject.maxValues.maxColliders3D);
         agg.maxColliderVertices3D  = std::max(agg.maxColliderVertices3D, sceneProject.maxValues.maxColliderVertices3D);
         agg.maxColliderIndices3D   = std::max(agg.maxColliderIndices3D, sceneProject.maxValues.maxColliderIndices3D);
@@ -2918,8 +2918,6 @@ std::vector<std::pair<std::string, unsigned int>> editor::Exporter::getSceneMaxV
         {"MAX_SPRITE_FRAMES", capacity(agg.maxSpriteFrames, MAX_SPRITE_FRAMES)},
         {"MAX_EXTERNAL_BUFFERS", capacity(agg.maxExternalBuffers, MAX_EXTERNAL_BUFFERS)},
         {"MAX_BONES", capacity(agg.maxBones, MAX_BONES)},
-        {"MAX_COLLIDERS_2D", capacity(agg.maxColliders2D, MAX_COLLIDERS_2D)},
-        {"MAX_COLLIDER_POINTS_2D", capacity(agg.maxColliderPoints2D, MAX_COLLIDER_POINTS_2D)},
         {"MAX_COLLIDERS_3D", capacity(agg.maxColliders3D, MAX_COLLIDERS_3D)},
         {"MAX_COLLIDER_VERTICES_3D", capacity(agg.maxColliderVertices3D, MAX_COLLIDER_VERTICES_3D)},
         {"MAX_COLLIDER_INDICES_3D", capacity(agg.maxColliderIndices3D, MAX_COLLIDER_INDICES_3D)},

@@ -654,6 +654,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/PlayTools.cpp
     ${EDITOR_DIR}/mcp/tools/ViewTools.cpp
     ${EDITOR_DIR}/mcp/tools/ConsoleTools.cpp
+    ${EDITOR_DIR}/mcp/tools/DataTools.cpp
     ${EDITOR_DIR}/mcp/tools/ScriptTools.cpp
     ${EDITOR_DIR}/mcp/tools/AssetTools.cpp
     ${EDITOR_DIR}/mcp/tools/DocsTools.cpp
@@ -687,6 +688,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/LatticeTrackKeys.cpp
     ${EDITOR_DIR}/util/ProjectChecks.cpp
     ${EDITOR_DIR}/util/ProjectFileWrites.cpp
+    ${EDITOR_DIR}/util/PhysicsMaterialAssets.cpp
     ${EDITOR_DIR}/util/SafeWrite.cpp
     ${EDITOR_DIR}/util/BuiltPlayers.cpp
     ${EDITOR_DIR}/util/NormalMapTilt.cpp
@@ -761,6 +763,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorWindow.cpp
     ${EDITOR_DIR}/window/InspectorWindowClips.cpp
     ${EDITOR_DIR}/window/InspectorWindowVat.cpp
+    ${EDITOR_DIR}/window/InspectorPhysics2D.cpp
     ${EDITOR_DIR}/window/InspectorWindowSpriteNormals.cpp
     ${EDITOR_DIR}/window/InspectorShaderLibrary.cpp
     ${EDITOR_DIR}/window/InspectorPostProcessing.cpp
@@ -883,6 +886,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/ModelLoadCmd.cpp
     ${EDITOR_DIR}/command/type/ModelClearCmd.cpp
     ${EDITOR_DIR}/command/type/SceneNameCmd.cpp
+    ${EDITOR_DIR}/command/type/InputActionsCmd.cpp
     ${EDITOR_DIR}/command/type/CopyFileCmd.cpp
     ${EDITOR_DIR}/command/type/RenameFileCmd.cpp
     ${EDITOR_DIR}/command/type/CreateDirCmd.cpp

@@ -20,6 +20,7 @@
 #include "util/Util.h"
 #include "physics/PlacementSettings.h"
 #include "window/SpriteNormalsWindowSettings.h"
+#include "input/InputActions.h"
 
 #include "yaml-cpp/yaml.h"
 
@@ -88,8 +89,6 @@ namespace jasperengine::editor{
         unsigned int maxExternalBuffers = 0;
         unsigned int maxSpriteFrames = 0;
         unsigned int maxBones = 0;
-        unsigned int maxColliders2D = 0;
-        unsigned int maxColliderPoints2D = 0;
         unsigned int maxColliders3D = 0;
         unsigned int maxColliderVertices3D = 0;
         unsigned int maxColliderIndices3D = 0;
@@ -631,6 +630,13 @@ namespace jasperengine::editor{
         // Layer Collision Matrices of Physics (3D) and Physics 2D, all layers collide by default
         LayerCollisionRows layerCollisionMatrix3D = allLayersCollide();
         LayerCollisionRows layerCollisionMatrix2D = allLayersCollide();
+        // Project Settings > Input; Unity's Input Manager defaults (and nothing in project.yaml)
+        // until edited
+        bool inputActionsCustomized = false;
+        std::vector<InputAction> inputActions = InputActions::defaults();
+        // an input node of project.yaml that could not be read: written back as it was until
+        // the actions are edited, so a typo made by hand does not lose them
+        std::string unreadableInputNode;
         bool packNativeResources;
         bool versionControlMetadata;
         ShaderOverrides shaderOverrides;
@@ -1212,6 +1218,23 @@ namespace jasperengine::editor{
         // Puts the project's matrices back into the engine, undoing what scripts changed
         // with Physics.ignoreLayerCollision during a Play
         void applyLayerCollisionMatrices() const;
+
+        // Project Settings > Input: the input actions (virtual axes and buttons). Setting them
+        // validates nothing (callers do: InputActions::validate) and applies them to the
+        // engine's InputActions, which Play reads; actions equal to Unity's defaults are
+        // stored as "not customized" (no input node in project.yaml)
+        void setInputActions(const std::vector<InputAction>& actions);
+        const std::vector<InputAction>& getInputActions() const;
+        bool hasCustomInputActions() const;
+        void resetInputActions();
+        void applyInputActions() const;
+        // the actions as InputActions::loadJson reads them; "" for the defaults (exports emit nothing)
+        std::string getInputActionsJsonForBuild() const;
+        void setUnreadableInputNode(const std::string& yaml);
+        const std::string& getUnreadableInputNode() const;
+        // Play starts and stops with clean input: no held keys, touches, rebinding overrides,
+        // disabled actions or simulated sources of the last Play
+        void resetPlayInput() const;
 
         // Absolute roots stored references are relative to: assets for textures, models,
         // sounds and fonts ("asset://"), Lua for script entries ("lua://").

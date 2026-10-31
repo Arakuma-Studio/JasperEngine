@@ -13,6 +13,8 @@
 
 namespace jasperengine {
 
+    class Joint2D;
+
     // The base of a C++ behaviour script (Unity's MonoBehaviour). The engine calls the
     // lifecycle methods below when a subclass overrides them, with the rules of Lua scripts
     // (docs/mcp/guide/cpp-scripting.md): init once when the GameObject is first active in
@@ -86,15 +88,27 @@ namespace jasperengine {
         // Engine-internal (persistence): the GameObject moved to another scene or entity id
         void rebind(Scene* scene, Entity entity);
 
-        // Lifecycle (script-lifecycle spec 7.2). Override what the script needs.
-        virtual void init() {}
-        virtual void start() {}
-        virtual void onEnable() {}
-        virtual void onDisable() {}
-        virtual void onDestroy() {}
-        virtual void onApplicationPause(bool paused) { (void)paused; }
-        virtual void onApplicationFocus(bool focused) { (void)focused; }
-        virtual void onApplicationQuit() {}
+        // Lifecycle (script-lifecycle spec 7.2) and the other script messages (ScriptMessages),
+        // like the Lua methods of the same name: override them (public, protected or private)
+        // and do not call the base, which only notes the message is not overridden.
+        virtual void init();
+        virtual void start();
+        virtual void onEnable();
+        virtual void onDisable();
+        virtual void onDestroy();
+        virtual void onApplicationPause(bool paused);
+        virtual void onApplicationFocus(bool focused);
+        virtual void onApplicationQuit();
+        // A 2D joint of this GameObject (or whose bodyA is it) broke (Unity OnJointBreak2D); the
+        // joint still exists during the call.
+        virtual void onJointBreak2D(Joint2D& joint);
+
+        // the messages (ScriptMessage bits) whose base method ran: not overridden, so not sent
+        // again and not among ScriptMessages::receivers
+        uint32_t inheritedMessages = 0;
+        // set by a base message method (ScriptMessages reads it after a call without touching a
+        // script the call may have destroyed)
+        static bool baseMessageRan;
 
     private:
         // A live C++ script on a persistent GameObject (or one queued to move there) other

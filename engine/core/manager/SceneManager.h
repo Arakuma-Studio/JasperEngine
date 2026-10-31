@@ -294,7 +294,6 @@ namespace jasperengine {
         // Stop: its destroy only lets go). A create returning null refuses (logged by the
         // caller): the editor outside Play. Null functions bring back the default.
         static void setPersistentSceneFactory(std::function<Scene*()> create, std::function<void(Scene*)> destroy);
-        // nullptr until the first dontDestroyOnLoad()
         static Scene* getPersistentScene();
         // Creates it if needed (and adds it as a running scene layer); null when refused
         static Scene* ensurePersistentScene();

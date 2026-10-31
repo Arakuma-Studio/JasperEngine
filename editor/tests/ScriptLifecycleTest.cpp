@@ -58,10 +58,11 @@ namespace {
         void init() {}
     };
 
-    static_assert(ScriptMessages::cppMask<CppPlain>() == 0, "no overrides, no messages");
-    static_assert(ScriptMessages::cppMask<CppPartial>() ==
-                  (scriptMessageBit(ScriptMessage::Enable) | scriptMessageBit(ScriptMessage::ApplicationPause)),
-                  "only the overridden messages");
+    // a ScriptBase may receive every message: which ones it overrides is learned when the base
+    // method runs (ScriptBase::inheritedMessages)
+    static_assert(ScriptMessages::cppMask<CppPlain>() == ScriptMessages::cppMask<CppPartial>(), "decided at runtime");
+    static_assert(ScriptMessages::cppMask<CppPlain>() == (ScriptMessageMask)((1ull << (uint32_t)ScriptMessage::Count) - 1),
+                  "every message, until its base method ran");
     static_assert(ScriptMessages::cppMask<CppWrapper>() == 0, "not a ScriptBase: no messages");
 
     std::string joined(const std::vector<std::string>& lines) {
@@ -550,6 +551,10 @@ TEST_F(ScriptLifecycleTest, CppScriptsSameOrder) {
     EXPECT_EQ(plain->getScript<CppLogger>()->suffix, "1") << "getScript<T>: the first one of that class";
     EXPECT_EQ(plain->getScript<ScriptBase>(), scene->getComponent<ScriptComponent>(b).scripts[0].cppScript) << "a base class finds subclasses";
     EXPECT_EQ(plain->getScript<CppPartial>(), nullptr);
+    // init, onEnable and start reached its base methods: it is not a receiver of them any more
+    const ScriptMessageMask lifecycle = scriptMessageBit(ScriptMessage::Init) | scriptMessageBit(ScriptMessage::Enable) |
+                                        scriptMessageBit(ScriptMessage::Start);
+    EXPECT_EQ(plain->inheritedMessages & lifecycle, lifecycle);
 
     CppLogger* first = static_cast<CppLogger*>(scene->getComponent<ScriptComponent>(a).scripts[0].cppScript);
     first->setEnabled(false);

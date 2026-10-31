@@ -4,6 +4,7 @@
 #include "ScriptBase.h"
 #include "ScriptRuntime.h"
 #include "component/ScriptComponent.h"
+#include "script/ScriptMessages.h"
 #include "manager/SceneManager.h"
 #include "manager/ObjectManager.h"
 #include "registry/EntityCloner.h"
@@ -135,4 +136,28 @@ void ScriptBase::destroyOwnGameObject() {
     if (scene && scene->isEntityCreated(entity)) {
         ObjectManager::destroy(scene, entity);
     }
+}
+
+// The base message methods: the script does not override the message, it is not sent to it again
+bool ScriptBase::baseMessageRan = false;
+
+namespace {
+    void inherited(ScriptBase& script, ScriptMessage m) {
+        script.inheritedMessages |= scriptMessageBit(m);
+        ScriptBase::baseMessageRan = true;
+    }
+}
+
+void ScriptBase::init() { inherited(*this, ScriptMessage::Init); }
+void ScriptBase::start() { inherited(*this, ScriptMessage::Start); }
+void ScriptBase::onEnable() { inherited(*this, ScriptMessage::Enable); }
+void ScriptBase::onDisable() { inherited(*this, ScriptMessage::Disable); }
+void ScriptBase::onDestroy() { inherited(*this, ScriptMessage::Destroy); }
+void ScriptBase::onApplicationPause(bool paused) { (void)paused; inherited(*this, ScriptMessage::ApplicationPause); }
+void ScriptBase::onApplicationFocus(bool focused) { (void)focused; inherited(*this, ScriptMessage::ApplicationFocus); }
+void ScriptBase::onApplicationQuit() { inherited(*this, ScriptMessage::ApplicationQuit); }
+
+void ScriptBase::onJointBreak2D(Joint2D& joint) {
+    (void)joint;
+    inherited(*this, ScriptMessage::JointBreak2D);
 }

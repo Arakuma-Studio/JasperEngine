@@ -100,6 +100,13 @@ an exported build's shutdown): `onApplicationQuit` to every script, then `onDisa
 | Events | Methods registered with `RegisterEngineEvent` / `RegisterEvent` are called by the engine. |
 | Release | After `onDestroy` (or for a GameObject never active, without it): subscriptions made through `RegisterEngineEvent`/`RegisterEvent` and `Event` listeners the instance owns are removed. |
 
+Script messages (defined methods, no registration; every script of the GameObject that defines
+it gets the call, enabled or not, after the fixed step that caused it):
+
+| Method | When |
+|---|---|
+| `onJointBreak2D(self, joint)` | a `Joint2D` of this GameObject, or whose bodyA is it, broke (its `breakForce` / `breakTorque` passed; `joint` still exists during the call, its `breakAction` decides what follows) |
+
 Every instance also has (Unity's MonoBehaviour members):
 
 | Member | Kind | Meaning |
@@ -229,6 +236,7 @@ Engine events (names valid for `RegisterEngineEvent`; handler arguments in order
 | `onGamepadConnect`, `onGamepadDisconnect` | `gamepad` | gamepad |
 | `onGamepadButtonDown`, `onGamepadButtonUp` | `gamepad, button` | gamepad button |
 | `onGamepadAxisMove` | `gamepad, axis, value` | axis -1..1 |
+| `onButtonDown`, `onButtonUp` | `action` (name) | an input action's button went down / up this frame (Project Settings > Input), before `onUpdate` |
 
 Component events (use `RegisterEvent`; this is exactly the form the editor generates):
 
@@ -312,13 +320,25 @@ end
 return Mover
 ```
 
-Edge detection (pressed this frame): `Input.isKeyPressed` returns the held state, so either
-keep the previous value in `self`, or register `onKeyDown(key, isRepeat, mods)`:
+The same with input actions (Project Settings > Input; keyboard, gamepad and on-screen stick
+add up, smoothed like Unity's Input Manager):
 
 ```lua
-function Mover:init() RegisterEngineEvent(self, "onKeyDown") end
-function Mover:onKeyDown(key, isRepeat, mods)
-    if key == Input.KEY_SPACE and not isRepeat then Log.print("jump") end
+function Mover:onUpdate()
+    local move = Input.getVector("Horizontal", "Vertical")    -- length <= 1
+    local p = self.go.position
+    self.go.position = Vector3(p.x + move.x * self.speed * Engine.deltatime, p.y + move.y * self.speed * Engine.deltatime, p.z)
+end
+```
+
+Edge detection (pressed this frame): `Input.getKeyDown(Input.KEY_SPACE)` (or
+`Input.getKeyDown("space")`), `Input.getButtonDown("Jump")`, `Input.getMouseButtonDown(0)`;
+`Input.isKeyPressed` / `getKey` are the held state. The `onKeyDown(key, isRepeat, mods)` event
+works too:
+
+```lua
+function Mover:onUpdate()
+    if Input.getButtonDown("Jump") then Log.print("jump") end
 end
 ```
 
@@ -427,9 +447,42 @@ Functions:
 | `Input.getTouchPosition(pointer)` | `Vector2` |
 | `Input.numTouches()` | integer |
 | `Input.findTouchIndex(pointer)` | integer |
-| `Input.getTouches()` | list of `Touch` (Touch class is NOT bound; prefer `numTouches`/`getTouchPosition` or touch events) |
+| `Input.getTouches()` | list of `Touch`: the fingers down now (`touch.pointer` is the old name of `fingerId`) |
 | `Input.isGamepadConnected(id)`, `Input.getGamepadName(id)`, `Input.isGamepadButtonPressed(id, button)`, `Input.getGamepadAxis(id, axis)`, `Input.numGamepads()`, `Input.getGamepadId(index)` | gamepad |
 | `Input.getModifiers()` | bitmask of `Input.MODIFIER_*` |
+
+Unity-style polling with edges, touches and input actions (details: `jasper://docs/input`).
+`key` is an `Input.KEY_*` code or a control name (`"space"`, `"a"`, `"left_shift"`,
+`"mouse_left"`, `"gamepad_a"`; Unity spellings like `"left ctrl"`, `"joystick button 0"` too):
+
+| Function / property | Returns |
+|---|---|
+| `Input.getKey(key)`, `Input.getKeyDown(key)`, `Input.getKeyUp(key)` | bool: held / pressed this frame / released this frame |
+| `Input.getMouseButton(b)`, `getMouseButtonDown(b)`, `getMouseButtonUp(b)` | bool; `b` 0 left, 1 right, 2 middle |
+| `Input.getGamepadButtonDown(id, button)`, `getGamepadButtonUp(id, button)` | bool; `id` -1 any pad; `button` `Input.GAMEPAD_BUTTON_*` or a name |
+| `Input.anyKey`, `Input.anyKeyDown` (properties) | bool: any key, mouse or gamepad button held / pressed this frame |
+| `Input.inputString` (property) | UTF-8 text typed this frame (`"\b"` backspace, `"\n"` return) |
+| `Input.mouseDelta`, `Input.mouseScrollDelta` (properties) | `Vector2`: movement this frame (canvas px, y down; works captured), wheel steps (y up) |
+| `Input.getPressedControl()` | string or nil: the first control pressed this frame (`"space"`, `"mouse_left"`, `"gamepad_a"`, `"left_x+"`) |
+| `Input.touchCount`, `Input.touches` (properties), `Input.getTouch(index)` (0-based), `Input.getTouchById(fingerId)` | Unity's touches this frame (ended/cancelled ones included in their last frame): `Touch` or nil |
+| `Input.multiTouchEnabled` (rw, default true), `Input.touchSupported` | false: only the first finger is reported / `System.isTouchDevice()` |
+| `Input.getAxis(name)`, `Input.getAxisRaw(name)` | number: the input action's smoothed / raw value (-1..1, button 0..1; mouse movement unclamped) |
+| `Input.getButton(name)`, `getButtonDown(name)`, `getButtonUp(name)` | bool |
+| `Input.getVector(xName, yName)` | `Vector2`, length <= 1 |
+| `Input.hasAction(name)`, `Input.getActionNames()` | bool / string list |
+| `Input.setActionEnabled(name, enabled)`, `Input.isActionEnabled(name)` | a disabled action reads 0 / false |
+| `Input.simulateButton(name, pressed [, source])`, `Input.simulateAxis(name, value [, source])`, `Input.addAxisDelta(name, delta [, source])`, `Input.clearSimulated([source])` | virtual sources (like an on-screen control); `source` a name (default `"script"`) or `self` (cleared with the instance) |
+| `Input.getBindings(name)` | list of binding tables (`kind`, `positive`, ...) |
+| `Input.setBindings(name, bindings)`, `Input.resetBindings([name])` | `true` or `false, error` / runtime rebinding over Project Settings |
+| `Input.exportBindings()`, `Input.importBindings(json)` | the overrides as JSON text / `true` or `false, error` |
+
+Default actions (Unity's Input Manager): `Horizontal`, `Vertical`, `Fire1`, `Fire2`, `Fire3`,
+`Jump`, `Mouse X`, `Mouse Y`, `Mouse ScrollWheel`, `Submit`, `Cancel`. An unknown action name logs
+one error and reads 0 / false.
+
+`Touch` (read-only fields): `fingerId`, `phase` (`TouchPhase.Began`, `Moved`, `Stationary`,
+`Ended`, `Canceled`), `position`, `startPosition`, `deltaPosition` (canvas px, y down),
+`deltaTime` (unscaled s), `tapCount`, `pointer` (= `fingerId`).
 
 Constants (static properties, integers, no parentheses):
 
@@ -466,14 +519,142 @@ Play and at edit time; a game's platform log in an exported build): it takes any
 values of any type and joins them with tabs, like standard Lua. `Log.*` add the warn / error
 levels.
 
-### 2.4 UserSettings (static, persistent key/value)
+### 2.4 PlayerPrefs / UserSettings (static, persistent key/value)
 
-Getters (with optional default as 2nd arg): `UserSettings.getBoolForKey(k [, def])`,
-`getIntegerForKey`, `getLongForKey`, `getFloatForKey`, `getDoubleForKey`,
-`getStringForKey`, `getDataForKey`.
-Setters: `UserSettings.setBoolForKey(k, v)`, `setIntegerForKey`, `setLongForKey`,
-`setFloatForKey`, `setDoubleForKey`, `setStringForKey`, `setDataForKey`.
-`UserSettings.removeKey(k)`.
+Unity's PlayerPrefs, lowerCamel: `PlayerPrefs.getInt(k [, default=0])`, `setInt(k, v)`,
+`getFloat(k [, default=0.0])`, `setFloat(k, v)`, `getString(k [, default=""])`,
+`setString(k, v)`, `hasKey(k)`, `deleteKey(k)`, `deleteAll()`, `save()`.
+
+```lua
+PlayerPrefs.setInt("Minigame_Money", PlayerPrefs.getInt("Minigame_Money") + 10)
+if not PlayerPrefs.hasKey("OnboardingDone") then showOnboarding() end
+PlayerPrefs.setString("progress", Json.encode(progress))   -- a table: through Json
+PlayerPrefs.save()                                          -- after an important write
+```
+
+`UserSettings` is the same store with more types (PlayerPrefs reads what it wrote):
+getters with an optional default `UserSettings.getBoolForKey(k [, def])`, `getIntegerForKey`,
+`getLongForKey`, `getFloatForKey`, `getDoubleForKey`, `getStringForKey`, `getDataForKey`;
+setters `setBoolForKey(k, v)`, `setIntegerForKey`, `setLongForKey`, `setFloatForKey`,
+`setDoubleForKey`, `setStringForKey`, `setDataForKey`; `hasKey(k)`, `deleteKey(k)` (=
+`removeKey(k)`), `deleteAll()`, `save()`.
+
+- Read a key with the type you wrote it with (as in Unity): another type gives the default
+  (Android keeps the types, desktop and web store text). Getters never raise: a stored value
+  that does not read as the type asked for gives the default, with a warning once per key.
+- `hasKey` is true for a stored empty string, and `getString` returns that `""`.
+- `setInt` takes an integer within 32 bits (`6 / 2` is fine, `3.5` raises "integer expected";
+  larger: `UserSettings.setLongForKey`); `setString` takes a string (`Json.encode` tables).
+- Numbers are written the same in every locale (`0.5`, never `0,5`).
+- `deleteKey` of a missing key does nothing; `deleteAll` removes every key of this game (on
+  iOS/macOS the keys the game wrote or read back, never other SDKs' entries such as ad consent).
+- Keys are non-empty strings without zero bytes (`PlayerPrefs` raises, `UserSettings` logs and
+  ignores them); values may hold any bytes.
+
+When values reach the disk (call `save()` after an important write; a crash loses at most
+the last second on desktop):
+
+| Platform | Store | Written |
+|---|---|---|
+| Editor (Play) | `<project>/.jasperengine/user/rundata/UserSettings.xml` (Edit > Clear User Settings (PlayerPrefs)..., MCP `user_settings`) | a second after a change, on `save()`, on Play stop |
+| Desktop exports | `UserSettings.xml` in the user data folder (`data://`, below) | a second after a change, on `save()`, app pause, quit |
+| Android | SharedPreferences `UserSettings` | at once in the background; `save()` waits for it |
+| iOS / macOS app | NSUserDefaults | by the system; `save()` synchronizes |
+| Web | localStorage, keys `<identifier>/<key>` | at once |
+
+### 2.4.1 Json (static)
+
+`Json.encode(value [, opts])` -> string, `Json.decode(text [, opts])` -> value; both raise
+on errors with the place (`Json.encode: cannot encode a function at $.player.onHit`,
+`Json.decode: syntax error at line 3, column 14: unexpected '}'; expected string literal`).
+`Json.tryEncode` / `Json.tryDecode` return `nil, message` instead (a valid `null` gives
+`Json.null`, so `nil` always means failure). `Json.readFile(path [, opts])` and
+`Json.writeFile(path, value [, opts])` are below (2.4.2).
+
+```lua
+local t = Json.decode(response)           -- JsonConvert.DeserializeObject
+local ts = t.utc_timestamp
+local body = Json.encode({playerID = id}) -- JsonConvert.SerializeObject
+local ok, err = Json.tryDecode(text)       -- untrusted text: no raise
+Log.print(Json.encode(state, {pretty = true}))
+```
+
+| Lua | JSON |
+|---|---|
+| table with keys exactly `1..n` (n >= 1) | array |
+| empty table | `[]` (`{}` with `Json.object(t)` or `{emptyTable = "object"}`) |
+| any other table | object (integer keys as `"1"`; other key types are an error) |
+| `Json.array(t)` / `Json.object(t)` (marks `t`, returns it) | always array / object (a marked array with holes is an error) |
+| integer / float | integer / number with a decimal point (`1` / `1.0`); NaN and infinities are an error |
+| string | string (must be UTF-8; `invalidUtf8 = "replace"` or `"ignore"`) |
+| `Json.null` (`Json.isNull(v)`) | `null` |
+| `Vector2/3/4`, `Quaternion` | `{"x":..,"y":..[,"z"][,"w"]}` |
+| a value whose metatable has `__tojson(self)` | what it returns |
+| function, thread, other userdata, a cycle, nesting deeper than 512 | error with the path |
+
+Decoding: objects and arrays are tables (empty ones marked, so `Json.encode(Json.decode(s))`
+keeps `[]` and `{}`), integers are Lua integers (`1.0`, `1e2`, and integers beyond int64 are
+floats), `null` is `Json.null` (`{null = "nil"}`: omitted from objects, holes in arrays).
+Object keys are written sorted. Options: encode `pretty` (indent 2), `indent` (0..64),
+`invalidUtf8` (`"error"`/`"replace"`/`"ignore"`), `emptyTable` (`"array"`/`"object"`);
+decode `null` (`"sentinel"`/`"nil"`), `allowComments`. Unknown option names raise (typos).
+
+### 2.4.2 Files and saves (File.*, data://)
+
+| Function | Returns |
+|---|---|
+| `File.readText(path)` | the whole file (bytes as they are), or `nil, message` |
+| `File.writeText(path, text)` | `true`, or `nil, message`; atomic (a crash leaves the old or the new file), makes missing folders |
+| `File.appendText(path, text)` | `true`, or `nil, message` (not atomic; makes the file) |
+| `File.exists(path)` | boolean (files and folders) |
+| `File.remove(path)` | `true` (also when nothing was there), or `nil, message`; files only |
+| `File.makeDirs(path)` | `true`, or `nil, message` |
+| `File.list(dir)` | sorted names of the files and folders of a `data://` folder, or `nil, message` |
+| `Json.readFile(path [, opts])` | the decoded value, or `nil, "not found: data://save.json"` / `nil, "data://save.json: syntax error at ..."` |
+| `Json.writeFile(path, value [, opts])` | `true`, or `nil, message` (encode error or write error) |
+
+Paths: `data://x` is the user data folder (Unity's `Application.persistentDataPath`), the
+only writable one; `asset://x` (the assets folder; Unity `Resources`/`StreamingAssets`) and
+`lua://x` (the Lua folder) are read-only and work inside an Android APK and a packed export;
+a bare relative path means `data://`; `..` segments and unknown `scheme://` are refused;
+absolute paths are read on desktop and in the editor only. Wrong argument types raise;
+file problems return `nil, message` ("not found: ...", "permission denied: ...",
+"read-only path: asset://...").
+
+```lua
+-- save / load a table
+local ok, err = Json.writeFile("data://garden.json", {coins = 120, plots = plots})
+if not ok then Log.warn("save failed: " .. err) end
+local state = Json.readFile("data://garden.json") or {coins = 0, plots = {}}
+```
+
+Where `data://` is: the editor's Play mode `<project>/.jasperengine/user/rundata`; desktop
+exports a per-user folder named after Project Settings `application.identifier` (the project
+name when it is the default): Linux `$XDG_DATA_HOME/<id>` (`~/.local/share/<id>`), Windows
+`%APPDATA%\<id>`, macOS `~/Library/Application Support/<id>` (older builds saved in the
+working directory: `UserSettings.xml` is copied over once; other files they wrote there are
+not); Android the app's internal files; iOS Documents; Web `/datafs` (IndexedDB).
+
+Web: files persist in IndexedDB. `File.writeText`, `Json.writeFile` and `File.remove` store
+within half a second (and when the tab is hidden); `System.syncFileSystem()` stores now.
+The first scene starts once the saved files are restored (`System.isUserDataLoaded()`; at
+most 3 s), so `init` reads them; if the restore takes longer, `data://` writes return
+`nil, "the saved files are not restored yet ..."` until it is done (the restore would replace
+them). Plain Lua `io` works with `FileData.getSystemPath("data://x")`
+paths, but on Web call `System.syncFileSystem()` after writing.
+
+Data assets (Unity ScriptableObjects): a JSON file with the Lua scripts or the assets
+(`Json.readFile("lua://data/items.json")`, `Json.readFile("asset://levels/1.json",
+{allowComments = true})`), exported with them; or a Lua data module shared by every
+script that requires it:
+
+```lua
+-- lua/data/items.lua
+return { sword = { damage = 12, price = 30 }, shield = { armor = 5, price = 25 } }
+-- in a script
+local Items = require("data.items")
+local price = Items.sword.price
+```
 
 ### 2.5 System (static)
 
@@ -483,7 +664,8 @@ Setters: `UserSettings.setBoolForKey(k, v)`, `setIntegerForKey`, `setLongForKey`
 `setWindowTitle(s)`, `quit()`, `showVirtualKeyboard(text)`, `hideVirtualKeyboard()`,
 `setClipboardText(s)`, `getClipboardText()` (the system clipboard, UTF-8; on Web the text of
 the last copy or paste), `getDirSeparator()`, `getAssetPath()`, `getUserDataPath()`, `getLuaPath()`,
-`getShaderPath()`; ads/web: `initializeAdMob()`, `setMaxAdContentRating(AdMobRating.*)`,
+`getShaderPath()`, `syncFileSystem()` (Web: stores the `data://` files in IndexedDB now; true),
+`isUserDataLoaded()` (Web: the saved files are restored; elsewhere true); ads/web: `initializeAdMob()`, `setMaxAdContentRating(AdMobRating.*)`,
 `loadInterstitialAd(id)`, `isInterstitialAdLoaded()`, `showInterstitialAd()` (Android/iOS; the
 export compiles Google Mobile Ads in only with the project settings `android.admob_enabled` /
 `ios.admob_enabled` and their `admob_app_id`, otherwise these do nothing),
@@ -491,7 +673,8 @@ export compiles Google Mobile Ads in only with the project settings `android.adm
 `gameplayStartCrazyGames()`, `gameplayStopCrazyGames()`, `loadingStartCrazyGames()`,
 `loadingStopCrazyGames()`.
 
-Files: `File()` / `File(path, write)` with `:open`, `:flush`, `:close`, `:readString()`,
+Files (for saves prefer `File.readText` / `File.writeText` / `Json.readFile`, 2.4.2):
+`File()` / `File(path, write)` with `:open`, `:flush`, `:close`, `:readString()`,
 `:writeString(s)`, `:read8/16/32()`, `:eof()`, `:length()`, `:seek(n)`, `:pos()`;
 `Data(path)` reads asset data; `FileData.getBaseDir(p)`, `FileData.getFilePathExtension(p)`,
 `FileData.getSystemPath(p)`. Constants `FileErrors.FILEDATA_OK`, `INVALID_PARAMETER`,
@@ -566,7 +749,71 @@ A `"Prefab"` script property left at None is `nil`: check before instantiating.
 `getSceneId(name)`, `getSceneName(id)`, `getSceneNames()`, `getScenePtr(id)`,
 `clearAll()`. Properties (ro unless noted): `sceneCount`, `currentSceneId`,
 `currentSceneName`, `loadPending`, `loadingSceneId`, `loading`, `loadingProgress`,
-`loadingDelay` (rw), `loadingTimeout` (rw).
+`loadingDelay` (rw), `loadingTimeout` (rw), `persistentScene` (the DontDestroyOnLoad scene, nil
+until the first `DontDestroyOnLoad`). `moveGameObjectToScene(obj, scene)` (2.8.1).
+
+### 2.8.1 Persistent objects (DontDestroyOnLoad)
+
+```lua
+function AudioManager:init()
+    DontDestroyOnLoad(self)          -- or GameObject.dontDestroyOnLoad(self) / (self.gameObject)
+end
+
+-- a manager placed in every scene (Unity's `if (instance == null) ... else Destroy(gameObject)`)
+function AdsManager:init()
+    if GameObject.persistSingleton(self) ~= self then return end
+    -- the one manager from here on
+end
+```
+
+| Function | Semantics |
+|---|---|
+| `DontDestroyOnLoad(obj)` / `GameObject.dontDestroyOnLoad(obj)` | `obj`: a script instance (its GameObject) or any GameObject wrapper. Its **root** GameObject, with its children, components and running state, moves into the persistent scene and survives every `SceneManager.loadScene`. Returns true. A GameObject with a parent: warning "DontDestroyOnLoad only works for root GameObjects", nothing happens (false). `nil`: ignored. Already persistent: nothing. In the editor outside Play: nothing (false). |
+| `GameObject.isPersistent(obj)` | in the persistent scene, or marked to move there (true from the call on) |
+| `GameObject.persistSingleton(self)` | the instance of `self`'s class that survives: another one already on a persistent GameObject (or marked earlier, also in the same start pass) is returned and `self`'s GameObject is destroyed (at the end of the frame); else `self` is made persistent and returned |
+| `SceneManager.persistentScene` | the persistent `Scene` (named "DontDestroyOnLoad"), or nil before the first `DontDestroyOnLoad`; `GameObject.instantiate(prefab, SceneManager.persistentScene)` instantiates straight into it (check for nil) |
+| `SceneManager.moveGameObjectToScene(obj, scene)` | moves a root GameObject to a running scene (`Engine.scene`, a layer) or to the persistent scene; out of the persistent scene it stops persisting (the next load destroys it). Error logged, false: not a root, "the target scene is not loaded" |
+
+Rules:
+- **The move is a real move**: the same script instance tables (fields, other scripts' references
+  to them), the same Lua state, sounds play on (the voice is kept), Rigidbody / Rigidbody2D keep
+  their velocities (the body is made again in the persistent scene's world), running actions,
+  tweens, particles, Animation Players keep going, subscriptions to its component events stay.
+  No lifecycle method runs for it (Unity). Entity ids are kept when free; otherwise the
+  GameObject gets a new id and `self.entity` changes with it. Reloaded as when copied: the GPU
+  state (one frame), UI documents (their DOM and data models start again), fluids and Vertex
+  Animators restart.
+- **When it moves**: never inside a callback. Called in `init`/`onEnable` of a scene being
+  loaded: at the end of that scene's start, before its HTML documents start (the usual case,
+  nothing is lost). From `onUpdate`, coroutines, timers, an instantiated object's `init`: after
+  this frame's update. Between frames (input callbacks, tools): at the start of the next frame.
+  Always before a scene load tears the scenes down. `self.scene` and `self.entity` change when
+  it moves; `self.gameObject` follows.
+- **Wrappers** a script made before the move for its own GameObjects (in its fields:
+  `self.body = Rigidbody2D(self.scene, self.entity)`) follow the move; wrappers kept elsewhere
+  (locals, other tables, other scripts) still name the old scene: use `self.gameObject` or wrap
+  again.
+- **Drawing**: the persistent scene is a scene layer above the loaded scenes (and their layers
+  and child scenes) and below the loading scene: persistent UI covers the game, the loading
+  screen covers everything. It draws with a default UI camera, or the first Camera a persistent
+  GameObject brings. It clears its own depth: persistent world objects draw on top of the level
+  (move them into the level with `moveGameObjectToScene` to depth-sort them with it).
+- **Physics**: the persistent scene has its own worlds (default gravity, set it with
+  `SceneManager.persistentScene:setGravity2D(...)`): persistent bodies collide only with
+  persistent bodies. A joint to a body that stays behind is removed (warning).
+- **Audio**: 2D sounds (music) are untouched; 3D sounds are heard by the loaded main scene's
+  camera.
+- **Events**: subscriptions to the old scene's events (`self.scene:getPhysicsSystem()...`) stay
+  on that scene until it unloads: register scene-wide events on `self.scene` after the move (or
+  use the per-object callbacks). Engine events (`RegisterEngineEvent`) keep working and follow
+  the GameObject's active state.
+- **Play stop / quit** destroys the persistent objects after the quit pass (`onApplicationQuit`,
+  `onDisable`, `onDestroy`); nothing persists into edit mode. The persistent scene stays (empty)
+  until then once made. `Engine.removeAllScenes()` (low level) takes it off the screen until
+  the next load adds it again.
+- **Finds** (`GameObject.find*`, `findObjectOfType`) see persistent objects; the editor's
+  Hierarchy lists them under a "DontDestroyOnLoad" row in Play, MCP as the running scene
+  "DontDestroyOnLoad" (`persistent: true`).
 
 ### 2.9 Scene (`self.scene`) - methods from EntityRegistry and Scene
 
@@ -590,11 +837,13 @@ Entities are plain integers (`0` = none).
 | `gravity2D` (Vector2, rw); `setGravity2D(x, y)` | |
 | `gravity3D` (Vector3, rw); `setGravity3D(x, y, z)` | |
 | `physicsInterpolation` (bool, rw) | bodies drawn between their last two fixed steps (default true); the scene setting `physics_interpolation` |
+| `physics2DSubSteps` (integer, rw) | Box2D sub-steps of each fixed step, 1-16 (default 4); the scene setting `physics_2d_sub_steps` |
 | `ambientLight2DColor`, `ambientLight2DIntensity`, `globalIlluminationColor`, `globalIlluminationIntensity`, `maxLightsPerObject` (1-16; the other lights reaching an object go into its ambient), `shadowQuality`, `lightState`, `shadow2DQuality`, `sceneColorScale` (`SceneColorScale`: resolution of the scene-colour copy that shaders requiring scenecolor sample; `HALF` default), `postProcessing` (a `PostProcessingSettings` copy: edit its fields, then assign it back, `local p = scene.postProcessing; p.tonemap = TonemapMode.ACES; p.fxaaEnabled = true; scene.postProcessing = p`; enums `TonemapMode` NONE/ACES/NEUTRAL/REINHARD/AGX, `MonochromeMode` GRAYSCALE/SEPIA; fields as `get_scene_settings` `post_processing.<field>` in camelCase; `scene.postProcessing = PostProcessingSettings()` turns everything off; costs and presets: `jasper://docs/post-processing`), `postProcessPasses` (a list of `PostProcessPass`: `shader`, `enabled`, `scale` 0.1-1, `setUniform`/`getUniform`, `setTexture(uniform, path)`/`getTexture`; assign the list back; `jasper://docs/post-processing`), `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
 | `getPhysicsSystem()`, `getAudioSystem()`, `getActionSystem()`, `getMeshSystem()`, `getRenderSystem()`, `getUISystem()` | subsystem objects |
 
 `PhysicsSystem` (from `self.scene:getPhysicsSystem()`): `gravity` / `gravity2D` /
-`gravity3D` (rw), `interpolation` (rw, as `scene.physicsInterpolation`), `pointsToMeterScale2D` (rw), event objects (section 1.3),
+`gravity3D` (rw), `interpolation` (rw, as `scene.physicsInterpolation`), `pointsToMeterScale2D` (rw),
+`subSteps2D` (rw, 1-16, as `scene.physics2DSubSteps`), event objects (section 1.3),
 `createRigidbody2D(e)`, `removeRigidbody2D(e)`, `createRigidbody(e)`, `removeRigidbody(e)`
 (partial).
 
@@ -728,11 +977,11 @@ EntityHandle
  |   |- RectTransform
  |       |- Text, Polygon, LayoutGroup
  |       |- Image -> Button, Panel, Scrollbar, Progressbar, InputField
- |- AudioSource, PoseAnimator, AnimationPlayer, VertexAnimator, Rigidbody2D, Rigidbody, Fog, Skybox
+ |- AudioSource, PoseAnimator, AnimationPlayer, VertexAnimator, Rigidbody2D, Joint2D, Rigidbody, Fog, Skybox
  |- Action -> Tween (AlphaTween, ColorTween, PositionTween, RotationTween, ScaleTween),
              ParticleSystem, SpriteAnimation, Animation,
              KeyframeTracks (MorphTracks, LatticeTracks, RotateTracks, ScaleTracks, TranslateTracks)
-Joint2D, Joint3D, AnimationState, AnimationEvent, VertexAnimatorSocketPose (standalone classes)
+Joint3D, AnimationState, AnimationEvent, VertexAnimatorSocketPose, PhysicsMaterial (standalone classes)
 ```
 
 Constructors: every wrapper has `(Scene, Entity)` to wrap an existing entity. Most also have
@@ -786,6 +1035,7 @@ non-string `className` errors. Annotate the result for LuaLS: `local enemy = go:
 | `localMatrix` (rw), `modelMatrix` (ro), `normalMatrix` (ro), `updateTransform()` | | |
 | `getRigidbody2D()` | method | returns `Rigidbody2D`, CREATING the component if missing |
 | `removeRigidbody2D()` | method | |
+| `getJoint2D()` | method | the GameObject's `Joint2D`, `nil` when it has none |
 | `getRigidbody()` / `removeRigidbody()` | method | 3D, same semantics |
 | `getRay(direction)` | method | Ray from world position |
 | `getAnimationPlayer()` | method | the GameObject's `AnimationPlayer` (4.8.2), `nil` when it has none (it never adds one) |
@@ -1176,11 +1426,17 @@ Restart a one-shot: `snd:stop(); snd:play()`.
 | `angle` | rw number | default units (degrees) |
 | `linearVelocity` | rw `Vector2` | points per second |
 | `angularVelocity` | rw | |
-| `linearDamping`, `angularDamping`, `gravityScale` | rw | |
+| `linearDamping`, `angularDamping`, `gravityScale` | rw | saved fields too (Unity drag, gravity scale) |
 | `type` | rw | `BodyType.STATIC`, `BodyType.KINEMATIC`, `BodyType.DYNAMIC` |
-| `fixedRotation`, `bullet`, `awake`, `enableSleep`, `enabled` | rw bool | |
+| `fixedRotation`, `bullet`, `awake`, `enableSleep`, `enabled` | rw bool | `bullet` = `collisionDetection` CONTINUOUS, `enableSleep` false = NEVER_SLEEP |
+| `collisionDetection` | rw | `CollisionDetectionMode2D.DISCRETE` / `CONTINUOUS` (never tunnels) |
+| `sleepingMode` | rw | `RigidbodySleepMode2D.NEVER_SLEEP` / `START_AWAKE` / `START_ASLEEP` |
+| `mass` | rw number | kg; setting it turns `useAutoMass` off (also `getMass()`) |
+| `useAutoMass` | rw bool | true: mass from the colliders (area x density) |
+| `centerOfMass`, `autoCenterOfMass` | rw `Vector2`, bool | body-local, collider units (points); setting the centre turns auto off |
+| `inertia`, `autoInertia` | rw number, bool | kg m^2 about the centre of mass; setting it turns auto off |
+| `material` | rw | default material of the colliders without one: a `.physicsmaterial` path, a `PhysicsMaterial` or nil; reads a `PhysicsMaterial` or nil |
 | `pointsToMeterScale` | ro | default 64 |
-| `getMass()` | method | kg (NOT a property) |
 | `getRotationalInertia()`, `applyMassFromColliders()` | methods | |
 | `applyForce(forceV2, pointV2, wake)` | method | point in world points |
 | `applyForceToCenter(forceV2, wake)` | method | |
@@ -1190,10 +1446,16 @@ Restart a one-shot: `snd:stop(); snd:play()`.
 | `applyAngularImpulse(i, wake)` | method | |
 | `createBoxCollider(w, h)` | method | box from local (0,0) to (w,h); returns collider index |
 | `createCenteredBoxCollider(w, h [, centerV2, angle])` | method | centered box |
-| `createRoundedBoxCollider(w, h, radius)`, `createCircleCollider(centerV2, radius)`, `createCapsuleCollider(c1, c2, radius)`, `createSegmentCollider(p1, p2)`, `createPolygonCollider({Vector2...})`, `createChainCollider({Vector2...}, loop)` | methods | |
+| `createRoundedBoxCollider(w, h, radius)`, `createCircleCollider(centerV2, radius)`, `createCapsuleCollider(c1, c2, radius)`, `createSegmentCollider(p1, p2)`, `createPolygonCollider({Vector2...})`, `createChainCollider({Vector2...}, loop)` | methods | any number of colliders; a polygon of any number of points, concave too (split in convex pieces); a chain of 2+ points (2-3: segments) |
 | `removeAllColliders()`, `getNumColliders()`, `getColliderType(i)` | methods | |
-| `load()` | method | rebuilds the body after changing colliders from script |
-| `shapeDensity`, `shapeFriction`, `shapeRestitution`, `shapeSensor`, `shapeContactEvents`, `shapeSensorEvents`, `shapeEnableHitEvents`, `shapePreSolveEvents` | rw | first collider; per collider: `setColliderX(index, v)` / `getColliderX(index)` (`Density`, `Friction`, `Restitution`), `setColliderSensor(i, b)`, `isColliderSensor(i)` ... |
+| `removeCollider(i)` | method | -> bool; later indices shift down |
+| `setColliderPoints(i, {Vector2...})`, `getColliderPoints(i)` | methods | polygon or chain, any count |
+| `setColliderLoop(i, b)`, `isColliderLoop(i)`, `setColliderRadius(i, r)`, `getColliderRadius(i)`, `setColliderCenter(i, v2)` (circle), `getColliderCenter(i)`, `setColliderSegment(i, a, b)` (segment, capsule) | methods | rebuild that collider only at the next step: the body keeps its velocity, joints and other contacts |
+| `setColliderMaterial(i, material)`, `getColliderMaterial(i)` | methods | a `.physicsmaterial` path, a `PhysicsMaterial` or nil; the getter returns the one in use (the collider's, else the body's) or nil |
+| `setColliderTrigger(i, b)`, `isColliderTrigger(i)` | methods | Unity `isTrigger` (the sensor flag) |
+| `getColliderPieceCount(i)` | method | the Box2D shapes of the collider (convex pieces of a polygon, segments of a chain) |
+| `load()` | method | rebuilds the whole body (collider edits do not need it) |
+| `shapeDensity`, `shapeFriction`, `shapeRestitution`, `shapeSensor`, `shapeContactEvents`, `shapeSensorEvents`, `shapeEnableHitEvents`, `shapePreSolveEvents` | rw | first collider; per collider: `setColliderX(index, v)` / `getColliderX(index)` (`Density`, `Friction`, `Restitution`), `setColliderSensor(i, b)`, `isColliderSensor(i)` ... Friction / restitution of a collider with a material read the material's; setting them gives the collider its own copy of it (Unity `collider.material`) |
 | `categoryBitsFilter`, `maskBitsFilter`, `groupIndexFilter` | rw | also `setBitsFilter(category, mask)` |
 | `getBodyContacts()`, `getColliderContacts(i)` | methods | tables of `Contact2D` |
 | `getAttachedObject()` | method | GameObject |
@@ -1201,9 +1463,48 @@ Restart a one-shot: `snd:stop(); snd:play()`.
 `Contact2D`: `getBodyA()`, `getBodyB()` (Rigidbody2D), `getBodyEntityA()`,
 `getBodyEntityB()`, `getColliderIndexA()`, `getColliderIndexB()`, `getManifold()`.
 `Manifold2D`: `getNormal()`, `getPointCount()`, `getManifoldPointPosition(i)`, ... .
-`Joint2D(scene [, entity])`: `setDistanceJoint(bodyA, bodyB [, anchorA, anchorB, ...])`,
-`setRevoluteJoint`, `setPrismaticJoint`, `setMouseJoint`, `setWheelJoint`, `setWeldJoint`,
-`setMotorJoint`, `getType()` (partial; arguments follow the C++ headers).
+`PhysicsMaterial` (shared with 3D): `PhysicsMaterial.load(path)` (the asset's runtime copy, shared
+by every collider naming it until the scene ends; nil when it cannot be read),
+`PhysicsMaterial.new{friction = 0.4, bounciness = 0, frictionCombine =
+PhysicsMaterialCombine.MINIMUM, bounceCombine = ...}` (a material of the script's own); rw
+`friction`, `bounciness`, `frictionCombine`, `bounceCombine`, ro `path` ("" for a new one).
+Editing one changes every collider using it at the next step.
+
+### 4.13.1 Joint2D (EntityHandle) - 2D joints
+
+`go:getJoint2D()` (nil when none), `Joint2D(scene, entity)`, `Joint2D(scene)` (a new GameObject
+with a joint). Units: points, degrees (the engine's angle unit), degrees/s or points/s, N, N m, Hz.
+Unity mapping: WheelJoint2D = `Joint2DType.WHEEL`, HingeJoint2D = `REVOLUTE`, SliderJoint2D =
+`PRISMATIC`, DistanceJoint2D = `DISTANCE` (`rope` = maxDistanceOnly), SpringJoint2D = `DISTANCE`
+with `enableSpring`, FixedJoint2D = `WELD`, RelativeJoint2D = `MOTOR`, TargetJoint2D = `MOUSE`.
+
+| Member | Kind | Notes |
+|---|---|---|
+| `type` | rw `Joint2DType` | changing it rebuilds the joint (fields at the old type's defaults take the new type's) |
+| `bodyA`, `bodyB` (alias `connectedBody`) | rw GameObject or nil | set with a GameObject or Rigidbody2D that has a Rigidbody 2D (else a Lua error), or nil (bodyB nil: the world) |
+| `anchorSpace` | rw `JointAnchorSpace.LOCAL` / `WORLD` | LOCAL: anchors in each body's space, axis in bodyA's |
+| `anchorA` (alias `anchor`), `anchorB` (alias `connectedAnchor`), `autoAnchors`, `axis` | rw | changing them rebuilds the joint before the next step |
+| `enableCollision` | rw bool | the connected bodies collide |
+| `breakForce`, `breakTorque` | rw number | N, N m; `math.huge` never breaks (default) |
+| `breakAction` | rw `JointBreakAction.IGNORE` / `CALLBACK_ONLY` / `DISABLE` / `DESTROY` | default DESTROY; the callback is `onJointBreak2D(joint)` |
+| `useLimits`, `lowerAngle`, `upperAngle`, `lowerTranslation`, `upperTranslation` | rw | revolute angles; prismatic and wheel translations |
+| `useMotor`, `motorSpeed`, `maxMotorTorque`, `maxMotorForce` | rw | live: change them every frame (a car's throttle) |
+| `enableSpring`, `frequency`, `dampingRatio` | rw | wheel suspension, revolute / prismatic / distance spring, mouse stiffness |
+| `length`, `autoLength`, `minLength`, `maxLength`, `rope` | rw | distance (setting `length` turns `autoLength` off) |
+| `linearFrequency`, `angularFrequency`, `linearDampingRatio`, `angularDampingRatio` | rw | weld (0 = rigid) |
+| `linearOffset`, `angularOffset`, `autoOffset`, `maxForce`, `maxTorque`, `correctionFactor` | rw | motor joint (setting an offset turns `autoOffset` off); mouse `maxForce` (0: 1000 x mass) |
+| `target` | rw `Vector2` | mouse joint world point |
+| `enabled` | rw bool | a disabled joint leaves the simulation (a broken DISABLE joint stays so until enabled) |
+| `reactionForce` (Vector2), `reactionTorque`, `jointAngle`, `jointSpeed`, `jointTranslation`, `jointLinearSpeed`, `motorTorque`, `motorForce`, `currentLength`, `limitState` (`JointLimitState2D`), `referenceAngle`, `broken` | ro | the live joint (0 without one) |
+| `setDistanceJoint(bodyA, bodyB [, anchorA, anchorB, rope])`, `setRevoluteJoint(a, b, anchor)`, `setPrismaticJoint(a, b, anchor, axis)`, `setMouseJoint(a, b, target)`, `setWheelJoint(a, b, anchor, axis)`, `setWeldJoint(a, b, anchor)`, `setMotorJoint(a, b)` | methods | bodies are entities; build a joint as before local anchors: WORLD anchors and Box2D's defaults for every other field (set properties after) |
+
+```lua
+local joint = self.frontWheel:getJoint2D()
+joint.useMotor = true
+joint.motorSpeed = -720      -- deg/s
+joint.maxMotorTorque = 10000
+function Car:onJointBreak2D(joint) Log.print("snap") end
+```
 
 ### 4.14 Rigidbody (EntityHandle) - 3D physics (Jolt)
 
@@ -1481,6 +1782,12 @@ use the methods. Physics colliders keep the rest shape.
 | `Collider3DType` | `SPHERE`, `BOX`, `CAPSULE`, `TAPERED_CAPSULE`, `CYLINDER`, `CONVEX_HULL`, `MESH`, `HEIGHTFIELD` |
 | `RigidbodyMotionQuality` | `DISCRETE`, `LINEAR_CAST` |
 | `Joint2DType` | `DISTANCE`, `REVOLUTE`, `PRISMATIC`, `MOUSE`, `WHEEL`, `WELD`, `MOTOR` |
+| `JointAnchorSpace` | `WORLD`, `LOCAL` |
+| `JointBreakAction` | `IGNORE`, `CALLBACK_ONLY`, `DISABLE`, `DESTROY` |
+| `JointLimitState2D` | `INACTIVE`, `LOWER`, `UPPER`, `EQUAL` |
+| `CollisionDetectionMode2D` | `DISCRETE`, `CONTINUOUS` |
+| `RigidbodySleepMode2D` | `NEVER_SLEEP`, `START_AWAKE`, `START_ASLEEP` |
+| `PhysicsMaterialCombine` | `AVERAGE`, `GEOMETRIC_MEAN`, `MINIMUM`, `MULTIPLY`, `MAXIMUM` |
 | `Joint3DType` | `FIXED`, `DISTANCE`, `POINT`, `HINGE`, `CONE`, `PRISMATIC`, `SWINGTWIST`, `SIXDOF`, `PATH`, `GEAR`, `RACKANDPINON`, `PULLEY` |
 | `CameraType` | `CAMERA_UI`, `CAMERA_ORTHO`, `CAMERA_PERSPECTIVE` |
 | `LightType` | `DIRECTIONAL`, `POINT`, `SPOT` |
@@ -1501,6 +1808,7 @@ use the methods. Physics colliders keep the rest shape.
 | `CursorType` | `ARROW`, `IBEAM`, `CROSSHAIR`, `POINTING_HAND`, `RESIZE_EW`, `RESIZE_NS`, `RESIZE_NWSE`, `RESIZE_NESW`, `RESIZE_ALL`, `NOT_ALLOWED`, `WAIT`, `PROGRESS`, `HELP`, `GRAB`, `GRABBING` |
 | `MouseMode` | `NORMAL`, `HIDDEN`, `CAPTURED`, `CONFINED` |
 | `UIEventState` | `NOT_SET`, `ENABLED`, `DISABLED` |
+| `TouchPhase` | `Began`, `Moved`, `Stationary`, `Ended`, `Canceled` |
 | `UIDocumentRenderMode` | `SCREEN`, `TEXTURE` |
 | `TextureFilter` | `NEAREST`, `LINEAR`, `NEAREST_MIPMAP_NEAREST`, `NEAREST_MIPMAP_LINEAR`, `LINEAR_MIPMAP_NEAREST`, `LINEAR_MIPMAP_LINEAR` |
 | `TextureWrap` | `REPEAT`, `MIRRORED_REPEAT`, `CLAMP_TO_EDGE`, `CLAMP_TO_BORDER` |
@@ -1587,8 +1895,10 @@ Rigidbody wrappers by index.
 14. **Do not assign Engine events** (`Engine.onUpdate = function() end`): it bypasses the
     per-script subscription (not removed when the script is destroyed, survives play
     sessions). Always use `RegisterEngineEvent`.
-15. **Held vs pressed**: `Input.isKeyPressed` / `isMousePressed` report the held state.
-    For "pressed this frame" track the previous value or use `onKeyDown` / `onMouseDown`.
+15. **Held vs pressed**: `Input.isKeyPressed` / `isMousePressed` / `getKey` report the held
+    state; "pressed this frame" is `Input.getKeyDown`, `getMouseButtonDown`, `getButtonDown`
+    (read edges in `onUpdate`: every fixed step of a frame sees them). Prefer input actions
+    (`Input.getAxis("Horizontal")`) to raw keys: they add the gamepad and on-screen controls.
 16. **Physics events are global** for the scene: compare `bodyA.entity` / `bodyB.entity`
     with `self.entity`. 2D contact events require the per-collider event flags.
 17. **Unassigned references are `nil`**: an entity-reference or Prefab property not set in
@@ -1620,3 +1930,15 @@ Rigidbody wrappers by index.
 26. **Unity method names are not called**: `Awake` -> `init`, `Start` -> `start`, `OnEnable` ->
     `onEnable`, `Update` -> `onUpdate` registered with `RegisterEngineEvent(self, "onUpdate")`
     (`FixedUpdate` -> `onFixedUpdate`, `LateUpdate` -> `onPostUpdate`). `check_script` warns.
+27. **Json: an empty table is `[]`.** Use `Json.object()` (or `{emptyTable = "object"}`) for an
+    empty object. A table with `nil` in the middle is not an array (`{1, nil, 3}` encodes as an
+    object `{"1":1,"3":3}`): store `Json.null` to keep a place. `Json.decode` gives integers for
+    `1` and floats for `1.0`; compare JSON nulls with `Json.null`, never `nil`.
+28. **Saves go to `data://`.** `asset://` and `lua://` are read-only (and inside the APK on
+    Android); `File.*` and `Json.*File` return `nil, message` on file problems instead of
+    raising: check the first result. On Web, Lua `io` writes need `System.syncFileSystem()`.
+29. **Singletons: module tables are per instance.** A Unity `static Instance` has no direct
+    equivalent (each attached script runs its file again): use `GameObject.persistSingleton(self)`
+    for a persistent manager, or keep shared state in a `require`d module table.
+30. **After `DontDestroyOnLoad`**, wrappers of the object kept outside the script's own fields
+    name the old scene once it moved: use `self.gameObject` or wrap again (2.8.1).

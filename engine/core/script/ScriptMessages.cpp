@@ -25,10 +25,11 @@ namespace {
         return static_cast<int>(reinterpret_cast<intptr_t>(entry.instance));
     }
 
-    // initialized (the GameObject was active once) and not destroyed
+    // initialized (the GameObject was active once) and not destroyed; an instance the
+    // lifecycle never saw (made by hand, its scene not started) has no such state: it is live
     bool live(const ScriptEntry& entry) {
         const ScriptState* state = ScriptRuntime::getState(entry.instance);
-        return state && state->initialized && !state->destroyed;
+        return !state || (state->initialized && !state->destroyed);
     }
 
     bool destroyed(const ScriptEntry& entry) {
@@ -104,7 +105,8 @@ ScriptMessageMask ScriptMessages::receivers(Scene* scene, Entity entity) {
                 }
                 lua_pop(L, 1);
             } else if (entry.cppScript) {
-                mask |= entry.cppMessageMask;
+                // less what reached the base methods (not overridden)
+                mask |= entry.cppMessageMask & ~entry.cppScript->inheritedMessages;
             }
         }
     }
@@ -148,17 +150,29 @@ bool ScriptMessages::invoke(Scene* scene, Entity entity, size_t scriptIndex, Scr
         lua_settop(L, top);
         return true;
     }
-    if (!entry.cppScript || !callCpp || !(entry.cppMessageMask & scriptMessageBit(m))) {
+    if (!entry.cppScript || !callCpp || !(entry.cppMessageMask & scriptMessageBit(m)) ||
+            (entry.cppScript->inheritedMessages & scriptMessageBit(m))) {
         return false;
     }
     ScriptBase* script = entry.cppScript;
     const std::string className = entry.className;
+    ScriptBase::baseMessageRan = false;
     try {
         callCpp(*script);
     } catch (const std::exception& e) {
         Log::error("C++ %s() failed for '%s': %s", method, className.c_str(), e.what());
     } catch (...) {
         Log::error("C++ %s() failed for '%s': unknown exception", method, className.c_str());
+    }
+    if (ScriptBase::baseMessageRan) {
+        // the base method ran (read from the flag, the script may be gone): not an override,
+        // not called again, not a receiver
+        ScriptBase::baseMessageRan = false;
+        auto sceneCache = receiverCache.find(scene);
+        if (sceneCache != receiverCache.end()) {
+            sceneCache->second.erase(entity);
+        }
+        return false;
     }
     return true;
 }
@@ -257,6 +271,10 @@ void ScriptMessages::addReceiversChangedListener(ReceiversChanged listener) {
     if (listener && std::find(receiverListeners.begin(), receiverListeners.end(), listener) == receiverListeners.end()) {
         receiverListeners.push_back(listener);
     }
+}
+
+void ScriptMessages::removeReceiversChangedListener(ReceiversChanged listener) {
+    receiverListeners.erase(std::remove(receiverListeners.begin(), receiverListeners.end(), listener), receiverListeners.end());
 }
 
 void ScriptMessages::notifyReceiversChanged(Scene* scene, Entity entity) {

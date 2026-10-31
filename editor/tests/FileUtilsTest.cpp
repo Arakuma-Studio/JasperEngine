@@ -1,0 +1,239 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+
+// The save-file helpers (feature script-data, spec 6.3 and 9): FileUtils path rules, atomic
+// writes, list, and the Lua File.* / Json.readFile / Json.writeFile functions over them.
+
+#include "ScriptDataTestSupport.h"
+
+#include "io/FileUtils.h"
+
+#include <gtest/gtest.h>
+
+#include <algorithm>
+#include <string>
+#include <vector>
+
+using scriptdata::ScriptDataTest;
+namespace fs = std::filesystem;
+
+namespace {
+
+class FileUtilsTest : public ScriptDataTest {};
+
+TEST_F(FileUtilsTest, PathRules) {
+    std::string normalized, systemPath, error;
+    ASSERT_TRUE(jasperengine::FileUtils::resolve("data://saves//slot1.json", true, normalized, systemPath, error)) << error;
+    EXPECT_EQ(normalized, "data://saves/slot1.json");
+    EXPECT_EQ(fs::path(systemPath).lexically_normal(), (root / "data" / "saves" / "slot1.json").lexically_normal());
+    // a bare relative path is data://; '\' separates like '/'; '.' segments go
+    ASSERT_TRUE(jasperengine::FileUtils::resolve("saves\\./slot1.json", true, normalized, systemPath, error)) << error;
+    EXPECT_EQ(normalized, "data://saves/slot1.json");
+    ASSERT_TRUE(jasperengine::FileUtils::resolve("asset://data/items.json", false, normalized, systemPath, error));
+    EXPECT_EQ(fs::path(systemPath).lexically_normal(), (root / "assets" / "data" / "items.json").lexically_normal());
+    ASSERT_TRUE(jasperengine::FileUtils::resolve("lua://data/items.json", false, normalized, systemPath, error));
+    EXPECT_EQ(fs::path(systemPath).lexically_normal(), (root / "lua" / "data" / "items.json").lexically_normal());
+
+    EXPECT_FALSE(jasperengine::FileUtils::resolve("data://../escape.json", true, normalized, systemPath, error));
+    EXPECT_EQ(error, "'..' is not allowed in paths: data://../escape.json");
+    EXPECT_FALSE(jasperengine::FileUtils::resolve("saves/../../x", false, normalized, systemPath, error));
+    EXPECT_FALSE(jasperengine::FileUtils::resolve("asset://a.json", true, normalized, systemPath, error));
+    EXPECT_EQ(error, "read-only path: asset://a.json");
+    EXPECT_FALSE(jasperengine::FileUtils::resolve("lua://a.lua", true, normalized, systemPath, error));
+    EXPECT_EQ(error, "read-only path: lua://a.lua");
+    EXPECT_FALSE(jasperengine::FileUtils::resolve("http://x/a.json", false, normalized, systemPath, error));
+    EXPECT_NE(error.find("unknown path scheme"), std::string::npos);
+    EXPECT_FALSE(jasperengine::FileUtils::resolve("data://C:/x", true, normalized, systemPath, error));
+    EXPECT_NE(error.find("':' is not allowed"), std::string::npos);
+    EXPECT_FALSE(jasperengine::FileUtils::resolve("", false, normalized, systemPath, error));
+    // absolute paths: reads on desktop and in the editor, never writes
+    const std::string absolute = (root / "data" / "a.txt").string();
+    EXPECT_FALSE(jasperengine::FileUtils::resolve(absolute, true, normalized, systemPath, error));
+    EXPECT_NE(error.find("absolute paths are not allowed for writes"), std::string::npos);
+    ASSERT_TRUE(jasperengine::FileUtils::resolve(absolute, false, normalized, systemPath, error)) << error;
+    EXPECT_EQ(systemPath, absolute);
+    EXPECT_FALSE(jasperengine::FileUtils::resolve((root / ".." / "x").string(), false, normalized, systemPath, error));
+}
+
+TEST_F(FileUtilsTest, AtomicWritesAppendsAndRemovals) {
+    std::string error, text;
+    ASSERT_TRUE(jasperengine::FileUtils::writeText("data://saves/deep/slot.txt", "first", error)) << error;
+    EXPECT_EQ(scriptdata::readFile(root / "data" / "saves" / "deep" / "slot.txt"), "first") << "missing folders made";
+    ASSERT_TRUE(jasperengine::FileUtils::writeText("saves/deep/slot.txt", std::string("second\0bytes", 12), error));
+    EXPECT_EQ(scriptdata::readFile(root / "data" / "saves" / "deep" / "slot.txt"), std::string("second\0bytes", 12));
+    EXPECT_TRUE(scriptdata::temporaryFiles(root / "data" / "saves" / "deep").empty()) << "no temporary file left behind";
+    ASSERT_TRUE(jasperengine::FileUtils::readText("data://saves/deep/slot.txt", text, error));
+    EXPECT_EQ(text, std::string("second\0bytes", 12));
+    ASSERT_TRUE(jasperengine::FileUtils::writeText("data://empty.txt", "", error));
+    ASSERT_TRUE(jasperengine::FileUtils::readText("data://empty.txt", text, error));
+    EXPECT_EQ(text, "");
+
+    ASSERT_TRUE(jasperengine::FileUtils::appendText("data://logs/run.log", "a\n", error)) << error;
+    ASSERT_TRUE(jasperengine::FileUtils::appendText("data://logs/run.log", "b\n", error));
+    EXPECT_EQ(scriptdata::readFile(root / "data" / "logs" / "run.log"), "a\nb\n");
+
+    EXPECT_FALSE(jasperengine::FileUtils::readText("data://nothing.json", text, error));
+    EXPECT_EQ(error, "not found: data://nothing.json");
+    EXPECT_FALSE(jasperengine::FileUtils::readText("data://saves", text, error));
+    EXPECT_EQ(error, "is a folder: data://saves");
+    EXPECT_FALSE(jasperengine::FileUtils::writeText("data://saves", "x", error));
+    EXPECT_EQ(error, "is a folder: data://saves");
+    EXPECT_FALSE(jasperengine::FileUtils::writeText("data://", "x", error));
+
+    EXPECT_TRUE(jasperengine::FileUtils::exists("data://saves"));
+    EXPECT_TRUE(jasperengine::FileUtils::exists("saves/deep/slot.txt"));
+    EXPECT_FALSE(jasperengine::FileUtils::exists("data://nope"));
+    EXPECT_FALSE(jasperengine::FileUtils::exists("data://../x"));
+    ASSERT_TRUE(jasperengine::FileUtils::remove("data://saves/deep/slot.txt", error)) << error;
+    EXPECT_FALSE(fs::exists(root / "data" / "saves" / "deep" / "slot.txt"));
+    EXPECT_TRUE(jasperengine::FileUtils::remove("data://saves/deep/slot.txt", error)) << "nothing there: fine";
+    EXPECT_FALSE(jasperengine::FileUtils::remove("data://saves", error));
+    EXPECT_NE(error.find("is a folder"), std::string::npos);
+    EXPECT_FALSE(jasperengine::FileUtils::remove("asset://x", error));
+
+    ASSERT_TRUE(jasperengine::FileUtils::makeDirs("data://a/b/c", error)) << error;
+    EXPECT_TRUE(fs::is_directory(root / "data" / "a" / "b" / "c"));
+    EXPECT_TRUE(jasperengine::FileUtils::makeDirs("data://a/b", error)) << "already there";
+    EXPECT_FALSE(jasperengine::FileUtils::makeDirs("data://empty.txt", error));
+    EXPECT_EQ(error, "a file is there: data://empty.txt");
+
+    // assets are read, never written
+    scriptdata::writeFile(root / "assets" / "data" / "items.json", "[1]");
+    ASSERT_TRUE(jasperengine::FileUtils::readText("asset://data/items.json", text, error)) << error;
+    EXPECT_EQ(text, "[1]");
+    EXPECT_TRUE(jasperengine::FileUtils::exists("asset://data/items.json"));
+    EXPECT_FALSE(jasperengine::FileUtils::writeText("asset://data/items.json", "x", error));
+    EXPECT_EQ(scriptdata::readFile(root / "assets" / "data" / "items.json"), "[1]");
+}
+
+TEST_F(FileUtilsTest, ListsDataFolders) {
+    std::string error;
+    std::vector<std::string> names;
+    ASSERT_TRUE(jasperengine::FileUtils::writeText("data://slots/b.json", "{}", error));
+    ASSERT_TRUE(jasperengine::FileUtils::writeText("data://slots/a.json", "{}", error));
+    ASSERT_TRUE(jasperengine::FileUtils::makeDirs("data://slots/sub", error));
+    ASSERT_TRUE(jasperengine::FileUtils::list("data://slots", names, error)) << error;
+    EXPECT_EQ(names, (std::vector<std::string>{"a.json", "b.json", "sub"}));
+    ASSERT_TRUE(jasperengine::FileUtils::list("data://", names, error)) << error;
+    EXPECT_NE(std::find(names.begin(), names.end(), "slots"), names.end());
+    EXPECT_FALSE(jasperengine::FileUtils::list("data://missing", names, error));
+    EXPECT_EQ(error, "not found: data://missing");
+    EXPECT_FALSE(jasperengine::FileUtils::list("data://slots/a.json", names, error));
+    EXPECT_EQ(error, "not a folder: data://slots/a.json");
+    EXPECT_FALSE(jasperengine::FileUtils::list("asset://", names, error));
+    EXPECT_NE(error.find("only data:// folders can be listed"), std::string::npos);
+}
+
+TEST_F(FileUtilsTest, DesktopUserDataFolderMigratesTheOldSettingsOnce) {
+    // an older desktop build saved UserSettings.xml in the working directory
+    const fs::path workingDir = root / "install";
+    scriptdata::writeFile(workingDir / "UserSettings.xml", "<userSettings><coins>5</coins></userSettings>");
+    const fs::path previous = fs::current_path();
+    fs::current_path(workingDir);
+    const fs::path perUser = root / "home" / ".local" / "share" / "com.example.game";
+    const bool made = jasperengine::FileUtils::prepareUserDataFolder(perUser.string());
+    const std::string copied = scriptdata::readFile(perUser / "UserSettings.xml");
+    // a second run: the copy is not redone (the per-user file has the newer saves)
+    scriptdata::writeFile(perUser / "UserSettings.xml", "<userSettings><coins>9</coins></userSettings>");
+    const bool again = jasperengine::FileUtils::prepareUserDataFolder(perUser.string());
+    // the player reset the saves (or the file broke): the old file is not copied back
+    fs::remove(perUser / "UserSettings.xml");
+    const bool afterReset = jasperengine::FileUtils::prepareUserDataFolder(perUser.string());
+    const bool copiedBack = fs::exists(perUser / "UserSettings.xml");
+    // a fresh folder without an old file next to the game: just made
+    fs::remove(workingDir / "UserSettings.xml");
+    const fs::path other = root / "home" / "other";
+    const bool fresh = jasperengine::FileUtils::prepareUserDataFolder(other.string());
+    fs::current_path(previous);
+    EXPECT_TRUE(made);
+    EXPECT_EQ(copied, "<userSettings><coins>5</coins></userSettings>") << "copied from the working directory";
+    EXPECT_TRUE(again);
+    EXPECT_TRUE(fresh);
+    EXPECT_TRUE(afterReset);
+    EXPECT_FALSE(copiedBack) << "copied once only: stale values never come back";
+    EXPECT_TRUE(fs::exists(perUser / ".jasperengine-migrated"));
+    EXPECT_TRUE(fs::is_directory(other));
+    EXPECT_FALSE(fs::exists(other / "UserSettings.xml"));
+    // a folder that cannot be made (a file is in the way): false, the caller keeps "."
+    scriptdata::writeFile(root / "blocker", "x");
+    EXPECT_FALSE(jasperengine::FileUtils::prepareUserDataFolder((root / "blocker" / "sub").string()));
+}
+
+TEST_F(FileUtilsTest, TemporaryFilesNeverTakeAGameFile) {
+    // a game file named like the old temporary name survives a write of its neighbour
+    std::string error, text;
+    ASSERT_TRUE(jasperengine::FileUtils::writeText("data://save.json.tmp", "the game's own", error)) << error;
+    ASSERT_TRUE(jasperengine::FileUtils::writeText("data://save.json", "{}", error)) << error;
+    ASSERT_TRUE(jasperengine::FileUtils::writeText("data://save.json", "{\"v\":2}", error)) << error;
+    ASSERT_TRUE(jasperengine::FileUtils::readText("data://save.json.tmp", text, error));
+    EXPECT_EQ(text, "the game's own");
+    EXPECT_EQ(scriptdata::readFile(root / "data" / "save.json"), "{\"v\":2}");
+    const std::vector<std::string> left = scriptdata::temporaryFiles(root / "data");
+    EXPECT_EQ(left, std::vector<std::string>{"save.json.tmp"}) << "only the game's file, no temporary one";
+}
+
+TEST_F(FileUtilsTest, WritesWaitForTheRestoredUserData) {
+    // the web build restores data:// from IndexedDB after it starts: a write before that would be
+    // replaced (or deleted) by the restore, so it is refused
+    std::string error, text;
+    ASSERT_TRUE(jasperengine::FileUtils::writeText("data://kept.json", "1", error));
+    system.userDataLoaded = false;
+    EXPECT_FALSE(jasperengine::FileUtils::writeText("data://new.json", "2", error));
+    EXPECT_NE(error.find("not restored yet"), std::string::npos) << error;
+    EXPECT_FALSE(jasperengine::FileUtils::appendText("data://log.txt", "x", error));
+    EXPECT_FALSE(jasperengine::FileUtils::remove("data://kept.json", error));
+    EXPECT_FALSE(jasperengine::FileUtils::makeDirs("data://dir", error));
+    EXPECT_TRUE(jasperengine::FileUtils::readText("data://kept.json", text, error)) << "reads are fine";
+    EXPECT_NE(eval("local ok, e = Json.writeFile('data://s.json', {}) return e").find("not restored yet"), std::string::npos);
+    EXPECT_FALSE(fs::exists(root / "data" / "new.json"));
+    system.userDataLoaded = true;
+    EXPECT_TRUE(jasperengine::FileUtils::writeText("data://new.json", "2", error)) << error;
+}
+
+TEST_F(FileUtilsTest, LuaFileFunctions) {
+    EXPECT_EQ(eval("return tostring(File.writeText('data://save.txt', 'hello'))"), "true");
+    EXPECT_EQ(eval("return File.readText('data://save.txt')"), "hello");
+    EXPECT_EQ(eval("return File.readText('save.txt')"), "hello");
+    EXPECT_EQ(eval("local ok, e = File.readText('data://missing.txt') return tostring(ok) .. ' ' .. e"), "nil not found: data://missing.txt");
+    EXPECT_EQ(eval("File.appendText('log.txt', 'a') File.appendText('log.txt', 'b') return File.readText('log.txt')"), "ab");
+    EXPECT_EQ(eval("return tostring(File.exists('save.txt')) .. tostring(File.exists('nope.txt'))"), "truefalse");
+    EXPECT_EQ(eval("return tostring(File.makeDirs('data://slots/old'))"), "true");
+    EXPECT_EQ(eval("File.writeText('slots/2.json', '{}') File.writeText('slots/1.json', '{}') return table.concat(File.list('data://slots'), ',')"),
+              "1.json,2.json,old");
+    EXPECT_EQ(eval("return tostring(File.remove('save.txt')) .. tostring(File.exists('save.txt'))"), "truefalse");
+    EXPECT_EQ(eval("local ok, e = File.writeText('asset://x.txt', 'x') return e"), "read-only path: asset://x.txt");
+    EXPECT_EQ(eval("local ok, e = File.writeText('../x.txt', 'x') return e"), "'..' is not allowed in paths: ../x.txt");
+    // wrong argument types are programming errors: they raise
+    EXPECT_EQ(eval("File.writeText('a.txt', 5)"), "ERROR: File.writeText: text must be a string, got number");
+    EXPECT_EQ(eval("File.readText()"), "ERROR: File.readText: path must be a string, got no value");
+    // the old File object API still works next to them
+    EXPECT_EQ(eval("local f = File('data://obj.txt', true) f:writeString('obj') f:close() return File.readText('obj.txt')"), "obj");
+}
+
+TEST_F(FileUtilsTest, JsonReadFileAndWriteFile) {
+    EXPECT_EQ(eval("return tostring(Json.writeFile('data://garden.json', {coins = 120, plots = {{plant = 'rose'}, Json.null}}))"), "true");
+    EXPECT_EQ(scriptdata::readFile(root / "data" / "garden.json"), "{\"coins\":120,\"plots\":[{\"plant\":\"rose\"},null]}");
+    EXPECT_EQ(eval("local s = Json.readFile('data://garden.json') return s.coins .. s.plots[1].plant .. tostring(s.plots[2])"),
+              "120roseJson.null");
+    EXPECT_EQ(eval("Json.writeFile('pretty.json', {a = 1}, {pretty = true}) return File.readText('pretty.json')"), "{\n  \"a\": 1\n}");
+    EXPECT_EQ(eval("local v, e = Json.readFile('data://none.json') return tostring(v) .. ' ' .. e"), "nil not found: data://none.json");
+    scriptdata::writeFile(root / "data" / "bad.json", "{\n  \"a\": }");
+    EXPECT_EQ(eval("local v, e = Json.readFile('data://bad.json') return e"),
+              "data://bad.json: syntax error at line 2, column 8: unexpected '}'; expected '[', '{', or a literal");
+    EXPECT_EQ(eval("local ok, e = Json.writeFile('data://f.json', {f = print}) return tostring(ok) .. ' ' .. e"),
+              "nil cannot encode a function at $.f");
+    EXPECT_FALSE(fs::exists(root / "data" / "f.json")) << "nothing written when the value does not encode";
+    EXPECT_EQ(eval("local ok, e = Json.writeFile('asset://f.json', {}) return e"), "read-only path: asset://f.json");
+    EXPECT_NE(eval("Json.writeFile('data://x.json')").find("Json.writeFile: a value to write expected"), std::string::npos);
+    EXPECT_NE(eval("Json.readFile('data://garden.json', {bad = 1})").find("unknown option 'bad'"), std::string::npos);
+    // a data asset: a JSON file next to the Lua scripts
+    scriptdata::writeFile(root / "lua" / "data" / "items.json", "{\"sword\": {\"damage\": 12}}");
+    EXPECT_EQ(eval("return Json.readFile('lua://data/items.json').sword.damage"), "12");
+    scriptdata::writeFile(root / "assets" / "levels" / "1.json", "[3, 1, 4]");
+    EXPECT_EQ(eval("return #Json.readFile('asset://levels/1.json')"), "3");
+    // comments in a hand-written data file
+    scriptdata::writeFile(root / "assets" / "levels" / "2.json", "// level 2\n[1]");
+    EXPECT_EQ(eval("return Json.readFile('asset://levels/2.json', {allowComments = true})[1]"), "1");
+}
+
+}
