@@ -26,6 +26,7 @@
 #include "component/UIComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/LayoutGroupComponent.h"
+#include "component/CanvasGroupComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/InputFieldComponent.h"
 #include "component/ParticleSystemComponent.h"
@@ -255,6 +256,12 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addVariable("HORIZONTAL", LayoutGroupType::HORIZONTAL)
         .addVariable("VERTICAL_WRAP", LayoutGroupType::VERTICAL_WRAP)
         .addVariable("HORIZONTAL_WRAP", LayoutGroupType::HORIZONTAL_WRAP)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("CanvasGroupRenderMode")
+        .addVariable("PER_ELEMENT", CanvasGroupRenderMode::PER_ELEMENT)
+        .addVariable("FLATTEN", CanvasGroupRenderMode::FLATTEN)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -571,6 +578,7 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("duration", &TweenComponent::duration, &TweenComponent::duration)
         .addProperty("loop", &TweenComponent::loop, &TweenComponent::loop)
         .addProperty("pingPong", &TweenComponent::pingPong, &TweenComponent::pingPong)
+        .addProperty("useUnscaledTime", &TweenComponent::useUnscaledTime, &TweenComponent::useUnscaledTime)
         .addProperty("function", [] (TweenComponent* self, lua_State* L) { return &self->function; }, [] (TweenComponent* self, lua_State* L) { self->function = L; })
         .endClass();
     
@@ -627,6 +635,20 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("needReload", &UIComponent::needReload, &UIComponent::needReload)
         .addProperty("needUpdateBuffer", &UIComponent::needUpdateBuffer, &UIComponent::needUpdateBuffer)
         .addProperty("needUpdateTexture", &UIComponent::needUpdateTexture, &UIComponent::needUpdateTexture)
+        // the Canvas Groups' state over the element (runtime, UISystem)
+        .addProperty("groupAlpha", &UIComponent::groupAlpha)
+        .addProperty("groupInteractable", &UIComponent::groupInteractable)
+        .addProperty("groupBlocksRaycasts", &UIComponent::groupBlocksRaycasts)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<CanvasGroupComponent>("CanvasGroupComponent")
+        .addProperty("enabled", &CanvasGroupComponent::enabled, &CanvasGroupComponent::enabled)
+        .addProperty("alpha", &CanvasGroupComponent::alpha, &CanvasGroupComponent::alpha)
+        .addProperty("interactable", &CanvasGroupComponent::interactable, &CanvasGroupComponent::interactable)
+        .addProperty("blocksRaycasts", &CanvasGroupComponent::blocksRaycasts, &CanvasGroupComponent::blocksRaycasts)
+        .addProperty("ignoreParentGroups", &CanvasGroupComponent::ignoreParentGroups, &CanvasGroupComponent::ignoreParentGroups)
+        .addProperty("renderMode", &CanvasGroupComponent::renderMode, &CanvasGroupComponent::renderMode)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

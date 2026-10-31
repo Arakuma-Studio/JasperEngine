@@ -3326,6 +3326,11 @@
 		4A534E4797F0082B52961FFA /* soloud_nosound.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4726306BA880E5B394 /* soloud_nosound.cpp */; };
 		4A534E47BB32EA6D03AC3BCE /* soloud_null.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47972A79349282E259 /* soloud_null.cpp */; };
 		4A534E4785BBAE9B51B66CF9 /* soloud_null.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47972A79349282E259 /* soloud_null.cpp */; };
+		4A534E471E54C5C8414BD121 /* CanvasGroup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CC52175BD8DE955D /* CanvasGroup.cpp */; };
+		4A534E47907B8208CD18D0FD /* CanvasGroup.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47CC52175BD8DE955D /* CanvasGroup.cpp */; };
+		4A534E47B8D0F2F45B3FB96F /* CanvasGroup.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476F86DE7CFA66AEAB /* CanvasGroup.h */; };
+		4A534E47C347027DB28DA261 /* CanvasGroupComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4767131FC7FF95861B /* CanvasGroupComponent.h */; };
+		4A534E479AC9510B4A13D68A /* UIDrawColor.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4737234843A0260B98 /* UIDrawColor.h */; };
 		4A534E47FAB0AB03DCC4FB57 /* PhysicsMaterialPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4734D6776EE9983E2C /* PhysicsMaterialPool.cpp */; };
 		4A534E474B176E0554781362 /* PhysicsMaterialPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4734D6776EE9983E2C /* PhysicsMaterialPool.cpp */; };
 		4A534E471DFCCEA6BE1F6704 /* PhysicsMaterial.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4782DC42859764CCD0 /* PhysicsMaterial.cpp */; };
@@ -3339,6 +3344,23 @@
 		4A534E47460ED1E95D04C3D4 /* PolygonDecomposition2D.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E966A402AAF3D786 /* PolygonDecomposition2D.h */; };
 		4A534E47552ED01E4CD8728E /* PhysicsMaterialPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47366B4EA887EC0288 /* PhysicsMaterialPool.h */; };
 		4A534E4708435C1C1D7160F0 /* ScriptMessages.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E471CD7791994CB883E /* ScriptMessages.h */; };
+		4A534E477EFCAC66C69CD457 /* PhysicsDebugLines.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A8E4F22F6929CFD1 /* PhysicsDebugLines.cpp */; };
+		4A534E473A5B45D22F9F1BDF /* PhysicsDebugLines.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A8E4F22F6929CFD1 /* PhysicsDebugLines.cpp */; };
+		4A534E47F93DEDE50611F1D9 /* RagdollBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474970B21BFA5FA0B5 /* RagdollBuilder.cpp */; };
+		4A534E473363A926D4AA43AD /* RagdollBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474970B21BFA5FA0B5 /* RagdollBuilder.cpp */; };
+		4A534E47DDF1A3D2474817EF /* PhysicsSystemJoints3D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4735F8B0318B067911 /* PhysicsSystemJoints3D.cpp */; };
+		4A534E4716697815C0C4D9FF /* PhysicsSystemJoints3D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4735F8B0318B067911 /* PhysicsSystemJoints3D.cpp */; };
+		4A534E4769FD34066CB46F15 /* PhysicsSystemRagdoll.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479C0EFAD0789E9D38 /* PhysicsSystemRagdoll.cpp */; };
+		4A534E473D49EB723078C351 /* PhysicsSystemRagdoll.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479C0EFAD0789E9D38 /* PhysicsSystemRagdoll.cpp */; };
+		4A534E477274B8AD71934C34 /* PhysicsSystemDebugDraw.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4709DE150BBF04619D /* PhysicsSystemDebugDraw.cpp */; };
+		4A534E47098B3AA83CBFEE5A /* PhysicsSystemDebugDraw.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4709DE150BBF04619D /* PhysicsSystemDebugDraw.cpp */; };
+		4A534E47F030ABE6D3615FC9 /* Ragdoll.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47DB3E31A582F73622 /* Ragdoll.cpp */; };
+		4A534E472163182938CCCCA4 /* Ragdoll.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47DB3E31A582F73622 /* Ragdoll.cpp */; };
+		4A534E47B198A12EF035B0B5 /* RagdollComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47ECB20D024971B61A /* RagdollComponent.h */; };
+		4A534E4737D8446103D6DB11 /* Ragdoll.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E115EBAE7A897293 /* Ragdoll.h */; };
+		4A534E47AF59483108C89E2F /* JoltSurfaceMaterial.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B943DF5AE8C89137 /* JoltSurfaceMaterial.h */; };
+		4A534E47C8AD8B108EAF5119 /* PhysicsDebugLines.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4732D16258C9BD3B20 /* PhysicsDebugLines.h */; };
+		4A534E47B455DB3E73FEC52F /* RagdollBuilder.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475211D61462BB9014 /* RagdollBuilder.h */; };
 		4A534E475F8922B71DF8823D /* ScriptEvent.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4708AE2F23673DC28C /* ScriptEvent.cpp */; };
 		4A534E476DADCD54579A8EF4 /* ScriptEvent.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4708AE2F23673DC28C /* ScriptEvent.cpp */; };
 		4A534E470CC4368392A0B2D2 /* ScriptRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47752AE757CAFC728C /* ScriptRuntime.cpp */; };
@@ -3363,6 +3385,26 @@
 		4A534E471ECC1F0F8A111EDB /* TrailRenderer.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D1A59D898AF8B4BB /* TrailRenderer.h */; };
 		4A534E478F589171F02F0B63 /* LineRibbonBuilder.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47197C345843945889 /* LineRibbonBuilder.h */; };
 		4A534E47212823E1E8889FB7 /* TrailSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D89F43391B4A415F /* TrailSystem.h */; };
+		4A534E47AC37D409692AA7D7 /* Http.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4787C9BCF72092DFEE /* Http.cpp */; };
+		4A534E47947208F6A52C0D79 /* Http.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4787C9BCF72092DFEE /* Http.cpp */; };
+		4A534E4707D0FB4D966D8BE5 /* HttpUtil.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F788CC244AA03377 /* HttpUtil.cpp */; };
+		4A534E47271657C6F28FFA0A /* HttpUtil.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F788CC244AA03377 /* HttpUtil.cpp */; };
+		4A534E4768DDBB2353D5C83D /* AsyncOwner.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C1EA7EEF9E302A12 /* AsyncOwner.cpp */; };
+		4A534E47951C64628BDACD07 /* AsyncOwner.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C1EA7EEF9E302A12 /* AsyncOwner.cpp */; };
+		4A534E4765A452A70993BC50 /* NetClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C7032EFC250E9A0E /* NetClassesLua.cpp */; };
+		4A534E4704BBC250AA4EB0AC /* NetClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C7032EFC250E9A0E /* NetClassesLua.cpp */; };
+		4A534E47D5FBC9D2B84C3EF4 /* MainThreadQueue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C9ACB5FAD8A291B0 /* MainThreadQueue.cpp */; };
+		4A534E47265BB2DD7CEE9EEA /* MainThreadQueue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C9ACB5FAD8A291B0 /* MainThreadQueue.cpp */; };
+		4A534E476582D52ED841837C /* HttpBackendApple.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C4D8BD8BC47E7C00 /* HttpBackendApple.mm */; };
+		4A534E47D3ECA820EEE9216B /* HttpBackendApple.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C4D8BD8BC47E7C00 /* HttpBackendApple.mm */; };
+		4A534E47759C736B9546FF1B /* CanvasGroupTracks.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47CB75CAA034603A13 /* CanvasGroupTracks.h */; };
+		4A534E47C85979F7504AB7AC /* CurlApi.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4746F0372B5BDC60B0 /* CurlApi.h */; };
+		4A534E472BD874B8DCF6E3EC /* Http.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4702C5166EB52DF781 /* Http.h */; };
+		4A534E475B9A526F84177777 /* HttpBackend.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4713FE339C7A9F7A0B /* HttpBackend.h */; };
+		4A534E47C7D46D82696964A0 /* HttpJson.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47FF3619E3F9DCCE88 /* HttpJson.h */; };
+		4A534E4798EE0D734C9C55E0 /* AsyncOwner.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4740FD2A72CFB10C16 /* AsyncOwner.h */; };
+		4A534E47D07D96EA20FAA7F1 /* NetClassesLua.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C4CB6F074423D782 /* NetClassesLua.h */; };
+		4A534E470B01A240FA439C2A /* MainThreadQueue.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4743499EE7BE02622E /* MainThreadQueue.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -6750,6 +6792,10 @@
 		4A534E47C23749B19343EA34 /* soloud_wavstream.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = soloud_wavstream.cpp; sourceTree = "<group>"; };
 		4A534E4726306BA880E5B394 /* soloud_nosound.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = soloud_nosound.cpp; sourceTree = "<group>"; };
 		4A534E47972A79349282E259 /* soloud_null.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = soloud_null.cpp; sourceTree = "<group>"; };
+		4A534E47CC52175BD8DE955D /* CanvasGroup.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CanvasGroup.cpp; sourceTree = "<group>"; };
+		4A534E476F86DE7CFA66AEAB /* CanvasGroup.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CanvasGroup.h; sourceTree = "<group>"; };
+		4A534E4767131FC7FF95861B /* CanvasGroupComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CanvasGroupComponent.h; sourceTree = "<group>"; };
+		4A534E4737234843A0260B98 /* UIDrawColor.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDrawColor.h; sourceTree = "<group>"; };
 		4A534E4734D6776EE9983E2C /* PhysicsMaterialPool.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsMaterialPool.cpp; sourceTree = "<group>"; };
 		4A534E4782DC42859764CCD0 /* PhysicsMaterial.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsMaterial.cpp; sourceTree = "<group>"; };
 		4A534E479691DF604E10D72A /* PolygonDecomposition2D.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PolygonDecomposition2D.cpp; sourceTree = "<group>"; };
@@ -6759,6 +6805,17 @@
 		4A534E47E966A402AAF3D786 /* PolygonDecomposition2D.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PolygonDecomposition2D.h; sourceTree = "<group>"; };
 		4A534E47366B4EA887EC0288 /* PhysicsMaterialPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PhysicsMaterialPool.h; sourceTree = "<group>"; };
 		4A534E471CD7791994CB883E /* ScriptMessages.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ScriptMessages.h; sourceTree = "<group>"; };
+		4A534E47A8E4F22F6929CFD1 /* PhysicsDebugLines.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsDebugLines.cpp; sourceTree = "<group>"; };
+		4A534E474970B21BFA5FA0B5 /* RagdollBuilder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RagdollBuilder.cpp; sourceTree = "<group>"; };
+		4A534E4735F8B0318B067911 /* PhysicsSystemJoints3D.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsSystemJoints3D.cpp; sourceTree = "<group>"; };
+		4A534E479C0EFAD0789E9D38 /* PhysicsSystemRagdoll.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsSystemRagdoll.cpp; sourceTree = "<group>"; };
+		4A534E4709DE150BBF04619D /* PhysicsSystemDebugDraw.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsSystemDebugDraw.cpp; sourceTree = "<group>"; };
+		4A534E47DB3E31A582F73622 /* Ragdoll.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Ragdoll.cpp; sourceTree = "<group>"; };
+		4A534E47ECB20D024971B61A /* RagdollComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RagdollComponent.h; sourceTree = "<group>"; };
+		4A534E47E115EBAE7A897293 /* Ragdoll.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Ragdoll.h; sourceTree = "<group>"; };
+		4A534E47B943DF5AE8C89137 /* JoltSurfaceMaterial.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = JoltSurfaceMaterial.h; sourceTree = "<group>"; };
+		4A534E4732D16258C9BD3B20 /* PhysicsDebugLines.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PhysicsDebugLines.h; sourceTree = "<group>"; };
+		4A534E475211D61462BB9014 /* RagdollBuilder.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RagdollBuilder.h; sourceTree = "<group>"; };
 		4A534E4708AE2F23673DC28C /* ScriptEvent.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ScriptEvent.cpp; sourceTree = "<group>"; };
 		4A534E47752AE757CAFC728C /* ScriptRuntime.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ScriptRuntime.cpp; sourceTree = "<group>"; };
 		4A534E47D748AD87F95BC4D0 /* ScriptClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ScriptClassesLua.cpp; sourceTree = "<group>"; };
@@ -6775,6 +6832,20 @@
 		4A534E47D1A59D898AF8B4BB /* TrailRenderer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TrailRenderer.h; sourceTree = "<group>"; };
 		4A534E47197C345843945889 /* LineRibbonBuilder.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LineRibbonBuilder.h; sourceTree = "<group>"; };
 		4A534E47D89F43391B4A415F /* TrailSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TrailSystem.h; sourceTree = "<group>"; };
+		4A534E4787C9BCF72092DFEE /* Http.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Http.cpp; sourceTree = "<group>"; };
+		4A534E47F788CC244AA03377 /* HttpUtil.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HttpUtil.cpp; sourceTree = "<group>"; };
+		4A534E47C1EA7EEF9E302A12 /* AsyncOwner.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AsyncOwner.cpp; sourceTree = "<group>"; };
+		4A534E47C7032EFC250E9A0E /* NetClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = NetClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E47C9ACB5FAD8A291B0 /* MainThreadQueue.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MainThreadQueue.cpp; sourceTree = "<group>"; };
+		4A534E47C4D8BD8BC47E7C00 /* HttpBackendApple.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = HttpBackendApple.mm; sourceTree = "<group>"; };
+		4A534E47CB75CAA034603A13 /* CanvasGroupTracks.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CanvasGroupTracks.h; sourceTree = "<group>"; };
+		4A534E4746F0372B5BDC60B0 /* CurlApi.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CurlApi.h; sourceTree = "<group>"; };
+		4A534E4702C5166EB52DF781 /* Http.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Http.h; sourceTree = "<group>"; };
+		4A534E4713FE339C7A9F7A0B /* HttpBackend.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HttpBackend.h; sourceTree = "<group>"; };
+		4A534E47FF3619E3F9DCCE88 /* HttpJson.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HttpJson.h; sourceTree = "<group>"; };
+		4A534E4740FD2A72CFB10C16 /* AsyncOwner.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AsyncOwner.h; sourceTree = "<group>"; };
+		4A534E47C4CB6F074423D782 /* NetClassesLua.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NetClassesLua.h; sourceTree = "<group>"; };
+		4A534E4743499EE7BE02622E /* MainThreadQueue.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MainThreadQueue.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -7190,6 +7261,8 @@
 				414E494D4500000000000044 /* HtmlUIAnimeLua.cpp */,
 				505645430000000000000178 /* HtmlUIVectorLua.cpp */,
 				4A534E47D748AD87F95BC4D0 /* ScriptClassesLua.cpp */,
+				4A534E47C7032EFC250E9A0E /* NetClassesLua.cpp */,
+				4A534E47C4CB6F074423D782 /* NetClassesLua.h */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -8031,6 +8104,11 @@
 				4A534E479691DF604E10D72A /* PolygonDecomposition2D.cpp */,
 				4A534E475AF194F17A7D2E1C /* PhysicsMaterial.h */,
 				4A534E47E966A402AAF3D786 /* PolygonDecomposition2D.h */,
+				4A534E47A8E4F22F6929CFD1 /* PhysicsDebugLines.cpp */,
+				4A534E474970B21BFA5FA0B5 /* RagdollBuilder.cpp */,
+				4A534E47B943DF5AE8C89137 /* JoltSurfaceMaterial.h */,
+				4A534E4732D16258C9BD3B20 /* PhysicsDebugLines.h */,
+				4A534E475211D61462BB9014 /* RagdollBuilder.h */,
 			);
 			path = physics;
 			sourceTree = "<group>";
@@ -8057,6 +8135,7 @@
 				4A534E47CAF9C2B816B80C47 /* VertexAnimation.cpp */,
 				4A534E47AD5E53AFFD11DDEA /* VertexAnimation.h */,
 				4A534E472C320572A975C725 /* VertexAnimatorRuntime.h */,
+				4A534E47CB75CAA034603A13 /* CanvasGroupTracks.h */,
 			);
 			path = animation;
 			sourceTree = "<group>";
@@ -8086,6 +8165,19 @@
 				4A534E4763010A7AB6271A0C /* InputControlNames.h */,
 			);
 			path = input;
+			sourceTree = "<group>";
+		};
+		4A534E47325562508AC85529 /* net */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E4787C9BCF72092DFEE /* Http.cpp */,
+				4A534E47F788CC244AA03377 /* HttpUtil.cpp */,
+				4A534E4746F0372B5BDC60B0 /* CurlApi.h */,
+				4A534E4702C5166EB52DF781 /* Http.h */,
+				4A534E4713FE339C7A9F7A0B /* HttpBackend.h */,
+				4A534E47FF3619E3F9DCCE88 /* HttpJson.h */,
+			);
+			path = net;
 			sourceTree = "<group>";
 		};
 		7162FC2A25962A0E0075B97D /* core */ = {
@@ -8130,6 +8222,7 @@
 				4A534E477E49C8CF16ED0963 /* animation */,
 				4A534E47BC50EC83811560AA /* input */,
 				4A534E472E7375E332BCF49F /* audio */,
+				4A534E47325562508AC85529 /* net */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -8238,6 +8331,7 @@
 				4A534E4754E256FE333DE6E7 /* CpuSkin.h */,
 				4A534E476309E3EF32DDB09B /* LineRibbonBuilder.cpp */,
 				4A534E47197C345843945889 /* LineRibbonBuilder.h */,
+				4A534E4737234843A0260B98 /* UIDrawColor.h */,
 			);
 			path = render;
 			sourceTree = "<group>";
@@ -8306,7 +8400,9 @@
 				4A534E47C6821B885199BD43 /* PoseAnimatorComponent.h */,
 				4A534E47625F8F2E8CA675B3 /* AnimationPlayerComponent.h */,
 				4A534E47F4D574AFECE5C17E /* VertexAnimatorComponent.h */,
+				4A534E4767131FC7FF95861B /* CanvasGroupComponent.h */,
 				4A534E47C782824D41EC527F /* PhysicsCommon.h */,
+				4A534E47ECB20D024971B61A /* RagdollComponent.h */,
 				4A534E471E4D971B8C73A691 /* TrailRendererComponent.h */,
 			);
 			path = component;
@@ -8454,6 +8550,9 @@
 				4A534E47452204C1B7C473FF /* ActionSystemPlayers.cpp */,
 				4A534E470570E826DC760188 /* VertexAnimatorSystem.cpp */,
 				4A534E474C490B38DD8DB742 /* VertexAnimatorSystem.h */,
+				4A534E4735F8B0318B067911 /* PhysicsSystemJoints3D.cpp */,
+				4A534E479C0EFAD0789E9D38 /* PhysicsSystemRagdoll.cpp */,
+				4A534E4709DE150BBF04619D /* PhysicsSystemDebugDraw.cpp */,
 				4A534E47B38E42BA45359570 /* TrailSystem.cpp */,
 				4A534E47D89F43391B4A415F /* TrailSystem.h */,
 			);
@@ -8592,6 +8691,7 @@
 				713D831D259D3F8F00567F9F /* macos */,
 				7158F43D259C2C82006E55D3 /* Renderer.h */,
 				7158F43E259C2C82006E55D3 /* Renderer.mm */,
+				4A534E47C4D8BD8BC47E7C00 /* HttpBackendApple.mm */,
 			);
 			path = apple;
 			sourceTree = "<group>";
@@ -8614,6 +8714,8 @@
 				716803CB2DF75EA200ED71BE /* ResourceProgress.cpp */,
 				716803CC2DF75EA200ED71BE /* ThreadPoolManager.h */,
 				716803CD2DF75EA200ED71BE /* ThreadPoolManager.cpp */,
+				4A534E47C9ACB5FAD8A291B0 /* MainThreadQueue.cpp */,
+				4A534E4743499EE7BE02622E /* MainThreadQueue.h */,
 			);
 			path = thread;
 			sourceTree = "<group>";
@@ -9466,6 +9568,8 @@
 				71ABBD4227A879D4001CE3AF /* Button.cpp */,
 				717AD98B29211976007D7DB5 /* LayoutGroup.h */,
 				717AD98C29211976007D7DB5 /* LayoutGroup.cpp */,
+				4A534E47CC52175BD8DE955D /* CanvasGroup.cpp */,
+				4A534E476F86DE7CFA66AEAB /* CanvasGroup.h */,
 				71ABBD322783C8BA001CE3AF /* Image.h */,
 				71ABBD332783C8BB001CE3AF /* Image.cpp */,
 				7181A0AF2BC8B6CB00AC230B /* Panel.h */,
@@ -9614,6 +9718,8 @@
 				4A534E47752AE757CAFC728C /* ScriptRuntime.cpp */,
 				4A534E473B9ADEBA91C10EBA /* ScriptEvent.h */,
 				4A534E4700754C227C4F1876 /* ScriptRuntime.h */,
+				4A534E47C1EA7EEF9E302A12 /* AsyncOwner.cpp */,
+				4A534E4740FD2A72CFB10C16 /* AsyncOwner.h */,
 			);
 			path = script;
 			sourceTree = "<group>";
@@ -9838,6 +9944,8 @@
 				7105CAB12AD61CB6007C91BA /* Joint3D.h */,
 				71651FEC2AA804B4008D9BF5 /* Manifold2D.cpp */,
 				71651FE92AA804B4008D9BF5 /* Manifold2D.h */,
+				4A534E47DB3E31A582F73622 /* Ragdoll.cpp */,
+				4A534E47E115EBAE7A897293 /* Ragdoll.h */,
 			);
 			path = physics;
 			sourceTree = "<group>";
@@ -12088,6 +12196,9 @@
 				4A534E47C43121F25A682263 /* VertexAnimator.h in Headers */,
 				4A534E4744BC97782E329223 /* VertexAnimationPool.h in Headers */,
 				4A534E471E767D9BE2C4AF8A /* CpuSkin.h in Headers */,
+				4A534E47B8D0F2F45B3FB96F /* CanvasGroup.h in Headers */,
+				4A534E47C347027DB28DA261 /* CanvasGroupComponent.h in Headers */,
+				4A534E479AC9510B4A13D68A /* UIDrawColor.h in Headers */,
 				4A534E47348D45F4BBD323C9 /* VertexAnimatorSystem.h in Headers */,
 				4A534E47693D678BC7B907E1 /* MeshBufferPool.h in Headers */,
 				4A534E4749E3318561E17181 /* InputActions.h in Headers */,
@@ -12102,6 +12213,11 @@
 				4A534E47460ED1E95D04C3D4 /* PolygonDecomposition2D.h in Headers */,
 				4A534E47552ED01E4CD8728E /* PhysicsMaterialPool.h in Headers */,
 				4A534E4708435C1C1D7160F0 /* ScriptMessages.h in Headers */,
+				4A534E47B198A12EF035B0B5 /* RagdollComponent.h in Headers */,
+				4A534E4737D8446103D6DB11 /* Ragdoll.h in Headers */,
+				4A534E47AF59483108C89E2F /* JoltSurfaceMaterial.h in Headers */,
+				4A534E47C8AD8B108EAF5119 /* PhysicsDebugLines.h in Headers */,
+				4A534E47B455DB3E73FEC52F /* RagdollBuilder.h in Headers */,
 				4A534E47A1EA29B71E34FD57 /* ScriptEvent.h in Headers */,
 				4A534E47A18FD96145634463 /* ScriptRuntime.h in Headers */,
 				4A534E477488C86519002423 /* TrailRendererComponent.h in Headers */,
@@ -12110,6 +12226,14 @@
 				4A534E471ECC1F0F8A111EDB /* TrailRenderer.h in Headers */,
 				4A534E478F589171F02F0B63 /* LineRibbonBuilder.h in Headers */,
 				4A534E47212823E1E8889FB7 /* TrailSystem.h in Headers */,
+				4A534E47759C736B9546FF1B /* CanvasGroupTracks.h in Headers */,
+				4A534E47C85979F7504AB7AC /* CurlApi.h in Headers */,
+				4A534E472BD874B8DCF6E3EC /* Http.h in Headers */,
+				4A534E475B9A526F84177777 /* HttpBackend.h in Headers */,
+				4A534E47C7D46D82696964A0 /* HttpJson.h in Headers */,
+				4A534E4798EE0D734C9C55E0 /* AsyncOwner.h in Headers */,
+				4A534E47D07D96EA20FAA7F1 /* NetClassesLua.h in Headers */,
+				4A534E470B01A240FA439C2A /* MainThreadQueue.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -13830,6 +13954,7 @@
 				713D8297259D307F00567F9F /* FileData.cpp in Sources */,
 				71451BEC270CA2C900712643 /* Sprite.cpp in Sources */,
 				717AD98F29211976007D7DB5 /* LayoutGroup.cpp in Sources */,
+				4A534E47907B8208CD18D0FD /* CanvasGroup.cpp in Sources */,
 				713D8298259D307F00567F9F /* ShaderRender.cpp in Sources */,
 				713D8299259D307F00567F9F /* ObjectRender.cpp in Sources */,
 				71C33FB62A315877007A5822 /* Mesh.cpp in Sources */,
@@ -14167,6 +14292,12 @@
 				4A534E471DFCCEA6BE1F6704 /* PhysicsMaterial.cpp in Sources */,
 				4A534E47E92F88382C9E5395 /* PolygonDecomposition2D.cpp in Sources */,
 				4A534E4704D5E059F83952E5 /* ScriptMessages.cpp in Sources */,
+				4A534E477EFCAC66C69CD457 /* PhysicsDebugLines.cpp in Sources */,
+				4A534E47F93DEDE50611F1D9 /* RagdollBuilder.cpp in Sources */,
+				4A534E47DDF1A3D2474817EF /* PhysicsSystemJoints3D.cpp in Sources */,
+				4A534E4769FD34066CB46F15 /* PhysicsSystemRagdoll.cpp in Sources */,
+				4A534E477274B8AD71934C34 /* PhysicsSystemDebugDraw.cpp in Sources */,
+				4A534E47F030ABE6D3615FC9 /* Ragdoll.cpp in Sources */,
 				4A534E475F8922B71DF8823D /* ScriptEvent.cpp in Sources */,
 				4A534E470CC4368392A0B2D2 /* ScriptRuntime.cpp in Sources */,
 				4A534E479BBB4CAB67E8BDD1 /* ScriptClassesLua.cpp in Sources */,
@@ -14175,6 +14306,12 @@
 				4A534E47CB7C331EE90C2019 /* TrailRenderer.cpp in Sources */,
 				4A534E474FD048B43C95AA02 /* LineRibbonBuilder.cpp in Sources */,
 				4A534E47C826FA60D57B648C /* TrailSystem.cpp in Sources */,
+				4A534E47AC37D409692AA7D7 /* Http.cpp in Sources */,
+				4A534E4707D0FB4D966D8BE5 /* HttpUtil.cpp in Sources */,
+				4A534E4768DDBB2353D5C83D /* AsyncOwner.cpp in Sources */,
+				4A534E4765A452A70993BC50 /* NetClassesLua.cpp in Sources */,
+				4A534E47D5FBC9D2B84C3EF4 /* MainThreadQueue.cpp in Sources */,
+				4A534E476582D52ED841837C /* HttpBackendApple.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14271,6 +14408,7 @@
 				7162FD1325963AE00075B97D /* Scene.cpp in Sources */,
 				71451BEB270CA2C900712643 /* Sprite.cpp in Sources */,
 				717AD98E29211976007D7DB5 /* LayoutGroup.cpp in Sources */,
+				4A534E471E54C5C8414BD121 /* CanvasGroup.cpp in Sources */,
 				7162FD1625963AE00075B97D /* Data.cpp in Sources */,
 				7162FD172E76C0010075B97D /* ResourcePack.cpp in Sources */,
 				5C9F1E02FC1244659AE8FF2F /* UserSettingsStore.cpp in Sources */,
@@ -14611,6 +14749,12 @@
 				4A534E479093D6E5BB6D8523 /* PhysicsMaterial.cpp in Sources */,
 				4A534E472D1D3FE08F50731F /* PolygonDecomposition2D.cpp in Sources */,
 				4A534E47D0813BE461D92A94 /* ScriptMessages.cpp in Sources */,
+				4A534E473A5B45D22F9F1BDF /* PhysicsDebugLines.cpp in Sources */,
+				4A534E473363A926D4AA43AD /* RagdollBuilder.cpp in Sources */,
+				4A534E4716697815C0C4D9FF /* PhysicsSystemJoints3D.cpp in Sources */,
+				4A534E473D49EB723078C351 /* PhysicsSystemRagdoll.cpp in Sources */,
+				4A534E47098B3AA83CBFEE5A /* PhysicsSystemDebugDraw.cpp in Sources */,
+				4A534E472163182938CCCCA4 /* Ragdoll.cpp in Sources */,
 				4A534E476DADCD54579A8EF4 /* ScriptEvent.cpp in Sources */,
 				4A534E47EA32FE1232B1C371 /* ScriptRuntime.cpp in Sources */,
 				4A534E47981333F75668E2CF /* ScriptClassesLua.cpp in Sources */,
@@ -14619,6 +14763,12 @@
 				4A534E47666B66B24871AAA0 /* TrailRenderer.cpp in Sources */,
 				4A534E47F807A7F7B7DC0936 /* LineRibbonBuilder.cpp in Sources */,
 				4A534E479399C2E0EAF5A3C3 /* TrailSystem.cpp in Sources */,
+				4A534E47947208F6A52C0D79 /* Http.cpp in Sources */,
+				4A534E47271657C6F28FFA0A /* HttpUtil.cpp in Sources */,
+				4A534E47951C64628BDACD07 /* AsyncOwner.cpp in Sources */,
+				4A534E4704BBC250AA4EB0AC /* NetClassesLua.cpp in Sources */,
+				4A534E47265BB2DD7CEE9EEA /* MainThreadQueue.cpp in Sources */,
+				4A534E47D3ECA820EEE9216B /* HttpBackendApple.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

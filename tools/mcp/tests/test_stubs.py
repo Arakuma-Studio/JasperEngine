@@ -55,6 +55,7 @@ function Bad:init()
     SceneManager.currentSceneName = 3
     Engine.scene = "main"
     Engine["fixedDeltatime"] = false
+    Http.maxConcurrentRequests = "many"
 end
 
 return Bad
@@ -81,6 +82,7 @@ BAD_LUA_EXPECTED = {
     25: "assign-type-mismatch",  # string <- integer
     26: "assign-type-mismatch",  # Scene <- string
     27: "assign-type-mismatch",  # number <- boolean, indexed with a string
+    28: "assign-type-mismatch",  # integer <- string (Http)
 }
 
 # A script without engine fields assigned: the plugin leaves the checks driven by the doc
@@ -205,6 +207,26 @@ function Good:onUpdate()
     print(UserSettings.hasKey("coins"), System.syncFileSystem(), System.isUserDataLoaded())
     UserSettings.deleteKey("coins")
     UserSettings.deleteAll()
+    -- http: the hand-written signatures and option classes
+    local req = Http.get("https://example.com/data.json", {timeout = 10, responseType = "json", owner = self}, function(res)
+        if res.ok then
+            print(res.status, res.data, res.body, res.headers["content-type"], res:header("etag"), res.url, res.redirected)
+        else
+            print(res.errorCode, res.error, res.elapsed)
+        end
+    end)
+    Http.post("https://example.com/api", {score = 3}, function(res) print(res.ok, res:json()) end)
+    Http.post("https://example.com/raw", "a=1", {headers = {["Content-Type"] = "text/plain"}})
+    Http.request{url = "https://example.com/x", method = "PUT", json = {a = 1}, onComplete = function(res) print(res.method) end}
+    Http.download("https://example.com/a.mp4", "data://ads/a.mp4", {resume = true, onProgress = function(r, got, total)
+        print(r.progress, r.bytesReceived, got, total)
+    end})
+    Http.getTexture("https://example.com/i.png", function(res) if res.textureData then print(res.textureData:getWidth()) end end)
+    Http.head("https://example.com", {redirects = false, query = {a = 1, b = "x"}})
+    print(req.state == HttpState.Done, req:isDone(), req.bytesTotal, req.response, Http.maxConcurrentRequests, Http.encodeUrl("a b"))
+    Http.timeout = 20
+    Http.logFailures = true
+    req:cancel()
 end
 
 return Good

@@ -47,7 +47,7 @@ origin/main).
 | 6 | `audio-mixer` | mixer buses with volume/mute and filters (low-pass/high-pass, ...), streamed music, PlayOneShot, fades | impl |
 | 7 | `physics-2d` | 2D joint parameters (wheel spring/motor, hinge limits/motor, ...), runtime-sized chain/polygon colliders (no export-only caps), 2D contact stay | merged |
 | 8 | `physics-contacts` | per-object collision/trigger callbacks (enter/stay/exit) for 3D and 2D, delivered on the main thread; 3D global handlers off the job threads | review |
-| 9 | `physics-3d` | damping, centre of mass, safe body-type switching, per-collider sensor/material, collider removal, 3D joint limits/motors/springs, cone fix, ragdoll, runtime-sized collider data and world capacity | impl |
+| 9 | `physics-3d` | damping, centre of mass, safe body-type switching, per-collider sensor/material, collider removal, 3D joint limits/motors/springs, cone fix, ragdoll, runtime-sized collider data and world capacity | review |
 | 10 | `anim-layers` | animation layers with bone masks and blending in the Animation Player | impl |
 | 11 | `anim-retarget` | humanoid retargeting of clips between different rigs | specced |
 | 12 | `anim-properties` | clip property channel: active state, colors, material and UI properties | specced |
@@ -58,9 +58,9 @@ origin/main).
 | 17 | `script-lifecycle` | onEnable/onDisable, enabling scripts, getScript/findObjectOfType, scene-wide find, event unregister | merged |
 | 18 | `script-data` | JSON encode/decode, UserSettings hasKey/deleteAll/save | merged |
 | 19 | `input` | key/mouse/button down/up edge queries, virtual axes and buttons (Input Manager-style), bound Touch with phases and deltas | merged |
-| 20 | `persistence` | DontDestroyOnLoad (persistent objects and their sounds across scene loads) | review |
+| 20 | `persistence` | DontDestroyOnLoad (persistent objects and their sounds across scene loads) | merged |
 | 21 | `ui-scaling-text` | canvas match-width-or-height scaling, per-character text effects (waves etc.), particles inside UI | impl |
-| 22 | `particles` | start speed along the emitter shape, multi-key curves for every over-lifetime module, Unity ParticleSystem import | impl |
+| 22 | `particles` | start speed along the emitter shape, multi-key curves for every over-lifetime module, Unity ParticleSystem import | review |
 | 23 | `debug-overlay` | on-device log console and stats/FPS overlay | impl |
 | 24 | `camera-shake` | camera shake component and presets (MilkShake-like), camera follow | impl |
 | 25 | `ui-canvas-group` | Canvas Group for the native UI: group alpha, interactable, blocks raycasts, ignore parent groups; animatable (found by the animation spec: legacy clips animate CanvasGroup alpha) | review |
@@ -142,3 +142,8 @@ origin/main).
   (merging main), ui-canvas-group, physics-contacts (2 high: 2D ignoreCollision on touching bodies, double destroy
   from an Exit callback), persistence. Box 2204 (Vultr) rebooted under memory pressure; sshd/swap now survive
   reboots on all boxes.
+- 2026-10-31: **`persistence` merged and pushed** (7 review defects fixed incl. two C++ use-after-frees; merged
+  tree: unit 1201 passed, full MCP 851 passed with only the 10 baseline failures). `physics-3d` reviewed (2 high:
+  ragdoll impulse on the switch frame, six-DOF zero-stiffness drives locking; lead calls: fix trigger-vs-CCD
+  properly, create the 3D world lazily) and `particles` reviewed (4 high incl. legacy mesh particles upgraded to
+  billboards, end-of-cycle bursts lost): fixes in progress.

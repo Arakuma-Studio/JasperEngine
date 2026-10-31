@@ -48,6 +48,10 @@ GameObject.destroy(go, 2.0)          -- after 2 seconds; destroyImmediate(go) ri
 - `destroy` removes the GameObject and its children after the frame's update (or after
   `delay`), calling `onDisable` and `onDestroy` (Lua and C++), then the C++ destructors, first.
 - `instantiate` returns nil when the prefab is not in the build.
+- Into the persistent scene (survives scene loads, `DontDestroyOnLoad`):
+  `GameObject.instantiate(prefab, SceneManager.persistentScene)` once it exists (it is nil
+  until the first `DontDestroyOnLoad`), or `DontDestroyOnLoad(go)` on the new root. See
+  [lua-api.md](lua-api.md) 2.8.1.
 
 ## Which prefabs are in the build
 

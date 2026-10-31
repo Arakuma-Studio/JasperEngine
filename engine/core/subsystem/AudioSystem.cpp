@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "AudioSystem.h"
+#include "manager/SceneManager.h"
 
 #include "audio/AudioMixer.h"
 #include "pool/SoundPool.h"
@@ -884,9 +885,13 @@ void AudioSystem::update(double dt){
         init();
     }
 
-    // 3D sources are placed against the main camera, so without one they play in 2D
-    const bool hasListener = scene->findComponent<CameraComponent>(scene->getCamera()) &&
-                             scene->findComponent<Transform>(scene->getCamera());
+    // 3D sources are placed against the main camera, so without one they play in 2D. The
+    // persistent scene's (DontDestroyOnLoad) are heard by the loaded main scene's camera: their
+    // positions are world positions too
+    const bool persistent = scene == SceneManager::getPersistentScene();
+    Scene* listenerScene = persistent ? Engine::getMainScene() : scene;
+    const bool hasListener = listenerScene && listenerScene->findComponent<CameraComponent>(listenerScene->getCamera()) &&
+                             listenerScene->findComponent<Transform>(listenerScene->getCamera());
     bool any3D = false;
 
     // the callbacks run after the loop: a script may add or remove components
@@ -1098,24 +1103,11 @@ void AudioSystem::update(double dt){
     updatePointVoices(unscaledDt);
     for (const PointVoice& voice : pointVoices) any3D = any3D || voice.is3D;
 
+    // the listener at the camera, once a frame while a 3D voice plays (the persistent scene's
+    // system too: the main scene's own places it only when it has 3D voices)
     if (inited && hasListener && listenerEnabled && any3D) {
-        CameraComponent& camera = scene->getComponent<CameraComponent>(scene->getCamera());
-        Transform& cameraTransform = scene->getComponent<Transform>(scene->getCamera());
-
-        Vector3 camWorldPos = cameraTransform.worldPosition;
-        Vector3 camWorldView = camera.worldTarget - camWorldPos;
-        Vector3 camWorldUp = camera.worldUp;
-        Vector3 camVelocity = cameraLastPosition - camWorldPos;
-
-        getSoloud().set3dListenerParameters(
-            camWorldPos.x, camWorldPos.y, camWorldPos.z,
-            camWorldView.x, camWorldView.y, camWorldView.z,
-            camWorldUp.x, camWorldUp.y, camWorldUp.z,
-            camVelocity.x, camVelocity.y, camVelocity.z);
-
-        cameraLastPosition = camWorldPos;
-    }
-    if (inited && any3D) {
+        placeListener(*listenerScene);
+    } else if (inited && any3D) {
         getSoloud().update3dAudio();
     }
 
@@ -1126,6 +1118,21 @@ void AudioSystem::update(double dt){
         else if (kind == EventPause) audio->onPause.call();
         else audio->onStop.call();
     }
+}
+
+void AudioSystem::placeListener(Scene& listenerScene){
+    const CameraComponent& camera = listenerScene.getComponent<CameraComponent>(listenerScene.getCamera());
+    const Transform& cameraTransform = listenerScene.getComponent<Transform>(listenerScene.getCamera());
+    const Vector3 position = cameraTransform.worldPosition;
+    const Vector3 view = camera.worldTarget - position;
+    const Vector3 up = camera.worldUp;
+    const Vector3 velocity = cameraLastPosition - position;
+    getSoloud().set3dListenerParameters(position.x, position.y, position.z, view.x, view.y, view.z,
+                                        up.x, up.y, up.z, velocity.x, velocity.y, velocity.z);
+    if (inited){
+        getSoloud().update3dAudio();
+    }
+    cameraLastPosition = position;
 }
 
 void AudioSystem::draw(){

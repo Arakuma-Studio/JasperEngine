@@ -42,6 +42,7 @@
 #include "component/AudioSourceComponent.h"
 #include "audio/AudioMixerDocument.h"
 #include "component/LayoutGroupComponent.h"
+#include "component/CanvasGroupComponent.h"
 #include "component/UIComponent.h"
 #include "component/TextComponent.h"
 #include "component/InputFieldComponent.h"
@@ -1231,9 +1232,17 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
             break;
         case ComponentType::Joint3DComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
-                registry->addComponent<Joint3DComponent>(entity, {});
+                // a new joint: Unity's defaults (local anchors)
+                registry->addComponent<Joint3DComponent>(entity, makeJoint3D(Joint3DType::FIXED));
             }else{
                 registry->addComponent<Joint3DComponent>(entity, Stream::decodeJoint3DComponent(componentNode));
+            }
+            break;
+        case ComponentType::RagdollComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<RagdollComponent>(entity, {});
+            }else{
+                registry->addComponent<RagdollComponent>(entity, Stream::decodeRagdollComponent(componentNode));
             }
             break;
         case ComponentType::KeyframeTracksComponent:
@@ -1430,6 +1439,13 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
                 registry->addComponent<LayoutGroupComponent>(entity, {});
             }else{
                 registry->addComponent<LayoutGroupComponent>(entity, Stream::decodeLayoutGroupComponent(componentNode));
+            }
+            break;
+        case ComponentType::CanvasGroupComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<CanvasGroupComponent>(entity, {});
+            }else{
+                registry->addComponent<CanvasGroupComponent>(entity, Stream::decodeCanvasGroupComponent(componentNode));
             }
             break;
         default:
@@ -1742,6 +1758,12 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
             }
             registry->removeComponent<Joint3DComponent>(entity);
             break;
+        case ComponentType::RagdollComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeRagdollComponent(registry->getComponent<RagdollComponent>(entity));
+            }
+            registry->removeComponent<RagdollComponent>(entity);
+            break;
         case ComponentType::KeyframeTracksComponent:
             if (encodeComponent){
                 oldComponent = Stream::encodeKeyframeTracksComponent(registry->getComponent<KeyframeTracksComponent>(entity));
@@ -1909,6 +1931,12 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
                 oldComponent = Stream::encodeLayoutGroupComponent(registry->getComponent<LayoutGroupComponent>(entity));
             }
             registry->removeComponent<LayoutGroupComponent>(entity);
+            break;
+        case ComponentType::CanvasGroupComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeCanvasGroupComponent(registry->getComponent<CanvasGroupComponent>(entity));
+            }
+            registry->removeComponent<CanvasGroupComponent>(entity);
             break;
         default:
             break;
@@ -2375,6 +2403,8 @@ editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(S
     if (signature.test(scene->getComponentId<LayoutGroupComponent>())) return objectClass("LayoutGroup");
     if (signature.test(scene->getComponentId<UIDocumentComponent>()))  return objectClass("UIDocument");
     if (signature.test(scene->getComponentId<UIComponent>()))          return objectClass("RectTransform");
+    // a container whose own component is its Canvas Group (CanvasGroup(scene, entity) there)
+    if (signature.test(scene->getComponentId<CanvasGroupComponent>())) return handleClass("CanvasGroup");
     // after the renderers: a fluid shown on a Sprite or a Mesh is that object first (its
     // FluidSimulation is FluidSimulation(scene, entity) there)
     if (signature.test(scene->getComponentId<FluidSimulationComponent>())) return objectClass("FluidSimulation");
@@ -2390,6 +2420,7 @@ editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(S
     if (signature.test(scene->getComponentId<RigidbodyComponent>()))      return handleClass("Rigidbody");
     if (signature.test(scene->getComponentId<Joint2DComponent>()))     return handleClass("Joint2D");
     if (signature.test(scene->getComponentId<Joint3DComponent>()))     return handleClass("Joint3D");
+    if (signature.test(scene->getComponentId<RagdollComponent>()))     return handleClass("Ragdoll");
     if (signature.test(scene->getComponentId<AlphaTweenComponent>())) return handleClass("AlphaTween");
     if (signature.test(scene->getComponentId<ColorTweenComponent>())) return handleClass("ColorTween");
     if (signature.test(scene->getComponentId<PositionTweenComponent>())) return handleClass("PositionTween");

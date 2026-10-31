@@ -11,6 +11,9 @@
 
 #include "physics/PhysicsMaterial.h"
 
+#include "ecs/Entity.h"
+
+#include <cstdint>
 #include <filesystem>
 #include <string>
 
@@ -29,6 +32,9 @@ namespace jasperengine::editor {
         // "<dir>/<baseName>.physicsmaterial", " 1", " 2"... when taken; a new GUID
         static std::filesystem::path create(Project* project, const std::filesystem::path& directory, const std::string& baseName,
                                             const PhysicsMaterialData& data, std::string& error);
+        // a material dropped on a GameObject: it becomes the material of every collider of its
+        // Rigidbody and Rigidbody 2D, one undo step of the scene; false (error) when it has none
+        static bool applyToObject(Project* project, uint32_t sceneId, Entity entity, const std::string& assetPath, std::string& error);
     };
 
 }

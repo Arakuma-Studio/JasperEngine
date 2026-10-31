@@ -454,7 +454,11 @@ Decisions taken while implementing (2026-10-31), where the spec was silent, ambi
   `getMeter()`, `setVolume(db, seconds, opts)`, `AudioMixerEffect.id`, `isValid()`, `hasParameter()`,
   `AudioSource:getVoiceCount()`, `getResolvedLoadType()`, `AudioSystem.isOutputAvailable()`, `getVoiceCount()`.
   `AudioSystem.preload` holds the sample until the engine shuts down (`SoundPool::pin`).
-- **Persistence contract** (feature `persistence`, implemented in parallel): after copying an `AudioSourceComponent`
+- **Persistence** (feature `persistence`, merged meanwhile): its `EntityCloner` move keeps the component's runtime and
+  its hand-over now calls `AudioSystem::moveSourceVoices` (below), so the old scene's `stopSceneSounds` and the voice
+  budget see the moved voices under the persistent scene; the persistent scene's 3D voices use the main scene's
+  camera (`listenerScene`, as persistence did), the listener placed once a frame where a 3D voice plays. The API:
+  after copying an `AudioSourceComponent`
   into the persistent scene, call `AudioSystem::moveSourceVoices(fromScene, sourceComponent, toScene,
   targetComponent)`: it moves the runtime state (main voice, one-shots and their samples, pending one-shots, fade,
   pause state, resolved group) to the copy and re-owns the voices in the engine-wide voice registry (which

@@ -31,6 +31,8 @@
 #include "animation/AnimationClipIO.h"
 #include "animation/ModelSubClips.h"
 #include "subsystem/RenderSystem.h"
+#include "subsystem/UISystem.h"
+#include "util/EntityPath.h"
 #include "texture/TextureData.h"
 #include "util/CameraTextureLink.h"
 #include "util/Color.h"
@@ -153,7 +155,7 @@ bool isVertexAnimationProperty(ComponentType component, const std::string& prope
 // animation, an Animation Player's clip, a Vertex Animator's animation)
 // A Rigidbody 2D's or one of its colliders' physics material (a .physicsmaterial)
 bool isPhysicsMaterialProperty(ComponentType component, const std::string& propertyName) {
-    return component == ComponentType::Rigidbody2DComponent &&
+    return (component == ComponentType::Rigidbody2DComponent || component == ComponentType::RigidbodyComponent) &&
            (propertyName == "material" || (propertyName.compare(0, 10, "colliders[") == 0 && endsWith(propertyName, "].material")));
 }
 
@@ -560,6 +562,33 @@ const EnumOptions& jointAnchorSpaceOptions() {
     return options;
 }
 
+const EnumOptions& jointMotionOptions() {
+    static const EnumOptions options = {
+        {(int)JointMotion::LOCKED, "locked", "Locked"},
+        {(int)JointMotion::LIMITED, "limited", "Limited"},
+        {(int)JointMotion::FREE, "free", "Free"}
+    };
+    return options;
+}
+
+const EnumOptions& jointSwingTypeOptions() {
+    static const EnumOptions options = {
+        {(int)JointSwingType::CONE, "cone", "Cone"},
+        {(int)JointSwingType::PYRAMID, "pyramid", "Pyramid"}
+    };
+    return options;
+}
+
+const EnumOptions& rigidbodyInterpolationOptions() {
+    static const EnumOptions options = {
+        {(int)RigidbodyInterpolation::SCENE, "scene", "Scene"},
+        {(int)RigidbodyInterpolation::NONE, "none", "None"},
+        {(int)RigidbodyInterpolation::INTERPOLATE, "interpolate", "Interpolate"},
+        {(int)RigidbodyInterpolation::EXTRAPOLATE, "extrapolate", "Extrapolate"}
+    };
+    return options;
+}
+
 const EnumOptions& jointBreakActionOptions() {
     static const EnumOptions options = {
         {(int)JointBreakAction::IGNORE, "ignore", "Ignore"},
@@ -624,6 +653,23 @@ const EnumOptions& layoutGroupTypeOptions() {
         {(int)LayoutGroupType::HORIZONTAL, "horizontal", "Horizontal"},
         {(int)LayoutGroupType::VERTICAL_WRAP, "vertical_wrap", "Vertical Wrap"},
         {(int)LayoutGroupType::HORIZONTAL_WRAP, "horizontal_wrap", "Horizontal Wrap"}
+    };
+    return options;
+}
+
+const EnumOptions& canvasGroupRenderModeOptions() {
+    static const EnumOptions options = {
+        {(int)CanvasGroupRenderMode::PER_ELEMENT, "per_element", "Per Element"},
+        {(int)CanvasGroupRenderMode::FLATTEN, "flatten", "Flatten"}
+    };
+    return options;
+}
+
+const EnumOptions& alphaTweenTargetOptions() {
+    static const EnumOptions options = {
+        {(int)AlphaTweenTarget::AUTO, "auto", "Auto"},
+        {(int)AlphaTweenTarget::COLOR, "color", "Color"},
+        {(int)AlphaTweenTarget::CANVAS_GROUP, "canvas_group", "Canvas Group"}
     };
     return options;
 }
@@ -1075,6 +1121,9 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
         {"body_type", &bodyTypeOptions()},
         {"collider2d_type", &collider2DTypeOptions()},
         {"collider3d_type", &collider3DTypeOptions()},
+        {"joint_motion", &jointMotionOptions()},
+        {"swing_type", &jointSwingTypeOptions()},
+        {"rigidbody_interpolation", &rigidbodyInterpolationOptions()},
         {"light_type", &lightTypeOptions()},
         {"camera_type", &cameraTypeOptions()},
         {"lattice_interpolation", &latticeInterpolationOptions()},
@@ -1168,9 +1217,20 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
             break;
         case ComponentType::Joint3DComponent:
             if (name == "type") return &joint3DTypeOptions();
+            if (name == "anchorSpace") return &jointAnchorSpaceOptions();
+            if (name == "breakAction") return &jointBreakActionOptions();
+            if (name == "swingType") return &jointSwingTypeOptions();
+            if (name == "xMotion" || name == "yMotion" || name == "zMotion" ||
+                name == "angularXMotion" || name == "angularYMotion" || name == "angularZMotion") return &jointMotionOptions();
             break;
         case ComponentType::LayoutGroupComponent:
             if (name == "type") return &layoutGroupTypeOptions();
+            break;
+        case ComponentType::CanvasGroupComponent:
+            if (name == "renderMode") return &canvasGroupRenderModeOptions();
+            break;
+        case ComponentType::AlphaTweenComponent:
+            if (name == "alphaTarget") return &alphaTweenTargetOptions();
             break;
         case ComponentType::MeshComponent:
             if (name == "submeshes[].material.alphaMode") return &alphaModeOptions();
@@ -1208,6 +1268,7 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
             if (name == "motionQuality") return &motionQualityOptions();
             if (name == "colliders[].type") return &collider3DTypeOptions();
             if (name == "colliders[].source") return &collider3DSourceOptions();
+            if (name == "interpolation") return &rigidbodyInterpolationOptions();
             break;
         case ComponentType::ParticleSystemComponent:
             if (name == "positionInitializer.shape") return &emitterShapeOptions();
@@ -3459,6 +3520,24 @@ bool McpValues::parseChangesAsGiven(const Json& changes, std::vector<Change>& ou
     }
     inferLineMode(out);
     return true;
+}
+
+Json McpValues::canvasGroupStateToJson(Scene* scene, Entity entity) {
+    if (!scene || !scene->isEntityCreated(entity) || !scene->findComponent<RectTransformComponent>(entity)) return nullptr;
+    const CanvasGroupState state = scene->getSystem<UISystem>()->getCanvasGroupState(entity);
+    if (state.group == NULL_ENTITY) return nullptr;
+    Json out = {{"inherited_alpha", state.alpha}, {"interactable", state.interactable},
+                {"blocks_raycasts", state.blocksRaycasts}, {"group", EntityPath::of(scene, state.group)}};
+    // a group itself: whether its Flatten layer is drawn, and what the layers cost last frame
+    if (const CanvasGroupComponent* group = scene->findComponent<CanvasGroupComponent>(entity)) {
+        if (group->renderMode == CanvasGroupRenderMode::FLATTEN) {
+            const RenderSystem::CanvasGroupRenderStats& stats = scene->getSystem<RenderSystem>()->getCanvasGroupRenderStats();
+            out["flatten"] = {{"layered", group->layered}, {"layer_alpha", group->layerAlpha},
+                              {"scene_layers_last_frame", stats.layers}, {"scene_layer_targets", stats.pooled},
+                              {"scene_layer_targets_created", stats.targetsCreated}};
+        }
+    }
+    return out;
 }
 
 Json McpValues::fluidStatsToJson(Scene* scene, Entity entity) {

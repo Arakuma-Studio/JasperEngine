@@ -843,7 +843,7 @@ TEST(GeneratorAudioTest, InitConfiguresTheVoicesAndLoadsTheMixer) {
     const std::vector<SceneBuildInfo> scenes = {SceneBuildInfo{1, "Level", {1}, {1}, true}};
     generator.configure(scenes, "test", {}, {}, project, internal, project / "assets", project / "lua", {}, 17,
                         Scaling::FITWIDTH, TextureStrategy::NONE, 1280, 720, true, WindowSettings(), LoadingSettings(),
-                        TagsAndLayers(), 4, "", settings);
+                        TagsAndLayers(), 4, "", false, settings);
     const std::string mainCpp = scriptdata::readFile(internal / "generated" / "main.cpp");
     const size_t load = mainCpp.find("AudioMixer::load(\"audio/Main.mixer\")");
     ASSERT_NE(load, std::string::npos);
