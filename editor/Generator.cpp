@@ -1617,7 +1617,7 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
                      "played by an Animation Player component (Unity's legacy Animation; Lua `getAnimationPlayer()`, `play`, `crossFade`, `queue`, clip events into script methods). "
                      "Edit them with `edit_animation {clip, ...}` (one project undo step) or by hand (auto-sync reloads them and reports problems); "
                      "a model's animations are read-only clips `assets/models/hero.gltf#Walk`. Guide: `jasper://docs/animation`.\n";
-    agentsContent += "- Checks without the editor: `jasperengine-editor check --project . [--files <paths...>] [--cpp]` (Lua syntax and load, shaders, animation clips, HTML/CSS UI, C++ build; exit code 1 on errors). "
+    agentsContent += "- Checks without the editor: `jasperengine-editor check --project . [--files <paths...>] [--cpp]` (Lua syntax and load, shaders, animation clips, vertex animations, HTML/CSS UI, C++ build; exit code 1 on errors). "
                      "As an agent hook after every edit, shell commands included: `jasperengine-editor check --project <this directory> --hook` "
                      "(PostToolUse; it checks what changed since its last run and logs to `" + relativeInternalPath.generic_string() + "/check-hook.log`).\n\n";
     agentsContent += "## HTML/CSS UI\n\n";

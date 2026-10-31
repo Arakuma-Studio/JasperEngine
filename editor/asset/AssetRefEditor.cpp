@@ -250,6 +250,11 @@ namespace {
                 if (!newRef.guid.isNull()) parent[key + "Guid"] = newRef.guid.str(); else parent.remove(key + "Guid");
                 break;
             }
+            case AssetRefShape::GuidSibling: {
+                parent[key] = clear ? std::string() : hint;
+                if (!clear && !newRef.guid.isNull()) parent["guid"] = newRef.guid.str(); else parent.remove("guid");
+                break;
+            }
             case AssetRefShape::Shader: {
                 std::string value = parent[key] ? parent[key].as<std::string>() : std::string();
                 std::string guids = parent[key + "Guid"] ? parent[key + "Guid"].as<std::string>() : std::string();

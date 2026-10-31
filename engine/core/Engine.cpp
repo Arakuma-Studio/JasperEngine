@@ -35,6 +35,7 @@
 #include "component/PoseAnimatorComponent.h"
 #include "component/AnimatorComponent.h"
 #include "component/AnimationPlayerComponent.h"
+#include "component/VertexAnimatorComponent.h"
 #include "pool/TexturePool.h"
 #include "pool/SoundPool.h"
 #include "pool/TextureDataPool.h"
@@ -42,7 +43,9 @@
 #include "pool/FontPool.h"
 #include "pool/ModelPool.h"
 #include "pool/MeshLodPool.h"
+#include "pool/MeshBufferPool.h"
 #include "pool/AnimationClipPool.h"
+#include "pool/VertexAnimationPool.h"
 #include "shader/RuntimeShaderCompiler.h"
 #include "io/AssetIOService.h"
 #include "jobs/JobSystem.h"
@@ -1043,6 +1046,72 @@ const ThreadingSettings& Engine::getThreadingSettings() {
     return threadingSettingsStorage();
 }
 
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+
+namespace{
+    // Android, iOS and the web: sokol's per-frame buffers are host-visible memory shared with
+    // the rest of a smaller device
+    bool smallGpuMemoryPlatform(){
+#if defined(JASPERENGINE_ANDROID) || defined(JASPERENGINE_WEB) || defined(__EMSCRIPTEN__)
+        return true;
+#elif defined(__APPLE__)
+    #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+        return true;
+    #else
+        return false;
+    #endif
+#else
+        return false;
+#endif
+    }
+}
+
+int Engine::defaultUniformBytes(){
+    return (smallGpuMemoryPlatform() ? 16 : 64) * 1024 * 1024;
+}
+
+int Engine::defaultStreamStagingBytes(){
+    return (smallGpuMemoryPlatform() ? 16 : 48) * 1024 * 1024;
+}
+
+int Engine::defaultDescriptorBytes(){
+    return (smallGpuMemoryPlatform() ? 16 : 64) * 1024 * 1024;
+}
+
+namespace{
+    Engine::GpuResourceLimits& gpuResourceLimits(){
+        static Engine::GpuResourceLimits limits;
+        return limits;
+    }
+}
+
+void Engine::setGpuResourceLimits(const GpuResourceLimits& limits){
+    const GpuResourceLimits defaults;
+    // sokol's pools take 1 to 65,535 slots
+    auto valid = [](int value, int fallback){ return (value > 0 && value < 65536) ? value : fallback; };
+    GpuResourceLimits& set = gpuResourceLimits();
+    set.buffers = valid(limits.buffers, defaults.buffers);
+    set.images = valid(limits.images, defaults.images);
+    set.samplers = valid(limits.samplers, defaults.samplers);
+    set.views = valid(limits.views, defaults.views);
+    set.pipelines = valid(limits.pipelines, defaults.pipelines);
+    set.shaders = valid(limits.shaders, defaults.shaders);
+    // sokol's per-frame buffers: 64 KB - 1 GB
+    auto validBytes = [](int value, int fallback){ return (value >= 65536 && value <= (1 << 30)) ? value : fallback; };
+    set.uniformBytes = validBytes(limits.uniformBytes, defaults.uniformBytes);
+    set.streamStagingBytes = validBytes(limits.streamStagingBytes, defaults.streamStagingBytes);
+    set.descriptorBytes = validBytes(limits.descriptorBytes, defaults.descriptorBytes);
+    // sokol's WebGPU bind group cache: a power of 2, 2 - 32,768 (its pools stay under 65,536)
+    const int cache = limits.bindGroupsCacheSize;
+    set.bindGroupsCacheSize = (cache >= 2 && cache <= 32768 && (cache & (cache - 1)) == 0) ? cache : defaults.bindGroupsCacheSize;
+}
+
+const Engine::GpuResourceLimits& Engine::getGpuResourceLimits(){
+    return gpuResourceLimits();
+}
+
 void Engine::setFramebuffer(Framebuffer* framebuffer){
     Engine::framebuffer = framebuffer;
 }
@@ -1125,6 +1194,8 @@ void Engine::endCompositeFramebuffer(){
 }
 
 void Engine::clearPools(){
+    // first: its assets' payload textures go back to the texture pools cleared next
+    VertexAnimationPool::clear();
     TexturePool::clear();
     SoundPool::clear();
     TextureDataPool::clear();
@@ -1132,10 +1203,12 @@ void Engine::clearPools(){
     FontPool::clear();
     ModelPool::clear();
     MeshLodPool::clear();
+    MeshBufferPool::clear();
     AnimationClipPool::clear();
 }
 
 void Engine::clearUnusedPools(){
+    VertexAnimationPool::clearUnused();
     TexturePool::clearUnused();
     SoundPool::clearUnused();
     TextureDataPool::clearUnused();
@@ -1143,6 +1216,7 @@ void Engine::clearUnusedPools(){
     FontPool::clearUnused();
     ModelPool::clearUnused();
     MeshLodPool::clearUnused();
+    MeshBufferPool::clearUnused();
     AnimationClipPool::clearUnused();
 }
 
@@ -1311,6 +1385,14 @@ void Engine::clearComponentSubscriptions(Scene* scene) {
         player.onFinish.clear();
     }
 
+    auto vertexAnimators = scene->getComponentArray<VertexAnimatorComponent>();
+    for (size_t i = 0; i < vertexAnimators->size(); i++) {
+        VertexAnimatorComponent& animator = vertexAnimators->getComponentFromIndex(i);
+        animator.onEvent.clear();
+        animator.onFinish.clear();
+        animator.onInstanceEvent.clear();
+        animator.onInstanceFinish.clear();
+    }
     auto stateAnimators = scene->getComponentArray<AnimatorComponent>();
     for (size_t i = 0; i < stateAnimators->size(); i++) {
         AnimatorComponent& animator = stateAnimators->getComponentFromIndex(i);
@@ -2000,6 +2082,10 @@ void Engine::runFrame(bool draw){
 
         // GameObject::destroy: after the update, before the draw (Unity)
         ObjectManager::update(frameDelta);
+        // their holes in the component arrays closed now, not by whatever reads next
+        for (int i = 0; i < scenes.size(); i++) {
+            scenes[i]->compactComponents();
+        }
     }
 
     if (draw){

@@ -1,0 +1,7 @@
+{
+ "comment": "filters reading content beyond the viewport, and descendants' filters in their ancestors' filter regions (fork P7-F2): blurred squares half beyond each edge, the half beyond blue (the blur at the edge picks it up; it mirrored the half on screen there), drop shadows cast onto the screen by bars entirely beyond its top and left edges (they were missing), a child's drop shadow beyond its brightness() parent's box, a blurred child at its grayscale() parent's edge (both were cut at the parent's box), a drop shadow three levels down (brightness() > grayscale() > the shadow). Before P7-F2: 6.985 % bad, largest cluster 2336 px. Measured 0.000 % on glcore (the blurs and shadows match within the channel threshold); 0.000 % on an NVIDIA RTX 3060 Ti (Vulkan, driver 580) too; the default limits (0.1 %, cluster 16 px) leave the margin for other GPUs.",
+ "viewport": [
+  340,
+  230
+ ]
+}

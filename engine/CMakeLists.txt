@@ -1199,10 +1199,12 @@ set(JASPERENGINE_SRCS
     core/animation/AnimatorRetarget.cpp
     core/animation/AnimatorRig.cpp
     core/animation/BlendTree.cpp
+    core/animation/VertexAnimatorRuntime.cpp
     core/animation/ClipBinding.cpp
     core/animation/CompiledController.cpp
     core/animation/KeyframeSampling.cpp
     core/animation/ModelSubClips.cpp
+    core/animation/VertexAnimation.cpp
     core/pose/HumanBones.cpp
     core/pose/HumanoidMap.cpp
     core/pose/HumanoidMapIO.cpp
@@ -1351,6 +1353,7 @@ set(JASPERENGINE_SRCS
     core/object/Model.cpp
     core/object/PoseAnimator.cpp
     core/object/AnimationPlayer.cpp
+    core/object/VertexAnimator.cpp
     core/object/Animator.cpp
     core/object/GameObject.cpp
     core/object/ShadowCaster2D.cpp
@@ -1396,7 +1399,9 @@ set(JASPERENGINE_SRCS
     core/pool/TexturePool.cpp
     core/pool/ModelPool.cpp
     core/pool/MeshLodPool.cpp
+    core/pool/MeshBufferPool.cpp
     core/pool/AnimationClipPool.cpp
+    core/pool/VertexAnimationPool.cpp
     core/pool/AnimatorAssetPool.cpp
     core/registry/EntityCloner.cpp
     core/registry/EntityRegistry.cpp
@@ -1413,6 +1418,7 @@ set(JASPERENGINE_SRCS
     core/render/BufferRender.cpp
     core/render/CameraRender.cpp
     core/render/DynamicResolutionController.cpp
+    core/render/CpuSkin.cpp
     core/render/FramebufferRender.cpp
     core/render/ObjectRender.cpp
     core/render/ShaderRender.cpp
@@ -1460,6 +1466,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/ActionSystem.cpp
     core/subsystem/ActionSystemPlayers.cpp
     core/subsystem/PoseAnimatorSystem.cpp
+    core/subsystem/VertexAnimatorSystem.cpp
     core/subsystem/AnimatorSystem.cpp
     core/subsystem/FluidSystem.cpp
     core/fluid/FluidSimulator.cpp
