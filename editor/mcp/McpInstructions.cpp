@@ -179,10 +179,9 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
 - Crowds: bake_vertex_animation (preview, then output) makes a .vat played on the GPU by a
   Vertex Animator (jasper://docs/vertex-animation).
 - UI (text, image, button, panel, scrollbar, progressbar, input field, layout group; HTML/CSS
-  UI: below): create_ui lays out in pixels, y DOWN from the parent's top-left, in 2D and UI
-  scenes, but in a 2D scene layout groups stack bottom-up and pointer input needs a UI camera:
-  put HUDs and menus in a UI scene as a child scene (set_child_scene). UI scale (Canvas
-  Scaler), text effects, UI particles: jasper://docs/ui.
+  UI: below): create_ui lays out in pixels, y DOWN from the parent's top-left; in a 2D scene
+  layout groups stack bottom-up and pointer input needs a UI camera: put HUDs and menus in a
+  child UI scene (set_child_scene). Canvas Scaler, text effects, UI particles: jasper://docs/ui.
 
 ## Physics
 - Add a body and its collider to the SAME GameObject in one step (edit_colliders with

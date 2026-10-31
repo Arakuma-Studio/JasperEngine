@@ -5,6 +5,7 @@
 
 #include "Engine.h"
 #include "htmlui/HtmlUIClock.h"
+#include "htmlui/compat/css/ColorValue.h"
 #include "htmlui/compat/runtime/CompatProperties.h"
 
 #include <RmlUi/Core/ComputedValues.h>
@@ -12,12 +13,11 @@
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/Property.h>
 #include <RmlUi/Core/PropertyIdSet.h>
-#include <RmlUi/Core/PropertyParser.h>
-#include <RmlUi/Core/StyleSheetSpecification.h>
 
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <optional>
 #include <cstdlib>
 
 using namespace jasperengine;
@@ -111,13 +111,12 @@ namespace {
         return false;
     }
 
+    // compat's CSS colour parser: it needs no RmlUi (the CLI check validates without it)
     bool parseColor(const std::string& text, Vector4& color){
-        Rml::PropertyParser* parser = Rml::StyleSheetSpecification::GetParser("color");
-        if (!parser) return false;
-        Rml::Property property;
-        if (!parser->ParseValue(property, text, Rml::ParameterMap())) return false;
-        const Rml::Colourb c = property.Get<Rml::Colourb>();
-        color = Vector4(c.red / 255.0f, c.green / 255.0f, c.blue / 255.0f, c.alpha / 255.0f);
+        const std::optional<compat::CssColor> parsed = compat::ColorValue::parse(text);
+        if (!parsed) return false;
+        const uint32_t rgba = compat::ColorValue::toRgba8(*parsed);
+        color = Vector4(((rgba >> 24) & 0xFF) / 255.0f, ((rgba >> 16) & 0xFF) / 255.0f, ((rgba >> 8) & 0xFF) / 255.0f, (rgba & 0xFF) / 255.0f);
         return true;
     }
 

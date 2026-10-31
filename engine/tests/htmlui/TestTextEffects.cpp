@@ -186,7 +186,20 @@ namespace {
 
 }
 
-// colours parse through RmlUi (initialised by the fixture)
+// the CLI check validates text-effect with no RmlUi: colours parse through compat's CSS parser
+TEST(TextEffectProperty, GradientColoursParseWithoutRmlUi){
+    HtmlTextEffect title = parsed("wave(0.12em 1.5s), gradient(1.5s add #ffffff, #ffd040)");
+    ASSERT_EQ(title.layers.size(), 2u);
+    ASSERT_EQ(title.layers[1].gradient.size(), 2u);
+    EXPECT_NEAR(title.layers[1].gradient[1].color.y, 0xd0 / 255.0f, 1e-4f);
+    HtmlTextEffect modern = parsed("gradient(#ff000080, lime 100%)");
+    ASSERT_EQ(modern.layers.size(), 1u);
+    ASSERT_EQ(modern.layers[0].gradient.size(), 2u);
+    EXPECT_NEAR(modern.layers[0].gradient[0].color.w, 0.5f, 0.01f);
+    EXPECT_FLOAT_EQ(modern.layers[0].gradient[1].color.y, 1.0f);
+}
+
+// glyph layers through the font engine (initialised by the fixture)
 TEST_F(TextEffectGlyphsTest, GradientAndLayers){
     // as compat normalizes it (colours as hex) and as written
     HtmlTextEffect gradient = parsed("gradient(2s add #ffff00 0%, #ff8800 100%)");
