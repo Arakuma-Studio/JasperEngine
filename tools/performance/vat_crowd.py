@@ -174,6 +174,7 @@ def main():
     parser.add_argument('--warmup', type=int, default=30)
     parser.add_argument('--cases', default='skinned,vat_vertices,vat_bones')
     parser.add_argument('--output', type=Path, default=ROOT / 'build/performance-vat-crowd')
+    parser.add_argument('--gpu-passes', action='store_true', help='also time the GPU (S15 pass timers): a real GPU')
     args = parser.parse_args()
     cases = [c for c in args.cases.split(',') if c]
     for c in cases:
@@ -198,7 +199,8 @@ def main():
         for key in cases:
             out = directory / f'{key}.json'
             r = run_editor(args.editor, ['benchmark', '--project', str(project), '--scene', f'{key}.scene', '--play',
-                                         '--frames', str(args.frames), '--warmup', str(args.warmup), '--name', key, '--out', str(out)],
+                                         '--frames', str(args.frames), '--warmup', str(args.warmup), '--name', key, '--out', str(out),
+                                         *(['--gpu-passes'] if args.gpu_passes else [])],
                            timeout=3600, cwd=directory)
             if r.returncode != 0 or not out.exists():
                 print(r.stdout[-3000:])
@@ -211,10 +213,13 @@ def main():
             results.append(result)
 
     (work / 'results.json').write_text(json.dumps(results, indent=2) + '\n')
-    print(f'{"case":14} {"count":>6} {"drawn":>6} {"avg ms":>9} {"wall fps":>9} {"draws":>8} {"instances":>10} {"triangles":>12}')
+    print(f'{"case":14} {"count":>6} {"drawn":>6} {"avg ms":>9} {"wall fps":>9} {"cpu ms":>8} {"gpu ms":>8} {"draws":>8} {"instances":>10} {"triangles":>12}')
     for r in results:
-        print(f'{r["name"]:14} {r["count"]:6d} {r["heroesDrawn"]:6d} {r["avgMs"]:9.2f} {r["wallFps"]:9.2f} {r["avgDrawCalls"]:8.0f} '
-              f'{r["avgInstances"]:10.0f} {r["avgTriangles"]:12.0f}')
+        gpu = r.get('gpu', {}).get('frameMs', {}).get('median')
+        print(f'{r["name"]:14} {r["count"]:6d} {r["heroesDrawn"]:6d} {r["avgMs"]:9.2f} {r["wallFps"]:9.2f} {r["cpuMs"]["median"]:8.2f} '
+              f'{(f"{gpu:8.2f}" if gpu is not None else "       -")} {r["avgDrawCalls"]:8.0f} {r["avgInstances"]:10.0f} {r["avgTriangles"]:12.0f}')
+    if results and results[0].get('gpu'):
+        print(f'device: {results[0]["gpu"].get("device")} ({results[0]["gpu"].get("backend")})')
     print(f'results: {work / "results.json"} (viewport {results[0]["viewport"] if results else "-"})')
 
 

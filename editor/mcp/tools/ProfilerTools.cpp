@@ -46,6 +46,8 @@ namespace {
 using namespace schema;
 
 constexpr uint32_t FRAME_TAG = SystemRender::FRAME_STATS_FRAME;
+// a capture's passes of every view (its samples keep each commit's own view tag)
+constexpr uint32_t ANY_TAG = 0xFFFFFFFEu;
 
 // ------------------------------------------------------------------ views
 
@@ -167,6 +169,9 @@ Json renderStatsJson(uint32_t tag, const std::string& viewName){
     const GpuTimingState gpu = SystemRender::getGpuTimingState();
     Json gpuJson = gpuStateJson(gpu);
     gpuJson["frame_ms"] = stats.gpuFrameValid ? Json(round3(stats.gpuFrameMs)) : Json(nullptr);
+    // the device the frames render on (GL_RENDERER or the Vulkan device): benches record it
+    gpuJson["backend"] = SystemRender::getBackendName();
+    gpuJson["device"] = SystemRender::getDeviceName();
     return Json{
         {"view", viewName},
         {"view_tag", tag == FRAME_TAG ? -1 : (long long)tag},
@@ -623,7 +628,7 @@ void capturePassesJson(const CallPtr& call, profiler::CaptureId id, uint32_t tag
         std::map<std::string, std::pair<double, double>> sums;
         bool any = false;
         for (const profiler::GpuPassSample& pass : frame.gpu){
-            if (pass.viewTag != tag || !pass.valid)
+            if ((tag != ANY_TAG && pass.viewTag != tag) || !pass.valid)
                 continue;
             auto& sum = sums[pass.label];
             sum.first += pass.gpuMs;
@@ -643,7 +648,7 @@ void capturePassesJson(const CallPtr& call, profiler::CaptureId id, uint32_t tag
             if (found != sums.end())
                 total += found->second.first;
         }
-        if (tag == FRAME_TAG && frame.gpuMs >= 0.0)
+        if ((tag == FRAME_TAG || tag == ANY_TAG) && frame.gpuMs >= 0.0)
             frameMs.push_back(frame.gpuMs);
         else
             frameMs.push_back(total);
@@ -723,9 +728,19 @@ void getGpuPassesTool(const CallPtr& call){
             call->fail("No capture " + std::to_string(id) + " (capture_profile returns capture_id).");
             return;
         }
+        // a capture keeps each view's commits under the view's own tag: "game" and "scene" are
+        // those views' passes (playing or not), no view is every view's passes of the frame (as
+        // the live list of the engine's frame); the editor's own commit is tag -1
+        uint32_t captureTag = tag;
+        if (!args.contains("view") || args["view"].is_null())
+            captureTag = ANY_TAG;
+        else if (args["view"] == "game")
+            captureTag = GAME_VIEW_ID;
+        else if (args["view"] == "scene")
+            captureTag = SCENE_VIEW_ID;
         Json data = {{"view", name}, {"semantics", SystemRender::getGpuTimingState().semantics}};
         std::string text;
-        capturePassesJson(call, id, tag, data, text);
+        capturePassesJson(call, id, captureTag, data, text);
         call->ok(text + ".", data);
         return;
     }

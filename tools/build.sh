@@ -20,6 +20,7 @@
 # container may use (docker --cpus), which also caps what ignores JOBS: the Android gradle/ninja
 # build and the test binaries. DOCKER_CPUS is the same cap under the name tools/smoke-test.sh
 # passes (e.g. DOCKER_CPUS=4 on a shared host).
+# DOCKER_GPU=1 runs the container with the host's NVIDIA GPU (see below and tools/gpu/env.sh).
 # GRAPHIC_BACKEND=vulkan builds the linux editor for Vulkan (build/linux/editor-vulkan), and
 # runs the core tests' GPU suites on Vulkan (lavapipe) for unit-tests.
 # SANITIZE=address,undefined or SANITIZE=thread (linux, unit-tests, htmlui-tests) builds with
@@ -218,6 +219,15 @@ CPU_FLAGS=()
 CPUS="${CPUS:-${DOCKER_CPUS:-${JOBS:-}}}"
 [[ -n "$CPUS" ]] && CPU_FLAGS=(--cpus "$CPUS")
 ENV_FLAGS=()
+# DOCKER_GPU=1 (opt-in, a host with the NVIDIA container runtime): the host GPU in the container, and
+# tools/with-xvfb.sh (unit tests, htmlui tests) sources tools/gpu/env.sh: the NVIDIA Vulkan/EGL
+# loader manifests and, while tools/gpu/xorg-headless.sh runs, its headless NVIDIA X server instead
+# of a Mesa Xvfb (docs/perf/gpu-campaign.md). Goldens stay the llvmpipe/lavapipe CI reference.
+if [[ "${DOCKER_GPU:-0}" == 1 ]]; then
+    CPU_FLAGS+=(--gpus all -e NVIDIA_DRIVER_CAPABILITIES=all)
+    ENV_FLAGS+=(-e DOCKER_GPU=1)
+    [[ -n "${JE_GPU_DISPLAY:-}" ]] && ENV_FLAGS+=(-e "JE_GPU_DISPLAY=$JE_GPU_DISPLAY")
+fi
 for name in JASPER_HTMLUI_UPDATE_GOLDEN JASPER_HTMLUI_WRITE_ACTUAL JASPER_TEST_UPDATE_GOLDEN JASPER_TEST_WRITE_ACTUAL \
             JASPER_TEST_KEEP_TEMP JASPER_REFLECT_WRITE_FIXTURE JASPER_BENCH_ENTITIES JASPER_HTMLUI_PERF_SLACK JASPER_TEST_PERF_SLACK \
             HTMLUI_LIVE_NETWORK JASPER_CHROME JASPER_ZERO_COST_UPDATE JASPER_PICK_SIMD \

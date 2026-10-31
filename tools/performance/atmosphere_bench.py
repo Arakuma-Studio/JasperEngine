@@ -6,6 +6,7 @@
     ... atmosphere_bench.py --mobile          # 1280x720, the mobile tier (Low)
     ... atmosphere_bench.py --make-fixture    # (re)write tools/fixtures/atmosphere/bench.scene
     ... atmosphere_bench.py --runs 3 --relative --json out.json   # a software-rendering machine
+    ... atmosphere_bench.py --runs 5 --gpu --json out.json        # a real GPU: S15 pass timers at 1080p
 
 Opens a copy of tools/fixtures/atmosphere/ in the editor (MCP), plays bench.scene at the given
 render size without vsync, and for each configuration (nothing, linear fog, height fog, height
@@ -43,6 +44,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools" / "mcp"))
 from harness import Editor  # noqa: E402
+
+sys.path.insert(0, str(ROOT / "tools" / "perf"))
+import gpu_view  # noqa: E402
 
 FIXTURE = ROOT / "tools" / "fixtures" / "atmosphere"
 SCENE = "bench.scene"
@@ -119,7 +123,12 @@ async def render_size(ed: Editor) -> list[int]:
     return [int(m.group(3)), int(m.group(4))] if m.group(3) else [int(m.group(1)), int(m.group(2))]
 
 
-async def measure(ed: Editor, frames: int) -> dict:
+def atmosphere_ms(gpu: dict | None) -> float:
+    """the configuration's Atmosphere/* passes, GPU ms per frame (S15 timers)"""
+    return sum(ms for label, ms in (gpu or {}).items() if label.startswith("Atmosphere/"))
+
+
+async def measure(ed: Editor, frames: int, gpu_size: tuple[int, int] | None = None) -> dict:
     results = {}
     scene = (await ed.call("open_scene", scene=SCENE))["scene"]["id"]
     for name, fog, clouds, tier in CONFIGS:
@@ -142,6 +151,12 @@ async def measure(ed: Editor, frames: int) -> dict:
                 start = time.perf_counter()
                 await ed.call("wait", frames=30)
                 times.append((time.perf_counter() - start) * 1000.0 / 30.0)
+            gpu = None
+            if gpu_size:
+                # the S15 pass timers at the exact render size (the Game view sized to it)
+                await gpu_view.fit_view(ed, gpu_size[0], gpu_size[1])
+                await ed.call("wait", frames=30)
+                gpu = await gpu_view.gpu_passes(ed, frames)
             info = await ed.call("get_atmosphere_info", view="game")
             size = await render_size(ed)
         finally:
@@ -149,8 +164,11 @@ async def measure(ed: Editor, frames: int) -> dict:
         results[name] = {"frame_ms": statistics.median(times), "passes": info["passes"], "vram_mb": info["vramBytes"] / 2 ** 20,
                          "vram_screen_mb": info.get("vramScreenBytes", info["vramBytes"]) / 2 ** 20, "tier": tier,
                          "render_size": size}
+        if gpu is not None:
+            results[name]["gpu"] = gpu
         print(f"{name:18s} {results[name]['frame_ms']:7.3f} ms  {results[name]['vram_mb']:6.2f} MB  "
-              f"{', '.join(p['label'] for p in info['passes'])}")
+              f"{', '.join(p['label'] for p in info['passes'])}"
+              + (f"  GPU frame {gpu['_frame']:.3f} ms, atmosphere {atmosphere_ms(gpu):.3f} ms at {size[0]}x{size[1]}" if gpu else ""))
     return results
 
 
@@ -177,9 +195,14 @@ def report(results: dict, platform: str, relative: bool = False) -> bool:
         if feature not in results:
             continue
         cost = results[feature]["frame_ms"] - results[BASELINE[feature]]["frame_ms"]
-        gpu = [p["gpuMs"] for p in results[feature]["passes"] if "gpuMs" in p]
-        if gpu and not relative:
-            cost = sum(gpu)
+        if "gpu" in results[feature] and not relative:
+            # S15 pass timers: the Atmosphere/* passes the feature adds to its baseline's; the
+            # height fog has no pass of its own (it is in the mesh shaders): its GPU frame over
+            # the linear fog's
+            if feature == "height_fog":
+                cost = results[feature]["gpu"]["_frame"] - results[BASELINE[feature]]["gpu"]["_frame"]
+            else:
+                cost = atmosphere_ms(results[feature]["gpu"]) - atmosphere_ms(results[BASELINE[feature]]["gpu"])
         vram = vram_at_1080p(results[feature], platform)
         vram_budget = BUDGETS_MB.get(results[feature]["tier"], 0)
         if relative:
@@ -206,6 +229,10 @@ def median_of_runs(runs: list[dict]) -> dict:
         merged[name]["runs_ms"] = [r[name]["frame_ms"] for r in runs]
         merged[name]["vram_mb"] = max(r[name]["vram_mb"] for r in runs)
         merged[name]["vram_screen_mb"] = max(r[name].get("vram_screen_mb", 0.0) for r in runs)
+        if all("gpu" in r[name] for r in runs):
+            labels = {label for r in runs for label in r[name]["gpu"]}
+            merged[name]["gpu"] = {label: statistics.median(r[name]["gpu"].get(label, 0.0) for r in runs) for label in labels}
+            merged[name]["gpu_runs_atmosphere_ms"] = [atmosphere_ms(r[name]["gpu"]) for r in runs]
     return merged
 
 
@@ -218,6 +245,8 @@ async def main() -> int:
     ap.add_argument("--frames", type=int, default=300)
     ap.add_argument("--json", help="also write the measurements here")
     ap.add_argument("--runs", type=int, default=1, help="measure this many times (a new editor each) and take the medians")
+    ap.add_argument("--gpu", action="store_true",
+                    help="a real GPU: time the passes with the S15 GPU timers, the Game view at exactly --width x --height")
     ap.add_argument("--relative", action="store_true",
                     help="cost relative to the no-atmosphere frame on this machine (a software renderer)")
     args = ap.parse_args()
@@ -239,11 +268,13 @@ async def main() -> int:
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp) / "atmosphere"
             shutil.copytree(FIXTURE, project)
-            async with Editor(project=project) as ed:
+            async with Editor(project=project, settings={"editor": {"vsync": False}} if args.gpu else None) as ed:
                 await ed.call("set_project_settings", values={"quality.vsync": False, "graphics.canvas_width": width,
                                                                 "graphics.canvas_height": height})
-                await ed.call("configure_game_view", aspect="project", maximize_on_play=False)
-                runs.append(await measure(ed, args.frames))
+                await ed.call("configure_game_view", aspect="project", maximize_on_play=args.gpu)
+                if args.gpu and run == 0:
+                    print(f"device: {await gpu_view.device(ed)}")
+                runs.append(await measure(ed, args.frames, (width, height) if args.gpu else None))
     results = median_of_runs(runs)
     platform = "mobile" if args.mobile else "desktop"
     ok = report(results, platform, args.relative)

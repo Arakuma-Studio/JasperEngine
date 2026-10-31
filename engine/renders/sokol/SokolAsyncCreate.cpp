@@ -656,7 +656,15 @@ namespace {
             return GpuCreationMode::GlDeferred;
         if (forced == "parallel" && !s.caps.gl_parallel_compile)
             Log::warn("[gpu] JASPER_ASYNC_SHADERS=parallel: KHR_parallel_shader_compile is not available");
-        return s.caps.gl_parallel_compile ? GpuCreationMode::GlParallel : GpuCreationMode::GlDeferred;
+        if (!s.caps.gl_parallel_compile)
+            return GpuCreationMode::GlDeferred;
+        // the driver's compile threads: the extension leaves their initial count to the driver, and
+        // NVIDIA's is none (its glLinkProgram then returns once linked, 2.1 s for a Lit lobe variant
+        // on an RTX 3080 Ti, and COMPLETION_STATUS is always true). Only in this mode: with a worker
+        // context the setting makes the worker's links return early and the render thread's first
+        // draw wait for them (docs/perf/gpu-campaign.md, S32)
+        sgj_gl_enable_compile_threads();
+        return GpuCreationMode::GlParallel;
     }
 
 }
