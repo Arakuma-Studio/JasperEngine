@@ -785,7 +785,9 @@ script-lifecycle), where the spec was silent, ambiguous or contradicted what the
     entry.
 14. **`numColliders`** is still written to YAML for older editors and bounds the decoded list (as
     physics-2d §6.2); the component field, the exported code and `MAX_COLLIDER*` are gone, so
-    acceptance 3 holds for code, not for that compatibility key.
+    acceptance 3 holds for code, not for that compatibility key. A scene's old `maxColliders3D`,
+    `maxColliderVertices3D` and `maxColliderIndices3D` are read only to be written back as they were
+    (as physics-2d does for its caps): re-saving an old scene changes no line, new scenes have none.
 15. **Debug draw.** One system GameObject per scene ("Physics Debug Lines", Transform + Line
     Renderer) rebuilt at each draw while `Physics.debugDraw` is on (process-wide, not saved), hidden
     when off; static bodies' edges are cached; contact points are recorded by the contact listener.
