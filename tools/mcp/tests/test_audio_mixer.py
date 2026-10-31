@@ -27,6 +27,11 @@ def write_tone(path, seconds=2.0, frequency=1000.0, amplitude=0.5, rate=44100):
     path.write_bytes(header + b"data" + struct.pack("<I", len(data)) + data)
 
 
+def audio_props(entity: dict) -> dict:
+    comps = entity["components"]
+    return comps[next(k for k in comps if "audio" in k.lower())]
+
+
 async def lua(ed: Editor, code: str):
     return (await ed.call("eval_lua", code=code))["values"]
 
@@ -48,7 +53,7 @@ async def test_setup_and_build_the_mixer(ed: Editor):
     write_tone(ed.project / "assets" / "music.wav")
     await ed.call("create_entity", name="Music", type="audio_source")
     await ed.call("set_properties", entity="Music",
-                  values={"audio_source": {"filename": "music.wav", "looping": True, "state": "playing"}})
+                  values={"audiosource": {"filename": "music.wav", "looping": True, "state": "playing"}})
 
     got = await ed.call_raw("audio_mixer", {"action": "get"})
     ed.check(not got.is_error and "implicit Master" in got.text, f"no mixer yet: {got.text[:300]}")
@@ -88,9 +93,9 @@ async def test_setup_and_build_the_mixer(ed: Editor):
     await ed.check_error("audio_mixer", action="edit", ops=[{"op": "add_group", "name": "Music"}], contains="exists")
 
     # the source by group name; it reports the name
-    await ed.call("set_properties", entity="Music", values={"audio_source": {"outputGroup": "Music"}})
-    entity = await ed.call("get_entity", entity="Music", components=["audio_source"])
-    ed.check_eq(entity["components"]["audio_source"]["outputGroup"], "Music", f"outputGroup by name: {entity['components']}")
+    await ed.call("set_properties", entity="Music", values={"audiosource": {"outputGroup": "Music"}})
+    entity = await ed.call("get_entity", entity="Music", components=["audiosource"])
+    ed.check_eq(audio_props(entity)["outputGroup"], "Music", f"outputGroup by name: {entity['components']}")
     await ed.call("save_project", untitled_scene_dir="scenes")
 
 
@@ -168,5 +173,5 @@ async def test_settings_keys(ed: Editor):
     await ed.check_error("set_project_settings", values={"audio.sample_rate": 12345}, contains="44100")
     # a new source plays through the default group
     await ed.call("create_entity", name="Click", type="audio_source")
-    entity = await ed.call("get_entity", entity="Click", components=["audio_source"])
-    ed.check_eq(entity["components"]["audio_source"]["outputGroup"], "SFX", "the default output group")
+    entity = await ed.call("get_entity", entity="Click", components=["audiosource"])
+    ed.check_eq(audio_props(entity)["outputGroup"], "SFX", "the default output group")

@@ -159,6 +159,11 @@ namespace {
         SoLoud::Soloud& soloud() { return AudioSystem::getSoloud(); }
     };
 
+    class AudioMixerMathRuntimeTest : public AudioFixture {};
+    class AudioMixerRuntimeTest : public AudioFixture {};
+    class AudioSourceTest : public AudioFixture {};
+    class AudioLuaTest : public AudioFixture {};
+
 }
 
 // ================================================================== AudioMixerIOTest
@@ -263,7 +268,7 @@ TEST(AudioMixerMathTest, TransitionCurves) {
     EXPECT_FLOAT_EQ(AudioMath::blend(AudioParamCurve::Linear, {2.0f, 4.0f}, {0.0f, 0.0f}), 2.0f) << "no weight: the first";
 }
 
-TEST_F(AudioFixture, SoloFollowsUnityOnAThreeLevelTree) {
+TEST_F(AudioMixerMathRuntimeTest, SoloFollowsUnityOnAThreeLevelTree) {
     loadMixer(R"({"format": "jasperengine.mixer", "groups": [
         {"id": "00000001", "name": "Master"},
         {"id": "00000002", "name": "Music", "parent": "00000001"},
@@ -283,7 +288,7 @@ TEST_F(AudioFixture, SoloFollowsUnityOnAThreeLevelTree) {
     EXPECT_FALSE(AudioMixer::isGroupAudible("Drums")) << "mute wins";
 }
 
-TEST_F(AudioFixture, SetFloatOverridesSnapshotsUntilCleared) {
+TEST_F(AudioMixerMathRuntimeTest, SetFloatOverridesSnapshotsUntilCleared) {
     loadMixer(R"({"format": "jasperengine.mixer", "groups": [
         {"id": "00000001", "name": "Master"},
         {"id": "00000002", "name": "Music", "parent": "00000001", "effects": [{"id": "0000000a", "type": "lowpass", "params": {"cutoff": 22000}}]}],
@@ -328,7 +333,7 @@ TEST_F(AudioFixture, SetFloatOverridesSnapshotsUntilCleared) {
     EXPECT_FALSE(AudioMixer::transitionTo("Nope", 1.0f));
 }
 
-TEST_F(AudioFixture, TimedChangesRunOnScaledTimeUnlessAskedOrTheMixerSaysUnscaled) {
+TEST_F(AudioMixerMathRuntimeTest, TimedChangesRunOnScaledTimeUnlessAskedOrTheMixerSaysUnscaled) {
     loadMusicMixer();
     float value = 0.0f;
     ASSERT_TRUE(AudioMixer::setFloat("MusicVolume", -20.0f, 1.0f));
@@ -351,7 +356,7 @@ TEST_F(AudioFixture, TimedChangesRunOnScaledTimeUnlessAskedOrTheMixerSaysUnscale
 
 // ================================================================== AudioMixerRuntimeTest
 
-TEST_F(AudioFixture, NoMixerIsAnImplicitMasterAtZeroDecibels) {
+TEST_F(AudioMixerRuntimeTest, NoMixerIsAnImplicitMasterAtZeroDecibels) {
     EXPECT_FALSE(AudioMixer::hasAsset());
     ASSERT_EQ(AudioMixer::getGroupNames(), std::vector<std::string>{"Master"});
     AudioSource sound = source();
@@ -363,7 +368,7 @@ TEST_F(AudioFixture, NoMixerIsAnImplicitMasterAtZeroDecibels) {
     EXPECT_FALSE(AudioSystem::isOutputAvailable()) << "the null backend";
 }
 
-TEST_F(AudioFixture, MetersVolumesMuteAndLowPass) {
+TEST_F(AudioMixerRuntimeTest, MetersVolumesMuteAndLowPass) {
     loadMusicMixer();
     AudioSource music = source("tone.wav", "Music");
     music.setLooping(true);
@@ -421,7 +426,7 @@ TEST_F(AudioFixture, MetersVolumesMuteAndLowPass) {
     EXPECT_LT(AudioMixer::getMeterDb("Music"), -79.0f);
 }
 
-TEST_F(AudioFixture, RememberedParametersComeBackWhenTheMixerLoads) {
+TEST_F(AudioMixerRuntimeTest, RememberedParametersComeBackWhenTheMixerLoads) {
     loadMusicMixer(22000.0f, true);
     ASSERT_TRUE(AudioMixer::setFloat("MusicVolume", -80.0f));
     EXPECT_FALSE(UserSettings::hasKey("audio.mixer.MusicVolume")) << "written at the end of the frame";
@@ -443,7 +448,7 @@ TEST_F(AudioFixture, RememberedParametersComeBackWhenTheMixerLoads) {
     EXPECT_FALSE(UserSettings::hasKey("audio.mixer.MusicVolume"));
 }
 
-TEST_F(AudioFixture, ARemovedGroupsSourcesGoOnInMaster) {
+TEST_F(AudioMixerRuntimeTest, ARemovedGroupsSourcesGoOnInMaster) {
     loadMusicMixer();
     AudioSource music = source("tone.wav", "Music");
     music.setLooping(true);
@@ -463,7 +468,7 @@ TEST_F(AudioFixture, ARemovedGroupsSourcesGoOnInMaster) {
     EXPECT_EQ(music.getOutputGroup(), "Music") << "the source keeps its name (a group of that name comes back)";
 }
 
-TEST_F(AudioFixture, AppPauseHoldsTheMasterBusAndKeepsAGamePausedSourcePaused) {
+TEST_F(AudioMixerRuntimeTest, AppPauseHoldsTheMasterBusAndKeepsAGamePausedSourcePaused) {
     AudioSource a = source();
     AudioSource b = source();
     a.setLooping(true);
@@ -491,7 +496,7 @@ TEST_F(AudioFixture, AppPauseHoldsTheMasterBusAndKeepsAGamePausedSourcePaused) {
 
 // ================================================================== AudioSourceTest
 
-TEST_F(AudioFixture, OneClipPlaysFromManySourcesAtOnceAndPlayRestarts) {
+TEST_F(AudioSourceTest, OneClipPlaysFromManySourcesAtOnceAndPlayRestarts) {
     AudioSource a = source();
     AudioSource b = source();
     a.play();
@@ -512,7 +517,7 @@ TEST_F(AudioFixture, OneClipPlaysFromManySourcesAtOnceAndPlayRestarts) {
     EXPECT_TRUE(soloud().isValidVoiceHandle(hb));
 }
 
-TEST_F(AudioFixture, OneShotsOverlapUpToMaxVoicesTheOldestStolen) {
+TEST_F(AudioSourceTest, OneShotsOverlapUpToMaxVoicesTheOldestStolen) {
     AudioSource sfx = source();
     for (int i = 0; i < 10; i++) {
         sfx.playOneShot("tone.wav", 0.5f);
@@ -528,7 +533,7 @@ TEST_F(AudioFixture, OneShotsOverlapUpToMaxVoicesTheOldestStolen) {
     EXPECT_EQ(sfx.getVoiceCount(), 0) << "stop() stops one-shots too";
 }
 
-TEST_F(AudioFixture, TheGlobalBudgetStealsTheLeastImportantVoice) {
+TEST_F(AudioSourceTest, TheGlobalBudgetStealsTheLeastImportantVoice) {
     AudioConfig config;
     config.maxVoices = 2;
     AudioSystem::configure(config);
@@ -563,7 +568,7 @@ TEST_F(AudioFixture, TheGlobalBudgetStealsTheLeastImportantVoice) {
     EXPECT_TRUE(low.isStopped());
 }
 
-TEST_F(AudioFixture, IsPlayingFollowsTheVoiceForLoopsAndPitch) {
+TEST_F(AudioSourceTest, IsPlayingFollowsTheVoiceForLoopsAndPitch) {
     writeTone(root / "assets" / "short.wav", 0.1);
     AudioSource loop = source("short.wav");
     loop.setLooping(true);
@@ -584,7 +589,7 @@ TEST_F(AudioFixture, IsPlayingFollowsTheVoiceForLoopsAndPitch) {
     EXPECT_TRUE(once.isStopped());
 }
 
-TEST_F(AudioFixture, EventsFireOnStartPauseStopAndTheNaturalEnd) {
+TEST_F(AudioSourceTest, EventsFireOnStartPauseStopAndTheNaturalEnd) {
     writeTone(root / "assets" / "short.wav", 0.1);
     AudioSource sound = source("short.wav");
     std::vector<std::string> events;
@@ -609,7 +614,7 @@ TEST_F(AudioFixture, EventsFireOnStartPauseStopAndTheNaturalEnd) {
     EXPECT_EQ(events, (std::vector<std::string>{"start", "stop"})) << "the natural end";
 }
 
-TEST_F(AudioFixture, FadesMoveTheVolumeAndFadeOutStopsOrPauses) {
+TEST_F(AudioSourceTest, FadesMoveTheVolumeAndFadeOutStopsOrPauses) {
     AudioSource sound = source();
     sound.setLooping(true);
     sound.setVolume(0.8);
@@ -645,7 +650,7 @@ TEST_F(AudioFixture, FadesMoveTheVolumeAndFadeOutStopsOrPauses) {
     EXPECT_NEAR(sound.getVolume(), 0.2, 1e-6);
 }
 
-TEST_F(AudioFixture, ListenerPauseSparesIgnoreListenerPauseSources) {
+TEST_F(AudioSourceTest, ListenerPauseSparesIgnoreListenerPauseSources) {
     AudioSource game = source();
     AudioSource click = source();
     game.setLooping(true);
@@ -664,7 +669,7 @@ TEST_F(AudioFixture, ListenerPauseSparesIgnoreListenerPauseSources) {
     EXPECT_FALSE(soloud().getPause(game.getComponent<AudioSourceComponent>().handle));
 }
 
-TEST_F(AudioFixture, AutoStreamsBigFilesAndDecodesSmallOnes) {
+TEST_F(AudioSourceTest, AutoStreamsBigFilesAndDecodesSmallOnes) {
     writeTone(root / "assets" / "music.wav", 12.0);   // ~1 MiB of 16-bit mono
     ASSERT_GE(fs::file_size(root / "assets" / "music.wav"), SoundPool::streamingThreshold);
     EXPECT_EQ(SoundPool::resolveLoadType("music.wav", AudioLoadType::Auto), AudioLoadType::Streaming);
@@ -704,7 +709,7 @@ TEST_F(AudioFixture, AutoStreamsBigFilesAndDecodesSmallOnes) {
     EXPECT_EQ(shots.getVoiceCount(), 2);
 }
 
-TEST_F(AudioFixture, PlayClipAtPointBelongsToItsScene) {
+TEST_F(AudioSourceTest, PlayClipAtPointBelongsToItsScene) {
     loadMusicMixer();
     AudioSource::playClipAtPoint(scene, "tone.wav", Vector3(0, 0, 0), 1.0f, "SFX");
     run(0.1);
@@ -714,7 +719,7 @@ TEST_F(AudioFixture, PlayClipAtPointBelongsToItsScene) {
     EXPECT_EQ(AudioSystem::getVoiceCount(), 0u);
 }
 
-TEST_F(AudioFixture, MovedVoicesFollowTheirSourceToAnotherScene) {
+TEST_F(AudioSourceTest, MovedVoicesFollowTheirSourceToAnotherScene) {
     AudioSource sound = source();
     sound.setLooping(true);
     sound.play();
@@ -739,7 +744,7 @@ TEST_F(AudioFixture, MovedVoicesFollowTheirSourceToAnotherScene) {
 
 // ================================================================== AudioLuaTest
 
-TEST_F(AudioFixture, LuaDrivesTheMixerAndSources) {
+TEST_F(AudioLuaTest, LuaDrivesTheMixerAndSources) {
     loadMusicMixer();
     ASSERT_EQ(luaL_dostring(L,
         "assert(AudioMixer.setFloat('MusicVolume', -12) == true)\n"
