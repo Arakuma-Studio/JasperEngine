@@ -75,6 +75,9 @@ namespace jasperengine::editor{
         UpdateFlags_AnimationPlayer_Reload = (uint64_t)1 << 42,
         // a Vertex Animator's animation changed: load it again (the fade is kept >= 0)
         UpdateFlags_VertexAnimator_Reload = (uint64_t)1 << 43,
+        // a script entry's enabled flag (or the list) changed: while the scene's scripts run,
+        // onEnable / onDisable as due (ScriptRuntime::refreshEntity)
+        UpdateFlags_Script_Enabled      = (uint64_t)1 << 44,
         // handlers that touch the whole scene, must be masked out when applying all flags
         UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Scene_Mesh_Variant | UpdateFlags_Reflection_Probe_Recapture_All
     };

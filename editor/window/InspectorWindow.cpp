@@ -3,6 +3,7 @@
 
 #include "InspectorWindow.h"
 #include "SceneWindow.h"
+#include "script/ScriptRuntime.h"
 
 #include "imgui_internal.h"
 
@@ -10317,6 +10318,38 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
 
             ImGui::SameLine();
             ImGui::TextUnformatted(script.className.c_str());
+
+            // in Play, where the script is in its lifecycle (as get_runtime_entity reports it)
+            if (entities.size() == 1 && ScriptRuntime::hasStarted(sceneProject->scene)) {
+                const ScriptEntry& live = sceneProject->scene->getComponent<ScriptComponent>(entities[0]).scripts[scriptIdx];
+                const ScriptState* state = ScriptRuntime::getState(live.instance);
+                const char* status = nullptr;
+                const char* help = nullptr;
+                if (!live.instance) {
+                    status = "not running";
+                    help = "No instance: the script failed to load (see the Console) or its C++ class is not built.";
+                } else if (state && state->destroyed) {
+                    status = "destroyed";
+                    help = "onDestroy ran.";
+                } else if (!state || !state->initialized) {
+                    status = "not initialized";
+                    help = "The GameObject has not been active yet: init runs when it is first activated.";
+                } else if (state->started) {
+                    status = state->enabledLatch ? "started" : "started, inactive";
+                    help = state->enabledLatch ? "init, onEnable and start ran." : "start ran; the script is disabled or its GameObject inactive now (onDisable ran).";
+                } else if (state->enabledLatch) {
+                    status = "waiting to start";
+                    help = "onEnable ran; start runs at the beginning of the next frame.";
+                } else {
+                    status = "initialized";
+                    help = "init ran; onEnable and start wait until the script is enabled and its GameObject active.";
+                }
+                ImGui::SameLine();
+                ImGui::TextDisabled("(%s)", status);
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("%s", help);
+                }
+            }
 
             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ImGui::GetStyle().FramePadding.x / 3.0, ImGui::GetStyle().FramePadding.y / 2.0));
 

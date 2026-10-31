@@ -32,6 +32,8 @@
 #include "command/type/MultiPropertyCmd.h"
 #include "component/ScriptComponent.h"
 #include "script/LuaBinding.h"
+#include "script/ScriptRuntime.h"
+#include "manager/SceneManager.h"
 #include "util/EntityPath.h"
 #include "window/PlayInput.h"
 
@@ -703,9 +705,18 @@ SceneProject* resolveRuntimeScene(Project* project, const Json& ref, std::string
         error = "Play mode is " + McpRefs::playStateName(main->playState) + "; wait until it is playing (play start waits).";
         return nullptr;
     }
-    if (ref.is_null()) return main;
-
     std::vector<SceneProject*> running = runningScenes(project);
+    // after a scene load replaced the played scene (another scene, or the same one loaded
+    // again: a fresh copy), the default is the main scene the game shows now
+    SceneProject* shown = main;
+    if (project->isPlayedSceneReplaced(main->id)) {
+        Scene* loadedMain = SceneManager::getScenePtr(SceneManager::getCurrentSceneId());
+        for (SceneProject* sp : running) {
+            if (sp != main && sp->scene == loadedMain) shown = sp;
+        }
+    }
+    if (ref.is_null()) return shown;
+
     std::string text = ref.is_string() ? ref.get<std::string>() : ref.dump();
     // a Play copy id or a running scene's name
     for (SceneProject* sp : running) {
@@ -714,7 +725,7 @@ SceneProject* resolveRuntimeScene(Project* project, const Json& ref, std::string
     std::string refError;
     SceneProject* source = McpRefs::resolveScene(project, ref, refError);
     if (source) {
-        if (source == main) return main;
+        if (source == main) return shown;
         const uint32_t runtimeId = project->getPlayRuntimeSceneId(source->id);
         if (runtimeId != NULL_PROJECT_SCENE) {
             if (SceneProject* runtime = project->getScene(runtimeId)) return runtime;
@@ -2051,15 +2062,20 @@ Json scriptStateJson(Project* project, SceneProject* sp, Entity entity, int maxD
     if (!component) return scripts;
     lua_State* L = LuaBinding::getLuaState();
     for (ScriptEntry& entry : component->scripts) {
+        // the lifecycle (script-lifecycle 6.1): init ran, start ran, onEnable ran and no onDisable since
+        const ScriptState* state = ScriptRuntime::getState(entry.instance);
         Json item = {{"class", entry.className}, {"type", entry.type == ScriptType::LUA ? "lua" : "cpp"},
-                     {"enabled", entry.enabled}};
+                     {"enabled", entry.enabled}, {"initialized", state && state->initialized}, {"started", state && state->started},
+                     {"active_and_enabled", entry.instance && entry.enabled && !(state && state->destroyed) &&
+                                            sp->scene->isEntityActiveInHierarchy(entity)}};
+        if (!entry.instance) item["running"] = false;
         if (entry.type == ScriptType::LUA && entry.instance && L) {
             const int top = lua_gettop(L);
             lua_rawgeti(L, LUA_REGISTRYINDEX, static_cast<lua_Integer>(reinterpret_cast<intptr_t>(entry.instance)));
             LuaSerializer serializer{L, project, maxDepth, 100};
             Json fields = serializer.toJson(-1, 0);
             if (fields.is_object()) {
-                for (const char* hidden : {"__name", "__scriptRef", "scene"}) fields.erase(hidden);
+                for (const char* hidden : {"__name", "__scriptRef", "__released", "scene"}) fields.erase(hidden);
             }
             item["state"] = fields;
             lua_settop(L, top);
@@ -3483,7 +3499,7 @@ void registerPlayTools(McpRegistry& registry) {
         tool.title = "Get Runtime GameObject";
         tool.description =
             "Live values of a GameObject in the running game (runtime-spawned too): component properties this frame "
-            "and script state (Lua instance fields, C++ DPROPERTY members). Only while playing.";
+            "and script state (lifecycle flags, Lua instance fields, C++ DPROPERTY members). Only while playing.";
         tool.inputSchema = object({
             {"scene", runtimeScene},
             {"entity", entityRef()},

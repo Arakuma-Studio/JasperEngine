@@ -88,11 +88,11 @@ scene created outside the editor before opening, playing or building it.
 R"JE(
 ## Lua scripts
 A Lua script returns a module table; attach it to a GameObject through its Script component.
-self.scene is the Scene, self.entity the GameObject's numeric id (NOT an object: never call
-self.entity:...). Wrap it: GameObject(self.scene, self.entity), Sprite(...), Text(...),
-Rigidbody2D(...), AudioSource(...); a constructor given only self.scene CREATES a new
-GameObject. Declare `---@class Name : ScriptInstance` (Name = the file name): lua-language-server
-then types self and catches typos.
+self.gameObject is its GameObject, self.scene the Scene, self.entity a numeric id (NOT an
+object: never call self.entity:...). Wrap it: Sprite(self.scene, self.entity), Text(...),
+AudioSource(...); a constructor given only self.scene CREATES a new GameObject. Declare
+`---@class Name : ScriptInstance` (Name = the file name): lua-language-server then types self
+and catches typos.
 
 ```lua
 ---@class Player : ScriptInstance
@@ -105,7 +105,7 @@ local Player = {
 }
 
 function Player:init()
-    self.go = GameObject(self.scene, self.entity)
+    self.go = self.gameObject
     RegisterEngineEvent(self, "onUpdate")
 end
 
@@ -117,7 +117,6 @@ function Player:onUpdate()
     self.go.position = Vector3(p.x + dx * self.speed * Engine.deltatime, p.y, p.z)
     if Input.isKeyPressed(Input.KEY_SPACE) and not self.fired then
         GameObject.instantiate(self.bullet, self.scene, self.go.position, Quaternion.IDENTITY)
-        Log.print("fired at " .. tostring(p.x))
     end
     self.fired = Input.isKeyPressed(Input.KEY_SPACE)
 end
@@ -126,21 +125,24 @@ return Player
 ```
 - Property types: bool, int, float, string, vector2/3/4, color3/color4, prefab, entity, any
   wrapper class name (Sprite, Text, Image, Button, AudioSource, Rigidbody2D, ...), or another
-  Lua script's class name (you get that script's self). Values are read as self.<name>.
+  Lua script's class name (you get that script's self), read as self.<name>.
 - Events: RegisterEngineEvent(self, "onUpdate" | "onFixedUpdate" | "onPostUpdate" |
   "onKeyDown" | "onMouseDown" | "onTouchStart" | ...); define the method first. Component
   events: RegisterEvent(self, Button(self.scene, self.entity):getButtonComponent().onPress,
-  "onPress"). No manual unregister. onDestroy runs on GameObject.destroy.
+  "onPress"); Unregister* undo them (else automatic).
+- Lifecycle by name: init (Awake: first activation, even disabled), onEnable, start,
+  onDisable, onDestroy; self.enabled; obj:getScript("Enemy"). jasper://docs/lua-api 1.1.
 - Bound getters are often PROPERTIES, not methods: go.position, sprite.width, body.mass,
   Engine.deltatime. A missing method fails with "attempt to call a nil value". Check
-  jasper://docs/lua-api (an index: read only what you need), the Lua stubs or search_engine_api before using a name you have not seen there.
+  jasper://docs/lua-api (an index), the Lua stubs or search_engine_api for names you have not
+  seen.
 - Input.isKeyPressed is the held state; detect a press by remembering last frame's value or
   with onKeyDown(key, isRepeat, mods). Log.print/warn/error take ONE string (use ..).
-- Time: Engine.timeScale and Engine.fixedDeltatime (read/write), Engine.gameTime and
-  Engine.frameCount (scaled game time and frames since start).
+- Time: Engine.timeScale, Engine.fixedDeltatime (read/write), Engine.gameTime and
+  Engine.frameCount (scaled, since start).
 - C++ default arguments do not exist in Lua: pass every argument (e.g. the wake flag).
-- Lua has no Dori.Script, on_start, getComponent, setProperty or timers. Never put editor
-  property paths (submeshes[0]...) in scripts.
+- Lua has no Dori.Script, getComponent, setProperty or timers. Never put editor property
+  paths (submeshes[0]...) in scripts.
 
 ## C++ scripts
 Two kinds (create_script): a ScriptBase subclass, or a subclass of the GameObject's own class
@@ -148,12 +150,13 @@ Two kinds (create_script): a ScriptBase subclass, or a subclass of the GameObjec
 (GENERATED_BODY, GDCLASS): inherit, declare a (jasperengine::Scene*, jasperengine::Entity)
 constructor, expose fields with DPROPERTY("Speed") (DPROPERTY("Tint", Color4) for colors).
 Includes are flat and quoted ("ScriptBase.h", "Engine.h", "Input.h", "Log.h", "Mesh.h"), never
-<core/...>. REGISTER_ENGINE_EVENT(onUpdate) in the constructor, UNREGISTER_ENGINE_EVENT in the
+<core/...>. Override init/start/onEnable/onDisable/onDestroy as in Lua.
+REGISTER_ENGINE_EVENT(onUpdate) in the constructor or init, UNREGISTER_ENGINE_EVENT in the
 destructor; components: REGISTER_BUTTON_EVENT / REGISTER_UI_EVENT / REGISTER_COMPONENT_EVENT
 (+ UNREGISTER_*). Log::print("x %f", x), never printf or std::cout. Keys are D_KEY_*. Angles are
 DEGREES: Quaternion(angle, axis); std::sin/cos want radians (Angle::defaultToRad). Script
-directories are include roots compiled whole (a build runs only with an enabled C++ script
-attached); build settings go in ProjectBuild.cmake, never the generated CMakeLists.txt.
+directories are include roots compiled whole (a build runs only with a C++ script attached);
+build settings go in ProjectBuild.cmake, never the generated CMakeLists.txt.
 compile_scripts reports errors without playing. More: jasper://docs/cpp-scripting.
 
 ## Play and time
@@ -166,8 +169,7 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
   since launch); returns its errors (Lua too) and the log tail.
 
 ## 2D and 3D
-- 2D: sprites, tilemaps, UI; units are points (pixels of the canvas, project canvasWidth x
-  canvasHeight, y up). Box2D converts with pointsToMeterScale (64 points per meter). Light 2D
+- 2D: sprites, tilemaps, UI; units are points (canvas pixels, y up). Box2D converts with pointsToMeterScale (64 points per meter). Light 2D
   adds to the 2D ambient (lower ambient_light_2d_intensity to see it); Shadow Caster 2D needs the
   light's shadows on; normal maps (generate_sprite_normals, jasper://docs/sprite-normals) need
   its height > 0.
