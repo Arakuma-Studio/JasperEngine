@@ -98,7 +98,9 @@ LIMITS.update({"get_pose_animation": 700, "edit_pose_animation": 1220})
 LIMITS.update({"bake_vertex_animation": 2000})
 # platform services (spec 6.9): send_input's `app` events (+88), configure_game_view's device,
 # orientation and language (+330), get_play_state's platform (+46), measured total 106564 (148 tools)
-TOTAL_LIMIT = 106600
+# ui-scaling-text: configure_game_view's resolution (a preset, "WxH[@dpi]", {width, height, dpi, name}) and
+# create_ui's outline/shadow text props (+284), measured total 106848 (148 tools)
+TOTAL_LIMIT = 106848
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

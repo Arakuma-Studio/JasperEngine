@@ -167,14 +167,13 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
 - Simulated focus, pause, rotation, language, opened URLs: jasper://docs/platform-services.
 
 ## 2D and 3D
-- 2D: sprites, tilemaps, UI; units are points (pixels of the canvas, project canvasWidth x
-  canvasHeight, y up). Box2D converts with pointsToMeterScale (64 points per meter). Light 2D
+- 2D: sprites, tilemaps, UI; units are points (canvas pixels, canvasWidth x canvasHeight,
+  y up). Box2D converts with pointsToMeterScale (64 points per meter). Light 2D
   adds to the 2D ambient (lower ambient_light_2d_intensity to see it); Shadow Caster 2D needs the
   light's shadows on; normal maps (generate_sprite_normals, jasper://docs/sprite-normals) need
   its height > 0.
 - 3D: meshes (box, sphere, plane, model files), lights, skybox, fog, terrain. Cameras look at
-  their target by default (useTarget): the GameObject's rotation is ignored until you call
-  disableTarget() (orbiting: jasper://docs/lua-api, Camera).
+  their target by default (useTarget): the rotation is ignored until disableTarget() (orbiting: jasper://docs/lua-api, Camera).
 - Humanoid poses (.poseanim): get_pose_animation -> edit_pose_animation ->
   render_pose_animation, its metrics; degrees from standing (arms down); mirror_pose
   (jasper://docs/pose-animation).
@@ -183,11 +182,10 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
 - Crowds: bake_vertex_animation (preview, then output) makes a .vat played on the GPU by a
   Vertex Animator (jasper://docs/vertex-animation).
 - UI (text, image, button, panel, scrollbar, progressbar, input field, layout group; HTML/CSS
-  UI: below): create_ui lays out in pixels with y DOWN from the parent's top-left, in 2D scenes
-  and UI scenes alike, but in a 2D scene layout groups stack bottom-up and pointer input needs a
-  UI camera: put HUDs and menus in a UI scene attached as a child scene (set_child_scene).
-- UI scale: Canvas Scaler (project graphics.ui_scale, scene canvas_scaler); preview with
-  configure_game_view resolution. Text outline/shadow, Text Effect, UI particles: jasper://docs/ui.
+  UI: below): create_ui lays out in pixels, y DOWN from the parent's top-left, in 2D and UI
+  scenes, but in a 2D scene layout groups stack bottom-up and pointer input needs a UI camera:
+  put HUDs and menus in a UI scene as a child scene (set_child_scene). UI scale (Canvas
+  Scaler), text effects, UI particles: jasper://docs/ui.
 
 ## Physics
 - Add a body and its collider to the SAME GameObject in one step (edit_colliders with
