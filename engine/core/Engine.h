@@ -605,7 +605,10 @@ namespace jasperengine {
 #endif
 
         //-----JasperEngine API functions-----
-        static void systemInit(int argc, char* argv[], System* system);
+        // startProject false leaves the project's main.lua and C++ init() (which load the first
+        // scene) to a later systemStartProject(): the web build waits for its saved files first
+        static void systemInit(int argc, char* argv[], System* system, bool startProject = true);
+        static void systemStartProject();
         static void systemViewLoaded();
         static void systemViewChanged();
         static void systemDraw();
@@ -666,6 +669,9 @@ namespace jasperengine {
         // an element of a document has focus, so the d-pad, the left stick and A go to the UI
         // (a game that polls Input can check it)
         static bool wantsGamepadNavigation();
+        // a text field has keyboard focus (a native InputField or a document text control): the
+        // keyboard does not drive input actions then (Input::beginFrame)
+        static bool isTextInputFocused();
 
         //-----JasperEngine user events-----
         // Safe accessor for the Init event
@@ -703,6 +709,10 @@ namespace jasperengine {
         static FunctionSubscribe<void(int,int)> onGamepadButtonDown;
         static FunctionSubscribe<void(int,int)> onGamepadButtonUp;
         static FunctionSubscribe<void(int,int,float)> onGamepadAxisMove;
+        // An input action's button went down / up in this frame (Project Settings > Input), with
+        // the action's name; fired before onUpdate (Input::beginFrame)
+        static FunctionSubscribe<void(const std::string&)> onButtonDown;
+        static FunctionSubscribe<void(const std::string&)> onButtonUp;
 
     };
     

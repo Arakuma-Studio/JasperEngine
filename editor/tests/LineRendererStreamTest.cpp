@@ -425,6 +425,8 @@ TEST(LineRendererStreamTest, SetPositionOutOfRangeChangesNothing){
 TEST(LineRendererStreamTest, McpLineDataPicksTheMode){
     // the whole segment list is Segments in local space, the positions list Polyline; unless the
     // same call names the mode (or the space) itself
+    using mcp::McpValues;
+    using mcp::Json;
     auto parse = [](const char* text){
         std::vector<McpValues::Change> changes;
         std::string error;

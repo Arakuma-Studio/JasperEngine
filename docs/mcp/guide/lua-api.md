@@ -157,6 +157,7 @@ Engine events (names valid for `RegisterEngineEvent`; handler arguments in order
 | `onGamepadConnect`, `onGamepadDisconnect` | `gamepad` | gamepad |
 | `onGamepadButtonDown`, `onGamepadButtonUp` | `gamepad, button` | gamepad button |
 | `onGamepadAxisMove` | `gamepad, axis, value` | axis -1..1 |
+| `onButtonDown`, `onButtonUp` | `action` (name) | an input action's button went down / up this frame (Project Settings > Input), before `onUpdate` |
 
 Component events (use `RegisterEvent`; this is exactly the form the editor generates):
 
@@ -239,13 +240,25 @@ end
 return Mover
 ```
 
-Edge detection (pressed this frame): `Input.isKeyPressed` returns the held state, so either
-keep the previous value in `self`, or register `onKeyDown(key, isRepeat, mods)`:
+The same with input actions (Project Settings > Input; keyboard, gamepad and on-screen stick
+add up, smoothed like Unity's Input Manager):
 
 ```lua
-function Mover:init() RegisterEngineEvent(self, "onKeyDown") end
-function Mover:onKeyDown(key, isRepeat, mods)
-    if key == Input.KEY_SPACE and not isRepeat then Log.print("jump") end
+function Mover:onUpdate()
+    local move = Input.getVector("Horizontal", "Vertical")    -- length <= 1
+    local p = self.go.position
+    self.go.position = Vector3(p.x + move.x * self.speed * Engine.deltatime, p.y + move.y * self.speed * Engine.deltatime, p.z)
+end
+```
+
+Edge detection (pressed this frame): `Input.getKeyDown(Input.KEY_SPACE)` (or
+`Input.getKeyDown("space")`), `Input.getButtonDown("Jump")`, `Input.getMouseButtonDown(0)`;
+`Input.isKeyPressed` / `getKey` are the held state. The `onKeyDown(key, isRepeat, mods)` event
+works too:
+
+```lua
+function Mover:onUpdate()
+    if Input.getButtonDown("Jump") then Log.print("jump") end
 end
 ```
 
@@ -354,9 +367,42 @@ Functions:
 | `Input.getTouchPosition(pointer)` | `Vector2` |
 | `Input.numTouches()` | integer |
 | `Input.findTouchIndex(pointer)` | integer |
-| `Input.getTouches()` | list of `Touch` (Touch class is NOT bound; prefer `numTouches`/`getTouchPosition` or touch events) |
+| `Input.getTouches()` | list of `Touch`: the fingers down now (`touch.pointer` is the old name of `fingerId`) |
 | `Input.isGamepadConnected(id)`, `Input.getGamepadName(id)`, `Input.isGamepadButtonPressed(id, button)`, `Input.getGamepadAxis(id, axis)`, `Input.numGamepads()`, `Input.getGamepadId(index)` | gamepad |
 | `Input.getModifiers()` | bitmask of `Input.MODIFIER_*` |
+
+Unity-style polling with edges, touches and input actions (details: `jasper://docs/input`).
+`key` is an `Input.KEY_*` code or a control name (`"space"`, `"a"`, `"left_shift"`,
+`"mouse_left"`, `"gamepad_a"`; Unity spellings like `"left ctrl"`, `"joystick button 0"` too):
+
+| Function / property | Returns |
+|---|---|
+| `Input.getKey(key)`, `Input.getKeyDown(key)`, `Input.getKeyUp(key)` | bool: held / pressed this frame / released this frame |
+| `Input.getMouseButton(b)`, `getMouseButtonDown(b)`, `getMouseButtonUp(b)` | bool; `b` 0 left, 1 right, 2 middle |
+| `Input.getGamepadButtonDown(id, button)`, `getGamepadButtonUp(id, button)` | bool; `id` -1 any pad; `button` `Input.GAMEPAD_BUTTON_*` or a name |
+| `Input.anyKey`, `Input.anyKeyDown` (properties) | bool: any key, mouse or gamepad button held / pressed this frame |
+| `Input.inputString` (property) | UTF-8 text typed this frame (`"\b"` backspace, `"\n"` return) |
+| `Input.mouseDelta`, `Input.mouseScrollDelta` (properties) | `Vector2`: movement this frame (canvas px, y down; works captured), wheel steps (y up) |
+| `Input.getPressedControl()` | string or nil: the first control pressed this frame (`"space"`, `"mouse_left"`, `"gamepad_a"`, `"left_x+"`) |
+| `Input.touchCount`, `Input.touches` (properties), `Input.getTouch(index)` (0-based), `Input.getTouchById(fingerId)` | Unity's touches this frame (ended/cancelled ones included in their last frame): `Touch` or nil |
+| `Input.multiTouchEnabled` (rw, default true), `Input.touchSupported` | false: only the first finger is reported / `System.isTouchDevice()` |
+| `Input.getAxis(name)`, `Input.getAxisRaw(name)` | number: the input action's smoothed / raw value (-1..1, button 0..1; mouse movement unclamped) |
+| `Input.getButton(name)`, `getButtonDown(name)`, `getButtonUp(name)` | bool |
+| `Input.getVector(xName, yName)` | `Vector2`, length <= 1 |
+| `Input.hasAction(name)`, `Input.getActionNames()` | bool / string list |
+| `Input.setActionEnabled(name, enabled)`, `Input.isActionEnabled(name)` | a disabled action reads 0 / false |
+| `Input.simulateButton(name, pressed [, source])`, `Input.simulateAxis(name, value [, source])`, `Input.addAxisDelta(name, delta [, source])`, `Input.clearSimulated([source])` | virtual sources (like an on-screen control); `source` a name (default `"script"`) or `self` (cleared with the instance) |
+| `Input.getBindings(name)` | list of binding tables (`kind`, `positive`, ...) |
+| `Input.setBindings(name, bindings)`, `Input.resetBindings([name])` | `true` or `false, error` / runtime rebinding over Project Settings |
+| `Input.exportBindings()`, `Input.importBindings(json)` | the overrides as JSON text / `true` or `false, error` |
+
+Default actions (Unity's Input Manager): `Horizontal`, `Vertical`, `Fire1`, `Fire2`, `Fire3`,
+`Jump`, `Mouse X`, `Mouse Y`, `Mouse ScrollWheel`, `Submit`, `Cancel`. An unknown action name logs
+one error and reads 0 / false.
+
+`Touch` (read-only fields): `fingerId`, `phase` (`TouchPhase.Began`, `Moved`, `Stationary`,
+`Ended`, `Canceled`), `position`, `startPosition`, `deltaPosition` (canvas px, y down),
+`deltaTime` (unscaled s), `tapCount`, `pointer` (= `fingerId`).
 
 Constants (static properties, integers, no parentheses):
 
@@ -393,14 +439,142 @@ Play and at edit time; a game's platform log in an exported build): it takes any
 values of any type and joins them with tabs, like standard Lua. `Log.*` add the warn / error
 levels.
 
-### 2.4 UserSettings (static, persistent key/value)
+### 2.4 PlayerPrefs / UserSettings (static, persistent key/value)
 
-Getters (with optional default as 2nd arg): `UserSettings.getBoolForKey(k [, def])`,
-`getIntegerForKey`, `getLongForKey`, `getFloatForKey`, `getDoubleForKey`,
-`getStringForKey`, `getDataForKey`.
-Setters: `UserSettings.setBoolForKey(k, v)`, `setIntegerForKey`, `setLongForKey`,
-`setFloatForKey`, `setDoubleForKey`, `setStringForKey`, `setDataForKey`.
-`UserSettings.removeKey(k)`.
+Unity's PlayerPrefs, lowerCamel: `PlayerPrefs.getInt(k [, default=0])`, `setInt(k, v)`,
+`getFloat(k [, default=0.0])`, `setFloat(k, v)`, `getString(k [, default=""])`,
+`setString(k, v)`, `hasKey(k)`, `deleteKey(k)`, `deleteAll()`, `save()`.
+
+```lua
+PlayerPrefs.setInt("Minigame_Money", PlayerPrefs.getInt("Minigame_Money") + 10)
+if not PlayerPrefs.hasKey("OnboardingDone") then showOnboarding() end
+PlayerPrefs.setString("progress", Json.encode(progress))   -- a table: through Json
+PlayerPrefs.save()                                          -- after an important write
+```
+
+`UserSettings` is the same store with more types (PlayerPrefs reads what it wrote):
+getters with an optional default `UserSettings.getBoolForKey(k [, def])`, `getIntegerForKey`,
+`getLongForKey`, `getFloatForKey`, `getDoubleForKey`, `getStringForKey`, `getDataForKey`;
+setters `setBoolForKey(k, v)`, `setIntegerForKey`, `setLongForKey`, `setFloatForKey`,
+`setDoubleForKey`, `setStringForKey`, `setDataForKey`; `hasKey(k)`, `deleteKey(k)` (=
+`removeKey(k)`), `deleteAll()`, `save()`.
+
+- Read a key with the type you wrote it with (as in Unity): another type gives the default
+  (Android keeps the types, desktop and web store text). Getters never raise: a stored value
+  that does not read as the type asked for gives the default, with a warning once per key.
+- `hasKey` is true for a stored empty string, and `getString` returns that `""`.
+- `setInt` takes an integer within 32 bits (`6 / 2` is fine, `3.5` raises "integer expected";
+  larger: `UserSettings.setLongForKey`); `setString` takes a string (`Json.encode` tables).
+- Numbers are written the same in every locale (`0.5`, never `0,5`).
+- `deleteKey` of a missing key does nothing; `deleteAll` removes every key of this game (on
+  iOS/macOS the keys the game wrote or read back, never other SDKs' entries such as ad consent).
+- Keys are non-empty strings without zero bytes (`PlayerPrefs` raises, `UserSettings` logs and
+  ignores them); values may hold any bytes.
+
+When values reach the disk (call `save()` after an important write; a crash loses at most
+the last second on desktop):
+
+| Platform | Store | Written |
+|---|---|---|
+| Editor (Play) | `<project>/.jasperengine/user/rundata/UserSettings.xml` (Edit > Clear User Settings (PlayerPrefs)..., MCP `user_settings`) | a second after a change, on `save()`, on Play stop |
+| Desktop exports | `UserSettings.xml` in the user data folder (`data://`, below) | a second after a change, on `save()`, app pause, quit |
+| Android | SharedPreferences `UserSettings` | at once in the background; `save()` waits for it |
+| iOS / macOS app | NSUserDefaults | by the system; `save()` synchronizes |
+| Web | localStorage, keys `<identifier>/<key>` | at once |
+
+### 2.4.1 Json (static)
+
+`Json.encode(value [, opts])` -> string, `Json.decode(text [, opts])` -> value; both raise
+on errors with the place (`Json.encode: cannot encode a function at $.player.onHit`,
+`Json.decode: syntax error at line 3, column 14: unexpected '}'; expected string literal`).
+`Json.tryEncode` / `Json.tryDecode` return `nil, message` instead (a valid `null` gives
+`Json.null`, so `nil` always means failure). `Json.readFile(path [, opts])` and
+`Json.writeFile(path, value [, opts])` are below (2.4.2).
+
+```lua
+local t = Json.decode(response)           -- JsonConvert.DeserializeObject
+local ts = t.utc_timestamp
+local body = Json.encode({playerID = id}) -- JsonConvert.SerializeObject
+local ok, err = Json.tryDecode(text)       -- untrusted text: no raise
+Log.print(Json.encode(state, {pretty = true}))
+```
+
+| Lua | JSON |
+|---|---|
+| table with keys exactly `1..n` (n >= 1) | array |
+| empty table | `[]` (`{}` with `Json.object(t)` or `{emptyTable = "object"}`) |
+| any other table | object (integer keys as `"1"`; other key types are an error) |
+| `Json.array(t)` / `Json.object(t)` (marks `t`, returns it) | always array / object (a marked array with holes is an error) |
+| integer / float | integer / number with a decimal point (`1` / `1.0`); NaN and infinities are an error |
+| string | string (must be UTF-8; `invalidUtf8 = "replace"` or `"ignore"`) |
+| `Json.null` (`Json.isNull(v)`) | `null` |
+| `Vector2/3/4`, `Quaternion` | `{"x":..,"y":..[,"z"][,"w"]}` |
+| a value whose metatable has `__tojson(self)` | what it returns |
+| function, thread, other userdata, a cycle, nesting deeper than 512 | error with the path |
+
+Decoding: objects and arrays are tables (empty ones marked, so `Json.encode(Json.decode(s))`
+keeps `[]` and `{}`), integers are Lua integers (`1.0`, `1e2`, and integers beyond int64 are
+floats), `null` is `Json.null` (`{null = "nil"}`: omitted from objects, holes in arrays).
+Object keys are written sorted. Options: encode `pretty` (indent 2), `indent` (0..64),
+`invalidUtf8` (`"error"`/`"replace"`/`"ignore"`), `emptyTable` (`"array"`/`"object"`);
+decode `null` (`"sentinel"`/`"nil"`), `allowComments`. Unknown option names raise (typos).
+
+### 2.4.2 Files and saves (File.*, data://)
+
+| Function | Returns |
+|---|---|
+| `File.readText(path)` | the whole file (bytes as they are), or `nil, message` |
+| `File.writeText(path, text)` | `true`, or `nil, message`; atomic (a crash leaves the old or the new file), makes missing folders |
+| `File.appendText(path, text)` | `true`, or `nil, message` (not atomic; makes the file) |
+| `File.exists(path)` | boolean (files and folders) |
+| `File.remove(path)` | `true` (also when nothing was there), or `nil, message`; files only |
+| `File.makeDirs(path)` | `true`, or `nil, message` |
+| `File.list(dir)` | sorted names of the files and folders of a `data://` folder, or `nil, message` |
+| `Json.readFile(path [, opts])` | the decoded value, or `nil, "not found: data://save.json"` / `nil, "data://save.json: syntax error at ..."` |
+| `Json.writeFile(path, value [, opts])` | `true`, or `nil, message` (encode error or write error) |
+
+Paths: `data://x` is the user data folder (Unity's `Application.persistentDataPath`), the
+only writable one; `asset://x` (the assets folder; Unity `Resources`/`StreamingAssets`) and
+`lua://x` (the Lua folder) are read-only and work inside an Android APK and a packed export;
+a bare relative path means `data://`; `..` segments and unknown `scheme://` are refused;
+absolute paths are read on desktop and in the editor only. Wrong argument types raise;
+file problems return `nil, message` ("not found: ...", "permission denied: ...",
+"read-only path: asset://...").
+
+```lua
+-- save / load a table
+local ok, err = Json.writeFile("data://garden.json", {coins = 120, plots = plots})
+if not ok then Log.warn("save failed: " .. err) end
+local state = Json.readFile("data://garden.json") or {coins = 0, plots = {}}
+```
+
+Where `data://` is: the editor's Play mode `<project>/.jasperengine/user/rundata`; desktop
+exports a per-user folder named after Project Settings `application.identifier` (the project
+name when it is the default): Linux `$XDG_DATA_HOME/<id>` (`~/.local/share/<id>`), Windows
+`%APPDATA%\<id>`, macOS `~/Library/Application Support/<id>` (older builds saved in the
+working directory: `UserSettings.xml` is copied over once; other files they wrote there are
+not); Android the app's internal files; iOS Documents; Web `/datafs` (IndexedDB).
+
+Web: files persist in IndexedDB. `File.writeText`, `Json.writeFile` and `File.remove` store
+within half a second (and when the tab is hidden); `System.syncFileSystem()` stores now.
+The first scene starts once the saved files are restored (`System.isUserDataLoaded()`; at
+most 3 s), so `init` reads them; if the restore takes longer, `data://` writes return
+`nil, "the saved files are not restored yet ..."` until it is done (the restore would replace
+them). Plain Lua `io` works with `FileData.getSystemPath("data://x")`
+paths, but on Web call `System.syncFileSystem()` after writing.
+
+Data assets (Unity ScriptableObjects): a JSON file with the Lua scripts or the assets
+(`Json.readFile("lua://data/items.json")`, `Json.readFile("asset://levels/1.json",
+{allowComments = true})`), exported with them; or a Lua data module shared by every
+script that requires it:
+
+```lua
+-- lua/data/items.lua
+return { sword = { damage = 12, price = 30 }, shield = { armor = 5, price = 25 } }
+-- in a script
+local Items = require("data.items")
+local price = Items.sword.price
+```
 
 ### 2.5 System (static)
 
@@ -410,7 +584,8 @@ Setters: `UserSettings.setBoolForKey(k, v)`, `setIntegerForKey`, `setLongForKey`
 `setWindowTitle(s)`, `quit()`, `showVirtualKeyboard(text)`, `hideVirtualKeyboard()`,
 `setClipboardText(s)`, `getClipboardText()` (the system clipboard, UTF-8; on Web the text of
 the last copy or paste), `getDirSeparator()`, `getAssetPath()`, `getUserDataPath()`, `getLuaPath()`,
-`getShaderPath()`; ads/web: `initializeAdMob()`, `setMaxAdContentRating(AdMobRating.*)`,
+`getShaderPath()`, `syncFileSystem()` (Web: stores the `data://` files in IndexedDB now; true),
+`isUserDataLoaded()` (Web: the saved files are restored; elsewhere true); ads/web: `initializeAdMob()`, `setMaxAdContentRating(AdMobRating.*)`,
 `loadInterstitialAd(id)`, `isInterstitialAdLoaded()`, `showInterstitialAd()` (Android/iOS; the
 export compiles Google Mobile Ads in only with the project settings `android.admob_enabled` /
 `ios.admob_enabled` and their `admob_app_id`, otherwise these do nothing),
@@ -418,7 +593,8 @@ export compiles Google Mobile Ads in only with the project settings `android.adm
 `gameplayStartCrazyGames()`, `gameplayStopCrazyGames()`, `loadingStartCrazyGames()`,
 `loadingStopCrazyGames()`.
 
-Files: `File()` / `File(path, write)` with `:open`, `:flush`, `:close`, `:readString()`,
+Files (for saves prefer `File.readText` / `File.writeText` / `Json.readFile`, 2.4.2):
+`File()` / `File(path, write)` with `:open`, `:flush`, `:close`, `:readString()`,
 `:writeString(s)`, `:read8/16/32()`, `:eof()`, `:length()`, `:seek(n)`, `:pos()`;
 `Data(path)` reads asset data; `FileData.getBaseDir(p)`, `FileData.getFilePathExtension(p)`,
 `FileData.getSystemPath(p)`. Constants `FileErrors.FILEDATA_OK`, `INVALID_PARAMETER`,
@@ -1425,6 +1601,7 @@ use the methods. Physics colliders keep the rest shape.
 | `CursorType` | `ARROW`, `IBEAM`, `CROSSHAIR`, `POINTING_HAND`, `RESIZE_EW`, `RESIZE_NS`, `RESIZE_NWSE`, `RESIZE_NESW`, `RESIZE_ALL`, `NOT_ALLOWED`, `WAIT`, `PROGRESS`, `HELP`, `GRAB`, `GRABBING` |
 | `MouseMode` | `NORMAL`, `HIDDEN`, `CAPTURED`, `CONFINED` |
 | `UIEventState` | `NOT_SET`, `ENABLED`, `DISABLED` |
+| `TouchPhase` | `Began`, `Moved`, `Stationary`, `Ended`, `Canceled` |
 | `UIDocumentRenderMode` | `SCREEN`, `TEXTURE` |
 | `TextureFilter` | `NEAREST`, `LINEAR`, `NEAREST_MIPMAP_NEAREST`, `NEAREST_MIPMAP_LINEAR`, `LINEAR_MIPMAP_NEAREST`, `LINEAR_MIPMAP_LINEAR` |
 | `TextureWrap` | `REPEAT`, `MIRRORED_REPEAT`, `CLAMP_TO_EDGE`, `CLAMP_TO_BORDER` |
@@ -1517,8 +1694,10 @@ Rigidbody wrappers by index.
 14. **Do not assign Engine events** (`Engine.onUpdate = function() end`): it bypasses the
     per-script subscription (not removed when the script is destroyed, survives play
     sessions). Always use `RegisterEngineEvent`.
-15. **Held vs pressed**: `Input.isKeyPressed` / `isMousePressed` report the held state.
-    For "pressed this frame" track the previous value or use `onKeyDown` / `onMouseDown`.
+15. **Held vs pressed**: `Input.isKeyPressed` / `isMousePressed` / `getKey` report the held
+    state; "pressed this frame" is `Input.getKeyDown`, `getMouseButtonDown`, `getButtonDown`
+    (read edges in `onUpdate`: every fixed step of a frame sees them). Prefer input actions
+    (`Input.getAxis("Horizontal")`) to raw keys: they add the gamepad and on-screen controls.
 16. **Physics events are global** for the scene: compare `bodyA.entity` / `bodyB.entity`
     with `self.entity`. 2D contact events require the per-collider event flags.
 17. **Unassigned references are `nil`**: an entity-reference or Prefab property not set in
@@ -1539,3 +1718,10 @@ Rigidbody wrappers by index.
     raw component fields (`UIComponent.color`, `ButtonComponent.colorNormal`) are linear.
 24. **Integers**: entity ids, indices and enum values are integers; do not pass fractional
     numbers to them (`math.floor` first).
+25. **Json: an empty table is `[]`.** Use `Json.object()` (or `{emptyTable = "object"}`) for an
+    empty object. A table with `nil` in the middle is not an array (`{1, nil, 3}` encodes as an
+    object `{"1":1,"3":3}`): store `Json.null` to keep a place. `Json.decode` gives integers for
+    `1` and floats for `1.0`; compare JSON nulls with `Json.null`, never `nil`.
+26. **Saves go to `data://`.** `asset://` and `lua://` are read-only (and inside the APK on
+    Android); `File.*` and `Json.*File` return `nil, message` on file problems instead of
+    raising: check the first result. On Web, Lua `io` writes need `System.syncFileSystem()`.

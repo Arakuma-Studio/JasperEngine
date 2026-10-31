@@ -39,8 +39,12 @@ JasperEngine is based on [Doriax](https://github.com/doriaxengine/doriax) by Edu
 - Particle systems and heightmap terrain with clipmap LOD and sculpting tools
 - A GPU fluid simulation component (a port of Pavel Dobryakov's WebGL-Fluid-Simulation: vorticity, bloom, sunrays) shown over the screen, on a sprite, image or mesh, or as a texture any material can use, with presets, seeded deterministic runs and a Lua API: see [docs/mcp/guide/fluid.md](docs/mcp/guide/fluid.md)
 - UI toolkit with Rect Transforms, layout groups, text, images, buttons, input fields, scrollbars, and other widgets
+- Unity-style input: key, mouse and gamepad edges (`Input.getKeyDown`), touches with phases, and input actions (Project Settings > Input, Unity's Input Manager axes and buttons with gravity, sensitivity and dead zones) that sum keyboard, gamepad and on-screen controls, with runtime rebinding: see [docs/mcp/guide/input.md](docs/mcp/guide/input.md)
 - Box2D and Jolt Physics for 2D/3D rigidbodies, colliders, and joints, drawn interpolated between fixed steps
 - Spatial 3D audio and multithreaded asynchronous resource loading
+- Saves and data for scripts: Unity-style `PlayerPrefs` (with `hasKey`, `deleteAll`, `save`) on every platform, a `Json` module (`Json.encode` / `Json.decode` with exact array, number and null rules and errors that name the place), and atomic save files under `data://` (`File.writeText`, `Json.writeFile`), stored per user on desktop and in IndexedDB on the web (see the Lua API guide, [docs/mcp/guide/lua-api.md](docs/mcp/guide/lua-api.md))
+
+**Saves of older desktop builds**: an exported desktop game now keeps its user data (`data://`, `UserSettings.xml`) in a per-user folder (`~/.local/share/<identifier>`, `%APPDATA%\<identifier>`, `~/Library/Application Support/<identifier>`, after Project Settings `application.identifier`) instead of the working directory. The first run copies an older build's `./UserSettings.xml` there; other files a game wrote next to itself are not moved.
 
 Names follow Unity; see [docs/unity-glossary.md](docs/unity-glossary.md) for the old names and how to migrate older projects.
 

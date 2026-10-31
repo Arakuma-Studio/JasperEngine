@@ -96,9 +96,14 @@ LIMITS.update({"get_pose_animation": 700, "edit_pose_animation": 1220})
 # fix FC: clips entries may be {name, wrap, interpolate, fps} objects (the detail in the guide), paid by
 # a shorter description: bake_vertex_animation 1977, total 106049
 LIMITS.update({"bake_vertex_animation": 2000})
-# lines and trails: no new tool; create_entity's type "trail_renderer" (+20) paid by a shorter
-# create_entity description (-20): total 106093
-TOTAL_LIMIT = 106100
+# script data (spec 2026-10-31-script-data 6.4): user_settings measured 515 (the PlayerPrefs
+# store: list/get/set/delete/clear); total 106611 with it (106096 before), the limit raised by it
+LIMITS.update({"user_settings": 550})
+# input (spec 2026-10-31-input 12): send_input's action/axis/axis_delta events and the input.actions setting,
+# measured on the merged tree: total 106687 (106611 before), the limit raised by them
+# lines and trails: no new tool; create_entity's type "trail_renderer" paid by a shorter create_entity
+# description, set_shape_points' line text reworded; measured on the merged tree: total 106692 (106687 before)
+TOTAL_LIMIT = 106692
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
