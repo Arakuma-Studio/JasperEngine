@@ -53,6 +53,7 @@ namespace {
     constexpr float graphHeight = 40.0f;        // px of the graph (overlay px), 50 ms at the top
     constexpr float graphMaxMs = 50.0f;
     constexpr size_t rowTextLimit = 300;        // characters of a message's first line in its row
+    constexpr float remPx = 13.0f;              // overlay px of 1rem (the sheet's lengths are in rem)
 
     const Rml::EventId capturedEvents[] = {Rml::EventId::Change, Rml::EventId::Scroll, Rml::EventId::Dragstart,
                                            Rml::EventId::Drag, Rml::EventId::Dragend};
@@ -282,6 +283,13 @@ namespace {
         return s.document ? s.document->GetElementById(id) : nullptr;
     }
 
+    // overlay px as the sheet's unit: the document scales with the root font size
+    std::string rem(float overlayPx){
+        char text[32];
+        snprintf(text, sizeof(text), "%.4frem", overlayPx / remPx);
+        return text;
+    }
+
     void setHidden(Rml::Element* element, bool hidden){
         if (element)
             element->SetClass("hidden", hidden);
@@ -508,8 +516,8 @@ namespace {
             for (size_t i = 0; i < graphBars; i++){
                 Rml::Element* bar = bars->AppendChild(s.document->CreateElement("div"));
                 bar->SetClass("bar", true);
-                bar->SetProperty("left", std::to_string(i * 2) + "px");
-                bar->SetProperty("height", "0px");
+                bar->SetProperty("left", rem(i * 2.0f));
+                bar->SetProperty("height", "0rem");
                 s.bars.push_back(bar);
             }
         }
@@ -518,9 +526,9 @@ namespace {
             for (int i = 0; i < graph->GetNumChildren(); i++){
                 Rml::Element* child = graph->GetChild(i);
                 if (child->IsClassSet("l60"))
-                    child->SetProperty("bottom", std::to_string((int)std::round(16.7f / graphMaxMs * graphHeight)) + "px");
+                    child->SetProperty("bottom", rem(std::round(16.7f / graphMaxMs * graphHeight)));
                 else if (child->IsClassSet("l30"))
-                    child->SetProperty("bottom", std::to_string((int)std::round(33.3f / graphMaxMs * graphHeight)) + "px");
+                    child->SetProperty("bottom", rem(std::round(33.3f / graphMaxMs * graphHeight)));
             }
         }
         if (Rml::Element* table = byId("stats-table")){
@@ -599,7 +607,7 @@ namespace {
             if (fromEnd < count)
                 ms = history[history.size() - 1 - fromEnd];
             const float height = std::min(ms, graphMaxMs) / graphMaxMs * graphHeight;
-            s.bars[i]->SetProperty("height", std::to_string((int)std::ceil(height)) + "px");
+            s.bars[i]->SetProperty("height", rem(std::ceil(height)));
             s.bars[i]->SetClass("slow", ms > 17.5f && ms <= 34.0f);
             s.bars[i]->SetClass("very-slow", ms > 34.0f);
         }
@@ -660,24 +668,27 @@ namespace {
         s.layoutChanged = false;
     }
 
-    // the safe area (feature safe-area) in overlay px, as padding of the panels
-    void applySafeArea(float scale){
+    // The document is laid out in the canvas (the context of the overlay's Scene is the canvas)
+    // with every length in rem: the root font size makes 1 overlay px `scale` view pixels, so
+    // the overlay looks the same whatever the canvas setting. The body's edges keep clear of
+    // the safe area (feature safe-area), in canvas px. Set only when something changed (a
+    // property set dirties the layout).
+    void applyScale(float scale){
         OverlayState& s = state();
         float left = 0.0f, top = 0.0f, right = 0.0f, bottom = 0.0f;
         if (s.safeArea)
             s.safeArea(left, top, right, bottom);
-        // canvas px to overlay px: the canvas fills the view rect
         const Rect view = Engine::getViewRect();
-        const float canvasToView = Engine::getCanvasWidth() > 0 ? view.getWidth() / (float)Engine::getCanvasWidth() : 1.0f;
-        const float k = canvasToView / scale;
-        auto px = [k](float v){ return std::to_string((int)std::round(std::max(0.0f, v) * k)) + "px"; };
-        // the body is the panels' containing block: its edges move in by the insets (only
-        // when they change: a property set dirties the layout)
-        const std::string insets = px(left) + " " + px(top) + " " + px(right) + " " + px(bottom);
-        if (insets == s.appliedInsets)
+        const float canvasPerView = view.getWidth() > 0.0f ? (float)Engine::getCanvasWidth() / view.getWidth() : 1.0f;
+        char fontSize[32];
+        snprintf(fontSize, sizeof(fontSize), "%.3fpx", remPx * scale * canvasPerView);
+        auto px = [](float v){ return std::to_string((int)std::round(std::max(0.0f, v))) + "px"; };
+        const std::string applied = std::string(fontSize) + " " + px(left) + " " + px(top) + " " + px(right) + " " + px(bottom);
+        if (applied == s.appliedInsets)
             return;
-        s.appliedInsets = insets;
+        s.appliedInsets = applied;
         if (Rml::Element* body = byId("overlay-body")){
+            body->SetProperty("font-size", fontSize);
             body->SetProperty("left", px(left));
             body->SetProperty("top", px(top));
             body->SetProperty("right", px(right));
@@ -685,7 +696,7 @@ namespace {
         }
     }
 
-    // overlay px per view pixel: text of 13 px stays legible whatever the canvas is
+    // view pixels per overlay px: text of 13 overlay px stays legible on any screen
     float overlayScale(){
         const Rect view = Engine::getViewRect();
         const float shorter = std::min(view.getWidth(), view.getHeight());
@@ -728,10 +739,7 @@ namespace {
         scene.load();
         scene.updateCameraSize();
 
-        const float scale = overlayScale();
-        const Rect view = Engine::getViewRect();
         auto documents = scene.getSystem<UIDocumentSystem>();
-        documents->setReferenceSize(std::max(1, (int)std::round(view.getWidth() / scale)), std::max(1, (int)std::round(view.getHeight() / scale)));
         documents->loadDocumentNow(s.entity);
         s.document = documents->getDocument(s.entity);
         if (!s.document){
@@ -1407,12 +1415,7 @@ void DebugOverlay::update(double unscaledDelta){
     if (!visible)
         return;
 
-    const float scale = overlayScale();
-    const Rect view = Engine::getViewRect();
-    s.scene->getSystem<UIDocumentSystem>()->setReferenceSize(std::max(1, (int)std::round(view.getWidth() / scale)),
-                                                           std::max(1, (int)std::round(view.getHeight() / scale)));
-
-    applySafeArea(scale);
+    applyScale(overlayScale());
     if (s.consoleVisible){
         updateRows();
         updateCounts();

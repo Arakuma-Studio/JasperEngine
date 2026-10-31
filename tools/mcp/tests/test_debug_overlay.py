@@ -96,7 +96,7 @@ async def test_console_in_play(ed: Editor):
         await ed.call("wait", frames=3)
         state = await ed.call("get_play_state")
         ed.check(state["debug_overlay"]["console_visible"], f"console visible: {state['debug_overlay']}")
-        shown = await ed.screenshot("game")
+        shown = await ed.screenshot("game", path=(ed.scratch.root / "console.png") if ed.scratch else None)
         ed.check(len(shown) > 1000, "screenshot not empty")
         ed.check(image_difference(before, shown) > 0.05, "the console changes the Game view")
         ed.check(count_near(shown, CONSOLE, tol=20) > 50, "the console's panel colour is in the Game view")

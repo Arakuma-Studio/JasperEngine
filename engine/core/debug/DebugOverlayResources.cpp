@@ -3,8 +3,8 @@
 
 // The debug overlay's document, as C++ raw strings (the user-agent sheet's precedent,
 // htmlui/compat/ua): RML and RCSS of their own, no project file, the built-in Roboto only.
-// Sizes are overlay px: DebugOverlay lays the document out at the view size divided by its
-// scale, so text stays readable whatever the game's canvas is.
+// Lengths are rem (1rem = 13 overlay px): DebugOverlay sets the body's font size so an overlay px
+// is the same number of screen pixels whatever the game's canvas is.
 
 #include "DebugOverlayResources.h"
 
@@ -19,7 +19,7 @@ namespace {
     <title>JasperEngine Debug Overlay</title>
     <link type="text/rcss" href="overlay.rcss"/>
 </head>
-<body id="overlay-body">
+<body id="overlay-body" style="font-size: 13px;">
     <div id="stats" class="hidden corner-tl">
         <div id="stats-line">-- FPS</div>
         <div id="graph"><div id="graph-bars"></div><div class="graph-line l30"></div><div class="graph-line l60"></div></div>
@@ -53,39 +53,39 @@ body, div { display: block; }
 span { display: inline; }
 body {
     position: absolute; left: 0px; top: 0px; right: 0px; bottom: 0px; margin: 0px;
-    font-family: Roboto; font-size: 13px; line-height: 1.3; color: #e6e8ee;
+    font-family: Roboto; line-height: 1.3; color: #e6e8ee;
 }
 
 /* ---- stats */
 #stats {
-    position: absolute; padding: 4px 6px; background-color: #0b0d12c8; border-radius: 4px;
-    pointer-events: none; min-width: 150px;
+    position: absolute; padding: 0.3077rem 0.4615rem; background-color: #0b0d12c8; border-radius: 0.3077rem;
+    pointer-events: none; min-width: 11.5385rem;
 }
-#stats.corner-tl { left: 4px; top: 4px; }
-#stats.corner-tr { right: 4px; top: 4px; }
-#stats.corner-bl { left: 4px; bottom: 4px; }
-#stats.corner-br { right: 4px; bottom: 4px; }
-#stats-line { font-size: 14px; white-space: nowrap; color: #ffffff; }
+#stats.corner-tl { left: 0.3077rem; top: 0.3077rem; }
+#stats.corner-tr { right: 0.3077rem; top: 0.3077rem; }
+#stats.corner-bl { left: 0.3077rem; bottom: 0.3077rem; }
+#stats.corner-br { right: 0.3077rem; bottom: 0.3077rem; }
+#stats-line { font-size: 1.0769rem; white-space: nowrap; color: #ffffff; }
 #stats-line.slow { color: #ffcc55; }
 #stats-line.very-slow { color: #ff6b6b; }
-#graph { position: relative; width: 240px; height: 40px; margin-top: 3px; background-color: #ffffff12; }
+#graph { position: relative; width: 18.4615rem; height: 3.0769rem; margin-top: 0.2308rem; background-color: #ffffff12; }
 #graph-bars { position: absolute; left: 0px; top: 0px; right: 0px; bottom: 0px; }
-.bar { position: absolute; bottom: 0px; width: 2px; background-color: #5fd38d; }
+.bar { position: absolute; bottom: 0px; width: 0.1538rem; background-color: #5fd38d; }
 .bar.slow { background-color: #ffcc55; }
 .bar.very-slow { background-color: #ff6b6b; }
-.graph-line { position: absolute; left: 0px; right: 0px; height: 1px; background-color: #ffffff40; }
-#stats-table { margin-top: 4px; font-size: 12px; }
-.stat-row { white-space: nowrap; height: 16px; }
-.stat-name { display: inline-block; width: 90px; color: #9aa3b5; }
+.graph-line { position: absolute; left: 0px; right: 0px; height: 0.0769rem; background-color: #ffffff40; }
+#stats-table { margin-top: 0.3077rem; font-size: 0.9231rem; }
+.stat-row { white-space: nowrap; height: 1.2308rem; }
+.stat-name { display: inline-block; width: 6.9231rem; color: #9aa3b5; }
 .stat-value { display: inline-block; color: #ffffff; }
 
 /* ---- popup */
 #popup {
-    position: absolute; right: 0px; top: 45%; width: 48px; padding: 4px 0px;
-    background-color: #0b0d12e0; border-radius: 6px 0px 0px 6px; text-align: center; drag: drag;
+    position: absolute; right: 0px; top: 45%; width: 3.6923rem; padding: 0.3077rem 0px;
+    background-color: #0b0d12e0; border-radius: 0.4615rem 0px 0px 0.4615rem; text-align: center; drag: drag;
 }
 #popup:active { background-color: #232838f0; }
-#popup div { font-size: 14px; height: 20px; }
+#popup div { font-size: 1.0769rem; height: 1.5385rem; }
 
 /* ---- console */
 .count-warn { color: #ffcc55; }
@@ -93,12 +93,12 @@ body {
 #console {
     position: absolute; left: 0px; top: 0px; right: 0px; height: 50%;
     display: flex; flex-direction: column; background-color: #0b0d12ee;
-    border-bottom: 1px #ffffff30;
+    border-bottom: 0.0769rem #ffffff30;
 }
 #console.full { height: 100%; }
-#toolbar { display: flex; flex-direction: row; flex-wrap: wrap; flex: 0 0 auto; padding: 3px; }
+#toolbar { display: flex; flex-direction: row; flex-wrap: wrap; flex: 0 0 auto; padding: 0.2308rem; }
 .btn {
-    padding: 6px 9px; margin: 2px; border-radius: 4px; background-color: #ffffff14; color: #cfd3dc;
+    padding: 0.4615rem 0.6923rem; margin: 0.1538rem; border-radius: 0.3077rem; background-color: #ffffff14; color: #cfd3dc;
     white-space: nowrap; cursor: pointer;
 }
 .btn:hover { background-color: #ffffff22; }
@@ -106,31 +106,31 @@ body {
 .btn.toggle { color: #7d8496; }
 .btn.toggle.on { color: #ffffff; background-color: #3d6bff55; }
 .badge { color: #9aa3b5; }
-#searchbar, #commandbar { flex: 0 0 auto; padding: 2px 5px; }
+#searchbar, #commandbar { flex: 0 0 auto; padding: 0.1538rem 0.3846rem; }
 input {
-    display: block; width: 100%; height: 26px; padding: 4px 6px; box-sizing: border-box;
-    background-color: #ffffff12; border-radius: 4px; color: #ffffff; font-size: 13px; cursor: text;
+    display: block; width: 100%; height: 2rem; padding: 0.3077rem 0.4615rem; box-sizing: border-box;
+    background-color: #ffffff12; border-radius: 0.3077rem; color: #ffffff; font-size: 1rem; cursor: text;
 }
 input:focus { background-color: #ffffff22; }
-#list { flex: 1 1 0px; overflow-y: auto; padding: 0px 4px; }
-#empty { flex: 0 0 auto; padding: 6px 10px; color: #7d8496; }
-.row { padding: 3px 4px; border-bottom: 1px #ffffff0d; }
+#list { flex: 1 1 0px; overflow-y: auto; padding: 0px 0.3077rem; }
+#empty { flex: 0 0 auto; padding: 0.4615rem 0.7692rem; color: #7d8496; }
+.row { padding: 0.2308rem 0.3077rem; border-bottom: 0.0769rem #ffffff0d; }
 .row:hover { background-color: #ffffff0a; }
 .row.expanded { background-color: #ffffff12; }
-.line { white-space: nowrap; overflow: hidden; height: 17px; }
-.mark { display: inline-block; width: 6px; height: 12px; margin-right: 6px; border-radius: 2px; background-color: #7d8496; }
+.line { white-space: nowrap; overflow: hidden; height: 1.3077rem; }
+.mark { display: inline-block; width: 0.4615rem; height: 0.9231rem; margin-right: 0.4615rem; border-radius: 0.1538rem; background-color: #7d8496; }
 .lvl-warn .mark { background-color: #ffcc55; }
 .lvl-error .mark { background-color: #ff6b6b; }
 .lvl-verbose .mark, .lvl-debug .mark { background-color: #4d5466; }
-.time { display: inline-block; color: #7d8496; margin-right: 6px; }
+.time { display: inline-block; color: #7d8496; margin-right: 0.4615rem; }
 .lvl-warn .msg { color: #ffe3a3; }
 .lvl-error .msg { color: #ffb3b3; }
-.count { display: inline-block; margin-left: 6px; padding: 0px 5px; border-radius: 6px; background-color: #ffffff22; color: #ffffff; }
-.detail { padding: 4px 4px 4px 18px; white-space: pre-wrap; word-break: break-word; color: #cfd3dc; }
-.trace { color: #9aa3b5; margin-top: 3px; }
+.count { display: inline-block; margin-left: 0.4615rem; padding: 0px 0.3846rem; border-radius: 0.4615rem; background-color: #ffffff22; color: #ffffff; }
+.detail { padding: 0.3077rem 0.3077rem 0.3077rem 1.3846rem; white-space: pre-wrap; word-break: break-word; color: #cfd3dc; }
+.trace { color: #9aa3b5; margin-top: 0.2308rem; }
 
-scrollbarvertical { width: 6px; }
-scrollbarvertical sliderbar { background-color: #ffffff40; border-radius: 3px; min-height: 20px; }
+scrollbarvertical { width: 0.4615rem; }
+scrollbarvertical sliderbar { background-color: #ffffff40; border-radius: 0.2308rem; min-height: 1.5385rem; }
 scrollbarhorizontal { height: 0px; }
 
 /* last, and as specific as the rules that set a display: hidden panels take no input */

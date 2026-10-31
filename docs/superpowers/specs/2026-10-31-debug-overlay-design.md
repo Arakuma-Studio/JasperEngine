@@ -402,10 +402,12 @@ the code:
    through `DebugOverlay::getScene()` instead of a `setOverlayScene` setter. Its document loads
    synchronously (`UIDocumentSystem::loadDocumentNow`) so a load failure turns the overlay off at
    once (one error). The overlay's draw calls are excluded from `Engine::getFrameStats` (the game's).
-5. **Layout scale**: the document is laid out at the view rect divided by
-   `max(1, min(viewW, viewH) / 720)` on desktop and `/ 400` on touch devices (spec: 720 for all),
-   so buttons stay finger-sized on phones; text is 13 px of that. The layout is the view's, not the
-   game canvas's, so the overlay looks the same whatever the canvas setting.
+5. **Layout scale**: one overlay px is `max(1, min(viewW, viewH) / 720)` view pixels on desktop and
+   `/ 400` on touch devices (spec: 720 for all), so buttons stay finger-sized on phones; text is
+   13 overlay px. The document is laid out in the game's canvas (the context of the overlay's
+   Scene is the canvas, which the composite maps onto the view) with every length of the sheet in
+   `rem`, and the body's font size set to 13 overlay px in canvas px: the overlay looks the same
+   whatever the canvas setting, and its text rasterizes at the view's resolution.
 6. **Input**: `Engine::getInputScenes` puts the overlay Scene on top of the input snapshot for
    pointer events and, for keys, text and IME, only while the console's search or command field
    has the focus; `canSendDocumentEvents/canSendUIEvents` never treat it as covered by the
