@@ -745,3 +745,22 @@ contradicted the code:
     trigger crossing) equal editor Play's. Lua stubs: 0 unresolved. Web (emscripten) build of every
     changed engine source and Android (NDK 28, arm64) `-fsyntax-only` of the same: clean. Apple and
     Windows: no platform code changed (the Xcode project lists the new sources).
+15. **Review fixes.** `Physics2D.ignoreCollision` is not a Box2D null joint (§6.1.8): Box2D tests
+    joints only when a broad-phase pair is made and never drops existing contacts for a null
+    joint, and the joint merged the bodies' islands. It is the set `Box2DAux::CollisionFilter`
+    refuses, and a change re-pairs both bodies' shapes (the refilter bit): a touching pair ends
+    with its Exit, an overlapping one is found again when un-ignored. Side effect: the global 2D
+    events see end / begin for the other contacts of those two bodies at that step. `destroy` /
+    `destroyImmediate` of a GameObject already being destroyed (from the Exit its destruction
+    sends, from its `onDestroy`) do nothing (`ObjectManager`); before, a nested destroy ran.
+    Raw 3D contacts whose body a global handler destroyed or made again are skipped.
+    `onContactModify3D` subscribers are called without the crash guard (`callDirect`: its
+    signal handlers are process-wide) and without a lock; the contract is in `PhysicsSystem.h`.
+    Activation events are sorted by body id. `Rigidbody2D.removeAllColliders` gives the queued
+    Exits index -1. Each has a regression test.
+16. **Cost, measured** (`ContactProcessingCostIsSmall`, 500 awake boxes on a floor, 60 steps, the
+    best of three, box 2202 under load): Jolt's step 129.0 ms with 10 listeners and 131.3 ms with
+    none (the job-thread recording is inside the step: no difference above the noise); the work
+    after the step 2.4 ms with 10 listeners (1.9%) and 0.08 ms with none (0.06%, asserted < 1%).
+    The job-thread side for unlistened bodies is two subscriber checks and a 16-bit mask read
+    per manifold (`main` had one subscriber check); it is not asserted separately.
