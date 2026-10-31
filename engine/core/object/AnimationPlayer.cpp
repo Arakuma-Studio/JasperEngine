@@ -140,6 +140,41 @@ bool AnimationState::isEnabled() const{
     return state && state->enabled;
 }
 
+void AnimationState::setLayer(int layer){
+    anim::PlayerStateRuntime* state = findState(scene, entity, name);
+    if (!state) return;
+    AnimationPlayerComponent& player = scene->getComponent<AnimationPlayerComponent>(entity);
+    const int index = anim::layerIndex(player, layer, scene->getEntityName(entity));
+    if (index >= 0) anim::setStateLayer(player, *state, index);
+}
+
+int AnimationState::getLayer() const{
+    const anim::PlayerStateRuntime* state = findState(scene, entity, name);
+    if (!state) return 0;
+    return scene->getComponent<AnimationPlayerComponent>(entity).runtime->stateLayer(*state);
+}
+
+void AnimationState::addMixingTransform(const std::string& path){
+    addMixingTransform(path, true);
+}
+
+void AnimationState::addMixingTransform(const std::string& path, bool recursive){
+    if (anim::PlayerStateRuntime* state = findState(scene, entity, name)){
+        anim::addMixingTransform(*state, path, recursive);
+    }
+}
+
+bool AnimationState::removeMixingTransform(const std::string& path){
+    anim::PlayerStateRuntime* state = findState(scene, entity, name);
+    return state && anim::removeMixingTransform(*state, path);
+}
+
+void AnimationState::clearMixingTransforms(){
+    if (anim::PlayerStateRuntime* state = findState(scene, entity, name)){
+        anim::clearMixingTransforms(*state);
+    }
+}
+
 // AnimationPlayer
 
 AnimationPlayer::AnimationPlayer(Scene* scene, Entity entity): EntityHandle(scene, entity){
@@ -164,6 +199,14 @@ void AnimationPlayer::play(const std::string& name){
 
 void AnimationPlayer::play(const std::string& name, float fade){
     anim::playState(getComponent<AnimationPlayerComponent>(), name, fade, getName());
+}
+
+void AnimationPlayer::play(const std::string& name, float fade, PlayMode mode){
+    anim::playState(getComponent<AnimationPlayerComponent>(), name, fade, getName(), mode == PlayMode::StopAll ? PlayMode::StopAll : PlayMode::StopSameLayer);
+}
+
+void AnimationPlayer::crossFade(const std::string& name, float fade, PlayMode mode){
+    play(name, fade, mode);
 }
 
 void AnimationPlayer::crossFade(const std::string& name){
@@ -245,8 +288,10 @@ AnimationStateInfo AnimationPlayer::getStateInfo(const std::string& name) const{
     info.wrap = anim::stateWrap(state);
     info.enabled = state.enabled;
     info.playing = state.playing;
-    for (const anim::QueuedState& queued : runtime.queue){
-        if (queued.state == (size_t)index) info.queued = true;
+    for (const anim::LayerRuntime& layer : runtime.layers){
+        for (const anim::QueuedState& queued : layer.queue){
+            if (queued.state == (size_t)index) info.queued = true;
+        }
     }
     info.boundTracks = state.bindings.resolvedCount;
     if (state.bindings.clip){
@@ -344,6 +389,162 @@ bool AnimationPlayer::isLoaded() const{
         if (!state.bindings.clip || !state.bindings.resolved) return false;
     }
     return true;
+}
+
+// layers
+
+int AnimationPlayer::getLayerCount() const{
+    return (int)anim::playerRuntime(getComponent<AnimationPlayerComponent>()).layers.size();
+}
+
+std::string AnimationPlayer::getLayerName(int index) const{
+    const anim::AnimationPlayerRuntime& runtime = anim::playerRuntime(getComponent<AnimationPlayerComponent>());
+    return index >= 0 && (size_t)index < runtime.layers.size() ? runtime.layers[(size_t)index].name : std::string();
+}
+
+int AnimationPlayer::getLayerIndex(const std::string& name) const{
+    return anim::playerRuntime(getComponent<AnimationPlayerComponent>()).findLayer(name);
+}
+
+int AnimationPlayer::addLayer(const std::string& name){
+    return addLayer(name, 1.0f, "override", "");
+}
+
+int AnimationPlayer::addLayer(const std::string& name, float weight){
+    return addLayer(name, weight, "override", "");
+}
+
+int AnimationPlayer::addLayer(const std::string& name, float weight, const std::string& blend){
+    return addLayer(name, weight, blend, "");
+}
+
+int AnimationPlayer::addLayer(const std::string& name, float weight, const std::string& blend, const std::string& mask){
+    AnimationLayerBlend mode = AnimationLayerBlend::Override;
+    if (!anim::layerBlendFromName(blend, mode)){
+        Log::warn("Animation Player '%s': unknown blend '%s' (override or additive): using override", getName().c_str(), blend.c_str());
+    }
+    return anim::addLayer(getComponent<AnimationPlayerComponent>(), name, weight, mode, mask);
+}
+
+bool AnimationPlayer::removeLayer(int layer){
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    if (layer == 0){
+        Log::warn("Animation Player '%s': the base layer cannot be removed", getName().c_str());
+        return false;
+    }
+    return anim::removeLayer(player, layer, getName());
+}
+
+bool AnimationPlayer::removeLayer(const std::string& layer){
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    const int index = anim::layerIndex(player, layer, getName());
+    return index >= 0 && removeLayer(index);
+}
+
+void AnimationPlayer::setLayerWeight(int layer, float weight){
+    setLayerWeight(layer, weight, 0.0f);
+}
+
+void AnimationPlayer::setLayerWeight(int layer, float weight, float fade){
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    const int index = anim::layerIndex(player, layer, getName());
+    if (index >= 0) anim::setLayerWeight(player, index, weight, fade, getName());
+}
+
+void AnimationPlayer::setLayerWeight(const std::string& layer, float weight){
+    setLayerWeight(layer, weight, 0.0f);
+}
+
+void AnimationPlayer::setLayerWeight(const std::string& layer, float weight, float fade){
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    const int index = anim::layerIndex(player, layer, getName());
+    if (index >= 0) anim::setLayerWeight(player, index, weight, fade, getName());
+}
+
+float AnimationPlayer::getLayerWeight(int layer) const{
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    const int index = anim::layerIndex(player, layer, getName());
+    return index >= 0 ? player.runtime->layerWeight(index) : 0.0f;
+}
+
+float AnimationPlayer::getLayerWeight(const std::string& layer) const{
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    const int index = anim::layerIndex(player, layer, getName());
+    return index >= 0 ? player.runtime->layerWeight(index) : 0.0f;
+}
+
+void AnimationPlayer::setLayerMask(int layer, const std::string& mask){
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    const int index = anim::layerIndex(player, layer, getName());
+    if (index >= 0) anim::setLayerMask(player, index, mask, getName());
+}
+
+void AnimationPlayer::setLayerMask(const std::string& layer, const std::string& mask){
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    const int index = anim::layerIndex(player, layer, getName());
+    if (index >= 0) anim::setLayerMask(player, index, mask, getName());
+}
+
+std::string AnimationPlayer::getLayerMask(int layer) const{
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    const int index = anim::layerIndex(player, layer, getName());
+    return index >= 0 ? player.runtime->layers[(size_t)index].maskPath : std::string();
+}
+
+std::string AnimationPlayer::getLayerMask(const std::string& layer) const{
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    const int index = anim::layerIndex(player, layer, getName());
+    return index >= 0 ? player.runtime->layers[(size_t)index].maskPath : std::string();
+}
+
+void AnimationPlayer::setLayerBlendMode(int layer, const std::string& mode){
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    const int index = anim::layerIndex(player, layer, getName());
+    AnimationLayerBlend blend;
+    if (index < 0) return;
+    if (!anim::layerBlendFromName(mode, blend)){
+        Log::warn("Animation Player '%s': unknown blend mode '%s' (override or additive)", getName().c_str(), mode.c_str());
+        return;
+    }
+    anim::setLayerBlend(player, index, blend, getName());
+}
+
+void AnimationPlayer::setLayerBlendMode(const std::string& layer, const std::string& mode){
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    const int index = anim::layerIndex(player, layer, getName());
+    if (index >= 0) setLayerBlendMode(index, mode);
+}
+
+std::string AnimationPlayer::getLayerBlendMode(int layer) const{
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    const int index = anim::layerIndex(player, layer, getName());
+    return index >= 0 ? anim::layerBlendName(player.runtime->layers[(size_t)index].blend) : "";
+}
+
+std::string AnimationPlayer::getLayerBlendMode(const std::string& layer) const{
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    const int index = anim::layerIndex(player, layer, getName());
+    return index >= 0 ? anim::layerBlendName(player.runtime->layers[(size_t)index].blend) : "";
+}
+
+void AnimationPlayer::stopLayer(int layer){
+    stopLayer(layer, 0.0f);
+}
+
+void AnimationPlayer::stopLayer(int layer, float fade){
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    const int index = anim::layerIndex(player, layer, getName());
+    if (index >= 0) anim::stopLayer(player, index, fade);
+}
+
+void AnimationPlayer::stopLayer(const std::string& layer){
+    stopLayer(layer, 0.0f);
+}
+
+void AnimationPlayer::stopLayer(const std::string& layer, float fade){
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    const int index = anim::layerIndex(player, layer, getName());
+    if (index >= 0) anim::stopLayer(player, index, fade);
 }
 
 FunctionSubscribe<void(const AnimationEvent&)>& AnimationPlayer::getOnEvent(){

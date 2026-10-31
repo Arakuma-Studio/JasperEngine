@@ -69,6 +69,7 @@ namespace luabridge
 
     template<> struct Stack<FogType> : EnumWrapper<FogType>{};
     template<> struct Stack<CameraType> : EnumWrapper<CameraType>{};
+    template<> struct Stack<PlayMode> : EnumWrapper<PlayMode>{};
     template<> struct Stack<FrustumPlane> : EnumWrapper<FrustumPlane>{};
     template<> struct Stack<LightType> : EnumWrapper<LightType>{};
     template<> struct Stack<LightShading> : EnumWrapper<LightShading>{};

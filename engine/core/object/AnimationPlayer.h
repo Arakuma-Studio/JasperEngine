@@ -22,6 +22,11 @@
 //   * calls made before the clips are loaded are remembered and applied on load; unknown state
 //     names log a warning once and do nothing.
 //   * calls from inside onEvent / onFinish take effect on the next frame.
+//   * layers (anim layers spec 8): play / crossFade stop the states of the target's layer
+//     (PlayMode::StopSameLayer, Unity's default) or of every layer (StopAll); queue waits for the
+//     target's layer. A layer is a 0-based index or a name: an unknown one warns once and does
+//     nothing (getters return 0, "" or -1). Layer weight, mask and blend setters are runtime
+//     (not saved); addLayer / removeLayer are authored (the next update reloads).
 
 #ifndef ANIMATIONPLAYER_H
 #define ANIMATIONPLAYER_H
@@ -85,6 +90,16 @@ namespace jasperengine{
         std::string getWrap() const;
         void setEnabled(bool enabled);
         bool isEnabled() const;
+
+        // layers (anim layers spec 8): a runtime move to another layer (keeps time and weight)
+        void setLayer(int layer);
+        int getLayer() const;
+        // Unity AddMixingTransform: with any, the state animates only these paths (and their
+        // descendants when recursive), multiplied with the layer's mask
+        void addMixingTransform(const std::string& path);
+        void addMixingTransform(const std::string& path, bool recursive);
+        bool removeMixingTransform(const std::string& path);
+        void clearMixingTransforms();
     };
 
     class JASPERENGINE_API AnimationPlayer: public EntityHandle{
@@ -100,8 +115,10 @@ namespace jasperengine{
 
         void play(const std::string& name);
         void play(const std::string& name, float fade);
+        void play(const std::string& name, float fade, PlayMode mode);
         void crossFade(const std::string& name);
         void crossFade(const std::string& name, float fade);
+        void crossFade(const std::string& name, float fade, PlayMode mode);
         void blend(const std::string& name, float weight);
         void blend(const std::string& name, float weight, float fade);
         void queue(const std::string& name);
@@ -141,6 +158,45 @@ namespace jasperengine{
 
         // every clip of the list is loaded and bound
         bool isLoaded() const;
+
+        // ---- layers (anim layers spec 8) ----
+        // >= 1 (the base layer is index 0)
+        int getLayerCount() const;
+        // "" / -1 when unknown
+        std::string getLayerName(int index) const;
+        int getLayerIndex(const std::string& name) const;
+        // authored: appends a layer; its index, or -1 when the name is taken. blend "override"
+        // (default) or "additive"; mask an asset-relative .mask ("" = none)
+        int addLayer(const std::string& name);
+        int addLayer(const std::string& name, float weight);
+        int addLayer(const std::string& name, float weight, const std::string& blend);
+        int addLayer(const std::string& name, float weight, const std::string& blend, const std::string& mask);
+        // authored: not the base layer; its clip entries move to layer 0
+        bool removeLayer(int layer);
+        bool removeLayer(const std::string& layer);
+        // runtime weight in [0, 1] (fades linearly over `fade` seconds); the getter returns the
+        // current (possibly fading) value; layer 0 is always 1
+        void setLayerWeight(int layer, float weight);
+        void setLayerWeight(int layer, float weight, float fade);
+        void setLayerWeight(const std::string& layer, float weight);
+        void setLayerWeight(const std::string& layer, float weight, float fade);
+        float getLayerWeight(int layer) const;
+        float getLayerWeight(const std::string& layer) const;
+        // runtime mask (an asset-relative .mask; "" clears it)
+        void setLayerMask(int layer, const std::string& mask);
+        void setLayerMask(const std::string& layer, const std::string& mask);
+        std::string getLayerMask(int layer) const;
+        std::string getLayerMask(const std::string& layer) const;
+        // runtime blend: "override" / "additive"
+        void setLayerBlendMode(int layer, const std::string& mode);
+        void setLayerBlendMode(const std::string& layer, const std::string& mode);
+        std::string getLayerBlendMode(int layer) const;
+        std::string getLayerBlendMode(const std::string& layer) const;
+        // every state of the layer fades out (instantly without a fade); its queue clears
+        void stopLayer(int layer);
+        void stopLayer(int layer, float fade);
+        void stopLayer(const std::string& layer);
+        void stopLayer(const std::string& layer, float fade);
 
         FunctionSubscribe<void(const AnimationEvent&)>& getOnEvent();
         FunctionSubscribe<void(const std::string&)>& getOnFinish();
