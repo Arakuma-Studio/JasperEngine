@@ -23,6 +23,7 @@
 #include "component/UIComponent.h"
 #include "math/Noise.h"
 #include "object/CameraShaker.h"
+#include "component/CameraFollowComponent.h"
 #include "pool/ShakePresetPool.h"
 #include "script/LuaBinding.h"
 #include "subsystem/CameraControlSystem.h"
@@ -699,6 +700,10 @@ TEST_F(Shake, LuaApi){
     // the per-shaker object and its properties
     lua_pushinteger(L, (lua_Integer)cam);
     lua_setglobal(L, "shakeEntity");
+    const Entity followed = scene.createEntity();
+    scene.addComponent<Transform>(followed, {});
+    lua_pushinteger(L, (lua_Integer)followed);
+    lua_setglobal(L, "shakeTarget");
     ASSERT_EQ(luaL_dostring(L,
         "local go = GameObject(Engine.scene, shakeEntity)\n"
         "local s = go:getCameraShaker()\n"
@@ -710,13 +715,24 @@ TEST_F(Shake, LuaApi){
         "local h = s:shakeAt(Vector3(0, 0, 10), 4, 'punch')\n"
         "shakeResult.near = h:isValid()\n"
         "shakeResult.count = s:getInstanceCount()\n"
-        "shakeResult.follow = go:getCameraFollow() == nil\n"), LUA_OK) << lua_tostring(L, -1);
+        "shakeResult.follow = go:getCameraFollow() == nil\n"
+        "local f = CameraFollow(Engine.scene, shakeEntity)\n"
+        "f.target = GameObject(Engine.scene, shakeTarget)\n"
+        "shakeResult.targetOk = f.target ~= nil and f.target.entity == shakeTarget\n"
+        "f.offsetSpace = 'target_yaw'\n"
+        "shakeResult.space = f.offsetSpace\n"
+        "f.target = nil\n"
+        "shakeResult.targetNil = f.target == nil\n"), LUA_OK) << lua_tostring(L, -1);
     field("has"); EXPECT_TRUE(lua_toboolean(L, -1)); lua_pop(L, 1);
     field("mode"); EXPECT_STREQ(lua_tostring(L, -1), "2d"); lua_pop(L, 1);
     field("power"); EXPECT_FLOAT_EQ((float)lua_tonumber(L, -1), 4.0f); lua_pop(L, 1);
     field("near"); EXPECT_TRUE(lua_toboolean(L, -1)); lua_pop(L, 1);
     field("count"); EXPECT_EQ(lua_tointeger(L, -1), 3); lua_pop(L, 1);
     field("follow"); EXPECT_TRUE(lua_toboolean(L, -1)); lua_pop(L, 1);
+    field("targetOk"); EXPECT_TRUE(lua_toboolean(L, -1)); lua_pop(L, 1);
+    field("space"); EXPECT_STREQ(lua_tostring(L, -1), "target_yaw"); lua_pop(L, 1);
+    field("targetNil"); EXPECT_TRUE(lua_toboolean(L, -1)); lua_pop(L, 1);
+    EXPECT_EQ(scene.getComponent<CameraFollowComponent>(cam).target, NULL_ENTITY);
 }
 
 // ---- 13. the budget

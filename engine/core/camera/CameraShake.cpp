@@ -214,7 +214,9 @@ bool CameraShake::resolveSource(const ShakeSource& source, ShakePreset& out){
 
 void CameraShake::forEachGlobalShaker(const std::function<void(Scene*, Entity)>& callback){
     for (Scene* scene : Engine::getSceneLayers()){
-        if (!scene || !scene->findSystem<CameraControlSystem>()) continue;
+        // an editor scene in edit mode (its system paused) takes no shake: it would play on Play
+        std::shared_ptr<CameraControlSystem> system = scene ? scene->findSystem<CameraControlSystem>() : nullptr;
+        if (!system || system->isPaused()) continue;
         auto shakers = scene->getComponentArray<CameraShakerComponent>();
         // the entities first: a callback may grow a runtime, never the array
         std::vector<Entity> entities;

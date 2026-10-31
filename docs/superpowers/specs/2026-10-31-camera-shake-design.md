@@ -653,3 +653,76 @@ MCP tests (`tools/mcp/tests/test_camera_shake.py`):
 - **`debug-overlay` (#23)** is unrelated. It may show `CameraShake` stats later.
 - **The animation features** are independent. A camera animated by an Animation Player still shakes,
   because the shake is a view offset.
+
+## Implementation notes
+
+Decisions taken while implementing (branch `gaps/camera-shake`, both phases):
+
+1. **Built-in presets: all 13 of the game.** Section 6 listed 9 of the game's MilkShake assets
+   while promising its 13 presets. The other four ship too, with the asset values:
+   `eh_shake` (EHShake), `entity_shake` (EnitityShake), `invader_drunk` (InvaderDrunk) and
+   `invaders_explosion` (InvadersExplosion). There are 16 built-ins with EZ Camera Shake's three.
+2. **MilkShake's step order, exactly.** MilkShake's `UpdateShake` returns the offset of the state
+   **before** the step. Then it advances the pause fade, then the noise clock (with the
+   roughness of the fade before this step), then the fade. Section 7.2 listed the fade first.
+   MilkShake's order is kept, so a shake's first frame is still, as in Unity.
+   Two guards differ from MilkShake, both against zero time steps:
+   - a step with dt <= 0 changes nothing (MilkShake stopped a shake started at time scale 0);
+   - only a shake fading in turns Sustained (MilkShake undid a `stop()` taken during a zero step).
+3. **Pause** keeps MilkShake's meaning: the noise clock slows to a stop, and the fade goes on. A
+   paused sustained shake holds its offset. A paused one-shot keeps fading out. The docs say so.
+4. **`viewOffsetPivot`**, a fourth runtime field on `CameraComponent`. A 2D shake rolls about the
+   view's centre (an orthographic camera's view origin is a corner). A 3D shake turns about the
+   eye. `view = T(c) R^-1 T(-c) T(-p) view`. With a custom view matrix (mirrors) the offset is
+   not applied.
+5. **`CameraFollowComponent::target` is an `Entity`** (`PropertyType::Entity`), like every other
+   GameObject field of a component (Joint2D bodies, Lattice Follower). S9 already rules out
+   targets in other scenes. Cloning remaps a target inside the copied hierarchy.
+6. **Staleness of `.shake` files.** `ShakePresetPool` keeps each file's size and modification
+   time and reloads the file when they change. This covers the Inspector, `write_file`, undo and
+   outside edits alike, with no editor hook to forget. `invalidate()` exists too. In packed
+   builds (no stat) an entry is loaded once.
+7. **Paths.** A `.shake` is named by its path relative to the assets folder. This is the stored
+   form, and Lua uses it. MCP takes and returns the project-relative form, as for every asset
+   path. With the default layout (assets folder = project folder) the two are the same:
+   `"assets/shakes/boom.shake"`.
+8. **The edit-mode preview** (`previewShake`, `previewAddTrauma`, `previewStop`, `stopPreview`).
+   - The paused system steps the preview itself, on the editor's frame time (clamped to 0.1 s).
+     The Inspector only starts and stops it, so the preview runs even while the Inspector is
+     scrolled away.
+   - A camera **without** a Camera Shaker can be previewed with default settings. The `.shake`
+     asset's **Test** uses this on the scene's main camera.
+   - In play mode, Test shakes the main camera's shaker, or every global shaker when the main
+     camera has none.
+   - The preview stops on Play, a save, Play stop, a scene switch, and when neither its
+     GameObject nor its `.shake` is shown in the Inspector.
+   - The Game view shows a "Shake preview" badge and redraws every frame while the preview
+     shakes.
+9. **Static calls skip paused systems.** An editor scene in edit mode never takes a
+   `CameraShake.*` shake, which would otherwise wait and play on Play.
+10. **Menus.** The GameObject menu has Camera as a single item, not a submenu. The command is
+    therefore **GameObject > Add Camera Shaker to Main Camera**, after the create items. It is
+    disabled when the main camera already has a shaker. In Add Component, both components are in
+    **Rendering**, next to Camera.
+11. **`list_assets` gains the type `shake`.** This is the only tool-definition change, and it is
+    measured in the tool budget. `get_asset_info` on a `.shake` returns `shake` (its values) and
+    `peak {position, rotation, duration}`.
+12. **Look-at conventions.**
+    - A camera looks down its -Z.
+    - Any other followed GameObject turns its +Z to the target, as Unity's `LookAt` does.
+    - With `lookAt` off, a `useTarget` camera keeps its view direction: its `target` moves with it.
+    - The dead zone uses world x/y and works on orthographic and UI cameras only. The
+      Inspector shows it only there and notes when a perspective camera has one.
+13. **Transform mode in 2D.** A non-camera GameObject in 2D mode (a UI element under `auto`, or
+    any GameObject under `2d`) uses units of the canvas height / 10.
+14. **Axes.** The offset is applied in the camera's local axes, the engine's: x right, y up, z
+    back. Unity's z is forward, but the noise is symmetric, so the presets look the same.
+15. **Tests.**
+    - The asset edit/undo test drives the write helper (`inspectorcamera::writeShakePresetFile`)
+      that the asset Inspector uses, not ImGui.
+    - The budget test (section 13) asserts 0.02 ms per frame in Release builds only.
+    - The Factory test pastes the emitted text into the test and compiles it, as the Vertex
+      Animator test does.
+16. **Camera Follow in edit mode** does nothing: the system is paused. **Snap Now** computes the
+    placement (`computeFollow` with snap) and writes the position, the rotation and the camera
+    target as one MultiPropertyCmd.

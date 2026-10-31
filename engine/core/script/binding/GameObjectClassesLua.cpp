@@ -2267,16 +2267,16 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
                 }
                 return luabridge::LuaRef(L, GameObject(scene, target));
             },
-            +[](CameraFollow* self, luabridge::LuaRef value, lua_State* L){
-                if (value.isNil()){
+            +[](CameraFollow* self, lua_State* L){
+                // the assigned value is on the top of the stack
+                const int index = lua_gettop(L);
+                if (lua_isnil(L, index)){
                     self->setTarget(NULL_ENTITY);
                     return;
                 }
-                value.push(L);
                 Scene* scene = nullptr;
                 Entity entity = NULL_ENTITY;
-                const bool object = luaObjectArg(L, -1, scene, entity);
-                lua_pop(L, 1);
+                const bool object = luaObjectArg(L, index, scene, entity);
                 if (!object || scene != self->getScene()){
                     Log::warn("CameraFollow.target: a GameObject of the same scene, or nil");
                     return;
