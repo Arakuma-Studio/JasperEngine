@@ -45,17 +45,17 @@ origin/main).
 | 4 | `safe-area` | safe-area insets on Android/iOS (and desktop simulation), Lua API + change event, native UI safe-area anchoring, HTML UI `env(safe-area-inset-*)`, editor Game view notch simulation | specced |
 | 5 | `ui-multitouch` | pointer ids through native UI and HTML UI events, per-pointer pressed state, on-screen stick/button controls | specced |
 | 6 | `audio-mixer` | mixer buses with volume/mute and filters (low-pass/high-pass, ...), streamed music, PlayOneShot, fades | specced |
-| 7 | `physics-2d` | 2D joint parameters (wheel spring/motor, hinge limits/motor, ...), runtime-sized chain/polygon colliders (no export-only caps), 2D contact stay | impl |
+| 7 | `physics-2d` | 2D joint parameters (wheel spring/motor, hinge limits/motor, ...), runtime-sized chain/polygon colliders (no export-only caps), 2D contact stay | review |
 | 8 | `physics-contacts` | per-object collision/trigger callbacks (enter/stay/exit) for 3D and 2D, delivered on the main thread; 3D global handlers off the job threads | specced |
 | 9 | `physics-3d` | damping, centre of mass, safe body-type switching, per-collider sensor/material, collider removal, 3D joint limits/motors/springs, cone fix, ragdoll, runtime-sized collider data and world capacity | specced |
-| 10 | `anim-layers` | animation layers with bone masks and blending in the Animation Player | specced |
+| 10 | `anim-layers` | animation layers with bone masks and blending in the Animation Player | impl |
 | 11 | `anim-retarget` | humanoid retargeting of clips between different rigs | specced |
 | 12 | `anim-properties` | clip property channel: active state, colors, material and UI properties | specced |
 | 13 | `lines-trails` | line width (thick lines) and a Trail Renderer | impl |
 | 14 | `shader-globals` | user global shader uniforms (`Shader.setGlobal*`) | specced |
 | 15 | `video-mp4` | MP4/H.264 playback (platform decoders) and streamed/URL video | specced |
-| 16 | `coroutines` | engine-driven coroutines (wait seconds/realtime/frames/until), Invoke-style scaled timers, unscaled delta time, callbacks always on the main Lua thread | specced |
-| 17 | `script-lifecycle` | onEnable/onDisable, enabling scripts, getScript/findObjectOfType, scene-wide find, event unregister | impl |
+| 16 | `coroutines` | engine-driven coroutines (wait seconds/realtime/frames/until), Invoke-style scaled timers, unscaled delta time, callbacks always on the main Lua thread | impl |
+| 17 | `script-lifecycle` | onEnable/onDisable, enabling scripts, getScript/findObjectOfType, scene-wide find, event unregister | review |
 | 18 | `script-data` | JSON encode/decode, UserSettings hasKey/deleteAll/save | merged |
 | 19 | `input` | key/mouse/button down/up edge queries, virtual axes and buttons (Input Manager-style), bound Touch with phases and deltas | review |
 | 20 | `persistence` | DontDestroyOnLoad (persistent objects and their sounds across scene loads) | specced |
@@ -98,3 +98,13 @@ origin/main).
   top of it. `input` and `platform-services` implemented; reviews found 5 and 7 defects, being fixed. Lead product
   calls for platform-services: keep-screen-on default applies on mobile only (desktop/Web only when the game asks);
   iPad `UIRequiresFullScreen` only when orientations are restricted.
+- 2026-10-31: `input` review fixes done (5 defects, regression tests; unit 989). Merged into local `main`
+  (`d29e2a4be`; conflicts in the glossary, test_build.py, Engine.cpp systemPause and TOOLS.md resolved keeping both
+  sides); verification running. `platform-services` review fixes done (7 defects incl. a Windows openURL drive-letter
+  launch and the generated project CMake link). `script-lifecycle` and `physics-2d` implemented, in review.
+  `coroutines` and `anim-layers` started.
+- 2026-10-31: compute: the host (8 cores) ran at load ~28. Rented a Hetzner cpx51 box (16 vCPU, 30 GB, Ubuntu
+  24.04, ~$0.44/h, 48 h limit; the dedicated-core ccx63 was refused by the account's core limit). distcc through
+  the port forward was slower per file than local (12.3 s vs 8.3 s), so the box runs the merge verification
+  instead (`/root/verify.sh <ref> [MCP tests|ALL]`: build, unit suite, MCP, tool budget), leaving the host to the
+  agents. macOS/Windows boxes to compile-check Apple/Windows code are planned in batches at merge time.

@@ -46,7 +46,9 @@ statics, `RegisterEvent`/`RegisterEngineEvent`).
    command system.
 4. MCP (`editor/mcp`, tools in `editor/mcp/tools`): the component/property surfaces agents use to author the
    feature; `docs/mcp/TOOLS.md` is generated (`tools/mcp/gen_tool_docs.py`), the tool definitions have a size
-   budget (`tools/mcp/tool_budget.py`); the agent guide (`editor/mcp/McpInstructions.cpp`, `jasper://guide`) has a
+   budget (`tools/mcp/tool_budget.py`; when new tool text is worth it, raise `TOTAL_LIMIT`/`LIMITS` in
+   `tools/mcp/tests/test_html_ui_tools.py` by the measured amount with a comment, as earlier features did; keep
+   descriptions tight and move detail to the guides); the agent guide (`editor/mcp/McpInstructions.cpp`, `jasper://guide`) has a
    tight budget - put details in `docs/mcp/guide/*.md` instead.
 5. Docs: `docs/mcp/guide/lua-api.md` and the topic guides, `docs/unity-glossary.md` (Unity name -> engine name),
    README feature list when user-visible.
