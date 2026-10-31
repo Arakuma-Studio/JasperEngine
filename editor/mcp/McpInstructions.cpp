@@ -200,8 +200,7 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
   overwritten). Teleport with body.position (and body.rotation / body.angle), velocity with
   body.linearVelocity. One-shot impulses fire once per press, not every held frame.
 - Layer Collision Matrix (project settings, per backend) gates contacts; raycasts take a
-  layer mask.
-- Drop or settle objects: place_with_physics.
+  layer mask. Drop or settle objects: place_with_physics.
 
 ## Prefabs
 - An edit on a prefab instance is an override of that instance only. Push it to the asset
@@ -253,8 +252,7 @@ Edit mode runs no Lua. First read jasper://docs/html-ui.
 
 ## Pitfalls
 - Unsaved scenes are lost when the editor closes; save after each working step.
-- Edits made while playing are lost when play stops (as in Unity): stop before editing
-  the scene for real.
+- Edits made while playing are lost when play stops (as in Unity): stop, then edit.
 - Lua: static functions use a dot (GameObject.instantiate), methods a colon (go:setScale(2)).
 )JE";
 }

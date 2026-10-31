@@ -45,25 +45,25 @@ origin/main).
 | 4 | `safe-area` | safe-area insets on Android/iOS (and desktop simulation), Lua API + change event, native UI safe-area anchoring, HTML UI `env(safe-area-inset-*)`, editor Game view notch simulation | impl |
 | 5 | `ui-multitouch` | pointer ids through native UI and HTML UI events, per-pointer pressed state, on-screen stick/button controls | impl |
 | 6 | `audio-mixer` | mixer buses with volume/mute and filters (low-pass/high-pass, ...), streamed music, PlayOneShot, fades | impl |
-| 7 | `physics-2d` | 2D joint parameters (wheel spring/motor, hinge limits/motor, ...), runtime-sized chain/polygon colliders (no export-only caps), 2D contact stay | review |
-| 8 | `physics-contacts` | per-object collision/trigger callbacks (enter/stay/exit) for 3D and 2D, delivered on the main thread; 3D global handlers off the job threads | impl |
+| 7 | `physics-2d` | 2D joint parameters (wheel spring/motor, hinge limits/motor, ...), runtime-sized chain/polygon colliders (no export-only caps), 2D contact stay | merged |
+| 8 | `physics-contacts` | per-object collision/trigger callbacks (enter/stay/exit) for 3D and 2D, delivered on the main thread; 3D global handlers off the job threads | review |
 | 9 | `physics-3d` | damping, centre of mass, safe body-type switching, per-collider sensor/material, collider removal, 3D joint limits/motors/springs, cone fix, ragdoll, runtime-sized collider data and world capacity | impl |
 | 10 | `anim-layers` | animation layers with bone masks and blending in the Animation Player | impl |
 | 11 | `anim-retarget` | humanoid retargeting of clips between different rigs | specced |
 | 12 | `anim-properties` | clip property channel: active state, colors, material and UI properties | specced |
-| 13 | `lines-trails` | line width (thick lines) and a Trail Renderer | review |
+| 13 | `lines-trails` | line width (thick lines) and a Trail Renderer | merged |
 | 14 | `shader-globals` | user global shader uniforms (`Shader.setGlobal*`) | impl |
 | 15 | `video-mp4` | MP4/H.264 playback (platform decoders) and streamed/URL video | impl |
 | 16 | `coroutines` | engine-driven coroutines (wait seconds/realtime/frames/until), Invoke-style scaled timers, unscaled delta time, callbacks always on the main Lua thread | review |
-| 17 | `script-lifecycle` | onEnable/onDisable, enabling scripts, getScript/findObjectOfType, scene-wide find, event unregister | review |
+| 17 | `script-lifecycle` | onEnable/onDisable, enabling scripts, getScript/findObjectOfType, scene-wide find, event unregister | merged |
 | 18 | `script-data` | JSON encode/decode, UserSettings hasKey/deleteAll/save | merged |
 | 19 | `input` | key/mouse/button down/up edge queries, virtual axes and buttons (Input Manager-style), bound Touch with phases and deltas | merged |
-| 20 | `persistence` | DontDestroyOnLoad (persistent objects and their sounds across scene loads) | impl |
+| 20 | `persistence` | DontDestroyOnLoad (persistent objects and their sounds across scene loads) | review |
 | 21 | `ui-scaling-text` | canvas match-width-or-height scaling, per-character text effects (waves etc.), particles inside UI | impl |
 | 22 | `particles` | start speed along the emitter shape, multi-key curves for every over-lifetime module, Unity ParticleSystem import | impl |
 | 23 | `debug-overlay` | on-device log console and stats/FPS overlay | impl |
 | 24 | `camera-shake` | camera shake component and presets (MilkShake-like), camera follow | impl |
-| 25 | `ui-canvas-group` | Canvas Group for the native UI: group alpha, interactable, blocks raycasts, ignore parent groups; animatable (found by the animation spec: legacy clips animate CanvasGroup alpha) | impl |
+| 25 | `ui-canvas-group` | Canvas Group for the native UI: group alpha, interactable, blocks raycasts, ignore parent groups; animatable (found by the animation spec: legacy clips animate CanvasGroup alpha) | review |
 
 ## Log
 
@@ -134,3 +134,11 @@ origin/main).
   FULL MCP suite after merging main. `script-lifecycle` (7 review defects fixed incl. a process abort on strict
   __index modules and an Inspector use-after-free) merged locally (`6ce992460`) with one ScriptMessages mechanism
   and the guide trimmed to 16369 bytes; pushed together with physics-2d once the full suite is clean.
+- 2026-10-31: **`physics-2d`, `script-lifecycle` and `lines-trails` merged and pushed** (lines-trails' conflicts
+  resolved by the lead: UpdateFlags_Trail moved to bit 47, both HierarchyWindow creation rules, trail clearing
+  before the activation-observer early return, Xcode project resynced). Final merged tree = the tree physics-2d's
+  agent verified on box 2201: unit 1175 passed / 8 skipped; full MCP 849 passed, 18 skipped, only the 10 baseline
+  failures. Agent guide 16319/16384 bytes. In review / fixing: http (merging main), coroutines, platform-services
+  (merging main), ui-canvas-group, physics-contacts (2 high: 2D ignoreCollision on touching bodies, double destroy
+  from an Exit callback), persistence. Box 2204 (Vultr) rebooted under memory pressure; sshd/swap now survive
+  reboots on all boxes.
