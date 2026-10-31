@@ -356,6 +356,22 @@ void destroyNow(Scene* scene, const std::vector<Entity>& roots) {
 
 }
 
+bool ObjectManager::isDestroyPending(Scene* scene, Entity entity) {
+    if (!scene || pendingDestroys.empty()) {
+        return false;
+    }
+    for (int depth = 0; entity != NULL_ENTITY && depth < 4096; depth++) {
+        for (const PendingDestroy& pending : pendingDestroys) {
+            if (pending.scene == scene && pending.entity == entity && pending.timeLeft <= 0.0) {
+                return true;
+            }
+        }
+        const Transform* transform = scene->isEntityCreated(entity) ? scene->findComponent<Transform>(entity) : nullptr;
+        entity = transform ? transform->parent : NULL_ENTITY;
+    }
+    return false;
+}
+
 void ObjectManager::destroyImmediate(Scene* scene, Entity entity) {
     if (!scene || entity == NULL_ENTITY || !scene->isEntityCreated(entity)) {
         return;

@@ -334,6 +334,11 @@ void ScriptRuntime::flushStarts() {
         if (!entry || !state.enabledLatch || !wantsEnabled(scene, entity, *entry, state)) {
             continue;
         }
+        // destroyed before its first frame (Unity: Destroy(gameObject) in Awake, a singleton's
+        // duplicate): it goes at the end of this frame without its start
+        if (ObjectManager::isDestroyPending(scene, entity)) {
+            continue;
+        }
         state.started = true;
         // (coroutines: a Lua start runs as a coroutine through ScriptScheduler::startCoroutine,
         // so it can wait; until then it is a plain call)

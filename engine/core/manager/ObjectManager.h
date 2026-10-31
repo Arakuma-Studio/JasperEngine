@@ -72,6 +72,9 @@ namespace jasperengine {
         static void destroy(Scene* scene, Entity entity, float delay = 0.0f);
         // ...now
         static void destroyImmediate(Scene* scene, Entity entity);
+        // A destroy without delay is pending for the GameObject or one of its parents (it goes
+        // at the end of this frame)
+        static bool isDestroyPending(Scene* scene, Entity entity);
 
         // The scene a prefab goes to when none is given (Unity's active scene): the scene
         // whose scripts are starting (their init() runs before the scene is shown), else

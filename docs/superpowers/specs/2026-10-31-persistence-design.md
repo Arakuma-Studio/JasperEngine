@@ -452,6 +452,6 @@ Decisions taken while implementing (branch `gaps/persistence`, on `gaps/script-l
     remedy); `Engine::getScene()` never returns the persistent scene (it was first while a load
     built its scenes); `dontDestroyOnLoad` on a persistent root calls off its queued move out
     (and `isPersistent` is false while one is queued); `persistSingleton<T>` reads lifecycle
-    states by the entry's instance. Regression tests for each, plus 3D Rigidbody velocity, the
+    states by the entry's instance. A GameObject destroyed (no delay) before its first frame, such as a singleton's duplicate, gets no `start` (`ScriptRuntime::flushStarts` skips it, `ObjectManager::isDestroyPending`; Unity's Destroy in Awake). Regression tests for each, plus 3D Rigidbody velocity, the
     Hierarchy row and selection following (`PlayStartupScenesTest.cpp`) and an MCP test of a
     compiled C++ script in the persistent scene through a load and Play stop.

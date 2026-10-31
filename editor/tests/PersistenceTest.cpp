@@ -978,3 +978,22 @@ TEST_F(PersistenceTest, RigidbodyKeepsVelocity) {
     Engine::removeAllScenes();
 }
 #endif
+
+// a singleton's duplicate (destroyed in its init) gets no start; its onDestroy follows
+TEST_F(PersistenceTest, DuplicateDestroyedInInitGetsNoStart) {
+    writeScript("Single",
+        "local M = {}\n"
+        "function M:init() if GameObject.persistSingleton(self) ~= self then log[#log + 1] = 'dup'; return end; log[#log + 1] = 'first' end\n"
+        "function M:start() log[#log + 1] = 'start' .. self.gameObject.name end\n"
+        "function M:onDestroy() log[#log + 1] = 'destroy' .. self.gameObject.name end\n"
+        "return M\n");
+    Scene* scene = newScene();
+    addScript(scene, entity(scene, "One"), "Single");
+    addScript(scene, entity(scene, "Two"), "Single");
+    Engine::setScene(scene);
+    LuaBinding::initializeLuaScripts(scene);
+    frame();
+    frame();
+    EXPECT_EQ(takeLog(), "first dup startOne destroyTwo");
+    Engine::removeAllScenes();
+}
