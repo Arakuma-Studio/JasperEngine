@@ -100,6 +100,12 @@ LIMITS.update({"bake_vertex_animation": 2000})
 # store: list/get/set/delete/clear); total 106611 with it (106096 before), the limit raised by it
 LIMITS.update({"user_settings": 550})
 TOTAL_LIMIT = 106620
+# anim layers (spec 10, 11.5; tool_budget.py): get_animation 670 -> 815 (mask, controller: +145) and
+# preview_animation 654 -> 721 (over: +67), phase 1 +212 (under its 600); edit_animator 2290 (under its
+# 3500; the op fields are in jasper://docs/animation): +2502 in all. The branch base measured 106687
+# (67 over the line above after the input feature), 109189 with these; the limits raised by them
+LIMITS.update({"get_animation": 830, "preview_animation": 740, "edit_animator": 2400})
+TOTAL_LIMIT = 106687 + 2502
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
