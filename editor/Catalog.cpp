@@ -4816,6 +4816,7 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     }
     if (registry->findComponent<TrailRendererComponent>(entity)){
         ret.push_back(ComponentType::TrailRendererComponent);
+    }
     if (registry->findComponent<SafeAreaComponent>(entity)){
         ret.push_back(ComponentType::SafeAreaComponent);
     }
