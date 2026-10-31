@@ -16,7 +16,7 @@ return Ball
 """
 
 COIN = """local Coin = {}
-function Coin:onTriggerEnter2D(other) print('coin trigger ' .. other.gameObject.name .. ' ' .. tostring(other.isTrigger)) end
+function Coin:onTriggerEnter2D(other) print('coin trigger ' .. other.gameObject.name .. ' ' .. other.index .. ' ' .. tostring(other.isTrigger)) end
 return Coin
 """
 
@@ -75,7 +75,8 @@ async def test_sensor_trigger_2d_and_receiver(ed: Editor):
     await ed.call("play", action="start", scene=sid, auto_pause=True, fixed_fps=60)
     try:
         await ed.call("wait", frames=90)
-        ed.check_eq(lines(await ed.console_since(), "coin trigger"), ["coin trigger Car false"], "the coin's onTriggerEnter2D once")
+        ed.check_eq(sorted(lines(await ed.console_since(), "coin trigger")), ["coin trigger Car 0 false", "coin trigger Car 1 false"],
+                    "the coin's onTriggerEnter2D once per car collider (one callback per collider pair)")
     finally:
         await ed.call("play", action="stop", auto_pause=False, fixed_fps=0)
     await ed.check_alive()

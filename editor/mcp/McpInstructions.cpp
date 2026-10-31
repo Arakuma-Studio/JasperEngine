@@ -188,18 +188,17 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
 ## Physics
 - Add a body and its collider to the SAME GameObject in one step (edit_colliders with
   body_type + add). A Rigidbody without a Collider does not collide. Dynamic: actors;
-  static: floors, level geometry; kinematic: scripted movers.
+  static: floors, levels; kinematic: scripted movers.
 - Collider sizes are mesh-local, scaled by the GameObject's scale: never pre-scale them.
   Omit sizes to fit the mesh bounds (never guess).
-- Mass = collider volume/area x density (default 1000 in 3D, 1 in 2D); a 2D body may set it
-  (useAutoMass false). Size forces as mass x acceleration; if huge, lower density.
+- Mass = collider volume/area x density (1000 in 3D, 1 in 2D; a 2D body may set it). Size
+  forces as mass x acceleration; if huge, lower density.
 - 2D joints (set_joint: Unity's set, motors, springs, limits, breaking), any 2D polygon
   (concave ok): jasper://docs/physics.
-- Continuous forces and torques go in onFixedUpdate, never onUpdate, and are NOT multiplied by
-  deltatime. The 3D and 2D APIs differ (2D calls take a wake flag): table in jasper://docs/physics.
-- Never move a body by writing its GameObject's transform from onFixedUpdate (silently
-  overwritten). Teleport with body.position (and body.rotation / body.angle), velocity with
-  body.linearVelocity. One-shot impulses fire once per press, not every held frame.
+- Continuous forces and torques go in onFixedUpdate (not onUpdate), NOT multiplied by deltatime.
+  The 3D and 2D APIs differ (2D calls take a wake flag): jasper://docs/physics.
+- Never write a body's transform in onFixedUpdate (overwritten): teleport with body.position
+  (rotation / angle), set body.linearVelocity. One-shot impulses: once per press, not per frame.
 - Collisions: define onCollisionEnter / onTriggerEnter(2D) on the script; filter with the Layer
   Collision Matrix or Physics.ignoreCollision; raycasts take a layer mask.
 - Drop or settle objects: place_with_physics.
