@@ -15,6 +15,11 @@
 + (void)focusGame:(BOOL)focused;
 + (void)lowMemory;
 + (void)orientationChanged;
+#if TARGET_OS_IPHONE
+// Screen.safeArea: the view's safeAreaInsets in points, with the drawable pixels per point
++ (void)safeAreaChangedTop:(CGFloat)top left:(CGFloat)left bottom:(CGFloat)bottom right:(CGFloat)right
+                    scaleX:(CGFloat)scaleX scaleY:(CGFloat)scaleY;
+#endif
 // Engine.targetFrameRate / vSyncCount as the view's preferredFramesPerSecond
 + (void)applyFramePacing;
 #if TARGET_OS_IPHONE

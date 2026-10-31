@@ -41,6 +41,9 @@
 
     _view.delegate = _renderer;
 
+    // Screen.safeArea from the start (zero until the view is in a window; the change follows)
+    [self updateSafeArea];
+
     // Input.deviceOrientation reads UIDevice.orientation
     [[UIDevice currentDevice] beginGeneratingDeviceOrientationNotifications];
 
@@ -120,12 +123,34 @@
     }
 }
 
+// Screen.safeArea: UIKit's safe area of the view (the notch, the Dynamic Island, rounded
+// corners, the home indicator), in drawable pixels
+- (void)viewSafeAreaInsetsDidChange
+{
+    [super viewSafeAreaInsetsDidChange];
+    [self updateSafeArea];
+}
+
+- (void)updateSafeArea
+{
+    if (!_renderer) return;
+    UIEdgeInsets insets = self.view.safeAreaInsets;
+    CGSize bounds = self.view.bounds.size;
+    CGSize drawable = _view.drawableSize;
+    CGFloat scale = self.view.contentScaleFactor;
+    CGFloat scaleX = (bounds.width > 0 && drawable.width > 0) ? drawable.width / bounds.width : scale;
+    CGFloat scaleY = (bounds.height > 0 && drawable.height > 0) ? drawable.height / bounds.height : scale;
+    [Renderer safeAreaChangedTop:insets.top left:insets.left bottom:insets.bottom right:insets.right scaleX:scaleX scaleY:scaleY];
+}
+
 // onCanvasChanged comes with the new drawable size; onOrientationChanged once the rotation ended
 - (void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)coordinator
 {
     [super viewWillTransitionToSize:size withTransitionCoordinator:coordinator];
     [coordinator animateAlongsideTransition:nil completion:^(id<UIViewControllerTransitionCoordinatorContext> context) {
         [Renderer orientationChanged];
+        // the drawable has its new size: the insets in its pixels again
+        [self updateSafeArea];
     }];
 }
 

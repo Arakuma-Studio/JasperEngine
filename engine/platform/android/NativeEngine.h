@@ -81,6 +81,9 @@ struct JniData{
     // the volatile fields its listeners keep (display rotation, device orientation degrees)
     jfieldID platformDisplayRotation;
     jfieldID platformDeviceDegrees;
+    // Screen.safeArea: where the game's view lies in the window and the cutout rectangles
+    jfieldID platformSafeAreaRevision;
+    jfieldID platformSafeAreaInfo;
 };
 
 class NativeEngine {
@@ -111,6 +114,16 @@ private:
     // Display.getRotation() in degrees as last read, and whether rotation 0 is portrait
     int mDisplayRotation;
     bool mNaturalPortrait;
+
+    // Screen.safeArea (safe-area spec 6.5): MainActivity.isFullscreenGame() (read once; a
+    // windowed game includes the system bars), and what the last push was computed from
+    bool mFullscreenGame;
+    bool mSafeAreaKnown;
+    ARect mLastCutoutInsets;
+    ARect mLastBarInsets;
+    int mLastSafeAreaRevision;
+    int mLastSafeAreaWidth;
+    int mLastSafeAreaHeight;
 
     // Engine.targetFrameRate where Swappy is not enabled: the EGL swap interval and a limiter
     // (0: none) after each swap
@@ -150,6 +163,10 @@ private:
     void setupPlatformJNI(JNIEnv* env);
     // reads JasperPlatform.displayRotation; true when it changed since the last read
     bool refreshDisplayRotation();
+    // GameActivity's display cutout insets (and the system bars when windowed), relative to the
+    // surface, to Screen when they changed: on APP_CMD_WINDOW_INSETS_CHANGED and every frame
+    // (cheap; the surface size and JasperPlatform's layout info can change without the command)
+    void updateSafeArea();
 
 public:
     NativeEngine(struct android_app *app);

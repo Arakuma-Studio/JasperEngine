@@ -100,6 +100,16 @@ static CGSize _screenSize;
     jasperengine::Engine::systemOrientationChanged();
 }
 
+#if TARGET_OS_IPHONE
++ (void)safeAreaChangedTop:(CGFloat)top left:(CGFloat)left bottom:(CGFloat)bottom right:(CGFloat)right
+                    scaleX:(CGFloat)scaleX scaleY:(CGFloat)scaleY {
+    // the engine's screen is the drawable (pixels); the home indicator's inset stays even with
+    // prefersHomeIndicatorAutoHidden (iOS keeps it); iOS gives no cutout rectangles
+    jasperengine::Screen::setPlatformSafeArea(jasperengine::EdgeInsets((float)std::round(left * scaleX), (float)std::round(top * scaleY),
+                                                                       (float)std::round(right * scaleX), (float)std::round(bottom * scaleY)));
+}
+#endif
+
 + (void)applyFramePacing {
     if (!_view) return;
     const jasperengine::FramePacing& pacing = jasperengine::Engine::getFramePacing();
