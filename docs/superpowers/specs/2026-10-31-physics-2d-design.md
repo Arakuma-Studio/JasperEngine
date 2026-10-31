@@ -708,3 +708,13 @@ physics-contacts), where the spec was silent, ambiguous or contradicted itself:
     dropped there; Live distance-joint edits only call Box2D's length setters when the length
     changes (they clear the joint's warm start). Cloning gives a collider's own material copy a
     copy of its own.
+24. **Verification** (Linux, this branch): `jasperengine-editor-tests` 979 passed, 8 skipped (the
+    known skips), 0 failed (43 new: Physics2DLegacy, Physics2DJoints, Physics2DColliders,
+    PolygonDecomposition2D); MCP `test_physics_2d.py` plus `test_stubs`, `test_docs`, `test_world`,
+    `test_scene`, `test_play*`, `test_prefab`, `test_place*`, `test_water`, `test_ui_anchors`,
+    `test_runtime_regressions`, `test_html_ui_tools` (the budget: 149 tools, 106029 characters)
+    123 passed, 7 skipped (no lua-language-server / clangd, slow C++ build); with
+    `JASPER_SLOW_BUILD=1`, `test_exported_player_runs_the_car` built a Desktop player and the car
+    rested there exactly as in Play (T3 on both). Lua stubs: 0 unresolved. Android (NDK 28, arm64)
+    and Web (emscripten) compile checks of every changed engine source (`-fsyntax-only` with the
+    platform's defines; a full Android configure needs the Gradle game-activity prefab): clean.
