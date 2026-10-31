@@ -2750,20 +2750,19 @@ void registerProjectTools(McpRegistry& registry) {
         tool.name = "native_plugins";
         tool.title = "Native Plugins";
         tool.description =
-            "plugins/native (Lua Native.call/callAsync to Java/Kotlin, ObjC/Swift, JS, C++). list: plugins, methods, Lua mocks, "
-            "native settings. create: scaffold one plugin for the platforms plus its Lua mock (lua/native_mocks); refuses to "
-            "overwrite. SDK deps: set_project_settings android.gradle_*, ios.cocoapods... Guide: jasper://docs/native-bridge.";
+            "plugins/native for Lua's Native.call (Java/Kotlin, ObjC/Swift, JS, C++). list: plugins, methods, Lua mocks, "
+            "native settings. create: one plugin's files for the platforms plus its Lua mock; refuses to overwrite. SDK "
+            "settings: set_project_settings android.gradle_*, ios.cocoapods... jasper://docs/native-bridge.";
         tool.inputSchema = object({
             {"action", stringEnum("", {"list", "create"})},
-            {"name", string("Plugin name (create), e.g. Device.")},
-            {"platforms", array(stringEnum("", {"android", "ios", "macos", "web", "cpp"}), "Default android, ios, web, cpp.")},
+            {"name", string("e.g. Device")},
+            {"platforms", array(stringEnum("", {"android", "ios", "macos", "web", "cpp"}), "default android, ios, web, cpp")},
             {"android_language", stringEnum("", {"java", "kotlin"})},
             {"apple_language", stringEnum("", {"objc", "swift"})},
-            {"package", string("Java/Kotlin package, default com.example.plugins.")},
+            {"package", string("default com.example.plugins")},
             {"methods", array(object({{"name", string("")}, {"async", boolean("")}}, {"name"}), "")},
             {"overwrite", boolean("")}
         }, {"action"});
-        tool.allowedWhilePlaying = true;
         tool.handler = nativePluginsTool;
         registry.addTool(std::move(tool));
     }

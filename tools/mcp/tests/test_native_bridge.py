@@ -70,6 +70,8 @@ async def lua(ed: Editor, code: str):
 
 async def test_native_plugins_create_and_list(ed: Editor):
     ed.require_tools("native_plugins")
+    import shutil
+    shutil.rmtree(ed.project / "plugins", ignore_errors=True)
     empty = await ed.call("native_plugins", action="list")
     ed.check_eq((empty["exists"], empty["plugins"], empty["mocks"]), (False, [], []))
 
@@ -78,7 +80,7 @@ async def test_native_plugins_create_and_list(ed: Editor):
     paths = [f["path"] for f in made["files"]]
     ed.check_eq(paths, ["plugins/native/android/java/com/test/plugins/Device.java", "plugins/native/apple/Device.h",
                         "plugins/native/apple/Device.m", "plugins/native/web/device.js", "plugins/native/cpp/DevicePlugin.cpp",
-                        "lua/native_mocks/Device.lua"])
+                        "native_mocks/Device.lua"])   # the Lua folder of a new project is its root
     for path in paths:
         ed.check((ed.project / path).is_file(), f"{path} written")
     ed.check_in("public static void login(final NativeCall call)", (ed.project / paths[0]).read_text())
@@ -111,7 +113,7 @@ async def test_native_plugins_create_and_list(ed: Editor):
     import shutil
     shutil.rmtree(ed.project / "plugins")
     for mock in ("Device", "Store"):
-        (ed.project / "lua" / "native_mocks" / f"{mock}.lua").unlink()
+        (ed.project / "native_mocks" / f"{mock}.lua").unlink()
 
 
 async def test_native_settings_keys(ed: Editor):
@@ -146,9 +148,10 @@ async def test_native_settings_keys(ed: Editor):
     ed.check_in("Podfile", json.dumps(described))
     await ed.call("save_project")
     project_yaml = (ed.project / "project.yaml").read_text()
-    for needle in ("gradleDependencies:", "plistEntries:", "cocoapods:", "swiftPackages:", "scriptUrls:", "deploymentTarget: \"16.0\"",
-                   "string: \"15\""):
-        ed.check_in(needle.replace('"', '') if "deploymentTarget" in needle else needle, project_yaml.replace("'", '"'))
+    # a string that reads like a number is written {string: ...}
+    for needle in ("gradleDependencies:", "plistEntries:", "cocoapods:", "swiftPackages:", "scriptUrls:", "deploymentTarget:",
+                   "Numeric:\n      string: "):
+        ed.check_in(needle, project_yaml)
     listed = await ed.call("native_plugins", action="list")
     ed.check_eq(listed["settings"]["web.script_urls"], ["https://sdk.example.com/sdk.js"])
 
@@ -157,8 +160,8 @@ async def test_play_cpp_plugin_and_mock(ed: Editor):
     ed.require_tools("play", "wait", "eval_lua", "create_script")
     (ed.project / "plugins" / "native" / "cpp").mkdir(parents=True, exist_ok=True)
     (ed.project / "plugins" / "native" / "cpp" / "CalcPlugin.cpp").write_text(CPP_PLUGIN)
-    (ed.project / "lua" / "native_mocks").mkdir(parents=True, exist_ok=True)
-    (ed.project / "lua" / "native_mocks" / "Device.lua").write_text(MOCK)
+    (ed.project / "native_mocks").mkdir(parents=True, exist_ok=True)
+    (ed.project / "native_mocks" / "Device.lua").write_text(MOCK)
     made = await ed.call("create_scene", name="NativeMain", type="2D", path="scenes/NativeMain")
     scene = made["scene"]["id"]
     ent = await ed.call("create_entity", scene=scene, type="empty", name="Probe")
@@ -210,6 +213,9 @@ def digest(paths: list[Path]) -> dict[str, str]:
 
 async def test_source_export(ed: Editor):
     native = ed.project / "plugins" / "native"
+    import shutil
+    for folder in ("android", "apple", "ios", "macos", "web"):
+        shutil.rmtree(native / folder, ignore_errors=True)
     (native / "android" / "java" / "com" / "t").mkdir(parents=True, exist_ok=True)
     (native / "android" / "java" / "com" / "t" / "Device.java").write_text(
         "package com.t;\n\npublic class Device {\n    public static int getCode() { return 7; }\n}\n")
