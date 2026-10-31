@@ -135,7 +135,7 @@ project's (created on the first edit). Groups are named by name (or id); effects
 | `remove_effect` | `group`, `index` or `type` |
 | `expose` | `name`, `group`, then `volume: true` or `param` (+ `effect`: index or type, when two effects have it), `remember` |
 | `unexpose` / `set_exposed` | `name` / `name`, `remember`, `new_name` |
-| `add_snapshot` | `name`, `values` (optional, see below), `start` (default: the first snapshot becomes the start) |
+| `add_snapshot` | `name`, `values` (optional, see below), `start` (default: the first snapshot becomes the start), `live: true` (in Play: the values heard now instead of the faders) |
 | `set_snapshot` | `name`, `values`, `capture: true` (every current value), `new_name` |
 | `remove_snapshot` / `set_start_snapshot` | `name` (`set_start_snapshot` with `name: ""` clears it) |
 | `set_mixer` | `update_mode`: `"scaled"` or `"unscaled"` |

@@ -906,12 +906,18 @@ void AudioSystem::update(double dt){
             worldPosition = transform.worldPosition;
         }
 
-        if (audio.filename.empty()) {
-            if (audio.loaded || audio.handle != 0 || audio.sample) {
-                destroySound(audio);
-            }
-            audio.pendingOneShots.clear();
-            continue;
+        // no clip: nothing of its own plays (its one-shots still do, Unity's PlayOneShot needs no clip)
+        const bool hasClip = !audio.filename.empty();
+        if (!hasClip && (audio.loaded || audio.handle != 0 || audio.sample)) {
+            if (audio.handle != 0) stopVoice(audio.handle);
+            audio.handle = 0;
+            audio.playingTime = 0;
+            releaseSample(audio);
+        }
+        if (!hasClip) {
+            if (audio.state != AudioSourceState::Stopped) audio.state = AudioSourceState::Stopped;
+            audio.startTrigger = false;
+            audio.pauseTrigger = false;
         }
 
         // Unity: disabling an Audio Source or its GameObject stops it and a play request
@@ -964,7 +970,7 @@ void AudioSystem::update(double dt){
 
         bool pendingStart = audio.startTrigger || (audio.state == AudioSourceState::Playing && audio.handle == 0);
 
-        if (audio.state == AudioSourceState::Playing || pendingStart || !audio.pendingOneShots.empty()){
+        if (hasClip && (audio.state == AudioSourceState::Playing || pendingStart)){
             if (!audio.loaded){
                 loadSound(audio);
             }
@@ -990,8 +996,10 @@ void AudioSystem::update(double dt){
             }
             audio.state = AudioSourceState::Stopped;
         }
+        // after the stop: a stop() before the first start keeps it stopped
+        pendingStart = audio.startTrigger || (audio.state == AudioSourceState::Playing && audio.handle == 0);
 
-        if (audio.loaded){
+        if (hasClip && audio.loaded){
             if (pendingStart){
                 const bool resume = audio.state == AudioSourceState::Paused && audio.handle != 0 && audio.startTrigger;
                 audio.startTrigger = false;
@@ -1022,9 +1030,8 @@ void AudioSystem::update(double dt){
                     }
                 }
             }
-
-            startPendingOneShots(audio, use3DAudio, worldPosition, unscaledDt);
         }
+        startPendingOneShots(audio, use3DAudio, worldPosition, unscaledDt);
 
         // the group changed (the mixer was edited, outputGroup set): the voices move to its bus
         if (inited && groupBefore != audio.resolvedGroup) {

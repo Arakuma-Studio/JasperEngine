@@ -1112,7 +1112,8 @@ void AudioMixer::onAudioInit(){
                 effect.applied.clear();
             }
         }
-        syncGraph(s.def, true);
+        // the runtime switches (a script's mute before the first sound) stay as they are
+        syncGraph(s.def, false);
     } else {
         updateVoiceLimit();
     }

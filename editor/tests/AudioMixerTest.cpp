@@ -393,7 +393,7 @@ TEST_F(AudioFixture, MetersVolumesMuteAndLowPass) {
     EXPECT_LT(AudioMixer::getMeterDb("Music"), open - 12.0f);
     // and an exposed cutoff set by a script opens it again
     def = AudioMixer::getDef();
-    def.exposed = {{"cut", "0000beef/cutoff", false}};
+    def.exposed.push_back({"cut", "0000beef/cutoff", false});
     AudioMixer::apply(def);
     ASSERT_TRUE(AudioMixer::setFloat("cut", 22000.0f));
     run(0.2);

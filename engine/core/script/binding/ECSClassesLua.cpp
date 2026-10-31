@@ -49,6 +49,8 @@ using namespace jasperengine;
 // table results read and push the Lua stack themselves
 namespace {
 
+    struct LuaAudioListener {};
+
     // opts.unscaled of an optional table at `index`
     bool luaOptUnscaled(lua_State* L, int index){
         if (!lua_istable(L, index)) return false;
@@ -56,14 +58,6 @@ namespace {
         const bool unscaled = lua_toboolean(L, -1) != 0;
         lua_pop(L, 1);
         return unscaled;
-    }
-
-    bool luaOptBool(lua_State* L, int index, const char* field){
-        if (!lua_istable(L, index)) return false;
-        lua_getfield(L, index, field);
-        const bool value = lua_toboolean(L, -1) != 0;
-        lua_pop(L, 1);
-        return value;
     }
 
     void luaPushStrings(lua_State* L, const std::vector<std::string>& values){
@@ -356,10 +350,10 @@ void LuaBinding::registerECSClasses(lua_State *L){
     // Unity AudioListener: the pause of every source but the ignoreListenerPause ones, and the
     // volume of everything (AudioSystem.globalVolume)
     luabridge::getGlobalNamespace(L)
-        .beginNamespace("AudioListener")
-        .addProperty("pause", &AudioSystem::isListenerPaused, &AudioSystem::setListenerPaused)
-        .addProperty("volume", &AudioSystem::getGlobalVolume, &AudioSystem::setGlobalVolume)
-        .endNamespace();
+        .beginClass<LuaAudioListener>("AudioListener")
+        .addStaticProperty("pause", &AudioSystem::isListenerPaused, &AudioSystem::setListenerPaused)
+        .addStaticProperty("volume", &AudioSystem::getGlobalVolume, &AudioSystem::setGlobalVolume)
+        .endClass();
 
     luabridge::getGlobalNamespace(L)
         .beginClass<AudioMixerEffect>("AudioMixerEffect")
@@ -388,26 +382,25 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addFunction("getMeter", &AudioMixerGroup::getMeter)
         .endClass();
 
-    // Unity AudioMixer (the project's mixer, Project Settings > Audio)
     luabridge::getGlobalNamespace(L)
-        .beginNamespace("AudioMixer")
-        .addFunction("setFloat", &luaMixerSetFloat)
-        .addFunction("getFloat", &luaMixerGetFloat)
-        .addFunction("clearFloat", &AudioMixer::clearFloat)
-        .addFunction("hasParameter", &AudioMixer::hasParameter)
-        .addFunction("getParameterNames", &luaMixerGetParameterNames)
-        .addFunction("transitionTo", &luaMixerTransitionTo)
-        .addFunction("transitionToSnapshots", &luaMixerTransitionToSnapshots)
-        .addFunction("getSnapshotNames", &luaMixerGetSnapshotNames)
-        .addFunction("getCurrentSnapshot", &AudioMixer::getCurrentSnapshot)
-        .addFunction("getGroup", &luaMixerGetGroup)
-        .addFunction("getGroupNames", &luaMixerGetGroupNames)
-        .addFunction("getMeter", &AudioMixer::getMeterDb)
-        .addFunction("saveParameters", &AudioMixer::saveRemembered)
-        .addFunction("loadParameters", &AudioMixer::loadRemembered)
-        .addFunction("dbToLinear", &AudioMixer::dbToLinear)
-        .addFunction("linearToDb", &AudioMixer::linearToDb)
-        .endNamespace();
+        .beginClass<AudioMixer>("AudioMixer")
+        .addStaticFunction("setFloat", &luaMixerSetFloat)
+        .addStaticFunction("getFloat", &luaMixerGetFloat)
+        .addStaticFunction("clearFloat", &AudioMixer::clearFloat)
+        .addStaticFunction("hasParameter", &AudioMixer::hasParameter)
+        .addStaticFunction("getParameterNames", &luaMixerGetParameterNames)
+        .addStaticFunction("transitionTo", &luaMixerTransitionTo)
+        .addStaticFunction("transitionToSnapshots", &luaMixerTransitionToSnapshots)
+        .addStaticFunction("getSnapshotNames", &luaMixerGetSnapshotNames)
+        .addStaticFunction("getCurrentSnapshot", &AudioMixer::getCurrentSnapshot)
+        .addStaticFunction("getGroup", &luaMixerGetGroup)
+        .addStaticFunction("getGroupNames", &luaMixerGetGroupNames)
+        .addStaticFunction("getMeter", &AudioMixer::getMeterDb)
+        .addStaticFunction("saveParameters", &AudioMixer::saveRemembered)
+        .addStaticFunction("loadParameters", &AudioMixer::loadRemembered)
+        .addStaticFunction("dbToLinear", &AudioMixer::dbToLinear)
+        .addStaticFunction("linearToDb", &AudioMixer::linearToDb)
+        .endClass();
 
     luabridge::getGlobalNamespace(L)
         .beginClass<MeshSystem>("MeshSystem")
