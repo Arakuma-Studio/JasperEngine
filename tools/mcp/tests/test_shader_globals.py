@@ -95,7 +95,12 @@ async def test_setup(ed: Editor):
                      "get_scene_tree", "get_project_settings", "set_project_settings", "play", "eval_lua", "wait",
                      "check_shader", "get_shader_uniforms", "attach_script", "undo", "set_transform")
     await ed.call("create_scene", name="Globals", path=SCENE)
-    tree = await ed.call("get_scene_tree", format="json")
+    # the fixture has no scene: the untitled one the editor opened goes (an export would list it)
+    status = await ed.call("list_scenes")
+    for scene in find_key(status, "scenes") or []:
+        if isinstance(scene, dict) and scene.get("name") != "Globals":
+            await ed.call("close_scene", scene=str(scene["id"]), unsaved="discard")
+    tree = await ed.call("get_scene_tree", scene=SCENE, format="json")
 
     def walk(nodes):
         for node in nodes or []:
