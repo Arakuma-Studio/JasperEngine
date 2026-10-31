@@ -772,6 +772,12 @@ for why), and the software-rendered golden and shader tests make up the rest
 (`test_materials_pbr`, `test_html_ui_examples`, `test_shader_library`, `test_post_fx_*`,
 `test_reflection`, `test_shadows`).
 
+The compiled tests then lost their fixed 3 and 2 build jobs. They build with the container's CPU
+allowance (`harness.build_jobs()`: `JOBS`, else the `--cpus` quota from cgroup `cpu.max`, 8 on D),
+because Docker's cap is what shares the host. Re-run alone on D, at `-j 2` and load 9 to 23
+(165c2b31e): `test_build.py` 2,675 s to 1,515 s (its compile 1,216 s),
+`test_html_ui_effects_export.py` 1,638 s to 1,139 s, `test_busy.py` unchanged; 17 passed.
+
 The compile path's missing executable is fixed: the Compile fallback holds its finish until the
 content manifest and the executable are set. S30 made the same fix (9d854d51e, `holdFinish`),
 which this branch now uses.
