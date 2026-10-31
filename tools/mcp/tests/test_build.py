@@ -251,6 +251,78 @@ async def test_admob_export(ed: Editor):
     check_left_out("disabled again")
 
 
+async def test_http_export(ed: Editor):
+    """The HTTP client's export surfaces (http spec 6.7, 9): Android INTERNET once when exported Lua
+    uses Http (Internet Access auto), never without it, always with require; the cleartext policy
+    in network_security_config.xml and App Transport Security in both Info.plists follow
+    player.allow_insecure_http; the NSURLSession backend is compiled by both Apple engine targets."""
+    out = ed.scratch.root / "export-http"
+    app = out / "workspaces" / "androidstudio" / "app" / "src" / "main"
+    manifest = app / "AndroidManifest.xml"
+    security = app / "res" / "xml" / "network_security_config.xml"
+    plists = [out / "workspaces" / "xcode" / "ios" / "Info.plist", out / "workspaces" / "xcode" / "macos" / "Info.plist"]
+    script = ed.project / "lua" / "net" / "analytics.lua"
+    internet = '<uses-permission android:name="android.permission.INTERNET" />'
+
+    async def export() -> str:
+        r = await ed.call("build_project", mode="source", output_dir=str(out), overwrite=True, timeout_seconds=600)
+        ed.check_eq(r["status"], "succeeded", f"{r}")
+        return Path(r["result"]["log_file"]).read_text()
+
+    script.parent.mkdir(parents=True, exist_ok=True)
+    script.write_text('local M = {}\nfunction M.send(id)\n    Http.post("https://backend.example.com/Interact", {playerID = id})\nend\nreturn M\n')
+    try:
+        log = await export()
+        m = manifest.read_text()
+        ed.check_eq(m.count(internet), 1, f"INTERNET once: {m}")
+        ed.check_in('android:networkSecurityConfig="@xml/network_security_config"', m)
+        ed.check_in("Android: added INTERNET (Http used in ", log)
+        ed.check_in("analytics.lua", log)
+        x = security.read_text()
+        ed.check_in('<base-config cleartextTrafficPermitted="false"/>', x)
+        ed.check_in('<domain includeSubdomains="false">localhost</domain>', x)
+        ed.check_in('<domain includeSubdomains="false">127.0.0.1</domain>', x)
+        for plist in plists:
+            text = plist.read_text()
+            ed.check_in("<key>NSAppTransportSecurity</key>\n\t<dict>\n\t\t<key>NSAllowsLocalNetworking</key>\n\t\t<true/>\n\t</dict>", text)
+            ed.check_eq(text.count("NSAppTransportSecurity"), 1, f"{plist}: one ATS dictionary")
+
+        # ticked by hand as well: still once
+        await ed.call("set_project_settings", values={"android.permissions": ["internet", "vibrate"]})
+        await export()
+        ed.check_eq(manifest.read_text().count(internet), 1, "INTERNET once with the permission ticked too")
+        await ed.call("set_project_settings", values={"android.permissions": []})
+    finally:
+        script.unlink(missing_ok=True)
+
+    # no Http anywhere: auto adds nothing, require adds it
+    await export()
+    ed.check(internet not in manifest.read_text(), "no INTERNET without Http (auto)")
+    await ed.call("set_project_settings", values={"android.internet_access": "require", "player.allow_insecure_http": True})
+    try:
+        await export()
+        ed.check_eq(manifest.read_text().count(internet), 1, "INTERNET with require")
+        ed.check_in('<base-config cleartextTrafficPermitted="true"/>', security.read_text())
+        for plist in plists:
+            text = plist.read_text()
+            ed.check_in("<key>NSAllowsArbitraryLoads</key>\n\t\t<true/>", text)
+            ed.check("NSAllowsLocalNetworking" not in text, f"{plist}: Apple ignores NSAllowsArbitraryLoads next to it")
+            ed.check_eq(text.count("NSAppTransportSecurity"), 1, f"{plist}: still one ATS dictionary")
+        main = (out / "project" / "main.cpp").read_text()
+        ed.check_in("Http::setInsecureHttpAllowed(true);", main)
+    finally:
+        await ed.call("set_project_settings", values={"android.internet_access": "auto", "player.allow_insecure_http": False})
+    await export()
+    ed.check_in("Http::setInsecureHttpAllowed(false);", (out / "project" / "main.cpp").read_text())
+
+    root = pbxproj.parse((out / "workspaces" / "xcode" / "JasperEngine.xcodeproj" / "project.pbxproj").read_text(encoding="utf-8"))
+    for name in ("jasperengine-ios", "jasperengine-macos"):
+        compiled = pbxproj.target_sources(root, name)
+        ed.check_eq(compiled.count("HttpBackendApple.mm"), 1, f"{name} compiles the NSURLSession backend")
+        ed.check_eq(compiled.count("Http.cpp"), 1, f"{name} compiles the HTTP client")
+        ed.check_eq(compiled.count("HttpBackendCurl.cpp"), 0, f"{name} leaves the libcurl backend out")
+
+
 async def test_cancel_desktop_build(ed: Editor):
     out = ed.scratch.root / "export-cancel"
     r = await ed.call("build_project", mode="desktop", output_dir=str(out), wait=False, build_jobs=JOBS)
