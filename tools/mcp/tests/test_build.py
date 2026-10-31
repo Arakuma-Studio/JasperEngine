@@ -6,8 +6,8 @@ targets: checked by parsing project.pbxproj, no Xcode needed), cancels a Desktop
 handling with stand-in "players" (shell scripts), including the crash report a player names (S28).
 
 The real players are slow: set JASPER_SLOW_BUILD=1 to run them. The full Desktop build
-(test_desktop_build_and_run: compiles the engine with the game from source, cmake + g++, ~20-60 min
-at 3 jobs) is this suite's check of the compile path (method compile, and its compile errors as
+(test_desktop_build_and_run: compiles the engine with the game from source, cmake + g++, with
+the container's CPUs, harness.build_jobs) is this suite's check of the compile path (method compile, and its compile errors as
 file:line). The Development Build's crash report needs a real player, not a compiled one: it is
 built with the prebuilt Development runtime of the run's shared build cache (tools/mcp/build_cache.py,
 docs/testing.md "Compiled and prebuilt game builds").
@@ -22,12 +22,14 @@ from pathlib import Path
 
 import build_cache
 import pbxproj
-from harness import Editor, skip
+from harness import Editor, build_jobs, skip
 
 CI = True
 EDITOR = {"create": True, "name": "Build Test"}
 TIMEOUT = int(os.environ.get("JASPER_BUILD_TIMEOUT", "7200"))
-JOBS = 3   # the host is shared: never more
+# the container's CPU allowance (harness.build_jobs: JOBS, else docker's --cpus quota): Docker's
+# cap is what shares the host, so the compile needs no cap of its own
+JOBS = build_jobs()
 # the runtime test_development_build_crash_report builds with (the runner starts building it)
 PREBUILT_PLAYERS = ["glcore-development"]
 

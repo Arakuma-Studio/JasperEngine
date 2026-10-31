@@ -13,14 +13,16 @@ import shutil
 import subprocess
 import time
 
-from harness import Editor, skip
+from harness import Editor, build_jobs, skip
 import ui_input
 
 # the harness owns the Xvfb so xdotool can press keys in the editor window
 CI = True
 EDITOR = {"create": True, "name": "Busy Test", "xvfb": "harness"}
 TIMEOUT = 1800
-JOBS = 3
+# the container's CPU allowance (harness.build_jobs: JOBS, else docker's --cpus quota): Docker's
+# cap is what shares the host, so the compile needs no cap of its own
+JOBS = build_jobs()
 
 _PREPARED = None
 

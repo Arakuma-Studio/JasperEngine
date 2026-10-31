@@ -30,14 +30,16 @@ from pathlib import Path
 import yaml
 
 import harness
-from harness import Editor, skip, REPO
+from harness import Editor, build_jobs, skip, REPO
 from htmlui_pixels import decode_png, near
 
 EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
 CI = True
 
 TIMEOUT = int(os.environ.get("JASPER_BUILD_TIMEOUT", "7200"))
-JOBS = 2
+# the container's CPU allowance (harness.build_jobs: JOBS, else docker's --cpus quota): Docker's
+# cap is what shares the host, so the compile needs no cap of its own
+JOBS = build_jobs()
 
 S: dict = {}
 _copies: list[tempfile.TemporaryDirectory] = []

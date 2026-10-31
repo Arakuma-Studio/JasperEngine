@@ -212,13 +212,10 @@ def cache_key(inputs: dict) -> str:
 def _jobs() -> int:
     if os.environ.get("JASPER_MCP_BUILD_JOBS"):
         return max(1, int(os.environ["JASPER_MCP_BUILD_JOBS"]))
-    cpus = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 2)
-    with contextlib.suppress(OSError, ValueError):   # a container's CPU quota (docker --cpus)
-        quota, period = Path("/sys/fs/cgroup/cpu.max").read_text().split()
-        if quota != "max":
-            cpus = min(cpus, max(1, int(quota) // int(period)))
-    # the run's test editors keep two CPUs
-    return max(2, cpus - 2)
+    sys.path.insert(0, str(HERE))
+    import harness   # (its build_jobs: JOBS, else the container's CPU quota)
+    # the run's test editors keep two CPUs (the build runs at nice 15 besides)
+    return max(2, harness.build_jobs() - 2)
 
 
 def _session() -> str:
