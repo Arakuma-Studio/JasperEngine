@@ -112,3 +112,16 @@ TEST(GeneratedScenes, SceneNamedMainLeavesMainCppAlone) {
 
     fs::remove_all(project);
 }
+
+// A Lua script's string property is generated as an assignment to a ScriptPropertyValue. Since
+// the variant holds AssetRef too (S04), constructible from a C string like std::string, a bare
+// string literal is ambiguous between the two (GCC 11: "no match for operator="): every exported
+// scene with a string property failed to compile (found by tools/ci/upgrade_from_main). The value
+// is written as a std::string.
+TEST(GeneratedScenes, StringScriptPropertyIsAStdString) {
+    const std::string code = Factory::formatScriptPropertyValue(ScriptPropertyValue(std::string("Level1")));
+    EXPECT_EQ(code.rfind("std::string(", 0), 0u) << code;
+    EXPECT_NE(code.find("\"Level1\""), std::string::npos) << code;
+    // the other alternatives keep their own forms
+    EXPECT_EQ(Factory::formatScriptPropertyValue(ScriptPropertyValue(6)), "6");
+}

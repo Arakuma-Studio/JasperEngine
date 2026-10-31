@@ -4,6 +4,7 @@
 #include "SceneCooker.h"
 
 #include "Catalog.h"
+#include "Configs.h"
 #include "Factory.h"
 #include "Project.h"
 #include "Stream.h"
@@ -12,6 +13,13 @@
 #include "serialization/RuntimeFields.h"
 #include "serialization/SceneSettingsCodec.h"
 #include "util/Fnv.h"
+#include "component/SkyboxComponent.h"
+#include "resources/sky/Daylight_Box_Back_png.h"
+#include "resources/sky/Daylight_Box_Bottom_png.h"
+#include "resources/sky/Daylight_Box_Front_png.h"
+#include "resources/sky/Daylight_Box_Left_png.h"
+#include "resources/sky/Daylight_Box_Right_png.h"
+#include "resources/sky/Daylight_Box_Top_png.h"
 
 #include <algorithm>
 #include <unordered_map>
@@ -21,6 +29,26 @@ using namespace jasperengine::editor;
 namespace rt = jasperengine::cook;
 
 namespace {
+
+    // where a prebuilt build ships the default sky's faces (under the assets directory)
+    const char* const kDefaultSkyDir = "je-default-sky";
+
+    std::string defaultSkyFace(const char* name) {
+        return std::string(kDefaultSkyDir) + "/Daylight_Box_" + name + ".png";
+    }
+
+    // the new 3D scene's sky: six images the editor holds in memory (ProjectUtils::setDefaultSkyTexture)
+    bool isDefaultSky(const Texture& texture) {
+        return texture.getId() == DEFAULT_SKY_ID && texture.getPath(0).empty();
+    }
+
+    bool usesDefaultSky(EntityRegistry* registry) {
+        if (!registry) return false;
+        auto skies = registry->getComponentArray<SkyboxComponent>();
+        for (size_t i = 0; i < skies->size(); i++)
+            if (isDefaultSky(skies->getComponentFromIndex(i).texture)) return true;
+        return false;
+    }
 
     const rt::ComponentTable* tableOf(ComponentType type) {
         const reflect::ComponentDesc* desc = reflect::find(type);
@@ -53,6 +81,20 @@ namespace {
                 Transform copy = *static_cast<const Transform*>(component);
                 copy.parent = NULL_ENTITY;
                 rt::writeComponent(w, *table, &copy, ctx);
+            } else if (std::string_view(table->cppName) == "SkyboxComponent" &&
+                       isDefaultSky(static_cast<const SkyboxComponent*>(component)->texture)) {
+                // a player reads files only: the faces cookProject ships (defaultSkyFiles), as the
+                // Compile path's generated code embeds them
+                SkyboxComponent copy = *static_cast<const SkyboxComponent*>(component);
+                Texture shipped;
+                shipped.setCubePaths(defaultSkyFace("Front"), defaultSkyFace("Back"), defaultSkyFace("Left"),
+                                     defaultSkyFace("Right"), defaultSkyFace("Top"), defaultSkyFace("Bottom"));
+                shipped.setMinFilter(copy.texture.getMinFilter());
+                shipped.setMagFilter(copy.texture.getMagFilter());
+                shipped.setWrapU(copy.texture.getWrapU());
+                shipped.setWrapV(copy.texture.getWrapV());
+                copy.texture = shipped;
+                rt::writeComponent(w, *table, &copy, ctx);
             } else {
                 rt::writeComponent(w, *table, component, ctx);
             }
@@ -69,6 +111,18 @@ void editor::cook::SceneCooker::describe(const EntityRegistry* registry, Entity 
     ctx.generatedMesh = ctx.modelBackedMesh || Stream::isGeneratedMesh(registry, signature);
     const TerrainComponent* terrain = const_cast<EntityRegistry*>(registry)->findComponent<TerrainComponent>(entity);
     ctx.terrainHeightmap = terrain && !terrain->heightMap.empty();
+}
+
+std::vector<editor::cook::CookedFileBytes> editor::cook::SceneCooker::defaultSkyFiles() {
+    auto file = [](const char* name, const unsigned char* data, unsigned int length) {
+        return CookedFileBytes{"assets/" + defaultSkyFace(name), std::vector<uint8_t>(data, data + length)};
+    };
+    return {file("Front", Daylight_Box_Front_png, Daylight_Box_Front_png_len),
+            file("Back", Daylight_Box_Back_png, Daylight_Box_Back_png_len),
+            file("Left", Daylight_Box_Left_png, Daylight_Box_Left_png_len),
+            file("Right", Daylight_Box_Right_png, Daylight_Box_Right_png_len),
+            file("Top", Daylight_Box_Top_png, Daylight_Box_Top_png_len),
+            file("Bottom", Daylight_Box_Bottom_png, Daylight_Box_Bottom_png_len)};
 }
 
 std::vector<uint8_t> editor::cook::SceneCooker::cookScene(Scene* scene, uint32_t sceneId, const std::vector<Entity>& entities, Entity camera,
@@ -231,11 +285,13 @@ std::vector<uint8_t> editor::cook::SceneCooker::cookPrefab(const std::filesystem
 
 bool editor::cook::SceneCooker::cookProject(Project* project, std::vector<editor::cook::CookedFileBytes>& files, std::vector<editor::cook::CookedPrefabInfo>& prefabs,
                                     std::string& error) {
+    bool defaultSky = false;
     for (const SceneProject& sceneProject : project->getScenes()) {
         if (!sceneProject.scene) {
             error = "scene " + sceneProject.name + " is not loaded for the cook";
             return false;
         }
+        defaultSky = defaultSky || usesDefaultSky(sceneProject.scene);
         files.push_back({"scenes/" + std::to_string(sceneProject.id) + ".jscn",
                          cookScene(sceneProject.scene, sceneProject.id, sceneProject.entities, project->getSceneCamera(&sceneProject),
                                    Project::collectResourcesInRegistry(sceneProject.scene))});
@@ -256,6 +312,10 @@ bool editor::cook::SceneCooker::cookProject(Project* project, std::vector<editor
         files.push_back({info.file, cookPrefab(all[i].prefabPath, bakedIt != baked.end() && bakedIt->second ? *bakedIt->second : unbaked,
                                                all[i].guid, id)});
         prefabs.push_back(std::move(info));
+        defaultSky = defaultSky || (bakedIt != baked.end() && bakedIt->second && usesDefaultSky(bakedIt->second->scene.get()));
+    }
+    if (defaultSky) {
+        for (CookedFileBytes& file : defaultSkyFiles()) files.push_back(std::move(file));
     }
     return true;
 }

@@ -195,6 +195,65 @@ namespace {
         body.needUpdateColliders = r.boolean();
     }
 
+#ifdef JASPERENGINE_PHYSICS_2D
+    // the collider members the field tables leave to the scene codec (Stream::encodeRigidbody2DComponent):
+    // the vertex count (a game's vertex array holds its maximum, the count says how many are the
+    // polygon's or chain's) and the collision filter
+    void writeBody2D(Writer& w, const void* component, const WriteContext& ctx) {
+        writeBodyFlags<Rigidbody2DComponent>(w, component, ctx);
+        const Rigidbody2DComponent& body = *static_cast<const Rigidbody2DComponent*>(component);
+        const size_t count = std::min(body.numColliders, body.colliders.size());
+        w.varint(count);
+        for (size_t i = 0; i < count; i++) {
+            const Collider2D& collider = body.colliders[i];
+            write(w, collider.numVertices);
+            write(w, collider.categoryBits);
+            write(w, collider.maskBits);
+            write(w, collider.groupIndex);
+        }
+    }
+
+    void readBody2D(Reader& r, void* component, const LoadContext& ctx) {
+        readBodyFlags<Rigidbody2DComponent>(r, component, ctx);
+        Rigidbody2DComponent& body = *static_cast<Rigidbody2DComponent*>(component);
+        const uint64_t count = r.varint();
+        for (uint64_t i = 0; i < count && !r.failed(); i++) {
+            Collider2D dropped;
+            Collider2D& collider = body.colliders.validIndex(static_cast<int>(i)) ? body.colliders[static_cast<size_t>(i)] : dropped;
+            read(r, collider.numVertices);
+            read(r, collider.categoryBits);
+            read(r, collider.maskBits);
+            read(r, collider.groupIndex);
+            collider.numVertices = static_cast<uint8_t>(std::min<size_t>(collider.numVertices, collider.vertices.size()));
+        }
+    }
+#endif
+
+#ifdef JASPERENGINE_PHYSICS_3D
+    // the members the field tables leave to the scene codec (Stream::encodeRigidbodyComponent): the
+    // allowed degrees of freedom and each collider's mesh indices
+    void writeBody3D(Writer& w, const void* component, const WriteContext& ctx) {
+        writeBodyFlags<RigidbodyComponent>(w, component, ctx);
+        const RigidbodyComponent& body = *static_cast<const RigidbodyComponent*>(component);
+        write(w, body.allowedDOFs);
+        const size_t count = std::min(body.numColliders, body.colliders.size());
+        w.varint(count);
+        for (size_t i = 0; i < count; i++) write(w, body.colliders[i].indices);
+    }
+
+    void readBody3D(Reader& r, void* component, const LoadContext& ctx) {
+        readBodyFlags<RigidbodyComponent>(r, component, ctx);
+        RigidbodyComponent& body = *static_cast<RigidbodyComponent*>(component);
+        read(r, body.allowedDOFs);
+        const uint64_t count = r.varint();
+        for (uint64_t i = 0; i < count && !r.failed(); i++) {
+            Collider3D dropped;
+            Collider3D& collider = body.colliders.validIndex(static_cast<int>(i)) ? body.colliders[static_cast<size_t>(i)] : dropped;
+            read(r, collider.indices);
+        }
+    }
+#endif
+
     const ComponentHooks kHooks[] = {
         {fnv1a32("mesh"), &writeMesh, &readMesh, nullptr},
         {fnv1a32("audiosource"), nullptr, nullptr, &afterAudioSource},
@@ -202,10 +261,10 @@ namespace {
         {fnv1a32("terrain"), nullptr, nullptr, &afterTerrain},
         {fnv1a32("spline"), nullptr, nullptr, &afterSpline},
 #ifdef JASPERENGINE_PHYSICS_2D
-        {fnv1a32("rigidbody2d"), &writeBodyFlags<Rigidbody2DComponent>, &readBodyFlags<Rigidbody2DComponent>, nullptr},
+        {fnv1a32("rigidbody2d"), &writeBody2D, &readBody2D, nullptr},
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
-        {fnv1a32("rigidbody"), &writeBodyFlags<RigidbodyComponent>, &readBodyFlags<RigidbodyComponent>, nullptr},
+        {fnv1a32("rigidbody"), &writeBody3D, &readBody3D, nullptr},
 #endif
     };
 
