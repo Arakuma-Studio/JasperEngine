@@ -20,6 +20,7 @@ import json
 import os
 import subprocess
 import tempfile
+import time
 import zipfile
 from pathlib import Path
 
@@ -102,8 +103,16 @@ async def test_create_from_templates(ed: Editor):
         finally:
             await ed.call("play", action="stop")
         if template == "3d" and os.environ.get("JASPER_SLOW_BUILD") == "1":
-            r = await ed.call("build_project", mode="desktop", build_jobs=3, timeout_seconds=3600)
-            ed.check(r["status"] == "succeeded" and not r["result"]["errors"], f"3d desktop build: {json.dumps(r)[:600]}")
+            # a job (the first build compiles the engine): polled until it ends
+            r = await ed.call("build_project", mode="desktop", output_dir=str(ed.scratch.root / "export-3d-desktop"),
+                              build_jobs=3, wait=False)
+            job = r
+            deadline = time.monotonic() + 3600
+            while job.get("status") == "running" and time.monotonic() < deadline:
+                await asyncio.sleep(5)
+                job = await ed.call("get_job", job_id=r["job_id"])
+            ed.check(job.get("status") == "succeeded" and not job.get("result", {}).get("errors"),
+                     f"3d desktop build: {json.dumps(job)[:600]}")
     await ed.check_error("create_project", {"path": str(root / "Bad"), "template": "nope"}, contains="list_project_templates")
     # a non-empty target is refused
     (root / "Busy").mkdir(parents=True)
