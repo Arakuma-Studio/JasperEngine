@@ -71,6 +71,10 @@ namespace jasperengine{
             }
         }
 
+        // the scripts' onEnable / onDisable (and a first init) once they started (ScriptRuntime)
+        bool isActivationObserved() const override;
+        void onActiveInHierarchyChanged(const std::vector<Entity>& changed, bool nowActive) override;
+
         void onEntityDestroyed(Entity entity, Signature signature) override {
             for (auto const& pair : systems) {
                 for (ComponentId componentId = 0; componentId < signature.size(); ++componentId) {

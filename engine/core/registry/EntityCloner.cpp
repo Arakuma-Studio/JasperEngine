@@ -671,6 +671,8 @@ template<>
 void prepare<ScriptComponent>(ScriptComponent& scripts, Entity, CloneContext& ctx) {
     for (ScriptEntry& entry : scripts.scripts) {
         entry.instance = nullptr;
+        entry.cppScript = nullptr;
+        entry.cppMessageMask = 0;
         for (ScriptProperty& property : entry.properties) {
             property.memberPtr = nullptr;
             property.ownedInstance = nullptr;

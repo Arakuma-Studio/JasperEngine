@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Catalog.h"
+#include "script/ScriptRuntime.h"
 
 #include "Stream.h"
 #include "util/EntityClipboard.h"
@@ -1147,7 +1148,7 @@ namespace {
         }
 
         if (propertyName == "scripts") {
-            return {PropertyType::Custom, UpdateFlags_None, nullptr, (void*)&comp->scripts};
+            return {PropertyType::Custom, UpdateFlags_Script_Enabled, nullptr, (void*)&comp->scripts};
         }
 
         // Parse "scripts[N].fieldName"
@@ -1174,7 +1175,7 @@ namespace {
         std::string fieldName = propertyName.substr(pos);
 
         if (fieldName == "enabled") {
-            return {PropertyType::Bool, UpdateFlags_None, nullptr, (void*)&scriptEntry.enabled};
+            return {PropertyType::Bool, UpdateFlags_Script_Enabled, nullptr, (void*)&scriptEntry.enabled};
         }
 
         for (auto& prop : scriptEntry.properties) {
@@ -3311,14 +3312,14 @@ namespace {
     void enumerateScriptProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
         ScriptComponent* comp = static_cast<ScriptComponent*>(compRef);
 
-        ps["scripts"] = {PropertyType::Custom, UpdateFlags_None, nullptr, compRef ? (void*)&comp->scripts : nullptr};
+        ps["scripts"] = {PropertyType::Custom, UpdateFlags_Script_Enabled, nullptr, compRef ? (void*)&comp->scripts : nullptr};
 
         if (compRef && comp) {
             for (size_t i = 0; i < comp->scripts.size(); i++) {
                 auto& script = comp->scripts[i];
 
                 std::string enabledKey = "scripts[" + std::to_string(i) + "].enabled";
-                ps[enabledKey] = {PropertyType::Bool, UpdateFlags_None, nullptr, (void*)&script.enabled};
+                ps[enabledKey] = {PropertyType::Bool, UpdateFlags_Script_Enabled, nullptr, (void*)&script.enabled};
 
                 for (auto& prop : script.properties) {
                     std::string key = "scripts[" + std::to_string(i) + "]." + prop.name;
@@ -5336,6 +5337,12 @@ uint64_t editor::Catalog::getMaterialUpdateFlags(const Material& from, const Mat
 }
 
 void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint64_t updateFlags){
+    if (updateFlags & UpdateFlags_Script_Enabled){
+        // in Play the Inspector checkbox, MCP and undo enable scripts as Lua's self.enabled does
+        if (Scene* scene = dynamic_cast<Scene*>(registry)){
+            ScriptRuntime::refreshEntity(scene, entity);
+        }
+    }
     if (updateFlags & UpdateFlags_Transform){
         if (Transform* transform = registry->findComponent<Transform>(entity)){
             transform->needUpdate = true;

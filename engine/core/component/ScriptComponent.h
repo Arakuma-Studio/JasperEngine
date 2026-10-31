@@ -26,8 +26,13 @@ namespace jasperengine{
         std::vector<ScriptProperty> properties;
 
         void* instance = nullptr; // C++ instance OR Lua handle
-        // C++: the ScriptBase of the instance (null when it is not one) and the script messages
-        // it overrides (ScriptMessages::cppMask), set by the generated script factory
+
+        // Runtime only, never serialized; a copy (EntityCloner) starts over. Set by the generated
+        // factory for a C++ script deriving ScriptBase (null for the GameObject wrapper kind):
+        // the object the lifecycle and other script messages are called on, and the messages it
+        // may override (ScriptMessages::cppMask; the ones it does not are learned when sent,
+        // ScriptBase::inheritedMessages). The lifecycle state of the instance (init ran, enabled
+        // latch, started...) is ScriptRuntime's, keyed by `instance`.
         ScriptBase* cppScript = nullptr;
         uint32_t cppMessageMask = 0;
     };
