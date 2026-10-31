@@ -31,6 +31,7 @@
 #include "component/Transform.h"
 #include "component/UIComponent.h"
 #include "component/UIDocumentComponent.h"
+#include "component/CanvasGroupComponent.h"
 #include "component/VideoPlayerComponent.h"
 #include "htmlui/compat/CompatApi.h"
 #include "htmlui/compat/DocumentLoader.h"
@@ -1070,6 +1071,9 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
     }
     // fixed resolution upscales with it and a scene stack is presented with it
     keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, 0));
+    // a FLATTEN Canvas Group composites its layer with the HTML UI passthrough: always (a few
+    // KB), since a script can add a group or switch one to FLATTEN in any scene
+    keys.insert(ShaderPool::getShaderKey(ShaderType::HTMLUI_POST, ShaderPool::getHtmlUIPostProperties(HtmlUIPostVariant::PASSTHROUGH)));
     // the uber pass of the scene's post-processing (phase 4: a BLIT variant of its features),
     // and the ones its scripts plausibly switch to; the bloom and blur chain's programs with them
     bool bloom = false;

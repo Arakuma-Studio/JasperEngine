@@ -20,7 +20,9 @@ namespace jasperengine{
         Vector4 colorNormal = Vector4(1.0, 1.0, 1.0, 1.0);  //linear color
         Vector4 colorHovered = Vector4(1.0, 1.0, 1.0, 1.0);  //linear color
         Vector4 colorPressed = Vector4(1.0, 1.0, 1.0, 1.0);  //linear color
-        Vector4 colorDisabled = Vector4(1.0, 1.0, 1.0, 1.0);  //linear color
+        // Unity ColorBlock.disabledColor: sRGB (200, 200, 200, 128), stored linear. Also shown
+        // under a non-interactable Canvas Group (ui canvas group spec decision 8)
+        Vector4 colorDisabled = Vector4(0.57758f, 0.57758f, 0.57758f, 0.50196f);  //linear color
 
         FunctionSubscribe<void()> onPress;
         FunctionSubscribe<void()> onRelease;

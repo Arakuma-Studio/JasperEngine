@@ -204,8 +204,15 @@ void Engine::setScene(Scene* scene){
 
 Scene* Engine::getScene(){
     std::lock_guard<std::mutex> lock(sceneListMutex);
-    // none before the first scene is set (a scene's scripts start before it is)
-    return Engine::scenes.empty() ? nullptr : Engine::scenes[0];
+    // none before the first scene is set (a scene's scripts start before it is); never the
+    // persistent scene (DontDestroyOnLoad), first while a load builds its new scenes
+    Scene* persistent = SceneManager::getPersistentScene();
+    for (Scene* scene : Engine::scenes) {
+        if (scene != persistent) {
+            return scene;
+        }
+    }
+    return nullptr;
 }
 
 std::vector<Scene*> Engine::getScenesSnapshot(){
@@ -1418,6 +1425,10 @@ void Engine::runFrame(bool draw){
 
     frameRunning = true;
 
+    // what DontDestroyOnLoad / MoveGameObjectToScene asked for between frames (input
+    // callbacks, the editor's tools), at this frame's first safe point
+    SceneManager::flushPersistentMoves();
+
     // a transition requested during the last frame; one requested by its factory waits again
     SceneManager::applyPendingLoad();
 
@@ -1643,6 +1654,8 @@ void Engine::systemShutdown(){
     // the media cache's downloads are forgotten (their .part files stay for a resume)
     MediaCache::shutdown();
     MainThreadQueue::clear();
+    // the persistent scene's scripts (their onDestroy ran above) are released, and it goes
+    SceneManager::destroyPersistentScene();
     LuaBinding::cleanup();
 
     removeAllSceneLayers(true);

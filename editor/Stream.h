@@ -167,6 +167,10 @@ namespace jasperengine::editor {
 
         static std::string layoutGroupTypeToString(LayoutGroupType type);
         static LayoutGroupType stringToLayoutGroupType(const std::string& str);
+        static std::string canvasGroupRenderModeToString(CanvasGroupRenderMode mode);
+        static CanvasGroupRenderMode stringToCanvasGroupRenderMode(const std::string& str);
+        static std::string alphaTweenTargetToString(AlphaTweenTarget target);
+        static AlphaTweenTarget stringToAlphaTweenTarget(const std::string& str);
 
         static std::string scrollbarTypeToString(ScrollbarType type);
         static ScrollbarType stringToScrollbarType(const std::string& str);
@@ -450,6 +454,8 @@ namespace jasperengine::editor {
 
         static YAML::Node encodeLayoutGroupComponent(const LayoutGroupComponent& container);
         static LayoutGroupComponent decodeLayoutGroupComponent(const YAML::Node& node, const LayoutGroupComponent* oldContainer = nullptr);
+        static YAML::Node encodeCanvasGroupComponent(const CanvasGroupComponent& group);
+        static CanvasGroupComponent decodeCanvasGroupComponent(const YAML::Node& node, const CanvasGroupComponent* oldGroup = nullptr);
 
         static YAML::Node encodeTextComponent(const TextComponent& text);
         static TextComponent decodeTextComponent(const YAML::Node& node, const TextComponent* oldText = nullptr);

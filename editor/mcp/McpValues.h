@@ -243,6 +243,10 @@ namespace jasperengine::editor::mcp {
         // playing, time, frame, frameCount, length, backend, codecs, error, prepareProgress; null
         // when the entity has none or nothing was opened yet (edit mode)
         static Json videoStatusToJson(Scene* scene, Entity entity);
+        // A UI element's Canvas Group chain (ui canvas group spec 7.8): {inherited_alpha,
+        // interactable, blocks_raycasts, group: "<path>"}; null outside any group or without a
+        // RectTransform; a FLATTEN group adds flatten {layered, layer_alpha, the scene's layer stats}
+        static Json canvasGroupStateToJson(Scene* scene, Entity entity);
 
         static Json shaderParamsToJson(const ShaderUniformValues& values);
         // `out` replaced by `value` (null clears); `manifest` (may be null) types colour hex

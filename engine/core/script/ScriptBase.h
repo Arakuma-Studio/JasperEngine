@@ -7,6 +7,9 @@
 #include "Scene.h"
 #include "Entity.h"
 #include "component/ScriptComponent.h"
+#include "object/EntityHandle.h"
+
+#include <type_traits>
 
 namespace jasperengine {
 
@@ -61,6 +64,32 @@ namespace jasperengine {
             return nullptr;
         }
 
+        // Unity's DontDestroyOnLoad(gameObject): this script's root GameObject (with its
+        // children) survives scene loads in the persistent scene (SceneManager::
+        // dontDestroyOnLoad). False, with a warning, when the GameObject has a parent.
+        bool dontDestroyOnLoad();
+        // In the persistent scene, or marked to move there
+        bool isPersistent() const;
+
+        // The singleton pattern of a persistent manager (Lua: GameObject.persistSingleton):
+        //   if (persistSingleton<AdsManager>() != this) return;   // in init()
+        // The instance of T already on a persistent GameObject (marked or moved), when there is
+        // one other than this: this script's GameObject is destroyed (at the end of the frame)
+        // and that one is returned. Otherwise this GameObject is made persistent and this is
+        // returned (null when that is refused: the GameObject has a parent).
+        template<class T>
+        T* persistSingleton() {
+            static_assert(std::is_base_of_v<ScriptBase, T>, "persistSingleton<T>: T is a C++ script class (ScriptBase)");
+            if (T* other = static_cast<T*>(findPersistentScript([](ScriptBase* script) { return dynamic_cast<T*>(script) != nullptr; }))) {
+                destroyOwnGameObject();
+                return other;
+            }
+            return dontDestroyOnLoad() ? dynamic_cast<T*>(this) : nullptr;
+        }
+
+        // Engine-internal (persistence): the GameObject moved to another scene or entity id
+        void rebind(Scene* scene, Entity entity);
+
         // Script messages (ScriptMessages), like the Lua methods of the same name: override what
         // the script needs (public, protected or private) and do not call the base, which only
         // notes the message is not overridden (it is not sent again).
@@ -84,7 +113,59 @@ namespace jasperengine {
         // set by a base message method (ScriptMessages reads it after a call without touching a
         // script the call may have destroyed)
         static bool baseMessageRan;
+
+    private:
+        // A live C++ script on a persistent GameObject (or one queued to move there) other
+        // than this one, for which `matches` is true
+        ScriptBase* findPersistentScript(bool (*matches)(ScriptBase*)) const;
+        void destroyOwnGameObject();
     };
+
+    // Engine-internal, for the generated code of C++ scripts (persistence): a script object or
+    // a wrapper a script property owns follows a GameObject that moved to another scene
+    template<class T>
+    void rebindScriptObject(T* object, Scene* scene, Entity entity) {
+        if (!object) {
+            return;
+        }
+        if constexpr (std::is_base_of_v<ScriptBase, T>) {
+            static_cast<ScriptBase*>(object)->rebind(scene, entity);
+        }
+        if constexpr (std::is_base_of_v<EntityHandle, T>) {
+            static_cast<EntityHandle*>(object)->rebind(scene, entity);
+        }
+    }
+
+    // ...when it points at one of the moved GameObjects (`oldEntities[i]` of `from`, now
+    // `newEntities[i]` of `to`)
+    template<class T>
+    void rebindScriptReference(T* object, Scene* from, Scene* to, const Entity* oldEntities, const Entity* newEntities, size_t count) {
+        if constexpr (std::is_base_of_v<EntityHandle, T> || std::is_base_of_v<ScriptBase, T>) {
+            if (!object) {
+                return;
+            }
+            Scene* scene = nullptr;
+            Entity entity = NULL_ENTITY;
+            if constexpr (std::is_base_of_v<EntityHandle, T>) {
+                scene = static_cast<EntityHandle*>(object)->getScene();
+                entity = static_cast<EntityHandle*>(object)->getEntity();
+            } else {
+                scene = static_cast<ScriptBase*>(object)->getScene();
+                entity = static_cast<ScriptBase*>(object)->getEntity();
+            }
+            if (scene != from) {
+                return;
+            }
+            for (size_t i = 0; i < count; i++) {
+                if (oldEntities[i] == entity) {
+                    rebindScriptObject(object, to, newEntities[i]);
+                    return;
+                }
+            }
+        } else {
+            (void)object; (void)from; (void)to; (void)oldEntities; (void)newEntities; (void)count;
+        }
+    }
 
 }
 

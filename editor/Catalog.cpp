@@ -501,6 +501,7 @@ namespace {
         makeFastProperty<TweenComponent, float, &TweenComponent::duration>("duration", PropertyType::Float, UpdateFlags_None),
         makeFastProperty<TweenComponent, bool, &TweenComponent::loop>("loop", PropertyType::Bool, UpdateFlags_None),
         makeFastProperty<TweenComponent, bool, &TweenComponent::pingPong>("pingPong", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<TweenComponent, bool, &TweenComponent::useUnscaledTime>("useUnscaledTime", PropertyType::Bool, UpdateFlags_None),
         makeFastProperty<TweenComponent, Ease, &TweenComponent::function>("function", PropertyType::Ease, UpdateFlags_None),
     };
 
@@ -532,6 +533,17 @@ namespace {
     static const FastPropertyDescriptor kAlphaTweenProperties[] = {
         makeFastPropertyNoDefault<AlphaTweenComponent, float, &AlphaTweenComponent::endAlpha>("endAlpha", PropertyType::Float, UpdateFlags_None),
         makeFastPropertyNoDefault<AlphaTweenComponent, float, &AlphaTweenComponent::startAlpha>("startAlpha", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<AlphaTweenComponent, AlphaTweenTarget, &AlphaTweenComponent::alphaTarget>("alphaTarget", PropertyType::Enum, UpdateFlags_None),
+    };
+
+    // A Canvas Group (ui canvas group spec 7.5): UISystem finds its changes itself (it compares
+    // the fields with what it saw); the flag clamps a written alpha to [0, 1] at once
+    static const FastPropertyDescriptor kCanvasGroupProperties[] = {
+        makeFastProperty<CanvasGroupComponent, float, &CanvasGroupComponent::alpha>("alpha", PropertyType::Float, UpdateFlags_CanvasGroup),
+        makeFastProperty<CanvasGroupComponent, bool, &CanvasGroupComponent::interactable>("interactable", PropertyType::Bool, UpdateFlags_CanvasGroup),
+        makeFastProperty<CanvasGroupComponent, bool, &CanvasGroupComponent::blocksRaycasts>("blocksRaycasts", PropertyType::Bool, UpdateFlags_CanvasGroup),
+        makeFastProperty<CanvasGroupComponent, bool, &CanvasGroupComponent::ignoreParentGroups>("ignoreParentGroups", PropertyType::Bool, UpdateFlags_CanvasGroup),
+        makeFastProperty<CanvasGroupComponent, CanvasGroupRenderMode, &CanvasGroupComponent::renderMode>("renderMode", PropertyType::Enum, UpdateFlags_CanvasGroup),
     };
 
     static const FastPropertyDescriptor kPrefabProperties[] = {
@@ -2424,6 +2436,10 @@ namespace {
         return resolveDirectProperties(static_cast<AlphaTweenComponent*>(comp), propertyName, kAlphaTweenProperties);
     }
 
+    PropertyData resolveCanvasGroupPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<CanvasGroupComponent*>(comp), propertyName, kCanvasGroupProperties);
+    }
+
     PropertyData resolveSpriteAnimationPropertyFast(void* compRef, const std::string& propertyName) {
         SpriteAnimationComponent* comp = static_cast<SpriteAnimationComponent*>(compRef);
         if (!comp) return PropertyData();
@@ -2768,6 +2784,10 @@ namespace {
 
     void enumerateAlphaTweenProperties(void* comp, std::map<std::string, PropertyData>& ps) {
         enumerateFromDescriptors(comp, ps, kAlphaTweenProperties);
+    }
+
+    void enumerateCanvasGroupProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kCanvasGroupProperties);
     }
 
     void enumerateModelProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
@@ -3968,6 +3988,7 @@ namespace {
         {ComponentType::PoseAnimatorComponent, &findComponentPtr<PoseAnimatorComponent>, &resolvePoseAnimatorPropertyFast, &enumeratePoseAnimatorProperties},
         {ComponentType::AnimationPlayerComponent, &findComponentPtr<AnimationPlayerComponent>, &resolveAnimationPlayerPropertyFast, &enumerateAnimationPlayerProperties},
         {ComponentType::VertexAnimatorComponent, &findComponentPtr<VertexAnimatorComponent>, &resolveVertexAnimatorPropertyFast, &enumerateVertexAnimatorProperties},
+        {ComponentType::CanvasGroupComponent, &findComponentPtr<CanvasGroupComponent>, &resolveCanvasGroupPropertyFast, &enumerateCanvasGroupProperties},
         {ComponentType::VideoPlayerComponent, &findComponentPtr<VideoPlayerComponent>, &resolveVideoPlayerPropertyFast, &enumerateVideoPlayerProperties},
         {ComponentType::Light2DComponent, &findComponentPtr<Light2DComponent>, &resolveLight2DPropertyFast, &enumerateLight2DProperties},
         {ComponentType::ShadowCaster2DComponent, &findComponentPtr<ShadowCaster2DComponent>, &resolveShadowCaster2DPropertyFast, &enumerateShadowCaster2DProperties},
@@ -4045,6 +4066,7 @@ namespace {
             case ComponentType::LatticeFollowerComponent: return &getEnabledRef<LatticeFollowerComponent>;
             case ComponentType::AnimationPlayerComponent: return &getEnabledRef<AnimationPlayerComponent>;
             case ComponentType::VertexAnimatorComponent: return &getEnabledRef<VertexAnimatorComponent>;
+            case ComponentType::CanvasGroupComponent: return &getEnabledRef<CanvasGroupComponent>;
             case ComponentType::VideoPlayerComponent: return &getEnabledRef<VideoPlayerComponent>;
             default: return nullptr;
         }
@@ -4199,6 +4221,8 @@ std::string computeComponentName(editor::ComponentType component){
         name = "VertexAnimatorComponent";
     }else if(component == ComponentType::TrailRendererComponent){
         name = "TrailRendererComponent";
+    }else if(component == ComponentType::CanvasGroupComponent){
+        name = "CanvasGroupComponent";
     }else if(component == ComponentType::VideoPlayerComponent){
         name = "VideoPlayerComponent";
     }else if(component == ComponentType::Light2DComponent){
@@ -4337,6 +4361,7 @@ std::string editor::Catalog::getComponentDisplayName(ComponentType component){
         case ComponentType::TilemapComponent: return "Tilemap";
         case ComponentType::TranslateTracksComponent: return "Position Tracks";
         case ComponentType::LayoutGroupComponent: return "Layout Group";
+        case ComponentType::CanvasGroupComponent: return "Canvas Group";
         case ComponentType::MirrorComponent: return "Mirror";
         case ComponentType::Light2DComponent: return "Light 2D";
         case ComponentType::ShadowCaster2DComponent: return "Shadow Caster 2D";
@@ -4406,6 +4431,7 @@ const char* editor::Catalog::getComponentIcon(ComponentType component){
         case ComponentType::TilemapComponent: return ICON_FA_BORDER_ALL;
         case ComponentType::TranslateTracksComponent: return ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT;
         case ComponentType::LayoutGroupComponent: return ICON_FA_TABLE_CELLS;
+        case ComponentType::CanvasGroupComponent: return ICON_FA_LAYER_GROUP;
         case ComponentType::MirrorComponent: return ICON_FA_CLONE;
         case ComponentType::Light2DComponent: return ICON_FA_LIGHTBULB;
         case ComponentType::ShadowCaster2DComponent: return ICON_FA_CIRCLE_HALF_STROKE;
@@ -4557,6 +4583,8 @@ ComponentId editor::Catalog::getComponentId(const EntityRegistry* registry, Comp
             return registry->getComponentId<TranslateTracksComponent>();
         case ComponentType::LayoutGroupComponent:
             return registry->getComponentId<LayoutGroupComponent>();
+        case ComponentType::CanvasGroupComponent:
+            return registry->getComponentId<CanvasGroupComponent>();
         default:
             return 0;
     }
@@ -4611,6 +4639,8 @@ editor::ComponentType editor::Catalog::getComponentType(const std::string& compo
         return ComponentType::AnimationPlayerComponent;
     }else if(normalizedName == "vertexanimator"){
         return ComponentType::VertexAnimatorComponent;
+    }else if(normalizedName == "canvasgroup"){
+        return ComponentType::CanvasGroupComponent;
     }else if(normalizedName == "videoplayer"){
         return ComponentType::VideoPlayerComponent;
     }else if(normalizedName == "light2d"){
@@ -4835,6 +4865,9 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     }
     if (registry->findComponent<TrailRendererComponent>(entity)){
         ret.push_back(ComponentType::TrailRendererComponent);
+    }
+    if (registry->findComponent<CanvasGroupComponent>(entity)){
+        ret.push_back(ComponentType::CanvasGroupComponent);
     }
     if (registry->isComponentRegistered<VideoPlayerComponent>() && registry->findComponent<VideoPlayerComponent>(entity)){
         ret.push_back(ComponentType::VideoPlayerComponent);
@@ -5507,6 +5540,16 @@ uint64_t editor::Catalog::getMaterialUpdateFlags(const Material& from, const Mat
 }
 
 void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint64_t updateFlags){
+    if (updateFlags & UpdateFlags_CanvasGroup){
+        // alpha in [0, 1] at once (a NaN keeps the value UISystem last saw)
+        if (CanvasGroupComponent* group = registry->findComponent<CanvasGroupComponent>(entity)){
+            if (std::isnan(group->alpha)){
+                group->alpha = group->seen.valid ? group->seen.alpha : 1.0f;
+            }else{
+                group->alpha = std::clamp(group->alpha, 0.0f, 1.0f);
+            }
+        }
+    }
     if (updateFlags & UpdateFlags_Script_Enabled){
         // in Play the Inspector checkbox, MCP and undo enable scripts as Lua's self.enabled does
         if (Scene* scene = dynamic_cast<Scene*>(registry)){
@@ -5884,6 +5927,12 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
         case ComponentType::LayoutGroupComponent: {
             YAML::Node encoded = Stream::encodeLayoutGroupComponent(sourceRegistry->getComponent<LayoutGroupComponent>(sourceEntity));
             targetRegistry->getComponent<LayoutGroupComponent>(targetEntity) = Stream::decodeLayoutGroupComponent(encoded);
+            break;
+        }
+
+        case ComponentType::CanvasGroupComponent: {
+            YAML::Node encoded = Stream::encodeCanvasGroupComponent(sourceRegistry->getComponent<CanvasGroupComponent>(sourceEntity));
+            targetRegistry->getComponent<CanvasGroupComponent>(targetEntity) = Stream::decodeCanvasGroupComponent(encoded);
             break;
         }
 

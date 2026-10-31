@@ -75,6 +75,7 @@ EntityRegistry::EntityRegistry() {
     registerComponent<AnimationPlayerComponent>();
     registerComponent<VertexAnimatorComponent>();
     registerComponent<TrailRendererComponent>();
+    registerComponent<CanvasGroupComponent>();
     // appended: ids stay those of saved scenes and the editor's ComponentType order
     registerComponent<VideoPlayerComponent>();
 }

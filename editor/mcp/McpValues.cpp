@@ -31,6 +31,8 @@
 #include "animation/AnimationClipIO.h"
 #include "animation/ModelSubClips.h"
 #include "subsystem/RenderSystem.h"
+#include "subsystem/UISystem.h"
+#include "util/EntityPath.h"
 #include "texture/TextureData.h"
 #include "util/CameraTextureLink.h"
 #include "util/Color.h"
@@ -669,6 +671,23 @@ const EnumOptions& layoutGroupTypeOptions() {
     return options;
 }
 
+const EnumOptions& canvasGroupRenderModeOptions() {
+    static const EnumOptions options = {
+        {(int)CanvasGroupRenderMode::PER_ELEMENT, "per_element", "Per Element"},
+        {(int)CanvasGroupRenderMode::FLATTEN, "flatten", "Flatten"}
+    };
+    return options;
+}
+
+const EnumOptions& alphaTweenTargetOptions() {
+    static const EnumOptions options = {
+        {(int)AlphaTweenTarget::AUTO, "auto", "Auto"},
+        {(int)AlphaTweenTarget::COLOR, "color", "Color"},
+        {(int)AlphaTweenTarget::CANVAS_GROUP, "canvas_group", "Canvas Group"}
+    };
+    return options;
+}
+
 const EnumOptions& alphaModeOptions() {
     static const EnumOptions options = {
         {(int)MaterialAlphaMode::AUTO, "auto", "Auto"},
@@ -1218,6 +1237,12 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
             break;
         case ComponentType::LayoutGroupComponent:
             if (name == "type") return &layoutGroupTypeOptions();
+            break;
+        case ComponentType::CanvasGroupComponent:
+            if (name == "renderMode") return &canvasGroupRenderModeOptions();
+            break;
+        case ComponentType::AlphaTweenComponent:
+            if (name == "alphaTarget") return &alphaTweenTargetOptions();
             break;
         case ComponentType::MeshComponent:
             if (name == "submeshes[].material.alphaMode") return &alphaModeOptions();
@@ -3540,6 +3565,24 @@ Json McpValues::videoStatusToJson(Scene* scene, Entity entity) {
                 {"videoCodec", s.videoCodec}, {"audioCodec", s.audioCodec}, {"prepareProgress", round3(s.prepareProgress)},
                 {"buffered", round3(s.bufferedSeconds)}};
     out["error"] = s.error.empty() ? Json(nullptr) : Json(s.error);
+    return out;
+}
+
+Json McpValues::canvasGroupStateToJson(Scene* scene, Entity entity) {
+    if (!scene || !scene->isEntityCreated(entity) || !scene->findComponent<RectTransformComponent>(entity)) return nullptr;
+    const CanvasGroupState state = scene->getSystem<UISystem>()->getCanvasGroupState(entity);
+    if (state.group == NULL_ENTITY) return nullptr;
+    Json out = {{"inherited_alpha", state.alpha}, {"interactable", state.interactable},
+                {"blocks_raycasts", state.blocksRaycasts}, {"group", EntityPath::of(scene, state.group)}};
+    // a group itself: whether its Flatten layer is drawn, and what the layers cost last frame
+    if (const CanvasGroupComponent* group = scene->findComponent<CanvasGroupComponent>(entity)) {
+        if (group->renderMode == CanvasGroupRenderMode::FLATTEN) {
+            const RenderSystem::CanvasGroupRenderStats& stats = scene->getSystem<RenderSystem>()->getCanvasGroupRenderStats();
+            out["flatten"] = {{"layered", group->layered}, {"layer_alpha", group->layerAlpha},
+                              {"scene_layers_last_frame", stats.layers}, {"scene_layer_targets", stats.pooled},
+                              {"scene_layer_targets_created", stats.targetsCreated}};
+        }
+    }
     return out;
 }
 

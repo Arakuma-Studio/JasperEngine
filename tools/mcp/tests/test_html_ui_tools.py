@@ -111,6 +111,9 @@ LIMITS.update({"user_settings": 550})
 # lines and trails: no new tool; create_entity's type "trail_renderer" paid by a shorter create_entity
 # description, set_shape_points' line text reworded; measured on the merged tree: total 106692 (106687 before)
 # (was TOTAL_LIMIT = 106700: re-measured on the merged tree by the lead's verification)
+# ui-canvas-group: create_ui's canvas_group node option (the rules in jasper://docs/ui) and
+# create_entity's canvas_group type; merged with main (lines-trails): 150 tools measured 106771
+# (then TOTAL_LIMIT = 106771)
 # video-mp4: no new tool; create_entity's types video_player / video_background, get_asset_info's video
 # probe and playable_on, the media "backend" of inspect_ui; merged with main (lines-trails) and gaps/http:
 # 150 tools measured 106846, the limit set to it

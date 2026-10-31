@@ -1471,6 +1471,52 @@ namespace jasperengine{
 		SceneInputStats sceneInputStats;
 		SceneInputStats lastSceneInputStats;
 
+		// FLATTEN Canvas Groups (ui canvas group spec 7.10): before a camera's colour pass, each
+		// layered group's subtree (its UI elements and UI particles) is drawn into a pooled
+		// target the size of the pass target, cleared to transparent (innermost groups first,
+		// so a nested layer is composited into its parent's). The colour pass composites the
+		// layer at the group's place in the Hierarchy order, premultiplied at layerAlpha,
+		// scissored to the subtree's bounds, and skips the UI it holds
+		struct CanvasLayer{
+			Framebuffer framebuffer;
+			uint64_t lastUsedFrame = 0;
+			// used by the camera pass being drawn, for the layers at these bounds (siblings
+			// elsewhere on screen share a target)
+			bool inUse = false;
+			std::vector<Rect> usedRects;
+		};
+		struct PassCanvasLayer{
+			size_t layer = 0;           // index in canvasLayers
+			Rect bounds;                // pass target pixels the subtree covers
+			bool hasBounds = false;
+		};
+		std::vector<std::unique_ptr<CanvasLayer>> canvasLayers;
+		std::unordered_map<Entity, PassCanvasLayer> passCanvasLayers;
+		CameraRender canvasLayerPass;
+		ObjectRender canvasCompositeObject;
+		std::shared_ptr<ShaderRender> canvasCompositeShader;
+		int canvasCompositeVsSlot = -1;
+		int canvasCompositeFsSlot = -1;
+		std::pair<int, int> canvasCompositeTextureSlot = {-1, -1};
+		bool canvasCompositeLoaded = false;
+		uint64_t canvasLayerFrame = 0;
+		uint64_t canvasLayerTargetsCreated = 0;
+		bool loadCanvasComposite();
+		void destroyCanvasLayers();
+		// the layers of one camera pass (passCanvasLayers), drawn outside any pass
+		void renderCanvasGroupLayers(CameraComponent& camera, Transform& cameraTransform, const Rect& colorPassViewport,
+		                             unsigned int targetWidth, unsigned int targetHeight, bool perCameraMVP, uint32_t cullingMask);
+		// composites a pass layer into the current pass (the pass's pipeline type and samples)
+		void drawCanvasLayer(Entity group, const PassCanvasLayer& layer, float alpha, PipelineType pipelineType, int msaaSamples,
+		                     const Rect& colorPassViewport, unsigned int targetWidth, unsigned int targetHeight, CameraRender& render);
+		// releases the layers unused for 120 frames
+		void trimCanvasLayers();
+		// the render points of Points whose uiGroupAlpha changed since the update
+		void refreshGroupFadedPoints();
+		// a Points GameObject in the UI hierarchy (a RectTransform on it or above): a UI
+		// particle, which Canvas Groups fade and FLATTEN layers hold
+		bool isUIParticle(Entity entity) const;
+
 		static void changeLoaded(void* data);
 		static void changeDestroy(void* data);
 
@@ -1668,6 +1714,12 @@ namespace jasperengine{
 		void updateInstanceBuffers();
 		void uploadInstanceViews(RenderView& renderView);
 		Rect getScissorRect(RectTransformComponent& layout, ImageComponent& img, Transform& transform, const Rect& passViewport);
+		// The UI scissor of a pass entity (a RectTransform): its parent's (unless ignoreScissor)
+		// is applied, its own (an Image's rect) is kept for its children. True when the
+		// parent's is empty: the entity draws nothing
+		bool applyPassScissor(Entity entity, Signature signature, Transform& transform, CameraRender& render, const Rect& colorPassViewport, bool& hasActiveScissor);
+		// the pixel rect (pass target pixels, within passViewport) a local rectangle covers
+		Rect projectLocalRect(const Matrix4& mvp, float localLeft, float localTop, float localRight, float localBottom, const Rect& passViewport);
 
 		// mesh LOD
 		struct LodAttribute{
@@ -1933,7 +1985,8 @@ namespace jasperengine{
 		// blending: drawn in the transparent queue, as with a transparent texture
 		bool lendsTransparentFluid(Entity entity, const Submesh& submesh) const;
 		// textureOverride: shown instead of the UI's texture (a FluidSimulation's MATERIAL output)
-		bool drawUI(UIComponent& ui, Transform& transform, PipelineType pipType, TextureRender* textureOverride = nullptr);
+		// inCanvasLayer: drawn into a FLATTEN Canvas Group layer (its alpha relative to the layer)
+		bool drawUI(UIComponent& ui, Transform& transform, PipelineType pipType, TextureRender* textureOverride = nullptr, bool inCanvasLayer = false);
 		void destroyUI(Entity entity, UIComponent& ui);
 
 		bool drawPoints(Entity entity, PointsComponent& points, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType);
@@ -1986,6 +2039,22 @@ namespace jasperengine{
 
 		void sortPoints(PointsComponent& points, Transform& transform, CameraComponent& camera, Transform& camTransform);
 		void sortInstancedMesh(InstancedMeshComponent& instmesh, MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform);
+
+	public:
+		// what the FLATTEN Canvas Groups drew in the last frame (tests, diagnostics)
+		struct CanvasGroupRenderStats{
+			uint32_t layers = 0;            // layers drawn and composited
+			uint32_t skippedBranches = 0;   // FLATTEN groups at alpha 0: their UI was skipped whole
+			uint32_t fallbacks = 0;         // layered groups drawn Per Element (an element not ready for the layer)
+			uint32_t pooled = 0;            // layer targets in the pool
+			uint32_t sharedTargets = 0;     // layers drawn into a target another layer of the pass uses
+			uint64_t targetsCreated = 0;    // layer targets created or resized since the scene started
+		};
+		const CanvasGroupRenderStats& getCanvasGroupRenderStats() const { return lastCanvasGroupRenderStats; }
+
+	private:
+		CanvasGroupRenderStats canvasGroupRenderStats;
+		CanvasGroupRenderStats lastCanvasGroupRenderStats;
 
 	public:
 
