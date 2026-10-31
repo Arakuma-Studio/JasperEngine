@@ -6753,6 +6753,11 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
 
     SceneMaxValues maxValues;
     maxValues.maxBones = sceneProject->maxValues.maxBones;
+    maxValues.legacyMaxColliders2D = sceneProject->maxValues.legacyMaxColliders2D;
+    maxValues.legacyMaxColliderPoints2D = sceneProject->maxValues.legacyMaxColliderPoints2D;
+    maxValues.legacyMaxColliders3D = sceneProject->maxValues.legacyMaxColliders3D;
+    maxValues.legacyMaxColliderVertices3D = sceneProject->maxValues.legacyMaxColliderVertices3D;
+    maxValues.legacyMaxColliderIndices3D = sceneProject->maxValues.legacyMaxColliderIndices3D;
     calculateSceneMaxValues(sceneProject, maxValues);
     sceneProject->maxValues = maxValues;
 

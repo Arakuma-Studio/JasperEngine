@@ -25,6 +25,7 @@
 #include "yaml-cpp/yaml.h"
 
 #include <filesystem>
+#include <optional>
 #include <chrono>
 #include <map>
 #include <set>
@@ -101,6 +102,14 @@ namespace jasperengine::editor{
         unsigned int maxExternalBuffers = 0;
         unsigned int maxSpriteFrames = 0;
         unsigned int maxBones = 0;
+        // the collider caps of scenes saved before colliders had none (maxColliders2D,
+        // maxColliderPoints2D, maxColliders3D, maxColliderVertices3D, maxColliderIndices3D):
+        // nothing reads them, kept as they were so re-saving an old scene changes no line
+        std::optional<unsigned int> legacyMaxColliders2D;
+        std::optional<unsigned int> legacyMaxColliderPoints2D;
+        std::optional<unsigned int> legacyMaxColliders3D;
+        std::optional<unsigned int> legacyMaxColliderVertices3D;
+        std::optional<unsigned int> legacyMaxColliderIndices3D;
     };
 
     struct ChildSceneRef {

@@ -3766,6 +3766,12 @@ YAML::Node editor::Stream::encodeSceneProject(const Project* project, const Scen
     maxValuesNode["maxExternalBuffers"] = sceneProject->maxValues.maxExternalBuffers;
     maxValuesNode["maxSpriteFrames"] = sceneProject->maxValues.maxSpriteFrames;
     maxValuesNode["maxBones"] = sceneProject->maxValues.maxBones;
+    // read from an older scene: written back unchanged (no churn in users' files)
+    if (sceneProject->maxValues.legacyMaxColliders2D) maxValuesNode["maxColliders2D"] = *sceneProject->maxValues.legacyMaxColliders2D;
+    if (sceneProject->maxValues.legacyMaxColliderPoints2D) maxValuesNode["maxColliderPoints2D"] = *sceneProject->maxValues.legacyMaxColliderPoints2D;
+    if (sceneProject->maxValues.legacyMaxColliders3D) maxValuesNode["maxColliders3D"] = *sceneProject->maxValues.legacyMaxColliders3D;
+    if (sceneProject->maxValues.legacyMaxColliderVertices3D) maxValuesNode["maxColliderVertices3D"] = *sceneProject->maxValues.legacyMaxColliderVertices3D;
+    if (sceneProject->maxValues.legacyMaxColliderIndices3D) maxValuesNode["maxColliderIndices3D"] = *sceneProject->maxValues.legacyMaxColliderIndices3D;
     root["maxValues"] = maxValuesNode;
 
     YAML::Node shaderKeysNode = Stream::encodeShaderKeys(sceneProject->shaderKeys);
@@ -3925,8 +3931,13 @@ void editor::Stream::decodeSceneProject(SceneProject* sceneProject, const YAML::
         if (maxValuesNode["maxExternalBuffers"]) sceneProject->maxValues.maxExternalBuffers = YamlNumbers::as<unsigned int>(maxValuesNode["maxExternalBuffers"]);
         if (maxValuesNode["maxSpriteFrames"]) sceneProject->maxValues.maxSpriteFrames = YamlNumbers::as<unsigned int>(maxValuesNode["maxSpriteFrames"]);
         if (maxValuesNode["maxBones"]) sceneProject->maxValues.maxBones = YamlNumbers::as<unsigned int>(maxValuesNode["maxBones"]);
-        // maxColliders2D / maxColliderPoints2D / maxColliders3D / maxColliderVertices3D /
-        // maxColliderIndices3D of older editors: colliders have no caps any more
+        // the collider caps of older editors: colliders have no caps any more; kept only to
+        // write them back as they were
+        if (maxValuesNode["maxColliders2D"]) sceneProject->maxValues.legacyMaxColliders2D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliders2D"]);
+        if (maxValuesNode["maxColliderPoints2D"]) sceneProject->maxValues.legacyMaxColliderPoints2D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliderPoints2D"]);
+        if (maxValuesNode["maxColliders3D"]) sceneProject->maxValues.legacyMaxColliders3D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliders3D"]);
+        if (maxValuesNode["maxColliderVertices3D"]) sceneProject->maxValues.legacyMaxColliderVertices3D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliderVertices3D"]);
+        if (maxValuesNode["maxColliderIndices3D"]) sceneProject->maxValues.legacyMaxColliderIndices3D = YamlNumbers::as<unsigned int>(maxValuesNode["maxColliderIndices3D"]);
     }
 
     sceneProject->shaderKeys.clear();
