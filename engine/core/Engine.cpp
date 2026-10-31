@@ -6,6 +6,7 @@
 #include "Log.h"
 #include "Scene.h"
 #include "Input.h"
+#include "io/UserSettings.h"
 #include "render/SystemRender.h"
 #include "script/LuaBinding.h"
 #include "manager/SceneManager.h"
@@ -1161,7 +1162,7 @@ void Engine::calculateCanvas(){
                       Engine::canvasWidth, Engine::canvasHeight, unusedViewRect);
 }
 
-void Engine::systemInit(int argc, char* argv[], System* system){
+void Engine::systemInit(int argc, char* argv[], System* system, bool startProject){
     #ifndef NO_THREAD_SUPPORT
         size_t maxThreads = std::max(1u, std::thread::hardware_concurrency() - 1);
         ThreadPoolManager::initialize(maxThreads);
@@ -1185,6 +1186,11 @@ void Engine::systemInit(int argc, char* argv[], System* system){
 
     LuaBinding::createLuaState();
 
+    if (startProject)
+        systemStartProject();
+}
+
+void Engine::systemStartProject(){
     #ifndef NO_LUA_INIT
     LuaBinding::init();
     #endif
@@ -1487,6 +1493,9 @@ void Engine::runFrame(bool draw){
     if (draw)
         signalReadyOnce();
 
+    // desktop UserSettings: written a second after a change, not on every set
+    UserSettings::tick();
+
     frameRunning = false;
 
     drawSemaphore.release();
@@ -1570,17 +1579,27 @@ void Engine::systemViewDestroyed(){
 void Engine::systemShutdown(){
     Engine::onShutdown.call();
 
+    // what the game (and its onShutdown handlers) stored is on disk before it goes
+    UserSettings::save();
+
     // anime's Lua references go while the Lua state still exists
     AnimEngine::instance().reset();
     LuaBinding::cleanup();
 
     removeAllSceneLayers(true);
+
+    // and what scripts stored while their scenes went (onDestroy): the last write. Desktop
+    // System objects live until the process ends, so ~System never gets to write it.
+    UserSettings::save();
 }
 
 void Engine::systemPause(){
     AudioSystem::pauseAll();
     Engine::onPause.call();
     paused = true;
+
+    // a paused app may be killed without another call
+    UserSettings::save();
 }
 
 void Engine::systemResume(){

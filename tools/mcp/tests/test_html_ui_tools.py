@@ -96,7 +96,10 @@ LIMITS.update({"get_pose_animation": 700, "edit_pose_animation": 1220})
 # fix FC: clips entries may be {name, wrap, interpolate, fps} objects (the detail in the guide), paid by
 # a shorter description: bake_vertex_animation 1977, total 106049
 LIMITS.update({"bake_vertex_animation": 2000})
-TOTAL_LIMIT = 106100
+# script data (spec 2026-10-31-script-data 6.4): user_settings measured 515 (the PlayerPrefs
+# store: list/get/set/delete/clear); total 106611 with it (106096 before), the limit raised by it
+LIMITS.update({"user_settings": 550})
+TOTAL_LIMIT = 106620
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 

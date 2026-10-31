@@ -605,7 +605,10 @@ namespace jasperengine {
 #endif
 
         //-----JasperEngine API functions-----
-        static void systemInit(int argc, char* argv[], System* system);
+        // startProject false leaves the project's main.lua and C++ init() (which load the first
+        // scene) to a later systemStartProject(): the web build waits for its saved files first
+        static void systemInit(int argc, char* argv[], System* system, bool startProject = true);
+        static void systemStartProject();
         static void systemViewLoaded();
         static void systemViewChanged();
         static void systemDraw();
