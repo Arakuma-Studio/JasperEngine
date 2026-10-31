@@ -98,7 +98,10 @@ LIMITS.update({"get_pose_animation": 700, "edit_pose_animation": 1220})
 LIMITS.update({"bake_vertex_animation": 2000})
 # platform services (spec 6.9): send_input's `app` events (+88), configure_game_view's device,
 # orientation and language (+330), get_play_state's platform (+46), measured total 106564 (148 tools)
-TOTAL_LIMIT = 106600
+# safe area (spec 6.7): configure_game_view's device_overlay, safe_area_outline, custom_device and
+# safe_area, screenshot's device_overlay / safe_area_in_image, create_ui / create_entity safe_area,
+# get_play_state's safe_area (+390), measured total 106954 (148 tools)
+TOTAL_LIMIT = 106960
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
