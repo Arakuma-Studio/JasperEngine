@@ -391,7 +391,7 @@ namespace {
     }
 
     // Ends the coroutine: its thread is closed (pending to-be-closed variables run, which is Lua:
-    // the records may move), its references dropped. `report`: a message already reported
+    // the records may move), its references dropped. `reported`: a message already reported
     // (an error), compared with what the closing leaves.
     void endCoroutine(TaskId id, CoStatus status, const std::string* reported = nullptr){
         CoRecord* rec = findCo(id);
