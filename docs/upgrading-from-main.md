@@ -75,6 +75,11 @@ The upgrade test found these, fixed in this editor (each with a test that failed
 - **A prebuilt Linux player drew no sky.** A Skybox that uses the editor's default sky names no
   file (its faces are built into the editor), so the prebuilt cook shipped none and the game logged
   "Texture is missing texture for face 0". The cook now ships the six default faces with the game.
+- **A prebuilt player's 2D polygon colliders lost their shape.** The cook left out a 2D collider's
+  vertex count, so in the player a polygon became the box between its two points (the upgrade
+  test's balls fell past the end of the ground). It also left out a 2D collider's collision filter
+  (category, mask, group) and a 3D body's allowed degrees of freedom and mesh collider indices; all
+  are cooked now.
 
 ## Known, as on origin/main
 
