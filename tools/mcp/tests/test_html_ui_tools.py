@@ -115,7 +115,7 @@ LIMITS.update({"user_settings": 550})
 # physics_debug / physics_debug_contacts; measured on the tree merged with main (script-lifecycle,
 # lines-trails) and gaps/physics-2d: 151 tools, total 107295 (tool_budget.py), the limit set to it
 LIMITS.update({"create_ragdoll": 900})
-TOTAL_LIMIT = 107295
+TOTAL_LIMIT = 107295  # re-measured after the physics-3d review fixes and the merge of main 92cc07d2a: unchanged
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
