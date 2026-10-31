@@ -190,7 +190,7 @@ assets. `handheld`, `vibration` and `bump` come from EZ Camera Shake (strength =
 
 ```text
 add_component {entity: "Main Camera", component: "camerashaker"}
-set_properties {entity: "Main Camera", component: "camerashaker", values: {startPreset: "drunk"}}
+set_properties {entity: "Main Camera", values: {camerashaker: {startPreset: "drunk"}}}
 write_file {path: "assets/shakes/boom.shake", content: "{\"format\": \"jasperengine.shake\", \"version\": 1, ...}"}
 get_asset_info {path: "assets/shakes/boom.shake"}     -> shake {values}, peak {position, rotation, duration}
 list_assets {type: "shake"}
@@ -204,8 +204,9 @@ screenshot {view: "game"}
 **Checking a follower.**
 
 1. Add it: `add_component {entity: "Main Camera", component: "camerafollow"}`.
-2. Set the target: `set_properties {..., values: {target: "Player", damping: [0, 0, 0]}}`.
-3. Play, move the player, and read the camera's `position` with `get_runtime_entity`. Its
+2. Set the target: `set_properties {entity: "Main Camera", values: {camerafollow: {target: <Player's id>, damping: [0, 0, 0]}}}`.
+3. Play, move the player (`set_runtime_property` or Lua), and read the camera's `position` with
+   `get_runtime_entity`. Its
    `camerafollow.runtime` gives `velocity`, `desired` and `placed`.
 
 **Validation.**

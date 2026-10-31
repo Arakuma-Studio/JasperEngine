@@ -54,19 +54,23 @@ namespace jasperengine{
             return a + t * (b - a);
         }
 
-        // one of 8 gradients: the 4 diagonals (length sqrt 2) and the 4 axes, dotted with (x, y);
-        // with these the noise stays within [-1, 1]
+        // one of 8 gradients of length sqrt 2, at 22.5 + 45 k degrees, dotted with (x, y). Off the
+        // axes and diagonals: those cancel exactly at half-integer points, which a shake clock
+        // stepping a quarter unit a frame (roughness 15 at 60 fps) lands on. The noise stays
+        // within [-1, 1]
         inline float gradient(uint8_t hash, float x, float y){
-            switch (hash & 7){
-                case 0: return  x + y;
-                case 1: return -x + y;
-                case 2: return  x - y;
-                case 3: return -x - y;
-                case 4: return  x;
-                case 5: return -x;
-                case 6: return  y;
-                default: return -y;
-            }
+            static const float table[8][2] = {
+                {1.306562965f, 0.541196100f},
+                {0.541196100f, 1.306562965f},
+                {-0.541196100f, 1.306562965f},
+                {-1.306562965f, 0.541196100f},
+                {-1.306562965f, -0.541196100f},
+                {-0.541196100f, -1.306562965f},
+                {0.541196100f, -1.306562965f},
+                {1.306562965f, -0.541196100f}
+            };
+            const float* g = table[hash & 7];
+            return g[0] * x + g[1] * y;
         }
 
     }
