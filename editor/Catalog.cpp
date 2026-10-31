@@ -712,6 +712,38 @@ namespace {
         makeFastProperty<LatticeFollowerComponent, float, &LatticeFollowerComponent::weight>("weight", PropertyType::Float, UpdateFlags_None),
     };
 
+    // read by CameraControlSystem every frame (no update flag needed); runtime is not a property
+    static const FastPropertyDescriptor kCameraShakerProperties[] = {
+        makeFastProperty<CameraShakerComponent, bool, &CameraShakerComponent::global>("global", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<CameraShakerComponent, bool, &CameraShakerComponent::unscaledTime>("unscaledTime", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<CameraShakerComponent, CameraShakeMode, &CameraShakerComponent::mode>("mode", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<CameraShakerComponent, float, &CameraShakerComponent::positionScale>("positionScale", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<CameraShakerComponent, float, &CameraShakerComponent::rotationScale>("rotationScale", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<CameraShakerComponent, std::string, &CameraShakerComponent::startPreset>("startPreset", PropertyType::String, UpdateFlags_None),
+        makeFastProperty<CameraShakerComponent, float, &CameraShakerComponent::traumaDecay>("traumaDecay", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<CameraShakerComponent, float, &CameraShakerComponent::traumaPower>("traumaPower", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<CameraShakerComponent, Vector3, &CameraShakerComponent::traumaMaxOffset>("traumaMaxOffset", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<CameraShakerComponent, Vector3, &CameraShakerComponent::traumaMaxAngle>("traumaMaxAngle", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<CameraShakerComponent, float, &CameraShakerComponent::traumaFrequency>("traumaFrequency", PropertyType::Float, UpdateFlags_None),
+    };
+
+    // read by CameraControlSystem every frame; the runtime fields (velocity...) are not properties
+    static const FastPropertyDescriptor kCameraFollowProperties[] = {
+        makeFastProperty<CameraFollowComponent, Entity, &CameraFollowComponent::target>("target", PropertyType::Entity, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, Vector3, &CameraFollowComponent::offset>("offset", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, FollowOffsetSpace, &CameraFollowComponent::offsetSpace>("offsetSpace", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, Vector3, &CameraFollowComponent::damping>("damping", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, float, &CameraFollowComponent::maxSpeed>("maxSpeed", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, bool, &CameraFollowComponent::lookAt>("lookAt", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, Vector3, &CameraFollowComponent::lookAtOffset>("lookAtOffset", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, float, &CameraFollowComponent::rotationDamping>("rotationDamping", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, Vector2, &CameraFollowComponent::deadZone>("deadZone", PropertyType::Vector2, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, bool, &CameraFollowComponent::useBounds>("useBounds", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, Vector3, &CameraFollowComponent::boundsMin>("boundsMin", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, Vector3, &CameraFollowComponent::boundsMax>("boundsMax", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<CameraFollowComponent, bool, &CameraFollowComponent::unscaledTime>("unscaledTime", PropertyType::Bool, UpdateFlags_None),
+    };
+
     static const FastPropertyDescriptor kLatticeTracksProperties[] = {
         makeFastProperty<LatticeTracksComponent, std::vector<int>, &LatticeTracksComponent::points>("points", PropertyType::Custom, UpdateFlags_None),
         makeFastProperty<LatticeTracksComponent, std::vector<std::vector<Vector3>>, &LatticeTracksComponent::values>("values", PropertyType::Custom, UpdateFlags_None),
@@ -1851,6 +1883,14 @@ namespace {
         return PropertyData();
     }
 
+    PropertyData resolveCameraShakerPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<CameraShakerComponent*>(comp), propertyName, kCameraShakerProperties);
+    }
+
+    PropertyData resolveCameraFollowPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<CameraFollowComponent*>(comp), propertyName, kCameraFollowProperties);
+    }
+
     PropertyData resolveLatticeFollowerPropertyFast(void* comp, const std::string& propertyName) {
         return resolveDirectProperties(static_cast<LatticeFollowerComponent*>(comp), propertyName, kLatticeFollowerProperties);
     }
@@ -2973,6 +3013,14 @@ namespace {
         }
     }
 
+    void enumerateCameraShakerProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kCameraShakerProperties);
+    }
+
+    void enumerateCameraFollowProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kCameraFollowProperties);
+    }
+
     void enumerateLatticeFollowerProperties(void* comp, std::map<std::string, PropertyData>& ps) {
         enumerateFromDescriptors(comp, ps, kLatticeFollowerProperties);
     }
@@ -3768,6 +3816,8 @@ namespace {
         {ComponentType::Light2DComponent, &findComponentPtr<Light2DComponent>, &resolveLight2DPropertyFast, &enumerateLight2DProperties},
         {ComponentType::ShadowCaster2DComponent, &findComponentPtr<ShadowCaster2DComponent>, &resolveShadowCaster2DPropertyFast, &enumerateShadowCaster2DProperties},
         {ComponentType::CameraComponent, &findComponentPtr<CameraComponent>, &resolveCameraPropertyFast, &enumerateCameraProperties},
+        {ComponentType::CameraShakerComponent, &findComponentPtr<CameraShakerComponent>, &resolveCameraShakerPropertyFast, &enumerateCameraShakerProperties},
+        {ComponentType::CameraFollowComponent, &findComponentPtr<CameraFollowComponent>, &resolveCameraFollowPropertyFast, &enumerateCameraFollowProperties},
         {ComponentType::AudioSourceComponent, &findComponentPtr<AudioSourceComponent>, &resolveAudioPropertyFast, &enumerateAudioProperties},
         {ComponentType::SkyboxComponent, &findComponentPtr<SkyboxComponent>, &resolveSkyPropertyFast, &enumerateSkyProperties},
         {ComponentType::TextComponent, &findComponentPtr<TextComponent>, &resolveTextPropertyFast, &enumerateTextProperties},
@@ -3839,6 +3889,8 @@ namespace {
             case ComponentType::LatticeFollowerComponent: return &getEnabledRef<LatticeFollowerComponent>;
             case ComponentType::AnimationPlayerComponent: return &getEnabledRef<AnimationPlayerComponent>;
             case ComponentType::VertexAnimatorComponent: return &getEnabledRef<VertexAnimatorComponent>;
+            case ComponentType::CameraShakerComponent: return &getEnabledRef<CameraShakerComponent>;
+            case ComponentType::CameraFollowComponent: return &getEnabledRef<CameraFollowComponent>;
             default: return nullptr;
         }
     }
@@ -3990,6 +4042,10 @@ std::string computeComponentName(editor::ComponentType component){
         name = "AnimationPlayerComponent";
     }else if(component == ComponentType::VertexAnimatorComponent){
         name = "VertexAnimatorComponent";
+    }else if(component == ComponentType::CameraShakerComponent){
+        name = "CameraShakerComponent";
+    }else if(component == ComponentType::CameraFollowComponent){
+        name = "CameraFollowComponent";
     }else if(component == ComponentType::Light2DComponent){
         name = "Light2DComponent";
     }else if(component == ComponentType::ShadowCaster2DComponent){
@@ -4138,6 +4194,8 @@ std::string editor::Catalog::getComponentDisplayName(ComponentType component){
         case ComponentType::PoseAnimatorComponent: return "Pose Animator";
         case ComponentType::AnimationPlayerComponent: return "Animation Player";
         case ComponentType::VertexAnimatorComponent: return "Vertex Animator";
+        case ComponentType::CameraShakerComponent: return "Camera Shaker";
+        case ComponentType::CameraFollowComponent: return "Camera Follow";
     }
     return getComponentName(component);
 }
@@ -4205,6 +4263,8 @@ const char* editor::Catalog::getComponentIcon(ComponentType component){
         case ComponentType::PoseAnimatorComponent: return ICON_FA_PERSON_RUNNING;
         case ComponentType::AnimationPlayerComponent: return ICON_FA_FILM;
         case ComponentType::VertexAnimatorComponent: return ICON_FA_PEOPLE_GROUP;
+        case ComponentType::CameraShakerComponent: return ICON_FA_BURST;
+        case ComponentType::CameraFollowComponent: return ICON_FA_LOCATION_CROSSHAIRS;
     }
     return ICON_FA_PUZZLE_PIECE;
 }
@@ -4270,6 +4330,10 @@ ComponentId editor::Catalog::getComponentId(const EntityRegistry* registry, Comp
             return registry->getComponentId<AnimationPlayerComponent>();
         case ComponentType::VertexAnimatorComponent:
             return registry->getComponentId<VertexAnimatorComponent>();
+        case ComponentType::CameraShakerComponent:
+            return registry->getComponentId<CameraShakerComponent>();
+        case ComponentType::CameraFollowComponent:
+            return registry->getComponentId<CameraFollowComponent>();
         case ComponentType::Light2DComponent:
             return registry->getComponentId<Light2DComponent>();
         case ComponentType::ShadowCaster2DComponent:
@@ -4392,6 +4456,10 @@ editor::ComponentType editor::Catalog::getComponentType(const std::string& compo
         return ComponentType::AnimationPlayerComponent;
     }else if(normalizedName == "vertexanimator"){
         return ComponentType::VertexAnimatorComponent;
+    }else if(normalizedName == "camerashaker"){
+        return ComponentType::CameraShakerComponent;
+    }else if(normalizedName == "camerafollow"){
+        return ComponentType::CameraFollowComponent;
     }else if(normalizedName == "light2d"){
         return ComponentType::Light2DComponent;
     }else if(normalizedName == "shadowcaster2d"){
@@ -4609,6 +4677,12 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     }
     if (registry->findComponent<VertexAnimatorComponent>(entity)){
         ret.push_back(ComponentType::VertexAnimatorComponent);
+    }
+    if (registry->findComponent<CameraShakerComponent>(entity)){
+        ret.push_back(ComponentType::CameraShakerComponent);
+    }
+    if (registry->findComponent<CameraFollowComponent>(entity)){
+        ret.push_back(ComponentType::CameraFollowComponent);
     }
     if (registry->findComponent<MorphTracksComponent>(entity)){
         ret.push_back(ComponentType::MorphTracksComponent);
@@ -5707,6 +5781,21 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
             YAML::Node encoded = Stream::encodeVertexAnimatorComponent(sourceRegistry->getComponent<VertexAnimatorComponent>(sourceEntity));
             VertexAnimatorComponent& target = targetRegistry->getComponent<VertexAnimatorComponent>(targetEntity);
             target = Stream::decodeVertexAnimatorComponent(encoded, &target);
+            break;
+        }
+
+        case ComponentType::CameraShakerComponent: {
+            // the target's shakes keep playing (only the settings are copied)
+            YAML::Node encoded = Stream::encodeCameraShakerComponent(sourceRegistry->getComponent<CameraShakerComponent>(sourceEntity));
+            CameraShakerComponent& target = targetRegistry->getComponent<CameraShakerComponent>(targetEntity);
+            target = Stream::decodeCameraShakerComponent(encoded, &target);
+            break;
+        }
+
+        case ComponentType::CameraFollowComponent: {
+            YAML::Node encoded = Stream::encodeCameraFollowComponent(sourceRegistry->getComponent<CameraFollowComponent>(sourceEntity));
+            CameraFollowComponent& target = targetRegistry->getComponent<CameraFollowComponent>(targetEntity);
+            target = Stream::decodeCameraFollowComponent(encoded, &target);
             break;
         }
 

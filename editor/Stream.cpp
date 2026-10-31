@@ -13,6 +13,8 @@
 #include "lattice/LatticeTypes.h"
 #include "animation/AnimationClipIO.h"
 #include "animation/ModelSubClips.h"
+#include "object/CameraFollow.h"
+#include "object/CameraShaker.h"
 #include "Factory.h"
 #include "pool/SoundPool.h"
 #include "pool/ShaderPool.h"
@@ -4933,6 +4935,16 @@ YAML::Node editor::Stream::encodeComponents(const Entity entity, const EntityReg
         compNode[Catalog::getComponentName(ComponentType::VertexAnimatorComponent, true)] = encodeVertexAnimatorComponent(animator);
     }
 
+    if (signature.test(registry->getComponentId<CameraShakerComponent>())) {
+        const CameraShakerComponent& shaker = registry->getComponent<CameraShakerComponent>(entity);
+        compNode[Catalog::getComponentName(ComponentType::CameraShakerComponent, true)] = encodeCameraShakerComponent(shaker);
+    }
+
+    if (signature.test(registry->getComponentId<CameraFollowComponent>())) {
+        const CameraFollowComponent& follow = registry->getComponent<CameraFollowComponent>(entity);
+        compNode[Catalog::getComponentName(ComponentType::CameraFollowComponent, true)] = encodeCameraFollowComponent(follow);
+    }
+
     if (signature.test(registry->getComponentId<CameraComponent>())) {
         const CameraComponent& camera = registry->getComponent<CameraComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::CameraComponent, true)] = encodeCameraComponent(camera);
@@ -5474,6 +5486,28 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->addComponent<AnimationPlayerComponent>(entity, std::move(player));
         }else{
             registry->getComponent<AnimationPlayerComponent>(entity) = std::move(player);
+        }
+    }
+
+    compName = Catalog::getComponentName(ComponentType::CameraShakerComponent, true);
+    if (compNode[compName]) {
+        CameraShakerComponent* existing = registry->findComponent<CameraShakerComponent>(entity);
+        CameraShakerComponent shaker = decodeCameraShakerComponent(compNode[compName], existing);
+        if (!signature.test(registry->getComponentId<CameraShakerComponent>())){
+            registry->addComponent<CameraShakerComponent>(entity, std::move(shaker));
+        }else{
+            registry->getComponent<CameraShakerComponent>(entity) = std::move(shaker);
+        }
+    }
+
+    compName = Catalog::getComponentName(ComponentType::CameraFollowComponent, true);
+    if (compNode[compName]) {
+        CameraFollowComponent* existing = registry->findComponent<CameraFollowComponent>(entity);
+        CameraFollowComponent follow = decodeCameraFollowComponent(compNode[compName], existing);
+        if (!signature.test(registry->getComponentId<CameraFollowComponent>())){
+            registry->addComponent<CameraFollowComponent>(entity, std::move(follow));
+        }else{
+            registry->getComponent<CameraFollowComponent>(entity) = std::move(follow);
         }
     }
 
@@ -7587,6 +7621,113 @@ AnimationPlayerComponent editor::Stream::decodeAnimationPlayerComponent(const YA
     }
 
     return player;
+}
+
+YAML::Node editor::Stream::encodeCameraShakerComponent(const CameraShakerComponent& shaker) {
+    YAML::Node node;
+    node["enabled"] = YamlNumbers::text(shaker.enabled);
+    node["global"] = YamlNumbers::text(shaker.global);
+    node["unscaledTime"] = YamlNumbers::text(shaker.unscaledTime);
+    node["mode"] = CameraShaker::modeToString(shaker.mode);
+    encodeFinite(node, "positionScale", shaker.positionScale);
+    encodeFinite(node, "rotationScale", shaker.rotationScale);
+    node["startPreset"] = shaker.startPreset;
+    encodeFinite(node, "traumaDecay", shaker.traumaDecay);
+    encodeFinite(node, "traumaPower", shaker.traumaPower);
+    node["traumaMaxOffset"] = encodeVector3(shaker.traumaMaxOffset);
+    node["traumaMaxAngle"] = encodeVector3(shaker.traumaMaxAngle);
+    encodeFinite(node, "traumaFrequency", shaker.traumaFrequency);
+    return node;
+}
+
+CameraShakerComponent editor::Stream::decodeCameraShakerComponent(const YAML::Node& node, const CameraShakerComponent* oldShaker) {
+    // a missing key is the default; an old component's shakes play on
+    CameraShakerComponent shaker;
+    if (oldShaker) {
+        shaker.runtime = oldShaker->runtime;
+    }
+    if (node["enabled"]) shaker.enabled = YamlNumbers::as<bool>(node["enabled"]);
+    if (node["global"]) shaker.global = YamlNumbers::as<bool>(node["global"]);
+    if (node["unscaledTime"]) shaker.unscaledTime = YamlNumbers::as<bool>(node["unscaledTime"]);
+    if (node["mode"]) {
+        CameraShakeMode mode;
+        if (CameraShaker::modeFromString(node["mode"].as<std::string>(), mode)) shaker.mode = mode;
+    }
+    if (node["positionScale"]) shaker.positionScale = std::max(0.0f, decodeFinite(node["positionScale"], shaker.positionScale));
+    if (node["rotationScale"]) shaker.rotationScale = std::max(0.0f, decodeFinite(node["rotationScale"], shaker.rotationScale));
+    if (node["startPreset"]) shaker.startPreset = node["startPreset"].as<std::string>();
+    if (node["traumaDecay"]) shaker.traumaDecay = std::max(0.0f, decodeFinite(node["traumaDecay"], shaker.traumaDecay));
+    if (node["traumaPower"]) shaker.traumaPower = std::max(1.0f, std::min(4.0f, decodeFinite(node["traumaPower"], shaker.traumaPower)));
+    if (node["traumaMaxOffset"]) shaker.traumaMaxOffset = decodeVector3(node["traumaMaxOffset"]);
+    if (node["traumaMaxAngle"]) shaker.traumaMaxAngle = decodeVector3(node["traumaMaxAngle"]);
+    if (node["traumaFrequency"]) shaker.traumaFrequency = std::max(0.0f, decodeFinite(node["traumaFrequency"], shaker.traumaFrequency));
+    return shaker;
+}
+
+YAML::Node editor::Stream::encodeCameraFollowComponent(const CameraFollowComponent& follow) {
+    YAML::Node node;
+    node["enabled"] = YamlNumbers::text(follow.enabled);
+    node["target"] = follow.target;
+    node["offset"] = encodeVector3(follow.offset);
+    node["offsetSpace"] = CameraFollow::offsetSpaceToString(follow.offsetSpace);
+    node["damping"] = encodeVector3(follow.damping);
+    encodeFinite(node, "maxSpeed", follow.maxSpeed);
+    node["lookAt"] = YamlNumbers::text(follow.lookAt);
+    node["lookAtOffset"] = encodeVector3(follow.lookAtOffset);
+    encodeFinite(node, "rotationDamping", follow.rotationDamping);
+    node["deadZone"] = encodeVector2(follow.deadZone);
+    node["useBounds"] = YamlNumbers::text(follow.useBounds);
+    node["boundsMin"] = encodeVector3(follow.boundsMin);
+    node["boundsMax"] = encodeVector3(follow.boundsMax);
+    node["unscaledTime"] = YamlNumbers::text(follow.unscaledTime);
+    return node;
+}
+
+CameraFollowComponent editor::Stream::decodeCameraFollowComponent(const YAML::Node& node, const CameraFollowComponent* oldFollow) {
+    // a missing key is the default; an old component's motion (velocity, placement) goes on
+    CameraFollowComponent follow;
+    if (oldFollow) {
+        follow = *oldFollow;
+        const CameraFollowComponent defaults;
+        follow.enabled = defaults.enabled;
+        follow.target = defaults.target;
+        follow.offset = defaults.offset;
+        follow.offsetSpace = defaults.offsetSpace;
+        follow.damping = defaults.damping;
+        follow.maxSpeed = defaults.maxSpeed;
+        follow.lookAt = defaults.lookAt;
+        follow.lookAtOffset = defaults.lookAtOffset;
+        follow.rotationDamping = defaults.rotationDamping;
+        follow.deadZone = defaults.deadZone;
+        follow.useBounds = defaults.useBounds;
+        follow.boundsMin = defaults.boundsMin;
+        follow.boundsMax = defaults.boundsMax;
+        follow.unscaledTime = defaults.unscaledTime;
+    }
+    if (node["enabled"]) follow.enabled = YamlNumbers::as<bool>(node["enabled"]);
+    if (node["target"]) follow.target = YamlNumbers::as<Entity>(node["target"]);
+    if (node["offset"]) follow.offset = decodeVector3(node["offset"]);
+    if (node["offsetSpace"]) {
+        FollowOffsetSpace space;
+        if (CameraFollow::offsetSpaceFromString(node["offsetSpace"].as<std::string>(), space)) follow.offsetSpace = space;
+    }
+    if (node["damping"]) {
+        const Vector3 damping = decodeVector3(node["damping"]);
+        follow.damping = Vector3(std::max(0.0f, damping.x), std::max(0.0f, damping.y), std::max(0.0f, damping.z));
+    }
+    if (node["maxSpeed"]) follow.maxSpeed = std::max(0.0f, decodeFinite(node["maxSpeed"], follow.maxSpeed));
+    if (node["lookAt"]) follow.lookAt = YamlNumbers::as<bool>(node["lookAt"]);
+    if (node["lookAtOffset"]) follow.lookAtOffset = decodeVector3(node["lookAtOffset"]);
+    if (node["rotationDamping"]) follow.rotationDamping = std::max(0.0f, decodeFinite(node["rotationDamping"], follow.rotationDamping));
+    if (node["deadZone"]) {
+        const Vector2 zone = decodeVector2(node["deadZone"]);
+        follow.deadZone = Vector2(std::max(0.0f, zone.x), std::max(0.0f, zone.y));
+    }
+    if (node["useBounds"]) follow.useBounds = YamlNumbers::as<bool>(node["useBounds"]);
+    if (node["boundsMin"]) follow.boundsMin = decodeVector3(node["boundsMin"]);
+    if (node["boundsMax"]) follow.boundsMax = decodeVector3(node["boundsMax"]);
+    if (node["unscaledTime"]) follow.unscaledTime = YamlNumbers::as<bool>(node["unscaledTime"]);
+    return follow;
 }
 
 YAML::Node editor::Stream::encodeVertexAnimatorComponent(const VertexAnimatorComponent& animator) {
