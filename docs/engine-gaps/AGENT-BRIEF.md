@@ -46,7 +46,9 @@ statics, `RegisterEvent`/`RegisterEngineEvent`).
    command system.
 4. MCP (`editor/mcp`, tools in `editor/mcp/tools`): the component/property surfaces agents use to author the
    feature; `docs/mcp/TOOLS.md` is generated (`tools/mcp/gen_tool_docs.py`), the tool definitions have a size
-   budget (`tools/mcp/tool_budget.py`); the agent guide (`editor/mcp/McpInstructions.cpp`, `jasper://guide`) has a
+   budget (`tools/mcp/tool_budget.py`; when new tool text is worth it, raise `TOTAL_LIMIT`/`LIMITS` in
+   `tools/mcp/tests/test_html_ui_tools.py` by the measured amount with a comment, as earlier features did; keep
+   descriptions tight and move detail to the guides); the agent guide (`editor/mcp/McpInstructions.cpp`, `jasper://guide`) has a
    tight budget - put details in `docs/mcp/guide/*.md` instead.
 5. Docs: `docs/mcp/guide/lua-api.md` and the topic guides, `docs/unity-glossary.md` (Unity name -> engine name),
    README feature list when user-visible.
@@ -71,10 +73,14 @@ statics, `RegisterEvent`/`RegisterEngineEvent`).
   (`cmake --install build/editor --prefix build/linux/editor-install`) and ALWAYS pass your own editor:
   `JASPER_EDITOR=$PWD/build/linux/editor-install/bin/jasperengine-editor tools/mcp/run-tests.sh -j2 <files>`
   (without it the harness silently uses the MAIN checkout's editor). xdotool, dbus-x11, uv, FFmpeg (tools + dev
-  libs) are installed. Known baseline: tests needing the external `build/fixture-unity` project fail on `main` too
-  (see LEDGER "Baseline"); every other MCP test passes on `main`.
+  libs) are installed. Known baseline failures on `main` (LEDGER "Baseline"): the 5 tests of
+  `test_animation_assets.py` and 5 of `test_lattice_scene.py`; every other MCP test passes on `main`.
 - Baseline on `main` (`b32a3c578`): editor + tests build with 0 warnings; unit tests 936 passed, 8 skipped, 0 failed.
 - Never use `git push`, never touch `main` or other branches/worktrees: the lead merges.
+- Before you hand off (and again when the lead asks), merge the current local `main` into your branch
+  (`git merge main` inside your worktree; `main` is shared through the repository), resolve conflicts keeping both
+  features' intent, rebuild, re-run the unit suite and your MCP tests, and regenerate TOOLS.md / re-check the tool
+  budget against the merged tree. The lead then merges your branch with no conflicts.
 
 ## Commits
 

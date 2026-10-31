@@ -13,8 +13,7 @@ const char* mcpServerInstructions() {
 R"JE(# JasperEngine editor (MCP)
 
 You are driving a running JasperEngine editor: a C++ game engine with a Unity-style editor
-(Hierarchy, Inspector, Project window, Console, Scene and Game views) and Lua or C++ gameplay
-scripts. Every tool edit is an undoable editor command, shown live to a human.
+and Lua or C++ gameplay scripts. Every tool edit is an undoable editor command, shown live to a human.
 Build scenes with tools, write code with your own file tools, verify by playing, screenshots
 and the Console. tools/list is authoritative for tool names and arguments; read a
 tool's description before first use. Deeper reference: resources jasper://docs/... (listed by
@@ -56,7 +55,7 @@ Legacy Animation = AnimationPlayerComponent (AnimationComponent: entity sequence
    project.yaml (the editor would overwrite you). Group many edits in one `batch` call
    (undo_group: one undo step). Edit code with your own tools (see Code).
 3. Save the scenes you changed.
-4. Play the start scene; a C++ project builds first (seconds to minutes).
+4. Play the start scene; a C++ project builds first.
 5. Look: screenshot the Game view (Scene view for layout). Drive the game with
    send_input / wait; query runtime state while playing (get_runtime_entity, eval_lua).
 6. Read the Console since your last cursor: compile, script and Lua errors, missing assets.
@@ -91,8 +90,8 @@ A Lua script returns a module table; attach it to a GameObject through its Scrip
 self.scene is the Scene, self.entity the GameObject's numeric id (NOT an object: never call
 self.entity:...). Wrap it: GameObject(self.scene, self.entity), Sprite(...), Text(...),
 Rigidbody2D(...), AudioSource(...); a constructor given only self.scene CREATES a new
-GameObject. Declare `---@class Name : ScriptInstance` (Name = the file name): lua-language-server
-then types self and catches typos.
+GameObject. Declare `---@class Name : ScriptInstance` (Name = the file name): LuaLS then
+types self.
 
 ```lua
 ---@class Player : ScriptInstance
@@ -110,16 +109,13 @@ function Player:init()
 end
 
 function Player:onUpdate()
-    local dx = 0
-    if Input.isKeyPressed(Input.KEY_RIGHT) then dx = dx + 1 end
-    if Input.isKeyPressed(Input.KEY_LEFT) then dx = dx - 1 end
+    local dx = Input.getAxis("Horizontal")              -- keys, gamepad, on-screen stick
     local p = self.go.position                          -- a copy: assign it back
     self.go.position = Vector3(p.x + dx * self.speed * Engine.deltatime, p.y, p.z)
-    if Input.isKeyPressed(Input.KEY_SPACE) and not self.fired then
+    if Input.getButtonDown("Jump") then                 -- pressed this frame (space, pad Y)
         GameObject.instantiate(self.bullet, self.scene, self.go.position, Quaternion.IDENTITY)
         Log.print("fired at " .. tostring(p.x))
     end
-    self.fired = Input.isKeyPressed(Input.KEY_SPACE)
 end
 
 return Player
@@ -134,11 +130,14 @@ return Player
 - Bound getters are often PROPERTIES, not methods: go.position, sprite.width, body.mass,
   Engine.deltatime. A missing method fails with "attempt to call a nil value". Check
   jasper://docs/lua-api (an index: read only what you need), the Lua stubs or search_engine_api before using a name you have not seen there.
-- Input.isKeyPressed is the held state; detect a press by remembering last frame's value or
-  with onKeyDown(key, isRepeat, mods). Log.print/warn/error take ONE string (use ..).
+- Input.getAxis/getButtonDown('Jump') read Project Settings > Input actions; getKeyDown(key)
+  is an edge, isKeyPressed held. Test with send_input action/axis events (jasper://docs/input).
+  Log.print/warn/error take ONE string (use ..).
 - Time: Engine.timeScale, Engine.fixedDeltatime (rw), Engine.gameTime, Engine.frameCount
   (scaled, since start).
 - C++ default arguments do not exist in Lua: pass every argument (e.g. the wake flag).
+- Saves: PlayerPrefs, Json.encode/decode, File.writeText("data://x") (jasper://docs/lua-api
+  2.4); user_settings reads/resets PlayerPrefs.
 - Lua has no Dori.Script, on_start, getComponent, setProperty or timers. Never put editor
   property paths (submeshes[0]...) in scripts.
 

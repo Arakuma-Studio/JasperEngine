@@ -8,8 +8,9 @@
 
 namespace jasperengine {
 
-    // 64 should be max number of components types
-    using Signature = std::bitset<64>;
+    // one bit per registered component type (ComponentManager ids are the bit positions); 128 leaves room for
+    // the engine's types (61 in 2026-10) and the ones the engine-gaps features add
+    using Signature = std::bitset<128>;
 
 }
 

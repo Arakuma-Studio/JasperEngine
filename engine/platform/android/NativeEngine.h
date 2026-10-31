@@ -45,6 +45,9 @@ struct JniData{
     jmethodID setStringForKeyRef;
 
     jmethodID removeKeyRef;
+    jmethodID hasKeyRef;
+    jmethodID removeAllKeysRef;
+    jmethodID saveUserSettingsRef;
 
     jmethodID initializeAdMob;
     jmethodID setMaxAdContentRating;

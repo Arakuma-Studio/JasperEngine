@@ -240,133 +240,153 @@ void JasperEngineAndroid::platformLog(const int type, const char *fmt, va_list a
     __android_log_vprint(priority, "JasperEngine", fmt, args);
 }
 
-bool JasperEngineAndroid::getBoolForKey(const char *key, bool defaultValue){
-    JniData& jniData = NativeEngine::getInstance()->getJniData();
-    JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
+// ---- UserSettings: SharedPreferences through UserSettings.java (it catches its own
+// exceptions: a key read with another type than it was written with gives the default).
+// Strings cross as UTF-16 (newJavaString / javaStringToUtf8): NewStringUTF and
+// GetStringUTFChars use modified UTF-8, which differs outside the BMP.
 
-    jstring strKey = env->NewStringUTF(key);
-    bool value = env->CallBooleanMethod(jniData.userSettingsObjRef, jniData.getBoolForKeyRef, strKey, defaultValue);
-    env->DeleteLocalRef(strKey);
-    return value;
+namespace {
+
+    // The game thread's JNIEnv and the key as a Java string, released at the end of the call
+    class UserSettingsCall {
+    public:
+        explicit UserSettingsCall(const char* key)
+            : jniData(NativeEngine::getInstance()->getJniData()),
+              env(NativeEngine::getInstance()->getJniEnv()),
+              key(newJavaString(env, key ? key : "")) {
+        }
+
+        ~UserSettingsCall() {
+            if (key)
+                env->DeleteLocalRef(key);
+        }
+
+        UserSettingsCall(const UserSettingsCall&) = delete;
+        UserSettingsCall& operator=(const UserSettingsCall&) = delete;
+
+        // false (logged) when the call raised; the caller uses the default then
+        bool done(const char* what) {
+            return !clearJavaException(env, what);
+        }
+
+        JniData& jniData;
+        JNIEnv* env;
+        jstring key;
+    };
+
+}
+
+bool JasperEngineAndroid::getBoolForKey(const char *key, bool defaultValue){
+    UserSettingsCall call(key);
+    const bool value = call.env->CallBooleanMethod(call.jniData.userSettingsObjRef, call.jniData.getBoolForKeyRef, call.key, defaultValue);
+    return call.done("UserSettings.getBoolForKey") ? value : defaultValue;
 }
 
 int JasperEngineAndroid::getIntegerForKey(const char *key, int defaultValue){
-    JniData& jniData = NativeEngine::getInstance()->getJniData();
-    JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
-
-    jstring strKey = env->NewStringUTF(key);
-    int value = env->CallIntMethod(jniData.userSettingsObjRef, jniData.getIntegerForKeyRef, strKey, defaultValue);
-    env->DeleteLocalRef(strKey);
-    return value;
+    UserSettingsCall call(key);
+    const int value = call.env->CallIntMethod(call.jniData.userSettingsObjRef, call.jniData.getIntegerForKeyRef, call.key, defaultValue);
+    return call.done("UserSettings.getIntegerForKey") ? value : defaultValue;
 }
 
 long JasperEngineAndroid::getLongForKey(const char *key, long defaultValue){
-    JniData& jniData = NativeEngine::getInstance()->getJniData();
-    JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
-
-    jstring strKey = env->NewStringUTF(key);
-    long value = env->CallLongMethod(jniData.userSettingsObjRef, jniData.getLongForKeyRef, strKey, defaultValue);
-    env->DeleteLocalRef(strKey);
-    return value;
+    UserSettingsCall call(key);
+    const long value = static_cast<long>(call.env->CallLongMethod(call.jniData.userSettingsObjRef, call.jniData.getLongForKeyRef, call.key,
+                                                                  static_cast<jlong>(defaultValue)));
+    return call.done("UserSettings.getLongForKey") ? value : defaultValue;
 }
 
 float JasperEngineAndroid::getFloatForKey(const char *key, float defaultValue){
-    JniData& jniData = NativeEngine::getInstance()->getJniData();
-    JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
-
-    jstring strKey = env->NewStringUTF(key);
-    float value = env->CallFloatMethod(jniData.userSettingsObjRef, jniData.getFloatForKeyRef, strKey, defaultValue);
-    env->DeleteLocalRef(strKey);
-    return value;
+    UserSettingsCall call(key);
+    const float value = call.env->CallFloatMethod(call.jniData.userSettingsObjRef, call.jniData.getFloatForKeyRef, call.key, defaultValue);
+    return call.done("UserSettings.getFloatForKey") ? value : defaultValue;
 }
 
 double JasperEngineAndroid::getDoubleForKey(const char *key, double defaultValue){
-    JniData& jniData = NativeEngine::getInstance()->getJniData();
-    JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
-
-    jstring strKey = env->NewStringUTF(key);
-    double value = env->CallDoubleMethod(jniData.userSettingsObjRef, jniData.getDoubleForKeyRef, strKey, defaultValue);
-    env->DeleteLocalRef(strKey);
-    return value;
+    UserSettingsCall call(key);
+    const double value = call.env->CallDoubleMethod(call.jniData.userSettingsObjRef, call.jniData.getDoubleForKeyRef, call.key, defaultValue);
+    return call.done("UserSettings.getDoubleForKey") ? value : defaultValue;
 }
 
 std::string JasperEngineAndroid::getStringForKey(const char *key, const std::string& defaultValue){
-    JniData& jniData = NativeEngine::getInstance()->getJniData();
-    JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
-
-    jstring strKey = env->NewStringUTF(key);
-    jstring strDefaultValue = env->NewStringUTF(defaultValue.c_str());
-    jstring rv = (jstring)env->CallObjectMethod(jniData.userSettingsObjRef, jniData.getStringForKeyRef, strKey, strDefaultValue);
-    std::string value = env->GetStringUTFChars(rv, 0);
-    env->DeleteLocalRef(strKey);
-    env->DeleteLocalRef(strDefaultValue);
-    env->DeleteLocalRef(rv);
+    UserSettingsCall call(key);
+    jstring strDefaultValue = newJavaString(call.env, defaultValue);
+    jstring rv = (jstring)call.env->CallObjectMethod(call.jniData.userSettingsObjRef, call.jniData.getStringForKeyRef, call.key, strDefaultValue);
+    std::string value = defaultValue;
+    if (call.done("UserSettings.getStringForKey") && rv)
+        value = javaStringToUtf8(call.env, rv);
+    if (strDefaultValue)
+        call.env->DeleteLocalRef(strDefaultValue);
+    if (rv)
+        call.env->DeleteLocalRef(rv);
     return value;
 }
 
 void JasperEngineAndroid::setBoolForKey(const char *key, bool value){
-    JniData& jniData = NativeEngine::getInstance()->getJniData();
-    JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
-
-    jstring strKey = env->NewStringUTF(key);
-    env->CallVoidMethod(jniData.userSettingsObjRef, jniData.setBoolForKeyRef, strKey, value);
-    env->DeleteLocalRef(strKey);
+    UserSettingsCall call(key);
+    call.env->CallVoidMethod(call.jniData.userSettingsObjRef, call.jniData.setBoolForKeyRef, call.key, value);
+    call.done("UserSettings.setBoolForKey");
 }
 
 void JasperEngineAndroid::setIntegerForKey(const char *key, int value){
-    JniData& jniData = NativeEngine::getInstance()->getJniData();
-    JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
-
-    jstring strKey = env->NewStringUTF(key);
-    env->CallVoidMethod(jniData.userSettingsObjRef, jniData.setIntegerForKeyRef, strKey, value);
-    env->DeleteLocalRef(strKey);
+    UserSettingsCall call(key);
+    call.env->CallVoidMethod(call.jniData.userSettingsObjRef, call.jniData.setIntegerForKeyRef, call.key, value);
+    call.done("UserSettings.setIntegerForKey");
 }
 
 void JasperEngineAndroid::setLongForKey(const char *key, long value){
-    JniData& jniData = NativeEngine::getInstance()->getJniData();
-    JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
-
-    jstring strKey = env->NewStringUTF(key);
-    env->CallVoidMethod(jniData.userSettingsObjRef, jniData.setLongForKeyRef, strKey, value);
-    env->DeleteLocalRef(strKey);
+    UserSettingsCall call(key);
+    call.env->CallVoidMethod(call.jniData.userSettingsObjRef, call.jniData.setLongForKeyRef, call.key, static_cast<jlong>(value));
+    call.done("UserSettings.setLongForKey");
 }
 
 void JasperEngineAndroid::setFloatForKey(const char *key, float value){
-    JniData& jniData = NativeEngine::getInstance()->getJniData();
-    JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
-
-    jstring strKey = env->NewStringUTF(key);
-    env->CallVoidMethod(jniData.userSettingsObjRef, jniData.setFloatForKeyRef, strKey, value);
-    env->DeleteLocalRef(strKey);
+    UserSettingsCall call(key);
+    call.env->CallVoidMethod(call.jniData.userSettingsObjRef, call.jniData.setFloatForKeyRef, call.key, value);
+    call.done("UserSettings.setFloatForKey");
 }
 
 void JasperEngineAndroid::setDoubleForKey(const char *key, double value){
-    JniData& jniData = NativeEngine::getInstance()->getJniData();
-    JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
-
-    jstring strKey = env->NewStringUTF(key);
-    env->CallVoidMethod(jniData.userSettingsObjRef, jniData.setDoubleForKeyRef, strKey, value);
-    env->DeleteLocalRef(strKey);
+    UserSettingsCall call(key);
+    call.env->CallVoidMethod(call.jniData.userSettingsObjRef, call.jniData.setDoubleForKeyRef, call.key, value);
+    call.done("UserSettings.setDoubleForKey");
 }
 
 void JasperEngineAndroid::setStringForKey(const char* key, const std::string& value){
-    JniData& jniData = NativeEngine::getInstance()->getJniData();
-    JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
-
-    jstring strKey = env->NewStringUTF(key);
-    jstring strValue = env->NewStringUTF(value.c_str());
-    env->CallVoidMethod(jniData.userSettingsObjRef, jniData.setStringForKeyRef, strKey, strValue);
-    env->DeleteLocalRef(strKey);
-    env->DeleteLocalRef(strValue);
+    if (!key || !key[0]){
+        jasperengine::Log::error("UserSettings: a key must be a non-empty string");
+        return;
+    }
+    UserSettingsCall call(key);
+    jstring strValue = newJavaString(call.env, value);
+    call.env->CallVoidMethod(call.jniData.userSettingsObjRef, call.jniData.setStringForKeyRef, call.key, strValue);
+    call.done("UserSettings.setStringForKey");
+    if (strValue)
+        call.env->DeleteLocalRef(strValue);
 }
 
 void JasperEngineAndroid::removeKey(const char* key){
-    JniData& jniData = NativeEngine::getInstance()->getJniData();
-    JNIEnv* env = NativeEngine::getInstance()->getJniEnv();
+    UserSettingsCall call(key);
+    call.env->CallVoidMethod(call.jniData.userSettingsObjRef, call.jniData.removeKeyRef, call.key);
+    call.done("UserSettings.removeKey");
+}
 
-    jstring strKey = env->NewStringUTF(key);
-    env->CallVoidMethod(jniData.userSettingsObjRef, jniData.removeKeyRef, strKey);
-    env->DeleteLocalRef(strKey);
+bool JasperEngineAndroid::hasKey(const char* key){
+    if (!key) return false;
+    UserSettingsCall call(key);
+    const bool value = call.env->CallBooleanMethod(call.jniData.userSettingsObjRef, call.jniData.hasKeyRef, call.key);
+    return call.done("UserSettings.hasKey") && value;
+}
+
+void JasperEngineAndroid::removeAllKeys(){
+    UserSettingsCall call(nullptr);
+    call.env->CallVoidMethod(call.jniData.userSettingsObjRef, call.jniData.removeAllKeysRef);
+    call.done("UserSettings.removeAllKeys");
+}
+
+void JasperEngineAndroid::saveUserSettings(){
+    UserSettingsCall call(nullptr);
+    call.env->CallBooleanMethod(call.jniData.userSettingsObjRef, call.jniData.saveUserSettingsRef);
+    call.done("UserSettings.save");
 }
 
 // The export compiles the AdMob wrapper in only when the project enables AdMob

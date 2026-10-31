@@ -44,6 +44,9 @@ public:
     virtual void setStringForKey(const char* key, const std::string& value) override;
 
     virtual void removeKey(const char* key) override;
+    virtual bool hasKey(const char* key) override;
+    virtual void removeAllKeys() override;
+    virtual void saveUserSettings() override;
 
     // platform services (JasperPlatform.java)
     virtual std::vector<std::string> getPreferredLocales() override;

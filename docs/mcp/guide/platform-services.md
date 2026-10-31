@@ -120,6 +120,8 @@ Order, on every platform: leaving, `onFocus(false)` then `onPause`; coming back,
 covered by a dialog keeps rendering on Android (as Unity); desktops never pause (they keep running
 in the background) but report focus. Web: hiding the tab pauses, `focus`/`blur` of the window is
 focus; CrazyGames ads and a lost WebGL context pause too (resumed once none of them holds).
+A focus loss or a pause releases every held key and button (`Input.getKeyUp` / `getButtonUp` in
+the next frame, as the input guide says) and a pause saves `PlayerPrefs`.
 
 ```lua
 function Music:init() RegisterEngineEvent(self, "onFocus") end
