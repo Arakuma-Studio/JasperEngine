@@ -40,7 +40,7 @@ origin/main).
 | # | Feature (branch `gaps/<name>`) | Covers | Status |
 |---|---|---|---|
 | 1 | `http` | HTTP client for Lua (GET/POST/HEAD, headers, timeouts, JSON/text/binary bodies, download to file, texture from URL), all platforms | review |
-| 2 | `native-bridge` | Lua to Java (Android), Objective-C/Swift (iOS/macOS), JavaScript (Web) calls with async callbacks, plus export hooks for extra Gradle/CocoaPods/SPM dependencies and manifest/plist entries | specced |
+| 2 | `native-bridge` | Lua to Java (Android), Objective-C/Swift (iOS/macOS), JavaScript (Web) calls with async callbacks, plus export hooks for extra Gradle/CocoaPods/SPM dependencies and manifest/plist entries | impl |
 | 3 | `platform-services` | `openURL`, system language/locale, target frame rate / vsync, runtime orientation lock + iOS orientation setting + device orientation, app focus event | review |
 | 4 | `safe-area` | safe-area insets on Android/iOS (and desktop simulation), Lua API + change event, native UI safe-area anchoring, HTML UI `env(safe-area-inset-*)`, editor Game view notch simulation | impl |
 | 5 | `ui-multitouch` | pointer ids through native UI and HTML UI events, per-pointer pressed state, on-screen stick/button controls | impl |
@@ -53,7 +53,7 @@ origin/main).
 | 12 | `anim-properties` | clip property channel: active state, colors, material and UI properties | specced |
 | 13 | `lines-trails` | line width (thick lines) and a Trail Renderer | review |
 | 14 | `shader-globals` | user global shader uniforms (`Shader.setGlobal*`) | impl |
-| 15 | `video-mp4` | MP4/H.264 playback (platform decoders) and streamed/URL video | specced |
+| 15 | `video-mp4` | MP4/H.264 playback (platform decoders) and streamed/URL video | impl |
 | 16 | `coroutines` | engine-driven coroutines (wait seconds/realtime/frames/until), Invoke-style scaled timers, unscaled delta time, callbacks always on the main Lua thread | review |
 | 17 | `script-lifecycle` | onEnable/onDisable, enabling scripts, getScript/findObjectOfType, scene-wide find, event unregister | review |
 | 18 | `script-data` | JSON encode/decode, UserSettings hasKey/deleteAll/save | merged |
@@ -124,3 +124,6 @@ origin/main).
   shader-globals on lines-trails; physics-3d on physics-2d; persistence, physics-contacts, ui-multitouch on
   script-lifecycle; safe-area, ui-scaling-text on platform-services). Queued: native-bridge and video-mp4 (on
   http, worktrees ready), anim-properties and anim-retarget (after anim-layers).
+- 2026-10-31: `coroutines` review: 1 memory-safety bug (isDone() stopping the waiting coroutine), C++ repeating
+  timers losing state, an O(n) deactivation scan, paused unscaled time, stop vs immediate waitFor; fixes in
+  progress. `native-bridge` and `video-mp4` started (on gaps/http). Only anim-properties and anim-retarget wait.
