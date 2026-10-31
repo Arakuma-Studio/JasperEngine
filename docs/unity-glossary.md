@@ -118,6 +118,25 @@ and timers); C++ timers: [cpp-scripting.md](mcp/guide/cpp-scripting.md).
 | `Time.time`, `fixedTime`, `unscaledTime`, `realtimeSinceStartup`, `timeSinceLevelLoad`, `frameCount` | the same names on `Time` (`Engine.gameTime`, `Engine.frameCount`) |
 | `Time.timeScale`, `maximumDeltaTime`, `captureDeltaTime`, `smoothDeltaTime`, `inFixedTimeStep` | the same names on `Time` (`Engine.timeScale`, `Engine.maxDeltatime`, `Engine.fixedDeltatime`: a fixed frame delta, not the fixed step) |
 
+## Camera shake and camera follow
+
+Rules, presets and the frame order: [camera.md](mcp/guide/camera.md) (users:
+[docs/camera.md](camera.md)); Lua: [lua-api.md](mcp/guide/lua-api.md) 4.9.1.
+
+| Unity term | JasperEngine name |
+|---|---|
+| MilkShake `Shaker` (component) | Camera Shaker component (`camerashaker`; Lua `CameraShaker`, `go:getCameraShaker()`): on a camera a view offset, the Transform never written |
+| MilkShake `Shaker.ShakeAll(preset)`, `GlobalShakers`, `addToGlobalShakers` | `CameraShake.shake(preset)` on every shaker with `global` on (default on) |
+| MilkShake `shaker.Shake(preset, seed)`, `ShakeFromPoint(point, maxDistance, preset)` | `shaker:shake(preset, {seed = s})`, `shaker:shakeAt(point, radius, preset)` / `CameraShake.shakeAt` |
+| MilkShake `ShakePreset` (asset), `ShakeParameters` | Shake Preset: a `.shake` file (Assets > Create > Shake Preset) or a built-in name (`CameraShake.getPresetNames()`), or a Lua table |
+| MilkShake `ShakeInstance`: `Stop(fade, true)`, `Pause(fade)`, `Resume(fade)`, `StrengthScale`, `RoughnessScale`, `State`, `IsFinished` | `ShakeInstance`: `stop([fade])`, `pause([fade])`, `resume([fade])`, `strengthScale`, `roughnessScale`, `state`, `isFinished()` (plus `isValid()`) |
+| EZ Camera Shake `CameraShakePresets.Bump / HandheldCamera / Vibration` | built-ins `bump`, `handheld`, `vibration` (strength = magnitude / 2) |
+| Trauma shake ("Juicing Your Cameras With Math") | `CameraShake.addTrauma(x)`, `traumaPower`, `traumaDecay`, `traumaMaxOffset`, `traumaMaxAngle` |
+| Cinemachine Impulse Source (`GenerateImpulse`) / Impulse Listener (gain) | `CameraShake.shake` / `shakeAt` (distance falloff only, no propagation speed) / Camera Shaker (`positionScale`, `rotationScale`; `mode` "2d") |
+| Cinemachine virtual camera follow (Transposer / Framing Transposer + Composer), simple cases | Camera Follow component (`camerafollow`): `target`, `offset` (`offsetSpace`), `damping`, `lookAt`, `deadZone` (2D), bounds; no blending, priorities or collision |
+| `Mathf.SmoothDamp` in a hand-written follow script | Camera Follow `damping` (the same formula, per world axis) and `maxSpeed` |
+| `transform.localPosition = shake` on a child camera (MilkShake's setup) | not needed: the shake is a view offset, put the Camera Shaker on the camera itself |
+
 ## Saves and data
 
 | Unity term | JasperEngine name |

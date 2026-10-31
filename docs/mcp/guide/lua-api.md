@@ -1316,6 +1316,85 @@ A camera looks at its target by default (`isUsingTarget()`): the GameObject's ro
 ignored until `disableTarget()`. Orbit: position = target + (cos(pitch)sin(yaw), sin(pitch),
 cos(pitch)cos(yaw)) * distance, then `setTarget(target)`.
 
+### 4.9.1 CameraShake, CameraShaker, ShakeInstance, CameraFollow
+
+Camera shake (MilkShake's Shaker) and a small follow component. On a camera the shake is a view
+offset: `position` and `rotation` are never shaken, so scripts and Camera Follow move the camera
+freely while it shakes. Without a camera, a Camera Shaker moves its Transform additively (the
+base under it is whatever else writes it). Both run after `onUpdate`, before the frame is drawn.
+Agents: `jasper://docs/camera`; users: `docs/camera.md`.
+
+A **preset** is a built-in name (`CameraShake.getPresetNames()`: `explosion`, `light_explosion`,
+`earthquake`, `punch`, `shock`, `electrocute`, `drunk`, `offroad`, `jumpscare_2d`, `eh_shake`,
+`entity_shake`, `invader_drunk`, `invaders_explosion`, `handheld`, `vibration`, `bump`), a
+`.shake` path relative to the assets folder, or a table `{type = "one_shot"|"sustained",
+strength, roughness, fadeIn, fadeOut, positionInfluence = Vector3, rotationInfluence = Vector3}`
+(missing keys: the `.shake` defaults). An unknown name logs one warning and shakes nothing.
+**options** (all optional): `{strength, roughness, seed, unscaled, fadeIn, fadeOut}`:
+`strength` / `roughness` scale the preset, the same `seed` shakes the same way, `unscaled`
+overrides the shaker's `unscaledTime`, the fades override the preset's.
+
+| `CameraShake` (static, a dot) | Notes |
+|---|---|
+| `shake(preset [, options])` | a `ShakeInstance` on every global Camera Shaker (Global on, enabled, active, every running scene); invalid with a warning when there is none |
+| `shakeAt(position, radius, preset [, options])` | the same, strength and roughness scaled by `max(0, 1 - d / radius)` (d from the shaker, x/y only in 2D); none at d >= radius |
+| `addTrauma(amount)` | every global shaker; trauma in [0, 1], shake = trauma ^ power, decaying linearly |
+| `stopAll([fade])` | every global shaker's shakes fade out over `fade` (default: their fade out; 0: now) |
+| `getPresetNames()` | the built-in names (a table) |
+
+| `CameraShaker` (EntityHandle) | Notes |
+|---|---|
+| `CameraShaker(scene, entity)` | adds the component when missing; `GameObject:getCameraShaker()` returns `nil` without one, `hasCameraShaker()` |
+| `shake(preset [, options])`, `shakeAt(position, radius, preset [, options])` | this shaker, whatever its `global`; a disabled shaker keeps the shake for when it is enabled |
+| `addTrauma(amount)`, `stopAll([fade])`, `getInstanceCount()` | |
+| `trauma` | rw, 0..1 |
+| `enabled`, `global`, `unscaledTime` | rw |
+| `mode` | rw, `"auto"` (2D for orthographic / UI cameras), `"3d"`, `"2d"` (x/y in tenths of the view height and roll only) |
+| `positionScale`, `rotationScale` | rw, gains (>= 0) |
+| `startPreset` | rw, played on start and on each enable (`""` = none) |
+| `traumaDecay`, `traumaPower` (1..4), `traumaMaxOffset` (Vector3, units), `traumaMaxAngle` (Vector3, degrees), `traumaFrequency` | rw |
+| `offsetPosition`, `offsetRotation` | ro, the offset applied this frame (Vector3; rotation in Euler degrees) |
+
+| `ShakeInstance` (a handle) | Notes |
+|---|---|
+| `stop([fade])` | fades out over `fade` (default: the preset's fade out; 0: now) |
+| `pause([fade])`, `resume([fade])` | the noise slows to a stop over `fade` (default 0) and back; a paused sustained shake holds its offset |
+| `isPaused()`, `isFinished()`, `isValid()` | invalid once every instance is gone (finished, its shaker destroyed, its scene unloaded): its calls do nothing |
+| `strengthScale`, `roughnessScale` | rw; on a handle from a static call they set every shaker's instance, and read the first live one |
+| `state` | ro, `"fading_in"`, `"sustained"`, `"fading_out"`, `"paused"`, `"stopped"` |
+| `count` | ro, the live instances (one per shaker reached) |
+
+| `CameraFollow` (EntityHandle) | Notes |
+|---|---|
+| `CameraFollow(scene, entity)` | adds the component when missing; `GameObject:getCameraFollow()` returns `nil` without one, `hasCameraFollow()` |
+| `target` | rw, the GameObject followed (same scene) or `nil` |
+| `offset` (Vector3), `offsetSpace` (`"world"`, `"target"`, `"target_yaw"`) | rw |
+| `damping` (Vector3, SmoothDamp seconds per world axis; 0 = rigid), `maxSpeed` (0 = unlimited) | rw |
+| `lookAt`, `lookAtOffset` (Vector3), `rotationDamping` | rw; a `useTarget` camera gets its `target` set, others are turned |
+| `deadZone` (Vector2, world x/y; orthographic and UI cameras), `useBounds`, `boundsMin`, `boundsMax` | rw |
+| `unscaledTime`, `enabled` | rw |
+| `snap()` | the next update places it without damping |
+
+Camera Follow owns its Transform while enabled: a script that also moves it is overwritten
+(warned once). Writes in `onPostUpdate` reach the camera a frame late.
+
+```lua
+-- MilkShake's CameraShaker.cs, ported
+function Hazard:onExplode()
+    CameraShake.shake("explosion")
+end
+function Rush:start()  self.heavy = CameraShake.shake("earthquake")  end
+function Rush:finish() if self.heavy then self.heavy:stop(0.2) end end
+
+-- a hit: trauma piles up and settles
+function Player:onHit(damage)
+    CameraShake.addTrauma(math.min(0.6, damage / 50))
+end
+
+-- a pause menu that still shakes (Time.timeScale = 0)
+CameraShake.shake("shock", {unscaled = true})
+```
+
 ### 4.10 Light (GameObject) / Light2D (GameObject)
 
 Light rw: `type` (`LightType.*`), `enabled`, `direction` (Vector3), `color` (Vector3),
