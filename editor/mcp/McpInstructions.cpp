@@ -161,7 +161,7 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
   sends send_input events while it waits.
 - run_build runs an exported desktop player (input events, screenshots_at seconds); returns
   its errors (Lua too) and the log tail.
-- Phones and safe areas (configure_game_view device): jasper://docs/safe-area; focus, pause,
+- Phones, safe areas (configure_game_view device): jasper://docs/safe-area; focus, pause,
   language, URLs: jasper://docs/platform-services.
 
 ## 2D and 3D
