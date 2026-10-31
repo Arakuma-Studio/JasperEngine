@@ -241,7 +241,8 @@ namespace {
 
 TEST(VertexAnimatorComponent, RegistrationAndNames) {
     const ComponentType type = ComponentType::VertexAnimatorComponent;
-    EXPECT_EQ(LastComponentType, type) << "appended at the end: prefab override masks use the ordinal";
+    // appended (prefab override masks use the ordinal); the Safe Area came after it
+    EXPECT_EQ(static_cast<int>(type) + 1, static_cast<int>(ComponentType::SafeAreaComponent));
     EXPECT_EQ(Catalog::getComponentName(type, true), "vertexanimator");
     EXPECT_EQ(Catalog::getComponentName(type), "VertexAnimatorComponent");
     EXPECT_EQ(Catalog::getComponentDisplayName(type), "Vertex Animator");
