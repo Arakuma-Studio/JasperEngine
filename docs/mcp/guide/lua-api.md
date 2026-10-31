@@ -73,7 +73,7 @@ defines them (no registration):
 |---|---|---|
 | `init(self)` | once, the first time the GameObject is active in hierarchy, **whether or not the script is enabled**; after every instance and reference of the scene exists | `Awake` |
 | `onEnable(self)` | the script becomes active and enabled: after `init` at load / instantiate / activation, and every time it is re-enabled or its GameObject re-activated | `OnEnable` |
-| `start(self)` | once, at the start of the frame after its first `onEnable`, before that frame's `onFixedUpdate`/`onUpdate`; not run while disabled or inactive (it waits) | `Start` |
+| `start(self)` | once, at the start of the frame after its first `onEnable`, before that frame's `onFixedUpdate`/`onUpdate`; not run while disabled or inactive (it waits). A script's registered updates begin only after its `start`: one enabled during a frame gets its first `onUpdate` in the next frame, after `start` | `Start` |
 | `onDisable(self)` | the script stops being active and enabled: `self.enabled = false`, its GameObject or a parent deactivated, destroy, scene unload, Play stop; always before `onDestroy` | `OnDisable` |
 | `onDestroy(self)` | once: `GameObject.destroy` (end of frame) / `destroyImmediate`, scene unload (a `SceneManager.loadScene`), Play stop / application quit; only if `init` ran | `OnDestroy` |
 | `onApplicationPause(self, paused)` | the app goes to the background (`true`) and returns (`false`); scripts of active GameObjects, enabled or not | `OnApplicationPause` |
@@ -100,8 +100,8 @@ an exported build's shutdown): `onApplicationQuit` to every script, then `onDisa
 | Events | Methods registered with `RegisterEngineEvent` / `RegisterEvent` are called by the engine. |
 | Release | After `onDestroy` (or for a GameObject never active, without it): subscriptions made through `RegisterEngineEvent`/`RegisterEvent` and `Event` listeners the instance owns are removed. |
 
-Script messages (defined methods, no registration; every script of the GameObject that defines
-it gets the call, enabled or not, after the fixed step that caused it):
+Script messages besides the lifecycle (defined methods, no registration; every script of the
+GameObject that defines it gets the call, enabled or not, after the fixed step that caused it):
 
 | Method | When |
 |---|---|
@@ -111,7 +111,7 @@ Every instance also has (Unity's MonoBehaviour members):
 
 | Member | Kind | Meaning |
 |---|---|---|
-| `self.enabled` | rw boolean | the Script entry's enabled flag (the Inspector checkbox); assigning calls `onEnable`/`onDisable` at once, and `start` at the next frame the first time. Only `true`/`false` (else error). |
+| `self.enabled` | rw boolean | the Script entry's enabled flag (the Inspector checkbox); assigning calls `onEnable`/`onDisable` at once, inside the assignment (as Unity), and `start` at the next frame the first time. Only `true`/`false` (else error). |
 | `self.isActiveAndEnabled` | ro boolean | GameObject active in hierarchy and the script enabled |
 | `self.gameObject` | ro `GameObject` | the script's GameObject (cached) |
 | `self:getScript(className)` ... | methods | the scripts of the same GameObject, its children or parents (4.1) |
@@ -126,11 +126,23 @@ Disabling a script does not stop what it started (tweens, sounds); deactivating 
 pauses its updates. Unity names (`Awake`, `Start`, `Update`, `OnEnable`, ...) are never called:
 `check_script` warns about them.
 
-Migration (projects from before this lifecycle): a **disabled** script's `init` now runs
-(Unity's Awake): check `self.enabled` in `init` or remove the script to keep it fully off. A
-script on a GameObject that starts **inactive** gets its `init` when the GameObject is first
-activated (it used to run at load). `onDestroy` now also runs on scene unload and Play stop.
-Disabled C++ scripts are compiled into the build too (they can be enabled at runtime).
+Migration (projects from before this lifecycle):
+
+- A **disabled** script's `init` now runs (Unity's Awake): check `self.enabled` in `init` or
+  remove the script to keep it fully off. A script on a GameObject that starts **inactive** gets
+  its `init` when the GameObject is first activated (it used to run at load). `onDestroy` now
+  also runs on scene unload and Play stop.
+- Methods named `start`, `onEnable`, `onDisable`, `onApplicationPause/Focus/Quit` are now called
+  by the engine; a script that called its own `start()` from `init` now runs it twice.
+- `self.gameObject = ...`, `self.isActiveAndEnabled = ...` and a non-boolean `self.enabled`
+  now raise an error; a `properties` entry or a field of the script's table named `enabled`,
+  `isActiveAndEnabled` or `gameObject` stops the script (renamed, it runs). The script's table
+  also holds these three members and the `getScript*` methods (it is per instance).
+- C++: `ScriptBase` methods named `init`, `start`, `onEnable`, `onDisable`, `onDestroy`,
+  `onApplicationPause/Focus/Quit` are now overrides the engine calls (twice if the script also
+  calls them itself, e.g. `init()` from its constructor); one with another signature (`bool
+  init()`) no longer compiles: rename it. Disabled C++ scripts are compiled into the build too
+  (they can be enabled at runtime).
 
 The editor reads `properties` by executing the file in an isolated Lua state of its own
 (engine globals there are inert stand-ins, see [checks](../checks.md)), and the game runs it
@@ -1923,20 +1935,20 @@ Rigidbody wrappers by index.
     raw component fields (`UIComponent.color`, `ButtonComponent.colorNormal`) are linear.
 24. **Integers**: entity ids, indices and enum values are integers; do not pass fractional
     numbers to them (`math.floor` first).
-25. **`self.enabled` and the reserved names**: `self.enabled = false` disables the script
-    (`onDisable`, its registered updates stop) but not what it started; it takes only `true` /
-    `false`. `enabled`, `isActiveAndEnabled` and `gameObject` cannot be `properties` names, and
-    `isActiveAndEnabled` / `gameObject` cannot be assigned. A disabled script's `init` still runs.
-26. **Unity method names are not called**: `Awake` -> `init`, `Start` -> `start`, `OnEnable` ->
-    `onEnable`, `Update` -> `onUpdate` registered with `RegisterEngineEvent(self, "onUpdate")`
-    (`FixedUpdate` -> `onFixedUpdate`, `LateUpdate` -> `onPostUpdate`). `check_script` warns.
-27. **Json: an empty table is `[]`.** Use `Json.object()` (or `{emptyTable = "object"}`) for an
+25. **Json: an empty table is `[]`.** Use `Json.object()` (or `{emptyTable = "object"}`) for an
     empty object. A table with `nil` in the middle is not an array (`{1, nil, 3}` encodes as an
     object `{"1":1,"3":3}`): store `Json.null` to keep a place. `Json.decode` gives integers for
     `1` and floats for `1.0`; compare JSON nulls with `Json.null`, never `nil`.
-28. **Saves go to `data://`.** `asset://` and `lua://` are read-only (and inside the APK on
+26. **Saves go to `data://`.** `asset://` and `lua://` are read-only (and inside the APK on
     Android); `File.*` and `Json.*File` return `nil, message` on file problems instead of
     raising: check the first result. On Web, Lua `io` writes need `System.syncFileSystem()`.
+27. **`self.enabled` and the reserved names**: `self.enabled = false` disables the script
+    (`onDisable`, its registered updates stop) but not what it started; it takes only `true` /
+    `false`. `enabled`, `isActiveAndEnabled` and `gameObject` cannot be `properties` names, and
+    `isActiveAndEnabled` / `gameObject` cannot be assigned. A disabled script's `init` still runs.
+28. **Unity method names are not called**: `Awake` -> `init`, `Start` -> `start`, `OnEnable` ->
+    `onEnable`, `Update` -> `onUpdate` registered with `RegisterEngineEvent(self, "onUpdate")`
+    (`FixedUpdate` -> `onFixedUpdate`, `LateUpdate` -> `onPostUpdate`). `check_script` warns.
 29. **Singletons: module tables are per instance.** A Unity `static Instance` has no direct
     equivalent (each attached script runs its file again): use `GameObject.persistSingleton(self)`
     for a persistent manager, or keep shared state in a `require`d module table.

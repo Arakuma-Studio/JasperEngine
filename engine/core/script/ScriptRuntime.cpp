@@ -119,13 +119,20 @@ namespace {
             return;
         }
         const bool want = wantsEnabled(scene, entity, *entry, *state);
+        ScriptMessage message = ScriptMessage::Count;
         if (want && !state->enabledLatch) {
             state->enabledLatch = true;
             queueStart(entry->instance, *state);
-            call(scene, entity, index, ScriptMessage::Enable);
+            message = ScriptMessage::Enable;
         } else if (!want && state->enabledLatch) {
             state->enabledLatch = false;
-            call(scene, entity, index, ScriptMessage::Disable);
+            message = ScriptMessage::Disable;
+        }
+        // self.enabled / self.isActiveAndEnabled as the callback should see them
+        LuaBinding::syncScriptMembers(scene, entity, *entry, entry->enabled && !state->destroyed &&
+                                      scene->isEntityActiveInHierarchy(entity));
+        if (message != ScriptMessage::Count) {
+            call(scene, entity, index, message);
         }
     }
 
@@ -191,6 +198,7 @@ namespace {
                 state->destroying = true;
                 state->destroyed = true;
                 state->startQueued = false;
+                LuaBinding::syncScriptMembers(scene, entity, entry, false);
                 if (state->initialized) {
                     call(scene, entity, index, ScriptMessage::Destroy);
                 }
@@ -442,6 +450,19 @@ void ScriptRuntime::remap(Scene* from, Scene* to, const std::unordered_map<Entit
         if (moved != entities.end()) {
             state.scene = to;
             state.entity = moved->second;
+        }
+    }
+    // their members (self.gameObject, isActiveAndEnabled) name the new place
+    for (const auto& [oldEntity, newEntity] : entities) {
+        (void)oldEntity;
+        ScriptComponent* scripts = scriptsOf(to, newEntity);
+        if (!scripts) {
+            continue;
+        }
+        for (const ScriptEntry& entry : scripts->scripts) {
+            const ScriptState* state = getState(entry.instance);
+            LuaBinding::syncScriptMembers(to, newEntity, entry, entry.enabled && state && !state->destroyed &&
+                                          to->isEntityActiveInHierarchy(newEntity));
         }
     }
 }

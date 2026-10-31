@@ -1873,9 +1873,18 @@ void editor::InspectorWindow::drawGameObjectHeader(SceneProject* sceneProject, c
     ImGui::BeginDisabled(readOnly);
     bool activeValue = active && !activeMixed;
     if (activeMixed) ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, true);
-    if (ImGui::Checkbox("##active", &activeValue)){
-        CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(
-            EntityStateCmd::active(project, sceneProject->id, entities, activeMixed ? true : activeValue));
+    const bool activeClicked = ImGui::Checkbox("##active", &activeValue);
+    UIProbe::item("inspector.active");
+    if (activeClicked){
+        // after this frame's drawing: in Play it runs onEnable / onDisable (deferredCommands)
+        const uint32_t commandSceneId = project->getSelectedSceneId();
+        const uint32_t stateSceneId = sceneProject->id;
+        const std::vector<Entity> targets = entities;
+        const bool value = activeMixed ? true : activeValue;
+        deferredCommands.push_back([this, commandSceneId, stateSceneId, targets, value]() {
+            if (!project->getScene(stateSceneId)) return;
+            CommandHandle::get(commandSceneId)->addCommandNoMerge(EntityStateCmd::active(project, stateSceneId, targets, value));
+        });
     }
     if (activeMixed) ImGui::PopItemFlag();
     ImGui::EndDisabled();
@@ -10287,15 +10296,25 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
 
             if (mixed) ImGui::PushStyleColor(ImGuiCol_CheckMark, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
             ImGui::Checkbox(("##script_enabled_" + std::to_string(scriptIdx)).c_str(), &enabled);
+            UIProbe::item("inspector.scriptEnabled." + std::to_string(scriptIdx));
             if (mixed) ImGui::PopStyleColor();
 
             if (ImGui::IsItemDeactivatedAfterEdit()) {
-                std::string propName = "scripts[" + std::to_string(scriptIdx) + "].enabled";
-                for (const Entity& entity : entities) {
-                    cmd = new PropertyCmd<bool>(project, sceneProject->id, entity, ComponentType::ScriptComponent, propName, enabled);
-                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
-                }
-                if (cmd) cmd->setNoMerge();
+                // after this frame's drawing: in Play it runs onEnable / onDisable, which may move
+                // the components `script` and the loop below point into (deferredCommands)
+                const std::string propName = "scripts[" + std::to_string(scriptIdx) + "].enabled";
+                const uint32_t commandSceneId = project->getSelectedSceneId();
+                const uint32_t stateSceneId = sceneProject->id;
+                const std::vector<Entity> targets = entities;
+                deferredCommands.push_back([this, propName, commandSceneId, stateSceneId, targets, enabled]() {
+                    if (!project->getScene(stateSceneId)) return;
+                    Command* last = nullptr;
+                    for (const Entity& entity : targets) {
+                        last = new PropertyCmd<bool>(project, stateSceneId, entity, ComponentType::ScriptComponent, propName, enabled);
+                        CommandHandle::get(commandSceneId)->addCommand(last);
+                    }
+                    if (last) last->setNoMerge();
+                });
             }
 
             ImGui::SameLine();
@@ -15419,7 +15438,17 @@ void editor::InspectorWindow::revealAssetInProject(const std::filesystem::path& 
     }
 }
 
+void editor::InspectorWindow::runDeferredCommands(){
+    std::vector<std::function<void()>> commands;
+    commands.swap(deferredCommands);
+    for (const std::function<void()>& command : commands) {
+        command();
+    }
+}
+
 void editor::InspectorWindow::show(){
+    runDeferredCommands();
+
     // Flush any debounced material file writes
     flushDirtyMaterials(ImGui::GetIO().DeltaTime);
 

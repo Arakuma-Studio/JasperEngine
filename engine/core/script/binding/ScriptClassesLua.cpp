@@ -128,12 +128,9 @@ namespace {
         return lua_tostring(L, index);
     }
 
+    // until it is released: an onDestroy still finds its siblings (Unity's components)
     bool liveLuaEntry(const ScriptEntry& entry, const std::string& className) {
-        if (entry.type != ScriptType::LUA || !entry.instance || (!className.empty() && entry.className != className)) {
-            return false;
-        }
-        const ScriptState* state = ScriptRuntime::getState(entry.instance);
-        return !(state && state->destroyed);
+        return entry.type == ScriptType::LUA && entry.instance && (className.empty() || entry.className == className);
     }
 
     // Pushes the matching Lua script instances of the GameObject, enabled or not; `limit` 1: the

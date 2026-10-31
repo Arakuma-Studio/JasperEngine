@@ -1,16 +1,6 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Unity-style per-object script messages: a method of a GameObject's scripts called by name when
-// the script defines it (init, onEnable..., onJointBreak2D...). The contract of physics-contacts
-// 6.1.1, with script-lifecycle's messages, delivery rules and receiver cache on top.
-// - Main thread only (the Lua state is single-threaded): physics queues what happened in a step
-//   and sends after it.
-// - Every live script instance of the GameObject that defines the method gets it, enabled or not
-//   (Unity), in the ScriptComponent order. The components are read again after each call: a
-//   callback may add or remove components or destroy the GameObject.
-// - Errors are logged with a traceback and never propagate.
-
 #ifndef SCRIPT_MESSAGES_H
 #define SCRIPT_MESSAGES_H
 
@@ -34,7 +24,8 @@ namespace jasperengine {
 
     // The per-object messages a script receives by method name, like Unity's MonoBehaviour
     // messages: Lua calls `self:<methodName>(...)` when the script defines it, C++ calls the
-    // ScriptBase virtual when the class overrides it. One mechanism for the lifecycle
+    // ScriptBase virtual when the class overrides it. Main thread only (physics queues what a
+    // step produced and sends after it); errors are logged with a traceback, never propagate. One mechanism for the lifecycle
     // (script-lifecycle), the physics contacts (physics-contacts) and the UI pointer events.
     // The physics values keep their order; features append theirs before Count (< 32).
     enum class ScriptMessage : uint8_t {
@@ -67,14 +58,13 @@ namespace jasperengine {
         static const char* methodName(ScriptMessage m);
 
         // The messages some live script instance of the GameObject defines (Lua: a function in
-        // the instance or its class; C++: ScriptEntry::cppMessageMask less the messages the
-        // script was seen not to override, ScriptBase::inheritedMessages: a C++ script counts
-        // until a message reached its base method), enabled or not. Cached per GameObject,
-        // recomputed after notifyReceiversChanged.
+        // the instance or its class; C++: an override, ScriptEntry::cppMessageMask), enabled or
+        // not. Cached per GameObject, recomputed after notifyReceiversChanged.
         static ScriptMessageMask receivers(Scene* scene, Entity entity);
 
-        // Calls the method on every script instance of the GameObject that defines it, in the
-        // Script component's order, enabled or not (unless `deliver` asks otherwise), skipping
+        // Calls the method on every script instance of the GameObject that defines it, Lua ones
+        // then C++ ones, each in the Script component's order, enabled or not (unless `deliver`
+        // asks otherwise), skipping
         // instances never initialized (the GameObject was never active) or already destroyed.
         // pushArgs pushes the Lua arguments and returns their count (may be null: none);
         // callCpp calls the C++ virtual (may be null: Lua only). The component is read again
@@ -107,18 +97,23 @@ namespace jasperengine {
         // The scene goes: its cached masks with it
         static void forgetScene(Scene* scene);
 
-        // The messages a C++ script T may receive (generated script factories store it in
+        // The messages a C++ script class T may receive (the generated factory stores it in
         // ScriptEntry::cppMessageMask): all of them for a ScriptBase, none otherwise. Whether T
-        // overrides one is learned when it is first sent (the base method marks
-        // ScriptBase::inheritedMessages), without naming T's members here (an override may be
-        // protected, private or overloaded)
-        template<typename T>
+        // overrides one is learned the first time it is sent (the base method marks
+        // ScriptBase::inheritedMessages: not sent again, not among receivers), without naming
+        // T's members here (an override may be protected, private or overloaded)
+        template<class T>
         static constexpr ScriptMessageMask cppMask() {
             if constexpr (std::is_base_of_v<ScriptBase, T>) {
-                return (ScriptMessageMask)((1ull << (uint32_t)ScriptMessage::Count) - 1);
+                return static_cast<ScriptMessageMask>((1ull << static_cast<unsigned>(ScriptMessage::Count)) - 1);
             } else {
                 return 0;
             }
+        }
+        // The ScriptBase of a C++ script instance, null when T is not one (physics-2d's name)
+        template<class T>
+        static ScriptBase* cppScript(T* instance) {
+            return asScriptBase(instance);
         }
         // The ScriptBase of a script object, null for a class that is not one (the GameObject
         // wrapper kind of C++ script gets no messages)
@@ -130,11 +125,6 @@ namespace jasperengine {
                 (void)script;
                 return nullptr;
             }
-        }
-        // the same (the name physics-2d's generated code used)
-        template<class T>
-        static ScriptBase* cppScript(T* instance) {
-            return asScriptBase(instance);
         }
     };
 

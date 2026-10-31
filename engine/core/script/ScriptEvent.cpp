@@ -13,6 +13,17 @@
 using namespace jasperengine;
 
 namespace {
+    // registry: owner instance -> {Event userdata = true}, weak keys in both
+    const char* const EVENT_OWNERS = "jasperengine.eventOwners";
+
+    void pushWeakTable(lua_State* L) {
+        lua_newtable(L);
+        lua_newtable(L);
+        lua_pushstring(L, "k");
+        lua_setfield(L, -2, "__mode");
+        lua_setmetatable(L, -2);
+    }
+
     ScriptEvent* eventArg(lua_State* L) {
         ScriptEvent* event = luabridge::detail::Userdata::get<ScriptEvent>(L, 1, false);
         if (!event) {
@@ -86,8 +97,68 @@ void ScriptEvent::dropReleasedOwners() const {
     compact();
 }
 
-void ScriptEvent::addTagged(lua_State* L, const std::string& tag, int functionIndex, int ownerIndex) {
+void ScriptEvent::trackOwner(lua_State* L, int ownerIndex, int eventIndex) {
+    ownerIndex = lua_absindex(L, ownerIndex);
+    eventIndex = lua_absindex(L, eventIndex);
+    if (lua_getfield(L, LUA_REGISTRYINDEX, EVENT_OWNERS) != LUA_TTABLE) {
+        lua_pop(L, 1);
+        pushWeakTable(L);
+        lua_pushvalue(L, -1);
+        lua_setfield(L, LUA_REGISTRYINDEX, EVENT_OWNERS);
+    }
+    lua_pushvalue(L, ownerIndex);
+    lua_rawget(L, -2);
+    if (!lua_istable(L, -1)) {
+        lua_pop(L, 1);
+        pushWeakTable(L);
+        lua_pushvalue(L, ownerIndex);
+        lua_pushvalue(L, -2);
+        lua_rawset(L, -4);
+    }
+    lua_pushvalue(L, eventIndex);
+    lua_pushboolean(L, 1);
+    lua_rawset(L, -3);
+    lua_pop(L, 2);
+}
+
+void ScriptEvent::releaseOwner(lua_State* L, int ownerIndex) {
+    ownerIndex = lua_absindex(L, ownerIndex);
+    if (lua_getfield(L, LUA_REGISTRYINDEX, EVENT_OWNERS) != LUA_TTABLE) {
+        lua_pop(L, 1);
+        return;
+    }
+    const int owners = lua_gettop(L);
+    lua_pushvalue(L, ownerIndex);
+    lua_rawget(L, owners);
+    if (lua_istable(L, -1)) {
+        const int events = lua_gettop(L);
+        lua_pushnil(L);
+        while (lua_next(L, events) != 0) {
+            lua_pop(L, 1);
+            if (ScriptEvent* event = luabridge::detail::Userdata::get<ScriptEvent>(L, -1, false)) {
+                event->dropOwner(L, ownerIndex);
+            }
+        }
+    }
+    lua_pop(L, 1);
+    lua_pushvalue(L, ownerIndex);
+    lua_pushnil(L);
+    lua_rawset(L, owners);
+    lua_pop(L, 1);
+}
+
+void ScriptEvent::dropOwner(lua_State* L, int ownerIndex) {
+    for (const auto& listener : listeners) {
+        if (!listener->removed && sameRef(L, listener->owner, ownerIndex)) {
+            release(*listener);
+        }
+    }
+    compact();
+}
+
+void ScriptEvent::addTagged(lua_State* L, int eventIndex, const std::string& tag, int functionIndex, int ownerIndex) {
     functionIndex = lua_absindex(L, functionIndex);
+    eventIndex = lua_absindex(L, eventIndex);
     if (ownerIndex != 0) {
         ownerIndex = lua_absindex(L, ownerIndex);
     }
@@ -99,6 +170,7 @@ void ScriptEvent::addTagged(lua_State* L, const std::string& tag, int functionIn
     if (ownerIndex != 0 && lua_istable(L, ownerIndex)) {
         lua_pushvalue(L, ownerIndex);
         listener->owner = luaL_ref(L, LUA_REGISTRYINDEX);
+        trackOwner(L, ownerIndex, eventIndex);
     }
     listeners.push_back(listener);
 }
@@ -160,6 +232,7 @@ int ScriptEvent::luaAddListener(lua_State* L) {
         listener->owner = luaL_ref(L, LUA_REGISTRYINDEX);
         listener->method = method;
         self->listeners.push_back(listener);
+        trackOwner(L, 2, 1);
         return 0;
     }
     return luaL_error(L, "Event:addListener(fn) or Event:addListener(self, \"methodName\")");
@@ -219,7 +292,7 @@ int ScriptEvent::luaInvoke(lua_State* L) {
             lua_rawgeti(L, LUA_REGISTRYINDEX, listener->function);
         } else {
             lua_rawgeti(L, LUA_REGISTRYINDEX, listener->owner);
-            lua_getfield(L, -1, listener->method.c_str());
+            LuaBinding::protectedGetField(L, -1, listener->method.c_str());
             if (!lua_isfunction(L, -1)) {
                 Log::error("Event listener: the script has no method '%s' any more", listener->method.c_str());
                 lua_settop(L, top);
@@ -246,7 +319,7 @@ int ScriptEvent::luaAdd(lua_State* L) {
     if (lua_type(L, 2) != LUA_TSTRING || !lua_isfunction(L, 3)) {
         return luaL_error(L, "Event:add(tag, fn)");
     }
-    self->addTagged(L, lua_tostring(L, 2), 3, 0);
+    self->addTagged(L, 1, lua_tostring(L, 2), 3, 0);
     lua_pushboolean(L, 1);
     return 1;
 }

@@ -677,7 +677,7 @@ std::string editor::Generator::buildInitSceneScriptsSource(const std::vector<Sce
             sourceContent += "        if (className == \"" + s.className + "\") {\n";
             sourceContent += "            " + s.className + "* typed = new " + s.className + "(scene, entity);\n";
             sourceContent += "            instance = static_cast<void*>(typed);\n";
-            sourceContent += "            cppScript = jasperengine::ScriptMessages::asScriptBase(typed);\n";
+            sourceContent += "            cppScript = jasperengine::ScriptMessages::cppScript<" + s.className + ">(typed);\n";
             sourceContent += "            cppMessageMask = jasperengine::ScriptMessages::cppMask<" + s.className + ">();\n";
             sourceContent += "        }\n";
         }

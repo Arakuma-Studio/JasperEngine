@@ -33,21 +33,33 @@ namespace {
     }
 }
 
-bool jasperengine::isScriptActive(Scene* scene, Entity entity, const void* instance) {
-    if (!scene || entity == NULL_ENTITY || !scene->isEntityCreated(entity)) {
+namespace {
+    bool activeAndEnabled(Scene* scene, Entity entity, const void* instance, bool beforeStartCounts) {
+        if (!scene || entity == NULL_ENTITY || !scene->isEntityCreated(entity)) {
+            return true;
+        }
+        if (!scene->isEntityActiveInHierarchy(entity)) {
+            return false;
+        }
+        if (ScriptEntry* entry = findEntryOf(scene, entity, instance)) {
+            if (!entry->enabled) {
+                return false;
+            }
+            // Unity: start before the first update; a script enabled during a frame gets its
+            // updates from the next one, after its start
+            const ScriptState* state = ScriptRuntime::getState(entry->instance);
+            return beforeStartCounts || !(state && state->enabledLatch && !state->started);
+        }
         return true;
     }
-    if (!scene->isEntityActiveInHierarchy(entity)) {
-        return false;
-    }
-    if (ScriptEntry* entry = findEntryOf(scene, entity, instance)) {
-        return entry->enabled;
-    }
-    return true;
+}
+
+bool jasperengine::isScriptActive(Scene* scene, Entity entity, const void* instance) {
+    return activeAndEnabled(scene, entity, instance, false);
 }
 
 bool ScriptBase::isActiveAndEnabled() const {
-    return isScriptActive(scene, entity, this);
+    return activeAndEnabled(scene, entity, this, true);
 }
 
 bool ScriptBase::isEnabled() const {
@@ -142,10 +154,16 @@ void ScriptBase::destroyOwnGameObject() {
 bool ScriptBase::baseMessageRan = false;
 
 namespace {
-    void inherited(ScriptBase& script, ScriptMessage m) {
-        script.inheritedMessages |= scriptMessageBit(m);
+    // a base message method ran: the script does not override it
+    void inherited(ScriptBase& script, ScriptMessage message) {
+        script.inheritedMessages |= scriptMessageBit(message);
         ScriptBase::baseMessageRan = true;
     }
+}
+
+void ScriptBase::onJointBreak2D(Joint2D& joint) {
+    (void)joint;
+    inherited(*this, ScriptMessage::JointBreak2D);
 }
 
 void ScriptBase::init() { inherited(*this, ScriptMessage::Init); }
@@ -156,8 +174,3 @@ void ScriptBase::onDestroy() { inherited(*this, ScriptMessage::Destroy); }
 void ScriptBase::onApplicationPause(bool paused) { (void)paused; inherited(*this, ScriptMessage::ApplicationPause); }
 void ScriptBase::onApplicationFocus(bool focused) { (void)focused; inherited(*this, ScriptMessage::ApplicationFocus); }
 void ScriptBase::onApplicationQuit() { inherited(*this, ScriptMessage::ApplicationQuit); }
-
-void ScriptBase::onJointBreak2D(Joint2D& joint) {
-    (void)joint;
-    inherited(*this, ScriptMessage::JointBreak2D);
-}

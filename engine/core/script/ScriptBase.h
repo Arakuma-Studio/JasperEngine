@@ -88,9 +88,10 @@ namespace jasperengine {
         // Engine-internal (persistence): the GameObject moved to another scene or entity id
         void rebind(Scene* scene, Entity entity);
 
-        // Lifecycle (script-lifecycle spec 7.2) and the other script messages (ScriptMessages),
-        // like the Lua methods of the same name: override them (public, protected or private)
-        // and do not call the base, which only notes the message is not overridden.
+        // Script messages (ScriptMessages), like the Lua methods of the same name: override what
+        // the script needs (public, protected or private) and do not call the base, which only
+        // notes the message is not overridden (it is not sent again).
+        // Lifecycle (script-lifecycle spec 7.2):
         virtual void init();
         virtual void start();
         virtual void onEnable();
@@ -99,6 +100,7 @@ namespace jasperengine {
         virtual void onApplicationPause(bool paused);
         virtual void onApplicationFocus(bool focused);
         virtual void onApplicationQuit();
+
         // A 2D joint of this GameObject (or whose bodyA is it) broke (Unity OnJointBreak2D); the
         // joint still exists during the call.
         virtual void onJointBreak2D(Joint2D& joint);

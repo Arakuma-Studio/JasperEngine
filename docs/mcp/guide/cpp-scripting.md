@@ -96,9 +96,16 @@ ones, with the rules and order of Lua scripts (`jasper://docs/lua-api`, 1.1):
 | `void onDisable() override` | it stops being active and enabled; before `onDestroy` | `OnDisable` |
 | `void onDestroy() override` | once: destroy, scene unload, Play stop / quit (only if `init` ran); the destructor runs after it | `OnDestroy` |
 | `void onApplicationPause(bool paused) override`, `onApplicationFocus(bool focused)`, `onApplicationQuit()` | app background / focus / quit | `OnApplication*` |
+| `void onJointBreak2D(jasperengine::Joint2D& joint) override` | a 2D joint of this GameObject (or whose bodyA is it) broke | `OnJointBreak2D` |
 
-The constructor runs first, before the properties are bound: read DPROPERTY members in
-`init()`, not in the constructor. Every Script component entry gets its object, enabled or not
+Overrides may be public, protected or private; do not call the base method: it only notes the
+script does not override the message, which is then not sent to it again. The constructor runs
+first, before the properties are bound: read DPROPERTY members in
+`init()`, not in the constructor. Events registered with `REGISTER_ENGINE_EVENT` start after
+`start()` (a script enabled during a frame gets its first `onUpdate` in the next one).
+Migration: a method of an existing script named like one of these is now an override the engine
+calls (twice if the script calls it itself too); one with another signature (`bool init()`) no
+longer compiles: rename it. Every Script component entry gets its object, enabled or not
 (disabled C++ scripts are compiled too). Exceptions thrown from these methods are logged and
 the loop goes on. The GameObject-subclass kind (below) is an object wrapper, not a behaviour:
 it gets no lifecycle calls.
