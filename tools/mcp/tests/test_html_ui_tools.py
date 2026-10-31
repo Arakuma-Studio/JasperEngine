@@ -110,7 +110,10 @@ LIMITS.update({"user_settings": 550})
 # 106621, the limit set to it
 # lines and trails: no new tool; create_entity's type "trail_renderer" paid by a shorter create_entity
 # description, set_shape_points' line text reworded; measured on the merged tree: total 106692 (106687 before)
-TOTAL_LIMIT = 106700  # re-measured on the merged tree by the lead's verification
+# particles: the new import_unity_particles (Unity ParticleSystem prefabs and scenes) and create_particles'
+# version 2 arguments (renderer, modules, upgrade, force, duration, speed); measured on the tree merged with
+# main (lines-trails, script-data, input, physics-2d, script-lifecycle): 151 tools, total 107583
+TOTAL_LIMIT = 107583
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
