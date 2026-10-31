@@ -937,3 +937,98 @@ MCP tests (`tools/mcp/tests/test_animation_layers.py`, `test_animator_controller
   as animation events (brief convention). No dependency in code order.
 - **`physics-3d` (#9) ragdoll**: disabling the player (`enabled = false`) hands bones to physics, as
   today. Masking the ragdoll's body parts is a possible follow-up.
+
+## Implementation notes
+
+Decisions taken where the spec was silent or ambiguous, deviations, and the extension points the
+later animation features plug into. Code references are to the `gaps/anim-layers` branch.
+
+### Engine runtime (phase 1)
+
+- **Files.** The evaluator is `engine/core/subsystem/ActionSystemLayers.cpp` (the spec named
+  ActionSystemPlayers.cpp); helpers both files use are in `ActionSystemPlayersDetail.h`. The two
+  asset pools share one template, `engine/core/pool/JsonAssetPool.h`. `.anim`, `.mask` and
+  `.controller` share the JSON plumbing in `engine/core/animation/AnimJson.{h,cpp}` (the clip parser
+  now calls its document parse: same errors, same positions).
+- **Fast path (L1).** `isDefaultLayering` is false when the component or the runtime has more than
+  one layer, a mask on layer 0 (authored or `setLayerMask`), a state with mixing transforms, or a
+  controller. Default players run the unchanged v1 loop. Test 1 records the hash of 100 frames of a
+  crossfade computed by the same test built against `main` before this feature
+  (`0x79e15195f729cd77`); the branch reproduces it bit for bit.
+- **Masked-out bones of the base layer go to their rest value** (decision 2, test 9): a bound
+  position/rotation/scale track whose mask weight is 0 on layer 0 still marks its slot, which then
+  composes to `lerp(rest, -, 0) = rest`. Morph and lattice tracks are not reset that way (writing
+  every morph target's rest would fight other writers). On layers above 0 a masked track is simply
+  skipped (S = 0).
+- **Authored layer edits in play mode.** The runtime rebuild (needsLoad) keeps each surviving
+  layer's runtime weight, blend and mask by name, unless the authored value changed since the last
+  build: an Inspector or MCP edit applies at once, a Lua `setLayerWeight` survives a clip list
+  edit (test 12).
+- **Mask resolution stamps.** A state's per-track mask weights are recomputed when its layer, the
+  layer's mask (pointer), the slot table (`AnimationPlayerRuntime::scratchSerial`, rebuilt after
+  any rebind), its mixing transforms or the humanoid rig change. A mask's transform entries are
+  resolved again with each slot table rebuild, not on unrelated hierarchy changes.
+- **Additive deltas use the raw track values** (`sample ⊖ reference`): for relative tracks the
+  rest cancels out, so the delta is the same. A zero scale component at the reference gives a ratio
+  of 1, warned once per state (the spec said per clip).
+- **A layer whose mask failed to load** contributes nothing, logs once and retries every second
+  (the clips' pace); the base layer included (then the player writes nothing).
+- **Shared pose blend.** The evaluator writes its composed values into the shared
+  `TransformBlendAccum` map with weight 1, as specified. To meet the budget the map now keeps its
+  nodes between frames (`TransformBlendAccum::reset`, empty entries skipped by the flush, entries
+  of destroyed entities dropped): no allocation per animated entity and frame. Results are
+  unchanged (test 1).
+- **Lua layer arguments** are bound as two overloads (an integer index first, then a name), so the
+  stubs show `integer` and `string` forms.
+
+### Animator Controller (phase 2)
+
+- **Player states of a controller** are `"<Layer>.<State>"` and, per blend tree child,
+  `"<Layer>.<State>#<i>"` (the child's index). They are `driven`: the driver owns their time
+  (`drivenTime`), weight and events; they never advance or finish by themselves, and `onFinish`
+  does not fire for them (Unity's Animator has no such callback).
+- **Interruption.** With `none` nothing interrupts a running transition, Any State transitions
+  included (the spec: "when one is active and its interruption source allows it"). With
+  `current_state` or `next_state`, Any State transitions are checked first, then the source's or
+  the destination's, in order; a transition to the running destination is skipped. Interrupted
+  sources keep playing (their times advance) at their frozen weights × (1 - x).
+- **Callbacks.** When a transition fires, `onStateExit` names the state the layer last entered
+  (the abandoned destination when a transition is interrupted), then `onStateEnter` the new
+  destination: every entered state gets exactly one exit. `play` and `crossFade` from Lua send the
+  same pair. The Lua script methods get the layer as an integer
+  (`LuaBinding::callLuaScriptMethod(..., integers = true)`).
+- **Exit time below 1** is checked at every `k + exit_time` (k ≥ 0) crossing, for non-looping clips
+  too (their normalized time keeps growing past 1, as in Unity). An empty state counts 1 second as
+  its length.
+- **`play(name, x)` with a controller** reads `x` as the layer (Unity's `Animator.Play(name,
+  layer)`), and `play(name, a, b)` as layer and normalized time. In Lua whole-number arguments go
+  through the `PlayMode` overload, which the player routes to the controller form;
+  `crossFade(name, seconds, layer)` likewise.
+- **Loading.** Parameter and state calls made before the first update (from `init`) load the
+  controller synchronously (AnimatorControllerPool, Data::open). A reload after an edit keeps each
+  layer's current state by name and normalized time, and the parameters by name and type.
+- **`stop()`** stops the controller until the next `play`, or until the player is disabled and
+  enabled again (then the default states are entered). A controller that was not stopped resumes
+  where it was after a disable (L13).
+- **Validation details.** Any State transitions count as exits for the dead-end check; empty
+  states are never dead ends; a blend tree loops when all its children loop. "Unreachable" is a
+  graph search from the default state (Any State targets are reachable).
+- **Mismatched parameter types** warn once per (parameter, requested type) and convert:
+  `setBool` on a float sets 0 or 1, `setFloat` on an int rounds, `setBool` on a trigger sets it.
+
+### Extension points
+
+- **anim-properties (#12).** `playerdetail::buildPoseSlots` skips `ClipChannel::Property` tracks
+  today: a property track becomes a `PoseSlot` with `channel = Property`, `key` naming its property
+  and `width` its component count (elements hold up to 4 floats; wider values take several
+  elements). `composePlayerLayers` composes continuous elements with the linear rules (Override
+  lerp, Additive `+ α·Δ`); discrete properties need their own winner-takes-all element kind and
+  are skipped on Additive layers (the reference sample is there: `PlayerStateRuntime::reference`).
+  The write-out (step 3) is where a `PropertyBlendAccum` is fed.
+- **anim-retarget (#11).** `AnimationPlayerRuntime::humanoid` (`anim::HumanoidSlots`, filled by
+  `anim::resolveHumanoidSlots`, the spec 6.2 rig rule) is the target-rig lookup to share;
+  `humanoidRevision` tells when it changed. Humanoid contributions enter as ordinary
+  Rotation/Position slots of the bone entities: a realisation step fills the state's samples
+  before `composePlayerLayers` (one `PoseStateInput` per state). `ControllerState::mirror`,
+  `footIK` and `retarget` (and `BlendTreeChild::mirror`) are parsed, kept and written back, and
+  ignored until then.
