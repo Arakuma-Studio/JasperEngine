@@ -422,8 +422,15 @@ namespace jasperengine{
         uint32_t shadowCasterRevision = 0;
         bool renderInReflectionProbes = true; // when false the mesh is skipped by probe captures
 
+        // authored (saved): transparent drawn when autoTransparency is off
         bool transparent = false;
         bool autoTransparency = true;
+        // set at load with autoTransparency: a submesh draws in the transparent queue. Runtime
+        // only, never saved, so a scene saves the same whether or not it has loaded yet
+        bool derivedTransparent = false;
+        // drawn in the transparent queue (the derived value with autoTransparency, else the
+        // authored one)
+        bool isTransparent() const { return autoTransparency ? derivedTransparent : transparent; }
         // set at load: transparent-queue order (the lowest sortPriority of its blended
         // submeshes), opaque-queue order (the lowest of the others; before the distance)
         // and whether the camera depth pre-pass leaves it out (a forked color shader without
