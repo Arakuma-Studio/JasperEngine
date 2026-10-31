@@ -8,6 +8,7 @@
 // the safe area lays the document out again without a reload.
 
 #include "InspectorTestCommon.h"
+#include "TestDocumentCommon.h"
 
 #include "Engine.h"
 #include "Screen.h"
