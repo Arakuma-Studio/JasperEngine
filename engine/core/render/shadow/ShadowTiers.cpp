@@ -11,13 +11,16 @@ using namespace jasperengine;
 namespace {
     constexpr uint64_t MB = 1024ull * 1024ull;
 
-    // the budget table of docs/rendering/shadow-budgets.md (spec S10 §5)
+    // the budget table of docs/rendering/shadow-budgets.md (spec S10 §5). High and Ultra since the
+    // GPU campaign (AC14 on an RTX 3080 Ti, the bench's walking camera): the fit freeze on and the
+    // memory row twice the D32 atlases, so the static layers fit and the walking camera redraws
+    // only the dynamic casters over them (High 7.2 -> under 1.0 ms of shadow passes at 1440p)
     const ShadowTierSettings tierSettings[] = {
         // cascades, slot, spot, point face, distance, soft filter, transition, receiver plane, freeze, memory
         {2, 1024, 512, 256, 40.0f, ShadowSoftFilter::GRID3, CascadeTransition::DITHER, false, true, 16 * MB},
         {3, 2048, 1024, 512, 60.0f, ShadowSoftFilter::GRID5, CascadeTransition::BLEND, true, true, 48 * MB},
-        {4, 2048, 1024, 512, 100.0f, ShadowSoftFilter::VOGEL, CascadeTransition::BLEND, true, false, 96 * MB},
-        {4, 4096, 1024, 512, 150.0f, ShadowSoftFilter::PCSS, CascadeTransition::BLEND, true, false, 288 * MB},
+        {4, 2048, 1024, 512, 100.0f, ShadowSoftFilter::VOGEL, CascadeTransition::BLEND, true, true, 192 * MB},
+        {4, 4096, 1024, 512, 150.0f, ShadowSoftFilter::PCSS, CascadeTransition::BLEND, true, true, 576 * MB},
     };
 
     const char* const tierNames[] = {"low", "medium", "high", "ultra"};

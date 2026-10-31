@@ -15,6 +15,7 @@ gpu_passes(ed, n)    n frames recorded with GPU timing; {label: median ms per fr
 
 from __future__ import annotations
 
+import asyncio
 import re
 import subprocess
 
@@ -78,19 +79,35 @@ async def device(ed) -> dict:
 
 
 async def gpu_passes(ed, frames: int = 300, view: str = "game") -> dict:
-    """{label: median GPU ms per frame} over `frames` recorded frames, plus "_frame" (the engine
-    frame's GPU time). A capture keeps each commit's view tag: while playing the Game view's passes
-    are the engine frame's (-1) on GL, but its own tag (2) on Vulkan with the view maximised, so
-    every tag is read and the labels merged (a sample has one tag: nothing counts twice)."""
-    capture = await ed.call("capture_profile", frames=frames, gpu=True)
-    out: dict = {}
-    frames_seen = 0
-    for tag in (-1, 1, 2):
-        passes = await ed.call("get_gpu_passes", view=tag, capture_id=capture["capture_id"])
-        for p in passes.get("passes", []):
-            out[p["label"]] = out.get(p["label"], 0.0) + float((p.get("gpu_ms") or {}).get("median") or 0.0)
-        if tag == -1:
-            out["_frame"] = float((passes.get("frame_gpu_ms") or {}).get("median") or 0.0)
-        frames_seen = max(frames_seen, int(passes.get("frames_with_gpu", 0)))
-    out["_frames"] = frames_seen
+    """The Game view's passes over `frames` recorded frames while playing: {label: median GPU ms per
+    frame}, "_frame" (their sum: the view's GPU time), "_tag". A capture keeps each commit's view
+    tag: the playing game is the engine frame's (-1, with the editor's own UI pass, left out), or
+    the Game view's own (2) when it draws as a secondary view; the Scene view (1) keeps drawing
+    behind a maximised Game view and is never counted."""
+    recording = asyncio.ensure_future(ed.call("capture_profile", frames=frames, gpu=True))
+    await asyncio.sleep(0.5)
+    clock = gpu_clock()
+    capture = await recording
+    lists = {}
+    for tag in (2, -1):
+        got = await ed.call("get_gpu_passes", view=tag, capture_id=capture["capture_id"])
+        lists[tag] = {p["label"]: float((p.get("gpu_ms") or {}).get("median") or 0.0)
+                      for p in got.get("passes", []) if view != "game" or p["label"] != "pass"}
+        lists[tag]["_frames"] = int(got.get("frames_with_gpu", 0))
+    tag = 2 if any(label.startswith("camera") for label in lists[2]) else -1
+    out = lists[tag]
+    out["_frame"] = sum(ms for label, ms in out.items() if not label.startswith("_"))
+    out["_tag"] = tag
+    out["_clock_mhz"] = clock
     return out
+
+
+def gpu_clock() -> float:
+    """the NVIDIA GPU's graphics clock now (MHz; 0 without nvidia-smi): it ramps with the load, so a
+    light frame can be timed at a fraction of the boost clock"""
+    try:
+        out = subprocess.run(["nvidia-smi", "--query-gpu=clocks.gr", "--format=csv,noheader,nounits"],
+                             capture_output=True, text=True, timeout=10).stdout
+        return float(out.split()[0])
+    except (OSError, ValueError, IndexError, subprocess.TimeoutExpired):
+        return 0.0

@@ -271,7 +271,7 @@ async def main() -> int:
             async with Editor(project=project, settings={"editor": {"vsync": False}} if args.gpu else None) as ed:
                 await ed.call("set_project_settings", values={"quality.vsync": False, "graphics.canvas_width": width,
                                                                 "graphics.canvas_height": height})
-                await ed.call("configure_game_view", aspect="project", maximize_on_play=args.gpu)
+                await ed.call("configure_game_view", aspect="project", maximize_on_play=False)
                 if args.gpu and run == 0:
                     print(f"device: {await gpu_view.device(ed)}")
                 runs.append(await measure(ed, args.frames, (width, height) if args.gpu else None))

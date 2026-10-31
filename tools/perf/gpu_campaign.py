@@ -72,7 +72,9 @@ def editor_args(args: argparse.Namespace) -> dict:
 
 async def prepare(ed: Editor) -> dict:
     await ed.call("set_project_settings", values={"quality.vsync": False})
-    await ed.call("configure_game_view", maximize_on_play=True, aspect="free")
+    # not maximised: the Game tab then hides the Scene view, which would draw too (and on Vulkan a
+    # second view's commit leaves the engine frame's passes untimed); fit_view sizes the view
+    await ed.call("configure_game_view", maximize_on_play=False, aspect="free")
     return await gpu_view.device(ed)
 
 
@@ -99,16 +101,20 @@ SHADOW_BUDGETS = {"low": (1.0, 0.05, 1.5), "medium": (1.5, 0.05, 2.0), "high": (
 SHADOW_CASES = {
     "static": {"SHADOWS_DYNAMIC": "0"},
     "walking": {"SHADOWS_WALK": "1"},
-    "receiver_soft": {"SHADOWS_DYNAMIC": "0", "SHADOWS_LIGHTS": "sun", "SHADOWS_SUN": "soft"},
-    "receiver_none": {"SHADOWS_DYNAMIC": "0", "SHADOWS_LIGHTS": "sun", "SHADOWS_SUN": "none"},
+    # the receiver row: the ground alone filling the view under the sun (no casters: the overdraw of
+    # 2,000 pillars is not the receiver's), soft against no shadow
+    "receiver_soft": {"SHADOWS_DYNAMIC": "0", "SHADOWS_STATIC": "0", "SHADOWS_LIGHTS": "sun", "SHADOWS_SUN": "soft"},
+    "receiver_none": {"SHADOWS_DYNAMIC": "0", "SHADOWS_STATIC": "0", "SHADOWS_LIGHTS": "sun", "SHADOWS_SUN": "none"},
 }
 
 
 async def shadows_run(args: argparse.Namespace, run: int) -> tuple[dict, dict]:
     out, dev = {}, {}
     for tier in args.tiers.split(","):
-        for case, env in SHADOW_CASES.items():
-            env = dict(env, SHADOWS_QUALITY=tier)
+        for case in args.cases.split(","):
+            env = dict(SHADOW_CASES[case], SHADOWS_QUALITY=tier)
+            if args.shadow_memory_mb:
+                env["JASPERENGINE_SHADOW_MEMORY_MB"] = str(args.shadow_memory_mb)
             async with Editor(project=ROOT / "tools" / "fixtures" / "shadows", env=env, label=f"gpu-shadows-{tier}-{case}-{run}",
                               **editor_args(args)) as ed:
                 dev = await prepare(ed)
@@ -121,15 +127,18 @@ async def shadows_run(args: argparse.Namespace, run: int) -> tuple[dict, dict]:
 def shadows_report(results: dict) -> list[str]:
     rows = ["| Tier | Resolution | Receiver, sun soft (ms) | Budget | Static, cached (ms) | Budget | Walking + 20 dynamic (ms) | Budget |",
             "|---|---|---|---|---|---|---|---|"]
+    mark = lambda v, b: "-" if v is None else f"{v:.3f}" + ("" if v <= b else " **over**")  # noqa: E731
     for tier, (rb, sb, wb) in SHADOW_BUDGETS.items():
-        if f"{tier}/static" not in results:
+        got = {case: results.get(f"{tier}/{case}") for case in SHADOW_CASES}
+        if not any(got.values()):
             continue
-        soft, none = results[f"{tier}/receiver_soft"], results[f"{tier}/receiver_none"]
-        receiver = (soft["_frame"] - shadow_ms(soft)) - (none["_frame"] - shadow_ms(none))
-        static = shadow_ms(results[f"{tier}/static"])
-        walking = shadow_ms(results[f"{tier}/walking"])
-        size = results[f"{tier}/static"]["_size"]
-        mark = lambda v, b: f"{v:.3f}" + ("" if v <= b else " **over**")  # noqa: E731
+        receiver = None
+        if got["receiver_soft"] and got["receiver_none"]:
+            soft, none = got["receiver_soft"], got["receiver_none"]
+            receiver = (soft["_frame"] - shadow_ms(soft)) - (none["_frame"] - shadow_ms(none))
+        static = shadow_ms(got["static"]) if got["static"] else None
+        walking = shadow_ms(got["walking"]) if got["walking"] else None
+        size = next(v for v in got.values() if v)["_size"]
         rows.append(f"| {tier} | {size[0]}x{size[1]} | {mark(receiver, rb)} | {rb} | {mark(static, sb)} | {sb} | {mark(walking, wb)} | {wb} |")
     return rows
 
@@ -212,7 +221,7 @@ async def particles_run(args: argparse.Namespace, run: int) -> tuple[dict, dict]
         for name, count in (("empty", 0), ("ref_100k", 100_000)):
             if count:
                 fx = await ed.call("create_particles", scene=sid, name="Ref", preset="fire", position=[0, 0, 0])
-                await ed.call("edit_particle_effect", scene=sid, entity=fx["entity_id"], patch=json.loads(PARTICLE_PATCH))
+                await ed.call("edit_particle_effect", scene=sid, entity=fx["particle_system"]["id"], patch=json.loads(PARTICLE_PATCH))
             cameras = (await ed.call("find_entities", scene=sid, component="camera"))["entities"]
             if cameras:
                 await ed.call("set_transform", scene=sid, entity=cameras[0]["id"], position=[0.0, 3.0, 14.0])
@@ -268,6 +277,9 @@ def main() -> int:
     parser.add_argument("--runs", type=int, default=5)
     parser.add_argument("--frames", type=int, default=300)
     parser.add_argument("--tiers", default="low,medium,high,ultra", help="shadows: the tiers")
+    parser.add_argument("--cases", default=",".join(SHADOW_CASES), help="shadows: the cases")
+    parser.add_argument("--shadow-memory-mb", type=int, default=0,
+                        help="shadows: JASPERENGINE_SHADOW_MEMORY_MB for the editor (the tier's memory row replaced)")
     parser.add_argument("--project", default=str(ROOT / "build" / "pbr-extended"), help="pbr: the generated project")
     parser.add_argument("--editor", default="", help="editor binary (default: the harness's)")
     parser.add_argument("--json", default="")
