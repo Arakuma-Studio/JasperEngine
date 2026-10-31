@@ -72,6 +72,9 @@ The upgrade test found these, fixed in this editor (each with a test that failed
 - **A UI scene changed on every save.** A RectTransform's scissor (the clip rectangle of the last
   draw, in the pixels of the view that drew it) was saved, so opening and saving a UI scene again
   rewrote it. It is no longer written.
+- **A prebuilt Linux player drew no sky.** A Skybox that uses the editor's default sky names no
+  file (its faces are built into the editor), so the prebuilt cook shipped none and the game logged
+  "Texture is missing texture for face 0". The cook now ships the six default faces with the game.
 
 ## Known, as on origin/main
 

@@ -14,6 +14,7 @@
 #include "Catalog.h"
 #include "component/ActionComponent.h"
 #include "component/AudioSourceComponent.h"
+#include "component/SkyboxComponent.h"
 #include "component/SplineComponent.h"
 #include "cook/RuntimeFieldsEmitter.h"
 #include "cook/SceneCooker.h"
@@ -195,6 +196,37 @@ TEST(CookedScene, SplineCurveThroughAccessors) {
     EXPECT_FLOAT_EQ(after.spline.knots()[1].rollDeg, 12.0f);
     EXPECT_EQ(after.spline.upAxis(), Vector3(0.0f, 0.0f, 1.0f));
     EXPECT_GT(after.spline.version(), SplineComponent().spline.version()) << "the load must mark the curve dirty";
+}
+
+// The default sky of a new 3D scene is six images the editor holds in memory (the Compile path's
+// generated code embeds them); a prebuilt player only reads files, so its cooked Skybox names the
+// files the build ships (SceneCooker::defaultSkyFiles), or the player has a cube texture with no
+// face ("Texture is missing texture for face 0" and no sky: the upgrade test's prebuilt player of
+// an origin/main 3D scene)
+TEST(CookedScene, DefaultSkyShipsItsFaces) {
+    DecodedScene source = emptyScene();
+    Scene* scene = source.scene->scene;
+    const Entity entity = scene->createEntity();
+    ASSERT_NE(entity, NULL_ENTITY);
+    ProjectUtils::addEntityComponent(scene, entity, ComponentType::SkyboxComponent, source.scene->entities, YAML::Node());
+    ProjectUtils::setDefaultSkyTexture(scene->getComponent<SkyboxComponent>(entity).texture);
+
+    DecodedScene loaded;
+    std::string error;
+    ASSERT_TRUE(roundTrip(scene, {entity}, loaded, error)) << error;
+    const Texture& texture = loaded.scene->scene->getComponent<SkyboxComponent>(entity).texture;
+    ASSERT_EQ(texture.getNumFaces(), 6u);
+    std::set<std::string> shipped;
+    for (const editor::cook::CookedFileBytes& file : editor::cook::SceneCooker::defaultSkyFiles()) {
+        ASSERT_GT(file.bytes.size(), 8u) << file.relativePath;
+        EXPECT_EQ(std::string(file.bytes.begin(), file.bytes.begin() + 4), "\x89PNG") << file.relativePath;
+        shipped.insert(file.relativePath);
+    }
+    for (size_t f = 0; f < 6; f++) {
+        const std::string path = texture.getPath(f);
+        ASSERT_FALSE(path.empty()) << "face " << f << " names no file";
+        EXPECT_TRUE(shipped.count("assets/" + path)) << path << " is not shipped";
+    }
 }
 
 TEST(RuntimeFields, Generated) {
