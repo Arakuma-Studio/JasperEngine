@@ -1155,7 +1155,7 @@ void EditorSettingsWindow::drawVersionControlSettings() {
             }
         }
         sectionRow("Tools");
-        auto pathRow = [this](const char* key, const char* label, const char* tooltip, std::string& value, const char* id) {
+        auto pathRow = [](const char* key, const char* label, const char* tooltip, std::string& value, const char* id) {
             if (!settingsui::beginRow(key)) return;
             if (prefsBeginSettingsRow(label, tooltip, !value.empty())) value.clear();
             char buffer[1024];

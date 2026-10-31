@@ -166,7 +166,6 @@ enum class ProjectCategory {
 
 // ProjectCategory follows the order of the Project Settings pages in the settings registry
 // (settings/SettingsRows.cpp), which lists them and their rows for the search
-static constexpr int projectCategoryCount = static_cast<int>(ProjectCategory::Count);
 
 static constexpr float projectSettingsLabelWidth = 200.0f;
 static constexpr float projectSettingsPanelPadding = 12.0f;
@@ -1729,8 +1728,8 @@ void ProjectSettingsWindow::drawQualitySettings() {
         static const char* const rows[3] = {"Atmosphere Quality (Desktop)", "Atmosphere Quality (Mobile)", "Atmosphere Quality (Web)"};
         static const char* const ids[3] = {"##AtmosphereDesktop", "##AtmosphereMobile", "##AtmosphereWeb"};
         static const char* const tooltips[3] = {
-            "Volumetric fog and volumetric clouds on Windows, macOS and Linux (and the editor's views). Off: neither; "
-            "Low, Medium, High: their resolution, steps, light and volume counts. Height fog and the sky fill are never tiered.",
+            ("Volumetric fog and volumetric clouds on Windows, macOS and Linux (and the editor's views). Off: neither; "
+             "Low, Medium, High: their resolution, steps, light and volume counts. Height fog and the sky fill are never tiered."),
             "Volumetric fog and volumetric clouds on Android and iOS.",
             "Volumetric fog and volumetric clouds in HTML5 builds."};
         static const char* const keys[3] = {"quality.atmosphere_quality_desktop", "quality.atmosphere_quality_mobile", "quality.atmosphere_quality_web"};

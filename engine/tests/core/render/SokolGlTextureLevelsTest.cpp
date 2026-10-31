@@ -17,14 +17,14 @@
 
 #include <vector>
 
-#if !defined(SOKOL_VULKAN)
+#if defined(SOKOL_GLCORE)
     #define GL_GLEXT_PROTOTYPES
     #include <GL/gl.h>
 #endif
 
 namespace {
 
-#if !defined(SOKOL_VULKAN)
+#if defined(SOKOL_GLCORE)
     // the GL_TEXTURE_MAX_LEVEL of an image's GL texture
     GLint maxLevelOf(sg_image image){
         const sg_gl_image_info info = sg_gl_query_image_info(image);
@@ -44,7 +44,7 @@ namespace {
 
 TEST(SokolGlTextureLevels, OneLevelTexturesStateTheirMaxLevel){
     JASPER_REQUIRE_GPU();
-#if defined(SOKOL_VULKAN)
+#if !defined(SOKOL_GLCORE)
     GTEST_SKIP() << "GL texture state";
 #else
     // a font atlas: R8, one level, with data

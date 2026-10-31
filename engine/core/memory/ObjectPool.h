@@ -120,7 +120,8 @@ namespace jasperengine { namespace memory {
             size_t reservedBytes = 0;
             uint64_t operations = 0;
             bool destroying = false;
-            bool assertNoLeaks;
+            // read by the leak check of JE_MEMORY_CHECKS builds only
+            [[maybe_unused]] bool assertNoLeaks;
             StatsRecord* record;
             SerialUseCheck serialUse;
         };

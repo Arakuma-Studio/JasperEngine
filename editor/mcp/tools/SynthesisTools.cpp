@@ -121,13 +121,13 @@ bool numberArg(const Json& params, const char* key, double minimum, double maxim
 bool outputArg(Project* project, const Json& value, const std::string& field, std::string& out, std::string& error) {
     if (!pathArg(project, value, field, false, out, error)) return false;
     const fs::path root = project->getProjectPath();
-    const fs::path absolute = root / fs::u8path(out);
+    const fs::path absolute = root / editor::FileUtils::pathFromUtf8(out);
     if (!project->isInsideAssetsPath(absolute)) {
         error = field + " \"" + out + "\" is outside the assets directory (\"" + ts::projectRelative(root, project->getAssetsPath()) +
                 "\"), so no component could use it.";
         return false;
     }
-    for (const fs::path& part : fs::u8path(out)) {
+    for (const fs::path& part : editor::FileUtils::pathFromUtf8(out)) {
         const std::string name = FileUtils::pathToUtf8(part);
         if (name.size() > 1 && name[0] == '.' && name != "..") {
             error = field + " \"" + out + "\" is in a hidden directory (" + name + "): write it to a visible folder of the assets.";
@@ -245,8 +245,8 @@ bool specFromArgs(Project* project, const Json& args, ts::SynthesisSpec& spec, b
             }
             if (companion.name.empty()) {
                 char separator = '_';
-                companion.name = ts::companionSuffix(FileUtils::pathToUtf8(fs::u8path(spec.examples[0].path).stem()),
-                                                     FileUtils::pathToUtf8(fs::u8path(companion.paths[0]).stem()), separator);
+                companion.name = ts::companionSuffix(FileUtils::pathToUtf8(editor::FileUtils::pathFromUtf8(spec.examples[0].path).stem()),
+                                                     FileUtils::pathToUtf8(editor::FileUtils::pathFromUtf8(companion.paths[0]).stem()), separator);
                 if (companion.name.empty()) companion.name = "companion" + std::to_string(c + 1);
             }
             spec.companions.push_back(companion);
@@ -553,7 +553,7 @@ void finishSynthesis(McpContext& ctx, const std::shared_ptr<SynthesisCall>& stat
             std::vector<std::string> existing;
             std::error_code ec;
             for (const ts::PlannedOutput& out : ts::plannedOutputs(spec)) {
-                if (fs::exists(state->root / fs::u8path(out.path), ec)) existing.push_back(out.path);
+                if (fs::exists(state->root / editor::FileUtils::pathFromUtf8(out.path), ec)) existing.push_back(out.path);
             }
             if (!existing.empty()) {
                 std::string list;
@@ -674,7 +674,7 @@ void synthesizeTextureTool(const CallPtr& call) {
         std::vector<std::string> existing;
         std::error_code ec;
         for (const ts::PlannedOutput& out : ts::plannedOutputs(spec)) {
-            if (fs::exists(root / fs::u8path(out.path), ec)) existing.push_back(out.path);
+            if (fs::exists(root / editor::FileUtils::pathFromUtf8(out.path), ec)) existing.push_back(out.path);
         }
         if (!existing.empty()) {
             std::string list;

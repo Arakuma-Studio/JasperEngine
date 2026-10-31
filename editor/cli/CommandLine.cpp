@@ -2554,7 +2554,7 @@ ClipCheck checkClipFiles(const fs::path& root, const std::vector<fs::path>& file
             if (clip.empty() || !reported.insert({clip, guid}).second) continue;
             anim::SubClipReference reference;
             const bool subClip = anim::parseSubClipReference(clip, reference);
-            const fs::path target = (assets / fs::u8path(subClip ? reference.model : clip)).lexically_normal();
+            const fs::path target = (assets / editor::FileUtils::pathFromUtf8(subClip ? reference.model : clip)).lexically_normal();
             std::error_code ec;
             if (fs::is_regular_file(target, ec)) {
                 // the editor resolves the GUID first: an entry whose GUID names another clip plays that one

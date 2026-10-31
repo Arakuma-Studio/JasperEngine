@@ -593,7 +593,7 @@ namespace jasperengine::editor::texsynth {
                 states.push_back(state);
                 return;
             }
-            const fs::path recorded = fs::u8path(state.path);
+            const fs::path recorded = editor::FileUtils::pathFromUtf8(state.path);
             state.resolved = recorded.is_absolute() ? recorded : base / recorded;
             std::string hash;
             if (hashFile) {

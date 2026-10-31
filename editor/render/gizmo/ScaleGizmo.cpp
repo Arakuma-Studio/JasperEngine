@@ -122,7 +122,7 @@ editor::GizmoSideSelected editor::ScaleGizmo::checkHover(const Ray& ray){
     AABB boxaabb = centerbox->getModelMatrix() * Matrix4::scaleMatrix(Vector3(1.5, 1.5, 1.5)) * centerbox->getAABB();
     AABB superboxaabb = centerbox->getModelMatrix() * Matrix4::scaleMatrix(Vector3(10, 10, 10)) * centerbox->getAABB();
 
-    RayReturn rreturn[7] = {0};
+    RayReturn rreturn[7] = {};
 
     rreturn[0] = ray.intersects(xaabb);
     rreturn[1] = ray.intersects(yaabb);

@@ -37,6 +37,7 @@
 #include "window/ProjectWindow.h"
 
 #include "tiny_gltf.h"
+#include "util/FileUtils.h"
 
 #include <algorithm>
 #include <cctype>
@@ -999,7 +1000,7 @@ namespace{
         }
         std::error_code ec;
         for (int n = 1;; n++){
-            const fs::path candidate = source.parent_path() / fs::u8path(base + suffix + (n == 1 ? std::string() : "_" + std::to_string(n)) + ".glb");
+            const fs::path candidate = source.parent_path() / editor::FileUtils::pathFromUtf8(base + suffix + (n == 1 ? std::string() : "_" + std::to_string(n)) + ".glb");
             if (!fs::exists(candidate, ec)) return candidate;
         }
     }

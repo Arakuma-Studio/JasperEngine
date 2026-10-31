@@ -4720,7 +4720,8 @@ void RenderSystem::applyLitMaterialBlock(ObjectRender& render, int slot, const M
     }
     float prefix[16];
     size = std::min<unsigned int>(size, sizeof(prefix));
-    std::memcpy(prefix, &material, size);
+    // from its first member: the shader part is Material's first 16 floats (Material.h)
+    std::memcpy(prefix, &material.baseColorFactor, size);
     for (int c = 8; c < 11; c++)
         prefix[c] *= material.emissiveStrength;
     render.applyUniformBlock(slot, size, prefix);
@@ -8452,7 +8453,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                 const size_t size = std::min<size_t>(sub.pbrParamsSize, sizeof(block));
                 // (16 floats: a Stochastic Tiling variant's vec4 comes before the lobes, mesh.frag)
                 float prefix[16];
-                std::memcpy(prefix, &sub.material, sizeof(prefix));
+                std::memcpy(prefix, &sub.material.baseColorFactor, sizeof(prefix));
                 for (int c = 8; c < 11; c++)
                     prefix[c] *= sub.material.emissiveStrength;
                 std::memcpy(block, prefix, std::min<size_t>(sub.pbrExtOffset, sizeof(prefix)));
