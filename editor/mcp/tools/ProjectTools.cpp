@@ -1094,7 +1094,7 @@ const std::vector<Setting>& settingsTable() {
             };
             add(s);
         }
-        add(boolField("player.keep_screen_on", "Initial Screen.sleepTimeout: true = NeverSleep, false = the device setting.",
+        add(boolField("player.keep_screen_on", "Initial Screen.sleepTimeout on Android/iOS: true = NeverSleep, false = the device setting.",
                       [](Project& p) -> bool& { return p.getPresentationSettings().keepScreenOn; }));
         {
             Setting s;

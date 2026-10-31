@@ -91,8 +91,11 @@ Screen.orientation = ScreenOrientation.AutoRotation
 - Player settings (Project Settings > Player > Resolution and Presentation, shared by Android and
   iOS): **Default Orientation** (`player.default_orientation`) and **Allowed Orientations for Auto
   Rotation** (`player.allowed_orientations`). They write Android's `screenOrientation` and iOS's
-  `UISupportedInterfaceOrientations` (+ `~ipad`; `UIRequiresFullScreen` unless all four are
-  allowed, since iPad Split View ignores orientation locks).
+  `UISupportedInterfaceOrientations` (+ `~ipad`, the default first: the launch orientation).
+- iPad: `UIRequiresFullScreen` is written true only when the orientations are restricted (a fixed
+  default, or fewer than four allowed): iPad Split View and Slide Over ignore orientation locks, so
+  a restricted game runs full screen. Allow all four orientations (with Auto Rotation) to keep
+  multitasking.
 - Android keeps the user's rotation lock in auto-rotation (Unity's "Auto Rotation Behavior: User").
   It cannot limit rotation to some sets (e.g. portrait upside down and landscape left only): it then
   allows all four and warns once.
@@ -126,11 +129,15 @@ function Music:onFocus(hasFocus) self.sound:setVolume(hasFocus and 1 or 0) end
 ## Screen sleep
 
 `Screen.sleepTimeout = SleepTimeout.NeverSleep` (-1) keeps the screen on; `SleepTimeout.SystemSetting`
-(-2) lets it dim as the device is set to (seconds count as SystemSetting, as on Unity's mobiles). The
-start value is Player > Keep Screen On (`player.keep_screen_on`, default on: Android builds always
-kept the screen on). Android: the window flag; iOS: `idleTimerDisabled`; macOS: a display-sleep
-activity; Windows: `SetThreadExecutionState`; web: the Screen Wake Lock (asked again when the page
-shows); Linux and the editor: nothing.
+(-2) lets it dim as the device is set to (seconds count as SystemSetting, as on Unity's mobiles).
+
+- Android and iOS start from Player > Keep Screen On (`player.keep_screen_on`, default on: Android
+  builds always kept the screen on). Android: the window flag; iOS: `idleTimerDisabled`.
+- Desktops and the web start at `SystemSetting`, as Unity: the display stays awake only when the game
+  sets `Screen.sleepTimeout = SleepTimeout.NeverSleep` itself (a video, a cutscene). macOS: a
+  display-sleep activity; Windows: `SetThreadExecutionState`; web: the Screen Wake Lock (asked again
+  when the page shows); Linux: nothing.
+- Editor Play: as a desktop, or as the device when the Game view simulates one.
 
 ## Application and device information
 
@@ -166,3 +173,31 @@ but not for every frame). The pixel size stays `System.getScreenWidth()/getScree
 - Project settings: `player.default_orientation`, `player.allowed_orientations`,
   `player.keep_screen_on`, `player.target_frame_rate` (`android.orientation` and
   `android.keep_screen_on` were renamed to these; older project.yaml files migrate on load).
+
+## Upgrading: what changes when an older project is exported
+
+Projects made before these settings migrate when opened (`android.orientation` becomes the shared
+Player orientation, `android.keepScreenOn` is dropped) and save `presentation:` in project.yaml.
+On the next export:
+
+- **Android orientation.** No orientation set (`unspecified`) now exports `screenOrientation="user"`:
+  portrait and both landscapes, following the user's rotation lock (tablets no longer turn upside
+  down unless Portrait Upside Down is allowed). `sensorPortrait`, `sensorLandscape` and `fullSensor`
+  become `userPortrait`, `userLandscape` and `fullUser`: the same orientations, now respecting the
+  rotation lock (Unity's Auto Rotation Behavior: User). `portrait` and `landscape` are unchanged.
+- **Android configChanges** now lists locale, uiMode, density, font scale and layout direction too:
+  the activity is no longer restarted when the user changes the language or dark mode (the game
+  reads `System.getLocale()` again instead).
+- **Android rendering** goes on while the app is visible but not focused (a permission dialog, the
+  notification shade), as Unity; `Engine.onFocus(false)` tells the game.
+- **Android permissions**: `VIBRATE` and `ACCESS_NETWORK_STATE` are added when a script calls
+  `System.vibrate` or `System.getInternetReachability`.
+- **Android screen sleep** is unchanged: on by default (Keep Screen On); a project that had
+  `android.keepScreenOn: false` keeps the screen on as before (that setting had no effect).
+- **iOS orientations** follow the shared setting, migrated from the Android one: a project that had
+  `android.orientation: landscape` exports a landscape-only iOS app. The default list is portrait and
+  both landscapes as before, portrait now first (the launch orientation).
+- **iOS iPad**: `UIRequiresFullScreen` is true for restricted orientations (the default set has three),
+  so iPad Split View is off unless all four orientations are allowed.
+- **Frame rate**: `Engine.targetFrameRate` starts at Player > Target Frame Rate (-1: 60 on mobile as
+  before); desktop and web exports start unsynchronized only when VSync is off, as before.

@@ -10,6 +10,7 @@
 #include <android/asset_manager.h>
 #include <game-activity/GameActivity.h>
 #include <string>
+#include "util/FrameLimiter.h"
 
 struct NativeEngineSavedState {
     bool mHasFocus;
@@ -111,6 +112,13 @@ private:
     int mDisplayRotation;
     bool mNaturalPortrait;
 
+    // Engine.targetFrameRate where Swappy is not enabled: the EGL swap interval and a limiter
+    // (0: none) after each swap
+    int mFallbackSwapInterval;
+    double mFallbackLimiterFps;
+    int mAppliedSwapInterval;
+    jasperengine::FrameLimiter mFrameLimiter;
+
     JNIEnv *mJniEnv;
     JniData mJniData;
 
@@ -165,6 +173,8 @@ public:
     bool isNaturalPortrait();
     // OrientationEventListener degrees, -1 when unknown or flat
     int getDeviceDegrees();
+    // frame pacing without Swappy: applied at the next frame (the context is current there)
+    void setFallbackPacing(int swapInterval, double limiterFps);
     void showSoftInput(std::wstring text);
     void hideSoftInput();
 

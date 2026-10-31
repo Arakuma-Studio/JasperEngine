@@ -1341,8 +1341,9 @@ void ProjectSettingsWindow::drawPresentationSettings() {
         m_keepScreenOn = defaults.keepScreenOn;
     }
     ImGui::Checkbox("##KeepScreenOn", &m_keepScreenOn);
-    endSettingsRow("The screen never dims or locks while the game runs (Screen.sleepTimeout = SleepTimeout.NeverSleep). "
-        "Off: the device's own setting.");
+    endSettingsRow("Android and iOS: the screen never dims or locks while the game runs (Screen.sleepTimeout = "
+        "SleepTimeout.NeverSleep). Off: the device's own setting. Desktops and the web follow the system unless a "
+        "script sets NeverSleep (as Unity).");
 
     if (beginSettingsRow("Target Frame Rate", m_targetFrameRate != defaults.targetFrameRate)) {
         m_targetFrameRate = defaults.targetFrameRate;

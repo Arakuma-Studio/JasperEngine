@@ -25,8 +25,11 @@ namespace jasperengine {
     public:
         // The Player settings: Default Orientation, Allowed Orientations for Auto Rotation (a
         // mask of PlatformRules::orientationBit; a fixed default is added to it) and Keep
-        // Screen On (the initial sleepTimeout: NeverSleep or SystemSetting)
+        // Screen On (the initial sleepTimeout on Android and iOS: NeverSleep or SystemSetting;
+        // elsewhere it starts at SystemSetting, as Unity's)
         static void initialize(ScreenOrientation defaultOrientation, uint8_t allowedMask, bool keepScreenOn);
+        // whether Keep Screen On applies here (Android, iOS)
+        static bool isMobileSleepPolicy();
 
         // A fixed orientation, or AutoRotation within the autorotateTo* set. Values outside
         // ScreenOrientation are ignored with a warning.

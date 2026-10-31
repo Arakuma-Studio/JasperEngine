@@ -126,7 +126,11 @@ namespace jasperengine::editor {
         ApplicationInfo linuxApp, windowsApp, macosApp, webApp;
     };
 
+    // editor/tests/PlatformServicesTest.cpp: the generated platform source lists
+    struct GeneratorTestAccess;
+
     class Generator {
+        friend struct GeneratorTestAccess;
     private:
         std::future<void> buildFuture;
         std::atomic<bool> lastBuildSucceeded;

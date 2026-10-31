@@ -37,8 +37,8 @@ namespace jasperengine {
         static void beginFrame();
         static void endFrame();
 
-        // Engine.vSyncCount on or off (FIFO or IMMEDIATE/MAILBOX): the swapchain is made
-        // again at the next beginFrame
+        // Engine.vSyncCount on or off (FIFO or IMMEDIATE/MAILBOX): pending until the next
+        // beginFrame, which makes the swapchain again before it acquires an image
         static void setVSync(bool vsync);
 
         static sg_environment environment();

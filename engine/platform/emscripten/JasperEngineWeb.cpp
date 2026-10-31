@@ -1490,12 +1490,16 @@ void JasperEngineWeb::setKeepScreenOn(bool keepOn){
         Module.jasperKeepScreenOn = $0 != 0;
         function acquire() {
             if (!Module.jasperKeepScreenOn || !navigator.wakeLock || document.visibilityState !== 'visible') return;
-            if (Module.jasperWakeLock) return;
+            // one request at a time: a second one before the first resolves would leak a lock
+            if (Module.jasperWakeLock || Module.jasperWakeLockPending) return;
+            Module.jasperWakeLockPending = true;
             navigator.wakeLock.request('screen').then(function(lock) {
+                Module.jasperWakeLockPending = false;
                 Module.jasperWakeLock = lock;
                 lock.addEventListener('release', function() { if (Module.jasperWakeLock === lock) Module.jasperWakeLock = null; });
-                if (!Module.jasperKeepScreenOn) { lock.release(); }
+                if (!Module.jasperKeepScreenOn) { Module.jasperWakeLock = null; lock.release(); }
             }).catch(function(e) {
+                Module.jasperWakeLockPending = false;
                 console.debug('Screen.sleepTimeout: ' + e.message);
             });
         }

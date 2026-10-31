@@ -35,6 +35,8 @@ namespace {
     };
 
     VulkanContextConfig gConfig;
+    // Engine.vSyncCount asked for since the last frame began (-1: nothing pending)
+    int gPendingVsync = -1;
 
     VkInstance gInstance = VK_NULL_HANDLE;
     VkSurfaceKHR gSurface = VK_NULL_HANDLE;
@@ -516,6 +518,7 @@ namespace {
 
 bool VulkanContext::create(const VulkanContextConfig& config) {
     gConfig = config;
+    gPendingVsync = -1;
     if (!gConfig.surfaceExtension || !gConfig.createSurface) {
         std::fprintf(stderr, "Error: The Vulkan backend needs a window surface.\n");
         return false;
@@ -559,6 +562,15 @@ void VulkanContext::destroy() {
 
 void VulkanContext::beginFrame() {
     if (gDevice == VK_NULL_HANDLE) return;
+
+    if (gPendingVsync >= 0) {
+        const bool vsync = gPendingVsync == 1;
+        gPendingVsync = -1;
+        if (vsync != gConfig.vsync) {
+            gConfig.vsync = vsync;
+            gSwapchainValid = false;
+        }
+    }
 
     VkSurfaceCapabilitiesKHR capabilities{};
     if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
@@ -622,9 +634,9 @@ void VulkanContext::endFrame() {
 }
 
 void VulkanContext::setVSync(bool vsync) {
-    if (gConfig.vsync == vsync) return;
-    gConfig.vsync = vsync;
-    gSwapchainValid = false;
+    // a script can ask mid-frame, with an image acquired and its semaphores in flight: the
+    // swapchain is made again at the start of the next frame, before it acquires
+    gPendingVsync = vsync ? 1 : 0;
 }
 
 sg_environment VulkanContext::environment() {

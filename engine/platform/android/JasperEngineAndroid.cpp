@@ -8,6 +8,8 @@
 #include <stdarg.h>
 #include <android/asset_manager.h>
 #include <vector>
+#include <algorithm>
+#include <cmath>
 #include "NativeEngine.h"
 #include "Log.h"
 #include "util/PlatformRules.h"
@@ -644,7 +646,18 @@ jasperengine::DeviceOrientation JasperEngineAndroid::getDeviceOrientation(){
 }
 
 void JasperEngineAndroid::applyFramePacing(const jasperengine::FramePacing& pacing){
-    // Swappy picks the nearest multiple of the display period
     const int fps = pacing.mobileFps > 0 ? pacing.mobileFps : 60;
-    SwappyGL_setSwapIntervalNS((uint64_t)(1000000000.0 / (double)fps));
+    if (SwappyGL_isEnabled()){
+        // Swappy picks the nearest multiple of the display period
+        SwappyGL_setSwapIntervalNS((uint64_t)(1000000000.0 / (double)fps));
+        NativeEngine::getInstance()->setFallbackPacing(1, 0.0);
+        return;
+    }
+    // without Swappy (devices it refuses): the swap interval nearest the rate, and the frame
+    // limiter for what an interval cannot give (45 fps at 60 Hz). The swap interval needs the
+    // context: systemViewLoaded applies the pacing again once it exists.
+    const double refresh = getRefreshRate();
+    const int interval = std::max(1, (int)std::lround(refresh / (double)fps));
+    const double intervalFps = refresh / (double)interval;
+    NativeEngine::getInstance()->setFallbackPacing(interval, std::fabs(intervalFps - (double)fps) > 1.0 ? (double)fps : 0.0);
 }

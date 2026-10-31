@@ -576,10 +576,11 @@ std::string editor::Generator::getPlatformCMakeConfig(bool vsyncEnabled, const W
     content += "            ${JASPERENGINE_PLATFORM_DIR}/win/JasperEngineWin.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/win/WindowWin.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/win/SystemWin.cpp\n";
+    content += "            ${JASPERENGINE_PLATFORM_DIR}/win/HostServicesWin.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/win/WinInputRouter.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/win/GamepadWin.cpp\n";
     content += "        )\n";
-    content += "        list(APPEND PLATFORM_LIBS gdi32 user32 shell32 imm32)\n";
+    content += "        list(APPEND PLATFORM_LIBS gdi32 user32 shell32 imm32 ole32 uuid advapi32)\n";
     content += "        if(JASPERENGINE_GRAPHIC_BACKEND STREQUAL \"vulkan\")\n";
     content += "            add_definitions(\"-DSOKOL_VULKAN\")\n";
     content += "            add_definitions(\"-DVK_USE_PLATFORM_WIN32_KHR\")\n";
@@ -598,6 +599,7 @@ std::string editor::Generator::getPlatformCMakeConfig(bool vsyncEnabled, const W
     content += "            ${JASPERENGINE_PLATFORM_DIR}/mac/JasperEngineMac.mm\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/mac/WindowMac.mm\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/mac/SystemMac.mm\n";
+    content += "            ${JASPERENGINE_PLATFORM_DIR}/mac/HostServicesMac.mm\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/mac/MacInputRouter.mm\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/mac/MacTextInputClient.mm\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/mac/main.mm\n";
@@ -625,6 +627,7 @@ std::string editor::Generator::getPlatformCMakeConfig(bool vsyncEnabled, const W
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/JasperEngineLinux.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/WindowLinux.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/SystemLinux.cpp\n";
+    content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/HostServicesLinux.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/LinuxInputRouter.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/GamepadLinux.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/GamepadDB.cpp\n";

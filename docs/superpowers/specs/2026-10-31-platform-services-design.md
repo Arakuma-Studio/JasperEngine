@@ -308,7 +308,7 @@ and `isNaturalPortrait()` (rotation 0/180 with height > width, or 90/270 with wi
 0 Portrait, 90 LandscapeLeft, 180 PortraitUpsideDown, 270 LandscapeRight. Queried on surface size
 change (`NativeEngine::doFrame`, `:1090-1097`) and `APP_CMD_CONFIG_CHANGED`; cached.
 Device orientation: Java `OrientationEventListener` in `MainActivity` (enabled in `onResume`,
-disabled in `onPause`), degrees with natural-orientation adjustment `d' = naturalPortrait ? d : (d + 90) % 360`,
+disabled in `onPause`), degrees with natural-orientation adjustment `d' = naturalPortrait ? d : (d + 270) % 360`,
 buckets with 20 degree hysteresis: around 0 Portrait, 90 LandscapeRight, 180 PortraitUpsideDown,
 270 LandscapeLeft; `ORIENTATION_UNKNOWN` (flat) -> `Unknown`; stored in a `volatile int` read via JNI.
 Manifest `configChanges` (`Exporter.cpp:3093`) becomes
@@ -659,3 +659,37 @@ ambiguous or did not fit the code:
     is `Engine::systemPause` itself: the game stops updating (as on a device; the engine's frame skips
     its update while paused) and its audio pauses, while `send_input` keeps counting the editor's frames
     so a later `resume` step runs; `wait` stalled on a paused app says so.
+
+### Review fixes (independent review of the branch)
+
+18. **URL rules:** a one-letter scheme is a Windows drive (`C:\Windows\System32\calc.exe` would run
+    through `ShellExecuteW("open")`), so schemes need two characters or more on every platform; Windows
+    protocol handlers that start programs, installers, Office documents or searches of local files
+    (`ms-msdt:`, `search-ms:`, `search:`, `shell:`, `ms-appinstaller:`, `ms-officecmd:`, `ms-word:` and
+    the other Office ones, `ms-cxh:`, `ms-distribution:`, `ms-quick-assist:`, `msi:`, `hcp:`, `its:`/`mk:`/
+    `ms-its:`, `mhtml:`, `jar:`, `ldap:`...) are refused everywhere (`UrlRules::check`).
+19. **Generated project CMake:** `Generator::getPlatformCMakeConfig` (Play with C++ scripts, desktop
+    builds of the project) lists the `HostServices*` sources and links `ole32 uuid advapi32` on Windows; a
+    unit test checks that every source of `platform/linux|win|mac` is in that list.
+20. **Android device degrees on natural-landscape tablets** use `(d + 270) % 360` (the listener's degrees
+    turn clockwise, `Display.getRotation` counter-clockwise; 6.5 corrected); a test checks the interface
+    and device orientations agree for every rotation on phones and tablets.
+21. **Quarter turns wait for the view size** (rule 7.5 on Android and the web, which learn the rotation
+    before the surface or canvas resizes): `Engine::systemOrientationChanged` fires a portrait/landscape
+    change only once the screen size has flipped (`systemViewChanged` calls it after `onCanvasChanged`),
+    or after `Engine::ORIENTATION_SIZE_TIMEOUT` (0.5 s, checked every frame) for a view that keeps its
+    shape; a half turn fires at once.
+22. **Vulkan vsync changes are pending until the next `beginFrame`**, which recreates the swapchain before
+    acquiring (a mid-frame change left an acquired image's semaphores unsignaled).
+23. **Android without Swappy** (`SwappyGL_isEnabled()` false): `eglSwapInterval(round(refresh / fps))`,
+    applied in the frame with the context current, plus the frame limiter when no interval gives the rate.
+24. **Web wake lock:** one request at a time (a pending flag), and a lock that resolves after
+    `NeverSleep` was turned off is released.
+25. **Lead decision A, screen sleep is a mobile setting:** `player.keep_screen_on` sets the initial
+    `Screen.sleepTimeout` on Android and iOS only (`Screen::isMobileSleepPolicy`); desktops and the web
+    start at `SystemSetting` and keep the display awake only when a script sets `NeverSleep`. Editor Play
+    follows the simulated device when the Game view has one, else the desktop rule.
+26. **Lead decision B, iPad:** `UIRequiresFullScreen` is true only for restricted orientations and false
+    when all four are allowed (unchanged from the first implementation, now documented).
+27. **Lead decision C:** the export changes for older projects are listed in the guide's "Upgrading"
+    section (`docs/mcp/guide/platform-services.md`).

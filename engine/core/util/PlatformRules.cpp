@@ -253,9 +253,22 @@ std::string UrlRules::check(const std::string& url){
         const unsigned char c = (unsigned char)url[i];
         if (!std::isalnum(c) && c != '+' && c != '-' && c != '.') return "the URL has no scheme (write https://...)";
     }
+    // one letter is a Windows drive ("C:\\Windows\\...exe"), a local program for ShellExecute
+    if (colon < 2) return "the URL has no scheme (\"" + url.substr(0, colon + 1) + "\" is a drive letter; write https://...)";
     const std::string scheme = lower(url.substr(0, colon));
     if (scheme == "javascript" || scheme == "data" || scheme == "file" || scheme == "vbscript"){
         return scheme + ": URLs are not opened (they run code or read local files)";
+    }
+    // Windows protocol handlers that run programs, installers, scripts or searches of local files
+    static const char* launchers[] = {
+        "ms-msdt", "search-ms", "search", "shell", "ms-appinstaller", "ms-officecmd", "ms-cxh", "ms-cxh-full",
+        "ms-word", "ms-excel", "ms-powerpoint", "ms-access", "ms-publisher", "ms-visio",
+        "ms-project", "ms-infopath", "ms-spd", "ms-officeapp", "ms-rd", "ms-distribution", "ms-gamingoverlay",
+        "ms-inputapp", "ms-quick-assist", "ms-windows-store-install", "msi", "hcp", "its", "mk", "ms-its",
+        "res", "ldap", "mhtml", "jar", "vbs", "wscript", "cscript", "powershell", "cmd", "telnet", "ssh"
+    };
+    for (const char* launcher : launchers){
+        if (scheme == launcher) return scheme + ": URLs are not opened (they start programs or installers)";
     }
     return "";
 }
@@ -381,7 +394,9 @@ ScreenOrientation PlatformRules::orientationFromRotation(int rotationDegrees, bo
 DeviceOrientation PlatformRules::deviceOrientationFromDegrees(int degrees, bool naturalPortrait, DeviceOrientation previous){
     if (degrees < 0) return DeviceOrientation::Unknown;
     int d = degrees % 360;
-    if (!naturalPortrait) d = (d + 90) % 360;
+    // the listener's degrees turn clockwise (Display.getRotation counter-clockwise): a device
+    // whose rotation 0 is landscape is a quarter turn back from portrait
+    if (!naturalPortrait) d = (d + 270) % 360;
 
     // OrientationEventListener: 90 when the device's left side is up (turned clockwise),
     // 270 when its right side is up (turned counter-clockwise: Unity's LandscapeLeft)

@@ -3,6 +3,7 @@
 
 #include "Screen.h"
 
+#include "Engine.h"
 #include "Log.h"
 #include "util/PlatformRules.h"
 
@@ -10,7 +11,12 @@ using namespace jasperengine;
 
 ScreenOrientation Screen::requestedOrientation = ScreenOrientation::AutoRotation;
 uint8_t Screen::allowedMask = PlatformRules::DEFAULT_ALLOWED_ORIENTATIONS;
-int Screen::sleepTimeout = SleepTimeout::NeverSleep;
+int Screen::sleepTimeout = Screen::isMobileSleepPolicy() ? SleepTimeout::NeverSleep : SleepTimeout::SystemSetting;
+
+bool Screen::isMobileSleepPolicy(){
+    const Platform platform = Engine::getPlatform();
+    return platform == Platform::Android || platform == Platform::iOS;
+}
 
 void Screen::initialize(ScreenOrientation defaultOrientation, uint8_t mask, bool keepScreenOn){
     if (!PlatformRules::isOrientation((int)defaultOrientation)){
@@ -25,7 +31,9 @@ void Screen::initialize(ScreenOrientation defaultOrientation, uint8_t mask, bool
     }
     requestedOrientation = defaultOrientation;
     allowedMask = mask;
-    sleepTimeout = keepScreenOn ? SleepTimeout::NeverSleep : SleepTimeout::SystemSetting;
+    // Unity applies the screen sleep setting on phones and tablets only: a desktop or web game
+    // keeps the display awake only when it sets Screen.sleepTimeout = NeverSleep itself
+    sleepTimeout = (keepScreenOn && isMobileSleepPolicy()) ? SleepTimeout::NeverSleep : SleepTimeout::SystemSetting;
     applyToPlatform();
 }
 

@@ -382,8 +382,10 @@ namespace jasperengine {
         static int targetFrameRate;
         static int vSyncCount;
         static FramePacing framePacing;
-        // last orientation systemOrientationChanged saw (0: none yet)
+        // last orientation systemOrientationChanged saw (0: none yet), and since when (system
+        // time) a quarter turn waits for its view size (0: none waits)
         static int lastOrientation;
+        static double orientationPendingSince;
         static std::atomic<bool> asyncLoading;
         static bool frameRunning;
 
@@ -634,8 +636,11 @@ namespace jasperengine {
         // while paused resumes first. Fires onFocus.
         static void systemFocus(bool hasFocus);
         // After a rotation or resize: fires onOrientationChanged when Screen::getOrientation()
-        // differs from the last one seen. systemViewChanged calls it after onCanvasChanged.
+        // differs from the last one seen. systemViewChanged calls it after onCanvasChanged; a
+        // quarter turn reported before the view size flips waits for it (at most
+        // ORIENTATION_SIZE_TIMEOUT seconds, checked every frame), a half turn fires at once.
         static void systemOrientationChanged();
+        static constexpr double ORIENTATION_SIZE_TIMEOUT = 0.5;
         // The system is short of memory: onLowMemory, before the platform frees its own caches
         static void systemLowMemory();
         // Play stop / start in the editor: focused, not paused, no orientation seen yet, and the

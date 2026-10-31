@@ -60,9 +60,11 @@ namespace jasperengine {
 
     namespace UrlRules {
 
-        // Why System.openURL refuses the URL, "" when it may open: it needs a scheme
-        // ("https:", "mailto:", "market:"), no control characters, and not one of the schemes
-        // that run code or read local files (javascript:, data:, file:, vbscript:)
+        // Why System.openURL refuses the URL, "" when it may open: it needs a scheme of two
+        // characters or more ("https:", "mailto:", "market:"; "C:" is a Windows drive), no control
+        // characters, and not one of the schemes that run code or read local files (javascript:,
+        // data:, file:, vbscript:) or that Windows hands to program launchers (ms-msdt:,
+        // search-ms:, shell:, ms-appinstaller:, ms-officecmd: and similar)
         JASPERENGINE_API std::string check(const std::string& url);
 
     }

@@ -18,13 +18,26 @@
 #include "Platform.h"
 #include "Project.h"
 #include "Stream.h"
+#include "Generator.h"
 #include "Workspace.h"
 #include "window/DeviceProfiles.h"
 
+#include <filesystem>
+
 #include <chrono>
+#include <thread>
 #include <regex>
 #include <string>
 #include <vector>
+
+namespace jasperengine::editor {
+    // TEST-ONLY seam (Generator.h befriends it)
+    struct GeneratorTestAccess {
+        static std::string platformCMake(Generator& generator) {
+            return generator.getPlatformCMakeConfig(true, WindowSettings(), "/project", "/project/assets", "/project/lua");
+        }
+    };
+}
 
 namespace jasperengine {
     // TEST-ONLY seam (System.h befriends it): detach / restore the instance
@@ -271,6 +284,25 @@ TEST(PlatformRules, DeviceOrientationWithHysteresis) {
     // and back: 40 stays landscape right
     EXPECT_EQ(PlatformRules::deviceOrientationFromDegrees(40, true, DO::LandscapeRight), DO::LandscapeRight);
     EXPECT_EQ(PlatformRules::deviceOrientationFromDegrees(30, true, DO::LandscapeRight), DO::Portrait);
+    // a tablet whose rotation 0 is landscape: held at 0 degrees it is in LandscapeLeft, a quarter
+    // turn clockwise from there is portrait
+    EXPECT_EQ(PlatformRules::deviceOrientationFromDegrees(0, false, DO::Unknown), DO::LandscapeLeft);
+    EXPECT_EQ(PlatformRules::deviceOrientationFromDegrees(90, false, DO::Unknown), DO::Portrait);
+    EXPECT_EQ(PlatformRules::deviceOrientationFromDegrees(180, false, DO::Unknown), DO::LandscapeRight);
+    EXPECT_EQ(PlatformRules::deviceOrientationFromDegrees(270, false, DO::Unknown), DO::PortraitUpsideDown);
+}
+
+TEST(PlatformRules, DeviceAndInterfaceOrientationAgree) {
+    // the display turns the content back as far as the device turned: rotation r counter-clockwise
+    // is the listener's (360 - r) clockwise, and both name the same orientation, on phones and tablets
+    for (bool naturalPortrait : {true, false}) {
+        for (int rotation : {0, 90, 180, 270}) {
+            const int degrees = (360 - rotation) % 360;
+            EXPECT_EQ(PlatformRules::deviceOrientationFromDegrees(degrees, naturalPortrait, DeviceOrientation::Unknown),
+                      PlatformRules::deviceOrientationOf(PlatformRules::orientationFromRotation(rotation, naturalPortrait)))
+                << "rotation " << rotation << (naturalPortrait ? " phone" : " tablet");
+        }
+    }
 }
 
 TEST(PlatformRules, IosMasks) {
@@ -432,6 +464,42 @@ TEST_F(PlatformServicesTest, OrientationEventOnlyOnChangeAfterTheFirst) {
     EXPECT_EQ(events, (std::vector<int>{(int)LL, (int)LR}));
 }
 
+TEST_F(PlatformServicesTest, QuarterTurnWaitsForTheCanvasAndHalfTurnDoesNot) {
+    std::vector<std::string> events;
+    Engine::onViewChanged.add("test_canvas", [&events]() { events.push_back("canvas"); });
+    Engine::onOrientationChanged.add("test_orientation", [&events](int o) { events.push_back("orientation " + std::to_string(o)); });
+    system.reportOrientation = true;
+    system.orientation = P;
+    system.width = 720;
+    system.height = 1280;
+    Engine::systemViewChanged();  // the baseline
+    events.clear();
+
+    // Android / the web: the rotation is known before the surface has its new size
+    system.orientation = LL;
+    Engine::systemOrientationChanged();
+    EXPECT_TRUE(events.empty());
+    system.width = 1280;
+    system.height = 720;
+    Engine::systemViewChanged();
+    EXPECT_EQ(events, (std::vector<std::string>{"canvas", "orientation 3"}));
+
+    // a half turn keeps the size: at once
+    events.clear();
+    system.orientation = LR;
+    Engine::systemOrientationChanged();
+    EXPECT_EQ(events, (std::vector<std::string>{"orientation 4"}));
+
+    // a view that never changes shape (a fixed canvas in a page): after the timeout
+    events.clear();
+    system.orientation = P;
+    Engine::systemOrientationChanged();
+    EXPECT_TRUE(events.empty());
+    std::this_thread::sleep_for(std::chrono::duration<double>(Engine::ORIENTATION_SIZE_TIMEOUT + 0.1));
+    Engine::systemOrientationChanged();
+    EXPECT_EQ(events, (std::vector<std::string>{"orientation 1"}));
+}
+
 TEST_F(PlatformServicesTest, LowMemoryEventAndLifecycleClearing) {
     int lowMemory = 0;
     Engine::onLowMemory.add("test_low_memory", [&lowMemory]() { lowMemory++; });
@@ -458,6 +526,18 @@ TEST_F(PlatformServicesTest, OpenUrlRefusesUnsafeUrls) {
     EXPECT_FALSE(system.openURL("www.example.com"));
     EXPECT_FALSE(system.openURL(""));
     EXPECT_FALSE(system.openURL("https://example.com/\nx"));
+    // a Windows drive path is no scheme: ShellExecute would run the program
+    EXPECT_FALSE(system.openURL("C:\\Windows\\System32\\calc.exe"));
+    EXPECT_FALSE(system.openURL("c:/Windows/System32/calc.exe"));
+    // Windows protocol handlers that start programs, installers or searches of local files
+    for (const char* url : {"ms-msdt:/id PCWDiagnostic", "search-ms:query=x&crumb=location:\\\\host\\share",
+                            "search:query=x", "shell:startup", "ms-appinstaller:?source=https://x/app.msix",
+                            "ms-officecmd:{}", "MS-MSDT:x", "ms-word:ofe|u|https://x/doc.docx"}) {
+        EXPECT_FALSE(system.openURL(url)) << url;
+    }
+    EXPECT_FALSE(UrlRules::check("C:\\x.exe").empty());
+    EXPECT_TRUE(UrlRules::check("itms-apps://apps.apple.com/app/id1").empty());
+    EXPECT_TRUE(UrlRules::check("tel:+15551234").empty());
     EXPECT_EQ(system.opened, (std::vector<std::string>{"https://play.google.com/store/apps/details?id=com.example",
                                                        "mailto:support@example.com", "market://details?id=com.example"}));
 }
@@ -468,8 +548,10 @@ TEST_F(PlatformServicesTest, ScreenAutorotateRules) {
     Screen::initialize(AUTO, bits({P, LL, LR}), true);
     ASSERT_FALSE(system.policies.empty());
     EXPECT_EQ(system.policies.back(), std::make_pair(AUTO, bits({P, LL, LR})));
-    EXPECT_EQ(system.keepScreenOn.back(), true);
-    EXPECT_EQ(Screen::getSleepTimeout(), SleepTimeout::NeverSleep);
+    // Keep Screen On is a phone and tablet setting (Unity): a desktop starts at the system's
+    EXPECT_FALSE(Screen::isMobileSleepPolicy());
+    EXPECT_EQ(system.keepScreenOn.back(), false);
+    EXPECT_EQ(Screen::getSleepTimeout(), SleepTimeout::SystemSetting);
 
     // applied right away while auto-rotating
     system.policies.clear();
@@ -504,6 +586,9 @@ TEST_F(PlatformServicesTest, ScreenAutorotateRules) {
     EXPECT_EQ(Screen::getAllowedMask(), bits({P, LR}));
     EXPECT_EQ(Screen::getSleepTimeout(), SleepTimeout::SystemSetting);
     EXPECT_EQ(system.keepScreenOn.back(), false);
+    // a script keeps it on everywhere
+    Screen::setSleepTimeout(SleepTimeout::NeverSleep);
+    EXPECT_EQ(system.keepScreenOn.back(), true);
 }
 
 TEST_F(PlatformServicesTest, ScreenSleepTimeoutAndOrientationOfTheSize) {
@@ -689,4 +774,31 @@ TEST(EditorPlatform, SimulatedDeviceTurnsForTheGamesRequests) {
     editor::Platform::setSimulatedLanguage("");
     EXPECT_EQ(platform.getDeviceType(), DeviceType::Desktop);
     EXPECT_EQ(platform.getDeviceOrientation(), DeviceOrientation::Unknown);
+}
+
+// ---- the generated project's platform sources ------------------------------------------------
+
+TEST(GeneratedProject, PlatformSourcesListEveryBackendFile) {
+    // a project built outside an export (Play with C++ scripts, `build_project` desktop) compiles
+    // the desktop backends from this list: every source of platform/<os> must be in it (a missing
+    // one, as HostServices*, fails at link time), but the entry points and D3D11 (not offered there)
+    Generator generator;
+    const std::string cmake = GeneratorTestAccess::platformCMake(generator);
+    const std::filesystem::path platform = std::filesystem::path(JASPER_EDITOR_TEST_FIXTURES) / ".." / ".." / ".." / "engine" / "platform";
+    ASSERT_TRUE(std::filesystem::is_directory(platform)) << platform;
+    int checked = 0;
+    for (const char* os : {"linux", "win", "mac"}) {
+        for (const auto& entry : std::filesystem::directory_iterator(platform / os)) {
+            const std::string name = entry.path().filename().string();
+            const std::string extension = entry.path().extension().string();
+            if (extension != ".cpp" && extension != ".mm") continue;
+            if ((std::string(os) != "mac" && name == "main.cpp") || name == "D3D11Context.cpp") continue;
+            EXPECT_NE(cmake.find(std::string("${JASPERENGINE_PLATFORM_DIR}/") + os + "/" + name), std::string::npos)
+                << os << "/" << name << " is not in the generated platform sources";
+            checked++;
+        }
+    }
+    EXPECT_GE(checked, 18);
+    // what HostServicesWin links
+    EXPECT_NE(cmake.find("ole32 uuid advapi32"), std::string::npos);
 }

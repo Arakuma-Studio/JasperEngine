@@ -125,6 +125,7 @@ int Engine::vSyncCount = 1;
 #endif
 FramePacing Engine::framePacing;
 int Engine::lastOrientation = 0;
+double Engine::orientationPendingSince = 0.0;
 std::atomic<bool> Engine::asyncLoading = false;
 bool Engine::frameRunning = false;
 
@@ -1199,6 +1200,7 @@ void Engine::systemInit(int argc, char* argv[], System* system){
     paused = false;
     focused = true;
     lastOrientation = 0;
+    orientationPendingSince = 0.0;
 
     drawSemaphore.release();
 
@@ -1370,6 +1372,11 @@ void Engine::systemUpdate(){
 
 void Engine::runFrame(bool draw){
     const int MAX_UPDATES_PER_FRAME = 100;
+
+    // a quarter turn waiting for its view size (systemOrientationChanged's timeout)
+    if (orientationPendingSince > 0.0){
+        systemOrientationChanged();
+    }
 
     //Deltatime in seconds
     double rawDelta = stm_sec(stm_laptime(&lastTime));
@@ -1665,13 +1672,35 @@ void Engine::systemFocus(bool hasFocus){
 void Engine::systemOrientationChanged(){
     if (!System::hasInstance()) return;
     const int orientation = (int)Screen::getOrientation();
-    if (orientation == lastOrientation) return;
-    const bool first = lastOrientation == 0;
-    lastOrientation = orientation;
-    // the first one is where the view starts, not a change
-    if (!first){
-        Engine::onOrientationChanged.call(orientation);
+    if (orientation == lastOrientation){
+        orientationPendingSince = 0.0;
+        return;
     }
+    // the first one is where the view starts, not a change
+    if (lastOrientation == 0){
+        lastOrientation = orientation;
+        return;
+    }
+    // A quarter turn is reported before the new view size on some platforms (Android's display
+    // rotation, the web's screen.orientation): it waits for the size to flip, so onCanvasChanged
+    // comes first (systemViewChanged calls this again), or ORIENTATION_SIZE_TIMEOUT seconds (a view
+    // that keeps its shape, e.g. a fixed canvas in a page). A half turn changes no size: at once.
+    auto landscape = [](int o){
+        return o == (int)ScreenOrientation::LandscapeLeft || o == (int)ScreenOrientation::LandscapeRight;
+    };
+    if (landscape(orientation) != landscape(lastOrientation)){
+        const int width = System::instance().getScreenWidth();
+        const int height = System::instance().getScreenHeight();
+        const bool sizeFlipped = width == height || landscape(orientation) == (width > height);
+        const double now = getSystemTime();
+        if (!sizeFlipped){
+            if (orientationPendingSince <= 0.0) orientationPendingSince = now;
+            if (now - orientationPendingSince < ORIENTATION_SIZE_TIMEOUT) return;
+        }
+    }
+    orientationPendingSince = 0.0;
+    lastOrientation = orientation;
+    Engine::onOrientationChanged.call(orientation);
 }
 
 void Engine::systemLowMemory(){
@@ -1685,6 +1714,7 @@ void Engine::resetApplicationState(){
     }
     focused = true;
     lastOrientation = 0;
+    orientationPendingSince = 0.0;
     targetFrameRate = -1;
     applyFramePacing();
 }

@@ -3230,6 +3230,11 @@ void editor::Project::applyPresentationSettings(){
     Engine::setTargetFrameRate(presentationSettings.targetFrameRate);
     Screen::initialize(presentationSettings.defaultOrientation, presentationSettings.effectiveAllowedOrientations(),
                        presentationSettings.keepScreenOn);
+    // a simulated phone or tablet keeps the screen on as the device would (Keep Screen On
+    // applies on Android and iOS only)
+    if (presentationSettings.keepScreenOn && editor::Platform::getSimulation().device) {
+        Screen::setSleepTimeout(SleepTimeout::NeverSleep);
+    }
     ApplicationInfo info;
     info.name = getApplicationName();
     info.identifier = getApplicationIdentifier();

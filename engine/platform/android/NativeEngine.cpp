@@ -607,6 +607,9 @@ NativeEngine::NativeEngine(struct android_app *app) {
     mSurfWidth = mSurfHeight = 0;
     mDisplayRotation = 0;
     mNaturalPortrait = true;
+    mFallbackSwapInterval = 1;
+    mFallbackLimiterFps = 0.0;
+    mAppliedSwapInterval = 0;
     mJniEnv = NULL;
     memset(&mState, 0, sizeof(mState));
 
@@ -694,6 +697,11 @@ int NativeEngine::getSurfWidth(){
 
 int NativeEngine::getSurfHeight(){
     return mSurfHeight;
+}
+
+void NativeEngine::setFallbackPacing(int swapInterval, double limiterFps){
+    mFallbackSwapInterval = std::max(1, swapInterval);
+    mFallbackLimiterFps = limiterFps;
 }
 
 int NativeEngine::getDisplayRotation(){
@@ -1107,6 +1115,8 @@ void NativeEngine::killContext() {
 
 void NativeEngine::killSurface() {
     eglMakeCurrent(mEglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    // a new surface takes the swap interval again
+    mAppliedSwapInterval = 0;
     if (mEglSurface != EGL_NO_SURFACE) {
         eglDestroySurface(mEglDisplay, mEglSurface);
         mEglSurface = EGL_NO_SURFACE;
@@ -1224,12 +1234,23 @@ void NativeEngine::doFrame() {
 
     jasperengine::Engine::systemDraw();
 
+    // without Swappy, SwappyGL_swap is eglSwapBuffers: pace it with the swap interval
+    const bool swappy = SwappyGL_isEnabled();
+    if (!swappy && mAppliedSwapInterval != mFallbackSwapInterval) {
+        eglSwapInterval(mEglDisplay, mFallbackSwapInterval);
+        mAppliedSwapInterval = mFallbackSwapInterval;
+    }
+
     // swap buffers
     if (!SwappyGL_swap(mEglDisplay, mEglSurface)) {        // failed to swap buffers...
         const EGLint error = eglGetError();
         jasperengine::Log::error("NativeEngine: SwappyGL_swap failed, EGL error %d", error);
         handleEglError(error);
         return;
+    }
+
+    if (!swappy) {
+        mFrameLimiter.wait(mFallbackLimiterFps);
     }
 
     // print out GL errors, if any

@@ -188,8 +188,10 @@ async def test_simulated_device_rotates_for_screen_orientation(ed: Editor):
         await ed.call("play", action="start", scene=s["scene"])
         # the project default (auto-rotation with portrait allowed) keeps the portrait device
         values = await lua(ed, "return Screen.orientation, Input.deviceOrientation, System.getDeviceModel(), "
-                               "System.getDeviceType() == DeviceType.Handheld, Screen.dpi, System.isEditor()")
-        ed.check_eq(values, [1, 1, "iPhone16,1", True, 460, True])
+                               "System.getDeviceType() == DeviceType.Handheld, Screen.dpi, System.isEditor(), "
+                               "Screen.sleepTimeout")
+        # a simulated phone keeps the screen on as the device would (player.keep_screen_on)
+        ed.check_eq(values, [1, 1, "iPhone16,1", True, 460, True, -1])
         await lua(ed, "platformLog = {}")
 
         # AutoRotate.cs: lock landscape, then auto-rotate within landscape
@@ -237,8 +239,9 @@ async def test_device_and_app_information(ed: Editor):
                                "System.getAppIdentifier(), System.getOperatingSystem():sub(1, 6), System.getAndroidApiLevel(), "
                                "System.getProcessorCount() >= 1, System.getSystemMemorySize() > 0, System.vibrate(), "
                                "System.hapticFeedback(HapticFeedback.Success), Screen.sleepTimeout, Screen.refreshRate > 0")
+        # Keep Screen On is a phone setting: a desktop (no simulated device) starts at the system's
         ed.check_eq(values, ["Platform Services", "1.0", 1, "com.yourcompany.project", "Linux ", 0, True, True, False,
-                             False, -1, True])
+                             False, -2, True])
         state = (await ed.call("get_play_state"))["platform"]
         ed.check_eq((state["vibrations"], state["haptics"]), (1, 1))
         error = await ed.call_raw("eval_lua", {"code": "return System.vibrate('long')"})
