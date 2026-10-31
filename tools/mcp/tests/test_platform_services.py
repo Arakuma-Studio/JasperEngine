@@ -139,9 +139,11 @@ async def test_target_frame_rate_paces_play(ed: Editor):
             after = await lua(ed, "return Engine.frameCount, Engine.systemTime")
             return (after[0] - before[0]) / (after[1] - before[1])
 
-        # a rate any loaded host reaches, then 30 (capped: a busy host may run slower, never faster)
+        # capped: never faster than the target. A shared, saturated test box was measured running
+        # the 15 fps target at 9.6-12.9 (alone it passes 13..17), so the lower bound only checks that
+        # frames keep coming; the limiter's timing is unit-tested (FrameLimiter)
         fps = await measure(15)
-        ed.check(13 <= fps <= 17, f"15 fps target, measured {fps:.1f}")
+        ed.check(5 <= fps <= 17, f"15 fps target, measured {fps:.1f}")
         fps = await measure(30)
         ed.check(fps <= 35, f"30 fps target, measured {fps:.1f}")
         state = (await ed.call("get_play_state"))["platform"]

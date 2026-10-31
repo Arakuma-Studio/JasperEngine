@@ -113,7 +113,7 @@ Screen.orientation = ScreenOrientation.AutoRotation
 | `Engine.onFocus` `(hasFocus)` | the app is frontmost and gets input, or something covers it (a system dialog, the notification shade, another window) |
 | `Engine.onPause`, `Engine.onResume` | the app goes to the background and comes back |
 | `Engine.onLowMemory` | the system is short of memory (Android, iOS): free caches |
-| script method `onApplicationFocus(focused)` / `onApplicationPause(paused)` | Unity's messages, called on every Lua script of active GameObjects that defines them |
+| script method `onApplicationFocus(focused)` / `onApplicationPause(paused)` | Unity's messages, called on every script of active GameObjects that defines them (Lua, and C++ `ScriptBase` overrides) |
 
 Order, on every platform: leaving, `onFocus(false)` then `onPause`; coming back, `onResume` then
 `onFocus(true)`. Pause and resume are idempotent (no second event, no second audio pause). A game
