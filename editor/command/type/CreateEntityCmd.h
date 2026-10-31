@@ -79,7 +79,9 @@ namespace jasperengine::editor{
         VIDEO_BACKGROUND,
         // a unit lattice (Transform + LatticeComponent); the menus create one through
         // LatticeEditorOps::createLattice, which fits and binds it around the selection
-        LATTICE
+        LATTICE,
+        // not a GameObject: the Hierarchy's "3D Object > Ragdoll..." opens the wizard on the selection
+        RAGDOLL_WIZARD
     };
 
     class CreateEntityCmd: public Command{

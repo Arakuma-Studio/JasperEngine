@@ -3401,6 +3401,20 @@
 		4A534E478F589171F02F0B63 /* LineRibbonBuilder.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47197C345843945889 /* LineRibbonBuilder.h */; };
 		4A534E47212823E1E8889FB7 /* TrailSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D89F43391B4A415F /* TrailSystem.h */; };
 		4A534E47759C736B9546FF1B /* CanvasGroupTracks.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47CB75CAA034603A13 /* CanvasGroupTracks.h */; };
+		4A534E477EFCAC66C69CD457 /* PhysicsDebugLines.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A8E4F22F6929CFD1 /* PhysicsDebugLines.cpp */; };
+		4A534E473A5B45D22F9F1BDF /* PhysicsDebugLines.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A8E4F22F6929CFD1 /* PhysicsDebugLines.cpp */; };
+		4A534E47F93DEDE50611F1D9 /* RagdollBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474970B21BFA5FA0B5 /* RagdollBuilder.cpp */; };
+		4A534E473363A926D4AA43AD /* RagdollBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E474970B21BFA5FA0B5 /* RagdollBuilder.cpp */; };
+		4A534E47DDF1A3D2474817EF /* PhysicsSystemJoints3D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4735F8B0318B067911 /* PhysicsSystemJoints3D.cpp */; };
+		4A534E4716697815C0C4D9FF /* PhysicsSystemJoints3D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4735F8B0318B067911 /* PhysicsSystemJoints3D.cpp */; };
+		4A534E4769FD34066CB46F15 /* PhysicsSystemRagdoll.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479C0EFAD0789E9D38 /* PhysicsSystemRagdoll.cpp */; };
+		4A534E473D49EB723078C351 /* PhysicsSystemRagdoll.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479C0EFAD0789E9D38 /* PhysicsSystemRagdoll.cpp */; };
+		4A534E477274B8AD71934C34 /* PhysicsSystemDebugDraw.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4709DE150BBF04619D /* PhysicsSystemDebugDraw.cpp */; };
+		4A534E47098B3AA83CBFEE5A /* PhysicsSystemDebugDraw.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4709DE150BBF04619D /* PhysicsSystemDebugDraw.cpp */; };
+		4A534E47B198A12EF035B0B5 /* RagdollComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47ECB20D024971B61A /* RagdollComponent.h */; };
+		4A534E47AF59483108C89E2F /* JoltSurfaceMaterial.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B943DF5AE8C89137 /* JoltSurfaceMaterial.h */; };
+		4A534E47C8AD8B108EAF5119 /* PhysicsDebugLines.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4732D16258C9BD3B20 /* PhysicsDebugLines.h */; };
+		4A534E47B455DB3E73FEC52F /* RagdollBuilder.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475211D61462BB9014 /* RagdollBuilder.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -6841,6 +6855,15 @@
 		4A534E47197C345843945889 /* LineRibbonBuilder.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LineRibbonBuilder.h; sourceTree = "<group>"; };
 		4A534E47D89F43391B4A415F /* TrailSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TrailSystem.h; sourceTree = "<group>"; };
 		4A534E47CB75CAA034603A13 /* CanvasGroupTracks.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CanvasGroupTracks.h; sourceTree = "<group>"; };
+		4A534E47A8E4F22F6929CFD1 /* PhysicsDebugLines.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsDebugLines.cpp; sourceTree = "<group>"; };
+		4A534E474970B21BFA5FA0B5 /* RagdollBuilder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RagdollBuilder.cpp; sourceTree = "<group>"; };
+		4A534E4735F8B0318B067911 /* PhysicsSystemJoints3D.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsSystemJoints3D.cpp; sourceTree = "<group>"; };
+		4A534E479C0EFAD0789E9D38 /* PhysicsSystemRagdoll.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsSystemRagdoll.cpp; sourceTree = "<group>"; };
+		4A534E4709DE150BBF04619D /* PhysicsSystemDebugDraw.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsSystemDebugDraw.cpp; sourceTree = "<group>"; };
+		4A534E47ECB20D024971B61A /* RagdollComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RagdollComponent.h; sourceTree = "<group>"; };
+		4A534E47B943DF5AE8C89137 /* JoltSurfaceMaterial.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = JoltSurfaceMaterial.h; sourceTree = "<group>"; };
+		4A534E4732D16258C9BD3B20 /* PhysicsDebugLines.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PhysicsDebugLines.h; sourceTree = "<group>"; };
+		4A534E475211D61462BB9014 /* RagdollBuilder.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RagdollBuilder.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -8099,6 +8122,11 @@
 				4A534E479691DF604E10D72A /* PolygonDecomposition2D.cpp */,
 				4A534E475AF194F17A7D2E1C /* PhysicsMaterial.h */,
 				4A534E47E966A402AAF3D786 /* PolygonDecomposition2D.h */,
+				4A534E47A8E4F22F6929CFD1 /* PhysicsDebugLines.cpp */,
+				4A534E474970B21BFA5FA0B5 /* RagdollBuilder.cpp */,
+				4A534E47B943DF5AE8C89137 /* JoltSurfaceMaterial.h */,
+				4A534E4732D16258C9BD3B20 /* PhysicsDebugLines.h */,
+				4A534E475211D61462BB9014 /* RagdollBuilder.h */,
 			);
 			path = physics;
 			sourceTree = "<group>";
@@ -8378,6 +8406,7 @@
 				4A534E47C782824D41EC527F /* PhysicsCommon.h */,
 				4A534E47C9EB4F5CD128ABB8 /* VideoPlayerComponent.h */,
 				4A534E471E4D971B8C73A691 /* TrailRendererComponent.h */,
+				4A534E47ECB20D024971B61A /* RagdollComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -8530,6 +8559,9 @@
 				4A534E47D88DB63824966935 /* VideoPlayerSystem.h */,
 				4A534E47B38E42BA45359570 /* TrailSystem.cpp */,
 				4A534E47D89F43391B4A415F /* TrailSystem.h */,
+				4A534E4735F8B0318B067911 /* PhysicsSystemJoints3D.cpp */,
+				4A534E479C0EFAD0789E9D38 /* PhysicsSystemRagdoll.cpp */,
+				4A534E4709DE150BBF04619D /* PhysicsSystemDebugDraw.cpp */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -12214,6 +12246,10 @@
 				4A534E478F589171F02F0B63 /* LineRibbonBuilder.h in Headers */,
 				4A534E47212823E1E8889FB7 /* TrailSystem.h in Headers */,
 				4A534E47759C736B9546FF1B /* CanvasGroupTracks.h in Headers */,
+				4A534E47B198A12EF035B0B5 /* RagdollComponent.h in Headers */,
+				4A534E47AF59483108C89E2F /* JoltSurfaceMaterial.h in Headers */,
+				4A534E47C8AD8B108EAF5119 /* PhysicsDebugLines.h in Headers */,
+				4A534E47B455DB3E73FEC52F /* RagdollBuilder.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14292,6 +14328,11 @@
 				4A534E47CB7C331EE90C2019 /* TrailRenderer.cpp in Sources */,
 				4A534E474FD048B43C95AA02 /* LineRibbonBuilder.cpp in Sources */,
 				4A534E47C826FA60D57B648C /* TrailSystem.cpp in Sources */,
+				4A534E477EFCAC66C69CD457 /* PhysicsDebugLines.cpp in Sources */,
+				4A534E47F93DEDE50611F1D9 /* RagdollBuilder.cpp in Sources */,
+				4A534E47DDF1A3D2474817EF /* PhysicsSystemJoints3D.cpp in Sources */,
+				4A534E4769FD34066CB46F15 /* PhysicsSystemRagdoll.cpp in Sources */,
+				4A534E477274B8AD71934C34 /* PhysicsSystemDebugDraw.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14749,6 +14790,11 @@
 				4A534E47666B66B24871AAA0 /* TrailRenderer.cpp in Sources */,
 				4A534E47F807A7F7B7DC0936 /* LineRibbonBuilder.cpp in Sources */,
 				4A534E479399C2E0EAF5A3C3 /* TrailSystem.cpp in Sources */,
+				4A534E473A5B45D22F9F1BDF /* PhysicsDebugLines.cpp in Sources */,
+				4A534E473363A926D4AA43AD /* RagdollBuilder.cpp in Sources */,
+				4A534E4716697815C0C4D9FF /* PhysicsSystemJoints3D.cpp in Sources */,
+				4A534E473D49EB723078C351 /* PhysicsSystemRagdoll.cpp in Sources */,
+				4A534E47098B3AA83CBFEE5A /* PhysicsSystemDebugDraw.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

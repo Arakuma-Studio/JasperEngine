@@ -1648,14 +1648,15 @@ void Engine::systemShutdown(){
 
     // anime's Lua references go while the Lua state still exists
     AnimEngine::instance().reset();
+    // the persistent scene's scripts (their onDestroy ran above) are released, and it goes
+    SceneManager::destroyPersistentScene();
+
     // HTTP requests end without their callbacks and the HTTP stack's threads stop; what other
     // threads posted for the game is dropped
     Http::terminate();
     // the media cache's downloads are forgotten (their .part files stay for a resume)
     MediaCache::shutdown();
     MainThreadQueue::clear();
-    // the persistent scene's scripts (their onDestroy ran above) are released, and it goes
-    SceneManager::destroyPersistentScene();
     LuaBinding::cleanup();
 
     removeAllSceneLayers(true);

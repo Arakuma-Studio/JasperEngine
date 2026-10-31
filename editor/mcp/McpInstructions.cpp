@@ -35,7 +35,7 @@ Legacy Animation = AnimationPlayerComponent (AnimationComponent: entity sequence
 - entity: numeric id ("12" ok), or a path of names from the scene root joined by "/" with "#N" for the
   Nth earlier sibling of the same name ("Player/Gun", "Enemy#2"), or a bare name unique in the
   scene; {"id"|"name"|"path"} objects (as results return them) work too. Ambiguous names fail
-  listing the matches. Results give id and path; prefer ids.
+  and list the matching paths. Results give id and path; prefer ids.
   `entities` (array) instead of `entity` applies a tool to several GameObjects. parent
   omitted = scene root; max_width 0 = full size.
 - component: lowercase catalog names (transform, mesh, sprite, rigidbody2d, ...); unknown
@@ -133,11 +133,9 @@ return Player
 - Input.getAxis/getButtonDown('Jump') read Project Settings > Input actions; getKeyDown(key)
   is an edge, isKeyPressed held. Test with send_input action/axis events (jasper://docs/input).
   Log.print/warn/error take ONE string (use ..).
-- Time: Engine.timeScale, Engine.fixedDeltatime (rw), Engine.gameTime, Engine.frameCount.
-- Lua has no C++ default arguments: pass every argument.
-- Saves: PlayerPrefs, Json.encode/decode, File.writeText("data://x") (lua-api 2.4);
-  user_settings reads/resets PlayerPrefs.
-- HTTP: Http.get/post/download: jasper://docs/networking.
+- Time: Engine.timeScale, fixedDeltatime (rw), gameTime, frameCount. No C++ default args.
+- Saves: PlayerPrefs, Json, File.writeText("data://x") (lua-api 2.4; tool user_settings).
+  HTTP: Http.get/post, main-thread callbacks (jasper://docs/networking).
 - Lua has no Dori.Script, getComponent, setProperty or timers. Never put editor property
   paths (submeshes[0]...) in scripts.
 
@@ -178,7 +176,7 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
   (jasper://docs/pose-animation).
 - Clips (.anim, shared): edit_animation {clip, create, tracks [{path}]}; play with an Animation
   Player (jasper://docs/animation).
-- Crowds: bake_vertex_animation makes a .vat played on the GPU by a
+- Crowds: bake_vertex_animation (preview, then output) makes a .vat played on the GPU by a
   Vertex Animator (jasper://docs/vertex-animation).
 - UI (text, image, button, panel, scrollbar, progressbar, input field, layout group; HTML/CSS
   UI: below): create_ui lays out in pixels with y DOWN from the parent's top-left, in 2D scenes
@@ -238,13 +236,13 @@ Video Player (texture video|<id>), MP4, WebM: jasper://docs/video.
 ## Build and ship
 Scenes in Build order and the start scene live in project.yaml (project tools). Export
 (Build Settings) produces a standalone CMake project or builds players per platform (a long
-job). The 2D/3D physics switches strip backends from the export
-(jasper://docs/cpp-scripting). Before exporting: scenes saved, Console clean in play, the start
-scene correct.
+job, see The loop). The 2D/3D physics switches strip backends from the export
+(jasper://docs/cpp-scripting). Before exporting: every scene saved, Console clean in play, the
+start scene correct.
 )JE"
 R"JE(
 ## HTML/CSS UI
-Menus, HUDs, dialogs in HTML + CSS, logic in Lua (no JavaScript): create_ui_document
+Menus, HUDs and dialogs in standard HTML + CSS, logic in Lua (no JavaScript): create_ui_document
 (template: blank, main_menu, hud, inventory, settings, shop...) adds the GameObject and writes
 assets/ui/<name>.html, its .css and Lua. Edit them yourself; fix what external_changes reports.
 inspect_ui (tree, boxes in canvas px = send_input coords, styles, at) and assert_ui (text_fits,

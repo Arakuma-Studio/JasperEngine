@@ -74,6 +74,7 @@
 #include "component/Joint2DComponent.h"
 #include "component/RigidbodyComponent.h"
 #include "component/Joint3DComponent.h"
+#include "component/RagdollComponent.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/PrefabComponent.h"
 

@@ -136,6 +136,19 @@ solver of your own, or a package.
 | `Resources.Load<TextAsset>(path).text`, `StreamingAssets` files | `File.readText("asset://path")` (read-only, in the APK on Android too); `Json.readFile("asset://...")` |
 | ScriptableObject (data assets) | a JSON file (`Json.readFile("lua://data/items.json")`) or a Lua data module (`require("data.items")`): jasper://docs/lua-api 2.4.2 |
 
+## UI (Canvas Group)
+
+| Unity term | JasperEngine name |
+|---|---|
+| `CanvasGroup` (`alpha`, `interactable`, `blocksRaycasts`, `ignoreParentGroups`) | Canvas Group component (`canvasgroup`); Lua `CanvasGroup(scene, entity)` with the same fields plus `renderMode` (`PER_ELEMENT` = Unity, `FLATTEN` = CSS opacity), `object:getCanvasGroup()`; see [mcp/guide/ui.md](mcp/guide/ui.md) |
+| `LeanTween.alphaCanvas(cg, to, time)`, DOTween `cg.DOFade(to, time)` | `group:fadeTo(to, time [, {ease, unscaled, deactivate, onComplete}])`, `fadeIn`, `fadeOut` |
+| `CanvasRenderer.GetInheritedAlpha()` | `RectTransform:getInheritedAlpha()` |
+| `Selectable.IsInteractable()` | `RectTransform:isInteractable()` |
+| `Graphic.raycastTarget` | `RectTransform.ignoreEvents` (inverted: `ignoreEvents = true` is `raycastTarget = false`) |
+| `ColorBlock.disabledColor` | `Button.colorDisabled` (default Unity's (200, 200, 200, 128)) |
+| An Animation Clip's `m_Alpha` curve on a CanvasGroup | the property track `canvasgroup.alpha` (and `interactable`, `blocksRaycasts`, `ignoreParentGroups`) |
+| Unity's quirk: a parent group at alpha 0 also hides an `ignoreParentGroups` child | not copied: the child shows at its own alpha |
+
 ## Networking
 
 Details: jasper://docs/networking.
@@ -154,19 +167,6 @@ Details: jasper://docs/networking.
 | `UnityWebRequest.EscapeURL` / `UnEscapeURL` | `Http.encodeUrl` / `Http.decodeUrl` |
 | Player Settings > Android > *Internet Access* (Auto / Require) | Project Settings > Android > Internet Access (`android.internet_access`: `auto` / `require`) |
 | Player Settings > *Allow downloads over HTTP* | Project Settings > Player > Other Settings > Allow Insecure HTTP (`player.allow_insecure_http`) |
-
-## UI (Canvas Group)
-
-| Unity term | JasperEngine name |
-|---|---|
-| `CanvasGroup` (`alpha`, `interactable`, `blocksRaycasts`, `ignoreParentGroups`) | Canvas Group component (`canvasgroup`); Lua `CanvasGroup(scene, entity)` with the same fields plus `renderMode` (`PER_ELEMENT` = Unity, `FLATTEN` = CSS opacity), `object:getCanvasGroup()`; see [mcp/guide/ui.md](mcp/guide/ui.md) |
-| `LeanTween.alphaCanvas(cg, to, time)`, DOTween `cg.DOFade(to, time)` | `group:fadeTo(to, time [, {ease, unscaled, deactivate, onComplete}])`, `fadeIn`, `fadeOut` |
-| `CanvasRenderer.GetInheritedAlpha()` | `RectTransform:getInheritedAlpha()` |
-| `Selectable.IsInteractable()` | `RectTransform:isInteractable()` |
-| `Graphic.raycastTarget` | `RectTransform.ignoreEvents` (inverted: `ignoreEvents = true` is `raycastTarget = false`) |
-| `ColorBlock.disabledColor` | `Button.colorDisabled` (default Unity's (200, 200, 200, 128)) |
-| An Animation Clip's `m_Alpha` curve on a CanvasGroup | the property track `canvasgroup.alpha` (and `interactable`, `blocksRaycasts`, `ignoreParentGroups`) |
-| Unity's quirk: a parent group at alpha 0 also hides an `ignoreParentGroups` child | not copied: the child shows at its own alpha |
 
 ## Input
 
@@ -223,6 +223,27 @@ origin, a direction and a distance it is in world units (scene units in 2D).
 | `collisionDetectionMode` (`CollisionDetectionMode2D`), `sleepMode` (`RigidbodySleepMode2D`) | `collisionDetection`, `sleepingMode` (same enum names) |
 | `isTrigger` (a collider) | the collider's `sensor` (`setColliderTrigger(i, b)`) |
 | Physics 2D settings: Velocity / Position Iterations | the scene's `physics2DSubSteps` (Box2D 3 sub-steps) |
+
+## 3D physics: Unity names and their JasperEngine counterparts
+
+| Unity | JasperEngine |
+|---|---|
+| `drag` / `linearDamping`, `angularDrag` / `angularDamping` | `linearDamping`, `angularDamping` (0.05 by default, Jolt's, where Unity has 0) |
+| `isKinematic` | `isKinematic` (Lua), the `type` `KINEMATIC`; switching in Play keeps the body |
+| `mass`, `automaticCenterOfMass` / `centerOfMass`, `automaticInertiaTensor` / `inertiaTensor` / `inertiaTensorRotation` | the same names, plus `automaticMass` (off when a mass is set) |
+| `maxLinearVelocity`, `maxAngularVelocity`, `interpolation` (`RigidbodyInterpolation`) | the same (`RigidbodyInterpolation.SCENE` follows the scene's setting) |
+| `IsSleeping()`, `Sleep()`, `WakeUp()` | `isSleeping()`, `sleep()`, `wakeUp()` |
+| `Collider.isTrigger` | `setColliderTrigger(i, b)` (per collider of the Rigidbody) |
+| `PhysicMaterial` / `PhysicsMaterial` (`dynamicFriction`, `bounciness`, `frictionCombine`, `bounceCombine`) | `PhysicsMaterial` (`.physicsmaterial`, Create > Physics Material), one `friction`; Unity's `Average` friction combine of 3D is `average` |
+| `collider.material` / `sharedMaterial` | `setColliderFriction` (an own copy) / `setColliderMaterial` |
+| `HingeJoint`, `ConfigurableJoint`, `CharacterJoint`, `SpringJoint`, `FixedJoint` | one `Joint3D` component with `type` `HINGE`, `SIXDOF` (or `PRISMATIC` for a slider), `SWINGTWIST`, `DISTANCE` + `useSpring`, `FIXED` |
+| `connectedBody`, `anchor`, `connectedAnchor`, `autoConfigureConnectedAnchor`, `axis`, `secondaryAxis`, `swingAxis` | `bodyB` (alias `connectedBody`), `anchor`, `anchorB` (alias `connectedAnchor`), `autoAnchors`, `axis`, `normal`, `planeAxis` (Lua aliases of the Unity names), with `anchorSpace = LOCAL` |
+| `HingeJoint.limits / spring / motor / useLimits / useSpring / useMotor`, `angle`, `velocity` | `limitsMin/Max`, `springStiffness / springDamper / springTargetPosition`, `motorTargetVelocity / motorMaxForce`, `useLimits / useSpring / useMotor`, `angle`, `velocity` |
+| `CharacterJoint.lowTwistLimit / highTwistLimit / swing1Limit / swing2Limit` | `twistMinAngle / twistMaxAngle / normalHalfConeAngle / planeHalfConeAngle` (Lua aliases of the Unity names) |
+| `ConfigurableJoint.xMotion ... angularZMotion` (`ConfigurableJointMotion`), drives, `targetPosition` / `targetRotation` | the same names (`JointMotion.LOCKED` / `LIMITED` / `FREE`), `useDrive` + stiffness / damping |
+| `enableCollision`, `breakForce`, `breakTorque`, `OnJointBreak(float)` | the same, `breakAction`, `onJointBreak(self, force, joint)` (C++ `onJointBreak(float, Joint3D&)`) |
+| Ragdoll Wizard (GameObject > 3D Object > Ragdoll...) | the same menu, `create_ragdoll` (MCP), the `Ragdoll` component (`simulated`) |
+| Physics Debugger, `Physics.autoSyncTransforms` | the Game view's Physics toggle, `Physics.debugDraw`; transforms always sync |
 
 In scene and prefab files the component keys follow the class names, e.g.
 `rigidbody2d:`, `audiosource:`, `recttransform:`, `colliders:`, `prefabPath:`.

@@ -24,10 +24,25 @@ bool PrefabObjectOverrides::isWholeComponent(ComponentType type) const {
 
 namespace {
 
-// Names of overrides recorded by editors before 2D colliders had no caps: the collider count
+// Names of overrides recorded by editors before colliders had no caps: the collider count
 // ("numColliders"), a collider's point count ("colliders[i].numVertices") and its points
 // ("colliders[i].vertices[j]") are now the colliders list, the points list and its points
 std::string currentPropertyName(ComponentType type, const std::string& property) {
+    // 3D colliders the same: the count is the list, a collider's vertex and index counts are
+    // its vertices and indices lists
+    if (type == ComponentType::RigidbodyComponent) {
+        if (property == "numColliders") {
+            return "colliders";
+        }
+        const size_t field = property.find("].");
+        if (property.compare(0, 10, "colliders[") == 0 && field != std::string::npos) {
+            const std::string collider = property.substr(0, field + 1);
+            const std::string rest = property.substr(field + 2);
+            if (rest == "numVertices") return collider + ".vertices";
+            if (rest == "numIndices") return collider + ".indices";
+        }
+        return property;
+    }
     if (type != ComponentType::Rigidbody2DComponent) {
         return property;
     }

@@ -1239,9 +1239,17 @@ void editor::ProjectUtils::addEntityComponent(EntityRegistry* registry, Entity e
             break;
         case ComponentType::Joint3DComponent:
             if (!componentNode.IsDefined() || componentNode.IsNull()){
-                registry->addComponent<Joint3DComponent>(entity, {});
+                // a new joint: Unity's defaults (local anchors)
+                registry->addComponent<Joint3DComponent>(entity, makeJoint3D(Joint3DType::FIXED));
             }else{
                 registry->addComponent<Joint3DComponent>(entity, Stream::decodeJoint3DComponent(componentNode));
+            }
+            break;
+        case ComponentType::RagdollComponent:
+            if (!componentNode.IsDefined() || componentNode.IsNull()){
+                registry->addComponent<RagdollComponent>(entity, {});
+            }else{
+                registry->addComponent<RagdollComponent>(entity, Stream::decodeRagdollComponent(componentNode));
             }
             break;
         case ComponentType::KeyframeTracksComponent:
@@ -1763,6 +1771,12 @@ YAML::Node editor::ProjectUtils::removeEntityComponent(EntityRegistry* registry,
                 oldComponent = Stream::encodeJoint3DComponent(registry->getComponent<Joint3DComponent>(entity));
             }
             registry->removeComponent<Joint3DComponent>(entity);
+            break;
+        case ComponentType::RagdollComponent:
+            if (encodeComponent){
+                oldComponent = Stream::encodeRagdollComponent(registry->getComponent<RagdollComponent>(entity));
+            }
+            registry->removeComponent<RagdollComponent>(entity);
             break;
         case ComponentType::KeyframeTracksComponent:
             if (encodeComponent){
@@ -2420,6 +2434,7 @@ editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(S
     if (signature.test(scene->getComponentId<RigidbodyComponent>()))      return handleClass("Rigidbody");
     if (signature.test(scene->getComponentId<Joint2DComponent>()))     return handleClass("Joint2D");
     if (signature.test(scene->getComponentId<Joint3DComponent>()))     return handleClass("Joint3D");
+    if (signature.test(scene->getComponentId<RagdollComponent>()))     return handleClass("Ragdoll");
     if (signature.test(scene->getComponentId<AlphaTweenComponent>())) return handleClass("AlphaTween");
     if (signature.test(scene->getComponentId<ColorTweenComponent>())) return handleClass("ColorTween");
     if (signature.test(scene->getComponentId<PositionTweenComponent>())) return handleClass("PositionTween");

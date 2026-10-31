@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "physics/PhysicsDebugLines.h"
 #include "SceneRender.h"
 
 #include "JasperEngine.h"
@@ -34,22 +35,11 @@ namespace jasperengine::editor{
 
         // Mesh and hull shapes walk their whole source buffer to build these, so they
         // are kept until the signature of what feeds them changes.
-        struct ShapeEdgeCache {
-            bool valid = false;
-            uint64_t signature = 0;
-            std::vector<std::pair<Vector3, Vector3>> edges; // body-local space
-        };
-        std::vector<ShapeEdgeCache> shapeEdgeCaches;
+        std::vector<PhysicsDebugLines::EdgeCache> shapeEdgeCaches;
     };
 
     class SceneRender3D: public SceneRender{
     private:
-
-        static constexpr float kHullQuantizeScale = 4096.0f;
-        // Above this the cloud is reduced to its extremes first. Matches
-        // ConvexHullShape::cMaxPointsInHull, the cap Jolt applies to the same shape.
-        static constexpr size_t kMaxHullInputPoints = 256;
-        static constexpr size_t kMaxSourceParentHops = 64;
 
         LineRenderer* lines;
 
@@ -78,10 +68,6 @@ namespace jasperengine::editor{
         bool instanciateSoundObject(Entity entity);
         bool instanciateBodyObject(Entity entity);
         bool instanciateBoneLines(Entity entity);
-        static uint64_t quantizeHullKey(const Vector3& p);
-        static void pushUniqueHullPoint(std::vector<Vector3>& points, std::unordered_set<uint64_t>& seen, const Vector3& p);
-        static void reduceToExtremes(std::vector<Vector3>& points);
-        static void buildConvexHullEdges(std::vector<Vector3> points, const std::function<void(const Vector3&, const Vector3&)>& emit);
         void createOrUpdateBoneLines(Entity entity, const ModelComponent& model, bool visible, bool highlighted);
         void createOrUpdateLightIcon(Entity entity, const Transform& transform, LightType lightType, bool newLight);
         void createOrUpdateCameraIcon(Entity entity, const Transform& transform, bool newCamera);
