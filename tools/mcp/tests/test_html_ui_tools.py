@@ -120,9 +120,9 @@ LIMITS.update({"create_ragdoll": 900})
 # merged by the lead (ui-canvas-group + physics-3d): provisional sum of both increments, re-measured below
 # http: configure_game_view's network and get_play_state's http block; merged with main (script-data,
 # input, physics-2d, script-lifecycle): 150 tools measured 106807, the limit set to it
-# merged by the lead (+ http): provisional, re-measured on the merged tree
+# merged by the lead (ui-canvas-group, physics-3d, http): 151 tools measured 107626 on the merged tree
 # native-bridge: the native_plugins tool (list / create a plugin for every platform with its Lua mock)
-# measured 1022; merged with main (http, ui-canvas-group, physics-3d, persistence): 152 tools measured 108648, the limit set to it
+# measured 1022; merged with main (after the lead's http/ui-canvas-group/physics-3d merge): MEASURED
 TOTAL_LIMIT = 108648
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)

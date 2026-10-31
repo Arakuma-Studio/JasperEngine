@@ -133,12 +133,10 @@ return Player
 - Input.getAxis/getButtonDown('Jump') read Project Settings > Input actions; getKeyDown(key)
   is an edge, isKeyPressed held. Test with send_input action/axis events (jasper://docs/input).
   Log.print/warn/error take ONE string (use ..).
-- Time: Engine.timeScale, Engine.fixedDeltatime (rw), Engine.gameTime, Engine.frameCount.
-- Lua has no C++ default arguments: pass every argument.
-- Saves: PlayerPrefs, Json.encode/decode, File.writeText("data://x") (lua-api 2.4);
-  user_settings reads/resets PlayerPrefs.
-- Http.get/post (jasper://docs/networking), Native.call (native_plugins,
-  jasper://docs/native-bridge): main-thread callbacks.
+- Time: Engine.timeScale, fixedDeltatime (rw), gameTime, frameCount. No C++ default args.
+- Saves: PlayerPrefs, Json, File.writeText("data://x") (lua-api 2.4; tool user_settings).
+  Http, Native.call (native_plugins): main-thread callbacks (docs/networking,
+  docs/native-bridge).
 - Lua has no Dori.Script, getComponent, setProperty or timers. Never put editor property
   paths (submeshes[0]...) in scripts.
 

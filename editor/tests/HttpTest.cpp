@@ -11,6 +11,8 @@
 
 #include "Engine.h"
 #include "Scene.h"
+#include "component/Transform.h"
+#include "manager/ObjectManager.h"
 #include "net/Http.h"
 #include "net/HttpBackend.h"
 #include "net/HttpJson.h"
@@ -847,6 +849,49 @@ TEST_F(HttpTest, SceneAndScriptOwners) {
     auto global = start(get("/text"));
     Scene().createUserEntity();
     ASSERT_TRUE(waitFor([&] { return global->calls == 1; }));
+}
+
+// persistence: a GameObject moved to another scene (DontDestroyOnLoad) keeps the requests it
+// and its scripts own; its old scene's own requests, and the GameObjects left there, do not
+TEST_F(HttpTest, OwnersFollowGameObjectsMovedToAnotherScene) {
+    auto level = std::make_unique<Scene>();
+    auto persistent = std::make_unique<Scene>();
+    const Entity manager = level->createUserEntity();
+    level->addComponent<Transform>(manager, Transform());
+    const Entity child = level->createUserEntity();
+    level->addComponent<Transform>(child, Transform());
+    level->addEntityChild(manager, child, false);
+    const Entity stays = level->createUserEntity();
+    level->addComponent<Transform>(stays, Transform());
+
+    int scriptKey = 0;
+    auto byManager = start(get("/slow/400"), nullptr, AsyncOwners::fromEntity(level.get(), manager));
+    auto byChild = start(get("/slow/400"), nullptr, AsyncOwners::fromEntity(level.get(), child));
+    auto byScript = start(get("/slow/400"), nullptr, AsyncOwners::fromScriptInstance(&scriptKey, level.get(), manager));
+    auto byScene = start(get("/slow/3000"), nullptr, AsyncOwners::fromScene(level.get()));
+    auto byStays = start(get("/slow/3000"), nullptr, AsyncOwners::fromEntity(level.get(), stays));
+
+    const std::vector<Entity> copies = ObjectManager::moveToScene(level.get(), manager, persistent.get());
+    ASSERT_EQ(copies.size(), 2u);
+    EXPECT_FALSE(level->isEntityCreated(manager));
+    level.reset();
+    ASSERT_TRUE(waitFor([&] { return byManager->calls == 1 && byChild->calls == 1 && byScript->calls == 1; }))
+        << "the moved GameObjects' requests still call back";
+    EXPECT_TRUE(byManager->response.ok);
+    EXPECT_EQ(text(byScript->response.body), "slow");
+    EXPECT_EQ(byScene->calls, 0);
+    EXPECT_EQ(byStays->calls, 0);
+
+    // the owners now are the copies: destroying one ends its requests
+    auto byCopy = start(get("/slow/3000"), nullptr, AsyncOwners::fromEntity(persistent.get(), copies[0]));
+    auto byMovedScript = start(get("/slow/3000"), nullptr, AsyncOwners::fromScriptInstance(&scriptKey, persistent.get(), copies[0]));
+    persistent->destroyEntity(copies[0]);
+    ASSERT_TRUE(waitFor([] { return HttpTesting::runningTransfers() == 0; }, 2.0));
+    waitFor([] { return false; }, 0.2);
+    EXPECT_EQ(byCopy->calls, 0);
+    EXPECT_EQ(byMovedScript->calls, 0);
+    EXPECT_EQ(byScene->calls, 0);
+    EXPECT_EQ(byStays->calls, 0);
 }
 
 TEST_F(HttpTest, ShutdownDropsEverythingWithoutCallbacks) {
