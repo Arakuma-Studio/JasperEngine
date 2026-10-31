@@ -1366,7 +1366,9 @@ TEST_F(CoroutineTest, CoroutinesAndTimersFollowAGameObjectMovedToAnotherScene) {
     EXPECT_EQ(ScriptScheduler::coroutineCountOf(owner), 1u);
     // the owner index follows: deactivating it in the new scene stops the coroutine
     other.setEntityActive(moved[0], false);
+    frames(1);
     EXPECT_EQ(eval("return Kept.status"), "stopped");
+    EXPECT_EQ(log(), "timer co timer");
     LuaBinding::cleanupLuaScripts(&other);
     EXPECT_EQ(ScriptScheduler::timerCountOf(owner), 0u);
 }
