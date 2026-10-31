@@ -19,6 +19,7 @@ d of quadrant q = (N / 4^q) % 4) as black, red, green or blue, the bottom-right 
   URL               a local HTTP server trickling the clips: the fast-start MP4 is prepared before
                     its download completes (progressive start), the moov-at-end one only after;
                     both in <userdata>/.cache/media/<sha256(url)>.mp4
+  check --videos    the CLI's per-platform codec warnings, not-fast-start urls, missing clips
 
 Runs in a new empty project (EDITOR create).
 """
@@ -27,13 +28,17 @@ from __future__ import annotations
 
 import ctypes.util
 import hashlib
+import json
+import re
 import shutil
+import subprocess
 import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import harness
 from harness import Editor, skip
 from htmlui_pixels import Shot
 
@@ -422,3 +427,45 @@ async def test_url_progressive_start(ed: Editor):
     finally:
         server.shutdown()
         server.server_close()
+
+
+# ---------------------------------------------------------------- check --videos
+
+async def test_cli_check_videos(ed: Editor):
+    """`jasperengine-editor check --videos`: a VP9 WebM clip warns for the platforms without VP9
+    (Apple), a moov-at-end MP4 played as a url is reported as not fast start, a missing clip is
+    named; the H.264 clips of the other scenes give nothing. Plain text names the Video Players."""
+    install_clip(ed, "vp9_opus_160x90.webm", "assets/video/vp9.webm")
+    install_clip(ed, MOOV_END, "assets/video/late.mp4")
+    await ed.call("sync_files")
+    made = await ed.call("create_scene", name="VideoCheck", type="2D", path="scenes/VideoCheck")
+    scene = made["scene"]["id"]
+    for name, values in (("Vp9", {"clip": "assets/video/vp9.webm"}),
+                         ("Late", {"source": "url", "url": "assets/video/late.mp4"}),
+                         ("Gone", {"clip": "assets/video/gone.mp4"})):
+        made = await ed.call("create_entity", scene=scene, type="video_player", name=name)
+        await ed.call("set_properties", scene=scene, entity=made["entity_id"], values={"videoplayer": values})
+    await ed.call("save_scene", scene=scene)
+    await ed.call("save_project")
+
+    cmd = harness.editor_command() + ["check", "--project", str(ed.project), "--videos", "--format", "json"]
+    r = subprocess.run(cmd, cwd=str(ed.project), capture_output=True, text=True, timeout=300, stdin=subprocess.DEVNULL)
+    try:
+        data = json.loads(r.stdout)
+    except json.JSONDecodeError:
+        raise AssertionError(f"check --videos --format json (exit {r.returncode}): {r.stdout[-1500:]} {r.stderr[-1500:]}")
+    findings = [f for f in data["findings"] if f.get("tool") == "videos"]
+    quoted = lambda m: (re.search(r"'(assets/[^']+)'", m) or re.search("'([^']*)'", m)).group(1)
+    codes = sorted((f.get("code", ""), quoted(f["message"])) for f in findings)
+    unsupported = [m for c, m in codes if c == "video-codec-unsupported-on-target"]
+    ed.check(unsupported and set(unsupported) == {"assets/video/vp9.webm"}, f"only the VP9 clip warns: {findings}")
+    ed.check(any(f["code"] == "video-codec-unsupported-on-target" and "macOS" in f["message"] for f in findings) and
+             any(f["code"] == "video-codec-unsupported-on-target" and "iOS" in f["message"] for f in findings),
+             f"for the Apple platforms: {findings}")
+    ed.check(("video-not-faststart-url", "assets/video/late.mp4") in codes, f"the moov-at-end url: {findings}")
+    ed.check(("video-missing", "assets/video/gone.mp4") in codes, f"the missing clip: {findings}")
+    ed.check(data["checked"].get("videos", 0) >= 3, f"the Video Players counted: {data['checked']}")
+
+    r = subprocess.run(harness.editor_command() + ["check", "--project", str(ed.project), "--videos"], cwd=str(ed.project),
+                       capture_output=True, text=True, timeout=300, stdin=subprocess.DEVNULL)
+    ed.check("Video Player" in r.stderr and "video-not-faststart-url" in r.stdout, f"the text summary: {r.stdout[-800:]} {r.stderr[-800:]}")

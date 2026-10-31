@@ -10,6 +10,7 @@
 #include "PhysicsTestScene.h"
 
 #include "Catalog.h"
+#include "Exporter.h"
 #include "Factory.h"
 #include "Stream.h"
 #include "component/MeshComponent.h"
@@ -475,4 +476,19 @@ TEST(VideoPlayerComponent, ExportCodegen){
     EXPECT_NE(code.find("player.url = \"https://cdn.example.com/a.mp4\";"), std::string::npos) << code;
     EXPECT_NE(code.find("player.renderMode = VideoRenderMode(1);"), std::string::npos) << code;
     EXPECT_EQ(code.find("player.clip"), std::string::npos) << "defaults are not written";
+}
+
+TEST(VideoPlayerComponent, AndroidInternetForUrlPlayers){
+    // the scene file's text as Stream writes it: an http(s) url needs INTERNET, a clip or a
+    // data:// url does not
+    VideoPlayerComponent player;
+    player.source = VideoPlayerSource::URL;
+    player.url = "https://cdn.example.com/ad.mp4";
+    YAML::Node node;
+    node["components"]["videoplayer"] = Stream::encodeVideoPlayerComponent(player);
+    EXPECT_TRUE(Exporter::hasUrlVideoPlayer(YAML::Dump(node))) << YAML::Dump(node);
+    player.url = "data://ads/ad1.mp4";
+    node["components"]["videoplayer"] = Stream::encodeVideoPlayerComponent(player);
+    EXPECT_FALSE(Exporter::hasUrlVideoPlayer(YAML::Dump(node)));
+    EXPECT_FALSE(Exporter::hasUrlVideoPlayer("components:\n  sprite:\n    url: https://x.example/a.png\n"));
 }

@@ -2942,10 +2942,18 @@ std::string editor::Exporter::buildScriptDirIncludes() const {
     return "target_include_directories(${APP_NAME} PRIVATE" + dirs + "\n    )";
 }
 
+// A scene or prefab file's text with a Video Player (key videoplayer) whose url is http(s)
+bool editor::Exporter::hasUrlVideoPlayer(const std::string& text) {
+    static const std::regex videoUrl(R"((?:videoplayer|VideoPlayerComponent):[^\n]*\n(?:[ \t]+[^\n]*\n){0,40}?[ \t]+url:[ \t]*['"]?https?://)",
+                                     std::regex::icase);
+    if (text.find("ideoplayer") == std::string::npos && text.find("ideoPlayer") == std::string::npos)
+        return false;
+    return std::regex_search(text, videoUrl);
+}
+
 // The first scene or prefab file of the project with a Video Player whose url is an http(s) URL
 // (the scene files' text: unloaded scenes count too); "" when there is none
 std::string editor::Exporter::videoUrlScene() const {
-    static const std::regex videoUrl(R"(VideoPlayerComponent:[^\n]*\n(?:[ \t]+[^\n]*\n){0,40}?[ \t]+url:[ \t]*['"]?https?://)");
     std::vector<fs::path> files;
     for (const SceneProject& sceneProject : project->getScenes())
         files.push_back(sceneProject.filepath);
@@ -2959,7 +2967,7 @@ std::string editor::Exporter::videoUrlScene() const {
         if (file.empty() || !in)
             continue;
         const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-        if (text.find("VideoPlayerComponent") != std::string::npos && std::regex_search(text, videoUrl))
+        if (hasUrlVideoPlayer(text))
             return file.filename().u8string();
     }
     return "";

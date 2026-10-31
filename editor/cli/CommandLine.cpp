@@ -2161,7 +2161,7 @@ void collectVideoPlayers(const YAML::Node& node, std::vector<YAML::Node>& out, i
     if (depth > 64 || !node) return;
     if (node.IsMap()) {
         for (auto it = node.begin(); it != node.end(); ++it) {
-            if (it->first.IsScalar() && it->first.Scalar() == "VideoPlayerComponent" && it->second.IsMap())
+            if (it->first.IsScalar() && (it->first.Scalar() == "videoplayer" || it->first.Scalar() == "VideoPlayerComponent") && it->second.IsMap())
                 out.push_back(it->second);
             else
                 collectVideoPlayers(it->second, out, depth + 1);

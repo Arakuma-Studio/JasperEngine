@@ -208,9 +208,11 @@ namespace jasperengine::editor {
         bool shipsFluidComponent() const;
         bool shipsFluidEffect() const;
 
+        // the first scene or prefab file with a Video Player playing an http(s) url ("" for none:
+        // Android exports then need no INTERNET for videos)
+        std::string videoUrlScene() const;
         // Aggregates SceneMaxValues across all project scenes into the capacities that
         // size the engine's fixed-capacity HybridArrays (MAX_SUBMESHES, MAX_SPRITE_FRAMES, ...).
-        std::string videoUrlScene() const;
         std::vector<std::pair<std::string, unsigned int>> getSceneMaxValues() const;
         // add_definitions() block applying them to the export.
         std::string buildSceneMaxValuesDefinitions() const;
@@ -225,6 +227,9 @@ namespace jasperengine::editor {
         static void copyTreeIfChanged(const fs::path& src, const fs::path& dst, std::error_code& ec);
 
     public:
+        // a scene or prefab file's text: a Video Player with an http(s) url
+        static bool hasUrlVideoPlayer(const std::string& sceneText);
+
         // a PNG copied (read once) without its jasper.* text chunks (util/PngEditorChunks.h; one
         // without them, or not a well-formed PNG, as it is); false when it is not a .png or could
         // not be read or written this way (the caller then copies the file)

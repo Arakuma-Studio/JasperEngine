@@ -40,9 +40,10 @@ namespace jasperengine::editor::htmlui {
     public:
         // a file a video importer must look at: any video extension (.webm, .mkv, .mp4, .mov, ...)
         static bool isVideoFile(const std::filesystem::path& path);
-        // the engine plays it as it is (the probe: AV1/Opus WebM or Matroska everywhere; an MP4 or
-        // other video some export platform's decoders play, docs/superpowers/specs/
-        // 2026-10-31-video-mp4-design.md §6.8): imported unchanged, never converted on its own
+        // the engine plays it as it is (the probe: AV1/Opus WebM or Matroska everywhere; an MP4/MOV
+        // some export platform's decoders play, docs/superpowers/specs/2026-10-31-video-mp4-design.md
+        // §6.8): imported unchanged, never converted on its own. A WebM of another codec (VP9) is
+        // converted as before (Apple has no VP9)
         static bool isPlayable(const std::filesystem::path& path);
 
         // FFmpeg: JASPER_FFMPEG, then the editor's override (setFfmpegPath: Preferences > External

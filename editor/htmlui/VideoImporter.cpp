@@ -80,7 +80,7 @@ bool VideoImporter::isVideoFile(const fs::path& path){
 
 namespace {
 
-    // an MP4 (or a WebM of another codec) one of the export platforms plays: kept as it is
+    // a file one of the export platforms plays through its decoders
     bool playsSomewhere(const jasperengine::VideoProbe& probe){
         using jasperengine::VideoSourceFactory;
         if (probe.playable)
@@ -96,8 +96,20 @@ namespace {
 
 }
 
+namespace {
+
+    // kept as it is: AV1/Opus WebM (the engine's software path), or an MP4/MOV the platforms'
+    // decoders play; a WebM of another codec (VP9) is converted as before, so it plays everywhere
+    bool keptAsIs(const jasperengine::VideoProbe& probe){
+        if (probe.playable && probe.audioPlayable && probe.backend == "webm")
+            return true;
+        return playsSomewhere(probe) && probe.container != "webm" && probe.container != "matroska";
+    }
+
+}
+
 bool VideoImporter::isPlayable(const fs::path& path){
-    return playsSomewhere(probeHost(path));
+    return keptAsIs(probeHost(path));
 }
 
 void VideoImporter::setFfmpegPath(const std::string& path){
@@ -224,8 +236,7 @@ VideoImportResult VideoImporter::importFile(const fs::path& input, const fs::pat
     // already the engine's format: copied
     const jasperengine::VideoProbe probe = probeHost(input);
     const bool webmPlayable = probe.playable && probe.audioPlayable && probe.backend == "webm";
-    const bool platformPlayable = !webmPlayable && playsSomewhere(probe) && probe.container != "webm" && probe.container != "matroska";
-    if (!convert && (webmPlayable || platformPlayable)){
+    if (!convert && keptAsIs(probe)){
         result.output = targetDir / input.filename();
         if (fs::exists(result.output, ec) && !overwrite){
             result.message = pathString(result.output.filename()) + " already exists";
