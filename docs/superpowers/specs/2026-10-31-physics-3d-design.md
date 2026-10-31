@@ -722,3 +722,82 @@ and `engine/core/physics/PlacementWorld.cpp` (collider storage users).
   blending of ragdoll and animation is a future extension (hook in §6.1.11).
 - **lines-trails**: debug draw lines use whatever `LineRenderer` width support exists (1 px today).
 - **persistence**: a ragdoll on a persistent object keeps its components (nothing scene-specific).
+
+## Implementation notes
+
+Decisions taken while implementing (branch `gaps/physics-3d`, on top of physics-2d and the merged
+script-lifecycle), where the spec was silent, ambiguous or contradicted what the engine does:
+
+1. **World capacity defaults lowered (§6.1.13).** Measured with Jolt's allocation hooks around a
+   scene's creation (`Physics3DBody.DefaultCapacityWorldFitsInFourMegabytes`): 8192 bodies / 16384
+   pairs / 8192 contact constraints take 4.32 MB, over the 4 MB budget, so the default
+   `maxBodyPairs` is **8192**: 8192 / 8192 / 8192 take **3.64 MB** (1024 / 1024 / 1024, the old
+   hard-coded values, took 0.49 MB). Each step also takes `maxContactConstraints` x ~450 bytes from
+   the shared temp allocator; it is now Jolt's `TempAllocatorImplWithMallocFallback` (the same
+   10 MiB arena, malloc past it), so a large capacity no longer aborts the step.
+2. **Setting names.** project.yaml keeps the spec's `physics3D: {maxBodies, maxBodyPairs,
+   maxContactConstraints}` (written only when not the defaults); the MCP project settings are
+   `physics.max_bodies`, `physics.max_body_pairs`, `physics.max_contact_constraints`, in the
+   existing `physics` category of `set_project_settings` rather than a new `physics3D` one. The
+   Project Settings panel is Physics > 3D World Capacity.
+3. **LOCAL anchors.** `anchor` is the point on bodyA in its local space, `anchorB` the connected
+   anchor in bodyB's (a world point when there is no bodyB, Unity's connectedAnchor); `anchorA`
+   stays the WORLD distance / six-DOF / pulley field. `autoAnchors` writes `anchorB` back when the
+   joint is made; LOCAL distance joints ignore it (as physics-2d note 4). Joints remade because a
+   body was recreated take the bodies' poses of that moment.
+4. **Sign convention.** LOCAL joint values (hinge angle, slider position, speeds, limits, motor and
+   spring targets, twist limits, six-DOF limits and targets, the swing-twist target rotation) are
+   bodyA's relative to the connected body, Unity's meaning; Jolt measures body 2 relative to body 1,
+   so they are Jolt's negated. WORLD joints keep Jolt's (the old engine's) meaning. The hinge /
+   slider re-centring turns the frame so Jolt reads +c at the start pose (the user's 0).
+5. **Swing names (§6.3, T9).** Jolt's `mNormalHalfConeAngle` limits rotation *about the plane
+   (swing) axis* and `mPlaneHalfConeAngle` rotation about the normal (measured: a torque about the
+   plane axis stops at the normal half angle). So Unity's `swing1Limit` (about the swing axis) is
+   `normalHalfConeAngle` and `swing2Limit` is `planeHalfConeAngle`, not the other way round as the
+   spec wrote; the Inspector labels, Lua aliases, docs and the Ragdoll builder (swing 1 into
+   `normalHalfConeAngle`, swing 2 = 0 into `planeHalfConeAngle`) follow.
+6. **Auto-detected anchor of WORLD fixed and slider joints.** Every body that may switch type is
+   now made with `mAllowDynamicOrKinematic` (static ones too, except mesh / heightfield shapes), and
+   Jolt's `mAutoDetectPoint` then weighs a static body like a movable one, which moved the old
+   slider's anchor (T1 caught it). The engine computes the old point itself: a static body anchors
+   at the other body's centre of mass. With that, the legacy fixture matches to 1e-5.
+7. **Type switches.** Dynamic to kinematic stops the body (Unity `isKinematic = true`); kinematic to
+   dynamic keeps its velocity; any switch keeps the BodyID (T4). A body whose type changes from or
+   to "must be static" (a mesh collider added or removed) is rebuilt.
+8. **Angles** of every joint field are in the engine's angle unit (degrees by default), the cone's
+   default `Angle::degToDefault(45)`; Factory always writes `coneHalfAngle` and `anchorSpace`.
+9. **Material detection on job threads** compares `PhysicsMaterial::GetDebugName()`'s pointer with
+   `JoltSurfaceMaterial::typeName` instead of Jolt RTTI (the class lives outside the JPH namespace,
+   where `JPH_DECLARE_RTTI_VIRTUAL` does not compile).
+10. **Gears and racks** always put their two bodies in the pair filter (their teeth overlap), whatever
+    `enableCollision` says.
+11. **`setColliderFriction` / `setColliderBounciness` on a collider without a material** give it an
+    own copy with the legacy modes (geometric mean friction, maximum bounce), so it still combines
+    as before with colliders without one.
+12. **Catalog edits of colliders** (Inspector, `set_properties`, MCP) mark the colliders dirty and swap
+    the shape like the Lua setters; the body is only rebuilt when it has none yet.
+13. **Ragdoll wizard re-run** removes the Rigidbody and Joint 3D components of the previous ragdoll's
+    parts (the Ragdoll component's part list) and of the newly chosen bones, then builds, all in one
+    undo step. The Hierarchy entry is a new `EntityCreationType::RAGDOLL_WIZARD` (appended) that
+    opens the dialog on the row or the single selection; the Model component's menu has the same
+    entry.
+14. **`numColliders`** is still written to YAML for older editors and bounds the decoded list (as
+    physics-2d §6.2); the component field, the exported code and `MAX_COLLIDER*` are gone, so
+    acceptance 3 holds for code, not for that compatibility key.
+15. **Debug draw.** One system GameObject per scene ("Physics Debug Lines", Transform + Line
+    Renderer) rebuilt at each draw while `Physics.debugDraw` is on (process-wide, not saved), hidden
+    when off; static bodies' edges are cached; contact points are recorded by the contact listener.
+    `configure_game_view` also returns `physics_debug_lines` (lines drawn by the playing scenes last
+    frame) for agents and the e2e test.
+16. **Dropping a `.physicsmaterial`** on a GameObject in the Scene view or the Hierarchy sets it on
+    every collider of its Rigidbody and Rigidbody 2D in one undo step (edit mode only).
+17. **T13 skinning** is checked through the bones: after the steps every part's Transform
+    (`worldPosition`, `modelMatrix`) equals its Jolt pose to 1e-4; the RenderSystem skin binding
+    (`bonesMatrix = inverse mesh x bone modelMatrix x inverse bind`) is unchanged and needs a render
+    update, so it is not run headless.
+18. **Destroying a body** now invalidates its constraints first (the old code left them in the
+    world pointing at the removed body).
+19. **Not verified here:** macOS / iOS (Xcode project updated with `tools/xcode_sync_engine.py`) and
+    Windows builds; acceptance 2 (BACK-MAN's rig and an exported Linux player toggling the ragdoll):
+    the wizard and the toggle are covered by `RagdollTest` and `test_physics_3d.py` on the
+    pose-animation fixture's Mixamo hero, not on BACK-MAN.

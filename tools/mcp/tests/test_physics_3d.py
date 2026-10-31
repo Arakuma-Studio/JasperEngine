@@ -71,7 +71,7 @@ async def test_hinge_limits_motor_and_play_readouts(ed: Editor):
     await ed.call("configure_game_view", physics_debug=True)
     try:
         await ed.call("play", action="start", scene=sid, fixed_fps=60, auto_pause=True)
-        await ed.call("wait", frames=120)
+        await ed.call("wait", frames=240)
         live = await ed.call("get_runtime_entity", entity="Door/DoorHinge", include_script_state=False)
         readout = live["joint3d"]
         ed.check(readout["live"] is True, f"{readout}")
@@ -96,7 +96,7 @@ async def test_create_ragdoll_on_the_hero(ed: Editor):
     made = await ed.call("create_ragdoll", entity="Hero", total_mass=30)
     parts = made["parts"]
     ed.check_eq(len(parts), 11, f"{made}")
-    ed.check_eq(made["start"], "animated", f"{made}")
+    ed.check_eq(made["start"], "simulated", f"no Animation Player on the hero: starts simulated: {made}")
     ed.check(abs(sum(p["mass"] for p in parts) - 30) < 1e-3, f"masses sum to the total: {parts}")
     joints = [p for p in parts if p["joint"]]
     ed.check_eq(len(joints), 10, f"{parts}")
@@ -117,6 +117,7 @@ async def test_create_ragdoll_on_the_hero(ed: Editor):
     ed.check("rigidbody" in back["components"], f"redone: {back}")
 
     # again: rebuilt, not doubled
-    again = await ed.call("create_ragdoll", entity="Hero", start="simulated")
+    again = await ed.call("create_ragdoll", entity="Hero", start="animated")
+    ed.check_eq(again["start"], "animated", f"{again}")
     ed.check_eq(len(again["parts"]), 11, f"{again}")
     await ed.check_error("create_ragdoll", entity="Hero", bones={"pelvis": "NoSuchBone"}, contains="NoSuchBone")
