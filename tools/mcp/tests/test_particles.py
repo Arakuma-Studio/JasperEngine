@@ -362,7 +362,9 @@ async def test_render_modes_pixels(ed: Editor):
 
     # mesh: a cube per particle (a square silhouette, filled, unlike the soft disc)
     await pixel_scene(ed, [0, 0, 6])
-    await one_particle(ed, "Cubes", {"renderer": {"renderMode": "mesh", "mesh": "cube", "alignment": "world"}})
+    cubes = await one_particle(ed, "Cubes", {"renderer": {"renderMode": "mesh", "mesh": "cube", "alignment": "world"}})
+    # plain white faces (no soft particle texture on each face)
+    await ed.call("set_properties", entity=cubes, values={"mesh": {"submeshes[0].material.shaderFeatures": []}})
     [cube] = await play_shot(ed, "mesh")
     ec = lit_extent(cube)
     ed.check(ec is not None, "mesh: nothing drawn")

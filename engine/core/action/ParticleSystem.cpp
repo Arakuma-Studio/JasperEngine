@@ -923,10 +923,10 @@ particles::UpgradeReport ParticleSystem::upgrade(bool force){
 
 void ParticleSystem::setupDefaultRenderer(Scene* scene, Entity entity){
     if (!scene->findComponent<Transform>(entity)){
-        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<Transform>(entity, Transform());
     }
     if (!scene->findComponent<MeshComponent>(entity)){
-        scene->addComponent<MeshComponent>(entity, {});
+        scene->addComponent<MeshComponent>(entity, MeshComponent());
         applyRendererMesh(scene, entity, "quad");
         MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
         Material& material = mesh.submeshes[0].material;
