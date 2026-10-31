@@ -2002,6 +2002,26 @@ OVERRIDES.update({
         'overloads': [([], 'string')]},
 })
 
+# Line and Trail Renderers (lines and trails spec 6.6): the points by 0-based index (Unity's
+# SetPosition / GetPosition); an index out of range raises an error naming positionCount.
+# setPosition(x, y[, z]) is still the GameObject's own position
+for _renderer, _what in (('LineRenderer', 'polyline point'), ('TrailRenderer', 'stored trail point (0 = the oldest)')):
+    OVERRIDES[(_renderer, 'setPosition')] = {
+        'doc': [f'Sets the {_what} at `index` (0-based, as Unity\'s SetPosition); an index out of range is an',
+                'error naming positionCount. With numbers only, (x, y[, z]) moves the GameObject itself.'],
+        'overloads': [([('index', 'integer'), ('position', 'Vector3')], ''),
+                      ([('x', 'number'), ('y', 'number'), ('z?', 'number')], '')]}
+    OVERRIDES[(_renderer, 'getPosition')] = {
+        'doc': [f'The {_what} at `index` (0-based); an index out of range is an error naming positionCount.'],
+        'overloads': [([('index', 'integer')], 'Vector3')]}
+
+OVERRIDES[('Gradient', 'setKeys')] = {
+    'doc': ['Replaces the keys: colorKeys are {time, color} (Vector3 sRGB) or GradientColorKey, alphaKeys',
+            '{time, alpha} or GradientAlphaKey; sorted, at most 8 of each.',
+            '`g:setKeys({{0, Vector3(1, 0.6, 0)}, {1, Vector3(1, 0.6, 0)}}, {{0, 1}, {1, 0}})`'],
+    'overloads': [([('colorKeys', '({[1]: number, [2]: Vector3}|GradientColorKey)[]'),
+                    ('alphaKeys?', '({[1]: number, [2]: number}|GradientAlphaKey)[]')], '')]}
+
 # Input (CoreClassesLua.cpp): the rebinding functions read and push tables, the simulated
 # sources take a name or a script instance
 _INPUT_SOURCE = 'string|ScriptInstance'

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "InspectorWindow.h"
+#include "window/widget/CurveField.h"
+#include "window/widget/GradientField.h"
 #include "SceneWindow.h"
 #include "script/ScriptRuntime.h"
 
@@ -4184,6 +4186,53 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         }
         if (dif)
             ImGui::PopStyleColor();
+
+    }else if (type == RowPropertyType::Curve || type == RowPropertyType::Gradient){
+        // Unity AnimationCurve / Gradient: an inline preview that opens its editor popup;
+        // every frame of a drag is one merged command, the edit's end its own undo step
+        auto valueRow = [&](auto sample, auto drawField){
+            using T = decltype(sample);
+            std::map<Entity, T> eValue;
+            const T* defValue = nullptr;
+            bool dif = false;
+            for (Entity& entity : entities){
+                PropertyData prop = Catalog::findProperty(sceneProject->scene, entity, cpType, id);
+                defValue = static_cast<const T*>(prop.def);
+                eValue[entity] = *static_cast<T*>(prop.ref);
+                if (eValue[entity] != eValue[entities[0]])
+                    dif = true;
+            }
+            T newValue = eValue[entities[0]];
+            const bool defChanged = defValue && newValue != *defValue;
+            if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent) && defValue){
+                for (Entity& entity : entities){
+                    cmd = new PropertyCmd<T>(project, sceneProject->id, entity, cpType, id, *defValue, settings.onValueChanged);
+                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                }
+                finishProperty = true;
+            }
+            const auto edit = drawField(newValue, dif);
+            if (edit.changed){
+                for (Entity& entity : entities){
+                    cmd = new PropertyCmd<T>(project, sceneProject->id, entity, cpType, id, newValue, settings.onValueChanged);
+                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                }
+            }
+            if (edit.finished)
+                finishProperty = true;
+        };
+        // the field leaves room for the help marker after it
+        const float helpWidth = settings.help.empty() ? 0.0f : ImGui::CalcTextSize("(?)").x + ImGui::GetStyle().ItemSpacing.x;
+        auto fieldWidth = [&](){ return std::max(ImGui::GetFontSize() * 4.0f, ImGui::GetContentRegionAvail().x - helpWidth); };
+        if (type == RowPropertyType::Curve){
+            valueRow(AnimationCurve(), [&](AnimationCurve& value, bool mixed){ return curveField(("##curve_" + id).c_str(), value, mixed, fieldWidth()); });
+        }else{
+            valueRow(jasperengine::Gradient(), [&](jasperengine::Gradient& value, bool mixed){ return gradientField(("##gradient_" + id).c_str(), value, mixed, fieldWidth()); });
+        }
+        if (!settings.help.empty()){
+            ImGui::SameLine();
+            helpMarker(settings.help);
+        }
 
     }else if (type == RowPropertyType::Font){
         FontArray* value = nullptr;
@@ -11534,15 +11583,15 @@ void editor::InspectorWindow::drawPointsComponent(ComponentType cpType, ScenePro
     }
 }
 
-void editor::InspectorWindow::drawLineRendererComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+// A Line Renderer's Segments: independent A-B segments with their own colours (the engine's
+// debug lines), each edited as before (InspectorLinesTrails.cpp draws the rest)
+void editor::InspectorWindow::drawLineSegmentsList(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     RowSettings settingsInt;
     settingsInt.secondColSize = 6 * ImGui::GetFontSize();
 
     beginTable(cpType, getLabelSize("Max Lines"));
     propertyRow(RowPropertyType::UInt, cpType, "maxLines", "Max Lines", sceneProject, entities, settingsInt);
     endTable();
-
-    drawCustomShaderRow(cpType, ShaderType::LINES, sceneProject, entities);
 
     if (entities.size() != 1) {
         ImGui::SeparatorText("Lines");
@@ -15821,6 +15870,8 @@ void editor::InspectorWindow::show(){
                     drawParticleSystemComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::LineRendererComponent){
                     drawLineRendererComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::TrailRendererComponent){
+                    drawTrailRendererComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::PointsComponent){
                     drawPointsComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::InstancedMeshComponent){

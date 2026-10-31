@@ -24,7 +24,12 @@ documents have their own effects library instead, `effect(<name>, ...)` in CSS (
   `.material` file takes the same keys (`create_material` / `update_material` `values`), and
   linked submeshes follow it.
 - **UI, Points, Lines and Sky shaders** go in the component's `customShader`; their
-  parameters are its `shaderUniforms`.
+  parameters are its `shaderUniforms`. A Line Renderer and a Trail Renderer both take `lines`
+  shaders (`list_shaders type=lines`, e.g. `library:line_flipbook`); with a width they draw a
+  textured ribbon: the built-in line shader samples `shaderTextures.u_baseTexture` (the
+  `texture` shortcut) times the line's colour, a library or forked one its own textures at
+  `lineUV()` (`includes/lines_fs.glsl`). A hairline (width 0) has no texture coordinates
+  (jasper://docs/lines-trails).
 - Values (paths of the submesh's material, `submeshes[N].material.<key>`):
   - `shaderParams`: `{member: value}`, or one entry `shaderParams.<member>`. Numbers or
     `[x,y,z,w]` as stored: colours are **linear**; a `"#RRGGBB[AA]"` string is sRGB and is
@@ -43,7 +48,7 @@ documents have their own effects library instead, `effect(<name>, ...)` in CSS (
     less, less_equal, equal, greater_equal, greater, not_equal, always), `depthOffsetFactor` /
     `depthOffsetUnits` (polygon offset; negative pulls towards the camera), `sortPriority`
     (draw order within the opaque or the transparent queue, lower first, before distance). `auto` takes the shader's default state, else the
-    engine's. UI, Points and Lines have `blendMode` and `depthWrite`.
+    engine's. UI, Points, Lines and Trails have `blendMode` and `depthWrite` (a thick line's or a trail's auto: alpha, no depth write).
   - `lighting`: auto, pixel, vertex, mixed or none (unlit), only the modes the shader lists
     (`list_shaders` gives them, the default first; the built-in Lit takes pixel, vertex, mixed
     and none, which draws the base colour only: a glTF material with `KHR_materials_unlit`
