@@ -22,6 +22,8 @@ public:
 	/// The effect state of 'text' (null: none) and, in 'first_index', the index of its first visible character (not white
 	/// space) among the characters its effect animates in its inline formatting context.
 	virtual const void* GetTextEffect(ElementText& text, int& first_index) = 0;
+	/// True when 'changed' holds a property of the effect (a text then generates its geometry again).
+	virtual bool IsTextEffectChange(const PropertyIdSet& changed) = 0;
 };
 
 class RMLUICORE_API ElementText final : public Element {

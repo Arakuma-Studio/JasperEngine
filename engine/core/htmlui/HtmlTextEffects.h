@@ -60,6 +60,8 @@ namespace jasperengine::htmlui {
         static void uninstall();
 
         const void* GetTextEffect(Rml::ElementText& text, int& first_index) override;
+        // text-effect, text-effect-iteration or text-effect-time changed (set at runtime too)
+        bool IsTextEffectChange(const Rml::PropertyIdSet& changed) override;
 
         // once per frame of a context, before its update: the geometry of the texts that
         // animate is generated again, finished one-shot effects send texteffectend
@@ -87,8 +89,10 @@ namespace jasperengine::htmlui {
             int iterationsDone = 0;
             bool finished = false;
             int lastCount = 0;
-            // what each of its texts showed: a change starts it again
+            // what each of its texts showed: a change starts it again, and so does a text
+            // joining in a later frame (new content: the old texts are gone)
             std::unordered_map<const Rml::ElementText*, std::string> texts;
+            uint64_t textsFrame = 0;
         };
 
         std::unordered_map<Rml::Element*, Scope> scopes;

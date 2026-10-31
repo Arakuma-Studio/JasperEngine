@@ -201,6 +201,8 @@ namespace jasperengine{
         // basic UIs
         bool createOrUpdatePolygon(PolygonComponent& polygon, UIComponent& ui, RectTransformComponent& layout);
         bool createOrUpdateImage(ImageComponent& img, UIComponent& ui, RectTransformComponent& layout);
+        // the canvas scale or the outline/shadow asks for another atlas: flags its rebuild
+        void checkTextAtlasOptions(TextComponent& text, UIComponent& ui);
         bool createOrUpdateText(TextComponent& text, UIComponent& ui, RectTransformComponent& layout);
 
         // advanced UIs

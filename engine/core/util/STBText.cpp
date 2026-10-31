@@ -550,14 +550,16 @@ void STBText::createText(const std::string& text, Buffer* buffer, std::vector<ui
             quad.y1 = -auxy0;
         }
             
-        if (quad.x0 < minX0)
-            minX0 = quad.x0;
-        if (quad.y0 < minY0)
-            minY0 = quad.y0;
-        if (quad.x1 > maxX1)
-            maxX1 = quad.x1;
-        if (quad.y1 > maxY1)
-            maxY1 = quad.y1;
+        // the ink box measures the text: an SDF quad's padding (outline, shadow) does not, as TMP
+        const float inkPadding = (float)options.sdfPadding;
+        if (quad.x0 + inkPadding < minX0)
+            minX0 = quad.x0 + inkPadding;
+        if (quad.y0 + inkPadding < minY0)
+            minY0 = quad.y0 + inkPadding;
+        if (quad.x1 - inkPadding > maxX1)
+            maxX1 = quad.x1 - inkPadding;
+        if (quad.y1 - inkPadding > maxY1)
+            maxY1 = quad.y1 - inkPadding;
         if (offsetX > maxX1)
             maxX1 = offsetX;
             

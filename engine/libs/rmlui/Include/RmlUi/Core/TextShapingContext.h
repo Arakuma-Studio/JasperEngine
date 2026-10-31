@@ -45,6 +45,8 @@ struct TextShapingContext {
 	// in the text's inline formatting context, so an effect runs on across elements and lines.
 	const void* text_effect = nullptr;
 	int glyph_index_base = 0;
+	// The string is a text-shadow of the text: the effect moves and fades its glyphs, its colour stays the shadow's.
+	bool text_effect_shadow = false;
 };
 
 } // namespace Rml

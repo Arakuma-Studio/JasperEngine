@@ -809,6 +809,9 @@ void ElementText::SuppressAutoLayout()
 	dirty_layout_on_change = false;
 }
 
+// the engine's text effects (fork, T21-1); not owned
+static TextEffectProvider* text_effect_provider = nullptr;
+
 void ElementText::OnPropertyChange(const PropertyIdSet& changed_properties)
 {
 	RMLUI_ZoneScoped;
@@ -839,6 +842,10 @@ void ElementText::OnPropertyChange(const PropertyIdSet& changed_properties)
 			geometry_dirty = true;
 		}
 	}
+
+	// a text effect set, changed or removed: the geometry again, the layout stays (fork, T21-1)
+	if (text_effect_provider && text_effect_provider->IsTextEffectChange(changed_properties))
+		geometry_dirty = true;
 
 	if (changed_properties.Contains(PropertyId::FontFamily) ||         //
 		changed_properties.Contains(PropertyId::FontWeight) ||         //
@@ -929,8 +936,6 @@ bool ElementText::UpdateFontEffects()
 
 	return false;
 }
-
-static TextEffectProvider* text_effect_provider = nullptr;
 
 void ElementText::SetTextEffectProvider(TextEffectProvider* provider)
 {
@@ -1123,8 +1128,10 @@ void ElementText::GenerateGeometry(RenderManager& render_manager, const FontFace
 			{
 				const Line& line = lines[i];
 				const Vector2f position = line.position + resolved.offset;
+				TextShapingContext shadow_context = line.justification_index < 0 ? PlainContext(line) : LineContext(line);
+				shadow_context.text_effect_shadow = true;
 				font_engine_interface->GenerateString(render_manager, font_face_handle, 0, line_strings[i], position, shadow_colour, opacity,
-					line.justification_index < 0 ? PlainContext(line) : LineContext(line), shadow_meshes);
+					shadow_context, shadow_meshes);
 				const Rectanglef line_ink =
 					Rectanglef::FromCorners(position - Vector2f(0.f, metrics.ascent), position + Vector2f((float)line.width, metrics.descent));
 				ink = (ink.Valid() ? ink.Join(line_ink) : line_ink);

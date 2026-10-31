@@ -503,8 +503,11 @@ spec was silent, ambiguous or did not fit the code:
    padding is quantized to steps of 4 px (2..64), an SDF glyph is rasterized at 32 px at least (small texts
    keep their corners), and the shader variant bit is `Sdf` (UI property bit 4, `ui_FtxSdf`). Colours,
    offsets and softness reach the shader every frame without rebuilding the text; a width the padding does
-   not cover rebuilds the atlas. The vertex colour of a Text Effect multiplies the face, its alpha also the
-   outline and shadow (a typewriter fades all three in), so a hollow text (face alpha 0) keeps its outline.
+   not cover rebuilds the atlas (past the 64 px cap the shader clamps width, softness and offset to the
+   padding instead of sampling a neighbour glyph). The vertex colour of a Text Effect multiplies the face, its
+   alpha and the Text's alpha also the outline and shadow (a typewriter or a colour fade fades all three), so
+   a hollow text (face alpha 0) keeps its outline. The padding is not part of the measured text: an
+   auto-sized Text keeps its size when an outline or shadow is turned on (as TMP).
 7. **`visibleCharacters`** collapses the quads of later characters (characters = grapheme clusters, from
    HarfBuzz's cluster values) without a vertex colour or a shader change.
 8. **Text Effect formulas vs. the spec.** The shared math is `engine/core/util/TextEffects.{h,cpp}` (native and
@@ -531,7 +534,10 @@ spec was silent, ambiguous or did not fit the code:
 11. **UI particles (native).** Verified: Points sizes under a UI camera are UI units (`computePointsScale`
     uses the camera's ortho height). The scissor was NOT inherited (only entities with a RectTransform took
     the parent's scissor): fixed in `RenderSystem` so Points under UI use the nearest ancestor RectTransform's
-    scissor (an empty one skips the draw), pinned by `FullPathGoldenTest.UIPointsClippedByAPanel`. "UI > Particle System" makes the legacy two-GameObject layout (a Points emitter "UI Particles"
+    scissor (an empty one skips the draw), pinned by `FullPathGoldenTest.UIPointsClippedByAPanel`. An old scene
+    with Points under a UI element now clips them to it (the rule of this spec, like UI children); nothing
+    else changes. Effect indices follow reading order (logical clusters), so a right-to-left text types from
+    its first character. "UI > Particle System" makes the legacy two-GameObject layout (a Points emitter "UI Particles"
     with a generated `ui/particle_soft.png` and its "Particle System" child: unscaled time, local space, a
     sparkle in UI units, y down) because the single-GameObject form belongs to the particles feature.
     `create_particles` under a UI element or in a UI scene does the same for its presets (y flipped, unscaled
@@ -546,7 +552,10 @@ spec was silent, ambiguous or did not fit the code:
     index per line; the engine's `HtmlTextEffects` finds the element that declares the effect, counts the
     visible characters of its texts in the linked inline formatting context and returns the time and count;
     `RmlFontEngine::GenerateString` applies the shared formulas to the base glyph box and maps every layer's
-    quad (outlines, `font-effect` shadows, text-shadow passes) through it. A `px` amplitude is divided by the
+    quad (outlines, `font-effect` shadows, text-shadow passes) through it; a text-shadow pass
+    (`TextShapingContext::text_effect_shadow`) keeps the shadow's colour and takes only the glyph's alpha. A
+    `text-effect*` property set at runtime regenerates the text's geometry (`TextEffectProvider::IsTextEffectChange`),
+    and new content (new text nodes joining the effect in a later frame) starts the effect again. A `px` amplitude is divided by the
     text's font size. `texteffectend` is dispatched (bubbling) at the declaring element; `el:restartTextEffect()`
     restarts it and its descendants' effects.
 13. **`<particle-system>`.** `htmlui/UIParticleSystemElement.{h,cpp}`: the prefab through `PrefabManager`

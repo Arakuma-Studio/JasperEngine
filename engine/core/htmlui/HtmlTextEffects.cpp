@@ -11,6 +11,7 @@
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Element.h>
 #include <RmlUi/Core/Property.h>
+#include <RmlUi/Core/PropertyIdSet.h>
 #include <RmlUi/Core/PropertyParser.h>
 #include <RmlUi/Core/StyleSheetSpecification.h>
 
@@ -306,6 +307,16 @@ bool HtmlTextEffects::animates(const Scope& scope) const{
     return false;
 }
 
+bool HtmlTextEffects::IsTextEffectChange(const Rml::PropertyIdSet& changed){
+    for (compat::CompatProperty property : {compat::CompatProperty::TextEffect, compat::CompatProperty::TextEffectIteration,
+                                            compat::CompatProperty::TextEffectTime}){
+        const Rml::PropertyId id = propertyId(property);
+        if (id != Rml::PropertyId::Invalid && changed.Contains(id))
+            return true;
+    }
+    return false;
+}
+
 const void* HtmlTextEffects::GetTextEffect(Rml::ElementText& text, int& first_index){
     first_index = 0;
     const std::string value = stringProperty(text, compat::CompatProperty::TextEffect);
@@ -364,12 +375,16 @@ const void* HtmlTextEffects::GetTextEffect(Rml::ElementText& text, int& first_in
     for (const Rml::ElementText::Line& line : text.GetLines())
         shown += line.text;
     auto known = scope.texts.find(&text);
-    if (known != scope.texts.end() && known->second != shown){
+    const bool replaced = known == scope.texts.end() && !scope.texts.empty() && scope.textsFrame != frame;
+    if (replaced || (known != scope.texts.end() && known->second != shown)){
         scope.start = scope.cycleStart = now(scope);
         scope.iterationsDone = 0;
         scope.finished = false;
     }
+    if (replaced)
+        scope.texts.clear();
     scope.texts[&text] = shown;
+    scope.textsFrame = frame;
 
     const double t = now(scope);
     scratch.effect = &scope.effect;

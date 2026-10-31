@@ -405,6 +405,37 @@ TEST_F(TextEffectDocumentTest, TypewriterEndsWithTexteffectend){
     frame();
     frame();
     EXPECT_EQ(ended.count, 2);
+
+    // new content (new text nodes) types again from the start, and ends again
+    line->SetInnerRML("Next line");
+    HtmlUIClock::setFixedTime(14.0);
+    frame();
+    frame();
+    EXPECT_EQ(ended.count, 2);
+    HtmlUIClock::setFixedTime(15.5);
+    frame();
+    frame();
+    EXPECT_EQ(ended.count, 3);
+    line->RemoveEventListener("texteffectend", &ended);
+}
+
+TEST_F(TextEffectDocumentTest, AnEffectSetAtRuntimeStarts){
+    load("<p id='line'>Hi there</p>");
+    Rml::Element* line = document->GetElementById("line");
+    ASSERT_NE(line, nullptr);
+    EventCount ended;
+    line->AddEventListener("texteffectend", &ended);
+    HtmlUIClock::setFixedTime(20.0);
+    frame();
+
+    // the text is laid out already: only its geometry is generated again, with the effect
+    line->SetProperty("text-effect", "typewriter(10)");
+    line->SetProperty("text-effect-iteration", "1");
+    frame();
+    HtmlUIClock::setFixedTime(21.0);
+    frame();
+    frame();
+    EXPECT_EQ(ended.count, 1);
     line->RemoveEventListener("texteffectend", &ended);
 }
 

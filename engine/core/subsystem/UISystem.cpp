@@ -423,18 +423,22 @@ void UISystem::updateTextShaderParams(TextComponent& text, UIComponent& ui){
     const Vector4 outlineColor = outline ? text.outlineColor : Vector4(0.0f, 0.0f, 0.0f, 0.0f);
     const Vector4 shadowColor = text.shadowEnabled ? text.shadowColor : Vector4(0.0f, 0.0f, 0.0f, 0.0f);
 
-    // colours linear as ui.color, sizes in atlas pixels
+    // colours linear as ui.color, sizes in atlas pixels, within the glyph's padding (the
+    // padding is capped: wider outlines and shadows stop at its edge, not at a neighbour glyph)
+    const float reach = std::max((float)text.sdfPadding - 2.0f, 0.0f);
+    const float softness = std::min(std::max(text.shadowSoftness, 0.0f) * raster, reach);
+    const float dilate = std::min(std::max(text.shadowDilate, 0.0f) * raster, reach - softness);
     ui.textParams[0] = outlineColor;
     ui.textParams[1] = shadowColor;
-    ui.textParams[2] = Vector4(outline ? text.outlineWidth * raster : 0.0f,
-                               std::max(text.shadowSoftness, 0.0f) * raster,
-                               std::max(text.shadowDilate, 0.0f) * raster,
+    ui.textParams[2] = Vector4(outline ? std::min(text.outlineWidth * raster, reach) : 0.0f,
+                               softness,
+                               dilate,
                                text.stbtext->getSdfDistanceScale());
     float u = 0.0f, v = 0.0f;
     if (TextureData* atlas = text.stbtext->getTextureData()){
         if (atlas->getWidth() > 0 && atlas->getHeight() > 0 && text.shadowEnabled){
-            u = text.shadowOffset.x * raster / (float)atlas->getWidth();
-            v = text.shadowOffset.y * raster / (float)atlas->getHeight();
+            u = std::clamp(text.shadowOffset.x * raster, -reach, reach) / (float)atlas->getWidth();
+            v = std::clamp(text.shadowOffset.y * raster, -reach, reach) / (float)atlas->getHeight();
         }
     }
     ui.textParams[3] = Vector4(u, v, 0.0f, 0.0f);
@@ -1554,8 +1558,7 @@ Vector2 UISystem::getTextMinSize(TextComponent& text){
     return Vector2(minWidth, minHeight);
 }
 
-bool UISystem::createOrUpdateText(TextComponent& text, UIComponent& ui, RectTransformComponent& layout){
-    // the canvas scale or the outline/shadow changed the atlas it needs
+void UISystem::checkTextAtlasOptions(TextComponent& text, UIComponent& ui){
     if (text.loaded && !text.needReloadAtlas){
         const STBTextOptions options = getTextOptions(text);
         if (options.rasterScale != text.rasterScale || options.sdfPadding != text.sdfPadding){
@@ -1565,6 +1568,11 @@ bool UISystem::createOrUpdateText(TextComponent& text, UIComponent& ui, RectTran
                 ui.needReload = true;
         }
     }
+}
+
+bool UISystem::createOrUpdateText(TextComponent& text, UIComponent& ui, RectTransformComponent& layout){
+    // the canvas scale or the outline/shadow changed the atlas it needs
+    checkTextAtlasOptions(text, ui);
 
     if (text.loaded && text.needReloadAtlas){
         destroyText(text);
@@ -1870,8 +1878,10 @@ void UISystem::applyTextEffect(Entity entity, TextEffectComponent& effect, TextC
 
     // the glyph's index among the animated visible glyphs (-1: not animated or no ink)
     const size_t glyphCount = std::min(text.glyphInfo.size(), (size_t)(vertexCount / 4));
+    // the effect's index of each glyph in reading (logical) order, so a right-to-left text
+    // types from its first character too
     std::vector<int> order(glyphCount, -1);
-    int count = 0;
+    std::vector<std::pair<uint32_t, size_t>> selectedGlyphs;
     for (size_t g = 0; g < glyphCount; g++){
         const Vector3& p0 = effect.basePositions[g * 4];
         const Vector3& p2 = effect.basePositions[g * 4 + 2];
@@ -1886,8 +1896,13 @@ void UISystem::applyTextEffect(Entity entity, TextEffectComponent& effect, TextC
             selected = character >= rangeStart && character < rangeEnd;
         }
         if (selected)
-            order[g] = count++;
+            selectedGlyphs.push_back({cluster, g});
     }
+    std::stable_sort(selectedGlyphs.begin(), selectedGlyphs.end(),
+                     [](const std::pair<uint32_t, size_t>& a, const std::pair<uint32_t, size_t>& b){ return a.first < b.first; });
+    const int count = (int)selectedGlyphs.size();
+    for (int i = 0; i < count; i++)
+        order[selectedGlyphs[(size_t)i].second] = i;
 
     const bool reduced = UISystem::isReducedMotion();
     const float fontSize = (float)text.fontSize;
@@ -2020,7 +2035,8 @@ void UISystem::updateTextEffects(double dt){
 
         if (!active){
             // hidden, disabled or held: the plain text, and it starts again when shown
-            if (effect.wasActive || effect.applied){
+            // (a colour or text change too: the vertices hold the absolute colour)
+            if (effect.wasActive || effect.applied || changed){
                 effect.wasActive = false;
                 const bool wasPlaying = effect.playing;
                 effect.playing = false;
@@ -2379,8 +2395,12 @@ void UISystem::createOrUpdateUiComponent(RectTransformComponent& layout, Entity 
             }
 
             if (InputFieldComponent* ownerEdit = findInputFieldForTextChild(entity)){
+                // (its input field rebuilds it: a new canvas scale or outline reaches it too)
+                checkTextAtlasOptions(text, ui);
                 if (text.needUpdateText || text.needReloadAtlas || isFontAtlasStale(text)){
                     ownerEdit->needUpdateInputField = true;
+                }else if (text.loaded && ui.textSdf){
+                    updateTextShaderParams(text, ui);
                 }
             }else{
                 createOrUpdateText(text, ui, layout);

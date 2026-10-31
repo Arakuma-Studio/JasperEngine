@@ -876,7 +876,8 @@ int RmlFontEngine::GenerateString(Rml::RenderManager& render_manager, Rml::FontF
             const Rml::Vector2f uv1((entry.x + entry.width) * uvScale, (entry.y + entry.height) * uvScale);
             addQuad(mesh_list[(size_t)meshIndex].mesh, origin, dimensions, quadColour, uv0, uv1, baseline,
                     handle->italicShear[glyph.face]);
-            applyGlyphEffect(mesh_list[(size_t)meshIndex].mesh, glyphNumber, effect == nullptr);
+            // (a text-shadow keeps its colour: only the glyph's alpha over the text's applies)
+            applyGlyphEffect(mesh_list[(size_t)meshIndex].mesh, glyphNumber, effect == nullptr && !text_shaping_context.text_effect_shadow);
         }
         return pen;
     };

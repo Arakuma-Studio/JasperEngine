@@ -76,8 +76,8 @@ float sdfDistance(vec2 uv){
 vec4 getSdfColor(){
     vec4 vertexColor = getVertexColor();
     vec4 face = uiParams.color * vertexColor;
-    // a glyph's fade (Text Effect, typewriter) fades its outline and shadow too
-    float fade = vertexColor.a;
+    // a glyph's fade (Text Effect, typewriter) and the Text's alpha fade its outline and shadow too
+    float fade = vertexColor.a * uiParams.color.a;
 
     float dist = sdfDistance(v_uv1);
     float aa = max(fwidth(dist), 0.0001);
