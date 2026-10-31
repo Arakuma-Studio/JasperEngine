@@ -56,7 +56,7 @@ origin/main).
 | 15 | `video-mp4` | MP4/H.264 playback (platform decoders) and streamed/URL video | specced |
 | 16 | `coroutines` | engine-driven coroutines (wait seconds/realtime/frames/until), Invoke-style scaled timers, unscaled delta time, callbacks always on the main Lua thread | specced |
 | 17 | `script-lifecycle` | onEnable/onDisable, enabling scripts, getScript/findObjectOfType, scene-wide find, event unregister | impl |
-| 18 | `script-data` | JSON encode/decode, UserSettings hasKey/deleteAll/save | impl |
+| 18 | `script-data` | JSON encode/decode, UserSettings hasKey/deleteAll/save | review |
 | 19 | `input` | key/mouse/button down/up edge queries, virtual axes and buttons (Input Manager-style), bound Touch with phases and deltas | impl |
 | 20 | `persistence` | DontDestroyOnLoad (persistent objects and their sounds across scene loads) | specced |
 | 21 | `ui-scaling-text` | canvas match-width-or-height scaling, per-character text effects (waves etc.), particles inside UI | specced |
@@ -91,3 +91,5 @@ origin/main).
   with 61 component types used; widened to 128 on `main` (`a23dfd2f7`, unit tests 936/936) before any new
   component lands, and pushed `main` (specs, ledger, fix). Added a 16 GB swap file (builds of 6 agents ran the
   machine out of memory). `script-lifecycle` implementation started.
+- 2026-10-31: `script-data` implemented (9 commits; unit 963 passed / 8 skipped; Android/Web compile checks;
+  Apple/Windows code not compilable here). Independent review started.
