@@ -638,8 +638,9 @@ TEST_F(Layers, LuaApi){
     luabridge::setGlobal(L, luabridge::LuaRef(L), "layersPlayer");
 }
 
-// Spec 13 (host check): 40 characters x 65 bones, a masked Override layer, a crossfade on the
-// base: under 0.6 ms per frame in updatePlayers (Release)
+// Spec 13 (host check): 40 characters x 65 bones, each with an Animator Controller of two layers
+// (the upper one an Override layer masked to half the bones) and a crossfade on the base: under
+// 0.6 ms per frame for the whole ActionSystem update (Release)
 TEST_F(Layers, PerformanceBudget){
 #ifdef NDEBUG
     constexpr int CHARACTERS = 40;
@@ -654,13 +655,20 @@ TEST_F(Layers, PerformanceBudget){
         walkData.tracks.push_back(track(chain, ClipChannel::Rotation, {key(0, axisAngle(0, 0, 0, 1)), key(1, axisAngle(40, 0, 0, 1))}));
         runData.tracks.push_back(track(chain, ClipChannel::Rotation, {key(0, axisAngle(10, 1, 0, 0)), key(0.5f, axisAngle(30, 1, 0, 0)), key(1, axisAngle(10, 1, 0, 0))}));
         if (b == 0) runData.tracks.push_back(track(chain, ClipChannel::Position, {key(0, {0, 0, 0}), key(1, {0, 1, 0})}));
-        if (b >= 30){
+        if (b >= 32){
             holdData.tracks.push_back(track(chain, ClipChannel::Rotation, {key(0, axisAngle(20, 0, 1, 0)), key(1, axisAngle(25, 0, 1, 0))}));
         }
-        if (b == 30) maskData.transforms.push_back({chain, 1.0f, true});
+        if (b == 32) maskData.transforms.push_back({chain, 1.0f, true});
     }
     const std::string walkPath = clip("pwalk", walkData), runPath = clip("prun", runData), holdPath = clip("phold", holdData);
     const std::string maskPath = mask("pmask", maskData);
+    const std::string controllerText = std::string("{\"format\": \"jasperengine.controller\", \"version\": 1, ") +
+        "\"parameters\": [{\"name\": \"Speed\", \"type\": \"float\"}], \"layers\": [" +
+        "{\"name\": \"Base Layer\", \"states\": [{\"name\": \"Walk\", \"clip\": \"" + walkPath + "\"}, {\"name\": \"Run\", \"clip\": \"" + runPath + "\"}], " +
+        "\"transitions\": [{\"from\": \"Walk\", \"to\": \"Run\", \"conditions\": [{\"parameter\": \"Speed\", \"mode\": \"greater\", \"threshold\": 0.5}], " +
+        "\"has_exit_time\": false, \"duration\": 100}]}, " +
+        "{\"name\": \"Holding\", \"mask\": \"" + maskPath + "\", \"states\": [{\"name\": \"Hold\", \"clip\": \"" + holdPath + "\"}]}]}";
+    animtest::writeAsset(prefix + "perf.controller", controllerText);
     std::vector<AnimationPlayer> players;
     for (int c = 0; c < CHARACTERS; c++){
         Entity character = scene.createEntity();
@@ -668,22 +676,17 @@ TEST_F(Layers, PerformanceBudget){
         Entity parent = character;
         for (int b = 0; b < BONES; b++) parent = child(parent, "B" + std::to_string(b));
         AnimationPlayer object(&scene, character);
-        AnimationPlayerComponent& component = scene.getComponent<AnimationPlayerComponent>(character);
-        component.clips = {AnimationPlayerClip{walkPath, "", "walk", ClipWrapMode::Default, 0},
-                           AnimationPlayerClip{runPath, "", "run", ClipWrapMode::Default, 0},
-                           AnimationPlayerClip{holdPath, "", "hold", ClipWrapMode::Default, 1}};
-        component.layers = {layer(anim::BASE_LAYER_NAME), layer("Holding", 1.0f, AnimationLayerBlend::Override, maskPath)};
-        component.playAutomatically = false;
-        component.needsLoad = true;
-        object.play("walk");
-        object.play("hold");
+        object.setController(prefix + "perf.controller");
         players.push_back(object);
     }
     step(1.0 / 60.0, 3);
-    for (AnimationPlayer& object : players) object.crossFade("run", 10.0f);
+    for (AnimationPlayer& object : players){
+        object.setFloat("Speed", 1.0f);
+        ASSERT_EQ(object.getLayerCount(), 2);
+    }
     step(1.0 / 60.0, 3);
-    // the whole ActionSystem::update (updatePlayers plus the flush) per frame; the best of a few
-    // batches, as the host is shared with other builds
+    ASSERT_TRUE(players[0].isInTransition());
+    // the best of a few batches: the host is shared with other builds
     double ms = 1e9;
     for (int batch = 0; batch < 8; batch++){
         const int frames = 30;
@@ -691,8 +694,9 @@ TEST_F(Layers, PerformanceBudget){
         step(1.0 / 60.0, frames);
         ms = std::min(ms, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() / frames);
     }
+    ASSERT_TRUE(players[0].isInTransition());
     EXPECT_LT(ms, 0.6) << ms << " ms per frame";
-    std::printf("[ perf ] 40 layered players x 65 bones: %.3f ms per frame\n", ms);
+    std::printf("[ perf ] 40 characters x 65 bones, controller, masked layer, crossfade: %.3f ms per frame\n", ms);
 #else
     GTEST_SKIP() << "timing needs a Release build";
 #endif

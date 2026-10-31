@@ -1614,7 +1614,16 @@ void ActionSystem::latticeTracksUpdate(KeyframeTracksComponent& keyframe, Lattic
 }
 
 void ActionSystem::clearPoseBlend(){
-    transformBlend.clear();
+    // the nodes stay for the next frame (no allocation per animated entity and frame); the
+    // entries of destroyed entities go
+    for (auto it = transformBlend.begin(); it != transformBlend.end();){
+        if (!scene->isEntityCreated(it->first)){
+            it = transformBlend.erase(it);
+        }else{
+            it->second.reset();
+            ++it;
+        }
+    }
     morphBlend.clear();
     for (auto it = latticeBlend.begin(); it != latticeBlend.end();){
         if (!scene->isEntityCreated(it->first)){
@@ -1633,6 +1642,9 @@ void ActionSystem::flushPoseBlend(){
     for (auto& entry : transformBlend){
         Entity target = entry.first;
         TransformBlendAccum& accum = entry.second;
+        // kept from an earlier frame, nothing this one
+        if (accum.empty())
+            continue;
 
         // one lookup: a destroyed entity has no components
         Transform* transform = scene->findComponent<Transform>(target);

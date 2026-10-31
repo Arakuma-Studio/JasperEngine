@@ -78,6 +78,20 @@ namespace jasperengine{
 			Vector3 restPosition = Vector3(0, 0, 0);
 			Quaternion restRotation;
 			Vector3 restScale = Vector3(1, 1, 1);
+
+			// back to "nothing accumulated" (clearPoseBlend keeps the map's nodes between frames;
+			// the reference and rest values only count with their flags set)
+			void reset(){
+				positionSum.x = positionSum.y = positionSum.z = 0.0f;
+				positionWeight = 0.0f;
+				scaleSum.x = scaleSum.y = scaleSum.z = 0.0f;
+				scaleWeight = 0.0f;
+				rotationSum.w = rotationSum.x = rotationSum.y = rotationSum.z = 0.0f;
+				rotationWeight = 0.0f;
+				hasRotationRef = false;
+				hasRestPosition = hasRestRotation = hasRestScale = false;
+			}
+			bool empty() const { return positionWeight <= 0.0f && scaleWeight <= 0.0f && rotationWeight <= 0.0f; }
 		};
 		struct MorphBlendAccum {
 			float sums[MAX_MORPHTARGETS] = {0};
@@ -252,6 +266,8 @@ namespace jasperengine{
 		// AnimatorControllerPool::revision() seen by the last player update
 		uint64_t playerControllerPoolRevision = 0;
 		bool playerControllerPoolChanged = false;
+		std::vector<float> controllerWeights;
+		std::vector<float> controllerThresholds;
 
 	public:
 		ActionSystem(Scene* scene);

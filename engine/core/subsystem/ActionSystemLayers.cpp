@@ -78,11 +78,15 @@ namespace {
         return a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
     }
 
-    // the normalized sum, or `fallback` when the sum cancelled out
-    Quaternion normalizedOr(const float* sum, const Quaternion& fallback){
+    // out = the normalized sum (w x y z), or `fallback` when the sum cancelled out
+    void normalizeOr(const float* sum, const float* fallback, float* out){
         const float length = std::sqrt(dot4(sum, sum));
-        if (!(length > 1e-12f)) return fallback;
-        return Quaternion(sum[0] / length, sum[1] / length, sum[2] / length, sum[3] / length);
+        if (!(length > 1e-12f)){
+            for (int k = 0; k < 4; k++) out[k] = fallback[k];
+            return;
+        }
+        const float inverse = 1.0f / length;
+        for (int k = 0; k < 4; k++) out[k] = sum[k] * inverse;
     }
 
     // the rest value of element `index` of a slot (R2), in the element layout
@@ -141,8 +145,7 @@ namespace {
 
     // as the entity tracks: aligned to the layer's first sample's hemisphere
     void addRotation(anim::PoseElement& e, const Quaternion& q, float w){
-        float v[4];
-        setQuat(v, q);
+        float v[4] = {q.w, q.x, q.y, q.z};
         if (!e.hasRef){
             e.hasRef = true;
             for (int k = 0; k < 4; k++) e.ref[k] = v[k];
@@ -236,7 +239,6 @@ void playerdetail::buildPoseSlots(Scene* scene, anim::PlayerPoseScratch& scratch
 
 void ActionSystem::preparePlayerLayers(Entity entity, AnimationPlayerComponent& player, float dt, bool modelsReloaded){
     anim::AnimationPlayerRuntime& runtime = *player.runtime;
-    const std::string who = scene->getEntityName(entity);
 
     // the layers' masks: loaded on first use, again after an edit (pool generation), retried
     // every second after a failure (logged once); a layer without its mask contributes nothing
@@ -265,7 +267,7 @@ void ActionSystem::preparePlayerLayers(Entity entity, AnimationPlayerComponent& 
                 layer.maskError = error;
                 if (!layer.maskErrorLogged){
                     layer.maskErrorLogged = true;
-                    Log::error("Animation Player '%s': layer '%s': mask '%s': %s (the layer contributes nothing)", who.c_str(),
+                    Log::error("Animation Player '%s': layer '%s': mask '%s': %s (the layer contributes nothing)", scene->getEntityName(entity).c_str(),
                                layer.name.c_str(), layer.maskPath.c_str(), error.c_str());
                 }
             }else{
@@ -292,7 +294,7 @@ void ActionSystem::preparePlayerLayers(Entity entity, AnimationPlayerComponent& 
         if (!runtime.humanoid->valid && !runtime.humanoidWarned){
             runtime.humanoidWarned = true;
             Log::warn("Animation Player '%s': a layer's humanoid mask needs a humanoid rig on the root (%s): its transforms and default apply",
-                      who.c_str(), runtime.humanoid->error.c_str());
+                      scene->getEntityName(entity).c_str(), runtime.humanoid->error.c_str());
         }
     }
 
@@ -463,7 +465,9 @@ void ActionSystem::composePlayerLayers(anim::PlayerPoseScratch& scratch, std::ve
                     }
                     continue;
                 }
-                playerdetail::completeRest(scene, target, rest, track.channel);
+                if (!rest.hasTransform || track.channel == ClipChannel::Morph || track.channel == ClipChannel::Lattice){
+                    playerdetail::completeRest(scene, target, rest, track.channel);
+                }
                 if (!anim::sampleTrack(track, state.time, sample, &bindings.cursors[i])) continue;
                 const anim::TrackSample* reference = (additive && state.reference) ? &state.reference[i] : nullptr;
                 if (additive && (!reference || !reference->valid)) continue;
@@ -539,36 +543,33 @@ void ActionSystem::composePlayerLayers(anim::PlayerPoseScratch& scratch, std::ve
             }
         }
 
-        // 2. compose the layer's elements into R
+        // 2. compose the layer's elements into R (raw floats: no Quaternion temporaries here)
         const float lambda = l == 0 ? 1.0f : layer.weight;
         for (uint32_t index : scratch.touched){
             anim::PoseElement& e = scratch.elements[index];
             e.touched = false;
             const anim::PoseSlot& slot = scratch.slots[scratch.elementSlot[index]];
             const float S = e.weight;
-            float rest[4];
-            restOf(slot, index - slot.first, rest);
             const bool rotation = slot.channel == ClipChannel::Rotation;
             const bool hadResult = e.hasResult;
+            float rest[4];
+            const bool needRest = l == 0 ? S < 1.0f : !e.hasResult;
+            if (needRest || rotation) restOf(slot, index - slot.first, rest);
 
             if (l == 0){
                 // R = lerp(rest, avg, min(1, S)): the rest fills what the states leave (R1)
                 if (rotation){
-                    Quaternion restQ = getQuat(rest);
                     if (S >= 1.0f){
-                        setQuat(e.result, normalizedOr(e.sum, restQ));
+                        normalizeOr(e.sum, rest, e.result);
                     }else{
-                        float r[4];
-                        setQuat(r, restQ);
-                        if (e.hasRef && dot4(e.ref, r) < 0.0f){
-                            for (int k = 0; k < 4; k++) r[k] = -r[k];
-                        }
+                        const float sign = (e.hasRef && dot4(e.ref, rest) < 0.0f) ? -1.0f : 1.0f;
                         float sum[4];
-                        for (int k = 0; k < 4; k++) sum[k] = e.sum[k] + r[k] * (1.0f - S);
-                        setQuat(e.result, normalizedOr(sum, restQ));
+                        for (int k = 0; k < 4; k++) sum[k] = e.sum[k] + sign * rest[k] * (1.0f - S);
+                        normalizeOr(sum, rest, e.result);
                     }
                 }else if (S >= 1.0f){
-                    for (int k = 0; k < 4; k++) e.result[k] = e.sum[k] * (1.0f / S);
+                    const float inverse = 1.0f / S;
+                    for (int k = 0; k < 4; k++) e.result[k] = e.sum[k] * inverse;
                 }else{
                     for (int k = 0; k < 4; k++) e.result[k] = e.sum[k] + rest[k] * (1.0f - S);
                 }
@@ -578,23 +579,38 @@ void ActionSystem::composePlayerLayers(anim::PlayerPoseScratch& scratch, std::ve
                 const float alpha = lambda * std::min(1.0f, S);
                 float base[4];
                 for (int k = 0; k < 4; k++) base[k] = e.hasResult ? e.result[k] : rest[k];
+                const float inverse = 1.0f / S;
                 if (!additive){
                     if (rotation){
-                        const Quaternion from = getQuat(base);
-                        const Quaternion avg = normalizedOr(e.sum, from);
+                        float avg[4];
+                        normalizeOr(e.sum, base, avg);
                         // a full override (the common case) needs no slerp
-                        setQuat(e.result, alpha >= 1.0f ? avg : pose::slerpShortest(from, avg, alpha));
+                        if (alpha >= 1.0f){
+                            for (int k = 0; k < 4; k++) e.result[k] = avg[k];
+                        }else{
+                            setQuat(e.result, pose::slerpShortest(getQuat(base), getQuat(avg), alpha));
+                        }
                     }else{
-                        for (int k = 0; k < 4; k++) e.result[k] = base[k] + (e.sum[k] / S - base[k]) * alpha;
+                        for (int k = 0; k < 4; k++) e.result[k] = base[k] + (e.sum[k] * inverse - base[k]) * alpha;
                     }
                 }else if (rotation){
-                    const Quaternion delta = normalizedOr(e.sum, Quaternion());
-                    setQuat(e.result, (getQuat(base) * pose::slerpShortest(Quaternion(), delta, alpha)).normalized());
+                    static const float identity[4] = {1.0f, 0.0f, 0.0f, 0.0f};
+                    float delta[4];
+                    normalizeOr(e.sum, identity, delta);
+                    const Quaternion scaled = alpha >= 1.0f ? getQuat(delta) : pose::slerpShortest(Quaternion(), getQuat(delta), alpha);
+                    // base * scaled (w x y z)
+                    const float bw = base[0], bx = base[1], by = base[2], bz = base[3];
+                    const float product[4] = {
+                        bw * scaled.w - bx * scaled.x - by * scaled.y - bz * scaled.z,
+                        bw * scaled.x + bx * scaled.w + by * scaled.z - bz * scaled.y,
+                        bw * scaled.y - bx * scaled.z + by * scaled.w + bz * scaled.x,
+                        bw * scaled.z + bx * scaled.y - by * scaled.x + bz * scaled.w};
+                    normalizeOr(product, base, e.result);
                 }else if (slot.channel == ClipChannel::Scale){
-                    for (int k = 0; k < 3; k++) e.result[k] = base[k] * (1.0f + alpha * (e.sum[k] / S - 1.0f));
+                    for (int k = 0; k < 3; k++) e.result[k] = base[k] * (1.0f + alpha * (e.sum[k] * inverse - 1.0f));
                     e.result[3] = 0.0f;
                 }else{
-                    for (int k = 0; k < 4; k++) e.result[k] = base[k] + alpha * (e.sum[k] / S);
+                    for (int k = 0; k < 4; k++) e.result[k] = base[k] + alpha * (e.sum[k] * inverse);
                 }
                 e.hasResult = true;
             }
@@ -622,20 +638,31 @@ void ActionSystem::composePlayerLayers(anim::PlayerPoseScratch& scratch, std::ve
                 }
                 TransformBlendAccum& accum = *currentAccum;
                 if (slot.channel == ClipChannel::Position){
-                    accum.positionSum = accum.positionSum + Vector3(e.result[0], e.result[1], e.result[2]);
+                    accum.positionSum.x += e.result[0];
+                    accum.positionSum.y += e.result[1];
+                    accum.positionSum.z += e.result[2];
                     accum.positionWeight += 1.0f;
                 }else if (slot.channel == ClipChannel::Scale){
-                    accum.scaleSum = accum.scaleSum + Vector3(e.result[0], e.result[1], e.result[2]);
+                    accum.scaleSum.x += e.result[0];
+                    accum.scaleSum.y += e.result[1];
+                    accum.scaleSum.z += e.result[2];
                     accum.scaleWeight += 1.0f;
                 }else{
-                    Quaternion value = getQuat(e.result);
+                    float sign = 1.0f;
                     if (!accum.hasRotationRef){
-                        accum.rotationRef = value;
+                        accum.rotationRef.w = e.result[0];
+                        accum.rotationRef.x = e.result[1];
+                        accum.rotationRef.y = e.result[2];
+                        accum.rotationRef.z = e.result[3];
                         accum.hasRotationRef = true;
-                    }else if (accum.rotationRef.dot(value) < 0.0f){
-                        value = -value;
+                    }else if (accum.rotationRef.w * e.result[0] + accum.rotationRef.x * e.result[1] +
+                              accum.rotationRef.y * e.result[2] + accum.rotationRef.z * e.result[3] < 0.0f){
+                        sign = -1.0f;
                     }
-                    accum.rotationSum = accum.rotationSum + value;
+                    accum.rotationSum.w += sign * e.result[0];
+                    accum.rotationSum.x += sign * e.result[1];
+                    accum.rotationSum.y += sign * e.result[2];
+                    accum.rotationSum.z += sign * e.result[3];
                     accum.rotationWeight += 1.0f;
                 }
                 break;

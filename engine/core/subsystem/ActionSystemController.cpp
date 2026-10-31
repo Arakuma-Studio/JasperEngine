@@ -130,8 +130,9 @@ void ActionSystem::driveController(Entity entity, AnimationPlayerComponent& play
         if (param.damping) param.value = smoothDamp(param.value, param.target, param.velocity, param.dampTime, dt);
     }
     const float playerSpeed = std::isfinite(player.speed) ? player.speed : 0.0f;
-    std::vector<float> weights;
-    std::vector<float> thresholds;
+    // reused between players and frames (no allocation per frame)
+    std::vector<float>& weights = controllerWeights;
+    std::vector<float>& thresholds = controllerThresholds;
 
     for (size_t l = 0; l < controller.layers.size() && l < ac.getLayers().size(); l++){
         anim::ControllerLayerRuntime& layer = controller.layers[l];
