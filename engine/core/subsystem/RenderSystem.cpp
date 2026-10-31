@@ -11,6 +11,8 @@
 #include "render/Render.h"
 #include "render/ObjectRender.h"
 #include "render/SystemRender.h"
+#include "render/UIDrawColor.h"
+#include "render/PipelineState.h"
 #include "pool/ShaderPool.h"
 #include "pool/TexturePool.h"
 #include "pool/MeshBufferPool.h"
@@ -27,6 +29,7 @@
 #include "lattice/LatticeRender.h"
 #include "animation/VertexAnimation.h"
 #include "component/VertexAnimatorComponent.h"
+#include "component/CanvasGroupComponent.h"
 #include "texture/Texture.h"
 #include "object/environment/Water.h"
 #include "subsystem/FluidSystem.h"
@@ -327,6 +330,16 @@ namespace {
             case BlendMode::PREMULTIPLIED: return POST_BLEND_PREMULTIPLIED;
             case BlendMode::MULTIPLY:      return POST_BLEND_MULTIPLY;
             default:                       return POST_BLEND_OWN;
+        }
+    }
+
+    MaterialBlendMode toMaterialBlendMode(BlendMode mode){
+        switch (mode){
+            case BlendMode::NONE:          return MaterialBlendMode::NONE;
+            case BlendMode::PREMULTIPLIED: return MaterialBlendMode::PREMULTIPLIED;
+            case BlendMode::ADDITIVE:      return MaterialBlendMode::ADDITIVE;
+            case BlendMode::MULTIPLY:      return MaterialBlendMode::MULTIPLY;
+            default:                       return MaterialBlendMode::ALPHA;
         }
     }
 
@@ -706,6 +719,9 @@ void RenderSystem::load(){
 void RenderSystem::destroy(){
     // View teardown keeps the scene alive; retain CPU assets for its next load.
     const bool reloadView = !Engine::isViewLoaded();
+
+    // the FLATTEN Canvas Group layers and their composite (made again on use)
+    destroyCanvasLayers();
 
     // Before the transform traversal below, which the camera entities are part of.
     while (!mirrorCameras.empty()){
@@ -3402,6 +3418,11 @@ void RenderSystem::getShaderVariants(Entity entity, std::vector<ShaderKey>& keys
     if (scene->findComponent<UIDocumentComponent>(entity)){
         for (const auto& variant : ShaderPool::getHtmlUIVariants())
             add(variant.first, variant.second, 0);
+    }
+    // a Canvas Group's FLATTEN layers composite with the HTML UI passthrough (any group: a
+    // script can switch it to FLATTEN)
+    if (scene->findComponent<CanvasGroupComponent>(entity)){
+        add(ShaderType::HTMLUI_POST, ShaderPool::getHtmlUIPostProperties(HtmlUIPostVariant::PASSTHROUGH), 0);
     }
 }
 
@@ -10278,10 +10299,15 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
     
     ui.needUpdateTexture = false;
 
-    if (!render.endLoad(pipelines, resolveComponentRenderState(ui.blendMode, ui.depthWrite, ui.stencil, ui.colorWrite, ui.shaderManifest.get(), ui.shaderFeatures, false),
-                        msaaPipelineSamples)){
+    const RenderState uiState = resolveComponentRenderState(ui.blendMode, ui.depthWrite, ui.stencil, ui.colorWrite, ui.shaderManifest.get(), ui.shaderFeatures, false);
+    if (!render.endLoad(pipelines, uiState, msaaPipelineSamples)){
         return false;
     }
+    // what a Canvas Group fades (uiDrawColor) and whether the draw is a stencil mask
+    ui.loadedPipelines = pipelines;
+    ui.drawBlendMode = toMaterialBlendMode(uiState.blend);
+    ui.writesStencil = uiState.stencilEnabled && uiState.stencilWriteMask != 0 &&
+                       (uiState.stencilPass != StencilOp::KEEP || uiState.stencilFail != StencilOp::KEEP || uiState.stencilDepthFail != StencilOp::KEEP);
 
     ui.needReload = false;
     ui.needUpdateAABB = true;
@@ -10301,7 +10327,7 @@ bool RenderSystem::lendsTransparentFluid(Entity entity, const Submesh& submesh) 
     return frameFluids->getMaterialTexture(entity, &transparent) && transparent;
 }
 
-bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pipType, TextureRender* textureOverride){
+bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pipType, TextureRender* textureOverride, bool inCanvasLayer){
     if (ui.loaded && ui.buffer.getSize() > 0){
 
         if (ui.needUpdateTexture || ui.texture.isFramebufferOutdated()){
@@ -10339,8 +10365,9 @@ bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pi
             return false;
         }
         render.applyUniformBlock(ui.slotVSParams, sizeof(float) * 16, (void*)&objectMVP(transform));
-        //Color
-        render.applyUniformBlock(ui.slotFSParams, sizeof(float) * 4, &ui.color);
+        //Color, faded by the element's Canvas Groups
+        Vector4 drawColor = uiDrawColor(ui.color, inCanvasLayer ? ui.groupLayerAlpha : ui.groupAlpha, ui.drawBlendMode);
+        render.applyUniformBlock(ui.slotFSParams, sizeof(float) * 4, &drawColor);
         applyComponentUniforms(render, ui.customVSParams, ui.customFSParams, ui.shaderUniforms, ui.shaderManifest.get(), ui.needUpdateShaderUniforms, frameTime, passResolution);
         applyFrameBlock(render, ui.libraryBindings);
         render.draw(0, ui.vertexCount, 1);
@@ -10504,6 +10531,7 @@ bool RenderSystem::loadPoints(Entity entity, PointsComponent& points, uint16_t p
 
     points.needReload = false;
     points.loadCalled = true;
+    points.loadedPipelines = pipelines;
     SystemRender::addQueueCommand(&changeLoaded, new check_load_t{scene, entity});
 
     return true;
@@ -11013,17 +11041,61 @@ static Rect intersectScissor(const Rect& rect, const Rect& bounds){
     return Rect(left, bottom, right - left, top - bottom);
 }
 
+bool RenderSystem::applyPassScissor(Entity entity, Signature signature, Transform& transform, CameraRender& render, const Rect& colorPassViewport, bool& hasActiveScissor){
+    RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
+    PassScissor scissor = passScissor(transform, layout);
+
+    Rect parentScissor;
+    bool parentScissorActive = false;
+
+    if (transform.parent != NULL_ENTITY){
+        Signature parentSignature = scene->getSignature(transform.parent);
+        if (parentSignature.test(scene->getComponentId<RectTransformComponent>())){
+            RectTransformComponent& parentLayout = scene->getComponent<RectTransformComponent>(transform.parent);
+            Transform& parentTransform = scene->getComponent<Transform>(transform.parent);
+            PassScissor parent = passScissor(parentTransform, parentLayout);
+
+            parentScissorActive = *parent.active;
+            parentScissor = *parent.rect;
+        }
+    }
+
+    // recomputed every pass, so children never get a stale rect
+    *scissor.active = false;
+
+    bool inheritsScissor = parentScissorActive && !layout.ignoreScissor;
+    bool clippedAway = false;
+
+    if (inheritsScissor){
+        *scissor.rect = parentScissor;
+        *scissor.active = true;
+
+        if (parentScissor.getWidth() <= 0 || parentScissor.getHeight() <= 0){
+            // sokol widens a scissor to 1x1 on Metal, Vulkan and WebGPU, so an
+            // empty rect would leak a pixel: skip the draw instead
+            clippedAway = true;
+        }else{
+            render.applyScissor(parentScissor);
+
+            hasActiveScissor = true;
+        }
+    }
+
+    if (signature.test(scene->getComponentId<ImageComponent>())){
+        ImageComponent& img = scene->getComponent<ImageComponent>(entity);
+
+        *scissor.rect = getScissorRect(layout, img, transform, colorPassViewport);
+        // applied or not: a clipped away element still passes the empty rect down
+        if (inheritsScissor){
+            *scissor.rect = intersectScissor(*scissor.rect, parentScissor);
+        }
+        *scissor.active = true;
+    }
+
+    return clippedAway;
+}
+
 Rect RenderSystem::getScissorRect(RectTransformComponent& layout, ImageComponent& img, Transform& transform, const Rect& passViewport){
-    // the scissor is in the pass target pixels, so it follows the viewport the color pass
-    // applied: offscreen targets start at (0,0), a swapchain keeps the letterbox offset
-    float viewX = passViewport.getX();
-    float viewY = passViewport.getY();
-    float viewWidth = passViewport.getWidth();
-    float viewHeight = passViewport.getHeight();
-
-    if (viewWidth <= 0.0f || viewHeight <= 0.0f)
-        return Rect(0, 0, 0, 0);
-
     float localLeft = (float) img.patchMarginLeft;
     float localTop = (float) img.patchMarginTop;
     float localRight = (float) layout.width - (float) img.patchMarginRight;
@@ -11034,7 +11106,19 @@ Rect RenderSystem::getScissorRect(RectTransformComponent& layout, ImageComponent
     if (localBottom < localTop)
         localBottom = localTop;
 
-    const Matrix4& mvp = objectMVP(transform);
+    return projectLocalRect(objectMVP(transform), localLeft, localTop, localRight, localBottom, passViewport);
+}
+
+Rect RenderSystem::projectLocalRect(const Matrix4& mvp, float localLeft, float localTop, float localRight, float localBottom, const Rect& passViewport){
+    // the scissor is in the pass target pixels, so it follows the viewport the color pass
+    // applied: offscreen targets start at (0,0), a swapchain keeps the letterbox offset
+    float viewX = passViewport.getX();
+    float viewY = passViewport.getY();
+    float viewWidth = passViewport.getWidth();
+    float viewHeight = passViewport.getHeight();
+
+    if (viewWidth <= 0.0f || viewHeight <= 0.0f)
+        return Rect(0, 0, 0, 0);
 
     Vector4 corners[4] = {
         mvp * Vector4(localLeft, localTop, 0.0f, 1.0f),
@@ -11393,6 +11477,8 @@ void RenderSystem::updatePoints(PointsComponent& points, Transform& transform, C
             PointRenderData& renderPoint = points.renderPoints[points.numVisible];
             renderPoint.position = points.points[i].position;
             renderPoint.color = points.points[i].color;
+            // a UI particle under a Canvas Group
+            renderPoint.color.w *= points.uiGroupAlpha;
             renderPoint.size = points.points[i].size * worldScale;
             renderPoint.rotation = points.points[i].rotation;
             renderPoint.textureRect = points.points[i].textureRect;
@@ -13219,6 +13305,15 @@ void RenderSystem::update(double dt){
         }
     }
     uint16_t pipelines = getScenePipelines();
+    // UI elements and UI particles under a FLATTEN Canvas Group draw into an offscreen layer:
+    // with any group in the scene (a script can switch one to FLATTEN) they also load the
+    // offscreen colour pipelines of the cameras
+    uint16_t uiPipelines = pipelines;
+    if (scene->getComponentArray<CanvasGroupComponent>()->size() > 0){
+        for (int i = 0; i < cameras->size(); i++){
+            uiPipelines |= cameras->getComponentFromIndex(i).depthTest ? PIP_RTT : PIP_RTT_NODEPTH;
+        }
+    }
 
     hasMultipleCameras = false;
     for (int i = 0; i < cameras->size(); i++){
@@ -13692,7 +13787,7 @@ void RenderSystem::update(double dt){
                 destroyUI(entity, ui);
             }
             if (!ui.loadCalled){
-                loadUI(entity, ui, pipelines, isText);
+                loadUI(entity, ui, uiPipelines, isText);
             }
             if (ui.needUpdateAABB || transform.needUpdate){
                 ui.worldAABB = transform.modelMatrix * ui.aabb;
@@ -13717,7 +13812,7 @@ void RenderSystem::update(double dt){
                 destroyPoints(entity, points);
             }
             if (!points.loadCalled){
-                loadPoints(entity, points, pipelines);
+                loadPoints(entity, points, uiPipelines);
             }
 
             bool sortTransparentPoints = points.transparent && batchSort;
@@ -14747,6 +14842,8 @@ void RenderSystem::render2DShadows(){
 }
 
 void RenderSystem::draw(){
+    // the FLATTEN Canvas Group layers of the last frame: stats, unused targets released
+    trimCanvasLayers();
     drawFramePasses();
     drawCameras(true);
 
@@ -15205,8 +15302,16 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     FramebufferRender* colorTarget = nullptr;
     bool colorPassViewportApplied = false;
     camera.render.setLabel(pass.renderToTexture ? "camera rtt" : (isBaseLayer() ? "camera" : "camera layer"));
+    // the size of the colour pass target (the FLATTEN Canvas Group layers match it)
+    unsigned int colorTargetWidth = 0;
+    unsigned int colorTargetHeight = 0;
+    passCanvasLayers.clear();
     auto startColorPass = [&](FramebufferRender* framebuffer){
         colorTarget = framebuffer;
+        colorTargetWidth = (unsigned int)framebuffer->getColorTexture().getWidth();
+        colorTargetHeight = (unsigned int)framebuffer->getColorTexture().getHeight();
+        // before the pass: the layers are passes of their own
+        renderCanvasGroupLayers(camera, cameraTransform, colorPassViewport, colorTargetWidth, colorTargetHeight, perCameraMVP, cullingMask);
         if (passMsaa > 1){
             // the multisampled target the size of the one it resolves into
             TextureRender& resolve = framebuffer->getColorTexture();
@@ -15283,15 +15388,18 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         colorPassViewport = Rect(0, 0, (float)rv().msaaResolveFramebuffer.getWidth(), (float)rv().msaaResolveFramebuffer.getHeight());
         startColorPass(&rv().msaaResolveFramebuffer.getRender());
     }else if (!pass.renderToTexture){
+        colorPassViewport = viewRect;
         if (target){
             if (!target->isCreated()){
                 target->create();
             }
             startColorPass(&target->getRender());
         }else{
+            colorTargetWidth = (unsigned int)System::instance().getScreenWidth();
+            colorTargetHeight = (unsigned int)System::instance().getScreenHeight();
+            renderCanvasGroupLayers(camera, cameraTransform, colorPassViewport, colorTargetWidth, colorTargetHeight, perCameraMVP, cullingMask);
             camera.render.startRenderPass();
         }
-        colorPassViewport = viewRect;
         camera.render.applyViewport(colorPassViewport);
         colorPassViewportApplied = true;
     }else{
@@ -15456,6 +15564,14 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         screenFluids->drawScreen(targetFormatFor(colorPip, passMsaa), isRenderingFlipped(camera));
     };
 
+    // FLATTEN Canvas Groups: the UI of a branch drawn into a layer (composited at its group)
+    // or faded out whole (alpha 0) is not drawn again below
+    const ComponentId canvasGroupId = scene->getComponentId<CanvasGroupComponent>();
+    const bool hasCanvasGroups = scene->getComponentArray<CanvasGroupComponent>()->size() > 0;
+    size_t canvasSkipLast = 0;
+    bool canvasSkipping = false;
+    Entity canvasSkipGroup = NULL_ENTITY;
+
     for (int i = 0; i < transforms->size(); i++){
         Transform& transform = transforms->getComponentFromIndex(i);
         Entity entity = transforms->getEntity(i);
@@ -15464,6 +15580,31 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         if (signature.test(scene->getComponentId<CameraComponent>())){
             continue;
         }
+
+        if (canvasSkipping && (size_t)i > canvasSkipLast){
+            canvasSkipping = false;
+        }
+        if (hasCanvasGroups && !canvasSkipping && signature.test(canvasGroupId)){
+            const CanvasGroupComponent& group = scene->getComponent<CanvasGroupComponent>(entity);
+            if (group.enabled && group.renderMode == CanvasGroupRenderMode::FLATTEN){
+                auto layer = passCanvasLayers.find(entity);
+                if (layer != passCanvasLayers.end()){
+                    // the layer goes where the group is, under its parent's scissor
+                    drawCanvasLayer(entity, layer->second, group.layerAlpha, colorPip, passMsaa, colorPassViewport, colorTargetWidth, colorTargetHeight, camera.render);
+                    canvasSkipping = true;
+                    canvasSkipGroup = entity;
+                    canvasSkipLast = scene->findBranchLastIndex(entity);
+                }else if (group.layerAlpha <= 0.0f){
+                    // CSS opacity 0: the whole subtree, stencil writers included
+                    canvasGroupRenderStats.skippedBranches++;
+                    canvasSkipping = true;
+                    canvasSkipGroup = entity;
+                    canvasSkipLast = scene->findBranchLastIndex(entity);
+                }
+            }
+        }
+        // what a layer drew (or a group at 0 hides): its scissors still pass down
+        const bool canvasSkipped = canvasSkipping;
 
         // (a UI element this pass draws: not one hidden, inactive or culled)
         if (screenFluidsPending && signature.test(scene->getComponentId<UIComponent>()) && transform.visible &&
@@ -15493,57 +15634,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
 
         // apply scissor on UI
         if (signature.test(scene->getComponentId<RectTransformComponent>())){
-            RectTransformComponent& layout = scene->getComponent<RectTransformComponent>(entity);
-            PassScissor scissor = passScissor(transform, layout);
-
-            Rect parentScissor;
-            bool parentScissorActive = false;
-
-            if (transform.parent != NULL_ENTITY){
-                Signature parentSignature = scene->getSignature(transform.parent);
-                if (parentSignature.test(scene->getComponentId<RectTransformComponent>())){
-                    RectTransformComponent& parentLayout = scene->getComponent<RectTransformComponent>(transform.parent);
-                    Transform& parentTransform = scene->getComponent<Transform>(transform.parent);
-                    PassScissor parent = passScissor(parentTransform, parentLayout);
-
-                    parentScissorActive = *parent.active;
-                    parentScissor = *parent.rect;
-                }
-            }
-
-            // recomputed every pass, so children never get a stale rect
-            *scissor.active = false;
-
-            bool inheritsScissor = parentScissorActive && !layout.ignoreScissor;
-            bool clippedAway = false;
-
-            if (inheritsScissor){
-                *scissor.rect = parentScissor;
-                *scissor.active = true;
-
-                if (parentScissor.getWidth() <= 0 || parentScissor.getHeight() <= 0){
-                    // sokol widens a scissor to 1x1 on Metal, Vulkan and WebGPU, so an
-                    // empty rect would leak a pixel: skip the draw instead
-                    clippedAway = true;
-                }else{
-                    camera.render.applyScissor(parentScissor);
-
-                    hasActiveScissor = true;
-                }
-            }
-
-            if (signature.test(scene->getComponentId<ImageComponent>())){
-                ImageComponent& img = scene->getComponent<ImageComponent>(entity);
-
-                *scissor.rect = getScissorRect(layout, img, transform, colorPassViewport);
-                // applied or not: a clipped away element still passes the empty rect down
-                if (inheritsScissor){
-                    *scissor.rect = intersectScissor(*scissor.rect, parentScissor);
-                }
-                *scissor.active = true;
-            }
-
-            if (clippedAway)
+            if (applyPassScissor(entity, signature, transform, camera.render, colorPassViewport, hasActiveScissor))
                 continue;
         }
 
@@ -15578,7 +15669,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }else if (signature.test(scene->getComponentId<UIComponent>())){
             UIComponent& ui = scene->getComponent<UIComponent>(entity);
 
-            if (transform.visible && renderActive && !samplesCameraTarget(camera, ui.texture))
+            if (transform.visible && renderActive && !canvasSkipped && !samplesCameraTarget(camera, ui.texture) &&
+                    !uiDrawSkipped(ui.color, ui.groupAlpha, ui.drawBlendMode, ui.writesStencil))
                 drawUI(ui, transform, colorPip,
                        (frameFluids && frameFluids->hasMaterialFluids()) ? frameFluids->getMaterialTexture(entity) : nullptr);
 
@@ -15589,7 +15681,9 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             // shared across all cameras and sokol only allows one sg_update_buffer per
             // buffer per frame (VALIDATE_UPDATEBUF_ONCE). Every camera reuses the main
             // camera's ordering computed in update().
-            if (transform.visible && renderActive && !samplesCameraTarget(camera, points.texture)){
+            // (UI particles draw here, over a FLATTEN layer of their group: hidden only at its alpha 0)
+            if (transform.visible && renderActive && !(canvasSkipped && isUIParticle(entity) && !passCanvasLayers.count(canvasSkipGroup)) &&
+                    !samplesCameraTarget(camera, points.texture)){
                 if (!points.transparent || !distanceSort){
                     drawPoints(entity, points, transform, camera, cameraTransform, colorPip);
                 }else{
@@ -15703,6 +15797,354 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     if (useMsaaRedirect){
         renderBlit(&rv().msaaResolveFramebuffer.getRender().getColorTexture(), targetViewRect());
     }
+}
+
+// ---------------------------------------------------------------------------------------
+// FLATTEN Canvas Groups (ui canvas group spec 7.10)
+// ---------------------------------------------------------------------------------------
+
+namespace {
+    // the HTML UI's passthrough composite (htmlui_post: a premultiplied image times params.x)
+    struct CanvasCompositeVs{
+        float uvTransform[4] = {1.0f, 1.0f, 0.0f, 0.0f};
+    };
+    struct CanvasCompositeFs{
+        float params[4] = {1.0f, 0.0f, 0.0f, 0.0f};
+        float texCoordMinMax[4] = {0.0f, 0.0f, 1.0f, 1.0f};
+        float color[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+        float weights[4] = {1.0f, 0.0f, 0.0f, 0.0f};
+        float colorMatrix[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+    };
+    constexpr size_t CANVAS_LAYER_MAX_UNUSED_FRAMES = 120;
+}
+
+bool RenderSystem::isUIParticle(Entity entity) const{
+    Entity current = entity;
+    int guard = 0;
+    while (current != NULL_ENTITY && guard++ < 4096){
+        if (scene->findComponent<RectTransformComponent>(current))
+            return true;
+        const Transform* transform = scene->findComponent<Transform>(current);
+        current = transform ? transform->parent : NULL_ENTITY;
+    }
+    return false;
+}
+
+bool RenderSystem::loadCanvasComposite(){
+    if (canvasCompositeLoaded)
+        return true;
+    if (!Engine::isViewLoaded())
+        return false;
+    if (!canvasCompositeShader || !canvasCompositeShader->isCreated()){
+        canvasCompositeShader = ShaderPool::get(ShaderType::HTMLUI_POST, ShaderPool::getHtmlUIPostProperties(HtmlUIPostVariant::PASSTHROUGH));
+    }
+    // still compiling (or missing from the build: logged by the pool): asked again next frame
+    if (!canvasCompositeShader || !canvasCompositeShader->isCreated())
+        return false;
+
+    ShaderData& data = canvasCompositeShader->shaderData;
+    canvasCompositeVsSlot = data.getUniformBlockIndexByName("u_vs_htmluiPost");
+    canvasCompositeFsSlot = data.getUniformBlockIndexByName("u_fs_htmluiPost");
+    canvasCompositeTextureSlot = data.getTextureIndexByName("u_htmluiPostTex");
+    // vertexless: a triangle from gl_VertexIndex over the viewport
+    canvasCompositeObject.beginLoad(PrimitiveType::TRIANGLES);
+    canvasCompositeObject.setShader(canvasCompositeShader.get());
+    canvasCompositeObject.addTexture(canvasCompositeTextureSlot, ShaderStageType::FRAGMENT, &emptyWhite);
+    if (!canvasCompositeObject.endLoadDynamic(PrimitiveType::TRIANGLES, IndexType::NONE)){
+        Log::error("Canvas Group: could not load the Flatten composite");
+        return false;
+    }
+    canvasCompositeLoaded = true;
+    return true;
+}
+
+void RenderSystem::destroyCanvasLayers(){
+    for (auto& layer : canvasLayers){
+        layer->framebuffer.destroy();
+    }
+    canvasLayers.clear();
+    passCanvasLayers.clear();
+    if (canvasCompositeLoaded){
+        canvasCompositeObject.destroy();
+        canvasCompositeLoaded = false;
+    }
+    if (canvasCompositeShader){
+        canvasCompositeShader.reset();
+        ShaderPool::remove(ShaderType::HTMLUI_POST, ShaderPool::getHtmlUIPostProperties(HtmlUIPostVariant::PASSTHROUGH));
+    }
+}
+
+void RenderSystem::trimCanvasLayers(){
+    canvasLayerFrame++;
+    for (size_t i = 0; i < canvasLayers.size();){
+        CanvasLayer& layer = *canvasLayers[i];
+        if (canvasLayerFrame - layer.lastUsedFrame > CANVAS_LAYER_MAX_UNUSED_FRAMES){
+            layer.framebuffer.destroy();
+            canvasLayers.erase(canvasLayers.begin() + i);
+            continue;
+        }
+        i++;
+    }
+    canvasGroupRenderStats.pooled = (uint32_t)canvasLayers.size();
+    lastCanvasGroupRenderStats = canvasGroupRenderStats;
+    canvasGroupRenderStats = CanvasGroupRenderStats();
+}
+
+void RenderSystem::renderCanvasGroupLayers(CameraComponent& camera, Transform& cameraTransform, const Rect& colorPassViewport,
+                                           unsigned int targetWidth, unsigned int targetHeight, bool perCameraMVP, uint32_t cullingMask){
+    passCanvasLayers.clear();
+    auto groups = scene->getComponentArray<CanvasGroupComponent>();
+    if (groups->size() == 0 || targetWidth == 0 || targetHeight == 0)
+        return;
+    // the last pass composited its layers: their targets are free again
+    for (auto& layer : canvasLayers){
+        layer->inUse = false;
+    }
+
+    auto transforms = scene->getComponentArray<Transform>();
+    // the layered groups this pass draws, innermost (highest index) first: a nested layer is
+    // ready when its parent's is drawn
+    std::vector<std::pair<size_t, Entity>> layered;
+    for (size_t i = 0; i < groups->size(); i++){
+        const CanvasGroupComponent& group = groups->getComponentFromIndex(i);
+        const Entity entity = groups->getEntity(i);
+        if (!group.enabled || group.renderMode != CanvasGroupRenderMode::FLATTEN || !group.layered || !transforms->hasEntity(entity))
+            continue;
+        if (!scene->isEntityActiveInHierarchy(entity) || !scene->getComponent<Transform>(entity).visible)
+            continue;
+        layered.push_back({transforms->getIndex(entity), entity});
+    }
+    if (layered.empty())
+        return;
+    std::sort(layered.begin(), layered.end(), [](const auto& a, const auto& b){ return a.first > b.first; });
+
+    if (!loadCanvasComposite()){
+        // drawn Per Element meanwhile (UISystem's groupAlpha is the chain's product)
+        canvasGroupRenderStats.fallbacks += (uint32_t)layered.size();
+        return;
+    }
+
+    const PipelineType layerPip = camera.depthTest ? PIP_RTT : PIP_RTT_NODEPTH;
+    const ComponentId uiId = scene->getComponentId<UIComponent>();
+    const ComponentId rectId = scene->getComponentId<RectTransformComponent>();
+    const ComponentId groupId = scene->getComponentId<CanvasGroupComponent>();
+    // the indices of groups whose layer failed: their ancestors' layers fail too (an inner
+    // subtree drawn Per Element cannot sit in a layer)
+    std::vector<size_t> failed;
+
+    for (const auto& item : layered){
+        const size_t first = item.first;
+        const Entity groupEntity = item.second;
+        const size_t last = scene->findBranchLastIndex(groupEntity);
+
+        bool ready = true;
+        for (size_t f : failed){
+            if (f > first && f <= last){
+                ready = false;
+            }
+        }
+        // every element must have the layer's pipelines (one loaded before the scene had a
+        // Canvas Group reloads with them: Per Element this frame)
+        for (size_t i = first; i <= last && ready; i++){
+            const Entity entity = transforms->getEntity(i);
+            if (!scene->getSignature(entity).test(uiId))
+                continue;
+            UIComponent& ui = scene->getComponent<UIComponent>(entity);
+            if (ui.loaded && !(ui.loadedPipelines & layerPip)){
+                ui.needReload = true;
+                ready = false;
+            }
+        }
+        if (!ready){
+            failed.push_back(first);
+            canvasGroupRenderStats.fallbacks++;
+            continue;
+        }
+
+        // a pooled target the size of the pass target (so scissors and viewport are the pass's)
+        CanvasLayer* layer = nullptr;
+        size_t layerIndex = 0;
+        for (size_t l = 0; l < canvasLayers.size(); l++){
+            if (!canvasLayers[l]->inUse){
+                layer = canvasLayers[l].get();
+                layerIndex = l;
+                break;
+            }
+        }
+        if (!layer){
+            canvasLayers.push_back(std::make_unique<CanvasLayer>());
+            layerIndex = canvasLayers.size() - 1;
+            layer = canvasLayers.back().get();
+        }
+        Framebuffer& framebuffer = layer->framebuffer;
+        if (!framebuffer.isCreated() || framebuffer.getWidth() != targetWidth || framebuffer.getHeight() != targetHeight){
+            framebuffer.destroy();
+            framebuffer.setWidth(targetWidth);
+            framebuffer.setHeight(targetHeight);
+            framebuffer.setMinFilter(TextureFilter::NEAREST);
+            framebuffer.setMagFilter(TextureFilter::NEAREST);
+            framebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
+            framebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+            framebuffer.create();
+        }
+        if (!framebuffer.isCreated()){
+            failed.push_back(first);
+            canvasGroupRenderStats.fallbacks++;
+            continue;
+        }
+        layer->inUse = true;
+        layer->lastUsedFrame = canvasLayerFrame;
+
+        // the scissors of the group's ancestors, root first (this pass has not drawn them yet)
+        std::vector<size_t> ancestors;
+        Entity parent = scene->getComponent<Transform>(groupEntity).parent;
+        while (parent != NULL_ENTITY && transforms->hasEntity(parent) && ancestors.size() < 4096){
+            ancestors.push_back(transforms->getIndex(parent));
+            parent = scene->getComponent<Transform>(parent).parent;
+        }
+
+        canvasLayerPass.setClearColor(Vector4(0.0f, 0.0f, 0.0f, 0.0f));
+        canvasLayerPass.setLabel("canvas group layer");
+        canvasLayerPass.startRenderPass(&framebuffer.getRender());
+        canvasLayerPass.applyViewport(colorPassViewport);
+
+        bool hasActiveScissor = false;
+        for (size_t a = ancestors.size(); a-- > 0;){
+            const size_t index = ancestors[a];
+            Transform& transform = transforms->getComponentFromIndex(index);
+            const Entity entity = transforms->getEntity(index);
+            const Signature signature = scene->getSignature(entity);
+            if (perCameraMVP)
+                updateMVP(index, transform, camera, cameraTransform);
+            if (signature.test(rectId))
+                applyPassScissor(entity, signature, transform, canvasLayerPass, colorPassViewport, hasActiveScissor);
+        }
+
+        PassCanvasLayer passLayer;
+        passLayer.layer = layerIndex;
+        auto addBounds = [&](const Rect& rect){
+            if (rect.getWidth() <= 0.0f || rect.getHeight() <= 0.0f)
+                return;
+            if (!passLayer.hasBounds){
+                passLayer.bounds = rect;
+                passLayer.hasBounds = true;
+                return;
+            }
+            const float x0 = std::min(passLayer.bounds.getX(), rect.getX());
+            const float y0 = std::min(passLayer.bounds.getY(), rect.getY());
+            const float x1 = std::max(passLayer.bounds.getX() + passLayer.bounds.getWidth(), rect.getX() + rect.getWidth());
+            const float y1 = std::max(passLayer.bounds.getY() + passLayer.bounds.getHeight(), rect.getY() + rect.getHeight());
+            passLayer.bounds = Rect(x0, y0, x1 - x0, y1 - y0);
+        };
+
+        size_t skipLast = 0;
+        bool skipping = false;
+        for (size_t i = first; i <= last; i++){
+            Transform& transform = transforms->getComponentFromIndex(i);
+            const Entity entity = transforms->getEntity(i);
+            const Signature signature = scene->getSignature(entity);
+            if (skipping && i > skipLast)
+                skipping = false;
+            if (perCameraMVP)
+                updateMVP(i, transform, camera, cameraTransform);
+
+            // a nested layer (drawn before, innermost first) goes where its group is
+            if (!skipping && i > first && signature.test(groupId)){
+                auto nested = passCanvasLayers.find(entity);
+                const CanvasGroupComponent& group = scene->getComponent<CanvasGroupComponent>(entity);
+                if (nested != passCanvasLayers.end()){
+                    drawCanvasLayer(entity, nested->second, group.layerAlpha, layerPip, 1, colorPassViewport, targetWidth, targetHeight, canvasLayerPass);
+                    if (nested->second.hasBounds)
+                        addBounds(nested->second.bounds);
+                    skipping = true;
+                    skipLast = scene->findBranchLastIndex(entity);
+                }else if (group.enabled && group.renderMode == CanvasGroupRenderMode::FLATTEN && group.layerAlpha <= 0.0f){
+                    skipping = true;
+                    skipLast = scene->findBranchLastIndex(entity);
+                }
+            }
+
+            bool clippedAway = false;
+            if (signature.test(rectId))
+                clippedAway = applyPassScissor(entity, signature, transform, canvasLayerPass, colorPassViewport, hasActiveScissor);
+
+            if (!clippedAway && !skipping && signature.test(uiId) && !signature.test(scene->getComponentId<CameraComponent>())){
+                UIComponent& ui = scene->getComponent<UIComponent>(entity);
+                const bool renderActive = isRenderActive(entity, signature) && isLayerVisible(entity, cullingMask);
+                if (transform.visible && renderActive && !samplesCameraTarget(camera, ui.texture) &&
+                        !uiDrawSkipped(ui.color, ui.groupLayerAlpha, ui.drawBlendMode, ui.writesStencil)){
+                    drawUI(ui, transform, layerPip,
+                           (frameFluids && frameFluids->hasMaterialFluids()) ? frameFluids->getMaterialTexture(entity) : nullptr, true);
+                    // what it covers (its geometry's local box), for the composite's scissor
+                    const Vector3 minimum = ui.aabb.getMinimum();
+                    const Vector3 maximum = ui.aabb.getMaximum();
+                    addBounds(projectLocalRect(objectMVP(transform), minimum.x, minimum.y, maximum.x, maximum.y, colorPassViewport));
+                }
+            }
+
+            if (hasActiveScissor){
+                canvasLayerPass.applyScissor(colorPassViewport);
+                hasActiveScissor = false;
+            }
+        }
+        canvasLayerPass.endRenderPass();
+
+        passCanvasLayers[groupEntity] = passLayer;
+        canvasGroupRenderStats.layers++;
+    }
+}
+
+void RenderSystem::drawCanvasLayer(Entity group, const PassCanvasLayer& layer, float alpha, PipelineType pipelineType, int msaaSamples,
+                                   const Rect& colorPassViewport, unsigned int targetWidth, unsigned int targetHeight, CameraRender& render){
+    if (!canvasCompositeLoaded || layer.layer >= canvasLayers.size() || !layer.hasBounds || targetWidth == 0 || targetHeight == 0)
+        return;
+
+    // the group's own place: its parent's scissor, unless it ignores it
+    Rect clip = intersectScissor(layer.bounds, colorPassViewport);
+    Transform* transform = scene->findComponent<Transform>(group);
+    RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(group);
+    if (transform && transform->parent != NULL_ENTITY && !(layout && layout->ignoreScissor)){
+        Transform* parentTransform = scene->findComponent<Transform>(transform->parent);
+        RectTransformComponent* parentLayout = scene->findComponent<RectTransformComponent>(transform->parent);
+        if (parentTransform && parentLayout){
+            PassScissor parent = passScissor(*parentTransform, *parentLayout);
+            if (*parent.active)
+                clip = intersectScissor(clip, *parent.rect);
+        }
+    }
+    // rounded out to whole pixels
+    const float x0 = std::floor(clip.getX());
+    const float y0 = std::floor(clip.getY());
+    const float x1 = std::ceil(clip.getX() + clip.getWidth());
+    const float y1 = std::ceil(clip.getY() + clip.getHeight());
+    if (x1 - x0 <= 0.0f || y1 - y0 <= 0.0f)
+        return;
+
+    PipelineState state;
+    state.target = targetFormatFor(pipelineType, msaaSamples);
+    state.blend = BlendMode::PREMULTIPLIED;
+    if (!canvasCompositeObject.beginDraw(state))
+        return;
+    render.applyScissor(Rect(x0, y0, x1 - x0, y1 - y0));
+
+    // the viewport's part of the layer, rows as stored (GL counts them from the bottom)
+    const float w = (float)targetWidth;
+    const float h = (float)targetHeight;
+    const float rowStart = Engine::isOpenGL() ? colorPassViewport.getY() : h - colorPassViewport.getY() - colorPassViewport.getHeight();
+    CanvasCompositeVs vs;
+    vs.uvTransform[0] = colorPassViewport.getWidth() / w;
+    vs.uvTransform[1] = colorPassViewport.getHeight() / h;
+    vs.uvTransform[2] = colorPassViewport.getX() / w;
+    vs.uvTransform[3] = rowStart / h;
+    CanvasCompositeFs fs;
+    fs.params[0] = std::clamp(alpha, 0.0f, 1.0f);
+
+    canvasCompositeObject.addTexture(canvasCompositeTextureSlot, ShaderStageType::FRAGMENT, &canvasLayers[layer.layer]->framebuffer.getRender().getColorTexture());
+    canvasCompositeObject.applyUniformBlock(canvasCompositeVsSlot, sizeof(CanvasCompositeVs), &vs);
+    canvasCompositeObject.applyUniformBlock(canvasCompositeFsSlot, sizeof(CanvasCompositeFs), &fs);
+    canvasCompositeObject.draw(0, 3, 1);
+
+    render.applyScissor(colorPassViewport);
 }
 
 void RenderSystem::onComponentAdded(Entity entity, ComponentId componentId) {
