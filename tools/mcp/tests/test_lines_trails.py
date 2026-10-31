@@ -135,9 +135,10 @@ async def test_old_hairline_matches_main(ed: Editor):
     current = await props(ed, line, "linerenderer", ["*"])
     values = {"lines": [{"pointA": [-3, -1, 0], "colorA": [1, 0, 0, 1], "pointB": [3, -1, 0], "colorB": [0, 1, 0, 1]},
                         {"pointA": [-3, 1, 0], "colorA": [0, 0, 1, 1], "pointB": [3, 2, 0], "colorB": [1, 1, 1, 1]}]}
-    # this editor's new lines are Unity's polylines: make it the old component again
+    # writing the segment list makes it Segments in local space (as main drew it); this editor's
+    # new lines have a width, main's had none
     if "widthMultiplier" in current:
-        values.update({"mode": "segments", "widthMultiplier": 0, "useWorldSpace": False, "positions": []})
+        values["widthMultiplier"] = 0
     await set_line(ed, line, values)
     data, _ = await shot(ed, "hairline")
     if os.environ.get("JASPER_UPDATE_GOLDEN") == "1":
@@ -232,6 +233,9 @@ async def test_width_alignment_and_units(ed: Editor):
     length, thickness = x1 - x0 + 1, y1 - y0 + 1
     # 4 long, 0.5 wide: thickness / length = 1/8 (+- a pixel)
     ed.check(abs(thickness - length / 8) <= 1.5, f"0.5 of 4: {thickness} px of {length} px")
+    # image pixels per world unit at the line's depth (the later tests' scale)
+    S["ppu"] = length / 4.0
+    S["center"] = ((x0 + x1) / 2.0, (y0 + y1) / 2.0)
 
     # a camera turned 90 degrees around the line (looking from +Y): View alignment faces it
     await ed.call("set_transform", entity=S["camera"], position=[0, 10, 0], rotation={"euler": [-90, 0, 0]})
@@ -303,12 +307,161 @@ async def test_caps_and_texture(ed: Editor):
     await ed.call("delete_entities", entity=line)
 
 
+def colored_extent(data: bytes):
+    """(x0, y0, x1, y1) of the red or blue pixels (the halves texture)."""
+    w, h, ch, rows = decode_png(data)
+    xs, ys = [], []
+    for y in range(h):
+        line = rows[y]
+        for x in range(w):
+            r, g, b = line[x * ch], line[x * ch + 1], line[x * ch + 2]
+            if g < 80 and (r > 150 or b > 150) and abs(r - b) > 60:
+                xs.append(x)
+                ys.append(y)
+    return (min(xs), min(ys), max(xs), max(ys)) if xs else None
+
+
+def color_changes(data: bytes, y: int, x0: int, x1: int):
+    """(colour, x) of each red/blue change along a row, x halfway between the two colours."""
+    w, h, ch, rows = decode_png(data)
+    seq, last = [], None
+    for x in range(x0, x1 + 1):
+        r, g, b = rows[y][x * ch:x * ch + 3]
+        c = "r" if r > b + 40 else "b" if b > r + 40 else None
+        if c and (not seq or seq[-1][0] != c):
+            seq.append((c, x if last is None else (last + x) / 2))
+        if c:
+            last = x
+    return seq
+
+
+async def test_texture_modes_per_segment(ed: Editor):
+    """DistributePerSegment and RepeatPerSegment on segments of 1 and 5 units."""
+    ppu = S["ppu"]
+    line = await make_line(ed, "PerSegment", {"positions": [[-3, 0, 0], [-2, 0, 0], [3, 0, 0]], "texture": TEXTURE,
+                                              "colorGradient": "#FFFFFF", "textureMode": "distribute_per_segment"})
+    data, _ = await shot(ed, "distribute")
+    box = colored_extent(data)
+    ed.check(box is not None, "the textured line draws")
+    x_of = lambda wx: box[0] + (wx + 3) * ppu
+    y = (box[1] + box[3]) // 2
+    seq = color_changes(data, y, box[0] + 2, box[2] - 2)
+    # each segment half the texture: red to blue where the first (short) segment ends
+    ed.check(len(seq) == 2 and abs(seq[1][1] - x_of(-2)) <= 0.2 * ppu + 2, f"distribute: the change at x=-2: {seq}, expected {x_of(-2):.0f}")
+
+    await set_line(ed, line, {"textureMode": "repeat_per_segment"})
+    data, _ = await shot(ed, "repeat")
+    seq = color_changes(data, y, box[0] + 2, box[2] - 2)
+    # the whole texture on each segment: blue from its middle, red again at the next one
+    expected = [("b", x_of(-2.5)), ("r", x_of(-2)), ("b", x_of(0.5))]
+    got = seq[1:]
+    ed.check(len(got) == 3 and all(c == e[0] and abs(x - e[1]) <= 0.2 * ppu + 2 for (c, x), e in zip(got, expected)),
+             f"repeat: changes at -2.5, -2, 0.5: {seq} vs {[(c, round(x)) for c, x in expected]}")
+    await ed.call("delete_entities", entity=line)
+
+
+async def test_round_joints_and_loop(ed: Editor):
+    ppu = S["ppu"]
+    # a right-angle V, 1 wide: the miter's outer tip is sqrt(2)/2 below the corner, a round
+    # joint's half a width
+    line = await make_line(ed, "Vee", {"positions": [[-2, 1, 0], [0, -1, 0], [2, 1, 0]], "widthMultiplier": 1.0})
+    miter, _ = await shot(ed, "miter")
+    await set_line(ed, line, {"numCornerVertices": 8})
+    rounded, _ = await shot(ed, "round-joint")
+    mb, rb = red_extent(miter), red_extent(rounded)
+    ed.check(mb is not None and rb is not None, "both draw")
+    lift = (mb[3] - rb[3]) / ppu
+    ed.check(abs(lift - (0.7071 - 0.5)) <= 0.06 + 1.5 / ppu, f"the round joint is {lift:.3f} units above the miter tip (0.207)")
+    # a round joint's outline below the corner: as wide as the line there, not a point
+    w, h, ch, rows = decode_png(rounded)
+    row = rows[rb[3] - int(0.1 * ppu)]
+    reds = [x for x in range(w) if row[x * ch] > 195 and row[x * ch + 1] < 60]
+    ed.check(len(reds) > 0.3 * ppu, f"a rounded bottom ({len(reds)} px wide 0.1 above it)")
+    await ed.call("delete_entities", entity=line)
+
+    # a square: open, its left side is missing; loop closes it
+    square = [[-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0]]
+    line = await make_line(ed, "Square", {"positions": square, "widthMultiplier": 0.2})
+    open_, _ = await shot(ed, "square-open")
+    await set_line(ed, line, {"loop": True})
+    closed, _ = await shot(ed, "square-loop")
+    ob, cb = red_extent(open_), red_extent(closed)
+    ed.check(cb is not None and ob is not None, "the square draws")
+    def red_at(data, x, y):
+        w, h, ch, rows = decode_png(data)
+        px = rows[y][x * ch:x * ch + 3]
+        return px[0] > 195 and px[1] < 60 and px[2] < 60
+    left_x, mid_y = cb[0] + max(1, int(0.1 * ppu)), (cb[1] + cb[3]) // 2
+    ed.check(red_at(closed, left_x, mid_y), "loop: the closing side draws")
+    ed.check(not red_at(open_, left_x, mid_y), "open: no closing side")
+    await ed.call("delete_entities", entity=line)
+
+
+async def test_local_and_world_space_under_parents(ed: Editor):
+    ppu = S["ppu"]
+    cx = S["center"][0]
+    for scale in ([2, 1, 1], [-2, 1, 1]):
+        parent = find_key(await ed.call("create_entity", type="empty", name="Holder", position=[1, 0, 0], scale=scale), "entity_id", "id")
+        line = find_key(await ed.call("create_entity", type="line_renderer", name="Held", parent=parent), "entity_id", "id")
+        await set_line(ed, line, {"positions": [[-1, 0, 0], [1, 0, 0]], "useWorldSpace": False, "widthMultiplier": 0.5,
+                                  "colorGradient": "#FF0000", "blendMode": "opaque"})
+        data, _ = await shot(ed, f"local-{scale[0]}")
+        box = red_extent(data)
+        ed.check(box is not None, f"the local line under scale {scale} draws")
+        # the points scale and move with the parent (world -1..3), the width does not
+        length, thickness = (box[2] - box[0] + 1) / ppu, (box[3] - box[1] + 1) / ppu
+        middle = ((box[0] + box[2]) / 2 - cx) / ppu
+        ed.check(abs(length - 4) <= 0.1 and abs(middle - 1) <= 0.1, f"scale {scale}: 4 long around x=1: {length:.2f}, {middle:.2f}")
+        ed.check(abs(thickness - 0.5) <= 0.05 + 1.5 / ppu, f"scale {scale}: still 0.5 wide: {thickness:.3f}")
+        # world space: the same numbers are world points, whatever the parents
+        await set_line(ed, line, {"useWorldSpace": True})
+        data, _ = await shot(ed, f"world-{scale[0]}")
+        box = red_extent(data)
+        length = (box[2] - box[0] + 1) / ppu
+        middle = ((box[0] + box[2]) / 2 - cx) / ppu
+        ed.check(abs(length - 2) <= 0.1 and abs(middle) <= 0.1, f"world space: 2 long around 0: {length:.2f}, {middle:.2f}")
+        await ed.call("delete_entities", entities=[str(parent)])
+
+
+async def test_pixel_width_through_the_near_plane(ed: Editor):
+    """A pixel-wide line from in front of the camera to behind it is cut at the near plane."""
+    line = await make_line(ed, "ToCamera", {"positions": [[0, -1, 0], [0, -1, 15]], "widthUnit": "pixels", "widthMultiplier": 6})
+    data, info = await shot(ed, "near-plane")
+    box = red_extent(data)
+    ed.check(box is not None, "the visible part draws")
+    w, h, ch, rows = decode_png(data)
+    # below the centre (y -1, coming towards the camera: down to the bottom edge), one strip
+    ed.check(box[1] >= S["center"][1] - 2, f"nothing above the line's far end: {box}, centre {S['center']}")
+    ed.check(box[2] - box[0] <= 12, f"a 6-pixel strip, no mirrored triangles: {box}")
+    await ed.call("delete_entities", entity=line)
+
+
+async def test_set_shape_points_on_new_lines(ed: Editor):
+    line = find_key(await ed.call("create_entity", type="line_renderer", name="Shaped", position=[1, 0, 0]), "entity_id", "id")
+    # (the transform's matrix is made by the next frame)
+    await ed.call("wait", frames=2)
+    await ed.call("set_shape_points", entity=line, component="line_renderer", points=[[-1, 0, 0], [1, 0, 0], [1, 1, 0]], closed=True)
+    v = await props(ed, line, "linerenderer", ["mode", "positions", "loop", "useWorldSpace"])
+    ed.check_eq(v["mode"], "polyline", "points: a polyline")
+    ed.check_eq(v["loop"], True, "closed: a loop")
+    # local points, a world-space line: moved by the GameObject's position
+    ed.check_eq(v["positions"], [[0, 0, 0], [2, 0, 0], [2, 1, 0]], "the points in world space")
+    await ed.call("set_shape_points", entity=line, component="line_renderer", lines=[{"a": [0, 0, 0], "b": [1, 0, 0]}])
+    v = await props(ed, line, "linerenderer", ["mode", "lines", "useWorldSpace"])
+    ed.check_eq(v["mode"], "segments", "lines: segments")
+    ed.check_eq(v["useWorldSpace"], False, "segments in the GameObject's space")
+    ed.check_eq(len(v["lines"]), 1, "one segment")
+    await ed.call("undo")
+    v = await props(ed, line, "linerenderer", ["mode"])
+    ed.check_eq(v["mode"], "polyline", "one undo step")
+    await ed.call("delete_entities", entity=line)
+
+
 async def test_trail_in_play(ed: Editor):
     mover = find_key(await ed.call("create_entity", type="empty", name="Mover", position=[-4, 0, 0]), "entity_id", "id")
     trail = find_key(await ed.call("create_entity", type="trail_renderer", name="MoverTrail", parent="Mover"), "entity_id", "id")
     await set_line(ed, trail, {"time": 0.3, "widthMultiplier": 0.4, "widthCurve": 1, "minVertexDistance": 0.05,
-                               "colorGradient": {"colors": [[0, "#FF0000"], [1, "#FF0000"]], "alphas": [[0, 1], [1, 0]]}},
-                   component="trailrenderer")
+                               "colorGradient": "#FF0000"}, component="trailrenderer")
     await ed.call("play", action="start", fixed_fps=60)
     # 4 units per second along x
     await ed.call("eval_lua", code="local o = object('Mover'); local s = {}; _G.mover_mover = s; "
@@ -318,6 +471,17 @@ async def test_trail_in_play(ed: Editor):
     stats = find_key(await ed.call("get_entity", entity="MoverTrail", runtime=True), "trail")
     ed.check(isinstance(stats, dict) and stats.get("points", 0) > 3, f"points while moving: {stats!r}")
     ed.check(abs(stats["length"] - 4 * 0.3) <= 4 * 0.3 * 0.15, f"0.3 s of 4 units/s: {stats['length']}")
+    # opaque first: the lit pixels span the last 0.3 s of the path (1.2 units) +- 10 %
+    solid, _ = await shot(ed, "trail-solid")
+    sb = red_extent(solid)
+    ed.check(sb is not None, "the opaque trail draws")
+    span = (sb[2] - sb[0] + 1) / S["ppu"]
+    ed.check(abs(span - 1.2) <= 0.12 + 2 / S["ppu"], f"the trail spans 0.3 s of 4 units/s: {span:.3f} units")
+    # then fading out by age
+    await ed.call("eval_lua", code="local t = object('MoverTrail', 'TrailRenderer'); local g = Gradient(); "
+                                   "g:setKeys({{0, Vector3(1, 0, 0)}, {1, Vector3(1, 0, 0)}}, {{0, 1}, {1, 0}}); "
+                                   "t.colorGradient = g; return true")
+    await ed.call("wait", game_seconds=0.1)
     data, _ = await shot(ed, "trail")
     box = red_extent(data, tol=110)
     ed.check(box is not None, "the trail draws")
@@ -373,6 +537,22 @@ return l.mode == LineRendererMode.Polyline, l.positionCount, ok, tostring(err), 
                                         "return t.time, t.numCapVertices, scene ~= nil and object('MoverTrail'):getTrailRenderer() ~= nil"))["values"]
     ed.check_eq(v[:2], [0, 90], "values are clamped")
     ed.check_eq(v[2], True, "getTrailRenderer")
+    # a handle adds nothing; addTrailRenderer adds; more than 8 gradient keys is an error
+    code = """
+local g = GameObject(scene); g.entityOwned = false; g.name = "NoTrailYet"
+pcall(function() return object("NoTrailYet", "TrailRenderer") end)
+local had = g:hasTrailRenderer()
+local t = g:addTrailRenderer()
+local ok, err = pcall(function()
+    local keys = {}
+    for i = 0, 8 do keys[#keys + 1] = {i / 8, Vector3(1, 1, 1)} end
+    Gradient():setKeys(keys, {{0, 1}})
+end)
+return had, g:hasTrailRenderer(), t ~= nil, ok, tostring(err)
+"""
+    v = (await ed.call("eval_lua", code=code))["values"]
+    ed.check_eq(v[:3], [False, True, True], "object(..., 'TrailRenderer') adds nothing, addTrailRenderer adds")
+    ed.check(v[3] is False and "at most 8" in v[4], f"9 colour keys refused: {v[4]}")
     await ed.call("play", action="stop")
 
 

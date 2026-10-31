@@ -123,6 +123,8 @@ namespace jasperengine::editor{
         // Lines endpoint sub-selection (index = lineIndex * 2 + endpoint, 0 = A, 1 = B)
         Entity selectedLinePointEntity = 0;  // NULL_ENTITY
         int selectedLinePointIndex = -1;
+        // the line's mode when the point was picked (the index is a polyline position or a segment end)
+        LineRendererMode selectedLinePointMode = LineRendererMode::Segments;
         bool linePointEditing = false;
 
         // Polygon / MeshPolygon vertex sub-selection (both store std::vector<PolygonPoint>;
@@ -551,6 +553,8 @@ namespace jasperengine::editor{
         static std::vector<Vector3> getLinePointWorldPositions(const LineRendererComponent& lines, const Transform& transform);
         static std::string getLinePointProperty(const LineRendererComponent& lines, int pointIndex);
         static Vector3 toLinePointSpace(const LineRendererComponent& lines, const Transform& transform, const Vector3& world);
+        // the line's points (either mode) in the GameObject's local space, merged into aabb
+        static void mergeLineLocalPoints(AABB& aabb, const LineRendererComponent& lines, const Transform& transform);
         // Inspector > Line Renderer > Edit Points: Ctrl+click on a selected polyline inserts a
         // point there (insertLinePointAt)
         bool isLinePointEditing() const { return linePointEditing; }

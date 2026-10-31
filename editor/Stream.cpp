@@ -1810,8 +1810,16 @@ AnimationCurve editor::Stream::decodeCurve(const YAML::Node& node, const Animati
         }
     }
     if (node.IsMap()) {
-        if (node["pre"]) curve.preWrap = stringToCurveWrap(node["pre"].as<std::string>());
-        if (node["post"]) curve.postWrap = stringToCurveWrap(node["post"].as<std::string>());
+        // a wrap that is not a name: the default (clamp), with a warning
+        for (const char* side : {"pre", "post"}) {
+            const YAML::Node wrap = node[side];
+            if (!wrap) continue;
+            if (!wrap.IsScalar()) {
+                Out::warning("Curve: %s is not a wrap mode name (clamp, loop, ping_pong): clamp", side);
+                continue;
+            }
+            (std::string(side) == "pre" ? curve.preWrap : curve.postWrap) = stringToCurveWrap(wrap.Scalar());
+        }
     }
     curve.normalize();
     return curve;
@@ -1922,8 +1930,11 @@ Gradient editor::Stream::decodeGradient(const YAML::Node& node, const Gradient& 
 
     Gradient gradient({}, {});
     if (node["mode"]) {
-        const std::string mode = node["mode"].as<std::string>();
-        gradient.mode = (mode == "fixed") ? GradientMode::Fixed : GradientMode::Blend;
+        if (node["mode"].IsScalar()) {
+            gradient.mode = (node["mode"].Scalar() == "fixed") ? GradientMode::Fixed : GradientMode::Blend;
+        } else {
+            Out::warning("Gradient: mode is not blend or fixed: blend");
+        }
     }
     if (node["colors"] && node["colors"].IsSequence()) {
         for (const YAML::Node& keyNode : node["colors"]) {
@@ -1939,6 +1950,11 @@ Gradient editor::Stream::decodeGradient(const YAML::Node& node, const Gradient& 
             if (!keyNode.IsSequence() || keyNode.size() < 2) continue;
             gradient.alphaKeys.push_back(GradientAlphaKey(decodeFinite(keyNode[0], 0.0f), decodeFinite(keyNode[1], 1.0f)));
         }
+    }
+    // more than Unity's 8 keys: the file still loads, with the first 7 and the last (normalize)
+    if (gradient.colorKeys.size() > Gradient::MAX_KEYS || gradient.alphaKeys.size() > Gradient::MAX_KEYS) {
+        Out::warning("Gradient: %zu colour and %zu alpha keys, at most %zu each: the first %zu and the last are kept",
+                     gradient.colorKeys.size(), gradient.alphaKeys.size(), Gradient::MAX_KEYS, Gradient::MAX_KEYS - 1);
     }
     gradient.normalize();
     return gradient;

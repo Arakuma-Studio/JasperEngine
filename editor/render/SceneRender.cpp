@@ -239,11 +239,7 @@ AABB editor::SceneRender::getAABB(Scene* target, Entity entity, bool local){
         }
 
         if (signature.test(target->getComponentId<LineRendererComponent>())){
-            LineRendererComponent& lines = target->getComponent<LineRendererComponent>(entity);
-            for (const LineData& line : lines.lines){
-                aabb.merge(line.pointA);
-                aabb.merge(line.pointB);
-            }
+            mergeLineLocalPoints(aabb, target->getComponent<LineRendererComponent>(entity), transform);
         }
 
         if (local){
@@ -451,11 +447,7 @@ OBB editor::SceneRender::getOBB(Scene* target, Entity entity, bool local, bool v
             }
 
             if (signature.test(target->getComponentId<LineRendererComponent>())){
-                LineRendererComponent& lines = target->getComponent<LineRendererComponent>(entity);
-                for (const LineData& line : lines.lines){
-                    aabb.merge(line.pointA);
-                    aabb.merge(line.pointB);
-                }
+                mergeLineLocalPoints(aabb, target->getComponent<LineRendererComponent>(entity), transform);
             }
 
             if (local){
@@ -806,6 +798,17 @@ void editor::SceneRender::updateRenderSystem(){
 void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<Entity> entities, Entity mainCamera, const SceneDisplaySettings& settings){
     // (also the subclasses' gizmos: their update runs after this one)
     dropGoneGizmos();
+
+    // a line point stays selected only while its GameObject is selected and its line keeps the
+    // mode (the index means a polyline position or a segment end) and the point
+    if (selectedLinePointIndex >= 0){
+        const LineRendererComponent* lines = scene->findComponent<LineRendererComponent>(selectedLinePointEntity);
+        const size_t count = lines ? (lines->mode == LineRendererMode::Polyline ? lines->positions.size() : lines->lines.size() * 2) : 0;
+        if (!lines || lines->mode != selectedLinePointMode || selectedLinePointIndex >= (int)count ||
+                std::find(selEntities.begin(), selEntities.end(), selectedLinePointEntity) == selEntities.end()){
+            clearLinePointSelection();
+        }
+    }
 
     displaySettings = settings;
 
@@ -3085,6 +3088,8 @@ OBB editor::SceneRender::getOccluderPointOBB(Entity entity, int pointIndex){
 void editor::SceneRender::selectLinePoint(Entity entity, int pointIndex){
     selectedLinePointEntity = entity;
     selectedLinePointIndex = pointIndex;
+    const LineRendererComponent* lines = scene->findComponent<LineRendererComponent>(entity);
+    selectedLinePointMode = lines ? lines->mode : LineRendererMode::Segments;
 }
 
 void editor::SceneRender::clearLinePointSelection(){
@@ -3122,6 +3127,21 @@ std::string editor::SceneRender::getLinePointProperty(const LineRendererComponen
 
 Vector3 editor::SceneRender::toLinePointSpace(const LineRendererComponent& lines, const Transform& transform, const Vector3& world){
     return lines.useWorldSpace ? world : transform.modelMatrix.inverse() * world;
+}
+
+void editor::SceneRender::mergeLineLocalPoints(AABB& aabb, const LineRendererComponent& lines, const Transform& transform){
+    const Matrix4 toLocal = lines.useWorldSpace ? transform.modelMatrix.inverse() : Matrix4();
+    auto merge = [&](const Vector3& point){
+        aabb.merge(lines.useWorldSpace ? toLocal * point : point);
+    };
+    if (lines.mode == LineRendererMode::Polyline){
+        for (const Vector3& position : lines.positions) merge(position);
+    }else{
+        for (const LineData& line : lines.lines){
+            merge(line.pointA);
+            merge(line.pointB);
+        }
+    }
 }
 
 // Returns the line point under the mouse (-1 when none): a polyline's position index, or for
@@ -3212,8 +3232,15 @@ int editor::SceneRender::insertLinePointAt(Project* project, uint32_t commandSce
 
 bool editor::SceneRender::removeSelectedLinePoint(Project* project, uint32_t commandSceneId){
     if (selectedLinePointIndex < 0) return false;
+    // only the point of a selected GameObject's polyline, picked in that mode
+    const std::vector<Entity> selected = project->getSelectedEntities(commandSceneId);
     LineRendererComponent* lines = scene->findComponent<LineRendererComponent>(selectedLinePointEntity);
-    if (!lines || lines->mode != LineRendererMode::Polyline || selectedLinePointIndex >= (int)lines->positions.size()) return false;
+    if (!lines || lines->mode != LineRendererMode::Polyline || selectedLinePointMode != LineRendererMode::Polyline ||
+            selectedLinePointIndex >= (int)lines->positions.size() ||
+            std::find(selected.begin(), selected.end(), selectedLinePointEntity) == selected.end()){
+        clearLinePointSelection();
+        return false;
+    }
     std::vector<Vector3> positions = lines->positions;
     positions.erase(positions.begin() + selectedLinePointIndex);
     CommandHandle::get(commandSceneId)->addCommandNoMerge(

@@ -7057,10 +7057,13 @@ AABB editor::Project::getEntityWorldAABB(Scene* scene, Entity entity, Scene* mai
             }
 
             if (signature.test(scene->getComponentId<LineRendererComponent>())){
+                // either mode, world or local space points; a ribbon of world widths around them
                 const LineRendererComponent& lines = scene->getComponent<LineRendererComponent>(entity);
-                for (const LineData& line : lines.lines) {
-                    mergeWorldPoint(transform.modelMatrix * line.pointA);
-                    mergeWorldPoint(transform.modelMatrix * line.pointB);
+                const float half = (lines.loadedRibbon && lines.widthUnit == LineWidthUnit::World)
+                    ? lines.ribbon.maxHalfWidth * LineRibbonBuilder::boundsGrowth(lines.numCornerVertices) : 0.0f;
+                for (const Vector3& point : SceneRender::getLinePointWorldPositions(lines, transform)) {
+                    mergeWorldPoint(point);
+                    if (half > 0.0f) aabb.merge(AABB(point.x - half, point.y - half, point.z - half, point.x + half, point.y + half, point.z + half));
                 }
             }
         }
@@ -7111,12 +7114,8 @@ AABB editor::Project::getEntityLocalAABB(Scene* scene, Entity entity) const{
                 aabb.merge(pt.position);
             }
         }
-        if (signature.test(scene->getComponentId<LineRendererComponent>())){
-            const LineRendererComponent& lines = scene->getComponent<LineRendererComponent>(entity);
-            for (const LineData& line : lines.lines) {
-                aabb.merge(line.pointA);
-                aabb.merge(line.pointB);
-            }
+        if (signature.test(scene->getComponentId<LineRendererComponent>()) && signature.test(scene->getComponentId<Transform>())){
+            SceneRender::mergeLineLocalPoints(aabb, scene->getComponent<LineRendererComponent>(entity), scene->getComponent<Transform>(entity));
         }
     }
 
