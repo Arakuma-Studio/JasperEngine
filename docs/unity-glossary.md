@@ -33,6 +33,7 @@ Projects made before the rename are migrated once with
 | Edit > Preferences... | Edit > Editor Settings... |
 | Edit > Project Settings... | Project > Project Settings... |
 | Project Settings > Physics / Physics 2D > Layer Collision Matrix | none (new) |
+| none: Unity has no editor list of global shader values (Godot: Project Settings > Shader Globals) | none (new): Project Settings > Graphics > Shader Globals (name, type, default; a Live column in Play) |
 | Project Settings > Input Manager (virtual axes and buttons; the Input System's actions) | none (new): Project Settings > Input, the input actions (see [Input](#input) below) |
 | Window menu | View menu |
 | GameObject, Component, Assets menus | Scene and Project menus, the Structure "+" menu |
@@ -100,6 +101,9 @@ Projects made before the rename are migrated once with
 | `Input.simulateMouseWithTouches` | `Engine.callMouseInTouchEvent` |
 | Input System: on-screen controls, `InputAction`, rebinding (`PerformInteractiveRebinding`, `SaveBindingOverridesAsJson`, `LoadBindingOverridesFromJson`) | none (new): virtual sources (`Input.simulateButton`, `simulateAxis`, `addAxisDelta`, `InputActions::setSourceValue` in C++), `Input.getPressedControl`, `Input.setBindings`, `exportBindings`, `importBindings` |
 | `Physics` / `Physics2D` (`ignoreLayerCollision`, `getIgnoreLayerCollision`, `getLayerCollisionMask`, `setLayerCollisionMask`, `raycast`, `raycastAll`, `ALL_LAYERS`, `DEFAULT_RAYCAST_LAYERS`, `IGNORE_RAYCAST_LAYER`) | none (new) |
+| `Shader.SetGlobalFloat`, `SetGlobalInt`, `SetGlobalVector`, `SetGlobalColor`, `SetGlobalMatrix`, `SetGlobalFloatArray`, `SetGlobalVectorArray`, `SetGlobalTexture`, `GetGlobal*`, `Shader.PropertyToID` | none (new): `Shader.setGlobalFloat`, `setGlobalInt`, ..., `getGlobal*`, `Shader.propertyToID`, plus `hasGlobal`, `getGlobalNames`, `resetGlobals`; shaders read them as members of a `u_vs_globals` / `u_fs_globals` block (or a texture uniform of the name); C++ `ShaderGlobals` ([shaders guide, Global values](mcp/guide/shaders.md#global-values)) |
+| A material property a global feeds (Unity: the global applies when the material does not define the property) | none (new): an explicit binding, the Inspector's link button on a shader parameter row (`shaderGlobalBindings`, Lua `material:setShaderGlobalBinding(member, global)`) |
+| `Shader.EnableKeyword` (global keywords) | not supported: shader features are per material (`setShaderFeature`) |
 
 Unchanged: `Entity`, `Scene`, `Transform`, `Camera`, `Light`, `Light2D`, `Mesh`,
 `Model`, `Sprite`, `Tilemap`, `Terrain`, `Fog`, `Mirror`, `ReflectionProbe`,

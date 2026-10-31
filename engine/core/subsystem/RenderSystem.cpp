@@ -34,6 +34,7 @@
 #include "object/environment/Water.h"
 #include "subsystem/FluidSystem.h"
 #include "subsystem/TrailSystem.h"
+#include "shader/ShaderGlobals.h"
 #include "render/LineRibbonBuilder.h"
 #include <cstddef>
 #include <memory>
@@ -285,10 +286,12 @@ namespace {
     void writeSubmeshCustomUniforms(const MeshComponent& mesh, Submesh& submesh){
         const ShaderUniformValues& values = submesh.material.shaderParams;
         const ShaderManifest* manifest = submesh.manifest.get();
-        submesh.customVSParams.writeValues(values, &mesh.shaderUniforms, manifest);
-        submesh.customFSParams.writeValues(values, &mesh.shaderUniforms, manifest);
-        submesh.customVSDepthParams.writeValues(values, &mesh.shaderUniforms, manifest);
-        submesh.customFSDepthParams.writeValues(values, &mesh.shaderUniforms, manifest);
+        // members bound to a global (Material::shaderGlobalBindings) take its current value
+        const ShaderGlobalBindings* bindings = submesh.material.shaderGlobalBindings.empty() ? nullptr : &submesh.material.shaderGlobalBindings;
+        submesh.customVSParams.writeValues(values, &mesh.shaderUniforms, manifest, bindings);
+        submesh.customFSParams.writeValues(values, &mesh.shaderUniforms, manifest, bindings);
+        submesh.customVSDepthParams.writeValues(values, &mesh.shaderUniforms, manifest, bindings);
+        submesh.customFSDepthParams.writeValues(values, &mesh.shaderUniforms, manifest, bindings);
         // the extra pass: its own parameters, else its manifest's defaults (not while a component
         // copy still shares the original's: its load makes its own and writes that one)
         if (submesh.extraPass && submesh.extraPass.use_count() == 1){
@@ -300,6 +303,15 @@ namespace {
 
     // the mesh blocks of both forks, from whichever pass draws first (depth runs before color)
     void writeCustomUniforms(MeshComponent& mesh){
+        // a global a material binds changed since its blocks were written
+        const uint64_t globalsVersion = ShaderGlobals::getVersion();
+        if (mesh.globalsVersionSeen != globalsVersion){
+            mesh.globalsVersionSeen = globalsVersion;
+            for (int i = 0; i < mesh.numSubmeshes && !mesh.needUpdateShaderUniforms; i++){
+                if (!mesh.submeshes[i].material.shaderGlobalBindings.empty())
+                    mesh.needUpdateShaderUniforms = true;
+            }
+        }
         if (!mesh.needUpdateShaderUniforms)
             return;
 
@@ -309,14 +321,26 @@ namespace {
         mesh.needUpdateShaderUniforms = false;
     }
 
+    // both stages of a single-block component, from its values, the globals it binds and its
+    // manifest defaults (globalsVersionSeen: the ShaderGlobals version they were written with)
+    void writeComponentUniforms(CustomUniformBlock& vsBlock, CustomUniformBlock& fsBlock, const ShaderUniformValues& values,
+                                const ShaderManifest* manifest, const ShaderGlobalBindings& bindings, uint64_t& globalsVersionSeen){
+        const ShaderGlobalBindings* bound = bindings.empty() ? nullptr : &bindings;
+        vsBlock.writeValues(values, nullptr, manifest, bound);
+        fsBlock.writeValues(values, nullptr, manifest, bound);
+        globalsVersionSeen = ShaderGlobals::getVersion();
+    }
+
     // both stages of a single-block component with manifest defaults, rewritten first when
-    // its values changed
+    // its values changed (or a global it binds did)
     void applyComponentUniforms(ObjectRender& render, CustomUniformBlock& vsBlock, CustomUniformBlock& fsBlock,
                                 const ShaderUniformValues& values, const ShaderManifest* manifest, bool& needUpdate,
+                                const ShaderGlobalBindings& bindings, uint64_t& globalsVersionSeen,
                                 float frameTime, const Vector2& resolution){
+        if (ShaderGlobals::isOutdated(bindings, globalsVersionSeen))
+            needUpdate = true;
         if (needUpdate){
-            vsBlock.writeValues(values, nullptr, manifest);
-            fsBlock.writeValues(values, nullptr, manifest);
+            writeComponentUniforms(vsBlock, fsBlock, values, manifest, bindings, globalsVersionSeen);
             needUpdate = false;
         }
         applyCustomUniforms(render, vsBlock, frameTime, resolution);
@@ -4006,6 +4030,43 @@ bool RenderSystem::loadShaderLibraryBindings(ShaderLibraryBindings& bindings, Sh
             addTexture(texture.first, static_cast<int>(ShaderTextureDefault::WHITE));
     }
 
+    // the global shader values (ShaderGlobals): the globals blocks, and every texture uniform
+    // nothing above claims named like a global (engine textures are all u_*, which globals
+    // cannot be), bound per draw by applyGlobals
+    bindings.slotVSGlobals = shaderData.getUniformBlockIndexByName(ShaderGlobals::VERTEX_BLOCK);
+    bindings.slotFSGlobals = shaderData.getUniformBlockIndexByName(ShaderGlobals::FRAGMENT_BLOCK);
+    if (bindings.slotVSGlobals != -1)
+        bindings.vsGlobals = ShaderGlobals::acquireLayout(shaderData, ShaderGlobals::VERTEX_BLOCK);
+    if (bindings.slotFSGlobals != -1)
+        bindings.fsGlobals = ShaderGlobals::acquireLayout(shaderData, ShaderGlobals::FRAGMENT_BLOCK);
+    if (!bindings.vsGlobals)
+        bindings.slotVSGlobals = -1;
+    if (!bindings.fsGlobals)
+        bindings.slotFSGlobals = -1;
+    for (const ShaderStage& stage : shaderData.stages){
+        for (const ShaderTexture& texture : stage.textures){
+            if (!ShaderGlobals::isValidName(texture.name))
+                continue;
+            const std::pair<int, int> slot = shaderData.getTextureIndexByName(texture.name);
+            if (slot.first == -1)
+                continue;
+            const bool claimed = std::any_of(bindings.textures.begin(), bindings.textures.end(), [&slot](const ShaderTextureSlot& t) {
+                return t.slot == slot;
+            }) || std::any_of(bindings.globalTextures.begin(), bindings.globalTextures.end(), [&slot](const GlobalTextureSlot& t) {
+                return t.slot == slot;
+            });
+            if (claimed)
+                continue;
+            GlobalTextureSlot globalSlot;
+            globalSlot.slot = slot;
+            globalSlot.globalId = ShaderGlobals::propertyToID(texture.name);
+            globalSlot.cube = texture.type == TextureType::TEXTURE_CUBE;
+            bindings.globalTextures.push_back(globalSlot);
+        }
+    }
+    // (the blocks are pushed per draw, inside its pass)
+    applyGlobalTextures(render, bindings);
+
     return bindShaderTextures(bindings, render, textures);
 }
 
@@ -4810,6 +4871,29 @@ void RenderSystem::applyFrameBlock(ObjectRender& render, const ShaderLibraryBind
         render.applyUniformBlock(bindings.slotFSFrame, bindings.frameSizeFS, &passFrame);
     applyPostColor(render, bindings);
     applyBlurredScene(render, bindings);
+    applyGlobals(render, bindings);
+}
+
+void RenderSystem::applyGlobals(ObjectRender& render, const ShaderLibraryBindings& bindings){
+    // packed again only when a value changed since (once per change for every program
+    // sharing the layout), then pushed per draw like the frame block
+    if (bindings.slotVSGlobals != -1 && bindings.vsGlobals){
+        bindings.vsGlobals->update();
+        render.applyUniformBlock(bindings.slotVSGlobals, bindings.vsGlobals->size, bindings.vsGlobals->bytes.data());
+    }
+    if (bindings.slotFSGlobals != -1 && bindings.fsGlobals){
+        bindings.fsGlobals->update();
+        render.applyUniformBlock(bindings.slotFSGlobals, bindings.fsGlobals->size, bindings.fsGlobals->bytes.data());
+    }
+    applyGlobalTextures(render, bindings);
+}
+
+void RenderSystem::applyGlobalTextures(ObjectRender& render, const ShaderLibraryBindings& bindings){
+    for (const GlobalTextureSlot& textureSlot : bindings.globalTextures){
+        TextureRender* fallback = textureSlot.cube ? &emptyCubeBlack : &emptyWhite;
+        TextureRender* textureRender = ShaderGlobals::getTextureRender(textureSlot.globalId, textureSlot.cube, fallback);
+        render.addTexture(textureSlot.slot, ShaderStageType::FRAGMENT, textureRender);
+    }
 }
 
 void RenderSystem::applyPostColor(ObjectRender& render, const ShaderLibraryBindings& bindings){
@@ -9770,7 +9854,8 @@ void RenderSystem::loadPostProcess(){
         // stored by name, so a renamed or removed member just drops; unset members take the
         // manifest's @property defaults
         if (pass.params.resolve(sd, "u_fs_postParams")){
-            pass.params.writeValues(passes[i].uniforms, nullptr, manifest);
+            pass.params.writeValues(passes[i].uniforms, nullptr, manifest,
+                                    passes[i].shaderGlobalBindings.empty() ? nullptr : &passes[i].shaderGlobalBindings);
         }
 
         postProcessPasses.push_back(std::move(pass));
@@ -9782,15 +9867,28 @@ void RenderSystem::loadPostProcess(){
 
 // rewrites the pass values from the scene chain, keeping the compiled shaders
 void RenderSystem::updatePostProcessUniforms(){
-    if (!postProcessNeedUpdateUniforms || !postProcessLoaded)
+    if (!postProcessLoaded)
         return;
 
     const std::vector<PostProcessPass>& passes = scene->getPostProcessPasses();
+    // a global a pass binds changed since its values were written
+    const uint64_t globalsVersion = ShaderGlobals::getVersion();
+    if (postProcessGlobalsVersion != globalsVersion){
+        postProcessGlobalsVersion = globalsVersion;
+        for (const PostProcessRuntime& pass : postProcessPasses){
+            if (pass.passIndex < (int)passes.size() && !passes[pass.passIndex].shaderGlobalBindings.empty())
+                postProcessNeedUpdateUniforms = true;
+        }
+    }
+    if (!postProcessNeedUpdateUniforms)
+        return;
+
     for (int i = 0; i < (int)postProcessPasses.size(); i++){
         PostProcessRuntime& pass = postProcessPasses[i];
         if (pass.passIndex < (int)passes.size()){
             const ShaderManifest* manifest = (pass.manifest && pass.manifest->present) ? pass.manifest.get() : nullptr;
-            pass.params.writeValues(passes[pass.passIndex].uniforms, nullptr, manifest);
+            const ShaderGlobalBindings& bindings = passes[pass.passIndex].shaderGlobalBindings;
+            pass.params.writeValues(passes[pass.passIndex].uniforms, nullptr, manifest, bindings.empty() ? nullptr : &bindings);
         }
     }
 
@@ -10270,8 +10368,8 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
     ui.shaderManifest = (ui.customShaderId != 0) ? findManifest(uiShaderBase) : nullptr;
     ui.customVSParams.resolve(shaderData, "u_vs_customParams");
     ui.customFSParams.resolve(shaderData, "u_fs_customParams");
-    ui.customVSParams.writeValues(ui.shaderUniforms, nullptr, ui.shaderManifest.get());
-    ui.customFSParams.writeValues(ui.shaderUniforms, nullptr, ui.shaderManifest.get());
+    writeComponentUniforms(ui.customVSParams, ui.customFSParams, ui.shaderUniforms, ui.shaderManifest.get(),
+                           ui.shaderGlobalBindings, ui.globalsVersionSeen);
     ui.needUpdateShaderUniforms = false;
 
     size_t bufferSize;
@@ -10394,7 +10492,8 @@ bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pi
         //Color, faded by the element's Canvas Groups
         Vector4 drawColor = uiDrawColor(ui.color, inCanvasLayer ? ui.groupLayerAlpha : ui.groupAlpha, ui.drawBlendMode);
         render.applyUniformBlock(ui.slotFSParams, sizeof(float) * 4, &drawColor);
-        applyComponentUniforms(render, ui.customVSParams, ui.customFSParams, ui.shaderUniforms, ui.shaderManifest.get(), ui.needUpdateShaderUniforms, frameTime, passResolution);
+        applyComponentUniforms(render, ui.customVSParams, ui.customFSParams, ui.shaderUniforms, ui.shaderManifest.get(), ui.needUpdateShaderUniforms,
+                               ui.shaderGlobalBindings, ui.globalsVersionSeen, frameTime, passResolution);
         applyFrameBlock(render, ui.libraryBindings);
         render.draw(0, ui.vertexCount, 1);
 
@@ -10503,8 +10602,8 @@ bool RenderSystem::loadPoints(Entity entity, PointsComponent& points, uint16_t p
     points.sceneInputsPredicted = false;
     points.customVSParams.resolve(shaderData, "u_vs_customParams");
     points.customFSParams.resolve(shaderData, "u_fs_customParams");
-    points.customVSParams.writeValues(points.shaderUniforms, nullptr, points.shaderManifest.get());
-    points.customFSParams.writeValues(points.shaderUniforms, nullptr, points.shaderManifest.get());
+    writeComponentUniforms(points.customVSParams, points.customFSParams, points.shaderUniforms, points.shaderManifest.get(),
+                           points.shaderGlobalBindings, points.globalsVersionSeen);
     points.needUpdateShaderUniforms = false;
 
     points.buffer.clear();
@@ -10786,8 +10885,8 @@ bool RenderSystem::loadRibbonRender(Entity entity, T& component, uint16_t pipeli
     component.shaderManifest = (component.customShaderId != 0) ? findManifest(shaderBase) : nullptr;
     component.customVSParams.resolve(shaderData, "u_vs_customParams");
     component.customFSParams.resolve(shaderData, "u_fs_customParams");
-    component.customVSParams.writeValues(component.shaderUniforms, nullptr, component.shaderManifest.get());
-    component.customFSParams.writeValues(component.shaderUniforms, nullptr, component.shaderManifest.get());
+    writeComponentUniforms(component.customVSParams, component.customFSParams, component.shaderUniforms, component.shaderManifest.get(),
+                           component.shaderGlobalBindings, component.globalsVersionSeen);
     component.needUpdateShaderUniforms = false;
 
     // the buffers, sized to the data with room to grow (powers of two)
@@ -10933,7 +11032,7 @@ bool RenderSystem::drawRibbon(T& component, const Matrix4& modelMatrix, const Ve
     params.viewport = Vector4(passResolution.x, passResolution.y, 0.0f, 0.0f);
     render.applyUniformBlock(component.slotVSParams, sizeof(vs_lines_ribbon_params_t), &params);
     applyComponentUniforms(render, component.customVSParams, component.customFSParams, component.shaderUniforms, component.shaderManifest.get(),
-                           component.needUpdateShaderUniforms, frameTime, passResolution);
+                           component.needUpdateShaderUniforms, component.shaderGlobalBindings, component.globalsVersionSeen, frameTime, passResolution);
     applyFrameBlock(render, component.libraryBindings);
     render.draw(0, ribbon.indexCount, 1);
 
@@ -11155,8 +11254,8 @@ bool RenderSystem::loadLines(Entity entity, LineRendererComponent& lines, uint16
     lines.shaderManifest = (lines.customShaderId != 0) ? findManifest(linesShaderBase) : nullptr;
     lines.customVSParams.resolve(shaderData, "u_vs_customParams");
     lines.customFSParams.resolve(shaderData, "u_fs_customParams");
-    lines.customVSParams.writeValues(lines.shaderUniforms, nullptr, lines.shaderManifest.get());
-    lines.customFSParams.writeValues(lines.shaderUniforms, nullptr, lines.shaderManifest.get());
+    writeComponentUniforms(lines.customVSParams, lines.customFSParams, lines.shaderUniforms, lines.shaderManifest.get(),
+                           lines.shaderGlobalBindings, lines.globalsVersionSeen);
     lines.needUpdateShaderUniforms = false;
 
     lines.buffer.clear();
@@ -11283,7 +11382,8 @@ bool RenderSystem::drawPoints(Entity entity, PointsComponent& points, Transform&
         vsParams.mvpMatrix = objectMVP(transform);
         vsParams.pointScale = computePointsScale(camera, getPointsViewportHeight(camera));
         render.applyUniformBlock(points.slotVSParams, sizeof(vs_points_params_t), &vsParams);
-        applyComponentUniforms(render, points.customVSParams, points.customFSParams, points.shaderUniforms, points.shaderManifest.get(), points.needUpdateShaderUniforms, frameTime, passResolution);
+        applyComponentUniforms(render, points.customVSParams, points.customFSParams, points.shaderUniforms, points.shaderManifest.get(), points.needUpdateShaderUniforms,
+                               points.shaderGlobalBindings, points.globalsVersionSeen, frameTime, passResolution);
         applyFrameBlock(render, points.libraryBindings);
         applySceneInputs(render, points.libraryBindings);
 #ifdef JASPERENGINE_EDITOR
@@ -11381,7 +11481,8 @@ bool RenderSystem::drawLines(Entity entity, LineRendererComponent& lines, Transf
         }else{
             render.applyUniformBlock(lines.slotVSParams, sizeof(float) * 16, (void*)&objectMVP(transform));
         }
-        applyComponentUniforms(render, lines.customVSParams, lines.customFSParams, lines.shaderUniforms, lines.shaderManifest.get(), lines.needUpdateShaderUniforms, frameTime, passResolution);
+        applyComponentUniforms(render, lines.customVSParams, lines.customFSParams, lines.shaderUniforms, lines.shaderManifest.get(), lines.needUpdateShaderUniforms,
+                               lines.shaderGlobalBindings, lines.globalsVersionSeen, frameTime, passResolution);
         applyFrameBlock(render, lines.libraryBindings);
         render.draw(0, segments.size() * 2, 1);
     }
@@ -11508,8 +11609,8 @@ bool RenderSystem::loadSky(Entity entity, SkyboxComponent& sky, uint16_t pipelin
     sky.shaderManifest = (sky.customShaderId != 0) ? findManifest(skyShaderBase) : nullptr;
     sky.customVSParams.resolve(shaderData, "u_vs_customParams");
     sky.customFSParams.resolve(shaderData, "u_fs_customParams");
-    sky.customVSParams.writeValues(sky.shaderUniforms, nullptr, sky.shaderManifest.get());
-    sky.customFSParams.writeValues(sky.shaderUniforms, nullptr, sky.shaderManifest.get());
+    writeComponentUniforms(sky.customVSParams, sky.customFSParams, sky.shaderUniforms, sky.shaderManifest.get(),
+                           sky.shaderGlobalBindings, sky.globalsVersionSeen);
     sky.needUpdateShaderUniforms = false;
 
     if (TextureRender* textureRender = sky.texture.getRender(&emptyCubeWhite)){
@@ -11578,7 +11679,8 @@ bool RenderSystem::drawSky(SkyboxComponent& sky, PipelineType pipType, const Mat
         }
         render.applyUniformBlock(sky.slotVSParams, sizeof(float) * 16, (void*)&viewProjection);
         render.applyUniformBlock(sky.slotFSParams, sizeof(float) * 4, &sky.color);
-        applyComponentUniforms(render, sky.customVSParams, sky.customFSParams, sky.shaderUniforms, sky.shaderManifest.get(), sky.needUpdateShaderUniforms, frameTime, passResolution);
+        applyComponentUniforms(render, sky.customVSParams, sky.customFSParams, sky.shaderUniforms, sky.shaderManifest.get(), sky.needUpdateShaderUniforms,
+                               sky.shaderGlobalBindings, sky.globalsVersionSeen, frameTime, passResolution);
         applyFrameBlock(render, sky.libraryBindings);
         render.draw(0, 36, 1);
     }
