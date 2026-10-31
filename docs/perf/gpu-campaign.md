@@ -166,6 +166,56 @@ VAT draws 5,000 heroes in 3-4 ms of GPU on either backend. The skinned crowd is 
 GPU as one texture per hero on GL (an upload per hero per frame) and as storage buffers on Vulkan.
 S21 has no GPU budget; recorded for its follow-up.
 
+### S11 materials (AC11, R13)
+
+`tools/perf/gpu_campaign.py pbr --size 3840 2160` on the generated `build/pbr-extended` (200
+spheres a scene), the Game view's GPU time; at 1080p a 0.24 ms frame let the GPU clock down mid-run
+(1065-1695 MHz, ratios of ±40 % noise), so the scenes are measured at 4K, where it holds 1.7+ GHz.
+The ratio is the whole view's, so it slightly understates a lobe's per-sphere cost.
+
+| Scene | GPU (Standard) | vs Lit Baseline | Budget | High / Standard |
+|---|---|---|---|---|
+| Lit Baseline | 0.648 ms | | | 1.079 (≤ 1.05: **over**) |
+| Lobes Off | 0.647 | -0.2 % | ≤ +2 % | 1.082 |
+| Clearcoat | 0.788 | +21.6 % | ≤ +25 % | 1.025 |
+| Sheen | 0.755 | +16.5 % **over** | ≤ +15 % | 1.103 |
+| Anisotropy | 0.720 | +11.1 % | ≤ +15 % | 1.122 |
+| Iridescence | 0.823 | +27.0 % | ≤ +30 % | 1.075 |
+| Specular/IOR | 0.705 | +8.8 % **over** | ≤ +3 % | 1.054 |
+| Transmission | 1.982 | +205.9 % (with the scene-colour copy, which the budget excludes) | ≤ +20 % | 1.047 |
+| Hex Terrain / Terrain Baseline | 6.056 / 1.173 | **5.16x** | ≤ 1.35x | |
+
+Software (E) could not see these (vertex-bound on llvmpipe: every lobe within 1 %). Open: Sheen,
+Specular/IOR and High quality are a few points over; the hex terrain is 4x over. The terrain's hex
+layers no longer also run the near/far path they threw away (`terrain_fs.glsl`), which made no
+measurable difference (the compiler had dropped it); what remains is the hex taps themselves
+(three explicit-gradient taps per map and layer, plus the side planes) and needs a design change
+(fewer maps on the hex path, or the hex weights shared across layers).
+
+### S20 particles (R23)
+
+`gpu_campaign.py particles`: the reference stack (curl noise High, colour and size over lifetime,
+billboards, additive) at 50,000 a second with 1.5-2.5 s lives, 0.05-0.15 m wide (3-10 px at 14 m):
+**92,344 live particles, 0.245 ms** of GPU at 1080p over the empty scene (≤ 1.5 ms for 100 k), one
+draw. Mobile (10 k, Adreno/Mali) pending.
+
+### S16 HTML UI (R22-R24)
+
+`HtmlUIRenderPerf` on the NVIDIA GL (5 runs; the harness has no GPU pass timers, so "frame" is the
+wall time of a frame started with the GPU idle): B2 `list-500` 1,115 -> 3 draws, engine 1.40 ->
+0.30 ms (21 %, R22 ≤ 50 %), frame 3.10 -> 0.36 ms; B6 the same; B3 `text-wall` 39 -> 1 draw, frame
+0.085 -> 0.057 ms. R24 (B2's fragment cost ≤ baseline) has no pass-level GPU number; the frame is
+8.6x faster. **Fixed:** since S32 these benchmarks measured frames with nothing drawn (every
+pipeline still being created; llvmpipe too), so their gates compared empty frames; they now wait
+until creation is idle over 5 drawn frames.
+
+### S15 profiler overhead (AC4)
+
+`tools/perf/profiler_overhead.py --runs 30`, the S15 merge against its parent (both with the
+benchmark focus fix), frames of 0.81 ms: idle **+0.72 %** [+0.04, +1.40] (≤ 0.5 %: over, ~6 µs a
+frame), recording +1.16 % (≤ 3 %), recording + GPU timers **+4.19 %** (≤ 3.5 %: over, ~34 µs).
+Software (E, 120 rounds): idle +0.40 %. Open (`docs/specs/S15-profiling-diagnostics.md`).
+
 ### Known measurement limits
 
 - **Vulkan pass timers in the editor drop the Game view's passes on light frames.** Captures of

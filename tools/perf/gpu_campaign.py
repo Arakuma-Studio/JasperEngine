@@ -253,7 +253,8 @@ PARTICLE_PATCH = json.dumps({
         "main": {"startLifetime": {"mode": "twoConstants", "constant": 1.5, "constantMax": 2.5},
                  "startSpeed": {"mode": "twoConstants", "constant": 2, "constantMax": 4},
                  "startSize": {"mode": "twoConstants", "constant": 0.05, "constantMax": 0.15}, "gravityModifier": 0.3},
-        "emission": {"rateOverTime": 50000},
+        # (the fire preset caps emission at 100 a tick: 6,000 a second at 60 Hz)
+        "emission": {"rateOverTime": 50000, "maxPerTick": 100000},
     }})
 
 

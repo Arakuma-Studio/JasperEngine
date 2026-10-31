@@ -74,3 +74,12 @@ cache (a rig is in parents-first depth-first order, so a subtree is a contiguous
 root-motion lap of a looping clip (its root at 0 and at its length) is sampled once at bind
 instead of every frame. A handled clip event builds no string (the "no handler" warning's key is
 hashed in place): before, each event cost two allocations.
+
+## GPU skinning on a GPU (GPU campaign)
+
+RTX 3080 Ti, `tools/performance/vat_crowd.py --gpu-passes` (Game view 752x362): the skinned crowd's
+GPU time is 28.8 / 61.2 / 101.8 ms on GL and 2.9 / 6.6 / 19.1 ms on Vulkan at 1,000 / 2,000 / 5,000
+heroes (its frame is CPU-bound either way: 115-1,624 ms posing). GL uploads each hero's bones as a
+texture every frame, Vulkan a storage buffer. No S21 GPU budget; recorded for a follow-up (the
+crowd's bones in one texture or buffer per frame). The VAT crowd draws 5,000 heroes in 3-4 ms of
+GPU on either backend (`tools/performance/vat-crowd.md`).

@@ -122,3 +122,23 @@ python3 tools/performance/vat_crowd.py [--count 2000] [--frames 60] [--warmup 30
 It needs the editor and `jasperengine-editor-tests` built (`-DJASPERENGINE_EDITOR_TESTS=ON`); without
 a DISPLAY it runs the editor under `xvfb-run` with software GL and a D-Bus session. Results go to
 `<output>/results.json` and `<output>/<count>/<case>.json` (the benchmark's own JSON).
+
+## Results on a GPU (GPU campaign, 31 October 2026)
+
+NVIDIA GeForce RTX 3080 Ti (driver 595.99.02), Release, the editor on a headless Xorg (GL) and
+Vulkan, Game view 752 x 362, 300 frames after 120 of warmup, `--gpu-passes` (frame / GPU ms):
+
+| heroes | case | GL | Vulkan |
+|---|---|---|---|
+| 1,000 | skinned | 155.8 / 28.76 | 145.0 / 2.90 |
+| 1,000 | VAT Vertices | 1.09 / 0.67 | 1.00 / 0.58 |
+| 1,000 | VAT Bones | 1.07 / 0.79 | 1.01 / 0.55 |
+| 2,000 | skinned | 589.1 / 61.17 | 563.5 / 6.62 |
+| 2,000 | VAT Vertices | 1.49 / 1.33 | 1.36 / 1.18 |
+| 2,000 | VAT Bones | 1.72 / 1.54 | 1.26 / 1.09 |
+| 5,000 | skinned | 1632.9 / 101.82 | 1564.6 / 19.11 |
+| 5,000 | VAT Vertices | 3.65 / 3.34 | 3.27 / 2.96 |
+| 5,000 | VAT Bones | 4.17 / 3.83 | 3.03 / 2.75 |
+
+Every hero is drawn. VAT is 140-450x faster per frame than the skinned crowd, whose CPU posing
+dominates; on GL the skinned crowd's GPU time is also ~10x Vulkan's (a bones texture per hero).
