@@ -1,0 +1,29 @@
+---@meta _
+-- Hand-written shapes of the Http options (engine/core/script/binding/NetClassesLua.cpp, feature
+-- http), appended to the generated stubs. The guide: docs/mcp/guide/networking.md.
+
+---Options of Http.get / post / put / patch / delete / head / download / getTexture (all optional).
+---An unknown key logs a warning once (a typo like `timout`).
+---@class HttpOptions
+---@field headers? table<string, string|number>|string[][] # request headers: {["Authorization"] = "Bearer x"} or {{"Name", "value"}, ...}
+---@field query? table<string, string|number|boolean> # appended to the URL, percent-encoded, sorted by name
+---@field body? string # the raw body (binary-safe; set Content-Type in headers)
+---@field json? any # sent as JSON (Json.encode), Content-Type: application/json unless set
+---@field form? table<string, string|number|boolean> # sent as application/x-www-form-urlencoded
+---@field timeout? number # seconds for the whole request (default Http.timeout = 30); 0: none. Wall clock (Engine.timeScale does not change it)
+---@field connectTimeout? number # seconds to connect (default 15)
+---@field redirects? boolean|integer # follow redirects: true (10 hops, default), false/0 (a 3xx is the response), or at most n hops
+---@field verifyTls? boolean # check the server's certificate (default true; false logs a warning once per host; ignored on the web)
+---@field responseType? "text"|"binary"|"json" # "json" also decodes the body into response.data (a parse failure: errorCode "decode")
+---@field maxBodySize? integer # bytes an in-memory body may have (default 64 MiB; 0: no limit); more: errorCode "too_large"
+---@field onProgress? fun(request: HttpRequest, received: integer, total: integer) # at most once a frame, before the callback; total -1 when unknown
+---@field owner? ScriptInstance|EntityHandle|Scene # the request ends silently (no callback) when its owner goes: `owner = self` in per-scene scripts
+---@field file? string # write the body to this file instead (as Http.download)
+---@field resume? boolean # a download continues an existing <path>.part (Range request)
+---@field keepPartial? boolean # a failed or cancelled download keeps its <path>.part (to resume later)
+
+---Http.request's options: the URL, the method and the callback, with every HttpOptions key.
+---@class HttpRequestOptions : HttpOptions
+---@field url string # http:// or https:// (plain http:// only to localhost unless player.allow_insecure_http)
+---@field method? string # "GET" (default), "POST", "PUT", "PATCH", "DELETE", "HEAD" or any token (uppercased)
+---@field onComplete? fun(response: HttpResponse) # the callback
