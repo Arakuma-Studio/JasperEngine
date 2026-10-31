@@ -73,6 +73,7 @@ the project (see [editor-integration.md](editor-integration.md)).
 | References | After all instances of the scene exist, entity-reference properties are resolved (second pass). So in `init()` all references are valid, but the referenced script's own `init()` may not have run yet. |
 | `init(self)` | Called once (third pass) for every enabled Lua script. Register events here. |
 | Events | Methods registered with `RegisterEngineEvent` / `RegisterEvent` are called by the engine. |
+| Coroutines, timers | `self:startCoroutine(fn)` and `self:invoke(...)` belong to the instance: deactivating the GameObject stops its coroutines (not its timers), destroying it or unloading its scene ends both (2.14). |
 | `onDestroy(self)` | Called (if defined) when the GameObject is destroyed at runtime (`GameObject.destroy` / `destroyImmediate`), before the instance is released. It is NOT called when the scene/play mode simply stops. Not a registered event, just define the method. |
 | Release | All subscriptions made through `RegisterEngineEvent`/`RegisterEvent` for this instance are removed automatically. |
 
@@ -319,10 +320,12 @@ Mass: `self.body:getMass()` (method, kg). To get a target acceleration `a` in po
 
 | Name | Kind | Notes |
 |---|---|---|
-| `deltatime` | ro | seconds since last frame (clamped, times `timeScale`). Same value inside `onFixedUpdate`. |
-| `updateTime` | rw | fixed step in seconds (default 1/60). Also `Engine.setUpdateTimeMS(ms)` |
+| `deltatime` | ro | seconds since last frame (clamped, times `timeScale`). Same value inside `onFixedUpdate` (`Time.deltaTime` gives the fixed step there, 2.13). |
+| `unscaledDeltatime`, `unscaledTime` | ro | the frame delta before `timeScale` (0 while paused or held) and its sum: `Time.unscaledDeltaTime` / `Time.unscaledTime` |
+| `maxDeltatime` | rw | cap of a frame's delta (default 0.25 s; values <= 0 are ignored with a warning): `Time.maximumDeltaTime` |
+| `updateTime` | rw | fixed step in seconds (default 1/60), Unity's `Time.fixedDeltaTime`. Also `Engine.setUpdateTimeMS(ms)` |
 | `timeScale` | rw | game speed (Unity's `Time.timeScale`): scales the frame delta, physics steps, actions, animations, tweens, particles. 1 = real time, 0 = frozen (frames still draw, `onUpdate` runs with delta 0). Clamped to [0, 100] |
-| `fixedDeltatime` | rw | when > 0, every frame advances exactly this many seconds (before `timeScale`) whatever the wall clock measured: reproducible runs. 0 (default) = measured frame time |
+| `fixedDeltatime` | rw | when > 0, every frame advances exactly this many seconds (before `timeScale`) whatever the wall clock measured: reproducible runs. 0 (default) = measured frame time. NOT the fixed step (that is `updateTime`): Unity's `Time.captureDeltaTime` |
 | `gameTime` | ro | scaled seconds the update loop has run since start (not while paused or held) |
 | `frameCount` | ro | frames the update loop has run since start (not while paused or held) |
 | `interpolationAlpha` | ro | fixed-step interpolation factor: how far the frame is between the last fixed step and the next (bodies are drawn this far from their pose before the last step) |
@@ -742,8 +745,134 @@ Buoyancy needs no script: a dynamic `Rigidbody` with `buoyancy > 0` floats (4.14
 `Color.linearTosRGB(...)`, `Color.sRGBToLinear(...)`: accept `Vector3`, `Vector4`, `(r,g,b)`
 or `(r,g,b,a)`.
 
-No timer API is bound: accumulate `Engine.deltatime` in `self`, or use
-`GameObject.destroy(obj, delay)` for delayed destruction, or Tweens/Actions.
+### 2.13 Time (static, Unity's Time)
+
+The game clocks under their Unity names. `Engine.deltatime` and the other `Engine` names stay;
+prefer `Time` in new code: its names are Unity's and they avoid the `Engine.updateTime` /
+`Engine.fixedDeltatime` trap.
+
+| Name | Kind | Notes |
+|---|---|---|
+| `deltaTime` | ro | game seconds of this frame (times `timeScale`); inside `onFixedUpdate` (a fixed step) the fixed step `fixedDeltaTime` |
+| `unscaledDeltaTime` | ro | the frame delta before `timeScale` (runs at time scale 0: pause menus); inside a fixed step `fixedUnscaledDeltaTime`; 0 while the app or the editor's Play is paused |
+| `fixedDeltaTime` | rw | game seconds per fixed step (physics, `onFixedUpdate`), default 1/60 |
+| `fixedUnscaledDeltaTime` | ro | `fixedDeltaTime / timeScale` (0 at time scale 0) |
+| `time` | ro | game seconds since start (inside a fixed step, `fixedTime`) |
+| `fixedTime` | ro | sum of the fixed steps run (inside a step: the time at its start) |
+| `unscaledTime` | ro | sum of `unscaledDeltaTime` |
+| `realtimeSinceStartup` | ro | wall clock seconds since the engine started (pauses included) |
+| `timeSinceLevelLoad` | ro | game seconds since the last `SceneManager.loadScene` (or Play start) |
+| `frameCount` | ro | frames the update loop has run |
+| `timeScale` | rw | game speed, [0, 100]: scales the frame delta, physics, actions, tweens, animations, particles, `Coroutine.wait` and timers (not `waitRealtime`, unscaled timers, audio, HTML UI) |
+| `maximumDeltaTime` | rw | cap of a frame's delta (default 0.25; values <= 0 are ignored with a warning) |
+| `captureDeltaTime` | rw | when > 0 every frame advances exactly this many seconds (before `timeScale`); 0 = measured frames |
+| `smoothDeltaTime` | ro | exponential average of `deltaTime` |
+| `inFixedTimeStep` | ro | true inside `onFixedUpdate`, the physics step and the coroutines waiting for it |
+
+| Old name | `Time` name |
+|---|---|
+| `Engine.deltatime` | `Time.deltaTime` (but the frame delta inside `onFixedUpdate` too) |
+| `Engine.updateTime` | `Time.fixedDeltaTime` (the fixed step) |
+| `Engine.fixedDeltatime` | `Time.captureDeltaTime` (a fixed frame delta, NOT the fixed step) |
+| `Engine.timeScale` | `Time.timeScale` |
+| `Engine.gameTime` | `Time.time` |
+| `Engine.frameCount` | `Time.frameCount` |
+| `Engine.unscaledDeltatime`, `Engine.unscaledTime` | `Time.unscaledDeltaTime`, `Time.unscaledTime` |
+| `Engine.maxDeltatime` | `Time.maximumDeltaTime` |
+| `Engine.systemTime` | `Time.realtimeSinceStartup` (from engine start, not an absolute clock) |
+
+### 2.14 Coroutines and timers (Coroutine, Timer, self:startCoroutine, self:invoke)
+
+Engine coroutines are Lua functions the engine resumes: a wait helper suspends the running one
+until its condition holds, then it continues on a later frame (Unity's `StartCoroutine` /
+`yield return`). Lua yields through plain calls, so helpers compose (`self:moveTo(p)` may wait).
+
+```lua
+function Spawner:init()
+    self.loop = self:startCoroutine(function()
+        Coroutine.wait(2)                         -- WaitForSeconds(2): game time
+        while true do
+            self:spawn()
+            Coroutine.wait(self.interval)
+        end
+    end)
+    self:invokeRepeating("blink", 1, 0.5)          -- InvokeRepeating("blink", 1, 0.5)
+end
+function Spawner:openDoor()                        -- `yield return StartCoroutine(Open())`
+    self:startCoroutine(function()
+        local ok = Coroutine.waitFor(self:startCoroutine(self.animateOpen, self))
+        Coroutine.waitUntil(function() return self.player.ready end, 5)   -- false after 5 s
+    end)
+end
+```
+
+| Script instance method | What it does |
+|---|---|
+| `self:startCoroutine(fn, ...)` / `self:startCoroutine("method", ...)` | runs `fn(...)` (or `self:method(...)`) in a new coroutine owned by this script, now until its first wait, and returns its `Coroutine`. Raises when the GameObject is inactive or the method is missing; allowed on a disabled script. An error inside is logged with the coroutine's traceback (the handle gets status `"error"`), never raised in the caller |
+| `self:stopCoroutine(co)` / `self:stopCoroutine("method")` | stops that coroutine (it must be this script's) / every coroutine of this script started with that method name; ended or unknown: nothing |
+| `self:stopAllCoroutines()` | every coroutine this script started (no other script's) |
+| `self:invoke(fn, delay [, unscaled])` / `self:invoke("method", delay [, unscaled])` | calls `fn()` / `self:method()` once after `delay` seconds; returns a `Timer`. A missing method is logged once when it fires |
+| `self:invokeRepeating(fnOrName, delay, interval [, unscaled])` | first after `delay`, then every `interval` (> 0) seconds |
+| `self:cancelInvoke([timerOrName])` | no argument: every timer of this script; a method name: its timers; a Timer: that one |
+| `self:isInvoking([timerOrName])` | a matching timer is pending |
+
+| Wait helper (inside an engine coroutine) | Resumes | Returns |
+|---|---|---|
+| `Coroutine.wait(seconds)` | after `seconds` of game time (scaled; never at `timeScale` 0; <= 0: next frame) | elapsed game seconds |
+| `Coroutine.waitRealtime(seconds)` | after unscaled seconds (runs at time scale 0) | elapsed unscaled seconds |
+| `Coroutine.nextFrame()` (= `coroutine.yield()`) | next frame (Unity's `yield return null`) | nothing |
+| `Coroutine.waitFrames(n)` | after `n` frames (n >= 1) | nothing |
+| `Coroutine.waitForFixedUpdate()` | after the next fixed step's physics (none at time scale 0) | nothing |
+| `Coroutine.waitForEndOfFrame()` | after this frame's draw | nothing |
+| `Coroutine.waitUntil(pred [, timeout [, unscaled]])` | when `pred()` is truthy, checked every frame | `true`, or `false` on timeout |
+| `Coroutine.waitWhile(pred [, timeout [, unscaled]])` | when `pred()` is falsy | same |
+| `Coroutine.waitFor(x)` (= `coroutine.yield(x)`) | when `x` is done | see below |
+
+`waitFor(x)`: a `Coroutine` -> `true, ...what it returned` / `false, error` (`false, "stopped"`),
+at once when it already ended; a `Timer` -> `true` when it fired, `false` when cancelled (an
+endless `every` raises "never done"); a Tween or any Action, an `AudioSource`, an
+`AnimationPlayer` -> `true` when stopped / not playing, `false` when its GameObject is gone; an
+anime animation or timer -> `true` completed, `false` cancelled; anything else with an
+`isDone()` method (the HTTP request handle) -> `true, x` once `x:isDone()` is truthy.
+
+Statics: `Coroutine.start(fn, ...)` (unowned: survives scene loads, ends at Play stop; for
+`require`d modules and HTML UI document scripts), `Coroutine.running()` (the handle or nil),
+`Coroutine.isInside()`. A `Coroutine` handle: `status` (`"running"`, `"suspended"`,
+`"finished"`, `"stopped"`, `"error"`), `error` (string with traceback, or nil), `owner` (the
+script instance or nil), `id`, `isDone()`, `stop()`. Lua's own `coroutine` library is untouched:
+`coroutine.wrap` generators work inside engine coroutines (the wait helpers do not, inside them).
+
+Timers outside scripts: `Timer.after(delay, fn [, opts])` and `Timer.every(interval, fn [, opts])`,
+`opts = {unscaled = bool, owner = self, delay = firstDelay (every), count = n (every)}`; `every`
+passes the Timer to `fn` and returning `false` cancels it. A `Timer`: `cancel()`, `isDone()`,
+`remaining` (seconds to the next call), `interval` (0 for a one-shot), `unscaled`, `id`. Timers
+count seconds (scaled by default), fire at most once a frame (a late repeat is rescheduled from
+now, no catch-up burst) and run after `onUpdate`. HTML UI animation timing stays
+`anime.createTimer` (milliseconds, the UI clock); for gameplay use `self:invoke` / `Timer.after`.
+
+Frame order: fixed steps (`onFixedUpdate`, physics, then the coroutines waiting
+`waitForFixedUpdate`), `onUpdate`, then timers and the coroutines whose wait is over (seconds,
+frames, predicates, `waitFor`; in the order they were started), the scenes' update,
+`onPostUpdate`, destroys, the draw, then the coroutines waiting `waitForEndOfFrame`. Every wait
+resumes on a later frame, except `waitForEndOfFrame` (same frame) and a `waitFor` of an ended
+coroutine (at once).
+
+Lifetime:
+
+| Event | Coroutines of the script | Its timers | Unowned (`Coroutine.start`, `Timer.after`) |
+|---|---|---|---|
+| `self.enabled = false` (script disabled) | continue | continue | - |
+| GameObject (or a parent) deactivated | stopped (to-be-closed variables close) | continue | - |
+| GameObject destroyed, scene unloaded (`loadScene`), Play stop | stopped | cancelled | continue on loads; end at Play stop |
+| `Time.timeScale = 0` | scaled waits wait | scaled timers wait | same |
+| App in background, editor Play paused | nothing runs, no clock advances (realtime too) | same | same |
+
+A coroutine that stops itself (`self:stopAllCoroutines()`, `Coroutine.running():stop()`) runs
+on to its next wait, which ends it. Errors read `Lua coroutine error in Spawner (GameObject
+'Spawner', scene 'Level1'), started at Spawner.lua:12: ... stack traceback: ...` (timers:
+`Lua timer error in ..., created at ...`). In the editor such an error stops Play, like an
+error in an event callback ("Script crash" in the Console). MCP `get_runtime_entity` lists each
+script's coroutines (what each waits for) and timers; `get_play_state` has the totals.
 
 ---
 
@@ -1642,7 +1771,8 @@ Rigidbody wrappers by index.
    use radians: convert with `math.rad`/`math.deg` or `Angle.degToRad`/`Angle.radToDeg`.
 9. **Forces in `onFixedUpdate`, without deltatime.** Forces are applied per physics step;
    do not multiply by `Engine.deltatime` (which is the frame delta even inside
-   `onFixedUpdate`; the fixed step is `Engine.updateTime`). Impulses are one-off and can be
+   `onFixedUpdate`; the fixed step is `Engine.updateTime`, `Time.fixedDeltaTime`, and
+   `Time.deltaTime` is the fixed step there). Impulses are one-off and can be
    applied anywhere. 2D forces/impulses are in Box2D units (kg, meters); positions and
    velocities read/written through Rigidbody2D are in points (`pointsToMeterScale`, default 64).
 10. **Pass every argument.** LuaBridge ignores C++ default arguments. A missing trailing
@@ -1692,3 +1822,13 @@ Rigidbody wrappers by index.
 26. **Saves go to `data://`.** `asset://` and `lua://` are read-only (and inside the APK on
     Android); `File.*` and `Json.*File` return `nil, message` on file problems instead of
     raising: check the first result. On Web, Lua `io` writes need `System.syncFileSystem()`.
+27. **Event handlers cannot wait.** `onUpdate`, input events, `init` and `onDestroy` are called
+    from C: `Coroutine.wait` there raises "not inside an engine coroutine". Start a coroutine
+    (`self:startCoroutine(function() ... end)`). Waits inside a `table.sort` comparator, a
+    metamethod or another C callback raise too ("waits cannot cross a C function").
+28. **Realtime stops when paused.** `Coroutine.waitRealtime` and unscaled timers run at
+    `timeScale = 0` but not while the app is in the background or the editor's Play is paused
+    (unlike Unity's wall clock).
+29. **Timers outlive deactivation; coroutines do not.** `self:invoke` keeps firing while the
+    GameObject is inactive (Unity); coroutines stop when it is deactivated and do not come back
+    on reactivation: start them again (in `onEnable`, or where you reactivate).
