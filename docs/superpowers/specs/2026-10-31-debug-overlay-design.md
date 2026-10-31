@@ -443,8 +443,8 @@ the code:
     - **safe-area**: `DebugOverlay::setSafeAreaInsetsProvider(fn)` with a function filling the
       canvas-px insets from `Screen::getSafeAreaInsets()`; the overlay moves its body's edges in by
       them (RCSS of an `.rml` document has no `env()`), re-applied when they change. Until then 0.
-    - **persistence**: entity/body/scene counts should add the persistent scene when it is not in
-      `Engine::getSceneLayers()`.
+    - **persistence** (merged): the persistent scene is a running scene layer, so the counts include
+      it; the overlay is drawn after it and after the loading scene.
 13. **Editor**: Project Settings > Debug page (Overlay and Log sections) with reset arrows; OK
     applies one `DebugSettingsCmd` to the project history (undoable, like Input). The settings
     live in `editor/DebugSettings.{h,cpp}` (struct, value names, `toOverlaySettings`), used by
