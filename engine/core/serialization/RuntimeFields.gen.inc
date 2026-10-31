@@ -248,6 +248,13 @@ template<> struct Codec<AnimatorIKConstraint> {
 template<> struct TextureVisit<AnimatorIKConstraint> {
     static void visit(AnimatorIKConstraint& value, const TextureVisitor& f);
 };
+template<> struct Codec<VertexAnimatorAttachment> {
+    static void write(Writer& w, const VertexAnimatorAttachment& value);
+    static void read(Reader& r, VertexAnimatorAttachment& value);
+};
+template<> struct TextureVisit<VertexAnimatorAttachment> {
+    static void visit(VertexAnimatorAttachment& value, const TextureVisitor& f);
+};
 
 }
 
@@ -777,6 +784,15 @@ const StructTable kStruct_AnimatorIKConstraint{"AnimatorIKConstraint", kStruct_A
 void Codec<AnimatorIKConstraint>::write(Writer& w, const AnimatorIKConstraint& value) { writeStruct(w, kStruct_AnimatorIKConstraint, &value); }
 void Codec<AnimatorIKConstraint>::read(Reader& r, AnimatorIKConstraint& value) { readStruct(r, kStruct_AnimatorIKConstraint, &value); }
 void TextureVisit<AnimatorIKConstraint>::visit(AnimatorIKConstraint& value, const TextureVisitor& f) { visitStructTextures(kStruct_AnimatorIKConstraint, &value, f); }
+
+const FieldEntry kStruct_VertexAnimatorAttachment_fields[] = {
+    JE_RF(VertexAnimatorAttachment, socket, 0x847bd59au, String),
+    JE_RF_ENTITY(VertexAnimatorAttachment, entity, 0x34038d44u, Entity),
+};
+const StructTable kStruct_VertexAnimatorAttachment{"VertexAnimatorAttachment", kStruct_VertexAnimatorAttachment_fields, std::size(kStruct_VertexAnimatorAttachment_fields)};
+void Codec<VertexAnimatorAttachment>::write(Writer& w, const VertexAnimatorAttachment& value) { writeStruct(w, kStruct_VertexAnimatorAttachment, &value); }
+void Codec<VertexAnimatorAttachment>::read(Reader& r, VertexAnimatorAttachment& value) { readStruct(r, kStruct_VertexAnimatorAttachment, &value); }
+void TextureVisit<VertexAnimatorAttachment>::visit(VertexAnimatorAttachment& value, const TextureVisitor& f) { visitStructTextures(kStruct_VertexAnimatorAttachment, &value, f); }
 
 const FieldEntry kBody_Transform_fields[] = {
     JE_RF(Transform, position, 0x89d4084cu, Vector3),
@@ -1926,6 +1942,22 @@ const FieldEntry kBody_AnimatorComponent_fields[] = {
 };
 const StructTable kBody_AnimatorComponent{"animator", kBody_AnimatorComponent_fields, std::size(kBody_AnimatorComponent_fields)};
 
+const FieldEntry kBody_VertexAnimatorComponent_fields[] = {
+    JE_RF(VertexAnimatorComponent, enabled, 0x066589ddu, Bool),
+    JE_RF(VertexAnimatorComponent, animation, 0x16f10daau, String),
+    JE_RF(VertexAnimatorComponent, guid, 0x00bd3381u, String),
+    JE_RF(VertexAnimatorComponent, defaultClip, 0xed365d3fu, String),
+    JE_RF(VertexAnimatorComponent, playAutomatically, 0x797fdcabu, Bool),
+    JE_RF(VertexAnimatorComponent, speed, 0x60f2e0a7u, Float),
+    JE_RF(VertexAnimatorComponent, randomStart, 0x1e141311u, Bool),
+    JE_RF(VertexAnimatorComponent, defaultFadeTime, 0x11c4e1d6u, Float),
+    JE_RF(VertexAnimatorComponent, instanceEvents, 0xeea0e8d2u, Bool),
+    JE_RF(VertexAnimatorComponent, attachments, 0x75cd096eu, Array),
+    JE_RF(VertexAnimatorComponent, instanceClips, 0xb5e74a06u, Array),
+    JE_RF(VertexAnimatorComponent, instanceSpeeds, 0x47eb7943u, Array),
+};
+const StructTable kBody_VertexAnimatorComponent{"vertexanimator", kBody_VertexAnimatorComponent_fields, std::size(kBody_VertexAnimatorComponent_fields)};
+
 const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(Transform, "transform", 0xe1ad931bu),
     JE_RF_COMPONENT(ScriptComponent, "script", 0x203e6faau),
@@ -2017,6 +2049,7 @@ const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(SplineInstantiateComponent, "splineinstantiate", 0x9d3ddbf4u),
     JE_RF_COMPONENT(SplineAnimateComponent, "splineanimate", 0x9d69db6bu),
     JE_RF_COMPONENT(AnimatorComponent, "animator", 0x754dee14u),
+    JE_RF_COMPONENT(VertexAnimatorComponent, "vertexanimator", 0x3269d22au),
     JE_RF_COMPONENTS_END
 };
 
