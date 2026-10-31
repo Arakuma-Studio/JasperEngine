@@ -20,7 +20,10 @@
 #include "animation/AnimationClipIO.h"
 #include "animation/AnimationPlayerRuntime.h"
 #include "animation/AnimatorEdits.h"
+#include "subsystem/ActionSystem.h"
 #include "window/AnimatorWindow.h"
+
+#include "imgui.h"
 
 #include <unistd.h>
 
@@ -477,4 +480,93 @@ TEST(AnimatorWindow, PreviewsOnTheBoundGameObjectAndDrivesLiveParameters){
     ASSERT_TRUE(follower.document());
     EXPECT_EQ(follower.document()->path(), doc->path());
     EXPECT_EQ(follower.boundEntity(), s.root) << "the player of the selection's ancestor";
+}
+
+// every panel and selection draws in a frame (edit mode, a preview, play mode's live view)
+TEST(AnimatorWindow, EveryPanelDrawsInAFrame){
+    ASSERT_TRUE(headless().ready);
+    const std::string idle = writeClip("idle", 0.0f);
+    const std::string run = writeClip("run", 4.0f);
+    AnimatorWindow window(project());
+    std::shared_ptr<AnimatorControllerDocument> doc = freshController(window, "drawn");
+    ASSERT_TRUE(doc);
+    window.createState(idle, false, nullptr);
+    window.createState(run, false, nullptr);
+    const int tree = window.createState("", true, nullptr);
+    ASSERT_TRUE(window.editState(tree, [&](anim::ControllerState& state){
+        state.blendTree.children = {anim::BlendTreeChild(), anim::BlendTreeChild()};
+        state.blendTree.children[0].clip = idle;
+        state.blendTree.children[1].clip = run;
+        state.blendTree.children[1].threshold = 4.0f;
+    }));
+    window.addParameter(anim::ControllerParameterType::Bool);
+    window.addParameter(anim::ControllerParameterType::Trigger);
+    window.addParameter(anim::ControllerParameterType::Int);
+    window.makeTransition(0, 1);
+    window.makeTransition(0, 1);
+    window.makeTransition(1, 0);
+    window.makeTransition(-1, 2);
+    window.makeTransition(2, 2);
+    window.editTransition(0, [](anim::ControllerTransition& t){ t.conditions.push_back({"Blend", anim::ConditionMode::Greater, 1.0f}); });
+    window.addLayer();
+    window.setCurrentLayer(0);
+
+    ImGuiContext* previous = ImGui::GetCurrentContext();
+    ImGuiContext* context = ImGui::CreateContext();
+    ImGui::SetCurrentContext(context);
+    ImGuiIO& io = ImGui::GetIO();
+    io.IniFilename = nullptr;
+    io.DisplaySize = ImVec2(1400, 900);
+    io.DeltaTime = 1.0f / 60.0f;
+    unsigned char* pixels;
+    int width, height;
+    io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+    auto frame = [&](){
+        ImGui::NewFrame();
+        window.show();
+        ImGui::EndFrame();
+    };
+    window.setOpen(true);
+    frame();
+    frame();
+    EXPECT_GT(window.zoom(), 0.0f);
+    const std::vector<animator::Item> items = {
+        {animator::ItemKind::State, 0, 0}, {animator::ItemKind::State, 0, tree}, {animator::ItemKind::Transition, 0, 0},
+        {animator::ItemKind::Transition, 0, 3}, {animator::ItemKind::AnyState, 0, -1}, {animator::ItemKind::Parameter, -1, 1}};
+    for (const animator::Item& item : items){
+        window.select(item);
+        frame();
+    }
+    window.frameAll();
+    window.frameSelection();
+    window.setCurrentLayer(1);
+    frame();
+    window.setCurrentLayer(0);
+
+    // bound: a preview, then the live view in play mode
+    PlayerScene s = playerScene("animator/drawn.controller");
+    std::string error;
+    ASSERT_TRUE(window.openController("animator/drawn.controller", s.sceneProject->id, s.root, &error)) << error;
+    window.select({animator::ItemKind::State, 0, tree});
+    window.setBlendValue(2.0f);
+    ASSERT_TRUE(window.startPreview()) << window.notice();
+    frame();
+    frame();
+    EXPECT_GT(s.sceneProject->scene->getComponent<Transform>(s.leg).position.x, 0.0f) << "the tree previews at its value";
+    window.stopPreview();
+    AnimationPlayerComponent& player = s.sceneProject->scene->getComponent<AnimationPlayerComponent>(s.root);
+    ASSERT_TRUE(anim::ensureController(player, "Granjero", 0.0f, false));
+    s.sceneProject->scene->getSystem<ActionSystem>()->setPaused(false);
+    s.sceneProject->scene->getSystem<ActionSystem>()->update(0.1);
+    s.sceneProject->playState = ScenePlayState::PLAYING;
+    ASSERT_TRUE(window.isLive());
+    frame();
+    window.select({animator::ItemKind::Parameter, -1, 0});
+    frame();
+    s.sceneProject->playState = ScenePlayState::STOPPED;
+    s.sceneProject->scene->getSystem<ActionSystem>()->setPaused(true);
+    window.setOpen(false);
+    frame();
+    ImGui::DestroyContext(context);
+    ImGui::SetCurrentContext(previous);
 }

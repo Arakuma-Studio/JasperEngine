@@ -207,6 +207,7 @@ namespace jasperengine::editor{
         // the bound GameObject's player component (null when none)
         AnimationPlayerComponent* boundPlayer() const;
         std::string newMergeKey(const char* what);
+        std::string clipGuidOf(const std::string& clip);
 
         void drawHeader();
         void drawLeftPanel(float width, float height);

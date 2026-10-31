@@ -34,7 +34,12 @@ namespace {
     std::string uniqueName(const Names& taken, const std::string& base){
         auto has = [&](const std::string& name){ return std::find(taken.begin(), taken.end(), name) != taken.end(); };
         if (!base.empty() && !has(base)) return base;
-        const std::string root = base.empty() ? std::string("New") : base;
+        // "Walk 2" taken: "Walk 3", not "Walk 2 1"
+        std::string root = base.empty() ? std::string("New") : base;
+        const size_t space = root.find_last_of(' ');
+        if (space != std::string::npos && space + 1 < root.size() && root.find_first_not_of("0123456789", space + 1) == std::string::npos){
+            root = root.substr(0, space);
+        }
         for (int k = 1;; k++){
             const std::string name = root + " " + std::to_string(k);
             if (!has(name)) return name;

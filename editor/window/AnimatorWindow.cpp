@@ -263,6 +263,16 @@ AnimationPlayerComponent* editor::AnimatorWindow::boundPlayer() const{
     return sceneProject->scene->findComponent<AnimationPlayerComponent>(entity);
 }
 
+std::string editor::AnimatorWindow::clipGuidOf(const std::string& clip){
+    // an .anim's GUID (registered now when the file is new to the asset database); model clips
+    // are path-only
+    if (!project || clip.empty() || anim::isSubClipReference(clip)) return std::string();
+    std::string path = clip;
+    std::string guid;
+    project->resolveAssetReference(path, guid, true);
+    return guid;
+}
+
 std::string editor::AnimatorWindow::newMergeKey(const char* what){
     return std::string("animator:") + what + ":" + std::to_string(++fieldGesture);
 }
@@ -341,9 +351,7 @@ int editor::AnimatorWindow::createState(const std::string& clip, bool blendTree,
     if (!clip.empty()){
         state.clip = clip;
         state.name = clipDisplayName(clip);
-        if (!anim::isSubClipReference(clip) && project){
-            state.clipGuid = project->getAssetDatabase().getGuid(project->getAssetsPath() / fs::u8path(clip));
-        }
+        state.clipGuid = clipGuidOf(clip);
     }else if (blendTree){
         state.name = "Blend Tree";
         state.hasBlendTree = true;
@@ -393,7 +401,7 @@ int editor::AnimatorWindow::dropClips(const std::vector<std::string>& paths, con
             anim::ControllerState state;
             state.clip = clip;
             state.name = clipDisplayName(clip);
-            if (!anim::isSubClipReference(clip)) state.clipGuid = project->getAssetDatabase().getGuid(project->getAssetsPath() / fs::u8path(clip));
+            state.clipGuid = clipGuidOf(clip);
             state.position[0] = std::round(at[0]);
             state.position[1] = std::round(at[1] + animator::GRID_Y * (float)created);
             state.hasPosition = true;
@@ -1531,8 +1539,7 @@ void editor::AnimatorWindow::drawStateInspector(int state){
         UIProbe::item("animator.state.clip");
         if (ImGui::IsItemDeactivatedAfterEdit()){
             const std::string value = clip;
-            std::string guid;
-            if (!value.empty() && !anim::isSubClipReference(value)) guid = project->getAssetDatabase().getGuid(project->getAssetsPath() / fs::u8path(value));
+            const std::string guid = clipGuidOf(value);
             editState(state, [&](anim::ControllerState& target){
                 target.clip = value;
                 target.clipGuid = guid;
@@ -1544,7 +1551,7 @@ void editor::AnimatorWindow::drawStateInspector(int state){
                 if (!paths.empty() && Util::isAnimationClipFile(paths.front())){
                     const fs::path absolute = fs::u8path(paths.front());
                     const std::string value = project->normalizeToAssetsRelative(absolute).generic_string();
-                    const std::string guid = project->getAssetDatabase().getGuid(absolute);
+                    const std::string guid = clipGuidOf(value);
                     editState(state, [&](anim::ControllerState& target){
                         target.clip = value;
                         target.clipGuid = guid;
@@ -1788,8 +1795,7 @@ void editor::AnimatorWindow::drawBlendTreeInspector(int state){
         ImGui::InputTextWithHint("##clip", "clip", clip, sizeof(clip));
         if (ImGui::IsItemDeactivatedAfterEdit()){
             const std::string value = clip;
-            std::string guid;
-            if (!value.empty() && !anim::isSubClipReference(value)) guid = project->getAssetDatabase().getGuid(project->getAssetsPath() / fs::u8path(value));
+            const std::string guid = clipGuidOf(value);
             editState(state, [c, value, guid](anim::ControllerState& target){
                 target.blendTree.children[c].clip = value;
                 target.blendTree.children[c].clipGuid = guid;
@@ -1801,7 +1807,7 @@ void editor::AnimatorWindow::drawBlendTreeInspector(int state){
                 if (!paths.empty() && Util::isAnimationClipFile(paths.front())){
                     const fs::path absolute = fs::u8path(paths.front());
                     const std::string value = project->normalizeToAssetsRelative(absolute).generic_string();
-                    const std::string guid = project->getAssetDatabase().getGuid(absolute);
+                    const std::string guid = clipGuidOf(value);
                     editState(state, [c, value, guid](anim::ControllerState& target){
                         target.blendTree.children[c].clip = value;
                         target.blendTree.children[c].clipGuid = guid;
