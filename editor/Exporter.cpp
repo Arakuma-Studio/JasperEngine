@@ -3,6 +3,7 @@
 
 #include "util/SafeWrite.h"
 #include "Exporter.h"
+#include "shader/ShaderVariantCollector.h"
 #include "util/ExportFeatureScan.h"
 #include "util/PngEditorChunks.h"
 #include "EditorHost.h"
@@ -933,6 +934,12 @@ void editor::Exporter::resolveShaderKeys() {
                 keys.insert(ShaderPool::normalizeKey(key));
             }
         }
+    }
+    // what every build ships (the FLATTEN Canvas Group composite), whatever the scenes hold
+    std::set<ShaderKey> required;
+    ShaderVariantCollector::addBuildRequiredKeys(required);
+    for (ShaderKey key : required) {
+        keys.insert(ShaderPool::normalizeKey(key));
     }
     for (ShaderKey key : config.shaderAdditions) {
         keys.insert(ShaderPool::normalizeKey(key));

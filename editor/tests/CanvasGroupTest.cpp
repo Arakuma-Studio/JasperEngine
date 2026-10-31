@@ -913,17 +913,27 @@ TEST_F(CanvasGroupTest, TrackRowsMatchTheCatalogAndClamp){
     EXPECT_FALSE(anim::readCanvasGroupAlpha(&scene, element, &read)) << "no group on the element";
 }
 
-// ---- exports: the Flatten composite ships with every scene (a script can add a group)
+// ---- exports: the Flatten composite ships with every build, never in a scene's saved keys
 
-TEST_F(CanvasGroupTest, ExportsAlwaysCarryTheFlattenComposite){
-    Scene empty;
-    ShaderVariantContent content;
-    content.registry = &empty;
-    content.entities = empty.getEntityList();
-    std::set<ShaderKey> keys;
-    ShaderVariantCollector::collectScene(&empty, content, {}, keys);
+TEST_F(CanvasGroupTest, FlattenCompositeIsABuildKeyNotASceneKey){
     const ShaderKey passthrough = ShaderPool::getShaderKey(ShaderType::HTMLUI_POST, ShaderPool::getHtmlUIPostProperties(HtmlUIPostVariant::PASSTHROUGH));
-    EXPECT_TRUE(keys.count(passthrough)) << "a scene without any Canvas Group still exports the passthrough composite";
+    // a scene without any Canvas Group: its keys (saved in the scene file) do not change
+    Scene old;
+    Entity image = old.createEntity();
+    old.addComponent<Transform>(image, Transform());
+    old.addComponent<RectTransformComponent>(image, RectTransformComponent());
+    old.addComponent<UIComponent>(image, UIComponent());
+    old.addComponent<ImageComponent>(image, ImageComponent());
+    ShaderVariantContent content;
+    content.registry = &old;
+    content.entities = old.getEntityList();
+    std::set<ShaderKey> keys;
+    ShaderVariantCollector::collectScene(&old, content, {}, keys);
+    EXPECT_FALSE(keys.count(passthrough)) << "an old scene's saved shader keys stay as they were";
+    // every export adds it (Exporter::resolveShaderKeys): a script can add a FLATTEN group anywhere
+    std::set<ShaderKey> required;
+    ShaderVariantCollector::addBuildRequiredKeys(required);
+    EXPECT_TRUE(required.count(passthrough));
 }
 
 // ---- 13. performance (Release only)
