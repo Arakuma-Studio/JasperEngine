@@ -97,6 +97,15 @@ namespace jasperengine {
         int syncCallsThisFrame = 0;
         bool warnedSyncCalls = false;
         bool ownerHooked = false;
+        // main thread: a C++ method running at the delivery point (startCpp) completes its call
+        // here, delivered right after it returns (the same frame, not the next)
+        bool collecting = false;
+        struct Completed {
+            std::shared_ptr<NativeCallState> state;
+            NativeJson value;
+            NativeError error;
+        };
+        std::vector<Completed> collected;
 
         static NativeBridgeCore& instance(){
             // never destroyed: native threads may complete calls while the process exits
@@ -256,10 +265,28 @@ namespace jasperengine {
                     value = nullptr;
                 }
             }
+            if (MainThreadQueue::isMainThread() && collecting){
+                collected.push_back({state, std::move(value), std::move(err)});
+                return true;
+            }
             MainThreadQueue::post([state, value = std::move(value), err = std::move(err)]() mutable {
                 NativeBridgeCore::instance().deliver(state, std::move(value), std::move(err));
             });
             return true;
+        }
+
+        // runs `fn` on the main thread at the delivery point; what it completes is delivered
+        // when it returns
+        template <typename Fn>
+        void runCollecting(Fn&& fn){
+            const bool outer = collecting;
+            collecting = true;
+            fn();
+            collecting = outer;
+            if (outer) return;
+            std::vector<Completed> done;
+            done.swap(collected);
+            for (Completed& c : done) deliver(c.state, std::move(c.value), std::move(c.error));
         }
 
         // main thread: the callback
@@ -430,8 +457,11 @@ namespace jasperengine {
                     core.complete(state, nullptr, &err);
                 }
             };
-            if (state->background) runInBackground(std::move(run));
-            else MainThreadQueue::post(std::move(run));
+            if (state->background){
+                runInBackground(std::move(run));
+            } else {
+                MainThreadQueue::post([run = std::move(run)]() { NativeBridgeCore::instance().runCollecting(run); });
+            }
         }
     };
 

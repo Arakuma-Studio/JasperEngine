@@ -133,8 +133,9 @@ namespace {
         }
 
         void TearDown() override {
-            reset();
+            // a test's fake platform is gone with the test body
             NativeBridgeInternal::setPlatformForTests(nullptr);
+            reset();
             SystemTestAccess::swap(previous);
             lua_settop(L, 0);
             std::error_code ec;
