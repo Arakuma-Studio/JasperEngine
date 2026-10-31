@@ -29,6 +29,10 @@
 #include "command/type/ModelLoadCmd.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/PropertyCmd.h"
+#include "physics/PolygonDecomposition2D.h"
+#include "physics/PhysicsMaterial.h"
+#include "util/PhysicsMaterialAssets.h"
+#include "subsystem/PhysicsSystem.h"
 #include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/BoneComponent.h"
@@ -84,6 +88,7 @@
 #include "window/AnimationWindow.h"
 #include "window/ProjectWindow.h"
 #include "window/TerrainEditWindow.h"
+#include "util/Angle.h"
 
 #include "stb_image.h"
 
@@ -971,7 +976,7 @@ bool parsePoints2D(const Json& value, std::vector<Vector2>& out, std::string& er
 }
 
 // Applies a 2D collider spec onto `shape` (a copy of an existing collider or a default one)
-bool applyCollider2D(Scene* scene, Entity entity, const Json& spec, Collider2D& shape, bool isNew, std::string& error) {
+bool applyCollider2D(Project* project, Scene* scene, Entity entity, const Json& spec, Collider2D& shape, bool isNew, std::string& error) {
     std::string shapeName = isNew ? stringOr(spec, "shape", "box") : stringOr(spec, "shape", "");
     if (!shapeName.empty() && !pickName(collider2DTypes(), shapeName, shape.type, "shape", error)) return false;
     shapeName = lowerText(shapeName);
@@ -1001,11 +1006,8 @@ bool applyCollider2D(Scene* scene, Entity entity, const Json& spec, Collider2D& 
             return false;
         }
         const Vector2 half = size * 0.5f;
-        shape.numVertices = 4;
-        shape.vertices[0] = center + Vector2(-half.x, -half.y);
-        shape.vertices[1] = center + Vector2(half.x, -half.y);
-        shape.vertices[2] = center + Vector2(half.x, half.y);
-        shape.vertices[3] = center + Vector2(-half.x, half.y);
+        shape.points = {center + Vector2(-half.x, -half.y), center + Vector2(half.x, -half.y),
+                        center + Vector2(half.x, half.y), center + Vector2(-half.x, half.y)};
         shape.pointA = center;
     } else if (shape.type == Collider2DType::CIRCLE) {
         if (!shapeName.empty() || has(spec, "center")) shape.pointA = center;
@@ -1043,25 +1045,19 @@ bool applyCollider2D(Scene* scene, Entity entity, const Json& spec, Collider2D& 
         }
     } else {
         // polygon / chain: explicit points, or the bounds rectangle
+        // any number of points: a polygon may be concave (split in convex pieces), a chain
+        // of 2 or 3 points is made of segments
         if (has(spec, "points")) {
             std::vector<Vector2> points;
             if (!parsePoints2D(spec["points"], points, error)) return false;
-            if (points.size() > MAX_COLLIDER_POINTS_2D) {
-                error = "A 2D collider holds at most " + std::to_string(MAX_COLLIDER_POINTS_2D) + " points.";
-                return false;
-            }
-            shape.numVertices = static_cast<uint8_t>(points.size());
-            for (size_t i = 0; i < points.size(); i++) shape.vertices[i] = points[i];
+            shape.points = std::move(points);
         } else if (!shapeName.empty()) {
             const Vector2 half = size * 0.5f;
-            shape.numVertices = 4;
-            shape.vertices[0] = center + Vector2(-half.x, -half.y);
-            shape.vertices[1] = center + Vector2(half.x, -half.y);
-            shape.vertices[2] = center + Vector2(half.x, half.y);
-            shape.vertices[3] = center + Vector2(-half.x, half.y);
+            shape.points = {center + Vector2(-half.x, -half.y), center + Vector2(half.x, -half.y),
+                            center + Vector2(half.x, half.y), center + Vector2(-half.x, half.y)};
         }
-        const unsigned minPoints = shape.type == Collider2DType::CHAIN ? 4u : 3u;
-        if (shape.numVertices < minPoints) {
+        const unsigned minPoints = shape.type == Collider2DType::CHAIN ? 2u : 3u;
+        if (shape.points.size() < minPoints) {
             error = std::string(shape.type == Collider2DType::CHAIN ? "chain" : "polygon") + " needs at least " +
                     std::to_string(minPoints) + " points.";
             return false;
@@ -1072,7 +1068,24 @@ bool applyCollider2D(Scene* scene, Entity entity, const Json& spec, Collider2D& 
     shape.density = numberOr(spec, "density", shape.density);
     shape.friction = numberOr(spec, "friction", shape.friction);
     shape.restitution = numberOr(spec, "restitution", shape.restitution);
-    shape.sensor = boolOr(spec, "sensor", shape.sensor);
+    if (has(spec, "material")) {
+        if (spec["material"].is_null()) {
+            shape.material.clear();
+        } else if (spec["material"].is_string()) {
+            // project-relative over MCP, assets-relative in the component
+            std::string stored;
+            if (!McpValues::assetPathFromJson(project, spec["material"].get<std::string>(), stored, error)) return false;
+            if (!PhysicsMaterialAssets::isPhysicsMaterialFile(stored)) {
+                error = "material must be a .physicsmaterial (edit_physics_material creates one).";
+                return false;
+            }
+            shape.material = stored;
+        } else {
+            error = "material must be a .physicsmaterial path or null.";
+            return false;
+        }
+    }
+    shape.sensor = boolOr(spec, "sensor", boolOr(spec, "is_trigger", shape.sensor));
     shape.enableHitEvents = boolOr(spec, "hit_events", shape.enableHitEvents);
     shape.contactEvents = boolOr(spec, "contact_events", shape.contactEvents);
     shape.preSolveEvents = boolOr(spec, "pre_solve_events", shape.preSolveEvents);
@@ -1087,16 +1100,26 @@ bool applyCollider2D(Scene* scene, Entity entity, const Json& spec, Collider2D& 
     return true;
 }
 
-Json collider2DJson(const Collider2D& shape) {
+Json collider2DJson(Project* project, Scene* scene, Entity entity, const Collider2D& shape) {
     Json out = {{"shape", nameOf(collider2DTypes(), shape.type)}, {"density", shape.density}, {"friction", shape.friction},
                 {"restitution", shape.restitution}, {"sensor", shape.sensor},
                 {"category_bits", shape.categoryBits}, {"mask_bits", shape.maskBits}, {"group_index", shape.groupIndex}};
+    if (!shape.material.empty()) out["material"] = McpValues::assetPathToJson(project, shape.material);
     if (shape.type == Collider2DType::POLYGON || shape.type == Collider2DType::CHAIN) {
         if (shape.type == Collider2DType::POLYGON) out["shape"] = "polygon";
         Json points = Json::array();
-        for (unsigned i = 0; i < shape.numVertices; i++) points.push_back(McpValues::toJson(shape.vertices[i]));
+        for (const Vector2& point : shape.points) points.push_back(McpValues::toJson(point));
         out["points"] = points;
         if (shape.type == Collider2DType::CHAIN) out["loop"] = shape.loop;
+        if (shape.type == Collider2DType::POLYGON && shape.points.size() >= 3) {
+            // the convex Box2D pieces the polygon is split into: the body's own (after the
+            // GameObject's scale, slivers Box2D cannot hull left out)
+            Collider2D pieces = shape;
+            scene->getSystem<PhysicsSystem>()->updateCollider2DPieces(entity, pieces);
+            out["pieces"] = pieces.pieces.size();
+            if (pieces.selfIntersecting) out["self_intersecting"] = true;
+            if (!pieces.decompositionError.empty()) out["error"] = pieces.decompositionError;
+        }
     } else if (shape.type == Collider2DType::CIRCLE) {
         out["center"] = McpValues::toJson(shape.pointA);
         out["radius"] = shape.radius;
@@ -1329,22 +1352,23 @@ void editCollidersTool(const CallPtr& call) {
     if (is2D) {
         std::vector<Collider2D> shapes;
         if (Rigidbody2DComponent* body = scene->findComponent<Rigidbody2DComponent>(target.entity)) {
-            oldCount = body->numColliders;
-            for (size_t i = 0; i < body->numColliders; i++) shapes.push_back(body->colliders[i]);
+            oldCount = body->colliders.size();
+            shapes = body->colliders;
         }
         auto apply = [&](const Json& spec, Collider2D& shape, bool isNew, std::string& err) {
-            return applyCollider2D(scene, target.entity, spec, shape, isNew, err);
+            return applyCollider2D(target.project, scene, target.entity, spec, shape, isNew, err);
         };
-        if (!editShapes(args, shapes, MAX_COLLIDERS_2D, apply, error)) {
+        // no limit on colliders per body
+        if (!editShapes(args, shapes, SIZE_MAX, apply, error)) {
             call->fail(error);
             return;
         }
         newCount = shapes.size();
-        for (size_t i = 0; i < std::max(oldCount, newCount); i++) {
-            addProp<Collider2D>(*multi, target, target.entity, bodyType, "colliders[" + std::to_string(i) + "]",
-                                i < newCount ? shapes[i] : Collider2D());
+        // the whole list in one value (any length)
+        if (editing && (has(args, "add") || has(args, "update") || has(args, "remove") || boolOr(args, "clear", false))) {
+            addProp<std::vector<Collider2D>>(*multi, target, target.entity, bodyType, "colliders", shapes);
         }
-        for (const Collider2D& shape : shapes) colliders.push_back(collider2DJson(shape));
+        for (const Collider2D& shape : shapes) colliders.push_back(collider2DJson(target.project, scene, target.entity, shape));
     } else {
         std::vector<Collider3D> shapes;
         if (RigidbodyComponent* body = scene->findComponent<RigidbodyComponent>(target.entity)) {
@@ -1384,7 +1408,7 @@ void editCollidersTool(const CallPtr& call) {
         }
         for (const Collider3D& shape : shapes) colliders.push_back(collider3DJson(target, shape));
     }
-    if (editing) {
+    if (editing && !is2D) {
         if (newCount != oldCount || !hasBody) addProp<size_t>(*multi, target, target.entity, bodyType, "numColliders", newCount);
     }
 
@@ -1433,7 +1457,7 @@ void editCollidersTool(const CallPtr& call) {
     colliders = Json::array();
     if (is2D) {
         Rigidbody2DComponent& body = scene->getComponent<Rigidbody2DComponent>(target.entity);
-        for (size_t i = 0; i < body.numColliders; i++) colliders.push_back(collider2DJson(body.colliders[i]));
+        for (const Collider2D& shape : body.colliders) colliders.push_back(collider2DJson(target.project, scene, target.entity, shape));
     } else {
         RigidbodyComponent& body = scene->getComponent<RigidbodyComponent>(target.entity);
         for (size_t i = 0; i < body.numColliders; i++) colliders.push_back(collider3DJson(target, body.colliders[i]));
@@ -1443,9 +1467,99 @@ void editCollidersTool(const CallPtr& call) {
                              : nameOf(bodyTypes(), scene->getComponent<RigidbodyComponent>(target.entity).type);
     data["body_added"] = !hasBody;
     if (!is2D) data["body"] = bodyJson();
+    if (is2D) {
+        // a decomposed polygon has inner seams a rolling wheel can catch on
+        const Rigidbody2DComponent& body = scene->getComponent<Rigidbody2DComponent>(target.entity);
+        Json warnings = Json::array();
+        for (size_t i = 0; i < body.colliders.size(); i++) {
+            const Collider2D& shape = body.colliders[i];
+            if (body.type == BodyType::STATIC && shape.type == Collider2DType::POLYGON && shape.points.size() > 8) {
+                warnings.push_back("collider " + std::to_string(i) + ": a polygon of " + std::to_string(shape.points.size()) +
+                                   " points is split in convex pieces; for ground that wheels roll over consider shape chain "
+                                   "(no inner seams, one-sided).");
+            }
+        }
+        if (!warnings.empty()) data["warnings"] = warnings;
+    }
     call->ok("\"" + scene->getEntityName(target.entity) + "\" now has " + std::to_string(newCount) + " collider(s)" +
              (hasBody ? "" : std::string(" on a new ") + (is2D ? "Rigidbody 2D" : "Rigidbody")) + " (one undo step)." +
              (bodyMaterial.empty() ? "" : " Note: 3D friction/restitution are per body: set on the Rigidbody (all its colliders)."), data);
+}
+
+// edit_physics_material: a .physicsmaterial's four values (created from the 3D or 2D preset)
+void editPhysicsMaterialTool(const CallPtr& call) {
+    const Json& args = call->args();
+    Project* project = call->ctx().project();
+    std::string error;
+    const std::string relative = stringOr(args, "path", "");
+    if (relative.empty() || !PhysicsMaterialAssets::isPhysicsMaterialFile(relative)) {
+        call->fail("path must be a project-relative .physicsmaterial (e.g. \"assets/physics/Tire.physicsmaterial\").");
+        return;
+    }
+    fs::path absolute;
+    if (!McpRefs::resolveProjectWritePath(project, relative, absolute, error, false)) {
+        call->fail(error);
+        return;
+    }
+    if (!project->isInsideAssetsPath(absolute)) {
+        call->fail("\"" + relative + "\" must be inside the assets directory.");
+        return;
+    }
+    const std::string create = lowerText(stringOr(args, "create", ""));
+    if (!create.empty() && create != "3d" && create != "2d") {
+        call->fail("create must be 3d or 2d (the presets of Create > Physics Material / Physics Material 2D).");
+        return;
+    }
+
+    std::error_code ec;
+    const bool exists = fs::is_regular_file(absolute, ec);
+    PhysicsMaterialData data;
+    if (exists) {
+        if (!PhysicsMaterialAssets::read(absolute, data, error)) {
+            call->fail("Cannot read \"" + relative + "\": " + error);
+            return;
+        }
+    } else if (create.empty()) {
+        call->fail("\"" + relative + "\" does not exist; pass create: \"2d\" (or \"3d\") to make it.");
+        return;
+    } else {
+        data = create == "2d" ? PhysicsMaterialData::preset2D() : PhysicsMaterialData::preset3D();
+        data.guid = physicsmaterial::generateGuid();
+    }
+
+    if (has(args, "friction")) {
+        if (!args["friction"].is_number() || args["friction"].get<float>() < 0.0f) {
+            call->fail("friction must be a number >= 0 (above 1 is allowed: a tyre is about 2).");
+            return;
+        }
+        data.friction = args["friction"].get<float>();
+    }
+    if (has(args, "bounciness")) {
+        if (!args["bounciness"].is_number() || args["bounciness"].get<float>() < 0.0f || args["bounciness"].get<float>() > 1.0f) {
+            call->fail("bounciness must be a number 0-1.");
+            return;
+        }
+        data.bounciness = args["bounciness"].get<float>();
+    }
+    for (const char* key : {"friction_combine", "bounce_combine"}) {
+        if (!has(args, key)) continue;
+        PhysicsMaterialCombine mode;
+        if (!args[key].is_string() || !physicsmaterial::combineFromName(args[key].get<std::string>(), mode)) {
+            call->fail(std::string(key) + " must be average, geometric_mean, minimum, multiply or maximum.");
+            return;
+        }
+        (std::string(key) == "friction_combine" ? data.frictionCombine : data.bounceCombine) = mode;
+    }
+
+    if (!PhysicsMaterialAssets::write(project, absolute, data, error)) {
+        call->fail(error);
+        return;
+    }
+    Json result = {{"path", McpValues::assetPathToJson(project, project->normalizeToAssetsRelative(absolute).generic_string())},
+                   {"created", !exists}, {"friction", data.friction}, {"bounciness", data.bounciness},
+                   {"friction_combine", physicsmaterial::combineName(data.frictionCombine)},
+                   {"bounce_combine", physicsmaterial::combineName(data.bounceCombine)}, {"undo", {{"scope", "project"}}}};
+    call->ok(std::string(exists ? "Updated" : "Created") + " physics material \"" + relative + "\" (one project undo step: undo scope project).", result);
 }
 
 const std::vector<std::pair<const char*, Joint2DType>>& joint2DTypes() {
@@ -1502,8 +1616,10 @@ void setJointTool(const CallPtr& call) {
         call->fail("\"" + scene->getEntityName(joint) + "\" has no " + (is2D ? "Joint 2D" : "Joint") + " component.");
         return;
     }
-    if (joint == NULL_ENTITY && (bodyA == NULL_ENTITY || bodyB == NULL_ENTITY)) {
-        call->fail("A new joint needs body_a and body_b (the two Rigidbody GameObjects it connects). Pass joint to edit an existing one.");
+    // 2D: without body_b the joint holds body_a to the world (Unity connectedBody none)
+    if (joint == NULL_ENTITY && (bodyA == NULL_ENTITY || (!is2D && bodyB == NULL_ENTITY))) {
+        call->fail(is2D ? "A new joint needs body_a (the Rigidbody 2D GameObject it is on) and usually body_b (the connected one; none = the world). Pass joint to edit an existing one."
+                        : "A new joint needs body_a and body_b (the two Rigidbody GameObjects it connects). Pass joint to edit an existing one.");
         return;
     }
     Json warnings = Json::array();
@@ -1517,8 +1633,11 @@ void setJointTool(const CallPtr& call) {
     UndoStep step(target.sceneId());
     const bool created = joint == NULL_ENTITY;
     if (created) {
-        auto* create = new CreateEntityCmd(target.project, target.sceneId(), stringOr(args, "name", is2D ? "Joint 2D" : "Joint"),
-                                           is2D ? EntityCreationType::JOINT2D : EntityCreationType::JOINT3D);
+        // a 2D joint lives under body_a (it follows it, a prefab carries it along)
+        auto* create = is2D ? new CreateEntityCmd(target.project, target.sceneId(), stringOr(args, "name", "Joint 2D"),
+                                                  EntityCreationType::JOINT2D, bodyA)
+                            : new CreateEntityCmd(target.project, target.sceneId(), stringOr(args, "name", "Joint"),
+                                                  EntityCreationType::JOINT3D);
         if (!step.add(create)) {
             call->fail("Could not create the joint GameObject.");
             return;
@@ -1527,11 +1646,20 @@ void setJointTool(const CallPtr& call) {
     }
 
     auto* multi = new MultiPropertyCmd();
+    // what the 2D joint will be once this edit is applied (type-dependent defaults, motor fields)
+    Joint2DComponent resulting2D = is2D ? scene->getComponent<Joint2DComponent>(joint) : Joint2DComponent();
     if (has(args, "type")) {
         if (is2D) {
             Joint2DType type;
             if (!pickName(joint2DTypes(), stringOr(args, "type", ""), type, "type", error)) { delete multi; step.fail(call, error); return; }
+            // the fields still at the old type's defaults take the new type's (wheel: 2 Hz spring)
+            const Joint2DComponent before = resulting2D;
+            changeJoint2DType(resulting2D, type);
             addProp<Joint2DType>(*multi, target, joint, jointType, "type", type);
+            if (resulting2D.enableSpring != before.enableSpring) addProp<bool>(*multi, target, joint, jointType, "enableSpring", resulting2D.enableSpring);
+            if (resulting2D.frequency != before.frequency) addProp<float>(*multi, target, joint, jointType, "frequency", resulting2D.frequency);
+            if (resulting2D.dampingRatio != before.dampingRatio) addProp<float>(*multi, target, joint, jointType, "dampingRatio", resulting2D.dampingRatio);
+            if (resulting2D.maxForce != before.maxForce) addProp<float>(*multi, target, joint, jointType, "maxForce", resulting2D.maxForce);
         } else {
             Joint3DType type;
             if (!pickName(joint3DTypes(), stringOr(args, "type", ""), type, "type", error)) { delete multi; step.fail(call, error); return; }
@@ -1549,6 +1677,98 @@ void setJointTool(const CallPtr& call) {
             addProp<Vector2>(*multi, target, joint, jointType, v.prop, value);
         }
         if (has(args, "rope")) addProp<bool>(*multi, target, joint, jointType, "rope", boolOr(args, "rope", false));
+        if (has(args, "anchor_space")) {
+            const std::string space = lowerText(stringOr(args, "anchor_space", ""));
+            if (space != "local" && space != "world") { delete multi; step.fail(call, "anchor_space must be local or world."); return; }
+            resulting2D.anchorSpace = space == "local" ? JointAnchorSpace::LOCAL : JointAnchorSpace::WORLD;
+            addProp<JointAnchorSpace>(*multi, target, joint, jointType, "anchorSpace", resulting2D.anchorSpace);
+        }
+        if (has(args, "enable_collision")) addProp<bool>(*multi, target, joint, jointType, "enableCollision", boolOr(args, "enable_collision", false));
+        const Joint2DType type2D = resulting2D.type;
+        if (has(args, "motor")) {
+            const Json& motor = args["motor"];
+            if (!motor.is_object()) { delete multi; step.fail(call, "motor must be {enabled, speed, max}."); return; }
+            if (type2D != Joint2DType::REVOLUTE && type2D != Joint2DType::WHEEL && type2D != Joint2DType::PRISMATIC && type2D != Joint2DType::DISTANCE) {
+                delete multi; step.fail(call, "motor: a " + std::string(nameOf(joint2DTypes(), type2D)) + " joint has no motor (revolute, wheel, prismatic, distance do)."); return;
+            }
+            addProp<bool>(*multi, target, joint, jointType, "useMotor", boolOr(motor, "enabled", true));
+            if (has(motor, "speed")) addProp<float>(*multi, target, joint, jointType, "motorSpeed", numberOr(motor, "speed", 0.0f));
+            if (has(motor, "max")) {
+                const bool torque = type2D == Joint2DType::REVOLUTE || type2D == Joint2DType::WHEEL;
+                addProp<float>(*multi, target, joint, jointType, torque ? "maxMotorTorque" : "maxMotorForce", std::max(0.0f, numberOr(motor, "max", 0.0f)));
+            }
+        }
+        if (has(args, "spring")) {
+            const Json& spring = args["spring"];
+            if (!spring.is_object()) { delete multi; step.fail(call, "spring must be {enabled, frequency, damping}."); return; }
+            if (type2D == Joint2DType::WELD) {
+                // weld stiffness: both linear and angular
+                if (has(spring, "frequency")) {
+                    addProp<float>(*multi, target, joint, jointType, "linearFrequency", std::max(0.0f, numberOr(spring, "frequency", 0.0f)));
+                    addProp<float>(*multi, target, joint, jointType, "angularFrequency", std::max(0.0f, numberOr(spring, "frequency", 0.0f)));
+                }
+                if (has(spring, "damping")) {
+                    addProp<float>(*multi, target, joint, jointType, "linearDampingRatio", std::max(0.0f, numberOr(spring, "damping", 0.0f)));
+                    addProp<float>(*multi, target, joint, jointType, "angularDampingRatio", std::max(0.0f, numberOr(spring, "damping", 0.0f)));
+                }
+            } else {
+                if (type2D != Joint2DType::MOUSE && type2D != Joint2DType::MOTOR) {
+                    addProp<bool>(*multi, target, joint, jointType, "enableSpring", boolOr(spring, "enabled", true));
+                }
+                if (has(spring, "frequency")) addProp<float>(*multi, target, joint, jointType, "frequency", std::max(0.0f, numberOr(spring, "frequency", 0.0f)));
+                if (has(spring, "damping")) addProp<float>(*multi, target, joint, jointType, "dampingRatio", std::max(0.0f, numberOr(spring, "damping", 0.0f)));
+            }
+        }
+        if (has(args, "limits")) {
+            if (args["limits"].is_boolean() && !args["limits"].get<bool>()) {
+                addProp<bool>(*multi, target, joint, jointType, "useLimits", false);
+            } else {
+                Vector2 limits;
+                if (!readVec2(args, "limits", limits, error)) { delete multi; step.fail(call, "limits must be [min, max] (or false): " + error); return; }
+                const float lower = std::min(limits.x, limits.y), upper = std::max(limits.x, limits.y);
+                if (type2D == Joint2DType::REVOLUTE) {
+                    // a revolute limit stays within a half turn each way (Box2D), in the project's unit
+                    const float halfTurn = Angle::degToDefault(180.0f);
+                    addProp<float>(*multi, target, joint, jointType, "lowerAngle", std::max(-halfTurn, lower));
+                    addProp<float>(*multi, target, joint, jointType, "upperAngle", std::min(halfTurn, upper));
+                } else if (type2D == Joint2DType::PRISMATIC || type2D == Joint2DType::WHEEL) {
+                    addProp<float>(*multi, target, joint, jointType, "lowerTranslation", lower);
+                    addProp<float>(*multi, target, joint, jointType, "upperTranslation", upper);
+                } else if (type2D == Joint2DType::DISTANCE) {
+                    addProp<float>(*multi, target, joint, jointType, "minLength", std::max(0.0f, lower));
+                    addProp<float>(*multi, target, joint, jointType, "maxLength", std::max(0.0f, upper));
+                } else {
+                    delete multi; step.fail(call, "limits: a " + std::string(nameOf(joint2DTypes(), type2D)) + " joint has no limits (revolute angles, prismatic/wheel translation, distance length)."); return;
+                }
+                addProp<bool>(*multi, target, joint, jointType, "useLimits", true);
+            }
+        }
+        if (has(args, "break")) {
+            const Json& breaking = args["break"];
+            if (!breaking.is_object()) { delete multi; step.fail(call, "break must be {force, torque, action}."); return; }
+            // a number, or null / "infinity" for never
+            auto threshold = [&](const char* key, float& out) {
+                const Json& value = breaking[key];
+                if (value.is_null() || (value.is_string() && lowerText(value.get<std::string>()) == "infinity")) { out = std::numeric_limits<float>::infinity(); return true; }
+                if (!value.is_number() || value.get<float>() < 0.0f) return false;
+                out = value.get<float>();
+                return true;
+            };
+            for (const char* key : {"force", "torque"}) {
+                if (!breaking.contains(key)) continue;
+                float value = 0.0f;
+                if (!threshold(key, value)) { delete multi; step.fail(call, std::string("break.") + key + " must be >= 0, or null for never."); return; }
+                addProp<float>(*multi, target, joint, jointType, std::string(key) == "force" ? "breakForce" : "breakTorque", value);
+            }
+            if (has(breaking, "action")) {
+                static const std::vector<std::pair<const char*, JointBreakAction>> actions = {
+                    {"ignore", JointBreakAction::IGNORE}, {"callback_only", JointBreakAction::CALLBACK_ONLY},
+                    {"disable", JointBreakAction::DISABLE}, {"destroy", JointBreakAction::DESTROY}};
+                JointBreakAction action;
+                if (!pickName(actions, stringOr(breaking, "action", ""), action, "break.action", error)) { delete multi; step.fail(call, error); return; }
+                addProp<JointBreakAction>(*multi, target, joint, jointType, "breakAction", action);
+            }
+        }
     } else {
         for (const VecArg& v : {VecArg{"anchor_a", "anchorA"}, VecArg{"anchor_b", "anchorB"}, VecArg{"anchor", "anchor"}, VecArg{"axis", "axis"}, VecArg{"normal", "normal"}}) {
             Vector3 value;
@@ -1564,8 +1784,11 @@ void setJointTool(const CallPtr& call) {
         }
     }
     const bool anchorsGiven = has(args, "anchor_a") || has(args, "anchor_b") || has(args, "anchor");
-    if (has(args, "auto_anchors") || anchorsGiven) {
-        addProp<bool>(*multi, target, joint, jointType, "autoAnchors", boolOr(args, "auto_anchors", !anchorsGiven));
+    // 2D local anchors: anchor_a alone keeps the connected anchor automatic (Unity); anchor_b
+    // sets it
+    const bool turnsAutoOff = (is2D && resulting2D.anchorSpace == JointAnchorSpace::LOCAL) ? has(args, "anchor_b") : anchorsGiven;
+    if (has(args, "auto_anchors") || turnsAutoOff) {
+        addProp<bool>(*multi, target, joint, jointType, "autoAnchors", boolOr(args, "auto_anchors", !turnsAutoOff));
     }
     if (has(args, "properties") && !addCatalogProperties(target.project, target.scene, joint, jointType, args["properties"], *multi, error)) {
         delete multi;
@@ -1585,6 +1808,18 @@ void setJointTool(const CallPtr& call) {
         data["body_a"] = j.bodyA != NULL_ENTITY ? entityJson(target, j.bodyA) : Json(nullptr);
         data["body_b"] = j.bodyB != NULL_ENTITY ? entityJson(target, j.bodyB) : Json(nullptr);
         data["auto_anchors"] = j.autoAnchors;
+        // every field as it resolved (Catalog names, set_properties takes the same)
+        Json fields = Json::object();
+        McpValues::ReadContext read;
+        read.project = target.project;
+        read.scene = target.scene;
+        read.entity = joint;
+        read.component = jointType;
+        for (const auto& [name, property] : Catalog::findEntityProperties(scene, joint, jointType)) {
+            if (name == "bodyA" || name == "bodyB" || name == "type") continue;
+            fields[name] = McpValues::readProperty(read, name, property);
+        }
+        data["fields"] = fields;
     } else {
         Joint3DComponent& j = scene->getComponent<Joint3DComponent>(joint);
         data["type"] = nameOf(joint3DTypes(), j.type);
@@ -4654,7 +4889,7 @@ void registerWorldTools(McpRegistry& registry) {
         "Add/update/remove a Rigidbody 2D / Rigidbody's colliders, creating the body if missing (no edits = "
         "list). Order: clear, remove (old indices), update, add. 2D: box, circle, capsule, segment, polygon, "
         "chain; 3D: box, sphere, capsule, cylinder, tapered_capsule, convex_hull, mesh, heightfield. New shapes "
-        "fit the drawn GameObject unless fit: false. Fields per shape: jasper://docs/physics. Returns the colliders.",
+        "fit the drawn GameObject unless fit: false. Fields: jasper://docs/physics.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -4669,10 +4904,10 @@ void registerWorldTools(McpRegistry& registry) {
         editCollidersTool, false, false);
 
     add("set_joint", "Create / Edit Joint",
-        "Create a joint GameObject between two bodies, or edit one (joint). 2D: distance, revolute, prismatic, "
-        "mouse, wheel, weld, motor. 3D: fixed, distance, point, hinge, cone, prismatic, swing_twist, six_dof, "
-        "path, gear, rack_and_pinion, pulley. Anchors turn auto_anchors off. Both bodies need Rigidbodies of "
-        "that dimension; built on play.",
+        "Create a joint (under body_a) or edit one (joint); 2D anchors are local, no body_b = the world; "
+        "built on play. Types, arguments, units: jasper://docs/physics.",
+        // what each argument does: docs/mcp/guide/physics.md (2D joints); the handler checks the
+        // vectors' shapes itself (readVec2 / readVec3), so they are not spelled out here
         object({
             {"scene", sceneRef()},
             {"joint", entityRef("")},
@@ -4683,16 +4918,34 @@ void registerWorldTools(McpRegistry& registry) {
             {"body_b", entityRef()},
             {"anchor_a", any("")},
             {"anchor_b", any("")},
-            {"anchor", vec3("3D.")},
+            {"anchor", any("")},
             {"axis", any("")},
-            {"normal", vec3("3D.")},
-            {"target", vec2("2D mouse.")},
-            {"limits", vec2("3D [min, max].")},
-            {"rope", boolean("2D distance.")},
+            {"normal", any("")},
+            {"target", any("")},
+            {"limits", any("")},
+            {"rope", boolean("")},
             {"auto_anchors", boolean("")},
-            {"properties", anyObject("Other joint properties.")}
+            {"anchor_space", stringEnum("", {"local", "world"})},
+            {"enable_collision", boolean("")},
+            {"motor", anyObject("")},
+            {"spring", anyObject("")},
+            {"break", anyObject("")},
+            {"properties", anyObject("")}
         }),
         setJointTool, false, false);
+
+    add("edit_physics_material", "Edit Physics Material",
+        "Create (create: 3d|2d preset) or edit a .physicsmaterial; combine modes average|geometric_mean|"
+        "minimum|multiply|maximum.",
+        object({
+            {"path", string("")},
+            {"create", stringEnum("", {"3d", "2d"})},
+            {"friction", number("")},
+            {"bounciness", number("")},
+            {"friction_combine", string("")},
+            {"bounce_combine", string("")}
+        }, {"path"}),
+        editPhysicsMaterialTool, false, false);
 
     // ---------------------------------------------------------------- tilemap
     add("edit_tilemap", "Edit Tilemap",

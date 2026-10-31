@@ -3326,6 +3326,27 @@
 		4A534E471ECC1F0F8A111EDB /* TrailRenderer.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D1A59D898AF8B4BB /* TrailRenderer.h */; };
 		4A534E478F589171F02F0B63 /* LineRibbonBuilder.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47197C345843945889 /* LineRibbonBuilder.h */; };
 		4A534E47212823E1E8889FB7 /* TrailSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D89F43391B4A415F /* TrailSystem.h */; };
+		4A534E47FAB0AB03DCC4FB57 /* PhysicsMaterialPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4734D6776EE9983E2C /* PhysicsMaterialPool.cpp */; };
+		4A534E474B176E0554781362 /* PhysicsMaterialPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4734D6776EE9983E2C /* PhysicsMaterialPool.cpp */; };
+		4A534E471DFCCEA6BE1F6704 /* PhysicsMaterial.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4782DC42859764CCD0 /* PhysicsMaterial.cpp */; };
+		4A534E479093D6E5BB6D8523 /* PhysicsMaterial.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4782DC42859764CCD0 /* PhysicsMaterial.cpp */; };
+		4A534E47E92F88382C9E5395 /* PolygonDecomposition2D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479691DF604E10D72A /* PolygonDecomposition2D.cpp */; };
+		4A534E472D1D3FE08F50731F /* PolygonDecomposition2D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E479691DF604E10D72A /* PolygonDecomposition2D.cpp */; };
+		4A534E4704D5E059F83952E5 /* ScriptMessages.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47987B75C94CDCCD29 /* ScriptMessages.cpp */; };
+		4A534E47D0813BE461D92A94 /* ScriptMessages.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47987B75C94CDCCD29 /* ScriptMessages.cpp */; };
+		4A534E4732715B216DF79AF9 /* PhysicsCommon.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C782824D41EC527F /* PhysicsCommon.h */; };
+		4A534E47E29EFC3039F81411 /* PhysicsMaterial.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475AF194F17A7D2E1C /* PhysicsMaterial.h */; };
+		4A534E47460ED1E95D04C3D4 /* PolygonDecomposition2D.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E966A402AAF3D786 /* PolygonDecomposition2D.h */; };
+		4A534E47552ED01E4CD8728E /* PhysicsMaterialPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47366B4EA887EC0288 /* PhysicsMaterialPool.h */; };
+		4A534E4708435C1C1D7160F0 /* ScriptMessages.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E471CD7791994CB883E /* ScriptMessages.h */; };
+		4A534E475F8922B71DF8823D /* ScriptEvent.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4708AE2F23673DC28C /* ScriptEvent.cpp */; };
+		4A534E476DADCD54579A8EF4 /* ScriptEvent.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4708AE2F23673DC28C /* ScriptEvent.cpp */; };
+		4A534E470CC4368392A0B2D2 /* ScriptRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47752AE757CAFC728C /* ScriptRuntime.cpp */; };
+		4A534E47EA32FE1232B1C371 /* ScriptRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47752AE757CAFC728C /* ScriptRuntime.cpp */; };
+		4A534E479BBB4CAB67E8BDD1 /* ScriptClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D748AD87F95BC4D0 /* ScriptClassesLua.cpp */; };
+		4A534E47981333F75668E2CF /* ScriptClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D748AD87F95BC4D0 /* ScriptClassesLua.cpp */; };
+		4A534E47A1EA29B71E34FD57 /* ScriptEvent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E473B9ADEBA91C10EBA /* ScriptEvent.h */; };
+		4A534E47A18FD96145634463 /* ScriptRuntime.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4700754C227C4F1876 /* ScriptRuntime.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -6714,6 +6735,20 @@
 		4A534E47D1A59D898AF8B4BB /* TrailRenderer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TrailRenderer.h; sourceTree = "<group>"; };
 		4A534E47197C345843945889 /* LineRibbonBuilder.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LineRibbonBuilder.h; sourceTree = "<group>"; };
 		4A534E47D89F43391B4A415F /* TrailSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TrailSystem.h; sourceTree = "<group>"; };
+		4A534E4734D6776EE9983E2C /* PhysicsMaterialPool.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsMaterialPool.cpp; sourceTree = "<group>"; };
+		4A534E4782DC42859764CCD0 /* PhysicsMaterial.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PhysicsMaterial.cpp; sourceTree = "<group>"; };
+		4A534E479691DF604E10D72A /* PolygonDecomposition2D.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PolygonDecomposition2D.cpp; sourceTree = "<group>"; };
+		4A534E47987B75C94CDCCD29 /* ScriptMessages.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ScriptMessages.cpp; sourceTree = "<group>"; };
+		4A534E47C782824D41EC527F /* PhysicsCommon.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PhysicsCommon.h; sourceTree = "<group>"; };
+		4A534E475AF194F17A7D2E1C /* PhysicsMaterial.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PhysicsMaterial.h; sourceTree = "<group>"; };
+		4A534E47E966A402AAF3D786 /* PolygonDecomposition2D.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PolygonDecomposition2D.h; sourceTree = "<group>"; };
+		4A534E47366B4EA887EC0288 /* PhysicsMaterialPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PhysicsMaterialPool.h; sourceTree = "<group>"; };
+		4A534E471CD7791994CB883E /* ScriptMessages.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ScriptMessages.h; sourceTree = "<group>"; };
+		4A534E4708AE2F23673DC28C /* ScriptEvent.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ScriptEvent.cpp; sourceTree = "<group>"; };
+		4A534E47752AE757CAFC728C /* ScriptRuntime.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ScriptRuntime.cpp; sourceTree = "<group>"; };
+		4A534E47D748AD87F95BC4D0 /* ScriptClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ScriptClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E473B9ADEBA91C10EBA /* ScriptEvent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ScriptEvent.h; sourceTree = "<group>"; };
+		4A534E4700754C227C4F1876 /* ScriptRuntime.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ScriptRuntime.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -7128,6 +7163,7 @@
 				564944450D63D10E11014513 /* HtmlUIMediaLua.cpp */,
 				414E494D4500000000000044 /* HtmlUIAnimeLua.cpp */,
 				505645430000000000000178 /* HtmlUIVectorLua.cpp */,
+				4A534E47D748AD87F95BC4D0 /* ScriptClassesLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -7965,6 +8001,10 @@
 				4A534E479BD98871AB1E19BF /* ConvexDecomposition.h */,
 				4A534E4755BA1970032D0AD7 /* JoltShapeBuilder.h */,
 				4A534E47F4315372D4C86A17 /* PlacementWorld.h */,
+				4A534E4782DC42859764CCD0 /* PhysicsMaterial.cpp */,
+				4A534E479691DF604E10D72A /* PolygonDecomposition2D.cpp */,
+				4A534E475AF194F17A7D2E1C /* PhysicsMaterial.h */,
+				4A534E47E966A402AAF3D786 /* PolygonDecomposition2D.h */,
 			);
 			path = physics;
 			sourceTree = "<group>";
@@ -8224,6 +8264,7 @@
 				4A534E47625F8F2E8CA675B3 /* AnimationPlayerComponent.h */,
 				4A534E47F4D574AFECE5C17E /* VertexAnimatorComponent.h */,
 				4A534E471E4D971B8C73A691 /* TrailRendererComponent.h */,
+				4A534E47C782824D41EC527F /* PhysicsCommon.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -9505,6 +9546,12 @@
 				71AD5E6E2E9F2B86004951AB /* ScriptBase.cpp */,
 				71AD5E6F2E9F2B86004951AB /* ScriptProperty.h */,
 				71AD5E752E9F2B87004951AB /* ScriptProperty.cpp */,
+				4A534E47987B75C94CDCCD29 /* ScriptMessages.cpp */,
+				4A534E471CD7791994CB883E /* ScriptMessages.h */,
+				4A534E4708AE2F23673DC28C /* ScriptEvent.cpp */,
+				4A534E47752AE757CAFC728C /* ScriptRuntime.cpp */,
+				4A534E473B9ADEBA91C10EBA /* ScriptEvent.h */,
+				4A534E4700754C227C4F1876 /* ScriptRuntime.h */,
 			);
 			path = script;
 			sourceTree = "<group>";
@@ -9534,6 +9581,8 @@
 				4A534E47401990531DC7D72F /* VertexAnimationPool.h */,
 				4A534E47D911C9CB4326E948 /* MeshBufferPool.cpp */,
 				4A534E47E2D854B4242EC2F5 /* MeshBufferPool.h */,
+				4A534E4734D6776EE9983E2C /* PhysicsMaterialPool.cpp */,
+				4A534E47366B4EA887EC0288 /* PhysicsMaterialPool.h */,
 			);
 			path = pool;
 			sourceTree = "<group>";
@@ -11990,6 +12039,13 @@
 				4A534E471ECC1F0F8A111EDB /* TrailRenderer.h in Headers */,
 				4A534E478F589171F02F0B63 /* LineRibbonBuilder.h in Headers */,
 				4A534E47212823E1E8889FB7 /* TrailSystem.h in Headers */,
+				4A534E4732715B216DF79AF9 /* PhysicsCommon.h in Headers */,
+				4A534E47E29EFC3039F81411 /* PhysicsMaterial.h in Headers */,
+				4A534E47460ED1E95D04C3D4 /* PolygonDecomposition2D.h in Headers */,
+				4A534E47552ED01E4CD8728E /* PhysicsMaterialPool.h in Headers */,
+				4A534E4708435C1C1D7160F0 /* ScriptMessages.h in Headers */,
+				4A534E47A1EA29B71E34FD57 /* ScriptEvent.h in Headers */,
+				4A534E47A18FD96145634463 /* ScriptRuntime.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14045,6 +14101,13 @@
 				4A534E47CB7C331EE90C2019 /* TrailRenderer.cpp in Sources */,
 				4A534E474FD048B43C95AA02 /* LineRibbonBuilder.cpp in Sources */,
 				4A534E47C826FA60D57B648C /* TrailSystem.cpp in Sources */,
+				4A534E47FAB0AB03DCC4FB57 /* PhysicsMaterialPool.cpp in Sources */,
+				4A534E471DFCCEA6BE1F6704 /* PhysicsMaterial.cpp in Sources */,
+				4A534E47E92F88382C9E5395 /* PolygonDecomposition2D.cpp in Sources */,
+				4A534E4704D5E059F83952E5 /* ScriptMessages.cpp in Sources */,
+				4A534E475F8922B71DF8823D /* ScriptEvent.cpp in Sources */,
+				4A534E470CC4368392A0B2D2 /* ScriptRuntime.cpp in Sources */,
+				4A534E479BBB4CAB67E8BDD1 /* ScriptClassesLua.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14479,6 +14542,13 @@
 				4A534E47666B66B24871AAA0 /* TrailRenderer.cpp in Sources */,
 				4A534E47F807A7F7B7DC0936 /* LineRibbonBuilder.cpp in Sources */,
 				4A534E479399C2E0EAF5A3C3 /* TrailSystem.cpp in Sources */,
+				4A534E474B176E0554781362 /* PhysicsMaterialPool.cpp in Sources */,
+				4A534E479093D6E5BB6D8523 /* PhysicsMaterial.cpp in Sources */,
+				4A534E472D1D3FE08F50731F /* PolygonDecomposition2D.cpp in Sources */,
+				4A534E47D0813BE461D92A94 /* ScriptMessages.cpp in Sources */,
+				4A534E476DADCD54579A8EF4 /* ScriptEvent.cpp in Sources */,
+				4A534E47EA32FE1232B1C371 /* ScriptRuntime.cpp in Sources */,
+				4A534E47981333F75668E2CF /* ScriptClassesLua.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

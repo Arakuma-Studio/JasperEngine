@@ -125,6 +125,8 @@ namespace jasperengine::editor::mcp {
         // it expands in place (in the object form before the component's other values, which
         // then override it)
         static bool parseChanges(const Json& changes, std::vector<Change>& out, std::string& error);
+        // parseChanges without the renamed names mapped to the current ones
+        static bool parseChangesAsGiven(const Json& changes, std::vector<Change>& out, std::string& error);
         // The commands for `changes` on each entity, added to `multi`: per entity and
         // component, the custom (YAML) edits first as one component rewrite, then the typed
         // PropertyCmds. False with `error` (multi may hold part of the commands then).

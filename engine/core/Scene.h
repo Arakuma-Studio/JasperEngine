@@ -71,6 +71,10 @@ namespace jasperengine{
             }
         }
 
+        // the scripts' onEnable / onDisable (and a first init) once they started (ScriptRuntime)
+        bool isActivationObserved() const override;
+        void onActiveInHierarchyChanged(const std::vector<Entity>& changed, bool nowActive) override;
+
         void onEntityDestroyed(Entity entity, Signature signature) override {
             for (auto const& pair : systems) {
                 for (ComponentId componentId = 0; componentId < signature.size(); ++componentId) {
@@ -222,6 +226,10 @@ namespace jasperengine{
         // fixed steps, so they move smoothly at any frame rate
         void setPhysicsInterpolation(bool interpolation);
         bool isPhysicsInterpolation() const;
+
+        // forwarder to PhysicsSystem::setSubSteps2D: Box2D sub-steps of each fixed step (1..16)
+        void setPhysics2DSubSteps(int subSteps);
+        int getPhysics2DSubSteps() const;
 
         void setDefaultMeshShader(const std::string& path);
         const std::string& getDefaultMeshShader() const;
