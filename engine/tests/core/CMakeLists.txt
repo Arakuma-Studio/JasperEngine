@@ -49,6 +49,44 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT JASPERENGINE_UNITY_BUILD)
         ${CMAKE_BINARY_DIR}/CMakeFiles/jasperengine.dir/core/diag/CrashHandlerPosix.cpp.o)
 endif()
 
+# Unity build: these tests keep file-local fixtures and helpers (TempDir, Marker, makeScene, ...)
+# named as in another test source (docs/specs/S33-build-speed.md M8)
+jasperengine_skip_unity_build(
+    REASON "file-local fixtures or helpers named as in another test source"
+    SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorBlendTreeTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorRetargetTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorStateMachineTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorSystemTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/animation/ClipIOTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/animation/KeyframeSamplingTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/animation/SubClipPoolTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/ecs/SignatureTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/input/InputFrameLoopGpuTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/io/JPakTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/particles/ParticleBudgetTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/particles/ParticleCollisionTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/particles/ParticleDeterminismTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/particles/ParticleEffectCodecTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/particles/ParticleRenderTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/particles/ParticleSeekTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/particles/ParticleSubEmittersTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/physics/CharacterController2DTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/physics/CharacterControllerBenchTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/physics/CharacterControllerTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/pose/HumanoidMapIOTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/pose/PoseFileTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/pose/PoseIOTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/pose/PoseMetricsTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/render/ObjectRenderShaderGpuTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/render/ParticlesGpuTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/render/RenderGpuTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/render/WaterFeaturesGpuTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/spline/SplineCornerTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/support/AllocationCounter.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/util/FunctionSubscribeReentrancyTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/util/PostColorLutTest.cpp)
+
 jasperengine_add_test_target(jasperengine-core-tests
     SOURCES ${CORE_TEST_SOURCES} ${CORE_TEST_ALLOCATION_COUNTER}
         # the animation clip tests' asset root (a temporary directory around each of them)
