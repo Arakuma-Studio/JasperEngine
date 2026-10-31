@@ -656,3 +656,62 @@ Acceptance:
 - `physics-3d`/`physics-2d`: gravity values read from the worlds (no change there).
 - `persistence` (#20): a persistent system keeps its particles across a scene load (world space ones stay put).
 - `anim-properties` (#12): clips may animate `emission.rateOverTime` etc. through the catalog paths.
+
+## Implementation notes
+
+Deviations and decisions taken while implementing (branch `gaps/particles`).
+
+- **Field names**: the shape type is `shape.shapeType` and the sheet tiles `textureSheetAnimation.numTilesX/Y` (Unity's
+  scripting names), everywhere (files, MCP, Lua, Inspector).
+- **Control methods**: `isPlaying()`, `isPaused()`, `isStopped()`, `isEmitting()`, `isAlive()` are methods in Lua
+  (the base `Action` class already has `isPlaying` as a method); `particleCount`, `time`, `randomSeed`,
+  `useAutoRandomSeed`, `useUnscaledTime`, `version` are properties. `emission:getBurst(i)` / `setBurst(i, b)` are
+  0-based like Unity's; `setBursts{...}` takes a table. `ps.main.useUnscaledTime` reads and writes the component's
+  top-level `useUnscaledTime` (shared with ui-scaling-text).
+- **Gravity source**: `main.gravitySource` (Unity 2021.2's field, Physics3D / Physics2D) picks the world whose gravity
+  applies instead of detecting the scene type; new systems in 2D scenes get Physics2D, the importer reads the field.
+- **Shape frame**: the engine's shapes lie in their XZ plane emitting along +Y; Unity's along +Z. The importer converts
+  a Unity shape rotation as q_engine = S(q_unity) * C with C = Rx(90) * Ry(180), plus one more Rx(90) for Edge (whose
+  line emits along its own +Y in both); positions, offsets, velocities and forces mirror x, scale and box
+  thickness swap y and z, Z rotations and roll speeds change sign (ROTATION_SIGN in UnityParticleImport.cpp).
+  Unity's disabled shape (emit along the system's +Z) becomes an enabled Cone with radius 0, angle 0 and rotation
+  (90, 0, 0).
+- **Prefab instance ids**: an instanced object's id is (source id XOR instance id) without the sign bit, verified on
+  the game's prefab files; a scene's `stripped` placeholders may carry their own ids (older Unity versions, and every
+  scene of the game): they are aliased to the instanced object through their `m_CorrespondingSourceObject` /
+  `m_PrefabInstance`.
+- **Importer scope**: from a scene, each topmost GameObject that has a ParticleSystem becomes a prefab (a parent
+  without one is not kept); from a prefab, each root with a system in its tree. The prefab root is placed at the
+  origin (a scene root also loses its rotation). Unity's start frame (stored as a share of the frames) is multiplied
+  by the frame count. Only Unity's built-in meshes map to engine primitives; a model's mesh is reported `mesh-missing`
+  and drawn as spheres. Noise `rotationAmount` is read as degrees (converted to radians): not verified against a
+  Unity capture. Existing materials and textures in `dest` are reused unless `overwrite` (prefabs get numbered names).
+  The editor and MCP write the files as one undo step (WriteFilesCmd); the CLI writes them directly with the safe
+  write helpers. Two extra report codes: `auto-destruct` (CFX_AutoDestructShuriken mapped to stopAction Destroy)
+  and `material-missing` / `material-unknown` (a material guid not in the project, an unknown built-in id).
+- **Limit velocity** applies to the integrated velocity, not to Velocity over Lifetime's animated part (Unity's own
+  behaviour differs slightly with dampen < 1).
+- **Stretched billboards**: `cameraVelocityScale` is stored and imported but not applied (the camera's velocity is
+  not tracked); length and speed scales are.
+- **Points renderer**: a version 2 system drawing on a Points target uses world diameters for sizes and only the
+  Billboard look (`check` reports `particles-points-render-mode`).
+- **Creation**: GameObject > Effects > Particle System makes the single GameObject version 2 system; the old layout
+  is still reachable as `PARTICLE_SYSTEM_LEGACY` (MCP `create_particles emitter_entity`) and a Points variant as
+  `PARTICLE_SYSTEM_POINTS`. Add Component > Particle System makes a version 2 component without adding a renderer
+  (the Inspector warns that nothing draws it and how to add a renderer).
+- **Legacy stop**: `Action.stop()` on a version 2 system is Unity's `Stop(true, StopEmittingAndClear)` followed by the
+  stop action.
+- **create_particles**: `size_over_life` / `alpha_over_life` of a version 2 system are multipliers of the start values
+  (curves from the pair), as Unity's Size/Color over Lifetime.
+- **Culling mode**: only Unity's values 1 and 2 (pause when invisible) are reported `culling-mode`; the engine always
+  simulates.
+- **Legacy golden image**: the version 1 scene of the MCP test uses deterministic values (no random ranges) because
+  Play shares `rand()` with everything else; the random presets are covered by the unit capture
+  (ParticleLegacyIdentityTest, recorded from the base before the change).
+- **Scene overlay**: "Simulate Layers" is a checkbox (the selected systems and their children, or every system of the
+  scene); the overlay preview resets the systems and their action state when it stops instead of restoring a
+  snapshot (the systems' authored values are never changed by a preview). The Inspector's Action component preview
+  of a version 2 system still works as before.
+- **Simulation fixes found by the tests**: the FPS frame and emission counts round with a 1e-4 tolerance (a second of
+  0.01 s steps sums to 0.99999); a prewarmed system draws its start delay random like a cold one, so both take the
+  same particle randoms.
