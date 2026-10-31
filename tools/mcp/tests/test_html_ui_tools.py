@@ -110,7 +110,9 @@ LIMITS.update({"user_settings": 550})
 # 106621, the limit set to it
 # lines and trails: no new tool; create_entity's type "trail_renderer" paid by a shorter create_entity
 # description, set_shape_points' line text reworded; measured on the merged tree: total 106692 (106687 before)
-TOTAL_LIMIT = 106700  # re-measured on the merged tree by the lead's verification
+# physics-contacts: get_runtime_entity's physics contacts / callbacks paid by a shorter description
+# (edit_colliders' receiver is in the guide); merged with main (lines-trails): 150 tools measured 106624
+TOTAL_LIMIT = 106624
 
 # ---------------------------------------------------------------------------- the import mirror (§3.9)
 
