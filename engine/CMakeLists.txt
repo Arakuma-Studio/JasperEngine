@@ -109,6 +109,12 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     add_definitions("-DJASPERENGINE_WINDOW_RESIZABLE=${JASPERENGINE_WINDOW_RESIZABLE_VALUE}")
     add_definitions("-DJASPERENGINE_WINDOW_TITLE=\"${JASPERENGINE_WINDOW_TITLE}\"")
     add_definitions("-DJASPERENGINE_STORAGE_ID=\"${JASPERENGINE_STORAGE_ID}\"")
+    # Only an editor export sets it: desktop builds then save per user
+    # (~/.local/share/<id>, %APPDATA%\<id>, ~/Library/Application Support/<id>) instead of in
+    # the working directory
+    if(DEFINED JASPERENGINE_APP_IDENTIFIER AND NOT JASPERENGINE_APP_IDENTIFIER STREQUAL "")
+        add_definitions("-DJASPERENGINE_APP_IDENTIFIER=\"${JASPERENGINE_APP_IDENTIFIER}\"")
+    endif()
     # X11 class / Wayland app_id (APP_NAME is a plain identifier, safe to quote).
     # Desktop environments match it against <APP_NAME>.desktop for the app icon.
     add_definitions("-DJASPERENGINE_APP_ID=\"${APP_NAME}\"")
@@ -963,12 +969,14 @@ set(JASPERENGINE_SRCS
     core/io/Data.cpp
     core/io/File.cpp
     core/io/FileData.cpp
+    core/io/FileUtils.cpp
     core/io/ResourcePack.cpp
     core/manager/ObjectManager.cpp
     core/manager/PrefabAsset.cpp
     core/manager/PrefabManager.cpp
     core/manager/SceneManager.cpp
     core/io/UserSettings.cpp
+    core/io/UserSettingsStore.cpp
     core/math/AABB.cpp
     core/math/Matrix3.cpp
     core/math/Matrix4.cpp
@@ -1052,6 +1060,7 @@ set(JASPERENGINE_SRCS
     core/render/TextureRender.cpp
     core/script/LuaBinding.cpp
     core/script/LuaFunctionBase.cpp
+    core/script/LuaJson.cpp
     core/script/LuaScript.cpp
     core/script/ScriptBase.cpp
     core/script/ScriptProperty.cpp
@@ -1110,6 +1119,7 @@ set(JASPERENGINE_SRCS
     core/util/FontRegistry.cpp
     core/util/GlyphAtlas.cpp
     core/util/LunaSVGRuntime.cpp
+    core/util/NumberText.cpp
     core/util/PostColorLut.cpp
     core/util/STBText.cpp
     core/util/StringUtils.cpp

@@ -3,6 +3,7 @@
 
 #include "UserSettings.h"
 #include "System.h"
+#include "UserSettingsStore.h"
 
 using namespace jasperengine;
 
@@ -92,4 +93,24 @@ void UserSettings::setDataForKey(const char *key, Data& value){
 
 void UserSettings::removeKey(const char *key){
     System::instance().removeKey(key);
+}
+
+bool UserSettings::hasKey(const char *key){
+    return System::instance().hasKey(key);
+}
+
+void UserSettings::deleteKey(const char *key){
+    System::instance().removeKey(key);
+}
+
+void UserSettings::deleteAll(){
+    System::instance().removeAllKeys();
+}
+
+void UserSettings::save(){
+    System::instance().saveUserSettings();
+}
+
+void UserSettings::tick(){
+    UserSettingsStore::instance().tick();
 }

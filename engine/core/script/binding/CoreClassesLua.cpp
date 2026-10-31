@@ -1747,6 +1747,13 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("getUserDataPath", [] () { return System::instance().getUserDataPath(); })
         .addStaticFunction("getLuaPath", [] () { return System::instance().getLuaPath(); })
         .addStaticFunction("getShaderPath", [] () { return System::instance().getShaderPath(); })
+        // The web build: writes the user data files (data://) to IndexedDB now instead of in
+        // half a second (File.writeText and Json.writeFile ask for that write themselves; Lua io
+        // writes need this call). Elsewhere files are on disk already: true.
+        .addStaticFunction("syncFileSystem", [] () { return System::instance().flushFileSystem(); })
+        // The web build: the saved files are restored from IndexedDB (the first scene waits for
+        // it, up to 3 s). Elsewhere always true.
+        .addStaticFunction("isUserDataLoaded", [] () { return System::instance().isUserDataLoaded(); })
 
         //UserSettings not need here
 
