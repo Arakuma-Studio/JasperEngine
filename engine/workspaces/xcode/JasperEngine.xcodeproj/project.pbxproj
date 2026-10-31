@@ -3320,6 +3320,16 @@
 		4A534E470B01A240FA439C2A /* MainThreadQueue.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4743499EE7BE02622E /* MainThreadQueue.h */; };
 		4A534E476582D52ED841837C /* HttpBackendApple.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C4D8BD8BC47E7C00 /* HttpBackendApple.mm */; };
 		4A534E47D3ECA820EEE9216B /* HttpBackendApple.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C4D8BD8BC47E7C00 /* HttpBackendApple.mm */; };
+		4A534E473175AEC2C1AD2C44 /* NativeBridge.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477D212C25FAAED034 /* NativeBridge.cpp */; };
+		4A534E478AB0864975A3DCA6 /* NativeBridge.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477D212C25FAAED034 /* NativeBridge.cpp */; };
+		4A534E47896376AB2B980B5A /* NativeClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477E5EE04810DE8E23 /* NativeClassesLua.cpp */; };
+		4A534E47E271DD1B910F97A7 /* NativeClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477E5EE04810DE8E23 /* NativeClassesLua.cpp */; };
+		4A534E4777D5CD339DD84BDE /* NativePlatformApple.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F3801C91FA764C9C /* NativePlatformApple.mm */; };
+		4A534E4777A7BCE6E27D7360 /* NativePlatformApple.mm in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F3801C91FA764C9C /* NativePlatformApple.mm */; };
+		4A534E474B958CA661CDD38F /* JasperNative.m in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4718CF4359AA4E6638 /* JasperNative.m */; };
+		4A534E47AF8E154ADAC11588 /* JasperNative.m in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4718CF4359AA4E6638 /* JasperNative.m */; };
+		4A534E477AADDB20250DF071 /* NativeBridge.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E472D37DB0DC4282EA3 /* NativeBridge.h */; };
+		4A534E47C9C2950E74BDB174 /* NativePlatform.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477549737BA275AFB0 /* NativePlatform.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -6704,6 +6714,12 @@
 		4A534E47C4CB6F074423D782 /* NetClassesLua.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NetClassesLua.h; sourceTree = "<group>"; };
 		4A534E4743499EE7BE02622E /* MainThreadQueue.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MainThreadQueue.h; sourceTree = "<group>"; };
 		4A534E47C4D8BD8BC47E7C00 /* HttpBackendApple.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = HttpBackendApple.mm; sourceTree = "<group>"; };
+		4A534E477D212C25FAAED034 /* NativeBridge.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = NativeBridge.cpp; sourceTree = "<group>"; };
+		4A534E477E5EE04810DE8E23 /* NativeClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = NativeClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E47F3801C91FA764C9C /* NativePlatformApple.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = NativePlatformApple.mm; sourceTree = "<group>"; };
+		4A534E4718CF4359AA4E6638 /* JasperNative.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = JasperNative.m; sourceTree = "<group>"; };
+		4A534E472D37DB0DC4282EA3 /* NativeBridge.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NativeBridge.h; sourceTree = "<group>"; };
+		4A534E477549737BA275AFB0 /* NativePlatform.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NativePlatform.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -7120,6 +7136,7 @@
 				505645430000000000000178 /* HtmlUIVectorLua.cpp */,
 				4A534E47C7032EFC250E9A0E /* NetClassesLua.cpp */,
 				4A534E47C4CB6F074423D782 /* NetClassesLua.h */,
+				4A534E477E5EE04810DE8E23 /* NativeClassesLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -8000,6 +8017,16 @@
 			path = net;
 			sourceTree = "<group>";
 		};
+		4A534E476646E8233CC78BAC /* native */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E477D212C25FAAED034 /* NativeBridge.cpp */,
+				4A534E472D37DB0DC4282EA3 /* NativeBridge.h */,
+				4A534E477549737BA275AFB0 /* NativePlatform.h */,
+			);
+			path = native;
+			sourceTree = "<group>";
+		};
 		7162FC2A25962A0E0075B97D /* core */ = {
 			isa = PBXGroup;
 			children = (
@@ -8041,6 +8068,7 @@
 				4A534E472AD0C1A658CC6825 /* physics */,
 				4A534E477E49C8CF16ED0963 /* animation */,
 				4A534E47325562508AC85529 /* net */,
+				4A534E476646E8233CC78BAC /* native */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -8492,6 +8520,8 @@
 				7158F43D259C2C82006E55D3 /* Renderer.h */,
 				7158F43E259C2C82006E55D3 /* Renderer.mm */,
 				4A534E47C4D8BD8BC47E7C00 /* HttpBackendApple.mm */,
+				4A534E47F3801C91FA764C9C /* NativePlatformApple.mm */,
+				4A534E4718CF4359AA4E6638 /* JasperNative.m */,
 			);
 			path = apple;
 			sourceTree = "<group>";
@@ -11974,6 +12004,8 @@
 				4A534E4798EE0D734C9C55E0 /* AsyncOwner.h in Headers */,
 				4A534E47D07D96EA20FAA7F1 /* NetClassesLua.h in Headers */,
 				4A534E470B01A240FA439C2A /* MainThreadQueue.h in Headers */,
+				4A534E477AADDB20250DF071 /* NativeBridge.h in Headers */,
+				4A534E47C9C2950E74BDB174 /* NativePlatform.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14027,6 +14059,10 @@
 				4A534E4765A452A70993BC50 /* NetClassesLua.cpp in Sources */,
 				4A534E47D5FBC9D2B84C3EF4 /* MainThreadQueue.cpp in Sources */,
 				4A534E476582D52ED841837C /* HttpBackendApple.mm in Sources */,
+				4A534E473175AEC2C1AD2C44 /* NativeBridge.cpp in Sources */,
+				4A534E47896376AB2B980B5A /* NativeClassesLua.cpp in Sources */,
+				4A534E4777D5CD339DD84BDE /* NativePlatformApple.mm in Sources */,
+				4A534E474B958CA661CDD38F /* JasperNative.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14459,6 +14495,10 @@
 				4A534E4704BBC250AA4EB0AC /* NetClassesLua.cpp in Sources */,
 				4A534E47265BB2DD7CEE9EEA /* MainThreadQueue.cpp in Sources */,
 				4A534E47D3ECA820EEE9216B /* HttpBackendApple.mm in Sources */,
+				4A534E478AB0864975A3DCA6 /* NativeBridge.cpp in Sources */,
+				4A534E47E271DD1B910F97A7 /* NativeClassesLua.cpp in Sources */,
+				4A534E4777A7BCE6E27D7360 /* NativePlatformApple.mm in Sources */,
+				4A534E47AF8E154ADAC11588 /* JasperNative.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -35,8 +35,10 @@ ANCHOR_HEADER = "core/subsystem/ActionSystem.h"
 HEADER_DIRECTORIES = ["core/component"]
 
 # platform sources outside JASPERENGINE_SRCS that both Apple engine targets compile (CMake picks
-# them per platform): the HTTP client's NSURLSession backend
-APPLE_ENGINE_SOURCES = ["platform/apple/HttpBackendApple.mm"]
+# them per platform): the HTTP client's NSURLSession backend, the native bridge's platform
+# layer and its Objective-C helper (JasperNative.h, which plugin code imports)
+APPLE_ENGINE_SOURCES = ["platform/apple/HttpBackendApple.mm", "platform/apple/NativePlatformApple.mm",
+                        "platform/apple/JasperNative.m"]
 
 OBJECT_RE = re.compile(r"^\t\t([0-9A-F]{24})(?: /\* (.*?) \*/)? = \{(.*)$")
 
@@ -257,7 +259,8 @@ def main():
         if what == "file":
             gid = group_for_directory(lines, objects, group_dirs, os.path.dirname(path))
             ref = object_id("ref", path)
-            file_type = "sourcecode.c.h" if is_header else ("sourcecode.cpp.objcpp" if path.endswith(".mm") else "sourcecode.cpp.cpp")
+            file_type = "sourcecode.c.h" if is_header else ("sourcecode.cpp.objcpp" if path.endswith(".mm") else
+                                                             "sourcecode.c.objc" if path.endswith(".m") else "sourcecode.cpp.cpp")
             insert_object(lines, objects, "PBXFileReference",
                           "\t\t%s /* %s */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = %s; path = %s; sourceTree = \"<group>\"; };"
                           % (ref, name, file_type, name))

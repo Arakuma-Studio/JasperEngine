@@ -74,6 +74,13 @@ namespace jasperengine::editor::NativePlugins {
     // The path below plugins/native, as "android", "ios", ... ("" when `path` is not in it)
     std::string platformOf(const fs::path& projectPath, const fs::path& path);
 
+    // CMake lines compiling the Objective-C (and C/C++) sources of plugins/native/apple and
+    // macos into `target` on macOS, with -fobjc-arc and the macos.frameworks linked ("" when
+    // there are none). rootExpression: where plugins/native is ("${PROJECT_ROOT}/plugins/native");
+    // includeDir: the folder of JasperNative.h. Swift is left out (Xcode builds only).
+    std::string macosCMake(const Scan& scan, const std::string& target, const std::string& rootExpression,
+                           const std::vector<std::string>& frameworks, const std::string& includeDir);
+
     // "" when `xml` is well-formed element content (several elements, comments and text are
     // fine; the android:, tools: and other prefixes need no declaration), else what is wrong
     // ("line 2: mismatched element ...")

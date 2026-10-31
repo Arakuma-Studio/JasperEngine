@@ -293,6 +293,39 @@ std::string NativePlugins::platformOf(const fs::path& projectPath, const fs::pat
     return std::find(names.begin(), names.end(), top) != names.end() ? top : std::string();
 }
 
+std::string NativePlugins::macosCMake(const Scan& scan, const std::string& target, const std::string& rootExpression,
+                                      const std::vector<std::string>& frameworks, const std::string& includeDir){
+    std::vector<std::string> sources;
+    for (const char* folder : {"apple", "macos"}){
+        for (const std::string& file : scan.filesWith(folder, {".m", ".mm", ".c", ".cpp", ".cc", ".cxx"})){
+            sources.push_back(rootExpression + "/" + folder + "/" + file);
+        }
+    }
+    if (sources.empty()) return std::string();
+    std::string s;
+    s += "\n# Objective-C native plugins (plugins/native/apple and macos), macOS only\n";
+    s += "if(APPLE AND NOT IOS)\n";
+    s += "    enable_language(OBJC OBJCXX)\n";
+    s += "    set(JASPERENGINE_NATIVE_PLUGIN_SOURCES\n";
+    for (const std::string& source : sources) s += "        \"" + source + "\"\n";
+    s += "    )\n";
+    s += "    target_sources(" + target + " PRIVATE ${JASPERENGINE_NATIVE_PLUGIN_SOURCES})\n";
+    s += "    set_source_files_properties(${JASPERENGINE_NATIVE_PLUGIN_SOURCES} PROPERTIES COMPILE_FLAGS \"-fobjc-arc\")\n";
+    s += "    target_include_directories(" + target + " PRIVATE \"" + includeDir + "\")\n";
+    s += "    target_link_libraries(" + target + " PRIVATE \"-framework Foundation\" \"-framework AppKit\"";
+    for (std::string framework : frameworks){
+        framework.erase(0, framework.find_first_not_of(" \t"));
+        framework.erase(framework.find_last_not_of(" \t") + 1);
+        const bool weak = !framework.empty() && framework.back() == '?';
+        if (weak) framework.pop_back();
+        if (framework.empty() || framework.find_first_of("\"\\ /;$") != std::string::npos) continue;
+        s += weak ? " \"-weak_framework " + framework + "\"" : " \"-framework " + framework + "\"";
+    }
+    s += ")\n";
+    s += "endif()\n";
+    return s;
+}
+
 std::string NativePlugins::xmlFragmentError(const std::string& xml){
     if (xml.find_first_not_of(" \t\r\n") == std::string::npos) return std::string();
     if (xml.find("<?xml") != std::string::npos) return "a fragment has no <?xml ...?> declaration (only the elements)";

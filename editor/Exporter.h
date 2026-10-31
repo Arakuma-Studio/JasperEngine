@@ -192,6 +192,11 @@ namespace jasperengine::editor {
         bool addXcodeProjectSources(std::string& xcodeProject);
         // The project's C++ standard and the scene capacities, as the CMake build sets them
         bool writeXcodeBuildSettings(std::string& xcodeProject);
+        // native plugins: plugins/native/{apple,ios,macos} sources and SDKs, system frameworks,
+        // Swift packages, Swift settings, entitlements, deployment target
+        bool addNativePluginsToXcode(std::string& xcodeProject);
+        // workspaces/xcode: the entitlements file and the CocoaPods Podfile (removed when unset)
+        bool writeNativeAppleFiles();
         bool writeWindowsResourceFile(bool includeIcon);
         bool writeAppIcon();
         bool buildAndSaveShaders();

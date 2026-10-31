@@ -1162,7 +1162,11 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "if(NOT JASPERENGINE_LIB)\n";
     cmakeContent += "    message(FATAL_ERROR \"JasperEngine library not found in ${JASPERENGINE_LIB_DIR}\")\n";
     cmakeContent += "endif()\n\n";
-    cmakeContent += "target_link_libraries(" + libName + " PRIVATE ${JASPERENGINE_LIB} ${PLATFORM_LIBS})\n\n";
+    cmakeContent += "target_link_libraries(" + libName + " PRIVATE ${JASPERENGINE_LIB} ${PLATFORM_LIBS})\n";
+    // macOS: the Objective-C native plugins run in the Play library and desktop builds too
+    cmakeContent += NativePlugins::macosCMake(NativePlugins::scan(projectPath), libName, "${CMAKE_CURRENT_SOURCE_DIR}/plugins/native",
+                                              macOSFrameworks, engineApiPathStr + "/platform/apple");
+    cmakeContent += "\n";
     cmakeContent += "# Set compile options based on compiler and platform\n";
     cmakeContent += "if(MSVC)\n";
     cmakeContent += "    # C4251/C4275: exported engine classes (JASPERENGINE_API -> dllimport) expose STL\n";
@@ -1598,7 +1602,8 @@ void editor::Generator::writeClaudeFile(const fs::path& projectPath) {
 
 const std::vector<std::string>& editor::Generator::engineApiIncludeDirs() {
     static const std::vector<std::string> dirs = {
-        "", "libs/sokol", "libs/box2d/include", "libs/joltphysics", "renders",
+        // libs/json: core/native/NativeBridge.h (NativeJson) and script/LuaJson.h
+        "", "libs/sokol", "libs/json", "libs/box2d/include", "libs/joltphysics", "renders",
         "core", "core/action", "core/action/keyframe", "core/buffer", "core/component", "core/ecs",
         "core/io", "core/manager", "core/math", "core/object", "core/object/sound", "core/object/ui",
         "core/object/environment", "core/object/physics", "core/pool", "core/registry", "core/render",
