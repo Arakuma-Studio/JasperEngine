@@ -31,8 +31,9 @@ Rules:
   edges, so read edges in `onUpdate`.
 - `Input.isKeyPressed`, `isMousePressed`, `numTouches`, `getTouches` and the `onKey*`, `onMouse*`,
   `onTouch*` events are unchanged.
-- App pause, focus loss and editor Play stop release everything held (the ups are seen by the
-  next frame); a disconnected gamepad releases its buttons.
+- App pause (a mobile app sent to the background, a web ad) and editor Play stop release
+  everything held (the ups are seen by the next frame); in the editor, the Game view losing
+  focus releases the keys. A disconnected gamepad releases its buttons.
 
 ## 2. Touches
 

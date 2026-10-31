@@ -113,6 +113,11 @@ disabled entry) are skipped.
 - Logging: `Log::print("pos %f %f", p.x, p.y)`, `Log::warn`, `Log::error` (printf format).
   Never `printf`, `std::cout` or `Engine::log` (it does not exist).
 - Key codes are `D_KEY_*` macros (`D_KEY_SPACE`, `D_KEY_LEFT`); Lua uses `Input.KEY_*`.
+- Input as in Lua (jasper://docs/input): `Input::getKeyDown(D_KEY_SPACE)`, `Input::getTouch(0)`,
+  and the input actions of Project Settings > Input with `#include "input/InputActions.h"`:
+  `InputActions::getAxis("Horizontal")`, `InputActions::getButtonDown("Jump")`. A source the
+  script feeds (`InputActions::setSourceValue(reinterpret_cast<uintptr_t>(this), "Horizontal",
+  1.0f, InputSourceKind::Script)`) is cleared when the script is deleted.
 - Angles are in DEGREES by default (`Engine::setUseDegrees(false)` switches):
   `Quaternion(angle, axis)` takes the angle first; `Quaternion::fromEulerAngles`,
   `Camera::rotateView` all go through `Angle::defaultToRad`. `std::sin/cos` want radians:
