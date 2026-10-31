@@ -200,6 +200,21 @@ function Good:onUpdate()
     Http.timeout = 20
     Http.logFailures = true
     req:cancel()
+    -- native-bridge: the hand-written signatures and option classes
+    local code, err, errCode = Native.call("Device", "getCode", 1, "two", {three = 3})
+    print(code, err, errCode == "not_found")
+    local call = Native.callAsync("Ads", "show", {"unit"}, function(result, message, c)
+        print(result, message, c)
+    end, {owner = self, thread = "background", timeout = 5})
+    Native.callAsync("Ads", "load", function(result) print(result) end)
+    print(call.id, call.result, call.errorCode, call.errorMessage, call.plugin, call.method, call:isDone())
+    call:cancel()
+    local id = Native.on("Ads", "paid", function(payload) print(payload) end, self)
+    Native.off(id)
+    print(Native.has("Ads"), Native.has("Ads", "show"))
+    Native.setMock("Ads", {show = function() return Native.pending() end})
+    Native.emitMock("Ads", "paid", {value = 1})
+    Native.clearMock("Ads")
 end
 
 return Good

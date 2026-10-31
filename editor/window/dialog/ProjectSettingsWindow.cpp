@@ -16,6 +16,7 @@
 #include <cmath>
 #include <cctype>
 #include <cfloat>
+#include <cstdlib>
 #include <cstring>
 
 namespace jasperengine::editor {
