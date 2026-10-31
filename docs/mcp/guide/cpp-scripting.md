@@ -105,6 +105,20 @@ The method name must be the Engine event's name (`onUpdate`, `onFixedUpdate`,
 `onPostUpdate`, `onKeyDown`, ...). Events of a disabled script (inactive GameObject or
 disabled entry) are skipped.
 
+## Saves and JSON
+
+- PlayerPrefs: `jasperengine::UserSettings` (`"io/UserSettings.h"`, flat include
+  `"UserSettings.h"`): `getIntegerForKey(k, default)`, `setIntegerForKey(k, v)`, the float,
+  double, long, bool, string and `Data` versions, `hasKey`, `deleteKey`, `deleteAll`, `save`.
+  The same keys as Lua `PlayerPrefs` / `UserSettings` (jasper://docs/lua-api, 2.4).
+- Files: `jasperengine::FileUtils` (`"FileUtils.h"`): `readText(path, out, error)`,
+  `writeText(path, text, error)` (atomic), `appendText`, `exists`, `remove`, `makeDirs`, `list`,
+  with the Lua `File.*` path rules (`data://` writable; `asset://`, `lua://` read-only).
+- JSON: nlohmann json 3.11 is on the include path (`#include "json.hpp"`, `nlohmann::json`);
+  `nlohmann::json::parse(text)` and `j.dump()`. To hand JSON to Lua or take it from Lua use
+  `jasperengine::LuaJson` (`"LuaJson.h"`: `toJson`, `push`, `encode`, `decode`, the same rules
+  as the Lua `Json` module).
+
 ## Rules that bite
 
 - Includes are quoted and resolve against the engine API snapshot: `"Engine.h"`,
